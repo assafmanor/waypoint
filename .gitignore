@@ -1,0 +1,30 @@
+# ─────────────────────────────────────────────────────────────
+# Private / local-only — NEVER committed.
+# ─────────────────────────────────────────────────────────────
+_internal/
+CLAUDE.local.md
+
+# Secrets & environment
+.env
+.env.*
+*.local
+**/secrets.*
+*.pem
+*.key
+
+# Dependencies / build
+node_modules/
+dist/
+build/
+.next/
+out/
+coverage/
+.turbo/
+*.tsbuildinfo
+
+# OS / editor cruft
+.DS_Store
+Thumbs.db
+.idea/
+.vscode/
+*.log

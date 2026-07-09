@@ -1,0 +1,224 @@
+// Waypoint data model — implements docs/architecture/data-model.md.
+// Keep in sync with packages/shared/src/entities.ts.
+// Design rules baked in: everything keyed by tripId; Event.kind (hard/soft, ADR-0011);
+// updatedBy/updatedAt for last-writer-wins + change-feed (ADR-0012);
+// Membership.role reserved for future roles (ADR-0005).
+
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "postgresql"
+  url      = env("DATABASE_URL")
+}
+
+enum EventKind {
+  hard
+  soft
+}
+
+enum EventStatus {
+  planned
+  now
+  done
+  skipped
+}
+
+enum EventSource {
+  manual
+  gmail
+  maybe_shelf
+  integration
+}
+
+enum BookingType {
+  flight
+  hotel
+  restaurant
+  train
+  activity
+  other
+}
+
+enum BookingSource {
+  manual
+  gmail
+}
+
+enum MembershipRole {
+  peer
+}
+
+enum DocumentType {
+  passport
+  insurance
+  visa
+  other
+}
+
+enum ChangeAction {
+  create
+  update
+  move
+  delete
+  status
+}
+
+model User {
+  id          String   @id @default(cuid())
+  googleSub   String   @unique
+  email       String   @unique
+  displayName String
+  avatarColor String   @default("#E9A63C")
+  createdAt   DateTime @default(now())
+
+  memberships Membership[]
+  maybeItems  MaybeItem[]
+  changes     Change[]
+}
+
+model Trip {
+  id          String   @id @default(cuid())
+  name        String
+  destination String
+  startDate   DateTime @db.Date
+  endDate     DateTime @db.Date
+  timezone    String   @default("UTC")
+  createdBy   String
+  createdAt   DateTime @default(now())
+
+  memberships Membership[]
+  days        Day[]
+  events      Event[]
+  bookings    Booking[]
+  documents   Document[]
+  maybeItems  MaybeItem[]
+  changes     Change[]
+
+  @@index([createdBy])
+}
+
+model Membership {
+  id                  String         @id @default(cuid())
+  tripId              String
+  userId              String
+  role                MembershipRole @default(peer)
+  calendarSyncEnabled Boolean        @default(false)
+  googleConnected     Boolean        @default(false)
+  joinedAt            DateTime       @default(now())
+
+  trip Trip @relation(fields: [tripId], references: [id], onDelete: Cascade)
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@unique([tripId, userId])
+  @@index([tripId])
+}
+
+model Day {
+  id     String   @id @default(cuid())
+  tripId String
+  date   DateTime @db.Date
+  label  String?
+
+  trip   Trip    @relation(fields: [tripId], references: [id], onDelete: Cascade)
+  events Event[]
+
+  @@unique([tripId, date])
+  @@index([tripId])
+}
+
+model Event {
+  id        String      @id @default(cuid())
+  tripId    String
+  dayId     String
+  title     String
+  icon      String?
+  kind      EventKind
+  startTime DateTime?
+  endTime   DateTime?
+  location  String?
+  placeId   String?
+  status    EventStatus @default(planned)
+  bookingId String?
+  sortOrder Int         @default(0)
+  source    EventSource @default(manual)
+  updatedBy String
+  updatedAt DateTime    @updatedAt
+
+  trip    Trip     @relation(fields: [tripId], references: [id], onDelete: Cascade)
+  day     Day      @relation(fields: [dayId], references: [id], onDelete: Cascade)
+  booking Booking? @relation(fields: [bookingId], references: [id], onDelete: SetNull)
+
+  @@index([tripId])
+  @@index([dayId])
+}
+
+model Booking {
+  id               String        @id @default(cuid())
+  tripId           String
+  type             BookingType
+  title            String
+  confirmationCode String?
+  provider         String?
+  address          String?
+  placeId          String?
+  startsAt         DateTime?
+  endsAt           DateTime?
+  details          Json?
+  source           BookingSource @default(manual)
+  offlineAvailable Boolean       @default(true)
+
+  trip   Trip    @relation(fields: [tripId], references: [id], onDelete: Cascade)
+  events Event[]
+
+  @@index([tripId])
+}
+
+model Document {
+  id          String       @id @default(cuid())
+  tripId      String
+  type        DocumentType
+  title       String
+  fileRef     String // reference to a server-side-encrypted blob (ADR-0015)
+  ownerUserId String?
+
+  trip Trip @relation(fields: [tripId], references: [id], onDelete: Cascade)
+
+  @@index([tripId])
+}
+
+model MaybeItem {
+  id        String   @id @default(cuid())
+  tripId    String
+  title     String
+  icon      String?
+  meta      String?
+  placeId   String?
+  createdBy String
+  consumed  Boolean  @default(false)
+  createdAt DateTime @default(now())
+
+  trip Trip @relation(fields: [tripId], references: [id], onDelete: Cascade)
+  user User @relation(fields: [createdBy], references: [id], onDelete: Cascade)
+
+  @@index([tripId])
+}
+
+model Change {
+  id          String       @id @default(cuid())
+  tripId      String
+  actorUserId String
+  entityType  String
+  entityId    String
+  action      ChangeAction
+  before      Json?
+  after       Json?
+  createdAt   DateTime     @default(now())
+
+  trip Trip @relation(fields: [tripId], references: [id], onDelete: Cascade)
+  user User @relation(fields: [actorUserId], references: [id], onDelete: Cascade)
+
+  @@index([tripId])
+  @@index([tripId, createdAt])
+}

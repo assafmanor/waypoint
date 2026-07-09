@@ -1,0 +1,66 @@
+# Documentation Index
+
+The single source of truth for where everything lives. Keep this current whenever a doc is added or renamed.
+
+## Conventions
+
+- **Language:** Documentation is written in **English** (engineering clarity, maintainability). The **product UI is Hebrew / full RTL** — Hebrew UI strings appear in quotes where relevant. See ADR-0009.
+- **Status tags** at the top of each doc: `DRAFT` · `PROPOSED` · `ACCEPTED` · `SUPERSEDED`.
+- **Every decision** of consequence gets an ADR in `decisions/`. Docs describe the *current* state; ADRs preserve the *why* and the history.
+- **Every working session** gets a dated note in `planning/`.
+
+## Product (the PM layer)
+
+| Doc | Purpose |
+|---|---|
+| [product/vision.md](product/vision.md) | The core insight, the two modes, the five pillars |
+| [product/modes.md](product/modes.md) | Plan mode & Trip mode: one surface re-emphasized, the switch |
+| [product/prd-v1.md](product/prd-v1.md) | v1 scope: what's in, what's out, success criteria |
+| [product/feature-catalog.md](product/feature-catalog.md) | Full feature list with MoSCoW priority + phase |
+| [product/personas.md](product/personas.md) | The travelers and their on-the-ground scenarios |
+
+## Design
+
+| Doc | Purpose |
+|---|---|
+| [design/design-language.md](design/design-language.md) | Palette, type, functional color, components, hard/soft grammar |
+
+## Architecture
+
+| Doc | Purpose |
+|---|---|
+| [architecture/overview.md](architecture/overview.md) | System shape, client/server split, offline model |
+| [architecture/collaboration-model.md](architecture/collaboration-model.md) | Multi-user model: trips, membership, sync, conflicts |
+| [architecture/data-model.md](architecture/data-model.md) | Entities; the hard/soft event model at its center |
+| [architecture/api-contract.md](architecture/api-contract.md) | v1 REST + WebSocket endpoints |
+| [architecture/sync-and-offline.md](architecture/sync-and-offline.md) | Realtime, optimistic sync, undo, offline protocol |
+| [architecture/auth-and-google.md](architecture/auth-and-google.md) | Google OAuth, sessions, scopes, calendar sync |
+| [architecture/deployment.md](architecture/deployment.md) | Hosting topology, CI/CD, GitHub — direction + open questions |
+| [architecture/tech-stack.md](architecture/tech-stack.md) | Chosen technologies + rationale |
+
+## Engineering
+
+| Doc | Purpose |
+|---|---|
+| [engineering/conventions.md](engineering/conventions.md) | Code style, repo shape, testing, commits, Definition of Done |
+| [engineering/prerequisites-checklist.md](engineering/prerequisites-checklist.md) | Toolchain, first-run commands, Google Cloud setup, secrets |
+
+## Integrations
+
+| Doc | Purpose |
+|---|---|
+| [integrations/overview.md](integrations/overview.md) | Integrations-as-pipes principle; per-service notes |
+
+## Decisions
+
+| Doc | Purpose |
+|---|---|
+| [decisions/README.md](decisions/README.md) | ADR process + index of all decisions |
+
+## Planning sessions
+
+| Doc | Purpose |
+|---|---|
+| [planning/2026-07-09-session-01-pm-kickoff.md](planning/2026-07-09-session-01-pm-kickoff.md) | PM kickoff: scope, decisions, scaffold |
+| [planning/2026-07-09-session-02-modes.md](planning/2026-07-09-session-02-modes.md) | Plan/Trip mode model + switch |
+| [planning/2026-07-08-handoff-source.md](planning/2026-07-08-handoff-source.md) | Original handoff doc (source material, Hebrew) |

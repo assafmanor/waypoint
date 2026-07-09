@@ -1,0 +1,435 @@
+<!DOCTYPE html>
+<html lang="he" dir="rtl">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>מרכז שליטה לטיול — מוקאפ v2</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Assistant:wght@400;500;600;700&family=Secular+One&family=JetBrains+Mono:wght@500;700&display=swap" rel="stylesheet">
+<style>
+  :root{
+    --ink:#16233D;
+    --indigo:#1B2A4A;
+    --board:#0E1729;
+    --board-2:#152137;
+    --screen:#E7EAEF;
+    --card:#FFFFFF;
+    --paper:#F3EFE6;
+    --amber:#E9A63C;
+    --amber-deep:#C9822A;
+    --teal:#2C9C90;
+    --muted:#6C7488;
+    --line:rgba(22,35,61,.10);
+    --soft-line:rgba(22,35,61,.28);
+    --shadow:0 18px 40px -18px rgba(14,23,41,.45);
+  }
+  *{box-sizing:border-box;margin:0;padding:0}
+  html,body{height:100%}
+  body{
+    font-family:'Assistant',sans-serif;
+    background:
+      radial-gradient(120% 90% at 80% -10%, #2A3E68 0%, transparent 55%),
+      radial-gradient(120% 90% at 0% 110%, #1a2a4a 0%, transparent 50%),
+      #0F1A31;
+    color:var(--ink);min-height:100vh;
+    display:flex;align-items:center;justify-content:center;
+    padding:28px 16px;-webkit-font-smoothing:antialiased;
+  }
+  .stage{width:100%;max-width:392px}
+  .caption{text-align:center;color:#AEB9D4;font-size:12.5px;letter-spacing:.02em;margin-bottom:14px;font-weight:500}
+  .caption b{color:#fff;font-weight:600}
+
+  .phone{
+    background:var(--screen);border-radius:38px;
+    box-shadow:var(--shadow), 0 0 0 10px #0b1526, 0 0 0 12px #223257;
+    overflow:hidden;position:relative;height:812px;display:flex;flex-direction:column;
+  }
+
+  .statusbar{background:var(--indigo);color:#DCE3F2;display:flex;justify-content:space-between;align-items:center;padding:11px 22px 8px;font-size:13px;font-weight:600;font-family:'JetBrains Mono',monospace}
+  .statusbar .dots{letter-spacing:2px;opacity:.85}
+
+  .header{background:var(--indigo);color:#fff;padding:6px 20px 18px}
+  .trip-row{display:flex;justify-content:space-between;align-items:flex-start}
+  .trip-name{font-family:'Secular One',sans-serif;font-size:26px;line-height:1.05}
+  .trip-sub{color:#9DAAC8;font-size:13px;margin-top:5px;font-weight:500}
+  .trip-sub .dot{opacity:.5;margin:0 6px}
+  .avatars{display:flex;flex-direction:row-reverse}
+  .av{width:31px;height:31px;border-radius:50%;display:grid;place-items:center;color:#12203a;font-weight:700;font-size:12.5px;border:2px solid var(--indigo);margin-inline-start:-9px;position:relative}
+  .av::after{content:"";position:absolute;bottom:-1px;inset-inline-start:-1px;width:11px;height:11px;border-radius:50%;background:conic-gradient(#4285F4 0 25%,#EA4335 0 50%,#FBBC05 0 75%,#34A853 0);border:1.5px solid var(--indigo)}
+  .gnote{display:flex;align-items:center;gap:6px;margin-top:12px;color:#8FA0C4;font-size:11.5px;font-weight:500}
+  .gnote .g{width:14px;height:14px;border-radius:50%;background:conic-gradient(#4285F4 0 25%,#EA4335 0 50%,#FBBC05 0 75%,#34A853 0)}
+
+  .day-strip{display:flex;gap:6px;margin-top:14px}
+  .day-pill{flex:1;text-align:center;font-size:11px;font-weight:600;padding:7px 0 8px;border-radius:9px;color:#8494B5;background:rgba(255,255,255,.05)}
+  .day-pill .n{display:block;font-family:'JetBrains Mono',monospace;font-size:14px;margin-top:2px;color:#B9C4DE}
+  .day-pill.on{background:var(--amber);color:#3a2405}
+  .day-pill.on .n{color:#3a2405}
+  .day-pill.past{opacity:.45}
+
+  .body{flex:1;overflow-y:auto;padding:16px 16px 92px;position:relative}
+  .body::-webkit-scrollbar{width:0}
+  .view{display:none}
+  .view.active{display:block;animation:fade .32s ease}
+  @keyframes fade{from{opacity:0;transform:translateY(6px)}to{opacity:1;transform:none}}
+
+  /* departure-board hero */
+  .board{background:linear-gradient(180deg,var(--board-2),var(--board));border-radius:22px;padding:18px 18px 16px;color:#EAF0FF;box-shadow:0 20px 34px -20px rgba(8,14,28,.9);position:relative;overflow:hidden}
+  .board::before{content:"";position:absolute;inset:0;background:radial-gradient(90% 60% at 85% 0%, rgba(233,166,60,.16), transparent 60%);pointer-events:none}
+  .board-top{display:flex;justify-content:space-between;align-items:center;position:relative}
+  .live{display:flex;align-items:center;gap:7px;font-size:11px;font-weight:600;letter-spacing:.14em;color:#8FA0C4}
+  .live .blip{width:7px;height:7px;border-radius:50%;background:var(--amber);animation:pulse 2s infinite}
+  @keyframes pulse{0%{box-shadow:0 0 0 0 rgba(233,166,60,.55)}70%{box-shadow:0 0 0 8px rgba(233,166,60,0)}100%{box-shadow:0 0 0 0 rgba(233,166,60,0)}}
+  .clock{font-family:'JetBrains Mono',monospace;font-size:15px;font-weight:700;color:#C3CEE8}
+  .now-label{color:var(--amber);font-size:12px;font-weight:700;letter-spacing:.1em;margin-top:14px}
+  .now-title{font-family:'Secular One',sans-serif;font-size:21px;margin-top:3px;color:#fff}
+  .now-meta{color:#93A2C4;font-size:13px;margin-top:3px}
+  .board-divider{height:1px;background:rgba(255,255,255,.09);margin:15px 0 13px}
+  .next-row{display:flex;justify-content:space-between;align-items:flex-end}
+  .next-label{color:#7E8FB4;font-size:11px;font-weight:700;letter-spacing:.1em}
+  .next-title{font-family:'Secular One',sans-serif;font-size:18px;color:#EAF0FF;margin-top:4px}
+  .next-meta{color:#93A2C4;font-size:12.5px;margin-top:3px;display:flex;align-items:center;gap:6px;flex-wrap:wrap}
+  .next-meta .code{font-family:'JetBrains Mono',monospace;color:#C9B78A;background:rgba(233,166,60,.12);padding:1px 6px;border-radius:5px;font-weight:700}
+  .lockmini{color:#C9B78A;font-size:11px;font-weight:600}
+  .countdown{text-align:center;background:rgba(233,166,60,.14);border:1px solid rgba(233,166,60,.32);border-radius:13px;padding:8px 12px;min-width:74px}
+  .countdown .t{font-family:'JetBrains Mono',monospace;font-size:20px;font-weight:700;color:var(--amber);line-height:1}
+  .countdown .u{font-size:10px;color:#B9985C;letter-spacing:.08em;margin-top:3px}
+  .progress{margin-top:16px;position:relative}
+  .progress .track{height:3px;background:rgba(255,255,255,.12);border-radius:3px;position:relative}
+  .progress .fill{position:absolute;inset-block:0;inset-inline-start:0;width:62%;background:linear-gradient(90deg,var(--amber-deep),var(--amber));border-radius:3px}
+  .progress .knob{position:absolute;inset-inline-start:62%;top:50%;width:11px;height:11px;background:var(--amber);border-radius:50%;transform:translate(50%,-50%);box-shadow:0 0 0 3px rgba(233,166,60,.25)}
+  .progress .ends{display:flex;justify-content:space-between;margin-top:7px;font-family:'JetBrains Mono',monospace;font-size:10px;color:#7688AC}
+
+  .sec-title{font-size:12px;font-weight:700;color:var(--muted);letter-spacing:.06em;margin:22px 4px 11px;display:flex;justify-content:space-between;align-items:center}
+  .sec-title .hint{font-weight:500;letter-spacing:0;color:#98A0B0;font-size:11px}
+
+  .quick{display:grid;grid-template-columns:repeat(4,1fr);gap:9px}
+  .qa{background:var(--card);border:1px solid var(--line);border-radius:15px;padding:13px 6px 10px;text-align:center;cursor:pointer;transition:transform .12s,box-shadow .12s;font:inherit;color:var(--ink)}
+  .qa:hover{transform:translateY(-2px);box-shadow:0 10px 18px -12px rgba(22,35,61,.35)}
+  .qa .ic{font-size:20px;display:block;margin-bottom:6px}
+  .qa .lb{font-size:11px;font-weight:600;line-height:1.2}
+  .qa:focus-visible{outline:2.5px solid var(--teal);outline-offset:2px}
+
+  /* itinerary items with quick actions */
+  .item{background:var(--card);border:1px solid var(--line);border-radius:15px;margin-bottom:10px;overflow:hidden}
+  .item.soft{background:repeating-linear-gradient(-45deg,#fff 0 9px,#FBFAF7 9px 18px);border:1px dashed var(--soft-line)}
+  .item.now{border-color:var(--amber);box-shadow:0 0 0 3px rgba(233,166,60,.13)}
+  .item.done .face{opacity:.5}
+  .face{display:flex;align-items:center;gap:12px;padding:14px 15px;cursor:pointer}
+  .badge{width:40px;height:40px;border-radius:12px;display:grid;place-items:center;font-size:19px;flex:0 0 auto;background:var(--paper)}
+  .item.soft .badge{background:rgba(22,35,61,.05)}
+  .face .main{flex:1;min-width:0}
+  .face .main .t{font-weight:700;font-size:14.5px;display:flex;align-items:center;gap:7px}
+  .tag-hard{font-size:10px;font-weight:700;color:var(--amber-deep);background:rgba(233,166,60,.14);padding:2px 6px;border-radius:6px;display:inline-flex;align-items:center;gap:3px}
+  .tag-soft{font-size:10px;font-weight:700;color:var(--muted);background:rgba(22,35,61,.06);padding:2px 6px;border-radius:6px}
+  .face .main .m{font-size:12px;color:var(--muted);margin-top:3px;display:flex;align-items:center;gap:6px;flex-wrap:wrap}
+  .src{font-size:10.5px;color:#7C8496;display:inline-flex;align-items:center;gap:4px}
+  .src .g{width:11px;height:11px;border-radius:50%;background:conic-gradient(#4285F4 0 25%,#EA4335 0 50%,#FBBC05 0 75%,#34A853 0)}
+  .face .time{font-family:'JetBrains Mono',monospace;font-size:13px;font-weight:700;color:var(--ink);flex:0 0 auto;text-align:end}
+  .item.soft .face .time{color:var(--muted)}
+  .face .chev{color:#B5BCC9;font-size:13px;flex:0 0 auto;transition:transform .2s}
+  .item.open .chev{transform:rotate(180deg)}
+
+  .actions{max-height:0;overflow:hidden;transition:max-height .28s ease;background:#FAFBFD;border-top:1px solid transparent}
+  .item.open .actions{max-height:200px;border-top-color:var(--line)}
+  .act-row{display:flex;gap:7px;padding:12px 14px;flex-wrap:wrap}
+  .act{font:inherit;font-size:12px;font-weight:600;border:1px solid var(--line);background:#fff;color:var(--ink);border-radius:9px;padding:7px 11px;cursor:pointer;transition:.12s}
+  .act:hover{background:var(--ink);color:#fff;border-color:var(--ink)}
+  .act.go{border-color:var(--teal);color:var(--teal)}
+  .act.go:hover{background:var(--teal);color:#fff}
+  .act:focus-visible{outline:2.5px solid var(--teal);outline-offset:2px}
+  .hard-warn{font-size:11px;color:var(--amber-deep);padding:0 14px 12px;display:flex;align-items:center;gap:6px}
+
+  /* ripple suggestion bar */
+  .ripple{background:rgba(233,166,60,.1);border:1px solid rgba(233,166,60,.3);border-radius:12px;padding:11px 13px;margin:0 0 10px;display:none;align-items:center;gap:10px}
+  .ripple.show{display:flex;animation:fade .3s ease}
+  .ripple .rt{flex:1;font-size:12.5px;font-weight:600;color:#7a5a1e}
+  .ripple button{font:inherit;font-size:12px;font-weight:700;border-radius:8px;border:0;padding:6px 12px;cursor:pointer}
+  .ripple .yes{background:var(--amber);color:#3a2405}
+  .ripple .no{background:transparent;color:#8a6a2e}
+
+  /* maybe shelf */
+  .shelf{display:flex;gap:10px;overflow-x:auto;padding:2px 2px 6px;scroll-snap-type:x mandatory}
+  .shelf::-webkit-scrollbar{height:0}
+  .maybe{scroll-snap-align:start;flex:0 0 auto;width:150px;background:repeating-linear-gradient(-45deg,#fff 0 9px,#FBFAF7 9px 18px);border:1px dashed var(--soft-line);border-radius:15px;padding:12px;cursor:pointer;transition:.14s}
+  .maybe:hover{transform:translateY(-2px);border-color:var(--teal)}
+  .maybe .mi{font-size:20px}
+  .maybe .mt{font-weight:700;font-size:13.5px;margin-top:6px;line-height:1.15}
+  .maybe .mm{font-size:11px;color:var(--muted);margin-top:4px}
+  .maybe .add{margin-top:9px;font-size:11px;font-weight:700;color:var(--teal);display:flex;align-items:center;gap:4px}
+
+  /* glance + generic lists (map/index) */
+  .glance{display:grid;grid-template-columns:1fr 1fr;gap:10px}
+  .gcard{background:var(--card);border:1px solid var(--line);border-radius:15px;padding:13px 14px}
+  .gcard .k{font-size:11.5px;color:var(--muted);font-weight:600;display:flex;align-items:center;gap:5px}
+  .gcard .v{font-family:'JetBrains Mono',monospace;font-size:19px;font-weight:700;margin-top:6px}
+  .gcard .s{font-size:11px;color:var(--muted);margin-top:2px}
+  .gcard .s.up{color:var(--teal);font-weight:600}
+  .budget-bar{height:5px;background:var(--line);border-radius:4px;margin-top:8px;overflow:hidden}
+  .budget-bar i{display:block;height:100%;width:58%;background:var(--teal);border-radius:4px}
+
+  .listcard{background:var(--card);border:1px solid var(--line);border-radius:15px;overflow:hidden}
+  .li{display:flex;align-items:center;gap:12px;padding:14px 15px;border-bottom:1px solid var(--line);cursor:pointer}
+  .li:last-child{border-bottom:0}
+  .li:hover{background:#FAFBFD}
+  .li .badge2{width:38px;height:38px;border-radius:11px;display:grid;place-items:center;font-size:18px;flex:0 0 auto;background:var(--paper)}
+  .li .main{flex:1;min-width:0}
+  .li .main .t{font-weight:700;font-size:14.5px}
+  .li .main .m{font-size:12px;color:var(--muted);margin-top:3px;display:flex;align-items:center;gap:6px;flex-wrap:wrap}
+  .li .right{text-align:end;flex:0 0 auto}
+  .li .right .code{font-family:'JetBrains Mono',monospace;font-size:12px;font-weight:700;color:var(--amber-deep)}
+  .li .right .time{font-family:'JetBrains Mono',monospace;font-size:12px;color:var(--muted);margin-top:3px}
+
+  .map{height:230px;border-radius:18px;position:relative;overflow:hidden;border:1px solid var(--line);background:linear-gradient(0deg,rgba(44,156,144,.06),rgba(44,156,144,.06)),repeating-linear-gradient(0deg,#E3E8EC 0 1px,transparent 1px 26px),repeating-linear-gradient(90deg,#E3E8EC 0 1px,transparent 1px 26px),#EEF1F0}
+  .pin{position:absolute;transform:translate(50%,-100%);text-align:center}
+  .pin .p{width:26px;height:26px;border-radius:50% 50% 50% 2px;transform:rotate(45deg);display:grid;place-items:center;box-shadow:0 4px 8px -2px rgba(0,0,0,.3)}
+  .pin .p span{transform:rotate(-45deg);font-size:12px}
+  .pin .cap{font-size:10px;font-weight:700;background:#fff;padding:1px 5px;border-radius:5px;margin-top:5px;box-shadow:0 2px 4px rgba(0,0,0,.12);white-space:nowrap}
+  .me{position:absolute;width:16px;height:16px;background:#2E6BE6;border:3px solid #fff;border-radius:50%;box-shadow:0 0 0 6px rgba(46,107,230,.2)}
+
+  .nav{position:absolute;inset-inline:0;bottom:0;background:rgba(255,255,255,.92);backdrop-filter:blur(12px);border-top:1px solid var(--line);display:flex;padding:9px 8px}
+  .nav button{flex:1;background:none;border:0;font:inherit;cursor:pointer;color:var(--muted);display:flex;flex-direction:column;align-items:center;gap:3px;padding:5px 0;font-size:10.5px;font-weight:600;transition:color .15s}
+  .nav button .ic{font-size:19px}
+  .nav button.on{color:var(--indigo)}
+  .nav button:focus-visible{outline:2.5px solid var(--teal);outline-offset:2px;border-radius:8px}
+
+  .toast{position:absolute;left:16px;right:16px;bottom:78px;background:var(--ink);color:#fff;border-radius:13px;padding:13px 16px;font-size:13.5px;font-weight:500;box-shadow:0 12px 28px -10px rgba(0,0,0,.5);display:flex;align-items:center;gap:9px;opacity:0;transform:translateY(12px);pointer-events:none;transition:.28s}
+  .toast.show{opacity:1;transform:none}
+  .toast .ic{font-size:17px}
+  .empty-note{color:var(--muted);font-size:13px;text-align:center;padding:22px 20px 6px;line-height:1.5}
+
+  @media (prefers-reduced-motion: reduce){*{animation:none!important;transition:none!important}}
+</style>
+</head>
+<body>
+<div class="stage">
+  <p class="caption">מרכז שליטה לטיול · <b>מצב טיול</b> · קשיח/רך · שינוי תוך כדי</p>
+
+  <div class="phone">
+    <div class="statusbar"><span id="sbclock">18:52</span><span class="dots">●●● 4G ▮</span></div>
+
+    <div class="header">
+      <div class="trip-row">
+        <div>
+          <div class="trip-name">יפן ׳26</div>
+          <div class="trip-sub">טוקיו<span class="dot">•</span>יום 3 מתוך 10</div>
+        </div>
+        <div class="avatars">
+          <div class="av" style="background:#E9A63C" title="אסף · Google מחובר">א</div>
+          <div class="av" style="background:#5EC5B6" title="נועם · Google מחובר">נ</div>
+          <div class="av" style="background:#E88C8C" title="דנה · Google מחובר">ד</div>
+          <div class="av" style="background:#9C8CE8" title="מאור · Google מחובר">מ</div>
+          <div class="av" style="background:#8CB6E8" title="רון · Google מחובר">ר</div>
+        </div>
+      </div>
+      <div class="gnote"><span class="g"></span>כל אחד מחובר לחשבון Google שלו · המסלול מסונכרן ליומן האישי</div>
+      <div class="day-strip">
+        <div class="day-pill past">א׳<span class="n">01</span></div>
+        <div class="day-pill past">ב׳<span class="n">02</span></div>
+        <div class="day-pill on">ג׳<span class="n">03</span></div>
+        <div class="day-pill">ד׳<span class="n">04</span></div>
+        <div class="day-pill">ה׳<span class="n">05</span></div>
+        <div class="day-pill">ו׳<span class="n">06</span></div>
+      </div>
+    </div>
+
+    <div class="body">
+
+      <!-- ===== HOME ===== -->
+      <section class="view active" id="view-home">
+        <div class="board">
+          <div class="board-top">
+            <div class="live"><span class="blip"></span>עכשיו</div>
+            <div class="clock" id="boardclock" dir="ltr">18:52</div>
+          </div>
+          <div class="now-label">זמן חופשי · רך</div>
+          <div class="now-title">משוטטים בשינג׳וקו</div>
+          <div class="now-meta">עד <span dir="ltr">19:30</span> · 5 דקות הליכה מהיעד הבא</div>
+          <div class="board-divider"></div>
+          <div class="next-row">
+            <div>
+              <div class="next-label">הבא בתור</div>
+              <div class="next-title">ארוחת ערב · Ichiran Ramen</div>
+              <div class="next-meta">
+                <span dir="ltr">19:30</span>
+                <span class="lockmini">🔒 קשיח</span>
+                <span class="code" dir="ltr">#4471</span>
+              </div>
+            </div>
+            <div class="countdown"><div class="t" id="cd" dir="ltr">38</div><div class="u">דקות</div></div>
+          </div>
+          <div class="progress" aria-hidden="true">
+            <div class="track"><div class="fill"></div><div class="knob"></div></div>
+            <div class="ends"><span>07:00</span><span>עכשיו</span><span>23:00</span></div>
+          </div>
+        </div>
+
+        <div class="sec-title">גישה מהירה</div>
+        <div class="quick">
+          <button class="qa" onclick="toast('🧭','פותח Google Maps לניווט למלון')"><span class="ic">🧭</span><span class="lb">ניווט למלון</span></button>
+          <button class="qa" onclick="toast('🎫','הכרטיס הבא: Ichiran · #4471')"><span class="ic">🎫</span><span class="lb">הכרטיס הבא</span></button>
+          <button class="qa" onclick="toast('🏧','3 כספומטים ללא עמלה ברדיוס 300 מ׳')"><span class="ic">🏧</span><span class="lb">כספומט קרוב</span></button>
+          <button class="qa" onclick="toast('📶','WiFi המלון הועתק ללוח')"><span class="ic">📶</span><span class="lb">קוד WiFi</span></button>
+        </div>
+
+        <div class="sec-title">מבט מהיר</div>
+        <div class="glance">
+          <div class="gcard"><div class="k">🌤️ טוקיו</div><div class="v">18°</div><div class="s">גשם קל אחרי חצות</div></div>
+          <div class="gcard"><div class="k">💱 שער</div><div class="v" style="font-size:15px">¥1=₪0.024</div><div class="s up">▲ 0.3% היום</div></div>
+          <div class="gcard" style="grid-column:1/-1"><div class="k">💰 תקציב היום</div><div class="v">¥8,200 <span style="font-size:12px;color:var(--muted);font-weight:500">/ ¥14,000</span></div><div class="budget-bar"><i></i></div></div>
+        </div>
+      </section>
+
+      <!-- ===== MAP ===== -->
+      <section class="view" id="view-map">
+        <div class="sec-title">מה מסביב</div>
+        <div class="map">
+          <div class="me" style="left:46%;top:58%"></div>
+          <div class="pin" style="left:44%;top:56%"><div class="p" style="background:#E9A63C"><span>🍜</span></div><div class="cap">Ichiran · 19:30</div></div>
+          <div class="pin" style="left:66%;top:30%"><div class="p" style="background:#2C9C90"><span>🏨</span></div><div class="cap">המלון</div></div>
+          <div class="pin" style="left:24%;top:38%"><div class="p" style="background:#9C8CE8"><span>🍶</span></div><div class="cap">גולדן גאי</div></div>
+          <div class="pin" style="left:70%;top:70%"><div class="p" style="background:#8CB6E8"><span>🚉</span></div><div class="cap">תחנת שינג׳וקו</div></div>
+        </div>
+        <div class="sec-title">קרוב אליך עכשיו</div>
+        <div class="listcard">
+          <div class="li" onclick="toast('☕','שמור למדף אולי')"><div class="badge2">☕</div><div class="main"><div class="t">% Arabica Coffee</div><div class="m">120 מ׳ · פתוח עד 20:00</div></div><div class="right"><div class="code">4.6★</div></div></div>
+          <div class="li" onclick="toast('🏧','ניווט לכספומט 7-Eleven')"><div class="badge2">🏧</div><div class="main"><div class="t">7-Eleven ATM</div><div class="m">80 מ׳ · ללא עמלה</div></div><div class="right"><div class="time">24/7</div></div></div>
+          <div class="li" onclick="toast('💊','ניווט לבית מרקחת')"><div class="badge2">💊</div><div class="main"><div class="t">Matsumoto Kiyoshi</div><div class="m">210 מ׳ · בית מרקחת</div></div><div class="right"><div class="time">עד 22:00</div></div></div>
+        </div>
+      </section>
+
+      <!-- ===== INDEX ===== -->
+      <section class="view" id="view-index">
+        <div class="sec-title">הזמנות <span class="hint">עובד גם בלי רשת</span></div>
+        <div class="listcard">
+          <div class="li" onclick="toast('✈️','טיסה NH 831 · שער 42')"><div class="badge2">✈️</div><div class="main"><div class="t">טיסה · TLV → NRT</div><div class="m"><span class="src"><span class="g"></span>יובא מ-Gmail</span></div></div><div class="right"><div class="code" dir="ltr">NH831</div><div class="time" dir="ltr">01·23:40</div></div></div>
+          <div class="li" onclick="toast('🏨','צ׳ק-אאוט 07/07 · 11:00')"><div class="badge2">🏨</div><div class="main"><div class="t">Shinjuku Granbell</div><div class="m"><span class="src"><span class="g"></span>יובא מ-Gmail</span> · חדר 512</div></div><div class="right"><div class="code" dir="ltr">#GB-2291</div><div class="time">פעיל</div></div></div>
+          <div class="li" onclick="toast('🍜','שולחן ל-5 · 19:30')"><div class="badge2">🍜</div><div class="main"><div class="t">Ichiran Ramen</div><div class="m">נוסף ידנית · שולחן ל-5</div></div><div class="right"><div class="code" dir="ltr">#4471</div><div class="time" dir="ltr">היום·19:30</div></div></div>
+          <div class="li" onclick="toast('🚄','שינקנסן · קרון 7 · 11A-E')"><div class="badge2">🚄</div><div class="main"><div class="t">שינקנסן · טוקיו→קיוטו</div><div class="m"><span class="src"><span class="g"></span>יובא מ-Gmail</span></div></div><div class="right"><div class="code" dir="ltr">#JR-88</div><div class="time" dir="ltr">06·09:12</div></div></div>
+        </div>
+        <div class="sec-title">מסמכים <span class="hint">🔒 מוצפן · אופליין</span></div>
+        <div class="listcard">
+          <div class="li" onclick="toast('🛂','5 דרכונים סרוקים')"><div class="badge2">🛂</div><div class="main"><div class="t">דרכונים</div><div class="m">5 קבצים · זמין אופליין</div></div><div class="right"><div class="time">🔒</div></div></div>
+          <div class="li" onclick="toast('🛡️','פוליסה + מספר חירום')"><div class="badge2">🛡️</div><div class="main"><div class="t">ביטוח נסיעות</div><div class="m">מספר חירום כלול</div></div><div class="right"><div class="time">🔒</div></div></div>
+        </div>
+      </section>
+
+      <!-- ===== ITINERARY (the star) ===== -->
+      <section class="view" id="view-days">
+        <div class="ripple" id="ripple">
+          <span class="rt">דחית את הרמן ל-20:00. לדחוף גם את גולדן גאי?</span>
+          <button class="yes" onclick="rippleDo(true)">כן</button>
+          <button class="no" onclick="rippleDo(false)">לא</button>
+        </div>
+
+        <div class="sec-title">יום 3 · שלישי · טוקיו <span class="hint">הקש כרטיס לשינוי</span></div>
+        <div id="daylist">
+          <div class="item soft done">
+            <div class="face" onclick="toggle(this)"><div class="badge">🐟</div><div class="main"><div class="t">שוק צוקיג׳י <span class="tag-soft">רך</span></div><div class="m">ארוחת בוקר · סושי טרי</div></div><div class="time" dir="ltr">10:00</div><div class="chev">▾</div></div>
+            <div class="actions"><div class="act-row"><button class="act">שחזר</button><button class="act go" onclick="toast('🧭','ניווט')">ניווט</button></div></div>
+          </div>
+          <div class="item soft done">
+            <div class="face" onclick="toggle(this)"><div class="badge">⛩️</div><div class="main"><div class="t">מקדש סנסו-ג׳י <span class="tag-soft">רך</span></div><div class="m">אסקוסה · נקמיסה</div></div><div class="time" dir="ltr">14:30</div><div class="chev">▾</div></div>
+            <div class="actions"><div class="act-row"><button class="act">שחזר</button><button class="act go" onclick="toast('🧭','ניווט')">ניווט</button></div></div>
+          </div>
+          <div class="item soft now">
+            <div class="face" onclick="toggle(this)"><div class="badge">🚶</div><div class="main"><div class="t">זמן חופשי · שינג׳וקו <span class="tag-soft">רך · עכשיו</span></div><div class="m">מתחם החנויות</div></div><div class="time" dir="ltr">16:30</div><div class="chev">▾</div></div>
+            <div class="actions"><div class="act-row"><button class="act" onclick="toast('✓','סומן כהושלם')">סיימנו</button><button class="act" onclick="toast('🗑️','הוסר מהיום')">דלג</button><button class="act">החלף</button></div></div>
+          </div>
+          <div class="item">
+            <div class="face" onclick="toggle(this)"><div class="badge">🍜</div><div class="main"><div class="t">Ichiran Ramen <span class="tag-hard">🔒 קשיח</span></div><div class="m">ארוחת ערב · הזמנה <span dir="ltr">#4471</span></div></div><div class="time" dir="ltr">19:30</div><div class="chev">▾</div></div>
+            <div class="actions">
+              <div class="act-row"><button class="act go" onclick="toast('🧭','ניווט · 5 דק׳ הליכה')">ניווט</button><button class="act" onclick="delay(this)">דחה 30 דק׳</button><button class="act" onclick="toast('📞','מתקשר למסעדה')">שנה הזמנה</button><button class="act" onclick="toast('💬','שותף לקבוצה')">בדרך</button></div>
+              <div class="hard-warn">⚠️ אירוע קשיח — שינוי דורש עדכון ההזמנה <span dir="ltr">#4471</span></div>
+            </div>
+          </div>
+          <div class="item soft">
+            <div class="face" onclick="toggle(this)"><div class="badge">🍶</div><div class="main"><div class="t">גולדן גאי <span class="tag-soft">רך</span></div><div class="m">דרינקים · סמטאות באר</div></div><div class="time" dir="ltr">21:30</div><div class="chev">▾</div></div>
+            <div class="actions"><div class="act-row"><button class="act" onclick="toast('✓','הושלם')">סיימנו</button><button class="act" onclick="toast('🗑️','הוסר')">דלג</button><button class="act">דחה 30 דק׳</button><button class="act go" onclick="toast('🧭','ניווט')">ניווט</button></div></div>
+          </div>
+        </div>
+
+        <div class="sec-title">מדף אולי <span class="hint">הקש כדי לשבץ ליום</span></div>
+        <div class="shelf">
+          <div class="maybe" onclick="schedule(this,'🗼','טוקיו סקייטרי','נוף · תצפית')"><div class="mi">🗼</div><div class="mt">טוקיו סקייטרי</div><div class="mm">נוף · תצפית</div><div class="add">＋ שבץ ליום</div></div>
+          <div class="maybe" onclick="schedule(this,'🐱','קפה חתולים','שינג׳וקו · קרוב')"><div class="mi">🐱</div><div class="mt">קפה חתולים</div><div class="mm">שינג׳וקו · קרוב</div><div class="add">＋ שבץ ליום</div></div>
+          <div class="maybe" onclick="schedule(this,'🛍️','Uniqlo פלאגשיפ','גינזה · קניות')"><div class="mi">🛍️</div><div class="mt">Uniqlo פלאגשיפ</div><div class="mm">גינזה · קניות</div><div class="add">＋ שבץ ליום</div></div>
+          <div class="maybe" onclick="schedule(this,'🍡','שוק אמאיוקוצ׳ו','אוכל רחוב')"><div class="mi">🍡</div><div class="mt">אמאיוקוצ׳ו</div><div class="mm">אוכל רחוב</div><div class="add">＋ שבץ ליום</div></div>
+        </div>
+        <div class="empty-note">אירועים <b>קשיחים</b> 🔒 יש להם התחייבות (הזמנה/כרטיס) — האפליקציה מגנה עליהם.<br>אירועים <b>רכים</b> זזים, מדולגים ומתחלפים בחופשיות.</div>
+      </section>
+
+    </div>
+
+    <div class="toast" id="toast"><span class="ic" id="toast-ic">✓</span><span id="toast-txt"></span></div>
+
+    <nav class="nav">
+      <button class="on" onclick="go(this,'home')"><span class="ic">🏠</span>בית</button>
+      <button onclick="go(this,'map')"><span class="ic">🗺️</span>מפה</button>
+      <button onclick="go(this,'index')"><span class="ic">📇</span>אינדקס</button>
+      <button onclick="go(this,'days')"><span class="ic">📅</span>יום-יום</button>
+    </nav>
+  </div>
+</div>
+
+<script>
+  function go(btn,view){
+    document.querySelectorAll('.nav button').forEach(b=>b.classList.remove('on'));
+    btn.classList.add('on');
+    document.querySelectorAll('.view').forEach(v=>v.classList.remove('active'));
+    document.getElementById('view-'+view).classList.add('active');
+    document.querySelector('.body').scrollTop=0;
+  }
+
+  let toastTimer;
+  function toast(icon,msg){
+    const t=document.getElementById('toast');
+    document.getElementById('toast-ic').textContent=icon;
+    document.getElementById('toast-txt').textContent=msg;
+    t.classList.add('show');
+    clearTimeout(toastTimer);
+    toastTimer=setTimeout(()=>t.classList.remove('show'),2600);
+  }
+
+  function toggle(face){
+    const item=face.closest('.item');
+    document.querySelectorAll('.item.open').forEach(i=>{if(i!==item)i.classList.remove('open')});
+    item.classList.toggle('open');
+  }
+
+  function delay(btn){
+    toast('⏱️','נדחה ל-20:00 · יומני הקבוצה עודכנו');
+    btn.closest('.item').classList.remove('open');
+    setTimeout(()=>document.getElementById('ripple').classList.add('show'),700);
+    document.querySelector('.body').scrollTop=0;
+  }
+  function rippleDo(yes){
+    document.getElementById('ripple').classList.remove('show');
+    toast(yes?'✓':'✕', yes?'גולדן גאי נדחה ל-22:00':'רק הרמן זז · שאר היום ללא שינוי');
+  }
+
+  function schedule(card,icon,title,meta){
+    const list=document.getElementById('daylist');
+    const el=document.createElement('div');
+    el.className='item soft';
+    el.innerHTML='<div class="face" onclick="toggle(this)"><div class="badge">'+icon+'</div><div class="main"><div class="t">'+title+' <span class="tag-soft">רך · חדש</span></div><div class="m">'+meta+'</div></div><div class="time" dir="ltr">17:30</div><div class="chev">▾</div></div>'+
+      '<div class="actions"><div class="act-row"><button class="act" onclick="toast(\'✓\',\'הושלם\')">סיימנו</button><button class="act" onclick="toast(\'🗑️\',\'הוסר\')">דלג</button><button class="act go" onclick="toast(\'🧭\',\'ניווט\')">ניווט</button></div></div>';
+    list.appendChild(el);
+    card.style.opacity='.4';card.querySelector('.add').textContent='✓ שובץ';
+    toast('📅', title+' שובץ ל-17:30 · סונכרן ליומני הקבוצה');
+    document.querySelector('.body').scrollTop=Math.max(0,list.offsetTop-40);
+  }
+
+  let mins=52,hrs=18;
+  function tick(){
+    mins++;if(mins>=60){mins=0;hrs=(hrs+1)%24;}
+    const s=String(hrs).padStart(2,'0')+':'+String(mins).padStart(2,'0');
+    document.getElementById('sbclock').textContent=s;
+    document.getElementById('boardclock').textContent=s;
+    const cd=(19*60+30)-(hrs*60+mins);
+    document.getElementById('cd').textContent=cd>0?cd:'—';
+  }
+  setInterval(tick,4000);
+</script>
+</body>
+</html>

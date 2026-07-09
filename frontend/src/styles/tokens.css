@@ -1,0 +1,41 @@
+/* Waypoint design tokens — ported from mockups/trip-dashboard-v2.html.
+   See docs/design/design-language.md. Amber = now/active only; Teal = location only. */
+:root {
+  --ink: #16233d;
+  --indigo: #1b2a4a;
+  --board: #0e1729;
+  --board-2: #152137;
+  --screen: #e7eaef;
+  --card: #ffffff;
+  --paper: #f3efe6;
+  --amber: #e9a63c;
+  --amber-deep: #c9822a;
+  --teal: #2c9c90;
+  --muted: #6c7488;
+  --line: rgba(22, 35, 61, 0.1);
+  --soft-line: rgba(22, 35, 61, 0.28);
+  --shadow: 0 18px 40px -18px rgba(14, 23, 41, 0.45);
+
+  --font-head: 'Secular One', sans-serif;
+  --font-body: 'Assistant', sans-serif;
+  --font-mono: 'JetBrains Mono', monospace;
+}
+
+* {
+  box-sizing: border-box;
+  margin: 0;
+  padding: 0;
+}
+
+html,
+body,
+#root {
+  height: 100%;
+}
+
+body {
+  font-family: var(--font-body);
+  background: var(--screen);
+  color: var(--ink);
+  -webkit-font-smoothing: antialiased;
+}

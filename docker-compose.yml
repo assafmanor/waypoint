@@ -1,0 +1,29 @@
+services:
+  postgres:
+    image: postgres:16-alpine
+    container_name: waypoint-postgres
+    restart: unless-stopped
+    environment:
+      POSTGRES_USER: waypoint
+      POSTGRES_PASSWORD: waypoint
+      POSTGRES_DB: waypoint
+    ports:
+      - "5432:5432"
+    volumes:
+      - waypoint_pgdata:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U waypoint"]
+      interval: 5s
+      timeout: 5s
+      retries: 5
+
+  # For v1.1 background jobs (Gmail import via BullMQ). Harmless to run now.
+  redis:
+    image: redis:7-alpine
+    container_name: waypoint-redis
+    restart: unless-stopped
+    ports:
+      - "6379:6379"
+
+volumes:
+  waypoint_pgdata:
