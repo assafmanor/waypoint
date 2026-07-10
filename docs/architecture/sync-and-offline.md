@@ -8,7 +8,7 @@
 2. **Optimistic + undo:** edits feel instant and are reversible.
 3. **Offline:** the index/documents/today read with no connectivity; writes made offline sync later.
 
-The unifying primitive is the **`Change`** record. Every shared-state mutation produces one; it drives realtime fan-out, the change-feed UI, undo, and offline catch-up.
+The unifying primitive is the **`Change`** record. Every **data-plane** mutation produces one; it drives realtime fan-out, the change-feed UI, undo, and offline catch-up. (Scope: the data plane is the collaborative timeline — events, bookings, maybe-shelf, notes, documents. The **control plane** — users, trips, memberships — is plain authenticated CRUD and does **not** produce `Change` records; ADR-0022. It's still in the snapshot, just refreshed rather than streamed.)
 
 **Two invariants underpin everything below (ADR-0019):**
 
