@@ -55,7 +55,23 @@ The single source of truth for where everything lives. Keep this current wheneve
 
 | Doc | Purpose |
 |---|---|
-| [decisions/README.md](decisions/README.md) | ADR process + index of all decisions |
+| [decisions/README.md](decisions/README.md) | ADR process + full chronological index of all decisions |
+
+### Decisions by domain (the router)
+
+Before changing a domain, read **only** the ADR(s) below for it (see the Context-Engineering rules in `CLAUDE.md`). Full list and status live in [decisions/README.md](decisions/README.md).
+
+| Domain | ADRs |
+|---|---|
+| Product scope & modes | [0006](decisions/0006-no-live-location-v1.md), [0014](decisions/0014-budget-display-only-v1.md), [0016](decisions/0016-plan-trip-modes-one-surface.md) |
+| Data model & events | [0011](decisions/0011-hard-soft-event-model.md) (hard/soft primitive), [0018](decisions/0018-timeline-data-model-shape.md) (drop Day, no stored `now`, `endDate`, client ids, roles) |
+| Sync / consistency / offline | [0012](decisions/0012-conflict-lww-undo.md) (LWW + undo), [0019](decisions/0019-sync-protocol.md) (change log, atomic write, snapshot + catch-up) |
+| Auth & sessions | [0002](decisions/0002-each-member-own-google-account.md), [0013](decisions/0013-google-only-auth-v1.md), [0020](decisions/0020-auth-session-architecture.md) (memory JWT + rotating refresh, single-origin, `AuthIdentity`) |
+| Collaboration & roles | [0005](decisions/0005-peers-not-roles-v1.md) (admin/peer), [0021](decisions/0021-multi-trip-membership.md) (multi-trip + active-trip state) |
+| Integrations & calendar | [0003](decisions/0003-one-way-calendar-sync.md), [0004](decisions/0004-integrations-are-pipes.md) |
+| Platform, design & device targets | [0007](decisions/0007-platform-pwa.md), [0009](decisions/0009-docs-english-ui-hebrew.md), [0017](decisions/0017-mobile-first-device-targets.md) |
+| Infra & security | [0008](decisions/0008-backend-supabase.md), [0015](decisions/0015-document-encryption-server-side.md) |
+| Process & repo boundary | [0001](decisions/0001-adopt-document-everything.md), [0010](decisions/0010-repo-vs-internal.md) |
 
 ## Planning sessions
 

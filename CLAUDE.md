@@ -16,7 +16,7 @@ Code and documentation live together. **Any consequential decision gets an ADR**
 - `docs/product/` — vision, PRD, feature catalog, personas (what & why).
 - `docs/design/design-language.md` — palette, type, hard/soft grammar, RTL.
 - `docs/architecture/` — overview, collaboration-model, data-model, **api-contract**, **sync-and-offline**, **auth-and-google**, tech-stack.
-- `docs/decisions/` — ADRs (the "why"). `README.md` indexes them.
+- `docs/decisions/` — ADRs (the "why"). `README.md` lists them chronologically; `INDEX.md`'s **"Decisions by domain"** table is the router — read the ADR(s) for a domain before you touch it.
 - `docs/engineering/` — conventions + prerequisites checklist.
 - `mockups/trip-dashboard-v2.html` — the interactive design reference.
 
@@ -38,7 +38,7 @@ pnpm --filter @waypoint/backend prisma:migrate
 pnpm dev                                               # backend :3000, frontend :5173
 ```
 
-(The `node_modules` were not pre-installed — run `pnpm install` on your machine.)
+(The `node_modules` were not pre-installed — run `pnpm install` on your machine.) This is the quickstart; the authoritative toolchain, Google Cloud, and secrets setup lives in `docs/engineering/prerequisites-checklist.md` — don't duplicate its detail here.
 
 ## Non-negotiable rules
 
@@ -53,3 +53,13 @@ pnpm dev                                               # backend :3000, frontend
 ## Conventions
 
 Conventional Commits, branch per task (`t-003-…`), Prettier/ESLint authoritative, `pnpm typecheck` + `pnpm build` green before done. Full details in `docs/engineering/conventions.md`.
+
+## Agent Instructions: Context Engineering
+
+Treat your context window as scarce RAM. The goal is **progressive disclosure**, not exhaustive loading — reading the whole `docs/` tree up front is the failure mode, not diligence.
+
+- **Context is RAM.** Never load all documentation at once. Load the minimum needed for the change in front of you, then stop.
+- **Progressive disclosure.** Before any architectural, state-model, or dependency change: read the router first — [`docs/INDEX.md`](docs/INDEX.md) and its "Decisions by domain" table (with the full list in [`docs/decisions/README.md`](docs/decisions/README.md)) — locate the specific ADR(s) for the domain you're touching, and read **only** those. Don't preload sibling ADRs "for background."
+- **Durable vs. scratch.** Treat `docs/decisions/` (the *why*) and `docs/architecture/` (the *current state*) as the source of truth. Any ephemeral material — scratch notes, raw session handoffs, investigation logs — is orientation only: a fact isn't authoritative until it lands in an ADR or an architecture doc. **Never cite scratch material to justify a decision.**
+- **Path-scoped rules.** If a `.claude/rules/` directory exists, check it for rules scoped to the files you're editing before changing that domain. (None today — this is a forward hook, not a current requirement.)
+- **Obsidian-compatible `docs/`.** The `docs/` tree is edited via Obsidian, but Git + standard Markdown are the source of truth. Use standard relative Markdown links (`[text](../decisions/0011-…md)`) — **never** Obsidian wikilinks (`[[…]]`). Any YAML frontmatter must be strictly valid so Obsidian properties parse it. (Scope: the `docs/` tree only.)

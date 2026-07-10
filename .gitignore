@@ -28,3 +28,11 @@ Thumbs.db
 .idea/
 .vscode/
 *.log
+
+# Obsidian specific ignores
+.obsidian/workspace.json
+.obsidian/workspace-mobile.json
+.obsidian/core-plugins-migration.json
+.obsidian/graph.json
+.obsidian/themes/
+.obsidian/appearance.json
