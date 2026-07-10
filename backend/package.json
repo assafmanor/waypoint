@@ -9,6 +9,7 @@
     "typecheck": "tsc --noEmit",
     "prisma:generate": "prisma generate",
     "prisma:migrate": "prisma migrate dev",
+    "prisma:seed": "node --env-file=.env prisma/seed.mjs",
     "prisma:studio": "prisma studio"
   },
   "dependencies": {
