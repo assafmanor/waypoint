@@ -68,7 +68,7 @@ There is no `Day` resource — events carry `date` (ADR-0018); the client groups
 | Method | Path | Body → Response |
 |---|---|---|
 | GET | `/trips/:tripId/maybe` | → `MaybeItem[]` |
-| POST | `/trips/:tripId/maybe` | `{ title, icon?, meta?, placeId? }` → `MaybeItem` |
+| POST | `/trips/:tripId/maybe` | `createMaybeItemSchema` (`{ title, icon?, placeId? }`) → `MaybeItem` |
 | POST | `/trips/:tripId/maybe/:id/schedule` | `{ date, startsAt? }` → `Event` (marks item consumed) |
 
 ## Documents

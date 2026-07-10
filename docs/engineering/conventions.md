@@ -22,6 +22,7 @@ waypoint/
 - **Types/validation live in `packages/shared`.** Never redefine an entity shape locally — import it. If the shape changes, change it there and in `backend/prisma/schema.prisma` together.
 - camelCase in TS/JSON; the DB (Prisma) maps to the same field names.
 - File naming: kebab-case files, PascalCase React components and Nest classes.
+- **Comment sparingly — only where a comment earns its keep.** A comment justifies itself by capturing a non-obvious *why* (a decision, a gotcha, an ADR pointer) that the code can't. Don't restate what the code already says, and don't document what something *isn't*, *doesn't contain*, or *used to be* — the schema/types are the record of what *is*. Prefer a short ADR reference over prose.
 
 ## Backend (NestJS)
 

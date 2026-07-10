@@ -1,8 +1,5 @@
 // Waypoint data model — implements docs/architecture/data-model.md.
 // Keep in sync with packages/shared/src/entities.ts.
-// Design rules baked in: everything keyed by tripId; Event.kind (hard/soft, ADR-0011);
-// updatedBy/updatedAt for last-writer-wins + change-feed (ADR-0012);
-// Membership.role reserved for future roles (ADR-0005).
 
 generator client {
   provider = "prisma-client-js"
@@ -13,6 +10,10 @@ datasource db {
   // Prisma 7: connection URL lives in prisma.config.ts, not here.
 }
 
+enum AuthProvider {
+  google
+}
+
 enum EventKind {
   hard
   soft
@@ -20,7 +21,6 @@ enum EventKind {
 
 enum EventStatus {
   planned
-  now
   done
   skipped
 }
@@ -47,6 +47,7 @@ enum BookingSource {
 }
 
 enum MembershipRole {
+  admin
   peer
 }
 
@@ -55,6 +56,11 @@ enum DocumentType {
   insurance
   visa
   other
+}
+
+enum TripNoteCategory {
+  wifi
+  note
 }
 
 enum ChangeAction {
@@ -67,33 +73,73 @@ enum ChangeAction {
 
 model User {
   id          String   @id @default(cuid())
-  googleSub   String   @unique
   email       String   @unique
   displayName String
   avatarColor String   @default("#E9A63C")
   createdAt   DateTime @default(now())
 
-  memberships Membership[]
-  maybeItems  MaybeItem[]
-  changes     Change[]
+  authIdentities     AuthIdentity[]
+  sessions           Session[]
+  memberships        Membership[]
+  tripsCreated       Trip[]
+  maybeItems         MaybeItem[]
+  changes            Change[]
+  calendarEventLinks CalendarEventLink[]
+}
+
+// Provider identity + that provider's OAuth material, one per (user, provider). ADR-0020.
+model AuthIdentity {
+  id                String       @id @default(cuid())
+  userId            String
+  provider          AuthProvider
+  providerAccountId String
+  refreshTokenEnc   String? // encrypted at rest (ADR-0015)
+  scopes            String[]
+  createdAt         DateTime     @default(now())
+  updatedAt         DateTime     @updatedAt
+
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@unique([provider, providerAccountId])
+  @@index([userId])
+}
+
+// Rotating refresh-token store (ADR-0020).
+model Session {
+  id               String    @id @default(cuid())
+  userId           String
+  refreshTokenHash String    @unique
+  expiresAt        DateTime
+  createdAt        DateTime  @default(now())
+  revokedAt        DateTime?
+  userAgent        String?
+
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@index([userId])
 }
 
 model Trip {
-  id          String   @id @default(cuid())
-  name        String
-  destination String
-  startDate   DateTime @db.Date
-  endDate     DateTime @db.Date
-  timezone    String   @default("UTC")
-  createdBy   String
-  createdAt   DateTime @default(now())
+  id               String   @id @default(cuid())
+  name             String
+  destination      String
+  startDate        DateTime @db.Date
+  endDate          DateTime @db.Date
+  timezone         String   @default("UTC")
+  currency         String?
+  dailyBudgetMinor Int?
+  createdBy        String
+  createdAt        DateTime @default(now())
+  updatedAt        DateTime @updatedAt
+  updatedBy        String
 
+  creator     User         @relation(fields: [createdBy], references: [id])
   memberships Membership[]
-  days        Day[]
   events      Event[]
   bookings    Booking[]
   documents   Document[]
   maybeItems  MaybeItem[]
+  tripNotes   TripNote[]
   changes     Change[]
 
   @@index([createdBy])
@@ -105,7 +151,6 @@ model Membership {
   userId              String
   role                MembershipRole @default(peer)
   calendarSyncEnabled Boolean        @default(false)
-  googleConnected     Boolean        @default(false)
   joinedAt            DateTime       @default(now())
 
   trip Trip @relation(fields: [tripId], references: [id], onDelete: Cascade)
@@ -115,43 +160,31 @@ model Membership {
   @@index([tripId])
 }
 
-model Day {
-  id     String   @id @default(cuid())
-  tripId String
-  date   DateTime @db.Date
-  label  String?
-
-  trip   Trip    @relation(fields: [tripId], references: [id], onDelete: Cascade)
-  events Event[]
-
-  @@unique([tripId, date])
-  @@index([tripId])
-}
-
 model Event {
   id        String      @id @default(cuid())
   tripId    String
-  dayId     String
+  date      DateTime    @db.Date
+  endDate   DateTime?   @db.Date // non-null = multi-day ambient span (ADR-0018)
   title     String
   icon      String?
   kind      EventKind
-  startTime DateTime?
-  endTime   DateTime?
+  startsAt  DateTime? // UTC instant
+  endsAt    DateTime?
   location  String?
   placeId   String?
   status    EventStatus @default(planned)
   bookingId String?
   sortOrder Int         @default(0)
   source    EventSource @default(manual)
-  updatedBy String
+  createdAt DateTime    @default(now())
   updatedAt DateTime    @updatedAt
+  updatedBy String
 
-  trip    Trip     @relation(fields: [tripId], references: [id], onDelete: Cascade)
-  day     Day      @relation(fields: [dayId], references: [id], onDelete: Cascade)
-  booking Booking? @relation(fields: [bookingId], references: [id], onDelete: SetNull)
+  trip          Trip                @relation(fields: [tripId], references: [id], onDelete: Cascade)
+  booking       Booking?            @relation(fields: [bookingId], references: [id], onDelete: SetNull)
+  calendarLinks CalendarEventLink[]
 
-  @@index([tripId])
-  @@index([dayId])
+  @@index([tripId, date])
 }
 
 model Booking {
@@ -163,16 +196,34 @@ model Booking {
   provider         String?
   address          String?
   placeId          String?
-  startsAt         DateTime?
+  startsAt         DateTime? // a hotel across nights is ONE booking with a range (ADR-0018)
   endsAt           DateTime?
   details          Json?
   source           BookingSource @default(manual)
-  offlineAvailable Boolean       @default(true)
+  createdAt        DateTime      @default(now())
+  updatedAt        DateTime      @updatedAt
+  updatedBy        String
 
   trip   Trip    @relation(fields: [tripId], references: [id], onDelete: Cascade)
   events Event[]
 
   @@index([tripId])
+}
+
+// Idempotency map for one-way calendar push, per member per event (ADR-0020).
+model CalendarEventLink {
+  id                    String   @id @default(cuid())
+  eventId               String
+  userId                String
+  googleCalendarEventId String
+  createdAt             DateTime @default(now())
+  updatedAt             DateTime @updatedAt
+
+  event Event @relation(fields: [eventId], references: [id], onDelete: Cascade)
+  user  User  @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@unique([eventId, userId])
+  @@index([userId])
 }
 
 model Document {
@@ -181,7 +232,12 @@ model Document {
   type        DocumentType
   title       String
   fileRef     String // reference to a server-side-encrypted blob (ADR-0015)
-  ownerUserId String?
+  mimeType    String
+  sizeBytes   Int
+  ownerUserId String? // null = group doc
+  createdAt   DateTime     @default(now())
+  updatedAt   DateTime     @updatedAt
+  updatedBy   String
 
   trip Trip @relation(fields: [tripId], references: [id], onDelete: Cascade)
 
@@ -193,11 +249,12 @@ model MaybeItem {
   tripId    String
   title     String
   icon      String?
-  meta      String?
   placeId   String?
   createdBy String
   consumed  Boolean  @default(false)
   createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+  updatedBy String
 
   trip Trip @relation(fields: [tripId], references: [id], onDelete: Cascade)
   user User @relation(fields: [createdBy], references: [id], onDelete: Cascade)
@@ -205,8 +262,27 @@ model MaybeItem {
   @@index([tripId])
 }
 
+// WiFi codes, notes — the practical layer's small stuff (ADR-0018).
+model TripNote {
+  id        String           @id @default(cuid())
+  tripId    String
+  category  TripNoteCategory
+  label     String
+  value     String
+  sortOrder Int              @default(0)
+  createdAt DateTime         @default(now())
+  updatedAt DateTime         @updatedAt
+  updatedBy String
+
+  trip Trip @relation(fields: [tripId], references: [id], onDelete: Cascade)
+
+  @@index([tripId])
+}
+
+// The sync/undo/feed substrate; seq is a strictly-increasing cursor (ADR-0019).
 model Change {
   id          String       @id @default(cuid())
+  seq         BigInt       @default(autoincrement())
   tripId      String
   actorUserId String
   entityType  String
@@ -219,6 +295,5 @@ model Change {
   trip Trip @relation(fields: [tripId], references: [id], onDelete: Cascade)
   user User @relation(fields: [actorUserId], references: [id], onDelete: Cascade)
 
-  @@index([tripId])
-  @@index([tripId, createdAt])
+  @@index([tripId, seq])
 }

@@ -3,8 +3,10 @@
 
 import { z } from 'zod';
 
+// Enum validators — the canonical shape source, mirrored from entities.ts.
+export const authProviderSchema = z.enum(['google']);
 export const eventKindSchema = z.enum(['hard', 'soft']);
-export const eventStatusSchema = z.enum(['planned', 'now', 'done', 'skipped']);
+export const eventStatusSchema = z.enum(['planned', 'done', 'skipped']);
 export const eventSourceSchema = z.enum(['manual', 'gmail', 'maybe_shelf', 'integration']);
 export const bookingTypeSchema = z.enum([
   'flight',
@@ -14,18 +16,30 @@ export const bookingTypeSchema = z.enum([
   'activity',
   'other',
 ]);
+export const bookingSourceSchema = z.enum(['manual', 'gmail']);
+export const membershipRoleSchema = z.enum(['admin', 'peer']);
+export const documentTypeSchema = z.enum(['passport', 'insurance', 'visa', 'other']);
+export const tripNoteCategorySchema = z.enum(['wifi', 'note']);
+export const changeActionSchema = z.enum(['create', 'update', 'move', 'delete', 'status']);
 
-/** Payload to create an event. Server assigns id/status/updatedBy/updatedAt. */
+/** Client-generated id (cuid/uuid). Server validates format only. ADR-0018. */
+// ponytail: charset+length guard, tighten to exact cuid2/uuid grammar if it ever matters.
+export const entityIdSchema = z.string().regex(/^[a-z0-9-]{8,64}$/i, 'invalid id format');
+
+/** Payload to create an event. Client supplies `id`; server assigns updatedBy/timestamps. */
 export const createEventSchema = z.object({
-  dayId: z.string(),
+  id: entityIdSchema.optional(),
+  date: z.string(), // ISO date (YYYY-MM-DD)
+  endDate: z.string().optional(),
   title: z.string().min(1),
   icon: z.string().optional(),
   kind: eventKindSchema,
-  startTime: z.string().optional(),
-  endTime: z.string().optional(),
+  startsAt: z.string().optional(), // UTC instant
+  endsAt: z.string().optional(),
   location: z.string().optional(),
   placeId: z.string().optional(),
   bookingId: z.string().optional(),
+  sortOrder: z.number().int().optional(),
   source: eventSourceSchema.default('manual'),
 });
 export type CreateEventInput = z.infer<typeof createEventSchema>;
@@ -33,11 +47,23 @@ export type CreateEventInput = z.infer<typeof createEventSchema>;
 /** Partial update to an event. Hard events require confirmation server-side (ADR-0011). */
 export const updateEventSchema = createEventSchema.partial().extend({
   status: eventStatusSchema.optional(),
-  sortOrder: z.number().optional(),
 });
 export type UpdateEventInput = z.infer<typeof updateEventSchema>;
 
+/** Move an event to another date/time/order. ADR-0018 (no dayId). */
+export const moveEventSchema = z.object({
+  date: z.string().optional(),
+  startsAt: z.string().optional(),
+  sortOrder: z.number().int().optional(),
+});
+export type MoveEventInput = z.infer<typeof moveEventSchema>;
+
+/** Set an event's status (done/skipped). */
+export const eventStatusUpdateSchema = z.object({ status: eventStatusSchema });
+export type EventStatusUpdateInput = z.infer<typeof eventStatusUpdateSchema>;
+
 export const createBookingSchema = z.object({
+  id: entityIdSchema.optional(),
   type: bookingTypeSchema,
   title: z.string().min(1),
   confirmationCode: z.string().optional(),
@@ -56,5 +82,22 @@ export const createTripSchema = z.object({
   startDate: z.string(),
   endDate: z.string(),
   timezone: z.string().default('UTC'),
+  currency: z.string().optional(),
+  dailyBudgetMinor: z.number().int().optional(),
 });
 export type CreateTripInput = z.infer<typeof createTripSchema>;
+
+export const createMaybeItemSchema = z.object({
+  id: entityIdSchema.optional(),
+  title: z.string().min(1),
+  icon: z.string().optional(),
+  placeId: z.string().optional(),
+});
+export type CreateMaybeItemInput = z.infer<typeof createMaybeItemSchema>;
+
+/** Schedule a maybe item — creates an Event, marks the item consumed. */
+export const scheduleMaybeItemSchema = z.object({
+  date: z.string(),
+  startsAt: z.string().optional(),
+});
+export type ScheduleMaybeItemInput = z.infer<typeof scheduleMaybeItemSchema>;

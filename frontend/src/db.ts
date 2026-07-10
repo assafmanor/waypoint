@@ -11,7 +11,7 @@ export class WaypointDB extends Dexie {
   constructor() {
     super('waypoint');
     this.version(1).stores({
-      events: 'id, tripId, dayId',
+      events: 'id, tripId, date',
       bookings: 'id, tripId',
       documents: 'id, tripId',
     });

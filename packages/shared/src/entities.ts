@@ -4,10 +4,12 @@
 
 export type ID = string;
 
+export type AuthProvider = 'google';
+
 /** The decisive distinction — see ADR-0011. */
 export type EventKind = 'hard' | 'soft';
 
-export type EventStatus = 'planned' | 'now' | 'done' | 'skipped';
+export type EventStatus = 'planned' | 'done' | 'skipped';
 
 export type EventSource = 'manual' | 'gmail' | 'maybe_shelf' | 'integration';
 
@@ -15,9 +17,11 @@ export type BookingType = 'flight' | 'hotel' | 'restaurant' | 'train' | 'activit
 
 export type BookingSource = 'manual' | 'gmail';
 
-export type MembershipRole = 'peer'; // reserved for future roles — ADR-0005
+export type MembershipRole = 'admin' | 'peer'; // creator is admin — ADR-0005/0018
 
 export type DocumentType = 'passport' | 'insurance' | 'visa' | 'other';
+
+export type TripNoteCategory = 'wifi' | 'note';
 
 export type ChangeAction = 'create' | 'update' | 'move' | 'delete' | 'status';
 
@@ -29,6 +33,27 @@ export interface User {
   createdAt: string;
 }
 
+/** Provider identity + OAuth material; the encrypted token stays server-side (ADR-0020). */
+export interface AuthIdentity {
+  id: ID;
+  userId: ID;
+  provider: AuthProvider;
+  providerAccountId: string;
+  scopes: string[];
+  createdAt: string;
+  updatedAt: string;
+}
+
+/** Rotating refresh-token store, server-side (ADR-0020). */
+export interface Session {
+  id: ID;
+  userId: ID;
+  expiresAt: string;
+  createdAt: string;
+  revokedAt?: string;
+  userAgent?: string;
+}
+
 export interface Trip {
   id: ID;
   name: string;
@@ -36,8 +61,12 @@ export interface Trip {
   startDate: string; // ISO date
   endDate: string; // ISO date
   timezone: string;
+  currency?: string;
+  dailyBudgetMinor?: number;
   createdBy: ID;
   createdAt: string;
+  updatedAt: string;
+  updatedBy: ID;
 }
 
 export interface Membership {
@@ -46,34 +75,28 @@ export interface Membership {
   userId: ID;
   role: MembershipRole;
   calendarSyncEnabled: boolean;
-  googleConnected: boolean;
   joinedAt: string;
-}
-
-export interface Day {
-  id: ID;
-  tripId: ID;
-  date: string; // ISO date
-  label?: string;
 }
 
 export interface TripEvent {
   id: ID;
   tripId: ID;
-  dayId: ID;
+  date: string; // ISO date
+  endDate?: string; // non-null = multi-day ambient span (ADR-0018)
   title: string;
   icon?: string;
   kind: EventKind;
-  startTime?: string;
-  endTime?: string;
+  startsAt?: string; // UTC instant
+  endsAt?: string;
   location?: string;
   placeId?: string;
   status: EventStatus;
   bookingId?: ID;
   sortOrder: number;
   source: EventSource;
-  updatedBy: ID;
+  createdAt: string;
   updatedAt: string;
+  updatedBy: ID;
 }
 
 export interface Booking {
@@ -89,7 +112,19 @@ export interface Booking {
   endsAt?: string;
   details?: Record<string, unknown>;
   source: BookingSource;
-  offlineAvailable: boolean;
+  createdAt: string;
+  updatedAt: string;
+  updatedBy: ID;
+}
+
+/** Idempotency map for one-way calendar push, per member per event (ADR-0020). */
+export interface CalendarEventLink {
+  id: ID;
+  eventId: ID;
+  userId: ID;
+  googleCalendarEventId: string;
+  createdAt: string;
+  updatedAt: string;
 }
 
 export interface TripDocument {
@@ -98,7 +133,12 @@ export interface TripDocument {
   type: DocumentType;
   title: string;
   fileRef: string; // reference to a server-side-encrypted blob — ADR-0015
-  ownerUserId?: ID;
+  mimeType: string;
+  sizeBytes: number;
+  ownerUserId?: ID; // null = group doc
+  createdAt: string;
+  updatedAt: string;
+  updatedBy: ID;
 }
 
 export interface MaybeItem {
@@ -106,14 +146,30 @@ export interface MaybeItem {
   tripId: ID;
   title: string;
   icon?: string;
-  meta?: string;
   placeId?: string;
   createdBy: ID;
   consumed: boolean;
+  createdAt: string;
+  updatedAt: string;
+  updatedBy: ID;
+}
+
+/** The practical layer's small stuff (WiFi codes, notes) — ADR-0018. */
+export interface TripNote {
+  id: ID;
+  tripId: ID;
+  category: TripNoteCategory;
+  label: string;
+  value: string;
+  sortOrder: number;
+  createdAt: string;
+  updatedAt: string;
+  updatedBy: ID;
 }
 
 export interface Change {
   id: ID;
+  seq: string; // BigInt serialized as string to avoid JS precision loss (ADR-0019)
   tripId: ID;
   actorUserId: ID;
   entityType: string;
