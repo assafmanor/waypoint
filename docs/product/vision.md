@@ -13,15 +13,15 @@ Most travel apps are **planning** tools: you build an itinerary before the fligh
 ## The concept: a control center in two modes
 
 - **Planning mode** (before / between days) — input, arranging the itinerary, research.
-- **Trip mode** (on the ground) — a minimal interface that answers *"what now / what next / what do I need in the next 30 minutes?"*
+- **Trip mode** (on the ground) — a minimal interface that answers _"what now / what next / what do I need in the next 30 minutes?"_
 
 Both modes are equally important and share **one surface** (the same four tabs, re-emphasized). The switch is **automatic by date with a manual override**. Full model: [modes.md](modes.md) · decided in ADR-0016.
 
 ### The five pillars
 
-1. **Live timeline (Now/Next)** — not a calendar, but *what's happening now, what's next, and how much free time sits between things.*
+1. **Live timeline (Now/Next)** — not a calendar, but _what's happening now, what's next, and how much free time sits between things._
 2. **Central index** — every booking in one place (confirmation codes, addresses, tickets). **Must work offline.**
-3. **Map as a primary surface** — everything pinned; *"what's near me right now."*
+3. **Map as a primary surface** — everything pinned; _"what's near me right now."_
 4. **Hybrid recommendations** — a pre-built list + discovery by location and free time.
 5. **Practical layer** — currency, language, emergency numbers, documents (passport/insurance), WiFi, budget.
 
@@ -42,7 +42,7 @@ Hard anchors provide the structure that "now/next" leans on; everything else flo
 
 ## Flexibility & changing plans mid-trip
 
-**The frame:** the itinerary is a suggestion, not a contract. The app's job is to make *deviating from the plan* smooth and safe — real-travel verbs on every card (skip · delay 30m · swap · done · on our way), a "maybe" shelf, ripple suggestions, undo everywhere, and a lightweight group change-feed.
+**The frame:** the itinerary is a suggestion, not a contract. The app's job is to make _deviating from the plan_ smooth and safe — real-travel verbs on every card (skip · delay 30m · swap · done · on our way), a "maybe" shelf, ripple suggestions, undo everywhere, and a lightweight group change-feed.
 
 ## User's technical background
 

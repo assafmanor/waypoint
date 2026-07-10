@@ -4,16 +4,16 @@
 
 ## The principle: one surface, two emphases
 
-Plan mode and Trip mode are **not two apps or two screen sets** — they are the **same four tabs (🏠 Home · 🗺️ Map · 📇 Index · 📅 Day-by-day), re-emphasized** for what you're doing. This keeps faith with the founding rule that *the trip is the only surface* (ADR-0004). The data is identical; what changes is which actions are foregrounded and how each tab presents.
+Plan mode and Trip mode are **not two apps or two screen sets** — they are the **same four tabs (🏠 Home · 🗺️ Map · 📇 Index · 📅 Day-by-day), re-emphasized** for what you're doing. This keeps faith with the founding rule that _the trip is the only surface_ (ADR-0004). The data is identical; what changes is which actions are foregrounded and how each tab presents.
 
-| Tab | Plan mode emphasis (before / between days) | Trip mode emphasis (on the ground) |
-|---|---|---|
-| **Home** | **Prep dashboard**: "trip in 12 days · 6 bookings · 3 gaps to fill · 2 travelers not yet connected." Checklist of what's missing. | **Departure board**: now/next, live countdown, day progress, quick access. |
-| **Day-by-day** | **Builder**: add days/events, set hard vs soft, times, drag to arrange across days. Editing is the point. | **Follow + adjust**: read the day; quick verbs (skip/delay/swap/done/on-way); editing is guarded. |
-| **Index** | **Entry**: add bookings manually (flights/hotels/reservations) → index, link to hard events. | **Reference**: read confirmation codes/documents; works offline. |
-| **Map** | **Research**: search & pin places (Google Places), collect onto the "maybe" shelf. | **Orientation**: "near me now," pinned events, deep-link nav. |
+| Tab            | Plan mode emphasis (before / between days)                                                                                        | Trip mode emphasis (on the ground)                                                                |
+| -------------- | --------------------------------------------------------------------------------------------------------------------------------- | ------------------------------------------------------------------------------------------------- |
+| **Home**       | **Prep dashboard**: "trip in 12 days · 6 bookings · 3 gaps to fill · 2 travelers not yet connected." Checklist of what's missing. | **Departure board**: now/next, live countdown, day progress, quick access.                        |
+| **Day-by-day** | **Builder**: add days/events, set hard vs soft, times, drag to arrange across days. Editing is the point.                         | **Follow + adjust**: read the day; quick verbs (skip/delay/swap/done/on-way); editing is guarded. |
+| **Index**      | **Entry**: add bookings manually (flights/hotels/reservations) → index, link to hard events.                                      | **Reference**: read confirmation codes/documents; works offline.                                  |
+| **Map**        | **Research**: search & pin places (Google Places), collect onto the "maybe" shelf.                                                | **Orientation**: "near me now," pinned events, deep-link nav.                                     |
 
-Editing isn't *disabled* in Trip mode — it's *de-emphasized and guarded* (hard-event warnings, undo). You can always adjust on the ground; the UI just stops leading with it.
+Editing isn't _disabled_ in Trip mode — it's _de-emphasized and guarded_ (hard-event warnings, undo). You can always adjust on the ground; the UI just stops leading with it.
 
 ## Plan mode — v1 responsibilities
 
@@ -30,7 +30,7 @@ Already designed in `mockups/trip-dashboard-v2.html` and `docs/design/design-lan
 
 - **Automatic by date:** the app enters **Trip mode** on the trip's `startDate` and returns to **Plan mode** before the start / after the end and between multi-leg gaps. Mode is **derived** from dates + current time — not stored on the trip.
 - **Manual override:** the user can always toggle to peek at / work in the other mode (e.g. tweak the plan mid-trip, or preview the departure board while planning). The override is a per-user, per-device UI state — it does not change the trip for anyone else.
-- **Location-awareness is deferred:** flipping to Trip mode on *arrival* (geolocation) rather than by calendar is a nice future upgrade, out of v1 scope.
+- **Location-awareness is deferred:** flipping to Trip mode on _arrival_ (geolocation) rather than by calendar is a nice future upgrade, out of v1 scope.
 
 ## Device note
 

@@ -11,13 +11,13 @@
 
 ## What is shared vs. personal
 
-| Shared (per trip, all members) | Personal (per member) |
-|---|---|
-| Itinerary (events, hard/soft) | Their Google account connection |
-| Index (bookings, codes) | Their personal calendar (one-way sync target) |
-| Documents | Their notification preferences |
-| The "maybe" shelf | Their device's offline cache |
-| The change-feed | — |
+| Shared (per trip, all members) | Personal (per member)                         |
+| ------------------------------ | --------------------------------------------- |
+| Itinerary (events, hard/soft)  | Their Google account connection               |
+| Index (bookings, codes)        | Their personal calendar (one-way sync target) |
+| Documents                      | Their notification preferences                |
+| The "maybe" shelf              | Their device's offline cache                  |
+| The change-feed                | —                                             |
 
 ## Realtime sync
 
@@ -32,7 +32,7 @@ At 5 users, heavy conflict machinery (CRDTs, operational transform) is overkill.
 
 - **Soft events:** **row-level, server-authoritative last-writer-wins** (ADR-0019), plus **undo**. If two people move the same soft block, the later commit wins and the change-feed shows both actions; anyone can undo their own last action.
 - **Hard events:** protected. Editing a hard event requires explicit confirmation (the warning in the mockup) and never happens automatically or via ripple. This drastically shrinks the conflict surface where it matters.
-- **The change-feed is the safety net:** "Noam moved ramen to 20:00." Lightweight awareness beats locking. It's *awareness, not a turf war* — no destructive auto-merge, everything undoable.
+- **The change-feed is the safety net:** "Noam moved ramen to 20:00." Lightweight awareness beats locking. It's _awareness, not a turf war_ — no destructive auto-merge, everything undoable.
 
 **Revisit trigger:** if last-writer-wins produces real pain in practice, upgrade specific entities to a CRDT-backed field. The schema (see data-model.md) records `updated_by` / `updated_at`, which is enough to build that later.
 

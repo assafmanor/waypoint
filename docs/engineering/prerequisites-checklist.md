@@ -1,6 +1,6 @@
 # Prerequisites Checklist
 
-**Status:** ACCEPTED. What must exist before/while coding. Split into what runs locally and what needs external accounts. Items marked 👤 only *you* can do (accounts/console); the rest an agent can do.
+**Status:** ACCEPTED. What must exist before/while coding. Split into what runs locally and what needs external accounts. Items marked 👤 only _you_ can do (accounts/console); the rest an agent can do.
 
 ## Local toolchain (your machine, once)
 
@@ -27,7 +27,7 @@ pnpm dev                     # runs backend + frontend via Turbo
 Do this in the [Google Cloud Console](https://console.cloud.google.com):
 
 - [ ] Create a project (e.g. "waypoint").
-- [ ] **OAuth consent screen:** External, in *Testing* mode; add the 5 travelers as test users (avoids the verification process for a private app).
+- [ ] **OAuth consent screen:** External, in _Testing_ mode; add the 5 travelers as test users (avoids the verification process for a private app).
 - [ ] **Credentials → OAuth client ID (Web):**
   - Authorized redirect URI: `http://localhost:3000/auth/google/callback` (add the prod URL later).
   - Copy client ID/secret → `GOOGLE_CLIENT_ID` / `GOOGLE_CLIENT_SECRET` in `.env`.
@@ -39,7 +39,7 @@ Do this in the [Google Cloud Console](https://console.cloud.google.com):
 
 - [ ] `JWT_SECRET` — random 32+ bytes.
 - [ ] `DOC_ENCRYPTION_KEY` — random 32 bytes, base64 (server-side document encryption, ADR-0015).
-- [ ] Keep all of the above in `.env` (gitignored). Record *what exists* (not the values) in a password manager or private local notes (kept out of the repo).
+- [ ] Keep all of the above in `.env` (gitignored). Record _what exists_ (not the values) in a password manager or private local notes (kept out of the repo).
 
 ## Deployment (later, not v1-blocking) 👤
 

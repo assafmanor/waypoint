@@ -1,0 +1,6 @@
+# Generated / vendored — never format (avoids churn that fights the toolchain).
+pnpm-lock.yaml
+**/dist/
+**/dev-dist/
+**/coverage/
+**/*.min.*

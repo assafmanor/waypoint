@@ -6,78 +6,78 @@ The single source of truth for where everything lives. Keep this current wheneve
 
 - **Language:** Documentation is written in **English** (engineering clarity, maintainability). The **product UI is Hebrew / full RTL** — Hebrew UI strings appear in quotes where relevant. See ADR-0009.
 - **Status tags** at the top of each doc: `DRAFT` · `PROPOSED` · `ACCEPTED` · `SUPERSEDED`.
-- **Every decision** of consequence gets an ADR in `decisions/`. Docs describe the *current* state; ADRs preserve the *why* and the history.
+- **Every decision** of consequence gets an ADR in `decisions/`. Docs describe the _current_ state; ADRs preserve the _why_ and the history.
 - **Every working session** gets a dated note in `planning/`.
 
 ## Product (the PM layer)
 
-| Doc | Purpose |
-|---|---|
-| [product/vision.md](product/vision.md) | The core insight, the two modes, the five pillars |
-| [product/modes.md](product/modes.md) | Plan mode & Trip mode: one surface re-emphasized, the switch |
-| [product/prd-v1.md](product/prd-v1.md) | v1 scope: what's in, what's out, success criteria |
-| [product/feature-catalog.md](product/feature-catalog.md) | Full feature list with MoSCoW priority + phase |
-| [product/personas.md](product/personas.md) | The travelers and their on-the-ground scenarios |
+| Doc                                                      | Purpose                                                      |
+| -------------------------------------------------------- | ------------------------------------------------------------ |
+| [product/vision.md](product/vision.md)                   | The core insight, the two modes, the five pillars            |
+| [product/modes.md](product/modes.md)                     | Plan mode & Trip mode: one surface re-emphasized, the switch |
+| [product/prd-v1.md](product/prd-v1.md)                   | v1 scope: what's in, what's out, success criteria            |
+| [product/feature-catalog.md](product/feature-catalog.md) | Full feature list with MoSCoW priority + phase               |
+| [product/personas.md](product/personas.md)               | The travelers and their on-the-ground scenarios              |
 
 ## Design
 
-| Doc | Purpose |
-|---|---|
+| Doc                                                    | Purpose                                                        |
+| ------------------------------------------------------ | -------------------------------------------------------------- |
 | [design/design-language.md](design/design-language.md) | Palette, type, functional color, components, hard/soft grammar |
 
 ## Architecture
 
-| Doc | Purpose |
-|---|---|
-| [architecture/overview.md](architecture/overview.md) | System shape, client/server split, offline model |
-| [architecture/collaboration-model.md](architecture/collaboration-model.md) | Multi-user model: trips, membership, sync, conflicts |
-| [architecture/data-model.md](architecture/data-model.md) | Entities; the hard/soft event model at its center |
-| [architecture/api-contract.md](architecture/api-contract.md) | v1 REST + WebSocket endpoints |
-| [architecture/sync-and-offline.md](architecture/sync-and-offline.md) | Realtime, optimistic sync, undo, offline protocol |
-| [architecture/auth-and-google.md](architecture/auth-and-google.md) | Google OAuth, sessions, scopes, calendar sync |
-| [architecture/deployment.md](architecture/deployment.md) | Hosting topology, CI/CD, GitHub — direction + open questions |
-| [architecture/tech-stack.md](architecture/tech-stack.md) | Chosen technologies + rationale |
+| Doc                                                                        | Purpose                                                      |
+| -------------------------------------------------------------------------- | ------------------------------------------------------------ |
+| [architecture/overview.md](architecture/overview.md)                       | System shape, client/server split, offline model             |
+| [architecture/collaboration-model.md](architecture/collaboration-model.md) | Multi-user model: trips, membership, sync, conflicts         |
+| [architecture/data-model.md](architecture/data-model.md)                   | Entities; the hard/soft event model at its center            |
+| [architecture/api-contract.md](architecture/api-contract.md)               | v1 REST + WebSocket endpoints                                |
+| [architecture/sync-and-offline.md](architecture/sync-and-offline.md)       | Realtime, optimistic sync, undo, offline protocol            |
+| [architecture/auth-and-google.md](architecture/auth-and-google.md)         | Google OAuth, sessions, scopes, calendar sync                |
+| [architecture/deployment.md](architecture/deployment.md)                   | Hosting topology, CI/CD, GitHub — direction + open questions |
+| [architecture/tech-stack.md](architecture/tech-stack.md)                   | Chosen technologies + rationale                              |
 
 ## Engineering
 
-| Doc | Purpose |
-|---|---|
-| [engineering/conventions.md](engineering/conventions.md) | Code style, repo shape, testing, commits, Definition of Done |
-| [engineering/prerequisites-checklist.md](engineering/prerequisites-checklist.md) | Toolchain, first-run commands, Google Cloud setup, secrets |
+| Doc                                                                              | Purpose                                                      |
+| -------------------------------------------------------------------------------- | ------------------------------------------------------------ |
+| [engineering/conventions.md](engineering/conventions.md)                         | Code style, repo shape, testing, commits, Definition of Done |
+| [engineering/prerequisites-checklist.md](engineering/prerequisites-checklist.md) | Toolchain, first-run commands, Google Cloud setup, secrets   |
 
 ## Integrations
 
-| Doc | Purpose |
-|---|---|
+| Doc                                                  | Purpose                                            |
+| ---------------------------------------------------- | -------------------------------------------------- |
 | [integrations/overview.md](integrations/overview.md) | Integrations-as-pipes principle; per-service notes |
 
 ## Decisions
 
-| Doc | Purpose |
-|---|---|
+| Doc                                        | Purpose                                                 |
+| ------------------------------------------ | ------------------------------------------------------- |
 | [decisions/README.md](decisions/README.md) | ADR process + full chronological index of all decisions |
 
 ### Decisions by domain (the router)
 
 Before changing a domain, read **only** the ADR(s) below for it (see the Context-Engineering rules in `CLAUDE.md`). Full list and status live in [decisions/README.md](decisions/README.md).
 
-| Domain | ADRs |
-|---|---|
-| Product scope & modes | [0006](decisions/0006-no-live-location-v1.md), [0014](decisions/0014-budget-display-only-v1.md), [0016](decisions/0016-plan-trip-modes-one-surface.md) |
-| Data model & events | [0011](decisions/0011-hard-soft-event-model.md) (hard/soft primitive), [0018](decisions/0018-timeline-data-model-shape.md) (drop Day, no stored `now`, `endDate`, client ids, roles) |
-| Sync / consistency / offline | [0012](decisions/0012-conflict-lww-undo.md) (LWW + undo), [0019](decisions/0019-sync-protocol.md) (change log, atomic write, snapshot + catch-up) |
-| Auth & sessions | [0002](decisions/0002-each-member-own-google-account.md), [0013](decisions/0013-google-only-auth-v1.md), [0020](decisions/0020-auth-session-architecture.md) (memory JWT + rotating refresh, single-origin, `AuthIdentity`) |
-| Collaboration & roles | [0005](decisions/0005-peers-not-roles-v1.md) (admin/peer), [0021](decisions/0021-multi-trip-membership.md) (multi-trip + active-trip state) |
-| Integrations & calendar | [0003](decisions/0003-one-way-calendar-sync.md), [0004](decisions/0004-integrations-are-pipes.md) |
-| Platform, design & device targets | [0007](decisions/0007-platform-pwa.md), [0009](decisions/0009-docs-english-ui-hebrew.md), [0017](decisions/0017-mobile-first-device-targets.md) |
-| Infra & security | [0008](decisions/0008-backend-supabase.md), [0015](decisions/0015-document-encryption-server-side.md) |
-| Process & repo boundary | [0001](decisions/0001-adopt-document-everything.md), [0010](decisions/0010-repo-vs-internal.md) |
+| Domain                            | ADRs                                                                                                                                                                                                                        |
+| --------------------------------- | --------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| Product scope & modes             | [0006](decisions/0006-no-live-location-v1.md), [0014](decisions/0014-budget-display-only-v1.md), [0016](decisions/0016-plan-trip-modes-one-surface.md)                                                                      |
+| Data model & events               | [0011](decisions/0011-hard-soft-event-model.md) (hard/soft primitive), [0018](decisions/0018-timeline-data-model-shape.md) (drop Day, no stored `now`, `endDate`, client ids, roles)                                        |
+| Sync / consistency / offline      | [0012](decisions/0012-conflict-lww-undo.md) (LWW + undo), [0019](decisions/0019-sync-protocol.md) (change log, atomic write, snapshot + catch-up)                                                                           |
+| Auth & sessions                   | [0002](decisions/0002-each-member-own-google-account.md), [0013](decisions/0013-google-only-auth-v1.md), [0020](decisions/0020-auth-session-architecture.md) (memory JWT + rotating refresh, single-origin, `AuthIdentity`) |
+| Collaboration & roles             | [0005](decisions/0005-peers-not-roles-v1.md) (admin/peer), [0021](decisions/0021-multi-trip-membership.md) (multi-trip + active-trip state)                                                                                 |
+| Integrations & calendar           | [0003](decisions/0003-one-way-calendar-sync.md), [0004](decisions/0004-integrations-are-pipes.md)                                                                                                                           |
+| Platform, design & device targets | [0007](decisions/0007-platform-pwa.md), [0009](decisions/0009-docs-english-ui-hebrew.md), [0017](decisions/0017-mobile-first-device-targets.md)                                                                             |
+| Infra & security                  | [0008](decisions/0008-backend-supabase.md), [0015](decisions/0015-document-encryption-server-side.md)                                                                                                                       |
+| Process & repo boundary           | [0001](decisions/0001-adopt-document-everything.md), [0010](decisions/0010-repo-vs-internal.md)                                                                                                                             |
 
 ## Planning sessions
 
-| Doc | Purpose |
-|---|---|
-| [planning/2026-07-09-session-01-pm-kickoff.md](planning/2026-07-09-session-01-pm-kickoff.md) | PM kickoff: scope, decisions, scaffold |
-| [planning/2026-07-09-session-02-modes.md](planning/2026-07-09-session-02-modes.md) | Plan/Trip mode model + switch |
+| Doc                                                                                                            | Purpose                                                                    |
+| -------------------------------------------------------------------------------------------------------------- | -------------------------------------------------------------------------- |
+| [planning/2026-07-09-session-01-pm-kickoff.md](planning/2026-07-09-session-01-pm-kickoff.md)                   | PM kickoff: scope, decisions, scaffold                                     |
+| [planning/2026-07-09-session-02-modes.md](planning/2026-07-09-session-02-modes.md)                             | Plan/Trip mode model + switch                                              |
 | [planning/2026-07-10-session-03-architecture-review.md](planning/2026-07-10-session-03-architecture-review.md) | T-025 architecture review: data model, sync, auth, modules (ADR-0018–0021) |
-| [planning/2026-07-08-handoff-source.md](planning/2026-07-08-handoff-source.md) | Original handoff doc (source material, Hebrew) |
+| [planning/2026-07-08-handoff-source.md](planning/2026-07-08-handoff-source.md)                                 | Original handoff doc (source material, Hebrew)                             |

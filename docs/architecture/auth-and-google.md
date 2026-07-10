@@ -30,11 +30,11 @@ Google → GET /auth/google/callback?code=...
 
 ## Scopes
 
-| Scope | When requested | Why |
-|---|---|---|
-| `openid email profile` | sign-in (v1) | identity |
+| Scope                      | When requested                           | Why                                    |
+| -------------------------- | ---------------------------------------- | -------------------------------------- |
+| `openid email profile`     | sign-in (v1)                             | identity                               |
 | `.../auth/calendar.events` | when a member enables calendar sync (v1) | one-way push of trip events (ADR-0003) |
-| `.../auth/gmail.readonly` | v1.1, on demand | booking import |
+| `.../auth/gmail.readonly`  | v1.1, on demand                          | booking import                         |
 
 Request the minimum at sign-in; **incrementally** request Calendar/Gmail scopes only when the member turns those features on. Don't front-load consent.
 

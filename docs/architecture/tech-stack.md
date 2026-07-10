@@ -4,36 +4,37 @@
 
 ## The stack
 
-| Layer | Choice | Why |
-|---|---|---|
-| **Repo shape** | **TS monorepo** (pnpm workspaces / Turborepo): `frontend/`, `backend/`, `packages/shared/` | Share types + zod schemas between client and server with zero codegen |
-| **Client** | **React 19 + Vite 8 + TypeScript**, installable **PWA** (vite-plugin-pwa) | Matches the mockup; PWA = install + offline, no app store (ADR-0007) |
-| **Client styling** | Hand-rolled CSS design system from the mockup (Tailwind optional later) | Design language already lives as CSS variables |
-| **Offline store** | **IndexedDB** via **Dexie** + service worker (Workbox) | True offline reads for index/documents/today; queue writes |
-| **Backend** | **Node + TypeScript, NestJS 11** | Traditional self-owned service, structured/modular (ADR-0008). tsconfig `NodeNext` — validated: emits CommonJS (no `type:module`), which the Nest runtime needs. **Guardrail: never add `"type":"module"` to `backend/package.json`.** |
-| **ORM / migrations** | **Prisma 7** + `@prisma/adapter-pg` driver adapter | Type-safe models + migrations. Prisma 7: connection URL in `prisma.config.ts`, adapter wired in `PrismaService`. |
-| **DB** | **Postgres 16** | Relational model in data-model.md |
-| **Validation** | **zod 4**, shared via `packages/shared` | One schema validates client + server, via a small `ZodValidationPipe` on the backend (not class-validator/DTOs) |
-| **Tests** | **Vitest** everywhere | One runner for backend + frontend; must-test: hard-event guard, ripple, LWW, mode-derivation |
-| **Lint** | **ESLint** (flat config, typescript-eslint) + Prettier | ⚠️ ESLint was claimed but not yet configured — set up in the tooling task |
-| **Auth** | **Google OAuth** (Passport / Auth.js) → own JWT; **Google-only** | Everyone has Google; unlocks Maps/Calendar/Gmail scopes (ADR-0013) |
-| **Realtime** | **WebSockets** (NestJS gateway / `ws`) + in-process per-trip channels | Simple fan-out for ~5 users; `LISTEN/NOTIFY` if we scale out |
-| **File storage** | S3-compatible bucket (disk in dev); **server-side encryption at rest** | Encrypted documents (ADR-0015) |
-| **Background jobs** | v1.1 only (Gmail import): BullMQ (Redis) or scheduled worker | Minimal until import lands |
-| **Hosting** | Client on Vercel/Netlify; API + worker on a small VPS / Fly / Railway / Render; managed Postgres | Cheap/simple for a private tool |
+| Layer                | Choice                                                                                           | Why                                                                                                                                                                                                                                    |
+| -------------------- | ------------------------------------------------------------------------------------------------ | -------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| **Repo shape**       | **TS monorepo** (pnpm workspaces / Turborepo): `frontend/`, `backend/`, `packages/shared/`       | Share types + zod schemas between client and server with zero codegen                                                                                                                                                                  |
+| **Client**           | **React 19 + Vite 8 + TypeScript**, installable **PWA** (vite-plugin-pwa)                        | Matches the mockup; PWA = install + offline, no app store (ADR-0007)                                                                                                                                                                   |
+| **Client styling**   | Hand-rolled CSS design system from the mockup (Tailwind optional later)                          | Design language already lives as CSS variables                                                                                                                                                                                         |
+| **Offline store**    | **IndexedDB** via **Dexie** + service worker (Workbox)                                           | True offline reads for index/documents/today; queue writes                                                                                                                                                                             |
+| **Backend**          | **Node + TypeScript, NestJS 11**                                                                 | Traditional self-owned service, structured/modular (ADR-0008). tsconfig `NodeNext` — validated: emits CommonJS (no `type:module`), which the Nest runtime needs. **Guardrail: never add `"type":"module"` to `backend/package.json`.** |
+| **ORM / migrations** | **Prisma 7** + `@prisma/adapter-pg` driver adapter                                               | Type-safe models + migrations. Prisma 7: connection URL in `prisma.config.ts`, adapter wired in `PrismaService`.                                                                                                                       |
+| **DB**               | **Postgres 16**                                                                                  | Relational model in data-model.md                                                                                                                                                                                                      |
+| **Validation**       | **zod 4**, shared via `packages/shared`                                                          | One schema validates client + server, via a small `ZodValidationPipe` on the backend (not class-validator/DTOs)                                                                                                                        |
+| **Tests**            | **Vitest** everywhere                                                                            | One runner for backend + frontend; must-test: hard-event guard, ripple, LWW, mode-derivation                                                                                                                                           |
+| **Lint**             | **ESLint** (flat config, typescript-eslint) + Prettier                                           | ⚠️ ESLint was claimed but not yet configured — set up in the tooling task                                                                                                                                                              |
+| **Auth**             | **Google OAuth** (Passport / Auth.js) → own JWT; **Google-only**                                 | Everyone has Google; unlocks Maps/Calendar/Gmail scopes (ADR-0013)                                                                                                                                                                     |
+| **Realtime**         | **WebSockets** (NestJS gateway / `ws`) + in-process per-trip channels                            | Simple fan-out for ~5 users; `LISTEN/NOTIFY` if we scale out                                                                                                                                                                           |
+| **File storage**     | S3-compatible bucket (disk in dev); **server-side encryption at rest**                           | Encrypted documents (ADR-0015)                                                                                                                                                                                                         |
+| **Background jobs**  | v1.1 only (Gmail import): BullMQ (Redis) or scheduled worker                                     | Minimal until import lands                                                                                                                                                                                                             |
+| **Hosting**          | Client on Vercel/Netlify; API + worker on a small VPS / Fly / Railway / Render; managed Postgres | Cheap/simple for a private tool                                                                                                                                                                                                        |
 
 ### Why TypeScript everywhere
+
 Chosen for **natively shared types and validation** between client and server — define an entity/zod schema once in `packages/shared` and both ends use it, no OpenAPI codegen. One language, one toolchain. (Python/FastAPI was the runner-up; it lost the type-sharing edge — ADR-0008.)
 
 ## External integrations
 
-| Integration | API | v1? |
-|---|---|---|
-| Maps / places / nav | Google Maps Platform (Maps, Places, deep-links) | **v1** |
-| Calendar push (one-way) | Google Calendar API | **v1 (Should)** |
-| Currency / weather | A rates API + a weather API | **v1 (Should)** |
-| Booking import ("TripIt magic") | Gmail API + a TS parsing layer | **v1.1** (deferred) |
-| Flight status | A flight-status provider | v1.1 |
+| Integration                     | API                                             | v1?                 |
+| ------------------------------- | ----------------------------------------------- | ------------------- |
+| Maps / places / nav             | Google Maps Platform (Maps, Places, deep-links) | **v1**              |
+| Calendar push (one-way)         | Google Calendar API                             | **v1 (Should)**     |
+| Currency / weather              | A rates API + a weather API                     | **v1 (Should)**     |
+| Booking import ("TripIt magic") | Gmail API + a TS parsing layer                  | **v1.1** (deferred) |
+| Flight status                   | A flight-status provider                        | v1.1                |
 
 See [integrations/overview.md](../integrations/overview.md).
 

@@ -9,7 +9,7 @@
 
 ## Topology direction — **single-origin** (T-025 / ADR-0020; ratified in T-021)
 
-The T-025 auth review settled the *direction*: **the backend host serves the static PWA on the same origin as the API** (single-origin), so the refresh cookie is same-origin and the WebSocket upgrade carries it cleanly. **The frontend is not deployed to Vercel** — its serverless layer can't proxy long-lived WebSockets, which our realtime channel needs.
+The T-025 auth review settled the _direction_: **the backend host serves the static PWA on the same origin as the API** (single-origin), so the refresh cookie is same-origin and the WebSocket upgrade carries it cleanly. **The frontend is not deployed to Vercel** — its serverless layer can't proxy long-lived WebSockets, which our realtime channel needs.
 
 ```
 GitHub (private)

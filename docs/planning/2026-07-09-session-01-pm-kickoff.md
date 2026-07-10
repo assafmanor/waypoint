@@ -17,6 +17,7 @@ First formal planning session after the concept/mockup phase. Goals: (1) stand u
 ## Decisions taken this session
 
 **Carried over & ratified as ADRs (Accepted):**
+
 - Document everything + handbook + ADR process (ADR-0001)
 - Each member connects their own Google account (ADR-0002)
 - One-way calendar sync (ADR-0003)
@@ -26,6 +27,7 @@ First formal planning session after the concept/mockup phase. Goals: (1) stand u
 - Hard/soft event model as the core primitive (ADR-0011)
 
 **New proposals this session (Proposed — awaiting your ruling):**
+
 - Everyone is a peer in v1, no roles (ADR-0005)
 - No live GPS location sharing in v1 (ADR-0006)
 - Platform = mobile-first PWA (ADR-0007)
@@ -33,6 +35,7 @@ First formal planning session after the concept/mockup phase. Goals: (1) stand u
 - Conflicts = last-writer-wins + undo for v1 (ADR-0012)
 
 **Product framing decided:**
+
 - v1 = one real trip, one real group; success measured on the ground (PRD-v1).
 - Real multi-user collaboration is a v1 requirement; not built for scale but designed not to preclude it.
 - Feature catalog drafted with MoSCoW priorities.
@@ -58,6 +61,7 @@ First formal planning session after the concept/mockup phase. Goals: (1) stand u
 ## Addendum — decisions ratified same day
 
 Assaf ruled on the open questions:
+
 - ✅ **Platform: PWA** (ADR-0007 → Accepted).
 - ✅ **Gmail import: v1.1** — deferred, not the most important; manual entry covers v1.
 - ✅ **Auth: Google-only** for now (ADR-0013, new).
@@ -69,22 +73,25 @@ Assaf ruled on the open questions:
 Also decided: stand up a persistent, **agent-handoff task system** in a private, gitignored local area (kept out of the repo).
 
 ### Final rulings (same day, second pass)
+
 - ✅ **TypeScript end-to-end** — backend switched from Python to **Node/TS (NestJS)** for natively shared types; TS monorepo with `packages/shared` (ADR-0008 rewritten).
 - ✅ **Budget: display-only** for v1; may not end up a main feature (ADR-0014).
 - ✅ **Member-to-member live location sharing: deferred** as a suggested future feature (ADR-0006 resolved).
 - ✅ **Document encryption: server-side at rest** (ADR-0015).
 
-**All v1 scope questions are now resolved.** Accepted ADRs: 0001–0004, 0006, 0007, 0008, 0009, 0010, 0011, 0013, 0014, 0015. Still *Proposed*: 0005 (peers/no-roles), 0012 (LWW+undo) — low-risk, ratify when convenient.
+**All v1 scope questions are now resolved.** Accepted ADRs: 0001–0004, 0006, 0007, 0008, 0009, 0010, 0011, 0013, 0014, 0015. Still _Proposed_: 0005 (peers/no-roles), 0012 (LWW+undo) — low-risk, ratify when convenient.
 
 ## Addendum — scaffold + specs built (same session)
 
 Built the full TypeScript monorepo scaffold on disk and wrote the remaining v1 specs:
+
 - **Monorepo:** pnpm workspaces + Turborepo; `packages/shared` (entity types + zod), `backend` (NestJS + Prisma, `/health`, full `schema.prisma`), `frontend` (React+Vite PWA, RTL, 4-tab shell, tokens, Dexie stub). Root config: tsconfig base, prettier, editorconfig, `.nvmrc`, `.env.example`, `docker-compose.yml` (Postgres+Redis).
 - **Specs:** `docs/architecture/api-contract.md`, `sync-and-offline.md`, `auth-and-google.md`; `docs/engineering/conventions.md` + `prerequisites-checklist.md`.
 - **`CLAUDE.md`** at repo root to orient coding agents.
 - Board reworked: T-003/004/005 done→archive; new critical-path tasks T-006 (first run), T-007 (auth), T-008 (Home/Day port), plus a backlog through T-017.
 
 **Two environment caveats (must be done on the Windows machine):**
+
 1. `pnpm install` was not run — the planning sandbox can't reach the npm registry, and Linux-built binaries would be wrong for Windows anyway. Run `pnpm install` locally (lockfile will be generated then).
 2. `git init` could not run — the sandbox can't manage `.git` on the mounted drive. A partial `.git/` folder was left behind; delete it (`Remove-Item -Recurse -Force .git` in PowerShell) then `git init` locally. The `.gitignore` already excludes the private local area and `.env`.
 

@@ -11,6 +11,7 @@
 The unifying primitive is the **`Change`** record. Every shared-state mutation produces one; it drives realtime fan-out, the change-feed UI, undo, and offline catch-up.
 
 **Two invariants underpin everything below (ADR-0019):**
+
 1. **Atomic write.** The entity write and its `Change` insert commit in **one transaction** (`prisma.$transaction`), through a single shared `ChangeService.mutate()`; the WS broadcast happens **only after commit**. A mutation is never logged separately or half-applied.
 2. **Monotonic cursor.** `Change.seq` is a strictly-increasing `BigInt`. All catch-up and gap-detection cursor on `seq`, never on timestamps.
 
@@ -20,18 +21,22 @@ The unifying primitive is the **`Change`** record. Every shared-state mutation p
 - On the server, an in-process **per-trip channel manager** keeps the set of connected sockets for each `tripId` and broadcasts to them. Fine for this scale; swap for Postgres `LISTEN/NOTIFY` or a bus only if we ever run multiple API instances.
 
 ### Message shapes (server → client)
+
 ```jsonc
 { "type": "change", "seq": 412, "change": { /* Change record, incl. its seq */ } }
 { "type": "presence", "members": [{ "userId": "...", "connected": true }] }
 { "type": "hello", "serverTime": "2026-07-09T18:00:00Z", "latestSeq": 412 }
 ```
+
 The client tracks `lastSeq`. If an arriving `change.seq > lastSeq + 1` (a gap), or `hello.latestSeq > lastSeq` after reconnect, it runs catch-up (below). This gap-detection is what makes "WS receives, REST writes" safe against a dropped frame.
 
 ### Client → server
+
 ```jsonc
 { "type": "subscribe", "tripId": "..." }   // implicit from the URL; explicit re-subscribe after reconnect
 { "type": "ping" }
 ```
+
 Writes go over **REST**, not the socket. The socket is for receiving. (Simpler auth, retries, and offline queueing than command-over-socket.) The WS upgrade authenticates via the session cookie (ADR-0020).
 
 ## Optimistic updates + undo
@@ -46,27 +51,30 @@ Writes go over **REST**, not the socket. The socket is for receiving. (Simpler a
 
 ## Conflict resolution (ADR-0012 / ADR-0019)
 
-- **Soft events:** **row-level, server-authoritative last-writer-wins** — the server stamps `updatedAt = now()`; whichever write commits last wins the whole row. (Not field-level: that needs a per-field clock, i.e. a CRDT, which we don't build.) Two people editing the same block → later commit wins; both actions appear in the change-feed; either is undoable. Concurrent edits to *different* fields can clobber — accepted at this scale; upgrade path is an optimistic-concurrency `version` column.
+- **Soft events:** **row-level, server-authoritative last-writer-wins** — the server stamps `updatedAt = now()`; whichever write commits last wins the whole row. (Not field-level: that needs a per-field clock, i.e. a CRDT, which we don't build.) Two people editing the same block → later commit wins; both actions appear in the change-feed; either is undoable. Concurrent edits to _different_ fields can clobber — accepted at this scale; upgrade path is an optimistic-concurrency `version` column.
 - **Hard events:** protected — mutations require `confirm` and are never auto-moved or rippled, so the churny conflict surface is only soft events.
 - No CRDT/OT in v1. The `Change` log (`before`/`after`, `updatedBy`, `updatedAt`) is enough to upgrade a specific entity to CRDT-backed later if LWW ever hurts.
 
 ## Ripple (suggestion only)
 
-When a soft event moves, the server may return a `rippleSuggestion` describing subsequent **soft** events it *could* push, with new times. The client shows the amber ripple bar; nothing moves until the user says yes. Ripple computation stops at the first hard anchor.
+When a soft event moves, the server may return a `rippleSuggestion` describing subsequent **soft** events it _could_ push, with new times. The client shows the amber ripple bar; nothing moves until the user says yes. Ripple computation stops at the first hard anchor.
 
 ## Offline
 
 ### Read (must work with zero connectivity)
+
 - The client mirrors the **whole trip** (events, bookings, documents metadata, maybe-shelf, members, practical) into **IndexedDB (Dexie)** on every successful snapshot/fetch/broadcast. A trip is a few hundred small rows — no per-row caching flags (ADR-0018).
 - The service worker (Workbox) caches the app shell and the document blobs.
 - Opening the app offline renders straight from IndexedDB.
 
 ### Write offline
+
 - Mutations made offline are appended to an ordered local **outbox** (IndexedDB) with the entity's **client-generated id** (ADR-0018) and the optimistic local state.
 - On reconnect, the client flushes the outbox **sequentially (FIFO)**, halting and retrying on the first hard error. Because the client owns the id, there is **no temp-id→real-id swap**, retries are idempotent (re-POST → unique violation → already-applied), and an offline-created entity can reference another offline-created one immediately.
 - Conflicts on flush resolve by the same LWW rule; the change-feed reflects the final state; anything surprising is undoable.
 
 ### Bootstrap & catch-up
+
 - **Initial load / deep desync:** `GET /trips/:tripId/snapshot` returns the full current trip state **plus `latestSeq`**, read in one transaction (a coherent baseline with one cursor). Sets `lastSeq`.
 - **Reconnect within the log:** `GET /trips/:tripId/changes?sinceSeq=<lastSeq>` replays anything missed, then re-subscribe to the socket. (Timestamp cursors are lossy on ms collisions — always cursor on `seq`.)
 

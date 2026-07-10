@@ -14,32 +14,39 @@ No integration gets its own screen. Each one **feeds the two existing surfaces**
 ## Per-integration notes
 
 ### Google Maps / Places
+
 - **Feeds:** event locations, "near me now," hours, ratings; **deep-links** to Google Maps for turn-by-turn (we don't rebuild navigation).
 - **v1:** yes. Lowest-risk, highest-daily-use.
 
 ### Gmail booking import ("the TripIt magic")
+
 - **Feeds:** the index (and hard Events) by parsing confirmation emails into Bookings.
 - **How:** read-only Gmail scope on each member's account → a parsing layer (provider templates + heuristics) → Booking entities → member confirms/edits.
 - **Effort:** highest single build. Parsing is messy and per-provider.
 - **v1 or v1.1 🔶** — flagged as the key scope decision.
 
 ### Google Calendar (one-way)
+
 - **Feeds:** each member's **personal** calendar from the trip (trip → calendar). **One-way only** — two-way is a conflict trap. (ADR-0003)
 - **v1:** Should.
 
 ### Flight status
+
 - **Feeds:** Now/Next directly (gate, delay, terminal).
 - **v1.1.**
 
 ### WhatsApp share-out
+
 - **Feeds:** outbound only — share a card/plan into the group chat.
 - **v1.1.**
 
 ### Expense splitting (Splitwise-style) / Google Photos album
+
 - **Feeds:** practical layer / a shared album.
 - **v1.1+.**
 
 ### Web / AI enrichment (future pipe 🔭)
+
 - **Feeds:** existing `Event` / `Booking` / `MaybeItem` entities with auto-pulled detail (opening hours, photos, descriptions, local tips; filling booking fields from a confirmation).
 - **Why it fits:** it's a textbook pipe — enrich the entities, never a new screen (ADR-0004).
 - **Keep-open requirements (so v1 doesn't block it):** preserve `source`/provenance on entities so enriched data is distinguishable and re-fetchable; keep `placeId` and free-text separable as stable keys to hang enrichment on.
@@ -47,4 +54,4 @@ No integration gets its own screen. Each one **feeds the two existing surfaces**
 
 ## Rule for adding any future integration
 
-Before building it, answer: *which existing surface does this feed — Now/Next or the index?* If the honest answer is "it needs its own screen," reconsider — that's a signal it doesn't fit the product.
+Before building it, answer: _which existing surface does this feed — Now/Next or the index?_ If the honest answer is "it needs its own screen," reconsider — that's a signal it doesn't fit the product.
