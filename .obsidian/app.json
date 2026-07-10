@@ -4,9 +4,8 @@
   "attachmentFolderPath": "docs/assets",
   "alwaysUpdateLinks": true,
   "userIgnoreFilters": [
-    "node_modules/",
-    "packages/",
-    ".turbo/",
-    ".git/"
+    ".git",
+    "node_modules",
+    ".turbo"
   ]
 }

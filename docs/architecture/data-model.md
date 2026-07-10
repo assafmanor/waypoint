@@ -1,6 +1,6 @@
 # Data Model
 
-**Status:** ACCEPTED target (T-025 review; decisions in ADR-0018 / 0019 / 0020 / 0021). Relational (Postgres). The **hard/soft event** is the heart of it. This describes the **target** model; it is applied to `backend/prisma/schema.prisma` + `packages/shared` + a migration in **T-026**. Until then the checked-in schema is the older scaffold — this doc leads.
+**Status:** CURRENT — implemented in `backend/prisma/schema.prisma` + `packages/shared` + the init migration (T-026; decisions in ADR-0018 / 0019 / 0020 / 0021). Relational (Postgres). The **hard/soft event** is the heart of it.
 
 ## Entity map
 
