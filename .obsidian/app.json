@@ -1,0 +1,12 @@
+{
+  "useMarkdownLinks": true,
+  "newLinkFormat": "absolute",
+  "attachmentFolderPath": "docs/assets",
+  "alwaysUpdateLinks": true,
+  "userIgnoreFilters": [
+    "node_modules/",
+    "packages/",
+    ".turbo/",
+    ".git/"
+  ]
+}
