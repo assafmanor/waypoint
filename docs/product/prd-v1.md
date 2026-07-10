@@ -57,7 +57,7 @@ Five friends traveling abroad together. Each is a peer — there is no "admin wh
 
 ## 5. Explicitly OUT of scope for v1
 
-- Multiple concurrent trips per user beyond a simple list (build for it in the data model, don't build UI polish for it).
+- A user belonging to **multiple trips** is **in** for v1 as a *simple list + switcher* (ADR-0021 — the model already supports it). What stays out: polished multi-trip UX and **overlapping in-progress trips** (deferred).
 - Two-way calendar sync (a conflict trap — see ADR-0003).
 - Expense splitting / Splitwise-style settlement (nice-to-have; v1.1+).
 - Shared photo album (Google Photos) (v1.1+).

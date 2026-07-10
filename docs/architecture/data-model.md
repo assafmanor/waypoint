@@ -1,89 +1,120 @@
 # Data Model
 
-**Status:** PROPOSED (for review). Relational (Postgres). The **hard/soft event** is the heart of it. Field lists are sketches, not final DDL.
+**Status:** ACCEPTED target (T-025 review; decisions in ADR-0018 / 0019 / 0020 / 0021). Relational (Postgres). The **hard/soft event** is the heart of it. This describes the **target** model; it is applied to `backend/prisma/schema.prisma` + `packages/shared` + a migration in **T-026**. Until then the checked-in schema is the older scaffold — this doc leads.
 
 ## Entity map
 
 ```
-User ──< Membership >── Trip ──< Day >── Event ──? Booking
-                          │                 │
-                          ├──< Booking       └──(hard→ reservation info)
+User ──< AuthIdentity                         (identity + per-provider OAuth token/scopes)
+User ──< Session                              (our rotating refresh tokens)
+User ──< Membership >── Trip ──< Event ──? Booking
+                          │        │
+                          │        └──< CalendarEventLink (per member, one-way sync)
+                          ├──< Booking
                           ├──< Document
                           ├──< MaybeItem
-                          └──< Change
+                          ├──< TripNote
+                          └──< Change          (the sync/undo/feed substrate)
 ```
+
+There is **no `Day` table** — a day is a calendar date within the trip range (ADR-0018).
 
 ## Entities
 
 ### User
-The person. Backed by Google identity.
-- `id`, `google_sub`, `email`, `display_name`, `avatar_color`, `created_at`
+The person (no provider fields — those live on `AuthIdentity`).
+- `id`, `email @unique`, `displayName`, `avatarColor`, `createdAt`
+
+### AuthIdentity (ADR-0020)
+One per (user, provider). Holds the provider identity **and** that provider's OAuth material.
+- `id`, `userId`, `provider` (`AuthProvider` enum: `google`; extensible), `providerAccountId`
+- `refreshTokenEnc?` (encrypted at rest, ADR-0015), `scopes String[]`, `createdAt`, `updatedAt`
+- `@@unique([provider, providerAccountId])`
+
+### Session (ADR-0020)
+Our own refresh-token store (the access token is a stateless in-memory JWT, not stored).
+- `id`, `userId`, `refreshTokenHash`, `expiresAt`, `createdAt`, `revokedAt?`, `userAgent?`
 
 ### Trip
 The aggregate root.
-- `id`, `name` (e.g. "יפן ׳26"), `destination`, `start_date`, `end_date`, `timezone`, `created_by`, `created_at`
-- Trip mode (planning/trip) is **derived** from dates + current time, not stored.
+- `id`, `name` (e.g. "יפן ׳26"), `destination`, `startDate @db.Date`, `endDate @db.Date`, `timezone`
+- `currency String?`, `dailyBudgetMinor Int?` (display-only budget, ADR-0014)
+- `createdBy` (FK → User), `createdAt`, `updatedAt`, `updatedBy`
+- Trip **mode** (plan/trip) is **derived** from dates + now, never stored (ADR-0016).
 
 ### Membership
-Join between User and Trip; enables collaboration and per-user features.
-- `id`, `trip_id`, `user_id`, `role` (`peer` for v1; field reserved for future roles), `joined_at`
-- `calendar_sync_enabled` (bool), `google_connected` (bool)
-
-### Day
-Convenience grouping for the itinerary (could be derived, but stored simplifies ordering).
-- `id`, `trip_id`, `date`, `label`
+User×Trip join — enables collaboration, multi-trip (ADR-0021), and per-user calendar sync.
+- `id`, `tripId`, `userId`, `role` (`MembershipRole`: `admin` | `peer` — creator is `admin`, ADR-0005)
+- `calendarSyncEnabled Boolean` (per-trip intent; capability derives from the user's Google `AuthIdentity.scopes`)
+- `joinedAt`
+- `@@unique([tripId, userId])`, `@@index([tripId])`
 
 ### Event ⭐ (the core)
-A block on the timeline. **Hard or soft** — this is the decisive field.
-- `id`, `trip_id`, `day_id`, `title`, `icon`
-- `kind`: **`hard` | `soft`** ← the central distinction
-- `start_time`, `end_time` (nullable for open-ended soft blocks)
-- `location` (place ref / lat-lng / free text), `place_id` (Google Places, nullable)
-- `status`: `planned` | `now` | `done` | `skipped`
-- `booking_id` (nullable) — a hard event usually links to a Booking that holds the commitment (code, contact to change it)
-- `sort_order` (within the day)
-- `source`: `manual` | `gmail` | `maybe_shelf` | `integration`
-- `updated_by`, `updated_at` (for last-writer-wins + change-feed)
+A block on the timeline. **Hard or soft** — the decisive field (ADR-0011).
+- `id` (**client-generated**, ADR-0018), `tripId`, `date @db.Date` (which day it's anchored to)
+- `endDate @db.Date?` — **null = single-day point-in-time block; non-null = multi-day ambient span** (wedding/festival), rendered as a strip like a hotel (ADR-0018)
+- `title`, `icon?`, `kind` (`hard` | `soft`)
+- `startsAt DateTime?`, `endsAt DateTime?` — **UTC instants**, may cross midnight; displayed via `Trip.timezone`
+- `location?`, `placeId?` (Google Places, nullable — kept separable from free text for future enrichment)
+- `status` (`EventStatus`: `planned` | `done` | `skipped` — **no `now`**; "now" is computed client-side from times)
+- `bookingId?` (a hard event usually links a Booking holding the commitment)
+- `sortOrder Int` (within the date), `source` (`manual` | `gmail` | `maybe_shelf` | `integration`)
+- `createdAt`, `updatedAt`, `updatedBy`
+- `@@index([tripId, date])`
 
 **Hard vs soft is behavior, not just a flag:**
-- `hard` → edits require confirmation; never auto-moved; excluded from ripple; renders with code + lock badge.
-- `soft` → freely draggable/skippable/swappable; included in ripple suggestions; renders dashed.
+- `hard` → edits require confirmation; never auto-moved; excluded from ripple; renders with code + lock.
+- `soft` → freely draggable/skippable/swappable; included in ripple; renders dashed.
 
 ### Booking
 An entry in the central index. Backs hard events and stands alone in the index.
-- `id`, `trip_id`, `type` (`flight` | `hotel` | `restaurant` | `train` | `activity` | …)
-- `title`, `confirmation_code`, `provider`, `address`, `place_id`
-- `starts_at`, `ends_at`, `details` (JSON: seat, room, gate, party size…)
-- `source`: `manual` | `gmail`
-- `offline_available` (bool) — indexed for offline caching
+- `id` (client-generated), `tripId`, `type` (`flight` | `hotel` | `restaurant` | `train` | `activity` | `other`)
+- `title`, `confirmationCode?`, `provider?`, `address?`, `placeId?`
+- `startsAt DateTime?`, `endsAt DateTime?` (a hotel across nights is **one** Booking with a range — ADR-0018)
+- `details Json?` (seat, room, gate, party size…), `source` (`manual` | `gmail`)
+- `createdAt`, `updatedAt`, `updatedBy`
+- (No `offlineAvailable` — the client mirrors the whole trip; ADR-0018.)
+
+### CalendarEventLink (ADR-0020)
+Idempotency map for one-way calendar push (ADR-0003) — per member, per event.
+- `id`, `eventId`, `userId`, `googleCalendarEventId`, `updatedAt`
+- `@@unique([eventId, userId])`
 
 ### Document
 Sensitive files (passports, insurance).
-- `id`, `trip_id`, `type`, `title`, `file_ref` (encrypted blob), `owner_user_id` (nullable — some are group docs)
-- **Encrypted at rest; offline-cacheable on the client.** Encryption approach → open question in tech-stack.md.
+- `id`, `tripId`, `type` (`passport` | `insurance` | `visa` | `other`), `title`
+- `fileRef` (server-side-encrypted blob, ADR-0015), `mimeType`, `sizeBytes`, `ownerUserId?` (null = group doc)
+- `createdAt`, `updatedAt`, `updatedBy`
 
 ### MaybeItem
 Parked ideas on the "maybe" shelf.
-- `id`, `trip_id`, `title`, `icon`, `meta`, `place_id` (nullable), `created_by`
+- `id`, `tripId`, `title`, `icon?`, `placeId?`, `createdBy`, `consumed Boolean`, `createdAt`, `updatedAt`, `updatedBy`
 - Scheduling one creates an Event (`source = maybe_shelf`) and marks the MaybeItem consumed.
+- (Dropped the untyped `meta` field — `title` + `placeId` + `icon` cover the shelf card.)
 
-### Change
-The change-feed + audit + undo substrate.
-- `id`, `trip_id`, `actor_user_id`, `entity_type`, `entity_id`, `action` (`create`|`update`|`move`|`delete`|`status`), `before` (JSON), `after` (JSON), `created_at`
+### TripNote (ADR-0018)
+The practical layer's small stuff (WiFi codes, notes). Emergency numbers are **static frontend data**, not DB.
+- `id`, `tripId`, `category` (`wifi` | `note`), `label`, `value`, `sortOrder`, `createdAt`, `updatedAt`, `updatedBy`
+
+### Change (the sync/undo/feed substrate — ADR-0019)
+- `id`, `seq BigInt @default(autoincrement())` (strictly-increasing cursor), `tripId`, `actorUserId`
+- `entityType`, `entityId`, `action` (`create` | `update` | `move` | `delete` | `status`)
+- `before Json?`, `after Json?`, `createdAt`
+- `@@index([tripId, seq])`
 
 ## Key relationships & rules
 
-- Everything is scoped by `trip_id` (row-level auth by membership).
-- An Event may reference a Booking; deleting a Booking should warn if a hard Event depends on it.
+- Everything is scoped by `tripId` (row-level auth by membership).
+- An Event may reference a Booking; deleting a Booking with a dependent hard event uses `onDelete: SetNull` and the API warns/confirms (api-contract.md).
+- Every shared-state mutation goes through `ChangeService.mutate()` — entity write + `Change` insert in **one transaction**, broadcast post-commit (ADR-0019).
 - Ripple only ever reorders **soft** Events after a moved Event, never crosses a hard anchor.
-- Undo = apply the inverse of a `Change` record.
+- Undo = apply the inverse of a `Change` (append a new `Change`; ADR-0019).
+
+## Resolved modeling questions
+
+1. **Day stored vs derived** → **derived** (drop the table; `Event.date`). ADR-0018.
+2. **Overnight/multi-day bookings** → a hotel is **one Booking** with a date range; multi-day *events* (weddings) use `Event.endDate`. Both render as ambient strips; point-in-time blocks stay single-date. ADR-0018.
+3. **Document encryption** → server-side at rest (ADR-0015).
 
 ## Scale-safe by construction
-
-Relational, every row keyed by `trip_id` + a real `user_id`, `role` reserved, `updated_by/at` present. None of this is tuned for scale, but none of it blocks scaling — that's the intended balance.
-
-## Open modeling questions 🔶
-
-1. Should `Day` be a stored entity or derived from dates? (Proposed: stored, for explicit ordering.)
-2. Recurring/overnight events (a hotel spanning nights) — model as one Booking with a date range, but how shown on multiple Days?
-3. ~~Document encryption: E2E vs. at-rest?~~ **Resolved:** server-side encryption at rest (ADR-0015). `Document.file_ref` points to an encrypted blob the backend can decrypt for authorized members.
+Relational, every row keyed by `trip_id` + a real `user_id`, `role` present, audit columns everywhere, client-generated ids. None of this is tuned for scale, but none of it blocks scaling.

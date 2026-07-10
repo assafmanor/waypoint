@@ -63,4 +63,5 @@ The single source of truth for where everything lives. Keep this current wheneve
 |---|---|
 | [planning/2026-07-09-session-01-pm-kickoff.md](planning/2026-07-09-session-01-pm-kickoff.md) | PM kickoff: scope, decisions, scaffold |
 | [planning/2026-07-09-session-02-modes.md](planning/2026-07-09-session-02-modes.md) | Plan/Trip mode model + switch |
+| [planning/2026-07-10-session-03-architecture-review.md](planning/2026-07-10-session-03-architecture-review.md) | T-025 architecture review: data model, sync, auth, modules (ADR-0018–0021) |
 | [planning/2026-07-08-handoff-source.md](planning/2026-07-08-handoff-source.md) | Original handoff doc (source material, Hebrew) |

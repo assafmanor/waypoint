@@ -1,6 +1,6 @@
 # Architecture Overview
 
-**Status:** PROPOSED (for review). Guiding constraint: **real multi-user collaboration must work in v1**, but we are **not building for scale** — we optimize for a handful of trips and ~5 users each, while keeping the design free of choices that would block scaling later.
+**Status:** ACCEPTED (revised in the T-025 review — see `planning/2026-07-10-session-03-architecture-review.md` and ADR-0018/0019/0020/0021). Guiding constraint: **real multi-user collaboration must work in v1**, but we are **not building for scale** — we optimize for a handful of trips and ~5 users each, while keeping the design free of choices that would block scaling later.
 
 ## Shape of the system
 
@@ -29,6 +29,14 @@
                            │ flight status │
                            └───────────────┘
 ```
+
+## What the T-025 review changed (summary)
+
+- **Data model (ADR-0018):** dropped the `Day` table (a day is a date on `Event`); removed stored `EventStatus.now` (computed from the clock); `Event.endDate` for multi-day ambient spans; **client-generated ids**; uniform audit columns; dropped `Booking.offlineAvailable`; roles `admin`+`peer`; a minimal practical layer (`TripNote`, budget columns, static emergency numbers).
+- **Sync (ADR-0019):** `Change.seq` monotonic cursor (not timestamps); the entity write + `Change` insert are one transaction through a single `ChangeService.mutate()`, broadcast post-commit; a `snapshot` bootstrap endpoint; **row-level** server-authoritative LWW (the old "field-level" claim was unimplementable).
+- **Auth (ADR-0020):** in-memory access JWT + a rotating httpOnly refresh `Session`; **single-origin** in prod (backend serves the PWA); a generalized `AuthIdentity` seam so non-Google login is a cheap future add; `CalendarEventLink` for one-way sync idempotency.
+- **Multi-trip (ADR-0021):** already supported by the model; adds a client active-trip selection + a minimal switcher.
+- These are applied to code in **T-026** (schema/migration/shared types) and the reshaped build tasks.
 
 ## Design tenets
 

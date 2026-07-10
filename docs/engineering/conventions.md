@@ -25,10 +25,11 @@ waypoint/
 
 ## Backend (NestJS)
 
-- One **module per domain** (trips, events, bookings, auth, realtime), each with controller + service.
-- Controllers validate input with the shared **zod** schemas; services hold logic; `PrismaService` is the only DB access.
-- Every shared-state mutation writes a `Change` and broadcasts it (see sync-and-offline.md). Put that in a small shared helper, not copy-pasted.
-- Trip authorization is checked in a guard, per request, against `Membership`.
+- One **module per domain** (Auth, Trips, Events, Bookings, Documents, Calendar) + infra modules (Prisma global, Crypto, **Sync**). See the module map in the T-025 review.
+- Controllers validate input with the shared **zod** schemas via a `ZodValidationPipe` (**not** class-validator/DTOs — `packages/shared` is the single source of truth); services hold logic; `PrismaService` is the only DB access.
+- **Every shared-state mutation goes through `ChangeService.mutate()`** — it runs the entity write + `Change` insert in **one transaction** (`seq` assigned atomically) and broadcasts **only after commit** (ADR-0019). Domain services never write `Change` or touch the WS gateway directly. This is a hard boundary, not a convention.
+- Trip authorization is checked in a `MembershipGuard`, per request, against `Membership` (404 on no membership).
+- **tsconfig guardrail:** the backend uses `NodeNext` and emits CommonJS — **never add `"type":"module"` to `backend/package.json`** (it would flip emit to ESM and break the Nest runtime).
 
 ## Frontend (React)
 
@@ -45,7 +46,8 @@ waypoint/
 
 ## Testing
 
-- **Backend:** unit-test services (Vitest/Jest); the hard-event guard, ripple, and LWW reconciliation are must-test.
+- **Runner: Vitest everywhere** (backend + frontend; one runner, ESM-clean).
+- **Backend:** unit-test services; the hard-event guard, ripple, LWW reconciliation, `ChangeService` atomicity, and mode-derivation are must-test.
 - **Frontend:** component tests for the interaction verbs; a smoke e2e (Playwright) for the 4 tabs.
 - A change to a documented behavior updates the doc/ADR in the same PR.
 
