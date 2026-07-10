@@ -46,7 +46,7 @@ export const createBookingSchema = z.object({
   placeId: z.string().optional(),
   startsAt: z.string().optional(),
   endsAt: z.string().optional(),
-  details: z.record(z.unknown()).optional(),
+  details: z.record(z.string(), z.unknown()).optional(),
 });
 export type CreateBookingInput = z.infer<typeof createBookingSchema>;
 
