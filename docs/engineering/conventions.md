@@ -20,9 +20,11 @@ waypoint/
 - **TypeScript everywhere**, `strict` on. No `any` without a comment justifying it.
 - Prettier + ESLint are authoritative; run `pnpm format` before committing.
 - **Types/validation live in `packages/shared`.** Never redefine an entity shape locally — import it. If the shape changes, change it there and in `backend/prisma/schema.prisma` together.
+- **Code is English-only** — identifiers, comments, commit messages, docs. **User-facing strings are the one exception**: they are localizable UI copy (Hebrew today) and must stay out of logic — reference them by key/variable, never branch on their text — so more languages can be added later.
+- **No magic values.** Meaningful string/number literals never sit inline in logic — hoist them to named constants: UI copy in the locale files (`frontend/src/i18n/`), domain enum values in `@waypoint/shared` constants, tunables (durations, thresholds, sizes, default slots) in a `constants` module. This keeps logic language-agnostic and i18n-ready. Exempt: structural/framework literals (CSS class names, ARIA roles, `dir="ltr"`) and fixture/seed content.
 - camelCase in TS/JSON; the DB (Prisma) maps to the same field names.
 - File naming: kebab-case files, PascalCase React components and Nest classes.
-- **Comment sparingly — only where a comment earns its keep.** A comment justifies itself by capturing a non-obvious *why* (a decision, a gotcha, an ADR pointer) that the code can't. Don't restate what the code already says, and don't document what something *isn't*, *doesn't contain*, or *used to be* — the schema/types are the record of what *is*. Prefer a short ADR reference over prose.
+- **Comment sparingly — only where a comment earns its keep.** A comment justifies itself by capturing a non-obvious _why_ (a decision, a gotcha, an ADR pointer) that the code can't. Don't restate what the code already says, and don't document what something _isn't_, _doesn't contain_, or _used to be_ — the schema/types are the record of what _is_. Prefer a short ADR reference over prose.
 
 ## Backend (NestJS)
 
@@ -61,5 +63,6 @@ waypoint/
 ## Definition of Done
 
 - Acceptance criteria (from the task brief) all checked.
+- **Every feature ships with tests** — its logic and its interaction verbs. Nothing merges test-free.
 - Types/zod/Prisma consistent; `pnpm typecheck` and `pnpm build` pass.
 - Docs/ADRs updated if behavior or a decision changed.

@@ -1,0 +1,97 @@
+// Hebrew UI copy — the active locale. All user-facing strings live here so logic
+// stays language-agnostic (conventions.md). Interpolated copy is a function;
+// runs that must render left-to-right (times, codes) stay as JSX in the caller.
+export const t = {
+  common: {
+    undo: 'בטל',
+    yes: 'כן',
+    no: 'לא',
+    now: 'עכשיו',
+  },
+  tabs: {
+    home: 'בית',
+    map: 'מפה',
+    index: 'אינדקס',
+    days: 'יום-יום',
+  },
+  header: {
+    googleNote: 'כל אחד מחובר לחשבון Google שלו · המסלול מסונכרן ליומן האישי',
+    dayOf: (day: number, total: number) => `יום ${day} מתוך ${total}`,
+  },
+  placeholder: {
+    comingSoon: 'מסך זה מעוצב בהמשך.',
+  },
+  board: {
+    freeLabel: 'פנוי',
+    freeTitle: 'זמן חופשי',
+    until: 'עד',
+    nextLabel: 'הבא בתור',
+    endOfDay: 'סוף היום',
+    minutes: 'דקות',
+  },
+  quick: {
+    title: 'גישה מהירה',
+    navHotel: 'ניווט למלון',
+    nextTicket: 'הכרטיס הבא',
+    nearbyAtm: 'כספומט קרוב',
+    wifiCode: 'קוד WiFi',
+    openingNav: 'פותח ניווט למלון',
+    nextTicketToast: (code: string) => `הכרטיס הבא · ${code}`,
+    noTicket: 'אין כרטיס קרוב',
+    atmToast: '3 כספומטים ללא עמלה ברדיוס 300 מ׳',
+    wifiCopied: 'קוד ה-WiFi הועתק ללוח',
+    noWifi: 'אין קוד WiFi שמור',
+  },
+  glance: {
+    title: 'מבט מהיר',
+    fx: 'שער',
+    fxChange: (pct: number) => `${pct}% היום`,
+    budgetToday: 'תקציב היום',
+  },
+  day: {
+    heading: (day: number, weekday: string, destination: string) =>
+      `יום ${day} · ${weekday} · ${destination}`,
+    tapToChange: 'הקש כרטיס לשינוי',
+    maybeShelf: 'מדף אולי',
+    tapToSchedule: 'הקש כדי לשבץ ליום',
+    legendHardWord: 'קשיחים',
+    legendSoftWord: 'רכים',
+    legendHardRest: ' יש להם התחייבות (הזמנה/כרטיס) — האפליקציה מגנה עליהם.',
+    legendSoftRest: ' זזים, מדולגים ומתחלפים בחופשיות.',
+    legendHardLead: 'אירועים ',
+    legendSoftLead: 'אירועים ',
+  },
+  event: {
+    hard: 'קשיח',
+    soft: 'רך',
+    softNow: 'רך · עכשיו',
+    bookingLabel: 'הזמנה',
+    hardWarn: 'אירוע קשיח — שינוי דורש עדכון ההזמנה',
+  },
+  actions: {
+    restore: 'שחזר',
+    navigate: 'ניווט',
+    delayBy: (minutes: number) => `דחה ${minutes} דק׳`,
+    onWay: 'בדרך',
+    done: 'סיימנו',
+    skip: 'דלג',
+    swap: 'החלף',
+    scheduleToDay: 'שבץ ליום',
+    scheduled: 'שובץ',
+  },
+  toast: {
+    markedDone: 'סומן כהושלם',
+    removed: 'הוסר מהיום',
+    restored: 'האירוע שוחזר',
+    swapPrompt: 'נבחר להחלפה — שבץ תחליף ממדף אולי',
+    hardDelayed: 'אירוע קשיח נדחה — יש לעדכן את ההזמנה',
+    softDelayed: (minutes: number) => `נדחה ב-${minutes} דקות`,
+    onWayShared: 'שותף לקבוצה · בדרך',
+    openingNav: 'פותח ניווט',
+    scheduled: (title: string, time: string) => `${title} שובץ ל-${time}`,
+    rippleApplied: 'האירועים הרכים הבאים נדחו',
+  },
+  ripple: {
+    prompt: (movedTitle: string) => `דחית את ${movedTitle}. לדחות את האירועים הבאים גם?`,
+  },
+} as const;
