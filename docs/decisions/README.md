@@ -64,4 +64,4 @@ What else we weighed and why we didn't pick it.
 | [0019](0019-sync-protocol.md)                   | Sync protocol: monotonic change log, atomic write path, snapshot + catch-up                | Accepted |
 | [0020](0020-auth-session-architecture.md)       | Auth & session architecture (memory JWT + rotating refresh, single-origin, `AuthIdentity`) | Accepted |
 | [0021](0021-multi-trip-membership.md)           | Multi-trip membership & active-trip client state                                           | Accepted |
-| [0022](0022-control-plane-vs-data-plane.md)     | Control plane vs. data plane: only the data plane routes through ChangeService             | Proposed |
+| [0022](0022-control-plane-vs-data-plane.md)     | Control plane vs. data plane: only the data plane routes through ChangeService             | Accepted |

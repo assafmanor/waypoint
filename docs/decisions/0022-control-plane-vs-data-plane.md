@@ -1,6 +1,6 @@
 # 0022 — Control plane vs. data plane: only the data plane routes through ChangeService
 
-**Status:** Proposed
+**Status:** Accepted
 **Date:** 2026-07-10
 **Refines:** ADR-0019 (scopes its "every shared-state mutation" to the data plane).
 
