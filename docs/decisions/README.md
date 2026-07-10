@@ -43,16 +43,20 @@ What else we weighed and why we didn't pick it.
 | [0002](0002-each-member-own-google-account.md) | Each member connects their own Google account | Accepted |
 | [0003](0003-one-way-calendar-sync.md) | Calendar sync is one-way (trip → personal) | Accepted |
 | [0004](0004-integrations-are-pipes.md) | Integrations are pipes, not screens | Accepted |
-| [0005](0005-peers-not-roles-v1.md) | Everyone is a peer in v1 (no roles) | Proposed |
+| [0005](0005-peers-not-roles-v1.md) | Roles in v1: `admin` (creator) + `peer` | Accepted |
 | [0006](0006-no-live-location-v1.md) | Own-device location in v1; member sharing deferred | Accepted |
 | [0007](0007-platform-pwa.md) | Platform: mobile-first PWA | Accepted |
 | [0008](0008-backend-supabase.md) | Backend: traditional self-owned Node/TypeScript service | Accepted |
 | [0009](0009-docs-english-ui-hebrew.md) | Docs in English, product UI Hebrew/RTL | Accepted |
 | [0010](0010-repo-vs-internal.md) | Keep private material out of the repo | Accepted |
 | [0011](0011-hard-soft-event-model.md) | Hard/soft event model as the core primitive | Accepted |
-| [0012](0012-conflict-lww-undo.md) | Conflicts: last-writer-wins + undo for v1 | Proposed |
+| [0012](0012-conflict-lww-undo.md) | Conflicts: last-writer-wins + undo for v1 | Accepted |
 | [0013](0013-google-only-auth-v1.md) | Google-only authentication for v1 | Accepted |
 | [0014](0014-budget-display-only-v1.md) | Budget is display-only in v1 | Accepted |
 | [0015](0015-document-encryption-server-side.md) | Document encryption: server-side at rest | Accepted |
 | [0016](0016-plan-trip-modes-one-surface.md) | Plan/Trip modes = one surface; auto-by-date switch + manual override | Accepted |
 | [0017](0017-mobile-first-device-targets.md) | Mobile-first; phone-primary device targets (tablet 2nd, desktop minimum) | Accepted |
+| [0018](0018-timeline-data-model-shape.md) | Timeline & data-model shape (drop Day, no stored `now`, `endDate`, client ids, roles) | Accepted |
+| [0019](0019-sync-protocol.md) | Sync protocol: monotonic change log, atomic write path, snapshot + catch-up | Accepted |
+| [0020](0020-auth-session-architecture.md) | Auth & session architecture (memory JWT + rotating refresh, single-origin, `AuthIdentity`) | Accepted |
+| [0021](0021-multi-trip-membership.md) | Multi-trip membership & active-trip client state | Accepted |

@@ -55,7 +55,9 @@
 | Group change-feed | Should | v1 | "Noam moved ramen to 20:00" |
 | Member presence (who's connected) | Could | v1 | Light; avatars already in mockup |
 | Live GPS location sharing | Won't (now) | — | Privacy + effort; revisit |
-| Per-member roles/permissions | Won't (now) | — | Everyone is a peer for v1 |
+| Multi-trip membership + trip switcher | Should | v1 | Model already supports it; minimal switcher + active-trip state (ADR-0021) |
+| Roles: `admin` (creator) + `peer` | Must | v1 | Structural from day one; enforcement minimal/deferred (ADR-0005) |
+| Full role permission matrix | Won't (now) | — | Admin powers defined in a later task |
 
 ## Integrations (pipes, not screens)
 

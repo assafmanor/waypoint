@@ -7,13 +7,15 @@
 | Layer | Choice | Why |
 |---|---|---|
 | **Repo shape** | **TS monorepo** (pnpm workspaces / Turborepo): `frontend/`, `backend/`, `packages/shared/` | Share types + zod schemas between client and server with zero codegen |
-| **Client** | **React + Vite + TypeScript**, installable **PWA** | Matches the mockup; PWA = install + offline, no app store (ADR-0007) |
+| **Client** | **React 19 + Vite 8 + TypeScript**, installable **PWA** (vite-plugin-pwa) | Matches the mockup; PWA = install + offline, no app store (ADR-0007) |
 | **Client styling** | Hand-rolled CSS design system from the mockup (Tailwind optional later) | Design language already lives as CSS variables |
 | **Offline store** | **IndexedDB** via **Dexie** + service worker (Workbox) | True offline reads for index/documents/today; queue writes |
-| **Backend** | **Node + TypeScript, NestJS** (Fastify = lighter alt 🔶) | Traditional self-owned service, structured/modular (ADR-0008) |
-| **ORM / migrations** | **Prisma** (Drizzle = SQL-first alt 🔶) | Type-safe models + migrations |
-| **DB** | **Postgres** | Relational model in data-model.md |
-| **Validation** | **zod**, shared via `packages/shared` | One schema validates on client and server |
+| **Backend** | **Node + TypeScript, NestJS 11** | Traditional self-owned service, structured/modular (ADR-0008). tsconfig `NodeNext` — validated: emits CommonJS (no `type:module`), which the Nest runtime needs. **Guardrail: never add `"type":"module"` to `backend/package.json`.** |
+| **ORM / migrations** | **Prisma 7** + `@prisma/adapter-pg` driver adapter | Type-safe models + migrations. Prisma 7: connection URL in `prisma.config.ts`, adapter wired in `PrismaService`. |
+| **DB** | **Postgres 16** | Relational model in data-model.md |
+| **Validation** | **zod 4**, shared via `packages/shared` | One schema validates client + server, via a small `ZodValidationPipe` on the backend (not class-validator/DTOs) |
+| **Tests** | **Vitest** everywhere | One runner for backend + frontend; must-test: hard-event guard, ripple, LWW, mode-derivation |
+| **Lint** | **ESLint** (flat config, typescript-eslint) + Prettier | ⚠️ ESLint was claimed but not yet configured — set up in the tooling task |
 | **Auth** | **Google OAuth** (Passport / Auth.js) → own JWT; **Google-only** | Everyone has Google; unlocks Maps/Calendar/Gmail scopes (ADR-0013) |
 | **Realtime** | **WebSockets** (NestJS gateway / `ws`) + in-process per-trip channels | Simple fan-out for ~5 users; `LISTEN/NOTIFY` if we scale out |
 | **File storage** | S3-compatible bucket (disk in dev); **server-side encryption at rest** | Encrypted documents (ADR-0015) |
@@ -50,10 +52,9 @@ See [integrations/overview.md](../integrations/overview.md).
 - ✅ Document encryption server-side at rest (ADR-0015)
 - ✅ Own-device location in v1; member sharing deferred (ADR-0006)
 
-## Minor choices left to confirm 🔶
+## Resolved in T-025 (2026-07-10)
 
-- NestJS vs. Fastify.
-- Prisma vs. Drizzle.
-- Monorepo tool: pnpm workspaces vs. Turborepo.
-
-_(All non-blocking — reasonable defaults chosen above.)_
+- **NestJS 11** (not Fastify) — confirmed; validated building/typechecking on `NodeNext`.
+- **Prisma 7** with the `pg` driver adapter (not Drizzle) — confirmed and migrated.
+- **pnpm workspaces + Turborepo** — both, as scaffolded.
+- **zod 4**, **Vitest** for tests, **ESLint flat config** to be wired (tooling task).
