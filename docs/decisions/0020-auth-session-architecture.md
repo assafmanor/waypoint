@@ -5,6 +5,7 @@
 **Builds on:** ADR-0013 (Google-only v1), ADR-0002 (own Google account), ADR-0015 (encryption at rest).
 
 ## Context
+
 `auth-and-google.md` (from planning) wanted a short-lived access JWT **and** working logout + Google-revocation handling — but a pure stateless JWT can't be revoked, and the schema had nowhere to store our sessions, the encrypted Google refresh tokens, or the calendar-event id mapping ADR-0003 needs. Reviewed in T-025 CP3. Assaf also asked to keep **future non-Google login methods** cheap to add.
 
 ## Decision
@@ -19,19 +20,21 @@
 
 4. **`CalendarEventLink { id, eventId, userId, googleCalendarEventId, @@unique([eventId, userId]) }`** — per-user (each member mirrors to their own calendar, ADR-0002/0003); gives one-way sync its idempotent upsert/delete target.
 
-5. **`Membership.googleConnected` dropped** (always true once a user has authenticated at all). "Can this member sync calendar" derives from their Google `AuthIdentity.scopes`. `Membership.calendarSyncEnabled` stays — the per-trip *intent* toggle.
+5. **`Membership.googleConnected` dropped** (always true once a user has authenticated at all). "Can this member sync calendar" derives from their Google `AuthIdentity.scopes`. `Membership.calendarSyncEnabled` stays — the per-trip _intent_ toggle.
 
 6. **OAuth hardening:** `state` param + PKCE + `access_type=offline` (and `prompt=consent` when a refresh token is missing — Google only returns it on first consent). Store the refresh token on first grant. Scopes stay incremental (identity at sign-in; calendar on enable; Gmail v1.1).
 
 7. **Encryption:** one shared AES-256-GCM util for documents (ADR-0015) and Google tokens, with a **separate `TOKEN_ENCRYPTION_KEY`** from `DOC_ENCRYPTION_KEY` (separate blast radius).
 
 ## Consequences
+
 - New tables: `Session`, `AuthIdentity`, `CalendarEventLink` (applied in T-026). `User` loses `googleSub`; `Membership` loses `googleConnected`.
 - Authz stays per-request against `Membership` (no trip claims in the JWT → instant revocation).
 - Single-origin steers T-021 hosting and the `api-contract.md` auth section (refresh/logout use the cookie, not Bearer).
 - Deferred (noted): refresh-token **reuse-detection** chain (rotate + logout-deletes only for v1).
 
 ## Alternatives considered
+
 - **Pure stateless JWT:** rejected — can't revoke; logout/Google-revocation impossible.
 - **`googleSub` on `User` + a Google-only token table:** rejected — same cost as `AuthIdentity` but closes the multi-provider door.
 - **Split hosting (PWA on Vercel, API elsewhere):** rejected for v1 — cross-origin cookies (`SameSite=None` + CSRF) and no clean WS proxy; single-origin is simpler and cheaper.

@@ -3,9 +3,5 @@
   "newLinkFormat": "absolute",
   "attachmentFolderPath": "docs/assets",
   "alwaysUpdateLinks": true,
-  "userIgnoreFilters": [
-    ".git",
-    "node_modules",
-    ".turbo"
-  ]
+  "userIgnoreFilters": [".git", "node_modules", ".turbo"]
 }

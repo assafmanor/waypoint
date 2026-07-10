@@ -2,11 +2,11 @@
 
 > **Working codename.** "Waypoint" is a placeholder for the trip control-center app — rename freely. The Hebrew product name in the mockup is **מרכז שליטה לטיול**.
 
-A private, small-group travel companion for friends traveling abroad together. **Not a commercial product**, not built for scale — but architected so that real multi-user collaboration works from day one, and so scale *could* be added later without a rewrite.
+A private, small-group travel companion for friends traveling abroad together. **Not a commercial product**, not built for scale — but architected so that real multi-user collaboration works from day one, and so scale _could_ be added later without a rewrite.
 
 ## The one-sentence pitch
 
-Most travel apps are **planning** tools (build an itinerary before the flight). Waypoint is a **living visibility layer** for when you're already on the ground: it answers *"what now / what next / what do I need in the next 30 minutes?"* for a group of ~5 friends, and makes deviating from the plan smooth and safe.
+Most travel apps are **planning** tools (build an itinerary before the flight). Waypoint is a **living visibility layer** for when you're already on the ground: it answers _"what now / what next / what do I need in the next 30 minutes?"_ for a group of ~5 friends, and makes deviating from the plan smooth and safe.
 
 ## Why this repo looks the way it does
 
@@ -52,4 +52,4 @@ waypoint/
 1. `docs/product/vision.md` — the core insight.
 2. `docs/product/prd-v1.md` — what v1 actually is.
 3. `docs/architecture/overview.md` — how the pieces fit.
-4. `docs/decisions/README.md` — the log of *why* things are the way they are.
+4. `docs/decisions/README.md` — the log of _why_ things are the way they are.

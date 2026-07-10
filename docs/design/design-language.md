@@ -4,39 +4,41 @@
 
 ## Principle: one loud element, everything else quiet
 
-The **departure-board "Now/Next" card** is the single expressive, glowing element. Everything else is calm and paper-like, so the eye goes straight to *what's happening now*.
+The **departure-board "Now/Next" card** is the single expressive, glowing element. Everything else is calm and paper-like, so the eye goes straight to _what's happening now_.
 
 ## Signature concept
 
-A **departure-board hero** (dark, glowing, monospace times) with a live countdown to the next thing and a progress bar for the day. It borrows the visual language of an airport board because that's the exact feeling we want: *the next departure, the time, the gate, at a glance.*
+A **departure-board hero** (dark, glowing, monospace times) with a live countdown to the next thing and a progress bar for the day. It borrows the visual language of an airport board because that's the exact feeling we want: _the next departure, the time, the gate, at a glance._
 
 ## Color palette
 
-| Token | Hex | Role |
-|---|---|---|
-| `--ink` | `#16233D` | Primary text |
-| `--indigo` | `#1B2A4A` | Base / chrome (header, status bar) |
-| `--board` | `#0E1729` | Departure-board background |
-| `--board-2` | `#152137` | Board gradient top |
-| `--screen` | `#E7EAEF` | App background ("cool paper") |
-| `--card` | `#FFFFFF` | Card surface |
-| `--paper` | `#F3EFE6` | Badge / warm paper accents |
-| **`--amber`** | **`#E9A63C`** | **NOW / active — this color only** |
-| `--amber-deep` | `#C9822A` | Amber pressed/hard-code accent |
-| **`--teal`** | **`#2C9C90`** | **Location / map — this color only** |
-| `--muted` | `#6C7488` | Secondary text |
+| Token          | Hex           | Role                                 |
+| -------------- | ------------- | ------------------------------------ |
+| `--ink`        | `#16233D`     | Primary text                         |
+| `--indigo`     | `#1B2A4A`     | Base / chrome (header, status bar)   |
+| `--board`      | `#0E1729`     | Departure-board background           |
+| `--board-2`    | `#152137`     | Board gradient top                   |
+| `--screen`     | `#E7EAEF`     | App background ("cool paper")        |
+| `--card`       | `#FFFFFF`     | Card surface                         |
+| `--paper`      | `#F3EFE6`     | Badge / warm paper accents           |
+| **`--amber`**  | **`#E9A63C`** | **NOW / active — this color only**   |
+| `--amber-deep` | `#C9822A`     | Amber pressed/hard-code accent       |
+| **`--teal`**   | **`#2C9C90`** | **Location / map — this color only** |
+| `--muted`      | `#6C7488`     | Secondary text                       |
 
 ### Functional color coding (important)
+
 Color carries meaning so the eye can parse a screen **without reading**:
-- **Amber** = *now / active / the current thing.* Nothing else uses amber.
-- **Teal** = *location / map / navigation.* Nothing else uses teal.
+
+- **Amber** = _now / active / the current thing._ Nothing else uses amber.
+- **Teal** = _location / map / navigation._ Nothing else uses teal.
 
 ## Typography
 
-| Family | Use |
-|---|---|
-| `Secular One` | Headings / titles |
-| `Assistant` | Body |
+| Family           | Use                                      |
+| ---------------- | ---------------------------------------- |
+| `Secular One`    | Headings / titles                        |
+| `Assistant`      | Body                                     |
 | `JetBrains Mono` | Times & codes (the departure-board feel) |
 
 **Full RTL.** Layout, icons, and directionality are Hebrew-first. Latin strings (times, codes, flight numbers) are wrapped `dir="ltr"` inside the RTL flow.
@@ -78,13 +80,14 @@ Plan mode reuses the same tokens/grammar as Trip mode, adding builder/entry comp
 
 **Mobile-first, phone-primary** (ADR-0017). The design is authored for the phone and scales up — never the reverse.
 
-| Device | Priority | Design intent |
-|---|---|---|
-| **Phone** ~360–430px | **Primary** | The baseline. One-handed, touch-first, glanceable. Trip mode is effectively phone-only. Primary actions sit in thumb reach; the bottom tab bar is the main nav. |
-| **Tablet** ~768–1024px | Secondary | Supported and *nice*, **especially Plan mode** (building/entry/research use the width — wider columns, side-by-side lists, a roomier itinerary builder). Scale up gracefully, don't just stretch the phone column. |
-| **Desktop** >1024px | Graceful minimum | Must work and look intentional (centered/max-width), but gets no bespoke effort. |
+| Device                 | Priority         | Design intent                                                                                                                                                                                                      |
+| ---------------------- | ---------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------ |
+| **Phone** ~360–430px   | **Primary**      | The baseline. One-handed, touch-first, glanceable. Trip mode is effectively phone-only. Primary actions sit in thumb reach; the bottom tab bar is the main nav.                                                    |
+| **Tablet** ~768–1024px | Secondary        | Supported and _nice_, **especially Plan mode** (building/entry/research use the width — wider columns, side-by-side lists, a roomier itinerary builder). Scale up gracefully, don't just stretch the phone column. |
+| **Desktop** >1024px    | Graceful minimum | Must work and look intentional (centered/max-width), but gets no bespoke effort.                                                                                                                                   |
 
 Rules that follow from this:
+
 - **Touch-first:** generous tap targets, no hover-only affordances (hover is a desktop luxury, not a dependency).
 - **Breakpoints, not a separate UI:** one responsive codebase; layouts adapt at tablet width.
 - **Phone-authored mockups:** design at ~390px first; add the tablet layout for Plan-mode-heavy screens.

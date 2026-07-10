@@ -4,7 +4,7 @@
 
 ## 1. Goal of v1
 
-Ship a usable trip control-center for **one real trip with one real group of ~5 friends**. Success is measured on the ground, not in a store: *did we actually reach for it during the trip instead of scattering across WhatsApp, screenshots, and Google Maps?*
+Ship a usable trip control-center for **one real trip with one real group of ~5 friends**. Success is measured on the ground, not in a store: _did we actually reach for it during the trip instead of scattering across WhatsApp, screenshots, and Google Maps?_
 
 The north-star behavior: **during the trip, the app is the first thing you open to answer "what now / what next."**
 
@@ -25,31 +25,37 @@ Five friends traveling abroad together. Each is a peer — there is no "admin wh
 ## 4. In scope for v1
 
 ### 4.1 The trip surface (the four tabs)
+
 - **Home** — the departure-board "Now/Next" hero (live clock, countdown, day progress), quick-access actions, glance cards (weather / FX / today's budget).
 - **Day-by-day** — the itinerary with hard/soft events, quick actions per card, the "maybe" shelf, ripple suggestions, undo.
 - **Index** — all bookings with confirmation codes; documents; **works offline**.
 - **Map** — pinned events + "near me now" list.
 
 ### 4.2 Real collaboration (multi-user) — see [collaboration-model.md](../architecture/collaboration-model.md)
+
 - A trip is a shared object; members join via invite link.
 - Everyone sees the same itinerary and index in near-real-time.
 - Edits by one member propagate to others; a lightweight **change-feed** ("Noam moved ramen to 20:00").
 - Presence-light: who's a member, who's connected to Google. (No live GPS-sharing in v1 🔶.)
 
 ### 4.3 Hard/soft event model
+
 - Events typed hard 🔒 or soft; hard events warn on edit and are never auto-moved.
 - Verbs: skip · delay 30m · swap · done · on our way.
 - Ripple suggestion when moving an event (always a suggestion, never touches a hard anchor).
 - Undo everywhere.
 
 ### 4.4 The "maybe" shelf
+
 - Saved ideas not yet scheduled; drop one onto a day to schedule it.
 
 ### 4.5 Practical layer
+
 - Currency rate, weather, emergency numbers, WiFi codes, per-day budget (display; see below).
 - Encrypted offline documents (passports, insurance).
 
 ### 4.6 Minimum integrations for v1 ✅
+
 - **Google Maps/Places** — navigation deep-links, hours, ratings, "near me."
 - **One-way calendar sync** — trip → each member's personal Google Calendar.
 - **Gmail booking import** is **deferred to v1.1** — high effort, and manual booking entry covers v1. (ADR/catalog)
@@ -57,7 +63,7 @@ Five friends traveling abroad together. Each is a peer — there is no "admin wh
 
 ## 5. Explicitly OUT of scope for v1
 
-- A user belonging to **multiple trips** is **in** for v1 as a *simple list + switcher* (ADR-0021 — the model already supports it). What stays out: polished multi-trip UX and **overlapping in-progress trips** (deferred).
+- A user belonging to **multiple trips** is **in** for v1 as a _simple list + switcher_ (ADR-0021 — the model already supports it). What stays out: polished multi-trip UX and **overlapping in-progress trips** (deferred).
 - Two-way calendar sync (a conflict trap — see ADR-0003).
 - Expense splitting / Splitwise-style settlement (nice-to-have; v1.1+).
 - Shared photo album (Google Photos) (v1.1+).
@@ -75,6 +81,7 @@ Five friends traveling abroad together. Each is a peer — there is no "admin wh
 ## 7. Decisions status
 
 **All v1 scope decisions resolved (2026-07-09):**
+
 - ✅ Platform: PWA (ADR-0007)
 - ✅ Backend: traditional self-owned **Node/TypeScript** (NestJS), TS end-to-end (ADR-0008)
 - ✅ Auth: Google-only (ADR-0013)

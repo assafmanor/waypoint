@@ -23,6 +23,7 @@ Code and documentation live together. **Any consequential decision gets an ADR**
 ## Tech stack (see docs/architecture/tech-stack.md)
 
 TypeScript monorepo (pnpm workspaces + Turborepo):
+
 - `packages/shared` — `@waypoint/shared`: entity types + zod schemas. **Source of truth for shapes** — import from here, don't redefine.
 - `backend` — NestJS + Prisma + Postgres. Google-only auth. WebSocket realtime.
 - `frontend` — React + Vite PWA, RTL, Dexie offline cache.
@@ -60,6 +61,6 @@ Treat your context window as scarce RAM. The goal is **progressive disclosure**,
 
 - **Context is RAM.** Never load all documentation at once. Load the minimum needed for the change in front of you, then stop.
 - **Progressive disclosure.** Before any architectural, state-model, or dependency change: read the router first — [`docs/INDEX.md`](docs/INDEX.md) and its "Decisions by domain" table (with the full list in [`docs/decisions/README.md`](docs/decisions/README.md)) — locate the specific ADR(s) for the domain you're touching, and read **only** those. Don't preload sibling ADRs "for background."
-- **Durable vs. scratch.** Treat `docs/decisions/` (the *why*) and `docs/architecture/` (the *current state*) as the source of truth. Any ephemeral material — scratch notes, raw session handoffs, investigation logs — is orientation only: a fact isn't authoritative until it lands in an ADR or an architecture doc. **Never cite scratch material to justify a decision.**
+- **Durable vs. scratch.** Treat `docs/decisions/` (the _why_) and `docs/architecture/` (the _current state_) as the source of truth. Any ephemeral material — scratch notes, raw session handoffs, investigation logs — is orientation only: a fact isn't authoritative until it lands in an ADR or an architecture doc. **Never cite scratch material to justify a decision.**
 - **Path-scoped rules.** If a `.claude/rules/` directory exists, check it for rules scoped to the files you're editing before changing that domain. (None today — this is a forward hook, not a current requirement.)
 - **Obsidian-compatible `docs/`.** The `docs/` tree is edited via Obsidian, but Git + standard Markdown are the source of truth. Use standard relative Markdown links (`[text](../decisions/0011-…md)`) — **never** Obsidian wikilinks (`[[…]]`). Any YAML frontmatter must be strictly valid so Obsidian properties parse it. (Scope: the `docs/` tree only.)

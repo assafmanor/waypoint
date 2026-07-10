@@ -14,77 +14,77 @@
 
 ## Health
 
-| Method | Path | Auth | Purpose |
-|---|---|---|---|
-| GET | `/health` | none | Liveness (implemented) |
+| Method | Path      | Auth | Purpose                |
+| ------ | --------- | ---- | ---------------------- |
+| GET    | `/health` | none | Liveness (implemented) |
 
 ## Auth (detail in auth-and-google.md)
 
-| Method | Path | Purpose |
-|---|---|---|
-| GET | `/auth/google` | Begin Google OAuth |
-| GET | `/auth/google/callback` | OAuth callback → issue session JWT |
-| POST | `/auth/refresh` | Refresh session |
-| POST | `/auth/logout` | Invalidate session |
-| GET | `/me` | Current user + memberships |
+| Method | Path                    | Purpose                            |
+| ------ | ----------------------- | ---------------------------------- |
+| GET    | `/auth/google`          | Begin Google OAuth                 |
+| GET    | `/auth/google/callback` | OAuth callback → issue session JWT |
+| POST   | `/auth/refresh`         | Refresh session                    |
+| POST   | `/auth/logout`          | Invalidate session                 |
+| GET    | `/me`                   | Current user + memberships         |
 
 ## Trips
 
-| Method | Path | Body → Response |
-|---|---|---|
-| POST | `/trips` | `createTripSchema` → `Trip` (caller becomes creator + **`admin`** member, ADR-0005) |
-| GET | `/trips` | → `Trip[]` (all trips the caller is a member of — multi-trip, ADR-0021) |
-| GET | `/trips/:tripId` | → `Trip` + members |
-| PATCH | `/trips/:tripId` | partial trip → `Trip` |
-| POST | `/trips/:tripId/invite` | → `{ inviteUrl }` (signed join token) |
-| POST | `/trips/join/:token` | → `Membership` (adds caller as peer) |
+| Method | Path                    | Body → Response                                                                     |
+| ------ | ----------------------- | ----------------------------------------------------------------------------------- |
+| POST   | `/trips`                | `createTripSchema` → `Trip` (caller becomes creator + **`admin`** member, ADR-0005) |
+| GET    | `/trips`                | → `Trip[]` (all trips the caller is a member of — multi-trip, ADR-0021)             |
+| GET    | `/trips/:tripId`        | → `Trip` + members                                                                  |
+| PATCH  | `/trips/:tripId`        | partial trip → `Trip`                                                               |
+| POST   | `/trips/:tripId/invite` | → `{ inviteUrl }` (signed join token)                                               |
+| POST   | `/trips/join/:token`    | → `Membership` (adds caller as peer)                                                |
 
 ## Events
 
 There is no `Day` resource — events carry `date` (ADR-0018); the client groups by date. Empty days derive from the trip range.
 
-| Method | Path | Body → Response |
-|---|---|---|
-| GET | `/trips/:tripId/events` | → `Event[]` (client groups by `date`) |
-| POST | `/trips/:tripId/events` | `createEventSchema` (incl. client `id`) → `Event` |
-| PATCH | `/trips/:tripId/events/:eventId` | `updateEventSchema` → `Event` |
-| POST | `/trips/:tripId/events/:eventId/status` | `{ status }` → `Event` (done/skipped) |
-| POST | `/trips/:tripId/events/:eventId/move` | `{ date?, startsAt?, sortOrder? }` → `{ event, rippleSuggestion? }` |
-| DELETE | `/trips/:tripId/events/:eventId` | → `204` |
+| Method | Path                                    | Body → Response                                                     |
+| ------ | --------------------------------------- | ------------------------------------------------------------------- |
+| GET    | `/trips/:tripId/events`                 | → `Event[]` (client groups by `date`)                               |
+| POST   | `/trips/:tripId/events`                 | `createEventSchema` (incl. client `id`) → `Event`                   |
+| PATCH  | `/trips/:tripId/events/:eventId`        | `updateEventSchema` → `Event`                                       |
+| POST   | `/trips/:tripId/events/:eventId/status` | `{ status }` → `Event` (done/skipped)                               |
+| POST   | `/trips/:tripId/events/:eventId/move`   | `{ date?, startsAt?, sortOrder? }` → `{ event, rippleSuggestion? }` |
+| DELETE | `/trips/:tripId/events/:eventId`        | → `204`                                                             |
 
 **Hard-event guard (ADR-0011):** PATCH/move/DELETE on an event with `kind = hard` requires `?confirm=true` (or `{ confirm: true }`); without it the API returns `409 HARD_EVENT_REQUIRES_CONFIRM` with the linked booking info. Ripple never touches hard events.
 
 ## Bookings (the index)
 
-| Method | Path | Body → Response |
-|---|---|---|
-| GET | `/trips/:tripId/bookings` | → `Booking[]` (offline-cached client-side) |
-| POST | `/trips/:tripId/bookings` | `createBookingSchema` → `Booking` |
-| PATCH | `/trips/:tripId/bookings/:bookingId` | partial → `Booking` |
+| Method | Path                                 | Body → Response                               |
+| ------ | ------------------------------------ | --------------------------------------------- |
+| GET    | `/trips/:tripId/bookings`            | → `Booking[]` (offline-cached client-side)    |
+| POST   | `/trips/:tripId/bookings`            | `createBookingSchema` → `Booking`             |
+| PATCH  | `/trips/:tripId/bookings/:bookingId` | partial → `Booking`                           |
 | DELETE | `/trips/:tripId/bookings/:bookingId` | → `204` (warns if a hard event depends on it) |
 
 ## Maybe shelf
 
-| Method | Path | Body → Response |
-|---|---|---|
-| GET | `/trips/:tripId/maybe` | → `MaybeItem[]` |
-| POST | `/trips/:tripId/maybe` | `createMaybeItemSchema` (`{ title, icon?, placeId? }`) → `MaybeItem` |
-| POST | `/trips/:tripId/maybe/:id/schedule` | `{ date, startsAt? }` → `Event` (marks item consumed) |
+| Method | Path                                | Body → Response                                                      |
+| ------ | ----------------------------------- | -------------------------------------------------------------------- |
+| GET    | `/trips/:tripId/maybe`              | → `MaybeItem[]`                                                      |
+| POST   | `/trips/:tripId/maybe`              | `createMaybeItemSchema` (`{ title, icon?, placeId? }`) → `MaybeItem` |
+| POST   | `/trips/:tripId/maybe/:id/schedule` | `{ date, startsAt? }` → `Event` (marks item consumed)                |
 
 ## Documents
 
-| Method | Path | Purpose |
-|---|---|---|
-| GET | `/trips/:tripId/documents` | List document metadata |
-| POST | `/trips/:tripId/documents` | Upload (multipart) → encrypted at rest (ADR-0015) |
-| GET | `/trips/:tripId/documents/:id/content` | Decrypted stream to an authorized member |
+| Method | Path                                   | Purpose                                           |
+| ------ | -------------------------------------- | ------------------------------------------------- |
+| GET    | `/trips/:tripId/documents`             | List document metadata                            |
+| POST   | `/trips/:tripId/documents`             | Upload (multipart) → encrypted at rest (ADR-0015) |
+| GET    | `/trips/:tripId/documents/:id/content` | Decrypted stream to an authorized member          |
 
 ## Snapshot & change feed (ADR-0019)
 
-| Method | Path | Purpose |
-|---|---|---|
-| GET | `/trips/:tripId/snapshot` | Full current trip state **+ `latestSeq`**, read in one transaction — the initial-load / deep-desync baseline |
-| GET | `/trips/:tripId/changes?sinceSeq=<n>` | Change history since a `seq` (reconnect catch-up). **Cursor on `seq`, not timestamps.** |
+| Method | Path                                  | Purpose                                                                                                      |
+| ------ | ------------------------------------- | ------------------------------------------------------------------------------------------------------------ |
+| GET    | `/trips/:tripId/snapshot`             | Full current trip state **+ `latestSeq`**, read in one transaction — the initial-load / deep-desync baseline |
+| GET    | `/trips/:tripId/changes?sinceSeq=<n>` | Change history since a `seq` (reconnect catch-up). **Cursor on `seq`, not timestamps.**                      |
 
 ## Realtime
 

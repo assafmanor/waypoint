@@ -5,6 +5,7 @@
 **Supersedes parts of:** the original `data-model.md` sketch (Day table, `EventStatus.now`, `Booking.offlineAvailable`).
 
 ## Context
+
 The scaffold's data model (from planning) modeled several things as **stored state that is actually derived**, and left the timeline model ambiguous for multi-day items. The T-025 architecture review (see `planning/2026-07-10-session-03-architecture-review.md`) went through it field by field.
 
 ## Decision
@@ -15,7 +16,7 @@ The scaffold's data model (from planning) modeled several things as **stored sta
 
 3. **Times are UTC instants; display converts through `Trip.timezone`.** `startsAt/endsAt` are UTC `DateTime`. A trip has one timezone (fine for a single-country trip; a per-event tz override is a non-breaking future add). Overnight/midnight-crossing blocks (a 23:00→06:00 flight) are one point-in-time event whose `endsAt` lands on the next date — no special modeling.
 
-4. **`Event.endDate DATE?` for genuine multi-day *spans*.** Null (>99% of events) = single-day point-in-time block anchored to `date`. Non-null = an **ambient span** (`date..endDate`) — a multi-day wedding, a festival — rendered as a strip across those days (the same treatment as a hotel `Booking` with a date range), **not** duplicated as a block per day. This distinguishes point-in-time blocks (timeline) from ambient spans (framing).
+4. **`Event.endDate DATE?` for genuine multi-day _spans_.** Null (>99% of events) = single-day point-in-time block anchored to `date`. Non-null = an **ambient span** (`date..endDate`) — a multi-day wedding, a festival — rendered as a strip across those days (the same treatment as a hotel `Booking` with a date range), **not** duplicated as a block per day. This distinguishes point-in-time blocks (timeline) from ambient spans (framing).
 
 5. **Client-generated entity IDs.** The client mints the id (cuid/uuid; server validates format). This deletes the offline temp-id→real-id swap, makes creates idempotent on retry (re-POST → unique violation → already-applied), and lets undo-of-delete restore the exact row so references survive. Server still owns `seq`, `updatedAt`, and authorization. (Enables ADR-0019.)
 
@@ -28,12 +29,14 @@ The scaffold's data model (from planning) modeled several things as **stored sta
 9. **Practical layer, minimal:** emergency numbers = static frontend data keyed by country (no DB); budget = `Trip.currency String?` + `Trip.dailyBudgetMinor Int?`; WiFi codes / notes = a small `TripNote` table.
 
 ## Consequences
+
 - Fewer entities, fewer lifecycle traps, no derived-state drift. Itinerary reads are `Event`s filtered/grouped by `date` client-side.
 - `move` takes `{ date?, startsAt?, sortOrder? }` instead of an FK day lookup; `GET /days` → `GET /events` (see api-contract.md).
-- Multi-day rendering has one rule: *anything with a date range (Booking across nights, or Event with `endDate`) → ambient strip; point-in-time → timeline block.*
+- Multi-day rendering has one rule: _anything with a date range (Booking across nights, or Event with `endDate`) → ambient strip; point-in-time → timeline block._
 - Applied to `schema.prisma` + `packages/shared` + a migration in **T-026** (this ADR is the spec).
 
 ## Alternatives considered
+
 - **Keep `Day` for explicit ordering:** rejected — `sortOrder` within a `date` gives ordering without the entity + cascade risk.
 - **`endDate` vs. per-day duplicated events for multi-day:** duplication has no umbrella entity and N rows to keep in sync; one nullable column is cheaper and truthful.
 - **Server-assigned ids:** rejected — forces the temp-id swap and non-idempotent creates in the offline path.

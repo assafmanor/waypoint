@@ -7,18 +7,23 @@
 Five peers traveling together. No hierarchy in daily use. Everyone can view everything and edit soft plans. One person happens to create the trip and send invites.
 
 ### Archetype A — "The organizer"
+
 Set up the trip, imported the bookings, cares that nothing falls through the cracks. Wants the index complete and the hard anchors protected. Reaches for the app to confirm codes and times.
 
 ### Archetype B — "The navigator"
+
 Always has the map open, decides where the group eats and how they get there. Lives in "near me now" and the quick-nav buttons. Wants low-friction deep-links to Google Maps.
 
 ### Archetype C — "The go-with-the-flow one"
+
 Doesn't plan, but will happily follow. Reaches for the app only in trip mode to see "what now/next." The minimal Home screen is built for this person.
 
 ### Archetype D — "The spontaneous one"
+
 Wants to bail on the plan and do something else. The "maybe" shelf, skip/swap verbs, and ripple suggestions exist to make their deviations safe for the group instead of chaotic.
 
 ### Archetype E — "The worrier"
+
 Cares about documents, insurance, emergency numbers, and connectivity. The offline index and encrypted documents are for them.
 
 Most real people are a blend; the archetypes exist to pressure-test features, not to label anyone.

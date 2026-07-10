@@ -22,35 +22,47 @@ There is **no `Day` table** — a day is a calendar date within the trip range (
 ## Entities
 
 ### User
+
 The person (no provider fields — those live on `AuthIdentity`).
+
 - `id`, `email @unique`, `displayName`, `avatarColor`, `createdAt`
 
 ### AuthIdentity (ADR-0020)
+
 One per (user, provider). Holds the provider identity **and** that provider's OAuth material.
+
 - `id`, `userId`, `provider` (`AuthProvider` enum: `google`; extensible), `providerAccountId`
 - `refreshTokenEnc?` (encrypted at rest, ADR-0015), `scopes String[]`, `createdAt`, `updatedAt`
 - `@@unique([provider, providerAccountId])`
 
 ### Session (ADR-0020)
+
 Our own refresh-token store (the access token is a stateless in-memory JWT, not stored).
+
 - `id`, `userId`, `refreshTokenHash`, `expiresAt`, `createdAt`, `revokedAt?`, `userAgent?`
 
 ### Trip
+
 The aggregate root.
+
 - `id`, `name` (e.g. "יפן ׳26"), `destination`, `startDate @db.Date`, `endDate @db.Date`, `timezone`
 - `currency String?`, `dailyBudgetMinor Int?` (display-only budget, ADR-0014)
 - `createdBy` (FK → User), `createdAt`, `updatedAt`, `updatedBy`
 - Trip **mode** (plan/trip) is **derived** from dates + now, never stored (ADR-0016).
 
 ### Membership
+
 User×Trip join — enables collaboration, multi-trip (ADR-0021), and per-user calendar sync.
+
 - `id`, `tripId`, `userId`, `role` (`MembershipRole`: `admin` | `peer` — creator is `admin`, ADR-0005)
 - `calendarSyncEnabled Boolean` (per-trip intent; capability derives from the user's Google `AuthIdentity.scopes`)
 - `joinedAt`
 - `@@unique([tripId, userId])`, `@@index([tripId])`
 
 ### Event ⭐ (the core)
+
 A block on the timeline. **Hard or soft** — the decisive field (ADR-0011).
+
 - `id` (**client-generated**, ADR-0018), `tripId`, `date @db.Date` (which day it's anchored to)
 - `endDate @db.Date?` — **null = single-day point-in-time block; non-null = multi-day ambient span** (wedding/festival), rendered as a strip like a hotel (ADR-0018)
 - `title`, `icon?`, `kind` (`hard` | `soft`)
@@ -63,11 +75,14 @@ A block on the timeline. **Hard or soft** — the decisive field (ADR-0011).
 - `@@index([tripId, date])`
 
 **Hard vs soft is behavior, not just a flag:**
+
 - `hard` → edits require confirmation; never auto-moved; excluded from ripple; renders with code + lock.
 - `soft` → freely draggable/skippable/swappable; included in ripple; renders dashed.
 
 ### Booking
+
 An entry in the central index. Backs hard events and stands alone in the index.
+
 - `id` (client-generated), `tripId`, `type` (`flight` | `hotel` | `restaurant` | `train` | `activity` | `other`)
 - `title`, `confirmationCode?`, `provider?`, `address?`, `placeId?`
 - `startsAt DateTime?`, `endsAt DateTime?` (a hotel across nights is **one** Booking with a range — ADR-0018)
@@ -76,27 +91,36 @@ An entry in the central index. Backs hard events and stands alone in the index.
 - (No `offlineAvailable` — the client mirrors the whole trip; ADR-0018.)
 
 ### CalendarEventLink (ADR-0020)
+
 Idempotency map for one-way calendar push (ADR-0003) — per member, per event.
+
 - `id`, `eventId`, `userId`, `googleCalendarEventId`, `updatedAt`
 - `@@unique([eventId, userId])`
 
 ### Document
+
 Sensitive files (passports, insurance).
+
 - `id`, `tripId`, `type` (`passport` | `insurance` | `visa` | `other`), `title`
 - `fileRef` (server-side-encrypted blob, ADR-0015), `mimeType`, `sizeBytes`, `ownerUserId?` (null = group doc)
 - `createdAt`, `updatedAt`, `updatedBy`
 
 ### MaybeItem
+
 Parked ideas on the "maybe" shelf.
+
 - `id`, `tripId`, `title`, `icon?`, `placeId?`, `createdBy`, `consumed Boolean`, `createdAt`, `updatedAt`, `updatedBy`
 - Scheduling one creates an Event (`source = maybe_shelf`) and marks the MaybeItem consumed.
 - (Dropped the untyped `meta` field — `title` + `placeId` + `icon` cover the shelf card.)
 
 ### TripNote (ADR-0018)
+
 The practical layer's small stuff (WiFi codes, notes). Emergency numbers are **static frontend data**, not DB.
+
 - `id`, `tripId`, `category` (`wifi` | `note`), `label`, `value`, `sortOrder`, `createdAt`, `updatedAt`, `updatedBy`
 
 ### Change (the sync/undo/feed substrate — ADR-0019)
+
 - `id`, `seq BigInt @default(autoincrement())` (strictly-increasing cursor), `tripId`, `actorUserId`
 - `entityType`, `entityId`, `action` (`create` | `update` | `move` | `delete` | `status`)
 - `before Json?`, `after Json?`, `createdAt`
@@ -113,8 +137,9 @@ The practical layer's small stuff (WiFi codes, notes). Emergency numbers are **s
 ## Resolved modeling questions
 
 1. **Day stored vs derived** → **derived** (drop the table; `Event.date`). ADR-0018.
-2. **Overnight/multi-day bookings** → a hotel is **one Booking** with a date range; multi-day *events* (weddings) use `Event.endDate`. Both render as ambient strips; point-in-time blocks stay single-date. ADR-0018.
+2. **Overnight/multi-day bookings** → a hotel is **one Booking** with a date range; multi-day _events_ (weddings) use `Event.endDate`. Both render as ambient strips; point-in-time blocks stay single-date. ADR-0018.
 3. **Document encryption** → server-side at rest (ADR-0015).
 
 ## Scale-safe by construction
+
 Relational, every row keyed by `trip_id` + a real `user_id`, `role` present, audit columns everywhere, client-generated ids. None of this is tuned for scale, but none of it blocks scaling.
