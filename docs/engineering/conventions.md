@@ -30,7 +30,7 @@ waypoint/
 
 - One **module per domain** (Auth, Trips, Events, Bookings, Documents, Calendar) + infra modules (Prisma global, Crypto, **Sync**). See the module map in the T-025 review.
 - Controllers validate input with the shared **zod** schemas via a `ZodValidationPipe` (**not** class-validator/DTOs — `packages/shared` is the single source of truth); services hold logic; `PrismaService` is the only DB access.
-- **Every shared-state mutation goes through `ChangeService.mutate()`** — it runs the entity write + `Change` insert in **one transaction** (`seq` assigned atomically) and broadcasts **only after commit** (ADR-0019). Domain services never write `Change` or touch the WS gateway directly. This is a hard boundary, not a convention.
+- **Every data-plane mutation goes through `ChangeService.mutate()`** — it runs the entity write + `Change` insert in **one transaction** (`seq` assigned atomically) and broadcasts **only after commit** (ADR-0019). Domain services never write `Change` or touch the WS gateway directly. This is a hard boundary, not a convention. The **data plane** is the collaborative timeline: `TripEvent`, `Booking`, `MaybeItem`, `TripNote`, documents. The **control plane** (`User`, `Trip`, `Membership`) is plain authenticated CRUD — no `Change`, no WS (ADR-0022).
 - Trip authorization is checked in a `MembershipGuard`, per request, against `Membership` (404 on no membership).
 - **tsconfig guardrail:** the backend uses `NodeNext` and emits CommonJS — **never add `"type":"module"` to `backend/package.json`** (it would flip emit to ESM and break the Nest runtime).
 
