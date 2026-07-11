@@ -282,7 +282,9 @@ export class EventsService {
   }
 
   /** Mirror of rippleForward: walks preceding events in reverse, pulling each one
-   *  earlier while it overlaps the shifted-back start of its successor. */
+   *  earlier while it overlaps the shifted-back start of its successor. Also stops
+   *  at the first event that's already started — pulling it earlier would rewrite
+   *  something that's already happened, which pushing later can never do. */
   private rippleBackward(
     events: TripEvent[],
     moved: TripEvent,
@@ -292,10 +294,12 @@ export class EventsService {
       .filter((e) => ms(e.startsAt) < ms(moved.startsAt))
       .sort((a, b) => ms(b.startsAt) - ms(a.startsAt) || b.sortOrder - a.sortOrder);
 
+    const now = Date.now();
     const candidates: RippleSuggestion['candidates'] = [];
     let prevStart = ms(moved.startsAt);
     for (const e of preceding) {
       if (e.kind === EVENT_KIND.HARD) break;
+      if (ms(e.startsAt) <= now) break;
       if (ms(e.endsAt ?? e.startsAt) <= prevStart) break;
       const startsAt = shiftIso(e.startsAt!, minutes);
       const endsAt = e.endsAt ? shiftIso(e.endsAt, minutes) : undefined;

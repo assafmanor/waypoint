@@ -22,7 +22,7 @@ Mirror "earlier" alongside "delay" (later) as a second quick-verb button, same f
 The one forward-only piece is `EventsService.computeRippleSuggestion`'s walk. Generalize it to a direction-agnostic walk over the same-day, `PLANNED` events, sorted by `startsAt`:
 
 - **Forward** (`minutes > 0`, today's behavior): walk events after `moved`, pushing each one forward by `minutes` while it's contiguous/overlapping with the shifted previous end. Stop at the first `HARD` event or the first one that isn't touching (a real gap — nothing to resolve).
-- **Backward** (`minutes < 0`, new): walk events before `moved` in reverse, pulling each one earlier by `minutes` while it's contiguous/overlapping with the shifted following start. Same stop conditions, mirrored.
+- **Backward** (`minutes < 0`, new): walk events before `moved` in reverse, pulling each one earlier by `minutes` while it's contiguous/overlapping with the shifted following start. Same stop conditions, mirrored — plus one asymmetric addition: the walk also stops at the first event whose `startsAt` is already at-or-before the current instant. Pushing later can never walk into the past, but pulling earlier can walk into "already happened," which nothing should silently rewrite.
 
 Implementation: extract the shared "walk and shift while overlapping" loop into one helper parameterized by direction (a comparator + which end of the neighbor to check), rather than duplicating the loop. Return shape (`RippleSuggestion`) is unchanged.
 
