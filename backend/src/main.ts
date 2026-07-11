@@ -1,12 +1,17 @@
 import 'reflect-metadata';
+import type { Server as HttpServer } from 'node:http';
 import { NestFactory } from '@nestjs/core';
 import { DocumentBuilder, SwaggerModule } from '@nestjs/swagger';
 import { cleanupOpenApiDoc } from 'nestjs-zod';
 import { AppModule } from './app.module';
+import { SyncGateway } from './sync/sync.gateway';
 
 async function bootstrap() {
   const app = await NestFactory.create(AppModule);
   app.enableCors();
+
+  // Raw `ws` upgrade handling for WS /trips/:tripId/stream (sync-and-offline.md).
+  app.get(SyncGateway).attach(app.getHttpServer() as HttpServer);
 
   const document = cleanupOpenApiDoc(
     SwaggerModule.createDocument(
