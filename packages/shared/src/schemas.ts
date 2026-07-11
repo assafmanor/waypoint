@@ -63,6 +63,10 @@ export const createBookingSchema = z.object({
 });
 export type CreateBookingInput = z.infer<typeof createBookingSchema>;
 
+/** Partial update to a booking. */
+export const updateBookingSchema = createBookingSchema.partial();
+export type UpdateBookingInput = z.infer<typeof updateBookingSchema>;
+
 export const createTripSchema = z.object({
   name: z.string().min(1),
   destination: z.string().min(1),
