@@ -207,6 +207,90 @@ describe('EventsService', () => {
     expect(untouchedWalkback.startsAt?.toISOString()).toBe(new Date(at('22:45')).toISOString());
   });
 
+  it('ripples preceding soft events earlier on overlap, stopping at the first hard anchor', async () => {
+    const tripId = await newTrip();
+    const flight = await service.create(tripId, DEV_USER, {
+      date: DAY,
+      title: 'Flight',
+      kind: EVENT_KIND.HARD,
+      startsAt: at('08:00'),
+      endsAt: at('10:00'),
+      source: 'manual',
+    });
+    const coffee = await service.create(tripId, DEV_USER, {
+      date: DAY,
+      title: 'Coffee',
+      kind: EVENT_KIND.SOFT,
+      startsAt: at('10:00'),
+      endsAt: at('11:00'),
+      sortOrder: 1,
+      source: 'manual',
+    });
+    const market = await service.create(tripId, DEV_USER, {
+      date: DAY,
+      title: 'Market',
+      kind: EVENT_KIND.SOFT,
+      startsAt: at('11:15'),
+      endsAt: at('12:00'),
+      sortOrder: 2,
+      source: 'manual',
+    });
+
+    // Pull Market 30 minutes earlier so it now overlaps Coffee.
+    const { rippleSuggestion } = await service.move(
+      tripId,
+      market.id,
+      DEV_USER,
+      { startsAt: at('10:45') },
+      false,
+    );
+
+    expect(rippleSuggestion?.movedTitle).toBe('Market');
+    expect(rippleSuggestion?.candidates).toEqual([
+      {
+        id: coffee.id,
+        startsAt: new Date(at('09:30')).toISOString(),
+        endsAt: new Date(at('10:30')).toISOString(),
+      },
+    ]);
+    expect(rippleSuggestion?.candidates.some((c) => c.id === flight.id)).toBe(false);
+
+    // Suggestion only — never auto-applied.
+    const untouchedCoffee = await prisma.event.findUniqueOrThrow({ where: { id: coffee.id } });
+    expect(untouchedCoffee.startsAt?.toISOString()).toBe(new Date(at('10:00')).toISOString());
+  });
+
+  it('returns no backward ripple when the preceding soft event has a real gap', async () => {
+    const tripId = await newTrip();
+    await service.create(tripId, DEV_USER, {
+      date: DAY,
+      title: 'Coffee',
+      kind: EVENT_KIND.SOFT,
+      startsAt: at('09:00'),
+      endsAt: at('09:30'),
+      source: 'manual',
+    });
+    const market = await service.create(tripId, DEV_USER, {
+      date: DAY,
+      title: 'Market',
+      kind: EVENT_KIND.SOFT,
+      startsAt: at('11:00'),
+      endsAt: at('12:00'),
+      sortOrder: 1,
+      source: 'manual',
+    });
+
+    // Pulling Market 30 min earlier (to 10:30) still leaves a gap after Coffee (ends 09:30) — nothing to resolve.
+    const { rippleSuggestion } = await service.move(
+      tripId,
+      market.id,
+      DEV_USER,
+      { startsAt: at('10:30') },
+      false,
+    );
+    expect(rippleSuggestion).toBeUndefined();
+  });
+
   it('does not ripple a hard event move', async () => {
     const tripId = await newTrip();
     const booking = await prisma.booking.create({

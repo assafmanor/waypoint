@@ -229,9 +229,12 @@ export class EventsService {
     });
   }
 
-  /** Ports computeRipple() 1:1 from frontend/src/state/trip-state.tsx (T-010 notes):
-   *  following soft events on the same day, shifted by the same delta, stopping at
-   *  the first hard anchor or the first gap. Suggestion only — never applied here. */
+  /** Ports computeRipple() 1:1 from frontend/src/state/trip-state.tsx (T-010 notes),
+   *  generalized to walk either direction (T-014 follow-on): a positive shift pushes
+   *  contiguous/overlapping following soft events later; a negative shift pulls
+   *  contiguous/overlapping preceding soft events earlier. Stops at the first hard
+   *  anchor or the first event that isn't actually overlapping (nothing to resolve).
+   *  Suggestion only — never applied here. */
   private async computeRippleSuggestion(
     tripId: string,
     moved: TripEvent,
@@ -244,12 +247,26 @@ export class EventsService {
     const dayEvents = await this.prisma.event.findMany({
       where: { tripId, date: new Date(moved.date) },
     });
-    const events = dayEvents.map(toEventDto);
+    const events = dayEvents
+      .map(toEventDto)
+      .filter((e) => e.status === EVENT_STATUS.PLANNED && e.startsAt && e.id !== moved.id);
 
+    const candidates =
+      minutes > 0
+        ? this.rippleForward(events, moved, minutes)
+        : this.rippleBackward(events, moved, minutes);
+
+    return candidates.length ? { movedTitle: moved.title, candidates } : undefined;
+  }
+
+  private rippleForward(
+    events: TripEvent[],
+    moved: TripEvent,
+    minutes: number,
+  ): RippleSuggestion['candidates'] {
     const following = events
-      .filter((e) => e.status === EVENT_STATUS.PLANNED && e.startsAt && e.id !== moved.id)
-      .sort((a, b) => ms(a.startsAt) - ms(b.startsAt) || a.sortOrder - b.sortOrder)
-      .filter((e) => ms(e.startsAt) > ms(moved.startsAt));
+      .filter((e) => ms(e.startsAt) > ms(moved.startsAt))
+      .sort((a, b) => ms(a.startsAt) - ms(b.startsAt) || a.sortOrder - b.sortOrder);
 
     const candidates: RippleSuggestion['candidates'] = [];
     let prevEnd = ms(moved.endsAt);
@@ -261,6 +278,30 @@ export class EventsService {
       candidates.push({ id: e.id, startsAt, endsAt });
       prevEnd = ms(endsAt ?? startsAt);
     }
-    return candidates.length ? { movedTitle: moved.title, candidates } : undefined;
+    return candidates;
+  }
+
+  /** Mirror of rippleForward: walks preceding events in reverse, pulling each one
+   *  earlier while it overlaps the shifted-back start of its successor. */
+  private rippleBackward(
+    events: TripEvent[],
+    moved: TripEvent,
+    minutes: number,
+  ): RippleSuggestion['candidates'] {
+    const preceding = events
+      .filter((e) => ms(e.startsAt) < ms(moved.startsAt))
+      .sort((a, b) => ms(b.startsAt) - ms(a.startsAt) || b.sortOrder - a.sortOrder);
+
+    const candidates: RippleSuggestion['candidates'] = [];
+    let prevStart = ms(moved.startsAt);
+    for (const e of preceding) {
+      if (e.kind === EVENT_KIND.HARD) break;
+      if (ms(e.endsAt ?? e.startsAt) <= prevStart) break;
+      const startsAt = shiftIso(e.startsAt!, minutes);
+      const endsAt = e.endsAt ? shiftIso(e.endsAt, minutes) : undefined;
+      candidates.push({ id: e.id, startsAt, endsAt });
+      prevStart = ms(startsAt);
+    }
+    return candidates;
   }
 }
