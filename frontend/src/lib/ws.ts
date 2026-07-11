@@ -11,9 +11,12 @@ export interface TripStreamHandlers {
   onResync: () => void;
 }
 
+// No API_BASE_URL (prod, same-origin) → a relative URL, which the WebSocket
+// constructor resolves against the page's own origin and maps http(s) to
+// ws(s) itself (WHATWG spec) — avoids depending on `window` here at all.
 function streamUrl(tripId: string): string {
-  const base = API_BASE_URL || window.location.origin;
-  return `${base.replace(/^http/, 'ws')}/trips/${tripId}/stream`;
+  const path = `/trips/${tripId}/stream`;
+  return API_BASE_URL ? `${API_BASE_URL.replace(/^http/, 'ws')}${path}` : path;
 }
 
 type ServerMessage =
