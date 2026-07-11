@@ -21,6 +21,10 @@ export const t = {
   placeholder: {
     comingSoon: 'מסך זה מעוצב בהמשך.',
   },
+  snapshot: {
+    loading: 'טוען את הטיול…',
+    errorTitle: 'לא הצלחנו לטעון את הטיול',
+  },
   board: {
     freeLabel: 'פנוי',
     freeTitle: 'זמן חופשי',

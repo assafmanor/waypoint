@@ -2,28 +2,30 @@
 // return an inverse via one-slot undo (your last action only — ADR-0019).
 // No API / Change-log / outbox here — those are T-014/T-013; dispatch is shaped
 // so the reducer can be swapped for REST calls without touching the screens.
-import { createContext, useContext, useMemo, useReducer, type ReactNode } from 'react';
+import {
+  createContext,
+  useContext,
+  useEffect,
+  useMemo,
+  useReducer,
+  useState,
+  type ReactNode,
+} from 'react';
 import {
   EVENT_KIND,
   EVENT_STATUS,
   type Booking,
   type MaybeItem,
+  type Trip,
   type TripEvent,
   type TripNote,
+  type TripSnapshot,
   type User,
 } from '@waypoint/shared';
+import { fetchSnapshot } from '../lib/api';
 import { shiftIso } from '../lib/time';
-import {
-  ACTIVE_DATE,
-  BOOKINGS,
-  EVENTS,
-  GLANCE,
-  MAYBE_ITEMS,
-  NOTES,
-  TRIP,
-  USERS,
-  activeUserId,
-} from '../fixtures';
+import { ACTIVE_DATE, EVENTS, GLANCE, MAYBE_ITEMS, USERS, activeUserId } from '../fixtures';
+import { t } from '../i18n/he';
 
 export interface RippleSuggestion {
   movedTitle: string;
@@ -86,12 +88,12 @@ function computeRipple(
   return candidates.length ? { movedTitle: moved.title, candidates } : null;
 }
 
-function snapshot(s: State): Snapshot {
+function snapshotOf(s: State): Snapshot {
   return { events: s.events, maybeItems: s.maybeItems };
 }
 
-export function initialState(): State {
-  return { events: EVENTS, maybeItems: MAYBE_ITEMS, ripple: null, undo: null };
+export function initialState(seed: Snapshot = { events: EVENTS, maybeItems: MAYBE_ITEMS }): State {
+  return { events: seed.events, maybeItems: seed.maybeItems, ripple: null, undo: null };
 }
 
 export function reducer(state: State, action: Action): State {
@@ -100,7 +102,7 @@ export function reducer(state: State, action: Action): State {
       const events = state.events.map((e) =>
         e.id === action.id ? { ...e, status: action.status } : e,
       );
-      return { ...state, events, ripple: null, undo: snapshot(state) };
+      return { ...state, events, ripple: null, undo: snapshotOf(state) };
     }
     case 'DELAY': {
       let moved: TripEvent | undefined;
@@ -114,14 +116,14 @@ export function reducer(state: State, action: Action): State {
         return moved;
       });
       const ripple = moved ? computeRipple(events, moved, action.minutes) : null;
-      return { ...state, events, ripple, undo: snapshot(state) };
+      return { ...state, events, ripple, undo: snapshotOf(state) };
     }
     case 'SCHEDULE': {
       const events = [...state.events, action.event];
       const maybeItems = state.maybeItems.map((m) =>
         m.id === action.maybeId ? { ...m, consumed: true } : m,
       );
-      return { ...state, events, maybeItems, ripple: null, undo: snapshot(state) };
+      return { ...state, events, maybeItems, ripple: null, undo: snapshotOf(state) };
     }
     case 'RIPPLE_APPLY': {
       if (!state.ripple) return state;
@@ -130,7 +132,7 @@ export function reducer(state: State, action: Action): State {
         const m = moves.get(e.id);
         return m ? { ...e, startsAt: m.startsAt, endsAt: m.endsAt } : e;
       });
-      return { ...state, events, ripple: null, undo: snapshot(state) };
+      return { ...state, events, ripple: null, undo: snapshotOf(state) };
     }
     case 'RIPPLE_DISMISS':
       return { ...state, ripple: null };
@@ -142,7 +144,7 @@ export function reducer(state: State, action: Action): State {
 }
 
 interface TripContextValue {
-  trip: typeof TRIP;
+  trip: Trip;
   users: User[];
   bookings: Booking[];
   notes: TripNote[];
@@ -157,17 +159,59 @@ interface TripContextValue {
 
 const TripContext = createContext<TripContextValue | null>(null);
 
-// ponytail: one seeded fixture trip; the tripId prop is the seam T-027 fills with
-// a real switcher. Wrong id → still the demo trip, which is fine for now.
+// Bootstraps from GET /trips/:tripId/snapshot (T-034); the tripId prop is the
+// seam T-027 fills with a real switcher. Verbs still mutate local state only —
+// writing back to the API is T-014.
 export function TripProvider({ tripId, children }: { tripId: string; children: ReactNode }) {
-  void tripId;
-  const [state, dispatch] = useReducer(reducer, undefined, initialState);
+  const [snapshot, setSnapshot] = useState<TripSnapshot | null>(null);
+  const [error, setError] = useState<string | null>(null);
+
+  useEffect(() => {
+    let cancelled = false;
+    setSnapshot(null);
+    setError(null);
+    fetchSnapshot(tripId).then(
+      (s) => {
+        if (!cancelled) setSnapshot(s);
+      },
+      (e: unknown) => {
+        if (!cancelled) setError(e instanceof Error ? e.message : String(e));
+      },
+    );
+    return () => {
+      cancelled = true;
+    };
+  }, [tripId]);
+
+  if (error) {
+    return (
+      <div className="placeholder">
+        <h1>{t.snapshot.errorTitle}</h1>
+        <p>{error}</p>
+      </div>
+    );
+  }
+  if (!snapshot) {
+    return (
+      <div className="placeholder">
+        <h1>{t.snapshot.loading}</h1>
+      </div>
+    );
+  }
+  return <TripReady snapshot={snapshot}>{children}</TripReady>;
+}
+
+function TripReady({ snapshot, children }: { snapshot: TripSnapshot; children: ReactNode }) {
+  const [state, dispatch] = useReducer(reducer, snapshot, initialState);
   const value = useMemo<TripContextValue>(
     () => ({
-      trip: TRIP,
+      trip: snapshot.trip,
+      // ponytail: snapshot.members is Membership only (userId, role) — no
+      // display name/avatar color endpoint yet. Header avatars stay fixture
+      // sourced until a user-profile read exists.
       users: USERS,
-      bookings: BOOKINGS,
-      notes: NOTES,
+      bookings: snapshot.bookings,
+      notes: snapshot.notes,
       glance: GLANCE,
       activeDate: ACTIVE_DATE,
       activeUserId,
@@ -176,7 +220,7 @@ export function TripProvider({ tripId, children }: { tripId: string; children: R
       ripple: state.ripple,
       dispatch,
     }),
-    [state],
+    [state, snapshot],
   );
   return <TripContext.Provider value={value}>{children}</TripContext.Provider>;
 }
