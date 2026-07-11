@@ -1,6 +1,7 @@
 import { useState } from 'react';
 import { TripProvider, useTrip } from './state/trip-state';
 import { ToastProvider } from './ui/Toast';
+import { ConfirmProvider } from './ui/ConfirmDialog';
 import { Home } from './screens/Home';
 import { DayView } from './screens/DayView';
 import { TRIP } from './fixtures';
@@ -94,25 +95,27 @@ export function App() {
   return (
     <TripProvider tripId={TRIP.id}>
       <ToastProvider>
-        <div className="app">
-          <Header />
-          <main className="body" key={tab}>
-            <Screen tab={tab} />
-          </main>
-          <nav className="nav">
-            {TABS.map((tabDef) => (
-              <button
-                key={tabDef.id}
-                className={tabDef.id === tab ? 'on' : ''}
-                onClick={() => setTab(tabDef.id)}
-                aria-current={tabDef.id === tab}
-              >
-                <span className="ic">{tabDef.icon}</span>
-                {t.tabs[tabDef.id]}
-              </button>
-            ))}
-          </nav>
-        </div>
+        <ConfirmProvider>
+          <div className="app">
+            <Header />
+            <main className="body" key={tab}>
+              <Screen tab={tab} />
+            </main>
+            <nav className="nav">
+              {TABS.map((tabDef) => (
+                <button
+                  key={tabDef.id}
+                  className={tabDef.id === tab ? 'on' : ''}
+                  onClick={() => setTab(tabDef.id)}
+                  aria-current={tabDef.id === tab}
+                >
+                  <span className="ic">{tabDef.icon}</span>
+                  {t.tabs[tabDef.id]}
+                </button>
+              ))}
+            </nav>
+          </div>
+        </ConfirmProvider>
       </ToastProvider>
     </TripProvider>
   );

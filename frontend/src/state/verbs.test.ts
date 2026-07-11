@@ -1,16 +1,17 @@
 import { afterEach, describe, expect, it, vi } from 'vitest';
 import { EVENT_STATUS } from '@waypoint/shared';
 import { EVENTS } from '../fixtures';
-import { applySetStatus, applyUndo, type VerbDeps } from './verbs';
+import { applyGuardedDelay, applySetStatus, applyUndo, type VerbDeps } from './verbs';
 import type { Action } from './trip-state';
 
-function fakeDeps(): VerbDeps & { actions: Action[] } {
+function fakeDeps(confirmHardEdit?: VerbDeps['confirmHardEdit']): VerbDeps & { actions: Action[] } {
   const actions: Action[] = [];
   return {
     tripId: 'trip-japan-26',
     dispatch: (a: Action) => actions.push(a),
     toast: vi.fn(),
     lastAction: { current: null },
+    confirmHardEdit: confirmHardEdit ?? vi.fn().mockResolvedValue(true),
     actions,
   };
 }
@@ -79,15 +80,71 @@ describe('applySetStatus (optimistic apply / rollback)', () => {
   });
 });
 
-describe('applyUndo', () => {
-  it('reverses the last status change over REST', async () => {
+describe('applyGuardedDelay (hard-event confirmation gate, ADR-0011)', () => {
+  const hardEvent = EVENTS.find((e) => e.id === 'ev-ichiran')!;
+  const softEvent = EVENTS.find((e) => e.id === 'ev-goldengai')!;
+
+  it('asks for confirmation and applies the delay when a hard event is confirmed', async () => {
     const fetchMock = vi
       .fn()
-      .mockResolvedValue(
-        new Response(JSON.stringify({ ...EVENTS[0], status: EVENT_STATUS.PLANNED }), {
-          status: 200,
-        }),
-      );
+      .mockResolvedValue(new Response(JSON.stringify(hardEvent), { status: 200 }));
+    vi.stubGlobal('fetch', fetchMock);
+    const confirmHardEdit = vi.fn().mockResolvedValue(true);
+    const deps = fakeDeps(confirmHardEdit);
+
+    const applied = await applyGuardedDelay(deps, hardEvent, 30);
+
+    expect(confirmHardEdit).toHaveBeenCalledWith(hardEvent);
+    expect(applied).toBe(true);
+    expect(deps.actions.some((a) => a.type === 'DELAY')).toBe(true);
+    // the backend's own hard-event guard (T-010) also requires `confirm=true`
+    // on the write itself, independent of this client-side gate.
+    expect(fetchMock).toHaveBeenCalledWith(
+      expect.stringContaining('confirm=true'),
+      expect.anything(),
+    );
+  });
+
+  it('is a true no-op when the hard-event confirmation is cancelled', async () => {
+    const fetchMock = vi.fn();
+    vi.stubGlobal('fetch', fetchMock);
+    const confirmHardEdit = vi.fn().mockResolvedValue(false);
+    const deps = fakeDeps(confirmHardEdit);
+
+    const applied = await applyGuardedDelay(deps, hardEvent, 30);
+
+    expect(applied).toBe(false);
+    expect(deps.actions).toEqual([]);
+    expect(fetchMock).not.toHaveBeenCalled();
+  });
+
+  it('applies a soft-event delay without asking for confirmation', async () => {
+    const fetchMock = vi
+      .fn()
+      .mockResolvedValue(new Response(JSON.stringify(softEvent), { status: 200 }));
+    vi.stubGlobal('fetch', fetchMock);
+    const confirmHardEdit = vi.fn().mockResolvedValue(true);
+    const deps = fakeDeps(confirmHardEdit);
+
+    const applied = await applyGuardedDelay(deps, softEvent, 30);
+
+    expect(confirmHardEdit).not.toHaveBeenCalled();
+    expect(applied).toBe(true);
+    expect(deps.actions.some((a) => a.type === 'DELAY')).toBe(true);
+    expect(fetchMock).toHaveBeenCalledWith(
+      expect.not.stringContaining('confirm=true'),
+      expect.anything(),
+    );
+  });
+});
+
+describe('applyUndo', () => {
+  it('reverses the last status change over REST', async () => {
+    const fetchMock = vi.fn().mockResolvedValue(
+      new Response(JSON.stringify({ ...EVENTS[0], status: EVENT_STATUS.PLANNED }), {
+        status: 200,
+      }),
+    );
     vi.stubGlobal('fetch', fetchMock);
     const deps = fakeDeps();
     deps.lastAction.current = {
