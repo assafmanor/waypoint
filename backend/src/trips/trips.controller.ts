@@ -2,18 +2,31 @@ import { Body, Controller, Delete, Get, HttpCode, Param, Post, UseGuards } from 
 import { ApiCreatedResponse, ApiNoContentResponse, ApiOkResponse, ApiTags } from '@nestjs/swagger';
 import {
   createTripSchema,
+  inviteUrlSchema,
+  membershipSchema,
+  tripSchema,
+  tripSnapshotSchema,
+  tripWithMembersSchema,
   type CreateTripInput,
   type Membership,
   type Trip,
   type TripSnapshot,
 } from '@waypoint/shared';
+import { createZodDto, ZodSerializerDto } from 'nestjs-zod';
 import { CurrentUser } from '../auth/current-user.decorator';
 import { DevAuthGuard } from '../auth/dev-auth.guard';
 import type { Principal } from '../auth/principal';
 import { ZodValidationPipe } from '../common/zod-validation.pipe';
 import { MembershipGuard } from './membership.guard';
-import { InviteUrlDto, MembershipDto, TripDto, TripWithMembersDto } from './trips.dto';
 import { TripsService } from './trips.service';
+
+// ADR-0023: OpenAPI DTOs generated from the @waypoint/shared zod schemas — no
+// hand-written field lists to keep in sync (see the deleted trips.dto.ts).
+class TripDto extends createZodDto(tripSchema) {}
+class MembershipDto extends createZodDto(membershipSchema) {}
+class TripWithMembersDto extends createZodDto(tripWithMembersSchema) {}
+class TripSnapshotDto extends createZodDto(tripSnapshotSchema) {}
+class InviteUrlDto extends createZodDto(inviteUrlSchema) {}
 
 @ApiTags('trips')
 @Controller('trips')
@@ -23,12 +36,14 @@ export class TripsController {
 
   @Get()
   @ApiOkResponse({ type: [TripDto] })
+  @ZodSerializerDto([TripDto])
   list(@CurrentUser() user: Principal): Promise<Trip[]> {
     return this.trips.listForUser(user.userId);
   }
 
   @Post()
   @ApiCreatedResponse({ type: TripDto })
+  @ZodSerializerDto(TripDto)
   create(
     @CurrentUser() user: Principal,
     @Body(new ZodValidationPipe(createTripSchema)) body: CreateTripInput,
@@ -38,6 +53,7 @@ export class TripsController {
 
   @Post('join/:token')
   @ApiCreatedResponse({ type: MembershipDto })
+  @ZodSerializerDto(MembershipDto)
   join(@CurrentUser() user: Principal, @Param('token') token: string): Promise<Membership> {
     return this.trips.joinByToken(user.userId, token);
   }
@@ -45,14 +61,15 @@ export class TripsController {
   @Get(':tripId')
   @UseGuards(MembershipGuard)
   @ApiOkResponse({ type: TripWithMembersDto })
+  @ZodSerializerDto(TripWithMembersDto)
   getTrip(@Param('tripId') tripId: string): Promise<{ trip: Trip; members: Membership[] }> {
     return this.trips.getTripWithMembers(tripId);
   }
 
-  // ponytail: snapshot response left undocumented in Swagger (generic object) —
-  // see T-037 for unifying entity types onto zod so nested shapes generate for real.
   @Get(':tripId/snapshot')
   @UseGuards(MembershipGuard)
+  @ApiOkResponse({ type: TripSnapshotDto })
+  @ZodSerializerDto(TripSnapshotDto)
   snapshot(@Param('tripId') tripId: string): Promise<TripSnapshot> {
     return this.trips.getSnapshot(tripId);
   }
@@ -60,6 +77,7 @@ export class TripsController {
   @Post(':tripId/invite')
   @UseGuards(MembershipGuard)
   @ApiCreatedResponse({ type: InviteUrlDto })
+  @ZodSerializerDto(InviteUrlDto)
   invite(@Param('tripId') tripId: string): { inviteUrl: string } {
     return { inviteUrl: `/trips/join/${this.trips.createInviteToken(tripId)}` };
   }

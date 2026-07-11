@@ -2,25 +2,12 @@
 // Used for API request validation (backend) and form/optimistic-write validation (frontend).
 
 import { z } from 'zod';
-
-// Enum validators — the canonical shape source, mirrored from entities.ts.
-export const authProviderSchema = z.enum(['google']);
-export const eventKindSchema = z.enum(['hard', 'soft']);
-export const eventStatusSchema = z.enum(['planned', 'done', 'skipped']);
-export const eventSourceSchema = z.enum(['manual', 'gmail', 'maybe_shelf', 'integration']);
-export const bookingTypeSchema = z.enum([
-  'flight',
-  'hotel',
-  'restaurant',
-  'train',
-  'activity',
-  'other',
-]);
-export const bookingSourceSchema = z.enum(['manual', 'gmail']);
-export const membershipRoleSchema = z.enum(['admin', 'peer']);
-export const documentTypeSchema = z.enum(['passport', 'insurance', 'visa', 'other']);
-export const tripNoteCategorySchema = z.enum(['wifi', 'note']);
-export const changeActionSchema = z.enum(['create', 'update', 'move', 'delete', 'status']);
+import {
+  bookingTypeSchema,
+  eventKindSchema,
+  eventSourceSchema,
+  eventStatusSchema,
+} from './entities';
 
 /** Client-generated id (cuid/uuid). Server validates format only. ADR-0018. */
 // ponytail: charset+length guard, tighten to exact cuid2/uuid grammar if it ever matters.
@@ -101,3 +88,7 @@ export const scheduleMaybeItemSchema = z.object({
   startsAt: z.string().optional(),
 });
 export type ScheduleMaybeItemInput = z.infer<typeof scheduleMaybeItemSchema>;
+
+/** `POST /trips/:tripId/invite` response. */
+export const inviteUrlSchema = z.object({ inviteUrl: z.string() });
+export type InviteUrl = z.infer<typeof inviteUrlSchema>;
