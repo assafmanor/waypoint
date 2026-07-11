@@ -1,6 +1,8 @@
 # API Contract — v1
 
-**Status:** ACCEPTED (T-025). REST over HTTPS + a WebSocket channel for realtime. All request/response bodies validated with the zod schemas in `packages/shared` (via a `ZodValidationPipe`, not class-validator). JSON, camelCase.
+**Status:** ACCEPTED (T-025). REST over HTTPS + a WebSocket channel for realtime. All request/response bodies validated with the zod schemas in `packages/shared`. JSON, camelCase.
+
+**Validation (ADR-0023):** entity shapes (`Trip`, `Membership`, `TripEvent`, `Booking`, `MaybeItem`, `TripNote`, `TripSnapshot`, ...) are zod schemas in `packages/shared/src/entities.ts`; their TS types are `z.infer` of those schemas — one shape per entity, not a separate hand-written interface. Requests are validated against `packages/shared` input schemas via the repo's `ZodValidationPipe`; responses on migrated routes are validated/stripped via `nestjs-zod`'s `@ZodSerializerDto`. OpenAPI (`/api/docs`) is generated directly from the same zod schemas via `createZodDto` — no hand-written `@ApiProperty` DTOs to keep in sync.
 
 ## Conventions
 

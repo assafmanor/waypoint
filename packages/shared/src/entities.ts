@@ -1,192 +1,236 @@
-// Shared domain types — the single source of truth for entity shapes used by
+// Shared domain shapes — the single source of truth for entity shapes used by
 // both the backend and the frontend. Mirrors docs/architecture/data-model.md.
 // Keep in sync with the Prisma schema (backend/prisma/schema.prisma).
+//
+// Zod-first (ADR-0023): each entity is a schema; the TS type is `z.infer` of it.
+// This is also what backend response validation and OpenAPI generation read from.
 
+import { z } from 'zod';
+
+export const idSchema = z.string();
 export type ID = string;
 
-export type AuthProvider = 'google';
-
 /** The decisive distinction — see ADR-0011. */
-export type EventKind = 'hard' | 'soft';
+export const eventKindSchema = z.enum(['hard', 'soft']);
+export type EventKind = z.infer<typeof eventKindSchema>;
 
-export type EventStatus = 'planned' | 'done' | 'skipped';
+export const authProviderSchema = z.enum(['google']);
+export type AuthProvider = z.infer<typeof authProviderSchema>;
 
-export type EventSource = 'manual' | 'gmail' | 'maybe_shelf' | 'integration';
+export const eventStatusSchema = z.enum(['planned', 'done', 'skipped']);
+export type EventStatus = z.infer<typeof eventStatusSchema>;
 
-export type BookingType = 'flight' | 'hotel' | 'restaurant' | 'train' | 'activity' | 'other';
+export const eventSourceSchema = z.enum(['manual', 'gmail', 'maybe_shelf', 'integration']);
+export type EventSource = z.infer<typeof eventSourceSchema>;
 
-export type BookingSource = 'manual' | 'gmail';
+export const bookingTypeSchema = z.enum([
+  'flight',
+  'hotel',
+  'restaurant',
+  'train',
+  'activity',
+  'other',
+]);
+export type BookingType = z.infer<typeof bookingTypeSchema>;
 
-export type MembershipRole = 'admin' | 'peer'; // creator is admin — ADR-0005/0018
+export const bookingSourceSchema = z.enum(['manual', 'gmail']);
+export type BookingSource = z.infer<typeof bookingSourceSchema>;
 
-export type DocumentType = 'passport' | 'insurance' | 'visa' | 'other';
+// creator is admin — ADR-0005/0018
+export const membershipRoleSchema = z.enum(['admin', 'peer']);
+export type MembershipRole = z.infer<typeof membershipRoleSchema>;
 
-export type TripNoteCategory = 'wifi' | 'note';
+export const documentTypeSchema = z.enum(['passport', 'insurance', 'visa', 'other']);
+export type DocumentType = z.infer<typeof documentTypeSchema>;
 
-export type ChangeAction = 'create' | 'update' | 'move' | 'delete' | 'status';
+export const tripNoteCategorySchema = z.enum(['wifi', 'note']);
+export type TripNoteCategory = z.infer<typeof tripNoteCategorySchema>;
 
-export interface User {
-  id: ID;
-  email: string;
-  displayName: string;
-  avatarColor: string;
-  createdAt: string;
-}
+export const changeActionSchema = z.enum(['create', 'update', 'move', 'delete', 'status']);
+export type ChangeAction = z.infer<typeof changeActionSchema>;
+
+export const userSchema = z.object({
+  id: idSchema,
+  email: z.string(),
+  displayName: z.string(),
+  avatarColor: z.string(),
+  createdAt: z.string(),
+});
+export type User = z.infer<typeof userSchema>;
 
 /** Provider identity + OAuth material; the encrypted token stays server-side (ADR-0020). */
-export interface AuthIdentity {
-  id: ID;
-  userId: ID;
-  provider: AuthProvider;
-  providerAccountId: string;
-  scopes: string[];
-  createdAt: string;
-  updatedAt: string;
-}
+export const authIdentitySchema = z.object({
+  id: idSchema,
+  userId: idSchema,
+  provider: authProviderSchema,
+  providerAccountId: z.string(),
+  scopes: z.array(z.string()),
+  createdAt: z.string(),
+  updatedAt: z.string(),
+});
+export type AuthIdentity = z.infer<typeof authIdentitySchema>;
 
 /** Rotating refresh-token store, server-side (ADR-0020). */
-export interface Session {
-  id: ID;
-  userId: ID;
-  expiresAt: string;
-  createdAt: string;
-  revokedAt?: string;
-  userAgent?: string;
-}
+export const sessionSchema = z.object({
+  id: idSchema,
+  userId: idSchema,
+  expiresAt: z.string(),
+  createdAt: z.string(),
+  revokedAt: z.string().optional(),
+  userAgent: z.string().optional(),
+});
+export type Session = z.infer<typeof sessionSchema>;
 
-export interface Trip {
-  id: ID;
-  name: string;
-  destination: string;
-  startDate: string; // ISO date
-  endDate: string; // ISO date
-  timezone: string;
-  currency?: string;
-  dailyBudgetMinor?: number;
-  createdBy: ID;
-  createdAt: string;
-  updatedAt: string;
-  updatedBy: ID;
-}
+export const tripSchema = z.object({
+  id: idSchema,
+  name: z.string(),
+  destination: z.string(),
+  startDate: z.string(), // ISO date
+  endDate: z.string(), // ISO date
+  timezone: z.string(),
+  currency: z.string().optional(),
+  dailyBudgetMinor: z.number().optional(),
+  createdBy: idSchema,
+  createdAt: z.string(),
+  updatedAt: z.string(),
+  updatedBy: idSchema,
+});
+export type Trip = z.infer<typeof tripSchema>;
 
-export interface Membership {
-  id: ID;
-  tripId: ID;
-  userId: ID;
-  role: MembershipRole;
-  calendarSyncEnabled: boolean;
-  joinedAt: string;
-}
+export const membershipSchema = z.object({
+  id: idSchema,
+  tripId: idSchema,
+  userId: idSchema,
+  role: membershipRoleSchema,
+  calendarSyncEnabled: z.boolean(),
+  joinedAt: z.string(),
+});
+export type Membership = z.infer<typeof membershipSchema>;
 
-export interface TripEvent {
-  id: ID;
-  tripId: ID;
-  date: string; // ISO date
-  endDate?: string; // non-null = multi-day ambient span (ADR-0018)
-  title: string;
-  icon?: string;
-  kind: EventKind;
-  startsAt?: string; // UTC instant
-  endsAt?: string;
-  location?: string;
-  placeId?: string;
-  status: EventStatus;
-  bookingId?: ID;
-  sortOrder: number;
-  source: EventSource;
-  createdAt: string;
-  updatedAt: string;
-  updatedBy: ID;
-}
+export const tripEventSchema = z.object({
+  id: idSchema,
+  tripId: idSchema,
+  date: z.string(), // ISO date
+  endDate: z.string().optional(), // non-null = multi-day ambient span (ADR-0018)
+  title: z.string(),
+  icon: z.string().optional(),
+  kind: eventKindSchema,
+  startsAt: z.string().optional(), // UTC instant
+  endsAt: z.string().optional(),
+  location: z.string().optional(),
+  placeId: z.string().optional(),
+  status: eventStatusSchema,
+  bookingId: idSchema.optional(),
+  sortOrder: z.number(),
+  source: eventSourceSchema,
+  createdAt: z.string(),
+  updatedAt: z.string(),
+  updatedBy: idSchema,
+});
+export type TripEvent = z.infer<typeof tripEventSchema>;
 
-export interface Booking {
-  id: ID;
-  tripId: ID;
-  type: BookingType;
-  title: string;
-  confirmationCode?: string;
-  provider?: string;
-  address?: string;
-  placeId?: string;
-  startsAt?: string;
-  endsAt?: string;
-  details?: Record<string, unknown>;
-  source: BookingSource;
-  createdAt: string;
-  updatedAt: string;
-  updatedBy: ID;
-}
+export const bookingSchema = z.object({
+  id: idSchema,
+  tripId: idSchema,
+  type: bookingTypeSchema,
+  title: z.string(),
+  confirmationCode: z.string().optional(),
+  provider: z.string().optional(),
+  address: z.string().optional(),
+  placeId: z.string().optional(),
+  startsAt: z.string().optional(),
+  endsAt: z.string().optional(),
+  details: z.record(z.string(), z.unknown()).optional(),
+  source: bookingSourceSchema,
+  createdAt: z.string(),
+  updatedAt: z.string(),
+  updatedBy: idSchema,
+});
+export type Booking = z.infer<typeof bookingSchema>;
 
 /** Idempotency map for one-way calendar push, per member per event (ADR-0020). */
-export interface CalendarEventLink {
-  id: ID;
-  eventId: ID;
-  userId: ID;
-  googleCalendarEventId: string;
-  createdAt: string;
-  updatedAt: string;
-}
+export const calendarEventLinkSchema = z.object({
+  id: idSchema,
+  eventId: idSchema,
+  userId: idSchema,
+  googleCalendarEventId: z.string(),
+  createdAt: z.string(),
+  updatedAt: z.string(),
+});
+export type CalendarEventLink = z.infer<typeof calendarEventLinkSchema>;
 
-export interface TripDocument {
-  id: ID;
-  tripId: ID;
-  type: DocumentType;
-  title: string;
-  fileRef: string; // reference to a server-side-encrypted blob — ADR-0015
-  mimeType: string;
-  sizeBytes: number;
-  ownerUserId?: ID; // null = group doc
-  createdAt: string;
-  updatedAt: string;
-  updatedBy: ID;
-}
+export const tripDocumentSchema = z.object({
+  id: idSchema,
+  tripId: idSchema,
+  type: documentTypeSchema,
+  title: z.string(),
+  fileRef: z.string(), // reference to a server-side-encrypted blob — ADR-0015
+  mimeType: z.string(),
+  sizeBytes: z.number(),
+  ownerUserId: idSchema.optional(), // absent = group doc
+  createdAt: z.string(),
+  updatedAt: z.string(),
+  updatedBy: idSchema,
+});
+export type TripDocument = z.infer<typeof tripDocumentSchema>;
 
-export interface MaybeItem {
-  id: ID;
-  tripId: ID;
-  title: string;
-  icon?: string;
-  placeId?: string;
-  createdBy: ID;
-  consumed: boolean;
-  createdAt: string;
-  updatedAt: string;
-  updatedBy: ID;
-}
+export const maybeItemSchema = z.object({
+  id: idSchema,
+  tripId: idSchema,
+  title: z.string(),
+  icon: z.string().optional(),
+  placeId: z.string().optional(),
+  createdBy: idSchema,
+  consumed: z.boolean(),
+  createdAt: z.string(),
+  updatedAt: z.string(),
+  updatedBy: idSchema,
+});
+export type MaybeItem = z.infer<typeof maybeItemSchema>;
 
 /** The practical layer's small stuff (WiFi codes, notes) — ADR-0018. */
-export interface TripNote {
-  id: ID;
-  tripId: ID;
-  category: TripNoteCategory;
-  label: string;
-  value: string;
-  sortOrder: number;
-  createdAt: string;
-  updatedAt: string;
-  updatedBy: ID;
-}
+export const tripNoteSchema = z.object({
+  id: idSchema,
+  tripId: idSchema,
+  category: tripNoteCategorySchema,
+  label: z.string(),
+  value: z.string(),
+  sortOrder: z.number(),
+  createdAt: z.string(),
+  updatedAt: z.string(),
+  updatedBy: idSchema,
+});
+export type TripNote = z.infer<typeof tripNoteSchema>;
 
 /** Full current trip state + sync cursor — GET /trips/:tripId/snapshot (ADR-0019/0022). */
-export interface TripSnapshot {
-  trip: Trip;
-  members: Membership[];
-  events: TripEvent[];
-  bookings: Booking[];
-  maybeItems: MaybeItem[];
-  notes: TripNote[];
-  latestSeq: string; // BigInt serialized as string, see Change.seq
-}
+export const tripSnapshotSchema = z.object({
+  trip: tripSchema,
+  members: z.array(membershipSchema),
+  events: z.array(tripEventSchema),
+  bookings: z.array(bookingSchema),
+  maybeItems: z.array(maybeItemSchema),
+  notes: z.array(tripNoteSchema),
+  latestSeq: z.string(), // BigInt serialized as string, see Change.seq
+});
+export type TripSnapshot = z.infer<typeof tripSnapshotSchema>;
 
-export interface Change {
-  id: ID;
-  seq: string; // BigInt serialized as string to avoid JS precision loss (ADR-0019)
-  tripId: ID;
-  actorUserId: ID;
-  entityType: string;
-  entityId: ID;
-  action: ChangeAction;
-  before?: Record<string, unknown>;
-  after?: Record<string, unknown>;
-  createdAt: string;
-}
+export const changeSchema = z.object({
+  id: idSchema,
+  seq: z.string(), // BigInt serialized as string to avoid JS precision loss (ADR-0019)
+  tripId: idSchema,
+  actorUserId: idSchema,
+  entityType: z.string(),
+  entityId: idSchema,
+  action: changeActionSchema,
+  before: z.record(z.string(), z.unknown()).optional(),
+  after: z.record(z.string(), z.unknown()).optional(),
+  createdAt: z.string(),
+});
+export type Change = z.infer<typeof changeSchema>;
+
+/** `GET /trips/:tripId` response shape — not its own persisted entity. */
+export const tripWithMembersSchema = z.object({
+  trip: tripSchema,
+  members: z.array(membershipSchema),
+});
+export type TripWithMembers = z.infer<typeof tripWithMembersSchema>;
