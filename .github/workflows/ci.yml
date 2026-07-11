@@ -1,0 +1,53 @@
+name: CI
+
+on:
+  pull_request:
+    branches: [main]
+  push:
+    branches: [main]
+
+env:
+  DATABASE_URL: postgresql://waypoint:waypoint@localhost:5432/waypoint?schema=public
+  JWT_SECRET: ci-test-secret
+
+jobs:
+  ci:
+    runs-on: ubuntu-latest
+    services:
+      postgres:
+        image: postgres:16
+        env:
+          POSTGRES_USER: waypoint
+          POSTGRES_PASSWORD: waypoint
+          POSTGRES_DB: waypoint
+        ports: ['5432:5432']
+        options: >-
+          --health-cmd "pg_isready -U waypoint"
+          --health-interval 10s
+          --health-timeout 5s
+          --health-retries 5
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: pnpm/action-setup@v4
+        with:
+          version: 9.12.0
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: pnpm
+
+      - run: pnpm install --frozen-lockfile
+
+      - run: pnpm --filter @waypoint/backend prisma:generate
+      - run: pnpm --filter @waypoint/backend exec prisma migrate deploy
+      # not `pnpm run prisma:seed`: that script hardcodes `node --env-file=.env`,
+      # which errors when no `.env` file exists (as in CI, where DATABASE_URL
+      # comes from this workflow's `env:` block instead).
+      - run: pnpm --filter @waypoint/backend exec node prisma/seed.mjs
+
+      - run: pnpm typecheck
+      - run: pnpm build
+      - run: pnpm test
+      - run: pnpm lint
