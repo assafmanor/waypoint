@@ -2,6 +2,7 @@ import { Module } from '@nestjs/common';
 import { ConfigModule } from '@nestjs/config';
 import { APP_INTERCEPTOR } from '@nestjs/core';
 import { ZodSerializerInterceptor } from 'nestjs-zod';
+import { BookingsModule } from './bookings/bookings.module';
 import { EventsModule } from './events/events.module';
 import { HealthController } from './health/health.controller';
 import { PrismaModule } from './prisma/prisma.module';
@@ -15,6 +16,7 @@ import { TripsModule } from './trips/trips.module';
     TripsModule,
     SyncModule,
     EventsModule,
+    BookingsModule,
   ],
   controllers: [HealthController],
   providers: [
