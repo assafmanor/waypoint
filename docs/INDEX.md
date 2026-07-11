@@ -33,6 +33,7 @@ The single source of truth for where everything lives. Keep this current wheneve
 | [architecture/collaboration-model.md](architecture/collaboration-model.md) | Multi-user model: trips, membership, sync, conflicts         |
 | [architecture/data-model.md](architecture/data-model.md)                   | Entities; the hard/soft event model at its center            |
 | [architecture/api-contract.md](architecture/api-contract.md)               | v1 REST + WebSocket endpoints                                |
+| [architecture/app-shell.md](architecture/app-shell.md)                     | App shell & trip lifecycle: routing, zero-state, create/join, switcher |
 | [architecture/sync-and-offline.md](architecture/sync-and-offline.md)       | Realtime, optimistic sync, undo, offline protocol            |
 | [architecture/auth-and-google.md](architecture/auth-and-google.md)         | Google OAuth, sessions, scopes, calendar sync                |
 | [architecture/deployment.md](architecture/deployment.md)                   | Hosting topology, CI/CD, GitHub — direction + open questions |
@@ -64,6 +65,7 @@ Before changing a domain, read **only** the ADR(s) below for it (see the Context
 | Domain                            | ADRs                                                                                                                                                                                                                        |
 | --------------------------------- | --------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
 | Product scope & modes             | [0006](decisions/0006-no-live-location-v1.md), [0014](decisions/0014-budget-display-only-v1.md), [0016](decisions/0016-plan-trip-modes-one-surface.md)                                                                      |
+| App shell & navigation            | [0024](decisions/0024-app-shell-and-trip-lifecycle.md) (thin shell; login/zero-state/create/join/switcher; routing) — spec in [architecture/app-shell.md](architecture/app-shell.md)                                        |
 | Data model & events               | [0011](decisions/0011-hard-soft-event-model.md) (hard/soft primitive), [0018](decisions/0018-timeline-data-model-shape.md) (drop Day, no stored `now`, `endDate`, client ids, roles)                                        |
 | Sync / consistency / offline      | [0012](decisions/0012-conflict-lww-undo.md) (LWW + undo), [0019](decisions/0019-sync-protocol.md) (change log, atomic write, snapshot + catch-up)                                                                           |
 | Auth & sessions                   | [0002](decisions/0002-each-member-own-google-account.md), [0013](decisions/0013-google-only-auth-v1.md), [0020](decisions/0020-auth-session-architecture.md) (memory JWT + rotating refresh, single-origin, `AuthIdentity`) |
@@ -80,4 +82,5 @@ Before changing a domain, read **only** the ADR(s) below for it (see the Context
 | [planning/2026-07-09-session-01-pm-kickoff.md](planning/2026-07-09-session-01-pm-kickoff.md)                   | PM kickoff: scope, decisions, scaffold                                     |
 | [planning/2026-07-09-session-02-modes.md](planning/2026-07-09-session-02-modes.md)                             | Plan/Trip mode model + switch                                              |
 | [planning/2026-07-10-session-03-architecture-review.md](planning/2026-07-10-session-03-architecture-review.md) | T-025 architecture review: data model, sync, auth, modules (ADR-0018–0021) |
+| [planning/2026-07-11-session-04-app-shell-lifecycle.md](planning/2026-07-11-session-04-app-shell-lifecycle.md) | App shell & trip lifecycle: routing, zero-state, create/join, switcher (ADR-0024) |
 | [planning/2026-07-08-handoff-source.md](planning/2026-07-08-handoff-source.md)                                 | Original handoff doc (source material, Hebrew)                             |

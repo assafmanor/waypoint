@@ -59,6 +59,21 @@
 | Roles: `admin` (creator) + `peer`     | Must        | v1    | Structural from day one; enforcement minimal/deferred (ADR-0005)           |
 | Full role permission matrix           | Won't (now) | —     | Admin powers defined in a later task                                       |
 
+## App shell & lifecycle (outside a single trip)
+
+The thin outer ring — chrome to get you into a trip and back out. Spec: [architecture/app-shell.md](../architecture/app-shell.md); decision: ADR-0024.
+
+| Feature                                   | Priority    | Phase | Notes                                                                    |
+| ----------------------------------------- | ----------- | ----- | ------------------------------------------------------------------------ |
+| Sign-in screen (Google)                   | Must        | v1    | Google-only (ADR-0013); one button                                       |
+| Zero-state home (no trips)                | Must        | v1    | Create and Join weighted equally (5-friend model)                        |
+| Trip creation (one form)                  | Must        | v1    | `createTripSchema`; land in the new trip, prompt to invite               |
+| Join landing (invite link + preview)      | Must        | v1    | Confirm w/ minimal preview via new public `GET /invites/:token`          |
+| Trip switcher (header sheet)              | Should      | v1    | Not a dashboard; active-trip in localStorage (ADR-0021)                   |
+| Account menu (name + sign out)            | Must        | v1    | Minimal; profile editing deferred                                        |
+| Trip settings & members                   | Must        | v1    | Invite/members/leave/edit; not a nav tab (ADR-0004)                      |
+| Profile editing / trips archive & search  | Won't (now) | —     | Deferred; keeps the shell thin                                           |
+
 ## Integrations (pipes, not screens)
 
 | Feature                                 | Priority | Phase | Notes                                                                          |
