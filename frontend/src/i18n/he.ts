@@ -94,6 +94,8 @@ export const t = {
     openingNav: 'פותח ניווט',
     scheduled: (title: string, time: string) => `${title} שובץ ל-${time}`,
     rippleApplied: 'האירועים הבאים נדחו',
+    hardConfirmRequired: 'אירוע קשיח דורש אישור מפורש לשינוי',
+    writeFailed: 'הפעולה נכשלה · נסו שוב',
   },
   ripple: {
     prompt: (movedTitle: string) => `דחית את ${movedTitle}. לדחות את האירועים הבאים גם?`,
