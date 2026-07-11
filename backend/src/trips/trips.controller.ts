@@ -5,7 +5,7 @@ import { CurrentUser } from '../auth/current-user.decorator';
 import { DevAuthGuard } from '../auth/dev-auth.guard';
 import type { Principal } from '../auth/principal';
 import { MembershipGuard } from './membership.guard';
-import { TripDto, TripSnapshotDto } from './trips.dto';
+import { TripDto } from './trips.dto';
 import { TripsService } from './trips.service';
 
 @ApiTags('trips')
@@ -20,9 +20,10 @@ export class TripsController {
     return this.trips.listForUser(user.userId);
   }
 
+  // ponytail: snapshot response left undocumented in Swagger (generic object) —
+  // see T-037 for unifying entity types onto zod so nested shapes generate for real.
   @Get(':tripId/snapshot')
   @UseGuards(MembershipGuard)
-  @ApiOkResponse({ type: TripSnapshotDto })
   snapshot(@Param('tripId') tripId: string): Promise<TripSnapshot> {
     return this.trips.getSnapshot(tripId);
   }
