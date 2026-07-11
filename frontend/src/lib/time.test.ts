@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest';
-import { EVENT_STATUS } from '@waypoint/shared';
-import { dayProgress, deriveNow, formatTime, minutesUntil, shiftIso } from './time';
+import { EVENT_STATUS, type TripEvent } from '@waypoint/shared';
+import { dayProgress, deriveNow, formatTime, hardConflicts, minutesUntil, shiftIso } from './time';
 import { DEMO_NOW, EVENTS, TRIP } from '../fixtures';
 
 const tz = TRIP.timezone;
@@ -45,5 +45,39 @@ describe('countdown + progress at the demo instant (18:52 JST)', () => {
 describe('shiftIso', () => {
   it('shifts an instant by whole minutes', () => {
     expect(shiftIso('2026-07-07T19:30:00+09:00', 30)).toBe('2026-07-07T11:00:00.000Z');
+  });
+});
+
+describe('hardConflicts', () => {
+  const shinjuku = EVENTS.find((e) => e.id === 'ev-shinjuku')!;
+  const ichiran = EVENTS.find((e) => e.id === 'ev-ichiran')!;
+
+  it('is empty when a soft event only touches the following hard event (no overlap)', () => {
+    expect(hardConflicts(shinjuku, EVENTS)).toEqual([]);
+  });
+
+  it("flags the hard event once the soft event's end runs past its start", () => {
+    const delayed = { ...shinjuku, endsAt: shiftIso(shinjuku.endsAt!, 30) };
+    expect(hardConflicts(delayed, EVENTS).map((e) => e.id)).toEqual(['ev-ichiran']);
+  });
+
+  it('ignores overlap between two soft events', () => {
+    const a: TripEvent = {
+      ...shinjuku,
+      id: 'x-a',
+      startsAt: '2026-07-07T10:00:00+09:00',
+      endsAt: '2026-07-07T11:00:00+09:00',
+    };
+    const b: TripEvent = {
+      ...shinjuku,
+      id: 'x-b',
+      startsAt: '2026-07-07T10:30:00+09:00',
+      endsAt: '2026-07-07T11:30:00+09:00',
+    };
+    expect(hardConflicts(a, [a, b])).toEqual([]);
+  });
+
+  it('returns nothing for a hard event itself', () => {
+    expect(hardConflicts(ichiran, EVENTS)).toEqual([]);
   });
 });

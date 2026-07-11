@@ -1,6 +1,6 @@
 // Trip-timezone formatting + client-side "now" derivation.
 // "Now" is never stored (ADR-0018) — it's computed from event startsAt/endsAt vs the clock.
-import { EVENT_STATUS, type TripEvent } from '@waypoint/shared';
+import { EVENT_KIND, EVENT_STATUS, type TripEvent } from '@waypoint/shared';
 import { DAY_WINDOW } from '../constants';
 
 /** Wall-clock parts for an instant, rendered in a specific IANA timezone. */
@@ -80,4 +80,19 @@ export function dayProgress(
 /** Shift an ISO instant by whole minutes, preserving the instant semantics. */
 export function shiftIso(iso: string, minutes: number): string {
   return new Date(new Date(iso).getTime() + minutes * 60000).toISOString();
+}
+
+/** Same-day hard event(s) whose span overlaps this soft event's current span.
+ *  Two soft events overlapping is expected/unguarded (ADR-0011) — only hard-vs-soft
+ *  matters, since a hard event can never move to resolve it. */
+export function hardConflicts(event: TripEvent, dayEvents: TripEvent[]): TripEvent[] {
+  if (event.kind !== EVENT_KIND.SOFT || !event.startsAt || !event.endsAt) return [];
+  const start = Date.parse(event.startsAt);
+  const end = Date.parse(event.endsAt);
+  return dayEvents.filter((e) => {
+    if (e.id === event.id || e.kind !== EVENT_KIND.HARD || !e.startsAt) return false;
+    const eStart = Date.parse(e.startsAt);
+    const eEnd = e.endsAt ? Date.parse(e.endsAt) : eStart;
+    return eStart < end && eEnd > start;
+  });
 }
