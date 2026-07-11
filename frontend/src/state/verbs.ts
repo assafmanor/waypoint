@@ -17,6 +17,8 @@ import {
   createEvent,
   deleteEvent,
   isHardEventConfirmError,
+  isMoveCrossesDayError,
+  isMoveIntoPastError,
   moveEvent,
   setEventStatus,
 } from '../lib/api';
@@ -40,10 +42,14 @@ export interface VerbDeps {
 }
 
 function writeErrorToast(toast: ShowToast, err: unknown): void {
-  toast(
-    ICONS.warn,
-    isHardEventConfirmError(err) ? t.toast.hardConfirmRequired : t.toast.writeFailed,
-  );
+  const message = isHardEventConfirmError(err)
+    ? t.toast.hardConfirmRequired
+    : isMoveIntoPastError(err)
+      ? t.toast.moveIntoPast
+      : isMoveCrossesDayError(err)
+        ? t.toast.moveCrossesDay
+        : t.toast.writeFailed;
+  toast(ICONS.warn, message);
 }
 
 function toCreateEventInput(event: TripEvent): CreateEventInput {

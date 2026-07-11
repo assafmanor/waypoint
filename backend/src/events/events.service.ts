@@ -28,6 +28,15 @@ const ms = (iso?: string | null) => (iso ? Date.parse(iso) : 0);
 const shiftIso = (iso: string, minutes: number) =>
   new Date(new Date(iso).getTime() + minutes * 60000).toISOString();
 
+/** The YYYY-MM-DD calendar day an instant falls on, in a given IANA timezone. */
+const localDateKey = (iso: string, timeZone: string): string =>
+  new Intl.DateTimeFormat('en-CA', {
+    timeZone,
+    year: 'numeric',
+    month: '2-digit',
+    day: '2-digit',
+  }).format(new Date(iso));
+
 @Injectable()
 export class EventsService {
   constructor(
@@ -147,6 +156,9 @@ export class EventsService {
   ): Promise<MoveEventResult> {
     const before = await this.requireEvent(tripId, eventId);
     await this.assertHardConfirmed(before, confirm);
+    if (input.startsAt !== undefined && input.date === undefined) {
+      await this.assertValidMoveTarget(tripId, before, input.startsAt);
+    }
 
     // moveEventSchema carries `startsAt` only, not `endsAt` — shift endsAt by the same
     // delta so a move preserves the event's duration (matches the DELAY semantics
@@ -227,6 +239,39 @@ export class EventsService {
         },
       },
     });
+  }
+
+  /** Guards a quick nudge's target time against two invariants it should never
+   *  silently violate: landing in the past, or crossing out of the day it's
+   *  scheduled on (a different day is a Plan-mode reassignment — pass `date`
+   *  explicitly for that; this guard only applies to a bare `startsAt` nudge). */
+  private async assertValidMoveTarget(
+    tripId: string,
+    before: PrismaEvent,
+    newStartsAt: string,
+  ): Promise<void> {
+    if (new Date(newStartsAt).getTime() <= Date.now()) {
+      throw new ConflictException({
+        error: {
+          code: 'MOVE_INTO_PAST',
+          message: 'Cannot move an event to start in the past.',
+        },
+      });
+    }
+
+    const trip = await this.prisma.trip.findUniqueOrThrow({
+      where: { id: tripId },
+      select: { timezone: true },
+    });
+    const eventDay = before.date.toISOString().slice(0, 10);
+    if (localDateKey(newStartsAt, trip.timezone) !== eventDay) {
+      throw new ConflictException({
+        error: {
+          code: 'MOVE_CROSSES_DAY',
+          message: 'Cannot move an event to a different day — use Plan mode to reschedule it.',
+        },
+      });
+    }
   }
 
   /** Ports computeRipple() 1:1 from frontend/src/state/trip-state.tsx (T-010 notes),

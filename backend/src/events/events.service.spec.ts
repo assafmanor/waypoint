@@ -263,8 +263,9 @@ describe('EventsService', () => {
   it('does not ripple a preceding event that has already started', async () => {
     const tripId = await newTrip();
     const now = Date.now();
+    const today = new Date(now).toISOString().slice(0, 10);
     await service.create(tripId, DEV_USER, {
-      date: DAY,
+      date: today,
       title: 'Already happening',
       kind: EVENT_KIND.SOFT,
       startsAt: new Date(now - 60 * 60_000).toISOString(),
@@ -272,7 +273,7 @@ describe('EventsService', () => {
       source: 'manual',
     });
     const market = await service.create(tripId, DEV_USER, {
-      date: DAY,
+      date: today,
       title: 'Market',
       kind: EVENT_KIND.SOFT,
       startsAt: new Date(now + 30 * 60_000).toISOString(),
@@ -387,5 +388,67 @@ describe('EventsService', () => {
       false,
     );
     expect(rippleSuggestion).toBeUndefined();
+  });
+
+  it('rejects moving an event to start in the past', async () => {
+    const tripId = await newTrip();
+    const market = await service.create(tripId, DEV_USER, {
+      date: DAY,
+      title: 'Market',
+      kind: EVENT_KIND.SOFT,
+      startsAt: at('11:00'),
+      endsAt: at('12:00'),
+      source: 'manual',
+    });
+
+    await expect(
+      service.move(
+        tripId,
+        market.id,
+        DEV_USER,
+        { startsAt: new Date(Date.now() - 60_000).toISOString() },
+        false,
+      ),
+    ).rejects.toThrow(ConflictException);
+  });
+
+  it('rejects nudging an event across a day boundary', async () => {
+    const tripId = await newTrip();
+    const walkback = await service.create(tripId, DEV_USER, {
+      date: DAY,
+      title: 'Walk back',
+      kind: EVENT_KIND.SOFT,
+      startsAt: at('22:45'),
+      endsAt: at('23:15'),
+      source: 'manual',
+    });
+
+    // newTrip() sets no explicit timezone, so it defaults to UTC — the day
+    // boundary is UTC midnight. `at()` bakes in a +09:00 offset; this target
+    // (2027-02-02T09:01+09:00 = 2027-02-02T00:01Z) crosses from Feb 1 into Feb 2 UTC.
+    await expect(
+      service.move(tripId, walkback.id, DEV_USER, { startsAt: '2027-02-02T09:01:00+09:00' }, false),
+    ).rejects.toThrow(ConflictException);
+  });
+
+  it('allows an explicit date change to cross days (Plan-mode reassignment)', async () => {
+    const tripId = await newTrip();
+    const walkback = await service.create(tripId, DEV_USER, {
+      date: DAY,
+      title: 'Walk back',
+      kind: EVENT_KIND.SOFT,
+      startsAt: at('22:45'),
+      endsAt: at('23:15'),
+      source: 'manual',
+    });
+
+    const { event } = await service.move(
+      tripId,
+      walkback.id,
+      DEV_USER,
+      { date: '2027-02-02', startsAt: '2027-02-02T09:01:00+09:00' },
+      false,
+    );
+    expect(event.date).toBe('2027-02-02');
   });
 });

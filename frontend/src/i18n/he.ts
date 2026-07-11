@@ -78,6 +78,7 @@ export const t = {
     navigate: 'ניווט',
     delayBy: (minutes: number) => `דחה ${minutes} דק׳`,
     earlierBy: (minutes: number) => `הקדם ${minutes} דק׳`,
+    stepMinutes: (minutes: number) => `${minutes} דק׳`,
     onWay: 'בדרך',
     done: 'סיימנו',
     skip: 'דלג',
@@ -99,6 +100,8 @@ export const t = {
     rippleApplied: 'האירועים הבאים נדחו',
     hardConfirmRequired: 'אירוע קשיח דורש אישור מפורש לשינוי',
     writeFailed: 'הפעולה נכשלה · נסו שוב',
+    moveIntoPast: 'לא ניתן לתזמן אירוע לזמן שכבר עבר',
+    moveCrossesDay: 'לא ניתן להעביר אירוע ליום אחר · השתמשו במצב תכנון',
   },
   ripple: {
     prompt: (movedTitle: string) => `דחית את ${movedTitle}. לדחות את האירועים הבאים גם?`,
