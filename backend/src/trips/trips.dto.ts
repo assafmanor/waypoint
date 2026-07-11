@@ -1,9 +1,9 @@
 import { ApiProperty } from '@nestjs/swagger';
-import type { Trip } from '@waypoint/shared';
+import { MEMBERSHIP_ROLE, type Membership, type Trip } from '@waypoint/shared';
 
 // Swagger can't infer schemas from plain interfaces imported across packages,
-// so this mirrors the @waypoint/shared shape for documentation only —
-// `implements` keeps it from drifting silently out of sync.
+// so these mirror the @waypoint/shared shapes for documentation only —
+// `implements` keeps them from drifting silently out of sync.
 export class TripDto implements Trip {
   @ApiProperty() id!: string;
   @ApiProperty() name!: string;
@@ -17,4 +17,23 @@ export class TripDto implements Trip {
   @ApiProperty() createdAt!: string;
   @ApiProperty() updatedAt!: string;
   @ApiProperty() updatedBy!: string;
+}
+
+export class MembershipDto implements Membership {
+  @ApiProperty() id!: string;
+  @ApiProperty() tripId!: string;
+  @ApiProperty() userId!: string;
+  @ApiProperty({ enum: Object.values(MEMBERSHIP_ROLE) }) role!: Membership['role'];
+  @ApiProperty() calendarSyncEnabled!: boolean;
+  @ApiProperty() joinedAt!: string;
+}
+
+/** `GET /trips/:tripId` — not a @waypoint/shared type, just this route's ad-hoc response shape. */
+export class TripWithMembersDto {
+  @ApiProperty({ type: TripDto }) trip!: Trip;
+  @ApiProperty({ type: [MembershipDto] }) members!: Membership[];
+}
+
+export class InviteUrlDto {
+  @ApiProperty() inviteUrl!: string;
 }
