@@ -59,7 +59,7 @@ export const t = {
     maybeShelf: 'מדף אולי',
     tapToSchedule: 'הקש כדי לשבץ ליום',
     legendHardWord: 'קשיחים',
-    legendSoftWord: 'רכים',
+    legendSoftWord: 'גמישים',
     legendHardRest: ' יש להם התחייבות (הזמנה/כרטיס) — האפליקציה מגנה עליהם.',
     legendSoftRest: ' זזים, מדולגים ומתחלפים בחופשיות.',
     legendHardLead: 'אירועים ',
@@ -67,8 +67,8 @@ export const t = {
   },
   event: {
     hard: 'קשיח',
-    soft: 'רך',
-    softNow: 'רך · עכשיו',
+    soft: 'גמיש',
+    softNow: 'גמיש · עכשיו',
     bookingLabel: 'הזמנה',
     hardWarn: 'אירוע קשיח — שינוי דורש עדכון ההזמנה',
   },
@@ -93,7 +93,7 @@ export const t = {
     onWayShared: 'שותף לקבוצה · בדרך',
     openingNav: 'פותח ניווט',
     scheduled: (title: string, time: string) => `${title} שובץ ל-${time}`,
-    rippleApplied: 'האירועים הרכים הבאים נדחו',
+    rippleApplied: 'האירועים הגמישים הבאים נדחו',
   },
   ripple: {
     prompt: (movedTitle: string) => `דחית את ${movedTitle}. לדחות את האירועים הבאים גם?`,
