@@ -7,7 +7,6 @@ import {
   tripSchema,
   tripSnapshotSchema,
   tripWithMembersSchema,
-  type CreateTripInput,
   type Membership,
   type Trip,
   type TripSnapshot,
@@ -22,6 +21,7 @@ import { TripsService } from './trips.service';
 
 // ADR-0023: OpenAPI DTOs generated from the @waypoint/shared zod schemas — no
 // hand-written field lists to keep in sync (see the deleted trips.dto.ts).
+class CreateTripDto extends createZodDto(createTripSchema) {}
 class TripDto extends createZodDto(tripSchema) {}
 class MembershipDto extends createZodDto(membershipSchema) {}
 class TripWithMembersDto extends createZodDto(tripWithMembersSchema) {}
@@ -46,7 +46,7 @@ export class TripsController {
   @ZodSerializerDto(TripDto)
   create(
     @CurrentUser() user: Principal,
-    @Body(new ZodValidationPipe(createTripSchema)) body: CreateTripInput,
+    @Body(new ZodValidationPipe(createTripSchema)) body: CreateTripDto,
   ): Promise<Trip> {
     return this.trips.createTrip(user.userId, body);
   }
