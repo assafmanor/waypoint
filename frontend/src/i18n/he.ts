@@ -93,7 +93,7 @@ export const t = {
     onWayShared: 'שותף לקבוצה · בדרך',
     openingNav: 'פותח ניווט',
     scheduled: (title: string, time: string) => `${title} שובץ ל-${time}`,
-    rippleApplied: 'האירועים הגמישים הבאים נדחו',
+    rippleApplied: 'האירועים הבאים נדחו',
   },
   ripple: {
     prompt: (movedTitle: string) => `דחית את ${movedTitle}. לדחות את האירועים הבאים גם?`,
