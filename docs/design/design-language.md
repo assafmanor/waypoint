@@ -33,6 +33,8 @@ Color carries meaning so the eye can parse a screen **without reading**:
 - **Amber** = _now / active / the current thing._ Nothing else uses amber.
 - **Teal** = _location / map / navigation._ Nothing else uses teal.
 
+A small **decorative palette** (avatar identity colors, map pin categories) exists alongside these — always pastel/muted, never amber or teal, so it reads as gentle variety rather than a second meaning system. See the Map pins entry below.
+
 ## Typography
 
 | Family           | Use                                      |
@@ -58,7 +60,8 @@ This is the most important visual rule after the color coding:
 - **Itinerary item** — tap to expand into quick-verb actions; hard items show an edit warning; `now` item gets an amber ring.
 - **Ripple bar** — amber suggestion strip after moving an event.
 - **"Maybe" shelf** — horizontal scroll of dashed cards to schedule onto a day.
-- **Map** — grid backdrop, teardrop pins colored by type, "me" dot, "near me now" list.
+- **Map** — grid backdrop, teardrop pins in 5 pastel category colors (food/lodging/transit/leisure/services — see legend), blue "me" dot (an OS-map convention, not part of the amber/teal system), a category filter row above "near me now", and an offline state (desaturated backdrop + "last saved locations" banner + stale-distance labels on the list).
+- **Index** — booking cards tagged by type (`tag-type` chip: flight/lodging/restaurant/train), a reusable `badge-offline` pill on section headers, normalized source tags (Gmail-import vs. manually-added, same chip shape), and a documents list with an "add document" affordance.
 - **Bottom nav** — 4 tabs (🏠 🗺️ 📇 📅), blurred translucent bar.
 - **Toast** — dark pill for lightweight confirmations.
 
