@@ -10,11 +10,25 @@ const prisma = new PrismaClient({
 });
 
 const ME = 'u-assaf';
-const CREATED_AT = '2026-07-07T09:00:00Z';
 const TZ = '+09:00';
-const DAY = '2026-07-07';
-const at = (time) => `${DAY}T${time}:00${TZ}`;
+const TRIP_TZ = 'Asia/Tokyo'; // must match TRIP.timezone below
 const date = (d) => `${d}T00:00:00Z`; // @db.Date — date part only
+const addDays = (dateKey, days) => {
+  const d = new Date(`${dateKey}T00:00:00Z`);
+  d.setUTCDate(d.getUTCDate() + days);
+  return d.toISOString().slice(0, 10);
+};
+// en-CA formats as YYYY-MM-DD — the trip's *local* calendar date, not UTC's
+// (which can be a day off from Tokyo's).
+const todayInTz = (timeZone) => new Intl.DateTimeFormat('en-CA', { timeZone }).format(new Date());
+
+// DAY rolls to "today" (in the trip's own timezone) on every reseed, so the
+// backend's real Date.now() guard (MOVE_INTO_PAST) never rejects moves on
+// stale, calendar-pinned demo data — re-run `prisma:seed` to bring the demo
+// trip back to the present.
+const DAY = todayInTz(TRIP_TZ);
+const CREATED_AT = `${DAY}T09:00:00Z`;
+const at = (time) => `${DAY}T${time}:00${TZ}`;
 
 const USERS = [
   { id: 'u-assaf', email: 'assaf@example.com', displayName: 'אסף', avatarColor: '#E9A63C' },
@@ -28,8 +42,8 @@ const TRIP = {
   id: 'trip-japan-26',
   name: 'יפן ׳26',
   destination: 'טוקיו',
-  startDate: date('2026-07-05'),
-  endDate: date('2026-07-14'),
+  startDate: date(addDays(DAY, -2)),
+  endDate: date(addDays(DAY, 7)),
   timezone: 'Asia/Tokyo',
   currency: 'JPY',
   dailyBudgetMinor: 14000,
