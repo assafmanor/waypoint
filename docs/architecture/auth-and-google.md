@@ -54,8 +54,14 @@ Request the minimum at sign-in; **incrementally** request Calendar/Gmail scopes 
 
 ## Invite / join
 
-- `POST /trips/:tripId/invite` → a **signed, expiring token** encoding `tripId`.
-- `POST /trips/join/:token` → verifies the token, adds the caller as a `peer` `Membership`. The joiner must be signed in (Google) first.
+Distinct from the session tokens above — this is how a non-member gets *into* a trip.
+
+- **Token shape:** `base64url("<tripId>.<expiresAtMs>") + "." + HMAC-SHA256(payload, JWT_SECRET)`. **Stateless** — the token *is* the grant; there is **no DB record**. 7-day TTL baked into the payload; the HMAC makes it unforgeable.
+- **`POST /trips/:tripId/invite`** → mints a token, returns `{ inviteUrl: "/trips/join/<token>" }` (member shares the link).
+- **`GET /invites/:token`** — **public/unguarded** (ADR-0024): validates the HMAC, returns a minimal preview `{ tripName, destination, startDate, endDate, memberCount }` so the join screen can show *which* trip before you commit. Needed because `GET /trips/:id/snapshot` is membership-guarded and can't preview an un-joined trip.
+- **`POST /trips/join/:token`** → verifies the token, adds the caller as a `peer` `Membership` (idempotent — rejoining keeps the existing role). The joiner must be **signed in first**; an invite tapped while logged out is preserved through the sign-in gate and resumed after (ADR-0024).
+
+**Revocability — deliberate v1 tradeoff.** Because invites carry no server-side record, an individual link **cannot be revoked** once shared; it simply expires after 7 days. This is acceptable for a private ~5-friend trip and matches ADR-0005 (invite-revoke isn't gated in v1). The blunt lever is rotating `JWT_SECRET`, which invalidates *all* outstanding invites at once; per-member control is via **membership removal**, which is immediate (trip authz is checked per request against `Membership`, not baked into any token). **Upgrade path** if per-link revoke is ever needed: a DB-backed invite record (or a per-trip invite secret) — no schema exists for it today, by choice.
 
 ## Security notes
 
