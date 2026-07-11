@@ -1,0 +1,4 @@
+# Force LF in the repo and on checkout, regardless of core.autocrlf — matches
+# .editorconfig's end_of_line=lf. Prevents `pnpm format` from producing
+# whole-tree line-ending churn on Windows checkouts.
+* text=auto eol=lf
