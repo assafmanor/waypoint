@@ -4,3 +4,4 @@ pnpm-lock.yaml
 **/dev-dist/
 **/coverage/
 **/*.min.*
+.obsidian/**

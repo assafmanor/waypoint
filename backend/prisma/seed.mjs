@@ -50,12 +50,73 @@ const BOOKINGS = [
 ];
 
 const EVENTS = [
-  { id: 'ev-tsukiji', title: 'שוק צוקיג׳י', icon: '🐟', kind: 'soft', status: 'done', startsAt: at('10:00'), endsAt: at('12:00'), location: 'ארוחת בוקר · סושי טרי', sortOrder: 1 },
-  { id: 'ev-senso', title: 'מקדש סנסו-ג׳י', icon: '⛩️', kind: 'soft', status: 'done', startsAt: at('14:30'), endsAt: at('16:00'), location: 'אסקוסה · נקמיסה', sortOrder: 2 },
-  { id: 'ev-shinjuku', title: 'זמן חופשי · שינג׳וקו', icon: '🚶', kind: 'soft', status: 'planned', startsAt: at('16:30'), endsAt: at('19:30'), location: 'מתחם החנויות', sortOrder: 3 },
-  { id: 'ev-ichiran', title: 'Ichiran Ramen', icon: '🍜', kind: 'hard', status: 'planned', startsAt: at('19:30'), endsAt: at('21:00'), location: 'ארוחת ערב', bookingId: 'bk-ichiran', sortOrder: 4 },
-  { id: 'ev-goldengai', title: 'גולדן גאי', icon: '🍶', kind: 'soft', status: 'planned', startsAt: at('21:30'), endsAt: at('22:30'), location: 'דרינקים · סמטאות באר', sortOrder: 5 },
-  { id: 'ev-walkback', title: 'חזרה למלון · הליכה', icon: '🌙', kind: 'soft', status: 'planned', startsAt: at('22:45'), endsAt: at('23:15'), location: 'שינג׳וקו', sortOrder: 6 },
+  {
+    id: 'ev-tsukiji',
+    title: 'שוק צוקיג׳י',
+    icon: '🐟',
+    kind: 'soft',
+    status: 'done',
+    startsAt: at('10:00'),
+    endsAt: at('12:00'),
+    location: 'ארוחת בוקר · סושי טרי',
+    sortOrder: 1,
+  },
+  {
+    id: 'ev-senso',
+    title: 'מקדש סנסו-ג׳י',
+    icon: '⛩️',
+    kind: 'soft',
+    status: 'done',
+    startsAt: at('14:30'),
+    endsAt: at('16:00'),
+    location: 'אסקוסה · נקמיסה',
+    sortOrder: 2,
+  },
+  {
+    id: 'ev-shinjuku',
+    title: 'זמן חופשי · שינג׳וקו',
+    icon: '🚶',
+    kind: 'soft',
+    status: 'planned',
+    startsAt: at('16:30'),
+    endsAt: at('19:30'),
+    location: 'מתחם החנויות',
+    sortOrder: 3,
+  },
+  {
+    id: 'ev-ichiran',
+    title: 'Ichiran Ramen',
+    icon: '🍜',
+    kind: 'hard',
+    status: 'planned',
+    startsAt: at('19:30'),
+    endsAt: at('21:00'),
+    location: 'ארוחת ערב',
+    bookingId: 'bk-ichiran',
+    sortOrder: 4,
+  },
+  {
+    id: 'ev-goldengai',
+    title: 'גולדן גאי',
+    icon: '🍶',
+    kind: 'soft',
+    status: 'planned',
+    startsAt: at('21:30'),
+    endsAt: at('22:30'),
+    location: 'דרינקים · סמטאות באר',
+    sortOrder: 5,
+  },
+  {
+    id: 'ev-walkback',
+    title: 'חזרה למלון · הליכה',
+    icon: '🌙',
+    kind: 'soft',
+    status: 'planned',
+    startsAt: at('22:45'),
+    endsAt: at('23:15'),
+    location: 'שינג׳וקו',
+    sortOrder: 6,
+  },
 ].map((e) => ({ ...e, tripId: TRIP.id, date: date(DAY), source: 'manual', updatedBy: ME }));
 
 const MAYBE_ITEMS = [
@@ -79,25 +140,49 @@ const NOTES = [
 
 async function main() {
   for (const u of USERS) {
-    await prisma.user.upsert({ where: { id: u.id }, create: { ...u, createdAt: CREATED_AT }, update: u });
+    await prisma.user.upsert({
+      where: { id: u.id },
+      create: { ...u, createdAt: CREATED_AT },
+      update: u,
+    });
   }
-  await prisma.trip.upsert({ where: { id: TRIP.id }, create: { ...TRIP, createdAt: CREATED_AT }, update: TRIP });
+  await prisma.trip.upsert({
+    where: { id: TRIP.id },
+    create: { ...TRIP, createdAt: CREATED_AT },
+    update: TRIP,
+  });
   await prisma.membership.upsert({
     where: { tripId_userId: { tripId: TRIP.id, userId: ME } },
     create: { tripId: TRIP.id, userId: ME, role: 'admin' },
     update: { role: 'admin' },
   });
   for (const b of BOOKINGS) {
-    await prisma.booking.upsert({ where: { id: b.id }, create: { ...b, createdAt: CREATED_AT }, update: b });
+    await prisma.booking.upsert({
+      where: { id: b.id },
+      create: { ...b, createdAt: CREATED_AT },
+      update: b,
+    });
   }
   for (const e of EVENTS) {
-    await prisma.event.upsert({ where: { id: e.id }, create: { ...e, createdAt: CREATED_AT }, update: e });
+    await prisma.event.upsert({
+      where: { id: e.id },
+      create: { ...e, createdAt: CREATED_AT },
+      update: e,
+    });
   }
   for (const m of MAYBE_ITEMS) {
-    await prisma.maybeItem.upsert({ where: { id: m.id }, create: { ...m, createdAt: CREATED_AT }, update: m });
+    await prisma.maybeItem.upsert({
+      where: { id: m.id },
+      create: { ...m, createdAt: CREATED_AT },
+      update: m,
+    });
   }
   for (const n of NOTES) {
-    await prisma.tripNote.upsert({ where: { id: n.id }, create: { ...n, createdAt: CREATED_AT }, update: n });
+    await prisma.tripNote.upsert({
+      where: { id: n.id },
+      create: { ...n, createdAt: CREATED_AT },
+      update: n,
+    });
   }
   console.log(
     `Seeded: ${USERS.length} users, 1 trip, 1 membership, ${BOOKINGS.length} booking, ${EVENTS.length} events, ${MAYBE_ITEMS.length} maybe-items, ${NOTES.length} note.`,
