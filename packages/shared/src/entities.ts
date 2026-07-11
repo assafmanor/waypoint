@@ -167,6 +167,17 @@ export interface TripNote {
   updatedBy: ID;
 }
 
+/** Full current trip state + sync cursor — GET /trips/:tripId/snapshot (ADR-0019/0022). */
+export interface TripSnapshot {
+  trip: Trip;
+  members: Membership[];
+  events: TripEvent[];
+  bookings: Booking[];
+  maybeItems: MaybeItem[];
+  notes: TripNote[];
+  latestSeq: string; // BigInt serialized as string, see Change.seq
+}
+
 export interface Change {
   id: ID;
   seq: string; // BigInt serialized as string to avoid JS precision loss (ADR-0019)
