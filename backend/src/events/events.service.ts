@@ -28,6 +28,15 @@ const ms = (iso?: string | null) => (iso ? Date.parse(iso) : 0);
 const shiftIso = (iso: string, minutes: number) =>
   new Date(new Date(iso).getTime() + minutes * 60000).toISOString();
 
+/** The YYYY-MM-DD calendar day an instant falls on, in a given IANA timezone. */
+const localDateKey = (iso: string, timeZone: string): string =>
+  new Intl.DateTimeFormat('en-CA', {
+    timeZone,
+    year: 'numeric',
+    month: '2-digit',
+    day: '2-digit',
+  }).format(new Date(iso));
+
 @Injectable()
 export class EventsService {
   constructor(
@@ -147,6 +156,9 @@ export class EventsService {
   ): Promise<MoveEventResult> {
     const before = await this.requireEvent(tripId, eventId);
     await this.assertHardConfirmed(before, confirm);
+    if (input.startsAt !== undefined && input.date === undefined) {
+      await this.assertValidMoveTarget(tripId, before, input.startsAt);
+    }
 
     // moveEventSchema carries `startsAt` only, not `endsAt` — shift endsAt by the same
     // delta so a move preserves the event's duration (matches the DELAY semantics
@@ -229,9 +241,45 @@ export class EventsService {
     });
   }
 
-  /** Ports computeRipple() 1:1 from frontend/src/state/trip-state.tsx (T-010 notes):
-   *  following soft events on the same day, shifted by the same delta, stopping at
-   *  the first hard anchor or the first gap. Suggestion only — never applied here. */
+  /** Guards a quick nudge's target time against two invariants it should never
+   *  silently violate: landing in the past, or crossing out of the day it's
+   *  scheduled on (a different day is a Plan-mode reassignment — pass `date`
+   *  explicitly for that; this guard only applies to a bare `startsAt` nudge). */
+  private async assertValidMoveTarget(
+    tripId: string,
+    before: PrismaEvent,
+    newStartsAt: string,
+  ): Promise<void> {
+    if (new Date(newStartsAt).getTime() <= Date.now()) {
+      throw new ConflictException({
+        error: {
+          code: 'MOVE_INTO_PAST',
+          message: 'Cannot move an event to start in the past.',
+        },
+      });
+    }
+
+    const trip = await this.prisma.trip.findUniqueOrThrow({
+      where: { id: tripId },
+      select: { timezone: true },
+    });
+    const eventDay = before.date.toISOString().slice(0, 10);
+    if (localDateKey(newStartsAt, trip.timezone) !== eventDay) {
+      throw new ConflictException({
+        error: {
+          code: 'MOVE_CROSSES_DAY',
+          message: 'Cannot move an event to a different day — use Plan mode to reschedule it.',
+        },
+      });
+    }
+  }
+
+  /** Ports computeRipple() 1:1 from frontend/src/state/trip-state.tsx (T-010 notes),
+   *  generalized to walk either direction (T-014 follow-on): a positive shift pushes
+   *  contiguous/overlapping following soft events later; a negative shift pulls
+   *  contiguous/overlapping preceding soft events earlier. Stops at the first hard
+   *  anchor or the first event that isn't actually overlapping (nothing to resolve).
+   *  Suggestion only — never applied here. */
   private async computeRippleSuggestion(
     tripId: string,
     moved: TripEvent,
@@ -244,12 +292,26 @@ export class EventsService {
     const dayEvents = await this.prisma.event.findMany({
       where: { tripId, date: new Date(moved.date) },
     });
-    const events = dayEvents.map(toEventDto);
+    const events = dayEvents
+      .map(toEventDto)
+      .filter((e) => e.status === EVENT_STATUS.PLANNED && e.startsAt && e.id !== moved.id);
 
+    const candidates =
+      minutes > 0
+        ? this.rippleForward(events, moved, minutes)
+        : this.rippleBackward(events, moved, minutes);
+
+    return candidates.length ? { movedTitle: moved.title, candidates } : undefined;
+  }
+
+  private rippleForward(
+    events: TripEvent[],
+    moved: TripEvent,
+    minutes: number,
+  ): RippleSuggestion['candidates'] {
     const following = events
-      .filter((e) => e.status === EVENT_STATUS.PLANNED && e.startsAt && e.id !== moved.id)
-      .sort((a, b) => ms(a.startsAt) - ms(b.startsAt) || a.sortOrder - b.sortOrder)
-      .filter((e) => ms(e.startsAt) > ms(moved.startsAt));
+      .filter((e) => ms(e.startsAt) > ms(moved.startsAt))
+      .sort((a, b) => ms(a.startsAt) - ms(b.startsAt) || a.sortOrder - b.sortOrder);
 
     const candidates: RippleSuggestion['candidates'] = [];
     let prevEnd = ms(moved.endsAt);
@@ -261,6 +323,34 @@ export class EventsService {
       candidates.push({ id: e.id, startsAt, endsAt });
       prevEnd = ms(endsAt ?? startsAt);
     }
-    return candidates.length ? { movedTitle: moved.title, candidates } : undefined;
+    return candidates;
+  }
+
+  /** Mirror of rippleForward: walks preceding events in reverse, pulling each one
+   *  earlier while it overlaps the shifted-back start of its successor. Also stops
+   *  at the first event that's already started — pulling it earlier would rewrite
+   *  something that's already happened, which pushing later can never do. */
+  private rippleBackward(
+    events: TripEvent[],
+    moved: TripEvent,
+    minutes: number,
+  ): RippleSuggestion['candidates'] {
+    const preceding = events
+      .filter((e) => ms(e.startsAt) < ms(moved.startsAt))
+      .sort((a, b) => ms(b.startsAt) - ms(a.startsAt) || b.sortOrder - a.sortOrder);
+
+    const now = Date.now();
+    const candidates: RippleSuggestion['candidates'] = [];
+    let prevStart = ms(moved.startsAt);
+    for (const e of preceding) {
+      if (e.kind === EVENT_KIND.HARD) break;
+      if (ms(e.startsAt) <= now) break;
+      if (ms(e.endsAt ?? e.startsAt) <= prevStart) break;
+      const startsAt = shiftIso(e.startsAt!, minutes);
+      const endsAt = e.endsAt ? shiftIso(e.endsAt, minutes) : undefined;
+      candidates.push({ id: e.id, startsAt, endsAt });
+      prevStart = ms(startsAt);
+    }
+    return candidates;
   }
 }

@@ -207,6 +207,124 @@ describe('EventsService', () => {
     expect(untouchedWalkback.startsAt?.toISOString()).toBe(new Date(at('22:45')).toISOString());
   });
 
+  it('ripples preceding soft events earlier on overlap, stopping at the first hard anchor', async () => {
+    const tripId = await newTrip();
+    const flight = await service.create(tripId, DEV_USER, {
+      date: DAY,
+      title: 'Flight',
+      kind: EVENT_KIND.HARD,
+      startsAt: at('08:00'),
+      endsAt: at('10:00'),
+      source: 'manual',
+    });
+    const coffee = await service.create(tripId, DEV_USER, {
+      date: DAY,
+      title: 'Coffee',
+      kind: EVENT_KIND.SOFT,
+      startsAt: at('10:00'),
+      endsAt: at('11:00'),
+      sortOrder: 1,
+      source: 'manual',
+    });
+    const market = await service.create(tripId, DEV_USER, {
+      date: DAY,
+      title: 'Market',
+      kind: EVENT_KIND.SOFT,
+      startsAt: at('11:15'),
+      endsAt: at('12:00'),
+      sortOrder: 2,
+      source: 'manual',
+    });
+
+    // Pull Market 30 minutes earlier so it now overlaps Coffee.
+    const { rippleSuggestion } = await service.move(
+      tripId,
+      market.id,
+      DEV_USER,
+      { startsAt: at('10:45') },
+      false,
+    );
+
+    expect(rippleSuggestion?.movedTitle).toBe('Market');
+    expect(rippleSuggestion?.candidates).toEqual([
+      {
+        id: coffee.id,
+        startsAt: new Date(at('09:30')).toISOString(),
+        endsAt: new Date(at('10:30')).toISOString(),
+      },
+    ]);
+    expect(rippleSuggestion?.candidates.some((c) => c.id === flight.id)).toBe(false);
+
+    // Suggestion only — never auto-applied.
+    const untouchedCoffee = await prisma.event.findUniqueOrThrow({ where: { id: coffee.id } });
+    expect(untouchedCoffee.startsAt?.toISOString()).toBe(new Date(at('10:00')).toISOString());
+  });
+
+  it('does not ripple a preceding event that has already started', async () => {
+    const tripId = await newTrip();
+    const now = Date.now();
+    const today = new Date(now).toISOString().slice(0, 10);
+    await service.create(tripId, DEV_USER, {
+      date: today,
+      title: 'Already happening',
+      kind: EVENT_KIND.SOFT,
+      startsAt: new Date(now - 60 * 60_000).toISOString(),
+      endsAt: new Date(now + 15 * 60_000).toISOString(),
+      source: 'manual',
+    });
+    const market = await service.create(tripId, DEV_USER, {
+      date: today,
+      title: 'Market',
+      kind: EVENT_KIND.SOFT,
+      startsAt: new Date(now + 30 * 60_000).toISOString(),
+      endsAt: new Date(now + 75 * 60_000).toISOString(),
+      sortOrder: 1,
+      source: 'manual',
+    });
+
+    // Pulling Market back to now+5 would, absent the guard, overlap "Already
+    // happening" (which ends at now+15) and pull it — but it already started.
+    const { rippleSuggestion } = await service.move(
+      tripId,
+      market.id,
+      DEV_USER,
+      { startsAt: new Date(now + 5 * 60_000).toISOString() },
+      false,
+    );
+    expect(rippleSuggestion).toBeUndefined();
+  });
+
+  it('returns no backward ripple when the preceding soft event has a real gap', async () => {
+    const tripId = await newTrip();
+    await service.create(tripId, DEV_USER, {
+      date: DAY,
+      title: 'Coffee',
+      kind: EVENT_KIND.SOFT,
+      startsAt: at('09:00'),
+      endsAt: at('09:30'),
+      source: 'manual',
+    });
+    const market = await service.create(tripId, DEV_USER, {
+      date: DAY,
+      title: 'Market',
+      kind: EVENT_KIND.SOFT,
+      startsAt: at('11:00'),
+      endsAt: at('12:00'),
+      sortOrder: 1,
+      source: 'manual',
+    });
+
+    // Pulling Market 30 min earlier (to 10:30) still leaves a gap after Coffee (ends 09:30) — nothing to resolve.
+    const { rippleSuggestion } = await service.move(
+      tripId,
+      market.id,
+      DEV_USER,
+      { startsAt: at('10:30') },
+      false,
+    );
+    expect(rippleSuggestion).toBeUndefined();
+  });
+
   it('does not ripple a hard event move', async () => {
     const tripId = await newTrip();
     const booking = await prisma.booking.create({
@@ -270,5 +388,67 @@ describe('EventsService', () => {
       false,
     );
     expect(rippleSuggestion).toBeUndefined();
+  });
+
+  it('rejects moving an event to start in the past', async () => {
+    const tripId = await newTrip();
+    const market = await service.create(tripId, DEV_USER, {
+      date: DAY,
+      title: 'Market',
+      kind: EVENT_KIND.SOFT,
+      startsAt: at('11:00'),
+      endsAt: at('12:00'),
+      source: 'manual',
+    });
+
+    await expect(
+      service.move(
+        tripId,
+        market.id,
+        DEV_USER,
+        { startsAt: new Date(Date.now() - 60_000).toISOString() },
+        false,
+      ),
+    ).rejects.toThrow(ConflictException);
+  });
+
+  it('rejects nudging an event across a day boundary', async () => {
+    const tripId = await newTrip();
+    const walkback = await service.create(tripId, DEV_USER, {
+      date: DAY,
+      title: 'Walk back',
+      kind: EVENT_KIND.SOFT,
+      startsAt: at('22:45'),
+      endsAt: at('23:15'),
+      source: 'manual',
+    });
+
+    // newTrip() sets no explicit timezone, so it defaults to UTC — the day
+    // boundary is UTC midnight. `at()` bakes in a +09:00 offset; this target
+    // (2027-02-02T09:01+09:00 = 2027-02-02T00:01Z) crosses from Feb 1 into Feb 2 UTC.
+    await expect(
+      service.move(tripId, walkback.id, DEV_USER, { startsAt: '2027-02-02T09:01:00+09:00' }, false),
+    ).rejects.toThrow(ConflictException);
+  });
+
+  it('allows an explicit date change to cross days (Plan-mode reassignment)', async () => {
+    const tripId = await newTrip();
+    const walkback = await service.create(tripId, DEV_USER, {
+      date: DAY,
+      title: 'Walk back',
+      kind: EVENT_KIND.SOFT,
+      startsAt: at('22:45'),
+      endsAt: at('23:15'),
+      source: 'manual',
+    });
+
+    const { event } = await service.move(
+      tripId,
+      walkback.id,
+      DEV_USER,
+      { date: '2027-02-02', startsAt: '2027-02-02T09:01:00+09:00' },
+      false,
+    );
+    expect(event.date).toBe('2027-02-02');
   });
 });

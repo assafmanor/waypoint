@@ -4,7 +4,7 @@ import { EVENT_KIND, TRIP_NOTE_CATEGORY } from '@waypoint/shared';
 import { useTrip } from '../state/trip-state';
 import { useToast } from '../ui/Toast';
 import { useClock } from '../lib/useClock';
-import { deriveNow, dayProgress, formatTime, minutesUntil } from '../lib/time';
+import { deriveNow, dayProgress, formatTime, hardConflicts, minutesUntil } from '../lib/time';
 import { formatMoney } from '../lib/money';
 import { CODE_PREFIX, DAY_WINDOW, ICONS } from '../constants';
 import { t } from '../i18n/he';
@@ -12,12 +12,14 @@ import { t } from '../i18n/he';
 const hourLabel = (hour: number) => `${String(hour).padStart(2, '0')}:00`;
 
 export function Home() {
-  const { trip, bookings, glance, notes, events } = useTrip();
+  const { trip, bookings, glance, notes, events, activeDate } = useTrip();
   const toast = useToast();
   const now = useClock();
   const tz = trip.timezone;
 
   const { now: nowEvent, next: nextEvent } = deriveNow(events, now);
+  const dayEvents = events.filter((e) => e.date === activeDate);
+  const conflicts = nowEvent ? hardConflicts(nowEvent, dayEvents) : [];
   const nextBooking = nextEvent?.bookingId
     ? bookings.find((b) => b.id === nextEvent.bookingId)
     : undefined;
@@ -65,6 +67,12 @@ export function Home() {
             {nowEvent.endsAt && (
               <div className="now-meta">
                 {t.board.until} <span dir="ltr">{formatTime(nowEvent.endsAt, tz)}</span>
+              </div>
+            )}
+            {conflicts.length > 0 && (
+              <div className="now-conflict">
+                {ICONS.warn}{' '}
+                {t.event.conflictWarn(conflicts[0].title, formatTime(conflicts[0].startsAt!, tz))}
               </div>
             )}
           </>

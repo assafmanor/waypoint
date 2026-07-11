@@ -12,7 +12,7 @@ import {
 import { useTrip, byStart } from '../state/trip-state';
 import { useVerbs } from '../state/verbs';
 import { useClock } from '../lib/useClock';
-import { deriveNow, formatTime } from '../lib/time';
+import { deriveNow, formatTime, hardConflicts } from '../lib/time';
 import { CODE_PREFIX, DELAY_STEP_MINUTES, ICONS, MS_PER_DAY } from '../constants';
 import { t } from '../i18n/he';
 import { TRIP_TZ_OFFSET, maybeMeta } from '../fixtures';
@@ -66,6 +66,7 @@ export function DayView() {
             isOpen={openId === e.id}
             onToggle={() => setOpenId((id) => (id === e.id ? null : e.id))}
             booking={e.bookingId ? bookings.find((b) => b.id === e.bookingId) : undefined}
+            conflicts={hardConflicts(e, dayEvents)}
             verbs={verbs}
           />
         ))}
@@ -101,6 +102,7 @@ function EventItem({
   isOpen,
   onToggle,
   booking,
+  conflicts,
   verbs,
 }: {
   event: TripEvent;
@@ -109,6 +111,7 @@ function EventItem({
   isOpen: boolean;
   onToggle: () => void;
   booking?: Booking;
+  conflicts: TripEvent[];
   verbs: ReturnType<typeof useVerbs>;
 }) {
   const isHard = event.kind === EVENT_KIND.HARD;
@@ -144,6 +147,12 @@ function EventItem({
             )}
           </span>
           <span className="m">{meta}</span>
+          {conflicts.length > 0 && (
+            <span className="conflict-flag">
+              {ICONS.warn}{' '}
+              {t.event.conflictWarn(conflicts[0].title, formatTime(conflicts[0].startsAt!, tz))}
+            </span>
+          )}
         </span>
         {event.startsAt && (
           <span className="time" dir="ltr">
@@ -183,9 +192,23 @@ function EventItem({
               <button className="act" onClick={() => verbs.skip(event)}>
                 {t.actions.skip}
               </button>
-              <button className="act" onClick={() => verbs.delay(event)}>
-                {t.actions.delayBy(DELAY_STEP_MINUTES)}
-              </button>
+              <div className="act stepper">
+                <button
+                  className="step"
+                  onClick={() => verbs.earlier(event)}
+                  aria-label={t.actions.earlierBy(DELAY_STEP_MINUTES)}
+                >
+                  −
+                </button>
+                <span className="step-label">{t.actions.stepMinutes(DELAY_STEP_MINUTES)}</span>
+                <button
+                  className="step"
+                  onClick={() => verbs.delay(event)}
+                  aria-label={t.actions.delayBy(DELAY_STEP_MINUTES)}
+                >
+                  +
+                </button>
+              </div>
               <button className="act" onClick={() => verbs.swap(event)}>
                 {t.actions.swap}
               </button>

@@ -57,7 +57,11 @@ Writes go over **REST**, not the socket. The socket is for receiving. (Simpler a
 
 ## Ripple (suggestion only)
 
-When a soft event moves, the server may return a `rippleSuggestion` describing subsequent **soft** events it _could_ push, with new times. The client shows the amber ripple bar; nothing moves until the user says yes. Ripple computation stops at the first hard anchor.
+When a soft event moves — earlier or later — the server may return a `rippleSuggestion` describing contiguous/overlapping **soft** events it _could_ shift the same way, with new times. The client shows the amber ripple bar; nothing moves until the user says yes. The walk stops at the first hard anchor in that direction, at the first event that isn't actually overlapping (nothing to resolve), or — backward only — at the first event that's already started (pulling it earlier would rewrite something that's already happened).
+
+Ripple is a suggestion mechanism for soft events, not a conflict-detection mechanism. Whether a nudge (rippled or not) leaves a soft event overlapping a hard anchor is tracked separately: any soft event whose current span overlaps a hard event's span is flagged wherever it renders (Day view row, Home's now-card), independent of the ripple bar and of how the overlap arose — this keeps the guard on hard events (ADR-0011) visible without ever blocking or requiring confirmation on the soft side.
+
+A quick nudge (the `+`/`−` stepper, as opposed to an explicit `date` change) is also guarded against two invariants: it can't move an event to start in the past, and it can't cross out of the event's assigned day — reassigning an event to a different day is a Plan-mode concern (an explicit `date`), not something a ±30-minute tap should do silently. Both reject with a distinct error code (`MOVE_INTO_PAST`, `MOVE_CROSSES_DAY`) surfaced as a toast.
 
 ## Offline
 

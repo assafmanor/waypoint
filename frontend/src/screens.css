@@ -75,6 +75,11 @@
   font-size: 13px;
   margin-top: 3px;
 }
+.now-conflict {
+  color: var(--amber-deep);
+  font-size: 12px;
+  margin-top: 4px;
+}
 .board-divider {
   height: 1px;
   background: rgba(255, 255, 255, 0.09);
@@ -453,6 +458,30 @@
   outline: 2.5px solid var(--teal);
   outline-offset: 2px;
 }
+.act.stepper {
+  display: flex;
+  align-items: stretch;
+  padding: 0;
+}
+.act.stepper .step {
+  font: inherit;
+  font-size: 14px;
+  font-weight: 700;
+  line-height: 1;
+  border: none;
+  background: transparent;
+  color: inherit;
+  padding: 7px 10px;
+  cursor: pointer;
+}
+.act.stepper .step-label {
+  display: flex;
+  align-items: center;
+  padding: 7px 6px;
+  border-inline: 1px solid var(--line);
+  color: var(--muted);
+  font-size: 11px;
+}
 .hard-warn {
   font-size: 11px;
   color: var(--amber-deep);
@@ -460,6 +489,12 @@
   display: flex;
   align-items: center;
   gap: 6px;
+}
+.conflict-flag {
+  display: block;
+  font-size: 11px;
+  color: var(--amber-deep);
+  margin-top: 2px;
 }
 
 /* ripple suggestion bar */

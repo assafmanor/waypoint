@@ -30,6 +30,14 @@ export const HARD_EVENT_REQUIRES_CONFIRM = 'HARD_EVENT_REQUIRES_CONFIRM';
 export const isHardEventConfirmError = (err: unknown): boolean =>
   err instanceof ApiError && err.code === HARD_EVENT_REQUIRES_CONFIRM;
 
+export const MOVE_INTO_PAST = 'MOVE_INTO_PAST';
+export const isMoveIntoPastError = (err: unknown): boolean =>
+  err instanceof ApiError && err.code === MOVE_INTO_PAST;
+
+export const MOVE_CROSSES_DAY = 'MOVE_CROSSES_DAY';
+export const isMoveCrossesDayError = (err: unknown): boolean =>
+  err instanceof ApiError && err.code === MOVE_CROSSES_DAY;
+
 async function throwApiError(res: Response): Promise<never> {
   const body = (await res.json().catch(() => undefined)) as
     { error?: { code?: string; details?: unknown } } | undefined;
