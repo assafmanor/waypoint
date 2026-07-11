@@ -75,6 +75,11 @@
   font-size: 13px;
   margin-top: 3px;
 }
+.now-conflict {
+  color: var(--amber-deep);
+  font-size: 12px;
+  margin-top: 4px;
+}
 .board-divider {
   height: 1px;
   background: rgba(255, 255, 255, 0.09);
