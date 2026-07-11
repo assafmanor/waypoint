@@ -124,17 +124,23 @@ export class TripsService {
   }
 
   async getSnapshot(tripId: string): Promise<TripSnapshot> {
-    const [trip, members, events, bookings, maybeItems, notes] = await this.prisma.$transaction([
-      this.prisma.trip.findUniqueOrThrow({ where: { id: tripId } }),
-      this.prisma.membership.findMany({ where: { tripId } }),
-      this.prisma.event.findMany({
-        where: { tripId },
-        orderBy: [{ date: 'asc' }, { sortOrder: 'asc' }],
-      }),
-      this.prisma.booking.findMany({ where: { tripId } }),
-      this.prisma.maybeItem.findMany({ where: { tripId } }),
-      this.prisma.tripNote.findMany({ where: { tripId }, orderBy: { sortOrder: 'asc' } }),
-    ]);
+    const [trip, members, events, bookings, maybeItems, notes, latestChange] =
+      await this.prisma.$transaction([
+        this.prisma.trip.findUniqueOrThrow({ where: { id: tripId } }),
+        this.prisma.membership.findMany({ where: { tripId } }),
+        this.prisma.event.findMany({
+          where: { tripId },
+          orderBy: [{ date: 'asc' }, { sortOrder: 'asc' }],
+        }),
+        this.prisma.booking.findMany({ where: { tripId } }),
+        this.prisma.maybeItem.findMany({ where: { tripId } }),
+        this.prisma.tripNote.findMany({ where: { tripId }, orderBy: { sortOrder: 'asc' } }),
+        this.prisma.change.findFirst({
+          where: { tripId },
+          orderBy: { seq: 'desc' },
+          select: { seq: true },
+        }),
+      ]);
 
     return {
       trip: toTripDto(trip),
@@ -143,8 +149,7 @@ export class TripsService {
       bookings: bookings.map(toBookingDto),
       maybeItems: maybeItems.map(toMaybeItemDto),
       notes: notes.map(toTripNoteDto),
-      // No ChangeService yet (ADR-0022) — real cursor lands with the first data-plane write.
-      latestSeq: '0',
+      latestSeq: latestChange ? latestChange.seq.toString() : '0',
     };
   }
 }

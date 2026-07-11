@@ -4,7 +4,7 @@ import type { Principal } from './principal';
 type RequestWithUser = { params: Record<string, string>; user?: Principal };
 
 // Matches backend/prisma/seed.mjs's ME user — swapped for real Google sessions in T-007.
-const DEV_PRINCIPAL: Principal = { userId: 'u-assaf', email: 'assaf@example.com' };
+export const DEV_PRINCIPAL: Principal = { userId: 'u-assaf', email: 'assaf@example.com' };
 
 /** T-033 walking-skeleton stub. Only injects a principal when DEV_AUTH=1; never on in prod. */
 @Injectable()
