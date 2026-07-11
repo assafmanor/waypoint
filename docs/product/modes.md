@@ -13,7 +13,23 @@ Plan mode and Trip mode are **not two apps or two screen sets** — they are the
 | **Index**      | **Entry**: add bookings manually (flights/hotels/reservations) → index, link to hard events.                                      | **Reference**: read confirmation codes/documents; works offline.                                  |
 | **Map**        | **Research**: search & pin places (Google Places), collect onto the "maybe" shelf.                                                | **Orientation**: "near me now," pinned events, deep-link nav.                                     |
 
-Editing isn't _disabled_ in Trip mode — it's _de-emphasized and guarded_ (hard-event warnings, undo). You can always adjust on the ground; the UI just stops leading with it.
+Editing isn't _disabled_ in Trip mode — it's _de-emphasized and guarded_ (hard-event warnings, undo). You can always adjust on the ground; the UI just stops leading with it. **What editing means per mode is defined by the capability tiers below (ADR-0025).**
+
+## Editing: capability tiers (ADR-0025)
+
+An edit's **tier is decided by its blast radius, not by mode**; mode decides _how_ you reach it. This refines "editing is never hard-disabled in Trip mode" (ADR-0016): trip-level building (Tier 3) is _gated_ in Trip mode, but the gate is a one-tap, discoverable switch to Plan — not a dead end.
+
+| Tier                                                            | Contents                                                                                                                                                                                     | Trip mode                          | Plan mode                 |
+| --------------------------------------------------------------- | -------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- | ---------------------------------- | ------------------------- |
+| **1 — on-the-ground verbs** (one tap, on the item)              | Soft: Done · Skip · Do-it-now · Delay/Earlier · Swap · Navigate. Hard: Navigate · On-my-way · Delay ±step _(confirm)_ · Done. Maybe-shelf → Schedule onto **today**. Add a quick soft event. | ✅ primary surface                 | ✅ available              |
+| **2 — single-item structural** (opens an inline **edit sheet**) | Edit one event's details/exact time · flip one event **hard↔soft** · **Delete** an event · quick-add a **booking** · add a **hard event** · link a booking                                   | 🔓 via sheet, then back to the day | ✅ first-class            |
+| **3 — trip-level building** (must be in Plan mode)              | Add/remove **days** · move/reorder events **across days** · bulk arrange · trip **dates / destination / timezone** · **invites** & membership · maybe-shelf **research** · **budget** setup  | 🚫 → "Switch to Plan to do this"   | ✅ the point of Plan mode |
+
+Two deliberate distinctions: **Skip** (Tier 1, reversible — parks to the shelf) vs. **Delete** (Tier 2, destroys); **Schedule-from-shelf** (Tier 1) vs. **build-the-shelf / research** (Tier 3). Hard-event edits in any tier route through the ADR-0011 confirmation gate.
+
+### The on-the-ground day view (ADR-0027)
+
+Trip mode's Day-by-day derives a **lifecycle phase** for every event from the real clock (ADR-0026) — never auto-writing status. Past events read as _handled_ without a stored mutation: a departed flight settles as **Passed**; a missed soft plan on today **Slips** to the top ("Slipped — still on?" → **Do it now** / Skip / Pick a time); earlier days' un-acted softs are greyed history. The **shelf is a parking lot**: Skip parks a soft event back onto it (durable, reversible), Schedule places it onto a day, consumed ideas simply stop rendering.
 
 ## Plan mode — v1 responsibilities
 

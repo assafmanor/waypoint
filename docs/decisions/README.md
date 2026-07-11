@@ -67,3 +67,6 @@ What else we weighed and why we didn't pick it.
 | [0022](0022-control-plane-vs-data-plane.md)     | Control plane vs. data plane: only the data plane routes through ChangeService             | Accepted |
 | [0023](0023-zod-first-entities-and-openapi.md)  | Zod-first entity shapes; OpenAPI generated from schemas                                    | Accepted |
 | [0024](0024-app-shell-and-trip-lifecycle.md)    | App shell & trip-lifecycle navigation (thin shell; login/zero-state/create/join/switcher)  | Accepted |
+| [0025](0025-trip-mode-edit-capability-tiers.md) | Trip-mode edit capability tiers & the Plan escape (refines 0016)                           | Accepted |
+| [0026](0026-real-clock-and-dev-time-travel.md)  | Real clock as the time source + dev time-travel                                            | Accepted |
+| [0027](0027-soft-item-lifecycle-shelf-slip.md)  | Soft-item lifecycle: derived phases, slip/Do-it-now, shelf as a parking lot                | Accepted |
