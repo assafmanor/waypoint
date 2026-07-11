@@ -88,8 +88,10 @@ export async function moveEvent(
   tripId: string,
   eventId: string,
   input: MoveEventInput,
+  confirm = false,
 ): Promise<MoveEventResult> {
-  const res = await fetch(`${eventUrl(tripId, eventId)}/move`, {
+  const url = `${eventUrl(tripId, eventId)}/move${confirm ? '?confirm=true' : ''}`;
+  const res = await fetch(url, {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
     body: JSON.stringify(input),

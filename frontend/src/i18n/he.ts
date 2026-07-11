@@ -106,4 +106,8 @@ export const t = {
   ripple: {
     prompt: (movedTitle: string) => `דחית את ${movedTitle}. לדחות את האירועים הבאים גם?`,
   },
+  confirm: {
+    hardEditTitle: 'לשנות אירוע קשיח?',
+    hardEditBody: (title: string) => `${title} הוא אירוע קשיח · שינוי דורש עדכון ההזמנה. להמשיך?`,
+  },
 } as const;
