@@ -221,6 +221,10 @@ export function useVerbs() {
       if (e.kind === EVENT_KIND.HARD) toast(ICONS.warn, t.toast.hardDelayed, undo);
       else toast(ICONS.delay, t.toast.softDelayed(DELAY_STEP_MINUTES), undo);
     },
+    earlier: (e: TripEvent) => {
+      void applyDelay(deps, e, -DELAY_STEP_MINUTES);
+      toast(ICONS.delay, t.toast.softEarlier(DELAY_STEP_MINUTES), undo);
+    },
     onWay: (_e: TripEvent) => toast(ICONS.share, t.toast.onWayShared),
     navigate: (_e: TripEvent) => toast(ICONS.navigate, t.toast.openingNav),
     schedule: (m: MaybeItem) => {
