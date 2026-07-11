@@ -30,14 +30,15 @@
 
 ## Trips
 
-| Method | Path                    | Body → Response                                                                     |
-| ------ | ----------------------- | ----------------------------------------------------------------------------------- |
-| POST   | `/trips`                | `createTripSchema` → `Trip` (caller becomes creator + **`admin`** member, ADR-0005) |
-| GET    | `/trips`                | → `Trip[]` (all trips the caller is a member of — multi-trip, ADR-0021)             |
-| GET    | `/trips/:tripId`        | → `Trip` + members                                                                  |
-| PATCH  | `/trips/:tripId`        | partial trip → `Trip`                                                               |
-| POST   | `/trips/:tripId/invite` | → `{ inviteUrl }` (signed join token)                                               |
-| POST   | `/trips/join/:token`    | → `Membership` (adds caller as peer)                                                |
+| Method | Path                             | Body → Response                                                                     |
+| ------ | -------------------------------- | ----------------------------------------------------------------------------------- |
+| POST   | `/trips`                         | `createTripSchema` → `Trip` (caller becomes creator + **`admin`** member, ADR-0005) |
+| GET    | `/trips`                         | → `Trip[]` (all trips the caller is a member of — multi-trip, ADR-0021)             |
+| GET    | `/trips/:tripId`                 | → `Trip` + members                                                                  |
+| PATCH  | `/trips/:tripId`                 | partial trip → `Trip`                                                               |
+| POST   | `/trips/:tripId/invite`          | → `{ inviteUrl }` (signed join token)                                               |
+| POST   | `/trips/join/:token`             | → `Membership` (adds caller as peer; idempotent, keeps existing role on rejoin)     |
+| DELETE | `/trips/:tripId/members/:userId` | → `204` (self = leave, anyone; others = admin-only, ADR-0005)                       |
 
 ## Events
 
