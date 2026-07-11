@@ -4,6 +4,10 @@
 _internal/
 CLAUDE.local.md
 
+# Private task-authoring skill: references _internal/tasks/ by name, which
+# the committed repo must never do (ADR-0010).
+.claude/skills/new-task/
+
 # Secrets & environment
 .env
 .env.*
