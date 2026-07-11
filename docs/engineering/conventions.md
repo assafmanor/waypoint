@@ -67,3 +67,4 @@ waypoint/
 - **Every feature ships with tests** — its logic and its interaction verbs. Nothing merges test-free.
 - Types/zod/Prisma consistent; `pnpm typecheck` and `pnpm build` pass.
 - Docs/ADRs updated if behavior or a decision changed.
+- **CI enforces this too**, not just the local pre-commit hook: `.github/workflows/ci.yml` runs typecheck/build/test/lint on every PR against `main` and blocks merge on failure.
