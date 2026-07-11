@@ -12,9 +12,9 @@ import {
   type ReactNode,
 } from 'react';
 import {
-  EVENT_KIND,
   EVENT_STATUS,
   type Booking,
+  type Change,
   type MaybeItem,
   type Trip,
   type TripEvent,
@@ -22,15 +22,13 @@ import {
   type TripSnapshot,
   type User,
 } from '@waypoint/shared';
-import { fetchSnapshot } from '../lib/api';
+import { fetchSnapshot, type RippleSuggestion } from '../lib/api';
+import { openTripStream } from '../lib/ws';
 import { shiftIso } from '../lib/time';
 import { ACTIVE_DATE, EVENTS, GLANCE, MAYBE_ITEMS, USERS, activeUserId } from '../fixtures';
 import { t } from '../i18n/he';
 
-export interface RippleSuggestion {
-  movedTitle: string;
-  candidates: { id: string; startsAt: string; endsAt?: string }[];
-}
+export type { RippleSuggestion };
 
 interface Snapshot {
   events: TripEvent[];
@@ -48,7 +46,12 @@ export type Action =
   | { type: 'SCHEDULE'; event: TripEvent; maybeId: string }
   | { type: 'RIPPLE_APPLY' }
   | { type: 'RIPPLE_DISMISS' }
-  | { type: 'UNDO' };
+  | { type: 'UNDO' }
+  // T-014: the REST write layer (verbs.ts) reconciles/broadcasts through these.
+  | { type: 'RECONCILE_EVENT'; event: TripEvent }
+  | { type: 'SET_RIPPLE'; ripple: RippleSuggestion | null }
+  | { type: 'REMOTE_EVENT_CHANGE'; change: Change }
+  | { type: 'RESYNC'; events: TripEvent[]; maybeItems: MaybeItem[] };
 
 // Compare/sort by instant, never by string: a delayed event's startsAt is a
 // Z-normalised ISO while fixtures carry an explicit offset — lexical compare
@@ -56,37 +59,6 @@ export type Action =
 const ms = (iso?: string) => (iso ? Date.parse(iso) : 0);
 const byStart = (a: TripEvent, b: TripEvent) =>
   ms(a.startsAt) - ms(b.startsAt) || a.sortOrder - b.sortOrder;
-
-/** Following soft events on the same day that now overlap the moved event, up to
- *  the first hard anchor (hard events are never rippled — ADR-0011). */
-function computeRipple(
-  events: TripEvent[],
-  moved: TripEvent,
-  minutes: number,
-): RippleSuggestion | null {
-  if (moved.kind !== EVENT_KIND.SOFT || !moved.endsAt) return null;
-  const following = events
-    .filter(
-      (e) =>
-        e.date === moved.date &&
-        e.status === EVENT_STATUS.PLANNED &&
-        e.startsAt &&
-        e.id !== moved.id,
-    )
-    .sort(byStart)
-    .filter((e) => ms(e.startsAt) > ms(moved.startsAt));
-  const candidates: RippleSuggestion['candidates'] = [];
-  let prevEnd = ms(moved.endsAt);
-  for (const e of following) {
-    if (e.kind === EVENT_KIND.HARD) break;
-    if (ms(e.startsAt) >= prevEnd) break;
-    const startsAt = shiftIso(e.startsAt!, minutes);
-    const endsAt = e.endsAt ? shiftIso(e.endsAt, minutes) : undefined;
-    candidates.push({ id: e.id, startsAt, endsAt });
-    prevEnd = ms(endsAt ?? startsAt);
-  }
-  return candidates.length ? { movedTitle: moved.title, candidates } : null;
-}
 
 function snapshotOf(s: State): Snapshot {
   return { events: s.events, maybeItems: s.maybeItems };
@@ -105,18 +77,18 @@ export function reducer(state: State, action: Action): State {
       return { ...state, events, ripple: null, undo: snapshotOf(state) };
     }
     case 'DELAY': {
-      let moved: TripEvent | undefined;
-      const events = state.events.map((e) => {
-        if (e.id !== action.id) return e;
-        moved = {
-          ...e,
-          startsAt: e.startsAt ? shiftIso(e.startsAt, action.minutes) : e.startsAt,
-          endsAt: e.endsAt ? shiftIso(e.endsAt, action.minutes) : e.endsAt,
-        };
-        return moved;
-      });
-      const ripple = moved ? computeRipple(events, moved, action.minutes) : null;
-      return { ...state, events, ripple, undo: snapshotOf(state) };
+      // Ripple is server-authoritative now (T-014) — verbs.ts's move() response
+      // sets it via SET_RIPPLE once the REST call resolves.
+      const events = state.events.map((e) =>
+        e.id === action.id
+          ? {
+              ...e,
+              startsAt: e.startsAt ? shiftIso(e.startsAt, action.minutes) : e.startsAt,
+              endsAt: e.endsAt ? shiftIso(e.endsAt, action.minutes) : e.endsAt,
+            }
+          : e,
+      );
+      return { ...state, events, ripple: null, undo: snapshotOf(state) };
     }
     case 'SCHEDULE': {
       const events = [...state.events, action.event];
@@ -138,9 +110,46 @@ export function reducer(state: State, action: Action): State {
       return { ...state, ripple: null };
     case 'UNDO':
       return state.undo ? { ...state, ...state.undo, ripple: null, undo: null } : state;
+    case 'RECONCILE_EVENT': {
+      const exists = state.events.some((e) => e.id === action.event.id);
+      const events = exists
+        ? state.events.map((e) => (e.id === action.event.id ? action.event : e))
+        : [...state.events, action.event];
+      return { ...state, events };
+    }
+    case 'SET_RIPPLE':
+      return { ...state, ripple: action.ripple };
+    case 'REMOTE_EVENT_CHANGE':
+      return { ...state, events: applyRemoteEventChange(state.events, action.change) };
+    case 'RESYNC':
+      return { ...state, events: action.events, maybeItems: action.maybeItems, ripple: null };
     default:
       return state;
   }
+}
+
+/** `change.after` is the wire input the actor sent (partial), not the full
+ *  persisted entity — the backend Change log doesn't carry server-computed
+ *  fields (e.g. a ripple-shifted `endsAt`). Good enough at this trip's scale;
+ *  a richer Change payload is a backend change, out of T-014's scope. */
+function applyRemoteEventChange(events: TripEvent[], change: Change): TripEvent[] {
+  // ponytail: bookings/notes/maybe-items have no consuming UI yet (T-048 etc.) —
+  // wire their entityTypes in here once something renders them live.
+  if (change.entityType !== 'event') return events;
+  if (change.action === 'delete') return events.filter((e) => e.id !== change.entityId);
+  const partial = change.after as Partial<TripEvent> | undefined;
+  if (!partial) return events;
+  const existing = events.find((e) => e.id === change.entityId);
+  if (existing) {
+    return events.map((e) => (e.id === change.entityId ? { ...e, ...partial } : e));
+  }
+  const created = {
+    status: EVENT_STATUS.PLANNED,
+    ...partial,
+    id: change.entityId,
+    tripId: change.tripId,
+  } as TripEvent;
+  return [...events, created];
 }
 
 interface TripContextValue {
@@ -203,6 +212,22 @@ export function TripProvider({ tripId, children }: { tripId: string; children: R
 
 function TripReady({ snapshot, children }: { snapshot: TripSnapshot; children: ReactNode }) {
   const [state, dispatch] = useReducer(reducer, snapshot, initialState);
+  const tripId = snapshot.trip.id;
+
+  useEffect(() => {
+    const close = openTripStream(tripId, snapshot.latestSeq, {
+      onChange: (change) => dispatch({ type: 'REMOTE_EVENT_CHANGE', change }),
+      onResync: () => {
+        fetchSnapshot(tripId).then(
+          (s) => dispatch({ type: 'RESYNC', events: s.events, maybeItems: s.maybeItems }),
+          () => {}, // ponytail: transient refetch failure — next change/hello retries the resync.
+        );
+      },
+    });
+    return close;
+    // Reconnect only on trip switch — `snapshot.latestSeq` is just this effect's initial cursor.
+  }, [tripId]);
+
   const value = useMemo<TripContextValue>(
     () => ({
       trip: snapshot.trip,
