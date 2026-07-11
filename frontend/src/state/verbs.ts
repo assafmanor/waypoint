@@ -13,10 +13,13 @@ import {
 } from '@waypoint/shared';
 import { useTrip, type Action, type RippleSuggestion } from './trip-state';
 import { useToast } from '../ui/Toast';
+import { useConfirmHardEdit } from '../ui/ConfirmDialog';
 import {
   createEvent,
   deleteEvent,
   isHardEventConfirmError,
+  isMoveCrossesDayError,
+  isMoveIntoPastError,
   moveEvent,
   setEventStatus,
 } from '../lib/api';
@@ -28,7 +31,7 @@ type ShowToast = ReturnType<typeof useToast>;
 
 type UndoDescriptor =
   | { kind: 'status'; id: string; previous: TripEvent['status'] }
-  | { kind: 'move'; id: string; previous: { date: string; startsAt?: string } }
+  | { kind: 'move'; id: string; previous: { date: string; startsAt?: string }; isHard: boolean }
   | { kind: 'create'; id: string }
   | { kind: 'rippleApply'; items: { id: string; previous: { date: string; startsAt?: string } }[] };
 
@@ -37,13 +40,18 @@ export interface VerbDeps {
   dispatch: React.Dispatch<Action>;
   toast: ShowToast;
   lastAction: { current: UndoDescriptor | null };
+  confirmHardEdit: (event: TripEvent) => Promise<boolean>;
 }
 
 function writeErrorToast(toast: ShowToast, err: unknown): void {
-  toast(
-    ICONS.warn,
-    isHardEventConfirmError(err) ? t.toast.hardConfirmRequired : t.toast.writeFailed,
-  );
+  const message = isHardEventConfirmError(err)
+    ? t.toast.hardConfirmRequired
+    : isMoveIntoPastError(err)
+      ? t.toast.moveIntoPast
+      : isMoveCrossesDayError(err)
+        ? t.toast.moveCrossesDay
+        : t.toast.writeFailed;
+  toast(ICONS.warn, message);
 }
 
 function toCreateEventInput(event: TripEvent): CreateEventInput {
@@ -97,12 +105,16 @@ export async function applySetStatus(
 
 export async function applyDelay(deps: VerbDeps, event: TripEvent, minutes: number): Promise<void> {
   const previous = { date: event.date, startsAt: event.startsAt };
+  const isHard = event.kind === EVENT_KIND.HARD;
   deps.dispatch({ type: 'DELAY', id: event.id, minutes });
-  deps.lastAction.current = { kind: 'move', id: event.id, previous };
+  deps.lastAction.current = { kind: 'move', id: event.id, previous, isHard };
   try {
-    const { event: canonical, rippleSuggestion } = await moveEvent(deps.tripId, event.id, {
-      startsAt: event.startsAt ? shiftForMove(event.startsAt, minutes) : undefined,
-    });
+    const { event: canonical, rippleSuggestion } = await moveEvent(
+      deps.tripId,
+      event.id,
+      { startsAt: event.startsAt ? shiftForMove(event.startsAt, minutes) : undefined },
+      isHard,
+    );
     deps.dispatch({ type: 'RECONCILE_EVENT', event: canonical });
     deps.dispatch({ type: 'SET_RIPPLE', ripple: rippleSuggestion ?? null });
   } catch (err) {
@@ -115,6 +127,23 @@ export async function applyDelay(deps: VerbDeps, event: TripEvent, minutes: numb
 // `startsAt` to send over the wire before the optimistic dispatch settles.
 function shiftForMove(iso: string, minutes: number): string {
   return new Date(new Date(iso).getTime() + minutes * 60000).toISOString();
+}
+
+// Hard-event guard (ADR-0011): a hard event's delay only applies after the
+// user confirms in the dialog; cancel is a true no-op (nothing dispatched,
+// no REST call). Soft events skip the gate entirely. This is the single
+// choke point both DayView's row and any future trigger (T-049) call through.
+export async function applyGuardedDelay(
+  deps: VerbDeps,
+  event: TripEvent,
+  minutes: number,
+): Promise<boolean> {
+  if (event.kind === EVENT_KIND.HARD) {
+    const confirmed = await deps.confirmHardEdit(event);
+    if (!confirmed) return false;
+  }
+  await applyDelay(deps, event, minutes);
+  return true;
 }
 
 export async function applySchedule(
@@ -161,10 +190,12 @@ async function reverseRest(tripId: string, desc: UndoDescriptor): Promise<void> 
       await setEventStatus(tripId, desc.id, desc.previous);
       return;
     case 'move':
-      await moveEvent(tripId, desc.id, {
-        date: desc.previous.date,
-        startsAt: desc.previous.startsAt,
-      });
+      await moveEvent(
+        tripId,
+        desc.id,
+        { date: desc.previous.date, startsAt: desc.previous.startsAt },
+        desc.isHard,
+      );
       return;
     case 'create':
       await deleteEvent(tripId, desc.id);
@@ -195,8 +226,9 @@ export async function applyUndo(deps: VerbDeps): Promise<void> {
 export function useVerbs() {
   const { dispatch, trip, events, ripple } = useTrip();
   const toast = useToast();
+  const confirmHardEdit = useConfirmHardEdit();
   const lastAction = useRef<UndoDescriptor | null>(null);
-  const deps: VerbDeps = { tripId: trip.id, dispatch, toast, lastAction };
+  const deps: VerbDeps = { tripId: trip.id, dispatch, toast, lastAction, confirmHardEdit };
   const undo = () => void applyUndo(deps);
 
   return {
@@ -217,9 +249,15 @@ export function useVerbs() {
       toast(ICONS.swap, t.toast.swapPrompt, undo);
     },
     delay: (e: TripEvent) => {
-      void applyDelay(deps, e, DELAY_STEP_MINUTES);
-      if (e.kind === EVENT_KIND.HARD) toast(ICONS.warn, t.toast.hardDelayed, undo);
-      else toast(ICONS.delay, t.toast.softDelayed(DELAY_STEP_MINUTES), undo);
+      void applyGuardedDelay(deps, e, DELAY_STEP_MINUTES).then((applied) => {
+        if (!applied) return;
+        if (e.kind === EVENT_KIND.HARD) toast(ICONS.warn, t.toast.hardDelayed, undo);
+        else toast(ICONS.delay, t.toast.softDelayed(DELAY_STEP_MINUTES), undo);
+      });
+    },
+    earlier: (e: TripEvent) => {
+      void applyDelay(deps, e, -DELAY_STEP_MINUTES);
+      toast(ICONS.delay, t.toast.softEarlier(DELAY_STEP_MINUTES), undo);
     },
     onWay: (_e: TripEvent) => toast(ICONS.share, t.toast.onWayShared),
     navigate: (_e: TripEvent) => toast(ICONS.navigate, t.toast.openingNav),

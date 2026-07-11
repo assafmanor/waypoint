@@ -6,6 +6,8 @@ import {
   deleteEvent,
   fetchSnapshot,
   isHardEventConfirmError,
+  isMoveCrossesDayError,
+  isMoveIntoPastError,
   moveEvent,
   setEventStatus,
 } from './api';
@@ -121,6 +123,34 @@ describe('event write calls', () => {
     vi.stubGlobal('fetch', vi.fn().mockResolvedValue(new Response(null, { status: 500 })));
     await expect(setEventStatus(TRIP.id, event.id, EVENT_STATUS.DONE)).rejects.toSatisfy(
       (err: unknown) => !isHardEventConfirmError(err),
+    );
+  });
+
+  it('a 409 MOVE_INTO_PAST parses into a distinguishable ApiError', async () => {
+    vi.stubGlobal(
+      'fetch',
+      vi.fn().mockResolvedValue(
+        new Response(JSON.stringify({ error: { code: 'MOVE_INTO_PAST', message: 'past' } }), {
+          status: 409,
+        }),
+      ),
+    );
+    await expect(moveEvent(TRIP.id, event.id, { startsAt: event.startsAt })).rejects.toSatisfy(
+      (err: unknown) => err instanceof ApiError && isMoveIntoPastError(err),
+    );
+  });
+
+  it('a 409 MOVE_CROSSES_DAY parses into a distinguishable ApiError', async () => {
+    vi.stubGlobal(
+      'fetch',
+      vi.fn().mockResolvedValue(
+        new Response(JSON.stringify({ error: { code: 'MOVE_CROSSES_DAY', message: 'day' } }), {
+          status: 409,
+        }),
+      ),
+    );
+    await expect(moveEvent(TRIP.id, event.id, { startsAt: event.startsAt })).rejects.toSatisfy(
+      (err: unknown) => err instanceof ApiError && isMoveCrossesDayError(err),
     );
   });
 });

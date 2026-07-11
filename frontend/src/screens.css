@@ -75,6 +75,11 @@
   font-size: 13px;
   margin-top: 3px;
 }
+.now-conflict {
+  color: var(--amber-deep);
+  font-size: 12px;
+  margin-top: 4px;
+}
 .board-divider {
   height: 1px;
   background: rgba(255, 255, 255, 0.09);
@@ -453,6 +458,30 @@
   outline: 2.5px solid var(--teal);
   outline-offset: 2px;
 }
+.act.stepper {
+  display: flex;
+  align-items: stretch;
+  padding: 0;
+}
+.act.stepper .step {
+  font: inherit;
+  font-size: 14px;
+  font-weight: 700;
+  line-height: 1;
+  border: none;
+  background: transparent;
+  color: inherit;
+  padding: 7px 10px;
+  cursor: pointer;
+}
+.act.stepper .step-label {
+  display: flex;
+  align-items: center;
+  padding: 7px 6px;
+  border-inline: 1px solid var(--line);
+  color: var(--muted);
+  font-size: 11px;
+}
 .hard-warn {
   font-size: 11px;
   color: var(--amber-deep);
@@ -460,6 +489,12 @@
   display: flex;
   align-items: center;
   gap: 6px;
+}
+.conflict-flag {
+  display: block;
+  font-size: 11px;
+  color: var(--amber-deep);
+  margin-top: 2px;
 }
 
 /* ripple suggestion bar */
@@ -568,6 +603,70 @@
   text-align: center;
   padding: 22px 20px 6px;
   line-height: 1.5;
+}
+
+/* hard-event edit confirmation dialog */
+.confirm-overlay {
+  position: fixed;
+  inset: 0;
+  background: rgba(22, 35, 61, 0.45);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: 24px;
+  z-index: 20;
+  animation: fade 0.18s ease;
+}
+.confirm-card {
+  width: 100%;
+  max-width: 340px;
+  background: var(--card);
+  border: 1px solid rgba(233, 166, 60, 0.35);
+  border-radius: 15px;
+  padding: 18px;
+  box-shadow: 0 20px 40px -14px rgba(0, 0, 0, 0.35);
+}
+.confirm-title {
+  font-weight: 700;
+  font-size: 15px;
+  color: var(--ink);
+  display: flex;
+  align-items: center;
+  gap: 6px;
+}
+.confirm-body {
+  font-size: 13px;
+  color: var(--muted);
+  margin: 8px 0 16px;
+  line-height: 1.5;
+}
+.confirm-actions {
+  display: flex;
+  gap: 8px;
+  justify-content: flex-end;
+}
+.confirm-actions button {
+  font: inherit;
+  font-size: 13px;
+  font-weight: 700;
+  border-radius: 9px;
+  padding: 8px 14px;
+  cursor: pointer;
+}
+.confirm-cancel {
+  border: 1px solid var(--line);
+  background: #fff;
+  color: var(--ink);
+}
+.confirm-cancel:focus-visible,
+.confirm-ok:focus-visible {
+  outline: 2.5px solid var(--teal);
+  outline-offset: 2px;
+}
+.confirm-ok {
+  border: 0;
+  background: var(--amber);
+  color: #3a2405;
 }
 
 /* toast */
