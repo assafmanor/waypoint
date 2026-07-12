@@ -131,7 +131,7 @@
   background: var(--amber);
   color: #3a2405;
 }
-/* Plan mode never uses amber (design-principles-addendum §1): the selected
+/* Plan mode never uses amber (design-language: mode identity): the selected
    mode pill and selected day go plan violet. Solid --plan rather than
    --plan-tint because the header chrome is still dark indigo — the light
    drafting chrome for plan mode is a designed follow-up. */
@@ -181,7 +181,7 @@
 .day-pill.on .n {
   color: #3a2405;
 }
-/* In plan mode no day is "now", so selection is violet (addendum fix list #5). */
+/* In plan mode no day is "now", so selection is violet (design-language: mode identity). */
 .app[data-mode='plan'] .day-pill.on {
   background: var(--plan);
   color: #fff;

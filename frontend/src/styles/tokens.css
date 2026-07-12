@@ -1,5 +1,5 @@
 /* Waypoint design tokens — ported from mockups/trip-dashboard-v2.html.
-   See docs/design/design-language.md + design-principles-addendum.md.
+   See docs/design/design-language.md (rules) + ADR-0028 (why).
    Amber = time & commitment only; Teal = location only; Plan violet = plan mode only. */
 :root {
   --ink: #16233d;
@@ -17,7 +17,7 @@
   --soft-line: rgba(22, 35, 61, 0.28);
   --shadow: 0 18px 40px -18px rgba(14, 23, 41, 0.45);
 
-  /* Mode & action tokens (design-principles-addendum §1–2) */
+  /* Mode & action tokens (design-language: mode identity + color budget) */
   --plan: #6e59d6; /* plan-mode accent — plan/builder actions only */
   --plan-deep: #5747b4;
   --plan-tint: rgba(110, 89, 214, 0.1);
@@ -53,7 +53,7 @@ body {
 
 /* Dark mode remap — INERT until <html data-theme="dark"> is set.
    Same token names, re-mapped; component CSS stays untouched.
-   See design-principles-addendum §11 for principles + remaining work. */
+   See design-language "Dark mode readiness" for principles + remaining work. */
 :root[data-theme='dark'] {
   --ink: #e7eaf2;
   --indigo: #131f38;

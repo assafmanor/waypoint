@@ -1,5 +1,5 @@
 /* Home + Day-by-day components, ported from mockups/trip-dashboard-v2.html.
-   Amber = time/commitment only; teal = location/nav only; plan violet = plan actions (addendum). */
+   Amber = time/commitment only; teal = location/nav only; plan violet = plan actions (design-language.md). */
 
 /* departure-board hero */
 .board {
@@ -304,7 +304,7 @@
   margin-top: 2px;
 }
 .gcard .s.up {
-  color: var(--ok); /* status, not location (addendum §2) */
+  color: var(--ok); /* status, not location (design-language: color budget) */
   font-weight: 600;
 }
 .gcard .s.down {
@@ -321,7 +321,7 @@
 .budget-bar i {
   display: block;
   height: 100%;
-  background: var(--ok); /* budget health status (addendum §2) */
+  background: var(--ok); /* budget health status (design-language: color budget) */
   border-radius: 4px;
 }
 .budget-bar i.over {
@@ -609,7 +609,7 @@
 }
 .maybe:hover {
   transform: translateY(-2px);
-  border-color: var(--plan); /* scheduling is a plan action (addendum §2) */
+  border-color: var(--plan); /* scheduling is a plan action (design-language: color budget) */
 }
 .maybe:focus-visible {
   outline: 2.5px solid var(--teal);
@@ -712,13 +712,13 @@
   outline: 2.5px solid var(--teal);
   outline-offset: 2px;
 }
-/* amber = the hard-edit/commitment guard only (addendum §2) */
+/* amber = the hard-edit/commitment guard only (design-language: color budget) */
 .confirm-ok {
   border: 0;
   background: var(--amber);
   color: #3a2405;
 }
-/* generic form submit = neutral CTA, never amber (addendum §2) */
+/* generic form submit = neutral CTA, never amber (design-language: color budget) */
 .form-save {
   border: 0;
   background: var(--cta);
@@ -791,7 +791,7 @@
   color: var(--ink);
 }
 /* soft selection follows the soft grammar — dashed + muted, never amber/teal
-   (design-principles-addendum §2); amber .on stays for hard = commitment */
+   (design-language: color budget); amber .on stays for hard = commitment */
 .kind-toggle button.soft.on {
   border-style: dashed;
   border-color: var(--soft-line);

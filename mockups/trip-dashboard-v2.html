@@ -1,14 +1,13 @@
 <!doctype html>
-<!-- STATUS: PRE-ADDENDUM (docs/design/design-principles-addendum.md).
-     Authored before the addendum; semantic colors (status --ok, plan violet on
-     scheduling affordances) have been retrofitted in place. Still the canonical
-     Trip-mode reference, but where this mockup and the design docs conflict,
-     the docs win. -->
+<!-- STATUS: predates ADR-0028 (mode identity / color budget / dark-ready tokens).
+     Semantic colors (status --ok, plan violet on scheduling affordances) have
+     been retrofitted in place. Still the canonical Trip-mode reference, but
+     where this mockup and docs/design/design-language.md conflict, the doc wins. -->
 <html lang="he" dir="rtl">
   <head>
     <meta charset="UTF-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-    <title>מרכז שליטה לטיול — מוקאפ v2 · לפני האדנדום</title>
+    <title>מרכז שליטה לטיול — מוקאפ v2 · לפני ADR-0028</title>
     <link rel="preconnect" href="https://fonts.googleapis.com" />
     <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
     <link
@@ -27,9 +26,9 @@
         --amber: #e9a63c;
         --amber-deep: #c9822a;
         --teal: #2c9c90;
-        --plan: #6e59d6; /* plan/scheduling actions (design-principles-addendum §1) */
+        --plan: #6e59d6; /* plan/scheduling actions (design-language: mode identity) */
         --plan-deep: #5747b4;
-        --ok: #3c9a6b; /* positive status (addendum §2) */
+        --ok: #3c9a6b; /* positive status (design-language: color budget) */
         --muted: #6c7488;
         --cat-food: #e8998a;
         --cat-lodging: #9c8ce8;
@@ -723,7 +722,7 @@
       }
       .maybe:hover {
         transform: translateY(-2px);
-        border-color: var(--plan); /* scheduling is a plan action (addendum §2) */
+        border-color: var(--plan); /* scheduling is a plan action (design-language: color budget) */
       }
       .maybe .mi {
         font-size: 20px;
@@ -781,7 +780,7 @@
         margin-top: 2px;
       }
       .gcard .s.up {
-        color: var(--ok); /* status, not location (addendum §2) */
+        color: var(--ok); /* status, not location (design-language: color budget) */
         font-weight: 600;
       }
       .budget-bar {
@@ -795,7 +794,9 @@
         display: block;
         height: 100%;
         width: 58%;
-        background: var(--ok); /* budget health status; flips to --miss when over (addendum §2) */
+        background: var(
+          --ok
+        ); /* budget health status; flips to --miss when over (design-language: color budget) */
         border-radius: 4px;
       }
 

@@ -159,7 +159,7 @@ function Screen({ tab }: { tab: TabId }) {
 }
 
 // data-mode on the shell root lets CSS follow the mode identity rule
-// (design-principles-addendum §1: plan mode never uses amber) without every
+// (design-language mode identity: plan mode never uses amber) without every
 // component reading mode state. Needs its own component because App renders
 // ModeProvider itself and so can't call useMode.
 function Shell() {
