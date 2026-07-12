@@ -20,6 +20,9 @@ export default defineConfig({
     react(),
     VitePWA({
       registerType: 'autoUpdate',
+      // Without these, a rebuilt SW only takes over after all tabs of the old
+      // one close — an offline reload in between would still run stale JS.
+      workbox: { skipWaiting: true, clientsClaim: true },
       manifest: {
         name: 'Waypoint · מרכז שליטה לטיול',
         short_name: 'Waypoint',

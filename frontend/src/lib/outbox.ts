@@ -9,14 +9,22 @@ import type {
   UpdateEventInput,
 } from '@waypoint/shared';
 import { db } from '../db';
-import { createEvent, deleteEvent, moveEvent, setEventStatus, updateEvent } from './api';
+import {
+  consumeMaybeItem,
+  createEvent,
+  deleteEvent,
+  moveEvent,
+  setEventStatus,
+  updateEvent,
+} from './api';
 
 export type OutboxOp =
   | { verb: 'create'; input: CreateEventInput }
   | { verb: 'update'; eventId: string; input: UpdateEventInput; confirm: boolean }
   | { verb: 'setStatus'; eventId: string; status: EventStatus }
   | { verb: 'move'; eventId: string; input: MoveEventInput; confirm: boolean }
-  | { verb: 'delete'; eventId: string; confirm: boolean };
+  | { verb: 'delete'; eventId: string; confirm: boolean }
+  | { verb: 'consumeMaybeItem'; maybeItemId: string };
 
 export interface OutboxEntry {
   seq?: number;
@@ -99,6 +107,9 @@ async function runOp(tripId: string, op: OutboxOp): Promise<void> {
       return;
     case 'delete':
       await deleteEvent(tripId, op.eventId, op.confirm);
+      return;
+    case 'consumeMaybeItem':
+      await consumeMaybeItem(tripId, op.maybeItemId);
       return;
   }
 }
