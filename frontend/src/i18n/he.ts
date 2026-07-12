@@ -15,10 +15,10 @@ export const t = {
     days: 'יום-יום',
   },
   header: {
-    googleNote: 'כל אחד מחובר לחשבון Google שלו · המסלול מסונכרן ליומן האישי',
+    googleNote: 'מחוברים עם חשבון Google אישי · מסונכרן ליומן',
     dayOf: (day: number, total: number) => `יום ${day} מתוך ${total}`,
-    pendingSync: (count: number) => `${count} שינויים ממתינים לסנכרון · יסתנכרנו כשהחיבור יחזור`,
-    offlineNow: 'מצב אופליין · עובדים מהנתונים השמורים',
+    pendingSync: (count: number) => `${count} שינויים מחכים לסנכרון`,
+    offlineNow: 'אופליין · נתונים שמורים',
   },
   placeholder: {
     comingSoon: 'המסך הזה עוד בעבודה.',
@@ -68,7 +68,7 @@ export const t = {
   day: {
     heading: (day: number, weekday: string, destination: string) =>
       `יום ${day} · ${weekday} · ${destination}`,
-    tapToChange: 'הקשה על כרטיס פותחת פעולות',
+    tapToChange: 'הקשה על כרטיס לפעולות',
     maybeShelf: 'מדף האולי',
     tapToSchedule: 'הקשה משבצת ליום',
   },
@@ -77,7 +77,7 @@ export const t = {
     soft: 'גמיש',
     softNow: 'גמיש · עכשיו',
     bookingLabel: 'הזמנה',
-    hardWarn: 'אירוע קשיח · שינוי מחייב עדכון של ההזמנה',
+    hardWarn: 'קשיח · שינוי מחייב עדכון ההזמנה',
     conflictWarn: (title: string, time: string) => `חופף ל-${title} (קשיח) · ${time}`,
   },
   actions: {
@@ -100,8 +100,8 @@ export const t = {
     markedDone: 'סומן כבוצע',
     removed: 'הוסר מהיום',
     restored: 'האירוע חזר למקום',
-    swapPrompt: 'נבחר להחלפה · אפשר לשבץ תחליף ממדף האולי',
-    hardDelayed: 'אירוע קשיח נדחה · חשוב לעדכן גם את ההזמנה',
+    swapPrompt: 'נבחר להחלפה · בוחרים תחליף מהמדף',
+    hardDelayed: 'נדחה · צריך לעדכן גם את ההזמנה',
     softDelayed: (minutes: number) => `נדחה ב-${minutes} דקות`,
     softEarlier: (minutes: number) => `הוקדם ב-${minutes} דקות`,
     onWayShared: 'שותף לקבוצה · בדרך',
@@ -138,8 +138,8 @@ export const t = {
     locationLabel: 'מיקום',
     locationPlaceholder: 'אופציונלי',
     kindLabel: 'סוג',
-    kindHard: 'קשיח · יש הזמנה',
-    kindSoft: 'גמיש · זז בחופשיות',
+    kindHard: '🔒 קשיח',
+    kindSoft: 'גמיש',
     save: 'שמירה',
     cancel: 'ביטול',
     titleRequired: 'חסרה כותרת',
