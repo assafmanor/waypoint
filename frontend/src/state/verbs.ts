@@ -49,11 +49,7 @@ export interface VerbDeps {
   confirmHardEdit: (event: TripEvent, action?: ConfirmHardEditAction) => Promise<boolean>;
 }
 
-// Offline write outbox (T-013): when there's no connectivity, or the request
-// itself fails to reach the network, queue the same mutation instead of
-// rolling back the optimistic dispatch — it flushes FIFO on reconnect
-// (lib/outbox.ts). A real HTTP error response (4xx/5xx) still rejects
-// normally so the caller's rollback/toast path runs.
+// A real HTTP error still rejects normally — only network failure/offline queues.
 async function restOrQueue<T>(
   tripId: string,
   op: OutboxOp,

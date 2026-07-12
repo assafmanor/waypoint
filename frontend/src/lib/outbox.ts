@@ -1,8 +1,6 @@
-// Offline write outbox (T-013, sync-and-offline.md "Write offline"): mutations
-// made while offline are queued in IndexedDB (Dexie) instead of failing, then
-// flushed FIFO on reconnect. Flush reuses the same REST functions as the online
-// path (lib/api.ts) rather than re-building requests — the online write path
-// (verbs.ts) stays the only place that builds optimistic dispatch + undo.
+// Offline write outbox (T-013, sync-and-offline.md "Write offline"). Flush
+// reuses lib/api.ts's REST functions directly — verbs.ts stays the only place
+// that builds optimistic dispatch + undo.
 import { useEffect, useState, useSyncExternalStore } from 'react';
 import type {
   CreateEventInput,
