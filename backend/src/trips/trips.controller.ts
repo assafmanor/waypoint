@@ -2,11 +2,13 @@ import { Body, Controller, Delete, Get, HttpCode, Param, Post, UseGuards } from 
 import { ApiCreatedResponse, ApiNoContentResponse, ApiOkResponse, ApiTags } from '@nestjs/swagger';
 import {
   createTripSchema,
+  invitePreviewSchema,
   inviteUrlSchema,
   membershipSchema,
   tripSchema,
   tripSnapshotSchema,
   tripWithMembersSchema,
+  type InvitePreview,
   type Membership,
   type Trip,
   type TripSnapshot,
@@ -27,6 +29,7 @@ class MembershipDto extends createZodDto(membershipSchema) {}
 class TripWithMembersDto extends createZodDto(tripWithMembersSchema) {}
 class TripSnapshotDto extends createZodDto(tripSnapshotSchema) {}
 class InviteUrlDto extends createZodDto(inviteUrlSchema) {}
+class InvitePreviewDto extends createZodDto(invitePreviewSchema) {}
 
 @ApiTags('trips')
 @Controller('trips')
@@ -79,7 +82,7 @@ export class TripsController {
   @ApiCreatedResponse({ type: InviteUrlDto })
   @ZodSerializerDto(InviteUrlDto)
   invite(@Param('tripId') tripId: string): { inviteUrl: string } {
-    return { inviteUrl: `/trips/join/${this.trips.createInviteToken(tripId)}` };
+    return { inviteUrl: `/join/${this.trips.createInviteToken(tripId)}` };
   }
 
   @Delete(':tripId/members/:userId')
@@ -92,5 +95,19 @@ export class TripsController {
     @Param('userId') userId: string,
   ): Promise<void> {
     return this.trips.removeMember(tripId, user.userId, userId);
+  }
+}
+
+// Public/unguarded (ADR-0024) — no DevAuthGuard: the join screen needs this before sign-in.
+@ApiTags('invites')
+@Controller('invites')
+export class InvitesController {
+  constructor(private readonly trips: TripsService) {}
+
+  @Get(':token')
+  @ApiOkResponse({ type: InvitePreviewDto })
+  @ZodSerializerDto(InvitePreviewDto)
+  preview(@Param('token') token: string): Promise<InvitePreview> {
+    return this.trips.getInvitePreview(token);
   }
 }

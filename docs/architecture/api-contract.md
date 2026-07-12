@@ -32,16 +32,16 @@
 
 ## Trips
 
-| Method | Path                             | Body → Response                                                                     |
-| ------ | -------------------------------- | ----------------------------------------------------------------------------------- |
-| POST   | `/trips`                         | `createTripSchema` → `Trip` (caller becomes creator + **`admin`** member, ADR-0005) |
-| GET    | `/trips`                         | → `Trip[]` (all trips the caller is a member of — multi-trip, ADR-0021)             |
-| GET    | `/trips/:tripId`                 | → `Trip` + members                                                                  |
-| PATCH  | `/trips/:tripId`                 | partial trip → `Trip`                                                               |
-| POST   | `/trips/:tripId/invite`          | → `{ inviteUrl }` (signed join token)                                               |
+| Method | Path                             | Body → Response                                                                                                                             |
+| ------ | -------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------- |
+| POST   | `/trips`                         | `createTripSchema` → `Trip` (caller becomes creator + **`admin`** member, ADR-0005)                                                         |
+| GET    | `/trips`                         | → `Trip[]` (all trips the caller is a member of — multi-trip, ADR-0021)                                                                     |
+| GET    | `/trips/:tripId`                 | → `Trip` + members                                                                                                                          |
+| PATCH  | `/trips/:tripId`                 | partial trip → `Trip`                                                                                                                       |
+| POST   | `/trips/:tripId/invite`          | → `{ inviteUrl }` (frontend `/join/:token` shell route, ADR-0024 — not the API's own `/trips/join/:token`)                                  |
 | GET    | `/invites/:token`                | **public** → `{ tripName, destination, startDate, endDate, memberCount }` (join preview, ADR-0024; validates the HMAC token, no membership) |
-| POST   | `/trips/join/:token`             | → `Membership` (adds caller as peer; idempotent, keeps existing role on rejoin)     |
-| DELETE | `/trips/:tripId/members/:userId` | → `204` (self = leave, anyone; others = admin-only, ADR-0005)                       |
+| POST   | `/trips/join/:token`             | → `Membership` (adds caller as peer; idempotent, keeps existing role on rejoin)                                                             |
+| DELETE | `/trips/:tripId/members/:userId` | → `204` (self = leave, anyone; others = admin-only, ADR-0005)                                                                               |
 
 ## Events
 

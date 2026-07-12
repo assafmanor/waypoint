@@ -1,6 +1,7 @@
 import type { Booking, Event, Membership, MaybeItem, Trip, TripNote } from '@prisma/client';
 import type {
   Booking as SharedBooking,
+  InvitePreview,
   Membership as SharedMembership,
   MaybeItem as SharedMaybeItem,
   Trip as SharedTrip,
@@ -84,6 +85,14 @@ export const toMaybeItemDto = (m: MaybeItem): SharedMaybeItem => ({
   createdAt: m.createdAt.toISOString(),
   updatedAt: m.updatedAt.toISOString(),
   updatedBy: m.updatedBy,
+});
+
+export const toInvitePreviewDto = (t: Trip, memberCount: number): InvitePreview => ({
+  tripName: t.name,
+  destination: t.destination,
+  startDate: toDateOnly(t.startDate),
+  endDate: toDateOnly(t.endDate),
+  memberCount,
 });
 
 export const toTripNoteDto = (n: TripNote): SharedTripNote => ({
