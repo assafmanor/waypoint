@@ -16,6 +16,7 @@ import { deriveNow, formatTime, hardConflicts } from '../lib/time';
 import { CODE_PREFIX, DELAY_STEP_MINUTES, ICONS, MS_PER_DAY } from '../constants';
 import { t } from '../i18n/he';
 import { TRIP_TZ_OFFSET, maybeMeta } from '../fixtures';
+import { EventForm } from '../ui/EventForm';
 
 const daysBetween = (from: string, to: string) =>
   Math.round((Date.parse(to) - Date.parse(from)) / MS_PER_DAY);
@@ -25,6 +26,7 @@ export function DayView() {
   const verbs = useVerbs();
   const now = useClock();
   const [openId, setOpenId] = useState<string | null>(null);
+  const [formTarget, setFormTarget] = useState<'new' | TripEvent | null>(null);
 
   const nowId = deriveNow(events, now).now?.id;
   const dayEvents = events
@@ -53,7 +55,12 @@ export function DayView() {
 
       <div className="sec-title">
         {t.day.heading(dayNumber, weekday, trip.destination)}
-        <span className="hint">{t.day.tapToChange}</span>
+        <span className="sec-title-end">
+          <span className="hint">{t.day.tapToChange}</span>
+          <button className="new-event-btn" onClick={() => setFormTarget('new')}>
+            {ICONS.add} {t.actions.newEvent}
+          </button>
+        </span>
       </div>
 
       <div>
@@ -68,9 +75,17 @@ export function DayView() {
             booking={e.bookingId ? bookings.find((b) => b.id === e.bookingId) : undefined}
             conflicts={hardConflicts(e, dayEvents)}
             verbs={verbs}
+            onEdit={() => setFormTarget(e)}
           />
         ))}
       </div>
+
+      {formTarget && (
+        <EventForm
+          event={formTarget === 'new' ? null : formTarget}
+          onClose={() => setFormTarget(null)}
+        />
+      )}
 
       <div className="sec-title">
         {t.day.maybeShelf}
@@ -104,6 +119,7 @@ function EventItem({
   booking,
   conflicts,
   verbs,
+  onEdit,
 }: {
   event: TripEvent;
   tz: string;
@@ -113,6 +129,7 @@ function EventItem({
   booking?: Booking;
   conflicts: TripEvent[];
   verbs: ReturnType<typeof useVerbs>;
+  onEdit: () => void;
 }) {
   const isHard = event.kind === EVENT_KIND.HARD;
   const isDone = event.status === EVENT_STATUS.DONE;
@@ -217,6 +234,18 @@ function EventItem({
               </button>
             </>
           )}
+          <span className="act-row-end">
+            <button className="act icon-only" onClick={onEdit} aria-label={t.actions.edit}>
+              {ICONS.edit}
+            </button>
+            <button
+              className="act icon-only danger"
+              onClick={() => verbs.remove(event)}
+              aria-label={t.actions.delete}
+            >
+              {ICONS.trash}
+            </button>
+          </span>
         </div>
         {isHard && (
           <div className="hard-warn">

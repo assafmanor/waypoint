@@ -1,6 +1,15 @@
 import { describe, expect, it } from 'vitest';
 import { EVENT_STATUS, type TripEvent } from '@waypoint/shared';
-import { dayProgress, deriveNow, formatTime, hardConflicts, minutesUntil, shiftIso } from './time';
+import {
+  dayProgress,
+  deriveNow,
+  formatTime,
+  hardConflicts,
+  isoToTimeInput,
+  minutesUntil,
+  shiftIso,
+  zonedIso,
+} from './time';
 import { DEMO_NOW, EVENTS, TRIP } from '../fixtures';
 
 const tz = TRIP.timezone;
@@ -45,6 +54,46 @@ describe('countdown + progress at the demo instant (18:52 JST)', () => {
 describe('shiftIso', () => {
   it('shifts an instant by whole minutes', () => {
     expect(shiftIso('2026-07-07T19:30:00+09:00', 30)).toBe('2026-07-07T11:00:00.000Z');
+  });
+});
+
+describe('zonedIso', () => {
+  it('combines a date + time reading them as wall-clock in the given timezone', () => {
+    expect(zonedIso('2026-07-07', '19:30', 'Asia/Tokyo')).toBe('2026-07-07T10:30:00.000Z');
+  });
+
+  it('is DST-aware (same wall time, different offset either side of a transition)', () => {
+    // America/New_York: EST (UTC-5) before, EDT (UTC-4) after the 2026-03-08 spring-forward.
+    expect(zonedIso('2026-03-01', '12:00', 'America/New_York')).toBe('2026-03-01T17:00:00.000Z');
+    expect(zonedIso('2026-06-01', '12:00', 'America/New_York')).toBe('2026-06-01T16:00:00.000Z');
+  });
+
+  it('resolves both sides of a same-day spring-forward transition correctly', () => {
+    // 2026-03-08: clocks jump 02:00 EST (-05:00) -> 03:00 EDT (-04:00) at 07:00 UTC.
+    // A naive single-lookup (e.g. anchored at noon UTC) gets the 01:30 case wrong by an hour.
+    expect(zonedIso('2026-03-08', '01:30', 'America/New_York')).toBe('2026-03-08T06:30:00.000Z');
+    expect(zonedIso('2026-03-08', '04:30', 'America/New_York')).toBe('2026-03-08T08:30:00.000Z');
+  });
+
+  it('resolves both sides of a same-day fall-back transition correctly', () => {
+    // 2026-11-01: clocks fall back 02:00 EDT (-04:00) -> 01:00 EST (-05:00) at 06:00 UTC.
+    expect(zonedIso('2026-11-01', '00:30', 'America/New_York')).toBe('2026-11-01T04:30:00.000Z');
+    expect(zonedIso('2026-11-01', '03:30', 'America/New_York')).toBe('2026-11-01T08:30:00.000Z');
+  });
+
+  it('handles half-hour and quarter-hour zone offsets', () => {
+    expect(zonedIso('2026-07-07', '12:00', 'Asia/Kolkata')).toBe('2026-07-07T06:30:00.000Z'); // +05:30
+    expect(zonedIso('2026-07-07', '12:00', 'Asia/Kathmandu')).toBe('2026-07-07T06:15:00.000Z'); // +05:45
+  });
+
+  it('resolves to a stable instant for a nonexistent (skipped) wall time without looping', () => {
+    // 02:30 never occurs on 2026-03-08 (clocks jump 02:00 -> 03:00) — must not throw or hang.
+    expect(() => zonedIso('2026-03-08', '02:30', 'America/New_York')).not.toThrow();
+  });
+
+  it('round-trips through isoToTimeInput for the trip timezone', () => {
+    const iso = zonedIso('2026-07-07', '19:30', 'Asia/Tokyo');
+    expect(isoToTimeInput(iso, 'Asia/Tokyo')).toBe('19:30');
   });
 });
 

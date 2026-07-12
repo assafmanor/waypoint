@@ -53,6 +53,10 @@ export type Action =
   | { type: 'RIPPLE_APPLY' }
   | { type: 'RIPPLE_DISMISS' }
   | { type: 'UNDO' }
+  // T-047: create/edit/delete UI verbs.
+  | { type: 'CREATE_EVENT'; event: TripEvent }
+  | { type: 'UPDATE_EVENT'; id: string; patch: Partial<TripEvent> }
+  | { type: 'DELETE_EVENT'; id: string }
   // T-014: the REST write layer (verbs.ts) reconciles/broadcasts through these.
   | { type: 'RECONCILE_EVENT'; event: TripEvent }
   | { type: 'SET_RIPPLE'; ripple: RippleSuggestion | null }
@@ -116,6 +120,18 @@ export function reducer(state: State, action: Action): State {
       return { ...state, ripple: null };
     case 'UNDO':
       return state.undo ? { ...state, ...state.undo, ripple: null, undo: null } : state;
+    case 'CREATE_EVENT': {
+      const events = [...state.events, action.event];
+      return { ...state, events, ripple: null, undo: snapshotOf(state) };
+    }
+    case 'UPDATE_EVENT': {
+      const events = state.events.map((e) => (e.id === action.id ? { ...e, ...action.patch } : e));
+      return { ...state, events, ripple: null, undo: snapshotOf(state) };
+    }
+    case 'DELETE_EVENT': {
+      const events = state.events.filter((e) => e.id !== action.id);
+      return { ...state, events, ripple: null, undo: snapshotOf(state) };
+    }
     case 'RECONCILE_EVENT': {
       const exists = state.events.some((e) => e.id === action.event.id);
       const events = exists

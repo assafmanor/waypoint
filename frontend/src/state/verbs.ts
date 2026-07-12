@@ -10,10 +10,11 @@ import {
   type CreateEventInput,
   type MaybeItem,
   type TripEvent,
+  type UpdateEventInput,
 } from '@waypoint/shared';
 import { useTrip, type Action, type RippleSuggestion } from './trip-state';
 import { useToast } from '../ui/Toast';
-import { useConfirmHardEdit } from '../ui/ConfirmDialog';
+import { useConfirmHardEdit, type ConfirmHardEditAction } from '../ui/ConfirmDialog';
 import {
   createEvent,
   deleteEvent,
@@ -22,6 +23,7 @@ import {
   isMoveIntoPastError,
   moveEvent,
   setEventStatus,
+  updateEvent,
 } from '../lib/api';
 import { DELAY_STEP_MINUTES, DEFAULT_SCHEDULE_SLOT, ICONS } from '../constants';
 import { t } from '../i18n/he';
@@ -33,14 +35,16 @@ type UndoDescriptor =
   | { kind: 'status'; id: string; previous: TripEvent['status'] }
   | { kind: 'move'; id: string; previous: { date: string; startsAt?: string }; isHard: boolean }
   | { kind: 'create'; id: string }
-  | { kind: 'rippleApply'; items: { id: string; previous: { date: string; startsAt?: string } }[] };
+  | { kind: 'rippleApply'; items: { id: string; previous: { date: string; startsAt?: string } }[] }
+  | { kind: 'update'; id: string; previous: UpdateEventInput; isHard: boolean }
+  | { kind: 'delete'; event: TripEvent };
 
 export interface VerbDeps {
   tripId: string;
   dispatch: React.Dispatch<Action>;
   toast: ShowToast;
   lastAction: { current: UndoDescriptor | null };
-  confirmHardEdit: (event: TripEvent) => Promise<boolean>;
+  confirmHardEdit: (event: TripEvent, action?: ConfirmHardEditAction) => Promise<boolean>;
 }
 
 function writeErrorToast(toast: ShowToast, err: unknown): void {
@@ -162,6 +166,78 @@ export async function applySchedule(
   }
 }
 
+export async function applyCreateEvent(deps: VerbDeps, event: TripEvent): Promise<void> {
+  deps.dispatch({ type: 'CREATE_EVENT', event });
+  deps.lastAction.current = { kind: 'create', id: event.id };
+  try {
+    const canonical = await createEvent(deps.tripId, toCreateEventInput(event));
+    deps.dispatch({ type: 'RECONCILE_EVENT', event: canonical });
+  } catch (err) {
+    deps.dispatch({ type: 'UNDO' });
+    writeErrorToast(deps.toast, err);
+  }
+}
+
+function previousOf(event: TripEvent, patch: UpdateEventInput): UpdateEventInput {
+  const previous: Record<string, unknown> = {};
+  for (const key of Object.keys(patch)) previous[key] = event[key as keyof TripEvent];
+  return previous as UpdateEventInput;
+}
+
+export async function applyUpdateEvent(
+  deps: VerbDeps,
+  event: TripEvent,
+  patch: UpdateEventInput,
+): Promise<void> {
+  const previous = previousOf(event, patch);
+  const isHard = event.kind === EVENT_KIND.HARD;
+  deps.dispatch({ type: 'UPDATE_EVENT', id: event.id, patch });
+  deps.lastAction.current = { kind: 'update', id: event.id, previous, isHard };
+  try {
+    const canonical = await updateEvent(deps.tripId, event.id, patch, isHard);
+    deps.dispatch({ type: 'RECONCILE_EVENT', event: canonical });
+  } catch (err) {
+    deps.dispatch({ type: 'UNDO' });
+    writeErrorToast(deps.toast, err);
+  }
+}
+
+// Hard-event guard (ADR-0011), same choke point as applyGuardedDelay: edit/delete
+// of a hard event needs explicit confirmation; cancel is a true no-op.
+export async function applyGuardedUpdate(
+  deps: VerbDeps,
+  event: TripEvent,
+  patch: UpdateEventInput,
+): Promise<boolean> {
+  if (event.kind === EVENT_KIND.HARD) {
+    const confirmed = await deps.confirmHardEdit(event, 'edit');
+    if (!confirmed) return false;
+  }
+  await applyUpdateEvent(deps, event, patch);
+  return true;
+}
+
+export async function applyDeleteEvent(deps: VerbDeps, event: TripEvent): Promise<void> {
+  const isHard = event.kind === EVENT_KIND.HARD;
+  deps.dispatch({ type: 'DELETE_EVENT', id: event.id });
+  deps.lastAction.current = { kind: 'delete', event };
+  try {
+    await deleteEvent(deps.tripId, event.id, isHard);
+  } catch (err) {
+    deps.dispatch({ type: 'UNDO' });
+    writeErrorToast(deps.toast, err);
+  }
+}
+
+export async function applyGuardedDelete(deps: VerbDeps, event: TripEvent): Promise<boolean> {
+  if (event.kind === EVENT_KIND.HARD) {
+    const confirmed = await deps.confirmHardEdit(event, 'delete');
+    if (!confirmed) return false;
+  }
+  await applyDeleteEvent(deps, event);
+  return true;
+}
+
 export async function applyRippleApply(
   deps: VerbDeps,
   ripple: RippleSuggestion,
@@ -206,6 +282,12 @@ async function reverseRest(tripId: string, desc: UndoDescriptor): Promise<void> 
           moveEvent(tripId, i.id, { date: i.previous.date, startsAt: i.previous.startsAt }),
         ),
       );
+      return;
+    case 'update':
+      await updateEvent(tripId, desc.id, desc.previous, desc.isHard);
+      return;
+    case 'delete':
+      await createEvent(tripId, toCreateEventInput(desc.event));
   }
 }
 
@@ -282,6 +364,20 @@ export function useVerbs() {
       };
       void applySchedule(deps, event, m.id);
       toast(ICONS.schedule, t.toast.scheduled(m.title, DEFAULT_SCHEDULE_SLOT.START), undo);
+    },
+    create: (event: TripEvent) => {
+      void applyCreateEvent(deps, event);
+      toast(ICONS.done, t.toast.eventCreated, undo);
+    },
+    update: (event: TripEvent, patch: UpdateEventInput) => {
+      void applyGuardedUpdate(deps, event, patch).then((applied) => {
+        if (applied) toast(ICONS.done, t.toast.eventUpdated, undo);
+      });
+    },
+    remove: (event: TripEvent) => {
+      void applyGuardedDelete(deps, event).then((applied) => {
+        if (applied) toast(ICONS.trash, t.toast.eventDeleted, undo);
+      });
     },
     rippleApply: () => {
       if (!ripple) return;

@@ -22,6 +22,9 @@ export const DEFAULT_SCHEDULE_SLOT = { START: '17:30', END: '18:30' } as const;
 /** Characters used to build the trip's initial from a display name. */
 export const AVATAR_INITIAL_LENGTH = 1;
 
+/** Icon for a manually created event when the form doesn't collect one (T-047). */
+export const DEFAULT_EVENT_ICON = '📌';
+
 /** Prefix shown before confirmation codes (e.g. #4471). */
 export const CODE_PREFIX = '#';
 
@@ -49,6 +52,7 @@ export const ICONS = {
   lock: '🔒',
   warn: '⚠️',
   done: '✓',
+  edit: '✏️',
   trash: '🗑️',
   restore: '↩️',
   swap: '🔄',

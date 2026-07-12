@@ -55,9 +55,9 @@ export const t = {
   day: {
     heading: (day: number, weekday: string, destination: string) =>
       `יום ${day} · ${weekday} · ${destination}`,
-    tapToChange: 'הקש כרטיס לשינוי',
+    tapToChange: 'בחר כרטיס לשינוי',
     maybeShelf: 'מדף אולי',
-    tapToSchedule: 'הקש כדי לשבץ ליום',
+    tapToSchedule: 'בחר כדי לשבץ ליום',
     legendHardWord: 'קשיחים',
     legendSoftWord: 'גמישים',
     legendHardRest: ' יש להם התחייבות (הזמנה/כרטיס) · האפליקציה מגנה עליהם.',
@@ -70,7 +70,7 @@ export const t = {
     soft: 'גמיש',
     softNow: 'גמיש · עכשיו',
     bookingLabel: 'הזמנה',
-    hardWarn: 'אירוע קשיח · שינוי דורש עדכון ההזמנה',
+    hardWarn: 'אירוע קשיח · שינוי דורש עדכון הזמנה',
     conflictWarn: (title: string, time: string) => `חופף ל-${title} (קשיח) · ${time}`,
   },
   actions: {
@@ -85,6 +85,9 @@ export const t = {
     swap: 'החלף',
     scheduleToDay: 'שבץ ליום',
     scheduled: 'שובץ',
+    newEvent: 'אירוע חדש',
+    edit: 'ערוך',
+    delete: 'מחק',
   },
   toast: {
     markedDone: 'סומן כהושלם',
@@ -102,6 +105,9 @@ export const t = {
     writeFailed: 'הפעולה נכשלה · נסו שוב',
     moveIntoPast: 'לא ניתן לתזמן אירוע לזמן שכבר עבר',
     moveCrossesDay: 'לא ניתן להעביר אירוע ליום אחר · השתמשו במצב תכנון',
+    eventCreated: 'האירוע נוצר',
+    eventUpdated: 'האירוע עודכן',
+    eventDeleted: 'האירוע נמחק',
   },
   ripple: {
     prompt: (movedTitle: string) => `דחית את ${movedTitle}. לדחות את האירועים הבאים גם?`,
@@ -109,5 +115,27 @@ export const t = {
   confirm: {
     hardEditTitle: 'לשנות אירוע קשיח?',
     hardEditBody: (title: string) => `${title} הוא אירוע קשיח · שינוי דורש עדכון ההזמנה. להמשיך?`,
+    hardDeleteTitle: 'למחוק אירוע קשיח?',
+    hardDeleteBody: (title: string) =>
+      `${title} הוא אירוע קשיח · מחיקה דורשת עדכון ההזמנה. להמשיך?`,
+  },
+  eventForm: {
+    newTitle: 'אירוע חדש',
+    editTitle: 'עריכת אירוע',
+    titleLabel: 'כותרת',
+    titlePlaceholder: 'למשל: ארוחת ערב',
+    dateLabel: 'תאריך',
+    startLabel: 'שעת התחלה',
+    endLabel: 'שעת סיום',
+    locationLabel: 'מיקום',
+    locationPlaceholder: 'אופציונלי',
+    kindLabel: 'סוג',
+    kindHard: 'קשיח · יש הזמנה',
+    kindSoft: 'גמיש · זז בחופשיות',
+    save: 'שמירה',
+    cancel: 'ביטול',
+    titleRequired: 'נא להזין כותרת',
+    dateRequired: 'נא לבחור תאריך',
+    endBeforeStart: 'שעת הסיום חייבת להיות אחרי שעת ההתחלה',
   },
 } as const;

@@ -6,19 +6,23 @@ import type { TripEvent } from '@waypoint/shared';
 import { ICONS } from '../constants';
 import { t } from '../i18n/he';
 
-type ConfirmHardEdit = (event: TripEvent) => Promise<boolean>;
+export type ConfirmHardEditAction = 'edit' | 'delete';
+type ConfirmHardEdit = (event: TripEvent, action?: ConfirmHardEditAction) => Promise<boolean>;
 
 const ConfirmContext = createContext<ConfirmHardEdit | null>(null);
 
 export function ConfirmProvider({ children }: { children: ReactNode }) {
-  const [pending, setPending] = useState<TripEvent | null>(null);
+  const [pending, setPending] = useState<{
+    event: TripEvent;
+    action: ConfirmHardEditAction;
+  } | null>(null);
   const resolveRef = useRef<((ok: boolean) => void) | null>(null);
 
   const confirmHardEdit = useCallback<ConfirmHardEdit>(
-    (event) =>
+    (event, action = 'edit') =>
       new Promise((resolve) => {
         resolveRef.current = resolve;
-        setPending(event);
+        setPending({ event, action });
       }),
     [],
   );
@@ -29,6 +33,12 @@ export function ConfirmProvider({ children }: { children: ReactNode }) {
     setPending(null);
   };
 
+  const title = pending?.action === 'delete' ? t.confirm.hardDeleteTitle : t.confirm.hardEditTitle;
+  const body =
+    pending?.action === 'delete'
+      ? t.confirm.hardDeleteBody(pending.event.title)
+      : pending && t.confirm.hardEditBody(pending.event.title);
+
   return (
     <ConfirmContext.Provider value={confirmHardEdit}>
       {children}
@@ -38,13 +48,13 @@ export function ConfirmProvider({ children }: { children: ReactNode }) {
             className="confirm-card"
             role="alertdialog"
             aria-modal="true"
-            aria-label={t.confirm.hardEditTitle}
+            aria-label={title}
             onClick={(e) => e.stopPropagation()}
           >
             <div className="confirm-title">
-              {ICONS.lock} {t.confirm.hardEditTitle}
+              {ICONS.lock} {title}
             </div>
-            <p className="confirm-body">{t.confirm.hardEditBody(pending.title)}</p>
+            <p className="confirm-body">{body}</p>
             <div className="confirm-actions">
               <button className="confirm-cancel" onClick={() => settle(false)}>
                 {t.common.no}

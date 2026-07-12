@@ -7,6 +7,7 @@ import {
   type MoveEventInput,
   type TripEvent,
   type TripSnapshot,
+  type UpdateEventInput,
 } from '@waypoint/shared';
 
 export const API_BASE_URL = import.meta.env.VITE_API_BASE_URL ?? '';
@@ -60,6 +61,22 @@ export async function createEvent(tripId: string, input: CreateEventInput): Prom
   return tripEventSchema.parse(await res.json());
 }
 
+export async function updateEvent(
+  tripId: string,
+  eventId: string,
+  input: UpdateEventInput,
+  confirm = false,
+): Promise<TripEvent> {
+  const url = `${eventUrl(tripId, eventId)}${confirm ? '?confirm=true' : ''}`;
+  const res = await fetch(url, {
+    method: 'PATCH',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify(input),
+  });
+  if (!res.ok) return throwApiError(res);
+  return tripEventSchema.parse(await res.json());
+}
+
 export async function setEventStatus(
   tripId: string,
   eventId: string,
@@ -101,7 +118,8 @@ export async function moveEvent(
   return { event: tripEventSchema.parse(body.event), rippleSuggestion: body.rippleSuggestion };
 }
 
-export async function deleteEvent(tripId: string, eventId: string): Promise<void> {
-  const res = await fetch(eventUrl(tripId, eventId), { method: 'DELETE' });
+export async function deleteEvent(tripId: string, eventId: string, confirm = false): Promise<void> {
+  const url = `${eventUrl(tripId, eventId)}${confirm ? '?confirm=true' : ''}`;
+  const res = await fetch(url, { method: 'DELETE' });
   if (!res.ok && res.status !== 404) return throwApiError(res);
 }
