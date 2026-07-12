@@ -9,6 +9,7 @@ on:
 env:
   DATABASE_URL: postgresql://waypoint:waypoint@localhost:5432/waypoint?schema=public
   JWT_SECRET: ci-test-secret
+  TOKEN_ENCRYPTION_KEY: my_test_key_123
 
 jobs:
   ci:
