@@ -14,7 +14,15 @@ export class MaybeItemsService {
 
   /** Marks a maybe-shelf item consumed server-side (T-058) so a post-reconnect
    *  resync (sync-and-offline.md "Bootstrap & catch-up") reflects it instead of
-   *  reverting the client's optimistic local flag back to unscheduled. */
+   *  reverting the client's optimistic local flag back to unscheduled.
+   *
+   *  Standalone rather than folded into event creation because the client
+   *  currently builds the scheduled event itself (icon, default time slot,
+   *  `maybeMeta()`-derived location — see `frontend/src/state/verbs.ts`'s
+   *  `schedule()`); a combined server-side "schedule" endpoint would need
+   *  that derivation moved server-side too. If that ever gets built, this
+   *  endpoint (and the frontend's separate `consumeMaybeItem` call) becomes
+   *  redundant and should be removed in the same change. */
   async consume(tripId: string, maybeItemId: string, actorUserId: string): Promise<MaybeItem> {
     const before = await this.requireMaybeItem(tripId, maybeItemId);
     if (before.consumed) return toMaybeItemDto(before);
