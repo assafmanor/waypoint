@@ -18,7 +18,7 @@ const SESSION_TTL_MS = 30 * 24 * 60 * 60 * 1000;
 const TOKEN_ENCRYPTION_ENV = 'TOKEN_ENCRYPTION_KEY';
 
 function tokenEncryptionKey(): string {
-  const key = process.env[TOKEN_ENCRYPTION_ENV];
+  const key = process.env.TOKEN_ENCRYPTION_ENV;
   if (!key) throw new Error(`${TOKEN_ENCRYPTION_ENV} not configured`);
   return key;
 }
