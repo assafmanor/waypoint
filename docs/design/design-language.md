@@ -1,6 +1,6 @@
 # Design Language
 
-**Status:** ACCEPTED for the mockup; the reference source of truth is `mockups/trip-dashboard-v2.html`. Values below are extracted from it.
+**Status:** ACCEPTED for the mockup; the reference source of truth is `mockups/trip-dashboard-v2.html`. Values below are extracted from it. Extended by [design-principles-addendum.md](design-principles-addendum.md) (mode identity, semantic color budget, scales, dark-mode readiness).
 
 ## Principle: one loud element, everything else quiet
 
@@ -33,8 +33,12 @@ A **departure-board hero** (dark, glowing, monospace times) with a live countdow
 
 Color carries meaning so the eye can parse a screen **without reading**:
 
-- **Amber** = _now / active / the current thing._ Nothing else uses amber.
+- **Amber** = _time & commitment_ — now, countdowns, the live blip, the `🔒 קשיח` lock, ripple suggestions. Nothing else uses amber; generic CTAs never do (they use the neutral `--cta`/`--cta-text` pair).
 - **Teal** = _location / map / navigation._ Nothing else uses teal.
+- **Plan violet (`--plan`)** = _the plan_ — plan-mode chrome, readiness bar, builder and scheduling affordances. Nothing else.
+- **`--ok` / `--miss`** = positive/negative _status_ (FX ▲/▼, budget health, checklist ✓/✗) — statuses never borrow teal.
+
+**Mode identity (Night vs. Day):** trip mode = dark indigo chrome + amber energy (the night board); plan mode = light drafting chrome + violet, never the pulsing blip. The mode must be readable from the chrome alone — see [design-principles-addendum.md §1](design-principles-addendum.md).
 
 A small **decorative palette** (avatar identity colors, map pin categories) exists alongside these — always pastel/muted, never amber or teal, so it reads as gentle variety rather than a second meaning system. See the Map pins entry below.
 
@@ -76,7 +80,7 @@ Plan mode reuses the same tokens/grammar as Trip mode, adding builder/entry comp
 - **Prep dashboard hero** — countdown to departure + a **readiness bar** (% complete). **Plan violet** rather than amber, since it's not "now" (teal is location-only — addendum §1).
 - **Completeness checklist** — rows with status (✓ done / warn / missing) and inline CTAs ("הוסף", "בנה יום", "תזכורת").
 - **Itinerary builder rows** — event rows with a **drag grip** (⠿), hard/soft tag, editable time, edit affordance; **gap chips** between events ("פער 2 שעות · מלא").
-- **Add-event / booking-entry forms** — inline forms with a **hard/soft kind selector** (amber=hard, teal=soft) and per-type booking fields.
+- **Add-event / booking-entry forms** — inline forms with a **hard/soft kind selector** (amber=hard; soft = dashed + muted, per the soft grammar — never teal, addendum §2) and per-type booking fields.
 - **Place research** — a search bar + result cards with rating and "＋ אולי" (add to the maybe-shelf).
 - **Day selector strip** — days 1–N with an **empty-day** marker (dashed, red number) surfacing gaps to fill.
 
@@ -105,6 +109,6 @@ Subtle fades on view change; pulsing "live" blip; countdown/clock tick. Respects
 
 ## Accessibility notes to carry into build
 
-- Focus-visible outlines use teal; keep them.
+- Focus-visible outlines use teal on light surfaces, amber on dark (addendum §7); keep them.
 - Don't rely on color alone — hard/soft also differ by border style and badge, which is good; preserve that.
 - The mockup uses tap-to-expand rather than swipe (swipe breaks in prototypes); revisit real swipe gestures in the build with care.

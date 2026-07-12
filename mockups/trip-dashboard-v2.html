@@ -22,6 +22,9 @@
         --amber: #e9a63c;
         --amber-deep: #c9822a;
         --teal: #2c9c90;
+        --plan: #6e59d6; /* plan/scheduling actions (design-principles-addendum §1) */
+        --plan-deep: #5747b4;
+        --ok: #3c9a6b; /* positive status (addendum §2) */
         --muted: #6c7488;
         --cat-food: #e8998a;
         --cat-lodging: #9c8ce8;
@@ -715,7 +718,7 @@
       }
       .maybe:hover {
         transform: translateY(-2px);
-        border-color: var(--teal);
+        border-color: var(--plan); /* scheduling is a plan action (addendum §2) */
       }
       .maybe .mi {
         font-size: 20px;
@@ -735,7 +738,7 @@
         margin-top: 9px;
         font-size: 11px;
         font-weight: 700;
-        color: var(--teal);
+        color: var(--plan-deep); /* plan action, not location */
         display: flex;
         align-items: center;
         gap: 4px;
@@ -773,7 +776,7 @@
         margin-top: 2px;
       }
       .gcard .s.up {
-        color: var(--teal);
+        color: var(--ok); /* status, not location (addendum §2) */
         font-weight: 600;
       }
       .budget-bar {
@@ -787,7 +790,7 @@
         display: block;
         height: 100%;
         width: 58%;
-        background: var(--teal);
+        background: var(--ok); /* budget health status; flips to --miss when over (addendum §2) */
         border-radius: 4px;
       }
 
@@ -881,7 +884,7 @@
         font: inherit;
         font-size: 13px;
         font-weight: 700;
-        color: var(--teal);
+        color: var(--plan-deep); /* adding content = plan action, not location */
         padding: 12px 15px;
         text-align: center;
         cursor: pointer;

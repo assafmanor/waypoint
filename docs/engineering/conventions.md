@@ -38,7 +38,7 @@ waypoint/
 ## Frontend (React)
 
 - Function components + hooks. Co-locate a component's CSS.
-- Design tokens come from `styles/tokens.css` (ported from the mockup). **Amber = now/active only; teal = location only** — don't reuse them decoratively.
+- Design tokens come from `styles/tokens.css` (ported from the mockup). **Amber = time & commitment only; teal = location only; plan violet = plan mode only** (`docs/design/design-principles-addendum.md`) — don't reuse them decoratively; generic CTAs use `--cta`, statuses use `--ok`/`--miss`.
 - Full RTL; wrap Latin runs (times, codes) with `dir="ltr"`.
 - **Mobile-first, phone-primary (ADR-0017):** author and test at phone width (~390px) first; touch-first (no hover-only affordances); add tablet breakpoints where it helps (esp. Plan mode). Desktop = graceful centered layout.
 - Offline reads go through the Dexie layer (`db.ts`); never assume the network.

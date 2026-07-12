@@ -21,9 +21,10 @@ The single source of truth for where everything lives. Keep this current wheneve
 
 ## Design
 
-| Doc                                                    | Purpose                                                        |
-| ------------------------------------------------------ | -------------------------------------------------------------- |
-| [design/design-language.md](design/design-language.md) | Palette, type, functional color, components, hard/soft grammar |
+| Doc                                                                          | Purpose                                                                       |
+| ---------------------------------------------------------------------------- | ----------------------------------------------------------------------------- |
+| [design/design-language.md](design/design-language.md)                       | Palette, type, functional color, components, hard/soft grammar                |
+| [design/design-principles-addendum.md](design/design-principles-addendum.md) | Mode identity (Night/Day), semantic color budget, scales, dark-mode readiness |
 
 ## Architecture
 

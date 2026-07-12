@@ -171,10 +171,10 @@ Dark mode is a **token remap, not a redesign**. Because every component reads `v
 
 ## Fix list for existing mockups
 
-**Status: APPLIED** to `trip-screens-mockup.html` and `trip-dashboard-mockup.html`.
+**Status: APPLIED** — in this repo: `mockups/screens-v1.html` (items 1, 3, 4, 7), `mockups/plan-mode-v1.html` (items 2, 5), and `mockups/trip-dashboard-v2.html` + the ported app CSS `frontend/src/screens.css` (item 8, plus the FX/budget status swaps of §2).
 
 1. **Settings screen (planning):** teal header → plan-mode light drafting chrome (paper + grid texture) with `--plan` accents; status bar follows the mode; edit links, invite box, and toggles inside plan mode use `--plan`.
-2. **Prep dashboard hero:** readiness bar teal → `--plan`; teal remains location-only. _(In repo mockup `plan-mode-v1.html` — not yet applied.)_
+2. **Prep dashboard hero:** readiness bar teal → `--plan`; teal remains location-only. _(Applied in `mockups/plan-mode-v1.html`.)_
 3. **Lobby:** "＋ טיול חדש" amber CTA → neutral `--cta`; pulsing badge on a future trip → static amber "🗓️ בעוד 12 יום" (countdown is time-semantic, so amber static is correct — but no pulse).
 4. **Join (code + link):** "הצטרף לטיול" amber → neutral `--cta`; removed the pulsing blip from the open-invite badge (an invite is not "live").
 5. **Day strip:** selected-day amber is acceptable in trip mode (it _is_ "today/now"); in plan mode, selection uses `--plan-tint`, since no day is "now".
