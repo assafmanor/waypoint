@@ -177,6 +177,31 @@
   opacity: 0.45;
 }
 
+/* Boot-time states (snapshot loading / failed to load, e.g. offline with no
+   cached data yet) render before the app shell exists — TripProvider returns
+   them ahead of <div className="app">, so unlike .placeholder below they get
+   none of .body's padding/centering and need their own standalone layout. */
+.boot-screen {
+  min-height: 100vh;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  text-align: center;
+  gap: 8px;
+  padding: 32px 24px;
+  background: var(--screen);
+}
+.boot-screen h1 {
+  font-family: var(--font-head);
+  font-size: 24px;
+  color: var(--indigo);
+}
+.boot-screen p {
+  color: var(--muted);
+  max-width: 320px;
+}
+
 /* placeholders (Map/Index — designed in T-002) */
 .placeholder h1 {
   font-family: var(--font-head);

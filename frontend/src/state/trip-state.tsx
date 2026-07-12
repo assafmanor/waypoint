@@ -212,7 +212,7 @@ export function TripProvider({ tripId, children }: { tripId: string; children: R
 
   if (error) {
     return (
-      <div className="placeholder">
+      <div className="boot-screen">
         <h1>{t.snapshot.errorTitle}</h1>
         <p>{error}</p>
       </div>
@@ -220,7 +220,7 @@ export function TripProvider({ tripId, children }: { tripId: string; children: R
   }
   if (!snapshot) {
     return (
-      <div className="placeholder">
+      <div className="boot-screen">
         <h1>{t.snapshot.loading}</h1>
       </div>
     );
