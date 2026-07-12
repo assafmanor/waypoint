@@ -95,13 +95,6 @@ export const createMaybeItemSchema = z.object({
 });
 export type CreateMaybeItemInput = z.infer<typeof createMaybeItemSchema>;
 
-/** Schedule a maybe item — creates an Event, marks the item consumed. */
-export const scheduleMaybeItemSchema = z.object({
-  date: z.string(),
-  startsAt: z.string().optional(),
-});
-export type ScheduleMaybeItemInput = z.infer<typeof scheduleMaybeItemSchema>;
-
 /** `POST /trips/:tripId/invite` response. */
 export const inviteUrlSchema = z.object({ inviteUrl: z.string() });
 export type InviteUrl = z.infer<typeof inviteUrlSchema>;
