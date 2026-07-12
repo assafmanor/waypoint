@@ -82,6 +82,51 @@ export function shiftIso(iso: string, minutes: number): string {
   return new Date(new Date(iso).getTime() + minutes * 60000).toISOString();
 }
 
+/** UTC offset (e.g. "+09:00") for a timezone at a specific instant — the IANA
+ *  tzdata behind `Intl` is the authoritative source, not a hand-maintained table. */
+function offsetAt(at: Date, timeZone: string): string {
+  const name = new Intl.DateTimeFormat('en-US', { timeZone, timeZoneName: 'longOffset' })
+    .formatToParts(at)
+    .find((p) => p.type === 'timeZoneName')?.value;
+  return !name || name === 'GMT' ? '+00:00' : name.replace('GMT', '');
+}
+
+/** Combine a form's `date` (YYYY-MM-DD) + `time` (HH:MM) inputs, read as wall-clock
+ *  in `timeZone`, into a UTC ISO instant.
+ *
+ *  The offset for a given wall-clock reading depends on the instant itself (DST),
+ *  which is exactly what we're trying to compute — so this resolves the
+ *  chicken-and-egg by fixed-point iteration: guess an offset, recompute the
+ *  instant, re-derive the offset *at that instant*, repeat until it stops
+ *  moving (verified against real DST boundaries in time.test.ts; converges in
+ *  at most 2 steps in practice). A single noon-anchored guess (the obvious
+ *  shortcut) is silently wrong by up to an hour for any wall time on the same
+ *  calendar day as a transition — don't reintroduce that.
+ *
+ *  ponytail: the one input this can't resolve correctly is a wall-clock
+ *  reading that's ambiguous (repeated) or nonexistent (skipped) *during* the
+ *  transition hour itself (e.g. 02:30 on a spring-forward day). It returns a
+ *  stable, well-defined instant rather than looping or throwing, just not
+ *  necessarily the one the user meant — every timezone library needs an
+ *  explicit disambiguation policy for that hour; add one (e.g. "prefer
+ *  standard time") if trip dates ever land there in practice. */
+export function zonedIso(date: string, time: string, timeZone: string): string {
+  let candidate = new Date(`${date}T${time}:00Z`);
+  for (let i = 0; i < 3; i++) {
+    const next = new Date(`${date}T${time}:00${offsetAt(candidate, timeZone)}`);
+    if (next.getTime() === candidate.getTime()) break;
+    candidate = next;
+  }
+  return candidate.toISOString();
+}
+
+/** Inverse of the date/time split zonedIso() combines — HH:MM in the trip timezone,
+ *  for prefilling a form's time input from an existing event. */
+export function isoToTimeInput(iso: string, timeZone: string): string {
+  const { hour, minute } = tzParts(new Date(iso), timeZone);
+  return `${String(hour).padStart(2, '0')}:${String(minute).padStart(2, '0')}`;
+}
+
 /** Same-day hard event(s) whose span overlaps this soft event's current span.
  *  Two soft events overlapping is expected/unguarded (ADR-0011) — only hard-vs-soft
  *  matters, since a hard event can never move to resolve it. */

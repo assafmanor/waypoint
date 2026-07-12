@@ -13,8 +13,7 @@ import {
 // ponytail: charset+length guard, tighten to exact cuid2/uuid grammar if it ever matters.
 export const entityIdSchema = z.string().regex(/^[a-z0-9-]{8,64}$/i, 'invalid id format');
 
-/** Payload to create an event. Client supplies `id`; server assigns updatedBy/timestamps. */
-export const createEventSchema = z.object({
+const eventFieldsSchema = z.object({
   id: entityIdSchema.optional(),
   date: z.string(), // ISO date (YYYY-MM-DD)
   endDate: z.string().optional(),
@@ -29,12 +28,22 @@ export const createEventSchema = z.object({
   sortOrder: z.number().int().optional(),
   source: eventSourceSchema.default('manual'),
 });
+
+/** Client and server both reject an inverted/zero-duration span — enforced once
+ *  here rather than separately on each end (ADR-0023). */
+const endAfterStart = (data: { startsAt?: string; endsAt?: string }) =>
+  !data.startsAt || !data.endsAt || Date.parse(data.endsAt) > Date.parse(data.startsAt);
+const endAfterStartIssue = { message: 'endsAt must be after startsAt', path: ['endsAt'] };
+
+/** Payload to create an event. Client supplies `id`; server assigns updatedBy/timestamps. */
+export const createEventSchema = eventFieldsSchema.refine(endAfterStart, endAfterStartIssue);
 export type CreateEventInput = z.infer<typeof createEventSchema>;
 
 /** Partial update to an event. Hard events require confirmation server-side (ADR-0011). */
-export const updateEventSchema = createEventSchema.partial().extend({
-  status: eventStatusSchema.optional(),
-});
+export const updateEventSchema = eventFieldsSchema
+  .partial()
+  .extend({ status: eventStatusSchema.optional() })
+  .refine(endAfterStart, endAfterStartIssue);
 export type UpdateEventInput = z.infer<typeof updateEventSchema>;
 
 /** Move an event to another date/time/order. ADR-0018 (no dayId). */

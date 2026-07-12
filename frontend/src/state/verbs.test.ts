@@ -1,7 +1,15 @@
 import { afterEach, describe, expect, it, vi } from 'vitest';
 import { EVENT_STATUS } from '@waypoint/shared';
 import { EVENTS } from '../fixtures';
-import { applyGuardedDelay, applySetStatus, applyUndo, type VerbDeps } from './verbs';
+import {
+  applyCreateEvent,
+  applyGuardedDelay,
+  applyGuardedDelete,
+  applyGuardedUpdate,
+  applySetStatus,
+  applyUndo,
+  type VerbDeps,
+} from './verbs';
 import type { Action } from './trip-state';
 
 function fakeDeps(confirmHardEdit?: VerbDeps['confirmHardEdit']): VerbDeps & { actions: Action[] } {
@@ -135,6 +143,145 @@ describe('applyGuardedDelay (hard-event confirmation gate, ADR-0011)', () => {
       expect.not.stringContaining('confirm=true'),
       expect.anything(),
     );
+  });
+});
+
+describe('applyCreateEvent', () => {
+  it('applies optimistically, POSTs, and reconciles with the canonical entity', async () => {
+    const draft = { ...EVENTS[0], id: 'ev-new', title: 'New event' };
+    const canonical = { ...draft, updatedAt: 'server-time' };
+    const fetchMock = vi
+      .fn()
+      .mockResolvedValue(new Response(JSON.stringify(canonical), { status: 201 }));
+    vi.stubGlobal('fetch', fetchMock);
+    const deps = fakeDeps();
+
+    await applyCreateEvent(deps, draft);
+
+    expect(deps.actions[0]).toEqual({ type: 'CREATE_EVENT', event: draft });
+    expect(deps.actions[1]).toEqual({ type: 'RECONCILE_EVENT', event: canonical });
+    expect(fetchMock).toHaveBeenCalledWith(
+      expect.stringContaining('/events'),
+      expect.objectContaining({ method: 'POST' }),
+    );
+  });
+});
+
+describe('applyGuardedUpdate (hard-event confirmation gate, ADR-0011)', () => {
+  const hardEvent = EVENTS.find((e) => e.id === 'ev-ichiran')!;
+  const softEvent = EVENTS.find((e) => e.id === 'ev-goldengai')!;
+  const patch = { title: 'Ichiran (renamed)' };
+
+  it('asks for confirmation before PATCHing a hard event, with confirm=true on the wire', async () => {
+    const fetchMock = vi
+      .fn()
+      .mockResolvedValue(new Response(JSON.stringify(hardEvent), { status: 200 }));
+    vi.stubGlobal('fetch', fetchMock);
+    const confirmHardEdit = vi.fn().mockResolvedValue(true);
+    const deps = fakeDeps(confirmHardEdit);
+
+    const applied = await applyGuardedUpdate(deps, hardEvent, patch);
+
+    expect(confirmHardEdit).toHaveBeenCalledWith(hardEvent, 'edit');
+    expect(applied).toBe(true);
+    expect(deps.actions.some((a) => a.type === 'UPDATE_EVENT')).toBe(true);
+    expect(fetchMock).toHaveBeenCalledWith(
+      expect.stringContaining('confirm=true'),
+      expect.objectContaining({ method: 'PATCH' }),
+    );
+  });
+
+  it('is a true no-op when the hard-event confirmation is cancelled', async () => {
+    const fetchMock = vi.fn();
+    vi.stubGlobal('fetch', fetchMock);
+    const confirmHardEdit = vi.fn().mockResolvedValue(false);
+    const deps = fakeDeps(confirmHardEdit);
+
+    const applied = await applyGuardedUpdate(deps, hardEvent, patch);
+
+    expect(applied).toBe(false);
+    expect(deps.actions).toEqual([]);
+    expect(fetchMock).not.toHaveBeenCalled();
+  });
+
+  it('updates a soft event without asking for confirmation', async () => {
+    const fetchMock = vi
+      .fn()
+      .mockResolvedValue(new Response(JSON.stringify(softEvent), { status: 200 }));
+    vi.stubGlobal('fetch', fetchMock);
+    const confirmHardEdit = vi.fn().mockResolvedValue(true);
+    const deps = fakeDeps(confirmHardEdit);
+
+    const applied = await applyGuardedUpdate(deps, softEvent, patch);
+
+    expect(confirmHardEdit).not.toHaveBeenCalled();
+    expect(applied).toBe(true);
+    expect(fetchMock).toHaveBeenCalledWith(
+      expect.not.stringContaining('confirm=true'),
+      expect.anything(),
+    );
+  });
+});
+
+describe('applyGuardedDelete (hard-event confirmation gate, ADR-0011)', () => {
+  const hardEvent = EVENTS.find((e) => e.id === 'ev-ichiran')!;
+  const softEvent = EVENTS.find((e) => e.id === 'ev-goldengai')!;
+
+  it('asks for delete confirmation and deletes with confirm=true when a hard event is confirmed', async () => {
+    const fetchMock = vi.fn().mockResolvedValue(new Response(null, { status: 204 }));
+    vi.stubGlobal('fetch', fetchMock);
+    const confirmHardEdit = vi.fn().mockResolvedValue(true);
+    const deps = fakeDeps(confirmHardEdit);
+
+    const applied = await applyGuardedDelete(deps, hardEvent);
+
+    expect(confirmHardEdit).toHaveBeenCalledWith(hardEvent, 'delete');
+    expect(applied).toBe(true);
+    expect(deps.actions).toEqual([{ type: 'DELETE_EVENT', id: hardEvent.id }]);
+    expect(fetchMock).toHaveBeenCalledWith(
+      expect.stringContaining('confirm=true'),
+      expect.objectContaining({ method: 'DELETE' }),
+    );
+  });
+
+  it('is a true no-op when the hard-event delete confirmation is cancelled', async () => {
+    const fetchMock = vi.fn();
+    vi.stubGlobal('fetch', fetchMock);
+    const confirmHardEdit = vi.fn().mockResolvedValue(false);
+    const deps = fakeDeps(confirmHardEdit);
+
+    const applied = await applyGuardedDelete(deps, hardEvent);
+
+    expect(applied).toBe(false);
+    expect(deps.actions).toEqual([]);
+    expect(fetchMock).not.toHaveBeenCalled();
+  });
+
+  it('deletes a soft event without asking for confirmation', async () => {
+    const fetchMock = vi.fn().mockResolvedValue(new Response(null, { status: 204 }));
+    vi.stubGlobal('fetch', fetchMock);
+    const confirmHardEdit = vi.fn().mockResolvedValue(true);
+    const deps = fakeDeps(confirmHardEdit);
+
+    const applied = await applyGuardedDelete(deps, softEvent);
+
+    expect(confirmHardEdit).not.toHaveBeenCalled();
+    expect(applied).toBe(true);
+    expect(fetchMock).toHaveBeenCalledWith(
+      expect.not.stringContaining('confirm=true'),
+      expect.anything(),
+    );
+  });
+
+  it('rolls back and toasts when the DELETE request fails', async () => {
+    vi.stubGlobal('fetch', vi.fn().mockResolvedValue(new Response(null, { status: 500 })));
+    const deps = fakeDeps();
+
+    await applyGuardedDelete(deps, softEvent);
+
+    expect(deps.actions[0]).toEqual({ type: 'DELETE_EVENT', id: softEvent.id });
+    expect(deps.actions[1]).toEqual({ type: 'UNDO' });
+    expect(deps.toast).toHaveBeenCalledTimes(1);
   });
 });
 

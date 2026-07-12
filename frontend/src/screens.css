@@ -200,6 +200,28 @@
   color: #98a0b0;
   font-size: 11px;
 }
+.sec-title-end {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+}
+.new-event-btn {
+  font: inherit;
+  font-size: 11px;
+  font-weight: 700;
+  letter-spacing: 0;
+  border: 1px solid var(--line);
+  background: #fff;
+  color: var(--ink);
+  border-radius: 8px;
+  padding: 5px 9px;
+  cursor: pointer;
+}
+.new-event-btn:hover {
+  background: var(--ink);
+  color: #fff;
+  border-color: var(--ink);
+}
 
 /* quick-access grid */
 .quick {
@@ -454,6 +476,25 @@
   background: var(--teal);
   color: #fff;
 }
+.act.danger {
+  border-color: rgba(181, 67, 47, 0.4);
+  color: #b5432f;
+}
+.act.danger:hover {
+  background: #b5432f;
+  color: #fff;
+  border-color: #b5432f;
+}
+.act-row-end {
+  display: flex;
+  gap: 7px;
+  margin-inline-start: auto;
+}
+.act.icon-only {
+  padding: 7px 10px;
+  font-size: 14px;
+  line-height: 1;
+}
 .act:focus-visible {
   outline: 2.5px solid var(--teal);
   outline-offset: 2px;
@@ -667,6 +708,76 @@
   border: 0;
   background: var(--amber);
   color: #3a2405;
+}
+
+/* event create/edit form (T-047) */
+.event-form-card {
+  width: 100%;
+  max-width: 380px;
+  max-height: 90vh;
+  overflow-y: auto;
+  background: var(--card);
+  border: 1px solid var(--line);
+  border-radius: 15px;
+  padding: 18px;
+  box-shadow: 0 20px 40px -14px rgba(0, 0, 0, 0.35);
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+}
+.form-field {
+  display: flex;
+  flex-direction: column;
+  gap: 5px;
+  font-size: 12.5px;
+  font-weight: 600;
+  color: var(--muted);
+}
+.form-field input {
+  font: inherit;
+  font-size: 14px;
+  font-weight: 500;
+  color: var(--ink);
+  background: #fff;
+  border: 1px solid var(--line);
+  border-radius: 9px;
+  padding: 9px 10px;
+}
+.form-field input:focus-visible {
+  outline: 2.5px solid var(--teal);
+  outline-offset: 1px;
+}
+.form-row {
+  display: flex;
+  gap: 10px;
+}
+.form-row .form-field {
+  flex: 1;
+}
+.kind-toggle {
+  display: flex;
+  gap: 8px;
+}
+.kind-toggle button {
+  flex: 1;
+  font: inherit;
+  font-size: 12.5px;
+  font-weight: 700;
+  border: 1px solid var(--line);
+  background: #fff;
+  color: var(--muted);
+  border-radius: 9px;
+  padding: 8px 6px;
+  cursor: pointer;
+}
+.kind-toggle button.on {
+  border-color: var(--amber);
+  background: rgba(233, 166, 60, 0.14);
+  color: var(--ink);
+}
+.form-error {
+  color: #b5432f;
+  margin: 0;
 }
 
 /* toast */
