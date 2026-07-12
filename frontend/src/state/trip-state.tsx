@@ -185,6 +185,10 @@ interface TripContextValue {
   maybeItems: MaybeItem[];
   ripple: RippleSuggestion | null;
   dispatch: React.Dispatch<Action>;
+  // T-058: true when the boot snapshot came from the Dexie cache because the
+  // live fetch failed — a stronger, earlier offline signal than `navigator.onLine`
+  // (whose 'offline' event some environments never fire even with no connectivity).
+  usingCachedSnapshot: boolean;
 }
 
 const TripContext = createContext<TripContextValue | null>(null);
@@ -195,6 +199,7 @@ const TripContext = createContext<TripContextValue | null>(null);
 export function TripProvider({ tripId, children }: { tripId: string; children: ReactNode }) {
   const [snapshot, setSnapshot] = useState<TripSnapshot | null>(null);
   const [error, setError] = useState<string | null>(null);
+  const [usingCachedSnapshot, setUsingCachedSnapshot] = useState(false);
 
   useEffect(() => {
     let cancelled = false;
@@ -203,7 +208,10 @@ export function TripProvider({ tripId, children }: { tripId: string; children: R
     fetchSnapshot(tripId).then(
       (s) => {
         void cacheSnapshot(tripId, s);
-        if (!cancelled) setSnapshot(s);
+        if (!cancelled) {
+          setSnapshot(s);
+          setUsingCachedSnapshot(false);
+        }
       },
       (e: unknown) => {
         // Offline read (sync-and-offline.md "Read"): fall back to the last-cached
@@ -212,8 +220,12 @@ export function TripProvider({ tripId, children }: { tripId: string; children: R
         readCachedSnapshot(tripId).then(
           (cached) => {
             if (cancelled) return;
-            if (cached) setSnapshot(cached);
-            else setError(e instanceof Error ? e.message : String(e));
+            if (cached) {
+              setSnapshot(cached);
+              setUsingCachedSnapshot(true);
+            } else {
+              setError(e instanceof Error ? e.message : String(e));
+            }
           },
           () => {
             if (!cancelled) setError(e instanceof Error ? e.message : String(e));
@@ -241,10 +253,28 @@ export function TripProvider({ tripId, children }: { tripId: string; children: R
       </div>
     );
   }
-  return <TripReady snapshot={snapshot}>{children}</TripReady>;
+  return (
+    <TripReady
+      snapshot={snapshot}
+      usingCachedSnapshot={usingCachedSnapshot}
+      onReconnected={() => setUsingCachedSnapshot(false)}
+    >
+      {children}
+    </TripReady>
+  );
 }
 
-function TripReady({ snapshot, children }: { snapshot: TripSnapshot; children: ReactNode }) {
+function TripReady({
+  snapshot,
+  usingCachedSnapshot,
+  onReconnected,
+  children,
+}: {
+  snapshot: TripSnapshot;
+  usingCachedSnapshot: boolean;
+  onReconnected: () => void;
+  children: ReactNode;
+}) {
   const [state, dispatch] = useReducer(reducer, snapshot, initialState);
   const tripId = snapshot.trip.id;
 
@@ -267,6 +297,7 @@ function TripReady({ snapshot, children }: { snapshot: TripSnapshot; children: R
               lastSeqRef.current = s.latestSeq;
               void cacheSnapshot(tripId, s);
               dispatch({ type: 'RESYNC', events: s.events, maybeItems: s.maybeItems });
+              onReconnected();
             },
             () => {}, // ponytail: transient refetch failure — next change/hello retries the resync.
           );
@@ -291,6 +322,7 @@ function TripReady({ snapshot, children }: { snapshot: TripSnapshot; children: R
           }
           closeSocket?.();
           connect(lastSeqRef.current);
+          onReconnected();
         })
         .catch(() => {}); // ponytail: next 'online' event (or a WS gap) retries.
     }
@@ -325,8 +357,9 @@ function TripReady({ snapshot, children }: { snapshot: TripSnapshot; children: R
       maybeItems: state.maybeItems,
       ripple: state.ripple,
       dispatch,
+      usingCachedSnapshot,
     }),
-    [state, snapshot],
+    [state, snapshot, usingCachedSnapshot],
   );
   return <TripContext.Provider value={value}>{children}</TripContext.Provider>;
 }

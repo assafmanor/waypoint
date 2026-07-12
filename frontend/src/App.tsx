@@ -73,8 +73,12 @@ function ModeToggle() {
 }
 
 function Header() {
-  const { trip, users, activeDate } = useTrip();
-  const offline = useIsOffline();
+  const { trip, users, activeDate, usingCachedSnapshot } = useTrip();
+  // `navigator.onLine` (T-013) misses cases like a hard reload where the boot
+  // fetch itself fails but the browser's online flag never flips (some
+  // environments' 'offline' event is unreliable) — usingCachedSnapshot (T-058)
+  // is a direct signal from that fetch actually failing, so OR the two.
+  const offline = useIsOffline() || usingCachedSnapshot;
   const pendingCount = useOutboxCount();
   const total =
     Math.round((Date.parse(trip.endDate) - Date.parse(trip.startDate)) / MS_PER_DAY) + 1;
