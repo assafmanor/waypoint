@@ -145,7 +145,7 @@ Plan mode reuses the same tokens/grammar as Trip mode, adding builder/entry comp
 - **Mode toggle** — a pill (✏️ תכנון / 🧭 טיול) in the header showing the manual override, with an "auto-switches on <date>" hint (ADR-0016).
 - **Prep dashboard hero** — countdown to departure + a **readiness bar** (% complete). **Plan violet** rather than amber, since it's not "now" (teal is location-only).
 - **Completeness checklist** — rows with status (✓ done / warn / missing) and inline CTAs ("הוסף", "בנה יום", "תזכורת").
-- **Itinerary builder rows** — event rows with a **drag grip** (⠿), hard/soft tag, editable time, edit affordance; **gap chips** between events ("פער 2 שעות · מלא").
+- **Itinerary builder rows** — event rows with a **drag grip** (⠿), hard/soft tag, editable time, edit affordance; **gap chips** between events ("פער של שעתיים · ＋ שבץ").
 - **Add-event / booking-entry forms** — inline forms with a **hard/soft kind selector** (amber=hard; soft = dashed + muted, per the soft grammar — never teal) and per-type booking fields.
 - **Place research** — a search bar + result cards with rating and "＋ אולי" (add to the maybe-shelf).
 - **Day selector strip** — days 1–N with an **empty-day** marker (dashed, red number) surfacing gaps to fill.
