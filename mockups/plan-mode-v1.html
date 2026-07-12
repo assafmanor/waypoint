@@ -23,6 +23,9 @@
         --amber-deep: #c9822a;
         --teal: #2c9c90;
         --teal-deep: #1f7a70;
+        --plan: #6e59d6; /* plan-mode accent (addendum §1): teal returns to location-only */
+        --plan-deep: #5747b4;
+        --plan-tint: rgba(110, 89, 214, 0.1);
         --muted: #6c7488;
         --line: rgba(22, 35, 61, 0.1);
         --soft-line: rgba(22, 35, 61, 0.28);
@@ -322,7 +325,7 @@
         margin-bottom: 6px;
       }
       .ready .rt b {
-        color: var(--teal);
+        color: var(--plan);
       }
       .ready .track {
         height: 7px;
@@ -333,7 +336,7 @@
       .ready .fill {
         height: 100%;
         width: 68%;
-        background: linear-gradient(90deg, var(--teal-deep), var(--teal));
+        background: linear-gradient(90deg, var(--plan-deep), var(--plan));
         border-radius: 6px;
       }
 
@@ -389,8 +392,8 @@
         font: inherit;
         font-size: 11.5px;
         font-weight: 700;
-        border: 1px solid var(--teal);
-        color: var(--teal);
+        border: 1px solid var(--plan);
+        color: var(--plan-deep);
         background: #fff;
         border-radius: 8px;
         padding: 6px 11px;
@@ -399,7 +402,7 @@
         flex: 0 0 auto;
       }
       .cta:hover {
-        background: var(--teal);
+        background: var(--plan);
         color: #fff;
       }
       .cta.warn {
@@ -576,10 +579,11 @@
         background: repeating-linear-gradient(90deg, var(--soft-line) 0 5px, transparent 5px 10px);
       }
       .gap .add {
+        /* fill-a-gap = plan action */
         font: inherit;
         font-size: 11px;
         font-weight: 700;
-        color: var(--teal);
+        color: var(--plan-deep);
         background: rgba(44, 156, 144, 0.08);
         border: 1px solid rgba(44, 156, 144, 0.3);
         border-radius: 20px;
@@ -588,7 +592,7 @@
         white-space: nowrap;
       }
       .gap .add:hover {
-        background: var(--teal);
+        background: var(--plan);
         color: #fff;
       }
 
@@ -607,8 +611,8 @@
         transition: 0.12s;
       }
       .addbtn:hover {
-        border-color: var(--teal);
-        color: var(--teal);
+        border-color: var(--plan);
+        color: var(--plan-deep);
         background: rgba(44, 156, 144, 0.04);
       }
 
@@ -680,8 +684,9 @@
         background: rgba(233, 166, 60, 0.1);
       }
       .kindsel button.soft {
-        border-color: var(--teal);
-        color: var(--teal-deep);
+        border-style: dashed; /* soft grammar: dashed + muted, never teal (addendum §2) */
+        border-color: var(--soft-line);
+        color: var(--muted);
         background: rgba(44, 156, 144, 0.08);
       }
       .form-actions {
@@ -731,8 +736,8 @@
       }
       .tp:hover,
       .tp.on {
-        border-color: var(--teal);
-        background: rgba(44, 156, 144, 0.06);
+        border-color: var(--plan);
+        background: var(--plan-tint);
       }
       .tp .i {
         font-size: 19px;
@@ -914,7 +919,7 @@
         font: inherit;
         font-size: 11px;
         font-weight: 700;
-        color: var(--teal);
+        color: var(--plan-deep);
         background: rgba(44, 156, 144, 0.08);
         border: 1px solid rgba(44, 156, 144, 0.3);
         border-radius: 20px;
@@ -923,7 +928,7 @@
         flex: 0 0 auto;
       }
       .addmaybe:hover {
-        background: var(--teal);
+        background: var(--plan);
         color: #fff;
       }
 
@@ -949,7 +954,7 @@
       }
       .maybe:hover {
         transform: translateY(-2px);
-        border-color: var(--teal);
+        border-color: var(--plan);
       }
       .maybe .mi {
         font-size: 19px;
@@ -969,7 +974,7 @@
         margin-top: 8px;
         font-size: 10.5px;
         font-weight: 700;
-        color: var(--teal);
+        color: var(--plan-deep);
       }
 
       /* nav */

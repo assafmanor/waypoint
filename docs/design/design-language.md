@@ -12,19 +12,22 @@ A **departure-board hero** (dark, glowing, monospace times) with a live countdow
 
 ## Color palette
 
-| Token          | Hex           | Role                                 |
-| -------------- | ------------- | ------------------------------------ |
-| `--ink`        | `#16233D`     | Primary text                         |
-| `--indigo`     | `#1B2A4A`     | Base / chrome (header, status bar)   |
-| `--board`      | `#0E1729`     | Departure-board background           |
-| `--board-2`    | `#152137`     | Board gradient top                   |
-| `--screen`     | `#E7EAEF`     | App background ("cool paper")        |
-| `--card`       | `#FFFFFF`     | Card surface                         |
-| `--paper`      | `#F3EFE6`     | Badge / warm paper accents           |
-| **`--amber`**  | **`#E9A63C`** | **NOW / active — this color only**   |
-| `--amber-deep` | `#C9822A`     | Amber pressed/hard-code accent       |
-| **`--teal`**   | **`#2C9C90`** | **Location / map — this color only** |
-| `--muted`      | `#6C7488`     | Secondary text                       |
+| Token                  | Hex                   | Role                                                                     |
+| ---------------------- | --------------------- | ------------------------------------------------------------------------ |
+| `--ink`                | `#16233D`             | Primary text                                                             |
+| `--indigo`             | `#1B2A4A`             | Base / chrome (header, status bar)                                       |
+| `--board`              | `#0E1729`             | Departure-board background                                               |
+| `--board-2`            | `#152137`             | Board gradient top                                                       |
+| `--screen`             | `#E7EAEF`             | App background ("cool paper")                                            |
+| `--card`               | `#FFFFFF`             | Card surface                                                             |
+| `--paper`              | `#F3EFE6`             | Badge / warm paper accents                                               |
+| **`--amber`**          | **`#E9A63C`**         | **NOW / active — this color only**                                       |
+| `--amber-deep`         | `#C9822A`             | Amber pressed/hard-code accent                                           |
+| **`--teal`**           | **`#2C9C90`**         | **Location / map — this color only**                                     |
+| `--muted`              | `#6C7488`             | Secondary text                                                           |
+| **`--plan`**           | **`#6E59D6`**         | **Plan mode — this color only** (`--plan-deep` `#5747B4`, `--plan-tint`) |
+| `--cta` / `--cta-text` | `--ink` / `#FFF`      | Neutral primary button (semantic colors are never CTAs)                  |
+| `--ok` / `--miss`      | `#3C9A6B` / `#C2584E` | Status mini-palette (positive/negative)                                  |
 
 ### Functional color coding (important)
 
@@ -70,7 +73,7 @@ This is the most important visual rule after the color coding:
 Plan mode reuses the same tokens/grammar as Trip mode, adding builder/entry components:
 
 - **Mode toggle** — a pill (✏️ תכנון / 🧭 טיול) in the header showing the manual override, with an "auto-switches on <date>" hint (ADR-0016).
-- **Prep dashboard hero** — countdown to departure + a **readiness bar** (% complete). Teal (location/progress) rather than amber, since it's not "now".
+- **Prep dashboard hero** — countdown to departure + a **readiness bar** (% complete). **Plan violet** rather than amber, since it's not "now" (teal is location-only — addendum §1).
 - **Completeness checklist** — rows with status (✓ done / warn / missing) and inline CTAs ("הוסף", "בנה יום", "תזכורת").
 - **Itinerary builder rows** — event rows with a **drag grip** (⠿), hard/soft tag, editable time, edit affordance; **gap chips** between events ("פער 2 שעות · מלא").
 - **Add-event / booking-entry forms** — inline forms with a **hard/soft kind selector** (amber=hard, teal=soft) and per-type booking fields.

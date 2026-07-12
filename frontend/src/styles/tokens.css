@@ -1,5 +1,6 @@
 /* Waypoint design tokens — ported from mockups/trip-dashboard-v2.html.
-   See docs/design/design-language.md. Amber = now/active only; Teal = location only. */
+   See docs/design/design-language.md + design-principles-addendum.md.
+   Amber = time & commitment only; Teal = location only; Plan violet = plan mode only. */
 :root {
   --ink: #16233d;
   --indigo: #1b2a4a;
@@ -15,6 +16,16 @@
   --line: rgba(22, 35, 61, 0.1);
   --soft-line: rgba(22, 35, 61, 0.28);
   --shadow: 0 18px 40px -18px rgba(14, 23, 41, 0.45);
+
+  /* Mode & action tokens (design-principles-addendum §1–2) */
+  --plan: #6e59d6; /* plan-mode accent — plan/builder actions only */
+  --plan-deep: #5747b4;
+  --plan-tint: rgba(110, 89, 214, 0.1);
+  --cta: var(--ink); /* neutral primary button; amber/teal/plan are semantic, never CTAs */
+  --cta-text: #ffffff;
+  /* Status mini-palette (distinct from the semantic trio) */
+  --ok: #3c9a6b;
+  --miss: #c2584e;
 
   --font-head: 'Secular One', sans-serif;
   --font-body: 'Assistant', sans-serif;
@@ -38,4 +49,31 @@ body {
   background: var(--screen);
   color: var(--ink);
   -webkit-font-smoothing: antialiased;
+}
+
+/* Dark mode remap — INERT until <html data-theme="dark"> is set.
+   Same token names, re-mapped; component CSS stays untouched.
+   See design-principles-addendum §11 for principles + remaining work. */
+:root[data-theme='dark'] {
+  --ink: #e7eaf2;
+  --indigo: #131f38;
+  --board: #0a1120; /* darkest surface — the board stays the loudest */
+  --board-2: #101b30;
+  --screen: #0f1726;
+  --card: #1a2740;
+  --paper: #2e2a20; /* keeps its warmth, dark */
+  --amber: #f0b254;
+  --amber-deep: #d89440;
+  --teal: #3fb3a5;
+  --muted: #93a0b8;
+  --line: rgba(231, 234, 242, 0.1);
+  --soft-line: rgba(231, 234, 242, 0.3);
+  --shadow: 0 18px 40px -18px rgba(0, 0, 0, 0.6);
+  --plan: #8b79e8;
+  --plan-deep: #a99af2; /* used as text — lighter on dark */
+  --plan-tint: rgba(139, 121, 232, 0.14);
+  --cta: #e7eaf2;
+  --cta-text: #12203a;
+  --ok: #4cbf85;
+  --miss: #e07a6e;
 }

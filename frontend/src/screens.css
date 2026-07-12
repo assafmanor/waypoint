@@ -1,5 +1,5 @@
 /* Home + Day-by-day components, ported from mockups/trip-dashboard-v2.html.
-   Amber = now/active only; teal = location/nav only (design-language.md). */
+   Amber = time/commitment only; teal = location/nav only; plan violet = plan actions (addendum). */
 
 /* departure-board hero */
 .board {
@@ -304,7 +304,7 @@
   margin-top: 2px;
 }
 .gcard .s.up {
-  color: var(--teal);
+  color: var(--ok); /* status, not location (addendum §2) */
   font-weight: 600;
 }
 .budget-bar {
@@ -317,7 +317,9 @@
 .budget-bar i {
   display: block;
   height: 100%;
-  background: var(--teal);
+  background: var(
+    --ok
+  ); /* budget health status; component flips to --miss when over (addendum §2) */
   border-radius: 4px;
 }
 
@@ -602,7 +604,7 @@
 }
 .maybe:hover {
   transform: translateY(-2px);
-  border-color: var(--teal);
+  border-color: var(--plan); /* scheduling is a plan action (addendum §2) */
 }
 .maybe:focus-visible {
   outline: 2.5px solid var(--teal);
@@ -633,7 +635,7 @@
   margin-top: 9px;
   font-size: 11px;
   font-weight: 700;
-  color: var(--teal);
+  color: var(--plan-deep); /* plan action, not location */
   display: block;
 }
 
