@@ -4,6 +4,7 @@ import { ToastProvider } from './ui/Toast';
 import { ConfirmProvider } from './ui/ConfirmDialog';
 import { Home } from './screens/Home';
 import { DayView } from './screens/DayView';
+import { DevTimeTravel } from './dev/DevTimeTravel';
 import { TRIP } from './fixtures';
 import { AVATAR_INITIAL_LENGTH, DOT_SEPARATOR, MS_PER_DAY, TABS, type TabId } from './constants';
 import { t } from './i18n/he';
@@ -115,6 +116,7 @@ export function App() {
               ))}
             </nav>
           </div>
+          {import.meta.env.DEV && <DevTimeTravel />}
         </ConfirmProvider>
       </ToastProvider>
     </TripProvider>
