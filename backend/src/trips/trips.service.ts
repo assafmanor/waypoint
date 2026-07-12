@@ -6,11 +6,18 @@ import {
   NotFoundException,
   UnauthorizedException,
 } from '@nestjs/common';
-import type { CreateTripInput, Membership, Trip, TripSnapshot } from '@waypoint/shared';
+import type {
+  CreateTripInput,
+  InvitePreview,
+  Membership,
+  Trip,
+  TripSnapshot,
+} from '@waypoint/shared';
 import { PrismaService } from '../prisma/prisma.service';
 import {
   toBookingDto,
   toEventDto,
+  toInvitePreviewDto,
   toMaybeItemDto,
   toMembershipDto,
   toTripDto,
@@ -99,6 +106,20 @@ export class TripsService {
     }
 
     await this.prisma.membership.delete({ where: { id: target.id } });
+  }
+
+  /** Public preview for the join screen (ADR-0024) — token invalid or trip gone both 404. */
+  async getInvitePreview(token: string): Promise<InvitePreview> {
+    let tripId: string;
+    try {
+      tripId = this.verifyInviteToken(token);
+    } catch {
+      throw new NotFoundException('Invite not found');
+    }
+    const trip = await this.prisma.trip.findUnique({ where: { id: tripId } });
+    if (!trip) throw new NotFoundException('Invite not found');
+    const memberCount = await this.prisma.membership.count({ where: { tripId } });
+    return toInvitePreviewDto(trip, memberCount);
   }
 
   private verifyInviteToken(token: string): string {

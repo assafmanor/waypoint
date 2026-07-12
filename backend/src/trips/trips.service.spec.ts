@@ -1,8 +1,20 @@
 import 'reflect-metadata';
+import { createHmac } from 'node:crypto';
 import { afterAll, afterEach, describe, expect, it } from 'vitest';
 import { ForbiddenException, NotFoundException, UnauthorizedException } from '@nestjs/common';
 import { PrismaService } from '../prisma/prisma.service';
 import { TripsService } from './trips.service';
+
+// Mirrors TripsService's private token signing (trips.service.ts) so tests can
+// craft an already-expired token without exposing that internal for prod use.
+function signedInviteToken(tripId: string, expiresAtMs: number): string {
+  const payload = `${tripId}.${expiresAtMs}`;
+  const encoded = Buffer.from(payload).toString('base64url');
+  const signature = createHmac('sha256', process.env.JWT_SECRET!)
+    .update(payload)
+    .digest('base64url');
+  return `${encoded}.${signature}`;
+}
 
 // Integration test against the seeded dev Postgres (backend/prisma/seed.mjs, T-015).
 // Run `pnpm --filter @waypoint/backend prisma:seed` first if this fails on a fresh DB.
@@ -129,5 +141,31 @@ describe('TripsService', () => {
     await expect(service.removeMember(trip.id, DEV_USER, PEER_USER)).rejects.toThrow(
       NotFoundException,
     );
+  });
+
+  it('previews a trip for a valid, unexpired invite token', async () => {
+    const trip = await service.createTrip(DEV_USER, NEW_TRIP_INPUT);
+    createdTripIds.push(trip.id);
+
+    const preview = await service.getInvitePreview(service.createInviteToken(trip.id));
+    expect(preview).toEqual({
+      tripName: NEW_TRIP_INPUT.name,
+      destination: NEW_TRIP_INPUT.destination,
+      startDate: NEW_TRIP_INPUT.startDate,
+      endDate: NEW_TRIP_INPUT.endDate,
+      memberCount: 1,
+    });
+  });
+
+  it('404s an invite preview for an expired token', async () => {
+    const trip = await service.createTrip(DEV_USER, NEW_TRIP_INPUT);
+    createdTripIds.push(trip.id);
+
+    const expiredToken = signedInviteToken(trip.id, Date.now() - 1000);
+    await expect(service.getInvitePreview(expiredToken)).rejects.toThrow(NotFoundException);
+  });
+
+  it('404s an invite preview for a malformed token', async () => {
+    await expect(service.getInvitePreview('not-a-real-token')).rejects.toThrow(NotFoundException);
   });
 });

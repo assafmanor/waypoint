@@ -98,3 +98,13 @@ export type CreateMaybeItemInput = z.infer<typeof createMaybeItemSchema>;
 /** `POST /trips/:tripId/invite` response. */
 export const inviteUrlSchema = z.object({ inviteUrl: z.string() });
 export type InviteUrl = z.infer<typeof inviteUrlSchema>;
+
+/** `GET /invites/:token` response — public preview shown before joining (ADR-0024). */
+export const invitePreviewSchema = z.object({
+  tripName: z.string(),
+  destination: z.string(),
+  startDate: z.string(),
+  endDate: z.string(),
+  memberCount: z.number().int(),
+});
+export type InvitePreview = z.infer<typeof invitePreviewSchema>;
