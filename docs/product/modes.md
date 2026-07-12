@@ -33,6 +33,8 @@ Trip mode's Day-by-day derives a **lifecycle phase** for every event from the re
 
 ## Plan mode — v1 responsibilities
 
+**Designed to finish level in `mockups/plan-mode-v1.html`** (phone-primary + a two-column tablet builder) — the mode toggle, the prep-dashboard Home, the itinerary **builder** Day view, booking **entry** Index, and **research** Map.
+
 1. **Trip setup + invites** — create the trip (dates, destination, timezone), invite the ~5 via link, each connects their own Google account (ADR-0002).
 2. **Itinerary building** — add days and events, mark hard vs soft (ADR-0011), set times, drag to arrange within/across days.
 3. **Manual booking entry** — type in bookings → the index; link a booking to a hard event. (Gmail auto-import is v1.1.)
