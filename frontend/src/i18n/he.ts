@@ -18,6 +18,7 @@ export const t = {
     googleNote: 'כל אחד מחובר לחשבון Google שלו · המסלול מסונכרן ליומן האישי',
     dayOf: (day: number, total: number) => `יום ${day} מתוך ${total}`,
     pendingSync: (count: number) => `${count} שינויים ממתינים לסנכרון · יסתנכרנו כשהחיבור יחזור`,
+    offlineNow: 'מצב אופליין · עובדים מהנתונים השמורים',
   },
   placeholder: {
     comingSoon: 'מסך זה מעוצב בהמשך.',

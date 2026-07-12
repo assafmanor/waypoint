@@ -24,7 +24,7 @@ import {
   type User,
 } from '@waypoint/shared';
 import { fetchChanges, fetchSnapshot, type RippleSuggestion } from '../lib/api';
-import { flushOutbox } from '../lib/outbox';
+import { flushOutbox, isOffline } from '../lib/outbox';
 import { openTripStream } from '../lib/ws';
 import { shiftIso, todayInTz } from '../lib/time';
 import { EVENTS, GLANCE, MAYBE_ITEMS, USERS, activeUserId } from '../fixtures';
@@ -276,6 +276,11 @@ function TripReady({ snapshot, children }: { snapshot: TripSnapshot; children: R
         .catch(() => {}); // ponytail: next 'online' event (or a WS gap) retries.
     }
     window.addEventListener('online', handleOnline);
+    // Also try on mount: a reload while already online (with a queue left
+    // over from a previous offline session) is not an 'online' *transition*,
+    // so it would never fire the listener above and the queue would sit
+    // forever. flushOutbox() is a no-op when the outbox is empty.
+    if (!isOffline()) handleOnline();
 
     return () => {
       window.removeEventListener('online', handleOnline);

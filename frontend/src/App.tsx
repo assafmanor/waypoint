@@ -1,7 +1,7 @@
 import { useState } from 'react';
 import { TripProvider, useTrip } from './state/trip-state';
 import { ModeProvider, useMode } from './state/mode-state';
-import { useOutboxCount } from './lib/outbox';
+import { useIsOffline, useOutboxCount } from './lib/outbox';
 import { ToastProvider } from './ui/Toast';
 import { ConfirmProvider } from './ui/ConfirmDialog';
 import { Home } from './screens/Home';
@@ -74,6 +74,7 @@ function ModeToggle() {
 
 function Header() {
   const { trip, users, activeDate } = useTrip();
+  const offline = useIsOffline();
   const pendingCount = useOutboxCount();
   const total =
     Math.round((Date.parse(trip.endDate) - Date.parse(trip.startDate)) / MS_PER_DAY) + 1;
@@ -116,8 +117,13 @@ function Header() {
         <span className="g" />
         {t.header.googleNote}
       </div>
+      {offline && (
+        <div className="offline-badge">
+          {ICONS.offline} {t.header.offlineNow}
+        </div>
+      )}
       {pendingCount > 0 && (
-        <div className="gnote">
+        <div className="offline-badge">
           {ICONS.sync} {t.header.pendingSync(pendingCount)}
         </div>
       )}

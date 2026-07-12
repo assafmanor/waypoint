@@ -61,4 +61,5 @@ export const ICONS = {
   schedule: '📅',
   add: '＋',
   sync: '🔄',
+  offline: '📡',
 } as const;

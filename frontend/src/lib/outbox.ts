@@ -3,7 +3,7 @@
 // flushed FIFO on reconnect. Flush reuses the same REST functions as the online
 // path (lib/api.ts) rather than re-building requests — the online write path
 // (verbs.ts) stays the only place that builds optimistic dispatch + undo.
-import { useSyncExternalStore } from 'react';
+import { useEffect, useState, useSyncExternalStore } from 'react';
 import type {
   CreateEventInput,
   EventStatus,
@@ -34,6 +34,22 @@ export function isNetworkError(err: unknown): boolean {
 
 export function isOffline(): boolean {
   return typeof navigator !== 'undefined' && navigator.onLine === false;
+}
+
+/** Live `online`/`offline` status for UI (an obvious "you're offline" badge,
+ *  distinct from the outbox count — you can be offline with nothing queued yet). */
+export function useIsOffline(): boolean {
+  const [offline, setOffline] = useState(isOffline);
+  useEffect(() => {
+    const update = () => setOffline(isOffline());
+    window.addEventListener('online', update);
+    window.addEventListener('offline', update);
+    return () => {
+      window.removeEventListener('online', update);
+      window.removeEventListener('offline', update);
+    };
+  }, []);
+  return offline;
 }
 
 type Listener = () => void;

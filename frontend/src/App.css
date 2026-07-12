@@ -85,6 +85,22 @@
   flex: 0 0 auto;
   background: conic-gradient(#4285f4 0 25%, #ea4335 0 50%, #fbbc05 0 75%, #34a853 0);
 }
+/* Offline/pending-sync badges (T-013) — muted like the offline map state in
+   mockups/trip-dashboard-v2.html (.map-offline-banner), not amber/teal: this
+   is a background/system signal, not a "now" or "location" one (ADR rule #4). */
+.offline-badge {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  margin-top: 8px;
+  padding: 4px 10px;
+  border-radius: 20px;
+  background: rgba(255, 255, 255, 0.08);
+  border: 1px solid rgba(255, 255, 255, 0.16);
+  color: #8fa0c4;
+  font-size: 11.5px;
+  font-weight: 600;
+}
 /* mode toggle (design-language.md's Plan-mode components, mockups/plan-mode-v1.html) */
 .modebar {
   display: flex;
