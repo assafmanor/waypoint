@@ -16,6 +16,7 @@ import { useTrip, type Action, type RippleSuggestion } from './trip-state';
 import { useToast } from '../ui/Toast';
 import { useConfirmHardEdit, type ConfirmHardEditAction } from '../ui/ConfirmDialog';
 import {
+  consumeMaybeItem,
   createEvent,
   deleteEvent,
   isHardEventConfirmError,
@@ -192,6 +193,11 @@ export async function applySchedule(
       createEvent(deps.tripId, input),
     );
     if (canonical) deps.dispatch({ type: 'RECONCILE_EVENT', event: canonical });
+    // Persists the consumed flag server-side (T-058) so a resync after an
+    // offline reconnect doesn't revert this maybe-item back to unscheduled.
+    await restOrQueue(deps.tripId, { verb: 'consumeMaybeItem', maybeItemId: maybeId }, () =>
+      consumeMaybeItem(deps.tripId, maybeId),
+    );
   } catch (err) {
     deps.dispatch({ type: 'UNDO' });
     writeErrorToast(deps.toast, err);

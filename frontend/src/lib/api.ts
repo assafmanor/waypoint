@@ -19,6 +19,8 @@ const eventsUrl = (tripId: string) => `${API_BASE_URL}/trips/${tripId}/events`;
 const eventUrl = (tripId: string, eventId: string) => `${eventsUrl(tripId)}/${eventId}`;
 const changesUrl = (tripId: string, sinceSeq: string) =>
   `${API_BASE_URL}/trips/${tripId}/changes?sinceSeq=${sinceSeq}`;
+const consumeMaybeItemUrl = (tripId: string, maybeItemId: string) =>
+  `${API_BASE_URL}/trips/${tripId}/maybe-items/${maybeItemId}/consume`;
 
 /** Server error shape (api-contract.md): `{ error: { code, message, details? } }`. */
 export class ApiError extends Error {
@@ -134,4 +136,12 @@ export async function fetchChanges(tripId: string, sinceSeq: string): Promise<Ch
   const res = await fetch(changesUrl(tripId, sinceSeq));
   if (!res.ok) throw new Error(`changes fetch failed: ${res.status}`);
   return changeSchema.array().parse(await res.json());
+}
+
+/** Marks a maybe-shelf item consumed server-side (T-058) — schedule() used to
+ *  only flip this locally, so a resync after an offline reconnect silently
+ *  reverted an already-scheduled item back to unscheduled. */
+export async function consumeMaybeItem(tripId: string, maybeItemId: string): Promise<void> {
+  const res = await fetch(consumeMaybeItemUrl(tripId, maybeItemId), { method: 'POST' });
+  if (!res.ok) return throwApiError(res);
 }

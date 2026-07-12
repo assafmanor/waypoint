@@ -24,6 +24,7 @@ import {
   type User,
 } from '@waypoint/shared';
 import { fetchChanges, fetchSnapshot, type RippleSuggestion } from '../lib/api';
+import { applyChangeToCache, cacheSnapshot, readCachedSnapshot } from '../lib/cache';
 import { flushOutbox, isOffline } from '../lib/outbox';
 import { openTripStream } from '../lib/ws';
 import { shiftIso, todayInTz } from '../lib/time';
@@ -151,8 +152,10 @@ export function reducer(state: State, action: Action): State {
  *  fields (e.g. a ripple-shifted `endsAt`). Good enough at this trip's scale;
  *  a richer Change payload is a backend change, out of T-014's scope. */
 function applyRemoteEventChange(events: TripEvent[], change: Change): TripEvent[] {
-  // ponytail: bookings/notes/maybe-items have no consuming UI yet (T-048 etc.) —
-  // wire their entityTypes in here once something renders them live.
+  // Only the `event` UI state lives in this reducer — bookings/notes/maybe-items
+  // have no consuming UI yet (T-048 etc.), so this stays event-only. The Dexie
+  // cache still stays coherent for all entity types via lib/cache.ts (T-058),
+  // independent of what this reducer renders.
   if (change.entityType !== 'event') return events;
   if (change.action === 'delete') return events.filter((e) => e.id !== change.entityId);
   const partial = change.after as Partial<TripEvent> | undefined;
@@ -199,10 +202,23 @@ export function TripProvider({ tripId, children }: { tripId: string; children: R
     setError(null);
     fetchSnapshot(tripId).then(
       (s) => {
+        void cacheSnapshot(tripId, s);
         if (!cancelled) setSnapshot(s);
       },
       (e: unknown) => {
-        if (!cancelled) setError(e instanceof Error ? e.message : String(e));
+        // Offline read (sync-and-offline.md "Read"): fall back to the last-cached
+        // snapshot rather than showing the boot-error screen. The error screen is
+        // the true last resort — nothing was ever cached for this trip.
+        readCachedSnapshot(tripId).then(
+          (cached) => {
+            if (cancelled) return;
+            if (cached) setSnapshot(cached);
+            else setError(e instanceof Error ? e.message : String(e));
+          },
+          () => {
+            if (!cancelled) setError(e instanceof Error ? e.message : String(e));
+          },
+        );
       },
     );
     return () => {
@@ -242,12 +258,14 @@ function TripReady({ snapshot, children }: { snapshot: TripSnapshot; children: R
       closeSocket = openTripStream(tripId, sinceSeq, {
         onChange: (change) => {
           lastSeqRef.current = change.seq;
+          void applyChangeToCache(tripId, change);
           dispatch({ type: 'REMOTE_EVENT_CHANGE', change });
         },
         onResync: () => {
           fetchSnapshot(tripId).then(
             (s) => {
               lastSeqRef.current = s.latestSeq;
+              void cacheSnapshot(tripId, s);
               dispatch({ type: 'RESYNC', events: s.events, maybeItems: s.maybeItems });
             },
             () => {}, // ponytail: transient refetch failure — next change/hello retries the resync.
@@ -268,6 +286,7 @@ function TripReady({ snapshot, children }: { snapshot: TripSnapshot; children: R
         .then((changes) => {
           for (const change of changes) {
             lastSeqRef.current = change.seq;
+            void applyChangeToCache(tripId, change);
             dispatch({ type: 'REMOTE_EVENT_CHANGE', change });
           }
           closeSocket?.();

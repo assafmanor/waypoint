@@ -9,6 +9,7 @@ import {
   applyGuardedDelay,
   applyGuardedDelete,
   applyGuardedUpdate,
+  applySchedule,
   applySetStatus,
   applyUndo,
   type VerbDeps,
@@ -321,6 +322,43 @@ describe('applyUndo', () => {
     const deps = fakeDeps();
     await applyUndo(deps);
     expect(fetchMock).not.toHaveBeenCalled();
+  });
+});
+
+describe('applySchedule (T-058: persists the maybe-item consumed flag server-side)', () => {
+  const event = { ...EVENTS[0], id: 'ev-new' };
+
+  it('creates the event then consumes the maybe item, both over REST', async () => {
+    const calls: string[] = [];
+    vi.stubGlobal(
+      'fetch',
+      vi.fn((url: string) => {
+        calls.push(String(url));
+        return Promise.resolve(new Response(JSON.stringify(event), { status: 200 }));
+      }),
+    );
+    const deps = fakeDeps();
+
+    await applySchedule(deps, event, 'mb-skytree');
+
+    expect(calls[0]).toContain('/events');
+    expect(calls[1]).toContain('/maybe-items/mb-skytree/consume');
+  });
+
+  it('queues both writes in the outbox when offline', async () => {
+    const fetchMock = vi.fn();
+    vi.stubGlobal('fetch', fetchMock);
+    vi.stubGlobal('navigator', { onLine: false });
+    const deps = fakeDeps();
+
+    await applySchedule(deps, event, 'mb-skytree');
+
+    expect(fetchMock).not.toHaveBeenCalled();
+    const queued = (await db.outbox.toArray()).map((e) => e.op);
+    expect(queued).toEqual([
+      { verb: 'create', input: expect.objectContaining({ id: 'ev-new' }) },
+      { verb: 'consumeMaybeItem', maybeItemId: 'mb-skytree' },
+    ]);
   });
 });
 
