@@ -58,12 +58,6 @@ export const t = {
     tapToChange: 'בחר כרטיס לשינוי',
     maybeShelf: 'מדף אולי',
     tapToSchedule: 'בחר כדי לשבץ ליום',
-    legendHardWord: 'קשיחים',
-    legendSoftWord: 'גמישים',
-    legendHardRest: ' יש להם התחייבות (הזמנה/כרטיס) · האפליקציה מגנה עליהם.',
-    legendSoftRest: ' זזים, מדולגים ומתחלפים בחופשיות.',
-    legendHardLead: 'אירועים ',
-    legendSoftLead: 'אירועים ',
   },
   event: {
     hard: 'קשיח',
