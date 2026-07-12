@@ -18,7 +18,8 @@ Code and documentation live together. **Any consequential decision gets an ADR**
 - `docs/architecture/` — overview, collaboration-model, data-model, **api-contract**, **sync-and-offline**, **auth-and-google**, tech-stack.
 - `docs/decisions/` — ADRs (the "why"). `README.md` lists them chronologically; `INDEX.md`'s **"Decisions by domain"** table is the router — read the ADR(s) for a domain before you touch it.
 - `docs/engineering/` — conventions + prerequisites checklist.
-- `mockups/trip-dashboard-v2.html` — the interactive design reference.
+- `mockups/trip-dashboard-v2.html` — the interactive **Trip-mode** design reference.
+- `mockups/plan-mode-v1.html` — the interactive **Plan-mode** design reference (prep-dashboard Home, itinerary builder, booking entry, research; phone + tablet).
 
 ## Tech stack (see docs/architecture/tech-stack.md)
 
