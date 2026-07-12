@@ -295,7 +295,9 @@
       }
 
       /* ============ SCREEN 1: LANDING (pre-login) ============ */
-      #s-landing {
+      /* pre-login screens (landing + link invite) share the night chrome */
+      #s-landing,
+      #s-linkjoin {
         background: linear-gradient(180deg, var(--board-2) 0%, var(--board) 100%);
         color: #eaf0ff;
       }
@@ -1314,30 +1316,36 @@
             <div class="land-top">
               <div>
                 <div class="land-logo logo" style="font-size: 17px">Waypoint</div>
-                <div class="codename">הוזמנת לטיול</div>
               </div>
               <div class="g-dot" style="width: 20px; height: 20px; opacity: 0.9"></div>
             </div>
 
+            <!-- welcome hero: an invite is a happy moment, not a gate -->
+            <div class="land-hero" style="margin-top: 30px">
+              <h1 style="font-size: 27px">הוזמנת לטיול! <em>🎉</em></h1>
+              <p style="margin-top: 8px">החברים כבר בפנים — נשארה רק ההצטרפות שלך.</p>
+            </div>
+
             <!-- boarding-pass style invite card -->
-            <div style="margin-top: 34px; position: relative">
+            <div style="margin-top: 22px; position: relative">
               <div class="pv-card" style="border-radius: 20px; padding: 0; overflow: hidden">
                 <div style="padding: 18px 18px 16px; position: relative">
                   <div style="display: flex; justify-content: space-between; align-items: center">
-                    <span class="live-badge" style="animation: none">✉️ הזמנה פתוחה</span>
+                    <span class="live-badge" style="animation: none">✈️ כרטיס הזמנה</span>
+                    <!-- static amber countdown: anticipation, time-semantic (no pulse) -->
                     <span
                       style="
                         font-family: 'JetBrains Mono', monospace;
-                        font-size: 11px;
-                        color: #7e8fb4;
+                        font-size: 12px;
+                        font-weight: 700;
+                        color: var(--amber);
                       "
-                      dir="ltr"
-                      >wpnt.app/j/x7Kq2</span
+                      >בעוד <span dir="ltr">12</span> ימים</span
                     >
                   </div>
                   <div class="pv-name" style="font-size: 24px; margin-top: 14px">יפן ׳26</div>
                   <div class="pv-meta" style="margin-top: 6px">
-                    <span dir="ltr">25.07 – 03.08</span> · 10 ימים
+                    טוקיו → קיוטו → אוסקה · <span dir="ltr">25.07 – 03.08</span> · 10 ימים
                   </div>
                 </div>
                 <!-- perforation -->
@@ -1380,64 +1388,50 @@
                     gap: 11px;
                   "
                 >
+                  <!-- the public preview has no names (API: memberCount only) — so the
+                       unknowns are bright and playful, not masked -->
                   <div class="avrow" aria-hidden="true">
-                    <div
-                      class="av"
-                      style="background: #3a4a6e; color: #8fa0c4; border-color: var(--board)"
-                    >
-                      ?
-                    </div>
-                    <div
-                      class="av"
-                      style="background: #33435f; color: #8fa0c4; border-color: var(--board)"
-                    >
-                      ?
-                    </div>
-                    <div
-                      class="av"
-                      style="background: #2c3b55; color: #8fa0c4; border-color: var(--board)"
-                    >
-                      ?
-                    </div>
-                    <div
-                      class="av"
-                      style="background: #26344b; color: #8fa0c4; border-color: var(--board)"
-                    >
-                      ?
-                    </div>
+                    <div class="av" style="background: #5ec5b6; border-color: var(--board)">🙂</div>
+                    <div class="av" style="background: #e88c8c; border-color: var(--board)">🙂</div>
+                    <div class="av" style="background: #9c8ce8; border-color: var(--board)">🙂</div>
+                    <div class="av" style="background: #8cb6e8; border-color: var(--board)">🙂</div>
                   </div>
                   <div style="flex: 1">
                     <div style="font-size: 13px; font-weight: 700; color: #eaf0ff">
-                      4 חברים כבר בפנים
+                      4 חברים כבר בפנים 👋
                     </div>
-                    <div style="font-size: 11px; color: #7e8fb4; margin-top: 2px">
-                      שמות ופרטים ייחשפו רק אחרי הצטרפות
-                    </div>
+                    <div style="font-size: 11px; color: #93a2c4; margin-top: 2px">מחכים רק לך</div>
                   </div>
                 </div>
               </div>
             </div>
 
-            <div class="land-note" style="margin-top: 18px; text-align: start; line-height: 1.6">
-              🔒 <b>פריוויו ציבורי מוגבל.</b> קישור ההזמנה חושף רק שם, תאריכים ומספר משתתפים — בלי
-              שמות, בלי מסלול, בלי הזמנות. הכול נפתח רק אחרי אימות.
-            </div>
-
             <div class="land-cta">
               <button
                 class="gbtn"
-                onclick="toast('🔑', 'מתחבר עם Google → מסך ההרשאות (טאב ״הצטרפות · קוד״)')"
+                onclick="toast('🎒', 'מתחבר עם Google → מסך ההרשאות (טאב ״הצטרפות · קוד״)')"
               >
-                <span class="gd"></span> התחבר והצטרף לטיול
+                <span class="gd"></span> המשך עם Google — ותוך שנייה אתה בפנים
               </button>
+              <div class="land-note">
+                מתחברים עם החשבון האישי · המסלול והפרטים נפתחים מיד אחרי ההצטרפות
+              </div>
               <button
-                class="btn dark-ghost"
-                style="margin-top: 10px"
+                style="
+                  display: block;
+                  margin: 6px auto 0;
+                  font: inherit;
+                  font-size: 12px;
+                  font-weight: 600;
+                  color: #7e8fb4;
+                  background: none;
+                  border: 0;
+                  cursor: pointer;
+                "
                 onclick="toast('👋', 'אולי בפעם אחרת')"
               >
                 לא עכשיו
               </button>
-              <div class="land-note">הקישור תקף ל-7 ימים · המנהל יכול לבטל אותו בכל רגע</div>
             </div>
           </div>
         </section>
