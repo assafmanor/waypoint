@@ -21,10 +21,12 @@ import {
   isHardEventConfirmError,
   isMoveCrossesDayError,
   isMoveIntoPastError,
+  type MoveEventResult,
   moveEvent,
   setEventStatus,
   updateEvent,
 } from '../lib/api';
+import { enqueueOutbox, isNetworkError, isOffline, type OutboxOp } from '../lib/outbox';
 import { DELAY_STEP_MINUTES, DEFAULT_SCHEDULE_SLOT, ICONS } from '../constants';
 import { t } from '../i18n/he';
 import { ACTIVE_DATE, TRIP_TZ_OFFSET, activeUserId, maybeMeta } from '../fixtures';
@@ -45,6 +47,27 @@ export interface VerbDeps {
   toast: ShowToast;
   lastAction: { current: UndoDescriptor | null };
   confirmHardEdit: (event: TripEvent, action?: ConfirmHardEditAction) => Promise<boolean>;
+}
+
+// A real HTTP error still rejects normally — only network failure/offline queues.
+async function restOrQueue<T>(
+  tripId: string,
+  op: OutboxOp,
+  call: () => Promise<T>,
+): Promise<T | undefined> {
+  if (isOffline()) {
+    await enqueueOutbox(tripId, op);
+    return undefined;
+  }
+  try {
+    return await call();
+  } catch (err) {
+    if (isNetworkError(err)) {
+      await enqueueOutbox(tripId, op);
+      return undefined;
+    }
+    throw err;
+  }
 }
 
 function writeErrorToast(toast: ShowToast, err: unknown): void {
@@ -99,8 +122,12 @@ export async function applySetStatus(
   deps.dispatch({ type: 'SET_STATUS', id: event.id, status });
   deps.lastAction.current = { kind: 'status', id: event.id, previous: event.status };
   try {
-    const canonical = await setEventStatus(deps.tripId, event.id, status);
-    deps.dispatch({ type: 'RECONCILE_EVENT', event: canonical });
+    const canonical = await restOrQueue(
+      deps.tripId,
+      { verb: 'setStatus', eventId: event.id, status },
+      () => setEventStatus(deps.tripId, event.id, status),
+    );
+    if (canonical) deps.dispatch({ type: 'RECONCILE_EVENT', event: canonical });
   } catch (err) {
     deps.dispatch({ type: 'UNDO' });
     writeErrorToast(deps.toast, err);
@@ -112,15 +139,17 @@ export async function applyDelay(deps: VerbDeps, event: TripEvent, minutes: numb
   const isHard = event.kind === EVENT_KIND.HARD;
   deps.dispatch({ type: 'DELAY', id: event.id, minutes });
   deps.lastAction.current = { kind: 'move', id: event.id, previous, isHard };
+  const input = { startsAt: event.startsAt ? shiftForMove(event.startsAt, minutes) : undefined };
   try {
-    const { event: canonical, rippleSuggestion } = await moveEvent(
+    const result = await restOrQueue<MoveEventResult>(
       deps.tripId,
-      event.id,
-      { startsAt: event.startsAt ? shiftForMove(event.startsAt, minutes) : undefined },
-      isHard,
+      { verb: 'move', eventId: event.id, input, confirm: isHard },
+      () => moveEvent(deps.tripId, event.id, input, isHard),
     );
-    deps.dispatch({ type: 'RECONCILE_EVENT', event: canonical });
-    deps.dispatch({ type: 'SET_RIPPLE', ripple: rippleSuggestion ?? null });
+    if (result) {
+      deps.dispatch({ type: 'RECONCILE_EVENT', event: result.event });
+      deps.dispatch({ type: 'SET_RIPPLE', ripple: result.rippleSuggestion ?? null });
+    }
   } catch (err) {
     deps.dispatch({ type: 'UNDO' });
     writeErrorToast(deps.toast, err);
@@ -157,9 +186,12 @@ export async function applySchedule(
 ): Promise<void> {
   deps.dispatch({ type: 'SCHEDULE', event, maybeId });
   deps.lastAction.current = { kind: 'create', id: event.id };
+  const input = toCreateEventInput(event);
   try {
-    const canonical = await createEvent(deps.tripId, toCreateEventInput(event));
-    deps.dispatch({ type: 'RECONCILE_EVENT', event: canonical });
+    const canonical = await restOrQueue(deps.tripId, { verb: 'create', input }, () =>
+      createEvent(deps.tripId, input),
+    );
+    if (canonical) deps.dispatch({ type: 'RECONCILE_EVENT', event: canonical });
   } catch (err) {
     deps.dispatch({ type: 'UNDO' });
     writeErrorToast(deps.toast, err);
@@ -169,9 +201,12 @@ export async function applySchedule(
 export async function applyCreateEvent(deps: VerbDeps, event: TripEvent): Promise<void> {
   deps.dispatch({ type: 'CREATE_EVENT', event });
   deps.lastAction.current = { kind: 'create', id: event.id };
+  const input = toCreateEventInput(event);
   try {
-    const canonical = await createEvent(deps.tripId, toCreateEventInput(event));
-    deps.dispatch({ type: 'RECONCILE_EVENT', event: canonical });
+    const canonical = await restOrQueue(deps.tripId, { verb: 'create', input }, () =>
+      createEvent(deps.tripId, input),
+    );
+    if (canonical) deps.dispatch({ type: 'RECONCILE_EVENT', event: canonical });
   } catch (err) {
     deps.dispatch({ type: 'UNDO' });
     writeErrorToast(deps.toast, err);
@@ -194,8 +229,12 @@ export async function applyUpdateEvent(
   deps.dispatch({ type: 'UPDATE_EVENT', id: event.id, patch });
   deps.lastAction.current = { kind: 'update', id: event.id, previous, isHard };
   try {
-    const canonical = await updateEvent(deps.tripId, event.id, patch, isHard);
-    deps.dispatch({ type: 'RECONCILE_EVENT', event: canonical });
+    const canonical = await restOrQueue(
+      deps.tripId,
+      { verb: 'update', eventId: event.id, input: patch, confirm: isHard },
+      () => updateEvent(deps.tripId, event.id, patch, isHard),
+    );
+    if (canonical) deps.dispatch({ type: 'RECONCILE_EVENT', event: canonical });
   } catch (err) {
     deps.dispatch({ type: 'UNDO' });
     writeErrorToast(deps.toast, err);
@@ -222,7 +261,9 @@ export async function applyDeleteEvent(deps: VerbDeps, event: TripEvent): Promis
   deps.dispatch({ type: 'DELETE_EVENT', id: event.id });
   deps.lastAction.current = { kind: 'delete', event };
   try {
-    await deleteEvent(deps.tripId, event.id, isHard);
+    await restOrQueue(deps.tripId, { verb: 'delete', eventId: event.id, confirm: isHard }, () =>
+      deleteEvent(deps.tripId, event.id, isHard),
+    );
   } catch (err) {
     deps.dispatch({ type: 'UNDO' });
     writeErrorToast(deps.toast, err);
@@ -251,8 +292,13 @@ export async function applyRippleApply(
   deps.lastAction.current = { kind: 'rippleApply', items };
   try {
     for (const c of ripple.candidates) {
-      const { event: canonical } = await moveEvent(deps.tripId, c.id, { startsAt: c.startsAt });
-      deps.dispatch({ type: 'RECONCILE_EVENT', event: canonical });
+      const input = { startsAt: c.startsAt };
+      const result = await restOrQueue<MoveEventResult>(
+        deps.tripId,
+        { verb: 'move', eventId: c.id, input, confirm: false },
+        () => moveEvent(deps.tripId, c.id, input),
+      );
+      if (result) deps.dispatch({ type: 'RECONCILE_EVENT', event: result.event });
     }
   } catch (err) {
     deps.dispatch({ type: 'UNDO' });
@@ -263,31 +309,47 @@ export async function applyRippleApply(
 async function reverseRest(tripId: string, desc: UndoDescriptor): Promise<void> {
   switch (desc.kind) {
     case 'status':
-      await setEventStatus(tripId, desc.id, desc.previous);
-      return;
-    case 'move':
-      await moveEvent(
+      await restOrQueue(
         tripId,
-        desc.id,
-        { date: desc.previous.date, startsAt: desc.previous.startsAt },
-        desc.isHard,
+        { verb: 'setStatus', eventId: desc.id, status: desc.previous },
+        () => setEventStatus(tripId, desc.id, desc.previous),
       );
       return;
+    case 'move': {
+      const input = { date: desc.previous.date, startsAt: desc.previous.startsAt };
+      await restOrQueue(
+        tripId,
+        { verb: 'move', eventId: desc.id, input, confirm: desc.isHard },
+        () => moveEvent(tripId, desc.id, input, desc.isHard),
+      );
+      return;
+    }
     case 'create':
-      await deleteEvent(tripId, desc.id);
+      await restOrQueue(tripId, { verb: 'delete', eventId: desc.id, confirm: false }, () =>
+        deleteEvent(tripId, desc.id),
+      );
       return;
     case 'rippleApply':
       await Promise.all(
-        desc.items.map((i) =>
-          moveEvent(tripId, i.id, { date: i.previous.date, startsAt: i.previous.startsAt }),
-        ),
+        desc.items.map((i) => {
+          const input = { date: i.previous.date, startsAt: i.previous.startsAt };
+          return restOrQueue(tripId, { verb: 'move', eventId: i.id, input, confirm: false }, () =>
+            moveEvent(tripId, i.id, input),
+          );
+        }),
       );
       return;
     case 'update':
-      await updateEvent(tripId, desc.id, desc.previous, desc.isHard);
+      await restOrQueue(
+        tripId,
+        { verb: 'update', eventId: desc.id, input: desc.previous, confirm: desc.isHard },
+        () => updateEvent(tripId, desc.id, desc.previous, desc.isHard),
+      );
       return;
-    case 'delete':
-      await createEvent(tripId, toCreateEventInput(desc.event));
+    case 'delete': {
+      const input = toCreateEventInput(desc.event);
+      await restOrQueue(tripId, { verb: 'create', input }, () => createEvent(tripId, input));
+    }
   }
 }
 

@@ -1,7 +1,9 @@
 // Data layer for the events read/write API (T-034/T-014).
 import {
+  changeSchema,
   tripEventSchema,
   tripSnapshotSchema,
+  type Change,
   type CreateEventInput,
   type EventStatus,
   type MoveEventInput,
@@ -15,6 +17,8 @@ export const API_BASE_URL = import.meta.env.VITE_API_BASE_URL ?? '';
 const snapshotUrl = (tripId: string) => `${API_BASE_URL}/trips/${tripId}/snapshot`;
 const eventsUrl = (tripId: string) => `${API_BASE_URL}/trips/${tripId}/events`;
 const eventUrl = (tripId: string, eventId: string) => `${eventsUrl(tripId)}/${eventId}`;
+const changesUrl = (tripId: string, sinceSeq: string) =>
+  `${API_BASE_URL}/trips/${tripId}/changes?sinceSeq=${sinceSeq}`;
 
 /** Server error shape (api-contract.md): `{ error: { code, message, details? } }`. */
 export class ApiError extends Error {
@@ -122,4 +126,12 @@ export async function deleteEvent(tripId: string, eventId: string, confirm = fal
   const url = `${eventUrl(tripId, eventId)}${confirm ? '?confirm=true' : ''}`;
   const res = await fetch(url, { method: 'DELETE' });
   if (!res.ok && res.status !== 404) return throwApiError(res);
+}
+
+/** Reconnect catch-up (sync-and-offline.md "Bootstrap & catch-up"): replays
+ *  anything committed since `sinceSeq`, cursored on `seq` not a timestamp. */
+export async function fetchChanges(tripId: string, sinceSeq: string): Promise<Change[]> {
+  const res = await fetch(changesUrl(tripId, sinceSeq));
+  if (!res.ok) throw new Error(`changes fetch failed: ${res.status}`);
+  return changeSchema.array().parse(await res.json());
 }

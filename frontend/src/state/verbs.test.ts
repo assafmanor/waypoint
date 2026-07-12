@@ -1,6 +1,9 @@
+import 'fake-indexeddb/auto';
 import { afterEach, describe, expect, it, vi } from 'vitest';
 import { EVENT_STATUS } from '@waypoint/shared';
+import { db } from '../db';
 import { EVENTS } from '../fixtures';
+import { initOutboxCount } from '../lib/outbox';
 import {
   applyCreateEvent,
   applyGuardedDelay,
@@ -24,8 +27,10 @@ function fakeDeps(confirmHardEdit?: VerbDeps['confirmHardEdit']): VerbDeps & { a
   };
 }
 
-afterEach(() => {
+afterEach(async () => {
   vi.unstubAllGlobals();
+  await db.outbox.clear();
+  await initOutboxCount();
 });
 
 describe('applySetStatus (optimistic apply / rollback)', () => {
@@ -316,5 +321,52 @@ describe('applyUndo', () => {
     const deps = fakeDeps();
     await applyUndo(deps);
     expect(fetchMock).not.toHaveBeenCalled();
+  });
+});
+
+describe('offline write outbox (T-013)', () => {
+  const event = EVENTS.find((e) => e.id === 'ev-goldengai')!;
+
+  it('queues the mutation instead of failing outright when offline, keeping the optimistic state', async () => {
+    const fetchMock = vi.fn();
+    vi.stubGlobal('fetch', fetchMock);
+    vi.stubGlobal('navigator', { onLine: false });
+    const deps = fakeDeps();
+
+    await applySetStatus(deps, event, EVENT_STATUS.DONE);
+
+    expect(fetchMock).not.toHaveBeenCalled();
+    expect(deps.actions).toEqual([{ type: 'SET_STATUS', id: event.id, status: EVENT_STATUS.DONE }]); // no UNDO — the optimistic change is what's queued, not rolled back
+    expect(deps.toast).not.toHaveBeenCalled();
+
+    const queued = await db.outbox.toArray();
+    expect(queued).toHaveLength(1);
+    expect(queued[0].op).toEqual({
+      verb: 'setStatus',
+      eventId: event.id,
+      status: EVENT_STATUS.DONE,
+    });
+  });
+
+  it('queues on a network failure (fetch throws) the same way as an explicit offline check', async () => {
+    vi.stubGlobal('fetch', vi.fn().mockRejectedValue(new TypeError('fetch failed')));
+    const deps = fakeDeps();
+
+    await applyCreateEvent(deps, event);
+
+    expect(deps.actions.some((a) => a.type === 'UNDO')).toBe(false);
+    expect(deps.toast).not.toHaveBeenCalled();
+    expect(await db.outbox.count()).toBe(1);
+  });
+
+  it('still rolls back and toasts on a real HTTP error while online (unaffected by the outbox)', async () => {
+    vi.stubGlobal('fetch', vi.fn().mockResolvedValue(new Response(null, { status: 500 })));
+    const deps = fakeDeps();
+
+    await applySetStatus(deps, event, EVENT_STATUS.DONE);
+
+    expect(deps.actions[1]).toEqual({ type: 'UNDO' });
+    expect(deps.toast).toHaveBeenCalledTimes(1);
+    expect(await db.outbox.count()).toBe(0);
   });
 });
