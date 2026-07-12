@@ -1,5 +1,5 @@
 import 'reflect-metadata';
-import { afterAll, afterEach, describe, expect, it } from 'vitest';
+import { afterAll, afterEach, describe, expect, it, vi } from 'vitest';
 import { ConflictException } from '@nestjs/common';
 import { EVENT_KIND, EVENT_STATUS } from '@waypoint/shared';
 import { PrismaService } from '../prisma/prisma.service';
@@ -261,37 +261,46 @@ describe('EventsService', () => {
   });
 
   it('does not ripple a preceding event that has already started', async () => {
-    const tripId = await newTrip();
-    const now = Date.now();
-    const today = new Date(now).toISOString().slice(0, 10);
-    await service.create(tripId, DEV_USER, {
-      date: today,
-      title: 'Already happening',
-      kind: EVENT_KIND.SOFT,
-      startsAt: new Date(now - 60 * 60_000).toISOString(),
-      endsAt: new Date(now + 15 * 60_000).toISOString(),
-      source: 'manual',
-    });
-    const market = await service.create(tripId, DEV_USER, {
-      date: today,
-      title: 'Market',
-      kind: EVENT_KIND.SOFT,
-      startsAt: new Date(now + 30 * 60_000).toISOString(),
-      endsAt: new Date(now + 75 * 60_000).toISOString(),
-      sortOrder: 1,
-      source: 'manual',
-    });
+    // Fixed, day-boundary-clear instant: the ±5..75min offsets below computed
+    // from a real Date.now() would flake near UTC midnight, since `date` (the
+    // day) and `startsAt` (the offset instant) could land on different days.
+    vi.useFakeTimers({ toFake: ['Date'] });
+    vi.setSystemTime(new Date('2027-06-15T12:00:00Z'));
+    try {
+      const tripId = await newTrip();
+      const now = Date.now();
+      const today = new Date(now).toISOString().slice(0, 10);
+      await service.create(tripId, DEV_USER, {
+        date: today,
+        title: 'Already happening',
+        kind: EVENT_KIND.SOFT,
+        startsAt: new Date(now - 60 * 60_000).toISOString(),
+        endsAt: new Date(now + 15 * 60_000).toISOString(),
+        source: 'manual',
+      });
+      const market = await service.create(tripId, DEV_USER, {
+        date: today,
+        title: 'Market',
+        kind: EVENT_KIND.SOFT,
+        startsAt: new Date(now + 30 * 60_000).toISOString(),
+        endsAt: new Date(now + 75 * 60_000).toISOString(),
+        sortOrder: 1,
+        source: 'manual',
+      });
 
-    // Pulling Market back to now+5 would, absent the guard, overlap "Already
-    // happening" (which ends at now+15) and pull it — but it already started.
-    const { rippleSuggestion } = await service.move(
-      tripId,
-      market.id,
-      DEV_USER,
-      { startsAt: new Date(now + 5 * 60_000).toISOString() },
-      false,
-    );
-    expect(rippleSuggestion).toBeUndefined();
+      // Pulling Market back to now+5 would, absent the guard, overlap "Already
+      // happening" (which ends at now+15) and pull it — but it already started.
+      const { rippleSuggestion } = await service.move(
+        tripId,
+        market.id,
+        DEV_USER,
+        { startsAt: new Date(now + 5 * 60_000).toISOString() },
+        false,
+      );
+      expect(rippleSuggestion).toBeUndefined();
+    } finally {
+      vi.useRealTimers();
+    }
   });
 
   it('returns no backward ripple when the preceding soft event has a real gap', async () => {
