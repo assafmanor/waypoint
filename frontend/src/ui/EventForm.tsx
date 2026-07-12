@@ -121,14 +121,14 @@ export function EventForm({ event, onClose }: { event?: TripEvent | null; onClos
           <div className="kind-toggle">
             <button
               type="button"
-              className={kind === EVENT_KIND.SOFT ? 'on' : ''}
+              className={'soft' + (kind === EVENT_KIND.SOFT ? ' on' : '')}
               onClick={() => setKind(EVENT_KIND.SOFT)}
             >
               {t.eventForm.kindSoft}
             </button>
             <button
               type="button"
-              className={kind === EVENT_KIND.HARD ? 'on' : ''}
+              className={'hard' + (kind === EVENT_KIND.HARD ? ' on' : '')}
               onClick={() => setKind(EVENT_KIND.HARD)}
             >
               {t.eventForm.kindHard}
@@ -142,7 +142,7 @@ export function EventForm({ event, onClose }: { event?: TripEvent | null; onClos
           <button type="button" className="confirm-cancel" onClick={onClose}>
             {t.eventForm.cancel}
           </button>
-          <button type="submit" className="confirm-ok">
+          <button type="submit" className="form-save">
             {t.eventForm.save}
           </button>
         </div>

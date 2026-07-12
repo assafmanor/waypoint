@@ -14,12 +14,13 @@ Code and documentation live together. **Any consequential decision gets an ADR**
 
 - `docs/INDEX.md` — the map of all documentation. **Start here.**
 - `docs/product/` — vision, PRD, feature catalog, personas (what & why).
-- `docs/design/design-language.md` — palette, type, hard/soft grammar, RTL.
+- `docs/design/design-language.md` — palette, type, mode identity, semantic color budget, hard/soft grammar, RTL, dark-mode readiness (adopted in ADR-0028).
 - `docs/architecture/` — overview, collaboration-model, data-model, **api-contract**, **sync-and-offline**, **auth-and-google**, tech-stack.
 - `docs/decisions/` — ADRs (the "why"). `README.md` lists them chronologically; `INDEX.md`'s **"Decisions by domain"** table is the router — read the ADR(s) for a domain before you touch it.
 - `docs/engineering/` — conventions + prerequisites checklist.
-- `mockups/trip-dashboard-v2.html` — the interactive **Trip-mode** design reference.
-- `mockups/plan-mode-v1.html` — the interactive **Plan-mode** design reference (prep-dashboard Home, itinerary builder, booking entry, research; phone + tablet).
+- `mockups/trip-dashboard-v2.html` — the interactive **Trip-mode** design reference _(predates ADR-0028; colors retrofitted — on conflict the design docs win)_.
+- `mockups/plan-mode-v1.html` — the interactive **Plan-mode** design reference (prep-dashboard Home, itinerary builder, booking entry, research; phone + tablet) _(predates ADR-0028; colors retrofitted, chrome restyle pending — on conflict the design docs win)_.
+- `mockups/screens-v1.html` — landing, lobby, join (code + link), and trip-settings screens (plan-mode daylight chrome).
 
 ## Tech stack (see docs/architecture/tech-stack.md)
 
@@ -47,7 +48,7 @@ pnpm dev                                               # backend :3000, frontend
 1. **Hard vs. soft events (ADR-0011)** is the core primitive. Hard = real commitment (flight, reservation code): guarded on edit, never auto-moved, excluded from ripple. Soft = free to move/skip/swap. Respect this everywhere it touches.
 2. **Integrations are pipes, not screens (ADR-0004).** Any integration feeds the Now/Next timeline or the index — it never gets its own tab.
 3. **Types/validation in `packages/shared`.** Keep it in sync with `backend/prisma/schema.prisma`.
-4. **Amber = now/active only; teal = location only.** Don't reuse them decoratively.
+4. **Amber = time & commitment only; teal = location only; plan violet (`--plan`) = plan mode only** (design-language.md, ADR-0028). Don't reuse them decoratively — generic CTAs use the neutral `--cta`, statuses use `--ok`/`--miss`.
 5. **Everything works offline for reads** (index/documents/today). Never assume the network.
 6. **Mobile-first, phone-primary (ADR-0017).** Design/build for the phone first (~360–430px), touch-first, no hover-only affordances. Tablet is secondary (matters most for Plan mode); desktop is a graceful minimum. Responsive by breakpoints, one codebase.
 7. **Never commit `.env`, secrets, or anything the `.gitignore` excludes.**

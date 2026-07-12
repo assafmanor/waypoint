@@ -1,9 +1,13 @@
 <!doctype html>
+<!-- STATUS: predates ADR-0028 (mode identity / color budget / dark-ready tokens).
+     Semantic colors (status --ok, plan violet on scheduling affordances) have
+     been retrofitted in place. Still the canonical Trip-mode reference, but
+     where this mockup and docs/design/design-language.md conflict, the doc wins. -->
 <html lang="he" dir="rtl">
   <head>
     <meta charset="UTF-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-    <title>מרכז שליטה לטיול — מוקאפ v2</title>
+    <title>מרכז שליטה לטיול — מוקאפ v2 · לפני ADR-0028</title>
     <link rel="preconnect" href="https://fonts.googleapis.com" />
     <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
     <link
@@ -22,6 +26,9 @@
         --amber: #e9a63c;
         --amber-deep: #c9822a;
         --teal: #2c9c90;
+        --plan: #6e59d6; /* plan/scheduling actions (design-language: mode identity) */
+        --plan-deep: #5747b4;
+        --ok: #3c9a6b; /* positive status (design-language: color budget) */
         --muted: #6c7488;
         --cat-food: #e8998a;
         --cat-lodging: #9c8ce8;
@@ -715,7 +722,7 @@
       }
       .maybe:hover {
         transform: translateY(-2px);
-        border-color: var(--teal);
+        border-color: var(--plan); /* scheduling is a plan action (design-language: color budget) */
       }
       .maybe .mi {
         font-size: 20px;
@@ -735,7 +742,7 @@
         margin-top: 9px;
         font-size: 11px;
         font-weight: 700;
-        color: var(--teal);
+        color: var(--plan-deep); /* plan action, not location */
         display: flex;
         align-items: center;
         gap: 4px;
@@ -773,7 +780,7 @@
         margin-top: 2px;
       }
       .gcard .s.up {
-        color: var(--teal);
+        color: var(--ok); /* status, not location (design-language: color budget) */
         font-weight: 600;
       }
       .budget-bar {
@@ -787,7 +794,9 @@
         display: block;
         height: 100%;
         width: 58%;
-        background: var(--teal);
+        background: var(
+          --ok
+        ); /* budget health status; flips to --miss when over (design-language: color budget) */
         border-radius: 4px;
       }
 
@@ -881,7 +890,7 @@
         font: inherit;
         font-size: 13px;
         font-weight: 700;
-        color: var(--teal);
+        color: var(--plan-deep); /* adding content = plan action, not location */
         padding: 12px 15px;
         text-align: center;
         cursor: pointer;
@@ -1123,7 +1132,7 @@
   </head>
   <body>
     <div class="stage">
-      <p class="caption">מרכז שליטה לטיול · <b>מצב טיול</b> · קשיח/רך · שינוי תוך כדי</p>
+      <p class="caption">מרכז שליטה לטיול · <b>מצב טיול</b> · קשיח/גמיש · שינוי תוך כדי</p>
 
       <div class="phone">
         <div class="statusbar">
@@ -1165,7 +1174,7 @@
                 <div class="live"><span class="blip"></span>עכשיו</div>
                 <div class="clock" id="boardclock" dir="ltr">18:52</div>
               </div>
-              <div class="now-label">זמן חופשי · רך</div>
+              <div class="now-label">זמן חופשי · גמיש</div>
               <div class="now-title">משוטטים בשינג׳וקו</div>
               <div class="now-meta">עד <span dir="ltr">19:30</span> · 5 דקות הליכה מהיעד הבא</div>
               <div class="board-divider"></div>
@@ -1282,7 +1291,7 @@
               </button>
             </div>
             <div class="listcard">
-              <div class="li" data-cat="food" onclick="toast('☕', 'שמור למדף אולי')">
+              <div class="li" data-cat="food" onclick="toast('☕', 'שמור למדף האולי')">
                 <div class="badge2">☕</div>
                 <div class="main">
                   <div class="t">% Arabica Coffee</div>
@@ -1410,20 +1419,20 @@
           <!-- ===== ITINERARY (the star) ===== -->
           <section class="view" id="view-days">
             <div class="ripple" id="ripple">
-              <span class="rt">דחית את הרמן ל-20:00. לדחוף גם את גולדן גאי?</span>
+              <span class="rt">הראמן נדחה ל-20:00 — לדחות גם את גולדן גאי?</span>
               <button class="yes" onclick="rippleDo(true)">כן</button>
               <button class="no" onclick="rippleDo(false)">לא</button>
             </div>
 
             <div class="sec-title">
-              יום 3 · שלישי · טוקיו <span class="hint">הקש כרטיס לשינוי</span>
+              יום 3 · שלישי · טוקיו <span class="hint">הקשה על כרטיס פותחת פעולות</span>
             </div>
             <div id="daylist">
               <div class="item soft done">
                 <div class="face" onclick="toggle(this)">
                   <div class="badge">🐟</div>
                   <div class="main">
-                    <div class="t">שוק צוקיג׳י <span class="tag-soft">רך</span></div>
+                    <div class="t">שוק צוקיג׳י <span class="tag-soft">גמיש</span></div>
                     <div class="m">ארוחת בוקר · סושי טרי</div>
                   </div>
                   <div class="time" dir="ltr">10:00</div>
@@ -1440,8 +1449,8 @@
                 <div class="face" onclick="toggle(this)">
                   <div class="badge">⛩️</div>
                   <div class="main">
-                    <div class="t">מקדש סנסו-ג׳י <span class="tag-soft">רך</span></div>
-                    <div class="m">אסקוסה · נקמיסה</div>
+                    <div class="t">מקדש סנסו-ג׳י <span class="tag-soft">גמיש</span></div>
+                    <div class="m">אסאקוסה · נקמיסה</div>
                   </div>
                   <div class="time" dir="ltr">14:30</div>
                   <div class="chev">▾</div>
@@ -1500,7 +1509,7 @@
                 <div class="face" onclick="toggle(this)">
                   <div class="badge">🍶</div>
                   <div class="main">
-                    <div class="t">גולדן גאי <span class="tag-soft">רך</span></div>
+                    <div class="t">גולדן גאי <span class="tag-soft">גמיש</span></div>
                     <div class="m">דרינקים · סמטאות באר</div>
                   </div>
                   <div class="time" dir="ltr">21:30</div>
@@ -1517,7 +1526,7 @@
               </div>
             </div>
 
-            <div class="sec-title">מדף אולי <span class="hint">הקש כדי לשבץ ליום</span></div>
+            <div class="sec-title">מדף האולי <span class="hint">הקשה משבצת ליום</span></div>
             <div class="shelf">
               <div class="maybe" onclick="schedule(this, '🗼', 'טוקיו סקייטרי', 'נוף · תצפית')">
                 <div class="mi">🗼</div>
@@ -1546,7 +1555,7 @@
             </div>
             <div class="empty-note">
               אירועים <b>קשיחים</b> 🔒 יש להם התחייבות (הזמנה/כרטיס) — האפליקציה מגנה עליהם.<br />אירועים
-              <b>רכים</b> זזים, מדולגים ומתחלפים בחופשיות.
+              <b>גמישים</b> אפשר להזיז, לדלג עליהם ולהחליף בחופשיות.
             </div>
           </section>
         </div>
@@ -1611,7 +1620,7 @@
       }
       function rippleDo(yes) {
         document.getElementById('ripple').classList.remove('show');
-        toast(yes ? '✓' : '✕', yes ? 'גולדן גאי נדחה ל-22:00' : 'רק הרמן זז · שאר היום ללא שינוי');
+        toast(yes ? '✓' : '✕', yes ? 'גולדן גאי נדחה ל-22:00' : 'רק הראמן זז · שאר היום ללא שינוי');
       }
 
       function schedule(card, icon, title, meta) {
