@@ -1,22 +1,72 @@
 import { useState } from 'react';
 import { TripProvider, useTrip } from './state/trip-state';
+import { ModeProvider, useMode } from './state/mode-state';
 import { ToastProvider } from './ui/Toast';
 import { ConfirmProvider } from './ui/ConfirmDialog';
 import { Home } from './screens/Home';
 import { DayView } from './screens/DayView';
 import { DevTimeTravel } from './dev/DevTimeTravel';
+import { useClock } from './lib/useClock';
 import { TRIP } from './fixtures';
-import { AVATAR_INITIAL_LENGTH, DOT_SEPARATOR, MS_PER_DAY, TABS, type TabId } from './constants';
+import {
+  AVATAR_INITIAL_LENGTH,
+  DOT_SEPARATOR,
+  ICONS,
+  MS_PER_DAY,
+  TABS,
+  type TabId,
+} from './constants';
+import { daysUntilStart, type Mode } from './lib/mode';
 import { t } from './i18n/he';
 import './App.css';
 import './screens.css';
 
-// Map & Index are designed later (T-002); kept as placeholders so the nav is whole.
-function Placeholder({ label }: { label: string }) {
+// Map & Index are designed later (T-002); Home/Day-by-day's Plan-mode content
+// is T-018's — all fall back here, with a mode-emphasis subtitle (T-019).
+function Placeholder({ tab, mode }: { tab: TabId; mode: Mode }) {
   return (
     <div className="placeholder">
-      <h1>{label}</h1>
+      <h1>{t.tabs[tab]}</h1>
+      <p className="placeholder-emphasis">{t.modeEmphasis[tab][mode]}</p>
       <p>{t.placeholder.comingSoon}</p>
+    </div>
+  );
+}
+
+// Segmented Plan/Trip toggle (design-language.md's Plan-mode components,
+// from mockups/plan-mode-v1.html) — two explicit states, not an auto/manual
+// cycle: tapping a side just picks it. The override is session-only
+// (state/mode-state.tsx) — always auto-derived by default, tapping a side
+// just peeks at the other for now; a fresh load is always back to auto, no
+// reset control needed. The "switches on <date>" hint only means something
+// pre-trip: it's suppressed once the trip has started, whether that's the
+// real derived mode or an override (peeking at Trip mode pre-trip, or
+// tweaking the plan mid-trip, both hide it too). The prominent
+// countdown-to-departure lives on Home's Plan-mode prep dashboard (T-055),
+// not here — this is just a small, secondary reminder.
+function ModeToggle() {
+  const { trip } = useTrip();
+  const now = useClock();
+  const { mode, setOverride } = useMode();
+  const isPreTrip = mode === 'plan' && daysUntilStart(trip, now) !== null;
+  const startLabel = isPreTrip
+    ? new Intl.DateTimeFormat('he-IL', {
+        day: 'numeric',
+        month: 'numeric',
+        timeZone: 'UTC',
+      }).format(new Date(`${trip.startDate}T00:00:00Z`))
+    : null;
+  return (
+    <div className="modebar">
+      <div className="toggle">
+        <button className={mode === 'plan' ? 'on' : ''} onClick={() => setOverride('plan')}>
+          {ICONS.edit} {t.mode.plan}
+        </button>
+        <button className={mode === 'trip' ? 'on' : ''} onClick={() => setOverride('trip')}>
+          {ICONS.navigate} {t.mode.trip}
+        </button>
+        {startLabel && <span className="auto">{t.mode.autoHint(startLabel)}</span>}
+      </div>
     </div>
   );
 }
@@ -37,6 +87,7 @@ function Header() {
   });
   return (
     <header className="header">
+      <ModeToggle />
       <div className="trip-row">
         <div>
           <div className="trip-name">{trip.name}</div>
@@ -80,45 +131,46 @@ function Header() {
   );
 }
 
+// Tabs re-emphasize by mode (ADR-0016), not duplicate screens: Home/Day-by-day
+// only have their Trip-mode content built so far, so Plan mode (and Map/Index,
+// which are unbuilt either way — T-002) fall back to Placeholder.
 function Screen({ tab }: { tab: TabId }) {
-  switch (tab) {
-    case 'home':
-      return <Home />;
-    case 'days':
-      return <DayView />;
-    default:
-      return <Placeholder label={t.tabs[tab]} />;
-  }
+  const { mode } = useMode();
+  if (tab === 'home' && mode === 'trip') return <Home />;
+  if (tab === 'days' && mode === 'trip') return <DayView />;
+  return <Placeholder tab={tab} mode={mode} />;
 }
 
 export function App() {
   const [tab, setTab] = useState<TabId>('home');
   return (
     <TripProvider tripId={TRIP.id}>
-      <ToastProvider>
-        <ConfirmProvider>
-          <div className="app">
-            <Header />
-            <main className="body" key={tab}>
-              <Screen tab={tab} />
-            </main>
-            <nav className="nav">
-              {TABS.map((tabDef) => (
-                <button
-                  key={tabDef.id}
-                  className={tabDef.id === tab ? 'on' : ''}
-                  onClick={() => setTab(tabDef.id)}
-                  aria-current={tabDef.id === tab}
-                >
-                  <span className="ic">{tabDef.icon}</span>
-                  {t.tabs[tabDef.id]}
-                </button>
-              ))}
-            </nav>
-          </div>
-          {import.meta.env.DEV && <DevTimeTravel />}
-        </ConfirmProvider>
-      </ToastProvider>
+      <ModeProvider>
+        <ToastProvider>
+          <ConfirmProvider>
+            <div className="app">
+              <Header />
+              <main className="body" key={tab}>
+                <Screen tab={tab} />
+              </main>
+              <nav className="nav">
+                {TABS.map((tabDef) => (
+                  <button
+                    key={tabDef.id}
+                    className={tabDef.id === tab ? 'on' : ''}
+                    onClick={() => setTab(tabDef.id)}
+                    aria-current={tabDef.id === tab}
+                  >
+                    <span className="ic">{tabDef.icon}</span>
+                    {t.tabs[tabDef.id]}
+                  </button>
+                ))}
+              </nav>
+            </div>
+            {import.meta.env.DEV && <DevTimeTravel />}
+          </ConfirmProvider>
+        </ToastProvider>
+      </ModeProvider>
     </TripProvider>
   );
 }
