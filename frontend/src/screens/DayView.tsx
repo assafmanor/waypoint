@@ -96,16 +96,6 @@ export function DayView() {
           <MaybeCard key={m.id} item={m} onSchedule={() => verbs.schedule(m)} />
         ))}
       </div>
-
-      <p className="empty-note">
-        {t.day.legendHardLead}
-        <b>{t.day.legendHardWord}</b>
-        {t.day.legendHardRest}
-        <br />
-        {t.day.legendSoftLead}
-        <b>{t.day.legendSoftWord}</b>
-        {t.day.legendSoftRest}
-      </p>
     </>
   );
 }
