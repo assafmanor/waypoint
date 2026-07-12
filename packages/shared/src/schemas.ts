@@ -108,3 +108,7 @@ export const invitePreviewSchema = z.object({
   memberCount: z.number().int(),
 });
 export type InvitePreview = z.infer<typeof invitePreviewSchema>;
+
+/** `POST /auth/refresh` response — the access JWT lives in memory client-side, never a cookie (ADR-0020). */
+export const accessTokenResponseSchema = z.object({ accessToken: z.string() });
+export type AccessTokenResponse = z.infer<typeof accessTokenResponseSchema>;

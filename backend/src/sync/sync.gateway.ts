@@ -3,9 +3,13 @@ import type { Duplex } from 'node:stream';
 import { Injectable, Logger } from '@nestjs/common';
 import type { Change } from '@waypoint/shared';
 import { WebSocket, WebSocketServer } from 'ws';
-import { DEV_PRINCIPAL } from '../auth/dev-auth.guard';
+import { parseCookieHeader } from '../auth/cookies.util';
+import { DEV_PRINCIPAL } from '../auth/jwt-auth.guard';
 import type { Principal } from '../auth/principal';
+import { hashRefreshToken } from '../auth/token.util';
 import { PrismaService } from '../prisma/prisma.service';
+
+const REFRESH_COOKIE = 'wp_refresh';
 
 // `ws`'s built-in `path` match is an exact string, so a dynamic `:tripId` segment
 // needs manual upgrade handling instead of the `path` option (sync-and-offline.md).
@@ -40,8 +44,7 @@ export class SyncGateway {
     if (!match) return; // not our route
 
     const tripId = match[1];
-    // ponytail: dev-auth stub only, same as DevAuthGuard — real cookie/JWT session lands with T-007.
-    const principal = this.authenticate();
+    const principal = await this.authenticate(req);
     if (!principal) {
       socket.write('HTTP/1.1 401 Unauthorized\r\n\r\n');
       socket.destroy();
@@ -62,8 +65,22 @@ export class SyncGateway {
     });
   }
 
-  private authenticate(): Principal | null {
-    return process.env.DEV_AUTH === '1' ? DEV_PRINCIPAL : null;
+  /** Browsers can't set headers on `WebSocket`, so auth rides the httpOnly
+   *  refresh cookie the upgrade request carries automatically (ADR-0020) —
+   *  not the Bearer access JWT the plain HTTP routes use. */
+  private async authenticate(req: IncomingMessage): Promise<Principal | null> {
+    if (process.env.DEV_AUTH === '1') return DEV_PRINCIPAL;
+
+    const refreshToken = parseCookieHeader(req.headers.cookie)[REFRESH_COOKIE];
+    if (!refreshToken) return null;
+
+    const session = await this.prisma.session.findUnique({
+      where: { refreshTokenHash: hashRefreshToken(refreshToken) },
+    });
+    if (!session || session.revokedAt || session.expiresAt < new Date()) return null;
+
+    const user = await this.prisma.user.findUnique({ where: { id: session.userId } });
+    return user ? { userId: user.id, email: user.email } : null;
   }
 
   private onConnection(client: WebSocket, tripId: string, userId: string): void {

@@ -22,7 +22,6 @@ import {
 } from '@waypoint/shared';
 import { createZodDto, ZodSerializerDto } from 'nestjs-zod';
 import { CurrentUser } from '../auth/current-user.decorator';
-import { DevAuthGuard } from '../auth/dev-auth.guard';
 import type { Principal } from '../auth/principal';
 import { ZodValidationPipe } from '../common/zod-validation.pipe';
 import { MembershipGuard } from '../trips/membership.guard';
@@ -46,7 +45,7 @@ function readConfirm(req: RequestWithBody, confirmQuery: string | undefined): bo
 
 @ApiTags('events')
 @Controller('trips/:tripId/events')
-@UseGuards(DevAuthGuard, MembershipGuard)
+@UseGuards(MembershipGuard)
 export class EventsController {
   constructor(private readonly events: EventsService) {}
 

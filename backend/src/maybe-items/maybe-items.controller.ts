@@ -3,7 +3,6 @@ import { ApiOkResponse, ApiTags } from '@nestjs/swagger';
 import { maybeItemSchema, type MaybeItem } from '@waypoint/shared';
 import { createZodDto, ZodSerializerDto } from 'nestjs-zod';
 import { CurrentUser } from '../auth/current-user.decorator';
-import { DevAuthGuard } from '../auth/dev-auth.guard';
 import type { Principal } from '../auth/principal';
 import { MembershipGuard } from '../trips/membership.guard';
 import { MaybeItemsService } from './maybe-items.service';
@@ -13,7 +12,7 @@ class MaybeItemDto extends createZodDto(maybeItemSchema) {}
 
 @ApiTags('maybe-items')
 @Controller('trips/:tripId/maybe-items')
-@UseGuards(DevAuthGuard, MembershipGuard)
+@UseGuards(MembershipGuard)
 export class MaybeItemsController {
   constructor(private readonly maybeItems: MaybeItemsService) {}
 

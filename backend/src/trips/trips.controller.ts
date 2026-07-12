@@ -15,8 +15,8 @@ import {
 } from '@waypoint/shared';
 import { createZodDto, ZodSerializerDto } from 'nestjs-zod';
 import { CurrentUser } from '../auth/current-user.decorator';
-import { DevAuthGuard } from '../auth/dev-auth.guard';
 import type { Principal } from '../auth/principal';
+import { Public } from '../auth/public.decorator';
 import { ZodValidationPipe } from '../common/zod-validation.pipe';
 import { MembershipGuard } from './membership.guard';
 import { TripsService } from './trips.service';
@@ -33,7 +33,6 @@ class InvitePreviewDto extends createZodDto(invitePreviewSchema) {}
 
 @ApiTags('trips')
 @Controller('trips')
-@UseGuards(DevAuthGuard)
 export class TripsController {
   constructor(private readonly trips: TripsService) {}
 
@@ -98,9 +97,10 @@ export class TripsController {
   }
 }
 
-// Public/unguarded (ADR-0024) — no DevAuthGuard: the join screen needs this before sign-in.
+// Public/unguarded (ADR-0024) — the join screen needs this before sign-in.
 @ApiTags('invites')
 @Controller('invites')
+@Public()
 export class InvitesController {
   constructor(private readonly trips: TripsService) {}
 

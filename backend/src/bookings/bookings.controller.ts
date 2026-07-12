@@ -20,7 +20,6 @@ import {
 } from '@waypoint/shared';
 import { createZodDto, ZodSerializerDto } from 'nestjs-zod';
 import { CurrentUser } from '../auth/current-user.decorator';
-import { DevAuthGuard } from '../auth/dev-auth.guard';
 import type { Principal } from '../auth/principal';
 import { ZodValidationPipe } from '../common/zod-validation.pipe';
 import { MembershipGuard } from '../trips/membership.guard';
@@ -35,7 +34,7 @@ type RequestWithBody = { body?: { confirm?: boolean } };
 
 @ApiTags('bookings')
 @Controller('trips/:tripId/bookings')
-@UseGuards(DevAuthGuard, MembershipGuard)
+@UseGuards(MembershipGuard)
 export class BookingsController {
   constructor(private readonly bookings: BookingsService) {}
 
