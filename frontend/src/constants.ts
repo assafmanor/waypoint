@@ -60,4 +60,5 @@ export const ICONS = {
   share: '💬',
   schedule: '📅',
   add: '＋',
+  sync: '🔄',
 } as const;

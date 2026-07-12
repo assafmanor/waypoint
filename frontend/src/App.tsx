@@ -1,6 +1,7 @@
 import { useState } from 'react';
 import { TripProvider, useTrip } from './state/trip-state';
 import { ModeProvider, useMode } from './state/mode-state';
+import { useOutboxCount } from './lib/outbox';
 import { ToastProvider } from './ui/Toast';
 import { ConfirmProvider } from './ui/ConfirmDialog';
 import { Home } from './screens/Home';
@@ -73,6 +74,7 @@ function ModeToggle() {
 
 function Header() {
   const { trip, users, activeDate } = useTrip();
+  const pendingCount = useOutboxCount();
   const total =
     Math.round((Date.parse(trip.endDate) - Date.parse(trip.startDate)) / MS_PER_DAY) + 1;
   const dayNumber =
@@ -114,6 +116,11 @@ function Header() {
         <span className="g" />
         {t.header.googleNote}
       </div>
+      {pendingCount > 0 && (
+        <div className="gnote">
+          {ICONS.sync} {t.header.pendingSync(pendingCount)}
+        </div>
+      )}
       <div className="day-strip">
         {days.map((d) => (
           <div

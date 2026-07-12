@@ -1,6 +1,6 @@
 import { randomUUID } from 'node:crypto';
 import { ConflictException, Injectable, NotFoundException } from '@nestjs/common';
-import type { Event as PrismaEvent } from '@prisma/client';
+import { Prisma, type Event as PrismaEvent } from '@prisma/client';
 import {
   EVENT_KIND,
   EVENT_STATUS,
@@ -54,35 +54,45 @@ export class EventsService {
 
   async create(tripId: string, actorUserId: string, input: CreateEventInput): Promise<TripEvent> {
     const id = input.id ?? randomUUID();
-    const { entity } = await this.changes.mutate({
-      tripId,
-      actorUserId,
-      entityType: 'event',
-      entityId: id,
-      action: 'create',
-      after: input,
-      apply: (tx) =>
-        tx.event.create({
-          data: {
-            id,
-            tripId,
-            date: new Date(input.date),
-            endDate: input.endDate ? new Date(input.endDate) : undefined,
-            title: input.title,
-            icon: input.icon,
-            kind: input.kind,
-            startsAt: input.startsAt ? new Date(input.startsAt) : undefined,
-            endsAt: input.endsAt ? new Date(input.endsAt) : undefined,
-            location: input.location,
-            placeId: input.placeId,
-            bookingId: input.bookingId,
-            sortOrder: input.sortOrder ?? 0,
-            source: input.source,
-            updatedBy: actorUserId,
-          },
-        }),
-    });
-    return toEventDto(entity);
+    try {
+      const { entity } = await this.changes.mutate({
+        tripId,
+        actorUserId,
+        entityType: 'event',
+        entityId: id,
+        action: 'create',
+        after: input,
+        apply: (tx) =>
+          tx.event.create({
+            data: {
+              id,
+              tripId,
+              date: new Date(input.date),
+              endDate: input.endDate ? new Date(input.endDate) : undefined,
+              title: input.title,
+              icon: input.icon,
+              kind: input.kind,
+              startsAt: input.startsAt ? new Date(input.startsAt) : undefined,
+              endsAt: input.endsAt ? new Date(input.endsAt) : undefined,
+              location: input.location,
+              placeId: input.placeId,
+              bookingId: input.bookingId,
+              sortOrder: input.sortOrder ?? 0,
+              source: input.source,
+              updatedBy: actorUserId,
+            },
+          }),
+      });
+      return toEventDto(entity);
+    } catch (err) {
+      // A client-generated id (ADR-0018) makes an offline-outbox retry idempotent:
+      // re-POSTing an already-created event hits the id's unique constraint, which
+      // we treat as "already applied" rather than an error (sync-and-offline.md).
+      if (err instanceof Prisma.PrismaClientKnownRequestError && err.code === 'P2002') {
+        return toEventDto(await this.requireEvent(tripId, id));
+      }
+      throw err;
+    }
   }
 
   async update(

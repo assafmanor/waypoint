@@ -62,6 +62,31 @@ describe('EventsService', () => {
     expect(change).toMatchObject({ entityType: 'event', action: 'create' });
   });
 
+  // T-013: a client-generated id (ADR-0018) makes an offline-outbox re-POST
+  // idempotent — the retry hits the id's unique constraint, which is treated
+  // as "already applied" (returns the existing event) rather than an error.
+  it('treats a duplicate create (same client-generated id) as already-applied, not an error', async () => {
+    const tripId = await newTrip();
+    const input = {
+      id: 'ev-client-generated',
+      date: DAY,
+      title: 'Ramen',
+      kind: EVENT_KIND.SOFT,
+      startsAt: at('19:00'),
+      endsAt: at('20:00'),
+      source: 'manual',
+    } as const;
+
+    const first = await service.create(tripId, DEV_USER, input);
+    const retry = await service.create(tripId, DEV_USER, input);
+
+    expect(retry.id).toBe(first.id);
+    expect(retry).toEqual(first);
+    // No duplicate Change row from the retry — it never reached ChangeService.mutate.
+    const changeCount = await prisma.change.count({ where: { tripId, entityId: first.id } });
+    expect(changeCount).toBe(1);
+  });
+
   it('blocks PATCH on a hard event without confirm, and allows it with confirm', async () => {
     const tripId = await newTrip();
     const booking = await prisma.booking.create({

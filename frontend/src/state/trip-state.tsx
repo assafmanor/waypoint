@@ -8,6 +8,7 @@ import {
   useEffect,
   useMemo,
   useReducer,
+  useRef,
   useState,
   type ReactNode,
 } from 'react';
@@ -22,7 +23,8 @@ import {
   type TripSnapshot,
   type User,
 } from '@waypoint/shared';
-import { fetchSnapshot, type RippleSuggestion } from '../lib/api';
+import { fetchChanges, fetchSnapshot, type RippleSuggestion } from '../lib/api';
+import { flushOutbox } from '../lib/outbox';
 import { openTripStream } from '../lib/ws';
 import { shiftIso, todayInTz } from '../lib/time';
 import { EVENTS, GLANCE, MAYBE_ITEMS, USERS, activeUserId } from '../fixtures';
@@ -230,17 +232,55 @@ function TripReady({ snapshot, children }: { snapshot: TripSnapshot; children: R
   const [state, dispatch] = useReducer(reducer, snapshot, initialState);
   const tripId = snapshot.trip.id;
 
+  const lastSeqRef = useRef(snapshot.latestSeq);
+
   useEffect(() => {
-    const close = openTripStream(tripId, snapshot.latestSeq, {
-      onChange: (change) => dispatch({ type: 'REMOTE_EVENT_CHANGE', change }),
-      onResync: () => {
-        fetchSnapshot(tripId).then(
-          (s) => dispatch({ type: 'RESYNC', events: s.events, maybeItems: s.maybeItems }),
-          () => {}, // ponytail: transient refetch failure — next change/hello retries the resync.
-        );
-      },
-    });
-    return close;
+    lastSeqRef.current = snapshot.latestSeq;
+    let closeSocket: (() => void) | null = null;
+
+    function connect(sinceSeq: string) {
+      closeSocket = openTripStream(tripId, sinceSeq, {
+        onChange: (change) => {
+          lastSeqRef.current = change.seq;
+          dispatch({ type: 'REMOTE_EVENT_CHANGE', change });
+        },
+        onResync: () => {
+          fetchSnapshot(tripId).then(
+            (s) => {
+              lastSeqRef.current = s.latestSeq;
+              dispatch({ type: 'RESYNC', events: s.events, maybeItems: s.maybeItems });
+            },
+            () => {}, // ponytail: transient refetch failure — next change/hello retries the resync.
+          );
+        },
+      });
+    }
+    connect(snapshot.latestSeq);
+
+    // Reconnect catch-up (T-013, sync-and-offline.md "Bootstrap & catch-up"):
+    // the socket just dies while offline with no signal, so on `online` we
+    // flush the write outbox first (our own queued writes replay before we ask
+    // what we missed), then replay `changes?sinceSeq=` and reopen the socket
+    // rather than waiting for it to notice the drop on its own.
+    function handleOnline() {
+      flushOutbox(tripId)
+        .then(() => fetchChanges(tripId, lastSeqRef.current))
+        .then((changes) => {
+          for (const change of changes) {
+            lastSeqRef.current = change.seq;
+            dispatch({ type: 'REMOTE_EVENT_CHANGE', change });
+          }
+          closeSocket?.();
+          connect(lastSeqRef.current);
+        })
+        .catch(() => {}); // ponytail: next 'online' event (or a WS gap) retries.
+    }
+    window.addEventListener('online', handleOnline);
+
+    return () => {
+      window.removeEventListener('online', handleOnline);
+      closeSocket?.();
+    };
     // Reconnect only on trip switch — `snapshot.latestSeq` is just this effect's initial cursor.
   }, [tripId]);
 
