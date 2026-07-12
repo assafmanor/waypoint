@@ -1,9 +1,16 @@
 <!doctype html>
+<!-- STATUS: PRE-ADDENDUM (docs/design/design-principles-addendum.md).
+     Authored before the addendum; semantic colors (plan violet, soft grammar,
+     status palette) have been retrofitted in place, but the chrome still
+     predates the mode-identity rule — plan mode here shows the dark indigo
+     header instead of the light "drafting table" chrome (§1). That restyle is
+     a designed follow-up. Where this mockup and the design docs conflict, the
+     docs win. -->
 <html lang="he" dir="rtl">
   <head>
     <meta charset="UTF-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-    <title>מרכז שליטה לטיול — מצב תכנון (מוקאפ)</title>
+    <title>מרכז שליטה לטיול — מצב תכנון (מוקאפ · לפני האדנדום)</title>
     <link rel="preconnect" href="https://fonts.googleapis.com" />
     <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
     <link
@@ -152,8 +159,10 @@
         transition: 0.15s;
       }
       .toggle button.on {
-        background: var(--amber);
-        color: #3a2405;
+        /* this mockup shows plan mode selected — violet, never amber (addendum §1);
+           in trip mode the selected pill is amber */
+        background: var(--plan);
+        color: #fff;
       }
       .toggle .auto {
         color: #7e8fb4;
@@ -687,7 +696,7 @@
         border-style: dashed; /* soft grammar: dashed + muted, never teal (addendum §2) */
         border-color: var(--soft-line);
         color: var(--muted);
-        background: rgba(44, 156, 144, 0.08);
+        background: rgba(22, 35, 61, 0.04);
       }
       .form-actions {
         display: flex;

@@ -1,6 +1,6 @@
 # Design Language
 
-**Status:** ACCEPTED for the mockup; the reference source of truth is `mockups/trip-dashboard-v2.html`. Values below are extracted from it. Extended by [design-principles-addendum.md](design-principles-addendum.md) (mode identity, semantic color budget, scales, dark-mode readiness).
+**Status:** ACCEPTED. Values below were extracted from the reference mockup `mockups/trip-dashboard-v2.html`. Extended by [design-principles-addendum.md](design-principles-addendum.md) (mode identity, semantic color budget, scales, dark-mode readiness). The mockups predate the addendum (colors retrofitted in place, marked `PRE-ADDENDUM` in-file) — **where a mockup and these docs conflict, the docs win.**
 
 ## Principle: one loud element, everything else quiet
 

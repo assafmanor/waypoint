@@ -307,6 +307,10 @@
   color: var(--ok); /* status, not location (addendum §2) */
   font-weight: 600;
 }
+.gcard .s.down {
+  color: var(--miss);
+  font-weight: 600;
+}
 .budget-bar {
   height: 5px;
   background: var(--line);
@@ -317,10 +321,11 @@
 .budget-bar i {
   display: block;
   height: 100%;
-  background: var(
-    --ok
-  ); /* budget health status; component flips to --miss when over (addendum §2) */
+  background: var(--ok); /* budget health status (addendum §2) */
   border-radius: 4px;
+}
+.budget-bar i.over {
+  background: var(--miss);
 }
 
 /* itinerary items */
@@ -702,14 +707,22 @@
   color: var(--ink);
 }
 .confirm-cancel:focus-visible,
-.confirm-ok:focus-visible {
+.confirm-ok:focus-visible,
+.form-save:focus-visible {
   outline: 2.5px solid var(--teal);
   outline-offset: 2px;
 }
+/* amber = the hard-edit/commitment guard only (addendum §2) */
 .confirm-ok {
   border: 0;
   background: var(--amber);
   color: #3a2405;
+}
+/* generic form submit = neutral CTA, never amber (addendum §2) */
+.form-save {
+  border: 0;
+  background: var(--cta);
+  color: var(--cta-text);
 }
 
 /* event create/edit form (T-047) */
@@ -775,6 +788,14 @@
 .kind-toggle button.on {
   border-color: var(--amber);
   background: rgba(233, 166, 60, 0.14);
+  color: var(--ink);
+}
+/* soft selection follows the soft grammar — dashed + muted, never amber/teal
+   (design-principles-addendum §2); amber .on stays for hard = commitment */
+.kind-toggle button.soft.on {
+  border-style: dashed;
+  border-color: var(--soft-line);
+  background: rgba(22, 35, 61, 0.04);
   color: var(--ink);
 }
 .form-error {
