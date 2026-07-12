@@ -1,0 +1,1663 @@
+<!doctype html>
+<html lang="he" dir="rtl">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>Waypoint — מסכי כניסה, קבוצה והגדרות</title>
+    <link rel="preconnect" href="https://fonts.googleapis.com" />
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+    <link
+      href="https://fonts.googleapis.com/css2?family=Assistant:wght@400;500;600;700&family=Secular+One&family=JetBrains+Mono:wght@500;700&display=swap"
+      rel="stylesheet"
+    />
+    <style>
+      :root {
+        --ink: #16233d;
+        --indigo: #1b2a4a;
+        --board: #0e1729;
+        --board-2: #152137;
+        --screen: #e7eaef;
+        --card: #ffffff;
+        --paper: #f3efe6;
+        --amber: #e9a63c;
+        --amber-deep: #c9822a;
+        --teal: #2c9c90;
+        --muted: #6c7488;
+        --plan: #6e59d6;
+        --plan-deep: #5747b4;
+        --plan-tint: rgba(110, 89, 214, 0.1);
+        --line: rgba(22, 35, 61, 0.1);
+        --soft-line: rgba(22, 35, 61, 0.28);
+        --shadow: 0 18px 40px -18px rgba(14, 23, 41, 0.45);
+      }
+      * {
+        box-sizing: border-box;
+        margin: 0;
+        padding: 0;
+      }
+      html,
+      body {
+        height: 100%;
+      }
+      body {
+        font-family: 'Assistant', sans-serif;
+        background:
+          radial-gradient(120% 90% at 80% -10%, #2a3e68 0%, transparent 55%),
+          radial-gradient(120% 90% at 0% 110%, #1a2a4a 0%, transparent 50%), #0f1a31;
+        color: var(--ink);
+        min-height: 100vh;
+        display: flex;
+        flex-direction: column;
+        align-items: center;
+        justify-content: center;
+        padding: 24px 16px;
+        -webkit-font-smoothing: antialiased;
+      }
+      .stage {
+        width: 100%;
+        max-width: 392px;
+      }
+
+      /* screen switcher */
+      .switcher {
+        display: flex;
+        gap: 6px;
+        justify-content: center;
+        margin-bottom: 14px;
+        flex-wrap: wrap;
+      }
+      .sw {
+        font: inherit;
+        font-size: 12px;
+        font-weight: 600;
+        color: #aeb9d4;
+        background: rgba(255, 255, 255, 0.07);
+        border: 1px solid rgba(255, 255, 255, 0.12);
+        border-radius: 99px;
+        padding: 7px 13px;
+        cursor: pointer;
+        transition: 0.15s;
+      }
+      .sw:hover {
+        color: #fff;
+      }
+      .sw.on {
+        background: var(--amber);
+        border-color: var(--amber);
+        color: #3a2405;
+      }
+      .sw:focus-visible {
+        outline: 2.5px solid var(--teal);
+        outline-offset: 2px;
+      }
+
+      .phone {
+        background: var(--screen);
+        border-radius: 38px;
+        box-shadow:
+          var(--shadow),
+          0 0 0 10px #0b1526,
+          0 0 0 12px #223257;
+        overflow: hidden;
+        position: relative;
+        height: 812px;
+        display: flex;
+        flex-direction: column;
+      }
+      .statusbar {
+        background: var(--indigo);
+        color: #dce3f2;
+        display: flex;
+        justify-content: space-between;
+        align-items: center;
+        padding: 11px 22px 8px;
+        font-size: 13px;
+        font-weight: 600;
+        font-family: 'JetBrains Mono', monospace;
+        flex: 0 0 auto;
+      }
+      .statusbar .dots {
+        letter-spacing: 2px;
+        opacity: 0.85;
+      }
+      .statusbar.dark {
+        background: var(--board);
+      }
+
+      .screen {
+        display: none;
+        flex: 1;
+        min-height: 0;
+        flex-direction: column;
+      }
+      .screen.active {
+        display: flex;
+        animation: fade 0.32s ease;
+      }
+      @keyframes fade {
+        from {
+          opacity: 0;
+          transform: translateY(6px);
+        }
+        to {
+          opacity: 1;
+          transform: none;
+        }
+      }
+
+      .scroll {
+        flex: 1;
+        overflow-y: auto;
+        min-height: 0;
+      }
+      .scroll::-webkit-scrollbar {
+        width: 0;
+      }
+
+      /* shared bits */
+      .logo {
+        font-family: 'Secular One', sans-serif;
+        letter-spacing: 0.02em;
+      }
+      .codename {
+        font-size: 10px;
+        font-weight: 700;
+        letter-spacing: 0.16em;
+        color: #8fa0c4;
+        text-transform: uppercase;
+      }
+      .g-dot {
+        width: 14px;
+        height: 14px;
+        border-radius: 50%;
+        background: conic-gradient(#4285f4 0 25%, #ea4335 0 50%, #fbbc05 0 75%, #34a853 0);
+        flex: 0 0 auto;
+      }
+      .sec-title {
+        font-size: 12px;
+        font-weight: 700;
+        color: var(--muted);
+        letter-spacing: 0.06em;
+        margin: 20px 4px 10px;
+        display: flex;
+        justify-content: space-between;
+        align-items: center;
+      }
+      .sec-title .hint {
+        font-weight: 500;
+        letter-spacing: 0;
+        color: #98a0b0;
+        font-size: 11px;
+      }
+      .listcard {
+        background: var(--card);
+        border: 1px solid var(--line);
+        border-radius: 15px;
+        overflow: hidden;
+      }
+      .btn {
+        font: inherit;
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        gap: 9px;
+        width: 100%;
+        border-radius: 14px;
+        padding: 14px;
+        font-size: 14.5px;
+        font-weight: 700;
+        cursor: pointer;
+        border: 1px solid var(--line);
+        transition: 0.15s;
+      }
+      .btn.primary {
+        background: var(--amber);
+        border-color: var(--amber);
+        color: #3a2405;
+      }
+      .btn.primary:hover {
+        background: var(--amber-deep);
+        border-color: var(--amber-deep);
+        color: #fff;
+      }
+      .btn.cta {
+        background: var(--ink);
+        border-color: var(--ink);
+        color: #fff;
+      }
+      .btn.cta:hover {
+        background: #0e1729;
+        border-color: #0e1729;
+      }
+      .btn.ghost {
+        background: #fff;
+        color: var(--ink);
+      }
+      .btn.ghost:hover {
+        border-color: var(--ink);
+      }
+      .btn.dark-ghost {
+        background: rgba(255, 255, 255, 0.06);
+        border-color: rgba(255, 255, 255, 0.16);
+        color: #eaf0ff;
+      }
+      .btn.dark-ghost:hover {
+        background: rgba(255, 255, 255, 0.12);
+      }
+      .btn:focus-visible {
+        outline: 2.5px solid var(--teal);
+        outline-offset: 2px;
+      }
+      .toast {
+        position: absolute;
+        left: 16px;
+        right: 16px;
+        bottom: 24px;
+        background: var(--ink);
+        color: #fff;
+        border-radius: 13px;
+        padding: 13px 16px;
+        font-size: 13.5px;
+        font-weight: 500;
+        box-shadow: 0 12px 28px -10px rgba(0, 0, 0, 0.5);
+        display: flex;
+        align-items: center;
+        gap: 9px;
+        opacity: 0;
+        transform: translateY(12px);
+        pointer-events: none;
+        transition: 0.28s;
+        z-index: 5;
+      }
+      .toast.show {
+        opacity: 1;
+        transform: none;
+      }
+      .av {
+        width: 31px;
+        height: 31px;
+        border-radius: 50%;
+        display: grid;
+        place-items: center;
+        color: #12203a;
+        font-weight: 700;
+        font-size: 12.5px;
+        border: 2px solid #fff;
+        flex: 0 0 auto;
+      }
+      .avrow {
+        display: flex;
+        flex-direction: row-reverse;
+      }
+      .avrow .av {
+        margin-inline-start: -9px;
+        border-color: var(--screen);
+      }
+
+      /* ============ SCREEN 1: LANDING (pre-login) ============ */
+      /* pre-login screens (landing + link invite) share the night chrome */
+      #s-landing,
+      #s-linkjoin {
+        background: linear-gradient(180deg, var(--board-2) 0%, var(--board) 100%);
+        color: #eaf0ff;
+      }
+      .land {
+        flex: 1;
+        display: flex;
+        flex-direction: column;
+        padding: 20px 24px 28px;
+        position: relative;
+        overflow: hidden;
+      }
+      .land::before {
+        content: '';
+        position: absolute;
+        inset: 0;
+        background: radial-gradient(80% 45% at 85% 0%, rgba(233, 166, 60, 0.14), transparent 60%);
+        pointer-events: none;
+      }
+      .land-top {
+        display: flex;
+        justify-content: space-between;
+        align-items: center;
+        position: relative;
+      }
+      .land-logo {
+        font-size: 20px;
+        color: #fff;
+      }
+      .land-hero {
+        margin-top: 52px;
+        position: relative;
+      }
+      .land-hero h1 {
+        font-family: 'Secular One', sans-serif;
+        font-size: 34px;
+        line-height: 1.18;
+        color: #fff;
+      }
+      .land-hero h1 em {
+        font-style: normal;
+        color: var(--amber);
+      }
+      .land-hero p {
+        color: #93a2c4;
+        font-size: 14.5px;
+        line-height: 1.55;
+        margin-top: 14px;
+        max-width: 30ch;
+      }
+
+      /* mini departure-board teaser */
+      .teaser {
+        margin-top: 30px;
+        background: rgba(255, 255, 255, 0.045);
+        border: 1px solid rgba(255, 255, 255, 0.1);
+        border-radius: 18px;
+        padding: 15px 16px;
+        position: relative;
+      }
+      .teaser .row {
+        display: flex;
+        justify-content: space-between;
+        align-items: center;
+      }
+      .teaser .lbl {
+        font-size: 10.5px;
+        font-weight: 700;
+        letter-spacing: 0.12em;
+        color: var(--amber);
+      }
+      .teaser .clk {
+        font-family: 'JetBrains Mono', monospace;
+        font-size: 12.5px;
+        font-weight: 700;
+        color: #8fa0c4;
+      }
+      .teaser .ttl {
+        font-family: 'Secular One', sans-serif;
+        font-size: 17px;
+        color: #fff;
+        margin-top: 6px;
+      }
+      .teaser .mt {
+        color: #93a2c4;
+        font-size: 12px;
+        margin-top: 3px;
+      }
+      .teaser .cd {
+        position: absolute;
+        inset-inline-end: 14px;
+        bottom: 13px;
+        text-align: center;
+        background: rgba(233, 166, 60, 0.13);
+        border: 1px solid rgba(233, 166, 60, 0.3);
+        border-radius: 11px;
+        padding: 6px 11px;
+      }
+      .teaser .cd b {
+        font-family: 'JetBrains Mono', monospace;
+        font-size: 16px;
+        color: var(--amber);
+        display: block;
+        line-height: 1;
+      }
+      .teaser .cd i {
+        font-style: normal;
+        font-size: 9px;
+        color: #b9985c;
+        letter-spacing: 0.08em;
+      }
+
+      .land-feats {
+        display: flex;
+        gap: 8px;
+        margin-top: 22px;
+        position: relative;
+      }
+      .feat {
+        flex: 1;
+        background: rgba(255, 255, 255, 0.045);
+        border: 1px solid rgba(255, 255, 255, 0.09);
+        border-radius: 13px;
+        padding: 11px 8px;
+        text-align: center;
+      }
+      .feat .fi {
+        font-size: 17px;
+      }
+      .feat .ft {
+        font-size: 10.5px;
+        font-weight: 600;
+        color: #aeb9d4;
+        margin-top: 5px;
+        line-height: 1.25;
+      }
+
+      .land-cta {
+        margin-top: auto;
+        position: relative;
+      }
+      .gbtn {
+        font: inherit;
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        gap: 10px;
+        width: 100%;
+        background: #fff;
+        color: #1a1a1a;
+        border: 0;
+        border-radius: 14px;
+        padding: 14px;
+        font-size: 14.5px;
+        font-weight: 700;
+        cursor: pointer;
+        transition: 0.15s;
+      }
+      .gbtn:hover {
+        transform: translateY(-1px);
+        box-shadow: 0 10px 24px -10px rgba(0, 0, 0, 0.5);
+      }
+      .gbtn .gd {
+        width: 18px;
+        height: 18px;
+        border-radius: 50%;
+        background: conic-gradient(#4285f4 0 25%, #ea4335 0 50%, #fbbc05 0 75%, #34a853 0);
+      }
+      .land-note {
+        text-align: center;
+        color: #7e8fb4;
+        font-size: 11.5px;
+        margin-top: 12px;
+        line-height: 1.5;
+      }
+      .land-note b {
+        color: #aeb9d4;
+      }
+
+      /* ============ SCREEN 2: LOBBY (post-login) ============ */
+      .lobby-head {
+        background: var(--indigo);
+        color: #fff;
+        padding: 14px 20px 20px;
+      }
+      .lobby-head .row {
+        display: flex;
+        justify-content: space-between;
+        align-items: center;
+      }
+      .hello {
+        font-family: 'Secular One', sans-serif;
+        font-size: 23px;
+      }
+      .hello-sub {
+        color: #9daac8;
+        font-size: 12.5px;
+        margin-top: 3px;
+        display: flex;
+        align-items: center;
+        gap: 6px;
+      }
+      .lobby-body {
+        padding: 16px 16px 24px;
+      }
+
+      /* active trip card = mini board */
+      .trip-live {
+        background: linear-gradient(180deg, var(--board-2), var(--board));
+        border-radius: 20px;
+        padding: 16px;
+        color: #eaf0ff;
+        cursor: pointer;
+        position: relative;
+        overflow: hidden;
+        transition: transform 0.14s;
+      }
+      .trip-live:hover {
+        transform: translateY(-2px);
+      }
+      .trip-live::before {
+        content: '';
+        position: absolute;
+        inset: 0;
+        background: radial-gradient(90% 60% at 85% 0%, rgba(233, 166, 60, 0.15), transparent 60%);
+        pointer-events: none;
+      }
+      .tl-top {
+        display: flex;
+        justify-content: space-between;
+        align-items: center;
+        position: relative;
+      }
+      .live-badge {
+        display: inline-flex;
+        align-items: center;
+        gap: 6px;
+        font-size: 10.5px;
+        font-weight: 700;
+        letter-spacing: 0.1em;
+        color: var(--amber);
+        background: rgba(233, 166, 60, 0.13);
+        border: 1px solid rgba(233, 166, 60, 0.3);
+        border-radius: 99px;
+        padding: 4px 10px;
+      }
+      .live-badge .blip {
+        width: 6px;
+        height: 6px;
+        border-radius: 50%;
+        background: var(--amber);
+        animation: pulse 2s infinite;
+      }
+      @keyframes pulse {
+        0% {
+          box-shadow: 0 0 0 0 rgba(233, 166, 60, 0.55);
+        }
+        70% {
+          box-shadow: 0 0 0 7px rgba(233, 166, 60, 0);
+        }
+        100% {
+          box-shadow: 0 0 0 0 rgba(233, 166, 60, 0);
+        }
+      }
+      .tl-name {
+        font-family: 'Secular One', sans-serif;
+        font-size: 22px;
+        margin-top: 12px;
+        color: #fff;
+        position: relative;
+      }
+      .tl-meta {
+        color: #93a2c4;
+        font-size: 12.5px;
+        margin-top: 4px;
+        position: relative;
+      }
+      .tl-next {
+        margin-top: 13px;
+        padding-top: 12px;
+        border-top: 1px solid rgba(255, 255, 255, 0.09);
+        display: flex;
+        justify-content: space-between;
+        align-items: center;
+        position: relative;
+      }
+      .tl-next .nx {
+        font-size: 12.5px;
+        color: #93a2c4;
+      }
+      .tl-next .nx b {
+        color: #eaf0ff;
+        font-weight: 700;
+      }
+      .tl-next .tm {
+        font-family: 'JetBrains Mono', monospace;
+        font-size: 13px;
+        font-weight: 700;
+        color: var(--amber);
+      }
+      .tl-prog {
+        margin-top: 13px;
+        position: relative;
+      }
+      .tl-prog .track {
+        height: 3px;
+        background: rgba(255, 255, 255, 0.12);
+        border-radius: 3px;
+        position: relative;
+      }
+      .tl-prog .fill {
+        position: absolute;
+        inset-block: 0;
+        inset-inline-start: 0;
+        width: 30%;
+        background: linear-gradient(90deg, var(--amber-deep), var(--amber));
+        border-radius: 3px;
+      }
+      .tl-prog .ends {
+        display: flex;
+        justify-content: space-between;
+        margin-top: 6px;
+        font-family: 'JetBrains Mono', monospace;
+        font-size: 10px;
+        color: #7688ac;
+      }
+
+      .trip-row2 {
+        display: flex;
+        align-items: center;
+        gap: 12px;
+        padding: 14px 15px;
+        border-bottom: 1px solid var(--line);
+        cursor: pointer;
+      }
+      .trip-row2:last-child {
+        border-bottom: 0;
+      }
+      .trip-row2:hover {
+        background: #fafbfd;
+      }
+      .trip-row2 .ic {
+        width: 40px;
+        height: 40px;
+        border-radius: 12px;
+        background: var(--paper);
+        display: grid;
+        place-items: center;
+        font-size: 19px;
+        flex: 0 0 auto;
+      }
+      .trip-row2 .main {
+        flex: 1;
+      }
+      .trip-row2 .t {
+        font-weight: 700;
+        font-size: 14.5px;
+      }
+      .trip-row2 .m {
+        font-size: 12px;
+        color: var(--muted);
+        margin-top: 2px;
+      }
+      .trip-row2 .st {
+        font-family: 'JetBrains Mono', monospace;
+        font-size: 11px;
+        font-weight: 700;
+        flex: 0 0 auto;
+      }
+      .st.plan {
+        color: var(--plan-deep);
+      }
+      .st.past {
+        color: #a6acba;
+      }
+      .lobby-actions {
+        display: grid;
+        grid-template-columns: 1fr 1fr;
+        gap: 10px;
+        margin-top: 14px;
+      }
+
+      /* ============ SCREEN 3: JOIN GROUP ============ */
+      .join-head {
+        background: var(--indigo);
+        color: #fff;
+        padding: 14px 20px 18px;
+        display: flex;
+        align-items: center;
+        gap: 12px;
+      }
+      .back {
+        font: inherit;
+        background: rgba(255, 255, 255, 0.08);
+        border: 1px solid rgba(255, 255, 255, 0.14);
+        color: #dce3f2;
+        width: 34px;
+        height: 34px;
+        border-radius: 11px;
+        cursor: pointer;
+        font-size: 15px;
+        display: grid;
+        place-items: center;
+      }
+      .join-title {
+        font-family: 'Secular One', sans-serif;
+        font-size: 19px;
+      }
+      .join-body {
+        padding: 20px 20px 24px;
+      }
+      .join-lede {
+        color: var(--muted);
+        font-size: 13.5px;
+        line-height: 1.55;
+      }
+      .code-row {
+        display: flex;
+        gap: 8px;
+        justify-content: center;
+        margin: 22px 0 8px;
+        direction: ltr;
+      }
+      .code-cell {
+        width: 46px;
+        height: 56px;
+        border-radius: 13px;
+        border: 1.5px solid var(--line);
+        background: #fff;
+        text-align: center;
+        font-family: 'JetBrains Mono', monospace;
+        font-size: 22px;
+        font-weight: 700;
+        color: var(--ink);
+        outline: none;
+        transition: 0.15s;
+        text-transform: uppercase;
+      }
+      .code-cell:focus {
+        border-color: var(--amber);
+        box-shadow: 0 0 0 3px rgba(233, 166, 60, 0.18);
+      }
+      .code-cell.filled {
+        border-color: var(--teal);
+        background: rgba(44, 156, 144, 0.05);
+      }
+      .paste-hint {
+        text-align: center;
+        font-size: 12px;
+        color: var(--muted);
+      }
+      .paste-hint button {
+        font: inherit;
+        background: none;
+        border: 0;
+        color: var(--teal);
+        font-weight: 700;
+        cursor: pointer;
+        font-size: 12px;
+      }
+
+      /* trip preview after code */
+      .preview {
+        margin-top: 20px;
+        display: none;
+      }
+      .preview.show {
+        display: block;
+        animation: fade 0.3s ease;
+      }
+      .pv-card {
+        background: linear-gradient(180deg, var(--board-2), var(--board));
+        border-radius: 18px;
+        padding: 16px;
+        color: #eaf0ff;
+        position: relative;
+        overflow: hidden;
+      }
+      .pv-card::before {
+        content: '';
+        position: absolute;
+        inset: 0;
+        background: radial-gradient(90% 60% at 85% 0%, rgba(233, 166, 60, 0.14), transparent 60%);
+        pointer-events: none;
+      }
+      .pv-name {
+        font-family: 'Secular One', sans-serif;
+        font-size: 20px;
+        color: #fff;
+        position: relative;
+      }
+      .pv-meta {
+        color: #93a2c4;
+        font-size: 12.5px;
+        margin-top: 4px;
+        position: relative;
+      }
+      .pv-people {
+        display: flex;
+        align-items: center;
+        gap: 10px;
+        margin-top: 14px;
+        position: relative;
+      }
+      .pv-people .avrow .av {
+        border-color: var(--board);
+      }
+      .pv-people .who {
+        font-size: 12px;
+        color: #93a2c4;
+      }
+      .perm {
+        display: flex;
+        align-items: flex-start;
+        gap: 11px;
+        padding: 13px 14px;
+        border-bottom: 1px solid var(--line);
+      }
+      .perm:last-child {
+        border-bottom: 0;
+      }
+      .perm .pi {
+        font-size: 17px;
+        flex: 0 0 auto;
+        margin-top: 1px;
+      }
+      .perm .pt {
+        font-weight: 700;
+        font-size: 13.5px;
+      }
+      .perm .pm {
+        font-size: 12px;
+        color: var(--muted);
+        margin-top: 2px;
+        line-height: 1.45;
+      }
+      .perm .chk {
+        margin-inline-start: auto;
+        flex: 0 0 auto;
+      }
+      /* toggle */
+      .tgl {
+        position: relative;
+        width: 42px;
+        height: 24px;
+        flex: 0 0 auto;
+        cursor: pointer;
+      }
+      .tgl input {
+        opacity: 0;
+        width: 0;
+        height: 0;
+        position: absolute;
+      }
+      .tgl .tr {
+        position: absolute;
+        inset: 0;
+        background: #cdd3de;
+        border-radius: 99px;
+        transition: 0.18s;
+      }
+      .tgl .th {
+        position: absolute;
+        top: 3px;
+        inset-inline-start: 3px;
+        width: 18px;
+        height: 18px;
+        background: #fff;
+        border-radius: 50%;
+        transition: 0.18s;
+        box-shadow: 0 1px 3px rgba(0, 0, 0, 0.25);
+      }
+      .tgl input:checked + .tr {
+        background: var(--ink);
+      }
+      .tgl input:checked + .tr .th {
+        inset-inline-start: 21px;
+      }
+      .tgl input:focus-visible + .tr {
+        outline: 2.5px solid var(--amber);
+        outline-offset: 2px;
+      }
+
+      /* ============ SCREEN 4: TRIP SETTINGS (planning mode) ============ */
+      /* Plan mode = "day / drafting table": light chrome + violet, subtle drafting grid. Teal stays location-only. */
+      .statusbar.plan {
+        background: #eceaf7;
+        color: #4a4370;
+      }
+      .set-head {
+        background:
+          repeating-linear-gradient(0deg, rgba(110, 89, 214, 0.05) 0 1px, transparent 1px 14px),
+          repeating-linear-gradient(90deg, rgba(110, 89, 214, 0.05) 0 1px, transparent 1px 14px),
+          linear-gradient(180deg, #f2f0fa, #eceaf7);
+        color: var(--ink);
+        padding: 14px 20px 16px;
+        border-bottom: 1px solid rgba(110, 89, 214, 0.18);
+      }
+      .set-head .row {
+        display: flex;
+        align-items: center;
+        gap: 12px;
+      }
+      .set-head .back {
+        background: var(--plan-tint);
+        border-color: rgba(110, 89, 214, 0.3);
+        color: var(--plan-deep);
+      }
+      .set-title {
+        font-family: 'Secular One', sans-serif;
+        font-size: 19px;
+      }
+      .mode-pill {
+        margin-inline-start: auto;
+        font-size: 10.5px;
+        font-weight: 700;
+        letter-spacing: 0.1em;
+        background: var(--plan-tint);
+        border: 1px solid rgba(110, 89, 214, 0.35);
+        border-radius: 99px;
+        padding: 4px 11px;
+        color: var(--plan-deep);
+      }
+      .set-sub {
+        font-size: 12px;
+        color: #6c6490;
+        margin-top: 8px;
+      }
+      .set-body {
+        padding: 16px 16px 28px;
+      }
+      .set-body .edit {
+        color: var(--plan-deep);
+      }
+      .set-body .tgl input:checked + .tr {
+        background: var(--plan);
+      }
+
+      .field {
+        padding: 13px 15px;
+        border-bottom: 1px solid var(--line);
+        display: flex;
+        align-items: center;
+        gap: 12px;
+      }
+      .field:last-child {
+        border-bottom: 0;
+      }
+      .field .fi {
+        font-size: 17px;
+        flex: 0 0 auto;
+      }
+      .field .fl {
+        font-size: 11px;
+        font-weight: 700;
+        color: var(--muted);
+        letter-spacing: 0.04em;
+      }
+      .field .fv {
+        font-size: 14.5px;
+        font-weight: 600;
+        margin-top: 2px;
+      }
+      .field .fv.mono {
+        font-family: 'JetBrains Mono', monospace;
+        font-size: 13.5px;
+      }
+      .field .edit {
+        margin-inline-start: auto;
+        font: inherit;
+        font-size: 12px;
+        font-weight: 700;
+        color: var(--teal);
+        background: none;
+        border: 0;
+        cursor: pointer;
+        flex: 0 0 auto;
+      }
+      .field .main {
+        flex: 1;
+        min-width: 0;
+      }
+
+      .member {
+        display: flex;
+        align-items: center;
+        gap: 11px;
+        padding: 12px 15px;
+        border-bottom: 1px solid var(--line);
+      }
+      .member:last-child {
+        border-bottom: 0;
+      }
+      .member .mn {
+        font-weight: 700;
+        font-size: 13.5px;
+        flex: 1;
+      }
+      .member .mr {
+        font-size: 11px;
+        color: var(--muted);
+      }
+      .member .role {
+        font-size: 10.5px;
+        font-weight: 700;
+        border-radius: 7px;
+        padding: 3px 8px;
+      }
+      .role.owner {
+        background: rgba(233, 166, 60, 0.15);
+        color: var(--amber-deep);
+      }
+      .role.mem {
+        background: rgba(22, 35, 61, 0.06);
+        color: var(--muted);
+      }
+      .invite-box {
+        display: flex;
+        align-items: center;
+        gap: 10px;
+        background: var(--plan-tint);
+        border: 1px dashed rgba(110, 89, 214, 0.5);
+        border-radius: 13px;
+        padding: 12px 14px;
+        margin-top: 10px;
+        cursor: pointer;
+        transition: 0.14s;
+      }
+      .invite-box:hover {
+        background: rgba(110, 89, 214, 0.16);
+      }
+      .invite-box .code {
+        font-family: 'JetBrains Mono', monospace;
+        font-weight: 700;
+        font-size: 15px;
+        color: var(--plan-deep);
+        letter-spacing: 0.12em;
+        direction: ltr;
+      }
+      .invite-box .lbl2 {
+        font-size: 11px;
+        color: var(--muted);
+        flex: 1;
+      }
+      .invite-box .cp {
+        font-size: 15px;
+      }
+
+      .danger {
+        border: 1px solid rgba(200, 60, 60, 0.25);
+        border-radius: 15px;
+        overflow: hidden;
+        background: #fff;
+      }
+      .danger .field .fv {
+        color: #b4372f;
+      }
+      .danger .field .edit {
+        color: #b4372f;
+      }
+
+      @media (prefers-reduced-motion: reduce) {
+        * {
+          animation: none !important;
+          transition: none !important;
+        }
+      }
+    </style>
+  </head>
+  <body>
+    <div class="stage">
+      <div class="switcher">
+        <button class="sw on" onclick="show(this, 'landing')">כניסה · לפני</button>
+        <button class="sw" onclick="show(this, 'lobby')">בית · אחרי</button>
+        <button class="sw" onclick="show(this, 'join')">הצטרפות · קוד</button>
+        <button class="sw" onclick="show(this, 'linkjoin')">הצטרפות · קישור</button>
+        <button class="sw" onclick="show(this, 'settings')">הגדרות טיול · תכנון</button>
+      </div>
+
+      <div class="phone">
+        <!-- ================= LANDING (pre-login) ================= -->
+        <section class="screen active" id="s-landing">
+          <div class="statusbar dark"><span>09:41</span><span class="dots">●●● 5G ▮</span></div>
+          <div class="land">
+            <div class="land-top">
+              <div>
+                <div class="land-logo logo">Waypoint</div>
+                <div class="codename">codename · שם רשמי בהמשך</div>
+              </div>
+              <div class="g-dot" style="width: 22px; height: 22px; opacity: 0.9"></div>
+            </div>
+
+            <div class="land-hero">
+              <h1>כל הטיול שלכם.<br />מסך <em>אחד</em>.</h1>
+              <p>מה עכשיו, מה הבא בתור, ואיפה כל ההזמנות — בזמן שאתם שם, גם בלי קליטה.</p>
+            </div>
+
+            <div class="teaser" aria-hidden="true">
+              <div class="row">
+                <span class="lbl">הבא בתור</span>
+                <span class="clk" dir="ltr">19:30</span>
+              </div>
+              <div class="ttl">ארוחת ערב · Ichiran</div>
+              <div class="mt">🔒 הזמנה #4471 · 5 דק׳ הליכה</div>
+              <div class="cd"><b dir="ltr">38</b><i>דקות</i></div>
+            </div>
+
+            <div class="land-feats">
+              <div class="feat">
+                <div class="fi">🎫</div>
+                <div class="ft">כל ההזמנות, גם אופליין</div>
+              </div>
+              <div class="feat">
+                <div class="fi">🗺️</div>
+                <div class="ft">הכל נעוץ על המפה</div>
+              </div>
+              <div class="feat">
+                <div class="fi">👥</div>
+                <div class="ft">כל החבורה מסונכרנת</div>
+              </div>
+            </div>
+
+            <div class="land-cta">
+              <button
+                class="gbtn"
+                onclick="toast('✓', 'מתחבר עם Google… (דמו) — עברו לטאב ״בית · אחרי״')"
+              >
+                <span class="gd"></span> המשך עם Google
+              </button>
+              <div class="land-note">
+                כל אחד מתחבר עם <b>החשבון האישי שלו</b>.<br />המסלול מסתנכרן ליומן האישי · הזמנות
+                נכנסות מ-Gmail רק באישור שלך.
+              </div>
+            </div>
+          </div>
+        </section>
+
+        <!-- ================= LOBBY (post-login) ================= -->
+        <section class="screen" id="s-lobby">
+          <div class="statusbar"><span>09:41</span><span class="dots">●●● 5G ▮</span></div>
+          <div class="lobby-head">
+            <div class="row">
+              <div>
+                <div class="hello">בוקר טוב, אסף 👋</div>
+                <div class="hello-sub">
+                  <span class="g-dot" style="width: 12px; height: 12px"></span>מחובר ·
+                  assaf@gmail.com
+                </div>
+              </div>
+              <div class="av" style="background: #e9a63c; border-color: var(--indigo)">א</div>
+            </div>
+          </div>
+
+          <div class="scroll">
+            <div class="lobby-body">
+              <div class="sec-title">טיול פעיל <span class="hint">מצב תכנון</span></div>
+              <div class="trip-live" onclick="toast('🧳', 'נכנס לטיול… (במוקאפ הקודם — הדאשבורד)')">
+                <div class="tl-top">
+                  <span class="live-badge" style="animation: none">🗓️ בעוד 12 ימים</span>
+                  <div class="avrow">
+                    <div class="av" style="background: #e9a63c">א</div>
+                    <div class="av" style="background: #5ec5b6">נ</div>
+                    <div class="av" style="background: #e88c8c">ד</div>
+                    <div class="av" style="background: #9c8ce8">מ</div>
+                    <div class="av" style="background: #8cb6e8">ר</div>
+                  </div>
+                </div>
+                <div class="tl-name">יפן ׳26</div>
+                <div class="tl-meta">טוקיו → קיוטו → אוסקה · 10 ימים · 25.07–03.08</div>
+                <div class="tl-next">
+                  <span class="nx">משימה פתוחה: <b>3 לילות בקיוטו עדיין בלי מלון</b></span>
+                  <span class="tm">12 ימים</span>
+                </div>
+                <div class="tl-prog">
+                  <div class="track"><div class="fill"></div></div>
+                  <div class="ends"><span>תכנון</span><span>30% מוכן</span><span>טיסה</span></div>
+                </div>
+              </div>
+
+              <div class="lobby-actions">
+                <button class="btn cta" onclick="toast('＋', 'יצירת טיול חדש (מסך נפרד)')">
+                  ＋ טיול חדש
+                </button>
+                <button class="btn ghost" onclick="toast('🔑', 'עברו לטאב ״הצטרפות לקבוצה״')">
+                  הצטרף עם קוד
+                </button>
+              </div>
+
+              <div class="sec-title">כל הטיולים</div>
+              <div class="listcard">
+                <div class="trip-row2" onclick="toast('🛠️', 'טיול במצב תכנון — טאב ״הגדרות טיול״')">
+                  <div class="ic">🏔️</div>
+                  <div class="main">
+                    <div class="t">גיאורגיה · סתיו</div>
+                    <div class="m">רעיון · 4 משתתפים · תאריכים פתוחים</div>
+                  </div>
+                  <span class="st plan">תכנון</span>
+                </div>
+                <div class="trip-row2" onclick="toast('📸', 'טיול שהסתיים — מצב זיכרונות')">
+                  <div class="ic">🇬🇷</div>
+                  <div class="main">
+                    <div class="t">איי יוון ׳25</div>
+                    <div class="m">הסתיים · 5 משתתפים · 214 תמונות באלבום</div>
+                  </div>
+                  <span class="st past">הסתיים</span>
+                </div>
+                <div class="trip-row2" onclick="toast('📸', 'טיול שהסתיים')">
+                  <div class="ic">🏜️</div>
+                  <div class="main">
+                    <div class="t">ירדן · סופ״ש ׳24</div>
+                    <div class="m">הסתיים · 3 משתתפים</div>
+                  </div>
+                  <span class="st past">הסתיים</span>
+                </div>
+              </div>
+            </div>
+          </div>
+        </section>
+
+        <!-- ================= JOIN GROUP ================= -->
+        <section class="screen" id="s-join">
+          <div class="statusbar"><span>09:41</span><span class="dots">●●● 5G ▮</span></div>
+          <div class="join-head">
+            <button class="back" onclick="toast('→', 'חזרה לבית')">→</button>
+            <div class="join-title">הצטרפות לטיול</div>
+          </div>
+
+          <div class="scroll">
+            <div class="join-body">
+              <p class="join-lede">
+                קיבלת קוד או קישור מחבר? מקלידים את הקוד כאן — או פשוט פותחים את הקישור, והכול קורה
+                לבד.
+              </p>
+
+              <div class="code-row" id="codeRow">
+                <input class="code-cell" maxlength="1" oninput="cell(this, 0)" />
+                <input class="code-cell" maxlength="1" oninput="cell(this, 1)" />
+                <input class="code-cell" maxlength="1" oninput="cell(this, 2)" />
+                <input class="code-cell" maxlength="1" oninput="cell(this, 3)" />
+                <input class="code-cell" maxlength="1" oninput="cell(this, 4)" />
+                <input class="code-cell" maxlength="1" oninput="cell(this, 5)" />
+              </div>
+              <div class="paste-hint">
+                יש לך קוד בלוח? <button onclick="fillDemo()">הדבק (דמו: JPN-26)</button>
+              </div>
+
+              <div class="preview" id="preview">
+                <div class="sec-title">מצאנו את הטיול!</div>
+                <div class="pv-card">
+                  <div class="pv-name">יפן ׳26</div>
+                  <div class="pv-meta">טוקיו → קיוטו → אוסקה · 10 ימים · 25.07–03.08</div>
+                  <div class="pv-people">
+                    <div class="avrow">
+                      <div class="av" style="background: #5ec5b6">נ</div>
+                      <div class="av" style="background: #e88c8c">ד</div>
+                      <div class="av" style="background: #9c8ce8">מ</div>
+                      <div class="av" style="background: #8cb6e8">ר</div>
+                    </div>
+                    <span class="who">נועם, דנה, מאור ורון כבר בפנים</span>
+                  </div>
+                </div>
+
+                <div class="sec-title">
+                  מה מאשרים בהצטרפות <span class="hint">אפשר לשנות אחר כך</span>
+                </div>
+                <div class="listcard">
+                  <div class="perm">
+                    <span class="pi">📅</span>
+                    <div>
+                      <div class="pt">סנכרון ליומן שלך</div>
+                      <div class="pm">
+                        המסלול יופיע ביומן Google האישי. חד-כיווני — הטיול לא קורא מהיומן שלך.
+                      </div>
+                    </div>
+                    <label class="tgl chk"
+                      ><input type="checkbox" checked /><span class="tr"
+                        ><span class="th"></span></span
+                    ></label>
+                  </div>
+                  <div class="perm">
+                    <span class="pi">✉️</span>
+                    <div>
+                      <div class="pt">ייבוא הזמנות מ-Gmail</div>
+                      <div class="pm">טיסות ומלונות שהוזמנו במייל שלך ייכנסו לאינדקס אוטומטית.</div>
+                    </div>
+                    <label class="tgl chk"
+                      ><input type="checkbox" checked /><span class="tr"
+                        ><span class="th"></span></span
+                    ></label>
+                  </div>
+                  <div class="perm">
+                    <span class="pi">📍</span>
+                    <div>
+                      <div class="pt">מיקום בזמן הטיול</div>
+                      <div class="pm">רק במצב טיול, רק לחבורה — בשביל "מה קרוב אליי" ו"בדרך".</div>
+                    </div>
+                    <label class="tgl chk"
+                      ><input type="checkbox" /><span class="tr"><span class="th"></span></span
+                    ></label>
+                  </div>
+                </div>
+
+                <div style="margin-top: 16px">
+                  <button class="btn cta" onclick="toast('🎉', 'הצטרפת ליפן ׳26! נתראה בלובי')">
+                    הצטרף לטיול 🎒
+                  </button>
+                </div>
+              </div>
+            </div>
+          </div>
+        </section>
+
+        <!-- ================= LINK JOIN (public preview, pre-auth) ================= -->
+        <section class="screen" id="s-linkjoin">
+          <div class="statusbar dark"><span>09:41</span><span class="dots">●●● 5G ▮</span></div>
+          <div class="land" style="padding: 20px 22px 26px">
+            <div class="land-top">
+              <div>
+                <div class="land-logo logo" style="font-size: 17px">Waypoint</div>
+              </div>
+              <div class="g-dot" style="width: 20px; height: 20px; opacity: 0.9"></div>
+            </div>
+
+            <!-- welcome hero: an invite is a happy moment, not a gate -->
+            <div class="land-hero" style="margin-top: 30px">
+              <h1 style="font-size: 27px">הוזמנת לטיול! <em>🎉</em></h1>
+              <p style="margin-top: 8px">החברים כבר בפנים — נשארה רק ההצטרפות שלך.</p>
+            </div>
+
+            <!-- boarding-pass style invite card -->
+            <div style="margin-top: 22px; position: relative">
+              <div class="pv-card" style="border-radius: 20px; padding: 0; overflow: hidden">
+                <div style="padding: 18px 18px 16px; position: relative">
+                  <div style="display: flex; justify-content: space-between; align-items: center">
+                    <span class="live-badge" style="animation: none">✈️ כרטיס הזמנה</span>
+                    <!-- static amber countdown: anticipation, time-semantic (no pulse) -->
+                    <span
+                      style="
+                        font-family: 'JetBrains Mono', monospace;
+                        font-size: 12px;
+                        font-weight: 700;
+                        color: var(--amber);
+                      "
+                      >בעוד <span dir="ltr">12</span> ימים</span
+                    >
+                  </div>
+                  <div class="pv-name" style="font-size: 24px; margin-top: 14px">יפן ׳26</div>
+                  <div class="pv-meta" style="margin-top: 6px">
+                    טוקיו → קיוטו → אוסקה · <span dir="ltr">25.07 – 03.08</span> · 10 ימים
+                  </div>
+                </div>
+                <!-- perforation -->
+                <div
+                  style="
+                    position: relative;
+                    height: 1px;
+                    border-top: 2px dashed rgba(255, 255, 255, 0.14);
+                  "
+                >
+                  <span
+                    style="
+                      position: absolute;
+                      top: -9px;
+                      inset-inline-start: -9px;
+                      width: 18px;
+                      height: 18px;
+                      border-radius: 50%;
+                      background: var(--board);
+                    "
+                  ></span>
+                  <span
+                    style="
+                      position: absolute;
+                      top: -9px;
+                      inset-inline-end: -9px;
+                      width: 18px;
+                      height: 18px;
+                      border-radius: 50%;
+                      background: var(--board);
+                    "
+                  ></span>
+                </div>
+                <div
+                  style="
+                    padding: 14px 18px 16px;
+                    position: relative;
+                    display: flex;
+                    align-items: center;
+                    gap: 11px;
+                  "
+                >
+                  <!-- the public preview has no names (API: memberCount only) — so the
+                       unknowns are bright and playful, not masked -->
+                  <div class="avrow" aria-hidden="true">
+                    <div class="av" style="background: #5ec5b6; border-color: var(--board)">🙂</div>
+                    <div class="av" style="background: #e88c8c; border-color: var(--board)">🙂</div>
+                    <div class="av" style="background: #9c8ce8; border-color: var(--board)">🙂</div>
+                    <div class="av" style="background: #8cb6e8; border-color: var(--board)">🙂</div>
+                  </div>
+                  <div style="flex: 1">
+                    <div style="font-size: 13px; font-weight: 700; color: #eaf0ff">
+                      4 חברים כבר בפנים 👋
+                    </div>
+                    <div style="font-size: 11px; color: #93a2c4; margin-top: 2px">מחכים רק לך</div>
+                  </div>
+                </div>
+              </div>
+            </div>
+
+            <div class="land-cta">
+              <button
+                class="gbtn"
+                onclick="toast('🎒', 'מתחבר עם Google → מסך ההרשאות (טאב ״הצטרפות · קוד״)')"
+              >
+                <span class="gd"></span> המשך עם Google
+              </button>
+              <div class="land-note">
+                תוך שנייה אתה בפנים · מתחברים עם החשבון האישי, והכול נפתח מיד
+              </div>
+              <button
+                style="
+                  display: block;
+                  margin: 6px auto 0;
+                  font: inherit;
+                  font-size: 12px;
+                  font-weight: 600;
+                  color: #7e8fb4;
+                  background: none;
+                  border: 0;
+                  cursor: pointer;
+                "
+                onclick="toast('👋', 'אולי בפעם אחרת')"
+              >
+                לא עכשיו
+              </button>
+            </div>
+          </div>
+        </section>
+
+        <!-- ================= TRIP SETTINGS (planning mode) ================= -->
+        <section class="screen" id="s-settings">
+          <div class="statusbar plan"><span>09:41</span><span class="dots">●●● 5G ▮</span></div>
+          <div class="set-head">
+            <div class="row">
+              <button class="back" onclick="toast('→', 'חזרה לטיול')">→</button>
+              <div class="set-title">יפן ׳26 · הגדרות</div>
+              <span class="mode-pill">✏️ מצב תכנון</span>
+            </div>
+            <div class="set-sub">האפליקציה תעבור למצב טיול אוטומטית ב-25.07 · אפשר גם ידנית</div>
+          </div>
+
+          <div class="scroll">
+            <div class="set-body">
+              <div class="sec-title">פרטי הטיול</div>
+              <div class="listcard">
+                <div class="field">
+                  <span class="fi">✏️</span>
+                  <div class="main">
+                    <div class="fl">שם הטיול</div>
+                    <div class="fv">יפן ׳26</div>
+                  </div>
+                  <button class="edit" onclick="toast('✏️', 'עריכת שם')">עריכה</button>
+                </div>
+                <div class="field">
+                  <span class="fi">📍</span>
+                  <div class="main">
+                    <div class="fl">יעדים</div>
+                    <div class="fv">טוקיו → קיוטו → אוסקה</div>
+                  </div>
+                  <button class="edit" onclick="toast('📍', 'עריכת יעדים · Google Places')">
+                    עריכה
+                  </button>
+                </div>
+                <div class="field">
+                  <span class="fi">🗓️</span>
+                  <div class="main">
+                    <div class="fl">תאריכים</div>
+                    <div class="fv mono" dir="ltr">25.07 – 03.08 · 2026</div>
+                  </div>
+                  <button class="edit" onclick="toast('🗓️', 'בחירת תאריכים')">עריכה</button>
+                </div>
+                <div class="field">
+                  <span class="fi">💰</span>
+                  <div class="main">
+                    <div class="fl">תקציב יומי לקבוצה</div>
+                    <div class="fv mono" dir="ltr">¥14,000 ≈ ₪336</div>
+                  </div>
+                  <button class="edit" onclick="toast('💰', 'עריכת תקציב')">עריכה</button>
+                </div>
+              </div>
+
+              <div class="sec-title">חבורה <span class="hint">5 משתתפים</span></div>
+              <div class="listcard">
+                <div class="member">
+                  <div class="av" style="background: #e9a63c">א</div>
+                  <div class="mn">אסף <span class="mr">· אתה</span></div>
+                  <span class="role owner">מנהל</span>
+                </div>
+                <div class="member">
+                  <div class="av" style="background: #5ec5b6">נ</div>
+                  <div class="mn">נועם</div>
+                  <span class="role mem">משתתף</span>
+                </div>
+                <div class="member">
+                  <div class="av" style="background: #e88c8c">ד</div>
+                  <div class="mn">דנה</div>
+                  <span class="role mem">משתתף</span>
+                </div>
+                <div class="member">
+                  <div class="av" style="background: #9c8ce8">מ</div>
+                  <div class="mn">מאור</div>
+                  <span class="role mem">משתתף</span>
+                </div>
+                <div class="member">
+                  <div class="av" style="background: #8cb6e8">ר</div>
+                  <div class="mn">רון</div>
+                  <span class="role mem">משתתף</span>
+                </div>
+              </div>
+              <div class="invite-box" onclick="toast('📋', 'הקוד הועתק · שתף בוואטסאפ הקבוצה')">
+                <span class="code">JPN-26</span>
+                <span class="lbl2">קוד הזמנה · הקש להעתקה ושיתוף</span>
+                <span class="cp">📋</span>
+              </div>
+
+              <div class="sec-title">אינטגרציות <span class="hint">אישי לכל משתתף</span></div>
+              <div class="listcard">
+                <div class="perm">
+                  <span class="pi">📅</span>
+                  <div>
+                    <div class="pt">Google Calendar</div>
+                    <div class="pm">המסלול ביומן האישי שלך · חד-כיווני</div>
+                  </div>
+                  <label class="tgl chk"
+                    ><input type="checkbox" checked /><span class="tr"
+                      ><span class="th"></span></span
+                  ></label>
+                </div>
+                <div class="perm">
+                  <span class="pi">✉️</span>
+                  <div>
+                    <div class="pt">ייבוא מ-Gmail</div>
+                    <div class="pm">4 הזמנות יובאו עד כה · סריקה שבועית</div>
+                  </div>
+                  <label class="tgl chk"
+                    ><input type="checkbox" checked /><span class="tr"
+                      ><span class="th"></span></span
+                  ></label>
+                </div>
+                <div class="perm">
+                  <span class="pi">💬</span>
+                  <div>
+                    <div class="pt">WhatsApp</div>
+                    <div class="pm">שיתוף עדכונים לקבוצת ״יפן 🇯🇵 26״</div>
+                  </div>
+                  <label class="tgl chk"
+                    ><input type="checkbox" checked /><span class="tr"
+                      ><span class="th"></span></span
+                  ></label>
+                </div>
+                <div class="perm">
+                  <span class="pi">🖼️</span>
+                  <div>
+                    <div class="pt">Google Photos</div>
+                    <div class="pm">אלבום משותף ייפתח אוטומטית ביום הראשון</div>
+                  </div>
+                  <label class="tgl chk"
+                    ><input type="checkbox" /><span class="tr"><span class="th"></span></span
+                  ></label>
+                </div>
+              </div>
+
+              <div class="sec-title">ברירות מחדל לאירועים</div>
+              <div class="listcard">
+                <div class="perm">
+                  <span class="pi">🔒</span>
+                  <div>
+                    <div class="pt">זיהוי אירועים קשיחים</div>
+                    <div class="pm">אירוע עם קוד הזמנה/כרטיס מסומן קשיח אוטומטית</div>
+                  </div>
+                  <label class="tgl chk"
+                    ><input type="checkbox" checked /><span class="tr"
+                      ><span class="th"></span></span
+                  ></label>
+                </div>
+                <div class="perm">
+                  <span class="pi">🌊</span>
+                  <div>
+                    <div class="pt">הצעות גל (ripple)</div>
+                    <div class="pm">כשמזיזים אירוע — להציע לדחוף את הבאים אחריו</div>
+                  </div>
+                  <label class="tgl chk"
+                    ><input type="checkbox" checked /><span class="tr"
+                      ><span class="th"></span></span
+                  ></label>
+                </div>
+              </div>
+
+              <div class="sec-title" style="color: #b4372f">אזור מסוכן</div>
+              <div class="danger">
+                <div class="field">
+                  <span class="fi">🚪</span>
+                  <div class="main">
+                    <div class="fv" style="font-size: 13.5px">עזוב את הטיול</div>
+                  </div>
+                  <button class="edit" onclick="toast('🚪', 'באמת? נשאל שוב ליתר ביטחון')">
+                    עזוב
+                  </button>
+                </div>
+                <div class="field">
+                  <span class="fi">🗑️</span>
+                  <div class="main">
+                    <div class="fv" style="font-size: 13.5px">מחק את הטיול לכולם</div>
+                  </div>
+                  <button class="edit" onclick="toast('🗑️', 'מחיקה דורשת אישור כפול')">מחק</button>
+                </div>
+              </div>
+            </div>
+          </div>
+        </section>
+
+        <div class="toast" id="toast"><span id="toast-ic">✓</span><span id="toast-txt"></span></div>
+      </div>
+    </div>
+
+    <script>
+      function show(btn, name) {
+        document.querySelectorAll('.sw').forEach((b) => b.classList.remove('on'));
+        btn.classList.add('on');
+        document.querySelectorAll('.screen').forEach((s) => s.classList.remove('active'));
+        document.getElementById('s-' + name).classList.add('active');
+      }
+
+      let toastTimer;
+      function toast(icon, msg) {
+        const t = document.getElementById('toast');
+        document.getElementById('toast-ic').textContent = icon;
+        document.getElementById('toast-txt').textContent = msg;
+        t.classList.add('show');
+        clearTimeout(toastTimer);
+        toastTimer = setTimeout(() => t.classList.remove('show'), 2600);
+      }
+
+      // join-code cells: auto-advance + reveal preview when full
+      const cells = () => Array.from(document.querySelectorAll('.code-cell'));
+      function cell(el, i) {
+        el.value = el.value.toUpperCase();
+        el.classList.toggle('filled', !!el.value);
+        const cs = cells();
+        if (el.value && i < 5) cs[i + 1].focus();
+        if (cs.every((c) => c.value)) document.getElementById('preview').classList.add('show');
+      }
+      function fillDemo() {
+        const demo = ['J', 'P', 'N', '-', '2', '6'];
+        cells().forEach((c, i) => {
+          c.value = demo[i];
+          c.classList.add('filled');
+        });
+        document.getElementById('preview').classList.add('show');
+        toast('🔑', 'הקוד הודבק · מצאנו את הטיול');
+      }
+    </script>
+  </body>
+</html>

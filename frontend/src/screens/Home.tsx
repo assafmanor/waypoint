@@ -33,6 +33,7 @@ export function Home() {
     100,
     Math.round((glance.budget.spentMinor / (trip.dailyBudgetMinor || 1)) * 100),
   );
+  const overBudget = glance.budget.spentMinor > (trip.dailyBudgetMinor ?? 0);
 
   const copyWifi = async () => {
     if (wifi && navigator.clipboard) {
@@ -166,8 +167,9 @@ export function Home() {
             {ICONS.fx} {t.glance.fx}
           </div>
           <div className="v small">{glance.fx.label}</div>
-          <div className="s up">
-            {ICONS.fxUp} {t.glance.fxChange(glance.fx.changePct)}
+          <div className={glance.fx.changePct >= 0 ? 's up' : 's down'}>
+            {glance.fx.changePct >= 0 ? ICONS.fxUp : ICONS.fxDown}{' '}
+            {t.glance.fxChange(glance.fx.changePct)}
           </div>
         </div>
         <div className="gcard wide">
@@ -181,7 +183,7 @@ export function Home() {
             </span>
           </div>
           <div className="budget-bar">
-            <i style={{ width: `${budgetPct}%` }} />
+            <i className={overBudget ? 'over' : undefined} style={{ width: `${budgetPct}%` }} />
           </div>
         </div>
       </div>

@@ -48,6 +48,7 @@ export const ICONS = {
   weather: '🌤️',
   fx: '💱',
   fxUp: '▲',
+  fxDown: '▼',
   budget: '💰',
   lock: '🔒',
   warn: '⚠️',
