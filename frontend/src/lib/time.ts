@@ -3,6 +3,12 @@
 import { EVENT_KIND, EVENT_STATUS, type TripEvent } from '@waypoint/shared';
 import { DAY_WINDOW } from '../constants';
 
+/** "Today" in a specific timezone as YYYY-MM-DD — the trip's own calendar day,
+ *  not the browser's (mirrors backend/prisma/seed.mjs's todayInTz). */
+export function todayInTz(timeZone: string, at: Date = new Date()): string {
+  return new Intl.DateTimeFormat('en-CA', { timeZone }).format(at);
+}
+
 /** Wall-clock parts for an instant, rendered in a specific IANA timezone. */
 export function tzParts(at: Date, timeZone: string) {
   const parts = new Intl.DateTimeFormat('en-US', {

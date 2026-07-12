@@ -24,17 +24,11 @@ import {
 } from '@waypoint/shared';
 import { fetchSnapshot, type RippleSuggestion } from '../lib/api';
 import { openTripStream } from '../lib/ws';
-import { shiftIso } from '../lib/time';
+import { shiftIso, todayInTz } from '../lib/time';
 import { EVENTS, GLANCE, MAYBE_ITEMS, USERS, activeUserId } from '../fixtures';
 import { t } from '../i18n/he';
 
 export type { RippleSuggestion };
-
-// en-CA formats as YYYY-MM-DD — "today" in the trip's own calendar, not the
-// browser's. Real day switching is T-027; this just keeps the default from
-// going stale (mirrors backend/prisma/seed.mjs's todayInTz).
-const todayInTz = (timeZone: string) =>
-  new Intl.DateTimeFormat('en-CA', { timeZone }).format(new Date());
 
 interface Snapshot {
   events: TripEvent[];
@@ -260,6 +254,7 @@ function TripReady({ snapshot, children }: { snapshot: TripSnapshot; children: R
       bookings: snapshot.bookings,
       notes: snapshot.notes,
       glance: GLANCE,
+      // Real day switching is T-027; this just keeps the default from going stale.
       activeDate: todayInTz(snapshot.trip.timezone),
       activeUserId,
       events: state.events,

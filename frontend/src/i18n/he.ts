@@ -21,6 +21,17 @@ export const t = {
   placeholder: {
     comingSoon: 'מסך זה מעוצב בהמשך.',
   },
+  mode: {
+    plan: 'תכנון',
+    trip: 'טיול',
+    autoHint: (date: string) => `מתחלף אוטו׳ ב-${date}`,
+  },
+  modeEmphasis: {
+    home: { plan: 'לוח הכנה', trip: 'לוח יציאה' },
+    map: { plan: 'מחקר', trip: 'אוריינטציה' },
+    index: { plan: 'הזנה', trip: 'מסמכים' },
+    days: { plan: 'בנאי', trip: 'מעקב והתאמה' },
+  },
   snapshot: {
     loading: 'טוען את הטיול…',
     errorTitle: 'לא הצלחנו לטעון את הטיול',

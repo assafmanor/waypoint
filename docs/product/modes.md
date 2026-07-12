@@ -47,7 +47,7 @@ Already designed in `mockups/trip-dashboard-v2.html` and `docs/design/design-lan
 ## The mode switch (ADR-0016)
 
 - **Automatic by date:** the app enters **Trip mode** on the trip's `startDate` and returns to **Plan mode** before the start / after the end and between multi-leg gaps. Mode is **derived** from dates + current time — not stored on the trip.
-- **Manual override:** the user can always toggle to peek at / work in the other mode (e.g. tweak the plan mid-trip, or preview the departure board while planning). The override is a per-user, per-device UI state — it does not change the trip for anyone else.
+- **Manual override:** the user can always toggle to peek at / work in the other mode (e.g. tweak the plan mid-trip, or preview the departure board while planning). The override is **session-only, in-memory UI state** — not persisted, and not synced — so it never changes the trip for anyone else, and a fresh load is always back to auto-derived; there's no separate "reset to auto" affordance because there's nothing to reset. It's also scoped per trip (multi-trip, ADR-0021): switching the active trip doesn't carry a peeked mode over from the previous one.
 - **Location-awareness is deferred:** flipping to Trip mode on _arrival_ (geolocation) rather than by calendar is a nice future upgrade, out of v1 scope.
 
 ## Device note
