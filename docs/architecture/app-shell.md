@@ -41,6 +41,7 @@ Active-trip selection is `tripId` in `localStorage` — per-device, **not** sync
 - **Purpose:** first landing for an authenticated user with zero memberships. In the ~5-friend model most people arrive here to **join**, one to **create** — so both are primary.
 - **Contents:** a short welcome line + **two equal actions: "Create a trip" (→ `/new`)** and **"Join with a link"**. "Join with a link" explains that a trip-mate sends an invite link; if the OS handed us a link we'd already be on `/join/:token`, so this is the "I was told to open the app first" path (paste/await link).
 - **States:** default · offline ("Creating a trip needs a connection — you can still open a link a trip-mate shares").
+- **Design reference:** `mockups/zero-state-v1.html` — the dormant departure board ("הלוח עוד כבוי"): the board is present but unpowered (no amber/teal/pulse; shell stays chrome per ADR-0028), two equal CTAs with role subtitles, a teach line, and the offline + powered-preview states.
 
 ### 3. Trip creation — `/new`
 
@@ -52,7 +53,7 @@ Active-trip selection is `tripId` in `localStorage` — per-device, **not** sync
 
 ### 4. Join — `/join/:token`
 
-- **Purpose:** turn an invite link into a membership, with a look before you leap.
+- **Purpose:** turn an invite link into a membership, with a look before you leap. Joining is **link-only** — no short invite codes (ADR-0030); the app-first arrival is served by pasting the same link (see §2).
 - **Preview (new endpoint):** `GET /invites/:token` — **public/unguarded**, validates the stateless HMAC token (same scheme as the invite signer) and returns `{ tripName, destination, startDate, endDate, memberCount }`. Needed because `GET /trips/:id/snapshot` is membership-guarded and cannot preview a trip you have not joined.
 - **Contents:** "You're invited to **{tripName}** · {destination} · {dates} · {n} members" + a single **Join** button.
 - **Auth interaction:** the preview renders **first, regardless of auth state** (the endpoint is public) — there is no eager redirect before anything is shown. For a signed-in visitor, the CTA is **Join** → `POST /trips/join/:token` (exists) → land in the trip. For an anonymous visitor, the same CTA reads **"Continue with Google"**: tapping it saves `/join/:token` as the intent and starts OAuth; sign-in **resumes** here, now authenticated, to complete the join (mockup: `s-linkjoin` → `s-join` in `mockups/screens-v1.html`).

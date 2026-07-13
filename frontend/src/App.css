@@ -249,12 +249,241 @@
   opacity: 0.45;
 }
 
-/* Zero-state's only account entry point (no Shell/Header exists with 0 trips —
-   without this, a 0-trip session could never reach sign-out). */
-.zero-topbar {
+/* Zero-state home (T-040 / ADR-0024 §2) — the dormant departure board.
+   Design: mockups/zero-state-v1.html. The board renders where it will live
+   once a trip exists, but stays unpowered: no amber/teal/pulse (ADR-0028). */
+.zero-head {
+  background: var(--indigo);
+  color: #fff;
+  padding: 14px 20px 18px;
+}
+.zero-head-row {
   display: flex;
-  justify-content: flex-end;
-  padding: 14px 20px 0;
+  justify-content: space-between;
+  align-items: center;
+}
+/* A single, non-overlapping avatar reads better with a defined ring than the
+   indigo-on-indigo blend .av uses for Header's overlapping multi-avatar row. */
+.zero-head .av {
+  border-color: #fff;
+}
+.zero-hello {
+  font-family: var(--font-head);
+  font-size: 23px;
+}
+.zero-hello-sub {
+  color: #9daac8;
+  font-size: 12.5px;
+  margin-top: 3px;
+  display: flex;
+  align-items: center;
+  gap: 6px;
+}
+.g-dot {
+  width: 12px;
+  height: 12px;
+  border-radius: 50%;
+  flex: 0 0 auto;
+  background: conic-gradient(#4285f4 0 25%, #ea4335 0 50%, #fbbc05 0 75%, #34a853 0);
+}
+.zero-body {
+  flex: 1;
+  padding: 22px 20px 28px;
+  display: flex;
+  flex-direction: column;
+}
+
+.board-off {
+  background: linear-gradient(180deg, var(--board-2), var(--board));
+  border-radius: 22px;
+  padding: 17px 18px 15px;
+  color: #eaf0ff;
+  box-shadow: 0 20px 34px -20px rgba(8, 14, 28, 0.75);
+}
+.board-off-top {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+}
+.off-label {
+  font-size: 11px;
+  font-weight: 600;
+  letter-spacing: 0.14em;
+  color: #5b6a8a;
+  display: flex;
+  align-items: center;
+  gap: 7px;
+}
+.off-dot {
+  width: 7px;
+  height: 7px;
+  border-radius: 50%;
+  background: #3a4a6e; /* a blip that isn't pulsing — nothing is live */
+}
+.board-off-clock {
+  font-family: var(--font-mono);
+  font-size: 15px;
+  font-weight: 700;
+  color: #4d5d80;
+}
+
+/* split-flap rows, blank */
+.flaps {
+  margin-top: 16px;
+  display: flex;
+  flex-direction: column;
+  gap: 9px;
+}
+.flap-row {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+.flap-row:nth-child(2) {
+  opacity: 0.72;
+}
+.flap-row:nth-child(3) {
+  opacity: 0.48;
+}
+.flap-row:nth-child(4) {
+  opacity: 0.26;
+}
+.flap-time {
+  font-family: var(--font-mono);
+  font-size: 13px;
+  font-weight: 700;
+  color: #44547a;
+  min-width: 52px;
+  text-align: center;
+  flex: 0 0 auto;
+}
+.cell {
+  height: 26px;
+  border-radius: 5px;
+  background: linear-gradient(180deg, #1c2946 0 50%, #17233c 50% 100%);
+  box-shadow: inset 0 0 0 1px rgba(255, 255, 255, 0.045);
+  position: relative;
+  flex: 0 0 auto;
+}
+.cell::after {
+  content: '';
+  position: absolute;
+  left: 0;
+  right: 0;
+  top: 50%;
+  height: 1px;
+  background: rgba(10, 17, 32, 0.9);
+}
+.cell.w1 {
+  width: 26px;
+}
+.cell.w2 {
+  width: 44px;
+}
+.cell.w3 {
+  width: 74px;
+}
+.cell.grow {
+  flex: 1;
+}
+/* one cell occasionally flutters, like a board testing a flap */
+@keyframes flutter {
+  0%,
+  92% {
+    transform: none;
+  }
+  94% {
+    transform: scaleY(0.1);
+  }
+  96% {
+    transform: scaleY(1);
+  }
+  97% {
+    transform: scaleY(0.4);
+  }
+  100% {
+    transform: none;
+  }
+}
+.cell.flutter {
+  animation: flutter 7s ease-in-out infinite;
+  transform-origin: center;
+}
+
+.zero-copy {
+  text-align: center;
+  margin-top: 26px;
+  padding: 0 6px;
+}
+.zero-copy h1 {
+  font-family: var(--font-head);
+  font-size: 26px;
+  color: var(--indigo);
+}
+.zero-copy p {
+  color: var(--muted);
+  font-size: 14.5px;
+  line-height: 1.55;
+  margin-top: 8px;
+  max-width: 32ch;
+  margin-inline: auto;
+}
+
+/* two EQUAL actions (ADR-0024 §3: most friends join, one creates) */
+.zero-actions {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 10px;
+  margin-top: 22px;
+}
+.zero-act {
+  font: inherit;
+  font-weight: 700;
+  font-size: 14px;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 7px;
+  padding: 16px 10px 14px;
+  border-radius: 16px;
+  background: var(--cta);
+  color: var(--cta-text);
+  border: 1px solid var(--cta);
+  cursor: pointer;
+}
+.zero-act .ic {
+  font-size: 21px;
+  line-height: 1;
+}
+.zero-act .sub {
+  font-size: 11px;
+  font-weight: 500;
+  color: rgba(255, 255, 255, 0.62);
+}
+.zero-act:focus-visible {
+  outline: 2.5px solid var(--teal);
+  outline-offset: 2px;
+}
+.zero-act:disabled {
+  opacity: 0.45;
+  pointer-events: none;
+}
+
+.zero-offline-note {
+  margin-top: 12px;
+  text-align: center;
+  color: var(--muted);
+  font-size: 12px;
+  line-height: 1.5;
+}
+
+.zero-teach {
+  margin-top: auto;
+  padding-top: 24px;
+  text-align: center;
+  color: #98a0b0;
+  font-size: 12px;
+  line-height: 1.6;
 }
 
 /* Boot-time states (snapshot loading / failed to load, e.g. offline with no

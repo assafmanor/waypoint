@@ -294,26 +294,14 @@ function AccountSheet({ onClose, onSignOut }: { onClose: () => void; onSignOut: 
   );
 }
 
-// With zero trips there's no Shell/Header, so this is the only other place
-// sign-out is reachable.
+// With zero trips there's no Shell/Header, so ZeroState's own avatar is the
+// only other place sign-out is reachable.
 function ZeroStateWithAccount() {
   const [showAccount, setShowAccount] = useState(false);
-  const { me, logout } = useAuth();
+  const { logout } = useAuth();
   return (
     <>
-      {me && (
-        <div className="zero-topbar">
-          <button
-            className="av account-btn"
-            style={{ background: me.user.avatarColor }}
-            onClick={() => setShowAccount(true)}
-            title={me.user.displayName}
-          >
-            {me.user.displayName.slice(0, AVATAR_INITIAL_LENGTH)}
-          </button>
-        </div>
-      )}
-      <ZeroState />
+      <ZeroState onOpenAccount={() => setShowAccount(true)} />
       {showAccount && <AccountSheet onClose={() => setShowAccount(false)} onSignOut={logout} />}
     </>
   );

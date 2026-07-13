@@ -40,6 +40,7 @@ waypoint/
 - Function components + hooks. Co-locate a component's CSS.
 - Design tokens come from `styles/tokens.css` (ported from the mockup). **Amber = time & commitment only; teal = location only; plan violet = plan mode only** (`docs/design/design-language.md`, ADR-0028) — don't reuse them decoratively; generic CTAs use `--cta`, statuses use `--ok`/`--miss`.
 - Full RTL; wrap Latin runs (times, codes) with `dir="ltr"`.
+- **Hebrew copy register:** everyday spoken Hebrew, not formal — e.g. the product word for an invite URL is **"לינק"** (owner's call; never "fix" it to "קישור"). Buttons are short nouns/imperatives; sentences stay impersonal (no slash-gender forms). All UI strings live in `i18n/he.ts`.
 - **Mobile-first, phone-primary (ADR-0017):** author and test at phone width (~390px) first; touch-first (no hover-only affordances); add tablet breakpoints where it helps (esp. Plan mode). Desktop = graceful centered layout.
 - Offline reads go through the Dexie layer (`db.ts`); never assume the network.
 
