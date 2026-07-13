@@ -16,7 +16,7 @@ import {
   type Me,
 } from '@waypoint/shared';
 import { createZodDto, ZodSerializerDto } from 'nestjs-zod';
-import { FRONTEND_URL as FRONTEND_URL_ENV } from '../common/env';
+import { DEFAULT_FRONTEND_URL, FRONTEND_URL as FRONTEND_URL_ENV } from '../common/env';
 import { AuthService } from './auth.service';
 import { parseCookieHeader } from './cookies.util';
 import { CurrentUser } from './current-user.decorator';
@@ -41,7 +41,7 @@ const OAUTH_COOKIE = 'wp_oauth';
 const REFRESH_COOKIE = 'wp_refresh';
 const OAUTH_COOKIE_TTL_MS = 10 * 60 * 1000;
 const REFRESH_COOKIE_TTL_MS = 30 * 24 * 60 * 60 * 1000;
-const frontendUrl = () => process.env[FRONTEND_URL_ENV] ?? 'http://localhost:5173';
+const frontendUrl = () => process.env[FRONTEND_URL_ENV] ?? DEFAULT_FRONTEND_URL;
 
 function baseCookieOptions() {
   return {

@@ -5,10 +5,13 @@ import { DocumentBuilder, SwaggerModule } from '@nestjs/swagger';
 import { cleanupOpenApiDoc } from 'nestjs-zod';
 import { AppModule } from './app.module';
 import { SyncGateway } from './sync/sync.gateway';
+import { DEFAULT_FRONTEND_URL, FRONTEND_URL } from './common/env';
 
 async function bootstrap() {
   const app = await NestFactory.create(AppModule);
-  app.enableCors();
+  // Needed for the refresh-token cookie to survive the dev-only cross-origin
+  // gap (:5173 → :3000); no-op in prod, which is single-origin (ADR-0020).
+  app.enableCors({ origin: process.env[FRONTEND_URL] ?? DEFAULT_FRONTEND_URL, credentials: true });
 
   // Raw `ws` upgrade handling for WS /trips/:tripId/stream (sync-and-offline.md).
   app.get(SyncGateway).attach(app.getHttpServer() as HttpServer);

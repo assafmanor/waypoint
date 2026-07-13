@@ -8,6 +8,10 @@ export const GOOGLE_OAUTH_REDIRECT_URI = 'GOOGLE_OAUTH_REDIRECT_URI';
 export const FRONTEND_URL = 'FRONTEND_URL';
 export const DEV_AUTH = 'DEV_AUTH';
 
+/** Dev-only default for `FRONTEND_URL` (single-origin in prod, ADR-0020, so this
+ *  fallback never applies there). */
+export const DEFAULT_FRONTEND_URL = 'http://localhost:5173';
+
 /** Throws with the var's own name if unset — pass one of the constants above. */
 export function requireEnv(name: string): string {
   const value = process.env[name];
