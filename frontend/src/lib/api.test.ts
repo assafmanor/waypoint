@@ -2,6 +2,7 @@ import { afterEach, describe, expect, it, vi } from 'vitest';
 import { EVENT_STATUS } from '@waypoint/shared';
 import {
   ApiError,
+  apiFetch,
   createEvent,
   deleteEvent,
   fetchSnapshot,
@@ -9,7 +10,9 @@ import {
   isMoveCrossesDayError,
   isMoveIntoPastError,
   moveEvent,
+  setAccessToken,
   setEventStatus,
+  setOnSessionExpired,
 } from './api';
 import { EVENTS, TRIP } from '../fixtures';
 
@@ -25,6 +28,39 @@ const snapshotBody = {
 
 afterEach(() => {
   vi.unstubAllGlobals();
+  setAccessToken(null);
+  setOnSessionExpired(null);
+});
+
+describe('apiFetch 401 → silent refresh (ADR-0020: 15-min access JWT)', () => {
+  it('retries once through /auth/refresh and succeeds', async () => {
+    const fetchMock = vi
+      .fn()
+      .mockResolvedValueOnce(new Response(null, { status: 401 }))
+      .mockResolvedValueOnce(
+        new Response(JSON.stringify({ accessToken: 'new-token' }), { status: 200 }),
+      )
+      .mockResolvedValueOnce(new Response(JSON.stringify({ ok: true }), { status: 200 }));
+    vi.stubGlobal('fetch', fetchMock);
+
+    const res = await apiFetch('/x');
+    expect(res.status).toBe(200);
+    expect(fetchMock).toHaveBeenCalledTimes(3);
+  });
+
+  it('gives up and reports the expired session when refresh also fails', async () => {
+    const fetchMock = vi
+      .fn()
+      .mockResolvedValueOnce(new Response(null, { status: 401 }))
+      .mockResolvedValueOnce(new Response(null, { status: 401 }));
+    vi.stubGlobal('fetch', fetchMock);
+    const onExpired = vi.fn();
+    setOnSessionExpired(onExpired);
+
+    const res = await apiFetch('/x');
+    expect(res.status).toBe(401);
+    expect(onExpired).toHaveBeenCalledOnce();
+  });
 });
 
 describe('fetchSnapshot', () => {
@@ -35,7 +71,10 @@ describe('fetchSnapshot', () => {
     );
     const snapshot = await fetchSnapshot(TRIP.id);
     expect(snapshot.trip.id).toBe(TRIP.id);
-    expect(fetch).toHaveBeenCalledWith(expect.stringContaining(`/trips/${TRIP.id}/snapshot`));
+    expect(fetch).toHaveBeenCalledWith(
+      expect.stringContaining(`/trips/${TRIP.id}/snapshot`),
+      expect.objectContaining({ credentials: 'include' }),
+    );
   });
 
   it('throws on a non-ok response', async () => {

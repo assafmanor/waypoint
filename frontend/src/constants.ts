@@ -30,6 +30,12 @@ export const CODE_PREFIX = '#';
 
 export const DOT_SEPARATOR = '•';
 
+/** Active-trip override — per-device, not synced (ADR-0021). */
+export const ACTIVE_TRIP_STORAGE_KEY = 'wp_active_trip_id';
+
+/** Deep-link path saved across the login gate, resumed after sign-in (ADR-0024). */
+export const AUTH_INTENT_STORAGE_KEY = 'wp_auth_intent';
+
 export const TABS = [
   { id: 'home', icon: '🏠' },
   { id: 'map', icon: '🗺️' },

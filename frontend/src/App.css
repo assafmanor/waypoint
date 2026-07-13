@@ -53,6 +53,41 @@
   opacity: 0.5;
   margin: 0 6px;
 }
+.trip-name-btn {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+  background: none;
+  border: 0;
+  padding: 0;
+  color: inherit;
+  font: inherit;
+  cursor: pointer;
+}
+.trip-name-btn .chev {
+  font-size: 14px;
+  opacity: 0.75;
+}
+.header-actions {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+.gear-btn {
+  width: 31px;
+  height: 31px;
+  border-radius: 50%;
+  display: grid;
+  place-items: center;
+  background: rgba(255, 255, 255, 0.12);
+  border: 2px solid rgba(255, 255, 255, 0.35);
+  color: #fff;
+  font-size: 14px;
+  cursor: pointer;
+}
+.account-btn {
+  cursor: pointer;
+}
 .avatars {
   display: flex;
   flex-direction: row-reverse;
@@ -194,6 +229,14 @@
 }
 .day-pill.past {
   opacity: 0.45;
+}
+
+/* Zero-state's only account entry point (no Shell/Header exists with 0 trips —
+   without this, a 0-trip session could never reach sign-out). */
+.zero-topbar {
+  display: flex;
+  justify-content: flex-end;
+  padding: 14px 20px 0;
 }
 
 /* Boot-time states (snapshot loading / failed to load, e.g. offline with no

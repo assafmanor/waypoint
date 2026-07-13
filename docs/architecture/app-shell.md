@@ -1,6 +1,6 @@
 # App Shell & Trip Lifecycle
 
-**Status:** PROPOSED (target — not yet built; the design half of the app shell, built alongside T-007 auth)
+**Status:** Routing map + auth gate + login built (T-039). The switcher/account sheets and the `/new`, `/join/:token`, `/trip/:id/settings` surfaces are stubs — their content is T-027/T-040–T-044.
 **Decision:** [ADR-0024](../decisions/0024-app-shell-and-trip-lifecycle.md) · **Related:** [ADR-0020 auth](../decisions/0020-auth-session-architecture.md), [ADR-0021 multi-trip](../decisions/0021-multi-trip-membership.md), [ADR-0005 roles](../decisions/0005-peers-not-roles-v1.md), [ADR-0004 integrations-are-pipes](../decisions/0004-integrations-are-pipes.md)
 
 The **shell** is everything _outside_ a single trip: the auth gate, the no-trips zero-state, trip creation, the invite/join flow, the trip switcher, the account menu, and per-trip settings. It is chrome whose only job is to get you into a trip and back out to another — indigo/neutral only, **never amber or teal** (design-language.md). Design principle: minimize screens and minimize taps from "app open" to "inside a trip." The in-trip surfaces (Home / Days / Map / Index) are specified elsewhere; this doc stops at the trip boundary.

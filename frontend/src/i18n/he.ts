@@ -38,6 +38,31 @@ export const t = {
     loading: 'טוען את הטיול…',
     errorTitle: 'לא הצלחנו לטעון את הטיול',
   },
+  shell: {
+    booting: 'טוען…',
+    login: {
+      tagline: 'כל הטיול שלכם. מסך אחד.',
+      continueWithGoogle: 'המשך עם Google',
+      offline: 'צריך חיבור לרשת כדי להתחבר',
+      note: 'כל אחד מתחבר עם החשבון האישי שלו.',
+    },
+    zeroState: {
+      title: 'עוד אין טיולים',
+      comingSoon: 'יצירת טיול והצטרפות עם קישור מגיעות בקרוב.',
+    },
+    stub: {
+      newTrip: 'טיול חדש',
+      join: 'הצטרפות לטיול',
+      settings: 'הגדרות טיול',
+      comingSoon: 'המסך הזה עוד בעבודה.',
+    },
+    switcher: {
+      title: 'הטיולים שלך',
+    },
+    account: {
+      signOut: 'התנתקות',
+    },
+  },
   board: {
     freeLabel: 'פנוי',
     freeTitle: 'זמן חופשי',

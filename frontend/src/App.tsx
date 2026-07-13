@@ -1,14 +1,24 @@
-import { useState } from 'react';
+import { useEffect, useState, type ReactNode } from 'react';
+import { Route, Routes, useLocation, useNavigate } from 'react-router-dom';
+import type { Trip } from '@waypoint/shared';
 import { TripProvider, useTrip } from './state/trip-state';
 import { ModeProvider, useMode } from './state/mode-state';
+import { AuthProvider, useAuth } from './state/auth-state';
+import { ActiveTripIdProvider, useActiveTripId } from './state/active-trip-id';
 import { useIsOffline, useOutboxCount } from './lib/outbox';
+import { fetchTrips } from './lib/api';
+import { resolveActiveTrip } from './lib/active-trip';
+import { consumeIntent, saveIntent } from './lib/intent';
 import { ToastProvider } from './ui/Toast';
 import { ConfirmProvider } from './ui/ConfirmDialog';
+import { Sheet } from './ui/Sheet';
 import { Home } from './screens/Home';
 import { DayView } from './screens/DayView';
+import { Login } from './screens/Login';
+import { ZeroState } from './screens/ZeroState';
+import { ShellStub } from './screens/ShellStub';
 import { DevTimeTravel } from './dev/DevTimeTravel';
 import { useClock } from './lib/useClock';
-import { TRIP } from './fixtures';
 import {
   AVATAR_INITIAL_LENGTH,
   DOT_SEPARATOR,
@@ -31,6 +41,14 @@ function Placeholder({ tab, mode }: { tab: TabId; mode: Mode }) {
       <h1>{t.tabs[tab]}</h1>
       <p className="placeholder-emphasis">{t.modeEmphasis[tab][mode]}</p>
       <p>{t.placeholder.comingSoon}</p>
+    </div>
+  );
+}
+
+function BootScreen({ text }: { text: string }) {
+  return (
+    <div className="boot-screen">
+      <h1>{text}</h1>
     </div>
   );
 }
@@ -73,8 +91,19 @@ function ModeToggle() {
   );
 }
 
-function Header({ onSelectDay }: { onSelectDay: (date: string) => void }) {
+function Header({
+  onSelectDay,
+  onOpenSwitcher,
+  onOpenAccount,
+  onOpenSettings,
+}: {
+  onSelectDay: (date: string) => void;
+  onOpenSwitcher: () => void;
+  onOpenAccount: () => void;
+  onOpenSettings: () => void;
+}) {
   const { trip, users, activeDate, usingCachedSnapshot } = useTrip();
+  const { me } = useAuth();
   // `navigator.onLine` (T-013) misses cases like a hard reload where the boot
   // fetch itself fails but the browser's online flag never flips (some
   // environments' 'offline' event is unreliable) — usingCachedSnapshot (T-058)
@@ -102,24 +131,46 @@ function Header({ onSelectDay }: { onSelectDay: (date: string) => void }) {
       <ModeToggle />
       <div className="trip-row">
         <div>
-          <div className="trip-name">{trip.name}</div>
+          <button
+            className="trip-name-btn"
+            onClick={onOpenSwitcher}
+            aria-label={t.shell.switcher.title}
+          >
+            <span className="trip-name">{trip.name}</span>
+            <span className="chev">▾</span>
+          </button>
           <div className="trip-sub">
             {trip.destination}
             <span className="dot">{DOT_SEPARATOR}</span>
             {t.header.dayOf(dayNumber, total)}
           </div>
         </div>
-        <div className="avatars">
-          {users.map((u) => (
-            <div
-              key={u.id}
-              className="av"
-              style={{ background: u.avatarColor }}
-              title={u.displayName}
+        <div className="header-actions">
+          <div className="avatars">
+            {users.map((u) => (
+              <div
+                key={u.id}
+                className="av"
+                style={{ background: u.avatarColor }}
+                title={u.displayName}
+              >
+                {u.displayName.slice(0, AVATAR_INITIAL_LENGTH)}
+              </div>
+            ))}
+          </div>
+          {me && (
+            <button
+              className="av account-btn"
+              style={{ background: me.user.avatarColor }}
+              onClick={onOpenAccount}
+              title={me.user.displayName}
             >
-              {u.displayName.slice(0, AVATAR_INITIAL_LENGTH)}
-            </div>
-          ))}
+              {me.user.displayName.slice(0, AVATAR_INITIAL_LENGTH)}
+            </button>
+          )}
+          <button className="gear-btn" onClick={onOpenSettings} aria-label={t.shell.stub.settings}>
+            ⚙
+          </button>
         </div>
       </div>
       <div className="gnote">
@@ -172,15 +223,23 @@ function Screen({ tab }: { tab: TabId }) {
 // ModeProvider itself and so can't call useMode.
 function Shell() {
   const [tab, setTab] = useState<TabId>('home');
+  const [sheet, setSheet] = useState<'switcher' | 'account' | null>(null);
   const { mode } = useMode();
-  const { setActiveDate } = useTrip();
+  const { trip, setActiveDate } = useTrip();
+  const { logout } = useAuth();
+  const navigate = useNavigate();
   const onSelectDay = (date: string) => {
     setActiveDate(date);
     setTab('days');
   };
   return (
     <div className="app" data-mode={mode}>
-      <Header onSelectDay={onSelectDay} />
+      <Header
+        onSelectDay={onSelectDay}
+        onOpenSwitcher={() => setSheet('switcher')}
+        onOpenAccount={() => setSheet('account')}
+        onOpenSettings={() => navigate(`/trip/${trip.id}/settings`)}
+      />
       <main className="body" key={tab}>
         <Screen tab={tab} />
       </main>
@@ -197,21 +256,191 @@ function Shell() {
           </button>
         ))}
       </nav>
+      {/* Switcher content is T-027's; this task only wires the sheet open/close plumbing. */}
+      {sheet === 'switcher' && (
+        <Sheet title={t.shell.switcher.title} onClose={() => setSheet(null)}>
+          <p className="sheet-body">{t.shell.stub.comingSoon}</p>
+        </Sheet>
+      )}
+      {/* Account content is T-043's; sign-out is wired since it's already load-bearing here. */}
+      {sheet === 'account' && <AccountSheet onClose={() => setSheet(null)} onSignOut={logout} />}
     </div>
+  );
+}
+
+function AccountSheet({ onClose, onSignOut }: { onClose: () => void; onSignOut: () => void }) {
+  const { me } = useAuth();
+  return (
+    <Sheet title={me?.user.displayName ?? ''} onClose={onClose}>
+      <p className="sheet-body" dir="ltr">
+        {me?.user.email}
+      </p>
+      <button
+        className="sheet-close"
+        onClick={() => {
+          onSignOut();
+          onClose();
+        }}
+      >
+        {t.shell.account.signOut}
+      </button>
+    </Sheet>
+  );
+}
+
+// The in-trip Header's account sheet (sign-out) only mounts inside Shell —
+// with zero trips there's no Shell, so this is the only other reachable
+// account entry point (otherwise a 0-trip session could never sign out).
+function ZeroStateWithAccount() {
+  const [showAccount, setShowAccount] = useState(false);
+  const { me, logout } = useAuth();
+  return (
+    <>
+      {me && (
+        <div className="zero-topbar">
+          <button
+            className="av account-btn"
+            style={{ background: me.user.avatarColor }}
+            onClick={() => setShowAccount(true)}
+            title={me.user.displayName}
+          >
+            {me.user.displayName.slice(0, AVATAR_INITIAL_LENGTH)}
+          </button>
+        </div>
+      )}
+      <ZeroState />
+      {showAccount && <AccountSheet onClose={() => setShowAccount(false)} onSignOut={logout} />}
+    </>
+  );
+}
+
+// Root, in-trip surface of the active trip (ADR-0024): resolves which trip
+// (ADR-0021) once the auth gate below has already confirmed we're signed in.
+function RootSurface() {
+  const [trips, setTrips] = useState<Trip[] | null>(null);
+  useEffect(() => {
+    let cancelled = false;
+    fetchTrips().then(
+      (list) => {
+        if (!cancelled) setTrips(list);
+      },
+      () => {
+        if (!cancelled) setTrips([]);
+      },
+    );
+    return () => {
+      cancelled = true;
+    };
+  }, []);
+  const { tripId: storedTripId } = useActiveTripId();
+  const now = useClock();
+
+  if (trips === null) return <BootScreen text={t.shell.booting} />;
+  if (trips.length === 0) return <ZeroStateWithAccount />;
+
+  const validStoredId = storedTripId && trips.some((tr) => tr.id === storedTripId);
+  const tripId = validStoredId ? storedTripId : resolveActiveTrip(trips, now)!.id;
+
+  return (
+    <TripProvider tripId={tripId}>
+      <ModeProvider>
+        <Shell />
+      </ModeProvider>
+    </TripProvider>
+  );
+}
+
+// Auth gate (ADR-0024): unauthenticated → /login, saving the hit route as the
+// intent to resume after sign-in; authenticated while still sitting on /login
+// (a full-navigation OAuth round trip lands back on "/", not the saved deep
+// link) → resume the saved intent, or fall through to "/".
+function AuthGate({ children }: { children: ReactNode }) {
+  const { status } = useAuth();
+  const location = useLocation();
+  const navigate = useNavigate();
+
+  useEffect(() => {
+    if (status === 'loading') return;
+    if (status === 'anon') {
+      if (location.pathname !== '/login') {
+        saveIntent(location.pathname);
+        navigate('/login', { replace: true });
+      }
+      return;
+    }
+    const intent = consumeIntent();
+    if (intent && intent !== location.pathname) {
+      navigate(intent, { replace: true });
+    } else if (location.pathname === '/login') {
+      navigate('/', { replace: true });
+    }
+  }, [status, location.pathname, navigate]);
+
+  if (status === 'loading') return <BootScreen text={t.shell.booting} />;
+  if (status === 'anon') {
+    return location.pathname === '/login' ? <>{children}</> : <BootScreen text={t.shell.booting} />;
+  }
+  return location.pathname === '/login' ? <BootScreen text={t.shell.booting} /> : <>{children}</>;
+}
+
+function AppRoutes() {
+  return (
+    <Routes>
+      <Route
+        path="/login"
+        element={
+          <AuthGate>
+            <Login />
+          </AuthGate>
+        }
+      />
+      <Route
+        path="/new"
+        element={
+          <AuthGate>
+            <ShellStub title={t.shell.stub.newTrip} />
+          </AuthGate>
+        }
+      />
+      <Route
+        path="/join/:token"
+        element={
+          <AuthGate>
+            <ShellStub title={t.shell.stub.join} />
+          </AuthGate>
+        }
+      />
+      <Route
+        path="/trip/:id/settings"
+        element={
+          <AuthGate>
+            <ShellStub title={t.shell.stub.settings} />
+          </AuthGate>
+        }
+      />
+      <Route
+        path="/*"
+        element={
+          <AuthGate>
+            <RootSurface />
+          </AuthGate>
+        }
+      />
+    </Routes>
   );
 }
 
 export function App() {
   return (
-    <TripProvider tripId={TRIP.id}>
-      <ModeProvider>
+    <AuthProvider>
+      <ActiveTripIdProvider>
         <ToastProvider>
           <ConfirmProvider>
-            <Shell />
+            <AppRoutes />
             {import.meta.env.DEV && <DevTimeTravel />}
           </ConfirmProvider>
         </ToastProvider>
-      </ModeProvider>
-    </TripProvider>
+      </ActiveTripIdProvider>
+    </AuthProvider>
   );
 }
