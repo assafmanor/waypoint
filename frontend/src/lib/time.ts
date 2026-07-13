@@ -24,6 +24,15 @@ export function clampDate(date: string, min: string, max: string): string {
   return date < min ? min : date > max ? max : date;
 }
 
+const monthAbbrev = new Intl.DateTimeFormat('he-IL', { month: 'short', timeZone: 'UTC' });
+
+/** Month label for a day-strip pill: shown only on the first pill (no
+ *  `prevDate`) and the first pill after a month rollover — null otherwise. */
+export function monthLabelFor(date: string, prevDate: string | undefined): string | null {
+  if (prevDate && date.slice(0, 7) === prevDate.slice(0, 7)) return null;
+  return monthAbbrev.format(new Date(`${date}T00:00:00Z`));
+}
+
 /** Wall-clock parts for an instant, rendered in a specific IANA timezone. */
 export function tzParts(at: Date, timeZone: string) {
   const parts = new Intl.DateTimeFormat('en-US', {

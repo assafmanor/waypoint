@@ -9,6 +9,7 @@ import {
   hardConflicts,
   isoToTimeInput,
   minutesUntil,
+  monthLabelFor,
   shiftIso,
   zonedIso,
 } from './time';
@@ -62,6 +63,32 @@ describe('addDays', () => {
   it('crosses month/year boundaries', () => {
     expect(addDays('2026-07-31', 1)).toBe('2026-08-01');
     expect(addDays('2026-12-31', 1)).toBe('2027-01-01');
+  });
+});
+
+describe('monthLabelFor', () => {
+  // Mirrors App.tsx's Header day-strip build: each date fed with the previous
+  // pill's date (undefined for the first).
+  const labelIndices = (dates: string[]) =>
+    dates.flatMap((date, i) => (monthLabelFor(date, dates[i - 1]) ? [i] : []));
+
+  it('labels only the first pill for a single-month trip', () => {
+    const dates = ['2026-07-11', '2026-07-12', '2026-07-13', '2026-07-14'];
+    expect(labelIndices(dates)).toEqual([0]);
+  });
+
+  it('labels the first pill and each month rollover for a multi-month trip', () => {
+    // Jul 29 -> Aug 3: rollover lands on index 3 (Aug 1).
+    const dates = ['2026-07-29', '2026-07-30', '2026-07-31', '2026-08-01', '2026-08-02'];
+    expect(labelIndices(dates)).toEqual([0, 3]);
+  });
+
+  it('sources the abbreviation from Intl, not a hardcoded table', () => {
+    expect(monthLabelFor('2026-08-01', '2026-07-31')).toBe(
+      new Intl.DateTimeFormat('he-IL', { month: 'short', timeZone: 'UTC' }).format(
+        new Date('2026-08-01T00:00:00Z'),
+      ),
+    );
   });
 });
 
