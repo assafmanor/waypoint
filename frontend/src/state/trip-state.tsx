@@ -27,7 +27,8 @@ import { fetchChanges, fetchSnapshot, type RippleSuggestion } from '../lib/api';
 import { applyChangeToCache, cacheSnapshot, readCachedSnapshot } from '../lib/cache';
 import { flushOutbox, isOffline } from '../lib/outbox';
 import { openTripStream } from '../lib/ws';
-import { shiftIso, todayInTz } from '../lib/time';
+import { getNow } from '../lib/useClock';
+import { clampDate, shiftIso, todayInTz } from '../lib/time';
 import { EVENTS, GLANCE, MAYBE_ITEMS, USERS, activeUserId } from '../fixtures';
 import { t } from '../i18n/he';
 
@@ -180,6 +181,7 @@ interface TripContextValue {
   notes: TripNote[];
   glance: typeof GLANCE;
   activeDate: string;
+  setActiveDate: (date: string) => void;
   activeUserId: string;
   events: TripEvent[];
   maybeItems: MaybeItem[];
@@ -277,6 +279,17 @@ function TripReady({
 }) {
   const [state, dispatch] = useReducer(reducer, snapshot, initialState);
   const tripId = snapshot.trip.id;
+  const { startDate, endDate } = snapshot.trip;
+
+  // Clamped to the trip's own date range: "today" is only the *initial* default,
+  // then the day-strip/DayView navigate it via setActiveDate — without clamping,
+  // a session left open across a trip-timezone midnight (or one that outlives
+  // the trip) drifts `activeDate` past the last real day and the day view
+  // silently goes empty.
+  const [activeDate, setActiveDateRaw] = useState(() =>
+    clampDate(todayInTz(snapshot.trip.timezone, new Date(getNow())), startDate, endDate),
+  );
+  const setActiveDate = (date: string) => setActiveDateRaw(clampDate(date, startDate, endDate));
 
   const lastSeqRef = useRef(snapshot.latestSeq);
 
@@ -350,8 +363,8 @@ function TripReady({
       bookings: snapshot.bookings,
       notes: snapshot.notes,
       glance: GLANCE,
-      // Real day switching is T-027; this just keeps the default from going stale.
-      activeDate: todayInTz(snapshot.trip.timezone),
+      activeDate,
+      setActiveDate,
       activeUserId,
       events: state.events,
       maybeItems: state.maybeItems,
@@ -359,7 +372,7 @@ function TripReady({
       dispatch,
       usingCachedSnapshot,
     }),
-    [state, snapshot, usingCachedSnapshot],
+    [state, snapshot, usingCachedSnapshot, activeDate],
   );
   return <TripContext.Provider value={value}>{children}</TripContext.Provider>;
 }

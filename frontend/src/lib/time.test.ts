@@ -1,6 +1,8 @@
 import { describe, expect, it } from 'vitest';
 import { EVENT_STATUS, type TripEvent } from '@waypoint/shared';
 import {
+  addDays,
+  clampDate,
   dayProgress,
   deriveNow,
   formatTime,
@@ -48,6 +50,32 @@ describe('countdown + progress at the demo instant (18:52 JST)', () => {
 
   it('formats the clock in the trip timezone', () => {
     expect(formatTime(DEMO_NOW, tz)).toBe('18:52');
+  });
+});
+
+describe('addDays', () => {
+  it('steps a date string forward and backward', () => {
+    expect(addDays('2026-07-13', 1)).toBe('2026-07-14');
+    expect(addDays('2026-07-13', -1)).toBe('2026-07-12');
+  });
+
+  it('crosses month/year boundaries', () => {
+    expect(addDays('2026-07-31', 1)).toBe('2026-08-01');
+    expect(addDays('2026-12-31', 1)).toBe('2027-01-01');
+  });
+});
+
+describe('clampDate', () => {
+  it('passes dates already inside the range through unchanged', () => {
+    expect(clampDate('2026-07-10', '2026-07-05', '2026-07-15')).toBe('2026-07-10');
+  });
+
+  it('clamps a date below the range up to the minimum', () => {
+    expect(clampDate('2026-07-01', '2026-07-05', '2026-07-15')).toBe('2026-07-05');
+  });
+
+  it('clamps a date past the range down to the maximum — the activeDate rollover bug', () => {
+    expect(clampDate('2026-07-20', '2026-07-05', '2026-07-15')).toBe('2026-07-15');
   });
 });
 

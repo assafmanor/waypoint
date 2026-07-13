@@ -4,9 +4,24 @@ import { EVENT_KIND, EVENT_STATUS, type TripEvent } from '@waypoint/shared';
 import { DAY_WINDOW } from '../constants';
 
 /** "Today" in a specific timezone as YYYY-MM-DD — the trip's own calendar day,
- *  not the browser's (mirrors backend/prisma/seed.mjs's todayInTz). */
-export function todayInTz(timeZone: string, at: Date = new Date()): string {
+ *  not the browser's (mirrors backend/prisma/seed.mjs's todayInTz). `at` is
+ *  required (no `new Date()` default, ADR-0026): callers must source it from
+ *  `useClock()`/`getNow()` so dev time-travel stays authoritative everywhere. */
+export function todayInTz(timeZone: string, at: Date): string {
   return new Intl.DateTimeFormat('en-CA', { timeZone }).format(at);
+}
+
+/** Add whole days to a YYYY-MM-DD date string. */
+export function addDays(date: string, delta: number): string {
+  const d = new Date(`${date}T00:00:00Z`);
+  d.setUTCDate(d.getUTCDate() + delta);
+  return d.toISOString().slice(0, 10);
+}
+
+/** Clamp a YYYY-MM-DD date string into [min, max] — lexical compare is valid
+ *  since ISO date strings sort chronologically. */
+export function clampDate(date: string, min: string, max: string): string {
+  return date < min ? min : date > max ? max : date;
 }
 
 /** Wall-clock parts for an instant, rendered in a specific IANA timezone. */

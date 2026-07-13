@@ -22,6 +22,7 @@ Simply deleting the stub for `Date.now()` would fix the mismatch but lose the ab
 - Trip mode stays fully testable at any point in a trip without waiting for real dates — via the dev control, not fiction shipped to users.
 - The override is a dev affordance only; it is never synced and never present in prod. Production "now" is always real.
 - Implemented in T-051; T-019 (mode switch) depends on it.
+- **Every frontend call site that needs "now" goes through `useClock()` (components) or `getNow()` (non-hook code) — never `new Date()`/`Date.now()` directly.** A stray direct call silently reads the real clock and ignores an active time-travel override, which is exactly how one such bug shipped (2026-07-13: `activeDate`'s initial value was seeded via a `todayInTz()` default parameter that fell back to `new Date()`, so the day-switcher never respected the dev clock). Enforced by an ESLint `no-restricted-syntax` rule scoped to `frontend/src/**` (excluding `lib/useClock.ts` itself); `todayInTz()`'s `at` parameter has no default for the same reason — callers must supply it explicitly.
 
 ## Alternatives considered
 

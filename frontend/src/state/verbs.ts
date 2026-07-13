@@ -28,9 +28,10 @@ import {
   updateEvent,
 } from '../lib/api';
 import { enqueueOutbox, isNetworkError, isOffline, type OutboxOp } from '../lib/outbox';
+import { getNow } from '../lib/useClock';
 import { DELAY_STEP_MINUTES, DEFAULT_SCHEDULE_SLOT, ICONS } from '../constants';
 import { t } from '../i18n/he';
-import { ACTIVE_DATE, TRIP_TZ_OFFSET, activeUserId, maybeMeta } from '../fixtures';
+import { TRIP_TZ_OFFSET, activeUserId, maybeMeta } from '../fixtures';
 
 type ShowToast = ReturnType<typeof useToast>;
 
@@ -379,7 +380,7 @@ export async function applyUndo(deps: VerbDeps): Promise<void> {
 }
 
 export function useVerbs() {
-  const { dispatch, trip, events, ripple } = useTrip();
+  const { dispatch, trip, events, ripple, activeDate } = useTrip();
   const toast = useToast();
   const confirmHardEdit = useConfirmHardEdit();
   const lastAction = useRef<UndoDescriptor | null>(null);
@@ -417,17 +418,17 @@ export function useVerbs() {
     onWay: (_e: TripEvent) => toast(ICONS.share, t.toast.onWayShared),
     navigate: (_e: TripEvent) => toast(ICONS.navigate, t.toast.openingNav),
     schedule: (m: MaybeItem) => {
-      const now = new Date().toISOString();
+      const now = new Date(getNow()).toISOString();
       const event: TripEvent = {
         id: crypto.randomUUID(),
         tripId: trip.id,
-        date: ACTIVE_DATE,
+        date: activeDate,
         title: m.title,
         icon: m.icon,
         kind: EVENT_KIND.SOFT,
         status: EVENT_STATUS.PLANNED,
-        startsAt: `${ACTIVE_DATE}T${DEFAULT_SCHEDULE_SLOT.START}:00${TRIP_TZ_OFFSET}`,
-        endsAt: `${ACTIVE_DATE}T${DEFAULT_SCHEDULE_SLOT.END}:00${TRIP_TZ_OFFSET}`,
+        startsAt: `${activeDate}T${DEFAULT_SCHEDULE_SLOT.START}:00${TRIP_TZ_OFFSET}`,
+        endsAt: `${activeDate}T${DEFAULT_SCHEDULE_SLOT.END}:00${TRIP_TZ_OFFSET}`,
         location: maybeMeta(m.id),
         sortOrder: 99,
         source: EVENT_SOURCE.MAYBE_SHELF,

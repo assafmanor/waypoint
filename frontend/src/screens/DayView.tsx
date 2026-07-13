@@ -56,7 +56,6 @@ export function DayView() {
       <div className="sec-title">
         {t.day.heading(dayNumber, weekday, trip.destination)}
         <span className="sec-title-end">
-          <span className="hint">{t.day.tapToChange}</span>
           <button className="new-event-btn" onClick={() => setFormTarget('new')}>
             {ICONS.add} {t.actions.newEvent}
           </button>

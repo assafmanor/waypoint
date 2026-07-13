@@ -68,7 +68,6 @@ export const t = {
   day: {
     heading: (day: number, weekday: string, destination: string) =>
       `יום ${day} · ${weekday} · ${destination}`,
-    tapToChange: 'הקשה על כרטיס לפעולות',
     maybeShelf: 'מדף האולי',
     tapToSchedule: 'הקשה משבצת ליום',
   },
