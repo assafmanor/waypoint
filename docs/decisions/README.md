@@ -71,3 +71,4 @@ What else we weighed and why we didn't pick it.
 | [0026](0026-real-clock-and-dev-time-travel.md)      | Real clock as the time source + dev time-travel                                            | Accepted |
 | [0027](0027-soft-item-lifecycle-shelf-slip.md)      | Soft-item lifecycle: derived phases, slip/Do-it-now, shelf as a parking lot                | Accepted |
 | [0028](0028-plan-violet-color-budget-dark-ready.md) | Plan violet + Night/Day mode identity, semantic color budget, dark-mode-ready tokens       | Accepted |
+| [0029](0029-trip-mode-day-scope-gating.md)          | Trip-mode day-scope: verb gating for past and future days (refines 0025, 0027)             | Accepted |
