@@ -21,6 +21,6 @@ The "I opened the app first" journey (the reason a code feels tempting) is serve
 
 ## Consequences
 
-- `mockups/screens-v1.html` reworked: the join-by-code screen became a paste-a-link screen (mono URL field, same trip-preview + permissions flow); the lobby button reads "הצטרף עם קישור"; trip-settings' invite box shares the **link**, not a code.
+- `mockups/screens-v1.html` reworked: the join-by-code screen became a paste-a-link screen (mono URL field, same trip-preview + permissions flow); the lobby button reads "הצטרף עם לינק"; trip-settings' invite box shares the **link**, not a code.
 - Confirmation codes on bookings (`#4471`, flight PNRs) are unrelated and unaffected — those are commitment artifacts (amber family), not invites.
 - If a future need for verbal sharing appears, the answer is a QR code of the invite link — not a typed short code.

@@ -1071,7 +1071,7 @@
         <button class="sw on" onclick="show(this, 'landing')">כניסה · לפני</button>
         <button class="sw" onclick="show(this, 'lobby')">בית · אחרי</button>
         <button class="sw" onclick="show(this, 'join')">הצטרפות · הדבקה</button>
-        <button class="sw" onclick="show(this, 'linkjoin')">הצטרפות · קישור</button>
+        <button class="sw" onclick="show(this, 'linkjoin')">הצטרפות · לינק</button>
         <button class="sw" onclick="show(this, 'settings')">הגדרות טיול · תכנון</button>
       </div>
 
@@ -1180,7 +1180,7 @@
                   ＋ טיול חדש
                 </button>
                 <button class="btn ghost" onclick="toast('🔑', 'עברו לטאב ״הצטרפות לקבוצה״')">
-                  הצטרף עם קישור
+                  הצטרף עם לינק
                 </button>
               </div>
 
@@ -1226,7 +1226,7 @@
           <div class="scroll">
             <div class="join-body">
               <p class="join-lede">
-                קיבלת קישור מחבר? בדרך כלל פשוט פותחים אותו. הגעת קודם לאפליקציה? מדביקים אותו כאן —
+                קיבלת לינק מחבר? בדרך כלל פשוט פותחים אותו. הגעת קודם לאפליקציה? מדביקים אותו כאן —
                 והכול קורה לבד.
               </p>
 
@@ -1239,7 +1239,7 @@
                 />
               </div>
               <div class="paste-hint">
-                הקישור אצלך בלוח? <button onclick="fillDemo()">הדבק (דמו)</button>
+                הלינק אצלך בלוח? <button onclick="fillDemo()">הדבק (דמו)</button>
               </div>
 
               <div class="preview" id="preview">
@@ -1515,9 +1515,9 @@
                   <span class="role mem">משתתף</span>
                 </div>
               </div>
-              <div class="invite-box" onclick="toast('📋', 'הקישור הועתק · שתף בקבוצת הוואטסאפ')">
+              <div class="invite-box" onclick="toast('📋', 'הלינק הועתק · שתף בקבוצת הוואטסאפ')">
                 <span class="code" dir="ltr">wpnt.app/j/x7Kq2</span>
-                <span class="lbl2">קישור הזמנה · הקש להעתקה ושיתוף</span>
+                <span class="lbl2">לינק הזמנה · הקש להעתקה ושיתוף</span>
                 <span class="cp">📋</span>
               </div>
 
@@ -1649,7 +1649,7 @@
         const el = document.getElementById('linkInput');
         el.value = 'wpnt.app/j/x7Kq2';
         document.getElementById('preview').classList.add('show');
-        toast('🔗', 'הקישור זוהה · מצאנו את הטיול');
+        toast('🔗', 'הלינק זוהה · מצאנו את הטיול');
       }
     </script>
   </body>
