@@ -19,9 +19,8 @@ import {
 
 export const API_BASE_URL = import.meta.env.VITE_API_BASE_URL ?? '';
 
-// The access JWT (15 min, ADR-0020) lives in memory only — never localStorage
-// — so a module-level holder (not React state) is the seam apiFetch reads
-// without forcing every caller through a hook.
+// In memory only, never localStorage (ADR-0020) — module-level so apiFetch
+// can read it without every caller going through a hook.
 let accessToken: string | null = null;
 let onSessionExpired: (() => void) | null = null;
 

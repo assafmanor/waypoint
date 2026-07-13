@@ -1,9 +1,6 @@
-// Deep-link intent preservation across the login gate (ADR-0024): a route hit
-// while unauthenticated (esp. /join/:token) is saved and resumed after sign-in.
-// sessionStorage, not localStorage — a stale intent shouldn't outlive the tab.
-// Storage is a parameter (not read from `window` directly) so this stays a
-// plain unit-testable function without pulling a DOM test environment into
-// the repo (there isn't one — see the other lib/*.test.ts files).
+// sessionStorage (ADR-0024) — a stale intent shouldn't outlive the tab.
+// Storage is a parameter, not read from `window` directly, so this is
+// unit-testable without a DOM test environment (there isn't one in this repo).
 import { AUTH_INTENT_STORAGE_KEY } from '../constants';
 
 export function saveIntent(path: string, storage: Storage = sessionStorage): void {

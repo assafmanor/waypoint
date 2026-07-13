@@ -288,9 +288,8 @@ function AccountSheet({ onClose, onSignOut }: { onClose: () => void; onSignOut: 
   );
 }
 
-// The in-trip Header's account sheet (sign-out) only mounts inside Shell —
-// with zero trips there's no Shell, so this is the only other reachable
-// account entry point (otherwise a 0-trip session could never sign out).
+// With zero trips there's no Shell/Header, so this is the only other place
+// sign-out is reachable.
 function ZeroStateWithAccount() {
   const [showAccount, setShowAccount] = useState(false);
   const { me, logout } = useAuth();
@@ -314,8 +313,6 @@ function ZeroStateWithAccount() {
   );
 }
 
-// Root, in-trip surface of the active trip (ADR-0024): resolves which trip
-// (ADR-0021) once the auth gate below has already confirmed we're signed in.
 function RootSurface() {
   const [trips, setTrips] = useState<Trip[] | null>(null);
   useEffect(() => {

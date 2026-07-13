@@ -1,6 +1,4 @@
-// Auth gate state (ADR-0020/0024). The access JWT itself lives in memory in
-// lib/api.ts (never localStorage) — this context only tracks whether we have
-// one, and who it belongs to.
+// ADR-0020/0024. The access JWT itself lives in lib/api.ts, not here.
 import { createContext, useContext, useEffect, useState, type ReactNode } from 'react';
 import type { Me } from '@waypoint/shared';
 import {
@@ -38,16 +36,10 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     return () => setOnSessionExpired(null);
   }, []);
 
-  // Bootstrap, two-step: try to mint a real access token from the refresh
-  // cookie *before* calling GET /me — not just relying on apiFetch's reactive
-  // 401→refresh retry, because that never fires when the backend has
-  // DEV_AUTH=1: an unauthenticated GET /me answers 200 via the dev-stub
-  // principal immediately, so a real signed-in session would silently lose
-  // the race to the stub every time. Explicitly refreshing first means a real
-  // token — when one exists — always wins (JwtAuthGuard prefers a presented
-  // Bearer token over the dev stub); only the absence of a real session falls
-  // through to the plain GET /me, where DEV_AUTH=1 still covers local dev
-  // without real Google Cloud credentials (T-033).
+  // Must refresh *before* GET /me, not rely on apiFetch's reactive 401 retry:
+  // with DEV_AUTH=1 an unauthenticated /me answers 200 via the dev stub, so a
+  // real session would never get the 401 that triggers a refresh — and lose
+  // the race to the stub every time.
   useEffect(() => {
     let cancelled = false;
     refreshAccessToken()

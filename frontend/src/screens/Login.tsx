@@ -1,5 +1,4 @@
-// /login — the auth gate (ADR-0024). Google-only (ADR-0013): product mark,
-// one "Continue with Google" button, nothing else.
+// /login — the auth gate (ADR-0024, ADR-0013: Google-only).
 import { useAuth } from '../state/auth-state';
 import { useIsOffline } from '../lib/outbox';
 import { t } from '../i18n/he';

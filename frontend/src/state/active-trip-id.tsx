@@ -1,7 +1,5 @@
-// Active-trip override (ADR-0021): a selected tripId in localStorage, per-device,
-// not synced — same class as the mode override (state/mode-state.tsx). This is
-// the seam T-027's switcher calls into; T-039 only wires it up to pick which
-// trip's <TripProvider> mounts (lib/active-trip.ts supplies the derived default).
+// Per-device override, not synced (ADR-0021), same class as the mode override
+// (state/mode-state.tsx). `setTripId` is the seam T-027's switcher calls into.
 import { createContext, useContext, useState, type ReactNode } from 'react';
 import { ACTIVE_TRIP_STORAGE_KEY } from '../constants';
 

@@ -1,7 +1,5 @@
-// Active-trip resolution (ADR-0021): current in-progress → nearest upcoming →
-// most recent past. Never stored server-side — recomputed on load; the manual
-// override lives in state/active-trip-id.tsx (localStorage), same class as
-// the mode override (lib/mode.ts).
+// ADR-0021 resolution rule. Never stored server-side — recomputed on load;
+// the manual override lives in state/active-trip-id.tsx.
 import type { Trip } from '@waypoint/shared';
 import { todayInTz } from './time';
 

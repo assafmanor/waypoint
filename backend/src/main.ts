@@ -9,10 +9,8 @@ import { DEFAULT_FRONTEND_URL, FRONTEND_URL } from './common/env';
 
 async function bootstrap() {
   const app = await NestFactory.create(AppModule);
-  // credentials: true (+ a specific origin, never '*') is required for the
-  // refresh-token cookie to cross the dev-only cross-origin gap between the
-  // frontend (:5173) and this API (:3000) — ADR-0020 is single-origin in prod,
-  // where this has no effect.
+  // Needed for the refresh-token cookie to survive the dev-only cross-origin
+  // gap (:5173 → :3000); no-op in prod, which is single-origin (ADR-0020).
   app.enableCors({ origin: process.env[FRONTEND_URL] ?? DEFAULT_FRONTEND_URL, credentials: true });
 
   // Raw `ws` upgrade handling for WS /trips/:tripId/stream (sync-and-offline.md).
