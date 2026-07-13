@@ -12,6 +12,7 @@ import {
 } from '@waypoint/shared';
 import { useTrip } from '../state/trip-state';
 import { useVerbs } from '../state/verbs';
+import { getNow } from '../lib/useClock';
 import { zonedIso, isoToTimeInput } from '../lib/time';
 import { DEFAULT_EVENT_ICON } from '../constants';
 import { t } from '../i18n/he';
@@ -59,7 +60,7 @@ export function EventForm({ event, onClose }: { event?: TripEvent | null; onClos
       const parsed = createEventSchema.safeParse(fields);
       if (!parsed.success)
         return setError(parsed.error.issues[0]?.message ?? t.eventForm.titleRequired);
-      const now = new Date().toISOString();
+      const now = new Date(getNow()).toISOString();
       verbs.create({
         ...parsed.data,
         id: crypto.randomUUID(),

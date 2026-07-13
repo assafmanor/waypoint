@@ -19,7 +19,7 @@ import {
 /** Asia/Tokyo has no DST, so a fixed offset is enough for building demo instants. */
 export const TRIP_TZ_OFFSET = '+09:00';
 
-/** The active day the screens render (day 3). Real day switching is T-027. */
+/** The active day the screens render (day 3). */
 export const ACTIVE_DATE = '2026-07-07';
 
 /** Demo clock anchor: 18:52 local on the active day — matches the mockup.

@@ -18,6 +18,7 @@ import {
   type TabId,
 } from './constants';
 import { daysUntilStart, type Mode } from './lib/mode';
+import { addDays } from './lib/time';
 import { t } from './i18n/he';
 import './App.css';
 import './screens.css';
@@ -72,7 +73,7 @@ function ModeToggle() {
   );
 }
 
-function Header() {
+function Header({ onSelectDay }: { onSelectDay: (date: string) => void }) {
   const { trip, users, activeDate, usingCachedSnapshot } = useTrip();
   // `navigator.onLine` (T-013) misses cases like a hard reload where the boot
   // fetch itself fails but the browser's online flag never flips (some
@@ -89,8 +90,12 @@ function Header() {
     timeZone: trip.timezone,
   });
   const days = Array.from({ length: total }, (_, i) => {
-    const date = new Date(Date.parse(trip.startDate) + i * MS_PER_DAY);
-    return { n: i + 1, letter: weekdayLetter.format(date) };
+    const date = addDays(trip.startDate, i);
+    return {
+      date,
+      dayOfMonth: date.slice(8),
+      letter: weekdayLetter.format(new Date(`${date}T00:00:00Z`)),
+    };
   });
   return (
     <header className="header">
@@ -133,15 +138,18 @@ function Header() {
       )}
       <div className="day-strip">
         {days.map((d) => (
-          <div
-            key={d.n}
-            className={'day-pill' + (d.n === dayNumber ? ' on' : d.n < dayNumber ? ' past' : '')}
+          <button
+            key={d.date}
+            className={
+              'day-pill' + (d.date === activeDate ? ' on' : d.date < activeDate ? ' past' : '')
+            }
+            onClick={() => onSelectDay(d.date)}
           >
             {d.letter}
             <span className="n" dir="ltr">
-              {String(d.n).padStart(2, '0')}
+              {d.dayOfMonth}
             </span>
-          </div>
+          </button>
         ))}
       </div>
     </header>
@@ -165,9 +173,14 @@ function Screen({ tab }: { tab: TabId }) {
 function Shell() {
   const [tab, setTab] = useState<TabId>('home');
   const { mode } = useMode();
+  const { setActiveDate } = useTrip();
+  const onSelectDay = (date: string) => {
+    setActiveDate(date);
+    setTab('days');
+  };
   return (
     <div className="app" data-mode={mode}>
-      <Header />
+      <Header onSelectDay={onSelectDay} />
       <main className="body" key={tab}>
         <Screen tab={tab} />
       </main>

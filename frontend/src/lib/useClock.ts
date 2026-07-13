@@ -27,7 +27,7 @@ export function setSimulatedNow(ms: number | null): void {
   listeners.forEach((notify) => notify());
 }
 
-function getNow(): number {
+export function getNow(): number {
   return simulatedNow ?? Date.now();
 }
 
