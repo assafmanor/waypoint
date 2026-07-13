@@ -185,25 +185,30 @@
 .day-strip {
   display: flex;
   gap: 6px;
-  margin-top: 26px;
+  margin-top: 14px;
   overflow-x: auto;
 }
 .day-strip::-webkit-scrollbar {
   height: 0;
 }
+/* Column layout (not absolute-above-the-pill) is deliberate: .day-strip is a
+   horizontal scroll container, and overflow-x: auto forces overflow-y: auto
+   too (CSS can't pair one axis auto with the other visible) — a label
+   positioned above the pill's own top edge lands in that container's
+   scrollable overflow, above scrollTop 0, which is permanently clipped. */
 .day-pill-wrap {
-  position: relative;
+  display: flex;
+  flex-direction: column;
+  justify-content: flex-end;
   flex: 0 0 auto;
 }
 .month-label {
-  position: absolute;
-  top: -13px;
-  inset-inline: 0;
   text-align: center;
   font-size: 10.5px;
   font-weight: 600;
   color: #8494b5;
   white-space: nowrap;
+  margin-bottom: 4px;
 }
 .day-pill {
   min-width: 42px;
