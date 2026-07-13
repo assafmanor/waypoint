@@ -99,6 +99,30 @@ describe('flushOutbox (FIFO)', () => {
     expect(await db.outbox.count()).toBe(0);
   });
 
+  it('drops a stale 4xx rejection (e.g. MOVE_INTO_PAST) instead of wedging the queue forever', async () => {
+    let call = 0;
+    vi.stubGlobal(
+      'fetch',
+      vi.fn(() => {
+        call += 1;
+        // ev-1 (call 1) is now unrejectably stale (409), ev-2 (call 2) succeeds.
+        if (call === 1) {
+          return Promise.resolve(
+            new Response(JSON.stringify({ error: { code: 'MOVE_INTO_PAST' } }), { status: 409 }),
+          );
+        }
+        return Promise.resolve(new Response(canonicalBody(), { status: 200 }));
+      }),
+    );
+
+    await enqueueOutbox(TRIP_ID, statusOp('ev-1'));
+    await enqueueOutbox(TRIP_ID, statusOp('ev-2'));
+
+    await expect(flushOutbox(TRIP_ID)).resolves.toBeUndefined();
+    expect(call).toBe(2); // ev-2 still attempted — ev-1 didn't block the queue
+    expect(await db.outbox.count()).toBe(0);
+  });
+
   it('a duplicate create retry is idempotent — the backend returns 200 for an already-applied client id', async () => {
     // ADR-0018: client-generated ids make a re-POST of an already-created event
     // hit a unique-constraint that the backend treats as "already applied"
