@@ -1,5 +1,5 @@
-import { useEffect, useState, type ReactNode } from 'react';
-import { Route, Routes, useLocation, useNavigate } from 'react-router-dom';
+import { useEffect, useState } from 'react';
+import { Outlet, Route, Routes, useLocation, useNavigate } from 'react-router-dom';
 import type { Trip } from '@waypoint/shared';
 import { TripProvider, useTrip } from './state/trip-state';
 import { ModeProvider, useMode } from './state/mode-state';
@@ -350,11 +350,13 @@ function RootSurface() {
   );
 }
 
-// Auth gate (ADR-0024): unauthenticated → /login, saving the hit route as the
-// intent to resume after sign-in; authenticated while still sitting on /login
-// (a full-navigation OAuth round trip lands back on "/", not the saved deep
-// link) → resume the saved intent, or fall through to "/".
-function AuthGate({ children }: { children: ReactNode }) {
+// Auth gate (ADR-0024), a layout route wrapping every other route via
+// <Outlet/> (react-router's shared-guard pattern, instead of repeating a
+// wrapper on each route's element): unauthenticated → /login, saving the hit
+// route as the intent to resume after sign-in; authenticated while still
+// sitting on /login (a full-navigation OAuth round trip lands back on "/",
+// not the saved deep link) → resume the saved intent, or fall through to "/".
+function AuthGate() {
   const { status } = useAuth();
   const location = useLocation();
   const navigate = useNavigate();
@@ -378,54 +380,21 @@ function AuthGate({ children }: { children: ReactNode }) {
 
   if (status === 'loading') return <BootScreen text={t.shell.booting} />;
   if (status === 'anon') {
-    return location.pathname === '/login' ? <>{children}</> : <BootScreen text={t.shell.booting} />;
+    return location.pathname === '/login' ? <Outlet /> : <BootScreen text={t.shell.booting} />;
   }
-  return location.pathname === '/login' ? <BootScreen text={t.shell.booting} /> : <>{children}</>;
+  return location.pathname === '/login' ? <BootScreen text={t.shell.booting} /> : <Outlet />;
 }
 
 function AppRoutes() {
   return (
     <Routes>
-      <Route
-        path="/login"
-        element={
-          <AuthGate>
-            <Login />
-          </AuthGate>
-        }
-      />
-      <Route
-        path="/new"
-        element={
-          <AuthGate>
-            <ShellStub title={t.shell.stub.newTrip} />
-          </AuthGate>
-        }
-      />
-      <Route
-        path="/join/:token"
-        element={
-          <AuthGate>
-            <ShellStub title={t.shell.stub.join} />
-          </AuthGate>
-        }
-      />
-      <Route
-        path="/trip/:id/settings"
-        element={
-          <AuthGate>
-            <ShellStub title={t.shell.stub.settings} />
-          </AuthGate>
-        }
-      />
-      <Route
-        path="/*"
-        element={
-          <AuthGate>
-            <RootSurface />
-          </AuthGate>
-        }
-      />
+      <Route element={<AuthGate />}>
+        <Route path="login" element={<Login />} />
+        <Route path="new" element={<ShellStub title={t.shell.stub.newTrip} />} />
+        <Route path="join/:token" element={<ShellStub title={t.shell.stub.join} />} />
+        <Route path="trip/:id/settings" element={<ShellStub title={t.shell.stub.settings} />} />
+        <Route path="*" element={<RootSurface />} />
+      </Route>
     </Routes>
   );
 }
