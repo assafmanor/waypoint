@@ -1,0 +1,714 @@
+<!doctype html>
+<!-- Zero-state home (ADR-0024 §2): authenticated, zero trips.
+     Concept: the departure board is present from the first moment but OFF —
+     no amber, no teal, no pulse, no glow (shell is chrome; the first trip
+     powers the board on). Complies with ADR-0028 / design-language.md.
+     The "powered" switcher state is a mockup-only demo of that transition. -->
+<html lang="he" dir="rtl">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>Waypoint — מסך פתיחה ריק (הלוח עוד כבוי)</title>
+    <link rel="preconnect" href="https://fonts.googleapis.com" />
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+    <link
+      href="https://fonts.googleapis.com/css2?family=Assistant:wght@400;500;600;700&family=Secular+One&family=JetBrains+Mono:wght@500;700&display=swap"
+      rel="stylesheet"
+    />
+    <style>
+      :root {
+        --ink: #16233d;
+        --indigo: #1b2a4a;
+        --board: #0e1729;
+        --board-2: #152137;
+        --screen: #e7eaef;
+        --card: #ffffff;
+        --paper: #f3efe6;
+        --amber: #e9a63c;
+        --amber-deep: #c9822a;
+        --teal: #2c9c90;
+        --muted: #6c7488;
+        --line: rgba(22, 35, 61, 0.1);
+        --soft-line: rgba(22, 35, 61, 0.28);
+        --cta: var(--ink);
+        --cta-text: #fff;
+        --shadow: 0 18px 40px -18px rgba(14, 23, 41, 0.45);
+      }
+      * {
+        box-sizing: border-box;
+        margin: 0;
+        padding: 0;
+      }
+      html {
+        height: 100%;
+      }
+      body {
+        font-family: 'Assistant', sans-serif;
+        min-height: 100%;
+        background:
+          radial-gradient(120% 90% at 80% -10%, #2a3e68 0%, transparent 55%),
+          radial-gradient(120% 90% at 0% 110%, #1a2a4a 0%, transparent 50%), #0f1a31;
+        color: var(--ink);
+        display: flex;
+        flex-direction: column;
+        align-items: center;
+        justify-content: center;
+        gap: 14px;
+        padding: 26px 16px 40px;
+        -webkit-font-smoothing: antialiased;
+      }
+
+      .caption {
+        color: #aeb9d4;
+        font-size: 12.5px;
+        font-weight: 500;
+        text-align: center;
+        max-width: 44ch;
+        line-height: 1.55;
+      }
+      .caption b {
+        color: #fff;
+        font-weight: 600;
+      }
+
+      /* state switcher (mockup chrome, not product UI) */
+      .switcher {
+        display: flex;
+        gap: 6px;
+        flex-wrap: wrap;
+        justify-content: center;
+      }
+      .sw {
+        font: inherit;
+        font-size: 12px;
+        font-weight: 600;
+        color: #aeb9d4;
+        background: rgba(255, 255, 255, 0.07);
+        border: 1px solid rgba(255, 255, 255, 0.12);
+        border-radius: 99px;
+        padding: 7px 13px;
+        cursor: pointer;
+        transition: 0.15s;
+      }
+      .sw:hover {
+        color: #fff;
+      }
+      .sw.on {
+        background: #fff;
+        border-color: #fff;
+        color: var(--ink);
+      }
+      .sw:focus-visible {
+        outline: 2.5px solid var(--teal);
+        outline-offset: 2px;
+      }
+
+      .phone {
+        width: 392px;
+        max-width: 100%;
+        height: 812px;
+        background: var(--screen);
+        border-radius: 38px;
+        box-shadow:
+          var(--shadow),
+          0 0 0 10px #0b1526,
+          0 0 0 12px #223257;
+        overflow: hidden;
+        display: flex;
+        flex-direction: column;
+        position: relative;
+      }
+      .statusbar {
+        background: var(--indigo);
+        color: #dce3f2;
+        display: flex;
+        justify-content: space-between;
+        align-items: center;
+        padding: 11px 22px 8px;
+        font-family: 'JetBrains Mono', monospace;
+        font-size: 13px;
+        font-weight: 700;
+        flex: 0 0 auto;
+      }
+      .statusbar .dots {
+        letter-spacing: 2px;
+        opacity: 0.85;
+      }
+
+      /* header — shell chrome: indigo + neutral, no semantic color */
+      .head {
+        background: var(--indigo);
+        color: #fff;
+        padding: 14px 20px 18px;
+        flex: 0 0 auto;
+      }
+      .head .row {
+        display: flex;
+        justify-content: space-between;
+        align-items: center;
+      }
+      .hello {
+        font-family: 'Secular One', sans-serif;
+        font-size: 23px;
+      }
+      .hello-sub {
+        color: #9daac8;
+        font-size: 12.5px;
+        margin-top: 3px;
+        display: flex;
+        align-items: center;
+        gap: 6px;
+      }
+      .g-dot {
+        width: 12px;
+        height: 12px;
+        border-radius: 50%;
+        flex: 0 0 auto;
+        background: conic-gradient(#4285f4 0 25%, #ea4335 0 50%, #fbbc05 0 75%, #34a853 0);
+      }
+      .av {
+        width: 31px;
+        height: 31px;
+        border-radius: 50%;
+        display: grid;
+        place-items: center;
+        background: #8cb6e8;
+        color: #12203a;
+        font-weight: 700;
+        font-size: 12.5px;
+        border: 2px solid #fff;
+      }
+      .offline-badge {
+        display: none;
+        align-items: center;
+        gap: 6px;
+        margin-top: 10px;
+        padding: 4px 10px;
+        border-radius: 20px;
+        background: rgba(255, 255, 255, 0.08);
+        border: 1px solid rgba(255, 255, 255, 0.16);
+        color: #8fa0c4;
+        font-size: 11.5px;
+        font-weight: 600;
+        width: fit-content;
+      }
+      .phone.offline .offline-badge {
+        display: inline-flex;
+      }
+
+      .body {
+        flex: 1;
+        min-height: 0;
+        overflow-y: auto;
+        padding: 22px 20px 28px;
+        display: flex;
+        flex-direction: column;
+      }
+      .body::-webkit-scrollbar {
+        width: 0;
+      }
+
+      /* ============ the dormant departure board ============ */
+      /* Off = no glow, no amber, no pulse. The board renders in the same place
+     it will live when a trip exists — the empty state IS the product's
+     signature surface, unpowered. */
+      .board {
+        background: linear-gradient(180deg, var(--board-2), var(--board));
+        border-radius: 22px;
+        padding: 17px 18px 15px;
+        color: #eaf0ff;
+        box-shadow: 0 20px 34px -20px rgba(8, 14, 28, 0.75);
+        position: relative;
+        overflow: hidden;
+        transition: box-shadow 0.6s ease;
+      }
+      /* the glow exists but is off — powering on only fades it in */
+      .board::before {
+        content: '';
+        position: absolute;
+        inset: 0;
+        background: radial-gradient(90% 60% at 85% 0%, rgba(233, 166, 60, 0.16), transparent 60%);
+        opacity: 0;
+        transition: opacity 0.7s ease;
+        pointer-events: none;
+      }
+      .board-top {
+        display: flex;
+        justify-content: space-between;
+        align-items: center;
+        position: relative;
+      }
+      .off-label {
+        font-size: 11px;
+        font-weight: 600;
+        letter-spacing: 0.14em;
+        color: #5b6a8a;
+        display: flex;
+        align-items: center;
+        gap: 7px;
+      }
+      .off-label .dot {
+        width: 7px;
+        height: 7px;
+        border-radius: 50%;
+        background: #3a4a6e; /* a blip that isn't pulsing — nothing is live */
+      }
+      .clock {
+        font-family: 'JetBrains Mono', monospace;
+        font-size: 15px;
+        font-weight: 700;
+        color: #4d5d80;
+      }
+
+      /* split-flap rows, blank */
+      .flaps {
+        margin-top: 16px;
+        display: flex;
+        flex-direction: column;
+        gap: 9px;
+        position: relative;
+      }
+      .flap-row {
+        display: flex;
+        align-items: center;
+        gap: 8px;
+      }
+      .cell {
+        height: 26px;
+        border-radius: 5px;
+        background: linear-gradient(180deg, #1c2946 0 50%, #17233c 50% 100%);
+        box-shadow: inset 0 0 0 1px rgba(255, 255, 255, 0.045);
+        position: relative;
+        flex: 0 0 auto;
+      }
+      .cell::after {
+        /* the flap hinge */
+        content: '';
+        position: absolute;
+        left: 0;
+        right: 0;
+        top: 50%;
+        height: 1px;
+        background: rgba(10, 17, 32, 0.9);
+      }
+      .cell.w1 {
+        width: 26px;
+      }
+      .cell.w2 {
+        width: 44px;
+      }
+      .cell.w3 {
+        width: 74px;
+      }
+      .cell.grow {
+        flex: 1;
+      }
+      .flap-time {
+        font-family: 'JetBrains Mono', monospace;
+        font-size: 13px;
+        font-weight: 700;
+        color: #44547a;
+        min-width: 52px;
+        text-align: center;
+        flex: 0 0 auto;
+      }
+      .flap-row:nth-child(2) {
+        opacity: 0.72;
+      }
+      .flap-row:nth-child(3) {
+        opacity: 0.48;
+      }
+      .flap-row:nth-child(4) {
+        opacity: 0.26;
+      }
+
+      /* one cell occasionally flutters, like a board testing a flap */
+      @keyframes flutter {
+        0%,
+        92% {
+          transform: none;
+        }
+        94% {
+          transform: scaleY(0.1);
+        }
+        96% {
+          transform: scaleY(1);
+        }
+        97% {
+          transform: scaleY(0.4);
+        }
+        100% {
+          transform: none;
+        }
+      }
+      .cell.flutter {
+        animation: flutter 7s ease-in-out infinite;
+        transform-origin: center;
+      }
+
+      /* ---- powered-on preview (mockup demo of the plan→trip transition) ---- */
+      .board .on-content {
+        position: absolute;
+        inset: 0;
+        padding: 17px 18px 15px;
+        opacity: 0;
+        pointer-events: none;
+        transition: opacity 0.55s ease 0.15s;
+      }
+      .phone.powered .board {
+        box-shadow: 0 20px 34px -20px rgba(8, 14, 28, 0.95);
+      }
+      .phone.powered .board::before {
+        opacity: 1;
+      }
+      .phone.powered .flaps,
+      .phone.powered .board-top {
+        opacity: 0;
+        transition: opacity 0.3s ease;
+      }
+      .phone.powered .on-content {
+        opacity: 1;
+      }
+      .on-top {
+        display: flex;
+        justify-content: space-between;
+        align-items: center;
+      }
+      .live {
+        font-size: 11px;
+        font-weight: 600;
+        letter-spacing: 0.14em;
+        color: #8fa0c4;
+        display: flex;
+        align-items: center;
+        gap: 7px;
+      }
+      .live .blip {
+        width: 7px;
+        height: 7px;
+        border-radius: 50%;
+        background: var(--amber);
+      }
+      .on-clock {
+        font-family: 'JetBrains Mono', monospace;
+        font-size: 15px;
+        font-weight: 700;
+        color: #c3cee8;
+      }
+      .now-label {
+        color: var(--amber);
+        font-size: 12px;
+        font-weight: 700;
+        letter-spacing: 0.1em;
+        margin-top: 15px;
+      }
+      .now-title {
+        font-family: 'Secular One', sans-serif;
+        font-size: 21px;
+        color: #fff;
+        margin-top: 3px;
+      }
+      .now-meta {
+        color: #93a2c4;
+        font-size: 13px;
+        margin-top: 3px;
+      }
+      .on-count {
+        position: absolute;
+        inset-inline-end: 18px;
+        bottom: 16px;
+        text-align: center;
+        background: rgba(233, 166, 60, 0.14);
+        border: 1px solid rgba(233, 166, 60, 0.32);
+        border-radius: 13px;
+        padding: 7px 13px;
+      }
+      .on-count b {
+        font-family: 'JetBrains Mono', monospace;
+        font-size: 18px;
+        color: var(--amber);
+        display: block;
+        line-height: 1;
+      }
+      .on-count i {
+        font-style: normal;
+        font-size: 9.5px;
+        color: #b9985c;
+        letter-spacing: 0.08em;
+      }
+
+      /* ============ copy + equal actions ============ */
+      /* the copy follows the board's state — powered preview swaps the headline */
+      .zero-copy .when-on {
+        display: none;
+      }
+      .phone.powered .zero-copy .when-off {
+        display: none;
+      }
+      .phone.powered .zero-copy .when-on {
+        display: block;
+        animation: fade 0.45s ease 0.2s backwards;
+      }
+      @keyframes fade {
+        from {
+          opacity: 0;
+          transform: translateY(5px);
+        }
+        to {
+          opacity: 1;
+          transform: none;
+        }
+      }
+      .zero-copy {
+        text-align: center;
+        margin-top: 26px;
+        padding: 0 6px;
+      }
+      .zero-copy h1 {
+        font-family: 'Secular One', sans-serif;
+        font-size: 26px;
+        color: var(--indigo);
+        text-wrap: balance;
+      }
+      .zero-copy p {
+        color: var(--muted);
+        font-size: 14.5px;
+        line-height: 1.55;
+        margin-top: 8px;
+        max-width: 32ch;
+        margin-inline: auto;
+      }
+      .zero-copy p b {
+        color: var(--ink);
+        font-weight: 600;
+      }
+
+      /* two EQUAL actions (ADR-0024: most friends join, one creates) */
+      .actions {
+        display: grid;
+        grid-template-columns: 1fr 1fr;
+        gap: 10px;
+        margin-top: 22px;
+      }
+      .act {
+        font: inherit;
+        font-weight: 700;
+        font-size: 14px;
+        display: flex;
+        flex-direction: column;
+        align-items: center;
+        gap: 7px;
+        padding: 16px 10px 14px;
+        border-radius: 16px;
+        background: var(--cta);
+        color: var(--cta-text);
+        border: 1px solid var(--cta);
+        cursor: pointer;
+        transition:
+          transform 0.13s,
+          box-shadow 0.13s,
+          opacity 0.2s;
+      }
+      .act .ic {
+        font-size: 21px;
+        line-height: 1;
+      }
+      .act .sub {
+        font-size: 11px;
+        font-weight: 500;
+        color: rgba(255, 255, 255, 0.62);
+      }
+      .act:hover {
+        transform: translateY(-2px);
+        box-shadow: 0 12px 22px -12px rgba(14, 23, 41, 0.6);
+      }
+      .act:focus-visible {
+        outline: 2.5px solid var(--teal);
+        outline-offset: 2px;
+      }
+      .act:active {
+        transform: none;
+      }
+      .phone.offline .act.create {
+        opacity: 0.45;
+        pointer-events: none;
+      }
+
+      .offline-note {
+        display: none;
+        margin-top: 12px;
+        text-align: center;
+        color: var(--muted);
+        font-size: 12px;
+        line-height: 1.5;
+      }
+      .phone.offline .offline-note {
+        display: block;
+      }
+
+      .teach {
+        margin-top: auto;
+        padding-top: 24px;
+        text-align: center;
+        color: #98a0b0;
+        font-size: 12px;
+        line-height: 1.6;
+      }
+
+      .toast {
+        position: absolute;
+        left: 16px;
+        right: 16px;
+        bottom: 24px;
+        background: var(--ink);
+        color: #fff;
+        border-radius: 13px;
+        padding: 13px 16px;
+        font-size: 13.5px;
+        font-weight: 500;
+        box-shadow: 0 12px 28px -10px rgba(0, 0, 0, 0.5);
+        display: flex;
+        align-items: center;
+        gap: 9px;
+        opacity: 0;
+        transform: translateY(12px);
+        pointer-events: none;
+        transition: 0.28s;
+        z-index: 5;
+      }
+      .toast.show {
+        opacity: 1;
+        transform: none;
+      }
+
+      @media (prefers-reduced-motion: reduce) {
+        * {
+          animation: none !important;
+          transition: none !important;
+        }
+      }
+    </style>
+  </head>
+  <body>
+    <div class="switcher" role="tablist" aria-label="מצבי תצוגה">
+      <button class="sw on" onclick="setState(this, '')">ברירת מחדל</button>
+      <button class="sw" onclick="setState(this, 'offline')">אופליין</button>
+      <button class="sw" onclick="setState(this, 'powered')">הצצה · הלוח נדלק</button>
+    </div>
+
+    <div class="phone" id="phone" dir="rtl" lang="he">
+      <div class="statusbar"><span>09:41</span><span class="dots">●●● 5G ▮</span></div>
+
+      <header class="head">
+        <div class="row">
+          <div>
+            <div class="hello">היי, אסף 👋</div>
+            <div class="hello-sub"><span class="g-dot"></span>מחובר · assaf@gmail.com</div>
+          </div>
+          <div class="av">א</div>
+        </div>
+        <div class="offline-badge">📡 אופליין · נתונים שמורים</div>
+      </header>
+
+      <main class="body">
+        <!-- the board, dormant -->
+        <section class="board" aria-label="לוח היציאות — כבוי">
+          <div class="board-top">
+            <span class="off-label"><span class="dot"></span>אין שידור</span>
+            <span class="clock" dir="ltr">--:--</span>
+          </div>
+          <div class="flaps" aria-hidden="true">
+            <div class="flap-row">
+              <span class="flap-time" dir="ltr">--:--</span>
+              <span class="cell w3 flutter"></span><span class="cell grow"></span
+              ><span class="cell w1"></span>
+            </div>
+            <div class="flap-row">
+              <span class="flap-time" dir="ltr">--:--</span>
+              <span class="cell w2"></span><span class="cell grow"></span
+              ><span class="cell w2"></span>
+            </div>
+            <div class="flap-row">
+              <span class="flap-time" dir="ltr">--:--</span>
+              <span class="cell grow"></span><span class="cell w3"></span
+              ><span class="cell w1"></span>
+            </div>
+            <div class="flap-row">
+              <span class="flap-time" dir="ltr">--:--</span>
+              <span class="cell w1"></span><span class="cell grow"></span
+              ><span class="cell w2"></span>
+            </div>
+          </div>
+
+          <!-- powered-on preview (demo of the plan→trip moment) -->
+          <div class="on-content" aria-hidden="true">
+            <div class="on-top">
+              <span class="live"><span class="blip"></span>עכשיו · יפן ׳26</span>
+              <span class="on-clock" dir="ltr">19:02</span>
+            </div>
+            <div class="now-label">הבא בתור</div>
+            <div class="now-title">ארוחת ערב · Ichiran</div>
+            <div class="now-meta">🔒 הזמנה #4471 · 5 דק׳ הליכה</div>
+            <div class="on-count"><b dir="ltr">38</b><i>דקות</i></div>
+          </div>
+        </section>
+
+        <div class="zero-copy">
+          <div class="when-off">
+            <h1>הלוח עוד כבוי</h1>
+            <p>טיול ראשון מדליק אותו — <b>מה עכשיו, מה הבא</b>, וכל ההזמנות של החבורה במקום אחד.</p>
+          </div>
+          <div class="when-on">
+            <h1>ככה זה ייראה</h1>
+            <p>בוקר אמיתי מהטיול: <b>עכשיו והבא בתור</b> על הלוח, וההזמנה כבר באינדקס.</p>
+          </div>
+        </div>
+
+        <div class="actions">
+          <button class="act" onclick="toast('🔗', 'מדביקים לינק שקיבלתם מחבר')">
+            <span class="ic">🔗</span>
+            הצטרף עם לינק
+            <span class="sub">קיבלת הזמנה מחבר</span>
+          </button>
+          <button class="act create" onclick="toast('＋', 'יצירת טיול — טופס אחד, בלי אשף')">
+            <span class="ic">＋</span>
+            טיול חדש
+            <span class="sub">אתה זה שמארגן</span>
+          </button>
+        </div>
+        <p class="offline-note">יצירת טיול צריכה חיבור · לינק שחבר שולח ייפתח גם עכשיו</p>
+
+        <p class="teach">
+          בחבורה של חמישה, בדרך כלל אחד יוצר את הטיול —<br />וכל השאר נכנסים עם הלינק שלו.
+        </p>
+      </main>
+
+      <div class="toast" id="toast"><span id="toast-ic">✓</span><span id="toast-txt"></span></div>
+    </div>
+
+    <p class="caption">
+      <b>Zero-state · הלוח עוד כבוי</b> — לוח היציאות נמצא שם מהרגע הראשון, אבל כבוי: בלי ענבר, בלי
+      פולס, בלי זוהר. הטיול הראשון הוא שמדליק אותו (הצצה בכפתור למעלה). שתי הפעולות שוות בכוונה —
+      רוב החבורה מצטרפת, אחד יוצר.
+    </p>
+
+    <script>
+      function setState(btn, state) {
+        document.querySelectorAll('.sw').forEach((b) => b.classList.remove('on'));
+        btn.classList.add('on');
+        const p = document.getElementById('phone');
+        p.classList.remove('offline', 'powered');
+        if (state) p.classList.add(state);
+      }
+      let toastTimer;
+      function toast(icon, msg) {
+        const t = document.getElementById('toast');
+        document.getElementById('toast-ic').textContent = icon;
+        document.getElementById('toast-txt').textContent = msg;
+        t.classList.add('show');
+        clearTimeout(toastTimer);
+        toastTimer = setTimeout(() => t.classList.remove('show'), 2400);
+      }
+    </script>
+  </body>
+</html>

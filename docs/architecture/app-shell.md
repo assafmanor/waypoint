@@ -41,6 +41,7 @@ Active-trip selection is `tripId` in `localStorage` — per-device, **not** sync
 - **Purpose:** first landing for an authenticated user with zero memberships. In the ~5-friend model most people arrive here to **join**, one to **create** — so both are primary.
 - **Contents:** a short welcome line + **two equal actions: "Create a trip" (→ `/new`)** and **"Join with a link"**. "Join with a link" explains that a trip-mate sends an invite link; if the OS handed us a link we'd already be on `/join/:token`, so this is the "I was told to open the app first" path (paste/await link).
 - **States:** default · offline ("Creating a trip needs a connection — you can still open a link a trip-mate shares").
+- **Design reference:** `mockups/zero-state-v1.html` — the dormant departure board ("הלוח עוד כבוי"): the board is present but unpowered (no amber/teal/pulse; shell stays chrome per ADR-0028), two equal CTAs with role subtitles, a teach line, and the offline + powered-preview states.
 
 ### 3. Trip creation — `/new`
 
