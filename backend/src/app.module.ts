@@ -1,7 +1,9 @@
 import { Module } from '@nestjs/common';
 import { ConfigModule } from '@nestjs/config';
-import { APP_INTERCEPTOR } from '@nestjs/core';
+import { APP_GUARD, APP_INTERCEPTOR } from '@nestjs/core';
 import { ZodSerializerInterceptor } from 'nestjs-zod';
+import { AuthModule } from './auth/auth.module';
+import { JwtAuthGuard } from './auth/jwt-auth.guard';
 import { BookingsModule } from './bookings/bookings.module';
 import { EventsModule } from './events/events.module';
 import { HealthController } from './health/health.controller';
@@ -14,6 +16,7 @@ import { TripsModule } from './trips/trips.module';
   imports: [
     ConfigModule.forRoot({ isGlobal: true }),
     PrismaModule,
+    AuthModule,
     TripsModule,
     SyncModule,
     EventsModule,
@@ -22,6 +25,8 @@ import { TripsModule } from './trips/trips.module';
   ],
   controllers: [HealthController],
   providers: [
+    // ADR-0020: every route needs a Bearer access JWT unless marked @Public().
+    { provide: APP_GUARD, useClass: JwtAuthGuard },
     // ADR-0023: validates/strips responses against each route's @ZodSerializerDto schema.
     { provide: APP_INTERCEPTOR, useClass: ZodSerializerInterceptor },
   ],

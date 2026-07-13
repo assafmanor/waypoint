@@ -2,7 +2,6 @@ import { BadRequestException, Controller, Get, Param, Query, UseGuards } from '@
 import { ApiOkResponse, ApiTags } from '@nestjs/swagger';
 import { changeSchema, type Change } from '@waypoint/shared';
 import { createZodDto, ZodSerializerDto } from 'nestjs-zod';
-import { DevAuthGuard } from '../auth/dev-auth.guard';
 import { PrismaService } from '../prisma/prisma.service';
 import { MembershipGuard } from '../trips/membership.guard';
 import { toChangeDto } from './change.mapper';
@@ -11,7 +10,7 @@ class ChangeDto extends createZodDto(changeSchema) {}
 
 @ApiTags('sync')
 @Controller('trips/:tripId/changes')
-@UseGuards(DevAuthGuard, MembershipGuard)
+@UseGuards(MembershipGuard)
 export class SyncController {
   constructor(private readonly prisma: PrismaService) {}
 

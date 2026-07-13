@@ -15,7 +15,7 @@
     "lint": {},
     "test": {
       "dependsOn": ["^build"],
-      "env": ["DATABASE_URL", "JWT_SECRET"]
+      "env": ["DATABASE_URL", "JWT_SECRET", "TOKEN_ENCRYPTION_KEY"]
     }
   }
 }

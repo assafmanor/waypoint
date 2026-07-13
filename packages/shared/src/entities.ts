@@ -234,3 +234,10 @@ export const tripWithMembersSchema = z.object({
   members: z.array(membershipSchema),
 });
 export type TripWithMembers = z.infer<typeof tripWithMembersSchema>;
+
+/** `GET /me` response shape — not its own persisted entity (ADR-0020). */
+export const meSchema = z.object({
+  user: userSchema,
+  memberships: z.array(membershipSchema),
+});
+export type Me = z.infer<typeof meSchema>;
