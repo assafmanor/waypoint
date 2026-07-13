@@ -409,9 +409,15 @@
         display: flex;
         justify-content: space-between;
         margin-top: 7px;
-        font-family: 'JetBrains Mono', monospace;
+        /* mixed line: mono has no Hebrew glyphs — body font, numeric ends go mono */
+        font-family: 'Assistant', sans-serif;
+        font-weight: 600;
         font-size: 10px;
         color: #7688ac;
+      }
+      .progress .ends span[dir='ltr'] {
+        font-family: 'JetBrains Mono', monospace;
+        font-weight: 400;
       }
 
       .sec-title {
@@ -1198,7 +1204,9 @@
                   <div class="fill"></div>
                   <div class="knob"></div>
                 </div>
-                <div class="ends"><span>07:00</span><span>עכשיו</span><span>23:00</span></div>
+                <div class="ends">
+                  <span dir="ltr">07:00</span><span>עכשיו</span><span dir="ltr">23:00</span>
+                </div>
               </div>
             </div>
 

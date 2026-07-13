@@ -198,9 +198,16 @@
   display: flex;
   justify-content: space-between;
   margin-top: 7px;
-  font-family: var(--font-mono);
+  /* mixed line: JetBrains Mono has no Hebrew glyphs, so the row is body font
+     and only the numeric endpoints go mono (design-language: typography) */
+  font-family: var(--font-body);
+  font-weight: 600;
   font-size: 10px;
   color: #7688ac;
+}
+.progress .ends span[dir='ltr'] {
+  font-family: var(--font-mono);
+  font-weight: 400;
 }
 
 /* section titles */

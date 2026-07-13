@@ -121,9 +121,9 @@ export function Home() {
             <div className="knob" style={{ insetInlineStart: `${progress}%` }} />
           </div>
           <div className="ends">
-            <span>{hourLabel(DAY_WINDOW.START_HOUR)}</span>
+            <span dir="ltr">{hourLabel(DAY_WINDOW.START_HOUR)}</span>
             <span>{t.common.now}</span>
-            <span>{hourLabel(DAY_WINDOW.END_HOUR)}</span>
+            <span dir="ltr">{hourLabel(DAY_WINDOW.END_HOUR)}</span>
           </div>
         </div>
       </div>

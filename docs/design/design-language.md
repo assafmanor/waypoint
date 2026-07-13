@@ -102,7 +102,7 @@ New screens must pick from these ramps instead of inventing values.
 | caption   | 11    | Labels, hints                 |
 | micro     | 10.5  | Tags, badges                  |
 
-JetBrains Mono is reserved for **times, dates, codes, and money** — never prose.
+JetBrains Mono is reserved for **times, dates, codes, and money** — never prose. And only for **Latin/numeric runs**: the face has no Hebrew glyphs, so Hebrew text must never sit inside a mono element (it silently falls back to a generic monospace and reads foreign). Mixed lines — e.g. the day progress's `07:00 · עכשיו · 23:00` — set the row in Assistant and wrap only the numeric runs in mono + `dir="ltr"`.
 
 **Radius ramp:** `8` chips/tags · `12` inner elements (badges, inputs) · `16` cards · `22` hero surfaces · `999` pills. (Phone frame `38` is a mockup artifact, not a token.)
 
