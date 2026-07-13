@@ -350,12 +350,9 @@ function RootSurface() {
   );
 }
 
-// Auth gate (ADR-0024), a layout route wrapping every other route via
-// <Outlet/> (react-router's shared-guard pattern, instead of repeating a
-// wrapper on each route's element): unauthenticated → /login, saving the hit
-// route as the intent to resume after sign-in; authenticated while still
-// sitting on /login (a full-navigation OAuth round trip lands back on "/",
-// not the saved deep link) → resume the saved intent, or fall through to "/".
+// Layout route (ADR-0024): one shared guard via <Outlet/> instead of
+// per-route wrapping. Intent is resumed here, not right after login, since
+// OAuth's redirect always lands on "/", never the saved deep link.
 function AuthGate() {
   const { status } = useAuth();
   const location = useLocation();
