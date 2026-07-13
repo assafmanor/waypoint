@@ -713,35 +713,33 @@
         font-size: 13.5px;
         line-height: 1.55;
       }
-      .code-row {
-        display: flex;
-        gap: 8px;
-        justify-content: center;
+      /* paste-a-link field (join is link-only, ADR-0030) */
+      .link-row {
         margin: 22px 0 8px;
-        direction: ltr;
       }
-      .code-cell {
-        width: 46px;
-        height: 56px;
+      .link-cell {
+        width: 100%;
+        height: 52px;
         border-radius: 13px;
         border: 1.5px solid var(--line);
         background: #fff;
+        padding: 0 16px;
+        direction: ltr;
         text-align: center;
         font-family: 'JetBrains Mono', monospace;
-        font-size: 22px;
+        font-size: 14.5px;
         font-weight: 700;
         color: var(--ink);
-        outline: none;
         transition: 0.15s;
-        text-transform: uppercase;
       }
-      .code-cell:focus {
-        border-color: var(--amber);
-        box-shadow: 0 0 0 3px rgba(233, 166, 60, 0.18);
+      .link-cell::placeholder {
+        color: #a6acba;
+        font-weight: 500;
       }
-      .code-cell.filled {
-        border-color: var(--teal);
-        background: rgba(44, 156, 144, 0.05);
+      .link-cell:focus-visible {
+        outline: 2.5px solid var(--teal);
+        outline-offset: 1px;
+        border-color: transparent;
       }
       .paste-hint {
         text-align: center;
@@ -752,10 +750,11 @@
         font: inherit;
         background: none;
         border: 0;
-        color: var(--teal);
+        color: var(--ink);
         font-weight: 700;
         cursor: pointer;
         font-size: 12px;
+        text-decoration: underline;
       }
 
       /* trip preview after code */
@@ -1071,8 +1070,8 @@
       <div class="switcher">
         <button class="sw on" onclick="show(this, 'landing')">כניסה · לפני</button>
         <button class="sw" onclick="show(this, 'lobby')">בית · אחרי</button>
-        <button class="sw" onclick="show(this, 'join')">הצטרפות · קוד</button>
-        <button class="sw" onclick="show(this, 'linkjoin')">הצטרפות · לינק</button>
+        <button class="sw" onclick="show(this, 'join')">הצטרפות · הדבקה</button>
+        <button class="sw" onclick="show(this, 'linkjoin')">הצטרפות · קישור</button>
         <button class="sw" onclick="show(this, 'settings')">הגדרות טיול · תכנון</button>
       </div>
 
@@ -1181,7 +1180,7 @@
                   ＋ טיול חדש
                 </button>
                 <button class="btn ghost" onclick="toast('🔑', 'עברו לטאב ״הצטרפות לקבוצה״')">
-                  הצטרף עם קוד
+                  הצטרף עם קישור
                 </button>
               </div>
 
@@ -1227,20 +1226,20 @@
           <div class="scroll">
             <div class="join-body">
               <p class="join-lede">
-                קיבלת קוד או לינק מחבר? מקלידים את הקוד כאן — או פשוט פותחים את הלינק, והכול קורה
-                לבד.
+                קיבלת קישור מחבר? בדרך כלל פשוט פותחים אותו. הגעת קודם לאפליקציה? מדביקים אותו כאן —
+                והכול קורה לבד.
               </p>
 
-              <div class="code-row" id="codeRow">
-                <input class="code-cell" maxlength="1" oninput="cell(this, 0)" />
-                <input class="code-cell" maxlength="1" oninput="cell(this, 1)" />
-                <input class="code-cell" maxlength="1" oninput="cell(this, 2)" />
-                <input class="code-cell" maxlength="1" oninput="cell(this, 3)" />
-                <input class="code-cell" maxlength="1" oninput="cell(this, 4)" />
-                <input class="code-cell" maxlength="1" oninput="cell(this, 5)" />
+              <div class="link-row">
+                <input
+                  class="link-cell"
+                  id="linkInput"
+                  placeholder="wpnt.app/j/…"
+                  oninput="linkChanged(this)"
+                />
               </div>
               <div class="paste-hint">
-                יש לך קוד בלוח? <button onclick="fillDemo()">הדבק (דמו: JPN-26)</button>
+                הקישור אצלך בלוח? <button onclick="fillDemo()">הדבק (דמו)</button>
               </div>
 
               <div class="preview" id="preview">
@@ -1409,7 +1408,7 @@
             <div class="land-cta">
               <button
                 class="gbtn"
-                onclick="toast('🎒', 'מתחבר עם Google → מסך ההרשאות (טאב ״הצטרפות · קוד״)')"
+                onclick="toast('🎒', 'מתחבר עם Google → מסך ההרשאות (טאב ״הצטרפות · הדבקה״)')"
               >
                 <span class="gd"></span> המשך עם Google
               </button>
@@ -1516,9 +1515,9 @@
                   <span class="role mem">משתתף</span>
                 </div>
               </div>
-              <div class="invite-box" onclick="toast('📋', 'הקוד הועתק · שתף בוואטסאפ הקבוצה')">
-                <span class="code">JPN-26</span>
-                <span class="lbl2">קוד הזמנה · הקש להעתקה ושיתוף</span>
+              <div class="invite-box" onclick="toast('📋', 'הקישור הועתק · שתף בקבוצת הוואטסאפ')">
+                <span class="code" dir="ltr">wpnt.app/j/x7Kq2</span>
+                <span class="lbl2">קישור הזמנה · הקש להעתקה ושיתוף</span>
                 <span class="cp">📋</span>
               </div>
 
@@ -1640,23 +1639,17 @@
         toastTimer = setTimeout(() => t.classList.remove('show'), 2600);
       }
 
-      // join-code cells: auto-advance + reveal preview when full
-      const cells = () => Array.from(document.querySelectorAll('.code-cell'));
-      function cell(el, i) {
-        el.value = el.value.toUpperCase();
-        el.classList.toggle('filled', !!el.value);
-        const cs = cells();
-        if (el.value && i < 5) cs[i + 1].focus();
-        if (cs.every((c) => c.value)) document.getElementById('preview').classList.add('show');
+      // paste-a-link: reveal the trip preview once a valid invite URL is in
+      function linkChanged(el) {
+        if (/wpnt\.app\/j\/\w+/.test(el.value)) {
+          document.getElementById('preview').classList.add('show');
+        }
       }
       function fillDemo() {
-        const demo = ['J', 'P', 'N', '-', '2', '6'];
-        cells().forEach((c, i) => {
-          c.value = demo[i];
-          c.classList.add('filled');
-        });
+        const el = document.getElementById('linkInput');
+        el.value = 'wpnt.app/j/x7Kq2';
         document.getElementById('preview').classList.add('show');
-        toast('🔑', 'הקוד הודבק · מצאנו את הטיול');
+        toast('🔗', 'הקישור זוהה · מצאנו את הטיול');
       }
     </script>
   </body>

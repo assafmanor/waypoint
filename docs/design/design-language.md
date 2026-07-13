@@ -186,7 +186,7 @@ Rules that follow from this:
 
 Subtle fades on view change; pulsing "live" blip; countdown/clock tick. Respects `prefers-reduced-motion` (all animation disabled).
 
-The plan→trip switch is the product's most meaningful moment — design it: the paper chrome dims, the board "powers on" (glow fades in, clock starts). Keep it under ~800ms, fully disabled under `prefers-reduced-motion`.
+The plan→trip switch is the product's most meaningful moment — design it: the paper chrome dims, the board "powers on" (glow fades in, clock starts). Keep it under ~800ms, fully disabled under `prefers-reduced-motion`. The board power-on is implemented (`screens.css`: `board-power`/`board-glow`, plays when the board appears in Trip mode) and mirrors the zero-state's dormant board — one surface, off → on.
 
 ## Accessibility: non-color redundancy
 

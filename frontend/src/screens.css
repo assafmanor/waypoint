@@ -18,6 +18,26 @@
   background: radial-gradient(90% 60% at 85% 0%, rgba(233, 166, 60, 0.16), transparent 60%);
   pointer-events: none;
 }
+/* The board "powers on" when the trip surface appears — the same surface the
+   zero-state renders dormant (design-language: motion & designed transitions).
+   Dim-to-lit plus the glow fading in, under 800ms; the global
+   prefers-reduced-motion rule disables it. */
+@keyframes board-power {
+  from {
+    filter: brightness(0.55) saturate(0.55);
+  }
+}
+@keyframes board-glow {
+  from {
+    opacity: 0;
+  }
+}
+.app[data-mode='trip'] .board {
+  animation: board-power 0.65s ease-out;
+}
+.app[data-mode='trip'] .board::before {
+  animation: board-glow 0.65s ease-out;
+}
 .board-top {
   display: flex;
   justify-content: space-between;
