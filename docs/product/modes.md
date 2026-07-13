@@ -27,6 +27,16 @@ An edit's **tier is decided by its blast radius, not by mode**; mode decides _ho
 
 Two deliberate distinctions: **Skip** (Tier 1, reversible — parks to the shelf) vs. **Delete** (Tier 2, destroys); **Schedule-from-shelf** (Tier 1) vs. **build-the-shelf / research** (Tier 3). Hard-event edits in any tier route through the ADR-0011 confirmation gate.
 
+### Day-scope: past and future days (ADR-0029)
+
+Day navigation (the day-strip) is mode-agnostic, so the tiers above aren't the whole story — which **day** you're viewing gates things too, in Trip mode only:
+
+- **Past day:** create/edit/delete/move are locked (no rewriting history); Done/Skip/Navigate stay available (retroactive cleanup is legitimate). The day view carries a visual "you're looking at history" signal.
+- **Future day:** everything from the tiers above still works **except Do-it-now**, which only makes sense for today.
+- **Today:** unchanged — the full Tier-1/Tier-2 surface.
+
+Plan mode has no past/future distinction; it's the building surface regardless of which day is shown.
+
 ### The on-the-ground day view (ADR-0027)
 
 Trip mode's Day-by-day derives a **lifecycle phase** for every event from the real clock (ADR-0026) — never auto-writing status. Past events read as _handled_ without a stored mutation: a departed flight settles as **Passed**; a missed soft plan on today **Slips** to the top ("Slipped — still on?" → **Do it now** / Skip / Pick a time); earlier days' un-acted softs are greyed history. The **shelf is a parking lot**: Skip parks a soft event back onto it (durable, reversible), Schedule places it onto a day, consumed ideas simply stop rendering.
