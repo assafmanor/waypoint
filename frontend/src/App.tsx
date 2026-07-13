@@ -28,7 +28,7 @@ import {
   type TabId,
 } from './constants';
 import { daysUntilStart, type Mode } from './lib/mode';
-import { addDays } from './lib/time';
+import { addDays, monthLabelFor } from './lib/time';
 import { t } from './i18n/he';
 import './App.css';
 import './screens.css';
@@ -118,12 +118,16 @@ function Header({
     weekday: 'narrow',
     timeZone: trip.timezone,
   });
+  let prevDate: string | undefined;
   const days = Array.from({ length: total }, (_, i) => {
     const date = addDays(trip.startDate, i);
+    const monthLabel = monthLabelFor(date, prevDate);
+    prevDate = date;
     return {
       date,
       dayOfMonth: date.slice(8),
       letter: weekdayLetter.format(new Date(`${date}T00:00:00Z`)),
+      monthLabel,
     };
   });
   return (
@@ -189,18 +193,20 @@ function Header({
       )}
       <div className="day-strip">
         {days.map((d) => (
-          <button
-            key={d.date}
-            className={
-              'day-pill' + (d.date === activeDate ? ' on' : d.date < activeDate ? ' past' : '')
-            }
-            onClick={() => onSelectDay(d.date)}
-          >
-            {d.letter}
-            <span className="n" dir="ltr">
-              {d.dayOfMonth}
-            </span>
-          </button>
+          <div key={d.date} className="day-pill-wrap">
+            {d.monthLabel && <span className="month-label">{d.monthLabel}</span>}
+            <button
+              className={
+                'day-pill' + (d.date === activeDate ? ' on' : d.date < activeDate ? ' past' : '')
+              }
+              onClick={() => onSelectDay(d.date)}
+            >
+              {d.letter}
+              <span className="n" dir="ltr">
+                {d.dayOfMonth}
+              </span>
+            </button>
+          </div>
         ))}
       </div>
     </header>
