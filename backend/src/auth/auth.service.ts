@@ -1,6 +1,7 @@
 import { Injectable, UnauthorizedException } from '@nestjs/common';
 import type { Me } from '@waypoint/shared';
 import { decryptAtRest, encryptAtRest } from '../common/crypto.util';
+import { requireEnv, TOKEN_ENCRYPTION_KEY } from '../common/env';
 import { PrismaService } from '../prisma/prisma.service';
 import { toMembershipDto } from '../trips/trips.mapper';
 import {
@@ -15,13 +16,6 @@ import {
 import { generateRefreshToken, hashRefreshToken, signAccessToken } from './token.util';
 
 const SESSION_TTL_MS = 30 * 24 * 60 * 60 * 1000;
-const TOKEN_ENCRYPTION_ENV = 'TOKEN_ENCRYPTION_KEY';
-
-function tokenEncryptionKey(): string {
-  const key = process.env.TOKEN_ENCRYPTION_ENV;
-  if (!key) throw new Error(`${TOKEN_ENCRYPTION_ENV} not configured`);
-  return key;
-}
 
 export interface OAuthTransaction {
   url: string;
@@ -66,7 +60,7 @@ export class AuthService {
 
     const scopes = tokens.scope.split(' ').filter(Boolean);
     const refreshTokenEnc = tokens.refresh_token
-      ? encryptAtRest(tokens.refresh_token, tokenEncryptionKey(), TOKEN_ENCRYPTION_ENV)
+      ? encryptAtRest(tokens.refresh_token, requireEnv(TOKEN_ENCRYPTION_KEY), TOKEN_ENCRYPTION_KEY)
       : null;
 
     const user = await this.prisma.user.upsert({
@@ -130,8 +124,8 @@ export class AuthService {
     if (identity?.refreshTokenEnc) {
       const rawGoogleToken = decryptAtRest(
         identity.refreshTokenEnc,
-        tokenEncryptionKey(),
-        TOKEN_ENCRYPTION_ENV,
+        requireEnv(TOKEN_ENCRYPTION_KEY),
+        TOKEN_ENCRYPTION_KEY,
       );
       await revokeGoogleToken(rawGoogleToken);
       await this.prisma.authIdentity.update({

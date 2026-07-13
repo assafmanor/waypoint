@@ -3,6 +3,7 @@ import { randomUUID } from 'node:crypto';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { UnauthorizedException } from '@nestjs/common';
 import { decryptAtRest } from '../common/crypto.util';
+import { requireEnv, TOKEN_ENCRYPTION_KEY } from '../common/env';
 import { PrismaService } from '../prisma/prisma.service';
 import { AuthService } from './auth.service';
 import * as googleClient from './google-oauth.client';
@@ -60,8 +61,8 @@ describe('AuthService', () => {
       where: { provider_providerAccountId: { provider: 'google', providerAccountId: sub } },
     });
     expect(identity.scopes).toEqual(['openid', 'email', 'profile']);
-    const tokenKey = process.env.TOKEN_ENCRYPTION_KEY!;
-    expect(decryptAtRest(identity.refreshTokenEnc!, tokenKey, 'TOKEN_ENCRYPTION_KEY')).toBe(
+    const tokenKey = requireEnv(TOKEN_ENCRYPTION_KEY);
+    expect(decryptAtRest(identity.refreshTokenEnc!, tokenKey, TOKEN_ENCRYPTION_KEY)).toBe(
       'g-refresh-token',
     );
 

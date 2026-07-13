@@ -1,5 +1,6 @@
 import { CanActivate, ExecutionContext, Injectable, UnauthorizedException } from '@nestjs/common';
 import { Reflector } from '@nestjs/core';
+import { DEV_AUTH } from '../common/env';
 import type { Principal } from './principal';
 import { IS_PUBLIC_KEY } from './public.decorator';
 import { verifyAccessToken } from './token.util';
@@ -28,15 +29,19 @@ export class JwtAuthGuard implements CanActivate {
 
     const req = context.switchToHttp().getRequest<RequestWithUser>();
 
-    if (process.env.DEV_AUTH === '1') {
-      req.user = DEV_PRINCIPAL;
-      return true;
-    }
-
+    // A real Bearer token always wins over the dev stub — DEV_AUTH is only a
+    // fallback for requests that don't present one at all.
     const auth = req.headers.authorization;
     const header = Array.isArray(auth) ? auth[0] : auth;
     const token = header?.startsWith('Bearer ') ? header.slice('Bearer '.length) : undefined;
-    if (!token) throw new UnauthorizedException('Missing access token');
+
+    if (!token) {
+      if (process.env[DEV_AUTH] === '1') {
+        req.user = DEV_PRINCIPAL;
+        return true;
+      }
+      throw new UnauthorizedException('Missing access token');
+    }
 
     const payload = verifyAccessToken(token);
     if (!payload) throw new UnauthorizedException('Invalid or expired access token');

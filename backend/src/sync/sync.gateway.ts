@@ -7,6 +7,7 @@ import { parseCookieHeader } from '../auth/cookies.util';
 import { DEV_PRINCIPAL } from '../auth/jwt-auth.guard';
 import type { Principal } from '../auth/principal';
 import { hashRefreshToken } from '../auth/token.util';
+import { DEV_AUTH } from '../common/env';
 import { PrismaService } from '../prisma/prisma.service';
 
 const REFRESH_COOKIE = 'wp_refresh';
@@ -69,10 +70,10 @@ export class SyncGateway {
    *  refresh cookie the upgrade request carries automatically (ADR-0020) —
    *  not the Bearer access JWT the plain HTTP routes use. */
   private async authenticate(req: IncomingMessage): Promise<Principal | null> {
-    if (process.env.DEV_AUTH === '1') return DEV_PRINCIPAL;
-
     const refreshToken = parseCookieHeader(req.headers.cookie)[REFRESH_COOKIE];
-    if (!refreshToken) return null;
+    if (!refreshToken) {
+      return process.env[DEV_AUTH] === '1' ? DEV_PRINCIPAL : null;
+    }
 
     const session = await this.prisma.session.findUnique({
       where: { refreshTokenHash: hashRefreshToken(refreshToken) },

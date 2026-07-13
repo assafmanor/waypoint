@@ -1,4 +1,5 @@
 import { createHash, createHmac, randomBytes, timingSafeEqual } from 'node:crypto';
+import { JWT_SECRET, requireEnv } from '../common/env';
 
 // Hand-rolled HS256 JWT (header.payload.signature, base64url + HMAC-SHA256) — same
 // technique trips.service.ts already uses for invite tokens, just with a JWT shape
@@ -11,14 +12,8 @@ export interface AccessTokenPayload {
   email: string;
 }
 
-function jwtSecret(): string {
-  const secret = process.env.JWT_SECRET;
-  if (!secret) throw new Error('JWT_SECRET not configured');
-  return secret;
-}
-
 function sign(data: string): string {
-  return createHmac('sha256', jwtSecret()).update(data).digest('base64url');
+  return createHmac('sha256', requireEnv(JWT_SECRET)).update(data).digest('base64url');
 }
 
 export function signAccessToken(payload: AccessTokenPayload): string {

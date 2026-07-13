@@ -1,4 +1,10 @@
 import { createHash, randomBytes } from 'node:crypto';
+import {
+  GOOGLE_CLIENT_ID,
+  GOOGLE_CLIENT_SECRET,
+  GOOGLE_OAUTH_REDIRECT_URI,
+  requireEnv,
+} from '../common/env';
 
 // Thin wrapper over Google's OAuth/OpenID endpoints — plain `fetch`, no
 // `googleapis`/`google-auth-library` dependency needed for sign-in + one-way
@@ -25,12 +31,6 @@ export interface GoogleUserinfo {
   name?: string;
 }
 
-function env(name: string): string {
-  const value = process.env[name];
-  if (!value) throw new Error(`${name} not configured`);
-  return value;
-}
-
 export function generatePkceVerifier(): string {
   return randomBytes(32).toString('base64url');
 }
@@ -49,8 +49,8 @@ export function buildGoogleAuthUrl(opts: {
   forceConsent: boolean;
 }): string {
   const params = new URLSearchParams({
-    client_id: env('GOOGLE_CLIENT_ID'),
-    redirect_uri: env('GOOGLE_OAUTH_REDIRECT_URI'),
+    client_id: requireEnv(GOOGLE_CLIENT_ID),
+    redirect_uri: requireEnv(GOOGLE_OAUTH_REDIRECT_URI),
     response_type: 'code',
     scope: SIGN_IN_SCOPES,
     access_type: 'offline',
@@ -72,12 +72,12 @@ export async function exchangeGoogleCode(
     method: 'POST',
     headers: { 'content-type': 'application/x-www-form-urlencoded' },
     body: new URLSearchParams({
-      client_id: env('GOOGLE_CLIENT_ID'),
-      client_secret: env('GOOGLE_CLIENT_SECRET'),
+      client_id: requireEnv(GOOGLE_CLIENT_ID),
+      client_secret: requireEnv(GOOGLE_CLIENT_SECRET),
       code,
       code_verifier: codeVerifier,
       grant_type: 'authorization_code',
-      redirect_uri: env('GOOGLE_OAUTH_REDIRECT_URI'),
+      redirect_uri: requireEnv(GOOGLE_OAUTH_REDIRECT_URI),
     }),
   });
   if (!res.ok) throw new Error(`Google token exchange failed: ${res.status} ${await res.text()}`);
