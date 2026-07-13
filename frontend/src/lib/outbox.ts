@@ -10,6 +10,7 @@ import type {
 } from '@waypoint/shared';
 import { db } from '../db';
 import {
+  ApiError,
   consumeMaybeItem,
   createEvent,
   deleteEvent,
@@ -114,16 +115,33 @@ async function runOp(tripId: string, op: OutboxOp): Promise<void> {
   }
 }
 
-/** Flushes queued mutations for a trip in FIFO order. A hard error halts the
- *  flush and leaves the remaining queue (including the failed entry) in place
- *  — the caller retries the whole flush later rather than skipping ahead and
- *  breaking ordering. A duplicate re-POST of a `create` is idempotent (the
- *  backend treats the client-generated id's unique-constraint hit as already
- *  applied — ADR-0018) so it needs no special handling here. */
+/** Flushes queued mutations for a trip in FIFO order. A transient/server error
+ *  (network failure, 5xx) halts the flush and leaves the remaining queue
+ *  (including the failed entry) in place — the caller retries the whole flush
+ *  later rather than skipping ahead and breaking ordering. A duplicate re-POST
+ *  of a `create` is idempotent (the backend treats the client-generated id's
+ *  unique-constraint hit as already applied — ADR-0018) so it needs no special
+ *  handling here.
+ *
+ *  A 4xx rejection (e.g. MOVE_INTO_PAST — the target time was valid when
+ *  queued offline but has since passed) can never succeed on retry: waiting
+ *  longer only makes it more stale. Halting on it would wedge the whole queue
+ *  forever behind an unfixable entry, so it's dropped instead and the flush
+ *  continues (sync-and-offline.md "Conflicts on flush ... anything surprising
+ *  is undoable"). */
 export async function flushOutbox(tripId: string): Promise<void> {
   const entries = await db.outbox.where('tripId').equals(tripId).sortBy('seq');
   for (const entry of entries) {
-    await runOp(tripId, entry.op);
+    try {
+      await runOp(tripId, entry.op);
+    } catch (err) {
+      if (err instanceof ApiError && err.status >= 400 && err.status < 500) {
+        await db.outbox.delete(entry.seq!);
+        setPendingCount(pendingCount - 1);
+        continue;
+      }
+      throw err;
+    }
     await db.outbox.delete(entry.seq!);
     setPendingCount(pendingCount - 1);
   }
