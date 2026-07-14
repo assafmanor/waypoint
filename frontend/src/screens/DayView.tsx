@@ -32,6 +32,12 @@ export function DayView() {
   const dayEvents = events
     .filter((e) => e.date === activeDate && e.status !== EVENT_STATUS.SKIPPED)
     .sort(byStart);
+  // ADR-0027 — the shelf is a parking lot: a skipped soft event parks here
+  // (durable, reversible) instead of just vanishing. Scoped to the day it was
+  // skipped on, alongside the unplaced maybe ideas.
+  const skippedToday = events.filter(
+    (e) => e.date === activeDate && e.kind === EVENT_KIND.SOFT && e.status === EVENT_STATUS.SKIPPED,
+  );
 
   const dayNumber = daysBetween(trip.startDate, activeDate) + 1;
   const weekday = new Intl.DateTimeFormat('he-IL', {
@@ -97,6 +103,22 @@ export function DayView() {
           .map((m) => (
             <MaybeCard key={m.id} item={m} onSchedule={() => verbs.schedule(m)} />
           ))}
+        {/* Skipped soft events park here, restorable (ADR-0027 parking lot). */}
+        {skippedToday.map((e) => (
+          <button
+            key={e.id}
+            className="maybe skipped-card"
+            onClick={() => verbs.restore(e)}
+            title={t.day.skippedTag}
+          >
+            <span className="mi">{e.icon}</span>
+            <span className="mt">{e.title}</span>
+            <span className="mm">{t.day.skippedTag}</span>
+            <span className="add">
+              {ICONS.restore} {t.actions.restore}
+            </span>
+          </button>
+        ))}
       </div>
     </>
   );

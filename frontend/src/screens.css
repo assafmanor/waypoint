@@ -1505,3 +1505,92 @@
   border-color: var(--plan);
   box-shadow: 0 0 0 2px var(--plan-tint);
 }
+
+/* Gap-fill chooser (#21): pick a shelf idea to drop into a builder gap, or
+   start a fresh event. Rendered inside the neutral Sheet. */
+.gapfill-list {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  margin: 4px 0 12px;
+  max-height: 320px;
+  overflow-y: auto;
+}
+.gapfill-row {
+  display: flex;
+  align-items: center;
+  gap: 11px;
+  width: 100%;
+  text-align: start;
+  font: inherit;
+  color: var(--ink);
+  background: var(--card);
+  border: 1px solid var(--line);
+  border-radius: 12px;
+  padding: 10px 12px;
+  cursor: pointer;
+}
+.gapfill-row:hover {
+  border-color: var(--plan);
+  background: var(--plan-tint);
+}
+.gapfill-row:focus-visible {
+  outline: 2.5px solid var(--plan);
+  outline-offset: 2px;
+}
+.gapfill-ic {
+  font-size: 18px;
+  flex: 0 0 auto;
+}
+.gapfill-main {
+  flex: 1;
+  min-width: 0;
+}
+.gapfill-t {
+  display: block;
+  font-weight: 700;
+  font-size: 14px;
+}
+.gapfill-m {
+  display: block;
+  font-size: 11.5px;
+  color: var(--muted);
+  margin-top: 2px;
+}
+.gapfill-add {
+  flex: 0 0 auto;
+  font-weight: 700;
+  font-size: 16px;
+  color: var(--plan-deep);
+}
+.gapfill-empty {
+  color: var(--muted);
+  font-size: 13px;
+  text-align: center;
+  padding: 14px 8px;
+}
+.gapfill-new {
+  width: 100%;
+  font: inherit;
+  font-size: 13.5px;
+  font-weight: 700;
+  color: #fff;
+  background: var(--plan);
+  border: 0;
+  border-radius: 12px;
+  padding: 12px;
+  cursor: pointer;
+}
+.gapfill-new:hover {
+  background: var(--plan-deep);
+}
+.gapfill-new:focus-visible {
+  outline: 2.5px solid var(--plan);
+  outline-offset: 2px;
+}
+
+/* A skipped soft event parked on the shelf (ADR-0027): same card as an idea,
+   but its action is restore (neutral, not the violet "schedule" action). */
+.maybe.skipped-card .add {
+  color: var(--muted);
+}

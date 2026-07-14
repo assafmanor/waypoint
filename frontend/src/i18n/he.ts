@@ -222,6 +222,7 @@ export const t = {
       `יום ${day} · ${weekday} · ${destination}`,
     maybeShelf: 'מדף האולי',
     tapToSchedule: 'הקשה משבצת ליום',
+    skippedTag: 'דילגת · הקש להחזרה',
   },
   // Plan-mode Day-by-day — the itinerary builder (screens/PlanDay.tsx).
   planDay: {
@@ -231,6 +232,8 @@ export const t = {
     moveLater: 'אחר',
     drag: 'גרור לסידור',
     pinned: 'אירוע קשיח · מעוגן בזמן',
+    gapFillTitle: (start: string, end: string) => `מילוי הפער · ${start}–${end}`,
+    gapFillEmpty: 'אין רעיונות במדף · הוסף אירוע חדש',
     addIdea: 'הוסף רעיון למדף',
     addIdeaPlaceholder: 'רעיון חדש למדף…',
     removeIdea: 'הסר רעיון',
