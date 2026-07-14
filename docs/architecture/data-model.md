@@ -102,7 +102,7 @@ Idempotency map for one-way calendar push (ADR-0003) — per member, per event.
 Sensitive files (passports, insurance).
 
 - `id`, `tripId`, `type` (`passport` | `insurance` | `visa` | `other`), `title`
-- `fileRef` (server-side-encrypted blob, ADR-0015), `mimeType`, `sizeBytes`, `ownerUserId?` (null = group doc)
+- `fileRef` (server-side-encrypted blob, ADR-0015 — trust model in ADR-0034), `mimeType`, `sizeBytes`, `ownerUserId?` (null = group doc)
 - `createdAt`, `updatedAt`, `updatedBy`
 
 ### MaybeItem
