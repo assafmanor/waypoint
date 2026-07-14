@@ -40,7 +40,8 @@
 | PATCH  | `/trips/:tripId`                 | partial trip → `Trip`                                                                                                                       |
 | POST   | `/trips/:tripId/invite`          | → `{ inviteUrl }` (frontend `/join/:token` shell route, ADR-0024 — not the API's own `/trips/join/:token`)                                  |
 | GET    | `/invites/:token`                | **public** → `{ tripName, destination, startDate, endDate, memberCount }` (join preview, ADR-0024; validates the HMAC token, no membership) |
-| POST   | `/trips/join/:token`             | → `Membership` (adds caller as peer; idempotent, keeps existing role on rejoin)                                                             |
+| POST   | `/trips/join/:token`             | `joinTripSchema` (`{ calendarSyncEnabled? }`) → `Membership` (peer join; idempotent; rejoin re-applies the flag)                            |
+| PATCH  | `/trips/:tripId/members/me`      | `updateMembershipPrefsSchema` (`{ calendarSyncEnabled }`) → `Membership` (caller's own row only, ADR-0005)                                  |
 | DELETE | `/trips/:tripId/members/:userId` | → `204` (self = leave, anyone; others = admin-only, ADR-0005)                                                                               |
 
 ## Events

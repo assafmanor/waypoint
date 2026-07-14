@@ -29,7 +29,7 @@ Concretely:
 
 4. **Trip creation is one form, not a wizard** — the fields of `createTripSchema`. On submit you become `admin` (ADR-0005), land _in the new trip_ (which is in Plan mode, being future-dated), and are prompted to invite.
 
-5. **Join is a confirm with a minimal preview.** A new **public** `GET /invites/:token` (unguarded, validates the HMAC token) returns just enough to show _which_ trip — `{ tripName, destination, startDate, endDate, memberCount }` — before you commit. Joining is one tap from there.
+5. **Join is a confirm with a minimal preview.** A new **public** `GET /invites/:token` (unguarded, validates the HMAC token) returns just enough to show _which_ trip — `{ tripName, destination, startDate, endDate, memberCount }` — before you commit. The preview always renders first, regardless of auth state. From there it's **one meaningful tap**: a signed-in visitor taps **Join**; a signed-out visitor taps **Continue with Google** — and because that tap happens _on the preview_, it **is** the confirm, so the join **auto-completes on return** from sign-in rather than demanding a second tap. (Consent/settings are not collected here — joining is one tap; per-member preferences like calendar sync are set later in trip settings. T-042/T-044.)
 
 6. **The switcher is a header sheet**, not a dashboard: the active trip's name in the header opens a list of your trips (each with a now/soon/past chip) plus Create and Join. Selecting one sets active-trip state (localStorage, per-device, ADR-0021) and navigates.
 
@@ -48,6 +48,6 @@ Concretely:
 ## Alternatives considered
 
 - **A full "trips dashboard" as the home.** Rejected: it makes multi-trip the centerpiece and pulls the product toward a planner/organizer. ADR-0021 already chose "minimal list + switch"; the sheet honors that.
-- **Auto-join on invite tap (no confirm/preview).** Rejected: joining a shared object blind is bad, and preserving the token through the auth gate already forces a post-login landing where a one-tap confirm costs nothing.
+- **Auto-join on invite tap, with no preview shown.** Rejected: joining a shared object blind is bad. Note this is _not_ the same as auto-completing the join after sign-in (point 5) — there the preview was shown and the "Continue with Google" tap on it was the explicit confirm, so finishing the join on return isn't blind. What's rejected is joining with no preview/action at all.
 - **A multi-step creation wizard.** Rejected as planner-creep; one form matches the thin-shell principle and the small `createTripSchema`.
 - **Making the switcher and settings full routes/tabs.** Rejected: more destinations for a phone-first shell, and a settings _tab_ would violate ADR-0004 ("the trip is the only surface").

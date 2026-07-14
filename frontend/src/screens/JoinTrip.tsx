@@ -1,0 +1,223 @@
+// /join/:token — invite preview + confirm (app-shell.md §4, ADR-0024).
+// Design: mockups/screens-v1.html #s-linkjoin — dark departure-board chrome
+// with an amber anticipation glow and a boarding-pass "ticket" preview card
+// (perforation, countdown-to-departure, playful anonymous avatars). The
+// public preview API returns only { tripName, destination, dates, memberCount }
+// (no member names), so the avatars are generic 🙂 placeholders, not real
+// people — matching the mockup's intent.
+//
+// One tap to join, no settings step (Assaf, 2026-07-14): calendarSyncEnabled
+// stays the Prisma default (off); it's configurable later in trip settings
+// (T-044), not asked for here.
+//
+// The preview renders first regardless of auth state, no eager redirect
+// (AuthGate in App.tsx carries an explicit exception for this route). For an
+// anonymous visitor the CTA reads "Continue with Google": tapping it saves
+// this path as the deep-link intent and starts OAuth; AuthGate resumes here
+// afterwards, CTA now reading "Join" — still one explicit tap, not automatic.
+//
+// "Already a member" isn't pre-detected — GET /invites/:token returns no
+// tripId to match against memberships. POST /trips/join/:token is idempotent
+// (rejoin keeps the role, api-contract.md), so Join lands an existing member
+// straight into the trip too.
+import { useCallback, useEffect, useState } from 'react';
+import { useNavigate, useParams } from 'react-router-dom';
+import type { InvitePreview } from '@waypoint/shared';
+import { useAuth } from '../state/auth-state';
+import { useActiveTripId } from '../state/active-trip-id';
+import { useIsOffline } from '../lib/outbox';
+import { getNow } from '../lib/useClock';
+import { ApiError, fetchInvitePreview, joinTrip } from '../lib/api';
+import { consumeJoinIntent, saveIntent, saveJoinIntent } from '../lib/intent';
+import { DOT_SEPARATOR, MS_PER_DAY } from '../constants';
+import { t } from '../i18n/he';
+
+type LoadState =
+  | { status: 'loading' }
+  | { status: 'invalid' }
+  | { status: 'offline' }
+  | { status: 'ready'; preview: InvitePreview };
+
+// Playful placeholder avatar colors (mockup #s-linkjoin) — the public preview
+// has no real members, so these are anonymous stand-ins.
+const AVATAR_COLORS = ['#5ec5b6', '#e88c8c', '#9c8ce8', '#8cb6e8'];
+const MAX_AVATARS = 4;
+
+const ddmm = (iso: string) => `${iso.slice(8, 10)}.${iso.slice(5, 7)}`;
+
+export function JoinTrip() {
+  const { token = '' } = useParams();
+  const navigate = useNavigate();
+  const { status: authStatus, login } = useAuth();
+  const { setTripId } = useActiveTripId();
+  const offline = useIsOffline();
+
+  const [load, setLoad] = useState<LoadState>({ status: 'loading' });
+  const [joining, setJoining] = useState(false);
+  const [joinError, setJoinError] = useState(false);
+
+  useEffect(() => {
+    let cancelled = false;
+    fetchInvitePreview(token).then(
+      (preview) => {
+        if (!cancelled) setLoad({ status: 'ready', preview });
+      },
+      (err) => {
+        if (!cancelled) setLoad({ status: err instanceof ApiError ? 'invalid' : 'offline' });
+      },
+    );
+    return () => {
+      cancelled = true;
+    };
+  }, [token]);
+
+  const doJoin = useCallback(async () => {
+    setJoining(true);
+    setJoinError(false);
+    try {
+      const membership = await joinTrip(token);
+      setTripId(membership.tripId);
+      navigate('/');
+    } catch {
+      setJoinError(true);
+    } finally {
+      setJoining(false);
+    }
+  }, [token, setTripId, navigate]);
+
+  // Auto-complete the join when we return here authed *and* the pending-join
+  // flag is set — i.e. the user reached login by tapping "Continue with Google"
+  // on this preview, so the confirm already happened (ADR-0024). A fresh authed
+  // visit (no flag) still shows the Join button. Gated on preview-ready so a
+  // join failure falls back to the normal preview + retry state.
+  useEffect(() => {
+    if (load.status !== 'ready' || authStatus !== 'authed') return;
+    if (consumeJoinIntent() === token) void doJoin();
+  }, [load.status, authStatus, token, doJoin]);
+
+  const onCta = () => {
+    if (authStatus !== 'authed') {
+      saveJoinIntent(token);
+      saveIntent(`/join/${token}`);
+      login();
+      return;
+    }
+    void doJoin();
+  };
+
+  return (
+    <div className="app join-land">
+      <div className="join-top">
+        <div className="join-logo">Waypoint</div>
+        <div className="g-dot" style={{ width: 20, height: 20 }} />
+      </div>
+
+      {load.status === 'loading' && <p className="join-status">{t.shell.join.loading}</p>}
+      {load.status === 'invalid' && <p className="join-status">{t.shell.join.invalid}</p>}
+      {load.status === 'offline' && <p className="join-status">{t.shell.join.offline}</p>}
+
+      {load.status === 'ready' && <Ready preview={load.preview} />}
+
+      {load.status === 'ready' && (
+        <div className="join-cta">
+          <button className="join-cta-btn" onClick={onCta} disabled={offline || joining}>
+            {authStatus === 'authed' ? (
+              t.shell.join.joinButton
+            ) : (
+              <>
+                <span className="gd" /> {t.shell.login.continueWithGoogle}
+              </>
+            )}
+          </button>
+          {/* Only the anon (Google sign-in) and offline cases carry a note —
+              an authed one-tap join needs no explaining. */}
+          {(offline || authStatus !== 'authed') && (
+            <p className="join-note">{offline ? t.shell.login.offline : t.shell.join.note}</p>
+          )}
+          {joinError && <p className="join-error">{t.shell.join.joinError}</p>}
+        </div>
+      )}
+    </div>
+  );
+}
+
+function Ready({ preview }: { preview: InvitePreview }) {
+  const daysUntilStart = Math.ceil(
+    (Date.parse(`${preview.startDate}T00:00:00Z`) - getNow()) / MS_PER_DAY,
+  );
+  const tripDays =
+    Math.round((Date.parse(preview.endDate) - Date.parse(preview.startDate)) / MS_PER_DAY) + 1;
+  const avatarCount = Math.min(preview.memberCount, MAX_AVATARS);
+
+  return (
+    <>
+      <div className="join-hero">
+        <h1>
+          {t.shell.join.heroTitle} <span className="hero-em">🎉</span>
+        </h1>
+        <p>{t.shell.join.heroBody}</p>
+      </div>
+
+      <div className="join-ticket-wrap">
+        <div className="join-ticket">
+          <div className="ticket-top">
+            <div className="ticket-head">
+              <span className="ticket-badge">✈️ {t.shell.join.ticketBadge}</span>
+              {daysUntilStart > 0 && (
+                <span className="ticket-countdown">
+                  {t.shell.join.countdownPrefix}{' '}
+                  <span className="num" dir="ltr">
+                    {daysUntilStart}
+                  </span>{' '}
+                  {t.shell.join.daysLabel}
+                </span>
+              )}
+            </div>
+            <div className="ticket-name">{preview.tripName}</div>
+            <div className="ticket-meta">
+              {preview.destination}
+              <span className="dot">{DOT_SEPARATOR}</span>
+              {/* Latin/numeric runs stay mono + dir=ltr; Hebrew never sits in
+                  mono (design-language.md §Typography). */}
+              <span className="num" dir="ltr">
+                {ddmm(preview.startDate)} – {ddmm(preview.endDate)}
+              </span>
+              {tripDays > 0 && (
+                <>
+                  <span className="dot">{DOT_SEPARATOR}</span>
+                  <span className="num" dir="ltr">
+                    {tripDays}
+                  </span>{' '}
+                  {t.shell.join.daysLabel}
+                </>
+              )}
+            </div>
+          </div>
+
+          <div className="ticket-perf">
+            <span className="notch start" />
+            <span className="notch end" />
+          </div>
+
+          <div className="ticket-bottom">
+            <div className="ticket-avatars" aria-hidden="true">
+              {Array.from({ length: avatarCount }, (_, i) => (
+                <span
+                  key={i}
+                  className="ticket-av"
+                  style={{ background: AVATAR_COLORS[i % AVATAR_COLORS.length] }}
+                >
+                  🙂
+                </span>
+              ))}
+            </div>
+            <div className="ticket-people">
+              <div className="ticket-members">{t.shell.join.members(preview.memberCount)} 👋</div>
+              <div className="ticket-sub">{t.shell.join.membersSub}</div>
+            </div>
+          </div>
+        </div>
+      </div>
+    </>
+  );
+}

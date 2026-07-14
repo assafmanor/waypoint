@@ -11,7 +11,13 @@ import {
   Req,
   UseGuards,
 } from '@nestjs/common';
-import { ApiCreatedResponse, ApiNoContentResponse, ApiOkResponse, ApiTags } from '@nestjs/swagger';
+import {
+  ApiBearerAuth,
+  ApiCreatedResponse,
+  ApiNoContentResponse,
+  ApiOkResponse,
+  ApiTags,
+} from '@nestjs/swagger';
 import {
   createEventSchema,
   eventStatusUpdateSchema,
@@ -44,6 +50,7 @@ function readConfirm(req: RequestWithBody, confirmQuery: string | undefined): bo
 }
 
 @ApiTags('events')
+@ApiBearerAuth()
 @Controller('trips/:tripId/events')
 @UseGuards(MembershipGuard)
 export class EventsController {
