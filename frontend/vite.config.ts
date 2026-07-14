@@ -23,6 +23,8 @@ export default defineConfig({
     react(),
     VitePWA({
       registerType: 'autoUpdate',
+      // Static assets outside the Vite graph that the SW should precache.
+      includeAssets: ['favicon.svg', 'apple-touch-icon.png'],
       // Without these, a rebuilt SW only takes over after all tabs of the old
       // one close — an offline reload in between would still run stale JS.
       workbox: {
@@ -41,7 +43,19 @@ export default defineConfig({
         background_color: '#E7EAEF',
         display: 'standalone',
         start_url: '/',
-        icons: [],
+        // Chrome requires a 192px and a 512px icon before it treats the app
+        // as installable — with none, "install" produces a browser shortcut
+        // that keeps the address bar instead of a standalone window.
+        icons: [
+          { src: 'pwa-192.png', sizes: '192x192', type: 'image/png' },
+          { src: 'pwa-512.png', sizes: '512x512', type: 'image/png' },
+          {
+            src: 'pwa-maskable-512.png',
+            sizes: '512x512',
+            type: 'image/png',
+            purpose: 'maskable',
+          },
+        ],
       },
     }),
   ],
