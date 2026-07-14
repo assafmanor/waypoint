@@ -58,7 +58,18 @@ export async function apiFetch(url: string, init: RequestInit = {}): Promise<Res
   return rawFetch(url, init);
 }
 
-export async function refreshAccessToken(): Promise<boolean> {
+// Shared in-flight refresh: the token rotates on each use (ADR-0020), so two
+// concurrent /auth/refresh calls race and corrupt the session. Coalesce them.
+let refreshInFlight: Promise<boolean> | null = null;
+
+export function refreshAccessToken(): Promise<boolean> {
+  refreshInFlight ??= doRefresh().finally(() => {
+    refreshInFlight = null;
+  });
+  return refreshInFlight;
+}
+
+async function doRefresh(): Promise<boolean> {
   const res = await fetch(`${API_BASE_URL}/auth/refresh`, {
     method: 'POST',
     credentials: 'include',

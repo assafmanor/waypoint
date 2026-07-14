@@ -12,6 +12,7 @@ import {
   isMoveCrossesDayError,
   isMoveIntoPastError,
   moveEvent,
+  refreshAccessToken,
   setAccessToken,
   setEventStatus,
   setOnSessionExpired,
@@ -63,6 +64,40 @@ describe('apiFetch 401 → silent refresh (ADR-0020: 15-min access JWT)', () => 
     const res = await apiFetch('/x');
     expect(res.status).toBe(401);
     expect(onExpired).toHaveBeenCalledOnce();
+  });
+});
+
+describe('refreshAccessToken coalescing (ADR-0020: rotating refresh token)', () => {
+  it('collapses concurrent calls into a single POST /auth/refresh', async () => {
+    // The token rotates on every use, so overlapping refreshes would race and
+    // corrupt the session (StrictMode double-mount, simultaneous 401 retries).
+    let resolveFetch: (r: Response) => void = () => {};
+    const fetchMock = vi.fn().mockImplementation(
+      () =>
+        new Promise<Response>((resolve) => {
+          resolveFetch = resolve;
+        }),
+    );
+    vi.stubGlobal('fetch', fetchMock);
+
+    const [a, b, c] = [refreshAccessToken(), refreshAccessToken(), refreshAccessToken()];
+    resolveFetch(new Response(JSON.stringify({ accessToken: 'tok' }), { status: 200 }));
+
+    expect(await Promise.all([a, b, c])).toEqual([true, true, true]);
+    expect(fetchMock).toHaveBeenCalledTimes(1);
+  });
+
+  it('starts a fresh request once the in-flight one settles', async () => {
+    const fetchMock = vi
+      .fn()
+      .mockImplementation(
+        async () => new Response(JSON.stringify({ accessToken: 'tok' }), { status: 200 }),
+      );
+    vi.stubGlobal('fetch', fetchMock);
+
+    await refreshAccessToken();
+    await refreshAccessToken();
+    expect(fetchMock).toHaveBeenCalledTimes(2);
   });
 });
 
