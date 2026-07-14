@@ -229,6 +229,9 @@ export const t = {
     addToDay: (day: number) => `הוסף אירוע ליום ${day}`,
     moveEarlier: 'הקדם',
     moveLater: 'אחר',
+    addIdea: 'הוסף רעיון למדף',
+    addIdeaPlaceholder: 'רעיון חדש למדף…',
+    removeIdea: 'הסר רעיון',
     gap: (label: string) => `פער של ${label} · ＋ שבץ`,
     gapMinutes: (n: number) => `${n} דק׳`,
     gapHour: 'שעה',
@@ -279,6 +282,9 @@ export const t = {
     eventUpdated: 'האירוע עודכן',
     eventDeleted: 'האירוע נמחק',
     reordered: 'הסדר עודכן',
+    scheduledDay: (title: string) => `${title} נוסף ליום`,
+    maybeAdded: 'הרעיון נוסף למדף',
+    maybeRemoved: 'הרעיון הוסר מהמדף',
   },
   ripple: {
     prompt: (movedTitle: string) => `${movedTitle} נדחה - לדחות גם את האירועים שאחריו?`,
@@ -294,6 +300,7 @@ export const t = {
   eventForm: {
     newTitle: 'אירוע חדש',
     editTitle: 'עריכת אירוע',
+    scheduleTitle: 'שיבוץ מהמדף',
     titleLabel: 'כותרת',
     titlePlaceholder: 'למשל: ארוחת ערב',
     dateLabel: 'תאריך',

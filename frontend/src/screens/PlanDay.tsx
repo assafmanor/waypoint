@@ -7,7 +7,7 @@
 // cross-day via its date field). Rows carry ▲/▼ controls that reorder by
 // swapping the neighbour's time slot (verbs.reorder → slotSwap); the list
 // stays time-ordered. Drag-to-reorder is a later nicety, not a gap.
-import { Fragment, useState } from 'react';
+import { Fragment, useState, type FormEvent } from 'react';
 import { EVENT_KIND, EVENT_STATUS, type MaybeItem, type TripEvent } from '@waypoint/shared';
 import { useTrip, byStart } from '../state/trip-state';
 import { useVerbs } from '../state/verbs';
@@ -62,6 +62,9 @@ export function PlanDay() {
   const tz = trip.timezone;
   const [formTarget, setFormTarget] = useState<'new' | TripEvent | null>(null);
   const [gapFill, setGapFill] = useState<GapDefaults | null>(null);
+  // A shelf idea being scheduled onto a day — opens EventForm in "schedule" mode
+  // so the user picks the day/time/kind (not the old hardcoded 17:30 dump).
+  const [scheduleMaybe, setScheduleMaybe] = useState<MaybeItem | null>(null);
 
   const dayEvents = events
     .filter((e) => e.date === activeDate && e.status !== EVENT_STATUS.SKIPPED)
@@ -76,6 +79,7 @@ export function PlanDay() {
   const closeForm = () => {
     setFormTarget(null);
     setGapFill(null);
+    setScheduleMaybe(null);
   };
 
   return (
@@ -145,14 +149,21 @@ export function PlanDay() {
         </div>
         <div className="shelf">
           {maybeItems.map((m) => (
-            <MaybeCard key={m.id} item={m} onSchedule={() => verbs.schedule(m)} />
+            <MaybeCard
+              key={m.id}
+              item={m}
+              onSchedule={() => setScheduleMaybe(m)}
+              onRemove={() => verbs.removeMaybe(m)}
+            />
           ))}
         </div>
+        <AddIdea onAdd={(title) => verbs.addMaybe(title)} />
       </div>
 
-      {formTarget && (
+      {(formTarget || scheduleMaybe) && (
         <EventForm
-          event={formTarget === 'new' ? null : formTarget}
+          event={formTarget && formTarget !== 'new' ? formTarget : null}
+          maybeItem={scheduleMaybe}
           defaults={gapFill ?? undefined}
           onClose={closeForm}
         />
@@ -236,21 +247,58 @@ function BuilderRow({
   );
 }
 
-function MaybeCard({ item, onSchedule }: { item: MaybeItem; onSchedule: () => void }) {
+function MaybeCard({
+  item,
+  onSchedule,
+  onRemove,
+}: {
+  item: MaybeItem;
+  onSchedule: () => void;
+  onRemove: () => void;
+}) {
   return (
-    <button
-      className={'maybe' + (item.consumed ? ' consumed' : '')}
-      onClick={onSchedule}
-      disabled={item.consumed}
-    >
-      <span className="mi">{item.icon}</span>
-      <span className="mt">{item.title}</span>
-      <span className="mm">{maybeMeta(item.id)}</span>
-      <span className="add">
-        {item.consumed
-          ? `${ICONS.done} ${t.actions.scheduled}`
-          : `${ICONS.add} ${t.actions.scheduleToDay}`}
-      </span>
-    </button>
+    <div className={'maybe' + (item.consumed ? ' consumed' : '')}>
+      {!item.consumed && (
+        <button className="maybe-remove" onClick={onRemove} aria-label={t.planDay.removeIdea}>
+          ✕
+        </button>
+      )}
+      <button className="maybe-body" onClick={onSchedule} disabled={item.consumed}>
+        <span className="mi">{item.icon}</span>
+        <span className="mt">{item.title}</span>
+        <span className="mm">{maybeMeta(item.id)}</span>
+        <span className="add">
+          {item.consumed
+            ? `${ICONS.done} ${t.actions.scheduled}`
+            : `${ICONS.add} ${t.actions.scheduleToDay}`}
+        </span>
+      </button>
+    </div>
+  );
+}
+
+// Add an idea to the shelf (Plan-mode Tier 3). Manual entry until Places
+// research (Map tab) lands; icon defaults server-agnostically in verbs.addMaybe.
+function AddIdea({ onAdd }: { onAdd: (title: string) => void }) {
+  const [title, setTitle] = useState('');
+  const submit = (e: FormEvent) => {
+    e.preventDefault();
+    const trimmed = title.trim();
+    if (!trimmed) return;
+    onAdd(trimmed);
+    setTitle('');
+  };
+  return (
+    <form className="add-idea" onSubmit={submit}>
+      <input
+        value={title}
+        onChange={(e) => setTitle(e.target.value)}
+        placeholder={t.planDay.addIdeaPlaceholder}
+        aria-label={t.planDay.addIdea}
+      />
+      <button type="submit" className="add-idea-btn" disabled={!title.trim()}>
+        {ICONS.add}
+      </button>
+    </form>
   );
 }

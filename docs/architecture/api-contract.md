@@ -70,11 +70,13 @@ There is no `Day` resource — events carry `date` (ADR-0018); the client groups
 
 ## Maybe shelf
 
-| Method | Path                                | Body → Response                                                      |
-| ------ | ----------------------------------- | -------------------------------------------------------------------- |
-| GET    | `/trips/:tripId/maybe`              | → `MaybeItem[]`                                                      |
-| POST   | `/trips/:tripId/maybe`              | `createMaybeItemSchema` (`{ title, icon?, placeId? }`) → `MaybeItem` |
-| POST   | `/trips/:tripId/maybe/:id/schedule` | `{ date, startsAt? }` → `Event` (marks item consumed)                |
+The shelf is read via the trip snapshot (`maybeItems`), not a standalone list. Scheduling an idea onto a day is done client-side — create the `Event` (`POST /events`, `source: maybe_shelf`) and mark the idea consumed — rather than a dedicated `/schedule` endpoint, so day/time/kind are chosen in the builder's event form.
+
+| Method | Path                                              | Body → Response                                                           |
+| ------ | ------------------------------------------------- | ------------------------------------------------------------------------- |
+| POST   | `/trips/:tripId/maybe-items`                      | `createMaybeItemSchema` (`{ id?, title, icon?, placeId? }`) → `MaybeItem` |
+| DELETE | `/trips/:tripId/maybe-items/:maybeItemId`         | → `204` (remove an idea)                                                  |
+| POST   | `/trips/:tripId/maybe-items/:maybeItemId/consume` | → `MaybeItem` (marks consumed when scheduled)                             |
 
 ## Documents
 

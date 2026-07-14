@@ -18,7 +18,9 @@ import { useConfirmHardEdit, type ConfirmHardEditAction } from '../ui/ConfirmDia
 import {
   consumeMaybeItem,
   createEvent,
+  createMaybeItem,
   deleteEvent,
+  deleteMaybeItem,
   isHardEventConfirmError,
   isMoveCrossesDayError,
   isMoveIntoPastError,
@@ -29,7 +31,8 @@ import {
 } from '../lib/api';
 import { enqueueOutbox, isNetworkError, isOffline, type OutboxOp } from '../lib/outbox';
 import { getNow } from '../lib/useClock';
-import { DELAY_STEP_MINUTES, DEFAULT_SCHEDULE_SLOT, ICONS } from '../constants';
+import { isoToTimeInput } from '../lib/time';
+import { DEFAULT_MAYBE_ICON, DELAY_STEP_MINUTES, DEFAULT_SCHEDULE_SLOT, ICONS } from '../constants';
 import { t } from '../i18n/he';
 import { TRIP_TZ_OFFSET, activeUserId, maybeMeta } from '../fixtures';
 
@@ -42,7 +45,9 @@ type UndoDescriptor =
   | { kind: 'rippleApply'; items: { id: string; previous: { date: string; startsAt?: string } }[] }
   | { kind: 'update'; id: string; previous: UpdateEventInput; isHard: boolean }
   | { kind: 'delete'; event: TripEvent }
-  | { kind: 'reorder'; items: { id: string; previous: UpdateEventInput; isHard: boolean }[] };
+  | { kind: 'reorder'; items: { id: string; previous: UpdateEventInput; isHard: boolean }[] }
+  | { kind: 'addMaybe'; id: string }
+  | { kind: 'removeMaybe'; item: MaybeItem };
 
 export interface VerbDeps {
   tripId: string;
@@ -374,6 +379,32 @@ export async function applyGuardedReorder(
   return true;
 }
 
+// Add/remove ideas are Plan-mode Tier-3 building actions — called online, not
+// queued through the write outbox (that only carries the day-editing verbs).
+// The client-generated id means the optimistic item already matches the server
+// row, so success needs no reconcile; a failure rolls back the optimistic state.
+export async function applyAddMaybe(deps: VerbDeps, item: MaybeItem): Promise<void> {
+  deps.dispatch({ type: 'ADD_MAYBE', item });
+  deps.lastAction.current = { kind: 'addMaybe', id: item.id };
+  try {
+    await createMaybeItem(deps.tripId, { id: item.id, title: item.title, icon: item.icon });
+  } catch (err) {
+    deps.dispatch({ type: 'UNDO' });
+    writeErrorToast(deps.toast, err);
+  }
+}
+
+export async function applyRemoveMaybe(deps: VerbDeps, item: MaybeItem): Promise<void> {
+  deps.dispatch({ type: 'REMOVE_MAYBE', id: item.id });
+  deps.lastAction.current = { kind: 'removeMaybe', item };
+  try {
+    await deleteMaybeItem(deps.tripId, item.id);
+  } catch (err) {
+    deps.dispatch({ type: 'UNDO' });
+    writeErrorToast(deps.toast, err);
+  }
+}
+
 export async function applyRippleApply(
   deps: VerbDeps,
   ripple: RippleSuggestion,
@@ -456,6 +487,16 @@ async function reverseRest(tripId: string, desc: UndoDescriptor): Promise<void> 
           ),
         ),
       );
+      return;
+    case 'addMaybe':
+      await deleteMaybeItem(tripId, desc.id);
+      return;
+    case 'removeMaybe':
+      await createMaybeItem(tripId, {
+        id: desc.item.id,
+        title: desc.item.title,
+        icon: desc.item.icon,
+      });
   }
 }
 
@@ -511,19 +552,37 @@ export function useVerbs() {
     },
     onWay: (_e: TripEvent) => toast(ICONS.share, t.toast.onWayShared),
     navigate: (_e: TripEvent) => toast(ICONS.navigate, t.toast.openingNav),
-    schedule: (m: MaybeItem) => {
+    // Place a shelf idea onto a day. With `fields` (from the builder's
+    // EventForm picker) the user chose the day/time/kind; without them it's the
+    // Trip-mode one-tap quick-schedule onto today at a default slot (Tier-1).
+    schedule: (
+      m: MaybeItem,
+      fields?: {
+        date: string;
+        title: string;
+        kind: TripEvent['kind'];
+        startsAt?: string;
+        endsAt?: string;
+        location?: string;
+      },
+    ) => {
       const now = new Date(getNow()).toISOString();
       const event: TripEvent = {
         id: crypto.randomUUID(),
         tripId: trip.id,
-        date: activeDate,
-        title: m.title,
+        date: fields?.date ?? activeDate,
+        title: fields?.title ?? m.title,
         icon: m.icon,
-        kind: EVENT_KIND.SOFT,
+        kind: fields?.kind ?? EVENT_KIND.SOFT,
         status: EVENT_STATUS.PLANNED,
-        startsAt: `${activeDate}T${DEFAULT_SCHEDULE_SLOT.START}:00${TRIP_TZ_OFFSET}`,
-        endsAt: `${activeDate}T${DEFAULT_SCHEDULE_SLOT.END}:00${TRIP_TZ_OFFSET}`,
-        location: maybeMeta(m.id),
+        startsAt: fields
+          ? fields.startsAt
+          : `${activeDate}T${DEFAULT_SCHEDULE_SLOT.START}:00${TRIP_TZ_OFFSET}`,
+        endsAt: fields
+          ? fields.endsAt
+          : `${activeDate}T${DEFAULT_SCHEDULE_SLOT.END}:00${TRIP_TZ_OFFSET}`,
+        location: fields?.location ?? maybeMeta(m.id),
+        placeId: m.placeId,
         sortOrder: 99,
         source: EVENT_SOURCE.MAYBE_SHELF,
         createdAt: now,
@@ -531,7 +590,34 @@ export function useVerbs() {
         updatedBy: activeUserId,
       };
       void applySchedule(deps, event, m.id);
-      toast(ICONS.schedule, t.toast.scheduled(m.title, DEFAULT_SCHEDULE_SLOT.START), undo);
+      const timeLabel = event.startsAt ? isoToTimeInput(event.startsAt, trip.timezone) : null;
+      toast(
+        ICONS.schedule,
+        timeLabel ? t.toast.scheduled(event.title, timeLabel) : t.toast.scheduledDay(event.title),
+        undo,
+      );
+    },
+    addMaybe: (title: string, icon?: string) => {
+      const trimmed = title.trim();
+      if (!trimmed) return;
+      const now = new Date(getNow()).toISOString();
+      const item: MaybeItem = {
+        id: crypto.randomUUID(),
+        tripId: trip.id,
+        title: trimmed,
+        icon: icon ?? DEFAULT_MAYBE_ICON,
+        createdBy: activeUserId,
+        consumed: false,
+        createdAt: now,
+        updatedAt: now,
+        updatedBy: activeUserId,
+      };
+      void applyAddMaybe(deps, item);
+      toast(ICONS.add, t.toast.maybeAdded, undo);
+    },
+    removeMaybe: (m: MaybeItem) => {
+      void applyRemoveMaybe(deps, m);
+      toast(ICONS.trash, t.toast.maybeRemoved, undo);
     },
     create: (event: TripEvent) => {
       void applyCreateEvent(deps, event);

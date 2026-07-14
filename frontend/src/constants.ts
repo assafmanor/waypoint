@@ -40,6 +40,9 @@ export const MEMBER_AVATAR_CAP = 2;
 /** Icon for a manually created event when the form doesn't collect one (T-047). */
 export const DEFAULT_EVENT_ICON = '📌';
 
+/** Icon for a manually added maybe-shelf idea (no icon picker yet). */
+export const DEFAULT_MAYBE_ICON = '💡';
+
 /** Placeholder row icon on the all-trips list (ADR-0033) — `destination` is
  *  free text, no structured country to derive a real flag from. */
 export const DEFAULT_TRIP_ICON = '🧳';

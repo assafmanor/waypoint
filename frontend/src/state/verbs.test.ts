@@ -2,14 +2,16 @@ import 'fake-indexeddb/auto';
 import { afterEach, describe, expect, it, vi } from 'vitest';
 import { EVENT_STATUS } from '@waypoint/shared';
 import { db } from '../db';
-import { EVENTS } from '../fixtures';
+import { EVENTS, MAYBE_ITEMS } from '../fixtures';
 import { initOutboxCount } from '../lib/outbox';
 import {
   applyCreateEvent,
   applyGuardedDelay,
   applyGuardedDelete,
   applyGuardedReorder,
+  applyAddMaybe,
   applyGuardedUpdate,
+  applyRemoveMaybe,
   applyReorder,
   applySchedule,
   applySetStatus,
@@ -471,5 +473,48 @@ describe('applyReorder', () => {
     const applied = await applyGuardedReorder(deps, hard, soft);
     expect(applied).toBe(false);
     expect(deps.actions).toHaveLength(0);
+  });
+});
+
+describe('applyAddMaybe / applyRemoveMaybe (shelf build/remove)', () => {
+  const item = MAYBE_ITEMS[0];
+
+  it('adds optimistically and POSTs, no rollback on success', async () => {
+    vi.stubGlobal(
+      'fetch',
+      vi.fn().mockResolvedValue(new Response(JSON.stringify(item), { status: 201 })),
+    );
+    const deps = fakeDeps();
+    await applyAddMaybe(deps, item);
+    expect(deps.actions[0]).toEqual({ type: 'ADD_MAYBE', item });
+    expect(deps.actions.some((a) => a.type === 'UNDO')).toBe(false);
+  });
+
+  it('rolls back the optimistic add and toasts on failure', async () => {
+    vi.stubGlobal('fetch', vi.fn().mockResolvedValue(new Response(null, { status: 500 })));
+    const deps = fakeDeps();
+    await applyAddMaybe(deps, item);
+    expect(deps.actions.at(-1)).toEqual({ type: 'UNDO' });
+    expect(deps.toast).toHaveBeenCalled();
+  });
+
+  it('removes optimistically and DELETEs', async () => {
+    const fetchMock = vi.fn().mockResolvedValue(new Response(null, { status: 204 }));
+    vi.stubGlobal('fetch', fetchMock);
+    const deps = fakeDeps();
+    await applyRemoveMaybe(deps, item);
+    expect(deps.actions[0]).toEqual({ type: 'REMOVE_MAYBE', id: item.id });
+    expect(fetchMock).toHaveBeenCalledWith(
+      expect.stringContaining(`/maybe-items/${item.id}`),
+      expect.objectContaining({ method: 'DELETE' }),
+    );
+  });
+
+  it('rolls back the optimistic remove on failure', async () => {
+    vi.stubGlobal('fetch', vi.fn().mockResolvedValue(new Response(null, { status: 500 })));
+    const deps = fakeDeps();
+    await applyRemoveMaybe(deps, item);
+    expect(deps.actions.at(-1)).toEqual({ type: 'UNDO' });
+    expect(deps.toast).toHaveBeenCalled();
   });
 });
