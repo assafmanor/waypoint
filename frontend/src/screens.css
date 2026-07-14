@@ -985,3 +985,179 @@
   cursor: pointer;
   padding: 2px 4px;
 }
+
+/* ============================================================
+   Plan-mode Home — the prep dashboard (screens/PlanHome.tsx).
+   modes.md; design-language "Plan-mode components". The prep hero is the one
+   loud element and it is PLAN VIOLET, never amber, and never pulses
+   (design-language: mode identity, ADR-0028). Everything else stays paper.
+   ============================================================ */
+
+/* prep hero — the single expressive surface on this screen */
+.prep {
+  background: linear-gradient(180deg, var(--plan-deep), var(--plan));
+  border-radius: 22px;
+  padding: 18px 18px 16px;
+  color: #f2effc;
+  box-shadow: 0 20px 34px -20px rgba(46, 33, 104, 0.7);
+  position: relative;
+  overflow: hidden;
+}
+.prep::before {
+  content: '';
+  position: absolute;
+  inset: 0;
+  /* soft top-corner sheen — violet, not the amber board glow */
+  background: radial-gradient(90% 60% at 85% 0%, rgba(255, 255, 255, 0.16), transparent 60%);
+  pointer-events: none;
+}
+.prep-k {
+  color: rgba(255, 255, 255, 0.72);
+  font-size: 11px;
+  font-weight: 700;
+  letter-spacing: 0.14em;
+}
+.prep-count {
+  font-family: var(--font-head);
+  font-size: 34px;
+  line-height: 1;
+  margin-top: 4px;
+  color: #fff;
+}
+.prep-count-u {
+  font-family: var(--font-body);
+  font-size: 15px;
+  font-weight: 400;
+  color: rgba(255, 255, 255, 0.8);
+}
+/* mixed Hebrew/numeric line ("5–14 ביולי · 10 ימים") — body font, never mono */
+.prep-dates {
+  color: rgba(255, 255, 255, 0.82);
+  font-size: 12.5px;
+  font-weight: 600;
+  margin-top: 5px;
+}
+.prep-dates .dot {
+  opacity: 0.55;
+  margin: 0 2px;
+}
+.prep-ready {
+  margin-top: 16px;
+}
+.prep-ready-top {
+  display: flex;
+  justify-content: space-between;
+  font-size: 12px;
+  font-weight: 600;
+  color: rgba(255, 255, 255, 0.88);
+  margin-bottom: 6px;
+}
+.prep-ready-top b {
+  font-family: var(--font-mono);
+  color: #fff;
+}
+.prep-track {
+  height: 7px;
+  background: rgba(255, 255, 255, 0.18);
+  border-radius: 6px;
+  overflow: hidden;
+}
+.prep-fill {
+  height: 100%;
+  background: linear-gradient(90deg, rgba(255, 255, 255, 0.82), #fff);
+  border-radius: 6px;
+  transition: width 0.4s ease;
+}
+
+/* completeness checklist — paper card, violet CTAs (plan action) */
+.checklist {
+  background: var(--card);
+  border: 1px solid var(--line);
+  border-radius: 14px;
+  overflow: hidden;
+}
+.chk-row {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  padding: 13px 14px;
+  border-bottom: 1px solid var(--line);
+}
+.chk-row:last-child {
+  border-bottom: 0;
+}
+.chk-ic {
+  width: 34px;
+  height: 34px;
+  border-radius: 10px;
+  display: grid;
+  place-items: center;
+  font-size: 17px;
+  flex: 0 0 auto;
+  background: var(--paper);
+}
+.chk-main {
+  flex: 1;
+  min-width: 0;
+}
+.chk-t {
+  font-weight: 700;
+  font-size: 14px;
+}
+.chk-m {
+  font-size: 11.5px;
+  color: var(--muted);
+  margin-top: 2px;
+}
+.chk-ok {
+  flex: 0 0 auto;
+  font-size: 12px;
+  font-weight: 700;
+  color: var(--ok);
+}
+.chk-cta {
+  flex: 0 0 auto;
+  font: inherit;
+  font-size: 11.5px;
+  font-weight: 700;
+  border: 1px solid var(--plan);
+  color: var(--plan-deep);
+  background: var(--card);
+  border-radius: 8px;
+  padding: 6px 12px;
+  cursor: pointer;
+  transition: 0.12s;
+}
+.chk-cta:hover {
+  background: var(--plan);
+  color: #fff;
+}
+.chk-cta:focus-visible {
+  outline: 2.5px solid var(--plan);
+  outline-offset: 2px;
+}
+
+/* overview stats — three quiet paper tiles; counts in mono */
+.prep-stats {
+  display: grid;
+  grid-template-columns: repeat(3, 1fr);
+  gap: 9px;
+}
+.prep-stat {
+  background: var(--card);
+  border: 1px solid var(--line);
+  border-radius: 13px;
+  padding: 12px 8px;
+  text-align: center;
+}
+.prep-stat-v {
+  font-family: var(--font-mono);
+  font-size: 21px;
+  font-weight: 700;
+}
+.prep-stat-l {
+  font-size: 10.5px;
+  color: var(--muted);
+  margin-top: 3px;
+  font-weight: 600;
+}

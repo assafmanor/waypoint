@@ -84,6 +84,29 @@ export const TRIP: Trip = {
 
 export const BOOKINGS: Booking[] = [
   {
+    id: 'bk-flight-out',
+    tripId: TRIP.id,
+    type: BOOKING_TYPE.FLIGHT,
+    title: 'ANA · TLV→HND',
+    confirmationCode: '7K2QLP',
+    provider: 'ANA',
+    source: BOOKING_SOURCE.MANUAL,
+    createdAt: NOW_ISO,
+    updatedAt: NOW_ISO,
+    updatedBy: ME,
+  },
+  {
+    id: 'bk-granbell',
+    tripId: TRIP.id,
+    type: BOOKING_TYPE.HOTEL,
+    title: 'Shinjuku Granbell',
+    confirmationCode: 'GB-2291',
+    source: BOOKING_SOURCE.MANUAL,
+    createdAt: NOW_ISO,
+    updatedAt: NOW_ISO,
+    updatedBy: ME,
+  },
+  {
     id: 'bk-ichiran',
     tripId: TRIP.id,
     type: BOOKING_TYPE.RESTAURANT,
@@ -107,7 +130,10 @@ const base = {
   updatedBy: ME,
 };
 
-export const EVENTS: TripEvent[] = [
+// Day 3 (the active demo day) — Trip-mode Home/DayView render these; their
+// now/next and countdown are pinned by time.test.ts, so keep this set and its
+// order stable (EVENTS[0] === ev-tsukiji).
+const DAY3_EVENTS: TripEvent[] = [
   {
     ...base,
     id: 'ev-tsukiji',
@@ -182,6 +208,70 @@ export const EVENTS: TripEvent[] = [
     sortOrder: 6,
   },
 ];
+
+// Events on other days, so the whole-trip Plan-mode prep dashboard reads
+// believably (a real spread of planned days with a few gaps) instead of "9 of
+// 10 days empty". Deliberately none on day 3 (07-07) and none between the
+// day-3 now/next instants the tests pin — all sit on earlier/later calendar
+// days. Days 07-10, 07-12 and 07-14 are left empty on purpose (the prep
+// dashboard's "3 ימים ללא תוכנית" row).
+const spreadBase = {
+  tripId: TRIP.id,
+  source: EVENT_SOURCE.MANUAL,
+  status: EVENT_STATUS.PLANNED,
+  createdAt: NOW_ISO,
+  updatedAt: NOW_ISO,
+  updatedBy: ME,
+} as const;
+const dayAt = (date: string, time: string) => `${date}T${time}:00${TRIP_TZ_OFFSET}`;
+const spread = (
+  id: string,
+  date: string,
+  title: string,
+  icon: string,
+  start: string,
+  end: string,
+  extra: Partial<TripEvent> = {},
+): TripEvent => ({
+  ...spreadBase,
+  id,
+  date,
+  title,
+  icon,
+  kind: EVENT_KIND.SOFT,
+  startsAt: dayAt(date, start),
+  endsAt: dayAt(date, end),
+  sortOrder: 1,
+  ...extra,
+});
+
+const SPREAD_EVENTS: TripEvent[] = [
+  // 07-05 · arrival
+  spread('ev-arrival', '2026-07-05', 'נחיתה בטוקיו · HND', '🛬', '16:40', '18:10', {
+    kind: EVENT_KIND.HARD,
+    bookingId: 'bk-flight-out',
+    location: 'שדה התעופה הנדה',
+  }),
+  spread('ev-checkin', '2026-07-05', 'צ׳ק-אין · גרנבל', '🏨', '19:30', '20:15', {
+    bookingId: 'bk-granbell',
+    sortOrder: 2,
+  }),
+  // 07-06
+  spread('ev-shibuya', '2026-07-06', 'צומת שיבויה', '🏙️', '11:00', '13:00'),
+  spread('ev-harajuku', '2026-07-06', 'הרג׳וקו · טאקשיטה', '🛍️', '15:00', '17:30', {
+    sortOrder: 2,
+  }),
+  // 07-08
+  spread('ev-teamlab', '2026-07-08', 'teamLab Planets', '🎨', '10:00', '12:30'),
+  // 07-09
+  spread('ev-fuji', '2026-07-09', 'הר פוג׳י · טיול יום', '🗻', '08:30', '18:00'),
+  // 07-11
+  spread('ev-fushimi', '2026-07-11', 'פושימי אינארי', '⛩️', '10:00', '12:30'),
+  // 07-13
+  spread('ev-arashiyama', '2026-07-13', 'יער הבמבוק ארשיאמה', '🎋', '09:30', '11:30'),
+];
+
+export const EVENTS: TripEvent[] = [...DAY3_EVENTS, ...SPREAD_EVENTS];
 
 export const MAYBE_ITEMS: MaybeItem[] = [
   {
