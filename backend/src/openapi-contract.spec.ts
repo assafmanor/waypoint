@@ -62,9 +62,12 @@ describe('OpenAPI contract: every @Body() handler documents a request body', () 
           );
 
         expect(operation, `${operationId} should be present in the OpenAPI doc`).toBeTruthy();
-        const schema = (
+        // Content-type key matches @ApiConsumes when set (e.g. multipart/form-data for
+        // file uploads) instead of the 'application/json' default — check any of them.
+        const content = (
           operation as { requestBody?: { content?: Record<string, { schema?: unknown }> } }
-        ).requestBody?.content?.['application/json']?.schema;
+        ).requestBody?.content;
+        const schema = content && Object.values(content).find((entry) => entry.schema)?.schema;
         expect(
           schema,
           `${operationId} has a @Body() param but no documented requestBody`,

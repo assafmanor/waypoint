@@ -7,6 +7,15 @@ export const GOOGLE_CLIENT_SECRET = 'GOOGLE_CLIENT_SECRET';
 export const GOOGLE_OAUTH_REDIRECT_URI = 'GOOGLE_OAUTH_REDIRECT_URI';
 export const FRONTEND_URL = 'FRONTEND_URL';
 export const DEV_AUTH = 'DEV_AUTH';
+export const DOC_ENCRYPTION_KEY = 'DOC_ENCRYPTION_KEY';
+
+// Railway Storage Bucket (S3-compatible, ADR-0031). S3_BUCKET unset → documents
+// fall back to local disk (backend/src/documents/storage.ts).
+export const S3_ENDPOINT = 'S3_ENDPOINT';
+export const S3_BUCKET = 'S3_BUCKET';
+export const S3_ACCESS_KEY_ID = 'S3_ACCESS_KEY_ID';
+export const S3_SECRET_ACCESS_KEY = 'S3_SECRET_ACCESS_KEY';
+export const S3_REGION = 'S3_REGION';
 
 /** Dev-only default for `FRONTEND_URL` (single-origin in prod, ADR-0020, so this
  *  fallback never applies there). */

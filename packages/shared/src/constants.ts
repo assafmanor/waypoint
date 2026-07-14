@@ -77,3 +77,8 @@ export const CHANGE_ACTION = {
  *  (app-shell.md §5). Validated server-side (createTripSchema) and enforced
  *  client-side (the create form's input `maxLength`). */
 export const MAX_TRIP_NAME_LENGTH = 18;
+
+/** Document upload cap (T-046) — passport/insurance/visa scans are single-page
+ *  PDFs or phone photos, never large media; the whole file is buffered in memory
+ *  for encryption, so this also bounds worst-case per-request memory use. */
+export const MAX_DOCUMENT_SIZE_BYTES = 10 * 1024 * 1024;

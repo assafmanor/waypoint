@@ -178,6 +178,11 @@ export const tripDocumentSchema = z.object({
 });
 export type TripDocument = z.infer<typeof tripDocumentSchema>;
 
+/** List response shape — omits `fileRef` so the encrypted blob reference never
+ *  leaves the server outside the guarded `/content` route. */
+export const documentSummarySchema = tripDocumentSchema.omit({ fileRef: true });
+export type DocumentSummary = z.infer<typeof documentSummarySchema>;
+
 export const maybeItemSchema = z.object({
   id: idSchema,
   tripId: idSchema,

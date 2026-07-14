@@ -5,6 +5,7 @@ import { ZodSerializerInterceptor } from 'nestjs-zod';
 import { AuthModule } from './auth/auth.module';
 import { JwtAuthGuard } from './auth/jwt-auth.guard';
 import { BookingsModule } from './bookings/bookings.module';
+import { DocumentsModule } from './documents/documents.module';
 import { EventsModule } from './events/events.module';
 import { HealthController } from './health/health.controller';
 import { MaybeItemsModule } from './maybe-items/maybe-items.module';
@@ -23,6 +24,7 @@ import { TripsModule } from './trips/trips.module';
     EventsModule,
     BookingsModule,
     MaybeItemsModule,
+    DocumentsModule,
   ],
   controllers: [HealthController],
   providers: [
