@@ -166,10 +166,6 @@
         opacity: 0.5;
         margin: 0 6px;
       }
-      .avatars {
-        display: flex;
-        flex-direction: row-reverse;
-      }
       .av {
         width: 31px;
         height: 31px;
@@ -181,33 +177,51 @@
         font-size: 12.5px;
         border: 2px solid var(--indigo);
         margin-inline-start: -9px;
-        position: relative;
       }
-      .av::after {
-        content: '';
-        position: absolute;
-        bottom: -1px;
-        inset-inline-start: -1px;
-        width: 11px;
-        height: 11px;
-        border-radius: 50%;
-        background: conic-gradient(#4285f4 0 25%, #ea4335 0 50%, #fbbc05 0 75%, #34a853 0);
-        border: 1.5px solid var(--indigo);
+      /* overflow bubble when there are more members than shown */
+      .av.more {
+        background: rgba(255, 255, 255, 0.14);
+        color: #dce3f2;
+        font-size: 11px;
       }
-      .gnote {
+      /* header controls: account (your avatar, ringed) + trip settings gear */
+      .header-actions {
         display: flex;
         align-items: center;
-        gap: 6px;
-        margin-top: 12px;
-        color: #8fa0c4;
-        font-size: 11.5px;
-        font-weight: 500;
+        gap: 8px;
       }
-      .gnote .g {
-        width: 14px;
-        height: 14px;
+      .avatars {
+        display: flex;
+        flex-direction: row-reverse;
+        margin-inline-end: 4px;
+      }
+      .account-btn {
+        margin-inline-start: 0;
+        border-color: rgba(255, 255, 255, 0.55);
+        cursor: pointer;
+        font: inherit;
+      }
+      .gear-btn {
+        width: 33px;
+        height: 33px;
         border-radius: 50%;
-        background: conic-gradient(#4285f4 0 25%, #ea4335 0 50%, #fbbc05 0 75%, #34a853 0);
+        display: grid;
+        place-items: center;
+        background: rgba(255, 255, 255, 0.12);
+        border: 1px solid rgba(255, 255, 255, 0.22);
+        color: #fff;
+        font-size: 15px;
+        cursor: pointer;
+        flex: 0 0 auto;
+      }
+      .gear-btn:hover,
+      .account-btn:hover {
+        background: rgba(255, 255, 255, 0.2);
+      }
+      .gear-btn:focus-visible,
+      .account-btn:focus-visible {
+        outline: 2.5px solid var(--teal);
+        outline-offset: 2px;
       }
 
       .day-strip {
@@ -1161,6 +1175,99 @@
         line-height: 1.5;
       }
 
+      /* ===== account sheet (app-shell §6) — identity + sign out, minimal.
+         Reached from the account avatar in the header. Shell chrome. ===== */
+      .acct-scrim {
+        position: absolute;
+        inset: 0;
+        background: rgba(22, 35, 61, 0.45);
+        opacity: 0;
+        pointer-events: none;
+        transition: opacity 0.22s ease;
+        z-index: 30;
+      }
+      .acct-scrim.show {
+        opacity: 1;
+        pointer-events: auto;
+      }
+      .acct-sheet {
+        position: absolute;
+        left: 0;
+        right: 0;
+        bottom: 0;
+        z-index: 31;
+        background: var(--card);
+        border-radius: 20px 20px 0 0;
+        box-shadow: 0 -20px 40px -14px rgba(0, 0, 0, 0.4);
+        padding: 8px 20px calc(22px + env(safe-area-inset-bottom));
+        transform: translateY(101%);
+        transition: transform 0.26s ease;
+        text-align: center;
+      }
+      .acct-scrim.show + .acct-sheet,
+      .acct-sheet.show {
+        transform: translateY(0);
+      }
+      .acct-grip {
+        width: 38px;
+        height: 4px;
+        border-radius: 99px;
+        background: var(--soft-line);
+        opacity: 0.5;
+        margin: 6px auto 18px;
+      }
+      .acct-av {
+        width: 64px;
+        height: 64px;
+        border-radius: 50%;
+        display: grid;
+        place-items: center;
+        margin: 0 auto;
+        color: #12203a;
+        font-weight: 700;
+        font-size: 26px;
+        font-family: 'Secular One', sans-serif;
+      }
+      .acct-name {
+        font-family: 'Secular One', sans-serif;
+        font-size: 20px;
+        color: var(--ink);
+        margin-top: 12px;
+      }
+      .acct-mail {
+        font-family: 'JetBrains Mono', monospace;
+        font-size: 12.5px;
+        color: var(--muted);
+        margin-top: 4px;
+        direction: ltr;
+      }
+      .acct-provider {
+        font-size: 11.5px;
+        color: #98a0b0;
+        margin-top: 8px;
+      }
+      .acct-signout {
+        width: 100%;
+        font: inherit;
+        font-size: 14px;
+        font-weight: 700;
+        color: var(--ink);
+        background: #fff;
+        border: 1px solid var(--soft-line);
+        border-radius: 13px;
+        padding: 13px;
+        margin-top: 22px;
+        cursor: pointer;
+        transition: 0.14s;
+      }
+      .acct-signout:hover {
+        border-color: var(--ink);
+      }
+      .acct-signout:focus-visible {
+        outline: 2.5px solid var(--teal);
+        outline-offset: 2px;
+      }
+
       @media (prefers-reduced-motion: reduce) {
         * {
           animation: none !important;
@@ -1191,16 +1298,28 @@
               </button>
               <div class="trip-sub">טוקיו<span class="dot">•</span>יום 3 מתוך 10</div>
             </div>
-            <div class="avatars">
-              <div class="av" style="background: #e9a63c" title="אסף · Google מחובר">א</div>
-              <div class="av" style="background: #5ec5b6" title="נועם · Google מחובר">נ</div>
-              <div class="av" style="background: #e88c8c" title="דנה · Google מחובר">ד</div>
-              <div class="av" style="background: #9c8ce8" title="מאור · Google מחובר">מ</div>
-              <div class="av" style="background: #8cb6e8" title="רון · Google מחובר">ר</div>
+            <div class="header-actions">
+              <div class="avatars" title="נועם · דנה · מאור · רון">
+                <div class="av more">+2</div>
+                <div class="av" style="background: #e88c8c">ד</div>
+                <div class="av" style="background: #5ec5b6">נ</div>
+              </div>
+              <button
+                class="av account-btn"
+                style="background: #e9a63c"
+                onclick="openAccount()"
+                aria-label="החשבון שלי"
+              >
+                א
+              </button>
+              <button
+                class="gear-btn"
+                onclick="toast('⚙', 'הגדרות הטיול')"
+                aria-label="הגדרות הטיול"
+              >
+                ⚙
+              </button>
             </div>
-          </div>
-          <div class="gnote">
-            <span class="g"></span>כל אחד מחובר לחשבון Google שלו · המסלול מסונכרן ליומן האישי
           </div>
           <div class="day-strip">
             <div class="day-pill past">א׳<span class="n">01</span></div>
@@ -1608,6 +1727,31 @@
           </section>
         </div>
 
+        <!-- account sheet: opened from the header account avatar -->
+        <div class="acct-scrim" id="acctScrim" onclick="closeAccount()"></div>
+        <div
+          class="acct-sheet"
+          id="acctSheet"
+          role="dialog"
+          aria-modal="true"
+          aria-label="החשבון שלי"
+        >
+          <div class="acct-grip"></div>
+          <div class="acct-av" style="background: #e9a63c">א</div>
+          <div class="acct-name">אסף</div>
+          <div class="acct-mail">assaf@gmail.com</div>
+          <div class="acct-provider">מחובר עם Google</div>
+          <button
+            class="acct-signout"
+            onclick="
+              toast('👋', 'מתנתק…');
+              closeAccount();
+            "
+          >
+            התנתקות
+          </button>
+        </div>
+
         <div class="toast" id="toast">
           <span class="ic" id="toast-ic">✓</span><span id="toast-txt"></span>
         </div>
@@ -1622,6 +1766,15 @@
     </div>
 
     <script>
+      function openAccount() {
+        document.getElementById('acctScrim').classList.add('show');
+        document.getElementById('acctSheet').classList.add('show');
+      }
+      function closeAccount() {
+        document.getElementById('acctScrim').classList.remove('show');
+        document.getElementById('acctSheet').classList.remove('show');
+      }
+
       function go(btn, view) {
         document.querySelectorAll('.nav button').forEach((b) => b.classList.remove('on'));
         btn.classList.add('on');

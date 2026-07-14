@@ -74,8 +74,10 @@ Active-trip selection is `tripId` in `localStorage` — per-device, **not** sync
 ### 6. Account — header sheet (not a route)
 
 - **Purpose:** identity + sign-out, kept minimal.
-- **Entry:** the avatar (initial on `User.avatarColor`) in the header.
-- **Contents:** display name, email, **Sign out** (deletes the refresh session server-side, ADR-0020). Profile editing is **deferred**.
+- **Entry:** the account avatar in the in-trip header — a **ringed** avatar sitting after the member cluster, next to the **⚙ trip-settings** gear (two distinct controls: account = you, gear = this trip's settings).
+- **Contents:** large avatar, display name, email, a quiet "מחובר עם Google" line (no Google logo), and **Sign out** (deletes the refresh session server-side, ADR-0020). Profile editing is **deferred**.
+- **Google chrome is minimal:** Google is the auth mechanism, not a badge — member avatars carry **no** per-face Google dot; the connection is stated once, quietly, in the account sheet.
+- **Design reference:** `mockups/trip-dashboard-v2.html` (header account avatar + ⚙ gear; the account sheet).
 
 ### 7. Trip settings & members — `/trip/:id/settings` (in-trip)
 
