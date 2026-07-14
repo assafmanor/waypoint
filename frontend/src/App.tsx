@@ -144,7 +144,7 @@ function Header({
     <header className="header">
       <ModeToggle />
       <div className="trip-row">
-        <div>
+        <div className="trip-name-wrap">
           <button
             className="trip-name-btn"
             onClick={onOpenSwitcher}

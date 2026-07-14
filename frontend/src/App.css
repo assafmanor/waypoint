@@ -37,11 +37,24 @@
   display: flex;
   justify-content: space-between;
   align-items: flex-start;
+  gap: 10px;
+}
+/* min-width: 0 lets this side shrink below its content size — the default
+   flex-item min-width is auto (= content size), which is exactly what let a
+   long trip name blow out the pill into a wrapped two-line block instead of
+   truncating. */
+.trip-name-wrap {
+  min-width: 0;
+  flex: 1 1 auto;
 }
 .trip-name {
   font-family: var(--font-head);
   font-size: 26px;
   line-height: 1.05;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  min-width: 0;
 }
 .trip-sub {
   color: #9daac8;
@@ -55,11 +68,14 @@
 }
 /* the switcher pill (ADR-0033) — a clear "there's more than one trip"
    affordance, distinct from the ⚙ settings button, navigating to /trips.
-   Single-trip: the header renders plain .trip-name text instead, no pill. */
+   Always shown, even with one trip (app-shell.md §5). max-width + the
+   .trip-name ellipsis above keep a long trip name to one line instead of
+   wrapping and blowing out the pill shape. */
 .trip-name-btn {
   display: inline-flex;
   align-items: center;
   gap: 8px;
+  max-width: 100%;
   background: rgba(255, 255, 255, 0.09);
   border: 1px solid rgba(255, 255, 255, 0.16);
   border-radius: 999px;
