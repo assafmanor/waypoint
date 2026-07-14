@@ -3,20 +3,26 @@
 // (ADR-0024): indigo/neutral chrome, no amber/teal/violet. The draft preview
 // renders in the soft grammar (dashed, provisional) and turns solid only
 // after landing inside the created trip. Design reference: mockups/create-trip-v1.html.
-import { useState } from 'react';
+//
+// Creation doesn't drop straight into the trip (T-065): screen 2 of the
+// mockup (#s-born) is a beat to get the invite link in front of the creator
+// immediately — plan-violet chrome since it's already "inside" the new trip.
+import { useEffect, useState } from 'react';
 import { useNavigate } from 'react-router-dom';
-import { createTripSchema, MAX_TRIP_NAME_LENGTH } from '@waypoint/shared';
+import { createTripSchema, MAX_TRIP_NAME_LENGTH, type Trip } from '@waypoint/shared';
 import { useIsOffline } from '../lib/outbox';
 import { useActiveTripId } from '../state/active-trip-id';
-import { createTrip } from '../lib/api';
+import { createInvite, createTrip } from '../lib/api';
 import { suggestTripName } from '../lib/trip-name';
-import { MS_PER_DAY, ICONS } from '../constants';
+import { useToast } from '../ui/Toast';
+import { MS_PER_DAY, ICONS, DEFAULT_TRIP_ICON } from '../constants';
 import { t } from '../i18n/he';
 
 export function CreateTrip() {
   const navigate = useNavigate();
   const { setTripId } = useActiveTripId();
   const offline = useIsOffline();
+  const [createdTrip, setCreatedTrip] = useState<Trip | null>(null);
 
   const [destination, setDestination] = useState('');
   const [startDate, setStartDate] = useState('');
@@ -53,13 +59,13 @@ export function CreateTrip() {
     try {
       const trip = await createTrip(parsed.data);
       setTripId(trip.id);
-      // TODO(T-044): post-create invite prompt (mockup screen 2) once the
-      // invite endpoint is wired into lib/api.ts.
-      navigate('/');
+      setCreatedTrip(trip);
     } finally {
       setSubmitting(false);
     }
   };
+
+  if (createdTrip) return <Created trip={createdTrip} onDone={() => navigate('/')} />;
 
   return (
     <div className="app">
@@ -148,6 +154,93 @@ export function CreateTrip() {
           )}
           {offline && <p className="offline-note">{t.shell.newTrip.offlineNote}</p>}
           <p className="new-note">{t.shell.newTrip.note}</p>
+        </div>
+      </main>
+    </div>
+  );
+}
+
+type InviteState = { status: 'pending' } | { status: 'ready'; url: string } | { status: 'failed' };
+
+/** Screen 2 (mockup #s-born): the beat right after creation where the invite
+ *  link goes in front of the creator. Plan-violet chrome — this is already
+ *  inside the new trip, not part of the shell-chrome creation form above. */
+function Created({ trip, onDone }: { trip: Trip; onDone: () => void }) {
+  const showToast = useToast();
+  const [invite, setInvite] = useState<InviteState>({ status: 'pending' });
+
+  useEffect(() => {
+    let cancelled = false;
+    createInvite(trip.id).then(
+      (res) => {
+        if (!cancelled)
+          setInvite({ status: 'ready', url: `${window.location.origin}${res.inviteUrl}` });
+      },
+      () => {
+        if (!cancelled) setInvite({ status: 'failed' });
+      },
+    );
+    return () => {
+      cancelled = true;
+    };
+  }, [trip.id]);
+
+  const days = Math.round((Date.parse(trip.endDate) - Date.parse(trip.startDate)) / MS_PER_DAY) + 1;
+
+  const copyInvite = () => {
+    if (invite.status !== 'ready') return;
+    void navigator.clipboard.writeText(invite.url);
+    showToast(ICONS.clipboard, t.shell.created.inviteCopied);
+  };
+
+  return (
+    <div className="app" data-mode="plan">
+      <header className="born-head">
+        <div className="born-title">{trip.name}</div>
+        <span className="mode-pill">{t.shell.created.modePill}</span>
+      </header>
+
+      <main className="born-body">
+        <div className="born-emoji">{t.shell.created.emoji}</div>
+        <h1 className="born-h1">{t.shell.created.title}</h1>
+        <p className="born-sub">{t.shell.created.sub}</p>
+
+        <div className="born-card">
+          <div className="ic">{DEFAULT_TRIP_ICON}</div>
+          <div>
+            <div className="t">{trip.name}</div>
+            <div className="m">{t.shell.newTrip.draftMeta(trip.destination, days)}</div>
+          </div>
+        </div>
+
+        {invite.status === 'ready' && (
+          <div className="invite-box" onClick={copyInvite}>
+            <span className="code" dir="ltr">
+              {invite.url}
+            </span>
+            <span className="lbl2">{t.shell.created.inviteLabel}</span>
+            <span className="cp">{ICONS.clipboard}</span>
+          </div>
+        )}
+        {invite.status === 'pending' && (
+          <p className="born-teach">{t.shell.created.invitePending}</p>
+        )}
+        {invite.status === 'failed' && <p className="born-teach">{t.shell.created.inviteFailed}</p>}
+        {invite.status === 'ready' && <p className="born-teach">{t.shell.created.teach}</p>}
+
+        <div className="born-cta">
+          <button className="plan-btn" onClick={onDone}>
+            {t.shell.created.planButton}
+          </button>
+          <button
+            className="later-btn"
+            onClick={() => {
+              showToast(ICONS.done, t.shell.created.laterToast);
+              onDone();
+            }}
+          >
+            {t.shell.created.laterButton}
+          </button>
         </div>
       </main>
     </div>
