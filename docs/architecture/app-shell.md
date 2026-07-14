@@ -68,6 +68,7 @@ Active-trip selection is `tripId` in `localStorage` — per-device, **not** sync
 - **Contents:** a list of the user's trips (name + a **now / soon / past** chip derived from dates), plus **＋ Create** (→ `/new`) and **Join with a link** at the bottom.
 - **Flow:** tap a trip → set active-trip (`localStorage`) → navigate to its surface and close.
 - **States:** single trip (header shows the name, no ▾ / no-op) · loading (from cached `GET /trips`) · offline (fully usable across already-cached trips — reads only).
+- **Design reference:** `mockups/trip-switcher-v1.html` — the sheet with the active trip marked ("נוכחי"), neutral-family now/soon/past chips, create/join footer, and the single-trip + offline states.
 
 ### 6. Account — header sheet (not a route)
 
