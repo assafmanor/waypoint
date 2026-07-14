@@ -2,6 +2,8 @@
 // values live in @waypoint/shared. Keep magic numbers/strings out of logic.
 
 export const MS_PER_DAY = 86_400_000;
+export const MINUTES_PER_HOUR = 60;
+export const MINUTES_PER_DAY = MINUTES_PER_HOUR * 24;
 
 /** How far a "delay" verb pushes an event. */
 export const DELAY_STEP_MINUTES = 30;

@@ -14,6 +14,12 @@ export function consumeIntent(storage: Storage = sessionStorage): string | null 
   return path;
 }
 
+/** Non-destructive read, for render-time checks that must stay pure
+ *  (consuming happens later, in the effect that actually navigates). */
+export function hasIntent(storage: Storage = sessionStorage): boolean {
+  return storage.getItem(AUTH_INTENT_STORAGE_KEY) !== null;
+}
+
 /** Marks that this login was triggered from a join preview, so the join
  *  auto-completes on resume (T-042). Separate from the generic deep-link
  *  intent, which AuthGate consumes before the join screen re-mounts. */

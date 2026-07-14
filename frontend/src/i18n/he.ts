@@ -1,6 +1,8 @@
 // Hebrew UI copy — the active locale. All user-facing strings live here so logic
 // stays language-agnostic (conventions.md). Interpolated copy is a function;
 // runs that must render left-to-right (times, codes) stay as JSX in the caller.
+import { dayPhrase } from '../lib/hebrew';
+
 export const t = {
   common: {
     undo: 'בטל',
@@ -43,7 +45,7 @@ export const t = {
       heroLine1: 'כל הטיול שלכם.',
       heroLine2Prefix: 'מסך',
       heroLine2Em: 'אחד',
-      tagline: 'מה עכשיו, מה הבא בתור, ואיפה כל ההזמנות — בזמן שאתם שם, גם בלי קליטה.',
+      tagline: 'מה עכשיו, מה הבא בתור, ואיפה כל ההזמנות - בזמן שאתם שם, גם בלי קליטה.',
       teaserLabel: 'הבא בתור',
       teaserTime: '19:30',
       teaserTitle: 'קמדן מרקט',
@@ -63,14 +65,14 @@ export const t = {
       connected: (email: string) => `מחובר · ${email}`,
       offSignal: 'אין שידור',
       boardOffTitle: 'הלוח עוד כבוי',
-      boardOffBody: 'טיול ראשון מדליק אותו — מה עכשיו, מה הבא, וכל ההזמנות של החבורה במקום אחד.',
+      boardOffBody: 'טיול ראשון מדליק אותו - מה עכשיו, מה הבא, וכל ההזמנות של החבורה במקום אחד.',
       create: 'טיול חדש',
       createSub: 'אתה זה שמארגן',
       join: 'הצטרף עם לינק',
       joinSub: 'קיבלת הזמנה מחבר',
-      joinToast: 'קיבלת לינק מחבר? פשוט פתח אותו — ותוך שנייה אתה בפנים',
+      joinToast: 'קיבלת לינק מחבר? פשוט פתח אותו - ותוך שנייה אתה בפנים',
       offline: 'יצירת טיול צריכה חיבור · לינק שחבר שולח ייפתח גם עכשיו',
-      teach: 'בחבורה של חמישה, בדרך כלל אחד יוצר את הטיול — וכל השאר נכנסים עם הלינק שלו.',
+      teach: 'בחבורה של חמישה, בדרך כלל אחד יוצר את הטיול - וכל השאר נכנסים עם הלינק שלו.',
     },
     stub: {
       newTrip: 'טיול חדש',
@@ -85,10 +87,10 @@ export const t = {
       destLabel: 'לאן נוסעים?',
       destPlaceholder: 'יפן, יוון, גיאורגיה…',
       datesLabel: 'מתי?',
-      dateError: 'רגע — תאריך הסיום לפני ההתחלה',
+      dateError: 'רגע - תאריך הסיום לפני ההתחלה',
       nameLabel: 'איך נקרא לזה?',
       namePlaceholder: 'נציע שם ברגע שנדע לאן',
-      nameHint: 'הצענו לפי היעד — אפשר לשנות',
+      nameHint: 'הצענו לפי היעד - אפשר לשנות',
       draftGhost: 'הטיול שלכם',
       draftPending: 'עוד רגע מקבל צורה…',
       draftMeta: (destination: string, days: number) => `${destination} · ${days} ימים`,
@@ -101,12 +103,12 @@ export const t = {
       modePill: '✏️ מצב תכנון',
       emoji: '🎉',
       title: 'יש טיול!',
-      sub: 'עכשיו הכי חשוב — להכניס את החבורה.',
+      sub: 'עכשיו הכי חשוב - להכניס את החבורה.',
       inviteLabel: 'לינק הזמנה · הקש להעתקה ושיתוף',
       invitePending: 'טוען לינק הזמנה…',
       inviteFailed: 'הלינק יהיה מוכן בהגדרות הטיול',
       inviteCopied: 'הלינק הועתק · שתף בקבוצת הוואטסאפ',
-      teach: 'שולחים בקבוצה, וכל אחד מצטרף עם החשבון שלו — זה הכול.',
+      teach: 'שולחים בקבוצה, וכל אחד מצטרף עם החשבון שלו - זה הכול.',
       planButton: 'לתכנון הטיול',
       laterButton: 'אשלח את הלינק אחר כך',
       laterToast: 'הלינק מחכה בהגדרות הטיול',
@@ -116,10 +118,9 @@ export const t = {
       invalid: 'הלינק הזה כבר לא בתוקף. אפשר לבקש מהחבר שישלח לינק חדש.',
       offline: 'צריך חיבור לרשת כדי לטעון את ההזמנה',
       heroTitle: 'הוזמנת לטיול!',
-      heroBody: 'החברים כבר בפנים — נשארה רק ההצטרפות שלך.',
+      heroBody: 'החברים כבר בפנים - נשארה רק ההצטרפות שלך.',
       ticketBadge: 'כרטיס הזמנה',
       countdownPrefix: 'בעוד',
-      daysLabel: 'ימים',
       members: (count: number) => (count === 1 ? 'חבר אחד כבר בפנים' : `${count} חברים כבר בפנים`),
       membersSub: 'מחכים רק לך',
       joinButton: 'הצטרפות לטיול',
@@ -135,7 +136,7 @@ export const t = {
       tripsCount: (n: number) => `${n} טיולים`,
       current: 'נוכחי',
       chipNow: 'עכשיו',
-      chipSoon: (days: number) => `בעוד ${days} יום`,
+      chipSoon: (days: number) => `בעוד ${dayPhrase(days)}`,
       chipPast: 'הסתיים',
       create: 'טיול חדש',
       offlineNote: 'מעבר בין טיולים שמורים עובד גם אופליין · יצירה צריכה חיבור',
@@ -152,7 +153,6 @@ export const t = {
     until: 'עד',
     nextLabel: 'הבא בתור',
     endOfDay: 'סוף היום',
-    minutes: 'דקות',
   },
   quick: {
     title: 'גישה מהירה',
@@ -224,15 +224,15 @@ export const t = {
     eventDeleted: 'האירוע נמחק',
   },
   ripple: {
-    prompt: (movedTitle: string) => `${movedTitle} נדחה — לדחות גם את האירועים שאחריו?`,
+    prompt: (movedTitle: string) => `${movedTitle} נדחה - לדחות גם את האירועים שאחריו?`,
   },
   confirm: {
     hardEditTitle: 'לשנות אירוע קשיח?',
     hardEditBody: (title: string) =>
-      `${title} מחובר להזמנה אמיתית — שינוי כאן מחייב עדכון שלה. ממשיכים?`,
+      `${title} מחובר להזמנה אמיתית - שינוי כאן מחייב עדכון שלה. ממשיכים?`,
     hardDeleteTitle: 'למחוק אירוע קשיח?',
     hardDeleteBody: (title: string) =>
-      `${title} מחובר להזמנה אמיתית — המחיקה לא מבטלת את ההזמנה עצמה. ממשיכים?`,
+      `${title} מחובר להזמנה אמיתית - המחיקה לא מבטלת את ההזמנה עצמה. ממשיכים?`,
   },
   eventForm: {
     newTitle: 'אירוע חדש',
