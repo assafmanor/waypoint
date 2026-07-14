@@ -162,30 +162,32 @@ export function Home() {
           <div className="v">{glance.weather.tempC}°</div>
           <div className="s">{glance.weather.note}</div>
         </div>
-        <div className="gcard">
-          <div className="k">
-            {ICONS.fx} {t.glance.fx}
+        {trip.currency && (
+          <div className="gcard">
+            <div className="k">
+              {ICONS.fx} {t.glance.fx}
+            </div>
+            <div className="v small">{glance.fx.label}</div>
+            <div className={glance.fx.changePct >= 0 ? 's up' : 's down'}>
+              {glance.fx.changePct >= 0 ? ICONS.fxUp : ICONS.fxDown}{' '}
+              {t.glance.fxChange(glance.fx.changePct)}
+            </div>
           </div>
-          <div className="v small">{glance.fx.label}</div>
-          <div className={glance.fx.changePct >= 0 ? 's up' : 's down'}>
-            {glance.fx.changePct >= 0 ? ICONS.fxUp : ICONS.fxDown}{' '}
-            {t.glance.fxChange(glance.fx.changePct)}
+        )}
+        {trip.currency && trip.dailyBudgetMinor && (
+          <div className="gcard wide">
+            <div className="k">
+              {ICONS.budget} {t.glance.budgetToday}
+            </div>
+            <div className="v">
+              {formatMoney(glance.budget.spentMinor, trip.currency)}{' '}
+              <span className="v-sub">/ {formatMoney(trip.dailyBudgetMinor, trip.currency)}</span>
+            </div>
+            <div className="budget-bar">
+              <i className={overBudget ? 'over' : undefined} style={{ width: `${budgetPct}%` }} />
+            </div>
           </div>
-        </div>
-        <div className="gcard wide">
-          <div className="k">
-            {ICONS.budget} {t.glance.budgetToday}
-          </div>
-          <div className="v">
-            {formatMoney(glance.budget.spentMinor, trip.currency!)}{' '}
-            <span className="v-sub">
-              / {formatMoney(trip.dailyBudgetMinor ?? 0, trip.currency!)}
-            </span>
-          </div>
-          <div className="budget-bar">
-            <i className={overBudget ? 'over' : undefined} style={{ width: `${budgetPct}%` }} />
-          </div>
-        </div>
+        )}
       </div>
     </>
   );
