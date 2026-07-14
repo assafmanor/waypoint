@@ -1594,3 +1594,9 @@
 .maybe.skipped-card .add {
   color: var(--muted);
 }
+
+/* Time cells may now show a start–end range; keep them on one line. */
+.bld-time,
+.item .time {
+  white-space: nowrap;
+}

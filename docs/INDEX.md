@@ -89,4 +89,5 @@ Before changing a domain, read **only** the ADR(s) below for it (see the Context
 | [planning/2026-07-14-session-08-maybe-shelf-rework.md](planning/2026-07-14-session-08-maybe-shelf-rework.md)                     | Maybe-shelf rework: schedule-with-picker + add/remove ideas                       |
 | [planning/2026-07-14-session-09-drag-reorder-shelf-tombstone.md](planning/2026-07-14-session-09-drag-reorder-shelf-tombstone.md) | Builder drag-reorder (soft-slot model) + shelf "שובץ" tombstone fix               |
 | [planning/2026-07-14-session-10-shelf-leftovers.md](planning/2026-07-14-session-10-shelf-leftovers.md)                           | Gap-fill-from-shelf + skip-parks-to-shelf (ADR-0027 parking lot)                  |
+| [planning/2026-07-14-session-11-gap-fix-end-times.md](planning/2026-07-14-session-11-gap-fix-end-times.md)                       | Gap-chip fix for start-only events + row start–end times                          |
 | [planning/2026-07-08-handoff-source.md](planning/2026-07-08-handoff-source.md)                                                   | Original handoff doc (source material, Hebrew)                                    |

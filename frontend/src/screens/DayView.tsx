@@ -188,6 +188,7 @@ function EventItem({
         {event.startsAt && (
           <span className="time" dir="ltr">
             {formatTime(event.startsAt, tz)}
+            {event.endsAt && `–${formatTime(event.endsAt, tz)}`}
           </span>
         )}
         <span className="chev" aria-hidden="true" />
