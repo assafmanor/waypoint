@@ -3,6 +3,7 @@ import { afterAll, beforeAll, describe, expect, it } from 'vitest';
 import { ROUTE_ARGS_METADATA } from '@nestjs/common/constants';
 import { DiscoveryService, MetadataScanner, ModulesContainer, NestFactory } from '@nestjs/core';
 import { DocumentBuilder, SwaggerModule, type OpenAPIObject } from '@nestjs/swagger';
+import { SERVER_ROUTE_PATTERN } from '@waypoint/shared';
 import { AppModule } from './app.module';
 
 // RouteParamtypes.BODY (@nestjs/common/enums/route-paramtypes.enum) — not part of the
@@ -19,18 +20,18 @@ const BODY_PARAM_TYPE = 3;
  * method isn't backed by a documented request body — so a future endpoint
  * can't reintroduce the same silent gap.
  */
+let document: OpenAPIObject;
+let app: Awaited<ReturnType<typeof NestFactory.create>>;
+
+beforeAll(async () => {
+  app = await NestFactory.create(AppModule, { logger: false });
+  await app.init();
+  document = SwaggerModule.createDocument(app, new DocumentBuilder().build());
+});
+
+afterAll(() => app.close());
+
 describe('OpenAPI contract: every @Body() handler documents a request body', () => {
-  let document: OpenAPIObject;
-  let app: Awaited<ReturnType<typeof NestFactory.create>>;
-
-  beforeAll(async () => {
-    app = await NestFactory.create(AppModule, { logger: false });
-    await app.init();
-    document = SwaggerModule.createDocument(app, new DocumentBuilder().build());
-  });
-
-  afterAll(() => app.close());
-
   it('has a non-empty requestBody for every handler with a @Body() parameter', () => {
     const discovery = new DiscoveryService(app.get(ModulesContainer));
     const scanner = new MetadataScanner();
@@ -73,5 +74,20 @@ describe('OpenAPI contract: every @Body() handler documents a request body', () 
 
     // Guard against the check itself going stale (e.g. no @Body() handlers left to scan).
     expect(checked.length).toBeGreaterThan(0);
+  });
+});
+
+// The PWA service worker only lets navigations under SERVER_ROUTE_PREFIXES
+// reach the backend (vite.config.ts navigateFallbackDenylist); a route outside
+// them would be answered by the cached app shell in production.
+describe('route ownership: every route lives under a shared server prefix', () => {
+  it('matches SERVER_ROUTE_PATTERN for every documented path', () => {
+    const paths = Object.keys(document.paths);
+    expect(paths.length).toBeGreaterThan(0);
+    for (const path of paths) {
+      expect(path, `${path} is outside SERVER_ROUTE_PREFIXES (@waypoint/shared)`).toMatch(
+        SERVER_ROUTE_PATTERN,
+      );
+    }
   });
 });

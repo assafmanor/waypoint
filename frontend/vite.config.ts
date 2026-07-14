@@ -2,6 +2,9 @@ import { fileURLToPath } from 'node:url';
 import { defineConfig } from 'vite';
 import react from '@vitejs/plugin-react';
 import { VitePWA } from 'vite-plugin-pwa';
+// Relative source import: the app-graph alias below doesn't apply to this
+// config file, and shared's dist may not be built yet when dev starts.
+import { SERVER_ROUTE_PATTERN } from '../packages/shared/src/server-routes';
 
 // Waypoint PWA — installable, RTL, offline-capable (ADR-0007).
 export default defineConfig({
@@ -22,7 +25,13 @@ export default defineConfig({
       registerType: 'autoUpdate',
       // Without these, a rebuilt SW only takes over after all tabs of the old
       // one close — an offline reload in between would still run stale JS.
-      workbox: { skipWaiting: true, clientsClaim: true },
+      workbox: {
+        skipWaiting: true,
+        clientsClaim: true,
+        // Backend-owned navigations (OAuth redirect, /health) must hit the
+        // network — the default fallback serves the cached shell for ALL paths.
+        navigateFallbackDenylist: [SERVER_ROUTE_PATTERN],
+      },
       manifest: {
         name: 'Waypoint · מרכז שליטה לטיול',
         short_name: 'Waypoint',
