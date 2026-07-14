@@ -1,4 +1,4 @@
-import type { Booking, Event, Membership, MaybeItem, Trip, TripNote } from '@prisma/client';
+import type { Booking, Event, Membership, MaybeItem, Trip, TripNote, User } from '@prisma/client';
 import type {
   Booking as SharedBooking,
   InvitePreview,
@@ -7,11 +7,20 @@ import type {
   Trip as SharedTrip,
   TripEvent,
   TripNote as SharedTripNote,
+  User as SharedUser,
 } from '@waypoint/shared';
 
 const toDateOnly = (d: Date): string => d.toISOString().slice(0, 10);
 
-export const toTripDto = (t: Trip): SharedTrip => ({
+export const toUserDto = (u: User): SharedUser => ({
+  id: u.id,
+  email: u.email,
+  displayName: u.displayName,
+  avatarColor: u.avatarColor,
+  createdAt: u.createdAt.toISOString(),
+});
+
+export const toTripDto = (t: Trip, memberCount?: number): SharedTrip => ({
   id: t.id,
   name: t.name,
   destination: t.destination,
@@ -24,6 +33,7 @@ export const toTripDto = (t: Trip): SharedTrip => ({
   createdAt: t.createdAt.toISOString(),
   updatedAt: t.updatedAt.toISOString(),
   updatedBy: t.updatedBy,
+  memberCount,
 });
 
 export const toMembershipDto = (m: Membership): SharedMembership => ({

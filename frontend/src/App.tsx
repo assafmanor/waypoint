@@ -1,5 +1,5 @@
 import { useEffect, useState } from 'react';
-import { Outlet, Route, Routes, useLocation, useNavigate } from 'react-router-dom';
+import { Navigate, Outlet, Route, Routes, useLocation, useNavigate } from 'react-router-dom';
 import type { Trip } from '@waypoint/shared';
 import { TripProvider, useTrip } from './state/trip-state';
 import { ModeProvider, useMode } from './state/mode-state';
@@ -7,7 +7,7 @@ import { AuthProvider, useAuth } from './state/auth-state';
 import { ActiveTripIdProvider, useActiveTripId } from './state/active-trip-id';
 import { useIsOffline, useOutboxCount } from './lib/outbox';
 import { fetchTrips } from './lib/api';
-import { resolveActiveTrip } from './lib/active-trip';
+import { resolveActiveTrip, tripChip } from './lib/active-trip';
 import { consumeIntent, saveIntent } from './lib/intent';
 import { ToastProvider } from './ui/Toast';
 import { ConfirmProvider } from './ui/ConfirmDialog';
@@ -16,6 +16,7 @@ import { Home } from './screens/Home';
 import { DayView } from './screens/DayView';
 import { Login } from './screens/Login';
 import { ZeroState } from './screens/ZeroState';
+import { AllTrips } from './screens/AllTrips';
 import { ShellStub } from './screens/ShellStub';
 import { CreateTrip } from './screens/CreateTrip';
 import { JoinTrip } from './screens/JoinTrip';
@@ -25,6 +26,7 @@ import {
   AVATAR_INITIAL_LENGTH,
   DOT_SEPARATOR,
   ICONS,
+  MEMBER_AVATAR_CAP,
   MS_PER_DAY,
   TABS,
   type TabId,
@@ -94,11 +96,13 @@ function ModeToggle() {
 }
 
 function Header({
+  tripCount,
   onSelectDay,
   onOpenSwitcher,
   onOpenAccount,
   onOpenSettings,
 }: {
+  tripCount: number;
   onSelectDay: (date: string) => void;
   onOpenSwitcher: () => void;
   onOpenAccount: () => void;
@@ -106,6 +110,12 @@ function Header({
 }) {
   const { trip, users, activeDate, usingCachedSnapshot } = useTrip();
   const { me } = useAuth();
+  // The account avatar (ringed, opens the account sheet) already shows "me" —
+  // the member cluster is everyone else, capped with a "+N" overflow bubble
+  // (app-shell.md §6, PR #57).
+  const others = users.filter((u) => u.id !== me?.user.id);
+  const visibleMembers = others.slice(0, MEMBER_AVATAR_CAP);
+  const overflowMembers = others.slice(MEMBER_AVATAR_CAP);
   // `navigator.onLine` (T-013) misses cases like a hard reload where the boot
   // fetch itself fails but the browser's online flag never flips (some
   // environments' 'offline' event is unreliable) — usingCachedSnapshot (T-058)
@@ -137,14 +147,18 @@ function Header({
       <ModeToggle />
       <div className="trip-row">
         <div>
-          <button
-            className="trip-name-btn"
-            onClick={onOpenSwitcher}
-            aria-label={t.shell.switcher.title}
-          >
+          {tripCount > 1 ? (
+            <button
+              className="trip-name-btn"
+              onClick={onOpenSwitcher}
+              aria-label={t.shell.switcher.title}
+            >
+              <span className="trip-name">{trip.name}</span>
+              <span className="chev">▾</span>
+            </button>
+          ) : (
             <span className="trip-name">{trip.name}</span>
-            <span className="chev">▾</span>
-          </button>
+          )}
           <div className="trip-sub">
             {trip.destination}
             <span className="dot">{DOT_SEPARATOR}</span>
@@ -152,8 +166,9 @@ function Header({
           </div>
         </div>
         <div className="header-actions">
-          <div className="avatars">
-            {users.map((u) => (
+          <div className="avatars" title={others.map((u) => u.displayName).join(DOT_SEPARATOR)}>
+            {overflowMembers.length > 0 && <div className="av more">+{overflowMembers.length}</div>}
+            {visibleMembers.map((u) => (
               <div
                 key={u.id}
                 className="av"
@@ -169,6 +184,7 @@ function Header({
               className="av account-btn"
               style={{ background: me.user.avatarColor }}
               onClick={onOpenAccount}
+              aria-label={t.shell.account.title}
               title={me.user.displayName}
             >
               {me.user.displayName.slice(0, AVATAR_INITIAL_LENGTH)}
@@ -178,10 +194,6 @@ function Header({
             ⚙
           </button>
         </div>
-      </div>
-      <div className="gnote">
-        <span className="g" />
-        {t.header.googleNote}
       </div>
       {offline && (
         <div className="offline-badge">
@@ -229,9 +241,9 @@ function Screen({ tab }: { tab: TabId }) {
 // (design-language mode identity: plan mode never uses amber) without every
 // component reading mode state. Needs its own component because App renders
 // ModeProvider itself and so can't call useMode.
-function Shell() {
+function Shell({ tripCount }: { tripCount: number }) {
   const [tab, setTab] = useState<TabId>('home');
-  const [sheet, setSheet] = useState<'switcher' | 'account' | null>(null);
+  const [accountOpen, setAccountOpen] = useState(false);
   const { mode } = useMode();
   const { trip, setActiveDate } = useTrip();
   const { logout } = useAuth();
@@ -243,9 +255,10 @@ function Shell() {
   return (
     <div className="app" data-mode={mode}>
       <Header
+        tripCount={tripCount}
         onSelectDay={onSelectDay}
-        onOpenSwitcher={() => setSheet('switcher')}
-        onOpenAccount={() => setSheet('account')}
+        onOpenSwitcher={() => navigate('/trips')}
+        onOpenAccount={() => setAccountOpen(true)}
         onOpenSettings={() => navigate(`/trip/${trip.id}/settings`)}
       />
       <main className="body" key={tab}>
@@ -264,27 +277,31 @@ function Shell() {
           </button>
         ))}
       </nav>
-      {/* Switcher content is T-027's; this task only wires the sheet open/close plumbing. */}
-      {sheet === 'switcher' && (
-        <Sheet title={t.shell.switcher.title} onClose={() => setSheet(null)}>
-          <p className="sheet-body">{t.shell.stub.comingSoon}</p>
-        </Sheet>
-      )}
-      {/* Account content is T-043's; sign-out is wired since it's already load-bearing here. */}
-      {sheet === 'account' && <AccountSheet onClose={() => setSheet(null)} onSignOut={logout} />}
+      {accountOpen && <AccountSheet onClose={() => setAccountOpen(false)} onSignOut={logout} />}
     </div>
   );
 }
 
+// Identity + sign-out, kept minimal (app-shell.md §6, PR #57) — a grip handle
+// and a centered avatar/name/email, no title bar. Google is stated once here,
+// quietly (no logo) — it's the auth mechanism, not a badge shown per-avatar.
 function AccountSheet({ onClose, onSignOut }: { onClose: () => void; onSignOut: () => void }) {
   const { me } = useAuth();
   return (
-    <Sheet title={me?.user.displayName ?? ''} onClose={onClose}>
-      <p className="sheet-body" dir="ltr">
+    <Sheet ariaLabel={t.shell.account.title} onClose={onClose}>
+      <div className="acct-grip" />
+      {me && (
+        <div className="acct-av" style={{ background: me.user.avatarColor }}>
+          {me.user.displayName.slice(0, AVATAR_INITIAL_LENGTH)}
+        </div>
+      )}
+      <div className="acct-name">{me?.user.displayName}</div>
+      <div className="acct-mail" dir="ltr">
         {me?.user.email}
-      </p>
+      </div>
+      <div className="acct-provider">{t.shell.account.provider}</div>
       <button
-        className="sheet-close"
+        className="acct-signout"
         onClick={() => {
           onSignOut();
           onClose();
@@ -304,6 +321,19 @@ function ZeroStateWithAccount() {
   return (
     <>
       <ZeroState onOpenAccount={() => setShowAccount(true)} />
+      {showAccount && <AccountSheet onClose={() => setShowAccount(false)} onSignOut={logout} />}
+    </>
+  );
+}
+
+// Same reasoning as ZeroStateWithAccount: /trips is a full-page route outside
+// Shell, so it needs its own account-sheet plumbing.
+function AllTripsWithAccount() {
+  const [showAccount, setShowAccount] = useState(false);
+  const { logout } = useAuth();
+  return (
+    <>
+      <AllTrips onOpenAccount={() => setShowAccount(true)} />
       {showAccount && <AccountSheet onClose={() => setShowAccount(false)} onSignOut={logout} />}
     </>
   );
@@ -331,13 +361,20 @@ function RootSurface() {
   if (trips === null) return <BootScreen text={t.shell.booting} />;
   if (trips.length === 0) return <ZeroStateWithAccount />;
 
+  // A manual pick (tapping a trip on /trips) is honored regardless of whether
+  // it's live — only the *auto-derived* landing defers to /trips when nothing
+  // is in progress (ADR-0033).
   const validStoredId = storedTripId && trips.some((tr) => tr.id === storedTripId);
+  if (!validStoredId) {
+    const resolved = resolveActiveTrip(trips, now)!;
+    if (tripChip(resolved, now) !== 'now') return <Navigate to="/trips" replace />;
+  }
   const tripId = validStoredId ? storedTripId : resolveActiveTrip(trips, now)!.id;
 
   return (
     <TripProvider tripId={tripId}>
       <ModeProvider>
-        <Shell />
+        <Shell tripCount={trips.length} />
       </ModeProvider>
     </TripProvider>
   );
@@ -390,6 +427,7 @@ function AppRoutes() {
     <Routes>
       <Route element={<AuthGate />}>
         <Route path="login" element={<Login />} />
+        <Route path="trips" element={<AllTripsWithAccount />} />
         <Route path="new" element={<CreateTrip />} />
         <Route path="join/:token" element={<JoinTrip />} />
         <Route path="trip/:id/settings" element={<ShellStub title={t.shell.stub.settings} />} />

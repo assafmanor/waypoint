@@ -1,13 +1,17 @@
-// Generic header-invoked bottom sheet (ADR-0024: switcher + account are sheets,
-// not routes). Indigo/neutral chrome only — see .sheet-* in screens.css.
+// Generic header-invoked bottom sheet (ADR-0024: account is a sheet, not a
+// route). Indigo/neutral chrome only — see .sheet-* in screens.css. `title`
+// is optional: the account sheet (app-shell.md §6) has no title bar, just a
+// grip handle — pass `ariaLabel` for that case instead.
 import type { ReactNode } from 'react';
 
 export function Sheet({
   title,
+  ariaLabel,
   onClose,
   children,
 }: {
-  title: string;
+  title?: string;
+  ariaLabel?: string;
   onClose: () => void;
   children: ReactNode;
 }) {
@@ -17,10 +21,10 @@ export function Sheet({
         className="sheet-card"
         role="dialog"
         aria-modal="true"
-        aria-label={title}
+        aria-label={ariaLabel ?? title}
         onClick={(e) => e.stopPropagation()}
       >
-        <div className="sheet-title">{title}</div>
+        {title && <div className="sheet-title">{title}</div>}
         {children}
       </div>
     </div>

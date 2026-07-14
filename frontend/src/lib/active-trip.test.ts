@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { resolveActiveTrip } from './active-trip';
+import { resolveActiveTrip, tripChip } from './active-trip';
 import { TRIP } from '../fixtures';
 
 const upcoming = { ...TRIP, id: 'trip-upcoming', startDate: '2026-08-01', endDate: '2026-08-10' };
@@ -47,5 +47,31 @@ describe('resolveActiveTrip (ADR-0021)', () => {
   it('deterministically picks the earlier-starting trip among overlapping in-progress trips', () => {
     const alsoInProgress = { ...inProgress, id: 'trip-also-in-progress', startDate: '2026-06-20' };
     expect(resolveActiveTrip([inProgress, alsoInProgress], NOW)?.id).toBe('trip-also-in-progress');
+  });
+});
+
+describe('tripChip (ADR-0033)', () => {
+  it('is "now" for a trip in progress today', () => {
+    expect(tripChip(inProgress, NOW)).toBe('now');
+  });
+
+  it('is "soon" for an upcoming trip', () => {
+    expect(tripChip(upcoming, NOW)).toBe('soon');
+  });
+
+  it('is "past" for a trip that already ended', () => {
+    expect(tripChip(past, NOW)).toBe('past');
+  });
+});
+
+describe('landing rule (ADR-0033): live → land in the trip, none live → /trips', () => {
+  it('resolves to the live trip when one is in progress', () => {
+    const resolved = resolveActiveTrip([past, upcoming, inProgress], NOW)!;
+    expect(tripChip(resolved, NOW)).toBe('now');
+  });
+
+  it('resolves to a non-live trip (→ /trips landing) when nothing is in progress', () => {
+    const resolved = resolveActiveTrip([past, upcoming], NOW)!;
+    expect(tripChip(resolved, NOW)).not.toBe('now');
   });
 });

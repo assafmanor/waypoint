@@ -24,6 +24,7 @@ import {
   toMembershipDto,
   toTripDto,
   toTripNoteDto,
+  toUserDto,
 } from './trips.mapper';
 
 // Stateless invite tokens (auth-and-google.md): base64url(`${tripId}.${expiresAtMs}`) + '.' + HMAC.
@@ -155,15 +156,16 @@ export class TripsService {
     const trips = await this.prisma.trip.findMany({
       where: { memberships: { some: { userId } } },
       orderBy: { startDate: 'asc' },
+      include: { _count: { select: { memberships: true } } },
     });
-    return trips.map(toTripDto);
+    return trips.map((t) => toTripDto(t, t._count.memberships));
   }
 
   async getSnapshot(tripId: string): Promise<TripSnapshot> {
     const [trip, members, events, bookings, maybeItems, notes, latestChange] =
       await this.prisma.$transaction([
         this.prisma.trip.findUniqueOrThrow({ where: { id: tripId } }),
-        this.prisma.membership.findMany({ where: { tripId } }),
+        this.prisma.membership.findMany({ where: { tripId }, include: { user: true } }),
         this.prisma.event.findMany({
           where: { tripId },
           orderBy: [{ date: 'asc' }, { sortOrder: 'asc' }],
@@ -181,6 +183,7 @@ export class TripsService {
     return {
       trip: toTripDto(trip),
       members: members.map(toMembershipDto),
+      users: members.map((m) => toUserDto(m.user)),
       events: events.map(toEventDto),
       bookings: bookings.map(toBookingDto),
       maybeItems: maybeItems.map(toMaybeItemDto),

@@ -22,8 +22,16 @@ export const DEFAULT_SCHEDULE_SLOT = { START: '17:30', END: '18:30' } as const;
 /** Characters used to build the trip's initial from a display name. */
 export const AVATAR_INITIAL_LENGTH = 1;
 
+/** Header member-cluster avatars shown before collapsing the rest into a
+ *  "+N" overflow bubble (app-shell.md §6, mockups/trip-dashboard-v2.html). */
+export const MEMBER_AVATAR_CAP = 2;
+
 /** Icon for a manually created event when the form doesn't collect one (T-047). */
 export const DEFAULT_EVENT_ICON = '📌';
+
+/** Placeholder row icon on the all-trips list (ADR-0033) — `destination` is
+ *  free text, no structured country to derive a real flag from. */
+export const DEFAULT_TRIP_ICON = '🧳';
 
 /** Prefix shown before confirmation codes (e.g. #4471). */
 export const CODE_PREFIX = '#';
@@ -74,4 +82,5 @@ export const ICONS = {
   add: '＋',
   sync: '🔄',
   offline: '📡',
+  members: '👥',
 } as const;

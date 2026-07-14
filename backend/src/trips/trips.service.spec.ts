@@ -43,9 +43,10 @@ describe('TripsService', () => {
 
   afterAll(() => prisma.$disconnect());
 
-  it('lists trips the user is a member of', async () => {
+  it('lists trips the user is a member of, with a member count', async () => {
     const trips = await service.listForUser(DEV_USER);
     expect(trips.map((t) => t.id)).toContain(SEEDED_TRIP);
+    expect(trips.find((t) => t.id === SEEDED_TRIP)?.memberCount).toBeGreaterThan(0);
   });
 
   it('returns an empty list for a user with no memberships', async () => {
@@ -58,6 +59,8 @@ describe('TripsService', () => {
 
     expect(snapshot.trip.id).toBe(SEEDED_TRIP);
     expect(snapshot.members.some((m) => m.userId === DEV_USER && m.role === 'admin')).toBe(true);
+    expect(snapshot.users.some((u) => u.id === DEV_USER)).toBe(true);
+    expect(snapshot.users.length).toBe(snapshot.members.length);
     expect(snapshot.events.length).toBeGreaterThan(0);
     expect(snapshot.bookings.length).toBeGreaterThan(0);
     expect(snapshot.maybeItems.length).toBeGreaterThan(0);

@@ -15,7 +15,6 @@ export const t = {
     days: 'יום-יום',
   },
   header: {
-    googleNote: 'מחוברים עם חשבון Google אישי · מסונכרן ליומן',
     dayOf: (day: number, total: number) => `יום ${day} מתוך ${total}`,
     pendingSync: (count: number) => `${count} שינויים מחכים לסנכרון`,
     offlineNow: 'אופליין · נתונים שמורים',
@@ -103,7 +102,20 @@ export const t = {
     switcher: {
       title: 'הטיולים שלך',
     },
+    allTrips: {
+      back: 'חזרה לטיול',
+      title: 'הטיולים שלי',
+      tripsCount: (n: number) => `${n} טיולים`,
+      current: 'נוכחי',
+      chipNow: 'עכשיו',
+      chipSoon: (days: number) => `בעוד ${days} יום`,
+      chipPast: 'הסתיים',
+      create: 'טיול חדש',
+      offlineNote: 'מעבר בין טיולים שמורים עובד גם אופליין · יצירה צריכה חיבור',
+    },
     account: {
+      title: 'החשבון שלי',
+      provider: 'מחובר עם Google',
       signOut: 'התנתקות',
     },
   },

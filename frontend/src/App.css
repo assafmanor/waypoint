@@ -53,20 +53,38 @@
   opacity: 0.5;
   margin: 0 6px;
 }
+/* the switcher pill (ADR-0033) — a clear "there's more than one trip"
+   affordance, distinct from the ⚙ settings button, navigating to /trips.
+   Single-trip: the header renders plain .trip-name text instead, no pill. */
 .trip-name-btn {
-  display: flex;
+  display: inline-flex;
   align-items: center;
-  gap: 4px;
-  background: none;
-  border: 0;
-  padding: 0;
-  color: inherit;
+  gap: 8px;
+  background: rgba(255, 255, 255, 0.09);
+  border: 1px solid rgba(255, 255, 255, 0.16);
+  border-radius: 999px;
+  padding: 5px 8px 5px 14px;
   font: inherit;
+  color: inherit;
   cursor: pointer;
+  transition: 0.14s;
+}
+.trip-name-btn:hover {
+  background: rgba(255, 255, 255, 0.15);
+}
+.trip-name-btn:focus-visible {
+  outline: 2.5px solid var(--teal);
+  outline-offset: 2px;
 }
 .trip-name-btn .chev {
-  font-size: 14px;
-  opacity: 0.75;
+  width: 22px;
+  height: 22px;
+  border-radius: 50%;
+  background: rgba(255, 255, 255, 0.14);
+  display: grid;
+  place-items: center;
+  font-size: 11px;
+  flex: 0 0 auto;
 }
 .header-actions {
   display: flex;
@@ -85,12 +103,19 @@
   font-size: 14px;
   cursor: pointer;
 }
+/* header account avatar — ringed, distinct from the plain member cluster
+   (app-shell.md §6, PR #57). Google is stated once, quietly, in the account
+   sheet — no per-avatar Google badge anywhere in the header. */
 .account-btn {
   cursor: pointer;
+  margin-inline-start: 0;
+  border-color: rgba(255, 255, 255, 0.55);
+  font: inherit;
 }
 .avatars {
   display: flex;
   flex-direction: row-reverse;
+  margin-inline-end: 4px;
 }
 .av {
   width: 31px;
@@ -104,21 +129,11 @@
   border: 2px solid var(--indigo);
   margin-inline-start: -9px;
 }
-.gnote {
-  display: flex;
-  align-items: center;
-  gap: 6px;
-  margin-top: 12px;
-  color: #8fa0c4;
-  font-size: 11.5px;
-  font-weight: 500;
-}
-.gnote .g {
-  width: 14px;
-  height: 14px;
-  border-radius: 50%;
-  flex: 0 0 auto;
-  background: conic-gradient(#4285f4 0 25%, #ea4335 0 50%, #fbbc05 0 75%, #34a853 0);
+/* overflow bubble when the trip has more members than the visible cap */
+.av.more {
+  background: rgba(255, 255, 255, 0.14);
+  color: #dce3f2;
+  font-size: 11px;
 }
 /* Offline/pending-sync badges (T-013) — muted like the offline map state in
    mockups/trip-dashboard-v2.html (.map-offline-banner), not amber/teal: this
@@ -974,6 +989,115 @@
   outline: 2.5px solid var(--teal);
   outline-offset: 2px;
   border-radius: 8px;
+}
+
+/* All-trips home (T-027 / ADR-0033) — navigation list, not a dashboard.
+   Header reuses .zero-head/.zero-hello/.g-dot (T-040); .back is the /new
+   header's back-arrow button (T-041), shown only in the from-trip state
+   (a live trip exists — see AllTrips.tsx). Design: mockups/all-trips-v1.html. */
+.head-left {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+}
+.trips-body {
+  flex: 1;
+  padding: 18px 16px 20px;
+  display: flex;
+  flex-direction: column;
+}
+.trips-body .sec {
+  font-size: 12px;
+  font-weight: 700;
+  color: var(--muted);
+  letter-spacing: 0.05em;
+  margin: 4px 4px 10px;
+}
+.trip-row {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  width: 100%;
+  text-align: start;
+  font: inherit;
+  background: var(--card);
+  border: 1px solid var(--line);
+  border-radius: 15px;
+  padding: 12px 13px;
+  margin-bottom: 10px;
+  cursor: pointer;
+}
+.trip-row:focus-visible {
+  outline: 2.5px solid var(--teal);
+  outline-offset: 2px;
+}
+.trip-row.current {
+  border-color: var(--soft-line);
+  background: #fafbfd;
+}
+.trip-row .flag {
+  width: 44px;
+  height: 44px;
+  border-radius: 12px;
+  background: var(--paper);
+  display: grid;
+  place-items: center;
+  font-size: 22px;
+  flex: 0 0 auto;
+}
+.trip-row .main {
+  flex: 1;
+  min-width: 0;
+}
+.trip-row .t {
+  font-weight: 700;
+  font-size: 15px;
+  display: flex;
+  align-items: center;
+  gap: 7px;
+}
+.trip-row .t .cur {
+  font-size: 10.5px;
+  font-weight: 700;
+  color: var(--indigo);
+  background: rgba(22, 35, 61, 0.08);
+  border-radius: 6px;
+  padding: 1px 7px;
+}
+.trip-row .m {
+  font-size: 12px;
+  color: var(--muted);
+  margin-top: 3px;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+/* now / soon / past — date-derived, neutral family (shell chrome, ADR-0028) */
+.chip {
+  flex: 0 0 auto;
+  font-size: 11px;
+  font-weight: 700;
+  border-radius: 8px;
+  padding: 4px 9px;
+  white-space: nowrap;
+}
+.chip.now {
+  color: #fff;
+  background: var(--ink);
+}
+.chip.soon {
+  color: var(--ink);
+  background: #fff;
+  border: 1px solid var(--soft-line);
+}
+.chip.past {
+  color: #a0a7b4;
+  background: transparent;
+  border: 1px solid var(--line);
+}
+.trips-body .spacer {
+  flex: 1;
+  min-height: 12px;
 }
 
 @media (prefers-reduced-motion: reduce) {
