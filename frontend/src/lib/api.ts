@@ -58,14 +58,8 @@ export async function apiFetch(url: string, init: RequestInit = {}): Promise<Res
   return rawFetch(url, init);
 }
 
-// A single in-flight refresh shared by every caller. The refresh token rotates
-// on each use server-side (ADR-0020): two concurrent POST /auth/refresh calls
-// race, each rotating to a different token, and the cookie the browser keeps
-// (last response wins) can end up disagreeing with the hash the DB kept (last
-// commit wins) — corrupting the session so the *next* refresh 401s and the app
-// fires an unauthenticated request that comes back "Missing access token".
-// StrictMode's double-invoked bootstrap effect and simultaneous 401 retries
-// both produce that overlap, so we coalesce them into one round-trip.
+// Shared in-flight refresh: the token rotates on each use (ADR-0020), so two
+// concurrent /auth/refresh calls race and corrupt the session. Coalesce them.
 let refreshInFlight: Promise<boolean> | null = null;
 
 export function refreshAccessToken(): Promise<boolean> {
