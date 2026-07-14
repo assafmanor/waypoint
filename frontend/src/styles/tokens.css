@@ -21,6 +21,7 @@
   --plan: #6e59d6; /* plan-mode accent — plan/builder actions only */
   --plan-deep: #5747b4;
   --plan-tint: rgba(110, 89, 214, 0.1);
+  --indigo-tint: rgba(27, 42, 74, 0.1); /* chrome-accent wash — active nav pill in Trip mode */
   --cta: var(--ink); /* neutral primary button; amber/teal/plan are semantic, never CTAs */
   --cta-text: #ffffff;
   /* Status mini-palette (distinct from the semantic trio) */
@@ -76,6 +77,7 @@ body {
   --plan: #8b79e8;
   --plan-deep: #a99af2; /* used as text — lighter on dark */
   --plan-tint: rgba(139, 121, 232, 0.14);
+  --indigo-tint: rgba(141, 168, 232, 0.16); /* brightened for the dark nav bar (dark-sweep: verify contrast) */
   --cta: #e7eaf2;
   --cta-text: #12203a;
   --ok: #4cbf85;

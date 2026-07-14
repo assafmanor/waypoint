@@ -135,7 +135,7 @@ Trip mode assumes bad connectivity abroad. Every component ships with its states
 - **"Maybe" shelf** — horizontal scroll of dashed cards to schedule onto a day.
 - **Map** — grid backdrop, teardrop pins in 5 pastel category colors (food/lodging/transit/leisure/services — see legend), blue "me" dot (an OS-map convention, not part of the amber/teal system), a category filter row above "near me now", and an offline state (desaturated backdrop + "last saved locations" banner + stale-distance labels on the list).
 - **Index** — booking cards tagged by type (`tag-type` chip: flight/lodging/restaurant/train), a reusable `badge-offline` pill on section headers, normalized source tags (Gmail-import vs. manually-added, same chip shape), and a documents list with an "add document" affordance.
-- **Bottom nav** — 4 tabs (🏠 🗺️ 📇 📅), blurred translucent bar.
+- **Bottom nav** — 4 tabs (🏠 🗺️ 📇 📅), blurred translucent bar. The active ("you are here") tab carries a **tinted pill** behind its icon plus a bold accent label; the marker **follows mode identity** — chrome indigo in Trip mode, `--plan` violet in Plan mode (`--nav-accent`/`--nav-tint`, scoped by `[data-mode]`). It never borrows amber (time) or teal (location). Every icon reserves the pill box so filling only the active one causes no layout shift. Options studied in `mockups/nav-active-states-v1.html`.
 - **Toast** — dark pill for lightweight confirmations.
 
 ## Plan-mode components (from `mockups/plan-mode-v1.html`)
