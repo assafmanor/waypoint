@@ -34,6 +34,11 @@ import { t } from '../i18n/he';
 
 export type { RippleSuggestion };
 
+// Warm-resume refresh threshold: only re-sync on return if the app was hidden
+// at least this long, so a quick app-switch doesn't churn the socket. Elapsed
+// is measured off getNow() (both reads share the clock, so the delta holds).
+const RESYNC_AFTER_HIDDEN_MS = 30_000;
+
 interface Snapshot {
   events: TripEvent[];
   maybeItems: MaybeItem[];
@@ -389,8 +394,27 @@ function TripReady({
     // forever. flushOutbox() is a no-op when the outbox is empty.
     if (!isOffline()) handleOnline();
 
+    // Warm-resume refresh: a backgrounded PWA gets its JS suspended and its
+    // socket silently killed by the OS, but returning fires no 'online' event
+    // (we never went offline), so the catch-up above never runs and the board
+    // goes stale. Re-run the same catch-up when the tab becomes visible again
+    // after being hidden past the threshold. A true app close → reopen already
+    // cold-loads fresh via the boot fetch; this covers the warm resume.
+    let hiddenAt = 0;
+    function handleVisibility() {
+      if (document.visibilityState === 'hidden') {
+        hiddenAt = getNow();
+        return;
+      }
+      const awayMs = hiddenAt === 0 ? 0 : getNow() - hiddenAt;
+      hiddenAt = 0;
+      if (awayMs >= RESYNC_AFTER_HIDDEN_MS && !isOffline()) handleOnline();
+    }
+    document.addEventListener('visibilitychange', handleVisibility);
+
     return () => {
       window.removeEventListener('online', handleOnline);
+      document.removeEventListener('visibilitychange', handleVisibility);
       closeSocket?.();
     };
     // Reconnect only on trip switch — `snapshot.latestSeq` is just this effect's initial cursor.
