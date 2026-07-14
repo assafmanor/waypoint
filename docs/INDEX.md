@@ -36,7 +36,7 @@ The single source of truth for where everything lives. Keep this current wheneve
 | [architecture/app-shell.md](architecture/app-shell.md)                     | App shell & trip lifecycle: routing, zero-state, create/join, switcher |
 | [architecture/sync-and-offline.md](architecture/sync-and-offline.md)       | Realtime, optimistic sync, undo, offline protocol                      |
 | [architecture/auth-and-google.md](architecture/auth-and-google.md)         | Google OAuth, sessions, scopes, calendar sync                          |
-| [architecture/deployment.md](architecture/deployment.md)                   | Hosting topology, CI/CD, GitHub — direction + open questions           |
+| [architecture/deployment.md](architecture/deployment.md)                   | Hosting on Railway: topology, env vars, setup runbook (ADR-0031)       |
 | [architecture/tech-stack.md](architecture/tech-stack.md)                   | Chosen technologies + rationale                                        |
 
 ## Engineering
@@ -72,7 +72,7 @@ Before changing a domain, read **only** the ADR(s) below for it (see the Context
 | Collaboration & roles             | [0005](decisions/0005-peers-not-roles-v1.md) (admin/peer), [0021](decisions/0021-multi-trip-membership.md) (multi-trip + active-trip state)                                                                                                                                                                                                                                       |
 | Integrations & calendar           | [0003](decisions/0003-one-way-calendar-sync.md), [0004](decisions/0004-integrations-are-pipes.md)                                                                                                                                                                                                                                                                                 |
 | Platform, design & device targets | [0007](decisions/0007-platform-pwa.md), [0009](decisions/0009-docs-english-ui-hebrew.md), [0017](decisions/0017-mobile-first-device-targets.md), [0028](decisions/0028-plan-violet-color-budget-dark-ready.md)                                                                                                                                                                    |
-| Infra & security                  | [0008](decisions/0008-backend-supabase.md), [0015](decisions/0015-document-encryption-server-side.md)                                                                                                                                                                                                                                                                             |
+| Infra & security                  | [0008](decisions/0008-backend-supabase.md), [0015](decisions/0015-document-encryption-server-side.md), [0031](decisions/0031-hosting-on-railway.md) (hosting on Railway; single-origin service, deploy runbook)                                                                                                                                                                   |
 | Process & repo boundary           | [0001](decisions/0001-adopt-document-everything.md), [0010](decisions/0010-repo-vs-internal.md)                                                                                                                                                                                                                                                                                   |
 
 ## Planning sessions
@@ -83,4 +83,5 @@ Before changing a domain, read **only** the ADR(s) below for it (see the Context
 | [planning/2026-07-09-session-02-modes.md](planning/2026-07-09-session-02-modes.md)                             | Plan/Trip mode model + switch                                                     |
 | [planning/2026-07-10-session-03-architecture-review.md](planning/2026-07-10-session-03-architecture-review.md) | T-025 architecture review: data model, sync, auth, modules (ADR-0018–0021)        |
 | [planning/2026-07-11-session-04-app-shell-lifecycle.md](planning/2026-07-11-session-04-app-shell-lifecycle.md) | App shell & trip lifecycle: routing, zero-state, create/join, switcher (ADR-0024) |
+| [planning/2026-07-14-session-05-hosting.md](planning/2026-07-14-session-05-hosting.md)                         | Hosting decision (Railway, ADR-0031) + deployment scaffolding                     |
 | [planning/2026-07-08-handoff-source.md](planning/2026-07-08-handoff-source.md)                                 | Original handoff doc (source material, Hebrew)                                    |

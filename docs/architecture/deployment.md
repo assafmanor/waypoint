@@ -1,45 +1,85 @@
 # Deployment & Hosting
 
-**Status:** DRAFT (direction + open questions; nothing chosen/executed yet — see T-021). Constraint: cheap and simple for a private ~5-user tool; not built for scale.
+**Status:** ACCEPTED ([ADR-0031](../decisions/0031-hosting-on-railway.md), 2026-07-14). Host: **Railway**, one project for everything. Constraint unchanged: cheap and simple for a private ~5-user tool; portable by construction (vanilla Postgres, generic S3, plain Docker).
 
 ## Version control
 
-- **GitHub, private repo.** `.env` and local-only private files are gitignored, so the repo is safe to host. See T-020.
+- **GitHub, private repo.** `.env` and local-only private files are gitignored (`.env.example` is the committed template). See T-020.
 - Default branch `main`; branch-per-task (`t-NNN-…`); Conventional Commits (conventions.md).
 
-## Topology direction — **single-origin** (T-025 / ADR-0020; ratified in T-021)
+## Topology — single-origin on Railway (ADR-0020 + ADR-0031)
 
-The T-025 auth review settled the _direction_: **the backend host serves the static PWA on the same origin as the API** (single-origin), so the refresh cookie is same-origin and the WebSocket upgrade carries it cleanly. **The frontend is not deployed to Vercel** — its serverless layer can't proxy long-lived WebSockets, which our realtime channel needs.
+One Railway project holds everything. The backend container serves the built PWA, the API, and the WebSocket upgrade on **one origin**, so the refresh cookie and WS auth stay same-origin (ADR-0020).
 
 ```
-GitHub (private)
-   │  push / PR
-   ▼
-CI (GitHub Actions): typecheck + build + lint + test on PR; deploy on main
-   │
-   ├─ ONE service (NestJS) → Fly.io / Railway / Render (container)
-   │     • serves the built PWA (static) AND the API + WS on one origin
-   ├─ worker (v1.1)   → same host as backend
-   ├─ Postgres        → managed (Neon / Railway / Render)
-   ├─ Redis (v1.1)    → managed (Upstash / host add-on)
-   └─ object storage  → S3-compatible (Cloudflare R2 / AWS S3) for encrypted documents
+GitHub main ──auto-deploy──▶ Railway project
+                              ├─ waypoint service (root Dockerfile)
+                              │    • NestJS API + WS  +  static PWA (one origin)
+                              │    • pre-deploy: npx prisma migrate deploy
+                              │    • healthcheck: GET /health
+                              ├─ Postgres (Railway plugin, private network)
+                              ├─ Redis          — NOT provisioned until v1.1 (BullMQ)
+                              └─ Storage Bucket — NOT provisioned until documents land
+                                                  (S3-compatible; code against generic S3 API)
 ```
 
-## What each environment needs
+The pieces in the repo:
 
-- **Env/secrets** set in the host's dashboard (never in the repo): `DATABASE_URL`, `JWT_SECRET`, `GOOGLE_CLIENT_ID/SECRET`, `GOOGLE_OAUTH_REDIRECT_URI` (prod URL), `DOC_ENCRYPTION_KEY`, `TOKEN_ENCRYPTION_KEY`, `REDIS_URL`, `VITE_GOOGLE_MAPS_API_KEY`. (`VITE_API_BASE_URL` is same-origin in prod, so it may be empty/relative.)
-- **Google Cloud:** add the production OAuth redirect URI and Maps key referrer/restrictions (prerequisites-checklist.md).
-- **Migrations on deploy:** run `prisma migrate deploy` as a release step before the API starts.
+| File                  | Role                                                                                                                                                                                                             |
+| --------------------- | ---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `Dockerfile` (root)   | Multi-stage build: pnpm workspace → `pnpm deploy --prod` prune → runtime with `dist/`, `public/` (PWA), prisma CLI                                                                                               |
+| `railway.json`        | Config-as-code: Dockerfile builder, `/health` healthcheck, `preDeployCommand: npx prisma migrate deploy`                                                                                                         |
+| `backend/src/main.ts` | Serves `<dist>/../public` when it exists (production image only); `SpaFallbackFilter` turns router 404s on browser navigations into the PWA — API routes are excluded by construction, no route list to maintain |
 
-## Open questions 🔶 (resolve in T-021)
+## Environment variables (set in the Railway service, never in the repo)
 
-1. Backend host: Fly.io vs. Railway vs. Render — pick one (cost, DX, container + WebSocket support).
-2. Postgres host: bundle with the backend host, or Neon (serverless) separately?
-3. ~~Frontend host~~ — resolved: single-origin, the backend serves the PWA (ADR-0020). No separate frontend host.
-4. Custom domain? (or default host subdomains for a private tool).
-5. Single "prod" environment, or also a "staging"? (Probably just prod for v1.)
-6. Secrets management beyond host env vars (fine for now)?
+| Var                                         | Value / how to generate                                                                    |
+| ------------------------------------------- | ------------------------------------------------------------------------------------------ |
+| `DATABASE_URL`                              | Reference variable `${{Postgres.DATABASE_URL}}` (private network)                          |
+| `JWT_SECRET`                                | `openssl rand -base64 32` — store in the password manager                                  |
+| `TOKEN_ENCRYPTION_KEY`                      | `openssl rand -base64 32` — **must decode to exactly 32 bytes** (AES-256-GCM, crypto.util) |
+| `GOOGLE_CLIENT_ID` / `GOOGLE_CLIENT_SECRET` | From the Google Cloud OAuth client (prerequisites-checklist.md)                            |
+| `GOOGLE_OAUTH_REDIRECT_URI`                 | `https://<domain>/auth/google/callback`                                                    |
+
+**Never set in production:** `DEV_AUTH` (auth bypass) and `FRONTEND_URL` (dev-only CORS; prod is single-origin). `VITE_API_BASE_URL` stays unset — the client defaults to same-origin. Later additions when their features land: `REDIS_URL` (v1.1), `DOC_ENCRYPTION_KEY` + bucket credentials (documents), `VITE_GOOGLE_MAPS_API_KEY` (build-time arg).
+
+## One-time setup runbook
+
+1. **Railway**: sign up (GitHub login), **Hobby plan**; optionally set a workspace usage limit (e.g. $10/mo) as a cost guardrail.
+2. **Project**: "Deploy from GitHub repo" → this repo, branch `main`, region EU-West. `railway.json` supplies builder/healthcheck; **verify the pre-deploy command** appears in service → Settings → Deploy (set it manually if config-as-code didn't apply): `npx prisma migrate deploy`.
+3. **Postgres**: `+ New → Database → PostgreSQL` in the same project.
+4. **Env vars**: set the table above on the service (`DATABASE_URL` via the reference picker).
+5. **Domain**: service → Settings → Networking → Generate Domain; then fill `GOOGLE_OAUTH_REDIRECT_URI` with it.
+6. **Google Cloud Console** (APIs & Services → Credentials → the OAuth client): add `https://<domain>` to Authorized JavaScript origins and `https://<domain>/auth/google/callback` to Authorized redirect URIs. If the consent screen is in _Testing_ mode, add each member's Gmail as a test user.
+7. **Deploy & verify** (below).
+
+## Verify after any deploy
+
+- `GET /health` → 200, `GET /api/docs` renders (Swagger).
+- App loads at `/`, Google login round-trips, a deep link (`/join/xyz`) serves the PWA, an unknown API path (`/trips/nope`) returns JSON — not HTML.
+- Realtime: a change made on one device appears live on another (WS carries the cookie same-origin).
+- Note: the API connects to Postgres at boot (`PrismaService.onModuleInit`) — the healthcheck failing right after a deploy usually means `DATABASE_URL` is wrong/missing, not app breakage.
+
+## Migrations
+
+`npx prisma migrate deploy` runs as Railway's **pre-deploy command** — in the new image, before it replaces the running one. This is why `prisma` (CLI) and `dotenv` are production `dependencies` of the backend, not dev-only.
+
+## Local production parity
+
+```bash
+docker build -t waypoint .
+docker run --rm -p 3000:3000 -e DATABASE_URL=… -e JWT_SECRET=… -e TOKEN_ENCRYPTION_KEY=… \
+  -e GOOGLE_CLIENT_ID=… -e GOOGLE_CLIENT_SECRET=… -e GOOGLE_OAUTH_REDIRECT_URI=… waypoint
+```
+
+Serves the full single-origin app (PWA + API + WS) on `:3000` — the same image Railway runs.
+
+## Still open (deliberately)
+
+1. Custom domain (default `*.up.railway.app` subdomain is fine for a private tool).
+2. Staging environment — skipped for v1; Railway PR environments can cover it later.
+3. CI on PRs (typecheck/build/test via GitHub Actions) — worth adding; deploys don't depend on it.
 
 ## Non-goals for v1
 
-Autoscaling, multi-region, blue/green, IaC. A single small prod environment is enough.
+Autoscaling, multi-region, blue/green, IaC beyond `railway.json`. Scale path and the exit story live in [ADR-0031](../decisions/0031-hosting-on-railway.md).
