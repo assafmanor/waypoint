@@ -69,6 +69,7 @@ export class AuthController {
   async googleCallback(
     @Query('code') code: string,
     @Query('state') state: string,
+    @Query('error') error: string,
     @Req() req: CookieRequest,
     @Res() res: CookieResponse,
   ): Promise<void> {
@@ -76,8 +77,12 @@ export class AuthController {
     const transaction = cookies[OAUTH_COOKIE]
       ? (JSON.parse(cookies[OAUTH_COOKIE]) as { state: string; codeVerifier: string })
       : undefined;
-    if (!code || !state || !transaction || transaction.state !== state) {
-      throw new UnauthorizedException('Invalid OAuth callback (state mismatch)');
+    if (error || !code || !state || !transaction || transaction.state !== state) {
+      // User cancelled consent (error=access_denied) or the callback is otherwise
+      // unusable (expired/replayed) — send them home instead of a raw 401 JSON body.
+      res.clearCookie(OAUTH_COOKIE, { path: '/auth' });
+      res.redirect(frontendUrl());
+      return;
     }
 
     const result = await this.auth.handleGoogleCallback(code, transaction.codeVerifier);
