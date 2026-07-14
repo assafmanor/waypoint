@@ -77,7 +77,7 @@ body {
   --plan: #8b79e8;
   --plan-deep: #a99af2; /* used as text — lighter on dark */
   --plan-tint: rgba(139, 121, 232, 0.14);
-  --indigo-tint: rgba(141, 168, 232, 0.16); /* brightened for the dark nav bar (dark-sweep: verify contrast) */
+  --indigo-tint: rgba(141, 168, 232, 0.16); /* brightened for the dark nav bar */
   --cta: #e7eaf2;
   --cta-text: #12203a;
   --ok: #4cbf85;
