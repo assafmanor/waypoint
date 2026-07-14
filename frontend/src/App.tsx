@@ -17,6 +17,7 @@ import { DayView } from './screens/DayView';
 import { Login } from './screens/Login';
 import { ZeroState } from './screens/ZeroState';
 import { ShellStub } from './screens/ShellStub';
+import { CreateTrip } from './screens/CreateTrip';
 import { DevTimeTravel } from './dev/DevTimeTravel';
 import { useClock } from './lib/useClock';
 import {
@@ -378,7 +379,7 @@ function AppRoutes() {
     <Routes>
       <Route element={<AuthGate />}>
         <Route path="login" element={<Login />} />
-        <Route path="new" element={<ShellStub title={t.shell.stub.newTrip} />} />
+        <Route path="new" element={<CreateTrip />} />
         <Route path="join/:token" element={<ShellStub title={t.shell.stub.join} />} />
         <Route path="trip/:id/settings" element={<ShellStub title={t.shell.stub.settings} />} />
         <Route path="*" element={<RootSurface />} />

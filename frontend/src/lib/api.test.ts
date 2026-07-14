@@ -4,6 +4,7 @@ import {
   ApiError,
   apiFetch,
   createEvent,
+  createTrip,
   deleteEvent,
   fetchSnapshot,
   isHardEventConfirmError,
@@ -88,6 +89,27 @@ describe('fetchSnapshot', () => {
       vi.fn().mockResolvedValue(new Response(JSON.stringify({ nope: true }), { status: 200 })),
     );
     await expect(fetchSnapshot(TRIP.id)).rejects.toThrow();
+  });
+});
+
+describe('createTrip', () => {
+  it('posts the input and returns the canonical trip', async () => {
+    const fetchMock = vi
+      .fn()
+      .mockResolvedValue(new Response(JSON.stringify(TRIP), { status: 200 }));
+    vi.stubGlobal('fetch', fetchMock);
+    const result = await createTrip({
+      name: TRIP.name,
+      destination: TRIP.destination,
+      startDate: TRIP.startDate,
+      endDate: TRIP.endDate,
+      timezone: TRIP.timezone,
+    });
+    expect(result.id).toBe(TRIP.id);
+    expect(fetchMock).toHaveBeenCalledWith(
+      expect.stringContaining('/trips'),
+      expect.objectContaining({ method: 'POST' }),
+    );
   });
 });
 
