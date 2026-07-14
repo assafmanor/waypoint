@@ -27,13 +27,21 @@ describe('gapBetween', () => {
     const gap = gapBetween(ev('lunch', '11:12'), ev('dinner', '19:10'), TZ);
     expect(gap).not.toBeNull();
     expect(gap!.minutes).toBe(478);
-    expect(gap!.fill).toEqual({ date: '2026-07-07', start: '11:12', end: '19:10' });
+    // Prefill is a 1h block at the gap start, not the whole 8h gap.
+    expect(gap!.fill).toEqual({ date: '2026-07-07', start: '11:12', end: '12:12' });
   });
 
-  it('measures from the end time when the earlier event has one', () => {
+  it('measures from the end time when the earlier event has one, capping the fill', () => {
     const gap = gapBetween(ev('a', '10:00', '12:00'), ev('b', '14:30'), TZ);
     expect(gap!.minutes).toBe(150);
     expect(gap!.fill.start).toBe('12:00');
+    expect(gap!.fill.end).toBe('13:00'); // 1h block, not the 2.5h gap
+  });
+
+  it('fills exactly a gap shorter than the default block', () => {
+    // 60-min gap (= threshold): fill the whole thing, not start+60 overshoot.
+    const gap = gapBetween(ev('a', '10:00'), ev('b', '11:00'), TZ);
+    expect(gap!.fill.end).toBe('11:00');
   });
 
   it('returns null below the threshold', () => {

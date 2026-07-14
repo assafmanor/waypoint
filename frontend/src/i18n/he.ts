@@ -232,6 +232,8 @@ export const t = {
     moveLater: 'אחר',
     drag: 'גרור לסידור',
     pinned: 'אירוע קשיח · מעוגן בזמן',
+    toShelf: 'העבר למדף',
+    rowActions: 'פעולות',
     gapFillTitle: (start: string, end: string) => `מילוי הפער · ${start}–${end}`,
     gapFillEmpty: 'אין רעיונות במדף · הוסף אירוע חדש',
     addIdea: 'הוסף רעיון למדף',
@@ -290,6 +292,7 @@ export const t = {
     scheduledDay: (title: string) => `${title} נוסף ליום`,
     maybeAdded: 'הרעיון נוסף למדף',
     maybeRemoved: 'הרעיון הוסר מהמדף',
+    movedToShelf: 'הועבר למדף האולי',
   },
   ripple: {
     prompt: (movedTitle: string) => `${movedTitle} נדחה - לדחות גם את האירועים שאחריו?`,

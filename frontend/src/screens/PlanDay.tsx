@@ -1,7 +1,9 @@
 // Plan-mode Day-by-day — the itinerary BUILDER (modes.md; ADR-0025 Tier 3;
 // mockups/plan-mode-v1.html). Trip mode follows/adjusts the day (quick verbs);
-// Plan mode builds it — so rows are structural: tap (or the pencil) opens the
-// edit sheet, ✎ edits, 🗑 deletes, and gap chips + the shelf fill the day.
+// Plan mode builds it — so rows are structural: tap the row opens the edit
+// sheet, the ⋯ button opens a per-row action sheet (edit · move-to-shelf ·
+// delete), and gap chips + the shelf fill the day. One trailing affordance per
+// row, not a strip of icons — the phone has no width for it (ADR-0017).
 //
 // Editing reuses EventForm (add + edit, incl. hard↔soft flip, time, and
 // cross-day via its date field). Reorder = drag a soft row's grip (or the ▲/▼
@@ -121,6 +123,7 @@ export function PlanDay() {
                     booking={e.bookingId ? bookings.find((b) => b.id === e.bookingId) : undefined}
                     onEdit={() => setFormTarget(e)}
                     onDelete={() => verbs.remove(e)}
+                    onPark={soft ? () => verbs.park(e) : undefined}
                     grip={soft ? gripProps(e.id) : undefined}
                     dragging={drag?.id === e.id}
                     over={drag?.overId === e.id}
@@ -252,6 +255,7 @@ function BuilderRow({
   booking,
   onEdit,
   onDelete,
+  onPark,
   grip,
   dragging,
   over,
@@ -263,6 +267,8 @@ function BuilderRow({
   booking?: { confirmationCode?: string };
   onEdit: () => void;
   onDelete: () => void;
+  // Present only for soft rows — move the event to the shelf as an idea.
+  onPark?: () => void;
   // Present only for soft rows (hard events are pinned anchors, not draggable).
   grip?: {
     onPointerDown: (e: ReactPointerEvent) => void;
@@ -284,6 +290,15 @@ function BuilderRow({
   const cls = ['bld', isHard ? '' : 'soft', dragging ? 'dragging' : '', over ? 'over' : '']
     .filter(Boolean)
     .join(' ');
+
+  // Row actions live behind one ⋯ button (a bottom sheet), not a strip of inline
+  // icons — a phone row only has width for grip + title + time + one affordance
+  // (mockups/plan-mode-v1.html). Edit is also reachable by tapping the row body.
+  const [menuOpen, setMenuOpen] = useState(false);
+  const runAction = (fn: () => void) => {
+    setMenuOpen(false);
+    fn();
+  };
 
   return (
     <div className={cls} data-bld-id={event.id}>
@@ -338,12 +353,39 @@ function BuilderRow({
           {event.endsAt && `–${formatTime(event.endsAt, tz)}`}
         </span>
       )}
-      <button className="bld-icon" onClick={onEdit} aria-label={t.actions.edit}>
-        {ICONS.edit}
+      <button
+        className="bld-icon"
+        onClick={() => setMenuOpen(true)}
+        aria-label={t.planDay.rowActions}
+      >
+        {ICONS.more}
       </button>
-      <button className="bld-icon danger" onClick={onDelete} aria-label={t.actions.delete}>
-        {ICONS.trash}
-      </button>
+      {menuOpen && (
+        <Sheet title={event.title} onClose={() => setMenuOpen(false)}>
+          <div className="row-actions">
+            <button className="row-action" onClick={() => runAction(onEdit)}>
+              <span className="row-action-ic" aria-hidden="true">
+                {ICONS.edit}
+              </span>
+              {t.actions.edit}
+            </button>
+            {onPark && (
+              <button className="row-action" onClick={() => runAction(onPark)}>
+                <span className="row-action-ic" aria-hidden="true">
+                  {ICONS.toShelf}
+                </span>
+                {t.planDay.toShelf}
+              </button>
+            )}
+            <button className="row-action danger" onClick={() => runAction(onDelete)}>
+              <span className="row-action-ic" aria-hidden="true">
+                {ICONS.trash}
+              </span>
+              {t.actions.delete}
+            </button>
+          </div>
+        </Sheet>
+      )}
     </div>
   );
 }
