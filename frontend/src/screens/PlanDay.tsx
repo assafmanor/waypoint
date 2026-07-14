@@ -11,11 +11,12 @@ import { Fragment, useState, type FormEvent, type PointerEvent as ReactPointerEv
 import { EVENT_KIND, EVENT_STATUS, type MaybeItem, type TripEvent } from '@waypoint/shared';
 import { useTrip, byStart } from '../state/trip-state';
 import { useVerbs } from '../state/verbs';
-import { formatTime, isoToTimeInput } from '../lib/time';
+import { formatTime, isoToTimeInput, zonedIso } from '../lib/time';
 import { CODE_PREFIX, ICONS, MS_PER_DAY, MINUTES_PER_HOUR } from '../constants';
 import { t } from '../i18n/he';
 import { TRIP_TZ_OFFSET, maybeMeta } from '../fixtures';
 import { EventForm } from '../ui/EventForm';
+import { Sheet } from '../ui/Sheet';
 
 const daysBetween = (from: string, to: string) =>
   Math.round((Date.parse(to) - Date.parse(from)) / MS_PER_DAY);
@@ -65,6 +66,9 @@ export function PlanDay() {
   // A shelf idea being scheduled onto a day — opens EventForm in "schedule" mode
   // so the user picks the day/time/kind (not the old hardcoded 17:30 dump).
   const [scheduleMaybe, setScheduleMaybe] = useState<MaybeItem | null>(null);
+  // A gap the user tapped "＋ שבץ" on — opens a chooser to drop an existing shelf
+  // idea into the gap's slot, or start a fresh event there (#21).
+  const [gapChoice, setGapChoice] = useState<GapDefaults | null>(null);
 
   const dayEvents = events
     .filter((e) => e.date === activeDate && e.status !== EVENT_STATUS.SKIPPED)
@@ -155,13 +159,7 @@ export function PlanDay() {
                   {gap && (
                     <div className="gap">
                       <span className="gap-line" />
-                      <button
-                        className="gap-add"
-                        onClick={() => {
-                          setFormTarget('new');
-                          setGapFill(gap.fill);
-                        }}
-                      >
+                      <button className="gap-add" onClick={() => setGapChoice(gap.fill)}>
                         {t.planDay.gap(gapLabel(gap.minutes))}
                       </button>
                       <span className="gap-line" />
@@ -200,6 +198,29 @@ export function PlanDay() {
         <AddIdea onAdd={(title) => verbs.addMaybe(title)} />
       </div>
 
+      {gapChoice && (
+        <GapFillSheet
+          gap={gapChoice}
+          ideas={maybeItems.filter((m) => !m.consumed)}
+          onPickIdea={(m) => {
+            verbs.schedule(m, {
+              date: gapChoice.date,
+              title: m.title,
+              kind: EVENT_KIND.SOFT,
+              startsAt: zonedIso(gapChoice.date, gapChoice.start, tz),
+              endsAt: zonedIso(gapChoice.date, gapChoice.end, tz),
+            });
+            setGapChoice(null);
+          }}
+          onNewEvent={() => {
+            setGapFill(gapChoice);
+            setFormTarget('new');
+            setGapChoice(null);
+          }}
+          onClose={() => setGapChoice(null)}
+        />
+      )}
+
       {(formTarget || scheduleMaybe) && (
         <EventForm
           event={formTarget && formTarget !== 'new' ? formTarget : null}
@@ -209,6 +230,44 @@ export function PlanDay() {
         />
       )}
     </div>
+  );
+}
+
+// Gap-fill chooser (#21): drop an existing shelf idea into the gap's slot, or
+// start a fresh event there. Scheduling an idea reuses verbs.schedule with the
+// gap's exact start/end so it lands in the hole, not the old default slot.
+function GapFillSheet({
+  gap,
+  ideas,
+  onPickIdea,
+  onNewEvent,
+  onClose,
+}: {
+  gap: GapDefaults;
+  ideas: MaybeItem[];
+  onPickIdea: (m: MaybeItem) => void;
+  onNewEvent: () => void;
+  onClose: () => void;
+}) {
+  return (
+    <Sheet title={t.planDay.gapFillTitle(gap.start, gap.end)} onClose={onClose}>
+      <div className="gapfill-list">
+        {ideas.map((m) => (
+          <button key={m.id} className="gapfill-row" onClick={() => onPickIdea(m)}>
+            <span className="gapfill-ic">{m.icon}</span>
+            <span className="gapfill-main">
+              <span className="gapfill-t">{m.title}</span>
+              <span className="gapfill-m">{maybeMeta(m.id)}</span>
+            </span>
+            <span className="gapfill-add">{ICONS.add}</span>
+          </button>
+        ))}
+        {ideas.length === 0 && <div className="gapfill-empty">{t.planDay.gapFillEmpty}</div>}
+      </div>
+      <button className="btn-primary gapfill-new" onClick={onNewEvent}>
+        {ICONS.add} {t.actions.newEvent}
+      </button>
+    </Sheet>
   );
 }
 
