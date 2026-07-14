@@ -27,9 +27,8 @@ describe('SpaFallbackFilter', () => {
     expect(res.status).not.toHaveBeenCalled();
   });
 
-  // The bug: /trips (client route) collides with the guarded GET /trips API
-  // route. A hard refresh sends a document GET with the cookie but no bearer,
-  // so the guard 401s — the shell must still load, not raw JSON.
+  // /trips collides with the guarded GET /trips API route: a refresh 401s
+  // (cookie, no bearer) and must still load the shell, not raw JSON.
   it('serves the SPA shell for a document navigation the auth guard 401d', () => {
     const { host, res } = hostFor(HTML_NAV);
     filter.catch(new UnauthorizedException('Missing access token'), host);

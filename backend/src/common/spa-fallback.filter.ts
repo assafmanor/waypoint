@@ -14,16 +14,10 @@ export const STATIC_ROOT = join(__dirname, '..', '..', 'public');
 const SPA_INDEX = join(STATIC_ROOT, 'index.html');
 const HTML_MIME = 'text/html';
 
-/** Deep-links client routes to the PWA. A browser document navigation (GET +
- *  `Accept: text/html`) gets index.html whether the router 404'd (an unknown
- *  client route) or the auth guard 401'd. The 401 case is a client route that
- *  collides with a guarded API route (e.g. `/trips`): a hard refresh there
- *  sends a document GET carrying the session cookie but no in-memory bearer,
- *  so the guard rejects it and we'd otherwise paint raw 401 JSON over the app.
- *  Programmatic fetch/XHR (`Accept: * / *` or `application/json`) still gets
- *  the real status + JSON body, so lib/api.ts's silent-refresh retry is
- *  unaffected. Paths a controller handles never reach here, so no API-prefix
- *  list to maintain. */
+/** Serves the PWA for browser document navigations (GET + Accept: text/html)
+ *  that 404 (unknown client route) or 401 (client route shadowing a guarded
+ *  API route, e.g. /trips — a hard refresh sends the cookie but no in-memory
+ *  bearer). Programmatic fetch/XHR still gets the real status + JSON. */
 @Catch(NotFoundException, UnauthorizedException)
 export class SpaFallbackFilter implements ExceptionFilter {
   catch(exception: HttpException, host: ArgumentsHost): void {
