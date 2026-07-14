@@ -91,9 +91,12 @@ export function DayView() {
         <span className="hint">{t.day.tapToSchedule}</span>
       </div>
       <div className="shelf">
-        {maybeItems.map((m) => (
-          <MaybeCard key={m.id} item={m} onSchedule={() => verbs.schedule(m)} />
-        ))}
+        {/* Scheduled (consumed) ideas leave the shelf — no dead tombstone (ADR-0027). */}
+        {maybeItems
+          .filter((m) => !m.consumed)
+          .map((m) => (
+            <MaybeCard key={m.id} item={m} onSchedule={() => verbs.schedule(m)} />
+          ))}
       </div>
     </>
   );

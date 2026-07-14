@@ -4,10 +4,10 @@
 // edit sheet, ✎ edits, 🗑 deletes, and gap chips + the shelf fill the day.
 //
 // Editing reuses EventForm (add + edit, incl. hard↔soft flip, time, and
-// cross-day via its date field). Rows carry ▲/▼ controls that reorder by
-// swapping the neighbour's time slot (verbs.reorder → slotSwap); the list
-// stays time-ordered. Drag-to-reorder is a later nicety, not a gap.
-import { Fragment, useState, type FormEvent } from 'react';
+// cross-day via its date field). Reorder = drag a soft row's grip (or the ▲/▼
+// fallback) to reassign the day's soft time slots (verbs.reorder → planReorder);
+// the list stays time-ordered and hard events are pinned anchors (ADR-0011).
+import { Fragment, useState, type FormEvent, type PointerEvent as ReactPointerEvent } from 'react';
 import { EVENT_KIND, EVENT_STATUS, type MaybeItem, type TripEvent } from '@waypoint/shared';
 import { useTrip, byStart } from '../state/trip-state';
 import { useVerbs } from '../state/verbs';
@@ -70,6 +70,34 @@ export function PlanDay() {
     .filter((e) => e.date === activeDate && e.status !== EVENT_STATUS.SKIPPED)
     .sort(byStart);
 
+  // Reorder acts on soft events only (hard events are pinned anchors, ADR-0011).
+  const softEvents = dayEvents.filter((e) => e.kind === EVENT_KIND.SOFT);
+  const softIndex = new Map(softEvents.map((e, i) => [e.id, i]));
+
+  // Drag-to-reorder: a soft event's grip is the handle. Pointer capture keeps
+  // move/up on the grip; the row under the pointer (data-bld-id) is the drop
+  // target. Drop reassigns the soft time slots (verbs.reorder → planReorder).
+  const [drag, setDrag] = useState<{ id: string; overId: string | null } | null>(null);
+  const gripProps = (id: string) => ({
+    onPointerDown: (e: ReactPointerEvent) => {
+      (e.currentTarget as HTMLElement).setPointerCapture(e.pointerId);
+      setDrag({ id, overId: null });
+    },
+    onPointerMove: (e: ReactPointerEvent) => {
+      setDrag((d) => {
+        if (!d) return d;
+        const el = document.elementFromPoint(e.clientX, e.clientY);
+        const overId = (el?.closest('[data-bld-id]') as HTMLElement | null)?.dataset.bldId ?? null;
+        const next = overId && overId !== d.id && softIndex.has(overId) ? overId : null;
+        return next === d.overId ? d : { ...d, overId: next };
+      });
+    },
+    onPointerUp: () => {
+      if (drag?.overId && drag.overId !== drag.id) verbs.reorder(dayEvents, drag.id, drag.overId);
+      setDrag(null);
+    },
+  });
+
   const dayNumber = daysBetween(trip.startDate, activeDate) + 1;
   const weekday = new Intl.DateTimeFormat('he-IL', {
     weekday: 'long',
@@ -101,6 +129,11 @@ export function PlanDay() {
             {dayEvents.map((e, i) => {
               const next = dayEvents[i + 1];
               const gap = next ? gapBetween(e, next, tz) : null;
+              const si = softIndex.get(e.id);
+              const soft = si !== undefined;
+              const earlierId = soft && si > 0 ? softEvents[si - 1].id : undefined;
+              const laterId =
+                soft && si < softEvents.length - 1 ? softEvents[si + 1].id : undefined;
               return (
                 <Fragment key={e.id}>
                   <BuilderRow
@@ -109,11 +142,14 @@ export function PlanDay() {
                     booking={e.bookingId ? bookings.find((b) => b.id === e.bookingId) : undefined}
                     onEdit={() => setFormTarget(e)}
                     onDelete={() => verbs.remove(e)}
-                    onMoveEarlier={i > 0 ? () => verbs.reorder(e, dayEvents[i - 1]) : undefined}
+                    grip={soft ? gripProps(e.id) : undefined}
+                    dragging={drag?.id === e.id}
+                    over={drag?.overId === e.id}
+                    onMoveEarlier={
+                      earlierId ? () => verbs.reorder(dayEvents, e.id, earlierId) : undefined
+                    }
                     onMoveLater={
-                      i < dayEvents.length - 1
-                        ? () => verbs.reorder(e, dayEvents[i + 1])
-                        : undefined
+                      laterId ? () => verbs.reorder(dayEvents, e.id, laterId) : undefined
                     }
                   />
                   {gap && (
@@ -148,14 +184,18 @@ export function PlanDay() {
           <span className="hint">{t.day.tapToSchedule}</span>
         </div>
         <div className="shelf">
-          {maybeItems.map((m) => (
-            <MaybeCard
-              key={m.id}
-              item={m}
-              onSchedule={() => setScheduleMaybe(m)}
-              onRemove={() => verbs.removeMaybe(m)}
-            />
-          ))}
+          {/* Scheduled (consumed) ideas leave the shelf — no dead "שובץ"
+              tombstone (ADR-0027: an idea is parked OR placed, never both). */}
+          {maybeItems
+            .filter((m) => !m.consumed)
+            .map((m) => (
+              <MaybeCard
+                key={m.id}
+                item={m}
+                onSchedule={() => setScheduleMaybe(m)}
+                onRemove={() => verbs.removeMaybe(m)}
+              />
+            ))}
         </div>
         <AddIdea onAdd={(title) => verbs.addMaybe(title)} />
       </div>
@@ -178,6 +218,9 @@ function BuilderRow({
   booking,
   onEdit,
   onDelete,
+  grip,
+  dragging,
+  over,
   onMoveEarlier,
   onMoveLater,
 }: {
@@ -186,7 +229,15 @@ function BuilderRow({
   booking?: { confirmationCode?: string };
   onEdit: () => void;
   onDelete: () => void;
-  // undefined at the ends of the list (nothing to swap with)
+  // Present only for soft rows (hard events are pinned anchors, not draggable).
+  grip?: {
+    onPointerDown: (e: ReactPointerEvent) => void;
+    onPointerMove: (e: ReactPointerEvent) => void;
+    onPointerUp: () => void;
+  };
+  dragging?: boolean;
+  over?: boolean;
+  // undefined at the ends of the soft list (nothing to swap with)
   onMoveEarlier?: () => void;
   onMoveLater?: () => void;
 }) {
@@ -196,26 +247,41 @@ function BuilderRow({
     .filter(Boolean)
     .join(' · ');
 
+  const cls = ['bld', isHard ? '' : 'soft', dragging ? 'dragging' : '', over ? 'over' : '']
+    .filter(Boolean)
+    .join(' ');
+
   return (
-    <div className={'bld' + (isHard ? '' : ' soft')}>
-      <span className="bld-reorder">
-        <button
-          className="bld-move"
-          onClick={onMoveEarlier}
-          disabled={!onMoveEarlier}
-          aria-label={t.planDay.moveEarlier}
-        >
-          ▲
-        </button>
-        <button
-          className="bld-move"
-          onClick={onMoveLater}
-          disabled={!onMoveLater}
-          aria-label={t.planDay.moveLater}
-        >
-          ▼
-        </button>
-      </span>
+    <div className={cls} data-bld-id={event.id}>
+      {grip ? (
+        <span className="bld-reorder">
+          <button className="bld-grip" aria-label={t.planDay.drag} {...grip}>
+            ⠿
+          </button>
+          <span className="bld-move-stack">
+            <button
+              className="bld-move"
+              onClick={onMoveEarlier}
+              disabled={!onMoveEarlier}
+              aria-label={t.planDay.moveEarlier}
+            >
+              ▲
+            </button>
+            <button
+              className="bld-move"
+              onClick={onMoveLater}
+              disabled={!onMoveLater}
+              aria-label={t.planDay.moveLater}
+            >
+              ▼
+            </button>
+          </span>
+        </span>
+      ) : (
+        <span className="bld-anchor" aria-label={t.planDay.pinned} title={t.planDay.pinned}>
+          {ICONS.lock}
+        </span>
+      )}
       <span className="bld-bd" aria-hidden="true">
         {event.icon}
       </span>
@@ -256,21 +322,19 @@ function MaybeCard({
   onSchedule: () => void;
   onRemove: () => void;
 }) {
+  // Consumed (scheduled) ideas are filtered out before render (ADR-0027), so a
+  // card is always an actionable, unplaced idea: schedule it or remove it.
   return (
-    <div className={'maybe' + (item.consumed ? ' consumed' : '')}>
-      {!item.consumed && (
-        <button className="maybe-remove" onClick={onRemove} aria-label={t.planDay.removeIdea}>
-          ✕
-        </button>
-      )}
-      <button className="maybe-body" onClick={onSchedule} disabled={item.consumed}>
+    <div className="maybe">
+      <button className="maybe-remove" onClick={onRemove} aria-label={t.planDay.removeIdea}>
+        ✕
+      </button>
+      <button className="maybe-body" onClick={onSchedule}>
         <span className="mi">{item.icon}</span>
         <span className="mt">{item.title}</span>
         <span className="mm">{maybeMeta(item.id)}</span>
         <span className="add">
-          {item.consumed
-            ? `${ICONS.done} ${t.actions.scheduled}`
-            : `${ICONS.add} ${t.actions.scheduleToDay}`}
+          {ICONS.add} {t.actions.scheduleToDay}
         </span>
       </button>
     </div>

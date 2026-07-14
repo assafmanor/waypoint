@@ -1450,3 +1450,58 @@
   opacity: 0.4;
   cursor: default;
 }
+
+/* Builder reorder: a drag grip (primary) + ▲/▼ stack (a11y/keyboard fallback).
+   Hard rows show a static anchor glyph instead — they're pinned (ADR-0011). */
+.bld-reorder {
+  flex-direction: row;
+  align-items: center;
+  gap: 3px;
+}
+.bld-grip {
+  flex: 0 0 auto;
+  width: 22px;
+  height: 30px;
+  display: grid;
+  place-items: center;
+  border: 0;
+  background: none;
+  color: #c0c6d2;
+  font-size: 15px;
+  line-height: 1;
+  cursor: grab;
+  border-radius: 6px;
+  /* let the grip own touch gestures so a drag doesn't scroll the list */
+  touch-action: none;
+}
+.bld-grip:active {
+  cursor: grabbing;
+}
+.bld-grip:hover {
+  background: var(--plan-tint);
+  color: var(--plan-deep);
+}
+.bld-grip:focus-visible {
+  outline: 2px solid var(--plan);
+  outline-offset: 1px;
+}
+.bld-move-stack {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+}
+.bld-anchor {
+  flex: 0 0 auto;
+  width: 22px;
+  display: grid;
+  place-items: center;
+  font-size: 12px;
+  opacity: 0.5;
+}
+.bld.dragging {
+  opacity: 0.45;
+}
+.bld.over {
+  border-color: var(--plan);
+  box-shadow: 0 0 0 2px var(--plan-tint);
+}

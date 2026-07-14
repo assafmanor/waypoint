@@ -229,6 +229,8 @@ export const t = {
     addToDay: (day: number) => `הוסף אירוע ליום ${day}`,
     moveEarlier: 'הקדם',
     moveLater: 'אחר',
+    drag: 'גרור לסידור',
+    pinned: 'אירוע קשיח · מעוגן בזמן',
     addIdea: 'הוסף רעיון למדף',
     addIdeaPlaceholder: 'רעיון חדש למדף…',
     removeIdea: 'הסר רעיון',

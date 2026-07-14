@@ -58,11 +58,10 @@ export type Action =
   // Plan-mode builder reorder: swap two adjacent events' slots atomically so
   // undo captures one pre-swap snapshot (a two-UPDATE_EVENT sequence would
   // overwrite the undo snapshot on the second dispatch).
-  | {
-      type: 'REORDER';
-      a: { id: string; patch: Partial<TripEvent> };
-      b: { id: string; patch: Partial<TripEvent> };
-    }
+  // Plan-mode builder reorder: reassign soft events' time slots atomically so
+  // undo captures one pre-reorder snapshot (a sequence of UPDATE_EVENTs would
+  // overwrite the undo snapshot on each dispatch).
+  | { type: 'REORDER'; patches: { id: string; patch: Partial<TripEvent> }[] }
   // Maybe-shelf add/remove (Plan-mode Tier 3 build-the-shelf).
   | { type: 'ADD_MAYBE'; item: MaybeItem }
   | { type: 'REMOVE_MAYBE'; id: string }
@@ -142,10 +141,7 @@ export function reducer(state: State, action: Action): State {
       return { ...state, events, ripple: null, undo: snapshotOf(state) };
     }
     case 'REORDER': {
-      const patches = new Map([
-        [action.a.id, action.a.patch],
-        [action.b.id, action.b.patch],
-      ]);
+      const patches = new Map(action.patches.map((p) => [p.id, p.patch]));
       const events = state.events.map((e) => {
         const patch = patches.get(e.id);
         return patch ? { ...e, ...patch } : e;

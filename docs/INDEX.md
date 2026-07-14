@@ -77,14 +77,15 @@ Before changing a domain, read **only** the ADR(s) below for it (see the Context
 
 ## Planning sessions
 
-| Doc                                                                                                            | Purpose                                                                           |
-| -------------------------------------------------------------------------------------------------------------- | --------------------------------------------------------------------------------- |
-| [planning/2026-07-09-session-01-pm-kickoff.md](planning/2026-07-09-session-01-pm-kickoff.md)                   | PM kickoff: scope, decisions, scaffold                                            |
-| [planning/2026-07-09-session-02-modes.md](planning/2026-07-09-session-02-modes.md)                             | Plan/Trip mode model + switch                                                     |
-| [planning/2026-07-10-session-03-architecture-review.md](planning/2026-07-10-session-03-architecture-review.md) | T-025 architecture review: data model, sync, auth, modules (ADR-0018–0021)        |
-| [planning/2026-07-11-session-04-app-shell-lifecycle.md](planning/2026-07-11-session-04-app-shell-lifecycle.md) | App shell & trip lifecycle: routing, zero-state, create/join, switcher (ADR-0024) |
-| [planning/2026-07-14-session-05-hosting.md](planning/2026-07-14-session-05-hosting.md)                         | Hosting decision (Railway, ADR-0031) + deployment scaffolding                     |
-| [planning/2026-07-14-session-06-plan-home.md](planning/2026-07-14-session-06-plan-home.md)                     | Plan-mode Home (prep dashboard, real-signals readiness) + light plan chrome       |
-| [planning/2026-07-14-session-07-plan-day-builder.md](planning/2026-07-14-session-07-plan-day-builder.md)       | Plan-mode Day-by-day (itinerary builder): rows, gap chips, empty-day markers      |
-| [planning/2026-07-14-session-08-maybe-shelf-rework.md](planning/2026-07-14-session-08-maybe-shelf-rework.md)   | Maybe-shelf rework: schedule-with-picker + add/remove ideas                       |
-| [planning/2026-07-08-handoff-source.md](planning/2026-07-08-handoff-source.md)                                 | Original handoff doc (source material, Hebrew)                                    |
+| Doc                                                                                                                              | Purpose                                                                           |
+| -------------------------------------------------------------------------------------------------------------------------------- | --------------------------------------------------------------------------------- |
+| [planning/2026-07-09-session-01-pm-kickoff.md](planning/2026-07-09-session-01-pm-kickoff.md)                                     | PM kickoff: scope, decisions, scaffold                                            |
+| [planning/2026-07-09-session-02-modes.md](planning/2026-07-09-session-02-modes.md)                                               | Plan/Trip mode model + switch                                                     |
+| [planning/2026-07-10-session-03-architecture-review.md](planning/2026-07-10-session-03-architecture-review.md)                   | T-025 architecture review: data model, sync, auth, modules (ADR-0018–0021)        |
+| [planning/2026-07-11-session-04-app-shell-lifecycle.md](planning/2026-07-11-session-04-app-shell-lifecycle.md)                   | App shell & trip lifecycle: routing, zero-state, create/join, switcher (ADR-0024) |
+| [planning/2026-07-14-session-05-hosting.md](planning/2026-07-14-session-05-hosting.md)                                           | Hosting decision (Railway, ADR-0031) + deployment scaffolding                     |
+| [planning/2026-07-14-session-06-plan-home.md](planning/2026-07-14-session-06-plan-home.md)                                       | Plan-mode Home (prep dashboard, real-signals readiness) + light plan chrome       |
+| [planning/2026-07-14-session-07-plan-day-builder.md](planning/2026-07-14-session-07-plan-day-builder.md)                         | Plan-mode Day-by-day (itinerary builder): rows, gap chips, empty-day markers      |
+| [planning/2026-07-14-session-08-maybe-shelf-rework.md](planning/2026-07-14-session-08-maybe-shelf-rework.md)                     | Maybe-shelf rework: schedule-with-picker + add/remove ideas                       |
+| [planning/2026-07-14-session-09-drag-reorder-shelf-tombstone.md](planning/2026-07-14-session-09-drag-reorder-shelf-tombstone.md) | Builder drag-reorder (soft-slot model) + shelf "שובץ" tombstone fix               |
+| [planning/2026-07-08-handoff-source.md](planning/2026-07-08-handoff-source.md)                                                   | Original handoff doc (source material, Hebrew)                                    |

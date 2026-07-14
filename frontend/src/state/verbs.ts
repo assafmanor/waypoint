@@ -32,6 +32,7 @@ import {
 import { enqueueOutbox, isNetworkError, isOffline, type OutboxOp } from '../lib/outbox';
 import { getNow } from '../lib/useClock';
 import { isoToTimeInput } from '../lib/time';
+import { planReorder } from '../lib/reorder';
 import { DEFAULT_MAYBE_ICON, DELAY_STEP_MINUTES, DEFAULT_SCHEDULE_SLOT, ICONS } from '../constants';
 import { t } from '../i18n/he';
 import { TRIP_TZ_OFFSET, activeUserId, maybeMeta } from '../fixtures';
@@ -123,22 +124,7 @@ function toCreateEventInput(event: TripEvent): CreateEventInput {
 }
 
 /** Two adjacent builder events swap slots (the Plan-mode reorder): if both are
- *  timed they trade startsAt/endsAt — which reorders the time-sorted list —
- *  otherwise they trade sortOrder only. Pure, so it's unit-tested without a
- *  component. */
-export function slotSwap(
-  a: Pick<TripEvent, 'startsAt' | 'endsAt' | 'sortOrder'>,
-  b: Pick<TripEvent, 'startsAt' | 'endsAt' | 'sortOrder'>,
-): { a: UpdateEventInput; b: UpdateEventInput } {
-  if (a.startsAt && b.startsAt) {
-    return {
-      a: { startsAt: b.startsAt, endsAt: b.endsAt, sortOrder: b.sortOrder },
-      b: { startsAt: a.startsAt, endsAt: a.endsAt, sortOrder: a.sortOrder },
-    };
-  }
-  return { a: { sortOrder: b.sortOrder }, b: { sortOrder: a.sortOrder } };
-}
-
+ *  reorder logic (which soft event holds which slot) lives in lib/reorder.ts. */
 const slotOf = (e: TripEvent): UpdateEventInput => ({
   startsAt: e.startsAt,
   endsAt: e.endsAt,
@@ -320,39 +306,34 @@ export async function applyGuardedDelete(deps: VerbDeps, event: TripEvent): Prom
   return true;
 }
 
-// Reorder two adjacent builder events by swapping their slots. One REORDER
-// dispatch (single undo snapshot) + two persisted updates. Each update carries
-// its own event's hard flag so the server-side ADR-0011 gate is satisfied per
-// event; the user's consent is collected once, upstream in applyGuardedReorder.
-export async function applyReorder(deps: VerbDeps, a: TripEvent, b: TripEvent): Promise<void> {
-  const swap = slotSwap(a, b);
-  const aHard = a.kind === EVENT_KIND.HARD;
-  const bHard = b.kind === EVENT_KIND.HARD;
-  deps.dispatch({
-    type: 'REORDER',
-    a: { id: a.id, patch: swap.a },
-    b: { id: b.id, patch: swap.b },
-  });
+// Reorder soft events on a day: reassign their time slots (patches computed by
+// lib/reorder.ts's planReorder). One REORDER dispatch (single undo snapshot) +
+// one persisted update per moved event. Only soft events are ever in `patches`
+// (hard events are pinned anchors, ADR-0011), so there's no hard-edit gate here.
+// `affected` is the day's events, used to record each moved event's prior slot
+// for undo.
+export async function applyReorder(
+  deps: VerbDeps,
+  patches: { id: string; patch: UpdateEventInput }[],
+  affected: TripEvent[],
+): Promise<void> {
+  if (patches.length === 0) return;
+  const byId = new Map(affected.map((e) => [e.id, e]));
+  deps.dispatch({ type: 'REORDER', patches });
   deps.lastAction.current = {
     kind: 'reorder',
-    items: [
-      { id: a.id, previous: slotOf(a), isHard: aHard },
-      { id: b.id, previous: slotOf(b), isHard: bHard },
-    ],
+    items: patches.map((p) => ({ id: p.id, previous: slotOf(byId.get(p.id)!), isHard: false })),
   };
   try {
-    const results = await Promise.all([
-      restOrQueue(
-        deps.tripId,
-        { verb: 'update', eventId: a.id, input: swap.a, confirm: aHard },
-        () => updateEvent(deps.tripId, a.id, swap.a, aHard),
+    const results = await Promise.all(
+      patches.map((p) =>
+        restOrQueue(
+          deps.tripId,
+          { verb: 'update', eventId: p.id, input: p.patch, confirm: false },
+          () => updateEvent(deps.tripId, p.id, p.patch, false),
+        ),
       ),
-      restOrQueue(
-        deps.tripId,
-        { verb: 'update', eventId: b.id, input: swap.b, confirm: bHard },
-        () => updateEvent(deps.tripId, b.id, swap.b, bHard),
-      ),
-    ]);
+    );
     for (const canonical of results) {
       if (canonical) deps.dispatch({ type: 'RECONCILE_EVENT', event: canonical });
     }
@@ -360,23 +341,6 @@ export async function applyReorder(deps: VerbDeps, a: TripEvent, b: TripEvent): 
     deps.dispatch({ type: 'UNDO' });
     writeErrorToast(deps.toast, err);
   }
-}
-
-// Hard-event guard (ADR-0011), same choke point as the other guarded verbs:
-// swapping a hard event's slot is a hard edit, so confirm once if either side
-// is hard; cancel is a true no-op.
-export async function applyGuardedReorder(
-  deps: VerbDeps,
-  a: TripEvent,
-  b: TripEvent,
-): Promise<boolean> {
-  const hard = a.kind === EVENT_KIND.HARD ? a : b.kind === EVENT_KIND.HARD ? b : null;
-  if (hard) {
-    const confirmed = await deps.confirmHardEdit(hard, 'edit');
-    if (!confirmed) return false;
-  }
-  await applyReorder(deps, a, b);
-  return true;
 }
 
 // Add/remove ideas are Plan-mode Tier-3 building actions — called online, not
@@ -633,12 +597,13 @@ export function useVerbs() {
         if (applied) toast(ICONS.trash, t.toast.eventDeleted, undo);
       });
     },
-    // Plan-mode builder: swap an event's slot with its neighbor (a = the moved
-    // event, b = the neighbor it trades places with).
-    reorder: (a: TripEvent, b: TripEvent) => {
-      void applyGuardedReorder(deps, a, b).then((applied) => {
-        if (applied) toast(ICONS.swap, t.toast.reordered, undo);
-      });
+    // Plan-mode builder: move soft event `movedId` to occupy `targetId`'s slot
+    // (drag drop target, or the ▲/▼ soft neighbour). Hard events are pinned.
+    reorder: (dayEvents: TripEvent[], movedId: string, targetId: string) => {
+      const patches = planReorder(dayEvents, movedId, targetId);
+      if (patches.length === 0) return;
+      void applyReorder(deps, patches, dayEvents);
+      toast(ICONS.swap, t.toast.reordered, undo);
     },
     rippleApply: () => {
       if (!ripple) return;
