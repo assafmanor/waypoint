@@ -1499,3 +1499,14 @@
 .app[data-mode='plan'] .month-label {
   color: var(--muted);
 }
+
+/* Plan-mode empty-day marker on the day strip (mockups/plan-mode-v1.html):
+   a dashed pill with a red number — a gap to go fill. Never on the selected
+   day (:not(.on)), whose violet fill wins. */
+.app[data-mode='plan'] .day-pill.empty:not(.on) {
+  border: 1px dashed var(--soft-line);
+  background: transparent;
+}
+.app[data-mode='plan'] .day-pill.empty:not(.on) .n {
+  color: var(--miss);
+}

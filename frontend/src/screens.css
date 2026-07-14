@@ -1161,3 +1161,165 @@
   margin-top: 3px;
   font-weight: 600;
 }
+
+/* ============================================================
+   Plan-mode Day-by-day — the itinerary builder (screens/PlanDay.tsx).
+   modes.md / ADR-0025 Tier 3 / mockups/plan-mode-v1.html. Structural rows
+   (edit/delete, no quick verbs), gap chips, and the shelf. Soft grammar
+   (dashed + hatch) matches Trip mode's .item.soft.
+   ============================================================ */
+.builder-empty {
+  border: 1.5px dashed var(--soft-line);
+  border-radius: 14px;
+  padding: 22px 16px;
+  text-align: center;
+  color: var(--muted);
+  font-size: 13px;
+  font-weight: 600;
+}
+
+/* builder row */
+.bld {
+  background: var(--card);
+  border: 1px solid var(--line);
+  border-radius: 14px;
+  margin-bottom: 9px;
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding: 10px 12px;
+}
+.bld.soft {
+  background: repeating-linear-gradient(-45deg, #fff 0 9px, #fbfaf7 9px 18px);
+  border: 1px dashed var(--soft-line);
+}
+.bld-bd {
+  width: 36px;
+  height: 36px;
+  border-radius: 10px;
+  display: grid;
+  place-items: center;
+  font-size: 17px;
+  background: var(--paper);
+  flex: 0 0 auto;
+}
+.bld.soft .bld-bd {
+  background: rgba(22, 35, 61, 0.05);
+}
+.bld-main {
+  flex: 1;
+  min-width: 0;
+  text-align: start;
+  font: inherit;
+  background: none;
+  border: 0;
+  padding: 0;
+  cursor: pointer;
+  color: inherit;
+}
+.bld-t {
+  font-weight: 700;
+  font-size: 14px;
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  flex-wrap: wrap;
+}
+.bld-m {
+  display: block;
+  font-size: 11.5px;
+  color: var(--muted);
+  margin-top: 2px;
+}
+.bld-time {
+  font-family: var(--font-mono);
+  font-size: 12.5px;
+  font-weight: 700;
+  flex: 0 0 auto;
+}
+.bld.soft .bld-time {
+  color: var(--muted);
+}
+.bld-icon {
+  flex: 0 0 auto;
+  width: 32px;
+  height: 32px;
+  border-radius: 9px;
+  border: 1px solid var(--line);
+  background: var(--card);
+  color: var(--muted);
+  font-size: 14px;
+  cursor: pointer;
+  display: grid;
+  place-items: center;
+}
+.bld-icon:hover {
+  border-color: var(--plan);
+  color: var(--plan-deep);
+}
+.bld-icon.danger:hover {
+  border-color: var(--miss);
+  color: var(--miss);
+}
+.bld-icon:focus-visible {
+  outline: 2.5px solid var(--plan);
+  outline-offset: 2px;
+}
+
+/* gap chip between events — fill-a-gap is a plan action (violet) */
+.gap {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  margin: 0 0 9px;
+  padding: 2px 6px;
+}
+.gap-line {
+  flex: 1;
+  height: 1px;
+  background: repeating-linear-gradient(90deg, var(--soft-line) 0 5px, transparent 5px 10px);
+}
+.gap-add {
+  font: inherit;
+  font-size: 11px;
+  font-weight: 700;
+  color: var(--plan-deep);
+  background: var(--plan-tint);
+  border: 1px solid rgba(110, 89, 214, 0.3);
+  border-radius: 20px;
+  padding: 4px 11px;
+  cursor: pointer;
+  white-space: nowrap;
+}
+.gap-add:hover {
+  background: var(--plan);
+  color: #fff;
+}
+.gap-add:focus-visible {
+  outline: 2.5px solid var(--plan);
+  outline-offset: 2px;
+}
+
+/* add-event affordance at the foot of the day */
+.addbtn {
+  width: 100%;
+  font: inherit;
+  font-size: 13.5px;
+  font-weight: 700;
+  color: var(--plan-deep);
+  background: var(--card);
+  border: 1.5px dashed var(--soft-line);
+  border-radius: 13px;
+  padding: 13px;
+  cursor: pointer;
+  margin-top: 2px;
+  transition: 0.12s;
+}
+.addbtn:hover {
+  border-color: var(--plan);
+  background: var(--plan-tint);
+}
+.addbtn:focus-visible {
+  outline: 2.5px solid var(--plan);
+  outline-offset: 2px;
+}

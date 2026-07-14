@@ -85,4 +85,5 @@ Before changing a domain, read **only** the ADR(s) below for it (see the Context
 | [planning/2026-07-11-session-04-app-shell-lifecycle.md](planning/2026-07-11-session-04-app-shell-lifecycle.md) | App shell & trip lifecycle: routing, zero-state, create/join, switcher (ADR-0024) |
 | [planning/2026-07-14-session-05-hosting.md](planning/2026-07-14-session-05-hosting.md)                         | Hosting decision (Railway, ADR-0031) + deployment scaffolding                     |
 | [planning/2026-07-14-session-06-plan-home.md](planning/2026-07-14-session-06-plan-home.md)                     | Plan-mode Home (prep dashboard, real-signals readiness) + light plan chrome       |
+| [planning/2026-07-14-session-07-plan-day-builder.md](planning/2026-07-14-session-07-plan-day-builder.md)       | Plan-mode Day-by-day (itinerary builder): rows, gap chips, empty-day markers      |
 | [planning/2026-07-08-handoff-source.md](planning/2026-07-08-handoff-source.md)                                 | Original handoff doc (source material, Hebrew)                                    |
