@@ -19,13 +19,16 @@ padding) keeps the drop reflow-free — the pill box stays reserved on all
 icons. The existing global `prefers-reduced-motion` block disables the
 transition (the static offset remains, no motion).
 
-Also killed the mobile browser's blue tap-flash on the nav buttons
+Also killed the mobile browser's blue tap-flash
 (`-webkit-tap-highlight-color: transparent`) — reported from a device
-screenshot where tapping a tab painted a translucent blue box over it. The
-pill + teal focus-visible ring are the only selection affordances.
+screenshot where tapping a tab painted a translucent blue box over it.
+Applied **app-wide** in the `*` reset (the property is inherited, and every
+tappable surface already has its own `:active` / hover / focus-visible
+feedback) rather than per-button, so the crude default overlay is gone
+everywhere, not just the nav.
 
-Files: `frontend/src/App.css`, `docs/design/design-language.md` (bottom-nav
-entry).
+Files: `frontend/src/App.css`, `frontend/src/styles/tokens.css`,
+`docs/design/design-language.md` (bottom-nav entry).
 
 ## Verified
 

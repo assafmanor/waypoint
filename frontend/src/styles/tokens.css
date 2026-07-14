@@ -37,6 +37,10 @@
   box-sizing: border-box;
   margin: 0;
   padding: 0;
+  /* Kill the mobile browser's blue tap-flash app-wide (inherited). Every
+     tappable surface has its own :active / hover / focus-visible feedback,
+     so this only removes the crude default overlay, not the affordance. */
+  -webkit-tap-highlight-color: transparent;
 }
 
 html,
