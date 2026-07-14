@@ -8,6 +8,7 @@ import {
   tripSnapshotSchema,
   type Change,
   type CreateEventInput,
+  type CreateTripInput,
   type EventStatus,
   type Me,
   type MoveEventInput,
@@ -75,6 +76,16 @@ export async function fetchTrips(): Promise<Trip[]> {
   const res = await apiFetch(`${API_BASE_URL}/trips`);
   if (!res.ok) return throwApiError(res);
   return tripSchema.array().parse(await res.json());
+}
+
+export async function createTrip(input: CreateTripInput): Promise<Trip> {
+  const res = await apiFetch(`${API_BASE_URL}/trips`, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify(input),
+  });
+  if (!res.ok) return throwApiError(res);
+  return tripSchema.parse(await res.json());
 }
 
 const snapshotUrl = (tripId: string) => `${API_BASE_URL}/trips/${tripId}/snapshot`;
