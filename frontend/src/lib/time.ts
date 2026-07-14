@@ -1,8 +1,14 @@
 // Trip-timezone formatting + client-side "now" derivation.
 // "Now" is never stored (ADR-0018) — it's computed from event startsAt/endsAt vs the clock.
 import { EVENT_KIND, EVENT_STATUS, type TripEvent } from '@waypoint/shared';
-import { DAY_WINDOW, MINUTES_PER_HOUR, MINUTES_PER_DAY } from '../constants';
-import { dayCount } from './hebrew';
+import {
+  COUNTDOWN_MONTHS_THRESHOLD,
+  DAY_WINDOW,
+  DAYS_PER_MONTH,
+  MINUTES_PER_HOUR,
+  MINUTES_PER_DAY,
+} from '../constants';
+import { dayCount, dayPhrase, monthPhrase } from './hebrew';
 
 /** "Today" in a specific timezone as YYYY-MM-DD — the trip's own calendar day,
  *  not the browser's (mirrors backend/prisma/seed.mjs's todayInTz). `at` is
@@ -114,6 +120,15 @@ export function formatCountdown(totalMinutes: number): Countdown {
     return { value: `${hours}:${String(minutes).padStart(2, '0')}`, unit: 'שעות' };
   }
   return dayCount(Math.floor(totalMinutes / MINUTES_PER_DAY));
+}
+
+/** Phrases a calendar-day countdown (all-trips "בעוד …" chip) — exact day
+ *  counts up close, then rounded month counts once the start is more than
+ *  COUNTDOWN_MONTHS_THRESHOLD months out (dual/plural via monthPhrase). */
+export function formatDaysUntil(days: number): string {
+  const months = days / DAYS_PER_MONTH;
+  if (months > COUNTDOWN_MONTHS_THRESHOLD) return monthPhrase(Math.round(months));
+  return dayPhrase(days);
 }
 
 /** 0..1 position of `at` across the active day's waking window, in the trip timezone. */

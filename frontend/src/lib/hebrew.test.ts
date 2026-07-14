@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { dayCount, dayPhrase } from './hebrew';
+import { dayCount, dayPhrase, monthCount, monthPhrase } from './hebrew';
 
 describe('dayCount', () => {
   it('has no numeral for 1 (dual/singular forms replace it)', () => {
@@ -21,5 +21,21 @@ describe('dayPhrase', () => {
     expect(dayPhrase(1)).toBe('יום');
     expect(dayPhrase(2)).toBe('יומיים');
     expect(dayPhrase(5)).toBe('5 ימים');
+  });
+});
+
+describe('monthCount', () => {
+  it('uses the same dual/plural rule as days', () => {
+    expect(monthCount(1)).toEqual({ value: '', unit: 'חודש' });
+    expect(monthCount(2)).toEqual({ value: '', unit: 'חודשיים' });
+    expect(monthCount(4)).toEqual({ value: '4', unit: 'חודשים' });
+  });
+});
+
+describe('monthPhrase', () => {
+  it('combines into a single string', () => {
+    expect(monthPhrase(1)).toBe('חודש');
+    expect(monthPhrase(2)).toBe('חודשיים');
+    expect(monthPhrase(4)).toBe('4 חודשים');
   });
 });

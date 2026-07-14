@@ -1,7 +1,7 @@
 // Hebrew UI copy — the active locale. All user-facing strings live here so logic
 // stays language-agnostic (conventions.md). Interpolated copy is a function;
 // runs that must render left-to-right (times, codes) stay as JSX in the caller.
-import { dayPhrase } from '../lib/hebrew';
+import { formatDaysUntil } from '../lib/time';
 
 export const t = {
   common: {
@@ -136,7 +136,7 @@ export const t = {
       tripsCount: (n: number) => `${n} טיולים`,
       current: 'נוכחי',
       chipNow: 'עכשיו',
-      chipSoon: (days: number) => `בעוד ${dayPhrase(days)}`,
+      chipSoon: (days: number) => `בעוד ${formatDaysUntil(days)}`,
       chipPast: 'הסתיים',
       create: 'טיול חדש',
       offlineNote: 'מעבר בין טיולים שמורים עובד גם אופליין · יצירה צריכה חיבור',

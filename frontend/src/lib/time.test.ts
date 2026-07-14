@@ -6,6 +6,7 @@ import {
   dayProgress,
   deriveNow,
   formatCountdown,
+  formatDaysUntil,
   formatTime,
   hardConflicts,
   isoToTimeInput,
@@ -168,6 +169,21 @@ describe('formatCountdown', () => {
     expect(formatCountdown(24 * 60)).toEqual({ value: '', unit: 'יום' });
     expect(formatCountdown(2 * 24 * 60)).toEqual({ value: '', unit: 'יומיים' });
     expect(formatCountdown(5 * 24 * 60 + 30)).toEqual({ value: '5', unit: 'ימים' });
+  });
+});
+
+describe('formatDaysUntil', () => {
+  it('phrases exact day counts up to two months out', () => {
+    expect(formatDaysUntil(1)).toBe('יום');
+    expect(formatDaysUntil(2)).toBe('יומיים');
+    expect(formatDaysUntil(45)).toBe('45 ימים');
+    expect(formatDaysUntil(60)).toBe('60 ימים');
+  });
+
+  it('rounds to months past two months out (dual form included)', () => {
+    expect(formatDaysUntil(61)).toBe('חודשיים');
+    expect(formatDaysUntil(100)).toBe('3 חודשים');
+    expect(formatDaysUntil(200)).toBe('7 חודשים');
   });
 });
 

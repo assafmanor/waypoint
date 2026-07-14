@@ -5,6 +5,15 @@ export const MS_PER_DAY = 86_400_000;
 export const MINUTES_PER_HOUR = 60;
 export const MINUTES_PER_DAY = MINUTES_PER_HOUR * 24;
 
+/** Average Gregorian month — good enough for rounding far-out countdowns,
+ *  where a ±1-day error is invisible anyway. */
+export const DAYS_PER_MONTH = 365.25 / 12;
+
+/** Day countdowns switch to rounded month counts past this many months —
+ *  up close the exact day count is the useful number, far out it's noise
+ *  ("בעוד 94 יום"). */
+export const COUNTDOWN_MONTHS_THRESHOLD = 2;
+
 /** How far a "delay" verb pushes an event. */
 export const DELAY_STEP_MINUTES = 30;
 

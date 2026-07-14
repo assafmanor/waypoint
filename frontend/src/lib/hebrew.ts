@@ -8,8 +8,22 @@ export function dayCount(n: number): { value: string; unit: string } {
   return { value: String(n), unit: 'ימים' };
 }
 
+/** Same dual/plural rule for months: "חודש", "חודשיים", then "N חודשים". */
+export function monthCount(n: number): { value: string; unit: string } {
+  if (n === 1) return { value: '', unit: 'חודש' };
+  if (n === 2) return { value: '', unit: 'חודשיים' };
+  return { value: String(n), unit: 'חודשים' };
+}
+
 /** Same rule, as a single string — for plain-text contexts (chip labels). */
 export function dayPhrase(n: number): string {
-  const { value, unit } = dayCount(n);
+  return joinCount(dayCount(n));
+}
+
+export function monthPhrase(n: number): string {
+  return joinCount(monthCount(n));
+}
+
+function joinCount({ value, unit }: { value: string; unit: string }): string {
   return value ? `${value} ${unit}` : unit;
 }
