@@ -11,7 +11,8 @@ import { Fragment, useState, type FormEvent, type PointerEvent as ReactPointerEv
 import { EVENT_KIND, EVENT_STATUS, type MaybeItem, type TripEvent } from '@waypoint/shared';
 import { useTrip, byStart } from '../state/trip-state';
 import { useVerbs } from '../state/verbs';
-import { formatTime, isoToTimeInput, zonedIso } from '../lib/time';
+import { formatTime, zonedIso } from '../lib/time';
+import { gapBetween, type GapDefaults } from '../lib/gaps';
 import { CODE_PREFIX, ICONS, MS_PER_DAY, MINUTES_PER_HOUR } from '../constants';
 import { t } from '../i18n/he';
 import { TRIP_TZ_OFFSET, maybeMeta } from '../fixtures';
@@ -20,32 +21,6 @@ import { Sheet } from '../ui/Sheet';
 
 const daysBetween = (from: string, to: string) =>
   Math.round((Date.parse(to) - Date.parse(from)) / MS_PER_DAY);
-
-/** Only surface a gap worth filling — below this it's just breathing room. */
-const GAP_MIN_MINUTES = 60;
-
-type GapDefaults = { date: string; start: string; end: string };
-
-// Minutes of dead time between one event's end and the next event's start, plus
-// the wall-clock endpoints for prefilling a new event into the gap. Null unless
-// both instants exist and the gap clears the threshold.
-function gapBetween(
-  a: TripEvent,
-  b: TripEvent,
-  tz: string,
-): { minutes: number; fill: GapDefaults } | null {
-  if (!a.endsAt || !b.startsAt) return null;
-  const minutes = Math.round((Date.parse(b.startsAt) - Date.parse(a.endsAt)) / 60000);
-  if (minutes < GAP_MIN_MINUTES) return null;
-  return {
-    minutes,
-    fill: {
-      date: a.date,
-      start: isoToTimeInput(a.endsAt, tz),
-      end: isoToTimeInput(b.startsAt, tz),
-    },
-  };
-}
 
 function gapLabel(minutes: number): string {
   if (minutes < MINUTES_PER_HOUR) return t.planDay.gapMinutes(minutes);
@@ -360,6 +335,7 @@ function BuilderRow({
       {event.startsAt && (
         <span className="bld-time" dir="ltr">
           {formatTime(event.startsAt, tz)}
+          {event.endsAt && `–${formatTime(event.endsAt, tz)}`}
         </span>
       )}
       <button className="bld-icon" onClick={onEdit} aria-label={t.actions.edit}>

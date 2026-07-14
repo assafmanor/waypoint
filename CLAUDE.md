@@ -19,7 +19,7 @@ Code and documentation live together. **Any consequential decision gets an ADR**
 - `docs/decisions/` — ADRs (the "why"). `README.md` lists them chronologically; `INDEX.md`'s **"Decisions by domain"** table is the router — read the ADR(s) for a domain before you touch it.
 - `docs/engineering/` — conventions + prerequisites checklist.
 - `mockups/trip-dashboard-v2.html` — the interactive **Trip-mode** design reference _(predates ADR-0028; colors retrofitted — on conflict the design docs win)_.
-- `mockups/plan-mode-v1.html` — the interactive **Plan-mode** design reference (prep-dashboard Home, itinerary builder, booking entry, research; phone + tablet) _(predates ADR-0028; colors retrofitted, chrome restyle pending — on conflict the design docs win)_.
+- `mockups/plan-mode-v1.html` — the interactive **Plan-mode** design reference (prep-dashboard Home, itinerary builder, booking entry, research; phone + tablet) _(colors + light "drafting table" chrome + violet prep hero retrofitted to match the shipped app / ADR-0028; dark-mode token remap still absent — on conflict the design docs win)_.
 - `mockups/screens-v1.html` — landing, lobby, join (paste-a-link + invite landing, ADR-0030), and trip-settings screens (plan-mode daylight chrome).
 - `mockups/zero-state-v1.html` — the zero-state home (logged in, no trips): the dormant "board off" concept, two equal join/create actions (ADR-0024 §2).
 - `mockups/create-trip-v1.html` — trip creation `/new`: three inputs, live soft-grammar draft preview, post-create invite prompt (ADR-0032).
