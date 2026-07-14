@@ -1,0 +1,19 @@
+# Keep the build context to what the Dockerfile actually copies.
+**/node_modules
+**/dist
+**/.turbo
+**/coverage
+*.tsbuildinfo
+.git
+.github
+.husky
+.obsidian
+_internal
+docs
+mockups
+*.log
+.DS_Store
+
+# Secrets never enter the image; prod config comes from Railway env vars.
+.env
+.env.*
