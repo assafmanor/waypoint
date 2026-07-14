@@ -1283,6 +1283,11 @@
   border-top: 1px solid var(--line);
   display: flex;
   padding: 9px 8px;
+  /* The active tab's "you are here" pill follows mode identity: the neutral
+     chrome indigo in Trip mode, --plan violet in Plan mode (below). It never
+     borrows amber (time) or teal (location) — see design-language.md. */
+  --nav-accent: var(--indigo);
+  --nav-tint: var(--indigo-tint);
 }
 .nav button {
   flex: 1;
@@ -1300,11 +1305,25 @@
   font-weight: 600;
   transition: color 0.15s;
 }
+/* Every icon carries the pill box (radius + padding) so filling only the
+   active one adds no layout shift; the tint fades in on selection. */
 .nav button .ic {
   font-size: 19px;
+  line-height: 1;
+  padding: 3px 16px;
+  border-radius: 999px;
+  transition: background-color 0.16s;
 }
 .nav button.on {
-  color: var(--indigo);
+  color: var(--nav-accent);
+  font-weight: 700;
+}
+.nav button.on .ic {
+  background: var(--nav-tint);
+}
+.app[data-mode='plan'] .nav {
+  --nav-accent: var(--plan);
+  --nav-tint: var(--plan-tint);
 }
 .nav button:focus-visible {
   outline: 2.5px solid var(--teal);
