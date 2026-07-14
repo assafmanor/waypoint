@@ -17,15 +17,29 @@ import { zonedIso, isoToTimeInput } from '../lib/time';
 import { DEFAULT_EVENT_ICON } from '../constants';
 import { t } from '../i18n/he';
 
-export function EventForm({ event, onClose }: { event?: TripEvent | null; onClose: () => void }) {
+export function EventForm({
+  event,
+  defaults,
+  onClose,
+}: {
+  event?: TripEvent | null;
+  // Prefill for a *new* event (e.g. the builder's gap-fill: date + start of the
+  // gap). Ignored when editing an existing event.
+  defaults?: { date?: string; start?: string; end?: string };
+  onClose: () => void;
+}) {
   const { trip, activeDate, activeUserId } = useTrip();
   const verbs = useVerbs();
   const tz = trip.timezone;
 
   const [title, setTitle] = useState(event?.title ?? '');
-  const [date, setDate] = useState(event?.date ?? activeDate);
-  const [start, setStart] = useState(event?.startsAt ? isoToTimeInput(event.startsAt, tz) : '');
-  const [end, setEnd] = useState(event?.endsAt ? isoToTimeInput(event.endsAt, tz) : '');
+  const [date, setDate] = useState(event?.date ?? defaults?.date ?? activeDate);
+  const [start, setStart] = useState(
+    event?.startsAt ? isoToTimeInput(event.startsAt, tz) : (defaults?.start ?? ''),
+  );
+  const [end, setEnd] = useState(
+    event?.endsAt ? isoToTimeInput(event.endsAt, tz) : (defaults?.end ?? ''),
+  );
   const [kind, setKind] = useState<TripEvent['kind']>(event?.kind ?? EVENT_KIND.SOFT);
   const [location, setLocation] = useState(event?.location ?? '');
   const [error, setError] = useState<string | null>(null);

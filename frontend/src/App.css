@@ -199,9 +199,9 @@
   color: #3a2405;
 }
 /* Plan mode never uses amber (design-language: mode identity): the selected
-   mode pill and selected day go plan violet. Solid --plan rather than
-   --plan-tint because the header chrome is still dark indigo — the light
-   drafting chrome for plan mode is a designed follow-up. */
+   mode pill and selected day go plan violet. Solid --plan reads as the pressed
+   state against the light "drafting table" chrome (see the [data-mode='plan']
+   chrome block below). */
 .app[data-mode='plan'] .toggle button.on {
   background: var(--plan);
   color: #fff;
@@ -1424,4 +1424,89 @@
     animation: none !important;
     transition: none !important;
   }
+}
+
+/* ============================================================
+   Plan-mode chrome — the light "drafting table" (design-language: mode identity,
+   ADR-0028). Trip mode keeps the dark indigo board chrome; Plan mode re-skins
+   the same header/toggle/day-strip as light paper with violet accents and a
+   faint drafting grid, so the mode is readable from the chrome alone before any
+   content. Scoped entirely under [data-mode='plan'] — Trip mode is untouched.
+   ============================================================ */
+.app[data-mode='plan'] .header {
+  color: var(--ink);
+  background-color: var(--card);
+  /* subtle drafting grid — violet, very low contrast */
+  background-image:
+    repeating-linear-gradient(0deg, rgba(110, 89, 214, 0.05) 0 1px, transparent 1px 22px),
+    repeating-linear-gradient(90deg, rgba(110, 89, 214, 0.05) 0 1px, transparent 1px 22px);
+  border-bottom: 1px solid var(--line);
+}
+.app[data-mode='plan'] .trip-sub {
+  color: var(--muted);
+}
+.app[data-mode='plan'] .trip-name-btn {
+  background: var(--plan-tint);
+  border-color: rgba(110, 89, 214, 0.28);
+}
+.app[data-mode='plan'] .trip-name-btn:hover {
+  background: rgba(110, 89, 214, 0.16);
+}
+.app[data-mode='plan'] .trip-name-btn .chev {
+  background: rgba(110, 89, 214, 0.16);
+}
+.app[data-mode='plan'] .trip-name-btn:focus-visible {
+  outline-color: var(--plan);
+}
+.app[data-mode='plan'] .gear-btn {
+  background: var(--plan-tint);
+  border-color: rgba(110, 89, 214, 0.3);
+  color: var(--plan-deep);
+}
+/* Avatar overlap rings match the (now light) header surface; the ringed
+   account avatar gets a violet ring instead of the dark-chrome white one. */
+.app[data-mode='plan'] .av {
+  border-color: var(--card);
+}
+.app[data-mode='plan'] .av.more {
+  background: var(--plan-tint);
+  color: var(--plan-deep);
+}
+.app[data-mode='plan'] .account-btn {
+  border-color: rgba(110, 89, 214, 0.5);
+}
+.app[data-mode='plan'] .offline-badge {
+  background: rgba(22, 35, 61, 0.05);
+  border-color: var(--line);
+  color: var(--muted);
+}
+.app[data-mode='plan'] .toggle {
+  background: var(--plan-tint);
+}
+.app[data-mode='plan'] .toggle button {
+  color: var(--muted);
+}
+.app[data-mode='plan'] .toggle .auto {
+  color: var(--muted);
+}
+.app[data-mode='plan'] .day-pill {
+  background: rgba(22, 35, 61, 0.05);
+  color: var(--muted);
+}
+.app[data-mode='plan'] .day-pill .n {
+  color: var(--ink);
+}
+.app[data-mode='plan'] .month-label {
+  color: var(--muted);
+}
+
+/* Plan-mode empty-day marker on the day strip (mockups/plan-mode-v1.html):
+   a dashed pill with a red number — a gap to go fill. Never on the selected
+   day (:not(.on)), whose violet fill wins. */
+.app[data-mode='plan'] .day-pill.empty:not(.on) {
+  border: 1px dashed var(--soft-line);
+  background: transparent;
+}
+.app[data-mode='plan'] .day-pill.empty:not(.on) .n {
+  color: var(--miss);
 }

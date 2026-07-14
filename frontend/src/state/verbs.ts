@@ -41,7 +41,8 @@ type UndoDescriptor =
   | { kind: 'create'; id: string }
   | { kind: 'rippleApply'; items: { id: string; previous: { date: string; startsAt?: string } }[] }
   | { kind: 'update'; id: string; previous: UpdateEventInput; isHard: boolean }
-  | { kind: 'delete'; event: TripEvent };
+  | { kind: 'delete'; event: TripEvent }
+  | { kind: 'reorder'; items: { id: string; previous: UpdateEventInput; isHard: boolean }[] };
 
 export interface VerbDeps {
   tripId: string;
@@ -115,6 +116,29 @@ function toCreateEventInput(event: TripEvent): CreateEventInput {
     source,
   };
 }
+
+/** Two adjacent builder events swap slots (the Plan-mode reorder): if both are
+ *  timed they trade startsAt/endsAt — which reorders the time-sorted list —
+ *  otherwise they trade sortOrder only. Pure, so it's unit-tested without a
+ *  component. */
+export function slotSwap(
+  a: Pick<TripEvent, 'startsAt' | 'endsAt' | 'sortOrder'>,
+  b: Pick<TripEvent, 'startsAt' | 'endsAt' | 'sortOrder'>,
+): { a: UpdateEventInput; b: UpdateEventInput } {
+  if (a.startsAt && b.startsAt) {
+    return {
+      a: { startsAt: b.startsAt, endsAt: b.endsAt, sortOrder: b.sortOrder },
+      b: { startsAt: a.startsAt, endsAt: a.endsAt, sortOrder: a.sortOrder },
+    };
+  }
+  return { a: { sortOrder: b.sortOrder }, b: { sortOrder: a.sortOrder } };
+}
+
+const slotOf = (e: TripEvent): UpdateEventInput => ({
+  startsAt: e.startsAt,
+  endsAt: e.endsAt,
+  sortOrder: e.sortOrder,
+});
 
 export async function applySetStatus(
   deps: VerbDeps,
@@ -291,6 +315,65 @@ export async function applyGuardedDelete(deps: VerbDeps, event: TripEvent): Prom
   return true;
 }
 
+// Reorder two adjacent builder events by swapping their slots. One REORDER
+// dispatch (single undo snapshot) + two persisted updates. Each update carries
+// its own event's hard flag so the server-side ADR-0011 gate is satisfied per
+// event; the user's consent is collected once, upstream in applyGuardedReorder.
+export async function applyReorder(deps: VerbDeps, a: TripEvent, b: TripEvent): Promise<void> {
+  const swap = slotSwap(a, b);
+  const aHard = a.kind === EVENT_KIND.HARD;
+  const bHard = b.kind === EVENT_KIND.HARD;
+  deps.dispatch({
+    type: 'REORDER',
+    a: { id: a.id, patch: swap.a },
+    b: { id: b.id, patch: swap.b },
+  });
+  deps.lastAction.current = {
+    kind: 'reorder',
+    items: [
+      { id: a.id, previous: slotOf(a), isHard: aHard },
+      { id: b.id, previous: slotOf(b), isHard: bHard },
+    ],
+  };
+  try {
+    const results = await Promise.all([
+      restOrQueue(
+        deps.tripId,
+        { verb: 'update', eventId: a.id, input: swap.a, confirm: aHard },
+        () => updateEvent(deps.tripId, a.id, swap.a, aHard),
+      ),
+      restOrQueue(
+        deps.tripId,
+        { verb: 'update', eventId: b.id, input: swap.b, confirm: bHard },
+        () => updateEvent(deps.tripId, b.id, swap.b, bHard),
+      ),
+    ]);
+    for (const canonical of results) {
+      if (canonical) deps.dispatch({ type: 'RECONCILE_EVENT', event: canonical });
+    }
+  } catch (err) {
+    deps.dispatch({ type: 'UNDO' });
+    writeErrorToast(deps.toast, err);
+  }
+}
+
+// Hard-event guard (ADR-0011), same choke point as the other guarded verbs:
+// swapping a hard event's slot is a hard edit, so confirm once if either side
+// is hard; cancel is a true no-op.
+export async function applyGuardedReorder(
+  deps: VerbDeps,
+  a: TripEvent,
+  b: TripEvent,
+): Promise<boolean> {
+  const hard = a.kind === EVENT_KIND.HARD ? a : b.kind === EVENT_KIND.HARD ? b : null;
+  if (hard) {
+    const confirmed = await deps.confirmHardEdit(hard, 'edit');
+    if (!confirmed) return false;
+  }
+  await applyReorder(deps, a, b);
+  return true;
+}
+
 export async function applyRippleApply(
   deps: VerbDeps,
   ripple: RippleSuggestion,
@@ -361,7 +444,18 @@ async function reverseRest(tripId: string, desc: UndoDescriptor): Promise<void> 
     case 'delete': {
       const input = toCreateEventInput(desc.event);
       await restOrQueue(tripId, { verb: 'create', input }, () => createEvent(tripId, input));
+      return;
     }
+    case 'reorder':
+      await Promise.all(
+        desc.items.map((i) =>
+          restOrQueue(
+            tripId,
+            { verb: 'update', eventId: i.id, input: i.previous, confirm: i.isHard },
+            () => updateEvent(tripId, i.id, i.previous, i.isHard),
+          ),
+        ),
+      );
   }
 }
 
@@ -451,6 +545,13 @@ export function useVerbs() {
     remove: (event: TripEvent) => {
       void applyGuardedDelete(deps, event).then((applied) => {
         if (applied) toast(ICONS.trash, t.toast.eventDeleted, undo);
+      });
+    },
+    // Plan-mode builder: swap an event's slot with its neighbor (a = the moved
+    // event, b = the neighbor it trades places with).
+    reorder: (a: TripEvent, b: TripEvent) => {
+      void applyGuardedReorder(deps, a, b).then((applied) => {
+        if (applied) toast(ICONS.swap, t.toast.reordered, undo);
       });
     },
     rippleApply: () => {

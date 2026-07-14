@@ -13,6 +13,8 @@ import { ToastProvider } from './ui/Toast';
 import { ConfirmProvider } from './ui/ConfirmDialog';
 import { Sheet } from './ui/Sheet';
 import { Home } from './screens/Home';
+import { PlanHome } from './screens/PlanHome';
+import { PlanDay } from './screens/PlanDay';
 import { DayView } from './screens/DayView';
 import { Login } from './screens/Login';
 import { ZeroState } from './screens/ZeroState';
@@ -33,7 +35,7 @@ import {
   type TabId,
 } from './constants';
 import { daysUntilStart, type Mode } from './lib/mode';
-import { addDays, monthLabelFor } from './lib/time';
+import { addDays, formatDaysUntil, monthLabelFor } from './lib/time';
 import { t } from './i18n/he';
 import './App.css';
 import './screens.css';
@@ -107,8 +109,13 @@ function Header({
   onOpenAccount: () => void;
   onOpenSettings: () => void;
 }) {
-  const { trip, users, activeDate, usingCachedSnapshot } = useTrip();
+  const { trip, users, activeDate, usingCachedSnapshot, events } = useTrip();
   const { me } = useAuth();
+  const { mode } = useMode();
+  const now = useClock();
+  // Plan mode surfaces empty days on the strip (dashed + red number), the
+  // day-selector cue from mockups/plan-mode-v1.html — a gap to go fill.
+  const datesWithEvents = new Set(events.map((e) => e.date));
   const { targetRef: tripNameRef, containerRef: tripNameWrapRef } = useShrinkToFit<
     HTMLSpanElement,
     HTMLDivElement
@@ -163,7 +170,15 @@ function Header({
           <div className="trip-sub">
             {trip.destination}
             <span className="dot">{DOT_SEPARATOR}</span>
-            {t.header.dayOf(dayNumber, total)}
+            {(() => {
+              // Plan mode leads with the countdown to departure; once the trip
+              // has started (real or an override peeking at Plan) fall back to
+              // "day X of Y" — daysUntilStart is null then anyway.
+              const daysToGo = mode === 'plan' ? daysUntilStart(trip, now) : null;
+              return daysToGo === null
+                ? t.header.dayOf(dayNumber, total)
+                : t.header.leavingIn(formatDaysUntil(daysToGo));
+            })()}
           </div>
         </div>
         <div className="header-actions">
@@ -212,7 +227,9 @@ function Header({
             {d.monthLabel && <span className="month-label">{d.monthLabel}</span>}
             <button
               className={
-                'day-pill' + (d.date === activeDate ? ' on' : d.date < activeDate ? ' past' : '')
+                'day-pill' +
+                (d.date === activeDate ? ' on' : d.date < activeDate ? ' past' : '') +
+                (mode === 'plan' && !datesWithEvents.has(d.date) ? ' empty' : '')
               }
               onClick={() => onSelectDay(d.date)}
             >
@@ -228,13 +245,14 @@ function Header({
   );
 }
 
-// Tabs re-emphasize by mode (ADR-0016), not duplicate screens: Home/Day-by-day
-// only have their Trip-mode content built so far, so Plan mode (and Map/Index,
-// which are unbuilt either way — T-002) fall back to Placeholder.
-function Screen({ tab }: { tab: TabId }) {
+// Tabs re-emphasize by mode (ADR-0016), not duplicate screens. Home and
+// Day-by-day are built for both modes now (Trip = departure board / follow +
+// adjust; Plan = prep dashboard / itinerary builder). Map/Index are unbuilt
+// either way (T-002), so they fall back to Placeholder.
+function Screen({ tab, onNavigate }: { tab: TabId; onNavigate: (tab: TabId) => void }) {
   const { mode } = useMode();
-  if (tab === 'home' && mode === 'trip') return <Home />;
-  if (tab === 'days' && mode === 'trip') return <DayView />;
+  if (tab === 'home') return mode === 'trip' ? <Home /> : <PlanHome onNavigate={onNavigate} />;
+  if (tab === 'days') return mode === 'trip' ? <DayView /> : <PlanDay />;
   return <Placeholder tab={tab} mode={mode} />;
 }
 
@@ -262,7 +280,7 @@ function Shell() {
         onOpenSettings={() => navigate(`/trip/${trip.id}/settings`)}
       />
       <main className="body" key={tab}>
-        <Screen tab={tab} />
+        <Screen tab={tab} onNavigate={setTab} />
       </main>
       <nav className="nav">
         {TABS.map((tabDef) => (

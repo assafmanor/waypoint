@@ -55,6 +55,14 @@ export type Action =
   | { type: 'CREATE_EVENT'; event: TripEvent }
   | { type: 'UPDATE_EVENT'; id: string; patch: Partial<TripEvent> }
   | { type: 'DELETE_EVENT'; id: string }
+  // Plan-mode builder reorder: swap two adjacent events' slots atomically so
+  // undo captures one pre-swap snapshot (a two-UPDATE_EVENT sequence would
+  // overwrite the undo snapshot on the second dispatch).
+  | {
+      type: 'REORDER';
+      a: { id: string; patch: Partial<TripEvent> };
+      b: { id: string; patch: Partial<TripEvent> };
+    }
   // T-014: the REST write layer (verbs.ts) reconciles/broadcasts through these.
   | { type: 'RECONCILE_EVENT'; event: TripEvent }
   | { type: 'SET_RIPPLE'; ripple: RippleSuggestion | null }
@@ -128,6 +136,17 @@ export function reducer(state: State, action: Action): State {
     }
     case 'DELETE_EVENT': {
       const events = state.events.filter((e) => e.id !== action.id);
+      return { ...state, events, ripple: null, undo: snapshotOf(state) };
+    }
+    case 'REORDER': {
+      const patches = new Map([
+        [action.a.id, action.a.patch],
+        [action.b.id, action.b.patch],
+      ]);
+      const events = state.events.map((e) => {
+        const patch = patches.get(e.id);
+        return patch ? { ...e, ...patch } : e;
+      });
       return { ...state, events, ripple: null, undo: snapshotOf(state) };
     }
     case 'RECONCILE_EVENT': {

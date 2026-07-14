@@ -18,6 +18,9 @@ export const t = {
   },
   header: {
     dayOf: (day: number, total: number) => `יום ${day} מתוך ${total}`,
+    // Plan mode, pre-trip: the header leads with the countdown to departure
+    // instead of "day X of Y" (mockups/plan-mode-v1.html).
+    leavingIn: (phrase: string) => `יוצאים בעוד ${phrase}`,
     pendingSync: (count: number) => `${count} שינויים מחכים לסנכרון`,
     offlineNow: 'אופליין · נתונים שמורים',
   },
@@ -173,11 +176,64 @@ export const t = {
     fxChange: (pct: number) => `${pct}% היום`,
     budgetToday: 'תקציב היום',
   },
+  // Plan-mode Home — the prep dashboard (modes.md; mockups/plan-mode-v1.html).
+  // Only the rows we can honestly derive from the snapshot appear; the Gmail /
+  // passports / Google-connection rows wait for their features (see DEFERRED).
+  planHome: {
+    prep: {
+      departIn: 'היציאה בעוד',
+      // Fallback for the rare plan-mode-while-the-trip-runs case (a manual
+      // override peeking at Plan mid-trip): no countdown to show.
+      underway: 'הטיול בעיצומו',
+      readiness: 'מוכנות הטיול',
+    },
+    checklist: {
+      title: 'מה חסר להשלמה',
+      remaining: (n: number) => (n === 1 ? 'פריט אחד' : `${n} פריטים`),
+      allDone: 'הכול מוכן 🎉',
+      done: 'הושלם',
+      flightsTitle: 'טיסות',
+      flightsDoneMeta: 'באינדקס',
+      flightsMissingMeta: 'עדיין לא באינדקס',
+      lodgingTitle: 'לינה',
+      lodgingDoneMeta: 'הוזמנה',
+      lodgingMissingMeta: 'עדיין לא הוזמנה',
+      itineraryDoneTitle: 'כל הימים מתוכננים',
+      itineraryDoneMeta: 'אין ימים ריקים',
+      itineraryTitle: (n: number) => (n === 1 ? 'יום אחד ללא תוכנית' : `${n} ימים ללא תוכנית`),
+      itineraryMeta: (days: string) => `ימים ${days} ריקים`,
+      groupTitle: 'החבורה',
+      groupDoneMeta: (n: number) => `${n} מטיילים בפנים`,
+      groupMissingTitle: 'עדיין רק אתה',
+      groupMissingMeta: 'הזמן את החבורה עם לינק',
+      addBooking: 'הוסף',
+      buildDay: 'בנה יום',
+      invite: 'הזמן',
+    },
+    stats: {
+      title: 'מבט על',
+      bookings: 'הזמנות',
+      events: 'אירועים',
+      emptyDays: 'ימים ריקים',
+    },
+  },
   day: {
     heading: (day: number, weekday: string, destination: string) =>
       `יום ${day} · ${weekday} · ${destination}`,
     maybeShelf: 'מדף האולי',
     tapToSchedule: 'הקשה משבצת ליום',
+  },
+  // Plan-mode Day-by-day — the itinerary builder (screens/PlanDay.tsx).
+  planDay: {
+    empty: 'היום ריק — הוסף אירוע או שבץ מהמדף',
+    addToDay: (day: number) => `הוסף אירוע ליום ${day}`,
+    moveEarlier: 'הקדם',
+    moveLater: 'אחר',
+    gap: (label: string) => `פער של ${label} · ＋ שבץ`,
+    gapMinutes: (n: number) => `${n} דק׳`,
+    gapHour: 'שעה',
+    gapTwoHours: 'שעתיים',
+    gapHours: (n: number) => `${n} שעות`,
   },
   event: {
     hard: 'קשיח',
@@ -222,6 +278,7 @@ export const t = {
     eventCreated: 'האירוע נוסף',
     eventUpdated: 'האירוע עודכן',
     eventDeleted: 'האירוע נמחק',
+    reordered: 'הסדר עודכן',
   },
   ripple: {
     prompt: (movedTitle: string) => `${movedTitle} נדחה - לדחות גם את האירועים שאחריו?`,

@@ -8,10 +8,13 @@ import {
   applyCreateEvent,
   applyGuardedDelay,
   applyGuardedDelete,
+  applyGuardedReorder,
   applyGuardedUpdate,
+  applyReorder,
   applySchedule,
   applySetStatus,
   applyUndo,
+  slotSwap,
   type VerbDeps,
 } from './verbs';
 import type { Action } from './trip-state';
@@ -406,5 +409,67 @@ describe('offline write outbox (T-013)', () => {
     expect(deps.actions[1]).toEqual({ type: 'UNDO' });
     expect(deps.toast).toHaveBeenCalledTimes(1);
     expect(await db.outbox.count()).toBe(0);
+  });
+});
+
+describe('slotSwap (Plan-mode reorder)', () => {
+  it('trades start/end/sortOrder when both events are timed', () => {
+    const a = EVENTS.find((e) => e.id === 'ev-tsukiji')!;
+    const b = EVENTS.find((e) => e.id === 'ev-senso')!;
+    expect(slotSwap(a, b)).toEqual({
+      a: { startsAt: b.startsAt, endsAt: b.endsAt, sortOrder: b.sortOrder },
+      b: { startsAt: a.startsAt, endsAt: a.endsAt, sortOrder: a.sortOrder },
+    });
+  });
+
+  it('trades only sortOrder when one event is untimed', () => {
+    const a = { startsAt: undefined, endsAt: undefined, sortOrder: 1 };
+    const b = { startsAt: '2026-07-07T01:00:00Z', endsAt: '2026-07-07T02:00:00Z', sortOrder: 2 };
+    expect(slotSwap(a, b)).toEqual({ a: { sortOrder: 2 }, b: { sortOrder: 1 } });
+  });
+});
+
+describe('applyReorder', () => {
+  const a = EVENTS.find((e) => e.id === 'ev-tsukiji')!; // soft
+  const b = EVENTS.find((e) => e.id === 'ev-senso')!; // soft
+
+  it('swaps slots optimistically in one REORDER, then reconciles both events', async () => {
+    vi.stubGlobal(
+      'fetch',
+      vi
+        .fn()
+        .mockImplementation(() =>
+          Promise.resolve(
+            new Response(JSON.stringify({ ...a, updatedAt: 'server' }), { status: 200 }),
+          ),
+        ),
+    );
+    const deps = fakeDeps();
+    await applyReorder(deps, a, b);
+
+    expect(deps.actions[0]).toEqual({
+      type: 'REORDER',
+      a: { id: a.id, patch: { startsAt: b.startsAt, endsAt: b.endsAt, sortOrder: b.sortOrder } },
+      b: { id: b.id, patch: { startsAt: a.startsAt, endsAt: a.endsAt, sortOrder: a.sortOrder } },
+    });
+    expect(deps.actions.filter((x) => x.type === 'RECONCILE_EVENT')).toHaveLength(2);
+    expect(deps.toast).not.toHaveBeenCalled();
+  });
+
+  it('rolls back and toasts on a failed request', async () => {
+    vi.stubGlobal('fetch', vi.fn().mockResolvedValue(new Response(null, { status: 500 })));
+    const deps = fakeDeps();
+    await applyReorder(deps, a, b);
+    expect(deps.actions.some((x) => x.type === 'UNDO')).toBe(true);
+    expect(deps.toast).toHaveBeenCalled();
+  });
+
+  it('guarded reorder aborts with no dispatch when a hard-event edit is declined', async () => {
+    const hard = EVENTS.find((e) => e.id === 'ev-ichiran')!; // hard
+    const soft = EVENTS.find((e) => e.id === 'ev-goldengai')!;
+    const deps = fakeDeps(vi.fn().mockResolvedValue(false));
+    const applied = await applyGuardedReorder(deps, hard, soft);
+    expect(applied).toBe(false);
+    expect(deps.actions).toHaveLength(0);
   });
 });
