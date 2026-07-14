@@ -14,7 +14,9 @@ import { TripsModule } from './trips/trips.module';
 
 @Module({
   imports: [
-    ConfigModule.forRoot({ isGlobal: true }),
+    // `.env` lives at the repo root (CLAUDE.md quickstart); backend/.env still
+    // wins when present since earlier files take precedence.
+    ConfigModule.forRoot({ isGlobal: true, envFilePath: ['.env', '../.env'] }),
     PrismaModule,
     AuthModule,
     TripsModule,
