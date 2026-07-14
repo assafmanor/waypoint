@@ -5,6 +5,8 @@ import {
   clampDate,
   dayProgress,
   deriveNow,
+  formatCountdown,
+  formatDaysUntil,
   formatTime,
   hardConflicts,
   isoToTimeInput,
@@ -149,6 +151,39 @@ describe('zonedIso', () => {
   it('round-trips through isoToTimeInput for the trip timezone', () => {
     const iso = zonedIso('2026-07-07', '19:30', 'Asia/Tokyo');
     expect(isoToTimeInput(iso, 'Asia/Tokyo')).toBe('19:30');
+  });
+});
+
+describe('formatCountdown', () => {
+  it('uses minutes under an hour', () => {
+    expect(formatCountdown(1)).toEqual({ value: '1', unit: 'דקה' });
+    expect(formatCountdown(38)).toEqual({ value: '38', unit: 'דקות' });
+  });
+
+  it('uses H:MM hours from an hour up to a day', () => {
+    expect(formatCountdown(60)).toEqual({ value: '1:00', unit: 'שעות' });
+    expect(formatCountdown(135)).toEqual({ value: '2:15', unit: 'שעות' });
+  });
+
+  it('uses a Hebrew day count from a day up (dual form, no numeral for 1-2)', () => {
+    expect(formatCountdown(24 * 60)).toEqual({ value: '', unit: 'יום' });
+    expect(formatCountdown(2 * 24 * 60)).toEqual({ value: '', unit: 'יומיים' });
+    expect(formatCountdown(5 * 24 * 60 + 30)).toEqual({ value: '5', unit: 'ימים' });
+  });
+});
+
+describe('formatDaysUntil', () => {
+  it('phrases exact day counts up to two months out', () => {
+    expect(formatDaysUntil(1)).toBe('יום');
+    expect(formatDaysUntil(2)).toBe('יומיים');
+    expect(formatDaysUntil(45)).toBe('45 ימים');
+    expect(formatDaysUntil(60)).toBe('60 ימים');
+  });
+
+  it('rounds to months past two months out (dual form included)', () => {
+    expect(formatDaysUntil(61)).toBe('חודשיים');
+    expect(formatDaysUntil(100)).toBe('3 חודשים');
+    expect(formatDaysUntil(200)).toBe('7 חודשים');
   });
 });
 

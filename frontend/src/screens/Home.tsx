@@ -4,7 +4,14 @@ import { EVENT_KIND, TRIP_NOTE_CATEGORY } from '@waypoint/shared';
 import { useTrip } from '../state/trip-state';
 import { useToast } from '../ui/Toast';
 import { useClock } from '../lib/useClock';
-import { deriveNow, dayProgress, formatTime, hardConflicts, minutesUntil } from '../lib/time';
+import {
+  deriveNow,
+  dayProgress,
+  formatCountdown,
+  formatTime,
+  hardConflicts,
+  minutesUntil,
+} from '../lib/time';
 import { formatMoney } from '../lib/money';
 import { CODE_PREFIX, DAY_WINDOW, ICONS } from '../constants';
 import { t } from '../i18n/he';
@@ -27,7 +34,9 @@ export function Home() {
     ? `${CODE_PREFIX}${nextBooking.confirmationCode}`
     : undefined;
   const progress = Math.round(dayProgress(now, tz) * 100);
-  const countdown = nextEvent?.startsAt ? minutesUntil(nextEvent.startsAt, now) : null;
+  const countdown = nextEvent?.startsAt
+    ? formatCountdown(minutesUntil(nextEvent.startsAt, now))
+    : null;
   const wifi = notes.find((n) => n.category === TRIP_NOTE_CATEGORY.WIFI);
   const budgetPct = Math.min(
     100,
@@ -107,10 +116,12 @@ export function Home() {
           </div>
           {countdown !== null && (
             <div className="countdown">
-              <div className="t" dir="ltr">
-                {countdown}
-              </div>
-              <div className="u">{t.board.minutes}</div>
+              {countdown.value && (
+                <div className="t" dir="ltr">
+                  {countdown.value}
+                </div>
+              )}
+              <div className="u">{countdown.unit}</div>
             </div>
           )}
         </div>

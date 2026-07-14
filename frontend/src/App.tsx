@@ -8,7 +8,7 @@ import { ActiveTripIdProvider, useActiveTripId } from './state/active-trip-id';
 import { useIsOffline, useOutboxCount } from './lib/outbox';
 import { fetchTrips } from './lib/api';
 import { resolveActiveTrip, tripChip } from './lib/active-trip';
-import { consumeIntent, saveIntent } from './lib/intent';
+import { consumeIntent, hasIntent, saveIntent } from './lib/intent';
 import { ToastProvider } from './ui/Toast';
 import { ConfirmProvider } from './ui/ConfirmDialog';
 import { Sheet } from './ui/Sheet';
@@ -419,7 +419,12 @@ function AuthGate() {
       <BootScreen text={t.shell.booting} />
     );
   }
-  return location.pathname === '/login' ? <BootScreen text={t.shell.booting} /> : <Outlet />;
+  // A pending deep-link intent (e.g. mid-join after OAuth's redirect to "/")
+  // must not let RootSurface mount even for one render — its fetchTrips()
+  // would see zero memberships (the join hasn't run yet) and flash ZeroState
+  // before the effect above navigates to the real intent path.
+  if (location.pathname === '/login' || hasIntent()) return <BootScreen text={t.shell.booting} />;
+  return <Outlet />;
 }
 
 function AppRoutes() {
