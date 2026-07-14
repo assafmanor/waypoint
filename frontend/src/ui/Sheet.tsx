@@ -3,6 +3,7 @@
 // is optional: the account sheet (app-shell.md §6) has no title bar, just a
 // grip handle — pass `ariaLabel` for that case instead.
 import type { ReactNode } from 'react';
+import { useOverlay } from '../state/nav-state';
 
 export function Sheet({
   title,
@@ -15,6 +16,9 @@ export function Sheet({
   onClose: () => void;
   children: ReactNode;
 }) {
+  // Register as the topmost overlay so the return gesture / back closes this
+  // sheet before touching structural navigation (ADR-0035 §4).
+  useOverlay(onClose);
   return (
     <div className="sheet-overlay" onClick={onClose}>
       <div
