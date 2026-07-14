@@ -8,6 +8,7 @@ import {
   EVENT_KIND,
   EVENT_SOURCE,
   EVENT_STATUS,
+  type MaybeItem,
   type TripEvent,
 } from '@waypoint/shared';
 import { useTrip } from '../state/trip-state';
@@ -20,19 +21,24 @@ import { t } from '../i18n/he';
 export function EventForm({
   event,
   defaults,
+  maybeItem,
   onClose,
 }: {
   event?: TripEvent | null;
   // Prefill for a *new* event (e.g. the builder's gap-fill: date + start of the
   // gap). Ignored when editing an existing event.
   defaults?: { date?: string; start?: string; end?: string };
+  // When set, this is a "schedule from the shelf" flow: same fields, but on save
+  // it creates the event AND consumes the idea (verbs.schedule) instead of a
+  // plain create. Prefilled from the idea's title/kind.
+  maybeItem?: MaybeItem | null;
   onClose: () => void;
 }) {
   const { trip, activeDate, activeUserId } = useTrip();
   const verbs = useVerbs();
   const tz = trip.timezone;
 
-  const [title, setTitle] = useState(event?.title ?? '');
+  const [title, setTitle] = useState(event?.title ?? maybeItem?.title ?? '');
   const [date, setDate] = useState(event?.date ?? defaults?.date ?? activeDate);
   const [start, setStart] = useState(
     event?.startsAt ? isoToTimeInput(event.startsAt, tz) : (defaults?.start ?? ''),
@@ -70,6 +76,18 @@ export function EventForm({
       if (!parsed.success)
         return setError(parsed.error.issues[0]?.message ?? t.eventForm.titleRequired);
       verbs.update(event, parsed.data);
+    } else if (maybeItem) {
+      const parsed = createEventSchema.safeParse(fields);
+      if (!parsed.success)
+        return setError(parsed.error.issues[0]?.message ?? t.eventForm.titleRequired);
+      verbs.schedule(maybeItem, {
+        date: parsed.data.date,
+        title: parsed.data.title,
+        kind: parsed.data.kind,
+        startsAt: parsed.data.startsAt,
+        endsAt: parsed.data.endsAt,
+        location: parsed.data.location,
+      });
     } else {
       const parsed = createEventSchema.safeParse(fields);
       if (!parsed.success)
@@ -94,7 +112,13 @@ export function EventForm({
   return (
     <div className="confirm-overlay" onClick={onClose}>
       <form className="event-form-card" onClick={(e) => e.stopPropagation()} onSubmit={submit}>
-        <div className="confirm-title">{event ? t.eventForm.editTitle : t.eventForm.newTitle}</div>
+        <div className="confirm-title">
+          {event
+            ? t.eventForm.editTitle
+            : maybeItem
+              ? t.eventForm.scheduleTitle
+              : t.eventForm.newTitle}
+        </div>
 
         <label className="form-field">
           {t.eventForm.titleLabel}

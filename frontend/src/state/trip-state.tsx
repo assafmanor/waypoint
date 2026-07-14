@@ -63,6 +63,9 @@ export type Action =
       a: { id: string; patch: Partial<TripEvent> };
       b: { id: string; patch: Partial<TripEvent> };
     }
+  // Maybe-shelf add/remove (Plan-mode Tier 3 build-the-shelf).
+  | { type: 'ADD_MAYBE'; item: MaybeItem }
+  | { type: 'REMOVE_MAYBE'; id: string }
   // T-014: the REST write layer (verbs.ts) reconciles/broadcasts through these.
   | { type: 'RECONCILE_EVENT'; event: TripEvent }
   | { type: 'SET_RIPPLE'; ripple: RippleSuggestion | null }
@@ -149,6 +152,20 @@ export function reducer(state: State, action: Action): State {
       });
       return { ...state, events, ripple: null, undo: snapshotOf(state) };
     }
+    case 'ADD_MAYBE':
+      return {
+        ...state,
+        maybeItems: [...state.maybeItems, action.item],
+        ripple: null,
+        undo: snapshotOf(state),
+      };
+    case 'REMOVE_MAYBE':
+      return {
+        ...state,
+        maybeItems: state.maybeItems.filter((m) => m.id !== action.id),
+        ripple: null,
+        undo: snapshotOf(state),
+      };
     case 'RECONCILE_EVENT': {
       const exists = state.events.some((e) => e.id === action.event.id);
       const events = exists

@@ -64,6 +64,32 @@ describe('MaybeItemsService', () => {
     expect(changeCount).toBe(0);
   });
 
+  it('creates a shelf idea through ChangeService', async () => {
+    const tripId = await newTrip();
+    const created = await service.create(tripId, DEV_USER, { title: 'Cat cafe', icon: '🐱' });
+    expect(created).toMatchObject({ title: 'Cat cafe', icon: '🐱', consumed: false });
+
+    const change = await prisma.change.findFirst({
+      where: { tripId, entityId: created.id, action: 'create' },
+    });
+    expect(change).toMatchObject({ entityType: 'maybeItem' });
+  });
+
+  it('removes a shelf idea through ChangeService', async () => {
+    const tripId = await newTrip();
+    const item = await prisma.maybeItem.create({
+      data: { tripId, title: 'Uniqlo', createdBy: DEV_USER, updatedBy: DEV_USER },
+    });
+
+    await service.remove(tripId, item.id, DEV_USER);
+    expect(await prisma.maybeItem.findUnique({ where: { id: item.id } })).toBeNull();
+
+    const change = await prisma.change.findFirst({
+      where: { tripId, entityId: item.id, action: 'delete' },
+    });
+    expect(change).toMatchObject({ entityType: 'maybeItem' });
+  });
+
   it('throws for a maybe item that does not belong to the trip', async () => {
     const tripId = await newTrip();
     const otherTripId = await newTrip();

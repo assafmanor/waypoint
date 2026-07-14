@@ -1358,3 +1358,95 @@
   outline: 2px solid var(--plan);
   outline-offset: 1px;
 }
+
+/* Maybe card is now a container (schedule body + remove ✕) rather than one
+   button, so ideas can be removed from the shelf (Plan-mode Tier 3). */
+.maybe {
+  position: relative;
+}
+.maybe-body {
+  display: block;
+  width: 100%;
+  text-align: start;
+  font: inherit;
+  color: inherit;
+  background: none;
+  border: 0;
+  padding: 0;
+  cursor: pointer;
+}
+.maybe-body:disabled {
+  cursor: default;
+}
+.maybe-body:focus-visible {
+  outline: 2.5px solid var(--plan);
+  outline-offset: 2px;
+  border-radius: 8px;
+}
+.maybe-remove {
+  position: absolute;
+  top: 6px;
+  inset-inline-end: 6px;
+  width: 20px;
+  height: 20px;
+  display: grid;
+  place-items: center;
+  border: 0;
+  border-radius: 50%;
+  background: rgba(22, 35, 61, 0.06);
+  color: var(--muted);
+  font-size: 11px;
+  line-height: 1;
+  cursor: pointer;
+}
+.maybe-remove:hover {
+  background: var(--miss);
+  color: #fff;
+}
+.maybe-remove:focus-visible {
+  outline: 2px solid var(--miss);
+  outline-offset: 1px;
+}
+
+/* add-idea row under the shelf */
+.add-idea {
+  display: flex;
+  gap: 8px;
+  margin-top: 10px;
+}
+.add-idea input {
+  flex: 1;
+  min-width: 0;
+  font: inherit;
+  font-size: 13px;
+  padding: 9px 11px;
+  border: 1px solid var(--line);
+  border-radius: 10px;
+  background: var(--card);
+  color: var(--ink);
+}
+.add-idea input:focus-visible {
+  outline: 2px solid var(--plan);
+  outline-offset: 0;
+  border-color: transparent;
+}
+.add-idea-btn {
+  flex: 0 0 auto;
+  font: inherit;
+  font-weight: 700;
+  font-size: 15px;
+  padding: 0 14px;
+  border: 1px solid var(--plan);
+  color: var(--plan-deep);
+  background: var(--card);
+  border-radius: 10px;
+  cursor: pointer;
+}
+.add-idea-btn:hover:not(:disabled) {
+  background: var(--plan);
+  color: #fff;
+}
+.add-idea-btn:disabled {
+  opacity: 0.4;
+  cursor: default;
+}

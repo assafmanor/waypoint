@@ -4,6 +4,7 @@ import {
   changeSchema,
   inviteUrlSchema,
   invitePreviewSchema,
+  maybeItemSchema,
   meSchema,
   membershipSchema,
   tripEventSchema,
@@ -11,8 +12,10 @@ import {
   tripSnapshotSchema,
   type Change,
   type CreateEventInput,
+  type CreateMaybeItemInput,
   type CreateTripInput,
   type EventStatus,
+  type MaybeItem,
   type InvitePreview,
   type InviteUrl,
   type JoinTripInput,
@@ -137,8 +140,11 @@ const eventsUrl = (tripId: string) => `${API_BASE_URL}/trips/${tripId}/events`;
 const eventUrl = (tripId: string, eventId: string) => `${eventsUrl(tripId)}/${eventId}`;
 const changesUrl = (tripId: string, sinceSeq: string) =>
   `${API_BASE_URL}/trips/${tripId}/changes?sinceSeq=${sinceSeq}`;
+const maybeItemsUrl = (tripId: string) => `${API_BASE_URL}/trips/${tripId}/maybe-items`;
+const maybeItemUrl = (tripId: string, maybeItemId: string) =>
+  `${maybeItemsUrl(tripId)}/${maybeItemId}`;
 const consumeMaybeItemUrl = (tripId: string, maybeItemId: string) =>
-  `${API_BASE_URL}/trips/${tripId}/maybe-items/${maybeItemId}/consume`;
+  `${maybeItemUrl(tripId, maybeItemId)}/consume`;
 
 /** Server error shape (api-contract.md): `{ error: { code, message, details? } }`. */
 export class ApiError extends Error {
@@ -262,4 +268,24 @@ export async function fetchChanges(tripId: string, sinceSeq: string): Promise<Ch
 export async function consumeMaybeItem(tripId: string, maybeItemId: string): Promise<void> {
   const res = await apiFetch(consumeMaybeItemUrl(tripId, maybeItemId), { method: 'POST' });
   if (!res.ok) return throwApiError(res);
+}
+
+/** Add an idea to the maybe shelf (Plan-mode Tier 3). */
+export async function createMaybeItem(
+  tripId: string,
+  input: CreateMaybeItemInput,
+): Promise<MaybeItem> {
+  const res = await apiFetch(maybeItemsUrl(tripId), {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify(input),
+  });
+  if (!res.ok) return throwApiError(res);
+  return maybeItemSchema.parse(await res.json());
+}
+
+/** Remove an idea from the shelf. 404 is tolerated (already gone), matching deleteEvent. */
+export async function deleteMaybeItem(tripId: string, maybeItemId: string): Promise<void> {
+  const res = await apiFetch(maybeItemUrl(tripId, maybeItemId), { method: 'DELETE' });
+  if (!res.ok && res.status !== 404) return throwApiError(res);
 }
