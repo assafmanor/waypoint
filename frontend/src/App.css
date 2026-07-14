@@ -1303,7 +1303,15 @@
   padding: 5px 0;
   font-size: 10.5px;
   font-weight: 600;
-  transition: color 0.15s;
+  /* Kill the mobile browser's blue tap-flash — the pill + focus-visible ring
+     are the only selection affordances (design-language: mode identity). */
+  -webkit-tap-highlight-color: transparent;
+  /* Selecting a tab settles its icon + label down a little (mockups/
+     nav-active-states-v1.html) — a transform (not layout) so there's no
+     reflow; the deselected tab rides back up. */
+  transition:
+    color 0.15s,
+    transform 0.2s ease;
 }
 /* Every icon carries the pill box (radius + padding) so filling only the
    active one adds no layout shift; the tint fades in on selection. */
@@ -1317,6 +1325,7 @@
 .nav button.on {
   color: var(--nav-accent);
   font-weight: 700;
+  transform: translateY(3px);
 }
 .nav button.on .ic {
   background: var(--nav-tint);
