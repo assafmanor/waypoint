@@ -168,4 +168,46 @@ describe('TripsService', () => {
   it('404s an invite preview for a malformed token', async () => {
     await expect(service.getInvitePreview('not-a-real-token')).rejects.toThrow(NotFoundException);
   });
+
+  it('defaults calendarSyncEnabled to false when omitted on join', async () => {
+    const trip = await service.createTrip(DEV_USER, NEW_TRIP_INPUT);
+    createdTripIds.push(trip.id);
+
+    const membership = await service.joinByToken(PEER_USER, service.createInviteToken(trip.id));
+    expect(membership.calendarSyncEnabled).toBe(false);
+  });
+
+  it('persists calendarSyncEnabled true/false on join and re-applies it on rejoin', async () => {
+    const trip = await service.createTrip(DEV_USER, NEW_TRIP_INPUT);
+    createdTripIds.push(trip.id);
+    const token = service.createInviteToken(trip.id);
+
+    const joined = await service.joinByToken(PEER_USER, token, { calendarSyncEnabled: true });
+    expect(joined.calendarSyncEnabled).toBe(true);
+
+    const rejoined = await service.joinByToken(PEER_USER, token, { calendarSyncEnabled: false });
+    expect(rejoined.calendarSyncEnabled).toBe(false);
+  });
+
+  it('updates the caller own calendarSyncEnabled via updateMembershipPrefs', async () => {
+    const trip = await service.createTrip(DEV_USER, NEW_TRIP_INPUT);
+    createdTripIds.push(trip.id);
+
+    const updated = await service.updateMembershipPrefs(trip.id, DEV_USER, {
+      calendarSyncEnabled: true,
+    });
+    expect(updated).toMatchObject({ tripId: trip.id, userId: DEV_USER, calendarSyncEnabled: true });
+  });
+
+  it('updateMembershipPrefs only ever touches the caller own row, never another member', async () => {
+    const trip = await service.createTrip(DEV_USER, NEW_TRIP_INPUT);
+    createdTripIds.push(trip.id);
+    await service.joinByToken(PEER_USER, service.createInviteToken(trip.id));
+
+    await service.updateMembershipPrefs(trip.id, PEER_USER, { calendarSyncEnabled: true });
+
+    const { members } = await service.getTripWithMembers(trip.id);
+    expect(members.find((m) => m.userId === PEER_USER)?.calendarSyncEnabled).toBe(true);
+    expect(members.find((m) => m.userId === DEV_USER)?.calendarSyncEnabled).toBe(false);
+  });
 });

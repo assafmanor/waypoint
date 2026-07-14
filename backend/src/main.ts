@@ -22,7 +22,7 @@ async function bootstrap() {
   const document = cleanupOpenApiDoc(
     SwaggerModule.createDocument(
       app,
-      new DocumentBuilder().setTitle('Waypoint API').setVersion('1').build(),
+      new DocumentBuilder().setTitle('Waypoint API').setVersion('1').addBearerAuth().build(),
     ),
   ); // ADR-0023: fixes up refs/nullability for the zod-derived (createZodDto) schemas
   SwaggerModule.setup('api/docs', app, document);

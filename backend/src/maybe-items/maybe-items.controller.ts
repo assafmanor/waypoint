@@ -1,5 +1,5 @@
 import { Controller, Param, Post, UseGuards } from '@nestjs/common';
-import { ApiOkResponse, ApiTags } from '@nestjs/swagger';
+import { ApiBearerAuth, ApiOkResponse, ApiTags } from '@nestjs/swagger';
 import { maybeItemSchema, type MaybeItem } from '@waypoint/shared';
 import { createZodDto, ZodSerializerDto } from 'nestjs-zod';
 import { CurrentUser } from '../auth/current-user.decorator';
@@ -11,6 +11,7 @@ import { MaybeItemsService } from './maybe-items.service';
 class MaybeItemDto extends createZodDto(maybeItemSchema) {}
 
 @ApiTags('maybe-items')
+@ApiBearerAuth()
 @Controller('trips/:tripId/maybe-items')
 @UseGuards(MembershipGuard)
 export class MaybeItemsController {

@@ -9,9 +9,11 @@ import {
 import type {
   CreateTripInput,
   InvitePreview,
+  JoinTripInput,
   Membership,
   Trip,
   TripSnapshot,
+  UpdateMembershipPrefsInput,
 } from '@waypoint/shared';
 import { PrismaService } from '../prisma/prisma.service';
 import {
@@ -79,12 +81,25 @@ export class TripsService {
     return `${encoded}.${signInvitePayload(payload)}`;
   }
 
-  async joinByToken(userId: string, token: string): Promise<Membership> {
+  async joinByToken(userId: string, token: string, input: JoinTripInput = {}): Promise<Membership> {
     const tripId = this.verifyInviteToken(token);
     const membership = await this.prisma.membership.upsert({
       where: { tripId_userId: { tripId, userId } },
-      update: {},
-      create: { tripId, userId, role: 'peer' },
+      update: { ...input },
+      create: { tripId, userId, role: 'peer', ...input },
+    });
+    return toMembershipDto(membership);
+  }
+
+  /** Self-only — MembershipGuard already confirms `userId` is a member of `tripId` (ADR-0005). */
+  async updateMembershipPrefs(
+    tripId: string,
+    userId: string,
+    input: UpdateMembershipPrefsInput,
+  ): Promise<Membership> {
+    const membership = await this.prisma.membership.update({
+      where: { tripId_userId: { tripId, userId } },
+      data: input,
     });
     return toMembershipDto(membership);
   }

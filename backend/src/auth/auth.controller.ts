@@ -8,7 +8,7 @@ import {
   Res,
   UnauthorizedException,
 } from '@nestjs/common';
-import { ApiOkResponse, ApiTags } from '@nestjs/swagger';
+import { ApiBearerAuth, ApiOkResponse, ApiTags } from '@nestjs/swagger';
 import {
   accessTokenResponseSchema,
   meSchema,
@@ -144,6 +144,7 @@ export class AuthController {
 // `GET /me` (api-contract.md) — not under /auth; needs a real Bearer access
 // token (no @Public here), unlike the four routes above.
 @ApiTags('auth')
+@ApiBearerAuth()
 @Controller()
 export class MeController {
   constructor(private readonly auth: AuthService) {}
