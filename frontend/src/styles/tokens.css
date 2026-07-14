@@ -42,6 +42,10 @@ html,
 body,
 #root {
   height: 100%;
+  /* App-shell scrolls inside .body, not the document. Stop overscroll from
+     chaining to the page so the browser's native pull-to-refresh never fires
+     (PWA feel). Scrolling inside .body is unaffected. */
+  overscroll-behavior-y: contain;
 }
 
 body {
