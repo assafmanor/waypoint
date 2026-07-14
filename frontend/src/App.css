@@ -1078,6 +1078,152 @@
   margin-top: 10px;
 }
 
+/* /login — pre-login landing (app-shell.md, mockups/screens-v1.html
+   #s-landing). Same dark departure-board chrome as /join, plus a static
+   demo teaser card and feature strip; reuses .join-cta-btn/.gd/.join-note
+   for the CTA rather than duplicating that button. */
+.land {
+  background: linear-gradient(180deg, var(--board-2) 0%, var(--board) 100%);
+  color: #eaf0ff;
+  padding: 20px 24px 28px;
+  position: relative;
+  overflow: hidden;
+}
+.land::before {
+  content: '';
+  position: absolute;
+  inset: 0;
+  background: radial-gradient(80% 45% at 85% 0%, rgba(233, 166, 60, 0.14), transparent 60%);
+  pointer-events: none;
+}
+.land-top {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  position: relative;
+}
+.land-logo {
+  font-family: var(--font-head);
+  font-size: 20px;
+  color: #fff;
+}
+.land-icon {
+  width: 34px;
+  height: 34px;
+  border-radius: 50%;
+  flex: 0 0 auto;
+  object-fit: cover;
+  box-shadow: 0 0 0 1px rgba(255, 255, 255, 0.15);
+}
+.land-hero {
+  margin-top: 52px;
+  position: relative;
+}
+.land-hero h1 {
+  font-family: var(--font-head);
+  font-size: 34px;
+  line-height: 1.18;
+  color: #fff;
+}
+.land-hero .hero-em {
+  color: var(--amber);
+}
+.land-hero p {
+  color: #93a2c4;
+  font-size: 14.5px;
+  line-height: 1.55;
+  margin-top: 14px;
+  max-width: 30ch;
+}
+.teaser {
+  margin-top: 30px;
+  background: rgba(255, 255, 255, 0.045);
+  border: 1px solid rgba(255, 255, 255, 0.1);
+  border-radius: 18px;
+  padding: 15px 16px;
+  position: relative;
+}
+.teaser .row {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+}
+.teaser .lbl {
+  font-size: 10.5px;
+  font-weight: 700;
+  letter-spacing: 0.12em;
+  color: var(--amber);
+}
+.teaser .clk {
+  font-family: var(--font-mono);
+  font-size: 12.5px;
+  font-weight: 700;
+  color: #8fa0c4;
+}
+.teaser .ttl {
+  font-family: var(--font-head);
+  font-size: 17px;
+  color: #fff;
+  margin-top: 6px;
+}
+.teaser .mt {
+  color: #93a2c4;
+  font-size: 12px;
+  margin-top: 3px;
+}
+.teaser .cd {
+  position: absolute;
+  inset-inline-end: 14px;
+  bottom: 13px;
+  text-align: center;
+  background: rgba(233, 166, 60, 0.13);
+  border: 1px solid rgba(233, 166, 60, 0.3);
+  border-radius: 11px;
+  padding: 6px 11px;
+}
+.teaser .cd b {
+  font-family: var(--font-mono);
+  font-size: 16px;
+  color: var(--amber);
+  display: block;
+  line-height: 1;
+}
+.teaser .cd i {
+  font-style: normal;
+  font-size: 9px;
+  color: #b9985c;
+  letter-spacing: 0.08em;
+}
+.land-feats {
+  display: flex;
+  gap: 8px;
+  margin-top: 22px;
+  position: relative;
+}
+.feat {
+  flex: 1;
+  background: rgba(255, 255, 255, 0.045);
+  border: 1px solid rgba(255, 255, 255, 0.09);
+  border-radius: 13px;
+  padding: 11px 8px;
+  text-align: center;
+}
+.feat .fi {
+  font-size: 17px;
+}
+.feat .ft {
+  font-size: 10.5px;
+  font-weight: 600;
+  color: #aeb9d4;
+  margin-top: 5px;
+  line-height: 1.25;
+}
+.land-cta {
+  margin-top: auto;
+  padding-top: 26px;
+  position: relative;
+}
+
 /* Boot-time states (snapshot loading / failed to load, e.g. offline with no
    cached data yet) render before the app shell exists — TripProvider returns
    them ahead of <div className="app">, so unlike .placeholder below they get
