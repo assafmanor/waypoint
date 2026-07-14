@@ -28,6 +28,20 @@ deep-link intents (esp. /join/:token) are saved before /login and resumed after
 
 Active-trip selection is `tripId` in `localStorage` — per-device, **not** synced (ADR-0021, same class as the mode override). Default when unset = ADR-0021 derivation: current in-progress → nearest upcoming → most recent.
 
+The in-trip **tab** (`?tab=` — home/map/index/days) and open **overlays** (a marker in `location.state`) are also real history entries, so "back" walks _within_ the app (ADR-0035).
+
+## Back & the return gesture (ADR-0035)
+
+React-router is the **single owner of history**; in-app navigation _is_ history, so every "back" trigger resolves to one guarded action, `goBack()`:
+
+1. open **overlay** (sheet/dialog/picker) → close it;
+2. a **non-Home tab** in a trip → back to **Home** (the anchor — Home-anchor / Material bottom-nav rule: Home→tab pushes, tab→tab replaces);
+3. **Home base** in a trip → out to **`/trips`** (ADR-0033);
+4. a **shell route** (`/new`, `/join/:token`, `/trip/:id/settings`) → its parent;
+5. **`/trips` / zero-state** → **no-op** (back never falls out to `/login` or exits).
+
+Because the app is a `display: standalone` PWA (ADR-0007) with **no system back on installed iOS**, a **return gesture** triggers the same `goBack()`: a trailing-edge horizontal pull. Full RTL (ADR-0009) mirrors the convention — the activation edge is the **right** edge, the pull goes **leftward**, the `‹` chevron flips to `›`; it reads `dir`, never hard-codes a side. It activates only from a narrow trailing-edge zone (so it doesn't fight the day-strip scroll or the Plan-builder pointer drag), peeks/parallaxes the surface behind, and commits past a distance-or-velocity threshold. On Android/desktop the hardware/browser back already peels tabs and overlays for free (they are genuine history entries); the gesture's unique jobs are to exist on installed iOS and to apply the **root guard** (Home base → `/trips`, never off-app). Day selection on the header strip is a lateral view change, **not** a back layer.
+
 ## Surfaces
 
 ### 1. Sign-in — `/login`
