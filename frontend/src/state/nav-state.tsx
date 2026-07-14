@@ -14,12 +14,19 @@ import {
   type ReactNode,
 } from 'react';
 import { useLocation, useNavigate, useSearchParams, type NavigateFunction } from 'react-router-dom';
-import type { TabId } from '../constants';
+import { ICONS, type TabId } from '../constants';
+import { getNow } from '../lib/useClock';
+import { useToast } from '../ui/Toast';
+import { t } from '../i18n/he';
 
 /** In-trip tab is a real, reload-surviving history entry (ADR-0035 §3). */
 export const TAB_PARAM = 'tab';
 /** The anchor tab: back from any other tab returns here, then exits to /trips. */
 export const HOME_TAB: TabId = 'home';
+/** Where leaving a trip lands (ADR-0033 all-trips home). */
+const EXIT_TRIP_TO = '/trips';
+/** How long the "swipe again to leave the trip" confirmation stays armed. */
+export const EXIT_CONFIRM_MS = 3000;
 
 /** A resolved navigation move, kept pure/serialisable so the decision logic is
  *  unit-testable without a router or DOM (see nav-state.test.ts). */
@@ -27,6 +34,7 @@ export type NavStep =
   | { kind: 'push'; to: string }
   | { kind: 'replace'; to: string }
   | { kind: 'back' }
+  | { kind: 'exit-trip' } // in-trip Home base → out to /trips (gated by a confirm)
   | { kind: 'none' };
 
 /** Home-anchor tab model (ADR-0035 §3): Home→tab pushes, tab→tab replaces (no
@@ -40,8 +48,9 @@ export function tabStep(current: TabId, next: TabId, canGoBack: boolean): NavSte
 }
 
 /** The structural half of `goBack()` (ADR-0035 §2), after any open overlay has
- *  already been closed. Precedence: non-Home tab → Home; Home base → /trips;
- *  shell route → parent; roots → no-op (never fall off-app). */
+ *  already been closed. Precedence: non-Home tab → Home; Home base → leave the
+ *  trip; shell route → parent; roots → no-op (never fall off-app). Leaving the
+ *  trip is surfaced as its own step so the caller can gate it behind a confirm. */
 export function structuralBackStep(ctx: {
   insideTrip: boolean;
   tab: string | null;
@@ -52,7 +61,7 @@ export function structuralBackStep(ctx: {
     if (ctx.tab && ctx.tab !== HOME_TAB) {
       return ctx.canGoBack ? { kind: 'back' } : { kind: 'replace', to: '/' };
     }
-    return { kind: 'push', to: '/trips' }; // Home base → all-trips (root guard).
+    return { kind: 'exit-trip' }; // Home base → out to all-trips (root guard).
   }
   // Roots (all-trips / zero-state / sign-in) have nothing behind them in-app.
   if (ctx.pathname === '/' || ctx.pathname === '/trips' || ctx.pathname === '/login') {
@@ -60,6 +69,10 @@ export function structuralBackStep(ctx: {
   }
   return ctx.canGoBack ? { kind: 'back' } : { kind: 'push', to: '/' };
 }
+
+/** What a single back resolved to — lets the return gesture pick its animation
+ *  (a screen slide-off for real navigation, a spring-back for the rest). */
+export type BackKind = 'overlay' | 'exit-confirm' | 'exit' | 'structural' | 'none';
 
 type OverlayEntry = { id: number; close: () => void };
 
@@ -70,6 +83,7 @@ interface NavContextValue {
   hasOverlay: () => boolean;
   setInsideTrip: (v: boolean) => void;
   insideTripRef: React.MutableRefObject<boolean>;
+  exitPendingRef: React.MutableRefObject<number>;
 }
 
 const NavContext = createContext<NavContextValue | null>(null);
@@ -93,6 +107,9 @@ function runStep(navigate: NavigateFunction, step: NavStep): void {
     case 'back':
       navigate(-1);
       break;
+    case 'exit-trip':
+      navigate(EXIT_TRIP_TO);
+      break;
     case 'none':
       break;
   }
@@ -102,6 +119,7 @@ export function NavProvider({ children }: { children: ReactNode }) {
   const stackRef = useRef<OverlayEntry[]>([]);
   const seqRef = useRef(0);
   const insideTripRef = useRef(false);
+  const exitPendingRef = useRef(0);
 
   const value = useMemo<NavContextValue>(
     () => ({
@@ -125,6 +143,7 @@ export function NavProvider({ children }: { children: ReactNode }) {
         insideTripRef.current = v;
       },
       insideTripRef,
+      exitPendingRef,
     }),
     [],
   );
@@ -151,6 +170,13 @@ export function useOverlay(onClose: () => void) {
   }, [registerOverlay, unregisterOverlay]);
 }
 
+/** Whether an overlay is currently open — the return gesture uses it to let a
+ *  pull start anywhere (not just the trailing edge) when there's a sheet to
+ *  dismiss over. Returns a live getter, stable across renders. */
+export function useHasOverlay(): () => boolean {
+  return useNav().hasOverlay;
+}
+
 /** Marks that the in-trip shell is mounted, so `goBack()` applies the in-trip
  *  precedence (tab → Home → /trips) rather than the shell-route rules. */
 export function useMarkInsideTrip() {
@@ -175,23 +201,69 @@ export function useTripTab(): { tab: TabId; goToTab: (t: TabId) => void } {
   return { tab, goToTab };
 }
 
-/** The single guarded back action (ADR-0035 §2). Precedence: open overlay →
- *  non-Home tab → Home base (→ /trips) → shell parent → no-op at the roots. */
-export function useAppBack(): () => void {
+/** The return controls (ADR-0035 §2). `classify()` reports what a back *would*
+ *  do — so the gesture can play the right animation before content swaps — and
+ *  `run()` performs it. Split apart precisely so a structural slide-off can
+ *  finish before `navigate` changes the screen underneath it. */
+export function useReturnControls() {
   const nav = useNav();
   const navigate = useNavigate();
   const location = useLocation();
   const [params] = useSearchParams();
+  const showToast = useToast();
+
+  const classify = useCallback((): { kind: BackKind; step: NavStep } => {
+    if (nav.hasOverlay()) return { kind: 'overlay', step: { kind: 'none' } };
+    const step = structuralBackStep({
+      insideTrip: nav.insideTripRef.current,
+      tab: params.get(TAB_PARAM),
+      pathname: location.pathname,
+      canGoBack: historyIdx() > 0,
+    });
+    if (step.kind === 'exit-trip') {
+      // Leaving a trip is confirmed: the first back arms it, a second within the
+      // window actually exits (ADR-0035 §1 refinement).
+      const armed = getNow() - nav.exitPendingRef.current < EXIT_CONFIRM_MS;
+      return { kind: armed ? 'exit' : 'exit-confirm', step };
+    }
+    if (step.kind === 'none') return { kind: 'none', step };
+    return { kind: 'structural', step };
+  }, [nav, location.pathname, params]);
+
+  const run = useCallback(
+    ({ kind, step }: { kind: BackKind; step: NavStep }) => {
+      switch (kind) {
+        case 'overlay':
+          nav.closeTopOverlay();
+          break;
+        case 'exit-confirm':
+          nav.exitPendingRef.current = getNow();
+          showToast(ICONS.navigate, t.shell.leaveTripHint);
+          break;
+        case 'exit':
+          nav.exitPendingRef.current = 0;
+          runStep(navigate, step); // exit-trip → /trips
+          break;
+        case 'structural':
+          runStep(navigate, step);
+          break;
+        case 'none':
+          break;
+      }
+    },
+    [nav, navigate, showToast],
+  );
+
+  return { classify, run };
+}
+
+/** Convenience single-shot back for non-animated callers (a header button, a
+ *  key handler). Returns what it did. The gesture uses classify/run directly. */
+export function useAppBack(): () => BackKind {
+  const { classify, run } = useReturnControls();
   return useCallback(() => {
-    if (nav.closeTopOverlay()) return; // an open sheet/dialog closes first.
-    runStep(
-      navigate,
-      structuralBackStep({
-        insideTrip: nav.insideTripRef.current,
-        tab: params.get(TAB_PARAM),
-        pathname: location.pathname,
-        canGoBack: historyIdx() > 0,
-      }),
-    );
-  }, [nav, navigate, location.pathname, params]);
+    const c = classify();
+    run(c);
+    return c.kind;
+  }, [classify, run]);
 }
