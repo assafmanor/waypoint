@@ -65,6 +65,9 @@ export type Action =
   // Maybe-shelf add/remove (Plan-mode Tier 3 build-the-shelf).
   | { type: 'ADD_MAYBE'; item: MaybeItem }
   | { type: 'REMOVE_MAYBE'; id: string }
+  // Park an event onto the shelf: it leaves the day and becomes a maybe idea,
+  // atomically (one undo snapshot).
+  | { type: 'PARK_EVENT'; eventId: string; item: MaybeItem }
   // T-014: the REST write layer (verbs.ts) reconciles/broadcasts through these.
   | { type: 'RECONCILE_EVENT'; event: TripEvent }
   | { type: 'SET_RIPPLE'; ripple: RippleSuggestion | null }
@@ -159,6 +162,14 @@ export function reducer(state: State, action: Action): State {
       return {
         ...state,
         maybeItems: state.maybeItems.filter((m) => m.id !== action.id),
+        ripple: null,
+        undo: snapshotOf(state),
+      };
+    case 'PARK_EVENT':
+      return {
+        ...state,
+        events: state.events.filter((e) => e.id !== action.eventId),
+        maybeItems: [...state.maybeItems, action.item],
         ripple: null,
         undo: snapshotOf(state),
       };

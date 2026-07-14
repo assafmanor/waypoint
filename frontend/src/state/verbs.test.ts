@@ -10,6 +10,7 @@ import {
   applyGuardedDelete,
   applyAddMaybe,
   applyGuardedUpdate,
+  applyPark,
   applyRemoveMaybe,
   applyReorder,
   applySchedule,
@@ -451,6 +452,59 @@ describe('applyReorder', () => {
     const deps = fakeDeps();
     await applyReorder(deps, [], [a, b]);
     expect(deps.actions).toHaveLength(0);
+  });
+});
+
+describe('applyPark (move a soft event to the maybe shelf)', () => {
+  const event = EVENTS.find((e) => e.id === 'ev-goldengai')!; // soft
+  const item = {
+    id: 'mb-parked',
+    tripId: 'trip-japan-26',
+    title: event.title,
+    icon: event.icon,
+    placeId: event.placeId,
+    createdBy: 'u-assaf',
+    consumed: false,
+    createdAt: 'now',
+    updatedAt: 'now',
+    updatedBy: 'u-assaf',
+  };
+
+  it('dispatches one PARK_EVENT optimistically, then creates the idea and deletes the event', async () => {
+    const calls: Array<{ url: string; method?: string }> = [];
+    vi.stubGlobal(
+      'fetch',
+      vi.fn((url: string, init?: RequestInit) => {
+        calls.push({ url: String(url), method: init?.method });
+        return Promise.resolve(new Response(JSON.stringify(item), { status: 201 }));
+      }),
+    );
+    const deps = fakeDeps();
+
+    await applyPark(deps, event, item);
+
+    expect(deps.actions[0]).toEqual({ type: 'PARK_EVENT', eventId: event.id, item });
+    expect(deps.actions.some((a) => a.type === 'UNDO')).toBe(false);
+    expect(deps.lastAction.current).toEqual({ kind: 'park', event, maybeId: item.id });
+    expect(calls[0].url).toContain('/maybe-items');
+    expect(calls[1]).toEqual(
+      expect.objectContaining({
+        url: expect.stringContaining(`/events/${event.id}`),
+        method: 'DELETE',
+      }),
+    );
+    expect(deps.toast).not.toHaveBeenCalled();
+  });
+
+  it('rolls back and toasts when the create fails', async () => {
+    vi.stubGlobal('fetch', vi.fn().mockResolvedValue(new Response(null, { status: 500 })));
+    const deps = fakeDeps();
+
+    await applyPark(deps, event, item);
+
+    expect(deps.actions[0]).toEqual({ type: 'PARK_EVENT', eventId: event.id, item });
+    expect(deps.actions.at(-1)).toEqual({ type: 'UNDO' });
+    expect(deps.toast).toHaveBeenCalledTimes(1);
   });
 });
 

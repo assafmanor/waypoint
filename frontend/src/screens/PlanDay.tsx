@@ -121,6 +121,7 @@ export function PlanDay() {
                     booking={e.bookingId ? bookings.find((b) => b.id === e.bookingId) : undefined}
                     onEdit={() => setFormTarget(e)}
                     onDelete={() => verbs.remove(e)}
+                    onPark={soft ? () => verbs.park(e) : undefined}
                     grip={soft ? gripProps(e.id) : undefined}
                     dragging={drag?.id === e.id}
                     over={drag?.overId === e.id}
@@ -252,6 +253,7 @@ function BuilderRow({
   booking,
   onEdit,
   onDelete,
+  onPark,
   grip,
   dragging,
   over,
@@ -263,6 +265,8 @@ function BuilderRow({
   booking?: { confirmationCode?: string };
   onEdit: () => void;
   onDelete: () => void;
+  // Present only for soft rows — move the event to the shelf as an idea.
+  onPark?: () => void;
   // Present only for soft rows (hard events are pinned anchors, not draggable).
   grip?: {
     onPointerDown: (e: ReactPointerEvent) => void;
@@ -337,6 +341,11 @@ function BuilderRow({
           {formatTime(event.startsAt, tz)}
           {event.endsAt && `–${formatTime(event.endsAt, tz)}`}
         </span>
+      )}
+      {onPark && (
+        <button className="bld-icon" onClick={onPark} aria-label={t.planDay.toShelf}>
+          {ICONS.toShelf}
+        </button>
       )}
       <button className="bld-icon" onClick={onEdit} aria-label={t.actions.edit}>
         {ICONS.edit}

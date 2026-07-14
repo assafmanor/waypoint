@@ -48,7 +48,8 @@ type UndoDescriptor =
   | { kind: 'delete'; event: TripEvent }
   | { kind: 'reorder'; items: { id: string; previous: UpdateEventInput; isHard: boolean }[] }
   | { kind: 'addMaybe'; id: string }
-  | { kind: 'removeMaybe'; item: MaybeItem };
+  | { kind: 'removeMaybe'; item: MaybeItem }
+  | { kind: 'park'; event: TripEvent; maybeId: string };
 
 export interface VerbDeps {
   tripId: string;
@@ -369,6 +370,26 @@ export async function applyRemoveMaybe(deps: VerbDeps, item: MaybeItem): Promise
   }
 }
 
+// Park an event onto the shelf: turn it into a maybe idea (title/icon/place) and
+// remove it from the day — so any event can become a reschedulable idea, not
+// just ones that started on the shelf. Online (a Tier-3 build action), one undo.
+export async function applyPark(deps: VerbDeps, event: TripEvent, item: MaybeItem): Promise<void> {
+  deps.dispatch({ type: 'PARK_EVENT', eventId: event.id, item });
+  deps.lastAction.current = { kind: 'park', event, maybeId: item.id };
+  try {
+    await createMaybeItem(deps.tripId, {
+      id: item.id,
+      title: item.title,
+      icon: item.icon,
+      placeId: item.placeId,
+    });
+    await deleteEvent(deps.tripId, event.id);
+  } catch (err) {
+    deps.dispatch({ type: 'UNDO' });
+    writeErrorToast(deps.toast, err);
+  }
+}
+
 export async function applyRippleApply(
   deps: VerbDeps,
   ripple: RippleSuggestion,
@@ -461,6 +482,13 @@ async function reverseRest(tripId: string, desc: UndoDescriptor): Promise<void> 
         title: desc.item.title,
         icon: desc.item.icon,
       });
+      return;
+    case 'park': {
+      // Un-park: drop the idea and put the event back.
+      await deleteMaybeItem(tripId, desc.maybeId);
+      const input = toCreateEventInput(desc.event);
+      await restOrQueue(tripId, { verb: 'create', input }, () => createEvent(tripId, input));
+    }
   }
 }
 
@@ -582,6 +610,25 @@ export function useVerbs() {
     removeMaybe: (m: MaybeItem) => {
       void applyRemoveMaybe(deps, m);
       toast(ICONS.trash, t.toast.maybeRemoved, undo);
+    },
+    // Move an event onto the shelf as a maybe idea (any event, not just ones
+    // that started there). Soft events only — hard events are commitments.
+    park: (event: TripEvent) => {
+      const now = new Date(getNow()).toISOString();
+      const item: MaybeItem = {
+        id: crypto.randomUUID(),
+        tripId: trip.id,
+        title: event.title,
+        icon: event.icon,
+        placeId: event.placeId,
+        createdBy: activeUserId,
+        consumed: false,
+        createdAt: now,
+        updatedAt: now,
+        updatedBy: activeUserId,
+      };
+      void applyPark(deps, event, item);
+      toast(ICONS.toShelf, t.toast.movedToShelf, undo);
     },
     create: (event: TripEvent) => {
       void applyCreateEvent(deps, event);

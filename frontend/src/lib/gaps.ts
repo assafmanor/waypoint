@@ -6,6 +6,11 @@ import { isoToTimeInput } from './time';
 /** Below this, the gap is just breathing room — no chip. */
 export const GAP_MIN_MINUTES = 60;
 
+/** Default length of an event dropped into a gap. A big (e.g. 9h) gap shouldn't
+ *  prefill a 9h event — start a normal block at the gap's start; the user can
+ *  extend it. Capped at the gap itself so a small gap fills exactly. */
+export const GAP_FILL_MINUTES = 60;
+
 /** Prefill for a new/scheduled event dropped into the gap: the gap's own slot. */
 export type GapDefaults = { date: string; start: string; end: string };
 
@@ -26,10 +31,18 @@ export function gapBetween(
 ): { minutes: number; fill: GapDefaults } | null {
   const aEnd = a.endsAt ?? a.startsAt;
   if (!aEnd || !b.startsAt) return null;
-  const minutes = Math.round((Date.parse(b.startsAt) - Date.parse(aEnd)) / 60000);
+  const startMs = Date.parse(aEnd);
+  const nextMs = Date.parse(b.startsAt);
+  const minutes = Math.round((nextMs - startMs) / 60000);
   if (minutes < GAP_MIN_MINUTES) return null;
+  // Prefill a default-length block at the gap's start, never the whole gap.
+  const fillEndMs = Math.min(startMs + GAP_FILL_MINUTES * 60000, nextMs);
   return {
     minutes,
-    fill: { date: a.date, start: isoToTimeInput(aEnd, tz), end: isoToTimeInput(b.startsAt, tz) },
+    fill: {
+      date: a.date,
+      start: isoToTimeInput(aEnd, tz),
+      end: isoToTimeInput(new Date(fillEndMs).toISOString(), tz),
+    },
   };
 }
