@@ -23,7 +23,7 @@ Code and documentation live together. **Any consequential decision gets an ADR**
 - `mockups/screens-v1.html` — landing, lobby, join (paste-a-link + invite landing, ADR-0030), and trip-settings screens (plan-mode daylight chrome).
 - `mockups/zero-state-v1.html` — the zero-state home (logged in, no trips): the dormant "board off" concept, two equal join/create actions (ADR-0024 §2).
 - `mockups/create-trip-v1.html` — trip creation `/new`: three inputs, live soft-grammar draft preview, post-create invite prompt (ADR-0032).
-- `mockups/trip-switcher-v1.html` — the trip switcher (ADR-0024 §5): header-invoked bottom sheet, now/soon/past chips, single-trip + offline states.
+- `mockups/all-trips-v1.html` — the "all trips" home (ADR-0033): the landing when no trip is live, reached from a trip via the header ▾; trip list with now/soon/past chips, create-only, offline state.
 
 ## Tech stack (see docs/architecture/tech-stack.md)
 

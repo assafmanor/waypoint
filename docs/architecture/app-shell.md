@@ -1,13 +1,13 @@
 # App Shell & Trip Lifecycle
 
-**Status:** Routing map + auth gate + login built (T-039). The switcher/account sheets and the `/new`, `/join/:token`, `/trip/:id/settings` surfaces are stubs — their content is T-027/T-040–T-044.
+**Status:** Routing map + auth gate + login built (T-039); zero-state (T-040) and create (T-041) built. The all-trips home (`/trips`, ADR-0033), account sheet, and `/join/:token`, `/trip/:id/settings` surfaces are stubs — their content is T-027/T-042–T-044.
 **Decision:** [ADR-0024](../decisions/0024-app-shell-and-trip-lifecycle.md) · **Related:** [ADR-0020 auth](../decisions/0020-auth-session-architecture.md), [ADR-0021 multi-trip](../decisions/0021-multi-trip-membership.md), [ADR-0005 roles](../decisions/0005-peers-not-roles-v1.md), [ADR-0004 integrations-are-pipes](../decisions/0004-integrations-are-pipes.md)
 
 The **shell** is everything _outside_ a single trip: the auth gate, the no-trips zero-state, trip creation, the invite/join flow, the trip switcher, the account menu, and per-trip settings. It is chrome whose only job is to get you into a trip and back out to another — indigo/neutral only, **never amber or teal** (design-language.md). Design principle: minimize screens and minimize taps from "app open" to "inside a trip." The in-trip surfaces (Home / Days / Map / Index) are specified elsewhere; this doc stops at the trip boundary.
 
 ## Routing map
 
-Client-side routing, single-origin PWA (ADR-0020). Only three shell routes are full pages; the switcher and account menu are header-invoked sheets.
+Client-side routing, single-origin PWA (ADR-0020). Login, all-trips, create, join, and settings are full-page routes; the account menu is a header-invoked sheet.
 
 ```
 app load
@@ -15,13 +15,14 @@ app load
   │                                     └─ (Google) ─► resume saved intent, else "/"
   │
   └─ authenticated ─► resolve active trip (ADR-0021)
-        ├─ has trips ──► "/"  = in-trip surface of the active trip
-        │                     ├─ header: [ active trip ▾ ]  → Switcher sheet
-        │                     │          [ avatar ]         → Account sheet
-        │                     └─ header ⚙ / members         → /trip/:id/settings
-        └─ no trips ───► Zero-state home
+        ├─ a trip is live ──► "/"  = in-trip surface of the in-progress trip
+        │                     ├─ header: [ trip name ▾ ]   → /trips (all-trips home)
+        │                     │          [ avatar ]        → Account sheet
+        │                     └─ header ⚙ / members        → /trip/:id/settings
+        ├─ trips, none live ► /trips = all-trips home (ADR-0033)
+        └─ no trips ────────► Zero-state home
 
-full-page routes:  /login   /new (create)   /join/:token
+full-page routes:  /login   /trips (all-trips home)   /new (create)   /join/:token
 deep-link intents (esp. /join/:token) are saved before /login and resumed after
 ```
 
@@ -61,14 +62,14 @@ Active-trip selection is `tripId` in `localStorage` — per-device, **not** sync
 - **Auth interaction:** the preview renders **first, regardless of auth state** (the endpoint is public) — there is no eager redirect before anything is shown. For a signed-in visitor, the CTA is **Join** → `POST /trips/join/:token` (exists) → land in the trip. For an anonymous visitor, the same CTA reads **"Continue with Google"**: tapping it saves `/join/:token` as the intent and starts OAuth; sign-in **resumes** here, now authenticated, to complete the join (mockup: `s-linkjoin` → `s-join` in `mockups/screens-v1.html`).
 - **States:** loading preview · valid → confirm · **invalid/expired token** (friendly dead-end, offer to ask for a fresh link) · already a member (skip straight into the trip) · offline (preview may hydrate from cache if the trip is known; joining needs the network).
 
-### 5. Trip switcher — header sheet (not a route)
+### 5. All-trips home — `/trips` (ADR-0033)
 
-- **Purpose:** navigate _between_ trip instances (ADR-0021). Explicitly not a dashboard.
-- **Entry:** the active trip's name in the in-trip header, with a ▾ affordance.
-- **Contents:** a list of the user's trips (name + a **now / soon / past** chip derived from dates), plus **＋ Create** (→ `/new`) and **Join with a link** at the bottom.
-- **Flow:** tap a trip → set active-trip (`localStorage`) → navigate to its surface and close.
-- **States:** single trip (header shows the name, no ▾ / no-op) · loading (from cached `GET /trips`) · offline (fully usable across already-cached trips — reads only).
-- **Design reference:** `mockups/trip-switcher-v1.html` — the sheet with the active trip marked ("נוכחי"), neutral-family now/soon/past chips, create/join footer, and the single-trip + offline states.
+- **Purpose:** the home base for your trips — see them as a set, switch between them, create. A navigation list, **not a dashboard**; no departure board (nothing is live here — a live trip opens directly).
+- **When you're here:** the **landing** when authenticated with trips but **none live** (all upcoming/past — don't auto-open a future trip); and reached from inside a trip via the **trip name ▾** in the header. Replaces the old switcher sheet (one surface, both entries).
+- **Contents:** a list of the user's trips (flag/name + destination/meta + a **now / soon / past** chip derived from dates); the trip you came from is marked "נוכחי". A single **＋ Create** (→ `/new`) — no Join button (joining starts from an invite link, ADR-0030; the zero-state keeps Join for first-run).
+- **Flow:** tap a trip → set active-trip (`localStorage`) → navigate to its surface.
+- **States:** landing (no current marked) · from-trip (current marked, its chip reads "עכשיו") · single trip (header shows the name, no ▾) · offline (switching among cached trips works; create disabled).
+- **Design reference:** `mockups/all-trips-v1.html`.
 
 ### 6. Account — header sheet (not a route)
 
