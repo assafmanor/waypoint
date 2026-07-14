@@ -5,6 +5,8 @@ import { TripProvider, useTrip } from './state/trip-state';
 import { ModeProvider, useMode } from './state/mode-state';
 import { AuthProvider, useAuth } from './state/auth-state';
 import { ActiveTripIdProvider, useActiveTripId } from './state/active-trip-id';
+import { NavProvider, useMarkInsideTrip, useTripTab } from './state/nav-state';
+import { EdgeSwipeBack } from './ui/EdgeSwipeBack';
 import { useIsOffline, useOutboxCount } from './lib/outbox';
 import { fetchTrips } from './lib/api';
 import { resolveActiveTrip, tripChip } from './lib/active-trip';
@@ -261,15 +263,17 @@ function Screen({ tab, onNavigate }: { tab: TabId; onNavigate: (tab: TabId) => v
 // component reading mode state. Needs its own component because App renders
 // ModeProvider itself and so can't call useMode.
 function Shell() {
-  const [tab, setTab] = useState<TabId>('home');
+  // Tab lives in the URL (?tab=), Home-anchored, so back peels it (ADR-0035).
+  const { tab, goToTab } = useTripTab();
   const [accountOpen, setAccountOpen] = useState(false);
+  useMarkInsideTrip();
   const { mode } = useMode();
   const { trip, setActiveDate } = useTrip();
   const { logout } = useAuth();
   const navigate = useNavigate();
   const onSelectDay = (date: string) => {
     setActiveDate(date);
-    setTab('days');
+    goToTab('days');
   };
   return (
     <div className="app" data-mode={mode}>
@@ -280,14 +284,14 @@ function Shell() {
         onOpenSettings={() => navigate(`/trip/${trip.id}/settings`)}
       />
       <main className="body" key={tab}>
-        <Screen tab={tab} onNavigate={setTab} />
+        <Screen tab={tab} onNavigate={goToTab} />
       </main>
       <nav className="nav">
         {TABS.map((tabDef) => (
           <button
             key={tabDef.id}
             className={tabDef.id === tab ? 'on' : ''}
-            onClick={() => setTab(tabDef.id)}
+            onClick={() => goToTab(tabDef.id)}
             aria-current={tabDef.id === tab}
           >
             <span className="ic">{tabDef.icon}</span>
@@ -465,10 +469,17 @@ export function App() {
     <AuthProvider>
       <ActiveTripIdProvider>
         <ToastProvider>
-          <ConfirmProvider>
-            <AppRoutes />
-            {import.meta.env.DEV && <DevTimeTravel />}
-          </ConfirmProvider>
+          <NavProvider>
+            <ConfirmProvider>
+              {/* #app-shift is the parallax target the return gesture nudges
+                  (ADR-0035 §5); EdgeSwipeBack sits outside it so it isn't moved. */}
+              <div id="app-shift">
+                <AppRoutes />
+              </div>
+              <EdgeSwipeBack />
+              {import.meta.env.DEV && <DevTimeTravel />}
+            </ConfirmProvider>
+          </NavProvider>
         </ToastProvider>
       </ActiveTripIdProvider>
     </AuthProvider>

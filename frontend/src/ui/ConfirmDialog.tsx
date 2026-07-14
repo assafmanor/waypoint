@@ -4,6 +4,7 @@
 import { createContext, useCallback, useContext, useRef, useState, type ReactNode } from 'react';
 import type { TripEvent } from '@waypoint/shared';
 import { ICONS } from '../constants';
+import { useOverlay } from '../state/nav-state';
 import { t } from '../i18n/he';
 
 export type ConfirmHardEditAction = 'edit' | 'delete';
@@ -33,40 +34,63 @@ export function ConfirmProvider({ children }: { children: ReactNode }) {
     setPending(null);
   };
 
-  const title = pending?.action === 'delete' ? t.confirm.hardDeleteTitle : t.confirm.hardEditTitle;
-  const body =
-    pending?.action === 'delete'
-      ? t.confirm.hardDeleteBody(pending.event.title)
-      : pending && t.confirm.hardEditBody(pending.event.title);
-
   return (
     <ConfirmContext.Provider value={confirmHardEdit}>
       {children}
       {pending && (
-        <div className="confirm-overlay" onClick={() => settle(false)}>
-          <div
-            className="confirm-card"
-            role="alertdialog"
-            aria-modal="true"
-            aria-label={title}
-            onClick={(e) => e.stopPropagation()}
-          >
-            <div className="confirm-title">
-              {ICONS.lock} {title}
-            </div>
-            <p className="confirm-body">{body}</p>
-            <div className="confirm-actions">
-              <button className="confirm-cancel" onClick={() => settle(false)}>
-                {t.common.no}
-              </button>
-              <button className="confirm-ok" onClick={() => settle(true)}>
-                {t.common.yes}
-              </button>
-            </div>
-          </div>
-        </div>
+        <ConfirmCard
+          event={pending.event}
+          action={pending.action}
+          onCancel={() => settle(false)}
+          onConfirm={() => settle(true)}
+        />
       )}
     </ConfirmContext.Provider>
+  );
+}
+
+// Split out so it can register as an overlay (ADR-0035 §4) — mounted only while
+// pending, its useOverlay makes the return gesture / back cancel the dialog.
+function ConfirmCard({
+  event,
+  action,
+  onCancel,
+  onConfirm,
+}: {
+  event: TripEvent;
+  action: ConfirmHardEditAction;
+  onCancel: () => void;
+  onConfirm: () => void;
+}) {
+  useOverlay(onCancel);
+  const title = action === 'delete' ? t.confirm.hardDeleteTitle : t.confirm.hardEditTitle;
+  const body =
+    action === 'delete'
+      ? t.confirm.hardDeleteBody(event.title)
+      : t.confirm.hardEditBody(event.title);
+  return (
+    <div className="confirm-overlay" onClick={onCancel}>
+      <div
+        className="confirm-card"
+        role="alertdialog"
+        aria-modal="true"
+        aria-label={title}
+        onClick={(e) => e.stopPropagation()}
+      >
+        <div className="confirm-title">
+          {ICONS.lock} {title}
+        </div>
+        <p className="confirm-body">{body}</p>
+        <div className="confirm-actions">
+          <button className="confirm-cancel" onClick={onCancel}>
+            {t.common.no}
+          </button>
+          <button className="confirm-ok" onClick={onConfirm}>
+            {t.common.yes}
+          </button>
+        </div>
+      </div>
+    </div>
   );
 }
 
