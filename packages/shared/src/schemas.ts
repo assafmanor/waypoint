@@ -8,6 +8,7 @@ import {
   eventSourceSchema,
   eventStatusSchema,
 } from './entities';
+import { MAX_TRIP_NAME_LENGTH } from './constants';
 
 /** Client-generated id (cuid/uuid). Server validates format only. ADR-0018. */
 // ponytail: charset+length guard, tighten to exact cuid2/uuid grammar if it ever matters.
@@ -77,7 +78,7 @@ export const updateBookingSchema = createBookingSchema.partial();
 export type UpdateBookingInput = z.infer<typeof updateBookingSchema>;
 
 export const createTripSchema = z.object({
-  name: z.string().min(1),
+  name: z.string().min(1).max(MAX_TRIP_NAME_LENGTH),
   destination: z.string().min(1),
   startDate: z.string(),
   endDate: z.string(),

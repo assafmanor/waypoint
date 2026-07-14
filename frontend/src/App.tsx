@@ -22,6 +22,7 @@ import { CreateTrip } from './screens/CreateTrip';
 import { JoinTrip } from './screens/JoinTrip';
 import { DevTimeTravel } from './dev/DevTimeTravel';
 import { useClock } from './lib/useClock';
+import { useShrinkToFit } from './lib/useShrinkToFit';
 import {
   AVATAR_INITIAL_LENGTH,
   DOT_SEPARATOR,
@@ -108,6 +109,10 @@ function Header({
 }) {
   const { trip, users, activeDate, usingCachedSnapshot } = useTrip();
   const { me } = useAuth();
+  const { targetRef: tripNameRef, containerRef: tripNameWrapRef } = useShrinkToFit<
+    HTMLSpanElement,
+    HTMLDivElement
+  >(trip.name);
   // The account avatar (ringed, opens the account sheet) already shows "me" —
   // the member cluster is everyone else, capped with a "+N" overflow bubble
   // (app-shell.md §6, PR #57).
@@ -144,13 +149,15 @@ function Header({
     <header className="header">
       <ModeToggle />
       <div className="trip-row">
-        <div className="trip-name-wrap">
+        <div className="trip-name-wrap" ref={tripNameWrapRef}>
           <button
             className="trip-name-btn"
             onClick={onOpenSwitcher}
             aria-label={t.shell.switcher.title}
           >
-            <span className="trip-name">{trip.name}</span>
+            <span ref={tripNameRef} className="trip-name">
+              {trip.name}
+            </span>
             <span className="chev">▾</span>
           </button>
           <div className="trip-sub">

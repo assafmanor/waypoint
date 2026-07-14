@@ -72,3 +72,8 @@ export const CHANGE_ACTION = {
   DELETE: 'delete',
   STATUS: 'status',
 } as const satisfies Record<string, ChangeAction>;
+
+/** Trip name length cap — keeps the header switcher pill to one line
+ *  (app-shell.md §5). Validated server-side (createTripSchema) and enforced
+ *  client-side (the create form's input `maxLength`). */
+export const MAX_TRIP_NAME_LENGTH = 18;
