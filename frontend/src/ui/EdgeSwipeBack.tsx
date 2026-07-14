@@ -1,12 +1,15 @@
 // The PWA return gesture (ADR-0035 §5). A trailing-edge horizontal pull that
-// triggers the one `goBack()`. RTL (ADR-0009) mirrors the platform convention:
-// the activation edge is the *right* edge and the pull goes leftward (the back
-// chevron flips to ›). We listen on window (no blocking overlay element, so no
-// taps are swallowed) and only claim the gesture — preventing scroll and moving
-// the page — once a horizontal drag *starts from the edge zone*, so it never
-// fights the day-strip scroll or the Plan-builder's pointer-capture drag.
-import { useEffect, useRef, useState } from 'react';
-import { useAppBack } from '../state/nav-state';
+// triggers the one back action. RTL (ADR-0009) mirrors the platform convention:
+// the activation edge is the *right* edge and the pull goes leftward. We listen
+// on window (no blocking overlay element, so no taps are swallowed) and only
+// claim the gesture — preventing scroll and moving the page — once a horizontal
+// drag *starts from the edge zone*, so it never fights the day-strip scroll or
+// the Plan-builder's pointer-capture drag. Over an open sheet the pull may start
+// anywhere (there's nothing to scroll under it), so back-to-dismiss feels
+// natural. On a committed structural back the screen slides fully off before the
+// content swaps; overlay-dismiss / confirm-to-exit spring back instead.
+import { useEffect } from 'react';
+import { useHasOverlay, useReturnControls } from '../state/nav-state';
 
 /** Width of the trailing-edge band a pull must start in to count as "back". */
 const EDGE_ZONE_PX = 24;
@@ -16,8 +19,10 @@ const CLAIM_PX = 12;
 const COMMIT_RATIO = 0.4;
 /** …or a fast flick, whichever comes first (px/ms). */
 const COMMIT_VELOCITY = 0.55;
-/** How far the page trails the finger — a peek, not a 1:1 drag. */
-const PARALLAX = 0.22;
+/** Point past which the drag meets resistance (rubber-band), as a width fraction. */
+const RESIST_AT = 0.5;
+/** Slide / spring animation duration. */
+const SLIDE_MS = 260;
 
 type Drag = {
   pointerId: number;
@@ -26,13 +31,12 @@ type Drag = {
   lastX: number;
   lastT: number;
   claimed: boolean;
-  dead: boolean; // ruled out (started off-edge or went vertical)
+  dead: boolean; // ruled out (started off-edge with no overlay, or went vertical)
 };
 
 export function EdgeSwipeBack() {
-  const goBack = useAppBack();
-  const [progress, setProgress] = useState(0);
-  const dragRef = useRef<Drag | null>(null);
+  const { classify, run } = useReturnControls();
+  const hasOverlay = useHasOverlay();
   const rtl = typeof document !== 'undefined' && document.documentElement.dir === 'rtl';
 
   useEffect(() => {
@@ -41,37 +45,46 @@ export function EdgeSwipeBack() {
     const backDist = (x: number, startX: number) => (rtl ? startX - x : x - startX);
     const inEdgeZone = (x: number) =>
       rtl ? x >= window.innerWidth - EDGE_ZONE_PX : x <= EDGE_ZONE_PX;
+    const dir = rtl ? -1 : 1; // which way the screen travels
 
-    const applyShift = (p: number) => {
+    let drag: Drag | null = null;
+
+    // Move the page (via #app-shift) with the pull; a trailing shadow reads as
+    // the current screen lifting over what's behind it.
+    const paint = (offset: number, animate = false) => {
       const el = shift();
       if (!el) return;
-      const off = p * window.innerWidth * PARALLAX * (rtl ? -1 : 1);
-      el.style.transition = 'none';
-      el.style.transform = `translateX(${off}px)`;
+      el.style.transition = animate
+        ? `transform ${SLIDE_MS}ms cubic-bezier(0.22, 0.61, 0.36, 1)`
+        : 'none';
+      el.style.transform = offset ? `translateX(${dir * offset}px)` : '';
+      el.style.boxShadow = offset ? '0 0 28px rgba(0, 0, 0, 0.3)' : '';
     };
-    const resetShift = () => {
-      setProgress(0);
+    const clearInline = () => {
       const el = shift();
       if (!el) return;
-      el.style.transition = 'transform 0.18s ease';
+      el.style.transition = 'none';
       el.style.transform = '';
+      el.style.boxShadow = '';
     };
 
     const onDown = (e: PointerEvent) => {
       if (e.pointerType === 'mouse' && e.button !== 0) return;
-      dragRef.current = {
+      drag = {
         pointerId: e.pointerId,
         startX: e.clientX,
         startY: e.clientY,
         lastX: e.clientX,
         lastT: e.timeStamp,
         claimed: false,
-        dead: !inEdgeZone(e.clientX),
+        // Over an open sheet the pull may start anywhere; otherwise it must
+        // start in the trailing-edge zone so it doesn't hijack content gestures.
+        dead: !inEdgeZone(e.clientX) && !hasOverlay(),
       };
     };
 
     const onMove = (e: PointerEvent) => {
-      const d = dragRef.current;
+      const d = drag;
       if (!d || d.dead || e.pointerId !== d.pointerId) return;
       const dx = backDist(e.clientX, d.startX);
       const dy = Math.abs(e.clientY - d.startY);
@@ -87,24 +100,45 @@ export function EdgeSwipeBack() {
       if (e.cancelable) e.preventDefault();
       d.lastX = e.clientX;
       d.lastT = e.timeStamp;
-      const p = Math.max(0, Math.min(1, dx / window.innerWidth));
-      setProgress(p);
-      applyShift(p);
+      // ~1:1 finger tracking with rubber-band resistance past the halfway mark.
+      const w = window.innerWidth;
+      const raw = Math.max(0, dx);
+      const knee = w * RESIST_AT;
+      const offset = raw <= knee ? raw : knee + (raw - knee) * 0.5;
+      paint(Math.min(offset, w));
     };
 
     const onUp = (e: PointerEvent) => {
-      const d = dragRef.current;
-      dragRef.current = null;
+      const d = drag;
+      drag = null;
       if (!d || d.dead || !d.claimed) {
-        resetShift();
+        paint(0, true);
         return;
       }
       const dx = backDist(e.clientX, d.startX);
       const velocity = (e.clientX - d.lastX) / Math.max(1, e.timeStamp - d.lastT);
       const backVelocity = rtl ? -velocity : velocity;
       const commit = dx > window.innerWidth * COMMIT_RATIO || backVelocity > COMMIT_VELOCITY;
-      resetShift();
-      if (commit) goBack();
+      if (!commit) {
+        paint(0, true); // below threshold → spring back
+        return;
+      }
+      const c = classify();
+      if (c.kind === 'structural' || c.kind === 'exit') {
+        // Real navigation: finish the screen off, then swap content and reset in
+        // the same frame so the incoming screen appears at rest (it fades via
+        // .body's own animation).
+        paint(window.innerWidth, true);
+        window.setTimeout(() => {
+          run(c);
+          requestAnimationFrame(clearInline);
+        }, SLIDE_MS);
+      } else {
+        // Overlay dismiss / confirm-to-exit / no-op: the underlying screen stays
+        // put — spring it back and let the sheet (or toast) handle itself.
+        run(c);
+        paint(0, true);
+      }
     };
 
     window.addEventListener('pointerdown', onDown, { passive: true });
@@ -117,18 +151,7 @@ export function EdgeSwipeBack() {
       window.removeEventListener('pointerup', onUp);
       window.removeEventListener('pointercancel', onUp);
     };
-  }, [goBack, rtl]);
+  }, [classify, run, hasOverlay, rtl]);
 
-  return (
-    <div
-      className={`edge-back-hint ${rtl ? 'rtl' : 'ltr'}`}
-      aria-hidden="true"
-      style={{
-        opacity: Math.min(1, progress * 2.5),
-        transform: `translateY(-50%) translateX(${(rtl ? -1 : 1) * (1 - Math.min(1, progress * 1.4)) * 48}px)`,
-      }}
-    >
-      <span className="edge-back-chev">{rtl ? '›' : '‹'}</span>
-    </div>
-  );
+  return null;
 }

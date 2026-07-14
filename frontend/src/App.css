@@ -1533,36 +1533,10 @@
   color: var(--miss);
 }
 
-/* Return gesture (ADR-0035 §5). #app-shift is the parallax target nudged as you
-   pull; the hint is a peek chevron that grows in from the trailing edge. RTL
-   (ADR-0009) puts the edge on the right, so the chevron flips to ›. The hint is
-   pointer-events:none and the gesture is tracked on window (ui/EdgeSwipeBack),
-   so nothing here blocks a tap. */
+/* Return gesture (ADR-0035 §5). #app-shift is the layer the pull moves: the
+   screen tracks the finger ~1:1 and, on a committed structural back, slides
+   fully off before the new screen swaps in (ui/EdgeSwipeBack drives transform +
+   a trailing shadow inline). will-change keeps the slide on the compositor. */
 #app-shift {
   will-change: transform;
-}
-.edge-back-hint {
-  position: fixed;
-  top: 50%;
-  z-index: 60;
-  pointer-events: none;
-  display: grid;
-  place-items: center;
-  width: 44px;
-  height: 44px;
-  border-radius: 999px;
-  background: var(--cta);
-  color: var(--cta-text);
-  box-shadow: 0 4px 16px rgba(0, 0, 0, 0.28);
-}
-.edge-back-hint.rtl {
-  right: 8px;
-}
-.edge-back-hint.ltr {
-  left: 8px;
-}
-.edge-back-chev {
-  font-size: 24px;
-  line-height: 1;
-  font-weight: 700;
 }

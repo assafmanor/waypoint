@@ -40,6 +40,14 @@ We want a **return gesture** (edge pull) that "navigates within the app, not the
 - **Bounded history growth:** stepping Home→trip repeatedly can add `/trips` entries (root guard pushes rather than pops). Acceptable at this app's scale; can be optimized to a pop-when-parent later.
 - **Deferred (recorded, not built):** a visible header back-chevron mirroring the gesture on shell routes; a forward gesture; per-day history; making the platform **system-back** (Android hardware / desktop browser button) close an open overlay too — today it peels the structural layer under the sheet. The gesture already closes overlays, and iOS-standalone, the motivating case, has no system back to reconcile.
 
+## Refinements
+
+**2026-07-15 (Assaf, post-merge feedback).** Three adjustments — additive, the decision above stands:
+
+1. **Leaving a trip is confirmed.** Back at the in-trip **Home base** no longer exits straight to `/trips`; the first back **arms** a toast ("החליקו שוב כדי לצאת מהטיול") and a second back within ~3s actually leaves (the Android "press again to exit" pattern). Guards against an accidental swipe yanking you out of the trip you're using on the ground. Surfaced as a distinct `exit-trip` step so the confirm lives in the handler, not the pure decision.
+2. **Overlays dismiss from anywhere.** The edge-zone restriction is lifted **while a sheet/dialog is open** — over a modal there's nothing to scroll under, so a back pull can start mid-screen. Makes the account sheet (and every `Sheet`/dialog) reliably closeable by the return gesture, not only by an exact edge swipe.
+3. **Native slide, not a nudged pill.** The peek chevron is gone; the screen now tracks the finger ~1:1 (rubber-band past halfway) with a trailing shadow, and a committed **structural** back slides the screen fully off before the content swaps. Overlay-dismiss and the exit-confirm spring back instead of sliding.
+
 ## Alternatives considered
 
 - **Custom gesture that suppresses the native back.** Rejected: iOS Safari's edge-swipe cannot be reliably prevented, and fighting Android's back yields two desynced back mechanisms. Owning history instead of blocking it is simpler and correct.

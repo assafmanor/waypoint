@@ -39,14 +39,14 @@ describe('structuralBackStep — goBack precedence (ADR-0035 §2)', () => {
     ).toEqual({ kind: 'replace', to: '/' });
   });
 
-  it('Home base in a trip goes out to the all-trips home (root guard)', () => {
+  it('Home base in a trip resolves to the trip-exit step (gated by a confirm)', () => {
     expect(
       structuralBackStep({ insideTrip: true, tab: null, pathname: '/', canGoBack: true }),
-    ).toEqual({ kind: 'push', to: '/trips' });
+    ).toEqual({ kind: 'exit-trip' });
     // tab=home is equivalent to the base.
     expect(
       structuralBackStep({ insideTrip: true, tab: 'home', pathname: '/', canGoBack: true }),
-    ).toEqual({ kind: 'push', to: '/trips' });
+    ).toEqual({ kind: 'exit-trip' });
   });
 
   it('a shell route steps back to its parent', () => {

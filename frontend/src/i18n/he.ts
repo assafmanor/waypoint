@@ -44,6 +44,10 @@ export const t = {
   },
   shell: {
     booting: 'טוען…',
+    // First "back" at the in-trip Home arms this; a second within a few seconds
+    // leaves to the all-trips list (ADR-0035 §1, refinement) — a guard against
+    // an accidental swipe yanking you out of the trip you're using.
+    leaveTripHint: 'החליקו שוב כדי לצאת מהטיול',
     login: {
       heroLine1: 'כל הטיול שלכם.',
       heroLine2Prefix: 'מסך',
