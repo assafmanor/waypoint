@@ -75,3 +75,4 @@ What else we weighed and why we didn't pick it.
 | [0030](0030-join-is-link-only.md)                   | Joining a trip is link-only — no short invite codes (paste-a-link covers app-first arrivals)                      | Accepted |
 | [0031](0031-hosting-on-railway.md)                  | Hosting: Railway, one project (single-origin service, Postgres; buckets later)                                    | Accepted |
 | [0032](0032-minimal-trip-creation.md)               | Trip creation is minimal: destination → dates → auto-suggested name; currency/budget/timezone derived or deferred | Accepted |
+| [0033](0033-all-trips-home.md)                      | "All trips" home page: land there unless a trip is live; replaces the switcher sheet, create-only                 | Accepted |

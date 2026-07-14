@@ -1,0 +1,541 @@
+<!doctype html>
+<!-- All-trips home (ADR-0033): the home base for your trips. A real page, not a
+     sheet. It's the landing when no trip is live (in progress); when a trip IS
+     live you drop into it directly and reach this page via the header ▾. A lean
+     navigation list, NOT a dashboard — no departure board (nothing is live
+     here). Shell chrome only: indigo/neutral, never amber/teal/violet (teal on
+     focus outlines only, ADR-0028). now/soon/past chips are date-derived and
+     stay in the neutral family. No "join" button — joining starts from a link
+     (ADR-0030); create only. -->
+<html lang="he" dir="rtl">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>Waypoint — כל הטיולים (מוקאפ)</title>
+    <link rel="preconnect" href="https://fonts.googleapis.com" />
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+    <link
+      href="https://fonts.googleapis.com/css2?family=Assistant:wght@400;500;600;700&family=Secular+One&family=JetBrains+Mono:wght@500;700&display=swap"
+      rel="stylesheet"
+    />
+    <style>
+      :root {
+        --ink: #16233d;
+        --indigo: #1b2a4a;
+        --board: #0e1729;
+        --board-2: #152137;
+        --screen: #e7eaef;
+        --card: #ffffff;
+        --paper: #f3efe6;
+        --amber: #e9a63c;
+        --teal: #2c9c90;
+        --muted: #6c7488;
+        --line: rgba(22, 35, 61, 0.1);
+        --soft-line: rgba(22, 35, 61, 0.28);
+        --cta: var(--ink);
+        --cta-text: #fff;
+        --shadow: 0 18px 40px -18px rgba(14, 23, 41, 0.45);
+      }
+      * {
+        box-sizing: border-box;
+        margin: 0;
+        padding: 0;
+      }
+      html,
+      body {
+        height: 100%;
+      }
+      body {
+        font-family: 'Assistant', sans-serif;
+        background:
+          radial-gradient(120% 90% at 80% -10%, #2a3e68 0%, transparent 55%),
+          radial-gradient(120% 90% at 0% 110%, #1a2a4a 0%, transparent 50%), #0f1a31;
+        color: var(--ink);
+        min-height: 100vh;
+        display: flex;
+        flex-direction: column;
+        align-items: center;
+        justify-content: center;
+        padding: 24px 16px;
+        -webkit-font-smoothing: antialiased;
+      }
+      .stage {
+        width: 100%;
+        max-width: 392px;
+      }
+
+      /* mockup state switcher */
+      .switcher {
+        display: flex;
+        gap: 6px;
+        justify-content: center;
+        margin-bottom: 14px;
+        flex-wrap: wrap;
+      }
+      .sw {
+        font: inherit;
+        font-size: 12px;
+        font-weight: 600;
+        color: #aeb9d4;
+        background: rgba(255, 255, 255, 0.07);
+        border: 1px solid rgba(255, 255, 255, 0.12);
+        border-radius: 99px;
+        padding: 7px 13px;
+        cursor: pointer;
+        transition: 0.15s;
+      }
+      .sw:hover {
+        color: #fff;
+      }
+      .sw.on {
+        background: #fff;
+        border-color: #fff;
+        color: var(--ink);
+      }
+      .sw:focus-visible {
+        outline: 2.5px solid var(--teal);
+        outline-offset: 2px;
+      }
+
+      .phone {
+        background: var(--screen);
+        border-radius: 38px;
+        box-shadow:
+          var(--shadow),
+          0 0 0 10px #0b1526,
+          0 0 0 12px #223257;
+        overflow: hidden;
+        position: relative;
+        height: 812px;
+        display: flex;
+        flex-direction: column;
+      }
+      .statusbar {
+        background: var(--indigo);
+        color: #dce3f2;
+        display: flex;
+        justify-content: space-between;
+        align-items: center;
+        padding: 11px 22px 8px;
+        font-size: 13px;
+        font-weight: 600;
+        font-family: 'JetBrains Mono', monospace;
+        flex: 0 0 auto;
+      }
+      .statusbar .dots {
+        letter-spacing: 2px;
+        opacity: 0.85;
+      }
+
+      /* ===== home-base header ===== */
+      .head {
+        background: var(--indigo);
+        color: #fff;
+        padding: 14px 20px 18px;
+        flex: 0 0 auto;
+      }
+      .head-row {
+        display: flex;
+        justify-content: space-between;
+        align-items: center;
+      }
+      .head-left {
+        display: flex;
+        align-items: center;
+        gap: 10px;
+      }
+      /* back arrow — only when this page was reached from inside a trip */
+      .back {
+        font: inherit;
+        background: rgba(255, 255, 255, 0.08);
+        border: 1px solid rgba(255, 255, 255, 0.14);
+        color: #dce3f2;
+        width: 34px;
+        height: 34px;
+        border-radius: 11px;
+        cursor: pointer;
+        font-size: 15px;
+        display: none;
+        place-items: center;
+        flex: 0 0 auto;
+      }
+      .phone[data-state='from-trip'] .back {
+        display: grid;
+      }
+      .hello {
+        font-family: 'Secular One', sans-serif;
+        font-size: 23px;
+      }
+      .phone[data-state='from-trip'] .hello {
+        font-size: 19px;
+      }
+      .hello-sub {
+        color: #9daac8;
+        font-size: 12.5px;
+        margin-top: 3px;
+        display: flex;
+        align-items: center;
+        gap: 6px;
+      }
+      .g-dot {
+        width: 12px;
+        height: 12px;
+        border-radius: 50%;
+        flex: 0 0 auto;
+        background: conic-gradient(#4285f4 0 25%, #ea4335 0 50%, #fbbc05 0 75%, #34a853 0);
+      }
+      .account {
+        width: 33px;
+        height: 33px;
+        border-radius: 50%;
+        display: grid;
+        place-items: center;
+        background: #8cb6e8;
+        color: #12203a;
+        font-weight: 700;
+        font-size: 13px;
+        border: 2px solid var(--indigo);
+        cursor: pointer;
+        flex: 0 0 auto;
+      }
+      .offline-badge {
+        display: none;
+        align-items: center;
+        gap: 6px;
+        margin-top: 10px;
+        padding: 4px 10px;
+        border-radius: 20px;
+        background: rgba(255, 255, 255, 0.08);
+        border: 1px solid rgba(255, 255, 255, 0.16);
+        color: #8fa0c4;
+        font-size: 11.5px;
+        font-weight: 600;
+        width: fit-content;
+      }
+      .phone[data-state='offline'] .offline-badge {
+        display: inline-flex;
+      }
+
+      /* ===== body ===== */
+      .body {
+        flex: 1;
+        min-height: 0;
+        overflow-y: auto;
+        padding: 18px 16px 20px;
+        display: flex;
+        flex-direction: column;
+      }
+      .body::-webkit-scrollbar {
+        width: 0;
+      }
+      .sec {
+        font-size: 12px;
+        font-weight: 700;
+        color: var(--muted);
+        letter-spacing: 0.05em;
+        margin: 4px 4px 10px;
+      }
+
+      .trip {
+        display: flex;
+        align-items: center;
+        gap: 12px;
+        width: 100%;
+        text-align: start;
+        font: inherit;
+        background: var(--card);
+        border: 1px solid var(--line);
+        border-radius: 15px;
+        padding: 12px 13px;
+        margin-bottom: 10px;
+        cursor: pointer;
+        transition:
+          transform 0.12s,
+          box-shadow 0.12s;
+      }
+      .trip:hover {
+        transform: translateY(-2px);
+        box-shadow: 0 10px 20px -14px rgba(22, 35, 61, 0.4);
+      }
+      .trip:focus-visible {
+        outline: 2.5px solid var(--teal);
+        outline-offset: 2px;
+      }
+      /* the trip you're currently inside (present only when reached from a trip) */
+      .trip.current {
+        border-color: var(--soft-line);
+        background: #fafbfd;
+      }
+      .trip .flag {
+        width: 44px;
+        height: 44px;
+        border-radius: 12px;
+        background: var(--paper);
+        display: grid;
+        place-items: center;
+        font-size: 22px;
+        flex: 0 0 auto;
+      }
+      .trip .main {
+        flex: 1;
+        min-width: 0;
+      }
+      .trip .t {
+        font-weight: 700;
+        font-size: 15px;
+        display: flex;
+        align-items: center;
+        gap: 7px;
+      }
+      .trip .t .cur {
+        font-size: 10.5px;
+        font-weight: 700;
+        color: var(--indigo);
+        background: rgba(22, 35, 61, 0.08);
+        border-radius: 6px;
+        padding: 1px 7px;
+      }
+      .trip .m {
+        font-size: 12px;
+        color: var(--muted);
+        margin-top: 3px;
+        white-space: nowrap;
+        overflow: hidden;
+        text-overflow: ellipsis;
+      }
+      /* now / soon / past — date-derived status, neutral family (shell chrome) */
+      .chip {
+        flex: 0 0 auto;
+        font-size: 11px;
+        font-weight: 700;
+        border-radius: 8px;
+        padding: 4px 9px;
+        white-space: nowrap;
+      }
+      .chip.now {
+        color: #fff;
+        background: var(--ink);
+      }
+      .chip.soon {
+        color: var(--ink);
+        background: #fff;
+        border: 1px solid var(--soft-line);
+      }
+      .chip.past {
+        color: #a0a7b4;
+        background: transparent;
+        border: 1px solid var(--line);
+      }
+
+      /* single primary action — create only (join starts from a link, ADR-0030) */
+      .create {
+        margin-top: 6px;
+        width: 100%;
+        font: inherit;
+        font-weight: 700;
+        font-size: 14.5px;
+        background: var(--cta);
+        color: var(--cta-text);
+        border: 1px solid var(--cta);
+        border-radius: 14px;
+        padding: 14px;
+        cursor: pointer;
+        transition: 0.14s;
+      }
+      .create:hover {
+        transform: translateY(-1px);
+        box-shadow: 0 12px 22px -12px rgba(14, 23, 41, 0.6);
+      }
+      .create:focus-visible {
+        outline: 2.5px solid var(--teal);
+        outline-offset: 2px;
+      }
+      .phone[data-state='offline'] .create {
+        opacity: 0.45;
+        pointer-events: none;
+      }
+      .offline-line {
+        display: none;
+        text-align: center;
+        color: var(--muted);
+        font-size: 12px;
+        margin-top: 10px;
+      }
+      .phone[data-state='offline'] .offline-line {
+        display: block;
+      }
+
+      .spacer {
+        flex: 1;
+        min-height: 12px;
+      }
+
+      .toast {
+        position: absolute;
+        left: 16px;
+        right: 16px;
+        bottom: 24px;
+        background: var(--ink);
+        color: #fff;
+        border-radius: 13px;
+        padding: 13px 16px;
+        font-size: 13.5px;
+        font-weight: 500;
+        box-shadow: 0 12px 28px -10px rgba(0, 0, 0, 0.5);
+        display: flex;
+        align-items: center;
+        gap: 9px;
+        opacity: 0;
+        transform: translateY(12px);
+        pointer-events: none;
+        transition: 0.28s;
+        z-index: 8;
+      }
+      .toast.show {
+        opacity: 1;
+        transform: none;
+      }
+
+      .caption {
+        color: #aeb9d4;
+        font-size: 12.5px;
+        font-weight: 500;
+        text-align: center;
+        max-width: 46ch;
+        line-height: 1.55;
+        margin: 14px auto 0;
+      }
+      .caption b {
+        color: #fff;
+      }
+
+      @media (prefers-reduced-motion: reduce) {
+        * {
+          animation: none !important;
+          transition: none !important;
+        }
+      }
+    </style>
+  </head>
+  <body>
+    <div class="stage">
+      <div class="switcher" role="tablist" aria-label="מצבי תצוגה">
+        <button class="sw on" onclick="setState(this, 'landing')">נחיתה · אין טיול פעיל</button>
+        <button class="sw" onclick="setState(this, 'from-trip')">מתוך טיול</button>
+        <button class="sw" onclick="setState(this, 'offline')">אופליין</button>
+      </div>
+
+      <div class="phone" id="phone" data-state="landing">
+        <div class="statusbar"><span>09:41</span><span class="dots">●●● 5G ▮</span></div>
+
+        <header class="head">
+          <div class="head-row">
+            <div class="head-left">
+              <button class="back" onclick="toast('→', 'חזרה לטיול')">→</button>
+              <div>
+                <div class="hello">הטיולים שלי</div>
+                <div class="hello-sub"><span class="g-dot"></span>אסף · assaf@gmail.com</div>
+              </div>
+            </div>
+            <button class="account" onclick="toast('👤', 'חשבון · התנתקות')">א</button>
+          </div>
+          <div class="offline-badge">📡 אופליין · מציג טיולים שמורים</div>
+        </header>
+
+        <main class="body">
+          <div class="sec">4 טיולים</div>
+
+          <!-- current: only marked when reached from inside a trip -->
+          <button class="trip cur-row" onclick="pick('יפן ׳26')">
+            <span class="flag">🇯🇵</span>
+            <span class="main">
+              <span class="t"
+                >יפן ׳26 <span class="cur" id="curTag" style="display: none">נוכחי</span></span
+              >
+              <span class="m">יפן · <span dir="ltr">25.07–03.08</span> · 5 👥</span>
+            </span>
+            <span class="chip soon" id="japanChip">בעוד 12 יום</span>
+          </button>
+
+          <button class="trip" onclick="pick('גיאורגיה')">
+            <span class="flag">🏔️</span>
+            <span class="main">
+              <span class="t">גיאורגיה</span>
+              <span class="m">גיאורגיה · <span dir="ltr">20.08–29.08</span> · 4 👥</span>
+            </span>
+            <span class="chip soon">בעוד 24 יום</span>
+          </button>
+
+          <button class="trip" onclick="pick('איי יוון ׳25')">
+            <span class="flag">🇬🇷</span>
+            <span class="main">
+              <span class="t">איי יוון ׳25</span>
+              <span class="m">יוון · <span dir="ltr">02–09.07</span> · 5 👥</span>
+            </span>
+            <span class="chip past">הסתיים</span>
+          </button>
+
+          <button class="trip" onclick="pick('ירדן · סופ״ש')">
+            <span class="flag">🏜️</span>
+            <span class="main">
+              <span class="t">ירדן · סופ״ש</span>
+              <span class="m">ירדן · <span dir="ltr">12–14.10</span> · 3 👥</span>
+            </span>
+            <span class="chip past">הסתיים</span>
+          </button>
+
+          <div class="spacer"></div>
+
+          <button class="create" onclick="toast('＋', 'יצירת טיול חדש — מסך /new')">
+            ＋ טיול חדש
+          </button>
+          <p class="offline-line">מעבר בין טיולים שמורים עובד גם אופליין · יצירה צריכה חיבור</p>
+        </main>
+
+        <div class="toast" id="toast"><span id="toast-ic">✓</span><span id="toast-txt"></span></div>
+      </div>
+
+      <p class="caption">
+        <b>כל הטיולים (ADR-0033)</b> — בית-הבסיס: הנחיתה כשאין טיול פעיל כרגע, ומתוך טיול מגיעים
+        לכאן דרך ה-▾ בכותרת. רשימת ניווט, לא דאשבורד — אין לוח, כי שום דבר לא "חי" כאן. כשטיול באמת
+        מתרחש, נכנסים אליו ישר. צ׳יפ עכשיו / בקרוב / הסתיים לפי התאריכים, בכרום ניטרלי.
+      </p>
+    </div>
+
+    <script>
+      function setState(btn, state) {
+        document.querySelectorAll('.sw').forEach((b) => b.classList.remove('on'));
+        btn.classList.add('on');
+        const p = document.getElementById('phone');
+        p.dataset.state = state;
+        const curTag = document.getElementById('curTag');
+        const curRow = document.querySelector('.cur-row');
+        const japanChip = document.getElementById('japanChip');
+        if (state === 'from-trip') {
+          // reached from inside the live Japan trip: it's current + happening now
+          curTag.style.display = '';
+          curRow.classList.add('current');
+          japanChip.className = 'chip now';
+          japanChip.textContent = 'עכשיו';
+        } else {
+          curTag.style.display = 'none';
+          curRow.classList.remove('current');
+          japanChip.className = 'chip soon';
+          japanChip.textContent = 'בעוד 12 יום';
+        }
+      }
+      function pick(name) {
+        toast('🧳', 'נכנסים ל' + name + '…');
+      }
+      let toastTimer;
+      function toast(icon, msg) {
+        const t = document.getElementById('toast');
+        document.getElementById('toast-ic').textContent = icon;
+        document.getElementById('toast-txt').textContent = msg;
+        t.classList.add('show');
+        clearTimeout(toastTimer);
+        toastTimer = setTimeout(() => t.classList.remove('show'), 2400);
+      }
+    </script>
+  </body>
+</html>
