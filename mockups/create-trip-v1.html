@@ -1,0 +1,803 @@
+<!doctype html>
+<!-- Trip creation /new (ADR-0032): three inputs — destination → dates → name
+     (auto-suggested) — everything else derived or deferred. Shell surface, so
+     the chrome is indigo/neutral (ADR-0024): no amber, no teal, no violet.
+     The draft-trip preview assembles live in the SOFT grammar (dashed,
+     provisional) and turns solid on create. The "after" screen is already
+     inside the new trip (Plan mode), so it wears the plan drafting chrome. -->
+<html lang="he" dir="rtl">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>Waypoint — יצירת טיול (מוקאפ)</title>
+    <link rel="preconnect" href="https://fonts.googleapis.com" />
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+    <link
+      href="https://fonts.googleapis.com/css2?family=Assistant:wght@400;500;600;700&family=Secular+One&family=JetBrains+Mono:wght@500;700&display=swap"
+      rel="stylesheet"
+    />
+    <style>
+      :root {
+        --ink: #16233d;
+        --indigo: #1b2a4a;
+        --board: #0e1729;
+        --board-2: #152137;
+        --screen: #e7eaef;
+        --card: #ffffff;
+        --paper: #f3efe6;
+        --amber: #e9a63c;
+        --amber-deep: #c9822a;
+        --teal: #2c9c90;
+        --plan: #6e59d6;
+        --plan-deep: #5747b4;
+        --plan-tint: rgba(110, 89, 214, 0.1);
+        --muted: #6c7488;
+        --miss: #c2584e;
+        --line: rgba(22, 35, 61, 0.1);
+        --soft-line: rgba(22, 35, 61, 0.28);
+        --cta: var(--ink);
+        --cta-text: #fff;
+        --shadow: 0 18px 40px -18px rgba(14, 23, 41, 0.45);
+      }
+      * {
+        box-sizing: border-box;
+        margin: 0;
+        padding: 0;
+      }
+      html,
+      body {
+        height: 100%;
+      }
+      body {
+        font-family: 'Assistant', sans-serif;
+        background:
+          radial-gradient(120% 90% at 80% -10%, #2a3e68 0%, transparent 55%),
+          radial-gradient(120% 90% at 0% 110%, #1a2a4a 0%, transparent 50%), #0f1a31;
+        color: var(--ink);
+        min-height: 100vh;
+        display: flex;
+        flex-direction: column;
+        align-items: center;
+        justify-content: center;
+        padding: 24px 16px;
+        -webkit-font-smoothing: antialiased;
+      }
+      .stage {
+        width: 100%;
+        max-width: 392px;
+      }
+
+      /* mockup state switcher */
+      .switcher {
+        display: flex;
+        gap: 6px;
+        justify-content: center;
+        margin-bottom: 14px;
+        flex-wrap: wrap;
+      }
+      .sw {
+        font: inherit;
+        font-size: 12px;
+        font-weight: 600;
+        color: #aeb9d4;
+        background: rgba(255, 255, 255, 0.07);
+        border: 1px solid rgba(255, 255, 255, 0.12);
+        border-radius: 99px;
+        padding: 7px 13px;
+        cursor: pointer;
+        transition: 0.15s;
+      }
+      .sw:hover {
+        color: #fff;
+      }
+      .sw.on {
+        background: #fff;
+        border-color: #fff;
+        color: var(--ink);
+      }
+      .sw:focus-visible {
+        outline: 2.5px solid var(--teal);
+        outline-offset: 2px;
+      }
+
+      .phone {
+        background: var(--screen);
+        border-radius: 38px;
+        box-shadow:
+          var(--shadow),
+          0 0 0 10px #0b1526,
+          0 0 0 12px #223257;
+        overflow: hidden;
+        position: relative;
+        height: 812px;
+        display: flex;
+        flex-direction: column;
+      }
+      .statusbar {
+        background: var(--indigo);
+        color: #dce3f2;
+        display: flex;
+        justify-content: space-between;
+        align-items: center;
+        padding: 11px 22px 8px;
+        font-size: 13px;
+        font-weight: 600;
+        font-family: 'JetBrains Mono', monospace;
+        flex: 0 0 auto;
+      }
+      .statusbar .dots {
+        letter-spacing: 2px;
+        opacity: 0.85;
+      }
+      .statusbar.plan {
+        background: #eceaf7;
+        color: #4a4370;
+      }
+
+      .screen {
+        display: none;
+        flex: 1;
+        min-height: 0;
+        flex-direction: column;
+      }
+      .screen.active {
+        display: flex;
+        animation: fade 0.32s ease;
+      }
+      @keyframes fade {
+        from {
+          opacity: 0;
+          transform: translateY(6px);
+        }
+        to {
+          opacity: 1;
+          transform: none;
+        }
+      }
+      .scroll {
+        flex: 1;
+        overflow-y: auto;
+        min-height: 0;
+      }
+      .scroll::-webkit-scrollbar {
+        width: 0;
+      }
+
+      /* ============ SCREEN 1: the form (shell chrome — indigo/neutral) ============ */
+      .new-head {
+        background: var(--indigo);
+        color: #fff;
+        padding: 14px 20px 18px;
+        display: flex;
+        align-items: center;
+        gap: 12px;
+      }
+      .back {
+        font: inherit;
+        background: rgba(255, 255, 255, 0.08);
+        border: 1px solid rgba(255, 255, 255, 0.14);
+        color: #dce3f2;
+        width: 34px;
+        height: 34px;
+        border-radius: 11px;
+        cursor: pointer;
+        font-size: 15px;
+        display: grid;
+        place-items: center;
+      }
+      .new-title {
+        font-family: 'Secular One', sans-serif;
+        font-size: 19px;
+      }
+      .new-body {
+        padding: 20px 20px 24px;
+        display: flex;
+        flex-direction: column;
+        min-height: 100%;
+      }
+      .new-lede {
+        color: var(--muted);
+        font-size: 13.5px;
+        line-height: 1.55;
+      }
+
+      .field {
+        margin-top: 18px;
+      }
+      .field label {
+        display: block;
+        font-size: 12.5px;
+        font-weight: 700;
+        color: var(--muted);
+        margin-bottom: 6px;
+      }
+      .field input {
+        width: 100%;
+        font: inherit;
+        font-size: 15px;
+        font-weight: 600;
+        color: var(--ink);
+        background: #fff;
+        border: 1.5px solid var(--line);
+        border-radius: 13px;
+        padding: 12px 14px;
+        transition: 0.15s;
+      }
+      .field input::placeholder {
+        color: #a6acba;
+        font-weight: 500;
+      }
+      .field input:focus-visible {
+        outline: 2.5px solid var(--teal);
+        outline-offset: 1px;
+        border-color: transparent;
+      }
+      .field .hint {
+        font-size: 11.5px;
+        color: #98a0b0;
+        margin-top: 5px;
+      }
+      .date-row {
+        display: grid;
+        grid-template-columns: 1fr 1fr;
+        gap: 10px;
+      }
+      .field input[type='date'] {
+        font-family: 'JetBrains Mono', monospace;
+        font-size: 13.5px;
+        direction: ltr;
+        text-align: center;
+      }
+      .field input.invalid {
+        border-color: var(--miss);
+      }
+      .field-error {
+        display: none;
+        color: var(--miss);
+        font-size: 12px;
+        font-weight: 600;
+        margin-top: 5px;
+      }
+      .phone.error .field-error {
+        display: block;
+      }
+      .phone.error #endDate {
+        border-color: var(--miss);
+      }
+
+      /* the draft preview — soft grammar: provisional until created */
+      .draft {
+        margin-top: 24px;
+        border: 1.5px dashed var(--soft-line);
+        background: repeating-linear-gradient(-45deg, #fff 0 9px, #fbfaf7 9px 18px);
+        border-radius: 16px;
+        padding: 14px 15px;
+        display: flex;
+        align-items: center;
+        gap: 12px;
+        transition: 0.2s;
+      }
+      .draft .ic {
+        width: 42px;
+        height: 42px;
+        border-radius: 12px;
+        background: var(--paper);
+        display: grid;
+        place-items: center;
+        font-size: 20px;
+        flex: 0 0 auto;
+      }
+      .draft .t {
+        font-family: 'Secular One', sans-serif;
+        font-size: 16px;
+        color: var(--ink);
+      }
+      .draft .t .ghost {
+        color: #a6acba;
+      }
+      .draft .m {
+        font-size: 12px;
+        color: var(--muted);
+        margin-top: 2px;
+      }
+      .draft .tag {
+        margin-inline-start: auto;
+        flex: 0 0 auto;
+        font-size: 10px;
+        font-weight: 700;
+        color: var(--muted);
+        background: rgba(22, 35, 61, 0.06);
+        border-radius: 6px;
+        padding: 2px 7px;
+      }
+
+      .new-cta {
+        margin-top: auto;
+        padding-top: 22px;
+      }
+      .create-btn {
+        width: 100%;
+        font: inherit;
+        font-size: 14.5px;
+        font-weight: 700;
+        background: var(--cta);
+        color: var(--cta-text);
+        border: 1px solid var(--cta);
+        border-radius: 14px;
+        padding: 14px;
+        cursor: pointer;
+        transition: 0.15s;
+      }
+      .create-btn:hover {
+        transform: translateY(-1px);
+        box-shadow: 0 10px 22px -12px rgba(14, 23, 41, 0.6);
+      }
+      .create-btn:focus-visible {
+        outline: 2.5px solid var(--teal);
+        outline-offset: 2px;
+      }
+      .create-btn:disabled {
+        opacity: 0.45;
+        cursor: default;
+        transform: none;
+        box-shadow: none;
+      }
+      .new-note {
+        text-align: center;
+        color: #98a0b0;
+        font-size: 11.5px;
+        margin-top: 10px;
+        line-height: 1.5;
+      }
+      .offline-note {
+        display: none;
+        text-align: center;
+        color: var(--muted);
+        font-size: 12px;
+        margin-top: 10px;
+      }
+      .phone.offline .offline-note {
+        display: block;
+      }
+      .phone.offline .create-btn {
+        opacity: 0.45;
+        pointer-events: none;
+      }
+      .offline-badge {
+        display: none;
+        align-items: center;
+        gap: 6px;
+        margin-inline-start: auto;
+        padding: 4px 10px;
+        border-radius: 20px;
+        background: rgba(255, 255, 255, 0.08);
+        border: 1px solid rgba(255, 255, 255, 0.16);
+        color: #8fa0c4;
+        font-size: 11px;
+        font-weight: 600;
+      }
+      .phone.offline .offline-badge {
+        display: inline-flex;
+      }
+
+      /* ============ SCREEN 2: created — inside the trip (plan chrome) ============ */
+      .born-head {
+        background:
+          repeating-linear-gradient(0deg, rgba(110, 89, 214, 0.05) 0 1px, transparent 1px 14px),
+          repeating-linear-gradient(90deg, rgba(110, 89, 214, 0.05) 0 1px, transparent 1px 14px),
+          linear-gradient(180deg, #f2f0fa, #eceaf7);
+        color: var(--ink);
+        padding: 14px 20px 16px;
+        border-bottom: 1px solid rgba(110, 89, 214, 0.18);
+        display: flex;
+        align-items: center;
+        gap: 12px;
+      }
+      .born-title {
+        font-family: 'Secular One', sans-serif;
+        font-size: 19px;
+      }
+      .mode-pill {
+        margin-inline-start: auto;
+        font-size: 10.5px;
+        font-weight: 700;
+        letter-spacing: 0.1em;
+        background: var(--plan-tint);
+        border: 1px solid rgba(110, 89, 214, 0.35);
+        border-radius: 99px;
+        padding: 4px 11px;
+        color: var(--plan-deep);
+      }
+      .born-body {
+        padding: 22px 20px 24px;
+        display: flex;
+        flex-direction: column;
+        min-height: 100%;
+        text-align: center;
+      }
+      .born-emoji {
+        font-size: 42px;
+        line-height: 1;
+      }
+      .born-h1 {
+        font-family: 'Secular One', sans-serif;
+        font-size: 26px;
+        color: var(--indigo);
+        margin-top: 10px;
+      }
+      .born-sub {
+        color: var(--muted);
+        font-size: 14px;
+        margin-top: 6px;
+        line-height: 1.55;
+      }
+
+      /* the same card, now solid — the trip exists */
+      .born-card {
+        margin-top: 20px;
+        border: 1px solid var(--line);
+        background: var(--card);
+        border-radius: 16px;
+        padding: 14px 15px;
+        display: flex;
+        align-items: center;
+        gap: 12px;
+        text-align: start;
+        box-shadow: 0 10px 22px -16px rgba(22, 35, 61, 0.35);
+      }
+      .born-card .ic {
+        width: 42px;
+        height: 42px;
+        border-radius: 12px;
+        background: var(--paper);
+        display: grid;
+        place-items: center;
+        font-size: 20px;
+        flex: 0 0 auto;
+      }
+      .born-card .t {
+        font-family: 'Secular One', sans-serif;
+        font-size: 16px;
+      }
+      .born-card .m {
+        font-size: 12px;
+        color: var(--muted);
+        margin-top: 2px;
+      }
+
+      /* invite = the very next step (link-only, ADR-0030) */
+      .invite-box {
+        display: flex;
+        align-items: center;
+        gap: 10px;
+        background: var(--plan-tint);
+        border: 1px dashed rgba(110, 89, 214, 0.5);
+        border-radius: 13px;
+        padding: 12px 14px;
+        margin-top: 18px;
+        cursor: pointer;
+        transition: 0.14s;
+        text-align: start;
+      }
+      .invite-box:hover {
+        background: rgba(110, 89, 214, 0.16);
+      }
+      .invite-box .code {
+        font-family: 'JetBrains Mono', monospace;
+        font-weight: 700;
+        font-size: 14px;
+        color: var(--plan-deep);
+        direction: ltr;
+      }
+      .invite-box .lbl2 {
+        font-size: 11px;
+        color: var(--muted);
+        flex: 1;
+      }
+      .invite-box .cp {
+        font-size: 15px;
+      }
+      .born-teach {
+        color: #98a0b0;
+        font-size: 12px;
+        margin-top: 10px;
+        line-height: 1.55;
+      }
+      .born-cta {
+        margin-top: auto;
+        padding-top: 22px;
+      }
+      .plan-btn {
+        width: 100%;
+        font: inherit;
+        font-size: 14.5px;
+        font-weight: 700;
+        background: var(--cta);
+        color: var(--cta-text);
+        border: 1px solid var(--cta);
+        border-radius: 14px;
+        padding: 14px;
+        cursor: pointer;
+        transition: 0.15s;
+      }
+      .plan-btn:hover {
+        transform: translateY(-1px);
+        box-shadow: 0 10px 22px -12px rgba(14, 23, 41, 0.6);
+      }
+      .plan-btn:focus-visible {
+        outline: 2.5px solid var(--teal);
+        outline-offset: 2px;
+      }
+      .later-btn {
+        display: block;
+        margin: 8px auto 0;
+        font: inherit;
+        font-size: 12px;
+        font-weight: 600;
+        color: var(--muted);
+        background: none;
+        border: 0;
+        cursor: pointer;
+      }
+
+      .toast {
+        position: absolute;
+        left: 16px;
+        right: 16px;
+        bottom: 24px;
+        background: var(--ink);
+        color: #fff;
+        border-radius: 13px;
+        padding: 13px 16px;
+        font-size: 13.5px;
+        font-weight: 500;
+        box-shadow: 0 12px 28px -10px rgba(0, 0, 0, 0.5);
+        display: flex;
+        align-items: center;
+        gap: 9px;
+        opacity: 0;
+        transform: translateY(12px);
+        pointer-events: none;
+        transition: 0.28s;
+        z-index: 5;
+      }
+      .toast.show {
+        opacity: 1;
+        transform: none;
+      }
+
+      @media (prefers-reduced-motion: reduce) {
+        * {
+          animation: none !important;
+          transition: none !important;
+        }
+      }
+    </style>
+  </head>
+  <body>
+    <div class="stage">
+      <div class="switcher" role="tablist" aria-label="מצבי תצוגה">
+        <button class="sw on" onclick="setState(this, '')">ריק</button>
+        <button class="sw" onclick="setState(this, 'filled')">מלא</button>
+        <button class="sw" onclick="setState(this, 'error')">שגיאה</button>
+        <button class="sw" onclick="setState(this, 'offline')">אופליין</button>
+        <button class="sw" onclick="setState(this, 'born')">אחרי יצירה</button>
+      </div>
+
+      <div class="phone" id="phone">
+        <!-- ============ SCREEN 1: /new ============ -->
+        <section class="screen active" id="s-form">
+          <div class="statusbar"><span>09:41</span><span class="dots">●●● 5G ▮</span></div>
+          <div class="new-head">
+            <button class="back" onclick="toast('→', 'חזרה')">→</button>
+            <div class="new-title">טיול חדש</div>
+            <span class="offline-badge">📡 אופליין</span>
+          </div>
+
+          <div class="scroll">
+            <div class="new-body">
+              <p class="new-lede">שלוש שאלות ויש טיול. בשאר נטפל אחר כך.</p>
+
+              <div class="field">
+                <label for="dest">לאן נוסעים?</label>
+                <input id="dest" placeholder="יפן, יוון, גיאורגיה…" oninput="destChanged(this)" />
+              </div>
+
+              <div class="field">
+                <label>מתי?</label>
+                <div class="date-row">
+                  <input type="date" id="startDate" value="" oninput="datesChanged()" />
+                  <input type="date" id="endDate" value="" oninput="datesChanged()" />
+                </div>
+                <div class="field-error">רגע — תאריך הסיום לפני ההתחלה</div>
+              </div>
+
+              <div class="field">
+                <label for="tripName">איך נקרא לזה?</label>
+                <input
+                  id="tripName"
+                  placeholder="נציע שם ברגע שנדע לאן"
+                  oninput="nameTouched = true"
+                />
+                <div class="hint">הצענו לפי היעד — אפשר לשנות</div>
+              </div>
+
+              <!-- the trip, taking shape (soft = provisional) -->
+              <div class="draft" aria-hidden="true">
+                <div class="ic" id="dIcon">✈️</div>
+                <div>
+                  <div class="t" id="dName"><span class="ghost">הטיול שלכם</span></div>
+                  <div class="m" id="dMeta">עוד רגע מקבל צורה…</div>
+                </div>
+                <span class="tag">טיוטה</span>
+              </div>
+
+              <div class="new-cta">
+                <button class="create-btn" id="createBtn" onclick="createTrip()" disabled>
+                  יאללה, יש טיול 🎉
+                </button>
+                <p class="offline-note">יצירת טיול צריכה חיבור · לינק שחבר שולח ייפתח גם עכשיו</p>
+                <p class="new-note">אזור זמן ומטבע מסתדרים לפי היעד · תקציב אפשר להוסיף אחר כך</p>
+              </div>
+            </div>
+          </div>
+        </section>
+
+        <!-- ============ SCREEN 2: created → inside the trip (plan mode) ============ -->
+        <section class="screen" id="s-born">
+          <div class="statusbar plan"><span>09:41</span><span class="dots">●●● 5G ▮</span></div>
+          <div class="born-head">
+            <div class="born-title">יפן ׳26</div>
+            <span class="mode-pill">✏️ מצב תכנון</span>
+          </div>
+
+          <div class="scroll">
+            <div class="born-body">
+              <div class="born-emoji">🎉</div>
+              <div class="born-h1">יש טיול!</div>
+              <p class="born-sub">עכשיו הכי חשוב — להכניס את החבורה.</p>
+
+              <div class="born-card">
+                <div class="ic">🇯🇵</div>
+                <div>
+                  <div class="t">יפן ׳26</div>
+                  <div class="m">יפן · <span dir="ltr">25.07 – 03.08</span> · 10 ימים</div>
+                </div>
+              </div>
+
+              <div class="invite-box" onclick="toast('📋', 'הלינק הועתק · שתף בקבוצת הוואטסאפ')">
+                <span class="code">wpnt.app/j/x7Kq2</span>
+                <span class="lbl2">לינק הזמנה · הקש להעתקה ושיתוף</span>
+                <span class="cp">📋</span>
+              </div>
+              <p class="born-teach">שולחים בקבוצה, וכל אחד מצטרף עם החשבון שלו — זה הכול.</p>
+
+              <div class="born-cta">
+                <button class="plan-btn" onclick="toast('✏️', 'ממשיכים ללוח ההכנה — מצב תכנון')">
+                  לתכנון הטיול
+                </button>
+                <button class="later-btn" onclick="toast('👌', 'הלינק מחכה בהגדרות הטיול')">
+                  אשלח את הלינק אחר כך
+                </button>
+              </div>
+            </div>
+          </div>
+        </section>
+
+        <div class="toast" id="toast"><span id="toast-ic">✓</span><span id="toast-txt"></span></div>
+      </div>
+
+      <p
+        class="caption"
+        style="
+          color: #aeb9d4;
+          font-size: 12.5px;
+          font-weight: 500;
+          text-align: center;
+          max-width: 46ch;
+          line-height: 1.55;
+          margin: 14px auto 0;
+        "
+      >
+        <b style="color: #fff">יצירת טיול (ADR-0032)</b> — שלושה שדות בלבד: יעד ← תאריכים ← שם (מוצע
+        אוטומטית). הטיוטה מקבלת צורה תוך כדי הקלדה בגרמטיקת ה-soft (מקווקו = עוד לא מחויב), ונהיית
+        מוצקה ביצירה. מטבע, תקציב ואזור זמן — נגזרים או מחכים בהגדרות.
+      </p>
+    </div>
+
+    <script>
+      let nameTouched = false;
+      const EMOJI = { יפן: '🇯🇵', יוון: '🇬🇷', גיאורגיה: '🏔️', איטליה: '🇮🇹', תאילנד: '🇹🇭' };
+
+      function suggestName() {
+        const dest = document.getElementById('dest').value.trim();
+        const start = document.getElementById('startDate').value;
+        const year = start ? '׳' + start.slice(2, 4) : '׳26';
+        return dest ? `${dest} ${year}` : '';
+      }
+      function refresh() {
+        const dest = document.getElementById('dest').value.trim();
+        const name = document.getElementById('tripName').value.trim();
+        const start = document.getElementById('startDate').value;
+        const end = document.getElementById('endDate').value;
+
+        document.getElementById('dIcon').textContent = EMOJI[dest] || (dest ? '🌍' : '✈️');
+        document.getElementById('dName').innerHTML = name
+          ? name
+          : '<span class="ghost">הטיול שלכם</span>';
+        let meta = 'עוד רגע מקבל צורה…';
+        if (dest && start && end) {
+          const days = Math.round((new Date(end) - new Date(start)) / 864e5) + 1;
+          meta = `${dest} · ${days} ימים`;
+        } else if (dest) {
+          meta = dest;
+        }
+        document.getElementById('dMeta').textContent = meta;
+        document.getElementById('createBtn').disabled = !(dest && start && end && name);
+      }
+      function destChanged() {
+        if (!nameTouched) document.getElementById('tripName').value = suggestName();
+        refresh();
+      }
+      function datesChanged() {
+        if (!nameTouched) document.getElementById('tripName').value = suggestName();
+        refresh();
+      }
+      document.getElementById('tripName').addEventListener('input', refresh);
+
+      function fillDemo() {
+        nameTouched = false;
+        document.getElementById('dest').value = 'יפן';
+        document.getElementById('startDate').value = '2026-07-25';
+        document.getElementById('endDate').value = '2026-08-03';
+        document.getElementById('tripName').value = suggestName();
+        refresh();
+      }
+      function createTrip() {
+        document.querySelectorAll('.sw').forEach((b) => b.classList.remove('on'));
+        document.querySelectorAll('.sw')[4].classList.add('on');
+        setState(document.querySelectorAll('.sw')[4], 'born');
+      }
+
+      function setState(btn, state) {
+        document.querySelectorAll('.sw').forEach((b) => b.classList.remove('on'));
+        btn.classList.add('on');
+        const p = document.getElementById('phone');
+        p.classList.remove('offline', 'error');
+        document.getElementById('s-form').classList.remove('active');
+        document.getElementById('s-born').classList.remove('active');
+        if (state === 'born') {
+          document.getElementById('s-born').classList.add('active');
+          return;
+        }
+        document.getElementById('s-form').classList.add('active');
+        if (state === 'offline') p.classList.add('offline');
+        if (state === 'error') {
+          fillDemo();
+          document.getElementById('endDate').value = '2026-07-20';
+          refresh();
+          document.getElementById('createBtn').disabled = true;
+          p.classList.add('error');
+        } else if (state === 'filled') {
+          fillDemo();
+        } else if (state === '') {
+          nameTouched = false;
+          ['dest', 'startDate', 'endDate', 'tripName'].forEach(
+            (id) => (document.getElementById(id).value = ''),
+          );
+          refresh();
+        }
+      }
+
+      let toastTimer;
+      function toast(icon, msg) {
+        const t = document.getElementById('toast');
+        document.getElementById('toast-ic').textContent = icon;
+        document.getElementById('toast-txt').textContent = msg;
+        t.classList.add('show');
+        clearTimeout(toastTimer);
+        toastTimer = setTimeout(() => t.classList.remove('show'), 2600);
+      }
+    </script>
+  </body>
+</html>

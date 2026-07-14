@@ -45,11 +45,13 @@ Active-trip selection is `tripId` in `localStorage` — per-device, **not** sync
 
 ### 3. Trip creation — `/new`
 
-- **Purpose:** stand up a new trip. One form, no wizard.
-- **Contents (= `createTripSchema`):** name, destination, start date, end date, timezone (default from device/destination, editable), and _optional_ currency + daily budget (display-only, ADR-0014). Validated with the shared zod schema (ZodValidationPipe on the server).
-- **API:** `POST /trips` (exists). Creator's membership is `admin` (ADR-0005).
-- **Flow:** on success → land _in the new trip_ (in Plan mode, being future-dated) → prompt to invite (deep-links into Trip settings' invite share).
+- **Purpose:** stand up a new trip. One form, no wizard — **three inputs, everything else derived or deferred (ADR-0032)**.
+- **Contents:** destination → dates → name (**auto-suggested** from destination + year, editable inline). Timezone derives from the destination (schema default); currency derives later; daily budget is deferred to settings (display-only, ADR-0014). Validated with the shared zod schema (ZodValidationPipe on the server).
+- **Feel:** a live **draft-trip preview card** assembles as you type, in the soft grammar (dashed — provisional), turning solid on create. Shell chrome stays indigo/neutral.
+- **API:** `POST /trips` (exists, unchanged — `createTripSchema` already defaults timezone and makes currency/budget optional). Creator's membership is `admin` (ADR-0005).
+- **Flow:** on success → land _in the new trip_ (in Plan mode, being future-dated) → prompt to invite (BoardingPass share, link-only per ADR-0030).
 - **States:** default · submitting · validation errors (inline, per field) · offline (creation is disabled offline — surfaced, not silently queued).
+- **Design reference:** `mockups/create-trip-v1.html` (form + post-create invite prompt).
 
 ### 4. Join — `/join/:token`
 
