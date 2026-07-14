@@ -140,7 +140,7 @@ Trip mode assumes bad connectivity abroad. Every component ships with its states
 
 ## Plan-mode components (from `mockups/plan-mode-v1.html`)
 
-Plan mode reuses the same tokens/grammar as Trip mode, adding builder/entry components:
+Plan mode reuses the same tokens/grammar as Trip mode, adding builder/entry components. The **light "drafting table" chrome** (light paper header/toggle/day-strip + violet accents + a faint drafting grid) and the **prep-dashboard Home** (violet hero + derived readiness/checklist) are implemented — `App.css`'s `[data-mode='plan']` block, `screens/PlanHome.tsx`, `lib/readiness.ts`. Readiness and the checklist are **derived from the trip snapshot, never stored** (same reasoning as the derived Now/Next); rows that would need data we don't collect yet (Gmail-import, documents, per-member Google-connection) are deliberately absent rather than faked.
 
 - **Mode toggle** — a pill (✏️ תכנון / 🧭 טיול) in the header showing the manual override, with an "auto-switches on <date>" hint (ADR-0016).
 - **Prep dashboard hero** — countdown to departure + a **readiness bar** (% complete). **Plan violet** rather than amber, since it's not "now" (teal is location-only).
