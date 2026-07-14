@@ -2,6 +2,7 @@
 import {
   accessTokenResponseSchema,
   changeSchema,
+  inviteUrlSchema,
   invitePreviewSchema,
   meSchema,
   membershipSchema,
@@ -13,6 +14,7 @@ import {
   type CreateTripInput,
   type EventStatus,
   type InvitePreview,
+  type InviteUrl,
   type JoinTripInput,
   type Me,
   type Membership,
@@ -91,6 +93,13 @@ export async function createTrip(input: CreateTripInput): Promise<Trip> {
   });
   if (!res.ok) return throwApiError(res);
   return tripSchema.parse(await res.json());
+}
+
+/** Generates/refreshes the trip's invite link (T-065, ADR-0030 — link-only). */
+export async function createInvite(tripId: string): Promise<InviteUrl> {
+  const res = await apiFetch(`${API_BASE_URL}/trips/${tripId}/invite`, { method: 'POST' });
+  if (!res.ok) return throwApiError(res);
+  return inviteUrlSchema.parse(await res.json());
 }
 
 /** Public/unguarded preview for the join screen (T-042, ADR-0024) — no auth needed. */

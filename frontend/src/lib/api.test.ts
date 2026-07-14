@@ -4,6 +4,7 @@ import {
   ApiError,
   apiFetch,
   createEvent,
+  createInvite,
   createTrip,
   deleteEvent,
   fetchSnapshot,
@@ -111,6 +112,28 @@ describe('createTrip', () => {
       expect.stringContaining('/trips'),
       expect.objectContaining({ method: 'POST' }),
     );
+  });
+});
+
+describe('createInvite', () => {
+  it('posts to /trips/:id/invite and returns the invite url', async () => {
+    const fetchMock = vi
+      .fn()
+      .mockResolvedValue(
+        new Response(JSON.stringify({ inviteUrl: '/join/tok123' }), { status: 201 }),
+      );
+    vi.stubGlobal('fetch', fetchMock);
+    const result = await createInvite(TRIP.id);
+    expect(result.inviteUrl).toBe('/join/tok123');
+    expect(fetchMock).toHaveBeenCalledWith(
+      expect.stringContaining(`/trips/${TRIP.id}/invite`),
+      expect.objectContaining({ method: 'POST' }),
+    );
+  });
+
+  it('throws on a non-ok response', async () => {
+    vi.stubGlobal('fetch', vi.fn().mockResolvedValue(new Response(null, { status: 500 })));
+    await expect(createInvite(TRIP.id)).rejects.toThrow();
   });
 });
 

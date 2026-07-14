@@ -78,6 +78,7 @@ export const ICONS = {
   swap: '🔄',
   delay: '⏱️',
   share: '💬',
+  clipboard: '📋',
   schedule: '📅',
   add: '＋',
   sync: '🔄',
