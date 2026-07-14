@@ -10,9 +10,13 @@
 - **Empty-day markers** on the existing header day-strip (Plan mode only) — dashed pill + red number — rather than a duplicate in-builder day selector.
 - **Maybe shelf** → schedule onto the selected day (existing `verbs.schedule`).
 
+## Reorder — shipped (follow-up in this session)
+
+**▲/▼ controls swap a row's time slot with its neighbour** (`verbs.reorder` → the pure `slotSwap`: trade `startsAt`/`endsAt` when both timed, else `sortOrder`). One atomic `REORDER` reducer action so undo captures a single pre-swap snapshot; two persisted `updateEvent` writes; hard events route through the ADR-0011 confirm gate once (`applyGuardedReorder`) and reverse with `confirm` on undo. Chosen over drag-and-drop for touch reliability (design-language flags gestures as "revisit with care"); the list stays time-ordered.
+
 ## Deferred (tracked as todos)
 
-- **One-tap reorder (drag or up/down).** The mockup's builder rows have a drag grip. Deferred because reorder in a _time-ordered_ list is genuinely decision-worthy: swap times vs. reorder by `sortOrder` (which diverges from the time sort), how to carry `endsAt` on a swap, the reducer's single-op snapshot-undo, and the hard-event gate. Retime + cross-day already cover "arranging" via the edit sheet. Recommended next: up/down buttons swapping adjacent time slots.
+- **Drag-to-reorder.** A later nicety over the shipped ▲/▼ — real touch DnD (autoscroll, long lists, RTL) is fiddly and untested in this repo.
 - **Tablet two-column layout.** The shell hard-caps `.app` to 430px; a real tablet builder needs the shell to widen at tablet breakpoints (affects header/nav too). `PlanDay` already wraps content in `.builder-main`/`.builder-side`, so it's mostly CSS once the shell widens. Phone-primary shipped now (ADR-0017).
 - **Places research panel** — belongs to the Map tab's plan emphasis (Google Places, not built); the builder's side panel is the maybe shelf.
 

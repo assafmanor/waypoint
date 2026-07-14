@@ -4,10 +4,9 @@
 // edit sheet, ✎ edits, 🗑 deletes, and gap chips + the shelf fill the day.
 //
 // Editing reuses EventForm (add + edit, incl. hard↔soft flip, time, and
-// cross-day via its date field). Retiming and moving across days happen there;
-// one-tap drag/up-down reorder is a separate, decision-worthy piece (see the
-// DEFERRED builder-reorder task) — the row order follows event times, as in
-// Trip mode.
+// cross-day via its date field). Rows carry ▲/▼ controls that reorder by
+// swapping the neighbour's time slot (verbs.reorder → slotSwap); the list
+// stays time-ordered. Drag-to-reorder is a later nicety, not a gap.
 import { Fragment, useState } from 'react';
 import { EVENT_KIND, EVENT_STATUS, type MaybeItem, type TripEvent } from '@waypoint/shared';
 import { useTrip, byStart } from '../state/trip-state';
@@ -106,6 +105,12 @@ export function PlanDay() {
                     booking={e.bookingId ? bookings.find((b) => b.id === e.bookingId) : undefined}
                     onEdit={() => setFormTarget(e)}
                     onDelete={() => verbs.remove(e)}
+                    onMoveEarlier={i > 0 ? () => verbs.reorder(e, dayEvents[i - 1]) : undefined}
+                    onMoveLater={
+                      i < dayEvents.length - 1
+                        ? () => verbs.reorder(e, dayEvents[i + 1])
+                        : undefined
+                    }
                   />
                   {gap && (
                     <div className="gap">
@@ -162,12 +167,17 @@ function BuilderRow({
   booking,
   onEdit,
   onDelete,
+  onMoveEarlier,
+  onMoveLater,
 }: {
   event: TripEvent;
   tz: string;
   booking?: { confirmationCode?: string };
   onEdit: () => void;
   onDelete: () => void;
+  // undefined at the ends of the list (nothing to swap with)
+  onMoveEarlier?: () => void;
+  onMoveLater?: () => void;
 }) {
   const isHard = event.kind === EVENT_KIND.HARD;
   const code = booking?.confirmationCode ? `${CODE_PREFIX}${booking.confirmationCode}` : undefined;
@@ -177,6 +187,24 @@ function BuilderRow({
 
   return (
     <div className={'bld' + (isHard ? '' : ' soft')}>
+      <span className="bld-reorder">
+        <button
+          className="bld-move"
+          onClick={onMoveEarlier}
+          disabled={!onMoveEarlier}
+          aria-label={t.planDay.moveEarlier}
+        >
+          ▲
+        </button>
+        <button
+          className="bld-move"
+          onClick={onMoveLater}
+          disabled={!onMoveLater}
+          aria-label={t.planDay.moveLater}
+        >
+          ▼
+        </button>
+      </span>
       <span className="bld-bd" aria-hidden="true">
         {event.icon}
       </span>

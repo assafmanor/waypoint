@@ -1323,3 +1323,38 @@
   outline: 2.5px solid var(--plan);
   outline-offset: 2px;
 }
+
+/* builder reorder controls — compact ▲/▼ that swap a row's slot with its
+   neighbor (a plan action; up/down chosen over drag for touch reliability). */
+.bld-reorder {
+  display: flex;
+  flex-direction: column;
+  flex: 0 0 auto;
+  gap: 2px;
+}
+.bld-move {
+  width: 22px;
+  height: 18px;
+  display: grid;
+  place-items: center;
+  border: 0;
+  background: none;
+  color: var(--muted);
+  font-size: 9px;
+  line-height: 1;
+  cursor: pointer;
+  border-radius: 5px;
+  padding: 0;
+}
+.bld-move:hover:not(:disabled) {
+  background: var(--plan-tint);
+  color: var(--plan-deep);
+}
+.bld-move:disabled {
+  opacity: 0.25;
+  cursor: default;
+}
+.bld-move:focus-visible {
+  outline: 2px solid var(--plan);
+  outline-offset: 1px;
+}

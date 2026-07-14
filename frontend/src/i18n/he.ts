@@ -227,6 +227,8 @@ export const t = {
   planDay: {
     empty: 'היום ריק — הוסף אירוע או שבץ מהמדף',
     addToDay: (day: number) => `הוסף אירוע ליום ${day}`,
+    moveEarlier: 'הקדם',
+    moveLater: 'אחר',
     gap: (label: string) => `פער של ${label} · ＋ שבץ`,
     gapMinutes: (n: number) => `${n} דק׳`,
     gapHour: 'שעה',
@@ -276,6 +278,7 @@ export const t = {
     eventCreated: 'האירוע נוסף',
     eventUpdated: 'האירוע עודכן',
     eventDeleted: 'האירוע נמחק',
+    reordered: 'הסדר עודכן',
   },
   ripple: {
     prompt: (movedTitle: string) => `${movedTitle} נדחה - לדחות גם את האירועים שאחריו?`,
