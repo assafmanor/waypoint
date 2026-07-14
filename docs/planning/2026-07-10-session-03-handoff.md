@@ -119,6 +119,8 @@ Parallel/ungated: T-028 (ESLint + Vitest) · T-018 (Plan mode, in review) · T-0
 Prereq: T-016 (Google Cloud OAuth/Maps) before T-007 real login
 ```
 
+**2026-07-14 addendum:** T-027 in this chain meant "trip switcher sheet" (ADR-0024 §5's framing at the time). ADR-0033 later replaced that with a real `/trips` page + a landing-rule change (land on it whenever no trip is live, instead of always forcing you into one); T-027 was redefined in place to match. The chain's shape (T-008 → T-027 → T-014 → T-013) is otherwise unaffected.
+
 - **T-026** is the immediate next step: apply the schema above + migration + `packages/shared` sync; flip `data-model.md` from "target" to "current".
 - **T-012** (old "realtime last") folded into **T-029** (sync core pulled ahead).
 - **T-018b (deferred, agreed):** define the admin↔peer permission matrix — its own future roles ADR. Also covers "what happens when a trip's sole admin leaves?"

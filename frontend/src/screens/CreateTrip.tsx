@@ -5,7 +5,7 @@
 // after landing inside the created trip. Design reference: mockups/create-trip-v1.html.
 import { useState } from 'react';
 import { useNavigate } from 'react-router-dom';
-import { createTripSchema } from '@waypoint/shared';
+import { createTripSchema, MAX_TRIP_NAME_LENGTH } from '@waypoint/shared';
 import { useIsOffline } from '../lib/outbox';
 import { useActiveTripId } from '../state/active-trip-id';
 import { createTrip } from '../lib/api';
@@ -120,9 +120,10 @@ export function CreateTrip() {
             id="tripName"
             value={name}
             placeholder={t.shell.newTrip.namePlaceholder}
+            maxLength={MAX_TRIP_NAME_LENGTH}
             onChange={(e) => {
               setNameTouched(true);
-              setName(e.target.value);
+              setName(e.target.value.slice(0, MAX_TRIP_NAME_LENGTH));
             }}
           />
           <div className="hint">{t.shell.newTrip.nameHint}</div>

@@ -3,6 +3,16 @@
 import type { Trip } from '@waypoint/shared';
 import { todayInTz } from './time';
 
+export type TripChip = 'now' | 'soon' | 'past';
+
+/** The all-trips row chip (ADR-0033) — same in-progress/upcoming/past split
+ *  `resolveActiveTrip` uses, just not collapsed into a single pick. */
+export function tripChip(trip: Trip, now: Date): TripChip {
+  const today = todayInTz(trip.timezone, now);
+  if (today >= trip.startDate && today <= trip.endDate) return 'now';
+  return today < trip.startDate ? 'soon' : 'past';
+}
+
 export function resolveActiveTrip(trips: Trip[], now: Date): Trip | null {
   if (trips.length === 0) return null;
 

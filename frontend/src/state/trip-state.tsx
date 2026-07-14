@@ -29,7 +29,7 @@ import { flushOutbox, isOffline } from '../lib/outbox';
 import { openTripStream } from '../lib/ws';
 import { getNow } from '../lib/useClock';
 import { clampDate, shiftIso, todayInTz } from '../lib/time';
-import { EVENTS, GLANCE, MAYBE_ITEMS, USERS, activeUserId } from '../fixtures';
+import { EVENTS, GLANCE, MAYBE_ITEMS, activeUserId } from '../fixtures';
 import { t } from '../i18n/he';
 
 export type { RippleSuggestion };
@@ -356,10 +356,7 @@ function TripReady({
   const value = useMemo<TripContextValue>(
     () => ({
       trip: snapshot.trip,
-      // ponytail: snapshot.members is Membership only (userId, role) — no
-      // display name/avatar color endpoint yet. Header avatars stay fixture
-      // sourced until a user-profile read exists.
-      users: USERS,
+      users: snapshot.users,
       bookings: snapshot.bookings,
       notes: snapshot.notes,
       glance: GLANCE,

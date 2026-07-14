@@ -94,6 +94,10 @@ export const tripSchema = z.object({
   createdAt: z.string(),
   updatedAt: z.string(),
   updatedBy: idSchema,
+  // Only populated by GET /trips (the all-trips list, ADR-0033) — a cheap
+  // aggregate for that one screen, not a general-purpose field every Trip
+  // producer has to supply.
+  memberCount: z.number().int().optional(),
 });
 export type Trip = z.infer<typeof tripSchema>;
 
@@ -206,6 +210,9 @@ export type TripNote = z.infer<typeof tripNoteSchema>;
 export const tripSnapshotSchema = z.object({
   trip: tripSchema,
   members: z.array(membershipSchema),
+  // Display info for each member (displayName/avatarColor) — Membership only
+  // carries userId/role, so the Header's avatar row needs this alongside it.
+  users: z.array(userSchema),
   events: z.array(tripEventSchema),
   bookings: z.array(bookingSchema),
   maybeItems: z.array(maybeItemSchema),

@@ -20,6 +20,7 @@ import { EVENTS, TRIP } from '../fixtures';
 const snapshotBody = {
   trip: TRIP,
   members: [],
+  users: [],
   events: [],
   bookings: [],
   maybeItems: [],

@@ -10,6 +10,7 @@ import type {
   TripEvent,
   TripNote,
   TripSnapshot,
+  User,
 } from '@waypoint/shared';
 import { db } from '../db';
 
@@ -18,6 +19,7 @@ export interface SnapshotMeta {
   tripId: string;
   trip: Trip;
   members: Membership[];
+  users: User[];
   maybeItems: MaybeItem[];
   notes: TripNote[];
   latestSeq: string;
@@ -35,6 +37,7 @@ export async function cacheSnapshot(tripId: string, snapshot: TripSnapshot): Pro
       tripId,
       trip: snapshot.trip,
       members: snapshot.members,
+      users: snapshot.users,
       maybeItems: snapshot.maybeItems,
       notes: snapshot.notes,
       latestSeq: snapshot.latestSeq,
@@ -54,6 +57,7 @@ export async function readCachedSnapshot(tripId: string): Promise<TripSnapshot |
   return {
     trip: meta.trip,
     members: meta.members,
+    users: meta.users,
     events,
     bookings,
     maybeItems: meta.maybeItems,

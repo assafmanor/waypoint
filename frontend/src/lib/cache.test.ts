@@ -22,6 +22,7 @@ function snapshot(overrides: Partial<TripSnapshot> = {}): TripSnapshot {
       updatedBy: 'u-assaf',
     },
     members: [],
+    users: [],
     events: EVENTS,
     bookings: [],
     maybeItems: MAYBE_ITEMS,
