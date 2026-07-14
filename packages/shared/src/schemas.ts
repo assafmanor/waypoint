@@ -112,3 +112,11 @@ export type InvitePreview = z.infer<typeof invitePreviewSchema>;
 /** `POST /auth/refresh` response — the access JWT lives in memory client-side, never a cookie (ADR-0020). */
 export const accessTokenResponseSchema = z.object({ accessToken: z.string() });
 export type AccessTokenResponse = z.infer<typeof accessTokenResponseSchema>;
+
+/** `PATCH /trips/:tripId/members/me` — a member's own consent flags (self-only, ADR-0005). */
+export const updateMembershipPrefsSchema = z.object({ calendarSyncEnabled: z.boolean() });
+export type UpdateMembershipPrefsInput = z.infer<typeof updateMembershipPrefsSchema>;
+
+/** `POST /trips/join/:token` body — same field, optional (defaults to the Prisma column default). */
+export const joinTripSchema = updateMembershipPrefsSchema.partial();
+export type JoinTripInput = z.infer<typeof joinTripSchema>;

@@ -2,7 +2,9 @@
 import {
   accessTokenResponseSchema,
   changeSchema,
+  invitePreviewSchema,
   meSchema,
+  membershipSchema,
   tripEventSchema,
   tripSchema,
   tripSnapshotSchema,
@@ -10,7 +12,10 @@ import {
   type CreateEventInput,
   type CreateTripInput,
   type EventStatus,
+  type InvitePreview,
+  type JoinTripInput,
   type Me,
+  type Membership,
   type MoveEventInput,
   type Trip,
   type TripEvent,
@@ -86,6 +91,25 @@ export async function createTrip(input: CreateTripInput): Promise<Trip> {
   });
   if (!res.ok) return throwApiError(res);
   return tripSchema.parse(await res.json());
+}
+
+/** Public/unguarded preview for the join screen (T-042, ADR-0024) — no auth needed. */
+export async function fetchInvitePreview(token: string): Promise<InvitePreview> {
+  const res = await fetch(`${API_BASE_URL}/invites/${token}`);
+  if (!res.ok) return throwApiError(res);
+  return invitePreviewSchema.parse(await res.json());
+}
+
+/** Idempotent — rejoining an already-joined trip keeps the existing role and
+ *  re-applies `calendarSyncEnabled` (api-contract.md). */
+export async function joinTrip(token: string, input: JoinTripInput = {}): Promise<Membership> {
+  const res = await apiFetch(`${API_BASE_URL}/trips/join/${token}`, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify(input),
+  });
+  if (!res.ok) return throwApiError(res);
+  return membershipSchema.parse(await res.json());
 }
 
 const snapshotUrl = (tripId: string) => `${API_BASE_URL}/trips/${tripId}/snapshot`;

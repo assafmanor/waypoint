@@ -668,6 +668,235 @@
   margin-top: 10px;
 }
 
+/* /join/:token (T-042) — public invite preview. Dark departure-board chrome
+   with the amber anticipation glow + boarding-pass "ticket" card, matching
+   mockups/screens-v1.html #s-linkjoin. Amber here is time/commitment-semantic
+   (countdown to departure), not decorative (ADR rule #4). One tap to join, no
+   settings step: calendarSyncEnabled stays the Prisma default (off) until
+   changed later in trip settings (T-044) — Assaf: joining is 1-2 taps, no
+   reading required. */
+.join-land {
+  background: linear-gradient(180deg, var(--board-2) 0%, var(--board) 100%);
+  color: #eaf0ff;
+  padding: 20px 22px 28px;
+  position: relative;
+  overflow: hidden;
+}
+.join-land::before {
+  content: '';
+  position: absolute;
+  inset: 0;
+  background: radial-gradient(80% 45% at 85% 0%, rgba(233, 166, 60, 0.14), transparent 60%);
+  pointer-events: none;
+}
+.join-top {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  position: relative;
+}
+.join-logo {
+  font-family: var(--font-head);
+  font-size: 17px;
+  color: #fff;
+}
+.join-hero {
+  margin-top: 30px;
+  position: relative;
+}
+.join-hero h1 {
+  font-family: var(--font-head);
+  font-size: 27px;
+  line-height: 1.2;
+  color: #fff;
+}
+.join-hero .hero-em {
+  color: var(--amber);
+}
+.join-hero p {
+  color: #93a2c4;
+  font-size: 14px;
+  line-height: 1.5;
+  margin-top: 8px;
+}
+.join-status {
+  margin-top: 44px;
+  color: #93a2c4;
+  font-size: 14px;
+  line-height: 1.6;
+  text-align: center;
+  position: relative;
+}
+
+/* boarding-pass ticket */
+.join-ticket-wrap {
+  margin-top: 22px;
+  position: relative;
+}
+.join-ticket {
+  background: linear-gradient(180deg, var(--board-2), var(--board));
+  border: 1px solid rgba(255, 255, 255, 0.08);
+  border-radius: 20px;
+  overflow: hidden;
+  position: relative;
+}
+.join-ticket::before {
+  content: '';
+  position: absolute;
+  inset: 0;
+  background: radial-gradient(90% 60% at 85% 0%, rgba(233, 166, 60, 0.14), transparent 60%);
+  pointer-events: none;
+}
+.ticket-top {
+  padding: 18px 18px 16px;
+  position: relative;
+}
+.ticket-head {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+}
+.ticket-badge {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  font-size: 10.5px;
+  font-weight: 700;
+  letter-spacing: 0.08em;
+  color: var(--amber);
+  background: rgba(233, 166, 60, 0.13);
+  border: 1px solid rgba(233, 166, 60, 0.3);
+  border-radius: 99px;
+  padding: 4px 10px;
+}
+/* Hebrew stays in the body face; only the numeric run goes mono + dir=ltr
+   (design-language.md §Typography — mono has no Hebrew glyphs). */
+.ticket-countdown {
+  font-size: 12px;
+  font-weight: 700;
+  color: var(--amber);
+}
+.ticket-name {
+  font-family: var(--font-head);
+  font-size: 24px;
+  line-height: 1.2;
+  color: #fff;
+  margin-top: 16px;
+}
+.ticket-meta {
+  color: #93a2c4;
+  font-size: 12.5px;
+  line-height: 1.5;
+  margin-top: 9px;
+}
+.ticket-meta .dot {
+  opacity: 0.5;
+  margin: 0 6px;
+}
+.ticket-countdown .num,
+.ticket-meta .num {
+  font-family: var(--font-mono);
+}
+/* perforation: dashed tear line with round notches cut from each edge */
+.ticket-perf {
+  position: relative;
+  height: 1px;
+  border-top: 2px dashed rgba(255, 255, 255, 0.14);
+}
+.ticket-perf .notch {
+  position: absolute;
+  top: -9px;
+  width: 18px;
+  height: 18px;
+  border-radius: 50%;
+  background: var(--board);
+}
+.ticket-perf .notch.start {
+  inset-inline-start: -9px;
+}
+.ticket-perf .notch.end {
+  inset-inline-end: -9px;
+}
+.ticket-bottom {
+  padding: 14px 18px 16px;
+  position: relative;
+  display: flex;
+  align-items: center;
+  gap: 11px;
+}
+.ticket-avatars {
+  display: flex;
+  flex-direction: row-reverse;
+}
+.ticket-av {
+  width: 31px;
+  height: 31px;
+  border-radius: 50%;
+  display: grid;
+  place-items: center;
+  font-size: 15px;
+  border: 2px solid var(--board);
+  margin-inline-start: -9px;
+}
+.ticket-people {
+  flex: 1;
+}
+.ticket-members {
+  font-size: 13px;
+  font-weight: 700;
+  color: #eaf0ff;
+}
+.ticket-sub {
+  font-size: 11px;
+  color: #93a2c4;
+  margin-top: 2px;
+}
+
+.join-cta {
+  margin-top: auto;
+  padding-top: 26px;
+  position: relative;
+}
+.join-cta-btn {
+  font: inherit;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 10px;
+  width: 100%;
+  background: #fff;
+  color: #1a1a1a;
+  border: 0;
+  border-radius: 14px;
+  padding: 14px;
+  font-size: 14.5px;
+  font-weight: 700;
+  cursor: pointer;
+}
+.join-cta-btn:disabled {
+  opacity: 0.55;
+  cursor: default;
+}
+.join-cta-btn .gd {
+  width: 18px;
+  height: 18px;
+  border-radius: 50%;
+  background: conic-gradient(#4285f4 0 25%, #ea4335 0 50%, #fbbc05 0 75%, #34a853 0);
+}
+.join-note {
+  text-align: center;
+  color: #7e8fb4;
+  font-size: 11.5px;
+  margin-top: 12px;
+  line-height: 1.5;
+}
+.join-error {
+  text-align: center;
+  color: var(--miss);
+  font-size: 12.5px;
+  margin-top: 10px;
+}
+
 /* Boot-time states (snapshot loading / failed to load, e.g. offline with no
    cached data yet) render before the app shell exists — TripProvider returns
    them ahead of <div className="app">, so unlike .placeholder below they get

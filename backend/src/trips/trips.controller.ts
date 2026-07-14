@@ -1,13 +1,31 @@
-import { Body, Controller, Delete, Get, HttpCode, Param, Post, UseGuards } from '@nestjs/common';
-import { ApiCreatedResponse, ApiNoContentResponse, ApiOkResponse, ApiTags } from '@nestjs/swagger';
+import {
+  Body,
+  Controller,
+  Delete,
+  Get,
+  HttpCode,
+  Param,
+  Patch,
+  Post,
+  UseGuards,
+} from '@nestjs/common';
+import {
+  ApiBearerAuth,
+  ApiCreatedResponse,
+  ApiNoContentResponse,
+  ApiOkResponse,
+  ApiTags,
+} from '@nestjs/swagger';
 import {
   createTripSchema,
   invitePreviewSchema,
   inviteUrlSchema,
+  joinTripSchema,
   membershipSchema,
   tripSchema,
   tripSnapshotSchema,
   tripWithMembersSchema,
+  updateMembershipPrefsSchema,
   type InvitePreview,
   type Membership,
   type Trip,
@@ -30,8 +48,11 @@ class TripWithMembersDto extends createZodDto(tripWithMembersSchema) {}
 class TripSnapshotDto extends createZodDto(tripSnapshotSchema) {}
 class InviteUrlDto extends createZodDto(inviteUrlSchema) {}
 class InvitePreviewDto extends createZodDto(invitePreviewSchema) {}
+class JoinTripDto extends createZodDto(joinTripSchema) {}
+class UpdateMembershipPrefsDto extends createZodDto(updateMembershipPrefsSchema) {}
 
 @ApiTags('trips')
+@ApiBearerAuth()
 @Controller('trips')
 export class TripsController {
   constructor(private readonly trips: TripsService) {}
@@ -56,8 +77,24 @@ export class TripsController {
   @Post('join/:token')
   @ApiCreatedResponse({ type: MembershipDto })
   @ZodSerializerDto(MembershipDto)
-  join(@CurrentUser() user: Principal, @Param('token') token: string): Promise<Membership> {
-    return this.trips.joinByToken(user.userId, token);
+  join(
+    @CurrentUser() user: Principal,
+    @Param('token') token: string,
+    @Body(new ZodValidationPipe(joinTripSchema)) body: JoinTripDto,
+  ): Promise<Membership> {
+    return this.trips.joinByToken(user.userId, token, body);
+  }
+
+  @Patch(':tripId/members/me')
+  @UseGuards(MembershipGuard)
+  @ApiOkResponse({ type: MembershipDto })
+  @ZodSerializerDto(MembershipDto)
+  updateMyMembership(
+    @CurrentUser() user: Principal,
+    @Param('tripId') tripId: string,
+    @Body(new ZodValidationPipe(updateMembershipPrefsSchema)) body: UpdateMembershipPrefsDto,
+  ): Promise<Membership> {
+    return this.trips.updateMembershipPrefs(tripId, user.userId, body);
   }
 
   @Get(':tripId')

@@ -18,6 +18,7 @@ import { Login } from './screens/Login';
 import { ZeroState } from './screens/ZeroState';
 import { ShellStub } from './screens/ShellStub';
 import { CreateTrip } from './screens/CreateTrip';
+import { JoinTrip } from './screens/JoinTrip';
 import { DevTimeTravel } from './dev/DevTimeTravel';
 import { useClock } from './lib/useClock';
 import {
@@ -345,15 +346,21 @@ function RootSurface() {
 // Layout route (ADR-0024): one shared guard via <Outlet/> instead of
 // per-route wrapping. Intent is resumed here, not right after login, since
 // OAuth's redirect always lands on "/", never the saved deep link.
+//
+// /join/:token is exempt from the anon-redirect (T-042, app-shell.md §4):
+// its preview is a public endpoint and must render before any auth check —
+// the screen's own "Continue with Google" CTA is what saves the intent and
+// starts sign-in, not this eager gate.
 function AuthGate() {
   const { status } = useAuth();
   const location = useLocation();
   const navigate = useNavigate();
+  const isJoinRoute = location.pathname.startsWith('/join/');
 
   useEffect(() => {
     if (status === 'loading') return;
     if (status === 'anon') {
-      if (location.pathname !== '/login') {
+      if (location.pathname !== '/login' && !isJoinRoute) {
         saveIntent(location.pathname);
         navigate('/login', { replace: true });
       }
@@ -365,11 +372,15 @@ function AuthGate() {
     } else if (location.pathname === '/login') {
       navigate('/', { replace: true });
     }
-  }, [status, location.pathname, navigate]);
+  }, [status, location.pathname, navigate, isJoinRoute]);
 
   if (status === 'loading') return <BootScreen text={t.shell.booting} />;
   if (status === 'anon') {
-    return location.pathname === '/login' ? <Outlet /> : <BootScreen text={t.shell.booting} />;
+    return location.pathname === '/login' || isJoinRoute ? (
+      <Outlet />
+    ) : (
+      <BootScreen text={t.shell.booting} />
+    );
   }
   return location.pathname === '/login' ? <BootScreen text={t.shell.booting} /> : <Outlet />;
 }
@@ -380,7 +391,7 @@ function AppRoutes() {
       <Route element={<AuthGate />}>
         <Route path="login" element={<Login />} />
         <Route path="new" element={<CreateTrip />} />
-        <Route path="join/:token" element={<ShellStub title={t.shell.stub.join} />} />
+        <Route path="join/:token" element={<JoinTrip />} />
         <Route path="trip/:id/settings" element={<ShellStub title={t.shell.stub.settings} />} />
         <Route path="*" element={<RootSurface />} />
       </Route>

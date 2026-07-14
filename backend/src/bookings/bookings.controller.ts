@@ -11,7 +11,13 @@ import {
   Req,
   UseGuards,
 } from '@nestjs/common';
-import { ApiCreatedResponse, ApiNoContentResponse, ApiOkResponse, ApiTags } from '@nestjs/swagger';
+import {
+  ApiBearerAuth,
+  ApiCreatedResponse,
+  ApiNoContentResponse,
+  ApiOkResponse,
+  ApiTags,
+} from '@nestjs/swagger';
 import {
   bookingSchema,
   createBookingSchema,
@@ -33,6 +39,7 @@ class BookingDto extends createZodDto(bookingSchema) {}
 type RequestWithBody = { body?: { confirm?: boolean } };
 
 @ApiTags('bookings')
+@ApiBearerAuth()
 @Controller('trips/:tripId/bookings')
 @UseGuards(MembershipGuard)
 export class BookingsController {

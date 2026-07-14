@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { consumeIntent, saveIntent } from './intent';
+import { consumeIntent, consumeJoinIntent, saveIntent, saveJoinIntent } from './intent';
 
 // No jsdom in this repo (see other lib/*.test.ts) — a plain Map-backed fake
 // standing in for the Storage interface is enough to exercise the logic.
@@ -33,5 +33,23 @@ describe('deep-link intent', () => {
 
   it('is null when nothing was saved', () => {
     expect(consumeIntent(fakeStorage())).toBeNull();
+  });
+});
+
+describe('join intent', () => {
+  it('round-trips a token and is one-shot', () => {
+    const storage = fakeStorage();
+    saveJoinIntent('tok-123', storage);
+    expect(consumeJoinIntent(storage)).toBe('tok-123');
+    expect(consumeJoinIntent(storage)).toBeNull();
+  });
+
+  it('is independent of the deep-link intent', () => {
+    const storage = fakeStorage();
+    saveIntent('/join/tok-123', storage);
+    saveJoinIntent('tok-123', storage);
+    // Consuming the deep-link intent must not clear the pending join.
+    consumeIntent(storage);
+    expect(consumeJoinIntent(storage)).toBe('tok-123');
   });
 });

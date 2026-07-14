@@ -1,5 +1,5 @@
 import { BadRequestException, Controller, Get, Param, Query, UseGuards } from '@nestjs/common';
-import { ApiOkResponse, ApiTags } from '@nestjs/swagger';
+import { ApiBearerAuth, ApiOkResponse, ApiTags } from '@nestjs/swagger';
 import { changeSchema, type Change } from '@waypoint/shared';
 import { createZodDto, ZodSerializerDto } from 'nestjs-zod';
 import { PrismaService } from '../prisma/prisma.service';
@@ -9,6 +9,7 @@ import { toChangeDto } from './change.mapper';
 class ChangeDto extends createZodDto(changeSchema) {}
 
 @ApiTags('sync')
+@ApiBearerAuth()
 @Controller('trips/:tripId/changes')
 @UseGuards(MembershipGuard)
 export class SyncController {
