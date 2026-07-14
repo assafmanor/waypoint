@@ -233,6 +233,7 @@ export const t = {
     drag: 'גרור לסידור',
     pinned: 'אירוע קשיח · מעוגן בזמן',
     toShelf: 'העבר למדף',
+    rowActions: 'פעולות',
     gapFillTitle: (start: string, end: string) => `מילוי הפער · ${start}–${end}`,
     gapFillEmpty: 'אין רעיונות במדף · הוסף אירוע חדש',
     addIdea: 'הוסף רעיון למדף',

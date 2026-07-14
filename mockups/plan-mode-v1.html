@@ -577,10 +577,25 @@
       .bld.soft .time {
         color: var(--muted);
       }
+      /* One trailing affordance per row: ⋯ opens an action sheet
+         (edit · move-to-shelf · delete) instead of a strip of inline icons —
+         a phone row has width for grip + title + time + one control. */
       .bld .edit {
         color: #b5bcc9;
-        font-size: 14px;
+        font-size: 18px;
+        line-height: 1;
         flex: 0 0 auto;
+        width: 30px;
+        height: 30px;
+        display: grid;
+        place-items: center;
+        border-radius: 9px;
+        border: 1px solid var(--line);
+        cursor: pointer;
+      }
+      .bld .edit:hover {
+        color: var(--plan-deep);
+        border-color: var(--plan);
       }
 
       .gap {
@@ -1461,7 +1476,7 @@
                       <div class="m">ארוחת בוקר · סושי טרי</div>
                     </div>
                     <div class="time" dir="ltr">10:00</div>
-                    <span class="edit">✎</span>
+                    <span class="edit" title="פעולות">⋯</span>
                   </div>
 
                   <div class="gap">
@@ -1479,7 +1494,7 @@
                       <div class="m">אסאקוסה</div>
                     </div>
                     <div class="time" dir="ltr">14:30</div>
-                    <span class="edit">✎</span>
+                    <span class="edit" title="פעולות">⋯</span>
                   </div>
 
                   <div class="bld">
@@ -1490,7 +1505,7 @@
                       <div class="m">הזמנה <span dir="ltr">#4471</span> · שולחן ל-5</div>
                     </div>
                     <div class="time" dir="ltr">19:30</div>
-                    <span class="edit">✎</span>
+                    <span class="edit" title="פעולות">⋯</span>
                   </div>
 
                   <div class="bld soft">
@@ -1501,7 +1516,7 @@
                       <div class="m">דרינקים · סמטאות באר</div>
                     </div>
                     <div class="time" dir="ltr">21:30</div>
-                    <span class="edit">✎</span>
+                    <span class="edit" title="פעולות">⋯</span>
                   </div>
                 </div>
 
@@ -1595,7 +1610,7 @@
                     <div class="m">ארוחת בוקר</div>
                   </div>
                   <div class="time" dir="ltr">10:00</div>
-                  <span class="edit">✎</span>
+                  <span class="edit" title="פעולות">⋯</span>
                 </div>
                 <div class="gap">
                   <span class="ln"></span><button class="add">פער של שעתיים · ＋ שבץ</button
@@ -1609,7 +1624,7 @@
                     <div class="m">אסאקוסה</div>
                   </div>
                   <div class="time" dir="ltr">14:30</div>
-                  <span class="edit">✎</span>
+                  <span class="edit" title="פעולות">⋯</span>
                 </div>
                 <div class="bld">
                   <span class="grip">⠿</span>
@@ -1619,7 +1634,7 @@
                     <div class="m">הזמנה <span dir="ltr">#4471</span></div>
                   </div>
                   <div class="time" dir="ltr">19:30</div>
-                  <span class="edit">✎</span>
+                  <span class="edit" title="פעולות">⋯</span>
                 </div>
                 <div class="bld soft">
                   <span class="grip">⠿</span>
@@ -1629,7 +1644,7 @@
                     <div class="m">דרינקים</div>
                   </div>
                   <div class="time" dir="ltr">21:30</div>
-                  <span class="edit">✎</span>
+                  <span class="edit" title="פעולות">⋯</span>
                 </div>
                 <button class="addbtn" style="margin-top: 6px">＋ הוסף אירוע</button>
               </div>

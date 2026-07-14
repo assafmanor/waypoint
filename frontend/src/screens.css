@@ -1589,6 +1589,51 @@
   outline-offset: 2px;
 }
 
+/* Builder-row action sheet (the ⋯ menu): full-width, thumb-sized rows so a
+   phone isn't fighting a strip of 32px icons — one affordance on the row,
+   the rest here. */
+.row-actions {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  margin: 4px 0 4px;
+}
+.row-action {
+  display: flex;
+  align-items: center;
+  gap: 11px;
+  width: 100%;
+  text-align: start;
+  font: inherit;
+  font-size: 14px;
+  font-weight: 600;
+  color: var(--ink);
+  background: var(--card);
+  border: 1px solid var(--line);
+  border-radius: 12px;
+  padding: 13px 14px;
+  cursor: pointer;
+}
+.row-action:hover {
+  border-color: var(--plan);
+  background: var(--plan-tint);
+}
+.row-action:focus-visible {
+  outline: 2.5px solid var(--plan);
+  outline-offset: 2px;
+}
+.row-action.danger {
+  color: var(--miss);
+}
+.row-action.danger:hover {
+  border-color: var(--miss);
+  background: rgba(198, 40, 40, 0.06);
+}
+.row-action-ic {
+  font-size: 17px;
+  flex: 0 0 auto;
+}
+
 /* A skipped soft event parked on the shelf (ADR-0027): same card as an idea,
    but its action is restore (neutral, not the violet "schedule" action). */
 .maybe.skipped-card .add {

@@ -95,6 +95,7 @@ export const ICONS = {
   clipboard: '📋',
   schedule: '📅',
   toShelf: '📥',
+  more: '⋯',
   add: '＋',
   sync: '🔄',
   offline: '📡',

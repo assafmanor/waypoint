@@ -24,6 +24,18 @@ between two events produced a 9-hour draft, which is never what you want. Now th
 default **1-hour** block (`GAP_FILL_MINUTES`) anchored at the gap's start, capped at the gap
 itself so a 40-minute gap still fills exactly (no overshoot). The user extends from there.
 
+## Declutter: row actions behind one ⋯ button, not a strip of icons
+
+Adding park as a third inline trailing icon (📥 · ✏️ · 🗑️) — on top of the grip + ▲/▼ reorder
+cluster — crushed the title on a phone (the fixed-width bits ate ~260–310px of a ~300px row).
+The `plan-mode-v1` mockup was always leaner: grip · emoji · title · time · **one** trailing
+affordance. So all three actions (**edit · move-to-shelf · delete**) now collapse into a single
+⋯ button that opens a bottom **action sheet** — full-width, thumb-sized rows, reusing the same
+`Sheet` the gap-fill chooser uses (no popover positioning). Edit stays reachable by tapping the
+row body too. Hard events get the same ⋯ (edit · delete), no park. Mockup updated to match (the
+`.bld` rows now show ⋯). Restores the mockup's one-affordance density and honors mobile-first
+(ADR-0017).
+
 ## Verified
 
 Full CI pipeline locally against real Postgres (`typecheck · build · test · lint · format:check`)
