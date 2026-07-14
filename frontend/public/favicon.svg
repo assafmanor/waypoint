@@ -1,0 +1,28 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 512 512">
+  <defs>
+    <linearGradient id="bg" x1="0" y1="0" x2="0" y2="1">
+      <stop offset="0" stop-color="#152137"/>
+      <stop offset="1" stop-color="#0E1729"/>
+    </linearGradient>
+    <filter id="glow" x="-60%" y="-60%" width="220%" height="220%">
+      <feGaussianBlur stdDeviation="16"/>
+    </filter>
+  </defs>
+
+  <!-- the icon IS the board: full-bleed board gradient -->
+  <rect width="512" height="512" fill="url(#bg)"/>
+
+  <!-- RTL board rows, right-aligned -->
+  <!-- the "now" row: live blip + glowing amber bar (amber = time, the trip speaking) -->
+  <g>
+    <rect x="88" y="140" width="248" height="52" rx="26" fill="#E9A63C" filter="url(#glow)" opacity="0.55"/>
+    <rect x="88" y="140" width="248" height="52" rx="26" fill="#E9A63C"/>
+    <circle cx="398" cy="166" r="26" fill="#E9A63C" filter="url(#glow)" opacity="0.6"/>
+    <circle cx="398" cy="166" r="26" fill="#E9A63C"/>
+    <circle cx="398" cy="166" r="40" fill="none" stroke="#E9A63C" stroke-width="6" opacity="0.35"/>
+  </g>
+
+  <!-- quiet upcoming rows -->
+  <rect x="152" y="248" width="272" height="48" rx="24" fill="#8FA0C4" opacity="0.42"/>
+  <rect x="216" y="330" width="208" height="48" rx="24" fill="#8FA0C4" opacity="0.22"/>
+</svg>
