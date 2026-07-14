@@ -21,3 +21,7 @@ v1 uses **server-side encryption at rest**. Documents are encrypted in storage; 
 ## Alternatives considered
 
 - **Client-side E2E:** stronger privacy, but significant key-management complexity for marginal benefit at this trust level. Deferred.
+
+## See also
+
+[0034](0034-document-encryption-trust-model.md) makes the trust boundary of this decision explicit — server-side-at-rest protects against data-at-rest exposure, not against the operator.

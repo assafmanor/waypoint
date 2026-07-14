@@ -4,6 +4,7 @@
 import { z } from 'zod';
 import {
   bookingTypeSchema,
+  documentTypeSchema,
   eventKindSchema,
   eventSourceSchema,
   eventStatusSchema,
@@ -76,6 +77,16 @@ export type CreateBookingInput = z.infer<typeof createBookingSchema>;
 /** Partial update to a booking. */
 export const updateBookingSchema = createBookingSchema.partial();
 export type UpdateBookingInput = z.infer<typeof updateBookingSchema>;
+
+/** `fileRef`/`mimeType`/`sizeBytes` are computed server-side from the uploaded
+ *  file (multipart), not client input — this validates the accompanying fields. */
+export const createDocumentSchema = z.object({
+  id: entityIdSchema.optional(),
+  type: documentTypeSchema,
+  title: z.string().min(1),
+  ownerUserId: entityIdSchema.optional(),
+});
+export type CreateDocumentInput = z.infer<typeof createDocumentSchema>;
 
 export const createTripSchema = z.object({
   name: z.string().min(1).max(MAX_TRIP_NAME_LENGTH),

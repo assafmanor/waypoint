@@ -40,8 +40,12 @@ The pieces in the repo:
 | `TOKEN_ENCRYPTION_KEY`                      | `openssl rand -base64 32` — **must decode to exactly 32 bytes** (AES-256-GCM, crypto.util) |
 | `GOOGLE_CLIENT_ID` / `GOOGLE_CLIENT_SECRET` | From the Google Cloud OAuth client (prerequisites-checklist.md)                            |
 | `GOOGLE_OAUTH_REDIRECT_URI`                 | `https://<domain>/auth/google/callback`                                                    |
+| `DOC_ENCRYPTION_KEY`                        | Documents at rest (ADR-0015). `openssl rand -base64 32` — must decode to exactly 32 bytes  |
+| `S3_ENDPOINT`                               | Railway Storage Bucket endpoint URL (S3-compatible, ADR-0031)                              |
+| `S3_BUCKET`                                 | Railway Storage Bucket name                                                                |
+| `S3_ACCESS_KEY_ID` / `S3_SECRET_ACCESS_KEY` | Railway Storage Bucket credentials                                                         |
 
-**Never set in production:** `DEV_AUTH` (auth bypass) and `FRONTEND_URL` (dev-only CORS; prod is single-origin). `VITE_API_BASE_URL` stays unset — the client defaults to same-origin. Later additions when their features land: `REDIS_URL` (v1.1), `DOC_ENCRYPTION_KEY` + bucket credentials (documents), `VITE_GOOGLE_MAPS_API_KEY` (build-time arg).
+**Never set in production:** `DEV_AUTH` (auth bypass) and `FRONTEND_URL` (dev-only CORS; prod is single-origin). `VITE_API_BASE_URL` stays unset — the client defaults to same-origin. Later additions when their features land: `REDIS_URL` (v1.1), `VITE_GOOGLE_MAPS_API_KEY` (build-time arg).
 
 ## One-time setup runbook
 
