@@ -22,6 +22,7 @@ Code and documentation live together. **Any consequential decision gets an ADR**
 - `mockups/plan-mode-v1.html` — the interactive **Plan-mode** design reference (prep-dashboard Home, itinerary builder, booking entry, research; phone + tablet) _(predates ADR-0028; colors retrofitted, chrome restyle pending — on conflict the design docs win)_.
 - `mockups/screens-v1.html` — landing, lobby, join (paste-a-link + invite landing, ADR-0030), and trip-settings screens (plan-mode daylight chrome).
 - `mockups/zero-state-v1.html` — the zero-state home (logged in, no trips): the dormant "board off" concept, two equal join/create actions (ADR-0024 §2).
+- `mockups/create-trip-v1.html` — trip creation `/new`: three inputs, live soft-grammar draft preview, post-create invite prompt (ADR-0032).
 
 ## Tech stack (see docs/architecture/tech-stack.md)
 
