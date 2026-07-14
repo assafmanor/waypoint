@@ -223,6 +223,18 @@ export const t = {
     maybeShelf: 'מדף האולי',
     tapToSchedule: 'הקשה משבצת ליום',
   },
+  // Plan-mode Day-by-day — the itinerary builder (screens/PlanDay.tsx).
+  planDay: {
+    empty: 'היום ריק — הוסף אירוע או שבץ מהמדף',
+    addToDay: (day: number) => `הוסף אירוע ליום ${day}`,
+    moveEarlier: 'הקדם',
+    moveLater: 'אחר',
+    gap: (label: string) => `פער של ${label} · ＋ שבץ`,
+    gapMinutes: (n: number) => `${n} דק׳`,
+    gapHour: 'שעה',
+    gapTwoHours: 'שעתיים',
+    gapHours: (n: number) => `${n} שעות`,
+  },
   event: {
     hard: 'קשיח',
     soft: 'גמיש',
@@ -266,6 +278,7 @@ export const t = {
     eventCreated: 'האירוע נוסף',
     eventUpdated: 'האירוע עודכן',
     eventDeleted: 'האירוע נמחק',
+    reordered: 'הסדר עודכן',
   },
   ripple: {
     prompt: (movedTitle: string) => `${movedTitle} נדחה - לדחות גם את האירועים שאחריו?`,

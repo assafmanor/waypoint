@@ -14,6 +14,7 @@ import { ConfirmProvider } from './ui/ConfirmDialog';
 import { Sheet } from './ui/Sheet';
 import { Home } from './screens/Home';
 import { PlanHome } from './screens/PlanHome';
+import { PlanDay } from './screens/PlanDay';
 import { DayView } from './screens/DayView';
 import { Login } from './screens/Login';
 import { ZeroState } from './screens/ZeroState';
@@ -108,10 +109,13 @@ function Header({
   onOpenAccount: () => void;
   onOpenSettings: () => void;
 }) {
-  const { trip, users, activeDate, usingCachedSnapshot } = useTrip();
+  const { trip, users, activeDate, usingCachedSnapshot, events } = useTrip();
   const { me } = useAuth();
   const { mode } = useMode();
   const now = useClock();
+  // Plan mode surfaces empty days on the strip (dashed + red number), the
+  // day-selector cue from mockups/plan-mode-v1.html — a gap to go fill.
+  const datesWithEvents = new Set(events.map((e) => e.date));
   const { targetRef: tripNameRef, containerRef: tripNameWrapRef } = useShrinkToFit<
     HTMLSpanElement,
     HTMLDivElement
@@ -223,7 +227,9 @@ function Header({
             {d.monthLabel && <span className="month-label">{d.monthLabel}</span>}
             <button
               className={
-                'day-pill' + (d.date === activeDate ? ' on' : d.date < activeDate ? ' past' : '')
+                'day-pill' +
+                (d.date === activeDate ? ' on' : d.date < activeDate ? ' past' : '') +
+                (mode === 'plan' && !datesWithEvents.has(d.date) ? ' empty' : '')
               }
               onClick={() => onSelectDay(d.date)}
             >
@@ -239,14 +245,14 @@ function Header({
   );
 }
 
-// Tabs re-emphasize by mode (ADR-0016), not duplicate screens. Home is built
-// for both modes now (Trip = departure board, Plan = prep dashboard); Day-by-day
-// has only its Trip-mode content, and Map/Index are unbuilt either way (T-002),
-// so those fall back to Placeholder.
+// Tabs re-emphasize by mode (ADR-0016), not duplicate screens. Home and
+// Day-by-day are built for both modes now (Trip = departure board / follow +
+// adjust; Plan = prep dashboard / itinerary builder). Map/Index are unbuilt
+// either way (T-002), so they fall back to Placeholder.
 function Screen({ tab, onNavigate }: { tab: TabId; onNavigate: (tab: TabId) => void }) {
   const { mode } = useMode();
   if (tab === 'home') return mode === 'trip' ? <Home /> : <PlanHome onNavigate={onNavigate} />;
-  if (tab === 'days' && mode === 'trip') return <DayView />;
+  if (tab === 'days') return mode === 'trip' ? <DayView /> : <PlanDay />;
   return <Placeholder tab={tab} mode={mode} />;
 }
 
