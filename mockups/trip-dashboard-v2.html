@@ -118,10 +118,43 @@
         justify-content: space-between;
         align-items: flex-start;
       }
+      /* trip-name is the switcher: a clearly-tappable pill (name + ▾ in a
+         circle) that goes to the all-trips home (ADR-0033). Distinct from the
+         ⚙ settings affordance. Single-trip: rendered as plain text, no pill. */
+      .trip-switch {
+        display: inline-flex;
+        align-items: center;
+        gap: 8px;
+        background: rgba(255, 255, 255, 0.09);
+        border: 1px solid rgba(255, 255, 255, 0.16);
+        border-radius: 999px;
+        padding: 5px 8px 5px 14px;
+        font: inherit;
+        color: inherit;
+        cursor: pointer;
+        transition: 0.14s;
+      }
+      .trip-switch:hover {
+        background: rgba(255, 255, 255, 0.15);
+      }
+      .trip-switch:focus-visible {
+        outline: 2.5px solid var(--teal);
+        outline-offset: 2px;
+      }
       .trip-name {
         font-family: 'Secular One', sans-serif;
-        font-size: 26px;
+        font-size: 23px;
         line-height: 1.05;
+      }
+      .trip-switch .chev {
+        width: 22px;
+        height: 22px;
+        border-radius: 50%;
+        background: rgba(255, 255, 255, 0.14);
+        display: grid;
+        place-items: center;
+        font-size: 11px;
+        flex: 0 0 auto;
       }
       .trip-sub {
         color: #9daac8;
@@ -1148,7 +1181,14 @@
         <div class="header">
           <div class="trip-row">
             <div>
-              <div class="trip-name">יפן ׳26</div>
+              <button
+                class="trip-switch"
+                onclick="toast('🧭', 'לכל הטיולים')"
+                aria-label="החלף טיול · לכל הטיולים"
+              >
+                <span class="trip-name">יפן ׳26</span>
+                <span class="chev">▾</span>
+              </button>
               <div class="trip-sub">טוקיו<span class="dot">•</span>יום 3 מתוך 10</div>
             </div>
             <div class="avatars">

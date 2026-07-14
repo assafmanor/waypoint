@@ -65,7 +65,7 @@ Active-trip selection is `tripId` in `localStorage` — per-device, **not** sync
 ### 5. All-trips home — `/trips` (ADR-0033)
 
 - **Purpose:** the home base for your trips — see them as a set, switch between them, create. A navigation list, **not a dashboard**; no departure board (nothing is live here — a live trip opens directly).
-- **When you're here:** the **landing** when authenticated with trips but **none live** (all upcoming/past — don't auto-open a future trip); and reached from inside a trip via the **trip name ▾** in the header. Replaces the old switcher sheet (one surface, both entries).
+- **When you're here:** the **landing** when authenticated with trips but **none live** (all upcoming/past — don't auto-open a future trip); and reached from inside a trip via the header — the **trip name is a tappable pill with a ▾ in a circle** (a clear switcher affordance, distinct from the ⚙ settings button), navigating to `/trips`. Returning is the header **‹ back** on the all-trips page or tapping a trip. Replaces the old switcher sheet (one surface, both entries). Single-trip: the name is plain text, no pill.
 - **Contents:** a list of the user's trips (flag/name + destination/meta + a **now / soon / past** chip derived from dates); the trip you came from is marked "נוכחי". A single **＋ Create** (→ `/new`) — no Join button (joining starts from an invite link, ADR-0030; the zero-state keeps Join for first-run).
 - **Flow:** tap a trip → set active-trip (`localStorage`) → navigate to its surface.
 - **States:** landing (no current marked) · from-trip (current marked, its chip reads "עכשיו") · single trip (header shows the name, no ▾) · offline (switching among cached trips works; create disabled).
