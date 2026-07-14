@@ -2,20 +2,13 @@ import { join } from 'node:path';
 import { ArgumentsHost, Catch, ExceptionFilter, NotFoundException } from '@nestjs/common';
 import type { Request, Response } from 'express';
 
-// ADR-0020 single-origin: the production image places the built PWA next to
-// the compiled backend (deployment.md). The directory never exists in dev,
-// where Vite serves the frontend on :5173.
+// Where the production image puts the built PWA; never exists in dev (ADR-0020).
 export const STATIC_ROOT = join(__dirname, '..', '..', 'public');
 const SPA_INDEX = join(STATIC_ROOT, 'index.html');
 const HTML_MIME = 'text/html';
 
-/**
- * Serves the PWA for browser navigations the router 404'd, so client-side
- * routes deep-link — without a hand-maintained list of API prefixes: a path a
- * controller handles never reaches this filter, so API routes (present and
- * future) are excluded by construction. Non-navigation requests (no
- * `text/html` in Accept) keep the JSON 404 shape.
- */
+/** Deep-links client routes: browser navigations the router 404'd get the PWA.
+ *  Paths a controller handles never reach here, so no API-prefix list to maintain. */
 @Catch(NotFoundException)
 export class SpaFallbackFilter implements ExceptionFilter {
   catch(exception: NotFoundException, host: ArgumentsHost): void {
