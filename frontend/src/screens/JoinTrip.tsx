@@ -29,6 +29,7 @@ import { useIsOffline } from '../lib/outbox';
 import { getNow } from '../lib/useClock';
 import { ApiError, fetchInvitePreview, joinTrip } from '../lib/api';
 import { consumeJoinIntent, saveIntent, saveJoinIntent } from '../lib/intent';
+import { dayCount } from '../lib/hebrew';
 import { DOT_SEPARATOR, MS_PER_DAY } from '../constants';
 import { t } from '../i18n/he';
 
@@ -109,7 +110,16 @@ export function JoinTrip() {
     <div className="app join-land">
       <div className="join-top">
         <div className="join-logo">Waypoint</div>
-        <div className="g-dot" style={{ width: 20, height: 20 }} />
+        {/* inlined (not <img>) so the vector stays crisp at this size —
+            Chrome rasterizes small <img src="*.svg"> and it comes out
+            aliased/pixelated (same reasoning as Login.tsx's .land-icon). */}
+        <svg className="join-icon" viewBox="0 0 512 512" aria-hidden="true">
+          <circle cx="256" cy="256" r="256" fill="#E9A63C" />
+          <rect x="88" y="140" width="248" height="52" rx="26" fill="#152137" />
+          <circle cx="398" cy="166" r="26" fill="#152137" />
+          <rect x="152" y="248" width="272" height="48" rx="24" fill="#152137" opacity={0.55} />
+          <rect x="216" y="330" width="208" height="48" rx="24" fill="#152137" opacity={0.3} />
+        </svg>
       </div>
 
       {load.status === 'loading' && <p className="join-status">{t.shell.join.loading}</p>}
@@ -148,6 +158,8 @@ function Ready({ preview }: { preview: InvitePreview }) {
   const tripDays =
     Math.round((Date.parse(preview.endDate) - Date.parse(preview.startDate)) / MS_PER_DAY) + 1;
   const avatarCount = Math.min(preview.memberCount, MAX_AVATARS);
+  const startCount = dayCount(daysUntilStart);
+  const lengthCount = dayCount(tripDays);
 
   return (
     <>
@@ -166,10 +178,14 @@ function Ready({ preview }: { preview: InvitePreview }) {
               {daysUntilStart > 0 && (
                 <span className="ticket-countdown">
                   {t.shell.join.countdownPrefix}{' '}
-                  <span className="num" dir="ltr">
-                    {daysUntilStart}
-                  </span>{' '}
-                  {t.shell.join.daysLabel}
+                  {startCount.value && (
+                    <>
+                      <span className="num" dir="ltr">
+                        {startCount.value}
+                      </span>{' '}
+                    </>
+                  )}
+                  {startCount.unit}
                 </span>
               )}
             </div>
@@ -185,10 +201,14 @@ function Ready({ preview }: { preview: InvitePreview }) {
               {tripDays > 0 && (
                 <>
                   <span className="dot">{DOT_SEPARATOR}</span>
-                  <span className="num" dir="ltr">
-                    {tripDays}
-                  </span>{' '}
-                  {t.shell.join.daysLabel}
+                  {lengthCount.value && (
+                    <>
+                      <span className="num" dir="ltr">
+                        {lengthCount.value}
+                      </span>{' '}
+                    </>
+                  )}
+                  {lengthCount.unit}
                 </>
               )}
             </div>
