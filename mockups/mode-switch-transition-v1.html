@@ -1,0 +1,1654 @@
+<title>Mode-switch transition — candidate lab</title>
+<!--
+  Waypoint · Plan ⇄ Trip mode-switch transition — candidate lab (v1)
+  ------------------------------------------------------------------
+  A DESIGN MOCKUP / motion reference, in the spirit of the other mockups/*.html.
+  Explores color/lighting transition candidates for the Plan⇄Trip switch — the
+  "most meaningful moment" the design-language names but leaves under-designed
+  (only the board power-on exists today; the chrome swap is abrupt and trip→plan
+  has no counterpart). Grounded in the real tokens + Night/Day mode identity
+  (design-language.md, ADR-0028) and the derived+override switch model (ADR-0016).
+
+  NOTE ON FONTS: the shipped app uses Secular One / Assistant / JetBrains Mono via
+  a font CDN. This file uses a system stack so it renders identically as a
+  standalone Artifact (CSP blocks font CDNs). Motion — not exact type — is the
+  subject here. Hebrew RTL is preserved so the mode identity reads truthfully.
+
+  STATUS: proposal. Adoption = a design-language "Motion" update + the CSS wiring;
+  see the recommendation panel at the bottom. Not yet an accepted decision.
+-->
+<style>
+  :root {
+    /* ---- Waypoint app tokens (the phone renders in these) ---- */
+    --ink: #16233d;
+    --indigo: #1b2a4a;
+    --board: #0e1729;
+    --board-2: #152137;
+    --screen: #e7eaef;
+    --card: #ffffff;
+    --paper: #f3efe6;
+    --amber: #e9a63c;
+    --amber-deep: #c9822a;
+    --teal: #2c9c90;
+    --muted: #6c7488;
+    --plan: #6e59d6;
+    --plan-deep: #5747b4;
+    --plan-tint: rgba(110, 89, 214, 0.1);
+    --ok: #3c9a6b;
+    --miss: #c2584e;
+
+    /* ---- Proposed motion tokens (the recommendation) ---- */
+    --t-quick: 140ms;
+    --t-base: 240ms;
+    --t-deliberate: 400ms;
+    --t-cinematic: 600ms;
+    --ease-standard: cubic-bezier(0.2, 0, 0, 1);
+    --ease-exit: cubic-bezier(0.4, 0, 1, 1);
+    --ease-emphasized: cubic-bezier(0.16, 1, 0.3, 1);
+
+    /* ---- Console (the lab chrome — deliberately single, dark) ---- */
+    --lab-bg: #0c1220;
+    --lab-bg-2: #111a2c;
+    --lab-panel: #141d31;
+    --lab-panel-2: #18233b;
+    --lab-line: rgba(148, 163, 194, 0.16);
+    --lab-line-2: rgba(148, 163, 194, 0.28);
+    --lab-ink: #e7ecf6;
+    --lab-muted: #93a0b8;
+    --lab-faint: #6b7794;
+    --lab-accent: #8b79e8; /* plan violet, brightened for the dark ground */
+
+    --mono: ui-monospace, "SF Mono", "SFMono-Regular", Menlo, Consolas, monospace;
+    --sans:
+      "Segoe UI", system-ui, -apple-system, "Helvetica Neue", Arial, sans-serif;
+  }
+
+  * {
+    box-sizing: border-box;
+  }
+  html {
+    -webkit-text-size-adjust: 100%;
+  }
+  body {
+    margin: 0;
+    font-family: var(--sans);
+    color: var(--lab-ink);
+    background:
+      radial-gradient(120% 80% at 82% -10%, rgba(139, 121, 232, 0.14), transparent 55%),
+      radial-gradient(90% 70% at 0% 0%, rgba(44, 156, 144, 0.08), transparent 50%),
+      linear-gradient(180deg, var(--lab-bg-2), var(--lab-bg));
+    background-attachment: fixed;
+    min-height: 100vh;
+    line-height: 1.5;
+  }
+
+  .wrap {
+    max-width: 1160px;
+    margin: 0 auto;
+    padding: clamp(20px, 4vw, 48px) clamp(16px, 4vw, 40px) 72px;
+  }
+
+  /* ---------- masthead ---------- */
+  .eyebrow {
+    font-size: 11.5px;
+    letter-spacing: 0.22em;
+    text-transform: uppercase;
+    color: var(--lab-accent);
+    font-weight: 700;
+    margin: 0 0 12px;
+  }
+  h1 {
+    font-size: clamp(28px, 5vw, 46px);
+    line-height: 1.05;
+    letter-spacing: -0.02em;
+    margin: 0 0 14px;
+    text-wrap: balance;
+    font-weight: 800;
+  }
+  h1 .amp {
+    font-weight: 300;
+    color: var(--lab-accent);
+    font-style: italic;
+  }
+  .lede {
+    max-width: 60ch;
+    color: var(--lab-muted);
+    font-size: clamp(14.5px, 1.6vw, 16.5px);
+    margin: 0;
+  }
+  .lede b {
+    color: var(--lab-ink);
+    font-weight: 600;
+  }
+
+  /* ---------- lab layout ---------- */
+  .lab {
+    display: grid;
+    grid-template-columns: minmax(300px, 360px) 1fr;
+    gap: clamp(20px, 3vw, 40px);
+    align-items: start;
+    margin-top: clamp(28px, 4vw, 48px);
+  }
+  @media (max-width: 820px) {
+    .lab {
+      grid-template-columns: 1fr;
+    }
+  }
+
+  .stage-col {
+    position: sticky;
+    top: 24px;
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    gap: 16px;
+  }
+  @media (max-width: 820px) {
+    .stage-col {
+      position: static;
+    }
+  }
+
+  /* ================= THE PHONE STAGE ================= */
+  .phone {
+    width: 340px;
+    max-width: 92vw;
+    border-radius: 40px;
+    padding: 10px;
+    background: linear-gradient(160deg, #1c2740, #0b1120);
+    box-shadow:
+      0 40px 80px -32px rgba(0, 0, 0, 0.75),
+      0 0 0 1px rgba(148, 163, 194, 0.14),
+      inset 0 0 0 1px rgba(255, 255, 255, 0.04);
+  }
+  .stage {
+    position: relative;
+    border-radius: 31px;
+    overflow: hidden;
+    height: 620px;
+    direction: rtl;
+    isolation: isolate;
+    /* One transition definition; engines drive --dur / --ease. */
+    --dur: 450ms;
+    --ease: var(--ease-standard);
+    background: var(--screen);
+    transition: background-color var(--dur) var(--ease);
+  }
+  .stage,
+  .stage * {
+    font-family: var(--sans);
+  }
+  /* Cross-fade the whole app surface between the two mode grounds. */
+  .stage[data-mode="trip"] {
+    background: var(--board);
+  }
+
+  /* ---- status bar ---- */
+  .sb {
+    height: 26px;
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    padding: 0 18px;
+    font-family: var(--mono);
+    font-size: 11px;
+    letter-spacing: 0.02em;
+    transition: color var(--dur) var(--ease);
+    color: var(--muted);
+  }
+  .stage[data-mode="trip"] .sb {
+    color: #8fa0c4;
+  }
+  .sb .dots {
+    display: flex;
+    gap: 4px;
+    align-items: center;
+  }
+  .sb .dots i {
+    width: 5px;
+    height: 5px;
+    border-radius: 50%;
+    background: currentColor;
+    opacity: 0.7;
+    display: block;
+  }
+
+  /* ---- header / chrome ---- */
+  .hd {
+    padding: 4px 14px 12px;
+    transition:
+      background-color var(--dur) var(--ease),
+      border-color var(--dur) var(--ease);
+    border-bottom: 1px solid transparent;
+  }
+  .stage[data-mode="plan"] .hd {
+    background-color: var(--card);
+    /* faint drafting grid — violet, low contrast (design-language) */
+    background-image:
+      repeating-linear-gradient(0deg, rgba(110, 89, 214, 0.05) 0 1px, transparent 1px 22px),
+      repeating-linear-gradient(90deg, rgba(110, 89, 214, 0.05) 0 1px, transparent 1px 22px);
+    border-bottom-color: rgba(22, 35, 61, 0.1);
+  }
+  .stage[data-mode="trip"] .hd {
+    background-color: var(--indigo);
+    border-bottom-color: rgba(255, 255, 255, 0.06);
+  }
+  .hd-top {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 8px;
+  }
+  .trip-name {
+    display: inline-flex;
+    align-items: center;
+    gap: 7px;
+    border: 1px solid transparent;
+    border-radius: 999px;
+    padding: 5px 10px 5px 8px;
+    font-size: 13px;
+    font-weight: 700;
+    cursor: pointer;
+    transition:
+      background-color var(--dur) var(--ease),
+      color var(--dur) var(--ease),
+      border-color var(--dur) var(--ease);
+  }
+  .trip-name .chev {
+    font-size: 10px;
+    opacity: 0.7;
+  }
+  .stage[data-mode="plan"] .trip-name {
+    background: var(--plan-tint);
+    border-color: rgba(110, 89, 214, 0.28);
+    color: var(--ink);
+  }
+  .stage[data-mode="trip"] .trip-name {
+    background: rgba(255, 255, 255, 0.06);
+    border-color: rgba(255, 255, 255, 0.12);
+    color: #eaf0ff;
+  }
+  .avs {
+    display: flex;
+  }
+  .avs .av {
+    width: 24px;
+    height: 24px;
+    border-radius: 50%;
+    margin-inline-start: -7px;
+    border: 2px solid;
+    font-size: 11px;
+    display: grid;
+    place-items: center;
+    font-weight: 700;
+    color: #fff;
+    transition: border-color var(--dur) var(--ease);
+  }
+  .stage[data-mode="plan"] .avs .av {
+    border-color: var(--card);
+  }
+  .stage[data-mode="trip"] .avs .av {
+    border-color: var(--indigo);
+  }
+  .av.a1 {
+    background: #7488c8;
+  }
+  .av.a2 {
+    background: #c88a74;
+  }
+  .av.a3 {
+    background: #74c8a0;
+  }
+
+  /* ---- the mode toggle (the control the user actually taps) ---- */
+  .toggle {
+    margin-top: 12px;
+    display: inline-flex;
+    position: relative;
+    border-radius: 999px;
+    padding: 3px;
+    gap: 2px;
+    transition: background-color var(--dur) var(--ease);
+  }
+  .stage[data-mode="plan"] .toggle {
+    background: var(--plan-tint);
+  }
+  .stage[data-mode="trip"] .toggle {
+    background: rgba(255, 255, 255, 0.07);
+  }
+  .toggle button {
+    appearance: none;
+    border: 0;
+    background: transparent;
+    cursor: pointer;
+    border-radius: 999px;
+    padding: 7px 13px;
+    font-size: 12.5px;
+    font-weight: 700;
+    font-family: inherit;
+    display: inline-flex;
+    align-items: center;
+    gap: 5px;
+    color: var(--muted);
+    transition:
+      color var(--dur) var(--ease),
+      background-color var(--dur) var(--ease);
+  }
+  .stage[data-mode="trip"] .toggle button {
+    color: #8fa0c4;
+  }
+  .stage[data-mode="plan"] .toggle button[data-side="plan"] {
+    background: #fff;
+    color: var(--plan-deep);
+    box-shadow: 0 2px 8px -3px rgba(87, 71, 180, 0.5);
+  }
+  .stage[data-mode="trip"] .toggle button[data-side="trip"] {
+    background: var(--amber);
+    color: #2a1c05;
+    box-shadow: 0 2px 10px -3px rgba(233, 166, 60, 0.7);
+  }
+  .auto-hint {
+    display: block;
+    font-size: 10.5px;
+    margin-top: 7px;
+    color: var(--muted);
+    transition:
+      color var(--dur) var(--ease),
+      opacity 200ms;
+  }
+  .stage[data-mode="trip"] .auto-hint {
+    opacity: 0;
+  }
+
+  /* ---- body ---- */
+  .body {
+    padding: 14px;
+    display: flex;
+    flex-direction: column;
+    gap: 12px;
+  }
+
+  /* the hero swaps: violet prep-hero (plan) ⇄ dark board (trip) */
+  .hero {
+    position: relative;
+    border-radius: 20px;
+    height: 168px;
+  }
+  .hero .face {
+    position: absolute;
+    inset: 0;
+    border-radius: 20px;
+    padding: 16px;
+    overflow: hidden;
+    transition: opacity var(--dur) var(--ease);
+  }
+  .stage[data-mode="trip"] .prep {
+    opacity: 0;
+    pointer-events: none;
+  }
+  .stage[data-mode="plan"] .board {
+    opacity: 0;
+    pointer-events: none;
+  }
+
+  /* prep hero (Day / plan) */
+  .prep {
+    background: linear-gradient(150deg, #7a67df, var(--plan-deep));
+    color: #fff;
+    box-shadow: 0 16px 30px -20px rgba(87, 71, 180, 0.8);
+  }
+  .prep .k {
+    font-size: 11px;
+    letter-spacing: 0.14em;
+    text-transform: uppercase;
+    opacity: 0.8;
+    font-weight: 700;
+  }
+  .prep .big {
+    font-size: 25px;
+    font-weight: 800;
+    margin-top: 6px;
+    letter-spacing: -0.01em;
+  }
+  .prep .big span {
+    font-family: var(--mono);
+  }
+  .prep .rl {
+    margin-top: 16px;
+    font-size: 12px;
+    display: flex;
+    justify-content: space-between;
+    opacity: 0.92;
+  }
+  .prep .bar {
+    height: 8px;
+    border-radius: 999px;
+    background: rgba(255, 255, 255, 0.22);
+    margin-top: 6px;
+    overflow: hidden;
+  }
+  .prep .bar i {
+    display: block;
+    height: 100%;
+    width: 68%;
+    border-radius: 999px;
+    background: #fff;
+  }
+
+  /* board hero (Night / trip) */
+  .board {
+    background: linear-gradient(180deg, var(--board-2), var(--board));
+    color: #eaf0ff;
+    box-shadow: 0 20px 34px -20px rgba(8, 14, 28, 0.9);
+  }
+  .board::before {
+    content: "";
+    position: absolute;
+    inset: 0;
+    background: radial-gradient(90% 60% at 85% 0%, rgba(233, 166, 60, 0.18), transparent 60%);
+    pointer-events: none;
+  }
+  .board .live {
+    display: flex;
+    align-items: center;
+    gap: 7px;
+    font-size: 10.5px;
+    font-weight: 700;
+    letter-spacing: 0.14em;
+    color: #8fa0c4;
+  }
+  .board .blip {
+    width: 7px;
+    height: 7px;
+    border-radius: 50%;
+    background: var(--amber);
+    animation: pulse 2s infinite;
+  }
+  @keyframes pulse {
+    0% {
+      box-shadow: 0 0 0 0 rgba(233, 166, 60, 0.55);
+    }
+    70% {
+      box-shadow: 0 0 0 8px rgba(233, 166, 60, 0);
+    }
+    100% {
+      box-shadow: 0 0 0 0 rgba(233, 166, 60, 0);
+    }
+  }
+  .board .clock {
+    font-family: var(--mono);
+    font-size: 30px;
+    font-weight: 700;
+    letter-spacing: 0.02em;
+    margin-top: 4px;
+    color: #fff;
+  }
+  .board .now {
+    font-size: 15px;
+    font-weight: 700;
+    margin-top: 2px;
+  }
+  .board .next {
+    margin-top: 12px;
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    font-size: 12px;
+    color: #b8c4e0;
+  }
+  .board .cd {
+    font-family: var(--mono);
+    font-size: 11px;
+    font-weight: 700;
+    color: var(--amber);
+    background: rgba(233, 166, 60, 0.14);
+    border: 1px solid rgba(233, 166, 60, 0.3);
+    border-radius: 999px;
+    padding: 3px 9px;
+  }
+
+  /* two quiet body cards */
+  .qcards {
+    display: grid;
+    grid-template-columns: 1fr 1fr;
+    gap: 10px;
+  }
+  .qc {
+    border-radius: 14px;
+    padding: 11px 12px;
+    font-size: 12px;
+    border: 1px solid transparent;
+    transition:
+      background-color var(--dur) var(--ease),
+      color var(--dur) var(--ease),
+      border-color var(--dur) var(--ease);
+  }
+  .qc .t {
+    font-size: 10px;
+    text-transform: uppercase;
+    letter-spacing: 0.1em;
+    opacity: 0.7;
+  }
+  .qc .v {
+    font-weight: 700;
+    font-size: 15px;
+    margin-top: 3px;
+  }
+  .stage[data-mode="plan"] .qc {
+    background: var(--card);
+    color: var(--ink);
+    border-color: rgba(22, 35, 61, 0.1);
+  }
+  .stage[data-mode="trip"] .qc {
+    background: rgba(255, 255, 255, 0.05);
+    color: #d4ddf0;
+    border-color: rgba(255, 255, 255, 0.08);
+  }
+
+  /* ---- bottom nav ---- */
+  .nav {
+    position: absolute;
+    left: 0;
+    right: 0;
+    bottom: 0;
+    height: 58px;
+    display: flex;
+    align-items: center;
+    justify-content: space-around;
+    padding: 0 8px;
+    backdrop-filter: blur(10px);
+    transition:
+      background-color var(--dur) var(--ease),
+      border-color var(--dur) var(--ease);
+    border-top: 1px solid transparent;
+  }
+  .stage[data-mode="plan"] .nav {
+    background: rgba(255, 255, 255, 0.82);
+    border-top-color: rgba(22, 35, 61, 0.1);
+  }
+  .stage[data-mode="trip"] .nav {
+    background: rgba(14, 23, 41, 0.72);
+    border-top-color: rgba(255, 255, 255, 0.07);
+  }
+  .nav b {
+    font-size: 19px;
+    opacity: 0.55;
+    line-height: 1;
+    display: grid;
+    place-items: center;
+    width: 40px;
+    height: 34px;
+    border-radius: 12px;
+    transition:
+      background-color var(--dur) var(--ease),
+      opacity var(--dur) var(--ease);
+  }
+  .stage[data-mode="plan"] .nav b.on {
+    opacity: 1;
+    background: var(--plan-tint);
+  }
+  .stage[data-mode="trip"] .nav b.on {
+    opacity: 1;
+    background: rgba(255, 255, 255, 0.12);
+  }
+
+  /* ---- engine overlays ---- */
+  .sweep,
+  .ripple {
+    position: absolute;
+    inset: 0;
+    z-index: 5;
+    pointer-events: none;
+    opacity: 0;
+  }
+  .sweep {
+    background: linear-gradient(
+      var(--sweep-dir, 180deg),
+      transparent 0%,
+      rgba(233, 166, 60, 0.16) 40%,
+      rgba(255, 255, 255, 0.85) 50%,
+      rgba(233, 166, 60, 0.16) 60%,
+      transparent 100%
+    );
+    mix-blend-mode: screen;
+  }
+  .ripple {
+    border-radius: inherit;
+  }
+
+  /* ================= CONSOLE (control rail) ================= */
+  .console {
+    display: flex;
+    flex-direction: column;
+    gap: 18px;
+    min-width: 0;
+  }
+
+  .panel {
+    background: linear-gradient(180deg, var(--lab-panel-2), var(--lab-panel));
+    border: 1px solid var(--lab-line);
+    border-radius: 18px;
+    padding: clamp(16px, 2.4vw, 22px);
+  }
+  .panel > h2 {
+    font-size: 12px;
+    letter-spacing: 0.14em;
+    text-transform: uppercase;
+    color: var(--lab-faint);
+    margin: 0 0 4px;
+    font-weight: 700;
+  }
+  .panel > .sub {
+    margin: 0 0 16px;
+    color: var(--lab-muted);
+    font-size: 13.5px;
+  }
+
+  /* candidate cards */
+  .cands {
+    display: flex;
+    flex-direction: column;
+    gap: 10px;
+  }
+  .cand {
+    position: relative;
+    display: grid;
+    grid-template-columns: auto 1fr auto;
+    align-items: center;
+    gap: 12px 14px;
+    text-align: start;
+    width: 100%;
+    cursor: pointer;
+    border: 1px solid var(--lab-line);
+    background: rgba(255, 255, 255, 0.015);
+    color: inherit;
+    border-radius: 14px;
+    padding: 13px 15px;
+    font-family: inherit;
+    transition:
+      border-color 160ms,
+      background-color 160ms,
+      transform 160ms;
+  }
+  .cand:hover {
+    border-color: var(--lab-line-2);
+    background: rgba(255, 255, 255, 0.04);
+  }
+  .cand[aria-pressed="true"] {
+    border-color: var(--lab-accent);
+    background: rgba(139, 121, 232, 0.12);
+    box-shadow: 0 0 0 1px var(--lab-accent) inset;
+  }
+  .cand .key {
+    font-family: var(--mono);
+    font-size: 15px;
+    font-weight: 700;
+    width: 30px;
+    height: 30px;
+    border-radius: 9px;
+    display: grid;
+    place-items: center;
+    background: rgba(255, 255, 255, 0.05);
+    color: var(--lab-ink);
+    border: 1px solid var(--lab-line);
+  }
+  .cand[aria-pressed="true"] .key {
+    background: var(--lab-accent);
+    color: #140f2c;
+    border-color: transparent;
+  }
+  .cand .name {
+    font-weight: 700;
+    font-size: 14.5px;
+    grid-column: 2;
+  }
+  .cand .desc {
+    grid-column: 2;
+    color: var(--lab-muted);
+    font-size: 12.5px;
+    margin-top: 2px;
+  }
+  .cand .dur {
+    grid-column: 3;
+    grid-row: 1 / span 2;
+    font-family: var(--mono);
+    font-size: 11px;
+    color: var(--lab-faint);
+    text-align: end;
+    white-space: nowrap;
+  }
+  .rec-badge {
+    position: absolute;
+    top: -9px;
+    inset-inline-end: 12px;
+    background: var(--lab-accent);
+    color: #140f2c;
+    font-size: 10px;
+    font-weight: 800;
+    letter-spacing: 0.08em;
+    text-transform: uppercase;
+    padding: 3px 8px;
+    border-radius: 999px;
+  }
+
+  /* driver controls */
+  .drive {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 10px;
+    align-items: center;
+  }
+  .btn {
+    appearance: none;
+    font-family: inherit;
+    cursor: pointer;
+    border-radius: 11px;
+    padding: 11px 18px;
+    font-size: 14px;
+    font-weight: 700;
+    border: 1px solid var(--lab-line-2);
+    background: rgba(255, 255, 255, 0.04);
+    color: var(--lab-ink);
+    transition:
+      background-color 140ms,
+      border-color 140ms,
+      transform 90ms;
+  }
+  .btn:hover {
+    background: rgba(255, 255, 255, 0.08);
+  }
+  .btn:active {
+    transform: translateY(1px);
+  }
+  .btn.primary {
+    background: var(--lab-accent);
+    color: #140f2c;
+    border-color: transparent;
+    box-shadow: 0 8px 20px -10px rgba(139, 121, 232, 0.9);
+  }
+  .btn.primary:hover {
+    background: #9d8ef0;
+  }
+  .btn:disabled {
+    opacity: 0.45;
+    cursor: default;
+  }
+  .btn .goto {
+    font-weight: 800;
+  }
+
+  .switchrow {
+    display: flex;
+    align-items: center;
+    gap: 10px;
+    font-size: 13px;
+    color: var(--lab-muted);
+  }
+  .swatch {
+    display: inline-flex;
+    align-items: center;
+    gap: 6px;
+    font-family: var(--mono);
+    font-size: 12px;
+  }
+  .swatch i {
+    width: 12px;
+    height: 12px;
+    border-radius: 4px;
+    display: block;
+  }
+
+  /* toggle switch for reduced motion */
+  .rm {
+    display: flex;
+    align-items: center;
+    gap: 10px;
+    margin-top: 14px;
+    font-size: 13px;
+    color: var(--lab-muted);
+    cursor: pointer;
+    user-select: none;
+  }
+  .rm .track {
+    width: 40px;
+    height: 22px;
+    border-radius: 999px;
+    background: rgba(255, 255, 255, 0.1);
+    border: 1px solid var(--lab-line-2);
+    position: relative;
+    transition: background-color 160ms;
+    flex: none;
+  }
+  .rm .track i {
+    position: absolute;
+    top: 2px;
+    inset-inline-start: 2px;
+    width: 16px;
+    height: 16px;
+    border-radius: 50%;
+    background: var(--lab-muted);
+    transition:
+      transform 160ms,
+      background-color 160ms;
+  }
+  .rm input {
+    position: absolute;
+    opacity: 0;
+    pointer-events: none;
+  }
+  .rm input:checked + .track {
+    background: rgba(139, 121, 232, 0.4);
+  }
+  .rm input:checked + .track i {
+    transform: translateX(18px);
+    background: var(--lab-accent);
+  }
+  .rm input:focus-visible + .track {
+    outline: 2px solid var(--lab-accent);
+    outline-offset: 2px;
+  }
+
+  /* the "why this one" note per candidate */
+  .why {
+    margin-top: 16px;
+    border-top: 1px solid var(--lab-line);
+    padding-top: 14px;
+    font-size: 13.5px;
+    color: var(--lab-muted);
+    min-height: 60px;
+  }
+  .why b {
+    color: var(--lab-ink);
+  }
+  .verdict {
+    display: inline-block;
+    font-size: 10.5px;
+    font-weight: 800;
+    letter-spacing: 0.06em;
+    text-transform: uppercase;
+    padding: 2px 8px;
+    border-radius: 999px;
+    margin-inline-end: 8px;
+    vertical-align: 1px;
+  }
+  .verdict.rec {
+    background: rgba(60, 154, 107, 0.22);
+    color: #7fe0ac;
+  }
+  .verdict.ok {
+    background: rgba(233, 166, 60, 0.18);
+    color: #f0c079;
+  }
+  .verdict.no {
+    background: rgba(194, 88, 78, 0.2);
+    color: #e79b92;
+  }
+
+  /* ---------- section headings on the page ---------- */
+  .section-h {
+    margin: clamp(44px, 6vw, 72px) 0 6px;
+    font-size: clamp(20px, 3vw, 27px);
+    font-weight: 800;
+    letter-spacing: -0.015em;
+  }
+  .section-sub {
+    color: var(--lab-muted);
+    margin: 0 0 22px;
+    max-width: 62ch;
+    font-size: 14.5px;
+  }
+
+  /* ---------- other-transitions grid ---------- */
+  .others {
+    display: grid;
+    grid-template-columns: repeat(auto-fill, minmax(220px, 1fr));
+    gap: 14px;
+  }
+  .demo {
+    border: 1px solid var(--lab-line);
+    border-radius: 16px;
+    padding: 16px;
+    background: linear-gradient(180deg, var(--lab-panel-2), var(--lab-panel));
+    display: flex;
+    flex-direction: column;
+    gap: 12px;
+  }
+  .demo h3 {
+    margin: 0;
+    font-size: 14.5px;
+    font-weight: 700;
+  }
+  .demo p {
+    margin: 0;
+    font-size: 12.5px;
+    color: var(--lab-muted);
+  }
+  .demo .token {
+    font-family: var(--mono);
+    font-size: 11px;
+    color: var(--lab-accent);
+  }
+  .demo .surface {
+    height: 96px;
+    border-radius: 12px;
+    background: rgba(0, 0, 0, 0.25);
+    border: 1px solid var(--lab-line);
+    position: relative;
+    overflow: hidden;
+    display: grid;
+    place-items: center;
+  }
+  .demo .btn.mini {
+    padding: 7px 12px;
+    font-size: 12.5px;
+    align-self: flex-start;
+  }
+
+  /* mini-demo: tab crossfade */
+  .d-tab .pane {
+    position: absolute;
+    inset: 0;
+    display: grid;
+    place-items: center;
+    font-weight: 700;
+    color: var(--lab-ink);
+    font-size: 20px;
+  }
+  .d-tab .p2 {
+    opacity: 0;
+  }
+  /* mini-demo: toast */
+  .d-toast .toast {
+    position: absolute;
+    bottom: 12px;
+    background: #0e1729;
+    color: #eaf0ff;
+    padding: 8px 14px;
+    border-radius: 999px;
+    font-size: 12.5px;
+    font-weight: 600;
+    box-shadow: 0 10px 24px -12px rgba(0, 0, 0, 0.8);
+    transform: translateY(60px);
+    opacity: 0;
+    border: 1px solid rgba(255, 255, 255, 0.08);
+  }
+  /* mini-demo: nav settle */
+  .d-nav .row {
+    display: flex;
+    gap: 22px;
+    font-size: 22px;
+  }
+  .d-nav .row b {
+    transition: transform var(--t-quick) var(--ease-standard);
+    opacity: 0.5;
+  }
+  .d-nav .row b.on {
+    opacity: 1;
+    transform: translateY(4px);
+  }
+  /* mini-demo: ripple bar */
+  .d-ripple .bar {
+    position: absolute;
+    left: 12px;
+    right: 12px;
+    bottom: 12px;
+    background: rgba(233, 166, 60, 0.16);
+    border: 1px solid rgba(233, 166, 60, 0.34);
+    color: #f0c079;
+    border-radius: 12px;
+    padding: 8px 12px;
+    font-size: 12px;
+    font-weight: 700;
+    transform: translateY(18px);
+    opacity: 0;
+    transition:
+      transform var(--t-base) var(--ease-standard),
+      opacity var(--t-base) var(--ease-standard);
+  }
+  .d-ripple .bar.show {
+    transform: none;
+    opacity: 1;
+  }
+
+  /* ---------- motion-token table ---------- */
+  .tokens-table {
+    width: 100%;
+    border-collapse: collapse;
+    font-size: 13.5px;
+    overflow: hidden;
+    border-radius: 14px;
+    border: 1px solid var(--lab-line);
+  }
+  .tokens-table th,
+  .tokens-table td {
+    text-align: start;
+    padding: 12px 14px;
+    border-bottom: 1px solid var(--lab-line);
+    vertical-align: top;
+  }
+  .tokens-table thead th {
+    font-size: 11px;
+    letter-spacing: 0.1em;
+    text-transform: uppercase;
+    color: var(--lab-faint);
+    background: rgba(255, 255, 255, 0.02);
+  }
+  .tokens-table tr:last-child td {
+    border-bottom: 0;
+  }
+  .tokens-table code {
+    font-family: var(--mono);
+    font-size: 12.5px;
+    color: var(--lab-accent);
+    white-space: nowrap;
+  }
+  .tokens-table .val {
+    font-family: var(--mono);
+    color: var(--lab-ink);
+    white-space: nowrap;
+  }
+  .tokens-table td:last-child {
+    color: var(--lab-muted);
+  }
+  .table-scroll {
+    overflow-x: auto;
+    margin-top: 8px;
+  }
+  .rule {
+    margin-top: 18px;
+    border-inline-start: 3px solid var(--lab-accent);
+    padding: 4px 0 4px 16px;
+    color: var(--lab-ink);
+    font-size: 14.5px;
+    background: linear-gradient(90deg, rgba(139, 121, 232, 0.08), transparent);
+  }
+
+  /* recommendation call-to */
+  .rec-panel {
+    margin-top: 28px;
+    border: 1px solid rgba(139, 121, 232, 0.4);
+    background:
+      radial-gradient(120% 100% at 100% 0%, rgba(139, 121, 232, 0.14), transparent 60%),
+      linear-gradient(180deg, var(--lab-panel-2), var(--lab-panel));
+    border-radius: 20px;
+    padding: clamp(20px, 3vw, 30px);
+  }
+  .rec-panel h2 {
+    margin: 0 0 4px;
+    font-size: clamp(19px, 2.6vw, 24px);
+  }
+  .rec-panel .tag {
+    color: var(--lab-accent);
+    font-weight: 800;
+    letter-spacing: 0.14em;
+    text-transform: uppercase;
+    font-size: 11.5px;
+  }
+  .rec-panel ul {
+    margin: 16px 0 0;
+    padding: 0;
+    list-style: none;
+    display: grid;
+    gap: 12px;
+  }
+  .rec-panel li {
+    display: grid;
+    grid-template-columns: 22px 1fr;
+    gap: 12px;
+    font-size: 14.5px;
+    color: var(--lab-muted);
+  }
+  .rec-panel li b {
+    color: var(--lab-ink);
+  }
+  .rec-panel li .m {
+    color: var(--lab-accent);
+    font-weight: 800;
+  }
+
+  .foot {
+    margin-top: 48px;
+    padding-top: 20px;
+    border-top: 1px solid var(--lab-line);
+    color: var(--lab-faint);
+    font-size: 12.5px;
+    max-width: 70ch;
+  }
+  .foot code {
+    font-family: var(--mono);
+    color: var(--lab-muted);
+  }
+
+  a.link {
+    color: var(--lab-accent);
+    text-decoration: none;
+    border-bottom: 1px solid transparent;
+  }
+  a.link:hover {
+    border-bottom-color: currentColor;
+  }
+
+  :focus-visible {
+    outline: 2px solid var(--lab-accent);
+    outline-offset: 3px;
+    border-radius: 6px;
+  }
+
+  @media (prefers-reduced-motion: reduce) {
+    * {
+      scroll-behavior: auto;
+    }
+  }
+</style>
+
+<div class="wrap">
+  <p class="eyebrow">Waypoint · motion study · v1</p>
+  <h1>Plan <span class="amp">⇄</span> Trip: the lights change</h1>
+  <p class="lede">
+    The mode switch is the app's most meaningful moment — <b>Day (the drafting table)</b>
+    becoming <b>Night (the departure board powering on)</b>, and back. Today only the board's
+    power-on exists; the chrome swap is abrupt and the return trip is undesigned. Below: five
+    ways to animate that lighting change on a live phone, a recommendation, and the smaller
+    transitions that should share its vocabulary.
+  </p>
+
+  <div class="lab">
+    <!-- ============ LIVE PHONE ============ -->
+    <div class="stage-col">
+      <div class="phone">
+        <div class="stage" id="stage" data-mode="plan" data-engine="B" dir="rtl">
+          <div class="sb">
+            <span>9:41</span>
+            <span class="dots"><i></i><i></i><i></i></span>
+          </div>
+
+          <div class="hd">
+            <div class="hd-top">
+              <button class="trip-name" tabindex="-1">
+                🇯🇵 יפן · אביב <span class="chev">▾</span>
+              </button>
+              <div class="avs">
+                <span class="av a1">ד</span>
+                <span class="av a2">מ</span>
+                <span class="av a3">ל</span>
+              </div>
+            </div>
+            <div style="display: flex; flex-direction: column; align-items: flex-start">
+              <div class="toggle" id="toggle" role="group" aria-label="מצב">
+                <button data-side="plan" type="button">✏️ תכנון</button>
+                <button data-side="trip" type="button">🧭 טיול</button>
+              </div>
+              <span class="auto-hint">עובר אוטומטית ב־2.4</span>
+            </div>
+          </div>
+
+          <div class="body">
+            <div class="hero">
+              <!-- Day / Plan face -->
+              <div class="face prep">
+                <div class="k">מוכנוּת לטיול</div>
+                <div class="big">יוצאים בעוד <span>12</span> ימים</div>
+                <div class="rl"><span>6 הזמנות · 3 פערים</span><span>68%</span></div>
+                <div class="bar"><i></i></div>
+              </div>
+              <!-- Night / Trip face -->
+              <div class="face board">
+                <div class="live"><span class="blip"></span> עכשיו</div>
+                <div class="clock" dir="ltr">14:20</div>
+                <div class="now">ארוחת בוקר · ריוקאן</div>
+                <div class="next">
+                  <span>הבא · רכבת לקיוטו</span>
+                  <span class="cd" dir="ltr">עוד 40′</span>
+                </div>
+              </div>
+            </div>
+
+            <div class="qcards">
+              <div class="qc">
+                <div class="t">מזג אוויר</div>
+                <div class="v">18° ☁️</div>
+              </div>
+              <div class="qc">
+                <div class="t">תקציב היום</div>
+                <div class="v">¥6,200</div>
+              </div>
+            </div>
+          </div>
+
+          <nav class="nav">
+            <b class="on">🏠</b><b>🗺️</b><b>📇</b><b>📅</b>
+          </nav>
+
+          <div class="sweep" id="sweep"></div>
+          <div class="ripple" id="ripple"></div>
+        </div>
+      </div>
+      <div class="switchrow">
+        <span class="swatch"><i style="background: #6e59d6"></i> Plan</span>
+        <span style="opacity: 0.5">→</span>
+        <span class="swatch"><i style="background: #0e1729; border: 1px solid #2a3a5c"></i> Trip</span>
+        <span style="opacity: 0.5">·</span>
+        <span id="dur-readout" style="font-family: var(--mono); font-size: 12px">—</span>
+      </div>
+    </div>
+
+    <!-- ============ CONSOLE ============ -->
+    <div class="console">
+      <div class="panel">
+        <h2>Transition engine</h2>
+        <p class="sub">Pick a candidate, then flip the switch. Each drives the same chrome swap a different way.</p>
+        <div class="cands" id="cands" role="radiogroup" aria-label="Transition candidate"></div>
+        <div class="why" id="why" aria-live="polite"></div>
+      </div>
+
+      <div class="panel">
+        <h2>Drive it</h2>
+        <div class="drive">
+          <button class="btn primary" id="flip" type="button">
+            Switch to <span class="goto" id="flip-label">Trip</span>
+          </button>
+          <button class="btn" id="replay" type="button">↻ Replay</button>
+        </div>
+        <label class="rm">
+          <input type="checkbox" id="reduce" />
+          <span class="track"><i></i></span>
+          <span><code style="font-family: var(--mono); color: var(--lab-muted)">prefers-reduced-motion</code> — instant, no animation</span>
+        </label>
+        <p class="sub" style="margin: 14px 0 0; font-size: 12.5px">
+          Direction matters: <b style="color: var(--lab-ink)">Plan→Trip</b> is the arrival — the celebrated beat.
+          <b style="color: var(--lab-ink)">Trip→Plan</b> is a quiet return to the desk, so it runs faster.
+        </p>
+      </div>
+    </div>
+  </div>
+
+  <!-- ============ OTHER TRANSITIONS ============ -->
+  <h2 class="section-h">The rest of the motion system</h2>
+  <p class="section-sub">
+    The mode switch is the <em>one</em> cinematic moment — everything else stays quick and quiet, the
+    motion analogue of "one loud element." These smaller transitions should all draw from the same
+    duration + easing tokens so the app feels like one hand made it. Tap each to preview.
+  </p>
+  <div class="others">
+    <div class="demo d-tab">
+      <h3>Tab change</h3>
+      <p class="token">--t-base · ease-standard</p>
+      <div class="surface">
+        <div class="pane p1">🏠 בית</div>
+        <div class="pane p2">📇 אינדקס</div>
+      </div>
+      <p>A short cross-fade on tab content — no slide, no bounce. Location, not narrative.</p>
+      <button class="btn mini" data-demo="tab" type="button">Preview</button>
+    </div>
+
+    <div class="demo d-toast">
+      <h3>Toast</h3>
+      <p class="token">--t-base · in: standard · out: exit</p>
+      <div class="surface">
+        <div class="toast">בוטל ✓ · בטל</div>
+      </div>
+      <p>Rises + fades in, holds, drops on exit. The undo affordance for every optimistic write.</p>
+      <button class="btn mini" data-demo="toast" type="button">Preview</button>
+    </div>
+
+    <div class="demo d-nav">
+      <h3>Nav tab settle</h3>
+      <p class="token">--t-quick · transform only</p>
+      <div class="surface">
+        <div class="row"><b class="on">🏠</b><b>🗺️</b><b>📇</b></div>
+      </div>
+      <p>The selected icon settles a few px down — a transform, no reflow (studied in nav-active-states-v1).</p>
+      <button class="btn mini" data-demo="nav" type="button">Preview</button>
+    </div>
+
+    <div class="demo d-ripple">
+      <h3>Ripple bar</h3>
+      <p class="token">--t-base · ease-standard</p>
+      <div class="surface">
+        <div class="bar">הוזז — לסדר את השאר?</div>
+      </div>
+      <p>The amber suggestion strip slides up after you move a soft event. Amber = time/commitment.</p>
+      <button class="btn mini" data-demo="ripple" type="button">Preview</button>
+    </div>
+  </div>
+
+  <!-- ============ MOTION TOKENS ============ -->
+  <h2 class="section-h">Proposed motion tokens</h2>
+  <p class="section-sub">
+    A small ramp of durations and easings — the shared vocabulary. New motion picks from these
+    instead of inventing values, the same discipline the type ramp and color budget already enforce.
+  </p>
+  <div class="table-scroll">
+    <table class="tokens-table">
+      <thead>
+        <tr><th>Token</th><th>Value</th><th>Used for</th></tr>
+      </thead>
+      <tbody>
+        <tr><td><code>--t-quick</code></td><td class="val">140ms</td><td>Nav settle, toggles, hovers, focus rings — the "instant but not jarring" tier.</td></tr>
+        <tr><td><code>--t-base</code></td><td class="val">240ms</td><td>Tab cross-fade, toast, ripple bar, sheets, most enters/exits.</td></tr>
+        <tr><td><code>--t-deliberate</code></td><td class="val">400ms</td><td>Return-gesture screen slide (ADR-0035), and <b style="color: var(--lab-ink)">Trip→Plan</b> (the quiet return).</td></tr>
+        <tr><td><code>--t-cinematic</code></td><td class="val">600ms</td><td><b style="color: var(--lab-ink)">Plan→Trip</b> — the board wakes. The <em>only</em> cinematic transition in the app.</td></tr>
+        <tr><td><code>--ease-standard</code></td><td class="val">cubic-bezier(.2,0,0,1)</td><td>Default. Entrances, color melts, most everything.</td></tr>
+        <tr><td><code>--ease-exit</code></td><td class="val">cubic-bezier(.4,0,1,1)</td><td>Things leaving — toast out, dismissals.</td></tr>
+        <tr><td><code>--ease-emphasized</code></td><td class="val">cubic-bezier(.16,1,.3,1)</td><td>The board wake — a confident settle with a soft landing.</td></tr>
+      </tbody>
+    </table>
+  </div>
+  <div class="rule">
+    <b>The budget rule:</b> exactly one <code>--t-cinematic</code> moment exists in the product — the Plan→Trip switch.
+    Spending "cinematic" anywhere else devalues it everywhere, just like amber or teal.
+  </div>
+
+  <!-- ============ RECOMMENDATION ============ -->
+  <div class="rec-panel">
+    <span class="tag">Recommendation</span>
+    <h2>Ship B — "Board wakes", direction-aware</h2>
+    <p style="color: var(--lab-muted); margin: 6px 0 0; max-width: 66ch; font-size: 14.5px">
+      It's the only candidate that <b style="color: var(--lab-ink)">tells the product's story</b>: the paper dims,
+      the board powers on (the seed already in <code style="font-family: var(--mono); color: var(--lab-accent)">screens.css</code>),
+      the clock starts, amber warms in last, the pulse begins. Asymmetric by design — arrival is celebrated, the
+      return is calm.
+    </p>
+    <ul>
+      <li><span class="m">B</span><span><b>Plan→Trip</b> runs the two-beat wake at <b class="m" style="font-weight: 700">600ms</b>: chrome→indigo, then board brightness+glow rise, accents + pulse arrive on the tail.</span></li>
+      <li><span class="m">B</span><span><b>Trip→Plan</b> is the quiet inverse at <b class="m" style="font-weight: 700">400ms</b>: glow fades, board flattens to paper, the drafting grid resolves. No fanfare — you're back at the desk.</span></li>
+      <li><span class="m">E</span><span>Use <b>Temperature shift</b> for the <b>automatic</b> date-driven switch (no tap to celebrate) — a silent 280ms warm/cool so a mode flip you didn't ask for never startles.</span></li>
+      <li><span class="m">A</span><span><b>Crossfade</b> is the graceful floor and the <b>reduced-motion</b> answer collapses to it — an instant token remap, mode identity intact.</span></li>
+      <li><span class="m">✕</span><span>Skip <b>D (Ripple)</b> — the expanding circle reads Material/consumer-flashy against a calm travel companion. <b>C (Sweep)</b> is lovely but optional polish over B, not a base.</span></li>
+    </ul>
+  </div>
+
+  <p class="foot">
+    Grounded in <code>design-language.md</code> (Night/Day mode identity, "the plan→trip switch is the product's
+    most meaningful moment"), <code>ADR-0016</code> (derived + per-user override switch), and <code>ADR-0028</code>
+    (the plan-violet budget). This is a <b>proposal</b> — adoption means a "Motion &amp; designed transitions"
+    update to the design language plus the CSS wiring (transition vars on the <code>.app</code> chrome + a
+    direction-aware class on the mode flip). Fonts here are a system substitute for Secular One / Assistant /
+    JetBrains Mono; motion, not type, is the subject. — Assaf's Waypoint, v1.
+  </p>
+</div>
+
+<script>
+  (function () {
+    "use strict";
+    var stage = document.getElementById("stage");
+    var toggle = document.getElementById("toggle");
+    var sweep = document.getElementById("sweep");
+    var ripple = document.getElementById("ripple");
+    var board = stage.querySelector(".board");
+    var flip = document.getElementById("flip");
+    var flipLabel = document.getElementById("flip-label");
+    var replay = document.getElementById("replay");
+    var reduce = document.getElementById("reduce");
+    var candsEl = document.getElementById("cands");
+    var whyEl = document.getElementById("why");
+    var durReadout = document.getElementById("dur-readout");
+
+    // honour the OS setting on first load
+    var mq = window.matchMedia("(prefers-reduced-motion: reduce)");
+    reduce.checked = mq.matches;
+
+    var TRIP = "#0e1729", PLAN = "#6e59d6";
+
+    var CANDIDATES = [
+      {
+        key: "A", name: "Crossfade dim", durs: "450ms",
+        desc: "Colors melt paper → board. Honest, cheap, tells no story.",
+        verdict: ["ok", "The floor"],
+        why: "Every themed surface simply cross-fades on <b>--dur</b>. Nothing wrong with it — it's exactly what <b>reduced-motion</b> should collapse to. But it treats the most meaningful moment like any other recolor.",
+      },
+      {
+        key: "B", name: "Board wakes", durs: "600 / 400ms", rec: true,
+        desc: "The board powers on; the way back, daylight returns. Direction-aware.",
+        verdict: ["rec", "Recommended"],
+        why: "<b>The story, animated.</b> Plan→Trip: chrome dims to indigo, the board's brightness + glow rise (the existing <b>board-power</b> seed), amber + pulse arrive last. Trip→Plan runs the quiet inverse, faster. One cinematic beat, earned.",
+      },
+      {
+        key: "C", name: "Dusk sweep", durs: "520ms",
+        desc: "A soft light-line wipes down; night falls behind it.",
+        verdict: ["ok", "Polish"],
+        why: "A luminance sweep travels across the screen and the mode commits behind it — like a blind drawn at dusk. Genuinely pretty and directional, but it's <b>optional connective tissue over B</b>, not a base. Risks feeling gimmicky if it's the whole show.",
+      },
+      {
+        key: "D", name: "Ripple from toggle", durs: "500ms",
+        desc: "The new mode floods out from the switch you tapped.",
+        verdict: ["no", "Too flashy"],
+        why: "A circular reveal expands from the toggle, tying cause to effect. Tactile — but the expanding-circle language reads <b>Material / consumer-flashy</b>, at odds with a calm on-the-ground companion. Also awkward for the <em>auto</em> switch, where there's no tap to originate from.",
+      },
+      {
+        key: "E", name: "Temperature shift", durs: "280ms",
+        desc: "Only the accent warms / cools; the frame holds still.",
+        verdict: ["ok", "The auto-switch"],
+        why: "The whisper: the frame barely moves, only the accent family morphs amber ⇄ violet and the glow/grid fade. Too timid for <em>the</em> moment when a user taps — but <b>perfect for the automatic date-driven switch</b>, which should never startle.",
+      },
+    ];
+
+    var current = "B";
+
+    function label(v) {
+      return v ? v[1] : "";
+    }
+
+    // build candidate cards
+    CANDIDATES.forEach(function (c) {
+      var b = document.createElement("button");
+      b.className = "cand";
+      b.type = "button";
+      b.setAttribute("role", "radio");
+      b.setAttribute("aria-pressed", c.key === current ? "true" : "false");
+      b.dataset.key = c.key;
+      b.innerHTML =
+        (c.rec ? '<span class="rec-badge">★ pick</span>' : "") +
+        '<span class="key">' + c.key + "</span>" +
+        '<span class="name">' + c.name + "</span>" +
+        '<span class="desc">' + c.desc + "</span>" +
+        '<span class="dur">' + c.durs + "</span>";
+      b.addEventListener("click", function () {
+        select(c.key);
+      });
+      candsEl.appendChild(b);
+    });
+
+    function meta(k) {
+      for (var i = 0; i < CANDIDATES.length; i++)
+        if (CANDIDATES[i].key === k) return CANDIDATES[i];
+      return CANDIDATES[0];
+    }
+
+    function select(k) {
+      current = k;
+      stage.dataset.engine = k;
+      Array.prototype.forEach.call(candsEl.children, function (el) {
+        el.setAttribute("aria-pressed", el.dataset.key === k ? "true" : "false");
+      });
+      var c = meta(k);
+      whyEl.innerHTML =
+        '<span class="verdict ' + c.verdict[0] + '">' + label(c.verdict) + "</span>" + c.why;
+    }
+
+    function updateFlipLabel() {
+      var toTrip = stage.dataset.mode === "plan";
+      flipLabel.textContent = toTrip ? "Trip" : "Plan";
+    }
+
+    var busy = false;
+
+    function commit(target) {
+      stage.dataset.mode = target;
+      updateFlipLabel();
+      // sync the header toggle's pressed side happens purely via CSS [data-mode]
+    }
+
+    function setVars(dur, ease) {
+      stage.style.setProperty("--dur", dur + "ms");
+      stage.style.setProperty("--ease", ease);
+      durReadout.textContent = dur + "ms · " + current;
+    }
+
+    function done() {
+      busy = false;
+      flip.disabled = false;
+      replay.disabled = false;
+    }
+
+    function runWake(dir) {
+      // fire the board-power keyframe by re-triggering an inline animation
+      if (dir !== "to-trip") return;
+      board.style.animation = "none";
+      // force reflow so the animation restarts
+      void board.offsetWidth;
+      board.style.animation =
+        "wake 600ms var(--ease-emphasized) both, wakeglow 600ms ease-out both";
+    }
+
+    // dynamic keyframes for the board wake (kept in JS so the mockup is one file)
+    var kf = document.createElement("style");
+    kf.textContent =
+      "@keyframes wake{from{filter:brightness(.5) saturate(.5)}to{filter:none}}" +
+      "@keyframes wakeglow{from{opacity:0}to{opacity:1}}";
+    document.head.appendChild(kf);
+
+    function transition(target) {
+      if (busy || target === stage.dataset.mode) return;
+      var dir = stage.dataset.mode === "plan" ? "to-trip" : "to-plan";
+
+      if (reduce.checked) {
+        setVars(0, "linear");
+        commit(target);
+        durReadout.textContent = "instant · reduced-motion";
+        return;
+      }
+
+      busy = true;
+      flip.disabled = true;
+      replay.disabled = true;
+
+      var eng = current;
+
+      if (eng === "A") {
+        setVars(450, "var(--ease-standard)");
+        commit(target);
+        setTimeout(done, 470);
+      } else if (eng === "E") {
+        setVars(280, "var(--ease-standard)");
+        commit(target);
+        setTimeout(done, 300);
+      } else if (eng === "B") {
+        var d = dir === "to-trip" ? 600 : 400;
+        setVars(d, "var(--ease-emphasized)");
+        commit(target);
+        runWake(dir);
+        setTimeout(done, d + 40);
+      } else if (eng === "C") {
+        // dusk sweep: overlay wipes; commit at the bright midpoint
+        setVars(240, "var(--ease-standard)");
+        sweep.style.setProperty("--sweep-dir", dir === "to-trip" ? "180deg" : "0deg");
+        var from = dir === "to-trip" ? "-100%" : "100%";
+        var to = dir === "to-trip" ? "100%" : "-100%";
+        var anim = sweep.animate(
+          [
+            { transform: "translateY(" + from + ")", opacity: 0 },
+            { transform: "translateY(0%)", opacity: 1, offset: 0.5 },
+            { transform: "translateY(" + to + ")", opacity: 0 },
+          ],
+          { duration: 520, easing: "cubic-bezier(.4,0,.2,1)" }
+        );
+        setTimeout(function () {
+          commit(target);
+        }, 250);
+        anim.onfinish = done;
+      } else if (eng === "D") {
+        // ripple from the active toggle button
+        setVars(200, "var(--ease-standard)");
+        var side = target === "trip" ? "trip" : "plan";
+        var btn = toggle.querySelector('[data-side="' + side + '"]');
+        var sr = stage.getBoundingClientRect();
+        var br = btn.getBoundingClientRect();
+        var ox = ((br.left + br.width / 2 - sr.left) / sr.width) * 100;
+        var oy = ((br.top + br.height / 2 - sr.top) / sr.height) * 100;
+        ripple.style.background = target === "trip" ? TRIP : PLAN;
+        ripple.style.opacity = "1";
+        ripple.style.clipPath = "circle(0% at " + ox + "% " + oy + "%)";
+        var ra = ripple.animate(
+          [
+            { clipPath: "circle(0% at " + ox + "% " + oy + "%)" },
+            { clipPath: "circle(150% at " + ox + "% " + oy + "%)" },
+          ],
+          { duration: 500, easing: "cubic-bezier(.3,0,.2,1)", fill: "forwards" }
+        );
+        setTimeout(function () {
+          commit(target);
+        }, 260);
+        ra.onfinish = function () {
+          ripple.style.opacity = "0";
+          ripple.style.clipPath = "";
+          done();
+        };
+      }
+    }
+
+    // header toggle (the real control) + big button both drive it
+    toggle.addEventListener("click", function (e) {
+      var b = e.target.closest("[data-side]");
+      if (b) transition(b.dataset.side);
+    });
+    flip.addEventListener("click", function () {
+      transition(stage.dataset.mode === "plan" ? "trip" : "plan");
+    });
+    replay.addEventListener("click", function () {
+      // reset to plan (no anim) then play forward to trip
+      var was = current;
+      stage.style.setProperty("--dur", "0ms");
+      commit("plan");
+      setTimeout(function () {
+        select(was);
+        transition("trip");
+      }, 60);
+    });
+
+    select("B");
+    updateFlipLabel();
+
+    // ---- other-transition mini-demos ----
+    document.querySelectorAll("[data-demo]").forEach(function (btn) {
+      btn.addEventListener("click", function () {
+        var kind = btn.dataset.demo;
+        var scope = btn.closest(".demo");
+        if (kind === "tab") {
+          var p1 = scope.querySelector(".p1"),
+            p2 = scope.querySelector(".p2");
+          p1.style.transition = p2.style.transition = "opacity 240ms cubic-bezier(.2,0,0,1)";
+          p1.style.opacity = "0";
+          p2.style.opacity = "1";
+          setTimeout(function () {
+            p1.style.opacity = "1";
+            p2.style.opacity = "0";
+          }, 900);
+        } else if (kind === "toast") {
+          var t = scope.querySelector(".toast");
+          t.style.transition = "transform 240ms cubic-bezier(.2,0,0,1), opacity 240ms";
+          t.style.transform = "translateY(0)";
+          t.style.opacity = "1";
+          setTimeout(function () {
+            t.style.transition = "transform 240ms cubic-bezier(.4,0,1,1), opacity 240ms";
+            t.style.transform = "translateY(60px)";
+            t.style.opacity = "0";
+          }, 1400);
+        } else if (kind === "nav") {
+          var bs = scope.querySelectorAll(".row b");
+          bs.forEach(function (x) {
+            x.classList.remove("on");
+          });
+          var pick = bs[Math.floor(Math.random() * bs.length)];
+          pick.classList.add("on");
+        } else if (kind === "ripple") {
+          var bar = scope.querySelector(".bar");
+          bar.classList.add("show");
+          setTimeout(function () {
+            bar.classList.remove("show");
+          }, 1600);
+        }
+      });
+    });
+  })();
+</script>
