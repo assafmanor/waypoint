@@ -73,3 +73,4 @@ What else we weighed and why we didn't pick it.
 | [0028](0028-plan-violet-color-budget-dark-ready.md) | Plan violet + Night/Day mode identity, semantic color budget, dark-mode-ready tokens         | Accepted |
 | [0029](0029-trip-mode-day-scope-gating.md)          | Trip-mode day-scope: verb gating for past and future days (refines 0025, 0027)               | Accepted |
 | [0030](0030-join-is-link-only.md)                   | Joining a trip is link-only — no short invite codes (paste-a-link covers app-first arrivals) | Accepted |
+| [0031](0031-hosting-on-railway.md)                  | Hosting: Railway, one project (single-origin service, Postgres; buckets later)               | Accepted |

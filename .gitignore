@@ -11,6 +11,7 @@ CLAUDE.local.md
 # Secrets & environment
 .env
 .env.*
+!.env.example
 *.local
 **/secrets.*
 *.pem
@@ -20,6 +21,7 @@ CLAUDE.local.md
 node_modules/
 dist/
 build/
+backend/public/
 .next/
 out/
 coverage/
