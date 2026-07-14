@@ -96,13 +96,11 @@ function ModeToggle() {
 }
 
 function Header({
-  tripCount,
   onSelectDay,
   onOpenSwitcher,
   onOpenAccount,
   onOpenSettings,
 }: {
-  tripCount: number;
   onSelectDay: (date: string) => void;
   onOpenSwitcher: () => void;
   onOpenAccount: () => void;
@@ -147,18 +145,14 @@ function Header({
       <ModeToggle />
       <div className="trip-row">
         <div>
-          {tripCount > 1 ? (
-            <button
-              className="trip-name-btn"
-              onClick={onOpenSwitcher}
-              aria-label={t.shell.switcher.title}
-            >
-              <span className="trip-name">{trip.name}</span>
-              <span className="chev">▾</span>
-            </button>
-          ) : (
+          <button
+            className="trip-name-btn"
+            onClick={onOpenSwitcher}
+            aria-label={t.shell.switcher.title}
+          >
             <span className="trip-name">{trip.name}</span>
-          )}
+            <span className="chev">▾</span>
+          </button>
           <div className="trip-sub">
             {trip.destination}
             <span className="dot">{DOT_SEPARATOR}</span>
@@ -241,7 +235,7 @@ function Screen({ tab }: { tab: TabId }) {
 // (design-language mode identity: plan mode never uses amber) without every
 // component reading mode state. Needs its own component because App renders
 // ModeProvider itself and so can't call useMode.
-function Shell({ tripCount }: { tripCount: number }) {
+function Shell() {
   const [tab, setTab] = useState<TabId>('home');
   const [accountOpen, setAccountOpen] = useState(false);
   const { mode } = useMode();
@@ -255,7 +249,6 @@ function Shell({ tripCount }: { tripCount: number }) {
   return (
     <div className="app" data-mode={mode}>
       <Header
-        tripCount={tripCount}
         onSelectDay={onSelectDay}
         onOpenSwitcher={() => navigate('/trips')}
         onOpenAccount={() => setAccountOpen(true)}
@@ -374,7 +367,7 @@ function RootSurface() {
   return (
     <TripProvider tripId={tripId}>
       <ModeProvider>
-        <Shell tripCount={trips.length} />
+        <Shell />
       </ModeProvider>
     </TripProvider>
   );
