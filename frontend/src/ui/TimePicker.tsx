@@ -61,6 +61,13 @@ export function clampSameDay(min: number): number {
   return Math.min(min, LAST_MINUTE);
 }
 
+/** The nearest round (15-min) slot to a minute-of-day, capped at the last slot
+ *  (23:45) so the suggestion is always a real list row. Used to suggest — never
+ *  to mutate — a round time when reopening the picker on an off-grid value. */
+export function nearestRoundSlot(min: number): number {
+  return Math.min(Math.round(min / STEP) * STEP, MINUTES_IN_DAY - STEP);
+}
+
 function durationPhrase(min: number): string {
   const h = Math.floor(min / 60);
   const m = min % 60;
@@ -76,9 +83,10 @@ function durationPhrase(min: number): string {
 
 const ALL_TIMES = Array.from({ length: MINUTES_IN_DAY / STEP }, (_, i) => i * STEP);
 
-/** Scroll the selected row to the vertical centre of its list on open. */
+/** Scroll the selected row — or, for an off-grid value, the suggested nearest
+ *  round row — to the vertical centre of its list on open. */
 function centreSelected(list: HTMLDivElement | null) {
-  const on = list?.querySelector<HTMLElement>('.tp-list-on');
+  const on = list?.querySelector<HTMLElement>('.tp-list-on, .tp-list-suggest');
   if (on && list) list.scrollTop = on.offsetTop - list.clientHeight / 2 + on.clientHeight / 2;
 }
 
@@ -104,6 +112,17 @@ export function TimePicker({
     if (startMin == null) return [];
     return DUR_PRESETS.filter((d) => startMin + d <= LAST_MINUTE);
   }, [startMin]);
+
+  // "Suggest rounds when reselecting" — when the current value is off-grid, the
+  // list scrolls to and highlights the nearest round slot / preset as a
+  // *suggestion*. It never mutates the value: 11:47 stays 11:47 until you tap
+  // 11:45. (Fixes the reopen-lands-on-00:00 case for an off-grid time.)
+  const suggestStart =
+    startMin != null && startMin % STEP !== 0 ? nearestRoundSlot(startMin) : null;
+  const suggestDur =
+    duration != null && durPresets.length > 0 && !durPresets.includes(duration)
+      ? durPresets.reduce((a, b) => (Math.abs(b - duration) < Math.abs(a - duration) ? b : a))
+      : null;
 
   const openPanel = (which: 'start' | 'dur') => {
     setNote(null);
@@ -213,7 +232,13 @@ export function TimePicker({
                 <button
                   key={min}
                   type="button"
-                  className={min === startMin ? 'tp-list-on' : undefined}
+                  className={
+                    min === startMin
+                      ? 'tp-list-on'
+                      : min === suggestStart
+                        ? 'tp-list-suggest'
+                        : undefined
+                  }
                   onClick={() => commitStart(min)}
                 >
                   <span dir="ltr">{toHHMM(min)}</span>
@@ -244,12 +269,14 @@ export function TimePicker({
               />
             </div>
             {note && <div className="tp-note">{note}</div>}
-            <div className="tp-list tp-list-dur">
+            <div className="tp-list tp-list-dur" ref={centreSelected}>
               {durPresets.map((d) => (
                 <button
                   key={d}
                   type="button"
-                  className={d === duration ? 'tp-list-on' : undefined}
+                  className={
+                    d === duration ? 'tp-list-on' : d === suggestDur ? 'tp-list-suggest' : undefined
+                  }
                   onClick={() => commitDuration(d)}
                 >
                   <span>{durationPhrase(d)}</span>

@@ -1138,6 +1138,18 @@
   font-family: var(--font-body);
   color: var(--amber-deep);
 }
+/* the off-grid "nearest round" suggestion: lighter than a real selection, and
+   no ✓ — it's a scroll target / hint, not the current value */
+.tp-list button.tp-list-suggest {
+  background: rgba(233, 166, 60, 0.06);
+  color: var(--amber-deep);
+}
+.tp-list button.tp-list-suggest::after {
+  content: '↩';
+  font-family: var(--font-body);
+  font-size: 12px;
+  color: var(--muted);
+}
 .tp-list-dur button {
   font-family: var(--font-body);
   font-weight: 700;
