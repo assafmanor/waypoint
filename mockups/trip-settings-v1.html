@@ -420,33 +420,117 @@
         line-height: 1.5;
       }
 
-      /* member management actions (admin only) */
-      .mem-actions {
-        display: flex;
-        align-items: center;
-        gap: 4px;
-        flex: 0 0 auto;
-      }
-      .mem-actions button {
+      /* member management: a single kebab opens a bottom action sheet (admin only) */
+      .kebab {
         font: inherit;
+        flex: 0 0 auto;
+        width: 32px;
+        height: 32px;
+        border-radius: 9px;
+        border: 1px solid transparent;
+        background: none;
+        color: var(--muted);
+        font-size: 18px;
+        line-height: 1;
         cursor: pointer;
-        border-radius: 8px;
-        padding: 5px 8px;
-        font-size: 11.5px;
-        font-weight: 700;
-        border: 1px solid var(--line);
-        background: rgba(22, 35, 61, 0.04);
+        display: grid;
+        place-items: center;
+      }
+      .kebab:hover {
+        background: rgba(22, 35, 61, 0.05);
         color: var(--ink);
       }
-      .mem-actions .promote {
-        color: var(--amber-deep);
-        border-color: rgba(233, 166, 60, 0.35);
-        background: rgba(233, 166, 60, 0.1);
+
+      /* bottom action sheet, clipped to the phone frame */
+      .msheet-backdrop {
+        position: absolute;
+        inset: 0;
+        background: rgba(14, 23, 41, 0.4);
+        display: none;
+        align-items: flex-end;
+        z-index: 20;
+        animation: bfade 0.18s ease;
       }
-      .mem-actions .remove {
+      .msheet-backdrop.open {
+        display: flex;
+      }
+      @keyframes bfade {
+        from {
+          opacity: 0;
+        }
+      }
+      .msheet {
+        width: 100%;
+        background: var(--card);
+        border-radius: 20px 20px 0 0;
+        padding: 8px 16px calc(16px + env(safe-area-inset-bottom));
+        box-shadow: 0 -12px 30px -12px rgba(14, 23, 41, 0.45);
+        animation: bup 0.22s cubic-bezier(0.16, 1, 0.3, 1);
+      }
+      @keyframes bup {
+        from {
+          transform: translateY(100%);
+        }
+      }
+      .msheet .grip {
+        width: 36px;
+        height: 4px;
+        border-radius: 99px;
+        background: var(--line);
+        margin: 4px auto 10px;
+      }
+      .msheet .who {
+        display: flex;
+        align-items: center;
+        gap: 10px;
+        padding: 4px 4px 12px;
+        border-bottom: 1px solid var(--line);
+        margin-bottom: 8px;
+      }
+      .msheet .who .mn {
+        font-weight: 700;
+        font-size: 14.5px;
+      }
+      .msheet .act {
+        font: inherit;
+        width: 100%;
+        display: flex;
+        align-items: center;
+        gap: 11px;
+        padding: 13px 12px;
+        border: 0;
+        background: none;
+        border-radius: 11px;
+        font-size: 14.5px;
+        font-weight: 600;
+        color: var(--ink);
+        cursor: pointer;
+        text-align: start;
+      }
+      .msheet .act:hover {
+        background: #f4f6fa;
+      }
+      .msheet .act.danger-item {
         color: var(--miss);
-        border-color: rgba(194, 88, 78, 0.3);
-        background: rgba(194, 88, 78, 0.08);
+      }
+      .msheet .act .ico {
+        font-size: 17px;
+        width: 22px;
+        text-align: center;
+        flex: 0 0 auto;
+      }
+      .msheet .cancel {
+        font: inherit;
+        width: 100%;
+        margin-top: 6px;
+        padding: 12px;
+        border: 1px solid var(--line);
+        background: none;
+        border-radius: 12px;
+        font-size: 14px;
+        font-weight: 700;
+        color: var(--muted);
+        cursor: pointer;
       }
       .peer-managed-note {
         display: none;
@@ -841,37 +925,43 @@
                 <div class="av" style="background: #5ec5b6">נ</div>
                 <div class="mn">נועם</div>
                 <span class="role mem">משתתף</span>
-                <div class="mem-actions admin-only">
-                  <button class="promote" title="הפוך למנהל" aria-label="הפוך את נועם למנהל">👑</button>
-                  <button class="remove" aria-label="הסר את נועם">הסר</button>
-                </div>
+                <button class="kebab admin-only" onclick="openMemberSheet('נועם')" aria-label="פעולות על נועם">⋮</button>
               </div>
               <div class="member">
                 <div class="av" style="background: #e88c8c">ד</div>
                 <div class="mn">דנה</div>
                 <span class="role mem">משתתף</span>
-                <div class="mem-actions admin-only">
-                  <button class="promote" title="הפוך למנהל" aria-label="הפוך את דנה למנהל">👑</button>
-                  <button class="remove" aria-label="הסר את דנה">הסר</button>
-                </div>
+                <button class="kebab admin-only" onclick="openMemberSheet('דנה')" aria-label="פעולות על דנה">⋮</button>
               </div>
               <div class="member">
                 <div class="av" style="background: #9c8ce8">מ</div>
                 <div class="mn">מאור</div>
                 <span class="role mem">משתתף</span>
-                <div class="mem-actions admin-only">
-                  <button class="promote" title="הפוך למנהל" aria-label="הפוך את מאור למנהל">👑</button>
-                  <button class="remove" aria-label="הסר את מאור">הסר</button>
-                </div>
+                <button class="kebab admin-only" onclick="openMemberSheet('מאור')" aria-label="פעולות על מאור">⋮</button>
               </div>
               <div class="member">
                 <div class="av" style="background: #8cb6e8">ר</div>
                 <div class="mn">רון</div>
                 <span class="role mem">משתתף</span>
-                <div class="mem-actions admin-only">
-                  <button class="promote" title="הפוך למנהל" aria-label="הפוך את רון למנהל">👑</button>
-                  <button class="remove" aria-label="הסר את רון">הסר</button>
+                <button class="kebab admin-only" onclick="openMemberSheet('רון')" aria-label="פעולות על רון">⋮</button>
+              </div>
+            </div>
+
+            <!-- member action sheet (opened by a member's kebab) -->
+            <div class="msheet-backdrop" id="msheet" onclick="if(event.target===this)closeMemberSheet()">
+              <div class="msheet" role="dialog" aria-label="פעולות על משתתף">
+                <div class="grip"></div>
+                <div class="who">
+                  <div class="av" id="ms-av">נ</div>
+                  <div class="mn" id="ms-name">נועם</div>
                 </div>
+                <button class="act" onclick="closeMemberSheet(); alert('הפוך למנהל (מוקאפ)')">
+                  <span class="ico">👑</span> הפוך למנהל
+                </button>
+                <button class="act danger-item" onclick="closeMemberSheet(); alert('הסר מהטיול (מוקאפ)')">
+                  <span class="ico">🚪</span> הסר מהטיול
+                </button>
+                <button class="cancel" onclick="closeMemberSheet()">ביטול</button>
               </div>
             </div>
             <div class="roleview-flag admin-only">👑 מנהל · אפשר לערוך פרטים, לקדם מנהלים ולהסיר משתתפים</div>
@@ -1026,6 +1116,17 @@
       function editDetails(on) {
         document.getElementById('details').classList.toggle('editing', on);
       }
+      const MEMBER_COLORS = { נועם: '#5ec5b6', דנה: '#e88c8c', מאור: '#9c8ce8', רון: '#8cb6e8' };
+      function openMemberSheet(name) {
+        document.getElementById('ms-name').textContent = name;
+        const av = document.getElementById('ms-av');
+        av.textContent = name.slice(0, 1);
+        av.style.background = MEMBER_COLORS[name] || '#8cb6e8';
+        document.getElementById('msheet').classList.add('open');
+      }
+      function closeMemberSheet() {
+        document.getElementById('msheet').classList.remove('open');
+      }
       function copyInvite(el) {
         const code = document.getElementById('invite-code');
         const prev = code.textContent;
@@ -1046,6 +1147,7 @@
         btns.forEach((b) => b.classList.remove('on'));
         if (btns[1]) btns[1].classList.add('on');
       }
+      if (location.hash === '#member') openMemberSheet('נועם');
     </script>
   </body>
 </html>
