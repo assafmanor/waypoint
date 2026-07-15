@@ -35,6 +35,7 @@ export class MaybeItemsService {
               tripId,
               title: input.title,
               icon: input.icon,
+              category: input.category,
               placeId: input.placeId,
               consumed: false,
               createdBy: actorUserId,
