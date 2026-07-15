@@ -1,16 +1,19 @@
 <!doctype html>
 <!-- STATUS: agreed design for parallel / overlapping-time events. ADR-0028-compliant
      (mode identity, color budget, hard/soft grammar). Decisions (session 22):
-       • Unified rule — in an overlap group, if one event contains ALL the others
-         → NESTING; otherwise → a flat CLUSTER. Nesting is one level deep (chains
-         flatten). Both modes decide this the same way.
+       • Recursive model — build a containment forest (parent = smallest strict
+         container); among siblings, partial overlaps form a CLUSTER. Nesting and
+         clustering COMPOSE (a nest can hold a cluster; a cluster member can be a
+         nest). Both modes decide this the same way. Render caps indent at ~2
+         levels (deeper flattens to "כולל N"); equal spans = cluster peers.
        • Containment → nesting — identical in Trip and Plan: envelope + tucked
          contents ("כולל N"), neutral, no "הזז" (usually intentional).
        • Partial overlap → cluster — Trip: quiet neutral bracket ("בו-זמנית").
          Plan: bound plan-violet group + header "הזז", deliberately DISTINCT from a
          gap (gap = airy additive pill between rows; shown alongside for contrast).
-       • "הזז" = ripple, inverted — moves a soft event to a clean slot (snap
-         before/after the anchor + exact-time fallback); hard stays an anchor.
+       • "הזז" = ripple, inverted — pick WHICH soft event to move when several are
+         soft (hard shows as a disabled anchor), then a clean slot (snap
+         before/after the anchor + exact-time fallback).
        • Board — one loud "now" hero + quiet "ועוד N עכשיו" expander, plus a
          group-split variant when there is no clear primary.
      Where this mockup and docs/design/design-language.md conflict, the doc wins. -->
@@ -435,6 +438,70 @@
         color: var(--muted);
         font-weight: 700;
         font-size: 12.5px;
+      }
+      /* multi-mover chooser: which soft event to move? hard events show disabled
+         as anchors. Pick one → its clean slots reveal (reusing .resolve-opt). */
+      .mover {
+        border: 1px solid var(--line);
+        border-radius: 12px;
+        margin-bottom: 8px;
+        overflow: hidden;
+      }
+      .mover-head {
+        display: flex;
+        align-items: center;
+        gap: 9px;
+        width: 100%;
+        background: var(--card);
+        border: 0;
+        font: inherit;
+        text-align: start;
+        padding: 10px 12px;
+        cursor: pointer;
+      }
+      .mover-head .ic {
+        width: 28px;
+        height: 28px;
+        border-radius: 8px;
+        background: var(--paper);
+        display: grid;
+        place-items: center;
+        font-size: 15px;
+        flex: none;
+      }
+      .mover-head .nm {
+        flex: 1;
+        font-weight: 700;
+        font-size: 13.5px;
+      }
+      .mover-head .tm {
+        font-family: 'JetBrains Mono', monospace;
+        font-size: 11.5px;
+        color: var(--muted);
+      }
+      .mover-head .chev {
+        color: var(--muted);
+        font-size: 12px;
+      }
+      .mover.anchor {
+        opacity: 0.6;
+      }
+      .mover.anchor .mover-head {
+        cursor: default;
+      }
+      .anchor-note {
+        font-size: 10.5px;
+        font-weight: 700;
+        color: var(--amber-deep);
+        white-space: nowrap;
+      }
+      .mover-slots {
+        padding: 2px 10px 9px;
+        background: rgba(110, 89, 214, 0.05);
+        border-top: 1px solid var(--line);
+      }
+      .mover-slots .resolve-opt {
+        margin: 8px 0 0;
       }
 
       /* ── gap chip (unchanged grammar) — shown for contrast ── */
@@ -1006,12 +1073,12 @@
           </div>
         </div>
 
-        <!-- The resolve sheet -->
+        <!-- The resolve sheet — choose which soft event to move -->
         <div class="col">
-          <h2 class="col-head">גיליון "הזז"</h2>
+          <h2 class="col-head">גיליון "הזז" — בחירת אירוע</h2>
           <p class="col-note">
-            משבצות נקיות בהקשה אחת (הצמדה לפני/אחרי העוגן) + נפילה חזרה לקובע־הזמן המדויק
-            (ADR-0036).
+            כשיש כמה אירועים גמישים, בוחרים <b>מה</b> להזיז; ואז המשבצות הנקיות של אותו אירוע
+            נפרשות. קשיח מופיע כעוגן מושבת.
           </p>
           <div class="phone host">
             <div class="dim">
@@ -1040,29 +1107,181 @@
             <div class="scrim"></div>
             <div class="sheet">
               <div class="sheet-grip"></div>
-              <div class="sheet-title">להזיז את הסיור בעיר</div>
-              <div class="sheet-sub">חופף לסדנת בישול ב-30 דק׳ · משך נשמר (שעה וחצי)</div>
-              <button class="resolve-opt">
-                <span class="lead">
-                  <span class="ttl">אחרי סדנת בישול</span>
-                  <span class="sub">מסתיים 14:30</span>
-                </span>
-                <span class="tm" dir="ltr">13:00</span>
-              </button>
-              <button class="resolve-opt">
-                <span class="lead">
-                  <span class="ttl">לפני סדנת בישול</span>
-                  <span class="sub">מסתיים 11:00</span>
-                </span>
-                <span class="tm" dir="ltr">09:30</span>
-              </button>
-              <button class="resolve-opt other">זמן אחר…</button>
+              <div class="sheet-title">פתרו את החפיפה</div>
+              <div class="sheet-sub">בחרו איזה אירוע גמיש להזיז · משך נשמר</div>
+
+              <!-- picked mover, slots revealed -->
+              <div class="mover">
+                <button class="mover-head">
+                  <span class="ic">🚶</span>
+                  <span class="nm">סיור בעיר</span>
+                  <span class="tm" dir="ltr">12:30–14:00</span>
+                  <span class="chev">▴</span>
+                </button>
+                <div class="mover-slots">
+                  <button class="resolve-opt">
+                    <span class="lead">
+                      <span class="ttl">אחרי סדנת בישול</span>
+                      <span class="sub">מסתיים 14:30</span>
+                    </span>
+                    <span class="tm" dir="ltr">13:00</span>
+                  </button>
+                  <button class="resolve-opt">
+                    <span class="lead">
+                      <span class="ttl">לפני סדנת בישול</span>
+                      <span class="sub">מסתיים 11:00</span>
+                    </span>
+                    <span class="tm" dir="ltr">09:30</span>
+                  </button>
+                  <button class="resolve-opt other">זמן אחר…</button>
+                </div>
+              </div>
+
+              <!-- other soft mover, collapsed -->
+              <div class="mover">
+                <button class="mover-head">
+                  <span class="ic">🍳</span>
+                  <span class="nm">סדנת בישול</span>
+                  <span class="tm" dir="ltr">11:00–13:00</span>
+                  <span class="chev">▾</span>
+                </button>
+              </div>
+
+              <!-- hard event: shown as a disabled anchor -->
+              <div class="mover anchor">
+                <div class="mover-head">
+                  <span class="ic">✈️</span>
+                  <span class="nm">טיסה</span>
+                  <span class="anchor-note">🔒 עוגן · לא זז</span>
+                </div>
+              </div>
             </div>
           </div>
           <p class="col-note" style="margin-top: 12px">
-            אישור = הזזה אופטימית + טוסט ביטול. אם ההזזה יוצרת חפיפה חדשה במורד היום, נכנס מנגנון
-            הריפל הקיים ("לדחוף גם את הבאים?").
+            כניסה מהכותרת ("הזז") פותחת את הבחירה; כניסה מתג החפיפה על כרטיס פותחת ישר את אותו
+            אירוע. אישור = הזזה אופטימית + ביטול; חפיפה חדשה במורד היום מפעילה את הריפל הקיים.
           </p>
+        </div>
+      </div>
+
+      <!-- ══════════ COMPOUND CASES — nesting + clustering compose ══════════ -->
+      <div class="caption">מקרים מורכבים · קינון ואשכול מתחברים רקורסיבית (עומק תצוגה מוגבל)</div>
+      <div class="cols">
+        <!-- Chain A ⊃ B ⊃ C -->
+        <div class="col">
+          <h2 class="col-head">שרשרת · א׳ ⊃ ב׳ ⊃ ג׳</h2>
+          <p class="col-note">קינון אמיתי עד 2 רמות הזחה; רמות עמוקות יותר משוטחות פנימה.</p>
+          <div class="phone">
+            <div class="day-sub">יום 1 · יום חמישי · לפה ולשם</div>
+            <div class="nest">
+              <div class="nest-head">
+                <span class="badge">🎪</span>
+                <span class="main">
+                  <span class="t">פסטיבל <span class="nest-note">· כולל 2</span></span>
+                </span>
+                <span class="time" dir="ltr">10:00–20:00</span>
+              </div>
+              <div class="inside">
+                <div class="nest" style="margin-bottom: 0">
+                  <div class="nest-head">
+                    <span class="badge">🎭</span>
+                    <span class="main">
+                      <span class="t">מופע ערב <span class="nest-note">· כולל 1</span></span>
+                    </span>
+                    <span class="time" dir="ltr">17:00–19:00</span>
+                  </div>
+                  <div class="inside">
+                    <div class="item soft" style="margin-bottom: 0">
+                      <span class="badge">🎸</span>
+                      <span class="main"><span class="t">סט ראשי</span></span>
+                      <span class="time" dir="ltr">18:00–18:45</span>
+                    </div>
+                  </div>
+                </div>
+              </div>
+            </div>
+          </div>
+        </div>
+
+        <!-- Overlap within containment: a nest holding a cluster -->
+        <div class="col">
+          <h2 class="col-head">חפיפה בתוך הכלה</h2>
+          <p class="col-note">
+            מעטפת שמכילה שני אירועים שחופפים <i>זה את זה</i> → אשכול <b>בתוך</b> הקינון. בתכנון
+            האשכול הפנימי מקבל "הזז".
+          </p>
+          <div class="phone">
+            <div class="day-sub">יום 1 · יום חמישי · לפה ולשם</div>
+            <div class="nest">
+              <div class="nest-head">
+                <span class="badge">🏖️</span>
+                <span class="main">
+                  <span class="t">יום ים <span class="nest-note">· כולל 2</span></span>
+                </span>
+                <span class="time" dir="ltr">10:00–18:00</span>
+              </div>
+              <div class="inside">
+                <div class="cluster" style="margin-bottom: 0">
+                  <div class="cluster-head">
+                    <span class="brk">⎣</span> בו-זמנית ·
+                    <span class="win" dir="ltr">11:00–14:00</span>
+                  </div>
+                  <div class="body">
+                    <div class="item soft">
+                      <span class="badge">🤿</span>
+                      <span class="main"><span class="t">שנורקלינג</span></span>
+                      <span class="time" dir="ltr">11:00–13:00</span>
+                    </div>
+                    <div class="item soft" style="margin-bottom: 0">
+                      <span class="badge">🏄</span>
+                      <span class="main"><span class="t">שיעור גלישה</span></span>
+                      <span class="time" dir="ltr">12:30–14:00</span>
+                    </div>
+                  </div>
+                </div>
+              </div>
+            </div>
+          </div>
+        </div>
+
+        <!-- Containment within overlap: a cluster whose member is a nest -->
+        <div class="col">
+          <h2 class="col-head">הכלה בתוך חפיפה</h2>
+          <p class="col-note">
+            שני אירועים חופפים חלקית (אף אחד לא מכיל את השני), ואחד מהם בעצמו מעטפת → אשכול שאחד
+            מחבריו הוא קינון.
+          </p>
+          <div class="phone">
+            <div class="day-sub">יום 1 · יום חמישי · לפה ולשם</div>
+            <div class="cluster">
+              <div class="cluster-head">
+                <span class="brk">⎣</span> בו-זמנית · <span class="win" dir="ltr">09:00–18:00</span>
+              </div>
+              <div class="body">
+                <div class="item soft">
+                  <span class="badge">🚴</span>
+                  <span class="main"><span class="t">סיור אופניים</span></span>
+                  <span class="time" dir="ltr">09:00–12:00</span>
+                </div>
+                <div class="nest" style="margin-bottom: 0">
+                  <div class="nest-head">
+                    <span class="badge">🏖️</span>
+                    <span class="main">
+                      <span class="t">יום ים <span class="nest-note">· כולל 1</span></span>
+                    </span>
+                    <span class="time" dir="ltr">11:00–18:00</span>
+                  </div>
+                  <div class="inside">
+                    <div class="item soft" style="margin-bottom: 0">
+                      <span class="badge">🍔</span>
+                      <span class="main"><span class="t">צהריים</span></span>
+                      <span class="time" dir="ltr">13:00–14:00</span>
+                    </div>
+                  </div>
+                </div>
+              </div>
+            </div>
+          </div>
         </div>
       </div>
 
@@ -1074,8 +1293,14 @@
             חפיפה נשאר שורה רגילה. <code>end === start</code> (גב-אל-גב) אינו חפיפה.
           </li>
           <li>
-            <b>ההחלטה: הכלה מול חפיפה חלקית.</b> אם אירוע יחיד מכיל את <i>כל</i> השאר →
-            <b>קינון</b>. אחרת → <b>אשכול שטוח</b>. שרשרת קינון משוטחת לרמה אחת (בלי בבושקה בטלפון).
+            <b>מבנה רקורסיבי (יער־הכלה).</b> הורה = הטווח הקטן ביותר שמכיל את האירוע. בין אחים באותה
+            רמה: מי שחופף חלקית מקובץ ל<b>אשכול</b>. כך <b>קינון ואשכול מתחברים</b> — קינון יכול
+            להכיל אשכול (חפיפה בתוך הכלה) ואיבר באשכול יכול להיות קינון (הכלה בתוך חפיפה).
+          </li>
+          <li>
+            <b>עומק תצוגה מוגבל.</b> הזחה עד 2 רמות; רמות עמוקות יותר משוטחות פנימה ("כולל N",
+            ניתן־להרחבה). טווחים שווים = עמיתים באשכול, לא קינון. המודל מדויק, התצוגה חסומה לרוחב
+            טלפון.
           </li>
           <li>
             <b>קינון — זהה בשני המצבים.</b> מעטפת + תוכן מקונן ("כולל N"), ניטרלי, בלי "הזז" (בדרך
@@ -1086,10 +1311,11 @@
             בסגול + "הזז", ובמכוון שונה מפער (אוורירי, מוסיף, בין־שורות).
           </li>
           <li>
-            <b>"הזז" = ריפל הפוך.</b> מזיז אירוע <i>גמיש</i> בלבד (קשיח = עוגן), משך נשמר. מציע
-            משבצת נקייה לפני/אחרי העוגן בהקשה אחת, או קובע־זמן מדויק (ADR-0036); אופטימי + ביטול.
-            חפיפה חדשה במורד היום מפעילה את מנגנון הריפל הקיים. שתי־קשיחות שחופפות = אזהרת ⚠️ בלבד
-            (אין "הזז").
+            <b>"הזז" = ריפל הפוך.</b> מזיז אירוע <i>גמיש</i> בלבד (קשיח = עוגן), משך נשמר. כשיש כמה
+            גמישים — <b>בוחרים מה להזיז</b> (קשיח מופיע כעוגן מושבת); כניסה מתג־החפיפה מדלגת ישר
+            לאירוע שנבחר. ואז משבצת נקייה לפני/אחרי העוגן בהקשה אחת, או קובע־זמן מדויק (ADR-0036);
+            אופטימי + ביטול. חפיפה חדשה במורד היום מפעילה את הריפל הקיים. שתי־קשיחות שחופפות = אזהרת
+            ⚠️ בלבד (אין "הזז").
           </li>
           <li><b>דקדוק קשיח/רך נשמר בתוך האשכול</b> (קשיח = כרטיס מלא + 🔒 + קוד; רך = מקווקו).</li>
           <li>

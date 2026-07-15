@@ -30,28 +30,39 @@ up; incidental collisions.
 3. **Board:** one loud `now` hero + a quiet **"ועוד N עכשיו"** expander; a
    distinct **group-split** variant when there's no clear primary. (Approved.)
 
-### The unified rule (day view, both modes)
+### The model is recursive (day view, both modes)
 
-Time-overlapping events merge into a group (interval-merge / connected
-component). Then one rule decides the shape, **the same way in both modes**:
+Overlap isn't one binary decision per group — the correct structure is a
+**containment forest with per-level clustering**, decided the same way in both
+modes:
 
-- **If a single event contains _all_ the others → NESTING** (envelope + tucked
-  contents).
-- **Otherwise → a flat CLUSTER.**
+1. **Containment forest.** For each event, its parent is the _smallest_ interval
+   that strictly contains it (stack/interval-tree build over events sorted by
+   start asc, end desc). Roots = events nothing contains.
+2. **Per-level clustering.** Among siblings at any level (roots, or the children
+   of one node), events that **partially overlap** (overlap but neither contains
+   the other) group into a **cluster**.
+3. **They compose, recursively.** A nest can hold a cluster (**overlap within
+   containment** — e.g. a beach day holding two things that clash), and a cluster
+   member can be a nest (**containment within overlap** — two partially
+   overlapping events, one of which is itself an envelope). A **chain** A ⊃ B ⊃ C
+   is just parent→child→grandchild.
 
-Nesting is **one level deep** — a chain (A ⊃ B ⊃ C) flattens to all contents
-under the outermost container (no Russian-doll indentation on a phone). If
-anything only partially sticks out of the would-be envelope, the whole group
-falls back to a flat cluster.
+Primitives: `contains(A,B)` = `A.start ≤ B.start && A.end ≥ B.end && A≠B`;
+`partialOverlap(A,B)` = overlap **and** neither contains the other; **equal
+spans** = cluster peers (not arbitrary nesting), tie-broken by `sortOrder`.
+`end === start` (back-to-back) is **not** overlap.
 
-Concurrency is shown with **structure + neutral ink**, never a new semantic hue
-(amber stays time/now; violet stays plan). Hard/soft grammar is preserved inside
-both nests and clusters (solid+🔒+code vs dashed+hatch). A single non-overlapping
-event stays a plain row. `end === start` (back-to-back) is **not** an overlap.
-(The proportional "time-rail" variant was **not** chosen.)
+**Rendering is bounded even though the model isn't.** Indent caps at ~2 levels;
+anything deeper flattens into its deepest rendered container as an expandable
+"כולל N" (no Russian-doll on a 360px phone). Concurrency is shown with
+**structure + neutral ink**, never a new hue (amber stays time/now, violet stays
+plan). Hard/soft grammar is preserved inside nests and clusters. A single
+non-overlapping event stays a plain row. (The proportional "time-rail" variant
+was **not** chosen.)
 
 - **Containment → nesting** is identical in Trip and Plan (usually intentional —
-  nothing to resolve): container row + contents indented one level, "כולל N".
+  nothing to resolve): container row + contents indented, "כולל N".
 - **Partial overlap → cluster** differs only by mode: **Trip** = a quiet neutral
   side brace + "בו-זמנית" header; **Plan** = the flagged violet group below.
 
@@ -79,16 +90,19 @@ overlap, shift one soft event to clear it."
 
 - **Mover is always soft** (hard = anchor, never moves). Two overlapping _hard_
   events → no "הזז", just the ⚠️ line (a real double-booking to fix in reality).
-- Tapping "הזז" (or a card's seam tag) opens a resolve **Sheet** scoped to the
-  soft mover: one-tap **clean slots** snapped to the anchor's edges — "אחרי · <end>"
-  / "לפני · <start>" — plus **"זמן אחר…"** → the ADR-0036 time-setter seeded with
-  the nearest free slot. **Duration is preserved** (move, not resize).
+- **Choose which event to move.** When a cluster has several soft events, the
+  sheet first lists them ("מה להזיז?"); hard members appear as **disabled
+  anchors** (🔒 עוגן) so it's clear why they can't move. Entry points: the header
+  **"הזז"** opens the chooser; a card's **seam tag** opens straight to that event.
+- Picking a mover reveals its one-tap **clean slots** snapped to the anchor's
+  edges — "אחרי · &lt;end&gt;" / "לפני · &lt;start&gt;" — plus **"זמן אחר…"** →
+  the ADR-0036 time-setter seeded with the nearest free slot. **Duration is
+  preserved** (move, not resize).
 - **Optimistic + undo**, like every verb. If the move creates a _new_ downstream
   overlap, the move's own `rippleSuggestion` handles the chain ("push the rest
   too?"). Resolve one collision at a time; re-cluster after.
 - **Same-day only** (ADR-0036); no moving into the past (ADR-0029), so "לפני" is
   offered only when that slot exists today and isn't past.
-- Multi-mover clusters: "הזז" targets the invoked event; others keep their own.
 
 ### Board
 
@@ -100,8 +114,11 @@ into "ועוד N עכשיו". Group-split variant (no primary): two equal rows u
 
 `deriveNow` returns single `now`/`next` today. To support this it should return
 `nowAll: TripEvent[]` / `nextAll: TripEvent[]` (concurrency groups), still derived
-from the clock, never stored (ADR-0018). A shared `mergeOverlaps`/`clusterByTime`
-helper feeds both the day view and the board.
+from the clock, never stored (ADR-0018). A shared pure helper — e.g.
+`buildTimeTree(events)` → a forest of `{ event, kind: 'nest'|'cluster'|'leaf',
+children }` — feeds both the day view (recursive render) and the board (flatten
+the "now" set, pick the primary). The board doesn't need the tree shape, only the
+concurrent set + primary rule.
 
 ## Open question (deferred)
 
@@ -112,8 +129,11 @@ helper feeds both the day view and the board.
 
 ## Next step
 
-Write an ADR (day-view concurrency cluster + Plan overlap-vs-gap distinction +
-board concurrency), then: extend `deriveNow` to `nowAll[]`/`nextAll[]`, add a
-shared `clusterByTime` helper (`packages/shared` or `lib/time`), implement in
-`DayView`/`PlanDay`/`Home`, and test cluster merging, back-to-back non-overlap,
-and primary-`now` selection (hard > ends-soonest > starts-first).
+Write an ADR (recursive containment-forest + per-level clustering; Plan
+overlap-vs-gap distinction; "הזז" resolve incl. mover chooser; board concurrency),
+then: add the pure `buildTimeTree` helper (`lib/time` or `packages/shared`),
+extend `deriveNow` to `nowAll[]`/`nextAll[]`, implement recursive render in
+`DayView`/`PlanDay` + the board changes in `Home`. Tests: containment forest
+(chain, overlap-in-containment, containment-in-overlap), back-to-back non-overlap,
+equal-span peers, indent-depth cap, and primary-`now` selection
+(hard > ends-soonest > starts-first).
