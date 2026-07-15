@@ -10,7 +10,7 @@ Mode is **derived**, never stored (ADR-0016): `today ∈ [startDate, endDate] �
 
 Two problems with letting Trip mode be reachable outside the live window:
 
-1. **Trip mode has no "now" to stand on.** Its signature surface is the departure board — now/next, live countdown, day progress, all derived from the real clock (ADR-0026). Pre-trip there is no "now" inside the trip; post-trip every "now" is behind you. The board renders an empty shell either way. ADR-0029 already encodes the same logic in miniature: it locks **Do-it-now** on future days ("targets 'now,' which doesn't exist yet") and locks create/edit/move on past days ("rewriting history isn't on-the-ground"). A pre-trip trip is *entirely* future days; a finished trip is *entirely* past days — so ADR-0029's own reasoning, taken to its limit, says the whole Trip-mode surface is incoherent outside the window.
+1. **Trip mode has no "now" to stand on.** Its signature surface is the departure board — now/next, live countdown, day progress, all derived from the real clock (ADR-0026). Pre-trip there is no "now" inside the trip; post-trip every "now" is behind you. The board renders an empty shell either way. ADR-0029 already encodes the same logic in miniature: it locks **Do-it-now** on future days ("targets 'now,' which doesn't exist yet") and locks create/edit/move on past days ("rewriting history isn't on-the-ground"). A pre-trip trip is _entirely_ future days; a finished trip is _entirely_ past days — so ADR-0029's own reasoning, taken to its limit, says the whole Trip-mode surface is incoherent outside the window.
 2. **The board is meant to be scarce.** ADR-0033 made "the board = the trip is speaking" a rule — the All-trips home carries no board because nothing is live. Letting the override conjure a board inside a not-yet-live (or already-finished) trip quietly contradicts that scarcity.
 
 Separately, "fall back to Plan" is not a complete answer for a **finished** trip: Plan mode's Home is a **prep dashboard** ("trip in 12 days · 3 gaps to fill · 2 not yet connected"), which is nonsense once the trip is over. A past trip needs an explicit posture, not just a mode.
@@ -20,9 +20,9 @@ Separately, "fall back to Plan" is not a complete answer for a **finished** trip
 **1. Trip mode is a live-window-only state.** The manual override becomes one-directional and window-scoped:
 
 - **Inside `[startDate, endDate]`:** default **Trip**, may peek **Plan** — unchanged (editing the plan mid-trip stays essential, ADR-0016).
-- **Outside the window (pre-trip and post-trip alike):** **Plan only.** The Trip-mode override is **not offered** — the `ModeToggle` is hidden entirely (with only Plan reachable, there is nothing to toggle). `deriveMode` is unchanged; this only removes the ability to override *away* from the derived Plan mode.
+- **Outside the window (pre-trip and post-trip alike):** **Plan only.** The Trip-mode override is **not offered** — the `ModeToggle` is hidden entirely (with only Plan reachable, there is nothing to toggle). `deriveMode` is unchanged; this only removes the ability to override _away_ from the derived Plan mode.
 
-The governing principle: **you can always drop *down* into Plan from Trip, but you can only be *in* Trip when the trip is actually live.** Plan is the universal fallback; Trip is the privileged live state. This **retires ADR-0016's "preview the departure board while planning" rationale** — previewing a board with no live data isn't useful, and the real "will my day flow?" preview is the Plan-mode Day **builder**, which already shows the full timeline.
+The governing principle: **you can always drop _down_ into Plan from Trip, but you can only be _in_ Trip when the trip is actually live.** Plan is the universal fallback; Trip is the privileged live state. This **retires ADR-0016's "preview the departure board while planning" rationale** — previewing a board with no live data isn't useful, and the real "will my day flow?" preview is the Plan-mode Day **builder**, which already shows the full timeline.
 
 **2. A finished trip is a read-only archive (calm, v1).** Post-trip, in Plan mode:
 
