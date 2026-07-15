@@ -13,11 +13,29 @@ the surrounding chrome swap (`data-mode` on `.app`) is **abrupt**, and the
 **Trip→Plan** return has no designed counterpart. Also surveyed the other
 in-app transitions so motion reads as one system.
 
+## Correction (v1 draft was wrong)
+
+The first pass framed the switch as a **luminance** cycle — "the paper dims, the
+board powers on" — and rendered the whole Trip surface dark. That conflates
+**mode** with **theme**. They are orthogonal axes:
+
+- **Mode** (Plan/Trip) is carried by **durable, theme-independent** channels:
+  temperature (violet ⇄ indigo+amber), the drafting grid (plan only), and the
+  board glow+pulse (trip "live"), plus the mode pill. In the light theme the
+  **body stays paper in both modes** — only the header hue, the hero, the grid,
+  and the glow move.
+- **Theme** (light/dark) is the **luminance** axis, orthogonal and future work.
+  Per `design-language.md` "Dark mode readiness", in dark mode **both** modes go
+  dark: plan = violet-tinted dark, trip = indigo dark + amber glow.
+
+So a mode transition built on luminance breaks the moment dark mode ships. Every
+candidate must read identically in either theme — the lab now has a **light/dark
+toggle** to prove it.
+
 ## Constraints honored
 
-- **Night/Day mode identity** (`design-language.md`, ADR-0028): Trip = dark indigo
-  board chrome + amber + pulse; Plan = light paper "drafting table" + violet +
-  drafting grid, no pulse.
+- **Night/Day mode identity** (`design-language.md`, ADR-0028) read correctly:
+  the identity is temperature + grid + glow + pill, **not** light-vs-dark.
 - **Switch model** (ADR-0016): mode is derived from dates with a per-user,
   session-only override via the header toggle. So the transition fires on **two**
   triggers — a **user tap** (celebrate it) and an **automatic date flip** (must
@@ -38,25 +56,32 @@ subject.)
 
 ## Candidates evaluated
 
+All operate on the **durable** channels (temperature / grid / glow), never
+luminance, so each was verified to read the same in light **and** dark theme.
+
 | # | Name | Timing | Verdict |
 | - | ---- | ------ | ------- |
-| A | **Crossfade dim** — all themed surfaces cross-fade | 450ms | The floor + the reduced-motion fallback. Tells no story. |
-| **B** | **Board wakes** — chrome dims to indigo, board brightness+glow rise, amber+pulse arrive last; quiet inverse on the way back | **600 / 400ms** | **Recommended.** The only one that animates the product's story; extends the existing `board-power` seed. |
-| C | **Dusk sweep** — a luminance light-line wipes across; mode commits behind it | 520ms | Pretty + directional, but optional polish **over** B, not a base. |
-| D | **Ripple from toggle** — circular clip-path reveal from the tapped switch | 500ms | Rejected — reads Material/consumer-flashy; also awkward for the auto (tap-less) switch. |
-| E | **Temperature shift** — only the accent morphs amber⇄violet; frame holds still | 280ms | Too timid for a tap, but **ideal for the automatic date-driven switch** (never startles). |
+| A | **Crossfade** — every channel (hue, grid, hero, glow) melts at once | 450ms | The floor + the reduced-motion fallback. Tells no story. |
+| **B** | **Go live / Stand down** — warm the chrome + dissolve the grid, *then* ignite the board glow + pulse; quiet inverse back | **600 / 400ms** | **Recommended.** Animates the product's story on durable channels; extends the existing `board-power` glow keyframe. |
+| C | **Grid resolve** — plan-led: the drafting grid draws in / erases as the lead gesture, hue+glow follow | 500ms | Nice structural read; a touch quieter than B's energy climax. |
+| D | **Hue sweep** — a warm/cool temperature band wipes across the **chrome only** (never full-screen) | 520ms | Optional connective polish over B; chrome-band scoping keeps it from reading as a brightness change. |
+
+(An expanding-circle "ripple from the toggle" was prototyped and cut — reads
+consumer-flashy, and has no origin point on the tap-less auto switch.)
 
 ## Recommendation
 
-1. **User-initiated switch → B ("Board wakes"), direction-aware.**
-   - **Plan→Trip** = the arrival, two-beat at `--t-cinematic` (600ms): chrome→indigo,
-     then board brightness+glow rise, accents + pulse on the tail.
-   - **Trip→Plan** = the quiet return at `--t-deliberate` (400ms): glow fades, board
-     flattens to paper, drafting grid resolves. No fanfare.
-2. **Automatic date-driven switch → E (Temperature shift, 280ms).** A silent flip
-   the user didn't ask for shouldn't be cinematic.
+1. **User-initiated switch → B ("Go live / Stand down"), direction-aware.**
+   - **Plan→Trip** (going live), `--t-cinematic` (600ms): hue warms violet→indigo,
+     grid dissolves, **then** the board's amber glow ignites + pulse starts — the
+     climax lands on the "live" energy, not on brightness.
+   - **Trip→Plan** (stand-down), `--t-deliberate` (400ms): glow extinguishes +
+     pulse stops, then indigo cools to violet and the grid re-draws. No fanfare.
+   - **Touches luminance nowhere** → identical in light or dark theme.
+2. **Automatic date-driven switch → a gentler, non-staged version (~280ms, close
+   to A).** A flip the user didn't ask for shouldn't perform.
 3. **Reduced-motion → A collapsed to instant.** Token remap, mode identity intact.
-4. **C (sweep)** is a stretch-goal polish layer over B; **D (ripple)** is out.
+4. **C / D** are optional layers/variants over B, not bases.
 
 ## Proposed motion tokens (the shared vocabulary)
 
@@ -65,10 +90,10 @@ subject.)
 | `--t-quick` | 140ms | Nav settle, toggles, hovers, focus |
 | `--t-base` | 240ms | Tab cross-fade, toast, ripple bar, sheets |
 | `--t-deliberate` | 400ms | Return-gesture slide (ADR-0035); Trip→Plan |
-| `--t-cinematic` | 600ms | Plan→Trip board wake — **the only cinematic moment** |
-| `--ease-standard` | `cubic-bezier(.2,0,0,1)` | Default / entrances |
-| `--ease-exit` | `cubic-bezier(.4,0,1,1)` | Exits (toast out, dismiss) |
-| `--ease-emphasized` | `cubic-bezier(.16,1,.3,1)` | The board wake |
+| `--t-cinematic` | 600ms | Plan→Trip going-live — **the only cinematic moment** |
+| `--ease-standard` | `cubic-bezier(.2,0,0,1)` | Default / entrances / hue melts |
+| `--ease-exit` | `cubic-bezier(.4,0,1,1)` | Exits (toast out, glow extinguishing) |
+| `--ease-emphasized` | `cubic-bezier(.16,1,.3,1)` | The glow ignite |
 
 **Budget rule:** exactly one `--t-cinematic` moment exists in the product; spending
 it elsewhere devalues it — same discipline as amber/teal/violet.
