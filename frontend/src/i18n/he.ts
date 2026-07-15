@@ -304,7 +304,10 @@ export const t = {
     movedToShelf: 'הועבר למדף האולי',
   },
   ripple: {
-    prompt: (movedTitle: string) => `${movedTitle} נדחה - לדחות גם את האירועים שאחריו?`,
+    prompt: (movedTitle: string, direction: 'later' | 'earlier') =>
+      direction === 'earlier'
+        ? `${movedTitle} הוקדם - להקדים גם את האירועים שלפניו?`
+        : `${movedTitle} נדחה - לדחות גם את האירועים שאחריו?`,
   },
   confirm: {
     hardEditTitle: 'לשנות אירוע קשיח?',

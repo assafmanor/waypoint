@@ -218,6 +218,7 @@ describe('EventsService', () => {
     );
 
     expect(rippleSuggestion?.movedTitle).toBe('Golden Gai');
+    expect(rippleSuggestion?.direction).toBe('later');
     expect(rippleSuggestion?.candidates).toEqual([
       {
         id: walkback.id,
@@ -271,6 +272,7 @@ describe('EventsService', () => {
     );
 
     expect(rippleSuggestion?.movedTitle).toBe('Market');
+    expect(rippleSuggestion?.direction).toBe('earlier');
     expect(rippleSuggestion?.candidates).toEqual([
       {
         id: coffee.id,

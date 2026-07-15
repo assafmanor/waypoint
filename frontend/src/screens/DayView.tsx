@@ -60,7 +60,7 @@ export function DayView() {
     <>
       {ripple && (
         <div className="ripple show">
-          <span className="rt">{t.ripple.prompt(ripple.movedTitle)}</span>
+          <span className="rt">{t.ripple.prompt(ripple.movedTitle, ripple.direction)}</span>
           <button className="yes" onClick={verbs.rippleApply}>
             {t.common.yes}
           </button>

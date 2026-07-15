@@ -189,7 +189,11 @@ describe('event write calls', () => {
   });
 
   it('moveEvent parses the event + optional rippleSuggestion', async () => {
-    const rippleSuggestion = { movedTitle: 'x', candidates: [{ id: 'ev-1', startsAt: 'y' }] };
+    const rippleSuggestion = {
+      movedTitle: 'x',
+      direction: 'later',
+      candidates: [{ id: 'ev-1', startsAt: 'y' }],
+    };
     vi.stubGlobal(
       'fetch',
       vi
