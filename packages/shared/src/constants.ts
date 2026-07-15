@@ -7,6 +7,7 @@ import type {
   BookingType,
   ChangeAction,
   DocumentType,
+  EventCategory,
   EventKind,
   EventSource,
   EventStatus,
@@ -47,6 +48,18 @@ export const BOOKING_SOURCE = {
   MANUAL: 'manual',
   GMAIL: 'gmail',
 } as const satisfies Record<string, BookingSource>;
+
+export const EVENT_CATEGORY = {
+  TRANSPORT: 'transport',
+  FOOD: 'food',
+  LODGING: 'lodging',
+  SIGHTSEEING: 'sightseeing',
+  NATURE: 'nature',
+  ACTIVITY: 'activity',
+  SHOPPING: 'shopping',
+  SERVICES: 'services',
+  OTHER: 'other',
+} as const satisfies Record<string, EventCategory>;
 
 export const MEMBERSHIP_ROLE = {
   ADMIN: 'admin',

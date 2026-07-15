@@ -41,6 +41,20 @@ enum BookingType {
   other
 }
 
+// Canonical semantic type of a timeline item (ADR-0038). The `icon` glyph is
+// only its badge; BookingType and map-pin colours derive from this.
+enum EventCategory {
+  transport
+  food
+  lodging
+  sightseeing
+  nature
+  activity
+  shopping
+  services
+  other
+}
+
 enum BookingSource {
   manual
   gmail
@@ -128,6 +142,7 @@ model Trip {
   timezone         String   @default("UTC")
   currency         String?
   dailyBudgetMinor Int?
+  icon             String?
   createdBy        String
   createdAt        DateTime @default(now())
   updatedAt        DateTime @updatedAt
@@ -161,23 +176,24 @@ model Membership {
 }
 
 model Event {
-  id        String      @id @default(cuid())
+  id        String         @id @default(cuid())
   tripId    String
-  date      DateTime    @db.Date
-  endDate   DateTime?   @db.Date // non-null = multi-day ambient span (ADR-0018)
+  date      DateTime       @db.Date
+  endDate   DateTime?      @db.Date // non-null = multi-day ambient span (ADR-0018)
   title     String
   icon      String?
+  category  EventCategory?
   kind      EventKind
   startsAt  DateTime? // UTC instant
   endsAt    DateTime?
   location  String?
   placeId   String?
-  status    EventStatus @default(planned)
+  status    EventStatus    @default(planned)
   bookingId String?
-  sortOrder Int         @default(0)
-  source    EventSource @default(manual)
-  createdAt DateTime    @default(now())
-  updatedAt DateTime    @updatedAt
+  sortOrder Int            @default(0)
+  source    EventSource    @default(manual)
+  createdAt DateTime       @default(now())
+  updatedAt DateTime       @updatedAt
   updatedBy String
 
   trip          Trip                @relation(fields: [tripId], references: [id], onDelete: Cascade)
@@ -245,15 +261,16 @@ model Document {
 }
 
 model MaybeItem {
-  id        String   @id @default(cuid())
+  id        String         @id @default(cuid())
   tripId    String
   title     String
   icon      String?
+  category  EventCategory?
   placeId   String?
   createdBy String
-  consumed  Boolean  @default(false)
-  createdAt DateTime @default(now())
-  updatedAt DateTime @updatedAt
+  consumed  Boolean        @default(false)
+  createdAt DateTime       @default(now())
+  updatedAt DateTime       @updatedAt
   updatedBy String
 
   trip Trip @relation(fields: [tripId], references: [id], onDelete: Cascade)

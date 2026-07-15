@@ -314,6 +314,37 @@ export const t = {
     hardDeleteBody: (title: string) =>
       `${title} מחובר להזמנה אמיתית - המחיקה לא מבטלת את ההזמנה עצמה. ממשיכים?`,
   },
+  iconPicker: {
+    open: 'בחר סמל',
+    title: 'בחירת סמל',
+    all: 'הכול',
+    categoryReadout: (label: string) => `קטגוריה: ${label}`,
+    // Browse-group labels — keyed by IconGroup.id in @waypoint/shared's ICON_SET.
+    groups: {
+      transport: 'תחבורה',
+      food: 'אוכל',
+      drink: 'שתייה',
+      lodging: 'לינה',
+      sights: 'אתרים ותרבות',
+      nature: 'טבע וחוץ',
+      activity: 'פעילות ופנאי',
+      shopping: 'קניות',
+      practical: 'מעשי ובריאות',
+      general: 'כללי',
+    },
+    // Canonical EventCategory labels — for the saved-category readout.
+    categories: {
+      transport: 'תחבורה',
+      food: 'אוכל',
+      lodging: 'לינה',
+      sightseeing: 'אתרים',
+      nature: 'טבע',
+      activity: 'פעילות',
+      shopping: 'קניות',
+      services: 'מעשי',
+      other: 'כללי',
+    },
+  },
   eventForm: {
     newTitle: 'אירוע חדש',
     editTitle: 'עריכת אירוע',

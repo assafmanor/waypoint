@@ -5,6 +5,7 @@ import { z } from 'zod';
 import {
   bookingTypeSchema,
   documentTypeSchema,
+  eventCategorySchema,
   eventKindSchema,
   eventSourceSchema,
   eventStatusSchema,
@@ -21,6 +22,7 @@ const eventFieldsSchema = z.object({
   endDate: z.string().optional(),
   title: z.string().min(1),
   icon: z.string().optional(),
+  category: eventCategorySchema.optional(),
   kind: eventKindSchema,
   startsAt: z.string().optional(), // UTC instant
   endsAt: z.string().optional(),
@@ -97,6 +99,7 @@ export const createTripSchema = z
     timezone: z.string().default('UTC'),
     currency: z.string().optional(),
     dailyBudgetMinor: z.number().int().optional(),
+    icon: z.string().optional(),
   })
   // A trip can't end before it begins (a same-day, one-night trip is fine).
   // ISO date strings sort chronologically, so a lexical compare is valid.
@@ -111,6 +114,7 @@ export const createMaybeItemSchema = z.object({
   id: entityIdSchema.optional(),
   title: z.string().min(1),
   icon: z.string().optional(),
+  category: eventCategorySchema.optional(),
   placeId: z.string().optional(),
 });
 export type CreateMaybeItemInput = z.infer<typeof createMaybeItemSchema>;

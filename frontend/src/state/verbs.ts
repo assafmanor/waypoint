@@ -8,6 +8,7 @@ import {
   EVENT_SOURCE,
   EVENT_STATUS,
   type CreateEventInput,
+  type EventCategory,
   type MaybeItem,
   type TripEvent,
   type UpdateEventInput,
@@ -98,6 +99,7 @@ function toCreateEventInput(event: TripEvent): CreateEventInput {
     endDate,
     title,
     icon,
+    category,
     kind,
     startsAt,
     endsAt,
@@ -113,6 +115,7 @@ function toCreateEventInput(event: TripEvent): CreateEventInput {
     endDate,
     title,
     icon,
+    category,
     kind,
     startsAt,
     endsAt,
@@ -352,7 +355,12 @@ export async function applyAddMaybe(deps: VerbDeps, item: MaybeItem): Promise<vo
   deps.dispatch({ type: 'ADD_MAYBE', item });
   deps.lastAction.current = { kind: 'addMaybe', id: item.id };
   try {
-    await createMaybeItem(deps.tripId, { id: item.id, title: item.title, icon: item.icon });
+    await createMaybeItem(deps.tripId, {
+      id: item.id,
+      title: item.title,
+      icon: item.icon,
+      category: item.category,
+    });
   } catch (err) {
     deps.dispatch({ type: 'UNDO' });
     writeErrorToast(deps.toast, err);
@@ -381,6 +389,7 @@ export async function applyPark(deps: VerbDeps, event: TripEvent, item: MaybeIte
       id: item.id,
       title: item.title,
       icon: item.icon,
+      category: item.category,
       placeId: item.placeId,
     });
     await deleteEvent(deps.tripId, event.id);
@@ -481,6 +490,7 @@ async function reverseRest(tripId: string, desc: UndoDescriptor): Promise<void> 
         id: desc.item.id,
         title: desc.item.title,
         icon: desc.item.icon,
+        category: desc.item.category,
       });
       return;
     case 'park': {
@@ -556,6 +566,8 @@ export function useVerbs() {
         startsAt?: string;
         endsAt?: string;
         location?: string;
+        icon?: string;
+        category?: EventCategory;
       },
     ) => {
       const now = new Date(getNow()).toISOString();
@@ -564,7 +576,8 @@ export function useVerbs() {
         tripId: trip.id,
         date: fields?.date ?? activeDate,
         title: fields?.title ?? m.title,
-        icon: m.icon,
+        icon: fields?.icon ?? m.icon,
+        category: fields?.category ?? m.category,
         kind: fields?.kind ?? EVENT_KIND.SOFT,
         status: EVENT_STATUS.PLANNED,
         startsAt: fields
@@ -589,7 +602,7 @@ export function useVerbs() {
         undo,
       );
     },
-    addMaybe: (title: string, icon?: string) => {
+    addMaybe: (title: string, icon?: string, category?: EventCategory) => {
       const trimmed = title.trim();
       if (!trimmed) return;
       const now = new Date(getNow()).toISOString();
@@ -598,6 +611,7 @@ export function useVerbs() {
         tripId: trip.id,
         title: trimmed,
         icon: icon ?? DEFAULT_MAYBE_ICON,
+        category,
         createdBy: activeUserId,
         consumed: false,
         createdAt: now,

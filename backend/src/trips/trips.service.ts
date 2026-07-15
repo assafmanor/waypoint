@@ -56,6 +56,7 @@ export class TripsService {
           timezone: input.timezone,
           currency: input.currency,
           dailyBudgetMinor: input.dailyBudgetMinor,
+          icon: input.icon,
           createdBy: userId,
           updatedBy: userId,
         },

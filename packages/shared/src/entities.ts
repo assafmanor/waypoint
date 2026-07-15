@@ -36,6 +36,23 @@ export type BookingType = z.infer<typeof bookingTypeSchema>;
 export const bookingSourceSchema = z.enum(['manual', 'gmail']);
 export type BookingSource = z.infer<typeof bookingSourceSchema>;
 
+/** Canonical semantic type of a timeline item — the durable primitive future
+ *  features (index unification, map-pin colour, filtering) read, distinct from
+ *  the `icon` glyph which is only its badge (ADR-0038). `BookingType`, the
+ *  icon-picker browse-groups, and map-pin categories all derive *from* this. */
+export const eventCategorySchema = z.enum([
+  'transport',
+  'food',
+  'lodging',
+  'sightseeing',
+  'nature',
+  'activity',
+  'shopping',
+  'services',
+  'other',
+]);
+export type EventCategory = z.infer<typeof eventCategorySchema>;
+
 // creator is admin — ADR-0005/0018
 export const membershipRoleSchema = z.enum(['admin', 'peer']);
 export type MembershipRole = z.infer<typeof membershipRoleSchema>;
@@ -90,6 +107,7 @@ export const tripSchema = z.object({
   timezone: z.string(),
   currency: z.string().optional(),
   dailyBudgetMinor: z.number().optional(),
+  icon: z.string().optional(), // chosen badge glyph; no category (ADR-0038 §5)
   createdBy: idSchema,
   createdAt: z.string(),
   updatedAt: z.string(),
@@ -118,6 +136,7 @@ export const tripEventSchema = z.object({
   endDate: z.string().optional(), // non-null = multi-day ambient span (ADR-0018)
   title: z.string(),
   icon: z.string().optional(),
+  category: eventCategorySchema.optional(), // canonical semantic type (ADR-0038)
   kind: eventKindSchema,
   startsAt: z.string().optional(), // UTC instant
   endsAt: z.string().optional(),
@@ -188,6 +207,7 @@ export const maybeItemSchema = z.object({
   tripId: idSchema,
   title: z.string(),
   icon: z.string().optional(),
+  category: eventCategorySchema.optional(), // canonical semantic type (ADR-0038)
   placeId: z.string().optional(),
   createdBy: idSchema,
   consumed: z.boolean(),
