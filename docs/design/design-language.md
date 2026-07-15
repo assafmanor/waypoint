@@ -186,7 +186,35 @@ Rules that follow from this:
 
 Subtle fades on view change; pulsing "live" blip; countdown/clock tick. Respects `prefers-reduced-motion` (all animation disabled).
 
-The plan→trip switch is the product's most meaningful moment — design it: the paper chrome dims, the board "powers on" (glow fades in, clock starts). Keep it under ~800ms, fully disabled under `prefers-reduced-motion`. The board power-on is implemented (`screens.css`: `board-power`/`board-glow`, plays when the board appears in Trip mode) and mirrors the zero-state's dormant board — one surface, off → on.
+### Motion tokens (the vocabulary)
+
+New motion picks from a small ramp instead of inventing values — the same discipline as the type ramp and color budget. Wired in `tokens.css`:
+
+| Token               | Value                      | Used for                                              |
+| ------------------- | -------------------------- | ----------------------------------------------------- |
+| `--t-quick`         | 140ms                      | Nav settle, toggles, hovers, focus                    |
+| `--t-base`          | 240ms                      | Tab cross-fade, toast, ripple bar, sheets             |
+| `--t-deliberate`    | 400ms                      | Return-gesture slide (ADR-0035); Trip→Plan stand-down |
+| `--t-cinematic`     | 600ms                      | Plan→Trip going-live — **the only cinematic moment**  |
+| `--ease-standard`   | `cubic-bezier(.2,0,0,1)`   | Default / entrances / hue melts                       |
+| `--ease-exit`       | `cubic-bezier(.4,0,1,1)`   | Exits — toast out, glow extinguishing                 |
+| `--ease-emphasized` | `cubic-bezier(.16,1,.3,1)` | The glow ignite                                       |
+
+**Budget rule:** exactly one `--t-cinematic` moment exists in the product — the Plan→Trip switch. Spending "cinematic" elsewhere devalues it, same discipline as amber / teal / violet. Motion mirrors "one loud element": everything else stays quick and quiet.
+
+### The mode switch — temperature & energy, not luminance
+
+The Plan⇄Trip switch is the product's most meaningful moment. Crucially it is **not a light-to-dark flip** — that would conflate **mode** with **theme**, two orthogonal axes:
+
+- **Mode** (Plan/Trip) rides on **durable, theme-independent** channels: the chrome's **temperature** (violet ⇄ indigo+amber), the **drafting grid** (plan only), and the board's **glow + pulse** (trip "live"), plus the mode pill. In the light theme the app **body stays paper in both modes** — only the header hue, the hero, the grid, and the glow move.
+- **Theme** (light/dark) is the separate **luminance** axis (see "Dark mode readiness"): in dark mode _both_ modes go dark (plan = violet-tinted dark, trip = indigo dark + amber glow). A transition built on luminance would break the moment dark mode ships — so the switch must never touch it, and must read identically in either theme.
+
+**"Go live / Stand down", direction-aware** (studied in `mockups/mode-switch-transition-v1.html`, implemented in `App.css` `[data-switching]` + `screens.css` `board-power`, driven by the Shell in `App.tsx`):
+
+- **Plan→Trip (going live), `--t-cinematic` 600ms:** the chrome warms violet→indigo and the drafting grid dissolves, **then** the board's amber glow ignites and the pulse starts — the climax lands on the "live" energy, not on brightness.
+- **Trip→Plan (stand-down), `--t-deliberate` 400ms:** the quieter return — the chrome cools to violet and the drafting grid re-draws (the board leaves with the hero swap). No fanfare; you're back at the desk.
+- The transition is **armed only during a switch** (`data-switching` on `.app`, set by the Shell for the animation's duration) so steady-state hovers keep their own timing, and is **fully disabled under `prefers-reduced-motion`** (mode identity still flips, instantly). The board power-on mirrors the zero-state's dormant board — one surface, off → on.
+- The **automatic** date-driven switch (ADR-0016) should use a gentler, non-staged version — a flip the user didn't ask for shouldn't perform. _(Currently the same transition serves both; a softened auto variant is a follow-up.)_
 
 ## Accessibility: non-color redundancy
 

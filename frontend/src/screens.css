@@ -20,8 +20,11 @@
 }
 /* The board "powers on" when the trip surface appears — the same surface the
    zero-state renders dormant (design-language: motion & designed transitions).
-   Dim-to-lit plus the glow fading in, under 800ms; the global
-   prefers-reduced-motion rule disables it. */
+   This is the Plan→Trip "going live" climax: dim-to-lit plus the amber glow
+   igniting. It's staged with a short delay so it lands AFTER the chrome has
+   started warming (App.css [data-switching]); `both` keeps the board dim during
+   that delay. Timed to --t-cinematic; the global prefers-reduced-motion rule
+   disables it. */
 @keyframes board-power {
   from {
     filter: brightness(0.55) saturate(0.55);
@@ -33,10 +36,10 @@
   }
 }
 .app[data-mode='trip'] .board {
-  animation: board-power 0.65s ease-out;
+  animation: board-power var(--t-cinematic) var(--ease-emphasized) 0.12s both;
 }
 .app[data-mode='trip'] .board::before {
-  animation: board-glow 0.65s ease-out;
+  animation: board-glow var(--t-cinematic) var(--ease-emphasized) 0.12s both;
 }
 .board-top {
   display: flex;
