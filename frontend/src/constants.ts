@@ -2,6 +2,15 @@
 // values live in @waypoint/shared. Keep magic numbers/strings out of logic.
 
 export const MS_PER_DAY = 86_400_000;
+
+/** The device's resolved locale (e.g. "he-IL", "en-US"). Native date inputs
+ *  (`<input type="date">`) are formatted by the browser's UI language, not the
+ *  document `lang="he"` — so an Israeli device on an English browser would show
+ *  a date as mm/dd/yyyy. Pinning the input's `lang` to the device locale renders
+ *  it in the device's own convention (mirrors TimePicker's `lang` on native
+ *  time inputs). */
+export const DEVICE_LOCALE =
+  typeof Intl !== 'undefined' ? Intl.DateTimeFormat().resolvedOptions().locale : 'he';
 export const MINUTES_PER_HOUR = 60;
 export const MINUTES_PER_DAY = MINUTES_PER_HOUR * 24;
 
