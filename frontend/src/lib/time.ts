@@ -75,25 +75,52 @@ export function formatTime(at: Date | string, timeZone: string) {
 }
 
 export interface NowNext {
+  /** The primary in-progress event (see byPrimaryNow), or undefined in a gap. */
   now?: TripEvent;
+  /** The primary of the next upcoming (concurrent) start, or undefined at day's end. */
   next?: TripEvent;
+  /** Every event in progress right now, primary-first — the board's "ועוד N" set. */
+  nowAll: TripEvent[];
+  /** Every event sharing the earliest upcoming start, primary-first. */
+  nextAll: TripEvent[];
 }
 
-/** The event currently in progress (start ≤ now < end) and the first upcoming one. */
+/** Orders concurrent events so the "loudest" is first: a hard commitment beats a
+ *  soft plan; then the one ending soonest (most urgent to leave); then the
+ *  earliest start; then sortOrder. Drives which event owns the board hero. */
+function byPrimaryNow(a: TripEvent, b: TripEvent): number {
+  const hard = (e: TripEvent) => (e.kind === EVENT_KIND.HARD ? 0 : 1);
+  if (hard(a) !== hard(b)) return hard(a) - hard(b);
+  const endOf = (e: TripEvent) => Date.parse(e.endsAt ?? e.startsAt!);
+  if (endOf(a) !== endOf(b)) return endOf(a) - endOf(b);
+  const startOf = (e: TripEvent) => Date.parse(e.startsAt!);
+  if (startOf(a) !== startOf(b)) return startOf(a) - startOf(b);
+  return a.sortOrder - b.sortOrder;
+}
+
+/** The events in progress (start ≤ now < end) and the next upcoming ones. Returns
+ *  the full concurrent sets (nowAll/nextAll) plus their primaries (now/next) so
+ *  the board can show one hero + "ועוד N". Derived from the clock, never stored
+ *  (ADR-0018). */
 export function deriveNow(events: TripEvent[], at: Date): NowNext {
   const t = at.getTime();
-  const timed = events
-    .filter((e) => e.startsAt && e.status === EVENT_STATUS.PLANNED)
+  const timed = events.filter((e) => e.startsAt && e.status === EVENT_STATUS.PLANNED);
+  const nowAll = timed
+    .filter((e) => {
+      const start = Date.parse(e.startsAt!);
+      const end = e.endsAt ? Date.parse(e.endsAt) : start;
+      return start <= t && t < end;
+    })
+    .sort(byPrimaryNow);
+  const future = timed
+    .filter((e) => Date.parse(e.startsAt!) > t)
     .sort((a, b) => Date.parse(a.startsAt!) - Date.parse(b.startsAt!));
-  let now: TripEvent | undefined;
-  let next: TripEvent | undefined;
-  for (const e of timed) {
-    const start = new Date(e.startsAt!).getTime();
-    const end = e.endsAt ? new Date(e.endsAt).getTime() : start;
-    if (start <= t && t < end) now = e;
-    if (start > t && !next) next = e;
-  }
-  return { now, next };
+  const nextStart = future.length ? Date.parse(future[0].startsAt!) : undefined;
+  const nextAll =
+    nextStart === undefined
+      ? []
+      : future.filter((e) => Date.parse(e.startsAt!) === nextStart).sort(byPrimaryNow);
+  return { now: nowAll[0], next: nextAll[0], nowAll, nextAll };
 }
 
 /** Whole minutes until an instant (floored at 0). */
@@ -221,4 +248,118 @@ export function hardConflicts(event: TripEvent, dayEvents: TripEvent[]): TripEve
     const eEnd = e.endsAt ? Date.parse(e.endsAt) : eStart;
     return eStart < end && eEnd > start;
   });
+}
+
+// ── Concurrency layout: containment forest + per-level clustering (ADR-0041) ──
+// Overlapping events aren't a flat list. We build a containment forest — each
+// event's parent is the *smallest* event that strictly contains it — then, among
+// siblings at every level, group the ones that *partially* overlap into clusters.
+// Nesting and clustering compose (a nest can hold a cluster; a cluster member can
+// itself be a nest). Pure and clock-independent: the day view renders the tree,
+// and callers can flatten it. `end === start` (back-to-back) is not overlap;
+// equal spans are cluster peers, never nested under each other.
+
+/** One event plus the laid-out groups of events nested inside it (empty = leaf). */
+export interface TimeItem {
+  event: TripEvent;
+  children: TimeGroup[];
+}
+
+/** A sibling-level unit: a lone item, or a cluster of items that overlap in time. */
+export type TimeGroup =
+  | { kind: 'single'; item: TimeItem }
+  | { kind: 'cluster'; startMs: number; endMs: number; items: TimeItem[] };
+
+interface Span {
+  start: number;
+  end: number;
+}
+
+const spanOf = (e: TripEvent): Span => {
+  const start = Date.parse(e.startsAt!);
+  return { start, end: e.endsAt ? Date.parse(e.endsAt) : start };
+};
+
+/** `a` strictly contains `b` — one edge must differ, so equal spans do NOT
+ *  contain each other (they become cluster peers instead). */
+const spanContains = (a: Span, b: Span): boolean =>
+  a.start <= b.start && a.end >= b.end && (a.start < b.start || a.end > b.end);
+
+/** True time overlap; touching (one's end === the other's start) is not overlap. */
+const spansOverlap = (a: Span, b: Span): boolean => a.start < b.end && b.start < a.end;
+
+/** Groups the day's timed events into the concurrency forest the day view renders.
+ *  Returns the top-level groups (roots), each carrying its nested subtree. */
+export function buildTimeTree(events: TripEvent[]): TimeGroup[] {
+  const timed = events.filter((e) => e.startsAt && e.status === EVENT_STATUS.PLANNED);
+  const span = new Map(timed.map((e) => [e.id, spanOf(e)]));
+  const duration = (id: string) => span.get(id)!.end - span.get(id)!.start;
+
+  // parent = smallest strict container; ties break on earliest start, then sortOrder.
+  const isSmaller = (candidate: TripEvent, best: TripEvent): boolean => {
+    const c = span.get(candidate.id)!;
+    const b = span.get(best.id)!;
+    if (duration(candidate.id) !== duration(best.id))
+      return duration(candidate.id) < duration(best.id);
+    if (c.start !== b.start) return c.start < b.start;
+    return candidate.sortOrder < best.sortOrder;
+  };
+  const parentId = new Map<string, string | null>();
+  for (const e of timed) {
+    let best: TripEvent | undefined;
+    for (const c of timed) {
+      if (c.id === e.id || !spanContains(span.get(c.id)!, span.get(e.id)!)) continue;
+      if (!best || isSmaller(c, best)) best = c;
+    }
+    parentId.set(e.id, best?.id ?? null);
+  }
+
+  const childrenOf = new Map<string | null, TripEvent[]>();
+  for (const e of timed) {
+    const p = parentId.get(e.id) ?? null;
+    const arr = childrenOf.get(p);
+    if (arr) arr.push(e);
+    else childrenOf.set(p, [e]);
+  }
+
+  // Lay out one sibling set: cluster the partial overlaps (union-find over the
+  // overlap graph), then emit groups in start order. Recurses into each item.
+  const layout = (siblings: TripEvent[]): TimeGroup[] => {
+    const ordered = [...siblings].sort(
+      (a, b) => span.get(a.id)!.start - span.get(b.id)!.start || a.sortOrder - b.sortOrder,
+    );
+    const root = ordered.map((_, i) => i);
+    const find = (i: number): number => (root[i] === i ? i : (root[i] = find(root[i])));
+    for (let i = 0; i < ordered.length; i++)
+      for (let j = i + 1; j < ordered.length; j++)
+        if (spansOverlap(span.get(ordered[i].id)!, span.get(ordered[j].id)!))
+          root[find(i)] = find(j);
+
+    const toItem = (e: TripEvent): TimeItem => ({
+      event: e,
+      children: layout(childrenOf.get(e.id) ?? []),
+    });
+
+    const groups: TimeGroup[] = [];
+    const emitted = new Set<number>();
+    for (let i = 0; i < ordered.length; i++) {
+      const r = find(i);
+      if (emitted.has(r)) continue;
+      emitted.add(r);
+      const members = ordered.filter((_, j) => find(j) === r);
+      if (members.length === 1) {
+        groups.push({ kind: 'single', item: toItem(members[0]) });
+      } else {
+        groups.push({
+          kind: 'cluster',
+          startMs: Math.min(...members.map((e) => span.get(e.id)!.start)),
+          endMs: Math.max(...members.map((e) => span.get(e.id)!.end)),
+          items: members.map(toItem),
+        });
+      }
+    }
+    return groups;
+  };
+
+  return layout(childrenOf.get(null) ?? []);
 }

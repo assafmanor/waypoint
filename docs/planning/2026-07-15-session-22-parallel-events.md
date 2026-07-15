@@ -1,7 +1,7 @@
 # Session 22 — Parallel / overlapping-time events (design)
 
 **Date:** 2026-07-15
-**Status:** Design decided (visual). ADR + implementation next.
+**Status:** Design decided → [ADR-0041](../decisions/0041-parallel-overlapping-events.md) written; pure-logic foundation landed (`buildTimeTree` + `deriveNow` sets, unit-tested). UI wiring next.
 **Mockup:** [`mockups/parallel-events-v1.html`](../../mockups/parallel-events-v1.html)
 
 ## Problem
@@ -129,11 +129,23 @@ concurrent set + primary rule.
 
 ## Next step
 
-Write an ADR (recursive containment-forest + per-level clustering; Plan
-overlap-vs-gap distinction; "הזז" resolve incl. mover chooser; board concurrency),
-then: add the pure `buildTimeTree` helper (`lib/time` or `packages/shared`),
-extend `deriveNow` to `nowAll[]`/`nextAll[]`, implement recursive render in
-`DayView`/`PlanDay` + the board changes in `Home`. Tests: containment forest
-(chain, overlap-in-containment, containment-in-overlap), back-to-back non-overlap,
-equal-span peers, indent-depth cap, and primary-`now` selection
-(hard > ends-soonest > starts-first).
+**Done:** ADR-0041; `buildTimeTree` + `deriveNow`(`nowAll`/`nextAll`, `byPrimaryNow`)
+in `lib/time.ts`, unit-tested (containment forest incl. chain / overlap-in-
+containment / containment-in-overlap, back-to-back non-overlap, equal-span peers,
+primary-`now` ordering).
+
+**Remaining (UI):**
+
+1. **Trip `DayView`** — recursive render of `buildTimeTree`: quiet nest + quiet
+   cluster; long-text ellipsis + depth-capped indent; preserve `now` ring.
+2. **Plan `PlanDay`** — same tree, violet overlap cluster with "הזז"; keep gap
+   chips only where there's a real gap (not inside clusters); drag-reorder intact.
+3. **`Home` board** — primary hero + "ועוד N עכשיו" expander + group-split
+   variant, off `nowAll`/`nextAll`.
+4. **"הזז" resolve sheet** — mover chooser (soft only; hard = disabled anchor) →
+   clean-slot picker (before/after anchor + exact-time fallback); wire to the
+   move verb (optimistic + undo; existing ripple handles downstream chains).
+5. CSS + i18n strings; component tests; verify in the running app.
+
+Respect ADR-0040: Trip mode only renders in the live window; a finished trip is
+a read-only archive (no "הזז"/resolve affordances there).
