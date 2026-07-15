@@ -74,6 +74,57 @@ export const ICON_SET: readonly IconGroup[] = [
   },
 ];
 
+/** Trip icons are a SEPARATE, flat set (ADR-0038 §5): a trip has no category,
+ *  and its glyph expresses the trip's *character* (destination / kind / vibe),
+ *  not a timeline item's type — so the event ICON_SET's groups don't apply.
+ *  Flat, quick-scan, ordered by archetype: general · travel mode · landscape ·
+ *  city & landmark · activity · occasion · season. `🧳` is the default. */
+export const TRIP_ICON_SET: readonly string[] = [
+  '🧳',
+  '🎒',
+  '✈️',
+  '🗺️',
+  '🌍',
+  '🌏',
+  '🚗',
+  '🚐',
+  '🚂',
+  '🚢',
+  '⛵',
+  '🏍️',
+  '🏖️',
+  '🏝️',
+  '🌴',
+  '🏔️',
+  '🏜️',
+  '🌋',
+  '🏞️',
+  '🌲',
+  '🏕️',
+  '🏙️',
+  '🗼',
+  '🗽',
+  '🏛️',
+  '⛩️',
+  '🕌',
+  '🏰',
+  '🎡',
+  '🎿',
+  '🏄',
+  '🥾',
+  '🤿',
+  '🐘',
+  '🍷',
+  '🎶',
+  '🎉',
+  '💍',
+  '🎓',
+  '🌸',
+  '☀️',
+  '🍁',
+  '❄️',
+];
+
 /** Default glyph per canonical category (the picker's suggestion + the badge a
  *  category-only item renders). Kept in step with `ICON_SET`'s first useful
  *  glyph for each category. */
