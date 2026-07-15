@@ -6,7 +6,7 @@
 
 - **Identity:** each user is a real account (Google sign-in). Not device-local, not a shared login. This is what makes true collaboration and per-user calendar sync possible.
 - **A trip has members.** One creator, then others **join via an invite link** (a signed token). Joining adds a membership row.
-- **Roles (v1):** two roles, `admin` and `peer` (ADR-0005). The **creator is `admin`**; members who join via invite are `peer`. The distinction is structural from day one; **enforcement is minimal/deferred** (v1 gates at most delete-trip / remove-member / revoke-invite), with the full permission matrix a later task. Everyday editing of soft plans is open to all.
+- **Roles (v1):** two roles, `admin` and `peer` (ADR-0005). The **creator is `admin`**; members who join via invite are `peer`. The distinction is structural from day one. **Trip-settings governance is admin-only and enforced server-side** (ADR-0039): editing trip details, promoting a peer to admin, removing members, and deleting the trip. Admins can promote peers; there is no explicit demotion in v1; when the **last admin leaves, another member is auto-promoted** so a trip is never admin-less. **Everyday editing of soft plans (events) stays open to all members** — the gate is on governance, not the collaborative timeline.
 - **Multi-trip (ADR-0021):** a user can be a member of **many trips** (the `Membership` join already allows it — no schema change). The client picks an **active trip** (per-device state); a minimal trip switcher is the app entry point. Overlapping in-progress trips are deferred.
 
 ## What is shared vs. personal
