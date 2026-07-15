@@ -24,6 +24,7 @@ export const toTripDto = (t: Trip, memberCount?: number): SharedTrip => ({
   id: t.id,
   name: t.name,
   destination: t.destination,
+  icon: t.icon ?? undefined,
   startDate: toDateOnly(t.startDate),
   endDate: toDateOnly(t.endDate),
   timezone: t.timezone,

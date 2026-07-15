@@ -60,6 +60,7 @@ export class TripsService {
         data: {
           name: input.name,
           destination: input.destination,
+          icon: input.icon,
           startDate: new Date(input.startDate),
           endDate: new Date(input.endDate),
           timezone: input.timezone,
@@ -113,6 +114,7 @@ export class TripsService {
           data: {
             ...(input.name !== undefined && { name: input.name }),
             ...(input.destination !== undefined && { destination: input.destination }),
+            ...(input.icon !== undefined && { icon: input.icon }),
             ...(input.startDate !== undefined && { startDate: new Date(input.startDate) }),
             ...(input.endDate !== undefined && { endDate: new Date(input.endDate) }),
             ...(input.timezone !== undefined && { timezone: input.timezone }),

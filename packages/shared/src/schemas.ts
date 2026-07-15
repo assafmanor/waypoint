@@ -93,6 +93,7 @@ export const createTripSchema = z
   .object({
     name: z.string().min(1).max(MAX_TRIP_NAME_LENGTH),
     destination: z.string().min(1),
+    icon: z.string().optional(),
     startDate: z.string(),
     endDate: z.string(),
     timezone: z.string().default('UTC'),
@@ -117,6 +118,7 @@ export const updateTripSchema = z
   .object({
     name: z.string().min(1).max(MAX_TRIP_NAME_LENGTH),
     destination: z.string().min(1),
+    icon: z.string(),
     startDate: z.string(),
     endDate: z.string(),
     timezone: z.string(),

@@ -1,7 +1,12 @@
 import { describe, expect, it } from 'vitest';
-import { EVENT_STATUS, type Change } from '@waypoint/shared';
-import { EVENTS } from '../fixtures';
-import { initialState, reducer } from './trip-state';
+import { EVENT_STATUS, type Change, type Membership } from '@waypoint/shared';
+import { EVENTS, TRIP } from '../fixtures';
+import {
+  applyControlChangeToMembers,
+  applyControlChangeToTrip,
+  initialState,
+  reducer,
+} from './trip-state';
 
 type State = ReturnType<typeof initialState>;
 const find = (s: State, id: string) => s.events.find((e) => e.id === id)!;
@@ -120,6 +125,80 @@ describe('REMOTE_EVENT_CHANGE (WS)', () => {
       change: { ...baseChange, entityType: 'booking' },
     });
     expect(s1).toEqual(initialState());
+  });
+});
+
+describe('control-plane change application (ADR-0039)', () => {
+  const tripChange = (over: Partial<Change>): Change => ({
+    id: 'ch',
+    seq: '9',
+    tripId: TRIP.id,
+    actorUserId: 'u-other',
+    entityType: 'trip',
+    entityId: TRIP.id,
+    action: 'update',
+    createdAt: '2026-07-11T00:00:00.000Z',
+    ...over,
+  });
+
+  const member = (over: Partial<Membership>): Membership => ({
+    id: 'mem-1',
+    tripId: TRIP.id,
+    userId: 'u-noam',
+    role: 'peer',
+    calendarSyncEnabled: false,
+    joinedAt: '2026-07-01T00:00:00.000Z',
+    ...over,
+  });
+
+  it('merges a remote trip edit onto the local trip', () => {
+    const next = applyControlChangeToTrip(TRIP, tripChange({ after: { name: 'שם חדש' } }));
+    expect(next.name).toBe('שם חדש');
+    expect(next.destination).toBe(TRIP.destination); // untouched fields preserved
+  });
+
+  it('leaves the trip unchanged for a delete or a non-trip change', () => {
+    expect(applyControlChangeToTrip(TRIP, tripChange({ action: 'delete', after: undefined }))).toBe(
+      TRIP,
+    );
+    expect(applyControlChangeToTrip(TRIP, tripChange({ entityType: 'event' }))).toBe(TRIP);
+  });
+
+  it('upserts a membership role change by id', () => {
+    const start = [member({})];
+    const promoted = member({ role: 'admin' });
+    const next = applyControlChangeToMembers(
+      start,
+      tripChange({
+        entityType: 'membership',
+        entityId: 'mem-1',
+        after: promoted as unknown as Record<string, unknown>,
+      }),
+    );
+    expect(next.find((m) => m.id === 'mem-1')?.role).toBe('admin');
+  });
+
+  it('inserts a not-yet-seen membership (a remote join)', () => {
+    const fresh = member({ id: 'mem-2', userId: 'u-dana' });
+    const next = applyControlChangeToMembers(
+      [member({})],
+      tripChange({
+        entityType: 'membership',
+        action: 'create',
+        entityId: 'mem-2',
+        after: fresh as unknown as Record<string, unknown>,
+      }),
+    );
+    expect(next).toHaveLength(2);
+    expect(next.some((m) => m.id === 'mem-2')).toBe(true);
+  });
+
+  it('drops a member on a remote removal', () => {
+    const next = applyControlChangeToMembers(
+      [member({}), member({ id: 'mem-2', userId: 'u-dana' })],
+      tripChange({ entityType: 'membership', action: 'delete', entityId: 'mem-2' }),
+    );
+    expect(next.map((m) => m.id)).toEqual(['mem-1']);
   });
 });
 

@@ -17,18 +17,36 @@ import {
   type Booking,
   type Change,
   type MaybeItem,
+  type Membership,
+  type MembershipRole,
   type Trip,
   type TripEvent,
   type TripNote,
   type TripSnapshot,
+  type UpdateTripInput,
   type User,
 } from '@waypoint/shared';
-import { fetchChanges, fetchSnapshot, type RippleSuggestion } from '../lib/api';
-import { applyChangeToCache, cacheSnapshot, readCachedSnapshot } from '../lib/cache';
-import { flushOutbox, isOffline } from '../lib/outbox';
+import {
+  deleteTrip as apiDeleteTrip,
+  fetchChanges,
+  fetchSnapshot,
+  removeMember as apiRemoveMember,
+  setMemberRole as apiSetMemberRole,
+  updateTrip as apiUpdateTrip,
+  type RippleSuggestion,
+} from '../lib/api';
+import {
+  applyChangeToCache,
+  cacheSnapshot,
+  clearTripCache,
+  readCachedSnapshot,
+} from '../lib/cache';
+import { flushOutbox, isOffline, restOrQueue } from '../lib/outbox';
 import { openTripStream } from '../lib/ws';
 import { getNow } from '../lib/useClock';
 import { clampDate, shiftIso, todayInTz } from '../lib/time';
+import { useToast } from '../ui/Toast';
+import { ICONS } from '../constants';
 import { EVENTS, GLANCE, MAYBE_ITEMS, activeUserId } from '../fixtures';
 import { t } from '../i18n/he';
 
@@ -222,9 +240,41 @@ function applyRemoteEventChange(events: TripEvent[], change: Change): TripEvent[
   return [...events, created];
 }
 
+/** Merge a remote `trip` change onto the local trip (ADR-0039). `after` carries
+ *  only the edited fields (the wire input the admin sent). Trip deletion is
+ *  handled separately (it tears the whole trip down), so this only applies an
+ *  `update`'s partial and otherwise returns the trip unchanged. */
+export function applyControlChangeToTrip(trip: Trip, change: Change): Trip {
+  if (change.entityType !== 'trip' || change.action === 'delete') return trip;
+  const partial = change.after as Partial<Trip> | undefined;
+  return partial ? { ...trip, ...partial } : trip;
+}
+
+/** Merge a remote `membership` change (role change / removal / join) into the
+ *  local roster, keyed by membership id (ADR-0039). */
+export function applyControlChangeToMembers(members: Membership[], change: Change): Membership[] {
+  if (change.entityType !== 'membership') return members;
+  if (change.action === 'delete') return members.filter((m) => m.id !== change.entityId);
+  const next = change.after as Membership | undefined;
+  if (!next) return members;
+  return members.some((m) => m.id === next.id)
+    ? members.map((m) => (m.id === next.id ? next : m))
+    : [...members, next];
+}
+
+/** Admin-governed trip-settings writes (ADR-0039): optimistic, data-plane
+ *  (broadcast + offline outbox), reconciled/rolled-back like the event verbs. */
+export interface SettingsVerbs {
+  updateTrip: (input: UpdateTripInput) => Promise<void>;
+  setMemberRole: (userId: string, role: MembershipRole) => Promise<void>;
+  removeMember: (userId: string) => Promise<void>;
+  deleteTrip: () => Promise<void>;
+}
+
 interface TripContextValue {
   trip: Trip;
   users: User[];
+  members: Membership[];
   bookings: Booking[];
   notes: TripNote[];
   glance: typeof GLANCE;
@@ -235,6 +285,10 @@ interface TripContextValue {
   maybeItems: MaybeItem[];
   ripple: RippleSuggestion | null;
   dispatch: React.Dispatch<Action>;
+  settings: SettingsVerbs;
+  // Set once the active trip is deleted (locally or by a remote admin, ADR-0039);
+  // the shell/settings screen navigate out to /trips when this flips.
+  tripDeleted: boolean;
   // T-058: true when the boot snapshot came from the Dexie cache because the
   // live fetch failed — a stronger, earlier offline signal than `navigator.onLine`
   // (whose 'offline' event some environments never fire even with no connectivity).
@@ -326,8 +380,19 @@ function TripReady({
   children: ReactNode;
 }) {
   const [state, dispatch] = useReducer(reducer, snapshot, initialState);
+  const toast = useToast();
   const tripId = snapshot.trip.id;
   const { startDate, endDate } = snapshot.trip;
+
+  // Trip details + roster are data-plane now (ADR-0039): held in reactive state
+  // (not the immutable snapshot) so admin edits, promotions and removals appear
+  // live — via WS remote changes below and the optimistic settings verbs. They
+  // re-seed on a trip switch because TripProvider unmounts TripReady while the
+  // new snapshot loads. (The one-slot event undo deliberately doesn't cover
+  // these — settings isn't the timeline.)
+  const [trip, setTrip] = useState<Trip>(snapshot.trip);
+  const [members, setMembers] = useState<Membership[]>(snapshot.members);
+  const [tripDeleted, setTripDeleted] = useState(false);
 
   // Clamped to the trip's own date range: "today" is only the *initial* default,
   // then the day-strip/DayView navigate it via setActiveDate — without clamping,
@@ -345,19 +410,32 @@ function TripReady({
     lastSeqRef.current = snapshot.latestSeq;
     let closeSocket: (() => void) | null = null;
 
+    // Fan a remote change into every consumer: the event reducer, the Dexie
+    // cache, and the reactive trip/roster state (ADR-0039). Setters are stable,
+    // so this closes over them safely without effect-dep churn.
+    function applyRemoteChange(change: Change) {
+      lastSeqRef.current = change.seq;
+      void applyChangeToCache(tripId, change);
+      dispatch({ type: 'REMOTE_EVENT_CHANGE', change });
+      if (change.entityType === 'trip') {
+        if (change.action === 'delete') setTripDeleted(true);
+        else setTrip((prev) => applyControlChangeToTrip(prev, change));
+      } else if (change.entityType === 'membership') {
+        setMembers((prev) => applyControlChangeToMembers(prev, change));
+      }
+    }
+
     function connect(sinceSeq: string) {
       closeSocket = openTripStream(tripId, sinceSeq, {
-        onChange: (change) => {
-          lastSeqRef.current = change.seq;
-          void applyChangeToCache(tripId, change);
-          dispatch({ type: 'REMOTE_EVENT_CHANGE', change });
-        },
+        onChange: applyRemoteChange,
         onResync: () => {
           fetchSnapshot(tripId).then(
             (s) => {
               lastSeqRef.current = s.latestSeq;
               void cacheSnapshot(tripId, s);
               dispatch({ type: 'RESYNC', events: s.events, maybeItems: s.maybeItems });
+              setTrip(s.trip);
+              setMembers(s.members);
               onReconnected();
             },
             () => {}, // ponytail: transient refetch failure — next change/hello retries the resync.
@@ -376,11 +454,7 @@ function TripReady({
       flushOutbox(tripId)
         .then(() => fetchChanges(tripId, lastSeqRef.current))
         .then((changes) => {
-          for (const change of changes) {
-            lastSeqRef.current = change.seq;
-            void applyChangeToCache(tripId, change);
-            dispatch({ type: 'REMOTE_EVENT_CHANGE', change });
-          }
+          for (const change of changes) applyRemoteChange(change);
           closeSocket?.();
           connect(lastSeqRef.current);
           onReconnected();
@@ -420,10 +494,73 @@ function TripReady({
     // Reconnect only on trip switch — `snapshot.latestSeq` is just this effect's initial cursor.
   }, [tripId]);
 
+  // --- Trip-settings verbs (ADR-0039): optimistic + reconcile/rollback, queued
+  // offline via the outbox — the same shape as the event verbs, but over the
+  // reactive trip/roster state instead of the reducer. ---
+  const settings = useMemo<SettingsVerbs>(() => {
+    const fail = (err: unknown) => {
+      toast(ICONS.warn, t.toast.writeFailed);
+      throw err;
+    };
+    return {
+      updateTrip: async (input) => {
+        const previous = trip;
+        setTrip((prev) => ({ ...prev, ...input })); // optimistic
+        try {
+          const canonical = await restOrQueue(tripId, { verb: 'updateTrip', input }, () =>
+            apiUpdateTrip(tripId, input),
+          );
+          if (canonical) setTrip(canonical); // reconcile with server truth
+          toast(ICONS.done, t.settings.toast.saved);
+        } catch (err) {
+          setTrip(previous); // rollback
+          fail(err);
+        }
+      },
+      setMemberRole: async (userId, role) => {
+        const previous = members;
+        setMembers((prev) => prev.map((m) => (m.userId === userId ? { ...m, role } : m)));
+        try {
+          const canonical = await restOrQueue(tripId, { verb: 'setMemberRole', userId, role }, () =>
+            apiSetMemberRole(tripId, userId, role),
+          );
+          if (canonical)
+            setMembers((prev) => prev.map((m) => (m.id === canonical.id ? canonical : m)));
+          toast(ICONS.done, t.settings.toast.promoted);
+        } catch (err) {
+          setMembers(previous);
+          fail(err);
+        }
+      },
+      removeMember: async (userId) => {
+        const previous = members;
+        setMembers((prev) => prev.filter((m) => m.userId !== userId));
+        try {
+          await restOrQueue(tripId, { verb: 'removeMember', userId }, () =>
+            apiRemoveMember(tripId, userId),
+          );
+        } catch (err) {
+          setMembers(previous);
+          fail(err);
+        }
+      },
+      deleteTrip: async () => {
+        try {
+          await restOrQueue(tripId, { verb: 'deleteTrip' }, () => apiDeleteTrip(tripId));
+          void clearTripCache(tripId);
+          setTripDeleted(true);
+        } catch (err) {
+          fail(err);
+        }
+      },
+    };
+  }, [tripId, trip, members, toast]);
+
   const value = useMemo<TripContextValue>(
     () => ({
-      trip: snapshot.trip,
+      trip,
       users: snapshot.users,
+      members,
       bookings: snapshot.bookings,
       notes: snapshot.notes,
       glance: GLANCE,
@@ -434,9 +571,11 @@ function TripReady({
       maybeItems: state.maybeItems,
       ripple: state.ripple,
       dispatch,
+      settings,
+      tripDeleted,
       usingCachedSnapshot,
     }),
-    [state, snapshot, usingCachedSnapshot, activeDate],
+    [state, snapshot, trip, members, settings, tripDeleted, usingCachedSnapshot, activeDate],
   );
   return <TripContext.Provider value={value}>{children}</TripContext.Provider>;
 }

@@ -5,8 +5,10 @@ import { useEffect, useState, useSyncExternalStore } from 'react';
 import type {
   CreateEventInput,
   EventStatus,
+  MembershipRole,
   MoveEventInput,
   UpdateEventInput,
+  UpdateTripInput,
 } from '@waypoint/shared';
 import { db } from '../db';
 import {
@@ -14,9 +16,13 @@ import {
   consumeMaybeItem,
   createEvent,
   deleteEvent,
+  deleteTrip,
   moveEvent,
+  removeMember,
   setEventStatus,
+  setMemberRole,
   updateEvent,
+  updateTrip,
 } from './api';
 
 export type OutboxOp =
@@ -25,7 +31,12 @@ export type OutboxOp =
   | { verb: 'setStatus'; eventId: string; status: EventStatus }
   | { verb: 'move'; eventId: string; input: MoveEventInput; confirm: boolean }
   | { verb: 'delete'; eventId: string; confirm: boolean }
-  | { verb: 'consumeMaybeItem'; maybeItemId: string };
+  | { verb: 'consumeMaybeItem'; maybeItemId: string }
+  // Trip-settings mutations (ADR-0039) — offline-capable like the timeline.
+  | { verb: 'updateTrip'; input: UpdateTripInput }
+  | { verb: 'setMemberRole'; userId: string; role: MembershipRole }
+  | { verb: 'removeMember'; userId: string }
+  | { verb: 'deleteTrip' };
 
 export interface OutboxEntry {
   seq?: number;
@@ -92,6 +103,30 @@ export async function enqueueOutbox(tripId: string, op: OutboxOp): Promise<void>
   setPendingCount(pendingCount + 1);
 }
 
+/** Run a write, or queue it for later if we're offline / the fetch fails at the
+ *  network layer (a real HTTP error still rejects). Returns the server result,
+ *  or `undefined` when the op was queued (sync-and-offline.md "Write offline").
+ *  Shared by the event verbs (verbs.ts) and the trip-settings verbs. */
+export async function restOrQueue<T>(
+  tripId: string,
+  op: OutboxOp,
+  call: () => Promise<T>,
+): Promise<T | undefined> {
+  if (isOffline()) {
+    await enqueueOutbox(tripId, op);
+    return undefined;
+  }
+  try {
+    return await call();
+  } catch (err) {
+    if (isNetworkError(err)) {
+      await enqueueOutbox(tripId, op);
+      return undefined;
+    }
+    throw err;
+  }
+}
+
 async function runOp(tripId: string, op: OutboxOp): Promise<void> {
   switch (op.verb) {
     case 'create':
@@ -111,6 +146,18 @@ async function runOp(tripId: string, op: OutboxOp): Promise<void> {
       return;
     case 'consumeMaybeItem':
       await consumeMaybeItem(tripId, op.maybeItemId);
+      return;
+    case 'updateTrip':
+      await updateTrip(tripId, op.input);
+      return;
+    case 'setMemberRole':
+      await setMemberRole(tripId, op.userId, op.role);
+      return;
+    case 'removeMember':
+      await removeMember(tripId, op.userId);
+      return;
+    case 'deleteTrip':
+      await deleteTrip(tripId);
       return;
   }
 }

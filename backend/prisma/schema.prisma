@@ -123,6 +123,7 @@ model Trip {
   id               String   @id @default(cuid())
   name             String
   destination      String
+  icon             String? // glyph-only trip identity (ADR-0038); UI falls back to DEFAULT_TRIP_ICON
   startDate        DateTime @db.Date
   endDate          DateTime @db.Date
   timezone         String   @default("UTC")

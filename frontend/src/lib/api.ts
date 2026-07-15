@@ -22,10 +22,12 @@ import {
   type Me,
   type Membership,
   type MoveEventInput,
+  type MembershipRole,
   type Trip,
   type TripEvent,
   type TripSnapshot,
   type UpdateEventInput,
+  type UpdateTripInput,
 } from '@waypoint/shared';
 
 export const API_BASE_URL = import.meta.env.VITE_API_BASE_URL ?? '';
@@ -107,6 +109,47 @@ export async function createTrip(input: CreateTripInput): Promise<Trip> {
   });
   if (!res.ok) return throwApiError(res);
   return tripSchema.parse(await res.json());
+}
+
+/** Admin-only trip-details edit (ADR-0039). Data-plane: the server broadcasts +
+ *  logs the change, so it reaches other members and reconciles like the timeline. */
+export async function updateTrip(tripId: string, input: UpdateTripInput): Promise<Trip> {
+  const res = await apiFetch(`${API_BASE_URL}/trips/${tripId}`, {
+    method: 'PATCH',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify(input),
+  });
+  if (!res.ok) return throwApiError(res);
+  return tripSchema.parse(await res.json());
+}
+
+/** Admin-only trip deletion (ADR-0039). 404 tolerated (already gone). */
+export async function deleteTrip(tripId: string): Promise<void> {
+  const res = await apiFetch(`${API_BASE_URL}/trips/${tripId}`, { method: 'DELETE' });
+  if (!res.ok && res.status !== 404) return throwApiError(res);
+}
+
+/** Admin-only: promote a member to a role (ADR-0039). */
+export async function setMemberRole(
+  tripId: string,
+  userId: string,
+  role: MembershipRole,
+): Promise<Membership> {
+  const res = await apiFetch(`${API_BASE_URL}/trips/${tripId}/members/${userId}`, {
+    method: 'PATCH',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ role }),
+  });
+  if (!res.ok) return throwApiError(res);
+  return membershipSchema.parse(await res.json());
+}
+
+/** Remove a member (admin) or leave (self) — ADR-0005/0039. 404 tolerated. */
+export async function removeMember(tripId: string, userId: string): Promise<void> {
+  const res = await apiFetch(`${API_BASE_URL}/trips/${tripId}/members/${userId}`, {
+    method: 'DELETE',
+  });
+  if (!res.ok && res.status !== 404) return throwApiError(res);
 }
 
 /** Generates/refreshes the trip's invite link (T-065, ADR-0030 — link-only). */

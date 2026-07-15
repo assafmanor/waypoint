@@ -85,6 +85,7 @@ export const tripSchema = z.object({
   id: idSchema,
   name: z.string(),
   destination: z.string(),
+  icon: z.string().optional(), // glyph-only trip identity (ADR-0038)
   startDate: z.string(), // ISO date
   endDate: z.string(), // ISO date
   timezone: z.string(),
