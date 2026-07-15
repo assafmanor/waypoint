@@ -8,6 +8,7 @@ import {
   EVENT_KIND,
   EVENT_SOURCE,
   EVENT_STATUS,
+  type EventCategory,
   type MaybeItem,
   type TripEvent,
 } from '@waypoint/shared';
@@ -18,6 +19,7 @@ import { zonedIso, isoToTimeInput, hardConflicts, formatTime, resolveEndIso } fr
 import { DEFAULT_EVENT_ICON, DEVICE_LOCALE } from '../constants';
 import { t } from '../i18n/he';
 import { TimePicker } from './TimePicker';
+import { IconPicker } from './IconPicker';
 
 export function EventForm({
   event,
@@ -49,6 +51,10 @@ export function EventForm({
   );
   const [kind, setKind] = useState<TripEvent['kind']>(event?.kind ?? EVENT_KIND.SOFT);
   const [location, setLocation] = useState(event?.location ?? '');
+  const [icon, setIcon] = useState(event?.icon ?? maybeItem?.icon ?? DEFAULT_EVENT_ICON);
+  const [category, setCategory] = useState<EventCategory | undefined>(
+    event?.category ?? maybeItem?.category,
+  );
   const [error, setError] = useState<string | null>(null);
 
   // Live hard-conflict warning (ADR-0011): a soft event whose span overlaps a
@@ -81,6 +87,8 @@ export function EventForm({
     const fields = {
       date,
       title: title.trim(),
+      icon,
+      category,
       kind,
       startsAt: start ? zonedIso(date, start, tz) : undefined,
       endsAt: end
@@ -114,6 +122,8 @@ export function EventForm({
         startsAt: parsed.data.startsAt,
         endsAt: parsed.data.endsAt,
         location: parsed.data.location,
+        icon: parsed.data.icon,
+        category: parsed.data.category,
       });
     } else {
       const parsed = createEventSchema.safeParse(fields);
@@ -124,7 +134,6 @@ export function EventForm({
         ...parsed.data,
         id: crypto.randomUUID(),
         tripId: trip.id,
-        icon: DEFAULT_EVENT_ICON,
         status: EVENT_STATUS.PLANNED,
         sortOrder: 99,
         source: parsed.data.source ?? EVENT_SOURCE.MANUAL,
@@ -156,15 +165,25 @@ export function EventForm({
               : t.eventForm.newTitle}
         </div>
 
-        <label className="form-field">
+        <div className="form-field">
           {t.eventForm.titleLabel}
-          <input
-            value={title}
-            onChange={(e) => setTitle(e.target.value)}
-            placeholder={t.eventForm.titlePlaceholder}
-            autoFocus
-          />
-        </label>
+          <div className="title-row">
+            <IconPicker
+              icon={icon}
+              onChange={(next, cat) => {
+                setIcon(next);
+                setCategory(cat);
+              }}
+            />
+            <input
+              className="title-input"
+              value={title}
+              onChange={(e) => setTitle(e.target.value)}
+              placeholder={t.eventForm.titlePlaceholder}
+              autoFocus
+            />
+          </div>
+        </div>
 
         <label className="form-field">
           {t.eventForm.dateLabel}

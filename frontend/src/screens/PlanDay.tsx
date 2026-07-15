@@ -10,15 +10,22 @@
 // fallback) to reassign the day's soft time slots (verbs.reorder → planReorder);
 // the list stays time-ordered and hard events are pinned anchors (ADR-0011).
 import { Fragment, useState, type FormEvent, type PointerEvent as ReactPointerEvent } from 'react';
-import { EVENT_KIND, EVENT_STATUS, type MaybeItem, type TripEvent } from '@waypoint/shared';
+import {
+  EVENT_KIND,
+  EVENT_STATUS,
+  type EventCategory,
+  type MaybeItem,
+  type TripEvent,
+} from '@waypoint/shared';
 import { useTrip, byStart } from '../state/trip-state';
 import { useVerbs } from '../state/verbs';
 import { formatTime, zonedIso, crossesMidnight } from '../lib/time';
 import { gapBetween, nextSlot, type GapDefaults } from '../lib/gaps';
-import { CODE_PREFIX, ICONS, MS_PER_DAY, MINUTES_PER_HOUR } from '../constants';
+import { CODE_PREFIX, DEFAULT_MAYBE_ICON, ICONS, MS_PER_DAY, MINUTES_PER_HOUR } from '../constants';
 import { t } from '../i18n/he';
 import { TRIP_TZ_OFFSET, maybeMeta } from '../fixtures';
 import { EventForm } from '../ui/EventForm';
+import { IconPicker } from '../ui/IconPicker';
 import { Sheet } from '../ui/Sheet';
 
 const daysBetween = (from: string, to: string) =>
@@ -184,7 +191,7 @@ export function PlanDay() {
               />
             ))}
         </div>
-        <AddIdea onAdd={(title) => verbs.addMaybe(title)} />
+        <AddIdea onAdd={(title, icon, category) => verbs.addMaybe(title, icon, category)} />
       </div>
 
       {gapChoice && (
@@ -436,17 +443,32 @@ function MaybeCard({
 
 // Add an idea to the shelf (Plan-mode Tier 3). Manual entry until Places
 // research (Map tab) lands; icon defaults server-agnostically in verbs.addMaybe.
-function AddIdea({ onAdd }: { onAdd: (title: string) => void }) {
+function AddIdea({
+  onAdd,
+}: {
+  onAdd: (title: string, icon: string, category: EventCategory | undefined) => void;
+}) {
   const [title, setTitle] = useState('');
+  const [icon, setIcon] = useState(DEFAULT_MAYBE_ICON);
+  const [category, setCategory] = useState<EventCategory | undefined>(undefined);
   const submit = (e: FormEvent) => {
     e.preventDefault();
     const trimmed = title.trim();
     if (!trimmed) return;
-    onAdd(trimmed);
+    onAdd(trimmed, icon, category);
     setTitle('');
+    setIcon(DEFAULT_MAYBE_ICON);
+    setCategory(undefined);
   };
   return (
     <form className="add-idea" onSubmit={submit}>
+      <IconPicker
+        icon={icon}
+        onChange={(next, cat) => {
+          setIcon(next);
+          setCategory(cat);
+        }}
+      />
       <input
         value={title}
         onChange={(e) => setTitle(e.target.value)}
