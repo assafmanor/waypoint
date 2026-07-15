@@ -1,4 +1,4 @@
-import { useEffect, useRef, useState } from 'react';
+import { useEffect, useState } from 'react';
 import { Navigate, Outlet, Route, Routes, useLocation, useNavigate } from 'react-router-dom';
 import type { Trip } from '@waypoint/shared';
 import { TripProvider, useTrip } from './state/trip-state';
@@ -41,6 +41,24 @@ import { addDays, formatDaysUntil, monthLabelFor } from './lib/time';
 import { t } from './i18n/he';
 import './App.css';
 import './screens.css';
+
+// Small tail added past the transition's own duration before disarming the
+// mode-switch class, so we never clear it a frame early (which would snap the
+// chrome to its final colors mid-animation).
+const SWITCH_TAIL_MS = 80;
+
+// Read a CSS duration token (e.g. `--t-cinematic`) off :root as milliseconds, so
+// the switch's disarm timer follows tokens.css instead of duplicating its values.
+// Falls back to --t-base, then a literal, if the token is missing/unparseable.
+function readDurationMs(token: string): number {
+  if (typeof window === 'undefined') return 400;
+  const root = document.documentElement;
+  const read = (name: string) => getComputedStyle(root).getPropertyValue(name).trim();
+  const raw = read(token) || read('--t-base');
+  const n = parseFloat(raw);
+  if (!Number.isFinite(n)) return 400;
+  return raw.endsWith('ms') ? n : n * 1000; // tokens are ms, but tolerate `s`
+}
 
 // Map & Index are designed later (T-002); Home/Day-by-day's Plan-mode content
 // is T-018's — all fall back here, with a mode-emphasis subtitle (T-019).
@@ -275,23 +293,31 @@ function Shell() {
     setActiveDate(date);
     goToTab('days');
   };
-  // Mode-switch transition (design-language: Motion). On a mode change, arm the
-  // chrome transition for its duration via data-switching, direction-scoped:
-  // Plan→Trip (going live) is the cinematic beat, Trip→Plan (stand-down) the
-  // quieter return. Durations mirror --t-cinematic / --t-deliberate (tokens.css)
-  // plus a small tail to clear after the animation settles; reduced-motion still
-  // flips instantly (the CSS is inert under it). Not armed on first mount.
+  // Mode-switch transition (design-language: Motion). data-switching arms the
+  // chrome transition, direction-scoped: Plan→Trip (going live) is the cinematic
+  // beat, Trip→Plan (stand-down) the quieter return. It MUST land in the same
+  // commit as the new data-mode — arming it a paint later (e.g. from a useEffect)
+  // lets the browser repaint the new colors before the transition exists, so the
+  // animation is intermittently skipped. So derive it during render (set-state-in-
+  // render) rather than post-paint. Not armed on first mount; reduced-motion still
+  // flips instantly (the CSS is inert under it).
+  const [prevMode, setPrevMode] = useState(mode);
   const [switching, setSwitching] = useState<'to-trip' | 'to-plan' | null>(null);
-  const prevMode = useRef(mode);
+  if (mode !== prevMode) {
+    setPrevMode(mode);
+    setSwitching(mode === 'trip' ? 'to-trip' : 'to-plan');
+  }
+  // Disarm once the animation has settled. The duration is read from the CSS
+  // token (not hardcoded) so JS and CSS can't drift — changing --t-cinematic in
+  // tokens.css can't leave this clearing the class mid-animation (which would
+  // snap the chrome). Keyed on `switching` so a new switch (or a quick
+  // back-and-forth) restarts the timer instead of stacking.
   useEffect(() => {
-    if (prevMode.current === mode) return;
-    prevMode.current = mode;
-    const dir = mode === 'trip' ? 'to-trip' : 'to-plan';
-    setSwitching(dir);
-    const clearAfter = mode === 'trip' ? 660 : 460;
-    const id = setTimeout(() => setSwitching(null), clearAfter);
+    if (!switching) return;
+    const token = switching === 'to-trip' ? '--t-cinematic' : '--t-deliberate';
+    const id = setTimeout(() => setSwitching(null), readDurationMs(token) + SWITCH_TAIL_MS);
     return () => clearTimeout(id);
-  }, [mode]);
+  }, [switching]);
   return (
     <div className="app" data-mode={mode} data-switching={switching ?? undefined}>
       <Header
