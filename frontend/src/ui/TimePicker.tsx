@@ -239,13 +239,20 @@ export function TimePicker({
           <div className="tp-panel">
             <div className="tp-exact">
               <span className="tp-exact-lbl">{t.eventForm.exactEnd}</span>
+              {/* Uncontrolled (defaultValue), not value={end}: the OS time wheel
+                  fires onChange on every tick, and rejecting an invalid one on a
+                  controlled input snaps the wheel back — trapping you in the
+                  daytime range you must scroll *through* to reach a post-midnight
+                  end (ADR-0037). Uncontrolled lets the wheel move freely; only a
+                  valid end commits. Remounts on each panel open, re-syncing to
+                  the committed end. */}
               <input
                 type="time"
                 step={60}
                 lang="he"
                 dir="ltr"
                 className="tp-time-input"
-                value={end}
+                defaultValue={end}
                 onChange={(e) => e.target.value && applyExactEnd(e.target.value)}
               />
             </div>
