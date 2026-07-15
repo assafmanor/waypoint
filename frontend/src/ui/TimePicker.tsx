@@ -68,6 +68,16 @@ export function nearestRoundSlot(min: number): number {
   return Math.min(Math.round(min / STEP) * STEP, MINUTES_IN_DAY - STEP);
 }
 
+/** Live-format a time entry so the ":" appears automatically as digits are
+ *  typed — the user types numbers only, never the separator. Digits map
+ *  right-aligned (last two = minutes), matching parseLoose: "930" → "9:30",
+ *  "0907" → "09:07", "14" → "14", "1" → "1". */
+export function maskTime(raw: string): string {
+  const d = raw.replace(/\D/g, '').slice(0, 4);
+  if (d.length <= 2) return d;
+  return `${d.slice(0, d.length - 2)}:${d.slice(d.length - 2)}`;
+}
+
 function durationPhrase(min: number): string {
   const h = Math.floor(min / 60);
   const m = min % 60;
@@ -161,9 +171,10 @@ export function TimePicker({
   };
 
   const onExactInput = (raw: string) => {
-    setExact(raw);
+    const masked = maskTime(raw);
+    setExact(masked);
     setNote(null);
-    const min = parseLoose(raw);
+    const min = parseLoose(masked);
     if (min == null) return;
     if (open === 'start')
       onChange({ start: toHHMM(min), end }); // live, keep panel open
@@ -260,7 +271,7 @@ export function TimePicker({
                 value={exact}
                 autoComplete="off"
                 onFocus={(e) => e.currentTarget.select()}
-                onChange={(e) => setExact(e.target.value)}
+                onChange={(e) => setExact(maskTime(e.target.value))}
                 onBlur={() => {
                   const min = parseLoose(exact);
                   if (min != null) commitExactEnd(min);
