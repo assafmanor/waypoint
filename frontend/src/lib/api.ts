@@ -266,6 +266,10 @@ export async function setEventStatus(
 
 export interface RippleSuggestion {
   movedTitle: string;
+  // 'later' = the moved event was delayed, ripple following events forward;
+  // 'earlier' = it was moved up, ripple preceding events back. Drives the prompt
+  // wording (see i18n ripple.prompt).
+  direction: 'later' | 'earlier';
   candidates: { id: string; startsAt: string; endsAt?: string }[];
 }
 

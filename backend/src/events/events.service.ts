@@ -16,6 +16,11 @@ import { toBookingDto, toEventDto } from '../trips/trips.mapper';
 
 export interface RippleSuggestion {
   movedTitle: string;
+  // Which way the shift propagates: 'later' pushes following events forward (the
+  // moved event was delayed), 'earlier' pulls preceding events back (it was moved
+  // up). The client needs this to phrase the prompt correctly — the geometry
+  // alone doesn't say whether we're rippling down or up.
+  direction: 'later' | 'earlier';
   candidates: { id: string; startsAt: string; endsAt?: string }[];
 }
 
@@ -308,12 +313,13 @@ export class EventsService {
       .map(toEventDto)
       .filter((e) => e.status === EVENT_STATUS.PLANNED && e.startsAt && e.id !== moved.id);
 
+    const direction = minutes > 0 ? 'later' : 'earlier';
     const candidates =
       minutes > 0
         ? this.rippleForward(events, moved, minutes)
         : this.rippleBackward(events, moved, minutes);
 
-    return candidates.length ? { movedTitle: moved.title, candidates } : undefined;
+    return candidates.length ? { movedTitle: moved.title, direction, candidates } : undefined;
   }
 
   private rippleForward(

@@ -38,6 +38,7 @@ describe('reducer verbs + undo', () => {
       type: 'SET_RIPPLE',
       ripple: {
         movedTitle: 'גולדן גאי',
+        direction: 'later',
         candidates: [{ id: 'ev-walkback', startsAt: '2099-01-01T00:00:00.000Z' }],
       },
     });
@@ -207,7 +208,11 @@ describe('RESYNC', () => {
     const s0 = reducer(initialState(), { type: 'DELAY', id: 'ev-goldengai', minutes: 30 });
     const s1 = reducer(s0, {
       type: 'SET_RIPPLE',
-      ripple: { movedTitle: 'x', candidates: [{ id: 'ev-walkback', startsAt: 'y' }] },
+      ripple: {
+        movedTitle: 'x',
+        direction: 'later',
+        candidates: [{ id: 'ev-walkback', startsAt: 'y' }],
+      },
     });
     const s2 = reducer(s1, { type: 'RESYNC', events: EVENTS, maybeItems: [] });
     expect(s2.events).toBe(EVENTS);
