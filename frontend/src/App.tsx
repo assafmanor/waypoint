@@ -42,6 +42,24 @@ import { t } from './i18n/he';
 import './App.css';
 import './screens.css';
 
+// Small tail added past the transition's own duration before disarming the
+// mode-switch class, so we never clear it a frame early (which would snap the
+// chrome to its final colors mid-animation).
+const SWITCH_TAIL_MS = 80;
+
+// Read a CSS duration token (e.g. `--t-cinematic`) off :root as milliseconds, so
+// the switch's disarm timer follows tokens.css instead of duplicating its values.
+// Falls back to --t-base, then a literal, if the token is missing/unparseable.
+function readDurationMs(token: string): number {
+  if (typeof window === 'undefined') return 400;
+  const root = document.documentElement;
+  const read = (name: string) => getComputedStyle(root).getPropertyValue(name).trim();
+  const raw = read(token) || read('--t-base');
+  const n = parseFloat(raw);
+  if (!Number.isFinite(n)) return 400;
+  return raw.endsWith('ms') ? n : n * 1000; // tokens are ms, but tolerate `s`
+}
+
 // Map & Index are designed later (T-002); Home/Day-by-day's Plan-mode content
 // is T-018's — all fall back here, with a mode-emphasis subtitle (T-019).
 function Placeholder({ tab, mode }: { tab: TabId; mode: Mode }) {
@@ -289,12 +307,15 @@ function Shell() {
     setPrevMode(mode);
     setSwitching(mode === 'trip' ? 'to-trip' : 'to-plan');
   }
-  // Disarm once the animation has settled — durations mirror --t-cinematic /
-  // --t-deliberate (tokens.css) plus a small tail. Keyed on `switching` so a new
-  // switch (or a quick back-and-forth) restarts the timer instead of stacking.
+  // Disarm once the animation has settled. The duration is read from the CSS
+  // token (not hardcoded) so JS and CSS can't drift — changing --t-cinematic in
+  // tokens.css can't leave this clearing the class mid-animation (which would
+  // snap the chrome). Keyed on `switching` so a new switch (or a quick
+  // back-and-forth) restarts the timer instead of stacking.
   useEffect(() => {
     if (!switching) return;
-    const id = setTimeout(() => setSwitching(null), switching === 'to-trip' ? 660 : 460);
+    const token = switching === 'to-trip' ? '--t-cinematic' : '--t-deliberate';
+    const id = setTimeout(() => setSwitching(null), readDurationMs(token) + SWITCH_TAIL_MS);
     return () => clearTimeout(id);
   }, [switching]);
   return (

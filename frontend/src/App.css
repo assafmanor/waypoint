@@ -1487,6 +1487,14 @@
    cinematic beat; Trip→Plan (stand-down) is the quieter, faster return. The
    board's amber glow igniting (screens.css board-power) is the Plan→Trip
    climax; the whole thing is disabled by the reduced-motion rule below.
+
+   The rule below is a UNIVERSAL selector on purpose: any element that recolors
+   by mode transitions along automatically, so adding chrome later needs no
+   upkeep here (no per-element list to forget). It's confined to the color
+   family and only while [data-switching] is set, so it never touches transforms
+   (nav settle) or body content, and reverts to per-element timing between
+   switches. The drafting grid on .header::before has its own rule —
+   pseudo-elements aren't matched by `*`.
    ============================================================ */
 .app[data-switching='to-trip'] {
   --switch-dur: var(--t-cinematic);
@@ -1494,28 +1502,12 @@
 .app[data-switching='to-plan'] {
   --switch-dur: var(--t-deliberate);
 }
-.app[data-switching] .header,
-.app[data-switching] .trip-name-btn,
-.app[data-switching] .trip-name-btn .chev,
-.app[data-switching] .trip-sub,
-.app[data-switching] .gear-btn,
-.app[data-switching] .account-btn,
-.app[data-switching] .av,
-.app[data-switching] .offline-badge,
-.app[data-switching] .toggle,
-.app[data-switching] .toggle button,
-.app[data-switching] .toggle .auto,
-.app[data-switching] .day-pill,
-.app[data-switching] .day-pill .n,
-.app[data-switching] .month-label,
-.app[data-switching] .nav,
-.app[data-switching] .nav button {
+.app[data-switching] * {
   transition:
     background-color var(--switch-dur, var(--t-base)) var(--ease-standard),
     color var(--switch-dur, var(--t-base)) var(--ease-standard),
     border-color var(--switch-dur, var(--t-base)) var(--ease-standard),
     box-shadow var(--switch-dur, var(--t-base)) var(--ease-standard),
-    transform var(--switch-dur, var(--t-base)) var(--ease-standard),
     opacity var(--switch-dur, var(--t-base)) var(--ease-standard);
 }
 
