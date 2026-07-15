@@ -188,7 +188,11 @@ export function TimePicker({
                   <span>{durationPhrase(duration)}</span>
                   <span className="tp-endhm" dir="ltr">
                     {t.eventForm.endsAtPrefix} {end}
-                    {endIsNextDay && <span className="tp-nextday">{t.eventForm.nextDay}</span>}
+                    {endIsNextDay && (
+                      <sup className="tp-nextday" title={t.eventForm.nextDay}>
+                        +1
+                      </sup>
+                    )}
                   </span>
                 </>
               ) : (
@@ -271,7 +275,9 @@ export function TimePicker({
                   <span className="tp-end" dir="ltr">
                     {t.eventForm.endsAtPrefix} {toEndWall(startMin + d)}
                     {isNextDay(startMin + d) && (
-                      <span className="tp-nextday">{t.eventForm.nextDay}</span>
+                      <sup className="tp-nextday" title={t.eventForm.nextDay}>
+                        +1
+                      </sup>
                     )}
                   </span>
                 </button>

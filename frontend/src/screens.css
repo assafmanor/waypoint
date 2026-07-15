@@ -1031,6 +1031,11 @@
   display: flex;
   align-items: baseline;
   gap: 7px;
+  /* wrap between the duration and the end (never mid-word) in the narrow field */
+  flex-wrap: wrap;
+}
+.tp-dur .tp-val > span {
+  white-space: nowrap;
 }
 .tp-dur .tp-endhm {
   font-family: var(--font-mono);
@@ -1860,10 +1865,11 @@
   vertical-align: super;
 }
 .tp-nextday {
-  margin-inline-start: 4px;
-  font-size: 11px;
+  font-size: 0.62em;
   font-weight: 700;
   color: var(--amber-deep);
+  margin-inline-start: 2px;
+  vertical-align: super;
 }
 
 /* Trip-mode quick-schedule confirm (shelf → day). Neutral --cta, not plan
