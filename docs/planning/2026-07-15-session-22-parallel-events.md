@@ -1,7 +1,7 @@
 # Session 22 — Parallel / overlapping-time events (design)
 
 **Date:** 2026-07-15
-**Status:** Design exploration — not yet decided. No ADR yet.
+**Status:** Design decided (visual). ADR + implementation next.
 **Mockup:** [`mockups/parallel-events-v1.html`](../../mockups/parallel-events-v1.html)
 
 ## Problem
@@ -22,40 +22,44 @@ conflict warning). Real sources of overlap: a long "envelope" soft event (museum
 pass 11:30–17:30) with specific things inside it; the ~5-friends group splitting
 up; incidental collisions.
 
-## Proposed direction (defaults pending owner confirmation)
-
-The clarifying questions didn't reach the owner (tool error); these are the
-recommended answers, used to build the mockup. **Confirm/redirect before code.**
+## Decisions (session 22, owner-confirmed)
 
 1. **Meaning = mix, shown calmly.** Support envelope, group-split, and incidental
    overlap; never scold soft-soft overlap.
-2. **By mode:** Trip shows concurrency calmly; **Plan** adds a gentle "these
-   overlap" affordance (it's the builder — where you'd resolve it).
+2. **By mode:** Trip shows concurrency calmly; **Plan** flags it as resolvable.
 3. **Board:** one loud `now` hero + a quiet **"ועוד N עכשיו"** expander; a
-   distinct **group-split** variant when there's no clear primary.
+   distinct **group-split** variant when there's no clear primary. (Approved.)
 
 ### The concurrency cluster (day view)
 
 Consecutive time-overlapping events merge into a single-column **cluster** with a
 shared window header. Concurrency is shown with **structure + neutral ink**,
-never a new semantic hue (amber stays time/now; violet stays plan). Two
-treatments in the mockup:
+never a new semantic hue (amber stays time/now; violet stays plan).
 
-- **A — bracket cluster:** header + hairline vertical bracket, rows nested.
-  Minimal, low-risk. Recommended baseline.
-- **B — time rail:** a proportional gutter where each event is a bar sized by its
-  span, so an envelope reads as a tall bar and nested events as short bars; amber
-  now-line. Richer; better for envelope-heavy days.
+**Trip = quiet ("Treatment A"):** a small muted header + a hairline neutral side
+brace, rows nested. No box, no fill — grouping reads without shouting. (The
+proportional "time-rail" variant B was **not** chosen.)
 
 Hard/soft grammar is preserved **inside** the cluster (solid+🔒+code vs
 dashed+hatch). A single non-overlapping event stays a plain row (no cluster).
 `end === start` (back-to-back) is **not** an overlap.
 
-### Plan mode
+### Plan mode — overlap must be VISUALLY DISTINCT from a gap
 
-Same cluster + a violet **overlap chip** replacing the gap chip when spans
-overlap ("חופף ב-45 דק׳ · הזז"). Drag-reorder still acts on soft slots; hard
-events stay pinned anchors.
+Owner call: an overlap must not share the gap chip's grammar — they are opposites
+(gap = empty time to add into; overlap = events bound in the same time). So:
+
+- **Gap** keeps its grammar: an airy dashed pill centered between two separated
+  rows, flanked by hairlines ("＋ שבץ") — additive.
+- **Overlap** is the same cluster as Trip but rendered as a **bound** group: a
+  plan-violet tinted container + a solid **violet side brace**, a header-level
+  **"הזז" resolve control**, and a small violet **seam tag** ("⧉ חופף 45 דק׳") on
+  the lower card of an overlapping pair. Crucially **no between-row pill / flanking
+  lines** inside it, so it can never be misread as a gap.
+
+Drag-reorder still acts on soft slots; hard events stay pinned anchors. "הזז"
+offers to nudge a soft event to break the overlap. The existing amber
+hard-vs-soft ⚠️ conflict line is unchanged.
 
 ### Board
 
@@ -70,15 +74,17 @@ into "ועוד N עכשיו". Group-split variant (no primary): two equal rows u
 from the clock, never stored (ADR-0018). A shared `mergeOverlaps`/`clusterByTime`
 helper feeds both the day view and the board.
 
-## Open questions for the owner
+## Open question (deferred)
 
-- Treatment **A vs B** for the day view (or A now, B later)?
-- Confirm the three defaults above.
 - Group-split: is "who's in which group" data we track, or just two events at the
-  same time? (Membership-per-event is a bigger data-model question — deferred.)
+  same time? Per-member-per-event membership is a bigger data-model question —
+  **deferred**. The board's group-split variant is driven purely by "≥2 concurrent
+  soft events with no clear primary" for now; group labels are illustrative.
 
 ## Next step
 
-On confirmation: write an ADR (day-view concurrency + board concurrency), extend
-`deriveNow` + add the cluster helper in `packages/shared`/`lib`, implement in
-`DayView`/`PlanDay`/`Home`, tests for cluster merging and primary-now selection.
+Write an ADR (day-view concurrency cluster + Plan overlap-vs-gap distinction +
+board concurrency), then: extend `deriveNow` to `nowAll[]`/`nextAll[]`, add a
+shared `clusterByTime` helper (`packages/shared` or `lib/time`), implement in
+`DayView`/`PlanDay`/`Home`, and test cluster merging, back-to-back non-overlap,
+and primary-`now` selection (hard > ends-soonest > starts-first).

@@ -1,10 +1,13 @@
 <!doctype html>
-<!-- STATUS: design exploration for parallel / overlapping-time events (undesigned
-     until now). ADR-0028-compliant from the start (mode identity, color budget,
-     hard/soft grammar). Covers three surfaces: Trip Day view, Plan Day view, and
-     the Trip-mode Now/Next board. Two day-view treatments are shown (A: bracket
-     cluster; B: time-rail cluster) for a pick. Where this mockup and
-     docs/design/design-language.md conflict, the doc wins. -->
+<!-- STATUS: agreed design for parallel / overlapping-time events. ADR-0028-compliant
+     (mode identity, color budget, hard/soft grammar). Decisions (session 22):
+       • Trip day view — bracket cluster ("Treatment A"), kept QUIET.
+       • Plan day view — same cluster, but overlap is deliberately DISTINCT from a
+         gap: a plan-violet brace + header "הזז" resolve control, no between-row
+         pill/flanking-lines. A real gap chip is shown alongside for contrast.
+       • Trip board — one loud "now" hero + quiet "ועוד N עכשיו" expander, plus a
+         group-split variant when there is no clear primary.
+     Where this mockup and docs/design/design-language.md conflict, the doc wins. -->
 <html lang="he" dir="rtl">
   <head>
     <meta charset="UTF-8" />
@@ -64,7 +67,7 @@
         color: var(--muted);
         font-size: 14px;
         margin: 0 0 28px;
-        max-width: 720px;
+        max-width: 760px;
       }
       .cols {
         display: flex;
@@ -87,7 +90,6 @@
         margin: 0 0 14px;
         min-height: 34px;
       }
-      /* phone frame */
       .phone {
         background: var(--screen);
         border-radius: 26px;
@@ -101,18 +103,9 @@
       .caption {
         font-size: 11px;
         color: var(--muted);
-        text-transform: none;
         letter-spacing: 0.02em;
-        margin: 18px 2px 6px;
-        font-weight: 600;
-      }
-
-      /* ── section title within a screen ── */
-      .sec-title {
-        font-family: 'Secular One', sans-serif;
-        font-size: 15px;
-        color: var(--ink);
-        margin: 4px 2px 10px;
+        margin: 26px 2px 8px;
+        font-weight: 700;
       }
       .day-sub {
         color: var(--muted);
@@ -204,131 +197,123 @@
         margin-top: 3px;
       }
 
-      /* ═══ THE CONCURRENCY CLUSTER ═══ */
-      /* A cluster groups 2+ time-overlapping events into one single-column unit.
-         Concurrency is shown with STRUCTURE (bracket / rail) and neutral ink —
-         never a new semantic hue. Amber stays reserved for time/now/commitment. */
+      /* ═══ CONCURRENCY CLUSTER — TRIP (quiet) ═══
+         No box, no fill. Just a hairline side brace + a small muted header, so the
+         grouping reads without shouting. Structure + neutral ink only — amber stays
+         time/now, no new hue. */
       .cluster {
-        border: 1px solid var(--line);
-        border-radius: var(--radius-card);
-        background: rgba(255, 255, 255, 0.45);
-        padding: 8px 8px 2px;
-        margin-bottom: 10px;
+        margin: 0 0 10px;
       }
       .cluster-head {
         display: flex;
         align-items: center;
-        gap: 8px;
-        padding: 3px 5px 8px;
+        gap: 7px;
+        padding: 2px 2px 7px;
         color: var(--muted);
-        font-size: 11.5px;
+        font-size: 11px;
         font-weight: 700;
+      }
+      .cluster-head .brk {
+        font-size: 12px;
+        opacity: 0.65;
       }
       .cluster-head .win {
         font-family: 'JetBrains Mono', monospace;
         font-weight: 700;
         color: var(--ink);
       }
-      .cluster-head .brk {
-        font-size: 13px;
-        opacity: 0.7;
+      .cluster .body {
+        border-inline-start: 2px solid var(--soft-line);
+        margin-inline-start: 6px;
+        padding-inline-start: 10px;
       }
       .cluster .item {
         margin-bottom: 8px;
       }
 
-      /* Treatment A — bracket rail (no proportional heights): a hairline vertical
-         line brackets the group; rows nest inside it. Minimal, low-risk. */
-      .cluster.brk-a .body {
-        border-inline-start: 2px solid var(--soft-line);
-        margin-inline-start: 7px;
-        padding-inline-start: 9px;
-      }
-
-      /* Treatment B — time rail (proportional): a gutter where each event is a bar
-         positioned + sized by its span within the cluster window, so an "envelope"
-         event reads as a tall bar and nested events as short bars. */
-      .rail-wrap {
-        display: flex;
-        gap: 10px;
-        align-items: stretch;
-      }
-      .rail {
-        position: relative;
-        width: 16px;
-        flex: none;
-        background: rgba(22, 35, 61, 0.05);
-        border-radius: 999px;
-        margin: 2px 2px 8px;
-      }
-      .rail .bar {
-        position: absolute;
-        inset-inline: 2px;
-        border-radius: 999px;
-      }
-      .rail .bar.hard {
-        background: var(--amber);
-      }
-      .rail .bar.soft {
-        background: repeating-linear-gradient(
-          -45deg,
-          rgba(22, 35, 61, 0.4) 0 3px,
-          rgba(22, 35, 61, 0.18) 3px 6px
-        );
-      }
-      .rail .nowline {
-        position: absolute;
-        inset-inline: -3px;
-        height: 2px;
-        background: var(--amber);
-        box-shadow: 0 0 6px 1px rgba(233, 166, 60, 0.7);
-      }
-      .rail .nowline::before {
-        content: '';
-        position: absolute;
-        inset-inline-end: -3px;
-        top: -2px;
-        width: 6px;
-        height: 6px;
-        border-radius: 50%;
-        background: var(--amber);
-      }
-      .rail-wrap .stack {
-        flex: 1;
-        min-width: 0;
-      }
-      .rail-wrap .item {
-        margin-bottom: 8px;
-      }
-
-      /* Plan-mode overlap chip — the "flag" affordance (gentle, resolvable). It
-         replaces the gap chip when spans overlap. Neutral, not a scold. */
-      .overlap-chip {
-        display: flex;
-        align-items: center;
-        justify-content: center;
-        gap: 8px;
-        margin: -2px 0 10px;
-      }
-      .overlap-chip .line {
-        flex: 1;
-        height: 1px;
-        background: var(--line);
-      }
-      .overlap-chip button {
-        font: inherit;
-        font-size: 11.5px;
-        font-weight: 700;
-        color: var(--plan-deep);
+      /* ═══ OVERLAP CLUSTER — PLAN (distinct from a gap, on purpose) ═══
+         A gap is airy space you add into (pill between two lines). An overlap is
+         the opposite — events bound in the same time — so it reads as a bound,
+         plan-violet braced group with a header-level resolve control, and there is
+         NO between-row pill/flanking-line inside it. */
+      .cluster.plan {
         background: var(--plan-tint);
         border: 1px solid rgba(110, 89, 214, 0.28);
+        border-radius: var(--radius-card);
+        padding: 8px 9px 3px;
+      }
+      .cluster.plan .cluster-head {
+        justify-content: space-between;
+        color: var(--plan-deep);
+        padding: 3px 3px 8px;
+        font-size: 11.5px;
+      }
+      .cluster.plan .cluster-head .win {
+        color: var(--plan-deep);
+      }
+      .cluster.plan .cluster-head .lead {
+        display: flex;
+        align-items: center;
+        gap: 7px;
+      }
+      .cluster.plan .resolve {
+        font: inherit;
+        font-size: 11px;
+        font-weight: 700;
+        color: #fff;
+        background: var(--plan);
+        border: 0;
         border-radius: 999px;
         padding: 4px 11px;
         cursor: pointer;
         white-space: nowrap;
       }
+      .cluster.plan .body {
+        /* solid violet brace = "bound / colliding", vs the neutral hairline in Trip */
+        border-inline-start: 3px solid var(--plan);
+        margin-inline-start: 4px;
+        padding-inline-start: 10px;
+      }
+      /* tiny violet seam tag on the lower card of an overlapping pair — a corner
+         mark, NOT a full-width between-row element, so it can't be read as a gap. */
+      .seam-tag {
+        display: inline-flex;
+        align-items: center;
+        gap: 4px;
+        font-size: 10px;
+        font-weight: 700;
+        color: var(--plan-deep);
+        background: rgba(110, 89, 214, 0.14);
+        border-radius: 999px;
+        padding: 1px 7px;
+      }
 
-      /* ═══ THE BOARD (Trip Now/Next) ═══ */
+      /* ── gap chip (unchanged grammar) — shown for contrast ── */
+      .gap {
+        display: flex;
+        align-items: center;
+        gap: 8px;
+        margin: 0 0 10px;
+      }
+      .gap .gap-line {
+        flex: 1;
+        height: 1px;
+        background: var(--line);
+      }
+      .gap .gap-add {
+        font: inherit;
+        font-size: 11.5px;
+        font-weight: 700;
+        color: var(--muted);
+        background: transparent;
+        border: 1px dashed var(--soft-line);
+        border-radius: 999px;
+        padding: 4px 12px;
+        cursor: pointer;
+        white-space: nowrap;
+      }
+
+      /* ═══ BOARD (Trip Now/Next) ═══ */
       .board {
         background: radial-gradient(120% 90% at 80% -10%, #1a2c4d 0%, var(--board) 60%);
         border-radius: 22px;
@@ -409,8 +394,6 @@
         font-family: 'JetBrains Mono', monospace;
         color: #cdd8ef;
       }
-      /* "and N more now" — the concurrency affordance on the board. Quiet, one line,
-         keeps the single loud now-title as the hero. */
       .also-now {
         margin-top: 11px;
         border-top: 1px dashed rgba(157, 170, 200, 0.25);
@@ -471,10 +454,6 @@
         font-size: 11.5px;
         color: #9fb0d3;
       }
-      .also-row .mini-lock {
-        font-size: 10px;
-        color: var(--amber);
-      }
       .board-divider {
         height: 1px;
         background: rgba(157, 170, 200, 0.2);
@@ -529,7 +508,7 @@
         border-radius: 14px;
         padding: 16px 18px;
         font-size: 13px;
-        max-width: 760px;
+        max-width: 780px;
       }
       .legend h3 {
         font-family: 'Secular One', sans-serif;
@@ -555,24 +534,24 @@
   </head>
   <body>
     <div class="canvas">
-      <h1 class="page-title">אירועים במקביל · מוקאפ עיצוב</h1>
+      <h1 class="page-title">אירועים במקביל · עיצוב מאושר</h1>
       <p class="page-sub">
-        חפיפת זמנים היא מצב לגיטימי (ADR-0011: חפיפת שני אירועים גמישים תקינה). המטרה: להראות
-        בו-זמניות בבירור בעמודה אחת, בלי רשת יומן דו-ממדית ובלי צבע סמנטי חדש — מבנה (סוגר / פס זמן)
-        ודיו ניטרלי בלבד. אמבר נשאר לזמן/עכשיו/מחויבות.
+        חפיפת זמנים היא מצב לגיטימי (ADR-0011). מצב טיול מציג בו-זמניות בשקט (אשכול עם סוגר דק). מצב
+        תכנון מסמן חפיפה כדבר שאפשר לפתור — ובמכוון <b>שונה מפער</b>: פער = מקום ריק להוסיף אליו;
+        חפיפה = אירועים כרוכים באותו זמן. הלוח שומר על גיבור אחד + "ועוד N עכשיו".
       </p>
 
       <div class="cols">
-        <!-- ══════════ COL 1 — TRIP DAY VIEW, treatment A ══════════ -->
+        <!-- ══════════ TRIP DAY VIEW (quiet cluster) ══════════ -->
         <div class="col">
-          <h2 class="col-head">מצב טיול · יום — גרסה A (סוגר)</h2>
+          <h2 class="col-head">מצב טיול · יום</h2>
           <p class="col-note">
-            אשכול בו-זמני: כותרת עם החלון המשותף + סוגר אנכי דק. הכי פשוט, סיכון נמוך.
+            אשכול בו-זמני שקט: כותרת קטנה + סוגר דק. הדקדוק קשיח/רך נשמר בפנים.
           </p>
           <div class="phone">
             <div class="day-sub">יום 1 · יום חמישי · לפה ולשם</div>
 
-            <div class="cluster brk-a">
+            <div class="cluster">
               <div class="cluster-head">
                 <span class="brk">⎣</span> בו-זמנית · <span class="win" dir="ltr">11:30–17:30</span>
               </div>
@@ -581,7 +560,7 @@
                   <span class="badge">🎟️</span>
                   <span class="main">
                     <span class="t">כרטיס מוזיאון <span class="tag-soft">גמיש</span></span>
-                    <span class="m">בתוקף כל היום · חופף לטיסה</span>
+                    <span class="m">בתוקף כל היום</span>
                   </span>
                   <span class="time" dir="ltr">11:30–17:30</span>
                 </div>
@@ -616,101 +595,38 @@
           </div>
         </div>
 
-        <!-- ══════════ COL 2 — TRIP DAY VIEW, treatment B ══════════ -->
+        <!-- ══════════ PLAN DAY VIEW (gap vs overlap, distinct) ══════════ -->
         <div class="col">
-          <h2 class="col-head">מצב טיול · יום — גרסה B (פס זמן)</h2>
+          <h2 class="col-head">מצב תכנון · יום</h2>
           <p class="col-note">
-            גם פס־זמן פרופורציונלי: אירוע־מעטפת ארוך נקרא כפס גבוה, אירועים קצרים בתוכו כפסים קצרים.
-            קו אמבר = עכשיו.
+            למעלה: <b>פער</b> — כפתור מקווקו אוורירי בין שתי שורות. למטה: <b>חפיפה</b> — קבוצה כרוכה
+            בסוגר סגול + "הזז", בלי כפתור־בין־שורות. שתי שפות שונות במכוון.
           </p>
           <div class="phone">
             <div class="day-sub">יום 1 · יום חמישי · לפה ולשם</div>
-
-            <div class="cluster">
-              <div class="cluster-head">
-                <span class="brk">⌇</span> בו-זמנית · <span class="win" dir="ltr">11:30–17:30</span>
-              </div>
-              <div class="rail-wrap">
-                <!-- rail: window 11:30–17:30 = 360min. bars positioned by % of window -->
-                <div class="rail">
-                  <!-- museum 11:30-17:30 = full -->
-                  <div class="bar soft" style="top: 0; bottom: 0"></div>
-                  <!-- coffee 11:30-12:30 = 0–16.7% -->
-                  <div
-                    class="bar soft"
-                    style="top: 2px; height: 15%; inset-inline: 5px; opacity: 0.9"
-                  ></div>
-                  <!-- flight 15:00-17:00 = 58.3–91.7% -->
-                  <div class="bar hard" style="top: 58%; height: 33%; inset-inline: 5px"></div>
-                  <!-- now line ~15:20 -->
-                  <div class="nowline" style="top: 64%"></div>
-                </div>
-                <div class="stack">
-                  <div class="item soft">
-                    <span class="badge">🎟️</span>
-                    <span class="main">
-                      <span class="t">כרטיס מוזיאון <span class="tag-soft">גמיש</span></span>
-                      <span class="m">בתוקף כל היום</span>
-                    </span>
-                    <span class="time" dir="ltr">11:30–17:30</span>
-                  </div>
-                  <div class="item soft">
-                    <span class="badge">☕</span>
-                    <span class="main">
-                      <span class="t">משהו יפה <span class="tag-soft">גמיש</span></span>
-                    </span>
-                    <span class="time" dir="ltr">11:30–12:30</span>
-                  </div>
-                  <div class="item">
-                    <span class="badge">✈️</span>
-                    <span class="main">
-                      <span class="t">
-                        טיסה <span class="tag-hard">🔒 קשיח</span>
-                        <span class="code" dir="ltr">BA-274</span>
-                      </span>
-                    </span>
-                    <span class="time" dir="ltr">15:00–17:00</span>
-                  </div>
-                </div>
-              </div>
-            </div>
 
             <div class="item soft">
-              <span class="badge">🍸</span>
+              <span class="badge">🥐</span>
               <span class="main">
-                <span class="t">בלה <span class="tag-soft">גמיש</span></span>
+                <span class="t">ארוחת בוקר <span class="tag-soft">גמיש</span></span>
               </span>
-              <span class="time" dir="ltr">18:00–19:00</span>
+              <span class="time" dir="ltr">09:00–10:00</span>
             </div>
-          </div>
-        </div>
 
-        <!-- ══════════ COL 3 — PLAN DAY VIEW ══════════ -->
-        <div class="col">
-          <h2 class="col-head">מצב תכנון · יום — סימון חפיפה</h2>
-          <p class="col-note">
-            אותו אשכול, בתוספת שבב־חפיפה סגול (במקום שבב הפער) — הזמנה עדינה לפתור, לא נזיפה.
-          </p>
-          <div class="phone">
-            <div class="day-sub">יום 1 · יום חמישי · לפה ולשם</div>
+            <!-- GAP: airy, additive -->
+            <div class="gap">
+              <span class="gap-line"></span>
+              <button class="gap-add">פער של שעה וחצי · ＋ שבץ</button>
+              <span class="gap-line"></span>
+            </div>
 
-            <div class="cluster brk-a">
+            <!-- OVERLAP: bound, resolvable, plan-violet -->
+            <div class="cluster plan">
               <div class="cluster-head">
-                <span class="brk">⎣</span> חופפים · <span class="win" dir="ltr">11:30–17:30</span>
+                <span class="lead">⧉ חופפים · <span class="win" dir="ltr">11:30–17:30</span></span>
+                <button class="resolve">הזז ▾</button>
               </div>
               <div class="body">
-                <div class="item soft">
-                  <span class="badge">☕</span>
-                  <span class="main">
-                    <span class="t">משהו יפה <span class="tag-soft">גמיש</span></span>
-                  </span>
-                  <span class="time" dir="ltr">11:30–12:30</span>
-                </div>
-                <div class="overlap-chip">
-                  <span class="line"></span>
-                  <button>חופף ב-45 דק׳ · הזז ▾</button>
-                  <span class="line"></span>
-                </div>
                 <div class="item soft">
                   <span class="badge">🎟️</span>
                   <span class="main">
@@ -719,10 +635,20 @@
                   </span>
                   <span class="time" dir="ltr">11:30–17:30</span>
                 </div>
+                <div class="item soft">
+                  <span class="badge">☕</span>
+                  <span class="main">
+                    <span class="t">
+                      משהו יפה <span class="tag-soft">גמיש</span>
+                      <span class="seam-tag">⧉ חופף 45 דק׳</span>
+                    </span>
+                  </span>
+                  <span class="time" dir="ltr">11:30–12:30</span>
+                </div>
                 <div class="item">
                   <span class="badge">✈️</span>
                   <span class="main">
-                    <span class="t"> טיסה <span class="tag-hard">🔒 קשיח</span> </span>
+                    <span class="t">טיסה <span class="tag-hard">🔒 קשיח</span></span>
                     <span class="conflict">⚠️ חופף לכרטיס מוזיאון (גמיש)</span>
                   </span>
                   <span class="time" dir="ltr">15:00–17:00</span>
@@ -731,13 +657,13 @@
             </div>
           </div>
           <p class="col-note" style="margin-top: 12px">
-            הערה: בתכנון, פער שלילי בין שורות (חפיפה) מחליף את שבב הפער בשבב־חפיפה. גרירה־לסידור
-            עדיין פועלת על משבצות רכות; אירוע קשיח נשאר עוגן.
+            גרירה־לסידור עדיין פועלת על משבצות רכות; אירוע קשיח נשאר עוגן. "הזז" מציע להסיט אירוע
+            גמיש כדי לפרק את החפיפה.
           </p>
         </div>
       </div>
 
-      <!-- ══════════ BOARD ROW ══════════ -->
+      <!-- ══════════ BOARD ROW (approved) ══════════ -->
       <div class="caption">מצב טיול · לוח Now/Next — שני דברים קורים עכשיו</div>
       <div class="cols">
         <div class="col">
@@ -823,7 +749,7 @@
           <h2 class="col-head">לוח — פיצול קבוצה (וריאנט)</h2>
           <p class="col-note">
             כשאין "גיבור" ברור (שני אירועים גמישים שקולים, הקבוצה מתפצלת) — שתי שורות שקולות תחת
-            "עכשיו, במקביל".
+            "עכשיו · במקביל".
           </p>
           <div class="phone dark">
             <div class="board">
@@ -865,32 +791,28 @@
       </div>
 
       <div class="legend">
-        <h3>כללי העיצוב (למימוש עתידי)</h3>
+        <h3>כללי העיצוב (למימוש)</h3>
         <ul>
           <li>
-            <b>אשכול = רצף אירועים שחופפים בזמן.</b> נבנה ע״י מיזוג טווחים חופפים (interval-merge);
-            אירוע בודד ללא חפיפה נשאר שורה רגילה — בלי אשכול.
+            <b>אשכול = רצף אירועים שחופפים בזמן</b> (interval-merge). אירוע בודד ללא חפיפה נשאר שורה
+            רגילה. <code>end === start</code> (גב-אל-גב) אינו חפיפה.
           </li>
           <li>
-            <b>נגיעה בקצה אינה חפיפה.</b> <code>end === start</code> (גב-אל-גב) לא יוצר אשכול — רק
-            חפיפה אמיתית.
+            <b>טיול — שקט.</b> סוגר דק ניטרלי + כותרת קטנה. מבנה ודיו בלבד; אמבר נשאר לזמן/עכשיו.
           </li>
           <li>
-            <b>מבנה, לא צבע.</b> הבו-זמניות מסומנת בסוגר/פס ובדיו ניטרלי. אמבר שמור לזמן/עכשיו; סגול
-            שמור לתכנון (שבב הפתרון).
+            <b>תכנון — חפיפה ≠ פער.</b> פער = כפתור מקווקו אוורירי בין שורות (מוסיף). חפיפה = קבוצה
+            כרוכה בסוגר סגול + "הזז" בכותרת, בלי אלמנט בין־שורות. שפות מכוונות שונות.
+          </li>
+          <li><b>דקדוק קשיח/רך נשמר בתוך האשכול</b> (קשיח = כרטיס מלא + 🔒 + קוד; רך = מקווקו).</li>
+          <li>
+            <b>לוח = גיבור אחד.</b> "עכשיו" ראשי לפי: קשיח &gt; מסתיים־ראשון &gt; מתחיל־ראשון; השאר
+            ב"ועוד N". פיצול־קבוצה (בלי גיבור) הוא וריאנט.
           </li>
           <li>
-            <b>דקדוק קשיח/רך נשמר בתוך האשכול.</b> קשיח = כרטיס מלא + 🔒 + קוד; רך = מקווקו + הצללה.
-          </li>
-          <li>
-            <b>לוח = גיבור אחד.</b> "עכשיו" ראשי לפי: קשיח > מסתיים־ראשון > מתחיל־ראשון; השאר ב"ועוד
-            N". פיצול־קבוצה (בלי גיבור) הוא וריאנט נפרד.
-          </li>
-          <li>
-            <b>מודל הנתונים:</b> <code>deriveNow</code> יחזיר <code>nowAll[]</code> ו-<code
-              >nextAll[]</code
-            >
-            (קבוצות בו-זמניות) במקום יחיד. נגזר מהשעון, לא נשמר (ADR-0018).
+            <b>מודל נתונים:</b> <code>deriveNow</code> יחזיר <code>nowAll[]</code> /
+            <code>nextAll[]</code> (קבוצות בו-זמניות), נגזר מהשעון, לא נשמר (ADR-0018); עוזר משותף
+            <code>clusterByTime</code> מזין גם את היום וגם את הלוח.
           </li>
         </ul>
       </div>
