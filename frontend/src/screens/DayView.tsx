@@ -17,6 +17,7 @@ import { CODE_PREFIX, DELAY_STEP_MINUTES, ICONS, MS_PER_DAY } from '../constants
 import { t } from '../i18n/he';
 import { TRIP_TZ_OFFSET, maybeMeta } from '../fixtures';
 import { EventForm } from '../ui/EventForm';
+import { Sheet } from '../ui/Sheet';
 
 const daysBetween = (from: string, to: string) =>
   Math.round((Date.parse(to) - Date.parse(from)) / MS_PER_DAY);
@@ -147,6 +148,15 @@ function EventItem({
 }) {
   const isHard = event.kind === EVENT_KIND.HARD;
   const isDone = event.status === EVENT_STATUS.DONE;
+  // Tier-2 structural edits (edit details, delete) don't belong on the exposed
+  // quick-verb strip in Trip mode — ADR-0025 puts them behind a per-item bottom
+  // sheet ("unlock this one thing"), the same ⋯ affordance Plan mode's rows use.
+  // The inline row keeps only Tier-1 on-the-ground verbs.
+  const [menuOpen, setMenuOpen] = useState(false);
+  const runAction = (fn: () => void) => {
+    setMenuOpen(false);
+    fn();
+  };
   const cls = [
     'item',
     event.kind === EVENT_KIND.SOFT ? 'soft' : '',
@@ -209,11 +219,11 @@ function EventItem({
               <button className="act go" onClick={() => verbs.navigate(event)}>
                 {t.actions.navigate}
               </button>
-              <button className="act" onClick={() => verbs.delay(event)}>
-                {t.actions.delayBy(DELAY_STEP_MINUTES)}
-              </button>
               <button className="act" onClick={() => verbs.onWay(event)}>
                 {t.actions.onWay}
+              </button>
+              <button className="act" onClick={() => verbs.delay(event)}>
+                {t.actions.delayBy(DELAY_STEP_MINUTES)}
               </button>
             </>
           ) : (
@@ -241,24 +251,18 @@ function EventItem({
                   +
                 </button>
               </div>
-              <button className="act" onClick={() => verbs.swap(event)}>
-                {t.actions.swap}
-              </button>
               <button className="act go" onClick={() => verbs.navigate(event)}>
                 {t.actions.navigate}
               </button>
             </>
           )}
           <span className="act-row-end">
-            <button className="act icon-only" onClick={onEdit} aria-label={t.actions.edit}>
-              {ICONS.edit}
-            </button>
             <button
-              className="act icon-only danger"
-              onClick={() => verbs.remove(event)}
-              aria-label={t.actions.delete}
+              className="act icon-only more"
+              onClick={() => setMenuOpen(true)}
+              aria-label={t.actions.more}
             >
-              {ICONS.trash}
+              {ICONS.more}
             </button>
           </span>
         </div>
@@ -268,6 +272,38 @@ function EventItem({
           </div>
         )}
       </div>
+      {menuOpen && (
+        <Sheet title={event.title} onClose={() => setMenuOpen(false)}>
+          <div className="row-actions">
+            {/* Swap is Tier-1 but low-frequency on the ground (it kicks you to the
+                shelf to pick a replacement) — kept reachable here so the inline
+                strip stays to the forward verbs. Soft events only. */}
+            {!isDone && !isHard && (
+              <button className="row-action" onClick={() => runAction(() => verbs.swap(event))}>
+                <span className="row-action-ic" aria-hidden="true">
+                  {ICONS.swap}
+                </span>
+                {t.actions.swap}
+              </button>
+            )}
+            <button className="row-action" onClick={() => runAction(onEdit)}>
+              <span className="row-action-ic" aria-hidden="true">
+                {ICONS.edit}
+              </span>
+              {t.actions.edit}
+            </button>
+            <button
+              className="row-action danger"
+              onClick={() => runAction(() => verbs.remove(event))}
+            >
+              <span className="row-action-ic" aria-hidden="true">
+                {ICONS.trash}
+              </span>
+              {t.actions.delete}
+            </button>
+          </div>
+        </Sheet>
+      )}
     </div>
   );
 }
