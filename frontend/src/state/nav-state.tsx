@@ -74,6 +74,42 @@ export function structuralBackStep(ctx: {
  *  (a screen slide-off for real navigation, a spring-back for the rest). */
 export type BackKind = 'overlay' | 'exit-confirm' | 'exit' | 'structural' | 'none';
 
+/** How the platform system-back (Android hardware/edge back, desktop button)
+ *  should be handled (ADR-0035 §5, Android refinement). The custom edge gesture
+ *  is pre-empted by the OS on Android, so we intercept the back *traversal*
+ *  itself via the Navigation API and route it through the same intent:
+ *  - `close-overlay` — a sheet/dialog is open → cancel the back, close it;
+ *  - `arm-exit` — at the in-trip Home base, first back → cancel, arm + toast;
+ *  - `do-exit` — at Home, second back within the window → cancel, go to /trips;
+ *  - `allow` — nothing to intercept; let react-router's back peel tab/route. */
+export type SystemBackDecision = 'close-overlay' | 'arm-exit' | 'do-exit' | 'allow';
+
+export function systemBackDecision(ctx: {
+  hasOverlay: boolean;
+  insideTrip: boolean;
+  atHome: boolean;
+  armed: boolean;
+}): SystemBackDecision {
+  if (ctx.hasOverlay) return 'close-overlay';
+  if (ctx.insideTrip && ctx.atHome) return ctx.armed ? 'do-exit' : 'arm-exit';
+  return 'allow';
+}
+
+// Minimal shape of the Navigation API we use (lib.dom lacks it in this TS
+// version). Present on Chromium (Android/desktop); absent on Safari/iOS — where
+// there's no system back to intercept anyway, so the edge gesture covers it.
+interface NavigateEventLike extends Event {
+  navigationType: string;
+  cancelable: boolean;
+  destination?: { index: number };
+}
+interface NavigationLike extends EventTarget {
+  currentEntry?: { index: number } | null;
+}
+function getNavigation(): NavigationLike | undefined {
+  return (window as unknown as { navigation?: NavigationLike }).navigation;
+}
+
 type OverlayEntry = { id: number; close: () => void };
 
 interface NavContextValue {
@@ -120,6 +156,55 @@ export function NavProvider({ children }: { children: ReactNode }) {
   const seqRef = useRef(0);
   const insideTripRef = useRef(false);
   const exitPendingRef = useRef(0);
+  const navigate = useNavigate();
+  const showToast = useToast();
+
+  // Route the platform system-back (Android hardware/edge back, desktop button)
+  // through the same intent as the edge gesture (ADR-0035 §5, Android). The
+  // Navigation API lets us cancel a back *traversal* before react-router sees it;
+  // when we don't cancel, the traversal proceeds and react-router's own back
+  // peels the tab/route. No history guards — the interception is at the source.
+  useEffect(() => {
+    const navApi = getNavigation();
+    if (!navApi) return; // Safari/iOS: no system back; the edge gesture covers it.
+    const onNavigate = (evt: Event) => {
+      const e = evt as NavigateEventLike;
+      if (e.navigationType !== 'traverse' || !e.cancelable) return;
+      const destIdx = e.destination?.index;
+      const curIdx = navApi.currentEntry?.index;
+      if (typeof destIdx !== 'number' || typeof curIdx !== 'number' || destIdx >= curIdx) return;
+      const atHome =
+        insideTripRef.current &&
+        window.location.pathname === '/' &&
+        !new URLSearchParams(window.location.search).has(TAB_PARAM);
+      const decision = systemBackDecision({
+        hasOverlay: stackRef.current.length > 0,
+        insideTrip: insideTripRef.current,
+        atHome,
+        armed: getNow() - exitPendingRef.current < EXIT_CONFIRM_MS,
+      });
+      switch (decision) {
+        case 'close-overlay':
+          e.preventDefault();
+          stackRef.current.pop()?.close();
+          break;
+        case 'arm-exit':
+          e.preventDefault();
+          exitPendingRef.current = getNow();
+          showToast(ICONS.navigate, t.shell.leaveTripHint);
+          break;
+        case 'do-exit':
+          e.preventDefault();
+          exitPendingRef.current = 0;
+          navigate(EXIT_TRIP_TO); // deterministic — never traverse off-app.
+          break;
+        case 'allow':
+          break; // let react-router's back peel the tab/route.
+      }
+    };
+    navApi.addEventListener('navigate', onNavigate);
+    return () => navApi.removeEventListener('navigate', onNavigate);
+  }, [navigate, showToast]);
 
   const value = useMemo<NavContextValue>(
     () => ({
