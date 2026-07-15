@@ -1,0 +1,918 @@
+<!doctype html>
+<html lang="he" dir="rtl">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>Waypoint — הגדרות הטיול</title>
+    <link rel="preconnect" href="https://fonts.googleapis.com" />
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+    <link
+      href="https://fonts.googleapis.com/css2?family=Assistant:wght@400;500;600;700&family=Secular+One&family=JetBrains+Mono:wght@500;700&display=swap"
+      rel="stylesheet"
+    />
+    <style>
+      :root {
+        --ink: #16233d;
+        --indigo: #1b2a4a;
+        --board: #0e1729;
+        --screen: #e7eaef;
+        --card: #ffffff;
+        --paper: #f3efe6;
+        --amber: #e9a63c;
+        --amber-deep: #c9822a;
+        --teal: #2c9c90;
+        --muted: #6c7488;
+        --plan: #6e59d6;
+        --plan-deep: #5747b4;
+        --plan-tint: rgba(110, 89, 214, 0.1);
+        --line: rgba(22, 35, 61, 0.1);
+        --soft-line: rgba(22, 35, 61, 0.28);
+        --miss: #c2584e;
+        --shadow: 0 18px 40px -18px rgba(14, 23, 41, 0.45);
+      }
+      * {
+        box-sizing: border-box;
+        margin: 0;
+        padding: 0;
+      }
+      html,
+      body {
+        min-height: 100%;
+      }
+      body {
+        font-family: 'Assistant', sans-serif;
+        background:
+          radial-gradient(120% 90% at 80% -10%, #2a3e68 0%, transparent 55%),
+          radial-gradient(120% 90% at 0% 110%, #1a2a4a 0%, transparent 50%), #0f1a31;
+        color: var(--ink);
+        min-height: 100vh;
+        padding: 28px 16px 60px;
+        -webkit-font-smoothing: antialiased;
+        display: flex;
+        flex-wrap: wrap;
+        gap: 26px;
+        align-items: flex-start;
+        justify-content: center;
+      }
+
+      /* ---------- layout: phone + design-notes panel ---------- */
+      .col {
+        display: flex;
+        flex-direction: column;
+        align-items: stretch;
+        gap: 14px;
+      }
+      .col.phone-col {
+        width: 392px;
+        max-width: 100%;
+      }
+      .col.notes-col {
+        width: 360px;
+        max-width: 100%;
+      }
+      .caption-title {
+        color: #cdd7ee;
+        font-family: 'Secular One', sans-serif;
+        font-size: 15px;
+        text-align: center;
+      }
+
+      /* perspective switcher */
+      .switcher {
+        display: flex;
+        gap: 6px;
+        justify-content: center;
+        flex-wrap: wrap;
+      }
+      .sw {
+        font: inherit;
+        font-size: 12px;
+        font-weight: 700;
+        color: #c6d0e8;
+        background: rgba(255, 255, 255, 0.06);
+        border: 1px solid rgba(255, 255, 255, 0.14);
+        border-radius: 99px;
+        padding: 7px 15px;
+        cursor: pointer;
+      }
+      .sw.on {
+        background: #eef1f9;
+        color: var(--ink);
+        border-color: transparent;
+      }
+
+      .phone {
+        background: var(--screen);
+        border-radius: 38px;
+        box-shadow:
+          var(--shadow),
+          0 0 0 10px #0b1526,
+          0 0 0 12px #223257;
+        overflow: hidden;
+        position: relative;
+        height: 812px;
+        display: flex;
+        flex-direction: column;
+      }
+
+      .statusbar {
+        background: #eef1f7;
+        color: #56607a;
+        display: flex;
+        justify-content: space-between;
+        align-items: center;
+        padding: 11px 22px 8px;
+        font-size: 13px;
+        font-weight: 600;
+        font-family: 'JetBrains Mono', monospace;
+        flex: 0 0 auto;
+      }
+      .statusbar .dots {
+        letter-spacing: 2px;
+        opacity: 0.85;
+      }
+
+      /* ---------- settings header (mode-neutral paper) ---------- */
+      /* Settings is reached from the header gear in BOTH modes, and today the
+         route sits outside the mode Shell — so the chrome here is deliberately
+         mode-neutral ink-on-paper, not plan-violet. (Design note in the panel.) */
+      .set-head {
+        background: linear-gradient(180deg, #ffffff, #f6f7fb);
+        color: var(--ink);
+        padding: 13px 18px 15px;
+        border-bottom: 1px solid var(--line);
+        flex: 0 0 auto;
+      }
+      .set-head .row {
+        display: flex;
+        align-items: center;
+        gap: 12px;
+      }
+      .set-head .back {
+        font: inherit;
+        background: rgba(22, 35, 61, 0.05);
+        border: 1px solid var(--line);
+        color: var(--ink);
+        width: 34px;
+        height: 34px;
+        border-radius: 11px;
+        cursor: pointer;
+        font-size: 17px;
+        display: grid;
+        place-items: center;
+        flex: 0 0 auto;
+      }
+      .set-title {
+        font-family: 'Secular One', sans-serif;
+        font-size: 19px;
+      }
+      .set-sub {
+        font-size: 12px;
+        color: var(--muted);
+        margin-top: 7px;
+        padding-inline-start: 46px;
+      }
+      .set-sub b {
+        color: var(--ink);
+        font-weight: 700;
+      }
+
+      .scroll {
+        flex: 1;
+        overflow-y: auto;
+        min-height: 0;
+      }
+      .scroll::-webkit-scrollbar {
+        width: 0;
+      }
+      .set-body {
+        padding: 4px 16px 30px;
+      }
+
+      .sec-title {
+        font-size: 12px;
+        font-weight: 700;
+        color: var(--muted);
+        letter-spacing: 0.06em;
+        margin: 22px 4px 10px;
+        display: flex;
+        justify-content: space-between;
+        align-items: center;
+      }
+      .sec-title .hint {
+        font-weight: 500;
+        letter-spacing: 0;
+        color: #98a0b0;
+        font-size: 11px;
+      }
+      /* generic edit affordance — neutral ink, never a semantic hue (color budget) */
+      .sec-title .edit-btn {
+        font: inherit;
+        font-size: 11.5px;
+        font-weight: 700;
+        letter-spacing: 0;
+        color: var(--ink);
+        background: rgba(22, 35, 61, 0.06);
+        border: 1px solid var(--line);
+        border-radius: 8px;
+        padding: 4px 12px;
+        cursor: pointer;
+      }
+      .listcard {
+        background: var(--card);
+        border: 1px solid var(--line);
+        border-radius: 15px;
+        overflow: hidden;
+      }
+
+      /* ---------- read-only detail rows ---------- */
+      .field {
+        padding: 13px 15px;
+        border-bottom: 1px solid var(--line);
+        display: flex;
+        align-items: center;
+        gap: 12px;
+      }
+      .field:last-child {
+        border-bottom: 0;
+      }
+      .field .fi {
+        font-size: 17px;
+        flex: 0 0 auto;
+        width: 20px;
+        text-align: center;
+      }
+      .field .main {
+        flex: 1;
+        min-width: 0;
+      }
+      .field .fl {
+        font-size: 11px;
+        font-weight: 700;
+        color: var(--muted);
+        letter-spacing: 0.04em;
+      }
+      .field .fv {
+        font-size: 14.5px;
+        font-weight: 600;
+        margin-top: 2px;
+      }
+      .field .fv.mono {
+        font-family: 'JetBrains Mono', monospace;
+        font-size: 13.5px;
+        direction: ltr;
+        text-align: start;
+      }
+      .readonly-note {
+        display: flex;
+        align-items: center;
+        gap: 8px;
+        padding: 10px 15px;
+        background: #fafbfd;
+        border-top: 1px solid var(--line);
+        font-size: 11.5px;
+        color: var(--muted);
+      }
+      .soon {
+        font-size: 10px;
+        font-weight: 700;
+        letter-spacing: 0.04em;
+        color: var(--plan-deep);
+        background: var(--plan-tint);
+        border: 1px solid rgba(110, 89, 214, 0.3);
+        border-radius: 7px;
+        padding: 2px 7px;
+        flex: 0 0 auto;
+      }
+
+      /* ---------- details edit form (one PATCH /trips/:id) ---------- */
+      .editform {
+        padding: 6px 15px 15px;
+      }
+      .fld {
+        margin-top: 13px;
+      }
+      .fld > label {
+        display: block;
+        font-size: 11px;
+        font-weight: 700;
+        color: var(--muted);
+        letter-spacing: 0.04em;
+        margin-bottom: 5px;
+      }
+      .inp {
+        font: inherit;
+        width: 100%;
+        background: #fafbfd;
+        border: 1px solid var(--soft-line);
+        border-radius: 10px;
+        padding: 10px 12px;
+        font-size: 14px;
+        font-weight: 600;
+        color: var(--ink);
+      }
+      .inp:focus-visible {
+        outline: 2.5px solid var(--ink);
+        outline-offset: 1px;
+        background: #fff;
+      }
+      .inp.mono {
+        font-family: 'JetBrains Mono', monospace;
+        font-size: 13px;
+        direction: ltr;
+        text-align: start;
+      }
+      .inp-row {
+        display: flex;
+        gap: 9px;
+      }
+      .inp-row > * {
+        flex: 1;
+        min-width: 0;
+      }
+      .subfld {
+        display: flex;
+        align-items: center;
+        gap: 7px;
+      }
+      .subfld .sublbl {
+        font-size: 12px;
+        font-weight: 700;
+        color: var(--muted);
+        flex: 0 0 auto;
+      }
+      .subfld .inp {
+        flex: 1;
+        min-width: 0;
+      }
+      .budget-row {
+        display: flex;
+        gap: 9px;
+      }
+      .budget-row .cur {
+        flex: 0 0 88px;
+      }
+      .budget-row .amt {
+        flex: 1;
+      }
+      .form-actions {
+        display: flex;
+        gap: 9px;
+        margin-top: 18px;
+      }
+      .btn-save {
+        font: inherit;
+        flex: 1;
+        background: var(--ink);
+        color: #fff;
+        border: 0;
+        border-radius: 11px;
+        padding: 12px;
+        font-size: 14px;
+        font-weight: 700;
+        cursor: pointer;
+      }
+      .btn-cancel {
+        font: inherit;
+        flex: 0 0 auto;
+        background: none;
+        color: var(--muted);
+        border: 1px solid var(--line);
+        border-radius: 11px;
+        padding: 12px 18px;
+        font-size: 14px;
+        font-weight: 700;
+        cursor: pointer;
+      }
+
+      /* view <-> edit visibility, toggled by .editing on the details card */
+      .details .details-edit {
+        display: none;
+      }
+      .details.editing .details-view {
+        display: none;
+      }
+      .details.editing .details-edit {
+        display: block;
+      }
+      .details.editing .edit-btn {
+        display: none;
+      }
+
+      /* ---------- members ---------- */
+      .member {
+        display: flex;
+        align-items: center;
+        gap: 11px;
+        padding: 11px 15px;
+        border-bottom: 1px solid var(--line);
+      }
+      .member:last-child {
+        border-bottom: 0;
+      }
+      .av {
+        width: 34px;
+        height: 34px;
+        border-radius: 50%;
+        display: grid;
+        place-items: center;
+        color: #fff;
+        font-weight: 700;
+        font-size: 14px;
+        flex: 0 0 auto;
+        font-family: 'Secular One', sans-serif;
+      }
+      .member .mn {
+        font-weight: 700;
+        font-size: 13.5px;
+        flex: 1;
+        min-width: 0;
+      }
+      .member .mr {
+        font-size: 11px;
+        color: var(--muted);
+        font-weight: 500;
+      }
+      .member .role {
+        font-size: 10.5px;
+        font-weight: 700;
+        border-radius: 7px;
+        padding: 3px 8px;
+        flex: 0 0 auto;
+      }
+      .role.owner {
+        background: rgba(233, 166, 60, 0.15);
+        color: var(--amber-deep);
+      }
+      .role.mem {
+        background: rgba(22, 35, 61, 0.06);
+        color: var(--muted);
+      }
+      .member .remove {
+        font: inherit;
+        font-size: 11.5px;
+        font-weight: 700;
+        color: var(--miss);
+        background: none;
+        border: 0;
+        cursor: pointer;
+        padding: 4px 6px;
+        flex: 0 0 auto;
+      }
+
+      /* ---------- invite ---------- */
+      .invite-box {
+        display: flex;
+        align-items: center;
+        gap: 10px;
+        background: var(--plan-tint);
+        border: 1px dashed rgba(110, 89, 214, 0.5);
+        border-radius: 13px;
+        padding: 12px 14px;
+        cursor: pointer;
+        transition: 0.14s;
+      }
+      .invite-box:hover {
+        background: rgba(110, 89, 214, 0.16);
+      }
+      .invite-box .code {
+        font-family: 'JetBrains Mono', monospace;
+        font-weight: 700;
+        font-size: 14px;
+        color: var(--plan-deep);
+        letter-spacing: 0.04em;
+        direction: ltr;
+        flex: 1;
+        min-width: 0;
+        overflow: hidden;
+        text-overflow: ellipsis;
+        white-space: nowrap;
+      }
+      .invite-box .cp {
+        font-size: 16px;
+        flex: 0 0 auto;
+      }
+      .invite-cap {
+        font-size: 11px;
+        color: var(--muted);
+        margin: 8px 4px 0;
+        line-height: 1.5;
+      }
+
+      /* ---------- danger zone ---------- */
+      .danger {
+        border: 1px solid rgba(194, 88, 78, 0.28);
+        border-radius: 15px;
+        overflow: hidden;
+        background: #fff;
+      }
+      .danger .field .fv {
+        color: var(--miss);
+        font-size: 13.5px;
+      }
+      .danger .field .go {
+        margin-inline-start: auto;
+        font: inherit;
+        font-size: 12px;
+        font-weight: 700;
+        color: var(--miss);
+        background: rgba(194, 88, 78, 0.08);
+        border: 1px solid rgba(194, 88, 78, 0.3);
+        border-radius: 9px;
+        padding: 6px 12px;
+        cursor: pointer;
+        flex: 0 0 auto;
+      }
+      .leave-cap {
+        font-size: 11px;
+        color: var(--muted);
+        margin: 8px 4px 0;
+        line-height: 1.5;
+      }
+
+      /* role-perspective gating */
+      .phone[data-role='peer'] .admin-only {
+        display: none;
+      }
+      .phone[data-role='peer'] .peer-only {
+        display: block;
+      }
+      .peer-only {
+        display: none;
+      }
+      .roleview-flag {
+        font-size: 10px;
+        font-weight: 700;
+        letter-spacing: 0.08em;
+        text-transform: uppercase;
+        color: #98a0b0;
+        text-align: center;
+        padding: 6px 0 0;
+      }
+
+      /* ---------- design-notes panel (outside the app) ---------- */
+      .notes {
+        background: #131f38;
+        border: 1px solid rgba(255, 255, 255, 0.12);
+        border-radius: 16px;
+        padding: 18px 18px 20px;
+        color: #d7deee;
+      }
+      .notes h2 {
+        font-family: 'Secular One', sans-serif;
+        font-size: 15px;
+        color: #fff;
+        margin-bottom: 4px;
+      }
+      .notes .lede {
+        font-size: 12px;
+        color: #9aa8c6;
+        line-height: 1.5;
+        margin-bottom: 14px;
+      }
+      .legend {
+        display: flex;
+        gap: 14px;
+        font-size: 11px;
+        color: #9aa8c6;
+        margin-bottom: 16px;
+        flex-wrap: wrap;
+      }
+      .legend span {
+        display: inline-flex;
+        align-items: center;
+        gap: 6px;
+      }
+      .swatch {
+        width: 10px;
+        height: 10px;
+        border-radius: 3px;
+        flex: 0 0 auto;
+      }
+      .note {
+        border-inline-start: 3px solid var(--plan);
+        background: rgba(110, 89, 214, 0.1);
+        border-radius: 0 10px 10px 0;
+        padding: 9px 12px;
+        margin-bottom: 9px;
+      }
+      .note.block {
+        border-inline-start-color: var(--miss);
+        background: rgba(194, 88, 78, 0.12);
+      }
+      .note.ok {
+        border-inline-start-color: var(--teal);
+        background: rgba(44, 156, 144, 0.1);
+      }
+      .note .nt {
+        font-size: 12.5px;
+        font-weight: 700;
+        color: #fff;
+        margin-bottom: 2px;
+      }
+      .note .nb {
+        font-size: 11.5px;
+        color: #b9c4dc;
+        line-height: 1.5;
+      }
+      .note .nb code {
+        font-family: 'JetBrains Mono', monospace;
+        font-size: 10.5px;
+        color: #e7d7a6;
+      }
+
+      @media (prefers-reduced-motion: reduce) {
+        * {
+          animation: none !important;
+          transition: none !important;
+        }
+      }
+    </style>
+  </head>
+  <body>
+    <!-- ============ THE APP SCREEN ============ -->
+    <div class="col phone-col">
+      <div class="caption-title">הגדרות הטיול · v1</div>
+      <div class="switcher">
+        <button class="sw on" onclick="setRole(this, 'admin')">תצוגת מנהל</button>
+        <button class="sw" onclick="setRole(this, 'peer')">תצוגת משתתף</button>
+      </div>
+
+      <div class="phone" id="phone" data-role="admin">
+        <div class="statusbar"><span>09:41</span><span class="dots">●●● 5G ▮</span></div>
+
+        <div class="set-head">
+          <div class="row">
+            <button class="back" aria-label="חזרה לטיול">→</button>
+            <div class="set-title">הגדרות הטיול</div>
+          </div>
+          <div class="set-sub"><b>יפן ׳26</b> · טוקיו → קיוטו → אוסקה</div>
+        </div>
+
+        <div class="scroll">
+          <div class="set-body">
+            <!-- ===== TRIP DETAILS (view <-> edit, one PATCH /trips/:id) ===== -->
+            <div class="sec-title">
+              פרטי הטיול
+              <button class="edit-btn" onclick="editDetails(true)">עריכה</button>
+            </div>
+            <div class="listcard details" id="details">
+              <!-- view mode -->
+              <div class="details-view">
+                <div class="field">
+                  <span class="fi">✏️</span>
+                  <div class="main">
+                    <div class="fl">שם הטיול</div>
+                    <div class="fv">יפן ׳26</div>
+                  </div>
+                </div>
+                <div class="field">
+                  <span class="fi">📍</span>
+                  <div class="main">
+                    <div class="fl">יעד</div>
+                    <div class="fv">טוקיו → קיוטו → אוסקה</div>
+                  </div>
+                </div>
+                <div class="field">
+                  <span class="fi">🗓️</span>
+                  <div class="main">
+                    <div class="fl">תאריכים</div>
+                    <div class="fv mono">25.07 – 03.08 · 2026</div>
+                  </div>
+                </div>
+                <div class="field">
+                  <span class="fi">🕓</span>
+                  <div class="main">
+                    <div class="fl">אזור זמן</div>
+                    <div class="fv mono">Asia/Tokyo</div>
+                  </div>
+                </div>
+                <div class="field">
+                  <span class="fi">💰</span>
+                  <div class="main">
+                    <div class="fl">תקציב יומי לקבוצה</div>
+                    <div class="fv mono">¥14,000</div>
+                  </div>
+                </div>
+              </div>
+
+              <!-- edit mode -->
+              <form class="details-edit" onsubmit="event.preventDefault(); editDetails(false)">
+                <div class="fld">
+                  <label for="f-name">שם הטיול</label>
+                  <input class="inp" id="f-name" value="יפן ׳26" maxlength="60" />
+                </div>
+                <div class="fld">
+                  <label for="f-dest">יעד</label>
+                  <input class="inp" id="f-dest" value="טוקיו → קיוטו → אוסקה" />
+                </div>
+                <div class="fld">
+                  <label>תאריכים</label>
+                  <div class="inp-row">
+                    <div class="subfld">
+                      <span class="sublbl">מ־</span>
+                      <input class="inp mono" type="date" value="2026-07-25" aria-label="תאריך התחלה" />
+                    </div>
+                    <div class="subfld">
+                      <span class="sublbl">עד</span>
+                      <input class="inp mono" type="date" value="2026-08-03" aria-label="תאריך סיום" />
+                    </div>
+                  </div>
+                </div>
+                <div class="fld">
+                  <label for="f-tz">אזור זמן</label>
+                  <select class="inp mono" id="f-tz">
+                    <option selected>Asia/Tokyo</option>
+                    <option>Asia/Jerusalem</option>
+                    <option>Europe/London</option>
+                    <option>UTC</option>
+                  </select>
+                </div>
+                <div class="fld">
+                  <label>תקציב יומי לקבוצה</label>
+                  <div class="budget-row">
+                    <select class="inp mono cur" aria-label="מטבע">
+                      <option selected>JPY ¥</option>
+                      <option>ILS ₪</option>
+                      <option>USD $</option>
+                      <option>EUR €</option>
+                    </select>
+                    <input class="inp mono amt" type="number" value="14000" min="0" aria-label="סכום" />
+                  </div>
+                </div>
+                <div class="form-actions">
+                  <button type="submit" class="btn-save">שמור</button>
+                  <button type="button" class="btn-cancel" onclick="editDetails(false)">ביטול</button>
+                </div>
+              </form>
+            </div>
+
+            <!-- ===== PARTY / MEMBERS ===== -->
+            <div class="sec-title">חבורה <span class="hint">5 משתתפים</span></div>
+            <div class="listcard">
+              <div class="member">
+                <div class="av" style="background: #e9a63c">א</div>
+                <div class="mn">אסף <span class="mr">· אתה</span></div>
+                <span class="role owner">מנהל</span>
+              </div>
+              <div class="member">
+                <div class="av" style="background: #5ec5b6">נ</div>
+                <div class="mn">נועם</div>
+                <span class="role mem">משתתף</span>
+                <button class="remove admin-only" aria-label="הסר את נועם">הסר</button>
+              </div>
+              <div class="member">
+                <div class="av" style="background: #e88c8c">ד</div>
+                <div class="mn">דנה</div>
+                <span class="role mem">משתתף</span>
+                <button class="remove admin-only" aria-label="הסר את דנה">הסר</button>
+              </div>
+              <div class="member">
+                <div class="av" style="background: #9c8ce8">מ</div>
+                <div class="mn">מאור</div>
+                <span class="role mem">משתתף</span>
+                <button class="remove admin-only" aria-label="הסר את מאור">הסר</button>
+              </div>
+              <div class="member">
+                <div class="av" style="background: #8cb6e8">ר</div>
+                <div class="mn">רון</div>
+                <span class="role mem">משתתף</span>
+                <button class="remove admin-only" aria-label="הסר את רון">הסר</button>
+              </div>
+            </div>
+            <div class="roleview-flag admin-only">מנהל · אפשר להסיר משתתפים</div>
+            <div class="roleview-flag peer-only">משתתף · צפייה בלבד ברשימה</div>
+
+            <!-- ===== INVITE ===== -->
+            <div class="sec-title">הזמנת חברים</div>
+            <div class="invite-box" onclick="copyInvite(this)">
+              <span class="code" id="invite-code">waypoint.app/join/x7Kq2f</span>
+              <span class="cp">📋</span>
+            </div>
+            <div class="invite-cap">לינק חדש נוצר בכל לחיצה · תקף 7 ימים · שתפו בקבוצת הוואטסאפ</div>
+
+            <!-- ===== LEAVE (danger) ===== -->
+            <div class="sec-title" style="color: var(--miss)">יציאה מהטיול</div>
+            <div class="danger">
+              <div class="field">
+                <span class="fi">🚪</span>
+                <div class="main">
+                  <div class="fv">עזוב את הטיול</div>
+                </div>
+                <button class="go" onclick="confirmLeave()">עזוב</button>
+              </div>
+            </div>
+            <div class="leave-cap">
+              תוסר מרשימת המשתתפים · תוכל להצטרף מחדש דרך לינק הזמנה תקף
+            </div>
+          </div>
+        </div>
+      </div>
+    </div>
+
+    <!-- ============ DESIGN NOTES (not part of the app) ============ -->
+    <div class="col notes-col">
+      <div class="caption-title" style="visibility: hidden">.</div>
+      <div class="notes">
+        <h2>מה נתמך — ומה עוד לא</h2>
+        <div class="lede">
+          המסך מציג רק פעולות שיש להן backend חי היום. כל השאר מסומן כאן לתחזור אליו,
+          ולא מוצג כפקד "חי" שמשקר למשתמש.
+        </div>
+        <div class="legend">
+          <span><i class="swatch" style="background: #2c9c90"></i>נתמך</span>
+          <span><i class="swatch" style="background: #6e59d6"></i>לתחזור — לא נתמך</span>
+          <span><i class="swatch" style="background: #c2584e"></i>חסר endpoint / החלטה</span>
+        </div>
+
+        <div class="note ok">
+          <div class="nt">✓ נתמך היום</div>
+          <div class="nb">
+            רשימת חבורה + תפקידים · הזמנה (<code>POST /trips/:id/invite</code>) · יציאה
+            מהטיול והסרת משתתף ע״י מנהל (<code>DELETE /trips/:id/members/:userId</code>).
+          </div>
+        </div>
+
+        <div class="note ok">
+          <div class="nt">⚒ עריכת פרטי הטיול — נבנה עכשיו</div>
+          <div class="nb">
+            שם / יעד / תאריכים / אזור-זמן / תקציב, כטופס אחד ו-<code>PATCH /trips/:id</code>
+            חדש (endpoint + סכמה משותפת). פתוח: האם עריכה לכל חבר או למנהל בלבד
+            (ADR-0005 "peers not roles" → נוטה לכל חבר). שינוי תאריכים משפיע על אירועים
+            מחוץ לטווח — צריך אזהרה.
+          </div>
+        </div>
+
+        <div class="note block">
+          <div class="nt">מחיקת הטיול לכולם</div>
+          <div class="nb">
+            הושמט מ״אזור היציאה״ — אין <code>DELETE /trips/:id</code>. צריך גם החלטת
+            הרשאה (מי מורשה, אישור כפול).
+          </div>
+        </div>
+
+        <div class="note">
+          <div class="nt">סנכרון Google Calendar</div>
+          <div class="nb">
+            ההעדפה <code>calendarSyncEnabled</code> נשמרת, אבל הדחיפה עצמה עדיין לא
+            מחווטת (ADR-0003). הושמט כדי לא להציג טוגל שלא עושה כלום. יחזור עם ה-push.
+          </div>
+        </div>
+
+        <div class="note">
+          <div class="nt">ייבוא Gmail / Photos / WhatsApp</div>
+          <div class="nb">
+            מהמוקאפ הישן. Gmail הוא v1.1; Photos/WhatsApp מחוץ לסקופ — ואינטגרציות הן
+            צינורות ולא מסך (ADR-0004), אז ממילא לא מקומן כאן.
+          </div>
+        </div>
+
+        <div class="note">
+          <div class="nt">טוגלים של התנהגות (ripple, זיהוי-קשיח)</div>
+          <div class="nb">
+            אלה התנהגויות מובנות של המוצר, לא העדפות נשמרות. אין להן שדה. אם ירצו
+            שליטה — צריך מודל הגדרות-טיול חדש.
+          </div>
+        </div>
+
+        <div class="note">
+          <div class="nt">Edge: החבר האחרון / החלפת מנהל</div>
+          <div class="nb">
+            יציאה נתמכת, אבל מה קורה כשמנהל יחיד עוזב או שהחבר האחרון יוצא (טיול יתום)?
+            צריך העברת-ניהול או מדיניות מחיקה. פתוח.
+          </div>
+        </div>
+
+        <div class="note">
+          <div class="nt">Chrome: נייטרלי מול צבעי-מצב</div>
+          <div class="nb">
+            בחרתי כותרת נייטרלית (ink-on-paper) כי הגדרות נגישות משני המצבים והמסלול
+            יושב מחוץ ל-Shell. לשקול: אולי כן לשאת את זהות-המצב (סגול/אינדיגו).
+          </div>
+        </div>
+      </div>
+    </div>
+
+    <script>
+      function setRole(btn, role) {
+        document.querySelectorAll('.sw').forEach((b) => b.classList.remove('on'));
+        btn.classList.add('on');
+        document.getElementById('phone').dataset.role = role;
+      }
+      function editDetails(on) {
+        document.getElementById('details').classList.toggle('editing', on);
+      }
+      function copyInvite(el) {
+        const code = document.getElementById('invite-code');
+        const prev = code.textContent;
+        code.textContent = 'הועתק · שתפו בקבוצה ✓';
+        setTimeout(() => (code.textContent = prev), 1600);
+      }
+      function confirmLeave() {
+        alert('באמת לצאת מ״יפן ׳26״? (מוקאפ — נשאל שוב ליתר ביטחון)');
+      }
+      // convenience for review: open with #edit to land in the details edit form
+      if (location.hash === '#edit') editDetails(true);
+    </script>
+  </body>
+</html>
