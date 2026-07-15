@@ -323,6 +323,22 @@
         font-size: 12px;
         font-weight: 700;
         color: var(--ink);
+        display: inline-flex;
+        align-items: center;
+      }
+      /* The saved semantic category (derived from the chosen glyph's group).
+         This is what persists for future features — the glyph is a badge. */
+      .cat-readout {
+        font-size: 10.5px;
+        font-weight: 700;
+        color: var(--muted);
+        background: var(--screen);
+        border-radius: 999px;
+        padding: 2px 8px;
+        margin-inline-start: 6px;
+      }
+      .cat-readout:empty {
+        display: none;
       }
       .picker-head .revert {
         display: inline-flex;
@@ -527,7 +543,9 @@
                  of the form down, like the time-setter dropdown). -->
             <div class="picker" id="picker">
               <div class="picker-head">
-                <span class="lbl">בחירת סמל</span>
+                <span class="lbl"
+                  >בחירת סמל <span class="cat-readout" id="cat-readout"></span
+                ></span>
                 <button type="button" class="revert" id="revert" onclick="revertAuto()">
                   ↺ איפוס
                 </button>
@@ -573,6 +591,12 @@
         <li>
           <b>רכיב אחד, שלושה מארחים.</b> אותו בורר משרת <code>EventForm</code>, "רעיון חדש" במדף,
           ויצירת הטיול. השדה כבר קיים בסכימה: <code>icon?</code> על Event ו־MaybeItem.
+        </li>
+        <li>
+          <b>שומרים קטגוריה, לא רק אימוג׳י.</b> נוסיף <code>category</code> קנוני ל־Event ול־MaybeItem
+          (transport · food · lodging · sightseeing · nature · activity · shopping · services ·
+          other); הסמל הוא badge לעקיפה. הקטגוריה נגזרת מהקבוצה שממנה נבחר הסמל (מוצגת למעלה בבורר),
+          ו־<code>BookingType</code> + צבעי סיכות-המפה נגזרים ממנה — מערכת-משמעות אחת (ADR).
         </li>
         <li>
           <b>ניטרלי בכוונה.</b> הבחירה מסומנת במילוי <code>--ink</code> ולא בענבר/טורקיז/סגול —
@@ -710,8 +734,16 @@
         render();
       }
 
+      // The canonical category is derived from which group the glyph lives in —
+      // this is the semantic value we persist (icon glyph is just the badge).
+      function categoryOf(glyph) {
+        return CATEGORIES.find((c) => c.icons.includes(glyph)) ?? null;
+      }
+
       function render() {
         $('chip').textContent = selected;
+        const cat = categoryOf(selected);
+        $('cat-readout').textContent = cat ? 'קטגוריה: ' + cat.label : '';
         // caption only when a *real* suggestion is active (type gave a specific
         // icon that isn't the plain default) and the user hasn't overridden.
         const suggesting = !manual && autoIcon !== HOSTS[host].def;
