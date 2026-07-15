@@ -15,8 +15,12 @@ import { useActiveTripId } from '../state/active-trip-id';
 import { createInvite, createTrip } from '../lib/api';
 import { suggestTripName } from '../lib/trip-name';
 import { useToast } from '../ui/Toast';
-import { MS_PER_DAY, ICONS, DEFAULT_TRIP_ICON } from '../constants';
+import { MS_PER_DAY, ICONS, DEFAULT_TRIP_ICON, DEVICE_LOCALE } from '../constants';
+import { todayInTz } from '../lib/time';
+import { getNow } from '../lib/useClock';
 import { t } from '../i18n/he';
+
+const DEVICE_TZ = Intl.DateTimeFormat().resolvedOptions().timeZone;
 
 export function CreateTrip() {
   const navigate = useNavigate();
@@ -35,7 +39,14 @@ export function CreateTrip() {
     if (!nameTouched) setName(suggestTripName(dest, start));
   };
 
-  const datesInvalid = Boolean(startDate && endDate && endDate < startDate);
+  // Device-local "today" as YYYY-MM-DD — the floor for a new trip's dates. A
+  // trip already under way is fine (start ≤ today ≤ end), but one that ended in
+  // the past isn't a trip you're about to take.
+  const today = todayInTz(DEVICE_TZ, new Date(getNow()));
+  const startInPast = Boolean(startDate && startDate < today);
+  const endInPast = Boolean(endDate && endDate < today);
+  const datesInvalid =
+    Boolean(startDate && endDate && endDate < startDate) || startInPast || endInPast;
   const canCreate = Boolean(destination && startDate && endDate && name && !datesInvalid);
 
   let draftMeta: string = t.shell.newTrip.draftPending;
@@ -104,6 +115,9 @@ export function CreateTrip() {
           <div className="date-row">
             <input
               type="date"
+              lang={DEVICE_LOCALE}
+              min={today}
+              className={startInPast ? 'invalid' : ''}
               value={startDate}
               onChange={(e) => {
                 setStartDate(e.target.value);
@@ -112,12 +126,18 @@ export function CreateTrip() {
             />
             <input
               type="date"
+              lang={DEVICE_LOCALE}
+              min={startDate || today}
               value={endDate}
               className={datesInvalid ? 'invalid' : ''}
               onChange={(e) => setEndDate(e.target.value)}
             />
           </div>
-          {datesInvalid && <div className="field-error">{t.shell.newTrip.dateError}</div>}
+          {datesInvalid && (
+            <div className="field-error">
+              {startInPast || endInPast ? t.shell.newTrip.datePast : t.shell.newTrip.dateError}
+            </div>
+          )}
         </div>
 
         <div className="field">

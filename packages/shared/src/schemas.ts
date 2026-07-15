@@ -88,15 +88,23 @@ export const createDocumentSchema = z.object({
 });
 export type CreateDocumentInput = z.infer<typeof createDocumentSchema>;
 
-export const createTripSchema = z.object({
-  name: z.string().min(1).max(MAX_TRIP_NAME_LENGTH),
-  destination: z.string().min(1),
-  startDate: z.string(),
-  endDate: z.string(),
-  timezone: z.string().default('UTC'),
-  currency: z.string().optional(),
-  dailyBudgetMinor: z.number().int().optional(),
-});
+export const createTripSchema = z
+  .object({
+    name: z.string().min(1).max(MAX_TRIP_NAME_LENGTH),
+    destination: z.string().min(1),
+    startDate: z.string(),
+    endDate: z.string(),
+    timezone: z.string().default('UTC'),
+    currency: z.string().optional(),
+    dailyBudgetMinor: z.number().int().optional(),
+  })
+  // A trip can't end before it begins (a same-day, one-night trip is fine).
+  // ISO date strings sort chronologically, so a lexical compare is valid.
+  // Enforced once here so client and server reject it identically (ADR-0023).
+  .refine((data) => data.endDate >= data.startDate, {
+    message: 'endDate must not be before startDate',
+    path: ['endDate'],
+  });
 export type CreateTripInput = z.infer<typeof createTripSchema>;
 
 export const createMaybeItemSchema = z.object({
