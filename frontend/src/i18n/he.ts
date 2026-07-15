@@ -232,7 +232,7 @@ export const t = {
   // Plan-mode Day-by-day — the itinerary builder (screens/PlanDay.tsx).
   planDay: {
     empty: 'היום ריק — הוסף אירוע או שבץ מהמדף',
-    addToDay: (day: number) => `הוסף אירוע ליום ${day}`,
+    addToDay: 'הוסף אירוע',
     moveEarlier: 'הקדם',
     moveLater: 'אחר',
     drag: 'גרור לסידור',

@@ -127,8 +127,17 @@ export function EventForm({
   };
 
   return (
-    <div className="confirm-overlay" onClick={onClose}>
-      <form className="event-form-card" onClick={(e) => e.stopPropagation()} onSubmit={submit}>
+    <div className="confirm-overlay event-form-overlay" onClick={onClose}>
+      <form
+        className="event-form-card"
+        onClick={(e) => e.stopPropagation()}
+        onSubmit={submit}
+        // Reveal the focused field above the keyboard within the scrolling sheet.
+        onFocusCapture={(e) => {
+          if (e.target instanceof HTMLElement)
+            e.target.scrollIntoView({ block: 'center', behavior: 'smooth' });
+        }}
+      >
         <div className="confirm-title">
           {event
             ? t.eventForm.editTitle
