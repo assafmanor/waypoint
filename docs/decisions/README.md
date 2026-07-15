@@ -82,3 +82,4 @@ What else we weighed and why we didn't pick it.
 | [0037](0037-overnight-events.md)                        | Overnight events: end may run to 07:00 next day, filed under the start night; transportation is a separate category (supersedes 0036 §5) | Accepted |
 | [0038](0038-icons-and-canonical-category.md)            | Curated event/item icon set + a canonical `category` primitive (icon is a badge override; BookingType + map-pins derive from category)   | Proposed |
 | [0039](0039-trip-settings-admin-governed-data-plane.md) | Trip settings: admin-governed edits; settings mutations join the data plane (refines 0005/0032; partially supersedes 0022)               | Accepted |
+| [0040](0040-trip-mode-access-window-and-past-trip-archive.md) | Trip mode is a live-window-only state (override one-directional); a finished trip is a read-only archive (refines 0016/0025/0029/0033)   | Accepted |
