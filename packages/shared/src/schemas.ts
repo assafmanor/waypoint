@@ -8,6 +8,7 @@ import {
   eventKindSchema,
   eventSourceSchema,
   eventStatusSchema,
+  membershipRoleSchema,
 } from './entities';
 import { MAX_TRIP_NAME_LENGTH } from './constants';
 
@@ -106,6 +107,35 @@ export const createTripSchema = z
     path: ['endDate'],
   });
 export type CreateTripInput = z.infer<typeof createTripSchema>;
+
+/** `PATCH /trips/:tripId` — partial trip edit (admin-only, ADR-0039). Every field
+ *  is optional so the details form sends only what changed; the same
+ *  `endDate >= startDate` rule as create is re-checked here whenever both bounds
+ *  are present in the patch (ADR-0023). A patch that moves only one bound is
+ *  validated against the stored trip in the service. */
+export const updateTripSchema = z
+  .object({
+    name: z.string().min(1).max(MAX_TRIP_NAME_LENGTH),
+    destination: z.string().min(1),
+    startDate: z.string(),
+    endDate: z.string(),
+    timezone: z.string(),
+    currency: z.string(),
+    dailyBudgetMinor: z.number().int(),
+  })
+  .partial()
+  .refine(
+    (data) =>
+      data.startDate === undefined || data.endDate === undefined || data.endDate >= data.startDate,
+    { message: 'endDate must not be before startDate', path: ['endDate'] },
+  );
+export type UpdateTripInput = z.infer<typeof updateTripSchema>;
+
+/** `PATCH /trips/:tripId/members/:userId` — admin promotes a peer to admin
+ *  (ADR-0039). No explicit demotion path in v1, but the schema accepts either
+ *  role so the "last admin leaving auto-promotes" write can reuse it. */
+export const updateMembershipRoleSchema = z.object({ role: membershipRoleSchema });
+export type UpdateMembershipRoleInput = z.infer<typeof updateMembershipRoleSchema>;
 
 export const createMaybeItemSchema = z.object({
   id: entityIdSchema.optional(),

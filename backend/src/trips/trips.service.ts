@@ -1,4 +1,4 @@
-import { createHmac } from 'node:crypto';
+import { createHmac, randomUUID } from 'node:crypto';
 import {
   BadRequestException,
   ForbiddenException,
@@ -7,6 +7,7 @@ import {
   UnauthorizedException,
 } from '@nestjs/common';
 import type {
+  Change,
   CreateTripInput,
   InvitePreview,
   JoinTripInput,
@@ -14,8 +15,11 @@ import type {
   Trip,
   TripSnapshot,
   UpdateMembershipPrefsInput,
+  UpdateMembershipRoleInput,
+  UpdateTripInput,
 } from '@waypoint/shared';
 import { PrismaService } from '../prisma/prisma.service';
+import { ChangeService } from '../sync/change.service';
 import {
   toBookingDto,
   toEventDto,
@@ -31,6 +35,8 @@ import {
 // No DB record, so nothing to revoke — acceptable per ADR-0005 (invite revoke isn't gated in v1).
 const INVITE_TTL_MS = 7 * 24 * 60 * 60 * 1000;
 
+const toDateOnly = (d: Date): string => d.toISOString().slice(0, 10);
+
 function inviteSecret(): string {
   const secret = process.env.JWT_SECRET;
   if (!secret) throw new Error('JWT_SECRET not configured');
@@ -43,7 +49,10 @@ function signInvitePayload(payload: string): string {
 
 @Injectable()
 export class TripsService {
-  constructor(private readonly prisma: PrismaService) {}
+  constructor(
+    private readonly prisma: PrismaService,
+    private readonly changes: ChangeService,
+  ) {}
 
   async createTrip(userId: string, input: CreateTripInput): Promise<Trip> {
     const trip = await this.prisma.$transaction(async (tx) => {
@@ -76,6 +85,58 @@ export class TripsService {
     return { trip: toTripDto(trip), members: members.map(toMembershipDto) };
   }
 
+  /** Admin-only trip-details edit (ADR-0039), data-plane via ChangeService so it
+   *  broadcasts + is offline-capable like the timeline. A partial patch that
+   *  moves only one date bound is validated against the stored trip here (the
+   *  shared schema only checks when both bounds are present). */
+  async updateTrip(tripId: string, actorUserId: string, input: UpdateTripInput): Promise<Trip> {
+    await this.assertAdmin(tripId, actorUserId);
+    const before = await this.prisma.trip.findUniqueOrThrow({ where: { id: tripId } });
+
+    const startDate = input.startDate ?? toDateOnly(before.startDate);
+    const endDate = input.endDate ?? toDateOnly(before.endDate);
+    if (endDate < startDate) {
+      throw new BadRequestException('endDate must not be before startDate');
+    }
+
+    const { entity } = await this.changes.mutate({
+      tripId,
+      actorUserId,
+      entityType: 'trip',
+      entityId: tripId,
+      action: 'update',
+      before: toTripDto(before),
+      after: input,
+      apply: (tx) =>
+        tx.trip.update({
+          where: { id: tripId },
+          data: {
+            ...(input.name !== undefined && { name: input.name }),
+            ...(input.destination !== undefined && { destination: input.destination }),
+            ...(input.startDate !== undefined && { startDate: new Date(input.startDate) }),
+            ...(input.endDate !== undefined && { endDate: new Date(input.endDate) }),
+            ...(input.timezone !== undefined && { timezone: input.timezone }),
+            ...(input.currency !== undefined && { currency: input.currency }),
+            ...(input.dailyBudgetMinor !== undefined && {
+              dailyBudgetMinor: input.dailyBudgetMinor,
+            }),
+            updatedBy: actorUserId,
+          },
+        }),
+    });
+    return toTripDto(entity);
+  }
+
+  /** Admin-only trip deletion (ADR-0039). The delete cascades the trip's whole
+   *  `Change` feed with it, so there is nothing durable to log against — instead
+   *  we fan out an ephemeral `trip`/`delete` change so connected members leave
+   *  the trip live. Not toast-undoable (a double-confirm guards it client-side). */
+  async deleteTrip(tripId: string, actorUserId: string): Promise<void> {
+    await this.assertAdmin(tripId, actorUserId);
+    await this.prisma.trip.delete({ where: { id: tripId } });
+    this.changes.broadcastEphemeral(tripId, this.syntheticChange(tripId, actorUserId));
+  }
+
   createInviteToken(tripId: string): string {
     const payload = `${tripId}.${Date.now() + INVITE_TTL_MS}`;
     const encoded = Buffer.from(payload).toString('base64url');
@@ -105,7 +166,37 @@ export class TripsService {
     return toMembershipDto(membership);
   }
 
-  /** Admin-only unless removing yourself (leaving the trip) — ADR-0005. */
+  /** Admin promotes a peer to admin (ADR-0039). Admin-only; data-plane so the
+   *  roster updates live for everyone. No explicit demotion path in v1. */
+  async setMemberRole(
+    tripId: string,
+    actorUserId: string,
+    targetUserId: string,
+    input: UpdateMembershipRoleInput,
+  ): Promise<Membership> {
+    await this.assertAdmin(tripId, actorUserId);
+    const target = await this.prisma.membership.findUnique({
+      where: { tripId_userId: { tripId, userId: targetUserId } },
+    });
+    if (!target) throw new NotFoundException('Member not found');
+    if (target.role === input.role) return toMembershipDto(target); // idempotent no-op
+
+    const { entity } = await this.changes.mutate({
+      tripId,
+      actorUserId,
+      entityType: 'membership',
+      entityId: target.id,
+      action: 'update',
+      before: toMembershipDto(target),
+      after: toMembershipDto({ ...target, role: input.role }),
+      apply: (tx) => tx.membership.update({ where: { id: target.id }, data: { role: input.role } }),
+    });
+    return toMembershipDto(entity);
+  }
+
+  /** Admin-only unless removing yourself (leaving the trip) — ADR-0005. Data-plane
+   *  via ChangeService so the roster updates live (ADR-0039). If removing the last
+   *  admin would leave the trip admin-less, another member is auto-promoted. */
   async removeMember(tripId: string, actorUserId: string, targetUserId: string): Promise<void> {
     const target = await this.prisma.membership.findUnique({
       where: { tripId_userId: { tripId, userId: targetUserId } },
@@ -113,15 +204,68 @@ export class TripsService {
     if (!target) throw new NotFoundException('Member not found');
 
     if (actorUserId !== targetUserId) {
-      const actor = await this.prisma.membership.findUniqueOrThrow({
-        where: { tripId_userId: { tripId, userId: actorUserId } },
-      });
-      if (actor.role !== 'admin') {
-        throw new ForbiddenException('Only an admin can remove another member');
-      }
+      await this.assertAdmin(tripId, actorUserId);
     }
 
-    await this.prisma.membership.delete({ where: { id: target.id } });
+    await this.changes.mutate({
+      tripId,
+      actorUserId,
+      entityType: 'membership',
+      entityId: target.id,
+      action: 'delete',
+      before: toMembershipDto(target),
+      apply: (tx) => tx.membership.delete({ where: { id: target.id } }),
+    });
+
+    await this.ensureAdminExists(tripId, actorUserId);
+  }
+
+  /** After a removal, if no admin remains but members do, promote the
+   *  earliest-joined member (arbitrary but stable) so a trip is never
+   *  admin-less (ADR-0039). The promotion is itself a data-plane change. */
+  private async ensureAdminExists(tripId: string, actorUserId: string): Promise<void> {
+    const remaining = await this.prisma.membership.findMany({
+      where: { tripId },
+      orderBy: { joinedAt: 'asc' },
+    });
+    if (remaining.length === 0 || remaining.some((m) => m.role === 'admin')) return;
+
+    const next = remaining[0];
+    await this.changes.mutate({
+      tripId,
+      actorUserId,
+      entityType: 'membership',
+      entityId: next.id,
+      action: 'update',
+      before: toMembershipDto(next),
+      after: toMembershipDto({ ...next, role: 'admin' }),
+      apply: (tx) => tx.membership.update({ where: { id: next.id }, data: { role: 'admin' } }),
+    });
+  }
+
+  /** Throws 403 unless the actor is an `admin` of the trip. Assumes membership
+   *  is already confirmed (MembershipGuard); a non-member reads as non-admin. */
+  private async assertAdmin(tripId: string, userId: string): Promise<void> {
+    const membership = await this.prisma.membership.findUnique({
+      where: { tripId_userId: { tripId, userId } },
+    });
+    if (!membership || membership.role !== 'admin') {
+      throw new ForbiddenException('Admin only');
+    }
+  }
+
+  /** A non-persisted `trip`/`delete` change for the ephemeral delete broadcast. */
+  private syntheticChange(tripId: string, actorUserId: string): Change {
+    return {
+      id: randomUUID(),
+      seq: '0', // not persisted; the trip's feed is gone, so the cursor is moot
+      tripId,
+      actorUserId,
+      entityType: 'trip',
+      entityId: tripId,
+      action: 'delete',
+      createdAt: new Date().toISOString(),
+    };
   }
 
   /** Public preview for the join screen (ADR-0024) — token invalid or trip gone both 404. */
