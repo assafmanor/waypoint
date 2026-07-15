@@ -93,4 +93,5 @@ Before changing a domain, read **only** the ADR(s) below for it (see the Context
 | [planning/2026-07-14-session-12-park-and-gap-fill-cap.md](planning/2026-07-14-session-12-park-and-gap-fill-cap.md)               | Park soft events to the shelf + cap the gap-fill prefill to a 1h block            |
 | [planning/2026-07-14-session-13-return-gesture.md](planning/2026-07-14-session-13-return-gesture.md)                             | In-app back model + PWA return gesture (ADR-0035): history-owned tabs/overlays    |
 | [planning/2026-07-15-session-20-trip-settings.md](planning/2026-07-15-session-20-trip-settings.md)                               | Trip-settings design (ADR-0039): admin-governed edits, member sheet, data-plane   |
+| [planning/2026-07-16-handoff-icon-picker-for-trip-settings.md](planning/2026-07-16-handoff-icon-picker-for-trip-settings.md)     | Handoff: reuse the trip `IconPicker` (flags + search) on the settings page        |
 | [planning/2026-07-08-handoff-source.md](planning/2026-07-08-handoff-source.md)                                                   | Original handoff doc (source material, Hebrew)                                    |
