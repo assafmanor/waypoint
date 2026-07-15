@@ -594,9 +594,16 @@
   margin-top: 2px;
 }
 
-/* ripple suggestion bar */
+/* ripple suggestion bar — pinned to the top of the scroll viewport so the
+   ripple prompt stays reachable however far the day is scrolled (it's the one
+   time-sensitive decision on the board). The amber tint is composited over an
+   opaque --screen base so scrolling rows don't bleed through once it's pinned. */
 .ripple {
-  background: rgba(233, 166, 60, 0.1);
+  position: sticky;
+  top: 0;
+  z-index: 5;
+  background:
+    linear-gradient(rgba(233, 166, 60, 0.1), rgba(233, 166, 60, 0.1)), var(--screen);
   border: 1px solid rgba(233, 166, 60, 0.3);
   border-radius: 12px;
   padding: 11px 13px;
