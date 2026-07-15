@@ -73,7 +73,10 @@ export function Home() {
             <div className="now-label">
               {nowEvent.kind === EVENT_KIND.HARD ? `${ICONS.lock} ${t.event.hard}` : t.event.soft}
             </div>
-            <div className="now-title">{nowEvent.title}</div>
+            <div className="now-title">
+              {nowEvent.icon && <span className="board-ic">{nowEvent.icon}</span>}
+              {nowEvent.title}
+            </div>
             {nowEvent.endsAt && (
               <div className="now-meta">
                 {t.board.until} <span dir="ltr">{formatTime(nowEvent.endsAt, tz)}</span>
@@ -97,7 +100,10 @@ export function Home() {
         <div className="next-row">
           <div>
             <div className="next-label">{t.board.nextLabel}</div>
-            <div className="next-title">{nextEvent ? nextEvent.title : t.board.endOfDay}</div>
+            <div className="next-title">
+              {nextEvent?.icon && <span className="board-ic">{nextEvent.icon}</span>}
+              {nextEvent ? nextEvent.title : t.board.endOfDay}
+            </div>
             {nextEvent && (
               <div className="next-meta">
                 <span dir="ltr">{formatTime(nextEvent.startsAt!, tz)}</span>

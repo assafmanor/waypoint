@@ -9,7 +9,14 @@
 // immediately — plan-violet chrome since it's already "inside" the new trip.
 import { useEffect, useState } from 'react';
 import { useNavigate } from 'react-router-dom';
-import { createTripSchema, MAX_TRIP_NAME_LENGTH, type Trip } from '@waypoint/shared';
+import {
+  createTripSchema,
+  DESTINATIONS,
+  MAX_TRIP_NAME_LENGTH,
+  suggestFlagFromDestination,
+  TRIP_ICON_CLUSTERS,
+  type Trip,
+} from '@waypoint/shared';
 import { useIsOffline } from '../lib/outbox';
 import { useActiveTripId } from '../state/active-trip-id';
 import { createInvite, createTrip } from '../lib/api';
@@ -35,10 +42,14 @@ export function CreateTrip() {
   const [name, setName] = useState('');
   const [nameTouched, setNameTouched] = useState(false);
   const [icon, setIcon] = useState(DEFAULT_TRIP_ICON);
+  const [iconTouched, setIconTouched] = useState(false);
   const [submitting, setSubmitting] = useState(false);
 
+  // Auto-suggest the trip name and — from a recognized destination — the flag,
+  // until the user overrides either (ADR-0038: flag auto-fill, overridable).
   const suggest = (dest: string, start: string) => {
     if (!nameTouched) setName(suggestTripName(dest, start));
+    if (!iconTouched) setIcon(suggestFlagFromDestination(dest) ?? DEFAULT_TRIP_ICON);
   };
 
   // Device-local "today" as YYYY-MM-DD — the floor for a new trip's dates. A
@@ -146,7 +157,15 @@ export function CreateTrip() {
         <div className="field">
           <label htmlFor="tripName">{t.shell.newTrip.nameLabel}</label>
           <div className="title-row">
-            <IconPicker icon={icon} onChange={(next) => setIcon(next)} />
+            <IconPicker
+              icon={icon}
+              onChange={(next) => {
+                setIcon(next);
+                setIconTouched(true);
+              }}
+              flatClusters={TRIP_ICON_CLUSTERS}
+              destinations={DESTINATIONS}
+            />
             <input
               id="tripName"
               className="title-input"
