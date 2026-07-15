@@ -12,12 +12,14 @@ import {
 import { useTrip, byStart } from '../state/trip-state';
 import { useVerbs } from '../state/verbs';
 import { useClock } from '../lib/useClock';
-import { deriveNow, formatTime, hardConflicts } from '../lib/time';
+import { deriveNow, formatTime, hardConflicts, zonedIso } from '../lib/time';
+import { nextSlot } from '../lib/gaps';
 import { CODE_PREFIX, DELAY_STEP_MINUTES, ICONS, MS_PER_DAY } from '../constants';
 import { t } from '../i18n/he';
 import { TRIP_TZ_OFFSET, maybeMeta } from '../fixtures';
 import { EventForm } from '../ui/EventForm';
 import { Sheet } from '../ui/Sheet';
+import { TimePicker } from '../ui/TimePicker';
 
 const daysBetween = (from: string, to: string) =>
   Math.round((Date.parse(to) - Date.parse(from)) / MS_PER_DAY);
@@ -28,6 +30,7 @@ export function DayView() {
   const now = useClock();
   const [openId, setOpenId] = useState<string | null>(null);
   const [formTarget, setFormTarget] = useState<'new' | TripEvent | null>(null);
+  const [scheduleItem, setScheduleItem] = useState<MaybeItem | null>(null);
 
   const nowId = deriveNow(events, now).now?.id;
   const dayEvents = events
@@ -102,7 +105,7 @@ export function DayView() {
         {maybeItems
           .filter((m) => !m.consumed)
           .map((m) => (
-            <MaybeCard key={m.id} item={m} onSchedule={() => verbs.schedule(m)} />
+            <MaybeCard key={m.id} item={m} onSchedule={() => setScheduleItem(m)} />
           ))}
         {/* Skipped soft events park here, restorable (ADR-0027 parking lot). */}
         {skippedToday.map((e) => (
@@ -121,7 +124,57 @@ export function DayView() {
           </button>
         ))}
       </div>
+
+      {scheduleItem && (
+        <ScheduleSheet
+          item={scheduleItem}
+          defaults={nextSlot(dayEvents, activeDate, trip.timezone)}
+          onConfirm={(start, end) => {
+            verbs.schedule(scheduleItem, {
+              date: activeDate,
+              title: scheduleItem.title,
+              kind: EVENT_KIND.SOFT,
+              startsAt: start ? zonedIso(activeDate, start, trip.timezone) : undefined,
+              endsAt: end ? zonedIso(activeDate, end, trip.timezone) : undefined,
+            });
+            setScheduleItem(null);
+          }}
+          onClose={() => setScheduleItem(null)}
+        />
+      )}
     </>
+  );
+}
+
+// Trip-mode quick-schedule: tap a shelf idea, adjust the prefilled time, done
+// (ADR-0025 Tier-1). Just the time — day/kind/location is Plan-mode building.
+function ScheduleSheet({
+  item,
+  defaults,
+  onConfirm,
+  onClose,
+}: {
+  item: MaybeItem;
+  defaults: { start: string; end: string };
+  onConfirm: (start: string, end: string) => void;
+  onClose: () => void;
+}) {
+  const [start, setStart] = useState(defaults.start);
+  const [end, setEnd] = useState(defaults.end);
+  return (
+    <Sheet title={t.day.scheduleTitle(item.title)} onClose={onClose}>
+      <TimePicker
+        start={start}
+        end={end}
+        onChange={(next) => {
+          setStart(next.start);
+          setEnd(next.end);
+        }}
+      />
+      <button type="button" className="sched-confirm" onClick={() => onConfirm(start, end)}>
+        {ICONS.schedule} {t.actions.scheduleToDay}
+      </button>
+    </Sheet>
   );
 }
 

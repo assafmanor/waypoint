@@ -228,6 +228,7 @@ export const t = {
     maybeShelf: 'מדף האולי',
     tapToSchedule: 'הקשה משבצת ליום',
     skippedTag: 'דילגת · הקש להחזרה',
+    scheduleTitle: (title: string) => `שיבוץ · ${title}`,
   },
   // Plan-mode Day-by-day — the itinerary builder (screens/PlanDay.tsx).
   planDay: {
