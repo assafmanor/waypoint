@@ -57,9 +57,35 @@ Owner call: an overlap must not share the gap chip's grammar — they are opposi
   the lower card of an overlapping pair. Crucially **no between-row pill / flanking
   lines** inside it, so it can never be misread as a gap.
 
-Drag-reorder still acts on soft slots; hard events stay pinned anchors. "הזז"
-offers to nudge a soft event to break the overlap. The existing amber
-hard-vs-soft ⚠️ conflict line is unchanged.
+Drag-reorder still acts on soft slots; hard events stay pinned anchors. The
+existing amber hard-vs-soft ⚠️ conflict line is unchanged.
+
+**Containment vs. partial overlap.** Derived from the interval relationship:
+
+- **Full containment** (one span inside another, e.g. a beach day holding a
+  lunch) is usually intentional → shown as **calm nesting** (container + tucked
+  contents), no violet, no "הזז".
+- **Partial overlap** (edges cross, neither contains the other) → the flagged
+  violet overlap cluster with "הזז".
+
+### "הזז" — the resolve (ripple, inverted)
+
+Overlap resolution is what the ripple engine already does, run the other way:
+ripple = "you moved X, shift the soft events it now overlaps?"; "הזז" = "these
+overlap, shift one soft event to clear it."
+
+- **Mover is always soft** (hard = anchor, never moves). Two overlapping _hard_
+  events → no "הזז", just the ⚠️ line (a real double-booking to fix in reality).
+- Tapping "הזז" (or a card's seam tag) opens a resolve **Sheet** scoped to the
+  soft mover: one-tap **clean slots** snapped to the anchor's edges — "אחרי · <end>"
+  / "לפני · <start>" — plus **"זמן אחר…"** → the ADR-0036 time-setter seeded with
+  the nearest free slot. **Duration is preserved** (move, not resize).
+- **Optimistic + undo**, like every verb. If the move creates a _new_ downstream
+  overlap, the move's own `rippleSuggestion` handles the chain ("push the rest
+  too?"). Resolve one collision at a time; re-cluster after.
+- **Same-day only** (ADR-0036); no moving into the past (ADR-0029), so "לפני" is
+  offered only when that slot exists today and isn't past.
+- Multi-mover clusters: "הזז" targets the invoked event; others keep their own.
 
 ### Board
 

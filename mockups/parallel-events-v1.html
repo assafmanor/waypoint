@@ -7,6 +7,9 @@
          pill/flanking-lines. A real gap chip is shown alongside for contrast.
        • Trip board — one loud "now" hero + quiet "ועוד N עכשיו" expander, plus a
          group-split variant when there is no clear primary.
+       • Plan resolve — full containment reads as calm nesting (no flag); partial
+         overlap flags with "הזז", opening a resolve sheet (snap before/after the
+         anchor + exact-time fallback). "הזז" is ripple, inverted.
      Where this mockup and docs/design/design-language.md conflict, the doc wins. -->
 <html lang="he" dir="rtl">
   <head>
@@ -286,6 +289,149 @@
         background: rgba(110, 89, 214, 0.14);
         border-radius: 999px;
         padding: 1px 7px;
+      }
+
+      /* ═══ ENVELOPE / NESTING — PLAN (calm, NOT flagged) ═══
+         When a long soft event fully CONTAINS a shorter one, that's usually
+         intentional (a pass/day that things happen inside), not a collision. So it
+         reads as calm nesting — no violet, no "הזז" — just the container with its
+         contents tucked inside. Distinct from a partial collision. */
+      .nest {
+        border: 1px dashed var(--soft-line);
+        border-radius: var(--radius-card);
+        background: repeating-linear-gradient(-45deg, #fff 0 9px, #fbfaf7 9px 18px);
+        padding: 10px 10px 4px;
+        margin-bottom: 10px;
+      }
+      .nest-head {
+        display: flex;
+        align-items: center;
+        gap: 11px;
+        padding: 2px 3px 9px;
+      }
+      .nest-head .badge {
+        width: 34px;
+        height: 34px;
+        border-radius: var(--radius-inner);
+        background: var(--paper);
+        display: grid;
+        place-items: center;
+        font-size: 18px;
+        flex: none;
+      }
+      .nest-head .main {
+        flex: 1;
+        min-width: 0;
+      }
+      .nest-head .t {
+        font-weight: 700;
+        font-size: 14.5px;
+        display: flex;
+        align-items: center;
+        gap: 7px;
+      }
+      .nest-note {
+        color: var(--muted);
+        font-size: 11px;
+        font-weight: 700;
+      }
+      .nest-head .time {
+        color: var(--ink);
+      }
+      .nest .inside {
+        border-inline-start: 2px dotted var(--soft-line);
+        margin-inline-start: 16px;
+        padding-inline-start: 11px;
+      }
+      .nest .inside .item {
+        margin-bottom: 8px;
+      }
+
+      /* ═══ "הזז" RESOLVE SHEET (bottom sheet over a dimmed day) ═══
+         Reuses the Sheet component; scoped to the soft event you're moving. One-tap
+         clean slots (snap before/after the anchor) + an exact-time fallback. */
+      .phone.host {
+        position: relative;
+        overflow: hidden;
+        min-height: 430px;
+      }
+      .dim {
+        filter: saturate(0.4) brightness(0.98);
+        opacity: 0.5;
+      }
+      .scrim {
+        position: absolute;
+        inset: 0;
+        background: rgba(14, 23, 41, 0.32);
+        border-radius: 26px;
+      }
+      .sheet {
+        position: absolute;
+        inset-inline: 0;
+        bottom: 0;
+        background: var(--card);
+        border-radius: 20px 20px 26px 26px;
+        padding: 12px 14px 16px;
+        box-shadow: 0 -10px 28px rgba(6, 12, 26, 0.28);
+      }
+      .sheet-grip {
+        width: 38px;
+        height: 4px;
+        border-radius: 999px;
+        background: var(--line);
+        margin: 0 auto 12px;
+      }
+      .sheet-title {
+        font-family: 'Secular One', sans-serif;
+        font-size: 16px;
+        margin: 0 2px 2px;
+      }
+      .sheet-sub {
+        color: var(--muted);
+        font-size: 12px;
+        margin: 0 2px 13px;
+      }
+      .resolve-opt {
+        display: flex;
+        align-items: center;
+        justify-content: space-between;
+        gap: 10px;
+        width: 100%;
+        background: var(--card);
+        border: 1px solid var(--line);
+        border-radius: 12px;
+        padding: 11px 13px;
+        margin-bottom: 8px;
+        font: inherit;
+        text-align: start;
+        cursor: pointer;
+      }
+      .resolve-opt .lead {
+        display: flex;
+        flex-direction: column;
+        gap: 1px;
+      }
+      .resolve-opt .ttl {
+        font-weight: 700;
+        font-size: 13.5px;
+      }
+      .resolve-opt .sub {
+        color: var(--muted);
+        font-size: 11.5px;
+      }
+      .resolve-opt .tm {
+        font-family: 'JetBrains Mono', monospace;
+        font-weight: 700;
+        font-size: 13px;
+        color: var(--plan-deep);
+        flex: none;
+      }
+      .resolve-opt.other {
+        border-style: dashed;
+        justify-content: center;
+        color: var(--muted);
+        font-weight: 700;
+        font-size: 12.5px;
       }
 
       /* ── gap chip (unchanged grammar) — shown for contrast ── */
@@ -790,6 +936,144 @@
         </div>
       </div>
 
+      <!-- ══════════ PLAN — ENVELOPE vs COLLISION + "הזז" SHEET ══════════ -->
+      <div class="caption">מצב תכנון · הכלה מול חפיפה חלקית + גיליון "הזז"</div>
+      <div class="cols">
+        <!-- Envelope / nesting — calm, no flag -->
+        <div class="col">
+          <h2 class="col-head">הכלה — רגוע</h2>
+          <p class="col-note">
+            אירוע ארוך שמכיל אירוע קצר בתוכו = בדרך כלל מכוון. מוצג כקינון שקט, בלי סגול ובלי "הזז".
+          </p>
+          <div class="phone">
+            <div class="day-sub">יום 1 · יום חמישי · לפה ולשם</div>
+            <div class="nest">
+              <div class="nest-head">
+                <span class="badge">🏖️</span>
+                <span class="main">
+                  <span class="t">
+                    יום ים <span class="tag-soft">גמיש</span>
+                    <span class="nest-note">· כולל 1 בתוכו</span>
+                  </span>
+                </span>
+                <span class="time" dir="ltr">10:00–18:00</span>
+              </div>
+              <div class="inside">
+                <div class="item soft">
+                  <span class="badge">🍔</span>
+                  <span class="main">
+                    <span class="t">צהריים <span class="tag-soft">גמיש</span></span>
+                  </span>
+                  <span class="time" dir="ltr">13:00–14:00</span>
+                </div>
+              </div>
+            </div>
+          </div>
+          <p class="col-note" style="margin-top: 12px">
+            נגזר מהיחס בין הטווחים: <b>הכלה</b> (אחד בתוך השני) → קינון. <b>חפיפה חלקית</b> (הקצוות
+            נחתכים) → אשכול עם "הזז".
+          </p>
+        </div>
+
+        <!-- Partial collision — flagged -->
+        <div class="col">
+          <h2 class="col-head">חפיפה חלקית — מסומן</h2>
+          <p class="col-note">
+            שני אירועים שהקצוות שלהם נחתכים (אף אחד לא מכיל את השני) → אשכול סגול עם "הזז".
+          </p>
+          <div class="phone">
+            <div class="day-sub">יום 1 · יום חמישי · לפה ולשם</div>
+            <div class="cluster plan">
+              <div class="cluster-head">
+                <span class="lead">⧉ חופפים · <span class="win" dir="ltr">11:00–14:00</span></span>
+                <button class="resolve">הזז ▾</button>
+              </div>
+              <div class="body">
+                <div class="item soft">
+                  <span class="badge">🍳</span>
+                  <span class="main">
+                    <span class="t">סדנת בישול <span class="tag-soft">גמיש</span></span>
+                  </span>
+                  <span class="time" dir="ltr">11:00–13:00</span>
+                </div>
+                <div class="item soft">
+                  <span class="badge">🚶</span>
+                  <span class="main">
+                    <span class="t">
+                      סיור בעיר <span class="tag-soft">גמיש</span>
+                      <span class="seam-tag">⧉ חופף 30 דק׳</span>
+                    </span>
+                  </span>
+                  <span class="time" dir="ltr">12:30–14:00</span>
+                </div>
+              </div>
+            </div>
+          </div>
+          <p class="col-note" style="margin-top: 12px">
+            הקשה על "הזז" (או על תג החפיפה) פותחת את הגיליון משמאל, ממוקד באירוע הגמיש שזז.
+          </p>
+        </div>
+
+        <!-- The resolve sheet -->
+        <div class="col">
+          <h2 class="col-head">גיליון "הזז"</h2>
+          <p class="col-note">
+            משבצות נקיות בהקשה אחת (הצמדה לפני/אחרי העוגן) + נפילה חזרה לקובע־הזמן המדויק
+            (ADR-0036).
+          </p>
+          <div class="phone host">
+            <div class="dim">
+              <div class="day-sub">יום 1 · יום חמישי · לפה ולשם</div>
+              <div class="cluster plan">
+                <div class="cluster-head">
+                  <span class="lead"
+                    >⧉ חופפים · <span class="win" dir="ltr">11:00–14:00</span></span
+                  >
+                  <button class="resolve">הזז ▾</button>
+                </div>
+                <div class="body">
+                  <div class="item soft">
+                    <span class="badge">🍳</span>
+                    <span class="main"><span class="t">סדנת בישול</span></span>
+                    <span class="time" dir="ltr">11:00–13:00</span>
+                  </div>
+                  <div class="item soft">
+                    <span class="badge">🚶</span>
+                    <span class="main"><span class="t">סיור בעיר</span></span>
+                    <span class="time" dir="ltr">12:30–14:00</span>
+                  </div>
+                </div>
+              </div>
+            </div>
+            <div class="scrim"></div>
+            <div class="sheet">
+              <div class="sheet-grip"></div>
+              <div class="sheet-title">להזיז את הסיור בעיר</div>
+              <div class="sheet-sub">חופף לסדנת בישול ב-30 דק׳ · משך נשמר (שעה וחצי)</div>
+              <button class="resolve-opt">
+                <span class="lead">
+                  <span class="ttl">אחרי סדנת בישול</span>
+                  <span class="sub">מסתיים 14:30</span>
+                </span>
+                <span class="tm" dir="ltr">13:00</span>
+              </button>
+              <button class="resolve-opt">
+                <span class="lead">
+                  <span class="ttl">לפני סדנת בישול</span>
+                  <span class="sub">מסתיים 11:00</span>
+                </span>
+                <span class="tm" dir="ltr">09:30</span>
+              </button>
+              <button class="resolve-opt other">זמן אחר…</button>
+            </div>
+          </div>
+          <p class="col-note" style="margin-top: 12px">
+            אישור = הזזה אופטימית + טוסט ביטול. אם ההזזה יוצרת חפיפה חדשה במורד היום, נכנס מנגנון
+            הריפל הקיים ("לדחוף גם את הבאים?").
+          </p>
+        </div>
+      </div>
+
       <div class="legend">
         <h3>כללי העיצוב (למימוש)</h3>
         <ul>
@@ -803,6 +1087,16 @@
           <li>
             <b>תכנון — חפיפה ≠ פער.</b> פער = כפתור מקווקו אוורירי בין שורות (מוסיף). חפיפה = קבוצה
             כרוכה בסוגר סגול + "הזז" בכותרת, בלי אלמנט בין־שורות. שפות מכוונות שונות.
+          </li>
+          <li>
+            <b>הכלה מול חפיפה חלקית.</b> אחד מכיל את השני (טווח בתוך טווח) → קינון שקט, בלי "הזז".
+            הקצוות נחתכים בלבד → אשכול־חפיפה עם "הזז".
+          </li>
+          <li>
+            <b>"הזז" = ריפל הפוך.</b> מזיז אירוע <i>גמיש</i> בלבד (קשיח = עוגן), משך נשמר. מציע
+            משבצת נקייה לפני/אחרי העוגן בהקשה אחת, או קובע־זמן מדויק (ADR-0036); אופטימי + ביטול.
+            חפיפה חדשה במורד היום מפעילה את מנגנון הריפל הקיים. שתי־קשיחות שחופפות = אזהרת ⚠️ בלבד
+            (אין "הזז").
           </li>
           <li><b>דקדוק קשיח/רך נשמר בתוך האשכול</b> (קשיח = כרטיס מלא + 🔒 + קוד; רך = מקווקו).</li>
           <li>
