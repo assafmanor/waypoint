@@ -1,0 +1,937 @@
+<!doctype html>
+<!-- Event / item / trip icon picker — v1 (branch: claude/event-item-icons-lg46c5).
+     "Let's add the ability to choose icons for events and maybe items, from a
+     limited set."  The icon field already exists (Event.icon?, MaybeItem.icon?,
+     Trip has a 🧳 placeholder) — this mockup designs the missing PICKER + the
+     curated vocabulary.
+
+     DECISIONS BAKED IN
+       • SCOPE   — one shared picker serves events, shelf ideas, AND create-trip
+                   (switcher below flips between the three host contexts).
+       • SET     — a CURATED, CATEGORISED emoji set (~100, ten travel-native
+                   groups) with a category quick-filter. Bounded, but generous —
+                   never the full OS emoji keyboard.
+       • DEFAULT — AUTO-SUGGEST via BOOKING TYPE only ("Tier B"). An event backed
+                   by a booking has a structured type (flight/hotel/…); we map
+                   that type → icon deterministically. NO free-text/NLP guessing
+                   (that was the fuzzy "Tier C" we dropped). Ideas & trips have no
+                   type, so they just get a sensible default + manual pick.
+                   Manual choice always wins; "↺" reverts to the suggestion.
+
+     Design-language anchors:
+       • "Emoji are content, icons are UI" — the badge IS emoji content, so the
+         picker chooses a curated EMOJI, not a lucide glyph.
+       • Colour budget — picker chrome is NEUTRAL. Selection uses an ink fill,
+         never amber/teal/violet (reserved for time/place/plan).
+       • ≥44px targets, RTL, phone-first (~392px). Orthogonal to hard/soft.
+
+     Interactive — pick a booking type to watch the icon auto-fill, open the chip
+     to browse/override, filter by category, switch host up top. -->
+<html lang="he" dir="rtl">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>Waypoint — בחירת סמל לאירוע / רעיון / טיול (מוקאפ v1)</title>
+    <link rel="preconnect" href="https://fonts.googleapis.com" />
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+    <link
+      href="https://fonts.googleapis.com/css2?family=Assistant:wght@400;500;600;700&family=Secular+One&family=JetBrains+Mono:wght@500;700&display=swap"
+      rel="stylesheet"
+    />
+    <style>
+      :root {
+        --ink: #16233d;
+        --screen: #e7eaef;
+        --card: #ffffff;
+        --paper: #f3efe6;
+        --amber: #e9a63c;
+        --plan: #6e59d6;
+        --plan-deep: #5747b4;
+        --plan-tint: rgba(110, 89, 214, 0.1);
+        --muted: #6c7488;
+        --miss: #c2584e;
+        --line: rgba(22, 35, 61, 0.1);
+        --soft-line: rgba(22, 35, 61, 0.28);
+        --cta: var(--ink);
+        --cta-text: #fff;
+        --shadow: 0 18px 40px -18px rgba(14, 23, 41, 0.45);
+        --font-head: 'Secular One', sans-serif;
+        --font-body: 'Assistant', sans-serif;
+        --font-mono: 'JetBrains Mono', monospace;
+      }
+      * {
+        box-sizing: border-box;
+        margin: 0;
+        padding: 0;
+        -webkit-tap-highlight-color: transparent;
+      }
+      html,
+      body {
+        min-height: 100%;
+      }
+      body {
+        font-family: var(--font-body);
+        background:
+          radial-gradient(120% 90% at 80% -10%, #2a3e68 0%, transparent 55%),
+          radial-gradient(120% 90% at 0% 110%, #1a2a4a 0%, transparent 50%), #0f1a31;
+        color: var(--ink);
+        min-height: 100vh;
+        display: flex;
+        flex-direction: column;
+        align-items: center;
+        padding: 24px 16px 60px;
+        -webkit-font-smoothing: antialiased;
+      }
+      .kicker {
+        color: #b9c4dc;
+        font-size: 12px;
+        letter-spacing: 0.06em;
+        text-transform: uppercase;
+        margin-bottom: 4px;
+        text-align: center;
+      }
+      .kicker b {
+        color: var(--plan);
+      }
+      h1.title {
+        font-family: var(--font-head);
+        color: #f4f7ff;
+        font-size: 20px;
+        font-weight: 400;
+        margin-bottom: 16px;
+        text-align: center;
+      }
+      .switcher {
+        display: inline-flex;
+        gap: 4px;
+        padding: 4px;
+        background: rgba(255, 255, 255, 0.06);
+        border: 1px solid rgba(255, 255, 255, 0.1);
+        border-radius: 999px;
+        margin-bottom: 20px;
+      }
+      .switcher button {
+        font-family: var(--font-body);
+        font-size: 13px;
+        font-weight: 700;
+        color: #c9d3e8;
+        background: none;
+        border: none;
+        border-radius: 999px;
+        padding: 7px 15px;
+        cursor: pointer;
+      }
+      .switcher button.on {
+        background: #f4f7ff;
+        color: var(--ink);
+      }
+
+      .phone {
+        width: 100%;
+        max-width: 392px;
+        background: var(--screen);
+        border-radius: 30px;
+        box-shadow: 0 26px 60px -18px rgba(0, 0, 0, 0.6);
+        overflow: hidden;
+        border: 1px solid rgba(255, 255, 255, 0.08);
+      }
+      .chrome {
+        background: #fbf9f4;
+        border-bottom: 1px solid var(--line);
+        padding: 12px 16px 11px;
+        display: flex;
+        align-items: center;
+        justify-content: space-between;
+      }
+      .mode-pill {
+        display: inline-flex;
+        align-items: center;
+        gap: 5px;
+        font-size: 12px;
+        font-weight: 700;
+        color: var(--plan-deep);
+        background: var(--plan-tint);
+        border: 1px solid rgba(110, 89, 214, 0.25);
+        border-radius: 999px;
+        padding: 4px 10px;
+      }
+      .chrome .day {
+        font-size: 12.5px;
+        color: var(--muted);
+        font-weight: 600;
+      }
+      .stage {
+        padding: 18px 16px 26px;
+        display: flex;
+        justify-content: center;
+      }
+      .form-card {
+        width: 100%;
+        max-width: 360px;
+        background: var(--card);
+        border: 1px solid var(--line);
+        border-radius: 15px;
+        padding: 16px;
+        box-shadow: var(--shadow);
+        display: flex;
+        flex-direction: column;
+        gap: 13px;
+      }
+      .form-title {
+        font-family: var(--font-head);
+        font-weight: 400;
+        font-size: 16px;
+        color: var(--ink);
+      }
+      .form-field {
+        display: flex;
+        flex-direction: column;
+        gap: 6px;
+        font-size: 12.5px;
+        font-weight: 600;
+        color: var(--muted);
+      }
+      /* Shared input look — applied to EVERY text input, incl. the title one
+         (which is nested, so it must be targeted explicitly, not via `>`). */
+      .form-field input,
+      .titlerow .grow input {
+        font-family: var(--font-body);
+        font-size: 14px;
+        font-weight: 500;
+        color: var(--ink);
+        background: #fff;
+        border: 1px solid var(--line);
+        border-radius: 11px;
+        padding: 0 11px;
+        width: 100%;
+      }
+      .form-field > input {
+        height: 40px;
+      }
+
+      /* ===== Title row: leading icon chip + the title input, EQUAL HEIGHT ===== */
+      .titlerow {
+        display: flex;
+        align-items: center; /* chip and input share a centre line */
+        gap: 9px;
+      }
+      .titlerow .grow {
+        flex: 1;
+        min-width: 0;
+      }
+      .titlerow .grow input {
+        height: 44px; /* matches the chip exactly */
+      }
+
+      /* The icon chip — a 44px tappable button that previews the badge exactly
+         as it renders in the day view. Neutral chrome; no semantic hue. */
+      .icon-chip {
+        position: relative;
+        flex: 0 0 auto;
+        width: 44px;
+        height: 44px;
+        display: grid;
+        place-items: center;
+        font-size: 20px;
+        line-height: 1;
+        background: #fff;
+        border: 1px solid var(--line);
+        border-radius: 11px;
+        cursor: pointer;
+        transition:
+          border-color 0.12s ease,
+          box-shadow 0.12s ease;
+      }
+      .icon-chip:hover {
+        border-color: var(--soft-line);
+      }
+      .icon-chip.open {
+        border-color: var(--ink);
+        box-shadow: 0 0 0 2px rgba(22, 35, 61, 0.12);
+      }
+      /* tiny caret so it reads as "opens a chooser", not a static badge */
+      .icon-chip::after {
+        content: '';
+        position: absolute;
+        bottom: 4px;
+        inset-inline-start: 4px;
+        width: 0;
+        height: 0;
+        border-left: 3px solid transparent;
+        border-right: 3px solid transparent;
+        border-top: 4px solid var(--soft-line);
+      }
+      .auto-caption {
+        display: none;
+        font-size: 11px;
+        font-weight: 600;
+        color: var(--muted);
+        margin-top: -4px;
+      }
+      .auto-caption.show {
+        display: block;
+      }
+
+      /* ===== Booking-type selector (event host only) — the auto signal ===== */
+      .type-row {
+        display: flex;
+        flex-wrap: wrap;
+        gap: 6px;
+      }
+      .type-chip {
+        font-family: var(--font-body);
+        font-size: 12.5px;
+        font-weight: 600;
+        color: var(--muted);
+        background: #fff;
+        border: 1px solid var(--line);
+        border-radius: 999px;
+        padding: 6px 11px;
+        cursor: pointer;
+        display: inline-flex;
+        align-items: center;
+        gap: 5px;
+      }
+      .type-chip.on {
+        color: var(--ink);
+        background: var(--screen);
+        border-color: var(--ink);
+      }
+
+      /* ===== The picker panel — full width inside the form card, in flow ===== */
+      .picker {
+        margin-top: 4px;
+        width: 100%;
+        background: #fff;
+        border: 1px solid var(--line);
+        border-radius: 13px;
+        box-shadow: 0 12px 26px -16px rgba(14, 23, 41, 0.3);
+        overflow: hidden;
+        display: none;
+      }
+      .picker.show {
+        display: block;
+      }
+      .picker-head {
+        display: flex;
+        align-items: center;
+        justify-content: space-between;
+        padding: 10px 12px 9px;
+        border-bottom: 1px solid var(--line);
+      }
+      .picker-head .lbl {
+        font-size: 12px;
+        font-weight: 700;
+        color: var(--ink);
+        display: inline-flex;
+        align-items: center;
+      }
+      /* The saved semantic category (derived from the chosen glyph's group).
+         This is what persists for future features — the glyph is a badge. */
+      .cat-readout {
+        font-size: 10.5px;
+        font-weight: 700;
+        color: var(--muted);
+        background: var(--screen);
+        border-radius: 999px;
+        padding: 2px 8px;
+        margin-inline-start: 6px;
+      }
+      .cat-readout:empty {
+        display: none;
+      }
+      .picker-head .revert {
+        display: inline-flex;
+        align-items: center;
+        gap: 4px;
+        font-family: var(--font-body);
+        font-size: 11px;
+        font-weight: 700;
+        color: var(--muted);
+        background: none;
+        border: none;
+        cursor: pointer;
+        padding: 2px 4px;
+        border-radius: 6px;
+        visibility: hidden;
+      }
+      .picker-head .revert.show {
+        visibility: visible;
+      }
+      .picker-head .revert:hover {
+        color: var(--ink);
+        background: var(--screen);
+      }
+
+      .cats {
+        display: flex;
+        gap: 5px;
+        padding: 9px 10px;
+        overflow-x: auto;
+        scrollbar-width: none;
+        border-bottom: 1px solid var(--line);
+      }
+      .cats::-webkit-scrollbar {
+        display: none;
+      }
+      .cats button {
+        flex: 0 0 auto;
+        font-family: var(--font-body);
+        font-size: 11.5px;
+        font-weight: 700;
+        color: var(--muted);
+        background: var(--screen);
+        border: 1px solid transparent;
+        border-radius: 999px;
+        padding: 5px 11px;
+        cursor: pointer;
+        white-space: nowrap;
+      }
+      .cats button.on {
+        color: var(--ink);
+        background: #fff;
+        border-color: var(--ink);
+      }
+
+      .grid-scroll {
+        max-height: 236px;
+        overflow-y: auto;
+        scrollbar-width: thin;
+        padding: 6px 10px 12px;
+      }
+      .grid-scroll::-webkit-scrollbar {
+        width: 6px;
+      }
+      .grid-scroll::-webkit-scrollbar-thumb {
+        background: var(--line);
+        border-radius: 3px;
+      }
+      .cat-label {
+        font-size: 10.5px;
+        font-weight: 700;
+        color: var(--muted);
+        letter-spacing: 0.02em;
+        margin: 11px 2px 6px;
+      }
+      .cat-label:first-child {
+        margin-top: 4px;
+      }
+      .grid {
+        display: grid;
+        grid-template-columns: repeat(6, 1fr);
+        gap: 4px;
+      }
+      .cell {
+        aspect-ratio: 1;
+        display: grid;
+        place-items: center;
+        font-size: 21px;
+        line-height: 1;
+        background: none;
+        border: 1px solid transparent;
+        border-radius: 10px;
+        cursor: pointer;
+        transition:
+          background 0.1s ease,
+          transform 0.1s ease;
+      }
+      .cell:hover {
+        background: var(--screen);
+      }
+      /* Selection — NEUTRAL ink fill (never a semantic hue). Non-colour
+         redundant: filled + ring, so it survives greyscale / colour-blindness. */
+      .cell.sel {
+        background: var(--ink);
+        box-shadow: 0 0 0 2px rgba(22, 35, 61, 0.25);
+      }
+      /* the type-suggested icon, before override, gets a dashed hint ring */
+      .cell.auto {
+        border-color: var(--soft-line);
+        border-style: dashed;
+      }
+
+      .hint {
+        margin-top: 14px;
+        font-size: 12.5px;
+        color: #b9c4dc;
+        text-align: center;
+        line-height: 1.55;
+      }
+      .hint b {
+        color: #f4f7ff;
+      }
+
+      .notes {
+        width: 100%;
+        max-width: 392px;
+        margin-top: 22px;
+        color: #cdd6ea;
+        font-size: 13px;
+        line-height: 1.55;
+      }
+      .notes h2 {
+        font-family: var(--font-head);
+        font-weight: 400;
+        font-size: 14px;
+        color: #f4f7ff;
+        margin: 14px 0 8px;
+      }
+      .notes ul {
+        list-style: none;
+        display: flex;
+        flex-direction: column;
+        gap: 9px;
+      }
+      .notes li {
+        background: rgba(255, 255, 255, 0.04);
+        border: 1px solid rgba(255, 255, 255, 0.08);
+        border-radius: 11px;
+        padding: 10px 12px;
+      }
+      .notes li b {
+        color: #f4f7ff;
+        font-weight: 700;
+      }
+      .notes code {
+        font-family: var(--font-mono);
+        font-size: 12px;
+        color: var(--plan);
+        background: rgba(110, 89, 214, 0.14);
+        padding: 1px 5px;
+        border-radius: 5px;
+      }
+    </style>
+  </head>
+  <body>
+    <div class="kicker">Waypoint · <b>בחירת סמל</b> · מוקאפ v1</div>
+    <h1 class="title">סמל לאירוע, לרעיון ולטיול — סט עשיר, הצעה לפי סוג</h1>
+
+    <div class="switcher">
+      <button id="sw-event" class="on" onclick="setHost('event')">אירוע</button>
+      <button id="sw-idea" onclick="setHost('idea')">רעיון (מדף)</button>
+      <button id="sw-trip" onclick="setHost('trip')">טיול חדש</button>
+    </div>
+
+    <div class="phone">
+      <div class="chrome">
+        <span class="mode-pill">✏️ תכנון</span>
+        <span class="day" id="chrome-day">יום ה׳ · 16 ביולי</span>
+      </div>
+      <div class="stage">
+        <form class="form-card" onsubmit="return false;">
+          <div class="form-title" id="form-title">אירוע חדש</div>
+
+          <div class="form-field">
+            <span id="title-label">כותרת</span>
+            <div class="titlerow">
+              <button
+                type="button"
+                class="icon-chip"
+                id="chip"
+                aria-label="בחר סמל"
+                onclick="togglePicker(event)"
+              >
+                📌
+              </button>
+              <div class="grow">
+                <input id="title-input" placeholder="למשל: טיסה לאתונה" />
+              </div>
+            </div>
+            <span class="auto-caption" id="auto-caption">✨ נבחר לפי סוג ההזמנה · אפשר לשנות</span>
+
+            <!-- Full-width panel under the title row (in flow — pushes the rest
+                 of the form down, like the time-setter dropdown). -->
+            <div class="picker" id="picker">
+              <div class="picker-head">
+                <span class="lbl"
+                  >בחירת סמל <span class="cat-readout" id="cat-readout"></span
+                ></span>
+                <button type="button" class="revert" id="revert" onclick="revertAuto()">
+                  ↺ איפוס
+                </button>
+              </div>
+              <div class="cats" id="cats"></div>
+              <div class="grid-scroll" id="grid-scroll"></div>
+            </div>
+          </div>
+
+          <!-- Booking type — the auto signal (represents the linked Booking.type
+               on a hard event). Event host only. -->
+          <div class="form-field" id="type-field">
+            <span>סוג הזמנה</span>
+            <div class="type-row" id="type-row"></div>
+          </div>
+
+          <label class="form-field" id="secondary-field">
+            <span id="secondary-label">מיקום</span>
+            <input id="secondary-input" placeholder="נמל התעופה בן גוריון" />
+          </label>
+        </form>
+      </div>
+    </div>
+
+    <p class="hint" id="hint">
+      בחר <b>סוג הזמנה</b> — הסמל מתמלא לבד.<br />
+      פתח את הצ׳יפ כדי לעיין ולשנות · <b>↺</b> חוזר להצעה.
+    </p>
+
+    <div class="notes">
+      <h2>ההחלטות</h2>
+      <ul>
+        <li>
+          <b>סט עשיר אך מוגבל.</b> ~100 סמלים בעשר קבוצות (תחבורה · אוכל · שתייה · לינה · אתרים ·
+          טבע · פעילות · קניות · מעשי · כללי), עם סינון לפי קבוצה. מוגבל — לא מקלדת אימוג׳י מלאה.
+        </li>
+        <li>
+          <b>הצעה לפי סוג בלבד (Tier B).</b> אירוע עם הזמנה נושא <em>סוג</em> מובנה
+          (<code>flight/hotel/…</code>); ממפים סוג→סמל <b>דטרמיניסטית</b>. בלי ניחוש מטקסט חופשי (זה
+          ה־Tier C הפאזי שוויתרנו עליו). רעיון וטיול — אין להם סוג, אז מקבלים ברירת מחדל + בחירה
+          ידנית. בחירה ידנית תמיד גוברת; <b>↺</b> חוזר להצעה.
+        </li>
+        <li>
+          <b>רכיב אחד, שלושה מארחים.</b> אותו בורר משרת <code>EventForm</code>, "רעיון חדש" במדף,
+          ויצירת הטיול. השדה כבר קיים בסכימה: <code>icon?</code> על Event ו־MaybeItem.
+        </li>
+        <li>
+          <b>שומרים קטגוריה, לא רק אימוג׳י.</b> נוסיף <code>category</code> קנוני ל־Event
+          ול־MaybeItem (transport · food · lodging · sightseeing · nature · activity · shopping ·
+          services · other); הסמל הוא badge לעקיפה. הקטגוריה נגזרת מהקבוצה שממנה נבחר הסמל (מוצגת
+          למעלה בבורר), ו־<code>BookingType</code> + צבעי סיכות-המפה נגזרים ממנה — מערכת-משמעות אחת
+          (ADR).
+        </li>
+        <li>
+          <b>ניטרלי בכוונה.</b> הבחירה מסומנת במילוי <code>--ink</code> ולא בענבר/טורקיז/סגול —
+          התקציב הסמנטי נשמר. הבורר הוא בקרת טופס רגילה.
+        </li>
+      </ul>
+      <h2>פתוח לדיון</h2>
+      <ul>
+        <li>הסט (עשר הקבוצות + ~100 הסמלים, למטה בקוד) — מה להוסיף/להסיר.</li>
+        <li>
+          מיפוי סוג→סמל:
+          <code>flight ✈️ · hotel 🏨 · restaurant 🍽️ · train 🚆 · activity 🎫 · other 📌</code>.
+        </li>
+        <li>האם הצ׳יפ צריך להופיע גם בכרטיס האירוע בתצוגת היום כעריכה מהירה, או רק בטופס.</li>
+      </ul>
+    </div>
+
+    <script>
+      // ── The curated set: ten travel-native categories, ~100 glyphs. ──
+      const CATEGORIES = [
+        {
+          id: 'transport',
+          label: 'תחבורה',
+          icons: [
+            '✈️',
+            '🚆',
+            '🚄',
+            '🚈',
+            '🚌',
+            '🚗',
+            '🚕',
+            '🚉',
+            '🛵',
+            '🚲',
+            '⛴️',
+            '🚢',
+            '🚡',
+            '🛺',
+          ],
+        },
+        {
+          id: 'food',
+          label: 'אוכל',
+          icons: [
+            '🍜',
+            '🍱',
+            '🍣',
+            '🍽️',
+            '🍕',
+            '🍔',
+            '🥘',
+            '🥗',
+            '🍝',
+            '🌮',
+            '🍢',
+            '🥟',
+            '🧆',
+            '🍦',
+          ],
+        },
+        {
+          id: 'drink',
+          label: 'שתייה',
+          icons: ['☕', '🍵', '🧋', '🍺', '🍷', '🍸', '🍹', '🥂', '🧉', '🥤'],
+        },
+        {
+          id: 'lodging',
+          label: 'לינה',
+          icons: ['🏨', '🏠', '🏡', '🏕️', '⛺', '🛏️', '🏩', '🏯', '♨️', '🔑'],
+        },
+        {
+          id: 'sights',
+          label: 'אתרים ותרבות',
+          icons: ['⛩️', '🏛️', '🗼', '🗽', '🏰', '🕌', '⛪', '🕍', '🖼️', '🎭', '🎨', '🎪', '🎋'],
+        },
+        {
+          id: 'nature',
+          label: 'טבע וחוץ',
+          icons: ['⛰️', '🌋', '🏔️', '🏖️', '🏝️', '🏞️', '🌊', '🌸', '🌲', '🍁', '🌅', '🐳', '🦌'],
+        },
+        {
+          id: 'activity',
+          label: 'פעילות ופנאי',
+          icons: [
+            '🎫',
+            '🎢',
+            '🎡',
+            '🎠',
+            '🎿',
+            '🏂',
+            '🏄',
+            '🚵',
+            '🥾',
+            '🧗',
+            '🎣',
+            '🛶',
+            '🏊',
+            '🎮',
+          ],
+        },
+        {
+          id: 'shopping',
+          label: 'קניות',
+          icons: ['🛍️', '🛒', '🏬', '🏪', '🎁', '💐', '🕯️', '🧴'],
+        },
+        {
+          id: 'practical',
+          label: 'מעשי ובריאות',
+          icons: ['🎟️', '💊', '🏥', '🏧', '🏦', '📮', '📶', '🔌', '🧳', '🧾', '📄', '🆘', '🅿️'],
+        },
+        {
+          id: 'general',
+          label: 'כללי',
+          icons: ['📌', '📍', '⭐', '❤️', '✅', '❓', '🔖', '💡', '🎉', '🎂'],
+        },
+      ];
+
+      // ── Tier B: booking type → icon (deterministic; the ONLY auto source). ──
+      const TYPE_ICON = {
+        flight: '✈️',
+        hotel: '🏨',
+        restaurant: '🍽️',
+        train: '🚆',
+        activity: '🎫',
+        other: '📌',
+      };
+      const BOOKING_TYPES = [
+        { id: 'flight', label: 'טיסה', icon: '✈️' },
+        { id: 'hotel', label: 'לינה', icon: '🏨' },
+        { id: 'restaurant', label: 'מסעדה', icon: '🍽️' },
+        { id: 'train', label: 'רכבת', icon: '🚆' },
+        { id: 'activity', label: 'פעילות', icon: '🎫' },
+        { id: 'other', label: 'אחר', icon: '📌' },
+      ];
+
+      // ── Host contexts — the one picker, three forms. ──
+      const HOSTS = {
+        event: {
+          formTitle: 'אירוע חדש',
+          titleLabel: 'כותרת',
+          titlePlaceholder: 'למשל: טיסה לאתונה',
+          showType: true,
+          secondaryLabel: 'מיקום',
+          secondaryPlaceholder: 'נמל התעופה בן גוריון',
+          def: '📌',
+        },
+        idea: {
+          formTitle: 'רעיון חדש למדף',
+          titleLabel: 'רעיון',
+          titlePlaceholder: 'למשל: מקדש פושׅימי אינארי',
+          showType: false,
+          secondaryLabel: null, // shelf ideas are just title + icon today
+          def: '💡',
+        },
+        trip: {
+          formTitle: 'טיול חדש',
+          titleLabel: 'שם הטיול',
+          titlePlaceholder: 'למשל: יפן ׳26',
+          showType: false,
+          secondaryLabel: 'יעד',
+          secondaryPlaceholder: 'טוקיו · קיוטו · אוסקה',
+          def: '🧳',
+        },
+      };
+
+      let host = 'event';
+      let bookingType = null; // event host: the chosen booking type (auto signal)
+      let manual = false; // has the user overridden the suggestion?
+      let selected = '📌'; // committed icon
+      let autoIcon = '📌'; // what the suggestion currently is
+      let activeCat = 'all';
+
+      const $ = (id) => document.getElementById(id);
+
+      function currentAuto() {
+        if (host === 'event' && bookingType) return TYPE_ICON[bookingType] ?? HOSTS.event.def;
+        return HOSTS[host].def;
+      }
+
+      function recompute() {
+        autoIcon = currentAuto();
+        if (!manual) selected = autoIcon;
+        render();
+      }
+
+      // The canonical category is derived from which group the glyph lives in —
+      // this is the semantic value we persist (icon glyph is just the badge).
+      function categoryOf(glyph) {
+        return CATEGORIES.find((c) => c.icons.includes(glyph)) ?? null;
+      }
+
+      function render() {
+        $('chip').textContent = selected;
+        const cat = categoryOf(selected);
+        $('cat-readout').textContent = cat ? 'קטגוריה: ' + cat.label : '';
+        // caption only when a *real* suggestion is active (type gave a specific
+        // icon that isn't the plain default) and the user hasn't overridden.
+        const suggesting = !manual && autoIcon !== HOSTS[host].def;
+        $('auto-caption').classList.toggle('show', suggesting);
+        $('revert').classList.toggle('show', manual);
+        if ($('picker').classList.contains('show')) {
+          renderCats();
+          renderGrid();
+        }
+      }
+
+      function renderTypeRow() {
+        const box = $('type-row');
+        box.innerHTML = '';
+        BOOKING_TYPES.forEach((tp) => {
+          const b = document.createElement('button');
+          b.type = 'button';
+          b.className = 'type-chip' + (tp.id === bookingType ? ' on' : '');
+          b.innerHTML = `<span>${tp.icon}</span> ${tp.label}`;
+          b.onclick = () => {
+            bookingType = tp.id;
+            renderTypeRow();
+            recompute();
+          };
+          box.appendChild(b);
+        });
+      }
+
+      function renderCats() {
+        const box = $('cats');
+        const all = [{ id: 'all', label: 'הכול' }, ...CATEGORIES];
+        box.innerHTML = '';
+        all.forEach((c) => {
+          const b = document.createElement('button');
+          b.type = 'button';
+          b.textContent = c.label;
+          b.className = c.id === activeCat ? 'on' : '';
+          b.onclick = (ev) => {
+            // Stop the bubble: renderCats() detaches this button, so the
+            // document click-outside handler would otherwise see an orphaned
+            // node (closest('#picker') === null) and wrongly close the picker.
+            ev.stopPropagation();
+            activeCat = c.id;
+            renderCats();
+            renderGrid();
+          };
+          box.appendChild(b);
+        });
+      }
+
+      function renderGrid() {
+        const box = $('grid-scroll');
+        box.innerHTML = '';
+        const cats =
+          activeCat === 'all' ? CATEGORIES : CATEGORIES.filter((c) => c.id === activeCat);
+        cats.forEach((cat) => {
+          if (activeCat === 'all') {
+            const lbl = document.createElement('div');
+            lbl.className = 'cat-label';
+            lbl.textContent = cat.label;
+            box.appendChild(lbl);
+          }
+          const grid = document.createElement('div');
+          grid.className = 'grid';
+          cat.icons.forEach((ic) => {
+            const b = document.createElement('button');
+            b.type = 'button';
+            b.className =
+              'cell' +
+              (ic === selected ? ' sel' : '') +
+              (!manual && ic === autoIcon ? ' auto' : '');
+            b.textContent = ic;
+            b.onclick = () => pick(ic);
+            grid.appendChild(b);
+          });
+          box.appendChild(grid);
+        });
+      }
+
+      function pick(ic) {
+        selected = ic;
+        manual = true; // manual choice wins from here
+        render();
+        closePicker();
+      }
+
+      function revertAuto() {
+        manual = false;
+        recompute();
+      }
+
+      function togglePicker(e) {
+        e.stopPropagation();
+        const p = $('picker');
+        const open = p.classList.toggle('show');
+        $('chip').classList.toggle('open', open);
+        if (open) {
+          renderCats();
+          renderGrid();
+        }
+      }
+      function closePicker() {
+        $('picker').classList.remove('show');
+        $('chip').classList.remove('open');
+      }
+      document.addEventListener('click', (e) => {
+        if (!e.target.closest('#picker') && !e.target.closest('#chip')) closePicker();
+      });
+
+      function setHost(h) {
+        host = h;
+        manual = false;
+        bookingType = null;
+        activeCat = 'all';
+        ['event', 'idea', 'trip'].forEach((k) => $('sw-' + k).classList.toggle('on', k === h));
+        const cfg = HOSTS[h];
+        $('form-title').textContent = cfg.formTitle;
+        $('title-label').textContent = cfg.titleLabel;
+        $('title-input').placeholder = cfg.titlePlaceholder;
+        $('title-input').value = '';
+        $('chrome-day').style.display = h === 'trip' ? 'none' : '';
+
+        $('type-field').style.display = cfg.showType ? '' : 'none';
+        if (cfg.showType) renderTypeRow();
+
+        const sec = $('secondary-field');
+        if (cfg.secondaryLabel) {
+          sec.style.display = '';
+          $('secondary-label').textContent = cfg.secondaryLabel;
+          $('secondary-input').placeholder = cfg.secondaryPlaceholder;
+          $('secondary-input').value = '';
+        } else {
+          sec.style.display = 'none';
+        }
+        closePicker();
+        recompute();
+      }
+
+      setHost('event');
+    </script>
+  </body>
+</html>

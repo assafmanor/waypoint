@@ -15,7 +15,7 @@ import { useTrip } from '../state/trip-state';
 import { useVerbs } from '../state/verbs';
 import { getNow } from '../lib/useClock';
 import { zonedIso, isoToTimeInput, hardConflicts, formatTime, resolveEndIso } from '../lib/time';
-import { DEFAULT_EVENT_ICON } from '../constants';
+import { DEFAULT_EVENT_ICON, DEVICE_LOCALE } from '../constants';
 import { t } from '../i18n/he';
 import { TimePicker } from './TimePicker';
 
@@ -71,6 +71,12 @@ export function EventForm({
     e.preventDefault();
     if (!title.trim()) return setError(t.eventForm.titleRequired);
     if (!date) return setError(t.eventForm.dateRequired);
+    // Native min/max guides the picker, but a typed value can still land outside
+    // the trip. An event belongs to a day within [startDate, endDate] — an
+    // overnight event on the last day still files under that day (ADR-0037).
+    if (date < trip.startDate || date > trip.endDate) {
+      return setError(t.eventForm.dateOutOfRange);
+    }
 
     const fields = {
       date,
@@ -162,7 +168,14 @@ export function EventForm({
 
         <label className="form-field">
           {t.eventForm.dateLabel}
-          <input type="date" value={date} onChange={(e) => setDate(e.target.value)} />
+          <input
+            type="date"
+            lang={DEVICE_LOCALE}
+            min={trip.startDate}
+            max={trip.endDate}
+            value={date}
+            onChange={(e) => setDate(e.target.value)}
+          />
         </label>
 
         <TimePicker
