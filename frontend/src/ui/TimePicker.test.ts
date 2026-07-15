@@ -4,7 +4,7 @@
 //   • loose exact-time parsing (the off-grid fallback), and
 //   • the same-day guard that keeps multi-day events out of scope.
 import { describe, it, expect } from 'vitest';
-import { parseLoose, endToDuration, clampSameDay, nearestRoundSlot } from './TimePicker';
+import { parseLoose, endToDuration, clampSameDay, nearestRoundSlot, maskTime } from './TimePicker';
 
 describe('parseLoose', () => {
   it('parses HH:MM', () => {
@@ -54,6 +54,36 @@ describe('clampSameDay', () => {
     expect(clampSameDay(23 * 60 + 30)).toBe(23 * 60 + 30);
     expect(clampSameDay(24 * 60)).toBe(23 * 60 + 59); // start 22:00 + 3h
     expect(clampSameDay(30 * 60)).toBe(23 * 60 + 59);
+  });
+});
+
+describe('maskTime (auto-insert the colon)', () => {
+  it('leaves one or two digits as the bare hour', () => {
+    expect(maskTime('1')).toBe('1');
+    expect(maskTime('14')).toBe('14');
+  });
+
+  it('inserts the colon before the last two digits', () => {
+    expect(maskTime('930')).toBe('9:30');
+    expect(maskTime('907')).toBe('9:07');
+    expect(maskTime('1430')).toBe('14:30');
+    expect(maskTime('0907')).toBe('09:07');
+  });
+
+  it('strips a colon the user typed and re-derives it', () => {
+    expect(maskTime('9:30')).toBe('9:30');
+    expect(maskTime('09:07')).toBe('09:07');
+  });
+
+  it('ignores non-digits and caps at four digits', () => {
+    expect(maskTime('9a3b0')).toBe('9:30');
+    expect(maskTime('12345')).toBe('12:34');
+    expect(maskTime('')).toBe('');
+  });
+
+  it('round-trips through parseLoose', () => {
+    expect(parseLoose(maskTime('907'))).toBe(9 * 60 + 7);
+    expect(parseLoose(maskTime('1430'))).toBe(14 * 60 + 30);
   });
 });
 
