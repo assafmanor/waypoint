@@ -188,8 +188,7 @@
         border-radius: 13px;
         padding: 12px 12px 13px;
         background:
-          linear-gradient(180deg, rgba(233, 166, 60, 0.05), rgba(233, 166, 60, 0) 60%),
-          #fff;
+          linear-gradient(180deg, rgba(233, 166, 60, 0.05), rgba(233, 166, 60, 0) 60%), #fff;
         display: flex;
         flex-direction: column;
         gap: 11px;
@@ -499,7 +498,7 @@
       </div>
 
       <div class="stage">
-        <form class="event-form-card" onsubmit="return false">
+        <form class="event-form-card" onsubmit="return false;">
           <div class="form-title">אירוע חדש</div>
 
           <label class="form-field">
@@ -561,17 +560,17 @@
       <h2>למה זה עובד</h2>
       <ul>
         <li>
-          <b>הזמן הוא ענבר.</b> הקריאה הגדולה במונו־ספייס היא היסוד היחיד ה"רם" בכרטיס —
-          שפת לוח־היציאות, על נייר ולא על לוח כהה (הלוח מוקצב לאחד למסך).
+          <b>הזמן הוא ענבר.</b> הקריאה הגדולה במונו־ספייס היא היסוד היחיד ה"רם" בכרטיס — שפת
+          לוח־היציאות, על נייר ולא על לוח כהה (הלוח מוקצב לאחד למסך).
         </li>
         <li>
           <b>קוונטיזציה = לחיצה אחת.</b> רצועת שעות אופקית + צ׳יפים של
-          <span class="swatch">:00 · :15 · :30 · :45</span>. הכפתור <b>⋯ דיוק</b> מוריד
-          לצעדי 5 דק׳ למקרים החריגים — עגול מהיר בלי לחסום את המשונה.
+          <span class="swatch">:00 · :15 · :30 · :45</span>. הכפתור <b>⋯ דיוק</b> מוריד לצעדי 5 דק׳
+          למקרים החריגים — עגול מהיר בלי לחסום את המשונה.
         </li>
         <li>
-          <b>סיום = משך.</b> בוחרים <span class="swatch">חצי שעה · שעה · שעה וחצי · שעתיים</span>
-          או "אחר" עם צעדי 15 דק׳. נשמר כ־<code>endsAt</code> מוחלט — שום דבר במורד הזרם לא משתנה.
+          <b>סיום = משך.</b> בוחרים <span class="swatch">חצי שעה · שעה · שעה וחצי · שעתיים</span> או
+          "אחר" עם צעדי 15 דק׳. נשמר כ־<code>endsAt</code> מוחלט — שום דבר במורד הזרם לא משתנה.
         </li>
       </ul>
     </div>
@@ -672,8 +671,7 @@
 
         durStepper.className = 'dur-stepper' + (state.customOpen ? ' open' : '');
 
-        document.getElementById('fine-toggle').className =
-          'toggle' + (state.fine ? ' on' : '');
+        document.getElementById('fine-toggle').className = 'toggle' + (state.fine ? ' on' : '');
       }
 
       document.getElementById('fine-toggle').onclick = () => {
