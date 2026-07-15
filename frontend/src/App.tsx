@@ -1,4 +1,4 @@
-import { useEffect, useState } from 'react';
+import { useEffect, useRef, useState } from 'react';
 import { Navigate, Outlet, Route, Routes, useLocation, useNavigate } from 'react-router-dom';
 import type { Trip } from '@waypoint/shared';
 import { TripProvider, useTrip } from './state/trip-state';
@@ -275,8 +275,25 @@ function Shell() {
     setActiveDate(date);
     goToTab('days');
   };
+  // Mode-switch transition (design-language: Motion). On a mode change, arm the
+  // chrome transition for its duration via data-switching, direction-scoped:
+  // Plan→Trip (going live) is the cinematic beat, Trip→Plan (stand-down) the
+  // quieter return. Durations mirror --t-cinematic / --t-deliberate (tokens.css)
+  // plus a small tail to clear after the animation settles; reduced-motion still
+  // flips instantly (the CSS is inert under it). Not armed on first mount.
+  const [switching, setSwitching] = useState<'to-trip' | 'to-plan' | null>(null);
+  const prevMode = useRef(mode);
+  useEffect(() => {
+    if (prevMode.current === mode) return;
+    prevMode.current = mode;
+    const dir = mode === 'trip' ? 'to-trip' : 'to-plan';
+    setSwitching(dir);
+    const clearAfter = mode === 'trip' ? 660 : 460;
+    const id = setTimeout(() => setSwitching(null), clearAfter);
+    return () => clearTimeout(id);
+  }, [mode]);
   return (
-    <div className="app" data-mode={mode}>
+    <div className="app" data-mode={mode} data-switching={switching ?? undefined}>
       <Header
         onSelectDay={onSelectDay}
         onOpenSwitcher={() => navigate('/trips')}

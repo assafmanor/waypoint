@@ -1,7 +1,8 @@
 # 2026-07-14 · Session 15 — Plan⇄Trip mode-switch transition (design study)
 
-**Status:** Scratch / exploration. This note is orientation, not authority — nothing
-here is binding until it lands in `design-language.md` (Motion section) or an ADR.
+**Status:** Explored → **adopted & implemented** this session. The durable record
+now lives in `design-language.md` ("Motion & designed transitions"); this note is
+the exploration history. Option **B** ("Go live / Stand down") was chosen and wired.
 
 ## Goal
 
@@ -59,12 +60,12 @@ subject.)
 All operate on the **durable** channels (temperature / grid / glow), never
 luminance, so each was verified to read the same in light **and** dark theme.
 
-| # | Name | Timing | Verdict |
-| - | ---- | ------ | ------- |
-| A | **Crossfade** — every channel (hue, grid, hero, glow) melts at once | 450ms | The floor + the reduced-motion fallback. Tells no story. |
-| **B** | **Go live / Stand down** — warm the chrome + dissolve the grid, *then* ignite the board glow + pulse; quiet inverse back | **600 / 400ms** | **Recommended.** Animates the product's story on durable channels; extends the existing `board-power` glow keyframe. |
-| C | **Grid resolve** — plan-led: the drafting grid draws in / erases as the lead gesture, hue+glow follow | 500ms | Nice structural read; a touch quieter than B's energy climax. |
-| D | **Hue sweep** — a warm/cool temperature band wipes across the **chrome only** (never full-screen) | 520ms | Optional connective polish over B; chrome-band scoping keeps it from reading as a brightness change. |
+| #     | Name                                                                                                                     | Timing          | Verdict                                                                                                              |
+| ----- | ------------------------------------------------------------------------------------------------------------------------ | --------------- | -------------------------------------------------------------------------------------------------------------------- |
+| A     | **Crossfade** — every channel (hue, grid, hero, glow) melts at once                                                      | 450ms           | The floor + the reduced-motion fallback. Tells no story.                                                             |
+| **B** | **Go live / Stand down** — warm the chrome + dissolve the grid, _then_ ignite the board glow + pulse; quiet inverse back | **600 / 400ms** | **Recommended.** Animates the product's story on durable channels; extends the existing `board-power` glow keyframe. |
+| C     | **Grid resolve** — plan-led: the drafting grid draws in / erases as the lead gesture, hue+glow follow                    | 500ms           | Nice structural read; a touch quieter than B's energy climax.                                                        |
+| D     | **Hue sweep** — a warm/cool temperature band wipes across the **chrome only** (never full-screen)                        | 520ms           | Optional connective polish over B; chrome-band scoping keeps it from reading as a brightness change.                 |
 
 (An expanding-circle "ripple from the toggle" was prototyped and cut — reads
 consumer-flashy, and has no origin point on the tap-less auto switch.)
@@ -85,15 +86,15 @@ consumer-flashy, and has no origin point on the tap-less auto switch.)
 
 ## Proposed motion tokens (the shared vocabulary)
 
-| Token | Value | Used for |
-| ----- | ----- | -------- |
-| `--t-quick` | 140ms | Nav settle, toggles, hovers, focus |
-| `--t-base` | 240ms | Tab cross-fade, toast, ripple bar, sheets |
-| `--t-deliberate` | 400ms | Return-gesture slide (ADR-0035); Trip→Plan |
-| `--t-cinematic` | 600ms | Plan→Trip going-live — **the only cinematic moment** |
-| `--ease-standard` | `cubic-bezier(.2,0,0,1)` | Default / entrances / hue melts |
-| `--ease-exit` | `cubic-bezier(.4,0,1,1)` | Exits (toast out, glow extinguishing) |
-| `--ease-emphasized` | `cubic-bezier(.16,1,.3,1)` | The glow ignite |
+| Token               | Value                      | Used for                                             |
+| ------------------- | -------------------------- | ---------------------------------------------------- |
+| `--t-quick`         | 140ms                      | Nav settle, toggles, hovers, focus                   |
+| `--t-base`          | 240ms                      | Tab cross-fade, toast, ripple bar, sheets            |
+| `--t-deliberate`    | 400ms                      | Return-gesture slide (ADR-0035); Trip→Plan           |
+| `--t-cinematic`     | 600ms                      | Plan→Trip going-live — **the only cinematic moment** |
+| `--ease-standard`   | `cubic-bezier(.2,0,0,1)`   | Default / entrances / hue melts                      |
+| `--ease-exit`       | `cubic-bezier(.4,0,1,1)`   | Exits (toast out, glow extinguishing)                |
+| `--ease-emphasized` | `cubic-bezier(.16,1,.3,1)` | The glow ignite                                      |
 
 **Budget rule:** exactly one `--t-cinematic` moment exists in the product; spending
 it elsewhere devalues it — same discipline as amber/teal/violet.
@@ -104,10 +105,26 @@ Tab change (cross-fade, `--t-base`), toast (rise-in/drop-out), nav tab settle
 (`--t-quick`, transform-only — nav-active-states-v1), ripple bar (slide-up,
 `--t-base`), plus the existing board power-on and the ADR-0035 return-gesture slide.
 
-## Next steps (not done here)
+## Adopted & implemented (this session)
 
-- Adopt: add a **"Motion & designed transitions"** expansion to `design-language.md`
-  with the token ramp + the B/E/reduced-motion decision.
-- Wire: transition vars on the `.app` chrome + a direction-aware class set on the
-  mode flip (`state/mode-state.tsx` / `App.tsx` `Shell`), reusing the existing
-  `board-power` keyframe for beat 2. Add the motion tokens to `tokens.css`.
+- **Docs:** `design-language.md` gained a "Motion & designed transitions" section
+  (token ramp + budget rule + the temperature/energy-not-luminance mode-switch
+  spec).
+- **Tokens:** `--t-quick/base/deliberate/cinematic` + `--ease-standard/exit/emphasized`
+  in `tokens.css`.
+- **Chrome transition:** `App.css` arms a direction-scoped transition on the chrome
+  only during a switch via `[data-switching]` on `.app` (`to-trip` = cinematic,
+  `to-plan` = deliberate); the drafting grid moved to `.header::before` so it can
+  dissolve; `App.tsx` `Shell` sets/clears `data-switching` on mode change (not on
+  first mount).
+- **Glow ignite:** `screens.css` `board-power`/`board-glow` retimed to
+  `--t-cinematic` + `--ease-emphasized` with a small stage delay, so it lands after
+  the hue warms.
+
+### Follow-ups (not in this change)
+
+- A **softened auto-switch** variant (the date-driven flip currently reuses the
+  same transition; it should be gentler / non-staged).
+- **Trip→Plan glow extinguish** isn't animated — the board leaves with the hero
+  component swap rather than fading out; the chrome cool carries the stand-down.
+  Revisit if we add exit-animation coordination to the hero.
