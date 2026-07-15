@@ -9,7 +9,7 @@
 import { useNavigate } from 'react-router-dom';
 import { useTrip } from '../state/trip-state';
 import { useClock } from '../lib/useClock';
-import { daysUntilStart } from '../lib/mode';
+import { daysUntilStart, tripPhase } from '../lib/mode';
 import { dayCount, dayPhrase } from '../lib/hebrew';
 import { computeReadiness, type ReadinessCheck } from '../lib/readiness';
 import { MS_PER_DAY, type TabId } from '../constants';
@@ -42,9 +42,53 @@ export function PlanHome({ onNavigate }: { onNavigate: (tab: TabId) => void }) {
   const now = useClock();
   const navigate = useNavigate();
 
+  const total = dayNumberOf(trip.endDate, trip.startDate);
+
+  // A finished trip is a calm read-only archive (ADR-0040): no prep dashboard,
+  // no countdown, no board — a quiet retrospective and a way back into the days.
+  if (tripPhase(trip, now) === 'past') {
+    return (
+      <>
+        <div className="prep prep-past">
+          <div className="prep-k">{t.planHome.past.complete}</div>
+          <div className="prep-count">{trip.destination}</div>
+          <div className="prep-dates">
+            {formatDateRange(trip.startDate, trip.endDate)} <span className="dot">·</span>{' '}
+            {dayPhrase(total)}
+          </div>
+        </div>
+
+        <div className="sec-title">{t.planHome.past.summary}</div>
+        <div className="prep-stats">
+          <div className="prep-stat">
+            <div className="prep-stat-v" dir="ltr">
+              {total}
+            </div>
+            <div className="prep-stat-l">{t.planHome.past.days}</div>
+          </div>
+          <div className="prep-stat">
+            <div className="prep-stat-v" dir="ltr">
+              {events.length}
+            </div>
+            <div className="prep-stat-l">{t.planHome.stats.events}</div>
+          </div>
+          <div className="prep-stat">
+            <div className="prep-stat-v" dir="ltr">
+              {bookings.length}
+            </div>
+            <div className="prep-stat-l">{t.planHome.stats.bookings}</div>
+          </div>
+        </div>
+
+        <button className="addbtn" onClick={() => onNavigate('days')}>
+          {t.planHome.past.viewDays}
+        </button>
+      </>
+    );
+  }
+
   const days = daysUntilStart(trip, now);
   const countdown = days === null ? null : dayCount(days);
-  const total = dayNumberOf(trip.endDate, trip.startDate);
   const readiness = computeReadiness({
     startDate: trip.startDate,
     endDate: trip.endDate,

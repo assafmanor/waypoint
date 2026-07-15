@@ -6,10 +6,11 @@
 import { createContext, useContext, useEffect, useState, type ReactNode } from 'react';
 import { useTrip } from './trip-state';
 import { useClock } from '../lib/useClock';
-import { deriveMode, type Mode } from '../lib/mode';
+import { tripPhase, type Mode, type TripPhase } from '../lib/mode';
 
 interface ModeContextValue {
   mode: Mode;
+  phase: TripPhase;
   override: Mode | null;
   setOverride: (mode: Mode | null) => void;
 }
@@ -23,10 +24,17 @@ export function ModeProvider({ children }: { children: ReactNode }) {
   // Switching trips (T-027) starts fresh — a peek on one trip shouldn't leak into another.
   useEffect(() => setOverride(null), [trip.id]);
 
-  const mode = override ?? deriveMode(trip, now);
+  const phase = tripPhase(trip, now);
+  // ADR-0040: Trip mode is a live-window-only state. While the trip is live the
+  // override may peek *down* into Plan (edit the plan mid-trip); before it starts
+  // and after it ends Plan is the only reachable mode, so a Trip-mode override is
+  // never honored there — the board has no "now" to stand on.
+  const mode: Mode = phase === 'live' ? (override ?? 'trip') : 'plan';
 
   return (
-    <ModeContext.Provider value={{ mode, override, setOverride }}>{children}</ModeContext.Provider>
+    <ModeContext.Provider value={{ mode, phase, override, setOverride }}>
+      {children}
+    </ModeContext.Provider>
   );
 }
 

@@ -19,6 +19,8 @@ import {
 } from '@waypoint/shared';
 import { useTrip, byStart } from '../state/trip-state';
 import { useVerbs } from '../state/verbs';
+import { useClock } from '../lib/useClock';
+import { tripPhase } from '../lib/mode';
 import { formatTime, zonedIso, crossesMidnight } from '../lib/time';
 import { gapBetween, nextSlot, type GapDefaults } from '../lib/gaps';
 import { CODE_PREFIX, DEFAULT_MAYBE_ICON, ICONS, MS_PER_DAY, MINUTES_PER_HOUR } from '../constants';
@@ -44,7 +46,11 @@ function gapLabel(minutes: number): string {
 export function PlanDay() {
   const { trip, events, maybeItems, bookings, activeDate } = useTrip();
   const verbs = useVerbs();
+  const now = useClock();
   const tz = trip.timezone;
+  // A finished trip is a read-only archive (ADR-0040): the builder becomes a
+  // frozen, browsable history — no create/edit/delete/move, no shelf.
+  const readOnly = tripPhase(trip, now) === 'past';
   const [formTarget, setFormTarget] = useState<'new' | TripEvent | null>(null);
   const [gapFill, setGapFill] = useState<GapDefaults | null>(null);
   // A shelf idea being scheduled onto a day — opens EventForm in "schedule" mode
@@ -104,14 +110,18 @@ export function PlanDay() {
         <div className="sec-title">
           {t.day.heading(dayNumber, weekday, trip.destination)}
           <span className="sec-title-end">
-            <button className="new-event-btn" onClick={() => setFormTarget('new')}>
-              {ICONS.add} {t.actions.newEvent}
-            </button>
+            {readOnly ? (
+              <span className="hint">{t.planDay.pastNote}</span>
+            ) : (
+              <button className="new-event-btn" onClick={() => setFormTarget('new')}>
+                {ICONS.add} {t.actions.newEvent}
+              </button>
+            )}
           </span>
         </div>
 
         {dayEvents.length === 0 ? (
-          <div className="builder-empty">{t.planDay.empty}</div>
+          <div className="builder-empty">{readOnly ? t.planDay.pastEmpty : t.planDay.empty}</div>
         ) : (
           <div>
             {dayEvents.map((e, i) => {
@@ -127,11 +137,12 @@ export function PlanDay() {
                   <BuilderRow
                     event={e}
                     tz={tz}
+                    readOnly={readOnly}
                     booking={e.bookingId ? bookings.find((b) => b.id === e.bookingId) : undefined}
                     onEdit={() => setFormTarget(e)}
                     onDelete={() => verbs.remove(e)}
                     onPark={soft ? () => verbs.park(e) : undefined}
-                    grip={soft ? gripProps(e.id) : undefined}
+                    grip={soft && !readOnly ? gripProps(e.id) : undefined}
                     dragging={drag?.id === e.id}
                     over={drag?.overId === e.id}
                     onMoveEarlier={
@@ -141,7 +152,7 @@ export function PlanDay() {
                       laterId ? () => verbs.reorder(dayEvents, e.id, laterId) : undefined
                     }
                   />
-                  {gap && (
+                  {gap && !readOnly && (
                     <div className="gap">
                       <span className="gap-line" />
                       <button className="gap-add" onClick={() => setGapChoice(gap.fill)}>
@@ -157,42 +168,48 @@ export function PlanDay() {
         )}
 
         {/* Header's "new event" is a blank form; this one continues the day at
-            the next open slot. */}
-        <button
-          className="addbtn"
-          onClick={() => {
-            setGapFill(nextSlot(dayEvents, activeDate, tz));
-            setFormTarget('new');
-          }}
-        >
-          {ICONS.add} {t.planDay.addToDay}
-        </button>
+            the next open slot. Frozen on a finished trip (ADR-0040). */}
+        {!readOnly && (
+          <button
+            className="addbtn"
+            onClick={() => {
+              setGapFill(nextSlot(dayEvents, activeDate, tz));
+              setFormTarget('new');
+            }}
+          >
+            {ICONS.add} {t.planDay.addToDay}
+          </button>
+        )}
       </div>
 
-      <div className="builder-side">
-        <div className="sec-title">
-          {t.day.maybeShelf}
-          <span className="hint">{t.day.tapToSchedule}</span>
+      {/* The maybe-shelf is trip-building (ADR-0025 Tier 3), so a finished
+          read-only trip drops it entirely (ADR-0040). */}
+      {!readOnly && (
+        <div className="builder-side">
+          <div className="sec-title">
+            {t.day.maybeShelf}
+            <span className="hint">{t.day.tapToSchedule}</span>
+          </div>
+          <div className="shelf">
+            {/* Scheduled (consumed) ideas leave the shelf — no dead "שובץ"
+                tombstone (ADR-0027: an idea is parked OR placed, never both). */}
+            {maybeItems
+              .filter((m) => !m.consumed)
+              .map((m) => (
+                <MaybeCard
+                  key={m.id}
+                  item={m}
+                  onSchedule={() => {
+                    setGapFill(nextSlot(dayEvents, activeDate, tz));
+                    setScheduleMaybe(m);
+                  }}
+                  onRemove={() => verbs.removeMaybe(m)}
+                />
+              ))}
+          </div>
+          <AddIdea onAdd={(title, icon, category) => verbs.addMaybe(title, icon, category)} />
         </div>
-        <div className="shelf">
-          {/* Scheduled (consumed) ideas leave the shelf — no dead "שובץ"
-              tombstone (ADR-0027: an idea is parked OR placed, never both). */}
-          {maybeItems
-            .filter((m) => !m.consumed)
-            .map((m) => (
-              <MaybeCard
-                key={m.id}
-                item={m}
-                onSchedule={() => {
-                  setGapFill(nextSlot(dayEvents, activeDate, tz));
-                  setScheduleMaybe(m);
-                }}
-                onRemove={() => verbs.removeMaybe(m)}
-              />
-            ))}
-        </div>
-        <AddIdea onAdd={(title, icon, category) => verbs.addMaybe(title, icon, category)} />
-      </div>
+      )}
 
       {gapChoice && (
         <GapFillSheet
@@ -270,6 +287,7 @@ function GapFillSheet({
 function BuilderRow({
   event,
   tz,
+  readOnly,
   booking,
   onEdit,
   onDelete,
@@ -282,6 +300,9 @@ function BuilderRow({
 }: {
   event: TripEvent;
   tz: string;
+  // A finished trip is a read-only archive (ADR-0040): the row is browsable but
+  // carries no edit/reorder/delete affordances.
+  readOnly?: boolean;
   booking?: { confirmationCode?: string };
   onEdit: () => void;
   onDelete: () => void;
@@ -318,6 +339,22 @@ function BuilderRow({
     fn();
   };
 
+  const mainContent = (
+    <>
+      <span className="bld-t">
+        {event.title}
+        {isHard ? (
+          <span className="tag-hard">
+            {ICONS.lock} {t.event.hard}
+          </span>
+        ) : (
+          <span className="tag-soft">{t.event.soft}</span>
+        )}
+      </span>
+      {meta && <span className="bld-m">{meta}</span>}
+    </>
+  );
+
   return (
     <div className={cls} data-bld-id={event.id}>
       {grip ? (
@@ -344,27 +381,23 @@ function BuilderRow({
             </button>
           </span>
         </span>
-      ) : (
+      ) : isHard ? (
         <span className="bld-anchor" aria-label={t.planDay.pinned} title={t.planDay.pinned}>
           {ICONS.lock}
         </span>
+      ) : (
+        <span className="bld-reorder" aria-hidden="true" />
       )}
       <span className="bld-bd" aria-hidden="true">
         {event.icon}
       </span>
-      <button className="bld-main" onClick={onEdit}>
-        <span className="bld-t">
-          {event.title}
-          {isHard ? (
-            <span className="tag-hard">
-              {ICONS.lock} {t.event.hard}
-            </span>
-          ) : (
-            <span className="tag-soft">{t.event.soft}</span>
-          )}
-        </span>
-        {meta && <span className="bld-m">{meta}</span>}
-      </button>
+      {readOnly ? (
+        <div className="bld-main">{mainContent}</div>
+      ) : (
+        <button className="bld-main" onClick={onEdit}>
+          {mainContent}
+        </button>
+      )}
       {event.startsAt && (
         <span className="bld-time" dir="ltr">
           {formatTime(event.startsAt, tz)}
@@ -376,14 +409,16 @@ function BuilderRow({
           )}
         </span>
       )}
-      <button
-        className="bld-icon"
-        onClick={() => setMenuOpen(true)}
-        aria-label={t.planDay.rowActions}
-      >
-        {ICONS.more}
-      </button>
-      {menuOpen && (
+      {!readOnly && (
+        <button
+          className="bld-icon"
+          onClick={() => setMenuOpen(true)}
+          aria-label={t.planDay.rowActions}
+        >
+          {ICONS.more}
+        </button>
+      )}
+      {!readOnly && menuOpen && (
         <Sheet title={event.title} onClose={() => setMenuOpen(false)}>
           <div className="row-actions">
             <button className="row-action" onClick={() => runAction(onEdit)}>

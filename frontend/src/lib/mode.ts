@@ -8,13 +8,27 @@ import { todayInTz } from './time';
 
 export type Mode = 'plan' | 'trip';
 
+/** Where the trip sits relative to trip-local "today": before it starts (`pre`),
+ *  within [startDate, endDate] (`live`), or after it ends (`past`). Trip mode is
+ *  a live-window-only state (ADR-0040) — pre and past are always Plan. */
+export type TripPhase = 'pre' | 'live' | 'past';
+
+export function tripPhase(
+  trip: Pick<Trip, 'startDate' | 'endDate' | 'timezone'>,
+  now: Date,
+): TripPhase {
+  const today = todayInTz(trip.timezone, now);
+  if (today < trip.startDate) return 'pre';
+  if (today > trip.endDate) return 'past';
+  return 'live';
+}
+
 /** Trip mode runs the trip's local calendar days [startDate, endDate] inclusive; Plan mode otherwise. */
 export function deriveMode(
   trip: Pick<Trip, 'startDate' | 'endDate' | 'timezone'>,
   now: Date,
 ): Mode {
-  const today = todayInTz(trip.timezone, now);
-  return today >= trip.startDate && today <= trip.endDate ? 'trip' : 'plan';
+  return tripPhase(trip, now) === 'live' ? 'trip' : 'plan';
 }
 
 /** Trip-local calendar days remaining before startDate — null once the trip

@@ -222,6 +222,15 @@ export const t = {
       events: 'אירועים',
       emptyDays: 'ימים ריקים',
     },
+    // Past-trip retrospective — the calm read-only archive (ADR-0040). No prep
+    // dashboard, no countdown, no board; a quiet summary and a way back into the
+    // days.
+    past: {
+      complete: 'הטיול הסתיים',
+      summary: 'לזיכרון',
+      days: 'ימים',
+      viewDays: 'עיון בימי הטיול',
+    },
   },
   day: {
     heading: (day: number, weekday: string, destination: string) =>
@@ -234,6 +243,9 @@ export const t = {
   // Plan-mode Day-by-day — the itinerary builder (screens/PlanDay.tsx).
   planDay: {
     empty: 'היום ריק — הוסף אירוע או שבץ מהמדף',
+    // Read-only archive signal for a finished trip (ADR-0040 / ADR-0029).
+    pastNote: 'טיול שהסתיים · לקריאה בלבד',
+    pastEmpty: 'אין אירועים ביום זה',
     addToDay: 'הוסף אירוע',
     moveEarlier: 'הקדם',
     moveLater: 'אחר',
