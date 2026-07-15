@@ -273,6 +273,7 @@ export const t = {
     newEvent: 'אירוע חדש',
     edit: 'ערוך',
     delete: 'מחק',
+    more: 'פעולות',
   },
   toast: {
     markedDone: 'סומן כבוצע',

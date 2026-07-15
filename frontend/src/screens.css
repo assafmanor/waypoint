@@ -532,6 +532,20 @@
   font-size: 14px;
   line-height: 1;
 }
+/* Overflow ⋯ opening the Tier-2 action sheet (edit · delete, ADR-0025). Set
+   apart from the quick verbs: no border until touched, so the strip reads as
+   "verbs + a quiet more". */
+.act.icon-only.more {
+  border-color: transparent;
+  color: var(--muted);
+  font-size: 17px;
+  padding: 6px 9px;
+}
+.act.icon-only.more:hover {
+  background: var(--paper);
+  color: var(--ink);
+  border-color: var(--line);
+}
 .act:focus-visible {
   outline: 2.5px solid var(--teal);
   outline-offset: 2px;
