@@ -1,0 +1,699 @@
+<!doctype html>
+<!-- Event time-setter redesign (branch: claude/event-time-setter-redesign).
+     Replaces the two bare <input type="time"> controls in EventForm with a
+     quantized, touch-first picker built on the insight that ~90% of events
+     start on :00 / :15 / :30 / :45 and are reasoned about by *duration*, not
+     by an absolute end time.
+
+     Three moves:
+       1. Amber monospace readout — time is THE amber/departure-board primitive
+          (design-language: "amber = the clock & the commitment"). On paper,
+          not a full dark board (the board is rationed to one per screen).
+       2. Coarse hour strip + quantized minute chips (:00/:15/:30/:45), with a
+          "⋯ דיוק" toggle that drops to 5-min steps for the off-grid case —
+          fast round times without making odd times impossible.
+       3. End = duration off the start (30 דק׳ · שעה · שעה וחצי · שעתיים · אחר),
+          which still saves as an absolute endsAt. Nothing downstream changes;
+          only the input control does.
+
+     Fully interactive — tap the hour strip, minute chips, duration chips, and
+     the precision toggle. RTL/Hebrew, phone-first (~390px). -->
+<html lang="he" dir="rtl">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>Waypoint — בורר שעה לאירוע (מוקאפ)</title>
+    <link rel="preconnect" href="https://fonts.googleapis.com" />
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+    <link
+      href="https://fonts.googleapis.com/css2?family=Assistant:wght@400;500;600;700&family=Secular+One&family=JetBrains+Mono:wght@500;700&display=swap"
+      rel="stylesheet"
+    />
+    <style>
+      :root {
+        --ink: #16233d;
+        --indigo: #1b2a4a;
+        --board: #0e1729;
+        --board-2: #152137;
+        --screen: #e7eaef;
+        --card: #ffffff;
+        --paper: #f3efe6;
+        --amber: #e9a63c;
+        --amber-deep: #c9822a;
+        --teal: #2c9c90;
+        --plan: #6e59d6;
+        --plan-deep: #5747b4;
+        --plan-tint: rgba(110, 89, 214, 0.1);
+        --muted: #6c7488;
+        --miss: #c2584e;
+        --line: rgba(22, 35, 61, 0.1);
+        --soft-line: rgba(22, 35, 61, 0.28);
+        --cta: var(--ink);
+        --cta-text: #fff;
+        --shadow: 0 18px 40px -18px rgba(14, 23, 41, 0.45);
+        --font-head: 'Secular One', sans-serif;
+        --font-body: 'Assistant', sans-serif;
+        --font-mono: 'JetBrains Mono', monospace;
+      }
+      * {
+        box-sizing: border-box;
+        margin: 0;
+        padding: 0;
+        -webkit-tap-highlight-color: transparent;
+      }
+      html,
+      body {
+        min-height: 100%;
+      }
+      body {
+        font-family: var(--font-body);
+        background:
+          radial-gradient(120% 90% at 80% -10%, #2a3e68 0%, transparent 55%),
+          radial-gradient(120% 90% at 0% 110%, #1a2a4a 0%, transparent 50%), #0f1a31;
+        color: var(--ink);
+        min-height: 100vh;
+        display: flex;
+        flex-direction: column;
+        align-items: center;
+        padding: 26px 16px 60px;
+        -webkit-font-smoothing: antialiased;
+      }
+      .kicker {
+        color: #b9c4dc;
+        font-size: 12px;
+        letter-spacing: 0.06em;
+        text-transform: uppercase;
+        margin-bottom: 4px;
+        text-align: center;
+      }
+      .kicker b {
+        color: var(--amber);
+      }
+      h1.title {
+        font-family: var(--font-head);
+        color: #f4f7ff;
+        font-size: 20px;
+        font-weight: 400;
+        margin-bottom: 22px;
+        text-align: center;
+      }
+
+      /* ---- phone frame ---- */
+      .phone {
+        width: 100%;
+        max-width: 392px;
+        background: var(--screen);
+        border-radius: 30px;
+        box-shadow: 0 26px 60px -18px rgba(0, 0, 0, 0.6);
+        overflow: hidden;
+        border: 1px solid rgba(255, 255, 255, 0.08);
+      }
+      /* plan-mode chrome (drafting table): light paper + violet accent line */
+      .chrome {
+        background: #fbf9f4;
+        border-bottom: 1px solid var(--line);
+        padding: 12px 16px 11px;
+        display: flex;
+        align-items: center;
+        justify-content: space-between;
+      }
+      .chrome::after {
+        content: '';
+        position: absolute;
+      }
+      .mode-pill {
+        display: inline-flex;
+        align-items: center;
+        gap: 5px;
+        font-size: 12px;
+        font-weight: 700;
+        color: var(--plan-deep);
+        background: var(--plan-tint);
+        border: 1px solid rgba(110, 89, 214, 0.25);
+        border-radius: 999px;
+        padding: 4px 10px;
+      }
+      .chrome .day {
+        font-size: 12.5px;
+        color: var(--muted);
+        font-weight: 600;
+      }
+      .stage {
+        padding: 20px 16px 22px;
+        display: flex;
+        justify-content: center;
+      }
+
+      /* ---- event form card ---- */
+      .event-form-card {
+        width: 100%;
+        max-width: 360px;
+        background: var(--card);
+        border: 1px solid var(--line);
+        border-radius: 15px;
+        padding: 16px;
+        box-shadow: var(--shadow);
+        display: flex;
+        flex-direction: column;
+        gap: 13px;
+      }
+      .form-title {
+        font-family: var(--font-head);
+        font-weight: 400;
+        font-size: 16px;
+        color: var(--ink);
+      }
+      .form-field {
+        display: flex;
+        flex-direction: column;
+        gap: 5px;
+        font-size: 12.5px;
+        font-weight: 600;
+        color: var(--muted);
+      }
+      .form-field input {
+        font: inherit;
+        font-size: 14px;
+        font-weight: 500;
+        color: var(--ink);
+        background: #fff;
+        border: 1px solid var(--line);
+        border-radius: 9px;
+        padding: 9px 10px;
+      }
+
+      /* ===== the time block ===== */
+      .time-block {
+        border: 1px solid var(--line);
+        border-radius: 13px;
+        padding: 12px 12px 13px;
+        background:
+          linear-gradient(180deg, rgba(233, 166, 60, 0.05), rgba(233, 166, 60, 0) 60%), #fff;
+        display: flex;
+        flex-direction: column;
+        gap: 11px;
+      }
+      /* the one loud element in the card: the amber readout */
+      .readout {
+        display: flex;
+        align-items: baseline;
+        justify-content: center;
+        gap: 10px;
+        font-family: var(--font-mono);
+        padding: 2px 0 1px;
+      }
+      .readout .start {
+        font-size: 34px;
+        font-weight: 700;
+        letter-spacing: 0.01em;
+        color: var(--amber-deep);
+        line-height: 1;
+      }
+      .readout .arrow {
+        color: var(--soft-line);
+        font-size: 16px;
+        font-weight: 700;
+      }
+      .readout .end {
+        font-size: 20px;
+        font-weight: 500;
+        color: var(--muted);
+        line-height: 1;
+      }
+      .readout .end b {
+        color: var(--amber-deep);
+        font-weight: 700;
+      }
+      .sub-label {
+        font-size: 11px;
+        font-weight: 700;
+        color: var(--muted);
+        letter-spacing: 0.02em;
+        display: flex;
+        align-items: center;
+        justify-content: space-between;
+      }
+      .sub-label .toggle {
+        font-family: var(--font-body);
+        font-size: 11px;
+        font-weight: 700;
+        color: var(--muted);
+        background: none;
+        border: 1px solid var(--line);
+        border-radius: 999px;
+        padding: 2px 9px;
+        cursor: pointer;
+      }
+      .sub-label .toggle.on {
+        color: var(--amber-deep);
+        border-color: var(--amber);
+        background: rgba(233, 166, 60, 0.12);
+      }
+
+      /* hour strip — horizontal scroller, snap, selected = amber */
+      .hour-strip {
+        display: flex;
+        gap: 6px;
+        overflow-x: auto;
+        scroll-snap-type: x proximity;
+        padding: 2px 1px 6px;
+        -ms-overflow-style: none;
+        scrollbar-width: none;
+      }
+      .hour-strip::-webkit-scrollbar {
+        display: none;
+      }
+      .hour {
+        flex: 0 0 auto;
+        min-width: 42px;
+        height: 40px;
+        border-radius: 10px;
+        border: 1px solid var(--line);
+        background: #fff;
+        font-family: var(--font-mono);
+        font-size: 16px;
+        font-weight: 700;
+        color: var(--ink);
+        cursor: pointer;
+        scroll-snap-align: center;
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        transition: all 0.12s ease;
+      }
+      .hour:active {
+        transform: scale(0.94);
+      }
+      .hour.on {
+        border-color: var(--amber);
+        background: var(--amber);
+        color: #fff;
+        box-shadow: 0 6px 14px -6px rgba(201, 130, 42, 0.7);
+      }
+
+      /* minute chips — segmented */
+      .chip-row {
+        display: flex;
+        gap: 6px;
+      }
+      .chip-row.scroll {
+        overflow-x: auto;
+        scrollbar-width: none;
+      }
+      .chip-row.scroll::-webkit-scrollbar {
+        display: none;
+      }
+      .chip {
+        flex: 1 0 auto;
+        min-width: 0;
+        height: 38px;
+        border-radius: 10px;
+        border: 1px solid var(--line);
+        background: #fff;
+        font-family: var(--font-mono);
+        font-size: 14px;
+        font-weight: 700;
+        color: var(--ink);
+        cursor: pointer;
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        transition: all 0.12s ease;
+      }
+      .chip:active {
+        transform: scale(0.95);
+      }
+      .chip.on {
+        border-color: var(--amber);
+        background: rgba(233, 166, 60, 0.16);
+        color: var(--amber-deep);
+      }
+
+      /* duration chips — body font, not mono (they're words, not clock digits) */
+      .dur-row {
+        display: flex;
+        gap: 6px;
+        flex-wrap: wrap;
+      }
+      .dur {
+        flex: 1 1 auto;
+        white-space: nowrap;
+        min-height: 36px;
+        padding: 0 12px;
+        border-radius: 10px;
+        border: 1px solid var(--line);
+        background: #fff;
+        font-family: var(--font-body);
+        font-size: 13px;
+        font-weight: 700;
+        color: var(--ink);
+        cursor: pointer;
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        transition: all 0.12s ease;
+      }
+      .dur:active {
+        transform: scale(0.96);
+      }
+      .dur.on {
+        border-color: var(--amber);
+        background: rgba(233, 166, 60, 0.16);
+        color: var(--amber-deep);
+      }
+      /* custom-duration stepper (the "אחר" escape hatch) */
+      .dur-stepper {
+        display: none;
+        align-items: center;
+        justify-content: space-between;
+        gap: 8px;
+        margin-top: 2px;
+        padding: 6px 8px;
+        border: 1px dashed var(--soft-line);
+        border-radius: 10px;
+      }
+      .dur-stepper.open {
+        display: flex;
+      }
+      .dur-stepper button {
+        width: 34px;
+        height: 32px;
+        border-radius: 8px;
+        border: 1px solid var(--line);
+        background: #fff;
+        font-size: 18px;
+        font-weight: 700;
+        color: var(--ink);
+        cursor: pointer;
+      }
+      .dur-stepper .val {
+        font-family: var(--font-mono);
+        font-weight: 700;
+        font-size: 14px;
+        color: var(--amber-deep);
+      }
+
+      /* kind toggle (unchanged from today, shown for context) */
+      .kind-toggle {
+        display: flex;
+        gap: 8px;
+      }
+      .kind-toggle button {
+        flex: 1;
+        font: inherit;
+        font-family: var(--font-body);
+        font-size: 12.5px;
+        font-weight: 700;
+        border: 1px solid var(--line);
+        background: #fff;
+        color: var(--muted);
+        border-radius: 9px;
+        padding: 8px 6px;
+        cursor: pointer;
+      }
+      .kind-toggle button.hard.on {
+        border-color: var(--amber);
+        background: rgba(233, 166, 60, 0.14);
+        color: var(--ink);
+      }
+      .kind-toggle button.soft.on {
+        border-style: dashed;
+        border-color: var(--soft-line);
+        background: rgba(22, 35, 61, 0.04);
+        color: var(--ink);
+      }
+
+      .actions {
+        display: flex;
+        gap: 8px;
+        margin-top: 2px;
+      }
+      .actions button {
+        flex: 1;
+        font: inherit;
+        font-family: var(--font-body);
+        font-weight: 700;
+        font-size: 14px;
+        border-radius: 10px;
+        padding: 11px;
+        cursor: pointer;
+        border: 1px solid var(--line);
+      }
+      .btn-cancel {
+        background: #fff;
+        color: var(--muted);
+      }
+      .btn-save {
+        background: var(--cta);
+        color: var(--cta-text);
+        border-color: var(--cta);
+      }
+
+      /* rationale panel */
+      .notes {
+        width: 100%;
+        max-width: 392px;
+        margin-top: 22px;
+        color: #cdd6ea;
+        font-size: 13px;
+        line-height: 1.55;
+      }
+      .notes h2 {
+        font-family: var(--font-head);
+        font-weight: 400;
+        font-size: 14px;
+        color: #f4f7ff;
+        margin-bottom: 8px;
+        letter-spacing: 0.02em;
+      }
+      .notes ul {
+        list-style: none;
+        display: flex;
+        flex-direction: column;
+        gap: 9px;
+      }
+      .notes li {
+        background: rgba(255, 255, 255, 0.04);
+        border: 1px solid rgba(255, 255, 255, 0.08);
+        border-radius: 11px;
+        padding: 10px 12px;
+      }
+      .notes li b {
+        color: var(--amber);
+        font-weight: 700;
+      }
+      .notes .swatch {
+        color: #9fb0d0;
+      }
+    </style>
+  </head>
+  <body>
+    <div class="kicker">Waypoint · <b>בורר שעה</b> · מוקאפ</div>
+    <h1 class="title">שעה בלחיצה אחת</h1>
+
+    <div class="phone">
+      <div class="chrome">
+        <span class="mode-pill">✏️ תכנון</span>
+        <span class="day">יום ג׳ · 21 ביולי</span>
+      </div>
+
+      <div class="stage">
+        <form class="event-form-card" onsubmit="return false;">
+          <div class="form-title">אירוע חדש</div>
+
+          <label class="form-field">
+            כותרת
+            <input value="ארוחת ערב בשוק" />
+          </label>
+
+          <!-- ===== TIME BLOCK ===== -->
+          <div class="form-field" style="gap: 8px">
+            שעה
+            <div class="time-block">
+              <div class="readout">
+                <span class="start" id="ro-start">09:30</span>
+                <span class="arrow">→</span>
+                <span class="end">מסתיים <b id="ro-end">10:30</b></span>
+              </div>
+
+              <div class="sub-label">
+                <span>שעה</span>
+                <button type="button" class="toggle" id="fine-toggle">⋯ דיוק</button>
+              </div>
+              <div class="hour-strip" id="hour-strip"></div>
+
+              <div class="sub-label"><span>דקות</span></div>
+              <div class="chip-row" id="minute-row"></div>
+
+              <div class="sub-label" style="margin-top: 2px"><span>משך</span></div>
+              <div class="dur-row" id="dur-row"></div>
+              <div class="dur-stepper" id="dur-stepper">
+                <button type="button" id="dur-minus">−</button>
+                <span class="val" id="dur-val">1 שעה 45 דק׳</span>
+                <button type="button" id="dur-plus">＋</button>
+              </div>
+            </div>
+          </div>
+
+          <label class="form-field">
+            מיקום
+            <input value="שוק מחנה יהודה" placeholder="אופציונלי" />
+          </label>
+
+          <div class="form-field">
+            סוג
+            <div class="kind-toggle">
+              <button type="button" class="soft on">גמיש</button>
+              <button type="button" class="hard">🔒 קשיח</button>
+            </div>
+          </div>
+
+          <div class="actions">
+            <button type="button" class="btn-cancel">ביטול</button>
+            <button type="button" class="btn-save">שמירה</button>
+          </div>
+        </form>
+      </div>
+    </div>
+
+    <div class="notes">
+      <h2>למה זה עובד</h2>
+      <ul>
+        <li>
+          <b>הזמן הוא ענבר.</b> הקריאה הגדולה במונו־ספייס היא היסוד היחיד ה"רם" בכרטיס — שפת
+          לוח־היציאות, על נייר ולא על לוח כהה (הלוח מוקצב לאחד למסך).
+        </li>
+        <li>
+          <b>קוונטיזציה = לחיצה אחת.</b> רצועת שעות אופקית + צ׳יפים של
+          <span class="swatch">:00 · :15 · :30 · :45</span>. הכפתור <b>⋯ דיוק</b> מוריד לצעדי 5 דק׳
+          למקרים החריגים — עגול מהיר בלי לחסום את המשונה.
+        </li>
+        <li>
+          <b>סיום = משך.</b> בוחרים <span class="swatch">חצי שעה · שעה · שעה וחצי · שעתיים</span> או
+          "אחר" עם צעדי 15 דק׳. נשמר כ־<code>endsAt</code> מוחלט — שום דבר במורד הזרם לא משתנה.
+        </li>
+      </ul>
+    </div>
+
+    <script>
+      const state = { h: 9, m: 30, dur: 60, fine: false, customOpen: false };
+
+      const HOURS = Array.from({ length: 24 }, (_, i) => i);
+      const COARSE = [0, 15, 30, 45];
+      const FINE = [0, 5, 10, 15, 20, 25, 30, 35, 40, 45, 50, 55];
+      const DURS = [
+        { min: 30, label: '30 דק׳' },
+        { min: 60, label: 'שעה' },
+        { min: 90, label: 'שעה וחצי' },
+        { min: 120, label: 'שעתיים' },
+      ];
+
+      const pad = (n) => String(n).padStart(2, '0');
+      const hm = (total) => {
+        const t = ((total % 1440) + 1440) % 1440;
+        return pad(Math.floor(t / 60)) + ':' + pad(t % 60);
+      };
+      const durPhrase = (min) => {
+        const h = Math.floor(min / 60),
+          m = min % 60;
+        if (h && m) return `${h} שעה ${m} דק׳`;
+        if (h) return h === 1 ? 'שעה' : h === 2 ? 'שעתיים' : `${h} שעות`;
+        return `${m} דק׳`;
+      };
+
+      const hourStrip = document.getElementById('hour-strip');
+      const minuteRow = document.getElementById('minute-row');
+      const durRow = document.getElementById('dur-row');
+      const durStepper = document.getElementById('dur-stepper');
+
+      function render() {
+        // readout
+        const startTotal = state.h * 60 + state.m;
+        document.getElementById('ro-start').textContent = hm(startTotal);
+        document.getElementById('ro-end').textContent = hm(startTotal + state.dur);
+        document.getElementById('dur-val').textContent = durPhrase(state.dur);
+
+        // hours
+        hourStrip.innerHTML = '';
+        HOURS.forEach((h) => {
+          const b = document.createElement('button');
+          b.type = 'button';
+          b.className = 'hour' + (h === state.h ? ' on' : '');
+          b.textContent = pad(h);
+          b.onclick = () => {
+            state.h = h;
+            render();
+          };
+          hourStrip.appendChild(b);
+        });
+        const on = hourStrip.querySelector('.hour.on');
+        if (on) on.scrollIntoView({ inline: 'center', block: 'nearest' });
+
+        // minutes
+        const mins = state.fine ? FINE : COARSE;
+        minuteRow.className = 'chip-row' + (state.fine ? ' scroll' : '');
+        minuteRow.innerHTML = '';
+        mins.forEach((m) => {
+          const b = document.createElement('button');
+          b.type = 'button';
+          b.className = 'chip' + (m === state.m ? ' on' : '');
+          b.textContent = ':' + pad(m);
+          b.onclick = () => {
+            state.m = m;
+            render();
+          };
+          minuteRow.appendChild(b);
+        });
+
+        // duration chips
+        durRow.innerHTML = '';
+        DURS.forEach((d) => {
+          const b = document.createElement('button');
+          b.type = 'button';
+          b.className = 'dur' + (!state.customOpen && d.min === state.dur ? ' on' : '');
+          b.textContent = d.label;
+          b.onclick = () => {
+            state.dur = d.min;
+            state.customOpen = false;
+            render();
+          };
+          durRow.appendChild(b);
+        });
+        const other = document.createElement('button');
+        other.type = 'button';
+        other.className = 'dur' + (state.customOpen ? ' on' : '');
+        other.textContent = 'אחר';
+        other.onclick = () => {
+          state.customOpen = !state.customOpen;
+          render();
+        };
+        durRow.appendChild(other);
+
+        durStepper.className = 'dur-stepper' + (state.customOpen ? ' open' : '');
+
+        document.getElementById('fine-toggle').className = 'toggle' + (state.fine ? ' on' : '');
+      }
+
+      document.getElementById('fine-toggle').onclick = () => {
+        state.fine = !state.fine;
+        // when leaving fine mode, snap the minute back onto the coarse grid
+        if (!state.fine && !COARSE.includes(state.m)) {
+          state.m = COARSE.reduce((a, b) =>
+            Math.abs(b - state.m) < Math.abs(a - state.m) ? b : a,
+          );
+        }
+        render();
+      };
+      document.getElementById('dur-minus').onclick = () => {
+        state.dur = Math.max(15, state.dur - 15);
+        render();
+      };
+      document.getElementById('dur-plus').onclick = () => {
+        state.dur = Math.min(600, state.dur + 15);
+        render();
+      };
+
+      render();
+    </script>
+  </body>
+</html>

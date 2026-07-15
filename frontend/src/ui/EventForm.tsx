@@ -1,7 +1,7 @@
 // Self-contained event create/edit form (T-047). Rendered as a modal today;
 // T-053 wraps this same component in a Trip-mode bottom sheet later — it owns
 // only the fields + save/cancel, not its presentation container.
-import { useState, type FormEvent } from 'react';
+import { useMemo, useState, type FormEvent } from 'react';
 import {
   createEventSchema,
   updateEventSchema,
@@ -14,9 +14,10 @@ import {
 import { useTrip } from '../state/trip-state';
 import { useVerbs } from '../state/verbs';
 import { getNow } from '../lib/useClock';
-import { zonedIso, isoToTimeInput } from '../lib/time';
+import { zonedIso, isoToTimeInput, hardConflicts, formatTime } from '../lib/time';
 import { DEFAULT_EVENT_ICON } from '../constants';
 import { t } from '../i18n/he';
+import { TimePicker } from './TimePicker';
 
 export function EventForm({
   event,
@@ -34,7 +35,7 @@ export function EventForm({
   maybeItem?: MaybeItem | null;
   onClose: () => void;
 }) {
-  const { trip, activeDate, activeUserId } = useTrip();
+  const { trip, activeDate, activeUserId, events } = useTrip();
   const verbs = useVerbs();
   const tz = trip.timezone;
 
@@ -49,6 +50,22 @@ export function EventForm({
   const [kind, setKind] = useState<TripEvent['kind']>(event?.kind ?? EVENT_KIND.SOFT);
   const [location, setLocation] = useState(event?.location ?? '');
   const [error, setError] = useState<string | null>(null);
+
+  // Live hard-conflict warning (ADR-0011): a soft event whose span overlaps a
+  // same-day hard event is flagged as it's edited — same check the day view and
+  // board use, so the warning wording is consistent. Only meaningful once the
+  // event has a full span; hardConflicts itself returns [] for hard events.
+  const conflicts = useMemo(() => {
+    if (!start || !end) return [];
+    const provisional = {
+      id: event?.id ?? '__provisional__',
+      kind,
+      startsAt: zonedIso(date, start, tz),
+      endsAt: zonedIso(date, end, tz),
+    } as TripEvent;
+    const dayEvents = events.filter((e) => e.date === date && e.status !== EVENT_STATUS.SKIPPED);
+    return hardConflicts(provisional, dayEvents);
+  }, [start, end, kind, date, tz, events, event?.id]);
 
   const submit = (e: FormEvent) => {
     e.preventDefault();
@@ -135,16 +152,20 @@ export function EventForm({
           <input type="date" value={date} onChange={(e) => setDate(e.target.value)} />
         </label>
 
-        <div className="form-row">
-          <label className="form-field">
-            {t.eventForm.startLabel}
-            <input type="time" value={start} onChange={(e) => setStart(e.target.value)} />
-          </label>
-          <label className="form-field">
-            {t.eventForm.endLabel}
-            <input type="time" value={end} onChange={(e) => setEnd(e.target.value)} />
-          </label>
-        </div>
+        <TimePicker
+          start={start}
+          end={end}
+          onChange={(next) => {
+            setStart(next.start);
+            setEnd(next.end);
+          }}
+        />
+
+        {conflicts.length > 0 && (
+          <p className="form-conflict">
+            ⚠︎ {t.event.conflictWarn(conflicts[0].title, formatTime(conflicts[0].startsAt!, tz))}
+          </p>
+        )}
 
         <label className="form-field">
           {t.eventForm.locationLabel}

@@ -958,6 +958,209 @@
   margin: 0;
 }
 
+/* ===== time picker (T-054, ADR-0036) =====
+   Compact start + duration fields that open a scroll list with a typeable
+   exact-time fallback. Time is amber (design-language color budget). */
+.tp-wrap {
+  position: relative;
+}
+.tp-fields {
+  display: flex;
+  gap: 9px;
+}
+.tp-field {
+  flex: 1;
+  min-width: 0;
+  text-align: start;
+  background: #fff;
+  border: 1px solid var(--line);
+  border-radius: 10px;
+  padding: 7px 11px 8px;
+  cursor: pointer;
+  display: flex;
+  flex-direction: column;
+  gap: 1px;
+  font: inherit;
+  transition: border-color 0.12s ease;
+}
+.tp-field:active {
+  border-color: var(--soft-line);
+}
+.tp-field.open {
+  border-color: var(--amber);
+  box-shadow: 0 0 0 2px rgba(233, 166, 60, 0.16);
+}
+.tp-field:disabled {
+  opacity: 0.55;
+  cursor: default;
+}
+.tp-cap {
+  font-size: 11px;
+  font-weight: 700;
+  color: var(--muted);
+}
+.tp-val {
+  font-family: var(--font-mono);
+  font-size: 19px;
+  font-weight: 700;
+  color: var(--amber-deep);
+  letter-spacing: 0.01em;
+  min-height: 24px;
+}
+.tp-dur .tp-val {
+  font-family: var(--font-body);
+  font-size: 15px;
+  display: flex;
+  align-items: baseline;
+  gap: 7px;
+}
+.tp-dur .tp-endhm {
+  font-family: var(--font-mono);
+  font-size: 13px;
+  font-weight: 500;
+  color: var(--muted);
+}
+.tp-placeholder {
+  font-family: var(--font-body);
+  font-size: 14px;
+  font-weight: 600;
+  color: var(--muted);
+}
+.tp-clear {
+  align-self: flex-start;
+  margin-top: 2px;
+  font: inherit;
+  font-size: 12px;
+  font-weight: 600;
+  color: var(--muted);
+  background: none;
+  border: none;
+  padding: 2px 0;
+  cursor: pointer;
+  text-decoration: underline;
+  text-underline-offset: 2px;
+}
+/* backdrop closes the open panel on any outside tap */
+.tp-backdrop {
+  position: fixed;
+  inset: 0;
+  z-index: 5;
+}
+/* The panel expands inline (in flow) rather than as an absolute popover — the
+   event-form card is `overflow-y: auto`, which would clip an absolute overlay;
+   inline growth just extends the card's own scroll. z-index keeps it above the
+   tap-away backdrop. */
+.tp-panel {
+  position: relative;
+  z-index: 6;
+  margin-top: 6px;
+  width: 100%;
+  background: #fff;
+  border: 1px solid var(--line);
+  border-radius: 12px;
+  box-shadow: 0 12px 26px -14px rgba(14, 23, 41, 0.35);
+  overflow: hidden;
+}
+.tp-exact {
+  display: flex;
+  align-items: center;
+  gap: 7px;
+  padding: 9px 11px;
+  border-bottom: 1px solid var(--line);
+  background: rgba(233, 166, 60, 0.05);
+}
+.tp-exact-lbl {
+  font-size: 10.5px;
+  font-weight: 700;
+  color: var(--muted);
+  white-space: nowrap;
+}
+.tp-exact input {
+  flex: 1;
+  min-width: 0;
+  font-family: var(--font-mono);
+  font-size: 16px;
+  font-weight: 700;
+  color: var(--amber-deep);
+  text-align: center;
+  background: #fff;
+  border: 1px solid var(--line);
+  border-radius: 8px;
+  padding: 5px 6px;
+}
+.tp-exact input:focus-visible {
+  outline: 2px solid var(--amber);
+  outline-offset: 0;
+  border-color: var(--amber);
+}
+.tp-note {
+  font-size: 11.5px;
+  font-weight: 600;
+  color: var(--miss);
+  padding: 7px 11px;
+  border-bottom: 1px solid var(--line);
+}
+.tp-list {
+  max-height: 210px;
+  overflow-y: auto;
+  scroll-snap-type: y proximity;
+  scrollbar-width: none;
+}
+.tp-list::-webkit-scrollbar {
+  display: none;
+}
+.tp-list button {
+  width: 100%;
+  text-align: start;
+  background: none;
+  border: none;
+  border-bottom: 1px solid var(--line);
+  padding: 10px 13px;
+  cursor: pointer;
+  font-family: var(--font-mono);
+  font-size: 15px;
+  font-weight: 600;
+  color: var(--ink);
+  scroll-snap-align: center;
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+}
+.tp-list button:last-child {
+  border-bottom: none;
+}
+.tp-list button.tp-list-on {
+  background: rgba(233, 166, 60, 0.14);
+  color: var(--amber-deep);
+}
+.tp-list button.tp-list-on::after {
+  content: '✓';
+  font-family: var(--font-body);
+  color: var(--amber-deep);
+}
+.tp-list-dur button {
+  font-family: var(--font-body);
+  font-weight: 700;
+  font-size: 14px;
+}
+.tp-list-dur button .tp-end {
+  font-family: var(--font-mono);
+  font-size: 12.5px;
+  font-weight: 500;
+  color: var(--muted);
+}
+/* conflict banner — reuses the amber "commitment" family (ADR-0011) */
+.form-conflict {
+  margin: 0;
+  font-size: 12px;
+  font-weight: 600;
+  color: var(--amber-deep);
+  background: rgba(233, 166, 60, 0.1);
+  border: 1px solid rgba(233, 166, 60, 0.3);
+  border-radius: 9px;
+  padding: 8px 10px;
+}
+
 /* toast */
 .toast {
   position: fixed;

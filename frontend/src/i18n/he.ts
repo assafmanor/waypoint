@@ -330,5 +330,24 @@ export const t = {
     titleRequired: 'חסרה כותרת',
     dateRequired: 'חסר תאריך',
     endBeforeStart: 'שעת הסיום צריכה להיות אחרי ההתחלה',
+    // Time picker (T-054): compact start + duration fields, scroll list with a
+    // typeable exact-time fallback. Multi-day events are out of scope, so the
+    // duration is capped to the same calendar day.
+    timeLabel: 'שעה',
+    startCap: 'התחלה',
+    durationCap: 'משך',
+    addTime: 'הוסף שעה',
+    addEnd: 'הוסף סיום',
+    noTime: 'ללא שעה',
+    exactStart: 'שעה מדויקת',
+    exactEnd: 'סיום מדויק',
+    endsAtPrefix: 'עד',
+    sameDayOnly: 'אירוע חד-יומי בלבד',
+    // duration phrasing (mirrors formatCountdown's dual/plural Hebrew)
+    durHour: 'שעה',
+    durTwoHours: 'שעתיים',
+    durHours: (n: number) => `${n} שעות`,
+    durHoursMinutes: (h: number, m: number) => `${h}:${String(m).padStart(2, '0')} שע׳`,
+    durMinutes: (m: number) => `${m} דק׳`,
   },
 } as const;

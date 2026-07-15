@@ -1,0 +1,725 @@
+<!doctype html>
+<!-- Event time-setter redesign v2 (branch: claude/event-time-setter-redesign).
+     v1 was too tall and used a novel interaction (always-expanded hour strip +
+     minute chips) that users have to learn. v2 collapses to two compact fields
+     that open a *familiar* picker on tap — the pattern people already know from
+     Google / Apple Calendar — while keeping the two ideas that tested well:
+       • time is amber (design-language: "amber = the clock & the commitment"),
+       • end is entered as a duration off the start, saved as an absolute endsAt.
+
+     A switcher at the top compares the two most familiar START pickers:
+       A — Scroll list (Google Calendar): a menu of 15-min times, scroll & tap.
+       B — Wheel (Apple/iOS): two snapping columns, hour | minute (5-min steps).
+     The duration field is shared — a short menu of durations with the resulting
+     end time next to each, exactly like Google's end-time dropdown.
+
+     Collapsed default is ~2 fields tall. Fully interactive, RTL, phone-first. -->
+<html lang="he" dir="rtl">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>Waypoint — בורר שעה v2 (מוקאפ)</title>
+    <link rel="preconnect" href="https://fonts.googleapis.com" />
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+    <link
+      href="https://fonts.googleapis.com/css2?family=Assistant:wght@400;500;600;700&family=Secular+One&family=JetBrains+Mono:wght@500;700&display=swap"
+      rel="stylesheet"
+    />
+    <style>
+      :root {
+        --ink: #16233d;
+        --indigo: #1b2a4a;
+        --screen: #e7eaef;
+        --card: #ffffff;
+        --amber: #e9a63c;
+        --amber-deep: #c9822a;
+        --teal: #2c9c90;
+        --plan: #6e59d6;
+        --plan-deep: #5747b4;
+        --plan-tint: rgba(110, 89, 214, 0.1);
+        --muted: #6c7488;
+        --line: rgba(22, 35, 61, 0.1);
+        --soft-line: rgba(22, 35, 61, 0.28);
+        --cta: var(--ink);
+        --cta-text: #fff;
+        --shadow: 0 18px 40px -18px rgba(14, 23, 41, 0.45);
+        --font-head: 'Secular One', sans-serif;
+        --font-body: 'Assistant', sans-serif;
+        --font-mono: 'JetBrains Mono', monospace;
+      }
+      * {
+        box-sizing: border-box;
+        margin: 0;
+        padding: 0;
+        -webkit-tap-highlight-color: transparent;
+      }
+      html,
+      body {
+        min-height: 100%;
+      }
+      body {
+        font-family: var(--font-body);
+        background:
+          radial-gradient(120% 90% at 80% -10%, #2a3e68 0%, transparent 55%),
+          radial-gradient(120% 90% at 0% 110%, #1a2a4a 0%, transparent 50%), #0f1a31;
+        color: var(--ink);
+        min-height: 100vh;
+        display: flex;
+        flex-direction: column;
+        align-items: center;
+        padding: 24px 16px 60px;
+        -webkit-font-smoothing: antialiased;
+      }
+      .kicker {
+        color: #b9c4dc;
+        font-size: 12px;
+        letter-spacing: 0.06em;
+        text-transform: uppercase;
+        margin-bottom: 4px;
+        text-align: center;
+      }
+      .kicker b {
+        color: var(--amber);
+      }
+      h1.title {
+        font-family: var(--font-head);
+        color: #f4f7ff;
+        font-size: 20px;
+        font-weight: 400;
+        margin-bottom: 16px;
+        text-align: center;
+      }
+
+      /* mode switcher */
+      .switcher {
+        display: inline-flex;
+        gap: 4px;
+        padding: 4px;
+        background: rgba(255, 255, 255, 0.06);
+        border: 1px solid rgba(255, 255, 255, 0.1);
+        border-radius: 999px;
+        margin-bottom: 20px;
+      }
+      .switcher button {
+        font-family: var(--font-body);
+        font-size: 13px;
+        font-weight: 700;
+        color: #c9d3e8;
+        background: none;
+        border: none;
+        border-radius: 999px;
+        padding: 7px 16px;
+        cursor: pointer;
+      }
+      .switcher button.on {
+        background: #f4f7ff;
+        color: var(--ink);
+      }
+
+      /* phone frame */
+      .phone {
+        width: 100%;
+        max-width: 392px;
+        background: var(--screen);
+        border-radius: 30px;
+        box-shadow: 0 26px 60px -18px rgba(0, 0, 0, 0.6);
+        overflow: hidden;
+        border: 1px solid rgba(255, 255, 255, 0.08);
+      }
+      .chrome {
+        background: #fbf9f4;
+        border-bottom: 1px solid var(--line);
+        padding: 12px 16px 11px;
+        display: flex;
+        align-items: center;
+        justify-content: space-between;
+      }
+      .mode-pill {
+        display: inline-flex;
+        align-items: center;
+        gap: 5px;
+        font-size: 12px;
+        font-weight: 700;
+        color: var(--plan-deep);
+        background: var(--plan-tint);
+        border: 1px solid rgba(110, 89, 214, 0.25);
+        border-radius: 999px;
+        padding: 4px 10px;
+      }
+      .chrome .day {
+        font-size: 12.5px;
+        color: var(--muted);
+        font-weight: 600;
+      }
+      .stage {
+        padding: 18px 16px 22px;
+        display: flex;
+        justify-content: center;
+      }
+
+      .event-form-card {
+        width: 100%;
+        max-width: 360px;
+        background: var(--card);
+        border: 1px solid var(--line);
+        border-radius: 15px;
+        padding: 16px;
+        box-shadow: var(--shadow);
+        display: flex;
+        flex-direction: column;
+        gap: 13px;
+      }
+      .form-title {
+        font-family: var(--font-head);
+        font-weight: 400;
+        font-size: 16px;
+        color: var(--ink);
+      }
+      .form-field {
+        display: flex;
+        flex-direction: column;
+        gap: 6px;
+        font-size: 12.5px;
+        font-weight: 600;
+        color: var(--muted);
+      }
+      .form-field > input {
+        font: inherit;
+        font-size: 14px;
+        font-weight: 500;
+        color: var(--ink);
+        background: #fff;
+        border: 1px solid var(--line);
+        border-radius: 9px;
+        padding: 9px 10px;
+      }
+
+      /* ===== compact time fields (collapsed default) ===== */
+      .time-fields {
+        position: relative;
+        display: flex;
+        gap: 9px;
+      }
+      .tfield {
+        flex: 1;
+        text-align: start;
+        background: #fff;
+        border: 1px solid var(--line);
+        border-radius: 10px;
+        padding: 7px 11px 8px;
+        cursor: pointer;
+        display: flex;
+        flex-direction: column;
+        gap: 1px;
+        font-family: var(--font-body);
+        transition: border-color 0.12s ease;
+      }
+      .tfield:active {
+        border-color: var(--soft-line);
+      }
+      .tfield.open {
+        border-color: var(--amber);
+        box-shadow: 0 0 0 2px rgba(233, 166, 60, 0.16);
+      }
+      .tfield .cap {
+        font-size: 11px;
+        font-weight: 700;
+        color: var(--muted);
+      }
+      .tfield .val {
+        font-family: var(--font-mono);
+        font-size: 19px;
+        font-weight: 700;
+        color: var(--amber-deep);
+        letter-spacing: 0.01em;
+      }
+      .tfield.dur .val {
+        font-family: var(--font-body);
+        font-size: 15px;
+        display: flex;
+        align-items: baseline;
+        gap: 7px;
+      }
+      .tfield.dur .val .endhm {
+        font-family: var(--font-mono);
+        font-size: 13px;
+        font-weight: 500;
+        color: var(--muted);
+      }
+
+      /* dropdown panel + backdrop */
+      .backdrop {
+        position: absolute;
+        inset: -400px -40px;
+        z-index: 5;
+        display: none;
+      }
+      .backdrop.on {
+        display: block;
+      }
+      .panel {
+        position: absolute;
+        z-index: 6;
+        top: calc(100% + 6px);
+        width: 168px;
+        background: #fff;
+        border: 1px solid var(--line);
+        border-radius: 12px;
+        box-shadow: 0 18px 38px -12px rgba(14, 23, 41, 0.4);
+        overflow: hidden;
+        display: none;
+      }
+      .panel.on {
+        display: block;
+      }
+      .panel-head {
+        font-size: 11px;
+        font-weight: 700;
+        color: var(--muted);
+        padding: 9px 12px 7px;
+        border-bottom: 1px solid var(--line);
+      }
+
+      /* A — scroll list */
+      .timelist {
+        max-height: 216px;
+        overflow-y: auto;
+        scroll-snap-type: y proximity;
+        scrollbar-width: none;
+      }
+      .timelist::-webkit-scrollbar {
+        display: none;
+      }
+      .timelist button,
+      .durlist button {
+        width: 100%;
+        text-align: start;
+        background: none;
+        border: none;
+        border-bottom: 1px solid var(--line);
+        padding: 11px 13px;
+        cursor: pointer;
+        font-family: var(--font-mono);
+        font-size: 15px;
+        font-weight: 600;
+        color: var(--ink);
+        scroll-snap-align: center;
+        display: flex;
+        justify-content: space-between;
+        align-items: center;
+      }
+      .timelist button:last-child,
+      .durlist button:last-child {
+        border-bottom: none;
+      }
+      .timelist button.on,
+      .durlist button.on {
+        background: rgba(233, 166, 60, 0.14);
+        color: var(--amber-deep);
+      }
+      .timelist button.on::after,
+      .durlist button.on::after {
+        content: '✓';
+        font-family: var(--font-body);
+        color: var(--amber-deep);
+      }
+
+      /* B — wheel */
+      .wheel {
+        display: flex;
+        justify-content: center;
+        position: relative;
+        padding: 0 14px;
+      }
+      .wheel::before {
+        /* the center selection band */
+        content: '';
+        position: absolute;
+        top: 50%;
+        left: 8px;
+        right: 8px;
+        height: 40px;
+        transform: translateY(-50%);
+        background: rgba(233, 166, 60, 0.12);
+        border-top: 1px solid rgba(233, 166, 60, 0.4);
+        border-bottom: 1px solid rgba(233, 166, 60, 0.4);
+        border-radius: 8px;
+        pointer-events: none;
+      }
+      .wcol {
+        height: 200px;
+        overflow-y: auto;
+        scroll-snap-type: y mandatory;
+        scrollbar-width: none;
+        flex: 1;
+        text-align: center;
+      }
+      .wcol::-webkit-scrollbar {
+        display: none;
+      }
+      .wcol .pad {
+        height: 80px;
+      }
+      .wcol button {
+        display: block;
+        width: 100%;
+        height: 40px;
+        background: none;
+        border: none;
+        font-family: var(--font-mono);
+        font-size: 18px;
+        font-weight: 700;
+        color: var(--muted);
+        cursor: pointer;
+        scroll-snap-align: center;
+        transition: color 0.1s ease;
+      }
+      .wcol button.on {
+        color: var(--amber-deep);
+      }
+      .wheel .colon {
+        align-self: center;
+        font-family: var(--font-mono);
+        font-size: 18px;
+        font-weight: 700;
+        color: var(--ink);
+        padding: 0 2px;
+      }
+
+      /* duration list rows use body font (words) with the end time in mono */
+      .durlist button {
+        font-family: var(--font-body);
+        font-weight: 700;
+        font-size: 14px;
+      }
+      .durlist button .end {
+        font-family: var(--font-mono);
+        font-size: 12.5px;
+        font-weight: 500;
+        color: var(--muted);
+      }
+
+      /* kind toggle for context */
+      .kind-toggle {
+        display: flex;
+        gap: 8px;
+      }
+      .kind-toggle button {
+        flex: 1;
+        font-family: var(--font-body);
+        font-size: 12.5px;
+        font-weight: 700;
+        border: 1px solid var(--line);
+        background: #fff;
+        color: var(--muted);
+        border-radius: 9px;
+        padding: 8px 6px;
+        cursor: pointer;
+      }
+      .kind-toggle button.soft.on {
+        border-style: dashed;
+        border-color: var(--soft-line);
+        background: rgba(22, 35, 61, 0.04);
+        color: var(--ink);
+      }
+
+      .actions {
+        display: flex;
+        gap: 8px;
+        margin-top: 2px;
+      }
+      .actions button {
+        flex: 1;
+        font-family: var(--font-body);
+        font-weight: 700;
+        font-size: 14px;
+        border-radius: 10px;
+        padding: 11px;
+        cursor: pointer;
+        border: 1px solid var(--line);
+      }
+      .btn-cancel {
+        background: #fff;
+        color: var(--muted);
+      }
+      .btn-save {
+        background: var(--cta);
+        color: var(--cta-text);
+        border-color: var(--cta);
+      }
+
+      .notes {
+        width: 100%;
+        max-width: 392px;
+        margin-top: 22px;
+        color: #cdd6ea;
+        font-size: 13px;
+        line-height: 1.55;
+      }
+      .notes h2 {
+        font-family: var(--font-head);
+        font-weight: 400;
+        font-size: 14px;
+        color: #f4f7ff;
+        margin-bottom: 8px;
+      }
+      .notes ul {
+        list-style: none;
+        display: flex;
+        flex-direction: column;
+        gap: 9px;
+      }
+      .notes li {
+        background: rgba(255, 255, 255, 0.04);
+        border: 1px solid rgba(255, 255, 255, 0.08);
+        border-radius: 11px;
+        padding: 10px 12px;
+      }
+      .notes li b {
+        color: var(--amber);
+        font-weight: 700;
+      }
+    </style>
+  </head>
+  <body>
+    <div class="kicker">Waypoint · <b>בורר שעה</b> · מוקאפ v2</div>
+    <h1 class="title">קומפקטי ומוכר</h1>
+
+    <div class="switcher">
+      <button id="sw-list" class="on" onclick="setMode('list')">רשימה (Google)</button>
+      <button id="sw-wheel" onclick="setMode('wheel')">גלגל (iOS)</button>
+    </div>
+
+    <div class="phone">
+      <div class="chrome">
+        <span class="mode-pill">✏️ תכנון</span>
+        <span class="day">יום ג׳ · 21 ביולי</span>
+      </div>
+
+      <div class="stage">
+        <form class="event-form-card" onsubmit="return false;">
+          <div class="form-title">אירוע חדש</div>
+
+          <label class="form-field">
+            כותרת
+            <input value="ארוחת ערב בשוק" />
+          </label>
+
+          <div class="form-field">
+            שעה
+            <div class="time-fields">
+              <button type="button" class="tfield start" id="f-start" onclick="openPanel('start')">
+                <span class="cap">התחלה</span>
+                <span class="val" id="v-start" dir="ltr">09:30</span>
+              </button>
+              <button type="button" class="tfield dur" id="f-dur" onclick="openPanel('dur')">
+                <span class="cap">משך</span>
+                <span class="val">
+                  <span id="v-dur">שעה</span>
+                  <span class="endhm" dir="ltr">עד <span id="v-end">10:30</span></span>
+                </span>
+              </button>
+
+              <div class="backdrop" id="backdrop" onclick="closePanel()"></div>
+
+              <!-- START panel: list OR wheel depending on mode -->
+              <div class="panel" id="panel-start" style="inset-inline-start: 0">
+                <div class="panel-head">שעת התחלה</div>
+                <div class="timelist" id="timelist"></div>
+                <div class="wheel" id="wheel" style="display: none">
+                  <div class="wcol" id="wcol-h"></div>
+                  <span class="colon">:</span>
+                  <div class="wcol" id="wcol-m"></div>
+                </div>
+              </div>
+
+              <!-- DURATION panel -->
+              <div class="panel" id="panel-dur" style="inset-inline-end: 0">
+                <div class="panel-head">משך</div>
+                <div class="durlist" id="durlist"></div>
+              </div>
+            </div>
+          </div>
+
+          <label class="form-field">
+            מיקום
+            <input value="שוק מחנה יהודה" placeholder="אופציונלי" />
+          </label>
+
+          <div class="form-field">
+            סוג
+            <div class="kind-toggle">
+              <button type="button" class="soft on">גמיש</button>
+              <button type="button" class="hard">🔒 קשיח</button>
+            </div>
+          </div>
+
+          <div class="actions">
+            <button type="button" class="btn-cancel">ביטול</button>
+            <button type="button" class="btn-save">שמירה</button>
+          </div>
+        </form>
+      </div>
+    </div>
+
+    <div class="notes">
+      <h2>מה השתנה מ־v1</h2>
+      <ul>
+        <li><b>קומפקטי.</b> ברירת המחדל היא שני שדות קטנים — הבורר נפתח בלחיצה, לא תמיד פרוש.</li>
+        <li>
+          <b>מוכר.</b> אותה מחווה כמו Google/Apple Calendar — רשימה נגללת או גלגל. אין מה ללמוד.
+        </li>
+        <li>
+          <b>נשמר מ־v1.</b> הזמן בענבר, וסיום = משך (עם שעת הסיום לצד כל אפשרות). נשמר
+          כ־<code>endsAt</code>.
+        </li>
+      </ul>
+    </div>
+
+    <script>
+      const state = { h: 9, m: 30, dur: 60, mode: 'list', open: null };
+      const pad = (n) => String(n).padStart(2, '0');
+      const hm = (total) => {
+        const t = ((total % 1440) + 1440) % 1440;
+        return pad(Math.floor(t / 60)) + ':' + pad(t % 60);
+      };
+      const durPhrase = (min) => {
+        const h = Math.floor(min / 60),
+          m = min % 60;
+        if (h && m) return `${h}:${pad(m)} שע׳`;
+        if (h) return h === 1 ? 'שעה' : h === 2 ? 'שעתיים' : `${h} שעות`;
+        return `${m} דק׳`;
+      };
+
+      const HOURS = Array.from({ length: 24 }, (_, i) => i);
+      const MINS = [0, 5, 10, 15, 20, 25, 30, 35, 40, 45, 50, 55];
+      const LIST = []; // 00:00 → 23:45 in 15-min steps
+      for (let t = 0; t < 1440; t += 15) LIST.push(t);
+      const DURS = [15, 30, 45, 60, 90, 120, 150, 180, 240];
+
+      const el = (id) => document.getElementById(id);
+
+      function renderFields() {
+        el('v-start').textContent = hm(state.h * 60 + state.m);
+        el('v-dur').textContent = durPhrase(state.dur);
+        el('v-end').textContent = hm(state.h * 60 + state.m + state.dur);
+      }
+
+      function renderList() {
+        const cur = state.h * 60 + state.m;
+        const box = el('timelist');
+        box.innerHTML = '';
+        LIST.forEach((t) => {
+          const b = document.createElement('button');
+          b.type = 'button';
+          b.className = t === cur ? 'on' : '';
+          b.innerHTML = `<span dir="ltr">${hm(t)}</span>`;
+          b.onclick = () => {
+            state.h = Math.floor(t / 60);
+            state.m = t % 60;
+            renderFields();
+            closePanel();
+          };
+          box.appendChild(b);
+        });
+        // center the current time when opened
+        const on = box.querySelector('.on');
+        if (on) box.scrollTop = on.offsetTop - box.clientHeight / 2 + on.clientHeight / 2;
+      }
+
+      function buildWheelCol(colId, values, current, onPick) {
+        const col = el(colId);
+        col.innerHTML = '';
+        const padTop = document.createElement('div');
+        padTop.className = 'pad';
+        col.appendChild(padTop);
+        values.forEach((v) => {
+          const b = document.createElement('button');
+          b.type = 'button';
+          b.textContent = pad(v);
+          b.className = v === current ? 'on' : '';
+          b.onclick = () => {
+            onPick(v);
+            b.scrollIntoView({ block: 'center', behavior: 'smooth' });
+            col.querySelectorAll('button').forEach((x) => x.classList.remove('on'));
+            b.classList.add('on');
+          };
+          col.appendChild(b);
+        });
+        const padBot = document.createElement('div');
+        padBot.className = 'pad';
+        col.appendChild(padBot);
+        // center current
+        const on = col.querySelector('.on');
+        if (on) col.scrollTop = on.offsetTop - col.clientHeight / 2 + on.clientHeight / 2;
+      }
+
+      function renderWheel() {
+        buildWheelCol('wcol-h', HOURS, state.h, (v) => {
+          state.h = v;
+          renderFields();
+        });
+        const nearest = MINS.reduce((a, b) =>
+          Math.abs(b - state.m) < Math.abs(a - state.m) ? b : a,
+        );
+        buildWheelCol('wcol-m', MINS, nearest, (v) => {
+          state.m = v;
+          renderFields();
+        });
+      }
+
+      function renderDur() {
+        const start = state.h * 60 + state.m;
+        const box = el('durlist');
+        box.innerHTML = '';
+        DURS.forEach((d) => {
+          const b = document.createElement('button');
+          b.type = 'button';
+          b.className = d === state.dur ? 'on' : '';
+          b.innerHTML = `<span>${durPhrase(d)}</span><span class="end" dir="ltr">עד ${hm(start + d)}</span>`;
+          b.onclick = () => {
+            state.dur = d;
+            renderFields();
+            closePanel();
+          };
+          box.appendChild(b);
+        });
+      }
+
+      function openPanel(which) {
+        state.open = which;
+        el('backdrop').classList.add('on');
+        el('f-start').classList.toggle('open', which === 'start');
+        el('f-dur').classList.toggle('open', which === 'dur');
+        el('panel-start').classList.toggle('on', which === 'start');
+        el('panel-dur').classList.toggle('on', which === 'dur');
+        if (which === 'start') {
+          const isList = state.mode === 'list';
+          el('timelist').style.display = isList ? '' : 'none';
+          el('wheel').style.display = isList ? 'none' : 'flex';
+          isList ? renderList() : renderWheel();
+        } else {
+          renderDur();
+        }
+      }
+
+      function closePanel() {
+        state.open = null;
+        el('backdrop').classList.remove('on');
+        el('f-start').classList.remove('open');
+        el('f-dur').classList.remove('open');
+        el('panel-start').classList.remove('on');
+        el('panel-dur').classList.remove('on');
+      }
+
+      function setMode(m) {
+        state.mode = m;
+        el('sw-list').classList.toggle('on', m === 'list');
+        el('sw-wheel').classList.toggle('on', m === 'wheel');
+        if (state.open === 'start') openPanel('start'); // re-render open panel
+      }
+
+      renderFields();
+    </script>
+  </body>
+</html>
