@@ -4,6 +4,10 @@ import type { TripEvent } from '@waypoint/shared';
 import { DAY_WINDOW } from '../constants';
 import { isoToTimeInput, zonedIso } from './time';
 
+const LAST_MINUTE_OF_DAY = 23 * 60 + 59; // 23:59 — the prefill slot stays same-day
+const pad = (n: number) => String(n).padStart(2, '0');
+const toHHMM = (min: number) => `${pad(Math.floor(min / 60))}:${pad(min % 60)}`;
+
 /** Below this, the gap is just breathing room — no chip. */
 export const GAP_MIN_MINUTES = 60;
 
@@ -50,19 +54,27 @@ export function gapBetween(
 
 /** A GAP_FILL_MINUTES block starting where the day's last event ends (the open
  *  tail gapBetween can't see), or at DAY_WINDOW.START_HOUR on an empty day.
- *  Max end, not last-by-start: a long block can outlast a later-starting one. */
+ *  Max end, not last-by-start: a long block can outlast a later-starting one.
+ *  Kept within the same day (ADR-0036): the end clamps to 23:59, and drops
+ *  entirely when the start leaves no room, so a late last event yields a
+ *  start-only prefill instead of a block spilling past midnight. */
 export function nextSlot(dayEvents: TripEvent[], date: string, tz: string): GapDefaults {
+  // Minutes since the day's local midnight, so an overnight end (02:00 the next
+  // morning, ADR-0037) reads as ≥ 1440 and clamps to 23:59 rather than looking
+  // like an early-morning slot on this day.
+  const dayStartMs = Date.parse(zonedIso(date, '00:00', tz));
   const ends = dayEvents
     .map((e) => e.endsAt ?? e.startsAt)
     .filter((v): v is string => Boolean(v))
-    .map((v) => Date.parse(v));
-  const startMs = ends.length
-    ? Math.max(...ends)
-    : Date.parse(zonedIso(date, `${String(DAY_WINDOW.START_HOUR).padStart(2, '0')}:00`, tz));
-  const endMs = startMs + GAP_FILL_MINUTES * 60000;
+    .map((v) => Math.round((Date.parse(v) - dayStartMs) / 60000));
+  const startMin = Math.min(
+    ends.length ? Math.max(...ends) : DAY_WINDOW.START_HOUR * 60,
+    LAST_MINUTE_OF_DAY,
+  );
+  const endMin = Math.min(startMin + GAP_FILL_MINUTES, LAST_MINUTE_OF_DAY);
   return {
     date,
-    start: isoToTimeInput(new Date(startMs).toISOString(), tz),
-    end: isoToTimeInput(new Date(endMs).toISOString(), tz),
+    start: toHHMM(startMin),
+    end: endMin > startMin ? toHHMM(endMin) : '',
   };
 }

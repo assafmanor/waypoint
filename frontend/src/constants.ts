@@ -26,6 +26,14 @@ export const CLOCK_TICK_MS = 1000;
 /** The waking window the day-progress bar spans, in trip-local hours. */
 export const DAY_WINDOW = { START_HOUR: 7, END_HOUR: 23 } as const;
 
+/** Overnight events (ADR-0037): a regular event may end in the small hours of
+ *  the next day, but stays filed under its start night. An end at/before the
+ *  start is read as next-day only when it lands at/before END_HOUR (07:00) and
+ *  the start is afternoon/evening (≥ MIN_START_HOUR, noon) — so a genuine
+ *  end-before-start typo (05:00→04:00) is still rejected, not stretched to 23h.
+ *  Transportation (red-eyes past 07:00) is a separate category, out of scope. */
+export const OVERNIGHT = { END_HOUR: 7, MIN_START_HOUR: 12 } as const;
+
 /** ponytail: fixed demo slot a scheduled maybe-item lands on (matches the mockup);
  *  a real scheduler opens a time picker. Trip-local wall time. */
 export const DEFAULT_SCHEDULE_SLOT = { START: '17:30', END: '18:30' } as const;

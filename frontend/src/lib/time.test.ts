@@ -14,6 +14,8 @@ import {
   monthLabelFor,
   shiftIso,
   zonedIso,
+  resolveEndIso,
+  crossesMidnight,
 } from './time';
 import { DEMO_NOW, EVENTS, TRIP } from '../fixtures';
 
@@ -151,6 +153,33 @@ describe('zonedIso', () => {
   it('round-trips through isoToTimeInput for the trip timezone', () => {
     const iso = zonedIso('2026-07-07', '19:30', 'Asia/Tokyo');
     expect(isoToTimeInput(iso, 'Asia/Tokyo')).toBe('19:30');
+  });
+});
+
+describe('resolveEndIso (overnight events, ADR-0037)', () => {
+  it('keeps a later end on the same day', () => {
+    expect(resolveEndIso('2026-07-07', '19:30', '21:00', 'Asia/Tokyo')).toBe(
+      zonedIso('2026-07-07', '21:00', 'Asia/Tokyo'),
+    );
+  });
+
+  it('rolls an earlier end onto the next calendar day', () => {
+    // 23:00 → 02:00 is the next morning, a later instant, not a 21h backwards span.
+    expect(resolveEndIso('2026-07-07', '23:00', '02:00', 'Asia/Tokyo')).toBe(
+      zonedIso('2026-07-08', '02:00', 'Asia/Tokyo'),
+    );
+  });
+});
+
+describe('crossesMidnight', () => {
+  it('is true only when start and end fall on different local days', () => {
+    const start = zonedIso('2026-07-07', '23:00', 'Asia/Tokyo');
+    expect(
+      crossesMidnight(start, zonedIso('2026-07-08', '02:00', 'Asia/Tokyo'), 'Asia/Tokyo'),
+    ).toBe(true);
+    expect(
+      crossesMidnight(start, zonedIso('2026-07-07', '23:45', 'Asia/Tokyo'), 'Asia/Tokyo'),
+    ).toBe(false);
   });
 });
 

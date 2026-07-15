@@ -228,6 +228,7 @@ export const t = {
     maybeShelf: 'מדף האולי',
     tapToSchedule: 'הקשה משבצת ליום',
     skippedTag: 'דילגת · הקש להחזרה',
+    scheduleTitle: (title: string) => `שיבוץ · ${title}`,
   },
   // Plan-mode Day-by-day — the itinerary builder (screens/PlanDay.tsx).
   planDay: {
@@ -254,6 +255,7 @@ export const t = {
     hard: 'קשיח',
     soft: 'גמיש',
     softNow: 'גמיש · עכשיו',
+    nextDay: 'מסתיים למחרת',
     bookingLabel: 'הזמנה',
     hardWarn: 'קשיח · שינוי מחייב עדכון ההזמנה',
     conflictWarn: (title: string, time: string) => `חופף ל-${title} (קשיח) · ${time}`,
@@ -342,7 +344,8 @@ export const t = {
     exactStart: 'שעה מדויקת',
     exactEnd: 'סיום מדויק',
     endsAtPrefix: 'עד',
-    sameDayOnly: 'אירוע חד-יומי בלבד',
+    invalidEnd: 'שעת סיום לא תקינה',
+    nextDay: 'למחרת',
     // duration phrasing (mirrors formatCountdown's dual/plural Hebrew)
     durHour: 'שעה',
     durTwoHours: 'שעתיים',

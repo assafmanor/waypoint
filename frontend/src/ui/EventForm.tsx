@@ -14,7 +14,7 @@ import {
 import { useTrip } from '../state/trip-state';
 import { useVerbs } from '../state/verbs';
 import { getNow } from '../lib/useClock';
-import { zonedIso, isoToTimeInput, hardConflicts, formatTime } from '../lib/time';
+import { zonedIso, isoToTimeInput, hardConflicts, formatTime, resolveEndIso } from '../lib/time';
 import { DEFAULT_EVENT_ICON } from '../constants';
 import { t } from '../i18n/he';
 import { TimePicker } from './TimePicker';
@@ -61,7 +61,7 @@ export function EventForm({
       id: event?.id ?? '__provisional__',
       kind,
       startsAt: zonedIso(date, start, tz),
-      endsAt: zonedIso(date, end, tz),
+      endsAt: resolveEndIso(date, start, end, tz),
     } as TripEvent;
     const dayEvents = events.filter((e) => e.date === date && e.status !== EVENT_STATUS.SKIPPED);
     return hardConflicts(provisional, dayEvents);
@@ -77,7 +77,11 @@ export function EventForm({
       title: title.trim(),
       kind,
       startsAt: start ? zonedIso(date, start, tz) : undefined,
-      endsAt: end ? zonedIso(date, end, tz) : undefined,
+      endsAt: end
+        ? start
+          ? resolveEndIso(date, start, end, tz)
+          : zonedIso(date, end, tz)
+        : undefined,
       location: location.trim() || undefined,
     };
     if (

@@ -1850,6 +1850,42 @@
   outline-offset: 2px;
 }
 
+/* Overnight events (ADR-0037): a small "+1" after the end time flags a span
+   that ends the next morning, so 23:00–02:00 doesn't read as backwards. */
+.xmid {
+  font-size: 0.62em;
+  font-weight: 700;
+  color: var(--amber-deep);
+  margin-inline-start: 1px;
+  vertical-align: super;
+}
+.tp-nextday {
+  margin-inline-start: 4px;
+  font-size: 11px;
+  font-weight: 700;
+  color: var(--amber-deep);
+}
+
+/* Trip-mode quick-schedule confirm (shelf → day). Neutral --cta, not plan
+   violet — this is Trip mode. */
+.sched-confirm {
+  width: 100%;
+  margin-top: 12px;
+  font: inherit;
+  font-size: 13.5px;
+  font-weight: 700;
+  color: var(--cta-text);
+  background: var(--cta);
+  border: 0;
+  border-radius: 12px;
+  padding: 12px;
+  cursor: pointer;
+}
+.sched-confirm:focus-visible {
+  outline: 2.5px solid var(--cta);
+  outline-offset: 2px;
+}
+
 /* Builder-row action sheet (the ⋯ menu): full-width, thumb-sized rows so a
    phone isn't fighting a strip of 32px icons — one affordance on the row,
    the rest here. */

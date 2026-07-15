@@ -1,6 +1,6 @@
 # 0036 — The event time-setter: a quantized quick-pick with a typeable exact fallback; end entered as a duration
 
-**Status:** Accepted
+**Status:** Accepted (§5 superseded by [0037](0037-overnight-events.md))
 **Date:** 2026-07-15
 **Refines:** [0011](0011-hard-soft-event-model.md) (hard vs. soft — the conflict warning it surfaces), [0017](0017-mobile-first-device-targets.md) (phone-first, touch-first), [0028](0028-plan-violet-color-budget-dark-ready.md) (semantic color budget — time is amber)
 
