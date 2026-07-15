@@ -6,10 +6,16 @@
 // reference: mockups/trip-settings-v1.html.
 import { useEffect, useState, type ReactNode } from 'react';
 import { useNavigate } from 'react-router-dom';
-import type { Membership, UpdateTripInput } from '@waypoint/shared';
+import {
+  DESTINATIONS,
+  TRIP_ICON_CLUSTERS,
+  type Membership,
+  type UpdateTripInput,
+} from '@waypoint/shared';
 import { useTrip } from '../state/trip-state';
 import { useAuth } from '../state/auth-state';
 import { useOverlay } from '../state/nav-state';
+import { IconPicker } from '../ui/IconPicker';
 import { Sheet } from '../ui/Sheet';
 import { useToast } from '../ui/Toast';
 import { useIsOffline } from '../lib/outbox';
@@ -349,7 +355,7 @@ function DetailsEditor({
 }) {
   const [name, setName] = useState(trip.name);
   const [destination, setDestination] = useState(trip.destination);
-  const [icon, setIcon] = useState(trip.icon ?? '');
+  const [icon, setIcon] = useState(trip.icon ?? DEFAULT_TRIP_ICON);
   const [startDate, setStartDate] = useState(trip.startDate);
   const [endDate, setEndDate] = useState(trip.endDate);
   const [timezone, setTimezone] = useState(trip.timezone);
@@ -401,20 +407,15 @@ function DetailsEditor({
         <input id="s-dest" value={destination} onChange={(e) => setDestination(e.target.value)} />
       </div>
       <div className="set-fld">
-        <label htmlFor="s-icon">{t.settings.iconLabel}</label>
-        <div className="icon-edit">
-          <span className="icon-preview" aria-hidden="true">
-            {icon || DEFAULT_TRIP_ICON}
-          </span>
-          <input
-            id="s-icon"
-            value={icon}
-            maxLength={4}
-            placeholder={DEFAULT_TRIP_ICON}
-            onChange={(e) => setIcon(e.target.value)}
-          />
-        </div>
-        <div className="hint">{t.settings.iconHint}</div>
+        <label>{t.settings.iconLabel}</label>
+        {/* Reuse the shared trip-mode IconPicker (flat archetype clusters + flag
+            search); trips have no category, so the 2nd onChange arg is ignored. */}
+        <IconPicker
+          icon={icon}
+          onChange={(next) => setIcon(next)}
+          flatClusters={TRIP_ICON_CLUSTERS}
+          destinations={DESTINATIONS}
+        />
       </div>
       <div className="set-fld">
         <label>{t.settings.datesLabel}</label>

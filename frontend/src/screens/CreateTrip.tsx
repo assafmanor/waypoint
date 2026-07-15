@@ -9,12 +9,20 @@
 // immediately — plan-violet chrome since it's already "inside" the new trip.
 import { useEffect, useState } from 'react';
 import { useNavigate } from 'react-router-dom';
-import { createTripSchema, MAX_TRIP_NAME_LENGTH, type Trip } from '@waypoint/shared';
+import {
+  createTripSchema,
+  DESTINATIONS,
+  MAX_TRIP_NAME_LENGTH,
+  suggestFlagFromDestination,
+  TRIP_ICON_CLUSTERS,
+  type Trip,
+} from '@waypoint/shared';
 import { useIsOffline } from '../lib/outbox';
 import { useActiveTripId } from '../state/active-trip-id';
 import { createInvite, createTrip } from '../lib/api';
 import { suggestTripName } from '../lib/trip-name';
 import { useToast } from '../ui/Toast';
+import { IconPicker } from '../ui/IconPicker';
 import { MS_PER_DAY, ICONS, DEFAULT_TRIP_ICON, DEVICE_LOCALE } from '../constants';
 import { todayInTz } from '../lib/time';
 import { getNow } from '../lib/useClock';
@@ -33,10 +41,15 @@ export function CreateTrip() {
   const [endDate, setEndDate] = useState('');
   const [name, setName] = useState('');
   const [nameTouched, setNameTouched] = useState(false);
+  const [icon, setIcon] = useState(DEFAULT_TRIP_ICON);
+  const [iconTouched, setIconTouched] = useState(false);
   const [submitting, setSubmitting] = useState(false);
 
+  // Auto-suggest the trip name and — from a recognized destination — the flag,
+  // until the user overrides either (ADR-0038: flag auto-fill, overridable).
   const suggest = (dest: string, start: string) => {
     if (!nameTouched) setName(suggestTripName(dest, start));
+    if (!iconTouched) setIcon(suggestFlagFromDestination(dest) ?? DEFAULT_TRIP_ICON);
   };
 
   // Device-local "today" as YYYY-MM-DD — the floor for a new trip's dates. A
@@ -64,6 +77,7 @@ export function CreateTrip() {
       startDate,
       endDate,
       timezone: Intl.DateTimeFormat().resolvedOptions().timeZone,
+      icon,
     });
     if (!parsed.success) return;
     setSubmitting(true);
@@ -142,21 +156,33 @@ export function CreateTrip() {
 
         <div className="field">
           <label htmlFor="tripName">{t.shell.newTrip.nameLabel}</label>
-          <input
-            id="tripName"
-            value={name}
-            placeholder={t.shell.newTrip.namePlaceholder}
-            maxLength={MAX_TRIP_NAME_LENGTH}
-            onChange={(e) => {
-              setNameTouched(true);
-              setName(e.target.value.slice(0, MAX_TRIP_NAME_LENGTH));
-            }}
-          />
+          <div className="title-row">
+            <IconPicker
+              icon={icon}
+              onChange={(next) => {
+                setIcon(next);
+                setIconTouched(true);
+              }}
+              flatClusters={TRIP_ICON_CLUSTERS}
+              destinations={DESTINATIONS}
+            />
+            <input
+              id="tripName"
+              className="title-input"
+              value={name}
+              placeholder={t.shell.newTrip.namePlaceholder}
+              maxLength={MAX_TRIP_NAME_LENGTH}
+              onChange={(e) => {
+                setNameTouched(true);
+                setName(e.target.value.slice(0, MAX_TRIP_NAME_LENGTH));
+              }}
+            />
+          </div>
           <div className="hint">{t.shell.newTrip.nameHint}</div>
         </div>
 
         <div className="draft" aria-hidden="true">
-          <div className="ic">✈️</div>
+          <div className="ic">{icon}</div>
           <div>
             <div className="t">
               {name || <span className="ghost">{t.shell.newTrip.draftGhost}</span>}
@@ -226,7 +252,7 @@ function Created({ trip, onDone }: { trip: Trip; onDone: () => void }) {
         <p className="born-sub">{t.shell.created.sub}</p>
 
         <div className="born-card">
-          <div className="ic">{DEFAULT_TRIP_ICON}</div>
+          <div className="ic">{trip.icon ?? DEFAULT_TRIP_ICON}</div>
           <div>
             <div className="t">{trip.name}</div>
             <div className="m">{t.shell.newTrip.draftMeta(trip.destination, days)}</div>

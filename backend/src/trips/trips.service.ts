@@ -60,12 +60,12 @@ export class TripsService {
         data: {
           name: input.name,
           destination: input.destination,
-          icon: input.icon,
           startDate: new Date(input.startDate),
           endDate: new Date(input.endDate),
           timezone: input.timezone,
           currency: input.currency,
           dailyBudgetMinor: input.dailyBudgetMinor,
+          icon: input.icon,
           createdBy: userId,
           updatedBy: userId,
         },
