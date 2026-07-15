@@ -121,7 +121,44 @@ export async function applyChangeToCache(tripId: string, change: Change): Promis
       await db.snapshotMeta.put({ ...meta, notes });
       return;
     }
+    // Trip settings are data-plane now (ADR-0039), so keep the cached snapshot's
+    // trip row and roster coherent too — otherwise an offline reader would show a
+    // renamed trip or removed member snapping back on the next cold load.
+    case 'trip': {
+      // A trip delete wipes everything for this trip; drop the cache entirely.
+      if (change.action === 'delete') {
+        await clearTripCache(tripId);
+        return;
+      }
+      const meta = await db.snapshotMeta.get(tripId);
+      const partial = change.after as Partial<Trip> | undefined;
+      if (!meta || !partial) return;
+      await db.snapshotMeta.put({ ...meta, trip: { ...meta.trip, ...partial } });
+      return;
+    }
+    case 'membership': {
+      const meta = await db.snapshotMeta.get(tripId);
+      if (!meta) return;
+      const existing = meta.members.find((m) => m.id === change.entityId);
+      const next = applyToRow<Membership>(existing, change);
+      const members = next
+        ? existing
+          ? meta.members.map((m) => (m.id === next.id ? next : m))
+          : [...meta.members, next]
+        : meta.members.filter((m) => m.id !== change.entityId);
+      await db.snapshotMeta.put({ ...meta, members });
+      return;
+    }
     default:
       return;
   }
+}
+
+/** Drops every cached row for a trip (used when the trip is deleted). */
+export async function clearTripCache(tripId: string): Promise<void> {
+  await db.transaction('rw', db.events, db.bookings, db.snapshotMeta, async () => {
+    await db.events.where('tripId').equals(tripId).delete();
+    await db.bookings.where('tripId').equals(tripId).delete();
+    await db.snapshotMeta.delete(tripId);
+  });
 }

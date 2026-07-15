@@ -1,5 +1,13 @@
 import { useEffect, useState } from 'react';
-import { Navigate, Outlet, Route, Routes, useLocation, useNavigate } from 'react-router-dom';
+import {
+  Navigate,
+  Outlet,
+  Route,
+  Routes,
+  useLocation,
+  useNavigate,
+  useParams,
+} from 'react-router-dom';
 import type { Trip } from '@waypoint/shared';
 import { TripProvider, useTrip } from './state/trip-state';
 import { ModeProvider, useMode } from './state/mode-state';
@@ -21,9 +29,9 @@ import { DayView } from './screens/DayView';
 import { Login } from './screens/Login';
 import { ZeroState } from './screens/ZeroState';
 import { AllTrips } from './screens/AllTrips';
-import { ShellStub } from './screens/ShellStub';
 import { CreateTrip } from './screens/CreateTrip';
 import { JoinTrip } from './screens/JoinTrip';
+import { TripSettings } from './screens/TripSettings';
 import { DevTimeTravel } from './dev/DevTimeTravel';
 import { useClock } from './lib/useClock';
 import { useShrinkToFit } from './lib/useShrinkToFit';
@@ -286,9 +294,14 @@ function Shell() {
   const [accountOpen, setAccountOpen] = useState(false);
   useMarkInsideTrip();
   const { mode } = useMode();
-  const { trip, setActiveDate } = useTrip();
+  const { trip, setActiveDate, tripDeleted } = useTrip();
   const { logout } = useAuth();
   const navigate = useNavigate();
+  // A remote admin deleting the trip while we're inside it (ADR-0039): leave to
+  // the all-trips list rather than sitting on a trip that no longer exists.
+  useEffect(() => {
+    if (tripDeleted) navigate('/trips', { replace: true });
+  }, [tripDeleted, navigate]);
   const onSelectDay = (date: string) => {
     setActiveDate(date);
     goToTab('days');
@@ -404,6 +417,18 @@ function AllTripsWithAccount() {
   );
 }
 
+// Settings is a full-page route outside the mode Shell (ADR-0039: mode-neutral),
+// but it still needs the trip context for its trip/roster state + settings verbs.
+function TripSettingsRoute() {
+  const { id } = useParams();
+  if (!id) return <Navigate to="/" replace />;
+  return (
+    <TripProvider tripId={id}>
+      <TripSettings />
+    </TripProvider>
+  );
+}
+
 function RootSurface() {
   const [trips, setTrips] = useState<Trip[] | null>(null);
   useEffect(() => {
@@ -500,7 +525,7 @@ function AppRoutes() {
         <Route path="trips" element={<AllTripsWithAccount />} />
         <Route path="new" element={<CreateTrip />} />
         <Route path="join/:token" element={<JoinTrip />} />
-        <Route path="trip/:id/settings" element={<ShellStub title={t.shell.stub.settings} />} />
+        <Route path="trip/:id/settings" element={<TripSettingsRoute />} />
         <Route path="*" element={<RootSurface />} />
       </Route>
     </Routes>

@@ -1954,6 +1954,369 @@
   white-space: nowrap;
 }
 
+/* ============ Trip settings (/trip/:id/settings, ADR-0039) ============ */
+/* Mode-neutral paper chrome; reuses .new-head / .back / .field / .date-row /
+   .invite-box / .confirm-* / .sheet-* from the shell. */
+.set-sub {
+  font-size: 12.5px;
+  color: var(--muted);
+  margin-top: 7px;
+  padding-inline-start: 46px;
+}
+.set-sub b {
+  color: var(--ink);
+  font-weight: 700;
+}
+.set-body {
+  padding: 4px 16px 32px;
+  overflow-y: auto;
+}
+.set-sec-title {
+  font-size: 12px;
+  font-weight: 700;
+  color: var(--muted);
+  letter-spacing: 0.06em;
+  margin: 22px 4px 10px;
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+}
+.set-hint {
+  font-weight: 500;
+  letter-spacing: 0;
+  color: var(--muted);
+  font-size: 11px;
+}
+.set-edit {
+  font: inherit;
+  font-size: 11.5px;
+  font-weight: 700;
+  letter-spacing: 0;
+  color: var(--ink);
+  background: rgba(22, 35, 61, 0.06);
+  border: 1px solid var(--line);
+  border-radius: 8px;
+  padding: 4px 12px;
+  cursor: pointer;
+}
+.set-card {
+  background: var(--card);
+  border: 1px solid var(--line);
+  border-radius: 15px;
+  overflow: hidden;
+}
+.set-row {
+  padding: 13px 15px;
+  border-bottom: 1px solid var(--line);
+  display: flex;
+  align-items: center;
+  gap: 12px;
+}
+.set-row:last-child {
+  border-bottom: 0;
+}
+.set-row .fi {
+  font-size: 17px;
+  width: 20px;
+  text-align: center;
+  flex: 0 0 auto;
+}
+.set-row .main {
+  flex: 1;
+  min-width: 0;
+}
+.set-row .fl {
+  font-size: 11px;
+  font-weight: 700;
+  color: var(--muted);
+  letter-spacing: 0.04em;
+}
+.set-row .fv {
+  font-size: 14.5px;
+  font-weight: 600;
+  margin-top: 2px;
+}
+.set-row .fv.mono {
+  font-family: 'JetBrains Mono', monospace;
+  font-size: 13px;
+}
+.set-note {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 10px 15px;
+  background: rgba(22, 35, 61, 0.03);
+  border-top: 1px solid var(--line);
+  font-size: 11.5px;
+  color: var(--muted);
+}
+
+/* members */
+.set-member {
+  display: flex;
+  align-items: center;
+  gap: 11px;
+  padding: 11px 15px;
+  border-bottom: 1px solid var(--line);
+}
+.set-member:last-child {
+  border-bottom: 0;
+}
+.set-member .av {
+  margin-inline-start: 0;
+  flex: 0 0 auto;
+}
+.set-member .mn {
+  font-weight: 700;
+  font-size: 13.5px;
+  flex: 1;
+  min-width: 0;
+}
+.set-member .mr {
+  font-size: 11px;
+  color: var(--muted);
+  font-weight: 500;
+}
+.role {
+  font-size: 10.5px;
+  font-weight: 700;
+  border-radius: 7px;
+  padding: 3px 8px;
+  flex: 0 0 auto;
+}
+.role.owner {
+  background: rgba(233, 166, 60, 0.16);
+  color: var(--amber-deep);
+}
+.role.mem {
+  background: rgba(22, 35, 61, 0.06);
+  color: var(--muted);
+}
+.kebab {
+  font: inherit;
+  flex: 0 0 auto;
+  width: 32px;
+  height: 32px;
+  border-radius: 9px;
+  border: 1px solid transparent;
+  background: none;
+  color: var(--muted);
+  font-size: 18px;
+  line-height: 1;
+  cursor: pointer;
+}
+.kebab:hover {
+  background: rgba(22, 35, 61, 0.05);
+  color: var(--ink);
+}
+
+/* invite */
+.set-invite-btn {
+  font: inherit;
+  width: 100%;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 8px;
+  background: var(--plan-tint);
+  border: 1px dashed var(--plan-deep);
+  color: var(--plan-deep);
+  border-radius: 13px;
+  padding: 13px;
+  font-size: 14px;
+  font-weight: 700;
+  cursor: pointer;
+}
+.set-invite-btn:disabled {
+  opacity: 0.6;
+  cursor: default;
+}
+.set-hint-block {
+  font-size: 11px;
+  color: var(--muted);
+  margin: 8px 4px 0;
+  line-height: 1.5;
+}
+
+/* edit form */
+.set-edit-form {
+  padding: 4px 15px 16px;
+}
+.set-fld {
+  margin-top: 13px;
+}
+.set-fld > label {
+  display: block;
+  font-size: 11px;
+  font-weight: 700;
+  color: var(--muted);
+  letter-spacing: 0.04em;
+  margin-bottom: 5px;
+}
+.set-fld input,
+.set-fld select {
+  font: inherit;
+  width: 100%;
+  background: #fafbfd;
+  border: 1px solid var(--soft-line);
+  border-radius: 10px;
+  padding: 10px 12px;
+  font-size: 14px;
+  font-weight: 600;
+  color: var(--ink);
+}
+.set-fld input.invalid {
+  border-color: var(--miss);
+}
+.set-fld .subfld {
+  display: flex;
+  align-items: center;
+  gap: 7px;
+}
+.set-fld .subfld > span {
+  font-size: 12px;
+  font-weight: 700;
+  color: var(--muted);
+  flex: 0 0 auto;
+}
+.budget-row {
+  display: flex;
+  gap: 9px;
+}
+.budget-row select {
+  flex: 0 0 92px;
+}
+.budget-row input {
+  flex: 1;
+}
+.set-form-actions {
+  display: flex;
+  gap: 9px;
+  margin-top: 18px;
+}
+.set-save {
+  font: inherit;
+  flex: 1;
+  background: var(--cta);
+  color: var(--cta-text);
+  border: 0;
+  border-radius: 11px;
+  padding: 12px;
+  font-size: 14px;
+  font-weight: 700;
+  cursor: pointer;
+}
+.set-save:disabled {
+  opacity: 0.5;
+  cursor: default;
+}
+.set-cancel {
+  font: inherit;
+  flex: 0 0 auto;
+  background: none;
+  color: var(--muted);
+  border: 1px solid var(--line);
+  border-radius: 11px;
+  padding: 12px 18px;
+  font-size: 14px;
+  font-weight: 700;
+  cursor: pointer;
+}
+
+/* danger zone */
+.set-danger-title {
+  color: var(--miss);
+}
+.set-danger {
+  border-color: rgba(194, 88, 78, 0.28);
+}
+.set-danger-row {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  padding: 13px 15px;
+  border-bottom: 1px solid var(--line);
+}
+.set-danger-row:last-child {
+  border-bottom: 0;
+}
+.set-danger-row .fi {
+  font-size: 17px;
+  flex: 0 0 auto;
+}
+.set-danger-row .fv {
+  flex: 1;
+  font-size: 13.5px;
+  font-weight: 600;
+  color: var(--miss);
+}
+.set-danger-btn {
+  font: inherit;
+  font-size: 12px;
+  font-weight: 700;
+  color: var(--miss);
+  background: rgba(194, 88, 78, 0.08);
+  border: 1px solid rgba(194, 88, 78, 0.3);
+  border-radius: 9px;
+  padding: 6px 12px;
+  cursor: pointer;
+  flex: 0 0 auto;
+}
+
+/* member action sheet body (uses .sheet-card from the shell) */
+.ms-who {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding: 2px 4px 12px;
+  border-bottom: 1px solid var(--line);
+  margin-bottom: 6px;
+}
+.ms-who .mn {
+  font-weight: 700;
+  font-size: 14.5px;
+}
+.ms-act {
+  font: inherit;
+  width: 100%;
+  display: flex;
+  align-items: center;
+  gap: 11px;
+  padding: 13px 8px;
+  border: 0;
+  background: none;
+  border-radius: 11px;
+  font-size: 14.5px;
+  font-weight: 600;
+  color: var(--ink);
+  cursor: pointer;
+  text-align: start;
+}
+.ms-act:hover {
+  background: rgba(22, 35, 61, 0.04);
+}
+.ms-act.danger-item {
+  color: var(--miss);
+}
+.ms-act .ic {
+  font-size: 17px;
+  width: 22px;
+  text-align: center;
+  flex: 0 0 auto;
+}
+.ms-cancel {
+  font: inherit;
+  width: 100%;
+  margin-top: 6px;
+  padding: 12px;
+  border: 1px solid var(--line);
+  background: none;
+  border-radius: 12px;
+  font-size: 14px;
+  font-weight: 700;
+  color: var(--muted);
+  cursor: pointer;
+}
 /* ===== Icon picker (ADR-0038) =====
    A leading chip + a dropdown panel of the curated ICON_SET. Neutral chrome:
    selection is an ink fill, never a semantic hue (amber/teal/violet reserved).

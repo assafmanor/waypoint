@@ -1,8 +1,15 @@
 import 'reflect-metadata';
 import { createHmac } from 'node:crypto';
 import { afterAll, afterEach, describe, expect, it } from 'vitest';
-import { ForbiddenException, NotFoundException, UnauthorizedException } from '@nestjs/common';
+import {
+  BadRequestException,
+  ForbiddenException,
+  NotFoundException,
+  UnauthorizedException,
+} from '@nestjs/common';
 import { PrismaService } from '../prisma/prisma.service';
+import { ChangeService } from '../sync/change.service';
+import { SyncGateway } from '../sync/sync.gateway';
 import { TripsService } from './trips.service';
 
 // Mirrors TripsService's private token signing (trips.service.ts) so tests can
@@ -33,7 +40,11 @@ const NEW_TRIP_INPUT = {
 
 describe('TripsService', () => {
   const prisma = new PrismaService();
-  const service = new TripsService(prisma);
+  // Real ChangeService (trip/membership mutations are data-plane now, ADR-0039):
+  // it persists a Change row + broadcasts. The gateway has no connected clients
+  // in this integration test, so the broadcast is a no-op.
+  const changes = new ChangeService(prisma, new SyncGateway(prisma));
+  const service = new TripsService(prisma, changes);
   const createdTripIds: string[] = [];
 
   afterEach(async () => {
@@ -212,5 +223,91 @@ describe('TripsService', () => {
     const { members } = await service.getTripWithMembers(trip.id);
     expect(members.find((m) => m.userId === PEER_USER)?.calendarSyncEnabled).toBe(true);
     expect(members.find((m) => m.userId === DEV_USER)?.calendarSyncEnabled).toBe(false);
+  });
+
+  // --- Trip-settings mutations (ADR-0039) ---
+
+  it('lets an admin edit trip details', async () => {
+    const trip = await service.createTrip(DEV_USER, NEW_TRIP_INPUT);
+    createdTripIds.push(trip.id);
+
+    const updated = await service.updateTrip(trip.id, DEV_USER, {
+      name: 'Renamed',
+      dailyBudgetMinor: 15000,
+    });
+    expect(updated).toMatchObject({ name: 'Renamed', dailyBudgetMinor: 15000 });
+    // Untouched fields are preserved.
+    expect(updated.destination).toBe(NEW_TRIP_INPUT.destination);
+  });
+
+  it('blocks a peer from editing trip details', async () => {
+    const trip = await service.createTrip(DEV_USER, NEW_TRIP_INPUT);
+    createdTripIds.push(trip.id);
+    await service.joinByToken(PEER_USER, service.createInviteToken(trip.id));
+
+    await expect(service.updateTrip(trip.id, PEER_USER, { name: 'Nope' })).rejects.toThrow(
+      ForbiddenException,
+    );
+  });
+
+  it('rejects a details edit whose merged date range is inverted', async () => {
+    const trip = await service.createTrip(DEV_USER, NEW_TRIP_INPUT);
+    createdTripIds.push(trip.id);
+
+    // startDate stays 2027-01-01 (stored); moving only endDate before it is invalid.
+    await expect(service.updateTrip(trip.id, DEV_USER, { endDate: '2026-12-31' })).rejects.toThrow(
+      BadRequestException,
+    );
+  });
+
+  it('lets an admin promote a peer to admin, and blocks a peer from promoting', async () => {
+    const trip = await service.createTrip(DEV_USER, NEW_TRIP_INPUT);
+    createdTripIds.push(trip.id);
+    await service.joinByToken(PEER_USER, service.createInviteToken(trip.id));
+    await service.joinByToken(OTHER_PEER_USER, service.createInviteToken(trip.id));
+
+    await expect(
+      service.setMemberRole(trip.id, PEER_USER, OTHER_PEER_USER, { role: 'admin' }),
+    ).rejects.toThrow(ForbiddenException);
+
+    const promoted = await service.setMemberRole(trip.id, DEV_USER, PEER_USER, { role: 'admin' });
+    expect(promoted).toMatchObject({ userId: PEER_USER, role: 'admin' });
+  });
+
+  it('auto-promotes another member when the last admin leaves', async () => {
+    const trip = await service.createTrip(DEV_USER, NEW_TRIP_INPUT);
+    createdTripIds.push(trip.id);
+    await service.joinByToken(PEER_USER, service.createInviteToken(trip.id));
+
+    // DEV is the only admin; leaving must not orphan the trip.
+    await service.removeMember(trip.id, DEV_USER, DEV_USER);
+
+    const { members } = await service.getTripWithMembers(trip.id);
+    expect(members.some((m) => m.role === 'admin')).toBe(true);
+    expect(members.find((m) => m.userId === PEER_USER)?.role).toBe('admin');
+  });
+
+  it('does not auto-promote while an admin still remains', async () => {
+    const trip = await service.createTrip(DEV_USER, NEW_TRIP_INPUT);
+    createdTripIds.push(trip.id);
+    await service.joinByToken(PEER_USER, service.createInviteToken(trip.id));
+
+    // Removing the peer leaves DEV as admin — the peer is simply gone, no promotion.
+    await service.removeMember(trip.id, DEV_USER, PEER_USER);
+
+    const { members } = await service.getTripWithMembers(trip.id);
+    expect(members).toHaveLength(1);
+    expect(members[0]).toMatchObject({ userId: DEV_USER, role: 'admin' });
+  });
+
+  it('lets an admin delete the trip and blocks a peer from deleting', async () => {
+    const trip = await service.createTrip(DEV_USER, NEW_TRIP_INPUT);
+    createdTripIds.push(trip.id);
+    await service.joinByToken(PEER_USER, service.createInviteToken(trip.id));
+
+    await expect(service.deleteTrip(trip.id, PEER_USER)).rejects.toThrow(ForbiddenException);
+
+    await service.deleteTrip(trip.id, DEV_USER);
+    await expect(service.getTripWithMembers(trip.id)).rejects.toThrow();
   });
 });

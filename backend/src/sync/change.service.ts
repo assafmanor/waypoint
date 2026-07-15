@@ -53,4 +53,15 @@ export class ChangeService {
     this.gateway.broadcast(input.tripId, change);
     return { entity, change };
   }
+
+  /**
+   * Fan out a change that is intentionally NOT persisted. Used only for trip
+   * deletion (ADR-0039): the trip's own `Change` feed is cascade-deleted with
+   * the trip (`onDelete: Cascade`), so there is nothing durable to log against —
+   * but connected members must still be told live that the trip is gone so
+   * their client can leave it. Everything else goes through `mutate()`.
+   */
+  broadcastEphemeral(tripId: string, change: Change): void {
+    this.gateway.broadcast(tripId, change);
+  }
 }

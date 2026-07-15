@@ -26,6 +26,8 @@ import {
   tripSnapshotSchema,
   tripWithMembersSchema,
   updateMembershipPrefsSchema,
+  updateMembershipRoleSchema,
+  updateTripSchema,
   type InvitePreview,
   type Membership,
   type Trip,
@@ -50,6 +52,8 @@ class InviteUrlDto extends createZodDto(inviteUrlSchema) {}
 class InvitePreviewDto extends createZodDto(invitePreviewSchema) {}
 class JoinTripDto extends createZodDto(joinTripSchema) {}
 class UpdateMembershipPrefsDto extends createZodDto(updateMembershipPrefsSchema) {}
+class UpdateTripDto extends createZodDto(updateTripSchema) {}
+class UpdateMembershipRoleDto extends createZodDto(updateMembershipRoleSchema) {}
 
 @ApiTags('trips')
 @ApiBearerAuth()
@@ -97,12 +101,46 @@ export class TripsController {
     return this.trips.updateMembershipPrefs(tripId, user.userId, body);
   }
 
+  // Declared after `members/me` so the literal route wins over this `:userId` param.
+  @Patch(':tripId/members/:userId')
+  @UseGuards(MembershipGuard)
+  @ApiOkResponse({ type: MembershipDto })
+  @ZodSerializerDto(MembershipDto)
+  setMemberRole(
+    @CurrentUser() user: Principal,
+    @Param('tripId') tripId: string,
+    @Param('userId') userId: string,
+    @Body(new ZodValidationPipe(updateMembershipRoleSchema)) body: UpdateMembershipRoleDto,
+  ): Promise<Membership> {
+    return this.trips.setMemberRole(tripId, user.userId, userId, body);
+  }
+
   @Get(':tripId')
   @UseGuards(MembershipGuard)
   @ApiOkResponse({ type: TripWithMembersDto })
   @ZodSerializerDto(TripWithMembersDto)
   getTrip(@Param('tripId') tripId: string): Promise<{ trip: Trip; members: Membership[] }> {
     return this.trips.getTripWithMembers(tripId);
+  }
+
+  @Patch(':tripId')
+  @UseGuards(MembershipGuard)
+  @ApiOkResponse({ type: TripDto })
+  @ZodSerializerDto(TripDto)
+  updateTrip(
+    @CurrentUser() user: Principal,
+    @Param('tripId') tripId: string,
+    @Body(new ZodValidationPipe(updateTripSchema)) body: UpdateTripDto,
+  ): Promise<Trip> {
+    return this.trips.updateTrip(tripId, user.userId, body);
+  }
+
+  @Delete(':tripId')
+  @UseGuards(MembershipGuard)
+  @HttpCode(204)
+  @ApiNoContentResponse()
+  deleteTrip(@CurrentUser() user: Principal, @Param('tripId') tripId: string): Promise<void> {
+    return this.trips.deleteTrip(tripId, user.userId);
   }
 
   @Get(':tripId/snapshot')
