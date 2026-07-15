@@ -54,11 +54,24 @@ Trip mode's Day-by-day derives a **lifecycle phase** for every event from the re
 
 Already designed in `mockups/trip-dashboard-v2.html` and `docs/design/design-language.md`: departure-board Home, live now/next, offline index/documents, map "near me," and the change-on-the-fly verbs.
 
-## The mode switch (ADR-0016)
+## The mode switch (ADR-0016, refined by ADR-0040)
 
-- **Automatic by date:** the app enters **Trip mode** on the trip's `startDate` and returns to **Plan mode** before the start / after the end and between multi-leg gaps. Mode is **derived** from dates + current time — not stored on the trip.
-- **Manual override:** the user can always toggle to peek at / work in the other mode (e.g. tweak the plan mid-trip, or preview the departure board while planning). The override is **session-only, in-memory UI state** — not persisted, and not synced — so it never changes the trip for anyone else, and a fresh load is always back to auto-derived; there's no separate "reset to auto" affordance because there's nothing to reset. It's also scoped per trip (multi-trip, ADR-0021): switching the active trip doesn't carry a peeked mode over from the previous one.
+- **Automatic by date:** the app enters **Trip mode** on the trip's `startDate` and returns to **Plan mode** before the start / after the end. Mode is **derived** from dates + current time — not stored on the trip.
+- **Trip mode is a live-window-only state (ADR-0040).** The manual override is **one-directional and window-scoped**:
+  - **Inside the trip window** (`today ∈ [startDate, endDate]`): default **Trip**, and the user may toggle to peek at **Plan** (e.g. tweak the plan mid-trip). Session-only, in-memory UI state — not persisted, not synced, so it never changes the trip for anyone else, and a fresh load is always back to auto-derived (no "reset to auto" affordance; there's nothing to reset). Scoped per trip (ADR-0021): switching the active trip doesn't carry a peeked mode over.
+  - **Outside the window** (before the start / after the end): **Plan only.** The Trip-mode override is **not offered** and the mode toggle is hidden — Trip mode's now/next surface has no coherent "now" to stand on, and the departure board stays scarce ("the board = the trip is speaking," ADR-0033). The principle: you can always drop _down_ into Plan from Trip, but you can only be _in_ Trip while the trip is live.
 - **Location-awareness is deferred:** flipping to Trip mode on _arrival_ (geolocation) rather than by calendar is a nice future upgrade, out of v1 scope.
+
+## Before and after the trip (ADR-0040)
+
+- **Before the trip (pre-trip):** Plan mode, **prep dashboard** — countdown, bookings, gaps to fill, who's connected. The purpose-built before-the-trip surface (unchanged).
+- **After the trip (past trip): a read-only archive.** Plan mode; the trip is finished and frozen for itinerary content:
+  - **Home** is a **calm retrospective** — a quiet header (destination · dates · "past trip"), a read-only day list, quick access to Index/Map. No prep dashboard, no board.
+  - **Day-by-day** is **read-only history** (ADR-0029's past-day visual for the whole trip); create/edit/delete/move are locked.
+  - **Index / Map** are full reference (offline) — confirmation codes/documents and "where we went."
+  - **Trip-settings** admin **rename/delete** stay available (governance, not itinerary building, ADR-0039).
+  - We deliberately do **not** allow settling stragglers (Done/Skip) post-trip — unresolved items just read as unresolved.
+  - **Future direction (not v1):** a richer **retrospective** — "trip wrapped"-style stats, highlights, a map of everywhere you went, per-member views, photos — would be a new feature surface with its own `mockups/past-trip-v1.html`. v1 ships the calm archive.
 
 ## Device note
 
