@@ -176,7 +176,10 @@ export function PlanDay() {
               <MaybeCard
                 key={m.id}
                 item={m}
-                onSchedule={() => setScheduleMaybe(m)}
+                onSchedule={() => {
+                  setGapFill(nextSlot(dayEvents, activeDate, tz));
+                  setScheduleMaybe(m);
+                }}
                 onRemove={() => verbs.removeMaybe(m)}
               />
             ))}
