@@ -30,19 +30,30 @@ up; incidental collisions.
 3. **Board:** one loud `now` hero + a quiet **"ועוד N עכשיו"** expander; a
    distinct **group-split** variant when there's no clear primary. (Approved.)
 
-### The concurrency cluster (day view)
+### The unified rule (day view, both modes)
 
-Consecutive time-overlapping events merge into a single-column **cluster** with a
-shared window header. Concurrency is shown with **structure + neutral ink**,
-never a new semantic hue (amber stays time/now; violet stays plan).
+Time-overlapping events merge into a group (interval-merge / connected
+component). Then one rule decides the shape, **the same way in both modes**:
 
-**Trip = quiet ("Treatment A"):** a small muted header + a hairline neutral side
-brace, rows nested. No box, no fill — grouping reads without shouting. (The
-proportional "time-rail" variant B was **not** chosen.)
+- **If a single event contains _all_ the others → NESTING** (envelope + tucked
+  contents).
+- **Otherwise → a flat CLUSTER.**
 
-Hard/soft grammar is preserved **inside** the cluster (solid+🔒+code vs
-dashed+hatch). A single non-overlapping event stays a plain row (no cluster).
-`end === start` (back-to-back) is **not** an overlap.
+Nesting is **one level deep** — a chain (A ⊃ B ⊃ C) flattens to all contents
+under the outermost container (no Russian-doll indentation on a phone). If
+anything only partially sticks out of the would-be envelope, the whole group
+falls back to a flat cluster.
+
+Concurrency is shown with **structure + neutral ink**, never a new semantic hue
+(amber stays time/now; violet stays plan). Hard/soft grammar is preserved inside
+both nests and clusters (solid+🔒+code vs dashed+hatch). A single non-overlapping
+event stays a plain row. `end === start` (back-to-back) is **not** an overlap.
+(The proportional "time-rail" variant was **not** chosen.)
+
+- **Containment → nesting** is identical in Trip and Plan (usually intentional —
+  nothing to resolve): container row + contents indented one level, "כולל N".
+- **Partial overlap → cluster** differs only by mode: **Trip** = a quiet neutral
+  side brace + "בו-זמנית" header; **Plan** = the flagged violet group below.
 
 ### Plan mode — overlap must be VISUALLY DISTINCT from a gap
 
@@ -59,14 +70,6 @@ Owner call: an overlap must not share the gap chip's grammar — they are opposi
 
 Drag-reorder still acts on soft slots; hard events stay pinned anchors. The
 existing amber hard-vs-soft ⚠️ conflict line is unchanged.
-
-**Containment vs. partial overlap.** Derived from the interval relationship:
-
-- **Full containment** (one span inside another, e.g. a beach day holding a
-  lunch) is usually intentional → shown as **calm nesting** (container + tucked
-  contents), no violet, no "הזז".
-- **Partial overlap** (edges cross, neither contains the other) → the flagged
-  violet overlap cluster with "הזז".
 
 ### "הזז" — the resolve (ripple, inverted)
 

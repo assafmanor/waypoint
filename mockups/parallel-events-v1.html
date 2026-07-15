@@ -1,15 +1,18 @@
 <!doctype html>
 <!-- STATUS: agreed design for parallel / overlapping-time events. ADR-0028-compliant
      (mode identity, color budget, hard/soft grammar). Decisions (session 22):
-       • Trip day view — bracket cluster ("Treatment A"), kept QUIET.
-       • Plan day view — same cluster, but overlap is deliberately DISTINCT from a
-         gap: a plan-violet brace + header "הזז" resolve control, no between-row
-         pill/flanking-lines. A real gap chip is shown alongside for contrast.
-       • Trip board — one loud "now" hero + quiet "ועוד N עכשיו" expander, plus a
+       • Unified rule — in an overlap group, if one event contains ALL the others
+         → NESTING; otherwise → a flat CLUSTER. Nesting is one level deep (chains
+         flatten). Both modes decide this the same way.
+       • Containment → nesting — identical in Trip and Plan: envelope + tucked
+         contents ("כולל N"), neutral, no "הזז" (usually intentional).
+       • Partial overlap → cluster — Trip: quiet neutral bracket ("בו-זמנית").
+         Plan: bound plan-violet group + header "הזז", deliberately DISTINCT from a
+         gap (gap = airy additive pill between rows; shown alongside for contrast).
+       • "הזז" = ripple, inverted — moves a soft event to a clean slot (snap
+         before/after the anchor + exact-time fallback); hard stays an anchor.
+       • Board — one loud "now" hero + quiet "ועוד N עכשיו" expander, plus a
          group-split variant when there is no clear primary.
-       • Plan resolve — full containment reads as calm nesting (no flag); partial
-         overlap flags with "הזז", opening a resolve sheet (snap before/after the
-         anchor + exact-time fallback). "הזז" is ripple, inverted.
      Where this mockup and docs/design/design-language.md conflict, the doc wins. -->
 <html lang="he" dir="rtl">
   <head>
@@ -682,51 +685,41 @@
     <div class="canvas">
       <h1 class="page-title">אירועים במקביל · עיצוב מאושר</h1>
       <p class="page-sub">
-        חפיפת זמנים היא מצב לגיטימי (ADR-0011). מצב טיול מציג בו-זמניות בשקט (אשכול עם סוגר דק). מצב
-        תכנון מסמן חפיפה כדבר שאפשר לפתור — ובמכוון <b>שונה מפער</b>: פער = מקום ריק להוסיף אליו;
-        חפיפה = אירועים כרוכים באותו זמן. הלוח שומר על גיבור אחד + "ועוד N עכשיו".
+        חפיפת זמנים היא מצב לגיטימי (ADR-0011). מודל אחיד: אם אירוע אחד <b>מכיל</b> את כל השאר →
+        <b>קינון</b> (זהה בטיול ובתכנון, בדרך כלל מכוון). אחרת → <b>אשכול</b>: בטיול סוגר דק שקט,
+        בתכנון כרוך בסגול עם "הזז" — ובמכוון שונה מפער (פער = מקום ריק להוסיף; חפיפה = כרוך באותו
+        זמן). הלוח שומר על גיבור אחד + "ועוד N עכשיו".
       </p>
 
+      <!-- ══════════ CONTAINMENT → NESTING (same in both modes) ══════════ -->
+      <div class="caption">הכלה → קינון · זהה בטיול ובתכנון (בדרך כלל מכוון, בלי "הזז")</div>
       <div class="cols">
-        <!-- ══════════ TRIP DAY VIEW (quiet cluster) ══════════ -->
+        <!-- single containment -->
         <div class="col">
-          <h2 class="col-head">מצב טיול · יום</h2>
+          <h2 class="col-head">הכלה בודדת</h2>
           <p class="col-note">
-            אשכול בו-זמני שקט: כותרת קטנה + סוגר דק. הדקדוק קשיח/רך נשמר בפנים.
+            אירוע ארוך שמכיל אירוע קצר בתוכו → קינון שקט. אין מה לפתור, זהה בשני המצבים.
           </p>
           <div class="phone">
             <div class="day-sub">יום 1 · יום חמישי · לפה ולשם</div>
-
-            <div class="cluster">
-              <div class="cluster-head">
-                <span class="brk">⎣</span> בו-זמנית · <span class="win" dir="ltr">11:30–17:30</span>
+            <div class="nest">
+              <div class="nest-head">
+                <span class="badge">🏖️</span>
+                <span class="main">
+                  <span class="t">
+                    יום ים <span class="tag-soft">גמיש</span>
+                    <span class="nest-note">· כולל 1 בתוכו</span>
+                  </span>
+                </span>
+                <span class="time" dir="ltr">10:00–18:00</span>
               </div>
-              <div class="body">
+              <div class="inside">
                 <div class="item soft">
-                  <span class="badge">🎟️</span>
+                  <span class="badge">🍔</span>
                   <span class="main">
-                    <span class="t">כרטיס מוזיאון <span class="tag-soft">גמיש</span></span>
-                    <span class="m">בתוקף כל היום</span>
+                    <span class="t">צהריים <span class="tag-soft">גמיש</span></span>
                   </span>
-                  <span class="time" dir="ltr">11:30–17:30</span>
-                </div>
-                <div class="item soft">
-                  <span class="badge">☕</span>
-                  <span class="main">
-                    <span class="t">משהו יפה <span class="tag-soft">גמיש</span></span>
-                  </span>
-                  <span class="time" dir="ltr">11:30–12:30</span>
-                </div>
-                <div class="item">
-                  <span class="badge">✈️</span>
-                  <span class="main">
-                    <span class="t">
-                      טיסה <span class="tag-hard">🔒 קשיח</span>
-                      <span class="code" dir="ltr">BA-274</span>
-                    </span>
-                    <span class="m">שדה תעופה · יעד</span>
-                  </span>
-                  <span class="time" dir="ltr">15:00–17:00</span>
+                  <span class="time" dir="ltr">13:00–14:00</span>
                 </div>
               </div>
             </div>
@@ -736,75 +729,62 @@
               <span class="main">
                 <span class="t">בלה <span class="tag-soft">גמיש</span></span>
               </span>
-              <span class="time" dir="ltr">18:00–19:00</span>
+              <span class="time" dir="ltr">19:00–20:00</span>
             </div>
           </div>
         </div>
 
-        <!-- ══════════ PLAN DAY VIEW (gap vs overlap, distinct) ══════════ -->
+        <!-- multiple containment -->
         <div class="col">
-          <h2 class="col-head">מצב תכנון · יום</h2>
+          <h2 class="col-head">הכלה מרובה</h2>
           <p class="col-note">
-            למעלה: <b>פער</b> — כפתור מקווקו אוורירי בין שתי שורות. למטה: <b>חפיפה</b> — קבוצה כרוכה
-            בסוגר סגול + "הזז", בלי כפתור־בין־שורות. שתי שפות שונות במכוון.
+            מעטפת אחת שמכילה כמה אירועים → כולם מקוננים ברמה אחת ("כולל N"). קשיח שומר על הדקדוק שלו
+            גם בפנים.
           </p>
           <div class="phone">
             <div class="day-sub">יום 1 · יום חמישי · לפה ולשם</div>
-
-            <div class="item soft">
-              <span class="badge">🥐</span>
-              <span class="main">
-                <span class="t">ארוחת בוקר <span class="tag-soft">גמיש</span></span>
-              </span>
-              <span class="time" dir="ltr">09:00–10:00</span>
-            </div>
-
-            <!-- GAP: airy, additive -->
-            <div class="gap">
-              <span class="gap-line"></span>
-              <button class="gap-add">פער של שעה וחצי · ＋ שבץ</button>
-              <span class="gap-line"></span>
-            </div>
-
-            <!-- OVERLAP: bound, resolvable, plan-violet -->
-            <div class="cluster plan">
-              <div class="cluster-head">
-                <span class="lead">⧉ חופפים · <span class="win" dir="ltr">11:30–17:30</span></span>
-                <button class="resolve">הזז ▾</button>
-              </div>
-              <div class="body">
-                <div class="item soft">
-                  <span class="badge">🎟️</span>
-                  <span class="main">
-                    <span class="t">כרטיס מוזיאון <span class="tag-soft">גמיש</span></span>
-                    <span class="m">בתוקף כל היום</span>
+            <div class="nest">
+              <div class="nest-head">
+                <span class="badge">🏖️</span>
+                <span class="main">
+                  <span class="t">
+                    יום ים <span class="tag-soft">גמיש</span>
+                    <span class="nest-note">· כולל 3 בתוכו</span>
                   </span>
-                  <span class="time" dir="ltr">11:30–17:30</span>
+                </span>
+                <span class="time" dir="ltr">10:00–18:00</span>
+              </div>
+              <div class="inside">
+                <div class="item soft">
+                  <span class="badge">🤿</span>
+                  <span class="main">
+                    <span class="t">שנורקלינג <span class="tag-soft">גמיש</span></span>
+                  </span>
+                  <span class="time" dir="ltr">11:00–12:30</span>
                 </div>
                 <div class="item soft">
-                  <span class="badge">☕</span>
+                  <span class="badge">🍔</span>
                   <span class="main">
-                    <span class="t">
-                      משהו יפה <span class="tag-soft">גמיש</span>
-                      <span class="seam-tag">⧉ חופף 45 דק׳</span>
-                    </span>
+                    <span class="t">צהריים <span class="tag-soft">גמיש</span></span>
                   </span>
-                  <span class="time" dir="ltr">11:30–12:30</span>
+                  <span class="time" dir="ltr">13:00–14:00</span>
                 </div>
                 <div class="item">
-                  <span class="badge">✈️</span>
+                  <span class="badge">⛵</span>
                   <span class="main">
-                    <span class="t">טיסה <span class="tag-hard">🔒 קשיח</span></span>
-                    <span class="conflict">⚠️ חופף לכרטיס מוזיאון (גמיש)</span>
+                    <span class="t">
+                      שייט <span class="tag-hard">🔒 קשיח</span>
+                      <span class="code" dir="ltr">SEA-88</span>
+                    </span>
                   </span>
-                  <span class="time" dir="ltr">15:00–17:00</span>
+                  <span class="time" dir="ltr">15:00–16:00</span>
                 </div>
               </div>
             </div>
           </div>
           <p class="col-note" style="margin-top: 12px">
-            גרירה־לסידור עדיין פועלת על משבצות רכות; אירוע קשיח נשאר עוגן. "הזז" מציע להסיט אירוע
-            גמיש כדי לפרק את החפיפה.
+            שרשרת קינון (א׳ מכיל ב׳ מכיל ג׳) משוטחת לרמה אחת — בלי "בבושקה" על מסך טלפון. הכלל:
+            אירוע יחיד שמכיל את כל השאר → קינון; אחרת → אשכול.
           </p>
         </div>
       </div>
@@ -936,53 +916,68 @@
         </div>
       </div>
 
-      <!-- ══════════ PLAN — ENVELOPE vs COLLISION + "הזז" SHEET ══════════ -->
-      <div class="caption">מצב תכנון · הכלה מול חפיפה חלקית + גיליון "הזז"</div>
+      <!-- ══════════ PARTIAL OVERLAP → CLUSTER (Trip quiet vs Plan flagged) ══════════ -->
+      <div class="caption">חפיפה חלקית → אשכול · טיול שקט מול תכנון שמסמן</div>
       <div class="cols">
-        <!-- Envelope / nesting — calm, no flag -->
+        <!-- Trip — quiet neutral cluster -->
         <div class="col">
-          <h2 class="col-head">הכלה — רגוע</h2>
+          <h2 class="col-head">מצב טיול — אשכול שקט</h2>
           <p class="col-note">
-            אירוע ארוך שמכיל אירוע קצר בתוכו = בדרך כלל מכוון. מוצג כקינון שקט, בלי סגול ובלי "הזז".
+            קצוות נחתכים (אף אחד לא מכיל את השני) → סוגר דק ניטרלי + כותרת "בו-זמנית". בלי פתרון —
+            בטיול פשוט חיים את זה.
           </p>
           <div class="phone">
             <div class="day-sub">יום 1 · יום חמישי · לפה ולשם</div>
-            <div class="nest">
-              <div class="nest-head">
-                <span class="badge">🏖️</span>
-                <span class="main">
-                  <span class="t">
-                    יום ים <span class="tag-soft">גמיש</span>
-                    <span class="nest-note">· כולל 1 בתוכו</span>
-                  </span>
-                </span>
-                <span class="time" dir="ltr">10:00–18:00</span>
+            <div class="cluster">
+              <div class="cluster-head">
+                <span class="brk">⎣</span> בו-זמנית · <span class="win" dir="ltr">11:00–14:00</span>
               </div>
-              <div class="inside">
+              <div class="body">
                 <div class="item soft">
-                  <span class="badge">🍔</span>
+                  <span class="badge">🍳</span>
                   <span class="main">
-                    <span class="t">צהריים <span class="tag-soft">גמיש</span></span>
+                    <span class="t">סדנת בישול <span class="tag-soft">גמיש</span></span>
                   </span>
-                  <span class="time" dir="ltr">13:00–14:00</span>
+                  <span class="time" dir="ltr">11:00–13:00</span>
+                </div>
+                <div class="item soft">
+                  <span class="badge">🚶</span>
+                  <span class="main">
+                    <span class="t">סיור בעיר <span class="tag-soft">גמיש</span></span>
+                  </span>
+                  <span class="time" dir="ltr">12:30–14:00</span>
                 </div>
               </div>
             </div>
           </div>
-          <p class="col-note" style="margin-top: 12px">
-            נגזר מהיחס בין הטווחים: <b>הכלה</b> (אחד בתוך השני) → קינון. <b>חפיפה חלקית</b> (הקצוות
-            נחתכים) → אשכול עם "הזז".
-          </p>
         </div>
 
-        <!-- Partial collision — flagged -->
+        <!-- Plan — flagged violet + gap contrast -->
         <div class="col">
-          <h2 class="col-head">חפיפה חלקית — מסומן</h2>
+          <h2 class="col-head">מצב תכנון — חפיפה ≠ פער</h2>
           <p class="col-note">
-            שני אירועים שהקצוות שלהם נחתכים (אף אחד לא מכיל את השני) → אשכול סגול עם "הזז".
+            למעלה <b>פער</b> אוורירי (מוסיף); למטה <b>חפיפה</b> כרוכה בסגול + "הזז". שפות מכוונות
+            שונות — אותם שני אירועים כמו בטיול, מסומנים לפתרון.
           </p>
           <div class="phone">
             <div class="day-sub">יום 1 · יום חמישי · לפה ולשם</div>
+
+            <div class="item soft">
+              <span class="badge">🥐</span>
+              <span class="main">
+                <span class="t">ארוחת בוקר <span class="tag-soft">גמיש</span></span>
+              </span>
+              <span class="time" dir="ltr">09:00–10:00</span>
+            </div>
+
+            <!-- GAP: airy, additive -->
+            <div class="gap">
+              <span class="gap-line"></span>
+              <button class="gap-add">פער של שעה · ＋ שבץ</button>
+              <span class="gap-line"></span>
+            </div>
+
+            <!-- OVERLAP: bound, resolvable -->
             <div class="cluster plan">
               <div class="cluster-head">
                 <span class="lead">⧉ חופפים · <span class="win" dir="ltr">11:00–14:00</span></span>
@@ -1009,9 +1004,6 @@
               </div>
             </div>
           </div>
-          <p class="col-note" style="margin-top: 12px">
-            הקשה על "הזז" (או על תג החפיפה) פותחת את הגיליון משמאל, ממוקד באירוע הגמיש שזז.
-          </p>
         </div>
 
         <!-- The resolve sheet -->
@@ -1078,19 +1070,20 @@
         <h3>כללי העיצוב (למימוש)</h3>
         <ul>
           <li>
-            <b>אשכול = רצף אירועים שחופפים בזמן</b> (interval-merge). אירוע בודד ללא חפיפה נשאר שורה
-            רגילה. <code>end === start</code> (גב-אל-גב) אינו חפיפה.
+            <b>קבוצה = רצף אירועים שחופפים בזמן</b> (interval-merge; רכיב קשירות). אירוע בודד ללא
+            חפיפה נשאר שורה רגילה. <code>end === start</code> (גב-אל-גב) אינו חפיפה.
           </li>
           <li>
-            <b>טיול — שקט.</b> סוגר דק ניטרלי + כותרת קטנה. מבנה ודיו בלבד; אמבר נשאר לזמן/עכשיו.
+            <b>ההחלטה: הכלה מול חפיפה חלקית.</b> אם אירוע יחיד מכיל את <i>כל</i> השאר →
+            <b>קינון</b>. אחרת → <b>אשכול שטוח</b>. שרשרת קינון משוטחת לרמה אחת (בלי בבושקה בטלפון).
           </li>
           <li>
-            <b>תכנון — חפיפה ≠ פער.</b> פער = כפתור מקווקו אוורירי בין שורות (מוסיף). חפיפה = קבוצה
-            כרוכה בסוגר סגול + "הזז" בכותרת, בלי אלמנט בין־שורות. שפות מכוונות שונות.
+            <b>קינון — זהה בשני המצבים.</b> מעטפת + תוכן מקונן ("כולל N"), ניטרלי, בלי "הזז" (בדרך
+            כלל מכוון). מבנה ודיו בלבד; אמבר נשאר לזמן/עכשיו.
           </li>
           <li>
-            <b>הכלה מול חפיפה חלקית.</b> אחד מכיל את השני (טווח בתוך טווח) → קינון שקט, בלי "הזז".
-            הקצוות נחתכים בלבד → אשכול־חפיפה עם "הזז".
+            <b>אשכול — טיול שקט, תכנון מסמן.</b> טיול = סוגר דק ניטרלי + "בו-זמנית". תכנון = כרוך
+            בסגול + "הזז", ובמכוון שונה מפער (אוורירי, מוסיף, בין־שורות).
           </li>
           <li>
             <b>"הזז" = ריפל הפוך.</b> מזיז אירוע <i>גמיש</i> בלבד (קשיח = עוגן), משך נשמר. מציע
