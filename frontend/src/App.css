@@ -1511,12 +1511,12 @@
 .app[data-switching] .nav,
 .app[data-switching] .nav button {
   transition:
-    background-color var(--switch-dur) var(--ease-standard),
-    color var(--switch-dur) var(--ease-standard),
-    border-color var(--switch-dur) var(--ease-standard),
-    box-shadow var(--switch-dur) var(--ease-standard),
-    transform var(--switch-dur) var(--ease-standard),
-    opacity var(--switch-dur) var(--ease-standard);
+    background-color var(--switch-dur, var(--t-base)) var(--ease-standard),
+    color var(--switch-dur, var(--t-base)) var(--ease-standard),
+    border-color var(--switch-dur, var(--t-base)) var(--ease-standard),
+    box-shadow var(--switch-dur, var(--t-base)) var(--ease-standard),
+    transform var(--switch-dur, var(--t-base)) var(--ease-standard),
+    opacity var(--switch-dur, var(--t-base)) var(--ease-standard);
 }
 
 @media (prefers-reduced-motion: reduce) {

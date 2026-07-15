@@ -1,4 +1,4 @@
-import { useEffect, useRef, useState } from 'react';
+import { useEffect, useState } from 'react';
 import { Navigate, Outlet, Route, Routes, useLocation, useNavigate } from 'react-router-dom';
 import type { Trip } from '@waypoint/shared';
 import { TripProvider, useTrip } from './state/trip-state';
@@ -275,23 +275,28 @@ function Shell() {
     setActiveDate(date);
     goToTab('days');
   };
-  // Mode-switch transition (design-language: Motion). On a mode change, arm the
-  // chrome transition for its duration via data-switching, direction-scoped:
-  // Plan→Trip (going live) is the cinematic beat, Trip→Plan (stand-down) the
-  // quieter return. Durations mirror --t-cinematic / --t-deliberate (tokens.css)
-  // plus a small tail to clear after the animation settles; reduced-motion still
-  // flips instantly (the CSS is inert under it). Not armed on first mount.
+  // Mode-switch transition (design-language: Motion). data-switching arms the
+  // chrome transition, direction-scoped: Plan→Trip (going live) is the cinematic
+  // beat, Trip→Plan (stand-down) the quieter return. It MUST land in the same
+  // commit as the new data-mode — arming it a paint later (e.g. from a useEffect)
+  // lets the browser repaint the new colors before the transition exists, so the
+  // animation is intermittently skipped. So derive it during render (set-state-in-
+  // render) rather than post-paint. Not armed on first mount; reduced-motion still
+  // flips instantly (the CSS is inert under it).
+  const [prevMode, setPrevMode] = useState(mode);
   const [switching, setSwitching] = useState<'to-trip' | 'to-plan' | null>(null);
-  const prevMode = useRef(mode);
+  if (mode !== prevMode) {
+    setPrevMode(mode);
+    setSwitching(mode === 'trip' ? 'to-trip' : 'to-plan');
+  }
+  // Disarm once the animation has settled — durations mirror --t-cinematic /
+  // --t-deliberate (tokens.css) plus a small tail. Keyed on `switching` so a new
+  // switch (or a quick back-and-forth) restarts the timer instead of stacking.
   useEffect(() => {
-    if (prevMode.current === mode) return;
-    prevMode.current = mode;
-    const dir = mode === 'trip' ? 'to-trip' : 'to-plan';
-    setSwitching(dir);
-    const clearAfter = mode === 'trip' ? 660 : 460;
-    const id = setTimeout(() => setSwitching(null), clearAfter);
+    if (!switching) return;
+    const id = setTimeout(() => setSwitching(null), switching === 'to-trip' ? 660 : 460);
     return () => clearTimeout(id);
-  }, [mode]);
+  }, [switching]);
   return (
     <div className="app" data-mode={mode} data-switching={switching ?? undefined}>
       <Header
