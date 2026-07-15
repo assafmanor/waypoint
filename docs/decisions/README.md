@@ -78,3 +78,4 @@ What else we weighed and why we didn't pick it.
 | [0033](0033-all-trips-home.md)                      | "All trips" home page: land there unless a trip is live; replaces the switcher sheet, create-only                     | Accepted |
 | [0034](0034-document-encryption-trust-model.md)     | Document encryption trust model: server-side-at-rest does not protect against the operator (refines 0015)             | Accepted |
 | [0035](0035-in-app-back-and-return-gesture.md)      | In-app "back" is one guarded history step; the PWA return gesture triggers it (Home-anchor tabs, overlays in history) | Accepted |
+| [0036](0036-event-time-setter.md)                   | Event time-setter: quantized 15-min quick-pick + typeable exact fallback; end as duration; same-day only              | Accepted |
