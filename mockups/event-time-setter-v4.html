@@ -1,0 +1,661 @@
+<!doctype html>
+<!-- Event time-setter — exact-entry rethink (branch: claude/event-time-setter-redesign).
+     Follows the shipped picker (ADR-0036): compact fields → dropdown with a
+     15-min list. This mockup only rethinks the "type an exact time" control at
+     the head of that dropdown, which had three problems:
+       • the ":" wasn't always visible (it was a character you typed),
+       • you could type invalid values (e.g. hour 76),
+       • the free-text-then-reinterpret model was unintuitive.
+
+     The fix is the well-known SEGMENTED MASKED field — the same mechanic as a
+     card-expiry MM/YY box or the browser's native time input:
+       • a fixed ":" separator that is always on screen,
+       • two range-bound segments (hour 00–23, minute 00–59) — invalid digits
+         are rejected, never shown,
+       • digits fill HH then MM, auto-advancing; smart single-digit
+         (type 7 → 07 and jump to minutes, since no valid hour is 7x).
+
+     Switcher compares:
+       A — Custom segmented mask (on-brand amber, we own the behaviour).
+       B — Native <input type="time"> (OS handles colon + validation for free).
+
+     Interactive — try to type 76 (blocked). RTL, phone-first (~390px). -->
+<html lang="he" dir="rtl">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>Waypoint — הקלדת שעה מדויקת (מוקאפ v4)</title>
+    <link rel="preconnect" href="https://fonts.googleapis.com" />
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+    <link
+      href="https://fonts.googleapis.com/css2?family=Assistant:wght@400;500;600;700&family=Secular+One&family=JetBrains+Mono:wght@500;700&display=swap"
+      rel="stylesheet"
+    />
+    <style>
+      :root {
+        --ink: #16233d;
+        --screen: #e7eaef;
+        --card: #ffffff;
+        --amber: #e9a63c;
+        --amber-deep: #c9822a;
+        --plan: #6e59d6;
+        --plan-deep: #5747b4;
+        --plan-tint: rgba(110, 89, 214, 0.1);
+        --muted: #6c7488;
+        --miss: #c2584e;
+        --line: rgba(22, 35, 61, 0.1);
+        --soft-line: rgba(22, 35, 61, 0.28);
+        --cta: var(--ink);
+        --cta-text: #fff;
+        --shadow: 0 18px 40px -18px rgba(14, 23, 41, 0.45);
+        --font-head: 'Secular One', sans-serif;
+        --font-body: 'Assistant', sans-serif;
+        --font-mono: 'JetBrains Mono', monospace;
+      }
+      * {
+        box-sizing: border-box;
+        margin: 0;
+        padding: 0;
+        -webkit-tap-highlight-color: transparent;
+      }
+      html,
+      body {
+        min-height: 100%;
+      }
+      body {
+        font-family: var(--font-body);
+        background:
+          radial-gradient(120% 90% at 80% -10%, #2a3e68 0%, transparent 55%),
+          radial-gradient(120% 90% at 0% 110%, #1a2a4a 0%, transparent 50%), #0f1a31;
+        color: var(--ink);
+        min-height: 100vh;
+        display: flex;
+        flex-direction: column;
+        align-items: center;
+        padding: 24px 16px 60px;
+        -webkit-font-smoothing: antialiased;
+      }
+      .kicker {
+        color: #b9c4dc;
+        font-size: 12px;
+        letter-spacing: 0.06em;
+        text-transform: uppercase;
+        margin-bottom: 4px;
+        text-align: center;
+      }
+      .kicker b {
+        color: var(--amber);
+      }
+      h1.title {
+        font-family: var(--font-head);
+        color: #f4f7ff;
+        font-size: 20px;
+        font-weight: 400;
+        margin-bottom: 16px;
+        text-align: center;
+      }
+      .switcher {
+        display: inline-flex;
+        gap: 4px;
+        padding: 4px;
+        background: rgba(255, 255, 255, 0.06);
+        border: 1px solid rgba(255, 255, 255, 0.1);
+        border-radius: 999px;
+        margin-bottom: 20px;
+      }
+      .switcher button {
+        font-family: var(--font-body);
+        font-size: 13px;
+        font-weight: 700;
+        color: #c9d3e8;
+        background: none;
+        border: none;
+        border-radius: 999px;
+        padding: 7px 16px;
+        cursor: pointer;
+      }
+      .switcher button.on {
+        background: #f4f7ff;
+        color: var(--ink);
+      }
+
+      .phone {
+        width: 100%;
+        max-width: 392px;
+        background: var(--screen);
+        border-radius: 30px;
+        box-shadow: 0 26px 60px -18px rgba(0, 0, 0, 0.6);
+        overflow: hidden;
+        border: 1px solid rgba(255, 255, 255, 0.08);
+      }
+      .chrome {
+        background: #fbf9f4;
+        border-bottom: 1px solid var(--line);
+        padding: 12px 16px 11px;
+        display: flex;
+        align-items: center;
+        justify-content: space-between;
+      }
+      .mode-pill {
+        display: inline-flex;
+        align-items: center;
+        gap: 5px;
+        font-size: 12px;
+        font-weight: 700;
+        color: var(--plan-deep);
+        background: var(--plan-tint);
+        border: 1px solid rgba(110, 89, 214, 0.25);
+        border-radius: 999px;
+        padding: 4px 10px;
+      }
+      .chrome .day {
+        font-size: 12.5px;
+        color: var(--muted);
+        font-weight: 600;
+      }
+      .stage {
+        padding: 18px 16px 26px;
+        display: flex;
+        justify-content: center;
+      }
+      .event-form-card {
+        width: 100%;
+        max-width: 360px;
+        background: var(--card);
+        border: 1px solid var(--line);
+        border-radius: 15px;
+        padding: 16px;
+        box-shadow: var(--shadow);
+        display: flex;
+        flex-direction: column;
+        gap: 13px;
+      }
+      .form-title {
+        font-family: var(--font-head);
+        font-weight: 400;
+        font-size: 16px;
+        color: var(--ink);
+      }
+      .form-field {
+        display: flex;
+        flex-direction: column;
+        gap: 6px;
+        font-size: 12.5px;
+        font-weight: 600;
+        color: var(--muted);
+      }
+      .form-field > input {
+        font: inherit;
+        font-size: 14px;
+        font-weight: 500;
+        color: var(--ink);
+        background: #fff;
+        border: 1px solid var(--line);
+        border-radius: 9px;
+        padding: 9px 10px;
+      }
+
+      .tp-wrap {
+        position: relative;
+      }
+      .tp-fields {
+        display: flex;
+        gap: 9px;
+      }
+      .tfield {
+        flex: 1;
+        text-align: start;
+        background: #fff;
+        border: 1px solid var(--line);
+        border-radius: 10px;
+        padding: 7px 11px 8px;
+        cursor: pointer;
+        display: flex;
+        flex-direction: column;
+        gap: 1px;
+        font-family: var(--font-body);
+      }
+      .tfield.open {
+        border-color: var(--amber);
+        box-shadow: 0 0 0 2px rgba(233, 166, 60, 0.16);
+      }
+      .tfield .cap {
+        font-size: 11px;
+        font-weight: 700;
+        color: var(--muted);
+      }
+      .tfield .val {
+        font-family: var(--font-mono);
+        font-size: 19px;
+        font-weight: 700;
+        color: var(--amber-deep);
+        letter-spacing: 0.01em;
+      }
+      .tfield.dur .val {
+        font-family: var(--font-body);
+        font-size: 15px;
+        display: flex;
+        align-items: baseline;
+        gap: 7px;
+      }
+      .tfield.dur .val .endhm {
+        font-family: var(--font-mono);
+        font-size: 13px;
+        font-weight: 500;
+        color: var(--muted);
+      }
+
+      .panel {
+        margin-top: 6px;
+        background: #fff;
+        border: 1px solid var(--line);
+        border-radius: 12px;
+        box-shadow: 0 12px 26px -14px rgba(14, 23, 41, 0.35);
+        overflow: hidden;
+      }
+      .exact {
+        display: flex;
+        align-items: center;
+        justify-content: space-between;
+        gap: 10px;
+        padding: 11px 12px;
+        border-bottom: 1px solid var(--line);
+        background: rgba(233, 166, 60, 0.05);
+      }
+      .exact-lbl {
+        font-size: 11px;
+        font-weight: 700;
+        color: var(--muted);
+        white-space: nowrap;
+      }
+
+      /* ===== A — segmented masked field ===== */
+      .seg {
+        display: inline-flex;
+        align-items: center;
+        gap: 2px;
+        background: #fff;
+        border: 1.5px solid var(--line);
+        border-radius: 9px;
+        padding: 4px 8px;
+        transition:
+          border-color 0.12s ease,
+          box-shadow 0.12s ease;
+      }
+      .seg.focus {
+        border-color: var(--amber);
+        box-shadow: 0 0 0 2.5px rgba(233, 166, 60, 0.18);
+      }
+      .seg.shake {
+        animation: shake 0.22s ease;
+        border-color: var(--miss);
+      }
+      @keyframes shake {
+        0%,
+        100% {
+          transform: translateX(0);
+        }
+        25% {
+          transform: translateX(-3px);
+        }
+        75% {
+          transform: translateX(3px);
+        }
+      }
+      .seg input {
+        width: 1.7ch;
+        border: none;
+        outline: none;
+        background: none;
+        font-family: var(--font-mono);
+        font-size: 22px;
+        font-weight: 700;
+        color: var(--amber-deep);
+        text-align: center;
+        padding: 0;
+        caret-color: var(--amber);
+      }
+      .seg input::placeholder {
+        color: rgba(201, 130, 42, 0.35);
+      }
+      .seg .colon {
+        font-family: var(--font-mono);
+        font-size: 22px;
+        font-weight: 700;
+        color: var(--amber-deep);
+        /* always on screen — the separator is chrome, not a typed character */
+      }
+
+      /* ===== B — native ===== */
+      .native-time {
+        font-family: var(--font-mono);
+        font-size: 18px;
+        font-weight: 700;
+        color: var(--amber-deep);
+        border: 1.5px solid var(--line);
+        border-radius: 9px;
+        padding: 6px 10px;
+        background: #fff;
+      }
+      .native-time:focus-visible {
+        outline: 2px solid var(--amber);
+      }
+
+      .list {
+        max-height: 176px;
+        overflow-y: auto;
+        scrollbar-width: none;
+      }
+      .list::-webkit-scrollbar {
+        display: none;
+      }
+      .list button {
+        width: 100%;
+        text-align: start;
+        background: none;
+        border: none;
+        border-bottom: 1px solid var(--line);
+        padding: 10px 13px;
+        cursor: pointer;
+        font-family: var(--font-mono);
+        font-size: 15px;
+        font-weight: 600;
+        color: var(--ink);
+      }
+      .list button:last-child {
+        border-bottom: none;
+      }
+      .list button.on {
+        background: rgba(233, 166, 60, 0.14);
+        color: var(--amber-deep);
+      }
+
+      .hint {
+        margin-top: 12px;
+        font-size: 12.5px;
+        color: #b9c4dc;
+        text-align: center;
+        line-height: 1.5;
+      }
+      .hint b {
+        color: var(--amber);
+      }
+
+      .notes {
+        width: 100%;
+        max-width: 392px;
+        margin-top: 20px;
+        color: #cdd6ea;
+        font-size: 13px;
+        line-height: 1.55;
+      }
+      .notes h2 {
+        font-family: var(--font-head);
+        font-weight: 400;
+        font-size: 14px;
+        color: #f4f7ff;
+        margin-bottom: 8px;
+      }
+      .notes ul {
+        list-style: none;
+        display: flex;
+        flex-direction: column;
+        gap: 9px;
+      }
+      .notes li {
+        background: rgba(255, 255, 255, 0.04);
+        border: 1px solid rgba(255, 255, 255, 0.08);
+        border-radius: 11px;
+        padding: 10px 12px;
+      }
+      .notes li b {
+        color: var(--amber);
+        font-weight: 700;
+      }
+    </style>
+  </head>
+  <body>
+    <div class="kicker">Waypoint · <b>הקלדת שעה</b> · מוקאפ v4</div>
+    <h1 class="title">מסכה מקטעית — נקודתיים תמיד, בלי ערכים לא חוקיים</h1>
+
+    <div class="switcher">
+      <button id="sw-seg" class="on" onclick="setMode('seg')">מסכה מקטעית</button>
+      <button id="sw-native" onclick="setMode('native')">שדה מערכת</button>
+    </div>
+
+    <div class="phone">
+      <div class="chrome">
+        <span class="mode-pill">✏️ תכנון</span>
+        <span class="day">יום ה׳ · 16 ביולי</span>
+      </div>
+      <div class="stage">
+        <form class="event-form-card" onsubmit="return false;">
+          <div class="form-title">עריכת אירוע</div>
+          <label class="form-field">
+            כותרת
+            <input value="טיסה לאתונה" />
+          </label>
+
+          <div class="form-field">
+            שעה
+            <div class="tp-wrap">
+              <div class="tp-fields">
+                <div class="tfield open">
+                  <span class="cap">התחלה</span>
+                  <span class="val" id="start-val" dir="ltr">09:00</span>
+                </div>
+                <div class="tfield dur">
+                  <span class="cap">משך</span>
+                  <span class="val">
+                    <span>שעה</span>
+                    <span class="endhm" dir="ltr">עד 10:00</span>
+                  </span>
+                </div>
+              </div>
+
+              <div class="panel">
+                <div class="exact">
+                  <span class="exact-lbl">שעה מדויקת</span>
+
+                  <!-- A: segmented mask -->
+                  <div class="seg" id="seg" dir="ltr">
+                    <input
+                      id="hh"
+                      inputmode="numeric"
+                      maxlength="2"
+                      placeholder="HH"
+                      aria-label="שעה"
+                    />
+                    <span class="colon">:</span>
+                    <input
+                      id="mm"
+                      inputmode="numeric"
+                      maxlength="2"
+                      placeholder="MM"
+                      aria-label="דקות"
+                    />
+                  </div>
+
+                  <!-- B: native -->
+                  <input
+                    id="native"
+                    class="native-time"
+                    type="time"
+                    step="60"
+                    value="09:00"
+                    dir="ltr"
+                    style="display: none"
+                  />
+                </div>
+                <div class="list" id="list"></div>
+              </div>
+            </div>
+          </div>
+
+          <label class="form-field">
+            מיקום
+            <input value="נמל התעופה בן גוריון" />
+          </label>
+        </form>
+      </div>
+    </div>
+
+    <p class="hint" id="hint">
+      נסו להקליד <b>09:07</b> — הספרות ממלאות שעה→דקות לבד.<br />
+      נסו להקליד <b>76</b> בשעה — הוא פשוט לא ייכנס.
+    </p>
+
+    <div class="notes">
+      <h2>המנגנון</h2>
+      <ul>
+        <li><b>נקודתיים תמיד על המסך.</b> המפריד הוא חלק מהשדה, לא תו שמקלידים.</li>
+        <li>
+          <b>שני מקטעים חסומים.</b> שעה 00–23, דקות 00–59. ספרה שתיצור ערך לא חוקי (למשל 76) נדחית —
+          לא ניתן להקליד זמן שגוי.
+        </li>
+        <li>
+          <b>מילוי חכם.</b> הספרות ממלאות שעה ואז דקות, עם קפיצה אוטומטית; ספרה בודדת שלא יכולה
+          להיות עשרות (7→07) קופצת מיד לדקות. בדיוק כמו MM/YY בכרטיס אשראי או שדה השעה של הדפדפן.
+        </li>
+      </ul>
+    </div>
+
+    <script>
+      const pad = (n) => String(n).padStart(2, '0');
+      const LIST = [];
+      for (let t = 0; t < 1440; t += 15) LIST.push(t);
+      const hm = (t) => `${pad(Math.floor(t / 60))}:${pad(t % 60)}`;
+
+      const hh = document.getElementById('hh');
+      const mm = document.getElementById('mm');
+      const seg = document.getElementById('seg');
+      const native = document.getElementById('native');
+      const startVal = document.getElementById('start-val');
+
+      let mode = 'seg';
+      // Committed value shown in the start field. Segments may be mid-edit.
+      const state = { h: 9, m: 0 };
+
+      function flash() {
+        seg.classList.add('shake');
+        setTimeout(() => seg.classList.remove('shake'), 220);
+      }
+      function commit() {
+        const h = hh.value === '' ? state.h : +hh.value;
+        const m = mm.value === '' ? state.m : +mm.value;
+        state.h = h;
+        state.m = m;
+        startVal.textContent = `${pad(h)}:${pad(m)}`;
+        renderList();
+      }
+
+      hh.addEventListener('input', () => {
+        let v = hh.value.replace(/\D/g, '').slice(0, 2);
+        if (v.length === 2 && +v > 23) {
+          // second digit makes an impossible hour → reject it, keep the first
+          v = v.slice(0, 1);
+          flash();
+        }
+        hh.value = v;
+        // auto-advance: two digits, or a first digit that can't be a tens digit
+        if (v.length === 2) {
+          commit();
+          mm.focus();
+          mm.select();
+        } else if (v.length === 1 && +v >= 3) {
+          hh.value = '0' + v; // 7 → 07
+          commit();
+          mm.focus();
+          mm.select();
+        } else {
+          commit();
+        }
+      });
+
+      mm.addEventListener('input', () => {
+        let v = mm.value.replace(/\D/g, '').slice(0, 2);
+        if (v.length === 2 && +v > 59) {
+          v = v.slice(0, 1);
+          flash();
+        }
+        if (v.length === 1 && +v >= 6) v = '0' + v; // 7 → 07
+        mm.value = v;
+        commit();
+      });
+
+      // Backspace at the start of the minute segment hops back to the hour.
+      mm.addEventListener('keydown', (e) => {
+        if (e.key === 'Backspace' && mm.value === '') {
+          hh.focus();
+          const val = hh.value;
+          hh.value = '';
+          hh.value = val;
+        }
+      });
+      // Pad a lone hour digit to two on the way out (2 → 02).
+      hh.addEventListener('blur', () => {
+        if (hh.value.length === 1) {
+          hh.value = pad(hh.value);
+          commit();
+        }
+      });
+
+      [hh, mm].forEach((el) => {
+        el.addEventListener('focus', () => seg.classList.add('focus'));
+        el.addEventListener('blur', () => {
+          if (document.activeElement !== hh && document.activeElement !== mm)
+            seg.classList.remove('focus');
+        });
+      });
+
+      native.addEventListener('input', () => {
+        if (!native.value) return;
+        const [h, m] = native.value.split(':').map(Number);
+        state.h = h;
+        state.m = m;
+        startVal.textContent = native.value;
+        renderList();
+      });
+
+      function seedSegments() {
+        hh.value = pad(state.h);
+        mm.value = pad(state.m);
+      }
+
+      function renderList() {
+        const cur = state.h * 60 + state.m;
+        const box = document.getElementById('list');
+        box.innerHTML = '';
+        LIST.forEach((t) => {
+          const b = document.createElement('button');
+          b.type = 'button';
+          b.className = t === cur ? 'on' : '';
+          b.innerHTML = `<span dir="ltr">${hm(t)}</span>`;
+          b.onclick = () => {
+            state.h = Math.floor(t / 60);
+            state.m = t % 60;
+            startVal.textContent = hm(t);
+            seedSegments();
+            native.value = hm(t);
+            renderList();
+          };
+          box.appendChild(b);
+        });
+        const on = box.querySelector('.on');
+        if (on) box.scrollTop = on.offsetTop - box.clientHeight / 2 + on.clientHeight / 2;
+      }
+
+      function setMode(m) {
+        mode = m;
+        document.getElementById('sw-seg').classList.toggle('on', m === 'seg');
+        document.getElementById('sw-native').classList.toggle('on', m === 'native');
+        seg.style.display = m === 'seg' ? 'inline-flex' : 'none';
+        native.style.display = m === 'native' ? 'inline-block' : 'none';
+        document.getElementById('hint').style.visibility = m === 'seg' ? 'visible' : 'hidden';
+      }
+
+      seedSegments();
+      renderList();
+    </script>
+  </body>
+</html>
