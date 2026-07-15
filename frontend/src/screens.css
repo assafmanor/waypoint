@@ -602,8 +602,7 @@
   position: sticky;
   top: 0;
   z-index: 5;
-  background:
-    linear-gradient(rgba(233, 166, 60, 0.1), rgba(233, 166, 60, 0.1)), var(--screen);
+  background: linear-gradient(rgba(233, 166, 60, 0.1), rgba(233, 166, 60, 0.1)), var(--screen);
   border: 1px solid rgba(233, 166, 60, 0.3);
   border-radius: 12px;
   padding: 11px 13px;
