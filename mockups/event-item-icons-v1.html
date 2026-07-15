@@ -3,30 +3,30 @@
      "Let's add the ability to choose icons for events and maybe items, from a
      limited set."  The icon field already exists (Event.icon?, MaybeItem.icon?,
      Trip has a 🧳 placeholder) — this mockup designs the missing PICKER + the
-     curated vocabulary, per three decisions taken up front:
+     curated vocabulary.
 
+     DECISIONS BAKED IN
        • SCOPE   — one shared picker serves events, shelf ideas, AND create-trip
                    (switcher below flips between the three host contexts).
-       • SET     — a CURATED, CATEGORISED emoji set (~36, six travel-native
-                   groups). Bounded like the type/colour/radius ramps — never a
-                   full OS emoji keyboard (unbounded, cross-platform-inconsistent,
-                   breaks the calm paper aesthetic).
-       • DEFAULT — AUTO-SUGGEST + OVERRIDE. The icon pre-fills from the title
-                   keywords (and, for a booking, its type; for a trip, its
-                   destination); a "✨ אוטומטי" tag marks the suggestion. The
-                   moment the user taps a different icon, manual wins and the tag
-                   clears. A "↺" on the chip reverts to auto.
+       • SET     — a CURATED, CATEGORISED emoji set (~100, ten travel-native
+                   groups) with a category quick-filter. Bounded, but generous —
+                   never the full OS emoji keyboard.
+       • DEFAULT — AUTO-SUGGEST via BOOKING TYPE only ("Tier B"). An event backed
+                   by a booking has a structured type (flight/hotel/…); we map
+                   that type → icon deterministically. NO free-text/NLP guessing
+                   (that was the fuzzy "Tier C" we dropped). Ideas & trips have no
+                   type, so they just get a sensible default + manual pick.
+                   Manual choice always wins; "↺" reverts to the suggestion.
 
      Design-language anchors:
        • "Emoji are content, icons are UI" — the badge IS emoji content, so the
-         picker chooses a curated EMOJI, not a lucide glyph. Consistent with how
-         DayView / PlanDay already render event.icon.
-       • Colour budget — the picker chrome is NEUTRAL. Selection uses an ink fill,
-         NOT amber/teal/violet (those stay reserved for time/place/plan).
+         picker chooses a curated EMOJI, not a lucide glyph.
+       • Colour budget — picker chrome is NEUTRAL. Selection uses an ink fill,
+         never amber/teal/violet (reserved for time/place/plan).
        • ≥44px targets, RTL, phone-first (~392px). Orthogonal to hard/soft.
 
-     Interactive — type a title (try "טיסה", "מלון", "מסעדה"), open the chip,
-     pick an icon, hit ↺ to go back to auto. Switch host context up top. -->
+     Interactive — pick a booking type to watch the icon auto-fill, open the chip
+     to browse/override, filter by category, switch host up top. -->
 <html lang="he" dir="rtl">
   <head>
     <meta charset="UTF-8" />
@@ -45,7 +45,6 @@
         --card: #ffffff;
         --paper: #f3efe6;
         --amber: #e9a63c;
-        --amber-deep: #c9822a;
         --plan: #6e59d6;
         --plan-deep: #5747b4;
         --plan-tint: rgba(110, 89, 214, 0.1);
@@ -192,32 +191,36 @@
         font-weight: 600;
         color: var(--muted);
       }
-      .form-field > input {
-        font: inherit;
+      /* Shared input look — applied to EVERY text input, incl. the title one
+         (which is nested, so it must be targeted explicitly, not via `>`). */
+      .form-field input,
+      .titlerow .grow input {
+        font-family: var(--font-body);
         font-size: 14px;
         font-weight: 500;
         color: var(--ink);
         background: #fff;
         border: 1px solid var(--line);
-        border-radius: 9px;
-        padding: 9px 10px;
+        border-radius: 11px;
+        padding: 0 11px;
         width: 100%;
       }
-      .hint-inline {
-        font-size: 11px;
-        font-weight: 600;
-        color: var(--muted);
+      .form-field > input {
+        height: 40px;
       }
 
-      /* ===== Title row: leading icon chip + the title input ===== */
+      /* ===== Title row: leading icon chip + the title input, EQUAL HEIGHT ===== */
       .titlerow {
         display: flex;
-        align-items: flex-start;
+        align-items: center; /* chip and input share a centre line */
         gap: 9px;
       }
       .titlerow .grow {
         flex: 1;
         min-width: 0;
+      }
+      .titlerow .grow input {
+        height: 44px; /* matches the chip exactly */
       }
 
       /* The icon chip — a 44px tappable button that previews the badge exactly
@@ -251,38 +254,51 @@
         content: '';
         position: absolute;
         bottom: 4px;
-        left: 4px;
+        inset-inline-start: 4px;
         width: 0;
         height: 0;
         border-left: 3px solid transparent;
         border-right: 3px solid transparent;
         border-top: 4px solid var(--soft-line);
       }
-      /* "✨ אוטומטי" flag — shown only while the icon is auto-derived and the
-         user hasn't overridden. Sits under the chip. */
-      .auto-tag {
-        display: inline-flex;
-        align-items: center;
-        gap: 3px;
-        margin-top: 5px;
-        font-size: 10px;
-        font-weight: 700;
+      .auto-caption {
+        display: none;
+        font-size: 11px;
+        font-weight: 600;
         color: var(--muted);
-        background: var(--paper);
-        border: 1px solid var(--line);
-        border-radius: 999px;
-        padding: 2px 7px;
-        white-space: nowrap;
+        margin-top: -4px;
       }
-      .icon-slot {
-        display: flex;
-        flex-direction: column;
-        align-items: center;
+      .auto-caption.show {
+        display: block;
       }
 
-      /* ===== The picker panel — full width inside the form card, in normal
-         flow (like the time-setter dropdown). Never a floating popover: at the
-         phone width a narrow anchored popover clips the category row. ===== */
+      /* ===== Booking-type selector (event host only) — the auto signal ===== */
+      .type-row {
+        display: flex;
+        flex-wrap: wrap;
+        gap: 6px;
+      }
+      .type-chip {
+        font-family: var(--font-body);
+        font-size: 12.5px;
+        font-weight: 600;
+        color: var(--muted);
+        background: #fff;
+        border: 1px solid var(--line);
+        border-radius: 999px;
+        padding: 6px 11px;
+        cursor: pointer;
+        display: inline-flex;
+        align-items: center;
+        gap: 5px;
+      }
+      .type-chip.on {
+        color: var(--ink);
+        background: var(--screen);
+        border-color: var(--ink);
+      }
+
+      /* ===== The picker panel — full width inside the form card, in flow ===== */
       .picker {
         margin-top: 4px;
         width: 100%;
@@ -331,7 +347,6 @@
         background: var(--screen);
       }
 
-      /* category quick-filter chips (horizontal scroll) */
       .cats {
         display: flex;
         gap: 5px;
@@ -363,7 +378,7 @@
       }
 
       .grid-scroll {
-        max-height: 234px;
+        max-height: 236px;
         overflow-y: auto;
         scrollbar-width: thin;
         padding: 6px 10px 12px;
@@ -380,7 +395,7 @@
         font-weight: 700;
         color: var(--muted);
         letter-spacing: 0.02em;
-        margin: 10px 2px 6px;
+        margin: 11px 2px 6px;
       }
       .cat-label:first-child {
         margin-top: 4px;
@@ -413,8 +428,7 @@
         background: var(--ink);
         box-shadow: 0 0 0 2px rgba(22, 35, 61, 0.25);
       }
-      /* the auto-suggested icon, when not yet overridden, gets a dashed hint ring
-         so you can see "this is what we guessed" before you commit to anything */
+      /* the type-suggested icon, before override, gets a dashed hint ring */
       .cell.auto {
         border-color: var(--soft-line);
         border-style: dashed;
@@ -474,7 +488,7 @@
   </head>
   <body>
     <div class="kicker">Waypoint · <b>בחירת סמל</b> · מוקאפ v1</div>
-    <h1 class="title">סמל לאירוע, לרעיון ולטיול — סט מוגבל, הצעה אוטומטית</h1>
+    <h1 class="title">סמל לאירוע, לרעיון ולטיול — סט עשיר, הצעה לפי סוג</h1>
 
     <div class="switcher">
       <button id="sw-event" class="on" onclick="setHost('event')">אירוע</button>
@@ -494,24 +508,20 @@
           <div class="form-field">
             <span id="title-label">כותרת</span>
             <div class="titlerow">
-              <!-- Leading icon chip: a 44px badge preview that opens the panel. -->
-              <div class="icon-slot">
-                <button
-                  type="button"
-                  class="icon-chip"
-                  id="chip"
-                  aria-label="בחר סמל"
-                  onclick="togglePicker(event)"
-                >
-                  📌
-                </button>
-                <span class="auto-tag" id="auto-tag">✨ אוטומטי</span>
-              </div>
-
+              <button
+                type="button"
+                class="icon-chip"
+                id="chip"
+                aria-label="בחר סמל"
+                onclick="togglePicker(event)"
+              >
+                📌
+              </button>
               <div class="grow">
-                <input id="title-input" placeholder="למשל: טיסה לאתונה" oninput="onTitle()" />
+                <input id="title-input" placeholder="למשל: טיסה לאתונה" />
               </div>
             </div>
+            <span class="auto-caption" id="auto-caption">✨ נבחר לפי סוג ההזמנה · אפשר לשנות</span>
 
             <!-- Full-width panel under the title row (in flow — pushes the rest
                  of the form down, like the time-setter dropdown). -->
@@ -519,12 +529,19 @@
               <div class="picker-head">
                 <span class="lbl">בחירת סמל</span>
                 <button type="button" class="revert" id="revert" onclick="revertAuto()">
-                  ↺ חזרה לאוטומטי
+                  ↺ איפוס
                 </button>
               </div>
               <div class="cats" id="cats"></div>
               <div class="grid-scroll" id="grid-scroll"></div>
             </div>
+          </div>
+
+          <!-- Booking type — the auto signal (represents the linked Booking.type
+               on a hard event). Event host only. -->
+          <div class="form-field" id="type-field">
+            <span>סוג הזמנה</span>
+            <div class="type-row" id="type-row"></div>
           </div>
 
           <label class="form-field" id="secondary-field">
@@ -536,25 +553,26 @@
     </div>
 
     <p class="hint" id="hint">
-      הקלד כותרת (נסה <b>טיסה</b>, <b>מלון</b>, <b>מסעדה</b>) — הסמל נבחר לבד.<br />
-      פתח את הצ׳יפ ובחר אחר כדי לעקוף · <b>↺</b> מחזיר לאוטומטי.
+      בחר <b>סוג הזמנה</b> — הסמל מתמלא לבד.<br />
+      פתח את הצ׳יפ כדי לעיין ולשנות · <b>↺</b> חוזר להצעה.
     </p>
 
     <div class="notes">
       <h2>ההחלטות</h2>
       <ul>
         <li>
-          <b>סט מוגבל, מקוטלג.</b> ~36 סמלים בשש קבוצות טבעיות לטיול (תחבורה · אוכל · לינה · אתרים ·
-          טבע · מעשי). מוגבל כמו שאר ה־ramps — לא מקלדת אימוג׳י מלאה.
+          <b>סט עשיר אך מוגבל.</b> ~100 סמלים בעשר קבוצות (תחבורה · אוכל · שתייה · לינה · אתרים · טבע
+          · פעילות · קניות · מעשי · כללי), עם סינון לפי קבוצה. מוגבל — לא מקלדת אימוג׳י מלאה.
         </li>
         <li>
-          <b>הצעה אוטומטית + עקיפה.</b> הסמל מתמלא מהכותרת (ולאירוע-הזמנה גם מהסוג, לטיול מהיעד). תג
-          <b>✨ אוטומטי</b> מסמן שזו הצעה; ברגע שבוחרים ידנית — הבחירה גוברת והתג נעלם. <b>↺</b> חוזר
-          להצעה.
+          <b>הצעה לפי סוג בלבד (Tier B).</b> אירוע עם הזמנה נושא <em>סוג</em> מובנה
+          (<code>flight/hotel/…</code>); ממפים סוג→סמל <b>דטרמיניסטית</b>. בלי ניחוש מטקסט חופשי (זה
+          ה־Tier C הפאזי שוויתרנו עליו). רעיון וטיול — אין להם סוג, אז מקבלים ברירת מחדל + בחירה
+          ידנית. בחירה ידנית תמיד גוברת; <b>↺</b> חוזר להצעה.
         </li>
         <li>
-          <b>רכיב אחד, שלושה מארחים.</b> אותו בורר משרת <code>EventForm</code>, את "רעיון חדש" במדף,
-          ואת יצירת הטיול. השדה כבר קיים בסכימה: <code>icon?</code> על Event ו־MaybeItem.
+          <b>רכיב אחד, שלושה מארחים.</b> אותו בורר משרת <code>EventForm</code>, "רעיון חדש" במדף,
+          ויצירת הטיול. השדה כבר קיים בסכימה: <code>icon?</code> על Event ו־MaybeItem.
         </li>
         <li>
           <b>ניטרלי בכוונה.</b> הבחירה מסומנת במילוי <code>--ink</code> ולא בענבר/טורקיז/סגול —
@@ -563,58 +581,83 @@
       </ul>
       <h2>פתוח לדיון</h2>
       <ul>
-        <li>הסט עצמו — 36 הסמלים ותוויות הקבוצות (למטה בקוד). קל להוסיף/להסיר.</li>
-        <li>מילון מילות המפתח להצעה (עברית + אנגלית) — מה כדאי לכסות.</li>
+        <li>הסט (עשר הקבוצות + ~100 הסמלים, למטה בקוד) — מה להוסיף/להסיר.</li>
+        <li>מיפוי סוג→סמל: <code>flight ✈️ · hotel 🏨 · restaurant 🍽️ · train 🚆 · activity 🎫 · other 📌</code>.</li>
         <li>האם הצ׳יפ צריך להופיע גם בכרטיס האירוע בתצוגת היום כעריכה מהירה, או רק בטופס.</li>
       </ul>
     </div>
 
     <script>
-      // ── The curated set: six travel-native categories, ~6 each (36 total). ──
+      // ── The curated set: ten travel-native categories, ~100 glyphs. ──
       const CATEGORIES = [
-        { id: 'transport', label: 'תחבורה', icons: ['✈️', '🚆', '🚌', '🚗', '🚕', '⛴️'] },
-        { id: 'food', label: 'אוכל ושתייה', icons: ['🍜', '🍽️', '☕', '🍺', '🍷', '🍰'] },
-        { id: 'lodging', label: 'לינה', icons: ['🏨', '🏠', '🏕️', '🛏️', '♨️', '🔑'] },
-        { id: 'sights', label: 'אתרים ותרבות', icons: ['⛩️', '🏛️', '🗼', '🏰', '🖼️', '🎭'] },
-        { id: 'nature', label: 'טבע ופנאי', icons: ['⛰️', '🏖️', '🌸', '🌊', '🥾', '🛍️'] },
-        { id: 'practical', label: 'מעשי', icons: ['🎫', '💊', '🏧', '📶', '📄', '📌'] },
+        {
+          id: 'transport',
+          label: 'תחבורה',
+          icons: ['✈️', '🚆', '🚄', '🚈', '🚌', '🚗', '🚕', '🚉', '🛵', '🚲', '⛴️', '🚢', '🚡', '🛺'],
+        },
+        {
+          id: 'food',
+          label: 'אוכל',
+          icons: ['🍜', '🍱', '🍣', '🍽️', '🍕', '🍔', '🥘', '🥗', '🍝', '🌮', '🍢', '🥟', '🧆', '🍦'],
+        },
+        {
+          id: 'drink',
+          label: 'שתייה',
+          icons: ['☕', '🍵', '🧋', '🍺', '🍷', '🍸', '🍹', '🥂', '🧉', '🥤'],
+        },
+        {
+          id: 'lodging',
+          label: 'לינה',
+          icons: ['🏨', '🏠', '🏡', '🏕️', '⛺', '🛏️', '🏩', '🏯', '♨️', '🔑'],
+        },
+        {
+          id: 'sights',
+          label: 'אתרים ותרבות',
+          icons: ['⛩️', '🏛️', '🗼', '🗽', '🏰', '🕌', '⛪', '🕍', '🖼️', '🎭', '🎨', '🎪', '🎋'],
+        },
+        {
+          id: 'nature',
+          label: 'טבע וחוץ',
+          icons: ['⛰️', '🌋', '🏔️', '🏖️', '🏝️', '🏞️', '🌊', '🌸', '🌲', '🍁', '🌅', '🐳', '🦌'],
+        },
+        {
+          id: 'activity',
+          label: 'פעילות ופנאי',
+          icons: ['🎫', '🎢', '🎡', '🎠', '🎿', '🏂', '🏄', '🚵', '🥾', '🧗', '🎣', '🛶', '🏊', '🎮'],
+        },
+        {
+          id: 'shopping',
+          label: 'קניות',
+          icons: ['🛍️', '🛒', '🏬', '🏪', '🎁', '💐', '🕯️', '🧴'],
+        },
+        {
+          id: 'practical',
+          label: 'מעשי ובריאות',
+          icons: ['🎟️', '💊', '🏥', '🏧', '🏦', '📮', '📶', '🔌', '🧳', '🧾', '📄', '🆘', '🅿️'],
+        },
+        {
+          id: 'general',
+          label: 'כללי',
+          icons: ['📌', '📍', '⭐', '❤️', '✅', '❓', '🔖', '💡', '🎉', '🎂'],
+        },
       ];
-      const DEFAULT_ICON = '📌';
 
-      // ── Auto-suggest: title keywords → icon (Hebrew + a little English). ──
-      // First match wins; falls back to the host default when nothing hits.
-      const KEYWORDS = [
-        [['טיסה', 'מטוס', 'נמל תעופה', 'flight', 'airport'], '✈️'],
-        [['רכבת', 'train', 'שינקנסן'], '🚆'],
-        [['אוטובוס', 'bus'], '🚌'],
-        [['מונית', 'taxi', 'הסעה'], '🚕'],
-        [['מעבורת', 'ferry', 'שייט'], '⛴️'],
-        [['מלון', 'לינה', 'הוסטל', 'hotel', 'airbnb', 'צ׳ק אין'], '🏨'],
-        [['אונסן', 'מרחצאות', 'onsen', 'ספא', 'spa'], '♨️'],
-        [['מסעדה', 'ארוחה', 'צהריים', 'ערב', 'dinner', 'lunch', 'restaurant'], '🍽️'],
-        [['ראמן', 'סושי', 'אוכל רחוב', 'ramen'], '🍜'],
-        [['קפה', 'בית קפה', 'coffee', 'café'], '☕'],
-        [['בר', 'שתייה', 'בירה', 'drinks', 'bar', 'פאב'], '🍺'],
-        [['מקדש', 'מקדשים', 'temple', 'מנזר', 'shrine'], '⛩️'],
-        [['מוזיאון', 'גלריה', 'museum', 'תערוכה'], '🖼️'],
-        [['טירה', 'ארמון', 'castle', 'מצודה'], '🏰'],
-        [['מגדל', 'תצפית', 'tower', 'נקודת תצפית'], '🗼'],
-        [['הצגה', 'מופע', 'קונצרט', 'show', 'תיאטרון'], '🎭'],
-        [['טיול רגלי', 'הליכה', 'מסלול', 'hike', 'trek'], '🥾'],
-        [['הר', 'הרים', 'mountain', 'פוג׳י'], '⛰️'],
-        [['חוף', 'ים', 'beach', 'שנרקל'], '🏖️'],
-        [['פארק', 'גן', 'פריחה', 'סאקורה', 'park'], '🌸'],
-        [['קניות', 'שוק', 'shopping', 'קניון', 'market'], '🛍️'],
-        [['כרטיס', 'הזמנה', 'ticket', 'כניסה'], '🎫'],
-        [['בית מרקחת', 'תרופה', 'pharmacy', 'רופא'], '💊'],
-        [['כספומט', 'atm', 'המרה', 'כסף'], '🏧'],
-      ];
-
-      // Destination keywords for the create-trip host (icon from the *place*).
-      const DEST_KEYWORDS = [
-        [['יפן', 'טוקיו', 'japan', 'tokyo', 'קיוטו'], '⛩️'],
-        [['יוון', 'אתונה', 'greece', 'איים'], '🏖️'],
-        [['הרים', 'אלפים', 'סקי', 'alps', 'ski'], '⛰️'],
+      // ── Tier B: booking type → icon (deterministic; the ONLY auto source). ──
+      const TYPE_ICON = {
+        flight: '✈️',
+        hotel: '🏨',
+        restaurant: '🍽️',
+        train: '🚆',
+        activity: '🎫',
+        other: '📌',
+      };
+      const BOOKING_TYPES = [
+        { id: 'flight', label: 'טיסה', icon: '✈️' },
+        { id: 'hotel', label: 'לינה', icon: '🏨' },
+        { id: 'restaurant', label: 'מסעדה', icon: '🍽️' },
+        { id: 'train', label: 'רכבת', icon: '🚆' },
+        { id: 'activity', label: 'פעילות', icon: '🎫' },
+        { id: 'other', label: 'אחר', icon: '📌' },
       ];
 
       // ── Host contexts — the one picker, three forms. ──
@@ -623,51 +666,42 @@
           formTitle: 'אירוע חדש',
           titleLabel: 'כותרת',
           titlePlaceholder: 'למשל: טיסה לאתונה',
+          showType: true,
           secondaryLabel: 'מיקום',
           secondaryPlaceholder: 'נמל התעופה בן גוריון',
-          def: DEFAULT_ICON,
-          table: KEYWORDS,
+          def: '📌',
         },
         idea: {
           formTitle: 'רעיון חדש למדף',
           titleLabel: 'רעיון',
           titlePlaceholder: 'למשל: מקדש פושׅימי אינארי',
+          showType: false,
           secondaryLabel: null, // shelf ideas are just title + icon today
           def: '💡',
-          table: KEYWORDS,
         },
         trip: {
           formTitle: 'טיול חדש',
           titleLabel: 'שם הטיול',
           titlePlaceholder: 'למשל: יפן ׳26',
+          showType: false,
           secondaryLabel: 'יעד',
           secondaryPlaceholder: 'טוקיו · קיוטו · אוסקה',
           def: '🧳',
-          table: null, // trip suggests from the *destination* field, below
         },
       };
 
       let host = 'event';
-      let manual = false; // has the user overridden the auto suggestion?
-      let selected = DEFAULT_ICON; // the committed icon
-      let autoIcon = DEFAULT_ICON; // what auto currently suggests
+      let bookingType = null; // event host: the chosen booking type (auto signal)
+      let manual = false; // has the user overridden the suggestion?
+      let selected = '📌'; // committed icon
+      let autoIcon = '📌'; // what the suggestion currently is
       let activeCat = 'all';
 
       const $ = (id) => document.getElementById(id);
 
       function currentAuto() {
-        const h = HOSTS[host];
-        // trip → suggest from destination; others → from title.
-        const text = (
-          host === 'trip' ? $('secondary-input').value : $('title-input').value
-        ).toLowerCase();
-        const table = host === 'trip' ? DEST_KEYWORDS : h.table;
-        if (text.trim() && table) {
-          for (const [keys, icon] of table) {
-            if (keys.some((k) => text.includes(k.toLowerCase()))) return icon;
-          }
-        }
-        return h.def;
+        if (host === 'event' && bookingType) return TYPE_ICON[bookingType] ?? HOSTS.event.def;
+        return HOSTS[host].def;
       }
 
       function recompute() {
@@ -678,10 +712,32 @@
 
       function render() {
         $('chip').textContent = selected;
-        $('auto-tag').style.display = manual ? 'none' : 'inline-flex';
+        // caption only when a *real* suggestion is active (type gave a specific
+        // icon that isn't the plain default) and the user hasn't overridden.
+        const suggesting = !manual && autoIcon !== HOSTS[host].def;
+        $('auto-caption').classList.toggle('show', suggesting);
         $('revert').classList.toggle('show', manual);
-        renderGrid();
-        renderCats();
+        if ($('picker').classList.contains('show')) {
+          renderCats();
+          renderGrid();
+        }
+      }
+
+      function renderTypeRow() {
+        const box = $('type-row');
+        box.innerHTML = '';
+        BOOKING_TYPES.forEach((tp) => {
+          const b = document.createElement('button');
+          b.type = 'button';
+          b.className = 'type-chip' + (tp.id === bookingType ? ' on' : '');
+          b.innerHTML = `<span>${tp.icon}</span> ${tp.label}`;
+          b.onclick = () => {
+            bookingType = tp.id;
+            renderTypeRow();
+            recompute();
+          };
+          box.appendChild(b);
+        });
       }
 
       function renderCats() {
@@ -730,7 +786,7 @@
 
       function pick(ic) {
         selected = ic;
-        manual = true; // manual choice wins over auto from here
+        manual = true; // manual choice wins from here
         render();
         closePicker();
       }
@@ -745,7 +801,10 @@
         const p = $('picker');
         const open = p.classList.toggle('show');
         $('chip').classList.toggle('open', open);
-        if (open) renderGrid();
+        if (open) {
+          renderCats();
+          renderGrid();
+        }
       }
       function closePicker() {
         $('picker').classList.remove('show');
@@ -755,17 +814,12 @@
         if (!e.target.closest('#picker') && !e.target.closest('#chip')) closePicker();
       });
 
-      function onTitle() {
-        recompute();
-      }
-
       function setHost(h) {
         host = h;
         manual = false;
+        bookingType = null;
         activeCat = 'all';
-        ['event', 'idea', 'trip'].forEach((k) =>
-          $('sw-' + k).classList.toggle('on', k === h),
-        );
+        ['event', 'idea', 'trip'].forEach((k) => $('sw-' + k).classList.toggle('on', k === h));
         const cfg = HOSTS[h];
         $('form-title').textContent = cfg.formTitle;
         $('title-label').textContent = cfg.titleLabel;
@@ -773,13 +827,15 @@
         $('title-input').value = '';
         $('chrome-day').style.display = h === 'trip' ? 'none' : '';
 
+        $('type-field').style.display = cfg.showType ? '' : 'none';
+        if (cfg.showType) renderTypeRow();
+
         const sec = $('secondary-field');
         if (cfg.secondaryLabel) {
           sec.style.display = '';
           $('secondary-label').textContent = cfg.secondaryLabel;
           $('secondary-input').placeholder = cfg.secondaryPlaceholder;
           $('secondary-input').value = '';
-          $('secondary-input').oninput = h === 'trip' ? recompute : null;
         } else {
           sec.style.display = 'none';
         }
