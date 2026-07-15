@@ -4,7 +4,7 @@
 //   • loose exact-time parsing (the off-grid fallback), and
 //   • the same-day guard that keeps multi-day events out of scope.
 import { describe, it, expect } from 'vitest';
-import { parseLoose, endToDuration, clampSameDay } from './TimePicker';
+import { parseLoose, endToDuration, clampSameDay, nearestRoundSlot } from './TimePicker';
 
 describe('parseLoose', () => {
   it('parses HH:MM', () => {
@@ -54,5 +54,22 @@ describe('clampSameDay', () => {
     expect(clampSameDay(23 * 60 + 30)).toBe(23 * 60 + 30);
     expect(clampSameDay(24 * 60)).toBe(23 * 60 + 59); // start 22:00 + 3h
     expect(clampSameDay(30 * 60)).toBe(23 * 60 + 59);
+  });
+});
+
+describe('nearestRoundSlot (reopen suggestion)', () => {
+  it('rounds to the nearest quarter-hour', () => {
+    expect(nearestRoundSlot(11 * 60 + 47)).toBe(11 * 60 + 45); // 11:47 → 11:45
+    expect(nearestRoundSlot(11 * 60 + 57)).toBe(12 * 60); // 11:57 → 12:00
+    expect(nearestRoundSlot(9 * 60 + 7)).toBe(9 * 60); // 09:07 → 09:00
+    expect(nearestRoundSlot(9 * 60 + 8)).toBe(9 * 60 + 15); // 09:08 → 09:15
+  });
+
+  it('leaves an already-round slot unchanged', () => {
+    expect(nearestRoundSlot(9 * 60 + 30)).toBe(9 * 60 + 30);
+  });
+
+  it('caps at the last slot (23:45) so it is always a real list row', () => {
+    expect(nearestRoundSlot(23 * 60 + 58)).toBe(23 * 60 + 45); // not 24:00
   });
 });
