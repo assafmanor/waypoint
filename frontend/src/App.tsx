@@ -37,6 +37,7 @@ import { useClock } from './lib/useClock';
 import { useShrinkToFit } from './lib/useShrinkToFit';
 import {
   AVATAR_INITIAL_LENGTH,
+  DEFAULT_TRIP_ICON,
   DOT_SEPARATOR,
   ICONS,
   MEMBER_AVATAR_CAP,
@@ -190,6 +191,9 @@ function Header({
             onClick={onOpenSwitcher}
             aria-label={t.shell.switcher.title}
           >
+            <span className="trip-icon" aria-hidden="true">
+              {trip.icon ?? DEFAULT_TRIP_ICON}
+            </span>
             <span ref={tripNameRef} className="trip-name">
               {trip.name}
             </span>

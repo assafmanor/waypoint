@@ -87,6 +87,14 @@
   white-space: nowrap;
   min-width: 0;
 }
+/* the trip's chosen glyph, leading the switcher pill (ADR-0038 §5); falls
+   back to DEFAULT_TRIP_ICON when unset. Fixed-size so it never gets caught
+   by the .trip-name ellipsis shrink-to-fit. */
+.trip-icon {
+  flex: 0 0 auto;
+  font-size: 22px;
+  line-height: 1;
+}
 .trip-sub {
   color: #9daac8;
   font-size: 13px;
@@ -110,7 +118,7 @@
   background: rgba(255, 255, 255, 0.09);
   border: 1px solid rgba(255, 255, 255, 0.16);
   border-radius: 999px;
-  padding: 5px 8px 5px 14px;
+  padding: 5px 8px 5px 12px;
   font: inherit;
   color: inherit;
   cursor: pointer;
