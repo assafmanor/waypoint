@@ -1051,6 +1051,16 @@
         </div>
 
         <div class="note">
+          <div class="nt">📅 שדות תאריך — לאמץ מ-PR #92</div>
+          <div class="nb">
+            אותו תיקון date-picker שמוזג ב-CreateTrip/EventForm: <code>lang=DEVICE_LOCALE</code>
+            (פורמט מקומי ולא <code>mm/dd/yyyy</code> כמו שרואים כאן במוקאפ), <code>min</code>
+            של הסיום קשור להתחלה, ו-refine של <code>endDate ≥ startDate</code>. <b>בלי</b>
+            רצפה להיום — עריכת טיול קיים חייבת לאפשר תאריכים שכבר עברו/התחילו.
+          </div>
+        </div>
+
+        <div class="note">
           <div class="nt">⚒ קידום למנהל 👑</div>
           <div class="nb">
             מנהל מקדם משתתף למנהל. צריך <code>PATCH /trips/:id/members/:userId</code>

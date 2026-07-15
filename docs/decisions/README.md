@@ -80,3 +80,4 @@ What else we weighed and why we didn't pick it.
 | [0035](0035-in-app-back-and-return-gesture.md)      | In-app "back" is one guarded history step; the PWA return gesture triggers it (Home-anchor tabs, overlays in history)                    | Accepted |
 | [0036](0036-event-time-setter.md)                   | Event time-setter: quantized 15-min quick-pick + typeable exact fallback; end as duration; same-day only                                 | Accepted |
 | [0037](0037-overnight-events.md)                    | Overnight events: end may run to 07:00 next day, filed under the start night; transportation is a separate category (supersedes 0036 §5) | Accepted |
+| [0038](0038-trip-settings-admin-governed-data-plane.md) | Trip settings: admin-governed edits; settings mutations join the data plane (refines 0005/0032; partially supersedes 0022)            | Accepted |
