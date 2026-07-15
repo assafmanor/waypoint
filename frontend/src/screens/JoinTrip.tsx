@@ -30,7 +30,7 @@ import { getNow } from '../lib/useClock';
 import { ApiError, fetchInvitePreview, joinTrip } from '../lib/api';
 import { consumeJoinIntent, saveIntent, saveJoinIntent } from '../lib/intent';
 import { dayCount } from '../lib/hebrew';
-import { DOT_SEPARATOR, MS_PER_DAY } from '../constants';
+import { DEFAULT_TRIP_ICON, DOT_SEPARATOR, MS_PER_DAY } from '../constants';
 import { t } from '../i18n/he';
 
 type LoadState =
@@ -189,7 +189,10 @@ function Ready({ preview }: { preview: InvitePreview }) {
                 </span>
               )}
             </div>
-            <div className="ticket-name">{preview.tripName}</div>
+            <div className="ticket-name">
+              <span className="ticket-emoji">{preview.icon ?? DEFAULT_TRIP_ICON}</span>{' '}
+              {preview.tripName}
+            </div>
             <div className="ticket-meta">
               {preview.destination}
               <span className="dot">{DOT_SEPARATOR}</span>

@@ -102,6 +102,7 @@ export const toMaybeItemDto = (m: MaybeItem): SharedMaybeItem => ({
 
 export const toInvitePreviewDto = (t: Trip, memberCount: number): InvitePreview => ({
   tripName: t.name,
+  icon: t.icon ?? undefined,
   destination: t.destination,
   startDate: toDateOnly(t.startDate),
   endDate: toDateOnly(t.endDate),

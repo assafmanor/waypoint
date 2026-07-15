@@ -318,6 +318,8 @@ export const t = {
     open: 'בחר סמל',
     title: 'בחירת סמל',
     all: 'הכול',
+    searchPlaceholder: 'חפש סמל או מדינה…',
+    noMatch: 'לא נמצא סמל',
     categoryReadout: (label: string) => `קטגוריה: ${label}`,
     // Browse-group labels — keyed by IconGroup.id in @waypoint/shared's ICON_SET.
     groups: {

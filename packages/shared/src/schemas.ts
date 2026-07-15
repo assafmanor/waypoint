@@ -126,6 +126,7 @@ export type InviteUrl = z.infer<typeof inviteUrlSchema>;
 /** `GET /invites/:token` response — public preview shown before joining (ADR-0024). */
 export const invitePreviewSchema = z.object({
   tripName: z.string(),
+  icon: z.string().optional(), // the trip's chosen glyph, shown on the ticket
   destination: z.string(),
   startDate: z.string(),
   endDate: z.string(),
