@@ -1,10 +1,15 @@
 // Compact, familiar time setter for the event editor (T-054, ADR-0036).
 // Two small fields — start + duration — each opening a Google-Calendar-style
-// scroll list of 15-minute times, with a typeable exact-time field at the top
-// as the fallback for off-grid times (a flight at 09:07). Time is amber
-// (design-language: "amber = the clock & the commitment"); the end is entered
-// as a duration off the start but stored as an absolute HH:MM end, so the
-// EventForm save path (zonedIso) is unchanged.
+// scroll list of 15-minute times, with a native <input type="time"> at the top
+// as the exact-entry fallback (ADR-0036 §2c). Time is amber (design-language:
+// "amber = the clock & the commitment"); the end is entered as a duration off
+// the start but stored as an absolute HH:MM end, so the EventForm save path
+// (zonedIso) is unchanged.
+//
+// The exact field is the platform-native time control: the ":" is always on
+// screen, invalid values (76) are impossible, and the numeric keypad drives it.
+// Its `.value` is always canonical 24h "HH:MM" per the HTML spec regardless of
+// how it's displayed; `lang="he"` renders it 24h (no AM/PM) for our RTL app.
 //
 // Multi-day events are out of scope (ADR-0036 §Scope): every option keeps the
 // end on the same calendar day as the start, and an exact end at/or before the
@@ -25,30 +30,6 @@ const toMin = (hhmm: string) => {
 };
 const toHHMM = (min: number) => `${pad(Math.floor(min / 60))}:${pad(min % 60)}`;
 
-/** Parse a loose exact-time entry into minutes-of-day, or null.
- *  Accepts "9:07", "907", "0907", "9". Digits-only: last two are minutes. */
-export function parseLoose(raw: string): number | null {
-  const s = raw.trim();
-  let h: number, m: number;
-  if (s.includes(':')) {
-    const [a, b] = s.split(':');
-    h = parseInt(a, 10);
-    m = parseInt(b || '0', 10);
-  } else {
-    const d = s.replace(/\D/g, '');
-    if (!d) return null;
-    if (d.length <= 2) {
-      h = parseInt(d, 10);
-      m = 0;
-    } else {
-      m = parseInt(d.slice(-2), 10);
-      h = parseInt(d.slice(0, -2), 10);
-    }
-  }
-  if (Number.isNaN(h) || Number.isNaN(m) || h < 0 || h > 23 || m < 0 || m > 59) return null;
-  return h * 60 + m;
-}
-
 /** Minutes from start to a chosen end within the same day, or null when the end
  *  isn't a valid same-day end (at/before the start). Multi-day events are out of
  *  scope (ADR-0036), so a "tomorrow" end is rejected here, never rolled over. */
@@ -66,16 +47,6 @@ export function clampSameDay(min: number): number {
  *  to mutate — a round time when reopening the picker on an off-grid value. */
 export function nearestRoundSlot(min: number): number {
   return Math.min(Math.round(min / STEP) * STEP, MINUTES_IN_DAY - STEP);
-}
-
-/** Live-format a time entry so the ":" appears automatically as digits are
- *  typed — the user types numbers only, never the separator. Digits map
- *  right-aligned (last two = minutes), matching parseLoose: "930" → "9:30",
- *  "0907" → "09:07", "14" → "14", "1" → "1". */
-export function maskTime(raw: string): string {
-  const d = raw.replace(/\D/g, '').slice(0, 4);
-  if (d.length <= 2) return d;
-  return `${d.slice(0, d.length - 2)}:${d.slice(d.length - 2)}`;
 }
 
 function durationPhrase(min: number): string {
@@ -110,8 +81,6 @@ export function TimePicker({
   onChange: (next: { start: string; end: string }) => void;
 }) {
   const [open, setOpen] = useState<null | 'start' | 'dur'>(null);
-  // Mirror value for the exact-time inputs — seeded on open, free-typed after.
-  const [exact, setExact] = useState('');
   const [note, setNote] = useState<string | null>(null);
 
   const startMin = start ? toMin(start) : null;
@@ -136,8 +105,6 @@ export function TimePicker({
 
   const openPanel = (which: 'start' | 'dur') => {
     setNote(null);
-    if (which === 'start') setExact(start || '');
-    else setExact(end || (startMin != null ? toHHMM(Math.min(startMin + 60, LAST_MINUTE)) : ''));
     setOpen(which);
   };
   const close = () => {
@@ -146,11 +113,12 @@ export function TimePicker({
   };
 
   // Pick a start; preserve the existing duration, clamped to the same day.
-  const commitStart = (min: number) => {
+  // `min` from the list, or from the native exact input (always valid HH:MM).
+  const applyStart = (min: number, opts?: { close?: boolean }) => {
     let nextEnd = end;
     if (duration != null) nextEnd = toHHMM(clampSameDay(min + duration));
     onChange({ start: toHHMM(min), end: nextEnd });
-    close();
+    if (opts?.close) close();
   };
 
   const commitDuration = (d: number) => {
@@ -160,26 +128,15 @@ export function TimePicker({
   };
 
   // Exact end → derived duration. Same-day only: reject end ≤ start.
-  const commitExactEnd = (min: number) => {
+  const applyExactEnd = (v: string) => {
     if (startMin == null) return;
+    const min = toMin(v);
     if (endToDuration(startMin, min) == null) {
       setNote(t.eventForm.sameDayOnly);
       return;
     }
-    onChange({ start, end: toHHMM(min) });
-    close();
-  };
-
-  const onExactInput = (raw: string) => {
-    const masked = maskTime(raw);
-    setExact(masked);
     setNote(null);
-    const min = parseLoose(masked);
-    if (min == null) return;
-    if (open === 'start')
-      onChange({ start: toHHMM(min), end }); // live, keep panel open
-    else if (startMin != null && endToDuration(startMin, min) != null)
-      onChange({ start, end: toHHMM(min) });
+    onChange({ start, end: toHHMM(min) });
   };
 
   return (
@@ -227,15 +184,13 @@ export function TimePicker({
             <div className="tp-exact">
               <span className="tp-exact-lbl">{t.eventForm.exactStart}</span>
               <input
-                type="text"
-                inputMode="numeric"
+                type="time"
+                step={60}
+                lang="he"
                 dir="ltr"
-                maxLength={5}
-                value={exact}
-                autoComplete="off"
-                onFocus={(e) => e.currentTarget.select()}
-                onChange={(e) => onExactInput(e.target.value)}
-                onBlur={() => setExact(start || '')}
+                className="tp-time-input"
+                value={start}
+                onChange={(e) => e.target.value && applyStart(toMin(e.target.value))}
               />
             </div>
             <div className="tp-list" ref={centreSelected}>
@@ -250,7 +205,7 @@ export function TimePicker({
                         ? 'tp-list-suggest'
                         : undefined
                   }
-                  onClick={() => commitStart(min)}
+                  onClick={() => applyStart(min, { close: true })}
                 >
                   <span dir="ltr">{toHHMM(min)}</span>
                 </button>
@@ -264,19 +219,13 @@ export function TimePicker({
             <div className="tp-exact">
               <span className="tp-exact-lbl">{t.eventForm.exactEnd}</span>
               <input
-                type="text"
-                inputMode="numeric"
+                type="time"
+                step={60}
+                lang="he"
                 dir="ltr"
-                maxLength={5}
-                value={exact}
-                autoComplete="off"
-                onFocus={(e) => e.currentTarget.select()}
-                onChange={(e) => setExact(maskTime(e.target.value))}
-                onBlur={() => {
-                  const min = parseLoose(exact);
-                  if (min != null) commitExactEnd(min);
-                  else setExact(end || '');
-                }}
+                className="tp-time-input"
+                value={end}
+                onChange={(e) => e.target.value && applyExactEnd(e.target.value)}
               />
             </div>
             {note && <div className="tp-note">{note}</div>}
