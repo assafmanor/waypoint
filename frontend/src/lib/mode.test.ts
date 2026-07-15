@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { daysUntilStart, deriveMode } from './mode';
+import { daysUntilStart, deriveMode, tripPhase } from './mode';
 import { TRIP } from '../fixtures';
 
 describe('deriveMode', () => {
@@ -22,6 +22,26 @@ describe('deriveMode', () => {
     expect(deriveMode(TRIP, new Date('2026-07-14T14:30:00Z'))).toBe('trip');
     // One hour later it's 2026-07-15 00:30 JST — Plan mode.
     expect(deriveMode(TRIP, new Date('2026-07-14T15:30:00Z'))).toBe('plan');
+  });
+});
+
+describe('tripPhase', () => {
+  it('is pre before the trip starts', () => {
+    expect(tripPhase(TRIP, new Date('2026-07-04T23:00:00+09:00'))).toBe('pre');
+  });
+
+  it('is live from startDate through endDate inclusive', () => {
+    expect(tripPhase(TRIP, new Date('2026-07-05T00:00:01+09:00'))).toBe('live');
+    expect(tripPhase(TRIP, new Date('2026-07-14T23:59:00+09:00'))).toBe('live');
+  });
+
+  it('is past after the trip ends', () => {
+    expect(tripPhase(TRIP, new Date('2026-07-15T00:30:00+09:00'))).toBe('past');
+  });
+
+  it('reads the calendar day in the trip timezone, not UTC', () => {
+    expect(tripPhase(TRIP, new Date('2026-07-14T14:30:00Z'))).toBe('live');
+    expect(tripPhase(TRIP, new Date('2026-07-14T15:30:00Z'))).toBe('past');
   });
 });
 

@@ -94,24 +94,16 @@ function BootScreen({ text }: { text: string }) {
 // cycle: tapping a side just picks it. The override is session-only
 // (state/mode-state.tsx) — always auto-derived by default, tapping a side
 // just peeks at the other for now; a fresh load is always back to auto, no
-// reset control needed. The "switches on <date>" hint only means something
-// pre-trip: it's suppressed once the trip has started, whether that's the
-// real derived mode or an override (peeking at Trip mode pre-trip, or
-// tweaking the plan mid-trip, both hide it too). The prominent
-// countdown-to-departure lives on Home's Plan-mode prep dashboard (T-055),
-// not here — this is just a small, secondary reminder.
+// reset control needed.
+//
+// ADR-0040: Trip mode is a live-window-only state, so the toggle only exists
+// while the trip is live. Before it starts and after it ends Plan is the only
+// reachable mode — there's nothing to switch, and the departure board stays
+// scarce (ADR-0033). The countdown-to-departure lives on Plan Home's prep
+// dashboard (T-055), not here.
 function ModeToggle() {
-  const { trip } = useTrip();
-  const now = useClock();
-  const { mode, setOverride } = useMode();
-  const isPreTrip = mode === 'plan' && daysUntilStart(trip, now) !== null;
-  const startLabel = isPreTrip
-    ? new Intl.DateTimeFormat('he-IL', {
-        day: 'numeric',
-        month: 'numeric',
-        timeZone: 'UTC',
-      }).format(new Date(`${trip.startDate}T00:00:00Z`))
-    : null;
+  const { mode, phase, setOverride } = useMode();
+  if (phase !== 'live') return null;
   return (
     <div className="modebar">
       <div className="toggle">
@@ -121,7 +113,6 @@ function ModeToggle() {
         <button className={mode === 'trip' ? 'on' : ''} onClick={() => setOverride('trip')}>
           {ICONS.navigate} {t.mode.trip}
         </button>
-        {startLabel && <span className="auto">{t.mode.autoHint(startLabel)}</span>}
       </div>
     </div>
   );
