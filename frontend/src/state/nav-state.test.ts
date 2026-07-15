@@ -2,7 +2,7 @@
 // hooks that wrap these (useTripTab / useAppBack) are React+router bound; the
 // decisions themselves are pure and are what's worth pinning down.
 import { describe, expect, it } from 'vitest';
-import { structuralBackStep, tabStep } from './nav-state';
+import { structuralBackStep, systemBackDecision, tabStep } from './nav-state';
 
 describe('tabStep — Home-anchor tab model (ADR-0035 §3)', () => {
   it('is a no-op when already on the target tab', () => {
@@ -67,5 +67,33 @@ describe('structuralBackStep — goBack precedence (ADR-0035 §2)', () => {
         structuralBackStep({ insideTrip: false, tab: null, pathname, canGoBack: true }),
       ).toEqual({ kind: 'none' });
     }
+  });
+});
+
+describe('systemBackDecision — Android system-back routing (ADR-0035 §5)', () => {
+  const base = { hasOverlay: false, insideTrip: false, atHome: false, armed: false };
+
+  it('closes an open overlay first, regardless of where you are', () => {
+    expect(systemBackDecision({ ...base, hasOverlay: true })).toBe('close-overlay');
+    expect(systemBackDecision({ ...base, hasOverlay: true, insideTrip: true, atHome: true })).toBe(
+      'close-overlay',
+    );
+  });
+
+  it('arms the leave-trip confirm on the first back at the in-trip Home base', () => {
+    expect(systemBackDecision({ ...base, insideTrip: true, atHome: true, armed: false })).toBe(
+      'arm-exit',
+    );
+  });
+
+  it('leaves the trip on a second back within the confirm window', () => {
+    expect(systemBackDecision({ ...base, insideTrip: true, atHome: true, armed: true })).toBe(
+      'do-exit',
+    );
+  });
+
+  it('lets a non-Home tab / route back through to react-router', () => {
+    expect(systemBackDecision({ ...base, insideTrip: true, atHome: false })).toBe('allow');
+    expect(systemBackDecision({ ...base, insideTrip: false })).toBe('allow');
   });
 });
