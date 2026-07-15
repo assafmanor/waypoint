@@ -1,0 +1,800 @@
+<!doctype html>
+<!-- Event / item / trip icon picker — v1 (branch: claude/event-item-icons-lg46c5).
+     "Let's add the ability to choose icons for events and maybe items, from a
+     limited set."  The icon field already exists (Event.icon?, MaybeItem.icon?,
+     Trip has a 🧳 placeholder) — this mockup designs the missing PICKER + the
+     curated vocabulary, per three decisions taken up front:
+
+       • SCOPE   — one shared picker serves events, shelf ideas, AND create-trip
+                   (switcher below flips between the three host contexts).
+       • SET     — a CURATED, CATEGORISED emoji set (~36, six travel-native
+                   groups). Bounded like the type/colour/radius ramps — never a
+                   full OS emoji keyboard (unbounded, cross-platform-inconsistent,
+                   breaks the calm paper aesthetic).
+       • DEFAULT — AUTO-SUGGEST + OVERRIDE. The icon pre-fills from the title
+                   keywords (and, for a booking, its type; for a trip, its
+                   destination); a "✨ אוטומטי" tag marks the suggestion. The
+                   moment the user taps a different icon, manual wins and the tag
+                   clears. A "↺" on the chip reverts to auto.
+
+     Design-language anchors:
+       • "Emoji are content, icons are UI" — the badge IS emoji content, so the
+         picker chooses a curated EMOJI, not a lucide glyph. Consistent with how
+         DayView / PlanDay already render event.icon.
+       • Colour budget — the picker chrome is NEUTRAL. Selection uses an ink fill,
+         NOT amber/teal/violet (those stay reserved for time/place/plan).
+       • ≥44px targets, RTL, phone-first (~392px). Orthogonal to hard/soft.
+
+     Interactive — type a title (try "טיסה", "מלון", "מסעדה"), open the chip,
+     pick an icon, hit ↺ to go back to auto. Switch host context up top. -->
+<html lang="he" dir="rtl">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>Waypoint — בחירת סמל לאירוע / רעיון / טיול (מוקאפ v1)</title>
+    <link rel="preconnect" href="https://fonts.googleapis.com" />
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+    <link
+      href="https://fonts.googleapis.com/css2?family=Assistant:wght@400;500;600;700&family=Secular+One&family=JetBrains+Mono:wght@500;700&display=swap"
+      rel="stylesheet"
+    />
+    <style>
+      :root {
+        --ink: #16233d;
+        --screen: #e7eaef;
+        --card: #ffffff;
+        --paper: #f3efe6;
+        --amber: #e9a63c;
+        --amber-deep: #c9822a;
+        --plan: #6e59d6;
+        --plan-deep: #5747b4;
+        --plan-tint: rgba(110, 89, 214, 0.1);
+        --muted: #6c7488;
+        --miss: #c2584e;
+        --line: rgba(22, 35, 61, 0.1);
+        --soft-line: rgba(22, 35, 61, 0.28);
+        --cta: var(--ink);
+        --cta-text: #fff;
+        --shadow: 0 18px 40px -18px rgba(14, 23, 41, 0.45);
+        --font-head: 'Secular One', sans-serif;
+        --font-body: 'Assistant', sans-serif;
+        --font-mono: 'JetBrains Mono', monospace;
+      }
+      * {
+        box-sizing: border-box;
+        margin: 0;
+        padding: 0;
+        -webkit-tap-highlight-color: transparent;
+      }
+      html,
+      body {
+        min-height: 100%;
+      }
+      body {
+        font-family: var(--font-body);
+        background:
+          radial-gradient(120% 90% at 80% -10%, #2a3e68 0%, transparent 55%),
+          radial-gradient(120% 90% at 0% 110%, #1a2a4a 0%, transparent 50%), #0f1a31;
+        color: var(--ink);
+        min-height: 100vh;
+        display: flex;
+        flex-direction: column;
+        align-items: center;
+        padding: 24px 16px 60px;
+        -webkit-font-smoothing: antialiased;
+      }
+      .kicker {
+        color: #b9c4dc;
+        font-size: 12px;
+        letter-spacing: 0.06em;
+        text-transform: uppercase;
+        margin-bottom: 4px;
+        text-align: center;
+      }
+      .kicker b {
+        color: var(--plan);
+      }
+      h1.title {
+        font-family: var(--font-head);
+        color: #f4f7ff;
+        font-size: 20px;
+        font-weight: 400;
+        margin-bottom: 16px;
+        text-align: center;
+      }
+      .switcher {
+        display: inline-flex;
+        gap: 4px;
+        padding: 4px;
+        background: rgba(255, 255, 255, 0.06);
+        border: 1px solid rgba(255, 255, 255, 0.1);
+        border-radius: 999px;
+        margin-bottom: 20px;
+      }
+      .switcher button {
+        font-family: var(--font-body);
+        font-size: 13px;
+        font-weight: 700;
+        color: #c9d3e8;
+        background: none;
+        border: none;
+        border-radius: 999px;
+        padding: 7px 15px;
+        cursor: pointer;
+      }
+      .switcher button.on {
+        background: #f4f7ff;
+        color: var(--ink);
+      }
+
+      .phone {
+        width: 100%;
+        max-width: 392px;
+        background: var(--screen);
+        border-radius: 30px;
+        box-shadow: 0 26px 60px -18px rgba(0, 0, 0, 0.6);
+        overflow: hidden;
+        border: 1px solid rgba(255, 255, 255, 0.08);
+      }
+      .chrome {
+        background: #fbf9f4;
+        border-bottom: 1px solid var(--line);
+        padding: 12px 16px 11px;
+        display: flex;
+        align-items: center;
+        justify-content: space-between;
+      }
+      .mode-pill {
+        display: inline-flex;
+        align-items: center;
+        gap: 5px;
+        font-size: 12px;
+        font-weight: 700;
+        color: var(--plan-deep);
+        background: var(--plan-tint);
+        border: 1px solid rgba(110, 89, 214, 0.25);
+        border-radius: 999px;
+        padding: 4px 10px;
+      }
+      .chrome .day {
+        font-size: 12.5px;
+        color: var(--muted);
+        font-weight: 600;
+      }
+      .stage {
+        padding: 18px 16px 26px;
+        display: flex;
+        justify-content: center;
+      }
+      .form-card {
+        width: 100%;
+        max-width: 360px;
+        background: var(--card);
+        border: 1px solid var(--line);
+        border-radius: 15px;
+        padding: 16px;
+        box-shadow: var(--shadow);
+        display: flex;
+        flex-direction: column;
+        gap: 13px;
+      }
+      .form-title {
+        font-family: var(--font-head);
+        font-weight: 400;
+        font-size: 16px;
+        color: var(--ink);
+      }
+      .form-field {
+        display: flex;
+        flex-direction: column;
+        gap: 6px;
+        font-size: 12.5px;
+        font-weight: 600;
+        color: var(--muted);
+      }
+      .form-field > input {
+        font: inherit;
+        font-size: 14px;
+        font-weight: 500;
+        color: var(--ink);
+        background: #fff;
+        border: 1px solid var(--line);
+        border-radius: 9px;
+        padding: 9px 10px;
+        width: 100%;
+      }
+      .hint-inline {
+        font-size: 11px;
+        font-weight: 600;
+        color: var(--muted);
+      }
+
+      /* ===== Title row: leading icon chip + the title input ===== */
+      .titlerow {
+        display: flex;
+        align-items: stretch;
+        gap: 9px;
+      }
+      .titlerow .grow {
+        flex: 1;
+        min-width: 0;
+      }
+
+      /* The icon chip — a 44px tappable button that previews the badge exactly
+         as it renders in the day view. Neutral chrome; no semantic hue. */
+      .icon-chip {
+        position: relative;
+        flex: 0 0 auto;
+        width: 44px;
+        height: 44px;
+        align-self: flex-end;
+        display: grid;
+        place-items: center;
+        font-size: 22px;
+        line-height: 1;
+        background: #fff;
+        border: 1px solid var(--line);
+        border-radius: 11px;
+        cursor: pointer;
+        transition:
+          border-color 0.12s ease,
+          box-shadow 0.12s ease;
+      }
+      .icon-chip:hover {
+        border-color: var(--soft-line);
+      }
+      .icon-chip.open {
+        border-color: var(--ink);
+        box-shadow: 0 0 0 2px rgba(22, 35, 61, 0.12);
+      }
+      /* tiny caret so it reads as "opens a chooser", not a static badge */
+      .icon-chip::after {
+        content: '';
+        position: absolute;
+        bottom: 4px;
+        left: 4px;
+        width: 0;
+        height: 0;
+        border-left: 3px solid transparent;
+        border-right: 3px solid transparent;
+        border-top: 4px solid var(--soft-line);
+      }
+      /* "✨ אוטומטי" flag — shown only while the icon is auto-derived and the
+         user hasn't overridden. Sits under the chip. */
+      .auto-tag {
+        display: inline-flex;
+        align-items: center;
+        gap: 3px;
+        margin-top: 5px;
+        font-size: 10px;
+        font-weight: 700;
+        color: var(--muted);
+        background: var(--paper);
+        border: 1px solid var(--line);
+        border-radius: 999px;
+        padding: 2px 7px;
+        white-space: nowrap;
+      }
+      .icon-slot {
+        display: flex;
+        flex-direction: column;
+        align-items: center;
+      }
+
+      /* ===== The picker popover ===== */
+      .picker-wrap {
+        position: relative;
+      }
+      .picker {
+        position: absolute;
+        top: calc(100% + 8px);
+        inset-inline-start: 0;
+        z-index: 20;
+        width: 300px;
+        max-width: calc(100vw - 48px);
+        background: #fff;
+        border: 1px solid var(--line);
+        border-radius: 13px;
+        box-shadow: 0 16px 34px -14px rgba(14, 23, 41, 0.4);
+        overflow: hidden;
+        display: none;
+      }
+      .picker.show {
+        display: block;
+      }
+      .picker-head {
+        display: flex;
+        align-items: center;
+        justify-content: space-between;
+        padding: 10px 12px 9px;
+        border-bottom: 1px solid var(--line);
+      }
+      .picker-head .lbl {
+        font-size: 12px;
+        font-weight: 700;
+        color: var(--ink);
+      }
+      .picker-head .revert {
+        display: inline-flex;
+        align-items: center;
+        gap: 4px;
+        font-family: var(--font-body);
+        font-size: 11px;
+        font-weight: 700;
+        color: var(--muted);
+        background: none;
+        border: none;
+        cursor: pointer;
+        padding: 2px 4px;
+        border-radius: 6px;
+        visibility: hidden;
+      }
+      .picker-head .revert.show {
+        visibility: visible;
+      }
+      .picker-head .revert:hover {
+        color: var(--ink);
+        background: var(--screen);
+      }
+
+      /* category quick-filter chips (horizontal scroll) */
+      .cats {
+        display: flex;
+        gap: 5px;
+        padding: 9px 10px;
+        overflow-x: auto;
+        scrollbar-width: none;
+        border-bottom: 1px solid var(--line);
+      }
+      .cats::-webkit-scrollbar {
+        display: none;
+      }
+      .cats button {
+        flex: 0 0 auto;
+        font-family: var(--font-body);
+        font-size: 11.5px;
+        font-weight: 700;
+        color: var(--muted);
+        background: var(--screen);
+        border: 1px solid transparent;
+        border-radius: 999px;
+        padding: 5px 11px;
+        cursor: pointer;
+        white-space: nowrap;
+      }
+      .cats button.on {
+        color: var(--ink);
+        background: #fff;
+        border-color: var(--ink);
+      }
+
+      .grid-scroll {
+        max-height: 234px;
+        overflow-y: auto;
+        scrollbar-width: thin;
+        padding: 6px 10px 12px;
+      }
+      .grid-scroll::-webkit-scrollbar {
+        width: 6px;
+      }
+      .grid-scroll::-webkit-scrollbar-thumb {
+        background: var(--line);
+        border-radius: 3px;
+      }
+      .cat-label {
+        font-size: 10.5px;
+        font-weight: 700;
+        color: var(--muted);
+        letter-spacing: 0.02em;
+        margin: 10px 2px 6px;
+      }
+      .cat-label:first-child {
+        margin-top: 4px;
+      }
+      .grid {
+        display: grid;
+        grid-template-columns: repeat(6, 1fr);
+        gap: 4px;
+      }
+      .cell {
+        aspect-ratio: 1;
+        display: grid;
+        place-items: center;
+        font-size: 21px;
+        line-height: 1;
+        background: none;
+        border: 1px solid transparent;
+        border-radius: 10px;
+        cursor: pointer;
+        transition:
+          background 0.1s ease,
+          transform 0.1s ease;
+      }
+      .cell:hover {
+        background: var(--screen);
+      }
+      /* Selection — NEUTRAL ink fill (never a semantic hue). Non-colour
+         redundant: filled + ring, so it survives greyscale / colour-blindness. */
+      .cell.sel {
+        background: var(--ink);
+        box-shadow: 0 0 0 2px rgba(22, 35, 61, 0.25);
+      }
+      /* the auto-suggested icon, when not yet overridden, gets a dashed hint ring
+         so you can see "this is what we guessed" before you commit to anything */
+      .cell.auto {
+        border-color: var(--soft-line);
+        border-style: dashed;
+      }
+
+      .hint {
+        margin-top: 14px;
+        font-size: 12.5px;
+        color: #b9c4dc;
+        text-align: center;
+        line-height: 1.55;
+      }
+      .hint b {
+        color: #f4f7ff;
+      }
+
+      .notes {
+        width: 100%;
+        max-width: 392px;
+        margin-top: 22px;
+        color: #cdd6ea;
+        font-size: 13px;
+        line-height: 1.55;
+      }
+      .notes h2 {
+        font-family: var(--font-head);
+        font-weight: 400;
+        font-size: 14px;
+        color: #f4f7ff;
+        margin: 14px 0 8px;
+      }
+      .notes ul {
+        list-style: none;
+        display: flex;
+        flex-direction: column;
+        gap: 9px;
+      }
+      .notes li {
+        background: rgba(255, 255, 255, 0.04);
+        border: 1px solid rgba(255, 255, 255, 0.08);
+        border-radius: 11px;
+        padding: 10px 12px;
+      }
+      .notes li b {
+        color: #f4f7ff;
+        font-weight: 700;
+      }
+      .notes code {
+        font-family: var(--font-mono);
+        font-size: 12px;
+        color: var(--plan);
+        background: rgba(110, 89, 214, 0.14);
+        padding: 1px 5px;
+        border-radius: 5px;
+      }
+    </style>
+  </head>
+  <body>
+    <div class="kicker">Waypoint · <b>בחירת סמל</b> · מוקאפ v1</div>
+    <h1 class="title">סמל לאירוע, לרעיון ולטיול — סט מוגבל, הצעה אוטומטית</h1>
+
+    <div class="switcher">
+      <button id="sw-event" class="on" onclick="setHost('event')">אירוע</button>
+      <button id="sw-idea" onclick="setHost('idea')">רעיון (מדף)</button>
+      <button id="sw-trip" onclick="setHost('trip')">טיול חדש</button>
+    </div>
+
+    <div class="phone">
+      <div class="chrome">
+        <span class="mode-pill">✏️ תכנון</span>
+        <span class="day" id="chrome-day">יום ה׳ · 16 ביולי</span>
+      </div>
+      <div class="stage">
+        <form class="form-card" onsubmit="return false;">
+          <div class="form-title" id="form-title">אירוע חדש</div>
+
+          <div class="form-field">
+            <span id="title-label">כותרת</span>
+            <div class="titlerow">
+              <!-- Leading icon chip + its picker popover live together so the
+                   popover anchors to the chip. -->
+              <div class="picker-wrap">
+                <div class="icon-slot">
+                  <button
+                    type="button"
+                    class="icon-chip"
+                    id="chip"
+                    aria-label="בחר סמל"
+                    onclick="togglePicker(event)"
+                  >
+                    📌
+                  </button>
+                  <span class="auto-tag" id="auto-tag">✨ אוטומטי</span>
+                </div>
+
+                <div class="picker" id="picker">
+                  <div class="picker-head">
+                    <span class="lbl">בחירת סמל</span>
+                    <button type="button" class="revert" id="revert" onclick="revertAuto()">
+                      ↺ חזרה לאוטומטי
+                    </button>
+                  </div>
+                  <div class="cats" id="cats"></div>
+                  <div class="grid-scroll" id="grid-scroll"></div>
+                </div>
+              </div>
+
+              <div class="grow">
+                <input id="title-input" placeholder="למשל: טיסה לאתונה" oninput="onTitle()" />
+              </div>
+            </div>
+          </div>
+
+          <label class="form-field" id="secondary-field">
+            <span id="secondary-label">מיקום</span>
+            <input id="secondary-input" placeholder="נמל התעופה בן גוריון" />
+          </label>
+        </form>
+      </div>
+    </div>
+
+    <p class="hint" id="hint">
+      הקלד כותרת (נסה <b>טיסה</b>, <b>מלון</b>, <b>מסעדה</b>) — הסמל נבחר לבד.<br />
+      פתח את הצ׳יפ ובחר אחר כדי לעקוף · <b>↺</b> מחזיר לאוטומטי.
+    </p>
+
+    <div class="notes">
+      <h2>ההחלטות</h2>
+      <ul>
+        <li>
+          <b>סט מוגבל, מקוטלג.</b> ~36 סמלים בשש קבוצות טבעיות לטיול (תחבורה · אוכל · לינה · אתרים ·
+          טבע · מעשי). מוגבל כמו שאר ה־ramps — לא מקלדת אימוג׳י מלאה.
+        </li>
+        <li>
+          <b>הצעה אוטומטית + עקיפה.</b> הסמל מתמלא מהכותרת (ולאירוע-הזמנה גם מהסוג, לטיול מהיעד). תג
+          <b>✨ אוטומטי</b> מסמן שזו הצעה; ברגע שבוחרים ידנית — הבחירה גוברת והתג נעלם. <b>↺</b> חוזר
+          להצעה.
+        </li>
+        <li>
+          <b>רכיב אחד, שלושה מארחים.</b> אותו בורר משרת <code>EventForm</code>, את "רעיון חדש" במדף,
+          ואת יצירת הטיול. השדה כבר קיים בסכימה: <code>icon?</code> על Event ו־MaybeItem.
+        </li>
+        <li>
+          <b>ניטרלי בכוונה.</b> הבחירה מסומנת במילוי <code>--ink</code> ולא בענבר/טורקיז/סגול —
+          התקציב הסמנטי נשמר. הבורר הוא בקרת טופס רגילה.
+        </li>
+      </ul>
+      <h2>פתוח לדיון</h2>
+      <ul>
+        <li>הסט עצמו — 36 הסמלים ותוויות הקבוצות (למטה בקוד). קל להוסיף/להסיר.</li>
+        <li>מילון מילות המפתח להצעה (עברית + אנגלית) — מה כדאי לכסות.</li>
+        <li>האם הצ׳יפ צריך להופיע גם בכרטיס האירוע בתצוגת היום כעריכה מהירה, או רק בטופס.</li>
+      </ul>
+    </div>
+
+    <script>
+      // ── The curated set: six travel-native categories, ~6 each (36 total). ──
+      const CATEGORIES = [
+        { id: 'transport', label: 'תחבורה', icons: ['✈️', '🚆', '🚌', '🚗', '🚕', '⛴️'] },
+        { id: 'food', label: 'אוכל ושתייה', icons: ['🍜', '🍽️', '☕', '🍺', '🍷', '🍰'] },
+        { id: 'lodging', label: 'לינה', icons: ['🏨', '🏠', '🏕️', '🛏️', '♨️', '🔑'] },
+        { id: 'sights', label: 'אתרים ותרבות', icons: ['⛩️', '🏛️', '🗼', '🏰', '🖼️', '🎭'] },
+        { id: 'nature', label: 'טבע ופנאי', icons: ['⛰️', '🏖️', '🌸', '🌊', '🥾', '🛍️'] },
+        { id: 'practical', label: 'מעשי', icons: ['🎫', '💊', '🏧', '📶', '📄', '📌'] },
+      ];
+      const DEFAULT_ICON = '📌';
+
+      // ── Auto-suggest: title keywords → icon (Hebrew + a little English). ──
+      // First match wins; falls back to the host default when nothing hits.
+      const KEYWORDS = [
+        [['טיסה', 'מטוס', 'נמל תעופה', 'flight', 'airport'], '✈️'],
+        [['רכבת', 'train', 'שינקנסן'], '🚆'],
+        [['אוטובוס', 'bus'], '🚌'],
+        [['מונית', 'taxi', 'הסעה'], '🚕'],
+        [['מעבורת', 'ferry', 'שייט'], '⛴️'],
+        [['מלון', 'לינה', 'הוסטל', 'hotel', 'airbnb', 'צ׳ק אין'], '🏨'],
+        [['אונסן', 'מרחצאות', 'onsen', 'ספא', 'spa'], '♨️'],
+        [['מסעדה', 'ארוחה', 'צהריים', 'ערב', 'dinner', 'lunch', 'restaurant'], '🍽️'],
+        [['ראמן', 'סושי', 'אוכל רחוב', 'ramen'], '🍜'],
+        [['קפה', 'בית קפה', 'coffee', 'café'], '☕'],
+        [['בר', 'שתייה', 'בירה', 'drinks', 'bar', 'פאב'], '🍺'],
+        [['מקדש', 'מקדשים', 'temple', 'מנזר', 'shrine'], '⛩️'],
+        [['מוזיאון', 'גלריה', 'museum', 'תערוכה'], '🖼️'],
+        [['טירה', 'ארמון', 'castle', 'מצודה'], '🏰'],
+        [['מגדל', 'תצפית', 'tower', 'נקודת תצפית'], '🗼'],
+        [['הצגה', 'מופע', 'קונצרט', 'show', 'תיאטרון'], '🎭'],
+        [['טיול רגלי', 'הליכה', 'מסלול', 'hike', 'trek'], '🥾'],
+        [['הר', 'הרים', 'mountain', 'פוג׳י'], '⛰️'],
+        [['חוף', 'ים', 'beach', 'שנרקל'], '🏖️'],
+        [['פארק', 'גן', 'פריחה', 'סאקורה', 'park'], '🌸'],
+        [['קניות', 'שוק', 'shopping', 'קניון', 'market'], '🛍️'],
+        [['כרטיס', 'הזמנה', 'ticket', 'כניסה'], '🎫'],
+        [['בית מרקחת', 'תרופה', 'pharmacy', 'רופא'], '💊'],
+        [['כספומט', 'atm', 'המרה', 'כסף'], '🏧'],
+      ];
+
+      // Destination keywords for the create-trip host (icon from the *place*).
+      const DEST_KEYWORDS = [
+        [['יפן', 'טוקיו', 'japan', 'tokyo', 'קיוטו'], '⛩️'],
+        [['יוון', 'אתונה', 'greece', 'איים'], '🏖️'],
+        [['הרים', 'אלפים', 'סקי', 'alps', 'ski'], '⛰️'],
+      ];
+
+      // ── Host contexts — the one picker, three forms. ──
+      const HOSTS = {
+        event: {
+          formTitle: 'אירוע חדש',
+          titleLabel: 'כותרת',
+          titlePlaceholder: 'למשל: טיסה לאתונה',
+          secondaryLabel: 'מיקום',
+          secondaryPlaceholder: 'נמל התעופה בן גוריון',
+          def: DEFAULT_ICON,
+          table: KEYWORDS,
+        },
+        idea: {
+          formTitle: 'רעיון חדש למדף',
+          titleLabel: 'רעיון',
+          titlePlaceholder: 'למשל: מקדש פושׅימי אינארי',
+          secondaryLabel: null, // shelf ideas are just title + icon today
+          def: '💡',
+          table: KEYWORDS,
+        },
+        trip: {
+          formTitle: 'טיול חדש',
+          titleLabel: 'שם הטיול',
+          titlePlaceholder: 'למשל: יפן ׳26',
+          secondaryLabel: 'יעד',
+          secondaryPlaceholder: 'טוקיו · קיוטו · אוסקה',
+          def: '🧳',
+          table: null, // trip suggests from the *destination* field, below
+        },
+      };
+
+      let host = 'event';
+      let manual = false; // has the user overridden the auto suggestion?
+      let selected = DEFAULT_ICON; // the committed icon
+      let autoIcon = DEFAULT_ICON; // what auto currently suggests
+      let activeCat = 'all';
+
+      const $ = (id) => document.getElementById(id);
+
+      function currentAuto() {
+        const h = HOSTS[host];
+        // trip → suggest from destination; others → from title.
+        const text = (
+          host === 'trip' ? $('secondary-input').value : $('title-input').value
+        ).toLowerCase();
+        const table = host === 'trip' ? DEST_KEYWORDS : h.table;
+        if (text.trim() && table) {
+          for (const [keys, icon] of table) {
+            if (keys.some((k) => text.includes(k.toLowerCase()))) return icon;
+          }
+        }
+        return h.def;
+      }
+
+      function recompute() {
+        autoIcon = currentAuto();
+        if (!manual) selected = autoIcon;
+        render();
+      }
+
+      function render() {
+        $('chip').textContent = selected;
+        $('auto-tag').style.display = manual ? 'none' : 'inline-flex';
+        $('revert').classList.toggle('show', manual);
+        renderGrid();
+        renderCats();
+      }
+
+      function renderCats() {
+        const box = $('cats');
+        const all = [{ id: 'all', label: 'הכול' }, ...CATEGORIES];
+        box.innerHTML = '';
+        all.forEach((c) => {
+          const b = document.createElement('button');
+          b.type = 'button';
+          b.textContent = c.label;
+          b.className = c.id === activeCat ? 'on' : '';
+          b.onclick = () => {
+            activeCat = c.id;
+            renderCats();
+            renderGrid();
+          };
+          box.appendChild(b);
+        });
+      }
+
+      function renderGrid() {
+        const box = $('grid-scroll');
+        box.innerHTML = '';
+        const cats = activeCat === 'all' ? CATEGORIES : CATEGORIES.filter((c) => c.id === activeCat);
+        cats.forEach((cat) => {
+          if (activeCat === 'all') {
+            const lbl = document.createElement('div');
+            lbl.className = 'cat-label';
+            lbl.textContent = cat.label;
+            box.appendChild(lbl);
+          }
+          const grid = document.createElement('div');
+          grid.className = 'grid';
+          cat.icons.forEach((ic) => {
+            const b = document.createElement('button');
+            b.type = 'button';
+            b.className =
+              'cell' + (ic === selected ? ' sel' : '') + (!manual && ic === autoIcon ? ' auto' : '');
+            b.textContent = ic;
+            b.onclick = () => pick(ic);
+            grid.appendChild(b);
+          });
+          box.appendChild(grid);
+        });
+      }
+
+      function pick(ic) {
+        selected = ic;
+        manual = true; // manual choice wins over auto from here
+        render();
+        closePicker();
+      }
+
+      function revertAuto() {
+        manual = false;
+        recompute();
+      }
+
+      function togglePicker(e) {
+        e.stopPropagation();
+        const p = $('picker');
+        const open = p.classList.toggle('show');
+        $('chip').classList.toggle('open', open);
+        if (open) renderGrid();
+      }
+      function closePicker() {
+        $('picker').classList.remove('show');
+        $('chip').classList.remove('open');
+      }
+      document.addEventListener('click', (e) => {
+        if (!e.target.closest('.picker-wrap')) closePicker();
+      });
+
+      function onTitle() {
+        recompute();
+      }
+
+      function setHost(h) {
+        host = h;
+        manual = false;
+        activeCat = 'all';
+        ['event', 'idea', 'trip'].forEach((k) =>
+          $('sw-' + k).classList.toggle('on', k === h),
+        );
+        const cfg = HOSTS[h];
+        $('form-title').textContent = cfg.formTitle;
+        $('title-label').textContent = cfg.titleLabel;
+        $('title-input').placeholder = cfg.titlePlaceholder;
+        $('title-input').value = '';
+        $('chrome-day').style.display = h === 'trip' ? 'none' : '';
+
+        const sec = $('secondary-field');
+        if (cfg.secondaryLabel) {
+          sec.style.display = '';
+          $('secondary-label').textContent = cfg.secondaryLabel;
+          $('secondary-input').placeholder = cfg.secondaryPlaceholder;
+          $('secondary-input').value = '';
+          $('secondary-input').oninput = h === 'trip' ? recompute : null;
+        } else {
+          sec.style.display = 'none';
+        }
+        closePicker();
+        recompute();
+      }
+
+      setHost('event');
+    </script>
+  </body>
+</html>
