@@ -44,7 +44,7 @@
 | POST   | `/trips/join/:token`             | `joinTripSchema` (`{ calendarSyncEnabled? }`) → `Membership` (peer join; idempotent; rejoin re-applies the flag)                            |
 | PATCH  | `/trips/:tripId/members/me`      | `updateMembershipPrefsSchema` (`{ calendarSyncEnabled }`) → `Membership` (caller's own row only, ADR-0005)                                  |
 | PATCH  | `/trips/:tripId/members/:userId` | `{ role }` → `Membership` (**admin-only**; promote a peer to `admin`, ADR-0038; no explicit demotion in v1)                                 |
-| DELETE | `/trips/:tripId/members/:userId` | → `204` (self = leave, anyone; others = admin-only, ADR-0005; last admin leaving auto-promotes another member, ADR-0038)                     |
+| DELETE | `/trips/:tripId/members/:userId` | → `204` (self = leave, anyone; others = admin-only, ADR-0005; last admin leaving auto-promotes another member, ADR-0038)                    |
 
 **Trip-settings mutations are data-plane (ADR-0038, partially superseding ADR-0022):** `PATCH`/`DELETE /trips/:tripId`, the member-role `PATCH`, and member removal route through `ChangeService.mutate()` — atomic write + `Change`, WS broadcast after commit, client optimistic + offline outbox — so settings edits are realtime and offline-capable like the timeline. (`PATCH .../members/me` for the personal `calendarSyncEnabled` pref may stay simple CRUD — it is not shared roster state.)
 

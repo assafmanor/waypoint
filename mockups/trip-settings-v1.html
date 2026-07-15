@@ -862,7 +862,13 @@
               </div>
 
               <!-- edit mode -->
-              <form class="details-edit" onsubmit="event.preventDefault(); editDetails(false)">
+              <form
+                class="details-edit"
+                onsubmit="
+                  event.preventDefault();
+                  editDetails(false);
+                "
+              >
                 <div class="fld">
                   <label for="f-name">שם הטיול</label>
                   <input class="inp" id="f-name" value="יפן ׳26" maxlength="60" />
@@ -876,11 +882,21 @@
                   <div class="inp-row">
                     <div class="subfld">
                       <span class="sublbl">מ־</span>
-                      <input class="inp mono" type="date" value="2026-07-25" aria-label="תאריך התחלה" />
+                      <input
+                        class="inp mono"
+                        type="date"
+                        value="2026-07-25"
+                        aria-label="תאריך התחלה"
+                      />
                     </div>
                     <div class="subfld">
                       <span class="sublbl">עד</span>
-                      <input class="inp mono" type="date" value="2026-08-03" aria-label="תאריך סיום" />
+                      <input
+                        class="inp mono"
+                        type="date"
+                        value="2026-08-03"
+                        aria-label="תאריך סיום"
+                      />
                     </div>
                   </div>
                 </div>
@@ -902,13 +918,23 @@
                       <option>USD $</option>
                       <option>EUR €</option>
                     </select>
-                    <input class="inp mono amt" type="number" value="14000" min="0" aria-label="סכום" />
+                    <input
+                      class="inp mono amt"
+                      type="number"
+                      value="14000"
+                      min="0"
+                      aria-label="סכום"
+                    />
                   </div>
                 </div>
-                <div class="derived-hint">אזור-זמן ומטבע נערכים ידנית כרגע — בעתיד ייגזרו אוטומטית מהיעד</div>
+                <div class="derived-hint">
+                  אזור-זמן ומטבע נערכים ידנית כרגע — בעתיד ייגזרו אוטומטית מהיעד
+                </div>
                 <div class="form-actions">
                   <button type="submit" class="btn-save">שמור</button>
-                  <button type="button" class="btn-cancel" onclick="editDetails(false)">ביטול</button>
+                  <button type="button" class="btn-cancel" onclick="editDetails(false)">
+                    ביטול
+                  </button>
                 </div>
               </form>
             </div>
@@ -925,46 +951,88 @@
                 <div class="av" style="background: #5ec5b6">נ</div>
                 <div class="mn">נועם</div>
                 <span class="role mem">משתתף</span>
-                <button class="kebab admin-only" onclick="openMemberSheet('נועם')" aria-label="פעולות על נועם">⋮</button>
+                <button
+                  class="kebab admin-only"
+                  onclick="openMemberSheet('נועם')"
+                  aria-label="פעולות על נועם"
+                >
+                  ⋮
+                </button>
               </div>
               <div class="member">
                 <div class="av" style="background: #e88c8c">ד</div>
                 <div class="mn">דנה</div>
                 <span class="role mem">משתתף</span>
-                <button class="kebab admin-only" onclick="openMemberSheet('דנה')" aria-label="פעולות על דנה">⋮</button>
+                <button
+                  class="kebab admin-only"
+                  onclick="openMemberSheet('דנה')"
+                  aria-label="פעולות על דנה"
+                >
+                  ⋮
+                </button>
               </div>
               <div class="member">
                 <div class="av" style="background: #9c8ce8">מ</div>
                 <div class="mn">מאור</div>
                 <span class="role mem">משתתף</span>
-                <button class="kebab admin-only" onclick="openMemberSheet('מאור')" aria-label="פעולות על מאור">⋮</button>
+                <button
+                  class="kebab admin-only"
+                  onclick="openMemberSheet('מאור')"
+                  aria-label="פעולות על מאור"
+                >
+                  ⋮
+                </button>
               </div>
               <div class="member">
                 <div class="av" style="background: #8cb6e8">ר</div>
                 <div class="mn">רון</div>
                 <span class="role mem">משתתף</span>
-                <button class="kebab admin-only" onclick="openMemberSheet('רון')" aria-label="פעולות על רון">⋮</button>
+                <button
+                  class="kebab admin-only"
+                  onclick="openMemberSheet('רון')"
+                  aria-label="פעולות על רון"
+                >
+                  ⋮
+                </button>
               </div>
             </div>
 
             <!-- member action sheet (opened by a member's kebab) -->
-            <div class="msheet-backdrop" id="msheet" onclick="if(event.target===this)closeMemberSheet()">
+            <div
+              class="msheet-backdrop"
+              id="msheet"
+              onclick="if (event.target === this) closeMemberSheet();"
+            >
               <div class="msheet" role="dialog" aria-label="פעולות על משתתף">
                 <div class="grip"></div>
                 <div class="who">
                   <div class="av" id="ms-av">נ</div>
                   <div class="mn" id="ms-name">נועם</div>
                 </div>
-                <button class="act" onclick="closeMemberSheet(); alert('הפוך למנהל (מוקאפ)')">
+                <button
+                  class="act"
+                  onclick="
+                    closeMemberSheet();
+                    alert('הפוך למנהל (מוקאפ)');
+                  "
+                >
                   <span class="ico">👑</span> הפוך למנהל
                 </button>
-                <button class="act danger-item" onclick="closeMemberSheet(); alert('הסר מהטיול (מוקאפ)')">
+                <button
+                  class="act danger-item"
+                  onclick="
+                    closeMemberSheet();
+                    alert('הסר מהטיול (מוקאפ)');
+                  "
+                >
                   <span class="ico">🚪</span> הסר מהטיול
                 </button>
                 <button class="cancel" onclick="closeMemberSheet()">ביטול</button>
               </div>
             </div>
-            <div class="roleview-flag admin-only">👑 מנהל · אפשר לערוך פרטים, לקדם מנהלים ולהסיר משתתפים</div>
+            <div class="roleview-flag admin-only">
+              👑 מנהל · אפשר לערוך פרטים, לקדם מנהלים ולהסיר משתתפים
+            </div>
             <div class="roleview-flag peer-only">משתתף · צפייה בלבד</div>
 
             <!-- ===== INVITE ===== -->
@@ -973,7 +1041,9 @@
               <span class="code" id="invite-code">waypoint.app/join/x7Kq2f</span>
               <span class="cp">📋</span>
             </div>
-            <div class="invite-cap">לינק חדש נוצר בכל לחיצה · תקף 7 ימים · שתפו בקבוצת הוואטסאפ</div>
+            <div class="invite-cap">
+              לינק חדש נוצר בכל לחיצה · תקף 7 ימים · שתפו בקבוצת הוואטסאפ
+            </div>
 
             <!-- ===== DANGER ZONE ===== -->
             <div class="sec-title" style="color: var(--miss)">אזור רגיש</div>
@@ -994,8 +1064,9 @@
               </div>
             </div>
             <div class="leave-cap">
-              יציאה: תוסר מהרשימה · אפשר לחזור דרך לינק תקף. אם המנהל האחרון עוזב —
-              משתתף אחר יקודם למנהל אוטומטית. <span class="admin-only">מחיקה זמינה למנהל בלבד ודורשת אישור כפול.</span>
+              יציאה: תוסר מהרשימה · אפשר לחזור דרך לינק תקף. אם המנהל האחרון עוזב — משתתף אחר יקודם
+              למנהל אוטומטית.
+              <span class="admin-only">מחיקה זמינה למנהל בלבד ודורשת אישור כפול.</span>
             </div>
           </div>
         </div>
@@ -1008,8 +1079,8 @@
       <div class="notes">
         <h2>מה נתמך — ומה נבנה</h2>
         <div class="lede">
-          העיצוב סוכם: מנהלים שולטים בטיול. חלק מהפעולות כבר עם backend חי, וחלק
-          דורשות עבודת backend חדשה (מסומן). מה שעדיין לא מוכר מסומן כעתידי.
+          העיצוב סוכם: מנהלים שולטים בטיול. חלק מהפעולות כבר עם backend חי, וחלק דורשות עבודת
+          backend חדשה (מסומן). מה שעדיין לא מוכר מסומן כעתידי.
         </div>
         <div class="legend">
           <span><i class="swatch" style="background: #2c9c90"></i>נתמך היום</span>
@@ -1020,9 +1091,9 @@
         <div class="note ok">
           <div class="nt">✓ נתמך היום</div>
           <div class="nb">
-            רשימת חבורה + תפקידים · הזמנה (<code>POST /trips/:id/invite</code>) · יציאה
-            מהטיול והסרת משתתף ע״י מנהל (<code>DELETE /trips/:id/members/:userId</code>,
-            כבר admin-gated ב-service).
+            רשימת חבורה + תפקידים · הזמנה (<code>POST /trips/:id/invite</code>) · יציאה מהטיול והסרת
+            משתתף ע״י מנהל (<code>DELETE /trips/:id/members/:userId</code>, כבר admin-gated
+            ב-service).
           </div>
         </div>
 
@@ -1030,22 +1101,21 @@
           <div class="nt">🔄 כל שינוי — realtime + offline</div>
           <div class="nb">
             כל מוטציה (פרטים / תפקיד / הסרה / מחיקה) עוברת דרך
-            <code>ChangeService.mutate</code>: כתיבה + רשומת <code>Change</code> בטרנזקציה
-            אחת, ואז broadcast ב-WS אחרי commit — מופיע מיד לכולם. בקליינט: אותו דפוס
-            אופטימי כמו <code>verbs.ts</code> (dispatch → REST → reconcile/rollback) +
-            outbox, כך שעובד offline ומסתנכרן אחר-כך.
-            <br /><b>פערים לסגור:</b> ה-membership ops היום עוקפים את
+            <code>ChangeService.mutate</code>: כתיבה + רשומת <code>Change</code> בטרנזקציה אחת, ואז
+            broadcast ב-WS אחרי commit — מופיע מיד לכולם. בקליינט: אותו דפוס אופטימי כמו
+            <code>verbs.ts</code> (dispatch → REST → reconcile/rollback) + outbox, כך שעובד offline
+            ומסתנכרן אחר-כך. <br /><b>פערים לסגור:</b> ה-membership ops היום עוקפים את
             <code>ChangeService</code> (prisma ישיר, בלי broadcast); והקליינט מיישם רק
-            <code>entityType==='event'</code> (trip-state / cache) + ל-outbox יש רק
-            verbs של אירועים. צריך <code>'trip'</code> ו-<code>'membership'</code>.
+            <code>entityType==='event'</code> (trip-state / cache) + ל-outbox יש רק verbs של
+            אירועים. צריך <code>'trip'</code> ו-<code>'membership'</code>.
           </div>
         </div>
 
         <div class="note">
           <div class="nt">⚒ עריכת פרטים — מנהל בלבד</div>
           <div class="nb">
-            שם / יעד / תאריכים כטופס אחד → <code>PATCH /trips/:id</code> חדש, <b>admin-gated
-            בשרת</b> (לא רק ב-UI). כפתור "עריכה" מוסתר למשתתף. שינוי טווח תאריכים →
+            שם / יעד / תאריכים כטופס אחד → <code>PATCH /trips/:id</code> חדש,
+            <b>admin-gated בשרת</b> (לא רק ב-UI). כפתור "עריכה" מוסתר למשתתף. שינוי טווח תאריכים →
             אזהרה על אירועים שיוצאים מהטווח.
           </div>
         </div>
@@ -1053,9 +1123,10 @@
         <div class="note">
           <div class="nt">📅 שדות תאריך — לאמץ מ-PR #92</div>
           <div class="nb">
-            אותו תיקון date-picker שמוזג ב-CreateTrip/EventForm: <code>lang=DEVICE_LOCALE</code>
-            (פורמט מקומי ולא <code>mm/dd/yyyy</code> כמו שרואים כאן במוקאפ), <code>min</code>
-            של הסיום קשור להתחלה, ו-refine של <code>endDate ≥ startDate</code>. <b>בלי</b>
+            אותו תיקון date-picker שמוזג ב-CreateTrip/EventForm:
+            <code>lang=DEVICE_LOCALE</code> (פורמט מקומי ולא <code>mm/dd/yyyy</code> כמו שרואים כאן
+            במוקאפ), <code>min</code> של הסיום קשור להתחלה, ו-refine של
+            <code>endDate ≥ startDate</code>. <b>בלי</b>
             רצפה להיום — עריכת טיול קיים חייבת לאפשר תאריכים שכבר עברו/התחילו.
           </div>
         </div>
@@ -1086,25 +1157,24 @@
         <div class="note">
           <div class="nt">אזור-זמן + מטבע — נערכים ידנית (עכשיו)</div>
           <div class="nb">
-            נכללים בטופס העריכה כרגע (select), עד שייגזרו אוטומטית מהיעד בעתיד. אז
-            צריך לחשוב על המנגנון (Google Places? מיפוי יעד→TZ/מטבע) והאם להשאיר override ידני.
+            נכללים בטופס העריכה כרגע (select), עד שייגזרו אוטומטית מהיעד בעתיד. אז צריך לחשוב על
+            המנגנון (Google Places? מיפוי יעד→TZ/מטבע) והאם להשאיר override ידני.
           </div>
         </div>
 
         <div class="note block">
           <div class="nt">Calendar sync / Gmail / Photos / WhatsApp</div>
           <div class="nb">
-            Calendar: <code>calendarSyncEnabled</code> נשמר אבל ה-push לא מחווט (ADR-0003).
-            Gmail = v1.1; Photos/WhatsApp מחוץ לסקופ (אינטגרציות הן צינורות, ADR-0004).
-            כולם מושמטים כדי לא להציג פקד שלא עובד.
+            Calendar: <code>calendarSyncEnabled</code> נשמר אבל ה-push לא מחווט (ADR-0003). Gmail =
+            v1.1; Photos/WhatsApp מחוץ לסקופ (אינטגרציות הן צינורות, ADR-0004). כולם מושמטים כדי לא
+            להציג פקד שלא עובד.
           </div>
         </div>
 
         <div class="note block">
           <div class="nt">טוגלים של התנהגות (ripple, זיהוי-קשיח)</div>
           <div class="nb">
-            התנהגויות מובנות, לא העדפות נשמרות — אין להן שדה. שליטה תדרוש מודל
-            הגדרות-טיול חדש.
+            התנהגויות מובנות, לא העדפות נשמרות — אין להן שדה. שליטה תדרוש מודל הגדרות-טיול חדש.
           </div>
         </div>
 
