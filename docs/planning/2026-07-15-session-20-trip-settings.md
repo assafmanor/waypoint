@@ -1,7 +1,7 @@
 # 2026-07-15 · Session 20 — Trip-settings design
 
 **Participants:** Assaf + Claude
-**Output:** `mockups/trip-settings-v1.html`, [ADR-0038](../decisions/0038-trip-settings-admin-governed-data-plane.md).
+**Output:** `mockups/trip-settings-v1.html`, [ADR-0039](../decisions/0039-trip-settings-admin-governed-data-plane.md).
 **Status:** design approved; implementation pending (new endpoints + frontend screen).
 
 ## Goal
@@ -18,7 +18,7 @@ Design the trip-settings screen (`/trip/:id/settings`, previously a `ShellStub`)
    - When the **last admin leaves**, another member is **auto-promoted (arbitrary)** so no trip is admin-less.
    - **Delete trip = admin-only**, double-confirm.
 4. **Timezone & currency stay manually editable** for now; auto-derivation from the destination is a future update.
-5. **Every settings mutation must be realtime + offline** — broadcast over WS and logged via the change service so it appears immediately to everyone and works offline. This **moves `Trip` + roster `Membership` onto the data plane**, partially superseding ADR-0022 (which had them as control-plane CRUD). See ADR-0038 §5.
+5. **Every settings mutation must be realtime + offline** — broadcast over WS and logged via the change service so it appears immediately to everyone and works offline. This **moves `Trip` + roster `Membership` onto the data plane**, partially superseding ADR-0022 (which had them as control-plane CRUD). See ADR-0039 §5.
 6. **Member actions** went from awkward inline crown+remove buttons to a single **kebab → bottom action sheet** (the app's `Sheet` pattern).
 7. **Chrome is mode-neutral** ink-on-paper (settings is reached from both modes; route sits outside the mode Shell).
 

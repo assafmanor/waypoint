@@ -98,13 +98,13 @@ Because the app is a `display: standalone` PWA (ADR-0007) with **no system back 
 ### 7. Trip settings & members — `/trip/:id/settings` (in-trip)
 
 - **Purpose:** manage the current trip. Reached from the header ⚙ — **not** a bottom-nav tab (ADR-0004).
-- **Governance (ADR-0038):** trip-settings editing is **admin-only, enforced server-side** (peers get a read-only screen); everyday soft-plan/event editing stays open to all. Chrome is **mode-neutral** ink-on-paper (reached from both modes; route sits outside the mode Shell).
+- **Governance (ADR-0039):** trip-settings editing is **admin-only, enforced server-side** (peers get a read-only screen); everyday soft-plan/event editing stays open to all. Chrome is **mode-neutral** ink-on-paper (reached from both modes; route sits outside the mode Shell).
 - **Contents:**
   - **Trip details:** admins edit name / destination / dates / timezone / currency / budget as **one form → one `PATCH /trips/:id`** (LWW, ADR-0012). Timezone & currency are editable now; auto-derivation from the destination is a future update. Date fields reuse PR #92's native-date handling (`lang` = `DEVICE_LOCALE`, end `min` linked to start, shared `endDate >= startDate` refine) but **do not floor to today** (an existing trip may be under way or past).
   - **Members:** list with role badges (`admin` / `peer`); a per-member **kebab opens a bottom action sheet** (the `Sheet` pattern) — **promote to admin** and **remove member**, both admin-only (`PATCH /trips/:id/members/:userId` for role; `DELETE /trips/:id/members/:userId` for removal). **Leave trip** removes your own membership; when the **last admin leaves**, another member is auto-promoted.
   - **Invite:** generate + share an invite link (`POST /trips/:id/invite`, exists; the link is `/join/:token`). Share sheet / copy.
   - **Delete trip:** admin-only, double-confirm (`DELETE /trips/:id`); removes the trip for everyone.
-- **Realtime + offline (ADR-0038):** every settings mutation routes through `ChangeService` — WS broadcast after commit + client optimistic outbox — so edits appear immediately to everyone and work offline. This moved `Trip` + roster `Membership` onto the data plane (partially supersedes ADR-0022).
+- **Realtime + offline (ADR-0039):** every settings mutation routes through `ChangeService` — WS broadcast after commit + client optimistic outbox — so edits appear immediately to everyone and work offline. This moved `Trip` + roster `Membership` onto the data plane (partially supersedes ADR-0022).
 - **States:** default · admin vs. peer (edit/remove/manage affordances gated) · offline (reads from cache; mutations queue per the offline model).
 
 ## Cross-cutting

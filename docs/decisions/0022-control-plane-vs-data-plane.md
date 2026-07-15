@@ -1,9 +1,9 @@
 # 0022 — Control plane vs. data plane: only the data plane routes through ChangeService
 
-**Status:** Accepted (partially superseded by ADR-0038)
+**Status:** Accepted (partially superseded by ADR-0039)
 **Date:** 2026-07-10
 **Refines:** ADR-0019 (scopes its "every shared-state mutation" to the data plane).
-**Partially superseded by:** ADR-0038 — `Trip` and roster-level `Membership` mutations move onto the **data plane** (settings edits must be realtime + offline). The control plane then effectively covers only `User` + auth (`Session`, `AuthIdentity`).
+**Partially superseded by:** ADR-0039 — `Trip` and roster-level `Membership` mutations move onto the **data plane** (settings edits must be realtime + offline). The control plane then effectively covers only `User` + auth (`Session`, `AuthIdentity`).
 
 ## Context
 

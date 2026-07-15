@@ -1,4 +1,4 @@
-# 0038 — Trip settings: admin-governed edits; settings mutations join the data plane
+# 0039 — Trip settings: admin-governed edits; settings mutations join the data plane
 
 **Status:** Accepted
 **Date:** 2026-07-15
