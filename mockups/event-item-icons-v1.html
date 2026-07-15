@@ -749,7 +749,11 @@
           b.type = 'button';
           b.textContent = c.label;
           b.className = c.id === activeCat ? 'on' : '';
-          b.onclick = () => {
+          b.onclick = (ev) => {
+            // Stop the bubble: renderCats() detaches this button, so the
+            // document click-outside handler would otherwise see an orphaned
+            // node (closest('#picker') === null) and wrongly close the picker.
+            ev.stopPropagation();
             activeCat = c.id;
             renderCats();
             renderGrid();
