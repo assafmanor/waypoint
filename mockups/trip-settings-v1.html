@@ -801,22 +801,27 @@
                   </div>
                 </div>
                 <div class="fld">
-                  <label>אזור זמן</label>
-                  <div class="derived">
-                    <span class="dv">Asia/Tokyo</span>
-                    <span class="auto">אוטומטי · בקרוב</span>
-                  </div>
+                  <label for="f-tz">אזור זמן</label>
+                  <select class="inp mono" id="f-tz">
+                    <option selected>Asia/Tokyo</option>
+                    <option>Asia/Jerusalem</option>
+                    <option>Europe/London</option>
+                    <option>UTC</option>
+                  </select>
                 </div>
                 <div class="fld">
                   <label>תקציב יומי לקבוצה</label>
                   <div class="budget-row">
-                    <div class="derived cur">
-                      <span class="dv">JPY ¥</span>
-                    </div>
+                    <select class="inp mono cur" aria-label="מטבע">
+                      <option selected>JPY ¥</option>
+                      <option>ILS ₪</option>
+                      <option>USD $</option>
+                      <option>EUR €</option>
+                    </select>
                     <input class="inp mono amt" type="number" value="14000" min="0" aria-label="סכום" />
                   </div>
                 </div>
-                <div class="derived-hint">אזור-זמן ומטבע ייגזרו אוטומטית מהיעד (בקרוב) — כרגע קבועים</div>
+                <div class="derived-hint">אזור-זמן ומטבע נערכים ידנית כרגע — בעתיד ייגזרו אוטומטית מהיעד</div>
                 <div class="form-actions">
                   <button type="submit" class="btn-save">שמור</button>
                   <button type="button" class="btn-cancel" onclick="editDetails(false)">ביטול</button>
@@ -932,6 +937,21 @@
         </div>
 
         <div class="note">
+          <div class="nt">🔄 כל שינוי — realtime + offline</div>
+          <div class="nb">
+            כל מוטציה (פרטים / תפקיד / הסרה / מחיקה) עוברת דרך
+            <code>ChangeService.mutate</code>: כתיבה + רשומת <code>Change</code> בטרנזקציה
+            אחת, ואז broadcast ב-WS אחרי commit — מופיע מיד לכולם. בקליינט: אותו דפוס
+            אופטימי כמו <code>verbs.ts</code> (dispatch → REST → reconcile/rollback) +
+            outbox, כך שעובד offline ומסתנכרן אחר-כך.
+            <br /><b>פערים לסגור:</b> ה-membership ops היום עוקפים את
+            <code>ChangeService</code> (prisma ישיר, בלי broadcast); והקליינט מיישם רק
+            <code>entityType==='event'</code> (trip-state / cache) + ל-outbox יש רק
+            verbs של אירועים. צריך <code>'trip'</code> ו-<code>'membership'</code>.
+          </div>
+        </div>
+
+        <div class="note">
           <div class="nt">⚒ עריכת פרטים — מנהל בלבד</div>
           <div class="nb">
             שם / יעד / תאריכים כטופס אחד → <code>PATCH /trips/:id</code> חדש, <b>admin-gated
@@ -963,11 +983,11 @@
           </div>
         </div>
 
-        <div class="note block">
-          <div class="nt">אזור-זמן + מטבע — אוטומטיים (עתידי)</div>
+        <div class="note">
+          <div class="nt">אזור-זמן + מטבע — נערכים ידנית (עכשיו)</div>
           <div class="nb">
-            הוחלט: ייגזרו מהיעד, לא נערכים ידנית. בטופס הם read-only מקווקו עם תג
-            "אוטומטי · בקרוב". צריך לחשוב על המנגנון (Google Places? מיפוי יעד→TZ/מטבע).
+            נכללים בטופס העריכה כרגע (select), עד שייגזרו אוטומטית מהיעד בעתיד. אז
+            צריך לחשוב על המנגנון (Google Places? מיפוי יעד→TZ/מטבע) והאם להשאיר override ידני.
           </div>
         </div>
 
