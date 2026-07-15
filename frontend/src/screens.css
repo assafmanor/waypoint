@@ -880,20 +880,38 @@
   color: var(--ink);
 }
 
-/* event create/edit form (T-047) */
+/* event create/edit form (T-047) — a bottom sheet so the autofocused title's
+   keyboard doesn't cover the fields (paired with interactive-widget=
+   resizes-content in index.html). */
+.event-form-overlay {
+  align-items: flex-end;
+  padding: 0;
+}
 .event-form-card {
   width: 100%;
   max-width: 380px;
   max-height: 90vh;
+  max-height: 90dvh;
   overflow-y: auto;
   background: var(--card);
   border: 1px solid var(--line);
-  border-radius: 15px;
+  border-radius: 15px 15px 0 0;
+  border-bottom: 0;
   padding: 18px;
-  box-shadow: 0 20px 40px -14px rgba(0, 0, 0, 0.35);
+  padding-bottom: calc(18px + env(safe-area-inset-bottom));
+  box-shadow: 0 -12px 40px -14px rgba(0, 0, 0, 0.35);
   display: flex;
   flex-direction: column;
   gap: 12px;
+  animation: sheet-up 0.22s ease;
+}
+@keyframes sheet-up {
+  from {
+    transform: translateY(100%);
+  }
+  to {
+    transform: translateY(0);
+  }
 }
 .form-field {
   display: flex;

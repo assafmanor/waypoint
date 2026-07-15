@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest';
 import { EVENT_KIND, EVENT_STATUS, type TripEvent } from '@waypoint/shared';
-import { gapBetween } from './gaps';
+import { gapBetween, nextSlot } from './gaps';
 
 const TZ = 'Asia/Tokyo';
 const NOW = '2026-07-01T00:00:00Z';
@@ -51,5 +51,38 @@ describe('gapBetween', () => {
   it('returns null when the next event has no start time', () => {
     const untimed = { ...ev('b', '00:00'), startsAt: undefined };
     expect(gapBetween(ev('a', '10:00'), untimed, TZ)).toBeNull();
+  });
+});
+
+describe('nextSlot', () => {
+  it('defaults an empty day to a 07:00 block (DAY_WINDOW.START_HOUR)', () => {
+    expect(nextSlot([], '2026-07-07', TZ)).toEqual({
+      date: '2026-07-07',
+      start: '07:00',
+      end: '08:00',
+    });
+  });
+
+  it('starts a 1h block right after the last event ends', () => {
+    const slot = nextSlot([ev('a', '10:00', '12:00'), ev('b', '13:00', '14:30')], '2026-07-07', TZ);
+    expect(slot).toEqual({ date: '2026-07-07', start: '14:30', end: '15:30' });
+  });
+
+  it('uses the latest end, not the last-by-start row (overlapping blocks)', () => {
+    // A long block ends after a later-starting short one — free time begins at
+    // the max end (16:00), not the tail row's end (13:00).
+    const slot = nextSlot(
+      [ev('long', '10:00', '16:00'), ev('short', '12:00', '13:00')],
+      '2026-07-07',
+      TZ,
+    );
+    expect(slot.start).toBe('16:00');
+    expect(slot.end).toBe('17:00');
+  });
+
+  it('treats a start-only last event as its start instant', () => {
+    const slot = nextSlot([ev('a', '09:00', '10:00'), ev('b', '18:30')], '2026-07-07', TZ);
+    expect(slot.start).toBe('18:30');
+    expect(slot.end).toBe('19:30');
   });
 });

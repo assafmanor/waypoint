@@ -14,7 +14,7 @@ import { EVENT_KIND, EVENT_STATUS, type MaybeItem, type TripEvent } from '@waypo
 import { useTrip, byStart } from '../state/trip-state';
 import { useVerbs } from '../state/verbs';
 import { formatTime, zonedIso } from '../lib/time';
-import { gapBetween, type GapDefaults } from '../lib/gaps';
+import { gapBetween, nextSlot, type GapDefaults } from '../lib/gaps';
 import { CODE_PREFIX, ICONS, MS_PER_DAY, MINUTES_PER_HOUR } from '../constants';
 import { t } from '../i18n/he';
 import { TRIP_TZ_OFFSET, maybeMeta } from '../fixtures';
@@ -149,8 +149,16 @@ export function PlanDay() {
           </div>
         )}
 
-        <button className="addbtn" onClick={() => setFormTarget('new')}>
-          {ICONS.add} {t.planDay.addToDay(dayNumber)}
+        {/* Header's "new event" is a blank form; this one continues the day at
+            the next open slot. */}
+        <button
+          className="addbtn"
+          onClick={() => {
+            setGapFill(nextSlot(dayEvents, activeDate, tz));
+            setFormTarget('new');
+          }}
+        >
+          {ICONS.add} {t.planDay.addToDay}
         </button>
       </div>
 
