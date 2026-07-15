@@ -579,8 +579,8 @@
       <h2>ההחלטות</h2>
       <ul>
         <li>
-          <b>סט עשיר אך מוגבל.</b> ~100 סמלים בעשר קבוצות (תחבורה · אוכל · שתייה · לינה · אתרים · טבע
-          · פעילות · קניות · מעשי · כללי), עם סינון לפי קבוצה. מוגבל — לא מקלדת אימוג׳י מלאה.
+          <b>סט עשיר אך מוגבל.</b> ~100 סמלים בעשר קבוצות (תחבורה · אוכל · שתייה · לינה · אתרים ·
+          טבע · פעילות · קניות · מעשי · כללי), עם סינון לפי קבוצה. מוגבל — לא מקלדת אימוג׳י מלאה.
         </li>
         <li>
           <b>הצעה לפי סוג בלבד (Tier B).</b> אירוע עם הזמנה נושא <em>סוג</em> מובנה
@@ -593,10 +593,11 @@
           ויצירת הטיול. השדה כבר קיים בסכימה: <code>icon?</code> על Event ו־MaybeItem.
         </li>
         <li>
-          <b>שומרים קטגוריה, לא רק אימוג׳י.</b> נוסיף <code>category</code> קנוני ל־Event ול־MaybeItem
-          (transport · food · lodging · sightseeing · nature · activity · shopping · services ·
-          other); הסמל הוא badge לעקיפה. הקטגוריה נגזרת מהקבוצה שממנה נבחר הסמל (מוצגת למעלה בבורר),
-          ו־<code>BookingType</code> + צבעי סיכות-המפה נגזרים ממנה — מערכת-משמעות אחת (ADR).
+          <b>שומרים קטגוריה, לא רק אימוג׳י.</b> נוסיף <code>category</code> קנוני ל־Event
+          ול־MaybeItem (transport · food · lodging · sightseeing · nature · activity · shopping ·
+          services · other); הסמל הוא badge לעקיפה. הקטגוריה נגזרת מהקבוצה שממנה נבחר הסמל (מוצגת
+          למעלה בבורר), ו־<code>BookingType</code> + צבעי סיכות-המפה נגזרים ממנה — מערכת-משמעות אחת
+          (ADR).
         </li>
         <li>
           <b>ניטרלי בכוונה.</b> הבחירה מסומנת במילוי <code>--ink</code> ולא בענבר/טורקיז/סגול —
@@ -606,7 +607,10 @@
       <h2>פתוח לדיון</h2>
       <ul>
         <li>הסט (עשר הקבוצות + ~100 הסמלים, למטה בקוד) — מה להוסיף/להסיר.</li>
-        <li>מיפוי סוג→סמל: <code>flight ✈️ · hotel 🏨 · restaurant 🍽️ · train 🚆 · activity 🎫 · other 📌</code>.</li>
+        <li>
+          מיפוי סוג→סמל:
+          <code>flight ✈️ · hotel 🏨 · restaurant 🍽️ · train 🚆 · activity 🎫 · other 📌</code>.
+        </li>
         <li>האם הצ׳יפ צריך להופיע גם בכרטיס האירוע בתצוגת היום כעריכה מהירה, או רק בטופס.</li>
       </ul>
     </div>
@@ -617,12 +621,42 @@
         {
           id: 'transport',
           label: 'תחבורה',
-          icons: ['✈️', '🚆', '🚄', '🚈', '🚌', '🚗', '🚕', '🚉', '🛵', '🚲', '⛴️', '🚢', '🚡', '🛺'],
+          icons: [
+            '✈️',
+            '🚆',
+            '🚄',
+            '🚈',
+            '🚌',
+            '🚗',
+            '🚕',
+            '🚉',
+            '🛵',
+            '🚲',
+            '⛴️',
+            '🚢',
+            '🚡',
+            '🛺',
+          ],
         },
         {
           id: 'food',
           label: 'אוכל',
-          icons: ['🍜', '🍱', '🍣', '🍽️', '🍕', '🍔', '🥘', '🥗', '🍝', '🌮', '🍢', '🥟', '🧆', '🍦'],
+          icons: [
+            '🍜',
+            '🍱',
+            '🍣',
+            '🍽️',
+            '🍕',
+            '🍔',
+            '🥘',
+            '🥗',
+            '🍝',
+            '🌮',
+            '🍢',
+            '🥟',
+            '🧆',
+            '🍦',
+          ],
         },
         {
           id: 'drink',
@@ -647,7 +681,22 @@
         {
           id: 'activity',
           label: 'פעילות ופנאי',
-          icons: ['🎫', '🎢', '🎡', '🎠', '🎿', '🏂', '🏄', '🚵', '🥾', '🧗', '🎣', '🛶', '🏊', '🎮'],
+          icons: [
+            '🎫',
+            '🎢',
+            '🎡',
+            '🎠',
+            '🎿',
+            '🏂',
+            '🏄',
+            '🚵',
+            '🥾',
+            '🧗',
+            '🎣',
+            '🛶',
+            '🏊',
+            '🎮',
+          ],
         },
         {
           id: 'shopping',
@@ -797,7 +846,8 @@
       function renderGrid() {
         const box = $('grid-scroll');
         box.innerHTML = '';
-        const cats = activeCat === 'all' ? CATEGORIES : CATEGORIES.filter((c) => c.id === activeCat);
+        const cats =
+          activeCat === 'all' ? CATEGORIES : CATEGORIES.filter((c) => c.id === activeCat);
         cats.forEach((cat) => {
           if (activeCat === 'all') {
             const lbl = document.createElement('div');
@@ -811,7 +861,9 @@
             const b = document.createElement('button');
             b.type = 'button';
             b.className =
-              'cell' + (ic === selected ? ' sel' : '') + (!manual && ic === autoIcon ? ' auto' : '');
+              'cell' +
+              (ic === selected ? ' sel' : '') +
+              (!manual && ic === autoIcon ? ' auto' : '');
             b.textContent = ic;
             b.onclick = () => pick(ic);
             grid.appendChild(b);

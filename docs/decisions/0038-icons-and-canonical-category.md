@@ -29,11 +29,11 @@ transport · food · lodging · sightseeing · nature · activity · shopping ·
 
 The three existing vocabularies map **into** it — none is a second source of truth:
 
-| Source | → canonical `category` |
-| --- | --- |
-| `BookingType` (booked events) | flight→`transport`, train→`transport`, hotel→`lodging`, restaurant→`food`, activity→`activity`, other→`other` |
+| Source                         | → canonical `category`                                                                                                                                                                                      |
+| ------------------------------ | ----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `BookingType` (booked events)  | flight→`transport`, train→`transport`, hotel→`lodging`, restaurant→`food`, activity→`activity`, other→`other`                                                                                               |
 | Icon picker browse-groups (10) | transport→`transport`, food→`food`, **drink→`food`**, lodging→`lodging`, **sights→`sightseeing`**, nature→`nature`, activity→`activity`, shopping→`shopping`, **practical→`services`**, **general→`other`** |
-| Map-pin colour (5) | `transport`→transit, `food`→food, `lodging`→lodging, `sightseeing`/`nature`/`activity`/`shopping`→leisure, `services`→services, `other`→leisure (fallback) |
+| Map-pin colour (5)             | `transport`→transit, `food`→food, `lodging`→lodging, `sightseeing`/`nature`/`activity`/`shopping`→leisure, `services`→services, `other`→leisure (fallback)                                                  |
 
 `category` is **nullable** — legacy/unset rows are `null` ("uncategorised"). A glyph chosen in the picker always yields a category (the "general" group resolves to `other`), so new writes are non-null.
 
