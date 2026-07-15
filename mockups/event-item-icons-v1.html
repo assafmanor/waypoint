@@ -212,7 +212,7 @@
       /* ===== Title row: leading icon chip + the title input ===== */
       .titlerow {
         display: flex;
-        align-items: stretch;
+        align-items: flex-start;
         gap: 9px;
       }
       .titlerow .grow {
@@ -227,10 +227,9 @@
         flex: 0 0 auto;
         width: 44px;
         height: 44px;
-        align-self: flex-end;
         display: grid;
         place-items: center;
-        font-size: 22px;
+        font-size: 20px;
         line-height: 1;
         background: #fff;
         border: 1px solid var(--line);
@@ -281,21 +280,16 @@
         align-items: center;
       }
 
-      /* ===== The picker popover ===== */
-      .picker-wrap {
-        position: relative;
-      }
+      /* ===== The picker panel — full width inside the form card, in normal
+         flow (like the time-setter dropdown). Never a floating popover: at the
+         phone width a narrow anchored popover clips the category row. ===== */
       .picker {
-        position: absolute;
-        top: calc(100% + 8px);
-        inset-inline-start: 0;
-        z-index: 20;
-        width: 300px;
-        max-width: calc(100vw - 48px);
+        margin-top: 4px;
+        width: 100%;
         background: #fff;
         border: 1px solid var(--line);
         border-radius: 13px;
-        box-shadow: 0 16px 34px -14px rgba(14, 23, 41, 0.4);
+        box-shadow: 0 12px 26px -16px rgba(14, 23, 41, 0.3);
         overflow: hidden;
         display: none;
       }
@@ -500,37 +494,36 @@
           <div class="form-field">
             <span id="title-label">כותרת</span>
             <div class="titlerow">
-              <!-- Leading icon chip + its picker popover live together so the
-                   popover anchors to the chip. -->
-              <div class="picker-wrap">
-                <div class="icon-slot">
-                  <button
-                    type="button"
-                    class="icon-chip"
-                    id="chip"
-                    aria-label="בחר סמל"
-                    onclick="togglePicker(event)"
-                  >
-                    📌
-                  </button>
-                  <span class="auto-tag" id="auto-tag">✨ אוטומטי</span>
-                </div>
-
-                <div class="picker" id="picker">
-                  <div class="picker-head">
-                    <span class="lbl">בחירת סמל</span>
-                    <button type="button" class="revert" id="revert" onclick="revertAuto()">
-                      ↺ חזרה לאוטומטי
-                    </button>
-                  </div>
-                  <div class="cats" id="cats"></div>
-                  <div class="grid-scroll" id="grid-scroll"></div>
-                </div>
+              <!-- Leading icon chip: a 44px badge preview that opens the panel. -->
+              <div class="icon-slot">
+                <button
+                  type="button"
+                  class="icon-chip"
+                  id="chip"
+                  aria-label="בחר סמל"
+                  onclick="togglePicker(event)"
+                >
+                  📌
+                </button>
+                <span class="auto-tag" id="auto-tag">✨ אוטומטי</span>
               </div>
 
               <div class="grow">
                 <input id="title-input" placeholder="למשל: טיסה לאתונה" oninput="onTitle()" />
               </div>
+            </div>
+
+            <!-- Full-width panel under the title row (in flow — pushes the rest
+                 of the form down, like the time-setter dropdown). -->
+            <div class="picker" id="picker">
+              <div class="picker-head">
+                <span class="lbl">בחירת סמל</span>
+                <button type="button" class="revert" id="revert" onclick="revertAuto()">
+                  ↺ חזרה לאוטומטי
+                </button>
+              </div>
+              <div class="cats" id="cats"></div>
+              <div class="grid-scroll" id="grid-scroll"></div>
             </div>
           </div>
 
@@ -759,7 +752,7 @@
         $('chip').classList.remove('open');
       }
       document.addEventListener('click', (e) => {
-        if (!e.target.closest('.picker-wrap')) closePicker();
+        if (!e.target.closest('#picker') && !e.target.closest('#chip')) closePicker();
       });
 
       function onTitle() {
