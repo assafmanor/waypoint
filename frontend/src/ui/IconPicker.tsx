@@ -14,6 +14,7 @@ import {
   categoryForIcon,
   flagFromCode,
   searchDestinations,
+  searchVibeIcons,
   type Destination,
   type EventCategory,
 } from '@waypoint/shared';
@@ -31,7 +32,7 @@ export function IconPicker({
   icon: string;
   onChange: (icon: string, category: EventCategory | undefined) => void;
   ariaLabel?: string;
-  // Trip mode: archetype clusters (spaced, no labels) rendered below the flags.
+  // Trip mode: archetype vibe clusters (spaced, no labels) shown first; flags last.
   flatClusters?: readonly (readonly string[])[];
   // Trip mode: searchable country flags. Presence switches the picker to trips.
   destinations?: readonly Destination[];
@@ -84,7 +85,10 @@ export function IconPicker({
 
   const groups = activeCat === ALL ? ICON_SET : ICON_SET.filter((g) => g.id === activeCat);
   const currentCategory = categoryForIcon(icon);
-  const matches = tripMode ? searchDestinations(query) : [];
+  // Trip search covers vibe glyphs AND flags; vibe icons render first, flags last.
+  const searching = tripMode && query.trim().length > 0;
+  const vibeMatches = searching ? searchVibeIcons(query) : [];
+  const flagMatches = tripMode ? searchDestinations(query) : [];
 
   return (
     <div className="icon-picker" ref={wrapRef}>
@@ -122,20 +126,35 @@ export function IconPicker({
                 />
               </div>
               <div className="icon-grid-scroll">
-                <div className="icon-grid">
-                  {matches.map((d) => cell(flagFromCode(d.code), d.he))}
-                </div>
-                {matches.length === 0 && <div className="icon-empty">{t.iconPicker.noMatch}</div>}
-                {/* Vibe clusters only when not actively searching flags. */}
-                {!query.trim() &&
-                  flatClusters?.map((cluster, i) => (
-                    <div
-                      className={'icon-grid icon-cluster' + (i === 0 ? ' icon-vibe-first' : '')}
-                      key={i}
-                    >
-                      {cluster.map((g) => cell(g))}
+                {searching ? (
+                  <>
+                    {/* Vibe glyph matches first… */}
+                    {vibeMatches.length > 0 && (
+                      <div className="icon-grid">{vibeMatches.map((g) => cell(g))}</div>
+                    )}
+                    {/* …then flag matches, separated when both are present. */}
+                    {flagMatches.length > 0 && (
+                      <div className={'icon-grid' + (vibeMatches.length > 0 ? ' icon-sep' : '')}>
+                        {flagMatches.map((d) => cell(flagFromCode(d.code), d.he))}
+                      </div>
+                    )}
+                    {vibeMatches.length === 0 && flagMatches.length === 0 && (
+                      <div className="icon-empty">{t.iconPicker.noMatch}</div>
+                    )}
+                  </>
+                ) : (
+                  <>
+                    {/* Default: the vibe clusters first (spaced), flags last. */}
+                    {flatClusters?.map((cluster, i) => (
+                      <div className="icon-grid icon-cluster" key={i}>
+                        {cluster.map((g) => cell(g))}
+                      </div>
+                    ))}
+                    <div className="icon-grid icon-sep">
+                      {flagMatches.map((d) => cell(flagFromCode(d.code), d.he))}
                     </div>
-                  ))}
+                  </>
+                )}
               </div>
             </>
           ) : (

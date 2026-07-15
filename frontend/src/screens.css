@@ -2118,7 +2118,8 @@
   font-weight: 600;
   color: var(--muted);
 }
-.icon-vibe-first {
+/* Divider before a following section in the trip picker (flags after vibe). */
+.icon-sep {
   margin-top: 12px;
   padding-top: 12px;
   border-top: 1px solid var(--line);

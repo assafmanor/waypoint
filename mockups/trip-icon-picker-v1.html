@@ -289,7 +289,7 @@
       .icon-cluster + .icon-cluster {
         margin-top: 11px;
       }
-      .icon-vibe-first {
+      .icon-sep {
         margin-top: 12px;
         padding-top: 12px;
         border-top: 1px solid var(--line);
@@ -618,7 +618,7 @@
               <span class="hostpill">טיול · דגלים + סגנון</span>
             </div>
             <div class="icon-search">
-              <input id="search" placeholder="חפש מדינה…" oninput="renderGrid()" />
+              <input id="search" placeholder="חפש סמל או מדינה…" oninput="renderGrid()" />
             </div>
             <div class="icon-grid-scroll" id="grid-scroll"></div>
           </div>
@@ -793,12 +793,66 @@
         ['🌸', '☀️', '🍁', '❄️'],
       ];
 
+      const TRIP_VIBE_TERMS = {
+        '🧳': ['מזוודה', 'כללי', 'luggage', 'trip'],
+        '🎒': ['תרמיל', 'טיולים', 'backpack'],
+        '✈️': ['טיסה', 'מטוס', 'flight', 'חול'],
+        '🗺️': ['מפה', 'מסלול', 'map', 'roadtrip'],
+        '🌍': ['עולם', 'אירופה', 'world', 'europe'],
+        '🌏': ['עולם', 'אסיה', 'world', 'asia'],
+        '🚗': ['רכב', 'מכונית', 'roadtrip', 'car'],
+        '🚐': ['ואן', 'קרוואן', 'van'],
+        '🚂': ['רכבת', 'train'],
+        '🚢': ['ספינה', 'שייט', 'קרוז', 'cruise', 'ship'],
+        '⛵': ['מפרשית', 'שייט', 'sail'],
+        '🏍️': ['אופנוע', 'motorcycle'],
+        '🏖️': ['חוף', 'ים', 'beach'],
+        '🏝️': ['אי', 'טרופי', 'island'],
+        '🌴': ['דקל', 'טרופי', 'palm'],
+        '🏔️': ['הר', 'הרים', 'אלפים', 'mountain', 'alps'],
+        '🏜️': ['מדבר', 'desert'],
+        '🌋': ['הר געש', 'געש', 'volcano'],
+        '🏞️': ['טבע', 'פארק', 'nature', 'park'],
+        '🌲': ['יער', 'forest'],
+        '🏕️': ['קמפינג', 'מחנה', 'camping'],
+        '🏙️': ['עיר', 'city'],
+        '🗼': ['מגדל', 'תצפית', 'tower'],
+        '🗽': ['ניו יורק', 'liberty', 'new york'],
+        '🏛️': ['היסטוריה', 'מוזיאון', 'תרבות', 'museum', 'history'],
+        '⛩️': ['מקדש', 'יפן', 'temple', 'japan'],
+        '🕌': ['מסגד', 'mosque'],
+        '🏰': ['טירה', 'ארמון', 'castle'],
+        '🎡': ['יריד', 'לונה פארק', 'fair'],
+        '🎿': ['סקי', 'ski'],
+        '🏄': ['גלישה', 'surf'],
+        '🥾': ['טיול רגלי', 'הליכה', 'hike', 'trek'],
+        '🤿': ['צלילה', 'שנרקל', 'dive', 'snorkel'],
+        '🐘': ['ספארי', 'חיות', 'safari'],
+        '🍷': ['יין', 'אוכל', 'wine', 'food'],
+        '🎶': ['מוזיקה', 'פסטיבל', 'music', 'festival'],
+        '🎉': ['חגיגה', 'מסיבה', 'party'],
+        '💍': ['ירח דבש', 'חתונה', 'honeymoon'],
+        '🎓': ['גמר', 'סיום', 'graduation'],
+        '🌸': ['אביב', 'פריחה', 'spring'],
+        '☀️': ['קיץ', 'שמש', 'summer'],
+        '🍁': ['סתיו', 'autumn'],
+        '❄️': ['חורף', 'שלג', 'winter'],
+      };
+
       const normalize = (s) =>
         s
           .toLowerCase()
           .replace(/["'`׳״]/g, '')
           .replace(/\s+/g, ' ')
           .trim();
+
+      const searchVibeIcons = (q) => {
+        const nq = normalize(q);
+        if (!nq) return [];
+        return TRIP_ICON_CLUSTERS.flat().filter((g) =>
+          (TRIP_VIBE_TERMS[g] || []).some((tm) => normalize(tm).includes(nq)),
+        );
+      };
 
       const suggestFlag = (text) => {
         if (!text || !text.trim()) return undefined;
@@ -865,29 +919,44 @@
         return b;
       }
 
+      function gridOf(items, sep) {
+        const g = document.createElement('div');
+        g.className = 'icon-grid' + (sep ? ' icon-sep' : '');
+        items.forEach((it) =>
+          g.appendChild(typeof it === 'string' ? cell(it) : cell(it.flag, it.he)),
+        );
+        return g;
+      }
+
       function renderGrid() {
         const box = $('grid-scroll');
         box.innerHTML = '';
         const q = $('search').value;
-        const matches = searchDestinations(q);
-        const flags = document.createElement('div');
-        flags.className = 'icon-grid';
-        matches.forEach((d) => flags.appendChild(cell(flagFromCode(d.code), d.he)));
-        box.appendChild(flags);
-        if (matches.length === 0) {
-          const e = document.createElement('div');
-          e.className = 'icon-empty';
-          e.textContent = 'לא נמצאה מדינה';
-          box.appendChild(e);
-        }
-        // vibe clusters only when not searching
-        if (!q.trim())
-          TRIP_ICON_CLUSTERS.forEach((cluster, i) => {
-            const g = document.createElement('div');
-            g.className = 'icon-grid icon-cluster' + (i === 0 ? ' icon-vibe-first' : '');
-            cluster.forEach((glyph) => g.appendChild(cell(glyph)));
+        const flagMatches = searchDestinations(q).map((d) => ({
+          flag: flagFromCode(d.code),
+          he: d.he,
+        }));
+
+        if (q.trim()) {
+          // Search covers vibe glyphs AND flags — vibe first, flags last.
+          const vibe = searchVibeIcons(q);
+          if (vibe.length) box.appendChild(gridOf(vibe, false));
+          if (flagMatches.length) box.appendChild(gridOf(flagMatches, vibe.length > 0));
+          if (!vibe.length && !flagMatches.length) {
+            const e = document.createElement('div');
+            e.className = 'icon-empty';
+            e.textContent = 'לא נמצא סמל';
+            box.appendChild(e);
+          }
+        } else {
+          // Default: vibe clusters first (spaced), country flags last.
+          TRIP_ICON_CLUSTERS.forEach((cluster) => {
+            const g = gridOf(cluster, false);
+            g.classList.add('icon-cluster');
             box.appendChild(g);
           });
+          box.appendChild(gridOf(flagMatches, true));
+        }
       }
 
       function toggle(e) {

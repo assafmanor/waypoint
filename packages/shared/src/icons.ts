@@ -94,6 +94,71 @@ export const TRIP_ICON_CLUSTERS: readonly (readonly string[])[] = [
 /** Flattened view for any consumer that just needs the membership list. */
 export const TRIP_ICON_SET: readonly string[] = TRIP_ICON_CLUSTERS.flat();
 
+/** Search terms (Hebrew + English) per vibe glyph, so the trip picker's search
+ *  matches style icons too — not only country flags. */
+export const TRIP_VIBE_TERMS: Record<string, readonly string[]> = {
+  '🧳': ['מזוודה', 'כללי', 'luggage', 'trip'],
+  '🎒': ['תרמיל', 'טיולים', 'backpack', 'backpacking'],
+  '✈️': ['טיסה', 'מטוס', 'flight', 'abroad', 'חול'],
+  '🗺️': ['מפה', 'מסלול', 'map', 'roadtrip'],
+  '🌍': ['עולם', 'אירופה', 'world', 'europe', 'africa'],
+  '🌏': ['עולם', 'אסיה', 'world', 'asia'],
+  '🚗': ['רכב', 'מכונית', 'roadtrip', 'car', 'drive'],
+  '🚐': ['ואן', 'קרוואן', 'van', 'campervan'],
+  '🚂': ['רכבת', 'train', 'rail'],
+  '🚢': ['ספינה', 'שייט', 'קרוז', 'cruise', 'ship', 'boat'],
+  '⛵': ['מפרשית', 'שייט', 'sail', 'yacht'],
+  '🏍️': ['אופנוע', 'motorcycle', 'moto'],
+  '🏖️': ['חוף', 'ים', 'beach', 'sea'],
+  '🏝️': ['אי', 'טרופי', 'island', 'tropical'],
+  '🌴': ['דקל', 'טרופי', 'palm', 'tropics'],
+  '🏔️': ['הר', 'הרים', 'אלפים', 'mountain', 'alps', 'snow'],
+  '🏜️': ['מדבר', 'desert'],
+  '🌋': ['הר געש', 'געש', 'volcano', 'geothermal'],
+  '🏞️': ['טבע', 'פארק', 'nature', 'park', 'national park'],
+  '🌲': ['יער', 'forest', 'woods'],
+  '🏕️': ['קמפינג', 'מחנה', 'camping', 'campsite'],
+  '🏙️': ['עיר', 'city', 'urban'],
+  '🗼': ['מגדל', 'תצפית', 'tower'],
+  '🗽': ['פסל החירות', 'ניו יורק', 'liberty', 'new york', 'nyc'],
+  '🏛️': ['היסטוריה', 'מוזיאון', 'תרבות', 'history', 'museum', 'culture'],
+  '⛩️': ['מקדש', 'יפן', 'temple', 'shrine', 'japan'],
+  '🕌': ['מסגד', 'mosque'],
+  '🏰': ['טירה', 'ארמון', 'castle', 'palace'],
+  '🎡': ['יריד', 'לונה פארק', 'fair', 'theme park'],
+  '🎿': ['סקי', 'ski', 'snow'],
+  '🏄': ['גלישה', 'surf', 'surfing'],
+  '🥾': ['טיול רגלי', 'הליכה', 'מסלול', 'hike', 'trek', 'hiking'],
+  '🤿': ['צלילה', 'שנרקל', 'dive', 'diving', 'snorkel'],
+  '🐘': ['ספארי', 'חיות', 'safari', 'wildlife'],
+  '🍷': ['יין', 'אוכל', 'קולינרי', 'wine', 'food', 'culinary'],
+  '🎶': ['מוזיקה', 'פסטיבל', 'הופעה', 'music', 'festival', 'concert'],
+  '🎉': ['חגיגה', 'מסיבה', 'party', 'celebration'],
+  '💍': ['ירח דבש', 'חתונה', 'honeymoon', 'wedding'],
+  '🎓': ['גמר', 'סיום', 'graduation'],
+  '🌸': ['אביב', 'פריחה', 'סאקורה', 'spring', 'blossom'],
+  '☀️': ['קיץ', 'שמש', 'summer', 'sun'],
+  '🍁': ['סתיו', 'autumn', 'fall'],
+  '❄️': ['חורף', 'שלג', 'winter', 'snow'],
+};
+
+const normalizeTerm = (s: string): string =>
+  s
+    .toLowerCase()
+    .replace(/["'`׳״]/g, '')
+    .replace(/\s+/g, ' ')
+    .trim();
+
+/** Vibe glyphs whose terms match a search query (empty query → none; the picker
+ *  shows the spaced clusters instead). */
+export const searchVibeIcons = (query: string): readonly string[] => {
+  const q = normalizeTerm(query);
+  if (!q) return [];
+  return TRIP_ICON_SET.filter((g) =>
+    (TRIP_VIBE_TERMS[g] ?? []).some((term) => normalizeTerm(term).includes(q)),
+  );
+};
+
 /** Default glyph per canonical category (the picker's suggestion + the badge a
  *  category-only item renders). Kept in step with `ICON_SET`'s first useful
  *  glyph for each category. */
