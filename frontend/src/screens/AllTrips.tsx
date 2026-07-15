@@ -117,7 +117,7 @@ export function AllTrips({ onOpenAccount }: { onOpenAccount: () => void }) {
               className={'trip-card' + (isCurrent ? ' current' : '')}
               onClick={() => pick(trip)}
             >
-              <span className="flag">{DEFAULT_TRIP_ICON}</span>
+              <span className="flag">{trip.icon ?? DEFAULT_TRIP_ICON}</span>
               <span className="main">
                 <span className="t">
                   {trip.name}
