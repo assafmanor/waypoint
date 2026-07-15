@@ -96,6 +96,7 @@ export const t = {
       destPlaceholder: 'יפן, יוון, גיאורגיה…',
       datesLabel: 'מתי?',
       dateError: 'רגע - תאריך הסיום לפני ההתחלה',
+      datePast: 'רגע - התאריך כבר עבר',
       nameLabel: 'איך נקרא לזה?',
       namePlaceholder: 'נציע שם ברגע שנדע לאן',
       nameHint: 'הצענו לפי היעד - אפשר לשנות',
@@ -331,6 +332,7 @@ export const t = {
     cancel: 'ביטול',
     titleRequired: 'חסרה כותרת',
     dateRequired: 'חסר תאריך',
+    dateOutOfRange: 'התאריך מחוץ לטווח הטיול',
     endBeforeStart: 'שעת הסיום צריכה להיות אחרי ההתחלה',
     // Time picker (T-054): compact start + duration fields, scroll list with a
     // typeable exact-time fallback. Multi-day events are out of scope, so the
