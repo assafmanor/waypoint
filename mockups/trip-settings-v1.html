@@ -385,7 +385,87 @@
         cursor: pointer;
       }
 
+      /* derived fields (auto-derived in the future — read-only for now) */
+      .derived {
+        display: flex;
+        align-items: center;
+        gap: 8px;
+        background: #f7f8fb;
+        border: 1px dashed var(--line);
+        border-radius: 10px;
+        padding: 10px 12px;
+      }
+      .derived .dv {
+        font-family: 'JetBrains Mono', monospace;
+        font-size: 13px;
+        font-weight: 600;
+        direction: ltr;
+        flex: 1;
+        min-width: 0;
+      }
+      .derived .auto {
+        font-size: 10px;
+        font-weight: 700;
+        letter-spacing: 0.04em;
+        color: var(--muted);
+        background: rgba(22, 35, 61, 0.06);
+        border-radius: 7px;
+        padding: 2px 7px;
+        flex: 0 0 auto;
+      }
+      .derived-hint {
+        font-size: 11px;
+        color: var(--muted);
+        margin: 9px 2px 0;
+        line-height: 1.5;
+      }
+
+      /* member management actions (admin only) */
+      .mem-actions {
+        display: flex;
+        align-items: center;
+        gap: 4px;
+        flex: 0 0 auto;
+      }
+      .mem-actions button {
+        font: inherit;
+        cursor: pointer;
+        border-radius: 8px;
+        padding: 5px 8px;
+        font-size: 11.5px;
+        font-weight: 700;
+        border: 1px solid var(--line);
+        background: rgba(22, 35, 61, 0.04);
+        color: var(--ink);
+      }
+      .mem-actions .promote {
+        color: var(--amber-deep);
+        border-color: rgba(233, 166, 60, 0.35);
+        background: rgba(233, 166, 60, 0.1);
+      }
+      .mem-actions .remove {
+        color: var(--miss);
+        border-color: rgba(194, 88, 78, 0.3);
+        background: rgba(194, 88, 78, 0.08);
+      }
+      .peer-managed-note {
+        display: none;
+        align-items: center;
+        gap: 8px;
+        padding: 10px 15px;
+        background: #fafbfd;
+        border-top: 1px solid var(--line);
+        font-size: 11.5px;
+        color: var(--muted);
+      }
+      .phone[data-role='peer'] .peer-managed-note {
+        display: flex;
+      }
+
       /* view <-> edit visibility, toggled by .editing on the details card */
+      .details-edit {
+        padding: 2px 15px 16px;
+      }
       .details .details-edit {
         display: none;
       }
@@ -654,7 +734,7 @@
             <!-- ===== TRIP DETAILS (view <-> edit, one PATCH /trips/:id) ===== -->
             <div class="sec-title">
               פרטי הטיול
-              <button class="edit-btn" onclick="editDetails(true)">עריכה</button>
+              <button class="edit-btn admin-only" onclick="editDetails(true)">עריכה</button>
             </div>
             <div class="listcard details" id="details">
               <!-- view mode -->
@@ -694,6 +774,7 @@
                     <div class="fv mono">¥14,000</div>
                   </div>
                 </div>
+                <div class="peer-managed-note">🔒 רק מנהל יכול לערוך את פרטי הטיול</div>
               </div>
 
               <!-- edit mode -->
@@ -720,26 +801,22 @@
                   </div>
                 </div>
                 <div class="fld">
-                  <label for="f-tz">אזור זמן</label>
-                  <select class="inp mono" id="f-tz">
-                    <option selected>Asia/Tokyo</option>
-                    <option>Asia/Jerusalem</option>
-                    <option>Europe/London</option>
-                    <option>UTC</option>
-                  </select>
+                  <label>אזור זמן</label>
+                  <div class="derived">
+                    <span class="dv">Asia/Tokyo</span>
+                    <span class="auto">אוטומטי · בקרוב</span>
+                  </div>
                 </div>
                 <div class="fld">
                   <label>תקציב יומי לקבוצה</label>
                   <div class="budget-row">
-                    <select class="inp mono cur" aria-label="מטבע">
-                      <option selected>JPY ¥</option>
-                      <option>ILS ₪</option>
-                      <option>USD $</option>
-                      <option>EUR €</option>
-                    </select>
+                    <div class="derived cur">
+                      <span class="dv">JPY ¥</span>
+                    </div>
                     <input class="inp mono amt" type="number" value="14000" min="0" aria-label="סכום" />
                   </div>
                 </div>
+                <div class="derived-hint">אזור-זמן ומטבע ייגזרו אוטומטית מהיעד (בקרוב) — כרגע קבועים</div>
                 <div class="form-actions">
                   <button type="submit" class="btn-save">שמור</button>
                   <button type="button" class="btn-cancel" onclick="editDetails(false)">ביטול</button>
@@ -759,29 +836,41 @@
                 <div class="av" style="background: #5ec5b6">נ</div>
                 <div class="mn">נועם</div>
                 <span class="role mem">משתתף</span>
-                <button class="remove admin-only" aria-label="הסר את נועם">הסר</button>
+                <div class="mem-actions admin-only">
+                  <button class="promote" title="הפוך למנהל" aria-label="הפוך את נועם למנהל">👑</button>
+                  <button class="remove" aria-label="הסר את נועם">הסר</button>
+                </div>
               </div>
               <div class="member">
                 <div class="av" style="background: #e88c8c">ד</div>
                 <div class="mn">דנה</div>
                 <span class="role mem">משתתף</span>
-                <button class="remove admin-only" aria-label="הסר את דנה">הסר</button>
+                <div class="mem-actions admin-only">
+                  <button class="promote" title="הפוך למנהל" aria-label="הפוך את דנה למנהל">👑</button>
+                  <button class="remove" aria-label="הסר את דנה">הסר</button>
+                </div>
               </div>
               <div class="member">
                 <div class="av" style="background: #9c8ce8">מ</div>
                 <div class="mn">מאור</div>
                 <span class="role mem">משתתף</span>
-                <button class="remove admin-only" aria-label="הסר את מאור">הסר</button>
+                <div class="mem-actions admin-only">
+                  <button class="promote" title="הפוך למנהל" aria-label="הפוך את מאור למנהל">👑</button>
+                  <button class="remove" aria-label="הסר את מאור">הסר</button>
+                </div>
               </div>
               <div class="member">
                 <div class="av" style="background: #8cb6e8">ר</div>
                 <div class="mn">רון</div>
                 <span class="role mem">משתתף</span>
-                <button class="remove admin-only" aria-label="הסר את רון">הסר</button>
+                <div class="mem-actions admin-only">
+                  <button class="promote" title="הפוך למנהל" aria-label="הפוך את רון למנהל">👑</button>
+                  <button class="remove" aria-label="הסר את רון">הסר</button>
+                </div>
               </div>
             </div>
-            <div class="roleview-flag admin-only">מנהל · אפשר להסיר משתתפים</div>
-            <div class="roleview-flag peer-only">משתתף · צפייה בלבד ברשימה</div>
+            <div class="roleview-flag admin-only">👑 מנהל · אפשר לערוך פרטים, לקדם מנהלים ולהסיר משתתפים</div>
+            <div class="roleview-flag peer-only">משתתף · צפייה בלבד</div>
 
             <!-- ===== INVITE ===== -->
             <div class="sec-title">הזמנת חברים</div>
@@ -791,8 +880,8 @@
             </div>
             <div class="invite-cap">לינק חדש נוצר בכל לחיצה · תקף 7 ימים · שתפו בקבוצת הוואטסאפ</div>
 
-            <!-- ===== LEAVE (danger) ===== -->
-            <div class="sec-title" style="color: var(--miss)">יציאה מהטיול</div>
+            <!-- ===== DANGER ZONE ===== -->
+            <div class="sec-title" style="color: var(--miss)">אזור רגיש</div>
             <div class="danger">
               <div class="field">
                 <span class="fi">🚪</span>
@@ -801,9 +890,17 @@
                 </div>
                 <button class="go" onclick="confirmLeave()">עזוב</button>
               </div>
+              <div class="field admin-only">
+                <span class="fi">🗑️</span>
+                <div class="main">
+                  <div class="fv">מחק את הטיול לכולם</div>
+                </div>
+                <button class="go" onclick="confirmDelete()">מחק</button>
+              </div>
             </div>
             <div class="leave-cap">
-              תוסר מרשימת המשתתפים · תוכל להצטרף מחדש דרך לינק הזמנה תקף
+              יציאה: תוסר מהרשימה · אפשר לחזור דרך לינק תקף. אם המנהל האחרון עוזב —
+              משתתף אחר יקודם למנהל אוטומטית. <span class="admin-only">מחיקה זמינה למנהל בלבד ודורשת אישור כפול.</span>
             </div>
           </div>
         </div>
@@ -814,80 +911,87 @@
     <div class="col notes-col">
       <div class="caption-title" style="visibility: hidden">.</div>
       <div class="notes">
-        <h2>מה נתמך — ומה עוד לא</h2>
+        <h2>מה נתמך — ומה נבנה</h2>
         <div class="lede">
-          המסך מציג רק פעולות שיש להן backend חי היום. כל השאר מסומן כאן לתחזור אליו,
-          ולא מוצג כפקד "חי" שמשקר למשתמש.
+          העיצוב סוכם: מנהלים שולטים בטיול. חלק מהפעולות כבר עם backend חי, וחלק
+          דורשות עבודת backend חדשה (מסומן). מה שעדיין לא מוכר מסומן כעתידי.
         </div>
         <div class="legend">
-          <span><i class="swatch" style="background: #2c9c90"></i>נתמך</span>
-          <span><i class="swatch" style="background: #6e59d6"></i>לתחזור — לא נתמך</span>
-          <span><i class="swatch" style="background: #c2584e"></i>חסר endpoint / החלטה</span>
+          <span><i class="swatch" style="background: #2c9c90"></i>נתמך היום</span>
+          <span><i class="swatch" style="background: #6e59d6"></i>נבנה · צריך backend</span>
+          <span><i class="swatch" style="background: #c2584e"></i>עתידי</span>
         </div>
 
         <div class="note ok">
           <div class="nt">✓ נתמך היום</div>
           <div class="nb">
             רשימת חבורה + תפקידים · הזמנה (<code>POST /trips/:id/invite</code>) · יציאה
-            מהטיול והסרת משתתף ע״י מנהל (<code>DELETE /trips/:id/members/:userId</code>).
+            מהטיול והסרת משתתף ע״י מנהל (<code>DELETE /trips/:id/members/:userId</code>,
+            כבר admin-gated ב-service).
           </div>
         </div>
 
-        <div class="note ok">
-          <div class="nt">⚒ עריכת פרטי הטיול — נבנה עכשיו</div>
+        <div class="note">
+          <div class="nt">⚒ עריכת פרטים — מנהל בלבד</div>
           <div class="nb">
-            שם / יעד / תאריכים / אזור-זמן / תקציב, כטופס אחד ו-<code>PATCH /trips/:id</code>
-            חדש (endpoint + סכמה משותפת). פתוח: האם עריכה לכל חבר או למנהל בלבד
-            (ADR-0005 "peers not roles" → נוטה לכל חבר). שינוי תאריכים משפיע על אירועים
-            מחוץ לטווח — צריך אזהרה.
+            שם / יעד / תאריכים כטופס אחד → <code>PATCH /trips/:id</code> חדש, <b>admin-gated
+            בשרת</b> (לא רק ב-UI). כפתור "עריכה" מוסתר למשתתף. שינוי טווח תאריכים →
+            אזהרה על אירועים שיוצאים מהטווח.
+          </div>
+        </div>
+
+        <div class="note">
+          <div class="nt">⚒ קידום למנהל 👑</div>
+          <div class="nb">
+            מנהל מקדם משתתף למנהל. צריך <code>PATCH /trips/:id/members/:userId</code>
+            (role), admin-gated. אין הורדת-דרגה מפורשת ב-v1 בכוונה.
+          </div>
+        </div>
+
+        <div class="note">
+          <div class="nt">⚒ מחיקת טיול — מנהל בלבד</div>
+          <div class="nb">
+            <code>DELETE /trips/:id</code> חדש, admin-gated, אישור כפול. מוחק לכולם.
+          </div>
+        </div>
+
+        <div class="note">
+          <div class="nt">⚒ מנהל אחרון עוזב</div>
+          <div class="nb">
+            כשמנהל אחרון יוצא — משתתף אחר מקודם אוטומטית (שרירותי) בתוך
+            <code>removeMember</code>. כך אין טיול "יתום" בלי מנהל.
           </div>
         </div>
 
         <div class="note block">
-          <div class="nt">מחיקת הטיול לכולם</div>
+          <div class="nt">אזור-זמן + מטבע — אוטומטיים (עתידי)</div>
           <div class="nb">
-            הושמט מ״אזור היציאה״ — אין <code>DELETE /trips/:id</code>. צריך גם החלטת
-            הרשאה (מי מורשה, אישור כפול).
+            הוחלט: ייגזרו מהיעד, לא נערכים ידנית. בטופס הם read-only מקווקו עם תג
+            "אוטומטי · בקרוב". צריך לחשוב על המנגנון (Google Places? מיפוי יעד→TZ/מטבע).
           </div>
         </div>
 
-        <div class="note">
-          <div class="nt">סנכרון Google Calendar</div>
+        <div class="note block">
+          <div class="nt">Calendar sync / Gmail / Photos / WhatsApp</div>
           <div class="nb">
-            ההעדפה <code>calendarSyncEnabled</code> נשמרת, אבל הדחיפה עצמה עדיין לא
-            מחווטת (ADR-0003). הושמט כדי לא להציג טוגל שלא עושה כלום. יחזור עם ה-push.
+            Calendar: <code>calendarSyncEnabled</code> נשמר אבל ה-push לא מחווט (ADR-0003).
+            Gmail = v1.1; Photos/WhatsApp מחוץ לסקופ (אינטגרציות הן צינורות, ADR-0004).
+            כולם מושמטים כדי לא להציג פקד שלא עובד.
           </div>
         </div>
 
-        <div class="note">
-          <div class="nt">ייבוא Gmail / Photos / WhatsApp</div>
-          <div class="nb">
-            מהמוקאפ הישן. Gmail הוא v1.1; Photos/WhatsApp מחוץ לסקופ — ואינטגרציות הן
-            צינורות ולא מסך (ADR-0004), אז ממילא לא מקומן כאן.
-          </div>
-        </div>
-
-        <div class="note">
+        <div class="note block">
           <div class="nt">טוגלים של התנהגות (ripple, זיהוי-קשיח)</div>
           <div class="nb">
-            אלה התנהגויות מובנות של המוצר, לא העדפות נשמרות. אין להן שדה. אם ירצו
-            שליטה — צריך מודל הגדרות-טיול חדש.
+            התנהגויות מובנות, לא העדפות נשמרות — אין להן שדה. שליטה תדרוש מודל
+            הגדרות-טיול חדש.
           </div>
         </div>
 
         <div class="note">
-          <div class="nt">Edge: החבר האחרון / החלפת מנהל</div>
+          <div class="nt">Chrome: נייטרלי (סוכם)</div>
           <div class="nb">
-            יציאה נתמכת, אבל מה קורה כשמנהל יחיד עוזב או שהחבר האחרון יוצא (טיול יתום)?
-            צריך העברת-ניהול או מדיניות מחיקה. פתוח.
-          </div>
-        </div>
-
-        <div class="note">
-          <div class="nt">Chrome: נייטרלי מול צבעי-מצב</div>
-          <div class="nb">
-            בחרתי כותרת נייטרלית (ink-on-paper) כי הגדרות נגישות משני המצבים והמסלול
-            יושב מחוץ ל-Shell. לשקול: אולי כן לשאת את זהות-המצב (סגול/אינדיגו).
+            כותרת נייטרלית ink-on-paper — הגדרות נגישות משני המצבים. לא נושא זהות-מצב.
           </div>
         </div>
       </div>
@@ -911,8 +1015,17 @@
       function confirmLeave() {
         alert('באמת לצאת מ״יפן ׳26״? (מוקאפ — נשאל שוב ליתר ביטחון)');
       }
-      // convenience for review: open with #edit to land in the details edit form
+      function confirmDelete() {
+        alert('מחיקת ״יפן ׳26״ לכל המשתתפים? (מוקאפ — דורש אישור כפול)');
+      }
+      // convenience for review: #edit lands in the details edit form; #peer shows the member view
       if (location.hash === '#edit') editDetails(true);
+      if (location.hash === '#peer') {
+        document.getElementById('phone').dataset.role = 'peer';
+        const btns = document.querySelectorAll('.sw');
+        btns.forEach((b) => b.classList.remove('on'));
+        if (btns[1]) btns[1].classList.add('on');
+      }
     </script>
   </body>
 </html>
