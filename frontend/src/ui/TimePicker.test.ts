@@ -4,25 +4,34 @@
 // entry is the native <input type="time"> (ADR-0036 §2c) — its value is always
 // a valid HH:MM, so there's no custom parsing left to test.
 import { describe, it, expect } from 'vitest';
-import { endToDuration, clampSameDay, nearestRoundSlot } from './TimePicker';
+import { endToDuration, clampToLatestEnd, nearestRoundSlot } from './TimePicker';
 
-describe('endToDuration (same-day guard)', () => {
+describe('endToDuration', () => {
   it('returns the gap when the end is later the same day', () => {
     expect(endToDuration(9 * 60 + 30, 10 * 60 + 30)).toBe(60);
     expect(endToDuration(0, 23 * 60 + 59)).toBe(23 * 60 + 59);
   });
 
-  it('rejects an end at or before the start (would be multi-day)', () => {
+  it('reads an earlier end from an evening start as an overnight span (ADR-0037)', () => {
+    expect(endToDuration(23 * 60, 2 * 60)).toBe(3 * 60); // 23:00 → 02:00 = 3h
+    expect(endToDuration(22 * 60, 7 * 60)).toBe(9 * 60); // 22:00 → 07:00 (cutoff) = 9h
+  });
+
+  it('rejects an end past the overnight cutoff or from a morning start', () => {
     expect(endToDuration(9 * 60, 9 * 60)).toBeNull(); // equal
-    expect(endToDuration(22 * 60, 1 * 60)).toBeNull(); // wraps past midnight
+    expect(endToDuration(23 * 60, 8 * 60)).toBeNull(); // 08:00 is past the 07:00 cutoff
+    expect(endToDuration(5 * 60, 4 * 60)).toBeNull(); // morning start → not an overnight, a typo
   });
 });
 
-describe('clampSameDay', () => {
-  it('caps a span at 23:59 so it never spills into tomorrow', () => {
-    expect(clampSameDay(23 * 60 + 30)).toBe(23 * 60 + 30);
-    expect(clampSameDay(24 * 60)).toBe(23 * 60 + 59); // start 22:00 + 3h
-    expect(clampSameDay(30 * 60)).toBe(23 * 60 + 59);
+describe('clampToLatestEnd', () => {
+  it('caps an evening start at the overnight cutoff (31:00 = 07:00 next day)', () => {
+    expect(clampToLatestEnd(22 * 60, 24 * 60)).toBe(24 * 60); // 00:00, within window
+    expect(clampToLatestEnd(22 * 60, 40 * 60)).toBe(31 * 60); // clamps to 07:00 next day
+  });
+
+  it('caps a morning start at the same day (23:59)', () => {
+    expect(clampToLatestEnd(9 * 60, 30 * 60)).toBe(23 * 60 + 59);
   });
 });
 

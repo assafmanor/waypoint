@@ -99,4 +99,13 @@ describe('nextSlot', () => {
     expect(slot.start).toBe('23:59');
     expect(slot.end).toBe('');
   });
+
+  it('clamps to 23:59 when the last event runs past midnight (ADR-0037 overnight)', () => {
+    // Club 23:00 → 02:00 next morning: the day is full, so the prefill stays on
+    // this day (23:59 start-only) rather than reading the 02:00 end as a slot.
+    const club = { ...ev('club', '23:00'), endsAt: '2026-07-08T02:00:00+09:00' };
+    const slot = nextSlot([club], '2026-07-07', TZ);
+    expect(slot.start).toBe('23:59');
+    expect(slot.end).toBe('');
+  });
 });

@@ -1850,6 +1850,22 @@
   outline-offset: 2px;
 }
 
+/* Overnight events (ADR-0037): a small "+1" after the end time flags a span
+   that ends the next morning, so 23:00–02:00 doesn't read as backwards. */
+.xmid {
+  font-size: 0.62em;
+  font-weight: 700;
+  color: var(--amber-deep);
+  margin-inline-start: 1px;
+  vertical-align: super;
+}
+.tp-nextday {
+  margin-inline-start: 4px;
+  font-size: 11px;
+  font-weight: 700;
+  color: var(--amber-deep);
+}
+
 /* Trip-mode quick-schedule confirm (shelf → day). Neutral --cta, not plan
    violet — this is Trip mode. */
 .sched-confirm {

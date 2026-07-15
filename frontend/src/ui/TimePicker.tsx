@@ -15,10 +15,17 @@
 // end on the same calendar day as the start, and an exact end at/or before the
 // start is rejected rather than rolled into tomorrow.
 import { useMemo, useState } from 'react';
+import { OVERNIGHT } from '../constants';
 import { t } from '../i18n/he';
 
 const MINUTES_IN_DAY = 1440;
 const LAST_MINUTE = MINUTES_IN_DAY - 1; // 23:59 — latest same-day end
+const OVERNIGHT_END = OVERNIGHT.END_HOUR * 60; // latest next-day end (07:00)
+const OVERNIGHT_MIN_START = OVERNIGHT.MIN_START_HOUR * 60; // earliest overnight start (12:00)
+// Latest end a start may reach: same day (23:59), or into the next day up to the
+// overnight cutoff (07:00 → 31:00) when the start is afternoon/evening.
+const latestEnd = (startMin: number) =>
+  startMin >= OVERNIGHT_MIN_START ? MINUTES_IN_DAY + OVERNIGHT_END : LAST_MINUTE;
 const STEP = 15;
 // Duration presets, coarsening as they grow; filtered per-start to same-day.
 const DUR_PRESETS = [15, 30, 45, 60, 90, 120, 150, 180, 240, 300, 360, 480];
@@ -30,16 +37,22 @@ const toMin = (hhmm: string) => {
 };
 const toHHMM = (min: number) => `${pad(Math.floor(min / 60))}:${pad(min % 60)}`;
 
-/** Minutes from start to a chosen end within the same day, or null when the end
- *  isn't a valid same-day end (at/before the start). Multi-day events are out of
- *  scope (ADR-0036), so a "tomorrow" end is rejected here, never rolled over. */
+/** Minutes from start to a chosen end, or null when the end isn't valid.
+ *  A later same-day end is the gap. An end at/before the start reads as the next
+ *  day (overnight, ADR-0037) only when the start is afternoon/evening and the
+ *  end lands by the 07:00 cutoff — so 23:00→02:00 is a 3h overnight, while a
+ *  05:00→04:00 typo (morning start) is still rejected rather than stretched. */
 export function endToDuration(startMin: number, endMin: number): number | null {
-  return endMin > startMin ? endMin - startMin : null;
+  if (endMin > startMin) return endMin - startMin;
+  if (startMin >= OVERNIGHT_MIN_START && endMin <= OVERNIGHT_END && endMin < startMin)
+    return endMin + MINUTES_IN_DAY - startMin;
+  return null;
 }
 
-/** Clamp minutes-of-day so a span never spills past 23:59 into the next day. */
-export function clampSameDay(min: number): number {
-  return Math.min(min, LAST_MINUTE);
+/** Clamp a start+duration end so it never runs past the latest end the start
+ *  allows (same day, or the overnight cutoff for an afternoon/evening start). */
+export function clampToLatestEnd(startMin: number, endMin: number): number {
+  return Math.min(endMin, latestEnd(startMin));
 }
 
 /** The nearest round (15-min) slot to a minute-of-day, capped at the last slot
@@ -61,6 +74,10 @@ function durationPhrase(min: number): string {
         : t.eventForm.durHours(h);
   return t.eventForm.durMinutes(m);
 }
+
+/** Wall-clock HH:MM for an end that may run into the next day (min ≥ 1440). */
+const toEndWall = (min: number) => toHHMM(min % MINUTES_IN_DAY);
+const isNextDay = (min: number) => min >= MINUTES_IN_DAY;
 
 const ALL_TIMES = Array.from({ length: MINUTES_IN_DAY / STEP }, (_, i) => i * STEP);
 
@@ -85,11 +102,13 @@ export function TimePicker({
 
   const startMin = start ? toMin(start) : null;
   const endMin = end ? toMin(end) : null;
-  const duration = startMin != null && endMin != null ? endMin - startMin : null;
+  const duration = startMin != null && endMin != null ? endToDuration(startMin, endMin) : null;
+  // The end wraps past midnight when it reads earlier than the start (overnight).
+  const endIsNextDay = startMin != null && endMin != null && endMin < startMin && duration != null;
 
   const durPresets = useMemo(() => {
     if (startMin == null) return [];
-    return DUR_PRESETS.filter((d) => startMin + d <= LAST_MINUTE);
+    return DUR_PRESETS.filter((d) => startMin + d <= latestEnd(startMin));
   }, [startMin]);
 
   // "Suggest rounds when reselecting" — when the current value is off-grid, the
@@ -112,27 +131,28 @@ export function TimePicker({
     setNote(null);
   };
 
-  // Pick a start; preserve the existing duration, clamped to the same day.
-  // `min` from the list, or from the native exact input (always valid HH:MM).
+  // Pick a start; preserve the existing duration, clamped to the latest end the
+  // new start allows. `min` from the list, or the native exact input (valid HH:MM).
   const applyStart = (min: number, opts?: { close?: boolean }) => {
     let nextEnd = end;
-    if (duration != null) nextEnd = toHHMM(clampSameDay(min + duration));
+    if (duration != null) nextEnd = toEndWall(clampToLatestEnd(min, min + duration));
     onChange({ start: toHHMM(min), end: nextEnd });
     if (opts?.close) close();
   };
 
   const commitDuration = (d: number) => {
     if (startMin == null) return;
-    onChange({ start, end: toHHMM(clampSameDay(startMin + d)) });
+    onChange({ start, end: toEndWall(clampToLatestEnd(startMin, startMin + d)) });
     close();
   };
 
-  // Exact end → derived duration. Same-day only: reject end ≤ start.
+  // Exact end → derived duration. Overnight ends (past midnight, ≤ 07:00 from an
+  // evening start) are accepted; an otherwise-invalid end is rejected inline.
   const applyExactEnd = (v: string) => {
     if (startMin == null) return;
     const min = toMin(v);
     if (endToDuration(startMin, min) == null) {
-      setNote(t.eventForm.sameDayOnly);
+      setNote(t.eventForm.invalidEnd);
       return;
     }
     setNote(null);
@@ -168,6 +188,7 @@ export function TimePicker({
                   <span>{durationPhrase(duration)}</span>
                   <span className="tp-endhm" dir="ltr">
                     {t.eventForm.endsAtPrefix} {end}
+                    {endIsNextDay && <span className="tp-nextday">{t.eventForm.nextDay}</span>}
                   </span>
                 </>
               ) : (
@@ -241,7 +262,10 @@ export function TimePicker({
                 >
                   <span>{durationPhrase(d)}</span>
                   <span className="tp-end" dir="ltr">
-                    {t.eventForm.endsAtPrefix} {toHHMM(startMin + d)}
+                    {t.eventForm.endsAtPrefix} {toEndWall(startMin + d)}
+                    {isNextDay(startMin + d) && (
+                      <span className="tp-nextday">{t.eventForm.nextDay}</span>
+                    )}
                   </span>
                 </button>
               ))}

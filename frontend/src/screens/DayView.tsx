@@ -12,7 +12,14 @@ import {
 import { useTrip, byStart } from '../state/trip-state';
 import { useVerbs } from '../state/verbs';
 import { useClock } from '../lib/useClock';
-import { deriveNow, formatTime, hardConflicts, zonedIso } from '../lib/time';
+import {
+  deriveNow,
+  formatTime,
+  hardConflicts,
+  zonedIso,
+  resolveEndIso,
+  crossesMidnight,
+} from '../lib/time';
 import { nextSlot } from '../lib/gaps';
 import { CODE_PREFIX, DELAY_STEP_MINUTES, ICONS, MS_PER_DAY } from '../constants';
 import { t } from '../i18n/he';
@@ -135,7 +142,8 @@ export function DayView() {
               title: scheduleItem.title,
               kind: EVENT_KIND.SOFT,
               startsAt: start ? zonedIso(activeDate, start, trip.timezone) : undefined,
-              endsAt: end ? zonedIso(activeDate, end, trip.timezone) : undefined,
+              endsAt:
+                end && start ? resolveEndIso(activeDate, start, end, trip.timezone) : undefined,
             });
             setScheduleItem(null);
           }}
@@ -252,6 +260,11 @@ function EventItem({
           <span className="time" dir="ltr">
             {formatTime(event.startsAt, tz)}
             {event.endsAt && `–${formatTime(event.endsAt, tz)}`}
+            {event.endsAt && crossesMidnight(event.startsAt, event.endsAt, tz) && (
+              <sup className="xmid" title={t.event.nextDay}>
+                +1
+              </sup>
+            )}
           </span>
         )}
         <span className="chev" aria-hidden="true" />

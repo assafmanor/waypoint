@@ -194,6 +194,20 @@ export function isoToTimeInput(iso: string, timeZone: string): string {
   return `${String(hour).padStart(2, '0')}:${String(minute).padStart(2, '0')}`;
 }
 
+/** End instant for a form's start/end HH:MM on `date`: the next calendar day
+ *  when the end reads earlier than the start — an overnight event that still
+ *  belongs to its start day (ADR-0037). The TimePicker only emits an earlier
+ *  end for a valid overnight span, so this needs no cutoff check of its own. */
+export function resolveEndIso(date: string, start: string, end: string, timeZone: string): string {
+  return zonedIso(end < start ? addDays(date, 1) : date, end, timeZone);
+}
+
+/** True when the event's end lands on a later calendar day than its start, in
+ *  the trip timezone — the signal for the "＋1 / next day" display marker. */
+export function crossesMidnight(startsAt: string, endsAt: string, timeZone: string): boolean {
+  return todayInTz(timeZone, new Date(startsAt)) !== todayInTz(timeZone, new Date(endsAt));
+}
+
 /** Same-day hard event(s) whose span overlaps this soft event's current span.
  *  Two soft events overlapping is expected/unguarded (ADR-0011) — only hard-vs-soft
  *  matters, since a hard event can never move to resolve it. */

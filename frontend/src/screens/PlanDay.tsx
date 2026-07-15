@@ -13,7 +13,7 @@ import { Fragment, useState, type FormEvent, type PointerEvent as ReactPointerEv
 import { EVENT_KIND, EVENT_STATUS, type MaybeItem, type TripEvent } from '@waypoint/shared';
 import { useTrip, byStart } from '../state/trip-state';
 import { useVerbs } from '../state/verbs';
-import { formatTime, zonedIso } from '../lib/time';
+import { formatTime, zonedIso, crossesMidnight } from '../lib/time';
 import { gapBetween, nextSlot, type GapDefaults } from '../lib/gaps';
 import { CODE_PREFIX, ICONS, MS_PER_DAY, MINUTES_PER_HOUR } from '../constants';
 import { t } from '../i18n/he';
@@ -362,6 +362,11 @@ function BuilderRow({
         <span className="bld-time" dir="ltr">
           {formatTime(event.startsAt, tz)}
           {event.endsAt && `–${formatTime(event.endsAt, tz)}`}
+          {event.endsAt && crossesMidnight(event.startsAt, event.endsAt, tz) && (
+            <sup className="xmid" title={t.event.nextDay}>
+              +1
+            </sup>
+          )}
         </span>
       )}
       <button
