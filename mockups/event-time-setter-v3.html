@@ -1,0 +1,671 @@
+<!doctype html>
+<!-- Event time-setter — FINAL direction (branch: claude/event-time-setter-redesign).
+     Supersedes v1 (too tall / novel) and v2 (which compared list vs wheel).
+     Chosen: the Google-Calendar-style compact field that opens a scrollable
+     15-min time menu — familiar, small, one-tap for the common case — with a
+     TYPEABLE exact-time field at the top of the menu as the fallback for
+     off-grid times (a flight at 09:07, not 09:00). This mirrors Google exactly:
+     the list is the fast path, typing is the escape hatch.
+
+     Kept from earlier rounds: time is amber (design-language: "amber = the clock
+     & the commitment"); end is entered as a duration off the start, with the
+     resulting end time shown next to each option, and saved as an absolute
+     endsAt. The duration menu carries the same "type an exact time" fallback,
+     so a hard event's exact end (a landing, a checkout) is reachable too.
+
+     Fully interactive, RTL, phone-first (~390px). -->
+<html lang="he" dir="rtl">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>Waypoint — בורר שעה (מוקאפ סופי)</title>
+    <link rel="preconnect" href="https://fonts.googleapis.com" />
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+    <link
+      href="https://fonts.googleapis.com/css2?family=Assistant:wght@400;500;600;700&family=Secular+One&family=JetBrains+Mono:wght@500;700&display=swap"
+      rel="stylesheet"
+    />
+    <style>
+      :root {
+        --ink: #16233d;
+        --screen: #e7eaef;
+        --card: #ffffff;
+        --amber: #e9a63c;
+        --amber-deep: #c9822a;
+        --teal: #2c9c90;
+        --plan: #6e59d6;
+        --plan-deep: #5747b4;
+        --plan-tint: rgba(110, 89, 214, 0.1);
+        --muted: #6c7488;
+        --line: rgba(22, 35, 61, 0.1);
+        --soft-line: rgba(22, 35, 61, 0.28);
+        --cta: var(--ink);
+        --cta-text: #fff;
+        --shadow: 0 18px 40px -18px rgba(14, 23, 41, 0.45);
+        --font-head: 'Secular One', sans-serif;
+        --font-body: 'Assistant', sans-serif;
+        --font-mono: 'JetBrains Mono', monospace;
+      }
+      * {
+        box-sizing: border-box;
+        margin: 0;
+        padding: 0;
+        -webkit-tap-highlight-color: transparent;
+      }
+      html,
+      body {
+        min-height: 100%;
+      }
+      body {
+        font-family: var(--font-body);
+        background:
+          radial-gradient(120% 90% at 80% -10%, #2a3e68 0%, transparent 55%),
+          radial-gradient(120% 90% at 0% 110%, #1a2a4a 0%, transparent 50%), #0f1a31;
+        color: var(--ink);
+        min-height: 100vh;
+        display: flex;
+        flex-direction: column;
+        align-items: center;
+        padding: 24px 16px 60px;
+        -webkit-font-smoothing: antialiased;
+      }
+      .kicker {
+        color: #b9c4dc;
+        font-size: 12px;
+        letter-spacing: 0.06em;
+        text-transform: uppercase;
+        margin-bottom: 4px;
+        text-align: center;
+      }
+      .kicker b {
+        color: var(--amber);
+      }
+      h1.title {
+        font-family: var(--font-head);
+        color: #f4f7ff;
+        font-size: 20px;
+        font-weight: 400;
+        margin-bottom: 20px;
+        text-align: center;
+      }
+
+      .phone {
+        width: 100%;
+        max-width: 392px;
+        background: var(--screen);
+        border-radius: 30px;
+        box-shadow: 0 26px 60px -18px rgba(0, 0, 0, 0.6);
+        overflow: hidden;
+        border: 1px solid rgba(255, 255, 255, 0.08);
+      }
+      .chrome {
+        background: #fbf9f4;
+        border-bottom: 1px solid var(--line);
+        padding: 12px 16px 11px;
+        display: flex;
+        align-items: center;
+        justify-content: space-between;
+      }
+      .mode-pill {
+        display: inline-flex;
+        align-items: center;
+        gap: 5px;
+        font-size: 12px;
+        font-weight: 700;
+        color: var(--plan-deep);
+        background: var(--plan-tint);
+        border: 1px solid rgba(110, 89, 214, 0.25);
+        border-radius: 999px;
+        padding: 4px 10px;
+      }
+      .chrome .day {
+        font-size: 12.5px;
+        color: var(--muted);
+        font-weight: 600;
+      }
+      .stage {
+        padding: 18px 16px 22px;
+        display: flex;
+        justify-content: center;
+      }
+
+      .event-form-card {
+        width: 100%;
+        max-width: 360px;
+        background: var(--card);
+        border: 1px solid var(--line);
+        border-radius: 15px;
+        padding: 16px;
+        box-shadow: var(--shadow);
+        display: flex;
+        flex-direction: column;
+        gap: 13px;
+      }
+      .form-title {
+        font-family: var(--font-head);
+        font-weight: 400;
+        font-size: 16px;
+        color: var(--ink);
+      }
+      .form-field {
+        display: flex;
+        flex-direction: column;
+        gap: 6px;
+        font-size: 12.5px;
+        font-weight: 600;
+        color: var(--muted);
+      }
+      .form-field > input {
+        font: inherit;
+        font-size: 14px;
+        font-weight: 500;
+        color: var(--ink);
+        background: #fff;
+        border: 1px solid var(--line);
+        border-radius: 9px;
+        padding: 9px 10px;
+      }
+
+      /* compact time fields */
+      .time-fields {
+        position: relative;
+        display: flex;
+        gap: 9px;
+      }
+      .tfield {
+        flex: 1;
+        text-align: start;
+        background: #fff;
+        border: 1px solid var(--line);
+        border-radius: 10px;
+        padding: 7px 11px 8px;
+        cursor: pointer;
+        display: flex;
+        flex-direction: column;
+        gap: 1px;
+        font-family: var(--font-body);
+        transition: border-color 0.12s ease;
+      }
+      .tfield:active {
+        border-color: var(--soft-line);
+      }
+      .tfield.open {
+        border-color: var(--amber);
+        box-shadow: 0 0 0 2px rgba(233, 166, 60, 0.16);
+      }
+      .tfield .cap {
+        font-size: 11px;
+        font-weight: 700;
+        color: var(--muted);
+      }
+      .tfield .val {
+        font-family: var(--font-mono);
+        font-size: 19px;
+        font-weight: 700;
+        color: var(--amber-deep);
+        letter-spacing: 0.01em;
+      }
+      .tfield.dur .val {
+        font-family: var(--font-body);
+        font-size: 15px;
+        display: flex;
+        align-items: baseline;
+        gap: 7px;
+      }
+      .tfield.dur .val .endhm {
+        font-family: var(--font-mono);
+        font-size: 13px;
+        font-weight: 500;
+        color: var(--muted);
+      }
+
+      .backdrop {
+        position: absolute;
+        inset: -600px -40px;
+        z-index: 5;
+        display: none;
+      }
+      .backdrop.on {
+        display: block;
+      }
+      .panel {
+        position: absolute;
+        z-index: 6;
+        top: calc(100% + 6px);
+        width: 184px;
+        background: #fff;
+        border: 1px solid var(--line);
+        border-radius: 12px;
+        box-shadow: 0 18px 38px -12px rgba(14, 23, 41, 0.4);
+        overflow: hidden;
+        display: none;
+      }
+      .panel.on {
+        display: block;
+      }
+
+      /* typeable exact-time header — the fallback */
+      .exact {
+        display: flex;
+        align-items: center;
+        gap: 7px;
+        padding: 9px 11px;
+        border-bottom: 1px solid var(--line);
+        background: rgba(233, 166, 60, 0.05);
+      }
+      .exact .lbl {
+        font-size: 10.5px;
+        font-weight: 700;
+        color: var(--muted);
+        white-space: nowrap;
+      }
+      .exact input {
+        flex: 1;
+        min-width: 0;
+        font-family: var(--font-mono);
+        font-size: 16px;
+        font-weight: 700;
+        color: var(--amber-deep);
+        text-align: center;
+        background: #fff;
+        border: 1px solid var(--line);
+        border-radius: 8px;
+        padding: 5px 6px;
+      }
+      .exact input:focus-visible {
+        outline: 2px solid var(--amber);
+        outline-offset: 0;
+        border-color: var(--amber);
+      }
+
+      .list {
+        max-height: 210px;
+        overflow-y: auto;
+        scroll-snap-type: y proximity;
+        scrollbar-width: none;
+      }
+      .list::-webkit-scrollbar {
+        display: none;
+      }
+      .list button {
+        width: 100%;
+        text-align: start;
+        background: none;
+        border: none;
+        border-bottom: 1px solid var(--line);
+        padding: 10px 13px;
+        cursor: pointer;
+        font-family: var(--font-mono);
+        font-size: 15px;
+        font-weight: 600;
+        color: var(--ink);
+        scroll-snap-align: center;
+        display: flex;
+        justify-content: space-between;
+        align-items: center;
+      }
+      .list button:last-child {
+        border-bottom: none;
+      }
+      .list button.on {
+        background: rgba(233, 166, 60, 0.14);
+        color: var(--amber-deep);
+      }
+      .list button.on::after {
+        content: '✓';
+        font-family: var(--font-body);
+        color: var(--amber-deep);
+      }
+      /* duration rows: words in body font, end time in mono */
+      .list.dur button {
+        font-family: var(--font-body);
+        font-weight: 700;
+        font-size: 14px;
+      }
+      .list.dur button .end {
+        font-family: var(--font-mono);
+        font-size: 12.5px;
+        font-weight: 500;
+        color: var(--muted);
+      }
+
+      .kind-toggle {
+        display: flex;
+        gap: 8px;
+      }
+      .kind-toggle button {
+        flex: 1;
+        font-family: var(--font-body);
+        font-size: 12.5px;
+        font-weight: 700;
+        border: 1px solid var(--line);
+        background: #fff;
+        color: var(--muted);
+        border-radius: 9px;
+        padding: 8px 6px;
+        cursor: pointer;
+      }
+      .kind-toggle button.soft.on {
+        border-style: dashed;
+        border-color: var(--soft-line);
+        background: rgba(22, 35, 61, 0.04);
+        color: var(--ink);
+      }
+      .actions {
+        display: flex;
+        gap: 8px;
+        margin-top: 2px;
+      }
+      .actions button {
+        flex: 1;
+        font-family: var(--font-body);
+        font-weight: 700;
+        font-size: 14px;
+        border-radius: 10px;
+        padding: 11px;
+        cursor: pointer;
+        border: 1px solid var(--line);
+      }
+      .btn-cancel {
+        background: #fff;
+        color: var(--muted);
+      }
+      .btn-save {
+        background: var(--cta);
+        color: var(--cta-text);
+        border-color: var(--cta);
+      }
+
+      .notes {
+        width: 100%;
+        max-width: 392px;
+        margin-top: 22px;
+        color: #cdd6ea;
+        font-size: 13px;
+        line-height: 1.55;
+      }
+      .notes h2 {
+        font-family: var(--font-head);
+        font-weight: 400;
+        font-size: 14px;
+        color: #f4f7ff;
+        margin-bottom: 8px;
+      }
+      .notes ul {
+        list-style: none;
+        display: flex;
+        flex-direction: column;
+        gap: 9px;
+      }
+      .notes li {
+        background: rgba(255, 255, 255, 0.04);
+        border: 1px solid rgba(255, 255, 255, 0.08);
+        border-radius: 11px;
+        padding: 10px 12px;
+      }
+      .notes li b {
+        color: var(--amber);
+        font-weight: 700;
+      }
+      .hint {
+        margin-top: 10px;
+        font-size: 12px;
+        color: #9fb0d0;
+        text-align: center;
+      }
+    </style>
+  </head>
+  <body>
+    <div class="kicker">Waypoint · <b>בורר שעה</b> · מוקאפ סופי</div>
+    <h1 class="title">רשימה מהירה + הקלדה מדויקת</h1>
+
+    <div class="phone">
+      <div class="chrome">
+        <span class="mode-pill">✏️ תכנון</span>
+        <span class="day">יום ג׳ · 21 ביולי</span>
+      </div>
+
+      <div class="stage">
+        <form class="event-form-card" onsubmit="return false">
+          <div class="form-title">אירוע חדש</div>
+
+          <label class="form-field">
+            כותרת
+            <input value="ארוחת ערב בשוק" />
+          </label>
+
+          <div class="form-field">
+            שעה
+            <div class="time-fields">
+              <button type="button" class="tfield start" id="f-start" onclick="openPanel('start')">
+                <span class="cap">התחלה</span>
+                <span class="val" id="v-start" dir="ltr">09:30</span>
+              </button>
+              <button type="button" class="tfield dur" id="f-dur" onclick="openPanel('dur')">
+                <span class="cap">משך</span>
+                <span class="val">
+                  <span id="v-dur">שעה</span>
+                  <span class="endhm" dir="ltr">עד <span id="v-end">10:30</span></span>
+                </span>
+              </button>
+
+              <div class="backdrop" id="backdrop" onclick="closePanel()"></div>
+
+              <!-- START -->
+              <div class="panel" id="panel-start" style="inset-inline-start: 0">
+                <div class="exact">
+                  <span class="lbl">שעה מדויקת</span>
+                  <input
+                    id="exact-start"
+                    type="text"
+                    inputmode="numeric"
+                    dir="ltr"
+                    maxlength="5"
+                    onfocus="this.select()"
+                    oninput="onExactStart(this.value)"
+                    onblur="normalizeStart()"
+                  />
+                </div>
+                <div class="list" id="list-start"></div>
+              </div>
+
+              <!-- DURATION -->
+              <div class="panel" id="panel-dur" style="inset-inline-end: 0">
+                <div class="exact">
+                  <span class="lbl">סיום מדויק</span>
+                  <input
+                    id="exact-end"
+                    type="text"
+                    inputmode="numeric"
+                    dir="ltr"
+                    maxlength="5"
+                    onfocus="this.select()"
+                    oninput="onExactEnd(this.value)"
+                    onblur="normalizeEnd()"
+                  />
+                </div>
+                <div class="list dur" id="list-dur"></div>
+              </div>
+            </div>
+          </div>
+
+          <label class="form-field">
+            מיקום
+            <input value="שוק מחנה יהודה" placeholder="אופציונלי" />
+          </label>
+
+          <div class="form-field">
+            סוג
+            <div class="kind-toggle">
+              <button type="button" class="soft on">גמיש</button>
+              <button type="button" class="hard">🔒 קשיח</button>
+            </div>
+          </div>
+
+          <div class="actions">
+            <button type="button" class="btn-cancel">ביטול</button>
+            <button type="button" class="btn-save">שמירה</button>
+          </div>
+        </form>
+      </div>
+    </div>
+
+    <p class="hint">
+      טיפ: פותחים "התחלה" → גוללים לשעה, או מקלידים 09:07 בשדה למעלה. אותו דבר ל"סיום".
+    </p>
+
+    <div class="notes">
+      <h2>ההחלטה</h2>
+      <ul>
+        <li><b>ברירת מחדל מהירה.</b> רשימת שעות ב־15 דק׳ — גלילה ולחיצה, כמו ב־Google Calendar.</li>
+        <li><b>נפילה חלקה לשעה מדויקת.</b> השדה בראש התפריט מקבל הקלדה (09:07) — לטיסה, לצ׳ק־אין.</li>
+        <li><b>סיום = משך + שעת סיום.</b> בוחרים משך ורואים את שעת הסיום, או מקלידים סיום מדויק. נשמר כ־<code>endsAt</code>.</li>
+      </ul>
+    </div>
+
+    <script>
+      const state = { h: 9, m: 30, dur: 60, open: null };
+      const pad = (n) => String(n).padStart(2, '0');
+      const hm = (total) => {
+        const t = ((total % 1440) + 1440) % 1440;
+        return pad(Math.floor(t / 60)) + ':' + pad(t % 60);
+      };
+      const durPhrase = (min) => {
+        const h = Math.floor(min / 60),
+          m = min % 60;
+        if (h && m) return `${h}:${pad(m)} שע׳`;
+        if (h) return h === 1 ? 'שעה' : h === 2 ? 'שעתיים' : `${h} שעות`;
+        return `${m} דק׳`;
+      };
+      const el = (id) => document.getElementById(id);
+
+      const LIST = [];
+      for (let t = 0; t < 1440; t += 15) LIST.push(t);
+      const DURS = [15, 30, 45, 60, 90, 120, 150, 180, 240];
+
+      // Parse a loose time entry into total minutes, or null.
+      // Accepts "9:07", "907", "0907", "9". Digits-only: last 2 are minutes.
+      function parseTime(raw) {
+        const s = String(raw).trim();
+        let h, m;
+        if (s.includes(':')) {
+          const [a, b] = s.split(':');
+          h = parseInt(a, 10);
+          m = parseInt(b || '0', 10);
+        } else {
+          const d = s.replace(/\D/g, '');
+          if (!d) return null;
+          if (d.length <= 2) {
+            h = parseInt(d, 10);
+            m = 0;
+          } else {
+            m = parseInt(d.slice(-2), 10);
+            h = parseInt(d.slice(0, -2), 10);
+          }
+        }
+        if (isNaN(h) || isNaN(m) || h < 0 || h > 23 || m < 0 || m > 59) return null;
+        return h * 60 + m;
+      }
+
+      function renderFields() {
+        el('v-start').textContent = hm(state.h * 60 + state.m);
+        el('v-dur').textContent = durPhrase(state.dur);
+        el('v-end').textContent = hm(state.h * 60 + state.m + state.dur);
+      }
+
+      function renderStartList() {
+        const cur = state.h * 60 + state.m;
+        const box = el('list-start');
+        box.innerHTML = '';
+        LIST.forEach((t) => {
+          const b = document.createElement('button');
+          b.type = 'button';
+          b.className = t === cur ? 'on' : '';
+          b.innerHTML = `<span dir="ltr">${hm(t)}</span>`;
+          b.onclick = () => {
+            state.h = Math.floor(t / 60);
+            state.m = t % 60;
+            renderFields();
+            closePanel();
+          };
+          box.appendChild(b);
+        });
+        const on = box.querySelector('.on');
+        if (on) box.scrollTop = on.offsetTop - box.clientHeight / 2 + on.clientHeight / 2;
+        el('exact-start').value = hm(cur);
+      }
+
+      function renderDurList() {
+        const start = state.h * 60 + state.m;
+        const box = el('list-dur');
+        box.innerHTML = '';
+        DURS.forEach((d) => {
+          const b = document.createElement('button');
+          b.type = 'button';
+          b.className = d === state.dur ? 'on' : '';
+          b.innerHTML = `<span>${durPhrase(d)}</span><span class="end" dir="ltr">עד ${hm(start + d)}</span>`;
+          b.onclick = () => {
+            state.dur = d;
+            renderFields();
+            closePanel();
+          };
+          box.appendChild(b);
+        });
+        el('exact-end').value = hm(start + state.dur);
+      }
+
+      // exact-time handlers
+      function onExactStart(v) {
+        const mins = parseTime(v);
+        if (mins == null) return;
+        state.h = Math.floor(mins / 60);
+        state.m = mins % 60;
+        renderFields();
+        // live-highlight the list without stealing focus
+        const cur = state.h * 60 + state.m;
+        el('list-start')
+          .querySelectorAll('button')
+          .forEach((b, i) => b.classList.toggle('on', LIST[i] === cur));
+      }
+      function normalizeStart() {
+        el('exact-start').value = hm(state.h * 60 + state.m);
+      }
+      function onExactEnd(v) {
+        const mins = parseTime(v);
+        if (mins == null) return;
+        const start = state.h * 60 + state.m;
+        let d = mins - start;
+        if (d <= 0) d += 1440; // end past midnight → next day
+        state.dur = d;
+        renderFields();
+        const on = state.dur;
+        el('list-dur')
+          .querySelectorAll('button')
+          .forEach((b, i) => b.classList.toggle('on', DURS[i] === on));
+      }
+      function normalizeEnd() {
+        el('exact-end').value = hm(state.h * 60 + state.m + state.dur);
+      }
+
+      function openPanel(which) {
+        state.open = which;
+        el('backdrop').classList.add('on');
+        el('f-start').classList.toggle('open', which === 'start');
+        el('f-dur').classList.toggle('open', which === 'dur');
+        el('panel-start').classList.toggle('on', which === 'start');
+        el('panel-dur').classList.toggle('on', which === 'dur');
+        which === 'start' ? renderStartList() : renderDurList();
+      }
+      function closePanel() {
+        state.open = null;
+        el('backdrop').classList.remove('on');
+        el('f-start').classList.remove('open');
+        el('f-dur').classList.remove('open');
+        el('panel-start').classList.remove('on');
+        el('panel-dur').classList.remove('on');
+      }
+
+      renderFields();
+    </script>
+  </body>
+</html>
