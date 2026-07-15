@@ -59,7 +59,7 @@ pnpm dev                                               # backend :3000, frontend
 
 ## Conventions
 
-Conventional Commits, branch per task (`t-003-…`), Prettier/ESLint authoritative, `pnpm typecheck` + `pnpm build` green before done. Full details in `docs/engineering/conventions.md`.
+Conventional Commits, branch per task (`t-003-…`), Prettier/ESLint authoritative. **Prefer self-documenting code** — comment only to capture a non-obvious _why_, keep comments short, and skip them where clear names make the code speak for itself. Run `pnpm format` before committing **and again before opening a PR** (unformatted code fails CI regularly). `pnpm typecheck` + `pnpm build` green before done. Full details in `docs/engineering/conventions.md`.
 
 ## Agent Instructions: Context Engineering
 
