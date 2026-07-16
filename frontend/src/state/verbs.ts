@@ -347,20 +347,18 @@ export async function applyReorder(
   }
 }
 
-// Add/remove ideas are Plan-mode Tier-3 building actions — called online, not
-// queued through the write outbox (that only carries the day-editing verbs).
-// The client-generated id means the optimistic item already matches the server
-// row, so success needs no reconcile; a failure rolls back the optimistic state.
+// Add/remove ideas are Plan-mode Tier-3 building actions. Shared state, so they
+// route through the write outbox and work offline (ADR-0042). The client-generated
+// id means the optimistic item already matches the server row, so success needs
+// no reconcile; a failure rolls back the optimistic state.
 export async function applyAddMaybe(deps: VerbDeps, item: MaybeItem): Promise<void> {
   deps.dispatch({ type: 'ADD_MAYBE', item });
   deps.lastAction.current = { kind: 'addMaybe', id: item.id };
+  const input = { id: item.id, title: item.title, icon: item.icon, category: item.category };
   try {
-    await createMaybeItem(deps.tripId, {
-      id: item.id,
-      title: item.title,
-      icon: item.icon,
-      category: item.category,
-    });
+    await restOrQueue(deps.tripId, { verb: 'createMaybeItem', input }, () =>
+      createMaybeItem(deps.tripId, input),
+    );
   } catch (err) {
     deps.dispatch({ type: 'UNDO' });
     writeErrorToast(deps.toast, err);
@@ -371,7 +369,9 @@ export async function applyRemoveMaybe(deps: VerbDeps, item: MaybeItem): Promise
   deps.dispatch({ type: 'REMOVE_MAYBE', id: item.id });
   deps.lastAction.current = { kind: 'removeMaybe', item };
   try {
-    await deleteMaybeItem(deps.tripId, item.id);
+    await restOrQueue(deps.tripId, { verb: 'deleteMaybeItem', maybeItemId: item.id }, () =>
+      deleteMaybeItem(deps.tripId, item.id),
+    );
   } catch (err) {
     deps.dispatch({ type: 'UNDO' });
     writeErrorToast(deps.toast, err);
@@ -380,19 +380,24 @@ export async function applyRemoveMaybe(deps: VerbDeps, item: MaybeItem): Promise
 
 // Park an event onto the shelf: turn it into a maybe idea (title/icon/place) and
 // remove it from the day — so any event can become a reschedulable idea, not
-// just ones that started on the shelf. Online (a Tier-3 build action), one undo.
+// just ones that started on the shelf. Offline-capable (Tier-3 build action), one undo.
 export async function applyPark(deps: VerbDeps, event: TripEvent, item: MaybeItem): Promise<void> {
   deps.dispatch({ type: 'PARK_EVENT', eventId: event.id, item });
   deps.lastAction.current = { kind: 'park', event, maybeId: item.id };
+  const input = {
+    id: item.id,
+    title: item.title,
+    icon: item.icon,
+    category: item.category,
+    placeId: item.placeId,
+  };
   try {
-    await createMaybeItem(deps.tripId, {
-      id: item.id,
-      title: item.title,
-      icon: item.icon,
-      category: item.category,
-      placeId: item.placeId,
-    });
-    await deleteEvent(deps.tripId, event.id);
+    await restOrQueue(deps.tripId, { verb: 'createMaybeItem', input }, () =>
+      createMaybeItem(deps.tripId, input),
+    );
+    await restOrQueue(deps.tripId, { verb: 'delete', eventId: event.id, confirm: false }, () =>
+      deleteEvent(deps.tripId, event.id),
+    );
   } catch (err) {
     deps.dispatch({ type: 'UNDO' });
     writeErrorToast(deps.toast, err);
@@ -483,19 +488,27 @@ async function reverseRest(tripId: string, desc: UndoDescriptor): Promise<void> 
       );
       return;
     case 'addMaybe':
-      await deleteMaybeItem(tripId, desc.id);
+      await restOrQueue(tripId, { verb: 'deleteMaybeItem', maybeItemId: desc.id }, () =>
+        deleteMaybeItem(tripId, desc.id),
+      );
       return;
-    case 'removeMaybe':
-      await createMaybeItem(tripId, {
+    case 'removeMaybe': {
+      const input = {
         id: desc.item.id,
         title: desc.item.title,
         icon: desc.item.icon,
         category: desc.item.category,
-      });
+      };
+      await restOrQueue(tripId, { verb: 'createMaybeItem', input }, () =>
+        createMaybeItem(tripId, input),
+      );
       return;
+    }
     case 'park': {
       // Un-park: drop the idea and put the event back.
-      await deleteMaybeItem(tripId, desc.maybeId);
+      await restOrQueue(tripId, { verb: 'deleteMaybeItem', maybeItemId: desc.maybeId }, () =>
+        deleteMaybeItem(tripId, desc.maybeId),
+      );
       const input = toCreateEventInput(desc.event);
       await restOrQueue(tripId, { verb: 'create', input }, () => createEvent(tripId, input));
     }

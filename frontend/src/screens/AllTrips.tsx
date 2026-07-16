@@ -14,7 +14,7 @@ import type { Trip } from '@waypoint/shared';
 import { useAuth } from '../state/auth-state';
 import { useActiveTripId } from '../state/active-trip-id';
 import { useIsOffline } from '../lib/outbox';
-import { fetchTrips } from '../lib/api';
+import { loadTripList } from '../lib/cache';
 import { tripChip, type TripChip } from '../lib/active-trip';
 import { daysUntilStart } from '../lib/mode';
 import { useClock } from '../lib/useClock';
@@ -78,14 +78,11 @@ export function AllTrips({ onOpenAccount }: { onOpenAccount: () => void }) {
 
   useEffect(() => {
     let cancelled = false;
-    fetchTrips().then(
-      (list) => {
-        if (!cancelled) setTrips(list);
-      },
-      () => {
-        if (!cancelled) setTrips([]);
-      },
-    );
+    // Falls back to the cached list offline so the all-trips view (and the back
+    // route into a live trip) keeps working with no network.
+    loadTripList().then(({ trips: list }) => {
+      if (!cancelled) setTrips(list);
+    });
     return () => {
       cancelled = true;
     };

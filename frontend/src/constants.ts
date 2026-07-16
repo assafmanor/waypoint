@@ -72,6 +72,12 @@ export const DOT_SEPARATOR = '•';
 /** Active-trip override — per-device, not synced (ADR-0021). */
 export const ACTIVE_TRIP_STORAGE_KEY = 'wp_active_trip_id';
 
+/** Cached identity (the last successful GET /me), so a cold reload with no
+ *  connectivity can render as signed-in instead of bouncing to /login — the
+ *  access token stays in-memory only (ADR-0020); this is identity, not a
+ *  credential. Cleared on real sign-out / auth loss. */
+export const ME_STORAGE_KEY = 'wp_me';
+
 /** Deep-link path saved across the login gate, resumed after sign-in (ADR-0024). */
 export const AUTH_INTENT_STORAGE_KEY = 'wp_auth_intent';
 

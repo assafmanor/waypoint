@@ -4,6 +4,7 @@
 import { useEffect, useState, useSyncExternalStore } from 'react';
 import type {
   CreateEventInput,
+  CreateMaybeItemInput,
   EventStatus,
   MembershipRole,
   MoveEventInput,
@@ -15,7 +16,9 @@ import {
   ApiError,
   consumeMaybeItem,
   createEvent,
+  createMaybeItem,
   deleteEvent,
+  deleteMaybeItem,
   deleteTrip,
   moveEvent,
   removeMember,
@@ -24,6 +27,7 @@ import {
   updateEvent,
   updateTrip,
 } from './api';
+import { applyOutboxOpToCache } from './cache';
 
 export type OutboxOp =
   | { verb: 'create'; input: CreateEventInput }
@@ -32,6 +36,9 @@ export type OutboxOp =
   | { verb: 'move'; eventId: string; input: MoveEventInput; confirm: boolean }
   | { verb: 'delete'; eventId: string; confirm: boolean }
   | { verb: 'consumeMaybeItem'; maybeItemId: string }
+  // Maybe-shelf build actions (Plan-mode Tier 3) — offline-capable (ADR-0042).
+  | { verb: 'createMaybeItem'; input: CreateMaybeItemInput }
+  | { verb: 'deleteMaybeItem'; maybeItemId: string }
   // Trip-settings mutations (ADR-0039) — offline-capable like the timeline.
   | { verb: 'updateTrip'; input: UpdateTripInput }
   | { verb: 'setMemberRole'; userId: string; role: MembershipRole }
@@ -100,6 +107,13 @@ export function useOutboxCount(): number {
 
 export async function enqueueOutbox(tripId: string, op: OutboxOp): Promise<void> {
   await db.outbox.add({ tripId, op });
+  // Mirror the queued change into the read cache so a reopen while still offline
+  // shows it (best-effort — a cache failure must not block queueing the write).
+  try {
+    await applyOutboxOpToCache(tripId, op);
+  } catch {
+    // ignore — the outbox entry is the source of truth; the cache is a mirror.
+  }
   setPendingCount(pendingCount + 1);
 }
 
@@ -147,6 +161,12 @@ async function runOp(tripId: string, op: OutboxOp): Promise<void> {
     case 'consumeMaybeItem':
       await consumeMaybeItem(tripId, op.maybeItemId);
       return;
+    case 'createMaybeItem':
+      await createMaybeItem(tripId, op.input);
+      return;
+    case 'deleteMaybeItem':
+      await deleteMaybeItem(tripId, op.maybeItemId);
+      return;
     case 'updateTrip':
       await updateTrip(tripId, op.input);
       return;
@@ -176,7 +196,31 @@ async function runOp(tripId: string, op: OutboxOp): Promise<void> {
  *  forever behind an unfixable entry, so it's dropped instead and the flush
  *  continues (sync-and-offline.md "Conflicts on flush ... anything surprising
  *  is undoable"). */
-export async function flushOutbox(tripId: string): Promise<void> {
+// Coalesce concurrent flushes of the same trip: the global reconnect flush and
+// a mounted trip's own reconnect handler can both fire on `online`, and running
+// two FIFO drains over the same queue would double-POST. Same tripId → same
+// in-flight promise.
+const inFlightFlush = new Map<string, Promise<void>>();
+
+export function flushOutbox(tripId: string): Promise<void> {
+  const existing = inFlightFlush.get(tripId);
+  if (existing) return existing;
+  const p = doFlushOutbox(tripId).finally(() => inFlightFlush.delete(tripId));
+  inFlightFlush.set(tripId, p);
+  return p;
+}
+
+/** Flush every trip's queue (device-wide), not just the mounted one — so a write
+ *  queued offline syncs the moment connectivity returns, even from the all-trips
+ *  list or zero-state where no trip realtime effect is mounted (ADR-0042). One
+ *  trip's stuck queue (halted on a hard error) doesn't block the others. */
+export async function flushAllOutbox(): Promise<void> {
+  const all = await db.outbox.toArray();
+  const tripIds = [...new Set(all.map((e) => e.tripId))];
+  await Promise.all(tripIds.map((id) => flushOutbox(id).catch(() => {})));
+}
+
+async function doFlushOutbox(tripId: string): Promise<void> {
   const entries = await db.outbox.where('tripId').equals(tripId).sortBy('seq');
   for (const entry of entries) {
     try {

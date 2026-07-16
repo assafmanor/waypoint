@@ -1,18 +1,21 @@
 // Offline read cache (T-058, sync-and-offline.md "Read"): mirrors the trip
 // snapshot into Dexie on every successful fetch/change/resync so the app can
 // render the last-known state with zero connectivity.
-import type {
-  Booking,
-  Change,
-  MaybeItem,
-  Membership,
-  Trip,
-  TripEvent,
-  TripNote,
-  TripSnapshot,
-  User,
+import {
+  EVENT_STATUS,
+  type Booking,
+  type Change,
+  type MaybeItem,
+  type Membership,
+  type Trip,
+  type TripEvent,
+  type TripNote,
+  type TripSnapshot,
+  type User,
 } from '@waypoint/shared';
 import { db } from '../db';
+import { fetchTrips } from './api';
+import type { OutboxOp } from './outbox';
 
 /** The slice of TripSnapshot with no dedicated Dexie table of its own. */
 export interface SnapshotMeta {
@@ -156,9 +159,145 @@ export async function applyChangeToCache(tripId: string, change: Change): Promis
 
 /** Drops every cached row for a trip (used when the trip is deleted). */
 export async function clearTripCache(tripId: string): Promise<void> {
-  await db.transaction('rw', db.events, db.bookings, db.snapshotMeta, async () => {
+  await db.transaction('rw', db.events, db.bookings, db.snapshotMeta, db.tripList, async () => {
     await db.events.where('tripId').equals(tripId).delete();
     await db.bookings.where('tripId').equals(tripId).delete();
     await db.snapshotMeta.delete(tripId);
+    await db.tripList.delete(tripId);
   });
+}
+
+// --- Trip-list cache (offline all-trips + boot resolution) -------------------
+// GET /trips has no snapshot to fall back on of its own, so a fetch failure used
+// to collapse to an empty list — ZeroState on a cold reopen, an empty all-trips
+// view, and "lost" trips after returning from settings. Mirror the last-known
+// list so those surfaces read from cache when the network is gone.
+
+/** Wholesale mirror of the last successful GET /trips. */
+export async function cacheTripList(trips: Trip[]): Promise<void> {
+  await db.transaction('rw', db.tripList, async () => {
+    await db.tripList.clear();
+    await db.tripList.bulkPut(trips);
+  });
+}
+
+/** Last-known trip list, or [] if none was ever cached. */
+export async function readCachedTripList(): Promise<Trip[]> {
+  return db.tripList.toArray();
+}
+
+/** Fetch the trip list, mirroring it on success and falling back to the cached
+ *  copy when the network is gone — the single loader RootSurface and AllTrips
+ *  share so both stay coherent offline. `fromCache` lets a caller show an
+ *  "offline, showing saved trips" cue. */
+export async function loadTripList(): Promise<{ trips: Trip[]; fromCache: boolean }> {
+  try {
+    const trips = await fetchTrips();
+    void cacheTripList(trips);
+    return { trips, fromCache: false };
+  } catch {
+    return { trips: await readCachedTripList(), fromCache: true };
+  }
+}
+
+// --- Optimistic write-through (offline writes → read cache) ------------------
+// An offline write lands in the reducer (in-memory) and the outbox, but never
+// touched the Dexie read cache — so a cold reopen while still offline rendered
+// the pre-edit snapshot and the queued change appeared to vanish (events you
+// added, a trip you renamed) until reconnect flushed the outbox. Applying the
+// queued op to the cache at enqueue time keeps offline reads coherent with what
+// the user just did. (Online writes don't need this: the server's own WS echo
+// runs applyChangeToCache for them.)
+export async function applyOutboxOpToCache(tripId: string, op: OutboxOp): Promise<void> {
+  switch (op.verb) {
+    case 'create': {
+      // Verbs always client-generate the id (ADR-0018); guard the optional type.
+      if (!op.input.id) return;
+      const existing = await db.events.get(op.input.id);
+      await db.events.put({
+        status: EVENT_STATUS.PLANNED,
+        ...existing,
+        ...op.input,
+        tripId,
+      } as TripEvent);
+      return;
+    }
+    case 'update':
+    case 'move': {
+      const existing = await db.events.get(op.eventId);
+      if (existing) await db.events.put({ ...existing, ...op.input });
+      return;
+    }
+    case 'setStatus': {
+      const existing = await db.events.get(op.eventId);
+      if (existing) await db.events.put({ ...existing, status: op.status });
+      return;
+    }
+    case 'delete': {
+      await db.events.delete(op.eventId);
+      return;
+    }
+    case 'consumeMaybeItem': {
+      const meta = await db.snapshotMeta.get(tripId);
+      if (!meta) return;
+      await db.snapshotMeta.put({
+        ...meta,
+        maybeItems: meta.maybeItems.map((m) =>
+          m.id === op.maybeItemId ? { ...m, consumed: true } : m,
+        ),
+      });
+      return;
+    }
+    case 'createMaybeItem': {
+      const meta = await db.snapshotMeta.get(tripId);
+      if (!meta || !op.input.id) return;
+      const id = op.input.id;
+      const existing = meta.maybeItems.find((m) => m.id === id);
+      const item = { consumed: false, ...existing, ...op.input, id, tripId } as MaybeItem;
+      const maybeItems = existing
+        ? meta.maybeItems.map((m) => (m.id === id ? item : m))
+        : [...meta.maybeItems, item];
+      await db.snapshotMeta.put({ ...meta, maybeItems });
+      return;
+    }
+    case 'deleteMaybeItem': {
+      const meta = await db.snapshotMeta.get(tripId);
+      if (!meta) return;
+      await db.snapshotMeta.put({
+        ...meta,
+        maybeItems: meta.maybeItems.filter((m) => m.id !== op.maybeItemId),
+      });
+      return;
+    }
+    case 'updateTrip': {
+      const meta = await db.snapshotMeta.get(tripId);
+      if (meta) await db.snapshotMeta.put({ ...meta, trip: { ...meta.trip, ...op.input } });
+      // Keep the all-trips list coherent too (name/dates/icon show there).
+      const listed = await db.tripList.get(tripId);
+      if (listed) await db.tripList.put({ ...listed, ...op.input });
+      return;
+    }
+    case 'setMemberRole': {
+      const meta = await db.snapshotMeta.get(tripId);
+      if (!meta) return;
+      await db.snapshotMeta.put({
+        ...meta,
+        members: meta.members.map((m) => (m.userId === op.userId ? { ...m, role: op.role } : m)),
+      });
+      return;
+    }
+    case 'removeMember': {
+      const meta = await db.snapshotMeta.get(tripId);
+      if (!meta) return;
+      await db.snapshotMeta.put({
+        ...meta,
+        members: meta.members.filter((m) => m.userId !== op.userId),
+      });
+      return;
+    }
+    case 'deleteTrip': {
+      await clearTripCache(tripId);
+      return;
+    }
+  }
 }

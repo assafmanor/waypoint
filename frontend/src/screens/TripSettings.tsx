@@ -18,7 +18,7 @@ import { useOverlay } from '../state/nav-state';
 import { IconPicker } from '../ui/IconPicker';
 import { Sheet } from '../ui/Sheet';
 import { useToast } from '../ui/Toast';
-import { useIsOffline } from '../lib/outbox';
+import { useIsOffline, useOutboxCount } from '../lib/outbox';
 import { createInvite } from '../lib/api';
 import {
   AVATAR_INITIAL_LENGTH,
@@ -50,6 +50,7 @@ export function TripSettings() {
   const { me } = useAuth();
   const toast = useToast();
   const offline = useIsOffline();
+  const pendingCount = useOutboxCount();
 
   const myId = me?.user.id;
   const isAdmin = members.some((m) => m.userId === myId && m.role === 'admin');
@@ -149,6 +150,11 @@ export function TripSettings() {
         {offline && (
           <div className="offline-badge">
             {ICONS.offline} {t.header.offlineNow}
+          </div>
+        )}
+        {pendingCount > 0 && (
+          <div className="offline-badge">
+            {ICONS.sync} {t.header.pendingSync(pendingCount)}
           </div>
         )}
       </header>
