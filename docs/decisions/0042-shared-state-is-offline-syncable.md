@@ -27,4 +27,13 @@ We need a principle, not just a pile of fixes. The owner stated it directly: **a
 - **A new shared surface inherits a checklist, not a guess:** cache-on-read (incl. its navigation entry point), queue-on-write, write-through, and it flushes with the global reconnect. Adding a collaborative entity without all four is the bug.
 - The data-plane/control-plane line (ADR-0022) is now decided by one question — _do people share it?_ — which is why ADR-0039 was right to move settings across, and why the maybe-shelf (previously online-only) is brought under the outbox.
 - Genuinely server-only actions (join/create/invite) are explicitly _not_ held to the offline-write contract; blocking them offline is correct behaviour, not a gap.
-- Deferred, consistent with sync-and-offline.md's "what we do NOT build": peer-to-peer sync, CRDTs, and background sync push (waking a closed app to flush). "Flush on reconnect" here means while the app is open.
+- Deferred, consistent with sync-and-offline.md's "what we do NOT build": peer-to-peer sync, CRDTs, and background sync push (waking a closed app to flush). "Flush on reconnect" here means **while the app is open**.
+
+## Deferred: background sync (evaluated 2026-07-16)
+
+Waking a **closed** app to flush the outbox (the Background Sync API in the service worker) was considered and **deferred**, for two reasons:
+
+1. **Platform gap.** Background Sync is Chromium-only — **no iOS Safari** — so for a ~5-friends group where some carry iPhones it would cover only part of the party, while the device-wide **flush-on-reconnect-while-open** shipped here covers everyone. In practice you open the app when you regain signal, and that flush fires immediately.
+2. **Auth cost.** The flush uses an in-memory access token (ADR-0020) the service worker can't see, so a SW-resident flush would need its own `/auth/refresh` → replay path (a second copy of the flush + refresh logic). Not worth it for the partial coverage above.
+
+Revisit only on a concrete "phone was closed in my pocket and never synced" need. **Also deferred, same round:** an in-app "paste an invite link" field — joining is by _opening_ the `/join/:token` link for now (the zero-state join card points you there).

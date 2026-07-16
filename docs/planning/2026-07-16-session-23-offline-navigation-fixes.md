@@ -91,6 +91,19 @@ Tests now 223 (+3 more: maybe-shelf write-through, `flushAllOutbox` multi-trip +
 one-stuck-queue-doesn't-block-others). Docs: ADR-0042 + README/INDEX rows,
 sync-and-offline.md "Write offline" rewritten.
 
+## Deferred (owner-confirmed this session)
+
+- **Background sync** (waking a _closed_ app to flush) — evaluated and deferred:
+  Chromium-only (no iOS Safari), so it'd cover only part of a mixed-device party,
+  while the shipped flush-on-reconnect-while-open covers everyone; plus a
+  SW-resident flush needs its own `/auth/refresh` path (ADR-0020 token is in-memory).
+  Rationale captured in ADR-0042's "Deferred" section.
+- **In-app "paste an invite link" field** — not now; joining is by opening the
+  `/join/:token` link (the zero-state join card points there).
+- **Invite-link join while offline** — already handled: the `/join` screen shows a
+  "need a connection" state and disables the CTA. Joining offline is intentionally
+  not supported (server-only, ADR-0042). No change needed.
+
 ## Original open questions (from the first round)
 
 - **Global background flush.** The outbox flush is still tied to a trip's realtime
