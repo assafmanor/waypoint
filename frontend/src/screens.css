@@ -113,6 +113,91 @@
   background: rgba(255, 255, 255, 0.09);
   margin: 15px 0 13px;
 }
+
+/* Board concurrency (ADR-0041): the quiet "ועוד N עכשיו" expander under the hero,
+   and the group-split list when several soft events run at once. Board-dark
+   palette (light blues), so it stays subordinate to the one loud now-title. */
+.also-now {
+  margin-top: 12px;
+  border-top: 1px dashed rgba(147, 162, 196, 0.25);
+  padding-top: 11px;
+}
+.also-toggle {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  background: none;
+  border: 0;
+  padding: 0;
+  font: inherit;
+  font-size: 13px;
+  font-weight: 700;
+  color: #cdd8ef;
+  cursor: pointer;
+}
+.also-toggle .dot {
+  width: 7px;
+  height: 7px;
+  border-radius: 50%;
+  background: #6f83ad;
+}
+.also-toggle .chev {
+  color: #8ea1c6;
+  font-size: 11px;
+}
+.also-list {
+  display: flex;
+  flex-direction: column;
+  gap: 9px;
+  margin-top: 10px;
+}
+.also-row {
+  display: flex;
+  align-items: center;
+  gap: 9px;
+  font-size: 13px;
+}
+.also-row .ic {
+  width: 26px;
+  height: 26px;
+  border-radius: 8px;
+  background: rgba(255, 255, 255, 0.07);
+  display: grid;
+  place-items: center;
+  font-size: 14px;
+  flex: none;
+}
+.also-row .nm {
+  flex: 1;
+  min-width: 0;
+  color: #e4ebf8;
+  font-weight: 600;
+}
+.also-row .tm {
+  color: #93a2c4;
+  font-size: 12px;
+  flex: none;
+}
+.also-row .mini-lock {
+  color: var(--amber);
+  font-size: 11px;
+  flex: none;
+}
+/* Group split — no single hero; the concurrent soft events read as equals. */
+.now-split {
+  margin-top: 14px;
+}
+.now-split .also-row {
+  font-size: 15px;
+}
+.now-split .also-row .ic {
+  width: 32px;
+  height: 32px;
+  font-size: 16px;
+}
+.now-split .also-row .nm {
+  font-family: var(--font-head);
+}
 .next-row {
   display: flex;
   justify-content: space-between;

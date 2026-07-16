@@ -162,6 +162,10 @@ export const t = {
     until: 'עד',
     nextLabel: 'הבא בתור',
     endOfDay: 'סוף היום',
+    // Concurrency on the board (ADR-0041): the "ועוד N עכשיו" expander for extra
+    // in-progress events, and the group-split header when several run at once.
+    alsoNow: (n: number) => `ועוד ${n} עכשיו`,
+    concurrentNow: 'עכשיו · במקביל',
   },
   quick: {
     title: 'גישה מהירה',
