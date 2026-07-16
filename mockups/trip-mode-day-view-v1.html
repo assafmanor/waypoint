@@ -1,0 +1,2632 @@
+<!doctype html>
+<!-- STATUS: proposal mockup (design review), 2026-07-16. Trip-mode day view:
+     the "now-line" + derived phases, the rethought Done ("סיימנו") button, and
+     the past-day archive feel (day view + top bar).
+
+     Follows ADR-0028 tokens/color budget. Builds on decisions already accepted
+     but not yet reflected in the shipped DayView:
+       ADR-0011 hard/soft grammar · ADR-0027 derived soft-item lifecycle phases
+       ADR-0028 color budget / mode identity · ADR-0029 past/future day gating
+       ADR-0040 finished-trip archive.
+     Phone frames are rendered in the app's current LIGHT theme on the studio's
+     dark stage — the established mockups/ convention (dark-mode is a token remap,
+     ADR-0028, not shown here). Where this mockup and the design docs conflict,
+     the docs win. -->
+<html lang="en" dir="ltr">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>Trip mode · day view — now-line, the Done button, past-day archive</title>
+    <link rel="preconnect" href="https://fonts.googleapis.com" />
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+    <link
+      href="https://fonts.googleapis.com/css2?family=Assistant:wght@400;500;600;700&family=Secular+One&family=JetBrains+Mono:wght@500;700&display=swap"
+      rel="stylesheet"
+    />
+    <style>
+      :root {
+        --ink: #16233d;
+        --indigo: #1b2a4a;
+        --board: #0e1729;
+        --board-2: #152137;
+        --screen: #e7eaef;
+        --card: #ffffff;
+        --paper: #f3efe6;
+        --amber: #e9a63c;
+        --amber-deep: #c9822a;
+        --teal: #2c9c90;
+        --plan: #6e59d6;
+        --plan-deep: #5747b4;
+        --plan-tint: rgba(110, 89, 214, 0.1);
+        --ok: #3c9a6b;
+        --miss: #c2584e;
+        --muted: #6c7488;
+        --line: rgba(22, 35, 61, 0.1);
+        --soft-line: rgba(22, 35, 61, 0.28);
+        --shadow: 0 18px 40px -18px rgba(14, 23, 41, 0.55);
+
+        /* studio (page chrome) — a deliberate single dark "studio" world, the
+           same stage the other mockups/ files sit on. */
+        --stage-ink: #eaf0ff;
+        --stage-dim: #9fb0d4;
+        --stage-faint: #6f80a6;
+        --stage-panel: #16233f;
+        --stage-panel-2: #1b2b4d;
+        --stage-line: rgba(159, 176, 212, 0.16);
+
+        --font-head: 'Secular One', system-ui, sans-serif;
+        --font-body: 'Assistant', system-ui, -apple-system, 'Segoe UI', sans-serif;
+        --font-mono: 'JetBrains Mono', ui-monospace, 'SFMono-Regular', monospace;
+      }
+      * {
+        box-sizing: border-box;
+        margin: 0;
+        padding: 0;
+      }
+      html,
+      body {
+        min-height: 100%;
+      }
+      body {
+        font-family: var(--font-body);
+        color: var(--stage-ink);
+        background:
+          radial-gradient(130% 90% at 82% -8%, #2a3e68 0%, transparent 52%),
+          radial-gradient(130% 90% at -5% 108%, #1a2a4a 0%, transparent 48%), #0b1424;
+        -webkit-font-smoothing: antialiased;
+        line-height: 1.5;
+        padding: 40px 20px 80px;
+      }
+      .wrap {
+        max-width: 1180px;
+        margin: 0 auto;
+      }
+
+      /* ── page masthead ─────────────────────────────────────────── */
+      .masthead {
+        max-width: 760px;
+        margin: 0 auto 8px;
+      }
+      .eyebrow {
+        font-size: 12px;
+        font-weight: 700;
+        letter-spacing: 0.16em;
+        text-transform: uppercase;
+        color: var(--amber);
+        margin-bottom: 14px;
+      }
+      h1.title {
+        font-family: var(--font-head);
+        font-weight: 400;
+        font-size: clamp(30px, 5vw, 46px);
+        line-height: 1.04;
+        letter-spacing: -0.01em;
+        text-wrap: balance;
+        color: #fff;
+      }
+      .lede {
+        font-size: 17px;
+        color: var(--stage-dim);
+        margin-top: 16px;
+        max-width: 62ch;
+      }
+      .lede b {
+        color: var(--stage-ink);
+        font-weight: 600;
+      }
+      .adr-row {
+        display: flex;
+        flex-wrap: wrap;
+        gap: 7px;
+        margin-top: 20px;
+      }
+      .adr {
+        font-size: 11.5px;
+        font-weight: 600;
+        color: var(--stage-dim);
+        border: 1px solid var(--stage-line);
+        border-radius: 999px;
+        padding: 4px 11px;
+        background: rgba(255, 255, 255, 0.02);
+      }
+      .adr b {
+        color: var(--stage-ink);
+        font-weight: 700;
+      }
+
+      /* ── section scaffolding ───────────────────────────────────── */
+      section {
+        margin-top: 68px;
+      }
+      .sec-head {
+        display: flex;
+        align-items: baseline;
+        gap: 16px;
+        border-top: 1px solid var(--stage-line);
+        padding-top: 22px;
+        margin-bottom: 30px;
+      }
+      .sec-num {
+        font-family: var(--font-mono);
+        font-size: 13px;
+        font-weight: 700;
+        color: var(--amber);
+        flex: 0 0 auto;
+        padding-top: 6px;
+      }
+      .sec-head h2 {
+        font-family: var(--font-head);
+        font-weight: 400;
+        font-size: clamp(22px, 3.4vw, 30px);
+        line-height: 1.1;
+        color: #fff;
+        letter-spacing: -0.01em;
+      }
+      .sec-head p {
+        font-size: 14.5px;
+        color: var(--stage-dim);
+        margin-top: 8px;
+        max-width: 60ch;
+      }
+
+      /* layout: phone beside an annotation column */
+      .duo {
+        display: flex;
+        flex-wrap: wrap;
+        gap: 36px;
+        align-items: flex-start;
+      }
+      .duo .stack {
+        flex: 1 1 340px;
+        min-width: 300px;
+        display: flex;
+        flex-direction: column;
+        gap: 18px;
+      }
+
+      /* ── the phone ─────────────────────────────────────────────── */
+      .phone-shell {
+        flex: 0 0 auto;
+        display: flex;
+        flex-direction: column;
+        align-items: center;
+        gap: 12px;
+      }
+      .phone {
+        width: 356px;
+        background: var(--screen);
+        border-radius: 40px;
+        box-shadow:
+          var(--shadow),
+          0 0 0 10px #0b1526,
+          0 0 0 12px #223257;
+        overflow: hidden;
+        position: relative;
+        display: flex;
+        flex-direction: column;
+      }
+      .phone-cap {
+        font-size: 12.5px;
+        color: var(--stage-faint);
+        font-weight: 600;
+        letter-spacing: 0.01em;
+      }
+      .statusbar {
+        background: var(--indigo);
+        color: #dce3f2;
+        display: flex;
+        justify-content: space-between;
+        align-items: center;
+        padding: 9px 20px 6px;
+        font-size: 12px;
+        font-weight: 600;
+        font-family: var(--font-mono);
+      }
+      .statusbar .dots {
+        letter-spacing: 2px;
+        opacity: 0.8;
+      }
+
+      /* header / top bar */
+      .header {
+        background: var(--indigo);
+        color: #fff;
+        padding: 6px 18px 14px;
+      }
+      .trip-row {
+        display: flex;
+        justify-content: space-between;
+        align-items: flex-start;
+        gap: 10px;
+      }
+      .trip-name {
+        font-family: var(--font-head);
+        font-size: 23px;
+        line-height: 1.05;
+        display: flex;
+        align-items: center;
+        gap: 8px;
+      }
+      .trip-name .chev {
+        font-size: 13px;
+        color: #9daac8;
+      }
+      .trip-sub {
+        color: #9daac8;
+        font-size: 12.5px;
+        margin-top: 5px;
+        font-weight: 500;
+      }
+      .trip-sub .dot {
+        margin: 0 6px;
+        opacity: 0.6;
+      }
+      .header-actions {
+        display: flex;
+        align-items: center;
+        gap: 7px;
+      }
+      .av {
+        width: 30px;
+        height: 30px;
+        border-radius: 999px;
+        display: grid;
+        place-items: center;
+        font-size: 11px;
+        font-weight: 700;
+        color: #fff;
+        flex: 0 0 auto;
+      }
+      .av.account {
+        box-shadow:
+          0 0 0 2px var(--indigo),
+          0 0 0 3.5px rgba(255, 255, 255, 0.5);
+      }
+      .gear {
+        color: #9daac8;
+        font-size: 17px;
+      }
+
+      /* day strip */
+      .day-strip {
+        display: flex;
+        gap: 6px;
+        margin-top: 13px;
+        overflow-x: auto;
+      }
+      .day-pill-wrap {
+        display: flex;
+        flex-direction: column;
+        justify-content: flex-end;
+        flex: 0 0 auto;
+      }
+      .month-label {
+        text-align: center;
+        font-size: 10px;
+        font-weight: 600;
+        color: #8494b5;
+        margin-bottom: 4px;
+      }
+      .day-pill {
+        position: relative;
+        min-width: 42px;
+        text-align: center;
+        font: inherit;
+        font-size: 11px;
+        font-weight: 600;
+        padding: 7px 0 8px;
+        border: none;
+        border-radius: 9px;
+        color: #8494b5;
+        background: rgba(255, 255, 255, 0.05);
+        cursor: pointer;
+      }
+      .day-pill .n {
+        display: block;
+        font-family: var(--font-mono);
+        font-size: 14px;
+        margin-top: 2px;
+        color: #b9c4de;
+      }
+      /* today selected (== now): amber, unchanged from today's build */
+      .day-pill.on {
+        background: var(--amber);
+        color: #3a2405;
+      }
+      .day-pill.on .n {
+        color: #3a2405;
+      }
+      /* NEW — today is always the live anchor on the strip, even when you're
+         looking at another day: a small amber dot marks "here". */
+      .day-pill.today-anchor::after {
+        content: '';
+        position: absolute;
+        top: 5px;
+        inset-inline-end: 7px;
+        width: 6px;
+        height: 6px;
+        border-radius: 999px;
+        background: var(--amber);
+        box-shadow: 0 0 0 2px rgba(233, 166, 60, 0.25);
+      }
+      /* NEW — a NON-today day you've selected is a NEUTRAL highlight, not amber
+         (amber is "now/time" only, ADR-0028). History reads settled, not live. */
+      .day-pill.sel-history {
+        background: rgba(255, 255, 255, 0.16);
+        color: #eaf0ff;
+        box-shadow: inset 0 0 0 1px rgba(255, 255, 255, 0.28);
+      }
+      .day-pill.sel-history .n {
+        color: #fff;
+      }
+      .day-pill.past {
+        opacity: 0.42;
+      }
+      .day-pill.future {
+        opacity: 0.6;
+      }
+
+      /* NEW — context ribbon under the strip when the viewed day isn't today */
+      .day-context {
+        display: flex;
+        align-items: center;
+        gap: 8px;
+        margin-top: 11px;
+        padding: 7px 11px;
+        border-radius: 10px;
+        font-size: 12px;
+        font-weight: 600;
+      }
+      .day-context.history {
+        background: rgba(255, 255, 255, 0.06);
+        color: #c3cee6;
+        border: 1px solid rgba(255, 255, 255, 0.09);
+      }
+      .day-context.future {
+        background: rgba(110, 89, 214, 0.16);
+        color: #cabff4;
+        border: 1px solid rgba(110, 89, 214, 0.3);
+      }
+      .day-context .ic {
+        font-size: 13px;
+      }
+      .day-context .back {
+        margin-inline-start: auto;
+        font-weight: 700;
+        color: #fff;
+        opacity: 0.85;
+        white-space: nowrap;
+      }
+      .day-context.future .back {
+        color: #d9d0fb;
+      }
+
+      /* body */
+      .body {
+        background: var(--screen);
+        padding: 15px 15px 20px;
+        position: relative;
+      }
+      .sec-title {
+        display: flex;
+        align-items: center;
+        justify-content: space-between;
+        font-family: var(--font-head);
+        font-size: 15px;
+        color: var(--ink);
+        margin: 4px 2px 11px;
+      }
+      .sec-title.first {
+        margin-top: 2px;
+      }
+      .new-event-btn {
+        font: inherit;
+        font-family: var(--font-body);
+        font-size: 12px;
+        font-weight: 700;
+        color: var(--ink);
+        background: #fff;
+        border: 1px solid var(--line);
+        border-radius: 999px;
+        padding: 5px 11px;
+        cursor: pointer;
+      }
+      .hint {
+        font-size: 11px;
+        font-weight: 500;
+        color: var(--muted);
+      }
+
+      /* itinerary item */
+      .item {
+        background: var(--card);
+        border: 1px solid var(--line);
+        border-radius: 15px;
+        margin-bottom: 9px;
+        overflow: hidden;
+      }
+      .item.soft {
+        background: repeating-linear-gradient(-45deg, #fff 0 9px, #fbfaf7 9px 18px);
+        border: 1px dashed var(--soft-line);
+      }
+      .item.now {
+        border-color: var(--amber);
+        box-shadow: 0 0 0 3px rgba(233, 166, 60, 0.16);
+      }
+      /* NEW — a PASSED event recedes: quieter than a live one, but still legible
+         reference. Derived from the clock (ADR-0027), never a stored status. */
+      .item.passed {
+        opacity: 0.66;
+        background: #fbfbfc;
+        border-style: solid;
+        border-color: var(--line);
+      }
+      .item.passed.soft {
+        background: #f7f7f9;
+      }
+      /* a DONE event settles like a passed one, plus a positive ✓ (ok-green,
+         NOT amber — done is a record, not a clock event). */
+      .item.done {
+        opacity: 0.78;
+        background: #f6faf7;
+        border-color: rgba(60, 154, 107, 0.32);
+        border-style: solid;
+      }
+      .face {
+        display: flex;
+        align-items: center;
+        gap: 11px;
+        padding: 12px 13px;
+        width: 100%;
+        background: none;
+        border: 0;
+        font: inherit;
+        color: inherit;
+        text-align: inherit;
+        cursor: pointer;
+      }
+      .badge {
+        width: 38px;
+        height: 38px;
+        border-radius: 12px;
+        display: grid;
+        place-items: center;
+        font-size: 18px;
+        flex: 0 0 auto;
+        background: var(--paper);
+      }
+      .item.soft .badge {
+        background: rgba(22, 35, 61, 0.05);
+      }
+      .item.done .badge,
+      .item.passed .badge {
+        filter: saturate(0.7);
+      }
+      .item.done .badge {
+        background: rgba(60, 154, 107, 0.12);
+      }
+      .main {
+        flex: 1;
+        min-width: 0;
+      }
+      .main .t {
+        font-weight: 700;
+        font-size: 14px;
+        display: flex;
+        align-items: center;
+        gap: 6px;
+        flex-wrap: wrap;
+        color: var(--ink);
+      }
+      .main .m {
+        font-size: 11.5px;
+        color: var(--muted);
+        margin-top: 3px;
+      }
+      .tag-hard,
+      .tag-soft,
+      .tag-phase {
+        font-size: 10px;
+        font-weight: 700;
+        padding: 2px 6px;
+        border-radius: 6px;
+        display: inline-flex;
+        align-items: center;
+        gap: 3px;
+      }
+      .tag-hard {
+        color: var(--amber-deep);
+        background: rgba(233, 166, 60, 0.14);
+      }
+      .tag-soft {
+        color: var(--muted);
+        background: rgba(22, 35, 61, 0.06);
+      }
+      .tag-now {
+        color: var(--amber-deep);
+        background: rgba(233, 166, 60, 0.16);
+      }
+      /* phase tags read as neutral history, never borrowing a semantic hue */
+      .tag-phase {
+        color: var(--muted);
+        background: rgba(22, 35, 61, 0.05);
+      }
+      .tag-done {
+        color: var(--ok);
+        background: rgba(60, 154, 107, 0.13);
+      }
+      .time {
+        font-family: var(--font-mono);
+        font-size: 13px;
+        font-weight: 700;
+        color: var(--ink);
+        flex: 0 0 auto;
+      }
+      .item.soft .time,
+      .item.passed .time {
+        color: var(--muted);
+      }
+      .check {
+        flex: 0 0 auto;
+        width: 22px;
+        height: 22px;
+        border-radius: 999px;
+        display: grid;
+        place-items: center;
+        font-size: 12px;
+        font-weight: 700;
+        color: #fff;
+        background: var(--ok);
+      }
+      .chev {
+        color: #b5bcc9;
+        font-size: 12px;
+        flex: 0 0 auto;
+      }
+      .lock-mini {
+        color: var(--muted);
+        font-size: 12px;
+        flex: 0 0 auto;
+      }
+
+      /* inline settle strip on a passed-but-unresolved soft event */
+      .settle {
+        display: flex;
+        align-items: center;
+        gap: 8px;
+        padding: 0 13px 12px 62px;
+        margin-top: -4px;
+      }
+      .settle .q {
+        font-size: 11.5px;
+        font-weight: 600;
+        color: var(--muted);
+        margin-inline-end: auto;
+      }
+      .settle button {
+        font: inherit;
+        font-family: var(--font-body);
+        font-size: 11.5px;
+        font-weight: 700;
+        border-radius: 999px;
+        padding: 4px 12px;
+        cursor: pointer;
+        border: 1px solid var(--line);
+        background: #fff;
+        color: var(--ink);
+      }
+      .settle button.yes {
+        border-color: rgba(60, 154, 107, 0.4);
+        color: var(--ok);
+      }
+
+      /* expanded quick-verb row (shown open on the "now" item) */
+      .actions {
+        border-top: 1px solid var(--line);
+        background: #fafbfd;
+        padding: 11px 13px;
+        display: flex;
+        gap: 6px;
+        flex-wrap: wrap;
+      }
+      .act {
+        font: inherit;
+        font-family: var(--font-body);
+        font-size: 12px;
+        font-weight: 700;
+        border: 1px solid var(--line);
+        background: #fff;
+        color: var(--ink);
+        border-radius: 999px;
+        padding: 6px 12px;
+        cursor: pointer;
+      }
+      .act.go {
+        border-color: rgba(44, 156, 144, 0.4);
+        color: var(--teal);
+      }
+      .act.done-verb {
+        border-color: rgba(60, 154, 107, 0.4);
+        color: var(--ok);
+      }
+      .act .k {
+        font-size: 12px;
+      }
+
+      /* the now-line — quiet by default: a soft amber hairline + a flat mono
+         time label. It is a time REFERENCE that sits UNDER the live "now" ring
+         in the hierarchy, never a second loud element. */
+      .nowline {
+        display: flex;
+        align-items: center;
+        gap: 8px;
+        margin: 2px 2px 9px;
+      }
+      .nowline .rule {
+        flex: 1;
+        height: 1px;
+        background: linear-gradient(
+          90deg,
+          rgba(233, 166, 60, 0.5) 0%,
+          rgba(233, 166, 60, 0.1) 100%
+        );
+      }
+      .nowline .chip {
+        flex: 0 0 auto;
+        display: inline-flex;
+        align-items: center;
+        gap: 6px;
+        background: rgba(233, 166, 60, 0.12);
+        color: var(--amber-deep);
+        font-family: var(--font-mono);
+        font-size: 11.5px;
+        font-weight: 700;
+        padding: 2px 9px;
+        border-radius: 999px;
+      }
+      .nowline .blip {
+        width: 5px;
+        height: 5px;
+        border-radius: 999px;
+        background: var(--amber);
+      }
+      .nowline .lbl {
+        font-family: var(--font-body);
+        font-size: 10px;
+        font-weight: 600;
+        opacity: 0.8;
+      }
+      /* the original v1 treatment, kept only for the side-by-side comparison */
+      .nowline.loud .rule {
+        height: 2px;
+        border-radius: 2px;
+        background: linear-gradient(90deg, var(--amber), rgba(233, 166, 60, 0.28));
+      }
+      .nowline.loud .chip {
+        background: var(--board);
+        color: var(--amber);
+        font-size: 12px;
+        padding: 4px 10px;
+        box-shadow: 0 6px 16px -8px rgba(233, 166, 60, 0.6);
+      }
+      .nowline.loud .blip {
+        width: 7px;
+        height: 7px;
+        box-shadow: 0 0 0 0 rgba(233, 166, 60, 0.55);
+        animation: pulse 2s infinite;
+      }
+      @keyframes pulse {
+        0% {
+          box-shadow: 0 0 0 0 rgba(233, 166, 60, 0.5);
+        }
+        70% {
+          box-shadow: 0 0 0 7px rgba(233, 166, 60, 0);
+        }
+        100% {
+          box-shadow: 0 0 0 0 rgba(233, 166, 60, 0);
+        }
+      }
+      @media (prefers-reduced-motion: reduce) {
+        .nowline.loud .blip {
+          animation: none;
+        }
+      }
+      /* now-line comparison strip */
+      .nl-compare {
+        display: grid;
+        grid-template-columns: repeat(auto-fit, minmax(240px, 1fr));
+        gap: 14px;
+      }
+      .nl-demo {
+        background: var(--screen);
+        border-radius: 14px;
+        padding: 16px 15px 6px;
+        border: 1px solid var(--stage-line);
+      }
+      .nl-demo .cap {
+        font-size: 11px;
+        font-weight: 700;
+        letter-spacing: 0.08em;
+        text-transform: uppercase;
+        color: var(--muted);
+        margin-bottom: 12px;
+      }
+      .nl-demo .cap.pick {
+        color: var(--ok);
+      }
+      .nl-demo .ghost {
+        height: 40px;
+        border-radius: 12px;
+        background: #fff;
+        border: 1px solid var(--line);
+        margin-bottom: 9px;
+        opacity: 0.6;
+      }
+
+      /* archive wash for a fully past day */
+      .body.archive {
+        background:
+          linear-gradient(0deg, rgba(120, 110, 92, 0.05), rgba(120, 110, 92, 0.05)), var(--screen);
+        filter: saturate(0.88);
+      }
+      .archive-banner {
+        display: flex;
+        align-items: center;
+        gap: 9px;
+        background: #eceae4;
+        border: 1px solid rgba(22, 35, 61, 0.09);
+        border-radius: 12px;
+        padding: 9px 12px;
+        margin-bottom: 13px;
+        font-size: 12px;
+        color: #5f6577;
+        font-weight: 600;
+      }
+      .archive-banner .ic {
+        font-size: 14px;
+      }
+      .archive-banner .back {
+        margin-inline-start: auto;
+        color: var(--ink);
+        font-weight: 700;
+      }
+      .item.unresolved .main .t {
+        color: #4c5468;
+      }
+
+      /* mini nav */
+      .nav {
+        display: flex;
+        background: #fff;
+        border-top: 1px solid var(--line);
+        padding: 7px 0 9px;
+      }
+      .nav button {
+        flex: 1;
+        background: none;
+        border: 0;
+        font: inherit;
+        font-family: var(--font-body);
+        font-size: 10px;
+        font-weight: 600;
+        color: var(--muted);
+        display: flex;
+        flex-direction: column;
+        align-items: center;
+        gap: 3px;
+        cursor: pointer;
+      }
+      .nav button .ic {
+        font-size: 17px;
+      }
+      .nav button.on {
+        color: var(--indigo);
+      }
+      .nav button.on .ic {
+        background: rgba(27, 42, 74, 0.1);
+        border-radius: 999px;
+        padding: 2px 12px;
+      }
+
+      /* ── phase-adaptive nudge mini-table ───────────────────────── */
+      .nudge {
+        border: 1px solid var(--stage-line);
+        border-radius: 12px;
+        overflow: hidden;
+      }
+      .nudge .r {
+        display: grid;
+        grid-template-columns: 92px 1fr;
+        gap: 12px;
+        padding: 10px 14px;
+        border-top: 1px solid var(--stage-line);
+        align-items: center;
+      }
+      .nudge .r:first-child {
+        border-top: 0;
+      }
+      .nudge .ph {
+        font-size: 12px;
+        font-weight: 700;
+        color: var(--stage-ink);
+      }
+      .nudge .step {
+        display: inline-flex;
+        gap: 5px;
+        align-items: center;
+        font-family: var(--font-mono);
+        font-size: 11.5px;
+      }
+      .nudge .pill {
+        border-radius: 7px;
+        padding: 2px 8px;
+        font-weight: 700;
+      }
+      .nudge .pill.on {
+        background: rgba(233, 166, 60, 0.16);
+        color: #e9b866;
+      }
+      .nudge .pill.off {
+        background: rgba(159, 176, 212, 0.1);
+        color: var(--stage-faint);
+        text-decoration: line-through;
+      }
+      .nudge .why {
+        font-family: var(--font-body);
+        font-size: 11.5px;
+        color: var(--stage-dim);
+        margin-inline-start: 6px;
+      }
+
+      /* ── plan-mode builder (faithful to screens.css .bld / .gap) ── */
+      .phone.plan .header {
+        background: var(--card);
+        color: var(--ink);
+        border-bottom: 1px solid var(--line);
+        background-image:
+          repeating-linear-gradient(0deg, rgba(110, 89, 214, 0.05) 0 1px, transparent 1px 22px),
+          repeating-linear-gradient(90deg, rgba(110, 89, 214, 0.05) 0 1px, transparent 1px 22px);
+      }
+      .phone.plan .trip-name {
+        color: var(--ink);
+      }
+      .phone.plan .trip-name .chev,
+      .phone.plan .trip-sub {
+        color: var(--muted);
+      }
+      .phone.plan .statusbar {
+        background: var(--card);
+        color: var(--muted);
+        border-bottom: 1px solid var(--line);
+      }
+      .phone.plan .gear {
+        color: var(--plan-deep);
+      }
+      .phone.plan .day-pill {
+        background: rgba(22, 35, 61, 0.05);
+        color: var(--muted);
+      }
+      .phone.plan .day-pill .n {
+        color: var(--ink);
+      }
+      .phone.plan .day-pill.on {
+        background: var(--plan);
+        color: #fff;
+      }
+      .phone.plan .day-pill.on .n {
+        color: #fff;
+      }
+      .phone.plan .month-label {
+        color: var(--muted);
+      }
+      .modepill {
+        display: inline-flex;
+        align-items: center;
+        gap: 5px;
+        background: var(--plan-tint);
+        color: var(--plan-deep);
+        border: 1px solid rgba(110, 89, 214, 0.28);
+        border-radius: 999px;
+        font-size: 11px;
+        font-weight: 700;
+        padding: 3px 10px;
+      }
+      .bld {
+        background: var(--card);
+        border: 1px solid var(--line);
+        border-radius: 14px;
+        margin-bottom: 9px;
+        display: flex;
+        align-items: center;
+        gap: 9px;
+        padding: 9px 11px;
+      }
+      .bld.soft {
+        background: repeating-linear-gradient(-45deg, #fff 0 9px, #fbfaf7 9px 18px);
+        border: 1px dashed var(--soft-line);
+      }
+      .bld-grip {
+        flex: 0 0 auto;
+        color: #b3b9c6;
+        font-size: 15px;
+        cursor: grab;
+      }
+      .bld-anchor {
+        flex: 0 0 auto;
+        color: var(--amber-deep);
+        font-size: 13px;
+      }
+      .bld-bd {
+        width: 34px;
+        height: 34px;
+        border-radius: 10px;
+        display: grid;
+        place-items: center;
+        font-size: 16px;
+        background: var(--paper);
+        flex: 0 0 auto;
+      }
+      .bld.soft .bld-bd {
+        background: rgba(22, 35, 61, 0.05);
+      }
+      .bld-main {
+        flex: 1;
+        min-width: 0;
+      }
+      .bld-t {
+        font-weight: 700;
+        font-size: 13.5px;
+        color: var(--ink);
+        display: flex;
+        align-items: center;
+        gap: 6px;
+        flex-wrap: wrap;
+      }
+      .bld-m {
+        font-size: 11px;
+        color: var(--muted);
+        margin-top: 2px;
+      }
+      .bld-time {
+        font-family: var(--font-mono);
+        font-size: 12px;
+        font-weight: 700;
+        color: var(--ink);
+        flex: 0 0 auto;
+      }
+      .bld.soft .bld-time {
+        color: var(--muted);
+      }
+      .bld-icon {
+        flex: 0 0 auto;
+        width: 30px;
+        height: 30px;
+        border-radius: 9px;
+        border: 1px solid var(--line);
+        background: var(--card);
+        color: var(--muted);
+        font-size: 13px;
+        display: grid;
+        place-items: center;
+      }
+      .gap {
+        display: flex;
+        align-items: center;
+        gap: 8px;
+        margin: 0 0 9px;
+        padding: 2px 6px;
+      }
+      .gap-line {
+        flex: 1;
+        height: 1px;
+        background: repeating-linear-gradient(90deg, var(--soft-line) 0 5px, transparent 5px 10px);
+      }
+      .gap-add {
+        font: inherit;
+        font-family: var(--font-body);
+        font-size: 11px;
+        font-weight: 700;
+        color: var(--plan-deep);
+        background: var(--plan-tint);
+        border: 1px solid rgba(110, 89, 214, 0.28);
+        border-radius: 999px;
+        padding: 4px 11px;
+      }
+      /* the PLAN now-reference — deliberately NOT the trip now-line: violet (plan
+         grammar), dashed, hollow marker, no pulse, no glow. A static "where now
+         falls" cue for building today, never a live signal. */
+      .nowref {
+        display: flex;
+        align-items: center;
+        gap: 8px;
+        margin: 1px 2px 9px;
+      }
+      .nowref .rule {
+        flex: 1;
+        height: 0;
+        border-top: 1px dashed rgba(110, 89, 214, 0.55);
+      }
+      .nowref .tag {
+        flex: 0 0 auto;
+        display: inline-flex;
+        align-items: center;
+        gap: 6px;
+        color: var(--plan-deep);
+        background: var(--plan-tint);
+        border: 1px solid rgba(110, 89, 214, 0.28);
+        font-size: 11px;
+        font-weight: 700;
+        padding: 2px 9px;
+        border-radius: 999px;
+      }
+      .nowref .ring {
+        width: 6px;
+        height: 6px;
+        border-radius: 999px;
+        border: 1.5px solid var(--plan);
+        background: transparent;
+      }
+      .nowref .tm {
+        font-family: var(--font-mono);
+      }
+
+      /* ── top-bar button redesign demo ──────────────────────────── */
+      .av.plain {
+        border: 2px solid var(--indigo);
+      }
+      .gear-round {
+        width: 30px;
+        height: 30px;
+        border-radius: 999px;
+        display: grid;
+        place-items: center;
+        background: rgba(255, 255, 255, 0.12);
+        border: 2px solid rgba(255, 255, 255, 0.35);
+        color: #fff;
+        font-size: 13px;
+      }
+      .gear-ghost {
+        width: 30px;
+        height: 30px;
+        border-radius: 10px;
+        display: grid;
+        place-items: center;
+        color: #9daac8;
+        font-size: 17px;
+      }
+      .av.ring2 {
+        box-shadow:
+          0 0 0 2px var(--indigo),
+          0 0 0 3.5px rgba(255, 255, 255, 0.55);
+      }
+      /* ── annotation cards ──────────────────────────────────────── */
+      .note {
+        border: 1px solid var(--stage-line);
+        background: linear-gradient(180deg, var(--stage-panel-2), var(--stage-panel));
+        border-radius: 14px;
+        padding: 15px 16px;
+      }
+      .note h3 {
+        font-family: var(--font-head);
+        font-weight: 400;
+        font-size: 16px;
+        color: #fff;
+        margin-bottom: 6px;
+        display: flex;
+        align-items: center;
+        gap: 8px;
+      }
+      .pin {
+        flex: 0 0 auto;
+        width: 20px;
+        height: 20px;
+        border-radius: 999px;
+        display: grid;
+        place-items: center;
+        font-family: var(--font-mono);
+        font-size: 11px;
+        font-weight: 700;
+        color: #1a1206;
+        background: var(--amber);
+      }
+      .note p {
+        font-size: 13.5px;
+        color: var(--stage-dim);
+      }
+      .note p + p {
+        margin-top: 7px;
+      }
+      .note code {
+        font-family: var(--font-mono);
+        font-size: 12px;
+        color: #d7c39a;
+        background: rgba(233, 166, 60, 0.08);
+        padding: 1px 5px;
+        border-radius: 5px;
+      }
+
+      .rec {
+        border-inline-start: 3px solid var(--ok);
+        background: rgba(60, 154, 107, 0.08);
+        border-radius: 0 12px 12px 0;
+        padding: 13px 15px;
+      }
+      :where([dir='ltr']) .rec {
+        border-radius: 12px 0 0 12px;
+      }
+      .rec .lab {
+        font-size: 11px;
+        font-weight: 700;
+        letter-spacing: 0.14em;
+        text-transform: uppercase;
+        color: #6ed3a0;
+        margin-bottom: 5px;
+      }
+      .rec p {
+        font-size: 13.5px;
+        color: #cfe8db;
+      }
+      .rec b {
+        color: #fff;
+        font-weight: 700;
+      }
+
+      /* option comparison cards (Done button) */
+      .options {
+        display: grid;
+        grid-template-columns: repeat(auto-fit, minmax(230px, 1fr));
+        gap: 14px;
+      }
+      .opt {
+        border: 1px solid var(--stage-line);
+        border-radius: 14px;
+        padding: 16px;
+        background: rgba(255, 255, 255, 0.02);
+        position: relative;
+      }
+      .opt.pick {
+        border-color: rgba(60, 154, 107, 0.55);
+        background: rgba(60, 154, 107, 0.07);
+      }
+      .opt .verdict {
+        font-size: 10.5px;
+        font-weight: 700;
+        letter-spacing: 0.1em;
+        text-transform: uppercase;
+        color: var(--stage-faint);
+        margin-bottom: 9px;
+      }
+      .opt.pick .verdict {
+        color: #6ed3a0;
+      }
+      .opt h4 {
+        font-family: var(--font-head);
+        font-weight: 400;
+        font-size: 17px;
+        color: #fff;
+        margin-bottom: 8px;
+      }
+      .opt p {
+        font-size: 13px;
+        color: var(--stage-dim);
+      }
+      .opt ul {
+        list-style: none;
+        margin-top: 10px;
+        display: flex;
+        flex-direction: column;
+        gap: 6px;
+      }
+      .opt li {
+        font-size: 12.5px;
+        color: var(--stage-dim);
+        padding-inline-start: 20px;
+        position: relative;
+      }
+      .opt li.pro::before {
+        content: '＋';
+        position: absolute;
+        inset-inline-start: 0;
+        color: var(--ok);
+        font-weight: 700;
+      }
+      .opt li.con::before {
+        content: '－';
+        position: absolute;
+        inset-inline-start: 0;
+        color: var(--miss);
+        font-weight: 700;
+      }
+
+      .analysis {
+        display: grid;
+        grid-template-columns: repeat(auto-fit, minmax(240px, 1fr));
+        gap: 14px;
+        margin-bottom: 26px;
+      }
+      .analysis .q {
+        border: 1px solid var(--stage-line);
+        border-radius: 14px;
+        padding: 15px 16px;
+        background: rgba(255, 255, 255, 0.02);
+      }
+      .analysis .q .k {
+        font-size: 11px;
+        font-weight: 700;
+        letter-spacing: 0.12em;
+        text-transform: uppercase;
+        color: var(--amber);
+        margin-bottom: 8px;
+      }
+      .analysis .q p {
+        font-size: 13.5px;
+        color: var(--stage-dim);
+      }
+
+      /* summary table */
+      .summary {
+        border: 1px solid var(--stage-line);
+        border-radius: 16px;
+        overflow: hidden;
+      }
+      .summary .row {
+        display: grid;
+        grid-template-columns: 200px 1fr 120px;
+        gap: 16px;
+        padding: 15px 20px;
+        border-top: 1px solid var(--stage-line);
+        align-items: start;
+      }
+      .summary .row:first-child {
+        border-top: 0;
+        background: rgba(255, 255, 255, 0.03);
+      }
+      .summary .row .h {
+        font-weight: 700;
+        color: #fff;
+        font-size: 13px;
+      }
+      .summary .row .d {
+        font-size: 13px;
+        color: var(--stage-dim);
+      }
+      .summary .row .t {
+        font-size: 11px;
+        font-weight: 700;
+        color: var(--stage-faint);
+        text-align: end;
+      }
+      .summary .row.head .h,
+      .summary .row.head .d,
+      .summary .row.head .t {
+        font-size: 10.5px;
+        letter-spacing: 0.1em;
+        text-transform: uppercase;
+        color: var(--stage-faint);
+        font-weight: 700;
+      }
+      .badge-new,
+      .badge-adr {
+        font-family: var(--font-mono);
+        font-size: 10px;
+        font-weight: 700;
+        padding: 2px 7px;
+        border-radius: 999px;
+        white-space: nowrap;
+      }
+      .badge-new {
+        color: #1a1206;
+        background: var(--amber);
+      }
+      .badge-adr {
+        color: #cabff4;
+        background: rgba(110, 89, 214, 0.22);
+      }
+
+      /* top-bar comparison strip */
+      .topbars {
+        display: grid;
+        grid-template-columns: repeat(auto-fit, minmax(280px, 1fr));
+        gap: 18px;
+      }
+      .tb {
+        border: 1px solid var(--stage-line);
+        border-radius: 16px;
+        overflow: hidden;
+        background: var(--indigo);
+      }
+      .tb .cap {
+        font-size: 11.5px;
+        font-weight: 700;
+        color: var(--stage-dim);
+        padding: 11px 14px 0;
+      }
+      .tb .cap b {
+        color: #fff;
+      }
+      .tb .mini-header {
+        padding: 8px 14px 14px;
+      }
+      .foot {
+        margin-top: 30px;
+        color: var(--stage-faint);
+        font-size: 12.5px;
+        text-align: center;
+      }
+      .foot code {
+        font-family: var(--font-mono);
+        color: var(--stage-dim);
+      }
+      /* RTL islands (phone UI + Hebrew) */
+      [dir='rtl'] {
+        text-align: right;
+      }
+    </style>
+  </head>
+  <body>
+    <div class="wrap">
+      <!-- ══ masthead ══ -->
+      <header class="masthead">
+        <div class="eyebrow">Trip mode · day view · proposal v1</div>
+        <h1 class="title">
+          Where are we in the day, what already happened, and does “סיימנו” still earn its tap?
+        </h1>
+        <p class="lede">
+          A set of changes to the on-the-ground day view, all derived from the clock — nothing new
+          is stored. <b>A now-line</b> anchors the current moment and splits the day into behind /
+          ahead. <b>The Done button is reframed</b> from a loud hygiene verb into a quiet, optional
+          “we did this” record. And <b>past days read as an archive</b> — in the list and in the top
+          bar. Plus the boundary calls that followed review: what stays Trip-only vs. crosses into
+          Plan, and how “new event” is scoped.
+        </p>
+        <div class="adr-row">
+          <span class="adr">builds on <b>ADR-0011</b> hard/soft</span>
+          <span class="adr"><b>ADR-0027</b> derived phases</span>
+          <span class="adr"><b>ADR-0028</b> color budget</span>
+          <span class="adr"><b>ADR-0029</b> past/future gating</span>
+          <span class="adr"><b>ADR-0040</b> finished-trip archive</span>
+        </div>
+      </header>
+
+      <!-- ══ 1 · NOW-LINE + PHASES ══ -->
+      <section>
+        <div class="sec-head">
+          <span class="sec-num">01</span>
+          <div>
+            <h2>A now-line, and events that recede once they’re behind you</h2>
+            <p>
+              Today the only time cue in the list is an amber ring on the “now” event; a 2 pm plan
+              still sitting there at 4 pm looks identical to an upcoming one. Two clock-derived
+              devices fix that — a live now-line, and phase treatment for what’s passed. (ADR-0027
+              already decided the phase model; this is where it becomes visible.)
+            </p>
+          </div>
+        </div>
+
+        <div class="nl-compare" style="margin-bottom: 30px">
+          <div class="nl-demo" dir="rtl">
+            <div class="cap" dir="ltr">v1 — too loud</div>
+            <div class="ghost"></div>
+            <div class="nowline loud">
+              <span class="chip"
+                ><span class="blip"></span><span dir="ltr">16:42</span>
+                <span class="lbl">עכשיו</span></span
+              >
+              <span class="rule"></span>
+            </div>
+            <div class="ghost"></div>
+          </div>
+          <div class="nl-demo" dir="rtl">
+            <div class="cap pick" dir="ltr">recommended — a quiet reference</div>
+            <div class="ghost"></div>
+            <div class="nowline">
+              <span class="chip"
+                ><span class="blip"></span><span dir="ltr">16:42</span>
+                <span class="lbl">עכשיו</span></span
+              >
+              <span class="rule"></span>
+            </div>
+            <div class="ghost"></div>
+          </div>
+        </div>
+
+        <div class="duo">
+          <div class="phone-shell">
+            <div class="phone" dir="rtl" lang="he">
+              <div class="statusbar">
+                <span>16:42</span>
+                <span class="dots">● ● ●</span>
+              </div>
+              <div class="header">
+                <div class="trip-row">
+                  <div>
+                    <div class="trip-name">🇯🇵 יפן 2026 <span class="chev">▾</span></div>
+                    <div class="trip-sub">טוקיו <span class="dot">·</span> יום 3 מתוך 9</div>
+                  </div>
+                  <div class="header-actions">
+                    <div class="av" style="background: #6e8cc8">ד</div>
+                    <div class="av account" style="background: #b06e9c">א</div>
+                    <div class="gear">⚙</div>
+                  </div>
+                </div>
+                <div class="day-strip">
+                  <div class="day-pill-wrap">
+                    <span class="month-label">יולי</span>
+                    <button class="day-pill past">א<span class="n" dir="ltr">14</span></button>
+                  </div>
+                  <div class="day-pill-wrap">
+                    <button class="day-pill past">ב<span class="n" dir="ltr">15</span></button>
+                  </div>
+                  <div class="day-pill-wrap">
+                    <button class="day-pill on today-anchor">
+                      ג<span class="n" dir="ltr">16</span>
+                    </button>
+                  </div>
+                  <div class="day-pill-wrap">
+                    <button class="day-pill future">ד<span class="n" dir="ltr">17</span></button>
+                  </div>
+                  <div class="day-pill-wrap">
+                    <button class="day-pill future">ה<span class="n" dir="ltr">18</span></button>
+                  </div>
+                  <div class="day-pill-wrap">
+                    <button class="day-pill future">ו<span class="n" dir="ltr">19</span></button>
+                  </div>
+                </div>
+              </div>
+
+              <div class="body">
+                <div class="sec-title first">יום 3 · שבת · טוקיו</div>
+
+                <!-- passed + done -->
+                <div class="item soft done">
+                  <div class="face">
+                    <div class="badge">🐟</div>
+                    <div class="main">
+                      <div class="t">שוק צוקיג׳י <span class="tag-phase">עבר</span></div>
+                      <div class="m">ארוחת בוקר · סושי טרי</div>
+                    </div>
+                    <div class="check">✓</div>
+                    <span class="time" dir="ltr">10:00</span>
+                    <span class="chev">▾</span>
+                  </div>
+                </div>
+
+                <!-- passed + unresolved (soft) -> optional settle -->
+                <div class="item soft passed">
+                  <div class="face">
+                    <div class="badge">⛩️</div>
+                    <div class="main">
+                      <div class="t">
+                        מקדש סנסו-ג׳י <span class="tag-phase">עבר · לא סומן</span>
+                      </div>
+                      <div class="m">אסאקוסה · נקמיסה</div>
+                    </div>
+                    <span class="time" dir="ltr">14:30</span>
+                    <span class="chev">▾</span>
+                  </div>
+                  <div class="settle">
+                    <span class="q">היינו שם?</span>
+                    <button class="yes">✓ היינו</button>
+                    <button>דלג</button>
+                  </div>
+                </div>
+
+                <!-- the now-line -->
+                <div class="nowline" aria-label="עכשיו 16:42">
+                  <span class="chip"
+                    ><span class="blip"></span><span dir="ltr">16:42</span>
+                    <span class="lbl">עכשיו</span></span
+                  >
+                  <span class="rule"></span>
+                </div>
+
+                <!-- now (in progress) -->
+                <div class="item soft now">
+                  <div class="face">
+                    <div class="badge">🚶</div>
+                    <div class="main">
+                      <div class="t">
+                        זמן חופשי · שינג׳וקו <span class="tag-now">גמיש · עכשיו</span>
+                      </div>
+                      <div class="m">מתחם החנויות · עד 18:00</div>
+                    </div>
+                    <span class="time" dir="ltr">16:30</span>
+                    <span class="chev">▴</span>
+                  </div>
+                  <div class="actions">
+                    <button class="act go"><span class="k">🧭</span> ניווט</button>
+                    <button class="act">דלג</button>
+                    <button class="act">＋30 דק׳</button>
+                    <button class="act done-verb">✓ סיימנו</button>
+                  </div>
+                </div>
+
+                <!-- upcoming (hard) -->
+                <div class="item">
+                  <div class="face">
+                    <div class="badge">🍜</div>
+                    <div class="main">
+                      <div class="t">Ichiran Ramen <span class="tag-hard">🔒 קשיח</span></div>
+                      <div class="m">ארוחת ערב · הזמנה <span dir="ltr">#4471</span></div>
+                    </div>
+                    <span class="time" dir="ltr">19:30</span>
+                    <span class="chev">▾</span>
+                  </div>
+                </div>
+
+                <!-- upcoming (soft) -->
+                <div class="item soft">
+                  <div class="face">
+                    <div class="badge">🍶</div>
+                    <div class="main">
+                      <div class="t">גולדן גאי <span class="tag-soft">גמיש</span></div>
+                      <div class="m">דרינקים · סמטאות באר</div>
+                    </div>
+                    <span class="time" dir="ltr">21:30</span>
+                    <span class="chev">▾</span>
+                  </div>
+                </div>
+              </div>
+
+              <div class="nav">
+                <button><span class="ic">🏠</span> בית</button>
+                <button><span class="ic">🗺️</span> מפה</button>
+                <button><span class="ic">📇</span> אינדקס</button>
+                <button class="on"><span class="ic">📅</span> יום-יום</button>
+              </div>
+            </div>
+            <div class="phone-cap">
+              Today · 16:42 — two events behind the line, one live, two ahead
+            </div>
+          </div>
+
+          <div class="stack">
+            <div class="note">
+              <h3><span class="pin">A</span> The now-line — dialed down</h3>
+              <p>
+                A <b>soft amber hairline</b> with a flat mono time label, inserted at the current
+                moment. It stays amber (that’s the color’s meaning — time), but drops the dark chip,
+                the glow and the pulse from v1, so it
+                <b>reads quieter than the live event above it</b>.
+              </p>
+              <p>
+                Hierarchy is the fix for “too loud”: the amber
+                <b>ring on the now event stays the one accent</b>; the line is just a reference for
+                where the moment falls. It travels down the list as time moves — the movement is the
+                liveness, no pulse needed.
+              </p>
+            </div>
+            <div class="note">
+              <h3><span class="pin">B</span> Passed events recede</h3>
+              <p>
+                Anything behind the line drops to a quiet, desaturated row — present for reference,
+                no longer competing. The phase is
+                <b>derived from the clock</b>, never written (<code>deriveNow</code> already does
+                this for the board).
+              </p>
+            </div>
+            <div class="note">
+              <h3><span class="pin">C</span> Slipped &amp; unresolved</h3>
+              <p>
+                A soft plan whose time passed with no tap (סנסו-ג׳י, 14:30) reads
+                <b>עבר · לא סומן</b> and offers a one-tap settle right there — the honest “still
+                on?” moment from ADR-0027, not a nag.
+              </p>
+            </div>
+            <div class="note">
+              <h3><span class="pin">D</span> The nudge adapts to phase</h3>
+              <p>
+                A small behavior the phase model makes honest: the ±30 stepper only offers moves
+                that are actually possible.
+              </p>
+              <div class="nudge" style="margin-top: 10px">
+                <div class="r">
+                  <span class="ph">Upcoming</span>
+                  <span class="step"
+                    ><span class="pill on">−30</span><span class="pill on">+30</span
+                    ><span class="why">both ways</span></span
+                  >
+                </div>
+                <div class="r">
+                  <span class="ph">Now</span>
+                  <span class="step"
+                    ><span class="pill off">−30</span><span class="pill on">+30</span
+                    ><span class="why">can’t pull into the past</span></span
+                  >
+                </div>
+                <div class="r">
+                  <span class="ph">Passed / past day</span>
+                  <span class="step"
+                    ><span class="pill off">−30</span><span class="pill off">+30</span
+                    ><span class="why">retiming history is locked</span></span
+                  >
+                </div>
+              </div>
+            </div>
+            <div class="note">
+              <h3><span class="pin">E</span> The view lands on now</h3>
+              <p>
+                On a long day, opening today shouldn’t dump you at 07:00. The view
+                <b>auto-scrolls to the now-line on open</b>, with a passed event or two left peeking
+                above for context — so “what now / what next” is the first thing on screen, not a
+                scroll away.
+              </p>
+              <p>
+                Once only, and only on <b>today</b> (a past/future day has no “now,” so it opens at
+                the top). It never fights a manual scroll after, and a short day that already fits
+                doesn’t move. Smooth by default, instant under <code>prefers-reduced-motion</code>.
+                The phone above is roughly where you’d land.
+              </p>
+            </div>
+            <div class="rec">
+              <div class="lab">Recommendation</div>
+              <p>
+                Ship <b>both</b>: the now-line and the derived phase treatment. The phase model is
+                already an accepted decision (ADR-0027) that the concurrency rewrite never surfaced
+                — this makes it visible, and the now-line is the small addition that turns “a list
+                of events” into “the day, and where we are in it.”
+              </p>
+            </div>
+          </div>
+        </div>
+      </section>
+
+      <!-- ══ 2 · THE DONE BUTTON ══ -->
+      <section>
+        <div class="sec-head">
+          <span class="sec-num">02</span>
+          <div>
+            <h2>“סיימנו”, rethought — from board hygiene to a quiet record</h2>
+            <p>
+              Today “סיימנו” sets <code>status = DONE</code>: the row dims to 50%, keeps its full
+              slot, and the board skips past it. The question is whether that tap is still worth
+              asking for once the clock does most of the work.
+            </p>
+          </div>
+        </div>
+
+        <div class="analysis">
+          <div class="q">
+            <div class="k">What was it for?</div>
+            <p>
+              Two jobs: <b>hygiene</b> (get it off the board so “now” advances) and
+              <b>record</b> (we actually did this). They were bundled into one tap.
+            </p>
+          </div>
+          <div class="q">
+            <div class="k">What changed?</div>
+            <p>
+              The now-line + passed phase (§1) do the hygiene job <b>for free</b> — a passed event
+              already recedes and falls out of Now/Next with no tap. Only the <b>record</b> job is
+              left.
+            </p>
+          </div>
+          <div class="q">
+            <div class="k">Is the record worth keeping?</div>
+            <p>
+              Yes. Without it, a soft plan you <b>did</b> is indistinguishable from one you
+              <b>blew off</b> — both just read “passed.” It’s the positive twin of Skip, and it’s
+              what a future “trip wrapped” retrospective (ADR-0040) is built from.
+            </p>
+          </div>
+        </div>
+
+        <div class="options">
+          <div class="opt">
+            <div class="verdict">Option A · rejected</div>
+            <h4>Remove it entirely</h4>
+            <p>Lean on the passed phase; never mark anything done.</p>
+            <ul>
+              <li class="pro">Zero on-the-ground friction</li>
+              <li class="con">“Did it” vs “skipped it” becomes unrecoverable</li>
+              <li class="con">Kills the retrospective before it exists</li>
+            </ul>
+          </div>
+          <div class="opt">
+            <div class="verdict">Option B · rejected</div>
+            <h4>Keep it as-is</h4>
+            <p>A loud primary verb on every soft row, dims in place.</p>
+            <ul>
+              <li class="pro">Familiar; no change</li>
+              <li class="con">Nobody taps “done” after every meal — dead weight up front</li>
+              <li class="con">Duplicates hygiene the clock now handles</li>
+            </ul>
+          </div>
+          <div class="opt pick">
+            <div class="verdict">Option C · recommended</div>
+            <h4>Keep it, demote &amp; reframe</h4>
+            <p>
+              An optional, affirmative “we did this” — quiet in the moment, useful behind the line.
+            </p>
+            <ul>
+              <li class="pro">Preserves the record + future retrospective</li>
+              <li class="pro">No friction: it’s where you already look back</li>
+              <li class="pro">Done <i>settles</i> (green ✓), not just dims</li>
+            </ul>
+          </div>
+        </div>
+
+        <div class="duo" style="margin-top: 26px">
+          <div class="stack">
+            <div class="note">
+              <h3><span class="pin">1</span> Ahead of now: quiet</h3>
+              <p>
+                On an upcoming or live soft event, the forward verbs lead — Navigate, Skip, nudge.
+                <b>סיימנו</b> is present but last, in <code>--ok</code> green (a status, not amber —
+                it isn’t a clock event). You <i>can</i> mark it early; you rarely need to.
+              </p>
+            </div>
+            <div class="note">
+              <h3><span class="pin">2</span> Behind the line: where it earns its tap</h3>
+              <p>
+                On a passed-but-unmarked soft event, the settle strip surfaces the same choice as a
+                light inline pair — <b>✓ היינו / דלג</b>. One tap to make the day’s record true,
+                exactly when you’d glance back.
+              </p>
+            </div>
+            <div class="note">
+              <h3><span class="pin">3</span> Done reads as done</h3>
+              <p>
+                A completed event settles into a calm green-checked row instead of a fat 50%-opacity
+                ghost holding its slot. Reversible via the row’s
+                <b>שחזר</b>, unchanged.
+              </p>
+            </div>
+            <div class="rec">
+              <div class="lab">Recommendation</div>
+              <p>
+                <b>Keep סיימנו — demoted and reframed (Option C).</b> Never auto-write it (ADR-0027
+                holds). Its natural home is the behind-now settle zone and the past-day archive
+                (§3), where “did we?” is a real question and one tap answers it.
+              </p>
+            </div>
+          </div>
+
+          <div class="phone-shell">
+            <div class="phone" dir="rtl" lang="he" style="width: 340px">
+              <div class="body" style="padding-top: 18px">
+                <div class="sec-title first">מאחורי הקו · לסגור את היום</div>
+
+                <div class="item soft done">
+                  <div class="face">
+                    <div class="badge">🐟</div>
+                    <div class="main">
+                      <div class="t">שוק צוקיג׳י <span class="tag-done">✓ היינו</span></div>
+                      <div class="m">ארוחת בוקר · סושי טרי</div>
+                    </div>
+                    <div class="check">✓</div>
+                    <span class="time" dir="ltr">10:00</span>
+                    <span class="chev">▾</span>
+                  </div>
+                </div>
+
+                <div class="item soft passed">
+                  <div class="face">
+                    <div class="badge">⛩️</div>
+                    <div class="main">
+                      <div class="t">
+                        מקדש סנסו-ג׳י <span class="tag-phase">עבר · לא סומן</span>
+                      </div>
+                      <div class="m">אסאקוסה · נקמיסה</div>
+                    </div>
+                    <span class="time" dir="ltr">14:30</span>
+                    <span class="chev">▾</span>
+                  </div>
+                  <div class="settle">
+                    <span class="q">היינו שם?</span>
+                    <button class="yes">✓ היינו</button>
+                    <button>דלג</button>
+                  </div>
+                </div>
+
+                <div class="sec-title" style="margin-top: 16px">לפני הקו · האירוע החי</div>
+                <div class="item soft now">
+                  <div class="face">
+                    <div class="badge">🚶</div>
+                    <div class="main">
+                      <div class="t">זמן חופשי · שינג׳וקו <span class="tag-now">עכשיו</span></div>
+                      <div class="m">מתחם החנויות</div>
+                    </div>
+                    <span class="time" dir="ltr">16:30</span>
+                    <span class="chev">▴</span>
+                  </div>
+                  <div class="actions">
+                    <button class="act go"><span class="k">🧭</span> ניווט</button>
+                    <button class="act">דלג</button>
+                    <button class="act">＋30</button>
+                    <button class="act done-verb">✓ סיימנו</button>
+                  </div>
+                </div>
+              </div>
+            </div>
+            <div class="phone-cap">Done is quiet up front, primary only when looking back</div>
+          </div>
+        </div>
+      </section>
+
+      <!-- ══ 3 · PAST-DAY ARCHIVE ══ -->
+      <section>
+        <div class="sec-head">
+          <span class="sec-num">03</span>
+          <div>
+            <h2>Past days feel like an archive — in the list and the top bar</h2>
+            <p>
+              While a trip is live you can still flip back to an earlier day. ADR-0029 already locks
+              editing there (create/move/delete off; Done, Skip, Navigate stay) — but nothing yet
+              <i>looks</i> like history. It should read settled the moment you land on it, and the
+              way back to today should be one tap.
+            </p>
+          </div>
+        </div>
+
+        <!-- top-bar states -->
+        <h3
+          style="
+            font-family: var(--font-head);
+            font-weight: 400;
+            font-size: 18px;
+            color: #fff;
+            margin-bottom: 14px;
+          "
+        >
+          Top bar · three states
+        </h3>
+        <div class="topbars">
+          <!-- today -->
+          <div class="tb">
+            <div class="cap"><b>Today</b> — selected = live anchor (amber, unchanged)</div>
+            <div class="mini-header">
+              <div class="day-strip">
+                <div class="day-pill-wrap">
+                  <button class="day-pill past">א<span class="n" dir="ltr">14</span></button>
+                </div>
+                <div class="day-pill-wrap">
+                  <button class="day-pill past">ב<span class="n" dir="ltr">15</span></button>
+                </div>
+                <div class="day-pill-wrap">
+                  <button class="day-pill on today-anchor">
+                    ג<span class="n" dir="ltr">16</span>
+                  </button>
+                </div>
+                <div class="day-pill-wrap">
+                  <button class="day-pill future">ד<span class="n" dir="ltr">17</span></button>
+                </div>
+                <div class="day-pill-wrap">
+                  <button class="day-pill future">ה<span class="n" dir="ltr">18</span></button>
+                </div>
+              </div>
+            </div>
+          </div>
+          <!-- past day -->
+          <div class="tb">
+            <div class="cap">
+              <b>Viewing a past day</b> — neutral selection; today keeps its amber dot
+            </div>
+            <div class="mini-header">
+              <div class="day-strip">
+                <div class="day-pill-wrap">
+                  <button class="day-pill past">א<span class="n" dir="ltr">14</span></button>
+                </div>
+                <div class="day-pill-wrap">
+                  <button class="day-pill sel-history">ב<span class="n" dir="ltr">15</span></button>
+                </div>
+                <div class="day-pill-wrap">
+                  <button class="day-pill today-anchor">
+                    ג<span class="n" dir="ltr">16</span>
+                  </button>
+                </div>
+                <div class="day-pill-wrap">
+                  <button class="day-pill future">ד<span class="n" dir="ltr">17</span></button>
+                </div>
+                <div class="day-pill-wrap">
+                  <button class="day-pill future">ה<span class="n" dir="ltr">18</span></button>
+                </div>
+              </div>
+              <div class="day-context history" dir="rtl">
+                <span class="ic">🕘</span> יום שהיה · היסטוריה
+                <span class="back">חזרה להיום →</span>
+              </div>
+            </div>
+          </div>
+          <!-- future day -->
+          <div class="tb">
+            <div class="cap"><b>Viewing a future day</b> — violet (plan-ahead), not amber</div>
+            <div class="mini-header">
+              <div class="day-strip">
+                <div class="day-pill-wrap">
+                  <button class="day-pill past">א<span class="n" dir="ltr">14</span></button>
+                </div>
+                <div class="day-pill-wrap">
+                  <button class="day-pill past">ב<span class="n" dir="ltr">15</span></button>
+                </div>
+                <div class="day-pill-wrap">
+                  <button class="day-pill today-anchor">
+                    ג<span class="n" dir="ltr">16</span>
+                  </button>
+                </div>
+                <div class="day-pill-wrap">
+                  <button class="day-pill sel-history">ד<span class="n" dir="ltr">17</span></button>
+                </div>
+                <div class="day-pill-wrap">
+                  <button class="day-pill future">ה<span class="n" dir="ltr">18</span></button>
+                </div>
+              </div>
+              <div class="day-context future" dir="rtl">
+                <span class="ic">→</span> יום עתידי · תצוגה מקדימה
+                <span class="back">חזרה להיום →</span>
+              </div>
+            </div>
+          </div>
+        </div>
+
+        <div class="duo" style="margin-top: 30px">
+          <div class="phone-shell">
+            <div class="phone" dir="rtl" lang="he">
+              <div class="statusbar">
+                <span>16:42</span>
+                <span class="dots">● ● ●</span>
+              </div>
+              <div class="header">
+                <div class="trip-row">
+                  <div>
+                    <div class="trip-name">🇯🇵 יפן 2026 <span class="chev">▾</span></div>
+                    <div class="trip-sub">טוקיו <span class="dot">·</span> יום 2 מתוך 9</div>
+                  </div>
+                  <div class="header-actions">
+                    <div class="av" style="background: #6e8cc8">ד</div>
+                    <div class="av account" style="background: #b06e9c">א</div>
+                    <div class="gear">⚙</div>
+                  </div>
+                </div>
+                <div class="day-strip">
+                  <div class="day-pill-wrap">
+                    <span class="month-label">יולי</span>
+                    <button class="day-pill past">א<span class="n" dir="ltr">14</span></button>
+                  </div>
+                  <div class="day-pill-wrap">
+                    <button class="day-pill sel-history">
+                      ב<span class="n" dir="ltr">15</span>
+                    </button>
+                  </div>
+                  <div class="day-pill-wrap">
+                    <button class="day-pill today-anchor">
+                      ג<span class="n" dir="ltr">16</span>
+                    </button>
+                  </div>
+                  <div class="day-pill-wrap">
+                    <button class="day-pill future">ד<span class="n" dir="ltr">17</span></button>
+                  </div>
+                  <div class="day-pill-wrap">
+                    <button class="day-pill future">ה<span class="n" dir="ltr">18</span></button>
+                  </div>
+                  <div class="day-pill-wrap">
+                    <button class="day-pill future">ו<span class="n" dir="ltr">19</span></button>
+                  </div>
+                </div>
+                <div class="day-context history" dir="rtl">
+                  <span class="ic">🕘</span> יום שהיה · היסטוריה
+                  <span class="back">חזרה להיום →</span>
+                </div>
+              </div>
+
+              <div class="body archive">
+                <div class="archive-banner">
+                  <span class="ic">📖</span> יום 2 · שישי · טוקיו — לקריאה בלבד
+                  <span class="back">חזרה להיום</span>
+                </div>
+
+                <div class="item soft done">
+                  <div class="face">
+                    <div class="badge">🗼</div>
+                    <div class="main">
+                      <div class="t">מגדל טוקיו <span class="tag-done">✓ היינו</span></div>
+                      <div class="m">שיבא · תצפית</div>
+                    </div>
+                    <div class="check">✓</div>
+                    <span class="time" dir="ltr">09:30</span>
+                    <span class="chev">▾</span>
+                  </div>
+                </div>
+
+                <div class="item done">
+                  <div class="face">
+                    <div class="badge">🍣</div>
+                    <div class="main">
+                      <div class="t">Sushi Dai <span class="tag-hard">🔒 קשיח</span></div>
+                      <div class="m">ארוחת צהריים · הזמנה <span dir="ltr">#2210</span></div>
+                    </div>
+                    <div class="check">✓</div>
+                    <span class="time" dir="ltr">13:00</span>
+                    <span class="chev">▾</span>
+                  </div>
+                </div>
+
+                <!-- unresolved on a past day: factual, still settle-able -->
+                <div class="item soft passed unresolved">
+                  <div class="face">
+                    <div class="badge">🌳</div>
+                    <div class="main">
+                      <div class="t">פארק יויוגי <span class="tag-phase">לא סומן</span></div>
+                      <div class="m">שיבויה · טיול רגלי</div>
+                    </div>
+                    <span class="lock-mini" title="עריכה במצב תכנון">🔒</span>
+                    <span class="time" dir="ltr">16:00</span>
+                    <span class="chev">▾</span>
+                  </div>
+                  <div class="settle">
+                    <span class="q">היינו שם?</span>
+                    <button class="yes">✓ היינו</button>
+                    <button>דלג</button>
+                  </div>
+                </div>
+
+                <div class="item soft done">
+                  <div class="face">
+                    <div class="badge">🍢</div>
+                    <div class="main">
+                      <div class="t">אמאיוקוצ׳ו <span class="tag-done">✓ היינו</span></div>
+                      <div class="m">אוכל רחוב · אואנו</div>
+                    </div>
+                    <div class="check">✓</div>
+                    <span class="time" dir="ltr">19:00</span>
+                    <span class="chev">▾</span>
+                  </div>
+                </div>
+
+                <div
+                  class="archive-banner"
+                  style="margin-top: 4px; background: transparent; border-style: dashed"
+                >
+                  <span class="ic">✏️</span> להוסיף או להזיז אירוע ביום שעבר — במצב תכנון
+                </div>
+              </div>
+
+              <div class="nav">
+                <button><span class="ic">🏠</span> בית</button>
+                <button><span class="ic">🗺️</span> מפה</button>
+                <button><span class="ic">📇</span> אינדקס</button>
+                <button class="on"><span class="ic">📅</span> יום-יום</button>
+              </div>
+            </div>
+            <div class="phone-cap">
+              Past day (live trip) · calm wash, no now-line, editing locked
+            </div>
+          </div>
+
+          <div class="stack">
+            <div class="note">
+              <h3><span class="pin">D</span> An archive wash, not a dead screen</h3>
+              <p>
+                The whole list cools and desaturates slightly, led by a
+                <b>לקריאה בלבד</b> banner. No now-line (there is no “now” on a day that’s over), no
+                amber. It reads as memory the instant it loads.
+              </p>
+            </div>
+            <div class="note">
+              <h3><span class="pin">E</span> Editing is locked, settling isn’t</h3>
+              <p>
+                Per ADR-0029, structural edits are gated to Plan mode (the dashed footer says so).
+                But <b>Done / Skip / Navigate stay</b> — an unresolved soft plan can still be
+                settled with one tap, which is exactly the retrospective job the reframed Done was
+                built for.
+              </p>
+            </div>
+            <div class="note">
+              <h3><span class="pin">F</span> Amber marks <i>today</i>, not the selection</h3>
+              <p>
+                The systemic fix in the top bar: amber is the trip’s live anchor, so it stays on
+                <b>today’s</b> pill wherever you browse. Selecting a past day is a neutral
+                highlight; a future day is violet (plan-ahead). One glance always finds “now,” and
+                history never borrows the live color (ADR-0028).
+              </p>
+            </div>
+            <div class="rec">
+              <div class="lab">Recommendation</div>
+              <p>
+                Reuse this same archive treatment for a <b>finished trip</b>
+                (ADR-0040) — it’s the whole trip in read-only, one day at a time — so past-day and
+                past-trip share one visual language instead of two.
+              </p>
+            </div>
+          </div>
+        </div>
+
+        <!-- top-bar buttons redesign -->
+        <h3
+          style="
+            font-family: var(--font-head);
+            font-weight: 400;
+            font-size: 18px;
+            color: #fff;
+            margin: 34px 0 6px;
+          "
+        >
+          While we’re in the top bar — the account &amp; settings cluster
+        </h3>
+        <p style="font-size: 13.5px; color: var(--stage-dim); max-width: 64ch; margin-bottom: 8px">
+          Got it now — Trip chrome (to match your screenshot). Two distinct things in the current
+          design:
+        </p>
+        <p style="font-size: 13px; color: var(--stage-faint); max-width: 64ch; margin-bottom: 16px">
+          <b style="color: var(--stage-ink)">1.</b> your own avatar has <i>no outer ring</i>, so it
+          looks like any member’s. <b style="color: var(--stage-ink)">2.</b> the settings gear sits
+          in a circle. So the redesign is two moves: <i>add</i> the ring to “you”, <i>remove</i> the
+          gear’s circle.
+        </p>
+        <div class="topbars">
+          <div class="tb">
+            <div class="cap"><b>Current</b> — “you” has no ring; gear is a circle</div>
+            <div class="mini-header">
+              <div class="trip-row">
+                <div>
+                  <div class="trip-name" style="font-size: 20px">
+                    🏞️ לפה ולשם ולכאן ’26 <span class="chev">▾</span>
+                  </div>
+                  <div class="trip-sub">לפה ולשם <span class="dot">·</span> יום 1 מתוך 8</div>
+                </div>
+                <div class="header-actions">
+                  <div class="gear-round">⚙</div>
+                  <div class="av plain" style="background: #e0a94b">A</div>
+                </div>
+              </div>
+            </div>
+          </div>
+          <div class="tb">
+            <div class="cap" style="color: #8fe3b6">
+              <b>Recommended</b> — ring “you”; drop the gear’s circle
+            </div>
+            <div class="mini-header">
+              <div class="trip-row">
+                <div>
+                  <div class="trip-name" style="font-size: 20px">
+                    🏞️ לפה ולשם ולכאן ’26 <span class="chev">▾</span>
+                  </div>
+                  <div class="trip-sub">לפה ולשם <span class="dot">·</span> יום 1 מתוך 8</div>
+                </div>
+                <div class="header-actions">
+                  <div class="gear-ghost">⚙</div>
+                  <div class="av plain ring2" style="background: #e0a94b">A</div>
+                </div>
+              </div>
+            </div>
+          </div>
+        </div>
+        <div class="rec" style="margin-top: 16px">
+          <div class="lab">Recommendation</div>
+          <p>
+            Two moves. <b>Ring “you”</b> — a clear outer ring on your own avatar so it’s
+            unmistakable in the member cluster (app-shell.md already intends the account avatar to
+            be “ringed, distinct from the plain members”; today’s ring is too faint to read).
+            <b>Drop the gear’s circle</b> — a borderless ghost icon, so identity is round chips and
+            settings reads as a UI control (“emoji are content, icons are UI”). The ghost follows
+            the mode: cool blue-grey in Trip, violet-tinted in Plan.
+          </p>
+        </div>
+      </section>
+
+      <!-- ══ 4 · MODE BOUNDARIES ══ -->
+      <section>
+        <div class="sec-head">
+          <span class="sec-num">04</span>
+          <div>
+            <h2>Where the line is drawn — Plan mode, and the “new event” button</h2>
+            <p>
+              Two boundary questions, one rule behind both: Trip mode is
+              <i>live and on-the-ground</i>; Plan mode is
+              <i>the drafting table and is never “live.”</i> (design-language: mode identity.)
+            </p>
+          </div>
+        </div>
+
+        <h3
+          style="
+            font-family: var(--font-head);
+            font-weight: 400;
+            font-size: 18px;
+            color: #fff;
+            margin-bottom: 6px;
+          "
+        >
+          Do these features cross into Plan mode?
+        </h3>
+        <p style="font-size: 13.5px; color: var(--stage-dim); max-width: 62ch; margin-bottom: 16px">
+          Mostly no — and that’s a feature, not a gap. Only the archive language crosses.
+        </p>
+        <div class="summary" style="margin-bottom: 30px">
+          <div class="row head">
+            <div class="h">Feature</div>
+            <div class="d">Verdict &amp; why</div>
+            <div class="t">Scope</div>
+          </div>
+          <div class="row">
+            <div class="h">Now-line</div>
+            <div class="d">
+              Trip only. Plan is never live — no pulse, no amber-now. Plan’s day builder already
+              shows the full timeline for “will my day flow.” A live marker there would blur the two
+              modes.
+            </div>
+            <div class="t">Trip</div>
+          </div>
+          <div class="row">
+            <div class="h">Derived phases</div>
+            <div class="d">
+              Trip only. ADR-0029: “Plan mode has no past/future distinction; it’s the building
+              surface regardless of which day is on screen.” Rebuilding any day is the point of
+              Plan.
+            </div>
+            <div class="t">Trip</div>
+          </div>
+          <div class="row">
+            <div class="h">Done / settle</div>
+            <div class="d">
+              Trip only — a Tier-1 on-the-ground verb (ADR-0025). A finished trip is explicitly
+              <b>read-only</b>, no settling (ADR-0040).
+            </div>
+            <div class="t">Trip</div>
+          </div>
+          <div class="row">
+            <div class="h">Archive visual language</div>
+            <div class="d">
+              <b>Shared.</b> A finished trip is a Plan-mode read-only archive (ADR-0040). Past-day
+              (Trip) and finished-trip (Plan) should wear the same calm wash — §3 — so there’s one
+              archive language, not two.
+            </div>
+            <div class="t">Both</div>
+          </div>
+          <div class="row">
+            <div class="h">“Now” reference in Plan builder</div>
+            <div class="d">
+              <b>Added (your call).</b> A faint <i>static</i> current-time cue when building
+              <i>today</i> mid-trip — useful for “what’s still ahead to build.” Kept in Plan’s
+              grammar so it can’t be mistaken for a live signal:
+              <b>violet, dashed, hollow marker, no pulse, no glow</b> — the opposite of the Trip
+              now-line. Shown below.
+            </div>
+            <div class="t">Both</div>
+          </div>
+        </div>
+
+        <div class="duo" style="margin: 4px 0 14px">
+          <div class="phone-shell">
+            <div class="phone plan" dir="rtl" lang="he" style="width: 340px">
+              <div class="statusbar">
+                <span>16:42</span>
+                <span class="dots">✏️ תכנון</span>
+              </div>
+              <div class="header">
+                <div class="trip-row">
+                  <div>
+                    <div class="trip-name" style="font-size: 20px">
+                      🇯🇵 יפן 2026 <span class="chev">▾</span>
+                    </div>
+                    <div class="trip-sub">טוקיו <span class="dot">·</span> יום 3 מתוך 9</div>
+                  </div>
+                  <div class="header-actions">
+                    <div class="av plain" style="background: #6e8cc8; border-color: #fff">ד</div>
+                    <div
+                      class="av plain ring2"
+                      style="
+                        background: #b06e9c;
+                        box-shadow:
+                          0 0 0 2px #fff,
+                          0 0 0 3.5px rgba(110, 89, 214, 0.5);
+                      "
+                    >
+                      א
+                    </div>
+                    <div class="gear-ghost" style="color: var(--plan-deep)">⚙</div>
+                  </div>
+                </div>
+                <div class="day-strip">
+                  <div class="day-pill-wrap">
+                    <span class="month-label">יולי</span
+                    ><button class="day-pill">א<span class="n" dir="ltr">14</span></button>
+                  </div>
+                  <div class="day-pill-wrap">
+                    <button class="day-pill">ב<span class="n" dir="ltr">15</span></button>
+                  </div>
+                  <div class="day-pill-wrap">
+                    <button class="day-pill on">ג<span class="n" dir="ltr">16</span></button>
+                  </div>
+                  <div class="day-pill-wrap">
+                    <button class="day-pill">ד<span class="n" dir="ltr">17</span></button>
+                  </div>
+                  <div class="day-pill-wrap">
+                    <button class="day-pill">ה<span class="n" dir="ltr">18</span></button>
+                  </div>
+                </div>
+              </div>
+              <div class="body">
+                <div class="sec-title first">
+                  יום 3 · שבת · טוקיו
+                  <span class="modepill">✏️ תכנון</span>
+                </div>
+
+                <div class="bld soft">
+                  <span class="bld-grip">⠿</span>
+                  <span class="bld-bd">🐟</span>
+                  <span class="bld-main">
+                    <span class="bld-t">שוק צוקיג׳י <span class="tag-soft">גמיש</span></span>
+                    <span class="bld-m">ארוחת בוקר · סושי טרי</span>
+                  </span>
+                  <span class="bld-time" dir="ltr">10:00</span>
+                  <span class="bld-icon">⋯</span>
+                </div>
+
+                <div class="bld soft">
+                  <span class="bld-grip">⠿</span>
+                  <span class="bld-bd">⛩️</span>
+                  <span class="bld-main">
+                    <span class="bld-t">מקדש סנסו-ג׳י <span class="tag-soft">גמיש</span></span>
+                    <span class="bld-m">אסאקוסה · נקמיסה</span>
+                  </span>
+                  <span class="bld-time" dir="ltr">14:30</span>
+                  <span class="bld-icon">⋯</span>
+                </div>
+
+                <!-- the plan now-reference: static, violet, dashed -->
+                <div class="nowref" aria-label="עכשיו 16:42">
+                  <span class="tag"
+                    ><span class="ring"></span>עכשיו <span class="tm" dir="ltr">16:42</span></span
+                  >
+                  <span class="rule"></span>
+                </div>
+
+                <div class="bld soft">
+                  <span class="bld-grip">⠿</span>
+                  <span class="bld-bd">🚶</span>
+                  <span class="bld-main">
+                    <span class="bld-t"
+                      >זמן חופשי · שינג׳וקו <span class="tag-soft">גמיש</span></span
+                    >
+                    <span class="bld-m">מתחם החנויות</span>
+                  </span>
+                  <span class="bld-time" dir="ltr">16:30</span>
+                  <span class="bld-icon">⋯</span>
+                </div>
+
+                <div class="gap">
+                  <span class="gap-line"></span>
+                  <button class="gap-add">פער של שעתיים · ＋ שבץ</button>
+                  <span class="gap-line"></span>
+                </div>
+
+                <div class="bld">
+                  <span class="bld-anchor">🔒</span>
+                  <span class="bld-bd">🍜</span>
+                  <span class="bld-main">
+                    <span class="bld-t">Ichiran Ramen <span class="tag-hard">🔒 קשיח</span></span>
+                    <span class="bld-m">ארוחת ערב · הזמנה <span dir="ltr">#4471</span></span>
+                  </span>
+                  <span class="bld-time" dir="ltr">19:30</span>
+                  <span class="bld-icon">⋯</span>
+                </div>
+              </div>
+            </div>
+            <div class="phone-cap">
+              Plan builder, today · a static violet “now” reference — never a live marker
+            </div>
+          </div>
+
+          <div class="stack">
+            <div class="note">
+              <h3><span class="pin">G</span> A reference, not a heartbeat</h3>
+              <p>
+                Same information (“here’s now”), opposite grammar. Trip’s now-line is a
+                <b>solid amber</b> hairline with a filled dot — live. Plan’s is a
+                <b>dashed violet</b> line with a hollow ring and no pulse — a drafting guide. You
+                can’t confuse the drafting table for the board.
+              </p>
+            </div>
+            <div class="note">
+              <h3><span class="pin">H</span> Only where it helps</h3>
+              <p>
+                It appears <b>only when the day on screen is today</b> and the trip is live — the
+                one case where “now” means something while building. Past and future builder days
+                show no reference (there’s no now to place), keeping ADR-0029’s “Plan has no
+                past/future distinction” intact for editing.
+              </p>
+            </div>
+            <div class="rec">
+              <div class="lab">Recommendation</div>
+              <p>
+                <b>Add it, in Plan’s violet.</b> It earns its place by helping you build around the
+                clock without borrowing the live board’s amber — mode identity holds.
+              </p>
+            </div>
+          </div>
+        </div>
+
+        <h3
+          style="
+            font-family: var(--font-head);
+            font-weight: 400;
+            font-size: 18px;
+            color: #fff;
+            margin-bottom: 6px;
+          "
+        >
+          Should Trip mode keep “אירוע חדש”?
+        </h3>
+        <p style="font-size: 13.5px; color: var(--stage-dim); max-width: 62ch; margin-bottom: 16px">
+          Don’t remove it — right-size it. The <i>need</i> is real (“we just decided to grab coffee
+          at 5”), but today’s button opens the full builder.
+        </p>
+        <div class="duo" style="align-items: stretch">
+          <div class="stack" style="flex: 1 1 300px">
+            <div class="nl-demo" dir="rtl" style="padding-bottom: 15px">
+              <div class="cap" dir="ltr">today — now: full builder</div>
+              <div class="sec-title" style="margin: 0">
+                יום 3 · שבת · טוקיו
+                <span class="new-event-btn">＋ אירוע חדש</span>
+              </div>
+              <p
+                style="font-size: 11.5px; color: var(--muted); margin-top: 10px; text-align: right"
+              >
+                פותח טופס מלא — יום כלשהו, קשיח/גמיש, הזמנות. זו בנייה (Tier&nbsp;2–3).
+              </p>
+            </div>
+            <div class="nl-demo" dir="rtl" style="padding-bottom: 15px">
+              <div class="cap pick" dir="ltr">recommended — quick-add, soft, today</div>
+              <div class="sec-title" style="margin: 0">
+                יום 3 · שבת · טוקיו
+                <span class="new-event-btn" style="border-color: rgba(22, 35, 61, 0.14)"
+                  >＋ הוסף להיום</span
+                >
+              </div>
+              <p
+                style="font-size: 11.5px; color: var(--muted); margin-top: 10px; text-align: right"
+              >
+                גמיש · היום · המשבצת הפנויה הבאה. בנייה כבדה עוברת למצב תכנון.
+              </p>
+            </div>
+          </div>
+          <div class="stack" style="flex: 1 1 300px">
+            <div class="note">
+              <h3><span class="pin">✓</span> Keep it, scoped to Tier-1</h3>
+              <p>
+                ADR-0025 lists “add a quick soft event for today” as a legitimate on-the-ground
+                verb. So keep an add affordance — but make it a
+                <b>quick-add</b> (soft, today, next open slot), not the full form. Adding a hard
+                event, a booking, or an event on another day is building → the ⋯ sheet or the Plan
+                escape.
+              </p>
+            </div>
+            <div class="note">
+              <h3><span class="pin">✕</span> Gone on past days</h3>
+              <p>
+                On a past day ADR-0029 <b>locks create</b> — so the add button disappears entirely,
+                replaced by §3’s “add or move in Plan mode” footer. The archive stays read-only.
+              </p>
+            </div>
+            <div class="rec">
+              <div class="lab">Recommendation</div>
+              <p>
+                <b>Keep it on today, right-sized; hide it on past days.</b> Net effect: spontaneous
+                soft adds stay one tap on the ground, real itinerary building lives where it belongs
+                — Plan mode.
+              </p>
+            </div>
+          </div>
+        </div>
+      </section>
+
+      <!-- ══ SUMMARY ══ -->
+      <section>
+        <div class="sec-head">
+          <span class="sec-num">05</span>
+          <div>
+            <h2>What ships, and where it already lives</h2>
+            <p>Every change is clock-derived — no schema change, no stored state.</p>
+          </div>
+        </div>
+        <div class="summary">
+          <div class="row head">
+            <div class="h">Change</div>
+            <div class="d">Behavior</div>
+            <div class="t">Basis</div>
+          </div>
+          <div class="row">
+            <div class="h">Now-line</div>
+            <div class="d">
+              A quiet soft-amber hairline at the current moment; splits the day into behind / ahead;
+              sits below the live event in the hierarchy (no chip, glow, or pulse).
+            </div>
+            <div class="t"><span class="badge-new">NEW</span></div>
+          </div>
+          <div class="row">
+            <div class="h">Land on now</div>
+            <div class="d">
+              Opening today auto-scrolls to the now-line (a passed event or two peeking above); once
+              only, today only, never fights a manual scroll.
+            </div>
+            <div class="t"><span class="badge-new">NEW</span></div>
+          </div>
+          <div class="row">
+            <div class="h">Derived phases</div>
+            <div class="d">
+              Passed / now / upcoming / slipped / unresolved / done — computed from the clock,
+              styled to recede once behind the line.
+            </div>
+            <div class="t"><span class="badge-adr">ADR-0027</span></div>
+          </div>
+          <div class="row">
+            <div class="h">Done, reframed</div>
+            <div class="d">
+              Optional affirmative record in <code>--ok</code> green; demoted up front, primary in
+              the settle zone; done rows settle instead of ghosting.
+            </div>
+            <div class="t">
+              <span class="badge-new">NEW</span> <span class="badge-adr">ADR-0027</span>
+            </div>
+          </div>
+          <div class="row">
+            <div class="h">Settle strip</div>
+            <div class="d">
+              Inline <b>✓ היינו / דלג</b> on a passed-but-unmarked soft event — the “still on?”
+              moment, made one tap.
+            </div>
+            <div class="t"><span class="badge-new">NEW</span></div>
+          </div>
+          <div class="row">
+            <div class="h">Past-day archive</div>
+            <div class="d">
+              Calm desaturated wash + read-only banner; no now-line; editing gated to Plan, settling
+              allowed.
+            </div>
+            <div class="t"><span class="badge-adr">ADR-0029</span></div>
+          </div>
+          <div class="row">
+            <div class="h">Today-anchor top bar</div>
+            <div class="d">
+              Amber marks today (not the selection); past = neutral highlight, future = violet; a
+              context ribbon + one-tap “back to today.”
+            </div>
+            <div class="t">
+              <span class="badge-new">NEW</span> <span class="badge-adr">ADR-0028</span>
+            </div>
+          </div>
+          <div class="row">
+            <div class="h">“אירוע חדש” → quick-add</div>
+            <div class="d">
+              Right-sized to a Tier-1 quick-add (soft, today, next slot); heavy building routes to
+              Plan; hidden entirely on past days.
+            </div>
+            <div class="t">
+              <span class="badge-adr">ADR-0025</span> <span class="badge-adr">ADR-0029</span>
+            </div>
+          </div>
+          <div class="row">
+            <div class="h">Phase-adaptive nudge</div>
+            <div class="d">
+              The ±30 stepper offers only possible moves: both ways upcoming, +30 only for now, none
+              once passed / on a past day.
+            </div>
+            <div class="t"><span class="badge-new">NEW</span></div>
+          </div>
+          <div class="row">
+            <div class="h">Plan “now” reference</div>
+            <div class="d">
+              A static violet dashed cue in the Plan builder when the day on screen is today — a
+              drafting guide, explicitly not the live now-line.
+            </div>
+            <div class="t"><span class="badge-new">NEW</span></div>
+          </div>
+          <div class="row">
+            <div class="h">Account / settings cluster</div>
+            <div class="d">
+              Ring “you” (the account avatar’s ring is too faint today) and drop the gear’s circle →
+              a borderless ghost control; identity stays round chips.
+            </div>
+            <div class="t"><span class="badge-new">NEW</span></div>
+          </div>
+        </div>
+        <p class="foot">
+          Mockup of record: <code>mockups/trip-mode-day-view-v1.html</code> · phones shown in the
+          app’s current light theme on the studio stage (dark mode is a token remap, ADR-0028). If
+          any detail here conflicts with the design docs, the docs win.
+        </p>
+      </section>
+    </div>
+  </body>
+</html>
