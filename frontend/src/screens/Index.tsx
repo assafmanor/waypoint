@@ -3,7 +3,7 @@
 // scheduled on the itinerary. Tap a row to edit/delete it (BookingSheet); the
 // add-booking form is a later checkpoint. Content is identical in Plan/Trip mode
 // (ADR-0049) — the mode only tints the chrome, so this reads mode-agnostically.
-import { useEffect, useState } from 'react';
+import { useEffect, useRef, useState } from 'react';
 import { useSearchParams } from 'react-router-dom';
 import {
   BOOKING_TYPE,
@@ -19,6 +19,7 @@ import { placeName } from '../lib/places';
 import { formatTime, todayInTz } from '../lib/time';
 import { BOOKING_TYPE_ICON, CODE_PREFIX, MS_PER_DAY } from '../constants';
 import { BookingSheet } from '../ui/BookingSheet';
+import { DocumentsSection } from '../ui/DocumentsSection';
 import { t } from '../i18n/he';
 
 const isTransport = (b: Booking): boolean =>
@@ -31,16 +32,26 @@ export function Index() {
   // null = closed; 'create' = new booking; a Booking = editing that one.
   const [sheet, setSheet] = useState<Booking | 'create' | null>(null);
 
-  // Deep-link from Home's quick-access (ADR-0050): ?booking=<id> opens that
-  // booking's sheet, then the param is cleared so back/reload don't reopen it.
+  const docsRef = useRef<HTMLDivElement>(null);
+
+  // Deep-links from Home's quick-access (ADR-0050): ?booking=<id> opens that
+  // booking's sheet; ?focus=docs scrolls to the documents section. The params are
+  // cleared after so back/reload don't re-trigger.
   const [params, setParams] = useSearchParams();
   useEffect(() => {
     const id = params.get('booking');
-    if (!id) return;
-    const target = bookings.find((b) => b.id === id);
-    if (target) setSheet(target);
+    const focus = params.get('focus');
+    if (!id && !focus) return;
+    if (id) {
+      const target = bookings.find((b) => b.id === id);
+      if (target) setSheet(target);
+    }
+    if (focus === 'docs') {
+      docsRef.current?.scrollIntoView({ behavior: 'smooth', block: 'start' });
+    }
     const next = new URLSearchParams(params);
     next.delete('booking');
+    next.delete('focus');
     setParams(next, { replace: true });
   }, [params, bookings, setParams]);
 
@@ -96,6 +107,10 @@ export function Index() {
           )}
         </>
       )}
+
+      <div ref={docsRef}>
+        <DocumentsSection />
+      </div>
 
       {sheet && (
         <BookingSheet booking={sheet === 'create' ? null : sheet} onClose={() => setSheet(null)} />

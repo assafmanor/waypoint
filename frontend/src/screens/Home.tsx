@@ -275,9 +275,9 @@ export function Home({ onNavigate }: { onNavigate?: (tab: TabId) => void }) {
             )}
           </button>
         )}
-        {/* Managed tile: always present. Deep-links to the Index; the documents
-            section + focused add-flow land with the documents UI (cp6). */}
-        <button className="qa empty" onClick={() => onNavigate?.('index')}>
+        {/* Managed tile: always present. Deep-links to the Index documents
+            section (ADR-0050). */}
+        <button className="qa empty" onClick={() => navigate(`/?${TAB_PARAM}=index&focus=docs`)}>
           <span className="ic">{ICONS.documents}</span>
           <span className="lb">
             <span className="plus">{ICONS.add}</span> {t.quick.documents}
