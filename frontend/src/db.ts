@@ -1,5 +1,5 @@
 import Dexie, { type Table } from 'dexie';
-import type { Booking, TripDocument, TripEvent } from '@waypoint/shared';
+import type { Booking, Trip, TripDocument, TripEvent } from '@waypoint/shared';
 import type { OutboxEntry } from './lib/outbox';
 import type { SnapshotMeta } from './lib/cache';
 
@@ -14,6 +14,10 @@ export class WaypointDB extends Dexie {
   outbox!: Table<OutboxEntry, number>;
   // T-058: last-known snapshot remainder, keyed by tripId.
   snapshotMeta!: Table<SnapshotMeta, string>;
+  // The last-known GET /trips result, so the all-trips list and the boot
+  // trip-resolution work offline (otherwise the fetch fails → empty list →
+  // ZeroState / lost trip on reopen).
+  tripList!: Table<Trip, string>;
 
   constructor() {
     super('waypoint');
@@ -27,6 +31,9 @@ export class WaypointDB extends Dexie {
     });
     this.version(3).stores({
       snapshotMeta: 'tripId',
+    });
+    this.version(4).stores({
+      tripList: 'id',
     });
   }
 }

@@ -1,6 +1,6 @@
 // ADR-0020/0024. The access JWT itself lives in lib/api.ts, not here.
 import { createContext, useContext, useEffect, useState, type ReactNode } from 'react';
-import type { Me } from '@waypoint/shared';
+import { meSchema, type Me } from '@waypoint/shared';
 import {
   API_BASE_URL,
   fetchMe,
@@ -9,8 +9,37 @@ import {
   setAccessToken,
   setOnSessionExpired,
 } from '../lib/api';
+import { isNetworkError, isOffline } from '../lib/outbox';
+import { ME_STORAGE_KEY } from '../constants';
 
 export type AuthStatus = 'loading' | 'anon' | 'authed';
+
+// Identity is cached so a cold reload offline renders signed-in from the last
+// known `me` rather than bouncing to /login (the boot refresh + GET /me both
+// fail with no network). It is *not* a credential — the access token stays
+// in-memory only (ADR-0020) — so caching it doesn't weaken the auth model.
+function cacheMe(me: Me): void {
+  try {
+    localStorage.setItem(ME_STORAGE_KEY, JSON.stringify(me));
+  } catch {
+    // ignore quota/serialisation failures — the cache is best-effort.
+  }
+}
+function readCachedMe(): Me | null {
+  try {
+    const raw = localStorage.getItem(ME_STORAGE_KEY);
+    return raw ? meSchema.parse(JSON.parse(raw)) : null;
+  } catch {
+    return null;
+  }
+}
+function clearCachedMe(): void {
+  try {
+    localStorage.removeItem(ME_STORAGE_KEY);
+  } catch {
+    // ignore
+  }
+}
 
 interface AuthContextValue {
   status: AuthStatus;
@@ -32,6 +61,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       setAccessToken(null);
       setMe(null);
       setStatus('anon');
+      clearCachedMe();
     });
     return () => setOnSessionExpired(null);
   }, []);
@@ -42,20 +72,31 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   // the race to the stub every time.
   useEffect(() => {
     let cancelled = false;
-    refreshAccessToken()
-      .catch(() => false)
-      .then(() => fetchMe())
-      .then(
-        (who) => {
-          if (!cancelled) {
-            setMe(who);
-            setStatus('authed');
-          }
-        },
-        () => {
-          if (!cancelled) setStatus('anon');
-        },
-      );
+    (async () => {
+      await refreshAccessToken().catch(() => false);
+      try {
+        const who = await fetchMe();
+        if (cancelled) return;
+        setMe(who);
+        setStatus('authed');
+        cacheMe(who);
+      } catch (err) {
+        if (cancelled) return;
+        // Offline cold-load (sync-and-offline.md "Read"): the refresh + /me both
+        // fail with no network, but that's not a real sign-out — fall back to the
+        // last-known identity so the app renders from cache instead of bouncing
+        // to /login. A genuine auth rejection (a 401 while online) still drops to
+        // anon and clears the stale identity.
+        const cached = readCachedMe();
+        if (cached && (isOffline() || isNetworkError(err))) {
+          setMe(cached);
+          setStatus('authed');
+        } else {
+          setStatus('anon');
+          clearCachedMe();
+        }
+      }
+    })();
     return () => {
       cancelled = true;
     };
@@ -70,6 +111,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     await requestLogout();
     setMe(null);
     setStatus('anon');
+    clearCachedMe();
   };
 
   return (

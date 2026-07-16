@@ -24,6 +24,7 @@ import {
   updateEvent,
   updateTrip,
 } from './api';
+import { applyOutboxOpToCache } from './cache';
 
 export type OutboxOp =
   | { verb: 'create'; input: CreateEventInput }
@@ -100,6 +101,13 @@ export function useOutboxCount(): number {
 
 export async function enqueueOutbox(tripId: string, op: OutboxOp): Promise<void> {
   await db.outbox.add({ tripId, op });
+  // Mirror the queued change into the read cache so a reopen while still offline
+  // shows it (best-effort — a cache failure must not block queueing the write).
+  try {
+    await applyOutboxOpToCache(tripId, op);
+  } catch {
+    // ignore — the outbox entry is the source of truth; the cache is a mirror.
+  }
   setPendingCount(pendingCount + 1);
 }
 

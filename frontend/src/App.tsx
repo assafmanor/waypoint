@@ -16,7 +16,7 @@ import { ActiveTripIdProvider, useActiveTripId } from './state/active-trip-id';
 import { NavProvider, useMarkInsideTrip, useTripTab } from './state/nav-state';
 import { EdgeSwipeBack } from './ui/EdgeSwipeBack';
 import { useIsOffline, useOutboxCount } from './lib/outbox';
-import { fetchTrips } from './lib/api';
+import { loadTripList } from './lib/cache';
 import { resolveActiveTrip, tripChip } from './lib/active-trip';
 import { consumeIntent, hasIntent, saveIntent } from './lib/intent';
 import { ToastProvider } from './ui/Toast';
@@ -428,14 +428,12 @@ function RootSurface() {
   const [trips, setTrips] = useState<Trip[] | null>(null);
   useEffect(() => {
     let cancelled = false;
-    fetchTrips().then(
-      (list) => {
-        if (!cancelled) setTrips(list);
-      },
-      () => {
-        if (!cancelled) setTrips([]);
-      },
-    );
+    // Offline-aware (sync-and-offline.md "Read"): falls back to the cached trip
+    // list when the fetch fails, so a cold reopen with no network resolves the
+    // active trip instead of collapsing to ZeroState.
+    loadTripList().then(({ trips: list }) => {
+      if (!cancelled) setTrips(list);
+    });
     return () => {
       cancelled = true;
     };

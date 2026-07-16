@@ -68,12 +68,15 @@ A quick nudge (the `+`/`−` stepper, as opposed to an explicit `date` change) i
 ### Read (must work with zero connectivity)
 
 - The client mirrors the **whole trip** (events, bookings, documents metadata, maybe-shelf, members, practical) into **IndexedDB (Dexie)** on every successful snapshot/fetch/broadcast. A trip is a few hundred small rows — no per-row caching flags (ADR-0018).
+- The **trip list** (`GET /trips`) is mirrored too. It has no per-trip snapshot to fall back on, so without this an offline `GET /trips` failure collapses the all-trips view to empty and — on a cold reopen — bounces the boot trip-resolution to ZeroState (a "lost trip"). `loadTripList()` fetches when online (mirroring the result) and reads the cached copy when the fetch fails.
+- **Identity** (the last successful `GET /me`) is cached in `localStorage` so a cold reopen with no connectivity renders signed-in instead of bouncing to `/login` (the boot `refresh` + `/me` both fail offline). This is **identity, not a credential** — the access token stays in memory only (ADR-0020); a genuine auth rejection (a 401 while online) still drops to anon and clears the cached identity.
 - The service worker (Workbox) caches the app shell and the document blobs.
 - Opening the app offline renders straight from IndexedDB.
 
 ### Write offline
 
 - Mutations made offline are appended to an ordered local **outbox** (IndexedDB) with the entity's **client-generated id** (ADR-0018) and the optimistic local state.
+- A queued mutation is also **written through to the Dexie read cache** at enqueue time, so a cold reopen while still offline shows what you just did (an event you added, a trip you renamed) rather than the pre-edit snapshot. Online writes don't need this — the server's own WS echo runs the cache-apply for them. (The flush itself is tied to a trip's realtime effect being mounted, so a write queued offline syncs when you're next in that trip online; a global background flush is deferred, in line with "background sync push" below.)
 - On reconnect, the client flushes the outbox **sequentially (FIFO)**, halting and retrying on the first hard error. Because the client owns the id, there is **no temp-id→real-id swap**, retries are idempotent (re-POST → unique violation → already-applied), and an offline-created entity can reference another offline-created one immediately.
 - Conflicts on flush resolve by the same LWW rule; the change-feed reflects the final state; anything surprising is undoable.
 

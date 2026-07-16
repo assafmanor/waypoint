@@ -1,9 +1,17 @@
 import 'fake-indexeddb/auto';
-import { afterEach, describe, expect, it } from 'vitest';
-import type { Change, TripSnapshot } from '@waypoint/shared';
+import { afterEach, describe, expect, it, vi } from 'vitest';
+import type { Change, Trip, TripSnapshot } from '@waypoint/shared';
 import { db } from '../db';
 import { EVENTS, MAYBE_ITEMS } from '../fixtures';
-import { applyChangeToCache, cacheSnapshot, readCachedSnapshot } from './cache';
+import {
+  applyChangeToCache,
+  applyOutboxOpToCache,
+  cacheSnapshot,
+  cacheTripList,
+  loadTripList,
+  readCachedSnapshot,
+  readCachedTripList,
+} from './cache';
 
 const TRIP_ID = EVENTS[0].tripId;
 
@@ -32,10 +40,16 @@ function snapshot(overrides: Partial<TripSnapshot> = {}): TripSnapshot {
   };
 }
 
+function trip(overrides: Partial<Trip> = {}): Trip {
+  return { ...snapshot().trip, ...overrides };
+}
+
 afterEach(async () => {
+  vi.unstubAllGlobals();
   await db.events.clear();
   await db.bookings.clear();
   await db.snapshotMeta.clear();
+  await db.tripList.clear();
 });
 
 describe('cacheSnapshot / readCachedSnapshot', () => {
@@ -115,5 +129,90 @@ describe('applyChangeToCache', () => {
       applyChangeToCache(TRIP_ID, { ...baseChange, entityType: 'maybeItem' }),
     ).resolves.toBeUndefined();
     expect(await readCachedSnapshot(TRIP_ID)).toBeNull();
+  });
+});
+
+describe('trip-list cache', () => {
+  it('mirrors and reads back the trip list', async () => {
+    const trips = [trip({ id: 't-1', name: 'A' }), trip({ id: 't-2', name: 'B' })];
+    await cacheTripList(trips);
+    const cached = await readCachedTripList();
+    expect(cached.map((t) => t.id).sort()).toEqual(['t-1', 't-2']);
+  });
+
+  it('replaces the list wholesale (stale trips drop)', async () => {
+    await cacheTripList([trip({ id: 't-1' }), trip({ id: 't-2' })]);
+    await cacheTripList([trip({ id: 't-2' })]);
+    expect((await readCachedTripList()).map((t) => t.id)).toEqual(['t-2']);
+  });
+});
+
+describe('loadTripList (offline-aware)', () => {
+  it('fetches and caches the list when online', async () => {
+    const trips = [trip({ id: 't-1' })];
+    vi.stubGlobal(
+      'fetch',
+      vi.fn(() => Promise.resolve(new Response(JSON.stringify(trips), { status: 200 }))),
+    );
+    const { trips: got, fromCache } = await loadTripList();
+    expect(fromCache).toBe(false);
+    expect(got.map((t) => t.id)).toEqual(['t-1']);
+    // The successful fetch is mirrored for the next offline load.
+    expect((await readCachedTripList()).map((t) => t.id)).toEqual(['t-1']);
+  });
+
+  it('falls back to the cached list when the fetch fails (offline)', async () => {
+    await cacheTripList([trip({ id: 't-cached' })]);
+    vi.stubGlobal(
+      'fetch',
+      vi.fn(() => Promise.reject(new TypeError('Failed to fetch'))),
+    );
+    const { trips: got, fromCache } = await loadTripList();
+    expect(fromCache).toBe(true);
+    expect(got.map((t) => t.id)).toEqual(['t-cached']);
+  });
+});
+
+describe('applyOutboxOpToCache (offline write-through)', () => {
+  it('adds an offline-created event to the read cache', async () => {
+    await cacheSnapshot(TRIP_ID, snapshot());
+    const newId = 'ev-offline-1';
+    await applyOutboxOpToCache(TRIP_ID, {
+      verb: 'create',
+      input: {
+        id: newId,
+        date: '2026-07-02',
+        title: 'Offline idea',
+        kind: 'soft',
+        source: 'manual',
+      },
+    });
+    const cached = await readCachedSnapshot(TRIP_ID);
+    expect(cached?.events.find((e) => e.id === newId)?.title).toBe('Offline idea');
+  });
+
+  it('applies a status change to a cached event', async () => {
+    await cacheSnapshot(TRIP_ID, snapshot());
+    await applyOutboxOpToCache(TRIP_ID, {
+      verb: 'setStatus',
+      eventId: EVENTS[0].id,
+      status: 'done',
+    });
+    expect((await db.events.get(EVENTS[0].id))?.status).toBe('done');
+  });
+
+  it('removes an offline-deleted event from the cache', async () => {
+    await cacheSnapshot(TRIP_ID, snapshot());
+    await applyOutboxOpToCache(TRIP_ID, { verb: 'delete', eventId: EVENTS[0].id, confirm: false });
+    expect(await db.events.get(EVENTS[0].id)).toBeUndefined();
+  });
+
+  it('applies an offline trip-settings edit to both the snapshot and the list', async () => {
+    await cacheSnapshot(TRIP_ID, snapshot());
+    await cacheTripList([trip({ id: TRIP_ID, name: 'Old name' })]);
+    await applyOutboxOpToCache(TRIP_ID, { verb: 'updateTrip', input: { name: 'New name' } });
+
+    expect((await readCachedSnapshot(TRIP_ID))?.trip.name).toBe('New name');
+    expect((await readCachedTripList()).find((t) => t.id === TRIP_ID)?.name).toBe('New name');
   });
 });
