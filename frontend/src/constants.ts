@@ -101,6 +101,7 @@ export const ICONS = {
   ticket: '🎫',
   atm: '🏧',
   wifi: '📶',
+  documents: '🛂',
   weather: '🌤️',
   fx: '💱',
   fxUp: '▲',

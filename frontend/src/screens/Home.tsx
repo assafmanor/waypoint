@@ -1,26 +1,47 @@
-// Home — the departure-board hero (the one loud element), quick-access grid,
-// and glance cards. "Now/Next" is derived from the clock, never stored (ADR-0018).
+// Home — the departure-board hero (the one loud element), a real-data-only
+// quick-access grid, and a derived "day at a glance" card. Nothing on this
+// screen is a fixture for an unbuilt feature (ADR-0045). "Now/Next" and the
+// glance are derived from the clock + events, never stored (ADR-0018).
 import { useState } from 'react';
-import { EVENT_KIND, TRIP_NOTE_CATEGORY } from '@waypoint/shared';
+import { EVENT_KIND, EVENT_STATUS, TRIP_NOTE_CATEGORY } from '@waypoint/shared';
 import { useTrip } from '../state/trip-state';
 import { useToast } from '../ui/Toast';
 import { useClock } from '../lib/useClock';
 import {
-  deriveNow,
+  buildTimeTree,
   dayProgress,
+  deriveNow,
+  eventPhase,
   formatCountdown,
   formatTime,
   hardConflicts,
   minutesUntil,
+  type TimeGroup,
 } from '../lib/time';
-import { formatMoney } from '../lib/money';
-import { CODE_PREFIX, DAY_WINDOW, ICONS } from '../constants';
+import { CODE_PREFIX, DAY_WINDOW, ICONS, type TabId } from '../constants';
 import { t } from '../i18n/he';
 
 const hourLabel = (hour: number) => `${String(hour).padStart(2, '0')}:00`;
 
-export function Home() {
-  const { trip, bookings, glance, notes, events, activeDate } = useTrip();
+// The day-at-a-glance bar/count run on top-level containment-forest blocks, not
+// raw events (ADR-0041/0045): a nesting envelope or an overlap cluster is one
+// block, so the day never reads busier than it is. A block's phase is derived
+// from the clock, same as the board's Now/Next.
+type BlockPhase = 'done' | 'passed' | 'now' | 'upcoming';
+function blockPhase(group: TimeGroup, at: Date): BlockPhase {
+  if (group.kind === 'single') {
+    // buildTimeTree excludes skipped, so a single is only done/passed/now/upcoming.
+    const p = eventPhase(group.item.event, at);
+    return (p === 'skipped' ? 'passed' : p) as BlockPhase;
+  }
+  const ms = at.getTime();
+  if (ms < group.startMs) return 'upcoming';
+  if (ms < group.endMs) return 'now';
+  return group.items.every((i) => i.event.status === EVENT_STATUS.DONE) ? 'done' : 'passed';
+}
+
+export function Home({ onNavigate }: { onNavigate?: (tab: TabId) => void }) {
+  const { trip, bookings, notes, events, activeDate } = useTrip();
   const toast = useToast();
   const now = useClock();
   const tz = trip.timezone;
@@ -45,11 +66,30 @@ export function Home() {
     ? formatCountdown(minutesUntil(nextEvent.startsAt, now))
     : null;
   const wifi = notes.find((n) => n.category === TRIP_NOTE_CATEGORY.WIFI);
-  const budgetPct = Math.min(
-    100,
-    Math.round((glance.budget.spentMinor / (trip.dailyBudgetMinor || 1)) * 100),
-  );
-  const overBudget = glance.budget.spentMinor > (trip.dailyBudgetMinor ?? 0);
+
+  // ── Day at a glance (derived) ──
+  const blocks = buildTimeTree(dayEvents);
+  const remaining = blocks.filter((b) => {
+    const p = blockPhase(b, now);
+    return p === 'now' || p === 'upcoming';
+  }).length;
+  // Hard anchors matter individually, so this counts leaves, not blocks — the one
+  // deliberate roots/leaves exception (ADR-0045).
+  const hardAhead = dayEvents
+    .filter((e) => e.kind === EVENT_KIND.HARD && e.startsAt)
+    .filter((e) => {
+      const p = eventPhase(e, now);
+      return p === 'now' || p === 'upcoming';
+    })
+    .sort((a, b) => Date.parse(a.startsAt!) - Date.parse(b.startsAt!))[0];
+  // "Free until" only reads honestly when there's no current event; otherwise the
+  // board already says what's on. Day-end is the latest instant of the day.
+  const freeUntil = !nowEvent && nextEvent?.startsAt ? formatTime(nextEvent.startsAt, tz) : null;
+  const dayEndMs = dayEvents.reduce((max, e) => {
+    const end = e.endsAt ? Date.parse(e.endsAt) : e.startsAt ? Date.parse(e.startsAt) : 0;
+    return end > max ? end : max;
+  }, 0);
+  const dayEnd = dayEndMs > 0 ? formatTime(new Date(dayEndMs), tz) : null;
 
   const copyWifi = async () => {
     if (wifi && navigator.clipboard) {
@@ -59,7 +99,7 @@ export function Home() {
         /* clipboard blocked — still confirm to the user */
       }
     }
-    toast(ICONS.wifi, wifi ? t.quick.wifiCopied : t.quick.noWifi);
+    toast(ICONS.wifi, t.quick.wifiCopied);
   };
 
   return (
@@ -206,65 +246,111 @@ export function Home() {
 
       <div className="sec-title">{t.quick.title}</div>
       <div className="quick">
-        <button className="qa" onClick={() => toast(ICONS.navigate, t.quick.openingNav)}>
-          <span className="ic">{ICONS.navigate}</span>
-          <span className="lb">{t.quick.navHotel}</span>
-        </button>
-        <button
-          className="qa"
-          onClick={() =>
-            toast(ICONS.ticket, nextCode ? t.quick.nextTicketToast(nextCode) : t.quick.noTicket)
-          }
-        >
+        <button className="qa" onClick={() => onNavigate?.('index')}>
           <span className="ic">{ICONS.ticket}</span>
           <span className="lb">{t.quick.nextTicket}</span>
+          {nextCode && (
+            <span className="code" dir="ltr">
+              {nextCode}
+            </span>
+          )}
         </button>
-        <button className="qa" onClick={() => toast(ICONS.atm, t.quick.atmToast)}>
-          <span className="ic">{ICONS.atm}</span>
-          <span className="lb">{t.quick.nearbyAtm}</span>
-        </button>
-        <button className="qa" onClick={copyWifi}>
-          <span className="ic">{ICONS.wifi}</span>
-          <span className="lb">{t.quick.wifiCode}</span>
+        {wifi ? (
+          <button className="qa" onClick={copyWifi}>
+            <span className="ic">{ICONS.wifi}</span>
+            <span className="lb">{t.quick.wifiCode}</span>
+          </button>
+        ) : (
+          <button className="qa empty" onClick={() => toast(ICONS.wifi, t.quick.addWifiSoon)}>
+            <span className="ic">{ICONS.wifi}</span>
+            <span className="lb">
+              <span className="plus">{ICONS.add}</span> {t.quick.wifiCode}
+            </span>
+            <span className="sub">{t.quick.addHint}</span>
+          </button>
+        )}
+        {/* Documents: an honest fixture until the FE supports documents (ADR-0045). */}
+        <button className="qa empty" onClick={() => toast(ICONS.documents, t.quick.addDocsSoon)}>
+          <span className="ic">{ICONS.documents}</span>
+          <span className="lb">
+            <span className="plus">{ICONS.add}</span> {t.quick.documents}
+          </span>
+          <span className="sub">{t.quick.addHint}</span>
         </button>
       </div>
 
       <div className="sec-title">{t.glance.title}</div>
-      <div className="glance">
-        <div className="gcard">
-          <div className="k">
-            {ICONS.weather} {trip.destination}
+      {blocks.length === 0 ? (
+        <div className="glance-day empty">
+          <div className="ei" aria-hidden="true">
+            🗓️
           </div>
-          <div className="v">{glance.weather.tempC}°</div>
-          <div className="s">{glance.weather.note}</div>
+          <div className="et">{t.glance.emptyTitle}</div>
+          <div className="es">{t.glance.emptySub}</div>
+          <button className="ea" onClick={() => onNavigate?.('days')}>
+            <span className="plus">{ICONS.add}</span> {t.glance.emptyAdd}
+          </button>
         </div>
-        {trip.currency && (
-          <div className="gcard">
-            <div className="k">
-              {ICONS.fx} {t.glance.fx}
-            </div>
-            <div className="v small">{glance.fx.label}</div>
-            <div className={glance.fx.changePct >= 0 ? 's up' : 's down'}>
-              {glance.fx.changePct >= 0 ? ICONS.fxUp : ICONS.fxDown}{' '}
-              {t.glance.fxChange(glance.fx.changePct)}
-            </div>
+      ) : (
+        <div className="glance-day">
+          <div className="blocks" aria-hidden="true">
+            {blocks.map((b, i) => {
+              const p = blockPhase(b, now);
+              return b.kind === 'cluster' ? (
+                <div className={`blk cluster ${p}`} key={i}>
+                  {b.items.map((_, j) => (
+                    <i key={j} />
+                  ))}
+                </div>
+              ) : (
+                <div className={`blk ${p}`} key={i} />
+              );
+            })}
           </div>
-        )}
-        {trip.currency && trip.dailyBudgetMinor && (
-          <div className="gcard wide">
-            <div className="k">
-              {ICONS.budget} {t.glance.budgetToday}
+          <div className="lead">
+            <div className="big">
+              <span className="v" dir="ltr">
+                {remaining}
+              </span>
+              <span className="k">{t.glance.remaining}</span>
             </div>
-            <div className="v">
-              {formatMoney(glance.budget.spentMinor, trip.currency)}{' '}
-              <span className="v-sub">/ {formatMoney(trip.dailyBudgetMinor, trip.currency)}</span>
-            </div>
-            <div className="budget-bar">
-              <i className={overBudget ? 'over' : undefined} style={{ width: `${budgetPct}%` }} />
-            </div>
+            {hardAhead && (
+              <div className="anchor">
+                {ICONS.lock} {t.glance.hardAnchor}
+                <br />
+                <span className="tm" dir="ltr">
+                  {formatTime(hardAhead.startsAt!, tz)}
+                </span>
+              </div>
+            )}
           </div>
-        )}
-      </div>
+          {(freeUntil || dayEnd) && (
+            <div className="glance-foot">
+              {freeUntil && (
+                <span>
+                  🕓 {t.glance.freeUntil}{' '}
+                  <span className="mono" dir="ltr">
+                    {freeUntil}
+                  </span>
+                </span>
+              )}
+              {freeUntil && dayEnd && (
+                <span className="dot" aria-hidden="true">
+                  ·
+                </span>
+              )}
+              {dayEnd && (
+                <span>
+                  {t.glance.dayEnds}{' '}
+                  <b className="mono" dir="ltr">
+                    ~{dayEnd}
+                  </b>
+                </span>
+              )}
+            </div>
+          )}
+        </div>
+      )}
     </>
   );
 }
