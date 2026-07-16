@@ -101,6 +101,25 @@ describe('buildDayGlance', () => {
     expect(g.segs[0].count).toBe(2); // two nested descendants
   });
 
+  it('drops the count chip on a too-narrow composite (avoids adjacent-chip overlap)', () => {
+    // Two short back-to-back clusters, each ~1h of a 16h window (~6%) — under the
+    // width floor, so neither shows a number (the layered cue still marks them).
+    const events = [
+      ev({ id: 'a1', startsAt: at('09:00'), endsAt: at('10:00') }),
+      ev({ id: 'a2', startsAt: at('09:30'), endsAt: at('10:00') }),
+      ev({ id: 'b1', startsAt: at('10:30'), endsAt: at('11:30') }),
+      ev({ id: 'b2', startsAt: at('11:00'), endsAt: at('11:30') }),
+      // a wide envelope for contrast — this one keeps its number
+      ev({ id: 'env', startsAt: at('13:00'), endsAt: at('19:00') }),
+      ev({ id: 'kid', startsAt: at('14:00'), endsAt: at('15:00') }),
+    ];
+    const g = buildDayGlance(events, ms('12:00'), day07, day23, TZ);
+    const composites = g.segs.filter((s) => s.composite);
+    expect(composites).toHaveLength(3);
+    expect(composites.filter((s) => s.showCount)).toHaveLength(1); // only the wide envelope
+    expect(composites.every((s) => s.composite)).toBe(true); // all still marked composite
+  });
+
   it('reports nowFrac only when now is inside the window', () => {
     const events = [ev({ startsAt: at('10:00'), endsAt: at('11:00') })];
     expect(buildDayGlance(events, ms('12:00'), day07, day23, TZ).nowFrac).toBeCloseTo(5 / 16, 5);

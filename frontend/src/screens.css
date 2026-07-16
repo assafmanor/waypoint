@@ -476,6 +476,7 @@
   top: -15px;
   left: 50%;
   transform: translateX(-50%);
+  z-index: 3; /* above the now-line so the count is never obscured */
   font-size: 9px;
   font-weight: 700;
   color: var(--muted);
@@ -489,6 +490,7 @@
   position: absolute;
   top: -15px;
   inset-inline-end: -4px;
+  z-index: 3;
   font-size: 9px;
   font-weight: 700;
   color: var(--amber-deep);
@@ -503,10 +505,12 @@
   border-radius: 2px;
   z-index: 2;
 }
+/* the dot sits BELOW the rail so it never collides with the count / +1 chips
+   above it (they share the rail's center when now lands on a composite block) */
 .nowmark::after {
   content: '';
   position: absolute;
-  top: -6px;
+  bottom: -6px;
   left: 50%;
   transform: translateX(-50%);
   width: 7px;

@@ -285,7 +285,7 @@ export function Home({ onNavigate }: { onNavigate?: (tab: TabId) => void }) {
                   ...(s.point ? {} : { width: `${Math.max(0, s.endFrac - s.startFrac) * 100}%` }),
                 }}
               >
-                {s.composite && (
+                {s.showCount && (
                   <span className="n">
                     {s.clusterLike ? t.glance.concurrent(s.count) : t.glance.contains(s.count)}
                   </span>
