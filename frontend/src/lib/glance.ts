@@ -23,6 +23,10 @@ export interface GlanceSeg {
   /** true = cluster ("×N" parallel); false = envelope ("כולל N" nested). */
   clusterLike: boolean;
   count: number;
+  /** Whether the count chip has room to render. A too-narrow composite keeps
+   *  only the layered cue (no number) so adjacent chips can't collide/overlap —
+   *  the exact count is one tap away in the day view. */
+  showCount: boolean;
   /** Zero-width event (no end) — rendered as a min-width tick. */
   point: boolean;
   /** End lands on the next calendar day (ADR-0037) — carries the "+1" marker. */
@@ -40,6 +44,11 @@ export interface DayGlance {
   /** Top-level blocks still ahead (now + upcoming); skipped/done/passed drop out. */
   remaining: number;
 }
+
+/** A composite's count chip renders only when its block spans at least this
+ *  fraction of the rail — narrower composites drop the number (keeping the
+ *  layered cue) so two short, close-by composites can't overlap chips. */
+const MIN_COUNT_FRAC = 0.14;
 
 const startMsOf = (e: TripEvent) => Date.parse(e.startsAt!);
 const endMsOf = (e: TripEvent) => (e.endsAt ? Date.parse(e.endsAt) : Date.parse(e.startsAt!));
@@ -115,6 +124,7 @@ export function buildDayGlance(
       composite,
       clusterLike,
       count: clusterLike ? g.items.length : evs.length - 1,
+      showCount: composite && frac(e) - frac(s) >= MIN_COUNT_FRAC,
       point: !composite && g.kind === 'single' && g.item.event.endsAt == null,
       nextDay: nextDayOf(evs),
     });
@@ -129,6 +139,7 @@ export function buildDayGlance(
       composite: false,
       clusterLike: false,
       count: 0,
+      showCount: false,
       point: e.endsAt == null,
       nextDay: e.endsAt != null && crossesMidnight(e.startsAt!, e.endsAt, timeZone),
     });
