@@ -498,6 +498,59 @@
   color: #fff;
   background: var(--ok);
 }
+/* The done ✓ as a tap-to-undo control (ADR-0043 revision): the record badge
+   doubles as a one-tap restore. Stays --ok green (a record, never amber,
+   ADR-0028); on hover/focus the ✓ morphs to an undo arrow with a soft ring, and
+   a thin persistent ring hints it's tappable on touch (no hover). The row's
+   שחזר stays as the discoverable twin. Only rendered off a read-only day. */
+.face .check.btn {
+  position: relative;
+  cursor: pointer;
+  transition:
+    box-shadow var(--t-quick),
+    transform var(--t-quick);
+}
+.check.btn .mark,
+.check.btn .undo {
+  grid-area: 1 / 1;
+  transition:
+    opacity var(--t-quick),
+    transform var(--t-quick);
+}
+.check.btn .undo {
+  opacity: 0;
+  transform: scale(0.6);
+  font-size: 13px;
+}
+.check.btn:hover,
+.check.btn:focus-visible {
+  box-shadow: 0 0 0 4px rgba(60, 154, 107, 0.18);
+  transform: scale(1.06);
+}
+.check.btn:hover .mark,
+.check.btn:focus-visible .mark {
+  opacity: 0;
+  transform: scale(0.6);
+}
+.check.btn:hover .undo,
+.check.btn:focus-visible .undo {
+  opacity: 1;
+  transform: scale(1);
+}
+.check.btn:focus-visible {
+  outline: 2.5px solid var(--teal);
+  outline-offset: 2px;
+}
+.check.btn:active {
+  transform: scale(0.92);
+}
+.check.btn::after {
+  content: '';
+  position: absolute;
+  inset: -4px;
+  border-radius: 999px;
+  box-shadow: 0 0 0 1.5px rgba(60, 154, 107, 0.35);
+}
 /* Settle variant: a calm, non-expanding card (a div, not the toggle button). */
 .face.static {
   cursor: default;

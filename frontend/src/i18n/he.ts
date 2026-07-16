@@ -314,6 +314,9 @@ export const t = {
   },
   actions: {
     restore: 'שחזר',
+    // The done ✓ doubles as a one-tap undo (ADR-0043 revision) — its accessible
+    // name / tooltip.
+    undoDone: 'בטל סימון · שחזר',
     navigate: 'ניווט',
     delayBy: (minutes: number) => `דחה ${minutes} דק׳`,
     earlierBy: (minutes: number) => `הקדם ${minutes} דק׳`,
