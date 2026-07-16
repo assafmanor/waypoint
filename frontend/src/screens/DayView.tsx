@@ -1,7 +1,13 @@
 // Day-by-day — the interactive core. Hard/soft grammar, tap-to-expand quick
 // verbs (optimistic + undo), the hard-event guard warning, the ripple bar, and
 // the "maybe" shelf. Reads events for the active day from the trip context.
-import { useState } from 'react';
+//
+// Presentation is derived from the clock, never stored (ADR-0027/0043): a
+// now-line marks the current moment on today and the view lands on it; events
+// recede once passed; a passed-but-unmarked soft event offers an inline settle
+// ("we did this / skip"); the ±30 nudge only offers moves that are possible; and
+// a past day reads as a read-only archive (ADR-0029), editing gated to Plan.
+import { Fragment, useEffect, useRef, useState } from 'react';
 import {
   EVENT_KIND,
   EVENT_STATUS,
@@ -14,12 +20,14 @@ import { useVerbs } from '../state/verbs';
 import { useClock } from '../lib/useClock';
 import {
   buildTimeTree,
-  deriveNow,
+  eventPhase,
   formatTime,
   hardConflicts,
+  todayInTz,
   zonedIso,
   resolveEndIso,
   crossesMidnight,
+  type EventPhase,
   type TimeGroup,
   type TimeItem,
 } from '../lib/time';
@@ -34,15 +42,33 @@ import { TimePicker } from '../ui/TimePicker';
 const daysBetween = (from: string, to: string) =>
   Math.round((Date.parse(to) - Date.parse(from)) / MS_PER_DAY);
 
+type DayScope = 'past' | 'today' | 'future';
+
+/** Chronological end of a top-level group, for placing the now-line above the
+ *  first group that isn't fully behind us. */
+function groupEndMs(g: TimeGroup): number {
+  if (g.kind === 'cluster') return g.endMs;
+  const e = g.item.event;
+  return e.endsAt ? Date.parse(e.endsAt) : Date.parse(e.startsAt!);
+}
+
+const groupKey = (g: TimeGroup) =>
+  g.kind === 'cluster' ? `cl-${g.items[0].event.id}` : g.item.event.id;
+
 export function DayView() {
-  const { trip, events, maybeItems, bookings, activeDate, ripple } = useTrip();
+  const { trip, events, maybeItems, bookings, activeDate, ripple, setActiveDate } = useTrip();
   const verbs = useVerbs();
   const now = useClock();
   const [openId, setOpenId] = useState<string | null>(null);
   const [formTarget, setFormTarget] = useState<'new' | TripEvent | null>(null);
   const [scheduleItem, setScheduleItem] = useState<MaybeItem | null>(null);
 
-  const nowId = deriveNow(events, now).now?.id;
+  const today = todayInTz(trip.timezone, now);
+  const dayScope: DayScope = activeDate < today ? 'past' : activeDate > today ? 'future' : 'today';
+  // A past day is a read-only archive within a live trip (ADR-0029): create /
+  // edit / delete / move are locked; Done / Skip / Navigate stay.
+  const readOnly = dayScope === 'past';
+
   const dayEvents = events
     .filter((e) => e.date === activeDate && e.status !== EVENT_STATUS.SKIPPED)
     .sort(byStart);
@@ -58,10 +84,12 @@ export function DayView() {
     weekday: 'long',
     timeZone: trip.timezone,
   }).format(new Date(`${activeDate}T12:00:00${TRIP_TZ_OFFSET}`));
+  const heading = t.day.heading(dayNumber, weekday, trip.destination);
 
   const dayCtx: DayCtx = {
     tz: trip.timezone,
-    nowId,
+    now,
+    readOnly,
     openId,
     toggle: (id) => setOpenId((cur) => (cur === id ? null : id)),
     bookings,
@@ -69,6 +97,32 @@ export function DayView() {
     verbs,
     onEdit: (e) => setFormTarget(e),
   };
+
+  // The now-line: only on today (a past/future day has no "now"). It sits above
+  // the first top-level group that isn't fully behind us; if every group is
+  // passed it falls after them all.
+  const groups = buildTimeTree(dayEvents);
+  const showNowLine = dayScope === 'today';
+  let nowLineIndex = groups.findIndex((g) => groupEndMs(g) > now.getTime());
+  if (nowLineIndex === -1) nowLineIndex = groups.length;
+
+  // Land on now: scroll the now-line into view once per day-open (today only), a
+  // passed event or two left peeking above. Keyed on the viewed day — never on
+  // the clock tick — so it doesn't fight a manual scroll. Instant under
+  // reduced-motion.
+  const nowLineRef = useRef<HTMLDivElement>(null);
+  const isToday = dayScope === 'today';
+  useEffect(() => {
+    if (!isToday) return;
+    const el = nowLineRef.current;
+    if (!el) return;
+    const reduce =
+      typeof window !== 'undefined' &&
+      window.matchMedia?.('(prefers-reduced-motion: reduce)').matches;
+    el.scrollIntoView({ block: 'center', behavior: reduce ? 'auto' : 'smooth' });
+  }, [activeDate, isToday]);
+
+  const untimed = dayEvents.filter((e) => !e.startsAt);
 
   return (
     <>
@@ -84,62 +138,103 @@ export function DayView() {
         </div>
       )}
 
-      <div className="sec-title">
-        {t.day.heading(dayNumber, weekday, trip.destination)}
-        <span className="sec-title-end">
-          <button className="new-event-btn" onClick={() => setFormTarget('new')}>
-            {ICONS.add} {t.actions.newEvent}
+      {readOnly && (
+        <div className="archive-banner">
+          <span className="ab-ic" aria-hidden="true">
+            📖
+          </span>
+          <span className="ab-main">
+            {heading} — {t.day.archiveTag}
+          </span>
+          <button className="ab-back" onClick={() => setActiveDate(today)}>
+            {t.header.backToToday}
           </button>
+        </div>
+      )}
+
+      <div className="sec-title">
+        {heading}
+        <span className="sec-title-end">
+          {/* Trip-mode add is a Tier-1 quick soft-add for today (ADR-0025/0043),
+              prefilled at the next open slot; heavy building lives in Plan.
+              Locked on a past day (create gated, ADR-0029). */}
+          {!readOnly && (
+            <button className="new-event-btn" onClick={() => setFormTarget('new')}>
+              {ICONS.add} {t.actions.newEvent}
+            </button>
+          )}
         </span>
       </div>
 
-      <div>
+      <div className={'day-list' + (readOnly ? ' archive' : '')}>
         {/* Overlapping events render as the concurrency forest (ADR-0041): nests
-            for containment, quiet clusters for partial overlap. Untimed events
-            have no span to place, so they stay plain leaf rows at the end. */}
-        <DayTree groups={buildTimeTree(dayEvents)} depth={0} ctx={dayCtx} />
-        {dayEvents
-          .filter((e) => !e.startsAt)
-          .map((e) => (
-            <ItemNode key={e.id} item={{ event: e, children: [] }} depth={0} ctx={dayCtx} />
-          ))}
+            for containment, quiet clusters for partial overlap. The now-line is
+            interleaved at the top level; untimed events have no span to place, so
+            they stay plain leaf rows at the end. */}
+        {groups.map((g, i) => (
+          <Fragment key={groupKey(g)}>
+            {showNowLine && i === nowLineIndex && (
+              <NowLine ref={nowLineRef} now={now} tz={trip.timezone} />
+            )}
+            <GroupNode group={g} depth={0} ctx={dayCtx} />
+          </Fragment>
+        ))}
+        {showNowLine && nowLineIndex === groups.length && (
+          <NowLine ref={nowLineRef} now={now} tz={trip.timezone} />
+        )}
+        {untimed.map((e) => (
+          <ItemNode key={e.id} item={{ event: e, children: [] }} depth={0} ctx={dayCtx} />
+        ))}
       </div>
 
       {formTarget && (
         <EventForm
           event={formTarget === 'new' ? null : formTarget}
+          defaults={
+            formTarget === 'new' ? nextSlot(dayEvents, activeDate, trip.timezone) : undefined
+          }
           onClose={() => setFormTarget(null)}
         />
       )}
 
-      <div className="sec-title">
-        {t.day.maybeShelf}
-        <span className="hint">{t.day.tapToSchedule}</span>
-      </div>
-      <div className="shelf">
-        {/* Scheduled (consumed) ideas leave the shelf — no dead tombstone (ADR-0027). */}
-        {maybeItems
-          .filter((m) => !m.consumed)
-          .map((m) => (
-            <MaybeCard key={m.id} item={m} onSchedule={() => setScheduleItem(m)} />
-          ))}
-        {/* Skipped soft events park here, restorable (ADR-0027 parking lot). */}
-        {skippedToday.map((e) => (
-          <button
-            key={e.id}
-            className="maybe skipped-card"
-            onClick={() => verbs.restore(e)}
-            title={t.day.skippedTag}
-          >
-            <span className="mi">{e.icon}</span>
-            <span className="mt">{e.title}</span>
-            <span className="mm">{t.day.skippedTag}</span>
-            <span className="add">
-              {ICONS.restore} {t.actions.restore}
-            </span>
-          </button>
-        ))}
-      </div>
+      {/* The maybe-shelf schedules onto a day — a create action, so it's gone on
+          a read-only past day (ADR-0029/0040); a build hint points to Plan. */}
+      {readOnly ? (
+        <div className="past-build-hint">
+          <span aria-hidden="true">{ICONS.edit}</span> {t.day.pastBuildHint}
+        </div>
+      ) : (
+        <>
+          <div className="sec-title">
+            {t.day.maybeShelf}
+            <span className="hint">{t.day.tapToSchedule}</span>
+          </div>
+          <div className="shelf">
+            {/* Scheduled (consumed) ideas leave the shelf — no dead tombstone (ADR-0027). */}
+            {maybeItems
+              .filter((m) => !m.consumed)
+              .map((m) => (
+                <MaybeCard key={m.id} item={m} onSchedule={() => setScheduleItem(m)} />
+              ))}
+            {/* Skipped soft events park here, restorable (ADR-0027 parking lot). */}
+            {skippedToday.map((e) => (
+              <button
+                key={e.id}
+                className="maybe skipped-card"
+                onClick={() => verbs.restore(e)}
+                title={t.day.skippedTag}
+              >
+                <span className="mi">{e.icon}</span>
+                <span className="mt">{e.title}</span>
+                <span className="mm">{t.day.skippedTag}</span>
+                <span className="add">
+                  {ICONS.restore} {t.actions.restore}
+                </span>
+              </button>
+            ))}
+          </div>
+        </>
+      )}
 
       {scheduleItem && (
         <ScheduleSheet
@@ -163,11 +258,29 @@ export function DayView() {
   );
 }
 
+// The now-line (ADR-0043): a quiet soft-amber hairline with a flat mono time
+// label, marking the current moment. It sits below the live event in the
+// hierarchy — a time reference, not a second loud element (no chip fill, glow,
+// or pulse). Takes a ref so the day view can scroll it into view on open.
+function NowLine({ ref, now, tz }: { ref: React.Ref<HTMLDivElement>; now: Date; tz: string }) {
+  return (
+    <div className="nowline" ref={ref} aria-label={t.day.nowLineAria(formatTime(now, tz))}>
+      <span className="nowline-chip">
+        <span className="nowline-dot" aria-hidden="true" />
+        <span dir="ltr">{formatTime(now, tz)}</span>{' '}
+        <span className="nowline-lbl">{t.common.now}</span>
+      </span>
+      <span className="nowline-rule" />
+    </div>
+  );
+}
+
 // Shared wiring threaded through the recursive concurrency render (ADR-0041), so
 // a nested/clustered EventItem keeps every quick-verb it has at the top level.
 interface DayCtx {
   tz: string;
-  nowId?: string;
+  now: Date;
+  readOnly: boolean;
   openId: string | null;
   toggle: (id: string) => void;
   bookings: Booking[];
@@ -184,33 +297,41 @@ function countDescendants(item: TimeItem): number {
   }, 0);
 }
 
-// Renders one sibling level: clusters get a quiet brace + "בו-זמנית" header, lone
-// items render directly. `depth` drives the indent cap (screens.css .deep).
+// Renders one sibling-level group: a cluster gets a quiet brace + "בו-זמנית"
+// header, a lone item renders directly. `depth` drives the indent cap.
+function GroupNode({ group, depth, ctx }: { group: TimeGroup; depth: number; ctx: DayCtx }) {
+  if (group.kind === 'cluster') {
+    return (
+      <div className="cluster">
+        <div className="cluster-head">
+          <span className="brk" aria-hidden="true">
+            ⎣
+          </span>{' '}
+          {t.day.concurrent} ·{' '}
+          <span className="win" dir="ltr">
+            {formatTime(new Date(group.startMs), ctx.tz)}–
+            {formatTime(new Date(group.endMs), ctx.tz)}
+          </span>
+        </div>
+        <div className="cluster-kids">
+          {group.items.map((item) => (
+            <ItemNode key={item.event.id} item={item} depth={depth + 1} ctx={ctx} />
+          ))}
+        </div>
+      </div>
+    );
+  }
+  return <ItemNode item={group.item} depth={depth} ctx={ctx} />;
+}
+
+// One sibling level: maps each group through GroupNode (used for nested levels;
+// the top level interleaves the now-line, so it maps groups itself).
 function DayTree({ groups, depth, ctx }: { groups: TimeGroup[]; depth: number; ctx: DayCtx }) {
   return (
     <>
-      {groups.map((g) =>
-        g.kind === 'cluster' ? (
-          <div className="cluster" key={`cl-${g.items[0].event.id}`}>
-            <div className="cluster-head">
-              <span className="brk" aria-hidden="true">
-                ⎣
-              </span>{' '}
-              {t.day.concurrent} ·{' '}
-              <span className="win" dir="ltr">
-                {formatTime(new Date(g.startMs), ctx.tz)}–{formatTime(new Date(g.endMs), ctx.tz)}
-              </span>
-            </div>
-            <div className="cluster-kids">
-              {g.items.map((item) => (
-                <ItemNode key={item.event.id} item={item} depth={depth + 1} ctx={ctx} />
-              ))}
-            </div>
-          </div>
-        ) : (
-          <ItemNode key={g.item.event.id} item={g.item} depth={depth} ctx={ctx} />
-        ),
-      )}
+      {groups.map((g) => (
+        <GroupNode key={groupKey(g)} group={g} depth={depth} ctx={ctx} />
+      ))}
     </>
   );
 }
@@ -224,7 +345,8 @@ function ItemNode({ item, depth, ctx }: { item: TimeItem; depth: number; ctx: Da
     <EventItem
       event={e}
       tz={ctx.tz}
-      isNow={e.id === ctx.nowId}
+      now={ctx.now}
+      readOnly={ctx.readOnly}
       isOpen={ctx.openId === e.id}
       onToggle={() => ctx.toggle(e.id)}
       booking={e.bookingId ? ctx.bookings.find((b) => b.id === e.bookingId) : undefined}
@@ -280,7 +402,8 @@ function ScheduleSheet({
 function EventItem({
   event,
   tz,
-  isNow,
+  now,
+  readOnly,
   isOpen,
   onToggle,
   booking,
@@ -291,7 +414,8 @@ function EventItem({
 }: {
   event: TripEvent;
   tz: string;
-  isNow: boolean;
+  now: Date;
+  readOnly: boolean;
   isOpen: boolean;
   onToggle: () => void;
   booking?: Booking;
@@ -302,77 +426,130 @@ function EventItem({
   nestedCount?: number;
 }) {
   const isHard = event.kind === EVENT_KIND.HARD;
-  const isDone = event.status === EVENT_STATUS.DONE;
+  const phase: EventPhase = eventPhase(event, now);
+  const isDone = phase === 'done';
+  const isNow = phase === 'now';
+  const isPassed = phase === 'passed';
+  // A passed-but-unmarked soft event settles inline ("we did this / skip") — the
+  // honest "still on?" moment (ADR-0027/0043). On a past day every planned soft
+  // event is there to be settled. Hard events aren't settled this way.
+  const showSettle = !isHard && event.status === EVENT_STATUS.PLANNED && (isPassed || readOnly);
+
   // Tier-2 structural edits (edit details, delete) don't belong on the exposed
   // quick-verb strip in Trip mode — ADR-0025 puts them behind a per-item bottom
-  // sheet ("unlock this one thing"), the same ⋯ affordance Plan mode's rows use.
-  // The inline row keeps only Tier-1 on-the-ground verbs.
+  // sheet ("unlock this one thing"). Locked entirely on a read-only past day.
   const [menuOpen, setMenuOpen] = useState(false);
   const runAction = (fn: () => void) => {
     setMenuOpen(false);
     fn();
   };
-  const cls = [
-    'item',
-    event.kind === EVENT_KIND.SOFT ? 'soft' : '',
-    isNow ? 'now' : '',
-    isDone ? 'done' : '',
-    isOpen ? 'open' : '',
-  ]
-    .filter(Boolean)
-    .join(' ');
 
   const code = booking?.confirmationCode ? `${CODE_PREFIX}${booking.confirmationCode}` : undefined;
   const meta = [event.location, code && `${t.event.bookingLabel} ${code}`]
     .filter(Boolean)
     .join(' · ');
 
+  const tag = isDone ? (
+    <span className="tag-done">
+      {ICONS.done} {t.event.didThis}
+    </span>
+  ) : isHard ? (
+    <span className="tag-hard">
+      {ICONS.lock} {t.event.hard}
+    </span>
+  ) : isPassed ? (
+    <span className="tag-phase">{t.event.notMarked}</span>
+  ) : (
+    <span className="tag-soft">{isNow ? t.event.softNow : t.event.soft}</span>
+  );
+
+  const cls = [
+    'item',
+    event.kind === EVENT_KIND.SOFT ? 'soft' : '',
+    isNow ? 'now' : '',
+    isDone ? 'done' : '',
+    isPassed && !isDone ? 'passed' : '',
+    isOpen && !showSettle ? 'open' : '',
+  ]
+    .filter(Boolean)
+    .join(' ');
+
+  const titleBlock = (
+    <span className="main">
+      <span className="t">
+        {event.title}
+        {tag}
+        {nestedCount !== undefined && (
+          <span className="nest-note">{t.day.contains(nestedCount)}</span>
+        )}
+      </span>
+      <span className="m">{meta}</span>
+      {conflicts.length > 0 && (
+        <span className="conflict-flag">
+          {ICONS.warn}{' '}
+          {t.event.conflictWarn(conflicts[0].title, formatTime(conflicts[0].startsAt!, tz))}
+        </span>
+      )}
+    </span>
+  );
+
+  const timeBlock = event.startsAt && (
+    <span className="time" dir="ltr">
+      {formatTime(event.startsAt, tz)}
+      {event.endsAt && `–${formatTime(event.endsAt, tz)}`}
+      {event.endsAt && crossesMidnight(event.startsAt, event.endsAt, tz) && (
+        <sup className="xmid" title={t.event.nextDay}>
+          +1
+        </sup>
+      )}
+    </span>
+  );
+
+  // Settle variant: a calm, non-expanding card + the inline settle strip. Its own
+  // return so the forward-verb strip below stays focused on live/upcoming events.
+  if (showSettle) {
+    return (
+      <div className={cls}>
+        <div className="face static">
+          <span className="badge">{event.icon}</span>
+          {titleBlock}
+          {timeBlock}
+        </div>
+        <div className="settle">
+          <span className="settle-q">{t.day.settleAsk}</span>
+          <button className="settle-yes" onClick={() => verbs.done(event)}>
+            {ICONS.done} {t.actions.wasThere}
+          </button>
+          <button className="settle-skip" onClick={() => verbs.skip(event)}>
+            {t.actions.skip}
+          </button>
+        </div>
+      </div>
+    );
+  }
+
   return (
     <div className={cls}>
       <button className="face" onClick={onToggle} aria-expanded={isOpen}>
         <span className="badge">{event.icon}</span>
-        <span className="main">
-          <span className="t">
-            {event.title}
-            {isHard ? (
-              <span className="tag-hard">
-                {ICONS.lock} {t.event.hard}
-              </span>
-            ) : (
-              <span className="tag-soft">{isNow ? t.event.softNow : t.event.soft}</span>
-            )}
-            {nestedCount !== undefined && (
-              <span className="nest-note">{t.day.contains(nestedCount)}</span>
-            )}
-          </span>
-          <span className="m">{meta}</span>
-          {conflicts.length > 0 && (
-            <span className="conflict-flag">
-              {ICONS.warn}{' '}
-              {t.event.conflictWarn(conflicts[0].title, formatTime(conflicts[0].startsAt!, tz))}
-            </span>
-          )}
-        </span>
-        {event.startsAt && (
-          <span className="time" dir="ltr">
-            {formatTime(event.startsAt, tz)}
-            {event.endsAt && `–${formatTime(event.endsAt, tz)}`}
-            {event.endsAt && crossesMidnight(event.startsAt, event.endsAt, tz) && (
-              <sup className="xmid" title={t.event.nextDay}>
-                +1
-              </sup>
-            )}
+        {titleBlock}
+        {isDone && (
+          <span className="check" aria-hidden="true">
+            {ICONS.done}
           </span>
         )}
+        {timeBlock}
         <span className="chev" aria-hidden="true" />
       </button>
       <div className="actions">
         <div className="act-row">
           {isDone ? (
             <>
-              <button className="act" onClick={() => verbs.restore(event)}>
-                {t.actions.restore}
-              </button>
+              {!readOnly && (
+                <button className="act" onClick={() => verbs.restore(event)}>
+                  {t.actions.restore}
+                </button>
+              )}
               <button className="act go" onClick={() => verbs.navigate(event)}>
                 {t.actions.navigate}
               </button>
@@ -382,12 +559,16 @@ function EventItem({
               <button className="act go" onClick={() => verbs.navigate(event)}>
                 {t.actions.navigate}
               </button>
-              <button className="act" onClick={() => verbs.onWay(event)}>
-                {t.actions.onWay}
-              </button>
-              <button className="act" onClick={() => verbs.delay(event)}>
-                {t.actions.delayBy(DELAY_STEP_MINUTES)}
-              </button>
+              {!readOnly && (
+                <>
+                  <button className="act" onClick={() => verbs.onWay(event)}>
+                    {t.actions.onWay}
+                  </button>
+                  <button className="act" onClick={() => verbs.delay(event)}>
+                    {t.actions.delayBy(DELAY_STEP_MINUTES)}
+                  </button>
+                </>
+              )}
             </>
           ) : (
             <>
@@ -397,14 +578,18 @@ function EventItem({
               <button className="act" onClick={() => verbs.skip(event)}>
                 {t.actions.skip}
               </button>
+              {/* The nudge adapts to phase (ADR-0043): both ways upcoming; +30
+                  only for a now event (can't pull it into the past). */}
               <div className="act stepper">
-                <button
-                  className="step"
-                  onClick={() => verbs.earlier(event)}
-                  aria-label={t.actions.earlierBy(DELAY_STEP_MINUTES)}
-                >
-                  −
-                </button>
+                {!isNow && (
+                  <button
+                    className="step"
+                    onClick={() => verbs.earlier(event)}
+                    aria-label={t.actions.earlierBy(DELAY_STEP_MINUTES)}
+                  >
+                    −
+                  </button>
+                )}
                 <span className="step-label">{t.actions.stepMinutes(DELAY_STEP_MINUTES)}</span>
                 <button
                   className="step"
@@ -419,15 +604,17 @@ function EventItem({
               </button>
             </>
           )}
-          <span className="act-row-end">
-            <button
-              className="act icon-only more"
-              onClick={() => setMenuOpen(true)}
-              aria-label={t.actions.more}
-            >
-              {ICONS.more}
-            </button>
-          </span>
+          {!readOnly && (
+            <span className="act-row-end">
+              <button
+                className="act icon-only more"
+                onClick={() => setMenuOpen(true)}
+                aria-label={t.actions.more}
+              >
+                {ICONS.more}
+              </button>
+            </span>
+          )}
         </div>
         {isHard && (
           <div className="hard-warn">

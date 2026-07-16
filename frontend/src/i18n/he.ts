@@ -23,6 +23,11 @@ export const t = {
     leavingIn: (phrase: string) => `יוצאים בעוד ${phrase}`,
     pendingSync: (count: number) => `${count} שינויים מחכים לסנכרון`,
     offlineNow: 'אופליין · נתונים שמורים',
+    // Day-scope context ribbon under the strip when viewing a non-today day in
+    // Trip mode (ADR-0043 / ADR-0029), plus the one-tap way back to today.
+    pastDay: 'יום שהיה · היסטוריה',
+    futureDay: 'יום עתידי · תצוגה מקדימה',
+    backToToday: 'חזרה להיום',
   },
   placeholder: {
     comingSoon: 'המסך הזה עוד בעבודה.',
@@ -247,6 +252,13 @@ export const t = {
     // "contains N" note on an envelope that nests shorter events inside it.
     concurrent: 'בו-זמנית',
     contains: (n: number) => `כולל ${n}`,
+    // Now-line + derived phases (ADR-0043). The now-line label reuses common.now.
+    nowLineAria: (time: string) => `השעה עכשיו · ${time}`,
+    // Settle strip on a passed-but-unmarked soft event ("still on?" → one tap).
+    settleAsk: 'היינו שם?',
+    // Past-day archive (ADR-0029 signal / ADR-0040 language).
+    archiveTag: 'לקריאה בלבד',
+    pastBuildHint: 'הוספה או הזזה של אירוע ביום שעבר — במצב תכנון',
   },
   // Plan-mode Day-by-day — the itinerary builder (screens/PlanDay.tsx).
   planDay: {
@@ -290,6 +302,11 @@ export const t = {
     hard: 'קשיח',
     soft: 'גמיש',
     softNow: 'גמיש · עכשיו',
+    // Derived-phase tags (ADR-0043): a passed-but-unmarked event, and the
+    // positive "we did this" record on a done one (--ok green, not amber).
+    passed: 'עבר',
+    notMarked: 'עבר · לא סומן',
+    didThis: 'היינו',
     nextDay: 'מסתיים למחרת',
     bookingLabel: 'הזמנה',
     hardWarn: 'קשיח · שינוי מחייב עדכון ההזמנה',
@@ -303,6 +320,8 @@ export const t = {
     stepMinutes: (minutes: number) => `${minutes} דק׳`,
     onWay: 'בדרך',
     done: 'סיימנו',
+    // Affirmative settle on a passed event — the "we did this" record (ADR-0043).
+    wasThere: 'היינו',
     skip: 'דלג',
     swap: 'החלף',
     scheduleToDay: 'שבץ ליום',
