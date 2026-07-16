@@ -2123,6 +2123,130 @@
   outline-offset: 2px;
 }
 
+/* Archive settle control (ADR-0044) — a soft row in a finished trip settles in
+   place, taking the ⋯ slot the read-only row leaves free. --ok green record
+   (status is mode-neutral, ADR-0028 — the same check the Trip archive uses); the
+   ✓ morphs to an undo arrow on hover/focus, and a thin persistent ring hints it
+   is tappable on touch. Done ✓ / skipped ↩ restore in one tap; unresolved ○
+   opens the settle chooser. */
+.bld-settle {
+  flex: 0 0 auto;
+  width: 32px;
+  height: 32px;
+  border-radius: 999px;
+  display: grid;
+  place-items: center;
+  cursor: pointer;
+  position: relative;
+  font-size: 13px;
+  font-weight: 700;
+  transition:
+    box-shadow var(--t-quick),
+    transform var(--t-quick),
+    border-color var(--t-quick),
+    background var(--t-quick);
+}
+.bld-settle:focus-visible {
+  outline: 2.5px solid var(--plan);
+  outline-offset: 2px;
+}
+.bld-settle.done {
+  background: var(--ok);
+  color: #fff;
+}
+.bld-settle.done .mark,
+.bld-settle.done .undo {
+  grid-area: 1 / 1;
+  transition:
+    opacity var(--t-quick),
+    transform var(--t-quick);
+}
+.bld-settle.done .undo {
+  opacity: 0;
+  transform: scale(0.6);
+}
+.bld-settle.done::after {
+  content: '';
+  position: absolute;
+  inset: -4px;
+  border-radius: 999px;
+  box-shadow: 0 0 0 1.5px rgba(60, 154, 107, 0.35);
+}
+.bld-settle.done:hover,
+.bld-settle.done:focus-visible {
+  box-shadow: 0 0 0 4px rgba(60, 154, 107, 0.18);
+  transform: scale(1.06);
+}
+.bld-settle.done:hover .mark,
+.bld-settle.done:focus-visible .mark {
+  opacity: 0;
+  transform: scale(0.6);
+}
+.bld-settle.done:hover .undo,
+.bld-settle.done:focus-visible .undo {
+  opacity: 1;
+  transform: scale(1);
+}
+.bld-settle.ghost {
+  border: 1.5px dashed var(--soft-line);
+  color: var(--muted);
+  background: transparent;
+}
+.bld-settle.ghost:hover,
+.bld-settle.ghost:focus-visible {
+  border-style: solid;
+  border-color: var(--ok);
+  color: var(--ok);
+}
+.bld-settle.restore {
+  border: 1.5px solid rgba(194, 88, 78, 0.4);
+  color: var(--miss);
+  background: transparent;
+  font-size: 12px;
+}
+.bld-settle.restore:hover,
+.bld-settle.restore:focus-visible {
+  background: rgba(194, 88, 78, 0.1);
+}
+/* A skipped archive row recedes and strikes through — legible history, not a
+   live plan (ADR-0044). */
+.bld.is-skip {
+  opacity: 0.72;
+}
+.bld.is-skip .bld-ttl {
+  text-decoration: line-through;
+  text-decoration-color: rgba(194, 88, 78, 0.5);
+}
+.tag-skip {
+  font-size: 10px;
+  font-weight: 700;
+  color: var(--miss);
+  background: rgba(194, 88, 78, 0.12);
+  padding: 2px 6px;
+  border-radius: 6px;
+}
+/* The unresolved-settle chooser (○ → "היינו / דלג") in a bottom sheet. */
+.settle-choose {
+  display: flex;
+  gap: 9px;
+}
+.settle-choose button {
+  flex: 1;
+  font: inherit;
+  font-size: 13px;
+  font-weight: 700;
+  border-radius: 10px;
+  padding: 11px;
+  cursor: pointer;
+  border: 1px solid var(--line);
+  background: var(--card);
+  color: var(--ink);
+}
+.settle-choose button:focus-visible {
+  outline: 2.5px solid var(--plan);
+  outline-offset: 2px;
+}
+
 /* gap chip between events — fill-a-gap is a plan action (violet) */
 .gap {
   display: flex;
