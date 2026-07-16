@@ -81,6 +81,8 @@ export const t = {
       arriveLabel: 'הגעה 🛬',
       checkinLabel: 'צ׳ק-אין 🏨',
       checkoutLabel: 'צ׳ק-אאוט 🧳',
+      startLabel: 'התחלה 🎬',
+      endLabel: 'סיום 🏁',
       kindLabel: 'סוג אירוע',
       kindHard: '🔒 קשיח',
       kindSoft: 'גמיש',
