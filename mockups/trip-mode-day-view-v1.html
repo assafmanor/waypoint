@@ -1099,46 +1099,6 @@
           0 0 0 2px var(--indigo),
           0 0 0 3.5px rgba(255, 255, 255, 0.55);
       }
-      /* light (plan-chrome) comparison card, matching the real app screenshot */
-      .tb.light {
-        background: var(--card);
-        background-image:
-          repeating-linear-gradient(0deg, rgba(110, 89, 214, 0.05) 0 1px, transparent 1px 22px),
-          repeating-linear-gradient(90deg, rgba(110, 89, 214, 0.05) 0 1px, transparent 1px 22px);
-      }
-      .tb.light .cap {
-        color: var(--muted);
-      }
-      .tb.light .cap b {
-        color: var(--ink);
-      }
-      .tb.light .trip-name {
-        color: var(--ink);
-      }
-      .tb.light .trip-name .chev,
-      .tb.light .trip-sub {
-        color: var(--muted);
-      }
-      /* the REAL current settings control in Plan: a violet-tinted, violet-outlined
-         circle (frontend .gear-btn under [data-mode='plan']) — not a solid chip */
-      .gear-plan {
-        width: 30px;
-        height: 30px;
-        border-radius: 999px;
-        display: grid;
-        place-items: center;
-        background: var(--plan-tint);
-        border: 2px solid rgba(110, 89, 214, 0.4);
-        color: var(--plan-deep);
-        font-size: 13px;
-      }
-      .av.ring-plan {
-        border: 2px solid var(--card);
-        box-shadow:
-          0 0 0 2px var(--card),
-          0 0 0 3.5px rgba(110, 89, 214, 0.5);
-      }
-
       /* ── annotation cards ──────────────────────────────────────── */
       .note {
         border: 1px solid var(--stage-line);
@@ -2184,51 +2144,48 @@
           While we’re in the top bar — the account &amp; settings cluster
         </h3>
         <p style="font-size: 13.5px; color: var(--stage-dim); max-width: 64ch; margin-bottom: 8px">
-          You flagged this, and checking against the real app I’d overstated it — so here’s the
-          honest before/after (Plan chrome, to match your screenshot):
+          Got it now — Trip chrome (to match your screenshot). Two distinct things in the current
+          design:
         </p>
         <p style="font-size: 13px; color: var(--stage-faint); max-width: 64ch; margin-bottom: 16px">
-          The gear is <i>not</i> a solid identity chip today — it’s already a violet-tinted,
-          violet-outlined circle, and your avatar is already ringed. The real snag is subtler: it’s
-          still a third <i>circle</i> in the row, so the control sits inside the identity cluster.
+          <b style="color: var(--stage-ink)">1.</b> your own avatar has <i>no outer ring</i>, so it
+          looks like any member’s. <b style="color: var(--stage-ink)">2.</b> the settings gear sits
+          in a circle. So the redesign is two moves: <i>add</i> the ring to “you”, <i>remove</i> the
+          gear’s circle.
         </p>
         <div class="topbars">
-          <div class="tb light">
-            <div class="cap">
-              <b>Current (real)</b> — outlined violet circle, inside the identity row
-            </div>
+          <div class="tb">
+            <div class="cap"><b>Current</b> — “you” has no ring; gear is a circle</div>
             <div class="mini-header">
               <div class="trip-row">
                 <div>
                   <div class="trip-name" style="font-size: 20px">
-                    🇬🇷 אתונה ’26 <span class="chev">▾</span>
+                    🏞️ לפה ולשם ולכאן ’26 <span class="chev">▾</span>
                   </div>
-                  <div class="trip-sub">אתונה <span class="dot">·</span> יום 3 מתוך 7</div>
+                  <div class="trip-sub">לפה ולשם <span class="dot">·</span> יום 1 מתוך 8</div>
                 </div>
                 <div class="header-actions">
-                  <div class="gear-plan">⚙</div>
-                  <div class="av plain ring-plan" style="background: #d89a3a">A</div>
-                  <div class="av plain" style="background: #e0a94b; border-color: #fff">N</div>
+                  <div class="gear-round">⚙</div>
+                  <div class="av plain" style="background: #e0a94b">A</div>
                 </div>
               </div>
             </div>
           </div>
-          <div class="tb light">
-            <div class="cap" style="color: #3c9a6b">
-              <b>Recommended</b> — a borderless control, outside the identity row
+          <div class="tb">
+            <div class="cap" style="color: #8fe3b6">
+              <b>Recommended</b> — ring “you”; drop the gear’s circle
             </div>
             <div class="mini-header">
               <div class="trip-row">
                 <div>
                   <div class="trip-name" style="font-size: 20px">
-                    🇬🇷 אתונה ’26 <span class="chev">▾</span>
+                    🏞️ לפה ולשם ולכאן ’26 <span class="chev">▾</span>
                   </div>
-                  <div class="trip-sub">אתונה <span class="dot">·</span> יום 3 מתוך 7</div>
+                  <div class="trip-sub">לפה ולשם <span class="dot">·</span> יום 1 מתוך 8</div>
                 </div>
                 <div class="header-actions">
-                  <div class="gear-ghost" style="color: var(--plan-deep)">⚙</div>
-                  <div class="av plain ring-plan" style="background: #d89a3a">A</div>
-                  <div class="av plain" style="background: #e0a94b; border-color: #fff">N</div>
+                  <div class="gear-ghost">⚙</div>
+                  <div class="av plain ring2" style="background: #e0a94b">A</div>
                 </div>
               </div>
             </div>
@@ -2237,12 +2194,12 @@
         <div class="rec" style="margin-top: 16px">
           <div class="lab">Recommendation</div>
           <p>
-            Smaller change than I first framed: the gear is already styled as a control, it’s just
-            still <i>circular</i>. <b>Drop the circle</b> — a borderless ghost icon so settings
-            visibly leaves the identity row. Identity stays round chips (member cluster + your
-            ringed avatar); the gear reads as UI (“emoji are content, icons are UI”). Mode-tinted:
-            violet in Plan, cool blue-grey in Trip. If you’d rather keep the outlined circle, that’s
-            defensible too — this is the lightest of the proposals.
+            Two moves. <b>Ring “you”</b> — a clear outer ring on your own avatar so it’s
+            unmistakable in the member cluster (app-shell.md already intends the account avatar to
+            be “ringed, distinct from the plain members”; today’s ring is too faint to read).
+            <b>Drop the gear’s circle</b> — a borderless ghost icon, so identity is round chips and
+            settings reads as a UI control (“emoji are content, icons are UI”). The ghost follows
+            the mode: cool blue-grey in Trip, violet-tinted in Plan.
           </p>
         </div>
       </section>
@@ -2658,8 +2615,8 @@
           <div class="row">
             <div class="h">Account / settings cluster</div>
             <div class="d">
-              Settings becomes a borderless ghost icon (mode-tinted); identity stays as round chips,
-              dropping one competing circle.
+              Ring “you” (the account avatar’s ring is too faint today) and drop the gear’s circle →
+              a borderless ghost control; identity stays round chips.
             </div>
             <div class="t"><span class="badge-new">NEW</span></div>
           </div>

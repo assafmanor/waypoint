@@ -51,7 +51,12 @@ The now-line, phases, Done, and the settle strip are **Trip-only** live/on-the-g
 
 ### 6. Account / settings cluster (minor)
 
-Today's settings control is **already** a distinct outlined/tinted circle (`.gear-btn`: translucent-bordered in Trip, violet-tinted in Plan), not a solid identity chip, and the account avatar is already ringed — so this is a small refinement, not a fix. The residual snag is that the gear is still a **circle in the identity row**, so control and identity read as one cluster. Drop the circle: settings becomes a **borderless ghost icon** so it visibly leaves the identity row — identity stays round chips (member cluster + the ringed account avatar), the gear reads as UI ("emoji are content, icons are UI," design-language). It follows mode: violet-tinted in Plan, cool blue-grey in Trip. Keeping the outlined circle is an acceptable alternative — this is the lightest-weight item in this ADR.
+Two small moves in the header-actions cluster:
+
+- **Ring "you".** app-shell.md §6 already intends the account avatar to be "ringed, distinct from the plain member cluster," but the shipped ring (a faint `rgba(255,255,255,0.55)` border, `.account-btn`) is too subtle to read — your own avatar looks like any member's. Strengthen it into a **clear outer ring** so "you" is unmistakable.
+- **Drop the gear's circle.** Settings today sits in a circle (`.gear-btn`: translucent-bordered in Trip, violet-tinted in Plan) — a third circle in the identity row, so a UI control reads as part of the identity cluster. Make it a **borderless ghost icon** ("emoji are content, icons are UI," design-language), mode-following: cool blue-grey in Trip, violet-tinted in Plan.
+
+Together: identity is round chips (member cluster + your clearly-ringed avatar); settings is a flat control beside them. Lightest-weight item in this ADR.
 
 ## Consequences
 
