@@ -40,3 +40,15 @@ This **revises ADR-0040's "read-only archive"** into "read-only _structural_ arc
 - Not proposing to reopen create / edit / delete / move / retime on a finished trip — those stay Plan-gated and, post-window, locked (ADR-0029/0040).
 - Not changing anything about the **live** trip's past-day behavior — that shipped with ADR-0043.
 - The exact surface (Plan-mode inline settle vs. a read-only Trip-mode archive view) is deferred to the implementing ADR once the direction is chosen.
+
+## Editability is three cases, not two (clarification)
+
+The read-only gate keys off the **trip phase**, not the viewed day (`tripPhase` in `lib/mode.ts`; `PlanDay` sets `readOnly = tripPhase === 'past'`). So a live trip's past day is deliberately _more_ editable than a finished trip, and the settle control this ADR adds is **finished-trip-only** in Plan:
+
+| Context                              | Structure                                                  | Settle (Done / Skip / Restore)                        |
+| ------------------------------------ | ---------------------------------------------------------- | ----------------------------------------------------- |
+| Live trip · past day · **Trip mode** | read-only (rebuild = switch to Plan)                       | yes — archive settle strip + interactive ✓ (ADR-0043) |
+| Live trip · past day · **Plan mode** | **fully editable** — create/edit/move/delete/reorder/shelf | not shown here — settle lives in Trip mode            |
+| **Finished trip** · Plan mode        | frozen (structural archive)                                | **the settle control this ADR adds**                  |
+
+Rationale: while the trip is live you rebuild in Plan and settle in Trip mode — the ADR-0043 division (Plan builds, Trip follows/settles) holds. A finished trip has no Trip mode (ADR-0040), so Plan mode is the _only_ surface, and it must host the settle exception. The settle control therefore appears on a Plan row **only when `readOnly` (finished trip)** — never on a live trip's fully-editable Plan rows.
