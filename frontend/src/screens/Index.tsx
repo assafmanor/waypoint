@@ -3,7 +3,8 @@
 // scheduled on the itinerary. Tap a row to edit/delete it (BookingSheet); the
 // add-booking form is a later checkpoint. Content is identical in Plan/Trip mode
 // (ADR-0049) — the mode only tints the chrome, so this reads mode-agnostically.
-import { useState } from 'react';
+import { useEffect, useState } from 'react';
+import { useSearchParams } from 'react-router-dom';
 import {
   BOOKING_TYPE,
   type Booking,
@@ -29,6 +30,19 @@ export function Index() {
   const { upcoming, past } = splitBookings(bookings, events, trip.timezone, now.getTime());
   // null = closed; 'create' = new booking; a Booking = editing that one.
   const [sheet, setSheet] = useState<Booking | 'create' | null>(null);
+
+  // Deep-link from Home's quick-access (ADR-0050): ?booking=<id> opens that
+  // booking's sheet, then the param is cleared so back/reload don't reopen it.
+  const [params, setParams] = useSearchParams();
+  useEffect(() => {
+    const id = params.get('booking');
+    if (!id) return;
+    const target = bookings.find((b) => b.id === id);
+    if (target) setSheet(target);
+    const next = new URLSearchParams(params);
+    next.delete('booking');
+    setParams(next, { replace: true });
+  }, [params, bookings, setParams]);
 
   return (
     <div className="index">

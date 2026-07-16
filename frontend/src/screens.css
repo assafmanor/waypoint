@@ -394,6 +394,14 @@
 .qa .lb .plus {
   color: var(--amber-deep);
 }
+/* filled-tile subtitle (e.g. the WiFi network name) — muted mono, mockup A */
+.qa .sub {
+  display: block;
+  font-family: var(--font-mono);
+  font-size: 9.5px;
+  color: var(--muted);
+  margin-top: 3px;
+}
 /* empty / needs-setup tile: soft dashed "add" affordance, never a dead card */
 .qa.empty {
   background: transparent;

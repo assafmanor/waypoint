@@ -3,10 +3,13 @@
 // screen is a fixture for an unbuilt feature (ADR-0045). "Now/Next" and the
 // glance are derived from the clock + events, never stored (ADR-0018).
 import { useState } from 'react';
+import { useNavigate } from 'react-router-dom';
 import { BOOKING_TYPE, EVENT_KIND, type Booking } from '@waypoint/shared';
 import { useTrip } from '../state/trip-state';
 import { useToast } from '../ui/Toast';
 import { useClock } from '../lib/useClock';
+import { nextCodedBooking } from '../lib/home-quick';
+import { TAB_PARAM } from '../state/nav-state';
 import {
   dayProgress,
   deriveNow,
@@ -36,6 +39,7 @@ function hotelWifi(bookings: Booking[]): HotelWifi | undefined {
 export function Home({ onNavigate }: { onNavigate?: (tab: TabId) => void }) {
   const { trip, bookings, events, activeDate } = useTrip();
   const toast = useToast();
+  const navigate = useNavigate();
   const now = useClock();
   const tz = trip.timezone;
 
@@ -59,6 +63,12 @@ export function Home({ onNavigate }: { onNavigate?: (tab: TabId) => void }) {
     ? formatCountdown(minutesUntil(nextEvent.startsAt, now))
     : null;
   const wifi = hotelWifi(bookings);
+  // Quick-access derived tiles (ADR-0050): the next confirmation code you'll need
+  // (may differ from the board's immediate next event) + WiFi from the hotel
+  // booking. Each is absent when there's no source; the grid reflows.
+  const nextCoded = nextCodedBooking(bookings, events, now.getTime());
+  const quickTileCount = (nextCoded ? 1 : 0) + (wifi ? 1 : 0) + 1; // documents is always present
+  const quickCols = Math.min(3, Math.max(2, quickTileCount));
 
   // ── Day at a glance (derived) — a proportional time rail (lib/glance) ──
   const day07 = Date.parse(zonedIso(activeDate, hourLabel(DAY_WINDOW.START_HOUR), tz));
@@ -237,37 +247,42 @@ export function Home({ onNavigate }: { onNavigate?: (tab: TabId) => void }) {
       </div>
 
       <div className="sec-title">{t.quick.title}</div>
-      <div className="quick">
-        <button className="qa" onClick={() => onNavigate?.('index')}>
-          <span className="ic">{ICONS.ticket}</span>
-          <span className="lb">{t.quick.nextTicket}</span>
-          {nextCode && (
+      {/* ADR-0050: derived tiles (next code, WiFi) deep-link into the Index and
+          vanish when there's no source; the managed documents tile is always
+          present with a ＋ invite. Grid columns follow the visible-tile count. */}
+      <div className="quick" style={{ gridTemplateColumns: `repeat(${quickCols}, 1fr)` }}>
+        {nextCoded && (
+          <button
+            className="qa"
+            onClick={() => navigate(`/?${TAB_PARAM}=index&booking=${nextCoded.booking.id}`)}
+          >
+            <span className="ic">{ICONS.ticket}</span>
+            <span className="lb">{t.quick.nextTicket}</span>
             <span className="code" dir="ltr">
-              {nextCode}
+              {CODE_PREFIX}
+              {nextCoded.booking.confirmationCode}
             </span>
-          )}
-        </button>
-        {wifi ? (
+          </button>
+        )}
+        {wifi && (
           <button className="qa" onClick={copyWifi}>
             <span className="ic">{ICONS.wifi}</span>
             <span className="lb">{t.quick.wifiCode}</span>
-          </button>
-        ) : (
-          <button className="qa empty" onClick={() => toast(ICONS.wifi, t.quick.addWifiSoon)}>
-            <span className="ic">{ICONS.wifi}</span>
-            <span className="lb">
-              <span className="plus">{ICONS.add}</span> {t.quick.wifiCode}
-            </span>
-            <span className="sub">{t.quick.addHint}</span>
+            {wifi.network && (
+              <span className="sub" dir="ltr">
+                {wifi.network}
+              </span>
+            )}
           </button>
         )}
-        {/* Documents: an honest fixture until the FE supports documents (ADR-0045). */}
-        <button className="qa empty" onClick={() => toast(ICONS.documents, t.quick.addDocsSoon)}>
+        {/* Managed tile: always present. Deep-links to the Index; the documents
+            section + focused add-flow land with the documents UI (cp6). */}
+        <button className="qa empty" onClick={() => onNavigate?.('index')}>
           <span className="ic">{ICONS.documents}</span>
           <span className="lb">
             <span className="plus">{ICONS.add}</span> {t.quick.documents}
           </span>
-          <span className="sub">{t.quick.addHint}</span>
+          <span className="sub">{t.quick.docsInvite}</span>
         </button>
       </div>
 

@@ -251,10 +251,8 @@ export const t = {
     nextTicket: 'הכרטיס הבא',
     wifiCode: 'קוד WiFi',
     documents: 'מסמכים',
-    addHint: 'הוסיפו',
+    docsInvite: 'הוסיפו מסמך',
     wifiCopied: 'קוד ה-WiFi הועתק ללוח',
-    addWifiSoon: 'הוספת קוד WiFi תגיע בקרוב',
-    addDocsSoon: 'הוספת מסמכים תגיע בקרוב',
   },
   // Day-at-a-glance: derived from events (ADR-0045). Counts are phase-based and
   // run on top-level blocks (ADR-0041), so a passed-unmarked event drops out of
