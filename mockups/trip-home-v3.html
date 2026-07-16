@@ -1,0 +1,846 @@
+<!doctype html>
+<!-- Trip-mode Home, redesign v3 (2026-07-16 session).
+     Supersedes the HOME section of trip-dashboard-v2.html. What changed & why:
+       - Board hero: unchanged. Still the one loud element (design-language).
+       - Quick access: fake concierge tiles removed (nearby-ATM needs live
+         location, forbidden by ADR-0006). Now four REAL, offline-safe shortcuts
+         into data/surfaces we actually have: next confirmation code (→ index),
+         WiFi copy, documents (→ index), navigate (Maps deep-link on the next
+         place — hidden when there's no usable place, never faked).
+       - Quick view (weather / FX / budget glance): removed. All three were
+         fixtures for unbuilt integration pipes; budget also dropped per the
+         ADR-0014 amendment (no expense model, no use on the ground). Replaced
+         by a "day at a glance" card derived 100% from events (offline-safe).
+     ADR-0028 compliant tokens. Where this and the design docs conflict, docs win. -->
+<html lang="he" dir="rtl">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>מרכז שליטה לטיול — בית · מוקאפ v3</title>
+    <link rel="preconnect" href="https://fonts.googleapis.com" />
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+    <link
+      href="https://fonts.googleapis.com/css2?family=Assistant:wght@400;500;600;700&family=Secular+One&family=JetBrains+Mono:wght@500;700&display=swap"
+      rel="stylesheet"
+    />
+    <style>
+      :root {
+        --ink: #16233d;
+        --indigo: #1b2a4a;
+        --board: #0e1729;
+        --board-2: #152137;
+        --screen: #e7eaef;
+        --card: #ffffff;
+        --paper: #f3efe6;
+        --amber: #e9a63c;
+        --amber-deep: #c9822a;
+        --teal: #2c9c90;
+        --ok: #3c9a6b;
+        --miss: #c2584e;
+        --muted: #6c7488;
+        --line: rgba(22, 35, 61, 0.1);
+        --soft-line: rgba(22, 35, 61, 0.28);
+        --shadow: 0 18px 40px -18px rgba(14, 23, 41, 0.45);
+      }
+      * {
+        box-sizing: border-box;
+        margin: 0;
+        padding: 0;
+      }
+      html,
+      body {
+        height: 100%;
+      }
+      body {
+        font-family: 'Assistant', sans-serif;
+        background:
+          radial-gradient(120% 90% at 80% -10%, #2a3e68 0%, transparent 55%),
+          radial-gradient(120% 90% at 0% 110%, #1a2a4a 0%, transparent 50%), #0f1a31;
+        color: var(--ink);
+        min-height: 100vh;
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        padding: 28px 16px;
+        -webkit-font-smoothing: antialiased;
+      }
+      .stage {
+        width: 100%;
+        max-width: 392px;
+      }
+      .caption {
+        text-align: center;
+        color: #aeb9d4;
+        font-size: 12.5px;
+        letter-spacing: 0.02em;
+        margin-bottom: 14px;
+        font-weight: 500;
+      }
+      .caption b {
+        color: #fff;
+        font-weight: 600;
+      }
+
+      .phone {
+        background: var(--screen);
+        border-radius: 38px;
+        box-shadow:
+          var(--shadow),
+          0 0 0 10px #0b1526,
+          0 0 0 12px #223257;
+        overflow: hidden;
+        position: relative;
+        height: 812px;
+        display: flex;
+        flex-direction: column;
+      }
+
+      .statusbar {
+        background: var(--indigo);
+        color: #dce3f2;
+        display: flex;
+        justify-content: space-between;
+        align-items: center;
+        padding: 11px 22px 8px;
+        font-size: 13px;
+        font-weight: 600;
+        font-family: 'JetBrains Mono', monospace;
+      }
+      .statusbar .dots {
+        letter-spacing: 2px;
+        opacity: 0.85;
+      }
+
+      .header {
+        background: var(--indigo);
+        color: #fff;
+        padding: 6px 20px 18px;
+      }
+      .mode-row {
+        display: flex;
+        justify-content: center;
+        margin: 2px 0 12px;
+      }
+      .mode-toggle {
+        display: inline-flex;
+        background: rgba(255, 255, 255, 0.08);
+        border: 1px solid rgba(255, 255, 255, 0.14);
+        border-radius: 999px;
+        padding: 3px;
+        gap: 2px;
+      }
+      .mode-toggle .m {
+        font: inherit;
+        font-size: 13px;
+        font-weight: 600;
+        color: #9daac8;
+        background: none;
+        border: 0;
+        border-radius: 999px;
+        padding: 6px 16px;
+        cursor: pointer;
+        display: flex;
+        align-items: center;
+        gap: 6px;
+      }
+      .mode-toggle .m.on {
+        background: var(--amber);
+        color: #3a2405;
+      }
+      .trip-row {
+        display: flex;
+        justify-content: space-between;
+        align-items: flex-start;
+      }
+      .trip-switch {
+        display: inline-flex;
+        align-items: center;
+        gap: 8px;
+        background: rgba(255, 255, 255, 0.09);
+        border: 1px solid rgba(255, 255, 255, 0.16);
+        border-radius: 999px;
+        padding: 5px 8px 5px 14px;
+        font: inherit;
+        color: inherit;
+        cursor: pointer;
+        transition: 0.14s;
+      }
+      .trip-switch:hover {
+        background: rgba(255, 255, 255, 0.15);
+      }
+      .trip-name {
+        font-family: 'Secular One', sans-serif;
+        font-size: 23px;
+        line-height: 1.05;
+      }
+      .trip-switch .chev {
+        width: 22px;
+        height: 22px;
+        border-radius: 50%;
+        background: rgba(255, 255, 255, 0.14);
+        display: grid;
+        place-items: center;
+        font-size: 11px;
+        flex: 0 0 auto;
+      }
+      .trip-sub {
+        color: #9daac8;
+        font-size: 13px;
+        margin-top: 5px;
+        font-weight: 500;
+      }
+      .trip-sub .dot {
+        opacity: 0.5;
+        margin: 0 6px;
+      }
+      .av {
+        width: 31px;
+        height: 31px;
+        border-radius: 50%;
+        display: grid;
+        place-items: center;
+        color: #12203a;
+        font-weight: 700;
+        font-size: 12.5px;
+        border: 2px solid var(--indigo);
+        margin-inline-start: -9px;
+      }
+      .av.more {
+        background: rgba(255, 255, 255, 0.14);
+        color: #dce3f2;
+        font-size: 11px;
+      }
+      .header-actions {
+        display: flex;
+        align-items: center;
+        gap: 8px;
+      }
+      .avatars {
+        display: flex;
+        flex-direction: row-reverse;
+        margin-inline-end: 4px;
+      }
+      .account-btn {
+        margin-inline-start: 0;
+        border-color: rgba(255, 255, 255, 0.55);
+        cursor: pointer;
+        font: inherit;
+      }
+      .gear-btn {
+        width: 33px;
+        height: 33px;
+        border-radius: 50%;
+        display: grid;
+        place-items: center;
+        background: rgba(255, 255, 255, 0.12);
+        border: 1px solid rgba(255, 255, 255, 0.22);
+        color: #fff;
+        font-size: 15px;
+        cursor: pointer;
+        flex: 0 0 auto;
+      }
+      .day-strip {
+        display: flex;
+        gap: 6px;
+        margin-top: 14px;
+      }
+      .day-pill {
+        flex: 1;
+        text-align: center;
+        font-size: 11px;
+        font-weight: 600;
+        padding: 7px 0 8px;
+        border-radius: 9px;
+        color: #8494b5;
+        background: rgba(255, 255, 255, 0.05);
+      }
+      .day-pill .n {
+        display: block;
+        font-family: 'JetBrains Mono', monospace;
+        font-size: 14px;
+        margin-top: 2px;
+        color: #b9c4de;
+      }
+      .day-pill.on {
+        background: var(--amber);
+        color: #3a2405;
+      }
+      .day-pill.on .n {
+        color: #3a2405;
+      }
+      .day-pill.past {
+        opacity: 0.45;
+      }
+
+      .body {
+        flex: 1;
+        overflow-y: auto;
+        padding: 16px 16px 40px;
+        position: relative;
+      }
+      .body::-webkit-scrollbar {
+        width: 0;
+      }
+
+      /* departure-board hero (unchanged from v2) */
+      .board {
+        background: linear-gradient(180deg, var(--board-2), var(--board));
+        border-radius: 22px;
+        padding: 18px 18px 16px;
+        color: #eaf0ff;
+        box-shadow: 0 20px 34px -20px rgba(8, 14, 28, 0.9);
+        position: relative;
+        overflow: hidden;
+      }
+      .board::before {
+        content: '';
+        position: absolute;
+        inset: 0;
+        background: radial-gradient(90% 60% at 85% 0%, rgba(233, 166, 60, 0.16), transparent 60%);
+        pointer-events: none;
+      }
+      .board-top {
+        display: flex;
+        justify-content: space-between;
+        align-items: center;
+        position: relative;
+      }
+      .live {
+        display: flex;
+        align-items: center;
+        gap: 7px;
+        font-size: 11px;
+        font-weight: 600;
+        letter-spacing: 0.14em;
+        color: #8fa0c4;
+      }
+      .live .blip {
+        width: 7px;
+        height: 7px;
+        border-radius: 50%;
+        background: var(--amber);
+        animation: pulse 2s infinite;
+      }
+      @keyframes pulse {
+        0% {
+          box-shadow: 0 0 0 0 rgba(233, 166, 60, 0.55);
+        }
+        70% {
+          box-shadow: 0 0 0 8px rgba(233, 166, 60, 0);
+        }
+        100% {
+          box-shadow: 0 0 0 0 rgba(233, 166, 60, 0);
+        }
+      }
+      .clock {
+        font-family: 'JetBrains Mono', monospace;
+        font-size: 15px;
+        font-weight: 700;
+        color: #c3cee8;
+      }
+      .now-label {
+        color: var(--amber);
+        font-size: 12px;
+        font-weight: 700;
+        letter-spacing: 0.1em;
+        margin-top: 14px;
+      }
+      .now-title {
+        font-family: 'Secular One', sans-serif;
+        font-size: 21px;
+        margin-top: 3px;
+        color: #fff;
+      }
+      .now-meta {
+        color: #93a2c4;
+        font-size: 13px;
+        margin-top: 3px;
+      }
+      .board-divider {
+        height: 1px;
+        background: rgba(255, 255, 255, 0.09);
+        margin: 15px 0 13px;
+      }
+      .next-row {
+        display: flex;
+        justify-content: space-between;
+        align-items: flex-end;
+      }
+      .next-label {
+        color: #7e8fb4;
+        font-size: 11px;
+        font-weight: 700;
+        letter-spacing: 0.1em;
+      }
+      .next-title {
+        font-family: 'Secular One', sans-serif;
+        font-size: 18px;
+        color: #eaf0ff;
+        margin-top: 4px;
+      }
+      .next-meta {
+        color: #93a2c4;
+        font-size: 12.5px;
+        margin-top: 3px;
+        display: flex;
+        align-items: center;
+        gap: 6px;
+        flex-wrap: wrap;
+      }
+      .next-meta .code {
+        font-family: 'JetBrains Mono', monospace;
+        color: #c9b78a;
+        background: rgba(233, 166, 60, 0.12);
+        padding: 1px 6px;
+        border-radius: 5px;
+        font-weight: 700;
+      }
+      .lockmini {
+        color: #c9b78a;
+        font-size: 11px;
+        font-weight: 600;
+      }
+      .countdown {
+        text-align: center;
+        background: rgba(233, 166, 60, 0.14);
+        border: 1px solid rgba(233, 166, 60, 0.32);
+        border-radius: 13px;
+        padding: 8px 12px;
+        min-width: 74px;
+      }
+      .countdown .t {
+        font-family: 'JetBrains Mono', monospace;
+        font-size: 20px;
+        font-weight: 700;
+        color: var(--amber);
+        line-height: 1;
+      }
+      .countdown .u {
+        font-size: 10px;
+        color: #b9985c;
+        letter-spacing: 0.08em;
+        margin-top: 3px;
+      }
+      .progress {
+        margin-top: 16px;
+        position: relative;
+      }
+      .progress .track {
+        height: 3px;
+        background: rgba(255, 255, 255, 0.12);
+        border-radius: 3px;
+        position: relative;
+      }
+      .progress .fill {
+        position: absolute;
+        inset-block: 0;
+        inset-inline-start: 0;
+        width: 62%;
+        background: linear-gradient(90deg, var(--amber-deep), var(--amber));
+        border-radius: 3px;
+      }
+      .progress .knob {
+        position: absolute;
+        inset-inline-start: 62%;
+        top: 50%;
+        width: 11px;
+        height: 11px;
+        background: var(--amber);
+        border-radius: 50%;
+        transform: translate(50%, -50%);
+        box-shadow: 0 0 0 3px rgba(233, 166, 60, 0.25);
+      }
+      .progress .ends {
+        display: flex;
+        justify-content: space-between;
+        margin-top: 7px;
+        font-family: 'Assistant', sans-serif;
+        font-weight: 600;
+        font-size: 10px;
+        color: #7688ac;
+      }
+      .progress .ends span[dir='ltr'] {
+        font-family: 'JetBrains Mono', monospace;
+        font-weight: 400;
+      }
+
+      .sec-title {
+        font-size: 12px;
+        font-weight: 700;
+        color: var(--muted);
+        letter-spacing: 0.06em;
+        margin: 22px 4px 11px;
+        display: flex;
+        justify-content: space-between;
+        align-items: center;
+      }
+
+      /* quick access — four REAL shortcuts */
+      .quick {
+        display: grid;
+        grid-template-columns: repeat(4, 1fr);
+        gap: 9px;
+      }
+      .qa {
+        background: var(--card);
+        border: 1px solid var(--line);
+        border-radius: 15px;
+        padding: 13px 6px 11px;
+        text-align: center;
+        cursor: pointer;
+        transition:
+          transform 0.12s,
+          box-shadow 0.12s;
+        font: inherit;
+        color: var(--ink);
+        position: relative;
+      }
+      .qa:hover {
+        transform: translateY(-2px);
+        box-shadow: 0 10px 18px -12px rgba(22, 35, 61, 0.35);
+      }
+      .qa .ic {
+        font-size: 20px;
+        display: block;
+        margin-bottom: 6px;
+      }
+      .qa .lb {
+        font-size: 11px;
+        font-weight: 600;
+        line-height: 1.2;
+      }
+      /* the code tile carries the real next-confirmation code (amber = commitment) */
+      .qa .code {
+        display: block;
+        font-family: 'JetBrains Mono', monospace;
+        font-size: 10px;
+        font-weight: 700;
+        color: var(--amber-deep);
+        margin-top: 3px;
+      }
+      /* navigate is a location action → teal (design-language: teal = place) */
+      .qa.nav .ic {
+        color: var(--teal);
+      }
+
+      /* day at a glance — derived 100% from events, replaces the fixture glance row */
+      .glance-day {
+        background: var(--card);
+        border: 1px solid var(--line);
+        border-radius: 16px;
+        padding: 15px 16px 16px;
+      }
+      /* segmented events bar: done · now · upcoming (a distinct view from the
+         board's time-progress bar — this counts events, not the clock) */
+      .seg {
+        display: flex;
+        gap: 4px;
+        margin-bottom: 13px;
+      }
+      .seg i {
+        height: 7px;
+        flex: 1;
+        border-radius: 3px;
+        background: rgba(22, 35, 61, 0.12);
+      }
+      .seg i.done {
+        background: var(--ok);
+      }
+      .seg i.now {
+        background: var(--amber);
+      }
+      .glance-stats {
+        display: flex;
+        align-items: stretch;
+      }
+      .gstat {
+        flex: 1;
+        text-align: center;
+      }
+      .gstat + .gstat {
+        border-inline-start: 1px solid var(--line);
+      }
+      .gstat .v {
+        font-family: 'JetBrains Mono', monospace;
+        font-size: 20px;
+        font-weight: 700;
+        color: var(--ink);
+        line-height: 1;
+      }
+      .gstat .v.hard {
+        color: var(--amber-deep);
+      }
+      .gstat .k {
+        font-size: 11px;
+        color: var(--muted);
+        font-weight: 600;
+        margin-top: 5px;
+      }
+      .gstat .k .lock {
+        font-size: 10px;
+      }
+      .glance-foot {
+        margin-top: 13px;
+        padding-top: 12px;
+        border-top: 1px solid var(--line);
+        font-size: 12.5px;
+        color: var(--muted);
+        display: flex;
+        align-items: center;
+        gap: 7px;
+      }
+      .glance-foot b {
+        color: var(--ink);
+        font-weight: 700;
+      }
+      .glance-foot .mono {
+        font-family: 'JetBrains Mono', monospace;
+        font-weight: 700;
+      }
+
+      .nav {
+        position: absolute;
+        inset-inline: 0;
+        bottom: 0;
+        background: rgba(255, 255, 255, 0.92);
+        backdrop-filter: blur(12px);
+        border-top: 1px solid var(--line);
+        display: flex;
+        padding: 9px 8px;
+      }
+      .nav button {
+        flex: 1;
+        background: none;
+        border: 0;
+        font: inherit;
+        cursor: pointer;
+        color: var(--muted);
+        display: flex;
+        flex-direction: column;
+        align-items: center;
+        gap: 3px;
+        padding: 5px 0;
+        font-size: 10.5px;
+        font-weight: 600;
+      }
+      .nav button .ic {
+        font-size: 19px;
+      }
+      .nav button.on {
+        color: var(--indigo);
+      }
+      .nav button.on .ic {
+        background: rgba(27, 42, 74, 0.1);
+        border-radius: 10px;
+        padding: 2px 12px;
+      }
+
+      .toast {
+        position: absolute;
+        left: 16px;
+        right: 16px;
+        bottom: 78px;
+        background: var(--ink);
+        color: #fff;
+        border-radius: 13px;
+        padding: 13px 16px;
+        font-size: 13.5px;
+        font-weight: 500;
+        box-shadow: 0 12px 28px -10px rgba(0, 0, 0, 0.5);
+        display: flex;
+        align-items: center;
+        gap: 9px;
+        opacity: 0;
+        transform: translateY(12px);
+        pointer-events: none;
+        transition: 0.28s;
+      }
+      .toast.show {
+        opacity: 1;
+        transform: none;
+      }
+      .toast .ic {
+        font-size: 17px;
+      }
+
+      @media (prefers-reduced-motion: reduce) {
+        * {
+          animation: none !important;
+          transition: none !important;
+        }
+      }
+    </style>
+  </head>
+  <body>
+    <div class="stage">
+      <p class="caption">בית · <b>מצב טיול</b> · הכל נשען על נתונים אמיתיים · עובד אופליין</p>
+
+      <div class="phone">
+        <div class="statusbar">
+          <span id="sbclock">18:52</span><span class="dots">●●● 4G ▮</span>
+        </div>
+
+        <div class="header">
+          <div class="mode-row">
+            <div class="mode-toggle">
+              <button class="m on">🧭 טיול</button>
+              <button class="m">✏️ תכנון</button>
+            </div>
+          </div>
+          <div class="trip-row">
+            <div>
+              <button class="trip-switch" aria-label="החלף טיול · לכל הטיולים">
+                <span class="trip-name">יפן ׳26</span>
+                <span class="chev">▾</span>
+              </button>
+              <div class="trip-sub">טוקיו<span class="dot">•</span>יום 3 מתוך 10</div>
+            </div>
+            <div class="header-actions">
+              <div class="avatars" title="נועם · דנה · מאור · רון">
+                <div class="av more">+2</div>
+                <div class="av" style="background: #e88c8c">ד</div>
+                <div class="av" style="background: #5ec5b6">נ</div>
+              </div>
+              <button class="av account-btn" style="background: #e9a63c" aria-label="החשבון שלי">
+                א
+              </button>
+              <button class="gear-btn" aria-label="הגדרות הטיול">⚙</button>
+            </div>
+          </div>
+          <div class="day-strip">
+            <div class="day-pill past">א׳<span class="n">05</span></div>
+            <div class="day-pill past">ב׳<span class="n">06</span></div>
+            <div class="day-pill on">ג׳<span class="n">07</span></div>
+            <div class="day-pill">ד׳<span class="n">08</span></div>
+            <div class="day-pill">ה׳<span class="n">09</span></div>
+            <div class="day-pill">ו׳<span class="n">10</span></div>
+          </div>
+        </div>
+
+        <div class="body">
+          <!-- ===== board hero — the one loud element (unchanged) ===== -->
+          <div class="board">
+            <div class="board-top">
+              <div class="live"><span class="blip"></span>עכשיו</div>
+              <div class="clock" id="boardclock" dir="ltr">18:52</div>
+            </div>
+            <div class="now-label">זמן חופשי · גמיש</div>
+            <div class="now-title">🚶 זמן חופשי · שינג׳וקו</div>
+            <div class="now-meta">עד <span dir="ltr">19:30</span></div>
+            <div class="board-divider"></div>
+            <div class="next-row">
+              <div>
+                <div class="next-label">הבא בתור</div>
+                <div class="next-title">🍜 Ichiran Ramen</div>
+                <div class="next-meta">
+                  <span dir="ltr">19:30</span>
+                  <span class="lockmini">🔒 קשיח</span>
+                  <span class="code" dir="ltr">#4471</span>
+                </div>
+              </div>
+              <div class="countdown">
+                <div class="t" id="cd" dir="ltr">38</div>
+                <div class="u">דקות</div>
+              </div>
+            </div>
+            <div class="progress" aria-hidden="true">
+              <div class="track">
+                <div class="fill"></div>
+                <div class="knob"></div>
+              </div>
+              <div class="ends">
+                <span dir="ltr">07:00</span><span>עכשיו</span><span dir="ltr">23:00</span>
+              </div>
+            </div>
+          </div>
+
+          <!-- ===== quick access — four real shortcuts ===== -->
+          <div class="sec-title">גישה מהירה</div>
+          <div class="quick">
+            <button class="qa" onclick="toast('🎫', 'הכרטיס הבא · #4471 · פתיחה באינדקס')">
+              <span class="ic">🎫</span><span class="lb">הכרטיס הבא</span>
+              <span class="code" dir="ltr">#4471</span>
+            </button>
+            <button class="qa" onclick="toast('📶', 'קוד ה-WiFi הועתק ללוח')">
+              <span class="ic">📶</span><span class="lb">קוד WiFi</span>
+            </button>
+            <button class="qa" onclick="toast('🛂', 'מסמכים · דרכונים וביטוח · אינדקס')">
+              <span class="ic">🛂</span><span class="lb">מסמכים</span>
+            </button>
+            <button class="qa nav" onclick="toast('🧭', 'פותח Google Maps ל-Ichiran Ramen')">
+              <span class="ic">🧭</span><span class="lb">ניווט ליעד הבא</span>
+            </button>
+          </div>
+
+          <!-- ===== day at a glance — derived from events, replaces weather/FX/budget ===== -->
+          <div class="sec-title">היום במבט</div>
+          <div class="glance-day">
+            <div class="seg" aria-hidden="true">
+              <i class="done"></i>
+              <i class="done"></i>
+              <i class="now"></i>
+              <i></i>
+              <i></i>
+              <i></i>
+            </div>
+            <div class="glance-stats">
+              <div class="gstat">
+                <div class="v">2</div>
+                <div class="k">הושלמו</div>
+              </div>
+              <div class="gstat">
+                <div class="v">4</div>
+                <div class="k">נותרו</div>
+              </div>
+              <div class="gstat">
+                <div class="v hard">1</div>
+                <div class="k"><span class="lock">🔒</span> עוגן קשיח</div>
+              </div>
+            </div>
+            <div class="glance-foot">
+              🕓 פנוי עד <span class="mono" dir="ltr">19:30</span> · היום מסתיים
+              <b class="mono" dir="ltr">~23:15</b>
+            </div>
+          </div>
+        </div>
+
+        <div class="toast" id="toast">
+          <span class="ic" id="toast-ic">✓</span><span id="toast-txt"></span>
+        </div>
+
+        <nav class="nav">
+          <button class="on"><span class="ic">🏠</span>בית</button>
+          <button><span class="ic">🗺️</span>מפה</button>
+          <button><span class="ic">📇</span>אינדקס</button>
+          <button><span class="ic">📅</span>יום-יום</button>
+        </nav>
+      </div>
+    </div>
+
+    <script>
+      let toastTimer;
+      function toast(icon, msg) {
+        document.getElementById('toast-ic').textContent = icon;
+        document.getElementById('toast-txt').textContent = msg;
+        const el = document.getElementById('toast');
+        el.classList.add('show');
+        clearTimeout(toastTimer);
+        toastTimer = setTimeout(() => el.classList.remove('show'), 2600);
+      }
+      let mins = 52,
+        hrs = 18;
+      setInterval(() => {
+        mins++;
+        if (mins >= 60) {
+          mins = 0;
+          hrs = (hrs + 1) % 24;
+        }
+        const s = String(hrs).padStart(2, '0') + ':' + String(mins).padStart(2, '0');
+        document.getElementById('sbclock').textContent = s;
+        document.getElementById('boardclock').textContent = s;
+        const cd = 19 * 60 + 30 - (hrs * 60 + mins);
+        document.getElementById('cd').textContent = cd > 0 ? cd : '—';
+      }, 4000);
+    </script>
+  </body>
+</html>

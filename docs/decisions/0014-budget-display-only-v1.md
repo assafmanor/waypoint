@@ -1,7 +1,11 @@
 # 0014 — Budget is display-only in v1
 
-**Status:** Accepted
+**Status:** Accepted (amended 2026-07-16 — display pulled from the Trip-mode Home, see [ADR-0045](0045-trip-home-real-data-only.md))
 **Date:** 2026-07-09
+
+## Amendment (2026-07-16)
+
+The decision below left the display-only budget's prominence explicitly uncertain ("may not be a main feature; we'll see how it's used"). It resolved as: **not a feature this product manages.** There is no expense model behind it, and the daily-budget glance card on the Trip-mode Home was a fixture. Per [ADR-0045](0045-trip-home-real-data-only.md), the budget card is **removed from the Home**. The `Trip.dailyBudgetMinor` field and `formatMoney` helper stay (harmless, re-usable if real tracking is ever built), but nothing renders them in v1. Shared expense tracking remains a v1.1+ "Could" as originally scoped. The original decision follows, unchanged.
 
 ## Context
 

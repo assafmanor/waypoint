@@ -19,7 +19,8 @@
 | Offline encrypted documents             | Must     | v1    | Passports, insurance                                   |
 | Map with pinned events + "near me now"  | Should   | v1    | Deep-link to Google Maps for turn-by-turn              |
 | Automatic mode switch (planning ↔ trip) | Should   | v1    | By date; location later                                |
-| Glance cards (weather / FX / budget)    | Should   | v1    | Read-only widgets                                      |
+| Day-at-a-glance card (derived)          | Should   | v1    | Trip-Home glance, computed from events (ADR-0045); replaces the weather/FX/budget row |
+| Glance cards (weather / FX)             | Could    | v1.1  | Return as their own cards when the integration pipes land (ADR-0045/0004); budget dropped |
 
 ## Modes (Plan / Trip)
 
@@ -94,5 +95,5 @@ The thin outer ring — chrome to get you into a trip and back out. Spec: [archi
 | Weather                        | Should   | v1    |                          |
 | Emergency numbers by country   | Should   | v1    |                          |
 | WiFi codes (copy to clipboard) | Could    | v1    | Already in mockup        |
-| Per-day budget (display)       | Should   | v1    |                          |
+| Per-day budget (display)       | Won't (now) | —  | Pulled from the Home (ADR-0045 / ADR-0014 amendment); no expense model behind it |
 | Shared expense tracking        | Could    | v1.1  | Bigger than display-only |
