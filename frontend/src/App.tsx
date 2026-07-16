@@ -17,7 +17,7 @@ import { HOME_TAB, NavProvider, useMarkInsideTrip, useTripTab } from './state/na
 import { EdgeSwipeBack } from './ui/EdgeSwipeBack';
 import { flushAllOutbox, isOffline, useIsOffline, useOutboxCount } from './lib/outbox';
 import { loadTripList } from './lib/cache';
-import { resolveActiveTrip, tripChip } from './lib/active-trip';
+import { resolveLanding } from './lib/active-trip';
 import { consumeIntent, hasIntent, saveIntent } from './lib/intent';
 import { ToastProvider } from './ui/Toast';
 import { ConfirmProvider } from './ui/ConfirmDialog';
@@ -480,24 +480,17 @@ function RootSurface() {
       cancelled = true;
     };
   }, []);
-  const { tripId: storedTripId } = useActiveTripId();
+  const { tripId: storedTripId, pickedThisSession } = useActiveTripId();
   const now = useClock();
 
   if (trips === null) return <BootScreen text={t.shell.booting} />;
   if (trips.length === 0) return <ZeroStateWithAccount />;
 
-  // A manual pick (tapping a trip on /trips) is honored regardless of whether
-  // it's live — only the *auto-derived* landing defers to /trips when nothing
-  // is in progress (ADR-0033).
-  const validStoredId = storedTripId && trips.some((tr) => tr.id === storedTripId);
-  if (!validStoredId) {
-    const resolved = resolveActiveTrip(trips, now)!;
-    if (tripChip(resolved, now) !== 'now') return <Navigate to="/trips" replace />;
-  }
-  const tripId = validStoredId ? storedTripId : resolveActiveTrip(trips, now)!.id;
+  const landing = resolveLanding(trips, storedTripId, pickedThisSession, now);
+  if ('redirect' in landing) return <Navigate to={landing.redirect} replace />;
 
   return (
-    <TripProvider tripId={tripId}>
+    <TripProvider tripId={landing.tripId}>
       <ModeProvider>
         <Shell />
       </ModeProvider>

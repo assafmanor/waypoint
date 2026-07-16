@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { resolveActiveTrip, tripChip } from './active-trip';
+import { resolveActiveTrip, resolveLanding, tripChip } from './active-trip';
 import { TRIP } from '../fixtures';
 
 const upcoming = { ...TRIP, id: 'trip-upcoming', startDate: '2026-08-01', endDate: '2026-08-10' };
@@ -73,5 +73,56 @@ describe('landing rule (ADR-0033): live → land in the trip, none live → /tri
   it('resolves to a non-live trip (→ /trips landing) when nothing is in progress', () => {
     const resolved = resolveActiveTrip([past, upcoming], NOW)!;
     expect(tripChip(resolved, NOW)).not.toBe('now');
+  });
+});
+
+describe('resolveLanding (ADR-0033 landing rule, refining ADR-0021)', () => {
+  const trips = [past, upcoming, inProgress];
+
+  it('opens the live trip on a cold reopen even when the last-opened trip is past', () => {
+    // The reported bug: reopening lands on the last-visited (past) trip instead
+    // of the trip that is live right now.
+    expect(resolveLanding(trips, past.id, false, NOW)).toEqual({ tripId: inProgress.id });
+  });
+
+  it('opens the live trip on a cold reopen when the last-opened trip is upcoming', () => {
+    expect(resolveLanding(trips, upcoming.id, false, NOW)).toEqual({ tripId: inProgress.id });
+  });
+
+  it('opens the live trip on a cold reopen with no stored id', () => {
+    expect(resolveLanding(trips, null, false, NOW)).toEqual({ tripId: inProgress.id });
+  });
+
+  it('honors a manual in-session pick of a past trip regardless of a live trip', () => {
+    expect(resolveLanding(trips, past.id, true, NOW)).toEqual({ tripId: past.id });
+  });
+
+  it('honors a manual in-session pick of an upcoming trip', () => {
+    expect(resolveLanding(trips, upcoming.id, true, NOW)).toEqual({ tripId: upcoming.id });
+  });
+
+  it('keeps a live last-opened trip on a cold reopen (last-opened among overlapping live)', () => {
+    const alsoInProgress = { ...inProgress, id: 'trip-also-in-progress', startDate: '2026-06-20' };
+    // resolveActiveTrip alone would pick the earlier-starting one; the stored
+    // live id wins so a reopen stays on the trip you last had open.
+    expect(resolveLanding([inProgress, alsoInProgress], inProgress.id, false, NOW)).toEqual({
+      tripId: inProgress.id,
+    });
+  });
+
+  it('redirects to /trips on a cold reopen when nothing is live', () => {
+    expect(resolveLanding([past, upcoming], past.id, false, NOW)).toEqual({ redirect: '/trips' });
+  });
+
+  it('redirects to /trips when a stale stored id no longer exists and nothing is live', () => {
+    expect(resolveLanding([past, upcoming], 'trip-deleted', false, NOW)).toEqual({
+      redirect: '/trips',
+    });
+  });
+
+  it('falls back to resolution when a manually-picked id no longer exists', () => {
+    // A pick that points at a since-deleted trip must not strand the user; the
+    // cold-load rule takes over and lands on the live trip.
+    expect(resolveLanding(trips, 'trip-deleted', true, NOW)).toEqual({ tripId: inProgress.id });
   });
 });
