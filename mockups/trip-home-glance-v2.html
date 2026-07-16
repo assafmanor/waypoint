@@ -1,0 +1,385 @@
+<!doctype html>
+<!-- "היום במבט" v2 — orientation fixes (2026-07-16, post-merge feedback).
+     Problems in the shipped v1 (ADR-0045): (a) no "now" anchor and past/future
+     read the same, so you can't tell where you are or which way time flows;
+     (b) a cluster used ONE aggregate color (green only if ALL members done);
+     (c) skipped events vanished. This mockup proposes:
+       - amber "now" (current block amber; a thin amber sliver in the gap when
+         you're free), and past = filled / future = hollow → direction reads at
+         a glance (RTL: right = earlier, left = later, same as the board);
+       - each split sub-tick colored by ITS OWN phase;
+       - skipped shown struck + dimmed, excluded from the "נותרו" count.
+     Where this and the docs conflict, docs win. -->
+<html lang="he" dir="rtl">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>היום במבט — v2 (התמצאות)</title>
+    <style>
+      :root {
+        --ink: #16233d;
+        --indigo: #1b2a4a;
+        --card: #ffffff;
+        --amber: #e9a63c;
+        --amber-deep: #c9822a;
+        --ok: #3c9a6b;
+        --muted: #6c7488;
+        --line: rgba(22, 35, 61, 0.1);
+        --soft-line: rgba(22, 35, 61, 0.28);
+      }
+      * {
+        box-sizing: border-box;
+        margin: 0;
+        padding: 0;
+      }
+      body {
+        font-family:
+          'Assistant',
+          system-ui,
+          -apple-system,
+          'Segoe UI',
+          'Arial Hebrew',
+          sans-serif;
+        background: var(--indigo);
+        color: var(--ink);
+        min-height: 100vh;
+        padding: 24px 16px 48px;
+        -webkit-font-smoothing: antialiased;
+      }
+      .wrap {
+        max-width: 420px;
+        margin: 0 auto;
+      }
+      .title {
+        color: #fff;
+        font-family: 'Secular One', system-ui, sans-serif;
+        font-size: 22px;
+        text-align: center;
+      }
+      .lede {
+        color: #aeb9d4;
+        font-size: 13px;
+        line-height: 1.55;
+        text-align: center;
+        margin: 8px 0 20px;
+      }
+      .sec {
+        color: #dce3f2;
+        font-size: 12px;
+        font-weight: 700;
+        letter-spacing: 0.05em;
+        margin: 4px 2px 10px;
+      }
+      .note {
+        color: #93a2c4;
+        font-size: 12px;
+        line-height: 1.55;
+        margin: 10px 2px 24px;
+      }
+      .note b {
+        color: #fff;
+        font-weight: 600;
+      }
+      .note .good {
+        color: #9ad4b3;
+      }
+
+      .glance-day {
+        background: var(--card);
+        border: 1px solid var(--line);
+        border-radius: 16px;
+        padding: 16px;
+      }
+
+      /* ── block bar v2 ── */
+      .blocks {
+        display: flex;
+        gap: 5px;
+        align-items: center;
+        margin-bottom: 7px;
+      }
+      .blk {
+        height: 10px;
+        flex: 1;
+        border-radius: 3px;
+        position: relative;
+      }
+      .blk.done {
+        background: var(--ok);
+      }
+      .blk.passed {
+        background: rgba(22, 35, 61, 0.32);
+      }
+      /* future = hollow (outlined) → "not filled yet"; direction cue */
+      .blk.upcoming {
+        background: transparent;
+        box-shadow: inset 0 0 0 1.5px rgba(22, 35, 61, 0.22);
+      }
+      /* now = amber, with a blip above the current block */
+      .blk.now {
+        background: var(--amber);
+      }
+      .blk.now::after {
+        content: '';
+        position: absolute;
+        top: -8px;
+        inset-inline-start: 50%;
+        transform: translateX(50%);
+        width: 6px;
+        height: 6px;
+        border-radius: 50%;
+        background: var(--amber);
+        box-shadow: 0 0 0 3px rgba(233, 166, 60, 0.25);
+      }
+      /* skipped = struck + dimmed, doesn't count as remaining */
+      .blk.skipped {
+        background: repeating-linear-gradient(
+          -45deg,
+          rgba(22, 35, 61, 0.26) 0 3px,
+          transparent 3px 6px
+        );
+        box-shadow: inset 0 0 0 1px rgba(22, 35, 61, 0.12);
+      }
+      /* the "now" sliver when you're between events (free) */
+      .nowgap {
+        flex: 0 0 3px;
+        align-self: stretch;
+        background: var(--amber);
+        border-radius: 2px;
+        position: relative;
+      }
+      .nowgap::after {
+        content: '';
+        position: absolute;
+        top: -8px;
+        inset-inline-start: 50%;
+        transform: translateX(50%);
+        width: 6px;
+        height: 6px;
+        border-radius: 50%;
+        background: var(--amber);
+        box-shadow: 0 0 0 3px rgba(233, 166, 60, 0.25);
+      }
+      /* split cluster: each sub-tick coloured by its OWN phase */
+      .blk.cluster {
+        display: flex;
+        gap: 1.5px;
+        background: transparent;
+      }
+      .blk.cluster > i {
+        flex: 1;
+        border-radius: 2px;
+      }
+      .blk.cluster > i.done {
+        background: var(--ok);
+      }
+      .blk.cluster > i.now {
+        background: var(--amber);
+      }
+      .blk.cluster > i.passed {
+        background: rgba(22, 35, 61, 0.32);
+      }
+      .blk.cluster > i.upcoming {
+        background: transparent;
+        box-shadow: inset 0 0 0 1.5px rgba(22, 35, 61, 0.22);
+      }
+
+      /* orientation strip under the bar (shown once, teaches the reading) */
+      .axis {
+        display: flex;
+        justify-content: space-between;
+        font-size: 10px;
+        color: var(--muted);
+        font-weight: 600;
+        margin-bottom: 12px;
+      }
+
+      .lead {
+        display: flex;
+        align-items: baseline;
+        justify-content: space-between;
+        gap: 12px;
+        margin-top: 4px;
+      }
+      .lead .big {
+        display: flex;
+        align-items: baseline;
+        gap: 8px;
+      }
+      .lead .big .v {
+        font-family: 'JetBrains Mono', ui-monospace, Menlo, monospace;
+        font-size: 32px;
+        font-weight: 700;
+        line-height: 1;
+      }
+      .lead .big .k {
+        font-size: 14px;
+        font-weight: 700;
+        color: var(--muted);
+      }
+      .lead .anchor {
+        text-align: end;
+        font-size: 12px;
+        color: var(--amber-deep);
+        font-weight: 700;
+      }
+      .lead .anchor .tm {
+        font-family: 'JetBrains Mono', ui-monospace, Menlo, monospace;
+      }
+      .foot {
+        margin-top: 13px;
+        padding-top: 12px;
+        border-top: 1px solid var(--line);
+        font-size: 12.5px;
+        color: var(--muted);
+      }
+      .foot .mono {
+        font-family: 'JetBrains Mono', ui-monospace, Menlo, monospace;
+        font-weight: 700;
+      }
+      .foot b {
+        color: var(--ink);
+      }
+
+      /* mini legend */
+      .key {
+        display: flex;
+        flex-wrap: wrap;
+        gap: 8px 14px;
+        margin: 14px 2px 24px;
+        font-size: 11px;
+        color: #b9c4de;
+      }
+      .key span {
+        display: inline-flex;
+        align-items: center;
+        gap: 6px;
+      }
+      .key i {
+        width: 16px;
+        height: 9px;
+        border-radius: 2px;
+        display: inline-block;
+      }
+      .key i.done {
+        background: var(--ok);
+      }
+      .key i.passed {
+        background: rgba(255, 255, 255, 0.34);
+      }
+      .key i.now {
+        background: var(--amber);
+      }
+      .key i.up {
+        background: transparent;
+        box-shadow: inset 0 0 0 1.5px rgba(255, 255, 255, 0.4);
+      }
+      .key i.sk {
+        background: repeating-linear-gradient(
+          -45deg,
+          rgba(255, 255, 255, 0.4) 0 3px,
+          transparent 3px 6px
+        );
+      }
+      .hr {
+        height: 1px;
+        background: rgba(255, 255, 255, 0.08);
+        margin: 4px 0 22px;
+      }
+    </style>
+  </head>
+  <body>
+    <div class="wrap">
+      <div class="title">היום במבט · v2</div>
+      <p class="lede">
+        אותו כרטיס, עכשיו עם <b>עוגן "עכשיו"</b> וכיוון זמן ברור: מלא = מאחורינו, חלול = לפנינו,
+        כתום = עכשיו.
+      </p>
+
+      <div class="key">
+        <span><i class="done"></i>היינו</span>
+        <span><i class="passed"></i>חלף</span>
+        <span><i class="now"></i>עכשיו</span>
+        <span><i class="up"></i>לפנינו</span>
+        <span><i class="sk"></i>דילגנו</span>
+      </div>
+
+      <!-- A · now inside an event -->
+      <div class="sec">א · עכשיו בתוך אירוע (יום 3, 16:45)</div>
+      <div class="glance-day">
+        <div class="blocks" aria-hidden="true">
+          <div class="blk done"></div>
+          <div class="blk passed"></div>
+          <div class="blk now"></div>
+          <div class="blk upcoming"></div>
+          <div class="blk upcoming"></div>
+          <div class="blk upcoming"></div>
+        </div>
+        <div class="axis"><span>מאוחר ←</span><span>→ מוקדם</span></div>
+        <div class="lead">
+          <div class="big"><span class="v" dir="ltr">4</span><span class="k">נותרו היום</span></div>
+          <div class="anchor">🔒 עוגן קשיח<br /><span class="tm" dir="ltr">19:30</span></div>
+        </div>
+      </div>
+      <p class="note">
+        <span class="good">הכתום עונה מיד על "איפה אנחנו"</span>; המעבר ממלא (מימין, מאחורינו) לחלול
+        (משמאל, לפנינו) עונה על "לאן זה הולך". אותו כיוון כמו בלוח (ימין = מוקדם).
+      </p>
+      <div class="hr"></div>
+
+      <!-- B · free right now (matches the screenshot) -->
+      <div class="sec">ב · פנויים כרגע, בין אירועים (17:24)</div>
+      <div class="glance-day">
+        <div class="blocks" aria-hidden="true">
+          <div class="blk done"></div>
+          <div class="blk passed"></div>
+          <div class="nowgap"></div>
+          <div class="blk upcoming"></div>
+          <div class="blk upcoming"></div>
+          <div class="blk upcoming"></div>
+        </div>
+        <div class="axis"><span>מאוחר ←</span><span>→ מוקדם</span></div>
+        <div class="lead">
+          <div class="big"><span class="v" dir="ltr">3</span><span class="k">נותרו היום</span></div>
+          <div class="anchor">🔒 עוגן קשיח<br /><span class="tm" dir="ltr">18:30</span></div>
+        </div>
+        <div class="foot">
+          🕓 פנוי עד <span class="mono" dir="ltr">18:30</span> · מסתיים
+          <b class="mono" dir="ltr">~19:30</b>
+        </div>
+      </div>
+      <p class="note">
+        כשאין אירוע פעיל, הפס הכתום הדק יושב <b>בפער שבו נמצאת השעה</b> — עדיין רואים מיד היכן
+        אנחנו, גם בלי אירוע "עכשיו".
+      </p>
+      <div class="hr"></div>
+
+      <!-- C · a split + a skipped block -->
+      <div class="sec">ג · אירועים חופפים + מדולג</div>
+      <div class="glance-day">
+        <div class="blocks" aria-hidden="true">
+          <div class="blk done"></div>
+          <div class="blk skipped"></div>
+          <div class="blk now"></div>
+          <!-- split of two, coloured per member: one done, one still upcoming -->
+          <div class="blk cluster"><i class="done"></i><i class="upcoming"></i></div>
+          <div class="blk upcoming"></div>
+        </div>
+        <div class="axis"><span>מאוחר ←</span><span>→ מוקדם</span></div>
+        <div class="lead">
+          <div class="big"><span class="v" dir="ltr">3</span><span class="k">נותרו היום</span></div>
+          <div class="anchor">🔒 עוגן קשיח<br /><span class="tm" dir="ltr">20:00</span></div>
+        </div>
+      </div>
+      <p class="note">
+        האשכול (הרביעי) צבוע <b>לפי כל אירוע בנפרד</b> — ירוק היינו, חלול עוד לפנינו — לא "הכול או
+        כלום". המקטע המקווקו הוא אירוע <b>שדילגנו</b>: נשאר בתמונה כדי לראות מה ויתרנו, אבל
+        <b>לא נספר ב"נותרו"</b>.
+      </p>
+      <p class="note" style="color: #cdd6ea">
+        פתוח להחלטה: להראות מדולגים (כמו כאן, עקבי עם תצוגת היום־יום והארכיון) או להשאיר אותם
+        מוסתרים מהמבט המהיר.
+      </p>
+    </div>
+  </body>
+</html>
