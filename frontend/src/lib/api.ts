@@ -3,24 +3,29 @@ import {
   accessTokenResponseSchema,
   bookingSchema,
   changeSchema,
+  documentSummarySchema,
   inviteUrlSchema,
   invitePreviewSchema,
   maybeItemSchema,
   meSchema,
   membershipSchema,
   placeSchema,
+  tripDocumentSchema,
   tripEventSchema,
   tripSchema,
   tripSnapshotSchema,
   type Booking,
   type Change,
   type CreateBookingInput,
+  type CreateDocumentInput,
   type CreateEventInput,
   type CreateMaybeItemInput,
   type CreatePlaceInput,
   type CreateTripInput,
+  type DocumentSummary,
   type EventStatus,
   type MaybeItem,
+  type TripDocument,
   type InvitePreview,
   type InviteUrl,
   type JoinTripInput,
@@ -200,6 +205,9 @@ const bookingsUrl = (tripId: string) => `${API_BASE_URL}/trips/${tripId}/booking
 const bookingUrl = (tripId: string, bookingId: string) => `${bookingsUrl(tripId)}/${bookingId}`;
 const placesUrl = (tripId: string) => `${API_BASE_URL}/trips/${tripId}/places`;
 const placeUrl = (tripId: string, placeId: string) => `${placesUrl(tripId)}/${placeId}`;
+const documentsUrl = (tripId: string) => `${API_BASE_URL}/trips/${tripId}/documents`;
+const documentContentUrl = (tripId: string, docId: string) =>
+  `${documentsUrl(tripId)}/${docId}/content`;
 
 /** Server error shape (api-contract.md): `{ error: { code, message, details? } }`. */
 export class ApiError extends Error {
@@ -418,4 +426,39 @@ export async function updatePlace(
   });
   if (!res.ok) return throwApiError(res);
   return placeSchema.parse(await res.json());
+}
+
+/** Trip documents (ADR-0015/0034). The list omits `fileRef` (the encrypted blob
+ *  reference never leaves the server outside the guarded `/content` route). */
+export async function listDocuments(tripId: string): Promise<DocumentSummary[]> {
+  const res = await apiFetch(documentsUrl(tripId));
+  if (!res.ok) return throwApiError(res);
+  return documentSummarySchema.array().parse(await res.json());
+}
+
+/** Upload a document (multipart). The browser sets the multipart `Content-Type`
+ *  boundary, so we must NOT set it ourselves. */
+export async function uploadDocument(
+  tripId: string,
+  input: CreateDocumentInput,
+  file: File,
+): Promise<TripDocument> {
+  const form = new FormData();
+  form.set('type', input.type);
+  form.set('title', input.title);
+  if (input.id) form.set('id', input.id);
+  if (input.ownerUserId) form.set('ownerUserId', input.ownerUserId);
+  form.set('file', file);
+  const res = await apiFetch(documentsUrl(tripId), { method: 'POST', body: form });
+  if (!res.ok) return throwApiError(res);
+  return tripDocumentSchema.parse(await res.json());
+}
+
+/** Fetch a document's decrypted content as a Blob. The `/content` route is
+ *  auth-guarded, so it can't be a raw `<img src>` — the viewer turns this Blob
+ *  into an object URL. */
+export async function fetchDocumentContent(tripId: string, docId: string): Promise<Blob> {
+  const res = await apiFetch(documentContentUrl(tripId, docId));
+  if (!res.ok) return throwApiError(res);
+  return res.blob();
 }

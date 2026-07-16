@@ -3865,3 +3865,121 @@
   font-weight: 700;
   color: var(--miss);
 }
+
+/* ===== Documents section (DocumentsSection.tsx) — grouped by type, per the
+   trip-index mockup. Rows reuse .index .li; only doc-specific bits added. ===== */
+.index .doc-group {
+  margin-top: 4px;
+}
+.index .doc-group .gt {
+  font-size: 11px;
+  font-weight: 700;
+  color: var(--muted);
+  padding: 6px 2px 7px;
+}
+.index .li.doc .main .t {
+  font-weight: 600;
+}
+.index .li .right .time {
+  font-size: 13px;
+  color: var(--muted);
+}
+.index .empty-card.doc {
+  border-style: dashed;
+  border-color: var(--soft-line);
+}
+.index .doc-status {
+  font-size: 12px;
+  color: var(--muted);
+  padding: 8px 2px;
+}
+
+/* Upload sheet: 4 doc types in a 2×2 grid; a plain file input. */
+.doc-upload .bs-typesel {
+  grid-template-columns: repeat(2, 1fr);
+}
+.doc-upload .bs-field input[type='file'] {
+  font: inherit;
+  font-size: 12.5px;
+  color: var(--ink);
+}
+
+/* Viewer overlay: near-fullscreen, above sheets (z 30). */
+.doc-viewer {
+  position: fixed;
+  inset: 0;
+  z-index: 30;
+  background: rgba(22, 35, 61, 0.72);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: 16px;
+  animation: fade 0.18s ease;
+}
+.doc-viewer-card {
+  display: flex;
+  flex-direction: column;
+  width: 100%;
+  max-width: 480px;
+  max-height: 88vh;
+  background: var(--card);
+  border-radius: 16px;
+  overflow: hidden;
+}
+.doc-viewer-head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 10px;
+  padding: 12px 14px;
+  border-bottom: 1px solid var(--line);
+}
+.doc-viewer-title {
+  font-weight: 700;
+  font-size: 14px;
+  color: var(--ink);
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.doc-viewer-close {
+  flex: 0 0 auto;
+  font: inherit;
+  font-size: 16px;
+  color: var(--muted);
+  background: transparent;
+  border: none;
+  cursor: pointer;
+  padding: 2px 6px;
+}
+.doc-viewer-body {
+  flex: 1;
+  min-height: 0;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  overflow: auto;
+  background: var(--paper);
+}
+.doc-viewer-img {
+  max-width: 100%;
+  max-height: 100%;
+  object-fit: contain;
+}
+.doc-viewer-frame {
+  width: 100%;
+  height: 78vh;
+  border: none;
+}
+.doc-viewer-msg {
+  font-size: 13px;
+  color: var(--muted);
+  padding: 40px 20px;
+}
+.doc-viewer-download {
+  font-weight: 700;
+  font-size: 13px;
+  color: var(--cta);
+  padding: 40px 20px;
+}

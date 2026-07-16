@@ -1,6 +1,6 @@
 // App-wide tunables and non-copy literals. UI copy lives in i18n/; domain enum
 // values live in @waypoint/shared. Keep magic numbers/strings out of logic.
-import type { BookingType } from '@waypoint/shared';
+import type { BookingType, DocumentType } from '@waypoint/shared';
 
 export const MS_PER_DAY = 86_400_000;
 
@@ -68,6 +68,14 @@ export const BOOKING_TYPE_ICON = {
   activity: '🎟️',
   other: '📄',
 } as const satisfies Record<BookingType, string>;
+
+/** Glyph per document type, for the Index documents section badges. */
+export const DOCUMENT_TYPE_ICON = {
+  passport: '🛂',
+  insurance: '🛡️',
+  visa: '🛃',
+  other: '📄',
+} as const satisfies Record<DocumentType, string>;
 
 /** Icon for a manually added maybe-shelf idea (no icon picker yet). */
 export const DEFAULT_MAYBE_ICON = '💡';
