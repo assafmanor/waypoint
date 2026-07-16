@@ -3645,20 +3645,26 @@
 }
 .booking-sheet .bs-save,
 .booking-sheet .bs-cancel {
-  flex: 1;
   font: inherit;
   font-weight: 700;
   font-size: 13px;
   border-radius: 12px;
-  padding: 11px;
+  padding: 12px;
   cursor: pointer;
 }
 .booking-sheet .bs-save {
+  flex: 1; /* primary spans the row; ghost cancel is a small pill (mockup) */
   background: var(--cta);
   color: var(--cta-text);
   border: none;
 }
+.booking-sheet .bs-save:disabled {
+  opacity: 0.6;
+  cursor: default;
+}
 .booking-sheet .bs-cancel {
+  flex: 0 0 auto;
+  padding: 12px 20px;
   background: transparent;
   color: var(--muted);
   border: 1px solid var(--soft-line);
@@ -3739,30 +3745,82 @@
   cursor: pointer;
 }
 
-/* Booking form: type-chip selector + transport route hint + validation error */
+/* Booking form: type-card grid + auto-caption + transport hint + validation. */
 .booking-sheet .bs-typesel {
-  display: flex;
-  flex-wrap: wrap;
-  gap: 7px;
+  display: grid;
+  grid-template-columns: repeat(3, 1fr);
+  gap: 8px;
 }
-.booking-sheet .bs-typechip {
-  display: inline-flex;
+.booking-sheet .bs-typecard {
+  display: flex;
+  flex-direction: column;
   align-items: center;
   gap: 5px;
   font: inherit;
-  font-weight: 700;
-  font-size: 12px;
-  color: var(--muted);
   background: var(--card);
-  border: 1px solid var(--soft-line);
-  border-radius: 999px;
-  padding: 6px 12px;
+  border: 1px solid var(--line);
+  border-radius: 13px;
+  padding: 12px 6px;
   cursor: pointer;
 }
-.booking-sheet .bs-typechip.on {
-  color: var(--cta-text);
-  background: var(--cta);
+.booking-sheet .bs-typecard-ic {
+  font-size: 20px;
+  line-height: 1;
+}
+.booking-sheet .bs-typecard-lbl {
+  font-size: 11.5px;
+  font-weight: 700;
+  color: var(--muted);
+}
+.booking-sheet .bs-typecard.on {
   border-color: var(--cta);
+  background: color-mix(in srgb, var(--ink) 5%, transparent);
+}
+.booking-sheet .bs-typecard.on .bs-typecard-lbl {
+  color: var(--ink);
+}
+/* Title box (matches the other fields) + IconPicker chip on the trailing side. */
+.booking-sheet .bs-title {
+  flex: 1;
+  min-width: 0;
+  font: inherit;
+  font-weight: 700;
+  font-size: 14px;
+  color: var(--ink);
+  background: var(--card);
+  border: 1px solid var(--soft-line);
+  border-radius: 10px;
+  padding: 10px 12px;
+}
+.booking-sheet .bs-title:focus-visible {
+  outline: none;
+  border-color: var(--teal);
+}
+.booking-sheet .bs-caption {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  flex-wrap: wrap;
+  font-size: 11px;
+  color: var(--muted);
+  margin-top: -4px;
+}
+.booking-sheet .bs-caption .cat-readout {
+  font-weight: 700;
+  color: var(--ink);
+  background: color-mix(in srgb, var(--ink) 6%, transparent);
+  border-radius: 6px;
+  padding: 1px 7px;
+}
+.booking-sheet .bs-revert {
+  font: inherit;
+  font-size: 11px;
+  font-weight: 700;
+  color: var(--muted);
+  background: transparent;
+  border: none;
+  cursor: pointer;
+  padding: 0;
 }
 .booking-sheet .bs-route-hint {
   font-size: 10.5px;

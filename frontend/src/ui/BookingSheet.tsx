@@ -22,7 +22,9 @@ import {
   mergeBookingDetails,
   deleteFlags,
   buildEventSeed,
+  buildTransportSeed,
   findPlaceByName,
+  isoToDateTimeLocal,
 } from '../lib/booking-edit';
 import { placeName } from '../lib/places';
 import { isoToTimeInput } from '../lib/time';
@@ -65,6 +67,7 @@ export function BookingSheet({
   const [notes, setNotes] = useState((booking?.details?.notes as string | undefined) ?? '');
   const [wifiNetwork, setWifiNetwork] = useState(wifi?.network ?? '');
   const [wifiPassword, setWifiPassword] = useState(wifi?.password ?? '');
+  // Non-transport scheduling: a single day + optional same-day time span.
   const [date, setDate] = useState(linkedEvent?.date ?? '');
   const [start, setStart] = useState(
     linkedEvent?.startsAt ? isoToTimeInput(linkedEvent.startsAt, trip.timezone) : '',
@@ -72,7 +75,17 @@ export function BookingSheet({
   const [end, setEnd] = useState(
     linkedEvent?.endsAt ? isoToTimeInput(linkedEvent.endsAt, trip.timezone) : '',
   );
-  const [kind, setKind] = useState<'hard' | 'soft'>(linkedEvent?.kind ?? EVENT_KIND.SOFT);
+  // Transport scheduling: explicit departure + arrival datetimes (may span days).
+  const [depAt, setDepAt] = useState(
+    linkedEvent?.startsAt ? isoToDateTimeLocal(linkedEvent.startsAt, trip.timezone) : '',
+  );
+  const [arrAt, setArrAt] = useState(
+    linkedEvent?.endsAt ? isoToDateTimeLocal(linkedEvent.endsAt, trip.timezone) : '',
+  );
+  const defaultKind = (ty: BookingType) =>
+    isTransportType(ty) ? EVENT_KIND.HARD : EVENT_KIND.SOFT;
+  const [kind, setKind] = useState<'hard' | 'soft'>(linkedEvent?.kind ?? defaultKind(initialType));
+  const [kindTouched, setKindTouched] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [saving, setSaving] = useState(false);
   const [deleting, setDeleting] = useState(false);
@@ -86,6 +99,11 @@ export function BookingSheet({
       setIcon(BOOKING_TYPE_ICON[next]);
       setCategory(BOOKING_TYPE_TO_CATEGORY[next]);
     }
+    if (!kindTouched) setKind(defaultKind(next));
+  };
+  const pickKind = (k: 'hard' | 'soft') => {
+    setKind(k);
+    setKindTouched(true);
   };
 
   const resolvePlaceId = async (name: string): Promise<string | undefined> => {
@@ -99,7 +117,8 @@ export function BookingSheet({
   const save = async () => {
     const finalTitle = title.trim();
     if (!finalTitle) return setError(t.index.form.titleRequired);
-    if (date && (date < trip.startDate || date > trip.endDate)) {
+    const scheduleDate = isTransport ? depAt.split('T')[0] : date;
+    if (scheduleDate && (scheduleDate < trip.startDate || scheduleDate > trip.endDate)) {
       return setError(t.index.form.dateOutOfRange);
     }
     setSaving(true);
@@ -113,7 +132,9 @@ export function BookingSheet({
         wifiNetwork: isHotel ? wifiNetwork : undefined,
         wifiPassword: isHotel ? wifiPassword : undefined,
       });
-      const event = buildEventSeed({ date, start, end, kind, icon, category }, trip.timezone);
+      const event = isTransport
+        ? buildTransportSeed({ depAt, arrAt, kind, icon, category }, trip.timezone)
+        : buildEventSeed({ date, start, end, kind, icon, category }, trip.timezone);
       const base = {
         title: finalTitle,
         confirmationCode: code.trim() || undefined,
@@ -147,11 +168,13 @@ export function BookingSheet({
                 <button
                   key={ty}
                   type="button"
-                  className={'bs-typechip' + (ty === type ? ' on' : '')}
+                  className={'bs-typecard' + (ty === type ? ' on' : '')}
                   onClick={() => changeType(ty)}
                 >
-                  <span aria-hidden="true">{BOOKING_TYPE_ICON[ty]}</span>
-                  {t.index.bookingType[ty]}
+                  <span className="bs-typecard-ic" aria-hidden="true">
+                    {BOOKING_TYPE_ICON[ty]}
+                  </span>
+                  <span className="bs-typecard-lbl">{t.index.bookingType[ty]}</span>
                 </button>
               ))}
             </div>
@@ -174,6 +197,26 @@ export function BookingSheet({
               aria-label={t.index.sheet.titlePlaceholder}
               autoFocus={isCreate}
             />
+          </div>
+
+          <div className="bs-caption">
+            <span>
+              ✨ {t.index.form.autoCaption}{' '}
+              <span className="cat-readout">{t.index.bookingType[type]}</span>
+            </span>
+            {iconTouched && (
+              <button
+                type="button"
+                className="bs-revert"
+                onClick={() => {
+                  setIcon(BOOKING_TYPE_ICON[type]);
+                  setCategory(BOOKING_TYPE_TO_CATEGORY[type]);
+                  setIconTouched(false);
+                }}
+              >
+                ↺ {t.index.form.reset}
+              </button>
+            )}
           </div>
 
           <label className="bs-field">
@@ -235,58 +278,67 @@ export function BookingSheet({
             <textarea value={notes} onChange={(e) => setNotes(e.target.value)} />
           </label>
 
-          <label className="bs-field">
-            {t.index.form.dateLabel}
-            <input
-              type="date"
-              lang={DEVICE_LOCALE}
-              min={trip.startDate}
-              max={trip.endDate}
-              value={date}
-              onChange={(e) => setDate(e.target.value)}
-            />
-          </label>
-
-          {date && (
+          {isTransport ? (
             <>
-              <TimePicker
-                start={start}
-                end={end}
-                onChange={(next) => {
-                  setStart(next.start);
-                  setEnd(next.end);
-                }}
-              />
-              <div className="bs-field">
-                {t.index.form.kindLabel}
-                <div className="kind-toggle">
-                  <button
-                    type="button"
-                    className={'soft' + (kind === EVENT_KIND.SOFT ? ' on' : '')}
-                    onClick={() => setKind(EVENT_KIND.SOFT)}
-                  >
-                    {t.index.form.kindSoft}
-                  </button>
-                  <button
-                    type="button"
-                    className={'hard' + (kind === EVENT_KIND.HARD ? ' on' : '')}
-                    onClick={() => setKind(EVENT_KIND.HARD)}
-                  >
-                    {t.index.form.kindHard}
-                  </button>
-                </div>
-              </div>
+              {/* A flight/train has a departure and an arrival that may fall on
+                  different days, so each is a full datetime (not a same-day span). */}
+              <label className="bs-field">
+                {t.index.form.departLabel}
+                <input
+                  type="datetime-local"
+                  lang={DEVICE_LOCALE}
+                  value={depAt}
+                  onChange={(e) => setDepAt(e.target.value)}
+                />
+              </label>
+              <label className="bs-field">
+                {t.index.form.arriveLabel}
+                <input
+                  type="datetime-local"
+                  lang={DEVICE_LOCALE}
+                  value={arrAt}
+                  onChange={(e) => setArrAt(e.target.value)}
+                />
+              </label>
+              {depAt && <KindToggle kind={kind} onPick={pickKind} />}
+            </>
+          ) : (
+            <>
+              <label className="bs-field">
+                {t.index.form.dateLabel}
+                <input
+                  type="date"
+                  lang={DEVICE_LOCALE}
+                  min={trip.startDate}
+                  max={trip.endDate}
+                  value={date}
+                  onChange={(e) => setDate(e.target.value)}
+                />
+              </label>
+              {date && (
+                <>
+                  <TimePicker
+                    start={start}
+                    end={end}
+                    onChange={(next) => {
+                      setStart(next.start);
+                      setEnd(next.end);
+                    }}
+                  />
+                  <KindToggle kind={kind} onPick={pickKind} />
+                </>
+              )}
             </>
           )}
 
           {error && <p className="bs-error">{error}</p>}
 
           <div className="bs-actions">
-            <button type="button" className="bs-cancel" onClick={onClose}>
-              {t.index.sheet.cancel}
-            </button>
             <button type="button" className="bs-save" onClick={save} disabled={saving}>
               {t.index.sheet.save}
+            </button>
+            <button type="button" className="bs-cancel" onClick={onClose}>
+              {t.index.sheet.cancel}
             </button>
           </div>
           {!isCreate && (
@@ -310,6 +362,36 @@ export function BookingSheet({
         />
       )}
     </>
+  );
+}
+
+function KindToggle({
+  kind,
+  onPick,
+}: {
+  kind: 'hard' | 'soft';
+  onPick: (k: 'hard' | 'soft') => void;
+}) {
+  return (
+    <div className="bs-field">
+      {t.index.form.kindLabel}
+      <div className="kind-toggle">
+        <button
+          type="button"
+          className={'soft' + (kind === EVENT_KIND.SOFT ? ' on' : '')}
+          onClick={() => onPick(EVENT_KIND.SOFT)}
+        >
+          {t.index.form.kindSoft}
+        </button>
+        <button
+          type="button"
+          className={'hard' + (kind === EVENT_KIND.HARD ? ' on' : '')}
+          onClick={() => onPick(EVENT_KIND.HARD)}
+        >
+          {t.index.form.kindHard}
+        </button>
+      </div>
+    </div>
   );
 }
 

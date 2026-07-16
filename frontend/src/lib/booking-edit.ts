@@ -1,7 +1,7 @@
 // Booking edit helpers (ADR-0047). Kept pure so the merge/flag/seed logic is
 // unit-testable without rendering the sheet.
 import type { Booking, BookingEventSeed, EventCategory, EventKind, Place } from '@waypoint/shared';
-import { zonedIso, resolveEndIso } from './time';
+import { zonedIso, resolveEndIso, isoToTimeInput, todayInTz } from './time';
 
 /** Editable free-form detail fields the sheet exposes (the rest of the booking's
  *  `details` blob is preserved untouched). */
@@ -90,4 +90,41 @@ export function buildEventSeed(
       : zonedIso(date, end, timeZone)
     : undefined;
   return { date, startsAt, endsAt, kind, icon, category };
+}
+
+/** A native datetime-local value ("YYYY-MM-DDTHH:MM") → its date + time parts. */
+function splitLocal(dt: string): { date: string; time: string } | null {
+  const [date, time] = dt.split('T');
+  return date && time ? { date, time } : null;
+}
+
+/** An instant → a datetime-local input value in the trip timezone, for
+ *  prefilling the departure/arrival fields when editing a transport booking. */
+export function isoToDateTimeLocal(iso: string, timeZone: string): string {
+  return `${todayInTz(timeZone, new Date(iso))}T${isoToTimeInput(iso, timeZone)}`;
+}
+
+/** Transport (flight/train) linked-event seed (ADR-0047 §1): an explicit
+ *  departure and arrival datetime, each in the trip timezone, spanning calendar
+ *  days via `endDate` when arrival lands on a later day. Returns `undefined`
+ *  with no departure (an index-only booking). */
+export function buildTransportSeed(
+  input: { depAt: string; arrAt: string; kind: EventKind; icon?: string; category?: EventCategory },
+  timeZone: string,
+): BookingEventSeed | undefined {
+  const dep = splitLocal(input.depAt);
+  if (!dep) return undefined;
+  const startsAt = zonedIso(dep.date, dep.time, timeZone);
+  const arr = splitLocal(input.arrAt);
+  const endsAt = arr ? zonedIso(arr.date, arr.time, timeZone) : undefined;
+  const endDate = arr && arr.date !== dep.date ? arr.date : undefined;
+  return {
+    date: dep.date,
+    startsAt,
+    endsAt,
+    endDate,
+    kind: input.kind,
+    icon: input.icon,
+    category: input.category,
+  };
 }

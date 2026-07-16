@@ -1,6 +1,12 @@
 import { describe, expect, it } from 'vitest';
 import type { Place } from '@waypoint/shared';
-import { buildEventSeed, deleteFlags, findPlaceByName, mergeBookingDetails } from './booking-edit';
+import {
+  buildEventSeed,
+  buildTransportSeed,
+  deleteFlags,
+  findPlaceByName,
+  mergeBookingDetails,
+} from './booking-edit';
 
 const TZ = 'Asia/Tokyo';
 const place = (id: string, name: string): Place => ({
@@ -91,5 +97,36 @@ describe('buildEventSeed', () => {
   it('a date with no times is a date-only linked event', () => {
     const seed = buildEventSeed({ date: '2026-07-20', start: '', end: '', kind: 'soft' }, TZ);
     expect(seed).toMatchObject({ date: '2026-07-20', startsAt: undefined, endsAt: undefined });
+  });
+});
+
+describe('buildTransportSeed', () => {
+  it('returns undefined with no departure', () => {
+    expect(buildTransportSeed({ depAt: '', arrAt: '', kind: 'hard' }, TZ)).toBeUndefined();
+  });
+
+  it('builds departure + arrival instants and an endDate when arrival is a later day', () => {
+    const seed = buildTransportSeed(
+      { depAt: '2026-07-20T23:40', arrAt: '2026-07-21T17:55', kind: 'hard', icon: '✈️' },
+      TZ,
+    );
+    expect(seed).toEqual({
+      date: '2026-07-20',
+      startsAt: '2026-07-20T14:40:00.000Z', // 23:40 +09:00
+      endsAt: '2026-07-21T08:55:00.000Z', // 17:55 +09:00
+      endDate: '2026-07-21',
+      kind: 'hard',
+      icon: '✈️',
+      category: undefined,
+    });
+  });
+
+  it('omits endDate for a same-day arrival', () => {
+    const seed = buildTransportSeed(
+      { depAt: '2026-07-20T09:00', arrAt: '2026-07-20T11:30', kind: 'hard' },
+      TZ,
+    );
+    expect(seed?.endDate).toBeUndefined();
+    expect(seed?.date).toBe('2026-07-20');
   });
 });
