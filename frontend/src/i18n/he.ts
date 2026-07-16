@@ -142,9 +142,10 @@ export const t = {
     allTrips: {
       back: 'חזרה לטיול',
       title: 'הטיולים שלי',
-      tripsCount: (n: number) => `${n} טיולים`,
-      current: 'נוכחי',
-      chipNow: 'עכשיו',
+      activeTrip: 'הטיול הפעיל',
+      sectionNow: 'עכשיו',
+      sectionSoon: 'בקרוב',
+      sectionPast: 'הסתיים',
       chipSoon: (days: number) => `בעוד ${formatDaysUntil(days)}`,
       chipPast: 'הסתיים',
       create: 'טיול חדש',
