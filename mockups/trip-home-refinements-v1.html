@@ -92,6 +92,12 @@
         border-radius: 16px;
         padding: 14px;
       }
+      .mini-label {
+        font-size: 11px;
+        font-weight: 700;
+        color: var(--muted);
+        margin: 0 2px 9px;
+      }
       .quick {
         display: grid;
         grid-template-columns: repeat(3, 1fr);
@@ -344,19 +350,44 @@
         מצבים ריקים לגישה מהירה, ואיך הכרטיס "היום במבט" מתנהג כשיש אירועים חופפים.
       </p>
 
-      <!-- ========== A. empty / add states ========== -->
-      <div class="sec">א · גישה מהירה — כשאין מידע עדיין</div>
+      <!-- ========== A. quick access: derived vs managed (ADR-0050) ========== -->
+      <div class="sec">א · גישה מהירה — נגזר מול מנוהל</div>
+      <p class="note">
+        שני סוגי אריחים. <b>נגזרים</b> (הכרטיס הבא, WiFi) משקפים מידע אמיתי ו<b>נעלמים</b> כשאין
+        מקור — אין הזמנה קרובה עם קוד → אין "הכרטיס הבא"; אין הזמנת מלון → אין WiFi (ADR-0047 §6).
+        אין הוספה ידנית: מוסיפים הזמנה, לא "קוד הבא". <b>מנוהל</b> (מסמכים) הוא קיצור לאזור שהמשתמש
+        ממלא בעצמו, אז הוא תמיד נוכח, ובטיול בלי מסמכים הוא נושא ＋ שמזמין להוסיף.
+      </p>
+
       <div class="screen">
+        <div class="mini-label">מלא · הזמנה קרובה עם קוד · מלון עם WiFi · מסמכים</div>
         <div class="quick">
           <button class="qa">
             <span class="ic">🎫</span><span class="lb">הכרטיס הבא</span>
             <span class="code" dir="ltr">#4471</span>
           </button>
-          <button class="qa empty">
-            <span class="ic">📶</span>
-            <span class="lb"><span class="plus">＋</span> קוד WiFi</span>
-            <span class="sub">הוסיפו קוד</span>
+          <button class="qa">
+            <span class="ic">📶</span><span class="lb">קוד WiFi</span>
+            <span class="sub" dir="ltr">Granbell-Guest</span>
           </button>
+          <button class="qa"><span class="ic">🛂</span><span class="lb">מסמכים</span></button>
+        </div>
+      </div>
+
+      <div class="screen" style="margin-top: 11px">
+        <div class="mini-label">אין הזמנת מלון → אריח ה-WiFi נעלם, הרשת מצטמצמת ל-2</div>
+        <div class="quick" style="grid-template-columns: repeat(2, 1fr)">
+          <button class="qa">
+            <span class="ic">🎫</span><span class="lb">הכרטיס הבא</span>
+            <span class="code" dir="ltr">#4471</span>
+          </button>
+          <button class="qa"><span class="ic">🛂</span><span class="lb">מסמכים</span></button>
+        </div>
+      </div>
+
+      <div class="screen" style="margin-top: 11px">
+        <div class="mini-label">טיול חדש · אין קוד קרוב ואין מלון → רק אריח המסמכים, עם ＋</div>
+        <div class="quick" style="grid-template-columns: repeat(2, 1fr)">
           <button class="qa empty">
             <span class="ic">🛂</span>
             <span class="lb"><span class="plus">＋</span> מסמכים</span>
@@ -365,9 +396,7 @@
         </div>
       </div>
       <p class="note">
-        תיבה עם מידע = כרטיס מלא ולחיץ. תיבה <b>ריקה</b> = מקווקוות, מעומעמת, עם ＋ שמזמין להוסיף —
-        לא כרטיס "מת". WiFi נתמך (הוספה אמיתית בהמשך); <b>מסמכים עדיין לא ב-FE</b>, אז זו כרגע
-        פיקסצ׳ר כנה: מציג "הוסיפו מסמך", והפעולה מתוגלת עד שהפיצ׳ר ינחת.
+        <b>מסמכים עדיין לא ב-FE</b> — האריח קיים כקיצור, ופעולת ההוספה מתוגלת עד שהפיצ׳ר ינחת.
       </p>
       <div class="hr"></div>
 

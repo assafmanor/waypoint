@@ -1,0 +1,1457 @@
+<!doctype html>
+<!-- Trip-mode Index tab (2026-07-16 session). The shippable Index screen,
+     promoting the approved behavior from ADR-0047 (booking<->event linkage,
+     delete/unlink, per-file documents, notes + hotel WiFi) and its follow-up
+     ADR-0048 (Event is the sole time authority; kind selectable on a
+     booking-backed event). Supersedes the INDEX section of trip-dashboard-v2.html
+     (which stays the reference for map/day only), the way trip-home-v3 superseded
+     that file's HOME. Replaces the review companion index-bookings-documents-proposal-v1.
+
+     Behavior shown:
+       - Bookings list: linked rows carry 🔗 + the day/time of their Event;
+         unlinked rows (no time yet) carry a direct "＋ שבץ". A booking with no
+         dedicated BookingType is "אחר" (car rental), icon still hand-pickable.
+       - Tap a booking → one merged edit sheet (Booking fields + Event timing,
+         same screen from Index or day view). Times live on the Event (ADR-0048);
+         the sheet's date fields reuse the TimePicker chrome (ADR-0036/0037) and
+         the icon reuses the IconPicker chip + derived category (ADR-0038).
+       - Hotel gets a dedicated WiFi field; every type gets free-text notes; both
+         ride Booking.details (no migration, ADR-0047).
+       - Delete a linked booking → the two-choice prompt (delete both / unlink and
+         keep the event), the UI for the backend's onDelete:SetNull + 409.
+       - "＋ שבץ" opens the SAME sheet with empty timing; saving a time auto-creates
+         the Event and the row flips to 🔗 (no separate schedule step).
+       - Documents: one row per file (matches the Document entity), grouped by the
+         4 Document.type values (passport/insurance/visa/other); independent of
+         bookings. Empty states teach, never dead-end (design-language.md).
+       - "＋ הוסף הזמנה" AND "＋ הוסף מסמך" are both present in Trip mode (Tier 2,
+         ADR-0025), as matched prominent affordances (peer lists, peer add buttons).
+
+     Two orthogonal axes (ADR-0016 mode vs ADR-0040 lifecycle):
+       - MODE → chrome only. This file is Trip (night) chrome; Plan is the same
+         content under the drafting-table reskin (light paper + --plan violet +
+         ✏️, per plan-mode-v1). Nothing on the Index is Tier-3-gated, so Plan and
+         Trip have identical bookings/documents and identical capabilities.
+       - LIFECYCLE → content states (the demo toggle):
+         · במהלך (during): upcoming/active + a muted "כבר מאחוריכם" past section.
+         · ריק (before, brand-new): teaching empty states.
+         · ארכיון (after): read-only + desaturated wash, no add/edit, no active/now
+           states, documents still openable (ADR-0040/0044/0043).
+         "Before the trip (with bookings)" = the during view minus the past section.
+     No day-strip: the Index is trip-wide, not day-scoped. No board hero: the board
+     is rationed to Home (ADR-0028). Where this and the design docs conflict, docs win. -->
+<html lang="he" dir="rtl">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>אינדקס · מצב טיול · מוקאפ v1</title>
+    <link rel="preconnect" href="https://fonts.googleapis.com" />
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+    <link
+      href="https://fonts.googleapis.com/css2?family=Assistant:wght@400;500;600;700&family=Secular+One&family=JetBrains+Mono:wght@500;700&display=swap"
+      rel="stylesheet"
+    />
+    <style>
+      :root {
+        --ink: #16233d;
+        --indigo: #1b2a4a;
+        --screen: #e7eaef;
+        --card: #ffffff;
+        --paper: #f3efe6;
+        --amber: #e9a63c;
+        --amber-deep: #c9822a;
+        --teal: #2c9c90;
+        --plan: #6e59d6;
+        --ok: #3c9a6b;
+        --miss: #c2584e;
+        --muted: #6c7488;
+        --line: rgba(22, 35, 61, 0.1);
+        --soft-line: rgba(22, 35, 61, 0.28);
+      }
+      * {
+        box-sizing: border-box;
+        margin: 0;
+        padding: 0;
+      }
+      html,
+      body {
+        height: 100%;
+      }
+      body {
+        font-family: 'Assistant', system-ui, sans-serif;
+        background:
+          radial-gradient(120% 90% at 80% -10%, #2a3e68 0%, transparent 55%),
+          radial-gradient(120% 90% at 0% 110%, #1a2a4a 0%, transparent 50%), #0f1a31;
+        color: var(--ink);
+        min-height: 100vh;
+        display: flex;
+        flex-direction: column;
+        align-items: center;
+        padding: 24px 16px 40px;
+        -webkit-font-smoothing: antialiased;
+      }
+      .caption {
+        text-align: center;
+        color: #aeb9d4;
+        font-size: 12.5px;
+        margin-bottom: 14px;
+        font-weight: 500;
+      }
+      .caption b {
+        color: #fff;
+        font-weight: 600;
+      }
+
+      /* demo control — flip the body between populated and empty (mockup only) */
+      .demo-toggle {
+        display: inline-flex;
+        background: rgba(255, 255, 255, 0.08);
+        border: 1px solid rgba(255, 255, 255, 0.16);
+        border-radius: 999px;
+        padding: 3px;
+        gap: 2px;
+        margin-bottom: 16px;
+      }
+      .demo-toggle button {
+        font: inherit;
+        font-size: 12px;
+        font-weight: 600;
+        color: #9daac8;
+        background: none;
+        border: 0;
+        border-radius: 999px;
+        padding: 6px 15px;
+        cursor: pointer;
+      }
+      .demo-toggle button.on {
+        background: #fff;
+        color: var(--ink);
+      }
+
+      .phone {
+        width: 100%;
+        max-width: 392px;
+        background: var(--screen);
+        border-radius: 38px;
+        box-shadow:
+          0 18px 40px -18px rgba(14, 23, 41, 0.45),
+          0 0 0 10px #0b1526,
+          0 0 0 12px #223257;
+        overflow: hidden;
+        position: relative;
+        height: 812px;
+        display: flex;
+        flex-direction: column;
+      }
+
+      .statusbar {
+        background: var(--indigo);
+        color: #dce3f2;
+        display: flex;
+        justify-content: space-between;
+        align-items: center;
+        padding: 11px 22px 8px;
+        font-size: 13px;
+        font-weight: 600;
+        font-family: 'JetBrains Mono', monospace;
+      }
+      .statusbar .dots {
+        letter-spacing: 2px;
+        opacity: 0.85;
+      }
+
+      .header {
+        background: var(--indigo);
+        color: #fff;
+        padding: 6px 20px 16px;
+      }
+      .mode-row {
+        display: flex;
+        justify-content: center;
+        margin: 2px 0 12px;
+      }
+      .mode-toggle {
+        display: inline-flex;
+        background: rgba(255, 255, 255, 0.08);
+        border: 1px solid rgba(255, 255, 255, 0.14);
+        border-radius: 999px;
+        padding: 3px;
+        gap: 2px;
+      }
+      .mode-toggle .m {
+        font: inherit;
+        font-size: 13px;
+        font-weight: 600;
+        color: #9daac8;
+        background: none;
+        border: 0;
+        border-radius: 999px;
+        padding: 6px 16px;
+        cursor: pointer;
+        display: flex;
+        align-items: center;
+        gap: 6px;
+      }
+      .mode-toggle .m.on {
+        background: var(--amber);
+        color: #3a2405;
+      }
+      .trip-row {
+        display: flex;
+        justify-content: space-between;
+        align-items: flex-start;
+      }
+      .trip-switch {
+        display: inline-flex;
+        align-items: center;
+        gap: 8px;
+        background: rgba(255, 255, 255, 0.09);
+        border: 1px solid rgba(255, 255, 255, 0.16);
+        border-radius: 999px;
+        padding: 5px 8px 5px 14px;
+        font: inherit;
+        color: inherit;
+        cursor: pointer;
+      }
+      .trip-name {
+        font-family: 'Secular One', sans-serif;
+        font-size: 23px;
+        line-height: 1.05;
+      }
+      .trip-switch .chev {
+        width: 22px;
+        height: 22px;
+        border-radius: 50%;
+        background: rgba(255, 255, 255, 0.14);
+        display: grid;
+        place-items: center;
+        font-size: 11px;
+        flex: 0 0 auto;
+      }
+      .trip-sub {
+        color: #9daac8;
+        font-size: 13px;
+        margin-top: 5px;
+        font-weight: 500;
+      }
+      .trip-sub .dot {
+        opacity: 0.5;
+        margin: 0 6px;
+      }
+      .header-actions {
+        display: flex;
+        align-items: center;
+        gap: 8px;
+      }
+      .avatars {
+        display: flex;
+        flex-direction: row-reverse;
+        margin-inline-end: 4px;
+      }
+      .av {
+        width: 31px;
+        height: 31px;
+        border-radius: 50%;
+        display: grid;
+        place-items: center;
+        color: #12203a;
+        font-weight: 700;
+        font-size: 12.5px;
+        border: 2px solid var(--indigo);
+        margin-inline-start: -9px;
+      }
+      .av.more {
+        background: rgba(255, 255, 255, 0.14);
+        color: #dce3f2;
+        font-size: 11px;
+      }
+      .account-btn {
+        margin-inline-start: 0;
+        border-color: rgba(255, 255, 255, 0.55);
+        cursor: pointer;
+        font: inherit;
+      }
+      .gear-btn {
+        width: 33px;
+        height: 33px;
+        border-radius: 50%;
+        display: grid;
+        place-items: center;
+        background: rgba(255, 255, 255, 0.12);
+        border: 1px solid rgba(255, 255, 255, 0.22);
+        color: #fff;
+        font-size: 15px;
+        cursor: pointer;
+      }
+
+      .body {
+        flex: 1;
+        overflow-y: auto;
+        padding: 16px 16px 40px;
+        position: relative;
+      }
+      .body::-webkit-scrollbar {
+        width: 0;
+      }
+      .view {
+        display: none;
+      }
+      .view.on {
+        display: block;
+      }
+
+      .sec-title {
+        font-family: 'Secular One', sans-serif;
+        font-size: 14.5px;
+        color: var(--ink);
+        display: flex;
+        align-items: center;
+        gap: 8px;
+        margin: 4px 2px 9px;
+      }
+      .sec-title:not(:first-child) {
+        margin-top: 20px;
+      }
+      .badge-offline {
+        font-size: 10.5px;
+        font-weight: 600;
+        color: var(--muted);
+        background: rgba(22, 35, 61, 0.06);
+        border-radius: 999px;
+        padding: 2px 8px;
+      }
+
+      .addbtn {
+        width: 100%;
+        background: transparent;
+        border: 1.5px dashed var(--soft-line);
+        color: var(--muted);
+        font: inherit;
+        font-weight: 700;
+        font-size: 12.5px;
+        border-radius: 13px;
+        padding: 11px;
+        cursor: pointer;
+        margin-bottom: 10px;
+      }
+
+      .listcard {
+        background: var(--card);
+        border: 1px solid var(--line);
+        border-radius: 16px;
+        overflow: hidden;
+      }
+      .li {
+        display: flex;
+        align-items: center;
+        gap: 11px;
+        padding: 12px 14px;
+        border-bottom: 1px solid var(--line);
+        cursor: pointer;
+      }
+      .li:last-child {
+        border-bottom: none;
+      }
+      .li:hover {
+        background: #fafbfd;
+      }
+      .li .badge2 {
+        width: 36px;
+        height: 36px;
+        border-radius: 11px;
+        background: var(--paper);
+        display: grid;
+        place-items: center;
+        font-size: 17px;
+        flex: 0 0 auto;
+      }
+      .li .main {
+        flex: 1;
+        min-width: 0;
+      }
+      .li .main .t {
+        font-size: 13.5px;
+        font-weight: 700;
+        display: flex;
+        align-items: center;
+        gap: 6px;
+        flex-wrap: wrap;
+      }
+      .li .main .m {
+        font-size: 11.5px;
+        color: var(--muted);
+        margin-top: 3px;
+        display: flex;
+        align-items: center;
+        gap: 5px;
+        flex-wrap: wrap;
+      }
+      .li .right {
+        text-align: end;
+        flex: 0 0 auto;
+      }
+      .li .right .code {
+        font-family: 'JetBrains Mono', monospace;
+        font-size: 11.5px;
+        font-weight: 700;
+        color: var(--amber-deep);
+      }
+      .li .right .time {
+        font-size: 10.5px;
+        color: var(--muted);
+        margin-top: 3px;
+        font-family: 'JetBrains Mono', monospace;
+      }
+      .tag-type {
+        font-size: 9.5px;
+        font-weight: 700;
+        color: var(--muted);
+        background: rgba(22, 35, 61, 0.06);
+        border-radius: 6px;
+        padding: 1.5px 6px;
+      }
+      .link-cue {
+        color: var(--muted);
+        font-size: 10.5px;
+        font-weight: 700;
+      }
+      /* transport route: the origin→dest identity of a flight/train row.
+         dir=ltr keeps origin on the left, dest on the right in the RTL layout;
+         the arrow is muted so the two place names read as the content. Each
+         endpoint is a Place (ADR-0048) — the same data the Map/pins will use. */
+      .route {
+        font-weight: 700;
+      }
+      .route .arr {
+        color: var(--muted);
+        font-weight: 400;
+        padding: 0 3px;
+      }
+      .unlinked {
+        color: var(--muted);
+        font-size: 10.5px;
+        font-weight: 700;
+      }
+      .add-link {
+        font-size: 10.5px;
+        font-weight: 700;
+        color: var(--ink);
+        background: #fff;
+        border: 1px solid var(--soft-line);
+        border-radius: 999px;
+        padding: 3px 10px;
+        margin-top: 4px;
+        cursor: pointer;
+        font-family: inherit;
+      }
+
+      /* documents: one row per file, grouped by type */
+      .doc-group .gt {
+        font-size: 11px;
+        font-weight: 700;
+        color: var(--muted);
+        padding: 10px 14px 2px;
+      }
+      .doc-group:first-child .gt {
+        padding-top: 12px;
+      }
+      .li.doc .main .t {
+        font-weight: 600;
+      }
+      .li.doc .right .time {
+        font-size: 13px;
+      }
+
+      /* empty states — teach, never dead-end */
+      .empty-card {
+        background: var(--card);
+        border: 1px solid var(--line);
+        border-radius: 16px;
+        text-align: center;
+        padding: 26px 20px 22px;
+      }
+      .empty-card.doc {
+        border-style: dashed;
+        border-color: var(--soft-line);
+      }
+      .empty-card .ei {
+        font-size: 26px;
+        opacity: 0.75;
+      }
+      .empty-card .et {
+        font-family: 'Secular One', sans-serif;
+        font-size: 15.5px;
+        margin-top: 8px;
+      }
+      .empty-card .es {
+        font-size: 12.5px;
+        color: var(--muted);
+        margin-top: 5px;
+        line-height: 1.55;
+      }
+      .empty-card .ea {
+        display: inline-flex;
+        align-items: center;
+        gap: 5px;
+        margin-top: 14px;
+        font: inherit;
+        font-size: 12.5px;
+        font-weight: 700;
+        color: var(--ink);
+        background: #fff;
+        border: 1.5px solid var(--soft-line);
+        border-radius: 999px;
+        padding: 8px 16px;
+        cursor: pointer;
+      }
+      .empty-card .ea .plus {
+        color: var(--amber-deep);
+      }
+
+      /* ===== overlays: merged edit sheet + delete/unlink modal ===== */
+      .scrim {
+        position: absolute;
+        inset: 0;
+        background: rgba(14, 23, 41, 0.55);
+        opacity: 0;
+        pointer-events: none;
+        transition: opacity 0.24s;
+        z-index: 5;
+        display: flex;
+      }
+      .scrim.show {
+        opacity: 1;
+        pointer-events: auto;
+      }
+      .scrim.sheet-scrim {
+        align-items: flex-end;
+      }
+      .scrim.modal-scrim {
+        align-items: center;
+        justify-content: center;
+        padding: 24px;
+      }
+
+      .sheet {
+        width: 100%;
+        background: var(--card);
+        border-radius: 20px 20px 0 0;
+        padding: 8px 16px 18px;
+        max-height: 90%;
+        overflow-y: auto;
+        transform: translateY(100%);
+        transition: transform 0.28s cubic-bezier(0.16, 1, 0.3, 1);
+      }
+      .scrim.show .sheet {
+        transform: none;
+      }
+      .sheet::-webkit-scrollbar {
+        width: 0;
+      }
+      .grip {
+        width: 36px;
+        height: 4px;
+        border-radius: 2px;
+        background: var(--soft-line);
+        margin: 4px auto 12px;
+      }
+      .titlerow {
+        display: flex;
+        align-items: center;
+        gap: 9px;
+      }
+      .icon-chip {
+        position: relative;
+        flex: 0 0 auto;
+        width: 42px;
+        height: 42px;
+        display: grid;
+        place-items: center;
+        font-size: 19px;
+        background: #fff;
+        border: 1px solid var(--soft-line);
+        border-radius: 11px;
+        cursor: pointer;
+      }
+      .icon-chip::after {
+        content: '';
+        position: absolute;
+        bottom: 4px;
+        inset-inline-start: 4px;
+        border-left: 3px solid transparent;
+        border-right: 3px solid transparent;
+        border-top: 4px solid var(--soft-line);
+      }
+      .titlerow .grow {
+        flex: 1;
+      }
+      .titlerow .grow input {
+        width: 100%;
+        border: 1px solid var(--soft-line);
+        border-radius: 10px;
+        padding: 10px 11px;
+        font: inherit;
+        font-size: 14.5px;
+        font-weight: 700;
+        color: var(--ink);
+        background: #fff;
+      }
+      .auto-caption {
+        font-size: 11px;
+        font-weight: 600;
+        color: var(--muted);
+        margin: 6px 2px 12px;
+        display: flex;
+        align-items: center;
+        gap: 6px;
+        flex-wrap: wrap;
+      }
+      .cat-readout {
+        font-size: 10.5px;
+        font-weight: 700;
+        color: var(--muted);
+        background: var(--screen);
+        border-radius: 999px;
+        padding: 2px 8px;
+      }
+      .revert {
+        font-size: 11px;
+        font-weight: 700;
+        color: var(--muted);
+        background: none;
+        border: none;
+        cursor: pointer;
+        padding: 0;
+        font-family: inherit;
+      }
+      .owner {
+        font-size: 9.5px;
+        font-weight: 700;
+        letter-spacing: 0.03em;
+        color: var(--muted);
+        text-transform: uppercase;
+        margin: 16px 2px 7px;
+      }
+      .field {
+        margin-bottom: 10px;
+      }
+      .field label {
+        display: block;
+        font-size: 11px;
+        font-weight: 700;
+        color: var(--muted);
+        margin-bottom: 4px;
+      }
+      .field input,
+      .field textarea {
+        width: 100%;
+        border: 1px solid var(--soft-line);
+        border-radius: 10px;
+        padding: 9px 11px;
+        font: inherit;
+        font-size: 13.5px;
+        color: var(--ink);
+        background: #fff;
+      }
+      .field textarea {
+        min-height: 54px;
+        resize: vertical;
+      }
+      .tp-fields {
+        display: flex;
+        gap: 9px;
+        margin-bottom: 10px;
+      }
+      .tfield {
+        flex: 1;
+        background: #fff;
+        border: 1px solid var(--soft-line);
+        border-radius: 10px;
+        padding: 7px 11px 8px;
+        cursor: pointer;
+        display: flex;
+        flex-direction: column;
+        gap: 1px;
+      }
+      .tfield.open {
+        border-color: var(--amber);
+        box-shadow: 0 0 0 2px rgba(233, 166, 60, 0.16);
+      }
+      .tfield .cap {
+        font-size: 11px;
+        font-weight: 700;
+        color: var(--muted);
+      }
+      .tfield .val {
+        font-family: 'JetBrains Mono', monospace;
+        font-size: 15px;
+        font-weight: 700;
+        color: var(--amber-deep);
+      }
+      .tfield .val .nextday {
+        font-family: 'Assistant', sans-serif;
+        font-size: 10px;
+        background: rgba(233, 166, 60, 0.15);
+        border-radius: 6px;
+        padding: 0 4px;
+        margin-inline-start: 3px;
+      }
+      .wifi-block {
+        background: rgba(44, 156, 144, 0.07);
+        border: 1px solid rgba(44, 156, 144, 0.25);
+        border-radius: 12px;
+        padding: 10px 11px 2px;
+        margin-bottom: 10px;
+      }
+      .wifi-block .wt {
+        font-size: 11px;
+        font-weight: 700;
+        color: var(--teal);
+        margin-bottom: 8px;
+      }
+      .route-hint {
+        font-size: 10.5px;
+        color: var(--teal);
+        font-weight: 600;
+        margin: 2px 2px 0;
+      }
+      .row2 {
+        display: grid;
+        grid-template-columns: 1fr 1fr;
+        gap: 10px;
+      }
+      .kindsel {
+        display: flex;
+        gap: 8px;
+      }
+      .kindsel button {
+        flex: 1;
+        border: 1.5px solid var(--soft-line);
+        background: #fff;
+        border-radius: 10px;
+        padding: 8px;
+        font: inherit;
+        font-size: 12.5px;
+        font-weight: 700;
+        color: var(--muted);
+        cursor: pointer;
+      }
+      .kindsel button.hard {
+        border-color: var(--amber-deep);
+        color: var(--amber-deep);
+        background: rgba(233, 166, 60, 0.1);
+      }
+      .empty-timing {
+        background: var(--screen);
+        border: 1px dashed var(--soft-line);
+        border-radius: 12px;
+        padding: 14px;
+        margin-bottom: 10px;
+      }
+      .empty-timing .es {
+        font-size: 12px;
+        color: var(--muted);
+        margin-bottom: 10px;
+        line-height: 1.5;
+      }
+      .empty-timing .ea {
+        display: inline-flex;
+        align-items: center;
+        gap: 5px;
+        font: inherit;
+        font-size: 12.5px;
+        font-weight: 700;
+        color: var(--ink);
+        background: #fff;
+        border: 1.5px solid var(--soft-line);
+        border-radius: 999px;
+        padding: 7px 15px;
+        cursor: pointer;
+      }
+      .empty-timing .ea .plus {
+        color: var(--amber-deep);
+      }
+      .form-actions {
+        display: flex;
+        gap: 8px;
+        margin-top: 16px;
+      }
+      .btn-primary {
+        flex: 1;
+        background: var(--ink);
+        color: #fff;
+        border: none;
+        border-radius: 12px;
+        padding: 12px;
+        font: inherit;
+        font-weight: 700;
+        font-size: 13.5px;
+        cursor: pointer;
+      }
+      .btn-ghost {
+        background: transparent;
+        border: 1.5px solid var(--soft-line);
+        color: var(--muted);
+        border-radius: 12px;
+        padding: 12px 14px;
+        font: inherit;
+        font-weight: 700;
+        font-size: 13.5px;
+        cursor: pointer;
+      }
+      .btn-danger {
+        width: 100%;
+        margin-top: 8px;
+        background: transparent;
+        border: none;
+        color: var(--miss);
+        font: inherit;
+        font-weight: 700;
+        font-size: 12.5px;
+        padding: 10px;
+        cursor: pointer;
+      }
+
+      .modal {
+        background: var(--card);
+        border-radius: 16px;
+        padding: 18px 18px 14px;
+        width: 100%;
+        text-align: center;
+        transform: scale(0.94);
+        transition: transform 0.2s;
+      }
+      .scrim.show .modal {
+        transform: none;
+      }
+      .modal .mi {
+        font-size: 22px;
+      }
+      .modal h4 {
+        font-family: 'Secular One', sans-serif;
+        font-size: 15.5px;
+        margin: 6px 0 5px;
+      }
+      .modal p {
+        font-size: 12.5px;
+        color: var(--muted);
+        line-height: 1.55;
+        margin-bottom: 15px;
+      }
+      .choices {
+        display: flex;
+        flex-direction: column;
+        gap: 8px;
+      }
+      .choice {
+        border: 1.5px solid var(--soft-line);
+        background: #fff;
+        border-radius: 12px;
+        padding: 10px 12px;
+        text-align: start;
+        cursor: pointer;
+        font: inherit;
+      }
+      .choice .ct {
+        font-size: 13px;
+        font-weight: 700;
+      }
+      .choice .cs {
+        font-size: 11px;
+        color: var(--muted);
+        margin-top: 1px;
+      }
+      .choice.danger .ct {
+        color: var(--miss);
+      }
+      .modal .cancel {
+        margin-top: 10px;
+        background: none;
+        border: none;
+        color: var(--muted);
+        font: inherit;
+        font-size: 12.5px;
+        font-weight: 700;
+        padding: 6px;
+        cursor: pointer;
+      }
+
+      .toast {
+        position: absolute;
+        left: 16px;
+        right: 16px;
+        bottom: 78px;
+        background: var(--ink);
+        color: #fff;
+        border-radius: 13px;
+        padding: 13px 16px;
+        font-size: 13.5px;
+        font-weight: 500;
+        box-shadow: 0 12px 28px -10px rgba(0, 0, 0, 0.5);
+        display: flex;
+        align-items: center;
+        gap: 9px;
+        opacity: 0;
+        transform: translateY(12px);
+        pointer-events: none;
+        transition: 0.28s;
+        z-index: 8;
+      }
+      .toast.show {
+        opacity: 1;
+        transform: none;
+      }
+      .toast .ic {
+        font-size: 17px;
+      }
+
+      .nav {
+        position: absolute;
+        inset-inline: 0;
+        bottom: 0;
+        background: rgba(255, 255, 255, 0.92);
+        backdrop-filter: blur(12px);
+        border-top: 1px solid var(--line);
+        display: flex;
+        padding: 9px 8px;
+      }
+      .nav button {
+        flex: 1;
+        background: none;
+        border: 0;
+        font: inherit;
+        cursor: pointer;
+        color: var(--muted);
+        display: flex;
+        flex-direction: column;
+        align-items: center;
+        gap: 3px;
+        padding: 5px 0;
+        font-size: 10.5px;
+        font-weight: 600;
+      }
+      .nav button .ic {
+        font-size: 19px;
+      }
+      .nav button.on {
+        color: var(--indigo);
+      }
+      .nav button.on .ic {
+        background: rgba(27, 42, 74, 0.1);
+        border-radius: 10px;
+        padding: 2px 12px;
+      }
+
+      /* past bookings (already behind you mid-trip): a muted section below
+         upcoming, so a long trip's used bookings don't crowd the next thing.
+         Still openable (durable record: delay claims, receipts). */
+      .past-head {
+        font-size: 11px;
+        font-weight: 700;
+        color: var(--muted);
+        letter-spacing: 0.04em;
+        margin: 18px 2px 8px;
+      }
+      .listcard.past .li {
+        opacity: 0.6;
+      }
+      .listcard.past .li .code {
+        color: var(--muted);
+      }
+
+      /* archive (finished trip): read-only + desaturated wash (ADR-0040/0044/0043).
+         No add/edit; documents stay openable; no active/now states. */
+      .archive-banner {
+        display: flex;
+        align-items: center;
+        gap: 8px;
+        background: rgba(22, 35, 61, 0.05);
+        border: 1px solid var(--line);
+        border-radius: 12px;
+        padding: 10px 13px;
+        font-size: 12px;
+        font-weight: 600;
+        color: var(--muted);
+        margin-bottom: 14px;
+      }
+      #view-archive .listcard {
+        filter: saturate(0.55);
+      }
+      #view-archive .li {
+        cursor: default;
+      }
+      #view-archive .li:hover {
+        background: none;
+      }
+
+      @media (prefers-reduced-motion: reduce) {
+        * {
+          animation: none !important;
+          transition: none !important;
+        }
+      }
+    </style>
+  </head>
+  <body>
+    <p class="caption">אינדקס · <b>מצב טיול</b> · הזמנות ומסמכים · עובד אופליין</p>
+    <p class="caption" style="max-width: 392px; color: #93a0c0; margin-top: -8px">
+      התוכן זהה במצב תכנון · רק הכרום מתחלף (שולחן שרטוט בהיר · סגול · ✏️). "לפני הטיול" = אותו מסך
+      בלי מקטע "כבר מאחוריכם".
+    </p>
+
+    <div class="demo-toggle" role="tablist" aria-label="מצב תצוגה">
+      <button class="on" onclick="setState('full', this)">במהלך הטיול</button>
+      <button onclick="setState('empty', this)">ריק (טיול חדש)</button>
+      <button onclick="setState('archive', this)">ארכיון</button>
+    </div>
+
+    <div class="phone">
+      <div class="statusbar"><span id="sbclock">18:52</span><span class="dots">●●● 4G ▮</span></div>
+
+      <div class="header">
+        <div class="mode-row">
+          <div class="mode-toggle">
+            <button class="m on">🧭 טיול</button>
+            <button class="m">✏️ תכנון</button>
+          </div>
+        </div>
+        <div class="trip-row">
+          <div>
+            <button class="trip-switch" aria-label="החלף טיול · לכל הטיולים">
+              <span class="trip-name">יפן ׳26</span>
+              <span class="chev">▾</span>
+            </button>
+            <div class="trip-sub">טוקיו<span class="dot">•</span>יום 3 מתוך 10</div>
+          </div>
+          <div class="header-actions">
+            <div class="avatars" title="נועם · דנה · מאור · רון">
+              <div class="av more">+2</div>
+              <div class="av" style="background: #e88c8c">ד</div>
+              <div class="av" style="background: #5ec5b6">נ</div>
+            </div>
+            <button class="av account-btn" style="background: #e9a63c" aria-label="החשבון שלי">
+              א
+            </button>
+            <button class="gear-btn" aria-label="הגדרות הטיול">⚙</button>
+          </div>
+        </div>
+      </div>
+
+      <div class="body">
+        <!-- ===== during the trip: upcoming/active + a muted past section ===== -->
+        <div class="view on" id="view-full">
+          <div class="sec-title">הזמנות <span class="badge-offline">⬇ עובד אופליין</span></div>
+          <button class="addbtn" onclick="toast('＋', 'פותח טופס הוספת הזמנה')">
+            ＋ הוסף הזמנה
+          </button>
+          <div class="listcard">
+            <div class="li" onclick="openSheet('hotel')">
+              <div class="badge2">🏨</div>
+              <div class="main">
+                <div class="t">Shinjuku Granbell <span class="tag-type">לינה</span></div>
+                <div class="m">
+                  <span class="link-cue">🔗 צ׳ק-אאוט 10/07 · 11:00</span> · חדר 512
+                </div>
+              </div>
+              <div class="right">
+                <div class="code" dir="ltr">#GB-2291</div>
+                <div class="time">פעיל</div>
+              </div>
+            </div>
+            <div class="li" onclick="toast('🔗', 'פותח את מסך העריכה המשותף')">
+              <div class="badge2">🍜</div>
+              <div class="main">
+                <div class="t">Ichiran Ramen <span class="tag-type">מסעדה</span></div>
+                <div class="m"><span class="link-cue">🔗 היום · 19:30</span> · שולחן ל-5</div>
+              </div>
+              <div class="right">
+                <div class="code" dir="ltr">#4471</div>
+                <div class="time" dir="ltr">היום·19:30</div>
+              </div>
+            </div>
+            <div class="li" onclick="toast('🔗', 'פותח את מסך העריכה המשותף')">
+              <div class="badge2">🚗</div>
+              <div class="main">
+                <div class="t">שכירת רכב · Toyota Yaris <span class="tag-type">אחר</span></div>
+                <div class="m"><span class="link-cue">🔗 ביום 5 · 09:00</span></div>
+              </div>
+              <div class="right">
+                <div class="code" dir="ltr">#RC-5540</div>
+                <div class="time" dir="ltr">05·09:00</div>
+              </div>
+            </div>
+            <div class="li" onclick="openSheet('schedule')">
+              <div class="badge2">🚄</div>
+              <div class="main">
+                <div class="t">
+                  <span class="route" dir="ltr">קיוטו <span class="arr">→</span> טוקיו</span>
+                  <span class="tag-type">רכבת</span>
+                </div>
+                <div class="m"><span class="unlinked">לא משובצת במסלול</span></div>
+              </div>
+              <div class="right">
+                <div class="code" dir="ltr">#JR-91</div>
+                <button
+                  class="add-link"
+                  onclick="
+                    event.stopPropagation();
+                    openSheet('schedule');
+                  "
+                >
+                  ＋ שבץ
+                </button>
+              </div>
+            </div>
+          </div>
+
+          <div class="past-head">כבר מאחוריכם</div>
+          <div class="listcard past">
+            <div class="li" onclick="toast('🔗', 'פותח את מסך העריכה המשותף')">
+              <div class="badge2">✈️</div>
+              <div class="main">
+                <div class="t">
+                  <span class="route" dir="ltr">TLV <span class="arr">→</span> NRT</span>
+                  <span class="tag-type">טיסה</span>
+                </div>
+                <div class="m"><span class="link-cue">🔗 ביום 1 · הגעה</span></div>
+              </div>
+              <div class="right">
+                <div class="code" dir="ltr">NH831</div>
+                <div class="time" dir="ltr">01·23:40</div>
+              </div>
+            </div>
+          </div>
+
+          <div class="sec-title">מסמכים <span class="badge-offline">🔒 מוצפן · אופליין</span></div>
+          <button class="addbtn" onclick="toast('📎', 'בחר קובץ להעלאה')">＋ הוסף מסמך</button>
+          <div class="listcard" id="doclist-full"></div>
+        </div>
+
+        <!-- ===== empty (a brand-new trip) ===== -->
+        <div class="view" id="view-empty">
+          <div class="sec-title">הזמנות</div>
+          <div class="empty-card" style="margin-bottom: 18px">
+            <div class="ei">📇</div>
+            <div class="et">האינדקס עוד ריק</div>
+            <div class="es">
+              כרטיסי טיסה, מלונות והזמנות אחרים יופיעו כאן, ידנית או מיובאים אוטומטית מ-Gmail
+            </div>
+            <button class="ea" onclick="toast('＋', 'פותח טופס הוספת הזמנה')">
+              <span class="plus">＋</span> הוסף הזמנה ראשונה
+            </button>
+          </div>
+          <div class="sec-title">מסמכים</div>
+          <div class="empty-card doc">
+            <div class="ei">🛂</div>
+            <div class="et">אין עדיין מסמכים שמורים</div>
+            <div class="es">דרכונים, ביטוח וויזות · מוצפנים ונשארים זמינים גם בלי אינטרנט</div>
+            <button class="ea" onclick="toast('📎', 'בחר קובץ להעלאה')">
+              <span class="plus">＋</span> העלה מסמך ראשון
+            </button>
+          </div>
+        </div>
+
+        <!-- ===== archive (finished trip): read-only + wash, docs still openable ===== -->
+        <div class="view" id="view-archive">
+          <div class="archive-banner">🗄️ הטיול הסתיים · תצוגה בלבד</div>
+          <div class="sec-title">הזמנות</div>
+          <div class="listcard">
+            <div class="li" onclick="toast('👁️', 'תצוגה בלבד · טיול בארכיון')">
+              <div class="badge2">✈️</div>
+              <div class="main">
+                <div class="t">
+                  <span class="route" dir="ltr">TLV <span class="arr">→</span> NRT</span>
+                  <span class="tag-type">טיסה</span>
+                </div>
+                <div class="m"><span class="link-cue">🔗 יום 1 · הגעה</span></div>
+              </div>
+              <div class="right"><div class="code" dir="ltr">NH831</div></div>
+            </div>
+            <div class="li" onclick="toast('👁️', 'תצוגה בלבד · טיול בארכיון')">
+              <div class="badge2">🏨</div>
+              <div class="main">
+                <div class="t">Shinjuku Granbell <span class="tag-type">לינה</span></div>
+                <div class="m"><span class="link-cue">🔗 ימים 1–6 · צ׳ק-אאוט 10/07</span></div>
+              </div>
+              <div class="right"><div class="code" dir="ltr">#GB-2291</div></div>
+            </div>
+            <div class="li" onclick="toast('👁️', 'תצוגה בלבד · טיול בארכיון')">
+              <div class="badge2">🚄</div>
+              <div class="main">
+                <div class="t">
+                  <span class="route" dir="ltr">קיוטו <span class="arr">→</span> טוקיו</span>
+                  <span class="tag-type">רכבת</span>
+                </div>
+                <div class="m"><span class="link-cue">🔗 יום 6 · 14:20</span></div>
+              </div>
+              <div class="right"><div class="code" dir="ltr">#JR-91</div></div>
+            </div>
+          </div>
+
+          <div class="sec-title">מסמכים <span class="badge-offline">🔒 מוצפן · אופליין</span></div>
+          <div class="listcard" id="doclist-archive"></div>
+        </div>
+      </div>
+
+      <!-- ===== merged edit sheet ===== -->
+      <div class="scrim sheet-scrim" id="sheet-scrim" onclick="closeSheet(event)">
+        <div class="sheet" id="edit-sheet" onclick="event.stopPropagation()">
+          <div class="grip"></div>
+
+          <div class="titlerow">
+            <button class="icon-chip" onclick="toast('🖼️', 'פותח בורר סמלים (IconPicker)')">
+              <span id="sheet-icon">🏨</span>
+            </button>
+            <div class="grow"><input id="sheet-title" value="Shinjuku Granbell" /></div>
+          </div>
+          <div class="auto-caption">
+            ✨ נבחר לפי סוג ההזמנה <span class="cat-readout" id="sheet-cat">לינה</span>
+            <button class="revert" onclick="toast('↺', 'חוזר לסמל המוצע')">↺ איפוס</button>
+          </div>
+          <div class="sub" style="font-size: 11.5px; color: var(--muted); margin-bottom: 4px">
+            <span id="sheet-sub">מלון · הזמנה + אירוע במסלול</span>
+          </div>
+
+          <div class="owner">פרטי הזמנה</div>
+          <div class="field">
+            <label>קוד אישור</label><input dir="ltr" id="sheet-code" value="GB-2291" />
+          </div>
+          <div class="field" id="sheet-room-field"><label>חדר</label><input value="512" /></div>
+
+          <!-- transport only: origin/destination, each place-linked (ADR-0048).
+               fromPlaceId/toPlaceId feed the Map pins + navigate-to-next; the
+               Event's placeId points to the origin. Terminals/gates go in notes/details. -->
+          <div class="route-block" id="sheet-route" style="display: none">
+            <div class="row2">
+              <div class="field"><label>מוצא 📍</label><input value="תחנת קיוטו" /></div>
+              <div class="field"><label>יעד 📍</label><input value="תחנת טוקיו" /></div>
+            </div>
+            <div class="route-hint">📍 מקושר ל-Google Places · מזין את המפה והניווט</div>
+          </div>
+
+          <div class="wifi-block" id="sheet-wifi">
+            <div class="wt">
+              📶 WiFi <span style="font-weight: 400; color: var(--muted)">· שדה למלון בלבד</span>
+            </div>
+            <div class="row2">
+              <div class="field"><label>רשת</label><input dir="ltr" value="Granbell-Guest" /></div>
+              <div class="field"><label>סיסמה</label><input dir="ltr" value="tokyo2026" /></div>
+            </div>
+          </div>
+
+          <div class="field">
+            <label>הערות (כל סוג הזמנה)</label>
+            <textarea id="sheet-notes">צ׳ק-אין מ-15:00, יש לבקש חדר גבוה</textarea>
+          </div>
+
+          <div class="owner">תזמון במסלול</div>
+          <!-- timed variant -->
+          <div id="sheet-timed">
+            <div class="tp-fields">
+              <div class="tfield open">
+                <span class="cap">צ׳ק-אין</span>
+                <span class="val" dir="ltr">01.07 · 15:00</span>
+              </div>
+              <div class="tfield">
+                <span class="cap">צ׳ק-אאוט</span>
+                <span class="val" dir="ltr">07.07 · 11:00</span>
+              </div>
+            </div>
+            <div class="field">
+              <label>סוג אירוע</label>
+              <div class="kindsel"><button class="hard">🔒 קשיח</button><button>גמיש</button></div>
+            </div>
+          </div>
+          <!-- unscheduled variant (the ＋ שבץ entry) -->
+          <div id="sheet-untimed" style="display: none">
+            <div class="empty-timing">
+              <div class="es">
+                עדיין אין תאריך/שעה. ההזמנה מופיעה באינדקס בלבד, בלי כרטיס ביום. הוספת שעה תיצור את
+                האירוע במסלול והשורה תעבור ל-🔗.
+              </div>
+              <button class="ea" onclick="toast('📅', 'פותח TimePicker לבחירת תאריך ושעה')">
+                <span class="plus">＋</span> הוסף למסלול
+              </button>
+            </div>
+          </div>
+
+          <div class="form-actions">
+            <button
+              class="btn-primary"
+              onclick="
+                toast('✓', 'נשמר · הזמנה ואירוע מסונכרנים');
+                closeSheet();
+              "
+            >
+              שמור
+            </button>
+            <button class="btn-ghost" onclick="closeSheet()">בטל</button>
+          </div>
+          <button class="btn-danger" id="sheet-delete" onclick="openModal()">
+            🗑️ מחק הזמנה זו
+          </button>
+        </div>
+      </div>
+
+      <!-- ===== delete / unlink modal ===== -->
+      <div class="scrim modal-scrim" id="modal-scrim" onclick="closeModal(event)">
+        <div class="modal" onclick="event.stopPropagation()">
+          <div class="mi">🔗</div>
+          <h4>ההזמנה הזו משובצת במסלול</h4>
+          <p>יש אירוע במסלול שמסתמך על ההזמנה הזאת. מה לעשות?</p>
+          <div class="choices">
+            <button
+              class="choice danger"
+              onclick="
+                toast('🗑️', 'ההזמנה והאירוע נמחקו');
+                closeModal();
+                closeSheet();
+              "
+            >
+              <div class="ct">מחק את שניהם</div>
+              <div class="cs">ההזמנה והאירוע במסלול יימחקו</div>
+            </button>
+            <button
+              class="choice"
+              onclick="
+                toast('🔓', 'ההזמנה נמחקה · האירוע נשאר, בלי קוד אישור');
+                closeModal();
+                closeSheet();
+              "
+            >
+              <div class="ct">בטל שיוך ושמור את האירוע</div>
+              <div class="cs">האירוע נשאר במסלול כרשומה ידנית</div>
+            </button>
+          </div>
+          <button class="cancel" onclick="closeModal()">בטל</button>
+        </div>
+      </div>
+
+      <div class="toast" id="toast">
+        <span class="ic" id="toast-ic">✓</span><span id="toast-txt"></span>
+      </div>
+
+      <nav class="nav">
+        <button><span class="ic">🏠</span>בית</button>
+        <button><span class="ic">🗺️</span>מפה</button>
+        <button class="on"><span class="ic">📇</span>אינדקס</button>
+        <button><span class="ic">📅</span>יום-יום</button>
+      </nav>
+    </div>
+
+    <script>
+      let toastTimer;
+      function toast(icon, msg) {
+        document.getElementById('toast-ic').textContent = icon;
+        document.getElementById('toast-txt').textContent = msg;
+        const el = document.getElementById('toast');
+        el.classList.add('show');
+        clearTimeout(toastTimer);
+        toastTimer = setTimeout(() => el.classList.remove('show'), 2600);
+      }
+
+      // One documents template, injected into both the during-trip and archive
+      // lists so they can't drift. Archive omits the add affordance (read-only).
+      const DOC_GROUPS = [
+        [
+          'דרכונים',
+          [
+            ['🛂', 'דרכון · אסף'],
+            ['🛂', 'דרכון · נועה'],
+          ],
+        ],
+        ['ביטוח נסיעות', [['🛡️', 'פוליסה + מספר חירום']]],
+        ['ויזות', [['🛃', 'ויזה · יפן']]],
+        ['אחר', [['📄', 'אישור חיסונים']]],
+      ];
+      function docListHtml() {
+        return DOC_GROUPS.map(
+          ([group, files]) =>
+            `<div class="doc-group"><div class="gt">${group}</div>` +
+            files
+              .map(
+                ([icon, name]) =>
+                  `<div class="li doc" onclick="toast('${icon}','${name}')">` +
+                  `<div class="badge2">${icon}</div>` +
+                  `<div class="main"><div class="t">${name}</div><div class="m">זמין אופליין</div></div>` +
+                  `<div class="right"><div class="time">🔒</div></div></div>`,
+              )
+              .join('') +
+            `</div>`,
+        ).join('');
+      }
+      document.getElementById('doclist-full').innerHTML = docListHtml();
+      document.getElementById('doclist-archive').innerHTML = docListHtml();
+
+      function setState(state, btn) {
+        document.getElementById('view-full').classList.toggle('on', state === 'full');
+        document.getElementById('view-empty').classList.toggle('on', state === 'empty');
+        document.getElementById('view-archive').classList.toggle('on', state === 'archive');
+        document.querySelectorAll('.demo-toggle button').forEach((b) => b.classList.remove('on'));
+        btn.classList.add('on');
+      }
+
+      // The sheet is ONE surface; "hotel" shows a fully-linked booking, "schedule"
+      // shows the same booking before it has a time (the ＋ שבץ entry point).
+      function openSheet(mode) {
+        const timed = document.getElementById('sheet-timed');
+        const untimed = document.getElementById('sheet-untimed');
+        const wifi = document.getElementById('sheet-wifi');
+        const room = document.getElementById('sheet-room-field');
+        const route = document.getElementById('sheet-route');
+        const del = document.getElementById('sheet-delete');
+        if (mode === 'schedule') {
+          document.getElementById('sheet-icon').textContent = '🚄';
+          document.getElementById('sheet-title').value = 'שינקנסן · חזרה';
+          document.getElementById('sheet-cat').textContent = 'תחבורה';
+          document.getElementById('sheet-sub').textContent = 'רכבת · הזמנה בלי אירוע במסלול';
+          document.getElementById('sheet-code').value = 'JR-91';
+          document.getElementById('sheet-notes').value = '';
+          wifi.style.display = 'none';
+          room.style.display = 'none';
+          route.style.display = 'block';
+          timed.style.display = 'none';
+          untimed.style.display = 'block';
+          del.style.display = 'none';
+        } else {
+          document.getElementById('sheet-icon').textContent = '🏨';
+          document.getElementById('sheet-title').value = 'Shinjuku Granbell';
+          document.getElementById('sheet-cat').textContent = 'לינה';
+          document.getElementById('sheet-sub').textContent = 'מלון · הזמנה + אירוע במסלול';
+          document.getElementById('sheet-code').value = 'GB-2291';
+          document.getElementById('sheet-notes').value = 'צ׳ק-אין מ-15:00, יש לבקש חדר גבוה';
+          wifi.style.display = 'block';
+          room.style.display = 'block';
+          route.style.display = 'none';
+          timed.style.display = 'block';
+          untimed.style.display = 'none';
+          del.style.display = 'block';
+        }
+        document.getElementById('sheet-scrim').classList.add('show');
+      }
+      function closeSheet(e) {
+        if (e && e.target !== e.currentTarget) return;
+        document.getElementById('sheet-scrim').classList.remove('show');
+      }
+      function openModal() {
+        document.getElementById('modal-scrim').classList.add('show');
+      }
+      function closeModal(e) {
+        if (e && e.target !== e.currentTarget) return;
+        document.getElementById('modal-scrim').classList.remove('show');
+      }
+
+      let mins = 52,
+        hrs = 18;
+      setInterval(() => {
+        mins++;
+        if (mins >= 60) {
+          mins = 0;
+          hrs = (hrs + 1) % 24;
+        }
+        document.getElementById('sbclock').textContent =
+          String(hrs).padStart(2, '0') + ':' + String(mins).padStart(2, '0');
+      }, 4000);
+    </script>
+  </body>
+</html>
