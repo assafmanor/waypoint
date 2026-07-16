@@ -1,7 +1,8 @@
 import { describe, expect, it } from 'vitest';
-import { EVENT_STATUS, type TripEvent } from '@waypoint/shared';
+import { EVENT_KIND, EVENT_STATUS, type TripEvent } from '@waypoint/shared';
 import {
   addDays,
+  buildTimeTree,
   clampDate,
   dayProgress,
   deriveNow,
@@ -13,6 +14,8 @@ import {
   minutesUntil,
   monthLabelFor,
   shiftIso,
+  type TimeGroup,
+  type TimeItem,
   zonedIso,
   resolveEndIso,
   crossesMidnight,
@@ -247,5 +250,165 @@ describe('hardConflicts', () => {
 
   it('returns nothing for a hard event itself', () => {
     expect(hardConflicts(ichiran, EVENTS)).toEqual([]);
+  });
+});
+
+describe('buildTimeTree — containment forest + per-level clustering', () => {
+  const DAY = '2027-02-01';
+  const at = (hhmm: string) => `${DAY}T${hhmm}:00Z`;
+  let seq = 0;
+  const ev = (
+    id: string,
+    start: string | null,
+    end: string | null,
+    kind: TripEvent['kind'] = EVENT_KIND.SOFT,
+  ) =>
+    ({
+      id,
+      tripId: 't',
+      date: DAY,
+      title: id,
+      kind,
+      startsAt: start ? at(start) : undefined,
+      endsAt: end ? at(end) : undefined,
+      status: EVENT_STATUS.PLANNED,
+      sortOrder: seq++,
+      source: 'manual',
+      createdAt: at('00:00'),
+      updatedAt: at('00:00'),
+      updatedBy: 'u',
+    }) satisfies TripEvent;
+
+  // Compact structural view: 'id' for a leaf, {nest,children} for a container,
+  // {cluster} for a partial-overlap group.
+  type Shape = string | { nest: string; children: Shape[] } | { cluster: Shape[] };
+  const itemShape = (item: TimeItem): Shape =>
+    item.children.length === 0
+      ? item.event.id
+      : { nest: item.event.id, children: shape(item.children) };
+  const shape = (groups: TimeGroup[]): Shape[] =>
+    groups.map((g) =>
+      g.kind === 'cluster' ? { cluster: g.items.map(itemShape) } : itemShape(g.item),
+    );
+
+  it('leaves non-overlapping events as flat singles', () => {
+    const tree = buildTimeTree([
+      ev('A', '09:00', '10:00'),
+      ev('B', '11:00', '12:00'),
+      ev('C', '13:00', '14:00'),
+    ]);
+    expect(shape(tree)).toEqual(['A', 'B', 'C']);
+  });
+
+  it('treats back-to-back (end === start) as NOT overlapping', () => {
+    const tree = buildTimeTree([ev('A', '09:00', '10:00'), ev('B', '10:00', '11:00')]);
+    expect(shape(tree)).toEqual(['A', 'B']);
+  });
+
+  it('clusters a partial overlap', () => {
+    const tree = buildTimeTree([ev('A', '11:00', '13:00'), ev('B', '12:30', '14:00')]);
+    expect(shape(tree)).toEqual([{ cluster: ['A', 'B'] }]);
+  });
+
+  it('nests a contained event under its container', () => {
+    const tree = buildTimeTree([ev('A', '10:00', '18:00'), ev('B', '13:00', '14:00')]);
+    expect(shape(tree)).toEqual([{ nest: 'A', children: ['B'] }]);
+  });
+
+  it('nests multiple contained events flat under one envelope', () => {
+    const tree = buildTimeTree([
+      ev('A', '10:00', '18:00'),
+      ev('B', '11:00', '12:00'),
+      ev('C', '13:00', '14:00'),
+    ]);
+    expect(shape(tree)).toEqual([{ nest: 'A', children: ['B', 'C'] }]);
+  });
+
+  it('nests a chain A ⊃ B ⊃ C (parent = smallest container)', () => {
+    const tree = buildTimeTree([
+      ev('A', '10:00', '20:00'),
+      ev('B', '17:00', '19:00'),
+      ev('C', '18:00', '18:45'),
+    ]);
+    expect(shape(tree)).toEqual([{ nest: 'A', children: [{ nest: 'B', children: ['C'] }] }]);
+  });
+
+  it('composes: overlap WITHIN containment (a nest holding a cluster)', () => {
+    const tree = buildTimeTree([
+      ev('A', '10:00', '18:00'),
+      ev('B', '11:00', '13:00'),
+      ev('C', '12:30', '14:00'),
+    ]);
+    expect(shape(tree)).toEqual([{ nest: 'A', children: [{ cluster: ['B', 'C'] }] }]);
+  });
+
+  it('composes: containment WITHIN overlap (a cluster member that is a nest)', () => {
+    const tree = buildTimeTree([
+      ev('A', '09:00', '12:00'),
+      ev('D', '11:00', '18:00'),
+      ev('E', '13:00', '14:00'),
+    ]);
+    expect(shape(tree)).toEqual([{ cluster: ['A', { nest: 'D', children: ['E'] }] }]);
+  });
+
+  it('treats equal spans as cluster peers, never nested', () => {
+    const tree = buildTimeTree([ev('A', '10:00', '12:00'), ev('B', '10:00', '12:00')]);
+    expect(shape(tree)).toEqual([{ cluster: ['A', 'B'] }]);
+  });
+
+  it('ignores skipped/unscheduled events but keeps done ones (they hold their slot)', () => {
+    const done = { ...ev('D', '09:00', '10:00'), status: EVENT_STATUS.DONE };
+    const skipped = { ...ev('S', '11:00', '12:00'), status: EVENT_STATUS.SKIPPED };
+    const unscheduled = ev('U', null, null);
+    const tree = buildTimeTree([done, skipped, unscheduled, ev('A', '13:00', '14:00')]);
+    expect(shape(tree)).toEqual(['D', 'A']);
+  });
+});
+
+describe('deriveNow — concurrent now/next sets', () => {
+  const DAY = '2027-02-02';
+  const at = (hhmm: string) => new Date(`${DAY}T${hhmm}:00Z`);
+  const iso = (hhmm: string) => `${DAY}T${hhmm}:00Z`;
+  let seq = 0;
+  const ev = (id: string, start: string, end: string, kind: TripEvent['kind'] = EVENT_KIND.SOFT) =>
+    ({
+      id,
+      tripId: 't',
+      date: DAY,
+      title: id,
+      kind,
+      startsAt: iso(start),
+      endsAt: iso(end),
+      status: EVENT_STATUS.PLANNED,
+      sortOrder: seq++,
+      source: 'manual',
+      createdAt: iso('00:00'),
+      updatedAt: iso('00:00'),
+      updatedBy: 'u',
+    }) satisfies TripEvent;
+
+  it('returns every in-progress event, hard first as the primary', () => {
+    const soft = ev('soft', '10:00', '17:00');
+    const hard = ev('hard', '15:00', '16:00', EVENT_KIND.HARD);
+    const { now, nowAll } = deriveNow([soft, hard], at('15:20'));
+    expect(now?.id).toBe('hard');
+    expect(nowAll.map((e) => e.id)).toEqual(['hard', 'soft']);
+  });
+
+  it('orders equal-kind concurrent events by ends-soonest', () => {
+    const longer = ev('longer', '10:00', '16:00');
+    const shorter = ev('shorter', '11:00', '15:00');
+    const { now, nowAll } = deriveNow([longer, shorter], at('12:00'));
+    expect(now?.id).toBe('shorter');
+    expect(nowAll.map((e) => e.id)).toEqual(['shorter', 'longer']);
+  });
+
+  it('groups nextAll by the earliest upcoming start', () => {
+    const p = ev('p', '18:00', '19:00');
+    const q = ev('q', '18:00', '18:30');
+    const later = ev('later', '20:00', '21:00');
+    const { next, nextAll } = deriveNow([p, q, later], at('12:00'));
+    expect(next?.id).toBe('q');
+    expect(nextAll.map((e) => e.id)).toEqual(['q', 'p']);
   });
 });

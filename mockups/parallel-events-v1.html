@@ -1,0 +1,1334 @@
+<!doctype html>
+<!-- STATUS: agreed design for parallel / overlapping-time events. ADR-0028-compliant
+     (mode identity, color budget, hard/soft grammar). Decisions (session 22):
+       • Recursive model — build a containment forest (parent = smallest strict
+         container); among siblings, partial overlaps form a CLUSTER. Nesting and
+         clustering COMPOSE (a nest can hold a cluster; a cluster member can be a
+         nest). Both modes decide this the same way. Render caps indent at ~2
+         levels (deeper flattens to "כולל N"); equal spans = cluster peers.
+       • Containment → nesting — identical in Trip and Plan: envelope + tucked
+         contents ("כולל N"), neutral, no "הזז" (usually intentional).
+       • Partial overlap → cluster — Trip: quiet neutral bracket ("בו-זמנית").
+         Plan: bound plan-violet group + header "הזז", deliberately DISTINCT from a
+         gap (gap = airy additive pill between rows; shown alongside for contrast).
+       • "הזז" = ripple, inverted — pick WHICH soft event to move when several are
+         soft (hard shows as a disabled anchor), then a clean slot (snap
+         before/after the anchor + exact-time fallback).
+       • Board — one loud "now" hero + quiet "ועוד N עכשיו" expander, plus a
+         group-split variant when there is no clear primary.
+     Where this mockup and docs/design/design-language.md conflict, the doc wins. -->
+<html lang="he" dir="rtl">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>אירועים במקביל — עיצוב (מוקאפ)</title>
+    <link rel="preconnect" href="https://fonts.googleapis.com" />
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+    <link
+      href="https://fonts.googleapis.com/css2?family=Assistant:wght@400;500;600;700&family=Secular+One&family=JetBrains+Mono:wght@500;700&display=swap"
+      rel="stylesheet"
+    />
+    <style>
+      :root {
+        --ink: #16233d;
+        --indigo: #1b2a4a;
+        --board: #0e1729;
+        --board-2: #152137;
+        --screen: #e7eaef;
+        --card: #ffffff;
+        --paper: #f3efe6;
+        --amber: #e9a63c;
+        --amber-deep: #c9822a;
+        --teal: #2c9c90;
+        --plan: #6e59d6;
+        --plan-deep: #5747b4;
+        --plan-tint: rgba(110, 89, 214, 0.1);
+        --muted: #6c7488;
+        --line: rgba(22, 35, 61, 0.1);
+        --soft-line: rgba(22, 35, 61, 0.28);
+        --ok: #3c9a6b;
+        --miss: #c2584e;
+        --radius-card: 16px;
+        --radius-inner: 12px;
+        --radius-chip: 8px;
+      }
+      * {
+        box-sizing: border-box;
+      }
+      body {
+        margin: 0;
+        background: #d8dce4;
+        font-family: 'Assistant', system-ui, sans-serif;
+        color: var(--ink);
+        padding: 28px 16px 80px;
+        line-height: 1.4;
+      }
+      .canvas {
+        max-width: 1120px;
+        margin: 0 auto;
+      }
+      .page-title {
+        font-family: 'Secular One', sans-serif;
+        font-size: 26px;
+        margin: 0 0 4px;
+      }
+      .page-sub {
+        color: var(--muted);
+        font-size: 14px;
+        margin: 0 0 28px;
+        max-width: 760px;
+      }
+      .cols {
+        display: flex;
+        flex-wrap: wrap;
+        gap: 28px;
+        align-items: flex-start;
+      }
+      .col {
+        flex: 1 1 320px;
+        max-width: 380px;
+      }
+      .col-head {
+        font-family: 'Secular One', sans-serif;
+        font-size: 17px;
+        margin: 0 0 2px;
+      }
+      .col-note {
+        color: var(--muted);
+        font-size: 12.5px;
+        margin: 0 0 14px;
+        min-height: 34px;
+      }
+      .phone {
+        background: var(--screen);
+        border-radius: 26px;
+        padding: 14px 12px 16px;
+        box-shadow: 0 18px 40px rgba(20, 30, 55, 0.22);
+        border: 1px solid rgba(255, 255, 255, 0.5);
+      }
+      .phone.dark {
+        background: var(--indigo);
+      }
+      .caption {
+        font-size: 11px;
+        color: var(--muted);
+        letter-spacing: 0.02em;
+        margin: 26px 2px 8px;
+        font-weight: 700;
+      }
+      .day-sub {
+        color: var(--muted);
+        font-size: 12px;
+        font-weight: 600;
+        margin: 0 2px 12px;
+      }
+
+      /* ── event card grammar (hard/soft) ── */
+      .item {
+        background: var(--card);
+        border: 1px solid var(--line);
+        border-radius: var(--radius-card);
+        padding: 12px 13px;
+        display: flex;
+        align-items: center;
+        gap: 11px;
+        margin-bottom: 10px;
+        box-shadow: 0 1px 2px rgba(20, 30, 55, 0.05);
+      }
+      .item.soft {
+        background: repeating-linear-gradient(-45deg, #fff 0 9px, #fbfaf7 9px 18px);
+        border: 1px dashed var(--soft-line);
+        box-shadow: none;
+      }
+      .item .badge {
+        width: 38px;
+        height: 38px;
+        border-radius: var(--radius-inner);
+        background: var(--paper);
+        display: grid;
+        place-items: center;
+        font-size: 19px;
+        flex: none;
+      }
+      .item .main {
+        flex: 1;
+        min-width: 0;
+      }
+      .item .t {
+        font-weight: 700;
+        font-size: 14.5px;
+        display: flex;
+        align-items: center;
+        gap: 7px;
+        flex-wrap: wrap;
+      }
+      .item .m {
+        color: var(--muted);
+        font-size: 12px;
+        margin-top: 2px;
+      }
+      .time {
+        font-family: 'JetBrains Mono', monospace;
+        font-size: 12.5px;
+        font-weight: 700;
+        color: var(--ink);
+        flex: none;
+      }
+      .tag-hard,
+      .tag-soft {
+        font-size: 10.5px;
+        font-weight: 700;
+        padding: 2px 7px;
+        border-radius: 999px;
+        white-space: nowrap;
+      }
+      .tag-hard {
+        background: rgba(233, 166, 60, 0.16);
+        color: var(--amber-deep);
+      }
+      .tag-soft {
+        background: rgba(22, 35, 61, 0.06);
+        color: var(--muted);
+      }
+      .code {
+        font-family: 'JetBrains Mono', monospace;
+        font-size: 11px;
+        font-weight: 700;
+        color: var(--amber-deep);
+        background: rgba(233, 166, 60, 0.1);
+        padding: 1px 6px;
+        border-radius: 6px;
+      }
+      .conflict {
+        color: var(--amber-deep);
+        font-size: 11.5px;
+        font-weight: 600;
+        margin-top: 3px;
+      }
+
+      /* ═══ CONCURRENCY CLUSTER — TRIP (quiet) ═══
+         No box, no fill. Just a hairline side brace + a small muted header, so the
+         grouping reads without shouting. Structure + neutral ink only — amber stays
+         time/now, no new hue. */
+      .cluster {
+        margin: 0 0 10px;
+      }
+      .cluster-head {
+        display: flex;
+        align-items: center;
+        gap: 7px;
+        padding: 2px 2px 7px;
+        color: var(--muted);
+        font-size: 11px;
+        font-weight: 700;
+      }
+      .cluster-head .brk {
+        font-size: 12px;
+        opacity: 0.65;
+      }
+      .cluster-head .win {
+        font-family: 'JetBrains Mono', monospace;
+        font-weight: 700;
+        color: var(--ink);
+      }
+      .cluster .body {
+        border-inline-start: 2px solid var(--soft-line);
+        margin-inline-start: 6px;
+        padding-inline-start: 10px;
+      }
+      .cluster .item {
+        margin-bottom: 8px;
+      }
+
+      /* ═══ OVERLAP CLUSTER — PLAN (distinct from a gap, on purpose) ═══
+         A gap is airy space you add into (pill between two lines). An overlap is
+         the opposite — events bound in the same time — so it reads as a bound,
+         plan-violet braced group with a header-level resolve control, and there is
+         NO between-row pill/flanking-line inside it. */
+      .cluster.plan {
+        background: var(--plan-tint);
+        border: 1px solid rgba(110, 89, 214, 0.28);
+        border-radius: var(--radius-card);
+        padding: 8px 9px 3px;
+      }
+      .cluster.plan .cluster-head {
+        justify-content: space-between;
+        color: var(--plan-deep);
+        padding: 3px 3px 8px;
+        font-size: 11.5px;
+      }
+      .cluster.plan .cluster-head .win {
+        color: var(--plan-deep);
+      }
+      .cluster.plan .cluster-head .lead {
+        display: flex;
+        align-items: center;
+        gap: 7px;
+      }
+      .cluster.plan .resolve {
+        font: inherit;
+        font-size: 11px;
+        font-weight: 700;
+        color: #fff;
+        background: var(--plan);
+        border: 0;
+        border-radius: 999px;
+        padding: 4px 11px;
+        cursor: pointer;
+        white-space: nowrap;
+      }
+      .cluster.plan .body {
+        /* solid violet brace = "bound / colliding", vs the neutral hairline in Trip */
+        border-inline-start: 3px solid var(--plan);
+        margin-inline-start: 4px;
+        padding-inline-start: 10px;
+      }
+      /* tiny violet seam tag on the lower card of an overlapping pair — a corner
+         mark, NOT a full-width between-row element, so it can't be read as a gap. */
+      .seam-tag {
+        display: inline-flex;
+        align-items: center;
+        gap: 4px;
+        font-size: 10px;
+        font-weight: 700;
+        color: var(--plan-deep);
+        background: rgba(110, 89, 214, 0.14);
+        border-radius: 999px;
+        padding: 1px 7px;
+      }
+
+      /* ═══ ENVELOPE / NESTING — PLAN (calm, NOT flagged) ═══
+         When a long soft event fully CONTAINS a shorter one, that's usually
+         intentional (a pass/day that things happen inside), not a collision. So it
+         reads as calm nesting — no violet, no "הזז" — just the container with its
+         contents tucked inside. Distinct from a partial collision. */
+      .nest {
+        border: 1px dashed var(--soft-line);
+        border-radius: var(--radius-card);
+        background: repeating-linear-gradient(-45deg, #fff 0 9px, #fbfaf7 9px 18px);
+        padding: 10px 10px 4px;
+        margin-bottom: 10px;
+      }
+      .nest-head {
+        display: flex;
+        align-items: center;
+        gap: 11px;
+        padding: 2px 3px 9px;
+      }
+      .nest-head .badge {
+        width: 34px;
+        height: 34px;
+        border-radius: var(--radius-inner);
+        background: var(--paper);
+        display: grid;
+        place-items: center;
+        font-size: 18px;
+        flex: none;
+      }
+      .nest-head .main {
+        flex: 1;
+        min-width: 0;
+      }
+      .nest-head .t {
+        font-weight: 700;
+        font-size: 14.5px;
+        display: flex;
+        align-items: center;
+        gap: 7px;
+      }
+      .nest-note {
+        color: var(--muted);
+        font-size: 11px;
+        font-weight: 700;
+      }
+      .nest-head .time {
+        color: var(--ink);
+      }
+      .nest .inside {
+        border-inline-start: 2px dotted var(--soft-line);
+        margin-inline-start: 16px;
+        padding-inline-start: 11px;
+      }
+      .nest .inside .item {
+        margin-bottom: 8px;
+      }
+
+      /* ═══ "הזז" RESOLVE SHEET (bottom sheet over a dimmed day) ═══
+         Reuses the Sheet component; scoped to the soft event you're moving. One-tap
+         clean slots (snap before/after the anchor) + an exact-time fallback. */
+      .phone.host {
+        position: relative;
+        overflow: hidden;
+        min-height: 430px;
+      }
+      .dim {
+        filter: saturate(0.4) brightness(0.98);
+        opacity: 0.5;
+      }
+      .scrim {
+        position: absolute;
+        inset: 0;
+        background: rgba(14, 23, 41, 0.32);
+        border-radius: 26px;
+      }
+      .sheet {
+        position: absolute;
+        inset-inline: 0;
+        bottom: 0;
+        background: var(--card);
+        border-radius: 20px 20px 26px 26px;
+        padding: 12px 14px 16px;
+        box-shadow: 0 -10px 28px rgba(6, 12, 26, 0.28);
+      }
+      .sheet-grip {
+        width: 38px;
+        height: 4px;
+        border-radius: 999px;
+        background: var(--line);
+        margin: 0 auto 12px;
+      }
+      .sheet-title {
+        font-family: 'Secular One', sans-serif;
+        font-size: 16px;
+        margin: 0 2px 2px;
+      }
+      .sheet-sub {
+        color: var(--muted);
+        font-size: 12px;
+        margin: 0 2px 13px;
+      }
+      .resolve-opt {
+        display: flex;
+        align-items: center;
+        justify-content: space-between;
+        gap: 10px;
+        width: 100%;
+        background: var(--card);
+        border: 1px solid var(--line);
+        border-radius: 12px;
+        padding: 11px 13px;
+        margin-bottom: 8px;
+        font: inherit;
+        text-align: start;
+        cursor: pointer;
+      }
+      .resolve-opt .lead {
+        display: flex;
+        flex-direction: column;
+        gap: 1px;
+      }
+      .resolve-opt .ttl {
+        font-weight: 700;
+        font-size: 13.5px;
+      }
+      .resolve-opt .sub {
+        color: var(--muted);
+        font-size: 11.5px;
+      }
+      .resolve-opt .tm {
+        font-family: 'JetBrains Mono', monospace;
+        font-weight: 700;
+        font-size: 13px;
+        color: var(--plan-deep);
+        flex: none;
+      }
+      .resolve-opt.other {
+        border-style: dashed;
+        justify-content: center;
+        color: var(--muted);
+        font-weight: 700;
+        font-size: 12.5px;
+      }
+      /* multi-mover chooser: which soft event to move? hard events show disabled
+         as anchors. Pick one → its clean slots reveal (reusing .resolve-opt). */
+      .mover {
+        border: 1px solid var(--line);
+        border-radius: 12px;
+        margin-bottom: 8px;
+        overflow: hidden;
+      }
+      .mover-head {
+        display: flex;
+        align-items: center;
+        gap: 9px;
+        width: 100%;
+        background: var(--card);
+        border: 0;
+        font: inherit;
+        text-align: start;
+        padding: 10px 12px;
+        cursor: pointer;
+      }
+      .mover-head .ic {
+        width: 28px;
+        height: 28px;
+        border-radius: 8px;
+        background: var(--paper);
+        display: grid;
+        place-items: center;
+        font-size: 15px;
+        flex: none;
+      }
+      .mover-head .nm {
+        flex: 1;
+        font-weight: 700;
+        font-size: 13.5px;
+      }
+      .mover-head .tm {
+        font-family: 'JetBrains Mono', monospace;
+        font-size: 11.5px;
+        color: var(--muted);
+      }
+      .mover-head .chev {
+        color: var(--muted);
+        font-size: 12px;
+      }
+      .mover.anchor {
+        opacity: 0.6;
+      }
+      .mover.anchor .mover-head {
+        cursor: default;
+      }
+      .anchor-note {
+        font-size: 10.5px;
+        font-weight: 700;
+        color: var(--amber-deep);
+        white-space: nowrap;
+      }
+      .mover-slots {
+        padding: 2px 10px 9px;
+        background: rgba(110, 89, 214, 0.05);
+        border-top: 1px solid var(--line);
+      }
+      .mover-slots .resolve-opt {
+        margin: 8px 0 0;
+      }
+
+      /* ── gap chip (unchanged grammar) — shown for contrast ── */
+      .gap {
+        display: flex;
+        align-items: center;
+        gap: 8px;
+        margin: 0 0 10px;
+      }
+      .gap .gap-line {
+        flex: 1;
+        height: 1px;
+        background: var(--line);
+      }
+      .gap .gap-add {
+        font: inherit;
+        font-size: 11.5px;
+        font-weight: 700;
+        color: var(--muted);
+        background: transparent;
+        border: 1px dashed var(--soft-line);
+        border-radius: 999px;
+        padding: 4px 12px;
+        cursor: pointer;
+        white-space: nowrap;
+      }
+
+      /* ═══ BOARD (Trip Now/Next) ═══ */
+      .board {
+        background: radial-gradient(120% 90% at 80% -10%, #1a2c4d 0%, var(--board) 60%);
+        border-radius: 22px;
+        padding: 16px 16px 18px;
+        color: #cdd8ef;
+        box-shadow: 0 12px 30px rgba(6, 12, 26, 0.5);
+        position: relative;
+        overflow: hidden;
+      }
+      .board::after {
+        content: '';
+        position: absolute;
+        inset: 0;
+        background: radial-gradient(60% 40% at 78% 8%, rgba(233, 166, 60, 0.16), transparent 70%);
+        pointer-events: none;
+      }
+      .board-top {
+        display: flex;
+        justify-content: space-between;
+        align-items: center;
+      }
+      .live {
+        display: flex;
+        align-items: center;
+        gap: 6px;
+        color: var(--amber);
+        font-size: 11px;
+        font-weight: 700;
+        letter-spacing: 0.06em;
+      }
+      .blip {
+        width: 8px;
+        height: 8px;
+        border-radius: 50%;
+        background: var(--amber);
+        box-shadow: 0 0 0 0 rgba(233, 166, 60, 0.6);
+        animation: pulse 1.8s infinite;
+      }
+      @keyframes pulse {
+        0% {
+          box-shadow: 0 0 0 0 rgba(233, 166, 60, 0.55);
+        }
+        70% {
+          box-shadow: 0 0 0 9px rgba(233, 166, 60, 0);
+        }
+        100% {
+          box-shadow: 0 0 0 0 rgba(233, 166, 60, 0);
+        }
+      }
+      .clock {
+        font-family: 'JetBrains Mono', monospace;
+        font-size: 17px;
+        font-weight: 700;
+        color: #fff;
+      }
+      .now-label {
+        font-size: 11px;
+        color: #8ea1c6;
+        margin-top: 12px;
+        font-weight: 700;
+        letter-spacing: 0.04em;
+      }
+      .now-title {
+        font-family: 'Secular One', sans-serif;
+        font-size: 21px;
+        color: #fff;
+        display: flex;
+        align-items: center;
+        gap: 9px;
+        margin-top: 2px;
+      }
+      .now-meta {
+        color: #9fb0d3;
+        font-size: 12.5px;
+        margin-top: 3px;
+      }
+      .now-meta .mono {
+        font-family: 'JetBrains Mono', monospace;
+        color: #cdd8ef;
+      }
+      .also-now {
+        margin-top: 11px;
+        border-top: 1px dashed rgba(157, 170, 200, 0.25);
+        padding-top: 10px;
+      }
+      .also-toggle {
+        display: flex;
+        align-items: center;
+        gap: 8px;
+        color: #cdd8ef;
+        font-size: 12.5px;
+        font-weight: 700;
+        background: none;
+        border: 0;
+        font-family: inherit;
+        cursor: pointer;
+        padding: 0;
+      }
+      .also-toggle .dot {
+        width: 7px;
+        height: 7px;
+        border-radius: 50%;
+        background: #6f83ad;
+      }
+      .also-toggle .chev {
+        color: #8ea1c6;
+        font-size: 11px;
+      }
+      .also-list {
+        margin-top: 9px;
+        display: flex;
+        flex-direction: column;
+        gap: 8px;
+      }
+      .also-row {
+        display: flex;
+        align-items: center;
+        gap: 9px;
+        font-size: 13px;
+      }
+      .also-row .ic {
+        width: 26px;
+        height: 26px;
+        border-radius: 8px;
+        background: rgba(255, 255, 255, 0.07);
+        display: grid;
+        place-items: center;
+        font-size: 14px;
+        flex: none;
+      }
+      .also-row .nm {
+        flex: 1;
+        color: #e4ebf8;
+        font-weight: 600;
+      }
+      .also-row .tm {
+        font-family: 'JetBrains Mono', monospace;
+        font-size: 11.5px;
+        color: #9fb0d3;
+      }
+      .board-divider {
+        height: 1px;
+        background: rgba(157, 170, 200, 0.2);
+        margin: 14px 0 12px;
+      }
+      .next-row {
+        display: flex;
+        justify-content: space-between;
+        align-items: flex-end;
+      }
+      .next-label {
+        font-size: 11px;
+        color: #8ea1c6;
+        font-weight: 700;
+        letter-spacing: 0.04em;
+      }
+      .next-title {
+        font-family: 'Secular One', sans-serif;
+        font-size: 16px;
+        color: #eaf0fb;
+        margin-top: 2px;
+        display: flex;
+        align-items: center;
+        gap: 7px;
+      }
+      .next-meta {
+        color: #9fb0d3;
+        font-size: 12px;
+        margin-top: 3px;
+        font-family: 'JetBrains Mono', monospace;
+      }
+      .countdown {
+        text-align: center;
+        color: var(--amber);
+      }
+      .countdown .t {
+        font-family: 'JetBrains Mono', monospace;
+        font-size: 22px;
+        font-weight: 700;
+        line-height: 1;
+      }
+      .countdown .u {
+        font-size: 10.5px;
+        color: #9fb0d3;
+        margin-top: 2px;
+      }
+
+      .legend {
+        margin-top: 34px;
+        background: var(--card);
+        border: 1px solid var(--line);
+        border-radius: 14px;
+        padding: 16px 18px;
+        font-size: 13px;
+        max-width: 780px;
+      }
+      .legend h3 {
+        font-family: 'Secular One', sans-serif;
+        font-size: 15px;
+        margin: 0 0 8px;
+      }
+      .legend ul {
+        margin: 0;
+        padding-inline-start: 18px;
+        color: #374253;
+      }
+      .legend li {
+        margin-bottom: 5px;
+      }
+      .legend code {
+        font-family: 'JetBrains Mono', monospace;
+        font-size: 12px;
+        background: rgba(22, 35, 61, 0.06);
+        padding: 1px 5px;
+        border-radius: 5px;
+      }
+    </style>
+  </head>
+  <body>
+    <div class="canvas">
+      <h1 class="page-title">אירועים במקביל · עיצוב מאושר</h1>
+      <p class="page-sub">
+        חפיפת זמנים היא מצב לגיטימי (ADR-0011). מודל אחיד: אם אירוע אחד <b>מכיל</b> את כל השאר →
+        <b>קינון</b> (זהה בטיול ובתכנון, בדרך כלל מכוון). אחרת → <b>אשכול</b>: בטיול סוגר דק שקט,
+        בתכנון כרוך בסגול עם "הזז" — ובמכוון שונה מפער (פער = מקום ריק להוסיף; חפיפה = כרוך באותו
+        זמן). הלוח שומר על גיבור אחד + "ועוד N עכשיו".
+      </p>
+
+      <!-- ══════════ CONTAINMENT → NESTING (same in both modes) ══════════ -->
+      <div class="caption">הכלה → קינון · זהה בטיול ובתכנון (בדרך כלל מכוון, בלי "הזז")</div>
+      <div class="cols">
+        <!-- single containment -->
+        <div class="col">
+          <h2 class="col-head">הכלה בודדת</h2>
+          <p class="col-note">
+            אירוע ארוך שמכיל אירוע קצר בתוכו → קינון שקט. אין מה לפתור, זהה בשני המצבים.
+          </p>
+          <div class="phone">
+            <div class="day-sub">יום 1 · יום חמישי · לפה ולשם</div>
+            <div class="nest">
+              <div class="nest-head">
+                <span class="badge">🏖️</span>
+                <span class="main">
+                  <span class="t">
+                    יום ים <span class="tag-soft">גמיש</span>
+                    <span class="nest-note">· כולל 1 בתוכו</span>
+                  </span>
+                </span>
+                <span class="time" dir="ltr">10:00–18:00</span>
+              </div>
+              <div class="inside">
+                <div class="item soft">
+                  <span class="badge">🍔</span>
+                  <span class="main">
+                    <span class="t">צהריים <span class="tag-soft">גמיש</span></span>
+                  </span>
+                  <span class="time" dir="ltr">13:00–14:00</span>
+                </div>
+              </div>
+            </div>
+
+            <div class="item soft">
+              <span class="badge">🍸</span>
+              <span class="main">
+                <span class="t">בלה <span class="tag-soft">גמיש</span></span>
+              </span>
+              <span class="time" dir="ltr">19:00–20:00</span>
+            </div>
+          </div>
+        </div>
+
+        <!-- multiple containment -->
+        <div class="col">
+          <h2 class="col-head">הכלה מרובה</h2>
+          <p class="col-note">
+            מעטפת אחת שמכילה כמה אירועים → כולם מקוננים ברמה אחת ("כולל N"). קשיח שומר על הדקדוק שלו
+            גם בפנים.
+          </p>
+          <div class="phone">
+            <div class="day-sub">יום 1 · יום חמישי · לפה ולשם</div>
+            <div class="nest">
+              <div class="nest-head">
+                <span class="badge">🏖️</span>
+                <span class="main">
+                  <span class="t">
+                    יום ים <span class="tag-soft">גמיש</span>
+                    <span class="nest-note">· כולל 3 בתוכו</span>
+                  </span>
+                </span>
+                <span class="time" dir="ltr">10:00–18:00</span>
+              </div>
+              <div class="inside">
+                <div class="item soft">
+                  <span class="badge">🤿</span>
+                  <span class="main">
+                    <span class="t">שנורקלינג <span class="tag-soft">גמיש</span></span>
+                  </span>
+                  <span class="time" dir="ltr">11:00–12:30</span>
+                </div>
+                <div class="item soft">
+                  <span class="badge">🍔</span>
+                  <span class="main">
+                    <span class="t">צהריים <span class="tag-soft">גמיש</span></span>
+                  </span>
+                  <span class="time" dir="ltr">13:00–14:00</span>
+                </div>
+                <div class="item">
+                  <span class="badge">⛵</span>
+                  <span class="main">
+                    <span class="t">
+                      שייט <span class="tag-hard">🔒 קשיח</span>
+                      <span class="code" dir="ltr">SEA-88</span>
+                    </span>
+                  </span>
+                  <span class="time" dir="ltr">15:00–16:00</span>
+                </div>
+              </div>
+            </div>
+          </div>
+          <p class="col-note" style="margin-top: 12px">
+            שרשרת קינון (א׳ מכיל ב׳ מכיל ג׳) משוטחת לרמה אחת — בלי "בבושקה" על מסך טלפון. הכלל:
+            אירוע יחיד שמכיל את כל השאר → קינון; אחרת → אשכול.
+          </p>
+        </div>
+      </div>
+
+      <!-- ══════════ BOARD ROW (approved) ══════════ -->
+      <div class="caption">מצב טיול · לוח Now/Next — שני דברים קורים עכשיו</div>
+      <div class="cols">
+        <div class="col">
+          <h2 class="col-head">לוח — מכווץ</h2>
+          <p class="col-note">
+            כותרת עכשיו אחת נשארת הגיבור; "ועוד N עכשיו" שורה שקטה, ניתנת להרחבה.
+          </p>
+          <div class="phone dark">
+            <div class="board">
+              <div class="board-top">
+                <div class="live"><span class="blip"></span> עכשיו</div>
+                <div class="clock" dir="ltr">15:20</div>
+              </div>
+              <div class="now-label">🔒 קשיח</div>
+              <div class="now-title"><span>✈️</span> טיסה</div>
+              <div class="now-meta">עד <span class="mono" dir="ltr">17:00</span></div>
+
+              <div class="also-now">
+                <button class="also-toggle">
+                  <span class="dot"></span> ועוד 1 עכשיו <span class="chev">▾</span>
+                </button>
+              </div>
+
+              <div class="board-divider"></div>
+              <div class="next-row">
+                <div>
+                  <div class="next-label">הבא</div>
+                  <div class="next-title"><span>🍸</span> בלה</div>
+                  <div class="next-meta" dir="ltr">18:00</div>
+                </div>
+                <div class="countdown">
+                  <div class="t" dir="ltr">2:40</div>
+                  <div class="u">שעות</div>
+                </div>
+              </div>
+            </div>
+          </div>
+        </div>
+
+        <div class="col">
+          <h2 class="col-head">לוח — מורחב</h2>
+          <p class="col-note">בהקשה, האירועים הבו-זמניים הנוספים נפרשים בשורות משניות שקטות.</p>
+          <div class="phone dark">
+            <div class="board">
+              <div class="board-top">
+                <div class="live"><span class="blip"></span> עכשיו</div>
+                <div class="clock" dir="ltr">15:20</div>
+              </div>
+              <div class="now-label">🔒 קשיח</div>
+              <div class="now-title"><span>✈️</span> טיסה</div>
+              <div class="now-meta">עד <span class="mono" dir="ltr">17:00</span></div>
+
+              <div class="also-now">
+                <button class="also-toggle">
+                  <span class="dot"></span> ועוד 1 עכשיו <span class="chev">▴</span>
+                </button>
+                <div class="also-list">
+                  <div class="also-row">
+                    <span class="ic">🎟️</span>
+                    <span class="nm">כרטיס מוזיאון</span>
+                    <span class="tm" dir="ltr">עד 17:30</span>
+                  </div>
+                </div>
+              </div>
+
+              <div class="board-divider"></div>
+              <div class="next-row">
+                <div>
+                  <div class="next-label">הבא</div>
+                  <div class="next-title"><span>🍸</span> בלה</div>
+                  <div class="next-meta" dir="ltr">18:00</div>
+                </div>
+                <div class="countdown">
+                  <div class="t" dir="ltr">2:40</div>
+                  <div class="u">שעות</div>
+                </div>
+              </div>
+            </div>
+          </div>
+        </div>
+
+        <div class="col">
+          <h2 class="col-head">לוח — פיצול קבוצה (וריאנט)</h2>
+          <p class="col-note">
+            כשאין "גיבור" ברור (שני אירועים גמישים שקולים, הקבוצה מתפצלת) — שתי שורות שקולות תחת
+            "עכשיו · במקביל".
+          </p>
+          <div class="phone dark">
+            <div class="board">
+              <div class="board-top">
+                <div class="live"><span class="blip"></span> עכשיו · במקביל</div>
+                <div class="clock" dir="ltr">12:10</div>
+              </div>
+              <div class="also-list" style="margin-top: 12px">
+                <div class="also-row" style="font-size: 15px">
+                  <span class="ic" style="width: 32px; height: 32px; font-size: 16px">🥾</span>
+                  <span class="nm" style="font-family: 'Secular One', sans-serif"
+                    >קבוצה א׳ · שוק</span
+                  >
+                  <span class="tm" dir="ltr">עד 13:30</span>
+                </div>
+                <div class="also-row" style="font-size: 15px">
+                  <span class="ic" style="width: 32px; height: 32px; font-size: 16px">🏛️</span>
+                  <span class="nm" style="font-family: 'Secular One', sans-serif"
+                    >קבוצה ב׳ · מוזיאון</span
+                  >
+                  <span class="tm" dir="ltr">עד 14:00</span>
+                </div>
+              </div>
+              <div class="board-divider"></div>
+              <div class="next-row">
+                <div>
+                  <div class="next-label">הבא (מתאחדים)</div>
+                  <div class="next-title"><span>🍜</span> צהריים ביחד</div>
+                  <div class="next-meta" dir="ltr">14:30</div>
+                </div>
+                <div class="countdown">
+                  <div class="t" dir="ltr">2:20</div>
+                  <div class="u">שעות</div>
+                </div>
+              </div>
+            </div>
+          </div>
+        </div>
+      </div>
+
+      <!-- ══════════ PARTIAL OVERLAP → CLUSTER (Trip quiet vs Plan flagged) ══════════ -->
+      <div class="caption">חפיפה חלקית → אשכול · טיול שקט מול תכנון שמסמן</div>
+      <div class="cols">
+        <!-- Trip — quiet neutral cluster -->
+        <div class="col">
+          <h2 class="col-head">מצב טיול — אשכול שקט</h2>
+          <p class="col-note">
+            קצוות נחתכים (אף אחד לא מכיל את השני) → סוגר דק ניטרלי + כותרת "בו-זמנית". בלי פתרון —
+            בטיול פשוט חיים את זה.
+          </p>
+          <div class="phone">
+            <div class="day-sub">יום 1 · יום חמישי · לפה ולשם</div>
+            <div class="cluster">
+              <div class="cluster-head">
+                <span class="brk">⎣</span> בו-זמנית · <span class="win" dir="ltr">11:00–14:00</span>
+              </div>
+              <div class="body">
+                <div class="item soft">
+                  <span class="badge">🍳</span>
+                  <span class="main">
+                    <span class="t">סדנת בישול <span class="tag-soft">גמיש</span></span>
+                  </span>
+                  <span class="time" dir="ltr">11:00–13:00</span>
+                </div>
+                <div class="item soft">
+                  <span class="badge">🚶</span>
+                  <span class="main">
+                    <span class="t">סיור בעיר <span class="tag-soft">גמיש</span></span>
+                  </span>
+                  <span class="time" dir="ltr">12:30–14:00</span>
+                </div>
+              </div>
+            </div>
+          </div>
+        </div>
+
+        <!-- Plan — flagged violet + gap contrast -->
+        <div class="col">
+          <h2 class="col-head">מצב תכנון — חפיפה ≠ פער</h2>
+          <p class="col-note">
+            למעלה <b>פער</b> אוורירי (מוסיף); למטה <b>חפיפה</b> כרוכה בסגול + "הזז". שפות מכוונות
+            שונות — אותם שני אירועים כמו בטיול, מסומנים לפתרון.
+          </p>
+          <div class="phone">
+            <div class="day-sub">יום 1 · יום חמישי · לפה ולשם</div>
+
+            <div class="item soft">
+              <span class="badge">🥐</span>
+              <span class="main">
+                <span class="t">ארוחת בוקר <span class="tag-soft">גמיש</span></span>
+              </span>
+              <span class="time" dir="ltr">09:00–10:00</span>
+            </div>
+
+            <!-- GAP: airy, additive -->
+            <div class="gap">
+              <span class="gap-line"></span>
+              <button class="gap-add">פער של שעה · ＋ שבץ</button>
+              <span class="gap-line"></span>
+            </div>
+
+            <!-- OVERLAP: bound, resolvable -->
+            <div class="cluster plan">
+              <div class="cluster-head">
+                <span class="lead">⧉ חופפים · <span class="win" dir="ltr">11:00–14:00</span></span>
+                <button class="resolve">הזז ▾</button>
+              </div>
+              <div class="body">
+                <div class="item soft">
+                  <span class="badge">🍳</span>
+                  <span class="main">
+                    <span class="t">סדנת בישול <span class="tag-soft">גמיש</span></span>
+                  </span>
+                  <span class="time" dir="ltr">11:00–13:00</span>
+                </div>
+                <div class="item soft">
+                  <span class="badge">🚶</span>
+                  <span class="main">
+                    <span class="t">
+                      סיור בעיר <span class="tag-soft">גמיש</span>
+                      <span class="seam-tag">⧉ חופף 30 דק׳</span>
+                    </span>
+                  </span>
+                  <span class="time" dir="ltr">12:30–14:00</span>
+                </div>
+              </div>
+            </div>
+          </div>
+        </div>
+
+        <!-- The resolve sheet — choose which soft event to move -->
+        <div class="col">
+          <h2 class="col-head">גיליון "הזז" — בחירת אירוע</h2>
+          <p class="col-note">
+            כשיש כמה אירועים גמישים, בוחרים <b>מה</b> להזיז; ואז המשבצות הנקיות של אותו אירוע
+            נפרשות. קשיח מופיע כעוגן מושבת.
+          </p>
+          <div class="phone host">
+            <div class="dim">
+              <div class="day-sub">יום 1 · יום חמישי · לפה ולשם</div>
+              <div class="cluster plan">
+                <div class="cluster-head">
+                  <span class="lead"
+                    >⧉ חופפים · <span class="win" dir="ltr">11:00–14:00</span></span
+                  >
+                  <button class="resolve">הזז ▾</button>
+                </div>
+                <div class="body">
+                  <div class="item soft">
+                    <span class="badge">🍳</span>
+                    <span class="main"><span class="t">סדנת בישול</span></span>
+                    <span class="time" dir="ltr">11:00–13:00</span>
+                  </div>
+                  <div class="item soft">
+                    <span class="badge">🚶</span>
+                    <span class="main"><span class="t">סיור בעיר</span></span>
+                    <span class="time" dir="ltr">12:30–14:00</span>
+                  </div>
+                </div>
+              </div>
+            </div>
+            <div class="scrim"></div>
+            <div class="sheet">
+              <div class="sheet-grip"></div>
+              <div class="sheet-title">פתרו את החפיפה</div>
+              <div class="sheet-sub">בחרו איזה אירוע גמיש להזיז · משך נשמר</div>
+
+              <!-- picked mover, slots revealed -->
+              <div class="mover">
+                <button class="mover-head">
+                  <span class="ic">🚶</span>
+                  <span class="nm">סיור בעיר</span>
+                  <span class="tm" dir="ltr">12:30–14:00</span>
+                  <span class="chev">▴</span>
+                </button>
+                <div class="mover-slots">
+                  <button class="resolve-opt">
+                    <span class="lead">
+                      <span class="ttl">אחרי סדנת בישול</span>
+                      <span class="sub">מסתיים 14:30</span>
+                    </span>
+                    <span class="tm" dir="ltr">13:00</span>
+                  </button>
+                  <button class="resolve-opt">
+                    <span class="lead">
+                      <span class="ttl">לפני סדנת בישול</span>
+                      <span class="sub">מסתיים 11:00</span>
+                    </span>
+                    <span class="tm" dir="ltr">09:30</span>
+                  </button>
+                  <button class="resolve-opt other">זמן אחר…</button>
+                </div>
+              </div>
+
+              <!-- other soft mover, collapsed -->
+              <div class="mover">
+                <button class="mover-head">
+                  <span class="ic">🍳</span>
+                  <span class="nm">סדנת בישול</span>
+                  <span class="tm" dir="ltr">11:00–13:00</span>
+                  <span class="chev">▾</span>
+                </button>
+              </div>
+
+              <!-- hard event: shown as a disabled anchor -->
+              <div class="mover anchor">
+                <div class="mover-head">
+                  <span class="ic">✈️</span>
+                  <span class="nm">טיסה</span>
+                  <span class="anchor-note">🔒 עוגן · לא זז</span>
+                </div>
+              </div>
+            </div>
+          </div>
+          <p class="col-note" style="margin-top: 12px">
+            כניסה מהכותרת ("הזז") פותחת את הבחירה; כניסה מתג החפיפה על כרטיס פותחת ישר את אותו
+            אירוע. אישור = הזזה אופטימית + ביטול; חפיפה חדשה במורד היום מפעילה את הריפל הקיים.
+          </p>
+        </div>
+      </div>
+
+      <!-- ══════════ COMPOUND CASES — nesting + clustering compose ══════════ -->
+      <div class="caption">מקרים מורכבים · קינון ואשכול מתחברים רקורסיבית (עומק תצוגה מוגבל)</div>
+      <div class="cols">
+        <!-- Chain A ⊃ B ⊃ C -->
+        <div class="col">
+          <h2 class="col-head">שרשרת · א׳ ⊃ ב׳ ⊃ ג׳</h2>
+          <p class="col-note">קינון אמיתי עד 2 רמות הזחה; רמות עמוקות יותר משוטחות פנימה.</p>
+          <div class="phone">
+            <div class="day-sub">יום 1 · יום חמישי · לפה ולשם</div>
+            <div class="nest">
+              <div class="nest-head">
+                <span class="badge">🎪</span>
+                <span class="main">
+                  <span class="t">פסטיבל <span class="nest-note">· כולל 2</span></span>
+                </span>
+                <span class="time" dir="ltr">10:00–20:00</span>
+              </div>
+              <div class="inside">
+                <div class="nest" style="margin-bottom: 0">
+                  <div class="nest-head">
+                    <span class="badge">🎭</span>
+                    <span class="main">
+                      <span class="t">מופע ערב <span class="nest-note">· כולל 1</span></span>
+                    </span>
+                    <span class="time" dir="ltr">17:00–19:00</span>
+                  </div>
+                  <div class="inside">
+                    <div class="item soft" style="margin-bottom: 0">
+                      <span class="badge">🎸</span>
+                      <span class="main"><span class="t">סט ראשי</span></span>
+                      <span class="time" dir="ltr">18:00–18:45</span>
+                    </div>
+                  </div>
+                </div>
+              </div>
+            </div>
+          </div>
+        </div>
+
+        <!-- Overlap within containment: a nest holding a cluster -->
+        <div class="col">
+          <h2 class="col-head">חפיפה בתוך הכלה</h2>
+          <p class="col-note">
+            מעטפת שמכילה שני אירועים שחופפים <i>זה את זה</i> → אשכול <b>בתוך</b> הקינון. בתכנון
+            האשכול הפנימי מקבל "הזז".
+          </p>
+          <div class="phone">
+            <div class="day-sub">יום 1 · יום חמישי · לפה ולשם</div>
+            <div class="nest">
+              <div class="nest-head">
+                <span class="badge">🏖️</span>
+                <span class="main">
+                  <span class="t">יום ים <span class="nest-note">· כולל 2</span></span>
+                </span>
+                <span class="time" dir="ltr">10:00–18:00</span>
+              </div>
+              <div class="inside">
+                <div class="cluster" style="margin-bottom: 0">
+                  <div class="cluster-head">
+                    <span class="brk">⎣</span> בו-זמנית ·
+                    <span class="win" dir="ltr">11:00–14:00</span>
+                  </div>
+                  <div class="body">
+                    <div class="item soft">
+                      <span class="badge">🤿</span>
+                      <span class="main"><span class="t">שנורקלינג</span></span>
+                      <span class="time" dir="ltr">11:00–13:00</span>
+                    </div>
+                    <div class="item soft" style="margin-bottom: 0">
+                      <span class="badge">🏄</span>
+                      <span class="main"><span class="t">שיעור גלישה</span></span>
+                      <span class="time" dir="ltr">12:30–14:00</span>
+                    </div>
+                  </div>
+                </div>
+              </div>
+            </div>
+          </div>
+        </div>
+
+        <!-- Containment within overlap: a cluster whose member is a nest -->
+        <div class="col">
+          <h2 class="col-head">הכלה בתוך חפיפה</h2>
+          <p class="col-note">
+            שני אירועים חופפים חלקית (אף אחד לא מכיל את השני), ואחד מהם בעצמו מעטפת → אשכול שאחד
+            מחבריו הוא קינון.
+          </p>
+          <div class="phone">
+            <div class="day-sub">יום 1 · יום חמישי · לפה ולשם</div>
+            <div class="cluster">
+              <div class="cluster-head">
+                <span class="brk">⎣</span> בו-זמנית · <span class="win" dir="ltr">09:00–18:00</span>
+              </div>
+              <div class="body">
+                <div class="item soft">
+                  <span class="badge">🚴</span>
+                  <span class="main"><span class="t">סיור אופניים</span></span>
+                  <span class="time" dir="ltr">09:00–12:00</span>
+                </div>
+                <div class="nest" style="margin-bottom: 0">
+                  <div class="nest-head">
+                    <span class="badge">🏖️</span>
+                    <span class="main">
+                      <span class="t">יום ים <span class="nest-note">· כולל 1</span></span>
+                    </span>
+                    <span class="time" dir="ltr">11:00–18:00</span>
+                  </div>
+                  <div class="inside">
+                    <div class="item soft" style="margin-bottom: 0">
+                      <span class="badge">🍔</span>
+                      <span class="main"><span class="t">צהריים</span></span>
+                      <span class="time" dir="ltr">13:00–14:00</span>
+                    </div>
+                  </div>
+                </div>
+              </div>
+            </div>
+          </div>
+        </div>
+      </div>
+
+      <div class="legend">
+        <h3>כללי העיצוב (למימוש)</h3>
+        <ul>
+          <li>
+            <b>קבוצה = רצף אירועים שחופפים בזמן</b> (interval-merge; רכיב קשירות). אירוע בודד ללא
+            חפיפה נשאר שורה רגילה. <code>end === start</code> (גב-אל-גב) אינו חפיפה.
+          </li>
+          <li>
+            <b>מבנה רקורסיבי (יער־הכלה).</b> הורה = הטווח הקטן ביותר שמכיל את האירוע. בין אחים באותה
+            רמה: מי שחופף חלקית מקובץ ל<b>אשכול</b>. כך <b>קינון ואשכול מתחברים</b> — קינון יכול
+            להכיל אשכול (חפיפה בתוך הכלה) ואיבר באשכול יכול להיות קינון (הכלה בתוך חפיפה).
+          </li>
+          <li>
+            <b>עומק תצוגה מוגבל.</b> הזחה עד 2 רמות; רמות עמוקות יותר משוטחות פנימה ("כולל N",
+            ניתן־להרחבה). טווחים שווים = עמיתים באשכול, לא קינון. המודל מדויק, התצוגה חסומה לרוחב
+            טלפון.
+          </li>
+          <li>
+            <b>קינון — זהה בשני המצבים.</b> מעטפת + תוכן מקונן ("כולל N"), ניטרלי, בלי "הזז" (בדרך
+            כלל מכוון). מבנה ודיו בלבד; אמבר נשאר לזמן/עכשיו.
+          </li>
+          <li>
+            <b>אשכול — טיול שקט, תכנון מסמן.</b> טיול = סוגר דק ניטרלי + "בו-זמנית". תכנון = כרוך
+            בסגול + "הזז", ובמכוון שונה מפער (אוורירי, מוסיף, בין־שורות).
+          </li>
+          <li>
+            <b>"הזז" = ריפל הפוך.</b> מזיז אירוע <i>גמיש</i> בלבד (קשיח = עוגן), משך נשמר. כשיש כמה
+            גמישים — <b>בוחרים מה להזיז</b> (קשיח מופיע כעוגן מושבת); כניסה מתג־החפיפה מדלגת ישר
+            לאירוע שנבחר. ואז משבצת נקייה לפני/אחרי העוגן בהקשה אחת, או קובע־זמן מדויק (ADR-0036);
+            אופטימי + ביטול. חפיפה חדשה במורד היום מפעילה את הריפל הקיים. שתי־קשיחות שחופפות = אזהרת
+            ⚠️ בלבד (אין "הזז").
+          </li>
+          <li><b>דקדוק קשיח/רך נשמר בתוך האשכול</b> (קשיח = כרטיס מלא + 🔒 + קוד; רך = מקווקו).</li>
+          <li>
+            <b>לוח = גיבור אחד.</b> "עכשיו" ראשי לפי: קשיח &gt; מסתיים־ראשון &gt; מתחיל־ראשון; השאר
+            ב"ועוד N". פיצול־קבוצה (בלי גיבור) הוא וריאנט.
+          </li>
+          <li>
+            <b>מודל נתונים:</b> <code>deriveNow</code> יחזיר <code>nowAll[]</code> /
+            <code>nextAll[]</code> (קבוצות בו-זמניות), נגזר מהשעון, לא נשמר (ADR-0018); עוזר משותף
+            <code>clusterByTime</code> מזין גם את היום וגם את הלוח.
+          </li>
+        </ul>
+      </div>
+    </div>
+  </body>
+</html>

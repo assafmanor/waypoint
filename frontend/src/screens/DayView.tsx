@@ -13,12 +13,15 @@ import { useTrip, byStart } from '../state/trip-state';
 import { useVerbs } from '../state/verbs';
 import { useClock } from '../lib/useClock';
 import {
+  buildTimeTree,
   deriveNow,
   formatTime,
   hardConflicts,
   zonedIso,
   resolveEndIso,
   crossesMidnight,
+  type TimeGroup,
+  type TimeItem,
 } from '../lib/time';
 import { nextSlot } from '../lib/gaps';
 import { CODE_PREFIX, DELAY_STEP_MINUTES, ICONS, MS_PER_DAY } from '../constants';
@@ -56,6 +59,17 @@ export function DayView() {
     timeZone: trip.timezone,
   }).format(new Date(`${activeDate}T12:00:00${TRIP_TZ_OFFSET}`));
 
+  const dayCtx: DayCtx = {
+    tz: trip.timezone,
+    nowId,
+    openId,
+    toggle: (id) => setOpenId((cur) => (cur === id ? null : id)),
+    bookings,
+    dayEvents,
+    verbs,
+    onEdit: (e) => setFormTarget(e),
+  };
+
   return (
     <>
       {ripple && (
@@ -80,20 +94,15 @@ export function DayView() {
       </div>
 
       <div>
-        {dayEvents.map((e) => (
-          <EventItem
-            key={e.id}
-            event={e}
-            tz={trip.timezone}
-            isNow={e.id === nowId}
-            isOpen={openId === e.id}
-            onToggle={() => setOpenId((id) => (id === e.id ? null : e.id))}
-            booking={e.bookingId ? bookings.find((b) => b.id === e.bookingId) : undefined}
-            conflicts={hardConflicts(e, dayEvents)}
-            verbs={verbs}
-            onEdit={() => setFormTarget(e)}
-          />
-        ))}
+        {/* Overlapping events render as the concurrency forest (ADR-0041): nests
+            for containment, quiet clusters for partial overlap. Untimed events
+            have no span to place, so they stay plain leaf rows at the end. */}
+        <DayTree groups={buildTimeTree(dayEvents)} depth={0} ctx={dayCtx} />
+        {dayEvents
+          .filter((e) => !e.startsAt)
+          .map((e) => (
+            <ItemNode key={e.id} item={{ event: e, children: [] }} depth={0} ctx={dayCtx} />
+          ))}
       </div>
 
       {formTarget && (
@@ -154,6 +163,88 @@ export function DayView() {
   );
 }
 
+// Shared wiring threaded through the recursive concurrency render (ADR-0041), so
+// a nested/clustered EventItem keeps every quick-verb it has at the top level.
+interface DayCtx {
+  tz: string;
+  nowId?: string;
+  openId: string | null;
+  toggle: (id: string) => void;
+  bookings: Booking[];
+  dayEvents: TripEvent[];
+  verbs: ReturnType<typeof useVerbs>;
+  onEdit: (event: TripEvent) => void;
+}
+
+/** Total events nested anywhere inside an item — the "כולל N" count. */
+function countDescendants(item: TimeItem): number {
+  return item.children.reduce((sum, g) => {
+    const items = g.kind === 'cluster' ? g.items : [g.item];
+    return sum + items.reduce((s, it) => s + 1 + countDescendants(it), 0);
+  }, 0);
+}
+
+// Renders one sibling level: clusters get a quiet brace + "בו-זמנית" header, lone
+// items render directly. `depth` drives the indent cap (screens.css .deep).
+function DayTree({ groups, depth, ctx }: { groups: TimeGroup[]; depth: number; ctx: DayCtx }) {
+  return (
+    <>
+      {groups.map((g) =>
+        g.kind === 'cluster' ? (
+          <div className="cluster" key={`cl-${g.items[0].event.id}`}>
+            <div className="cluster-head">
+              <span className="brk" aria-hidden="true">
+                ⎣
+              </span>{' '}
+              {t.day.concurrent} ·{' '}
+              <span className="win" dir="ltr">
+                {formatTime(new Date(g.startMs), ctx.tz)}–{formatTime(new Date(g.endMs), ctx.tz)}
+              </span>
+            </div>
+            <div className="cluster-kids">
+              {g.items.map((item) => (
+                <ItemNode key={item.event.id} item={item} depth={depth + 1} ctx={ctx} />
+              ))}
+            </div>
+          </div>
+        ) : (
+          <ItemNode key={g.item.event.id} item={g.item} depth={depth} ctx={ctx} />
+        ),
+      )}
+    </>
+  );
+}
+
+// One event; if it contains others it becomes a nest (the event card + its
+// contents indented beneath a brace, "כולל N" on the card).
+function ItemNode({ item, depth, ctx }: { item: TimeItem; depth: number; ctx: DayCtx }) {
+  const e = item.event;
+  const hasKids = item.children.length > 0;
+  const card = (
+    <EventItem
+      event={e}
+      tz={ctx.tz}
+      isNow={e.id === ctx.nowId}
+      isOpen={ctx.openId === e.id}
+      onToggle={() => ctx.toggle(e.id)}
+      booking={e.bookingId ? ctx.bookings.find((b) => b.id === e.bookingId) : undefined}
+      conflicts={hardConflicts(e, ctx.dayEvents)}
+      verbs={ctx.verbs}
+      onEdit={() => ctx.onEdit(e)}
+      nestedCount={hasKids ? countDescendants(item) : undefined}
+    />
+  );
+  if (!hasKids) return card;
+  return (
+    <div className="nest">
+      {card}
+      <div className={'nest-kids' + (depth >= 1 ? ' deep' : '')}>
+        <DayTree groups={item.children} depth={depth + 1} ctx={ctx} />
+      </div>
+    </div>
+  );
+}
+
 // Trip-mode quick-schedule: tap a shelf idea, adjust the prefilled time, done
 // (ADR-0025 Tier-1). Just the time — day/kind/location is Plan-mode building.
 function ScheduleSheet({
@@ -196,6 +287,7 @@ function EventItem({
   conflicts,
   verbs,
   onEdit,
+  nestedCount,
 }: {
   event: TripEvent;
   tz: string;
@@ -206,6 +298,8 @@ function EventItem({
   conflicts: TripEvent[];
   verbs: ReturnType<typeof useVerbs>;
   onEdit: () => void;
+  // Set on an envelope event that nests others: the "כולל N" contents count.
+  nestedCount?: number;
 }) {
   const isHard = event.kind === EVENT_KIND.HARD;
   const isDone = event.status === EVENT_STATUS.DONE;
@@ -246,6 +340,9 @@ function EventItem({
               </span>
             ) : (
               <span className="tag-soft">{isNow ? t.event.softNow : t.event.soft}</span>
+            )}
+            {nestedCount !== undefined && (
+              <span className="nest-note">{t.day.contains(nestedCount)}</span>
             )}
           </span>
           <span className="m">{meta}</span>
