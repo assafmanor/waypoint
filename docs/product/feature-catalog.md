@@ -11,16 +11,16 @@
 
 ## Core surfaces
 
-| Feature                                  | Priority | Phase | Notes                                                                                     |
-| ---------------------------------------- | -------- | ----- | ----------------------------------------------------------------------------------------- |
-| Home "Now/Next" departure board          | Must     | v1    | Signature element; live clock, countdown, day progress                                    |
-| Day-by-day itinerary                     | Must     | v1    | Hard/soft cards, quick verbs, undo                                                        |
-| Central index (bookings + codes)         | Must     | v1    | **Offline-first**                                                                         |
-| Offline encrypted documents              | Must     | v1    | Passports, insurance                                                                      |
-| Map with pinned events + "near me now"   | Should   | v1    | Deep-link to Google Maps for turn-by-turn                                                 |
+| Feature                                 | Priority | Phase | Notes                                                                                     |
+| --------------------------------------- | -------- | ----- | ----------------------------------------------------------------------------------------- |
+| Home "Now/Next" departure board         | Must     | v1    | Signature element; live clock, countdown, day progress                                    |
+| Day-by-day itinerary                    | Must     | v1    | Hard/soft cards, quick verbs, undo                                                        |
+| Central index (bookings + codes)        | Must     | v1    | **Offline-first**                                                                         |
+| Offline encrypted documents             | Must     | v1    | Passports, insurance                                                                      |
+| Map with pinned events + "near me now"  | Should   | v1    | Deep-link to Google Maps for turn-by-turn                                                 |
 | Automatic mode switch (planning ↔ trip) | Should   | v1    | By date; location later                                                                   |
-| Day-at-a-glance card (derived)           | Should   | v1    | Trip-Home glance, computed from events (ADR-0045); replaces the weather/FX/budget row     |
-| Glance cards (weather / FX)              | Could    | v1.1  | Return as their own cards when the integration pipes land (ADR-0045/0004); budget dropped |
+| Day-at-a-glance card (derived)          | Should   | v1    | Trip-Home glance, computed from events (ADR-0045); replaces the weather/FX/budget row     |
+| Glance cards (weather / FX)             | Could    | v1.1  | Return as their own cards when the integration pipes land (ADR-0045/0004); budget dropped |
 
 ## Modes (Plan / Trip)
 
