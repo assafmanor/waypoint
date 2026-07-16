@@ -1,6 +1,6 @@
 # 0043 — Day view: the now-line, derived-phase presentation, phase-scoped verbs, and the archive chrome
 
-**Status:** Proposed
+**Status:** Accepted
 **Date:** 2026-07-16
 **Refines:** [0011](0011-hard-soft-event-model.md) (hard/soft), [0025](0025-trip-mode-edit-capability-tiers.md) (edit tiers), [0027](0027-soft-item-lifecycle-shelf-slip.md) (derived phases, Do-it-now, shelf), [0028](0028-plan-violet-color-budget-dark-ready.md) (color budget, mode identity), [0029](0029-trip-mode-day-scope-gating.md) (past/future day gating), [0040](0040-trip-mode-access-window-and-past-trip-archive.md) (finished-trip archive)
 **Builds on:** [0018](0018-timeline-data-model-shape.md) / [0026](0026-real-clock-and-dev-time-travel.md) (state is `planned | done | skipped`; "now" is derived from the clock, never stored)
