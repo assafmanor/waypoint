@@ -1,15 +1,27 @@
 import { randomUUID } from 'node:crypto';
-import { ConflictException, Injectable, NotFoundException } from '@nestjs/common';
-import type { Booking as PrismaBooking, Prisma } from '@prisma/client';
 import {
+  BadRequestException,
+  ConflictException,
+  Injectable,
+  NotFoundException,
+} from '@nestjs/common';
+import { Prisma, type Booking as PrismaBooking } from '@prisma/client';
+import {
+  BOOKING_TYPE,
+  BOOKING_TYPE_TO_CATEGORY,
   EVENT_KIND,
   type Booking,
+  type BookingEventSeed,
+  type BookingType,
   type CreateBookingInput,
   type UpdateBookingInput,
 } from '@waypoint/shared';
 import { PrismaService } from '../prisma/prisma.service';
-import { ChangeService } from '../sync/change.service';
+import { ChangeService, type ChangeOp } from '../sync/change.service';
 import { toBookingDto, toEventDto } from '../trips/trips.mapper';
+
+const isTransport = (type: BookingType): boolean =>
+  type === BOOKING_TYPE.FLIGHT || type === BOOKING_TYPE.TRAIN;
 
 @Injectable()
 export class BookingsService {
@@ -27,33 +39,66 @@ export class BookingsService {
   }
 
   async create(tripId: string, actorUserId: string, input: CreateBookingInput): Promise<Booking> {
+    this.assertPlaceShape(input.type, input);
+    await this.assertPlacesInTrip(tripId, [input.placeId, input.fromPlaceId, input.toPlaceId]);
     const id = input.id ?? randomUUID();
-    const { entity } = await this.changes.mutate({
-      tripId,
-      actorUserId,
-      entityType: 'booking',
-      entityId: id,
-      action: 'create',
-      after: input,
-      apply: (tx) =>
-        tx.booking.create({
-          data: {
-            id,
-            tripId,
-            type: input.type,
-            title: input.title,
-            confirmationCode: input.confirmationCode,
-            provider: input.provider,
-            address: input.address,
-            placeId: input.placeId,
-            startsAt: input.startsAt ? new Date(input.startsAt) : undefined,
-            endsAt: input.endsAt ? new Date(input.endsAt) : undefined,
-            details: input.details as Prisma.InputJsonValue | undefined,
-            updatedBy: actorUserId,
-          },
-        }),
-    });
-    return toBookingDto(entity);
+
+    // Untimed booking (index-only, ADR-0047): a single Change, no Event.
+    if (!input.event) {
+      try {
+        const { entity } = await this.changes.mutate({
+          tripId,
+          actorUserId,
+          entityType: 'booking',
+          entityId: id,
+          action: 'create',
+          after: input,
+          apply: (tx) =>
+            tx.booking.create({ data: this.bookingCreateData(id, tripId, actorUserId, input) }),
+        });
+        return toBookingDto(entity);
+      } catch (err) {
+        return this.recoverFromDuplicate(tripId, id, err);
+      }
+    }
+
+    // Timed booking: auto-create its Event atomically (ADR-0047 §1) — booking + event
+    // are two Change rows in one transaction (ADR-0048).
+    const eventId = input.event.id ?? randomUUID();
+    try {
+      const { entity } = await this.changes.mutateMany({
+        tripId,
+        actorUserId,
+        apply: async (tx) => {
+          const booking = await tx.booking.create({
+            data: this.bookingCreateData(id, tripId, actorUserId, input),
+          });
+          const event = await tx.event.create({
+            data: this.eventDataFromBooking(tripId, actorUserId, booking, input.event!, eventId),
+          });
+          return {
+            entity: booking,
+            ops: [
+              {
+                entityType: 'booking',
+                entityId: booking.id,
+                action: 'create',
+                after: toBookingDto(booking),
+              },
+              {
+                entityType: 'event',
+                entityId: event.id,
+                action: 'create',
+                after: toEventDto(event),
+              },
+            ] satisfies ChangeOp[],
+          };
+        },
+      });
+      return toBookingDto(entity);
+    } catch (err) {
+      return this.recoverFromDuplicate(tripId, id, err);
+    }
   }
 
   async update(
@@ -63,55 +108,241 @@ export class BookingsService {
     input: UpdateBookingInput,
   ): Promise<Booking> {
     const before = await this.requireBooking(tripId, bookingId);
-    const { entity } = await this.changes.mutate({
+    const type = input.type ?? before.type;
+    this.assertPlaceShape(type, {
+      placeId: 'placeId' in input ? input.placeId : (before.placeId ?? undefined),
+      fromPlaceId: 'fromPlaceId' in input ? input.fromPlaceId : (before.fromPlaceId ?? undefined),
+      toPlaceId: 'toPlaceId' in input ? input.toPlaceId : (before.toPlaceId ?? undefined),
+    });
+    await this.assertPlacesInTrip(tripId, [input.placeId, input.fromPlaceId, input.toPlaceId]);
+
+    // Booking-only update (no event touched) → single Change.
+    if (!input.event) {
+      const { entity } = await this.changes.mutate({
+        tripId,
+        actorUserId,
+        entityType: 'booking',
+        entityId: bookingId,
+        action: 'update',
+        before: toBookingDto(before),
+        after: input,
+        apply: (tx) =>
+          tx.booking.update({
+            where: { id: bookingId },
+            data: this.bookingUpdateData(actorUserId, input),
+          }),
+      });
+      return toBookingDto(entity);
+    }
+
+    // Merged edit surface (ADR-0047): update booking and upsert its linked event atomically.
+    const existingEvent = await this.prisma.event.findUnique({ where: { bookingId } });
+    const { entity } = await this.changes.mutateMany({
       tripId,
       actorUserId,
-      entityType: 'booking',
-      entityId: bookingId,
-      action: 'update',
-      before: toBookingDto(before),
-      after: input,
-      apply: (tx) =>
-        tx.booking.update({
+      apply: async (tx) => {
+        const booking = await tx.booking.update({
           where: { id: bookingId },
-          data: {
-            ...(input.type !== undefined && { type: input.type }),
-            ...(input.title !== undefined && { title: input.title }),
-            ...(input.confirmationCode !== undefined && {
-              confirmationCode: input.confirmationCode,
-            }),
-            ...(input.provider !== undefined && { provider: input.provider }),
-            ...(input.address !== undefined && { address: input.address }),
-            ...(input.placeId !== undefined && { placeId: input.placeId }),
-            ...(input.startsAt !== undefined && { startsAt: new Date(input.startsAt) }),
-            ...(input.endsAt !== undefined && { endsAt: new Date(input.endsAt) }),
-            ...(input.details !== undefined && {
-              details: input.details as Prisma.InputJsonValue,
-            }),
-            updatedBy: actorUserId,
+          data: this.bookingUpdateData(actorUserId, input),
+        });
+        const ops: ChangeOp[] = [
+          {
+            entityType: 'booking',
+            entityId: bookingId,
+            action: 'update',
+            before: toBookingDto(before),
+            after: toBookingDto(booking),
           },
-        }),
+        ];
+        if (existingEvent) {
+          const event = await tx.event.update({
+            where: { id: existingEvent.id },
+            data: this.eventUpdateFromSeed(actorUserId, input.event!),
+          });
+          ops.push({
+            entityType: 'event',
+            entityId: event.id,
+            action: 'update',
+            before: toEventDto(existingEvent),
+            after: toEventDto(event),
+          });
+        } else {
+          const eventId = input.event!.id ?? randomUUID();
+          const event = await tx.event.create({
+            data: this.eventDataFromBooking(tripId, actorUserId, booking, input.event!, eventId),
+          });
+          ops.push({
+            entityType: 'event',
+            entityId: event.id,
+            action: 'create',
+            after: toEventDto(event),
+          });
+        }
+        return { entity: booking, ops };
+      },
     });
     return toBookingDto(entity);
   }
 
+  /** Delete/unlink (ADR-0047 §3). `deleteEvents=false` keeps the linked Event but
+   *  clears its `bookingId` and records that as its own Change (the FK's silent
+   *  onDelete:SetNull would leave peers thinking the event is still linked). */
   async remove(
     tripId: string,
     bookingId: string,
     actorUserId: string,
     confirm: boolean,
+    deleteEvents: boolean,
   ): Promise<void> {
     const before = await this.requireBooking(tripId, bookingId);
     await this.assertNoHardEventDependency(tripId, bookingId, confirm);
-    await this.changes.mutate({
+    const linkedEvent = await this.prisma.event.findUnique({ where: { bookingId } });
+
+    if (!linkedEvent) {
+      await this.changes.mutate({
+        tripId,
+        actorUserId,
+        entityType: 'booking',
+        entityId: bookingId,
+        action: 'delete',
+        before: toBookingDto(before),
+        apply: (tx) => tx.booking.delete({ where: { id: bookingId } }),
+      });
+      return;
+    }
+
+    await this.changes.mutateMany<null>({
       tripId,
       actorUserId,
-      entityType: 'booking',
-      entityId: bookingId,
-      action: 'delete',
-      before: toBookingDto(before),
-      apply: (tx) => tx.booking.delete({ where: { id: bookingId } }),
+      apply: async (tx) => {
+        const ops: ChangeOp[] = [];
+        if (deleteEvents) {
+          await tx.event.delete({ where: { id: linkedEvent.id } });
+          ops.push({
+            entityType: 'event',
+            entityId: linkedEvent.id,
+            action: 'delete',
+            before: toEventDto(linkedEvent),
+          });
+        } else {
+          const event = await tx.event.update({
+            where: { id: linkedEvent.id },
+            data: { bookingId: null, updatedBy: actorUserId },
+          });
+          ops.push({
+            entityType: 'event',
+            entityId: event.id,
+            action: 'update',
+            before: toEventDto(linkedEvent),
+            after: toEventDto(event),
+          });
+        }
+        await tx.booking.delete({ where: { id: bookingId } });
+        ops.push({
+          entityType: 'booking',
+          entityId: bookingId,
+          action: 'delete',
+          before: toBookingDto(before),
+        });
+        return { entity: null, ops };
+      },
     });
+  }
+
+  private bookingCreateData(
+    id: string,
+    tripId: string,
+    actorUserId: string,
+    input: CreateBookingInput,
+  ): Prisma.BookingUncheckedCreateInput {
+    return {
+      id,
+      tripId,
+      type: input.type,
+      title: input.title,
+      confirmationCode: input.confirmationCode,
+      provider: input.provider,
+      placeId: input.placeId,
+      fromPlaceId: input.fromPlaceId,
+      toPlaceId: input.toPlaceId,
+      details: input.details as Prisma.InputJsonValue | undefined,
+      updatedBy: actorUserId,
+    };
+  }
+
+  private bookingUpdateData(
+    actorUserId: string,
+    input: UpdateBookingInput,
+  ): Prisma.BookingUncheckedUpdateInput {
+    return {
+      ...(input.type !== undefined && { type: input.type }),
+      ...(input.title !== undefined && { title: input.title }),
+      ...(input.confirmationCode !== undefined && { confirmationCode: input.confirmationCode }),
+      ...(input.provider !== undefined && { provider: input.provider }),
+      ...(input.placeId !== undefined && { placeId: input.placeId }),
+      ...(input.fromPlaceId !== undefined && { fromPlaceId: input.fromPlaceId }),
+      ...(input.toPlaceId !== undefined && { toPlaceId: input.toPlaceId }),
+      ...(input.details !== undefined && { details: input.details as Prisma.InputJsonValue }),
+      updatedBy: actorUserId,
+    };
+  }
+
+  /** A booking-backed Event: place comes from the booking, so its own `placeId` is
+   *  null (ADR-0048 authority rule); category falls back to the booking type only when
+   *  the form gave no icon-derived category (ADR-0038). */
+  private eventDataFromBooking(
+    tripId: string,
+    actorUserId: string,
+    booking: PrismaBooking,
+    seed: BookingEventSeed,
+    eventId: string,
+  ): Prisma.EventUncheckedCreateInput {
+    return {
+      id: eventId,
+      tripId,
+      date: new Date(seed.date),
+      endDate: seed.endDate ? new Date(seed.endDate) : undefined,
+      title: booking.title,
+      icon: seed.icon,
+      category: seed.category ?? BOOKING_TYPE_TO_CATEGORY[booking.type],
+      kind: seed.kind ?? EVENT_KIND.HARD,
+      startsAt: seed.startsAt ? new Date(seed.startsAt) : undefined,
+      endsAt: seed.endsAt ? new Date(seed.endsAt) : undefined,
+      placeId: null,
+      bookingId: booking.id,
+      updatedBy: actorUserId,
+    };
+  }
+
+  private eventUpdateFromSeed(
+    actorUserId: string,
+    seed: BookingEventSeed,
+  ): Prisma.EventUncheckedUpdateInput {
+    return {
+      date: new Date(seed.date),
+      ...(seed.endDate !== undefined && { endDate: new Date(seed.endDate) }),
+      ...(seed.icon !== undefined && { icon: seed.icon }),
+      ...(seed.category !== undefined && { category: seed.category }),
+      ...(seed.kind !== undefined && { kind: seed.kind }),
+      ...(seed.startsAt !== undefined && { startsAt: new Date(seed.startsAt) }),
+      ...(seed.endsAt !== undefined && { endsAt: new Date(seed.endsAt) }),
+      placeId: null, // linked → place stays on the booking
+      updatedBy: actorUserId,
+    };
+  }
+
+  private async recoverFromDuplicate(
+    tripId: string,
+    bookingId: string,
+    err: unknown,
+  ): Promise<Booking> {
+    // Client-generated id (ADR-0018): an offline-outbox retry re-POSTs the same ids,
+    // rolling the whole transaction back on the first P2002. Treat that as "already
+    // applied" and return the persisted booking (its event, if any, is already there).
+    if (err instanceof Prisma.PrismaClientKnownRequestError && err.code === 'P2002') {
+      return toBookingDto(await this.requireBooking(tripId, bookingId));
+    }
+    throw err;
   }
 
   private async requireBooking(tripId: string, bookingId: string): Promise<PrismaBooking> {
@@ -120,8 +351,37 @@ export class BookingsService {
     return booking;
   }
 
-  /** Mirrors the hard-event guard (ADR-0011): a hard event losing its booking link via
-   *  the FK's onDelete: SetNull is exactly the surprise that guard exists to prevent. */
+  /** Transport carries origin/destination (`from`/`to`); every other type carries a
+   *  single `placeId`. The two are mutually exclusive (ADR-0048). */
+  private assertPlaceShape(
+    type: BookingType,
+    input: { placeId?: string; fromPlaceId?: string; toPlaceId?: string },
+  ): void {
+    if (isTransport(type)) {
+      if (input.placeId) {
+        throw new BadRequestException('Transport bookings use fromPlaceId/toPlaceId, not placeId');
+      }
+    } else if (input.fromPlaceId || input.toPlaceId) {
+      throw new BadRequestException('Only transport bookings have origin/destination places');
+    }
+  }
+
+  private async assertPlacesInTrip(tripId: string, ids: (string | undefined)[]): Promise<void> {
+    const present = ids.filter((id): id is string => Boolean(id));
+    if (present.length === 0) return;
+    const found = await this.prisma.place.findMany({
+      where: { tripId, id: { in: present } },
+      select: { id: true },
+    });
+    const foundIds = new Set(found.map((p) => p.id));
+    const missing = present.filter((id) => !foundIds.has(id));
+    if (missing.length > 0) {
+      throw new BadRequestException(`Unknown place(s) for this trip: ${missing.join(', ')}`);
+    }
+  }
+
+  /** Mirrors the hard-event guard (ADR-0011): a hard event losing its booking link is
+   *  exactly the surprise that guard exists to prevent — both on delete and unlink. */
   private async assertNoHardEventDependency(
     tripId: string,
     bookingId: string,

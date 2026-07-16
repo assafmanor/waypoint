@@ -60,9 +60,6 @@ export type MembershipRole = z.infer<typeof membershipRoleSchema>;
 export const documentTypeSchema = z.enum(['passport', 'insurance', 'visa', 'other']);
 export type DocumentType = z.infer<typeof documentTypeSchema>;
 
-export const tripNoteCategorySchema = z.enum(['wifi', 'note']);
-export type TripNoteCategory = z.infer<typeof tripNoteCategorySchema>;
-
 export const changeActionSchema = z.enum(['create', 'update', 'move', 'delete', 'status']);
 export type ChangeAction = z.infer<typeof changeActionSchema>;
 
@@ -140,8 +137,7 @@ export const tripEventSchema = z.object({
   kind: eventKindSchema,
   startsAt: z.string().optional(), // UTC instant
   endsAt: z.string().optional(),
-  location: z.string().optional(),
-  placeId: z.string().optional(),
+  placeId: z.string().optional(), // authoritative only for unlinked events (ADR-0048)
   status: eventStatusSchema,
   bookingId: idSchema.optional(),
   sortOrder: z.number(),
@@ -159,10 +155,9 @@ export const bookingSchema = z.object({
   title: z.string(),
   confirmationCode: z.string().optional(),
   provider: z.string().optional(),
-  address: z.string().optional(),
-  placeId: z.string().optional(),
-  startsAt: z.string().optional(),
-  endsAt: z.string().optional(),
+  placeId: z.string().optional(), // single-place types; mutually exclusive with from/to
+  fromPlaceId: z.string().optional(), // transport origin (ADR-0048)
+  toPlaceId: z.string().optional(), // transport destination (ADR-0048)
   details: z.record(z.string(), z.unknown()).optional(),
   source: bookingSourceSchema,
   createdAt: z.string(),
@@ -170,6 +165,23 @@ export const bookingSchema = z.object({
   updatedBy: idSchema,
 });
 export type Booking = z.infer<typeof bookingSchema>;
+
+/** Trip-scoped location registry (ADR-0048). Every `placeId` FK points here. A
+ *  name-only row is valid ("Place-lite"); the Google Places picker fills in
+ *  googlePlaceId/lat/lng later. */
+export const placeSchema = z.object({
+  id: idSchema,
+  tripId: idSchema,
+  googlePlaceId: z.string().optional(),
+  name: z.string(),
+  address: z.string().optional(),
+  lat: z.number().optional(),
+  lng: z.number().optional(),
+  createdAt: z.string(),
+  updatedAt: z.string(),
+  updatedBy: idSchema,
+});
+export type Place = z.infer<typeof placeSchema>;
 
 /** Idempotency map for one-way calendar push, per member per event (ADR-0020). */
 export const calendarEventLinkSchema = z.object({
@@ -217,20 +229,6 @@ export const maybeItemSchema = z.object({
 });
 export type MaybeItem = z.infer<typeof maybeItemSchema>;
 
-/** The practical layer's small stuff (WiFi codes, notes) — ADR-0018. */
-export const tripNoteSchema = z.object({
-  id: idSchema,
-  tripId: idSchema,
-  category: tripNoteCategorySchema,
-  label: z.string(),
-  value: z.string(),
-  sortOrder: z.number(),
-  createdAt: z.string(),
-  updatedAt: z.string(),
-  updatedBy: idSchema,
-});
-export type TripNote = z.infer<typeof tripNoteSchema>;
-
 /** Full current trip state + sync cursor — GET /trips/:tripId/snapshot (ADR-0019/0022). */
 export const tripSnapshotSchema = z.object({
   trip: tripSchema,
@@ -241,7 +239,7 @@ export const tripSnapshotSchema = z.object({
   events: z.array(tripEventSchema),
   bookings: z.array(bookingSchema),
   maybeItems: z.array(maybeItemSchema),
-  notes: z.array(tripNoteSchema),
+  places: z.array(placeSchema),
   latestSeq: z.string(), // BigInt serialized as string, see Change.seq
 });
 export type TripSnapshot = z.infer<typeof tripSnapshotSchema>;

@@ -72,11 +72,6 @@ enum DocumentType {
   other
 }
 
-enum TripNoteCategory {
-  wifi
-  note
-}
-
 enum ChangeAction {
   create
   update
@@ -154,7 +149,7 @@ model Trip {
   bookings    Booking[]
   documents   Document[]
   maybeItems  MaybeItem[]
-  tripNotes   TripNote[]
+  places      Place[]
   changes     Change[]
 
   @@index([createdBy])
@@ -186,10 +181,9 @@ model Event {
   kind      EventKind
   startsAt  DateTime? // UTC instant
   endsAt    DateTime?
-  location  String?
-  placeId   String?
+  placeId   String? // authoritative only for unlinked events; cleared when bookingId is set (ADR-0048)
   status    EventStatus    @default(planned)
-  bookingId String?
+  bookingId String?        @unique // strict 1:1 with Booking (ADR-0047)
   sortOrder Int            @default(0)
   source    EventSource    @default(manual)
   createdAt DateTime       @default(now())
@@ -198,6 +192,7 @@ model Event {
 
   trip          Trip                @relation(fields: [tripId], references: [id], onDelete: Cascade)
   booking       Booking?            @relation(fields: [bookingId], references: [id], onDelete: SetNull)
+  place         Place?              @relation("EventPlace", fields: [placeId], references: [id], onDelete: SetNull)
   calendarLinks CalendarEventLink[]
 
   @@index([tripId, date])
@@ -210,18 +205,44 @@ model Booking {
   title            String
   confirmationCode String?
   provider         String?
-  address          String?
-  placeId          String?
-  startsAt         DateTime? // a hotel across nights is ONE booking with a range (ADR-0018)
-  endsAt           DateTime?
+  placeId          String? // single-place types (hotel/restaurant/…); mutually exclusive with from/to
+  fromPlaceId      String? // transport origin (map-pin/nav target of the linked Event) — ADR-0048
+  toPlaceId        String? // transport destination — ADR-0048
   details          Json?
   source           BookingSource @default(manual)
   createdAt        DateTime      @default(now())
   updatedAt        DateTime      @updatedAt
   updatedBy        String
 
-  trip   Trip    @relation(fields: [tripId], references: [id], onDelete: Cascade)
-  events Event[]
+  trip      Trip   @relation(fields: [tripId], references: [id], onDelete: Cascade)
+  event     Event? // strict 1:1 (Event.bookingId @unique, ADR-0047)
+  place     Place? @relation("BookingPlace", fields: [placeId], references: [id], onDelete: SetNull)
+  fromPlace Place? @relation("BookingFromPlace", fields: [fromPlaceId], references: [id], onDelete: SetNull)
+  toPlace   Place? @relation("BookingToPlace", fields: [toPlaceId], references: [id], onDelete: SetNull)
+
+  @@index([tripId])
+}
+
+// Trip-scoped location registry (ADR-0048). Name-only rows are valid ("Place-lite");
+// googlePlaceId/lat/lng are filled in later by the Google Places picker (Maps work).
+model Place {
+  id            String   @id @default(cuid())
+  tripId        String
+  googlePlaceId String?
+  name          String
+  address       String?
+  lat           Float?
+  lng           Float?
+  createdAt     DateTime @default(now())
+  updatedAt     DateTime @updatedAt
+  updatedBy     String
+
+  trip          Trip        @relation(fields: [tripId], references: [id], onDelete: Cascade)
+  events        Event[]     @relation("EventPlace")
+  bookings      Booking[]   @relation("BookingPlace")
+  bookingsFrom  Booking[]   @relation("BookingFromPlace")
+  bookingsTo    Booking[]   @relation("BookingToPlace")
+  maybeItems    MaybeItem[] @relation("MaybeItemPlace")
 
   @@index([tripId])
 }
@@ -273,25 +294,9 @@ model MaybeItem {
   updatedAt DateTime       @updatedAt
   updatedBy String
 
-  trip Trip @relation(fields: [tripId], references: [id], onDelete: Cascade)
-  user User @relation(fields: [createdBy], references: [id], onDelete: Cascade)
-
-  @@index([tripId])
-}
-
-// WiFi codes, notes — the practical layer's small stuff (ADR-0018).
-model TripNote {
-  id        String           @id @default(cuid())
-  tripId    String
-  category  TripNoteCategory
-  label     String
-  value     String
-  sortOrder Int              @default(0)
-  createdAt DateTime         @default(now())
-  updatedAt DateTime         @updatedAt
-  updatedBy String
-
-  trip Trip @relation(fields: [tripId], references: [id], onDelete: Cascade)
+  trip  Trip   @relation(fields: [tripId], references: [id], onDelete: Cascade)
+  user  User   @relation(fields: [createdBy], references: [id], onDelete: Cascade)
+  place Place? @relation("MaybeItemPlace", fields: [placeId], references: [id], onDelete: SetNull)
 
   @@index([tripId])
 }

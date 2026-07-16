@@ -27,8 +27,7 @@ const eventFieldsSchema = z.object({
   kind: eventKindSchema,
   startsAt: z.string().optional(), // UTC instant
   endsAt: z.string().optional(),
-  location: z.string().optional(),
-  placeId: z.string().optional(),
+  placeId: z.string().optional(), // FK → Place; cleared server-side when bookingId is set (ADR-0048)
   bookingId: z.string().optional(),
   sortOrder: z.number().int().optional(),
   source: eventSourceSchema.default('manual'),
@@ -63,23 +62,52 @@ export type MoveEventInput = z.infer<typeof moveEventSchema>;
 export const eventStatusUpdateSchema = z.object({ status: eventStatusSchema });
 export type EventStatusUpdateInput = z.infer<typeof eventStatusUpdateSchema>;
 
+/** Optional event to auto-create/update alongside a booking (ADR-0047 §1). Present
+ *  only when the booking has a time. title/placeId/bookingId/source are derived by the
+ *  service — the linked event's place comes from the booking (ADR-0048). */
+export const bookingEventSeedSchema = z.object({
+  id: entityIdSchema.optional(),
+  date: z.string(),
+  startsAt: z.string().optional(),
+  endsAt: z.string().optional(),
+  endDate: z.string().optional(),
+  kind: eventKindSchema.optional(),
+  icon: z.string().optional(),
+  category: eventCategorySchema.optional(),
+});
+export type BookingEventSeed = z.infer<typeof bookingEventSeedSchema>;
+
 export const createBookingSchema = z.object({
   id: entityIdSchema.optional(),
   type: bookingTypeSchema,
   title: z.string().min(1),
   confirmationCode: z.string().optional(),
   provider: z.string().optional(),
-  address: z.string().optional(),
-  placeId: z.string().optional(),
-  startsAt: z.string().optional(),
-  endsAt: z.string().optional(),
+  placeId: z.string().optional(), // single-place types; mutually exclusive with from/to
+  fromPlaceId: z.string().optional(), // transport origin (ADR-0048)
+  toPlaceId: z.string().optional(), // transport destination (ADR-0048)
   details: z.record(z.string(), z.unknown()).optional(),
+  event: bookingEventSeedSchema.optional(),
 });
 export type CreateBookingInput = z.infer<typeof createBookingSchema>;
 
 /** Partial update to a booking. */
 export const updateBookingSchema = createBookingSchema.partial();
 export type UpdateBookingInput = z.infer<typeof updateBookingSchema>;
+
+export const createPlaceSchema = z.object({
+  id: entityIdSchema.optional(),
+  name: z.string().min(1),
+  googlePlaceId: z.string().optional(),
+  address: z.string().optional(),
+  lat: z.number().optional(),
+  lng: z.number().optional(),
+});
+export type CreatePlaceInput = z.infer<typeof createPlaceSchema>;
+
+/** Partial update to a place (the picker enriches a name-only row later). */
+export const updatePlaceSchema = createPlaceSchema.partial();
+export type UpdatePlaceInput = z.infer<typeof updatePlaceSchema>;
 
 /** `fileRef`/`mimeType`/`sizeBytes` are computed server-side from the uploaded
  *  file (multipart), not client input — this validates the accompanying fields. */

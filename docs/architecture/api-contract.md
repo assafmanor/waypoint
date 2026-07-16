@@ -2,7 +2,7 @@
 
 **Status:** ACCEPTED (T-025). REST over HTTPS + a WebSocket channel for realtime. All request/response bodies validated with the zod schemas in `packages/shared`. JSON, camelCase.
 
-**Validation (ADR-0023):** entity shapes (`Trip`, `Membership`, `TripEvent`, `Booking`, `MaybeItem`, `TripNote`, `TripSnapshot`, ...) are zod schemas in `packages/shared/src/entities.ts`; their TS types are `z.infer` of those schemas — one shape per entity, not a separate hand-written interface. Requests are validated against `packages/shared` input schemas via the repo's `ZodValidationPipe`; responses on migrated routes are validated/stripped via `nestjs-zod`'s `@ZodSerializerDto`. OpenAPI (`/api/docs`) is generated directly from the same zod schemas via `createZodDto` — no hand-written `@ApiProperty` DTOs to keep in sync.
+**Validation (ADR-0023):** entity shapes (`Trip`, `Membership`, `TripEvent`, `Booking`, `MaybeItem`, `Place`, `TripSnapshot`, ...) are zod schemas in `packages/shared/src/entities.ts`; their TS types are `z.infer` of those schemas — one shape per entity, not a separate hand-written interface. Requests are validated against `packages/shared` input schemas via the repo's `ZodValidationPipe`; responses on migrated routes are validated/stripped via `nestjs-zod`'s `@ZodSerializerDto`. OpenAPI (`/api/docs`) is generated directly from the same zod schemas via `createZodDto` — no hand-written `@ApiProperty` DTOs to keep in sync.
 
 ## Conventions
 
@@ -65,12 +65,27 @@ There is no `Day` resource — events carry `date` (ADR-0018); the client groups
 
 ## Bookings (the index)
 
-| Method | Path                                 | Body → Response                               |
-| ------ | ------------------------------------ | --------------------------------------------- |
-| GET    | `/trips/:tripId/bookings`            | → `Booking[]` (offline-cached client-side)    |
-| POST   | `/trips/:tripId/bookings`            | `createBookingSchema` → `Booking`             |
-| PATCH  | `/trips/:tripId/bookings/:bookingId` | partial → `Booking`                           |
-| DELETE | `/trips/:tripId/bookings/:bookingId` | → `204` (warns if a hard event depends on it) |
+| Method | Path                                 | Body → Response                                    |
+| ------ | ------------------------------------ | -------------------------------------------------- |
+| GET    | `/trips/:tripId/bookings`            | → `Booking[]` (offline-cached client-side)         |
+| POST   | `/trips/:tripId/bookings`            | `createBookingSchema` → `Booking`                  |
+| PATCH  | `/trips/:tripId/bookings/:bookingId` | partial → `Booking`                                |
+| DELETE | `/trips/:tripId/bookings/:bookingId` | → `204` (`?deleteEvents=`, `?confirm=`; see below) |
+
+**Auto-create-on-save (ADR-0047 §1 / ADR-0048):** `createBookingSchema` carries an optional `event` seed (`{ id?, date, startsAt?, endsAt?, endDate?, kind?, icon?, category? }`). When present, the booking and its linked `Event` are written in **one transaction** (two `Change` rows — `booking:create` then `event:create` — via `ChangeService.mutateMany()`). The event's place lives on the booking, so its own `placeId` is null (ADR-0051); `kind` defaults `hard`; `category` falls back to the booking type only when the seed gives none. Re-POSTing the same client ids is idempotent (offline-retry safe). `PATCH` with an `event` seed upserts the linked event the same way.
+
+**Places (ADR-0048):** transport bookings carry `fromPlaceId`/`toPlaceId`; every other type carries a single `placeId` — the two are mutually exclusive (a `400` otherwise). Any place id must belong to the trip (`400` otherwise).
+
+**Delete / unlink (ADR-0047 §3):** `DELETE ?deleteEvents=true` removes the booking **and** its linked event; the default (`false`) **unlinks** — the event survives with `bookingId` nulled, recorded as its own `event:update` `Change` (not a silent FK `SetNull`). The hard-event guard still applies: if a `hard` event depends on the booking, `?confirm=true` is required or the API returns `409 HARD_EVENT_REQUIRES_CONFIRM`.
+
+## Places
+
+Trip-scoped location registry (ADR-0048). Read via the trip snapshot (`places`); written here. Name-only rows are valid ("Place-lite"); the Places picker enriches `googlePlaceId`/`lat`/`lng` later. No delete endpoint yet (orphans are left).
+
+| Method | Path                             | Body → Response                                                                       |
+| ------ | -------------------------------- | ------------------------------------------------------------------------------------- |
+| POST   | `/trips/:tripId/places`          | `createPlaceSchema` (`{ id?, name, googlePlaceId?, address?, lat?, lng? }`) → `Place` |
+| PATCH  | `/trips/:tripId/places/:placeId` | partial → `Place` (the picker's enrichment path)                                      |
 
 ## Maybe shelf
 

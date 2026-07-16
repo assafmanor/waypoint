@@ -22,11 +22,13 @@ import {
   type Booking,
   type EventCategory,
   type MaybeItem,
+  type Place,
   type TripEvent,
 } from '@waypoint/shared';
 import { useTrip, byStart } from '../state/trip-state';
 import { useVerbs } from '../state/verbs';
 import { useClock } from '../lib/useClock';
+import { eventPlaceName } from '../lib/places';
 import { tripPhase } from '../lib/mode';
 import {
   buildTimeTree,
@@ -59,7 +61,7 @@ function gapLabel(minutes: number): string {
 }
 
 export function PlanDay() {
-  const { trip, events, maybeItems, bookings, activeDate } = useTrip();
+  const { trip, events, maybeItems, bookings, places, activeDate } = useTrip();
   const verbs = useVerbs();
   const now = useClock();
   const tz = trip.timezone;
@@ -136,6 +138,7 @@ export function PlanDay() {
     readOnly,
     nowRefMs,
     bookings,
+    places,
     verbs,
     dayEvents,
     softEvents,
@@ -445,6 +448,7 @@ interface BuilderCtx {
   // depth 0 (viewing today, mid-trip); null otherwise (ADR-0043).
   nowRefMs: number | null;
   bookings: Booking[];
+  places: Place[];
   verbs: ReturnType<typeof useVerbs>;
   dayEvents: TripEvent[];
   softEvents: TripEvent[];
@@ -611,6 +615,7 @@ function BuilderNode({
         tz={ctx.tz}
         readOnly={ctx.readOnly}
         booking={e.bookingId ? ctx.bookings.find((b) => b.id === e.bookingId) : undefined}
+        placeName={eventPlaceName(e, ctx.bookings, ctx.places)}
         onEdit={() => ctx.onEdit(e)}
         onDelete={() => ctx.verbs.remove(e)}
         onPark={soft ? () => ctx.verbs.park(e) : undefined}
@@ -650,6 +655,7 @@ function BuilderRow({
   tz,
   readOnly,
   booking,
+  placeName,
   onEdit,
   onDelete,
   onPark,
@@ -668,6 +674,7 @@ function BuilderRow({
   // carries no edit/reorder/delete affordances.
   readOnly?: boolean;
   booking?: { confirmationCode?: string };
+  placeName?: string;
   onEdit: () => void;
   onDelete: () => void;
   // Present only for soft rows — move the event to the shelf as an idea.
@@ -699,9 +706,7 @@ function BuilderRow({
 }) {
   const isHard = event.kind === EVENT_KIND.HARD;
   const code = booking?.confirmationCode ? `${CODE_PREFIX}${booking.confirmationCode}` : undefined;
-  const meta = [event.location, code && `${t.event.bookingLabel} ${code}`]
-    .filter(Boolean)
-    .join(' · ');
+  const meta = [placeName, code && `${t.event.bookingLabel} ${code}`].filter(Boolean).join(' · ');
 
   const isSkipped = settle?.status === EVENT_STATUS.SKIPPED;
   const cls = [

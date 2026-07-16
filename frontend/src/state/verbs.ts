@@ -36,7 +36,7 @@ import { isoToTimeInput } from '../lib/time';
 import { planReorder } from '../lib/reorder';
 import { DEFAULT_MAYBE_ICON, DELAY_STEP_MINUTES, DEFAULT_SCHEDULE_SLOT, ICONS } from '../constants';
 import { t } from '../i18n/he';
-import { TRIP_TZ_OFFSET, activeUserId, maybeMeta } from '../fixtures';
+import { TRIP_TZ_OFFSET, activeUserId } from '../fixtures';
 
 type ShowToast = ReturnType<typeof useToast>;
 
@@ -103,7 +103,6 @@ function toCreateEventInput(event: TripEvent): CreateEventInput {
     kind,
     startsAt,
     endsAt,
-    location,
     placeId,
     bookingId,
     sortOrder,
@@ -119,7 +118,6 @@ function toCreateEventInput(event: TripEvent): CreateEventInput {
     kind,
     startsAt,
     endsAt,
-    location,
     placeId,
     bookingId,
     sortOrder,
@@ -216,7 +214,7 @@ export async function applySchedule(
     // Persists the consumed flag server-side (T-058) so a resync after an
     // offline reconnect doesn't revert this maybe-item back to unscheduled.
     // Separate call rather than a combined backend "schedule" endpoint because
-    // the event is built here (icon, default slot, maybeMeta() location) —
+    // the event is built here (icon, default slot, carried-over placeId) —
     // if that derivation ever moves server-side, drop this call and the
     // consume() service method (backend/src/maybe-items/maybe-items.service.ts)
     // together in favor of one endpoint.
@@ -586,7 +584,6 @@ export function useVerbs() {
         kind: TripEvent['kind'];
         startsAt?: string;
         endsAt?: string;
-        location?: string;
         icon?: string;
         category?: EventCategory;
       },
@@ -607,7 +604,6 @@ export function useVerbs() {
         endsAt: fields
           ? fields.endsAt
           : `${activeDate}T${DEFAULT_SCHEDULE_SLOT.END}:00${TRIP_TZ_OFFSET}`,
-        location: fields?.location ?? maybeMeta(m.id),
         placeId: m.placeId,
         sortOrder: 99,
         source: EVENT_SOURCE.MAYBE_SHELF,

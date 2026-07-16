@@ -7,13 +7,13 @@
 ```
 User ──< AuthIdentity                         (identity + per-provider OAuth token/scopes)
 User ──< Session                              (our rotating refresh tokens)
-User ──< Membership >── Trip ──< Event ──? Booking
+User ──< Membership >── Trip ──< Event ──? Booking   (Event.bookingId @unique → strict 1:1)
                           │        │
                           │        └──< CalendarEventLink (per member, one-way sync)
                           ├──< Booking
                           ├──< Document
                           ├──< MaybeItem
-                          ├──< TripNote
+                          ├──< Place           (location registry; Event/Booking/MaybeItem placeId → Place)
                           └──< Change          (the sync/undo/feed substrate)
 ```
 
@@ -67,13 +67,12 @@ A block on the timeline. **Hard or soft** — the decisive field (ADR-0011).
 - `endDate @db.Date?` — **null = single-day point-in-time block; non-null = multi-day ambient span** (wedding/festival), rendered as a strip like a hotel (ADR-0018)
 - `title`, `icon?`, `kind` (`hard` | `soft`)
 - `startsAt DateTime?`, `endsAt DateTime?` — **UTC instants**, may cross midnight; displayed via `Trip.timezone`
-- `location?`, `placeId?` (Google Places, nullable — kept separable from free text for future enrichment)
+- `placeId?` — **FK → Place** (ADR-0048). Authoritative only for an _unlinked_ event; when `bookingId` is set it is forced null and the place resolves from the booking (the authority rule, ADR-0051).
 - `status` (`EventStatus`: `planned` | `done` | `skipped` — **no `now`**; "now" is computed client-side from times)
-- `bookingId?` (a hard event usually links a Booking holding the commitment)
+- `bookingId?` **`@unique`** — strict 1:1 with Booking (ADR-0047, enforced in the schema per ADR-0051); a hard event usually links a Booking holding the commitment
 - `sortOrder Int` (within the date), `source` (`manual` | `gmail` | `maybe_shelf` | `integration`)
 - `createdAt`, `updatedAt`, `updatedBy`
 - `@@index([tripId, date])`
-- **Planned (ADR-0048, not yet implemented):** `placeId` becomes a **FK → Place**; for a transport-booking-backed Event it points to the **origin** (the navigate-to-next target). `location?` stays as a free-text fallback.
 
 **Hard vs soft is behavior, not just a flag:**
 
@@ -85,13 +84,12 @@ A block on the timeline. **Hard or soft** — the decisive field (ADR-0011).
 An entry in the central index. Backs hard events and stands alone in the index.
 
 - `id` (client-generated), `tripId`, `type` (`flight` | `hotel` | `restaurant` | `train` | `activity` | `other`)
-- `title`, `confirmationCode?`, `provider?`, `address?`, `placeId?`
-- `startsAt DateTime?`, `endsAt DateTime?` (a hotel across nights is **one** Booking with a range — ADR-0018)
-- `details Json?` (seat, room, gate, party size…), `source` (`manual` | `gmail`)
+- `title`, `confirmationCode?`, `provider?`
+- `placeId?` — **FK → Place** (single-place types; mutually exclusive with from/to). Transport bookings instead carry `fromPlaceId?`/`toPlaceId?` (FK → Place) for origin/destination; the linked Event's map-pin/navigate-to-next target derives as the **origin** (ADR-0048/0051).
+- Time lives on the **linked Event** (the sole time authority — ADR-0048); a hotel across nights is **one** Booking whose Event carries the range via `endDate` (ADR-0018). Booking has no `startsAt`/`endsAt` of its own.
+- `details Json?` (seat, room, gate, party size…; plus a generic `notes` string and, for `hotel`, a `wifi` `{network, password}` — ADR-0047), `source` (`manual` | `gmail`)
 - `createdAt`, `updatedAt`, `updatedBy`
 - (No `offlineAvailable` — the client mirrors the whole trip; ADR-0018.)
-- **Planned (ADR-0047, not yet implemented):** `details` gains a generic `notes` string (any type) and, for `hotel` bookings, a `wifi` field (network/password) — no migration, both ride in the existing JSON blob.
-- **Planned (ADR-0048, not yet implemented):** `startsAt`/`endsAt` are **dropped** — the linked Event is the sole time authority (a hotel's range lives on its Event via `endDate`). `placeId` becomes a **FK → Place**. Transport bookings gain `fromPlaceId?`/`toPlaceId?` (FK → Place); the linked Event's `placeId` points to the origin (navigate-to-next target). `address?` stays as a free-text fallback.
 
 ### CalendarEventLink (ADR-0020)
 
@@ -112,25 +110,17 @@ Sensitive files (passports, insurance).
 
 Parked ideas on the "maybe" shelf.
 
-- `id`, `tripId`, `title`, `icon?`, `placeId?`, `createdBy`, `consumed Boolean`, `createdAt`, `updatedAt`, `updatedBy`
+- `id`, `tripId`, `title`, `icon?`, `placeId?` (**FK → Place**, ADR-0048), `createdBy`, `consumed Boolean`, `createdAt`, `updatedAt`, `updatedBy`
 - Scheduling one creates an Event (`source = maybe_shelf`) and marks the MaybeItem consumed.
 - (Dropped the untyped `meta` field — `title` + `placeId` + `icon` cover the shelf card.)
-- **Planned (ADR-0048, not yet implemented):** `placeId` becomes a **FK → Place**.
 
-### Place (Planned — ADR-0048, not yet implemented)
+### Place (ADR-0048)
 
-The place registry every `placeId` reference points to, and the cache the Map/Places work will enrich. Trip-scoped, data-plane (created/updated through `ChangeService`).
+The trip-scoped location registry every `placeId` FK points to, and the cache the Map/Places work will enrich. Data-plane (created/updated through `ChangeService`). The **only** way a location is expressed — there is no free-text `Event.location`/`Booking.address` (ADR-0051); free text becomes a name-only Place ("Place-lite").
 
 - `id`, `tripId`, `googlePlaceId?` (null for manually-typed places), `name`, `address?`, `lat?`, `lng?`, `createdAt`, `updatedAt`, `updatedBy`
-- Referenced by `Event.placeId`, `Booking.placeId` + `Booking.fromPlaceId`/`toPlaceId`, `MaybeItem.placeId`.
-- Enrichment (hours, rating, photos) is added when the Maps work lands; `lat`/`lng` fill on first Google lookup.
-
-### TripNote (ADR-0018) — **being removed (ADR-0048)**
-
-Held WiFi codes and notes. ADR-0047 §6 moved WiFi onto the hotel `Booking`, leaving no reader; **ADR-0048 drops `TripNote` and `TripNoteCategory` entirely** (not narrowed to `note`-only). Emergency numbers remain **static frontend data**, not DB. Documented here until the migration removes it.
-
-- `id`, `tripId`, `category` (`wifi` | `note`), `label`, `value`, `sortOrder`, `createdAt`, `updatedAt`, `updatedBy`
-- **Planned (ADR-0047, not yet implemented):** `category` narrows to `note`-only — WiFi moves onto the active hotel `Booking.details.wifi` instead (Home's quick-access, ADR-0045, reads from there once this ships).
+- Referenced by `Event.placeId` (unlinked events only — see the authority rule, ADR-0051), `Booking.placeId` + `Booking.fromPlaceId`/`toPlaceId`, `MaybeItem.placeId`. All `onDelete: SetNull`.
+- Enrichment (hours, rating, photos) is added when the Maps work lands; `googlePlaceId`/`lat`/`lng` fill in when the Places picker replaces free-text entry. Orphaned rows are left (no GC yet); no within-trip dedup until `googlePlaceId` exists.
 
 ### Change (the sync/undo/feed substrate — ADR-0019)
 

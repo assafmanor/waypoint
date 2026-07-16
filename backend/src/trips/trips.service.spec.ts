@@ -75,7 +75,7 @@ describe('TripsService', () => {
     expect(snapshot.events.length).toBeGreaterThan(0);
     expect(snapshot.bookings.length).toBeGreaterThan(0);
     expect(snapshot.maybeItems.length).toBeGreaterThan(0);
-    expect(snapshot.notes.length).toBeGreaterThan(0);
+    expect(snapshot.places.length).toBeGreaterThan(0);
     // Not a fixed value: the trip's Change log is append-only, so any prior
     // mutation against this DB (manual QA, real app use) bumps it permanently.
     expect(snapshot.latestSeq).toMatch(/^\d+$/);

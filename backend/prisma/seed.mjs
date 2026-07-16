@@ -51,6 +51,19 @@ const TRIP = {
   updatedBy: ME,
 };
 
+// The trip-scoped location registry (ADR-0048). Name-only "Place-lite" rows — the
+// Google Places picker (Maps work) fills in googlePlaceId/lat/lng later.
+const PLACES = [
+  { id: 'pl-asakusa', name: 'אסקוסה' },
+  { id: 'pl-tsukiji', name: 'שוק צוקיג׳י' },
+  { id: 'pl-senso', name: 'מקדש סנסו-ג׳י' },
+  { id: 'pl-shinjuku', name: 'שינג׳וקו' },
+  { id: 'pl-goldengai', name: 'גולדן גאי' },
+  { id: 'pl-granbell', name: 'Shinjuku Granbell Hotel', address: 'Shinjuku, Tokyo' },
+  { id: 'pl-tlv', name: 'נתב״ג (TLV)' },
+  { id: 'pl-nrt', name: 'נמל התעופה נריטה (NRT)' },
+].map((p) => ({ ...p, tripId: TRIP.id, updatedBy: ME }));
+
 const BOOKINGS = [
   {
     id: 'bk-ichiran',
@@ -58,11 +71,38 @@ const BOOKINGS = [
     type: 'restaurant',
     title: 'Ichiran Ramen',
     confirmationCode: '4471',
+    placeId: 'pl-shinjuku',
+    source: 'manual',
+    updatedBy: ME,
+  },
+  // Hotel WiFi lives on the hotel booking's details blob now (ADR-0047), not a TripNote.
+  {
+    id: 'bk-hotel',
+    tripId: TRIP.id,
+    type: 'hotel',
+    title: 'Shinjuku Granbell',
+    confirmationCode: 'GRB-88',
+    placeId: 'pl-granbell',
+    details: { wifi: { network: 'GRANBELL-512', password: 'tokyo2026' } },
+    source: 'manual',
+    updatedBy: ME,
+  },
+  // Transport carries origin/destination Places (ADR-0048); index-only (no linked event).
+  {
+    id: 'bk-flight',
+    tripId: TRIP.id,
+    type: 'flight',
+    title: 'טיסה TLV → NRT',
+    confirmationCode: 'LY075',
+    fromPlaceId: 'pl-tlv',
+    toPlaceId: 'pl-nrt',
     source: 'manual',
     updatedBy: ME,
   },
 ];
 
+// A linked event's place lives on its booking (ADR-0048), so it carries no placeId;
+// unlinked events reference a Place directly.
 const EVENTS = [
   // A long "envelope" the morning stops happen inside — demos the concurrency
   // nesting (ADR-0041): שוק צוקיג׳י + מקדש סנסו-ג׳י nest under it as "כולל 2".
@@ -74,7 +114,7 @@ const EVENTS = [
     status: 'done',
     startsAt: at('10:00'),
     endsAt: at('16:00'),
-    location: 'מודרך · אסקוסה והסביבה',
+    placeId: 'pl-asakusa',
     sortOrder: 0,
   },
   {
@@ -85,7 +125,7 @@ const EVENTS = [
     status: 'done',
     startsAt: at('10:00'),
     endsAt: at('12:00'),
-    location: 'ארוחת בוקר · סושי טרי',
+    placeId: 'pl-tsukiji',
     sortOrder: 1,
   },
   {
@@ -96,7 +136,7 @@ const EVENTS = [
     status: 'done',
     startsAt: at('14:30'),
     endsAt: at('16:00'),
-    location: 'אסקוסה · נקמיסה',
+    placeId: 'pl-senso',
     sortOrder: 2,
   },
   {
@@ -107,7 +147,7 @@ const EVENTS = [
     status: 'planned',
     startsAt: at('16:30'),
     endsAt: at('19:30'),
-    location: 'מתחם החנויות',
+    placeId: 'pl-shinjuku',
     sortOrder: 3,
   },
   {
@@ -118,7 +158,6 @@ const EVENTS = [
     status: 'planned',
     startsAt: at('19:30'),
     endsAt: at('21:00'),
-    location: 'ארוחת ערב',
     bookingId: 'bk-ichiran',
     sortOrder: 4,
   },
@@ -130,7 +169,7 @@ const EVENTS = [
     status: 'planned',
     startsAt: at('21:30'),
     endsAt: at('22:30'),
-    location: 'דרינקים · סמטאות באר',
+    placeId: 'pl-goldengai',
     sortOrder: 5,
   },
   // Partially overlaps גולדן גאי (22:00–22:30) but neither contains the other —
@@ -143,7 +182,7 @@ const EVENTS = [
     status: 'planned',
     startsAt: at('22:00'),
     endsAt: at('22:45'),
-    location: 'שינג׳וקו',
+    placeId: 'pl-shinjuku',
     sortOrder: 6,
   },
   {
@@ -154,7 +193,7 @@ const EVENTS = [
     status: 'planned',
     startsAt: at('22:45'),
     endsAt: at('23:15'),
-    location: 'שינג׳וקו',
+    placeId: 'pl-shinjuku',
     sortOrder: 7,
   },
 ].map((e) => ({ ...e, tripId: TRIP.id, date: date(DAY), source: 'manual', updatedBy: ME }));
@@ -165,18 +204,6 @@ const MAYBE_ITEMS = [
   { id: 'mb-uniqlo', title: 'Uniqlo פלאגשיפ', icon: '🛍️' },
   { id: 'mb-ameyoko', title: 'אמאיוקוצ׳ו', icon: '🍡' },
 ].map((m) => ({ ...m, tripId: TRIP.id, createdBy: ME, consumed: false, updatedBy: ME }));
-
-const NOTES = [
-  {
-    id: 'nt-wifi',
-    tripId: TRIP.id,
-    category: 'wifi',
-    label: 'WiFi המלון',
-    value: 'GRANBELL-512 / tokyo2026',
-    sortOrder: 1,
-    updatedBy: ME,
-  },
-];
 
 async function main() {
   for (const u of USERS) {
@@ -196,6 +223,14 @@ async function main() {
     create: { tripId: TRIP.id, userId: ME, role: 'admin' },
     update: { role: 'admin' },
   });
+  // Places first — bookings/events reference them by FK.
+  for (const p of PLACES) {
+    await prisma.place.upsert({
+      where: { id: p.id },
+      create: { ...p, createdAt: CREATED_AT },
+      update: p,
+    });
+  }
   for (const b of BOOKINGS) {
     await prisma.booking.upsert({
       where: { id: b.id },
@@ -217,15 +252,8 @@ async function main() {
       update: m,
     });
   }
-  for (const n of NOTES) {
-    await prisma.tripNote.upsert({
-      where: { id: n.id },
-      create: { ...n, createdAt: CREATED_AT },
-      update: n,
-    });
-  }
   console.log(
-    `Seeded: ${USERS.length} users, 1 trip, 1 membership, ${BOOKINGS.length} booking, ${EVENTS.length} events, ${MAYBE_ITEMS.length} maybe-items, ${NOTES.length} note.`,
+    `Seeded: ${USERS.length} users, 1 trip, 1 membership, ${PLACES.length} places, ${BOOKINGS.length} bookings, ${EVENTS.length} events, ${MAYBE_ITEMS.length} maybe-items.`,
   );
 }
 

@@ -26,7 +26,7 @@ const snapshotBody = {
   events: [],
   bookings: [],
   maybeItems: [],
-  notes: [],
+  places: [],
   latestSeq: '0',
 };
 

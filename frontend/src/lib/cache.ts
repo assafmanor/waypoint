@@ -7,9 +7,9 @@ import {
   type Change,
   type MaybeItem,
   type Membership,
+  type Place,
   type Trip,
   type TripEvent,
-  type TripNote,
   type TripSnapshot,
   type User,
 } from '@waypoint/shared';
@@ -24,7 +24,7 @@ export interface SnapshotMeta {
   members: Membership[];
   users: User[];
   maybeItems: MaybeItem[];
-  notes: TripNote[];
+  places: Place[];
   latestSeq: string;
 }
 
@@ -42,7 +42,7 @@ export async function cacheSnapshot(tripId: string, snapshot: TripSnapshot): Pro
       members: snapshot.members,
       users: snapshot.users,
       maybeItems: snapshot.maybeItems,
-      notes: snapshot.notes,
+      places: snapshot.places,
       latestSeq: snapshot.latestSeq,
     });
   });
@@ -64,7 +64,7 @@ export async function readCachedSnapshot(tripId: string): Promise<TripSnapshot |
     events,
     bookings,
     maybeItems: meta.maybeItems,
-    notes: meta.notes,
+    places: meta.places,
     latestSeq: meta.latestSeq,
   };
 }
@@ -80,7 +80,7 @@ function applyToRow<T extends { id: string }>(
 }
 
 /** Keeps the Dexie cache coherent with every data-plane entity type in the
- *  snapshot (events, bookings, maybeItems, notes) — not just events — so a
+ *  snapshot (events, bookings, maybeItems, places) — not just events — so a
  *  remote change never silently falls out of the offline cache. */
 export async function applyChangeToCache(tripId: string, change: Change): Promise<void> {
   switch (change.entityType) {
@@ -111,17 +111,17 @@ export async function applyChangeToCache(tripId: string, change: Change): Promis
       await db.snapshotMeta.put({ ...meta, maybeItems });
       return;
     }
-    case 'note': {
+    case 'place': {
       const meta = await db.snapshotMeta.get(tripId);
       if (!meta) return;
-      const existing = meta.notes.find((n) => n.id === change.entityId);
-      const next = applyToRow<TripNote>(existing, change);
-      const notes = next
+      const existing = meta.places.find((p) => p.id === change.entityId);
+      const next = applyToRow<Place>(existing, change);
+      const places = next
         ? existing
-          ? meta.notes.map((n) => (n.id === next.id ? next : n))
-          : [...meta.notes, next]
-        : meta.notes.filter((n) => n.id !== change.entityId);
-      await db.snapshotMeta.put({ ...meta, notes });
+          ? meta.places.map((p) => (p.id === next.id ? next : p))
+          : [...meta.places, next]
+        : meta.places.filter((p) => p.id !== change.entityId);
+      await db.snapshotMeta.put({ ...meta, places });
       return;
     }
     // Trip settings are data-plane now (ADR-0039), so keep the cached snapshot's
