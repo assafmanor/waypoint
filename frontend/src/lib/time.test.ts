@@ -6,6 +6,7 @@ import {
   clampDate,
   dayProgress,
   deriveNow,
+  eventPhase,
   formatCountdown,
   formatDaysUntil,
   formatTime,
@@ -44,6 +45,35 @@ describe('deriveNow', () => {
     const { now, next } = deriveNow(EVENTS, gap);
     expect(now).toBeUndefined();
     expect(next?.id).toBe('ev-goldengai');
+  });
+});
+
+describe('eventPhase', () => {
+  const soft = EVENTS.find((e) => e.id === 'ev-shinjuku')!; // 16:30–18:00 JST
+  const before = new Date('2026-07-07T10:00:00+09:00');
+  const during = new Date('2026-07-07T17:00:00+09:00');
+  const after = new Date('2026-07-07T20:00:00+09:00');
+
+  it('derives upcoming / now / passed from the clock against the event span', () => {
+    expect(eventPhase(soft, before)).toBe('upcoming');
+    expect(eventPhase(soft, during)).toBe('now');
+    expect(eventPhase(soft, after)).toBe('passed');
+  });
+
+  it('lets a human-set status win over the clock', () => {
+    expect(eventPhase({ ...soft, status: EVENT_STATUS.DONE }, before)).toBe('done');
+    expect(eventPhase({ ...soft, status: EVENT_STATUS.SKIPPED }, during)).toBe('skipped');
+  });
+
+  it('reads an untimed planned event as upcoming (no span to place)', () => {
+    expect(eventPhase({ ...soft, startsAt: undefined, endsAt: undefined }, after)).toBe('upcoming');
+  });
+
+  it('uses start ≤ now < end, matching deriveNow (end-exclusive)', () => {
+    const start = new Date(soft.startsAt!);
+    const end = new Date(soft.endsAt!);
+    expect(eventPhase(soft, start)).toBe('now');
+    expect(eventPhase(soft, end)).toBe('passed');
   });
 });
 

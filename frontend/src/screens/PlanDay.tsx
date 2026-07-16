@@ -25,6 +25,7 @@ import { tripPhase } from '../lib/mode';
 import {
   buildTimeTree,
   formatTime,
+  todayInTz,
   zonedIso,
   crossesMidnight,
   type TimeGroup,
@@ -59,6 +60,11 @@ export function PlanDay() {
   // A finished trip is a read-only archive (ADR-0040): the builder becomes a
   // frozen, browsable history — no create/edit/delete/move, no shelf.
   const readOnly = tripPhase(trip, now) === 'past';
+  // A static "now" reference while building TODAY mid-trip (ADR-0043): a drafting
+  // guide for "what's still ahead to build," never a live signal. Only when the
+  // day on screen is today and the trip is live — Plan has no "now" otherwise.
+  const nowRefMs =
+    tripPhase(trip, now) === 'live' && activeDate === todayInTz(tz, now) ? now.getTime() : null;
   const [formTarget, setFormTarget] = useState<'new' | TripEvent | null>(null);
   const [gapFill, setGapFill] = useState<GapDefaults | null>(null);
   // A shelf idea being scheduled onto a day — opens EventForm in "schedule" mode
@@ -119,6 +125,7 @@ export function PlanDay() {
   const builderCtx: BuilderCtx = {
     tz,
     readOnly,
+    nowRefMs,
     bookings,
     verbs,
     dayEvents,
@@ -425,6 +432,9 @@ function GapFillSheet({
 interface BuilderCtx {
   tz: string;
   readOnly: boolean;
+  // Epoch ms of "now" when the builder should show the static now-reference at
+  // depth 0 (viewing today, mid-trip); null otherwise (ADR-0043).
+  nowRefMs: number | null;
   bookings: Booking[];
   verbs: ReturnType<typeof useVerbs>;
   dayEvents: TripEvent[];
@@ -480,6 +490,16 @@ function BuilderGroups({
   depth: number;
   ctx: BuilderCtx;
 }) {
+  // The static now-reference sits at depth 0 only, above the first group that
+  // isn't fully behind "now" (falls after them all if every group is passed).
+  const nowRefMs = depth === 0 ? ctx.nowRefMs : null;
+  const nowRefIndex =
+    nowRefMs === null
+      ? -1
+      : (() => {
+          const i = groups.findIndex((g) => endMsOf(groupEndEvent(g)) > nowRefMs);
+          return i === -1 ? groups.length : i;
+        })();
   return (
     <>
       {groups.map((g, i) => {
@@ -490,6 +510,7 @@ function BuilderGroups({
         const key = g.kind === 'cluster' ? `cl-${g.items[0].event.id}` : g.item.event.id;
         return (
           <Fragment key={key}>
+            {i === nowRefIndex && nowRefMs !== null && <NowRef ms={nowRefMs} tz={ctx.tz} />}
             {gap && (
               <div className="gap">
                 <span className="gap-line" />
@@ -531,7 +552,27 @@ function BuilderGroups({
           </Fragment>
         );
       })}
+      {nowRefMs !== null && nowRefIndex === groups.length && <NowRef ms={nowRefMs} tz={ctx.tz} />}
     </>
+  );
+}
+
+// The Plan builder's static now-reference (ADR-0043): a drafting guide for where
+// "now" falls while building today — deliberately NOT the Trip now-line. Plan's
+// violet, a dashed rule, a hollow marker, no pulse or glow, so it can never read
+// as a live signal ("nothing in Plan mode is live", design-language).
+function NowRef({ ms, tz }: { ms: number; tz: string }) {
+  return (
+    <div className="nowref" aria-label={t.day.nowLineAria(formatTime(new Date(ms), tz))}>
+      <span className="nowref-tag">
+        <span className="nowref-ring" aria-hidden="true" />
+        {t.common.now}{' '}
+        <span className="nowref-tm" dir="ltr">
+          {formatTime(new Date(ms), tz)}
+        </span>
+      </span>
+      <span className="nowref-rule" />
+    </div>
   );
 }
 
