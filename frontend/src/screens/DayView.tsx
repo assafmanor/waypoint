@@ -144,7 +144,7 @@ export function DayView() {
             📖
           </span>
           <span className="ab-main">
-            {heading} — {t.day.archiveTag}
+            {heading} · {t.day.archiveTag}
           </span>
           <button className="ab-back" onClick={() => setActiveDate(today)}>
             {t.header.backToToday}

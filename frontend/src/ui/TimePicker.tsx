@@ -196,7 +196,7 @@ export function TimePicker({
                   </span>
                 </>
               ) : (
-                <span className="tp-placeholder">{start ? t.eventForm.addEnd : '—'}</span>
+                <span className="tp-placeholder">{start ? t.eventForm.addEnd : '-'}</span>
               )}
             </span>
           </button>

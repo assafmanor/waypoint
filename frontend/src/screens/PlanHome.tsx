@@ -147,7 +147,9 @@ export function PlanHome({ onNavigate }: { onNavigate: (tab: TabId) => void }) {
   return (
     <>
       <div className="prep">
-        <div className="prep-k">{t.planHome.prep.departIn}</div>
+        {/* No "היציאה בעוד" label once the trip is underway — the countdown line
+            reads "הטיול בעיצומו" on its own (would otherwise concatenate oddly). */}
+        {countdown && <div className="prep-k">{t.planHome.prep.departIn}</div>}
         {countdown ? (
           <div className="prep-count">
             {countdown.value && (

@@ -195,7 +195,7 @@ export function TripSettings() {
               value={
                 trip.dailyBudgetMinor != null
                   ? `${trip.currency ?? ''} ${trip.dailyBudgetMinor}`.trim()
-                  : '—'
+                  : '-'
               }
               mono
             />
@@ -467,7 +467,7 @@ function DetailsEditor({
             aria-label={t.settings.budgetLabel}
             onChange={(e) => setCurrency(e.target.value)}
           >
-            <option value="">—</option>
+            <option value="">-</option>
             {withCurrent(CURRENCY_OPTIONS, currency || undefined).map((c) => (
               <option key={c} value={c}>
                 {c}

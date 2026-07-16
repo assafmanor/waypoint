@@ -302,7 +302,12 @@ function Header({
 // either way (T-002), so they fall back to Placeholder.
 function Screen({ tab, onNavigate }: { tab: TabId; onNavigate: (tab: TabId) => void }) {
   const { mode } = useMode();
-  if (tab === 'home') return mode === 'trip' ? <Home /> : <PlanHome onNavigate={onNavigate} />;
+  if (tab === 'home')
+    return mode === 'trip' ? (
+      <Home onNavigate={onNavigate} />
+    ) : (
+      <PlanHome onNavigate={onNavigate} />
+    );
   if (tab === 'days') return mode === 'trip' ? <DayView /> : <PlanDay />;
   return <Placeholder tab={tab} mode={mode} />;
 }
