@@ -59,7 +59,8 @@ waypoint/
 ## Git & commits
 
 - **Conventional Commits:** `feat:`, `fix:`, `docs:`, `chore:`, `refactor:`, `test:`. Scope optional: `feat(events): ...`.
-- Small, focused commits. Branch per task: `t-003-prisma-schema`.
+- Small, focused commits. Branch per task, descriptive name (e.g. `index-bookings-documents-spec`) — task-ID-style names (`t-003-…`) are stale since ADR-0046 retired the task board.
+- **Create the branch before the first commit** — including docs-only changes. Never commit directly onto local `main`, even briefly with the intent to move it onto a branch later.
 - Never commit `.env`, secrets, or anything the `.gitignore` excludes (don't override it).
 
 ## Definition of Done
