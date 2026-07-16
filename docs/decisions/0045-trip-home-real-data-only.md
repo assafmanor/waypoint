@@ -21,12 +21,13 @@ Concretely:
 
 1. **Board hero — unchanged.** Still the single loud element; still derived from `events` + the clock. Not touched by this ADR.
 
-2. **Quick access → four *real* shortcuts.** The grid stops being a concierge and becomes shortcuts into data/surfaces we actually have:
+2. **Quick access → three *real* shortcuts (v1).** The grid stops being a concierge and becomes shortcuts into data/surfaces we actually have:
    - **הכרטיס הבא** — the next hard booking's confirmation code, tappable → the index. (Kept, upgraded from a toast to a real jump.)
    - **קוד WiFi** — copy the hotel WiFi `TripNote` to the clipboard. (Kept.)
    - **מסמכים** — jump to the encrypted offline documents in the index. (Added; real surface.)
-   - **ניווט ליעד הבא** — a Google Maps deep-link (a catalog *Must*) built from the next/now event's place. **Shown only when that event has a usable place string; otherwise hidden, never faked.**
-   - **Removed:** `כספומט קרוב` (needs live location — ADR-0006) and the old standalone `ניווט למלון` toast (folded into the real next-place navigate).
+   - **Removed:** `כספומט קרוב` (needs live location — ADR-0006) and the old standalone `ניווט למלון` toast.
+
+   **Navigate-to-next is deferred to v1.next (decided 2026-07-16).** A fourth tile, **ניווט ליעד הבא**, was in the approved set but is held back until the maps/location work lands. The subtlety worth recording: the tile does **not** depend on live *user* location — a Google Maps deep-link (a catalog *Must*) hands off to Maps, which does the routing from the device's own position, so [ADR-0006](0006-no-live-location-v1.md) does not block it. What it depends on is **real place data on the event** (address / Places id / coords). Today an event carries only a free-text `title`/`location`, so the only thing buildable now is a Maps *search-query* deep-link — which can resolve to the wrong city or an ambiguous match. That is exactly the "might-be-wrong fixture" this ADR exists to remove, and it would be the one tile on the screen that could confidently send someone to the wrong place. So navigate waits for the place-data work; when it lands, the tile slots back in as the fourth and the grid returns to four columns. The design intent (four tiles) is unchanged — only its phasing.
 
 3. **Quick view → replaced by a derived "day at a glance" card.** The weather/FX/budget row is removed. In its place, one paper card computed **100% from `events`** (offline-safe, no fixture): how much of today is done vs. remaining, how many **hard anchors** are still ahead, and the day's free-until / end-of-day framing. It uses a *segmented events bar* (done · now · upcoming) — deliberately a different visualization from the board's time-progress bar, so the two don't read as duplicates.
    - Colors stay on-budget (ADR-0028): `--ok` for the done segments/completed count, `--amber` for the live segment and the hard-anchor count (time & commitment), everything else neutral. No teal, no violet on this card.

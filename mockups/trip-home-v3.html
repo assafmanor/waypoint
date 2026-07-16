@@ -3,10 +3,13 @@
      Supersedes the HOME section of trip-dashboard-v2.html. What changed & why:
        - Board hero: unchanged. Still the one loud element (design-language).
        - Quick access: fake concierge tiles removed (nearby-ATM needs live
-         location, forbidden by ADR-0006). Now four REAL, offline-safe shortcuts
+         location, forbidden by ADR-0006). Three REAL, offline-safe shortcuts
          into data/surfaces we actually have: next confirmation code (→ index),
-         WiFi copy, documents (→ index), navigate (Maps deep-link on the next
-         place — hidden when there's no usable place, never faked).
+         WiFi copy, documents (→ index). A fourth tile — navigate-to-next (Maps
+         deep-link) — is DEFERRED to v1.next: it needs real place data on events
+         (address / Places id), which arrives with the maps/location work; a
+         fuzzy title-search deep-link now would be exactly the kind of might-be-
+         wrong fixture this redesign removes (ADR-0045).
        - Quick view (weather / FX / budget glance): removed. All three were
          fixtures for unbuilt integration pipes; budget also dropped per the
          ADR-0014 amendment (no expense model, no use on the ground). Replaced
@@ -475,10 +478,11 @@
         align-items: center;
       }
 
-      /* quick access — four REAL shortcuts */
+      /* quick access — three REAL shortcuts (navigate-to-next deferred to the
+         maps/location work, ADR-0045; the grid returns to 4 columns then) */
       .quick {
         display: grid;
-        grid-template-columns: repeat(4, 1fr);
+        grid-template-columns: repeat(3, 1fr);
         gap: 9px;
       }
       .qa {
@@ -517,10 +521,6 @@
         font-weight: 700;
         color: var(--amber-deep);
         margin-top: 3px;
-      }
-      /* navigate is a location action → teal (design-language: teal = place) */
-      .qa.nav .ic {
-        color: var(--teal);
       }
 
       /* day at a glance — derived 100% from events, replaces the fixture glance row */
@@ -767,9 +767,7 @@
             <button class="qa" onclick="toast('🛂', 'מסמכים · דרכונים וביטוח · אינדקס')">
               <span class="ic">🛂</span><span class="lb">מסמכים</span>
             </button>
-            <button class="qa nav" onclick="toast('🧭', 'פותח Google Maps ל-Ichiran Ramen')">
-              <span class="ic">🧭</span><span class="lb">ניווט ליעד הבא</span>
-            </button>
+            <!-- 4th tile "ניווט ליעד הבא" deferred to the maps/location work (ADR-0045) -->
           </div>
 
           <!-- ===== day at a glance — derived from events, replaces weather/FX/budget ===== -->
