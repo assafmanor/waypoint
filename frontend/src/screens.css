@@ -3404,3 +3404,129 @@
   outline: 2px solid var(--teal);
   outline-offset: 1px;
 }
+
+/* ===== Index tab (mockups/trip-index-v1.html) — bookings reference. All rules
+   scoped under .index so the generic row classes (.li/.right/.code/.main) can't
+   collide with other screens. Read-only for now; edit affordances land later. */
+.index .badge-offline {
+  font-size: 10.5px;
+  font-weight: 600;
+  color: var(--muted);
+  background: rgba(22, 35, 61, 0.06);
+  border-radius: 999px;
+  padding: 2px 8px;
+  letter-spacing: 0;
+}
+.index .listcard {
+  background: var(--card);
+  border: 1px solid var(--line);
+  border-radius: 16px;
+  overflow: hidden;
+}
+.index .li {
+  display: flex;
+  align-items: center;
+  gap: 11px;
+  padding: 12px 14px;
+  border-bottom: 1px solid var(--line);
+}
+.index .li:last-child {
+  border-bottom: none;
+}
+.index .li .badge2 {
+  width: 36px;
+  height: 36px;
+  border-radius: 11px;
+  background: var(--paper);
+  display: grid;
+  place-items: center;
+  font-size: 17px;
+  flex: 0 0 auto;
+}
+.index .li .main {
+  flex: 1;
+  min-width: 0;
+}
+.index .li .main .t {
+  font-size: 13.5px;
+  font-weight: 700;
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  flex-wrap: wrap;
+}
+.index .li .main .m {
+  font-size: 11.5px;
+  color: var(--muted);
+  margin-top: 3px;
+}
+.index .li .right {
+  text-align: end;
+  flex: 0 0 auto;
+}
+.index .li .right .code {
+  font-family: var(--font-mono);
+  font-size: 11.5px;
+  font-weight: 700;
+  color: var(--amber-deep);
+}
+.index .tag-type {
+  font-size: 9.5px;
+  font-weight: 700;
+  color: var(--muted);
+  background: rgba(22, 35, 61, 0.06);
+  border-radius: 6px;
+  padding: 1.5px 6px;
+}
+.index .link-cue,
+.index .unlinked {
+  font-size: 10.5px;
+  font-weight: 700;
+  color: var(--muted);
+}
+/* transport route: origin→dest identity of a flight/train row. dir=ltr on the
+   element keeps origin left, dest right inside the RTL layout; the arrow is
+   muted so the two Place names read as the content (ADR-0048). */
+.index .route {
+  font-weight: 700;
+}
+.index .route .arr {
+  color: var(--muted);
+  font-weight: 400;
+  padding: 0 3px;
+}
+.index .past-head {
+  font-size: 11px;
+  font-weight: 700;
+  color: var(--muted);
+  letter-spacing: 0.04em;
+  margin: 18px 2px 8px;
+}
+.index .listcard.past .li {
+  opacity: 0.6;
+}
+.index .listcard.past .li .right .code {
+  color: var(--muted);
+}
+.index .empty-card {
+  background: var(--card);
+  border: 1px solid var(--line);
+  border-radius: 16px;
+  text-align: center;
+  padding: 26px 20px 22px;
+}
+.index .empty-card .ei {
+  font-size: 26px;
+  opacity: 0.75;
+}
+.index .empty-card .et {
+  font-family: var(--font-head);
+  font-size: 15.5px;
+  margin-top: 8px;
+}
+.index .empty-card .es {
+  font-size: 12.5px;
+  color: var(--muted);
+  margin-top: 5px;
+  line-height: 1.55;
+}

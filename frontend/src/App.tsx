@@ -26,6 +26,7 @@ import { Home } from './screens/Home';
 import { PlanHome } from './screens/PlanHome';
 import { PlanDay } from './screens/PlanDay';
 import { DayView } from './screens/DayView';
+import { Index } from './screens/Index';
 import { Login } from './screens/Login';
 import { ZeroState } from './screens/ZeroState';
 import { AllTrips } from './screens/AllTrips';
@@ -69,8 +70,8 @@ function readDurationMs(token: string): number {
   return raw.endsWith('ms') ? n : n * 1000; // tokens are ms, but tolerate `s`
 }
 
-// Map & Index are designed later (T-002); Home/Day-by-day's Plan-mode content
-// is T-018's — all fall back here, with a mode-emphasis subtitle (T-019).
+// Map is designed later (T-002); it falls back here with a mode-emphasis
+// subtitle (T-019). Home/Day-by-day/Index are built for both modes.
 function Placeholder({ tab, mode }: { tab: TabId; mode: Mode }) {
   return (
     <div className="placeholder">
@@ -298,8 +299,8 @@ function Header({
 
 // Tabs re-emphasize by mode (ADR-0016), not duplicate screens. Home and
 // Day-by-day are built for both modes now (Trip = departure board / follow +
-// adjust; Plan = prep dashboard / itinerary builder). Map/Index are unbuilt
-// either way (T-002), so they fall back to Placeholder.
+// adjust; Plan = prep dashboard / itinerary builder); Index is mode-agnostic
+// (ADR-0049). Map is unbuilt (T-002), so it falls back to Placeholder.
 function Screen({ tab, onNavigate }: { tab: TabId; onNavigate: (tab: TabId) => void }) {
   const { mode } = useMode();
   if (tab === 'home')
@@ -309,6 +310,8 @@ function Screen({ tab, onNavigate }: { tab: TabId; onNavigate: (tab: TabId) => v
       <PlanHome onNavigate={onNavigate} />
     );
   if (tab === 'days') return mode === 'trip' ? <DayView /> : <PlanDay />;
+  // Index content is mode-agnostic (ADR-0049 — mode tints chrome only).
+  if (tab === 'index') return <Index />;
   return <Placeholder tab={tab} mode={mode} />;
 }
 

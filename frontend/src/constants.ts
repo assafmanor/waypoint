@@ -1,5 +1,6 @@
 // App-wide tunables and non-copy literals. UI copy lives in i18n/; domain enum
 // values live in @waypoint/shared. Keep magic numbers/strings out of logic.
+import type { BookingType } from '@waypoint/shared';
 
 export const MS_PER_DAY = 86_400_000;
 
@@ -56,6 +57,17 @@ export const MEMBER_AVATAR_CAP = 2;
 
 /** Icon for a manually created event when the form doesn't collect one (T-047). */
 export const DEFAULT_EVENT_ICON = '📌';
+
+/** Fallback glyph for a booking row in the Index when it has no linked event to
+ *  borrow an icon from (a linked event's user-picked icon always wins). */
+export const BOOKING_TYPE_ICON = {
+  flight: '✈️',
+  hotel: '🏨',
+  restaurant: '🍜',
+  train: '🚄',
+  activity: '🎟️',
+  other: '📄',
+} as const satisfies Record<BookingType, string>;
 
 /** Icon for a manually added maybe-shelf idea (no icon picker yet). */
 export const DEFAULT_MAYBE_ICON = '💡';

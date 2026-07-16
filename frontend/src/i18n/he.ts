@@ -32,6 +32,24 @@ export const t = {
   placeholder: {
     comingSoon: 'המסך הזה עוד בעבודה.',
   },
+  index: {
+    bookingsTitle: 'הזמנות',
+    offlineBadge: '⬇ עובד אופליין',
+    pastHead: 'כבר מאחוריכם',
+    unlinked: 'לא משובצת במסלול',
+    today: 'היום',
+    dayN: (n: number) => `יום ${n}`,
+    bookingType: {
+      flight: 'טיסה',
+      hotel: 'לינה',
+      restaurant: 'מסעדה',
+      train: 'רכבת',
+      activity: 'פעילות',
+      other: 'אחר',
+    },
+    emptyTitle: 'האינדקס עוד ריק',
+    emptyBody: 'כרטיסי טיסה, מלונות והזמנות אחרים יופיעו כאן, ידנית או מיובאים אוטומטית מ-Gmail',
+  },
   mode: {
     plan: 'תכנון',
     trip: 'טיול',
