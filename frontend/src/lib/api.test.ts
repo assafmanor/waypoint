@@ -3,9 +3,12 @@ import { EVENT_STATUS } from '@waypoint/shared';
 import {
   ApiError,
   apiFetch,
+  createBooking,
   createEvent,
   createInvite,
+  createPlace,
   createTrip,
+  deleteBooking,
   deleteEvent,
   fetchSnapshot,
   isHardEventConfirmError,
@@ -16,8 +19,10 @@ import {
   setAccessToken,
   setEventStatus,
   setOnSessionExpired,
+  updateBooking,
+  updatePlace,
 } from './api';
-import { EVENTS, TRIP } from '../fixtures';
+import { BOOKINGS, EVENTS, TRIP } from '../fixtures';
 
 const snapshotBody = {
   trip: TRIP,
@@ -275,6 +280,101 @@ describe('event write calls', () => {
     );
     await expect(moveEvent(TRIP.id, event.id, { startsAt: event.startsAt })).rejects.toSatisfy(
       (err: unknown) => err instanceof ApiError && isMoveCrossesDayError(err),
+    );
+  });
+});
+
+const booking = BOOKINGS[0];
+const place = {
+  id: 'pl-1',
+  tripId: TRIP.id,
+  name: 'Tokyo Station',
+  createdAt: '2026-07-01T00:00:00Z',
+  updatedAt: '2026-07-01T00:00:00Z',
+  updatedBy: 'u1',
+};
+
+describe('booking + place write calls', () => {
+  it('createBooking posts the input to /bookings and parses the returned booking', async () => {
+    const fetchMock = vi
+      .fn()
+      .mockResolvedValue(new Response(JSON.stringify(booking), { status: 201 }));
+    vi.stubGlobal('fetch', fetchMock);
+    const result = await createBooking(TRIP.id, { type: booking.type, title: booking.title });
+    expect(result.id).toBe(booking.id);
+    expect(fetchMock).toHaveBeenCalledWith(
+      expect.stringContaining(`/trips/${TRIP.id}/bookings`),
+      expect.objectContaining({ method: 'POST' }),
+    );
+  });
+
+  it('updateBooking patches /bookings/:id', async () => {
+    const fetchMock = vi
+      .fn()
+      .mockResolvedValue(new Response(JSON.stringify(booking), { status: 200 }));
+    vi.stubGlobal('fetch', fetchMock);
+    await updateBooking(TRIP.id, booking.id, { title: 'x' });
+    expect(fetchMock).toHaveBeenCalledWith(
+      expect.stringContaining(`/trips/${TRIP.id}/bookings/${booking.id}`),
+      expect.objectContaining({ method: 'PATCH' }),
+    );
+  });
+
+  it('deleteBooking builds the confirm + deleteEvents query string', async () => {
+    const fetchMock = vi.fn().mockResolvedValue(new Response(null, { status: 204 }));
+    vi.stubGlobal('fetch', fetchMock);
+    await deleteBooking(TRIP.id, booking.id, { confirm: true, deleteEvents: true });
+    const url = fetchMock.mock.calls[0][0] as string;
+    expect(url).toContain('confirm=true');
+    expect(url).toContain('deleteEvents=true');
+  });
+
+  it('deleteBooking (unlink default) sends no query string and tolerates 404', async () => {
+    const fetchMock = vi.fn().mockResolvedValue(new Response(null, { status: 404 }));
+    vi.stubGlobal('fetch', fetchMock);
+    await expect(deleteBooking(TRIP.id, booking.id)).resolves.toBeUndefined();
+    expect(fetchMock.mock.calls[0][0]).not.toContain('?');
+  });
+
+  it('deleteBooking surfaces a hard-event 409 as the confirm error', async () => {
+    vi.stubGlobal(
+      'fetch',
+      vi
+        .fn()
+        .mockResolvedValue(
+          new Response(
+            JSON.stringify({ error: { code: 'HARD_EVENT_REQUIRES_CONFIRM', message: 'c' } }),
+            { status: 409 },
+          ),
+        ),
+    );
+    await expect(deleteBooking(TRIP.id, booking.id)).rejects.toSatisfy(
+      (err: unknown) => err instanceof ApiError && isHardEventConfirmError(err),
+    );
+  });
+
+  it('createPlace posts to /places and parses the returned place', async () => {
+    const fetchMock = vi
+      .fn()
+      .mockResolvedValue(new Response(JSON.stringify(place), { status: 201 }));
+    vi.stubGlobal('fetch', fetchMock);
+    const result = await createPlace(TRIP.id, { name: place.name });
+    expect(result.id).toBe(place.id);
+    expect(fetchMock).toHaveBeenCalledWith(
+      expect.stringContaining(`/trips/${TRIP.id}/places`),
+      expect.objectContaining({ method: 'POST' }),
+    );
+  });
+
+  it('updatePlace patches /places/:id', async () => {
+    const fetchMock = vi
+      .fn()
+      .mockResolvedValue(new Response(JSON.stringify(place), { status: 200 }));
+    vi.stubGlobal('fetch', fetchMock);
+    await updatePlace(TRIP.id, place.id, { name: 'y' });
+    expect(fetchMock).toHaveBeenCalledWith(
+      expect.stringContaining(`/trips/${TRIP.id}/places/${place.id}`),
+      expect.objectContaining({ method: 'PATCH' }),
     );
   });
 });

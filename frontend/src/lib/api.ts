@@ -1,18 +1,23 @@
 // Data layer for the events read/write API (T-034/T-014).
 import {
   accessTokenResponseSchema,
+  bookingSchema,
   changeSchema,
   inviteUrlSchema,
   invitePreviewSchema,
   maybeItemSchema,
   meSchema,
   membershipSchema,
+  placeSchema,
   tripEventSchema,
   tripSchema,
   tripSnapshotSchema,
+  type Booking,
   type Change,
+  type CreateBookingInput,
   type CreateEventInput,
   type CreateMaybeItemInput,
+  type CreatePlaceInput,
   type CreateTripInput,
   type EventStatus,
   type MaybeItem,
@@ -23,10 +28,13 @@ import {
   type Membership,
   type MoveEventInput,
   type MembershipRole,
+  type Place,
   type Trip,
   type TripEvent,
   type TripSnapshot,
+  type UpdateBookingInput,
   type UpdateEventInput,
+  type UpdatePlaceInput,
   type UpdateTripInput,
 } from '@waypoint/shared';
 
@@ -188,6 +196,10 @@ const maybeItemUrl = (tripId: string, maybeItemId: string) =>
   `${maybeItemsUrl(tripId)}/${maybeItemId}`;
 const consumeMaybeItemUrl = (tripId: string, maybeItemId: string) =>
   `${maybeItemUrl(tripId, maybeItemId)}/consume`;
+const bookingsUrl = (tripId: string) => `${API_BASE_URL}/trips/${tripId}/bookings`;
+const bookingUrl = (tripId: string, bookingId: string) => `${bookingsUrl(tripId)}/${bookingId}`;
+const placesUrl = (tripId: string) => `${API_BASE_URL}/trips/${tripId}/places`;
+const placeUrl = (tripId: string, placeId: string) => `${placesUrl(tripId)}/${placeId}`;
 
 /** Server error shape (api-contract.md): `{ error: { code, message, details? } }`. */
 export class ApiError extends Error {
@@ -335,4 +347,75 @@ export async function createMaybeItem(
 export async function deleteMaybeItem(tripId: string, maybeItemId: string): Promise<void> {
   const res = await apiFetch(maybeItemUrl(tripId, maybeItemId), { method: 'DELETE' });
   if (!res.ok && res.status !== 404) return throwApiError(res);
+}
+
+/** Create a booking (ADR-0047). An optional `event` seed auto-creates the linked
+ *  event atomically server-side (ADR-0048). */
+export async function createBooking(tripId: string, input: CreateBookingInput): Promise<Booking> {
+  const res = await apiFetch(bookingsUrl(tripId), {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify(input),
+  });
+  if (!res.ok) return throwApiError(res);
+  return bookingSchema.parse(await res.json());
+}
+
+export async function updateBooking(
+  tripId: string,
+  bookingId: string,
+  input: UpdateBookingInput,
+): Promise<Booking> {
+  const res = await apiFetch(bookingUrl(tripId, bookingId), {
+    method: 'PATCH',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify(input),
+  });
+  if (!res.ok) return throwApiError(res);
+  return bookingSchema.parse(await res.json());
+}
+
+/** Delete a booking (ADR-0047 §3). `deleteEvents=false` (default) unlinks — the
+ *  linked event is kept, its `bookingId` nulled; `true` deletes both. A hard
+ *  linked event without `confirm` yields a 409 (surfaced for the delete/unlink
+ *  prompt). 404 tolerated (already gone), matching deleteEvent. */
+export async function deleteBooking(
+  tripId: string,
+  bookingId: string,
+  opts: { confirm?: boolean; deleteEvents?: boolean } = {},
+): Promise<void> {
+  const params = new URLSearchParams();
+  if (opts.confirm) params.set('confirm', 'true');
+  if (opts.deleteEvents) params.set('deleteEvents', 'true');
+  const qs = params.toString();
+  const res = await apiFetch(`${bookingUrl(tripId, bookingId)}${qs ? `?${qs}` : ''}`, {
+    method: 'DELETE',
+  });
+  if (!res.ok && res.status !== 404) return throwApiError(res);
+}
+
+/** Create a Place (ADR-0048). Name-only ("Place-lite") is valid; the Google
+ *  Places picker enriches googlePlaceId/lat/lng later. */
+export async function createPlace(tripId: string, input: CreatePlaceInput): Promise<Place> {
+  const res = await apiFetch(placesUrl(tripId), {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify(input),
+  });
+  if (!res.ok) return throwApiError(res);
+  return placeSchema.parse(await res.json());
+}
+
+export async function updatePlace(
+  tripId: string,
+  placeId: string,
+  input: UpdatePlaceInput,
+): Promise<Place> {
+  const res = await apiFetch(placeUrl(tripId, placeId), {
+    method: 'PATCH',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify(input),
+  });
+  if (!res.ok) return throwApiError(res);
+  return placeSchema.parse(await res.json());
 }

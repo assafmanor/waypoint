@@ -2,6 +2,7 @@ import { describe, expect, it } from 'vitest';
 import { EVENT_STATUS, type Change, type Membership } from '@waypoint/shared';
 import { EVENTS, TRIP } from '../fixtures';
 import {
+  applyControlChangeToList,
   applyControlChangeToMembers,
   applyControlChangeToTrip,
   initialState,
@@ -200,6 +201,47 @@ describe('control-plane change application (ADR-0039)', () => {
       tripChange({ entityType: 'membership', action: 'delete', entityId: 'mem-2' }),
     );
     expect(next.map((m) => m.id)).toEqual(['mem-1']);
+  });
+});
+
+describe('applyControlChangeToList (bookings/places WS merge, ADR-0047/0048)', () => {
+  type Row = { id: string; name: string; code?: string };
+  const change = (over: Partial<Change>): Change => ({
+    id: 'ch',
+    seq: '9',
+    tripId: TRIP.id,
+    actorUserId: 'u-other',
+    entityType: 'booking',
+    entityId: 'bk-1',
+    action: 'update',
+    createdAt: '2026-07-11T00:00:00.000Z',
+    ...over,
+  });
+
+  it('merges a partial update over the existing row (leaves other fields intact)', () => {
+    const start: Row[] = [{ id: 'bk-1', name: 'Hotel', code: 'ABC' }];
+    const next = applyControlChangeToList(start, change({ after: { name: 'Hotel Renamed' } }));
+    expect(next[0]).toEqual({ id: 'bk-1', name: 'Hotel Renamed', code: 'ABC' });
+  });
+
+  it('appends a peer-created row not seen locally', () => {
+    const next = applyControlChangeToList<Row>(
+      [{ id: 'bk-1', name: 'Hotel' }],
+      change({ action: 'create', entityId: 'bk-2', after: { name: 'Flight' } }),
+    );
+    expect(next.map((r) => r.id)).toEqual(['bk-1', 'bk-2']);
+    expect(next[1].name).toBe('Flight');
+  });
+
+  it('drops a row on a remote delete', () => {
+    const next = applyControlChangeToList<Row>(
+      [
+        { id: 'bk-1', name: 'Hotel' },
+        { id: 'bk-2', name: 'Flight' },
+      ],
+      change({ action: 'delete', entityId: 'bk-2', after: undefined }),
+    );
+    expect(next.map((r) => r.id)).toEqual(['bk-1']);
   });
 });
 

@@ -233,4 +233,38 @@ describe('applyOutboxOpToCache (offline write-through)', () => {
     expect(cached?.maybeItems).toHaveLength(before);
     expect(cached?.maybeItems.find((m) => m.id === 'mb-offline')).toBeUndefined();
   });
+
+  it('mirrors an offline booking create/delete, stripping the event seed', async () => {
+    await cacheSnapshot(TRIP_ID, snapshot());
+    await applyOutboxOpToCache(TRIP_ID, {
+      verb: 'createBooking',
+      input: {
+        id: 'bk-offline',
+        type: 'hotel',
+        title: 'Offline hotel',
+        event: { date: '2026-07-03' },
+      },
+    });
+    const row = await db.bookings.get('bk-offline');
+    expect(row?.title).toBe('Offline hotel');
+    expect((row as Record<string, unknown>).event).toBeUndefined();
+
+    await applyOutboxOpToCache(TRIP_ID, {
+      verb: 'deleteBooking',
+      bookingId: 'bk-offline',
+      confirm: false,
+      deleteEvents: false,
+    });
+    expect(await db.bookings.get('bk-offline')).toBeUndefined();
+  });
+
+  it('mirrors an offline place create into the cached snapshot', async () => {
+    await cacheSnapshot(TRIP_ID, snapshot());
+    await applyOutboxOpToCache(TRIP_ID, {
+      verb: 'createPlace',
+      input: { id: 'pl-offline', name: 'Offline place' },
+    });
+    const cached = await readCachedSnapshot(TRIP_ID);
+    expect(cached?.places.find((p) => p.id === 'pl-offline')?.name).toBe('Offline place');
+  });
 });

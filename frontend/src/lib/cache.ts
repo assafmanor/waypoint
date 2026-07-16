@@ -299,5 +299,48 @@ export async function applyOutboxOpToCache(tripId: string, op: OutboxOp): Promis
       await clearTripCache(tripId);
       return;
     }
+    // Index writes (ADR-0047/0048). ponytail: the booking row / place is mirrored,
+    // but a seeded linked event's offline coherence is deferred to the booking-form
+    // checkpoint — online, the WS echo mirrors the event either way.
+    case 'createBooking': {
+      if (!op.input.id) return;
+      const { event: _seed, ...fields } = op.input;
+      const existing = await db.bookings.get(op.input.id);
+      await db.bookings.put({ ...existing, ...fields, tripId, id: op.input.id } as Booking);
+      return;
+    }
+    case 'updateBooking': {
+      const existing = await db.bookings.get(op.bookingId);
+      if (existing) {
+        const { event: _seed, ...fields } = op.input;
+        await db.bookings.put({ ...existing, ...fields });
+      }
+      return;
+    }
+    case 'deleteBooking': {
+      await db.bookings.delete(op.bookingId);
+      return;
+    }
+    case 'createPlace': {
+      const meta = await db.snapshotMeta.get(tripId);
+      if (!meta || !op.input.id) return;
+      const id = op.input.id;
+      const existing = meta.places.find((p) => p.id === id);
+      const place = { ...existing, ...op.input, id, tripId } as Place;
+      const places = existing
+        ? meta.places.map((p) => (p.id === id ? place : p))
+        : [...meta.places, place];
+      await db.snapshotMeta.put({ ...meta, places });
+      return;
+    }
+    case 'updatePlace': {
+      const meta = await db.snapshotMeta.get(tripId);
+      if (!meta) return;
+      await db.snapshotMeta.put({
+        ...meta,
+        places: meta.places.map((p) => (p.id === op.placeId ? { ...p, ...op.input } : p)),
+      });
+      return;
+    }
   }
 }
