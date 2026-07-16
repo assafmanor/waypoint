@@ -656,21 +656,22 @@
         font-size: 12px;
       }
 
-      /* the now-line */
+      /* the now-line — quiet by default: a soft amber hairline + a flat mono
+         time label. It is a time REFERENCE that sits UNDER the live "now" ring
+         in the hierarchy, never a second loud element. */
       .nowline {
         display: flex;
         align-items: center;
-        gap: 9px;
-        margin: 3px 2px 10px;
+        gap: 8px;
+        margin: 2px 2px 9px;
       }
       .nowline .rule {
         flex: 1;
-        height: 2px;
-        border-radius: 2px;
+        height: 1px;
         background: linear-gradient(
           90deg,
-          var(--amber) 0%,
-          rgba(233, 166, 60, 0.28) 100%
+          rgba(233, 166, 60, 0.5) 0%,
+          rgba(233, 166, 60, 0.1) 100%
         );
       }
       .nowline .chip {
@@ -678,27 +679,44 @@
         display: inline-flex;
         align-items: center;
         gap: 6px;
-        background: var(--board);
-        color: var(--amber);
+        background: rgba(233, 166, 60, 0.12);
+        color: var(--amber-deep);
         font-family: var(--font-mono);
-        font-size: 12px;
+        font-size: 11.5px;
         font-weight: 700;
-        padding: 4px 10px;
+        padding: 2px 9px;
         border-radius: 999px;
-        box-shadow: 0 6px 16px -8px rgba(233, 166, 60, 0.6);
       }
       .nowline .blip {
-        width: 7px;
-        height: 7px;
+        width: 5px;
+        height: 5px;
         border-radius: 999px;
         background: var(--amber);
-        box-shadow: 0 0 0 0 rgba(233, 166, 60, 0.55);
-        animation: pulse 2s infinite;
       }
       .nowline .lbl {
         font-family: var(--font-body);
-        font-size: 10.5px;
-        letter-spacing: 0.02em;
+        font-size: 10px;
+        font-weight: 600;
+        opacity: 0.8;
+      }
+      /* the original v1 treatment, kept only for the side-by-side comparison */
+      .nowline.loud .rule {
+        height: 2px;
+        border-radius: 2px;
+        background: linear-gradient(90deg, var(--amber), rgba(233, 166, 60, 0.28));
+      }
+      .nowline.loud .chip {
+        background: var(--board);
+        color: var(--amber);
+        font-size: 12px;
+        padding: 4px 10px;
+        box-shadow: 0 6px 16px -8px rgba(233, 166, 60, 0.6);
+      }
+      .nowline.loud .blip {
+        width: 7px;
+        height: 7px;
+        box-shadow: 0 0 0 0 rgba(233, 166, 60, 0.55);
+        animation: pulse 2s infinite;
       }
       @keyframes pulse {
         0% {
@@ -712,9 +730,40 @@
         }
       }
       @media (prefers-reduced-motion: reduce) {
-        .nowline .blip {
+        .nowline.loud .blip {
           animation: none;
         }
+      }
+      /* now-line comparison strip */
+      .nl-compare {
+        display: grid;
+        grid-template-columns: repeat(auto-fit, minmax(240px, 1fr));
+        gap: 14px;
+      }
+      .nl-demo {
+        background: var(--screen);
+        border-radius: 14px;
+        padding: 16px 15px 6px;
+        border: 1px solid var(--stage-line);
+      }
+      .nl-demo .cap {
+        font-size: 11px;
+        font-weight: 700;
+        letter-spacing: 0.08em;
+        text-transform: uppercase;
+        color: var(--muted);
+        margin-bottom: 12px;
+      }
+      .nl-demo .cap.pick {
+        color: var(--ok);
+      }
+      .nl-demo .ghost {
+        height: 40px;
+        border-radius: 12px;
+        background: #fff;
+        border: 1px solid var(--line);
+        margin-bottom: 9px;
+        opacity: 0.6;
       }
 
       /* archive wash for a fully past day */
@@ -1085,6 +1134,27 @@
           </div>
         </div>
 
+        <div class="nl-compare" style="margin-bottom: 30px">
+          <div class="nl-demo" dir="rtl">
+            <div class="cap" dir="ltr">v1 — too loud</div>
+            <div class="ghost"></div>
+            <div class="nowline loud">
+              <span class="chip"><span class="blip"></span><span dir="ltr">16:42</span> <span class="lbl">עכשיו</span></span>
+              <span class="rule"></span>
+            </div>
+            <div class="ghost"></div>
+          </div>
+          <div class="nl-demo" dir="rtl">
+            <div class="cap pick" dir="ltr">recommended — a quiet reference</div>
+            <div class="ghost"></div>
+            <div class="nowline">
+              <span class="chip"><span class="blip"></span><span dir="ltr">16:42</span> <span class="lbl">עכשיו</span></span>
+              <span class="rule"></span>
+            </div>
+            <div class="ghost"></div>
+          </div>
+        </div>
+
         <div class="duo">
           <div class="phone-shell">
             <div class="phone" dir="rtl" lang="he">
@@ -1230,17 +1300,18 @@
 
           <div class="stack">
             <div class="note">
-              <h3><span class="pin">A</span> The now-line</h3>
+              <h3><span class="pin">A</span> The now-line — dialed down</h3>
               <p>
-                A live amber hairline with a mono time chip, inserted at the
-                current moment between the last passed row and what’s next. Same
-                grammar as the board’s clock — <code>--amber</code>, one pulsing
-                blip. It’s the single answer to “where are we in the day,” and it
-                travels down the list as time moves.
+                A <b>soft amber hairline</b> with a flat mono time label, inserted
+                at the current moment. It stays amber (that’s the color’s meaning —
+                time), but drops the dark chip, the glow and the pulse from v1, so
+                it <b>reads quieter than the live event above it</b>.
               </p>
               <p>
-                On the day tab there’s no board, so this carries the one live pulse
-                per screen (design-language: “pulse means live”).
+                Hierarchy is the fix for “too loud”: the amber <b>ring on the now
+                event stays the one accent</b>; the line is just a reference for
+                where the moment falls. It travels down the list as time moves —
+                the movement is the liveness, no pulse needed.
               </p>
             </div>
             <div class="note">
@@ -1672,10 +1743,143 @@
         </div>
       </section>
 
-      <!-- ══ SUMMARY ══ -->
+      <!-- ══ 4 · MODE BOUNDARIES ══ -->
       <section>
         <div class="sec-head">
           <span class="sec-num">04</span>
+          <div>
+            <h2>Where the line is drawn — Plan mode, and the “new event” button</h2>
+            <p>
+              Two boundary questions, one rule behind both: Trip mode is <i>live
+              and on-the-ground</i>; Plan mode is <i>the drafting table and is
+              never “live.”</i> (design-language: mode identity.)
+            </p>
+          </div>
+        </div>
+
+        <h3 style="font-family: var(--font-head); font-weight: 400; font-size: 18px; color: #fff; margin-bottom: 6px">
+          Do these features cross into Plan mode?
+        </h3>
+        <p style="font-size: 13.5px; color: var(--stage-dim); max-width: 62ch; margin-bottom: 16px">
+          Mostly no — and that’s a feature, not a gap. Only the archive language crosses.
+        </p>
+        <div class="summary" style="margin-bottom: 30px">
+          <div class="row head">
+            <div class="h">Feature</div>
+            <div class="d">Verdict &amp; why</div>
+            <div class="t">Scope</div>
+          </div>
+          <div class="row">
+            <div class="h">Now-line</div>
+            <div class="d">
+              Trip only. Plan is never live — no pulse, no amber-now. Plan’s day
+              builder already shows the full timeline for “will my day flow.” A
+              live marker there would blur the two modes.
+            </div>
+            <div class="t">Trip</div>
+          </div>
+          <div class="row">
+            <div class="h">Derived phases</div>
+            <div class="d">
+              Trip only. ADR-0029: “Plan mode has no past/future distinction; it’s
+              the building surface regardless of which day is on screen.” Rebuilding
+              any day is the point of Plan.
+            </div>
+            <div class="t">Trip</div>
+          </div>
+          <div class="row">
+            <div class="h">Done / settle</div>
+            <div class="d">
+              Trip only — a Tier-1 on-the-ground verb (ADR-0025). A finished trip is
+              explicitly <b>read-only</b>, no settling (ADR-0040).
+            </div>
+            <div class="t">Trip</div>
+          </div>
+          <div class="row">
+            <div class="h">Archive visual language</div>
+            <div class="d">
+              <b>Shared.</b> A finished trip is a Plan-mode read-only archive
+              (ADR-0040). Past-day (Trip) and finished-trip (Plan) should wear the
+              same calm wash — §3 — so there’s one archive language, not two.
+            </div>
+            <div class="t">Both</div>
+          </div>
+          <div class="row">
+            <div class="h">“Now” reference in Plan builder</div>
+            <div class="d">
+              Considered &amp; deferred: a faint, static, non-amber current-time tick
+              when building <i>today</i> mid-trip. Marginal value, real risk of
+              muddying mode identity — leave it out for now.
+            </div>
+            <div class="t">—</div>
+          </div>
+        </div>
+
+        <h3 style="font-family: var(--font-head); font-weight: 400; font-size: 18px; color: #fff; margin-bottom: 6px">
+          Should Trip mode keep “אירוע חדש”?
+        </h3>
+        <p style="font-size: 13.5px; color: var(--stage-dim); max-width: 62ch; margin-bottom: 16px">
+          Don’t remove it — right-size it. The <i>need</i> is real (“we just decided
+          to grab coffee at 5”), but today’s button opens the full builder.
+        </p>
+        <div class="duo" style="align-items: stretch">
+          <div class="stack" style="flex: 1 1 300px">
+            <div class="nl-demo" dir="rtl" style="padding-bottom: 15px">
+              <div class="cap" dir="ltr">today — now: full builder</div>
+              <div class="sec-title" style="margin: 0">
+                יום 3 · שבת · טוקיו
+                <span class="new-event-btn">＋ אירוע חדש</span>
+              </div>
+              <p style="font-size: 11.5px; color: var(--muted); margin-top: 10px; text-align: right">
+                פותח טופס מלא — יום כלשהו, קשיח/גמיש, הזמנות. זו בנייה (Tier&nbsp;2–3).
+              </p>
+            </div>
+            <div class="nl-demo" dir="rtl" style="padding-bottom: 15px">
+              <div class="cap pick" dir="ltr">recommended — quick-add, soft, today</div>
+              <div class="sec-title" style="margin: 0">
+                יום 3 · שבת · טוקיו
+                <span class="new-event-btn" style="border-color: rgba(22,35,61,0.14)">＋ הוסף להיום</span>
+              </div>
+              <p style="font-size: 11.5px; color: var(--muted); margin-top: 10px; text-align: right">
+                גמיש · היום · המשבצת הפנויה הבאה. בנייה כבדה עוברת למצב תכנון.
+              </p>
+            </div>
+          </div>
+          <div class="stack" style="flex: 1 1 300px">
+            <div class="note">
+              <h3><span class="pin">✓</span> Keep it, scoped to Tier-1</h3>
+              <p>
+                ADR-0025 lists “add a quick soft event for today” as a legitimate
+                on-the-ground verb. So keep an add affordance — but make it a
+                <b>quick-add</b> (soft, today, next open slot), not the full form.
+                Adding a hard event, a booking, or an event on another day is
+                building → the ⋯ sheet or the Plan escape.
+              </p>
+            </div>
+            <div class="note">
+              <h3><span class="pin">✕</span> Gone on past days</h3>
+              <p>
+                On a past day ADR-0029 <b>locks create</b> — so the add button
+                disappears entirely, replaced by §3’s “add or move in Plan mode”
+                footer. The archive stays read-only.
+              </p>
+            </div>
+            <div class="rec">
+              <div class="lab">Recommendation</div>
+              <p>
+                <b>Keep it on today, right-sized; hide it on past days.</b> Net
+                effect: spontaneous soft adds stay one tap on the ground, real
+                itinerary building lives where it belongs — Plan mode.
+              </p>
+            </div>
+          </div>
+        </div>
+      </section>
+
+      <!-- ══ SUMMARY ══ -->
+      <section>
+        <div class="sec-head">
+          <span class="sec-num">05</span>
           <div>
             <h2>What ships, and where it already lives</h2>
             <p>Every change is clock-derived — no schema change, no stored state.</p>
@@ -1716,6 +1920,11 @@
             <div class="h">Today-anchor top bar</div>
             <div class="d">Amber marks today (not the selection); past = neutral highlight, future = violet; a context ribbon + one-tap “back to today.”</div>
             <div class="t"><span class="badge-new">NEW</span> <span class="badge-adr">ADR-0028</span></div>
+          </div>
+          <div class="row">
+            <div class="h">“אירוע חדש” → quick-add</div>
+            <div class="d">Right-sized to a Tier-1 quick-add (soft, today, next slot); heavy building routes to Plan; hidden entirely on past days.</div>
+            <div class="t"><span class="badge-adr">ADR-0025</span> <span class="badge-adr">ADR-0029</span></div>
           </div>
         </div>
         <p class="foot">
