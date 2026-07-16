@@ -3428,10 +3428,24 @@
   align-items: center;
   gap: 11px;
   padding: 12px 14px;
+  border: none;
   border-bottom: 1px solid var(--line);
+  width: 100%;
+  background: transparent;
+  font: inherit;
+  color: inherit;
+  text-align: inherit;
+  cursor: pointer;
 }
 .index .li:last-child {
   border-bottom: none;
+}
+.index .li:hover {
+  background: color-mix(in srgb, var(--ink) 4%, transparent);
+}
+.index .li:focus-visible {
+  outline: 2px solid var(--teal);
+  outline-offset: -2px;
 }
 .index .li .badge2 {
   width: 36px;
@@ -3529,4 +3543,181 @@
   color: var(--muted);
   margin-top: 5px;
   line-height: 1.55;
+}
+
+/* ===== Booking edit sheet (BookingSheet.tsx) — rides inside the generic
+   .sheet-card; all rules scoped under .booking-sheet. ===== */
+.booking-sheet {
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+  max-height: 80vh;
+  overflow-y: auto;
+}
+.booking-sheet .titlerow {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+}
+.booking-sheet .bs-icon {
+  width: 40px;
+  height: 40px;
+  border-radius: 12px;
+  background: var(--paper);
+  display: grid;
+  place-items: center;
+  font-size: 19px;
+  flex: 0 0 auto;
+}
+.booking-sheet .bs-title {
+  flex: 1;
+  min-width: 0;
+  font: inherit;
+  font-weight: 700;
+  font-size: 15px;
+  color: var(--ink);
+  background: transparent;
+  border: none;
+  border-bottom: 1.5px solid var(--soft-line);
+  padding: 4px 2px;
+}
+.booking-sheet .bs-schedule {
+  font-size: 11.5px;
+  font-weight: 600;
+  color: var(--muted);
+  margin-top: -4px;
+}
+.booking-sheet .bs-field {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  font-size: 11.5px;
+  font-weight: 700;
+  color: var(--muted);
+}
+.booking-sheet .bs-field input,
+.booking-sheet .bs-field textarea {
+  font: inherit;
+  font-weight: 500;
+  font-size: 13.5px;
+  color: var(--ink);
+  background: var(--card);
+  border: 1px solid var(--soft-line);
+  border-radius: 10px;
+  padding: 9px 11px;
+}
+.booking-sheet .bs-field textarea {
+  min-height: 56px;
+  resize: vertical;
+}
+.booking-sheet .bs-field input:focus-visible,
+.booking-sheet .bs-field textarea:focus-visible,
+.booking-sheet .bs-title:focus-visible {
+  outline: none;
+  border-color: var(--teal);
+}
+.booking-sheet .bs-row2 {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 10px;
+}
+.booking-sheet .bs-wifi {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  background: color-mix(in srgb, var(--teal) 6%, transparent);
+  border-radius: 12px;
+  padding: 10px 11px;
+}
+.booking-sheet .bs-wifi-head {
+  font-size: 12px;
+  font-weight: 700;
+  color: var(--ink);
+}
+.booking-sheet .bs-hint {
+  font-weight: 400;
+  color: var(--muted);
+}
+.booking-sheet .bs-actions {
+  display: flex;
+  gap: 10px;
+  margin-top: 4px;
+}
+.booking-sheet .bs-save,
+.booking-sheet .bs-cancel {
+  flex: 1;
+  font: inherit;
+  font-weight: 700;
+  font-size: 13px;
+  border-radius: 12px;
+  padding: 11px;
+  cursor: pointer;
+}
+.booking-sheet .bs-save {
+  background: var(--cta);
+  color: var(--cta-text);
+  border: none;
+}
+.booking-sheet .bs-cancel {
+  background: transparent;
+  color: var(--muted);
+  border: 1px solid var(--soft-line);
+}
+.booking-sheet .bs-delete {
+  font: inherit;
+  font-weight: 700;
+  font-size: 12.5px;
+  color: var(--miss);
+  background: transparent;
+  border: none;
+  padding: 6px;
+  cursor: pointer;
+}
+
+/* delete/unlink prompt — rides inside the generic .confirm-card */
+.bs-hard-note {
+  font-size: 12px;
+  font-weight: 700;
+  color: var(--amber-deep);
+  margin: 2px 0 6px;
+}
+.bs-choices {
+  display: flex;
+  flex-direction: column;
+  gap: 9px;
+  margin: 6px 0 4px;
+}
+.bs-choice {
+  text-align: start;
+  font: inherit;
+  background: var(--card);
+  border: 1px solid var(--soft-line);
+  border-radius: 12px;
+  padding: 11px 13px;
+  cursor: pointer;
+}
+.bs-choice.danger {
+  border-color: color-mix(in srgb, var(--miss) 55%, var(--soft-line));
+}
+.bs-choice-t {
+  font-weight: 700;
+  font-size: 13px;
+  color: var(--ink);
+}
+.bs-choice.danger .bs-choice-t {
+  color: var(--miss);
+}
+.bs-choice-s {
+  font-size: 11px;
+  color: var(--muted);
+  margin-top: 2px;
+}
+.bs-choice-cancel {
+  width: 100%;
+}
+.bs-danger-ok {
+  background: var(--miss);
+}
+.bs-modal-overlay {
+  z-index: 30;
 }

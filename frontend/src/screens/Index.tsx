@@ -1,8 +1,9 @@
 // Index tab — the trip's bookings reference (ADR-0047/0049): flights, hotels,
 // restaurants and the like, with their confirmation codes and whether each is
-// scheduled on the itinerary. Read-only for now; the edit sheet + booking form
-// are later checkpoints. Content is identical in Plan/Trip mode (ADR-0049) — the
-// mode only tints the chrome, so this screen reads mode-agnostically.
+// scheduled on the itinerary. Tap a row to edit/delete it (BookingSheet); the
+// add-booking form is a later checkpoint. Content is identical in Plan/Trip mode
+// (ADR-0049) — the mode only tints the chrome, so this reads mode-agnostically.
+import { useState } from 'react';
 import {
   BOOKING_TYPE,
   type Booking,
@@ -16,6 +17,7 @@ import { splitBookings, type BookingRow } from '../lib/index-bookings';
 import { placeName } from '../lib/places';
 import { formatTime, todayInTz } from '../lib/time';
 import { BOOKING_TYPE_ICON, CODE_PREFIX, MS_PER_DAY } from '../constants';
+import { BookingSheet } from '../ui/BookingSheet';
 import { t } from '../i18n/he';
 
 const isTransport = (b: Booking): boolean =>
@@ -25,6 +27,7 @@ export function Index() {
   const { trip, bookings, places, events } = useTrip();
   const now = useClock();
   const { upcoming, past } = splitBookings(bookings, events, trip.timezone, now.getTime());
+  const [editing, setEditing] = useState<Booking | null>(null);
 
   return (
     <div className="index">
@@ -43,7 +46,14 @@ export function Index() {
         <>
           <div className="listcard">
             {upcoming.map((row) => (
-              <BookingLi key={row.booking.id} row={row} places={places} trip={trip} now={now} />
+              <BookingLi
+                key={row.booking.id}
+                row={row}
+                places={places}
+                trip={trip}
+                now={now}
+                onOpen={setEditing}
+              />
             ))}
           </div>
           {past.length > 0 && (
@@ -51,13 +61,22 @@ export function Index() {
               <div className="past-head">{t.index.pastHead}</div>
               <div className="listcard past">
                 {past.map((row) => (
-                  <BookingLi key={row.booking.id} row={row} places={places} trip={trip} now={now} />
+                  <BookingLi
+                    key={row.booking.id}
+                    row={row}
+                    places={places}
+                    trip={trip}
+                    now={now}
+                    onOpen={setEditing}
+                  />
                 ))}
               </div>
             </>
           )}
         </>
       )}
+
+      {editing && <BookingSheet booking={editing} onClose={() => setEditing(null)} />}
     </div>
   );
 }
@@ -67,17 +86,19 @@ function BookingLi({
   places,
   trip,
   now,
+  onOpen,
 }: {
   row: BookingRow;
   places: Place[];
   trip: Trip;
   now: Date;
+  onOpen: (booking: Booking) => void;
 }) {
   const { booking, event } = row;
   const icon = event?.icon ?? BOOKING_TYPE_ICON[booking.type];
 
   return (
-    <div className="li">
+    <button type="button" className="li" onClick={() => onOpen(booking)}>
       <div className="badge2">{icon}</div>
       <div className="main">
         <div className="t">
@@ -100,7 +121,7 @@ function BookingLi({
           </div>
         )}
       </div>
-    </div>
+    </button>
   );
 }
 
