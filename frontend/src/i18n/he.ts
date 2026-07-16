@@ -142,7 +142,6 @@ export const t = {
     allTrips: {
       back: 'חזרה לטיול',
       title: 'הטיולים שלי',
-      activeTrip: 'הטיול הפעיל',
       sectionNow: 'עכשיו',
       sectionSoon: 'בקרוב',
       sectionPast: 'הסתיים',

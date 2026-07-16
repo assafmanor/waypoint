@@ -1529,22 +1529,6 @@
   font-size: 26px;
   flex: 0 0 auto;
 }
-.trip-hero .live {
-  display: inline-flex;
-  align-items: center;
-  gap: 6px;
-  font-size: 10.5px;
-  font-weight: 700;
-  letter-spacing: 0.06em;
-  color: #cbd6ef;
-  margin-bottom: 5px;
-}
-.trip-hero .live .blip {
-  width: 7px;
-  height: 7px;
-  border-radius: 50%;
-  background: #e8edf8;
-}
 .trip-hero .t {
   font-family: var(--font-head);
   font-size: 19px;
