@@ -108,10 +108,6 @@ export function AllTrips({ onOpenAccount }: { onOpenAccount: () => void }) {
     <button key={trip.id} className="trip-hero" onClick={() => pick(trip)}>
       <span className="flag">{trip.icon ?? DEFAULT_TRIP_ICON}</span>
       <span className="main">
-        <span className="live">
-          <span className="blip" aria-hidden="true" />
-          {t.shell.allTrips.activeTrip}
-        </span>
         <span className="t">{trip.name}</span>
         <TripMeta trip={trip} />
       </span>
