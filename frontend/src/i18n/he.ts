@@ -172,24 +172,31 @@ export const t = {
     alsoNow: (n: number) => `ועוד ${n} עכשיו`,
     concurrentNow: 'עכשיו · במקביל',
   },
+  // Real, offline-safe shortcuts only (ADR-0045): next confirmation code, WiFi,
+  // documents. Empty tiles are an "add" affordance; documents stays a fixture
+  // until the FE supports it.
   quick: {
     title: 'גישה מהירה',
-    navHotel: 'ניווט למלון',
     nextTicket: 'הכרטיס הבא',
-    nearbyAtm: 'כספומט קרוב',
     wifiCode: 'קוד WiFi',
-    openingNav: 'פותח ניווט למלון',
-    nextTicketToast: (code: string) => `הכרטיס הבא · ${code}`,
-    noTicket: 'אין כרטיס קרוב',
-    atmToast: '3 כספומטים ללא עמלה ברדיוס 300 מ׳',
+    documents: 'מסמכים',
+    addHint: 'הוסיפו',
     wifiCopied: 'קוד ה-WiFi הועתק ללוח',
-    noWifi: 'אין קוד WiFi שמור',
+    addWifiSoon: 'הוספת קוד WiFi תגיע בקרוב',
+    addDocsSoon: 'הוספת מסמכים תגיע בקרוב',
   },
+  // Day-at-a-glance: derived from events (ADR-0045). Counts are phase-based and
+  // run on top-level blocks (ADR-0041), so a passed-unmarked event drops out of
+  // "נותרו" and overlaps never inflate the day.
   glance: {
-    title: 'מבט מהיר',
-    fx: 'שער',
-    fxChange: (pct: number) => `${pct}% היום`,
-    budgetToday: 'תקציב היום',
+    title: 'היום במבט',
+    remaining: 'נותרו היום',
+    hardAnchor: 'עוגן קשיח',
+    freeUntil: 'פנוי עד',
+    dayEnds: 'מסתיים',
+    emptyTitle: 'היום עוד פתוח',
+    emptySub: 'אין אירועים מתוכננים · יום חופשי',
+    emptyAdd: 'הוסיפו אירוע',
   },
   // Plan-mode Home — the prep dashboard (modes.md; mockups/plan-mode-v1.html).
   // Only the rows we can honestly derive from the snapshot appear; the Gmail /
@@ -258,11 +265,11 @@ export const t = {
     settleAsk: 'היינו שם?',
     // Past-day archive (ADR-0029 signal / ADR-0040 language).
     archiveTag: 'לקריאה בלבד',
-    pastBuildHint: 'הוספה או הזזה של אירוע ביום שעבר — במצב תכנון',
+    pastBuildHint: 'הוספה או הזזה של אירוע ביום שעבר · במצב תכנון',
   },
   // Plan-mode Day-by-day — the itinerary builder (screens/PlanDay.tsx).
   planDay: {
-    empty: 'היום ריק — הוסף אירוע או שבץ מהמדף',
+    empty: 'היום ריק · הוסף אירוע או שבץ מהמדף',
     // A finished trip is a structural archive but stays settle-editable
     // (ADR-0044): the header note says so, since the ✓ / הסדרה is still live.
     pastNote: 'טיול שהסתיים · מבנה קפוא, אפשר להסדיר',
@@ -470,7 +477,7 @@ export const t = {
     dateTo: 'עד',
     timezoneLabel: 'אזור זמן',
     budgetLabel: 'תקציב יומי לקבוצה',
-    derivedHint: 'אזור-זמן ומטבע נערכים ידנית כרגע — בעתיד ייגזרו אוטומטית מהיעד',
+    derivedHint: 'אזור-זמן ומטבע נערכים ידנית כרגע · בעתיד ייגזרו אוטומטית מהיעד',
     peerManaged: 'רק מנהל יכול לערוך את פרטי הטיול',
     party: 'חבורה',
     memberCount: (n: number) => `${n} משתתפים`,
@@ -494,7 +501,7 @@ export const t = {
     deleteAction: 'מחק',
     deleteHint: 'מחיקה זמינה למנהל בלבד · מוחקת את הטיול לכל המשתתפים',
     deleteConfirmTitle: 'למחוק את הטיול לכולם?',
-    deleteConfirmBody: (name: string) => `״${name}״ יימחק לכל המשתתפים — אין דרך חזרה. ממשיכים?`,
+    deleteConfirmBody: (name: string) => `״${name}״ יימחק לכל המשתתפים · אין דרך חזרה. ממשיכים?`,
     removeConfirmTitle: 'להסיר משתתף?',
     removeConfirmBody: (name: string) => `${name} יוסר מהטיול. תמיד אפשר להזמין מחדש.`,
     toast: {
