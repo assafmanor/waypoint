@@ -226,6 +226,45 @@
         background: rgba(255, 255, 255, 0.34);
         box-shadow: inset 0 3px 0 rgba(255, 255, 255, 0.7);
       }
+
+      /* collapsed-block coloring rule card */
+      .crule {
+        display: flex;
+        flex-wrap: wrap;
+        gap: 10px 18px;
+      }
+      .crule > div {
+        display: flex;
+        align-items: center;
+        gap: 7px;
+        font-size: 11.5px;
+        color: var(--muted);
+      }
+      .crs {
+        width: 28px;
+        height: 12px;
+        border-radius: 3px;
+        flex: 0 0 auto;
+        /* the "layered" edge marks it as a collapsed composite */
+        box-shadow:
+          inset 0 3px 0 rgba(255, 255, 255, 0.55),
+          inset 0 0 0 1px rgba(22, 35, 61, 0.12);
+      }
+      .crs.now {
+        background: var(--amber);
+      }
+      .crs.done {
+        background: var(--ok);
+      }
+      .crs.passed {
+        background: rgba(22, 35, 61, 0.32);
+      }
+      .crs.up {
+        background: transparent;
+        box-shadow:
+          inset 0 3px 0 rgba(22, 35, 61, 0.12),
+          inset 0 0 0 1.5px rgba(22, 35, 61, 0.24);
+      }
     </style>
   </head>
   <body>
@@ -242,6 +281,21 @@
         <span><i class="now"></i>עכשיו</span>
         <span><i class="up"></i>לפנינו</span>
         <span><i class="multi"></i>שכבות (חופף/מכיל)</span>
+      </div>
+
+      <!-- 0 · collapsed-block coloring rule -->
+      <div class="case">
+        <h4>0 · צביעת בלוק מקובץ (אשכול/מעטפת)</h4>
+        <p>
+          צבע אחד לכל הבלוק, אותו היגיון של אירוע יחיד · רק מחושב לכל הבלוק. הקצה ה"שכבתי" מסמן שזה
+          כמה אירועים.
+        </p>
+        <div class="crule">
+          <div><i class="crs now"></i><span>עכשיו בתוכו</span></div>
+          <div><i class="crs done"></i><span>עבר · הכול סומן</span></div>
+          <div><i class="crs passed"></i><span>עבר · לא הכול</span></div>
+          <div><i class="crs up"></i><span>עוד לפנינו</span></div>
+        </div>
       </div>
 
       <!-- 1 · overnight -->
