@@ -78,22 +78,45 @@ Before changing a domain, read **only** the ADR(s) below for it (see the Context
 
 ## Planning sessions
 
-| Doc                                                                                                                              | Purpose                                                                           |
-| -------------------------------------------------------------------------------------------------------------------------------- | --------------------------------------------------------------------------------- |
-| [planning/2026-07-09-session-01-pm-kickoff.md](planning/2026-07-09-session-01-pm-kickoff.md)                                     | PM kickoff: scope, decisions, scaffold                                            |
-| [planning/2026-07-09-session-02-modes.md](planning/2026-07-09-session-02-modes.md)                                               | Plan/Trip mode model + switch                                                     |
-| [planning/2026-07-10-session-03-architecture-review.md](planning/2026-07-10-session-03-architecture-review.md)                   | T-025 architecture review: data model, sync, auth, modules (ADR-0018–0021)        |
-| [planning/2026-07-11-session-04-app-shell-lifecycle.md](planning/2026-07-11-session-04-app-shell-lifecycle.md)                   | App shell & trip lifecycle: routing, zero-state, create/join, switcher (ADR-0024) |
-| [planning/2026-07-14-session-05-hosting.md](planning/2026-07-14-session-05-hosting.md)                                           | Hosting decision (Railway, ADR-0031) + deployment scaffolding                     |
-| [planning/2026-07-14-session-06-plan-home.md](planning/2026-07-14-session-06-plan-home.md)                                       | Plan-mode Home (prep dashboard, real-signals readiness) + light plan chrome       |
-| [planning/2026-07-14-session-07-plan-day-builder.md](planning/2026-07-14-session-07-plan-day-builder.md)                         | Plan-mode Day-by-day (itinerary builder): rows, gap chips, empty-day markers      |
-| [planning/2026-07-14-session-08-maybe-shelf-rework.md](planning/2026-07-14-session-08-maybe-shelf-rework.md)                     | Maybe-shelf rework: schedule-with-picker + add/remove ideas                       |
-| [planning/2026-07-14-session-09-drag-reorder-shelf-tombstone.md](planning/2026-07-14-session-09-drag-reorder-shelf-tombstone.md) | Builder drag-reorder (soft-slot model) + shelf "שובץ" tombstone fix               |
-| [planning/2026-07-14-session-10-shelf-leftovers.md](planning/2026-07-14-session-10-shelf-leftovers.md)                           | Gap-fill-from-shelf + skip-parks-to-shelf (ADR-0027 parking lot)                  |
-| [planning/2026-07-14-session-11-gap-fix-end-times.md](planning/2026-07-14-session-11-gap-fix-end-times.md)                       | Gap-chip fix for start-only events + row start–end times                          |
-| [planning/2026-07-14-session-12-park-and-gap-fill-cap.md](planning/2026-07-14-session-12-park-and-gap-fill-cap.md)               | Park soft events to the shelf + cap the gap-fill prefill to a 1h block            |
-| [planning/2026-07-14-session-13-return-gesture.md](planning/2026-07-14-session-13-return-gesture.md)                             | In-app back model + PWA return gesture (ADR-0035): history-owned tabs/overlays    |
-| [planning/2026-07-15-session-20-trip-settings.md](planning/2026-07-15-session-20-trip-settings.md)                               | Trip-settings design (ADR-0039): admin-governed edits, member sheet, data-plane   |
-| [planning/2026-07-16-session-24-retire-task-board.md](planning/2026-07-16-session-24-retire-task-board.md)                       | Remote-cloud catch-up; retiring the task board (ADR-0046) + `backlog.md`          |
-| [planning/2026-07-16-session-21-trip-settings-impl.md](planning/2026-07-16-session-21-trip-settings-impl.md)                     | Trip-settings implementation (ADR-0039) + Trip.icon added; stopgap icon field     |
-| [planning/2026-07-08-handoff-source.md](planning/2026-07-08-handoff-source.md)                                                   | Original handoff doc (source material, Hebrew)                                    |
+| Doc                                                                                                                              | Purpose                                                                                         |
+| -------------------------------------------------------------------------------------------------------------------------------- | ----------------------------------------------------------------------------------------------- |
+| [planning/2026-07-09-session-01-pm-kickoff.md](planning/2026-07-09-session-01-pm-kickoff.md)                                     | PM kickoff: scope, decisions, scaffold                                                          |
+| [planning/2026-07-09-session-02-modes.md](planning/2026-07-09-session-02-modes.md)                                               | Plan/Trip mode model + switch                                                                   |
+| [planning/2026-07-10-session-03-architecture-review.md](planning/2026-07-10-session-03-architecture-review.md)                   | T-025 architecture review: data model, sync, auth, modules (ADR-0018–0021)                      |
+| [planning/2026-07-11-session-04-app-shell-lifecycle.md](planning/2026-07-11-session-04-app-shell-lifecycle.md)                   | App shell & trip lifecycle: routing, zero-state, create/join, switcher (ADR-0024)               |
+| [planning/2026-07-14-session-05-hosting.md](planning/2026-07-14-session-05-hosting.md)                                           | Hosting decision (Railway, ADR-0031) + deployment scaffolding                                   |
+| [planning/2026-07-14-session-06-plan-home.md](planning/2026-07-14-session-06-plan-home.md)                                       | Plan-mode Home (prep dashboard, real-signals readiness) + light plan chrome                     |
+| [planning/2026-07-14-session-07-plan-day-builder.md](planning/2026-07-14-session-07-plan-day-builder.md)                         | Plan-mode Day-by-day (itinerary builder): rows, gap chips, empty-day markers                    |
+| [planning/2026-07-14-session-08-maybe-shelf-rework.md](planning/2026-07-14-session-08-maybe-shelf-rework.md)                     | Maybe-shelf rework: schedule-with-picker + add/remove ideas                                     |
+| [planning/2026-07-14-session-09-drag-reorder-shelf-tombstone.md](planning/2026-07-14-session-09-drag-reorder-shelf-tombstone.md) | Builder drag-reorder (soft-slot model) + shelf "שובץ" tombstone fix                             |
+| [planning/2026-07-14-session-10-shelf-leftovers.md](planning/2026-07-14-session-10-shelf-leftovers.md)                           | Gap-fill-from-shelf + skip-parks-to-shelf (ADR-0027 parking lot)                                |
+| [planning/2026-07-14-session-11-gap-fix-end-times.md](planning/2026-07-14-session-11-gap-fix-end-times.md)                       | Gap-chip fix for start-only events + row start–end times                                        |
+| [planning/2026-07-14-session-12-park-and-gap-fill-cap.md](planning/2026-07-14-session-12-park-and-gap-fill-cap.md)               | Park soft events to the shelf + cap the gap-fill prefill to a 1h block                          |
+| [planning/2026-07-14-session-13-nav-active-pill.md](planning/2026-07-14-session-13-nav-active-pill.md)                           | Bottom-nav "you are here" active pill                                                           |
+| [planning/2026-07-14-session-13-return-gesture.md](planning/2026-07-14-session-13-return-gesture.md)                             | In-app back model + PWA return gesture (ADR-0035): history-owned tabs/overlays                  |
+| [planning/2026-07-14-session-14-nav-select-drop.md](planning/2026-07-14-session-14-nav-select-drop.md)                           | Bottom-nav select drop animation (follow-up to the active pill)                                 |
+| [planning/2026-07-14-session-15-mode-switch-transition.md](planning/2026-07-14-session-15-mode-switch-transition.md)             | Plan⇄Trip mode-switch transition ("Go live / Stand down"); durable record in design-language.md |
+| [planning/2026-07-15-session-14-date-picker-bugs.md](planning/2026-07-15-session-14-date-picker-bugs.md)                         | Date-input fixes across trip creation + the event form (no ADR)                                 |
+| [planning/2026-07-15-session-15-add-button-and-form-keyboard.md](planning/2026-07-15-session-15-add-button-and-form-keyboard.md) | Builder "add event" button gets a distinct job; event-form keyboard safety                      |
+| [planning/2026-07-15-session-16-event-time-setter.md](planning/2026-07-15-session-16-event-time-setter.md)                       | Event time-setter redesign: the `TimePicker` (ADR-0036)                                         |
+| [planning/2026-07-15-session-16-shelf-schedule-consistency.md](planning/2026-07-15-session-16-shelf-schedule-consistency.md)     | Every shelf→schedule path prefills a time; Trip-mode shelf time prompt                          |
+| [planning/2026-07-15-session-17-overnight-events.md](planning/2026-07-15-session-17-overnight-events.md)                         | Overnight events: end in the small hours, filed under the start night (ADR-0037)                |
+| [planning/2026-07-15-session-17-time-setter-round-suggestion.md](planning/2026-07-15-session-17-time-setter-round-suggestion.md) | Time-setter: suggest nearest round slot on reopen (ADR-0036 §2a)                                |
+| [planning/2026-07-15-session-18-time-setter-auto-colon.md](planning/2026-07-15-session-18-time-setter-auto-colon.md)             | Time-setter: auto-insert the colon in the exact field (ADR-0036 §2b)                            |
+| [planning/2026-07-15-session-19-time-setter-native-exact.md](planning/2026-07-15-session-19-time-setter-native-exact.md)         | Time-setter: native `<input type="time">` for exact entry (ADR-0036 §2c)                        |
+| [planning/2026-07-15-session-20-trip-settings.md](planning/2026-07-15-session-20-trip-settings.md)                               | Trip-settings design (ADR-0039): admin-governed edits, member sheet, data-plane                 |
+| [planning/2026-07-15-session-22-parallel-events.md](planning/2026-07-15-session-22-parallel-events.md)                           | Parallel/overlapping events design: containment forest, `buildTimeTree` (ADR-0041)              |
+| [planning/2026-07-16-session-18-overnight-exact-input-fix.md](planning/2026-07-16-session-18-overnight-exact-input-fix.md)       | Overnight exact-time input fix on iOS (ADR-0037 follow-up)                                      |
+| [planning/2026-07-16-session-19-nextday-marker-polish.md](planning/2026-07-16-session-19-nextday-marker-polish.md)               | Next-day marker visual polish (ADR-0037 follow-up)                                              |
+| [planning/2026-07-16-session-21-trip-settings-impl.md](planning/2026-07-16-session-21-trip-settings-impl.md)                     | Trip-settings implementation (ADR-0039) + Trip.icon added; stopgap icon field                   |
+| [planning/2026-07-16-session-23-offline-navigation-fixes.md](planning/2026-07-16-session-23-offline-navigation-fixes.md)         | Offline navigation & sync fixes; all shared state made syncable (ADR-0042)                      |
+| [planning/2026-07-16-session-24-retire-task-board.md](planning/2026-07-16-session-24-retire-task-board.md)                       | Remote-cloud catch-up; retiring the task board (ADR-0046) + `backlog.md`                        |
+
+Cold-start / source material, kept out of the chronology above:
+
+| Doc                                                                                    | Purpose                                                                   |
+| -------------------------------------------------------------------------------------- | ------------------------------------------------------------------------- |
+| [planning/2026-07-08-handoff-source.md](planning/2026-07-08-handoff-source.md)         | Original handoff doc (source material, Hebrew)                            |
+| [planning/2026-07-10-session-03-handoff.md](planning/2026-07-10-session-03-handoff.md) | Condensed cold-start synthesis of the architecture review (ADR-0018–0021) |
+
+_Session numbers collide across days (there are two 13s, 14s, 15s…): remote cloud sessions number themselves independently. Order by date, not by number._
