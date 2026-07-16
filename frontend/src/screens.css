@@ -3827,6 +3827,21 @@
   color: var(--muted);
   margin-top: -6px;
 }
+/* Span times (departure/arrival, check-in/check-out) wear the app's amber "time
+   & commitment" treatment (design-language) so they read like the events time
+   picker without swapping the reliable native multi-day control. The box styling
+   is inherited from .bs-field input; only the value + native accent turn amber. */
+.booking-sheet .bs-field input[type='datetime-local'] {
+  accent-color: var(--amber);
+  color: var(--amber-deep);
+  font-family: var(--font-mono);
+  font-weight: 700;
+  letter-spacing: 0.02em;
+}
+.booking-sheet .bs-field input[type='datetime-local']:focus-visible {
+  border-color: var(--amber);
+  outline: none;
+}
 .booking-sheet .bs-error {
   font-size: 12px;
   font-weight: 700;
