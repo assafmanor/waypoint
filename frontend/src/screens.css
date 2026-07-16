@@ -636,6 +636,54 @@
   color: #8a6a2e;
 }
 
+/* ── concurrency: nests + clusters (ADR-0041) ──
+   Structure + neutral ink only; no new semantic hue (amber stays time/now). */
+/* Nest: an envelope card with its contents indented beneath a dotted brace. */
+.nest-note {
+  font-size: 11px;
+  font-weight: 700;
+  color: var(--muted);
+  white-space: nowrap;
+}
+.nest-kids {
+  border-inline-start: 2px dotted var(--soft-line);
+  margin-inline-start: 19px;
+  padding-inline-start: 11px;
+}
+/* Indent stops deepening past the first level so titles keep their width on a
+   phone (ADR-0041 render cap). */
+.nest-kids.deep {
+  margin-inline-start: 9px;
+  padding-inline-start: 9px;
+}
+/* Cluster: partial-overlap peers under a quiet header + solid brace. */
+.cluster {
+  margin-bottom: 10px;
+}
+.cluster-head {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  padding: 0 2px 6px;
+  color: var(--muted);
+  font-size: 11px;
+  font-weight: 700;
+}
+.cluster-head .brk {
+  font-size: 12px;
+  opacity: 0.6;
+}
+.cluster-head .win {
+  font-family: 'JetBrains Mono', monospace;
+  font-weight: 700;
+  color: var(--ink);
+}
+.cluster-kids {
+  border-inline-start: 2px solid var(--soft-line);
+  margin-inline-start: 6px;
+  padding-inline-start: 10px;
+}
+
 /* maybe shelf */
 .shelf {
   display: flex;

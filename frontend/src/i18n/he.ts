@@ -239,6 +239,10 @@ export const t = {
     tapToSchedule: 'הקשה משבצת ליום',
     skippedTag: 'דילגת · הקש להחזרה',
     scheduleTitle: (title: string) => `שיבוץ · ${title}`,
+    // Concurrency (ADR-0041): a cluster of partially-overlapping events, and the
+    // "contains N" note on an envelope that nests shorter events inside it.
+    concurrent: 'בו-זמנית',
+    contains: (n: number) => `כולל ${n}`,
   },
   // Plan-mode Day-by-day — the itinerary builder (screens/PlanDay.tsx).
   planDay: {

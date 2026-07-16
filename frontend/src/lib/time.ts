@@ -291,7 +291,9 @@ const spansOverlap = (a: Span, b: Span): boolean => a.start < b.end && b.start <
 /** Groups the day's timed events into the concurrency forest the day view renders.
  *  Returns the top-level groups (roots), each carrying its nested subtree. */
 export function buildTimeTree(events: TripEvent[]): TimeGroup[] {
-  const timed = events.filter((e) => e.startsAt && e.status === EVENT_STATUS.PLANNED);
+  // Layout includes done events (they still occupy their slot) but not skipped
+  // ones (parked on the shelf, ADR-0027) or untimed ones (no span to place).
+  const timed = events.filter((e) => e.startsAt && e.status !== EVENT_STATUS.SKIPPED);
   const span = new Map(timed.map((e) => [e.id, spanOf(e)]));
   const duration = (id: string) => span.get(id)!.end - span.get(id)!.start;
 

@@ -356,11 +356,12 @@ describe('buildTimeTree — containment forest + per-level clustering', () => {
     expect(shape(tree)).toEqual([{ cluster: ['A', 'B'] }]);
   });
 
-  it('ignores skipped/unscheduled events', () => {
+  it('ignores skipped/unscheduled events but keeps done ones (they hold their slot)', () => {
+    const done = { ...ev('D', '09:00', '10:00'), status: EVENT_STATUS.DONE };
     const skipped = { ...ev('S', '11:00', '12:00'), status: EVENT_STATUS.SKIPPED };
     const unscheduled = ev('U', null, null);
-    const tree = buildTimeTree([ev('A', '09:00', '10:00'), skipped, unscheduled]);
-    expect(shape(tree)).toEqual(['A']);
+    const tree = buildTimeTree([done, skipped, unscheduled, ev('A', '13:00', '14:00')]);
+    expect(shape(tree)).toEqual(['D', 'A']);
   });
 });
 
