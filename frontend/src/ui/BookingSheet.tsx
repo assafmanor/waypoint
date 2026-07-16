@@ -39,9 +39,22 @@ interface Wifi {
 const BOOKING_TYPES = Object.values(BOOKING_TYPE);
 const isTransportType = (ty: BookingType) =>
   ty === BOOKING_TYPE.FLIGHT || ty === BOOKING_TYPE.TRAIN;
-// Two-endpoint schedule (start + end, may span days): transport departure→arrival
-// and a hotel check-in→check-out. Others are a single point on a day.
-const isSpanType = (ty: BookingType) => isTransportType(ty) || ty === BOOKING_TYPE.HOTEL;
+// Two-endpoint schedule (start + end, may span days): transport departure→arrival,
+// a hotel check-in→check-out, an activity start→end. Restaurant/other are a
+// single point on a day (date + the events time picker).
+const isSpanType = (ty: BookingType) =>
+  isTransportType(ty) || ty === BOOKING_TYPE.HOTEL || ty === BOOKING_TYPE.ACTIVITY;
+
+/** The two span-endpoint labels for a type (i18n keys resolved at the call site). */
+function spanLabels(ty: BookingType): { start: string; end: string } {
+  if (ty === BOOKING_TYPE.HOTEL) {
+    return { start: t.index.form.checkinLabel, end: t.index.form.checkoutLabel };
+  }
+  if (isTransportType(ty)) {
+    return { start: t.index.form.departLabel, end: t.index.form.arriveLabel };
+  }
+  return { start: t.index.form.startLabel, end: t.index.form.endLabel }; // activity
+}
 
 export function BookingSheet({
   booking,
@@ -284,27 +297,31 @@ export function BookingSheet({
 
           {isSpan ? (
             <>
-              {/* A flight/train (departure→arrival) or a hotel stay (check-in→
-                  check-out) has two endpoints that may fall on different days, so
-                  each is a full datetime rather than a single same-day span. */}
-              <label className="bs-field">
-                {isHotel ? t.index.form.checkinLabel : t.index.form.departLabel}
-                <input
-                  type="datetime-local"
-                  lang={DEVICE_LOCALE}
-                  value={spanStart}
-                  onChange={(e) => setSpanStart(e.target.value)}
-                />
-              </label>
-              <label className="bs-field">
-                {isHotel ? t.index.form.checkoutLabel : t.index.form.arriveLabel}
-                <input
-                  type="datetime-local"
-                  lang={DEVICE_LOCALE}
-                  value={spanEnd}
-                  onChange={(e) => setSpanEnd(e.target.value)}
-                />
-              </label>
+              {/* Two endpoints (flight departure→arrival, hotel check-in→check-out,
+                  activity start→end) that may fall on different days — each a full
+                  datetime, side by side. dir=ltr keeps the date+time reading L→R. */}
+              <div className="bs-row2">
+                <label className="bs-field">
+                  {spanLabels(type).start}
+                  <input
+                    type="datetime-local"
+                    dir="ltr"
+                    lang={DEVICE_LOCALE}
+                    value={spanStart}
+                    onChange={(e) => setSpanStart(e.target.value)}
+                  />
+                </label>
+                <label className="bs-field">
+                  {spanLabels(type).end}
+                  <input
+                    type="datetime-local"
+                    dir="ltr"
+                    lang={DEVICE_LOCALE}
+                    value={spanEnd}
+                    onChange={(e) => setSpanEnd(e.target.value)}
+                  />
+                </label>
+              </div>
               {spanStart && <KindToggle kind={kind} onPick={pickKind} />}
             </>
           ) : (

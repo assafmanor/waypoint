@@ -3561,6 +3561,12 @@
   gap: 12px;
   max-height: 80vh;
   overflow-y: auto;
+  /* Hide the RTL left-edge scrollbar — it reads as a stray vertical line on the
+     sheet; the content still scrolls by touch/wheel. */
+  scrollbar-width: none;
+}
+.booking-sheet::-webkit-scrollbar {
+  display: none;
 }
 .booking-sheet .titlerow {
   display: flex;
@@ -3843,8 +3849,12 @@
   accent-color: var(--amber);
   color: var(--amber-deep);
   font-family: var(--font-mono);
-  font-weight: 700;
-  letter-spacing: 0.02em;
+  font-weight: 600;
+  /* Compact so the full date+time fits (two sit side by side in a row) without
+     clipping; dir=ltr on the element keeps it reading left-to-right. */
+  font-size: 11.5px;
+  padding-inline: 8px;
+  min-width: 0;
 }
 .booking-sheet .bs-field input[type='datetime-local']:focus-visible {
   border-color: var(--amber);
