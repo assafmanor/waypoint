@@ -64,6 +64,19 @@ const BOOKINGS = [
 ];
 
 const EVENTS = [
+  // A long "envelope" the morning stops happen inside — demos the concurrency
+  // nesting (ADR-0041): שוק צוקיג׳י + מקדש סנסו-ג׳י nest under it as "כולל 2".
+  {
+    id: 'ev-daytour',
+    title: 'סיור יום בטוקיו',
+    icon: '🗺️',
+    kind: 'soft',
+    status: 'done',
+    startsAt: at('10:00'),
+    endsAt: at('16:00'),
+    location: 'מודרך · אסקוסה והסביבה',
+    sortOrder: 0,
+  },
   {
     id: 'ev-tsukiji',
     title: 'שוק צוקיג׳י',
@@ -120,6 +133,19 @@ const EVENTS = [
     location: 'דרינקים · סמטאות באר',
     sortOrder: 5,
   },
+  // Partially overlaps גולדן גאי (22:00–22:30) but neither contains the other —
+  // demos the partial-overlap cluster + the "הזז" resolve (ADR-0041).
+  {
+    id: 'ev-cocktail',
+    title: 'בר קוקטיילים',
+    icon: '🍸',
+    kind: 'soft',
+    status: 'planned',
+    startsAt: at('22:00'),
+    endsAt: at('22:45'),
+    location: 'שינג׳וקו',
+    sortOrder: 6,
+  },
   {
     id: 'ev-walkback',
     title: 'חזרה למלון · הליכה',
@@ -129,7 +155,7 @@ const EVENTS = [
     startsAt: at('22:45'),
     endsAt: at('23:15'),
     location: 'שינג׳וקו',
-    sortOrder: 6,
+    sortOrder: 7,
   },
 ].map((e) => ({ ...e, tripId: TRIP.id, date: date(DAY), source: 'manual', updatedBy: ME }));
 
