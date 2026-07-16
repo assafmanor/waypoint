@@ -3,7 +3,7 @@
 // screen is a fixture for an unbuilt feature (ADR-0045). "Now/Next" and the
 // glance are derived from the clock + events, never stored (ADR-0018).
 import { useState } from 'react';
-import { EVENT_KIND, TRIP_NOTE_CATEGORY } from '@waypoint/shared';
+import { BOOKING_TYPE, EVENT_KIND, type Booking } from '@waypoint/shared';
 import { useTrip } from '../state/trip-state';
 import { useToast } from '../ui/Toast';
 import { useClock } from '../lib/useClock';
@@ -23,8 +23,18 @@ import { t } from '../i18n/he';
 
 const hourLabel = (hour: number) => `${String(hour).padStart(2, '0')}:00`;
 
+/** WiFi lives on the hotel booking's details blob now (ADR-0047), not a TripNote.
+ *  Derived quick-access: absent when there's no hotel booking with WiFi. */
+type HotelWifi = { network?: string; password?: string };
+function hotelWifi(bookings: Booking[]): HotelWifi | undefined {
+  const details = bookings.find((b) => b.type === BOOKING_TYPE.HOTEL)?.details;
+  const wifi = details?.wifi as HotelWifi | undefined;
+  if (!wifi || (!wifi.network && !wifi.password)) return undefined;
+  return wifi;
+}
+
 export function Home({ onNavigate }: { onNavigate?: (tab: TabId) => void }) {
-  const { trip, bookings, notes, events, activeDate } = useTrip();
+  const { trip, bookings, events, activeDate } = useTrip();
   const toast = useToast();
   const now = useClock();
   const tz = trip.timezone;
@@ -48,7 +58,7 @@ export function Home({ onNavigate }: { onNavigate?: (tab: TabId) => void }) {
   const countdown = nextEvent?.startsAt
     ? formatCountdown(minutesUntil(nextEvent.startsAt, now))
     : null;
-  const wifi = notes.find((n) => n.category === TRIP_NOTE_CATEGORY.WIFI);
+  const wifi = hotelWifi(bookings);
 
   // ── Day at a glance (derived) — a proportional time rail (lib/glance) ──
   const day07 = Date.parse(zonedIso(activeDate, hourLabel(DAY_WINDOW.START_HOUR), tz));
@@ -76,7 +86,7 @@ export function Home({ onNavigate }: { onNavigate?: (tab: TabId) => void }) {
   const copyWifi = async () => {
     if (wifi && navigator.clipboard) {
       try {
-        await navigator.clipboard.writeText(wifi.value);
+        await navigator.clipboard.writeText(wifi.password ?? wifi.network ?? '');
       } catch {
         /* clipboard blocked — still confirm to the user */
       }

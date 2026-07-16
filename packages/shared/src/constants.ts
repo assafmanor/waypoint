@@ -12,7 +12,6 @@ import type {
   EventSource,
   EventStatus,
   MembershipRole,
-  TripNoteCategory,
 } from './entities';
 
 export const AUTH_PROVIDER = { GOOGLE: 'google' } as const satisfies Record<string, AuthProvider>;
@@ -73,10 +72,17 @@ export const DOCUMENT_TYPE = {
   OTHER: 'other',
 } as const satisfies Record<string, DocumentType>;
 
-export const TRIP_NOTE_CATEGORY = {
-  WIFI: 'wifi',
-  NOTE: 'note',
-} as const satisfies Record<string, TripNoteCategory>;
+/** Default EventCategory for a booking-backed event when the form supplies no icon
+ *  (ADR-0038: category normally derives from the chosen icon's group — this is only a
+ *  last-resort fallback so an auto-created event is never category-less). */
+export const BOOKING_TYPE_TO_CATEGORY = {
+  flight: 'transport',
+  train: 'transport',
+  hotel: 'lodging',
+  restaurant: 'food',
+  activity: 'activity',
+  other: 'other',
+} as const satisfies Record<BookingType, EventCategory>;
 
 export const CHANGE_ACTION = {
   CREATE: 'create',

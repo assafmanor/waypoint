@@ -36,7 +36,7 @@ class CreateBookingDto extends createZodDto(createBookingSchema) {}
 class UpdateBookingDto extends createZodDto(updateBookingSchema) {}
 class BookingDto extends createZodDto(bookingSchema) {}
 
-type RequestWithBody = { body?: { confirm?: boolean } };
+type RequestWithBody = { body?: { confirm?: boolean; deleteEvents?: boolean } };
 
 @ApiTags('bookings')
 @ApiBearerAuth()
@@ -83,9 +83,12 @@ export class BookingsController {
     @Param('tripId') tripId: string,
     @Param('bookingId') bookingId: string,
     @Query('confirm') confirmQuery: string | undefined,
+    @Query('deleteEvents') deleteEventsQuery: string | undefined,
     @Req() req: RequestWithBody,
   ): Promise<void> {
     const confirm = confirmQuery === 'true' || req.body?.confirm === true;
-    return this.bookings.remove(tripId, bookingId, user.userId, confirm);
+    // Default false = unlink (keep the event); true = delete both (ADR-0047 §3).
+    const deleteEvents = deleteEventsQuery === 'true' || req.body?.deleteEvents === true;
+    return this.bookings.remove(tripId, bookingId, user.userId, confirm, deleteEvents);
   }
 }

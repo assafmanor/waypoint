@@ -7,12 +7,10 @@ import {
   EVENT_KIND,
   EVENT_SOURCE,
   EVENT_STATUS,
-  TRIP_NOTE_CATEGORY,
   type Booking,
   type MaybeItem,
   type Trip,
   type TripEvent,
-  type TripNote,
   type User,
 } from '@waypoint/shared';
 
@@ -143,7 +141,6 @@ const DAY3_EVENTS: TripEvent[] = [
     status: EVENT_STATUS.DONE,
     startsAt: at('10:00'),
     endsAt: at('12:00'),
-    location: 'ארוחת בוקר · סושי טרי',
     sortOrder: 1,
   },
   {
@@ -155,7 +152,6 @@ const DAY3_EVENTS: TripEvent[] = [
     status: EVENT_STATUS.DONE,
     startsAt: at('14:30'),
     endsAt: at('16:00'),
-    location: 'אסקוסה · נקמיסה',
     sortOrder: 2,
   },
   {
@@ -167,7 +163,6 @@ const DAY3_EVENTS: TripEvent[] = [
     status: EVENT_STATUS.PLANNED,
     startsAt: at('16:30'),
     endsAt: at('19:30'),
-    location: 'מתחם החנויות',
     sortOrder: 3,
   },
   {
@@ -179,7 +174,6 @@ const DAY3_EVENTS: TripEvent[] = [
     status: EVENT_STATUS.PLANNED,
     startsAt: at('19:30'),
     endsAt: at('21:00'),
-    location: 'ארוחת ערב',
     bookingId: 'bk-ichiran',
     sortOrder: 4,
   },
@@ -192,7 +186,6 @@ const DAY3_EVENTS: TripEvent[] = [
     status: EVENT_STATUS.PLANNED,
     startsAt: at('21:30'),
     endsAt: at('22:30'),
-    location: 'דרינקים · סמטאות באר',
     sortOrder: 5,
   },
   {
@@ -204,7 +197,6 @@ const DAY3_EVENTS: TripEvent[] = [
     status: EVENT_STATUS.PLANNED,
     startsAt: at('22:45'),
     endsAt: at('23:15'),
-    location: 'שינג׳וקו',
     sortOrder: 6,
   },
 ];
@@ -250,7 +242,6 @@ const SPREAD_EVENTS: TripEvent[] = [
   spread('ev-arrival', '2026-07-05', 'נחיתה בטוקיו · HND', '🛬', '16:40', '18:10', {
     kind: EVENT_KIND.HARD,
     bookingId: 'bk-flight-out',
-    location: 'שדה התעופה הנדה',
   }),
   spread('ev-checkin', '2026-07-05', 'צ׳ק-אין · גרנבל', '🏨', '19:30', '20:15', {
     bookingId: 'bk-granbell',
@@ -327,20 +318,6 @@ const MAYBE_META: Record<string, string> = {
   'mb-ameyoko': 'אוכל רחוב',
 };
 export const maybeMeta = (id: string) => MAYBE_META[id] ?? '';
-
-export const NOTES: TripNote[] = [
-  {
-    id: 'nt-wifi',
-    tripId: TRIP.id,
-    category: TRIP_NOTE_CATEGORY.WIFI,
-    label: 'WiFi המלון',
-    value: 'GRANBELL-512 / tokyo2026',
-    sortOrder: 1,
-    createdAt: NOW_ISO,
-    updatedAt: NOW_ISO,
-    updatedBy: ME,
-  },
-];
 
 /** Glance widgets pull from integrations later (ADR-0004); static demo values for now. */
 export const GLANCE = {

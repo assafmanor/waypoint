@@ -80,8 +80,9 @@ export class EventsService {
               kind: input.kind,
               startsAt: input.startsAt ? new Date(input.startsAt) : undefined,
               endsAt: input.endsAt ? new Date(input.endsAt) : undefined,
-              location: input.location,
-              placeId: input.placeId,
+              // Authority invariant (ADR-0048): a linked event's place lives on its
+              // booking, so it never carries its own placeId.
+              placeId: input.bookingId ? null : input.placeId,
               bookingId: input.bookingId,
               sortOrder: input.sortOrder ?? 0,
               source: input.source,
@@ -111,6 +112,16 @@ export class EventsService {
     const before = await this.requireEvent(tripId, eventId);
     await this.assertHardConfirmed(before, confirm);
 
+    // Authority invariant (ADR-0048): if the event will be linked to a booking, its
+    // place lives on the booking — force placeId null; only an unlinked event keeps one.
+    const willBeLinked =
+      input.bookingId !== undefined ? Boolean(input.bookingId) : Boolean(before.bookingId);
+    const placeIdData = willBeLinked
+      ? { placeId: null }
+      : input.placeId !== undefined
+        ? { placeId: input.placeId }
+        : {};
+
     const { entity } = await this.changes.mutate({
       tripId,
       actorUserId,
@@ -131,9 +142,8 @@ export class EventsService {
             ...(input.kind !== undefined && { kind: input.kind }),
             ...(input.startsAt !== undefined && { startsAt: new Date(input.startsAt) }),
             ...(input.endsAt !== undefined && { endsAt: new Date(input.endsAt) }),
-            ...(input.location !== undefined && { location: input.location }),
-            ...(input.placeId !== undefined && { placeId: input.placeId }),
             ...(input.bookingId !== undefined && { bookingId: input.bookingId }),
+            ...placeIdData,
             ...(input.sortOrder !== undefined && { sortOrder: input.sortOrder }),
             ...(input.source !== undefined && { source: input.source }),
             ...(input.status !== undefined && { status: input.status }),

@@ -1,12 +1,12 @@
-import type { Booking, Event, Membership, MaybeItem, Trip, TripNote, User } from '@prisma/client';
+import type { Booking, Event, Membership, MaybeItem, Place, Trip, User } from '@prisma/client';
 import type {
   Booking as SharedBooking,
   InvitePreview,
   Membership as SharedMembership,
   MaybeItem as SharedMaybeItem,
+  Place as SharedPlace,
   Trip as SharedTrip,
   TripEvent,
-  TripNote as SharedTripNote,
   User as SharedUser,
 } from '@waypoint/shared';
 
@@ -57,7 +57,6 @@ export const toEventDto = (e: Event): TripEvent => ({
   kind: e.kind,
   startsAt: e.startsAt?.toISOString(),
   endsAt: e.endsAt?.toISOString(),
-  location: e.location ?? undefined,
   placeId: e.placeId ?? undefined,
   status: e.status,
   bookingId: e.bookingId ?? undefined,
@@ -75,10 +74,9 @@ export const toBookingDto = (b: Booking): SharedBooking => ({
   title: b.title,
   confirmationCode: b.confirmationCode ?? undefined,
   provider: b.provider ?? undefined,
-  address: b.address ?? undefined,
   placeId: b.placeId ?? undefined,
-  startsAt: b.startsAt?.toISOString(),
-  endsAt: b.endsAt?.toISOString(),
+  fromPlaceId: b.fromPlaceId ?? undefined,
+  toPlaceId: b.toPlaceId ?? undefined,
   details: (b.details as Record<string, unknown> | null) ?? undefined,
   source: b.source,
   createdAt: b.createdAt.toISOString(),
@@ -109,14 +107,15 @@ export const toInvitePreviewDto = (t: Trip, memberCount: number): InvitePreview 
   memberCount,
 });
 
-export const toTripNoteDto = (n: TripNote): SharedTripNote => ({
-  id: n.id,
-  tripId: n.tripId,
-  category: n.category,
-  label: n.label,
-  value: n.value,
-  sortOrder: n.sortOrder,
-  createdAt: n.createdAt.toISOString(),
-  updatedAt: n.updatedAt.toISOString(),
-  updatedBy: n.updatedBy,
+export const toPlaceDto = (p: Place): SharedPlace => ({
+  id: p.id,
+  tripId: p.tripId,
+  googlePlaceId: p.googlePlaceId ?? undefined,
+  name: p.name,
+  address: p.address ?? undefined,
+  lat: p.lat ?? undefined,
+  lng: p.lng ?? undefined,
+  createdAt: p.createdAt.toISOString(),
+  updatedAt: p.updatedAt.toISOString(),
+  updatedBy: p.updatedBy,
 });

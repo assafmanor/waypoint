@@ -50,7 +50,6 @@ export function EventForm({
     event?.endsAt ? isoToTimeInput(event.endsAt, tz) : (defaults?.end ?? ''),
   );
   const [kind, setKind] = useState<TripEvent['kind']>(event?.kind ?? EVENT_KIND.SOFT);
-  const [location, setLocation] = useState(event?.location ?? '');
   const [icon, setIcon] = useState(event?.icon ?? maybeItem?.icon ?? DEFAULT_EVENT_ICON);
   const [category, setCategory] = useState<EventCategory | undefined>(
     event?.category ?? maybeItem?.category,
@@ -96,7 +95,6 @@ export function EventForm({
           ? resolveEndIso(date, start, end, tz)
           : zonedIso(date, end, tz)
         : undefined,
-      location: location.trim() || undefined,
     };
     if (
       fields.startsAt &&
@@ -121,7 +119,6 @@ export function EventForm({
         kind: parsed.data.kind,
         startsAt: parsed.data.startsAt,
         endsAt: parsed.data.endsAt,
-        location: parsed.data.location,
         icon: parsed.data.icon,
         category: parsed.data.category,
       });
@@ -211,15 +208,6 @@ export function EventForm({
             ⚠︎ {t.event.conflictWarn(conflicts[0].title, formatTime(conflicts[0].startsAt!, tz))}
           </p>
         )}
-
-        <label className="form-field">
-          {t.eventForm.locationLabel}
-          <input
-            value={location}
-            onChange={(e) => setLocation(e.target.value)}
-            placeholder={t.eventForm.locationPlaceholder}
-          />
-        </label>
 
         <div className="form-field">
           {t.eventForm.kindLabel}

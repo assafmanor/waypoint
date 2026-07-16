@@ -34,7 +34,7 @@ function snapshot(overrides: Partial<TripSnapshot> = {}): TripSnapshot {
     events: EVENTS,
     bookings: [],
     maybeItems: MAYBE_ITEMS,
-    notes: [],
+    places: [],
     latestSeq: '10',
     ...overrides,
   };

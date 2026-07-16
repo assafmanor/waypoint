@@ -13,9 +13,11 @@ import {
   EVENT_STATUS,
   type Booking,
   type MaybeItem,
+  type Place,
   type TripEvent,
 } from '@waypoint/shared';
 import { useTrip, byStart } from '../state/trip-state';
+import { eventPlaceName } from '../lib/places';
 import { useVerbs } from '../state/verbs';
 import { useClock } from '../lib/useClock';
 import {
@@ -56,7 +58,8 @@ const groupKey = (g: TimeGroup) =>
   g.kind === 'cluster' ? `cl-${g.items[0].event.id}` : g.item.event.id;
 
 export function DayView() {
-  const { trip, events, maybeItems, bookings, activeDate, ripple, setActiveDate } = useTrip();
+  const { trip, events, maybeItems, bookings, places, activeDate, ripple, setActiveDate } =
+    useTrip();
   const verbs = useVerbs();
   const now = useClock();
   const [openId, setOpenId] = useState<string | null>(null);
@@ -93,6 +96,7 @@ export function DayView() {
     openId,
     toggle: (id) => setOpenId((cur) => (cur === id ? null : id)),
     bookings,
+    places,
     dayEvents,
     verbs,
     onEdit: (e) => setFormTarget(e),
@@ -284,6 +288,7 @@ interface DayCtx {
   openId: string | null;
   toggle: (id: string) => void;
   bookings: Booking[];
+  places: Place[];
   dayEvents: TripEvent[];
   verbs: ReturnType<typeof useVerbs>;
   onEdit: (event: TripEvent) => void;
@@ -350,6 +355,7 @@ function ItemNode({ item, depth, ctx }: { item: TimeItem; depth: number; ctx: Da
       isOpen={ctx.openId === e.id}
       onToggle={() => ctx.toggle(e.id)}
       booking={e.bookingId ? ctx.bookings.find((b) => b.id === e.bookingId) : undefined}
+      placeName={eventPlaceName(e, ctx.bookings, ctx.places)}
       conflicts={hardConflicts(e, ctx.dayEvents)}
       verbs={ctx.verbs}
       onEdit={() => ctx.onEdit(e)}
@@ -407,6 +413,7 @@ function EventItem({
   isOpen,
   onToggle,
   booking,
+  placeName,
   conflicts,
   verbs,
   onEdit,
@@ -419,6 +426,7 @@ function EventItem({
   isOpen: boolean;
   onToggle: () => void;
   booking?: Booking;
+  placeName?: string;
   conflicts: TripEvent[];
   verbs: ReturnType<typeof useVerbs>;
   onEdit: () => void;
@@ -445,9 +453,7 @@ function EventItem({
   };
 
   const code = booking?.confirmationCode ? `${CODE_PREFIX}${booking.confirmationCode}` : undefined;
-  const meta = [event.location, code && `${t.event.bookingLabel} ${code}`]
-    .filter(Boolean)
-    .join(' · ');
+  const meta = [placeName, code && `${t.event.bookingLabel} ${code}`].filter(Boolean).join(' · ');
 
   const tag = isDone ? (
     <span className="tag-done">

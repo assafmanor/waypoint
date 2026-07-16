@@ -21,7 +21,7 @@ import {
   type MembershipRole,
   type Trip,
   type TripEvent,
-  type TripNote,
+  type Place,
   type TripSnapshot,
   type UpdateTripInput,
   type User,
@@ -276,7 +276,7 @@ interface TripContextValue {
   users: User[];
   members: Membership[];
   bookings: Booking[];
-  notes: TripNote[];
+  places: Place[];
   glance: typeof GLANCE;
   activeDate: string;
   setActiveDate: (date: string) => void;
@@ -570,7 +570,7 @@ function TripReady({
       users: snapshot.users,
       members,
       bookings: snapshot.bookings,
-      notes: snapshot.notes,
+      places: snapshot.places,
       glance: GLANCE,
       activeDate,
       setActiveDate,
