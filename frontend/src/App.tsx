@@ -15,7 +15,7 @@ import { AuthProvider, useAuth } from './state/auth-state';
 import { ActiveTripIdProvider, useActiveTripId } from './state/active-trip-id';
 import { NavProvider, useMarkInsideTrip, useTripTab } from './state/nav-state';
 import { EdgeSwipeBack } from './ui/EdgeSwipeBack';
-import { useIsOffline, useOutboxCount } from './lib/outbox';
+import { flushAllOutbox, isOffline, useIsOffline, useOutboxCount } from './lib/outbox';
 import { loadTripList } from './lib/cache';
 import { resolveActiveTrip, tripChip } from './lib/active-trip';
 import { consumeIntent, hasIntent, saveIntent } from './lib/intent';
@@ -525,6 +525,25 @@ function AppRoutes() {
   );
 }
 
+// Device-wide outbox flush (ADR-0042): a write queued offline must sync the
+// moment connectivity returns — even from the all-trips list or zero-state,
+// where no trip's realtime effect is mounted to flush its queue. Flushes every
+// trip's queue on `online` and once on mount (to drain a queue left over from a
+// prior offline session). Only while authed — a flush needs the session. The
+// mounted trip still runs its own reconnect (flush + catch-up + resubscribe);
+// flushOutbox coalesces so the two never double-POST.
+function OutboxAutoFlush() {
+  const { status } = useAuth();
+  useEffect(() => {
+    if (status !== 'authed') return;
+    const flush = () => void flushAllOutbox();
+    if (!isOffline()) flush();
+    window.addEventListener('online', flush);
+    return () => window.removeEventListener('online', flush);
+  }, [status]);
+  return null;
+}
+
 export function App() {
   return (
     <AuthProvider>
@@ -532,6 +551,7 @@ export function App() {
         <ToastProvider>
           <NavProvider>
             <ConfirmProvider>
+              <OutboxAutoFlush />
               {/* #app-shift is the parallax target the return gesture nudges
                   (ADR-0035 §5); EdgeSwipeBack sits outside it so it isn't moved. */}
               <div id="app-shift">

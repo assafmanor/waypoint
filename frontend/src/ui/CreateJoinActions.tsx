@@ -12,7 +12,13 @@ export function CreateJoinActions({ offline }: { offline: boolean }) {
   return (
     <>
       <div className="zero-actions">
-        <button className="zero-act" onClick={() => showToast('🔗', t.shell.zeroState.joinToast)}>
+        {/* Joining needs the server (validate invite + create membership), so it's
+            blocked offline like create — an offline dead-end that says so (ADR-0042). */}
+        <button
+          className="zero-act"
+          disabled={offline}
+          onClick={() => showToast('🔗', t.shell.zeroState.joinToast)}
+        >
           <span className="ic">🔗</span>
           {t.shell.zeroState.join}
           <span className="sub">{t.shell.zeroState.joinSub}</span>

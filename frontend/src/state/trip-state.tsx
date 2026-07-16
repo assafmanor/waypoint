@@ -511,7 +511,12 @@ function TripReady({
             apiUpdateTrip(tripId, input),
           );
           if (canonical) setTrip(canonical); // reconcile with server truth
-          toast(ICONS.done, t.settings.toast.saved);
+          // Honest toast: `undefined` means the write was queued offline, not saved
+          // to the server yet (ADR-0042) — the pending badge tracks it from here.
+          toast(
+            canonical ? ICONS.done : ICONS.sync,
+            canonical ? t.settings.toast.saved : t.settings.toast.savedQueued,
+          );
         } catch (err) {
           setTrip(previous); // rollback
           fail(err);
@@ -526,7 +531,10 @@ function TripReady({
           );
           if (canonical)
             setMembers((prev) => prev.map((m) => (m.id === canonical.id ? canonical : m)));
-          toast(ICONS.done, t.settings.toast.promoted);
+          toast(
+            canonical ? ICONS.done : ICONS.sync,
+            canonical ? t.settings.toast.promoted : t.settings.toast.promotedQueued,
+          );
         } catch (err) {
           setMembers(previous);
           fail(err);

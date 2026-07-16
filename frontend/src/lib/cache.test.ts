@@ -215,4 +215,22 @@ describe('applyOutboxOpToCache (offline write-through)', () => {
     expect((await readCachedSnapshot(TRIP_ID))?.trip.name).toBe('New name');
     expect((await readCachedTripList()).find((t) => t.id === TRIP_ID)?.name).toBe('New name');
   });
+
+  it('adds and removes an offline maybe-shelf idea in the cache', async () => {
+    await cacheSnapshot(TRIP_ID, snapshot());
+    const before = (await readCachedSnapshot(TRIP_ID))!.maybeItems.length;
+
+    await applyOutboxOpToCache(TRIP_ID, {
+      verb: 'createMaybeItem',
+      input: { id: 'mb-offline', title: 'Offline idea', icon: '💡' },
+    });
+    let cached = await readCachedSnapshot(TRIP_ID);
+    expect(cached?.maybeItems).toHaveLength(before + 1);
+    expect(cached?.maybeItems.find((m) => m.id === 'mb-offline')?.title).toBe('Offline idea');
+
+    await applyOutboxOpToCache(TRIP_ID, { verb: 'deleteMaybeItem', maybeItemId: 'mb-offline' });
+    cached = await readCachedSnapshot(TRIP_ID);
+    expect(cached?.maybeItems).toHaveLength(before);
+    expect(cached?.maybeItems.find((m) => m.id === 'mb-offline')).toBeUndefined();
+  });
 });

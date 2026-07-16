@@ -61,7 +61,37 @@ typecheck needs a generated Prisma client / `DATABASE_URL`, an env artifact of a
 fresh clone). End-to-end offline driving (service worker + real reopen) deferred
 to manual QA.
 
-## Open questions / follow-ups
+## Follow-up round — owner directives (same branch/PR)
+
+Assaf reviewed the open questions and asked to close most of them. Second commit:
+
+- **ADR-0042 — "everything shared between people is offline-syncable."** The guiding
+  principle behind all of this, written down: shared/collaborative state owes the
+  full offline contract (read-cache incl. its navigation entry point + outbox +
+  write-through + device-wide reconnect flush); per-device state is exempt;
+  genuinely server-only actions (join/create/invite) are the only allowed offline
+  dead-ends and must say so. Makes "do people share it?" the test for the
+  data-plane/control-plane line (refines ADR-0019/0022/0039).
+- **Device-wide flush** (`lib/outbox.ts` `flushAllOutbox`, `App.tsx`
+  `OutboxAutoFlush`): flush **every** trip's queue on `online` + on mount, not
+  just the mounted trip. `flushOutbox` now coalesces per-trip so the global flush
+  and a mounted trip's reconnect can't double-POST.
+- **Maybe-shelf offline** (`verbs.ts`, `outbox.ts`, `cache.ts`): add/remove/park
+  (and their undos) now route through the outbox with cache write-through, instead
+  of being online-only.
+- **Honest offline toast** (`state/trip-state.tsx`): a queued settings edit toasts
+  "יסונכרן כשנחזור לרשת" (will sync) instead of "נשמר" (saved) — discriminated on
+  `restOrQueue` returning `undefined`.
+- **Block join offline in the empty-state cards** (`ui/CreateJoinActions.tsx`,
+  i18n): the zero-state join card is disabled offline like create (the `/join`
+  screen already blocked it); the offline note now says both creation and joining
+  need a connection.
+
+Tests now 223 (+3 more: maybe-shelf write-through, `flushAllOutbox` multi-trip +
+one-stuck-queue-doesn't-block-others). Docs: ADR-0042 + README/INDEX rows,
+sync-and-offline.md "Write offline" rewritten.
+
+## Original open questions (from the first round)
 
 - **Global background flush.** The outbox flush is still tied to a trip's realtime
   effect being mounted, so a write queued offline flushes when you're next in that

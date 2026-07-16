@@ -4,6 +4,7 @@ import { db } from '../db';
 import { EVENTS } from '../fixtures';
 import {
   enqueueOutbox,
+  flushAllOutbox,
   flushOutbox,
   getOutboxCount,
   initOutboxCount,
@@ -144,6 +145,49 @@ describe('flushOutbox (FIFO)', () => {
 
     await expect(flushOutbox(TRIP_ID)).resolves.toBeUndefined();
     expect(await db.outbox.count()).toBe(0);
+  });
+});
+
+describe('flushAllOutbox (device-wide)', () => {
+  it('flushes queues across multiple trips', async () => {
+    const seen: string[] = [];
+    vi.stubGlobal(
+      'fetch',
+      vi.fn((url: string) => {
+        seen.push(String(url));
+        return Promise.resolve(new Response(canonicalBody(), { status: 200 }));
+      }),
+    );
+
+    await enqueueOutbox('trip-a', statusOp('ev-a'));
+    await enqueueOutbox('trip-b', statusOp('ev-b'));
+    expect(getOutboxCount()).toBe(2);
+
+    await flushAllOutbox();
+
+    expect(seen).toEqual([expect.stringContaining('ev-a'), expect.stringContaining('ev-b')]);
+    expect(await db.outbox.count()).toBe(0);
+    expect(getOutboxCount()).toBe(0);
+  });
+
+  it("one trip's stuck queue does not block another trip's flush", async () => {
+    vi.stubGlobal(
+      'fetch',
+      vi.fn((url: string) =>
+        String(url).includes('ev-stuck')
+          ? Promise.resolve(new Response(null, { status: 500 })) // trip-a halts
+          : Promise.resolve(new Response(canonicalBody(), { status: 200 })),
+      ),
+    );
+
+    await enqueueOutbox('trip-a', statusOp('ev-stuck'));
+    await enqueueOutbox('trip-b', statusOp('ev-ok'));
+
+    await expect(flushAllOutbox()).resolves.toBeUndefined();
+
+    // trip-a's entry survives (5xx halt), trip-b's drained.
+    const remaining = await db.outbox.toArray();
+    expect(remaining.map((e) => e.tripId)).toEqual(['trip-a']);
   });
 });
 

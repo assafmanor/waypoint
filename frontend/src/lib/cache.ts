@@ -248,6 +248,27 @@ export async function applyOutboxOpToCache(tripId: string, op: OutboxOp): Promis
       });
       return;
     }
+    case 'createMaybeItem': {
+      const meta = await db.snapshotMeta.get(tripId);
+      if (!meta || !op.input.id) return;
+      const id = op.input.id;
+      const existing = meta.maybeItems.find((m) => m.id === id);
+      const item = { consumed: false, ...existing, ...op.input, id, tripId } as MaybeItem;
+      const maybeItems = existing
+        ? meta.maybeItems.map((m) => (m.id === id ? item : m))
+        : [...meta.maybeItems, item];
+      await db.snapshotMeta.put({ ...meta, maybeItems });
+      return;
+    }
+    case 'deleteMaybeItem': {
+      const meta = await db.snapshotMeta.get(tripId);
+      if (!meta) return;
+      await db.snapshotMeta.put({
+        ...meta,
+        maybeItems: meta.maybeItems.filter((m) => m.id !== op.maybeItemId),
+      });
+      return;
+    }
     case 'updateTrip': {
       const meta = await db.snapshotMeta.get(tripId);
       if (meta) await db.snapshotMeta.put({ ...meta, trip: { ...meta.trip, ...op.input } });
