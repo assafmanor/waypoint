@@ -1,0 +1,421 @@
+<!doctype html>
+<!-- Trip-home refinements (2026-07-16), companion to trip-home-v3.html / ADR-0045:
+     (A) empty/"add" states for quick-access tiles (WiFi/documents not set up);
+     (B) the day-at-a-glance bar under overlap/containment — counts TOP-LEVEL
+         roots of the containment forest (ADR-0041 buildTimeTree), not raw
+         events, so nesting/clusters don't give a "longer day" wrong picture.
+     Where this and the docs conflict, docs win. -->
+<html lang="he" dir="rtl">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>בית · חידודים — מצבים ריקים + אשכולות</title>
+    <link rel="preconnect" href="https://fonts.googleapis.com" />
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+    <link
+      href="https://fonts.googleapis.com/css2?family=Assistant:wght@400;500;600;700&family=Secular+One&family=JetBrains+Mono:wght@500;700&display=swap"
+      rel="stylesheet"
+    />
+    <style>
+      :root {
+        --ink: #16233d;
+        --indigo: #1b2a4a;
+        --screen: #e7eaef;
+        --card: #ffffff;
+        --amber: #e9a63c;
+        --amber-deep: #c9822a;
+        --ok: #3c9a6b;
+        --muted: #6c7488;
+        --line: rgba(22, 35, 61, 0.1);
+        --soft-line: rgba(22, 35, 61, 0.28);
+      }
+      * {
+        box-sizing: border-box;
+        margin: 0;
+        padding: 0;
+      }
+      body {
+        font-family: 'Assistant', system-ui, -apple-system, 'Segoe UI', 'Arial Hebrew', sans-serif;
+        background: var(--indigo);
+        color: var(--ink);
+        min-height: 100vh;
+        padding: 24px 16px 48px;
+        -webkit-font-smoothing: antialiased;
+      }
+      .wrap {
+        max-width: 420px;
+        margin: 0 auto;
+      }
+      .title {
+        color: #fff;
+        font-family: 'Secular One', system-ui, sans-serif;
+        font-size: 22px;
+        text-align: center;
+      }
+      .lede {
+        color: #aeb9d4;
+        font-size: 13px;
+        line-height: 1.55;
+        text-align: center;
+        margin: 8px 0 22px;
+      }
+      .sec {
+        color: #dce3f2;
+        font-size: 12px;
+        font-weight: 700;
+        letter-spacing: 0.05em;
+        margin: 6px 2px 11px;
+      }
+      .note {
+        color: #93a2c4;
+        font-size: 12px;
+        line-height: 1.55;
+        margin: 10px 2px 26px;
+      }
+      .note b {
+        color: #fff;
+        font-weight: 600;
+      }
+      .note .good {
+        color: #9ad4b3;
+      }
+
+      /* ---- quick-access tiles (filled + empty) ---- */
+      .screen {
+        background: var(--screen);
+        border-radius: 16px;
+        padding: 14px;
+      }
+      .quick {
+        display: grid;
+        grid-template-columns: repeat(3, 1fr);
+        gap: 9px;
+      }
+      .qa {
+        background: var(--card);
+        border: 1px solid var(--line);
+        border-radius: 15px;
+        padding: 13px 6px 11px;
+        text-align: center;
+        cursor: pointer;
+        font: inherit;
+        color: var(--ink);
+        min-height: 78px;
+        display: flex;
+        flex-direction: column;
+        align-items: center;
+        justify-content: center;
+        gap: 4px;
+      }
+      .qa .ic {
+        font-size: 20px;
+      }
+      .qa .lb {
+        font-size: 11px;
+        font-weight: 600;
+        line-height: 1.2;
+      }
+      .qa .code {
+        font-family: 'JetBrains Mono', ui-monospace, Menlo, monospace;
+        font-size: 10px;
+        font-weight: 700;
+        color: var(--amber-deep);
+      }
+      /* empty / needs-setup: dashed + muted + ＋, reusing the soft "provisional"
+         grammar. Reads "set me up", never a dead filled tile. */
+      .qa.empty {
+        background: transparent;
+        border: 1.5px dashed var(--soft-line);
+        color: var(--muted);
+      }
+      .qa.empty .ic {
+        opacity: 0.5;
+      }
+      .qa.empty .lb {
+        color: var(--muted);
+        font-weight: 700;
+      }
+      .qa.empty .lb .plus {
+        color: var(--amber-deep);
+      }
+      .qa.empty .sub {
+        font-size: 9.5px;
+        color: #9aa2b2;
+      }
+
+      /* ---- day-at-a-glance card (option 1) ---- */
+      .glance-day {
+        background: var(--card);
+        border: 1px solid var(--line);
+        border-radius: 16px;
+        padding: 15px 16px 16px;
+      }
+      /* block bar: one item per TOP-LEVEL root. Blocks are separated by wide
+         gaps; a cluster block is a tight bundle of sub-ticks (concurrency reads
+         without a legend). NOT a time scale — the board owns time-progress. */
+      .blocks {
+        display: flex;
+        gap: 5px;
+        margin-bottom: 6px;
+      }
+      .blk {
+        height: 9px;
+        flex: 1;
+        border-radius: 3px;
+        background: rgba(22, 35, 61, 0.13);
+        display: flex;
+        gap: 1.5px;
+        overflow: hidden;
+      }
+      .blk.done {
+        background: var(--ok);
+      }
+      .blk.now {
+        background: var(--amber);
+      }
+      /* a cluster: split the block into N tight sub-ticks of the same phase */
+      .blk.cluster {
+        background: transparent;
+        gap: 1.5px;
+      }
+      .blk.cluster i {
+        flex: 1;
+        border-radius: 2px;
+        background: rgba(22, 35, 61, 0.13);
+      }
+      .blocks-key {
+        font-size: 10.5px;
+        color: var(--muted);
+        display: flex;
+        gap: 12px;
+        margin-bottom: 13px;
+      }
+      .blocks-key span {
+        display: inline-flex;
+        align-items: center;
+        gap: 5px;
+      }
+      .blocks-key i {
+        width: 12px;
+        height: 7px;
+        border-radius: 2px;
+        display: inline-block;
+      }
+      .blocks-key i.dn {
+        background: var(--ok);
+      }
+      .blocks-key i.nw {
+        background: var(--amber);
+      }
+      .blocks-key i.up {
+        background: rgba(22, 35, 61, 0.13);
+      }
+      .blocks-key i.cl {
+        background: repeating-linear-gradient(
+          90deg,
+          rgba(22, 35, 61, 0.4) 0 2px,
+          transparent 2px 4px
+        );
+      }
+
+      .lead {
+        display: flex;
+        align-items: baseline;
+        justify-content: space-between;
+        gap: 12px;
+      }
+      .lead .big {
+        display: flex;
+        align-items: baseline;
+        gap: 8px;
+      }
+      .lead .big .v {
+        font-family: 'JetBrains Mono', ui-monospace, Menlo, monospace;
+        font-size: 34px;
+        font-weight: 700;
+        line-height: 1;
+        color: var(--ink);
+      }
+      .lead .big .k {
+        font-size: 14px;
+        font-weight: 700;
+        color: var(--muted);
+      }
+      .lead .anchor {
+        text-align: end;
+        font-size: 12px;
+        color: var(--amber-deep);
+        font-weight: 700;
+      }
+      .lead .anchor .tm {
+        font-family: 'JetBrains Mono', ui-monospace, Menlo, monospace;
+      }
+      .glance-foot {
+        margin-top: 13px;
+        padding-top: 12px;
+        border-top: 1px solid var(--line);
+        font-size: 12.5px;
+        color: var(--muted);
+        display: flex;
+        align-items: center;
+        gap: 7px;
+        flex-wrap: wrap;
+      }
+      .glance-foot b {
+        color: var(--ink);
+        font-weight: 700;
+      }
+      .glance-foot .mono {
+        font-family: 'JetBrains Mono', ui-monospace, Menlo, monospace;
+        font-weight: 700;
+      }
+
+      .daykey {
+        background: rgba(255, 255, 255, 0.05);
+        border: 1px solid rgba(255, 255, 255, 0.1);
+        border-radius: 12px;
+        padding: 11px 13px;
+        margin-bottom: 13px;
+        color: #b9c4de;
+        font-size: 12px;
+        line-height: 1.7;
+      }
+      .daykey b {
+        color: #fff;
+        font-weight: 600;
+      }
+      .hr {
+        height: 1px;
+        background: rgba(255, 255, 255, 0.08);
+        margin: 8px 0 24px;
+      }
+
+      /* empty day: calm teach state — not a hidden card, not a 0/0 bar */
+      .glance-day.empty {
+        text-align: center;
+        padding: 22px 18px 20px;
+      }
+      .glance-day.empty .ei {
+        font-size: 26px;
+        opacity: 0.75;
+      }
+      .glance-day.empty .et {
+        font-family: 'Secular One', system-ui, sans-serif;
+        font-size: 16px;
+        color: var(--ink);
+        margin-top: 7px;
+      }
+      .glance-day.empty .es {
+        font-size: 12.5px;
+        color: var(--muted);
+        margin-top: 5px;
+        line-height: 1.5;
+      }
+      .glance-day.empty .ea {
+        display: inline-flex;
+        align-items: center;
+        gap: 5px;
+        margin-top: 13px;
+        font: inherit;
+        font-size: 12.5px;
+        font-weight: 700;
+        color: var(--ink);
+        background: #fff;
+        border: 1px solid var(--soft-line);
+        border-radius: 999px;
+        padding: 7px 15px;
+        cursor: pointer;
+      }
+      .glance-day.empty .ea .plus {
+        color: var(--amber-deep);
+      }
+    </style>
+  </head>
+  <body>
+    <div class="wrap">
+      <div class="title">בית · חידודים</div>
+      <p class="lede">מצבים ריקים לגישה מהירה, ואיך הכרטיס "היום במבט" מתנהג כשיש אירועים חופפים.</p>
+
+      <!-- ========== A. empty / add states ========== -->
+      <div class="sec">א · גישה מהירה — כשאין מידע עדיין</div>
+      <div class="screen">
+        <div class="quick">
+          <button class="qa">
+            <span class="ic">🎫</span><span class="lb">הכרטיס הבא</span>
+            <span class="code" dir="ltr">#4471</span>
+          </button>
+          <button class="qa empty">
+            <span class="ic">📶</span>
+            <span class="lb"><span class="plus">＋</span> קוד WiFi</span>
+            <span class="sub">הוסיפו קוד</span>
+          </button>
+          <button class="qa empty">
+            <span class="ic">🛂</span>
+            <span class="lb"><span class="plus">＋</span> מסמכים</span>
+            <span class="sub">הוסיפו מסמך</span>
+          </button>
+        </div>
+      </div>
+      <p class="note">
+        תיבה עם מידע = כרטיס מלא ולחיץ. תיבה <b>ריקה</b> = מקווקוות, מעומעמת, עם ＋ שמזמין להוסיף — לא
+        כרטיס "מת". WiFi נתמך (הוספה אמיתית בהמשך); <b>מסמכים עדיין לא ב-FE</b>, אז זו כרגע פיקסצ׳ר
+        כנה: מציג "הוסיפו מסמך", והפעולה מתוגלת עד שהפיצ׳ר ינחת.
+      </p>
+      <div class="hr"></div>
+
+      <!-- ========== B. glance under overlap/containment ========== -->
+      <div class="sec">ב · "היום במבט" עם אירועים חופפים</div>
+      <div class="daykey">
+        היום לדוגמה (18:52) · <b>4 בלוקים עליונים</b>:<br />
+        ▸ ארוחת בוקר (09:00) — <b>היינו</b><br />
+        ▸ יום בחוף (10:00–18:00) — <b>עכשיו</b> · מעטפת שמכילה 3 עצירות (מקוננות)<br />
+        ▸ Ichiran 🔒 (19:00) — <b>לפנינו</b><br />
+        ▸ בערב: בר + מוזיקה חיה (20:30) — <b>אשכול בו-זמנית</b> (2 אירועים מקבילים)
+      </div>
+      <div class="glance-day">
+        <div class="blocks" aria-hidden="true">
+          <div class="blk done"></div>
+          <div class="blk now"></div>
+          <div class="blk"></div>
+          <div class="blk cluster"><i></i><i></i></div>
+        </div>
+        <div class="blocks-key">
+          <span><i class="dn"></i>היינו</span>
+          <span><i class="nw"></i>עכשיו</span>
+          <span><i class="up"></i>לפנינו</span>
+          <span><i class="cl"></i>בו-זמנית</span>
+        </div>
+        <div class="lead">
+          <div class="big"><span class="v">3</span><span class="k">בלוקים נותרו</span></div>
+          <div class="anchor">🔒 עוגן קשיח<br /><span class="tm" dir="ltr">19:00</span></div>
+        </div>
+        <div class="glance-foot">
+          🕓 ״יום בחוף״ עד <span class="mono" dir="ltr">18:00</span> · היום מסתיים
+          <b class="mono" dir="ltr">~22:00</b>
+        </div>
+      </div>
+      <p class="note">
+        הספירה על <b>הבלוקים העליונים</b>, לא על כל אירוע: 3 העצירות בתוך "יום בחוף" הן
+        <b>בלוק אחד</b> (לא ארבעה), והאשכול בערב הוא <b>בלוק אחד</b> (לא שניים) — צרור צפוף של פסים
+        קטנים שנקרא "בו-זמנית" בלי מקרא. <span class="good">כך "נותרו" אף פעם לא מנפח את היום</span>,
+        ובמקרה הרגיל (בלי חפיפות) זה בדיוק אפשרות 1 שאהבת. פירוט הקינון נמצא ב"יום-יום".
+      </p>
+      <div class="hr"></div>
+
+      <!-- ========== C. empty day — no events ========== -->
+      <div class="sec">ג · "היום במבט" ליום ריק (אין אירועים)</div>
+      <div class="glance-day empty">
+        <div class="ei">🗓️</div>
+        <div class="et">היום עוד פתוח</div>
+        <div class="es">אין אירועים מתוכננים — יום חופשי.<br />אפשר להוסיף משהו או להציץ במדף האולי.</div>
+        <button class="ea"><span class="plus">＋</span> הוסיפו אירוע</button>
+      </div>
+      <p class="note">
+        לא מסתירים את הכרטיס ולא מציגים "0 / 0" (נקרא כתקלה). במקום — מצב <b>מלמד ורגוע</b>: "יום פתוח"
+        זו אינפורמציה שימושית בשטח (אתם פנויים), עם הזמנה עדינה להוסיף (quick-add של מצב טיול, ADR-0043)
+        או ללכת למדף. <span class="good">אמבר לא נדלק</span> — אין "עכשיו", אז אין דופק. אותו מצב משרת
+        גם יום עתידי ריק בגלילת רצועת הימים.
+      </p>
+    </div>
+  </body>
+</html>
