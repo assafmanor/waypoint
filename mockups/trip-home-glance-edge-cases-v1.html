@@ -1,0 +1,378 @@
+<!doctype html>
+<!-- "היום במבט" — edge cases for the proportional rail (2026-07-16).
+     Companion to trip-home-glance-v3.html. Two hard areas:
+       (1) overnight / next-day spillover (ADR-0037): window = 07:00 (or the
+           earliest event) → 23:00 (or the latest event). An overnight day runs
+           only to its latest event (e.g. 02:00), NOT padded to 07:00; the
+           crossing segment carries the amber +1.
+       (2) overlap × containment (ADR-0041): the GLANCE draws top-level roots
+           ONLY. Any composite (cluster of peers, or envelope with nested
+           children, any depth) collapses to ONE segment + a "layered" edge cue
+           + a small count. Full nesting/cluster fidelity stays in the day view.
+     This collapses every overlap/containment permutation to one shape, so no
+     edge case can break the single-track layout. Where this and docs conflict,
+     docs win. -->
+<html lang="he" dir="rtl">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>היום במבט — מקרי קצה</title>
+    <style>
+      :root {
+        --ink: #16233d;
+        --indigo: #1b2a4a;
+        --card: #ffffff;
+        --amber: #e9a63c;
+        --amber-deep: #c9822a;
+        --ok: #3c9a6b;
+        --muted: #6c7488;
+        --line: rgba(22, 35, 61, 0.1);
+        --track: rgba(22, 35, 61, 0.07);
+      }
+      * {
+        box-sizing: border-box;
+        margin: 0;
+        padding: 0;
+      }
+      body {
+        font-family:
+          'Assistant',
+          system-ui,
+          -apple-system,
+          'Segoe UI',
+          'Arial Hebrew',
+          sans-serif;
+        background: var(--indigo);
+        color: var(--ink);
+        min-height: 100vh;
+        padding: 24px 16px 48px;
+        -webkit-font-smoothing: antialiased;
+      }
+      .wrap {
+        max-width: 440px;
+        margin: 0 auto;
+      }
+      .title {
+        color: #fff;
+        font-family: 'Secular One', system-ui, sans-serif;
+        font-size: 22px;
+        text-align: center;
+      }
+      .lede {
+        color: #aeb9d4;
+        font-size: 13px;
+        line-height: 1.55;
+        text-align: center;
+        margin: 8px 0 22px;
+      }
+      .case {
+        background: var(--card);
+        border-radius: 14px;
+        padding: 14px 15px 15px;
+        margin-bottom: 14px;
+      }
+      .case h4 {
+        font-size: 13px;
+        color: var(--ink);
+        margin-bottom: 3px;
+      }
+      .case p {
+        font-size: 11.5px;
+        color: var(--muted);
+        line-height: 1.45;
+        margin-bottom: 12px;
+      }
+
+      .rail {
+        position: relative;
+        height: 14px;
+        background: var(--track);
+        border-radius: 5px;
+      }
+      .seg {
+        position: absolute;
+        top: 0;
+        height: 14px;
+        border-radius: 3px;
+        min-width: 6px;
+      }
+      .seg.done {
+        background: var(--ok);
+      }
+      .seg.passed {
+        background: rgba(22, 35, 61, 0.32);
+      }
+      .seg.upcoming {
+        background: transparent;
+        box-shadow: inset 0 0 0 1.5px rgba(22, 35, 61, 0.24);
+      }
+      .seg.now {
+        background: var(--amber);
+      }
+      .seg.skipped {
+        background: repeating-linear-gradient(
+          -45deg,
+          rgba(22, 35, 61, 0.26) 0 3px,
+          transparent 3px 6px
+        );
+        box-shadow: inset 0 0 0 1px rgba(22, 35, 61, 0.12);
+      }
+      /* composite (cluster/envelope, any depth) → "layered" top edge + count */
+      .seg.multi {
+        box-shadow:
+          inset 0 3px 0 rgba(255, 255, 255, 0.55),
+          inset 0 0 0 1px rgba(22, 35, 61, 0.12);
+      }
+      .seg.multi.upcoming {
+        box-shadow:
+          inset 0 3px 0 rgba(22, 35, 61, 0.12),
+          inset 0 0 0 1.5px rgba(22, 35, 61, 0.24);
+      }
+      .seg .n {
+        position: absolute;
+        top: -15px;
+        left: 50%;
+        transform: translateX(-50%);
+        font-size: 9px;
+        font-weight: 700;
+        color: var(--muted);
+        background: #fff;
+        border: 1px solid var(--line);
+        border-radius: 20px;
+        padding: 0 5px;
+        white-space: nowrap;
+      }
+      /* overnight +1 marker at the late (left) end */
+      .seg .plus1 {
+        position: absolute;
+        top: -15px;
+        inset-inline-end: -4px;
+        font-size: 9px;
+        font-weight: 700;
+        color: var(--amber-deep);
+        font-family: 'JetBrains Mono', ui-monospace, Menlo, monospace;
+      }
+      /* point event (no end) */
+      .seg.point {
+        width: 4px;
+        min-width: 4px;
+        border-radius: 2px;
+      }
+      .nowmark {
+        position: absolute;
+        top: -5px;
+        bottom: -5px;
+        width: 2px;
+        background: var(--amber);
+        border-radius: 2px;
+        z-index: 2;
+      }
+      .nowmark::after {
+        content: '';
+        position: absolute;
+        top: -6px;
+        left: 50%;
+        transform: translateX(-50%);
+        width: 7px;
+        height: 7px;
+        border-radius: 50%;
+        background: var(--amber);
+        box-shadow: 0 0 0 3px rgba(233, 166, 60, 0.22);
+      }
+      .ends {
+        display: flex;
+        justify-content: space-between;
+        margin-top: 10px;
+        font-size: 9.5px;
+        color: var(--muted);
+        font-weight: 600;
+      }
+      .ends span {
+        font-family: 'JetBrains Mono', ui-monospace, Menlo, monospace;
+      }
+      .key {
+        display: flex;
+        flex-wrap: wrap;
+        gap: 7px 13px;
+        margin: 0 2px 20px;
+        font-size: 11px;
+        color: #b9c4de;
+      }
+      .key span {
+        display: inline-flex;
+        align-items: center;
+        gap: 6px;
+      }
+      .key i {
+        width: 15px;
+        height: 9px;
+        border-radius: 2px;
+        display: inline-block;
+      }
+      .key i.done {
+        background: var(--ok);
+      }
+      .key i.passed {
+        background: rgba(255, 255, 255, 0.34);
+      }
+      .key i.now {
+        background: var(--amber);
+      }
+      .key i.up {
+        background: transparent;
+        box-shadow: inset 0 0 0 1.5px rgba(255, 255, 255, 0.4);
+      }
+      .key i.multi {
+        background: rgba(255, 255, 255, 0.34);
+        box-shadow: inset 0 3px 0 rgba(255, 255, 255, 0.7);
+      }
+
+      /* collapsed-block coloring rule card */
+      .crule {
+        display: flex;
+        flex-wrap: wrap;
+        gap: 10px 18px;
+      }
+      .crule > div {
+        display: flex;
+        align-items: center;
+        gap: 7px;
+        font-size: 11.5px;
+        color: var(--muted);
+      }
+      .crs {
+        width: 28px;
+        height: 12px;
+        border-radius: 3px;
+        flex: 0 0 auto;
+        /* the "layered" edge marks it as a collapsed composite */
+        box-shadow:
+          inset 0 3px 0 rgba(255, 255, 255, 0.55),
+          inset 0 0 0 1px rgba(22, 35, 61, 0.12);
+      }
+      .crs.now {
+        background: var(--amber);
+      }
+      .crs.done {
+        background: var(--ok);
+      }
+      .crs.passed {
+        background: rgba(22, 35, 61, 0.32);
+      }
+      .crs.up {
+        background: transparent;
+        box-shadow:
+          inset 0 3px 0 rgba(22, 35, 61, 0.12),
+          inset 0 0 0 1.5px rgba(22, 35, 61, 0.24);
+      }
+    </style>
+  </head>
+  <body>
+    <div class="wrap">
+      <div class="title">היום במבט · מקרי קצה</div>
+      <p class="lede">
+        איך כל תרחיש נראה על הפס הפרופורציונלי. כלל־העל: מציגים רק את
+        <b>הבלוקים העליונים</b>; כל חפיפה/הכלה מתקפלת לבלוק אחד עם רמז "שכבות" + מונה.
+      </p>
+
+      <div class="key">
+        <span><i class="done"></i>היינו</span>
+        <span><i class="passed"></i>חלף</span>
+        <span><i class="now"></i>עכשיו</span>
+        <span><i class="up"></i>לפנינו</span>
+        <span><i class="multi"></i>שכבות (חופף/מכיל)</span>
+      </div>
+
+      <!-- 0 · collapsed-block coloring rule -->
+      <div class="case">
+        <h4>0 · צביעת בלוק מקובץ (אשכול/מעטפת)</h4>
+        <p>
+          צבע אחד לכל הבלוק, אותו היגיון של אירוע יחיד · רק מחושב לכל הבלוק. הקצה ה"שכבתי" מסמן שזה
+          כמה אירועים.
+        </p>
+        <div class="crule">
+          <div><i class="crs now"></i><span>עכשיו בתוכו</span></div>
+          <div><i class="crs done"></i><span>עבר · הכול סומן</span></div>
+          <div><i class="crs passed"></i><span>עבר · לא הכול</span></div>
+          <div><i class="crs up"></i><span>עוד לפנינו</span></div>
+        </div>
+      </div>
+
+      <!-- 1 · overnight -->
+      <div class="case">
+        <h4>1 · אירוע חוצה חצות (מסיבה 22:00→02:00)</h4>
+        <p>החלון נמתח עד סוף האירוע האחרון (02:00) · לא מרופד ל-07:00. הקצה נושא +1.</p>
+        <div class="rail" aria-hidden="true">
+          <div class="seg done" style="inset-inline-start: 20%; width: 14%"></div>
+          <div class="seg passed" style="inset-inline-start: 44%; width: 10%"></div>
+          <div class="seg now" style="inset-inline-start: 70%; width: 18%">
+            <span class="plus1" dir="ltr">+1</span>
+          </div>
+          <div class="nowmark" style="inset-inline-start: 76%"></div>
+        </div>
+        <div class="ends"><span dir="ltr">02:00 (+1)</span><span dir="ltr">07:00</span></div>
+      </div>
+
+      <!-- 2 · partial-overlap cluster -->
+      <div class="case">
+        <h4>2 · חפיפה חלקית (בר + הופעה, מקבילים)</h4>
+        <p>לא מנסים לצייר את שני הטווחים · בלוק אחד על האיחוד, רמז שכבות + ×2.</p>
+        <div class="rail" aria-hidden="true">
+          <div class="seg done" style="inset-inline-start: 22%; width: 12%"></div>
+          <div class="seg upcoming multi" style="inset-inline-start: 58%; width: 22%">
+            <span class="n">×2</span>
+          </div>
+          <div class="nowmark" style="inset-inline-start: 48%"></div>
+        </div>
+        <div class="ends"><span dir="ltr">23:00</span><span dir="ltr">07:00</span></div>
+      </div>
+
+      <!-- 3 · envelope + nested -->
+      <div class="case">
+        <h4>3 · מעטפת עם עצירות מקוננות (יום בחוף 10:00–18:00, 3 בפנים)</h4>
+        <p>בלוק אחד על טווח המעטפת + "כולל 3". הפירוט המקונן נמצא ביום-יום.</p>
+        <div class="rail" aria-hidden="true">
+          <div class="seg now multi" style="inset-inline-start: 19%; width: 50%">
+            <span class="n">כולל 3</span>
+          </div>
+          <div class="seg upcoming" style="inset-inline-start: 78%; width: 10%"></div>
+          <div class="nowmark" style="inset-inline-start: 40%"></div>
+        </div>
+        <div class="ends"><span dir="ltr">23:00</span><span dir="ltr">07:00</span></div>
+      </div>
+
+      <!-- 4 · chain + point + tiny -->
+      <div class="case">
+        <h4>4 · שרשרת הכלה, אירוע-נקודה, ואירועים זעירים</h4>
+        <p>
+          שרשרת A⊃B⊃C = בלוק אחד (הטווח החיצוני) + שכבות. אירוע בלי סיום = נקודה. אירועים קצרצרים
+          נצמדים לרוחב מינימלי ונקראים כצביר.
+        </p>
+        <div class="rail" aria-hidden="true">
+          <div class="seg done multi" style="inset-inline-start: 16%; width: 20%">
+            <span class="n">כולל 3</span>
+          </div>
+          <div class="seg passed point" style="inset-inline-start: 46%"></div>
+          <div class="seg upcoming" style="inset-inline-start: 60%; width: 6%"></div>
+          <div class="seg upcoming" style="inset-inline-start: 67%; width: 6%"></div>
+          <div class="seg upcoming" style="inset-inline-start: 74%; width: 6%"></div>
+          <div class="nowmark" style="inset-inline-start: 52%"></div>
+        </div>
+        <div class="ends"><span dir="ltr">23:00</span><span dir="ltr">07:00</span></div>
+      </div>
+
+      <!-- 5 · all-day envelope -->
+      <div class="case">
+        <h4>5 · מעטפת יום־שלם (טיול יום 08:30–18:00)</h4>
+        <p>בלוק אחד ארוך ששולט בפס · כי זה באמת דבר אחד שנמשך כל היום. כן ורואים מיד.</p>
+        <div class="rail" aria-hidden="true">
+          <div class="seg now multi" style="inset-inline-start: 9%; width: 68%">
+            <span class="n">כולל 4</span>
+          </div>
+          <div class="nowmark" style="inset-inline-start: 40%"></div>
+        </div>
+        <div class="ends"><span dir="ltr">23:00</span><span dir="ltr">07:00</span></div>
+      </div>
+    </div>
+  </body>
+</html>
