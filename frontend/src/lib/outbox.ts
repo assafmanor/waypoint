@@ -3,20 +3,27 @@
 // that builds optimistic dispatch + undo.
 import { useEffect, useState, useSyncExternalStore } from 'react';
 import type {
+  CreateBookingInput,
   CreateEventInput,
   CreateMaybeItemInput,
+  CreatePlaceInput,
   EventStatus,
   MembershipRole,
   MoveEventInput,
+  UpdateBookingInput,
   UpdateEventInput,
+  UpdatePlaceInput,
   UpdateTripInput,
 } from '@waypoint/shared';
 import { db } from '../db';
 import {
   ApiError,
   consumeMaybeItem,
+  createBooking,
   createEvent,
   createMaybeItem,
+  createPlace,
+  deleteBooking,
   deleteEvent,
   deleteMaybeItem,
   deleteTrip,
@@ -24,7 +31,9 @@ import {
   removeMember,
   setEventStatus,
   setMemberRole,
+  updateBooking,
   updateEvent,
+  updatePlace,
   updateTrip,
 } from './api';
 import { applyOutboxOpToCache } from './cache';
@@ -43,7 +52,13 @@ export type OutboxOp =
   | { verb: 'updateTrip'; input: UpdateTripInput }
   | { verb: 'setMemberRole'; userId: string; role: MembershipRole }
   | { verb: 'removeMember'; userId: string }
-  | { verb: 'deleteTrip' };
+  | { verb: 'deleteTrip' }
+  // Index writes (ADR-0047/0048) — bookings + places, offline-capable.
+  | { verb: 'createBooking'; input: CreateBookingInput }
+  | { verb: 'updateBooking'; bookingId: string; input: UpdateBookingInput }
+  | { verb: 'deleteBooking'; bookingId: string; confirm: boolean; deleteEvents: boolean }
+  | { verb: 'createPlace'; input: CreatePlaceInput }
+  | { verb: 'updatePlace'; placeId: string; input: UpdatePlaceInput };
 
 export interface OutboxEntry {
   seq?: number;
@@ -178,6 +193,24 @@ async function runOp(tripId: string, op: OutboxOp): Promise<void> {
       return;
     case 'deleteTrip':
       await deleteTrip(tripId);
+      return;
+    case 'createBooking':
+      await createBooking(tripId, op.input);
+      return;
+    case 'updateBooking':
+      await updateBooking(tripId, op.bookingId, op.input);
+      return;
+    case 'deleteBooking':
+      await deleteBooking(tripId, op.bookingId, {
+        confirm: op.confirm,
+        deleteEvents: op.deleteEvents,
+      });
+      return;
+    case 'createPlace':
+      await createPlace(tripId, op.input);
+      return;
+    case 'updatePlace':
+      await updatePlace(tripId, op.placeId, op.input);
       return;
   }
 }

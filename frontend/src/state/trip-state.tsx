@@ -13,9 +13,12 @@ import {
   type ReactNode,
 } from 'react';
 import {
+  BOOKING_SOURCE,
   EVENT_STATUS,
   type Booking,
   type Change,
+  type CreateBookingInput,
+  type CreatePlaceInput,
   type MaybeItem,
   type Membership,
   type MembershipRole,
@@ -23,15 +26,23 @@ import {
   type TripEvent,
   type Place,
   type TripSnapshot,
+  type UpdateBookingInput,
+  type UpdatePlaceInput,
   type UpdateTripInput,
   type User,
 } from '@waypoint/shared';
 import {
+  createBooking as apiCreateBooking,
+  createPlace as apiCreatePlace,
+  deleteBooking as apiDeleteBooking,
   deleteTrip as apiDeleteTrip,
   fetchChanges,
   fetchSnapshot,
+  isHardEventConfirmError,
   removeMember as apiRemoveMember,
   setMemberRole as apiSetMemberRole,
+  updateBooking as apiUpdateBooking,
+  updatePlace as apiUpdatePlace,
   updateTrip as apiUpdateTrip,
   type RippleSuggestion,
 } from '../lib/api';
@@ -262,6 +273,20 @@ export function applyControlChangeToMembers(members: Membership[], change: Chang
     : [...members, next];
 }
 
+/** Upsert/delete a remote change into a by-id list (bookings, places — the Index
+ *  data plane, ADR-0047/0048). Mirrors cache.ts `applyToRow`: `after` is merged
+ *  over the existing row (a partial input) or appended as a new row (a peer's
+ *  create). A peer's plain create arrives without server-only fields until the
+ *  next resync — the Index reads only type/title/code/place, so it renders fine. */
+export function applyControlChangeToList<T extends { id: string }>(list: T[], change: Change): T[] {
+  if (change.action === 'delete') return list.filter((x) => x.id !== change.entityId);
+  const partial = change.after as Partial<T> | undefined;
+  if (!partial) return list;
+  const existing = list.find((x) => x.id === change.entityId);
+  const next = { ...(existing as T), ...partial, id: change.entityId } as T;
+  return existing ? list.map((x) => (x.id === change.entityId ? next : x)) : [...list, next];
+}
+
 /** Admin-governed trip-settings writes (ADR-0039): optimistic, data-plane
  *  (broadcast + offline outbox), reconciled/rolled-back like the event verbs. */
 export interface SettingsVerbs {
@@ -269,6 +294,25 @@ export interface SettingsVerbs {
   setMemberRole: (userId: string, role: MembershipRole) => Promise<void>;
   removeMember: (userId: string) => Promise<void>;
   deleteTrip: () => Promise<void>;
+}
+
+/** Index write verbs (ADR-0047/0048): optimistic + reconcile/rollback, queued
+ *  offline via the outbox — the same shape as the settings verbs, over the
+ *  reactive bookings/places state. The edit sheet (checkpoint 3) and booking
+ *  form (checkpoint 4) call these. A booking `event` seed is forwarded to the
+ *  server (which creates the linked event atomically); the optimistic *event*
+ *  side is the form's job — for now a seeded event arrives via the WS echo. */
+export interface IndexVerbs {
+  createBooking: (input: CreateBookingInput) => Promise<Booking | undefined>;
+  updateBooking: (bookingId: string, input: UpdateBookingInput) => Promise<void>;
+  deleteBooking: (
+    bookingId: string,
+    opts?: { confirm?: boolean; deleteEvents?: boolean },
+  ) => Promise<void>;
+  // Returns the client-generated id synchronously so a booking can reference a
+  // just-authored name-only Place; the write settles in the background.
+  createPlace: (input: CreatePlaceInput) => string;
+  updatePlace: (placeId: string, input: UpdatePlaceInput) => Promise<void>;
 }
 
 interface TripContextValue {
@@ -286,6 +330,7 @@ interface TripContextValue {
   ripple: RippleSuggestion | null;
   dispatch: React.Dispatch<Action>;
   settings: SettingsVerbs;
+  indexVerbs: IndexVerbs;
   // Set once the active trip is deleted (locally or by a remote admin, ADR-0039);
   // the shell/settings screen navigate out to /trips when this flips.
   tripDeleted: boolean;
@@ -393,6 +438,11 @@ function TripReady({
   const [trip, setTrip] = useState<Trip>(snapshot.trip);
   const [members, setMembers] = useState<Membership[]>(snapshot.members);
   const [tripDeleted, setTripDeleted] = useState(false);
+  // Index data plane (ADR-0047/0048): reactive like trip/roster (not the events
+  // reducer) so a peer's booking/place edit and our own optimistic writes both
+  // reflect live. Re-seed on a trip switch (TripReady remounts) and on resync.
+  const [bookings, setBookings] = useState<Booking[]>(snapshot.bookings);
+  const [places, setPlaces] = useState<Place[]>(snapshot.places);
 
   // Clamped to the trip's own date range: "today" is only the *initial* default,
   // then the day-strip/DayView navigate it via setActiveDate — without clamping,
@@ -422,6 +472,10 @@ function TripReady({
         else setTrip((prev) => applyControlChangeToTrip(prev, change));
       } else if (change.entityType === 'membership') {
         setMembers((prev) => applyControlChangeToMembers(prev, change));
+      } else if (change.entityType === 'booking') {
+        setBookings((prev) => applyControlChangeToList(prev, change));
+      } else if (change.entityType === 'place') {
+        setPlaces((prev) => applyControlChangeToList(prev, change));
       }
     }
 
@@ -436,6 +490,8 @@ function TripReady({
               dispatch({ type: 'RESYNC', events: s.events, maybeItems: s.maybeItems });
               setTrip(s.trip);
               setMembers(s.members);
+              setBookings(s.bookings);
+              setPlaces(s.places);
               onReconnected();
             },
             () => {}, // ponytail: transient refetch failure — next change/hello retries the resync.
@@ -564,13 +620,137 @@ function TripReady({
     };
   }, [tripId, trip, members, toast]);
 
+  // --- Index write verbs (ADR-0047/0048): optimistic + reconcile/rollback,
+  // queued offline via the outbox — same shape as the settings verbs, over the
+  // reactive bookings/places state. ---
+  const indexVerbs = useMemo<IndexVerbs>(() => {
+    const stamp = () => new Date(getNow()).toISOString();
+    return {
+      createBooking: async (input) => {
+        const id = input.id ?? crypto.randomUUID();
+        const withId = { ...input, id };
+        const { event: _seed, ...fields } = withId;
+        const optimistic = {
+          source: BOOKING_SOURCE.MANUAL,
+          ...fields,
+          tripId,
+          createdAt: stamp(),
+          updatedAt: stamp(),
+          updatedBy: activeUserId,
+        } as Booking;
+        const previous = bookings;
+        setBookings((prev) => [...prev, optimistic]);
+        try {
+          const canonical = await restOrQueue(
+            tripId,
+            { verb: 'createBooking', input: withId },
+            () => apiCreateBooking(tripId, withId),
+          );
+          if (canonical) setBookings((prev) => prev.map((b) => (b.id === id ? canonical : b)));
+          toast(
+            canonical ? ICONS.done : ICONS.sync,
+            canonical ? t.index.toast.saved : t.index.toast.savedQueued,
+          );
+          return canonical ?? optimistic;
+        } catch (err) {
+          setBookings(previous);
+          toast(ICONS.warn, t.toast.writeFailed);
+          throw err;
+        }
+      },
+      updateBooking: async (bookingId, input) => {
+        const previous = bookings;
+        const { event: _seed, ...fields } = input;
+        setBookings((prev) => prev.map((b) => (b.id === bookingId ? { ...b, ...fields } : b)));
+        try {
+          const canonical = await restOrQueue(
+            tripId,
+            { verb: 'updateBooking', bookingId, input },
+            () => apiUpdateBooking(tripId, bookingId, input),
+          );
+          if (canonical)
+            setBookings((prev) => prev.map((b) => (b.id === bookingId ? canonical : b)));
+          toast(
+            canonical ? ICONS.done : ICONS.sync,
+            canonical ? t.index.toast.saved : t.index.toast.savedQueued,
+          );
+        } catch (err) {
+          setBookings(previous);
+          toast(ICONS.warn, t.toast.writeFailed);
+          throw err;
+        }
+      },
+      deleteBooking: async (bookingId, opts = {}) => {
+        const previous = bookings;
+        setBookings((prev) => prev.filter((b) => b.id !== bookingId));
+        try {
+          await restOrQueue(
+            tripId,
+            {
+              verb: 'deleteBooking',
+              bookingId,
+              confirm: !!opts.confirm,
+              deleteEvents: !!opts.deleteEvents,
+            },
+            () => apiDeleteBooking(tripId, bookingId, opts),
+          );
+          toast(ICONS.trash, t.index.toast.deleted);
+        } catch (err) {
+          setBookings(previous);
+          // A hard linked-event 409 isn't a failure — the caller (edit sheet)
+          // re-prompts for confirm/unlink, so it rethrows without a generic toast.
+          if (!isHardEventConfirmError(err)) toast(ICONS.warn, t.toast.writeFailed);
+          throw err;
+        }
+      },
+      createPlace: (input) => {
+        const id = input.id ?? crypto.randomUUID();
+        const withId = { ...input, id };
+        const optimistic = {
+          ...withId,
+          tripId,
+          createdAt: stamp(),
+          updatedAt: stamp(),
+          updatedBy: activeUserId,
+        } as Place;
+        const previous = places;
+        setPlaces((prev) => [...prev, optimistic]);
+        void restOrQueue(tripId, { verb: 'createPlace', input: withId }, () =>
+          apiCreatePlace(tripId, withId),
+        )
+          .then((canonical) => {
+            if (canonical) setPlaces((prev) => prev.map((p) => (p.id === id ? canonical : p)));
+          })
+          .catch(() => {
+            setPlaces(previous);
+            toast(ICONS.warn, t.toast.writeFailed);
+          });
+        return id;
+      },
+      updatePlace: async (placeId, input) => {
+        const previous = places;
+        setPlaces((prev) => prev.map((p) => (p.id === placeId ? { ...p, ...input } : p)));
+        try {
+          const canonical = await restOrQueue(tripId, { verb: 'updatePlace', placeId, input }, () =>
+            apiUpdatePlace(tripId, placeId, input),
+          );
+          if (canonical) setPlaces((prev) => prev.map((p) => (p.id === placeId ? canonical : p)));
+        } catch (err) {
+          setPlaces(previous);
+          toast(ICONS.warn, t.toast.writeFailed);
+          throw err;
+        }
+      },
+    };
+  }, [tripId, bookings, places, toast]);
+
   const value = useMemo<TripContextValue>(
     () => ({
       trip,
       users: snapshot.users,
       members,
-      bookings: snapshot.bookings,
-      places: snapshot.places,
+      bookings,
+      places,
       glance: GLANCE,
       activeDate,
       setActiveDate,
@@ -580,10 +760,23 @@ function TripReady({
       ripple: state.ripple,
       dispatch,
       settings,
+      indexVerbs,
       tripDeleted,
       usingCachedSnapshot,
     }),
-    [state, snapshot, trip, members, settings, tripDeleted, usingCachedSnapshot, activeDate],
+    [
+      state,
+      snapshot,
+      trip,
+      members,
+      bookings,
+      places,
+      settings,
+      indexVerbs,
+      tripDeleted,
+      usingCachedSnapshot,
+      activeDate,
+    ],
   );
   return <TripContext.Provider value={value}>{children}</TripContext.Provider>;
 }
