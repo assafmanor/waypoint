@@ -89,6 +89,7 @@ An entry in the central index. Backs hard events and stands alone in the index.
 - `details Json?` (seat, room, gate, party size…), `source` (`manual` | `gmail`)
 - `createdAt`, `updatedAt`, `updatedBy`
 - (No `offlineAvailable` — the client mirrors the whole trip; ADR-0018.)
+- **Planned (ADR-0047, not yet implemented):** `details` gains a generic `notes` string (any type) and, for `hotel` bookings, a `wifi` field (network/password) — no migration, both ride in the existing JSON blob.
 
 ### CalendarEventLink (ADR-0020)
 
@@ -118,6 +119,7 @@ Parked ideas on the "maybe" shelf.
 The practical layer's small stuff (WiFi codes, notes). Emergency numbers are **static frontend data**, not DB.
 
 - `id`, `tripId`, `category` (`wifi` | `note`), `label`, `value`, `sortOrder`, `createdAt`, `updatedAt`, `updatedBy`
+- **Planned (ADR-0047, not yet implemented):** `category` narrows to `note`-only — WiFi moves onto the active hotel `Booking.details.wifi` instead (Home's quick-access, ADR-0045, reads from there once this ships).
 
 ### Change (the sync/undo/feed substrate — ADR-0019)
 
