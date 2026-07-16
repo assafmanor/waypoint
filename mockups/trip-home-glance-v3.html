@@ -1,8 +1,9 @@
 <!doctype html>
 <!-- "היום במבט" v3 — time-proportional (2026-07-16, post-merge feedback).
-     Supersedes v2's equal-width blocks. The bar is now a real timeline anchored
-     to the board's day window (07:00→23:00, RTL: right = earlier). Block width =
-     duration; the empty track between blocks = free time (now visible); the amber
+     Supersedes v2's equal-width blocks. The bar is now a real timeline. Window =
+     07:00 (or the earliest event) to 23:00 (or the latest event); an overnight
+     day runs only to its latest event, not padded to 07:00. RTL: right = earlier.
+     Block width = duration; the empty track between blocks = free time; the amber
      now-marker sits at the true clock position. Past = filled, future = hollow;
      clusters stack per-member; skipped shown struck, excluded from "נותרו".
      A min-width floor keeps short events (e.g. a dinner booking) visible.
@@ -200,8 +201,8 @@
         content: '';
         position: absolute;
         top: -6px;
-        inset-inline-start: 50%;
-        transform: translateX(50%);
+        left: 50%;
+        transform: translateX(-50%);
         width: 7px;
         height: 7px;
         border-radius: 50%;
@@ -332,7 +333,7 @@
         </div>
       </div>
       <p class="note">
-        עכשיו רואים <b>כמה זמן פנוי יש ומתי</b> — הרווח הגדול מימין לסמן הוא אחה״צ הפתוח שלכם. זה מה
+        עכשיו רואים <b>כמה זמן פנוי יש ומתי</b> · הרווח הגדול מימין לסמן הוא אחה״צ הפתוח שלכם. זה מה
         שהצורה הפרופורציונלית קונה.
       </p>
       <div class="hr"></div>
@@ -358,7 +359,7 @@
       </div>
       <p class="note">
         האשכול (החופף) יושב על טווח הזמן המשותף ומחולק <b>לפי כל אירוע בנפרד</b> (ירוק/חלול). המקטע
-        המקווקו הוא <b>שדילגנו</b> — נשאר בתמונה, לא נספר ב"נותרו".
+        המקווקו הוא <b>שדילגנו</b> · נשאר בתמונה, לא נספר ב"נותרו".
       </p>
     </div>
   </body>
