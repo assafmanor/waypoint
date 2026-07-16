@@ -1,5 +1,6 @@
 // Home — the departure-board hero (the one loud element), quick-access grid,
 // and glance cards. "Now/Next" is derived from the clock, never stored (ADR-0018).
+import { useState } from 'react';
 import { EVENT_KIND, TRIP_NOTE_CATEGORY } from '@waypoint/shared';
 import { useTrip } from '../state/trip-state';
 import { useToast } from '../ui/Toast';
@@ -24,9 +25,15 @@ export function Home() {
   const now = useClock();
   const tz = trip.timezone;
 
-  const { now: nowEvent, next: nextEvent } = deriveNow(events, now);
+  const { now: nowEvent, next: nextEvent, nowAll } = deriveNow(events, now);
   const dayEvents = events.filter((e) => e.date === activeDate);
   const conflicts = nowEvent ? hardConflicts(nowEvent, dayEvents) : [];
+  // Concurrency on the board (ADR-0041): one loud hero + a quiet "ועוד N" for the
+  // rest, unless several soft events run at once with no hard anchor to lead —
+  // then it's a group-split ("עכשיו · במקביל"), shown as equals.
+  const alsoNow = nowAll.slice(1);
+  const groupSplit = nowAll.length >= 2 && nowAll.every((e) => e.kind === EVENT_KIND.SOFT);
+  const [alsoOpen, setAlsoOpen] = useState(false);
   const nextBooking = nextEvent?.bookingId
     ? bookings.find((b) => b.id === nextEvent.bookingId)
     : undefined;
@@ -68,7 +75,24 @@ export function Home() {
           </div>
         </div>
 
-        {nowEvent ? (
+        {groupSplit ? (
+          <div className="now-split">
+            <div className="now-label">{t.board.concurrentNow}</div>
+            <div className="also-list">
+              {nowAll.map((e) => (
+                <div className="also-row" key={e.id}>
+                  {e.icon && <span className="ic">{e.icon}</span>}
+                  <span className="nm">{e.title}</span>
+                  {e.endsAt && (
+                    <span className="tm">
+                      {t.board.until} <span dir="ltr">{formatTime(e.endsAt, tz)}</span>
+                    </span>
+                  )}
+                </div>
+              ))}
+            </div>
+          </div>
+        ) : nowEvent ? (
           <>
             <div className="now-label">
               {nowEvent.kind === EVENT_KIND.HARD ? `${ICONS.lock} ${t.event.hard}` : t.event.soft}
@@ -86,6 +110,41 @@ export function Home() {
               <div className="now-conflict">
                 {ICONS.warn}{' '}
                 {t.event.conflictWarn(conflicts[0].title, formatTime(conflicts[0].startsAt!, tz))}
+              </div>
+            )}
+            {alsoNow.length > 0 && (
+              <div className="also-now">
+                <button
+                  className="also-toggle"
+                  onClick={() => setAlsoOpen((v) => !v)}
+                  aria-expanded={alsoOpen}
+                >
+                  <span className="dot" aria-hidden="true" />
+                  {t.board.alsoNow(alsoNow.length)}
+                  <span className="chev" aria-hidden="true">
+                    {alsoOpen ? '▴' : '▾'}
+                  </span>
+                </button>
+                {alsoOpen && (
+                  <div className="also-list">
+                    {alsoNow.map((e) => (
+                      <div className="also-row" key={e.id}>
+                        {e.icon && <span className="ic">{e.icon}</span>}
+                        <span className="nm">{e.title}</span>
+                        {e.kind === EVENT_KIND.HARD && (
+                          <span className="mini-lock" aria-hidden="true">
+                            {ICONS.lock}
+                          </span>
+                        )}
+                        {e.endsAt && (
+                          <span className="tm">
+                            {t.board.until} <span dir="ltr">{formatTime(e.endsAt, tz)}</span>
+                          </span>
+                        )}
+                      </div>
+                    ))}
+                  </div>
+                )}
               </div>
             )}
           </>
