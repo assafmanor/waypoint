@@ -6,8 +6,9 @@ This is not the record of the project. The **why** lives in [decisions/](decisio
 
 ## Screens not built
 
-- **Index tab** — still a `Placeholder` in `App.tsx`. Bookings list + create/edit/delete; the form is designed in `mockups/plan-mode-v1.html` (Index / "הוסף הזמנה"). Backend CRUD exists; delete 409s if a hard event depends on the booking, so surface that distinctly.
-- **Documents UI** — upload + viewer, in the Index tab. Backend storage/encryption is done (ADR-0015, ADR-0034); nothing on the frontend reaches it, and Home's documents shortcut (ADR-0045) points at it.
+- **Index tab** — still a `Placeholder` in `App.tsx`. Bookings list + create/edit/delete; the form is designed in `mockups/plan-mode-v1.html` (Index / "הוסף הזמנה"), needs the notes + hotel-wifi fields added (ADR-0047). Backend CRUD exists; the delete 409 (a hard event depends on the booking) becomes an explicit delete-both/unlink prompt, not a raw error (ADR-0047).
+- **Documents UI** — upload + viewer, in the Index tab, one row per file grouped by type (ADR-0047). Backend storage/encryption is done (ADR-0015, ADR-0034); nothing on the frontend reaches it, and Home's documents shortcut (ADR-0045) points at it.
+- **Home WiFi source migration** — Home's WiFi quick-access (ADR-0045) currently reads a `TripNote`; ADR-0047 moves it to the active/next hotel `Booking.details.wifi` instead. `TripNoteCategory` narrows to `note`-only once this ships.
 - **Map tab** — Plan-mode research surface: Places search, pins, results → "+ maybe". Blocked on Google Cloud setup below. **Navigate-to-next** (deferred out of ADR-0045) lands here too.
 - **Archive presentation** — ADR-0044 settled the behavior of a finished trip and explicitly left how the archive _looks_ as a follow-up.
 
