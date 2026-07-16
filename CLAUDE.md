@@ -47,6 +47,8 @@ pnpm dev                                               # backend :3000, frontend
 
 (The `node_modules` were not pre-installed — run `pnpm install` on your machine.) This is the quickstart; the authoritative toolchain, Google Cloud, and secrets setup lives in `docs/engineering/prerequisites-checklist.md` — don't duplicate its detail here.
 
+**Testing without Google (sandbox/agent sessions):** set `DEV_AUTH=1` in `.env` to bypass OAuth — the backend treats un-tokened requests as the seeded dev user, so you can drive the app headlessly. Dev-only, never in prod. Full recipe (seed, `VITE_API_BASE_URL`, the `localhost`-origin/CORS gotcha, no-Docker Postgres, clock pinning) in `docs/engineering/prerequisites-checklist.md`.
+
 ## Non-negotiable rules
 
 1. **Hard vs. soft events (ADR-0011)** is the core primitive. Hard = real commitment (flight, reservation code): guarded on edit, never auto-moved, excluded from ripple. Soft = free to move/skip/swap. Respect this everywhere it touches.
