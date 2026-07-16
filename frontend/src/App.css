@@ -1375,7 +1375,7 @@
 /* All-trips home (T-027 / ADR-0033) — navigation list, not a dashboard.
    Header reuses .zero-head/.zero-hello/.g-dot (T-040); .back is the /new
    header's back-arrow button (T-041), shown only in the from-trip state
-   (a live trip exists — see AllTrips.tsx). Design: mockups/all-trips-v1.html. */
+   (a live trip exists — see AllTrips.tsx). Design: mockups/all-trips-v2.html. */
 .head-left {
   display: flex;
   align-items: center;
@@ -1388,13 +1388,21 @@
   display: flex;
   flex-direction: column;
 }
+/* section label — groups the list (עכשיו / בקרוב / הסתיים) so the hierarchy
+   reads at a glance rather than as a flat stack. Neutral (shell chrome). */
 .trips-body .sec {
   font-size: 12px;
   font-weight: 700;
   color: var(--muted);
-  letter-spacing: 0.05em;
-  margin: 4px 4px 10px;
+  letter-spacing: 0.04em;
+  margin: 2px 4px 9px;
 }
+.trip-card + .sec,
+.trip-hero + .sec {
+  margin-top: 16px;
+}
+
+/* shared paper row (בקרוב / הסתיים) */
 .trip-card {
   display: flex;
   align-items: center;
@@ -1404,68 +1412,175 @@
   font: inherit;
   background: var(--card);
   border: 1px solid var(--line);
-  border-radius: 15px;
-  padding: 12px 13px;
+  border-radius: 16px;
+  padding: 13px 14px;
   margin-bottom: 10px;
   cursor: pointer;
+  transition:
+    transform var(--t-quick) var(--ease-standard),
+    box-shadow var(--t-quick) var(--ease-standard);
 }
-.trip-card:focus-visible {
+.trip-card:hover {
+  transform: translateY(-2px);
+  box-shadow: 0 10px 24px -16px rgba(22, 35, 61, 0.5);
+}
+.trip-card:focus-visible,
+.trip-hero:focus-visible {
   outline: 2.5px solid var(--teal);
   outline-offset: 2px;
 }
-.trip-card.current {
-  border-color: var(--soft-line);
-  background: #fafbfd;
-}
 .trip-card .flag {
-  width: 44px;
-  height: 44px;
-  border-radius: 12px;
+  width: 46px;
+  height: 46px;
+  border-radius: 13px;
   background: var(--paper);
   display: grid;
   place-items: center;
-  font-size: 22px;
+  font-size: 23px;
   flex: 0 0 auto;
 }
-.trip-card .main {
+.trip-card .main,
+.trip-hero .main {
   flex: 1;
   min-width: 0;
 }
 .trip-card .t {
-  font-weight: 700;
-  font-size: 15px;
+  font-family: var(--font-head);
+  font-size: 16px;
+  line-height: 1.15;
+  color: var(--ink);
+}
+/* meta line — spaced middots + mono dir=ltr numeric runs (design-language:
+   mono = dates). The dir=ltr isolation also fixes RTL date-range reversal. */
+.trip-card .m,
+.trip-hero .m {
   display: flex;
   align-items: center;
-  gap: 7px;
+  flex-wrap: wrap;
+  font-size: 12.5px;
+  color: var(--muted);
+  margin-top: 6px;
+  line-height: 1.3;
 }
-.trip-card .t .cur {
+.trip-card .m .sep,
+.trip-hero .m .sep {
+  margin: 0 7px;
+  opacity: 0.45;
+}
+.trip-card .m .sep::before,
+.trip-hero .m .sep::before {
+  content: '·';
+}
+.trip-card .m .num,
+.trip-card .m .ppl,
+.trip-hero .m .num,
+.trip-hero .m .ppl {
+  font-family: var(--font-mono);
+  font-weight: 500;
+  font-size: 12px;
+}
+
+/* finished trips read one notch quieter */
+.trip-card.is-past {
+  background: #fbfbfc;
+}
+.trip-card.is-past .flag {
+  filter: saturate(0.7);
+  opacity: 0.9;
+}
+.trip-card.is-past .t {
+  color: #4a5673;
+}
+
+/* Active-trip hero (ADR-0033) — the single loud element on a paper page. Uses
+   the chrome-base indigo (NOT the darker --board), with no glow, no pulse and
+   no now/next hero, so it reads as a prominent nav card, not the rationed
+   departure board (ADR-0028). */
+.trip-hero {
+  display: flex;
+  align-items: center;
+  gap: 13px;
+  width: 100%;
+  text-align: start;
+  font: inherit;
+  background: radial-gradient(140% 120% at 88% -20%, #294066 0%, transparent 60%), var(--indigo);
+  color: #eef2fb;
+  border: 1px solid rgba(255, 255, 255, 0.08);
+  border-radius: 18px;
+  padding: 16px;
+  margin-bottom: 12px;
+  cursor: pointer;
+  box-shadow: 0 20px 40px -20px rgba(14, 23, 41, 0.7);
+  transition:
+    transform var(--t-quick) var(--ease-standard),
+    box-shadow var(--t-quick) var(--ease-standard);
+}
+.trip-hero:hover {
+  transform: translateY(-2px);
+}
+.trip-hero .flag {
+  width: 52px;
+  height: 52px;
+  border-radius: 14px;
+  background: rgba(35, 56, 97, 0.5);
+  border: 1px solid rgba(255, 255, 255, 0.1);
+  display: grid;
+  place-items: center;
+  font-size: 26px;
+  flex: 0 0 auto;
+}
+.trip-hero .live {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
   font-size: 10.5px;
   font-weight: 700;
-  color: var(--indigo);
-  background: rgba(22, 35, 61, 0.08);
-  border-radius: 6px;
-  padding: 1px 7px;
+  letter-spacing: 0.06em;
+  color: #cbd6ef;
+  margin-bottom: 5px;
 }
-.trip-card .m {
-  font-size: 12px;
-  color: var(--muted);
-  margin-top: 3px;
-  white-space: nowrap;
-  overflow: hidden;
-  text-overflow: ellipsis;
+.trip-hero .live .blip {
+  width: 7px;
+  height: 7px;
+  border-radius: 50%;
+  background: #e8edf8;
 }
-/* now / soon / past — date-derived, neutral family (shell chrome, ADR-0028) */
+.trip-hero .t {
+  font-family: var(--font-head);
+  font-size: 19px;
+  line-height: 1.1;
+  color: #fff;
+}
+.trip-hero .m {
+  color: #9fb0d2;
+}
+.trip-hero .m .sep {
+  opacity: 0.5;
+}
+.trip-hero .go {
+  flex: 0 0 auto;
+  align-self: center;
+  width: 34px;
+  height: 34px;
+  border-radius: 11px;
+  display: grid;
+  place-items: center;
+  background: rgba(255, 255, 255, 0.1);
+  border: 1px solid rgba(255, 255, 255, 0.14);
+  color: #dfe6f5;
+  font-size: 17px;
+}
+
+/* soon / past chips — date-derived, neutral family (shell chrome, ADR-0028) */
 .chip {
   flex: 0 0 auto;
+  align-self: flex-start;
+  margin-top: 2px;
   font-size: 11px;
   font-weight: 700;
   border-radius: 8px;
   padding: 4px 9px;
   white-space: nowrap;
-}
-.chip.now {
-  color: #fff;
-  background: var(--ink);
 }
 .chip.soon {
   color: var(--ink);

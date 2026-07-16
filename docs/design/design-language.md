@@ -69,6 +69,8 @@ The dark departure-board surface means **"the trip is speaking."** It keeps its 
 - The pre-login landing teaser is the one marketing exception.
 - Everything else — lists, settings, forms — stays on paper (`--card` / `--screen`).
 
+The scarcity is on the **board surface + its live grammar** (dark `--board`, amber glow, pulse, Now/Next), not on the chrome color itself. Prominent chrome-`--indigo` elements are fine where hierarchy needs them — e.g. the all-trips live-trip hero (ADR-0033 revision): loud, indigo, but glowless and pulseless, so it reads as a nav card, not the board.
+
 ## Pulse means live — right now
 
 The pulsing blip is a claim: _something is happening this minute._
