@@ -263,9 +263,14 @@ export const t = {
   // Plan-mode Day-by-day — the itinerary builder (screens/PlanDay.tsx).
   planDay: {
     empty: 'היום ריק — הוסף אירוע או שבץ מהמדף',
-    // Read-only archive signal for a finished trip (ADR-0040 / ADR-0029).
-    pastNote: 'טיול שהסתיים · לקריאה בלבד',
+    // A finished trip is a structural archive but stays settle-editable
+    // (ADR-0044): the header note says so, since the ✓ / הסדרה is still live.
+    pastNote: 'טיול שהסתיים · מבנה קפוא, אפשר להסדיר',
     pastEmpty: 'אין אירועים ביום זה',
+    // The archive settle control (ADR-0044): tap ○ on an unresolved soft event
+    // to record it — the "we were there / skip" the trip never got.
+    settleTitle: (title: string) => `הסדרת «${title}»`,
+    settleUnresolved: 'הסדר: היינו או דלג',
     addToDay: 'הוסף אירוע',
     moveEarlier: 'הקדם',
     moveLater: 'אחר',
@@ -307,6 +312,7 @@ export const t = {
     passed: 'עבר',
     notMarked: 'עבר · לא סומן',
     didThis: 'היינו',
+    skipped: 'דילגנו',
     nextDay: 'מסתיים למחרת',
     bookingLabel: 'הזמנה',
     hardWarn: 'קשיח · שינוי מחייב עדכון ההזמנה',
