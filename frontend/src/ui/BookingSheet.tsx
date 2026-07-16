@@ -1,17 +1,32 @@
-// Booking edit sheet + delete/unlink prompt (ADR-0047). Edits a booking's
-// reference details (title, code, notes, hotel room/WiFi) via the optimistic
-// indexVerbs; scheduling (date/time), the IconPicker and place authoring are the
-// booking-form checkpoint. Delete surfaces the delete-both-vs-unlink choice when
-// the booking is tied to an itinerary event (ADR-0047 §3).
+// Booking form (ADR-0047/0048) — one merged sheet for create and edit. Fields:
+// type (create only), IconPicker glyph + derived category, title, confirmation
+// code, transport origin/destination (each a name-only Place, authored on save),
+// hotel room/WiFi, notes, and an optional date/time that seeds the linked
+// itinerary event (the backend upserts it). Delete surfaces the delete-both-vs-
+// unlink choice when a booking is tied to an event (ADR-0047 §3).
 import { useState } from 'react';
 import { createPortal } from 'react-dom';
-import { BOOKING_TYPE, type Booking } from '@waypoint/shared';
+import {
+  BOOKING_TYPE,
+  BOOKING_TYPE_TO_CATEGORY,
+  EVENT_KIND,
+  type Booking,
+  type BookingType,
+  type EventCategory,
+} from '@waypoint/shared';
 import { useTrip } from '../state/trip-state';
 import { Sheet } from './Sheet';
-import { mergeBookingDetails, deleteFlags } from '../lib/booking-edit';
-import { formatTime, todayInTz } from '../lib/time';
-import { useClock } from '../lib/useClock';
-import { BOOKING_TYPE_ICON, MS_PER_DAY } from '../constants';
+import { IconPicker } from './IconPicker';
+import { TimePicker } from './TimePicker';
+import {
+  mergeBookingDetails,
+  deleteFlags,
+  buildEventSeed,
+  findPlaceByName,
+} from '../lib/booking-edit';
+import { placeName } from '../lib/places';
+import { isoToTimeInput } from '../lib/time';
+import { BOOKING_TYPE_ICON, DEVICE_LOCALE } from '../constants';
 import { t } from '../i18n/he';
 
 interface Wifi {
@@ -19,66 +34,168 @@ interface Wifi {
   password?: string;
 }
 
-export function BookingSheet({ booking, onClose }: { booking: Booking; onClose: () => void }) {
-  const { trip, events, indexVerbs } = useTrip();
-  const now = useClock();
-  const linkedEvent = events.find((e) => e.bookingId === booking.id);
-  const isHotel = booking.type === BOOKING_TYPE.HOTEL;
-  const wifi = booking.details?.wifi as Wifi | undefined;
+const BOOKING_TYPES = Object.values(BOOKING_TYPE);
+const isTransportType = (ty: BookingType) =>
+  ty === BOOKING_TYPE.FLIGHT || ty === BOOKING_TYPE.TRAIN;
 
-  const [title, setTitle] = useState(booking.title);
-  const [code, setCode] = useState(booking.confirmationCode ?? '');
-  const [room, setRoom] = useState((booking.details?.room as string | undefined) ?? '');
-  const [notes, setNotes] = useState((booking.details?.notes as string | undefined) ?? '');
+export function BookingSheet({
+  booking,
+  onClose,
+}: {
+  booking?: Booking | null;
+  onClose: () => void;
+}) {
+  const { trip, events, places, indexVerbs } = useTrip();
+  const isCreate = !booking;
+  const linkedEvent = booking ? events.find((e) => e.bookingId === booking.id) : undefined;
+  const initialType = booking?.type ?? BOOKING_TYPE.FLIGHT;
+  const wifi = booking?.details?.wifi as Wifi | undefined;
+
+  const [type, setType] = useState<BookingType>(initialType);
+  const [iconTouched, setIconTouched] = useState(false);
+  const [icon, setIcon] = useState(linkedEvent?.icon ?? BOOKING_TYPE_ICON[initialType]);
+  const [category, setCategory] = useState<EventCategory>(
+    linkedEvent?.category ?? BOOKING_TYPE_TO_CATEGORY[initialType],
+  );
+  const [title, setTitle] = useState(booking?.title ?? '');
+  const [code, setCode] = useState(booking?.confirmationCode ?? '');
+  const [origin, setOrigin] = useState(placeName(places, booking?.fromPlaceId) ?? '');
+  const [dest, setDest] = useState(placeName(places, booking?.toPlaceId) ?? '');
+  const [room, setRoom] = useState((booking?.details?.room as string | undefined) ?? '');
+  const [notes, setNotes] = useState((booking?.details?.notes as string | undefined) ?? '');
   const [wifiNetwork, setWifiNetwork] = useState(wifi?.network ?? '');
   const [wifiPassword, setWifiPassword] = useState(wifi?.password ?? '');
+  const [date, setDate] = useState(linkedEvent?.date ?? '');
+  const [start, setStart] = useState(
+    linkedEvent?.startsAt ? isoToTimeInput(linkedEvent.startsAt, trip.timezone) : '',
+  );
+  const [end, setEnd] = useState(
+    linkedEvent?.endsAt ? isoToTimeInput(linkedEvent.endsAt, trip.timezone) : '',
+  );
+  const [kind, setKind] = useState<'hard' | 'soft'>(linkedEvent?.kind ?? EVENT_KIND.SOFT);
+  const [error, setError] = useState<string | null>(null);
+  const [saving, setSaving] = useState(false);
   const [deleting, setDeleting] = useState(false);
 
-  const icon = linkedEvent?.icon ?? BOOKING_TYPE_ICON[booking.type];
+  const isTransport = isTransportType(type);
+  const isHotel = type === BOOKING_TYPE.HOTEL;
 
-  const save = () => {
-    void indexVerbs.updateBooking(booking.id, {
-      title: title.trim() || booking.title,
-      confirmationCode: code.trim() || undefined,
-      details: mergeBookingDetails(booking.details, {
+  const changeType = (next: BookingType) => {
+    setType(next);
+    if (!iconTouched) {
+      setIcon(BOOKING_TYPE_ICON[next]);
+      setCategory(BOOKING_TYPE_TO_CATEGORY[next]);
+    }
+  };
+
+  const resolvePlaceId = async (name: string): Promise<string | undefined> => {
+    const trimmed = name.trim();
+    if (!trimmed) return undefined;
+    return (
+      findPlaceByName(places, trimmed)?.id ?? (await indexVerbs.createPlace({ name: trimmed }))
+    );
+  };
+
+  const save = async () => {
+    const finalTitle = title.trim();
+    if (!finalTitle) return setError(t.index.form.titleRequired);
+    if (date && (date < trip.startDate || date > trip.endDate)) {
+      return setError(t.index.form.dateOutOfRange);
+    }
+    setSaving(true);
+    try {
+      // Author places before the booking that FK-references them (see createPlace).
+      const fromPlaceId = isTransport ? await resolvePlaceId(origin) : undefined;
+      const toPlaceId = isTransport ? await resolvePlaceId(dest) : undefined;
+      const details = mergeBookingDetails(booking?.details, {
         room: isHotel ? room : undefined,
         notes,
         wifiNetwork: isHotel ? wifiNetwork : undefined,
         wifiPassword: isHotel ? wifiPassword : undefined,
-      }),
-    });
-    onClose();
+      });
+      const event = buildEventSeed({ date, start, end, kind, icon, category }, trip.timezone);
+      const base = {
+        title: finalTitle,
+        confirmationCode: code.trim() || undefined,
+        details,
+        event,
+      };
+      if (isCreate) {
+        await indexVerbs.createBooking({ type, ...base, fromPlaceId, toPlaceId });
+      } else {
+        await indexVerbs.updateBooking(booking.id, {
+          ...base,
+          ...(isTransport ? { fromPlaceId, toPlaceId } : {}),
+        });
+      }
+      onClose();
+    } catch {
+      setSaving(false); // the verb already toasted + rolled back
+    }
   };
 
   return (
     <>
-      <Sheet ariaLabel={t.index.sheet.editTitle} onClose={onClose}>
+      <Sheet
+        ariaLabel={isCreate ? t.index.form.createTitle : t.index.sheet.editTitle}
+        onClose={onClose}
+      >
         <div className="booking-sheet">
+          {isCreate && (
+            <div className="bs-typesel">
+              {BOOKING_TYPES.map((ty) => (
+                <button
+                  key={ty}
+                  type="button"
+                  className={'bs-typechip' + (ty === type ? ' on' : '')}
+                  onClick={() => changeType(ty)}
+                >
+                  <span aria-hidden="true">{BOOKING_TYPE_ICON[ty]}</span>
+                  {t.index.bookingType[ty]}
+                </button>
+              ))}
+            </div>
+          )}
+
           <div className="titlerow">
-            <span className="bs-icon" aria-hidden="true">
-              {icon}
-            </span>
+            <IconPicker
+              icon={icon}
+              onChange={(next, cat) => {
+                setIcon(next);
+                if (cat) setCategory(cat);
+                setIconTouched(true);
+              }}
+            />
             <input
               className="bs-title"
               value={title}
               onChange={(e) => setTitle(e.target.value)}
               placeholder={t.index.sheet.titlePlaceholder}
               aria-label={t.index.sheet.titlePlaceholder}
+              autoFocus={isCreate}
             />
-          </div>
-
-          <div className="bs-schedule">
-            {linkedEvent
-              ? t.index.sheet.scheduledOn(
-                  scheduleLabel(linkedEvent, trip.startDate, trip.timezone, now),
-                )
-              : t.index.sheet.notScheduled}
           </div>
 
           <label className="bs-field">
             {t.index.sheet.codeLabel}
             <input dir="ltr" value={code} onChange={(e) => setCode(e.target.value)} />
           </label>
+
+          {isTransport && (
+            <>
+              <div className="bs-row2">
+                <label className="bs-field">
+                  {t.index.form.originLabel}
+                  <input value={origin} onChange={(e) => setOrigin(e.target.value)} />
+                </label>
+                <label className="bs-field">
+                  {t.index.form.destLabel}
+                  <input value={dest} onChange={(e) => setDest(e.target.value)} />
+                </label>
+              </div>
+              <div className="bs-route-hint">📍 {t.index.form.routeHint}</div>
+            </>
+          )}
 
           {isHotel && (
             <>
@@ -118,21 +235,69 @@ export function BookingSheet({ booking, onClose }: { booking: Booking; onClose: 
             <textarea value={notes} onChange={(e) => setNotes(e.target.value)} />
           </label>
 
+          <label className="bs-field">
+            {t.index.form.dateLabel}
+            <input
+              type="date"
+              lang={DEVICE_LOCALE}
+              min={trip.startDate}
+              max={trip.endDate}
+              value={date}
+              onChange={(e) => setDate(e.target.value)}
+            />
+          </label>
+
+          {date && (
+            <>
+              <TimePicker
+                start={start}
+                end={end}
+                onChange={(next) => {
+                  setStart(next.start);
+                  setEnd(next.end);
+                }}
+              />
+              <div className="bs-field">
+                {t.index.form.kindLabel}
+                <div className="kind-toggle">
+                  <button
+                    type="button"
+                    className={'soft' + (kind === EVENT_KIND.SOFT ? ' on' : '')}
+                    onClick={() => setKind(EVENT_KIND.SOFT)}
+                  >
+                    {t.index.form.kindSoft}
+                  </button>
+                  <button
+                    type="button"
+                    className={'hard' + (kind === EVENT_KIND.HARD ? ' on' : '')}
+                    onClick={() => setKind(EVENT_KIND.HARD)}
+                  >
+                    {t.index.form.kindHard}
+                  </button>
+                </div>
+              </div>
+            </>
+          )}
+
+          {error && <p className="bs-error">{error}</p>}
+
           <div className="bs-actions">
             <button type="button" className="bs-cancel" onClick={onClose}>
               {t.index.sheet.cancel}
             </button>
-            <button type="button" className="bs-save" onClick={save}>
+            <button type="button" className="bs-save" onClick={save} disabled={saving}>
               {t.index.sheet.save}
             </button>
           </div>
-          <button type="button" className="bs-delete" onClick={() => setDeleting(true)}>
-            🗑️ {t.index.sheet.delete}
-          </button>
+          {!isCreate && (
+            <button type="button" className="bs-delete" onClick={() => setDeleting(true)}>
+              🗑️ {t.index.sheet.delete}
+            </button>
+          )}
         </div>
       </Sheet>
 
-      {deleting && (
+      {deleting && booking && (
         <DeletePrompt
           hasLinkedEvent={!!linkedEvent}
           linkedIsHard={linkedEvent?.kind === 'hard'}
@@ -213,18 +378,4 @@ function DeletePrompt({
   );
 
   return createPortal(body, document.body);
-}
-
-/** "היום · 09:00" / "יום 3 · 09:00" for the read-only schedule line. */
-function scheduleLabel(
-  event: { date: string; startsAt?: string },
-  startDate: string,
-  timezone: string,
-  now: Date,
-): string {
-  const today = todayInTz(timezone, now);
-  const dayNumber = Math.round((Date.parse(event.date) - Date.parse(startDate)) / MS_PER_DAY) + 1;
-  const dayLabel = event.date === today ? t.index.today : t.index.dayN(dayNumber);
-  const time = event.startsAt ? formatTime(event.startsAt, timezone) : null;
-  return time ? `${dayLabel} · ${time}` : dayLabel;
 }

@@ -27,7 +27,8 @@ export function Index() {
   const { trip, bookings, places, events } = useTrip();
   const now = useClock();
   const { upcoming, past } = splitBookings(bookings, events, trip.timezone, now.getTime());
-  const [editing, setEditing] = useState<Booking | null>(null);
+  // null = closed; 'create' = new booking; a Booking = editing that one.
+  const [sheet, setSheet] = useState<Booking | 'create' | null>(null);
 
   return (
     <div className="index">
@@ -41,9 +42,15 @@ export function Index() {
           <div className="ei">📇</div>
           <div className="et">{t.index.emptyTitle}</div>
           <div className="es">{t.index.emptyBody}</div>
+          <button type="button" className="ea" onClick={() => setSheet('create')}>
+            {t.index.form.add}
+          </button>
         </div>
       ) : (
         <>
+          <button type="button" className="addbtn" onClick={() => setSheet('create')}>
+            {t.index.form.add}
+          </button>
           <div className="listcard">
             {upcoming.map((row) => (
               <BookingLi
@@ -52,7 +59,7 @@ export function Index() {
                 places={places}
                 trip={trip}
                 now={now}
-                onOpen={setEditing}
+                onOpen={setSheet}
               />
             ))}
           </div>
@@ -67,7 +74,7 @@ export function Index() {
                     places={places}
                     trip={trip}
                     now={now}
-                    onOpen={setEditing}
+                    onOpen={setSheet}
                   />
                 ))}
               </div>
@@ -76,7 +83,9 @@ export function Index() {
         </>
       )}
 
-      {editing && <BookingSheet booking={editing} onClose={() => setEditing(null)} />}
+      {sheet && (
+        <BookingSheet booking={sheet === 'create' ? null : sheet} onClose={() => setSheet(null)} />
+      )}
     </div>
   );
 }

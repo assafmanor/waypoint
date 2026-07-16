@@ -309,9 +309,11 @@ export interface IndexVerbs {
     bookingId: string,
     opts?: { confirm?: boolean; deleteEvents?: boolean },
   ) => Promise<void>;
-  // Returns the client-generated id synchronously so a booking can reference a
-  // just-authored name-only Place; the write settles in the background.
-  createPlace: (input: CreatePlaceInput) => string;
+  // Resolves to the client-generated id so a booking can reference a just-authored
+  // name-only Place. Awaitable so the caller can persist the Place before the
+  // booking that FK-references it (online: awaited; offline: the outbox is FIFO,
+  // so the queued place op still runs before the booking op).
+  createPlace: (input: CreatePlaceInput) => Promise<string>;
   updatePlace: (placeId: string, input: UpdatePlaceInput) => Promise<void>;
 }
 
@@ -703,7 +705,7 @@ function TripReady({
           throw err;
         }
       },
-      createPlace: (input) => {
+      createPlace: async (input) => {
         const id = input.id ?? crypto.randomUUID();
         const withId = { ...input, id };
         const optimistic = {
@@ -715,16 +717,16 @@ function TripReady({
         } as Place;
         const previous = places;
         setPlaces((prev) => [...prev, optimistic]);
-        void restOrQueue(tripId, { verb: 'createPlace', input: withId }, () =>
-          apiCreatePlace(tripId, withId),
-        )
-          .then((canonical) => {
-            if (canonical) setPlaces((prev) => prev.map((p) => (p.id === id ? canonical : p)));
-          })
-          .catch(() => {
-            setPlaces(previous);
-            toast(ICONS.warn, t.toast.writeFailed);
-          });
+        try {
+          const canonical = await restOrQueue(tripId, { verb: 'createPlace', input: withId }, () =>
+            apiCreatePlace(tripId, withId),
+          );
+          if (canonical) setPlaces((prev) => prev.map((p) => (p.id === id ? canonical : p)));
+        } catch (err) {
+          setPlaces(previous);
+          toast(ICONS.warn, t.toast.writeFailed);
+          throw err;
+        }
         return id;
       },
       updatePlace: async (placeId, input) => {

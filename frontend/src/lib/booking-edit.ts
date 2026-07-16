@@ -1,6 +1,7 @@
-// Booking edit helpers (ADR-0047). Kept pure so the merge/flag logic is unit-
-// testable without rendering the sheet.
-import type { Booking } from '@waypoint/shared';
+// Booking edit helpers (ADR-0047). Kept pure so the merge/flag/seed logic is
+// unit-testable without rendering the sheet.
+import type { Booking, BookingEventSeed, EventCategory, EventKind, Place } from '@waypoint/shared';
+import { zonedIso, resolveEndIso } from './time';
 
 /** Editable free-form detail fields the sheet exposes (the rest of the booking's
  *  `details` blob is preserved untouched). */
@@ -52,4 +53,41 @@ export function deleteFlags(choice: 'both' | 'unlink'): {
   return choice === 'both'
     ? { deleteEvents: true, confirm: true }
     : { deleteEvents: false, confirm: true };
+}
+
+/** Match a typed place name to an existing Place (trimmed, case-insensitive) so
+ *  re-typing a name reuses its row instead of spawning a duplicate. Returns
+ *  `undefined` for a blank name or no match — the caller then authors a new one.
+ *  Dedup gets richer once the Google Places picker replaces free text. */
+export function findPlaceByName(places: Place[], name: string): Place | undefined {
+  const key = name.trim().toLowerCase();
+  if (!key) return undefined;
+  return places.find((p) => p.name.trim().toLowerCase() === key);
+}
+
+/** Build the linked-event seed a booking save sends when it has a schedule
+ *  (ADR-0047 §1) — same date/time math as EventForm. Returns `undefined` with no
+ *  date (an index-only booking, no itinerary event). No `id`: the backend mints
+ *  the event and the WS echo delivers it. `end` without `start` files as an
+ *  end-of-day marker (zonedIso on the date), matching EventForm. */
+export function buildEventSeed(
+  input: {
+    date: string;
+    start: string;
+    end: string;
+    kind: EventKind;
+    icon?: string;
+    category?: EventCategory;
+  },
+  timeZone: string,
+): BookingEventSeed | undefined {
+  const { date, start, end, kind, icon, category } = input;
+  if (!date) return undefined;
+  const startsAt = start ? zonedIso(date, start, timeZone) : undefined;
+  const endsAt = end
+    ? start
+      ? resolveEndIso(date, start, end, timeZone)
+      : zonedIso(date, end, timeZone)
+    : undefined;
+  return { date, startsAt, endsAt, kind, icon, category };
 }
