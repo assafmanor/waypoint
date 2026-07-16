@@ -272,6 +272,20 @@ export const t = {
     gapHour: 'שעה',
     gapTwoHours: 'שעתיים',
     gapHours: (n: number) => `${n} שעות`,
+    // Overlap cluster (ADR-0041) — deliberately distinct from a gap: a bound
+    // violet group, plus a seam tag on the colliding row.
+    overlapping: 'חופפים',
+    overlapSeam: (label: string) => `חופף ${label}`,
+    // "הזז" resolve sheet: choose which soft event to move, then a clean slot.
+    resolve: 'הזז',
+    resolveTitle: 'פתרו את החפיפה',
+    resolveChoose: 'בחרו איזה אירוע גמיש להזיז',
+    resolveAnchor: 'עוגן · לא זז',
+    resolveFor: (title: string) => `להזיז את ${title}`,
+    resolveBack: 'אירוע אחר',
+    resolveAfter: 'אחרי',
+    resolveBefore: 'לפני',
+    resolveOther: 'זמן אחר…',
   },
   event: {
     hard: 'קשיח',
@@ -311,6 +325,7 @@ export const t = {
     openingNav: 'פותח ניווט',
     scheduled: (title: string, time: string) => `${title} שובץ ל-${time}`,
     rippleApplied: 'האירועים הבאים נדחו',
+    eventMoved: 'האירוע הוזז',
     hardConfirmRequired: 'שינוי אירוע קשיח מחייב אישור',
     writeFailed: 'משהו השתבש · אפשר לנסות שוב',
     moveIntoPast: 'אי אפשר לשבץ אירוע לשעה שכבר עברה',
