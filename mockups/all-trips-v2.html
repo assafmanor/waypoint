@@ -1,0 +1,764 @@
+<!doctype html>
+<!-- All-trips home REDESIGN (v2) — iterates mockups/all-trips-v1.html against
+     three issues raised on the shipped screen:
+       1. The meta line (destination · dates · members) was cramped — glued
+          separators, no mono dates, tight leading. Fixed: spaced middots,
+          JetBrains-Mono dir=ltr date runs (design-language: mono = dates),
+          more leading, and a de-duped destination (hidden when it just
+          repeats the trip name).
+       2. The active/live trip was not prominent — a near-invisible
+          off-white card. Fixed: the list is now SECTIONED (עכשיו / בקרוב /
+          הסתיים) and the live trip gets a distinct treatment. Two prominence
+          options are shown via the switcher (indigo hero — recommended — and
+          a paper card with an indigo accent rail).
+       3. Date range rendered reversed in RTL (23.07–16.07). Fixed by
+          isolating each range in a mono dir=ltr element.
+     Still ADR-0033 / ADR-0028 shell chrome: indigo + neutral, NO amber / teal /
+     violet. The indigo option uses only the chrome base color — it is a loud
+     NAV card, not a departure board (no glow, no pulse, no now/next hero), so
+     board scarcity holds. now/soon/past stay date-derived + neutral. -->
+<html lang="he" dir="rtl">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>Waypoint — כל הטיולים · רדיזיין (מוקאפ)</title>
+    <link rel="preconnect" href="https://fonts.googleapis.com" />
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+    <link
+      href="https://fonts.googleapis.com/css2?family=Assistant:wght@400;500;600;700&family=Secular+One&family=JetBrains+Mono:wght@500;700&display=swap"
+      rel="stylesheet"
+    />
+    <style>
+      :root {
+        --ink: #16233d;
+        --indigo: #1b2a4a;
+        --indigo-2: #23386180; /* translucent tile on indigo */
+        --board: #0e1729;
+        --screen: #e7eaef;
+        --card: #ffffff;
+        --paper: #f3efe6;
+        --amber: #e9a63c;
+        --teal: #2c9c90;
+        --muted: #6c7488;
+        --line: rgba(22, 35, 61, 0.1);
+        --soft-line: rgba(22, 35, 61, 0.28);
+        --cta: var(--ink);
+        --cta-text: #fff;
+        --shadow: 0 18px 40px -18px rgba(14, 23, 41, 0.45);
+        --raised: 0 10px 24px -16px rgba(22, 35, 61, 0.5);
+        --hero-shadow: 0 20px 40px -20px rgba(14, 23, 41, 0.7);
+        /* light text tuned for the indigo hero */
+        --on-indigo: #eef2fb;
+        --on-indigo-dim: #9fb0d2;
+      }
+      * {
+        box-sizing: border-box;
+        margin: 0;
+        padding: 0;
+      }
+      html,
+      body {
+        height: 100%;
+      }
+      body {
+        font-family: 'Assistant', sans-serif;
+        background:
+          radial-gradient(120% 90% at 80% -10%, #2a3e68 0%, transparent 55%),
+          radial-gradient(120% 90% at 0% 110%, #1a2a4a 0%, transparent 50%), #0f1a31;
+        color: var(--ink);
+        min-height: 100vh;
+        display: flex;
+        flex-direction: column;
+        align-items: center;
+        justify-content: center;
+        padding: 24px 16px;
+        -webkit-font-smoothing: antialiased;
+      }
+      .stage {
+        width: 100%;
+        max-width: 392px;
+      }
+
+      .switcher {
+        display: flex;
+        gap: 6px;
+        justify-content: center;
+        margin-bottom: 14px;
+        flex-wrap: wrap;
+      }
+      .sw {
+        font: inherit;
+        font-size: 12px;
+        font-weight: 600;
+        color: #aeb9d4;
+        background: rgba(255, 255, 255, 0.07);
+        border: 1px solid rgba(255, 255, 255, 0.12);
+        border-radius: 99px;
+        padding: 7px 13px;
+        cursor: pointer;
+        transition: 0.15s;
+      }
+      .sw:hover {
+        color: #fff;
+      }
+      .sw.on {
+        background: #fff;
+        border-color: #fff;
+        color: var(--ink);
+      }
+      .sw:focus-visible {
+        outline: 2.5px solid var(--teal);
+        outline-offset: 2px;
+      }
+
+      .phone {
+        background: var(--screen);
+        border-radius: 38px;
+        box-shadow:
+          var(--shadow),
+          0 0 0 10px #0b1526,
+          0 0 0 12px #223257;
+        overflow: hidden;
+        position: relative;
+        height: 812px;
+        display: flex;
+        flex-direction: column;
+      }
+      .statusbar {
+        background: var(--indigo);
+        color: #dce3f2;
+        display: flex;
+        justify-content: space-between;
+        align-items: center;
+        padding: 11px 22px 8px;
+        font-size: 13px;
+        font-weight: 600;
+        font-family: 'JetBrains Mono', monospace;
+        flex: 0 0 auto;
+      }
+      .statusbar .dots {
+        letter-spacing: 2px;
+        opacity: 0.85;
+      }
+
+      /* ===== header ===== */
+      .head {
+        background: var(--indigo);
+        color: #fff;
+        padding: 14px 20px 18px;
+        flex: 0 0 auto;
+      }
+      .head-row {
+        display: flex;
+        justify-content: space-between;
+        align-items: center;
+      }
+      .head-left {
+        display: flex;
+        align-items: center;
+        gap: 10px;
+      }
+      .back {
+        font: inherit;
+        background: rgba(255, 255, 255, 0.08);
+        border: 1px solid rgba(255, 255, 255, 0.14);
+        color: #dce3f2;
+        width: 34px;
+        height: 34px;
+        border-radius: 11px;
+        cursor: pointer;
+        font-size: 15px;
+        display: none;
+        place-items: center;
+        flex: 0 0 auto;
+      }
+      .phone[data-state='from-trip'] .back,
+      .phone[data-state='paper'] .back {
+        display: grid;
+      }
+      .hello {
+        font-family: 'Secular One', sans-serif;
+        font-size: 23px;
+      }
+      .phone[data-state='from-trip'] .hello,
+      .phone[data-state='paper'] .hello {
+        font-size: 19px;
+      }
+      .hello-sub {
+        color: #9daac8;
+        font-size: 12.5px;
+        margin-top: 3px;
+        display: flex;
+        align-items: center;
+        gap: 6px;
+      }
+      .g-dot {
+        width: 12px;
+        height: 12px;
+        border-radius: 50%;
+        flex: 0 0 auto;
+        background: conic-gradient(#4285f4 0 25%, #ea4335 0 50%, #fbbc05 0 75%, #34a853 0);
+      }
+      .account {
+        width: 33px;
+        height: 33px;
+        border-radius: 50%;
+        display: grid;
+        place-items: center;
+        background: #8cb6e8;
+        color: #12203a;
+        font-weight: 700;
+        font-size: 13px;
+        border: 2px solid var(--indigo);
+        cursor: pointer;
+        flex: 0 0 auto;
+      }
+      .offline-badge {
+        display: none;
+        align-items: center;
+        gap: 6px;
+        margin-top: 10px;
+        padding: 4px 10px;
+        border-radius: 20px;
+        background: rgba(255, 255, 255, 0.08);
+        border: 1px solid rgba(255, 255, 255, 0.16);
+        color: #8fa0c4;
+        font-size: 11.5px;
+        font-weight: 600;
+        width: fit-content;
+      }
+      .phone[data-state='offline'] .offline-badge {
+        display: inline-flex;
+      }
+
+      /* ===== body ===== */
+      .body {
+        flex: 1;
+        min-height: 0;
+        overflow-y: auto;
+        padding: 18px 16px 20px;
+        display: flex;
+        flex-direction: column;
+      }
+      .body::-webkit-scrollbar {
+        width: 0;
+      }
+
+      /* section label — groups the list so the eye reads hierarchy, not a flat
+         stack. Neutral (shell chrome). The count rides on the first label. */
+      .sec {
+        display: flex;
+        align-items: baseline;
+        gap: 8px;
+        font-size: 12px;
+        font-weight: 700;
+        color: var(--muted);
+        letter-spacing: 0.04em;
+        margin: 2px 4px 9px;
+      }
+      .sec .count {
+        font-weight: 600;
+        color: #9aa2b3;
+        letter-spacing: 0;
+      }
+      .sec + .sec,
+      .trip + .sec,
+      .hero + .sec {
+        margin-top: 16px;
+      }
+
+      /* ===== shared trip row (paper) ===== */
+      .trip {
+        display: flex;
+        align-items: center;
+        gap: 12px;
+        width: 100%;
+        text-align: start;
+        font: inherit;
+        background: var(--card);
+        border: 1px solid var(--line);
+        border-radius: 16px;
+        padding: 13px 14px;
+        margin-bottom: 10px;
+        cursor: pointer;
+        transition:
+          transform 0.12s,
+          box-shadow 0.12s;
+      }
+      .trip:hover {
+        transform: translateY(-2px);
+        box-shadow: var(--raised);
+      }
+      .trip:focus-visible {
+        outline: 2.5px solid var(--teal);
+        outline-offset: 2px;
+      }
+      .trip .flag {
+        width: 46px;
+        height: 46px;
+        border-radius: 13px;
+        background: var(--paper);
+        display: grid;
+        place-items: center;
+        font-size: 23px;
+        flex: 0 0 auto;
+      }
+      .trip .main {
+        flex: 1;
+        min-width: 0;
+      }
+      .trip .t {
+        font-family: 'Secular One', sans-serif;
+        font-size: 16px;
+        line-height: 1.15;
+        color: var(--ink);
+      }
+      /* meta line — the fix: spaced middots, mono dir=ltr dates, real leading */
+      .trip .m {
+        display: flex;
+        align-items: center;
+        flex-wrap: wrap;
+        gap: 3px 0;
+        font-size: 12.5px;
+        color: var(--muted);
+        margin-top: 6px;
+        line-height: 1.3;
+      }
+      .trip .m .sep {
+        margin: 0 7px;
+        opacity: 0.45;
+      }
+      .trip .m .num {
+        font-family: 'JetBrains Mono', monospace;
+        font-weight: 500;
+        font-size: 12px;
+        letter-spacing: -0.2px;
+      }
+      .trip .m .ppl {
+        font-family: 'JetBrains Mono', monospace;
+        font-weight: 500;
+        font-size: 12px;
+      }
+
+      /* now / soon / past — date-derived, neutral family (shell chrome) */
+      .chip {
+        flex: 0 0 auto;
+        align-self: flex-start;
+        margin-top: 2px;
+        font-size: 11px;
+        font-weight: 700;
+        border-radius: 8px;
+        padding: 4px 9px;
+        white-space: nowrap;
+      }
+      .chip.soon {
+        color: var(--ink);
+        background: #fff;
+        border: 1px solid var(--soft-line);
+      }
+      .chip.past {
+        color: #a0a7b4;
+        background: transparent;
+        border: 1px solid var(--line);
+      }
+
+      /* de-emphasize finished trips a touch further */
+      .trip.is-past {
+        background: #fbfbfc;
+      }
+      .trip.is-past .flag {
+        filter: saturate(0.7);
+        opacity: 0.9;
+      }
+      .trip.is-past .t {
+        color: #4a5673;
+      }
+
+      /* ============================================================
+         OPTION A — indigo "live" hero (recommended). The single loud element
+         on an otherwise paper page. Chrome-base indigo only; NO board glow,
+         NO pulse, NO now/next — a prominent way back into the trip you're on.
+         ============================================================ */
+      .hero {
+        display: flex;
+        align-items: center;
+        gap: 13px;
+        width: 100%;
+        text-align: start;
+        font: inherit;
+        background:
+          radial-gradient(140% 120% at 88% -20%, #294066 0%, transparent 60%), var(--indigo);
+        color: var(--on-indigo);
+        border: 1px solid rgba(255, 255, 255, 0.08);
+        border-radius: 18px;
+        padding: 16px 16px;
+        margin-bottom: 12px;
+        cursor: pointer;
+        box-shadow: var(--hero-shadow);
+        transition:
+          transform 0.12s,
+          box-shadow 0.12s;
+      }
+      .hero:hover {
+        transform: translateY(-2px);
+      }
+      .hero:focus-visible {
+        outline: 2.5px solid var(--teal);
+        outline-offset: 2px;
+      }
+      .hero .flag {
+        width: 52px;
+        height: 52px;
+        border-radius: 14px;
+        background: var(--indigo-2);
+        border: 1px solid rgba(255, 255, 255, 0.1);
+        display: grid;
+        place-items: center;
+        font-size: 26px;
+        flex: 0 0 auto;
+      }
+      .hero .main {
+        flex: 1;
+        min-width: 0;
+      }
+      .hero .live {
+        display: inline-flex;
+        align-items: center;
+        gap: 6px;
+        font-size: 10.5px;
+        font-weight: 700;
+        letter-spacing: 0.06em;
+        color: #cbd6ef;
+        margin-bottom: 5px;
+      }
+      .hero .live .blip {
+        width: 7px;
+        height: 7px;
+        border-radius: 50%;
+        background: #e8edf8;
+      }
+      .hero .t {
+        font-family: 'Secular One', sans-serif;
+        font-size: 19px;
+        line-height: 1.1;
+        color: #fff;
+      }
+      .hero .m {
+        display: flex;
+        align-items: center;
+        flex-wrap: wrap;
+        font-size: 12.5px;
+        color: var(--on-indigo-dim);
+        margin-top: 6px;
+        line-height: 1.3;
+      }
+      .hero .m .sep {
+        margin: 0 7px;
+        opacity: 0.5;
+      }
+      .hero .m .num,
+      .hero .m .ppl {
+        font-family: 'JetBrains Mono', monospace;
+        font-weight: 500;
+        font-size: 12px;
+      }
+      .hero .go {
+        flex: 0 0 auto;
+        align-self: center;
+        width: 34px;
+        height: 34px;
+        border-radius: 11px;
+        display: grid;
+        place-items: center;
+        background: rgba(255, 255, 255, 0.1);
+        border: 1px solid rgba(255, 255, 255, 0.14);
+        color: #dfe6f5;
+        font-size: 17px;
+      }
+
+      /* ============================================================
+         OPTION B — paper card + indigo accent rail (lighter-touch prominence).
+         Same paper family as the rest, distinguished by a leading indigo rail,
+         a raised shadow, and an indigo "עכשיו" chip. Shown for comparison.
+         ============================================================ */
+      .trip.live-paper {
+        position: relative;
+        border-color: var(--soft-line);
+        box-shadow: var(--raised);
+        overflow: hidden;
+      }
+      .trip.live-paper::before {
+        content: '';
+        position: absolute;
+        inset-inline-start: 0;
+        top: 0;
+        bottom: 0;
+        width: 5px;
+        background: var(--indigo);
+      }
+      .trip.live-paper .flag {
+        background: #eef1f7;
+      }
+      .chip.now {
+        color: #fff;
+        background: var(--indigo);
+      }
+
+      /* single primary action — create only (join starts from a link) */
+      .create {
+        margin-top: 6px;
+        width: 100%;
+        font: inherit;
+        font-weight: 700;
+        font-size: 14.5px;
+        background: var(--cta);
+        color: var(--cta-text);
+        border: 1px solid var(--cta);
+        border-radius: 14px;
+        padding: 14px;
+        cursor: pointer;
+        transition: 0.14s;
+      }
+      .create:hover {
+        transform: translateY(-1px);
+        box-shadow: 0 12px 22px -12px rgba(14, 23, 41, 0.6);
+      }
+      .create:focus-visible {
+        outline: 2.5px solid var(--teal);
+        outline-offset: 2px;
+      }
+      .phone[data-state='offline'] .create {
+        opacity: 0.45;
+        pointer-events: none;
+      }
+      .offline-line {
+        display: none;
+        text-align: center;
+        color: var(--muted);
+        font-size: 12px;
+        margin-top: 10px;
+      }
+      .phone[data-state='offline'] .offline-line {
+        display: block;
+      }
+
+      .spacer {
+        flex: 1;
+        min-height: 14px;
+      }
+
+      /* visibility per state */
+      .only-hero,
+      .only-paper,
+      .only-live {
+        display: none;
+      }
+      .phone[data-state='from-trip'] .only-hero {
+        display: flex;
+      }
+      .phone[data-state='from-trip'] .only-live,
+      .phone[data-state='paper'] .only-live {
+        display: block;
+      }
+      .phone[data-state='paper'] .only-paper {
+        display: flex;
+      }
+      /* landing + offline have no live trip → hide the "עכשיו" section entirely */
+      .phone[data-state='landing'] .only-live,
+      .phone[data-state='offline'] .only-live {
+        display: none;
+      }
+
+      .toast {
+        position: absolute;
+        left: 16px;
+        right: 16px;
+        bottom: 24px;
+        background: var(--ink);
+        color: #fff;
+        border-radius: 13px;
+        padding: 13px 16px;
+        font-size: 13.5px;
+        font-weight: 500;
+        box-shadow: 0 12px 28px -10px rgba(0, 0, 0, 0.5);
+        display: flex;
+        align-items: center;
+        gap: 9px;
+        opacity: 0;
+        transform: translateY(12px);
+        pointer-events: none;
+        transition: 0.28s;
+        z-index: 8;
+      }
+      .toast.show {
+        opacity: 1;
+        transform: none;
+      }
+
+      .caption {
+        color: #aeb9d4;
+        font-size: 12.5px;
+        font-weight: 500;
+        text-align: center;
+        max-width: 48ch;
+        line-height: 1.6;
+        margin: 14px auto 0;
+      }
+      .caption b {
+        color: #fff;
+      }
+
+      @media (prefers-reduced-motion: reduce) {
+        * {
+          animation: none !important;
+          transition: none !important;
+        }
+      }
+    </style>
+  </head>
+  <body>
+    <div class="stage">
+      <div class="switcher" role="tablist" aria-label="מצבי תצוגה">
+        <button class="sw on" onclick="setState(this, 'from-trip')">
+          מתוך טיול · הירו האינדיגו (מומלץ)
+        </button>
+        <button class="sw" onclick="setState(this, 'paper')">חלופה · פס אינדיגו</button>
+        <button class="sw" onclick="setState(this, 'landing')">נחיתה · אין טיול פעיל</button>
+        <button class="sw" onclick="setState(this, 'offline')">אופליין</button>
+      </div>
+
+      <div class="phone" id="phone" data-state="from-trip">
+        <div class="statusbar"><span>09:41</span><span class="dots">●●● 5G ▮</span></div>
+
+        <header class="head">
+          <div class="head-row">
+            <div class="head-left">
+              <button class="back" onclick="toast('→', 'חזרה לטיול הפעיל')">→</button>
+              <div>
+                <div class="hello">הטיולים שלי</div>
+                <div class="hello-sub"><span class="g-dot"></span>assaf44@gmail.com · מחובר</div>
+              </div>
+            </div>
+            <button class="account" onclick="toast('👤', 'חשבון · התנתקות')">A</button>
+          </div>
+          <div class="offline-badge">📡 אופליין · מציג טיולים שמורים</div>
+        </header>
+
+        <main class="body">
+          <!-- ===== ACTIVE / NOW section (only when a trip is live) ===== -->
+          <div class="sec only-live">עכשיו</div>
+
+          <!-- Option A: indigo hero -->
+          <button class="hero only-hero" onclick="pick('לפה ולשם ׳26')">
+            <span class="flag">🏞️</span>
+            <span class="main">
+              <span class="live"><span class="blip"></span>הטיול הפעיל</span>
+              <span class="t">לפה ולשם ׳26</span>
+              <span class="m">
+                <span class="num" dir="ltr">16.07–23.07</span>
+                <span class="sep">·</span>
+                <span class="ppl" dir="ltr">1</span>&nbsp;👥
+              </span>
+            </span>
+            <span class="go" aria-hidden="true">→</span>
+          </button>
+
+          <!-- Option B: paper card + indigo accent rail -->
+          <button class="trip live-paper only-paper" onclick="pick('לפה ולשם ׳26')">
+            <span class="flag">🏞️</span>
+            <span class="main">
+              <span class="t">לפה ולשם ׳26</span>
+              <span class="m">
+                <span class="num" dir="ltr">16.07–23.07</span>
+                <span class="sep">·</span>
+                <span class="ppl" dir="ltr">1</span>&nbsp;👥
+              </span>
+            </span>
+            <span class="chip now">עכשיו</span>
+          </button>
+
+          <!-- ===== SOON ===== -->
+          <div class="sec">בקרוב <span class="count only-hero-count">· 2</span></div>
+
+          <button class="trip" onclick="pick('אתונה ׳26')">
+            <span class="flag">🇬🇷</span>
+            <span class="main">
+              <span class="t">אתונה ׳26</span>
+              <span class="m">
+                <span class="num" dir="ltr">23.07–30.07</span>
+                <span class="sep">·</span>
+                <span class="ppl" dir="ltr">2</span>&nbsp;👥
+              </span>
+            </span>
+            <span class="chip soon">בעוד 7 ימים</span>
+          </button>
+
+          <button class="trip" onclick="pick('איסלנד ׳26')">
+            <span class="flag">🇮🇸</span>
+            <span class="main">
+              <span class="t">איסלנד ׳26</span>
+              <span class="m">
+                <span class="num" dir="ltr">11.09–22.09</span>
+                <span class="sep">·</span>
+                <span class="ppl" dir="ltr">1</span>&nbsp;👥
+              </span>
+            </span>
+            <span class="chip soon">בעוד 57 ימים</span>
+          </button>
+
+          <!-- ===== PAST ===== -->
+          <div class="sec">הסתיים</div>
+
+          <button class="trip is-past" onclick="pick('איי יוון ׳25')">
+            <span class="flag">⛵️</span>
+            <span class="main">
+              <span class="t">איי יוון ׳25</span>
+              <span class="m">
+                <span class="num" dir="ltr">02.07–09.07</span>
+                <span class="sep">·</span>
+                <span class="ppl" dir="ltr">5</span>&nbsp;👥
+              </span>
+            </span>
+            <span class="chip past">הסתיים</span>
+          </button>
+
+          <div class="spacer"></div>
+
+          <button class="create" onclick="toast('＋', 'יצירת טיול חדש — מסך /new')">
+            ＋ טיול חדש
+          </button>
+          <p class="offline-line">מעבר בין טיולים שמורים עובד גם אופליין · יצירה צריכה חיבור</p>
+        </main>
+
+        <div class="toast" id="toast"><span id="toast-ic">✓</span><span id="toast-txt"></span></div>
+      </div>
+
+      <p class="caption">
+        <b>רדיזיין — כל הטיולים (v2)</b> · הרשימה מחולקת לפי <b>עכשיו / בקרוב / הסתיים</b> כדי
+        שההיררכיה תיקרא במבט. שורת המטא מתאווררת: מפרידים עם רווח ותאריכים במונו־LTR (מתוקן גם כיוון
+        התאריך ההפוך). הטיול הפעיל בולט — הירו האינדיגו הוא היחיד ה״רועש״ בדף נייר, בצבע הכרום בלבד
+        (לא לוח: בלי זוהר/פעימה). החלופה: כרטיס נייר עם פס אינדיגו.
+      </p>
+    </div>
+
+    <script>
+      function setState(btn, state) {
+        document.querySelectorAll('.sw').forEach((b) => b.classList.remove('on'));
+        btn.classList.add('on');
+        document.getElementById('phone').dataset.state = state;
+      }
+      function pick(name) {
+        toast('🧳', 'נכנסים ל' + name + '…');
+      }
+      let toastTimer;
+      function toast(icon, msg) {
+        const t = document.getElementById('toast');
+        document.getElementById('toast-ic').textContent = icon;
+        document.getElementById('toast-txt').textContent = msg;
+        t.classList.add('show');
+        clearTimeout(toastTimer);
+        toastTimer = setTimeout(() => t.classList.remove('show'), 2400);
+      }
+    </script>
+  </body>
+</html>

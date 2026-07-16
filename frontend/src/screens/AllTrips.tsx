@@ -1,10 +1,13 @@
 // All-trips home (ADR-0033): the home base for your trips — a navigation
 // list, not a dashboard (no departure board; nothing is "live" here since a
 // live trip opens directly). Landing when authenticated with trips but none
-// live; also reached from inside a live trip via the header switcher pill —
-// that live trip is what drives the "from-trip" back button + "current" mark
-// below, no separate navigation-origin flag needed. Design reference:
-// mockups/all-trips-v1.html.
+// live; also reached from inside a live trip via the header switcher pill.
+//
+// The list is SECTIONED by date-derived status (עכשיו / בקרוב / הסתיים) so the
+// hierarchy reads at a glance, and the live trip gets a prominent indigo hero
+// (chrome-base color only — no board glow/pulse/now-next, so board scarcity
+// still holds; ADR-0028/0033). A live trip present is also what drives the
+// header back button. Design reference: mockups/all-trips-v2.html.
 import { useEffect, useState } from 'react';
 import { useNavigate } from 'react-router-dom';
 import type { Trip } from '@waypoint/shared';
@@ -12,11 +15,13 @@ import { useAuth } from '../state/auth-state';
 import { useActiveTripId } from '../state/active-trip-id';
 import { useIsOffline } from '../lib/outbox';
 import { fetchTrips } from '../lib/api';
-import { tripChip } from '../lib/active-trip';
+import { tripChip, type TripChip } from '../lib/active-trip';
 import { daysUntilStart } from '../lib/mode';
 import { useClock } from '../lib/useClock';
-import { AVATAR_INITIAL_LENGTH, DEFAULT_TRIP_ICON, DOT_SEPARATOR, ICONS } from '../constants';
+import { AVATAR_INITIAL_LENGTH, DEFAULT_TRIP_ICON, ICONS } from '../constants';
 import { t } from '../i18n/he';
+
+const NBSP = ' ';
 
 const dateFmt = new Intl.DateTimeFormat('he-IL', {
   day: '2-digit',
@@ -25,6 +30,43 @@ const dateFmt = new Intl.DateTimeFormat('he-IL', {
 });
 const dateRange = (trip: Trip) =>
   `${dateFmt.format(new Date(`${trip.startDate}T00:00:00Z`))}–${dateFmt.format(new Date(`${trip.endDate}T00:00:00Z`))}`;
+
+// `destination` is free text; hide it when the trip name already carries it
+// (e.g. name "לפה ולשם ׳26" + destination "לפה ולשם") to keep the meta lean.
+const metaDestination = (trip: Trip): string | null => {
+  const dest = trip.destination.trim();
+  if (!dest || trip.name.includes(dest)) return null;
+  return dest;
+};
+
+// Meta line: spaced middots, dates & member count in mono `dir="ltr"` so the
+// numeric runs render correctly in the RTL flow (design-language: mono = dates).
+function TripMeta({ trip }: { trip: Trip }) {
+  const dest = metaDestination(trip);
+  return (
+    <span className="m">
+      {dest && (
+        <>
+          {dest}
+          <span className="sep" aria-hidden="true" />
+        </>
+      )}
+      <span className="num" dir="ltr">
+        {dateRange(trip)}
+      </span>
+      {trip.memberCount !== undefined && (
+        <>
+          <span className="sep" aria-hidden="true" />
+          <span className="ppl" dir="ltr">
+            {trip.memberCount}
+          </span>
+          {NBSP}
+          {ICONS.members}
+        </>
+      )}
+    </span>
+  );
+}
 
 export function AllTrips({ onOpenAccount }: { onOpenAccount: () => void }) {
   const navigate = useNavigate();
@@ -51,18 +93,59 @@ export function AllTrips({ onOpenAccount }: { onOpenAccount: () => void }) {
 
   if (trips === null) return null;
 
-  const liveTrip = trips.find((trip) => tripChip(trip, now) === 'now');
+  const buckets: Record<TripChip, Trip[]> = { now: [], soon: [], past: [] };
+  for (const trip of trips) buckets[tripChip(trip, now)].push(trip);
+  buckets.now.sort((a, b) => (a.startDate < b.startDate ? -1 : 1));
+  buckets.soon.sort((a, b) => (a.startDate < b.startDate ? -1 : 1));
+  buckets.past.sort((a, b) => (a.endDate > b.endDate ? -1 : 1));
+
   const pick = (trip: Trip) => {
     setTripId(trip.id);
     navigate('/');
   };
+
+  const hero = (trip: Trip) => (
+    <button key={trip.id} className="trip-hero" onClick={() => pick(trip)}>
+      <span className="flag">{trip.icon ?? DEFAULT_TRIP_ICON}</span>
+      <span className="main">
+        <span className="live">
+          <span className="blip" aria-hidden="true" />
+          {t.shell.allTrips.activeTrip}
+        </span>
+        <span className="t">{trip.name}</span>
+        <TripMeta trip={trip} />
+      </span>
+      <span className="go" aria-hidden="true">
+        →
+      </span>
+    </button>
+  );
+
+  const row = (trip: Trip, chip: 'soon' | 'past') => (
+    <button
+      key={trip.id}
+      className={'trip-card' + (chip === 'past' ? ' is-past' : '')}
+      onClick={() => pick(trip)}
+    >
+      <span className="flag">{trip.icon ?? DEFAULT_TRIP_ICON}</span>
+      <span className="main">
+        <span className="t">{trip.name}</span>
+        <TripMeta trip={trip} />
+      </span>
+      <span className={'chip ' + chip}>
+        {chip === 'soon'
+          ? t.shell.allTrips.chipSoon(daysUntilStart(trip, now) ?? 0)
+          : t.shell.allTrips.chipPast}
+      </span>
+    </button>
+  );
 
   return (
     <div className="app">
       <header className="zero-head">
         <div className="zero-head-row">
           <div className="head-left">
-            {liveTrip && (
+            {buckets.now.length > 0 && (
               <button
                 className="back"
                 onClick={() => navigate('/')}
@@ -100,45 +183,24 @@ export function AllTrips({ onOpenAccount }: { onOpenAccount: () => void }) {
       </header>
 
       <main className="trips-body">
-        <div className="sec">{t.shell.allTrips.tripsCount(trips.length)}</div>
-
-        {trips.map((trip) => {
-          const chip = tripChip(trip, now);
-          const isCurrent = trip === liveTrip;
-          const chipLabel =
-            chip === 'now'
-              ? t.shell.allTrips.chipNow
-              : chip === 'soon'
-                ? t.shell.allTrips.chipSoon(daysUntilStart(trip, now) ?? 0)
-                : t.shell.allTrips.chipPast;
-          return (
-            <button
-              key={trip.id}
-              className={'trip-card' + (isCurrent ? ' current' : '')}
-              onClick={() => pick(trip)}
-            >
-              <span className="flag">{trip.icon ?? DEFAULT_TRIP_ICON}</span>
-              <span className="main">
-                <span className="t">
-                  {trip.name}
-                  {isCurrent && <span className="cur">{t.shell.allTrips.current}</span>}
-                </span>
-                <span className="m">
-                  {trip.destination}
-                  <span className="dot">{DOT_SEPARATOR}</span>
-                  <span dir="ltr">{dateRange(trip)}</span>
-                  {trip.memberCount !== undefined && (
-                    <>
-                      <span className="dot">{DOT_SEPARATOR}</span>
-                      {trip.memberCount} {ICONS.members}
-                    </>
-                  )}
-                </span>
-              </span>
-              <span className={'chip ' + chip}>{chipLabel}</span>
-            </button>
-          );
-        })}
+        {buckets.now.length > 0 && (
+          <>
+            <div className="sec">{t.shell.allTrips.sectionNow}</div>
+            {buckets.now.map(hero)}
+          </>
+        )}
+        {buckets.soon.length > 0 && (
+          <>
+            <div className="sec">{t.shell.allTrips.sectionSoon}</div>
+            {buckets.soon.map((trip) => row(trip, 'soon'))}
+          </>
+        )}
+        {buckets.past.length > 0 && (
+          <>
+            <div className="sec">{t.shell.allTrips.sectionPast}</div>
+            {buckets.past.map((trip) => row(trip, 'past'))}
+          </>
+        )}
 
         <div className="spacer" />
 
