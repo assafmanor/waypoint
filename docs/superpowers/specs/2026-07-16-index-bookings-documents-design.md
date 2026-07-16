@@ -1,7 +1,7 @@
 # Index tab: bookings, documents, and the booking↔event link
 
 **Status:** ACCEPTED (brainstorm session 2026-07-16)
-**Produces:** an ADR for the booking↔event linkage model + booking notes/wifi fields (new, domain: data model & events); a revision note on ADR-0045 (Home's WiFi source changes); ADR-0038 status unaffected (category unification is separate and still proposed).
+**Produces:** [ADR-0047](../../decisions/0047-booking-event-linkage-and-notes.md) (the booking↔event linkage model, delete/unlink, and booking notes/wifi fields); ADR-0045 is not edited (refined by ADR-0047 instead, per this repo's "never edit an Accepted ADR's decision" rule); ADR-0038 status unaffected (category unification is separate and still proposed).
 **Builds on:** ADR-0004 (integrations are pipes, not screens), ADR-0011 (hard/soft events), ADR-0015 + ADR-0034 (document encryption), ADR-0025 (trip-mode edit tiers — Tier 2 already sanctions "quick-add a booking" / "link a booking"), ADR-0045 (Home real-data-only, documents + wifi quick-access).
 
 ## Problem
@@ -52,9 +52,13 @@ The booking form is reachable from Plan mode and directly from the Trip-mode Ind
 - Document↔Booking linkage (e.g. a boarding pass tied to its flight) is explicitly out of scope — Documents stay independent, per (D).
 - Type-specific Booking fields are scoped to hotel→wifi only, plus the generic notes field for every type. No other type-specific fields (flight seat, train car, etc.) are being added now.
 
-## Follow-up doc work
+## Follow-up doc work (done in this session, before merging)
 
-- New ADR for (A)-(C), (E)-(G) — the booking↔event linkage model, delete/unlink behavior, and booking notes/wifi fields. Domain: "Data model & events" in `docs/INDEX.md`'s router.
-- ADR-0045 gets a short superseding note: Home's WiFi source moves from `TripNote` to the active hotel Booking's `details.wifi`.
-- `docs/architecture/data-model.md` gets the `Booking.details.notes` / `details.wifi` shape documented, and a note that `TripNoteCategory` narrows to `note`-only.
-- `docs/backlog.md`'s "Index tab" and "Documents UI" lines get updated to point at this spec once an implementation plan exists.
+- [ADR-0047](../../decisions/0047-booking-event-linkage-and-notes.md) written for (A)-(C), (E)-(G); added to `docs/decisions/README.md`'s index and `docs/INDEX.md`'s "Data model & events" domain row.
+- ADR-0045 is **not** edited (this repo never edits an Accepted ADR's decision) — ADR-0047 refines it and is the record of the WiFi-source change.
+- `docs/architecture/data-model.md` gets forward-pointer notes on `Booking.details` and `TripNote.category` marked **planned, not yet implemented** (matches how ADR-0038's still-unbuilt `category` field is handled — the doc isn't rewritten ahead of the code).
+- `docs/backlog.md`'s "Index tab" and "Documents UI" lines updated with the ADR-0047 specifics; a new "Home WiFi source migration" line added.
+
+## Still open (implementation plan, not this session)
+
+- Actual schema/code changes: `Booking.details.notes`/`.wifi`, narrowing `TripNoteCategory`, the FE for all of this. None of that has shipped yet — this session was docs-only.
