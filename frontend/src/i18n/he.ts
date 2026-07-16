@@ -271,6 +271,10 @@ export const t = {
     gapHour: 'שעה',
     gapTwoHours: 'שעתיים',
     gapHours: (n: number) => `${n} שעות`,
+    // Overlap cluster (ADR-0041) — deliberately distinct from a gap: a bound
+    // violet group, plus a seam tag on the colliding row.
+    overlapping: 'חופפים',
+    overlapSeam: (label: string) => `חופף ${label}`,
   },
   event: {
     hard: 'קשיח',

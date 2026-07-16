@@ -13,6 +13,7 @@ import { Fragment, useState, type FormEvent, type PointerEvent as ReactPointerEv
 import {
   EVENT_KIND,
   EVENT_STATUS,
+  type Booking,
   type EventCategory,
   type MaybeItem,
   type TripEvent,
@@ -21,7 +22,14 @@ import { useTrip, byStart } from '../state/trip-state';
 import { useVerbs } from '../state/verbs';
 import { useClock } from '../lib/useClock';
 import { tripPhase } from '../lib/mode';
-import { formatTime, zonedIso, crossesMidnight } from '../lib/time';
+import {
+  buildTimeTree,
+  formatTime,
+  zonedIso,
+  crossesMidnight,
+  type TimeGroup,
+  type TimeItem,
+} from '../lib/time';
 import { gapBetween, nextSlot, type GapDefaults } from '../lib/gaps';
 import { CODE_PREFIX, DEFAULT_MAYBE_ICON, ICONS, MS_PER_DAY, MINUTES_PER_HOUR } from '../constants';
 import { t } from '../i18n/he';
@@ -104,6 +112,20 @@ export function PlanDay() {
     setScheduleMaybe(null);
   };
 
+  const builderCtx: BuilderCtx = {
+    tz,
+    readOnly,
+    bookings,
+    verbs,
+    dayEvents,
+    softEvents,
+    softIndex,
+    drag,
+    gripProps,
+    onEdit: (e) => setFormTarget(e),
+    onGapFill: (fill) => setGapChoice(fill),
+  };
+
   return (
     <div className="builder">
       <div className="builder-main">
@@ -124,46 +146,20 @@ export function PlanDay() {
           <div className="builder-empty">{readOnly ? t.planDay.pastEmpty : t.planDay.empty}</div>
         ) : (
           <div>
-            {dayEvents.map((e, i) => {
-              const next = dayEvents[i + 1];
-              const gap = next ? gapBetween(e, next, tz) : null;
-              const si = softIndex.get(e.id);
-              const soft = si !== undefined;
-              const earlierId = soft && si > 0 ? softEvents[si - 1].id : undefined;
-              const laterId =
-                soft && si < softEvents.length - 1 ? softEvents[si + 1].id : undefined;
-              return (
-                <Fragment key={e.id}>
-                  <BuilderRow
-                    event={e}
-                    tz={tz}
-                    readOnly={readOnly}
-                    booking={e.bookingId ? bookings.find((b) => b.id === e.bookingId) : undefined}
-                    onEdit={() => setFormTarget(e)}
-                    onDelete={() => verbs.remove(e)}
-                    onPark={soft ? () => verbs.park(e) : undefined}
-                    grip={soft && !readOnly ? gripProps(e.id) : undefined}
-                    dragging={drag?.id === e.id}
-                    over={drag?.overId === e.id}
-                    onMoveEarlier={
-                      earlierId ? () => verbs.reorder(dayEvents, e.id, earlierId) : undefined
-                    }
-                    onMoveLater={
-                      laterId ? () => verbs.reorder(dayEvents, e.id, laterId) : undefined
-                    }
-                  />
-                  {gap && !readOnly && (
-                    <div className="gap">
-                      <span className="gap-line" />
-                      <button className="gap-add" onClick={() => setGapChoice(gap.fill)}>
-                        {t.planDay.gap(gapLabel(gap.minutes))}
-                      </button>
-                      <span className="gap-line" />
-                    </div>
-                  )}
-                </Fragment>
-              );
-            })}
+            {/* Overlaps render as the concurrency forest (ADR-0041): nests for
+                containment, violet clusters for partial overlap. Gap chips sit
+                only between top-level groups — never inside an overlap. */}
+            <BuilderGroups groups={buildTimeTree(dayEvents)} depth={0} ctx={builderCtx} />
+            {dayEvents
+              .filter((e) => !e.startsAt)
+              .map((e) => (
+                <BuilderNode
+                  key={e.id}
+                  item={{ event: e, children: [] }}
+                  depth={0}
+                  ctx={builderCtx}
+                />
+              ))}
           </div>
         )}
 
@@ -284,6 +280,162 @@ function GapFillSheet({
   );
 }
 
+// Shared wiring for the recursive concurrency render (ADR-0041): keeps every
+// builder row's edit/park/delete/reorder identical whether it's top-level,
+// nested inside an envelope, or a member of an overlap cluster.
+interface BuilderCtx {
+  tz: string;
+  readOnly: boolean;
+  bookings: Booking[];
+  verbs: ReturnType<typeof useVerbs>;
+  dayEvents: TripEvent[];
+  softEvents: TripEvent[];
+  softIndex: Map<string, number>;
+  drag: { id: string; overId: string | null } | null;
+  gripProps: (id: string) => {
+    onPointerDown: (e: ReactPointerEvent) => void;
+    onPointerMove: (e: ReactPointerEvent) => void;
+    onPointerUp: () => void;
+  };
+  onEdit: (event: TripEvent) => void;
+  onGapFill: (fill: GapDefaults) => void;
+}
+
+const groupMembers = (g: TimeGroup): TimeItem[] => (g.kind === 'cluster' ? g.items : [g.item]);
+const startMsOf = (e: TripEvent) => Date.parse(e.startsAt!);
+const endMsOf = (e: TripEvent) => Date.parse(e.endsAt ?? e.startsAt!);
+const groupStartEvent = (g: TimeGroup): TripEvent =>
+  groupMembers(g).reduce((a, b) => (startMsOf(b.event) < startMsOf(a.event) ? b : a)).event;
+const groupEndEvent = (g: TimeGroup): TripEvent =>
+  groupMembers(g).reduce((a, b) => (endMsOf(b.event) > endMsOf(a.event) ? b : a)).event;
+
+/** Total events nested anywhere inside an item — the "כולל N" count. */
+function countDescendants(item: TimeItem): number {
+  return item.children.reduce(
+    (sum, g) => sum + groupMembers(g).reduce((s, it) => s + 1 + countDescendants(it), 0),
+    0,
+  );
+}
+
+/** Minutes this cluster member overlaps an earlier one (the seam tag), or none. */
+function overlapSeam(items: TimeItem[], idx: number): string | undefined {
+  const cur = items[idx].event;
+  let best = 0;
+  for (let j = 0; j < idx; j++) {
+    const prev = items[j].event;
+    const ov = Math.min(endMsOf(cur), endMsOf(prev)) - Math.max(startMsOf(cur), startMsOf(prev));
+    if (ov > best) best = ov;
+  }
+  return best > 0 ? t.planDay.overlapSeam(gapLabel(Math.round(best / 60000))) : undefined;
+}
+
+// One sibling level: partial-overlap clusters get a violet "חופפים" box, lone
+// items render directly. Gap chips sit only between top-level groups (depth 0).
+function BuilderGroups({
+  groups,
+  depth,
+  ctx,
+}: {
+  groups: TimeGroup[];
+  depth: number;
+  ctx: BuilderCtx;
+}) {
+  return (
+    <>
+      {groups.map((g, i) => {
+        const gap =
+          depth === 0 && i > 0 && !ctx.readOnly
+            ? gapBetween(groupEndEvent(groups[i - 1]), groupStartEvent(g), ctx.tz)
+            : null;
+        const key = g.kind === 'cluster' ? `cl-${g.items[0].event.id}` : g.item.event.id;
+        return (
+          <Fragment key={key}>
+            {gap && (
+              <div className="gap">
+                <span className="gap-line" />
+                <button className="gap-add" onClick={() => ctx.onGapFill(gap.fill)}>
+                  {t.planDay.gap(gapLabel(gap.minutes))}
+                </button>
+                <span className="gap-line" />
+              </div>
+            )}
+            {g.kind === 'cluster' ? (
+              <div className="bld-cluster">
+                <div className="bld-cluster-head">
+                  <span aria-hidden="true">⧉</span> {t.planDay.overlapping} ·{' '}
+                  <span className="win" dir="ltr">
+                    {formatTime(new Date(g.startMs), ctx.tz)}–
+                    {formatTime(new Date(g.endMs), ctx.tz)}
+                  </span>
+                </div>
+                {g.items.map((item, idx) => (
+                  <BuilderNode
+                    key={item.event.id}
+                    item={item}
+                    depth={depth + 1}
+                    ctx={ctx}
+                    overlapNote={overlapSeam(g.items, idx)}
+                  />
+                ))}
+              </div>
+            ) : (
+              <BuilderNode item={g.item} depth={depth} ctx={ctx} />
+            )}
+          </Fragment>
+        );
+      })}
+    </>
+  );
+}
+
+// One builder row; if it contains others it becomes a nest (the row + its
+// contents indented beneath a brace).
+function BuilderNode({
+  item,
+  depth,
+  ctx,
+  overlapNote,
+}: {
+  item: TimeItem;
+  depth: number;
+  ctx: BuilderCtx;
+  overlapNote?: string;
+}) {
+  const e = item.event;
+  const si = ctx.softIndex.get(e.id);
+  const soft = si !== undefined;
+  const earlierId = soft && si > 0 ? ctx.softEvents[si - 1].id : undefined;
+  const laterId = soft && si < ctx.softEvents.length - 1 ? ctx.softEvents[si + 1].id : undefined;
+  const hasKids = item.children.length > 0;
+  return (
+    <>
+      <BuilderRow
+        event={e}
+        tz={ctx.tz}
+        readOnly={ctx.readOnly}
+        booking={e.bookingId ? ctx.bookings.find((b) => b.id === e.bookingId) : undefined}
+        onEdit={() => ctx.onEdit(e)}
+        onDelete={() => ctx.verbs.remove(e)}
+        onPark={soft ? () => ctx.verbs.park(e) : undefined}
+        grip={soft && !ctx.readOnly ? ctx.gripProps(e.id) : undefined}
+        dragging={ctx.drag?.id === e.id}
+        over={ctx.drag?.overId === e.id}
+        onMoveEarlier={
+          earlierId ? () => ctx.verbs.reorder(ctx.dayEvents, e.id, earlierId) : undefined
+        }
+        onMoveLater={laterId ? () => ctx.verbs.reorder(ctx.dayEvents, e.id, laterId) : undefined}
+        nestedCount={hasKids ? countDescendants(item) : undefined}
+        overlapNote={overlapNote}
+      />
+      {hasKids && (
+        <div className={'bld-nest-kids' + (depth >= 1 ? ' deep' : '')}>
+          <BuilderGroups groups={item.children} depth={depth + 1} ctx={ctx} />
+        </div>
+      )}
+    </>
+  );
+}
+
 function BuilderRow({
   event,
   tz,
@@ -297,6 +449,8 @@ function BuilderRow({
   over,
   onMoveEarlier,
   onMoveLater,
+  nestedCount,
+  overlapNote,
 }: {
   event: TripEvent;
   tz: string;
@@ -319,6 +473,10 @@ function BuilderRow({
   // undefined at the ends of the soft list (nothing to swap with)
   onMoveEarlier?: () => void;
   onMoveLater?: () => void;
+  // Set on an envelope row that nests others: the "כולל N" contents count.
+  nestedCount?: number;
+  // Set on a cluster member that overlaps an earlier one: the seam tag text.
+  overlapNote?: string;
 }) {
   const isHard = event.kind === EVENT_KIND.HARD;
   const code = booking?.confirmationCode ? `${CODE_PREFIX}${booking.confirmationCode}` : undefined;
@@ -349,6 +507,10 @@ function BuilderRow({
           </span>
         ) : (
           <span className="tag-soft">{t.event.soft}</span>
+        )}
+        {overlapNote && <span className="seam-tag">⧉ {overlapNote}</span>}
+        {nestedCount !== undefined && (
+          <span className="nest-note">{t.day.contains(nestedCount)}</span>
         )}
       </span>
       {meta && <span className="bld-m">{meta}</span>}

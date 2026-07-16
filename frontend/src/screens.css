@@ -1594,6 +1594,50 @@
 }
 
 /* builder row */
+/* Plan concurrency (ADR-0041): an overlap is a bound violet group — deliberately
+   NOT the airy gap chip — and an envelope nests its contents under a dotted
+   brace. Neutral/violet only; violet = plan affordance. */
+.bld-cluster {
+  border: 1px solid rgba(110, 89, 214, 0.28);
+  background: var(--plan-tint);
+  border-radius: 14px;
+  padding: 8px 8px 1px;
+  margin-bottom: 9px;
+}
+.bld-cluster-head {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  padding: 2px 4px 8px;
+  color: var(--plan-deep);
+  font-size: 11.5px;
+  font-weight: 700;
+}
+.bld-cluster-head .win {
+  font-family: var(--font-mono);
+  color: var(--plan-deep);
+}
+.bld-nest-kids {
+  border-inline-start: 2px dotted var(--soft-line);
+  margin-inline-start: 17px;
+  padding-inline-start: 10px;
+}
+.bld-nest-kids.deep {
+  margin-inline-start: 8px;
+  padding-inline-start: 8px;
+}
+.seam-tag {
+  display: inline-flex;
+  align-items: center;
+  gap: 3px;
+  font-size: 10px;
+  font-weight: 700;
+  color: var(--plan-deep);
+  background: rgba(110, 89, 214, 0.14);
+  border-radius: 999px;
+  padding: 1px 7px;
+}
+
 .bld {
   background: var(--card);
   border: 1px solid var(--line);
