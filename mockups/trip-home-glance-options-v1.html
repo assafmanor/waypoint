@@ -1,0 +1,439 @@
+<!doctype html>
+<!-- "היום במבט" (day-at-a-glance) card — counting-model options (2026-07-16).
+     Companion to trip-home-v3.html / ADR-0045. The card is derived from the
+     5-phase model in lib/time.ts eventPhase() (ADR-0027/0043):
+       done · skipped · passed (time over, never marked) · now · upcoming.
+     The open question: how much of that texture to surface on a glance.
+     Demo day deliberately includes a passed-unmarked AND a skipped event so the
+     three options read differently. Where this and the docs conflict, docs win. -->
+<html lang="he" dir="rtl">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>היום במבט — אפשרויות ספירה</title>
+    <link rel="preconnect" href="https://fonts.googleapis.com" />
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+    <link
+      href="https://fonts.googleapis.com/css2?family=Assistant:wght@400;500;600;700&family=Secular+One&family=JetBrains+Mono:wght@500;700&display=swap"
+      rel="stylesheet"
+    />
+    <style>
+      :root {
+        --ink: #16233d;
+        --indigo: #1b2a4a;
+        --screen: #e7eaef;
+        --card: #ffffff;
+        --amber: #e9a63c;
+        --amber-deep: #c9822a;
+        --ok: #3c9a6b;
+        --miss: #c2584e;
+        --muted: #6c7488;
+        --line: rgba(22, 35, 61, 0.1);
+        --soft-line: rgba(22, 35, 61, 0.28);
+      }
+      * {
+        box-sizing: border-box;
+        margin: 0;
+        padding: 0;
+      }
+      body {
+        font-family:
+          'Assistant',
+          system-ui,
+          -apple-system,
+          'Segoe UI',
+          'Arial Hebrew',
+          sans-serif;
+        background: var(--indigo);
+        color: var(--ink);
+        min-height: 100vh;
+        padding: 24px 16px 48px;
+        -webkit-font-smoothing: antialiased;
+      }
+      .wrap {
+        max-width: 420px;
+        margin: 0 auto;
+      }
+      .title {
+        color: #fff;
+        font-family: 'Secular One', system-ui, sans-serif;
+        font-size: 22px;
+        text-align: center;
+      }
+      .lede {
+        color: #aeb9d4;
+        font-size: 13px;
+        line-height: 1.55;
+        text-align: center;
+        margin: 8px 0 18px;
+      }
+
+      /* the demo day, as an honest phase legend */
+      .legend {
+        background: rgba(255, 255, 255, 0.05);
+        border: 1px solid rgba(255, 255, 255, 0.1);
+        border-radius: 14px;
+        padding: 13px 15px;
+        margin-bottom: 22px;
+      }
+      .legend h4 {
+        color: #dce3f2;
+        font-size: 12px;
+        font-weight: 700;
+        letter-spacing: 0.04em;
+        margin-bottom: 10px;
+      }
+      .legend .row {
+        display: flex;
+        align-items: center;
+        gap: 9px;
+        font-size: 12.5px;
+        color: #b9c4de;
+        padding: 3px 0;
+      }
+      .legend .row .sw {
+        width: 26px;
+        height: 8px;
+        border-radius: 3px;
+        flex: 0 0 auto;
+      }
+      .legend .row b {
+        color: #fff;
+        font-weight: 600;
+      }
+      .sw.done {
+        background: var(--ok);
+      }
+      .sw.passed {
+        background: rgba(255, 255, 255, 0.26);
+      }
+      .sw.skipped {
+        background: repeating-linear-gradient(
+          -45deg,
+          rgba(255, 255, 255, 0.32) 0 3px,
+          transparent 3px 6px
+        );
+      }
+      .sw.now {
+        background: var(--amber);
+      }
+      .sw.upcoming {
+        background: rgba(255, 255, 255, 0.13);
+      }
+
+      .opt {
+        margin-bottom: 22px;
+      }
+      .opt-head {
+        display: flex;
+        align-items: center;
+        gap: 8px;
+        margin-bottom: 9px;
+      }
+      .opt-head .n {
+        color: #fff;
+        font-weight: 700;
+        font-size: 14px;
+      }
+      .opt-head .rec {
+        font-size: 10.5px;
+        font-weight: 700;
+        color: #12203a;
+        background: var(--amber);
+        padding: 2px 8px;
+        border-radius: 20px;
+      }
+      .opt-note {
+        color: #93a2c4;
+        font-size: 12px;
+        line-height: 1.5;
+        margin-top: 9px;
+      }
+      .opt-note .good {
+        color: #9ad4b3;
+      }
+      .opt-note .bad {
+        color: #e6a79e;
+      }
+
+      /* the card itself — matches trip-home-v3.html .glance-day */
+      .glance-day {
+        background: var(--card);
+        border: 1px solid var(--line);
+        border-radius: 16px;
+        padding: 15px 16px 16px;
+      }
+      .seg {
+        display: flex;
+        gap: 4px;
+        margin-bottom: 13px;
+      }
+      .seg i {
+        height: 8px;
+        flex: 1;
+        border-radius: 3px;
+        background: rgba(22, 35, 61, 0.12);
+      }
+      .seg i.done {
+        background: var(--ok);
+      }
+      .seg i.now {
+        background: var(--amber);
+      }
+      .seg i.passed {
+        background: rgba(22, 35, 61, 0.3);
+      }
+      .seg i.skipped {
+        background: repeating-linear-gradient(
+          -45deg,
+          rgba(22, 35, 61, 0.34) 0 3px,
+          transparent 3px 6px
+        );
+      }
+
+      .glance-stats {
+        display: flex;
+        align-items: stretch;
+      }
+      .gstat {
+        flex: 1;
+        text-align: center;
+      }
+      .gstat + .gstat {
+        border-inline-start: 1px solid var(--line);
+      }
+      .gstat .v {
+        font-family: 'JetBrains Mono', ui-monospace, Menlo, monospace;
+        font-size: 22px;
+        font-weight: 700;
+        color: var(--ink);
+        line-height: 1;
+      }
+      .gstat .v.hard {
+        color: var(--amber-deep);
+      }
+      .gstat .v.ok {
+        color: var(--ok);
+      }
+      .gstat .k {
+        font-size: 11px;
+        color: var(--muted);
+        font-weight: 600;
+        margin-top: 5px;
+      }
+
+      /* option 1 — one lead number */
+      .lead {
+        display: flex;
+        align-items: baseline;
+        justify-content: space-between;
+        gap: 12px;
+      }
+      .lead .big {
+        display: flex;
+        align-items: baseline;
+        gap: 8px;
+      }
+      .lead .big .v {
+        font-family: 'JetBrains Mono', ui-monospace, Menlo, monospace;
+        font-size: 34px;
+        font-weight: 700;
+        line-height: 1;
+        color: var(--ink);
+      }
+      .lead .big .k {
+        font-size: 14px;
+        font-weight: 700;
+        color: var(--muted);
+      }
+      .lead .anchor {
+        text-align: end;
+        font-size: 12px;
+        color: var(--amber-deep);
+        font-weight: 700;
+      }
+      .lead .anchor .tm {
+        font-family: 'JetBrains Mono', ui-monospace, Menlo, monospace;
+      }
+
+      /* small stat variant (option 3) */
+      .mini {
+        display: flex;
+        flex-wrap: wrap;
+        gap: 6px 16px;
+        font-size: 12.5px;
+      }
+      .mini span {
+        display: inline-flex;
+        align-items: center;
+        gap: 5px;
+        color: var(--muted);
+        font-weight: 600;
+      }
+      .mini b {
+        font-family: 'JetBrains Mono', ui-monospace, Menlo, monospace;
+        font-size: 15px;
+        color: var(--ink);
+      }
+      .mini b.ok {
+        color: var(--ok);
+      }
+      .mini b.miss {
+        color: var(--miss);
+      }
+      .mini b.passed {
+        color: var(--muted);
+      }
+
+      .glance-foot {
+        margin-top: 13px;
+        padding-top: 12px;
+        border-top: 1px solid var(--line);
+        font-size: 12.5px;
+        color: var(--muted);
+        display: flex;
+        align-items: center;
+        gap: 7px;
+        flex-wrap: wrap;
+      }
+      .glance-foot b {
+        color: var(--ink);
+        font-weight: 700;
+      }
+      .glance-foot .mono {
+        font-family: 'JetBrains Mono', ui-monospace, Menlo, monospace;
+        font-weight: 700;
+      }
+      .hr {
+        height: 1px;
+        background: rgba(255, 255, 255, 0.08);
+        margin: 4px 0 22px;
+      }
+    </style>
+  </head>
+  <body>
+    <div class="wrap">
+      <div class="title">היום במבט · אפשרויות ספירה</div>
+      <p class="lede">
+        הכרטיס נגזר ממודל 5 המצבים (lib/time.ts · ADR-0043). היום לדוגמה כולל אירוע
+        <b>שחלף בלי שסומן</b> ואירוע <b>שדולג</b>, כדי שההבדל בין האפשרויות יהיה ברור.
+      </p>
+
+      <div class="legend">
+        <h4>היום לדוגמה · 18:52 · 6 אירועים</h4>
+        <div class="row">
+          <span class="sw done"></span><b>היינו</b> · ארוחת בוקר (09:00) — סומן ✓
+        </div>
+        <div class="row">
+          <span class="sw passed"></span><b>חלף</b> · מוזיאון (11:00) — הזמן עבר, לא סומן כלום
+        </div>
+        <div class="row">
+          <span class="sw skipped"></span><b>דילגנו</b> · ארוחת צהריים (14:00) — סומן דילוג
+        </div>
+        <div class="row"><span class="sw now"></span><b>עכשיו</b> · זמן חופשי (16:30)</div>
+        <div class="row">
+          <span class="sw upcoming"></span><b>לפנינו</b> · Ichiran 🔒 (19:30) + גולדן גאי (21:30)
+        </div>
+      </div>
+
+      <!-- ================= OPTION 1 (recommended) ================= -->
+      <div class="opt">
+        <div class="opt-head">
+          <span class="n">אפשרות 1 · מובילים ב״נותרו״</span>
+          <span class="rec">מומלץ</span>
+        </div>
+        <div class="glance-day">
+          <div class="seg" aria-hidden="true">
+            <i class="done"></i>
+            <i class="passed"></i>
+            <i class="skipped"></i>
+            <i class="now"></i>
+            <i></i>
+            <i></i>
+          </div>
+          <div class="lead">
+            <div class="big"><span class="v">3</span><span class="k">נותרו היום</span></div>
+            <div class="anchor">🔒 עוגן קשיח<br /><span class="tm" dir="ltr">19:30</span></div>
+          </div>
+          <div class="glance-foot">
+            🕓 פנוי עד <span class="mono" dir="ltr">19:30</span> · היום מסתיים
+            <b class="mono" dir="ltr">~23:15</b>
+          </div>
+        </div>
+        <div class="opt-note">
+          <span class="good">מספר אחד שאי אפשר לפרש לא נכון</span> — "נותרו" = עכשיו + לפנינו, כך
+          שחלף-בלי-סומן ודילגנו <b>נושרים אוטומטית</b>. הפסים נושאים את מרקם היום (ירוק=היינו,
+          אפור=חלף, מקווקו=דילגנו) בלי מספרים נוספים.
+        </div>
+      </div>
+      <div class="hr"></div>
+
+      <!-- ================= OPTION 2 ================= -->
+      <div class="opt">
+        <div class="opt-head"><span class="n">אפשרות 2 · פילוח לשלושה</span></div>
+        <div class="glance-day">
+          <div class="seg" aria-hidden="true">
+            <i class="done"></i>
+            <i class="passed"></i>
+            <i class="skipped"></i>
+            <i class="now"></i>
+            <i></i>
+            <i></i>
+          </div>
+          <div class="glance-stats">
+            <div class="gstat">
+              <div class="v">3</div>
+              <div class="k">מאחוריכם</div>
+            </div>
+            <div class="gstat">
+              <div class="v">3</div>
+              <div class="k">נותרו</div>
+            </div>
+            <div class="gstat">
+              <div class="v hard">1</div>
+              <div class="k">🔒 עוגן קשיח</div>
+            </div>
+          </div>
+          <div class="glance-foot">
+            🕓 פנוי עד <span class="mono" dir="ltr">19:30</span> · היום מסתיים
+            <b class="mono" dir="ltr">~23:15</b>
+          </div>
+        </div>
+        <div class="opt-note">
+          פשוט וסימטרי. אבל <span class="bad">"מאחוריכם" ממזג שלושה דברים</span> — היינו, דילגנו
+          וחלף — למספר אחד, בדיוק ההבחנה ששאלת עליה.
+        </div>
+      </div>
+      <div class="hr"></div>
+
+      <!-- ================= OPTION 3 ================= -->
+      <div class="opt">
+        <div class="opt-head"><span class="n">אפשרות 3 · פירוט מלא</span></div>
+        <div class="glance-day">
+          <div class="seg" aria-hidden="true">
+            <i class="done"></i>
+            <i class="passed"></i>
+            <i class="skipped"></i>
+            <i class="now"></i>
+            <i></i>
+            <i></i>
+          </div>
+          <div class="mini">
+            <span><b class="ok">1</b> היינו</span>
+            <span><b class="miss">1</b> דילגנו</span>
+            <span><b class="passed">1</b> חלף</span>
+            <span><b>3</b> נותרו</span>
+          </div>
+          <div class="glance-foot">
+            🔒 עוגן קשיח <b class="mono" dir="ltr">1 · 19:30</b> · היום מסתיים
+            <b class="mono" dir="ltr">~23:15</b>
+          </div>
+        </div>
+        <div class="opt-note">
+          הכי מדויק — כל מצב בנפרד. אבל <span class="bad">4+ מספרים זה הרבה למבט חטוף</span>; קורא
+          כמו דו"ח, לא כמו הצצה.
+        </div>
+      </div>
+    </div>
+  </body>
+</html>
