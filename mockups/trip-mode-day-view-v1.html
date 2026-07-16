@@ -1099,6 +1099,45 @@
           0 0 0 2px var(--indigo),
           0 0 0 3.5px rgba(255, 255, 255, 0.55);
       }
+      /* light (plan-chrome) comparison card, matching the real app screenshot */
+      .tb.light {
+        background: var(--card);
+        background-image:
+          repeating-linear-gradient(0deg, rgba(110, 89, 214, 0.05) 0 1px, transparent 1px 22px),
+          repeating-linear-gradient(90deg, rgba(110, 89, 214, 0.05) 0 1px, transparent 1px 22px);
+      }
+      .tb.light .cap {
+        color: var(--muted);
+      }
+      .tb.light .cap b {
+        color: var(--ink);
+      }
+      .tb.light .trip-name {
+        color: var(--ink);
+      }
+      .tb.light .trip-name .chev,
+      .tb.light .trip-sub {
+        color: var(--muted);
+      }
+      /* the REAL current settings control in Plan: a violet-tinted, violet-outlined
+         circle (frontend .gear-btn under [data-mode='plan']) — not a solid chip */
+      .gear-plan {
+        width: 30px;
+        height: 30px;
+        border-radius: 999px;
+        display: grid;
+        place-items: center;
+        background: var(--plan-tint);
+        border: 2px solid rgba(110, 89, 214, 0.4);
+        color: var(--plan-deep);
+        font-size: 13px;
+      }
+      .av.ring-plan {
+        border: 2px solid var(--card);
+        box-shadow:
+          0 0 0 2px var(--card),
+          0 0 0 3.5px rgba(110, 89, 214, 0.5);
+      }
 
       /* ── annotation cards ──────────────────────────────────────── */
       .note {
@@ -1644,6 +1683,21 @@
                 </div>
               </div>
             </div>
+            <div class="note">
+              <h3><span class="pin">E</span> The view lands on now</h3>
+              <p>
+                On a long day, opening today shouldn’t dump you at 07:00. The view
+                <b>auto-scrolls to the now-line on open</b>, with a passed event or two left peeking
+                above for context — so “what now / what next” is the first thing on screen, not a
+                scroll away.
+              </p>
+              <p>
+                Once only, and only on <b>today</b> (a past/future day has no “now,” so it opens at
+                the top). It never fights a manual scroll after, and a short day that already fits
+                doesn’t move. Smooth by default, instant under <code>prefers-reduced-motion</code>.
+                The phone above is roughly where you’d land.
+              </p>
+            </div>
             <div class="rec">
               <div class="lab">Recommendation</div>
               <p>
@@ -2129,46 +2183,52 @@
         >
           While we’re in the top bar — the account &amp; settings cluster
         </h3>
-        <p style="font-size: 13.5px; color: var(--stage-dim); max-width: 62ch; margin-bottom: 16px">
-          A small tidy-up you flagged: today the settings gear is a third filled circle sitting
-          beside the identity avatars, so three round chips compete. Separating <i>identity</i> from
-          <i>controls</i> reads cleaner.
+        <p style="font-size: 13.5px; color: var(--stage-dim); max-width: 64ch; margin-bottom: 8px">
+          You flagged this, and checking against the real app I’d overstated it — so here’s the
+          honest before/after (Plan chrome, to match your screenshot):
+        </p>
+        <p style="font-size: 13px; color: var(--stage-faint); max-width: 64ch; margin-bottom: 16px">
+          The gear is <i>not</i> a solid identity chip today — it’s already a violet-tinted,
+          violet-outlined circle, and your avatar is already ringed. The real snag is subtler: it’s
+          still a third <i>circle</i> in the row, so the control sits inside the identity cluster.
         </p>
         <div class="topbars">
-          <div class="tb">
-            <div class="cap"><b>Current</b> — gear is a filled circle, one of three chips</div>
+          <div class="tb light">
+            <div class="cap">
+              <b>Current (real)</b> — outlined violet circle, inside the identity row
+            </div>
             <div class="mini-header">
               <div class="trip-row">
                 <div>
                   <div class="trip-name" style="font-size: 20px">
-                    🇯🇵 יפן 2026 <span class="chev">▾</span>
+                    🇬🇷 אתונה ’26 <span class="chev">▾</span>
                   </div>
-                  <div class="trip-sub">טוקיו <span class="dot">·</span> יום 3 מתוך 9</div>
+                  <div class="trip-sub">אתונה <span class="dot">·</span> יום 3 מתוך 7</div>
                 </div>
                 <div class="header-actions">
-                  <div class="av plain" style="background: #6e8cc8">ד</div>
-                  <div class="av plain ring2" style="background: #b06e9c">א</div>
-                  <div class="gear-round">⚙</div>
+                  <div class="gear-plan">⚙</div>
+                  <div class="av plain ring-plan" style="background: #d89a3a">A</div>
+                  <div class="av plain" style="background: #e0a94b; border-color: #fff">N</div>
                 </div>
               </div>
             </div>
           </div>
-          <div class="tb">
-            <div class="cap" style="color: #8fe3b6">
-              <b>Recommended</b> — identity chips, then a quiet ghost control
+          <div class="tb light">
+            <div class="cap" style="color: #3c9a6b">
+              <b>Recommended</b> — a borderless control, outside the identity row
             </div>
             <div class="mini-header">
               <div class="trip-row">
                 <div>
                   <div class="trip-name" style="font-size: 20px">
-                    🇯🇵 יפן 2026 <span class="chev">▾</span>
+                    🇬🇷 אתונה ’26 <span class="chev">▾</span>
                   </div>
-                  <div class="trip-sub">טוקיו <span class="dot">·</span> יום 3 מתוך 9</div>
+                  <div class="trip-sub">אתונה <span class="dot">·</span> יום 3 מתוך 7</div>
                 </div>
                 <div class="header-actions">
-                  <div class="av plain" style="background: #6e8cc8">ד</div>
-                  <div class="av plain ring2" style="background: #b06e9c">א</div>
-                  <div class="gear-ghost">⚙</div>
+                  <div class="gear-ghost" style="color: var(--plan-deep)">⚙</div>
+                  <div class="av plain ring-plan" style="background: #d89a3a">A</div>
+                  <div class="av plain" style="background: #e0a94b; border-color: #fff">N</div>
                 </div>
               </div>
             </div>
@@ -2177,10 +2237,12 @@
         <div class="rec" style="margin-top: 16px">
           <div class="lab">Recommendation</div>
           <p>
-            Demote settings to a <b>borderless ghost icon</b> — identity is round chips (member
-            cluster + your ringed avatar), the gear is a UI control, not a chip. It matches
-            design-language’s “emoji are content, icons are UI,” drops one competing circle, and
-            follows the mode: the ghost tints <b>violet</b> in Plan, stays cool blue-grey in Trip.
+            Smaller change than I first framed: the gear is already styled as a control, it’s just
+            still <i>circular</i>. <b>Drop the circle</b> — a borderless ghost icon so settings
+            visibly leaves the identity row. Identity stays round chips (member cluster + your
+            ringed avatar); the gear reads as UI (“emoji are content, icons are UI”). Mode-tinted:
+            violet in Plan, cool blue-grey in Trip. If you’d rather keep the outlined circle, that’s
+            defensible too — this is the lightest of the proposals.
           </p>
         </div>
       </section>
@@ -2510,8 +2572,16 @@
           <div class="row">
             <div class="h">Now-line</div>
             <div class="d">
-              Live amber time-rule at the current moment; splits the day into behind / ahead;
-              carries the day tab’s one pulse.
+              A quiet soft-amber hairline at the current moment; splits the day into behind / ahead;
+              sits below the live event in the hierarchy (no chip, glow, or pulse).
+            </div>
+            <div class="t"><span class="badge-new">NEW</span></div>
+          </div>
+          <div class="row">
+            <div class="h">Land on now</div>
+            <div class="d">
+              Opening today auto-scrolls to the now-line (a passed event or two peeking above); once
+              only, today only, never fights a manual scroll.
             </div>
             <div class="t"><span class="badge-new">NEW</span></div>
           </div>
