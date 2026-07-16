@@ -552,6 +552,14 @@ export function useVerbs() {
       void applyDelay(deps, e, -DELAY_STEP_MINUTES);
       toast(ICONS.delay, t.toast.softEarlier(DELAY_STEP_MINUTES), undo);
     },
+    // Move a soft event by an arbitrary delta — the "הזז" overlap-resolve
+    // (ADR-0041), a manual ripple: shift to a clean slot, duration preserved, and
+    // any new downstream overlap flows through the same ripple suggestion.
+    moveBy: (e: TripEvent, minutes: number) => {
+      if (minutes === 0) return;
+      void applyDelay(deps, e, minutes);
+      toast(ICONS.delay, t.toast.eventMoved, undo);
+    },
     onWay: (_e: TripEvent) => toast(ICONS.share, t.toast.onWayShared),
     navigate: (_e: TripEvent) => toast(ICONS.navigate, t.toast.openingNav),
     // Place a shelf idea onto a day. With `fields` (from the builder's

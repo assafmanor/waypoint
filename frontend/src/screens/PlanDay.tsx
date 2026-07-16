@@ -67,6 +67,10 @@ export function PlanDay() {
   // A gap the user tapped "＋ שבץ" on — opens a chooser to drop an existing shelf
   // idea into the gap's slot, or start a fresh event there (#21).
   const [gapChoice, setGapChoice] = useState<GapDefaults | null>(null);
+  // An overlap cluster being resolved via "הזז" (ADR-0041), and the soft event
+  // chosen to move (null = still choosing which one).
+  const [resolveCluster, setResolveCluster] = useState<TimeGroup | null>(null);
+  const [resolveMover, setResolveMover] = useState<TripEvent | null>(null);
 
   const dayEvents = events
     .filter((e) => e.date === activeDate && e.status !== EVENT_STATUS.SKIPPED)
@@ -124,6 +128,15 @@ export function PlanDay() {
     gripProps,
     onEdit: (e) => setFormTarget(e),
     onGapFill: (fill) => setGapChoice(fill),
+    onResolve: (cluster) => {
+      setResolveCluster(cluster);
+      setResolveMover(null);
+    },
+  };
+
+  const closeResolve = () => {
+    setResolveCluster(null);
+    setResolveMover(null);
   };
 
   return (
@@ -230,6 +243,25 @@ export function PlanDay() {
         />
       )}
 
+      {resolveCluster && resolveCluster.kind === 'cluster' && (
+        <ResolveSheet
+          cluster={resolveCluster}
+          mover={resolveMover}
+          tz={tz}
+          onChooseMover={setResolveMover}
+          onBack={() => setResolveMover(null)}
+          onMove={(mover, minutes) => {
+            verbs.moveBy(mover, minutes);
+            closeResolve();
+          }}
+          onOther={(mover) => {
+            closeResolve();
+            setFormTarget(mover);
+          }}
+          onClose={closeResolve}
+        />
+      )}
+
       {(formTarget || scheduleMaybe) && (
         <EventForm
           event={formTarget && formTarget !== 'new' ? formTarget : null}
@@ -239,6 +271,113 @@ export function PlanDay() {
         />
       )}
     </div>
+  );
+}
+
+// The "הזז" overlap-resolve (ADR-0041): pick which SOFT event to move (hard
+// members show as disabled anchors), then a one-tap clean slot before/after the
+// rest of the cluster, or the exact time-setter (EventForm). Moving is a manual
+// ripple — duration preserved, downstream overlap flows through the ripple bar.
+function ResolveSheet({
+  cluster,
+  mover,
+  tz,
+  onChooseMover,
+  onBack,
+  onMove,
+  onOther,
+  onClose,
+}: {
+  cluster: Extract<TimeGroup, { kind: 'cluster' }>;
+  mover: TripEvent | null;
+  tz: string;
+  onChooseMover: (e: TripEvent) => void;
+  onBack: () => void;
+  onMove: (mover: TripEvent, minutes: number) => void;
+  onOther: (mover: TripEvent) => void;
+  onClose: () => void;
+}) {
+  const members = cluster.items.map((i) => i.event);
+  const softMovers = members.filter((e) => e.kind === EVENT_KIND.SOFT);
+  const hardAnchors = members.filter((e) => e.kind === EVENT_KIND.HARD);
+  const fmt = (ms: number) => formatTime(new Date(ms), tz);
+
+  if (!mover) {
+    return (
+      <Sheet title={t.planDay.resolveTitle} onClose={onClose}>
+        <div className="resolve-sub">{t.planDay.resolveChoose}</div>
+        {softMovers.map((e) => (
+          <button key={e.id} className="resolve-mover" onClick={() => onChooseMover(e)}>
+            <span className="ic" aria-hidden="true">
+              {e.icon}
+            </span>
+            <span className="nm">{e.title}</span>
+            <span className="tm" dir="ltr">
+              {formatTime(e.startsAt!, tz)}
+              {e.endsAt && `–${formatTime(e.endsAt, tz)}`}
+            </span>
+            <span className="chev" aria-hidden="true">
+              ▾
+            </span>
+          </button>
+        ))}
+        {hardAnchors.map((e) => (
+          <div key={e.id} className="resolve-mover anchor">
+            <span className="ic" aria-hidden="true">
+              {e.icon}
+            </span>
+            <span className="nm">{e.title}</span>
+            <span className="anchor-note">
+              {ICONS.lock} {t.planDay.resolveAnchor}
+            </span>
+          </div>
+        ))}
+      </Sheet>
+    );
+  }
+
+  const others = members.filter((e) => e.id !== mover.id);
+  const mStart = Date.parse(mover.startsAt!);
+  const dur = Date.parse(mover.endsAt ?? mover.startsAt!) - mStart;
+  const othersStart = Math.min(...others.map((e) => Date.parse(e.startsAt!)));
+  const othersEnd = Math.max(...others.map((e) => Date.parse(e.endsAt ?? e.startsAt!)));
+  const afterStart = othersEnd;
+  const beforeStart = othersStart - dur;
+
+  return (
+    <Sheet title={t.planDay.resolveFor(mover.title)} onClose={onClose}>
+      {softMovers.length > 1 && (
+        <button className="resolve-backbtn" onClick={onBack}>
+          ‹ {t.planDay.resolveBack}
+        </button>
+      )}
+      <button
+        className="resolve-opt"
+        onClick={() => onMove(mover, Math.round((afterStart - mStart) / 60000))}
+      >
+        <span className="ttl">
+          {t.planDay.resolveAfter} · {others.length === 1 ? others[0].title : t.planDay.overlapping}
+        </span>
+        <span className="tm" dir="ltr">
+          {fmt(afterStart)}
+        </span>
+      </button>
+      <button
+        className="resolve-opt"
+        onClick={() => onMove(mover, Math.round((beforeStart - mStart) / 60000))}
+      >
+        <span className="ttl">
+          {t.planDay.resolveBefore} ·{' '}
+          {others.length === 1 ? others[0].title : t.planDay.overlapping}
+        </span>
+        <span className="tm" dir="ltr">
+          {fmt(beforeStart)}
+        </span>
+      </button>
+      <button className="resolve-opt other" onClick={() => onOther(mover)}>
+        {t.planDay.resolveOther}
+      </button>
+    </Sheet>
   );
 }
 
@@ -299,6 +438,7 @@ interface BuilderCtx {
   };
   onEdit: (event: TripEvent) => void;
   onGapFill: (fill: GapDefaults) => void;
+  onResolve: (cluster: TimeGroup) => void;
 }
 
 const groupMembers = (g: TimeGroup): TimeItem[] => (g.kind === 'cluster' ? g.items : [g.item]);
@@ -362,11 +502,18 @@ function BuilderGroups({
             {g.kind === 'cluster' ? (
               <div className="bld-cluster">
                 <div className="bld-cluster-head">
-                  <span aria-hidden="true">⧉</span> {t.planDay.overlapping} ·{' '}
-                  <span className="win" dir="ltr">
-                    {formatTime(new Date(g.startMs), ctx.tz)}–
-                    {formatTime(new Date(g.endMs), ctx.tz)}
+                  <span className="lead">
+                    <span aria-hidden="true">⧉</span> {t.planDay.overlapping} ·{' '}
+                    <span className="win" dir="ltr">
+                      {formatTime(new Date(g.startMs), ctx.tz)}–
+                      {formatTime(new Date(g.endMs), ctx.tz)}
+                    </span>
                   </span>
+                  {!ctx.readOnly && (
+                    <button className="bld-resolve" onClick={() => ctx.onResolve(g)}>
+                      {t.planDay.resolve} ▾
+                    </button>
+                  )}
                 </div>
                 {g.items.map((item, idx) => (
                   <BuilderNode
