@@ -55,8 +55,7 @@
         --stage-line: rgba(159, 176, 212, 0.16);
 
         --font-head: 'Secular One', system-ui, sans-serif;
-        --font-body:
-          'Assistant', system-ui, -apple-system, 'Segoe UI', sans-serif;
+        --font-body: 'Assistant', system-ui, -apple-system, 'Segoe UI', sans-serif;
         --font-mono: 'JetBrains Mono', ui-monospace, 'SFMono-Regular', monospace;
       }
       * {
@@ -73,8 +72,7 @@
         color: var(--stage-ink);
         background:
           radial-gradient(130% 90% at 82% -8%, #2a3e68 0%, transparent 52%),
-          radial-gradient(130% 90% at -5% 108%, #1a2a4a 0%, transparent 48%),
-          #0b1424;
+          radial-gradient(130% 90% at -5% 108%, #1a2a4a 0%, transparent 48%), #0b1424;
         -webkit-font-smoothing: antialiased;
         line-height: 1.5;
         padding: 40px 20px 80px;
@@ -280,7 +278,9 @@
         flex: 0 0 auto;
       }
       .av.account {
-        box-shadow: 0 0 0 2px var(--indigo), 0 0 0 3.5px rgba(255, 255, 255, 0.5);
+        box-shadow:
+          0 0 0 2px var(--indigo),
+          0 0 0 3.5px rgba(255, 255, 255, 0.5);
       }
       .gear {
         color: #9daac8;
@@ -446,11 +446,7 @@
         overflow: hidden;
       }
       .item.soft {
-        background: repeating-linear-gradient(
-          -45deg,
-          #fff 0 9px,
-          #fbfaf7 9px 18px
-        );
+        background: repeating-linear-gradient(-45deg, #fff 0 9px, #fbfaf7 9px 18px);
         border: 1px dashed var(--soft-line);
       }
       .item.now {
@@ -770,8 +766,7 @@
       /* archive wash for a fully past day */
       .body.archive {
         background:
-          linear-gradient(0deg, rgba(120, 110, 92, 0.05), rgba(120, 110, 92, 0.05)),
-          var(--screen);
+          linear-gradient(0deg, rgba(120, 110, 92, 0.05), rgba(120, 110, 92, 0.05)), var(--screen);
         filter: saturate(0.88);
       }
       .archive-banner {
@@ -1374,15 +1369,16 @@
       <!-- ══ masthead ══ -->
       <header class="masthead">
         <div class="eyebrow">Trip mode · day view · proposal v1</div>
-        <h1 class="title">Where are we in the day, what already happened, and does “סיימנו” still earn its tap?</h1>
+        <h1 class="title">
+          Where are we in the day, what already happened, and does “סיימנו” still earn its tap?
+        </h1>
         <p class="lede">
-          A set of changes to the on-the-ground day view, all derived from the
-          clock — nothing new is stored. <b>A now-line</b> anchors the current
-          moment and splits the day into behind / ahead. <b>The Done button is
-          reframed</b> from a loud hygiene verb into a quiet, optional “we did
-          this” record. And <b>past days read as an archive</b> — in the list and
-          in the top bar. Plus the boundary calls that followed review: what stays
-          Trip-only vs. crosses into Plan, and how “new event” is scoped.
+          A set of changes to the on-the-ground day view, all derived from the clock — nothing new
+          is stored. <b>A now-line</b> anchors the current moment and splits the day into behind /
+          ahead. <b>The Done button is reframed</b> from a loud hygiene verb into a quiet, optional
+          “we did this” record. And <b>past days read as an archive</b> — in the list and in the top
+          bar. Plus the boundary calls that followed review: what stays Trip-only vs. crosses into
+          Plan, and how “new event” is scoped.
         </p>
         <div class="adr-row">
           <span class="adr">builds on <b>ADR-0011</b> hard/soft</span>
@@ -1400,11 +1396,10 @@
           <div>
             <h2>A now-line, and events that recede once they’re behind you</h2>
             <p>
-              Today the only time cue in the list is an amber ring on the “now”
-              event; a 2 pm plan still sitting there at 4 pm looks identical to an
-              upcoming one. Two clock-derived devices fix that — a live now-line,
-              and phase treatment for what’s passed. (ADR-0027 already decided the
-              phase model; this is where it becomes visible.)
+              Today the only time cue in the list is an amber ring on the “now” event; a 2 pm plan
+              still sitting there at 4 pm looks identical to an upcoming one. Two clock-derived
+              devices fix that — a live now-line, and phase treatment for what’s passed. (ADR-0027
+              already decided the phase model; this is where it becomes visible.)
             </p>
           </div>
         </div>
@@ -1414,7 +1409,10 @@
             <div class="cap" dir="ltr">v1 — too loud</div>
             <div class="ghost"></div>
             <div class="nowline loud">
-              <span class="chip"><span class="blip"></span><span dir="ltr">16:42</span> <span class="lbl">עכשיו</span></span>
+              <span class="chip"
+                ><span class="blip"></span><span dir="ltr">16:42</span>
+                <span class="lbl">עכשיו</span></span
+              >
               <span class="rule"></span>
             </div>
             <div class="ghost"></div>
@@ -1423,7 +1421,10 @@
             <div class="cap pick" dir="ltr">recommended — a quiet reference</div>
             <div class="ghost"></div>
             <div class="nowline">
-              <span class="chip"><span class="blip"></span><span dir="ltr">16:42</span> <span class="lbl">עכשיו</span></span>
+              <span class="chip"
+                ><span class="blip"></span><span dir="ltr">16:42</span>
+                <span class="lbl">עכשיו</span></span
+              >
               <span class="rule"></span>
             </div>
             <div class="ghost"></div>
@@ -1440,12 +1441,8 @@
               <div class="header">
                 <div class="trip-row">
                   <div>
-                    <div class="trip-name">
-                      🇯🇵 יפן 2026 <span class="chev">▾</span>
-                    </div>
-                    <div class="trip-sub">
-                      טוקיו <span class="dot">·</span> יום 3 מתוך 9
-                    </div>
+                    <div class="trip-name">🇯🇵 יפן 2026 <span class="chev">▾</span></div>
+                    <div class="trip-sub">טוקיו <span class="dot">·</span> יום 3 מתוך 9</div>
                   </div>
                   <div class="header-actions">
                     <div class="av" style="background: #6e8cc8">ד</div>
@@ -1462,7 +1459,9 @@
                     <button class="day-pill past">ב<span class="n" dir="ltr">15</span></button>
                   </div>
                   <div class="day-pill-wrap">
-                    <button class="day-pill on today-anchor">ג<span class="n" dir="ltr">16</span></button>
+                    <button class="day-pill on today-anchor">
+                      ג<span class="n" dir="ltr">16</span>
+                    </button>
                   </div>
                   <div class="day-pill-wrap">
                     <button class="day-pill future">ד<span class="n" dir="ltr">17</span></button>
@@ -1498,7 +1497,9 @@
                   <div class="face">
                     <div class="badge">⛩️</div>
                     <div class="main">
-                      <div class="t">מקדש סנסו-ג׳י <span class="tag-phase">עבר · לא סומן</span></div>
+                      <div class="t">
+                        מקדש סנסו-ג׳י <span class="tag-phase">עבר · לא סומן</span>
+                      </div>
                       <div class="m">אסאקוסה · נקמיסה</div>
                     </div>
                     <span class="time" dir="ltr">14:30</span>
@@ -1513,7 +1514,10 @@
 
                 <!-- the now-line -->
                 <div class="nowline" aria-label="עכשיו 16:42">
-                  <span class="chip"><span class="blip"></span><span dir="ltr">16:42</span> <span class="lbl">עכשיו</span></span>
+                  <span class="chip"
+                    ><span class="blip"></span><span dir="ltr">16:42</span>
+                    <span class="lbl">עכשיו</span></span
+                  >
                   <span class="rule"></span>
                 </div>
 
@@ -1522,7 +1526,9 @@
                   <div class="face">
                     <div class="badge">🚶</div>
                     <div class="main">
-                      <div class="t">זמן חופשי · שינג׳וקו <span class="tag-now">גמיש · עכשיו</span></div>
+                      <div class="t">
+                        זמן חופשי · שינג׳וקו <span class="tag-now">גמיש · עכשיו</span>
+                      </div>
                       <div class="m">מתחם החנויות · עד 18:00</div>
                     </div>
                     <span class="time" dir="ltr">16:30</span>
@@ -1570,71 +1576,81 @@
                 <button class="on"><span class="ic">📅</span> יום-יום</button>
               </div>
             </div>
-            <div class="phone-cap">Today · 16:42 — two events behind the line, one live, two ahead</div>
+            <div class="phone-cap">
+              Today · 16:42 — two events behind the line, one live, two ahead
+            </div>
           </div>
 
           <div class="stack">
             <div class="note">
               <h3><span class="pin">A</span> The now-line — dialed down</h3>
               <p>
-                A <b>soft amber hairline</b> with a flat mono time label, inserted
-                at the current moment. It stays amber (that’s the color’s meaning —
-                time), but drops the dark chip, the glow and the pulse from v1, so
-                it <b>reads quieter than the live event above it</b>.
+                A <b>soft amber hairline</b> with a flat mono time label, inserted at the current
+                moment. It stays amber (that’s the color’s meaning — time), but drops the dark chip,
+                the glow and the pulse from v1, so it
+                <b>reads quieter than the live event above it</b>.
               </p>
               <p>
-                Hierarchy is the fix for “too loud”: the amber <b>ring on the now
-                event stays the one accent</b>; the line is just a reference for
-                where the moment falls. It travels down the list as time moves —
-                the movement is the liveness, no pulse needed.
+                Hierarchy is the fix for “too loud”: the amber
+                <b>ring on the now event stays the one accent</b>; the line is just a reference for
+                where the moment falls. It travels down the list as time moves — the movement is the
+                liveness, no pulse needed.
               </p>
             </div>
             <div class="note">
               <h3><span class="pin">B</span> Passed events recede</h3>
               <p>
-                Anything behind the line drops to a quiet, desaturated row —
-                present for reference, no longer competing. The phase is
-                <b>derived from the clock</b>, never written
-                (<code>deriveNow</code> already does this for the board).
+                Anything behind the line drops to a quiet, desaturated row — present for reference,
+                no longer competing. The phase is
+                <b>derived from the clock</b>, never written (<code>deriveNow</code> already does
+                this for the board).
               </p>
             </div>
             <div class="note">
               <h3><span class="pin">C</span> Slipped &amp; unresolved</h3>
               <p>
                 A soft plan whose time passed with no tap (סנסו-ג׳י, 14:30) reads
-                <b>עבר · לא סומן</b> and offers a one-tap settle right there —
-                the honest “still on?” moment from ADR-0027, not a nag.
+                <b>עבר · לא סומן</b> and offers a one-tap settle right there — the honest “still
+                on?” moment from ADR-0027, not a nag.
               </p>
             </div>
             <div class="note">
               <h3><span class="pin">D</span> The nudge adapts to phase</h3>
               <p>
-                A small behavior the phase model makes honest: the ±30 stepper
-                only offers moves that are actually possible.
+                A small behavior the phase model makes honest: the ±30 stepper only offers moves
+                that are actually possible.
               </p>
               <div class="nudge" style="margin-top: 10px">
                 <div class="r">
                   <span class="ph">Upcoming</span>
-                  <span class="step"><span class="pill on">−30</span><span class="pill on">+30</span><span class="why">both ways</span></span>
+                  <span class="step"
+                    ><span class="pill on">−30</span><span class="pill on">+30</span
+                    ><span class="why">both ways</span></span
+                  >
                 </div>
                 <div class="r">
                   <span class="ph">Now</span>
-                  <span class="step"><span class="pill off">−30</span><span class="pill on">+30</span><span class="why">can’t pull into the past</span></span>
+                  <span class="step"
+                    ><span class="pill off">−30</span><span class="pill on">+30</span
+                    ><span class="why">can’t pull into the past</span></span
+                  >
                 </div>
                 <div class="r">
                   <span class="ph">Passed / past day</span>
-                  <span class="step"><span class="pill off">−30</span><span class="pill off">+30</span><span class="why">retiming history is locked</span></span>
+                  <span class="step"
+                    ><span class="pill off">−30</span><span class="pill off">+30</span
+                    ><span class="why">retiming history is locked</span></span
+                  >
                 </div>
               </div>
             </div>
             <div class="rec">
               <div class="lab">Recommendation</div>
               <p>
-                Ship <b>both</b>: the now-line and the derived phase treatment.
-                The phase model is already an accepted decision (ADR-0027) that the
-                concurrency rewrite never surfaced — this makes it visible, and the
-                now-line is the small addition that turns “a list of events” into
-                “the day, and where we are in it.”
+                Ship <b>both</b>: the now-line and the derived phase treatment. The phase model is
+                already an accepted decision (ADR-0027) that the concurrency rewrite never surfaced
+                — this makes it visible, and the now-line is the small addition that turns “a list
+                of events” into “the day, and where we are in it.”
               </p>
             </div>
           </div>
@@ -1648,10 +1664,9 @@
           <div>
             <h2>“סיימנו”, rethought — from board hygiene to a quiet record</h2>
             <p>
-              Today “סיימנו” sets <code>status = DONE</code>: the row dims to 50%,
-              keeps its full slot, and the board skips past it. The question is
-              whether that tap is still worth asking for once the clock does most
-              of the work.
+              Today “סיימנו” sets <code>status = DONE</code>: the row dims to 50%, keeps its full
+              slot, and the board skips past it. The question is whether that tap is still worth
+              asking for once the clock does most of the work.
             </p>
           </div>
         </div>
@@ -1667,18 +1682,17 @@
           <div class="q">
             <div class="k">What changed?</div>
             <p>
-              The now-line + passed phase (§1) do the hygiene job <b>for free</b> —
-              a passed event already recedes and falls out of Now/Next with no tap.
-              Only the <b>record</b> job is left.
+              The now-line + passed phase (§1) do the hygiene job <b>for free</b> — a passed event
+              already recedes and falls out of Now/Next with no tap. Only the <b>record</b> job is
+              left.
             </p>
           </div>
           <div class="q">
             <div class="k">Is the record worth keeping?</div>
             <p>
-              Yes. Without it, a soft plan you <b>did</b> is indistinguishable from
-              one you <b>blew off</b> — both just read “passed.” It’s the positive
-              twin of Skip, and it’s what a future “trip wrapped” retrospective
-              (ADR-0040) is built from.
+              Yes. Without it, a soft plan you <b>did</b> is indistinguishable from one you
+              <b>blew off</b> — both just read “passed.” It’s the positive twin of Skip, and it’s
+              what a future “trip wrapped” retrospective (ADR-0040) is built from.
             </p>
           </div>
         </div>
@@ -1707,7 +1721,9 @@
           <div class="opt pick">
             <div class="verdict">Option C · recommended</div>
             <h4>Keep it, demote &amp; reframe</h4>
-            <p>An optional, affirmative “we did this” — quiet in the moment, useful behind the line.</p>
+            <p>
+              An optional, affirmative “we did this” — quiet in the moment, useful behind the line.
+            </p>
             <ul>
               <li class="pro">Preserves the record + future retrospective</li>
               <li class="pro">No friction: it’s where you already look back</li>
@@ -1721,35 +1737,33 @@
             <div class="note">
               <h3><span class="pin">1</span> Ahead of now: quiet</h3>
               <p>
-                On an upcoming or live soft event, the forward verbs lead —
-                Navigate, Skip, nudge. <b>סיימנו</b> is present but last, in
-                <code>--ok</code> green (a status, not amber — it isn’t a clock
-                event). You <i>can</i> mark it early; you rarely need to.
+                On an upcoming or live soft event, the forward verbs lead — Navigate, Skip, nudge.
+                <b>סיימנו</b> is present but last, in <code>--ok</code> green (a status, not amber —
+                it isn’t a clock event). You <i>can</i> mark it early; you rarely need to.
               </p>
             </div>
             <div class="note">
               <h3><span class="pin">2</span> Behind the line: where it earns its tap</h3>
               <p>
-                On a passed-but-unmarked soft event, the settle strip surfaces the
-                same choice as a light inline pair — <b>✓ היינו / דלג</b>. One tap
-                to make the day’s record true, exactly when you’d glance back.
+                On a passed-but-unmarked soft event, the settle strip surfaces the same choice as a
+                light inline pair — <b>✓ היינו / דלג</b>. One tap to make the day’s record true,
+                exactly when you’d glance back.
               </p>
             </div>
             <div class="note">
               <h3><span class="pin">3</span> Done reads as done</h3>
               <p>
-                A completed event settles into a calm green-checked row instead of
-                a fat 50%-opacity ghost holding its slot. Reversible via the row’s
+                A completed event settles into a calm green-checked row instead of a fat 50%-opacity
+                ghost holding its slot. Reversible via the row’s
                 <b>שחזר</b>, unchanged.
               </p>
             </div>
             <div class="rec">
               <div class="lab">Recommendation</div>
               <p>
-                <b>Keep סיימנו — demoted and reframed (Option C).</b> Never
-                auto-write it (ADR-0027 holds). Its natural home is the behind-now
-                settle zone and the past-day archive (§3), where “did we?” is a
-                real question and one tap answers it.
+                <b>Keep סיימנו — demoted and reframed (Option C).</b> Never auto-write it (ADR-0027
+                holds). Its natural home is the behind-now settle zone and the past-day archive
+                (§3), where “did we?” is a real question and one tap answers it.
               </p>
             </div>
           </div>
@@ -1776,7 +1790,9 @@
                   <div class="face">
                     <div class="badge">⛩️</div>
                     <div class="main">
-                      <div class="t">מקדש סנסו-ג׳י <span class="tag-phase">עבר · לא סומן</span></div>
+                      <div class="t">
+                        מקדש סנסו-ג׳י <span class="tag-phase">עבר · לא סומן</span>
+                      </div>
                       <div class="m">אסאקוסה · נקמיסה</div>
                     </div>
                     <span class="time" dir="ltr">14:30</span>
@@ -1821,17 +1837,24 @@
           <div>
             <h2>Past days feel like an archive — in the list and the top bar</h2>
             <p>
-              While a trip is live you can still flip back to an earlier day.
-              ADR-0029 already locks editing there (create/move/delete off; Done,
-              Skip, Navigate stay) — but nothing yet <i>looks</i> like history. It
-              should read settled the moment you land on it, and the way back to
-              today should be one tap.
+              While a trip is live you can still flip back to an earlier day. ADR-0029 already locks
+              editing there (create/move/delete off; Done, Skip, Navigate stay) — but nothing yet
+              <i>looks</i> like history. It should read settled the moment you land on it, and the
+              way back to today should be one tap.
             </p>
           </div>
         </div>
 
         <!-- top-bar states -->
-        <h3 style="font-family: var(--font-head); font-weight: 400; font-size: 18px; color: #fff; margin-bottom: 14px">
+        <h3
+          style="
+            font-family: var(--font-head);
+            font-weight: 400;
+            font-size: 18px;
+            color: #fff;
+            margin-bottom: 14px;
+          "
+        >
           Top bar · three states
         </h3>
         <div class="topbars">
@@ -1840,24 +1863,50 @@
             <div class="cap"><b>Today</b> — selected = live anchor (amber, unchanged)</div>
             <div class="mini-header">
               <div class="day-strip">
-                <div class="day-pill-wrap"><button class="day-pill past">א<span class="n" dir="ltr">14</span></button></div>
-                <div class="day-pill-wrap"><button class="day-pill past">ב<span class="n" dir="ltr">15</span></button></div>
-                <div class="day-pill-wrap"><button class="day-pill on today-anchor">ג<span class="n" dir="ltr">16</span></button></div>
-                <div class="day-pill-wrap"><button class="day-pill future">ד<span class="n" dir="ltr">17</span></button></div>
-                <div class="day-pill-wrap"><button class="day-pill future">ה<span class="n" dir="ltr">18</span></button></div>
+                <div class="day-pill-wrap">
+                  <button class="day-pill past">א<span class="n" dir="ltr">14</span></button>
+                </div>
+                <div class="day-pill-wrap">
+                  <button class="day-pill past">ב<span class="n" dir="ltr">15</span></button>
+                </div>
+                <div class="day-pill-wrap">
+                  <button class="day-pill on today-anchor">
+                    ג<span class="n" dir="ltr">16</span>
+                  </button>
+                </div>
+                <div class="day-pill-wrap">
+                  <button class="day-pill future">ד<span class="n" dir="ltr">17</span></button>
+                </div>
+                <div class="day-pill-wrap">
+                  <button class="day-pill future">ה<span class="n" dir="ltr">18</span></button>
+                </div>
               </div>
             </div>
           </div>
           <!-- past day -->
           <div class="tb">
-            <div class="cap"><b>Viewing a past day</b> — neutral selection; today keeps its amber dot</div>
+            <div class="cap">
+              <b>Viewing a past day</b> — neutral selection; today keeps its amber dot
+            </div>
             <div class="mini-header">
               <div class="day-strip">
-                <div class="day-pill-wrap"><button class="day-pill past">א<span class="n" dir="ltr">14</span></button></div>
-                <div class="day-pill-wrap"><button class="day-pill sel-history">ב<span class="n" dir="ltr">15</span></button></div>
-                <div class="day-pill-wrap"><button class="day-pill today-anchor">ג<span class="n" dir="ltr">16</span></button></div>
-                <div class="day-pill-wrap"><button class="day-pill future">ד<span class="n" dir="ltr">17</span></button></div>
-                <div class="day-pill-wrap"><button class="day-pill future">ה<span class="n" dir="ltr">18</span></button></div>
+                <div class="day-pill-wrap">
+                  <button class="day-pill past">א<span class="n" dir="ltr">14</span></button>
+                </div>
+                <div class="day-pill-wrap">
+                  <button class="day-pill sel-history">ב<span class="n" dir="ltr">15</span></button>
+                </div>
+                <div class="day-pill-wrap">
+                  <button class="day-pill today-anchor">
+                    ג<span class="n" dir="ltr">16</span>
+                  </button>
+                </div>
+                <div class="day-pill-wrap">
+                  <button class="day-pill future">ד<span class="n" dir="ltr">17</span></button>
+                </div>
+                <div class="day-pill-wrap">
+                  <button class="day-pill future">ה<span class="n" dir="ltr">18</span></button>
+                </div>
               </div>
               <div class="day-context history" dir="rtl">
                 <span class="ic">🕘</span> יום שהיה · היסטוריה
@@ -1870,11 +1919,23 @@
             <div class="cap"><b>Viewing a future day</b> — violet (plan-ahead), not amber</div>
             <div class="mini-header">
               <div class="day-strip">
-                <div class="day-pill-wrap"><button class="day-pill past">א<span class="n" dir="ltr">14</span></button></div>
-                <div class="day-pill-wrap"><button class="day-pill past">ב<span class="n" dir="ltr">15</span></button></div>
-                <div class="day-pill-wrap"><button class="day-pill today-anchor">ג<span class="n" dir="ltr">16</span></button></div>
-                <div class="day-pill-wrap"><button class="day-pill sel-history">ד<span class="n" dir="ltr">17</span></button></div>
-                <div class="day-pill-wrap"><button class="day-pill future">ה<span class="n" dir="ltr">18</span></button></div>
+                <div class="day-pill-wrap">
+                  <button class="day-pill past">א<span class="n" dir="ltr">14</span></button>
+                </div>
+                <div class="day-pill-wrap">
+                  <button class="day-pill past">ב<span class="n" dir="ltr">15</span></button>
+                </div>
+                <div class="day-pill-wrap">
+                  <button class="day-pill today-anchor">
+                    ג<span class="n" dir="ltr">16</span>
+                  </button>
+                </div>
+                <div class="day-pill-wrap">
+                  <button class="day-pill sel-history">ד<span class="n" dir="ltr">17</span></button>
+                </div>
+                <div class="day-pill-wrap">
+                  <button class="day-pill future">ה<span class="n" dir="ltr">18</span></button>
+                </div>
               </div>
               <div class="day-context future" dir="rtl">
                 <span class="ic">→</span> יום עתידי · תצוגה מקדימה
@@ -1908,11 +1969,25 @@
                     <span class="month-label">יולי</span>
                     <button class="day-pill past">א<span class="n" dir="ltr">14</span></button>
                   </div>
-                  <div class="day-pill-wrap"><button class="day-pill sel-history">ב<span class="n" dir="ltr">15</span></button></div>
-                  <div class="day-pill-wrap"><button class="day-pill today-anchor">ג<span class="n" dir="ltr">16</span></button></div>
-                  <div class="day-pill-wrap"><button class="day-pill future">ד<span class="n" dir="ltr">17</span></button></div>
-                  <div class="day-pill-wrap"><button class="day-pill future">ה<span class="n" dir="ltr">18</span></button></div>
-                  <div class="day-pill-wrap"><button class="day-pill future">ו<span class="n" dir="ltr">19</span></button></div>
+                  <div class="day-pill-wrap">
+                    <button class="day-pill sel-history">
+                      ב<span class="n" dir="ltr">15</span>
+                    </button>
+                  </div>
+                  <div class="day-pill-wrap">
+                    <button class="day-pill today-anchor">
+                      ג<span class="n" dir="ltr">16</span>
+                    </button>
+                  </div>
+                  <div class="day-pill-wrap">
+                    <button class="day-pill future">ד<span class="n" dir="ltr">17</span></button>
+                  </div>
+                  <div class="day-pill-wrap">
+                    <button class="day-pill future">ה<span class="n" dir="ltr">18</span></button>
+                  </div>
+                  <div class="day-pill-wrap">
+                    <button class="day-pill future">ו<span class="n" dir="ltr">19</span></button>
+                  </div>
                 </div>
                 <div class="day-context history" dir="rtl">
                   <span class="ic">🕘</span> יום שהיה · היסטוריה
@@ -1984,7 +2059,10 @@
                   </div>
                 </div>
 
-                <div class="archive-banner" style="margin-top: 4px; background: transparent; border-style: dashed">
+                <div
+                  class="archive-banner"
+                  style="margin-top: 4px; background: transparent; border-style: dashed"
+                >
                   <span class="ic">✏️</span> להוסיף או להזיז אירוע ביום שעבר — במצב תכנון
                 </div>
               </div>
@@ -1996,7 +2074,9 @@
                 <button class="on"><span class="ic">📅</span> יום-יום</button>
               </div>
             </div>
-            <div class="phone-cap">Past day (live trip) · calm wash, no now-line, editing locked</div>
+            <div class="phone-cap">
+              Past day (live trip) · calm wash, no now-line, editing locked
+            </div>
           </div>
 
           <div class="stack">
@@ -2004,48 +2084,55 @@
               <h3><span class="pin">D</span> An archive wash, not a dead screen</h3>
               <p>
                 The whole list cools and desaturates slightly, led by a
-                <b>לקריאה בלבד</b> banner. No now-line (there is no “now” on a day
-                that’s over), no amber. It reads as memory the instant it loads.
+                <b>לקריאה בלבד</b> banner. No now-line (there is no “now” on a day that’s over), no
+                amber. It reads as memory the instant it loads.
               </p>
             </div>
             <div class="note">
               <h3><span class="pin">E</span> Editing is locked, settling isn’t</h3>
               <p>
-                Per ADR-0029, structural edits are gated to Plan mode (the dashed
-                footer says so). But <b>Done / Skip / Navigate stay</b> — an
-                unresolved soft plan can still be settled with one tap, which is
-                exactly the retrospective job the reframed Done was built for.
+                Per ADR-0029, structural edits are gated to Plan mode (the dashed footer says so).
+                But <b>Done / Skip / Navigate stay</b> — an unresolved soft plan can still be
+                settled with one tap, which is exactly the retrospective job the reframed Done was
+                built for.
               </p>
             </div>
             <div class="note">
               <h3><span class="pin">F</span> Amber marks <i>today</i>, not the selection</h3>
               <p>
-                The systemic fix in the top bar: amber is the trip’s live anchor,
-                so it stays on <b>today’s</b> pill wherever you browse. Selecting a
-                past day is a neutral highlight; a future day is violet
-                (plan-ahead). One glance always finds “now,” and history never
-                borrows the live color (ADR-0028).
+                The systemic fix in the top bar: amber is the trip’s live anchor, so it stays on
+                <b>today’s</b> pill wherever you browse. Selecting a past day is a neutral
+                highlight; a future day is violet (plan-ahead). One glance always finds “now,” and
+                history never borrows the live color (ADR-0028).
               </p>
             </div>
             <div class="rec">
               <div class="lab">Recommendation</div>
               <p>
                 Reuse this same archive treatment for a <b>finished trip</b>
-                (ADR-0040) — it’s the whole trip in read-only, one day at a time —
-                so past-day and past-trip share one visual language instead of two.
+                (ADR-0040) — it’s the whole trip in read-only, one day at a time — so past-day and
+                past-trip share one visual language instead of two.
               </p>
             </div>
           </div>
         </div>
 
         <!-- top-bar buttons redesign -->
-        <h3 style="font-family: var(--font-head); font-weight: 400; font-size: 18px; color: #fff; margin: 34px 0 6px">
+        <h3
+          style="
+            font-family: var(--font-head);
+            font-weight: 400;
+            font-size: 18px;
+            color: #fff;
+            margin: 34px 0 6px;
+          "
+        >
           While we’re in the top bar — the account &amp; settings cluster
         </h3>
         <p style="font-size: 13.5px; color: var(--stage-dim); max-width: 62ch; margin-bottom: 16px">
-          A small tidy-up you flagged: today the settings gear is a third filled
-          circle sitting beside the identity avatars, so three round chips compete.
-          Separating <i>identity</i> from <i>controls</i> reads cleaner.
+          A small tidy-up you flagged: today the settings gear is a third filled circle sitting
+          beside the identity avatars, so three round chips compete. Separating <i>identity</i> from
+          <i>controls</i> reads cleaner.
         </p>
         <div class="topbars">
           <div class="tb">
@@ -2053,7 +2140,9 @@
             <div class="mini-header">
               <div class="trip-row">
                 <div>
-                  <div class="trip-name" style="font-size: 20px">🇯🇵 יפן 2026 <span class="chev">▾</span></div>
+                  <div class="trip-name" style="font-size: 20px">
+                    🇯🇵 יפן 2026 <span class="chev">▾</span>
+                  </div>
                   <div class="trip-sub">טוקיו <span class="dot">·</span> יום 3 מתוך 9</div>
                 </div>
                 <div class="header-actions">
@@ -2065,11 +2154,15 @@
             </div>
           </div>
           <div class="tb">
-            <div class="cap" style="color: #8fe3b6"><b>Recommended</b> — identity chips, then a quiet ghost control</div>
+            <div class="cap" style="color: #8fe3b6">
+              <b>Recommended</b> — identity chips, then a quiet ghost control
+            </div>
             <div class="mini-header">
               <div class="trip-row">
                 <div>
-                  <div class="trip-name" style="font-size: 20px">🇯🇵 יפן 2026 <span class="chev">▾</span></div>
+                  <div class="trip-name" style="font-size: 20px">
+                    🇯🇵 יפן 2026 <span class="chev">▾</span>
+                  </div>
                   <div class="trip-sub">טוקיו <span class="dot">·</span> יום 3 מתוך 9</div>
                 </div>
                 <div class="header-actions">
@@ -2084,11 +2177,10 @@
         <div class="rec" style="margin-top: 16px">
           <div class="lab">Recommendation</div>
           <p>
-            Demote settings to a <b>borderless ghost icon</b> — identity is round
-            chips (member cluster + your ringed avatar), the gear is a UI control,
-            not a chip. It matches design-language’s “emoji are content, icons are
-            UI,” drops one competing circle, and follows the mode: the ghost tints
-            <b>violet</b> in Plan, stays cool blue-grey in Trip.
+            Demote settings to a <b>borderless ghost icon</b> — identity is round chips (member
+            cluster + your ringed avatar), the gear is a UI control, not a chip. It matches
+            design-language’s “emoji are content, icons are UI,” drops one competing circle, and
+            follows the mode: the ghost tints <b>violet</b> in Plan, stays cool blue-grey in Trip.
           </p>
         </div>
       </section>
@@ -2100,14 +2192,22 @@
           <div>
             <h2>Where the line is drawn — Plan mode, and the “new event” button</h2>
             <p>
-              Two boundary questions, one rule behind both: Trip mode is <i>live
-              and on-the-ground</i>; Plan mode is <i>the drafting table and is
-              never “live.”</i> (design-language: mode identity.)
+              Two boundary questions, one rule behind both: Trip mode is
+              <i>live and on-the-ground</i>; Plan mode is
+              <i>the drafting table and is never “live.”</i> (design-language: mode identity.)
             </p>
           </div>
         </div>
 
-        <h3 style="font-family: var(--font-head); font-weight: 400; font-size: 18px; color: #fff; margin-bottom: 6px">
+        <h3
+          style="
+            font-family: var(--font-head);
+            font-weight: 400;
+            font-size: 18px;
+            color: #fff;
+            margin-bottom: 6px;
+          "
+        >
           Do these features cross into Plan mode?
         </h3>
         <p style="font-size: 13.5px; color: var(--stage-dim); max-width: 62ch; margin-bottom: 16px">
@@ -2122,46 +2222,46 @@
           <div class="row">
             <div class="h">Now-line</div>
             <div class="d">
-              Trip only. Plan is never live — no pulse, no amber-now. Plan’s day
-              builder already shows the full timeline for “will my day flow.” A
-              live marker there would blur the two modes.
+              Trip only. Plan is never live — no pulse, no amber-now. Plan’s day builder already
+              shows the full timeline for “will my day flow.” A live marker there would blur the two
+              modes.
             </div>
             <div class="t">Trip</div>
           </div>
           <div class="row">
             <div class="h">Derived phases</div>
             <div class="d">
-              Trip only. ADR-0029: “Plan mode has no past/future distinction; it’s
-              the building surface regardless of which day is on screen.” Rebuilding
-              any day is the point of Plan.
+              Trip only. ADR-0029: “Plan mode has no past/future distinction; it’s the building
+              surface regardless of which day is on screen.” Rebuilding any day is the point of
+              Plan.
             </div>
             <div class="t">Trip</div>
           </div>
           <div class="row">
             <div class="h">Done / settle</div>
             <div class="d">
-              Trip only — a Tier-1 on-the-ground verb (ADR-0025). A finished trip is
-              explicitly <b>read-only</b>, no settling (ADR-0040).
+              Trip only — a Tier-1 on-the-ground verb (ADR-0025). A finished trip is explicitly
+              <b>read-only</b>, no settling (ADR-0040).
             </div>
             <div class="t">Trip</div>
           </div>
           <div class="row">
             <div class="h">Archive visual language</div>
             <div class="d">
-              <b>Shared.</b> A finished trip is a Plan-mode read-only archive
-              (ADR-0040). Past-day (Trip) and finished-trip (Plan) should wear the
-              same calm wash — §3 — so there’s one archive language, not two.
+              <b>Shared.</b> A finished trip is a Plan-mode read-only archive (ADR-0040). Past-day
+              (Trip) and finished-trip (Plan) should wear the same calm wash — §3 — so there’s one
+              archive language, not two.
             </div>
             <div class="t">Both</div>
           </div>
           <div class="row">
             <div class="h">“Now” reference in Plan builder</div>
             <div class="d">
-              <b>Added (your call).</b> A faint <i>static</i> current-time cue when
-              building <i>today</i> mid-trip — useful for “what’s still ahead to
-              build.” Kept in Plan’s grammar so it can’t be mistaken for a live
-              signal: <b>violet, dashed, hollow marker, no pulse, no glow</b> —
-              the opposite of the Trip now-line. Shown below.
+              <b>Added (your call).</b> A faint <i>static</i> current-time cue when building
+              <i>today</i> mid-trip — useful for “what’s still ahead to build.” Kept in Plan’s
+              grammar so it can’t be mistaken for a live signal:
+              <b>violet, dashed, hollow marker, no pulse, no glow</b> — the opposite of the Trip
+              now-line. Shown below.
             </div>
             <div class="t">Both</div>
           </div>
@@ -2177,21 +2277,44 @@
               <div class="header">
                 <div class="trip-row">
                   <div>
-                    <div class="trip-name" style="font-size: 20px">🇯🇵 יפן 2026 <span class="chev">▾</span></div>
+                    <div class="trip-name" style="font-size: 20px">
+                      🇯🇵 יפן 2026 <span class="chev">▾</span>
+                    </div>
                     <div class="trip-sub">טוקיו <span class="dot">·</span> יום 3 מתוך 9</div>
                   </div>
                   <div class="header-actions">
                     <div class="av plain" style="background: #6e8cc8; border-color: #fff">ד</div>
-                    <div class="av plain ring2" style="background: #b06e9c; box-shadow: 0 0 0 2px #fff, 0 0 0 3.5px rgba(110,89,214,0.5)">א</div>
+                    <div
+                      class="av plain ring2"
+                      style="
+                        background: #b06e9c;
+                        box-shadow:
+                          0 0 0 2px #fff,
+                          0 0 0 3.5px rgba(110, 89, 214, 0.5);
+                      "
+                    >
+                      א
+                    </div>
                     <div class="gear-ghost" style="color: var(--plan-deep)">⚙</div>
                   </div>
                 </div>
                 <div class="day-strip">
-                  <div class="day-pill-wrap"><span class="month-label">יולי</span><button class="day-pill">א<span class="n" dir="ltr">14</span></button></div>
-                  <div class="day-pill-wrap"><button class="day-pill">ב<span class="n" dir="ltr">15</span></button></div>
-                  <div class="day-pill-wrap"><button class="day-pill on">ג<span class="n" dir="ltr">16</span></button></div>
-                  <div class="day-pill-wrap"><button class="day-pill">ד<span class="n" dir="ltr">17</span></button></div>
-                  <div class="day-pill-wrap"><button class="day-pill">ה<span class="n" dir="ltr">18</span></button></div>
+                  <div class="day-pill-wrap">
+                    <span class="month-label">יולי</span
+                    ><button class="day-pill">א<span class="n" dir="ltr">14</span></button>
+                  </div>
+                  <div class="day-pill-wrap">
+                    <button class="day-pill">ב<span class="n" dir="ltr">15</span></button>
+                  </div>
+                  <div class="day-pill-wrap">
+                    <button class="day-pill on">ג<span class="n" dir="ltr">16</span></button>
+                  </div>
+                  <div class="day-pill-wrap">
+                    <button class="day-pill">ד<span class="n" dir="ltr">17</span></button>
+                  </div>
+                  <div class="day-pill-wrap">
+                    <button class="day-pill">ה<span class="n" dir="ltr">18</span></button>
+                  </div>
                 </div>
               </div>
               <div class="body">
@@ -2224,7 +2347,9 @@
 
                 <!-- the plan now-reference: static, violet, dashed -->
                 <div class="nowref" aria-label="עכשיו 16:42">
-                  <span class="tag"><span class="ring"></span>עכשיו <span class="tm" dir="ltr">16:42</span></span>
+                  <span class="tag"
+                    ><span class="ring"></span>עכשיו <span class="tm" dir="ltr">16:42</span></span
+                  >
                   <span class="rule"></span>
                 </div>
 
@@ -2232,7 +2357,9 @@
                   <span class="bld-grip">⠿</span>
                   <span class="bld-bd">🚶</span>
                   <span class="bld-main">
-                    <span class="bld-t">זמן חופשי · שינג׳וקו <span class="tag-soft">גמיש</span></span>
+                    <span class="bld-t"
+                      >זמן חופשי · שינג׳וקו <span class="tag-soft">גמיש</span></span
+                    >
                     <span class="bld-m">מתחם החנויות</span>
                   </span>
                   <span class="bld-time" dir="ltr">16:30</span>
@@ -2257,46 +2384,54 @@
                 </div>
               </div>
             </div>
-            <div class="phone-cap">Plan builder, today · a static violet “now” reference — never a live marker</div>
+            <div class="phone-cap">
+              Plan builder, today · a static violet “now” reference — never a live marker
+            </div>
           </div>
 
           <div class="stack">
             <div class="note">
               <h3><span class="pin">G</span> A reference, not a heartbeat</h3>
               <p>
-                Same information (“here’s now”), opposite grammar. Trip’s now-line
-                is a <b>solid amber</b> hairline with a filled dot — live. Plan’s is
-                a <b>dashed violet</b> line with a hollow ring and no pulse — a
-                drafting guide. You can’t confuse the drafting table for the board.
+                Same information (“here’s now”), opposite grammar. Trip’s now-line is a
+                <b>solid amber</b> hairline with a filled dot — live. Plan’s is a
+                <b>dashed violet</b> line with a hollow ring and no pulse — a drafting guide. You
+                can’t confuse the drafting table for the board.
               </p>
             </div>
             <div class="note">
               <h3><span class="pin">H</span> Only where it helps</h3>
               <p>
-                It appears <b>only when the day on screen is today</b> and the trip
-                is live — the one case where “now” means something while building.
-                Past and future builder days show no reference (there’s no now to
-                place), keeping ADR-0029’s “Plan has no past/future distinction”
-                intact for editing.
+                It appears <b>only when the day on screen is today</b> and the trip is live — the
+                one case where “now” means something while building. Past and future builder days
+                show no reference (there’s no now to place), keeping ADR-0029’s “Plan has no
+                past/future distinction” intact for editing.
               </p>
             </div>
             <div class="rec">
               <div class="lab">Recommendation</div>
               <p>
-                <b>Add it, in Plan’s violet.</b> It earns its place by helping you
-                build around the clock without borrowing the live board’s amber —
-                mode identity holds.
+                <b>Add it, in Plan’s violet.</b> It earns its place by helping you build around the
+                clock without borrowing the live board’s amber — mode identity holds.
               </p>
             </div>
           </div>
         </div>
 
-        <h3 style="font-family: var(--font-head); font-weight: 400; font-size: 18px; color: #fff; margin-bottom: 6px">
+        <h3
+          style="
+            font-family: var(--font-head);
+            font-weight: 400;
+            font-size: 18px;
+            color: #fff;
+            margin-bottom: 6px;
+          "
+        >
           Should Trip mode keep “אירוע חדש”?
         </h3>
         <p style="font-size: 13.5px; color: var(--stage-dim); max-width: 62ch; margin-bottom: 16px">
-          Don’t remove it — right-size it. The <i>need</i> is real (“we just decided
-          to grab coffee at 5”), but today’s button opens the full builder.
+          Don’t remove it — right-size it. The <i>need</i> is real (“we just decided to grab coffee
+          at 5”), but today’s button opens the full builder.
         </p>
         <div class="duo" style="align-items: stretch">
           <div class="stack" style="flex: 1 1 300px">
@@ -2306,7 +2441,9 @@
                 יום 3 · שבת · טוקיו
                 <span class="new-event-btn">＋ אירוע חדש</span>
               </div>
-              <p style="font-size: 11.5px; color: var(--muted); margin-top: 10px; text-align: right">
+              <p
+                style="font-size: 11.5px; color: var(--muted); margin-top: 10px; text-align: right"
+              >
                 פותח טופס מלא — יום כלשהו, קשיח/גמיש, הזמנות. זו בנייה (Tier&nbsp;2–3).
               </p>
             </div>
@@ -2314,9 +2451,13 @@
               <div class="cap pick" dir="ltr">recommended — quick-add, soft, today</div>
               <div class="sec-title" style="margin: 0">
                 יום 3 · שבת · טוקיו
-                <span class="new-event-btn" style="border-color: rgba(22,35,61,0.14)">＋ הוסף להיום</span>
+                <span class="new-event-btn" style="border-color: rgba(22, 35, 61, 0.14)"
+                  >＋ הוסף להיום</span
+                >
               </div>
-              <p style="font-size: 11.5px; color: var(--muted); margin-top: 10px; text-align: right">
+              <p
+                style="font-size: 11.5px; color: var(--muted); margin-top: 10px; text-align: right"
+              >
                 גמיש · היום · המשבצת הפנויה הבאה. בנייה כבדה עוברת למצב תכנון.
               </p>
             </div>
@@ -2325,27 +2466,26 @@
             <div class="note">
               <h3><span class="pin">✓</span> Keep it, scoped to Tier-1</h3>
               <p>
-                ADR-0025 lists “add a quick soft event for today” as a legitimate
-                on-the-ground verb. So keep an add affordance — but make it a
-                <b>quick-add</b> (soft, today, next open slot), not the full form.
-                Adding a hard event, a booking, or an event on another day is
-                building → the ⋯ sheet or the Plan escape.
+                ADR-0025 lists “add a quick soft event for today” as a legitimate on-the-ground
+                verb. So keep an add affordance — but make it a
+                <b>quick-add</b> (soft, today, next open slot), not the full form. Adding a hard
+                event, a booking, or an event on another day is building → the ⋯ sheet or the Plan
+                escape.
               </p>
             </div>
             <div class="note">
               <h3><span class="pin">✕</span> Gone on past days</h3>
               <p>
-                On a past day ADR-0029 <b>locks create</b> — so the add button
-                disappears entirely, replaced by §3’s “add or move in Plan mode”
-                footer. The archive stays read-only.
+                On a past day ADR-0029 <b>locks create</b> — so the add button disappears entirely,
+                replaced by §3’s “add or move in Plan mode” footer. The archive stays read-only.
               </p>
             </div>
             <div class="rec">
               <div class="lab">Recommendation</div>
               <p>
-                <b>Keep it on today, right-sized; hide it on past days.</b> Net
-                effect: spontaneous soft adds stay one tap on the ground, real
-                itinerary building lives where it belongs — Plan mode.
+                <b>Keep it on today, right-sized; hide it on past days.</b> Net effect: spontaneous
+                soft adds stay one tap on the ground, real itinerary building lives where it belongs
+                — Plan mode.
               </p>
             </div>
           </div>
@@ -2369,59 +2509,95 @@
           </div>
           <div class="row">
             <div class="h">Now-line</div>
-            <div class="d">Live amber time-rule at the current moment; splits the day into behind / ahead; carries the day tab’s one pulse.</div>
+            <div class="d">
+              Live amber time-rule at the current moment; splits the day into behind / ahead;
+              carries the day tab’s one pulse.
+            </div>
             <div class="t"><span class="badge-new">NEW</span></div>
           </div>
           <div class="row">
             <div class="h">Derived phases</div>
-            <div class="d">Passed / now / upcoming / slipped / unresolved / done — computed from the clock, styled to recede once behind the line.</div>
+            <div class="d">
+              Passed / now / upcoming / slipped / unresolved / done — computed from the clock,
+              styled to recede once behind the line.
+            </div>
             <div class="t"><span class="badge-adr">ADR-0027</span></div>
           </div>
           <div class="row">
             <div class="h">Done, reframed</div>
-            <div class="d">Optional affirmative record in <code>--ok</code> green; demoted up front, primary in the settle zone; done rows settle instead of ghosting.</div>
-            <div class="t"><span class="badge-new">NEW</span> <span class="badge-adr">ADR-0027</span></div>
+            <div class="d">
+              Optional affirmative record in <code>--ok</code> green; demoted up front, primary in
+              the settle zone; done rows settle instead of ghosting.
+            </div>
+            <div class="t">
+              <span class="badge-new">NEW</span> <span class="badge-adr">ADR-0027</span>
+            </div>
           </div>
           <div class="row">
             <div class="h">Settle strip</div>
-            <div class="d">Inline <b>✓ היינו / דלג</b> on a passed-but-unmarked soft event — the “still on?” moment, made one tap.</div>
+            <div class="d">
+              Inline <b>✓ היינו / דלג</b> on a passed-but-unmarked soft event — the “still on?”
+              moment, made one tap.
+            </div>
             <div class="t"><span class="badge-new">NEW</span></div>
           </div>
           <div class="row">
             <div class="h">Past-day archive</div>
-            <div class="d">Calm desaturated wash + read-only banner; no now-line; editing gated to Plan, settling allowed.</div>
+            <div class="d">
+              Calm desaturated wash + read-only banner; no now-line; editing gated to Plan, settling
+              allowed.
+            </div>
             <div class="t"><span class="badge-adr">ADR-0029</span></div>
           </div>
           <div class="row">
             <div class="h">Today-anchor top bar</div>
-            <div class="d">Amber marks today (not the selection); past = neutral highlight, future = violet; a context ribbon + one-tap “back to today.”</div>
-            <div class="t"><span class="badge-new">NEW</span> <span class="badge-adr">ADR-0028</span></div>
+            <div class="d">
+              Amber marks today (not the selection); past = neutral highlight, future = violet; a
+              context ribbon + one-tap “back to today.”
+            </div>
+            <div class="t">
+              <span class="badge-new">NEW</span> <span class="badge-adr">ADR-0028</span>
+            </div>
           </div>
           <div class="row">
             <div class="h">“אירוע חדש” → quick-add</div>
-            <div class="d">Right-sized to a Tier-1 quick-add (soft, today, next slot); heavy building routes to Plan; hidden entirely on past days.</div>
-            <div class="t"><span class="badge-adr">ADR-0025</span> <span class="badge-adr">ADR-0029</span></div>
+            <div class="d">
+              Right-sized to a Tier-1 quick-add (soft, today, next slot); heavy building routes to
+              Plan; hidden entirely on past days.
+            </div>
+            <div class="t">
+              <span class="badge-adr">ADR-0025</span> <span class="badge-adr">ADR-0029</span>
+            </div>
           </div>
           <div class="row">
             <div class="h">Phase-adaptive nudge</div>
-            <div class="d">The ±30 stepper offers only possible moves: both ways upcoming, +30 only for now, none once passed / on a past day.</div>
+            <div class="d">
+              The ±30 stepper offers only possible moves: both ways upcoming, +30 only for now, none
+              once passed / on a past day.
+            </div>
             <div class="t"><span class="badge-new">NEW</span></div>
           </div>
           <div class="row">
             <div class="h">Plan “now” reference</div>
-            <div class="d">A static violet dashed cue in the Plan builder when the day on screen is today — a drafting guide, explicitly not the live now-line.</div>
+            <div class="d">
+              A static violet dashed cue in the Plan builder when the day on screen is today — a
+              drafting guide, explicitly not the live now-line.
+            </div>
             <div class="t"><span class="badge-new">NEW</span></div>
           </div>
           <div class="row">
             <div class="h">Account / settings cluster</div>
-            <div class="d">Settings becomes a borderless ghost icon (mode-tinted); identity stays as round chips, dropping one competing circle.</div>
+            <div class="d">
+              Settings becomes a borderless ghost icon (mode-tinted); identity stays as round chips,
+              dropping one competing circle.
+            </div>
             <div class="t"><span class="badge-new">NEW</span></div>
           </div>
         </div>
         <p class="foot">
-          Mockup of record: <code>mockups/trip-mode-day-view-v1.html</code> ·
-          phones shown in the app’s current light theme on the studio stage (dark mode is a token remap, ADR-0028).
-          If any detail here conflicts with the design docs, the docs win.
+          Mockup of record: <code>mockups/trip-mode-day-view-v1.html</code> · phones shown in the
+          app’s current light theme on the studio stage (dark mode is a token remap, ADR-0028). If
+          any detail here conflicts with the design docs, the docs win.
         </p>
       </section>
     </div>
