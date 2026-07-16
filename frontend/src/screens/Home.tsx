@@ -3,12 +3,11 @@
 // screen is a fixture for an unbuilt feature (ADR-0045). "Now/Next" and the
 // glance are derived from the clock + events, never stored (ADR-0018).
 import { useState } from 'react';
-import { EVENT_KIND, EVENT_STATUS, TRIP_NOTE_CATEGORY } from '@waypoint/shared';
+import { EVENT_KIND, TRIP_NOTE_CATEGORY } from '@waypoint/shared';
 import { useTrip } from '../state/trip-state';
 import { useToast } from '../ui/Toast';
 import { useClock } from '../lib/useClock';
 import {
-  buildTimeTree,
   dayProgress,
   deriveNow,
   eventPhase,
@@ -16,29 +15,13 @@ import {
   formatTime,
   hardConflicts,
   minutesUntil,
-  type TimeGroup,
+  zonedIso,
 } from '../lib/time';
+import { buildDayGlance } from '../lib/glance';
 import { CODE_PREFIX, DAY_WINDOW, ICONS, type TabId } from '../constants';
 import { t } from '../i18n/he';
 
 const hourLabel = (hour: number) => `${String(hour).padStart(2, '0')}:00`;
-
-// The day-at-a-glance bar/count run on top-level containment-forest blocks, not
-// raw events (ADR-0041/0045): a nesting envelope or an overlap cluster is one
-// block, so the day never reads busier than it is. A block's phase is derived
-// from the clock, same as the board's Now/Next.
-type BlockPhase = 'done' | 'passed' | 'now' | 'upcoming';
-function blockPhase(group: TimeGroup, at: Date): BlockPhase {
-  if (group.kind === 'single') {
-    // buildTimeTree excludes skipped, so a single is only done/passed/now/upcoming.
-    const p = eventPhase(group.item.event, at);
-    return (p === 'skipped' ? 'passed' : p) as BlockPhase;
-  }
-  const ms = at.getTime();
-  if (ms < group.startMs) return 'upcoming';
-  if (ms < group.endMs) return 'now';
-  return group.items.every((i) => i.event.status === EVENT_STATUS.DONE) ? 'done' : 'passed';
-}
 
 export function Home({ onNavigate }: { onNavigate?: (tab: TabId) => void }) {
   const { trip, bookings, notes, events, activeDate } = useTrip();
@@ -67,12 +50,11 @@ export function Home({ onNavigate }: { onNavigate?: (tab: TabId) => void }) {
     : null;
   const wifi = notes.find((n) => n.category === TRIP_NOTE_CATEGORY.WIFI);
 
-  // ── Day at a glance (derived) ──
-  const blocks = buildTimeTree(dayEvents);
-  const remaining = blocks.filter((b) => {
-    const p = blockPhase(b, now);
-    return p === 'now' || p === 'upcoming';
-  }).length;
+  // ── Day at a glance (derived) — a proportional time rail (lib/glance) ──
+  const day07 = Date.parse(zonedIso(activeDate, hourLabel(DAY_WINDOW.START_HOUR), tz));
+  const day23 = Date.parse(zonedIso(activeDate, hourLabel(DAY_WINDOW.END_HOUR), tz));
+  const glance = buildDayGlance(dayEvents, now.getTime(), day07, day23, tz);
+  const remaining = glance.remaining;
   // Hard anchors matter individually, so this counts leaves, not blocks — the one
   // deliberate roots/leaves exception (ADR-0045).
   const hardAhead = dayEvents
@@ -280,7 +262,7 @@ export function Home({ onNavigate }: { onNavigate?: (tab: TabId) => void }) {
       </div>
 
       <div className="sec-title">{t.glance.title}</div>
-      {blocks.length === 0 ? (
+      {glance.empty ? (
         <div className="glance-day empty">
           <div className="ei" aria-hidden="true">
             🗓️
@@ -293,19 +275,35 @@ export function Home({ onNavigate }: { onNavigate?: (tab: TabId) => void }) {
         </div>
       ) : (
         <div className="glance-day">
-          <div className="blocks" aria-hidden="true">
-            {blocks.map((b, i) => {
-              const p = blockPhase(b, now);
-              return b.kind === 'cluster' ? (
-                <div className={`blk cluster ${p}`} key={i}>
-                  {b.items.map((_, j) => (
-                    <i key={j} />
-                  ))}
-                </div>
-              ) : (
-                <div className={`blk ${p}`} key={i} />
-              );
-            })}
+          <div className="rail" aria-hidden="true">
+            {glance.segs.map((s) => (
+              <div
+                key={s.key}
+                className={`seg ${s.phase}${s.composite ? ' multi' : ''}${s.point ? ' point' : ''}`}
+                style={{
+                  insetInlineStart: `${s.startFrac * 100}%`,
+                  ...(s.point ? {} : { width: `${Math.max(0, s.endFrac - s.startFrac) * 100}%` }),
+                }}
+              >
+                {s.showCount && (
+                  <span className="n">
+                    {s.clusterLike ? t.glance.concurrent(s.count) : t.glance.contains(s.count)}
+                  </span>
+                )}
+                {s.nextDay && (
+                  <span className="plus1" dir="ltr">
+                    {t.glance.nextDay}
+                  </span>
+                )}
+              </div>
+            ))}
+            {glance.nowFrac !== null && (
+              <div className="nowmark" style={{ insetInlineStart: `${glance.nowFrac * 100}%` }} />
+            )}
+          </div>
+          <div className="rail-ends">
+            <span dir="ltr">{formatTime(new Date(glance.windowStartMs), tz)}</span>
+            <span dir="ltr">{formatTime(new Date(glance.windowEndMs), tz)}</span>
           </div>
           <div className="lead">
             <div className="big">

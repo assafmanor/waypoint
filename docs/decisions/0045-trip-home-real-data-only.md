@@ -1,8 +1,21 @@
 # 0045 — Trip-mode Home: real data only (quick-access rework + day-at-a-glance)
 
-**Status:** Accepted
+**Status:** Accepted (day-at-a-glance reworked to a proportional rail 2026-07-16 post-merge — see the amendment below)
 **Date:** 2026-07-16
-**Refines:** [0004](0004-integrations-are-pipes.md) (integrations feed surfaces, don't get their own), [0006](0006-no-live-location-v1.md) (no live location in v1), [0014](0014-budget-display-only-v1.md) (budget display — now deferred off the home)
+**Refines:** [0004](0004-integrations-are-pipes.md) (integrations feed surfaces, don't get their own), [0006](0006-no-live-location-v1.md) (no live location in v1), [0014](0014-budget-display-only-v1.md) (budget display — now deferred off the home), [0037](0037-overnight-events.md) (the overnight window the rail honors), [0041](0041-parallel-overlapping-events.md) (the containment forest the rail collapses)
+
+## Amendment (2026-07-16, post-merge) — the day-at-a-glance is a proportional rail
+
+Once the equal-width block bar shipped and was seen on a phone, it failed its one job: you couldn't tell **where "now" is** or **which way time flows**, and the block coloring for concurrency was confusing. The widget was reworked (still real-data-only, still the same section). Design mockups: `mockups/trip-home-glance-v2.html` (orientation fixes explored), `trip-home-glance-v3.html` (proportional, chosen), `trip-home-glance-edge-cases-v1.html` (overnight + overlap/containment). Implementation: `frontend/src/lib/glance.ts` (`buildDayGlance`, unit-tested) + `Home.tsx` + `screens.css`.
+
+- **Proportional time rail, not equal-width blocks.** Block width = duration; the empty track between blocks = **free time** (now visible); the amber **now-marker** sits at the true clock position. Past = filled, future = **hollow** (outlined), so direction reads at a glance. RTL: earliest at the right (same axis as the board's day-progress bar).
+- **Window = 07:00 (or the earliest event) → 23:00 (or the latest event).** An overnight day (ADR-0037) runs **only to its latest event** (e.g. 02:00), never padded to 07:00 next day; the crossing segment carries the amber `+1`.
+- **Overlap/containment collapses to top-level roots** (`buildTimeTree`, ADR-0041). Any composite — a cluster of peers, or an envelope with nested children, any depth — renders as **one segment + a "layered" edge cue + a count** (`×N` for a cluster, `כולל N` for an envelope). Full nesting/cluster fidelity stays in the day view. This makes every overlap/containment permutation render identically, so no edge case breaks the single-track layout — and it removes the old confusing all-or-nothing color.
+- **A block's color is its one time-phase**, same logic as a single event: all events done → green; else now inside its span → amber; else fully past → grey; else ahead → hollow.
+- **Skipped events are shown** as struck segments (`buildTimeTree` excludes them, so `glance.ts` layers them back in) and are **never counted** in "נותרו".
+- **"נותרו"** counts top-level blocks whose phase is now/upcoming; the hard-anchor readout stays leaf-level.
+
+The rest of this ADR (below) stands; only the day-at-a-glance's internal rendering changed from a segmented block bar to this rail.
 
 ## Context
 

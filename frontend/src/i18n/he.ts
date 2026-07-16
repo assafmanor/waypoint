@@ -194,6 +194,11 @@ export const t = {
     hardAnchor: 'עוגן קשיח',
     freeUntil: 'פנוי עד',
     dayEnds: 'מסתיים',
+    // Collapsed composite blocks on the rail: a cluster of parallel peers ("×N")
+    // or an envelope with nested children ("כולל N"); overnight end marker.
+    concurrent: (n: number) => `×${n}`,
+    contains: (n: number) => `כולל ${n}`,
+    nextDay: '+1',
     emptyTitle: 'היום עוד פתוח',
     emptySub: 'אין אירועים מתוכננים · יום חופשי',
     emptyAdd: 'הוסיפו אירוע',
