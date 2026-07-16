@@ -22,6 +22,32 @@ pnpm dev                     # runs backend + frontend via Turbo
 # frontend: http://localhost:5173
 ```
 
+## Local dev auth bypass (`DEV_AUTH=1`) — headless / agent testing
+
+Google OAuth (below) needs the Cloud setup and a real browser sign-in, which a
+sandbox, CI-style, or agent session can't complete. To run and exercise the
+backend + app **without** Google, set `DEV_AUTH=1` in `.env`:
+
+- **What it does:** a request with no bearer token is treated as the seeded dev
+  user — `u-assaf` / `assaf@example.com`, matching `prisma/seed.mjs`'s ME user
+  (`backend/src/auth/jwt-auth.guard.ts`, `sync.gateway.ts`). A real
+  `Authorization: Bearer …` still wins. **Dev-only — never set in production**
+  (ADR-0020; see `architecture/deployment.md`).
+- **Seed first** (`pnpm --filter @waypoint/backend prisma:seed`): it creates that
+  dev user plus a **live demo trip** (dates relative to today, `Asia/Tokyo`), so
+  the app lands authed on a real trip instead of the zero-state.
+- **Frontend → backend:** across the dev `:5173 → :3000` gap, start the frontend
+  with `VITE_API_BASE_URL=http://localhost:3000` and open it at
+  **`http://localhost:5173`** (not `127.0.0.1`) — the request Origin must equal
+  `FRONTEND_URL` or CORS blocks the credentialed `GET /me`.
+- **No Docker?** Any Postgres reachable on `:5432` with role/db `waypoint` /
+  `waypoint` satisfies the default `DATABASE_URL` — the CI workflow uses a
+  `postgres:16` service; a system cluster (`pg_ctlcluster 16 main start`) works
+  too. Docker is only the convenience path.
+- **Pin the clock** to exercise now / passed / upcoming and past/future days
+  (ADR-0026): the dev time-travel widget, or set
+  `localStorage['waypoint:dev-now'] = <epoch ms>` and reload.
+
 ## Google Cloud setup 👤 (needed for auth + Maps + Calendar)
 
 Do this in the [Google Cloud Console](https://console.cloud.google.com):
