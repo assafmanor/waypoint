@@ -522,6 +522,15 @@
         color: var(--amber-deep);
         margin-top: 3px;
       }
+      /* the WiFi tile shows the source network name (from the hotel Booking) */
+      .qa .sub {
+        display: block;
+        font-family: 'JetBrains Mono', monospace;
+        font-size: 9.5px;
+        font-weight: 700;
+        color: var(--muted);
+        margin-top: 3px;
+      }
 
       /* day at a glance — derived 100% from events, replaces the fixture glance row */
       .glance-day {
@@ -754,20 +763,29 @@
             </div>
           </div>
 
-          <!-- ===== quick access — four real shortcuts ===== -->
+          <!-- ===== quick access — real shortcuts into the Index (ADR-0050) =====
+               Each tile deep-links into the Index tab. Two kinds:
+               - DERIVED (next code, WiFi): reflect real derived data, and are
+                 ABSENT when there's no source (no upcoming coded booking → no
+                 "הכרטיס הבא"; no hotel Booking → no WiFi). No manual "add" — you
+                 add a booking, not a "next code". The grid reflows to what's real.
+               - MANAGED (documents): a shortcut to a section the user fills
+                 directly, so it's always present; when the trip has no documents
+                 yet it carries the ＋ invite (see trip-home-refinements-v1).
+               The 4th tile "ניווט ליעד הבא" stays deferred to the maps work (ADR-0045). -->
           <div class="sec-title">גישה מהירה</div>
           <div class="quick">
-            <button class="qa" onclick="toast('🎫', 'הכרטיס הבא · #4471 · פתיחה באינדקס')">
+            <button class="qa" onclick="toast('🎫', 'פותח את ההזמנה באינדקס · #4471')">
               <span class="ic">🎫</span><span class="lb">הכרטיס הבא</span>
               <span class="code" dir="ltr">#4471</span>
             </button>
-            <button class="qa" onclick="toast('📶', 'קוד ה-WiFi הועתק ללוח')">
+            <button class="qa" onclick="toast('📶', 'הסיסמה הועתקה · Granbell-Guest')">
               <span class="ic">📶</span><span class="lb">קוד WiFi</span>
+              <span class="sub" dir="ltr">Granbell-Guest</span>
             </button>
-            <button class="qa" onclick="toast('🛂', 'מסמכים · דרכונים וביטוח · אינדקס')">
+            <button class="qa" onclick="toast('🛂', 'פותח מסמכים באינדקס')">
               <span class="ic">🛂</span><span class="lb">מסמכים</span>
             </button>
-            <!-- 4th tile "ניווט ליעד הבא" deferred to the maps/location work (ADR-0045) -->
           </div>
 
           <!-- ===== day at a glance — derived from events, replaces weather/FX/budget ===== -->

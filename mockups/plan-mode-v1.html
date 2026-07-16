@@ -751,10 +751,142 @@
         cursor: pointer;
       }
 
+      /* booking form: icon chip + title (IconPicker, ADR-0038) */
+      .titlerow {
+        display: flex;
+        align-items: center;
+        gap: 9px;
+      }
+      .icon-chip {
+        position: relative;
+        flex: 0 0 auto;
+        width: 40px;
+        height: 40px;
+        display: grid;
+        place-items: center;
+        font-size: 18px;
+        background: #fafbfd;
+        border: 1px solid var(--line);
+        border-radius: 10px;
+        cursor: pointer;
+      }
+      .icon-chip::after {
+        content: '';
+        position: absolute;
+        bottom: 4px;
+        inset-inline-start: 4px;
+        border-left: 3px solid transparent;
+        border-right: 3px solid transparent;
+        border-top: 4px solid var(--soft-line);
+      }
+      .titlerow .grow {
+        flex: 1;
+      }
+      .auto-caption {
+        font-size: 11px;
+        font-weight: 600;
+        color: var(--muted);
+        margin: 6px 2px 12px;
+        display: flex;
+        align-items: center;
+        gap: 6px;
+        flex-wrap: wrap;
+      }
+      .cat-readout {
+        font-size: 10.5px;
+        font-weight: 700;
+        color: var(--muted);
+        background: var(--plan-tint);
+        border-radius: 999px;
+        padding: 2px 8px;
+      }
+      .revert {
+        font-size: 11px;
+        font-weight: 700;
+        color: var(--muted);
+        background: none;
+        border: none;
+        cursor: pointer;
+        padding: 0;
+        font-family: inherit;
+      }
+      .field textarea {
+        width: 100%;
+        font: inherit;
+        font-size: 13.5px;
+        padding: 9px 11px;
+        border: 1px solid var(--line);
+        border-radius: 9px;
+        background: #fafbfd;
+        color: var(--ink);
+        min-height: 52px;
+        resize: vertical;
+      }
+      /* date/time via the shared TimePicker chrome (ADR-0036/0037) */
+      .tp-fields {
+        display: flex;
+        gap: 9px;
+      }
+      .tfield {
+        flex: 1;
+        background: #fafbfd;
+        border: 1px solid var(--line);
+        border-radius: 9px;
+        padding: 7px 11px 8px;
+        cursor: pointer;
+        display: flex;
+        flex-direction: column;
+        gap: 1px;
+      }
+      .tfield.open {
+        border-color: var(--amber);
+        box-shadow: 0 0 0 2px rgba(233, 166, 60, 0.16);
+      }
+      .tfield .cap {
+        font-size: 11px;
+        font-weight: 700;
+        color: var(--muted);
+      }
+      .tfield .val {
+        font-family: 'JetBrains Mono', monospace;
+        font-size: 14.5px;
+        font-weight: 700;
+        color: var(--amber-deep);
+      }
+      /* hotel-only WiFi (Booking.details, ADR-0047); transport route (Place FKs, ADR-0048) */
+      .wifi-block {
+        background: rgba(44, 156, 144, 0.07);
+        border: 1px solid rgba(44, 156, 144, 0.25);
+        border-radius: 11px;
+        padding: 10px 11px 1px;
+        margin-bottom: 11px;
+      }
+      .wifi-block .wt {
+        font-size: 11px;
+        font-weight: 700;
+        color: var(--teal);
+        margin-bottom: 8px;
+      }
+      .route-hint {
+        font-size: 10.5px;
+        color: var(--teal);
+        font-weight: 600;
+        margin: -4px 2px 11px;
+      }
+      /* transport route in a booking row: origin→dest, arrow muted, dir=ltr */
+      .route {
+        font-weight: 700;
+      }
+      .route .arr {
+        color: var(--muted);
+        font-weight: 400;
+        padding: 0 3px;
+      }
+
       /* index / bookings */
       .typepick {
         display: grid;
-        grid-template-columns: repeat(4, 1fr);
+        grid-template-columns: repeat(3, 1fr);
         gap: 8px;
         margin-bottom: 12px;
       }
@@ -1368,6 +1500,7 @@
                 <div class="sec-title">
                   הוסף הזמנה <span class="hint">אוטומטית מ-Gmail בקרוב</span>
                 </div>
+                <!-- All 6 BookingType values (data-model.md), incl. activity + other -->
                 <div class="typepick">
                   <div class="tp on">
                     <div class="i">✈️</div>
@@ -1385,29 +1518,76 @@
                     <div class="i">🚄</div>
                     <div class="l">רכבת</div>
                   </div>
-                </div>
-                <div class="form">
-                  <h4>הזמנת טיסה</h4>
-                  <div class="row2">
-                    <div class="field"><label>חברת תעופה</label><input value="ANA" /></div>
-                    <div class="field"><label>מספר טיסה</label><input value="NH 831" /></div>
+                  <div class="tp">
+                    <div class="i">🎫</div>
+                    <div class="l">פעילות</div>
                   </div>
-                  <div class="row2">
-                    <div class="field"><label>קוד אישור</label><input value="7K2QLP" /></div>
-                    <div class="field">
-                      <label>תאריך ושעה</label><input value="01.10 · 23:40" />
+                  <div class="tp">
+                    <div class="i">📌</div>
+                    <div class="l">אחר</div>
+                  </div>
+                </div>
+                <!-- Booking form. Shown: flight (transport → origin/destination route,
+                     each a Place FK, ADR-0048). Icon = IconPicker + derived category
+                     (ADR-0038); date/time = TimePicker (ADR-0036/0037); notes on every
+                     type (ADR-0047). Hotel swaps the route block for a WiFi block;
+                     restaurant/activity/other drop both and keep just notes. -->
+                <div class="form">
+                  <div class="titlerow">
+                    <button class="icon-chip" onclick="toast('🖼️', 'בורר סמלים (IconPicker)')">
+                      ✈️
+                    </button>
+                    <div class="grow">
+                      <div class="field" style="margin: 0">
+                        <input placeholder="למשל: ANA · NH 831" value="ANA · NH 831" />
+                      </div>
                     </div>
                   </div>
+                  <div class="auto-caption">
+                    ✨ נבחר לפי סוג ההזמנה <span class="cat-readout">תחבורה</span>
+                    <button class="revert" onclick="toast('↺', 'חוזר לסמל המוצע')">↺ איפוס</button>
+                  </div>
+
+                  <div class="field"><label>קוד אישור</label><input value="7K2QLP" /></div>
+
+                  <!-- transport only: origin + destination, each a Place FK (ADR-0048) -->
+                  <div class="row2">
+                    <div class="field">
+                      <label>מוצא 📍</label><input value="נמל התעופה בן גוריון" />
+                    </div>
+                    <div class="field"><label>יעד 📍</label><input value="נריטה (NRT)" /></div>
+                  </div>
+                  <div class="route-hint">📍 מקושר ל-Google Places · מזין את המפה והניווט</div>
+
+                  <div class="field">
+                    <label>תאריך ושעה</label>
+                    <div class="tp-fields">
+                      <div class="tfield open">
+                        <span class="cap">המראה</span>
+                        <span class="val" dir="ltr">01.10 · 23:40</span>
+                      </div>
+                      <div class="tfield">
+                        <span class="cap">נחיתה</span>
+                        <span class="val" dir="ltr">02.10 · 17:55</span>
+                      </div>
+                    </div>
+                  </div>
+
+                  <div class="field">
+                    <label>הערות</label>
+                    <textarea placeholder="מושב, טרמינל, כבודה וכו׳">מושב 32K · טרמינל 3</textarea>
+                  </div>
+
                   <div class="field">
                     <label>סוג אירוע</label>
                     <div class="kindsel">
-                      <button class="hard">🔒 קשיח</button><button>גמיש</button>
+                      <button class="hard">🔒 קשיח</button><button class="soft">גמיש</button>
                     </div>
                   </div>
                   <div class="form-actions">
                     <button
                       class="btn-primary"
-                      onclick="toast('✓', 'הטיסה נוספה לאינדקס וסונכרנה')"
+                      onclick="toast('✓', 'הטיסה נוספה לאינדקס · אירוע נוצר במסלול')"
                     >
                       שמור לאינדקס
                     </button>
@@ -1433,7 +1613,9 @@
                   <div class="li">
                     <div class="b2">🚄</div>
                     <div class="main">
-                      <div class="t">שינקנסן · טוקיו→קיוטו</div>
+                      <div class="t">
+                        <span class="route" dir="ltr">טוקיו <span class="arr">→</span> קיוטו</span>
+                      </div>
                       <div class="m">
                         <span class="src"><span class="g"></span>Gmail</span>
                       </div>
