@@ -533,11 +533,44 @@ function EventItem({
       <button className="face" onClick={onToggle} aria-expanded={isOpen}>
         <span className="badge">{event.icon}</span>
         {titleBlock}
-        {isDone && (
-          <span className="check" aria-hidden="true">
-            {ICONS.done}
-          </span>
-        )}
+        {/* The done ✓ doubles as a one-tap undo (ADR-0043 revision): tapping it
+            restores the event, the fast twin of the row's שחזר. It's a
+            role=button inside the face (not a nested <button>) that stops
+            propagation so it undoes without also toggling the row open. Stays a
+            plain decorative badge on a read-only past day, where restore is
+            locked (ADR-0029). */}
+        {isDone &&
+          (readOnly ? (
+            <span className="check" aria-hidden="true">
+              {ICONS.done}
+            </span>
+          ) : (
+            <span
+              className="check btn"
+              role="button"
+              tabIndex={0}
+              aria-label={t.actions.undoDone}
+              title={t.actions.undoDone}
+              onClick={(e) => {
+                e.stopPropagation();
+                verbs.restore(event);
+              }}
+              onKeyDown={(e) => {
+                if (e.key === 'Enter' || e.key === ' ') {
+                  e.preventDefault();
+                  e.stopPropagation();
+                  verbs.restore(event);
+                }
+              }}
+            >
+              <span className="mark" aria-hidden="true">
+                {ICONS.done}
+              </span>
+              <span className="undo" aria-hidden="true">
+                ↩
+              </span>
+            </span>
+          ))}
         {timeBlock}
         <span className="chev" aria-hidden="true" />
       </button>
