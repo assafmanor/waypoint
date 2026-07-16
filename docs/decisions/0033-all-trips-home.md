@@ -45,3 +45,14 @@ The first shipped version (`all-trips-v1.html`) was a flat list where the live t
 2. **The live trip gets a prominent indigo hero.** This is the one loud element on an otherwise paper page: chrome-base `--indigo` (never the darker `--board`), elevated, with an enter affordance. **It is a nav card, not a departure board** — no board glow, no pulse, no Now/Next content — so §5 ("no board here") and the ADR-0028 board-scarcity rule both still hold. This clarifies, rather than reverses, §5: _the prohibition is on the board surface + its live grammar, not on using the chrome color prominently._ No "active trip" caption sits on the hero: the `עכשיו` section header above it and the indigo prominence already carry that, so a label would only crowd the trip name (the visible section text still provides the non-color redundancy).
 3. **Meta line follows the type system.** Spaced middots (`·`), and the date range + member count set in JetBrains Mono `dir="ltr"` (design-language: mono = dates/numbers). Isolating the numeric run in `dir="ltr"` also fixes an RTL bidi bug where the date range rendered reversed (`23.07–16.07`). Card titles move to `Secular One` (the ramp's h3). A `destination` that the trip name already contains is hidden to keep the line lean.
 4. **Past trips** are de-emphasized a notch (quieter surface + desaturated icon).
+
+## Revision (2026-07-16) — the landing rule wins over the last-opened trip on a cold reopen
+
+The landing rule (§2) said "a trip is live → open it directly," but the implementation let the persisted last-opened `tripId` (the per-device active-trip state, ADR-0021) win unconditionally: reopening the app dropped you back on the last trip you visited even when a **different** trip was live right now. That contradicts on-the-ground priority — the whole point of §2.
+
+The fix distinguishes two ways you arrive at the trip surface:
+
+1. **A manual pick this session** — tapping a trip on /trips, creating, or joining — is honored regardless of whether that trip is live. You asked for it; you land in it. (This is the "manual pick honored" behavior §2's `resolveActiveTrip` note alluded to.)
+2. **A cold reopen** (a fresh app launch, no in-session pick) applies the §2 rule directly: a live trip opens, nothing live goes to /trips. The stored last-opened id only wins here when it is **itself** live — that preserves "default to last-opened among overlapping live trips" (ADR-0021) while stopping a stale non-live id from shadowing a trip that is live now.
+
+The two cases are told apart by an in-memory `pickedThisSession` flag on the active-trip state (`frontend/src/state/active-trip-id.tsx`) — set on an explicit pick, absent after a fresh launch, so a reopen is always treated as a cold load. The decision itself is the pure `resolveLanding` helper in `frontend/src/lib/active-trip.ts`. No change to the persisted `tripId` semantics (still per-device, not synced) or to any other landing branch.
