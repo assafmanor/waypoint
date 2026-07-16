@@ -28,7 +28,7 @@ Implementation: extract the shared "walk and shift while overlapping" loop into 
 
 **Frontend:** `verbs.ts` gains an `earlier` verb (thin wrapper calling `applyDelay(deps, event, -DELAY_STEP_MINUTES)`), `DayView.tsx`'s soft-event actions row gains a second button. Toast copy needs an "earlier" variant alongside `softDelayed`/`hardDelayed` in `i18n/he.ts`.
 
-**Hard events:** no "earlier" button added to hard events in this change. Their existing single delay button remains as-is; nudging a hard event in either direction is [T-030](../../../_internal/tasks/open/T-030-hard-event-edit-confirmation.md)'s guarded-confirm territory, out of scope here.
+**Hard events:** no "earlier" button added to hard events in this change. Their existing single delay button remains as-is; nudging a hard event in either direction is T-030 (guarded hard-edit confirm)'s guarded-confirm territory, out of scope here.
 
 ### 2. Standing conflict indicator
 
@@ -50,8 +50,8 @@ Because this is a pure function of current `events`, it reflects a just-applied 
 ## Out of scope (this change)
 
 - **Reordering** two events' positions on the timeline — new, bigger feature; tracked separately (task to be filed).
-- **Confirm-gated hard-event nudge** — [T-030](../../../_internal/tasks/open/T-030-hard-event-edit-confirmation.md).
-- **Arbitrary/custom-time retiming** (a picker, not a fixed step) — covered by [T-047](../../../_internal/tasks/open/T-047-event-create-edit-ui.md)'s edit form.
+- **Confirm-gated hard-event nudge** — T-030 (guarded hard-edit confirm).
+- **Arbitrary/custom-time retiming** (a picker, not a fixed step) — covered by T-047 (the event edit form)'s edit form.
 
 ## Testing
 
