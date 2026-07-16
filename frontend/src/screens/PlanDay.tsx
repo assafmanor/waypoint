@@ -9,7 +9,13 @@
 // cross-day via its date field). Reorder = drag a soft row's grip (or the ▲/▼
 // fallback) to reassign the day's soft time slots (verbs.reorder → planReorder);
 // the list stays time-ordered and hard events are pinned anchors (ADR-0011).
-import { Fragment, useState, type FormEvent, type PointerEvent as ReactPointerEvent } from 'react';
+import {
+  Fragment,
+  useState,
+  type FormEvent,
+  type KeyboardEvent as ReactKeyboardEvent,
+  type PointerEvent as ReactPointerEvent,
+} from 'react';
 import {
   EVENT_KIND,
   EVENT_STATUS,
@@ -78,8 +84,11 @@ export function PlanDay() {
   const [resolveCluster, setResolveCluster] = useState<TimeGroup | null>(null);
   const [resolveMover, setResolveMover] = useState<TripEvent | null>(null);
 
+  // A live trip hides skipped soft events (they park on the shelf); a finished
+  // trip's archive shows them in place — struck-through, restorable — so the
+  // record reads "what we did / what we skipped" (ADR-0044).
   const dayEvents = events
-    .filter((e) => e.date === activeDate && e.status !== EVENT_STATUS.SKIPPED)
+    .filter((e) => e.date === activeDate && (readOnly || e.status !== EVENT_STATUS.SKIPPED))
     .sort(byStart);
 
   // Reorder acts on soft events only (hard events are pinned anchors, ADR-0011).
@@ -614,6 +623,18 @@ function BuilderNode({
         onMoveLater={laterId ? () => ctx.verbs.reorder(ctx.dayEvents, e.id, laterId) : undefined}
         nestedCount={hasKids ? countDescendants(item) : undefined}
         overlapNote={overlapNote}
+        // Finished-trip archive: soft rows settle in place (ADR-0044). Hard
+        // events aren't settled this way (ADR-0043), so they get no control.
+        settle={
+          ctx.readOnly && e.kind === EVENT_KIND.SOFT
+            ? {
+                status: e.status,
+                onDone: () => ctx.verbs.done(e),
+                onSkip: () => ctx.verbs.skip(e),
+                onRestore: () => ctx.verbs.restore(e),
+              }
+            : undefined
+        }
       />
       {hasKids && (
         <div className={'bld-nest-kids' + (depth >= 1 ? ' deep' : '')}>
@@ -639,6 +660,7 @@ function BuilderRow({
   onMoveLater,
   nestedCount,
   overlapNote,
+  settle,
 }: {
   event: TripEvent;
   tz: string;
@@ -665,6 +687,15 @@ function BuilderRow({
   nestedCount?: number;
   // Set on a cluster member that overlaps an earlier one: the seam tag text.
   overlapNote?: string;
+  // Present only on a finished-trip archive soft row (ADR-0044): the settle
+  // status + the verbs to change it. Absent = no settle control (live trip, or
+  // a hard event, which isn't settled this way).
+  settle?: {
+    status: TripEvent['status'];
+    onDone: () => void;
+    onSkip: () => void;
+    onRestore: () => void;
+  };
 }) {
   const isHard = event.kind === EVENT_KIND.HARD;
   const code = booking?.confirmationCode ? `${CODE_PREFIX}${booking.confirmationCode}` : undefined;
@@ -672,7 +703,14 @@ function BuilderRow({
     .filter(Boolean)
     .join(' · ');
 
-  const cls = ['bld', isHard ? '' : 'soft', dragging ? 'dragging' : '', over ? 'over' : '']
+  const isSkipped = settle?.status === EVENT_STATUS.SKIPPED;
+  const cls = [
+    'bld',
+    isHard ? '' : 'soft',
+    dragging ? 'dragging' : '',
+    over ? 'over' : '',
+    isSkipped ? 'is-skip' : '',
+  ]
     .filter(Boolean)
     .join(' ');
 
@@ -684,17 +722,42 @@ function BuilderRow({
     setMenuOpen(false);
     fn();
   };
+  // The archive settle control replaces the (hidden) ⋯ slot; an unresolved row
+  // opens this chooser to record "we were there / skip" (ADR-0044).
+  const [settleOpen, setSettleOpen] = useState(false);
+  const onSettleKey = (fn: () => void) => (e: ReactKeyboardEvent) => {
+    if (e.key === 'Enter' || e.key === ' ') {
+      e.preventDefault();
+      fn();
+    }
+  };
+
+  // In the archive a soft row wears its settle status (done/skipped/unresolved),
+  // not the generic "גמיש" — the record is what matters there (ADR-0044).
+  const softTag = settle ? (
+    settle.status === EVENT_STATUS.DONE ? (
+      <span className="tag-done">
+        {ICONS.done} {t.event.didThis}
+      </span>
+    ) : settle.status === EVENT_STATUS.SKIPPED ? (
+      <span className="tag-skip">{t.event.skipped}</span>
+    ) : (
+      <span className="tag-phase">{t.event.notMarked}</span>
+    )
+  ) : (
+    <span className="tag-soft">{t.event.soft}</span>
+  );
 
   const mainContent = (
     <>
       <span className="bld-t">
-        {event.title}
+        <span className="bld-ttl">{event.title}</span>
         {isHard ? (
           <span className="tag-hard">
             {ICONS.lock} {t.event.hard}
           </span>
         ) : (
-          <span className="tag-soft">{t.event.soft}</span>
+          softTag
         )}
         {overlapNote && <span className="seam-tag">⧉ {overlapNote}</span>}
         {nestedCount !== undefined && (
@@ -768,6 +831,52 @@ function BuilderRow({
           {ICONS.more}
         </button>
       )}
+      {/* Archive settle control (ADR-0044) — takes the ⋯ slot the read-only row
+          leaves free. Done ✓ / skipped ↩ restore in one tap (the ✓ morphs to an
+          undo arrow on hover/focus); an unresolved ○ opens the settle chooser. */}
+      {settle &&
+        (settle.status === EVENT_STATUS.DONE ? (
+          <span
+            className="bld-settle done"
+            role="button"
+            tabIndex={0}
+            aria-label={t.actions.undoDone}
+            title={t.actions.undoDone}
+            onClick={settle.onRestore}
+            onKeyDown={onSettleKey(settle.onRestore)}
+          >
+            <span className="mark" aria-hidden="true">
+              {ICONS.done}
+            </span>
+            <span className="undo" aria-hidden="true">
+              ↩
+            </span>
+          </span>
+        ) : settle.status === EVENT_STATUS.SKIPPED ? (
+          <span
+            className="bld-settle restore"
+            role="button"
+            tabIndex={0}
+            aria-label={t.actions.restore}
+            title={t.actions.restore}
+            onClick={settle.onRestore}
+            onKeyDown={onSettleKey(settle.onRestore)}
+          >
+            ↩
+          </span>
+        ) : (
+          <span
+            className="bld-settle ghost"
+            role="button"
+            tabIndex={0}
+            aria-label={t.planDay.settleUnresolved}
+            title={t.planDay.settleUnresolved}
+            onClick={() => setSettleOpen(true)}
+            onKeyDown={onSettleKey(() => setSettleOpen(true))}
+          >
+            ○
+          </span>
+        ))}
       {!readOnly && menuOpen && (
         <Sheet title={event.title} onClose={() => setMenuOpen(false)}>
           <div className="row-actions">
@@ -790,6 +899,30 @@ function BuilderRow({
                 {ICONS.trash}
               </span>
               {t.actions.delete}
+            </button>
+          </div>
+        </Sheet>
+      )}
+      {settle && settleOpen && (
+        <Sheet title={t.planDay.settleTitle(event.title)} onClose={() => setSettleOpen(false)}>
+          <div className="settle-choose">
+            <button
+              className="settle-yes"
+              onClick={() => {
+                setSettleOpen(false);
+                settle.onDone();
+              }}
+            >
+              {ICONS.done} {t.actions.wasThere}
+            </button>
+            <button
+              className="settle-skip"
+              onClick={() => {
+                setSettleOpen(false);
+                settle.onSkip();
+              }}
+            >
+              {t.actions.skip}
             </button>
           </div>
         </Sheet>

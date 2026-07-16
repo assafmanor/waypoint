@@ -144,7 +144,7 @@ export function DayView() {
             📖
           </span>
           <span className="ab-main">
-            {heading} — {t.day.archiveTag}
+            {heading} · {t.day.archiveTag}
           </span>
           <button className="ab-back" onClick={() => setActiveDate(today)}>
             {t.header.backToToday}
@@ -533,9 +533,38 @@ function EventItem({
       <button className="face" onClick={onToggle} aria-expanded={isOpen}>
         <span className="badge">{event.icon}</span>
         {titleBlock}
+        {/* The done ✓ doubles as a one-tap undo (ADR-0043 revision): tapping it
+            restores the event, the fast twin of the row's שחזר. It's a
+            role=button inside the face (not a nested <button>) that stops
+            propagation so it undoes without also toggling the row open. Stays
+            interactive on a read-only past day too: settling is reversible
+            wherever it's allowed — restore is the inverse of the Done/Skip that
+            ADR-0029/0043 keep for the archive's retrospective job. */}
         {isDone && (
-          <span className="check" aria-hidden="true">
-            {ICONS.done}
+          <span
+            className="check btn"
+            role="button"
+            tabIndex={0}
+            aria-label={t.actions.undoDone}
+            title={t.actions.undoDone}
+            onClick={(e) => {
+              e.stopPropagation();
+              verbs.restore(event);
+            }}
+            onKeyDown={(e) => {
+              if (e.key === 'Enter' || e.key === ' ') {
+                e.preventDefault();
+                e.stopPropagation();
+                verbs.restore(event);
+              }
+            }}
+          >
+            <span className="mark" aria-hidden="true">
+              {ICONS.done}
+            </span>
+            <span className="undo" aria-hidden="true">
+              ↩
+            </span>
           </span>
         )}
         {timeBlock}
@@ -545,11 +574,11 @@ function EventItem({
         <div className="act-row">
           {isDone ? (
             <>
-              {!readOnly && (
-                <button className="act" onClick={() => verbs.restore(event)}>
-                  {t.actions.restore}
-                </button>
-              )}
+              {/* שחזר stays on a past day too — un-settling is the inverse of the
+                  retrospective Done the archive already allows (ADR-0043 §2). */}
+              <button className="act" onClick={() => verbs.restore(event)}>
+                {t.actions.restore}
+              </button>
               <button className="act go" onClick={() => verbs.navigate(event)}>
                 {t.actions.navigate}
               </button>

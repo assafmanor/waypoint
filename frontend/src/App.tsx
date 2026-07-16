@@ -13,7 +13,7 @@ import { TripProvider, useTrip } from './state/trip-state';
 import { ModeProvider, useMode } from './state/mode-state';
 import { AuthProvider, useAuth } from './state/auth-state';
 import { ActiveTripIdProvider, useActiveTripId } from './state/active-trip-id';
-import { NavProvider, useMarkInsideTrip, useTripTab } from './state/nav-state';
+import { HOME_TAB, NavProvider, useMarkInsideTrip, useTripTab } from './state/nav-state';
 import { EdgeSwipeBack } from './ui/EdgeSwipeBack';
 import { flushAllOutbox, isOffline, useIsOffline, useOutboxCount } from './lib/outbox';
 import { loadTripList } from './lib/cache';
@@ -302,7 +302,12 @@ function Header({
 // either way (T-002), so they fall back to Placeholder.
 function Screen({ tab, onNavigate }: { tab: TabId; onNavigate: (tab: TabId) => void }) {
   const { mode } = useMode();
-  if (tab === 'home') return mode === 'trip' ? <Home /> : <PlanHome onNavigate={onNavigate} />;
+  if (tab === 'home')
+    return mode === 'trip' ? (
+      <Home onNavigate={onNavigate} />
+    ) : (
+      <PlanHome onNavigate={onNavigate} />
+    );
   if (tab === 'days') return mode === 'trip' ? <DayView /> : <PlanDay />;
   return <Placeholder tab={tab} mode={mode} />;
 }
@@ -320,6 +325,7 @@ function Shell() {
   const { trip, setActiveDate, tripDeleted } = useTrip();
   const { logout } = useAuth();
   const navigate = useNavigate();
+  const now = useClock();
   // A remote admin deleting the trip while we're inside it (ADR-0039): leave to
   // the all-trips list rather than sitting on a trip that no longer exists.
   useEffect(() => {
@@ -328,6 +334,14 @@ function Shell() {
   const onSelectDay = (date: string) => {
     setActiveDate(date);
     goToTab('days');
+  };
+  // Tapping Home in Trip mode is "back to now": the board is a live/today
+  // surface (ADR-0043 anchors amber to today), so snap the day-strip selection
+  // back to today rather than leaving a previously-browsed day highlighted while
+  // the board shows now. Plan mode has no "now" — its day selection is preserved.
+  const onSelectTab = (next: TabId) => {
+    if (next === HOME_TAB && mode === 'trip') setActiveDate(todayInTz(trip.timezone, now));
+    goToTab(next);
   };
   // Mode-switch transition (design-language: Motion). data-switching arms the
   // chrome transition, direction-scoped: Plan→Trip (going live) is the cinematic
@@ -370,7 +384,7 @@ function Shell() {
           <button
             key={tabDef.id}
             className={tabDef.id === tab ? 'on' : ''}
-            onClick={() => goToTab(tabDef.id)}
+            onClick={() => onSelectTab(tabDef.id)}
             aria-current={tabDef.id === tab}
           >
             <span className="ic">{tabDef.icon}</span>
