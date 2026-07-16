@@ -13,6 +13,7 @@ Code and documentation live together. **Any consequential decision gets an ADR**
 ## Where things are
 
 - `docs/INDEX.md` — the map of all documentation. **Start here.**
+- `docs/backlog.md` — decided-but-unbuilt work. A flat list, no statuses (ADR-0046). Not a record of anything: the ADRs and planning notes are.
 - `docs/product/` — vision, PRD, feature catalog, personas (what & why).
 - `docs/design/design-language.md` — palette, type, mode identity, semantic color budget, hard/soft grammar, RTL, dark-mode readiness (adopted in ADR-0028).
 - `docs/architecture/` — overview, collaboration-model, data-model, **api-contract**, **sync-and-offline**, **auth-and-google**, tech-stack.
