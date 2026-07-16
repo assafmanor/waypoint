@@ -63,7 +63,7 @@ pnpm dev                                               # backend :3000, frontend
 
 ## Conventions
 
-Conventional Commits, branch per task (`t-003-…`), Prettier/ESLint authoritative. **Prefer self-documenting code** — comment only to capture a non-obvious _why_, keep comments short, and skip them where clear names make the code speak for itself. Run `pnpm format` before committing **and again before opening a PR** (unformatted code fails CI regularly). `pnpm typecheck` + `pnpm build` green before done. Full details in `docs/engineering/conventions.md`.
+Conventional Commits, branch per task (create the branch _before_ the first commit — including docs-only changes, never commit onto local `main`), Prettier/ESLint authoritative. **Prefer self-documenting code** — comment only to capture a non-obvious _why_, keep comments short, and skip them where clear names make the code speak for itself. Run `pnpm format` before committing **and again before opening a PR** (unformatted code fails CI regularly). `pnpm typecheck` + `pnpm build` green before done. Full details in `docs/engineering/conventions.md`.
 
 **No em dashes (`—`) in UI copy — never.** For a separator between peer bits of info use the small middle dot (`·`, the app's separator, e.g. `עכשיו · במקביל`); for a "no value" placeholder a regular dash (`-`) reads best; otherwise a comma or period. User-facing strings only (Hebrew UI copy, placeholders, option labels), not English code comments.
 
