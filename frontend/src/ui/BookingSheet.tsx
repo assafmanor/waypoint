@@ -22,7 +22,7 @@ import {
   mergeBookingDetails,
   deleteFlags,
   buildEventSeed,
-  buildTransportSeed,
+  buildSpanSeed,
   findPlaceByName,
   isoToDateTimeLocal,
 } from '../lib/booking-edit';
@@ -39,6 +39,9 @@ interface Wifi {
 const BOOKING_TYPES = Object.values(BOOKING_TYPE);
 const isTransportType = (ty: BookingType) =>
   ty === BOOKING_TYPE.FLIGHT || ty === BOOKING_TYPE.TRAIN;
+// Two-endpoint schedule (start + end, may span days): transport departure→arrival
+// and a hotel check-in→check-out. Others are a single point on a day.
+const isSpanType = (ty: BookingType) => isTransportType(ty) || ty === BOOKING_TYPE.HOTEL;
 
 export function BookingSheet({
   booking,
@@ -75,15 +78,15 @@ export function BookingSheet({
   const [end, setEnd] = useState(
     linkedEvent?.endsAt ? isoToTimeInput(linkedEvent.endsAt, trip.timezone) : '',
   );
-  // Transport scheduling: explicit departure + arrival datetimes (may span days).
-  const [depAt, setDepAt] = useState(
+  // Span scheduling (transport departure/arrival, hotel check-in/check-out): two
+  // explicit datetimes that may fall on different days.
+  const [spanStart, setSpanStart] = useState(
     linkedEvent?.startsAt ? isoToDateTimeLocal(linkedEvent.startsAt, trip.timezone) : '',
   );
-  const [arrAt, setArrAt] = useState(
+  const [spanEnd, setSpanEnd] = useState(
     linkedEvent?.endsAt ? isoToDateTimeLocal(linkedEvent.endsAt, trip.timezone) : '',
   );
-  const defaultKind = (ty: BookingType) =>
-    isTransportType(ty) ? EVENT_KIND.HARD : EVENT_KIND.SOFT;
+  const defaultKind = (ty: BookingType) => (isSpanType(ty) ? EVENT_KIND.HARD : EVENT_KIND.SOFT);
   const [kind, setKind] = useState<'hard' | 'soft'>(linkedEvent?.kind ?? defaultKind(initialType));
   const [kindTouched, setKindTouched] = useState(false);
   const [error, setError] = useState<string | null>(null);
@@ -92,6 +95,7 @@ export function BookingSheet({
 
   const isTransport = isTransportType(type);
   const isHotel = type === BOOKING_TYPE.HOTEL;
+  const isSpan = isSpanType(type);
 
   const changeType = (next: BookingType) => {
     setType(next);
@@ -117,7 +121,7 @@ export function BookingSheet({
   const save = async () => {
     const finalTitle = title.trim();
     if (!finalTitle) return setError(t.index.form.titleRequired);
-    const scheduleDate = isTransport ? depAt.split('T')[0] : date;
+    const scheduleDate = isSpan ? spanStart.split('T')[0] : date;
     if (scheduleDate && (scheduleDate < trip.startDate || scheduleDate > trip.endDate)) {
       return setError(t.index.form.dateOutOfRange);
     }
@@ -132,8 +136,8 @@ export function BookingSheet({
         wifiNetwork: isHotel ? wifiNetwork : undefined,
         wifiPassword: isHotel ? wifiPassword : undefined,
       });
-      const event = isTransport
-        ? buildTransportSeed({ depAt, arrAt, kind, icon, category }, trip.timezone)
+      const event = isSpan
+        ? buildSpanSeed({ startAt: spanStart, endAt: spanEnd, kind, icon, category }, trip.timezone)
         : buildEventSeed({ date, start, end, kind, icon, category }, trip.timezone);
       const base = {
         title: finalTitle,
@@ -278,29 +282,30 @@ export function BookingSheet({
             <textarea value={notes} onChange={(e) => setNotes(e.target.value)} />
           </label>
 
-          {isTransport ? (
+          {isSpan ? (
             <>
-              {/* A flight/train has a departure and an arrival that may fall on
-                  different days, so each is a full datetime (not a same-day span). */}
+              {/* A flight/train (departure→arrival) or a hotel stay (check-in→
+                  check-out) has two endpoints that may fall on different days, so
+                  each is a full datetime rather than a single same-day span. */}
               <label className="bs-field">
-                {t.index.form.departLabel}
+                {isHotel ? t.index.form.checkinLabel : t.index.form.departLabel}
                 <input
                   type="datetime-local"
                   lang={DEVICE_LOCALE}
-                  value={depAt}
-                  onChange={(e) => setDepAt(e.target.value)}
+                  value={spanStart}
+                  onChange={(e) => setSpanStart(e.target.value)}
                 />
               </label>
               <label className="bs-field">
-                {t.index.form.arriveLabel}
+                {isHotel ? t.index.form.checkoutLabel : t.index.form.arriveLabel}
                 <input
                   type="datetime-local"
                   lang={DEVICE_LOCALE}
-                  value={arrAt}
-                  onChange={(e) => setArrAt(e.target.value)}
+                  value={spanEnd}
+                  onChange={(e) => setSpanEnd(e.target.value)}
                 />
               </label>
-              {depAt && <KindToggle kind={kind} onPick={pickKind} />}
+              {spanStart && <KindToggle kind={kind} onPick={pickKind} />}
             </>
           ) : (
             <>

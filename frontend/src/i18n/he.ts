@@ -79,6 +79,8 @@ export const t = {
       dateLabel: 'תאריך (משבץ במסלול)',
       departLabel: 'יציאה 🛫',
       arriveLabel: 'הגעה 🛬',
+      checkinLabel: 'צ׳ק-אין 🏨',
+      checkoutLabel: 'צ׳ק-אאוט 🧳',
       kindLabel: 'סוג אירוע',
       kindHard: '🔒 קשיח',
       kindSoft: 'גמיש',

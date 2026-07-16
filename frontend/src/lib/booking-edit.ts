@@ -99,27 +99,34 @@ function splitLocal(dt: string): { date: string; time: string } | null {
 }
 
 /** An instant → a datetime-local input value in the trip timezone, for
- *  prefilling the departure/arrival fields when editing a transport booking. */
+ *  prefilling the span (departure/arrival, check-in/check-out) fields on edit. */
 export function isoToDateTimeLocal(iso: string, timeZone: string): string {
   return `${todayInTz(timeZone, new Date(iso))}T${isoToTimeInput(iso, timeZone)}`;
 }
 
-/** Transport (flight/train) linked-event seed (ADR-0047 §1): an explicit
- *  departure and arrival datetime, each in the trip timezone, spanning calendar
- *  days via `endDate` when arrival lands on a later day. Returns `undefined`
- *  with no departure (an index-only booking). */
-export function buildTransportSeed(
-  input: { depAt: string; arrAt: string; kind: EventKind; icon?: string; category?: EventCategory },
+/** Linked-event seed for a two-endpoint booking (ADR-0047 §1): flight/train
+ *  departure→arrival, or a hotel check-in→check-out. Each endpoint is a full
+ *  datetime in the trip timezone; the event spans calendar days via `endDate`
+ *  when the end lands on a later day. Returns `undefined` with no start (an
+ *  index-only booking). */
+export function buildSpanSeed(
+  input: {
+    startAt: string;
+    endAt: string;
+    kind: EventKind;
+    icon?: string;
+    category?: EventCategory;
+  },
   timeZone: string,
 ): BookingEventSeed | undefined {
-  const dep = splitLocal(input.depAt);
-  if (!dep) return undefined;
-  const startsAt = zonedIso(dep.date, dep.time, timeZone);
-  const arr = splitLocal(input.arrAt);
-  const endsAt = arr ? zonedIso(arr.date, arr.time, timeZone) : undefined;
-  const endDate = arr && arr.date !== dep.date ? arr.date : undefined;
+  const startParts = splitLocal(input.startAt);
+  if (!startParts) return undefined;
+  const startsAt = zonedIso(startParts.date, startParts.time, timeZone);
+  const endParts = splitLocal(input.endAt);
+  const endsAt = endParts ? zonedIso(endParts.date, endParts.time, timeZone) : undefined;
+  const endDate = endParts && endParts.date !== startParts.date ? endParts.date : undefined;
   return {
-    date: dep.date,
+    date: startParts.date,
     startsAt,
     endsAt,
     endDate,

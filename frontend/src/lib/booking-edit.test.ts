@@ -2,7 +2,7 @@ import { describe, expect, it } from 'vitest';
 import type { Place } from '@waypoint/shared';
 import {
   buildEventSeed,
-  buildTransportSeed,
+  buildSpanSeed,
   deleteFlags,
   findPlaceByName,
   mergeBookingDetails,
@@ -100,14 +100,14 @@ describe('buildEventSeed', () => {
   });
 });
 
-describe('buildTransportSeed', () => {
-  it('returns undefined with no departure', () => {
-    expect(buildTransportSeed({ depAt: '', arrAt: '', kind: 'hard' }, TZ)).toBeUndefined();
+describe('buildSpanSeed', () => {
+  it('returns undefined with no start', () => {
+    expect(buildSpanSeed({ startAt: '', endAt: '', kind: 'hard' }, TZ)).toBeUndefined();
   });
 
-  it('builds departure + arrival instants and an endDate when arrival is a later day', () => {
-    const seed = buildTransportSeed(
-      { depAt: '2026-07-20T23:40', arrAt: '2026-07-21T17:55', kind: 'hard', icon: '✈️' },
+  it('builds start + end instants and an endDate when the end is a later day', () => {
+    const seed = buildSpanSeed(
+      { startAt: '2026-07-20T23:40', endAt: '2026-07-21T17:55', kind: 'hard', icon: '✈️' },
       TZ,
     );
     expect(seed).toEqual({
@@ -121,9 +121,18 @@ describe('buildTransportSeed', () => {
     });
   });
 
-  it('omits endDate for a same-day arrival', () => {
-    const seed = buildTransportSeed(
-      { depAt: '2026-07-20T09:00', arrAt: '2026-07-20T11:30', kind: 'hard' },
+  it('spans multiple days for a hotel check-in → check-out', () => {
+    const seed = buildSpanSeed(
+      { startAt: '2026-07-15T15:00', endAt: '2026-07-20T11:00', kind: 'hard' },
+      TZ,
+    );
+    expect(seed?.date).toBe('2026-07-15');
+    expect(seed?.endDate).toBe('2026-07-20');
+  });
+
+  it('omits endDate for a same-day span', () => {
+    const seed = buildSpanSeed(
+      { startAt: '2026-07-20T09:00', endAt: '2026-07-20T11:30', kind: 'hard' },
       TZ,
     );
     expect(seed?.endDate).toBeUndefined();
