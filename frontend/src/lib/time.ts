@@ -123,6 +123,26 @@ export function deriveNow(events: TripEvent[], at: Date): NowNext {
   return { now: nowAll[0], next: nextAll[0], nowAll, nextAll };
 }
 
+/** The day-view lifecycle phase of an event, derived from the clock (ADR-0027 /
+ *  ADR-0043) — never stored. A human-set status wins (done/skipped); otherwise a
+ *  planned event is placed against `at`: before its start (`upcoming`), within
+ *  its span (`now`), or after its end (`passed`). An untimed planned event has no
+ *  span to place, so it reads `upcoming` (neutral). Mirrors deriveNow's
+ *  start ≤ at < end window, so the now-line and the board agree on "now". */
+export type EventPhase = 'upcoming' | 'now' | 'passed' | 'done' | 'skipped';
+
+export function eventPhase(event: TripEvent, at: Date): EventPhase {
+  if (event.status === EVENT_STATUS.DONE) return 'done';
+  if (event.status === EVENT_STATUS.SKIPPED) return 'skipped';
+  if (!event.startsAt) return 'upcoming';
+  const t = at.getTime();
+  const start = Date.parse(event.startsAt);
+  const end = event.endsAt ? Date.parse(event.endsAt) : start;
+  if (t < start) return 'upcoming';
+  if (t < end) return 'now';
+  return 'passed';
+}
+
 /** Whole minutes until an instant (floored at 0). */
 export function minutesUntil(iso: string, at: Date): number {
   return Math.max(0, Math.round((new Date(iso).getTime() - at.getTime()) / 60000));

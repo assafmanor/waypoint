@@ -464,8 +464,43 @@
   border-color: var(--amber);
   box-shadow: 0 0 0 3px rgba(233, 166, 60, 0.13);
 }
-.item.done .face {
-  opacity: 0.5;
+/* A passed event recedes — quieter than a live one, still legible reference
+   (ADR-0043). Derived from the clock, never a stored status. The hatch of a
+   soft card flattens so it reads settled, not provisional. */
+.item.passed {
+  opacity: 0.66;
+}
+.item.passed.soft {
+  background: #f7f7f9;
+  border-style: solid;
+  border-color: var(--line);
+}
+/* A done event settles like a passed one, plus a positive ✓ (ok-green, a record,
+   not a clock event — never amber). Replaces the old flat 50% face dim. */
+.item.done {
+  opacity: 0.85;
+  background: #f6faf7;
+  border-color: rgba(60, 154, 107, 0.32);
+  border-style: solid;
+}
+.item.done .badge {
+  background: rgba(60, 154, 107, 0.12);
+}
+.face .check {
+  flex: 0 0 auto;
+  width: 22px;
+  height: 22px;
+  border-radius: 999px;
+  display: grid;
+  place-items: center;
+  font-size: 12px;
+  font-weight: 700;
+  color: #fff;
+  background: var(--ok);
+}
+/* Settle variant: a calm, non-expanding card (a div, not the toggle button). */
+.face.static {
+  cursor: default;
 }
 .face {
   display: flex;
@@ -527,6 +562,27 @@
   background: rgba(22, 35, 61, 0.06);
   padding: 2px 6px;
   border-radius: 6px;
+}
+/* Derived-phase tags (ADR-0043): a passed-but-unmarked event reads as neutral
+   history; a done one wears a positive --ok record (never amber). */
+.tag-phase {
+  font-size: 10px;
+  font-weight: 700;
+  color: var(--muted);
+  background: rgba(22, 35, 61, 0.05);
+  padding: 2px 6px;
+  border-radius: 6px;
+}
+.tag-done {
+  font-size: 10px;
+  font-weight: 700;
+  color: var(--ok);
+  background: rgba(60, 154, 107, 0.13);
+  padding: 2px 6px;
+  border-radius: 6px;
+  display: inline-flex;
+  align-items: center;
+  gap: 3px;
 }
 .face .main .m {
   font-size: 12px;
@@ -767,6 +823,174 @@
   border-inline-start: 2px solid var(--soft-line);
   margin-inline-start: 6px;
   padding-inline-start: 10px;
+}
+
+/* ── now-line (ADR-0043) ────────────────────────────────────────────────
+   A quiet soft-amber hairline marking the current moment; the amber ring on the
+   live event stays the accent, so this whispers (no chip fill, glow, or pulse).
+   Its movement down the list as time passes is the liveness. */
+.nowline {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  margin: 2px 2px 11px;
+}
+.nowline-rule {
+  flex: 1;
+  height: 1px;
+  background: linear-gradient(90deg, rgba(233, 166, 60, 0.5) 0%, rgba(233, 166, 60, 0.1) 100%);
+}
+.nowline-chip {
+  flex: 0 0 auto;
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  background: rgba(233, 166, 60, 0.12);
+  color: var(--amber-deep);
+  font-family: var(--font-mono);
+  font-size: 11.5px;
+  font-weight: 700;
+  padding: 2px 9px;
+  border-radius: 999px;
+}
+.nowline-dot {
+  width: 5px;
+  height: 5px;
+  border-radius: 999px;
+  background: var(--amber);
+}
+.nowline-lbl {
+  font-family: var(--font-body);
+  font-size: 10px;
+  font-weight: 600;
+  opacity: 0.8;
+}
+
+/* Inline settle strip on a passed-but-unmarked soft event (ADR-0043): the
+   "still on?" moment, made one tap — the reframed Done's natural home. */
+.settle {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 0 15px 12px 66px;
+  margin-top: -2px;
+}
+.item.soft .settle {
+  padding-inline-end: 62px;
+}
+.settle-q {
+  font-size: 11.5px;
+  font-weight: 600;
+  color: var(--muted);
+  margin-inline-end: auto;
+}
+.settle button {
+  font: inherit;
+  font-size: 11.5px;
+  font-weight: 700;
+  border-radius: 999px;
+  padding: 5px 13px;
+  cursor: pointer;
+  border: 1px solid var(--line);
+  background: var(--card);
+  color: var(--ink);
+}
+.settle-yes {
+  border-color: rgba(60, 154, 107, 0.4) !important;
+  color: var(--ok) !important;
+}
+.settle button:focus-visible {
+  outline: 2.5px solid var(--teal);
+  outline-offset: 2px;
+}
+
+/* Past-day archive (ADR-0029/0040): a calm read-only banner + a slightly cooled,
+   desaturated list. No now-line (a day that's over has no "now"). */
+.day-list.archive {
+  filter: saturate(0.9);
+}
+.archive-banner {
+  display: flex;
+  align-items: center;
+  gap: 9px;
+  background: #eceae4;
+  border: 1px solid rgba(22, 35, 61, 0.09);
+  border-radius: 12px;
+  padding: 9px 12px;
+  margin-bottom: 12px;
+  font-size: 12px;
+  color: #5f6577;
+  font-weight: 600;
+}
+.archive-banner .ab-ic {
+  font-size: 14px;
+}
+.archive-banner .ab-main {
+  min-width: 0;
+}
+.archive-banner .ab-back {
+  margin-inline-start: auto;
+  font: inherit;
+  font-weight: 700;
+  color: var(--ink);
+  background: none;
+  border: 0;
+  cursor: pointer;
+  white-space: nowrap;
+}
+.archive-banner .ab-back:focus-visible {
+  outline: 2.5px solid var(--teal);
+  outline-offset: 2px;
+  border-radius: 6px;
+}
+.past-build-hint {
+  display: flex;
+  align-items: center;
+  gap: 7px;
+  border: 1px dashed var(--soft-line);
+  border-radius: 12px;
+  padding: 10px 12px;
+  margin-top: 4px;
+  font-size: 12px;
+  color: var(--muted);
+  font-weight: 500;
+}
+
+/* Plan builder's static now-reference (ADR-0043): Plan's violet, dashed, hollow
+   marker — the deliberate opposite of the Trip now-line, never a live signal. */
+.nowref {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  margin: 1px 2px 10px;
+}
+.nowref-rule {
+  flex: 1;
+  height: 0;
+  border-top: 1px dashed rgba(110, 89, 214, 0.55);
+}
+.nowref-tag {
+  flex: 0 0 auto;
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  color: var(--plan-deep);
+  background: var(--plan-tint);
+  border: 1px solid rgba(110, 89, 214, 0.28);
+  font-size: 11px;
+  font-weight: 700;
+  padding: 2px 9px;
+  border-radius: 999px;
+}
+.nowref-ring {
+  width: 6px;
+  height: 6px;
+  border-radius: 999px;
+  border: 1.5px solid var(--plan);
+  background: transparent;
+}
+.nowref-tm {
+  font-family: var(--font-mono);
 }
 
 /* maybe shelf */

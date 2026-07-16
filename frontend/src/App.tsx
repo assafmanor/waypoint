@@ -46,7 +46,7 @@ import {
   type TabId,
 } from './constants';
 import { daysUntilStart, type Mode } from './lib/mode';
-import { addDays, formatDaysUntil, monthLabelFor } from './lib/time';
+import { addDays, formatDaysUntil, monthLabelFor, todayInTz } from './lib/time';
 import { t } from './i18n/he';
 import './App.css';
 import './screens.css';
@@ -172,6 +172,29 @@ function Header({
       monthLabel,
     };
   });
+  // Trip mode anchors amber to TODAY (the live day), not to the selection
+  // (ADR-0043 / ADR-0028): selecting a past day is a neutral highlight, a future
+  // day violet (plan-ahead), and today keeps its amber dot wherever you browse —
+  // so "where's now?" is always answerable from the chrome. Plan mode has no
+  // "now", so it keeps its own violet-selection + empty-day grammar unchanged.
+  const today = todayInTz(trip.timezone, now);
+  const pillClass = (date: string) => {
+    const c = ['day-pill'];
+    const selected = date === activeDate;
+    if (mode === 'trip') {
+      if (selected) c.push(date === today ? 'on' : date < today ? 'sel-history' : 'sel-future');
+      else if (date === today) c.push('today-anchor');
+      else c.push(date < today ? 'past' : 'future');
+    } else {
+      if (selected) c.push('on');
+      else if (date < activeDate) c.push('past');
+      if (!datesWithEvents.has(date)) c.push('empty');
+    }
+    return c.join(' ');
+  };
+  // Day-scope context ribbon (ADR-0029/0043): only in Trip mode, only off today.
+  const dayScope =
+    mode === 'trip' && activeDate !== today ? (activeDate < today ? 'past' : 'future') : null;
   return (
     <header className="header">
       <ModeToggle />
@@ -248,14 +271,7 @@ function Header({
         {days.map((d) => (
           <div key={d.date} className="day-pill-wrap">
             {d.monthLabel && <span className="month-label">{d.monthLabel}</span>}
-            <button
-              className={
-                'day-pill' +
-                (d.date === activeDate ? ' on' : d.date < activeDate ? ' past' : '') +
-                (mode === 'plan' && !datesWithEvents.has(d.date) ? ' empty' : '')
-              }
-              onClick={() => onSelectDay(d.date)}
-            >
+            <button className={pillClass(d.date)} onClick={() => onSelectDay(d.date)}>
               {d.letter}
               <span className="n" dir="ltr">
                 {d.dayOfMonth}
@@ -264,6 +280,18 @@ function Header({
           </div>
         ))}
       </div>
+      {dayScope && (
+        <button
+          className={'day-context ' + dayScope}
+          onClick={() => onSelectDay(today)}
+          aria-label={t.header.backToToday}
+        >
+          <span className="dc-label">
+            {dayScope === 'past' ? t.header.pastDay : t.header.futureDay}
+          </span>
+          <span className="dc-back">{t.header.backToToday} →</span>
+        </button>
+      )}
     </header>
   );
 }
