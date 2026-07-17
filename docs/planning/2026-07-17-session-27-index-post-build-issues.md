@@ -99,7 +99,7 @@ The viewer itself (`DocumentViewer.tsx`) has only a close button. And it isn't o
 
 **What's happening:** they're technically two different codepoints — `constants.ts:73-78` maps `passport: '🛂'`, `visa: '🛃'` — but 🛂 (passport-control) and 🛃 (customs) are the **same signage pictogram** (a standing figure) and are visually indistinguishable at the 17px badge size (`.li .badge2`), especially across platforms. So they read as "the same icon," which the design language forbids for two peer categories (distinct meaning must be distinctly encoded — ADR-0028's non-colour-redundant discipline, applied to glyphs). Also `DocumentsSection.tsx:59` **hardcodes** 🛂 for the empty-state illustration, decoupled from the map.
 
-**Fix (see ADR-0052):** pick four glyphs that are distinct at badge size. Proposed set (shown in the mockup): passport 📕 (a booklet), visa 🛂 _(or a stamp/sticker glyph)_, insurance 🛡️ (unchanged, already distinct), other 📄 (unchanged). Final glyphs are Assaf's call — the rule is "four visually distinct badges," and the empty-state illustration should read from the same constant, not a literal.
+**Fix (see ADR-0052):** four glyphs distinct at badge size — **approved set (Assaf, 2026-07-17): passport 📕 · insurance 🛡️ · visa 🎫 · other 📄** (shown in the mockup, "נראה טוב"). The rule is "four visually distinct badges," and the empty-state illustration should read from the same constant, not a literal.
 
 **CTA:** four document types → four unmistakable badges. Cheap fix, real confusion today.
 

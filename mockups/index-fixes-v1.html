@@ -645,16 +645,40 @@
         padding: 15px 15px 6px;
         position: relative;
       }
-      .bk-detail .kebab {
+      /* action cluster in the free top-left corner: a visible edit button + ⋯
+         (Assaf's call — the detail view stays read-only, but edit is a first-class
+         button, not hidden only behind the menu). */
+      .bk-actions {
         position: absolute;
-        inset-inline-start: 10px;
-        top: 10px;
+        inset-inline-end: 12px;
+        top: 12px;
+        display: flex;
+        align-items: center;
+        gap: 6px;
+      }
+      .bk-edit {
+        display: inline-flex;
+        align-items: center;
+        gap: 5px;
+        font: inherit;
+        font-size: 12px;
+        font-weight: 700;
+        color: var(--plan-deep);
+        background: var(--card);
+        border: 1px solid var(--soft-line);
+        border-radius: 999px;
+        padding: 5px 11px;
+        cursor: pointer;
+      }
+      .bk-edit:hover {
+        border-color: var(--plan);
+        background: var(--plan-tint);
       }
       .bk-head {
         display: flex;
         align-items: center;
         gap: 11px;
-        padding-inline-end: 34px;
+        padding-inline-end: 108px;
       }
       .bs-icon {
         width: 44px;
@@ -1237,13 +1261,17 @@
           <div class="panel" id="panel-booking">
             <div class="sec-title">הזמנה · פרטים</div>
             <div class="note good">
-              <b>מתוקן:</b> הקשה על הזמנה פותחת <b>תצוגת פרטים לקריאה בלבד</b> עם תפריט
-              <b>⋯ ← עריכה / מחיקה</b>, כמו כרטיס אירוע (ADR-0043). הזמנה מגבה אירוע <b>קשיח</b>,
-              ולכן שמורה מפני עריכה בטעות (ADR-0011).
+              <b>מתוקן:</b> הקשה על הזמנה פותחת <b>תצוגת פרטים לקריאה בלבד</b> עם
+              <b>כפתור עריכה</b> גלוי (משמאל למעלה) ו-<b>⋯</b> למחיקה/עוד, כמו כרטיס אירוע
+              (ADR-0043). התצוגה עצמה לקריאה בלבד, כך שההזמנה הקשיחה שמורה מפני שינוי בטעות
+              (ADR-0011).
             </div>
 
             <div class="bk-detail">
-              <button class="kebab" onclick="openBookingMenu()">⋯</button>
+              <div class="bk-actions">
+                <button class="bk-edit" onclick="openBookingEdit()"><span>✏️</span> עריכה</button>
+                <button class="kebab" onclick="openBookingMenu()">⋯</button>
+              </div>
               <div class="bk-head">
                 <div class="bs-icon">🏨</div>
                 <div>
@@ -1251,7 +1279,7 @@
                   <div class="bk-type">מלון · לינה</div>
                 </div>
               </div>
-              <div class="bs-hard-note">🔒 הזמנה קשיחה · עריכה דרך ⋯</div>
+              <div class="bs-hard-note">🔒 הזמנה קשיחה</div>
               <div class="facts">
                 <div class="fact">
                   <span class="k">צ׳ק-אין</span><span class="v">ג׳ 14 באפר׳ · 15:00</span>
@@ -1477,6 +1505,10 @@
         show('menu');
       }
       function openBookingMenu() {
+        show('bmenu');
+      }
+      function openBookingEdit() {
+        // in the app this opens the merged BookingSheet (ADR-0053 §2). Demo: the menu.
         show('bmenu');
       }
       function openDelete(isBooking) {
