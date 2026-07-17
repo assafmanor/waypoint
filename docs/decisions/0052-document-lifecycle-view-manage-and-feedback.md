@@ -14,10 +14,12 @@ The constraint that shapes everything here: documents are **encrypted at rest** 
 
 **1. Viewing is mobile-first: never make an embedded preview the only way to open a file.** A PDF `<iframe src=blob:>` does not render on mobile Safari / installed-PWA WebViews (the primary target, ADR-0017), so the current viewer is blank for the most common document type. The contract becomes:
 
-- **Images** — shown inline (works today, unchanged).
+- **Images** — shown inline when the browser can decode them. But a browser-**undecodable** image is treated exactly like a PDF (below), never left as a blank `<img>`. The live case that surfaced this (Assaf's "בתמונה", clarified 2026-07-17 as _uploading an image document_): an iPhone photo of a passport is usually **HEIC**, which `accept="image/*"` lets you pick and `mimeType.startsWith('image/')` routes to `<img src=blob:…heic>`, which most browsers render blank — the image twin of the PDF-iframe bug. So the viewer must (a) detect a decode failure (`img.onerror`) and fall back to open/download, and (b) render the image sized to fit + EXIF-oriented (`image-orientation: from-image`, already the browser default) so a portrait phone scan isn't cut off or sideways. Client-side pre-upload conversion of HEIC→JPEG is a possible enhancement, not required by this decision.
 - **PDFs and everything else** — the primary actions are **open in a new tab** (hand the blob URL to the browser/OS, which routes it to the right app) and **download/share**. An inline `<iframe>` PDF preview may be layered on _as a desktop enhancement only_, gated on a capability/viewport check — never the sole path.
 
-This generalizes the viewer's existing "unknown type → download link" branch to be the rule for non-images, rather than a fallback.
+This generalizes the viewer's existing "unknown type → download link" branch: the fallback is driven by _can the browser actually render this blob_, not by MIME family — so a HEIC image and a PDF land in the same open/download path.
+
+**1a. The document row is one line.** Name, size, lock, and the "⋯" trigger share a single vertically-centered row (`mockups/index-fixes-v1.html`), rather than dropping the size to a muted second line under the name — once the row gains a "⋯", a mid-row-centered trigger floating between two text lines reads as misaligned. Size moves beside the lock/⋯ on the name's line.
 
 **2. Documents are fully manageable: rename, change type, replace the file, delete — at both layers.** The backend gains the missing routes on `documents.controller.ts` (today only `GET` list / `POST` upload / `GET :id/content`):
 

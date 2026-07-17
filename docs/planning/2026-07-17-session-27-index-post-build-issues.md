@@ -103,11 +103,17 @@ The viewer itself (`DocumentViewer.tsx`) has only a close button. And it isn't o
 
 **CTA:** four document types → four unmistakable badges. Cheap fix, real confusion today.
 
-### A7 · "בתמונה" — a referenced screenshot not available to this session
+### A7 · Uploading an _image_ document — P2
 
-**Reported:** a bare bullet "בתמונה" ("in the image") under the documents list.
+**Reported:** a bare bullet "בתמונה" ("in the image"), **clarified 2026-07-17**: "כשאמרתי בתמונה התכוונתי כשמעלים מסמך של תמונה" — the problem is when you **upload an image document** (not a PDF). The original screenshot did not reach this session, so the exact captured state is unconfirmed; the clarification pins the flow.
 
-Assaf attached (or meant to attach) a screenshot illustrating a documents-screen problem; it did **not** reach this session, so I can't say which state it captured. Everything reproducible from the report + code is covered by A1–A6, and the mockup shows the corrected document screen end-to-end. **Open question for Assaf:** which state did the screenshot show — was it a case A1–A6 already covers, or a distinct eighth issue (e.g. a layout/overflow glitch)? Flagged rather than guessed.
+**What's happening (strongest hypothesis, from the code):** the image twin of A1. `DocumentUploadSheet.tsx:74` accepts `image/*`, so a phone lets you pick a camera photo — on iOS that's typically **HEIC**. `DocumentViewer.tsx:43` routes anything `mimeType.startsWith('image/')` to `<img src=blob:…>` (`:67`), and most browsers render an **HEIC blob blank** — exactly the "uploaded an image, it shows nothing" a screenshot would capture. Two lesser image-specific angles compound it: a large photo has **no upload progress** (A3), so it looks frozen mid-upload; and a portrait scan relies on EXIF orientation (browser default `image-orientation: from-image`, usually fine, worth confirming). A JPG/PNG scan itself displays correctly under `.doc-viewer-img` (`object-fit: contain`).
+
+**Fix (see ADR-0052 §1):** the viewer's fallback is driven by _can the browser actually render this blob_ (detect `img.onerror`) rather than by MIME family — an undecodable image (HEIC) falls into the same **open-in-tab / download** path as a PDF, never a blank `<img>`. Pair with the upload progress (A3). Optional enhancement: client-side HEIC→JPEG on pick.
+
+**CTA:** an uploaded phone photo must never render blank. Same "can the browser show it? else hand it off" rule as PDFs.
+
+**Still worth a look:** if the screenshot showed something other than a blank/again-unsupported image (e.g. a layout/overflow or an orientation glitch on a valid JPG), re-share it and I'll pin that specific defect — but the HEIC-blank path is the most likely and is now covered.
 
 ---
 
