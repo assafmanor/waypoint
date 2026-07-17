@@ -15,7 +15,6 @@ export const t = {
   // and "forward" (open/advance) points left; an LTR locale swaps the two.
   arrows: {
     back: '→',
-    forward: '←',
     route: '←', // origin → destination connector; points at the destination
     chevronBack: '›', // in-sheet "back to previous step" chevron (resolve sheet)
   },

@@ -1631,6 +1631,24 @@
 .trip-hero .m .sep {
   opacity: 0.5;
 }
+/* Shared directional nav arrow (ui/NavArrow.tsx) — an SVG icon that centers
+   cleanly in a button box (glyph fallbacks drift off-baseline) and mirrors by
+   reading direction. Size rides on the parent's font-size, colour on currentColor. */
+.nav-arrow {
+  display: block;
+  width: 1em;
+  height: 1em;
+}
+.nav-arrow-back {
+  transform: scaleX(-1);
+}
+[dir='ltr'] .nav-arrow-forward {
+  transform: scaleX(-1);
+}
+[dir='ltr'] .nav-arrow-back {
+  transform: none;
+}
+
 .trip-hero .go {
   flex: 0 0 auto;
   align-self: center;
@@ -1642,7 +1660,7 @@
   background: rgba(255, 255, 255, 0.1);
   border: 1px solid rgba(255, 255, 255, 0.14);
   color: #dfe6f5;
-  font-size: 17px;
+  font-size: 18px;
 }
 
 /* soon / past chips — date-derived, neutral family (shell chrome, ADR-0028) */
