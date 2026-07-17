@@ -53,6 +53,7 @@ import {
   readCachedSnapshot,
 } from '../lib/cache';
 import { flushOutbox, isOffline, restOrQueue } from '../lib/outbox';
+import { emitDocChange } from '../lib/doc-live';
 import { openTripStream } from '../lib/ws';
 import { getNow } from '../lib/useClock';
 import { clampDate, shiftIso, todayInTz } from '../lib/time';
@@ -478,6 +479,11 @@ function TripReady({
         setBookings((prev) => applyControlChangeToList(prev, change));
       } else if (change.entityType === 'place') {
         setPlaces((prev) => applyControlChangeToList(prev, change));
+      } else if (change.entityType === 'document') {
+        // Section-owned, not a reactive list here (ADR-0049/0057) — fan to the
+        // mounted DocumentsSection; the offline mirror is handled above by
+        // applyChangeToCache.
+        emitDocChange(tripId, change);
       }
     }
 

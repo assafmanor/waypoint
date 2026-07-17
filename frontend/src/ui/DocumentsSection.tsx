@@ -1,12 +1,16 @@
-// Documents section on the Index (ADR-0047/0049/0052/0056): grouped by type, upload +
-// view + per-row manage ("⋯"). Fetches its own list (documents aren't in the trip
-// snapshot). Own writes are applied optimistically; a peer's shows on the next load.
-// Queued uploads (ADR-0056) render as pending "uploading" rows straight from the
-// outbox, so they survive a reopen and reconcile to the real row once flushed.
-import { useEffect, useRef, useState } from 'react';
-import { type DocumentSummary, type TripDocument } from '@waypoint/shared';
-import { useTrip } from '../state/trip-state';
-import { listDocuments } from '../lib/api';
+// Documents section on the Index (ADR-0047/0049/0052/0056/0057): grouped by type,
+// upload + view + per-row manage ("⋯"). Documents are section-owned (not in the trip
+// snapshot), but live: a peer's upload / rename / delete arrives over WS (ADR-0057)
+// and patches the list, and the list seeds from the offline cache for an instant /
+// offline first paint. Own writes are applied optimistically. Queued uploads (ADR-0056)
+// render as pending "uploading" rows straight from the outbox, so they survive a reopen
+// and reconcile to the real row once flushed.
+import { useCallback, useEffect, useRef, useState } from 'react';
+import { type Change, type DocumentSummary, type TripDocument } from '@waypoint/shared';
+import { applyControlChangeToList, useTrip } from '../state/trip-state';
+import { evictDocumentBlob, listDocuments } from '../lib/api';
+import { cacheDocuments, readCachedDocuments } from '../lib/cache';
+import { useDocChanges } from '../lib/doc-live';
 import { usePendingUploads } from '../lib/outbox';
 import { groupDocuments, formatSize } from '../lib/documents';
 import { DocumentUploadSheet } from './DocumentUploadSheet';
@@ -29,18 +33,44 @@ export function DocumentsSection() {
     let cancelled = false;
     setServerDocs(null);
     setFailed(false);
-    listDocuments(trip.id).then(
-      (list) => {
+    // Instant/offline first paint from the cache (ADR-0057), then refresh from the
+    // network; only surface the offline state when there's no cached list to show.
+    void (async () => {
+      const cached = await readCachedDocuments(trip.id);
+      if (cancelled) return;
+      if (cached.length) setServerDocs(cached);
+      try {
+        const list = await listDocuments(trip.id);
         if (!cancelled) setServerDocs(list);
-      },
-      () => {
-        if (!cancelled) setFailed(true);
-      },
-    );
+      } catch {
+        if (!cancelled && cached.length === 0) setFailed(true);
+      }
+    })();
     return () => {
       cancelled = true;
     };
   }, [trip.id]);
+
+  // Mirror the loaded list into the offline cache so a reopen (even offline) paints
+  // instantly and stays coherent with our own edits (ADR-0057). Pending optimistic
+  // rows aren't part of serverDocs, so they're never cached as if real.
+  useEffect(() => {
+    if (serverDocs) void cacheDocuments(trip.id, serverDocs);
+  }, [serverDocs, trip.id]);
+
+  // A peer's document change arrives over WS (ADR-0057): patch the list live, and
+  // evict the doc's blob cache on a replace/delete so a reopen fetches fresh bytes
+  // (the WS payload carries no new `updatedAt` to re-key the ADR-0055 blob cache).
+  const applyRemoteDoc = useCallback(
+    (change: Change) => {
+      if (change.action === 'update' || change.action === 'delete') {
+        void evictDocumentBlob(trip.id, change.entityId);
+      }
+      setServerDocs((prev) => (prev ? applyControlChangeToList(prev, change) : prev));
+    },
+    [trip.id],
+  );
+  useDocChanges(trip.id, applyRemoteDoc);
 
   // When a queued upload leaves the outbox (flushed to a real row, or 4xx-dropped),
   // refetch so the now-real document replaces its optimistic row — and a dropped
