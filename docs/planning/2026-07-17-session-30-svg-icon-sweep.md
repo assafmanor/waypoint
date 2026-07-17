@@ -40,6 +40,13 @@ A single SVG primitive keyed by `name` (`caret`, `undo`, `reset`, `download`) wi
 
 - The TimePicker list markers are CSS `::after` `content` on `.tp-list-on` (`✓`) and `.tp-list-suggest` (`↩`). The `✓` is a checkmark, not an arrow; the `↩` is a 12px muted "nearest round" hint. Converting them needs both markers reworked from pseudo-content into markup for consistency — disproportionate for a low-visibility hint. Left as glyphs; revisit if the hint reads poorly.
 
+## Guardrail against regression
+
+So a new feature can't quietly drop a raw glyph back in:
+
+- **`design-language.md` §"Emoji are content, icons are UI"** now names `NavArrow` + `Icon` as _the_ primitives and forbids raw Unicode arrow/caret/triangle glyphs for controls (with the reason: Assistant lacks them, the fallback sits low).
+- **ESLint** (`no-restricted-syntax`, frontend scope) fails CI on an arrow/caret glyph in JSX — both a text node (`<span>→</span>`) and a JSX expression literal (`{'▾'}`). Verified it fires on both and flags nothing in the current tree.
+
 ## Verification
 
 `pnpm typecheck` + `pnpm build` green. Icon shapes and centring checked in isolated headless-Chromium renders (the app screens sit behind auth). The `.undo`/`.chev` open-state and hover CSS operate on the wrapping span, so the existing rotate/scale/reveal transitions carry over to the SVG children unchanged.
