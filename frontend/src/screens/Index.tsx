@@ -15,6 +15,7 @@ import { BookingSheet } from '../ui/BookingSheet';
 import { BookingDetail, RouteLabel } from '../ui/BookingDetail';
 import { BookingManageSheet } from '../ui/BookingManageSheet';
 import { DocumentsSection } from '../ui/DocumentsSection';
+import { Icon } from '../ui/Icon';
 import { t } from '../i18n/he';
 
 const isTransport = (b: Booking): boolean =>
@@ -65,7 +66,9 @@ export function Index() {
     <div className="index">
       <div className="sec-title">
         {t.index.bookingsTitle}
-        <span className="badge-offline">{t.index.offlineBadge}</span>
+        <span className="badge-offline">
+          <Icon name="download" /> {t.index.offlineBadge}
+        </span>
       </div>
 
       {bookings.length === 0 ? (

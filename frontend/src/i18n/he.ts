@@ -10,13 +10,13 @@ export const t = {
     no: 'לא',
     now: 'עכשיו',
   },
-  // Directional glyphs, keyed by logical direction rather than a fixed shape so a
-  // future LTR locale flips them for free: in this RTL locale "back" points right
-  // and "forward" (open/advance) points left; an LTR locale swaps the two.
+  // Visible directional arrows render as SVGs (ui/NavArrow, ui/Icon) so they
+  // centre cleanly — the Assistant body font has no arrow glyphs and the
+  // fallback sits low. This one stays textual: it's only used to build the
+  // screen-reader label for a transport route (origin → destination), never
+  // shown, so an SVG would add nothing.
   arrows: {
-    back: '→',
-    route: '←', // origin → destination connector; points at the destination
-    chevronBack: '›', // in-sheet "back to previous step" chevron (resolve sheet)
+    route: '←',
   },
   tabs: {
     home: 'בית',
@@ -42,7 +42,7 @@ export const t = {
   },
   index: {
     bookingsTitle: 'הזמנות',
-    offlineBadge: '⬇ עובד אופליין',
+    offlineBadge: 'עובד אופליין',
     pastHead: 'כבר מאחוריכם',
     unlinked: 'לא משובצת במסלול',
     today: 'היום',
