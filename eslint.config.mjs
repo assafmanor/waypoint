@@ -47,6 +47,19 @@ export default tseslint.config(
             "CallExpression[callee.object.name='Date'][callee.property.name='now'][arguments.length=0]",
           message: 'Use `getNow()` (lib/useClock) instead of `Date.now()` — ADR-0026.',
         },
+        {
+          // design-language.md "Emoji are content, icons are UI": UI arrows/carets
+          // render as SVGs (ui/NavArrow, ui/Icon). The Assistant body font has no
+          // glyphs for these, so a raw glyph falls back to a low-sitting substitute.
+          selector: 'JSXText[value=/[→←›‹↩↺⬇▾▴▲▼]/]',
+          message:
+            'Use the <NavArrow>/<Icon> primitive, not a raw arrow/caret glyph — Assistant lacks these and the fallback renders low (design-language.md).',
+        },
+        {
+          selector: 'JSXExpressionContainer Literal[value=/[→←›‹↩↺⬇▾▴▲▼]/]',
+          message:
+            'Use the <NavArrow>/<Icon> primitive, not a raw arrow/caret glyph — Assistant lacks these and the fallback renders low (design-language.md).',
+        },
       ],
     },
   },

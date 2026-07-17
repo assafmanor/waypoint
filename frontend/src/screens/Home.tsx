@@ -7,6 +7,7 @@ import { useNavigate } from 'react-router-dom';
 import { BOOKING_TYPE, EVENT_KIND, type Booking } from '@waypoint/shared';
 import { useTrip } from '../state/trip-state';
 import { useToast } from '../ui/Toast';
+import { Icon } from '../ui/Icon';
 import { useClock } from '../lib/useClock';
 import { nextCodedBooking } from '../lib/home-quick';
 import { TAB_PARAM } from '../state/nav-state';
@@ -174,7 +175,7 @@ export function Home({ onNavigate }: { onNavigate?: (tab: TabId) => void }) {
                   <span className="dot" aria-hidden="true" />
                   {t.board.alsoNow(alsoNow.length)}
                   <span className="chev" aria-hidden="true">
-                    {alsoOpen ? '▴' : '▾'}
+                    <Icon name="caret" dir={alsoOpen ? 'up' : 'down'} />
                   </span>
                 </button>
                 {alsoOpen && (

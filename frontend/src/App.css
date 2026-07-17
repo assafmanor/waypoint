@@ -1634,10 +1634,13 @@
 /* Shared directional nav arrow (ui/NavArrow.tsx) — an SVG icon that centers
    cleanly in a button box (glyph fallbacks drift off-baseline) and mirrors by
    reading direction. Size rides on the parent's font-size, colour on currentColor. */
-.nav-arrow {
-  display: block;
+.nav-arrow,
+.icon {
+  display: inline-block;
+  vertical-align: -0.125em;
   width: 1em;
   height: 1em;
+  flex: 0 0 auto;
 }
 .nav-arrow-back {
   transform: scaleX(-1);

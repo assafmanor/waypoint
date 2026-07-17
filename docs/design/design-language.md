@@ -164,7 +164,7 @@ Canonical names, for docs / code / tickets — one vocabulary end to end:
 
 In mockups emoji do both jobs; in the build they split:
 
-- **UI controls** (nav, verbs, edit/back/settings) use a consistent icon set (e.g., lucide), inheriting text color.
+- **UI controls** (nav, verbs, edit/back/settings) use a consistent icon set, inheriting text color. In the build this is **inline SVG via the shared primitives `ui/NavArrow.tsx`** (directional nav arrows — forward/back, RTL-mirrored) **and `ui/Icon.tsx`** (caret, undo, reset, download, …; sized `1em`, `currentColor`). **Never render a raw Unicode arrow/caret/triangle glyph** (`→ ← › ‹ ↩ ↺ ⬇ ▾ ▴ ▲ ▼`) for a control: the Assistant body font has no glyphs for them, so the browser substitutes a fallback that sits low and drifts off-centre. Add new shapes to `Icon` rather than reaching for a glyph. A lint rule (`no-restricted-syntax`) fails CI on raw arrow/caret glyphs in JSX.
 - **Emoji remain as content**: trip identity (🇯🇵), event category badges, group flavor. This keeps warmth without making controls look inconsistent across platforms.
 
 ## Device targets & responsive strategy
