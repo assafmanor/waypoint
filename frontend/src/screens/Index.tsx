@@ -19,6 +19,7 @@ import { placeName } from '../lib/places';
 import { formatTime, todayInTz } from '../lib/time';
 import { BOOKING_TYPE_ICON, CODE_PREFIX, MS_PER_DAY } from '../constants';
 import { BookingSheet } from '../ui/BookingSheet';
+import { BookingDetail } from '../ui/BookingDetail';
 import { DocumentsSection } from '../ui/DocumentsSection';
 import { t } from '../i18n/he';
 
@@ -31,6 +32,14 @@ export function Index() {
   const { upcoming, past } = splitBookings(bookings, events, trip.timezone, now.getTime());
   // null = closed; 'create' = new booking; a Booking = editing that one.
   const [sheet, setSheet] = useState<Booking | 'create' | null>(null);
+  // The read-only detail view (ADR-0053) — tapping a row opens this, not the edit
+  // sheet; editing from here opens `sheet`.
+  const [detail, setDetail] = useState<Booking | null>(null);
+  const openDetail = (booking: Booking) => setDetail(booking);
+  const editFromDetail = (booking: Booking) => {
+    setDetail(null);
+    setSheet(booking);
+  };
 
   const docsRef = useRef<HTMLDivElement>(null);
 
@@ -44,7 +53,7 @@ export function Index() {
     if (!id && !focus) return;
     if (id) {
       const target = bookings.find((b) => b.id === id);
-      if (target) setSheet(target);
+      if (target) setDetail(target);
     }
     if (focus === 'docs') {
       docsRef.current?.scrollIntoView({ behavior: 'smooth', block: 'start' });
@@ -84,7 +93,7 @@ export function Index() {
                 places={places}
                 trip={trip}
                 now={now}
-                onOpen={setSheet}
+                onOpen={openDetail}
               />
             ))}
           </div>
@@ -112,6 +121,9 @@ export function Index() {
         <DocumentsSection />
       </div>
 
+      {detail && (
+        <BookingDetail booking={detail} onClose={() => setDetail(null)} onEdit={editFromDetail} />
+      )}
       {sheet && (
         <BookingSheet booking={sheet === 'create' ? null : sheet} onClose={() => setSheet(null)} />
       )}

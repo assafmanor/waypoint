@@ -53,6 +53,16 @@ const MIN_COUNT_FRAC = 0.14;
 const startMsOf = (e: TripEvent) => Date.parse(e.startsAt!);
 const endMsOf = (e: TripEvent) => (e.endsAt ? Date.parse(e.endsAt) : Date.parse(e.startsAt!));
 
+/** Ambient-span events (a hotel / multi-day booking) active on `date` — i.e.
+ *  `event.date ≤ date ≤ event.endDate` (ADR-0054). Rendered as a backdrop on
+ *  every day they cover (check-in through check-out), not on the counted rail.
+ *  Keyed on `endDate` (the multi-day property), not on booking type, so any
+ *  future multi-day span gets the same treatment. Takes the full trip event list,
+ *  since a stay shows on nights the event's own `date` doesn't match. */
+export function ambientEventsOnDate(events: TripEvent[], date: string): TripEvent[] {
+  return events.filter((e) => e.endDate != null && e.date <= date && date <= e.endDate);
+}
+
 function itemEvents(item: TimeItem): TripEvent[] {
   return [item.event, ...item.children.flatMap(groupEvents)];
 }
@@ -85,9 +95,14 @@ export function buildDayGlance(
   day23Ms: number,
   timeZone: string,
 ): DayGlance {
-  const tree = buildTimeTree(dayEvents); // excludes skipped + untimed
-  const skipped = dayEvents.filter((e) => e.status === EVENT_STATUS.SKIPPED && e.startsAt);
-  const timed = dayEvents.filter((e) => e.startsAt);
+  // Ambient-span events (a hotel / multi-day booking, `endDate` set — ADR-0054)
+  // are backdrop, not counted blocks: they're excluded from the rail, the window
+  // math, and "remaining", so a multi-night stay can't distort the day. An
+  // overnight tail (ADR-0037, no `endDate`) stays an ordinary block.
+  const sameDay = dayEvents.filter((e) => !e.endDate);
+  const tree = buildTimeTree(sameDay); // excludes skipped + untimed
+  const skipped = sameDay.filter((e) => e.status === EVENT_STATUS.SKIPPED && e.startsAt);
+  const timed = sameDay.filter((e) => e.startsAt);
 
   if (tree.length === 0 && skipped.length === 0) {
     return {

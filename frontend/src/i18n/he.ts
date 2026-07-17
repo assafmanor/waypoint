@@ -54,6 +54,21 @@ export const t = {
       savedQueued: 'יישמר כשנחזור לרשת',
       deleted: 'ההזמנה נמחקה',
     },
+    // Read-only booking detail view (ADR-0053): tap a booking → facts + a visible
+    // edit button + a "⋯" menu (edit / delete).
+    detail: {
+      edit: 'עריכה',
+      actions: 'פעולות',
+      delete: 'מחיקה',
+      timing: 'מתי',
+      unscheduled: 'לא משובצת במסלול',
+      code: 'קוד אישור',
+      provider: 'ספק',
+      room: 'חדר',
+      wifi: 'WiFi',
+      notes: 'הערות',
+      hardNote: 'הזמנה קשיחה',
+    },
     sheet: {
       editTitle: 'עריכת הזמנה',
       titlePlaceholder: 'שם ההזמנה',
@@ -133,15 +148,39 @@ export const t = {
       titleLabel: 'שם',
       titlePlaceholder: 'למשל: דרכון · אסף',
       save: 'העלה',
+      saving: 'מעלה…',
       cancel: 'בטל',
       saved: 'המסמך הועלה',
-      failed: 'ההעלאה נכשלה',
+      failed: 'ההעלאה נכשלה, נסו שוב',
+      tooLarge: (mb: number) => `הקובץ גדול מדי · עד ${mb}MB`,
+      wrongType: 'אפשר להעלות תמונה או PDF בלבד',
+      offline: 'אין חיבור · ההעלאה תמתין לרשת',
     },
     viewer: {
       close: 'סגור',
-      loading: 'טוען…',
+      loading: 'טוען ומפענח…',
       error: 'לא הצלחנו לפתוח את המסמך',
+      open: 'פתח בכרטיסייה',
       download: 'הורדה',
+      handoff: 'הקובץ מוכן · פתחו אותו באפליקציה המתאימה או הורידו',
+    },
+    // Per-row manage menu + optimistic-action toasts (ADR-0052).
+    manage: {
+      actions: 'פעולות',
+      rename: 'שינוי שם',
+      renameTitle: 'שם חדש',
+      changeType: 'שינוי סוג',
+      replace: 'החלפת קובץ',
+      delete: 'מחיקה',
+      deleteTitle: 'למחוק את המסמך?',
+      deleteBody: 'הקובץ מוצפן ונמחק לצמיתות. אי אפשר לשחזר.',
+      deleteConfirm: 'מחק לצמיתות',
+      cancel: 'ביטול',
+      renamed: 'השם עודכן',
+      typeChanged: 'הסוג עודכן',
+      replaced: 'הקובץ הוחלף',
+      deleted: 'המסמך נמחק',
+      failed: 'הפעולה נכשלה, נסו שוב',
     },
   },
   mode: {
@@ -312,6 +351,9 @@ export const t = {
     emptyTitle: 'היום עוד פתוח',
     emptySub: 'אין אירועים מתוכננים · יום חופשי',
     emptyAdd: 'הוסיפו אירוע',
+    // Ambient-span backdrop (a hotel / multi-day booking) shown across its nights
+    // (ADR-0054) — not counted on the rail.
+    ambientNight: (night: number, nights: number) => `לילה ${night} מתוך ${nights}`,
   },
   // Plan-mode Home — the prep dashboard (modes.md; mockups/plan-mode-v1.html).
   // Only the rows we can honestly derive from the snapshot appear; the Gmail /

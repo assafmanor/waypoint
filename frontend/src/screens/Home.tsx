@@ -20,8 +20,8 @@ import {
   minutesUntil,
   zonedIso,
 } from '../lib/time';
-import { buildDayGlance } from '../lib/glance';
-import { CODE_PREFIX, DAY_WINDOW, ICONS, type TabId } from '../constants';
+import { buildDayGlance, ambientEventsOnDate } from '../lib/glance';
+import { CODE_PREFIX, DAY_WINDOW, ICONS, MS_PER_DAY, type TabId } from '../constants';
 import { t } from '../i18n/he';
 
 const hourLabel = (hour: number) => `${String(hour).padStart(2, '0')}:00`;
@@ -75,6 +75,16 @@ export function Home({ onNavigate }: { onNavigate?: (tab: TabId) => void }) {
   const day23 = Date.parse(zonedIso(activeDate, hourLabel(DAY_WINDOW.END_HOUR), tz));
   const glance = buildDayGlance(dayEvents, now.getTime(), day07, day23, tz);
   const remaining = glance.remaining;
+  // Ambient-span stays (a hotel spanning several nights, ADR-0054) — backdrop
+  // above the rail on every night they cover, never a counted block.
+  const ambientStays = ambientEventsOnDate(events, activeDate);
+  const stayNights = (e: (typeof ambientStays)[number]) =>
+    Math.max(1, Math.round((Date.parse(e.endDate!) - Date.parse(e.date)) / MS_PER_DAY));
+  const stayNight = (e: (typeof ambientStays)[number]) =>
+    Math.min(
+      stayNights(e),
+      Math.round((Date.parse(activeDate) - Date.parse(e.date)) / MS_PER_DAY) + 1,
+    );
   // Hard anchors matter individually, so this counts leaves, not blocks — the one
   // deliberate roots/leaves exception (ADR-0045).
   const hardAhead = dayEvents
@@ -287,6 +297,19 @@ export function Home({ onNavigate }: { onNavigate?: (tab: TabId) => void }) {
       </div>
 
       <div className="sec-title">{t.glance.title}</div>
+      {ambientStays.length > 0 && (
+        <div className="glance-ambient">
+          {ambientStays.map((e) => (
+            <div className="ambient" key={e.id}>
+              <span className="ai" aria-hidden="true">
+                {e.icon ?? '🏨'}
+              </span>
+              <span className="an">{e.title}</span>
+              <span className="as">{t.glance.ambientNight(stayNight(e), stayNights(e))}</span>
+            </div>
+          ))}
+        </div>
+      )}
       {glance.empty ? (
         <div className="glance-day empty">
           <div className="ei" aria-hidden="true">

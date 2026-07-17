@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest';
 import { EVENT_KIND, EVENT_SOURCE, EVENT_STATUS, type TripEvent } from '@waypoint/shared';
-import { buildDayGlance } from './glance';
+import { buildDayGlance, ambientEventsOnDate } from './glance';
 
 const TZ = 'Asia/Tokyo';
 const OFF = '+09:00';
@@ -118,6 +118,39 @@ describe('buildDayGlance', () => {
     expect(composites).toHaveLength(3);
     expect(composites.filter((s) => s.showCount)).toHaveLength(1); // only the wide envelope
     expect(composites.every((s) => s.composite)).toBe(true); // all still marked composite
+  });
+
+  it('excludes an ambient-span event (endDate set) from the rail + remaining (ADR-0054)', () => {
+    const now = ms('12:30');
+    const events = [
+      // a 4-night hotel checked in today: endsAt is days away, endDate set
+      ev({
+        id: 'hotel',
+        kind: EVENT_KIND.HARD,
+        startsAt: at('15:00'),
+        endsAt: at('11:00', '2026-07-11'),
+        endDate: '2026-07-11',
+      }),
+      ev({ id: 'b', startsAt: at('12:00'), endsAt: at('13:00') }), // now
+      ev({ id: 'c', startsAt: at('15:00'), endsAt: at('16:00') }), // upcoming
+    ];
+    const g = buildDayGlance(events, now, day07, day23, TZ);
+    // The hotel neither distorts the window (no multi-day stretch) nor counts.
+    expect(g.windowEndMs).toBe(day23);
+    expect(g.segs.some((s) => s.key === 'hotel')).toBe(false);
+    expect(g.segs).toHaveLength(2);
+    expect(g.remaining).toBe(2); // b + c only — the hotel is backdrop
+  });
+
+  it('finds ambient stays active on a date across their whole span (ADR-0054)', () => {
+    const hotel = ev({ id: 'hotel', date: '2026-07-07', endDate: '2026-07-10' });
+    const events = [hotel, ev({ id: 'plain', date: '2026-07-08' })];
+    // check-in day, a middle night, checkout day → all covered; before/after not.
+    expect(ambientEventsOnDate(events, '2026-07-07').map((e) => e.id)).toEqual(['hotel']);
+    expect(ambientEventsOnDate(events, '2026-07-09').map((e) => e.id)).toEqual(['hotel']);
+    expect(ambientEventsOnDate(events, '2026-07-10').map((e) => e.id)).toEqual(['hotel']);
+    expect(ambientEventsOnDate(events, '2026-07-11')).toHaveLength(0);
+    expect(ambientEventsOnDate(events, '2026-07-06')).toHaveLength(0);
   });
 
   it('reports nowFrac only when now is inside the window', () => {

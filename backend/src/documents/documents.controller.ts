@@ -2,8 +2,11 @@ import {
   BadRequestException,
   Body,
   Controller,
+  Delete,
   Get,
+  HttpCode,
   Param,
+  Patch,
   Post,
   Res,
   UploadedFile,
@@ -15,6 +18,7 @@ import {
   ApiBearerAuth,
   ApiConsumes,
   ApiCreatedResponse,
+  ApiNoContentResponse,
   ApiOkResponse,
   ApiTags,
 } from '@nestjs/swagger';
@@ -23,6 +27,7 @@ import {
   documentSummarySchema,
   MAX_DOCUMENT_SIZE_BYTES,
   tripDocumentSchema,
+  updateDocumentSchema,
   type DocumentSummary,
   type TripDocument,
 } from '@waypoint/shared';
@@ -36,6 +41,7 @@ import { DocumentsService } from './documents.service';
 
 // ADR-0023: OpenAPI DTOs generated from the @waypoint/shared zod schemas.
 class CreateDocumentDto extends createZodDto(createDocumentSchema) {}
+class UpdateDocumentDto extends createZodDto(updateDocumentSchema) {}
 class DocumentSummaryDto extends createZodDto(documentSummarySchema) {}
 class DocumentDto extends createZodDto(tripDocumentSchema) {}
 
@@ -70,6 +76,32 @@ export class DocumentsController {
       });
     }
     return this.documents.create(tripId, user.userId, body, file);
+  }
+
+  @Patch(':documentId')
+  @ApiConsumes('multipart/form-data')
+  @ApiOkResponse({ type: DocumentDto })
+  @ZodSerializerDto(DocumentDto)
+  @UseInterceptors(FileInterceptor('file', { limits: { fileSize: MAX_DOCUMENT_SIZE_BYTES } }))
+  update(
+    @CurrentUser() user: Principal,
+    @Param('tripId') tripId: string,
+    @Param('documentId') documentId: string,
+    @Body(new ZodValidationPipe(updateDocumentSchema)) body: UpdateDocumentDto,
+    @UploadedFile() file: Express.Multer.File | undefined,
+  ): Promise<TripDocument> {
+    return this.documents.update(tripId, user.userId, documentId, body, file);
+  }
+
+  @Delete(':documentId')
+  @HttpCode(204)
+  @ApiNoContentResponse()
+  async remove(
+    @CurrentUser() user: Principal,
+    @Param('tripId') tripId: string,
+    @Param('documentId') documentId: string,
+  ): Promise<void> {
+    await this.documents.remove(tripId, user.userId, documentId);
   }
 
   @Get(':documentId/content')

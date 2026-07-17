@@ -1,16 +1,35 @@
-// Document upload (ADR-0015/0034). A type selector + file + title, uploaded as a
-// group document (a per-owner picker is deferred). Reuses the booking sheet's
-// form chrome for consistency.
+// Document upload (ADR-0015/0034/0052). A type selector + file + title, uploaded
+// as a group document (a per-owner picker is deferred). Reuses the booking sheet's
+// form chrome. Validates size/type on pick so an oversized/wrong file fails
+// instantly (not after a long upload), shows a busy spinner while uploading, and
+// reports failures cause-aware rather than one generic message.
 import { useState } from 'react';
-import { DOCUMENT_TYPE, type DocumentType, type TripDocument } from '@waypoint/shared';
+import {
+  DOCUMENT_TYPE,
+  MAX_DOCUMENT_SIZE_BYTES,
+  type DocumentType,
+  type TripDocument,
+} from '@waypoint/shared';
 import { Sheet } from './Sheet';
+import { Spinner } from './Spinner';
 import { uploadDocument } from '../lib/api';
 import { useToast } from './Toast';
 import { DOCUMENT_TYPE_ICON, ICONS } from '../constants';
 import { t } from '../i18n/he';
 
 const DOC_TYPES = Object.values(DOCUMENT_TYPE);
+const MAX_MB = Math.round(MAX_DOCUMENT_SIZE_BYTES / (1024 * 1024));
 const stripExt = (name: string) => name.replace(/\.[^./\\]+$/, '');
+
+/** Client-side gate mirroring the server's cap + accept filter, so the common
+ *  failures surface before the round-trip. Returns an error string or null. */
+function validateFile(f: File): string | null {
+  if (f.size > MAX_DOCUMENT_SIZE_BYTES) return t.docs.upload.tooLarge(MAX_MB);
+  if (f.type && !f.type.startsWith('image/') && f.type !== 'application/pdf') {
+    return t.docs.upload.wrongType;
+  }
+  return null;
+}
 
 export function DocumentUploadSheet({
   tripId,
@@ -29,14 +48,16 @@ export function DocumentUploadSheet({
   const [error, setError] = useState<string | null>(null);
 
   const pick = (f: File | null) => {
-    setFile(f);
-    setError(null);
-    if (f && !title.trim()) setTitle(stripExt(f.name));
+    const problem = f ? validateFile(f) : null;
+    setError(problem);
+    setFile(problem ? null : f);
+    if (f && !problem && !title.trim()) setTitle(stripExt(f.name));
   };
 
   const submit = async () => {
     if (!file) return setError(t.docs.upload.fileRequired);
     setSaving(true);
+    setError(null);
     try {
       const doc = await uploadDocument(tripId, { type, title: title.trim() || file.name }, file);
       onUploaded(doc);
@@ -44,7 +65,9 @@ export function DocumentUploadSheet({
       onClose();
     } catch {
       setSaving(false);
-      toast(ICONS.warn, t.docs.upload.failed);
+      const msg = navigator.onLine ? t.docs.upload.failed : t.docs.upload.offline;
+      setError(msg);
+      toast(ICONS.warn, msg);
     }
   };
 
@@ -88,8 +111,14 @@ export function DocumentUploadSheet({
         {error && <p className="bs-error">{error}</p>}
 
         <div className="bs-actions">
-          <button type="button" className="bs-save" onClick={submit} disabled={saving}>
-            {t.docs.upload.save}
+          <button type="button" className="bs-save" onClick={submit} disabled={saving || !!error}>
+            {saving ? (
+              <>
+                <Spinner /> {t.docs.upload.saving}
+              </>
+            ) : (
+              t.docs.upload.save
+            )}
           </button>
           <button type="button" className="bs-cancel" onClick={onClose}>
             {t.docs.upload.cancel}

@@ -1,6 +1,11 @@
-import { mkdir, readFile, writeFile } from 'node:fs/promises';
+import { mkdir, readFile, rm, writeFile } from 'node:fs/promises';
 import { join } from 'node:path';
-import { GetObjectCommand, PutObjectCommand, S3Client } from '@aws-sdk/client-s3';
+import {
+  DeleteObjectCommand,
+  GetObjectCommand,
+  PutObjectCommand,
+  S3Client,
+} from '@aws-sdk/client-s3';
 import {
   requireEnv,
   S3_ACCESS_KEY_ID,
@@ -46,4 +51,13 @@ export async function getObject(key: string): Promise<Buffer> {
     return Buffer.from(bytes ?? []);
   }
   return readFile(join(LOCAL_DIR, key));
+}
+
+export async function deleteObject(key: string): Promise<void> {
+  const bucket = process.env[S3_BUCKET];
+  if (bucket) {
+    await s3Client().send(new DeleteObjectCommand({ Bucket: bucket, Key: key }));
+    return;
+  }
+  await rm(join(LOCAL_DIR, key), { force: true });
 }
