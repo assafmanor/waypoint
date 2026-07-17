@@ -45,7 +45,7 @@ The pieces in the repo:
 | `S3_BUCKET`                                 | Railway Storage Bucket name                                                                |
 | `S3_ACCESS_KEY_ID` / `S3_SECRET_ACCESS_KEY` | Railway Storage Bucket credentials                                                         |
 
-**Never set in production:** `DEV_AUTH` (auth bypass) and `FRONTEND_URL` (dev-only CORS; prod is single-origin). `VITE_API_BASE_URL` stays unset — the client defaults to same-origin. Later additions when their features land: `REDIS_URL` (v1.1), `VITE_GOOGLE_MAPS_API_KEY` (build-time arg).
+**Never set in production:** `DEV_AUTH` (auth bypass) and `FRONTEND_URL` (dev-only CORS; prod is single-origin). `VITE_API_BASE_URL` stays unset — the client defaults to same-origin. Later additions when their features land: `REDIS_URL` (v1.1), `VITE_GOOGLE_MAPS_API_KEY` (build-time arg), and the document blob cache (ADR-0055, **Proposed**) — `DOC_CACHE_DIR` (local-FS cache tier; unset → memory-only), `DOC_CACHE_MAX_BYTES` (in-memory LRU bound), `DOC_CACHE_DISABLED` (kill switch). The cache holds ciphertext only and is never a source of truth, so the ephemeral filesystem (below) is fine for it — a miss falls through to S3.
 
 ## One-time setup runbook
 

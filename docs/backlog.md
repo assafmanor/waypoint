@@ -21,6 +21,15 @@ Triaged from the shipped Index (#122–#127) in `planning/2026-07-17-session-27-
 - **Merged edit reachable from the linked event (ADR-0053, completes ADR-0047 §2)** — editing a booking-linked event from the day view / plan builder opens the merged span-capable `BookingSheet`, not the same-day `EventForm`; `EventForm` stays for unlinked events only.
 - **Ambient-span events off the day schedule (ADR-0054)** — a lodging / multi-day booking (`endDate` set) is excluded from `buildTimeTree`, the glance rail and the `remaining` count, and rendered as a **backdrop strip across every day it covers** (fixes the check-in-day rail distortion and the blank nights 2…N).
 
+## Documents: performance & caching (two parallel tasks — see `planning/2026-07-17-session-29-document-caching-and-fast-uploads.md`)
+
+Decomposed to run simultaneously; disjoint file ownership (map in the session-29 note). Both **Proposed**.
+
+- **Document blob read caching (ADR-0055)** — a read-through, ciphertext-only cache: server two-tier (in-memory LRU bounded by bytes + local-FS tier) wired into `storage.ts` `getObject`/`putObject`/`deleteObject`, keyed by the immutable `fileRef`; plus a client Cache-API read cache in `fetchDocumentContent`. Skips the repeat S3 GET + network fetch and closes the offline-document-reads gap (CLAUDE.md rule 5 / ADR-0042). New env: `DOC_CACHE_DIR` / `DOC_CACHE_MAX_BYTES` / `DOC_CACHE_DISABLED`.
+- **Faster document uploads (ADR-0056)** — move uploads onto the offline outbox: close the upload sheet instantly, queue a `uploadDocument` op carrying the file `Blob`, flush in the background (offline-capable); make `documents.service.create` idempotent on a duplicate client `id` (no 500, no orphaned second blob on retry).
+- **Streaming server ingest** (deferred follow-up) — stream multipart → encrypt → S3 multipart upload, dropping the full in-memory buffer + base64 inflation. Touches `storage.ts`/`putObject`, so sequence it _after_ the read-cache task to avoid a merge fight.
+- **Redis for documents** (deferred) — a shared cross-instance read cache and/or upload write-buffer only matter past one backend instance (ADR-0031); Redis stays reserved for its earmarked BullMQ role until then.
+
 ## Integrations
 
 - **Google Cloud project setup** (human) — OAuth consent, Maps/Places, Calendar. Gates the Map tab and calendar sync.
