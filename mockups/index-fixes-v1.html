@@ -1,0 +1,578 @@
+<!doctype html>
+<!-- Index fixes (2026-07-17 session) — the corrected document + booking screens
+     and the ambient-hotel glance, promoting three Proposed ADRs written after
+     Assaf walked the shipped Index (#122-#127):
+
+       ADR-0052 (documents): mobile-first viewing (open/download a PDF, no
+         sole-path iframe), per-row "⋯" → rename/change-type/replace/delete,
+         upload progress + a shared loading spinner, cause-aware errors, and four
+         VISUALLY DISTINCT type badges (passport/insurance/visa/other).
+       ADR-0053 (bookings): tap a booking → a READ-ONLY DETAIL VIEW with a "⋯"
+         menu → Edit / Delete (parity with the event card, ADR-0043), instead of
+         dropping straight into the edit sheet. Editing a booking-linked event
+         from the day view opens the SAME merged sheet (completes ADR-0047 §2).
+       ADR-0054 (glance): a hotel / multi-day booking is an AMBIENT SPAN
+         (Event.endDate set) — backdrop, not a counted schedule block. It's shown
+         as a thin "🏨 לינה" strip across every night, excluded from the rail and
+         from the "נותרו N" count, so real same-day events read correctly.
+
+     Chrome is Trip (night) to match trip-index-v1.html; the same content under
+     the Plan drafting-table reskin is identical (ADR-0049 — mode = chrome only).
+     Design tokens/classes are lifted from trip-index-v1.html so this reads as the
+     shipped system. Where this and the design docs conflict, the docs win.
+
+     Demo toggle switches the four panels:
+       · מסמכים   — corrected documents list (distinct icons + ⋯), with the manage
+                     sheet, the upload-in-progress state, the PDF viewer, and an error.
+       · הזמנה    — the booking read-only detail view + ⋯ menu (ADR-0053).
+       · לוז      — day-at-a-glance BEFORE (hotel distorts the rail) vs AFTER
+                     (hotel as ambient backdrop, correct rail) (ADR-0054).
+  -->
+<html lang="he" dir="rtl">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>תיקוני אינדקס · מוקאפ v1</title>
+    <link rel="preconnect" href="https://fonts.googleapis.com" />
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+    <link
+      href="https://fonts.googleapis.com/css2?family=Assistant:wght@400;500;600;700&family=Secular+One&family=JetBrains+Mono:wght@500;700&display=swap"
+      rel="stylesheet"
+    />
+    <style>
+      :root {
+        --ink: #16233d;
+        --indigo: #1b2a4a;
+        --screen: #e7eaef;
+        --card: #ffffff;
+        --paper: #f3efe6;
+        --amber: #e9a63c;
+        --amber-deep: #c9822a;
+        --teal: #2c9c90;
+        --plan: #6e59d6;
+        --ok: #3c9a6b;
+        --miss: #c2584e;
+        --muted: #6c7488;
+        --line: rgba(22, 35, 61, 0.1);
+        --soft-line: rgba(22, 35, 61, 0.28);
+      }
+      * { box-sizing: border-box; margin: 0; padding: 0; }
+      html, body { height: 100%; }
+      body {
+        font-family: 'Assistant', system-ui, sans-serif;
+        background:
+          radial-gradient(120% 90% at 80% -10%, #2a3e68 0%, transparent 55%),
+          radial-gradient(120% 90% at 0% 110%, #1a2a4a 0%, transparent 50%), #0f1a31;
+        color: var(--ink);
+        min-height: 100vh;
+        display: flex;
+        flex-direction: column;
+        align-items: center;
+        padding: 24px 16px 60px;
+        -webkit-font-smoothing: antialiased;
+      }
+      .caption { text-align: center; color: #aeb9d4; font-size: 12.5px; margin-bottom: 6px; font-weight: 500; max-width: 460px; }
+      .caption b { color: #fff; font-weight: 600; }
+      .adr-note { text-align: center; color: #7f8db0; font-size: 11px; margin-bottom: 14px; }
+
+      .demo-toggle {
+        display: inline-flex; background: rgba(255, 255, 255, 0.08);
+        border: 1px solid rgba(255, 255, 255, 0.16); border-radius: 999px;
+        padding: 3px; gap: 2px; margin-bottom: 16px;
+      }
+      .demo-toggle button {
+        font: inherit; font-size: 12px; font-weight: 600; color: #9daac8;
+        background: none; border: 0; border-radius: 999px; padding: 6px 15px; cursor: pointer;
+      }
+      .demo-toggle button.on { background: #fff; color: var(--ink); }
+
+      .phone {
+        width: 100%; max-width: 392px; background: var(--screen); border-radius: 38px;
+        box-shadow: 0 18px 40px -18px rgba(14, 23, 41, 0.45), 0 0 0 10px #0b1526, 0 0 0 12px #223257;
+        overflow: hidden; position: relative; height: 812px; display: flex; flex-direction: column;
+      }
+      .statusbar {
+        background: var(--indigo); color: #dce3f2; display: flex; justify-content: space-between;
+        align-items: center; padding: 11px 22px 8px; font-size: 13px; font-weight: 600; font-family: 'JetBrains Mono', monospace;
+      }
+      .statusbar .dots { letter-spacing: 2px; opacity: 0.85; }
+      .header { background: var(--indigo); color: #fff; padding: 4px 20px 14px; }
+      .trip-row { display: flex; justify-content: space-between; align-items: center; }
+      .trip-name { font-family: 'Secular One', sans-serif; font-size: 21px; }
+      .trip-sub { color: #9daac8; font-size: 12.5px; margin-top: 3px; font-weight: 500; }
+      .gear-btn {
+        width: 33px; height: 33px; border-radius: 50%; display: grid; place-items: center;
+        background: rgba(255, 255, 255, 0.12); border: 1px solid rgba(255, 255, 255, 0.22); color: #fff; font-size: 15px; cursor: pointer;
+      }
+
+      .body { flex: 1; overflow-y: auto; padding: 16px 16px 40px; position: relative; }
+      .body::-webkit-scrollbar { width: 0; }
+      .panel { display: none; }
+      .panel.on { display: block; }
+
+      .sec-title {
+        font-family: 'Secular One', sans-serif; font-size: 14.5px; color: var(--ink);
+        display: flex; align-items: center; gap: 8px; margin: 4px 2px 9px;
+      }
+      .sec-title:not(:first-child) { margin-top: 20px; }
+      .badge-offline {
+        font-size: 10.5px; font-weight: 600; color: var(--muted);
+        background: rgba(22, 35, 61, 0.06); border-radius: 999px; padding: 2px 8px;
+      }
+      .callout {
+        font-size: 11px; color: var(--muted); background: rgba(22,35,61,0.045);
+        border: 1px dashed var(--line); border-radius: 10px; padding: 8px 10px; margin: 2px 2px 12px;
+      }
+      .callout b { color: var(--ink); }
+      .callout.good { border-color: rgba(60,154,107,0.4); background: rgba(60,154,107,0.07); }
+      .callout.bad { border-color: rgba(194,88,78,0.35); background: rgba(194,88,78,0.06); }
+
+      .addbtn {
+        width: 100%; background: transparent; border: 1.5px dashed var(--soft-line); color: var(--muted);
+        font: inherit; font-weight: 700; font-size: 12.5px; border-radius: 13px; padding: 11px; cursor: pointer; margin-bottom: 10px;
+      }
+
+      .listcard { background: var(--card); border: 1px solid var(--line); border-radius: 16px; overflow: hidden; }
+      .li { display: flex; align-items: center; gap: 11px; padding: 12px 14px; border-bottom: 1px solid var(--line); cursor: pointer; }
+      .li:last-child { border-bottom: none; }
+      .li:hover { background: #fafbfd; }
+      .li .badge2 {
+        width: 36px; height: 36px; border-radius: 11px; background: var(--paper);
+        display: grid; place-items: center; font-size: 18px; flex: 0 0 auto;
+      }
+      .li .main { flex: 1; min-width: 0; }
+      .li .main .t { font-size: 13.5px; font-weight: 700; display: flex; align-items: center; gap: 6px; flex-wrap: wrap; }
+      .li .main .m { font-size: 11.5px; color: var(--muted); margin-top: 3px; display: flex; align-items: center; gap: 5px; flex-wrap: wrap; }
+      .li .right { display: flex; align-items: center; gap: 8px; flex: 0 0 auto; }
+      .li .right .code { font-family: 'JetBrains Mono', monospace; font-size: 11.5px; font-weight: 700; color: var(--amber-deep); }
+      .li .lock { font-size: 13px; opacity: 0.6; }
+      .kebab {
+        width: 30px; height: 30px; border-radius: 9px; border: 1px solid var(--line); background: #fff;
+        display: grid; place-items: center; font-size: 15px; color: var(--muted); cursor: pointer; flex: 0 0 auto;
+      }
+      .kebab:hover { background: #f4f6fa; color: var(--ink); }
+
+      .doc-group { margin-top: 10px; }
+      .doc-group .gt { font-size: 11.5px; font-weight: 700; color: var(--muted); margin: 0 4px 6px; }
+
+      /* ── booking detail view (ADR-0053) ───────────────────────────── */
+      .detail-hero {
+        background: var(--card); border: 1px solid var(--line); border-radius: 18px; padding: 16px 15px; position: relative;
+      }
+      .detail-hero .kebab { position: absolute; inset-inline-start: 12px; top: 12px; }
+      .dh-top { display: flex; align-items: center; gap: 12px; margin-bottom: 4px; }
+      .dh-badge { width: 46px; height: 46px; border-radius: 13px; background: var(--paper); display: grid; place-items: center; font-size: 24px; flex: 0 0 auto; }
+      .dh-title { font-family: 'Secular One', sans-serif; font-size: 18px; line-height: 1.1; }
+      .dh-type { font-size: 11.5px; color: var(--muted); margin-top: 3px; }
+      .dh-route { font-family: 'JetBrains Mono', monospace; font-size: 13px; font-weight: 700; color: var(--ink); margin: 12px 0 2px; direction: ltr; text-align: start; }
+      .guard-chip {
+        display: inline-flex; align-items: center; gap: 5px; font-size: 10.5px; font-weight: 700;
+        color: var(--amber-deep); background: rgba(233,166,60,0.12); border-radius: 999px; padding: 3px 9px; margin-top: 6px;
+      }
+      .facts { margin-top: 12px; display: flex; flex-direction: column; gap: 0; }
+      .fact { display: flex; justify-content: space-between; gap: 12px; padding: 9px 2px; border-top: 1px solid var(--line); font-size: 12.5px; }
+      .fact .k { color: var(--muted); font-weight: 600; flex: 0 0 auto; }
+      .fact .v { text-align: end; font-weight: 600; }
+      .fact .v.mono { font-family: 'JetBrains Mono', monospace; color: var(--amber-deep); }
+      .fact .v.wifi { font-family: 'JetBrains Mono', monospace; }
+
+      /* ── glance rail (mirrors screens.css) ───────────────────────── */
+      .glance-day { background: var(--card); border: 1px solid var(--line); border-radius: 16px; padding: 16px 15px 14px; }
+      .glance-lead { font-size: 12.5px; font-weight: 700; color: var(--ink); margin-bottom: 12px; }
+      .glance-lead b { color: var(--amber-deep); }
+      .ambient-strip {
+        display: flex; align-items: center; gap: 8px; font-size: 12px; font-weight: 600; color: #4b5a44;
+        background: rgba(44,156,144,0.09); border: 1px solid rgba(44,156,144,0.28); border-radius: 11px;
+        padding: 8px 11px; margin-bottom: 12px;
+      }
+      .ambient-strip .ic { font-size: 15px; }
+      .ambient-strip .sub { color: var(--muted); font-weight: 500; font-size: 11px; margin-inline-start: auto; }
+      .rail { position: relative; height: 30px; border-radius: 8px; background: rgba(22,35,61,0.05); overflow: hidden; }
+      .seg { position: absolute; top: 5px; height: 20px; border-radius: 5px; display: grid; place-items: center; font-size: 10px; font-weight: 700; color: #fff; overflow: hidden; }
+      .seg.up { background: var(--amber); color: #3a2405; }
+      .seg.now { background: var(--indigo); }
+      .seg.done { background: var(--ok); }
+      .seg.hotel { background: repeating-linear-gradient(45deg, #9fb0c7, #9fb0c7 5px, #93a5bd 5px, #93a5bd 10px); color: #fff; }
+      .nowmark { position: absolute; top: 0; bottom: 0; width: 2px; background: var(--miss); }
+      .rail-labels { display: flex; justify-content: space-between; font-family: 'JetBrains Mono', monospace; font-size: 9.5px; color: var(--muted); margin-top: 5px; }
+
+      /* ── sheet + viewer overlays ─────────────────────────────────── */
+      .scrim { position: absolute; inset: 0; background: rgba(9,15,26,0.5); display: none; align-items: flex-end; z-index: 20; }
+      .scrim.on { display: flex; }
+      .scrim.center { align-items: center; justify-content: center; }
+      .sheet {
+        width: 100%; background: var(--card); border-radius: 22px 22px 0 0; padding: 8px 16px 22px;
+        max-height: 82%; overflow-y: auto; box-shadow: 0 -10px 40px -12px rgba(0,0,0,0.4);
+      }
+      .grip { width: 40px; height: 4px; background: var(--line); border-radius: 999px; margin: 6px auto 12px; }
+      .sheet-title { font-family: 'Secular One', sans-serif; font-size: 16px; margin: 0 2px 12px; }
+      .menu-item {
+        display: flex; align-items: center; gap: 12px; width: 100%; text-align: start; font: inherit; font-size: 14px; font-weight: 600;
+        color: var(--ink); background: none; border: 0; border-radius: 12px; padding: 13px 12px; cursor: pointer;
+      }
+      .menu-item:hover { background: #f4f6fa; }
+      .menu-item .mi-ic { width: 26px; text-align: center; font-size: 17px; }
+      .menu-item.danger { color: var(--miss); }
+      .menu-sep { height: 1px; background: var(--line); margin: 4px 0; }
+
+      .bs-field { display: block; font-size: 12px; font-weight: 700; color: var(--muted); margin: 12px 2px 5px; }
+      .bs-input {
+        width: 100%; font: inherit; font-size: 14px; color: var(--ink); background: #fff;
+        border: 1.5px solid var(--line); border-radius: 12px; padding: 11px 12px;
+      }
+      .typesel { display: grid; grid-template-columns: repeat(4, 1fr); gap: 8px; }
+      .typecard {
+        display: flex; flex-direction: column; align-items: center; gap: 5px; font: inherit; cursor: pointer;
+        background: #fff; border: 1.5px solid var(--line); border-radius: 13px; padding: 11px 4px;
+      }
+      .typecard.on { border-color: var(--ink); box-shadow: inset 0 0 0 1px var(--ink); }
+      .typecard .ic { font-size: 21px; }
+      .typecard .lbl { font-size: 10.5px; font-weight: 700; color: var(--ink); }
+      .btn-row { display: flex; gap: 10px; margin-top: 18px; }
+      .btn {
+        flex: 1; font: inherit; font-weight: 700; font-size: 14px; border-radius: 13px; padding: 13px; cursor: pointer; border: 0;
+        display: inline-flex; align-items: center; justify-content: center; gap: 8px;
+      }
+      .btn.primary { background: var(--ink); color: #fff; }
+      .btn.ghost { background: rgba(22,35,61,0.06); color: var(--ink); }
+      .btn.danger { background: var(--miss); color: #fff; }
+      .btn[disabled] { opacity: 0.7; cursor: default; }
+
+      /* spinner (ADR-0052 §4 — one shared component) */
+      .spin { width: 15px; height: 15px; border-radius: 50%; border: 2px solid rgba(255,255,255,0.45); border-top-color: #fff; animation: sp 0.7s linear infinite; }
+      .spin.ink { border-color: rgba(22,35,61,0.2); border-top-color: var(--ink); }
+      @keyframes sp { to { transform: rotate(360deg); } }
+      .loading-row { display: flex; align-items: center; gap: 9px; color: var(--muted); font-size: 12.5px; font-weight: 600; padding: 14px 4px; }
+
+      /* upload progress bar (determinate, ADR-0052 §4) */
+      .progress { height: 7px; border-radius: 999px; background: rgba(22,35,61,0.1); overflow: hidden; margin: 14px 2px 4px; }
+      .progress .bar { height: 100%; width: 62%; background: var(--ink); border-radius: 999px; }
+      .progress-cap { font-size: 11px; color: var(--muted); font-weight: 600; margin: 0 2px; }
+
+      /* cause-aware error (ADR-0052 §5) */
+      .err {
+        display: flex; gap: 9px; align-items: flex-start; font-size: 12px; color: #7a2f28;
+        background: rgba(194,88,78,0.09); border: 1px solid rgba(194,88,78,0.3); border-radius: 11px; padding: 10px 11px; margin: 12px 2px 2px;
+      }
+      .err b { display: block; color: var(--miss); margin-bottom: 2px; }
+
+      /* PDF viewer (ADR-0052 §1) */
+      .viewer { width: 92%; max-width: 340px; background: var(--card); border-radius: 20px; overflow: hidden; box-shadow: 0 20px 50px -14px rgba(0,0,0,0.5); }
+      .viewer-head { display: flex; align-items: center; justify-content: space-between; padding: 13px 15px; border-bottom: 1px solid var(--line); }
+      .viewer-head .vt { font-weight: 700; font-size: 14px; }
+      .viewer-head .kebab { border: 0; }
+      .viewer-canvas {
+        height: 200px; display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 6px;
+        background: repeating-linear-gradient(135deg, #eef1f6, #eef1f6 12px, #e7ebf2 12px, #e7ebf2 24px); color: var(--muted);
+      }
+      .viewer-canvas .big { font-size: 40px; }
+      .viewer-canvas .fn { font-size: 12px; font-weight: 700; color: var(--ink); }
+      .viewer-actions { display: flex; gap: 10px; padding: 14px 15px; }
+      .close-x { width: 30px; height: 30px; border-radius: 50%; border: 0; background: rgba(22,35,61,0.07); font-size: 15px; cursor: pointer; color: var(--ink); }
+    </style>
+  </head>
+  <body>
+    <div class="caption">
+      <b>תיקוני מסך האינדקס</b> — מסמכים, הזמנות ולוז. מוקאפ לשלוש ה-ADR שנכתבו אחרי הריצה של אסף על המסך.
+    </div>
+    <div class="adr-note">ADR-0052 (מסמכים) · ADR-0053 (הזמנות) · ADR-0054 (לוז / לינה) — כולם Proposed</div>
+
+    <div class="demo-toggle" id="toggle">
+      <button data-panel="docs" class="on">מסמכים</button>
+      <button data-panel="booking">הזמנה</button>
+      <button data-panel="glance">לוז</button>
+    </div>
+
+    <div class="phone">
+      <div class="statusbar"><span>9:41</span><span class="dots">● ● ●</span></div>
+      <div class="header">
+        <div class="trip-row">
+          <div>
+            <div class="trip-name">יפן · אביב</div>
+            <div class="trip-sub">אינדקס · הזמנות ומסמכים</div>
+          </div>
+          <button class="gear-btn">⚙️</button>
+        </div>
+      </div>
+
+      <div class="body">
+        <!-- ══════════ PANEL: DOCUMENTS (ADR-0052) ══════════ -->
+        <div class="panel on" id="panel-docs">
+          <div class="sec-title">מסמכים <span class="badge-offline">🔒 מוצפן</span></div>
+          <div class="callout good">
+            <b>מתוקן:</b> כל שורה פותחת <b>תצוגה שנפתחת נכון בנייד</b> (PDF ב-tab / הורדה, לא iframe ריק),
+            עם תפריט <b>⋯</b> לשינוי שם · שינוי סוג · החלפת קובץ · מחיקה. ארבעה אייקונים <b>נבדלים</b>.
+          </div>
+          <button class="addbtn">＋ הוסף מסמך</button>
+
+          <div class="doc-group">
+            <div class="gt">דרכונים</div>
+            <div class="listcard">
+              <div class="li" onclick="openViewer('דרכון · אסף','📕')">
+                <div class="badge2">📕</div>
+                <div class="main"><div class="t">דרכון · אסף</div><div class="m" dir="ltr">1.2 MB · PDF</div></div>
+                <div class="right"><span class="lock">🔒</span><button class="kebab" onclick="event.stopPropagation();openManage('דרכון · אסף')">⋯</button></div>
+              </div>
+              <div class="li" onclick="openViewer('דרכון · נועה','📕')">
+                <div class="badge2">📕</div>
+                <div class="main"><div class="t">דרכון · נועה</div><div class="m" dir="ltr">980 KB · JPG</div></div>
+                <div class="right"><span class="lock">🔒</span><button class="kebab" onclick="event.stopPropagation();openManage('דרכון · נועה')">⋯</button></div>
+              </div>
+            </div>
+          </div>
+
+          <div class="doc-group">
+            <div class="gt">ביטוח נסיעות</div>
+            <div class="listcard">
+              <div class="li" onclick="openViewer('פוליסת ביטוח','🛡️')">
+                <div class="badge2">🛡️</div>
+                <div class="main"><div class="t">פוליסת ביטוח · קבוצתי</div><div class="m" dir="ltr">2.4 MB · PDF</div></div>
+                <div class="right"><span class="lock">🔒</span><button class="kebab" onclick="event.stopPropagation();openManage('פוליסת ביטוח · קבוצתי')">⋯</button></div>
+              </div>
+            </div>
+          </div>
+
+          <div class="doc-group">
+            <div class="gt">ויזות</div>
+            <div class="listcard">
+              <div class="li" onclick="openViewer('ויזה · יפן','🎫')">
+                <div class="badge2">🎫</div>
+                <div class="main"><div class="t">ויזה · יפן</div><div class="m" dir="ltr">640 KB · PDF</div></div>
+                <div class="right"><span class="lock">🔒</span><button class="kebab" onclick="event.stopPropagation();openManage('ויזה · יפן')">⋯</button></div>
+              </div>
+            </div>
+          </div>
+
+          <div class="callout">
+            <b>אייקונים נבדלים (ADR-0052 §6):</b> דרכון 📕 · ביטוח 🛡️ · ויזה 🎫 · אחר 📄 —
+            במקום 🛂/🛃 שנראים זהים בגודל התג. הגליפים הסופיים לבחירתך; הכלל הוא "ארבעה תגים נבדלים ממקור אחד".
+          </div>
+
+          <div style="display:flex;gap:10px;margin-top:12px">
+            <button class="btn ghost" onclick="openUpload()">הדגם: העלאה מתבצעת</button>
+            <button class="btn ghost" onclick="openUploadErr()">הדגם: שגיאה</button>
+          </div>
+        </div>
+
+        <!-- ══════════ PANEL: BOOKING DETAIL (ADR-0053) ══════════ -->
+        <div class="panel" id="panel-booking">
+          <div class="sec-title">הזמנה · פרטים</div>
+          <div class="callout good">
+            <b>מתוקן:</b> הקשה על הזמנה פותחת <b>תצוגת פרטים לקריאה בלבד</b> עם תפריט <b>⋯ ← עריכה / מחיקה</b>,
+            בדיוק כמו כרטיס אירוע (ADR-0043). הזמנה מגבה אירוע <b>קשיח</b> — ולכן שמורה מפני עריכה בטעות (ADR-0011).
+          </div>
+
+          <div class="detail-hero">
+            <button class="kebab" onclick="openBookingMenu()">⋯</button>
+            <div class="dh-top">
+              <div class="dh-badge">🏨</div>
+              <div>
+                <div class="dh-title">Mimaru Kyoto Station</div>
+                <div class="dh-type">מלון · לינה</div>
+              </div>
+            </div>
+            <div class="guard-chip">🔒 הזמנה קשיחה · עריכה דרך ⋯</div>
+
+            <div class="facts">
+              <div class="fact"><span class="k">צ׳ק-אין</span><span class="v">ג׳ 14 באפר׳ · 15:00</span></div>
+              <div class="fact"><span class="k">צ׳ק-אאוט</span><span class="v">א׳ 18 באפר׳ · 11:00</span></div>
+              <div class="fact"><span class="k">קוד אישור</span><span class="v mono">#MIM-4471</span></div>
+              <div class="fact"><span class="k">חדר</span><span class="v">Deluxe · 2 מיטות</span></div>
+              <div class="fact"><span class="k">WiFi</span><span class="v wifi">Mimaru-5G · kyoto2026</span></div>
+              <div class="fact"><span class="k">הערות</span><span class="v">צ׳ק-אין מוקדם סוכם בטלפון</span></div>
+            </div>
+          </div>
+
+          <div class="callout" style="margin-top:14px">
+            <b>מקור אחד לעריכה (ADR-0053 §2-3):</b> "עריכה" כאן, וגם עריכת האירוע המקושר מתצוגת היום,
+            פותחות את <b>אותה גיליון הזמנה ממוזג</b> — כולל טווח רב-יומי (צ׳ק-אין→צ׳ק-אאוט), לא טופס יום-בודד.
+            כך מושלם ADR-0047 §2.
+          </div>
+        </div>
+
+        <!-- ══════════ PANEL: GLANCE (ADR-0054) ══════════ -->
+        <div class="panel" id="panel-glance">
+          <div class="sec-title">מבט על היום · מלון רב-יומי</div>
+
+          <div class="callout bad">
+            <b>היום (לפני):</b> אירוע המלון נספר כבלוק — <b>מתיחת הציר לימים קדימה</b> מוחצת את אירועי היום,
+            והמלון מנופח את הספירה ל"נותרו".
+          </div>
+          <div class="glance-day" style="margin-bottom:16px">
+            <div class="glance-lead">נותרו <b>4</b> · יום 2 בטיול</div>
+            <div class="rail">
+              <div class="seg hotel" style="inset-inline-end:0;width:88%">🏨 מלון · 4 לילות</div>
+              <div class="seg up" style="inset-inline-end:2%;width:7%"></div>
+              <div class="seg up" style="inset-inline-end:6%;width:6%"></div>
+              <div class="nowmark" style="inset-inline-end:9%"></div>
+            </div>
+            <div class="rail-labels"><span>07:00</span><span>18 באפר׳ 11:00</span></div>
+            <div class="progress-cap" style="margin-top:8px;color:var(--miss)">הציר נמתח על פני 4 ימים — האירועים האמיתיים נעלמים.</div>
+          </div>
+
+          <div class="callout good">
+            <b>היום (אחרי · ADR-0054):</b> המלון = <b>ספאן אמביינטי</b> (יש לו <code>endDate</code>) → מוצג כרצועת
+            רקע דקה, <b>מחוץ לציר ומחוץ לספירה</b>. הציר חוזר לחלון היום, האירועים קריאים, "נותרו" מדויק.
+          </div>
+          <div class="glance-day">
+            <div class="glance-lead">נותרו <b>3</b> · יום 2 בטיול</div>
+            <div class="ambient-strip">
+              <span class="ic">🏨</span><span>לינה · Mimaru Kyoto</span><span class="sub">לילה 2 מתוך 4</span>
+            </div>
+            <div class="rail">
+              <div class="seg done" style="inset-inline-end:0;width:16%">בוקר</div>
+              <div class="seg now" style="inset-inline-end:19%;width:22%">עכשיו</div>
+              <div class="seg up" style="inset-inline-end:47%;width:18%">14:30</div>
+              <div class="seg up" style="inset-inline-end:70%;width:16%">18:00</div>
+              <div class="nowmark" style="inset-inline-end:30%"></div>
+            </div>
+            <div class="rail-labels"><span>07:00</span><span>23:00</span></div>
+          </div>
+          <div class="callout" style="margin-top:14px">
+            הרצועה מופיעה על <b>כל לילה</b> של השהות (צ׳ק-אין…צ׳ק-אאוט), כך שהמלון גלוי גם בלילות 2-4
+            (היום נעלם בכל יום מלבד צ׳ק-אין). הכלל מבוסס על <code>endDate</code>, לא על "מלון" — כל ספאן רב-יומי מקבל אותו טיפול.
+          </div>
+        </div>
+      </div>
+
+      <!-- ── overlays ─────────────────────────────────────── -->
+      <div class="scrim" id="scrim-menu">
+        <div class="sheet">
+          <div class="grip"></div>
+          <div class="sheet-title" id="menu-title">מסמך</div>
+          <button class="menu-item"><span class="mi-ic">✏️</span> שינוי שם</button>
+          <button class="menu-item"><span class="mi-ic">🏷️</span> שינוי סוג</button>
+          <button class="menu-item"><span class="mi-ic">🔄</span> החלפת קובץ</button>
+          <div class="menu-sep"></div>
+          <button class="menu-item danger" onclick="openDelete()"><span class="mi-ic">🗑️</span> מחיקה</button>
+          <div class="btn-row"><button class="btn ghost" onclick="closeAll()">סגור</button></div>
+        </div>
+      </div>
+
+      <div class="scrim" id="scrim-bmenu">
+        <div class="sheet">
+          <div class="grip"></div>
+          <div class="sheet-title">Mimaru Kyoto Station</div>
+          <button class="menu-item"><span class="mi-ic">✏️</span> עריכה (גיליון הזמנה ממוזג)</button>
+          <div class="menu-sep"></div>
+          <button class="menu-item danger" onclick="openDelete(true)"><span class="mi-ic">🗑️</span> מחיקה</button>
+          <div class="btn-row"><button class="btn ghost" onclick="closeAll()">סגור</button></div>
+        </div>
+      </div>
+
+      <div class="scrim" id="scrim-delete">
+        <div class="sheet">
+          <div class="grip"></div>
+          <div class="sheet-title" id="del-title">למחוק את המסמך?</div>
+          <p style="font-size:12.5px;color:var(--muted);margin:0 2px 4px" id="del-body">
+            הקובץ מוצפן ונמחק לצמיתות. אי אפשר לשחזר.
+          </p>
+          <div class="btn-row">
+            <button class="btn danger">מחק לצמיתות</button>
+            <button class="btn ghost" onclick="closeAll()">ביטול</button>
+          </div>
+        </div>
+      </div>
+
+      <div class="scrim" id="scrim-upload">
+        <div class="sheet">
+          <div class="grip"></div>
+          <div class="sheet-title">העלאת מסמך</div>
+          <div class="typesel">
+            <div class="typecard on"><span class="ic">📕</span><span class="lbl">דרכון</span></div>
+            <div class="typecard"><span class="ic">🛡️</span><span class="lbl">ביטוח</span></div>
+            <div class="typecard"><span class="ic">🎫</span><span class="lbl">ויזה</span></div>
+            <div class="typecard"><span class="ic">📄</span><span class="lbl">אחר</span></div>
+          </div>
+          <label class="bs-field">קובץ (תמונה או PDF)</label>
+          <div class="bs-input" style="color:var(--ink)" dir="ltr">passport-assaf.pdf</div>
+
+          <div id="up-progress">
+            <div class="progress"><div class="bar"></div></div>
+            <div class="progress-cap">מעלה… 62% · 0.7MB מתוך 1.2MB</div>
+          </div>
+          <div id="up-error" style="display:none">
+            <div class="err">
+              <span>⚠️</span>
+              <span><b>הקובץ גדול מדי</b>המקסימום הוא 10MB. נסו לכווץ או לצלם מחדש. הפרטים נשמרו — אפשר לבחור קובץ אחר ולנסות שוב.</span>
+            </div>
+          </div>
+
+          <div class="btn-row">
+            <button class="btn primary" id="up-save" disabled><span class="spin"></span> מעלה…</button>
+            <button class="btn ghost" onclick="closeAll()">ביטול</button>
+          </div>
+        </div>
+      </div>
+
+      <div class="scrim center" id="scrim-viewer">
+        <div class="viewer">
+          <div class="viewer-head">
+            <span class="vt" id="vw-title">מסמך</span>
+            <button class="close-x" onclick="closeAll()">✕</button>
+          </div>
+          <div class="viewer-canvas">
+            <span class="big" id="vw-ic">📕</span>
+            <span class="fn" id="vw-fn">document.pdf</span>
+            <span style="font-size:11px">PDF · לתצוגה בנייד נפתח באפליקציה</span>
+          </div>
+          <div class="viewer-actions">
+            <button class="btn primary">↗︎ פתח בכרטיסייה</button>
+            <button class="btn ghost">⤓ הורדה</button>
+          </div>
+        </div>
+      </div>
+
+      <div class="scrim center" id="scrim-vloading">
+        <div class="viewer">
+          <div class="viewer-head"><span class="vt">דרכון · אסף</span><button class="close-x" onclick="closeAll()">✕</button></div>
+          <div class="viewer-canvas"><div class="loading-row"><span class="spin ink"></span> טוען ומפענח…</div></div>
+        </div>
+      </div>
+    </div>
+
+    <script>
+      const panels = ['docs', 'booking', 'glance'];
+      document.getElementById('toggle').addEventListener('click', (e) => {
+        const btn = e.target.closest('button[data-panel]');
+        if (!btn) return;
+        document.querySelectorAll('#toggle button').forEach((b) => b.classList.toggle('on', b === btn));
+        panels.forEach((p) => document.getElementById('panel-' + p).classList.toggle('on', p === btn.dataset.panel));
+      });
+      const scrims = ['menu', 'bmenu', 'delete', 'upload', 'viewer', 'vloading'];
+      function closeAll() { scrims.forEach((s) => document.getElementById('scrim-' + s).classList.remove('on')); }
+      function show(id) { closeAll(); document.getElementById('scrim-' + id).classList.add('on'); }
+      function openManage(name) { document.getElementById('menu-title').textContent = name; show('menu'); }
+      function openBookingMenu() { show('bmenu'); }
+      function openDelete(isBooking) {
+        document.getElementById('del-title').textContent = isBooking ? 'למחוק את ההזמנה?' : 'למחוק את המסמך?';
+        document.getElementById('del-body').textContent = isBooking
+          ? 'ההזמנה מקושרת לאירוע קשיח. בחרו למחוק את שניהם או לנתק ולשמור את האירוע (ADR-0047 §3).'
+          : 'הקובץ מוצפן ונמחק לצמיתות. אי אפשר לשחזר.';
+        show('delete');
+      }
+      function openUpload() {
+        document.getElementById('up-progress').style.display = 'block';
+        document.getElementById('up-error').style.display = 'none';
+        document.getElementById('up-save').innerHTML = '<span class="spin"></span> מעלה…';
+        document.getElementById('up-save').disabled = true;
+        show('upload');
+      }
+      function openUploadErr() {
+        document.getElementById('up-progress').style.display = 'none';
+        document.getElementById('up-error').style.display = 'block';
+        document.getElementById('up-save').innerHTML = 'נסה שוב';
+        document.getElementById('up-save').disabled = false;
+        show('upload');
+      }
+      function openViewer(title, ic) {
+        // demo: show the decrypt/loading state briefly, then the open/download actions
+        document.getElementById('vw-title').textContent = title;
+        document.getElementById('vw-ic').textContent = ic;
+        document.getElementById('vw-fn').textContent = title;
+        show('vloading');
+        setTimeout(() => { if (document.getElementById('scrim-vloading').classList.contains('on')) show('viewer'); }, 850);
+      }
+    </script>
+  </body>
+</html>

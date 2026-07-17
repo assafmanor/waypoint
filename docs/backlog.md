@@ -6,15 +6,20 @@ This is not the record of the project. The **why** lives in [decisions/](decisio
 
 ## Screens not built
 
-- **Index tab** — still a `Placeholder` in `App.tsx`. Full design in `mockups/trip-index-v1.html` (the screen: linked/unlinked bookings, merged edit sheet, delete/unlink prompt, past/upcoming split, read-only archive) + `mockups/plan-mode-v1.html` (the booking-entry form). Behavior: ADR-0047 (linkage / delete / notes+wifi), ADR-0048/0051 (schema), ADR-0049 (mode + lifecycle). **Backend is done** — booking CRUD, auto-create-on-save, `?deleteEvents` delete/unlink, Places module (ADR-0048/0051); only the frontend UI remains.
-- **Booking-entry form** — one form for both modes (`mockups/plan-mode-v1.html`): all 6 `BookingType`s, `IconPicker` chip + derived category (ADR-0038), the shared `TimePicker` for dates (ADR-0036/0037), per-type notes, hotel WiFi fields, transport origin/destination place fields (ADR-0047/0048). Backend accepts the `event` seed + place FKs; the form itself (frontend) is unbuilt.
 - **`Place`-picker component** — a Google Places search that creates/links a `Place`, used by every place field (event location, booking location, transport origin/destination, maybe-item). Blocked on the Google Cloud setup below; until it ships, place authoring is free-text-only via a name-only `Place`.
 - **EventForm place authoring** — the manual `EventForm`'s free-text location input was **removed** (ADR-0051, deferred with the picker); re-add place authoring (name-only `Place` now, the picker later) so a new manual event can be given a place again.
-- **Documents UI** — upload + viewer, in the Index tab, one row per file grouped by type with a matched "＋ הוסף מסמך" affordance (ADR-0047/0049; `mockups/trip-index-v1.html`). Backend storage/encryption is done (ADR-0015, ADR-0034); nothing on the frontend reaches it, and Home's documents shortcut (ADR-0045) points at it.
-- **Home quick-access wiring (ADR-0050)** — the three tiles deep-link into the Index; derived tiles (next code, WiFi) are absent when there's no source and the grid reflows; the managed documents tile is always present with a ＋ invite. WiFi already reads the hotel `Booking.details.wifi` (ADR-0047); the deep-links + derived-vs-managed reflow are unbuilt.
 - **Board hero booking presentation** — the now/next hero already shows a booking-backed hard event's time + code by inheritance; the richer transport-route / hotel check-in-out / gate presentation on the hero is an unstarted follow-up (deferred out of session 25; no ADR yet).
 - **Map tab** — Plan-mode research surface: Places search, pins (from `Place`), results → "+ maybe". Blocked on Google Cloud setup below. **Navigate-to-next** (deferred out of ADR-0045; routes to the transport origin `Place`, ADR-0048) lands here too.
 - **Archive presentation** — ADR-0044 settled the behavior of a finished trip and explicitly left how the archive _looks_ as a follow-up (the Index's read-only archive state is designed in ADR-0049; other tabs' archive presentation is still open).
+
+## Index post-build fixes (build after Assaf signs off ADR-0052/0053/0054 — all Proposed)
+
+Triaged from the shipped Index (#122–#127) in `planning/2026-07-17-session-27-index-post-build-issues.md`; mockup `mockups/index-fixes-v1.html`.
+
+- **Documents: manage + mobile viewing (ADR-0052)** — backend `DELETE :id` (row + encrypted blob) and `PATCH :id` (metadata + replace-file, blob-aware) on the documents controller; a per-row "⋯" menu → rename / change type / replace / delete (guarded delete); PDF **opens in-tab / downloads** on a phone instead of a blank iframe; a **shared spinner** for upload/list/viewer; **cause-aware** upload errors + pre-upload size/type validation; **four visually distinct** document-type badges (passport/insurance/visa/other), the empty-state illustration reading from the same constant.
+- **Bookings: detail view + "⋯" parity (ADR-0053)** — tapping a booking opens a **read-only detail view** (full record: code, provider, route, room, wifi, notes, timing) with a "⋯" menu → edit / delete, like the event card — not the edit sheet directly.
+- **Merged edit reachable from the linked event (ADR-0053, completes ADR-0047 §2)** — editing a booking-linked event from the day view / plan builder opens the merged span-capable `BookingSheet`, not the same-day `EventForm`; `EventForm` stays for unlinked events only.
+- **Ambient-span events off the day schedule (ADR-0054)** — a lodging / multi-day booking (`endDate` set) is excluded from `buildTimeTree`, the glance rail and the `remaining` count, and rendered as a **backdrop strip across every day it covers** (fixes the check-in-day rail distortion and the blank nights 2…N).
 
 ## Integrations
 
