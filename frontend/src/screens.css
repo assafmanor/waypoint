@@ -3534,6 +3534,59 @@
   font-weight: 700;
   color: var(--amber-deep);
 }
+/* Booking row (ADR-0053 revision): a flex container, not a single button, so the
+   "⋯" can sit beside the tap-to-open area (same shape as the document row). The
+   badge+title open the detail view; code · ⋯ sit on the same line in .right. */
+.index .li.bk {
+  padding: 0;
+  cursor: default;
+}
+.index .li.bk:hover {
+  background: transparent;
+}
+.index .li.bk .li-open {
+  display: flex;
+  align-items: center;
+  gap: 11px;
+  flex: 1;
+  min-width: 0;
+  background: transparent;
+  border: none;
+  font: inherit;
+  color: inherit;
+  text-align: start;
+  cursor: pointer;
+  padding: 12px 14px;
+}
+.index .li.bk .li-open:hover {
+  background: color-mix(in srgb, var(--ink) 4%, transparent);
+}
+.index .li.bk .li-open:focus-visible {
+  outline: 2px solid var(--teal);
+  outline-offset: -2px;
+}
+.index .li.bk .right {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding-inline-end: 12px;
+}
+.index .li.bk .right .kebab {
+  width: 30px;
+  height: 30px;
+  border-radius: 9px;
+  display: grid;
+  place-items: center;
+  background: none;
+  border: 0;
+  color: var(--muted);
+  font-size: 17px;
+  cursor: pointer;
+}
+.index .li.bk .right .kebab:hover {
+  background: color-mix(in srgb, var(--ink) 6%, transparent);
+  color: var(--ink);
+}
 .index .tag-type {
   font-size: 9.5px;
   font-weight: 700;
@@ -3548,16 +3601,21 @@
   font-weight: 700;
   color: var(--muted);
 }
-/* transport route: origin→dest identity of a flight/train row. dir=ltr on the
-   element keeps origin left, dest right inside the RTL layout; the arrow is
-   muted so the two Place names read as the content (ADR-0048). */
-.index .route {
-  font-weight: 700;
+/* transport route: origin → destination identity of a flight/train row. flex +
+   explicit RTL so the origin sits at the start (right) and the arrow points at
+   the destination, independent of text bidi (ADR-0048). */
+.route {
+  display: inline-flex;
+  direction: rtl;
+  align-items: baseline;
 }
-.index .route .arr {
+.route .arr {
   color: var(--muted);
   font-weight: 400;
-  padding: 0 3px;
+  padding: 0 4px;
+}
+.index .route {
+  font-weight: 700;
 }
 .index .past-head {
   font-size: 11px;
@@ -3909,7 +3967,8 @@
 }
 
 /* ===== Booking detail view (BookingDetail.tsx, ADR-0053) — read-only facts with
-   a visible edit button + a "⋯" menu, riding inside the generic .sheet-card. ===== */
+   a single visible edit button (delete lives on the row's "⋯", not here),
+   riding inside the generic .sheet-card. ===== */
 .bk-detail {
   position: relative;
 }
@@ -3939,27 +3998,11 @@
   border-color: var(--plan);
   background: var(--plan-tint);
 }
-.bk-menu-btn {
-  width: 30px;
-  height: 30px;
-  border-radius: 9px;
-  display: grid;
-  place-items: center;
-  background: none;
-  border: 0;
-  color: var(--muted);
-  font-size: 17px;
-  cursor: pointer;
-}
-.bk-menu-btn:hover {
-  background: color-mix(in srgb, var(--ink) 6%, transparent);
-  color: var(--ink);
-}
 .bk-head {
   display: flex;
   align-items: center;
   gap: 11px;
-  padding-inline-end: 108px;
+  padding-inline-end: 92px;
 }
 .bk-badge {
   width: 44px;
@@ -4006,9 +4049,6 @@
 .bk-fact-v.mono {
   font-family: var(--font-mono);
   color: var(--amber-deep);
-}
-.bk-menu {
-  margin-top: 16px;
 }
 
 /* ===== Documents section (DocumentsSection.tsx) — grouped by type, per the

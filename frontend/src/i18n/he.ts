@@ -94,6 +94,8 @@ export const t = {
       dateLabel: 'תאריך (משבץ במסלול)',
       departLabel: 'יציאה 🛫',
       arriveLabel: 'הגעה 🛬',
+      flightDepartLabel: 'המראה 🛫',
+      flightArriveLabel: 'נחיתה 🛬',
       checkinLabel: 'צ׳ק-אין 🏨',
       checkoutLabel: 'צ׳ק-אאוט 🧳',
       startLabel: 'התחלה 🎬',

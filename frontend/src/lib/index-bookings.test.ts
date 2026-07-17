@@ -7,7 +7,8 @@ import {
   type Booking,
   type TripEvent,
 } from '@waypoint/shared';
-import { splitBookings } from './index-bookings';
+import { type Trip } from '@waypoint/shared';
+import { scheduleLabel, splitBookings } from './index-bookings';
 
 const TZ = 'Asia/Tokyo';
 const NOW = Date.parse('2026-07-07T12:00:00+09:00'); // "today" = 2026-07-07 in Tokyo
@@ -43,6 +44,15 @@ const linkedEvent = (bookingId: string, date: string, hhmm = '09:00'): TripEvent
   updatedAt: ISO,
   updatedBy: 'u1',
 });
+
+/** Turn a single-day linked event into a multi-day span (check-in → check-out). */
+const span_ = (event: TripEvent, endDate: string, hhmm: string): TripEvent => ({
+  ...event,
+  endDate,
+  endsAt: `${endDate}T${hhmm}:00+09:00`,
+});
+
+const TRIP = { startDate: '2026-07-05', timezone: TZ } as Trip;
 
 describe('splitBookings', () => {
   it('files a booking whose linked event is before today under past', () => {
@@ -84,5 +94,57 @@ describe('splitBookings', () => {
       NOW,
     );
     expect(upcoming.map((r) => r.booking.id)).toEqual(['b1', 'b2']);
+  });
+
+  it('keeps an in-progress multi-day stay upcoming until its check-out passes', () => {
+    const b = booking('b1', 'hotel'); // checked in 07-05, checks out 07-09; today is 07-07
+    const span = span_(linkedEvent('b1', '2026-07-05', '15:00'), '2026-07-09', '11:00');
+    const { past, upcoming } = splitBookings([b], [span], TZ, NOW);
+    expect(upcoming.map((r) => r.booking.id)).toEqual(['b1']);
+    expect(past).toHaveLength(0);
+  });
+
+  it('files a multi-day stay under past only after its check-out day', () => {
+    const b = booking('b1', 'hotel'); // checked out 07-06, before today (07-07)
+    const span = span_(linkedEvent('b1', '2026-07-04', '15:00'), '2026-07-06', '11:00');
+    const { past, upcoming } = splitBookings([b], [span], TZ, NOW);
+    expect(past.map((r) => r.booking.id)).toEqual(['b1']);
+    expect(upcoming).toHaveLength(0);
+  });
+});
+
+describe('scheduleLabel (span-aware, ADR-0053)', () => {
+  const hotel = booking('h', 'hotel', BOOKING_TYPE.HOTEL);
+
+  it('shows the check-in time before the stay begins', () => {
+    const ev = span_(linkedEvent('h', '2026-07-10', '15:00'), '2026-07-14', '11:00');
+    const label = scheduleLabel(ev, hotel, TRIP, new Date(NOW)); // today 07-07, before check-in
+    expect(label).toContain('צ׳ק-אין');
+    expect(label).toContain('15:00');
+    expect(label).not.toContain('צ׳ק-אאוט');
+  });
+
+  it('shows the check-out day (no time) mid-stay', () => {
+    const ev = span_(linkedEvent('h', '2026-07-05', '15:00'), '2026-07-14', '11:00');
+    const label = scheduleLabel(ev, hotel, TRIP, new Date(NOW)); // today 07-07, mid-stay
+    expect(label).toContain('צ׳ק-אאוט');
+    expect(label).not.toContain('11:00');
+    expect(label).not.toContain('צ׳ק-אין');
+  });
+
+  it('shows the check-out time on the check-out day', () => {
+    const ev = span_(linkedEvent('h', '2026-07-04', '15:00'), '2026-07-07', '11:00');
+    const label = scheduleLabel(ev, hotel, TRIP, new Date(NOW)); // today 07-07 = check-out day
+    expect(label).toContain('צ׳ק-אאוט');
+    expect(label).toContain('היום');
+    expect(label).toContain('11:00');
+  });
+
+  it('shows the check-in day on the check-in day itself', () => {
+    const ev = span_(linkedEvent('h', '2026-07-07', '15:00'), '2026-07-10', '11:00');
+    const label = scheduleLabel(ev, hotel, TRIP, new Date(NOW)); // today 07-07 = check-in day
+    expect(label).toContain('צ׳ק-אין');
+    expect(label).toContain('היום');
+    expect(label).toContain('15:00');
   });
 });

@@ -5,21 +5,15 @@
 // (ADR-0049) — the mode only tints the chrome, so this reads mode-agnostically.
 import { useEffect, useRef, useState } from 'react';
 import { useSearchParams } from 'react-router-dom';
-import {
-  BOOKING_TYPE,
-  type Booking,
-  type Place,
-  type Trip,
-  type TripEvent,
-} from '@waypoint/shared';
+import { BOOKING_TYPE, type Booking, type Place, type Trip } from '@waypoint/shared';
 import { useTrip } from '../state/trip-state';
 import { useClock } from '../lib/useClock';
-import { splitBookings, type BookingRow } from '../lib/index-bookings';
+import { splitBookings, scheduleLabel, type BookingRow } from '../lib/index-bookings';
 import { placeName } from '../lib/places';
-import { formatTime, todayInTz } from '../lib/time';
-import { BOOKING_TYPE_ICON, CODE_PREFIX, MS_PER_DAY } from '../constants';
+import { BOOKING_TYPE_ICON, CODE_PREFIX } from '../constants';
 import { BookingSheet } from '../ui/BookingSheet';
-import { BookingDetail } from '../ui/BookingDetail';
+import { BookingDetail, RouteLabel } from '../ui/BookingDetail';
+import { BookingManageSheet } from '../ui/BookingManageSheet';
 import { DocumentsSection } from '../ui/DocumentsSection';
 import { t } from '../i18n/he';
 
@@ -35,9 +29,12 @@ export function Index() {
   // The read-only detail view (ADR-0053) — tapping a row opens this, not the edit
   // sheet; editing from here opens `sheet`.
   const [detail, setDetail] = useState<Booking | null>(null);
+  // The row's "⋯" opens the manage sheet (edit / delete), like a document row.
+  const [manage, setManage] = useState<Booking | null>(null);
   const openDetail = (booking: Booking) => setDetail(booking);
-  const editFromDetail = (booking: Booking) => {
+  const editFrom = (booking: Booking) => {
     setDetail(null);
+    setManage(null);
     setSheet(booking);
   };
 
@@ -94,6 +91,7 @@ export function Index() {
                 trip={trip}
                 now={now}
                 onOpen={openDetail}
+                onManage={setManage}
               />
             ))}
           </div>
@@ -108,7 +106,8 @@ export function Index() {
                     places={places}
                     trip={trip}
                     now={now}
-                    onOpen={setSheet}
+                    onOpen={openDetail}
+                    onManage={setManage}
                   />
                 ))}
               </div>
@@ -122,7 +121,10 @@ export function Index() {
       </div>
 
       {detail && (
-        <BookingDetail booking={detail} onClose={() => setDetail(null)} onEdit={editFromDetail} />
+        <BookingDetail booking={detail} onClose={() => setDetail(null)} onEdit={editFrom} />
+      )}
+      {manage && (
+        <BookingManageSheet booking={manage} onClose={() => setManage(null)} onEdit={editFrom} />
       )}
       {sheet && (
         <BookingSheet booking={sheet === 'create' ? null : sheet} onClose={() => setSheet(null)} />
@@ -137,32 +139,44 @@ function BookingLi({
   trip,
   now,
   onOpen,
+  onManage,
 }: {
   row: BookingRow;
   places: Place[];
   trip: Trip;
   now: Date;
   onOpen: (booking: Booking) => void;
+  onManage: (booking: Booking) => void;
 }) {
   const { booking, event } = row;
   const icon = event?.icon ?? BOOKING_TYPE_ICON[booking.type];
 
+  // A flex row (not a single button) so the "⋯" can sit alongside the tap-to-open
+  // area, mirroring the document row (ADR-0052). Tap the body → detail view; the
+  // "⋯" → the manage sheet (edit / delete).
   return (
-    <button type="button" className="li" onClick={() => onOpen(booking)}>
-      <div className="badge2">{icon}</div>
-      <div className="main">
-        <div className="t">
-          <BookingTitle booking={booking} places={places} />
-          <span className="tag-type">{t.index.bookingType[booking.type]}</span>
+    <div className="li bk">
+      <button
+        type="button"
+        className="li-open"
+        onClick={() => onOpen(booking)}
+        aria-label={booking.title}
+      >
+        <div className="badge2">{icon}</div>
+        <div className="main">
+          <div className="t">
+            <BookingTitle booking={booking} places={places} />
+            <span className="tag-type">{t.index.bookingType[booking.type]}</span>
+          </div>
+          <div className="m">
+            {event ? (
+              <span className="link-cue">🔗 {scheduleLabel(event, booking, trip, now)}</span>
+            ) : (
+              <span className="unlinked">{t.index.unlinked}</span>
+            )}
+          </div>
         </div>
-        <div className="m">
-          {event ? (
-            <span className="link-cue">🔗 {scheduleLabel(event, trip, now)}</span>
-          ) : (
-            <span className="unlinked">{t.index.unlinked}</span>
-          )}
-        </div>
-      </div>
+      </button>
       <div className="right">
         {booking.confirmationCode && (
           <div className="code" dir="ltr">
@@ -170,8 +184,16 @@ function BookingLi({
             {booking.confirmationCode}
           </div>
         )}
+        <button
+          type="button"
+          className="kebab"
+          onClick={() => onManage(booking)}
+          aria-label={t.index.detail.actions}
+        >
+          ⋯
+        </button>
       </div>
-    </button>
+    </div>
   );
 }
 
@@ -182,23 +204,7 @@ function BookingTitle({ booking, places }: { booking: Booking; places: Place[] }
   const from = placeName(places, booking.fromPlaceId);
   const to = placeName(places, booking.toPlaceId);
   if (isTransport(booking) && (from || to)) {
-    return (
-      <span className="route" dir="ltr">
-        {from ?? '-'}
-        <span className="arr">→</span>
-        {to ?? '-'}
-      </span>
-    );
+    return <RouteLabel from={from} to={to} />;
   }
   return <span>{booking.title}</span>;
-}
-
-/** "היום · 09:00" / "יום 3 · 09:00" — the linked event's place on the itinerary. */
-function scheduleLabel(event: TripEvent, trip: Trip, now: Date): string {
-  const today = todayInTz(trip.timezone, now);
-  const dayNumber =
-    Math.round((Date.parse(event.date) - Date.parse(trip.startDate)) / MS_PER_DAY) + 1;
-  const dayLabel = event.date === today ? t.index.today : t.index.dayN(dayNumber);
-  const time = event.startsAt ? formatTime(event.startsAt, trip.timezone) : null;
-  return time ? `${dayLabel} · ${time}` : dayLabel;
 }
