@@ -69,4 +69,15 @@ waypoint/
 - **Every feature ships with tests** — its logic and its interaction verbs. Nothing merges test-free.
 - Types/zod/Prisma consistent; `pnpm typecheck` and `pnpm build` pass.
 - Docs/ADRs updated if behavior or a decision changed.
+- **Retire the backlog line your PR just built** (ADR-0046: shipped → delete the line). If the docs still call the thing "unbuilt" after you built it, the PR isn't done.
 - **CI enforces this too**, not just the local pre-commit hook: `.github/workflows/ci.yml` runs typecheck/build/test/lint on every PR against `main` and blocks merge on failure.
+
+### Managed-list parity checklist
+
+Any new user-managed list surface (bookings, documents, members, …) is only "done" when it answers **all** of these — the Index tab shipped missing several (see `planning/2026-07-17-session-27-index-post-build-issues.md`), which is why this is a checklist now:
+
+- **View** — can a row's content actually be opened, **on a phone** (ADR-0017)? An embedded preview that only works on desktop is not a viewer; provide open/download.
+- **Create / Edit / Delete** — all present, at **both** the frontend and the backend? A list you can add to but not rename or delete from is half a feature. Deleting something irreversible (an encrypted doc, a hard commitment) is **guarded**.
+- **The right edit surface** — if an entity has a merged/shared editor reachable from more than one place (an ADR that says "from X **or** Y"), enumerate every entry point and wire the same surface to each; don't build one path and leave the other on a lesser form.
+- **Async states** — busy (with motion, not just a disabled button), empty (teaching, not a dead-end), and error (**cause-aware**, distinct from offline). Validate client-side before a round-trip where you can.
+- **Icons/badges** — peer categories are **visually** distinct at render size, from a single source constant (not hardcoded per call site).
