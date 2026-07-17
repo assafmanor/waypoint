@@ -24,11 +24,19 @@ This **revises ADR-0049 / `trip-index-v1.html`**, which drew tap-straight-to-the
 
 **3. One edit surface, one set of options, from any entry point.** Because both the booking (via §1's detail view) and its event (via §2) now route to the same `BookingSheet`, "editing the event" and "editing the booking" are the same action with the same options — including the multi-day span for hotels/transport. The same-day limitation Assaf hit only ever came from the _wrong form being opened_, not from a missing capability.
 
+**4. From the day view, a booking-linked event keeps the event card — only the edit/delete _destinations_ change; it does not become the Index detail view.** On the day/timeline a booking-linked event still renders as an ordinary event card with its phase verbs (Done / Skip / Navigate, ADR-0043) and its own "⋯" menu — the day is "what now / what next", the Index is the durable record; two jobs, two presentations (ADR-0004/0049). What changes inside that "⋯" menu for a linked event:
+
+- **Edit** → opens the merged `BookingSheet` (per §2), never `EventForm`.
+- **Delete** → deletes the **Event only**; the **Booking survives, unlinked, in the Index** (ADR-0047 §3: "deleting the Event side of a linked pair leaves the Booking untouched and unlinked"). This is deliberately **different** from Delete on the Index detail view (§1), which raises the delete-both / unlink two-choice prompt. The mental model: from the day you're removing _this item from the timeline_; from the Index you're acting on _the reservation itself_. Deleting a **hard** linked event stays guarded (a confirm), per ADR-0011.
+- **Swap** (soft-only) is unchanged; a booking-backed event defaults to `hard` (ADR-0048 §5), so it normally won't appear.
+
+So the two "⋯" menus are **not** identical: the Index booking menu is Edit · Delete-with-prompt (acting on the reservation); the day-view event menu is the standard event menu whose Edit is rerouted and whose Delete unlinks. Both reach the one merged edit surface; they differ only in what "delete here" means, which mirrors the entity you're looking at.
+
 ## Consequences
 
 - **Frontend only — no data-model or backend change.** The merged sheet, the span fields, and the delete/unlink prompt all exist; this rewires _which_ surface opens and adds a detail view in front of the edit.
 - **New:** a booking **detail view** component (read-only; reuses the row/badge chrome and the merged sheet's field layout for display). `Index.tsx` opens detail-then-edit instead of edit directly.
-- **Changed:** `DayView.tsx` / `PlanDay.tsx` gain a `bookingId`-aware edit branch that opens `BookingSheet` (they already import the booking for display — `DayView.tsx:357`; now they forward it to edit). They must import `BookingSheet` (today only `EventForm`).
+- **Changed:** `DayView.tsx` / `PlanDay.tsx` gain a `bookingId`-aware **edit** branch that opens `BookingSheet` (they already import the booking for display — `DayView.tsx:357`; now they forward it to edit); they must import `BookingSheet` (today only `EventForm`). Their event-card **Delete** already deletes only the Event — which, for a linked event, is exactly the "unlink, keep the booking" behavior §4 wants (ADR-0047 §3's `onDelete: SetNull`); it needs the hard-event confirm (ADR-0011), not the Index's two-choice prompt.
 - **`EventForm` narrows in role** to unlinked events. Its same-day scope (ADR-0036/0037) is correct _for that role_; the fix is not to widen `EventForm` but to stop pointing it at linked events.
 - **Detail view content is a superset of the row.** The row (ADR-0049) stays a compact list entry; the detail view is where the full record (notes, wifi, room, route, timing) is read — so the durable-reference value of the Index (ADR-0049 §1) is actually visible, not only editable.
 - **Archive/read-only (ADR-0049 §2):** in the finished-trip archive the detail view is exactly right — it's already read-only; the "⋯" menu is simply absent (no edit/delete in the archive), which is cleaner than today's tap-into-an-edit-form-then-discover-it's-locked.
