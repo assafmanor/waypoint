@@ -13,10 +13,10 @@ This session produced **planning only** — no implementation. The record of the
 
 ## The two tasks
 
-| Task                            | ADR                                                     | One-line scope                                                                                                                              |
-| ------------------------------- | ------------------------------------------------------ | ------------------------------------------------------------------------------------------------------------------------------------------ |
-| **A — Document blob caching**   | [0055](../decisions/0055-document-blob-read-caching.md) | Read-through, ciphertext-only cache: server two-tier (in-memory LRU + local FS) below `getObject`, and a client-side Cache API read cache.  |
-| **B — Faster document uploads** | [0056](../decisions/0056-faster-document-uploads.md)   | Optimistic upload via the offline outbox: close the sheet instantly, queue the file blob, flush in the background; server idempotent re-POST. |
+| Task                            | ADR                                                     | One-line scope                                                                                                                                |
+| ------------------------------- | ------------------------------------------------------- | --------------------------------------------------------------------------------------------------------------------------------------------- |
+| **A — Document blob caching**   | [0055](../decisions/0055-document-blob-read-caching.md) | Read-through, ciphertext-only cache: server two-tier (in-memory LRU + local FS) below `getObject`, and a client-side Cache API read cache.    |
+| **B — Faster document uploads** | [0056](../decisions/0056-faster-document-uploads.md)    | Optimistic upload via the offline outbox: close the sheet instantly, queue the file blob, flush in the background; server idempotent re-POST. |
 
 ## Why they're independent (the design guarantee)
 
