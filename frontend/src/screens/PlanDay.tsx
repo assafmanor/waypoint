@@ -47,6 +47,8 @@ import { TRIP_TZ_OFFSET, maybeMeta } from '../fixtures';
 import { EventForm } from '../ui/EventForm';
 import { BookingSheet } from '../ui/BookingSheet';
 import { IconPicker } from '../ui/IconPicker';
+import { Icon } from '../ui/Icon';
+import { NavArrow } from '../ui/NavArrow';
 import { Sheet } from '../ui/Sheet';
 
 const daysBetween = (from: string, to: string) =>
@@ -374,7 +376,7 @@ function ResolveSheet({
               {e.endsAt && `–${formatTime(e.endsAt, tz)}`}
             </span>
             <span className="chev" aria-hidden="true">
-              ▾
+              <Icon name="caret" dir="down" />
             </span>
           </button>
         ))}
@@ -405,7 +407,7 @@ function ResolveSheet({
     <Sheet title={t.planDay.resolveFor(mover.title)} onClose={onClose}>
       {softMovers.length > 1 && (
         <button className="resolve-backbtn" onClick={onBack}>
-          {t.arrows.chevronBack} {t.planDay.resolveBack}
+          <NavArrow variant="back" /> {t.planDay.resolveBack}
         </button>
       )}
       <button
@@ -583,7 +585,7 @@ function BuilderGroups({
                   </span>
                   {!ctx.readOnly && (
                     <button className="bld-resolve" onClick={() => ctx.onResolve(g)}>
-                      {t.planDay.resolve} ▾
+                      {t.planDay.resolve} <Icon name="caret" dir="down" />
                     </button>
                   )}
                 </div>
@@ -825,7 +827,7 @@ function BuilderRow({
               disabled={!onMoveEarlier}
               aria-label={t.planDay.moveEarlier}
             >
-              ▲
+              <Icon name="caret" dir="up" />
             </button>
             <button
               className="bld-move"
@@ -833,7 +835,7 @@ function BuilderRow({
               disabled={!onMoveLater}
               aria-label={t.planDay.moveLater}
             >
-              ▼
+              <Icon name="caret" dir="down" />
             </button>
           </span>
         </span>
@@ -892,7 +894,7 @@ function BuilderRow({
               {ICONS.done}
             </span>
             <span className="undo" aria-hidden="true">
-              ↩
+              <Icon name="undo" />
             </span>
           </span>
         ) : settle.status === EVENT_STATUS.SKIPPED ? (
@@ -905,7 +907,7 @@ function BuilderRow({
             onClick={settle.onRestore}
             onKeyDown={onSettleKey(settle.onRestore)}
           >
-            ↩
+            <Icon name="undo" />
           </span>
         ) : (
           <span

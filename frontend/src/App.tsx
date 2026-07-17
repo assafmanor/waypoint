@@ -22,6 +22,8 @@ import { consumeIntent, hasIntent, saveIntent } from './lib/intent';
 import { ToastProvider } from './ui/Toast';
 import { ConfirmProvider } from './ui/ConfirmDialog';
 import { Sheet } from './ui/Sheet';
+import { Icon } from './ui/Icon';
+import { NavArrow } from './ui/NavArrow';
 import { Home } from './screens/Home';
 import { PlanHome } from './screens/PlanHome';
 import { PlanDay } from './screens/PlanDay';
@@ -212,7 +214,9 @@ function Header({
             <span ref={tripNameRef} className="trip-name">
               {trip.name}
             </span>
-            <span className="chev">▾</span>
+            <span className="chev">
+              <Icon name="caret" dir="down" />
+            </span>
           </button>
           <div className="trip-sub">
             {trip.destination}
@@ -291,7 +295,7 @@ function Header({
             {dayScope === 'past' ? t.header.pastDay : t.header.futureDay}
           </span>
           <span className="dc-back">
-            {t.header.backToToday} {t.arrows.back}
+            {t.header.backToToday} <NavArrow variant="back" />
           </span>
         </button>
       )}

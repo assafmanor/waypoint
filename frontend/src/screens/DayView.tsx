@@ -42,6 +42,7 @@ import { EventForm } from '../ui/EventForm';
 import { BookingSheet } from '../ui/BookingSheet';
 import { Sheet } from '../ui/Sheet';
 import { TimePicker } from '../ui/TimePicker';
+import { Icon } from '../ui/Icon';
 
 const daysBetween = (from: string, to: string) =>
   Math.round((Date.parse(to) - Date.parse(from)) / MS_PER_DAY);
@@ -606,12 +607,14 @@ function EventItem({
               {ICONS.done}
             </span>
             <span className="undo" aria-hidden="true">
-              ↩
+              <Icon name="undo" />
             </span>
           </span>
         )}
         {timeBlock}
-        <span className="chev" aria-hidden="true" />
+        <span className="chev" aria-hidden="true">
+          <Icon name="caret" dir="down" />
+        </span>
       </button>
       <div className="actions">
         <div className="act-row">

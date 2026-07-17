@@ -6,6 +6,7 @@
 import { BOOKING_TYPE, type Booking, type BookingType } from '@waypoint/shared';
 import { useTrip } from '../state/trip-state';
 import { Sheet } from './Sheet';
+import { NavArrow } from './NavArrow';
 import { placeName } from '../lib/places';
 import { formatTime } from '../lib/time';
 import { timingLabels } from '../lib/booking-timing';
@@ -122,7 +123,7 @@ export function RouteLabel({ from, to }: { from?: string; to?: string }) {
     <span className="route">
       <bdi>{from ?? '-'}</bdi>
       <span className="arr" aria-hidden="true">
-        {t.arrows.route}
+        <NavArrow variant="forward" />
       </span>
       <bdi>{to ?? '-'}</bdi>
     </span>

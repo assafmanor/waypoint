@@ -17,6 +17,7 @@ import {
 import { useTrip } from '../state/trip-state';
 import { Sheet } from './Sheet';
 import { IconPicker } from './IconPicker';
+import { Icon } from './Icon';
 import { TimePicker } from './TimePicker';
 import {
   mergeBookingDetails,
@@ -225,7 +226,7 @@ export function BookingSheet({
                   setIconTouched(false);
                 }}
               >
-                ↺ {t.index.form.reset}
+                <Icon name="reset" /> {t.index.form.reset}
               </button>
             )}
           </div>
