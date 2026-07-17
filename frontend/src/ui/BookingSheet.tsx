@@ -28,6 +28,7 @@ import {
 } from '../lib/booking-edit';
 import { placeName } from '../lib/places';
 import { isoToTimeInput } from '../lib/time';
+import { timingLabels } from '../lib/booking-timing';
 import { BOOKING_TYPE_ICON, DEVICE_LOCALE } from '../constants';
 import { t } from '../i18n/he';
 
@@ -45,16 +46,9 @@ const isTransportType = (ty: BookingType) =>
 const isSpanType = (ty: BookingType) =>
   isTransportType(ty) || ty === BOOKING_TYPE.HOTEL || ty === BOOKING_TYPE.ACTIVITY;
 
-/** The two span-endpoint labels for a type (i18n keys resolved at the call site). */
-function spanLabels(ty: BookingType): { start: string; end: string } {
-  if (ty === BOOKING_TYPE.HOTEL) {
-    return { start: t.index.form.checkinLabel, end: t.index.form.checkoutLabel };
-  }
-  if (isTransportType(ty)) {
-    return { start: t.index.form.departLabel, end: t.index.form.arriveLabel };
-  }
-  return { start: t.index.form.startLabel, end: t.index.form.endLabel }; // activity
-}
+/** The two span-endpoint labels for a type — shared with the detail view and the
+ *  Index row so the wording never drifts (`../lib/booking-timing`). */
+const spanLabels = timingLabels;
 
 export function BookingSheet({
   booking,

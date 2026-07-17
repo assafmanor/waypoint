@@ -4,6 +4,8 @@
 **Date:** 2026-07-17
 **Refines:** [0049](0049-index-tab-mode-and-lifecycle.md) (revises "tap a booking → the merged edit sheet": tap now opens a read-only detail, edit is behind a menu), [0047](0047-booking-event-linkage-and-notes.md) (completes §2's "one merged edit surface … from the Index **or** the day view" — only the Index path shipped), [0011](0011-hard-soft-event-model.md) (a booking backs a **hard** event, which is _guarded on edit_ — the detail-first pattern is that guard), [0043](0043-day-view-now-line-phases-and-archive-chrome.md) (the event card's expand → quick-verbs → "⋯" pattern this brings bookings to parity with)
 
+> **Revision (2026-07-17, session 28 — `docs/planning/2026-07-17-session-28-booking-detail-refinements.md`):** §1's "the detail view carries an edit button **plus** a '⋯' menu" was corrected during implementation. The **read-only detail view carries only the '✏️ עריכה' button**; the **"⋯" menu (Edit · Delete) moved onto the booking _row_**, on the inline-start side, mirroring the document row's "⋯" (ADR-0052). The mental model holds — you land on facts, editing is deliberate — but the row is where you _manage_ a booking (edit/delete), the detail is where you _read_ it. The timing fact is also labelled by type (המראה/נחיתה, צ׳ק-אין/צ׳ק-אאוט) both in the detail and on the row.
+
 ## Context
 
 Two asymmetries surfaced walking the shipped Index (session 2026-07-17, `docs/planning/2026-07-17-session-27-index-post-build-issues.md`):
