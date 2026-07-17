@@ -1,14 +1,16 @@
 import 'fake-indexeddb/auto';
 import { afterEach, describe, expect, it, vi } from 'vitest';
-import type { Change, Trip, TripSnapshot } from '@waypoint/shared';
+import type { Change, DocumentSummary, Trip, TripSnapshot } from '@waypoint/shared';
 import { db } from '../db';
 import { EVENTS, MAYBE_ITEMS } from '../fixtures';
 import {
   applyChangeToCache,
   applyOutboxOpToCache,
+  cacheDocuments,
   cacheSnapshot,
   cacheTripList,
   loadTripList,
+  readCachedDocuments,
   readCachedSnapshot,
   readCachedTripList,
 } from './cache';
@@ -48,6 +50,7 @@ afterEach(async () => {
   vi.unstubAllGlobals();
   await db.events.clear();
   await db.bookings.clear();
+  await db.documents.clear();
   await db.snapshotMeta.clear();
   await db.tripList.clear();
 });
@@ -124,11 +127,55 @@ describe('applyChangeToCache', () => {
     expect(cached?.maybeItems).toHaveLength(MAYBE_ITEMS.length);
   });
 
+  it('mirrors a remote document create into db.documents, then removes it on delete (ADR-0057)', async () => {
+    await applyChangeToCache(TRIP_ID, {
+      ...baseChange,
+      entityType: 'document',
+      entityId: 'doc-1',
+      action: 'create',
+      after: { type: 'passport', title: 'Passport', mimeType: 'application/pdf', sizeBytes: 12 },
+    });
+    const afterCreate = await readCachedDocuments(TRIP_ID);
+    expect(afterCreate.map((d) => d.id)).toEqual(['doc-1']);
+    expect(afterCreate[0]).toMatchObject({ title: 'Passport', tripId: TRIP_ID });
+
+    await applyChangeToCache(TRIP_ID, {
+      ...baseChange,
+      entityType: 'document',
+      entityId: 'doc-1',
+      action: 'delete',
+      after: undefined,
+    });
+    expect(await readCachedDocuments(TRIP_ID)).toEqual([]);
+  });
+
   it('is a no-op when nothing was ever cached for this trip', async () => {
     await expect(
       applyChangeToCache(TRIP_ID, { ...baseChange, entityType: 'maybeItem' }),
     ).resolves.toBeUndefined();
     expect(await readCachedSnapshot(TRIP_ID)).toBeNull();
+  });
+});
+
+describe('cacheDocuments / readCachedDocuments', () => {
+  const doc = (id: string): DocumentSummary => ({
+    id,
+    tripId: TRIP_ID,
+    type: 'passport',
+    title: id,
+    mimeType: 'application/pdf',
+    sizeBytes: 1,
+    createdAt: '2026-07-01T00:00:00.000Z',
+    updatedAt: '2026-07-01T00:00:00.000Z',
+    updatedBy: 'u-assaf',
+  });
+
+  it('mirrors a list and reads it back; a later list replaces it wholesale', async () => {
+    await cacheDocuments(TRIP_ID, [doc('a'), doc('b')]);
+    expect((await readCachedDocuments(TRIP_ID)).map((d) => d.id).sort()).toEqual(['a', 'b']);
+
+    await cacheDocuments(TRIP_ID, [doc('b')]);
+    expect((await readCachedDocuments(TRIP_ID)).map((d) => d.id)).toEqual(['b']);
   });
 });
 

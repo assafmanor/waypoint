@@ -1,5 +1,5 @@
 import Dexie, { type Table } from 'dexie';
-import type { Booking, Trip, TripDocument, TripEvent } from '@waypoint/shared';
+import type { Booking, DocumentSummary, Trip, TripEvent } from '@waypoint/shared';
 import type { OutboxEntry } from './lib/outbox';
 import type { SnapshotMeta } from './lib/cache';
 
@@ -9,7 +9,9 @@ import type { SnapshotMeta } from './lib/cache';
 export class WaypointDB extends Dexie {
   events!: Table<TripEvent, string>;
   bookings!: Table<Booking, string>;
-  documents!: Table<TripDocument, string>;
+  // Summaries only — `fileRef` never reaches the client (ADR-0015/0034/0057);
+  // blob bytes cache separately via the Cache API (ADR-0055).
+  documents!: Table<DocumentSummary, string>;
   // T-013: offline write outbox, `seq` (auto-increment) is the FIFO order.
   // Entries may carry binary (a `uploadDocument` op's `File` — ADR-0056);
   // IndexedDB's structured clone persists `Blob`/`File` as-is, so no schema

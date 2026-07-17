@@ -43,7 +43,7 @@ import {
   type UpdatePlaceInput,
   type UpdateTripInput,
 } from '@waypoint/shared';
-import { readCachedBlob, writeCachedBlob } from './doc-cache';
+import { evictCachedDocument, readCachedBlob, writeCachedBlob } from './doc-cache';
 
 export const API_BASE_URL = import.meta.env.VITE_API_BASE_URL ?? '';
 
@@ -504,4 +504,12 @@ export async function updateDocument(
 export async function deleteDocument(tripId: string, docId: string): Promise<void> {
   const res = await apiFetch(`${documentsUrl(tripId)}/${docId}`, { method: 'DELETE' });
   if (!res.ok) return throwApiError(res);
+}
+
+/** Drop every cached version of a document's blob (ADR-0055/0057). Used when a
+ *  remote replace/delete arrives: the `/content` URL is reused across a replace,
+ *  and a peer's WS change carries no fresh `updatedAt` to re-key the cache, so a
+ *  stale open would otherwise hit the old bytes. Evicting forces a fresh fetch. */
+export async function evictDocumentBlob(tripId: string, docId: string): Promise<void> {
+  await evictCachedDocument(documentContentUrl(tripId, docId));
 }
