@@ -11,6 +11,9 @@ export class WaypointDB extends Dexie {
   bookings!: Table<Booking, string>;
   documents!: Table<TripDocument, string>;
   // T-013: offline write outbox, `seq` (auto-increment) is the FIFO order.
+  // Entries may carry binary (a `uploadDocument` op's `File` — ADR-0056);
+  // IndexedDB's structured clone persists `Blob`/`File` as-is, so no schema
+  // change is needed beyond the existing `seq`/`tripId` indexes.
   outbox!: Table<OutboxEntry, number>;
   // T-058: last-known snapshot remainder, keyed by tripId.
   snapshotMeta!: Table<SnapshotMeta, string>;

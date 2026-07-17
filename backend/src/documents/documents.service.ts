@@ -1,6 +1,6 @@
 import { randomUUID } from 'node:crypto';
 import { Injectable, NotFoundException } from '@nestjs/common';
-import type { Document as PrismaDocument } from '@prisma/client';
+import { Prisma, type Document as PrismaDocument } from '@prisma/client';
 import type {
   CreateDocumentInput,
   DocumentSummary,
@@ -59,6 +59,14 @@ export class DocumentsService {
     file: UploadedFile,
   ): Promise<TripDocument> {
     const id = input.id ?? randomUUID();
+
+    // Idempotent re-POST (ADR-0018/0056): an offline-outbox flush can retry an
+    // upload whose first attempt already landed. If this client id already exists,
+    // return it as already-applied *before* encrypting + storing bytes — so a retry
+    // never orphans a second blob that no row references.
+    const existing = await this.prisma.document.findFirst({ where: { id, tripId } });
+    if (existing) return toDocumentDto(existing);
+
     const fileRef = randomUUID();
     const encrypted = encryptAtRest(
       file.buffer.toString('base64'),
@@ -67,29 +75,40 @@ export class DocumentsService {
     );
     await putObject(fileRef, Buffer.from(encrypted, 'base64'));
 
-    const { entity } = await this.changes.mutate({
-      tripId,
-      actorUserId,
-      entityType: 'document',
-      entityId: id,
-      action: 'create',
-      after: { ...input, mimeType: file.mimetype, sizeBytes: file.size },
-      apply: (tx) =>
-        tx.document.create({
-          data: {
-            id,
-            tripId,
-            type: input.type,
-            title: input.title,
-            fileRef,
-            mimeType: file.mimetype,
-            sizeBytes: file.size,
-            ownerUserId: input.ownerUserId,
-            updatedBy: actorUserId,
-          },
-        }),
-    });
-    return toDocumentDto(entity);
+    try {
+      const { entity } = await this.changes.mutate({
+        tripId,
+        actorUserId,
+        entityType: 'document',
+        entityId: id,
+        action: 'create',
+        after: { ...input, mimeType: file.mimetype, sizeBytes: file.size },
+        apply: (tx) =>
+          tx.document.create({
+            data: {
+              id,
+              tripId,
+              type: input.type,
+              title: input.title,
+              fileRef,
+              mimeType: file.mimetype,
+              sizeBytes: file.size,
+              ownerUserId: input.ownerUserId,
+              updatedBy: actorUserId,
+            },
+          }),
+      });
+      return toDocumentDto(entity);
+    } catch (err) {
+      // Lost a concurrent race on the same client id (the pre-check missed a
+      // near-simultaneous first POST): the row exists now, so the blob we just
+      // stored is an orphan. Drop it and return the winning row (ADR-0056).
+      if (err instanceof Prisma.PrismaClientKnownRequestError && err.code === 'P2002') {
+        await deleteObject(fileRef).catch(() => undefined);
+        return toDocumentDto(await this.requireDocument(tripId, id));
+      }
+      throw err;
+    }
   }
 
   /** Rename / change type, and optionally replace the file (ADR-0052). A new file
