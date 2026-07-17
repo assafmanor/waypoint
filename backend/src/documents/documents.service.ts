@@ -1,12 +1,17 @@
 import { randomUUID } from 'node:crypto';
 import { Injectable, NotFoundException } from '@nestjs/common';
 import type { Document as PrismaDocument } from '@prisma/client';
-import type { CreateDocumentInput, DocumentSummary, TripDocument } from '@waypoint/shared';
+import type {
+  CreateDocumentInput,
+  DocumentSummary,
+  TripDocument,
+  UpdateDocumentInput,
+} from '@waypoint/shared';
 import { decryptAtRest, encryptAtRest } from '../common/crypto.util';
 import { DOC_ENCRYPTION_KEY, requireEnv } from '../common/env';
 import { PrismaService } from '../prisma/prisma.service';
 import { ChangeService } from '../sync/change.service';
-import { getObject, putObject } from './storage';
+import { deleteObject, getObject, putObject } from './storage';
 
 const toDocumentSummaryDto = (d: PrismaDocument): DocumentSummary => ({
   id: d.id,
@@ -85,6 +90,73 @@ export class DocumentsService {
         }),
     });
     return toDocumentDto(entity);
+  }
+
+  /** Rename / change type, and optionally replace the file (ADR-0052). A new file
+   *  is encrypted to a fresh blob and swapped in; the old blob is deleted only
+   *  after the row commits, so a mid-flight failure orphans a blob rather than
+   *  losing the document (same posture as create). */
+  async update(
+    tripId: string,
+    actorUserId: string,
+    documentId: string,
+    input: UpdateDocumentInput,
+    file: UploadedFile | undefined,
+  ): Promise<TripDocument> {
+    const existing = await this.requireDocument(tripId, documentId);
+
+    let fileFields: { fileRef: string; mimeType: string; sizeBytes: number } | undefined;
+    if (file) {
+      const fileRef = randomUUID();
+      const encrypted = encryptAtRest(
+        file.buffer.toString('base64'),
+        requireEnv(DOC_ENCRYPTION_KEY),
+        DOC_ENCRYPTION_KEY,
+      );
+      await putObject(fileRef, Buffer.from(encrypted, 'base64'));
+      fileFields = { fileRef, mimeType: file.mimetype, sizeBytes: file.size };
+    }
+
+    const { entity } = await this.changes.mutate({
+      tripId,
+      actorUserId,
+      entityType: 'document',
+      entityId: documentId,
+      action: 'update',
+      before: toDocumentSummaryDto(existing),
+      after: {
+        ...input,
+        ...(fileFields ? { mimeType: fileFields.mimeType, sizeBytes: fileFields.sizeBytes } : {}),
+      },
+      apply: (tx) =>
+        tx.document.update({
+          where: { id: documentId },
+          data: {
+            ...(input.title !== undefined ? { title: input.title } : {}),
+            ...(input.type !== undefined ? { type: input.type } : {}),
+            ...(fileFields ?? {}),
+            updatedBy: actorUserId,
+          },
+        }),
+    });
+
+    if (fileFields) await deleteObject(existing.fileRef).catch(() => undefined);
+    return toDocumentDto(entity);
+  }
+
+  /** Delete the row and its encrypted blob (ADR-0015/0034 — no orphaned ciphertext). */
+  async remove(tripId: string, actorUserId: string, documentId: string): Promise<void> {
+    const existing = await this.requireDocument(tripId, documentId);
+    await this.changes.mutate({
+      tripId,
+      actorUserId,
+      entityType: 'document',
+      entityId: documentId,
+      action: 'delete',
+      before: toDocumentSummaryDto(existing),
+      apply: (tx) => tx.document.delete({ where: { id: documentId } }),
+    });
+    await deleteObject(existing.fileRef).catch(() => undefined);
   }
 
   async getContent(

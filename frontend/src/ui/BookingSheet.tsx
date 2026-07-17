@@ -417,7 +417,7 @@ function KindToggle({
   );
 }
 
-function DeletePrompt({
+export function DeletePrompt({
   hasLinkedEvent,
   linkedIsHard,
   onCancel,

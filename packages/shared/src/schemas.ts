@@ -119,6 +119,15 @@ export const createDocumentSchema = z.object({
 });
 export type CreateDocumentInput = z.infer<typeof createDocumentSchema>;
 
+/** Metadata patch for an existing document (ADR-0052): rename and/or change type.
+ *  A file replacement rides as the multipart `file` alongside this, handled
+ *  server-side like create — not a field here. */
+export const updateDocumentSchema = z.object({
+  title: z.string().min(1).optional(),
+  type: documentTypeSchema.optional(),
+});
+export type UpdateDocumentInput = z.infer<typeof updateDocumentSchema>;
+
 export const createTripSchema = z
   .object({
     name: z.string().min(1).max(MAX_TRIP_NAME_LENGTH),

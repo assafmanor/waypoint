@@ -41,9 +41,11 @@ import {
 } from '../lib/time';
 import { gapBetween, nextSlot, type GapDefaults } from '../lib/gaps';
 import { CODE_PREFIX, DEFAULT_MAYBE_ICON, ICONS, MS_PER_DAY, MINUTES_PER_HOUR } from '../constants';
+import { ambientEventsOnDate } from '../lib/glance';
 import { t } from '../i18n/he';
 import { TRIP_TZ_OFFSET, maybeMeta } from '../fixtures';
 import { EventForm } from '../ui/EventForm';
+import { BookingSheet } from '../ui/BookingSheet';
 import { IconPicker } from '../ui/IconPicker';
 import { Sheet } from '../ui/Sheet';
 
@@ -74,6 +76,8 @@ export function PlanDay() {
   const nowRefMs =
     tripPhase(trip, now) === 'live' && activeDate === todayInTz(tz, now) ? now.getTime() : null;
   const [formTarget, setFormTarget] = useState<'new' | TripEvent | null>(null);
+  // A booking-linked event edits through the merged BookingSheet (ADR-0053 §2).
+  const [bookingTarget, setBookingTarget] = useState<Booking | null>(null);
   const [gapFill, setGapFill] = useState<GapDefaults | null>(null);
   // A shelf idea being scheduled onto a day — opens EventForm in "schedule" mode
   // so the user picks the day/time/kind (not the old hardcoded 17:30 dump).
@@ -90,8 +94,20 @@ export function PlanDay() {
   // trip's archive shows them in place — struck-through, restorable — so the
   // record reads "what we did / what we skipped" (ADR-0044).
   const dayEvents = events
-    .filter((e) => e.date === activeDate && (readOnly || e.status !== EVENT_STATUS.SKIPPED))
+    .filter(
+      (e) => e.date === activeDate && (readOnly || e.status !== EVENT_STATUS.SKIPPED) && !e.endDate,
+    )
     .sort(byStart);
+  // Ambient-span stays (a hotel, ADR-0054): backdrop across their nights, not
+  // builder rows.
+  const ambientStays = ambientEventsOnDate(events, activeDate);
+  const stayNights = (e: TripEvent) =>
+    Math.max(1, Math.round((Date.parse(e.endDate!) - Date.parse(e.date)) / MS_PER_DAY));
+  const stayNight = (e: TripEvent) =>
+    Math.min(
+      stayNights(e),
+      Math.round((Date.parse(activeDate) - Date.parse(e.date)) / MS_PER_DAY) + 1,
+    );
 
   // Reorder acts on soft events only (hard events are pinned anchors, ADR-0011).
   const softEvents = dayEvents.filter((e) => e.kind === EVENT_KIND.SOFT);
@@ -145,7 +161,11 @@ export function PlanDay() {
     softIndex,
     drag,
     gripProps,
-    onEdit: (e) => setFormTarget(e),
+    onEdit: (e) => {
+      const booking = e.bookingId ? bookings.find((b) => b.id === e.bookingId) : undefined;
+      if (booking) setBookingTarget(booking);
+      else setFormTarget(e);
+    },
     onGapFill: (fill) => setGapChoice(fill),
     onResolve: (cluster) => {
       setResolveCluster(cluster);
@@ -173,6 +193,20 @@ export function PlanDay() {
             )}
           </span>
         </div>
+
+        {ambientStays.length > 0 && (
+          <div className="day-ambient">
+            {ambientStays.map((e) => (
+              <div className="ambient" key={e.id}>
+                <span className="ai" aria-hidden="true">
+                  {e.icon ?? '🏨'}
+                </span>
+                <span className="an">{e.title}</span>
+                <span className="as">{t.glance.ambientNight(stayNight(e), stayNights(e))}</span>
+              </div>
+            ))}
+          </div>
+        )}
 
         {dayEvents.length === 0 ? (
           <div className="builder-empty">{readOnly ? t.planDay.pastEmpty : t.planDay.empty}</div>
@@ -288,6 +322,10 @@ export function PlanDay() {
           defaults={gapFill ?? undefined}
           onClose={closeForm}
         />
+      )}
+
+      {bookingTarget && (
+        <BookingSheet booking={bookingTarget} onClose={() => setBookingTarget(null)} />
       )}
     </div>
   );

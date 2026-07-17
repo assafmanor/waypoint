@@ -23,6 +23,7 @@ import {
   type CreatePlaceInput,
   type CreateTripInput,
   type DocumentSummary,
+  type DocumentType,
   type EventStatus,
   type MaybeItem,
   type TripDocument,
@@ -461,4 +462,27 @@ export async function fetchDocumentContent(tripId: string, docId: string): Promi
   const res = await apiFetch(documentContentUrl(tripId, docId));
   if (!res.ok) return throwApiError(res);
   return res.blob();
+}
+
+/** Rename / change type, and optionally replace the file (ADR-0052). Always
+ *  multipart (matching upload) so metadata-only and replace share one route. */
+export async function updateDocument(
+  tripId: string,
+  docId: string,
+  input: { title?: string; type?: DocumentType },
+  file?: File,
+): Promise<TripDocument> {
+  const form = new FormData();
+  if (input.title !== undefined) form.set('title', input.title);
+  if (input.type !== undefined) form.set('type', input.type);
+  if (file) form.set('file', file);
+  const res = await apiFetch(`${documentsUrl(tripId)}/${docId}`, { method: 'PATCH', body: form });
+  if (!res.ok) return throwApiError(res);
+  return tripDocumentSchema.parse(await res.json());
+}
+
+/** Delete a document (row + encrypted blob, server-side). 204, no body. */
+export async function deleteDocument(tripId: string, docId: string): Promise<void> {
+  const res = await apiFetch(`${documentsUrl(tripId)}/${docId}`, { method: 'DELETE' });
+  if (!res.ok) return throwApiError(res);
 }

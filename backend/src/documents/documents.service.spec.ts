@@ -99,4 +99,83 @@ describe('DocumentsService', () => {
 
     await expect(service.getContent(otherTripId, created.id)).rejects.toThrow(NotFoundException);
   });
+
+  it('renames + changes type without touching the blob (ADR-0052)', async () => {
+    const tripId = await newTrip();
+    const plaintext = Buffer.from('passport scan');
+    const created = await service.create(
+      tripId,
+      DEV_USER,
+      { type: 'passport', title: 'Passport' },
+      { buffer: plaintext, mimetype: 'application/pdf', size: plaintext.length },
+    );
+
+    const updated = await service.update(
+      tripId,
+      DEV_USER,
+      created.id,
+      { title: 'Passport · Assaf', type: 'visa' },
+      undefined,
+    );
+
+    expect(updated).toMatchObject({ title: 'Passport · Assaf', type: 'visa' });
+    expect(updated.fileRef).toBe(created.fileRef); // blob untouched on a metadata patch
+    const content = await service.getContent(tripId, created.id);
+    expect(content.buffer).toEqual(plaintext);
+    const change = await prisma.change.findFirst({
+      where: { tripId, entityId: created.id, action: 'update' },
+    });
+    expect(change).toMatchObject({ entityType: 'document', action: 'update' });
+  });
+
+  it('replaces the file: swaps to a fresh blob and deletes the old one (ADR-0052)', async () => {
+    const tripId = await newTrip();
+    const before = Buffer.from('old scan');
+    const created = await service.create(
+      tripId,
+      DEV_USER,
+      { type: 'passport', title: 'Passport' },
+      { buffer: before, mimetype: 'application/pdf', size: before.length },
+    );
+    const oldRef = created.fileRef;
+
+    const after = Buffer.from('new scan bytes');
+    const updated = await service.update(
+      tripId,
+      DEV_USER,
+      created.id,
+      {},
+      {
+        buffer: after,
+        mimetype: 'image/jpeg',
+        size: after.length,
+      },
+    );
+
+    expect(updated.fileRef).not.toBe(oldRef); // fresh blob
+    expect(updated.mimeType).toBe('image/jpeg');
+    const content = await service.getContent(tripId, created.id);
+    expect(content.buffer).toEqual(after);
+    await expect(readFile(join(LOCAL_STORAGE_DIR, oldRef))).rejects.toThrow(); // old blob gone
+  });
+
+  it('deletes the row and its encrypted blob (ADR-0052)', async () => {
+    const tripId = await newTrip();
+    const plaintext = Buffer.from('to be deleted');
+    const created = await service.create(
+      tripId,
+      DEV_USER,
+      { type: 'other', title: 'Scratch' },
+      { buffer: plaintext, mimetype: 'application/pdf', size: plaintext.length },
+    );
+
+    await service.remove(tripId, DEV_USER, created.id);
+
+    await expect(service.getContent(tripId, created.id)).rejects.toThrow(NotFoundException);
+    await expect(readFile(join(LOCAL_STORAGE_DIR, created.fileRef))).rejects.toThrow();
+    const change = await prisma.change.findFirst({
+      where: { tripId, entityId: created.id, action: 'delete' },
+    });
+    expect(change).toMatchObject({ entityType: 'document', action: 'delete' });
+  });
 });

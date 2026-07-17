@@ -34,10 +34,12 @@ import {
   type TimeItem,
 } from '../lib/time';
 import { nextSlot } from '../lib/gaps';
+import { ambientEventsOnDate } from '../lib/glance';
 import { CODE_PREFIX, DELAY_STEP_MINUTES, ICONS, MS_PER_DAY } from '../constants';
 import { t } from '../i18n/he';
 import { TRIP_TZ_OFFSET, maybeMeta } from '../fixtures';
 import { EventForm } from '../ui/EventForm';
+import { BookingSheet } from '../ui/BookingSheet';
 import { Sheet } from '../ui/Sheet';
 import { TimePicker } from '../ui/TimePicker';
 
@@ -64,6 +66,9 @@ export function DayView() {
   const now = useClock();
   const [openId, setOpenId] = useState<string | null>(null);
   const [formTarget, setFormTarget] = useState<'new' | TripEvent | null>(null);
+  // Editing a booking-linked event opens the merged BookingSheet, not EventForm
+  // (ADR-0053 §2) — the same surface as editing from the Index.
+  const [bookingTarget, setBookingTarget] = useState<Booking | null>(null);
   const [scheduleItem, setScheduleItem] = useState<MaybeItem | null>(null);
 
   const today = todayInTz(trip.timezone, now);
@@ -73,8 +78,18 @@ export function DayView() {
   const readOnly = dayScope === 'past';
 
   const dayEvents = events
-    .filter((e) => e.date === activeDate && e.status !== EVENT_STATUS.SKIPPED)
+    .filter((e) => e.date === activeDate && e.status !== EVENT_STATUS.SKIPPED && !e.endDate)
     .sort(byStart);
+  // Ambient-span stays (a hotel, ADR-0054) are backdrop, not timeline rows: shown
+  // as a strip on every night they cover (not just check-in), never as a block.
+  const ambientStays = ambientEventsOnDate(events, activeDate);
+  const stayNights = (e: TripEvent) =>
+    Math.max(1, Math.round((Date.parse(e.endDate!) - Date.parse(e.date)) / MS_PER_DAY));
+  const stayNight = (e: TripEvent) =>
+    Math.min(
+      stayNights(e),
+      Math.round((Date.parse(activeDate) - Date.parse(e.date)) / MS_PER_DAY) + 1,
+    );
   // ADR-0027 — the shelf is a parking lot: a skipped soft event parks here
   // (durable, reversible) instead of just vanishing. Scoped to the day it was
   // skipped on, alongside the unplaced maybe ideas.
@@ -99,7 +114,11 @@ export function DayView() {
     places,
     dayEvents,
     verbs,
-    onEdit: (e) => setFormTarget(e),
+    onEdit: (e) => {
+      const booking = e.bookingId ? bookings.find((b) => b.id === e.bookingId) : undefined;
+      if (booking) setBookingTarget(booking);
+      else setFormTarget(e);
+    },
   };
 
   // The now-line: only on today (a past/future day has no "now"). It sits above
@@ -170,6 +189,20 @@ export function DayView() {
         </span>
       </div>
 
+      {ambientStays.length > 0 && (
+        <div className="day-ambient">
+          {ambientStays.map((e) => (
+            <div className="ambient" key={e.id}>
+              <span className="ai" aria-hidden="true">
+                {e.icon ?? '🏨'}
+              </span>
+              <span className="an">{e.title}</span>
+              <span className="as">{t.glance.ambientNight(stayNight(e), stayNights(e))}</span>
+            </div>
+          ))}
+        </div>
+      )}
+
       <div className={'day-list' + (readOnly ? ' archive' : '')}>
         {/* Overlapping events render as the concurrency forest (ADR-0041): nests
             for containment, quiet clusters for partial overlap. The now-line is
@@ -199,6 +232,10 @@ export function DayView() {
           }
           onClose={() => setFormTarget(null)}
         />
+      )}
+
+      {bookingTarget && (
+        <BookingSheet booking={bookingTarget} onClose={() => setBookingTarget(null)} />
       )}
 
       {/* The maybe-shelf schedules onto a day — a create action, so it's gone on

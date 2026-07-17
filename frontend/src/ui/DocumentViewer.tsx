@@ -1,11 +1,14 @@
-// Document viewer (ADR-0015/0034). The /content route is auth-guarded, so the
-// blob is fetched via apiFetch and shown as an object URL (revoked on close) —
-// image inline, PDF in an iframe, anything else as a download link.
+// Document viewer (ADR-0015/0034/0052). The /content route is auth-guarded, so the
+// blob is fetched via apiFetch and shown as an object URL (revoked on close).
+// Mobile-first (ADR-0017): only an image the browser can actually decode is shown
+// inline; a PDF, an undecodable image (e.g. iPhone HEIC), or anything else hands
+// off to "open in a new tab" / "download" — never a blank embed.
 import { useEffect, useState } from 'react';
 import { createPortal } from 'react-dom';
 import { type DocumentSummary } from '@waypoint/shared';
 import { fetchDocumentContent } from '../lib/api';
 import { useOverlay } from '../state/nav-state';
+import { Spinner } from './Spinner';
 import { t } from '../i18n/he';
 
 export function DocumentViewer({
@@ -20,6 +23,9 @@ export function DocumentViewer({
   useOverlay(onClose);
   const [url, setUrl] = useState<string | null>(null);
   const [failed, setFailed] = useState(false);
+  // An image whose bytes the browser can't decode (HEIC, a corrupt scan) falls
+  // back to the hand-off actions instead of a blank <img> (ADR-0052 §1).
+  const [imageBroken, setImageBroken] = useState(false);
 
   useEffect(() => {
     let objectUrl: string | null = null;
@@ -40,8 +46,7 @@ export function DocumentViewer({
     };
   }, [tripId, doc.id]);
 
-  const isImage = doc.mimeType.startsWith('image/');
-  const isPdf = doc.mimeType === 'application/pdf';
+  const showInlineImage = doc.mimeType.startsWith('image/') && !imageBroken;
 
   return createPortal(
     <div className="doc-viewer" onClick={onClose}>
@@ -62,15 +67,32 @@ export function DocumentViewer({
           {failed ? (
             <p className="doc-viewer-msg">{t.docs.viewer.error}</p>
           ) : !url ? (
-            <p className="doc-viewer-msg">{t.docs.viewer.loading}</p>
-          ) : isImage ? (
-            <img className="doc-viewer-img" src={url} alt={doc.title} />
-          ) : isPdf ? (
-            <iframe className="doc-viewer-frame" src={url} title={doc.title} />
+            <div className="doc-viewer-loading">
+              <Spinner className="ink" />
+              <span>{t.docs.viewer.loading}</span>
+            </div>
+          ) : showInlineImage ? (
+            <img
+              className="doc-viewer-img"
+              src={url}
+              alt={doc.title}
+              onError={() => setImageBroken(true)}
+            />
           ) : (
-            <a className="doc-viewer-download" href={url} download={doc.title}>
-              {t.docs.viewer.download}
-            </a>
+            <div className="doc-viewer-handoff">
+              <div className="doc-viewer-handoff-ic" aria-hidden="true">
+                📄
+              </div>
+              <p className="doc-viewer-msg">{t.docs.viewer.handoff}</p>
+              <div className="doc-viewer-actions">
+                <a className="dv-open" href={url} target="_blank" rel="noopener noreferrer">
+                  {t.docs.viewer.open}
+                </a>
+                <a className="dv-download" href={url} download={doc.title}>
+                  {t.docs.viewer.download}
+                </a>
+              </div>
+            </div>
           )}
         </div>
       </div>

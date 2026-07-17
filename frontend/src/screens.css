@@ -430,6 +430,48 @@
   border-radius: 16px;
   padding: 15px 16px 16px;
 }
+/* Ambient-span backdrop (a hotel / multi-day booking, ADR-0054): shown above the
+   day's blocks on every night it covers, teal-tinted (it's a place, not a time). */
+.glance-ambient {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  margin-bottom: 10px;
+}
+.glance-ambient .ambient,
+.day-ambient .ambient {
+  display: flex;
+  align-items: center;
+  gap: 9px;
+  background: color-mix(in srgb, var(--teal) 8%, transparent);
+  border: 1px solid color-mix(in srgb, var(--teal) 30%, transparent);
+  border-radius: 12px;
+  padding: 9px 12px;
+}
+.glance-ambient .ai,
+.day-ambient .ai {
+  font-size: 16px;
+  flex: 0 0 auto;
+}
+.glance-ambient .an,
+.day-ambient .an {
+  font-size: 12.5px;
+  font-weight: 700;
+  color: var(--ink);
+}
+.glance-ambient .as,
+.day-ambient .as {
+  margin-inline-start: auto;
+  font-size: 11px;
+  font-weight: 600;
+  color: var(--muted);
+}
+.day-ambient {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  margin-bottom: 12px;
+}
 /* one segment per top-level block (ADR-0041): wide gaps between blocks; a
    cluster is a tight sub-tick bundle. NOT a time scale — the board owns that. */
 /* proportional time rail: window start (earliest) at the RTL right edge,
@@ -3866,6 +3908,109 @@
   color: var(--miss);
 }
 
+/* ===== Booking detail view (BookingDetail.tsx, ADR-0053) — read-only facts with
+   a visible edit button + a "⋯" menu, riding inside the generic .sheet-card. ===== */
+.bk-detail {
+  position: relative;
+}
+.bk-actions {
+  position: absolute;
+  inset-inline-end: 0;
+  top: 0;
+  display: flex;
+  align-items: center;
+  gap: 6px;
+}
+.bk-edit {
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+  font: inherit;
+  font-size: 12px;
+  font-weight: 700;
+  color: var(--plan-deep);
+  background: var(--card);
+  border: 1px solid var(--soft-line);
+  border-radius: 999px;
+  padding: 5px 11px;
+  cursor: pointer;
+}
+.bk-edit:hover {
+  border-color: var(--plan);
+  background: var(--plan-tint);
+}
+.bk-menu-btn {
+  width: 30px;
+  height: 30px;
+  border-radius: 9px;
+  display: grid;
+  place-items: center;
+  background: none;
+  border: 0;
+  color: var(--muted);
+  font-size: 17px;
+  cursor: pointer;
+}
+.bk-menu-btn:hover {
+  background: color-mix(in srgb, var(--ink) 6%, transparent);
+  color: var(--ink);
+}
+.bk-head {
+  display: flex;
+  align-items: center;
+  gap: 11px;
+  padding-inline-end: 108px;
+}
+.bk-badge {
+  width: 44px;
+  height: 44px;
+  border-radius: 12px;
+  background: var(--paper);
+  display: grid;
+  place-items: center;
+  font-size: 22px;
+  flex: 0 0 auto;
+}
+.bk-title {
+  font-family: var(--font-head);
+  font-size: 18px;
+  line-height: 1.1;
+  color: var(--ink);
+}
+.bk-type {
+  font-size: 11.5px;
+  color: var(--muted);
+  margin-top: 3px;
+}
+.bk-facts {
+  margin-top: 12px;
+}
+.bk-fact {
+  display: flex;
+  justify-content: space-between;
+  gap: 14px;
+  padding: 10px 2px;
+  border-top: 1px solid var(--line);
+  font-size: 12.5px;
+}
+.bk-fact-k {
+  color: var(--muted);
+  font-weight: 600;
+  flex: 0 0 auto;
+}
+.bk-fact-v {
+  text-align: end;
+  font-weight: 600;
+  color: var(--ink);
+}
+.bk-fact-v.mono {
+  font-family: var(--font-mono);
+  color: var(--amber-deep);
+}
+.bk-menu {
+  margin-top: 16px;
+}
+
 /* ===== Documents section (DocumentsSection.tsx) — grouped by type, per the
    trip-index mockup. Rows reuse .index .li; only doc-specific bits added. ===== */
 .index .doc-group {
@@ -3884,6 +4029,63 @@
   font-size: 13px;
   color: var(--muted);
 }
+/* Doc row (ADR-0052): a flex container, not a single button — the "⋯" can't nest
+   inside a row button. The badge+title are one clickable area (.li-open, opens the
+   viewer); size · lock · ⋯ sit on the same line in .right. */
+.index .li.doc {
+  padding: 0;
+  cursor: default;
+}
+.index .li.doc:hover {
+  background: transparent;
+}
+.index .li.doc .li-open {
+  display: flex;
+  align-items: center;
+  gap: 11px;
+  flex: 1;
+  min-width: 0;
+  background: transparent;
+  border: none;
+  font: inherit;
+  color: inherit;
+  text-align: start;
+  cursor: pointer;
+  padding: 12px 14px;
+}
+.index .li.doc .li-open:hover {
+  background: color-mix(in srgb, var(--ink) 4%, transparent);
+}
+.index .li.doc .li-open:focus-visible {
+  outline: 2px solid var(--teal);
+  outline-offset: -2px;
+}
+.index .li.doc .right {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding-inline-end: 12px;
+}
+.index .li.doc .right .size {
+  font-size: 11.5px;
+  color: var(--muted);
+}
+.index .li.doc .right .kebab {
+  width: 30px;
+  height: 30px;
+  border-radius: 9px;
+  display: grid;
+  place-items: center;
+  background: none;
+  border: 0;
+  color: var(--muted);
+  font-size: 17px;
+  cursor: pointer;
+}
+.index .li.doc .right .kebab:hover {
+  background: color-mix(in srgb, var(--ink) 6%, transparent);
+  color: var(--ink);
+}
 .index .empty-card.doc {
   border-style: dashed;
   border-color: var(--soft-line);
@@ -3892,6 +4094,41 @@
   font-size: 12px;
   color: var(--muted);
   padding: 8px 2px;
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+}
+/* Per-document manage menu (DocumentManageSheet) rides inside the generic sheet;
+   reuses .row-action / .booking-sheet chrome, so only the wrapper needs a rule. */
+.doc-manage .row-actions {
+  margin: 2px 0;
+}
+
+/* The one shared spinner (Spinner.tsx, ADR-0052 §4). */
+.spinner {
+  display: inline-block;
+  width: 15px;
+  height: 15px;
+  border-radius: 50%;
+  border: 2px solid rgba(255, 255, 255, 0.45);
+  border-top-color: #fff;
+  animation: spin 0.7s linear infinite;
+  flex: 0 0 auto;
+  vertical-align: -2px;
+}
+.spinner.ink {
+  border-color: color-mix(in srgb, var(--ink) 22%, transparent);
+  border-top-color: var(--ink);
+}
+@keyframes spin {
+  to {
+    transform: rotate(360deg);
+  }
+}
+@media (prefers-reduced-motion: reduce) {
+  .spinner {
+    animation-duration: 1.6s;
+  }
 }
 
 /* Upload sheet: 4 doc types in a 2×2 grid; a plain file input. */
@@ -3975,11 +4212,51 @@
 .doc-viewer-msg {
   font-size: 13px;
   color: var(--muted);
+  padding: 0 20px;
+  text-align: center;
+}
+.doc-viewer-loading {
+  display: flex;
+  align-items: center;
+  gap: 9px;
+  font-size: 13px;
+  font-weight: 600;
+  color: var(--muted);
   padding: 40px 20px;
 }
-.doc-viewer-download {
+/* Hand-off panel (ADR-0052 §1): a PDF / undecodable image opens or downloads
+   rather than rendering blank inline. */
+.doc-viewer-handoff {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 12px;
+  padding: 36px 20px;
+}
+.doc-viewer-handoff-ic {
+  font-size: 44px;
+  opacity: 0.8;
+}
+.doc-viewer-actions {
+  display: flex;
+  gap: 10px;
+}
+.doc-viewer-actions .dv-open,
+.doc-viewer-actions .dv-download {
+  font: inherit;
   font-weight: 700;
   font-size: 13px;
-  color: var(--cta);
-  padding: 40px 20px;
+  border-radius: 12px;
+  padding: 11px 16px;
+  cursor: pointer;
+  text-decoration: none;
+}
+.doc-viewer-actions .dv-open {
+  background: var(--cta);
+  color: var(--cta-text);
+}
+.doc-viewer-actions .dv-download {
+  background: transparent;
+  color: var(--ink);
+  border: 1px solid var(--soft-line);
 }

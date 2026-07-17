@@ -71,9 +71,9 @@ export const BOOKING_TYPE_ICON = {
 
 /** Glyph per document type, for the Index documents section badges. */
 export const DOCUMENT_TYPE_ICON = {
-  passport: '🛂',
+  passport: '📕',
   insurance: '🛡️',
-  visa: '🛃',
+  visa: '🎫',
   other: '📄',
 } as const satisfies Record<DocumentType, string>;
 
