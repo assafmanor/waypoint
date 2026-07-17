@@ -1,6 +1,6 @@
 # 0056 — Faster document uploads
 
-**Status:** Proposed
+**Status:** Accepted
 **Date:** 2026-07-17
 **Refines:** [0042](0042-shared-state-is-offline-syncable.md) (offline outbox), [0018](0018-timeline-data-model-shape.md) (client-id idempotency); relates to [0015](0015-document-encryption-server-side.md)/[0034](0034-document-encryption-trust-model.md)
 

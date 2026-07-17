@@ -4,9 +4,11 @@
 import { useEffect, useState, useSyncExternalStore } from 'react';
 import type {
   CreateBookingInput,
+  CreateDocumentInput,
   CreateEventInput,
   CreateMaybeItemInput,
   CreatePlaceInput,
+  DocumentType,
   EventStatus,
   MembershipRole,
   MoveEventInput,
@@ -35,6 +37,7 @@ import {
   updateEvent,
   updatePlace,
   updateTrip,
+  uploadDocument,
 } from './api';
 import { applyOutboxOpToCache } from './cache';
 
@@ -58,7 +61,11 @@ export type OutboxOp =
   | { verb: 'updateBooking'; bookingId: string; input: UpdateBookingInput }
   | { verb: 'deleteBooking'; bookingId: string; confirm: boolean; deleteEvents: boolean }
   | { verb: 'createPlace'; input: CreatePlaceInput }
-  | { verb: 'updatePlace'; placeId: string; input: UpdatePlaceInput };
+  | { verb: 'updatePlace'; placeId: string; input: UpdatePlaceInput }
+  // Document upload (ADR-0056) — the first outbox op to carry binary: the file
+  // rides as a `File` (a `Blob`, which Dexie persists) so the sheet can close
+  // instantly and the upload flushes in the background / on reconnect.
+  | { verb: 'uploadDocument'; input: CreateDocumentInput; file: File };
 
 export interface OutboxEntry {
   seq?: number;
@@ -130,6 +137,71 @@ export async function enqueueOutbox(tripId: string, op: OutboxOp): Promise<void>
     // ignore — the outbox entry is the source of truth; the cache is a mirror.
   }
   setPendingCount(pendingCount + 1);
+}
+
+/** A queued-but-not-yet-flushed document upload, surfaced to `DocumentsSection`
+ *  so it can render an optimistic "uploading" row (ADR-0056). Client-only —
+ *  pending state never becomes a shared entity. */
+export interface PendingUpload {
+  seq: number;
+  tripId: string;
+  id: string;
+  type: DocumentType;
+  title: string;
+  mimeType: string;
+  sizeBytes: number;
+}
+
+/** The queued uploads for a trip, in FIFO order — read straight from the outbox
+ *  so they survive a reopen while still offline. */
+export async function readPendingUploads(tripId: string): Promise<PendingUpload[]> {
+  const entries = await db.outbox.where('tripId').equals(tripId).sortBy('seq');
+  const uploads: PendingUpload[] = [];
+  for (const entry of entries) {
+    if (entry.op.verb !== 'uploadDocument') continue;
+    const { input, file } = entry.op;
+    uploads.push({
+      seq: entry.seq!,
+      tripId: entry.tripId,
+      id: input.id ?? String(entry.seq),
+      type: input.type,
+      title: input.title,
+      mimeType: file.type,
+      sizeBytes: file.size,
+    });
+  }
+  return uploads;
+}
+
+/** Live pending uploads for a trip: re-reads whenever the outbox changes (an
+ *  enqueue adds one; a successful flush or a 4xx-drop removes it). */
+export function usePendingUploads(tripId: string): PendingUpload[] {
+  const count = useOutboxCount();
+  const [uploads, setUploads] = useState<PendingUpload[]>([]);
+  useEffect(() => {
+    let cancelled = false;
+    void readPendingUploads(tripId).then((u) => {
+      if (!cancelled) setUploads(u);
+    });
+    return () => {
+      cancelled = true;
+    };
+    // `count` re-runs the read on every outbox change (see the doc comment).
+  }, [tripId, count]);
+  return uploads;
+}
+
+/** Queue a document upload (ADR-0056): the sheet closes instantly, the file rides
+ *  the outbox, and — when online — we kick a background flush right away rather
+ *  than waiting for the next reconnect. Offline, it sits queued until reconnect
+ *  like any other write, flushed device-wide by `flushAllOutbox`. */
+export async function queueDocumentUpload(
+  tripId: string,
+  input: CreateDocumentInput,
+  file: File,
+): Promise<void> {
+  await enqueueOutbox(tripId, { verb: 'uploadDocument', input, file });
+  if (!isOffline()) void flushOutbox(tripId);
 }
 
 /** Run a write, or queue it for later if we're offline / the fetch fails at the
@@ -211,6 +283,12 @@ async function runOp(tripId: string, op: OutboxOp): Promise<void> {
       return;
     case 'updatePlace':
       await updatePlace(tripId, op.placeId, op.input);
+      return;
+    case 'uploadDocument':
+      // The client-generated id makes this re-POST idempotent (ADR-0056): a retry
+      // after the first attempt already landed is treated as already-applied
+      // server-side rather than creating a second document / blob.
+      await uploadDocument(tripId, op.input, op.file);
       return;
   }
 }

@@ -1,5 +1,6 @@
 import 'reflect-metadata';
-import { readFile, rm } from 'node:fs/promises';
+import { randomUUID } from 'node:crypto';
+import { readdir, readFile, rm } from 'node:fs/promises';
 import { join } from 'node:path';
 import { afterAll, afterEach, beforeAll, describe, expect, it } from 'vitest';
 import { NotFoundException } from '@nestjs/common';
@@ -157,6 +158,40 @@ describe('DocumentsService', () => {
     const content = await service.getContent(tripId, created.id);
     expect(content.buffer).toEqual(after);
     await expect(readFile(join(LOCAL_STORAGE_DIR, oldRef))).rejects.toThrow(); // old blob gone
+  });
+
+  it('is idempotent on a duplicate client id: one document, one blob, no error (ADR-0056)', async () => {
+    const tripId = await newTrip();
+    const id = randomUUID();
+    const plaintext = Buffer.from('boarding pass bytes');
+    const file = { buffer: plaintext, mimetype: 'application/pdf', size: plaintext.length };
+
+    const first = await service.create(
+      tripId,
+      DEV_USER,
+      { id, type: 'passport', title: 'Boarding pass' },
+      file,
+    );
+    // A flush retry re-POSTs the same client id (e.g. the first response never
+    // reached the client) — must be treated as already-applied, not a 500.
+    const second = await service.create(
+      tripId,
+      DEV_USER,
+      { id, type: 'passport', title: 'Boarding pass' },
+      file,
+    );
+
+    expect(second.id).toBe(first.id);
+    expect(second.fileRef).toBe(first.fileRef); // same blob, not a fresh one
+
+    const docs = await prisma.document.findMany({ where: { tripId } });
+    expect(docs).toHaveLength(1); // exactly one document
+
+    const blobs = await readdir(LOCAL_STORAGE_DIR);
+    expect(blobs).toHaveLength(1); // exactly one blob — no orphan from the retry
+
+    const content = await service.getContent(tripId, id);
+    expect(content.buffer).toEqual(plaintext);
   });
 
   it('deletes the row and its encrypted blob (ADR-0052)', async () => {

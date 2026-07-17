@@ -1,18 +1,13 @@
-// Document upload (ADR-0015/0034/0052). A type selector + file + title, uploaded
-// as a group document (a per-owner picker is deferred). Reuses the booking sheet's
-// form chrome. Validates size/type on pick so an oversized/wrong file fails
-// instantly (not after a long upload), shows a busy spinner while uploading, and
-// reports failures cause-aware rather than one generic message.
+// Document upload (ADR-0015/0034/0052/0056). A type selector + file + title,
+// uploaded as a group document (a per-owner picker is deferred). Reuses the
+// booking sheet's form chrome. Validates size/type on pick so an oversized/wrong
+// file fails instantly, then — rather than blocking on the network — closes the
+// sheet immediately and hands the upload to the offline outbox (ADR-0056): the
+// file flushes in the background and works offline like every other write.
 import { useState } from 'react';
-import {
-  DOCUMENT_TYPE,
-  MAX_DOCUMENT_SIZE_BYTES,
-  type DocumentType,
-  type TripDocument,
-} from '@waypoint/shared';
+import { DOCUMENT_TYPE, MAX_DOCUMENT_SIZE_BYTES, type DocumentType } from '@waypoint/shared';
 import { Sheet } from './Sheet';
-import { Spinner } from './Spinner';
-import { uploadDocument } from '../lib/api';
+import { queueDocumentUpload } from '../lib/outbox';
 import { useToast } from './Toast';
 import { DOCUMENT_TYPE_ICON, ICONS } from '../constants';
 import { t } from '../i18n/he';
@@ -31,20 +26,11 @@ function validateFile(f: File): string | null {
   return null;
 }
 
-export function DocumentUploadSheet({
-  tripId,
-  onClose,
-  onUploaded,
-}: {
-  tripId: string;
-  onClose: () => void;
-  onUploaded: (doc: TripDocument) => void;
-}) {
+export function DocumentUploadSheet({ tripId, onClose }: { tripId: string; onClose: () => void }) {
   const toast = useToast();
   const [file, setFile] = useState<File | null>(null);
   const [type, setType] = useState<DocumentType>(DOCUMENT_TYPE.PASSPORT);
   const [title, setTitle] = useState('');
-  const [saving, setSaving] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
   const pick = (f: File | null) => {
@@ -54,21 +40,18 @@ export function DocumentUploadSheet({
     if (f && !problem && !title.trim()) setTitle(stripExt(f.name));
   };
 
-  const submit = async () => {
+  // Optimistic (ADR-0056): validate, enqueue the file on the outbox with a
+  // client-generated id (idempotent re-POST), close at once, and let the pending
+  // row render from the outbox until the background flush turns it real.
+  const submit = () => {
     if (!file) return setError(t.docs.upload.fileRequired);
-    setSaving(true);
-    setError(null);
-    try {
-      const doc = await uploadDocument(tripId, { type, title: title.trim() || file.name }, file);
-      onUploaded(doc);
-      toast(ICONS.done, t.docs.upload.saved);
-      onClose();
-    } catch {
-      setSaving(false);
-      const msg = navigator.onLine ? t.docs.upload.failed : t.docs.upload.offline;
-      setError(msg);
-      toast(ICONS.warn, msg);
-    }
+    void queueDocumentUpload(
+      tripId,
+      { id: crypto.randomUUID(), type, title: title.trim() || file.name },
+      file,
+    );
+    toast(ICONS.done, t.docs.upload.saved);
+    onClose();
   };
 
   return (
@@ -111,14 +94,8 @@ export function DocumentUploadSheet({
         {error && <p className="bs-error">{error}</p>}
 
         <div className="bs-actions">
-          <button type="button" className="bs-save" onClick={submit} disabled={saving || !!error}>
-            {saving ? (
-              <>
-                <Spinner /> {t.docs.upload.saving}
-              </>
-            ) : (
-              t.docs.upload.save
-            )}
+          <button type="button" className="bs-save" onClick={submit} disabled={!file || !!error}>
+            {t.docs.upload.save}
           </button>
           <button type="button" className="bs-cancel" onClick={onClose}>
             {t.docs.upload.cancel}
