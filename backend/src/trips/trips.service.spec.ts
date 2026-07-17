@@ -74,6 +74,7 @@ describe('TripsService', () => {
     expect(snapshot.users.length).toBe(snapshot.members.length);
     expect(snapshot.events.length).toBeGreaterThan(0);
     expect(snapshot.bookings.length).toBeGreaterThan(0);
+    expect(Array.isArray(snapshot.documents)).toBe(true);
     expect(snapshot.maybeItems.length).toBeGreaterThan(0);
     expect(snapshot.places.length).toBeGreaterThan(0);
     // Not a fixed value: the trip's Change log is append-only, so any prior

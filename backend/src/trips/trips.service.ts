@@ -22,6 +22,7 @@ import { PrismaService } from '../prisma/prisma.service';
 import { ChangeService } from '../sync/change.service';
 import {
   toBookingDto,
+  toDocumentSummaryDto,
   toEventDto,
   toInvitePreviewDto,
   toMaybeItemDto,
@@ -308,7 +309,7 @@ export class TripsService {
   }
 
   async getSnapshot(tripId: string): Promise<TripSnapshot> {
-    const [trip, members, events, bookings, maybeItems, places, latestChange] =
+    const [trip, members, events, bookings, documents, maybeItems, places, latestChange] =
       await this.prisma.$transaction([
         this.prisma.trip.findUniqueOrThrow({ where: { id: tripId } }),
         this.prisma.membership.findMany({ where: { tripId }, include: { user: true } }),
@@ -317,6 +318,7 @@ export class TripsService {
           orderBy: [{ date: 'asc' }, { sortOrder: 'asc' }],
         }),
         this.prisma.booking.findMany({ where: { tripId } }),
+        this.prisma.document.findMany({ where: { tripId }, orderBy: { createdAt: 'asc' } }),
         this.prisma.maybeItem.findMany({ where: { tripId } }),
         this.prisma.place.findMany({ where: { tripId }, orderBy: { createdAt: 'asc' } }),
         this.prisma.change.findFirst({
@@ -332,6 +334,7 @@ export class TripsService {
       users: members.map((m) => toUserDto(m.user)),
       events: events.map(toEventDto),
       bookings: bookings.map(toBookingDto),
+      documents: documents.map(toDocumentSummaryDto),
       maybeItems: maybeItems.map(toMaybeItemDto),
       places: places.map(toPlaceDto),
       latestSeq: latestChange ? latestChange.seq.toString() : '0',

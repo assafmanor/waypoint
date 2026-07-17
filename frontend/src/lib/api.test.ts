@@ -30,6 +30,7 @@ const snapshotBody = {
   users: [],
   events: [],
   bookings: [],
+  documents: [],
   maybeItems: [],
   places: [],
   latestSeq: '0',

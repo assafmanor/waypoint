@@ -6,11 +6,9 @@ import { EVENTS, MAYBE_ITEMS } from '../fixtures';
 import {
   applyChangeToCache,
   applyOutboxOpToCache,
-  cacheDocuments,
   cacheSnapshot,
   cacheTripList,
   loadTripList,
-  readCachedDocuments,
   readCachedSnapshot,
   readCachedTripList,
 } from './cache';
@@ -35,6 +33,7 @@ function snapshot(overrides: Partial<TripSnapshot> = {}): TripSnapshot {
     users: [],
     events: EVENTS,
     bookings: [],
+    documents: [],
     maybeItems: MAYBE_ITEMS,
     places: [],
     latestSeq: '10',
@@ -127,7 +126,9 @@ describe('applyChangeToCache', () => {
     expect(cached?.maybeItems).toHaveLength(MAYBE_ITEMS.length);
   });
 
-  it('mirrors a remote document create into db.documents, then removes it on delete (ADR-0057)', async () => {
+  it('mirrors a remote document create into db.documents, then removes it on delete (ADR-0058)', async () => {
+    const rows = () => db.documents.where('tripId').equals(TRIP_ID).toArray();
+
     await applyChangeToCache(TRIP_ID, {
       ...baseChange,
       entityType: 'document',
@@ -135,7 +136,7 @@ describe('applyChangeToCache', () => {
       action: 'create',
       after: { type: 'passport', title: 'Passport', mimeType: 'application/pdf', sizeBytes: 12 },
     });
-    const afterCreate = await readCachedDocuments(TRIP_ID);
+    const afterCreate = await rows();
     expect(afterCreate.map((d) => d.id)).toEqual(['doc-1']);
     expect(afterCreate[0]).toMatchObject({ title: 'Passport', tripId: TRIP_ID });
 
@@ -146,7 +147,7 @@ describe('applyChangeToCache', () => {
       action: 'delete',
       after: undefined,
     });
-    expect(await readCachedDocuments(TRIP_ID)).toEqual([]);
+    expect(await rows()).toEqual([]);
   });
 
   it('is a no-op when nothing was ever cached for this trip', async () => {
@@ -157,7 +158,7 @@ describe('applyChangeToCache', () => {
   });
 });
 
-describe('cacheDocuments / readCachedDocuments', () => {
+describe('cacheSnapshot mirrors documents (ADR-0058)', () => {
   const doc = (id: string): DocumentSummary => ({
     id,
     tripId: TRIP_ID,
@@ -170,12 +171,14 @@ describe('cacheDocuments / readCachedDocuments', () => {
     updatedBy: 'u-assaf',
   });
 
-  it('mirrors a list and reads it back; a later list replaces it wholesale', async () => {
-    await cacheDocuments(TRIP_ID, [doc('a'), doc('b')]);
-    expect((await readCachedDocuments(TRIP_ID)).map((d) => d.id).sort()).toEqual(['a', 'b']);
+  it('caches the snapshot documents and reads them back; a later snapshot replaces them', async () => {
+    await cacheSnapshot(TRIP_ID, snapshot({ documents: [doc('a'), doc('b')] }));
+    const first = await readCachedSnapshot(TRIP_ID);
+    expect(first?.documents.map((d) => d.id).sort()).toEqual(['a', 'b']);
 
-    await cacheDocuments(TRIP_ID, [doc('b')]);
-    expect((await readCachedDocuments(TRIP_ID)).map((d) => d.id)).toEqual(['b']);
+    await cacheSnapshot(TRIP_ID, snapshot({ documents: [doc('b')] }));
+    const second = await readCachedSnapshot(TRIP_ID);
+    expect(second?.documents.map((d) => d.id)).toEqual(['b']);
   });
 });
 

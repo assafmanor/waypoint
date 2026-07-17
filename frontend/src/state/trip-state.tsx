@@ -19,6 +19,7 @@ import {
   type Change,
   type CreateBookingInput,
   type CreatePlaceInput,
+  type DocumentSummary,
   type MaybeItem,
   type Membership,
   type MembershipRole,
@@ -36,6 +37,7 @@ import {
   createPlace as apiCreatePlace,
   deleteBooking as apiDeleteBooking,
   deleteTrip as apiDeleteTrip,
+  evictDocumentBlob,
   fetchChanges,
   fetchSnapshot,
   isHardEventConfirmError,
@@ -53,7 +55,6 @@ import {
   readCachedSnapshot,
 } from '../lib/cache';
 import { flushOutbox, isOffline, restOrQueue } from '../lib/outbox';
-import { emitDocChange } from '../lib/doc-live';
 import { openTripStream } from '../lib/ws';
 import { getNow } from '../lib/useClock';
 import { clampDate, shiftIso, todayInTz } from '../lib/time';
@@ -324,6 +325,7 @@ interface TripContextValue {
   members: Membership[];
   bookings: Booking[];
   places: Place[];
+  documents: DocumentSummary[];
   glance: typeof GLANCE;
   activeDate: string;
   setActiveDate: (date: string) => void;
@@ -446,6 +448,10 @@ function TripReady({
   // reflect live. Re-seed on a trip switch (TripReady remounts) and on resync.
   const [bookings, setBookings] = useState<Booking[]>(snapshot.bookings);
   const [places, setPlaces] = useState<Place[]>(snapshot.places);
+  // Documents ride the snapshot too (ADR-0058) — a reactive list like bookings, so
+  // a peer's upload/rename/delete and our own writes (via the WS self-echo) both
+  // reflect live. The bytes still load lazily via /content + the ADR-0055 cache.
+  const [documents, setDocuments] = useState<DocumentSummary[]>(snapshot.documents);
 
   // Clamped to the trip's own date range: "today" is only the *initial* default,
   // then the day-strip/DayView navigate it via setActiveDate — without clamping,
@@ -480,10 +486,13 @@ function TripReady({
       } else if (change.entityType === 'place') {
         setPlaces((prev) => applyControlChangeToList(prev, change));
       } else if (change.entityType === 'document') {
-        // Section-owned, not a reactive list here (ADR-0049/0057) — fan to the
-        // mounted DocumentsSection; the offline mirror is handled above by
-        // applyChangeToCache.
-        emitDocChange(tripId, change);
+        // A replace/delete invalidates the client blob cache: the `/content` URL is
+        // reused across a replace and the WS payload carries no fresh `updatedAt` to
+        // re-key it (ADR-0055/0058), so evict to force a fresh fetch on next open.
+        if (change.action === 'update' || change.action === 'delete') {
+          void evictDocumentBlob(tripId, change.entityId);
+        }
+        setDocuments((prev) => applyControlChangeToList(prev, change));
       }
     }
 
@@ -500,6 +509,7 @@ function TripReady({
               setMembers(s.members);
               setBookings(s.bookings);
               setPlaces(s.places);
+              setDocuments(s.documents);
               onReconnected();
             },
             () => {}, // ponytail: transient refetch failure — next change/hello retries the resync.
@@ -759,6 +769,7 @@ function TripReady({
       members,
       bookings,
       places,
+      documents,
       glance: GLANCE,
       activeDate,
       setActiveDate,
@@ -779,6 +790,7 @@ function TripReady({
       members,
       bookings,
       places,
+      documents,
       settings,
       indexVerbs,
       tripDeleted,

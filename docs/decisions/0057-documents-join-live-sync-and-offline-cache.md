@@ -1,8 +1,10 @@
 # 0057 — Documents join the live sync path and the offline read cache
 
-**Status:** Accepted
+**Status:** Superseded by [0058](0058-documents-in-the-trip-snapshot.md)
 **Date:** 2026-07-17
 **Refines:** [0042](0042-shared-state-is-offline-syncable.md) (everything shared is offline-syncable), [0049](0049-index-tab-mode-and-lifecycle.md) (documents are section-owned, not in the snapshot); relates to [0019](0019-sync-protocol.md) (change log + WS), [0055](0055-document-blob-read-caching.md)/[0056](0056-faster-document-uploads.md)
+
+> **Superseded by [ADR-0058](0058-documents-in-the-trip-snapshot.md)** (2026-07-17): documents moved into the `TripSnapshot` and became a first-class reactive list, so the `doc-live.ts` emitter and the section's bespoke fetch/mirror this ADR introduced were removed. The blob-cache eviction on a peer replace (below) was kept and relocated into `trip-state`. The problem analysis here remains the accurate account of _why_ documents needed to join the live path.
 
 ## Context
 
