@@ -109,7 +109,7 @@ export function AllTrips({ onOpenAccount }: { onOpenAccount: () => void }) {
         <TripMeta trip={trip} />
       </span>
       <span className="go" aria-hidden="true">
-        →
+        ←
       </span>
     </button>
   );
