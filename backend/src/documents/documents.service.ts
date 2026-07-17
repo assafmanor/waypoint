@@ -164,7 +164,15 @@ export class DocumentsService {
     documentId: string,
   ): Promise<{ buffer: Buffer; mimeType: string }> {
     const document = await this.requireDocument(tripId, documentId);
-    const stored = await getObject(document.fileRef);
+    // The row exists but its blob may not (storage misconfigured, or a blob lost to
+    // an ephemeral filesystem on redeploy — the failure mode ADR-0031's S3 choice
+    // guards against). Surface a clean 404 rather than leaking a raw ENOENT 500.
+    let stored: Buffer;
+    try {
+      stored = await getObject(document.fileRef);
+    } catch {
+      throw new NotFoundException('Document content unavailable');
+    }
     const decrypted = decryptAtRest(
       stored.toString('base64'),
       requireEnv(DOC_ENCRYPTION_KEY),
