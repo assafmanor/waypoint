@@ -27,6 +27,7 @@ import {
   DOT_SEPARATOR,
   ICONS,
 } from '../constants';
+import { NavArrow } from '../ui/NavArrow';
 import { t } from '../i18n/he';
 
 // Small, stable option lists for the manual timezone/currency selects (ADR-0039
@@ -138,7 +139,7 @@ export function TripSettings() {
       <header className="new-head">
         <div className="new-head-row">
           <button className="back" onClick={() => navigate(-1)} aria-label={t.settings.back}>
-            {t.arrows.back}
+            <NavArrow variant="back" />
           </button>
           <div className="new-title">{t.settings.title}</div>
         </div>
