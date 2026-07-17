@@ -1,16 +1,13 @@
-// Documents section on the Index (ADR-0047/0049/0052/0056/0057): grouped by type,
-// upload + view + per-row manage ("⋯"). Documents are section-owned (not in the trip
-// snapshot), but live: a peer's upload / rename / delete arrives over WS (ADR-0057)
-// and patches the list, and the list seeds from the offline cache for an instant /
-// offline first paint. Own writes are applied optimistically. Queued uploads (ADR-0056)
-// render as pending "uploading" rows straight from the outbox, so they survive a reopen
-// and reconcile to the real row once flushed.
-import { useCallback, useEffect, useRef, useState } from 'react';
-import { type Change, type DocumentSummary, type TripDocument } from '@waypoint/shared';
-import { applyControlChangeToList, useTrip } from '../state/trip-state';
-import { evictDocumentBlob, listDocuments } from '../lib/api';
-import { cacheDocuments, readCachedDocuments } from '../lib/cache';
-import { useDocChanges } from '../lib/doc-live';
+// Documents section on the Index (ADR-0047/0049/0052/0056/0058): grouped by type,
+// upload + view + per-row manage ("⋯"). Documents ride the trip snapshot and are a
+// live reactive list (ADR-0058) — a peer's upload/rename/delete and our own writes
+// (via the WS self-echo) reflect live, and the list reads offline like every other
+// snapshot entity. Queued uploads (ADR-0056) render as pending "uploading" rows
+// straight from the outbox, so they survive a reopen and reconcile to the real row
+// once flushed.
+import { useState } from 'react';
+import { type DocumentSummary } from '@waypoint/shared';
+import { useTrip } from '../state/trip-state';
 import { usePendingUploads } from '../lib/outbox';
 import { groupDocuments, formatSize } from '../lib/documents';
 import { DocumentUploadSheet } from './DocumentUploadSheet';
@@ -21,81 +18,15 @@ import { DOCUMENT_TYPE_ICON, ICONS } from '../constants';
 import { t } from '../i18n/he';
 
 export function DocumentsSection() {
-  const { trip } = useTrip();
-  const [serverDocs, setServerDocs] = useState<DocumentSummary[] | null>(null);
-  const [failed, setFailed] = useState(false);
+  const { trip, documents } = useTrip();
   const [uploading, setUploading] = useState(false);
   const [viewing, setViewing] = useState<DocumentSummary | null>(null);
   const [managing, setManaging] = useState<DocumentSummary | null>(null);
   const pending = usePendingUploads(trip.id);
 
-  useEffect(() => {
-    let cancelled = false;
-    setServerDocs(null);
-    setFailed(false);
-    // Instant/offline first paint from the cache (ADR-0057), then refresh from the
-    // network; only surface the offline state when there's no cached list to show.
-    void (async () => {
-      const cached = await readCachedDocuments(trip.id);
-      if (cancelled) return;
-      if (cached.length) setServerDocs(cached);
-      try {
-        const list = await listDocuments(trip.id);
-        if (!cancelled) setServerDocs(list);
-      } catch {
-        if (!cancelled && cached.length === 0) setFailed(true);
-      }
-    })();
-    return () => {
-      cancelled = true;
-    };
-  }, [trip.id]);
-
-  // Mirror the loaded list into the offline cache so a reopen (even offline) paints
-  // instantly and stays coherent with our own edits (ADR-0057). Pending optimistic
-  // rows aren't part of serverDocs, so they're never cached as if real.
-  useEffect(() => {
-    if (serverDocs) void cacheDocuments(trip.id, serverDocs);
-  }, [serverDocs, trip.id]);
-
-  // A peer's document change arrives over WS (ADR-0057): patch the list live, and
-  // evict the doc's blob cache on a replace/delete so a reopen fetches fresh bytes
-  // (the WS payload carries no new `updatedAt` to re-key the ADR-0055 blob cache).
-  const applyRemoteDoc = useCallback(
-    (change: Change) => {
-      if (change.action === 'update' || change.action === 'delete') {
-        void evictDocumentBlob(trip.id, change.entityId);
-      }
-      setServerDocs((prev) => (prev ? applyControlChangeToList(prev, change) : prev));
-    },
-    [trip.id],
-  );
-  useDocChanges(trip.id, applyRemoteDoc);
-
-  // When a queued upload leaves the outbox (flushed to a real row, or 4xx-dropped),
-  // refetch so the now-real document replaces its optimistic row — and a dropped
-  // one simply disappears (ADR-0056).
-  const prevPendingIds = useRef<Set<string>>(new Set());
-  useEffect(() => {
-    const now = new Set(pending.map((p) => p.id));
-    const completed = [...prevPendingIds.current].some((id) => !now.has(id));
-    prevPendingIds.current = now;
-    if (completed) {
-      listDocuments(trip.id).then(
-        (list) => setServerDocs(list),
-        () => {},
-      );
-    }
-  }, [pending, trip.id]);
-
-  const applyUpdate = (doc: TripDocument) =>
-    setServerDocs((prev) => (prev ?? []).map((d) => (d.id === doc.id ? doc : d)));
-  const applyDelete = (id: string) =>
-    setServerDocs((prev) => (prev ?? []).filter((d) => d.id !== id));
-
-  // Merge the fetched list with queued uploads not yet reflected server-side; a
-  // Set of pending ids drives the per-row "uploading" affordance.
-  const serverIds = new Set((serverDocs ?? []).map((d) => d.id));
+  // Merge the live list with queued uploads not yet reflected server-side; a Set of
+  // pending ids drives the per-row "uploading" affordance.
+  const serverIds = new Set(documents.map((d) => d.id));
   const pendingRows: DocumentSummary[] = pending
     .filter((p) => !serverIds.has(p.id))
     .map((p) => ({
@@ -110,10 +41,10 @@ export function DocumentsSection() {
       updatedBy: '',
     }));
   const pendingIds = new Set(pendingRows.map((r) => r.id));
-  const allDocs = [...(serverDocs ?? []), ...pendingRows];
+  const allDocs = [...documents, ...pendingRows];
 
-  const groups = serverDocs !== null || pendingRows.length > 0 ? groupDocuments(allDocs) : [];
-  const isEmpty = serverDocs !== null && allDocs.length === 0;
+  const groups = groupDocuments(allDocs);
+  const isEmpty = allDocs.length === 0;
 
   return (
     <>
@@ -127,13 +58,6 @@ export function DocumentsSection() {
           {t.docs.add}
         </button>
       )}
-
-      {serverDocs === null && !failed && pendingRows.length === 0 && (
-        <div className="doc-status">
-          <Spinner className="ink" /> {t.docs.loading}
-        </div>
-      )}
-      {failed && pendingRows.length === 0 && <div className="doc-status">{t.docs.offline}</div>}
 
       {isEmpty && (
         <div className="empty-card doc">
@@ -202,13 +126,7 @@ export function DocumentsSection() {
         <DocumentViewer tripId={trip.id} doc={viewing} onClose={() => setViewing(null)} />
       )}
       {managing && (
-        <DocumentManageSheet
-          tripId={trip.id}
-          doc={managing}
-          onClose={() => setManaging(null)}
-          onUpdated={applyUpdate}
-          onDeleted={applyDelete}
-        />
+        <DocumentManageSheet tripId={trip.id} doc={managing} onClose={() => setManaging(null)} />
       )}
     </>
   );

@@ -1,14 +1,14 @@
 // Per-document manage sheet (ADR-0052 §2/§3): rename, change type, replace the
 // file, or delete — the "⋯" a document row now carries. Each action calls the
-// backend PATCH/DELETE and reports back so the list updates optimistically.
-// Deleting an encrypted document is irreversible, so it takes a confirm step.
+// backend PATCH/DELETE; the live list updates from the WS self-echo (ADR-0058), so
+// no callback is needed. Deleting an encrypted document is irreversible, so it
+// takes a confirm step.
 import { useRef, useState } from 'react';
 import {
   DOCUMENT_TYPE,
   MAX_DOCUMENT_SIZE_BYTES,
   type DocumentSummary,
   type DocumentType,
-  type TripDocument,
 } from '@waypoint/shared';
 import { Sheet } from './Sheet';
 import { Spinner } from './Spinner';
@@ -26,14 +26,10 @@ export function DocumentManageSheet({
   tripId,
   doc,
   onClose,
-  onUpdated,
-  onDeleted,
 }: {
   tripId: string;
   doc: DocumentSummary;
   onClose: () => void;
-  onUpdated: (doc: TripDocument) => void;
-  onDeleted: (id: string) => void;
 }) {
   const toast = useToast();
   const [mode, setMode] = useState<Mode>('menu');
@@ -53,16 +49,14 @@ export function DocumentManageSheet({
 
   const rename = () =>
     run(async () => {
-      const updated = await updateDocument(tripId, doc.id, { title: title.trim() || doc.title });
-      onUpdated(updated);
+      await updateDocument(tripId, doc.id, { title: title.trim() || doc.title });
       toast(ICONS.done, t.docs.manage.renamed);
       onClose();
     });
 
   const changeType = (type: DocumentType) =>
     run(async () => {
-      const updated = await updateDocument(tripId, doc.id, { type });
-      onUpdated(updated);
+      await updateDocument(tripId, doc.id, { type });
       toast(ICONS.done, t.docs.manage.typeChanged);
       onClose();
     });
@@ -73,8 +67,7 @@ export function DocumentManageSheet({
       return;
     }
     run(async () => {
-      const updated = await updateDocument(tripId, doc.id, {}, file);
-      onUpdated(updated);
+      await updateDocument(tripId, doc.id, {}, file);
       toast(ICONS.done, t.docs.manage.replaced);
       onClose();
     });
@@ -83,7 +76,6 @@ export function DocumentManageSheet({
   const remove = () =>
     run(async () => {
       await deleteDocument(tripId, doc.id);
-      onDeleted(doc.id);
       toast(ICONS.done, t.docs.manage.deleted);
       onClose();
     });

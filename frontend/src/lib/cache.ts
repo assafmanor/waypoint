@@ -32,11 +32,15 @@ export interface SnapshotMeta {
 /** Wholesale mirror on every snapshot fetch/resync — a trip is a few hundred
  *  small rows, so replace-all is simpler and cheap enough (ADR-0018). */
 export async function cacheSnapshot(tripId: string, snapshot: TripSnapshot): Promise<void> {
-  await db.transaction('rw', db.events, db.bookings, db.snapshotMeta, async () => {
+  await db.transaction('rw', db.events, db.bookings, db.documents, db.snapshotMeta, async () => {
     await db.events.where('tripId').equals(tripId).delete();
     await db.events.bulkAdd(snapshot.events);
     await db.bookings.where('tripId').equals(tripId).delete();
     await db.bookings.bulkAdd(snapshot.bookings);
+    // Documents ride the snapshot (ADR-0058), summaries only — `fileRef` never
+    // reaches the client (ADR-0015/0034); blob bytes cache separately (ADR-0055).
+    await db.documents.where('tripId').equals(tripId).delete();
+    await db.documents.bulkAdd(snapshot.documents);
     await db.snapshotMeta.put({
       tripId,
       trip: snapshot.trip,
@@ -54,9 +58,10 @@ export async function cacheSnapshot(tripId: string, snapshot: TripSnapshot): Pro
 export async function readCachedSnapshot(tripId: string): Promise<TripSnapshot | null> {
   const meta = await db.snapshotMeta.get(tripId);
   if (!meta) return null;
-  const [events, bookings] = await Promise.all([
+  const [events, bookings, documents] = await Promise.all([
     db.events.where('tripId').equals(tripId).toArray(),
     db.bookings.where('tripId').equals(tripId).toArray(),
+    db.documents.where('tripId').equals(tripId).toArray(),
   ]);
   return {
     trip: meta.trip,
@@ -64,26 +69,11 @@ export async function readCachedSnapshot(tripId: string): Promise<TripSnapshot |
     users: meta.users,
     events,
     bookings,
+    documents,
     maybeItems: meta.maybeItems,
     places: meta.places,
     latestSeq: meta.latestSeq,
   };
-}
-
-/** Mirror a freshly fetched document list into the offline cache (ADR-0057).
- *  Replace-all for this trip — a handful of small rows, same posture as the
- *  snapshot mirror. Summaries only; `fileRef` never reaches the client. */
-export async function cacheDocuments(tripId: string, docs: DocumentSummary[]): Promise<void> {
-  await db.transaction('rw', db.documents, async () => {
-    await db.documents.where('tripId').equals(tripId).delete();
-    await db.documents.bulkAdd(docs.map((d) => ({ ...d, tripId })));
-  });
-}
-
-/** The last-known document list for a trip, for an instant/offline first paint
- *  (ADR-0057). Empty array if none was ever cached. */
-export async function readCachedDocuments(tripId: string): Promise<DocumentSummary[]> {
-  return db.documents.where('tripId').equals(tripId).toArray();
 }
 
 function applyToRow<T extends { id: string }>(
@@ -115,10 +105,9 @@ export async function applyChangeToCache(tripId: string, change: Change): Promis
       else await db.bookings.delete(change.entityId);
       return;
     }
-    // Documents are section-owned, not in the snapshot (ADR-0049/0057), but their
-    // list still mirrors here so a peer's change stays coherent offline even when
-    // DocumentsSection isn't mounted. Summary only — `fileRef` never reaches the
-    // client (ADR-0015/0034); blob bytes cache separately (ADR-0055).
+    // Documents ride the snapshot (ADR-0058); keep the mirror coherent on every
+    // remote change like the other lists. Summary only — `fileRef` never reaches
+    // the client (ADR-0015/0034); blob bytes cache separately (ADR-0055).
     case 'document': {
       const existing = await db.documents.get(change.entityId);
       const next = applyToRow<DocumentSummary>(existing, change);

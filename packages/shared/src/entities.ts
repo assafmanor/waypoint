@@ -238,6 +238,7 @@ export const tripSnapshotSchema = z.object({
   users: z.array(userSchema),
   events: z.array(tripEventSchema),
   bookings: z.array(bookingSchema),
+  documents: z.array(documentSummarySchema),
   maybeItems: z.array(maybeItemSchema),
   places: z.array(placeSchema),
   latestSeq: z.string(), // BigInt serialized as string, see Change.seq

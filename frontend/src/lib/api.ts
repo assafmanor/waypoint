@@ -3,7 +3,6 @@ import {
   accessTokenResponseSchema,
   bookingSchema,
   changeSchema,
-  documentSummarySchema,
   inviteUrlSchema,
   invitePreviewSchema,
   maybeItemSchema,
@@ -22,7 +21,6 @@ import {
   type CreateMaybeItemInput,
   type CreatePlaceInput,
   type CreateTripInput,
-  type DocumentSummary,
   type DocumentType,
   type EventStatus,
   type MaybeItem,
@@ -428,14 +426,6 @@ export async function updatePlace(
   });
   if (!res.ok) return throwApiError(res);
   return placeSchema.parse(await res.json());
-}
-
-/** Trip documents (ADR-0015/0034). The list omits `fileRef` (the encrypted blob
- *  reference never leaves the server outside the guarded `/content` route). */
-export async function listDocuments(tripId: string): Promise<DocumentSummary[]> {
-  const res = await apiFetch(documentsUrl(tripId));
-  if (!res.ok) return throwApiError(res);
-  return documentSummarySchema.array().parse(await res.json());
 }
 
 /** Upload a document (multipart). The browser sets the multipart `Content-Type`
