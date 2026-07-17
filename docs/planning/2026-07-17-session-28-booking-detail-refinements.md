@@ -24,6 +24,14 @@ Assaf walked the shipped booking detail view (the read-only sheet from ADR-0053,
 - **The Index row** now prefixes its schedule with the (emoji-stripped) type start label — `🔗 המראה · היום · 02:10`, `🔗 צ׳ק-אין · היום · 04:17` — in place of the bare `היום · 02:10`. A date-only event (no time) still reads plainly.
 - All three surfaces (detail, the merged `BookingSheet` form, the row) resolve their labels from **one shared helper**, `frontend/src/lib/booking-timing.ts` (`timingLabels` + `plainTimingLabel`), so the wording can't drift.
 
+#### Multi-day spans on the row are now context-aware (Assaf follow-up)
+
+For a multi-day booking (linked event with `endDate` set) the row was frozen on the check-in line for the whole stay — and worse, `splitBookings` filed it under **"past"** the morning after check-in. Both fixed:
+
+- **The row flips endpoint once check-in has passed** (`scheduleLabel` in `index-bookings.ts`): check-in (with time) up to and on the check-in day → check-out **day** (no time) mid-stay → check-out **time** on the check-out day itself (`צ׳ק-אאוט · היום · 11:00`). The check-out time only appears on its day; before that, the day is the useful bit.
+- **The past/upcoming split now keys on the last day** (`endDate ?? date`), so an in-progress stay stays under "upcoming" through its check-out day and only drops to "past" once check-out is behind us. Single-day bookings are unaffected.
+- `scheduleLabel` moved from `Index.tsx` into `index-bookings.ts` so it's unit-tested (four phase cases + two split cases added).
+
 ### 2 · The "⋯" lives on the row, not in the detail (revises ADR-0053 §1)
 
 ADR-0053 §1 put both a visible edit button **and** a "⋯" menu inside the detail view. Assaf's correction: the detail is a pure read-only record with **only** the edit button; the "⋯" belongs on the row, matching the document row (ADR-0052).
@@ -40,8 +48,10 @@ The route (`from → to`) was rendered `dir="ltr"` with a `→`, so for Hebrew p
 
 - `frontend/src/lib/booking-timing.ts` — **new** shared `timingLabels` + `plainTimingLabel`.
 - `frontend/src/ui/BookingManageSheet.tsx` — **new** row "⋯" sheet (edit / delete).
+- `frontend/src/lib/index-bookings.ts` — span-aware `scheduleLabel` (moved here, exported); past split keys on the last day.
+- `frontend/src/lib/index-bookings.test.ts` — six new cases (span split + the four `scheduleLabel` phases).
 - `frontend/src/ui/BookingDetail.tsx` — edit-only header, `endsAt`-keyed timing, `RouteLabel` (exported), shared labels.
-- `frontend/src/screens/Index.tsx` — flex row + `.kebab` → manage sheet; row schedule prefixed with the type label; `RouteLabel`.
+- `frontend/src/screens/Index.tsx` — flex row + `.kebab` → manage sheet; row uses the shared `scheduleLabel`; `RouteLabel`.
 - `frontend/src/ui/BookingSheet.tsx` — `spanLabels` delegates to the shared helper.
 - `frontend/src/i18n/he.ts` — `flightDepartLabel` / `flightArriveLabel`.
 - `frontend/src/screens.css` — general `.route` (RTL flex), `.li.bk` row (mirrors the doc row), removed the detail "⋯" styles.

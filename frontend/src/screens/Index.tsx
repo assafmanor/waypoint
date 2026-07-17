@@ -5,20 +5,12 @@
 // (ADR-0049) — the mode only tints the chrome, so this reads mode-agnostically.
 import { useEffect, useRef, useState } from 'react';
 import { useSearchParams } from 'react-router-dom';
-import {
-  BOOKING_TYPE,
-  type Booking,
-  type Place,
-  type Trip,
-  type TripEvent,
-} from '@waypoint/shared';
+import { BOOKING_TYPE, type Booking, type Place, type Trip } from '@waypoint/shared';
 import { useTrip } from '../state/trip-state';
 import { useClock } from '../lib/useClock';
-import { splitBookings, type BookingRow } from '../lib/index-bookings';
+import { splitBookings, scheduleLabel, type BookingRow } from '../lib/index-bookings';
 import { placeName } from '../lib/places';
-import { formatTime, todayInTz } from '../lib/time';
-import { timingLabels, plainTimingLabel } from '../lib/booking-timing';
-import { BOOKING_TYPE_ICON, CODE_PREFIX, MS_PER_DAY } from '../constants';
+import { BOOKING_TYPE_ICON, CODE_PREFIX } from '../constants';
 import { BookingSheet } from '../ui/BookingSheet';
 import { BookingDetail, RouteLabel } from '../ui/BookingDetail';
 import { BookingManageSheet } from '../ui/BookingManageSheet';
@@ -215,19 +207,4 @@ function BookingTitle({ booking, places }: { booking: Booking; places: Place[] }
     return <RouteLabel from={from} to={to} />;
   }
   return <span>{booking.title}</span>;
-}
-
-/** "המראה · היום · 09:00" / "צ׳ק-אין · יום 3 · 15:00" — the linked event's place on
- *  the itinerary, prefixed with what the time _is_ for this booking type (ADR-0053
- *  refinement). The type label shows only when there's a time to name; a date-only
- *  event still reads plainly ("היום"). */
-function scheduleLabel(event: TripEvent, booking: Booking, trip: Trip, now: Date): string {
-  const today = todayInTz(trip.timezone, now);
-  const dayNumber =
-    Math.round((Date.parse(event.date) - Date.parse(trip.startDate)) / MS_PER_DAY) + 1;
-  const dayLabel = event.date === today ? t.index.today : t.index.dayN(dayNumber);
-  if (!event.startsAt) return dayLabel;
-  const time = formatTime(event.startsAt, trip.timezone);
-  const kind = plainTimingLabel(timingLabels(booking.type).start);
-  return `${kind} · ${dayLabel} · ${time}`;
 }
