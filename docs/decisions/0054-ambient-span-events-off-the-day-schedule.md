@@ -8,10 +8,10 @@
 
 A hotel is one Event with `startsAt` = check-in and `endsAt` = check-out **days later**, plus `endDate` set (ADR-0047 §1 / `buildSpanSeed`). The day-at-a-glance rail (`lib/glance.ts`, ADR-0045) was built for same-day blocks and mishandles this on both ends (session 2026-07-17, `docs/planning/2026-07-17-session-27-index-post-build-issues.md`):
 
-- **Check-in day:** the window stretches to `Math.max(day23, endsAt)` (`glance.ts:106`, `endMsOf` reads `endsAt` `:54`), so a multi-night stay blows the rail out to *days*, crushing every real event into a sliver — and the hotel is counted in `remaining` (`glance.ts:148-151`), inflating "what's left today" with a thing you don't *do*.
+- **Check-in day:** the window stretches to `Math.max(day23, endsAt)` (`glance.ts:106`, `endMsOf` reads `endsAt` `:54`), so a multi-night stay blows the rail out to _days_, crushing every real event into a sliver — and the hotel is counted in `remaining` (`glance.ts:148-151`), inflating "what's left today" with a thing you don't _do_.
 - **Every other night:** the day filters are a strict `e.date === activeDate` (`Home.tsx:47`, same in `DayView`/`PlanDay`); nothing expands an event across `endDate`, so nights 2…checkout are blank.
 
-Assaf named the fix from the user side: "וזה לא צריך להיספר בלוז ב-glance" — a hotel shouldn't be *counted* in the day's schedule. The underlying model error: a lodging span is being treated as an ordinary timed block. It isn't. You don't perform a hotel at a point in the day; it's the **backdrop the day happens inside**.
+Assaf named the fix from the user side: "וזה לא צריך להיספר בלוז ב-glance" — a hotel shouldn't be _counted_ in the day's schedule. The underlying model error: a lodging span is being treated as an ordinary timed block. It isn't. You don't perform a hotel at a point in the day; it's the **backdrop the day happens inside**.
 
 ## Decision
 
@@ -19,17 +19,17 @@ Assaf named the fix from the user side: "וזה לא צריך להיספר בל�
 
 **2. Ambient-span events are excluded from the counted day schedule.** They do not enter `buildTimeTree`, do not become glance rail segments, and are **not** in the `remaining` count. Consequently the glance window (`day07…day23`, stretched only by genuine same-day blocks + the overnight tail) is correct again — a hotel can no longer distort the rail, and "3 עוד" counts only things you actually have to do.
 
-**3. Ambient-span events render as a backdrop across every day they cover.** On each day from check-in through check-out, the day surfaces a thin ambient strip/header — e.g. "🏨 <hotel>" with check-in / middle-night / check-out framing — above the day's blocks, not inside the proportional rail. This fixes the "blank on nights 2…N" gap (§Context) with the *same* mechanism that removes the distortion: the span is shown as context on all its days, counted on none.
+**3. Ambient-span events render as a backdrop across every day they cover.** On each day from check-in through check-out, the day surfaces a thin ambient strip/header — e.g. "🏨 <hotel>" with check-in / middle-night / check-out framing — above the day's blocks, not inside the proportional rail. This fixes the "blank on nights 2…N" gap (§Context) with the _same_ mechanism that removes the distortion: the span is shown as context on all its days, counted on none.
 
 **4. The rule is presentational and orthogonal to hard/soft.** A hotel stays a **hard** commitment (ADR-0011) — guarded on edit, in the Index, feeding "next code" on Home. "Ambient" only changes how it appears **on the day timeline/glance**: as backdrop, not a block. Hard/soft (commitment) and ambient/point (day-presentation) are independent axes, the way `category` and `kind` already are (ADR-0038).
 
 ## Consequences
 
 - **`lib/glance.ts`:** partition `dayEvents` into ambient (has `endDate`, spans past this day) vs. same-day; feed only same-day to `buildTimeTree`/segments/`remaining`; the window math then only sees same-day extents. Add the ambient set to the returned model for the backdrop.
-- **Day expansion:** a small helper — "is this ambient event active on date D?" (`date ≤ D ≤ endDate`) — lets `Home` / `DayView` / `PlanDay` show the backdrop on every covered day, replacing the bare `e.date === activeDate` match *for ambient events only*. Same-day events keep the existing filter untouched.
+- **Day expansion:** a small helper — "is this ambient event active on date D?" (`date ≤ D ≤ endDate`) — lets `Home` / `DayView` / `PlanDay` show the backdrop on every covered day, replacing the bare `e.date === activeDate` match _for ambient events only_. Same-day events keep the existing filter untouched.
 - **Day view (`DayView`/`PlanDay`):** the ambient strip appears there too, so a hotel is visible (and openable → its detail view, ADR-0053) on nights 2…N, not just check-in. It is not a settle-able block (ADR-0043/0044) — nothing to Done/Skip about where you're sleeping.
 - **No data-model or backend change.** `endDate` already exists and is already set by the booking span path; this is entirely derived presentation, consistent with "phases/now are derived, never stored" (ADR-0018/0043).
-- **Board hero (Home now/next):** unaffected here — the hero already shows the next *event*; whether a hotel check-in/out should appear on the hero is the separate "board hero booking presentation" backlog item, not this ADR.
+- **Board hero (Home now/next):** unaffected here — the hero already shows the next _event_; whether a hotel check-in/out should appear on the hero is the separate "board hero booking presentation" backlog item, not this ADR.
 - **Generality:** the rule keys on `endDate`, so any future multi-day ambient booking (a multi-day rail pass, a car rental spanning the trip) gets the same correct treatment for free — it's not hotel-special-cased.
 
 ## Alternatives considered
