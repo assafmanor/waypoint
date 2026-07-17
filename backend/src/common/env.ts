@@ -17,6 +17,17 @@ export const S3_ACCESS_KEY_ID = 'S3_ACCESS_KEY_ID';
 export const S3_SECRET_ACCESS_KEY = 'S3_SECRET_ACCESS_KEY';
 export const S3_REGION = 'S3_REGION';
 
+// Document blob read cache (ADR-0055). The cache holds ciphertext only and is never a
+// source of truth, so an unset FS dir (memory-only) or a lost dir on redeploy is fine —
+// a miss falls through to S3 (backend/src/documents/blob-cache.ts).
+export const DOC_CACHE_DIR = 'DOC_CACHE_DIR'; // local-FS tier path; unset → memory-only
+export const DOC_CACHE_MAX_BYTES = 'DOC_CACHE_MAX_BYTES'; // in-memory LRU bound (bytes)
+export const DOC_CACHE_DISABLED = 'DOC_CACHE_DISABLED'; // kill switch (any truthy value)
+
+/** In-memory LRU bound when `DOC_CACHE_MAX_BYTES` is unset — 64 MB comfortably holds a
+ *  handful of passport scans / booking PDFs for a ~5-person trip. */
+export const DEFAULT_DOC_CACHE_MAX_BYTES = 64 * 1024 * 1024;
+
 /** Dev-only default for `FRONTEND_URL` (single-origin in prod, ADR-0020, so this
  *  fallback never applies there). */
 export const DEFAULT_FRONTEND_URL = 'http://localhost:5173';

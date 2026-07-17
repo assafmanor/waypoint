@@ -1,6 +1,6 @@
 # 0055 — Document blob read caching
 
-**Status:** Proposed
+**Status:** Accepted
 **Date:** 2026-07-17
 **Refines:** [0015](0015-document-encryption-server-side.md)/[0034](0034-document-encryption-trust-model.md) (encryption posture), [0031](0031-hosting-on-railway.md) (ephemeral FS), [0042](0042-shared-state-is-offline-syncable.md) (offline reads)
 

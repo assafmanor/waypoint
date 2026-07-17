@@ -43,6 +43,7 @@ import {
   type UpdatePlaceInput,
   type UpdateTripInput,
 } from '@waypoint/shared';
+import { readCachedBlob, writeCachedBlob } from './doc-cache';
 
 export const API_BASE_URL = import.meta.env.VITE_API_BASE_URL ?? '';
 
@@ -457,11 +458,29 @@ export async function uploadDocument(
 
 /** Fetch a document's decrypted content as a Blob. The `/content` route is
  *  auth-guarded, so it can't be a raw `<img src>` — the viewer turns this Blob
- *  into an object URL. */
-export async function fetchDocumentContent(tripId: string, docId: string): Promise<Blob> {
-  const res = await apiFetch(documentContentUrl(tripId, docId));
+ *  into an object URL.
+ *
+ *  Read-through the client blob cache (ADR-0055): a repeat open is served with no
+ *  network fetch, and an offline re-open of a previously viewed doc still succeeds
+ *  (ADR-0042). The blob is immutable by fileRef but the URL is reused across a
+ *  replace, so `version` (the doc's `updatedAt`) keys the cache — a replace mints a
+ *  fresh key and the stale one is evicted on write. */
+export async function fetchDocumentContent(
+  tripId: string,
+  docId: string,
+  version?: string,
+): Promise<Blob> {
+  const baseUrl = documentContentUrl(tripId, docId);
+  const url = version ? `${baseUrl}?v=${encodeURIComponent(version)}` : baseUrl;
+
+  const cached = await readCachedBlob(url);
+  if (cached) return cached;
+
+  const res = await apiFetch(url);
   if (!res.ok) return throwApiError(res);
-  return res.blob();
+  const blob = await res.blob();
+  await writeCachedBlob(url, blob, baseUrl);
+  return blob;
 }
 
 /** Rename / change type, and optionally replace the file (ADR-0052). Always
