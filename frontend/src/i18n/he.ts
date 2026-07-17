@@ -10,6 +10,15 @@ export const t = {
     no: 'לא',
     now: 'עכשיו',
   },
+  // Directional glyphs, keyed by logical direction rather than a fixed shape so a
+  // future LTR locale flips them for free: in this RTL locale "back" points right
+  // and "forward" (open/advance) points left; an LTR locale swaps the two.
+  arrows: {
+    back: '→',
+    forward: '←',
+    route: '←', // origin → destination connector; points at the destination
+    chevronBack: '›', // in-sheet "back to previous step" chevron (resolve sheet)
+  },
   tabs: {
     home: 'בית',
     map: 'מפה',
