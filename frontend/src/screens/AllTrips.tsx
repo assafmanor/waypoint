@@ -109,7 +109,7 @@ export function AllTrips({ onOpenAccount }: { onOpenAccount: () => void }) {
         <TripMeta trip={trip} />
       </span>
       <span className="go" aria-hidden="true">
-        →
+        {t.arrows.forward}
       </span>
     </button>
   );
@@ -144,7 +144,7 @@ export function AllTrips({ onOpenAccount }: { onOpenAccount: () => void }) {
                 onClick={() => navigate('/')}
                 aria-label={t.shell.allTrips.back}
               >
-                →
+                {t.arrows.back}
               </button>
             )}
             {me && (
