@@ -14,6 +14,7 @@ import {
   S3_REGION,
   S3_SECRET_ACCESS_KEY,
 } from '../common/env';
+import { evictCachedBlob, getCachedBlob, putCachedBlob } from './blob-cache';
 
 // Swappable byte sink for encrypted document blobs, keyed by `Document.fileRef`.
 // Mirrors this codebase's existing swap idiom (DEV_AUTH branch in jwt-auth.guard.ts /
@@ -55,23 +56,35 @@ export async function putObject(key: string, body: Buffer): Promise<void> {
   const bucket = storageBucket();
   if (bucket) {
     await s3Client().send(new PutObjectCommand({ Bucket: bucket, Key: key, Body: body }));
-    return;
+  } else {
+    await mkdir(LOCAL_DIR, { recursive: true });
+    await writeFile(join(LOCAL_DIR, key), body);
   }
-  await mkdir(LOCAL_DIR, { recursive: true });
-  await writeFile(join(LOCAL_DIR, key), body);
+  // Warm the cache so the first open after an upload is served locally (ADR-0055).
+  await putCachedBlob(key, body);
 }
 
 export async function getObject(key: string): Promise<Buffer> {
+  // Read-through: memory → filesystem → S3, populating the tiers that missed (ADR-0055).
+  const cached = await getCachedBlob(key);
+  if (cached) return cached;
+
   const bucket = storageBucket();
+  let bytes: Buffer;
   if (bucket) {
     const result = await s3Client().send(new GetObjectCommand({ Bucket: bucket, Key: key }));
-    const bytes = await result.Body?.transformToByteArray();
-    return Buffer.from(bytes ?? []);
+    bytes = Buffer.from((await result.Body?.transformToByteArray()) ?? []);
+  } else {
+    bytes = await readFile(join(LOCAL_DIR, key));
   }
-  return readFile(join(LOCAL_DIR, key));
+  await putCachedBlob(key, bytes);
+  return bytes;
 }
 
 export async function deleteObject(key: string): Promise<void> {
+  // Evict every cache tier first — a fileRef is retired for good on delete/replace, so a
+  // lingering entry could only serve a blob whose backing object is about to vanish.
+  await evictCachedBlob(key);
   const bucket = storageBucket();
   if (bucket) {
     await s3Client().send(new DeleteObjectCommand({ Bucket: bucket, Key: key }));

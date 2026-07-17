@@ -33,19 +33,24 @@ The pieces in the repo:
 
 ## Environment variables (set in the Railway service, never in the repo)
 
-| Var                                         | Value / how to generate                                                                    |
-| ------------------------------------------- | ------------------------------------------------------------------------------------------ |
-| `DATABASE_URL`                              | Reference variable `${{Postgres.DATABASE_URL}}` (private network)                          |
-| `JWT_SECRET`                                | `openssl rand -base64 32` — store in the password manager                                  |
-| `TOKEN_ENCRYPTION_KEY`                      | `openssl rand -base64 32` — **must decode to exactly 32 bytes** (AES-256-GCM, crypto.util) |
-| `GOOGLE_CLIENT_ID` / `GOOGLE_CLIENT_SECRET` | From the Google Cloud OAuth client (prerequisites-checklist.md)                            |
-| `GOOGLE_OAUTH_REDIRECT_URI`                 | `https://<domain>/auth/google/callback`                                                    |
-| `DOC_ENCRYPTION_KEY`                        | Documents at rest (ADR-0015). `openssl rand -base64 32` — must decode to exactly 32 bytes  |
-| `S3_ENDPOINT`                               | Railway Storage Bucket endpoint URL (S3-compatible, ADR-0031)                              |
-| `S3_BUCKET`                                 | Railway Storage Bucket name                                                                |
-| `S3_ACCESS_KEY_ID` / `S3_SECRET_ACCESS_KEY` | Railway Storage Bucket credentials                                                         |
+| Var                                         | Value / how to generate                                                                                     |
+| ------------------------------------------- | ----------------------------------------------------------------------------------------------------------- |
+| `DATABASE_URL`                              | Reference variable `${{Postgres.DATABASE_URL}}` (private network)                                           |
+| `JWT_SECRET`                                | `openssl rand -base64 32` — store in the password manager                                                   |
+| `TOKEN_ENCRYPTION_KEY`                      | `openssl rand -base64 32` — **must decode to exactly 32 bytes** (AES-256-GCM, crypto.util)                  |
+| `GOOGLE_CLIENT_ID` / `GOOGLE_CLIENT_SECRET` | From the Google Cloud OAuth client (prerequisites-checklist.md)                                             |
+| `GOOGLE_OAUTH_REDIRECT_URI`                 | `https://<domain>/auth/google/callback`                                                                     |
+| `DOC_ENCRYPTION_KEY`                        | Documents at rest (ADR-0015). `openssl rand -base64 32` — must decode to exactly 32 bytes                   |
+| `S3_ENDPOINT`                               | Railway Storage Bucket endpoint URL (S3-compatible, ADR-0031)                                               |
+| `S3_BUCKET`                                 | Railway Storage Bucket name                                                                                 |
+| `S3_ACCESS_KEY_ID` / `S3_SECRET_ACCESS_KEY` | Railway Storage Bucket credentials                                                                          |
+| `DOC_CACHE_DIR` _(optional)_                | Local-FS blob-cache tier path (ADR-0055). Unset → memory-only; a lost dir on redeploy just re-warms from S3 |
+| `DOC_CACHE_MAX_BYTES` _(optional)_          | In-memory LRU bound in bytes (ADR-0055). Unset → 64 MB default                                              |
+| `DOC_CACHE_DISABLED` _(optional)_           | Any truthy value turns the blob cache off entirely (kill switch, ADR-0055)                                  |
 
-**Never set in production:** `DEV_AUTH` (auth bypass) and `FRONTEND_URL` (dev-only CORS; prod is single-origin). `VITE_API_BASE_URL` stays unset — the client defaults to same-origin. Later additions when their features land: `REDIS_URL` (v1.1), `VITE_GOOGLE_MAPS_API_KEY` (build-time arg), and the document blob cache (ADR-0055, **Proposed**) — `DOC_CACHE_DIR` (local-FS cache tier; unset → memory-only), `DOC_CACHE_MAX_BYTES` (in-memory LRU bound), `DOC_CACHE_DISABLED` (kill switch). The cache holds ciphertext only and is never a source of truth, so the ephemeral filesystem (below) is fine for it — a miss falls through to S3.
+**Never set in production:** `DEV_AUTH` (auth bypass) and `FRONTEND_URL` (dev-only CORS; prod is single-origin). `VITE_API_BASE_URL` stays unset — the client defaults to same-origin. Later additions when their features land: `REDIS_URL` (v1.1) and `VITE_GOOGLE_MAPS_API_KEY` (build-time arg).
+
+**Document blob cache (ADR-0055).** A read-through, **ciphertext-only** cache below `getObject` (`backend/src/documents/blob-cache.ts`): an in-memory LRU (`DOC_CACHE_MAX_BYTES`, default 64 MB) plus an optional local-FS tier (`DOC_CACHE_DIR`). Keyed by the immutable `fileRef`, so it needs eviction on delete/replace only, never content invalidation. All three vars are optional — unconfigured, the cache runs memory-only and nothing breaks. Both tiers hold exactly the bytes S3 holds (ciphertext), so the operator trust boundary (ADR-0034) is unchanged, and the FS tier is a cache, never a source of truth — the ephemeral filesystem (below) is fine for it, a miss just falls through to S3. `DOC_CACHE_DISABLED` is the kill switch. The client mirrors this with a Cache-API blob cache (`frontend/src/lib/doc-cache.ts`) so repeat and offline opens skip the network.
 
 ## One-time setup runbook
 

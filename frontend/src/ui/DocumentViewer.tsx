@@ -30,7 +30,9 @@ export function DocumentViewer({
   useEffect(() => {
     let objectUrl: string | null = null;
     let cancelled = false;
-    fetchDocumentContent(tripId, doc.id).then(
+    // `doc.updatedAt` versions the client blob cache (ADR-0055): a replaced file bumps it,
+    // so a stale cached blob is never served for the same docId.
+    fetchDocumentContent(tripId, doc.id, doc.updatedAt).then(
       (blob) => {
         if (cancelled) return;
         objectUrl = URL.createObjectURL(blob);
@@ -44,7 +46,7 @@ export function DocumentViewer({
       cancelled = true;
       if (objectUrl) URL.revokeObjectURL(objectUrl);
     };
-  }, [tripId, doc.id]);
+  }, [tripId, doc.id, doc.updatedAt]);
 
   const showInlineImage = doc.mimeType.startsWith('image/') && !imageBroken;
 
