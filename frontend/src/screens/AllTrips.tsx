@@ -19,6 +19,7 @@ import { tripChip, type TripChip } from '../lib/active-trip';
 import { daysUntilStart } from '../lib/mode';
 import { useClock } from '../lib/useClock';
 import { AVATAR_INITIAL_LENGTH, DEFAULT_TRIP_ICON, ICONS } from '../constants';
+import { NavArrow } from '../ui/NavArrow';
 import { t } from '../i18n/he';
 
 const NBSP = ' ';
@@ -108,8 +109,8 @@ export function AllTrips({ onOpenAccount }: { onOpenAccount: () => void }) {
         <span className="t">{trip.name}</span>
         <TripMeta trip={trip} />
       </span>
-      <span className="go" aria-hidden="true">
-        →
+      <span className="go">
+        <NavArrow variant="forward" />
       </span>
     </button>
   );
@@ -144,7 +145,7 @@ export function AllTrips({ onOpenAccount }: { onOpenAccount: () => void }) {
                 onClick={() => navigate('/')}
                 aria-label={t.shell.allTrips.back}
               >
-                →
+                <NavArrow variant="back" />
               </button>
             )}
             {me && (

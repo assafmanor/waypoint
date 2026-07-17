@@ -26,6 +26,7 @@ import { IconPicker } from '../ui/IconPicker';
 import { MS_PER_DAY, ICONS, DEFAULT_TRIP_ICON, DEVICE_LOCALE } from '../constants';
 import { todayInTz } from '../lib/time';
 import { getNow } from '../lib/useClock';
+import { NavArrow } from '../ui/NavArrow';
 import { t } from '../i18n/he';
 
 const DEVICE_TZ = Intl.DateTimeFormat().resolvedOptions().timeZone;
@@ -97,7 +98,7 @@ export function CreateTrip() {
       <header className="new-head">
         <div className="new-head-row">
           <button className="back" onClick={() => navigate(-1)} aria-label={t.shell.newTrip.back}>
-            →
+            <NavArrow variant="back" />
           </button>
           <div className="new-title">{t.shell.newTrip.title}</div>
         </div>

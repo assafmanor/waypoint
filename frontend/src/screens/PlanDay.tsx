@@ -405,7 +405,7 @@ function ResolveSheet({
     <Sheet title={t.planDay.resolveFor(mover.title)} onClose={onClose}>
       {softMovers.length > 1 && (
         <button className="resolve-backbtn" onClick={onBack}>
-          ‹ {t.planDay.resolveBack}
+          {t.arrows.chevronBack} {t.planDay.resolveBack}
         </button>
       )}
       <button
