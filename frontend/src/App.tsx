@@ -290,7 +290,9 @@ function Header({
           <span className="dc-label">
             {dayScope === 'past' ? t.header.pastDay : t.header.futureDay}
           </span>
-          <span className="dc-back">{t.header.backToToday} →</span>
+          <span className="dc-back">
+            {t.header.backToToday} {t.arrows.back}
+          </span>
         </button>
       )}
     </header>

@@ -55,7 +55,7 @@ export function BookingDetail({
   const isRoute = isTransport(booking.type) && !!(from || to);
   // The route reads in the RTL flow (origin on the start/right, arrow pointing to
   // the destination) — the trip's UI is Hebrew-first, so the arrow follows it.
-  const heading = isRoute ? `${from ?? '-'} ← ${to ?? '-'}` : booking.title;
+  const heading = isRoute ? `${from ?? '-'} ${t.arrows.route} ${to ?? '-'}` : booking.title;
 
   const edit = () => {
     onEdit(booking);
@@ -122,7 +122,7 @@ export function RouteLabel({ from, to }: { from?: string; to?: string }) {
     <span className="route">
       <bdi>{from ?? '-'}</bdi>
       <span className="arr" aria-hidden="true">
-        ←
+        {t.arrows.route}
       </span>
       <bdi>{to ?? '-'}</bdi>
     </span>

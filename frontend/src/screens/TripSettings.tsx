@@ -138,7 +138,7 @@ export function TripSettings() {
       <header className="new-head">
         <div className="new-head-row">
           <button className="back" onClick={() => navigate(-1)} aria-label={t.settings.back}>
-            →
+            {t.arrows.back}
           </button>
           <div className="new-title">{t.settings.title}</div>
         </div>
