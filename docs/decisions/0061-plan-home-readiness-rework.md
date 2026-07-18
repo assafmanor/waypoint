@@ -27,18 +27,27 @@ Assaf (2026-07-18): "כפתורי מסך הבית במצב תכנון 'מה חס
 
 3. **The exact final check set, copy, ordering, and CTA behavior are settled in a design pass** (a mockup + this ADR flipping to Accepted). This ADR fixes the direction and the constraint (real data only, derived), not the final row list.
 
-## Open questions (for the design pass — Assaf)
+## Proposed in the mockup (2026-07-18, `mockups/plan-home-readiness-v1.html`) — for sign-off
 
-- Which new suggestions does Assaf specifically want surfaced first (documents/passport is the strongest candidate — confirm)?
-- Should readiness stay purely advisory, or ever gate / nudge the "go live" mode switch? (Today advisory.)
-- Should completed checks stay visible as ✓ rows, or collapse once done to keep the list about _what's missing_?
-- Do we want a per-traveller dimension (e.g. "everyone's passport uploaded") or trip-level only, given the small-group model?
+The mockup proposes a concrete reworked check set and answers the open questions below; each is a _proposal_ pending Assaf's sign-off (then this ADR → Accepted).
+
+- **Check set (all derived, real-data-only):** keep the four existing — 🏨 `lodging`, 📅 `itinerary` (empty days), ✈️ `flights`, 👥 `group` — each with a CTA that _does the thing_ (opens the add-booking sheet / seeds the day builder on the first empty day / the settings invite), not a bare tab-switch. **Add two now-buildable checks:** 🛂 **documents/passports** (per-traveller, from the snapshot documents list post-ADR-0058) and 🔑 **confirmation-code completeness** (a hard booking missing its code). **Left out** (no data/feature, ADR-0045/0004): Google-connection, Gmail import, WhatsApp reminder.
+- **Completed checks collapse into a one-line summary** ("✓ הושלמו · ✈️ טיסות · 👥 הקבוצה") with a "show completed" toggle, so the list stays about _what's missing_.
+- **Readiness stays advisory** — it never gates the go-live switch (a nudge, not a blocker).
+- **Documents is a per-traveller rollup** ("2 מתוך 5 העלו דרכון", with a small per-person indicator), fitting the small-group model, with the breakdown on tap.
+
+## Open questions (confirm / adjust the proposals above)
+
+- Which new suggestions to surface first — documents/passport proposed as the strongest; confirm, and whether the 🔑 code-completeness nudge earns a row or is too minor.
+- Readiness advisory-only (proposed) vs ever gating/nudging the go-live switch.
+- Collapse completed (proposed) vs keep them as ✓ rows.
+- Documents per-traveller (proposed) vs trip-level only.
 
 ## Consequences
 
 - `lib/readiness.ts` (new/changed pure checks + a unit test per check, matching `readiness.test.ts`) and `screens/PlanHome.tsx` (row behavior/CTAs), plus `i18n/he.ts` copy (no em dashes; `·` for separators).
 - A documents check reads the snapshot documents list (ADR-0058) — no new fetch, offline-safe.
-- Design record + mockup land first; implementation follows on its own change.
+- Design record + mockup (`mockups/plan-home-readiness-v1.html`, session 32) land first; implementation follows on its own change.
 - No data-model or backend change anticipated (all inputs already in the snapshot).
 
 ## Alternatives considered

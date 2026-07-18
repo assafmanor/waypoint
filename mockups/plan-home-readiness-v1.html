@@ -1,0 +1,769 @@
+<!doctype html>
+<!-- Plan-mode Home "what's missing to complete" rework — v1 (2026-07-18 session 32).
+     Design record for ADR-0061. Reworks the prep-dashboard checklist:
+       - Re-verifies the four existing checks' BEHAVIOUR now that their CTA targets
+         are real screens (add-booking sheet / day builder / settings invite),
+         retiring the session-06 placeholder-era tab-switches.
+       - Reconsiders the SUGGESTION SET: adds two now-buildable, real-data checks —
+         🛂 documents/passports (feasible post-ADR-0058, the snapshot carries
+         documents; a per-traveller signal) and 🔑 confirmation-code completeness
+         (hard bookings missing a code). Still-deferred signals (Google-connection,
+         Gmail import, WhatsApp reminder) stay OUT — no data/feature (ADR-0045/0004).
+       - Proposes behaviours for the ADR's open questions (see the legend): collapse
+         completed checks into a summary; readiness stays ADVISORY (never gates the
+         go-live switch); documents is a per-traveller rollup.
+     Everything shown is derived, real-data-only (ADR-0045). Plan chrome = the light
+     "drafting table" + violet prep hero (ADR-0028). RTL. On conflict, docs win. -->
+<html lang="he" dir="rtl">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>מה חסר להשלמה · מצב תכנון · מוקאפ v1</title>
+    <link rel="preconnect" href="https://fonts.googleapis.com" />
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+    <link
+      href="https://fonts.googleapis.com/css2?family=Assistant:wght@400;500;600;700&family=Secular+One&family=JetBrains+Mono:wght@500;700&display=swap"
+      rel="stylesheet"
+    />
+    <style>
+      :root {
+        --ink: #16233d;
+        --screen: #e7eaef;
+        --card: #ffffff;
+        --paper: #f3efe6;
+        --plan: #6e59d6;
+        --plan-deep: #5747b4;
+        --plan-tint: rgba(110, 89, 214, 0.1);
+        --muted: #6c7488;
+        --line: rgba(22, 35, 61, 0.1);
+        --ok: #3c9a6b;
+        --miss: #c2584e;
+        --amber: #e9a63c;
+        --shadow: 0 18px 40px -18px rgba(14, 23, 41, 0.45);
+      }
+      * {
+        box-sizing: border-box;
+        margin: 0;
+        padding: 0;
+      }
+      html,
+      body {
+        min-height: 100%;
+      }
+      body {
+        font-family: 'Assistant', sans-serif;
+        background:
+          radial-gradient(120% 90% at 80% -10%, #3a2f6a 0%, transparent 55%),
+          radial-gradient(120% 90% at 0% 110%, #2a2350 0%, transparent 50%), #14112b;
+        color: var(--ink);
+        min-height: 100vh;
+        padding: 30px 16px 64px;
+        -webkit-font-smoothing: antialiased;
+      }
+      .wrap {
+        max-width: 1060px;
+        margin: 0 auto;
+      }
+      .lede {
+        text-align: center;
+        color: #d9d3ef;
+        max-width: 720px;
+        margin: 0 auto 22px;
+      }
+      .lede h1 {
+        font-family: 'Secular One', sans-serif;
+        color: #fff;
+        font-size: 25px;
+        font-weight: 400;
+      }
+      .lede p {
+        color: #b6aede;
+        font-size: 13.5px;
+        margin-top: 8px;
+        line-height: 1.55;
+      }
+      .lede code {
+        font-family: 'JetBrains Mono', monospace;
+        color: #cbbcff;
+        font-size: 12px;
+      }
+
+      .cols {
+        display: flex;
+        gap: 30px;
+        justify-content: center;
+        align-items: flex-start;
+        flex-wrap: wrap;
+      }
+
+      .phone {
+        background: var(--paper);
+        border-radius: 38px;
+        box-shadow:
+          var(--shadow),
+          0 0 0 10px #211a44,
+          0 0 0 12px #3d3470;
+        overflow: hidden;
+        position: relative;
+        width: 392px;
+        height: 812px;
+        display: flex;
+        flex-direction: column;
+      }
+      .statusbar {
+        background: var(--card);
+        color: #3a4763;
+        display: flex;
+        justify-content: space-between;
+        align-items: center;
+        padding: 11px 22px 8px;
+        font-size: 13px;
+        font-weight: 600;
+        font-family: 'JetBrains Mono', monospace;
+      }
+      /* light "drafting table" plan header */
+      .header {
+        background: var(--card);
+        color: var(--ink);
+        padding: 8px 20px 16px;
+        border-bottom: 1px solid var(--line);
+      }
+      .mode-row {
+        display: flex;
+        justify-content: center;
+        margin: 2px 0 12px;
+      }
+      .mode-toggle {
+        display: inline-flex;
+        background: var(--plan-tint);
+        border: 1px solid rgba(110, 89, 214, 0.25);
+        border-radius: 999px;
+        padding: 3px;
+        gap: 2px;
+      }
+      .mode-toggle .m {
+        font: inherit;
+        font-size: 13px;
+        font-weight: 600;
+        color: var(--plan-deep);
+        background: none;
+        border: 0;
+        border-radius: 999px;
+        padding: 6px 16px;
+        cursor: pointer;
+      }
+      .mode-toggle .m.on {
+        background: var(--plan);
+        color: #fff;
+      }
+      .trip-row {
+        display: flex;
+        justify-content: space-between;
+        align-items: center;
+      }
+      .trip-name {
+        font-family: 'Secular One', sans-serif;
+        font-size: 22px;
+      }
+      .trip-sub {
+        color: var(--muted);
+        font-size: 13px;
+        margin-top: 4px;
+        font-weight: 600;
+      }
+      .gear-btn {
+        width: 33px;
+        height: 33px;
+        border-radius: 50%;
+        display: grid;
+        place-items: center;
+        background: var(--plan-tint);
+        border: 1px solid rgba(110, 89, 214, 0.25);
+        color: var(--plan-deep);
+        font-size: 15px;
+        flex: 0 0 auto;
+      }
+
+      .body {
+        flex: 1;
+        overflow-y: auto;
+        padding: 16px 15px 40px;
+        /* faint violet drafting grid — the "drafting table" cue */
+        background-image:
+          linear-gradient(rgba(110, 89, 214, 0.05) 1px, transparent 1px),
+          linear-gradient(90deg, rgba(110, 89, 214, 0.05) 1px, transparent 1px);
+        background-size: 22px 22px;
+      }
+      .body::-webkit-scrollbar {
+        width: 0;
+      }
+
+      /* violet prep hero */
+      .prep {
+        background: linear-gradient(180deg, var(--plan-deep), var(--plan));
+        border-radius: 20px;
+        padding: 18px;
+        color: #f2effc;
+        position: relative;
+        overflow: hidden;
+        box-shadow: 0 18px 30px -20px rgba(46, 33, 104, 0.7);
+      }
+      .prep::before {
+        content: '';
+        position: absolute;
+        inset: 0;
+        background: radial-gradient(80% 60% at 88% 0%, rgba(255, 255, 255, 0.16), transparent 60%);
+        pointer-events: none;
+      }
+      .prep .k {
+        color: rgba(255, 255, 255, 0.72);
+        font-size: 11px;
+        font-weight: 700;
+        letter-spacing: 0.14em;
+      }
+      .prep .count {
+        font-family: 'Secular One', sans-serif;
+        font-size: 34px;
+        margin-top: 4px;
+        color: #fff;
+        line-height: 1;
+      }
+      .prep .count small {
+        font-size: 15px;
+        color: rgba(255, 255, 255, 0.8);
+        font-weight: 400;
+      }
+      .prep .dates {
+        color: rgba(255, 255, 255, 0.82);
+        font-size: 12.5px;
+        margin-top: 5px;
+        font-weight: 600;
+      }
+      .ready {
+        margin-top: 16px;
+      }
+      .ready .rt {
+        display: flex;
+        justify-content: space-between;
+        font-size: 12px;
+        font-weight: 600;
+        color: rgba(255, 255, 255, 0.88);
+        margin-bottom: 6px;
+      }
+      .ready .rt b {
+        color: #fff;
+      }
+      .ready .track {
+        height: 7px;
+        background: rgba(255, 255, 255, 0.12);
+        border-radius: 6px;
+        overflow: hidden;
+      }
+      .ready .fill {
+        height: 100%;
+        width: 55%;
+        background: linear-gradient(90deg, rgba(255, 255, 255, 0.82), #fff);
+        border-radius: 6px;
+      }
+
+      .sec-title {
+        font-size: 12px;
+        font-weight: 700;
+        color: var(--muted);
+        letter-spacing: 0.06em;
+        margin: 22px 4px 11px;
+        display: flex;
+        justify-content: space-between;
+        align-items: center;
+      }
+      .sec-title .toggle {
+        font: inherit;
+        font-size: 11px;
+        font-weight: 700;
+        color: var(--plan-deep);
+        background: var(--plan-tint);
+        border: 0;
+        border-radius: 999px;
+        padding: 4px 10px;
+        cursor: pointer;
+        letter-spacing: 0;
+      }
+
+      /* checklist */
+      .check {
+        background: var(--card);
+        border: 1px solid var(--line);
+        border-radius: 14px;
+        overflow: hidden;
+      }
+      .ci {
+        display: flex;
+        align-items: center;
+        gap: 12px;
+        padding: 13px 14px;
+        border-bottom: 1px solid var(--line);
+      }
+      .ci:last-child {
+        border-bottom: 0;
+      }
+      .ci .ic {
+        width: 34px;
+        height: 34px;
+        border-radius: 10px;
+        display: grid;
+        place-items: center;
+        font-size: 17px;
+        flex: 0 0 auto;
+        background: var(--paper);
+      }
+      .ci .main {
+        flex: 1;
+        min-width: 0;
+      }
+      .ci .t {
+        font-weight: 700;
+        font-size: 14px;
+        display: flex;
+        align-items: center;
+        gap: 7px;
+      }
+      .ci .t .new {
+        font-size: 9.5px;
+        font-weight: 800;
+        letter-spacing: 0.04em;
+        color: var(--plan-deep);
+        background: var(--plan-tint);
+        border-radius: 5px;
+        padding: 1px 6px;
+      }
+      .ci .m {
+        font-size: 11.5px;
+        color: var(--muted);
+        margin-top: 2px;
+      }
+      /* per-traveller mini progress (documents) */
+      .ci .ppl {
+        display: inline-flex;
+        gap: 3px;
+        margin-inline-start: 6px;
+        vertical-align: middle;
+      }
+      .ci .ppl i {
+        width: 7px;
+        height: 7px;
+        border-radius: 50%;
+        background: var(--line);
+      }
+      .ci .ppl i.on {
+        background: var(--ok);
+      }
+      .cta {
+        font: inherit;
+        font-size: 11.5px;
+        font-weight: 700;
+        border: 1px solid var(--plan);
+        color: var(--plan-deep);
+        background: #fff;
+        border-radius: 8px;
+        padding: 6px 11px;
+        cursor: pointer;
+        transition: 0.12s;
+        flex: 0 0 auto;
+      }
+      .cta:hover {
+        background: var(--plan);
+        color: #fff;
+      }
+      .cta.warn {
+        border-color: var(--miss);
+        color: var(--miss);
+      }
+      .cta.warn:hover {
+        background: var(--miss);
+        color: #fff;
+      }
+
+      /* collapsed "completed" summary */
+      .done-sum {
+        display: flex;
+        align-items: center;
+        gap: 8px;
+        flex-wrap: wrap;
+        background: var(--card);
+        border: 1px solid var(--line);
+        border-radius: 12px;
+        padding: 11px 13px;
+        font-size: 12.5px;
+        color: var(--muted);
+        font-weight: 600;
+      }
+      .done-sum .ok {
+        color: var(--ok);
+        font-weight: 700;
+      }
+      .done-sum .pill {
+        color: var(--ink);
+        background: var(--paper);
+        border-radius: 999px;
+        padding: 2px 9px;
+        font-weight: 700;
+      }
+      .done-list {
+        display: none;
+      }
+      .done-list.show {
+        display: block;
+      }
+      .done-sum.hide {
+        display: none;
+      }
+      .ci .st {
+        flex: 0 0 auto;
+        font-size: 12px;
+        font-weight: 700;
+        color: var(--ok);
+      }
+
+      .stats {
+        display: grid;
+        grid-template-columns: repeat(3, 1fr);
+        gap: 9px;
+      }
+      .stat {
+        background: var(--card);
+        border: 1px solid var(--line);
+        border-radius: 13px;
+        padding: 12px 8px;
+        text-align: center;
+      }
+      .stat .v {
+        font-family: 'JetBrains Mono', monospace;
+        font-size: 21px;
+        font-weight: 700;
+      }
+      .stat .l {
+        font-size: 10.5px;
+        color: var(--muted);
+        margin-top: 3px;
+        font-weight: 600;
+      }
+
+      /* legend / design notes */
+      .legend {
+        width: 392px;
+        background: rgba(255, 255, 255, 0.05);
+        border: 1px solid rgba(255, 255, 255, 0.13);
+        border-radius: 18px;
+        padding: 18px 18px 20px;
+        color: #d9d3ef;
+        align-self: stretch;
+      }
+      .legend h2 {
+        font-family: 'Secular One', sans-serif;
+        font-weight: 400;
+        color: #fff;
+        font-size: 16px;
+        margin-bottom: 4px;
+      }
+      .legend h3 {
+        font-size: 12px;
+        font-weight: 700;
+        color: #cbbcff;
+        letter-spacing: 0.04em;
+        margin: 16px 0 8px;
+      }
+      .legend .row {
+        display: flex;
+        gap: 8px;
+        font-size: 12px;
+        line-height: 1.5;
+        padding: 5px 0;
+        border-bottom: 1px solid rgba(255, 255, 255, 0.07);
+      }
+      .legend .row:last-child {
+        border-bottom: 0;
+      }
+      .legend .row .ico {
+        flex: 0 0 auto;
+      }
+      .legend .row b {
+        color: #fff;
+      }
+      .legend .tag {
+        display: inline-block;
+        font-size: 9.5px;
+        font-weight: 800;
+        border-radius: 5px;
+        padding: 1px 6px;
+        vertical-align: middle;
+      }
+      .legend .tag.new {
+        color: #1a1140;
+        background: #cbbcff;
+      }
+      .legend .tag.keep {
+        color: #05221f;
+        background: #7fd8cc;
+      }
+      .legend .tag.out {
+        color: #fff;
+        background: rgba(194, 88, 78, 0.85);
+      }
+      .legend .notes {
+        font-size: 12px;
+        line-height: 1.6;
+        color: #b6aede;
+      }
+      .legend .notes b {
+        color: #fff;
+      }
+      .legend .q {
+        color: #f0c785;
+        font-weight: 800;
+      }
+
+      @media (prefers-reduced-motion: reduce) {
+        * {
+          animation: none !important;
+          transition: none !important;
+        }
+      }
+    </style>
+  </head>
+  <body>
+    <div class="wrap">
+      <div class="lede">
+        <h1>מה חסר להשלמה · מצב תכנון</h1>
+        <p>
+          ADR-0061 · שכתוב הצ׳ק-ליסט של הכנת הטיול. הכל
+          <b style="color: #fff">נגזר מנתונים אמיתיים</b> (ADR-0045). שתי בדיקות חדשות
+          (מסמכים/דרכונים · קודי אישור) שנפתחו אחרי <code>ADR-0058</code>; ההצעות ה"מזויפות" הישנות
+          (Gmail · חיבור Google · תזכורת וואטסאפ) נשארות בחוץ.
+        </p>
+      </div>
+
+      <div class="cols">
+        <!-- ============ PHONE: Plan-mode Home ============ -->
+        <div class="phone">
+          <div class="statusbar"><span>09:41</span><span>●●● 4G ▮</span></div>
+          <div class="header">
+            <div class="mode-row">
+              <div class="mode-toggle">
+                <button class="m">🧭 טיול</button>
+                <button class="m on">✏️ תכנון</button>
+              </div>
+            </div>
+            <div class="trip-row">
+              <div>
+                <div class="trip-name">יפן ׳26</div>
+                <div class="trip-sub">יוצאים בעוד 12 ימים</div>
+              </div>
+              <div class="gear-btn">⚙</div>
+            </div>
+          </div>
+
+          <div class="body">
+            <!-- violet prep hero -->
+            <div class="prep">
+              <div class="k">היציאה בעוד</div>
+              <div class="count">12 <small>ימים</small></div>
+              <div class="dates">03–12 · אוקטובר ׳26 · 10 ימים</div>
+              <div class="ready">
+                <div class="rt"><span>מוכנות הטיול</span><b>55%</b></div>
+                <div class="track"><div class="fill"></div></div>
+              </div>
+            </div>
+
+            <!-- what's missing — reworked check set (incomplete first) -->
+            <div class="sec-title">
+              מה חסר להשלמה
+              <button class="toggle" id="doneToggle">הצג שהושלמו (2)</button>
+            </div>
+            <div class="check">
+              <div class="ci">
+                <div class="ic">🏨</div>
+                <div class="main">
+                  <div class="t">לינה בקיוטו</div>
+                  <div class="m">3 לילות · עדיין לא הוזמן</div>
+                </div>
+                <button class="cta warn" onclick="toast('פותח הזמנת לינה')">הוסיפו לינה</button>
+              </div>
+              <div class="ci">
+                <div class="ic">📅</div>
+                <div class="main">
+                  <div class="t">3 ימים ללא תוכנית</div>
+                  <div class="m">ימים 5, 7, 9 ריקים</div>
+                </div>
+                <button class="cta" onclick="toast('פותח את בונה היום · יום 5')">בנו יום</button>
+              </div>
+              <div class="ci">
+                <div class="ic">🛂</div>
+                <div class="main">
+                  <div class="t">מסמכים ודרכונים <span class="new">חדש</span></div>
+                  <div class="m">
+                    2 מתוך 5 העלו דרכון
+                    <span class="ppl"
+                      ><i class="on"></i><i class="on"></i><i></i><i></i><i></i
+                    ></span>
+                  </div>
+                </div>
+                <button class="cta" onclick="toast('פותח מסמכים באינדקס')">העלו</button>
+              </div>
+              <div class="ci">
+                <div class="ic">🔑</div>
+                <div class="main">
+                  <div class="t">קוד אישור חסר <span class="new">חדש</span></div>
+                  <div class="m">טיסת חזור NH7 · ללא קוד אישור</div>
+                </div>
+                <button class="cta" onclick="toast('פותח את ההזמנה להשלמת קוד')">השלימו</button>
+              </div>
+            </div>
+
+            <!-- completed — collapsed by default into a summary -->
+            <div class="done-sum" id="doneSum">
+              <span class="ok">✓ הושלמו</span>
+              <span class="pill">✈️ טיסות</span>
+              <span class="pill">👥 הקבוצה</span>
+            </div>
+            <div class="check done-list" id="doneList" style="margin-top: 9px">
+              <div class="ci">
+                <div class="ic">✈️</div>
+                <div class="main">
+                  <div class="t">טיסות</div>
+                  <div class="m">הלוך ושוב · הוזמנו</div>
+                </div>
+                <div class="st">✓ הושלם</div>
+              </div>
+              <div class="ci">
+                <div class="ic">👥</div>
+                <div class="main">
+                  <div class="t">הקבוצה</div>
+                  <div class="m">5 נוסעים הצטרפו</div>
+                </div>
+                <div class="st">✓ הושלם</div>
+              </div>
+            </div>
+
+            <div class="sec-title">מבט על</div>
+            <div class="stats">
+              <div class="stat">
+                <div class="v">7</div>
+                <div class="l">הזמנות</div>
+              </div>
+              <div class="stat">
+                <div class="v">23</div>
+                <div class="l">אירועים</div>
+              </div>
+              <div class="stat">
+                <div class="v" style="color: var(--miss)">3</div>
+                <div class="l">ימים ריקים</div>
+              </div>
+            </div>
+          </div>
+        </div>
+
+        <!-- ============ legend / design notes ============ -->
+        <div class="legend">
+          <h2>הצ׳ק-ליסט המוצע</h2>
+          <div class="notes" style="margin-bottom: 6px">
+            הכל נגזר, אף פעם לא נשמר (ADR-0045). כל שורה פותחת את הפעולה עצמה, לא רק מחליפה טאב.
+          </div>
+
+          <h3>בדיקות</h3>
+          <div class="row">
+            <span class="ico">🏨</span
+            ><span
+              ><b>לינה</b> · קיימת הזמנת מלון? → פותח את יצירת ההזמנה
+              <span class="tag keep">קיים</span></span
+            >
+          </div>
+          <div class="row">
+            <span class="ico">📅</span
+            ><span
+              ><b>ימים ריקים</b> · יום ללא אירועים? → בונה היום על היום הריק הראשון
+              <span class="tag keep">קיים</span></span
+            >
+          </div>
+          <div class="row">
+            <span class="ico">✈️</span
+            ><span
+              ><b>טיסות</b> · קיימת הזמנת טיסה? → יצירת הזמנה
+              <span class="tag keep">קיים</span></span
+            >
+          </div>
+          <div class="row">
+            <span class="ico">👥</span
+            ><span
+              ><b>הקבוצה</b> · יותר מנוסע אחד הצטרף? → הזמנה מההגדרות
+              <span class="tag keep">קיים</span></span
+            >
+          </div>
+          <div class="row">
+            <span class="ico">🛂</span
+            ><span
+              ><b>מסמכים ודרכונים</b> · לכל נוסע דרכון? מדד לפי-נוסע (זמין אחרי ADR-0058)
+              <span class="tag new">חדש</span></span
+            >
+          </div>
+          <div class="row">
+            <span class="ico">🔑</span
+            ><span
+              ><b>קודי אישור</b> · לכל הזמנה קשיחה יש קוד? נודג׳ שלמות
+              <span class="tag new">חדש</span></span
+            >
+          </div>
+
+          <h3>נשאר בחוץ (אין נתונים/פיצ׳ר)</h3>
+          <div class="row">
+            <span class="ico">🚫</span
+            ><span
+              >חיבור חשבון Google · ייבוא מ-Gmail · תזכורת וואטסאפ
+              <span class="tag out">מושהה</span> — היו "אותות מזויפים" ב-mockup המקורי
+              (ADR-0045/0004).</span
+            >
+          </div>
+
+          <h3>שאלות פתוחות (לאסף)</h3>
+          <div class="notes">
+            <span class="q">·</span> אילו הצעות חדשות קודם? (מסמכים/דרכונים נראית החזקה ביותר —
+            לאשר) <br />
+            <span class="q">·</span> המוכנות נשארת <b>מייעצת</b> בלבד, או פעם כן חוסמת/מנדנדת את
+            מעבר ה"צאו לדרך"? (מוצע: מייעצת) <br />
+            <span class="q">·</span> להשאיר בדיקות שהושלמו כשורות ✓, או <b>לכווץ לסיכום</b> כמו כאן?
+            (מוצע: לכווץ) <br />
+            <span class="q">·</span> מסמכים — מדד <b>לפי-נוסע</b> ("2 מתוך 5") או רק ברמת הטיול?
+            (מוצע: לפי-נוסע, עם פירוט בלחיצה)
+          </div>
+        </div>
+      </div>
+    </div>
+
+    <script>
+      let t;
+      function toast(msg) {
+        // lightweight inline toast for the demo
+        let el = document.getElementById('t');
+        if (!el) {
+          el = document.createElement('div');
+          el.id = 't';
+          el.style.cssText =
+            'position:fixed;left:50%;bottom:26px;transform:translateX(-50%);background:#16233d;color:#fff;padding:11px 18px;border-radius:12px;font:600 13px Assistant,sans-serif;box-shadow:0 12px 28px -10px rgba(0,0,0,.5);z-index:9;transition:.2s;opacity:0';
+          document.body.appendChild(el);
+        }
+        el.textContent = msg;
+        el.style.opacity = '1';
+        clearTimeout(t);
+        t = setTimeout(() => (el.style.opacity = '0'), 2200);
+      }
+
+      const doneToggle = document.getElementById('doneToggle');
+      const doneSum = document.getElementById('doneSum');
+      const doneList = document.getElementById('doneList');
+      doneToggle.addEventListener('click', () => {
+        const showing = doneList.classList.toggle('show');
+        doneSum.classList.toggle('hide', showing);
+        doneToggle.textContent = showing ? 'כווץ שהושלמו' : 'הצג שהושלמו (2)';
+      });
+    </script>
+  </body>
+</html>

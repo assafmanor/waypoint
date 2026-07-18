@@ -72,6 +72,6 @@ Ordered roughly by independence. Frontend paths are under `frontend/src/`. Tasks
 
 ## Deferred / explicitly not done
 
-- Implementation of any task (this session is triage + decisions + the ADR-0059 mockup). **Built after the doc pass:** `mockups/booking-presentation-v1.html` (the ADR-0059 design record — profile-driven hero states, the teal "inside a booking" treatment, the shared row/detail grammar, the glance markers; verified rendering in headless Chromium). The **ADR-0061 plan-home mockup** is still to do.
+- Implementation of any task (this session is triage + decisions + the two mockups). **Built after the doc pass:** `mockups/booking-presentation-v1.html` (ADR-0059 — profile-driven hero states, the teal "inside a booking" treatment, the shared row/detail grammar, the glance markers; revised per Assaf review: slim dismissible strip, marker lane, flights on the timeline; merged in PR #141) and `mockups/plan-home-readiness-v1.html` (ADR-0061 — reworked checklist with real CTAs + the 🛂/🔑 new checks, collapsed completed, proposed answers to the open questions). Both verified rendering in headless Chromium.
 - The document **replace-file** PATCH variant (ADR-0052 amendment defers it; delete + re-upload covers the need).
 - Flipping ADR-0059/0060/0061/0062/0063 to Accepted — they await Assaf's sign-off (and, for 0059/0061, a mockup), per the repo's Proposed→Accepted gate.
