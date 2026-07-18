@@ -9,6 +9,7 @@
 // a past day reads as a read-only archive (ADR-0029), editing gated to Plan.
 import { Fragment, useEffect, useRef, useState } from 'react';
 import {
+  CATEGORY_DEFAULT_ICON,
   EVENT_KIND,
   EVENT_STATUS,
   isAmbient,
@@ -35,12 +36,19 @@ import {
   type TimeItem,
 } from '../lib/time';
 import { nextSlot } from '../lib/gaps';
-import { ambientEventsOnDate } from '../lib/glance';
+import {
+  dayTransitions,
+  mergeDayEntries,
+  type DayEntry,
+  type TransitionEntry,
+} from '../lib/day-entries';
+import { transitionLabel } from '../lib/transitions';
 import { CODE_PREFIX, DELAY_STEP_MINUTES, ICONS, MS_PER_DAY } from '../constants';
 import { t } from '../i18n/he';
 import { TRIP_TZ_OFFSET, maybeMeta } from '../fixtures';
 import { EventForm } from '../ui/EventForm';
 import { BookingSheet } from '../ui/BookingSheet';
+import { BookingDetail } from '../ui/BookingDetail';
 import { Sheet } from '../ui/Sheet';
 import { TimePicker } from '../ui/TimePicker';
 import { Icon } from '../ui/Icon';
@@ -71,6 +79,9 @@ export function DayView() {
   // Editing a booking-linked event opens the merged BookingSheet, not EventForm
   // (ADR-0053 §2) — the same surface as editing from the Index.
   const [bookingTarget, setBookingTarget] = useState<Booking | null>(null);
+  // Tapping a transition row opens the read-only booking detail (ADR-0053/0064),
+  // the same pattern as the Index; editing from there opens the BookingSheet.
+  const [detailTarget, setDetailTarget] = useState<Booking | null>(null);
   const [scheduleItem, setScheduleItem] = useState<MaybeItem | null>(null);
 
   const today = todayInTz(trip.timezone, now);
@@ -82,9 +93,14 @@ export function DayView() {
   const dayEvents = events
     .filter((e) => e.date === activeDate && e.status !== EVENT_STATUS.SKIPPED && !isAmbient(e))
     .sort(byStart);
-  // Ambient-span stays (a hotel, ADR-0054/0063) are backdrop, not timeline rows:
-  // shown as a strip on every night they cover (not just check-in), never a block.
-  const ambientStays = ambientEventsOnDate(events, activeDate);
+  // Ambient-span stays (a hotel, ADR-0054/0063) are backdrop, not timeline rows.
+  // The strip now renders only on STRICTLY-MIDDLE nights (ADR-0064 §C): edge days
+  // show the transition entry instead, so no day shows the stay twice and the
+  // (wrong) checkout-day strip disappears. A 1-night stay has no middle day → no
+  // strip, just its two edge entries.
+  const middleStays = events.filter(
+    (e) => isAmbient(e) && e.date < activeDate && activeDate < e.endDate!,
+  );
   const stayNights = (e: TripEvent) =>
     Math.max(1, Math.round((Date.parse(e.endDate!) - Date.parse(e.date)) / MS_PER_DAY));
   const stayNight = (e: TripEvent) =>
@@ -121,15 +137,23 @@ export function DayView() {
       if (booking) setBookingTarget(booking);
       else setFormTarget(e);
     },
+    onOpenDetail: setDetailTarget,
   };
 
+  // Multi-day bracketed bookings (a hotel, a red-eye flight) are ambient — off
+  // `dayEvents` — so their edge days would show nothing in the list. Interleave
+  // their transition points (check-in/out, departure/arrival) among the event
+  // groups by instant (ADR-0064 §B). Same-day brackets stay a single span row.
+  const merged = mergeDayEntries(buildTimeTree(dayEvents), dayTransitions(events, activeDate));
+
   // The now-line: only on today (a past/future day has no "now"). It sits above
-  // the first top-level group that isn't fully behind us; if every group is
-  // passed it falls after them all.
-  const groups = buildTimeTree(dayEvents);
+  // the first entry that isn't fully behind us (a transition point ends at its
+  // own instant); if every entry is passed it falls after them all.
+  const entryEndMs = (entry: DayEntry) =>
+    entry.kind === 'event' ? groupEndMs(entry.group) : entry.atMs;
   const showNowLine = dayScope === 'today';
-  let nowLineIndex = groups.findIndex((g) => groupEndMs(g) > now.getTime());
-  if (nowLineIndex === -1) nowLineIndex = groups.length;
+  let nowLineIndex = merged.findIndex((entry) => entryEndMs(entry) > now.getTime());
+  if (nowLineIndex === -1) nowLineIndex = merged.length;
 
   // Land on now: scroll the now-line into view once per day-open (today only), a
   // passed event or two left peeking above. Keyed on the viewed day — never on
@@ -191,9 +215,9 @@ export function DayView() {
         </span>
       </div>
 
-      {ambientStays.length > 0 && (
+      {middleStays.length > 0 && (
         <div className="day-ambient">
-          {ambientStays.map((e) => (
+          {middleStays.map((e) => (
             <div className="ambient" key={e.id}>
               <span className="ai" aria-hidden="true">
                 {e.icon ?? '🏨'}
@@ -210,15 +234,21 @@ export function DayView() {
             for containment, quiet clusters for partial overlap. The now-line is
             interleaved at the top level; untimed events have no span to place, so
             they stay plain leaf rows at the end. */}
-        {groups.map((g, i) => (
-          <Fragment key={groupKey(g)}>
+        {merged.map((entry, i) => (
+          <Fragment
+            key={entry.kind === 'event' ? groupKey(entry.group) : `${entry.event.id}-${entry.edge}`}
+          >
             {showNowLine && i === nowLineIndex && (
               <NowLine ref={nowLineRef} now={now} tz={trip.timezone} />
             )}
-            <GroupNode group={g} depth={0} ctx={dayCtx} />
+            {entry.kind === 'event' ? (
+              <GroupNode group={entry.group} depth={0} ctx={dayCtx} />
+            ) : (
+              <TransitionRow entry={entry} ctx={dayCtx} />
+            )}
           </Fragment>
         ))}
-        {showNowLine && nowLineIndex === groups.length && (
+        {showNowLine && nowLineIndex === merged.length && (
           <NowLine ref={nowLineRef} now={now} tz={trip.timezone} />
         )}
         {untimed.map((e) => (
@@ -238,6 +268,17 @@ export function DayView() {
 
       {bookingTarget && (
         <BookingSheet booking={bookingTarget} onClose={() => setBookingTarget(null)} />
+      )}
+
+      {detailTarget && (
+        <BookingDetail
+          booking={detailTarget}
+          onClose={() => setDetailTarget(null)}
+          onEdit={(b) => {
+            setDetailTarget(null);
+            setBookingTarget(b);
+          }}
+        />
       )}
 
       {/* The maybe-shelf schedules onto a day — a create action, so it's gone on
@@ -318,6 +359,47 @@ function NowLine({ ref, now, tz }: { ref: React.Ref<HTMLDivElement>; now: Date; 
   );
 }
 
+// A per-day transition entry (ADR-0064 §B): a compact, read-only reference row
+// for one edge of a multi-day bracketed booking — badge + transition label
+// (from the profile, ADR-0063) + booking title + mono time, amber (time +
+// commitment). Tapping opens the read-only booking detail (ADR-0053), where
+// edit/delete live; it carries NO inline settle/skip/delay verbs (mutating half
+// a derived span is ambiguous). A start edge (check-in / departure) offers
+// Navigate — the one on-the-ground action that fits; an end edge is a plain
+// reference row. On a read-only past day it renders read-only (no Navigate).
+function TransitionRow({ entry, ctx }: { entry: TransitionEntry; ctx: DayCtx }) {
+  const { event, edge, atMs, labelKey } = entry;
+  const booking = event.bookingId ? ctx.bookings.find((b) => b.id === event.bookingId) : undefined;
+  const icon =
+    event.icon ?? (event.category != null ? CATEGORY_DEFAULT_ICON[event.category] : '📌');
+  return (
+    <div className="transition-row">
+      <button
+        type="button"
+        className="tr-face"
+        onClick={() => booking && ctx.onOpenDetail(booking)}
+        disabled={!booking}
+      >
+        <span className="tr-badge" aria-hidden="true">
+          {icon}
+        </span>
+        <span className="tr-main">
+          <span className="tr-label">{transitionLabel(labelKey)}</span>
+          <span className="tr-title">{event.title}</span>
+        </span>
+        <span className="tr-time" dir="ltr">
+          {formatTime(new Date(atMs), ctx.tz)}
+        </span>
+      </button>
+      {edge === 'start' && !ctx.readOnly && (
+        <button className="tr-nav" onClick={() => ctx.verbs.navigate(event)}>
+          {t.actions.navigate}
+        </button>
+      )}
+    </div>
+  );
+}
+
 // Shared wiring threaded through the recursive concurrency render (ADR-0041), so
 // a nested/clustered EventItem keeps every quick-verb it has at the top level.
 interface DayCtx {
@@ -331,6 +413,7 @@ interface DayCtx {
   dayEvents: TripEvent[];
   verbs: ReturnType<typeof useVerbs>;
   onEdit: (event: TripEvent) => void;
+  onOpenDetail: (booking: Booking) => void;
 }
 
 /** Total events nested anywhere inside an item — the "כולל N" count. */

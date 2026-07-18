@@ -472,6 +472,95 @@
   gap: 8px;
   margin-bottom: 12px;
 }
+
+/* ── per-day transition entry (ADR-0064 §B) ─────────────────────────────
+   A multi-day booking's edge (check-in/out, departure/arrival) as a compact,
+   read-only reference row interleaved in the day timeline by instant. Amber =
+   time + commitment (ADR-0028) — a hard, time-anchored moment; shorter than a
+   full event card so it reads as a marker, not a settle-able block. */
+.transition-row {
+  display: flex;
+  align-items: stretch;
+  margin-bottom: 10px;
+  background: color-mix(in srgb, var(--amber) 7%, var(--card));
+  border: 1px solid color-mix(in srgb, var(--amber) 32%, transparent);
+  border-inline-start: 3px solid var(--amber);
+  border-radius: 12px;
+  overflow: hidden;
+}
+.tr-face {
+  flex: 1;
+  min-width: 0;
+  display: flex;
+  align-items: center;
+  gap: 11px;
+  padding: 10px 13px;
+  background: none;
+  border: 0;
+  font: inherit;
+  color: inherit;
+  text-align: inherit;
+  cursor: pointer;
+}
+.tr-face:disabled {
+  cursor: default;
+}
+.tr-face:focus-visible {
+  outline: 2.5px solid var(--amber);
+  outline-offset: -2px;
+}
+.tr-badge {
+  width: 32px;
+  height: 32px;
+  border-radius: 10px;
+  display: grid;
+  place-items: center;
+  font-size: 16px;
+  flex: 0 0 auto;
+  background: rgba(233, 166, 60, 0.14);
+}
+.tr-main {
+  flex: 1;
+  min-width: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 1px;
+}
+.tr-label {
+  font-size: 11px;
+  font-weight: 700;
+  color: var(--amber-deep);
+}
+.tr-title {
+  font-size: 13.5px;
+  font-weight: 700;
+  color: var(--ink);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.tr-time {
+  flex: 0 0 auto;
+  font-family: var(--font-mono);
+  font-size: 12.5px;
+  font-weight: 700;
+  color: var(--amber-deep);
+  white-space: nowrap;
+}
+.tr-nav {
+  flex: 0 0 auto;
+  align-self: center;
+  margin-inline-end: 10px;
+  padding: 6px 12px;
+  font: inherit;
+  font-size: 12px;
+  font-weight: 700;
+  color: var(--amber-deep);
+  background: rgba(233, 166, 60, 0.14);
+  border: 1px solid color-mix(in srgb, var(--amber) 30%, transparent);
+  border-radius: 9px;
+  cursor: pointer;
+}
 /* one segment per top-level block (ADR-0041): wide gaps between blocks; a
    cluster is a tight sub-tick bundle. NOT a time scale — the board owns that. */
 /* proportional time rail: window start (earliest) at the RTL right edge,

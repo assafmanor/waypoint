@@ -90,6 +90,37 @@ export function ambientEventsOnDate(events: TripEvent[], date: string): TripEven
   return events.filter((e) => isAmbient(e) && e.date <= date && date <= e.endDate!);
 }
 
+/** A bracketed booking's transition landing on `date` (ADR-0064): its start
+ *  (check-in / departure) when the event's own `date` is `date`, and/or its end
+ *  (check-out / arrival) when `endDate ?? date` is `date`. The single shared
+ *  derivation behind BOTH the Home glance markers and the day-screen transition
+ *  entries, so the two can never diverge. Reads `isBracketed` + the category
+ *  profile's `transitions` (ADR-0063); nothing is stored. */
+export interface BookingTransition {
+  event: TripEvent;
+  edge: 'start' | 'end';
+  /** The transition instant, in ms. */
+  atMs: number;
+  /** i18n transition key from the profile (`checkIn`/`departure`…). */
+  labelKey: string;
+}
+
+export function bookingTransitionsOnDate(events: TripEvent[], date: string): BookingTransition[] {
+  const out: BookingTransition[] = [];
+  for (const e of events) {
+    if (!isBracketed(e) || e.category == null) continue;
+    const trans = CATEGORY_TIME_PROFILE[e.category].transitions;
+    if (!trans) continue;
+    if (e.date === date && e.startsAt) {
+      out.push({ event: e, edge: 'start', atMs: Date.parse(e.startsAt), labelKey: trans.startKey });
+    }
+    if ((e.endDate ?? e.date) === date && e.endsAt) {
+      out.push({ event: e, edge: 'end', atMs: Date.parse(e.endsAt), labelKey: trans.endKey });
+    }
+  }
+  return out;
+}
+
 function itemEvents(item: TimeItem): TripEvent[] {
   return [item.event, ...item.children.flatMap(groupEvents)];
 }
@@ -195,39 +226,20 @@ export function buildDayGlance(
     return p === 'now' || p === 'upcoming';
   }).length;
 
-  // Transition markers (ADR-0054 amendment): every bracketed event touching this
-  // day contributes its start/end that lands on it — a same-day flight's
-  // departure + arrival (edge markers on its counted block) and an ambient
-  // hotel's check-in (its check-in day) / check-out (its check-out day). The
-  // ambient stay stays off the counted rail; marking a transition point is not
-  // counting a block.
-  const ambientToday = ambientEventsOnDate(events, activeDate);
-  const byId = new Map<string, TripEvent>();
-  for (const e of [...dayEvents, ...ambientToday]) if (isBracketed(e)) byId.set(e.id, e);
-  const markers: GlanceMarker[] = [];
-  for (const e of byId.values()) {
-    const trans = e.category != null ? CATEGORY_TIME_PROFILE[e.category].transitions : undefined;
-    if (!trans) continue;
-    const icon = e.icon ?? (e.category != null ? CATEGORY_DEFAULT_ICON[e.category] : '📌');
-    if (e.date === activeDate && e.startsAt) {
-      markers.push({
-        key: `${e.id}-s`,
-        frac: frac(startMsOf(e)),
-        labelKey: trans.startKey,
-        timeMs: startMsOf(e),
-        icon,
-      });
-    }
-    if ((e.endDate ?? e.date) === activeDate && e.endsAt) {
-      markers.push({
-        key: `${e.id}-e`,
-        frac: frac(endMsOf(e)),
-        labelKey: trans.endKey,
-        timeMs: endMsOf(e),
-        icon,
-      });
-    }
-  }
+  // Transition markers (ADR-0054 amendment) derive from the one shared function
+  // (ADR-0064) — every bracketed event's start/end that lands on this day: a
+  // same-day flight's departure + arrival (edge markers on its counted block),
+  // an ambient hotel's check-in / check-out (uncounted). Marking a transition
+  // point is not counting a block; the ambient stay stays off the counted rail.
+  const markers: GlanceMarker[] = bookingTransitionsOnDate(events, activeDate).map((tr) => ({
+    key: `${tr.event.id}-${tr.edge === 'start' ? 's' : 'e'}`,
+    frac: frac(tr.atMs),
+    labelKey: tr.labelKey,
+    timeMs: tr.atMs,
+    icon:
+      tr.event.icon ??
+      (tr.event.category != null ? CATEGORY_DEFAULT_ICON[tr.event.category] : '📌'),
+  }));
   markers.sort((a, b) => a.frac - b.frac);
 
   const nowFrac = nowMs >= windowStartMs && nowMs <= windowEndMs ? frac(nowMs) : null;
