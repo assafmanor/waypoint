@@ -77,6 +77,15 @@ The through-line: bookings are the trip's hard spine (ADR-0011), but the app pre
 - **Gate/terminal is not shown** — it isn't modeled today (`Booking.details` carries code/provider/route, no gate field), and real-data-only (ADR-0045) forbids faking it. If a gate/terminal field is added later it slots into the hero + detail with no change to this decision.
 - **In-transit vs hotel in-progress:** resolved — **one teal grammar, two placements** (see "Settled in the mockup" above).
 
+## Implemented (2026-07-18)
+
+Built in `frontend/src/lib/hero-booking.ts` (pure, unit-tested) + `Home.tsx`, with the shared grammar in `frontend/src/lib/transitions.ts` (transition labels + category badge tint) applied to the hero, the Index `BookingLi`, and `BookingDetail`.
+
+- **Window constants** (`hero-booking.ts`, tunable without a new ADR): `CHECKIN_GRACE_MIN = 120`, `CHECKOUT_LEAD_MIN = 180`, `ARRIVAL_EMPHASIS_MIN = 45`, and the previously-unfixed **departure lead `DEPARTURE_LEAD_MIN = 180`**. Check-in surfaces on its own check-in day up to the grace-after; check-out from the lead-before; a flight is departure-lead → `in-transit` → arrival-emphasis.
+- **`deriveHeroBooking(events, nowMs, today)`** returns the discriminated result the Home renders from (`transition-checkin`/`-checkout`/`-departure`/`-arrival` | `in-transit` | `none`).
+- **Ambient hotels are kept out of the now/next block selection once you've checked in** (`Home.tsx`: `deriveNow` runs on events minus checked-in ambient spans) so a mid-stay hotel can't hijack the hero; before check-in it stays in so it competes as the natural "next". **Check-out is an end-transition `deriveNow` can't produce**, so the hotel is offered as a next-candidate and the sooner of it / the regular next wins.
+- **In-transit fills the NOW slot** (teal identity + amber time-to-landing progress); the **mid-stay strip** is a slim dismissible teal strip above the hero, shown while the clock is inside a stay's span.
+
 ## Alternatives considered
 
 - **Keep the hotel on the hero across the whole stay** (the naive "make hotels span-aware on the hero"). Rejected: it dominates Now/Next for days with nothing actionable — the exact always-there blandness Assaf flagged.

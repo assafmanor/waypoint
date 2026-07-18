@@ -26,6 +26,12 @@ Implementation: `lib/glance.ts` emits **transition markers** (a marker kind on t
 
 The rest of this ADR (below) stands.
 
+## Implemented (2026-07-18)
+
+- The ambient discriminator is now `isAmbient(e)` (ADR-0063 profile + multi-day), applied in `lib/glance.ts` (`ambientEventsOnDate` + the `buildDayGlance` `sameDay` partition) and in the `DayView` / `PlanDay` day-event filters — replacing the bare `!e.endDate` check. A multi-day event of a non-ambient category (e.g. a sightseeing pass) therefore stays a counted block.
+- `buildDayGlance` now takes the full `events` + `activeDate` and emits `markers: GlanceMarker[]` alongside `segs`: for every bracketed event touching the day, its start/end that lands on that day (a same-day flight's departure + arrival edge markers on its counted block; an ambient hotel's check-in on its check-in day / check-out on its check-out day, uncounted; nothing on a middle night). The stay stays out of `buildTimeTree`, the window math, and `remaining`.
+- `Home.tsx` renders the markers as amber time-anchor chips in a dedicated lane (`.glance-marks`) positioned above the existing `.rail` block bar (a separate lane, not the mockup's nested `marks`/`bars` restructure — visually equivalent, minimal diff). The persistent stay signal remains the `day-ambient` backdrop in the day views.
+
 ## Context
 
 A hotel is one Event with `startsAt` = check-in and `endsAt` = check-out **days later**, plus `endDate` set (ADR-0047 §1 / `buildSpanSeed`). The day-at-a-glance rail (`lib/glance.ts`, ADR-0045) was built for same-day blocks and mishandles this on both ends (session 2026-07-17, `docs/planning/2026-07-17-session-27-index-post-build-issues.md`):

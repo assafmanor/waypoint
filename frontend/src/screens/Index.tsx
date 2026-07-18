@@ -10,7 +10,8 @@ import { useTrip } from '../state/trip-state';
 import { useClock } from '../lib/useClock';
 import { splitBookings, scheduleLabel, type BookingRow } from '../lib/index-bookings';
 import { placeName } from '../lib/places';
-import { BOOKING_TYPE_ICON, CODE_PREFIX } from '../constants';
+import { badgeClassForBookingType } from '../lib/transitions';
+import { BOOKING_TYPE_ICON, CODE_PREFIX, ICONS } from '../constants';
 import { BookingSheet } from '../ui/BookingSheet';
 import { BookingDetail, RouteLabel } from '../ui/BookingDetail';
 import { BookingManageSheet } from '../ui/BookingManageSheet';
@@ -153,6 +154,10 @@ function BookingLi({
 }) {
   const { booking, event } = row;
   const icon = event?.icon ?? BOOKING_TYPE_ICON[booking.type];
+  // Shared booking grammar (ADR-0059 §3): the badge is tinted by category (teal
+  // for a stay, amber for transport), and a hard booking wears the lock.
+  const badgeTint = badgeClassForBookingType(booking.type);
+  const isHard = event?.kind === 'hard';
 
   // A flex row (not a single button) so the "⋯" can sit alongside the tap-to-open
   // area, mirroring the document row (ADR-0052). Tap the body → detail view; the
@@ -165,10 +170,15 @@ function BookingLi({
         onClick={() => onOpen(booking)}
         aria-label={booking.title}
       >
-        <div className="badge2">{icon}</div>
+        <div className={'badge2' + (badgeTint ? ` ${badgeTint}` : '')}>{icon}</div>
         <div className="main">
           <div className="t">
             <BookingTitle booking={booking} places={places} />
+            {isHard && (
+              <span className="bk-lock" aria-hidden="true">
+                {ICONS.lock}
+              </span>
+            )}
             <span className="tag-type">{t.index.bookingType[booking.type]}</span>
           </div>
           <div className="m">

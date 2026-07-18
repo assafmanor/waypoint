@@ -10,6 +10,7 @@ import { NavArrow } from './NavArrow';
 import { placeName } from '../lib/places';
 import { formatTime } from '../lib/time';
 import { timingLabels } from '../lib/booking-timing';
+import { badgeClassForBookingType } from '../lib/transitions';
 import { BOOKING_TYPE_ICON, CODE_PREFIX, DEVICE_LOCALE } from '../constants';
 import { t } from '../i18n/he';
 
@@ -44,6 +45,8 @@ export function BookingDetail({
 
   const tz = trip.timezone;
   const icon = linkedEvent?.icon ?? BOOKING_TYPE_ICON[booking.type];
+  // Shared booking grammar (ADR-0059 §3): badge tinted by category.
+  const badgeTint = badgeClassForBookingType(booking.type);
   const wifi = booking.details?.wifi as Wifi | undefined;
   const room = booking.details?.room as string | undefined;
   const notes = booking.details?.notes as string | undefined;
@@ -72,7 +75,7 @@ export function BookingDetail({
         </div>
 
         <div className="bk-head">
-          <div className="bk-badge">{icon}</div>
+          <div className={'bk-badge' + (badgeTint ? ` ${badgeTint}` : '')}>{icon}</div>
           <div className="bk-headtext">
             <div className="bk-title">{isRoute ? <RouteLabel from={from} to={to} /> : heading}</div>
             <div className="bk-type">{t.index.bookingType[booking.type]}</div>

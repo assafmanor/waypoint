@@ -30,9 +30,10 @@ function ev(partial: Partial<TripEvent>): TripEvent {
 
 describe('buildDayGlance', () => {
   it('is empty when the day has no timed/skipped events', () => {
-    const g = buildDayGlance([], ms('12:00'), day07, day23, TZ);
+    const g = buildDayGlance([], DATE, ms('12:00'), day07, day23, TZ);
     expect(g.empty).toBe(true);
     expect(g.segs).toHaveLength(0);
+    expect(g.markers).toHaveLength(0);
   });
 
   it('places sequential events and counts only now+upcoming as remaining', () => {
@@ -42,7 +43,7 @@ describe('buildDayGlance', () => {
       ev({ id: 'b', startsAt: at('12:00'), endsAt: at('13:00') }), // now
       ev({ id: 'c', startsAt: at('15:00'), endsAt: at('16:00') }), // upcoming
     ];
-    const g = buildDayGlance(events, now, day07, day23, TZ);
+    const g = buildDayGlance(events, DATE, now, day07, day23, TZ);
     expect(g.empty).toBe(false);
     expect(g.segs).toHaveLength(3);
     expect(g.remaining).toBe(2); // b (now) + c (upcoming); a is done
@@ -56,7 +57,7 @@ describe('buildDayGlance', () => {
 
   it('stretches the window to an overnight end, not padded to 07:00', () => {
     const events = [ev({ id: 'party', startsAt: at('22:00'), endsAt: at('02:00', '2026-07-08') })];
-    const g = buildDayGlance(events, ms('23:30'), day07, day23, TZ);
+    const g = buildDayGlance(events, DATE, ms('23:30'), day07, day23, TZ);
     expect(g.windowStartMs).toBe(day07);
     expect(g.windowEndMs).toBe(ms('02:00', '2026-07-08')); // the actual end, not 07:00 next day
     expect(g.segs[0].nextDay).toBe(true);
@@ -69,7 +70,7 @@ describe('buildDayGlance', () => {
       ev({ id: 'keep', startsAt: at('15:00'), endsAt: at('16:00') }),
       ev({ id: 'drop', status: EVENT_STATUS.SKIPPED, startsAt: at('10:00'), endsAt: at('11:00') }),
     ];
-    const g = buildDayGlance(events, now, day07, day23, TZ);
+    const g = buildDayGlance(events, DATE, now, day07, day23, TZ);
     const skip = g.segs.find((s) => s.key === 'drop')!;
     expect(skip.phase).toBe('skipped');
     expect(g.remaining).toBe(1); // only the kept upcoming event
@@ -80,7 +81,7 @@ describe('buildDayGlance', () => {
       ev({ id: 'bar', startsAt: at('20:00'), endsAt: at('22:00') }),
       ev({ id: 'gig', startsAt: at('21:00'), endsAt: at('23:00') }),
     ];
-    const g = buildDayGlance(events, ms('12:00'), day07, day23, TZ);
+    const g = buildDayGlance(events, DATE, ms('12:00'), day07, day23, TZ);
     expect(g.segs).toHaveLength(1);
     expect(g.segs[0].composite).toBe(true);
     expect(g.segs[0].clusterLike).toBe(true);
@@ -94,7 +95,7 @@ describe('buildDayGlance', () => {
       ev({ id: 'lunch', startsAt: at('12:00'), endsAt: at('13:00') }),
       ev({ id: 'kayak', startsAt: at('14:00'), endsAt: at('15:00') }),
     ];
-    const g = buildDayGlance(events, ms('12:00'), day07, day23, TZ);
+    const g = buildDayGlance(events, DATE, ms('12:00'), day07, day23, TZ);
     expect(g.segs).toHaveLength(1);
     expect(g.segs[0].composite).toBe(true);
     expect(g.segs[0].clusterLike).toBe(false);
@@ -113,19 +114,21 @@ describe('buildDayGlance', () => {
       ev({ id: 'env', startsAt: at('13:00'), endsAt: at('19:00') }),
       ev({ id: 'kid', startsAt: at('14:00'), endsAt: at('15:00') }),
     ];
-    const g = buildDayGlance(events, ms('12:00'), day07, day23, TZ);
+    const g = buildDayGlance(events, DATE, ms('12:00'), day07, day23, TZ);
     const composites = g.segs.filter((s) => s.composite);
     expect(composites).toHaveLength(3);
     expect(composites.filter((s) => s.showCount)).toHaveLength(1); // only the wide envelope
     expect(composites.every((s) => s.composite)).toBe(true); // all still marked composite
   });
 
-  it('excludes an ambient-span event (endDate set) from the rail + remaining (ADR-0054)', () => {
+  it('excludes an ambient hotel span from the rail + remaining (ADR-0054/0063)', () => {
     const now = ms('12:30');
     const events = [
-      // a 4-night hotel checked in today: endsAt is days away, endDate set
+      // a 4-night hotel checked in today: endsAt is days away, endDate set,
+      // lodging category → isAmbient
       ev({
         id: 'hotel',
+        category: 'lodging',
         kind: EVENT_KIND.HARD,
         startsAt: at('15:00'),
         endsAt: at('11:00', '2026-07-11'),
@@ -134,7 +137,7 @@ describe('buildDayGlance', () => {
       ev({ id: 'b', startsAt: at('12:00'), endsAt: at('13:00') }), // now
       ev({ id: 'c', startsAt: at('15:00'), endsAt: at('16:00') }), // upcoming
     ];
-    const g = buildDayGlance(events, now, day07, day23, TZ);
+    const g = buildDayGlance(events, DATE, now, day07, day23, TZ);
     // The hotel neither distorts the window (no multi-day stretch) nor counts.
     expect(g.windowEndMs).toBe(day23);
     expect(g.segs.some((s) => s.key === 'hotel')).toBe(false);
@@ -142,8 +145,111 @@ describe('buildDayGlance', () => {
     expect(g.remaining).toBe(2); // b + c only — the hotel is backdrop
   });
 
-  it('finds ambient stays active on a date across their whole span (ADR-0054)', () => {
-    const hotel = ev({ id: 'hotel', date: '2026-07-07', endDate: '2026-07-10' });
+  it('marks a same-day flight departure + arrival as edge markers on its counted block', () => {
+    const events = [
+      ev({
+        id: 'flight',
+        category: 'transport',
+        kind: EVENT_KIND.HARD,
+        icon: '✈️',
+        startsAt: at('09:00'),
+        endsAt: at('11:00'),
+      }),
+    ];
+    const g = buildDayGlance(events, DATE, ms('08:00'), day07, day23, TZ);
+    // The same-day flight is a counted block AND carries two markers.
+    expect(g.segs.some((s) => s.key === 'flight')).toBe(true);
+    expect(g.remaining).toBe(1);
+    const keys = g.markers.map((m) => m.labelKey);
+    expect(keys).toEqual(['departure', 'arrival']); // sorted by clock position
+    const dep = g.markers.find((m) => m.labelKey === 'departure')!;
+    expect(dep.frac).toBeCloseTo(2 / 16, 5); // 09:00 is 2h into the 07:00 window
+    expect(dep.icon).toBe('✈️');
+  });
+
+  it('marks an ambient hotel check-in on its check-in day, uncounted', () => {
+    const events = [
+      ev({
+        id: 'hotel',
+        category: 'lodging',
+        icon: '🏨',
+        startsAt: at('15:00'),
+        endsAt: at('11:00', '2026-07-10'),
+        endDate: '2026-07-10',
+      }),
+      ev({ id: 'other', startsAt: at('10:00'), endsAt: at('11:00') }),
+    ];
+    const g = buildDayGlance(events, DATE, ms('09:00'), day07, day23, TZ);
+    expect(g.segs.some((s) => s.key === 'hotel')).toBe(false); // uncounted
+    expect(g.markers).toHaveLength(1);
+    expect(g.markers[0].labelKey).toBe('checkIn');
+    expect(g.markers[0].frac).toBeCloseTo(8 / 16, 5); // 15:00 → 8h into the window
+  });
+
+  it('marks an ambient hotel check-out on its check-out day (backdrop, not a block)', () => {
+    const checkoutDay = '2026-07-10';
+    const events = [
+      ev({
+        id: 'hotel',
+        category: 'lodging',
+        date: '2026-07-07',
+        startsAt: at('15:00', '2026-07-07'),
+        endsAt: at('11:00', checkoutDay),
+        endDate: checkoutDay,
+      }),
+      ev({
+        id: 'brunch',
+        date: checkoutDay,
+        startsAt: at('09:00', checkoutDay),
+        endsAt: at('10:00', checkoutDay),
+      }),
+    ];
+    const g = buildDayGlance(
+      events,
+      checkoutDay,
+      ms('08:00', checkoutDay),
+      ms('07:00', checkoutDay),
+      ms('23:00', checkoutDay),
+      TZ,
+    );
+    // On the check-out day the hotel is not a block, but its check-out is marked.
+    expect(g.segs.some((s) => s.key === 'hotel')).toBe(false);
+    expect(g.markers).toHaveLength(1);
+    expect(g.markers[0].labelKey).toBe('checkOut');
+  });
+
+  it('shows no rail marker on a middle night of a stay', () => {
+    const middle = '2026-07-08';
+    const events = [
+      ev({
+        id: 'hotel',
+        category: 'lodging',
+        date: '2026-07-07',
+        startsAt: at('15:00', '2026-07-07'),
+        endsAt: at('11:00', '2026-07-10'),
+        endDate: '2026-07-10',
+      }),
+      ev({ id: 'walk', date: middle, startsAt: at('10:00', middle), endsAt: at('11:00', middle) }),
+    ];
+    const g = buildDayGlance(
+      events,
+      middle,
+      ms('12:00', middle),
+      ms('07:00', middle),
+      ms('23:00', middle),
+      TZ,
+    );
+    expect(g.markers).toHaveLength(0);
+    expect(g.remaining).toBe(0); // walk already passed; hotel uncounted
+  });
+
+  it('finds ambient stays active on a date across their whole span (ADR-0054/0063)', () => {
+    const hotel = ev({
+      id: 'hotel',
+      category: 'lodging',
+      date: '2026-07-07',
+      endDate: '2026-07-10',
+    });
     const events = [hotel, ev({ id: 'plain', date: '2026-07-08' })];
     // check-in day, a middle night, checkout day → all covered; before/after not.
     expect(ambientEventsOnDate(events, '2026-07-07').map((e) => e.id)).toEqual(['hotel']);
@@ -153,12 +259,26 @@ describe('buildDayGlance', () => {
     expect(ambientEventsOnDate(events, '2026-07-06')).toHaveLength(0);
   });
 
+  it('does not treat a multi-day non-ambient event as ambient (profile-keyed)', () => {
+    // A multi-day sightseeing pass has no ambient profile → stays a counted block.
+    const pass = ev({
+      id: 'pass',
+      category: 'sightseeing',
+      date: '2026-07-07',
+      endDate: '2026-07-09',
+    });
+    expect(ambientEventsOnDate([pass], '2026-07-08')).toHaveLength(0);
+  });
+
   it('reports nowFrac only when now is inside the window', () => {
     const events = [ev({ startsAt: at('10:00'), endsAt: at('11:00') })];
-    expect(buildDayGlance(events, ms('12:00'), day07, day23, TZ).nowFrac).toBeCloseTo(5 / 16, 5);
+    expect(buildDayGlance(events, DATE, ms('12:00'), day07, day23, TZ).nowFrac).toBeCloseTo(
+      5 / 16,
+      5,
+    );
     // browsing a future day: now is before the window start
-    expect(buildDayGlance(events, ms('06:00'), day07, day23, TZ).nowFrac).toBeNull();
+    expect(buildDayGlance(events, DATE, ms('06:00'), day07, day23, TZ).nowFrac).toBeNull();
     // a past day: now is after the window end
-    expect(buildDayGlance(events, ms('23:30'), day07, day23, TZ).nowFrac).toBeNull();
+    expect(buildDayGlance(events, DATE, ms('23:30'), day07, day23, TZ).nowFrac).toBeNull();
   });
 });
