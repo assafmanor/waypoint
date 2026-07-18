@@ -110,8 +110,26 @@ export class DocumentsController {
     @Param('documentId') documentId: string,
     @Res() res: Response,
   ): Promise<void> {
-    const { buffer, mimeType } = await this.documents.getContent(tripId, documentId);
+    const { buffer, mimeType, title } = await this.documents.getContent(tripId, documentId);
+    // Always download, never inline-render: a document is caller-uploaded bytes with
+    // a caller-declared type, so serving it inline is a same-origin script-execution
+    // path (backend-review B-03). `nosniff` stops the browser from re-interpreting
+    // the bytes as a more dangerous type than declared.
     res.setHeader('Content-Type', mimeType);
+    res.setHeader('X-Content-Type-Options', 'nosniff');
+    res.setHeader('Content-Disposition', attachmentDisposition(title));
     res.send(buffer);
   }
+}
+
+/** RFC 6266/5987 `attachment` disposition. Titles are Hebrew (non-ASCII), so the
+ *  Unicode name rides `filename*` (percent-encoded, header-injection-safe by
+ *  construction) with an ASCII `filename` fallback. */
+function attachmentDisposition(title: string): string {
+  const asciiFallback =
+    title
+      .replace(/[^\x20-\x7e]/g, '_')
+      .replace(/["\\]/g, '_')
+      .trim() || 'document';
+  return `attachment; filename="${asciiFallback}"; filename*=UTF-8''${encodeURIComponent(title)}`;
 }

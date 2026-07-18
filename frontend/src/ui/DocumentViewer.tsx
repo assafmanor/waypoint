@@ -13,7 +13,7 @@ import {
   type PointerEvent as ReactPointerEvent,
 } from 'react';
 import { createPortal } from 'react-dom';
-import { type DocumentSummary } from '@waypoint/shared';
+import { isInlineOpenableDocumentMimeType, type DocumentSummary } from '@waypoint/shared';
 import { fetchDocumentContent } from '../lib/api';
 import { useOverlay } from '../state/nav-state';
 import { useDialogFocus } from '../lib/useDialogFocus';
@@ -254,6 +254,10 @@ export function DocumentViewer({
   useEffect(() => reset(), [url, reset]);
 
   const showInlineImage = doc.mimeType.startsWith('image/') && !imageBroken;
+  // Open-in-new-tab runs the blob: URL in the app origin, so only offer it for
+  // types the browser renders without executing script — PDF (B-03). Everything
+  // else is download-only.
+  const canOpenInTab = isInlineOpenableDocumentMimeType(doc.mimeType);
 
   return createPortal(
     <div className="doc-viewer" onClick={onClose}>
@@ -296,9 +300,11 @@ export function DocumentViewer({
               </div>
               <p className="doc-viewer-msg">{t.docs.viewer.handoff}</p>
               <div className="doc-viewer-actions">
-                <a className="dv-open" href={url} target="_blank" rel="noopener noreferrer">
-                  {t.docs.viewer.open}
-                </a>
+                {canOpenInTab && (
+                  <a className="dv-open" href={url} target="_blank" rel="noopener noreferrer">
+                    {t.docs.viewer.open}
+                  </a>
+                )}
                 <a className="dv-download" href={url} download={doc.title}>
                   {t.docs.viewer.download}
                 </a>

@@ -1,11 +1,12 @@
 import { randomUUID } from 'node:crypto';
-import { Injectable, NotFoundException } from '@nestjs/common';
+import { Injectable, NotFoundException, UnsupportedMediaTypeException } from '@nestjs/common';
 import { Prisma, type Document as PrismaDocument } from '@prisma/client';
-import type {
-  CreateDocumentInput,
-  DocumentSummary,
-  TripDocument,
-  UpdateDocumentInput,
+import {
+  isAllowedDocumentMimeType,
+  type CreateDocumentInput,
+  type DocumentSummary,
+  type TripDocument,
+  type UpdateDocumentInput,
 } from '@waypoint/shared';
 import { decryptAtRest, encryptAtRest } from '../common/crypto.util';
 import { DOC_ENCRYPTION_KEY, requireEnv } from '../common/env';
@@ -37,6 +38,17 @@ export interface UploadedFile {
   size: number;
 }
 
+/** Reject any upload outside the document allow-list before it is encrypted or
+ *  stored (backend-review B-03), so an executable "document" (HTML/SVG/XHTML)
+ *  never reaches storage and no orphan blob is written for a rejected type. */
+function assertAllowedMime(mimeType: string): void {
+  if (!isAllowedDocumentMimeType(mimeType)) {
+    throw new UnsupportedMediaTypeException({
+      error: { code: 'UNSUPPORTED_MEDIA_TYPE', message: `Unsupported file type: ${mimeType}` },
+    });
+  }
+}
+
 @Injectable()
 export class DocumentsService {
   constructor(
@@ -58,6 +70,7 @@ export class DocumentsService {
     input: CreateDocumentInput,
     file: UploadedFile,
   ): Promise<TripDocument> {
+    assertAllowedMime(file.mimetype);
     const id = input.id ?? randomUUID();
 
     // Idempotent re-POST (ADR-0018/0056): an offline-outbox flush can retry an
@@ -126,6 +139,7 @@ export class DocumentsService {
 
     let fileFields: { fileRef: string; mimeType: string; sizeBytes: number } | undefined;
     if (file) {
+      assertAllowedMime(file.mimetype);
       const fileRef = randomUUID();
       const encrypted = encryptAtRest(
         file.buffer.toString('base64'),
@@ -181,7 +195,7 @@ export class DocumentsService {
   async getContent(
     tripId: string,
     documentId: string,
-  ): Promise<{ buffer: Buffer; mimeType: string }> {
+  ): Promise<{ buffer: Buffer; mimeType: string; title: string }> {
     const document = await this.requireDocument(tripId, documentId);
     // The row exists but its blob may not (storage misconfigured, or a blob lost to
     // an ephemeral filesystem on redeploy — the failure mode ADR-0031's S3 choice
@@ -197,7 +211,11 @@ export class DocumentsService {
       requireEnv(DOC_ENCRYPTION_KEY),
       DOC_ENCRYPTION_KEY,
     );
-    return { buffer: Buffer.from(decrypted, 'base64'), mimeType: document.mimeType };
+    return {
+      buffer: Buffer.from(decrypted, 'base64'),
+      mimeType: document.mimeType,
+      title: document.title,
+    };
   }
 
   private async requireDocument(tripId: string, documentId: string): Promise<PrismaDocument> {

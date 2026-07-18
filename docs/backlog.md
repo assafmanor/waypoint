@@ -52,7 +52,6 @@ Full write-up + evidence in [reviews/frontend-architecture-review.md](reviews/fr
 Full write-up + evidence (incl. a reproduced concurrency probe) in [reviews/backend-architecture-review.md](reviews/backend-architecture-review.md). Nothing shipped yet. The **Revocable invite tokens** line under "Security & correctness" above is the same item as B-07.
 
 - **B-02 WS eviction on removal** (High) — `SyncGateway` authorizes membership only at upgrade; `removeMember` never closes the socket, so a removed member keeps receiving the trip's live changes. Add `disconnectUser(tripId,userId)` and call it from `removeMember`/`deleteTrip`.
-- **B-03 document inline-render / MIME** (High) — `/content` echoes a caller-controlled `Content-Type` with no `Content-Disposition`/`nosniff` and there's no upload allow-list, so an uploaded HTML/SVG "document" runs script in the app origin (co-traveler token theft). Send `attachment`+`nosniff`, allow-list MIME, download-not-open in the viewer.
 - **B-04 fail-fast config** (Med) — validate secrets/keys at startup and refuse to boot with `DEV_AUTH=1` under `NODE_ENV=production`.
 - **B-05 error envelope + date/timezone validation** (Med) — add a global exception filter emitting the documented `{error:{code}}` shape (guards/Prisma errors currently don't) and tighten `date`/`startsAt`/`timezone` in `packages/shared` so malformed input is a 400, not a 500.
 - **B-06 event cross-trip refs** (Med) — `events.service` writes client `bookingId`/`placeId` without trip-scoping (bookings already validate places); add the same check.
