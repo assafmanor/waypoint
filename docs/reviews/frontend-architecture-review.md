@@ -31,7 +31,9 @@ Waypoint's frontend is **unusually mature for its stage** and clearly built _for
 2. **Wrong event times for any trip not in Asia/Tokyo** via the quick-schedule verb (High) — F-02.
 3. **Silent data loss of a queued write with no user-visible sync failure** (High) — F-03.
 
-**Production-readiness:** **Not yet, but close.** For the intended tiny private group the app is largely usable today, but F-01 (privacy of stored passports across logout), F-02 (a whole class of trips get wrong times), and F-03 (invisible data loss) are all reachable on the happy path and should be fixed before broader use. None require a rewrite; all are localized.
+**Production-readiness:** **Not yet, but close.** F-01 (privacy of stored passports across logout), F-02 (a whole class of trips get wrong times), and F-03 (invisible data loss) are all reachable on the happy path and should be fixed before broader use. None require a rewrite; all are localized.
+
+> **Scope note (ADR-0065, merged after this review, PR #162):** ADR-0065 is docs-only — no production code changed, so every finding below stands verbatim. It does, however, correct the framing this review must be read against: **"~5" sizes a single trip's group, not the app**, which is a many-trip / many-user product held with a _grow-later_ (not small-by-design) posture. Under that lens the isolation gap **F-01 is reinforced, not softened** — a shared or rotating device across many users makes cross-session leakage a mainstream case, and ADR-0065 explicitly scopes ADR-0034's operator-trust reasoning (which underwrites persisting decrypted document blobs) to a _single self-hosted group_, so that persistence must not be treated as safe at app scale. Conversely, findings whose caveats rest on **per-trip** ~5-user scale (LWW conflict surface, in-process WS fan-out) remain proportionate — ADR-0065 keeps 0012/0019/0022 intact. Any "for the tiny private group" phrasing elsewhere in this document should be read as "per-trip group," never as an app-wide ceiling.
 
 ---
 
@@ -46,7 +48,7 @@ Waypoint's frontend is **unusually mature for its stage** and clearly built _for
 - Shared: `packages/shared/src/entities.ts` (contract shapes).
 - Build/CI: `package.json` (root + frontend), `turbo.json`, `.github/workflows/ci.yml`.
 
-**Documentation consulted:** `CLAUDE.md`, `README.md`, `docs/INDEX.md`, `architecture/overview.md`, `architecture/sync-and-offline.md`, and the ADR router (with targeted reads of ADRs referenced inline: 0011, 0016, 0018–0022, 0033, 0035, 0039, 0040, 0042, 0045, 0047/0048, 0055–0058, 0060, 0062). Mockups were treated as design reference only, not as authority over shipped docs.
+**Documentation consulted:** `CLAUDE.md`, `README.md`, `docs/INDEX.md`, `architecture/overview.md`, `architecture/sync-and-offline.md`, and the ADR router (with targeted reads of ADRs referenced inline: 0011, 0016, 0018–0022, 0033, 0035, 0039, 0040, 0042, 0045, 0047/0048, 0055–0058, 0060, 0062, and 0065 — the last read post-merge, PR #162). Mockups were treated as design reference only, not as authority over shipped docs.
 
 **Flows traced through code:** boot/auth resolution, create trip, join trip (incl. OAuth intent round-trip), active-trip resolution/switch, tab navigation + back model, event verbs (create/edit/delete/move/schedule/park + undo), booking create/edit/delete, document view online, document view offline (Cache-API read), offline write enqueue → cold reopen → reconnect flush, remote change fan-out, session expiry, and stale-cache-after-logout.
 
@@ -131,7 +133,7 @@ Ordered by severity. IDs are stable references.
 
 **F-01 — Local caches are not torn down on logout or session expiry (cross-session data leakage; decrypted passports persist)**
 
-- **Severity:** Critical · **Confidence:** High (mechanism) / Medium (exploit severity) · **Category:** security / data-isolation
+- **Severity:** Critical · **Confidence:** High (mechanism) / Medium→High (exploit severity, raised under ADR-0065's many-user scope) · **Category:** security / data-isolation
 - **Files/symbols:** `state/auth-state.tsx` `logout`, `setOnSessionExpired` callback; `lib/cache.ts` `clearTripCache` (only called on trip delete); `lib/doc-cache.ts` (no logout hook); `state/active-trip-id.tsx` `ACTIVE_TRIP_STORAGE_KEY`; `db.ts` tables.
 - **Observed behavior:** `logout()` calls `requestLogout()` + `setMe(null)` + `setStatus('anon')` + `clearCachedMe()`. Session expiry clears the token + cached `me`. **Neither clears** Dexie (`events`, `bookings`, `documents`, `snapshotMeta`, `tripList`, `outbox`), the Cache-API document blob store (`waypoint-doc-content-v1`), or `wp_active_trip_id`. `clearTripCache` runs only on explicit trip deletion.
 - **Why it matters:** The app stores **decrypted document bytes** (passports, insurance, visas — `DOCUMENT_TYPE`) in `CacheStorage` and full trip snapshots in IndexedDB. After sign-out these remain on disk indefinitely, readable via DevTools or by the next person to use the device. Worse, `fetchDocumentContent` consults `readCachedBlob` **before** any auth check, so a cached blob is returned with no live authorization. And `OutboxAutoFlush` flushes **every** trip's queue whenever _any_ user is `authed` — a write queued by user A can be POSTed under user B's session on the next login.
@@ -248,7 +250,7 @@ Ordered by severity. IDs are stable references.
 - **Severity:** Medium · **Confidence:** High · **Category:** accessibility (documented tradeoff)
 - **Files/symbols:** `index.html` viewport meta + the gesture-suppression script; ADR-0062.
 - **Observed behavior:** Pinch-zoom is suppressed everywhere except the image preview; the viewport meta blocks user scaling.
-- **Why it matters:** WCAG 1.4.4 (Resize Text) — low-vision users can't magnify the UI. This is an **explicit product decision** (ADR-0062), noted here for completeness and because it may bite if the app broadens beyond the private group. Not a bug.
+- **Why it matters:** WCAG 1.4.4 (Resize Text) — low-vision users can't magnify the UI. This is an **explicit product decision** (ADR-0062), noted here for completeness. Under ADR-0065's corrected scope (a many-user, grow-later app rather than a private group) this is more likely to bite a real user, so it's worth an explicit revisit rather than an indefinite deferral. Not a bug.
 - **Recommended change:** Revisit if accessibility scope widens; browser text-scaling via relative units is a partial mitigation. Keep as a conscious tradeoff otherwise.
 - **Scope:** n/a · **Priority:** Longer term (revisit)
 
@@ -394,7 +396,7 @@ Ordered by severity. IDs are stable references.
 
 These need product/backend/architecture input — they are **not** logged as frontend defects:
 
-1. **Shared-device expectations.** Is a single device ever shared by non-members (borrowed, sold, family)? The answer sets how aggressive F-01's teardown must be (wipe-on-logout vs. also encrypt-at-rest client-side). _Assumption used:_ passports/insurance warrant wipe-on-logout regardless.
+1. **Shared-device expectations.** Is a single device ever shared by non-members (borrowed, sold, family)? The answer sets how aggressive F-01's teardown must be (wipe-on-logout vs. also encrypt-at-rest client-side). _Assumption used:_ passports/insurance warrant wipe-on-logout regardless — and ADR-0065's many-user framing makes account switching on one device a mainstream case, not an edge one. ADR-0065 also flags that ADR-0034's operator-trust model (which underpins caching decrypted blobs) does **not** generalize past a single self-hosted group; if Waypoint ever hosts distrusting tenants, client-side document encryption (ADR-0015/0034 alternatives) becomes a prerequisite, not an option.
 2. **Failed-sync UX.** When a queued write is permanently rejected, should the app toast-and-drop, keep a retry/dead-letter list, or roll back visibly? (F-03 recommends _at least_ surfacing it.)
 3. **Conflict policy sufficiency.** Is row-level LWW with one-slot undo acceptable indefinitely at 5 users, or is a lightweight "someone else changed this" surface wanted? (Docs say LWW is intentional; confirming it's still the intent.)
 4. **Selected day in the URL.** Should the active day be deep-linkable / refresh-surviving (a route param) rather than in-memory? Trade-off: shareable day links vs. the current Home-anchored back model.
