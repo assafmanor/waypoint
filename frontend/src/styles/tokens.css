@@ -64,6 +64,10 @@ body,
      chaining to the page so the browser's native pull-to-refresh never fires
      (PWA feel). Scrolling inside .body is unaffected. */
   overscroll-behavior-y: contain;
+  /* ADR-0062: suppress double-tap zoom app-wide (pinch is handled in index.html;
+     the image preview opts back in via its own touch-action). manipulation still
+     allows panning + the day-strip pan-x scroll. */
+  touch-action: manipulation;
 }
 
 body {

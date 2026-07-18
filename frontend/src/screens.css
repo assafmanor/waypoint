@@ -4303,13 +4303,21 @@
   display: flex;
   align-items: center;
   justify-content: center;
-  overflow: auto;
+  /* Clip the transformed image to the frame (ADR-0062): the image zooms/pans via
+     transform, not native scroll, so hidden keeps the pan inside the viewer. */
+  overflow: hidden;
   background: var(--paper);
 }
 .doc-viewer-img {
   max-width: 100%;
   max-height: 100%;
   object-fit: contain;
+  /* ADR-0062: the one zoom exception. The pointer handler in DocumentViewer.tsx
+     owns pinch + pan, so the browser must not consume the gesture itself; the
+     transform-origin matches the handler's focal math. */
+  touch-action: none;
+  transform-origin: 0 0;
+  will-change: transform;
 }
 .doc-viewer-frame {
   width: 100%;
