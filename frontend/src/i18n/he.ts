@@ -31,6 +31,10 @@ export const t = {
     leavingIn: (phrase: string) => `יוצאים בעוד ${phrase}`,
     pendingSync: (count: number) => `${count} שינויים מחכים לסנכרון`,
     offlineNow: 'אופליין · נתונים שמורים',
+    // A queued write that the server rejected on flush (F-03) — real data loss if
+    // left silent. Tapping the badge dismisses it.
+    syncFailed: (count: number) =>
+      count === 1 ? 'שינוי אחד לא נשמר · הקישו לסגירה' : `${count} שינויים לא נשמרו · הקישו לסגירה`,
     // Day-scope context ribbon under the strip when viewing a non-today day in
     // Trip mode (ADR-0043 / ADR-0029), plus the one-tap way back to today.
     pastDay: 'יום שהיה · היסטוריה',

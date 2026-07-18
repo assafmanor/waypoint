@@ -29,6 +29,8 @@ import {
   deleteEvent,
   deleteMaybeItem,
   deleteTrip,
+  MOVE_CROSSES_DAY,
+  MOVE_INTO_PAST,
   moveEvent,
   removeMember,
   setEventStatus,
@@ -109,10 +111,63 @@ function setPendingCount(n: number): void {
 }
 
 /** Primes the in-memory count from IndexedDB so a queue left over from a
- *  previous session (closed while offline) shows up without a first mutation. */
+ *  previous session (closed while offline) shows up without a first mutation.
+ *  Sync failures are in-memory only (not persisted), so a fresh prime resets
+ *  them too — nothing has failed to sync yet this session. */
 export async function initOutboxCount(): Promise<void> {
   setPendingCount(await db.outbox.count());
+  clearSyncFailures();
 }
+
+// --- Failed-sync store (F-03): a queued write that hard-fails on flush with a
+// non-allowlisted 4xx is invisible data loss if dropped silently. Record it in a
+// persistent (session-lived) store — modeled on `pendingCount` — so the header
+// can surface "N changes couldn't be saved" and the mounted trip can reconcile
+// the phantom optimistic entity. ---
+export interface SyncFailure {
+  tripId: string;
+  verb: OutboxOp['verb'];
+  code?: string;
+}
+
+const failureListeners = new Set<Listener>();
+let syncFailures: SyncFailure[] = [];
+
+function emitSyncFailures(): void {
+  failureListeners.forEach((l) => l());
+}
+
+function recordSyncFailure(failure: SyncFailure): void {
+  syncFailures = [...syncFailures, failure];
+  emitSyncFailures();
+}
+
+export function subscribeSyncFailures(listener: Listener): () => void {
+  failureListeners.add(listener);
+  return () => {
+    failureListeners.delete(listener);
+  };
+}
+
+export function getSyncFailures(): SyncFailure[] {
+  return syncFailures;
+}
+
+/** Dismiss the recorded sync failures (user tapped the badge). */
+export function clearSyncFailures(): void {
+  if (syncFailures.length === 0) return;
+  syncFailures = [];
+  emitSyncFailures();
+}
+
+export function useSyncFailures(): SyncFailure[] {
+  return useSyncExternalStore(subscribeSyncFailures, getSyncFailures);
+}
+
+// Known-unfixable rejections that are safe to drop quietly: a time-move that was
+// valid when queued offline but has since gone stale. Retrying only makes it more
+// stale, and the user already saw the optimistic move — no failure to surface.
+const QUIET_DROP_CODES = new Set<string>([MOVE_INTO_PAST, MOVE_CROSSES_DAY]);
 
 export function subscribeOutboxCount(listener: Listener): () => void {
   listeners.add(listener);
@@ -301,12 +356,13 @@ async function runOp(tripId: string, op: OutboxOp): Promise<void> {
  *  unique-constraint hit as already applied — ADR-0018) so it needs no special
  *  handling here.
  *
- *  A 4xx rejection (e.g. MOVE_INTO_PAST — the target time was valid when
- *  queued offline but has since passed) can never succeed on retry: waiting
- *  longer only makes it more stale. Halting on it would wedge the whole queue
- *  forever behind an unfixable entry, so it's dropped instead and the flush
- *  continues (sync-and-offline.md "Conflicts on flush ... anything surprising
- *  is undoable"). */
+ *  A 4xx rejection can never succeed on retry, and halting on it would wedge the
+ *  whole queue forever behind an unfixable entry — so it's always dropped and the
+ *  flush continues. But dropping is only *silent* for a known-stale time-move
+ *  (MOVE_INTO_PAST / MOVE_CROSSES_DAY): every other 4xx (a rejected create/update,
+ *  a permission loss) is real, invisible data loss, so it's recorded as a sync
+ *  failure the header surfaces and the trip reconciles (F-03; sync-and-offline.md
+ *  "Conflicts on flush ... anything surprising is undoable"). */
 // Coalesce concurrent flushes of the same trip: the global reconnect flush and
 // a mounted trip's own reconnect handler can both fire on `online`, and running
 // two FIFO drains over the same queue would double-POST. Same tripId → same
@@ -338,6 +394,9 @@ async function doFlushOutbox(tripId: string): Promise<void> {
       await runOp(tripId, entry.op);
     } catch (err) {
       if (err instanceof ApiError && err.status >= 400 && err.status < 500) {
+        if (!err.code || !QUIET_DROP_CODES.has(err.code)) {
+          recordSyncFailure({ tripId, verb: entry.op.verb, code: err.code });
+        }
         await db.outbox.delete(entry.seq!);
         setPendingCount(pendingCount - 1);
         continue;
