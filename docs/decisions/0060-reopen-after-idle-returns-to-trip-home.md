@@ -23,7 +23,8 @@ So if you leave the app deep in the Index or on some past day and come back an h
 
 ## Consequences
 
-- **Frontend only, no data-model/backend change.** Extend the existing `visibilitychange` path (`trip-state.tsx:551-561`) or add a sibling in nav-state: record hidden-at on `hidden`; on `visible`, if `elapsed ≥ RESET_TO_HOME_AFTER_HIDDEN_MS` and `mode === 'trip'`, navigate to `?tab=home`, `setActiveDate(todayInTz(...))`, and clear the overlay stack. The Home-tab reset is already wired for the nav-bar tap (`App.tsx:351-354`); this reuses the same reset from the resume trigger.
+- **Frontend only, no data-model/backend change.** Record hidden-at on `hidden`; on `visible`, if `elapsed ≥ RESET_TO_HOME_AFTER_HIDDEN_MS` and `mode === 'trip'`, navigate to Home, `setActiveDate(todayInTz(...))`, and clear the overlay stack.
+- _As built:_ a **sibling `visibilitychange` listener in `App.tsx Shell`** — not in `trip-state.tsx` (its `mode` isn't visible there: `ModeProvider` is a child of `TripProvider`) nor in `nav-state.tsx` (which has no `setActiveDate`). Shell is where `navigate`, `setActiveDate`, `mode` and the overlay stack all converge. It uses `shouldResetToHomeOnResume(awayMs, mode)` + `RESET_TO_HOME_AFTER_HIDDEN_MS` (`nav-state.tsx`), `useCloseAllOverlays()`, and the same `shouldResetDayToToday` Home-landing reset the ADR-0035 refinement wired.
 - Composes with ADR-0035's day-to-today reset on back-to-Home (2026-07-18 refinement): both routes (gesture-back and idle-resume) now converge on "Home shows today."
 - The 30-second data resync still fires independently; a long idle triggers both a data catch-up and the nav reset.
 - **Edge:** resuming exactly at the boundary, or with the device clock changed across timezones, uses wall-clock elapsed since `hidden`; `todayInTz` already handles the trip timezone.
