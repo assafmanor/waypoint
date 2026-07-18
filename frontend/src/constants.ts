@@ -106,6 +106,13 @@ export const AUTH_INTENT_STORAGE_KEY = 'wp_auth_intent';
  *  so the join finishes on resume without a redundant second tap (ADR-0024). */
 export const JOIN_INTENT_STORAGE_KEY = 'wp_join_intent';
 
+/** The mid-stay strip the user last dismissed, as "<tripId>:<eventId>:<date>"
+ *  (ADR-0064 §A). Self-expiring: it suppresses the strip only while that exact
+ *  stay+day is showing, so the next night or the next hotel re-surfaces it.
+ *  Only one strip shows at a time, so a single stored value suffices.
+ *  Per-device, not synced (ADR-0021). */
+export const STAY_STRIP_DISMISS_STORAGE_KEY = 'wp_stay_strip_dismissed';
+
 export const TABS = [
   { id: 'home', icon: '🏠' },
   { id: 'map', icon: '🗺️' },

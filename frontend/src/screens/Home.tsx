@@ -33,7 +33,14 @@ import {
 import { buildDayGlance, ambientEventsOnDate } from '../lib/glance';
 import { deriveHeroBooking } from '../lib/hero-booking';
 import { transitionLabel } from '../lib/transitions';
-import { CODE_PREFIX, DAY_WINDOW, ICONS, MS_PER_DAY, type TabId } from '../constants';
+import {
+  CODE_PREFIX,
+  DAY_WINDOW,
+  ICONS,
+  MS_PER_DAY,
+  STAY_STRIP_DISMISS_STORAGE_KEY,
+  type TabId,
+} from '../constants';
 import { t } from '../i18n/he';
 
 /** The start transition label key for a bracketed upcoming event (ADR-0063). */
@@ -159,7 +166,19 @@ export function Home({ onNavigate }: { onNavigate?: (tab: TabId) => void }) {
     (e) =>
       e.startsAt && e.endsAt && Date.parse(e.startsAt) <= nowMs && nowMs < Date.parse(e.endsAt),
   );
-  const [stayDismissed, setStayDismissed] = useState(false);
+  // A dismiss persists across reload/navigation but self-expires on the next
+  // night or the next hotel: it is keyed to (trip + stay + day), and the strip
+  // is hidden only while the stored key still matches the one showing now.
+  const stayStripKey = stayNow ? `${trip.id}:${stayNow.id}:${activeDate}` : null;
+  const [dismissedStrip, setDismissedStrip] = useState(() =>
+    localStorage.getItem(STAY_STRIP_DISMISS_STORAGE_KEY),
+  );
+  const stayDismissed = stayStripKey != null && dismissedStrip === stayStripKey;
+  const dismissStay = () => {
+    if (!stayStripKey) return;
+    localStorage.setItem(STAY_STRIP_DISMISS_STORAGE_KEY, stayStripKey);
+    setDismissedStrip(stayStripKey);
+  };
   // Hard anchors matter individually, so this counts leaves, not blocks — the one
   // deliberate roots/leaves exception (ADR-0045).
   const hardAhead = sameDayEvents
@@ -209,7 +228,7 @@ export function Home({ onNavigate }: { onNavigate?: (tab: TabId) => void }) {
           <button
             type="button"
             className="ss-x"
-            onClick={() => setStayDismissed(true)}
+            onClick={dismissStay}
             aria-label={t.glance.dismissStay}
           >
             ✕
