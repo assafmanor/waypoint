@@ -9,7 +9,6 @@
 // a past day reads as a read-only archive (ADR-0029), editing gated to Plan.
 import { Fragment, useEffect, useRef, useState } from 'react';
 import {
-  CATEGORY_DEFAULT_ICON,
   EVENT_KIND,
   EVENT_STATUS,
   isAmbient,
@@ -36,19 +35,14 @@ import {
   type TimeItem,
 } from '../lib/time';
 import { nextSlot } from '../lib/gaps';
-import {
-  dayTransitions,
-  mergeDayEntries,
-  type DayEntry,
-  type TransitionEntry,
-} from '../lib/day-entries';
-import { transitionLabel } from '../lib/transitions';
+import { dayTransitions, mergeDayEntries, type DayEntry } from '../lib/day-entries';
 import { CODE_PREFIX, DELAY_STEP_MINUTES, ICONS, MS_PER_DAY } from '../constants';
 import { t } from '../i18n/he';
 import { TRIP_TZ_OFFSET, maybeMeta } from '../fixtures';
 import { EventForm } from '../ui/EventForm';
 import { BookingSheet } from '../ui/BookingSheet';
 import { BookingDetail } from '../ui/BookingDetail';
+import { TransitionRow } from '../ui/TransitionRow';
 import { Sheet } from '../ui/Sheet';
 import { TimePicker } from '../ui/TimePicker';
 import { Icon } from '../ui/Icon';
@@ -244,7 +238,13 @@ export function DayView() {
             {entry.kind === 'event' ? (
               <GroupNode group={entry.group} depth={0} ctx={dayCtx} />
             ) : (
-              <TransitionRow entry={entry} ctx={dayCtx} />
+              <TransitionRow
+                entry={entry}
+                tz={dayCtx.tz}
+                bookings={dayCtx.bookings}
+                onOpen={dayCtx.onOpenDetail}
+                onNavigate={dayCtx.readOnly ? undefined : dayCtx.verbs.navigate}
+              />
             )}
           </Fragment>
         ))}
@@ -355,47 +355,6 @@ function NowLine({ ref, now, tz }: { ref: React.Ref<HTMLDivElement>; now: Date; 
         <span className="nowline-lbl">{t.common.now}</span>
       </span>
       <span className="nowline-rule" />
-    </div>
-  );
-}
-
-// A per-day transition entry (ADR-0064 §B): a compact, read-only reference row
-// for one edge of a multi-day bracketed booking — badge + transition label
-// (from the profile, ADR-0063) + booking title + mono time, amber (time +
-// commitment). Tapping opens the read-only booking detail (ADR-0053), where
-// edit/delete live; it carries NO inline settle/skip/delay verbs (mutating half
-// a derived span is ambiguous). A start edge (check-in / departure) offers
-// Navigate — the one on-the-ground action that fits; an end edge is a plain
-// reference row. On a read-only past day it renders read-only (no Navigate).
-function TransitionRow({ entry, ctx }: { entry: TransitionEntry; ctx: DayCtx }) {
-  const { event, edge, atMs, labelKey } = entry;
-  const booking = event.bookingId ? ctx.bookings.find((b) => b.id === event.bookingId) : undefined;
-  const icon =
-    event.icon ?? (event.category != null ? CATEGORY_DEFAULT_ICON[event.category] : '📌');
-  return (
-    <div className="transition-row">
-      <button
-        type="button"
-        className="tr-face"
-        onClick={() => booking && ctx.onOpenDetail(booking)}
-        disabled={!booking}
-      >
-        <span className="tr-badge" aria-hidden="true">
-          {icon}
-        </span>
-        <span className="tr-main">
-          <span className="tr-label">{transitionLabel(labelKey)}</span>
-          <span className="tr-title">{event.title}</span>
-        </span>
-        <span className="tr-time" dir="ltr">
-          {formatTime(new Date(atMs), ctx.tz)}
-        </span>
-      </button>
-      {edge === 'start' && !ctx.readOnly && (
-        <button className="tr-nav" onClick={() => ctx.verbs.navigate(event)}>
-          {t.actions.navigate}
-        </button>
-      )}
     </div>
   );
 }

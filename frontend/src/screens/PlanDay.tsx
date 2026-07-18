@@ -42,11 +42,14 @@ import {
 } from '../lib/time';
 import { gapBetween, nextSlot, type GapDefaults } from '../lib/gaps';
 import { CODE_PREFIX, DEFAULT_MAYBE_ICON, ICONS, MS_PER_DAY, MINUTES_PER_HOUR } from '../constants';
-import { ambientEventsOnDate } from '../lib/glance';
+import { dayTransitions, mergeDayEntries, type DayEntry } from '../lib/day-entries';
+import type { BookingTransition } from '../lib/glance';
 import { t } from '../i18n/he';
 import { TRIP_TZ_OFFSET, maybeMeta } from '../fixtures';
 import { EventForm } from '../ui/EventForm';
 import { BookingSheet } from '../ui/BookingSheet';
+import { BookingDetail } from '../ui/BookingDetail';
+import { TransitionRow } from '../ui/TransitionRow';
 import { IconPicker } from '../ui/IconPicker';
 import { Icon } from '../ui/Icon';
 import { NavArrow } from '../ui/NavArrow';
@@ -81,6 +84,9 @@ export function PlanDay() {
   const [formTarget, setFormTarget] = useState<'new' | TripEvent | null>(null);
   // A booking-linked event edits through the merged BookingSheet (ADR-0053 §2).
   const [bookingTarget, setBookingTarget] = useState<Booking | null>(null);
+  // Tapping a transition row opens the read-only booking detail (ADR-0053/0064),
+  // the same pattern as the Trip-mode day view; editing from there opens the sheet.
+  const [detailTarget, setDetailTarget] = useState<Booking | null>(null);
   const [gapFill, setGapFill] = useState<GapDefaults | null>(null);
   // A shelf idea being scheduled onto a day — opens EventForm in "schedule" mode
   // so the user picks the day/time/kind (not the old hardcoded 17:30 dump).
@@ -102,9 +108,14 @@ export function PlanDay() {
         e.date === activeDate && (readOnly || e.status !== EVENT_STATUS.SKIPPED) && !isAmbient(e),
     )
     .sort(byStart);
-  // Ambient-span stays (a hotel, ADR-0054/0063): backdrop across their nights,
-  // not builder rows.
-  const ambientStays = ambientEventsOnDate(events, activeDate);
+  // Ambient-span stays (a hotel, ADR-0054/0063): backdrop, not builder rows. The
+  // strip now renders only on STRICTLY-MIDDLE nights (ADR-0064 §C, mirroring the
+  // Trip-mode day view): edge days show the transition entry instead, so no day
+  // shows the stay twice and the (wrong) checkout-day strip disappears. A 1-night
+  // stay has no middle day → no strip, just its two edge entries.
+  const middleStays = events.filter(
+    (e) => isAmbient(e) && e.date < activeDate && activeDate < e.endDate!,
+  );
   const stayNights = (e: TripEvent) =>
     Math.max(1, Math.round((Date.parse(e.endDate!) - Date.parse(e.date)) / MS_PER_DAY));
   const stayNight = (e: TripEvent) =>
@@ -112,6 +123,12 @@ export function PlanDay() {
       stayNights(e),
       Math.round((Date.parse(activeDate) - Date.parse(e.date)) / MS_PER_DAY) + 1,
     );
+
+  // Multi-day bracketed bookings (a hotel, a red-eye flight) are ambient — off
+  // `dayEvents` — so their edge days would show nothing in the list. Interleave
+  // their transition points (check-in/out, departure/arrival) among the builder
+  // groups by instant (ADR-0064 §B); same-day brackets stay a single span row.
+  const transitions = dayTransitions(events, activeDate);
 
   // Reorder acts on soft events only (hard events are pinned anchors, ADR-0011).
   const softEvents = dayEvents.filter((e) => e.kind === EVENT_KIND.SOFT);
@@ -170,6 +187,7 @@ export function PlanDay() {
       if (booking) setBookingTarget(booking);
       else setFormTarget(e);
     },
+    onOpenDetail: setDetailTarget,
     onGapFill: (fill) => setGapChoice(fill),
     onResolve: (cluster) => {
       setResolveCluster(cluster);
@@ -198,9 +216,9 @@ export function PlanDay() {
           </span>
         </div>
 
-        {ambientStays.length > 0 && (
+        {middleStays.length > 0 && (
           <div className="day-ambient">
-            {ambientStays.map((e) => (
+            {middleStays.map((e) => (
               <div className="ambient" key={e.id}>
                 <span className="ai" aria-hidden="true">
                   {e.icon ?? '🏨'}
@@ -212,14 +230,20 @@ export function PlanDay() {
           </div>
         )}
 
-        {dayEvents.length === 0 ? (
+        {dayEvents.length === 0 && transitions.length === 0 ? (
           <div className="builder-empty">{readOnly ? t.planDay.pastEmpty : t.planDay.empty}</div>
         ) : (
           <div>
             {/* Overlaps render as the concurrency forest (ADR-0041): nests for
                 containment, violet clusters for partial overlap. Gap chips sit
-                only between top-level groups — never inside an overlap. */}
-            <BuilderGroups groups={buildTimeTree(dayEvents)} depth={0} ctx={builderCtx} />
+                only between top-level groups — never inside an overlap.
+                Transition points interleave by instant at the top level (§B). */}
+            <BuilderGroups
+              groups={buildTimeTree(dayEvents)}
+              depth={0}
+              ctx={builderCtx}
+              transitions={transitions}
+            />
             {dayEvents
               .filter((e) => !e.startsAt)
               .map((e) => (
@@ -330,6 +354,17 @@ export function PlanDay() {
 
       {bookingTarget && (
         <BookingSheet booking={bookingTarget} onClose={() => setBookingTarget(null)} />
+      )}
+
+      {detailTarget && (
+        <BookingDetail
+          booking={detailTarget}
+          onClose={() => setDetailTarget(null)}
+          onEdit={(b) => {
+            setDetailTarget(null);
+            setBookingTarget(b);
+          }}
+        />
       )}
     </div>
   );
@@ -502,6 +537,8 @@ interface BuilderCtx {
     onPointerUp: () => void;
   };
   onEdit: (event: TripEvent) => void;
+  // Tapping a transition row opens the read-only booking detail (ADR-0064).
+  onOpenDetail: (booking: Booking) => void;
   onGapFill: (fill: GapDefaults) => void;
   onResolve: (cluster: TimeGroup) => void;
 }
@@ -536,36 +573,66 @@ function overlapSeam(items: TimeItem[], idx: number): string | undefined {
 
 // One sibling level: partial-overlap clusters get a violet "חופפים" box, lone
 // items render directly. Gap chips sit only between top-level groups (depth 0).
+// At depth 0 the day's multi-day-bracket transition points are interleaved by
+// instant (ADR-0064 §B) as read-only reference rows — they are not builder rows
+// (no grip/drag/⋯/edit, not a drop target), and they neither open nor close a
+// plannable gap, so gap chips stay computed between consecutive EVENT groups.
 function BuilderGroups({
   groups,
   depth,
   ctx,
+  transitions,
 }: {
   groups: TimeGroup[];
   depth: number;
   ctx: BuilderCtx;
+  transitions?: BookingTransition[];
 }) {
-  // The static now-reference sits at depth 0 only, above the first group that
-  // isn't fully behind "now" (falls after them all if every group is passed).
+  // The static now-reference sits at depth 0 only, above the first entry that
+  // isn't fully behind "now" (a transition point ends at its own instant); it
+  // falls after them all if every entry is passed.
   const nowRefMs = depth === 0 ? ctx.nowRefMs : null;
+  const entries = mergeDayEntries(groups, depth === 0 ? (transitions ?? []) : []);
+  const entryEndMs = (entry: DayEntry) =>
+    entry.kind === 'event' ? endMsOf(groupEndEvent(entry.group)) : entry.atMs;
   const nowRefIndex =
     nowRefMs === null
       ? -1
       : (() => {
-          const i = groups.findIndex((g) => endMsOf(groupEndEvent(g)) > nowRefMs);
-          return i === -1 ? groups.length : i;
+          const i = entries.findIndex((e) => entryEndMs(e) > nowRefMs);
+          return i === -1 ? entries.length : i;
         })();
+  // Gaps are measured between consecutive EVENT groups only — a transition point
+  // interleaved between two groups doesn't break their adjacency for gap-fill.
+  let prevEventGroup: TimeGroup | null = null;
   return (
     <>
-      {groups.map((g, i) => {
+      {entries.map((entry, i) => {
+        const nowRef =
+          i === nowRefIndex && nowRefMs !== null ? <NowRef ms={nowRefMs} tz={ctx.tz} /> : null;
+        if (entry.kind === 'transition') {
+          return (
+            <Fragment key={`${entry.event.id}-${entry.edge}`}>
+              {nowRef}
+              <TransitionRow
+                entry={entry}
+                tz={ctx.tz}
+                bookings={ctx.bookings}
+                onOpen={ctx.onOpenDetail}
+              />
+            </Fragment>
+          );
+        }
+        const g = entry.group;
         const gap =
-          depth === 0 && i > 0 && !ctx.readOnly
-            ? gapBetween(groupEndEvent(groups[i - 1]), groupStartEvent(g), ctx.tz)
+          depth === 0 && prevEventGroup && !ctx.readOnly
+            ? gapBetween(groupEndEvent(prevEventGroup), groupStartEvent(g), ctx.tz)
             : null;
+        prevEventGroup = g;
         const key = g.kind === 'cluster' ? `cl-${g.items[0].event.id}` : g.item.event.id;
         return (
           <Fragment key={key}>
-            {i === nowRefIndex && nowRefMs !== null && <NowRef ms={nowRefMs} tz={ctx.tz} />}
+            {nowRef}
             {gap && (
               <div className="gap">
                 <span className="gap-line" />
@@ -607,7 +674,7 @@ function BuilderGroups({
           </Fragment>
         );
       })}
-      {nowRefMs !== null && nowRefIndex === groups.length && <NowRef ms={nowRefMs} tz={ctx.tz} />}
+      {nowRefMs !== null && nowRefIndex === entries.length && <NowRef ms={nowRefMs} tz={ctx.tz} />}
     </>
   );
 }
