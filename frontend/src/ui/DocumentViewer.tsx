@@ -16,6 +16,7 @@ import { createPortal } from 'react-dom';
 import { type DocumentSummary } from '@waypoint/shared';
 import { fetchDocumentContent } from '../lib/api';
 import { useOverlay } from '../state/nav-state';
+import { useDialogFocus } from '../lib/useDialogFocus';
 import { Spinner } from './Spinner';
 import { t } from '../i18n/he';
 
@@ -219,6 +220,8 @@ export function DocumentViewer({
   onClose: () => void;
 }) {
   useOverlay(onClose);
+  const cardRef = useRef<HTMLDivElement>(null);
+  useDialogFocus(cardRef, onClose, { trap: true });
   const [url, setUrl] = useState<string | null>(null);
   const [failed, setFailed] = useState(false);
   // An image whose bytes the browser can't decode (HEIC, a corrupt scan) falls
@@ -255,6 +258,8 @@ export function DocumentViewer({
   return createPortal(
     <div className="doc-viewer" onClick={onClose}>
       <div
+        ref={cardRef}
+        tabIndex={-1}
         className="doc-viewer-card"
         role="dialog"
         aria-modal="true"

@@ -1,4 +1,4 @@
-import { useEffect, useRef, useState } from 'react';
+import { lazy, Suspense, useEffect, useRef, useState } from 'react';
 import {
   Navigate,
   Outlet,
@@ -39,16 +39,24 @@ import { Sheet } from './ui/Sheet';
 import { Icon } from './ui/Icon';
 import { NavArrow } from './ui/NavArrow';
 import { Home } from './screens/Home';
-import { PlanHome } from './screens/PlanHome';
-import { PlanDay } from './screens/PlanDay';
-import { DayView } from './screens/DayView';
-import { Index } from './screens/Index';
 import { Login } from './screens/Login';
 import { ZeroState } from './screens/ZeroState';
-import { AllTrips } from './screens/AllTrips';
-import { CreateTrip } from './screens/CreateTrip';
-import { JoinTrip } from './screens/JoinTrip';
-import { TripSettings } from './screens/TripSettings';
+// Code-split the non-first-paint surfaces (F-07): the boot path (auth, RootSurface,
+// Trip-mode Home) stays eager; the Plan surfaces, the Index (which pulls in the
+// document viewer + zoom math), and the full-page shell routes load on demand so
+// they stay out of the initial bundle — the exact win for weak connectivity abroad.
+const PlanHome = lazy(() => import('./screens/PlanHome').then((m) => ({ default: m.PlanHome })));
+const PlanDay = lazy(() => import('./screens/PlanDay').then((m) => ({ default: m.PlanDay })));
+const DayView = lazy(() => import('./screens/DayView').then((m) => ({ default: m.DayView })));
+const Index = lazy(() => import('./screens/Index').then((m) => ({ default: m.Index })));
+const AllTrips = lazy(() => import('./screens/AllTrips').then((m) => ({ default: m.AllTrips })));
+const CreateTrip = lazy(() =>
+  import('./screens/CreateTrip').then((m) => ({ default: m.CreateTrip })),
+);
+const JoinTrip = lazy(() => import('./screens/JoinTrip').then((m) => ({ default: m.JoinTrip })));
+const TripSettings = lazy(() =>
+  import('./screens/TripSettings').then((m) => ({ default: m.TripSettings })),
+);
 import { DevTimeTravel } from './dev/DevTimeTravel';
 import { getNow, useClock } from './lib/useClock';
 import { useShrinkToFit } from './lib/useShrinkToFit';
@@ -277,29 +285,33 @@ function Header({
           </button>
         </div>
       </div>
-      {offline && (
-        <div className="offline-badge">
-          {ICONS.offline} {t.header.offlineNow}
-        </div>
-      )}
-      {pendingCount > 0 && (
-        <div className="offline-badge">
-          {ICONS.sync} {t.header.pendingSync(pendingCount)}
-        </div>
-      )}
-      {syncFailures.length > 0 && (
-        <div
-          className="offline-badge"
-          role="button"
-          tabIndex={0}
-          onClick={() => clearSyncFailures()}
-          onKeyDown={(e) => {
-            if (e.key === 'Enter' || e.key === ' ') clearSyncFailures();
-          }}
-        >
-          {ICONS.warn} {t.header.syncFailed(syncFailures.length)}
-        </div>
-      )}
+      {/* Connectivity / sync status is a polite live region so a screen reader
+          announces going offline, queued writes, and failed syncs (F-10). */}
+      <div role="status" aria-live="polite">
+        {offline && (
+          <div className="offline-badge">
+            {ICONS.offline} {t.header.offlineNow}
+          </div>
+        )}
+        {pendingCount > 0 && (
+          <div className="offline-badge">
+            {ICONS.sync} {t.header.pendingSync(pendingCount)}
+          </div>
+        )}
+        {syncFailures.length > 0 && (
+          <div
+            className="offline-badge"
+            role="button"
+            tabIndex={0}
+            onClick={() => clearSyncFailures()}
+            onKeyDown={(e) => {
+              if (e.key === 'Enter' || e.key === ' ') clearSyncFailures();
+            }}
+          >
+            {ICONS.warn} {t.header.syncFailed(syncFailures.length)}
+          </div>
+        )}
+      </div>
       <div className="day-strip">
         {days.map((d) => (
           <div key={d.date} className="day-pill-wrap">
@@ -442,7 +454,9 @@ function Shell() {
         onOpenSettings={() => navigate(`/trip/${trip.id}/settings`)}
       />
       <main className="body" key={tab}>
-        <Screen tab={tab} onNavigate={goToTab} />
+        <Suspense fallback={<BootScreen text={t.shell.booting} />}>
+          <Screen tab={tab} onNavigate={goToTab} />
+        </Suspense>
       </main>
       <nav className="nav">
         {TABS.map((tabDef) => (
@@ -571,17 +585,26 @@ function RootSurface() {
 // its preview is a public endpoint and must render before any auth check —
 // the screen's own "Continue with Google" CTA is what saves the intent and
 // starts sign-in, not this eager gate.
-function AuthGate() {
+export function AuthGate() {
   const { status } = useAuth();
   const location = useLocation();
   const navigate = useNavigate();
   const isJoinRoute = location.pathname.startsWith('/join/');
+  // Whether a saved deep-link intent is still waiting to be resolved. Kept in
+  // React state (not a bare hasIntent() read at render time) so that *consuming*
+  // an intent always triggers a re-render that lifts this gate — even when the
+  // intent equals the current path and the effect therefore neither navigates
+  // nor changes any other state (the logout-from-"/" → login-back-to-"/" case).
+  // A non-reactive sessionStorage read here left the app frozen on the boot
+  // screen after logout+login until the tab was closed.
+  const [intentPending, setIntentPending] = useState(hasIntent);
 
   useEffect(() => {
     if (status === 'loading') return;
     if (status === 'anon') {
       if (location.pathname !== '/login' && !isJoinRoute) {
         saveIntent(location.pathname);
+        setIntentPending(true);
         navigate('/login', { replace: true });
       }
       return;
@@ -592,6 +615,7 @@ function AuthGate() {
     } else if (location.pathname === '/login') {
       navigate('/', { replace: true });
     }
+    setIntentPending(false);
   }, [status, location.pathname, navigate, isJoinRoute]);
 
   if (status === 'loading') return <BootScreen text={t.shell.booting} />;
@@ -606,22 +630,26 @@ function AuthGate() {
   // must not let RootSurface mount even for one render — its fetchTrips()
   // would see zero memberships (the join hasn't run yet) and flash ZeroState
   // before the effect above navigates to the real intent path.
-  if (location.pathname === '/login' || hasIntent()) return <BootScreen text={t.shell.booting} />;
+  if (location.pathname === '/login' || intentPending) return <BootScreen text={t.shell.booting} />;
   return <Outlet />;
 }
 
 function AppRoutes() {
+  // Suspense boundary for the lazily-loaded route screens (F-07). The fallback is
+  // the same boot screen the gate already uses, so a chunk fetch reads as booting.
   return (
-    <Routes>
-      <Route element={<AuthGate />}>
-        <Route path="login" element={<Login />} />
-        <Route path="trips" element={<AllTripsWithAccount />} />
-        <Route path="new" element={<CreateTrip />} />
-        <Route path="join/:token" element={<JoinTrip />} />
-        <Route path="trip/:id/settings" element={<TripSettingsRoute />} />
-        <Route path="*" element={<RootSurface />} />
-      </Route>
-    </Routes>
+    <Suspense fallback={<BootScreen text={t.shell.booting} />}>
+      <Routes>
+        <Route element={<AuthGate />}>
+          <Route path="login" element={<Login />} />
+          <Route path="trips" element={<AllTripsWithAccount />} />
+          <Route path="new" element={<CreateTrip />} />
+          <Route path="join/:token" element={<JoinTrip />} />
+          <Route path="trip/:id/settings" element={<TripSettingsRoute />} />
+          <Route path="*" element={<RootSurface />} />
+        </Route>
+      </Routes>
+    </Suspense>
   );
 }
 
