@@ -1,6 +1,6 @@
 # Architecture Overview
 
-**Status:** ACCEPTED (revised in the T-025 review — see `planning/2026-07-10-session-03-architecture-review.md` and ADR-0018/0019/0020/0021). Guiding constraint: **real multi-user collaboration must work in v1**, but we are **not building for scale** — we optimize for a handful of trips and ~5 users each, while keeping the design free of choices that would block scaling later.
+**Status:** ACCEPTED (revised in the T-025 review — see `planning/2026-07-10-session-03-architecture-review.md` and ADR-0018/0019/0020/0021). Guiding constraint: **real multi-user collaboration must work in v1**. We optimize the per-trip experience for a small group (~5 members each), while keeping the design free of choices that would block scaling to **many trips and many users**. We aren't production-scaled yet, but the posture is **grow-later**, not capped — "~5" sizes one trip's group, never the app (ADR-0065).
 
 ## Shape of the system
 
@@ -67,8 +67,10 @@
 - **Write offline:** soft edits queue locally and sync on reconnect (last-writer-wins with undo is acceptable at this size — see collaboration-model.md).
 - **Not offline in v1:** map tiles/navigation (deep-link to Google Maps, which handles its own offline), Gmail import, calendar push.
 
-## What "not for scale" means concretely
+## What "not yet scaled" means concretely
 
-- Fine to keep realtime simple (a hosted realtime service or a single-node websocket) rather than a horizontally-scaled bus.
-- Fine to run integration workers in-process on a timer rather than a distributed queue.
-- **But**: every record is keyed by `trip_id` and `user_id`, auth is real, and the schema is relational — so scaling later is an infra change, not a data-model rewrite.
+These are v1 conveniences we can grow past, not permanent caps (ADR-0065):
+
+- Fine _for now_ to keep realtime simple (a hosted realtime service or a single-node websocket) rather than a horizontally-scaled bus.
+- Fine _for now_ to run integration workers in-process on a timer rather than a distributed queue.
+- **But**: every record is keyed by `trip_id` and `user_id`, auth is real, and the schema is relational — so scaling later is an infra change, not a data-model rewrite. That bright line is non-negotiable: a simplification that's cheap to undo is fine, a choice that would force a data-model rewrite to grow is not.

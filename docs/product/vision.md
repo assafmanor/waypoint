@@ -4,7 +4,7 @@
 
 ## What we're building
 
-A web/app trip control-center for **private use** — for me and my travel companions (a group of ~5). Not a commercial product.
+A web/app trip control-center for groups traveling together. Each **trip** is a small group (~5 people); the **app** is meant to serve many trips and many users. It started as a private tool for me and my travel companions and stays invite-only — no public discovery or social layer — but that's a privacy choice, not a cap on how many people can use it. It isn't production-scaled yet; the ambition is to grow, and the architecture is kept free of choices that would block that (ADR-0065).
 
 ## The central insight
 

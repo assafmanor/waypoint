@@ -4,7 +4,7 @@ Guidance for Claude (and any coding agent) working in this repo. Read this first
 
 ## What this is
 
-**Waypoint** (working codename) is a private, small-group travel companion for ~5 friends traveling abroad — a **living visibility layer** for when you're on the ground ("what now / what next / what do I need in the next 30 minutes"), not a pre-trip planner. Not commercial, not built for scale, but architected so real multi-user collaboration works and scaling later isn't blocked.
+**Waypoint** (working codename) is a travel companion for small groups traveling abroad — a **living visibility layer** for when you're on the ground ("what now / what next / what do I need in the next 30 minutes"), not a pre-trip planner. Each **trip** is a small group (~5 people traveling together), but the **app** is built to serve many trips and many users — read "~5" as the size of one trip's group, never as a ceiling on the app. It's invite-only (no public discovery or social layer) and not production-scaled yet; the mindset is **grow-later** — real multi-user collaboration works today and nothing is designed to bake in a low-user-count cap (ADR-0065).
 
 ## Founding principle: document everything
 
