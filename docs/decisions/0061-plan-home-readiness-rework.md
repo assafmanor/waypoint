@@ -51,6 +51,12 @@ Assaf (2026-07-18): "כפתורי מסך הבית במצב תכנון 'מה חס
 - Design record + mockup (`mockups/plan-home-readiness-v1.html`, session 32) land first; implementation follows on its own change.
 - No data-model or backend change anticipated (all inputs already in the snapshot).
 
+### Implementation notes (built 2026-07-18)
+
+- `computeReadiness` now takes `destination`, `places`, `documents`, and `travelerIds` (replacing the bare `memberCount`). The flights check derives `hasOutbound`/`hasReturn` from each flight's `to`/`from` Place **name** vs the trip destination (case-insensitive, substring-tolerant so "Tokyo, Japan" reaches "Japan"); a flight with an unrecorded endpoint can't be confirmed, so it leaves the check open (the ADR's degradation clause). The documents check counts distinct travellers who own a `passport` doc; a group-owned passport (no `ownerUserId`) covers nobody.
+- Actionable CTAs reuse existing plumbing, no new form components: flight/lodging open the shared `BookingSheet` in create mode via a new optional `seed` prop (`{ type, origin?, dest? }`) — the flight row seeds the missing leg's destination endpoint; empty-day seeds the day builder on the first empty date; group navigates to the settings invite.
+- **Documents "breakdown on tap"** is the existing Index documents section: the row shows the `X מתוך N` rollup + a per-person dot indicator inline, and its CTA deep-links to `?tab=index&focus=docs` rather than opening a bespoke per-traveller popover (the docs list already is the breakdown). Missing-hard-commitment CTAs (flight/lodging) render in `--miss` as a status nudge; readiness stays advisory and gates nothing.
+
 ## Alternatives considered
 
 - **Leave the four checks as-is.** Rejected: Assaf asked to revisit both content and behavior, and the CTA-target notes are stale now that the screens are real.
