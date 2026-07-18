@@ -382,8 +382,10 @@ describe('buildScheduleEvent (F-02: quick-schedule builds instants in the trip t
     (timezone, activeDate) => {
       const trip = { id: 'trip-x', timezone };
 
-      const event = buildScheduleEvent(trip, activeDate, m, now);
+      const event = buildScheduleEvent(trip, activeDate, m, now, 'u-test');
 
+      // F-05: attribution is the passed-in user, never a fixture.
+      expect(event.updatedBy).toBe('u-test');
       expect(event.startsAt).toBe(zonedIso(activeDate, DEFAULT_SCHEDULE_SLOT.START, timezone));
       expect(event.endsAt).toBe(zonedIso(activeDate, DEFAULT_SCHEDULE_SLOT.END, timezone));
       // Regression guard: the old code interpolated a hardcoded +09:00 offset,
@@ -403,7 +405,7 @@ describe('buildScheduleEvent (F-02: quick-schedule builds instants in the trip t
       endsAt: '2026-07-16T11:00:00.000Z',
     };
 
-    const event = buildScheduleEvent(trip, '2026-07-15', m, now, fields);
+    const event = buildScheduleEvent(trip, '2026-07-15', m, now, 'u-test', fields);
 
     expect(event.startsAt).toBe(fields.startsAt);
     expect(event.endsAt).toBe(fields.endsAt);

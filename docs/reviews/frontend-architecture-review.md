@@ -134,7 +134,18 @@ Ordered by severity. IDs are stable references.
 > - **F-03 — Fixed.** Non-allowlisted 4xx flush failures are no longer dropped silently: they record a failed-sync entry (new `useSyncFailures` store), surface a dismissable Header badge, and trigger a snapshot resync so the phantom optimistic entity is reconciled. Only `MOVE_INTO_PAST`/`MOVE_CROSSES_DAY` still drop quietly.
 > - **F-04 — Fixed.** `openTripStream` gained bounded exponential-backoff reconnect (pure `reconnectDelay`), a ping heartbeat, and a no-frames watchdog; `trip-state` runs catch-up on reconnect via a shared `catchUp()`.
 >
-> Remaining findings below (F-05 onward: Medium/Low/Informational) are **not yet addressed**. Runtime browser verification of the fixes was not performed (no backend was booted — consistent with §2); coverage is the unit/integration suite plus the combined build.
+> **Medium tier (2026-07-18, follow-up branch; combined gate green — typecheck clean, 360 tests, build + lint + format pass; a `jsdom` + `@testing-library/react` harness was added):**
+>
+> - **F-05 — Fixed.** Optimistic `createdBy`/`updatedBy` now come from the signed-in user (`useAuth`) across the schedule/addMaybe/park verbs, the index booking/place verbs, and `EventForm`; the dead `glance`/`activeUserId` fixtures were dropped from `TripContext`.
+> - **F-06 — Fixed.** `setActiveDate` clamps against the reactive `trip` dates, not the boot snapshot, so a live admin date-edit and the day-strip agree.
+> - **F-07 — Fixed.** Route-level code-splitting: the Plan surfaces, Index, and full-page shell routes lazy-load behind `Suspense`; the single ~620 KB bundle is now a ~217 KB entry plus per-screen chunks.
+> - **F-08 — Fixed.** A shared `useDialogFocus` hook (focus-in, focus-restore, Escape-to-close, optional Tab-trap) wired into `Sheet` (focus/Escape only, so nested prompts still reach), `ConfirmDialog`, the trip-settings confirm, and the document viewer (trapped).
+> - **F-10 — Fixed.** The offline / pending-sync / failed-sync badges moved into a polite `aria-live` region.
+> - **F-09 — intentionally not changed.** App-wide zoom is an accepted product decision (ADR-0062), not a defect.
+>
+> **Post-review regression found & fixed (2026-07-18):** exercising the F-01 logout path surfaced a pre-existing **stuck-on-"טוען…" freeze after logout → login**. `AuthGate` gated its render on a non-reactive `hasIntent()` read; when a saved intent equalled the post-login path (logout from `/` → Google → back to `/`), consuming it triggered no re-render and the boot screen stuck until the tab was closed. Fixed by tracking intent resolution in React state; guarded by a jsdom test that renders `AuthGate` through that path (fails against the old gate). This was not one of the numbered findings — it was discovered while testing.
+>
+> Remaining open findings (F-11–F-15: Low/Informational) are not yet addressed. Runtime browser verification of the behavioral fixes was not performed (no backend booted — consistent with §2); coverage is the unit/integration suite plus the combined build.
 
 ### Critical
 

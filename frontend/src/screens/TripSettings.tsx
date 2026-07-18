@@ -4,7 +4,7 @@
 // broadcast + offline outbox) via the trip-state settings verbs. Mode-neutral
 // paper chrome (reached from both modes, outside the mode Shell). Design
 // reference: mockups/trip-settings-v1.html.
-import { useEffect, useState, type ReactNode } from 'react';
+import { useEffect, useRef, useState, type ReactNode } from 'react';
 import { useNavigate } from 'react-router-dom';
 import {
   DESTINATIONS,
@@ -15,6 +15,7 @@ import {
 import { useTrip } from '../state/trip-state';
 import { useAuth } from '../state/auth-state';
 import { useOverlay } from '../state/nav-state';
+import { useDialogFocus } from '../lib/useDialogFocus';
 import { IconPicker } from '../ui/IconPicker';
 import { Sheet } from '../ui/Sheet';
 import { useToast } from '../ui/Toast';
@@ -549,9 +550,13 @@ function Confirm({
   onCancel: () => void;
 }): ReactNode {
   useOverlay(onCancel);
+  const cardRef = useRef<HTMLDivElement>(null);
+  useDialogFocus(cardRef, onCancel, { trap: true });
   return (
     <div className="confirm-overlay" onClick={onCancel}>
       <div
+        ref={cardRef}
+        tabIndex={-1}
         className="confirm-card"
         role="alertdialog"
         aria-modal="true"

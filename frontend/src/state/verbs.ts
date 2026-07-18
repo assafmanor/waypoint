@@ -36,7 +36,7 @@ import { isoToTimeInput, zonedIso } from '../lib/time';
 import { planReorder } from '../lib/reorder';
 import { DEFAULT_MAYBE_ICON, DELAY_STEP_MINUTES, DEFAULT_SCHEDULE_SLOT, ICONS } from '../constants';
 import { t } from '../i18n/he';
-import { activeUserId } from '../fixtures';
+import { useAuth } from './auth-state';
 
 type ShowToast = ReturnType<typeof useToast>;
 
@@ -218,6 +218,7 @@ export function buildScheduleEvent(
   activeDate: string,
   m: MaybeItem,
   now: string,
+  userId: string,
   fields?: ScheduleFields,
 ): TripEvent {
   return {
@@ -238,7 +239,7 @@ export function buildScheduleEvent(
     source: EVENT_SOURCE.MAYBE_SHELF,
     createdAt: now,
     updatedAt: now,
-    updatedBy: activeUserId,
+    updatedBy: userId,
   };
 }
 
@@ -573,10 +574,15 @@ export async function applyUndo(deps: VerbDeps): Promise<void> {
 
 export function useVerbs() {
   const { dispatch, trip, events, ripple, activeDate } = useTrip();
+  const { me } = useAuth();
   const toast = useToast();
   const confirmHardEdit = useConfirmHardEdit();
   const lastAction = useRef<UndoDescriptor | null>(null);
   const deps: VerbDeps = { tripId: trip.id, dispatch, toast, lastAction, confirmHardEdit };
+  // Attribution for our own optimistic writes: the signed-in user, not a fixture.
+  // The server stamps the canonical author on reconcile; this is what a
+  // non-reconciled entity (a client-id maybe-item, an offline write) shows until then.
+  const authorId = me?.user.id ?? trip.updatedBy;
   const undo = () => void applyUndo(deps);
 
   return {
@@ -622,7 +628,7 @@ export function useVerbs() {
     // Trip-mode one-tap quick-schedule onto today at a default slot (Tier-1).
     schedule: (m: MaybeItem, fields?: ScheduleFields) => {
       const now = new Date(getNow()).toISOString();
-      const event = buildScheduleEvent(trip, activeDate, m, now, fields);
+      const event = buildScheduleEvent(trip, activeDate, m, now, authorId, fields);
       void applySchedule(deps, event, m.id);
       const timeLabel = event.startsAt ? isoToTimeInput(event.startsAt, trip.timezone) : null;
       toast(
@@ -641,11 +647,11 @@ export function useVerbs() {
         title: trimmed,
         icon: icon ?? DEFAULT_MAYBE_ICON,
         category,
-        createdBy: activeUserId,
+        createdBy: authorId,
         consumed: false,
         createdAt: now,
         updatedAt: now,
-        updatedBy: activeUserId,
+        updatedBy: authorId,
       };
       void applyAddMaybe(deps, item);
       toast(ICONS.add, t.toast.maybeAdded, undo);
@@ -664,11 +670,11 @@ export function useVerbs() {
         title: event.title,
         icon: event.icon,
         placeId: event.placeId,
-        createdBy: activeUserId,
+        createdBy: authorId,
         consumed: false,
         createdAt: now,
         updatedAt: now,
-        updatedBy: activeUserId,
+        updatedBy: authorId,
       };
       void applyPark(deps, event, item);
       toast(ICONS.toShelf, t.toast.movedToShelf, undo);

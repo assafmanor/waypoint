@@ -5,6 +5,7 @@ import { createContext, useCallback, useContext, useRef, useState, type ReactNod
 import type { TripEvent } from '@waypoint/shared';
 import { ICONS } from '../constants';
 import { useOverlay } from '../state/nav-state';
+import { useDialogFocus } from '../lib/useDialogFocus';
 import { t } from '../i18n/he';
 
 export type ConfirmHardEditAction = 'edit' | 'delete';
@@ -63,6 +64,8 @@ function ConfirmCard({
   onConfirm: () => void;
 }) {
   useOverlay(onCancel);
+  const cardRef = useRef<HTMLDivElement>(null);
+  useDialogFocus(cardRef, onCancel, { trap: true });
   const title = action === 'delete' ? t.confirm.hardDeleteTitle : t.confirm.hardEditTitle;
   const body =
     action === 'delete'
@@ -71,6 +74,8 @@ function ConfirmCard({
   return (
     <div className="confirm-overlay" onClick={onCancel}>
       <div
+        ref={cardRef}
+        tabIndex={-1}
         className="confirm-card"
         role="alertdialog"
         aria-modal="true"

@@ -13,6 +13,7 @@ import {
   type TripEvent,
 } from '@waypoint/shared';
 import { useTrip } from '../state/trip-state';
+import { useAuth } from '../state/auth-state';
 import { useVerbs } from '../state/verbs';
 import { getNow } from '../lib/useClock';
 import { zonedIso, isoToTimeInput, hardConflicts, formatTime, resolveEndIso } from '../lib/time';
@@ -37,7 +38,8 @@ export function EventForm({
   maybeItem?: MaybeItem | null;
   onClose: () => void;
 }) {
-  const { trip, activeDate, activeUserId, events } = useTrip();
+  const { trip, activeDate, events } = useTrip();
+  const { me } = useAuth();
   const verbs = useVerbs();
   const tz = trip.timezone;
 
@@ -136,7 +138,7 @@ export function EventForm({
         source: parsed.data.source ?? EVENT_SOURCE.MANUAL,
         createdAt: now,
         updatedAt: now,
-        updatedBy: activeUserId,
+        updatedBy: me?.user.id ?? trip.updatedBy,
       });
     }
     onClose();
