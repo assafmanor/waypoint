@@ -17,7 +17,7 @@ import { daysUntilStart, tripPhase } from '../lib/mode';
 import { dayCount, dayPhrase } from '../lib/hebrew';
 import { computeReadiness, type CheckId, type ReadinessCheck } from '../lib/readiness';
 import { BookingSheet, type BookingSeed } from '../ui/BookingSheet';
-import { TAB_PARAM } from '../state/nav-state';
+import { DocumentUploadSheet } from '../ui/DocumentUploadSheet';
 import { MS_PER_DAY, type TabId } from '../constants';
 import { t } from '../i18n/he';
 
@@ -67,6 +67,7 @@ export function PlanHome({ onNavigate }: { onNavigate: (tab: TabId) => void }) {
   // A create-form open seeded by a checklist CTA (null = closed). The row that
   // opened it decides the booking type (and, for a flight, the missing leg).
   const [sheetSeed, setSheetSeed] = useState<BookingSeed | null>(null);
+  const [uploadingDoc, setUploadingDoc] = useState(false);
   const [showCompleted, setShowCompleted] = useState(false);
 
   const total = dayNumberOf(trip.endDate, trip.startDate);
@@ -132,7 +133,7 @@ export function PlanHome({ onNavigate }: { onNavigate: (tab: TabId) => void }) {
   // Each check → its row copy + the one action that resolves it. Actionable CTAs
   // open the thing itself (ADR-0061): flight/lodging → the seeded create form,
   // empty-day → the day builder on the first empty day, group → the settings
-  // invite, documents → the Index documents section.
+  // invite, documents → the passport upload sheet.
   const rowFor = (check: ReadinessCheck): ChecklistRow => {
     const c = t.planHome.checklist;
     switch (check.id) {
@@ -160,7 +161,9 @@ export function PlanHome({ onNavigate }: { onNavigate: (tab: TabId) => void }) {
         return {
           icon: CHECK_ICON.lodging,
           title: c.lodgingTitle,
-          meta: check.done ? c.lodgingDoneMeta : c.lodgingMissingMeta,
+          meta: check.done
+            ? c.lodgingDoneMeta
+            : c.lodgingMissingMeta(check.count ?? 0, check.total ?? 0),
           cta: {
             label: c.addLodging,
             warn: true,
@@ -190,10 +193,7 @@ export function PlanHome({ onNavigate }: { onNavigate: (tab: TabId) => void }) {
             ? c.documentsDoneMeta
             : c.documentsMissingMeta(check.count ?? 0, check.total ?? 0),
           dots: { have: check.count ?? 0, total: check.total ?? 0 },
-          cta: {
-            label: c.uploadDocs,
-            onClick: () => navigate(`/?${TAB_PARAM}=index&focus=docs`),
-          },
+          cta: { label: c.uploadDocs, onClick: () => setUploadingDoc(true) },
         };
       case 'group':
         return {
@@ -346,6 +346,9 @@ export function PlanHome({ onNavigate }: { onNavigate: (tab: TabId) => void }) {
 
       {sheetSeed && (
         <BookingSheet booking={null} seed={sheetSeed} onClose={() => setSheetSeed(null)} />
+      )}
+      {uploadingDoc && (
+        <DocumentUploadSheet tripId={trip.id} onClose={() => setUploadingDoc(false)} />
       )}
     </>
   );

@@ -399,8 +399,9 @@ export const t = {
       flightsMissingOutboundMeta: 'יש טיסת חזור · חסרה טיסת הלוך',
       addFlight: 'הוסיפו טיסה',
       lodgingTitle: 'לינה',
-      lodgingDoneMeta: 'הוזמנה',
-      lodgingMissingMeta: 'עדיין לא הוזמנה',
+      lodgingDoneMeta: 'כל הלילות מכוסים',
+      lodgingMissingMeta: (covered: number, total: number) =>
+        `${covered} מתוך ${total} לילות מכוסים`,
       addLodging: 'הוסיפו לינה',
       itineraryDoneTitle: 'כל הימים מתוכננים',
       itineraryDoneMeta: 'אין ימים ריקים',
