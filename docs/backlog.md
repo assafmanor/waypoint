@@ -41,12 +41,11 @@ Decomposed to run simultaneously; disjoint file ownership (map in the session-29
 
 ## Frontend review follow-ups (open findings)
 
-Full write-up + evidence in [reviews/frontend-architecture-review.md](reviews/frontend-architecture-review.md) (F-01–F-04 shipped session 35; the below remain). Most relevant Mediums:
+Full write-up + evidence in [reviews/frontend-architecture-review.md](reviews/frontend-architecture-review.md). F-01–F-04 shipped session 35; F-05–F-08 + F-10 shipped session 36; F-09 is a deliberate non-fix (ADR-0062). Only the Low/Informational items remain:
 
-- **Real-user write attribution (F-05)** — optimistic `createdBy`/`updatedBy` use the `activeUserId` fixture (`u-assaf`), not the signed-in user; wrong until a resync for non-reconciled entities. Thread `me.user.id` through the verbs / index verbs and drop the dead `glance`/`activeUserId` from `TripContext`; move `fixtures.ts` off the production import graph.
-- **`activeDate` clamps against stale trip dates (F-06)** — `TripReady` clamps to the original snapshot's `startDate`/`endDate`, so after an admin edits the dates live the day-strip and the selectable range disagree. Clamp against the reactive `trip`.
-- **Route-level code-splitting (F-07)** — single ~620 KB JS bundle; lazy-load heavy non-first-paint surfaces (DocumentViewer, TripSettings, PlanDay, CreateTrip). Pair an SW update prompt with it (F-13).
-- **Dialog focus management (F-08)** + **status live-region (F-10)** — sheets/dialogs lack focus-trap/Escape; offline & pending-sync badges aren't announced to assistive tech.
+- **SW update prompt (F-13)** — now that code-splitting is in (F-07), pair `skipWaiting`/`clientsClaim` with a "new version, reload" prompt so a mid-session SW swap can't hand a client a stale lazy chunk.
+- **Self-host fonts (F-11)** — fonts load from the Google CDN, so they aren't precached (offline first paint uses a fallback) and add an external dependency; self-host the woff2 subset.
+- **Minor sync-robustness (F-12, F-14, F-15)** — flush loop for writes enqueued mid-flush; a `crypto.randomUUID` fallback for non-secure test hosts; derive the outbox pending-count from the store rather than a shared counter.
 
 ## Testing
 
