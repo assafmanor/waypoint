@@ -11,7 +11,9 @@ import {
   loadTripList,
   readCachedSnapshot,
   readCachedTripList,
+  wipeLocalData,
 } from './cache';
+import { ACTIVE_TRIP_STORAGE_KEY } from '../constants';
 
 const TRIP_ID = EVENTS[0].tripId;
 
@@ -316,5 +318,52 @@ describe('applyOutboxOpToCache (offline write-through)', () => {
     });
     const cached = await readCachedSnapshot(TRIP_ID);
     expect(cached?.places.find((p) => p.id === 'pl-offline')?.name).toBe('Offline place');
+  });
+});
+
+describe('wipeLocalData (sign-out / session loss, F-01)', () => {
+  const doc = (id: string): DocumentSummary => ({
+    id,
+    tripId: TRIP_ID,
+    type: 'passport',
+    title: id,
+    mimeType: 'application/pdf',
+    sizeBytes: 1,
+    createdAt: '2026-07-01T00:00:00.000Z',
+    updatedAt: '2026-07-01T00:00:00.000Z',
+    updatedBy: 'u-assaf',
+  });
+
+  it('clears every Dexie table, the active-trip pointer, and does not throw', async () => {
+    // The node test env has no localStorage; back it with a plain Map.
+    const store = new Map<string, string>();
+    vi.stubGlobal('localStorage', {
+      getItem: (k: string) => store.get(k) ?? null,
+      setItem: (k: string, v: string) => void store.set(k, v),
+      removeItem: (k: string) => void store.delete(k),
+    });
+
+    await cacheSnapshot(TRIP_ID, snapshot({ bookings: [], documents: [doc('d-1')] }));
+    await cacheTripList([trip({ id: TRIP_ID })]);
+    await db.outbox.add({
+      tripId: TRIP_ID,
+      op: { verb: 'delete', eventId: EVENTS[0].id, confirm: false },
+    });
+    localStorage.setItem(ACTIVE_TRIP_STORAGE_KEY, TRIP_ID);
+
+    // Sanity: the caches are actually populated before the wipe.
+    expect(await db.events.count()).toBeGreaterThan(0);
+    expect(await db.documents.count()).toBe(1);
+    expect(await db.outbox.count()).toBe(1);
+
+    await expect(wipeLocalData()).resolves.toBeUndefined();
+
+    expect(await db.events.count()).toBe(0);
+    expect(await db.bookings.count()).toBe(0);
+    expect(await db.documents.count()).toBe(0);
+    expect(await db.snapshotMeta.count()).toBe(0);
+    expect(await db.tripList.count()).toBe(0);
+    expect(await db.outbox.count()).toBe(0);
+    expect(localStorage.getItem(ACTIVE_TRIP_STORAGE_KEY)).toBeNull();
   });
 });
