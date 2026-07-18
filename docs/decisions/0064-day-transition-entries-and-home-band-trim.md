@@ -20,6 +20,7 @@ Both are refinements of the same domain (how a bracketed booking presents), so t
 
 - **The persistent ambient stay band does not render on the Home glance.** The hero already surfaces the stay at its **transition moments** (check-in / check-out) and the **in-transit** treatment for a flight (ADR-0059); the glance already draws the uncounted check-in/out **markers** (ADR-0054). The mid-stay identity does not need a fourth, always-on band competing with "what now / next."
 - **Any mid-stay treatment is gated strictly to _inside_ the stay span** — after check-in and before check-out. The observed pre-check-in display is a bug against ADR-0059's "inside a booking = where you are": before check-in you are _not_ in the stay, and the amber check-in transition owns that moment alone.
+- **Dismissing the mid-stay strip persists, scoped per (stay + day).** The strip's ✕ was an ephemeral in-memory boolean — it reset on every remount/reload and never actually held. It now persists (per-device `localStorage`, ADR-0021), keyed to `<tripId>:<eventId>:<activeDate>`, so a dismiss survives navigation but **self-expires on the next night (a new `activeDate`) or the next hotel (a new event id)** — the two moments the strip should legitimately return. Only one strip shows at a time, so a single stored last-dismissed key is enough; a stale key simply never matches again (no set to prune). Presentation stays derived (ADR-0043/0018); only the user's dismiss _intent_ is stored.
 
 ### B. Per-day transition entries for multi-day bracketed bookings (day screen)
 
