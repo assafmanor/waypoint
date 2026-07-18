@@ -6,6 +6,7 @@ import {
   NotFoundException,
   UnauthorizedException,
 } from '@nestjs/common';
+import { Prisma } from '@prisma/client';
 import type {
   Change,
   CreateTripInput,
@@ -308,25 +309,37 @@ export class TripsService {
     return trips.map((t) => toTripDto(t, t._count.memberships));
   }
 
+  /**
+   * A coherent baseline + cursor (ADR-0019). Read at RepeatableRead so all
+   * entity lists reflect one consistent snapshot, and read `latestSeq` FIRST so
+   * the cursor can only ever be stale-*low* relative to the entities — a client
+   * then harmlessly re-applies the extra change via `/changes` (idempotent). The
+   * inverse (cursor ahead of the entities) is B-01's data loss, and the
+   * write-side per-trip lock (ADR-0067) guarantees a visible `latestSeq` means
+   * every lower `seq` has already committed, so no entity it counts is missing.
+   */
   async getSnapshot(tripId: string): Promise<TripSnapshot> {
-    const [trip, members, events, bookings, documents, maybeItems, places, latestChange] =
-      await this.prisma.$transaction([
-        this.prisma.trip.findUniqueOrThrow({ where: { id: tripId } }),
-        this.prisma.membership.findMany({ where: { tripId }, include: { user: true } }),
-        this.prisma.event.findMany({
-          where: { tripId },
-          orderBy: [{ date: 'asc' }, { sortOrder: 'asc' }],
-        }),
-        this.prisma.booking.findMany({ where: { tripId } }),
-        this.prisma.document.findMany({ where: { tripId }, orderBy: { createdAt: 'asc' } }),
-        this.prisma.maybeItem.findMany({ where: { tripId } }),
-        this.prisma.place.findMany({ where: { tripId }, orderBy: { createdAt: 'asc' } }),
-        this.prisma.change.findFirst({
-          where: { tripId },
-          orderBy: { seq: 'desc' },
-          select: { seq: true },
-        }),
-      ]);
+    const [latestChange, trip, members, events, bookings, documents, maybeItems, places] =
+      await this.prisma.$transaction(
+        [
+          this.prisma.change.findFirst({
+            where: { tripId },
+            orderBy: { seq: 'desc' },
+            select: { seq: true },
+          }),
+          this.prisma.trip.findUniqueOrThrow({ where: { id: tripId } }),
+          this.prisma.membership.findMany({ where: { tripId }, include: { user: true } }),
+          this.prisma.event.findMany({
+            where: { tripId },
+            orderBy: [{ date: 'asc' }, { sortOrder: 'asc' }],
+          }),
+          this.prisma.booking.findMany({ where: { tripId } }),
+          this.prisma.document.findMany({ where: { tripId }, orderBy: { createdAt: 'asc' } }),
+          this.prisma.maybeItem.findMany({ where: { tripId } }),
+          this.prisma.place.findMany({ where: { tripId }, orderBy: { createdAt: 'asc' } }),
+        ],
+        { isolationLevel: Prisma.TransactionIsolationLevel.RepeatableRead },
+      );
 
     return {
       trip: toTripDto(trip),
