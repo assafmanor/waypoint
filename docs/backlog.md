@@ -39,6 +39,15 @@ Decomposed to run simultaneously; disjoint file ownership (map in the session-29
 - `lib/active-trip.ts:57` — overlapping in-progress trips are an explicitly deferred case.
 - `lib/time.ts:220` — a wall-clock input this can't resolve correctly.
 
+## Frontend review follow-ups (open findings)
+
+Full write-up + evidence in [reviews/frontend-architecture-review.md](reviews/frontend-architecture-review.md) (F-01–F-04 shipped session 35; the below remain). Most relevant Mediums:
+
+- **Real-user write attribution (F-05)** — optimistic `createdBy`/`updatedBy` use the `activeUserId` fixture (`u-assaf`), not the signed-in user; wrong until a resync for non-reconciled entities. Thread `me.user.id` through the verbs / index verbs and drop the dead `glance`/`activeUserId` from `TripContext`; move `fixtures.ts` off the production import graph.
+- **`activeDate` clamps against stale trip dates (F-06)** — `TripReady` clamps to the original snapshot's `startDate`/`endDate`, so after an admin edits the dates live the day-strip and the selectable range disagree. Clamp against the reactive `trip`.
+- **Route-level code-splitting (F-07)** — single ~620 KB JS bundle; lazy-load heavy non-first-paint surfaces (DocumentViewer, TripSettings, PlanDay, CreateTrip). Pair an SW update prompt with it (F-13).
+- **Dialog focus management (F-08)** + **status live-region (F-10)** — sheets/dialogs lack focus-trap/Escape; offline & pending-sync badges aren't announced to assistive tech.
+
 ## Testing
 
 - **e2e smoke** (Playwright) — conventions call for one; none exists. Boot the app, cross the tabs, assert each renders and the console is clean. Catches white-screen regressions unit tests miss.
