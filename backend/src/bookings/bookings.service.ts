@@ -260,7 +260,7 @@ export class BookingsService {
       tripId,
       type: input.type,
       title: input.title,
-      confirmationCode: input.confirmationCode,
+      confirmationCode: input.confirmationCode || null,
       provider: input.provider,
       placeId: input.placeId,
       fromPlaceId: input.fromPlaceId,
@@ -277,7 +277,10 @@ export class BookingsService {
     return {
       ...(input.type !== undefined && { type: input.type }),
       ...(input.title !== undefined && { title: input.title }),
-      ...(input.confirmationCode !== undefined && { confirmationCode: input.confirmationCode }),
+      // A present-but-empty code is an explicit clear (→ null); undefined leaves it untouched.
+      ...(input.confirmationCode !== undefined && {
+        confirmationCode: input.confirmationCode || null,
+      }),
       ...(input.provider !== undefined && { provider: input.provider }),
       ...(input.placeId !== undefined && { placeId: input.placeId }),
       ...(input.fromPlaceId !== undefined && { fromPlaceId: input.fromPlaceId }),

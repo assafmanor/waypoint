@@ -217,6 +217,45 @@ describe('BookingsService', () => {
     expect(updates.length).toBeGreaterThan(0);
   });
 
+  it('persists a confirmation code when editing a booking with a linked event (merged path)', async () => {
+    const tripId = await newTrip();
+    const booking = await service.create(tripId, DEV_USER, {
+      type: 'hotel',
+      title: 'Park Hyatt',
+      event: eventSeed(),
+    });
+
+    const updated = await service.update(tripId, booking.id, DEV_USER, {
+      confirmationCode: 'HOTEL-9',
+      event: eventSeed(),
+    });
+
+    expect(updated.confirmationCode).toBe('HOTEL-9');
+    const persisted = await prisma.booking.findUnique({ where: { id: booking.id } });
+    expect(persisted?.confirmationCode).toBe('HOTEL-9');
+  });
+
+  it('clears the confirmation code when edited to empty (merged path)', async () => {
+    const tripId = await newTrip();
+    const booking = await service.create(tripId, DEV_USER, {
+      type: 'hotel',
+      title: 'Park Hyatt',
+      confirmationCode: 'GRB-88',
+      event: eventSeed(),
+    });
+
+    // An empty string is the sheet's explicit "clear" intent — it must null the
+    // column, not be treated as "leave unchanged" (undefined) nor stored as ''.
+    const updated = await service.update(tripId, booking.id, DEV_USER, {
+      confirmationCode: '',
+      event: eventSeed(),
+    });
+
+    expect(updated.confirmationCode).toBeUndefined();
+    const persisted = await prisma.booking.findUnique({ where: { id: booking.id } });
+    expect(persisted?.confirmationCode).toBeNull();
+  });
+
   it('rejects a place that does not belong to the trip', async () => {
     const tripId = await newTrip();
     await expect(
