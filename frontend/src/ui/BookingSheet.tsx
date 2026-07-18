@@ -162,7 +162,10 @@ export function BookingSheet({
         : buildEventSeed({ date, start, end, kind, icon, category }, trip.timezone);
       const base = {
         title: finalTitle,
-        confirmationCode: code.trim() || undefined,
+        // Send the trimmed value even when empty: an empty string is the explicit
+        // "clear the code" intent (undefined would be dropped by JSON.stringify and
+        // read as "leave unchanged"). The backend normalizes empty → null.
+        confirmationCode: code.trim(),
         details,
         event,
       };
