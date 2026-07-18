@@ -1,6 +1,6 @@
 # 0060 — Reopening the app after an idle stretch returns to the trip Home (today)
 
-**Status:** Proposed
+**Status:** Accepted (Assaf sign-off 2026-07-18)
 **Date:** 2026-07-18
 **Refines:** [0033](0033-all-trips-home.md) (the live-trip landing rule this extends to warm resume), [0024](0024-app-shell-and-trip-lifecycle.md) (app shell & routing / initial landing), [0035](0035-in-app-back-and-return-gesture.md) (the Home anchor + the day-strip-to-today reset this reuses)
 

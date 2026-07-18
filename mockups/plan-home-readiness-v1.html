@@ -262,7 +262,7 @@
       }
       .ready .fill {
         height: 100%;
-        width: 40%;
+        width: 20%;
         background: linear-gradient(90deg, rgba(255, 255, 255, 0.82), #fff);
         border-radius: 6px;
       }
@@ -570,7 +570,7 @@
               <div class="count">12 <small>ימים</small></div>
               <div class="dates">03–12 · אוקטובר ׳26 · 10 ימים</div>
               <div class="ready">
-                <div class="rt"><span>מוכנות הטיול</span><b>40%</b></div>
+                <div class="rt"><span>מוכנות הטיול</span><b>20%</b></div>
                 <div class="track"><div class="fill"></div></div>
               </div>
             </div>
@@ -578,16 +578,28 @@
             <!-- what's missing — reworked check set (incomplete first) -->
             <div class="sec-title">
               מה חסר להשלמה
-              <button class="toggle" id="doneToggle">הצג שהושלמו (2)</button>
+              <button class="toggle" id="doneToggle">הצג שהושלמו (1)</button>
             </div>
             <div class="check">
+              <div class="ci">
+                <div class="ic">✈️</div>
+                <div class="main">
+                  <div class="t">טיסות</div>
+                  <div class="m">יש טיסת הלוך · חסרה טיסת חזור</div>
+                </div>
+                <button class="cta warn" onclick="toast('פותח טופס יצירת טיסה · כיוון חזור')">
+                  הוסיפו טיסה
+                </button>
+              </div>
               <div class="ci">
                 <div class="ic">🏨</div>
                 <div class="main">
                   <div class="t">לינה בקיוטו</div>
                   <div class="m">3 לילות · עדיין לא הוזמן</div>
                 </div>
-                <button class="cta warn" onclick="toast('פותח הזמנת לינה')">הוסיפו לינה</button>
+                <button class="cta warn" onclick="toast('פותח טופס יצירת לינה')">
+                  הוסיפו לינה
+                </button>
               </div>
               <div class="ci">
                 <div class="ic">📅</div>
@@ -615,18 +627,9 @@
             <!-- completed — collapsed by default into a summary -->
             <div class="done-sum" id="doneSum">
               <span class="ok">✓ הושלמו</span>
-              <span class="pill">✈️ טיסות</span>
               <span class="pill">👥 הקבוצה</span>
             </div>
             <div class="check done-list" id="doneList" style="margin-top: 9px">
-              <div class="ci">
-                <div class="ic">✈️</div>
-                <div class="main">
-                  <div class="t">טיסות</div>
-                  <div class="m">הלוך ושוב · הוזמנו</div>
-                </div>
-                <div class="st">✓ הושלם</div>
-              </div>
               <div class="ci">
                 <div class="ic">👥</div>
                 <div class="main">
@@ -666,7 +669,7 @@
           <div class="row">
             <span class="ico">🏨</span
             ><span
-              ><b>לינה</b> · קיימת הזמנת מלון? → פותח את יצירת ההזמנה
+              ><b>לינה</b> · קיימת הזמנת מלון? → פותח את <b>טופס יצירת הלינה</b> (סוג=מלון)
               <span class="tag keep">קיים</span></span
             >
           </div>
@@ -680,8 +683,9 @@
           <div class="row">
             <span class="ico">✈️</span
             ><span
-              ><b>טיסות</b> · קיימת הזמנת טיסה? → יצירת הזמנה
-              <span class="tag keep">קיים</span></span
+              ><b>טיסות</b> · <b>הלוך וחזור</b> — מושלם רק עם טיסה ליעד (הלוך) וטיסה מהיעד (חזור); →
+              פותח את <b>טופס יצירת הטיסה</b> (סוג=טיסה, כיוון חסר)
+              <span class="tag keep">קיים+</span></span
             >
           </div>
           <div class="row">
@@ -719,6 +723,10 @@
           <h3>הוחלט (אסף, 2026-07-18)</h3>
           <div class="notes">
             <span class="q">✓</span> בדיקה חדשה: <b>מסמכים/דרכונים</b> בלבד; קודי-אישור ירד. <br />
+            <span class="q">✓</span> כל כפתור פותח את <b>הטופס הספציפי</b> (לינה→טופס לינה,
+            טיסה→טופס טיסה). <br />
+            <span class="q">✓</span> טיסות: מושלם רק עם <b>הלוך + חזור</b> (טיסה ליעד וטיסה מהיעד).
+            <br />
             <span class="q">✓</span> המוכנות <b>מייעצת</b> בלבד, לא חוסמת את מעבר ה"צאו לדרך".
             <br />
             <span class="q">✓</span> בדיקות שהושלמו <b>מכווצות</b> לסיכום. <br />
@@ -752,7 +760,7 @@
       doneToggle.addEventListener('click', () => {
         const showing = doneList.classList.toggle('show');
         doneSum.classList.toggle('hide', showing);
-        doneToggle.textContent = showing ? 'כווץ שהושלמו' : 'הצג שהושלמו (2)';
+        doneToggle.textContent = showing ? 'כווץ שהושלמו' : 'הצג שהושלמו (1)';
       });
     </script>
   </body>

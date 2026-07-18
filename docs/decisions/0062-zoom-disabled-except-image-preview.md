@@ -1,6 +1,6 @@
 # 0062 — Zoom is disabled app-wide, except inside the image preview
 
-**Status:** Proposed
+**Status:** Accepted (Assaf sign-off 2026-07-18)
 **Date:** 2026-07-18
 **Refines:** [0007](0007-platform-pwa.md) (installed, app-like PWA), [0017](0017-mobile-first-device-targets.md) (mobile-first, touch-first — the layout is already responsive, so page zoom is unwanted), [0052](0052-document-lifecycle-view-manage-and-feedback.md) (the document/image viewer that becomes the one zoom exception)
 

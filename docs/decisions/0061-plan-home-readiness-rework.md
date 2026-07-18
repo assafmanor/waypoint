@@ -36,6 +36,14 @@ Assaf (2026-07-18): "כפתורי מסך הבית במצב תכנון 'מה חס
 - **Readiness stays advisory** — a nudge, never a blocker; it does **not** gate the go-live mode switch.
 - **Left out** (no data/feature, ADR-0045/0004): Google-connection, Gmail import, WhatsApp reminder.
 
+## Refinement (2026-07-18, Assaf) — type-specific CTA targets + flights = round-trip
+
+- **Each actionable row's CTA opens the type-specific create form, pre-set** — not a generic "add booking." The 🏨 lodging row opens the **create-lodging** form (booking type = hotel); the ✈️ flights row opens the **create-flight** form (booking type = flight, seeded with the missing direction where known). The row already knows which type is missing, so it seeds the form. (📅 empty-day → the day builder on the first empty day; 👥 group → the settings invite — unchanged.)
+- **The flights check is round-trip aware.** It is complete only when there is **at least one flight to the destination (outbound) _and_ at least one flight from the destination (return)** — "a way in and a way out." A single one-way flight leaves the check **open**, with copy naming the missing leg ("יש טיסת הלוך · חסרה טיסת חזור") and a CTA that opens the create-flight form for that direction. Derived from flight bookings' origin/destination `Place` FKs (ADR-0048/0051): an outbound leg's destination is the trip destination, a return leg's origin is the trip destination. "Source"/home need not be stored — only that a leg lands at the destination and a leg leaves it.
+- **Degradation until the Place-picker lands** (backlog; direction rests on name-only Places today): if a flight's origin/destination isn't recorded, the check can't confirm that leg, so it **stays open** — conservatively nudging the traveller to record both legs rather than falsely reading "done." Revisit if that proves too strict in practice.
+
+`readiness.ts`: the `flights` check reads flight bookings' origin/destination Places and requires both directions (a small pure predicate, unit-tested). `PlanHome.tsx`: each CTA passes the target booking type (and, for the return flight, the direction) into the create form.
+
 ## Consequences
 
 - `lib/readiness.ts` (new/changed pure checks + a unit test per check, matching `readiness.test.ts`) and `screens/PlanHome.tsx` (row behavior/CTAs), plus `i18n/he.ts` copy (no em dashes; `·` for separators).
