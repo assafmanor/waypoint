@@ -16,10 +16,9 @@
 // this path as the deep-link intent and starts OAuth; AuthGate resumes here
 // afterwards, CTA now reading "Join" — still one explicit tap, not automatic.
 //
-// "Already a member" isn't pre-detected — GET /invites/:token returns no
-// tripId to match against memberships. POST /trips/join/:token is idempotent
-// (rejoin keeps the role, api-contract.md), so Join lands an existing member
-// straight into the trip too.
+// An authed visitor already in this trip is redirected straight in (ADR-0067):
+// GET /invites/:code now returns tripId, so we can match it against memberships
+// instead of showing the "you're invited" ticket to an existing member.
 import { useCallback, useEffect, useState } from 'react';
 import { useNavigate, useParams } from 'react-router-dom';
 import type { InvitePreview } from '@waypoint/shared';
@@ -27,7 +26,13 @@ import { useAuth } from '../state/auth-state';
 import { useActiveTripId } from '../state/active-trip-id';
 import { useIsOffline } from '../lib/outbox';
 import { getNow } from '../lib/useClock';
-import { ApiError, fetchInvitePreview, joinTrip } from '../lib/api';
+import {
+  ApiError,
+  fetchInvitePreview,
+  isInviteExpiredError,
+  isRemovedFromTripError,
+  joinTrip,
+} from '../lib/api';
 import { consumeJoinIntent, saveIntent, saveJoinIntent } from '../lib/intent';
 import { dayCount } from '../lib/hebrew';
 import { DEFAULT_TRIP_ICON, DOT_SEPARATOR, MS_PER_DAY } from '../constants';
@@ -36,6 +41,7 @@ import { t } from '../i18n/he';
 type LoadState =
   | { status: 'loading' }
   | { status: 'invalid' }
+  | { status: 'expired' }
   | { status: 'offline' }
   | { status: 'ready'; preview: InvitePreview };
 
@@ -49,13 +55,14 @@ const ddmm = (iso: string) => `${iso.slice(8, 10)}.${iso.slice(5, 7)}`;
 export function JoinTrip() {
   const { token = '' } = useParams();
   const navigate = useNavigate();
-  const { status: authStatus, login } = useAuth();
+  const { status: authStatus, me, login } = useAuth();
   const { setTripId } = useActiveTripId();
   const offline = useIsOffline();
 
   const [load, setLoad] = useState<LoadState>({ status: 'loading' });
   const [joining, setJoining] = useState(false);
   const [joinError, setJoinError] = useState(false);
+  const [joinBlocked, setJoinBlocked] = useState(false);
 
   useEffect(() => {
     let cancelled = false;
@@ -64,7 +71,13 @@ export function JoinTrip() {
         if (!cancelled) setLoad({ status: 'ready', preview });
       },
       (err) => {
-        if (!cancelled) setLoad({ status: err instanceof ApiError ? 'invalid' : 'offline' });
+        if (cancelled) return;
+        const status = isInviteExpiredError(err)
+          ? 'expired'
+          : err instanceof ApiError
+            ? 'invalid'
+            : 'offline';
+        setLoad({ status });
       },
     );
     return () => {
@@ -72,15 +85,26 @@ export function JoinTrip() {
     };
   }, [token]);
 
+  // Already a member? Skip the ticket and go straight into the trip (ADR-0067).
+  useEffect(() => {
+    if (load.status !== 'ready' || authStatus !== 'authed' || !me) return;
+    if (me.memberships.some((m) => m.tripId === load.preview.tripId)) {
+      setTripId(load.preview.tripId);
+      navigate('/', { replace: true });
+    }
+  }, [load, authStatus, me, setTripId, navigate]);
+
   const doJoin = useCallback(async () => {
     setJoining(true);
     setJoinError(false);
+    setJoinBlocked(false);
     try {
       const membership = await joinTrip(token);
       setTripId(membership.tripId);
       navigate('/');
-    } catch {
-      setJoinError(true);
+    } catch (err) {
+      if (isRemovedFromTripError(err)) setJoinBlocked(true);
+      else setJoinError(true);
     } finally {
       setJoining(false);
     }
@@ -124,6 +148,7 @@ export function JoinTrip() {
 
       {load.status === 'loading' && <p className="join-status">{t.shell.join.loading}</p>}
       {load.status === 'invalid' && <p className="join-status">{t.shell.join.invalid}</p>}
+      {load.status === 'expired' && <p className="join-status">{t.shell.join.expired}</p>}
       {load.status === 'offline' && <p className="join-status">{t.shell.join.offline}</p>}
 
       {load.status === 'ready' && <Ready preview={load.preview} />}
@@ -145,6 +170,7 @@ export function JoinTrip() {
             <p className="join-note">{offline ? t.shell.login.offline : t.shell.join.note}</p>
           )}
           {joinError && <p className="join-error">{t.shell.join.joinError}</p>}
+          {joinBlocked && <p className="join-error">{t.shell.join.joinBlocked}</p>}
         </div>
       )}
     </div>

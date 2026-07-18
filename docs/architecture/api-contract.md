@@ -32,19 +32,22 @@
 
 ## Trips
 
-| Method | Path                             | Body → Response                                                                                                                             |
-| ------ | -------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------- |
-| POST   | `/trips`                         | `createTripSchema` → `Trip` (caller becomes creator + **`admin`** member, ADR-0005)                                                         |
-| GET    | `/trips`                         | → `Trip[]` (all trips the caller is a member of — multi-trip, ADR-0021)                                                                     |
-| GET    | `/trips/:tripId`                 | → `Trip` + members                                                                                                                          |
-| PATCH  | `/trips/:tripId`                 | partial trip → `Trip` (**admin-only**, ADR-0039; `endDate >= startDate` refine, ADR-0023)                                                   |
-| DELETE | `/trips/:tripId`                 | → `204` (**admin-only**, double-confirm; deletes the trip for everyone — ADR-0039)                                                          |
-| POST   | `/trips/:tripId/invite`          | → `{ inviteUrl }` (frontend `/join/:token` shell route, ADR-0024 — not the API's own `/trips/join/:token`)                                  |
-| GET    | `/invites/:token`                | **public** → `{ tripName, destination, startDate, endDate, memberCount }` (join preview, ADR-0024; validates the HMAC token, no membership) |
-| POST   | `/trips/join/:token`             | `joinTripSchema` (`{ calendarSyncEnabled? }`) → `Membership` (peer join; idempotent; rejoin re-applies the flag)                            |
-| PATCH  | `/trips/:tripId/members/me`      | `updateMembershipPrefsSchema` (`{ calendarSyncEnabled }`) → `Membership` (caller's own row only, ADR-0005)                                  |
-| PATCH  | `/trips/:tripId/members/:userId` | `{ role }` → `Membership` (**admin-only**; promote a peer to `admin`, ADR-0039; no explicit demotion in v1)                                 |
-| DELETE | `/trips/:tripId/members/:userId` | → `204` (self = leave, anyone; others = admin-only, ADR-0005; last admin leaving auto-promotes another member, ADR-0039)                    |
+| Method | Path                             | Body → Response                                                                                                                                                               |
+| ------ | -------------------------------- | ----------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| POST   | `/trips`                         | `createTripSchema` → `Trip` (caller becomes creator + **`admin`** member, ADR-0005)                                                                                           |
+| GET    | `/trips`                         | → `Trip[]` (all trips the caller is a member of — multi-trip, ADR-0021)                                                                                                       |
+| GET    | `/trips/:tripId`                 | → `Trip` + members                                                                                                                                                            |
+| PATCH  | `/trips/:tripId`                 | partial trip → `Trip` (**admin-only**, ADR-0039; `endDate >= startDate` refine, ADR-0023)                                                                                     |
+| DELETE | `/trips/:tripId`                 | → `204` (**admin-only**, double-confirm; deletes the trip for everyone — ADR-0039)                                                                                            |
+| POST   | `/trips/:tripId/invite`          | → `{ inviteUrl: "/join/<code>" }` (**get-or-create** the trip's one stable invite code, ADR-0067; frontend `/join/:code` shell route)                                         |
+| POST   | `/trips/:tripId/invite/rotate`   | → `{ inviteUrl }` (**admin-only** revoke + replace; the old code stops resolving, ADR-0067)                                                                                   |
+| GET    | `/invites/:code`                 | **public** → `{ tripId, tripName, icon?, destination, startDate, endDate, memberCount }` (join preview, ADR-0024/0067; `404` unknown, `410 INVITE_EXPIRED` if the trip ended) |
+| POST   | `/trips/join/:code`              | `joinTripSchema` (`{ calendarSyncEnabled? }`) → `Membership` (peer join; idempotent; rejoin re-applies the flag; `403 REMOVED_FROM_TRIP` if blocked, ADR-0067)                |
+| GET    | `/trips/:tripId/blocks`          | → `RemovedMember[]` (`{ userId, displayName, avatarColor, blockedAt }`; **admin-only**; the "Removed" list, ADR-0067)                                                         |
+| DELETE | `/trips/:tripId/blocks/:userId`  | → `204` (**admin-only** re-invite: clear a removal block so they can rejoin the link, ADR-0067)                                                                               |
+| PATCH  | `/trips/:tripId/members/me`      | `updateMembershipPrefsSchema` (`{ calendarSyncEnabled }`) → `Membership` (caller's own row only, ADR-0005)                                                                    |
+| PATCH  | `/trips/:tripId/members/:userId` | `{ role }` → `Membership` (**admin-only**; promote a peer to `admin`, ADR-0039; no explicit demotion in v1)                                                                   |
+| DELETE | `/trips/:tripId/members/:userId` | → `204` (self = leave, anyone; others = admin-only, ADR-0005; **an admin kick writes a removal block**, ADR-0067; last admin leaving auto-promotes another member, ADR-0039)  |
 
 **Trip-settings mutations are data-plane (ADR-0039, partially superseding ADR-0022):** `PATCH`/`DELETE /trips/:tripId`, the member-role `PATCH`, and member removal route through `ChangeService.mutate()` — atomic write + `Change`, WS broadcast after commit, client optimistic + offline outbox — so settings edits are realtime and offline-capable like the timeline. (`PATCH .../members/me` for the personal `calendarSyncEnabled` pref may stay simple CRUD — it is not shared roster state.)
 

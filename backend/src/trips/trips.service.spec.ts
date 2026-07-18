@@ -1,27 +1,15 @@
 import 'reflect-metadata';
-import { createHmac } from 'node:crypto';
 import { afterAll, afterEach, describe, expect, it } from 'vitest';
 import {
   BadRequestException,
   ForbiddenException,
+  GoneException,
   NotFoundException,
-  UnauthorizedException,
 } from '@nestjs/common';
 import { PrismaService } from '../prisma/prisma.service';
 import { ChangeService } from '../sync/change.service';
 import { SyncGateway } from '../sync/sync.gateway';
 import { TripsService } from './trips.service';
-
-// Mirrors TripsService's private token signing (trips.service.ts) so tests can
-// craft an already-expired token without exposing that internal for prod use.
-function signedInviteToken(tripId: string, expiresAtMs: number): string {
-  const payload = `${tripId}.${expiresAtMs}`;
-  const encoded = Buffer.from(payload).toString('base64url');
-  const signature = createHmac('sha256', process.env.JWT_SECRET!)
-    .update(payload)
-    .digest('base64url');
-  return `${encoded}.${signature}`;
-}
 
 // Integration test against the seeded dev Postgres (backend/prisma/seed.mjs, T-015).
 // Run `pnpm --filter @waypoint/backend prisma:seed` first if this fails on a fresh DB.
@@ -38,6 +26,15 @@ const NEW_TRIP_INPUT = {
   timezone: 'UTC',
 };
 
+// A trip whose dates are already in the past — its invite code reads as expired (ADR-0067).
+const ENDED_TRIP_INPUT = {
+  name: 'Past Trip',
+  destination: 'Yesterland',
+  startDate: '2020-01-01',
+  endDate: '2020-01-07',
+  timezone: 'UTC',
+};
+
 describe('TripsService', () => {
   const prisma = new PrismaService();
   // Real ChangeService (trip/membership mutations are data-plane now, ADR-0039):
@@ -47,8 +44,14 @@ describe('TripsService', () => {
   const service = new TripsService(prisma, changes);
   const createdTripIds: string[] = [];
 
+  // One trip per case; Invite/TripBlock/Membership rows cascade-delete with it.
+  async function freshTrip(input = NEW_TRIP_INPUT): Promise<string> {
+    const trip = await service.createTrip(DEV_USER, input);
+    createdTripIds.push(trip.id);
+    return trip.id;
+  }
+
   afterEach(async () => {
-    // Membership rows cascade-delete with the trip (schema.prisma).
     await prisma.trip.deleteMany({ where: { id: { in: createdTripIds.splice(0) } } });
   });
 
@@ -87,83 +90,76 @@ describe('TripsService', () => {
   });
 
   it('creates a trip and the creator admin membership in one transaction', async () => {
-    const trip = await service.createTrip(DEV_USER, NEW_TRIP_INPUT);
-    createdTripIds.push(trip.id);
+    const tripId = await freshTrip();
 
-    const { members } = await service.getTripWithMembers(trip.id);
-    expect(members).toEqual([
-      expect.objectContaining({ tripId: trip.id, userId: DEV_USER, role: 'admin' }),
-    ]);
+    const { members } = await service.getTripWithMembers(tripId);
+    expect(members).toEqual([expect.objectContaining({ tripId, userId: DEV_USER, role: 'admin' })]);
   });
 
-  it('lets a peer join via a valid invite token and keeps existing role on rejoin', async () => {
-    const trip = await service.createTrip(DEV_USER, NEW_TRIP_INPUT);
-    createdTripIds.push(trip.id);
+  // --- Invite codes (ADR-0067) ---
 
-    const token = service.createInviteToken(trip.id);
-    const membership = await service.joinByToken(PEER_USER, token);
-    expect(membership).toMatchObject({ tripId: trip.id, userId: PEER_USER, role: 'peer' });
+  it('returns one stable invite code (get-or-create), an 8-char base58 handle', async () => {
+    const tripId = await freshTrip();
 
-    // Rejoining (e.g. re-using the link) is idempotent and doesn't change the role.
-    const rejoinAsCreator = await service.joinByToken(DEV_USER, token);
+    const code = await service.getOrCreateInvite(tripId, DEV_USER);
+    expect(code).toMatch(/^[1-9A-HJ-NP-Za-km-z]{8}$/);
+    // Idempotent: a second call returns the same code, not a fresh one.
+    expect(await service.getOrCreateInvite(tripId, DEV_USER)).toBe(code);
+  });
+
+  it('lets a peer join via a valid code and keeps existing role on rejoin', async () => {
+    const tripId = await freshTrip();
+    const code = await service.getOrCreateInvite(tripId, DEV_USER);
+
+    const membership = await service.joinByCode(PEER_USER, code);
+    expect(membership).toMatchObject({ tripId, userId: PEER_USER, role: 'peer' });
+
+    // Rejoining (re-using the link) is idempotent and doesn't change the role.
+    const rejoinAsCreator = await service.joinByCode(DEV_USER, code);
     expect(rejoinAsCreator.role).toBe('admin');
   });
 
-  it('rejects an invite token for a trip that no longer matches its signature', async () => {
-    const trip = await service.createTrip(DEV_USER, NEW_TRIP_INPUT);
-    createdTripIds.push(trip.id);
+  it('rotates the code (admin revoke): the old code stops resolving, a new one works', async () => {
+    const tripId = await freshTrip();
+    const oldCode = await service.getOrCreateInvite(tripId, DEV_USER);
 
-    const token = service.createInviteToken(trip.id);
-    await expect(service.joinByToken(PEER_USER, `${token}-tampered`)).rejects.toThrow(
-      UnauthorizedException,
+    const newCode = await service.rotateInvite(tripId, DEV_USER);
+    expect(newCode).not.toBe(oldCode);
+
+    await expect(service.joinByCode(PEER_USER, oldCode)).rejects.toThrow(NotFoundException);
+    await expect(service.joinByCode(PEER_USER, newCode)).resolves.toMatchObject({
+      userId: PEER_USER,
+    });
+  });
+
+  it('blocks a peer from rotating (revoking) the invite', async () => {
+    const tripId = await freshTrip();
+    await service.joinByCode(PEER_USER, await service.getOrCreateInvite(tripId, DEV_USER));
+
+    await expect(service.rotateInvite(tripId, PEER_USER)).rejects.toThrow(ForbiddenException);
+  });
+
+  it('404s an unknown invite code', async () => {
+    await expect(service.getInvitePreview('nosuchcd')).rejects.toThrow(NotFoundException);
+    await expect(service.joinByCode(PEER_USER, 'nosuchcd')).rejects.toThrow(NotFoundException);
+  });
+
+  it('410s a code whose trip has already ended', async () => {
+    const tripId = await freshTrip(ENDED_TRIP_INPUT);
+    const code = await service.getOrCreateInvite(tripId, DEV_USER);
+
+    await expect(service.getInvitePreview(code)).rejects.toThrow(GoneException);
+    await expect(service.joinByCode(PEER_USER, code)).rejects.toThrow(GoneException);
+  });
+
+  it('previews a trip (with tripId for the already-member redirect) for a valid code', async () => {
+    const tripId = await freshTrip();
+
+    const preview = await service.getInvitePreview(
+      await service.getOrCreateInvite(tripId, DEV_USER),
     );
-  });
-
-  it('lets an admin remove another member', async () => {
-    const trip = await service.createTrip(DEV_USER, NEW_TRIP_INPUT);
-    createdTripIds.push(trip.id);
-    await service.joinByToken(PEER_USER, service.createInviteToken(trip.id));
-
-    await service.removeMember(trip.id, DEV_USER, PEER_USER);
-
-    const { members } = await service.getTripWithMembers(trip.id);
-    expect(members.some((m) => m.userId === PEER_USER)).toBe(false);
-  });
-
-  it('lets a member remove themselves (leave) without being admin', async () => {
-    const trip = await service.createTrip(DEV_USER, NEW_TRIP_INPUT);
-    createdTripIds.push(trip.id);
-    await service.joinByToken(PEER_USER, service.createInviteToken(trip.id));
-
-    await expect(service.removeMember(trip.id, PEER_USER, PEER_USER)).resolves.toBeUndefined();
-  });
-
-  it('blocks a non-admin from removing another member', async () => {
-    const trip = await service.createTrip(DEV_USER, NEW_TRIP_INPUT);
-    createdTripIds.push(trip.id);
-    await service.joinByToken(PEER_USER, service.createInviteToken(trip.id));
-    await service.joinByToken(OTHER_PEER_USER, service.createInviteToken(trip.id));
-
-    await expect(service.removeMember(trip.id, PEER_USER, OTHER_PEER_USER)).rejects.toThrow(
-      ForbiddenException,
-    );
-  });
-
-  it('404s removing a user who is not a member', async () => {
-    const trip = await service.createTrip(DEV_USER, NEW_TRIP_INPUT);
-    createdTripIds.push(trip.id);
-
-    await expect(service.removeMember(trip.id, DEV_USER, PEER_USER)).rejects.toThrow(
-      NotFoundException,
-    );
-  });
-
-  it('previews a trip for a valid, unexpired invite token', async () => {
-    const trip = await service.createTrip(DEV_USER, NEW_TRIP_INPUT);
-    createdTripIds.push(trip.id);
-
-    const preview = await service.getInvitePreview(service.createInviteToken(trip.id));
     expect(preview).toEqual({
+      tripId,
       tripName: NEW_TRIP_INPUT.name,
       destination: NEW_TRIP_INPUT.destination,
       startDate: NEW_TRIP_INPUT.startDate,
@@ -172,56 +168,129 @@ describe('TripsService', () => {
     });
   });
 
-  it('404s an invite preview for an expired token', async () => {
-    const trip = await service.createTrip(DEV_USER, NEW_TRIP_INPUT);
-    createdTripIds.push(trip.id);
+  // --- Removal blocks + re-invite (ADR-0067) ---
 
-    const expiredToken = signedInviteToken(trip.id, Date.now() - 1000);
-    await expect(service.getInvitePreview(expiredToken)).rejects.toThrow(NotFoundException);
+  it('blocks a kicked member from rejoining via the live link', async () => {
+    const tripId = await freshTrip();
+    const code = await service.getOrCreateInvite(tripId, DEV_USER);
+    await service.joinByCode(PEER_USER, code);
+
+    await service.removeMember(tripId, DEV_USER, PEER_USER); // admin kick
+
+    await expect(service.joinByCode(PEER_USER, code)).rejects.toThrow(ForbiddenException);
+    const removed = await service.listBlocked(tripId, DEV_USER);
+    expect(removed).toEqual([expect.objectContaining({ userId: PEER_USER })]);
   });
 
-  it('404s an invite preview for a malformed token', async () => {
-    await expect(service.getInvitePreview('not-a-real-token')).rejects.toThrow(NotFoundException);
+  it('does NOT block a member who leaves voluntarily — they can rejoin', async () => {
+    const tripId = await freshTrip();
+    const code = await service.getOrCreateInvite(tripId, DEV_USER);
+    await service.joinByCode(PEER_USER, code);
+
+    await service.removeMember(tripId, PEER_USER, PEER_USER); // self-leave
+
+    expect(await service.listBlocked(tripId, DEV_USER)).toEqual([]);
+    await expect(service.joinByCode(PEER_USER, code)).resolves.toMatchObject({ userId: PEER_USER });
+  });
+
+  it('lets an admin allow a kicked member back in (clear the block), then they rejoin', async () => {
+    const tripId = await freshTrip();
+    const code = await service.getOrCreateInvite(tripId, DEV_USER);
+    await service.joinByCode(PEER_USER, code);
+    await service.removeMember(tripId, DEV_USER, PEER_USER);
+
+    await service.unblockMember(tripId, DEV_USER, PEER_USER);
+
+    expect(await service.listBlocked(tripId, DEV_USER)).toEqual([]);
+    await expect(service.joinByCode(PEER_USER, code)).resolves.toMatchObject({ userId: PEER_USER });
+  });
+
+  it('gates the removed-list and unblock behind admin', async () => {
+    const tripId = await freshTrip();
+    const code = await service.getOrCreateInvite(tripId, DEV_USER);
+    await service.joinByCode(PEER_USER, code);
+
+    await expect(service.listBlocked(tripId, PEER_USER)).rejects.toThrow(ForbiddenException);
+    await expect(service.unblockMember(tripId, PEER_USER, OTHER_PEER_USER)).rejects.toThrow(
+      ForbiddenException,
+    );
+  });
+
+  // --- Membership removal (ADR-0005/0039) ---
+
+  it('lets an admin remove another member', async () => {
+    const tripId = await freshTrip();
+    await service.joinByCode(PEER_USER, await service.getOrCreateInvite(tripId, DEV_USER));
+
+    await service.removeMember(tripId, DEV_USER, PEER_USER);
+
+    const { members } = await service.getTripWithMembers(tripId);
+    expect(members.some((m) => m.userId === PEER_USER)).toBe(false);
+  });
+
+  it('lets a member remove themselves (leave) without being admin', async () => {
+    const tripId = await freshTrip();
+    await service.joinByCode(PEER_USER, await service.getOrCreateInvite(tripId, DEV_USER));
+
+    await expect(service.removeMember(tripId, PEER_USER, PEER_USER)).resolves.toBeUndefined();
+  });
+
+  it('blocks a non-admin from removing another member', async () => {
+    const tripId = await freshTrip();
+    const code = await service.getOrCreateInvite(tripId, DEV_USER);
+    await service.joinByCode(PEER_USER, code);
+    await service.joinByCode(OTHER_PEER_USER, code);
+
+    await expect(service.removeMember(tripId, PEER_USER, OTHER_PEER_USER)).rejects.toThrow(
+      ForbiddenException,
+    );
+  });
+
+  it('404s removing a user who is not a member', async () => {
+    const tripId = await freshTrip();
+
+    await expect(service.removeMember(tripId, DEV_USER, PEER_USER)).rejects.toThrow(
+      NotFoundException,
+    );
   });
 
   it('defaults calendarSyncEnabled to false when omitted on join', async () => {
-    const trip = await service.createTrip(DEV_USER, NEW_TRIP_INPUT);
-    createdTripIds.push(trip.id);
+    const tripId = await freshTrip();
 
-    const membership = await service.joinByToken(PEER_USER, service.createInviteToken(trip.id));
+    const membership = await service.joinByCode(
+      PEER_USER,
+      await service.getOrCreateInvite(tripId, DEV_USER),
+    );
     expect(membership.calendarSyncEnabled).toBe(false);
   });
 
   it('persists calendarSyncEnabled true/false on join and re-applies it on rejoin', async () => {
-    const trip = await service.createTrip(DEV_USER, NEW_TRIP_INPUT);
-    createdTripIds.push(trip.id);
-    const token = service.createInviteToken(trip.id);
+    const tripId = await freshTrip();
+    const code = await service.getOrCreateInvite(tripId, DEV_USER);
 
-    const joined = await service.joinByToken(PEER_USER, token, { calendarSyncEnabled: true });
+    const joined = await service.joinByCode(PEER_USER, code, { calendarSyncEnabled: true });
     expect(joined.calendarSyncEnabled).toBe(true);
 
-    const rejoined = await service.joinByToken(PEER_USER, token, { calendarSyncEnabled: false });
+    const rejoined = await service.joinByCode(PEER_USER, code, { calendarSyncEnabled: false });
     expect(rejoined.calendarSyncEnabled).toBe(false);
   });
 
   it('updates the caller own calendarSyncEnabled via updateMembershipPrefs', async () => {
-    const trip = await service.createTrip(DEV_USER, NEW_TRIP_INPUT);
-    createdTripIds.push(trip.id);
+    const tripId = await freshTrip();
 
-    const updated = await service.updateMembershipPrefs(trip.id, DEV_USER, {
+    const updated = await service.updateMembershipPrefs(tripId, DEV_USER, {
       calendarSyncEnabled: true,
     });
-    expect(updated).toMatchObject({ tripId: trip.id, userId: DEV_USER, calendarSyncEnabled: true });
+    expect(updated).toMatchObject({ tripId, userId: DEV_USER, calendarSyncEnabled: true });
   });
 
   it('updateMembershipPrefs only ever touches the caller own row, never another member', async () => {
-    const trip = await service.createTrip(DEV_USER, NEW_TRIP_INPUT);
-    createdTripIds.push(trip.id);
-    await service.joinByToken(PEER_USER, service.createInviteToken(trip.id));
+    const tripId = await freshTrip();
+    await service.joinByCode(PEER_USER, await service.getOrCreateInvite(tripId, DEV_USER));
 
-    await service.updateMembershipPrefs(trip.id, PEER_USER, { calendarSyncEnabled: true });
+    await service.updateMembershipPrefs(tripId, PEER_USER, { calendarSyncEnabled: true });
 
-    const { members } = await service.getTripWithMembers(trip.id);
+    const { members } = await service.getTripWithMembers(tripId);
     expect(members.find((m) => m.userId === PEER_USER)?.calendarSyncEnabled).toBe(true);
     expect(members.find((m) => m.userId === DEV_USER)?.calendarSyncEnabled).toBe(false);
   });
@@ -229,10 +298,9 @@ describe('TripsService', () => {
   // --- Trip-settings mutations (ADR-0039) ---
 
   it('lets an admin edit trip details', async () => {
-    const trip = await service.createTrip(DEV_USER, NEW_TRIP_INPUT);
-    createdTripIds.push(trip.id);
+    const tripId = await freshTrip();
 
-    const updated = await service.updateTrip(trip.id, DEV_USER, {
+    const updated = await service.updateTrip(tripId, DEV_USER, {
       name: 'Renamed',
       dailyBudgetMinor: 15000,
     });
@@ -242,73 +310,68 @@ describe('TripsService', () => {
   });
 
   it('blocks a peer from editing trip details', async () => {
-    const trip = await service.createTrip(DEV_USER, NEW_TRIP_INPUT);
-    createdTripIds.push(trip.id);
-    await service.joinByToken(PEER_USER, service.createInviteToken(trip.id));
+    const tripId = await freshTrip();
+    await service.joinByCode(PEER_USER, await service.getOrCreateInvite(tripId, DEV_USER));
 
-    await expect(service.updateTrip(trip.id, PEER_USER, { name: 'Nope' })).rejects.toThrow(
+    await expect(service.updateTrip(tripId, PEER_USER, { name: 'Nope' })).rejects.toThrow(
       ForbiddenException,
     );
   });
 
   it('rejects a details edit whose merged date range is inverted', async () => {
-    const trip = await service.createTrip(DEV_USER, NEW_TRIP_INPUT);
-    createdTripIds.push(trip.id);
+    const tripId = await freshTrip();
 
     // startDate stays 2027-01-01 (stored); moving only endDate before it is invalid.
-    await expect(service.updateTrip(trip.id, DEV_USER, { endDate: '2026-12-31' })).rejects.toThrow(
+    await expect(service.updateTrip(tripId, DEV_USER, { endDate: '2026-12-31' })).rejects.toThrow(
       BadRequestException,
     );
   });
 
   it('lets an admin promote a peer to admin, and blocks a peer from promoting', async () => {
-    const trip = await service.createTrip(DEV_USER, NEW_TRIP_INPUT);
-    createdTripIds.push(trip.id);
-    await service.joinByToken(PEER_USER, service.createInviteToken(trip.id));
-    await service.joinByToken(OTHER_PEER_USER, service.createInviteToken(trip.id));
+    const tripId = await freshTrip();
+    const code = await service.getOrCreateInvite(tripId, DEV_USER);
+    await service.joinByCode(PEER_USER, code);
+    await service.joinByCode(OTHER_PEER_USER, code);
 
     await expect(
-      service.setMemberRole(trip.id, PEER_USER, OTHER_PEER_USER, { role: 'admin' }),
+      service.setMemberRole(tripId, PEER_USER, OTHER_PEER_USER, { role: 'admin' }),
     ).rejects.toThrow(ForbiddenException);
 
-    const promoted = await service.setMemberRole(trip.id, DEV_USER, PEER_USER, { role: 'admin' });
+    const promoted = await service.setMemberRole(tripId, DEV_USER, PEER_USER, { role: 'admin' });
     expect(promoted).toMatchObject({ userId: PEER_USER, role: 'admin' });
   });
 
   it('auto-promotes another member when the last admin leaves', async () => {
-    const trip = await service.createTrip(DEV_USER, NEW_TRIP_INPUT);
-    createdTripIds.push(trip.id);
-    await service.joinByToken(PEER_USER, service.createInviteToken(trip.id));
+    const tripId = await freshTrip();
+    await service.joinByCode(PEER_USER, await service.getOrCreateInvite(tripId, DEV_USER));
 
     // DEV is the only admin; leaving must not orphan the trip.
-    await service.removeMember(trip.id, DEV_USER, DEV_USER);
+    await service.removeMember(tripId, DEV_USER, DEV_USER);
 
-    const { members } = await service.getTripWithMembers(trip.id);
+    const { members } = await service.getTripWithMembers(tripId);
     expect(members.some((m) => m.role === 'admin')).toBe(true);
     expect(members.find((m) => m.userId === PEER_USER)?.role).toBe('admin');
   });
 
   it('does not auto-promote while an admin still remains', async () => {
-    const trip = await service.createTrip(DEV_USER, NEW_TRIP_INPUT);
-    createdTripIds.push(trip.id);
-    await service.joinByToken(PEER_USER, service.createInviteToken(trip.id));
+    const tripId = await freshTrip();
+    await service.joinByCode(PEER_USER, await service.getOrCreateInvite(tripId, DEV_USER));
 
     // Removing the peer leaves DEV as admin — the peer is simply gone, no promotion.
-    await service.removeMember(trip.id, DEV_USER, PEER_USER);
+    await service.removeMember(tripId, DEV_USER, PEER_USER);
 
-    const { members } = await service.getTripWithMembers(trip.id);
+    const { members } = await service.getTripWithMembers(tripId);
     expect(members).toHaveLength(1);
     expect(members[0]).toMatchObject({ userId: DEV_USER, role: 'admin' });
   });
 
   it('lets an admin delete the trip and blocks a peer from deleting', async () => {
-    const trip = await service.createTrip(DEV_USER, NEW_TRIP_INPUT);
-    createdTripIds.push(trip.id);
-    await service.joinByToken(PEER_USER, service.createInviteToken(trip.id));
+    const tripId = await freshTrip();
+    await service.joinByCode(PEER_USER, await service.getOrCreateInvite(tripId, DEV_USER));
 
-    await expect(service.deleteTrip(trip.id, PEER_USER)).rejects.toThrow(ForbiddenException);
+    await expect(service.deleteTrip(tripId, PEER_USER)).rejects.toThrow(ForbiddenException);
 
-    await service.deleteTrip(trip.id, DEV_USER);
-    await expect(service.getTripWithMembers(trip.id)).rejects.toThrow();
+    await service.deleteTrip(tripId, DEV_USER);
+    await expect(service.getTripWithMembers(tripId)).rejects.toThrow();
   });
 });

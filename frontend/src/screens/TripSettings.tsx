@@ -4,12 +4,13 @@
 // broadcast + offline outbox) via the trip-state settings verbs. Mode-neutral
 // paper chrome (reached from both modes, outside the mode Shell). Design
 // reference: mockups/trip-settings-v1.html.
-import { useEffect, useRef, useState, type ReactNode } from 'react';
+import { useCallback, useEffect, useRef, useState, type ReactNode } from 'react';
 import { useNavigate } from 'react-router-dom';
 import {
   DESTINATIONS,
   TRIP_ICON_CLUSTERS,
   type Membership,
+  type RemovedMember,
   type UpdateTripInput,
 } from '@waypoint/shared';
 import { useTrip } from '../state/trip-state';
@@ -20,7 +21,7 @@ import { IconPicker } from '../ui/IconPicker';
 import { Sheet } from '../ui/Sheet';
 import { useToast } from '../ui/Toast';
 import { useIsOffline, useOutboxCount } from '../lib/outbox';
-import { createInvite } from '../lib/api';
+import { allowMemberBack, createInvite, fetchRemovedMembers, rotateInvite } from '../lib/api';
 import {
   AVATAR_INITIAL_LENGTH,
   DEFAULT_TRIP_ICON,
@@ -61,12 +62,21 @@ export function TripSettings() {
   const [sheetFor, setSheetFor] = useState<Membership | null>(null);
   const [confirm, setConfirm] = useState<ConfirmState | null>(null);
   const [invite, setInvite] = useState<{ url: string } | 'loading' | null>(null);
+  const [removed, setRemoved] = useState<RemovedMember[] | null>(null);
 
   // Leave for /trips once the trip is gone — whether we deleted it or a remote
   // admin did (tripDeleted flips from the WS change, ADR-0039).
   useEffect(() => {
     if (tripDeleted) navigate('/trips', { replace: true });
   }, [tripDeleted, navigate]);
+
+  // The admin-only "Removed" list (ADR-0067) — kicked members, so they can be
+  // allowed back. Reloaded after a kick or an allow-back.
+  const reloadRemoved = useCallback(() => {
+    if (!isAdmin) return;
+    fetchRemovedMembers(trip.id).then(setRemoved, () => {});
+  }, [isAdmin, trip.id]);
+  useEffect(() => reloadRemoved(), [reloadRemoved]);
 
   const userFor = (userId: string) => users.find((u) => u.id === userId);
 
@@ -107,7 +117,10 @@ export function TripSettings() {
       confirmLabel: t.settings.removeMember,
       onConfirm: () => {
         void settings.removeMember(m.userId).then(
-          () => toast(ICONS.done, t.settings.toast.removed),
+          () => {
+            toast(ICONS.done, t.settings.toast.removed);
+            reloadRemoved(); // the kick just added a block — surface it in "Removed"
+          },
           () => {},
         );
       },
@@ -118,16 +131,50 @@ export function TripSettings() {
     void settings.setMemberRole(m.userId, 'admin').catch(() => {});
   };
 
+  const allowBack = (userId: string, name: string) => {
+    setRemoved((cur) => cur?.filter((r) => r.userId !== userId) ?? null); // optimistic
+    allowMemberBack(trip.id, userId).then(
+      () => toast(ICONS.done, t.settings.allowedBack(name)),
+      () => {
+        toast(ICONS.warn, t.toast.writeFailed);
+        reloadRemoved(); // roll the optimistic drop back
+      },
+    );
+  };
+
+  const inviteUrlFrom = (path: string) => `${window.location.origin}${path}`;
+
   const generateInvite = () => {
     setInvite('loading');
     createInvite(trip.id).then(
-      (res) => setInvite({ url: `${window.location.origin}${res.inviteUrl}` }),
+      (res) => setInvite({ url: inviteUrlFrom(res.inviteUrl) }),
       () => {
         setInvite(null);
         toast(ICONS.warn, t.toast.writeFailed);
       },
     );
   };
+
+  // Revoke + replace the link (admin-only, ADR-0067) — the old code dies at once.
+  const resetInvite = () =>
+    setConfirm({
+      title: t.settings.inviteReset,
+      body: t.settings.inviteResetHint,
+      confirmLabel: t.settings.inviteReset,
+      onConfirm: () => {
+        setInvite('loading');
+        rotateInvite(trip.id).then(
+          (res) => {
+            setInvite({ url: inviteUrlFrom(res.inviteUrl) });
+            toast(ICONS.done, t.settings.inviteReset_done);
+          },
+          () => {
+            setInvite(null);
+            toast(ICONS.warn, t.toast.writeFailed);
+          },
+        );
+      },
+    });
 
   const copyInvite = () => {
     if (invite === 'loading' || !invite) return;
@@ -249,8 +296,36 @@ export function TripSettings() {
           })}
         </div>
 
+        {/* ===== Removed (admin re-invite, ADR-0067) ===== */}
+        {isAdmin && removed && removed.length > 0 && (
+          <>
+            <div className="set-sec-title">{t.settings.removedTitle}</div>
+            <div className="set-card">
+              {removed.map((r) => (
+                <div className="set-member" key={r.userId}>
+                  <div className="av" style={{ background: r.avatarColor }}>
+                    {r.displayName.slice(0, AVATAR_INITIAL_LENGTH)}
+                  </div>
+                  <div className="mn">{r.displayName}</div>
+                  <button className="set-edit" onClick={() => allowBack(r.userId, r.displayName)}>
+                    {t.settings.allowBack}
+                  </button>
+                </div>
+              ))}
+            </div>
+            <div className="set-hint-block">{t.settings.removedHint}</div>
+          </>
+        )}
+
         {/* ===== Invite ===== */}
-        <div className="set-sec-title">{t.settings.invite}</div>
+        <div className="set-sec-title">
+          {t.settings.invite}
+          {isAdmin && invite && invite !== 'loading' && (
+            <button className="set-edit" onClick={resetInvite}>
+              {t.settings.inviteReset}
+            </button>
+          )}
+        </div>
         {invite && invite !== 'loading' ? (
           <div className="invite-box" onClick={copyInvite}>
             <span className="code" dir="ltr">

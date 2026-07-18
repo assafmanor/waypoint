@@ -28,7 +28,6 @@ Decomposed to run simultaneously; disjoint file ownership (map in the session-29
 
 ## Security & correctness
 
-- **Revocable invite tokens** — `trips.service.ts` signs stateless `base64url(tripId.expiresAt) + HMAC` tokens with no DB row. If `JWT_SECRET` leaks, anyone with it can forge a peer membership for any trip ID with any expiry, and no invite can be revoked early. A short `Invite` row fixes that and reads as a normal link instead of a phishing blob (the token becomes the row id). Revisit the invite-link copy/expiry messaging while in there.
 - **Minor-unit currency** — `lib/money.ts` treats amounts as whole units. Correct for JPY, wrong for ILS/USD. Fix before a non-JPY trip.
 - **Admin role permission matrix** — ADR-0005 is admin/peer only; if roles grow, decide the matrix in an ADR first.
 
@@ -49,8 +48,9 @@ Full write-up + evidence in [reviews/frontend-architecture-review.md](reviews/fr
 
 ## Backend review follow-ups (open findings)
 
-Full write-up + evidence (incl. a reproduced concurrency probe) in [reviews/backend-architecture-review.md](reviews/backend-architecture-review.md). Nothing shipped yet. The **Revocable invite tokens** line under "Security & correctness" above is the same item as B-07.
+Full write-up + evidence (incl. a reproduced concurrency probe) in [reviews/backend-architecture-review.md](reviews/backend-architecture-review.md).
 
+- ~~**B-07 invite revocability + rejoin-after-removal**~~ — **shipped** (ADR-0067): invites are a durable per-trip `Invite` row keyed by a short base58 code that is itself the credential (no HMAC token), one stable get-or-create link with an admin rotate/revoke, valid until the trip ends; an admin kick writes a `TripBlock` that blocks rejoin via the live link, with an admin "Removed" allow-back list; `GET /invites/:code` returns `tripId` so an existing member is redirected into the trip.
 - **B-01 sync cursor consistency** (High, confirmed) — `Change.seq` (`BIGSERIAL`) is not commit-ordered and reads run at READ COMMITTED, so `getSnapshot` (reads entities before `latestSeq`) and `/changes` catch-up can advance a client's cursor past a concurrently-committed change it never received. Fix: read `latestSeq` first + snapshot at a stronger isolation level; advance the catch-up cursor only across a contiguous committed prefix.
 - **B-02 WS eviction on removal** (High) — `SyncGateway` authorizes membership only at upgrade; `removeMember` never closes the socket, so a removed member keeps receiving the trip's live changes. Add `disconnectUser(tripId,userId)` and call it from `removeMember`/`deleteTrip`.
 - **B-03 document inline-render / MIME** (High) — `/content` echoes a caller-controlled `Content-Type` with no `Content-Disposition`/`nosniff` and there's no upload allow-list, so an uploaded HTML/SVG "document" runs script in the app origin (co-traveler token theft). Send `attachment`+`nosniff`, allow-list MIME, download-not-open in the viewer.
