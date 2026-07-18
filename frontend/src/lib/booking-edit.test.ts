@@ -3,6 +3,7 @@ import type { Place } from '@waypoint/shared';
 import {
   buildEventSeed,
   buildSpanSeed,
+  dateOutOfTripRange,
   deleteFlags,
   findPlaceByName,
   mergeBookingDetails,
@@ -97,6 +98,25 @@ describe('buildEventSeed', () => {
   it('a date with no times is a date-only linked event', () => {
     const seed = buildEventSeed({ date: '2026-07-20', start: '', end: '', kind: 'soft' }, TZ);
     expect(seed).toMatchObject({ date: '2026-07-20', startsAt: undefined, endsAt: undefined });
+  });
+});
+
+describe('dateOutOfTripRange', () => {
+  const START = '2026-07-15';
+  const END = '2026-07-20';
+
+  it('blank is in-range (an index-only booking has no schedule to bound)', () => {
+    expect(dateOutOfTripRange('', START, END)).toBe(false);
+  });
+
+  it('a date or datetime-local inside the trip range is in-range', () => {
+    expect(dateOutOfTripRange('2026-07-15', START, END)).toBe(false);
+    expect(dateOutOfTripRange('2026-07-20T23:40', START, END)).toBe(false);
+  });
+
+  it('a day before the trip start or after the trip end is out of range', () => {
+    expect(dateOutOfTripRange('2026-07-14T09:00', START, END)).toBe(true);
+    expect(dateOutOfTripRange('2026-07-21T09:00', START, END)).toBe(true);
   });
 });
 
