@@ -11,7 +11,7 @@ import { placeName } from '../lib/places';
 import { formatTime } from '../lib/time';
 import { timingLabels } from '../lib/booking-timing';
 import { badgeClassForBookingType } from '../lib/transitions';
-import { BOOKING_TYPE_ICON, CODE_PREFIX, DEVICE_LOCALE } from '../constants';
+import { BOOKING_TYPE_ICON, CODE_PREFIX } from '../constants';
 import { t } from '../i18n/he';
 
 interface Wifi {
@@ -21,8 +21,10 @@ interface Wifi {
 
 const isTransport = (ty: BookingType) => ty === BOOKING_TYPE.FLIGHT || ty === BOOKING_TYPE.TRAIN;
 
-function dayTime(iso: string, timeZone: string): string {
-  const day = new Intl.DateTimeFormat(DEVICE_LOCALE, {
+// Displayed text is always the Hebrew UI locale, independent of the device
+// locale (which drives native date inputs, not app-rendered text).
+export function dayTime(iso: string, timeZone: string): string {
+  const day = new Intl.DateTimeFormat('he-IL', {
     weekday: 'short',
     day: 'numeric',
     month: 'short',
