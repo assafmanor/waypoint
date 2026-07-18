@@ -4,14 +4,15 @@
        - Re-verifies the four existing checks' BEHAVIOUR now that their CTA targets
          are real screens (add-booking sheet / day builder / settings invite),
          retiring the session-06 placeholder-era tab-switches.
-       - Reconsiders the SUGGESTION SET: adds two now-buildable, real-data checks —
+       - Reconsiders the SUGGESTION SET: adds ONE now-buildable, real-data check —
          🛂 documents/passports (feasible post-ADR-0058, the snapshot carries
-         documents; a per-traveller signal) and 🔑 confirmation-code completeness
-         (hard bookings missing a code). Still-deferred signals (Google-connection,
-         Gmail import, WhatsApp reminder) stay OUT — no data/feature (ADR-0045/0004).
-       - Proposes behaviours for the ADR's open questions (see the legend): collapse
-         completed checks into a summary; readiness stays ADVISORY (never gates the
-         go-live switch); documents is a per-traveller rollup.
+         documents; a per-traveller signal). A 🔑 confirmation-code-completeness
+         check was considered but DROPPED (Assaf 2026-07-18: too minor for its own
+         row). Still-deferred signals (Google-connection, Gmail import, WhatsApp
+         reminder) stay OUT — no data/feature (ADR-0045/0004).
+       - Decided behaviours (Assaf 2026-07-18, see the legend): completed checks
+         COLLAPSE into a summary; readiness stays ADVISORY (never gates the go-live
+         switch); documents is a per-traveller rollup.
      Everything shown is derived, real-data-only (ADR-0045). Plan chrome = the light
      "drafting table" + violet prep hero (ADR-0028). RTL. On conflict, docs win. -->
 <html lang="he" dir="rtl">
@@ -261,7 +262,7 @@
       }
       .ready .fill {
         height: 100%;
-        width: 55%;
+        width: 40%;
         background: linear-gradient(90deg, rgba(255, 255, 255, 0.82), #fff);
         border-radius: 6px;
       }
@@ -536,8 +537,8 @@
         <h1>מה חסר להשלמה · מצב תכנון</h1>
         <p>
           ADR-0061 · שכתוב הצ׳ק-ליסט של הכנת הטיול. הכל
-          <b style="color: #fff">נגזר מנתונים אמיתיים</b> (ADR-0045). שתי בדיקות חדשות
-          (מסמכים/דרכונים · קודי אישור) שנפתחו אחרי <code>ADR-0058</code>; ההצעות ה"מזויפות" הישנות
+          <b style="color: #fff">נגזר מנתונים אמיתיים</b> (ADR-0045). בדיקה חדשה אחת
+          (מסמכים/דרכונים, לפי-נוסע) שנפתחה אחרי <code>ADR-0058</code>; ההצעות ה"מזויפות" הישנות
           (Gmail · חיבור Google · תזכורת וואטסאפ) נשארות בחוץ.
         </p>
       </div>
@@ -569,7 +570,7 @@
               <div class="count">12 <small>ימים</small></div>
               <div class="dates">03–12 · אוקטובר ׳26 · 10 ימים</div>
               <div class="ready">
-                <div class="rt"><span>מוכנות הטיול</span><b>55%</b></div>
+                <div class="rt"><span>מוכנות הטיול</span><b>40%</b></div>
                 <div class="track"><div class="fill"></div></div>
               </div>
             </div>
@@ -608,14 +609,6 @@
                   </div>
                 </div>
                 <button class="cta" onclick="toast('פותח מסמכים באינדקס')">העלו</button>
-              </div>
-              <div class="ci">
-                <div class="ic">🔑</div>
-                <div class="main">
-                  <div class="t">קוד אישור חסר <span class="new">חדש</span></div>
-                  <div class="m">טיסת חזור NH7 · ללא קוד אישור</div>
-                </div>
-                <button class="cta" onclick="toast('פותח את ההזמנה להשלמת קוד')">השלימו</button>
               </div>
             </div>
 
@@ -708,8 +701,8 @@
           <div class="row">
             <span class="ico">🔑</span
             ><span
-              ><b>קודי אישור</b> · לכל הזמנה קשיחה יש קוד? נודג׳ שלמות
-              <span class="tag new">חדש</span></span
+              ><b>קודי אישור</b> · נודג׳ שלמות <span class="tag out">ירד</span> — אסף: מינורי מדי
+              לשורה משלו.</span
             >
           </div>
 
@@ -723,16 +716,13 @@
             >
           </div>
 
-          <h3>שאלות פתוחות (לאסף)</h3>
+          <h3>הוחלט (אסף, 2026-07-18)</h3>
           <div class="notes">
-            <span class="q">·</span> אילו הצעות חדשות קודם? (מסמכים/דרכונים נראית החזקה ביותר —
-            לאשר) <br />
-            <span class="q">·</span> המוכנות נשארת <b>מייעצת</b> בלבד, או פעם כן חוסמת/מנדנדת את
-            מעבר ה"צאו לדרך"? (מוצע: מייעצת) <br />
-            <span class="q">·</span> להשאיר בדיקות שהושלמו כשורות ✓, או <b>לכווץ לסיכום</b> כמו כאן?
-            (מוצע: לכווץ) <br />
-            <span class="q">·</span> מסמכים — מדד <b>לפי-נוסע</b> ("2 מתוך 5") או רק ברמת הטיול?
-            (מוצע: לפי-נוסע, עם פירוט בלחיצה)
+            <span class="q">✓</span> בדיקה חדשה: <b>מסמכים/דרכונים</b> בלבד; קודי-אישור ירד. <br />
+            <span class="q">✓</span> המוכנות <b>מייעצת</b> בלבד, לא חוסמת את מעבר ה"צאו לדרך".
+            <br />
+            <span class="q">✓</span> בדיקות שהושלמו <b>מכווצות</b> לסיכום. <br />
+            <span class="q">✓</span> מסמכים — מדד <b>לפי-נוסע</b> ("2 מתוך 5"), עם פירוט בלחיצה.
           </div>
         </div>
       </div>

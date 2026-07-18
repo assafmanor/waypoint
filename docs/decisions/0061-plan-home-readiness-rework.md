@@ -1,6 +1,6 @@
 # 0061 — Plan-mode Home "what's missing to complete" rework
 
-**Status:** Proposed
+**Status:** Accepted (Assaf sign-off 2026-07-18; mockup `mockups/plan-home-readiness-v1.html`)
 **Date:** 2026-07-18
 **Refines:** [0045](0045-trip-home-real-data-only.md) (real-data-only home — the sibling principle the checklist already follows), [0004](0004-integrations-are-pipes.md) (deferred suggestions wait for their pipes/data). Builds on the plan-home built in `planning/2026-07-14-session-06-plan-home.md`.
 
@@ -27,21 +27,14 @@ Assaf (2026-07-18): "כפתורי מסך הבית במצב תכנון 'מה חס
 
 3. **The exact final check set, copy, ordering, and CTA behavior are settled in a design pass** (a mockup + this ADR flipping to Accepted). This ADR fixes the direction and the constraint (real data only, derived), not the final row list.
 
-## Proposed in the mockup (2026-07-18, `mockups/plan-home-readiness-v1.html`) — for sign-off
+## Settled (Assaf sign-off, 2026-07-18; mockup `mockups/plan-home-readiness-v1.html`)
 
-The mockup proposes a concrete reworked check set and answers the open questions below; each is a _proposal_ pending Assaf's sign-off (then this ADR → Accepted).
-
-- **Check set (all derived, real-data-only):** keep the four existing — 🏨 `lodging`, 📅 `itinerary` (empty days), ✈️ `flights`, 👥 `group` — each with a CTA that _does the thing_ (opens the add-booking sheet / seeds the day builder on the first empty day / the settings invite), not a bare tab-switch. **Add two now-buildable checks:** 🛂 **documents/passports** (per-traveller, from the snapshot documents list post-ADR-0058) and 🔑 **confirmation-code completeness** (a hard booking missing its code). **Left out** (no data/feature, ADR-0045/0004): Google-connection, Gmail import, WhatsApp reminder.
+- **Check set (all derived, real-data-only):** keep the four existing — 🏨 `lodging`, 📅 `itinerary` (empty days), ✈️ `flights`, 👥 `group` — each with a CTA that _does the thing_ (opens the add-booking sheet / seeds the day builder on the first empty day / the settings invite), not a bare tab-switch. **Add exactly one new check:** 🛂 **documents/passports** (per-traveller, from the snapshot documents list post-ADR-0058).
+- **Confirmation-code completeness (🔑) is dropped** — considered, but "too minor for its own row" (Assaf). It can live as a subtle inline hint on a booking later, not as a readiness check.
+- **Documents is a per-traveller rollup** ("2 מתוך 5 העלו דרכון", with a small per-person indicator), breakdown on tap — fits the small-group model.
 - **Completed checks collapse into a one-line summary** ("✓ הושלמו · ✈️ טיסות · 👥 הקבוצה") with a "show completed" toggle, so the list stays about _what's missing_.
-- **Readiness stays advisory** — it never gates the go-live switch (a nudge, not a blocker).
-- **Documents is a per-traveller rollup** ("2 מתוך 5 העלו דרכון", with a small per-person indicator), fitting the small-group model, with the breakdown on tap.
-
-## Open questions (confirm / adjust the proposals above)
-
-- Which new suggestions to surface first — documents/passport proposed as the strongest; confirm, and whether the 🔑 code-completeness nudge earns a row or is too minor.
-- Readiness advisory-only (proposed) vs ever gating/nudging the go-live switch.
-- Collapse completed (proposed) vs keep them as ✓ rows.
-- Documents per-traveller (proposed) vs trip-level only.
+- **Readiness stays advisory** — a nudge, never a blocker; it does **not** gate the go-live mode switch.
+- **Left out** (no data/feature, ADR-0045/0004): Google-connection, Gmail import, WhatsApp reminder.
 
 ## Consequences
 
