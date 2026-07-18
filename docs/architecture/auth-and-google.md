@@ -52,16 +52,19 @@ Request the minimum at sign-in; **incrementally** request Calendar/Gmail scopes 
 - Action: upsert a corresponding event in that member's Google Calendar via their token. One-way only — we never read the calendar back (ADR-0003).
 - Idempotency: the **`CalendarEventLink`** table (`eventId × userId → googleCalendarEventId`, `@@unique([eventId, userId])`) maps trip events to each member's Google calendar event so updates/deletes target the right one.
 
-## Invite / join
+## Invite / join (ADR-0067)
 
-Distinct from the session tokens above — this is how a non-member gets _into_ a trip.
+Distinct from the session tokens above — this is how a non-member gets _into_ a trip. The invite is a **durable, per-trip row** whose short `code` is the credential (superseding the earlier stateless-HMAC-token design; see ADR-0067).
 
-- **Token shape:** `base64url("<tripId>.<expiresAtMs>") + "." + HMAC-SHA256(payload, JWT_SECRET)`. **Stateless** — the token _is_ the grant; there is **no DB record**. 7-day TTL baked into the payload; the HMAC makes it unforgeable.
-- **`POST /trips/:tripId/invite`** → mints a token, returns `{ inviteUrl: "/trips/join/<token>" }` (member shares the link).
-- **`GET /invites/:token`** — **public/unguarded** (ADR-0024): validates the HMAC, returns a minimal preview `{ tripName, destination, startDate, endDate, memberCount }` so the join screen can show _which_ trip before you commit. Needed because `GET /trips/:id/snapshot` is membership-guarded and can't preview an un-joined trip.
-- **`POST /trips/join/:token`** → verifies the token, adds the caller as a `peer` `Membership` (idempotent — rejoining keeps the existing role). The joiner must be **signed in first**; an invite tapped while logged out is preserved through the sign-in gate and resumed after (ADR-0024).
+- **`Invite` row (one per trip, `tripId @unique`):** `{ code @unique, createdBy, timestamps }`. The random **8-char base58** `code` (`a–z A–Z 0–9` minus `0 O I l`, ~2⁴⁷ keyspace, case-sensitive) is both the public handle in `/join/<code>` and the grant — join resolves `code → row → tripId` directly. No HMAC token: with a row keyed by a unique random code, the code _is_ the secret and the row's `tripId` is the binding, so invites no longer touch `JWT_SECRET`.
+- **`POST /trips/:tripId/invite`** — **get-or-create**: returns the trip's one stable code (mints only if none exists), `{ inviteUrl: "/join/<code>" }`. Repeated calls return the _same_ link.
+- **`POST /trips/:tripId/invite/rotate`** — **admin-only** revoke: mints a fresh code in place; the previously shared code stops resolving at once.
+- **`GET /invites/:code`** — **public/unguarded** (ADR-0024): returns a minimal preview `{ tripId, tripName, icon?, destination, startDate, endDate, memberCount }` so the join screen can show _which_ trip before you commit (and so an already-member is redirected straight in). `404` on an unknown code, `410 INVITE_EXPIRED` once the trip has ended.
+- **`POST /trips/join/:code`** → adds the caller as a `peer` `Membership` (idempotent — rejoining keeps the existing role). The joiner must be **signed in first** (ADR-0024). `403 REMOVED_FROM_TRIP` if they were kicked and not yet allowed back.
 
-**Revocability — deliberate v1 tradeoff.** Because invites carry no server-side record, an individual link **cannot be revoked** once shared; it simply expires after 7 days. This is acceptable for a private ~5-friend trip and matches ADR-0005 (invite-revoke isn't gated in v1). The blunt lever is rotating `JWT_SECRET`, which invalidates _all_ outstanding invites at once; per-member control is via **membership removal**, which is immediate (trip authz is checked per request against `Membership`, not baked into any token). **Upgrade path** if per-link revoke is ever needed: a DB-backed invite record (or a per-trip invite secret) — no schema exists for it today, by choice.
+**Validity.** A code is live from creation **until the trip's `endDate` passes in the trip's timezone** (checked live) or an admin rotates — no fixed timer, so the link is stable through planning and travel and dies on its own once the trip is over.
+
+**Removal is now durable (removal blocks, ADR-0067).** When an **admin removes another member** (not a self-leave), a `TripBlock (tripId, userId)` row is written in the same transaction as the membership delete; `join` rejects a blocked user. This makes membership removal hold against a still-live link (the earlier stateless invite let a removed member rejoin instantly). **Re-invite** = clear the block: Trip Settings shows a **Removed** section (admin-only `GET /trips/:tripId/blocks`) with an "allow back in" action (`DELETE /trips/:tripId/blocks/:userId`). A determined ex-member can still rejoin under a _new_ Google identity — accepted for an invite-only friends app.
 
 ## Security notes
 
