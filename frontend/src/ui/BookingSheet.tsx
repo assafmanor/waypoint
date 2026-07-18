@@ -24,6 +24,7 @@ import {
   deleteFlags,
   buildEventSeed,
   buildSpanSeed,
+  dateOutOfTripRange,
   findPlaceByName,
   isoToDateTimeLocal,
 } from '../lib/booking-edit';
@@ -117,6 +118,10 @@ export function BookingSheet({
   const isTransport = isTransportType(type);
   const isHotel = type === BOOKING_TYPE.HOTEL;
   const isSpan = isSpanType(type);
+  // Bound the span datetime-local inputs to the trip's day range (matches the
+  // single-date input's min/max); datetime-local honours "YYYY-MM-DDTHH:MM".
+  const spanMin = `${trip.startDate}T00:00`;
+  const spanMax = `${trip.endDate}T23:59`;
 
   const changeType = (next: BookingType) => {
     setType(next);
@@ -142,8 +147,8 @@ export function BookingSheet({
   const save = async () => {
     const finalTitle = title.trim();
     if (!finalTitle) return setError(t.index.form.titleRequired);
-    const scheduleDate = isSpan ? spanStart.split('T')[0] : date;
-    if (scheduleDate && (scheduleDate < trip.startDate || scheduleDate > trip.endDate)) {
+    const outOfRange = (v: string) => dateOutOfTripRange(v, trip.startDate, trip.endDate);
+    if (isSpan ? outOfRange(spanStart) || outOfRange(spanEnd) : outOfRange(date)) {
       return setError(t.index.form.dateOutOfRange);
     }
     setSaving(true);
@@ -318,6 +323,8 @@ export function BookingSheet({
                     type="datetime-local"
                     dir="ltr"
                     lang={DEVICE_LOCALE}
+                    min={spanMin}
+                    max={spanMax}
                     value={spanStart}
                     onChange={(e) => setSpanStart(e.target.value)}
                   />
@@ -328,6 +335,8 @@ export function BookingSheet({
                     type="datetime-local"
                     dir="ltr"
                     lang={DEVICE_LOCALE}
+                    min={spanMin}
+                    max={spanMax}
                     value={spanEnd}
                     onChange={(e) => setSpanEnd(e.target.value)}
                   />
