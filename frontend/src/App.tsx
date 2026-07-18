@@ -1,4 +1,4 @@
-import { useEffect, useState } from 'react';
+import { useEffect, useRef, useState } from 'react';
 import {
   Navigate,
   Outlet,
@@ -13,7 +13,14 @@ import { TripProvider, useTrip } from './state/trip-state';
 import { ModeProvider, useMode } from './state/mode-state';
 import { AuthProvider, useAuth } from './state/auth-state';
 import { ActiveTripIdProvider, useActiveTripId } from './state/active-trip-id';
-import { HOME_TAB, NavProvider, useMarkInsideTrip, useTripTab } from './state/nav-state';
+import {
+  NavProvider,
+  shouldResetDayToToday,
+  shouldResetToHomeOnResume,
+  useCloseAllOverlays,
+  useMarkInsideTrip,
+  useTripTab,
+} from './state/nav-state';
 import { EdgeSwipeBack } from './ui/EdgeSwipeBack';
 import { flushAllOutbox, isOffline, useIsOffline, useOutboxCount } from './lib/outbox';
 import { loadTripList } from './lib/cache';
@@ -36,7 +43,7 @@ import { CreateTrip } from './screens/CreateTrip';
 import { JoinTrip } from './screens/JoinTrip';
 import { TripSettings } from './screens/TripSettings';
 import { DevTimeTravel } from './dev/DevTimeTravel';
-import { useClock } from './lib/useClock';
+import { getNow, useClock } from './lib/useClock';
 import { useShrinkToFit } from './lib/useShrinkToFit';
 import {
   AVATAR_INITIAL_LENGTH,
@@ -334,7 +341,7 @@ function Shell() {
   const { trip, setActiveDate, tripDeleted } = useTrip();
   const { logout } = useAuth();
   const navigate = useNavigate();
-  const now = useClock();
+  const closeAllOverlays = useCloseAllOverlays();
   // A remote admin deleting the trip while we're inside it (ADR-0039): leave to
   // the all-trips list rather than sitting on a trip that no longer exists.
   useEffect(() => {
@@ -344,14 +351,42 @@ function Shell() {
     setActiveDate(date);
     goToTab('days');
   };
-  // Tapping Home in Trip mode is "back to now": the board is a live/today
-  // surface (ADR-0043 anchors amber to today), so snap the day-strip selection
-  // back to today rather than leaving a previously-browsed day highlighted while
-  // the board shows now. Plan mode has no "now" — its day selection is preserved.
-  const onSelectTab = (next: TabId) => {
-    if (next === HOME_TAB && mode === 'trip') setActiveDate(todayInTz(trip.timezone, now));
-    goToTab(next);
-  };
+
+  // "Back to now": landing on Home in Trip mode snaps the day-strip to today, so
+  // every route to Home converges here (nav-bar tap, goToTab, the return gesture,
+  // system-back) instead of each caller resetting the day itself. The board is a
+  // live/today surface (ADR-0043); Plan mode has no "now", so it keeps the
+  // selected day. Latest-ref keeps the effect keyed purely on the Home landing.
+  const snapDayToTodayRef = useRef<() => void>(() => {});
+  snapDayToTodayRef.current = () => setActiveDate(todayInTz(trip.timezone, new Date(getNow())));
+  useEffect(() => {
+    if (shouldResetDayToToday(tab, mode)) snapDayToTodayRef.current();
+  }, [tab, mode]);
+
+  // Reopen-after-idle (ADR-0060): when the app returns to the foreground after a
+  // long idle stretch (≥ RESET_TO_HOME_AFTER_HIDDEN_MS) in Trip mode, reset to a
+  // clean Home + today — close any open sheet, go to the Home base, snap the day.
+  // Distinct from trip-state's ~30s data-resync (that refreshes data; this resets
+  // the view); both listen independently. Refs keep the listener bound once.
+  const modeRef = useRef(mode);
+  modeRef.current = mode;
+  useEffect(() => {
+    let hiddenAt = 0;
+    const onVisibility = () => {
+      if (document.visibilityState === 'hidden') {
+        hiddenAt = getNow();
+        return;
+      }
+      const awayMs = hiddenAt === 0 ? 0 : getNow() - hiddenAt;
+      hiddenAt = 0;
+      if (!shouldResetToHomeOnResume(awayMs, modeRef.current)) return;
+      closeAllOverlays();
+      navigate('/', { replace: true });
+      snapDayToTodayRef.current();
+    };
+    document.addEventListener('visibilitychange', onVisibility);
+    return () => document.removeEventListener('visibilitychange', onVisibility);
+  }, [navigate, closeAllOverlays]);
   // Mode-switch transition (design-language: Motion). data-switching arms the
   // chrome transition, direction-scoped: Plan→Trip (going live) is the cinematic
   // beat, Trip→Plan (stand-down) the quieter return. It MUST land in the same
@@ -393,7 +428,7 @@ function Shell() {
           <button
             key={tabDef.id}
             className={tabDef.id === tab ? 'on' : ''}
-            onClick={() => onSelectTab(tabDef.id)}
+            onClick={() => goToTab(tabDef.id)}
             aria-current={tabDef.id === tab}
           >
             <span className="ic">{tabDef.icon}</span>

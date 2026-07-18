@@ -15,6 +15,7 @@ import {
 } from 'react';
 import { useLocation, useNavigate, useSearchParams, type NavigateFunction } from 'react-router-dom';
 import { ICONS, type TabId } from '../constants';
+import type { Mode } from '../lib/mode';
 import { getNow } from '../lib/useClock';
 import { useToast } from '../ui/Toast';
 import { t } from '../i18n/he';
@@ -27,6 +28,12 @@ export const HOME_TAB: TabId = 'home';
 const EXIT_TRIP_TO = '/trips';
 /** How long the "swipe again to leave the trip" confirmation stays armed. */
 export const EXIT_CONFIRM_MS = 3000;
+
+/** Idle-resume threshold (ADR-0060): a warm resume resets the view to Home +
+ *  today only after the app was hidden at least this long (~30 min).
+ *  Deliberately distinct from trip-state's 30-*second* data-resync — "reset the
+ *  view to what-now" (minutes) vs "refresh the data" (seconds). */
+export const RESET_TO_HOME_AFTER_HIDDEN_MS = 30 * 60 * 1000;
 
 /** A resolved navigation move, kept pure/serialisable so the decision logic is
  *  unit-testable without a router or DOM (see nav-state.test.ts). */
@@ -68,6 +75,23 @@ export function structuralBackStep(ctx: {
     return { kind: 'none' };
   }
   return ctx.canGoBack ? { kind: 'back' } : { kind: 'push', to: '/' };
+}
+
+/** The trip-vs-plan rule shared by every route to Home (ADR-0035, 2026-07-18):
+ *  landing on the Home tab snaps the day-strip back to today in Trip mode; Plan
+ *  mode preserves the selected day (it isn't today-anchored). The single choke
+ *  point behind the nav-bar tap, `goToTab`, the return gesture and system-back —
+ *  all converge on the Home tab, so the reset is keyed off that, not per-caller. */
+export function shouldResetDayToToday(tab: TabId, mode: Mode): boolean {
+  return tab === HOME_TAB && mode === 'trip';
+}
+
+/** Whether a warm resume should reset navigation to Home + today (ADR-0060):
+ *  only after a real idle stretch (≥ RESET_TO_HOME_AFTER_HIDDEN_MS) and only in
+ *  Trip mode; a brief app-switch resumes in place, and Plan mode is never
+ *  today-anchored. */
+export function shouldResetToHomeOnResume(awayMs: number, mode: Mode): boolean {
+  return awayMs >= RESET_TO_HOME_AFTER_HIDDEN_MS && mode === 'trip';
 }
 
 /** What a single back resolved to — lets the return gesture pick its animation
@@ -116,6 +140,7 @@ interface NavContextValue {
   registerOverlay: (close: () => void) => number;
   unregisterOverlay: (id: number) => void;
   closeTopOverlay: () => boolean;
+  closeAllOverlays: () => void;
   hasOverlay: () => boolean;
   setInsideTrip: (v: boolean) => void;
   insideTripRef: React.MutableRefObject<boolean>;
@@ -223,6 +248,12 @@ export function NavProvider({ children }: { children: ReactNode }) {
         top.close();
         return true;
       },
+      // Drain the whole stack (ADR-0060 idle-resume): snapshot then clear before
+      // closing, so each close()'s unregister can't splice the array mid-loop.
+      closeAllOverlays: () => {
+        const all = stackRef.current.splice(0);
+        for (const o of all) o.close();
+      },
       hasOverlay: () => stackRef.current.length > 0,
       setInsideTrip: (v) => {
         insideTripRef.current = v;
@@ -260,6 +291,12 @@ export function useOverlay(onClose: () => void) {
  *  dismiss over. Returns a live getter, stable across renders. */
 export function useHasOverlay(): () => boolean {
   return useNav().hasOverlay;
+}
+
+/** Close every open overlay at once. Used by the idle-resume reset (ADR-0060) so
+ *  a long-idle reopen lands on a clean Home, not Home under a stale sheet. */
+export function useCloseAllOverlays(): () => void {
+  return useNav().closeAllOverlays;
 }
 
 /** Marks that the in-trip shell is mounted, so `goBack()` applies the in-trip

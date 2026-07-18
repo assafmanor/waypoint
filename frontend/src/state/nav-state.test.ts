@@ -2,7 +2,14 @@
 // hooks that wrap these (useTripTab / useAppBack) are React+router bound; the
 // decisions themselves are pure and are what's worth pinning down.
 import { describe, expect, it } from 'vitest';
-import { structuralBackStep, systemBackDecision, tabStep } from './nav-state';
+import {
+  RESET_TO_HOME_AFTER_HIDDEN_MS,
+  shouldResetDayToToday,
+  shouldResetToHomeOnResume,
+  structuralBackStep,
+  systemBackDecision,
+  tabStep,
+} from './nav-state';
 
 describe('tabStep — Home-anchor tab model (ADR-0035 §3)', () => {
   it('is a no-op when already on the target tab', () => {
@@ -95,5 +102,42 @@ describe('systemBackDecision — Android system-back routing (ADR-0035 §5)', ()
   it('lets a non-Home tab / route back through to react-router', () => {
     expect(systemBackDecision({ ...base, insideTrip: true, atHome: false })).toBe('allow');
     expect(systemBackDecision({ ...base, insideTrip: false })).toBe('allow');
+  });
+});
+
+describe('shouldResetDayToToday — every route to Home lands on today (ADR-0035, 2026-07-18)', () => {
+  it('resets the day when a structural back lands on Home in Trip mode', () => {
+    expect(shouldResetDayToToday('home', 'trip')).toBe(true);
+  });
+
+  it('preserves the selected day in Plan mode (not today-anchored)', () => {
+    expect(shouldResetDayToToday('home', 'plan')).toBe(false);
+  });
+
+  it('does not reset while on a non-Home tab', () => {
+    expect(shouldResetDayToToday('days', 'trip')).toBe(false);
+    expect(shouldResetDayToToday('index', 'trip')).toBe(false);
+  });
+});
+
+describe('shouldResetToHomeOnResume — reopen-after-idle reset (ADR-0060)', () => {
+  it('resets only when hidden at least the idle threshold in Trip mode', () => {
+    expect(shouldResetToHomeOnResume(RESET_TO_HOME_AFTER_HIDDEN_MS, 'trip')).toBe(true);
+    expect(shouldResetToHomeOnResume(RESET_TO_HOME_AFTER_HIDDEN_MS + 1, 'trip')).toBe(true);
+  });
+
+  it('resumes in place for a brief app-switch below the threshold', () => {
+    expect(shouldResetToHomeOnResume(RESET_TO_HOME_AFTER_HIDDEN_MS - 1, 'trip')).toBe(false);
+    expect(shouldResetToHomeOnResume(0, 'trip')).toBe(false);
+  });
+
+  it('never resets in Plan mode, however long the idle', () => {
+    expect(shouldResetToHomeOnResume(RESET_TO_HOME_AFTER_HIDDEN_MS, 'plan')).toBe(false);
+    expect(shouldResetToHomeOnResume(RESET_TO_HOME_AFTER_HIDDEN_MS * 10, 'plan')).toBe(false);
+  });
+
+  it('is distinct from (and longer than) the 30s data-resync threshold', () => {
+    const RESYNC_AFTER_HIDDEN_MS = 30_000;
+    expect(RESET_TO_HOME_AFTER_HIDDEN_MS).toBeGreaterThan(RESYNC_AFTER_HIDDEN_MS);
   });
 });
