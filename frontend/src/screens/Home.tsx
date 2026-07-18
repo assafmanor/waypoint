@@ -138,8 +138,10 @@ export function Home({ onNavigate }: { onNavigate?: (tab: TabId) => void }) {
   const day23 = Date.parse(zonedIso(activeDate, hourLabel(DAY_WINDOW.END_HOUR), tz));
   const glance = buildDayGlance(events, activeDate, nowMs, day07, day23, tz);
   const remaining = glance.remaining;
-  // Ambient-span stays (a hotel spanning several nights, ADR-0054) — backdrop
-  // above the rail on every night they cover, never a counted block.
+  // Ambient-span stays active today (a hotel spanning several nights, ADR-0054).
+  // No persistent band on Home (ADR-0064 §A): the hero surfaces the transition
+  // moments and the glance draws the check-in/out markers. This only feeds the
+  // clock-gated "inside a booking now" strip below.
   const ambientStays = ambientEventsOnDate(events, activeDate);
   // Same-day (non-ambient) events drive the day's own end / hard-anchor stats —
   // a multi-night hotel's check-out is days away and must not skew them.
@@ -455,19 +457,6 @@ export function Home({ onNavigate }: { onNavigate?: (tab: TabId) => void }) {
       </div>
 
       <div className="sec-title">{t.glance.title}</div>
-      {ambientStays.length > 0 && (
-        <div className="glance-ambient">
-          {ambientStays.map((e) => (
-            <div className="ambient" key={e.id}>
-              <span className="ai" aria-hidden="true">
-                {e.icon ?? '🏨'}
-              </span>
-              <span className="an">{e.title}</span>
-              <span className="as">{t.glance.ambientNight(stayNight(e), stayNights(e))}</span>
-            </div>
-          ))}
-        </div>
-      )}
       {glance.empty ? (
         <div className="glance-day empty">
           <div className="ei" aria-hidden="true">
