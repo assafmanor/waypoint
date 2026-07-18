@@ -127,6 +127,15 @@ Using precise terms, the implementation is:
 
 Ordered by severity. IDs are stable references.
 
+> **Remediation status (2026-07-18).** The Critical and both High findings have been fixed on `claude/waypoint-frontend-review-kovleu` (three worktree-isolated agents, integrated together; combined gate green — typecheck clean, 353 tests, build + lint pass):
+>
+> - **F-01 — Fixed.** `wipeLocalData()` (`lib/cache.ts`) clears all Dexie tables + `ACTIVE_TRIP_STORAGE_KEY` + the document blob cache (`clearAllCachedDocuments()` in `lib/doc-cache.ts`) and re-primes the outbox badge; called from `logout()` and the genuine online-401 `onSessionExpired` path, while the offline cold-boot fallback is deliberately left untouched.
+> - **F-02 — Fixed.** The quick-schedule verb now builds instants via `zonedIso(activeDate, slot, trip.timezone)` instead of the fixture `+09:00`; the derivation was extracted to a pure `buildScheduleEvent` and regression-tested for `Europe/London` (DST) and `America/New_York`.
+> - **F-03 — Fixed.** Non-allowlisted 4xx flush failures are no longer dropped silently: they record a failed-sync entry (new `useSyncFailures` store), surface a dismissable Header badge, and trigger a snapshot resync so the phantom optimistic entity is reconciled. Only `MOVE_INTO_PAST`/`MOVE_CROSSES_DAY` still drop quietly.
+> - **F-04 — Fixed.** `openTripStream` gained bounded exponential-backoff reconnect (pure `reconnectDelay`), a ping heartbeat, and a no-frames watchdog; `trip-state` runs catch-up on reconnect via a shared `catchUp()`.
+>
+> Remaining findings below (F-05 onward: Medium/Low/Informational) are **not yet addressed**. Runtime browser verification of the fixes was not performed (no backend was booted — consistent with §2); coverage is the unit/integration suite plus the combined build.
+
 ### Critical
 
 ---
