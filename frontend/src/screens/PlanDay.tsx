@@ -19,6 +19,7 @@ import {
 import {
   EVENT_KIND,
   EVENT_STATUS,
+  isAmbient,
   type Booking,
   type EventCategory,
   type MaybeItem,
@@ -97,11 +98,12 @@ export function PlanDay() {
   // record reads "what we did / what we skipped" (ADR-0044).
   const dayEvents = events
     .filter(
-      (e) => e.date === activeDate && (readOnly || e.status !== EVENT_STATUS.SKIPPED) && !e.endDate,
+      (e) =>
+        e.date === activeDate && (readOnly || e.status !== EVENT_STATUS.SKIPPED) && !isAmbient(e),
     )
     .sort(byStart);
-  // Ambient-span stays (a hotel, ADR-0054): backdrop across their nights, not
-  // builder rows.
+  // Ambient-span stays (a hotel, ADR-0054/0063): backdrop across their nights,
+  // not builder rows.
   const ambientStays = ambientEventsOnDate(events, activeDate);
   const stayNights = (e: TripEvent) =>
     Math.max(1, Math.round((Date.parse(e.endDate!) - Date.parse(e.date)) / MS_PER_DAY));

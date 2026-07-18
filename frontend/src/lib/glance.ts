@@ -6,7 +6,14 @@
 // (buildTimeTree, ADR-0041); full nesting/cluster fidelity stays in the day
 // view. Skipped events are excluded from buildTimeTree, so they're layered back
 // in as struck segments (never counted in "remaining").
-import { EVENT_STATUS, type TripEvent } from '@waypoint/shared';
+import {
+  CATEGORY_DEFAULT_ICON,
+  CATEGORY_TIME_PROFILE,
+  EVENT_STATUS,
+  isAmbient,
+  isBracketed,
+  type TripEvent,
+} from '@waypoint/shared';
 import { buildTimeTree, crossesMidnight, type TimeGroup, type TimeItem } from './time';
 
 export type SegPhase = 'done' | 'passed' | 'now' | 'upcoming' | 'skipped';
@@ -33,11 +40,30 @@ export interface GlanceSeg {
   nextDay: boolean;
 }
 
+/** A transition marker on the rail's dedicated upper lane (ADR-0054 amendment,
+ *  rebased on ADR-0063): a bracketed event's start/end (check-in/check-out,
+ *  departure/arrival) as an amber time-anchor chip. A marker is a *point* that
+ *  happens in the day, not a counted block — an ambient hotel's markers stay
+ *  uncounted; a flight's are edge markers on its counted block. */
+export interface GlanceMarker {
+  key: string;
+  /** Position from the window start (0..1), same scale as the block segments. */
+  frac: number;
+  /** i18n transition key from the category profile (`checkIn`/`departure`…). */
+  labelKey: string;
+  /** The transition instant, for the mono time label. */
+  timeMs: number;
+  /** The event's own icon (or its category default) — the shared badge glyph. */
+  icon: string;
+}
+
 export interface DayGlance {
   empty: boolean;
   windowStartMs: number;
   windowEndMs: number;
   segs: GlanceSeg[];
+  /** Amber transition markers above the block bar (ADR-0054 amendment). */
+  markers: GlanceMarker[];
   /** Now's position in the window (0..1), or null when now is outside it
    *  (i.e. a past/future day being browsed). */
   nowFrac: number | null;
@@ -54,13 +80,14 @@ const startMsOf = (e: TripEvent) => Date.parse(e.startsAt!);
 const endMsOf = (e: TripEvent) => (e.endsAt ? Date.parse(e.endsAt) : Date.parse(e.startsAt!));
 
 /** Ambient-span events (a hotel / multi-day booking) active on `date` — i.e.
- *  `event.date ≤ date ≤ event.endDate` (ADR-0054). Rendered as a backdrop on
- *  every day they cover (check-in through check-out), not on the counted rail.
- *  Keyed on `endDate` (the multi-day property), not on booking type, so any
- *  future multi-day span gets the same treatment. Takes the full trip event list,
- *  since a stay shows on nights the event's own `date` doesn't match. */
+ *  `event.date ≤ date ≤ event.endDate` (ADR-0054, rebased on ADR-0063). Rendered
+ *  as a backdrop on every day they cover (check-in through check-out), not on the
+ *  counted rail. Keyed on the category time-profile (`isAmbient`), not booking
+ *  type, so any future ambient category gets the same treatment. Takes the full
+ *  trip event list, since a stay shows on nights the event's own `date` doesn't
+ *  match. */
 export function ambientEventsOnDate(events: TripEvent[], date: string): TripEvent[] {
-  return events.filter((e) => e.endDate != null && e.date <= date && date <= e.endDate);
+  return events.filter((e) => isAmbient(e) && e.date <= date && date <= e.endDate!);
 }
 
 function itemEvents(item: TimeItem): TripEvent[] {
@@ -89,17 +116,19 @@ function groupPhase(g: TimeGroup, nowMs: number): SegPhase {
 }
 
 export function buildDayGlance(
-  dayEvents: TripEvent[],
+  events: TripEvent[],
+  activeDate: string,
   nowMs: number,
   day07Ms: number,
   day23Ms: number,
   timeZone: string,
 ): DayGlance {
-  // Ambient-span events (a hotel / multi-day booking, `endDate` set — ADR-0054)
-  // are backdrop, not counted blocks: they're excluded from the rail, the window
-  // math, and "remaining", so a multi-night stay can't distort the day. An
-  // overnight tail (ADR-0037, no `endDate`) stays an ordinary block.
-  const sameDay = dayEvents.filter((e) => !e.endDate);
+  const dayEvents = events.filter((e) => e.date === activeDate);
+  // Ambient-span events (a multi-day hotel — `isAmbient`, ADR-0063) are backdrop,
+  // not counted blocks: they're excluded from the rail, the window math, and
+  // "remaining", so a multi-night stay can't distort the day. An overnight tail
+  // (ADR-0037, no `endDate`) stays an ordinary block.
+  const sameDay = dayEvents.filter((e) => !isAmbient(e));
   const tree = buildTimeTree(sameDay); // excludes skipped + untimed
   const skipped = sameDay.filter((e) => e.status === EVENT_STATUS.SKIPPED && e.startsAt);
   const timed = sameDay.filter((e) => e.startsAt);
@@ -110,6 +139,7 @@ export function buildDayGlance(
       windowStartMs: day07Ms,
       windowEndMs: day23Ms,
       segs: [],
+      markers: [],
       nowFrac: null,
       remaining: 0,
     };
@@ -165,7 +195,42 @@ export function buildDayGlance(
     return p === 'now' || p === 'upcoming';
   }).length;
 
+  // Transition markers (ADR-0054 amendment): every bracketed event touching this
+  // day contributes its start/end that lands on it — a same-day flight's
+  // departure + arrival (edge markers on its counted block) and an ambient
+  // hotel's check-in (its check-in day) / check-out (its check-out day). The
+  // ambient stay stays off the counted rail; marking a transition point is not
+  // counting a block.
+  const ambientToday = ambientEventsOnDate(events, activeDate);
+  const byId = new Map<string, TripEvent>();
+  for (const e of [...dayEvents, ...ambientToday]) if (isBracketed(e)) byId.set(e.id, e);
+  const markers: GlanceMarker[] = [];
+  for (const e of byId.values()) {
+    const trans = e.category != null ? CATEGORY_TIME_PROFILE[e.category].transitions : undefined;
+    if (!trans) continue;
+    const icon = e.icon ?? (e.category != null ? CATEGORY_DEFAULT_ICON[e.category] : '📌');
+    if (e.date === activeDate && e.startsAt) {
+      markers.push({
+        key: `${e.id}-s`,
+        frac: frac(startMsOf(e)),
+        labelKey: trans.startKey,
+        timeMs: startMsOf(e),
+        icon,
+      });
+    }
+    if ((e.endDate ?? e.date) === activeDate && e.endsAt) {
+      markers.push({
+        key: `${e.id}-e`,
+        frac: frac(endMsOf(e)),
+        labelKey: trans.endKey,
+        timeMs: endMsOf(e),
+        icon,
+      });
+    }
+  }
+  markers.sort((a, b) => a.frac - b.frac);
+
   const nowFrac = nowMs >= windowStartMs && nowMs <= windowEndMs ? frac(nowMs) : null;
 
-  return { empty: false, windowStartMs, windowEndMs, segs, nowFrac, remaining };
+  return { empty: false, windowStartMs, windowEndMs, segs, markers, nowFrac, remaining };
 }

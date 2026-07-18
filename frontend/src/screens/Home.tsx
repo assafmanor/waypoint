@@ -4,7 +4,15 @@
 // glance are derived from the clock + events, never stored (ADR-0018).
 import { useState } from 'react';
 import { useNavigate } from 'react-router-dom';
-import { BOOKING_TYPE, EVENT_KIND, type Booking } from '@waypoint/shared';
+import {
+  BOOKING_TYPE,
+  CATEGORY_TIME_PROFILE,
+  EVENT_KIND,
+  isAmbient,
+  isBracketed,
+  type Booking,
+  type TripEvent,
+} from '@waypoint/shared';
 import { useTrip } from '../state/trip-state';
 import { useToast } from '../ui/Toast';
 import { Icon } from '../ui/Icon';
@@ -19,11 +27,20 @@ import {
   formatTime,
   hardConflicts,
   minutesUntil,
+  todayInTz,
   zonedIso,
 } from '../lib/time';
 import { buildDayGlance, ambientEventsOnDate } from '../lib/glance';
+import { deriveHeroBooking } from '../lib/hero-booking';
+import { transitionLabel } from '../lib/transitions';
 import { CODE_PREFIX, DAY_WINDOW, ICONS, MS_PER_DAY, type TabId } from '../constants';
 import { t } from '../i18n/he';
+
+/** The start transition label key for a bracketed upcoming event (ADR-0063). */
+const startTransitionKey = (e: TripEvent): string | undefined =>
+  isBracketed(e) && e.category != null
+    ? CATEGORY_TIME_PROFILE[e.category].transitions?.startKey
+    : undefined;
 
 const hourLabel = (hour: number) => `${String(hour).padStart(2, '0')}:00`;
 
@@ -43,9 +60,24 @@ export function Home({ onNavigate }: { onNavigate?: (tab: TabId) => void }) {
   const navigate = useNavigate();
   const now = useClock();
   const tz = trip.timezone;
+  const nowMs = now.getTime();
+  const today = todayInTz(tz, now);
 
-  const { now: nowEvent, next: nextEvent, nowAll } = deriveNow(events, now);
+  // Ambient hotels are backdrop, never a now/next block — once you've checked in
+  // they'd otherwise hijack the hero for the whole stay (ADR-0059 §1 / ADR-0054).
+  // Their transitions surface via the hero-booking derivation below; before
+  // check-in a hotel stays in, so it can be the natural "next" fairly.
+  const scheduleEvents = events.filter((e) => !(isAmbient(e) && nowMs >= Date.parse(e.startsAt!)));
+  const { now: nowEvent, next: nextEvent, nowAll } = deriveNow(scheduleEvents, now);
   const dayEvents = events.filter((e) => e.date === activeDate);
+
+  // A bracketed booking surfaces on the hero only at its transition moments
+  // (ADR-0059 §1): a flight in the air fills the NOW slot (in-transit), a hotel
+  // check-in/out or flight departure decorates the NEXT slot.
+  const hero = deriveHeroBooking(events, nowMs, today);
+  const inTransit = hero.kind === 'in-transit' || hero.kind === 'transition-arrival';
+  const arriving = hero.kind === 'transition-arrival';
+
   const conflicts = nowEvent ? hardConflicts(nowEvent, dayEvents) : [];
   // Concurrency on the board (ADR-0041): one loud hero + a quiet "ועוד N" for the
   // rest, unless several soft events run at once with no hard anchor to lead —
@@ -53,16 +85,46 @@ export function Home({ onNavigate }: { onNavigate?: (tab: TabId) => void }) {
   const alsoNow = nowAll.slice(1);
   const groupSplit = nowAll.length >= 2 && nowAll.every((e) => e.kind === EVENT_KIND.SOFT);
   const [alsoOpen, setAlsoOpen] = useState(false);
-  const nextBooking = nextEvent?.bookingId
-    ? bookings.find((b) => b.id === nextEvent.bookingId)
+
+  // The NEXT item: normally deriveNow's next, but check-out is an END transition
+  // deriveNow can't surface — offer the hotel and pick whichever comes sooner.
+  let shownNext = nextEvent;
+  let nextInstant = nextEvent?.startsAt;
+  let nextLabelKey: string | undefined;
+  if (hero.kind === 'transition-checkout' && hero.event?.endsAt) {
+    if (!nextInstant || Date.parse(hero.event.endsAt) < Date.parse(nextInstant)) {
+      shownNext = hero.event;
+      nextInstant = hero.event.endsAt;
+      nextLabelKey = hero.labelKey;
+    }
+  }
+  if (!nextLabelKey && shownNext) nextLabelKey = startTransitionKey(shownNext);
+
+  const nextBooking = shownNext?.bookingId
+    ? bookings.find((b) => b.id === shownNext!.bookingId)
     : undefined;
   const nextCode = nextBooking?.confirmationCode
     ? `${CODE_PREFIX}${nextBooking.confirmationCode}`
     : undefined;
   const progress = Math.round(dayProgress(now, tz) * 100);
-  const countdown = nextEvent?.startsAt
-    ? formatCountdown(minutesUntil(nextEvent.startsAt, now))
-    : null;
+  const countdown = nextInstant ? formatCountdown(minutesUntil(nextInstant, now)) : null;
+
+  // In-transit hero derivations (flight in the air): time-to-landing progress
+  // and the code chip.
+  const transitEvent = inTransit ? hero.event : undefined;
+  const transitStart = transitEvent?.startsAt ? Date.parse(transitEvent.startsAt) : 0;
+  const transitEnd = transitEvent?.endsAt ? Date.parse(transitEvent.endsAt) : 0;
+  const transitProgress =
+    transitEvent && transitEnd > transitStart
+      ? Math.min(1, Math.max(0, (nowMs - transitStart) / (transitEnd - transitStart)))
+      : 0;
+  const transitBooking = transitEvent?.bookingId
+    ? bookings.find((b) => b.id === transitEvent.bookingId)
+    : undefined;
+  const transitCode = transitBooking?.confirmationCode
+    ? `${CODE_PREFIX}${transitBooking.confirmationCode}`
+    : undefined;
+
   const wifi = hotelWifi(bookings);
   // Quick-access derived tiles (ADR-0050): the next confirmation code you'll need
   // (may differ from the board's immediate next event) + WiFi from the hotel
@@ -74,21 +136,31 @@ export function Home({ onNavigate }: { onNavigate?: (tab: TabId) => void }) {
   // ── Day at a glance (derived) — a proportional time rail (lib/glance) ──
   const day07 = Date.parse(zonedIso(activeDate, hourLabel(DAY_WINDOW.START_HOUR), tz));
   const day23 = Date.parse(zonedIso(activeDate, hourLabel(DAY_WINDOW.END_HOUR), tz));
-  const glance = buildDayGlance(dayEvents, now.getTime(), day07, day23, tz);
+  const glance = buildDayGlance(events, activeDate, nowMs, day07, day23, tz);
   const remaining = glance.remaining;
   // Ambient-span stays (a hotel spanning several nights, ADR-0054) — backdrop
   // above the rail on every night they cover, never a counted block.
   const ambientStays = ambientEventsOnDate(events, activeDate);
-  const stayNights = (e: (typeof ambientStays)[number]) =>
+  // Same-day (non-ambient) events drive the day's own end / hard-anchor stats —
+  // a multi-night hotel's check-out is days away and must not skew them.
+  const sameDayEvents = dayEvents.filter((e) => !isAmbient(e));
+  const stayNights = (e: TripEvent) =>
     Math.max(1, Math.round((Date.parse(e.endDate!) - Date.parse(e.date)) / MS_PER_DAY));
-  const stayNight = (e: (typeof ambientStays)[number]) =>
+  const stayNight = (e: TripEvent) =>
     Math.min(
       stayNights(e),
       Math.round((Date.parse(activeDate) - Date.parse(e.date)) / MS_PER_DAY) + 1,
     );
+  // "Inside a booking now" (ADR-0059 §2): the ambient stay whose span currently
+  // contains the clock — a slim, dismissible teal strip subordinate to the hero.
+  const stayNow = ambientStays.find(
+    (e) =>
+      e.startsAt && e.endsAt && Date.parse(e.startsAt) <= nowMs && nowMs < Date.parse(e.endsAt),
+  );
+  const [stayDismissed, setStayDismissed] = useState(false);
   // Hard anchors matter individually, so this counts leaves, not blocks — the one
   // deliberate roots/leaves exception (ADR-0045).
-  const hardAhead = dayEvents
+  const hardAhead = sameDayEvents
     .filter((e) => e.kind === EVENT_KIND.HARD && e.startsAt)
     .filter((e) => {
       const p = eventPhase(e, now);
@@ -98,7 +170,7 @@ export function Home({ onNavigate }: { onNavigate?: (tab: TabId) => void }) {
   // "Free until" only reads honestly when there's no current event; otherwise the
   // board already says what's on. Day-end is the latest instant of the day.
   const freeUntil = !nowEvent && nextEvent?.startsAt ? formatTime(nextEvent.startsAt, tz) : null;
-  const dayEndMs = dayEvents.reduce((max, e) => {
+  const dayEndMs = sameDayEvents.reduce((max, e) => {
     const end = e.endsAt ? Date.parse(e.endsAt) : e.startsAt ? Date.parse(e.startsAt) : 0;
     return end > max ? end : max;
   }, 0);
@@ -117,18 +189,92 @@ export function Home({ onNavigate }: { onNavigate?: (tab: TabId) => void }) {
 
   return (
     <>
-      <div className="board">
+      {/* "Inside a booking now" (ADR-0059 §2): a slim, dismissible teal strip for
+          an ambient hotel mid-stay — subordinate to the hero, a quiet reminder.
+          The persistent stay signal is the day-view backdrop + the Index. */}
+      {stayNow && !stayDismissed && (
+        <div className="stay-strip">
+          <span className="ss-ic" aria-hidden="true">
+            {stayNow.icon ?? '🏨'}
+          </span>
+          <span className="ss-txt">
+            {t.glance.stayingPrefix}
+            <b>{stayNow.title}</b> · {t.glance.nightLabel}{' '}
+            <span className="mono" dir="ltr">
+              {stayNight(stayNow)}/{stayNights(stayNow)}
+            </span>
+          </span>
+          <button
+            type="button"
+            className="ss-x"
+            onClick={() => setStayDismissed(true)}
+            aria-label={t.glance.dismissStay}
+          >
+            ✕
+          </button>
+        </div>
+      )}
+
+      <div className={'board' + (inTransit ? ' transit' : '')}>
         <div className="board-top">
-          <div className="live">
+          <div className={'live' + (inTransit ? ' loc' : '')}>
             <span className="blip" />
-            {t.common.now}
+            {inTransit ? t.board.inTransitLive : t.common.now}
           </div>
           <div className="clock" dir="ltr">
             {formatTime(now, tz)}
           </div>
         </div>
 
-        {groupSplit ? (
+        {inTransit && transitEvent ? (
+          <>
+            <div className="now-label loc">{t.board.inTransitLabel}</div>
+            <div className="now-title">
+              {transitEvent.icon && <span className="board-ic">{transitEvent.icon}</span>}
+              {transitEvent.title}
+            </div>
+            <div className="now-meta">
+              <span className={'tlabel loc' + (arriving ? ' emph' : '')}>
+                {transitionLabel(hero.labelKey ?? 'arrival')}
+              </span>
+              {transitEvent.endsAt && <span dir="ltr">{formatTime(transitEvent.endsAt, tz)}</span>}
+              {transitCode && (
+                <span className="code" dir="ltr">
+                  {transitCode}
+                </span>
+              )}
+            </div>
+            {transitEvent.startsAt && transitEvent.endsAt && (
+              <div className="transit-prog">
+                <div className="tp-track">
+                  <div className="tp-fill" style={{ width: `${transitProgress * 100}%` }} />
+                  <div
+                    className="tp-plane"
+                    style={{ insetInlineStart: `${transitProgress * 100}%` }}
+                  >
+                    ✈️
+                  </div>
+                </div>
+                <div className="tp-ends">
+                  <span className="mono" dir="ltr">
+                    {formatTime(transitEvent.startsAt, tz)}
+                  </span>
+                  {countdown && (
+                    <span>
+                      {t.board.until}{' '}
+                      <span className="mono" dir="ltr">
+                        {formatTime(transitEvent.endsAt, tz)}
+                      </span>
+                    </span>
+                  )}
+                  <span className="mono" dir="ltr">
+                    {formatTime(transitEvent.endsAt, tz)}
+                  </span>
+                </div>
+              </div>
+            )}
+          </>
+        ) : groupSplit ? (
           <div className="now-split">
             <div className="now-label">{t.board.concurrentNow}</div>
             <div className="also-list">
@@ -208,53 +354,64 @@ export function Home({ onNavigate }: { onNavigate?: (tab: TabId) => void }) {
           </>
         )}
 
-        <div className="board-divider" />
-        <div className="next-row">
-          <div>
-            <div className="next-label">{t.board.nextLabel}</div>
-            <div className="next-title">
-              {nextEvent?.icon && <span className="board-ic">{nextEvent.icon}</span>}
-              {nextEvent ? nextEvent.title : t.board.endOfDay}
-            </div>
-            {nextEvent && (
-              <div className="next-meta">
-                <span dir="ltr">{formatTime(nextEvent.startsAt!, tz)}</span>
-                {nextEvent.kind === EVENT_KIND.HARD && (
-                  <span className="lockmini">
-                    {ICONS.lock} {t.event.hard}
-                  </span>
-                )}
-                {nextCode && (
-                  <span className="code" dir="ltr">
-                    {nextCode}
-                  </span>
+        {/* In transit, the transit-progress bar replaces the next-row + day rail
+            (the flight IS the current activity). */}
+        {!inTransit && (
+          <>
+            <div className="board-divider" />
+            <div className="next-row">
+              <div>
+                <div className="next-label">{t.board.nextLabel}</div>
+                <div className="next-title">
+                  {shownNext?.icon && <span className="board-ic">{shownNext.icon}</span>}
+                  {shownNext ? shownNext.title : t.board.endOfDay}
+                </div>
+                {shownNext && (
+                  <div className="next-meta">
+                    {/* A bracketed booking leads with its transition label
+                        (המראה / צ׳ק-אין …) — the shared grammar (ADR-0059 §3). */}
+                    {nextLabelKey && (
+                      <span className="tlabel">{transitionLabel(nextLabelKey)}</span>
+                    )}
+                    {nextInstant && <span dir="ltr">{formatTime(nextInstant, tz)}</span>}
+                    {shownNext.kind === EVENT_KIND.HARD && (
+                      <span className="lockmini">
+                        {ICONS.lock} {t.event.hard}
+                      </span>
+                    )}
+                    {nextCode && (
+                      <span className="code" dir="ltr">
+                        {nextCode}
+                      </span>
+                    )}
+                  </div>
                 )}
               </div>
-            )}
-          </div>
-          {countdown !== null && (
-            <div className="countdown">
-              {countdown.value && (
-                <div className="t" dir="ltr">
-                  {countdown.value}
+              {countdown !== null && (
+                <div className="countdown">
+                  {countdown.value && (
+                    <div className="t" dir="ltr">
+                      {countdown.value}
+                    </div>
+                  )}
+                  <div className="u">{countdown.unit}</div>
                 </div>
               )}
-              <div className="u">{countdown.unit}</div>
             </div>
-          )}
-        </div>
 
-        <div className="progress" aria-hidden="true">
-          <div className="track">
-            <div className="fill" style={{ width: `${progress}%` }} />
-            <div className="knob" style={{ insetInlineStart: `${progress}%` }} />
-          </div>
-          <div className="ends">
-            <span dir="ltr">{hourLabel(DAY_WINDOW.START_HOUR)}</span>
-            <span>{t.common.now}</span>
-            <span dir="ltr">{hourLabel(DAY_WINDOW.END_HOUR)}</span>
-          </div>
-        </div>
+            <div className="progress" aria-hidden="true">
+              <div className="track">
+                <div className="fill" style={{ width: `${progress}%` }} />
+                <div className="knob" style={{ insetInlineStart: `${progress}%` }} />
+              </div>
+              <div className="ends">
+                <span dir="ltr">{hourLabel(DAY_WINDOW.START_HOUR)}</span>
+                <span>{t.common.now}</span>
+                <span dir="ltr">{hourLabel(DAY_WINDOW.END_HOUR)}</span>
+              </div>
+            </div>
+          </>
+        )}
       </div>
 
       <div className="sec-title">{t.quick.title}</div>
@@ -324,6 +481,23 @@ export function Home({ onNavigate }: { onNavigate?: (tab: TabId) => void }) {
         </div>
       ) : (
         <div className="glance-day">
+          {/* Amber transition markers in a dedicated lane above the block bar so
+              segments can't swallow their labels (ADR-0054 amendment / ADR-0059). */}
+          {glance.markers.length > 0 && (
+            <div className="glance-marks" aria-hidden="true">
+              {glance.markers.map((m) => (
+                <div className="tmark" key={m.key} style={{ insetInlineStart: `${m.frac * 100}%` }}>
+                  <span className="chip">
+                    <span className="mi">{m.icon}</span> {transitionLabel(m.labelKey)}{' '}
+                    <span className="mono" dir="ltr">
+                      {formatTime(new Date(m.timeMs), tz)}
+                    </span>
+                  </span>
+                  <span className="stem" />
+                </div>
+              ))}
+            </div>
+          )}
           <div className="rail" aria-hidden="true">
             {glance.segs.map((s) => (
               <div

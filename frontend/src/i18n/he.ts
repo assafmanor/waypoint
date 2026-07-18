@@ -329,6 +329,10 @@ export const t = {
     // in-progress events, and the group-split header when several run at once.
     alsoNow: (n: number) => `ועוד ${n} עכשיו`,
     concurrentNow: 'עכשיו · במקביל',
+    // "In transit" hero (ADR-0059 §2): a flight in the air fills the NOW slot,
+    // teal = "where you are"; amber stays only on the time-to-landing.
+    inTransitLive: 'בטיסה',
+    inTransitLabel: 'כרגע · בדרך',
   },
   // Real, offline-safe shortcuts only (ADR-0045): next confirmation code, WiFi,
   // documents. Empty tiles are an "add" affordance; documents stays a fixture
@@ -361,6 +365,18 @@ export const t = {
     // Ambient-span backdrop (a hotel / multi-day booking) shown across its nights
     // (ADR-0054) — not counted on the rail.
     ambientNight: (night: number, nights: number) => `לילה ${night} מתוך ${nights}`,
+    // Amber transition markers on the rail + the shared booking grammar (ADR-0059
+    // §3 / ADR-0063 profile keys): the two ends of a bracketed booking.
+    transition: {
+      checkIn: 'צ׳ק-אין',
+      checkOut: 'צ׳ק-אאוט',
+      departure: 'המראה',
+      arrival: 'נחיתה',
+    },
+    // "Inside a booking" mid-stay strip (ADR-0059 §2) — teal "where you are".
+    stayingPrefix: 'שוהים ב־',
+    nightLabel: 'לילה',
+    dismissStay: 'הסתר',
   },
   // Plan-mode Home — the prep dashboard (modes.md; mockups/plan-mode-v1.html).
   // Only the rows we can honestly derive from the snapshot appear; the Gmail /

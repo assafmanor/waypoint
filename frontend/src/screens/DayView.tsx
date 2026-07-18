@@ -11,6 +11,7 @@ import { Fragment, useEffect, useRef, useState } from 'react';
 import {
   EVENT_KIND,
   EVENT_STATUS,
+  isAmbient,
   type Booking,
   type MaybeItem,
   type Place,
@@ -79,10 +80,10 @@ export function DayView() {
   const readOnly = dayScope === 'past';
 
   const dayEvents = events
-    .filter((e) => e.date === activeDate && e.status !== EVENT_STATUS.SKIPPED && !e.endDate)
+    .filter((e) => e.date === activeDate && e.status !== EVENT_STATUS.SKIPPED && !isAmbient(e))
     .sort(byStart);
-  // Ambient-span stays (a hotel, ADR-0054) are backdrop, not timeline rows: shown
-  // as a strip on every night they cover (not just check-in), never as a block.
+  // Ambient-span stays (a hotel, ADR-0054/0063) are backdrop, not timeline rows:
+  // shown as a strip on every night they cover (not just check-in), never a block.
   const ambientStays = ambientEventsOnDate(events, activeDate);
   const stayNights = (e: TripEvent) =>
     Math.max(1, Math.round((Date.parse(e.endDate!) - Date.parse(e.date)) / MS_PER_DAY));
