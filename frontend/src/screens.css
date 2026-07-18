@@ -431,14 +431,8 @@
   padding: 15px 16px 16px;
 }
 /* Ambient-span backdrop (a hotel / multi-day booking, ADR-0054): shown above the
-   day's blocks on every night it covers, teal-tinted (it's a place, not a time). */
-.glance-ambient {
-  display: flex;
-  flex-direction: column;
-  gap: 8px;
-  margin-bottom: 10px;
-}
-.glance-ambient .ambient,
+   day's blocks on the strictly-middle nights it covers, teal-tinted (it's a place,
+   not a time). Day-screen only — Home carries no persistent band (ADR-0064 §A). */
 .day-ambient .ambient {
   display: flex;
   align-items: center;
@@ -448,18 +442,15 @@
   border-radius: 12px;
   padding: 9px 12px;
 }
-.glance-ambient .ai,
 .day-ambient .ai {
   font-size: 16px;
   flex: 0 0 auto;
 }
-.glance-ambient .an,
 .day-ambient .an {
   font-size: 12.5px;
   font-weight: 700;
   color: var(--ink);
 }
-.glance-ambient .as,
 .day-ambient .as {
   margin-inline-start: auto;
   font-size: 11px;

@@ -11,12 +11,6 @@ This is not the record of the project. The **why** lives in [decisions/](decisio
 - **Map tab** — Plan-mode research surface: Places search, pins (from `Place`), results → "+ maybe". Blocked on Google Cloud setup below. **Navigate-to-next** (deferred out of ADR-0045; routes to the transport origin `Place`, ADR-0048) lands here too.
 - **Archive presentation** — ADR-0044 settled the behavior of a finished trip and explicitly left how the archive _looks_ as a follow-up (the Index's read-only archive state is designed in ADR-0049; other tabs' archive presentation is still open).
 
-## Booking presentation refinement (ADR-0064 — see `planning/2026-07-18-session-34-booking-presentation-refinements.md`)
-
-Follows the session-32/33 booking-presentation build (ADR-0059/0054/0063, all shipped). Two areas that overlap in `glance.ts`/`he.ts`/`screens.css` — **sequence, don't parallelise** (the shared derivation lands first).
-
-- **Trim the Home ambient band + fix mid-stay timing (ADR-0064 §A)** — drop the persistent ambient stay band from the Home glance (the hero's transition moments + the glance markers already carry every edge); gate any mid-stay treatment strictly to inside the stay span (after check-in, before check-out — fixes the observed pre-check-in "night 1 of 2"). `Home.tsx`, consuming the same shared derivation.
-
 ## Documents: performance & caching (two parallel tasks — see `planning/2026-07-17-session-29-document-caching-and-fast-uploads.md`)
 
 Decomposed to run simultaneously; disjoint file ownership (map in the session-29 note). Both **Proposed**.
