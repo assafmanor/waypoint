@@ -3728,6 +3728,8 @@
   gap: 12px;
   max-height: 80vh;
   overflow-y: auto;
+  /* Clears the home indicator: the sticky footer pins above this padding. */
+  padding-bottom: env(safe-area-inset-bottom, 0px);
   /* Hide the RTL left-edge scrollbar — it reads as a stray vertical line on the
      sheet; the content still scrolls by touch/wheel. */
   scrollbar-width: none;
@@ -3819,10 +3821,19 @@
   font-weight: 400;
   color: var(--muted);
 }
+/* Pinned footer: Save/Cancel stay reachable while the field area scrolls
+   (the scroll container is .booking-sheet). The negative margin swallows the
+   column gap so scrolling fields slide fully under the opaque band instead of
+   peeking through it. */
 .booking-sheet .bs-actions {
+  position: sticky;
+  bottom: 0;
+  z-index: 1;
   display: flex;
   gap: 10px;
-  margin-top: 4px;
+  margin-top: -12px;
+  padding-top: 14px;
+  background: var(--card);
 }
 .booking-sheet .bs-save,
 .booking-sheet .bs-cancel {
