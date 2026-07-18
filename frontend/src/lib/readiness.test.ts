@@ -26,6 +26,14 @@ const event = (id: string, date: string): TripEvent => ({
   updatedBy: 'u1',
 });
 
+// A lodging stay: the event that carries a hotel booking's check-in→check-out
+// span (bookings hold no dates — readiness.ts reads them off the linked event).
+const stay = (bookingId: string, checkIn: string, checkOut: string): TripEvent => ({
+  ...event(`stay-${bookingId}`, checkIn),
+  endDate: checkOut,
+  bookingId,
+});
+
 const booking = (id: string, type: Booking['type'], extra: Partial<Booking> = {}): Booking => ({
   id,
   tripId: 't1',
@@ -73,7 +81,12 @@ const TRAVELERS = ['u1', 'u2', 'u3'];
 const base = () => ({
   ...RANGE,
   destination: DEST,
-  events: [event('a', '2026-07-05'), event('b', '2026-07-06'), event('c', '2026-07-07')],
+  events: [
+    event('a', '2026-07-05'),
+    event('b', '2026-07-06'),
+    event('c', '2026-07-07'),
+    stay('h', '2026-07-05', '2026-07-07'), // covers both trip nights (05, 06)
+  ],
   bookings: [outbound, inbound, booking('h', BOOKING_TYPE.HOTEL)],
   places: PLACES,
   documents: TRAVELERS.map((u) => passport(`p-${u}`, u)),
@@ -172,11 +185,57 @@ describe('computeReadiness', () => {
       expect(check(r, 'documents').done).toBe(true);
     });
 
-    it('does not count a group-owned passport (no owner) toward any traveller', () => {
-      const r = computeReadiness({ ...base(), documents: [passport('grp', undefined)] });
+    it('counts an unattributed passport toward the head-count (owner picker deferred)', () => {
+      // Uploads are group-owned today (no per-owner picker), so a passport with no
+      // owner must still count — otherwise no uploaded passport ever would.
+      const r = computeReadiness({
+        ...base(),
+        documents: [passport('grp', undefined)],
+        travelerIds: ['u1'],
+      });
       const d = check(r, 'documents');
-      expect(d.done).toBe(false);
-      expect(d.count).toBe(0);
+      expect(d.done).toBe(true);
+      expect(d.count).toBe(1);
+      expect(d.total).toBe(1);
+    });
+  });
+
+  describe('lodging night-coverage', () => {
+    it('fails when a trip night is left uncovered', () => {
+      const r = computeReadiness({
+        ...base(),
+        bookings: [outbound, inbound, booking('h', BOOKING_TYPE.HOTEL)],
+        events: [stay('h', '2026-07-05', '2026-07-06')], // covers night 05 only
+      });
+      const l = check(r, 'lodging');
+      expect(l.done).toBe(false);
+      expect(l.count).toBe(1);
+      expect(l.total).toBe(2);
+    });
+
+    it('passes when stitched-together hotels cover every night', () => {
+      const r = computeReadiness({
+        ...base(),
+        bookings: [
+          outbound,
+          inbound,
+          booking('h1', BOOKING_TYPE.HOTEL),
+          booking('h2', BOOKING_TYPE.HOTEL),
+        ],
+        events: [stay('h1', '2026-07-05', '2026-07-06'), stay('h2', '2026-07-06', '2026-07-07')],
+      });
+      expect(check(r, 'lodging').done).toBe(true);
+    });
+
+    it('does not credit a hotel booking that has no dated event', () => {
+      const r = computeReadiness({
+        ...base(),
+        bookings: [outbound, inbound, booking('h', BOOKING_TYPE.HOTEL)],
+        events: [], // hotel exists but its span is unknown
+      });
+      const l = check(r, 'lodging');
+      expect(l.done).toBe(false);
+      expect(l.count).toBe(0);
     });
   });
 });

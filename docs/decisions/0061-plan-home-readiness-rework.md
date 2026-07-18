@@ -57,6 +57,14 @@ Assaf (2026-07-18): "כפתורי מסך הבית במצב תכנון 'מה חס
 - Actionable CTAs reuse existing plumbing, no new form components: flight/lodging open the shared `BookingSheet` in create mode via a new optional `seed` prop (`{ type, origin?, dest? }`) — the flight row seeds the missing leg's destination endpoint; empty-day seeds the day builder on the first empty date; group navigates to the settings invite.
 - **Documents "breakdown on tap"** is the existing Index documents section: the row shows the `X מתוך N` rollup + a per-person dot indicator inline, and its CTA deep-links to `?tab=index&focus=docs` rather than opening a bespoke per-traveller popover (the docs list already is the breakdown). Missing-hard-commitment CTAs (flight/lodging) render in `--miss` as a status nudge; readiness stays advisory and gates nothing.
 
+### Refinement (2026-07-18, post-merge feedback)
+
+Three fixes after driving the shipped screen:
+
+- **`lodging` = night-coverage, not "a hotel exists."** The check is complete only when **every trip night is covered** by a hotel booking, so a stay that ends before the trip does leaves the check open. Trip nights are `[startDate, endDate)` (the departure day has no night). A `Booking` carries no dates — the check reads each hotel booking's check-in→check-out span off its **linked event** (`date`/`endDate`, ADR-0018/0063); a stay with no `endDate` covers its single night. Multiple hotels stitch together to cover a span. A hotel booking with no dated event can't be credited (degradation, like flights). Row copy is a rollup: `X מתוך Y לילות מכוסים`.
+- **`documents` counts passport documents, not owners.** The original per-owner rule (a passport must have an `ownerUserId` matching a traveller) is **unsatisfiable today**: the upload flow is group-owned only — the per-owner picker is deferred (ADR-0015), so no upload sets `ownerUserId`. As built, every passport read `0 מתוך N`. Fixed: count passport documents against the traveller head-count (`min(passportCount, travelerCount)` of `travelerCount`; complete when `passportCount >= travelerCount`). Ceiling: one person could upload N passports and satisfy it — acceptable for the small-group model; tighten to per-owner when the upload owner-picker ships.
+- **Documents CTA opens the upload sheet, not the Index.** Superseding the `?tab=index&focus=docs` deep-link above: the 🛂 row's CTA now opens `DocumentUploadSheet` in place (it defaults its type to `passport`), matching flights/lodging opening the `BookingSheet` — the CTA _does the thing_ (ADR-0061's own principle) instead of dropping the user on the Index.
+
 ## Alternatives considered
 
 - **Leave the four checks as-is.** Rejected: Assaf asked to revisit both content and behavior, and the CTA-target notes are stale now that the screens are real.
