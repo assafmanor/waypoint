@@ -4,8 +4,33 @@
     <meta charset="UTF-8" />
     <meta
       name="viewport"
-      content="width=device-width, initial-scale=1.0, viewport-fit=cover, interactive-widget=resizes-content"
+      content="width=device-width, initial-scale=1.0, maximum-scale=1, user-scalable=no, viewport-fit=cover, interactive-widget=resizes-content"
     />
+    <script>
+      // ADR-0062: zoom disabled app-wide, except inside the image preview (.doc-viewer).
+      // CSS touch-action:manipulation kills double-tap; the viewport meta above is ignored
+      // by iOS Safari, so pinch is suppressed here — iOS fires gesture* events, other
+      // browsers a multi-touch touchmove. The viewer subtree is excluded so its
+      // hand-rolled pinch/pan is untouched.
+      (function () {
+        var inViewer = function (target) {
+          return target && target.closest && target.closest('.doc-viewer');
+        };
+        var blockGesture = function (e) {
+          if (!inViewer(e.target)) e.preventDefault();
+        };
+        document.addEventListener('gesturestart', blockGesture, { passive: false });
+        document.addEventListener('gesturechange', blockGesture, { passive: false });
+        document.addEventListener('gestureend', blockGesture, { passive: false });
+        document.addEventListener(
+          'touchmove',
+          function (e) {
+            if (e.touches.length > 1 && !inViewer(e.target)) e.preventDefault();
+          },
+          { passive: false },
+        );
+      })();
+    </script>
     <meta name="theme-color" content="#1B2A4A" />
     <link rel="icon" type="image/svg+xml" href="/favicon.svg" />
     <link rel="apple-touch-icon" href="/apple-touch-icon.png" />

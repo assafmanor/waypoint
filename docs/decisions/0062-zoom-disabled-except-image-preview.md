@@ -28,6 +28,11 @@ Assaf (2026-07-18): "זום באפליקציה — צריך להיות מבוט�
 - **Must be verified on iOS Safari / the installed PWA** — that's precisely where the meta-only approach fails and the gesture approach is required. A desktop check alone is insufficient.
 - Does not affect the Plan-builder drag (`touch-action: none` grip) or the horizontal day-strip scroll (`pan-x` still allowed under `manipulation`).
 
+### Shipped as (2026-07-18)
+
+- Viewport meta gained `maximum-scale=1, user-scalable=no`; `touch-action: manipulation` sits on `html, body, #root` (tokens.css). The multi-touch suppressor is an inline `<script>` in `index.html` (document-level, runs before the app), `preventDefault`-ing `gesturestart`/`gesturechange`/`gestureend` (iOS Safari) and multi-touch `touchmove` (others) unless the event target is inside `.doc-viewer`.
+- The viewer image opts back in with the **hand-rolled pointer handler** (not `touch-action: pinch-zoom`, which zooms the visual viewport rather than the element): `.doc-viewer-img` sets `touch-action: none; transform-origin: 0 0`, and `DocumentViewer.tsx` owns pinch (focal-point scale, `1×`–`4×`), single-finger pan while zoomed, double-tap to reset (or zoom to `2.5×` at the tapped point), and a snap-back to fit when a pinch bottoms out at `1×`. The focal/clamp math is unit-tested (`DocumentViewer.zoom.test.ts`); pan bounds are intentionally omitted — reset/snap-back is the recovery.
+
 ## Alternatives considered
 
 - **Viewport `user-scalable=no` only.** Rejected: ignored by modern iOS Safari, so it wouldn't actually disable pinch on the primary target.
