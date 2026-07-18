@@ -9,7 +9,7 @@
 // migration touches. UI copy (group labels) lives in the frontend i18n, keyed
 // by `IconGroup.id` — never here (this package is shapes + data, ADR-0009).
 
-import type { BookingType, EventCategory } from './entities';
+import type { BookingType, EventCategory, TripEvent } from './entities';
 
 /** A browse-group in the picker. `category` is the canonical semantic value
  *  persisted when a glyph from this group is chosen — the UI groups (10) are
@@ -194,3 +194,69 @@ export const iconForCategory = (category: EventCategory): string => CATEGORY_DEF
  *  records this alongside the glyph). `undefined` for a glyph not in the set. */
 export const categoryForIcon = (icon: string): EventCategory | undefined =>
   ICON_SET.find((g) => g.icons.includes(icon))?.category;
+
+/** Per-category time-behaviour profile (ADR-0063). A small closed lookup beside
+ *  the icon registry that every time-aware surface reads, so "bracketed" and
+ *  "ambient" stop being scattered per-type `endDate`/type checks. Orthogonal to
+ *  hard/soft (ADR-0011, the commitment axis) and to category (the semantic axis);
+ *  this is the time-presentation axis. Nothing is stored — behaviours derive from
+ *  this profile plus the event's own timing (ADR-0018). */
+export interface CategoryTimeProfile {
+  /** The ends matter, the middle is passive: show start & end, not the span
+   *  between. Applies regardless of duration (a same-day flight collapses to a
+   *  point when start ≈ end). */
+  bracketed: boolean;
+  /** When the event crosses days: rendered as a backdrop across every covered
+   *  day, off the counted schedule (ADR-0054). */
+  ambientWhenMultiDay: boolean;
+  /** i18n keys for the two ends, resolved in `i18n/he.ts`. Only meaningful when
+   *  `bracketed`. */
+  transitions?: {
+    startKey: string;
+    endKey: string;
+  };
+}
+
+const ORDINARY_PROFILE: CategoryTimeProfile = { bracketed: false, ambientWhenMultiDay: false };
+
+export const CATEGORY_TIME_PROFILE: Record<EventCategory, CategoryTimeProfile> = {
+  transport: {
+    bracketed: true,
+    ambientWhenMultiDay: true,
+    transitions: { startKey: 'departure', endKey: 'arrival' },
+  },
+  lodging: {
+    bracketed: true,
+    ambientWhenMultiDay: true,
+    transitions: { startKey: 'checkIn', endKey: 'checkOut' },
+  },
+  food: ORDINARY_PROFILE,
+  sightseeing: ORDINARY_PROFILE,
+  nature: ORDINARY_PROFILE,
+  activity: ORDINARY_PROFILE,
+  shopping: ORDINARY_PROFILE,
+  services: ORDINARY_PROFILE,
+  other: ORDINARY_PROFILE,
+};
+
+/** The profile for an event's category. A null/unset category (ADR-0038) uses
+ *  the ordinary profile (a plain point/block). */
+const profileFor = (category: EventCategory | null | undefined): CategoryTimeProfile =>
+  category != null ? CATEGORY_TIME_PROFILE[category] : ORDINARY_PROFILE;
+
+type TimedEvent = Pick<TripEvent, 'category' | 'date' | 'endDate'>;
+
+/** The event's ends matter and its middle is passive (ADR-0063). */
+export const isBracketed = (event: Pick<TripEvent, 'category'>): boolean =>
+  profileFor(event.category).bracketed;
+
+/** The event crosses days — its `endDate` is set and lands on a later day than
+ *  `date` (ADR-0018/0047). A single overnight tail (ADR-0037, no `endDate`) is
+ *  not multi-day. */
+export const isMultiDay = (event: Pick<TripEvent, 'date' | 'endDate'>): boolean =>
+  event.endDate != null && event.endDate > event.date;
+
+/** The event renders as an off-schedule backdrop: its category is
+ *  ambient-when-multi-day AND it is currently multi-day (ADR-0054, rebased). */
+export const isAmbient = (event: TimedEvent): boolean =>
+  profileFor(event.category).ambientWhenMultiDay && isMultiDay(event);
