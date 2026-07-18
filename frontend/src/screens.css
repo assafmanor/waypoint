@@ -2058,6 +2058,74 @@
   outline: 2.5px solid var(--plan);
   outline-offset: 2px;
 }
+/* A missing hard commitment (flight/lodging) nudges in --miss, not plan violet
+   (ADR-0061 mockup) — a status hint, still advisory, never a blocker. */
+.chk-cta.warn {
+  border-color: var(--miss);
+  color: var(--miss);
+}
+.chk-cta.warn:hover {
+  background: var(--miss);
+  color: #fff;
+}
+/* Per-traveller passport indicator on the documents row (ADR-0061). */
+.chk-ppl {
+  display: inline-flex;
+  gap: 3px;
+  margin-inline-start: 6px;
+  vertical-align: middle;
+}
+.chk-ppl i {
+  width: 7px;
+  height: 7px;
+  border-radius: 50%;
+  background: var(--line);
+}
+.chk-ppl i.on {
+  background: var(--ok);
+}
+/* Show/hide-completed toggle in the checklist section title (ADR-0061). */
+.chk-toggle {
+  font: inherit;
+  font-size: 11px;
+  font-weight: 700;
+  letter-spacing: 0;
+  color: var(--plan-deep);
+  background: var(--plan-tint);
+  border: 0;
+  border-radius: 999px;
+  padding: 4px 10px;
+  cursor: pointer;
+}
+.chk-toggle:focus-visible {
+  outline: 2.5px solid var(--plan);
+  outline-offset: 2px;
+}
+/* Collapsed "completed" summary: one line of pills (ADR-0061). */
+.chk-done-sum {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  flex-wrap: wrap;
+  background: var(--card);
+  border: 1px solid var(--line);
+  border-radius: 12px;
+  padding: 11px 13px;
+  font-size: 12.5px;
+  color: var(--muted);
+  font-weight: 600;
+}
+.chk-done-sum .ok {
+  color: var(--ok);
+  font-weight: 700;
+}
+.chk-done-sum .pill {
+  color: var(--ink);
+  background: var(--paper);
+  border-radius: 999px;
+  padding: 2px 9px;
+  font-weight: 700;
+}
 
 /* overview stats — three quiet paper tiles; counts in mono */
 .prep-stats {

@@ -51,17 +51,28 @@ const isSpanType = (ty: BookingType) =>
  *  Index row so the wording never drifts (`../lib/booking-timing`). */
 const spanLabels = timingLabels;
 
+/** Pre-set fields for a create-flow open (ADR-0061): the Plan-home checklist opens
+ *  the form for a specific booking type, and for a flight seeds the missing leg's
+ *  destination endpoint. Ignored when editing an existing booking. */
+export interface BookingSeed {
+  type?: BookingType;
+  origin?: string;
+  dest?: string;
+}
+
 export function BookingSheet({
   booking,
+  seed,
   onClose,
 }: {
   booking?: Booking | null;
+  seed?: BookingSeed;
   onClose: () => void;
 }) {
   const { trip, events, places, indexVerbs } = useTrip();
   const isCreate = !booking;
   const linkedEvent = booking ? events.find((e) => e.bookingId === booking.id) : undefined;
-  const initialType = booking?.type ?? BOOKING_TYPE.FLIGHT;
+  const initialType = booking?.type ?? seed?.type ?? BOOKING_TYPE.FLIGHT;
   const wifi = booking?.details?.wifi as Wifi | undefined;
 
   const [type, setType] = useState<BookingType>(initialType);
@@ -72,8 +83,10 @@ export function BookingSheet({
   );
   const [title, setTitle] = useState(booking?.title ?? '');
   const [code, setCode] = useState(booking?.confirmationCode ?? '');
-  const [origin, setOrigin] = useState(placeName(places, booking?.fromPlaceId) ?? '');
-  const [dest, setDest] = useState(placeName(places, booking?.toPlaceId) ?? '');
+  const [origin, setOrigin] = useState(
+    placeName(places, booking?.fromPlaceId) ?? seed?.origin ?? '',
+  );
+  const [dest, setDest] = useState(placeName(places, booking?.toPlaceId) ?? seed?.dest ?? '');
   const [room, setRoom] = useState((booking?.details?.room as string | undefined) ?? '');
   const [notes, setNotes] = useState((booking?.details?.notes as string | undefined) ?? '');
   const [wifiNetwork, setWifiNetwork] = useState(wifi?.network ?? '');
