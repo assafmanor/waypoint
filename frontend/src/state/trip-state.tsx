@@ -66,7 +66,8 @@ import { getNow } from '../lib/useClock';
 import { clampDate, shiftIso, todayInTz } from '../lib/time';
 import { useToast } from '../ui/Toast';
 import { ICONS } from '../constants';
-import { EVENTS, GLANCE, MAYBE_ITEMS, activeUserId } from '../fixtures';
+import { EVENTS, MAYBE_ITEMS } from '../fixtures';
+import { useAuth } from './auth-state';
 import { t } from '../i18n/he';
 
 export type { RippleSuggestion };
@@ -332,10 +333,8 @@ interface TripContextValue {
   bookings: Booking[];
   places: Place[];
   documents: DocumentSummary[];
-  glance: typeof GLANCE;
   activeDate: string;
   setActiveDate: (date: string) => void;
-  activeUserId: string;
   events: TripEvent[];
   maybeItems: MaybeItem[];
   ripple: RippleSuggestion | null;
@@ -437,8 +436,12 @@ function TripReady({
 }) {
   const [state, dispatch] = useReducer(reducer, snapshot, initialState);
   const toast = useToast();
+  const { me } = useAuth();
   const tripId = snapshot.trip.id;
-  const { startDate, endDate } = snapshot.trip;
+  // Attribution for our own optimistic writes: the signed-in user, not a fixture
+  // (the server stamps the canonical `updatedBy` on reconcile; this is what a
+  // non-reconciled entity — an offline booking/place — shows until then).
+  const authorId = me?.user.id ?? snapshot.trip.updatedBy;
 
   // Trip details + roster are data-plane now (ADR-0039): held in reactive state
   // (not the immutable snapshot) so admin edits, promotions and removals appear
@@ -465,9 +468,17 @@ function TripReady({
   // the trip) drifts `activeDate` past the last real day and the day view
   // silently goes empty.
   const [activeDate, setActiveDateRaw] = useState(() =>
-    clampDate(todayInTz(snapshot.trip.timezone, new Date(getNow())), startDate, endDate),
+    clampDate(
+      todayInTz(snapshot.trip.timezone, new Date(getNow())),
+      snapshot.trip.startDate,
+      snapshot.trip.endDate,
+    ),
   );
-  const setActiveDate = (date: string) => setActiveDateRaw(clampDate(date, startDate, endDate));
+  // Clamp against the *reactive* trip, not the boot snapshot: after an admin edits
+  // the trip dates live (data-plane, ADR-0039) the day-strip renders the new range,
+  // so selection must clamp to it too — otherwise a newly-added day snaps back out.
+  const setActiveDate = (date: string) =>
+    setActiveDateRaw(clampDate(date, trip.startDate, trip.endDate));
 
   const lastSeqRef = useRef(snapshot.latestSeq);
 
@@ -691,7 +702,7 @@ function TripReady({
           tripId,
           createdAt: stamp(),
           updatedAt: stamp(),
-          updatedBy: activeUserId,
+          updatedBy: authorId,
         } as Booking;
         const previous = bookings;
         setBookings((prev) => [...prev, optimistic]);
@@ -766,7 +777,7 @@ function TripReady({
           tripId,
           createdAt: stamp(),
           updatedAt: stamp(),
-          updatedBy: activeUserId,
+          updatedBy: authorId,
         } as Place;
         const previous = places;
         setPlaces((prev) => [...prev, optimistic]);
@@ -797,7 +808,7 @@ function TripReady({
         }
       },
     };
-  }, [tripId, bookings, places, toast]);
+  }, [tripId, bookings, places, toast, authorId]);
 
   const value = useMemo<TripContextValue>(
     () => ({
@@ -807,10 +818,8 @@ function TripReady({
       bookings,
       places,
       documents,
-      glance: GLANCE,
       activeDate,
       setActiveDate,
-      activeUserId,
       events: state.events,
       maybeItems: state.maybeItems,
       ripple: state.ripple,
