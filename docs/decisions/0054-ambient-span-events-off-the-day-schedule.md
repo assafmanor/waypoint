@@ -4,6 +4,22 @@
 **Date:** 2026-07-17
 **Refines:** [0045](0045-trip-home-real-data-only.md) (the day-at-a-glance card this fixes), [0041](0041-parallel-overlapping-events.md) (`buildTimeTree` / the block model an ambient span must sit outside of), [0018](0018-timeline-data-model-shape.md) (the `endDate` ambient-span field that becomes the discriminator), [0047](0047-booking-event-linkage-and-notes.md) (a hotel = one Booking backing one Event with an `endDate` span), [0037](0037-overnight-events.md) (distinguishes a true multi-day span from a single overnight tail), [0011](0011-hard-soft-event-model.md) (hard/soft is orthogonal; ambient is a third, presentational axis)
 
+## Rebased on ADR-0063 (2026-07-18) — "ambient" is one profile behaviour, not a bare `endDate` check
+
+[ADR-0063](0063-category-time-behaviour-profile.md) generalizes this decision. "Ambient-span" is no longer "any event with `endDate` set"; it is a **category whose time-profile has `ambientWhenMultiDay`, when the event is actually multi-day** (`lodging`, `transport` are the seeded ones). Every behaviour below stands unchanged — backdrop across days, excluded from `buildTimeTree` / the rail / `remaining`, hard/soft-orthogonal. Only the **discriminator** moves from `e.endDate != null` (§Consequences) to `isAmbient(e)` (profile + multi-day), so the same rule now covers non-booking events and any future ambient category. The amendment below (check-in/out markers) is the profile's `transitions` rendered on the rail.
+
+## Amendment (2026-07-18, Assaf triage) — the glance marks check-in / check-out moments (still uncounted)
+
+Reviewing the design, Assaf asked that the day-at-a-glance still **mark** the transition moments of an ambient span, even though the stay itself is backdrop: "היום במבט: לסמן צ'ק אין צ'ק אאוט וכו' אבל לא [לספור אותם בלוז]." The refinement, additive to the decision below:
+
+- **The rail marks the check-in and check-out moments** of an ambient span as **thin point markers** at their true clock position — check-in on the check-in day, check-out on the check-out day — labelled by type (צ׳ק-אין / צ׳ק-אאוט; and the same treatment generalizes to transport departure/arrival on the day they occur).
+- **These are marks on the rail, not segments.** The span stays **excluded from `buildTimeTree`, from the rail width, and from the "נותרו" count** (§2 stands). A transition is a _point_ that happens in the day (you arrive / you leave); marking a point is not counting a block. Middle nights show only the backdrop strip (§3) with no rail marker.
+- Rationale is the same "transitions matter, the middle doesn't" principle ADR-0059 §1 applies to the board hero — the two are the Home-wide expression of one idea.
+
+Implementation: `lib/glance.ts` emits check-in/check-out **point markers** (a new marker kind on the returned model, distinct from `GlanceSeg`) for ambient events active on the day; the `sameDay` partition (`:102`) and the `remaining` count (`:163-166`) are untouched. `Home.tsx` renders the markers on the rail alongside the existing ambient backdrop chip (`:301-312`).
+
+The rest of this ADR (below) stands.
+
 ## Context
 
 A hotel is one Event with `startsAt` = check-in and `endsAt` = check-out **days later**, plus `endDate` set (ADR-0047 §1 / `buildSpanSeed`). The day-at-a-glance rail (`lib/glance.ts`, ADR-0045) was built for same-day blocks and mishandles this on both ends (session 2026-07-17, `docs/planning/2026-07-17-session-27-index-post-build-issues.md`):

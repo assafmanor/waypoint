@@ -4,6 +4,19 @@
 **Date:** 2026-07-17
 **Refines:** [0047](0047-booking-event-linkage-and-notes.md) (§4 documents = one row per file, independent of bookings — this adds their lifecycle), [0049](0049-index-tab-mode-and-lifecycle.md) (§3 documents are a user-managed section with an add affordance — this makes "managed" mean editable), [0015](0015-document-encryption-server-side.md) + [0034](0034-document-encryption-trust-model.md) (encrypted-at-rest storage the delete/replace paths must respect), [0017](0017-mobile-first-device-targets.md) (phone-primary — why the PDF path changes)
 
+## Amendment (2026-07-18, Assaf triage) — the "⋯" menu is trimmed to Edit · Delete
+
+Walking the shipped documents section, Assaf found §2's four-row "⋯" (rename / change type / replace file / delete) to be more control than a small-group app needs: "לא צריך כל כך הרבה אפשרויות בשלוש נקודות, רק עריכה בסיסית מחיקה." The menu is trimmed:
+
+- **The "⋯" menu becomes exactly two rows: Edit · Delete** — matching the booking row's "⋯" (ADR-0053) so the two managed lists in the Index read the same.
+- **"Edit" opens one small edit sheet** that **renames and changes the type** together (metadata), rather than "rename" and "change type" as two separate menu steps.
+- **"Replace file" is dropped** from the UI. To swap the underlying file, delete and re-upload. The backend `PATCH :documentId` for **metadata** (title/type) and `DELETE :documentId` (§2) stand; the **replace-file (multipart PATCH) variant is deferred** — not built unless delete-and-re-upload proves insufficient in practice.
+- Everything else in this ADR is **unchanged**: mobile-first viewing (§1), the one-line row (§1a), the guarded delete confirm (§3), the shared spinner (§4), cause-aware errors + pre-upload validation (§5), and the four distinct type badges (§6).
+
+Implementation note: `ui/DocumentManageSheet.tsx` currently implements all four as separate steps (`mode === 'menu'`, lines 86-123). The change is to collapse the menu to Edit · Delete and make the Edit step a single rename+type sheet, removing the replace-file row (`:100-105`, `:112-121`) and its `updateDocument({}, file)` call.
+
+The rest of this ADR (below) stands.
+
 ## Context
 
 The documents section shipped (#127) with **upload + view only**. Walking the live screen (session 2026-07-17, `docs/planning/2026-07-17-session-27-index-post-build-issues.md`) surfaced that "managed list" was only half-true: you can add and open a document, but you cannot open a PDF on a phone, cannot rename / delete / replace anything, get no motion while uploading or loading, get one generic failure message, and passport vs. visa share a pictogram. ADR-0047 §4 settled the _shape_ of documents (one row per file, grouped by type) and ADR-0049 §3 called them a section "the user fills directly" — neither settled what you can _do_ to a document after it lands. This ADR does.
