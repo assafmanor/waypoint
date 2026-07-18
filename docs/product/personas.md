@@ -4,7 +4,7 @@
 
 ## The group
 
-Five peers traveling together. No hierarchy in daily use. Everyone can view everything and edit soft plans. One person happens to create the trip and send invites.
+One trip's group is ~5 peers traveling together (the app serves many such groups). No hierarchy in daily use. Everyone can view everything and edit soft plans. One person happens to create the trip and send invites.
 
 ### Archetype A — "The organizer"
 

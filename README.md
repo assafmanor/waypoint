@@ -4,7 +4,7 @@
 
 > **Working codename.** "Waypoint" is a placeholder for the trip control-center app — rename freely. The Hebrew product name in the mockup is **מרכז שליטה לטיול**.
 
-A travel companion for a small group of friends traveling abroad together.
+A travel companion for groups of friends traveling abroad together. Each trip is a small group (~5 people); the app is built to serve many such trips and many users.
 
 ## The idea
 
