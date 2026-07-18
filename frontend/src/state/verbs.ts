@@ -32,11 +32,11 @@ import {
 } from '../lib/api';
 import { enqueueOutbox, isNetworkError, isOffline, type OutboxOp } from '../lib/outbox';
 import { getNow } from '../lib/useClock';
-import { isoToTimeInput } from '../lib/time';
+import { isoToTimeInput, zonedIso } from '../lib/time';
 import { planReorder } from '../lib/reorder';
 import { DEFAULT_MAYBE_ICON, DELAY_STEP_MINUTES, DEFAULT_SCHEDULE_SLOT, ICONS } from '../constants';
 import { t } from '../i18n/he';
-import { TRIP_TZ_OFFSET, activeUserId } from '../fixtures';
+import { activeUserId } from '../fixtures';
 
 type ShowToast = ReturnType<typeof useToast>;
 
@@ -196,6 +196,50 @@ export async function applyGuardedDelay(
   }
   await applyDelay(deps, event, minutes);
   return true;
+}
+
+export interface ScheduleFields {
+  date: string;
+  title: string;
+  kind: TripEvent['kind'];
+  startsAt?: string;
+  endsAt?: string;
+  icon?: string;
+  category?: EventCategory;
+}
+
+// Build the TripEvent a schedule verb dispatches. With `fields` (the builder's
+// EventForm picker) the user chose the day/time/kind; without them it's the
+// Trip-mode one-tap quick-schedule onto `activeDate` at the default slot — whose
+// wall-clock instants must be resolved in the trip's own timezone (F-02), never
+// a fixed fixture offset. Pure so the derivation is testable without the hook.
+export function buildScheduleEvent(
+  trip: { id: string; timezone: string },
+  activeDate: string,
+  m: MaybeItem,
+  now: string,
+  fields?: ScheduleFields,
+): TripEvent {
+  return {
+    id: crypto.randomUUID(),
+    tripId: trip.id,
+    date: fields?.date ?? activeDate,
+    title: fields?.title ?? m.title,
+    icon: fields?.icon ?? m.icon,
+    category: fields?.category ?? m.category,
+    kind: fields?.kind ?? EVENT_KIND.SOFT,
+    status: EVENT_STATUS.PLANNED,
+    startsAt: fields
+      ? fields.startsAt
+      : zonedIso(activeDate, DEFAULT_SCHEDULE_SLOT.START, trip.timezone),
+    endsAt: fields ? fields.endsAt : zonedIso(activeDate, DEFAULT_SCHEDULE_SLOT.END, trip.timezone),
+    placeId: m.placeId,
+    sortOrder: 99,
+    source: EVENT_SOURCE.MAYBE_SHELF,
+    createdAt: now,
+    updatedAt: now,
+    updatedBy: activeUserId,
+  };
 }
 
 export async function applySchedule(
@@ -576,41 +620,9 @@ export function useVerbs() {
     // Place a shelf idea onto a day. With `fields` (from the builder's
     // EventForm picker) the user chose the day/time/kind; without them it's the
     // Trip-mode one-tap quick-schedule onto today at a default slot (Tier-1).
-    schedule: (
-      m: MaybeItem,
-      fields?: {
-        date: string;
-        title: string;
-        kind: TripEvent['kind'];
-        startsAt?: string;
-        endsAt?: string;
-        icon?: string;
-        category?: EventCategory;
-      },
-    ) => {
+    schedule: (m: MaybeItem, fields?: ScheduleFields) => {
       const now = new Date(getNow()).toISOString();
-      const event: TripEvent = {
-        id: crypto.randomUUID(),
-        tripId: trip.id,
-        date: fields?.date ?? activeDate,
-        title: fields?.title ?? m.title,
-        icon: fields?.icon ?? m.icon,
-        category: fields?.category ?? m.category,
-        kind: fields?.kind ?? EVENT_KIND.SOFT,
-        status: EVENT_STATUS.PLANNED,
-        startsAt: fields
-          ? fields.startsAt
-          : `${activeDate}T${DEFAULT_SCHEDULE_SLOT.START}:00${TRIP_TZ_OFFSET}`,
-        endsAt: fields
-          ? fields.endsAt
-          : `${activeDate}T${DEFAULT_SCHEDULE_SLOT.END}:00${TRIP_TZ_OFFSET}`,
-        placeId: m.placeId,
-        sortOrder: 99,
-        source: EVENT_SOURCE.MAYBE_SHELF,
-        createdAt: now,
-        updatedAt: now,
-        updatedBy: activeUserId,
-      };
+      const event = buildScheduleEvent(trip, activeDate, m, now, fields);
       void applySchedule(deps, event, m.id);
       const timeLabel = event.startsAt ? isoToTimeInput(event.startsAt, trip.timezone) : null;
       toast(
