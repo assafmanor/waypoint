@@ -13,16 +13,22 @@
           Principled colour (ADR-0028): it is a LOCATION statement ("where you are"),
           so it uses TEAL, which sets it apart from the amber time-critical hero.
           One grammar, two placements:
-            - ambient hotel mid-stay → a teal backdrop band ABOVE the hero (you're
-              staying there, but DOING something else, which the hero still shows).
+            - ambient hotel mid-stay → a SLIM, DISMISSIBLE, transient teal strip above
+              the hero (subordinate to it — the persistent stay signal is the day-strip
+              underline + the day-view backdrop + the Index; the strip is a quiet
+              reminder with a ✕). [revised after Assaf feedback: was a loud card.]
             - a bracketed point in progress (flight in the air) → it fills the hero's
               NOW slot (the flight IS your current activity), with amber only on the
               time-to-landing.
        3. SHARED grammar on all three surfaces (ADR-0059 §3): board hero, Index row,
           read-only detail view — same type badge, type-labelled timing, code chip.
-       4. GLANCE marks check-in/out as UNCOUNTED point markers on the proportional
-          rail (ADR-0054 rebased on 0063: `isAmbient` excludes from the count, the
-          profile's `transitions` are drawn as marks).
+       4. GLANCE marks every bracketed TRANSITION on the rail (ADR-0054 rebased on 0063:
+          the profile's `transitions`), in a DEDICATED LANE above the blocks so bar
+          segments can't swallow the labels. Markers are AMBER (time anchors, like the
+          hero labels). Covers BOTH: hotel check-in/out (standalone, uncounted — the
+          ambient stay isn't a block) AND transport departure/arrival (edge markers on
+          the flight's counted block). [revised after Assaf feedback: labels were
+          swallowed; flights were missing; markers were teal.]
 
      Colours are ADR-0028 tokens: amber = time & commitment; teal = location/"where
      you are"; --ok/--miss = status; neutral otherwise. No decorative reuse. RTL.
@@ -278,70 +284,58 @@
       }
 
       /* ===== "inside a booking" backdrop band — teal = where you are (ADR-0059 §2) ===== */
-      .inside-band {
+      /* slim, dismissible, transient — subordinate to the hero (not a card).
+         The PERSISTENT "you're staying here" signal is the day-strip teal
+         underline + the day-view backdrop + the Index; this strip is a quiet
+         reminder shown at relevant times, dismissible with ✕. */
+      .stay-strip {
         display: none;
         align-items: center;
-        gap: 11px;
-        background: linear-gradient(180deg, rgba(44, 156, 144, 0.14), rgba(44, 156, 144, 0.06));
-        border: 1px solid rgba(44, 156, 144, 0.34);
-        border-radius: 16px;
-        padding: 11px 13px;
-        margin-bottom: 12px;
+        gap: 8px;
+        background: rgba(44, 156, 144, 0.09);
+        border: 1px solid rgba(44, 156, 144, 0.24);
+        border-radius: 11px;
+        padding: 7px 10px;
+        margin-bottom: 11px;
       }
-      .inside-band .ib-ic {
-        width: 40px;
-        height: 40px;
+      .stay-strip .ss-ic {
+        font-size: 14px;
         flex: 0 0 auto;
-        border-radius: 12px;
-        background: rgba(44, 156, 144, 0.16);
-        display: grid;
-        place-items: center;
-        font-size: 21px;
+        opacity: 0.9;
       }
-      .inside-band .ib-main {
+      .stay-strip .ss-txt {
         flex: 1;
         min-width: 0;
-      }
-      .inside-band .ib-k {
-        color: var(--teal-deep);
-        font-size: 10.5px;
-        font-weight: 700;
-        letter-spacing: 0.1em;
-      }
-      .inside-band .ib-t {
-        font-weight: 700;
-        font-size: 15px;
-        color: var(--ink);
-        margin-top: 1px;
-      }
-      .inside-band .ib-sub {
-        color: var(--muted);
         font-size: 12px;
-        margin-top: 2px;
-      }
-      .inside-band .ib-sub .mono {
-        font-family: 'JetBrains Mono', monospace;
-        font-weight: 700;
-        color: var(--teal-deep);
-      }
-      .inside-band .ib-nights {
-        text-align: center;
-        flex: 0 0 auto;
-        padding-inline-start: 11px;
-        border-inline-start: 1px solid rgba(44, 156, 144, 0.3);
-      }
-      .inside-band .ib-nights .v {
-        font-family: 'JetBrains Mono', monospace;
-        font-size: 18px;
-        font-weight: 700;
-        color: var(--teal-deep);
-        line-height: 1;
-      }
-      .inside-band .ib-nights .u {
-        font-size: 9.5px;
         color: var(--muted);
-        margin-top: 3px;
-        font-weight: 600;
+        white-space: nowrap;
+        overflow: hidden;
+        text-overflow: ellipsis;
+      }
+      .stay-strip .ss-txt b {
+        color: var(--teal-deep);
+        font-weight: 700;
+      }
+      .stay-strip .ss-txt .mono {
+        font-family: 'JetBrains Mono', monospace;
+        font-weight: 700;
+      }
+      .stay-strip .ss-x {
+        flex: 0 0 auto;
+        font: inherit;
+        font-size: 13px;
+        line-height: 1;
+        color: var(--muted);
+        background: none;
+        border: 0;
+        cursor: pointer;
+        padding: 2px 4px;
+        border-radius: 6px;
+        opacity: 0.7;
+      }
+      .stay-strip .ss-x:hover {
+        background: rgba(22, 35, 61, 0.06);
+        opacity: 1;
       }
 
       /* ===== board hero ===== */
@@ -581,20 +575,62 @@
       }
       .rail {
         position: relative;
-        height: 30px;
-        margin: 20px 0 26px;
+        margin: 6px 0 22px;
+      }
+      /* upper lane: transition-marker chips get their OWN row so block bars can
+         never swallow their labels (fix for the "swallowed text" issue).
+         Markers are AMBER = time anchors (hard-commitment times), same family as
+         the hero's המראה/צ׳ק-אין labels; teal stays for "where you are now". */
+      .rail .marks {
+        position: relative;
+        height: 32px;
+      }
+      .rail .tmark {
+        position: absolute;
+        inset-inline-start: var(--x);
+        bottom: 0;
+        transform: translateX(50%);
+        display: flex;
+        flex-direction: column;
+        align-items: center;
+      }
+      .rail .tmark .chip {
+        display: inline-flex;
+        align-items: center;
+        gap: 4px;
+        white-space: nowrap;
+        font-size: 10px;
+        font-weight: 700;
+        color: var(--amber-deep);
+        background: rgba(233, 166, 60, 0.16);
+        border: 1px solid rgba(233, 166, 60, 0.34);
+        border-radius: 999px;
+        padding: 2px 8px;
+      }
+      .rail .tmark .chip .mono {
+        font-family: 'JetBrains Mono', monospace;
+      }
+      .rail .tmark .stem {
+        width: 1.5px;
+        height: 7px;
+        background: rgba(201, 130, 42, 0.5);
+      }
+      /* lower lane: the proportional block bar */
+      .rail .bars {
+        position: relative;
+        height: 22px;
       }
       .rail .track {
         position: absolute;
         inset-inline: 0;
-        top: 13px;
+        top: 8px;
         height: 6px;
         border-radius: 4px;
         background: rgba(22, 35, 61, 0.08);
       }
       .rail .blk {
         position: absolute;
-        top: 9px;
+        top: 4px;
         height: 14px;
         border-radius: 4px;
       }
@@ -609,41 +645,19 @@
         background: transparent;
         border: 1.5px solid var(--soft-line);
       }
+      /* a flight is a COUNTED bracketed block; its edges carry the departure/
+         arrival markers above (issue 3). A subtle amber outline ties block↔markers. */
+      .rail .blk.flight {
+        background: rgba(233, 166, 60, 0.28);
+        border: 1px solid var(--amber);
+      }
       .rail .nowmark {
         position: absolute;
-        top: 3px;
+        top: -2px;
         width: 2px;
-        height: 24px;
+        height: 22px;
         background: var(--amber);
         transform: translateX(50%);
-      }
-      /* uncounted check-in/out point markers (ADR-0054 rebased) — teal, on the rail
-         but NOT segments and NOT in the "נותרו" count */
-      .rail .mark {
-        position: absolute;
-        top: -3px;
-        transform: translateX(50%);
-        display: flex;
-        flex-direction: column;
-        align-items: center;
-        color: var(--teal-deep);
-      }
-      .rail .mark .pin {
-        font-size: 12px;
-        line-height: 1;
-      }
-      .rail .mark .lb {
-        font-size: 8.5px;
-        font-weight: 700;
-        white-space: nowrap;
-        margin-top: 1px;
-      }
-      .rail .mark .stem {
-        position: absolute;
-        top: 15px;
-        width: 1.5px;
-        height: 12px;
-        background: rgba(44, 156, 144, 0.5);
       }
       .glance-stats {
         display: flex;
@@ -1072,20 +1086,16 @@
             </div>
 
             <div class="body">
-              <!-- inside-a-booking backdrop band (ambient hotel mid-stay) -->
-              <div class="inside-band" id="band">
-                <div class="ib-ic">🏨</div>
-                <div class="ib-main">
-                  <div class="ib-k">אתם שוהים ב</div>
-                  <div class="ib-t">Granbell Shinjuku</div>
-                  <div class="ib-sub">
-                    צ׳ק-אאוט יום ו׳ · <span class="mono" dir="ltr">11:00</span>
-                  </div>
-                </div>
-                <div class="ib-nights">
-                  <div class="v" dir="ltr">2/5</div>
-                  <div class="u">לילות</div>
-                </div>
+              <!-- inside-a-booking: a SLIM, DISMISSIBLE, transient strip (not a card).
+                   Subordinate to the hero; the persistent stay signal is the day-strip
+                   underline + the day-view backdrop + the Index. -->
+              <div class="stay-strip" id="band">
+                <span class="ss-ic">🏨</span>
+                <span class="ss-txt"
+                  >שוהים ב־<b>Granbell Shinjuku</b> · לילה
+                  <span class="mono" dir="ltr">2/5</span></span
+                >
+                <button class="ss-x" id="bandX" aria-label="הסתר">✕</button>
               </div>
 
               <!-- HERO variants (one visible per scenario) -->
@@ -1222,21 +1232,37 @@
                 </div>
               </div>
 
-              <!-- day at a glance with uncounted check-in/out markers -->
+              <!-- day at a glance — illustrative "arrival day": a morning flight
+                   (counted block + 🛫🛬 edge markers) and an afternoon hotel check-in
+                   (standalone marker, uncounted). Markers live in their own lane so
+                   block bars can't swallow their labels. -->
               <div class="sec-title">היום במבט</div>
               <div class="glance-day">
                 <div class="rail" id="rail">
-                  <div class="track"></div>
-                  <!-- same-day counted blocks -->
-                  <div class="blk done" style="inset-inline-start: 3%; width: 15%"></div>
-                  <div class="blk now" style="inset-inline-start: 42%; width: 12%"></div>
-                  <div class="blk up" style="inset-inline-start: 66%; width: 14%"></div>
-                  <div class="blk up" style="inset-inline-start: 85%; width: 11%"></div>
-                  <div class="nowmark" style="inset-inline-start: 48%"></div>
-                  <!-- uncounted check-in marker (this day = check-in day) -->
-                  <div class="mark" style="inset-inline-start: 62%">
-                    <span class="pin">🏨</span><span class="lb">צ׳ק-אין 15:00</span>
-                    <span class="stem"></span>
+                  <!-- upper lane: transition markers (amber = time anchors) -->
+                  <div class="marks">
+                    <div class="tmark" style="--x: 14%">
+                      <span class="chip">🛫 <span class="mono" dir="ltr">08:20</span></span>
+                      <span class="stem"></span>
+                    </div>
+                    <div class="tmark" style="--x: 34%">
+                      <span class="chip">🛬 <span class="mono" dir="ltr">10:40</span></span>
+                      <span class="stem"></span>
+                    </div>
+                    <div class="tmark" style="--x: 66%">
+                      <span class="chip">🏨 צ׳ק-אין <span class="mono" dir="ltr">15:00</span></span>
+                      <span class="stem"></span>
+                    </div>
+                  </div>
+                  <!-- lower lane: proportional blocks -->
+                  <div class="bars">
+                    <div class="track"></div>
+                    <div class="blk done" style="inset-inline-start: 3%; width: 8%"></div>
+                    <div class="blk flight" style="inset-inline-start: 14%; width: 20%"></div>
+                    <div class="blk now" style="inset-inline-start: 45%; width: 10%"></div>
+                    <div class="blk up" style="inset-inline-start: 70%; width: 13%"></div>
+                    <div class="blk up" style="inset-inline-start: 87%; width: 10%"></div>
+                    <div class="nowmark" style="inset-inline-start: 50%"></div>
                   </div>
                 </div>
                 <div class="glance-stats">
@@ -1254,7 +1280,7 @@
                   </div>
                 </div>
                 <div class="glance-note">
-                  <span class="tealdot">🏨</span> צ׳ק-אין מסומן אך <b>אינו נספר</b> בלוז היום
+                  מעברים (🛫 🛬 🏨) מסומנים בציר · שהות המלון (רקע) <b>אינה נספרת</b> בלוז
                 </div>
               </div>
             </div>
@@ -1436,9 +1462,19 @@
             מיקום, ולכן teal מבדיל אותו מההירו האמבר של הזמן.
           </p>
           <p>
-            <b>מצב אחד, שתי הנחות:</b> להזמנה רב-יומית (מלון) הפס הוא <b>רקע</b> מעל ההירו (שוהים
-            שם, אבל <i>עושים</i> משהו אחר שההירו מציג); לנקודה תחומה תוך-כדי (טיסה באוויר) הוא
-            <b>ממלא את ה-NOW</b> (הטיסה היא הפעילות עצמה).
+            <b>מצב אחד, שתי הנחות:</b> להזמנה רב-יומית (מלון) זהו
+            <b>פס דק, זמני וניתן לסגירה (✕)</b> מעל ההירו — <b>כפוף</b> לו, לא מתחרה בו (הסימון
+            הקבוע לשהות הוא הקו התחתון בפס-הימים + הרקע בתצוגת היום + האינדקס); לנקודה תחומה תוך-כדי
+            (טיסה באוויר) הוא <b>ממלא את ה-NOW</b>
+            (הטיסה היא הפעילות עצמה).
+          </p>
+          <p>
+            <b>מעברים בציר "היום במבט":</b> בלוֹז מסומנים כל המעברים התחומים ב<b
+              >נתיב ייעודי מעל הבלוקים</b
+            >
+            (כדי שלא ייבלעו), בצבע <span class="tag amber">amber</span> (עוגני זמן, כמו תוויות
+            ההירו). מלון: צ׳ק-אין/אאוט כסימון עצמאי (רקע, <b>לא נספר</b>); טיסה: המראה/נחיתה כסימוני
+            קצה על הבלוק הנספר.
           </p>
           <p>
             <b>שאלות פתוחות לאסף (לפני מימוש):</b>
@@ -1455,17 +1491,17 @@
       const chips = document.getElementById('chips');
       const board = document.getElementById('board');
       const band = document.getElementById('band');
+      const bandX = document.getElementById('bandX');
       const tripsub = document.getElementById('tripsub');
       const clk = document.getElementById('clk');
-      const rail = document.getElementById('rail');
 
-      // per-scenario: which hero variant, whether the ambient band shows, header clock/day
+      // per-scenario: which hero variant, whether the stay strip is relevant, header clock/day
       const S = {
-        precheckin: { clock: '08:05', band: false, sub: 'טוקיו · יום 3 מתוך 10', markers: true },
-        instay: { clock: '13:20', band: true, sub: 'טוקיו · יום 4 מתוך 10', markers: false },
-        precheckout: { clock: '09:30', band: true, sub: 'טוקיו · יום 6 מתוך 10', markers: 'out' },
-        preflight: { clock: '06:10', band: false, sub: 'טוקיו · יום 6 מתוך 10', markers: false },
-        intransit: { clock: '15:45', band: false, sub: 'בדרך לאוסקה · יום 6', markers: false },
+        precheckin: { clock: '08:05', band: false, sub: 'טוקיו · יום 3 מתוך 10' },
+        instay: { clock: '13:20', band: true, sub: 'טוקיו · יום 4 מתוך 10' },
+        precheckout: { clock: '09:30', band: true, sub: 'טוקיו · יום 6 מתוך 10' },
+        preflight: { clock: '06:10', band: false, sub: 'טוקיו · יום 6 מתוך 10' },
+        intransit: { clock: '15:45', band: false, sub: 'בדרך לאוסקה · יום 6' },
       };
 
       function setScenario(name) {
@@ -1473,21 +1509,10 @@
         board.querySelectorAll('.hero-variant').forEach((v) => {
           v.classList.toggle('on', v.dataset.v === name);
         });
+        // the strip is transient + dismissible: switching to a stay scenario re-shows it
         band.style.display = cfg.band ? 'flex' : 'none';
         clk.textContent = cfg.clock;
         tripsub.innerHTML = cfg.sub.replace(' · ', '<span class="dot">•</span>');
-        // glance markers: show check-in on the check-in-day scenario, check-out later
-        const mark = rail.querySelector('.mark');
-        if (cfg.markers === true) {
-          mark.style.display = 'flex';
-          mark.querySelector('.lb').textContent = 'צ׳ק-אין 15:00';
-        } else if (cfg.markers === 'out') {
-          mark.style.display = 'flex';
-          mark.style.insetInlineStart = '20%';
-          mark.querySelector('.lb').textContent = 'צ׳ק-אאוט 11:00';
-        } else {
-          mark.style.display = 'none';
-        }
         chips
           .querySelectorAll('.chip')
           .forEach((c) => c.classList.toggle('on', c.dataset.s === name));
@@ -1496,6 +1521,9 @@
       chips.addEventListener('click', (e) => {
         const b = e.target.closest('.chip');
         if (b) setScenario(b.dataset.s);
+      });
+      bandX.addEventListener('click', () => {
+        band.style.display = 'none';
       });
 
       // index list/detail toggle

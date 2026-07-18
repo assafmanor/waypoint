@@ -16,7 +16,13 @@ Reviewing the design, Assaf asked that the day-at-a-glance still **mark** the tr
 - **These are marks on the rail, not segments.** The span stays **excluded from `buildTimeTree`, from the rail width, and from the "נותרו" count** (§2 stands). A transition is a _point_ that happens in the day (you arrive / you leave); marking a point is not counting a block. Middle nights show only the backdrop strip (§3) with no rail marker.
 - Rationale is the same "transitions matter, the middle doesn't" principle ADR-0059 §1 applies to the board hero — the two are the Home-wide expression of one idea.
 
-Implementation: `lib/glance.ts` emits check-in/check-out **point markers** (a new marker kind on the returned model, distinct from `GlanceSeg`) for ambient events active on the day; the `sameDay` partition (`:102`) and the `remaining` count (`:163-166`) are untouched. `Home.tsx` renders the markers on the rail alongside the existing ambient backdrop chip (`:301-312`).
+**Refined after mockup review (2026-07-18, `mockups/booking-presentation-v1.html`):**
+
+- **Markers get a dedicated lane above the block bar.** The first cut drew them inline on the block rail and the labels were **swallowed by adjacent segments** (Assaf). Fix: a separate marker row above the bars, each a small chip + a stem down to its clock position — labels can never collide with blocks.
+- **Markers are amber (time anchors), not teal.** They are hard-commitment _times_, the same family as the hero's `המראה`/`צ׳ק-אין` labels; teal is reserved for the "where you are now" state (ADR-0059 §2). This also de-clutters the teal already used for the day-strip stay underline.
+- **The rule generalizes to every bracketed transition, not just lodging** (Assaf: "flights departure/arrival should also be on the timeline"). It is really "render the profile's `transitions` on the rail" (ADR-0063): a **hotel** (ambient) shows standalone, uncounted check-in/out markers; a **flight** (a counted bracketed block) shows departure/arrival as **edge markers on its block**. So the marker system is driven by `isBracketed` + the profile's `transitions`, while the _uncounted_ part stays specific to `isAmbient` spans.
+
+Implementation: `lib/glance.ts` emits **transition markers** (a marker kind on the returned model, distinct from `GlanceSeg`) for bracketed events on the day — from `CATEGORY_TIME_PROFILE.transitions` (ADR-0063); the `sameDay` partition (`:102`) and the `remaining` count (`:163-166`) are untouched (a flight block stays counted; an ambient hotel stays excluded). `Home.tsx` renders the markers in a dedicated lane above the block bar.
 
 The rest of this ADR (below) stands.
 
