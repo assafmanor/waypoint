@@ -32,6 +32,14 @@ The rest of this ADR (below) stands.
 - `buildDayGlance` now takes the full `events` + `activeDate` and emits `markers: GlanceMarker[]` alongside `segs`: for every bracketed event touching the day, its start/end that lands on that day (a same-day flight's departure + arrival edge markers on its counted block; an ambient hotel's check-in on its check-in day / check-out on its check-out day, uncounted; nothing on a middle night). The stay stays out of `buildTimeTree`, the window math, and `remaining`.
 - `Home.tsx` renders the markers as amber time-anchor chips in a dedicated lane (`.glance-marks`) positioned above the existing `.rail` block bar (a separate lane, not the mockup's nested `marks`/`bars` restructure — visually equivalent, minimal diff). The persistent stay signal remains the `day-ambient` backdrop in the day views.
 
+### Marker layout refinement (2026-07-18, session 37)
+
+The dedicated lane kept labels off the _blocks_, but on-the-ground use surfaced two ways markers still read as clutter: chips **close in time overlapped each other**, and a chip near the rail edge **clipped off-screen** (`docs/planning/2026-07-18-session-37-glance-markers-and-flight-route-hero.md`). All fixes are pure layout — the marker _set_ and semantics are unchanged.
+
+- **The window folds in transition instants.** `buildDayGlance` derives the transitions before the window math and includes each `atMs` in `windowStart/EndMs`, so an **ambient** booking's late transition (an overnight flight's departure/arrival) — which contributes no counted block to stretch the window — can no longer land past `frac 1` and clip. A day carrying **only** a transition marker (e.g. a lone check-out) is now non-empty instead of dropping the marker.
+- **Colliding chips stack into lanes.** A pure, width-independent `assignMarkerLanes` (`MARKER_MIN_GAP_FRAC`) puts each marker in the lowest lane whose last chip is far enough away; `GlanceMarker.lane` + `DayGlance.markerLaneCount` drive a CSS band that lifts each chip by its lane and grows the stem so it still reaches the bar.
+- **Edge chips anchor inward.** A marker near either rail edge anchors its chip edge to the point (zero-width flex, no direction-sensitive `translateX`) and extends inward, so it can't clip.
+
 ## Context
 
 A hotel is one Event with `startsAt` = check-in and `endsAt` = check-out **days later**, plus `endDate` set (ADR-0047 §1 / `buildSpanSeed`). The day-at-a-glance rail (`lib/glance.ts`, ADR-0045) was built for same-day blocks and mishandles this on both ends (session 2026-07-17, `docs/planning/2026-07-17-session-27-index-post-build-issues.md`):

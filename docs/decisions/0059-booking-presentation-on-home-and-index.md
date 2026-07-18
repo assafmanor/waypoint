@@ -86,6 +86,14 @@ Built in `frontend/src/lib/hero-booking.ts` (pure, unit-tested) + `Home.tsx`, wi
 - **Ambient hotels are kept out of the now/next block selection once you've checked in** (`Home.tsx`: `deriveNow` runs on events minus checked-in ambient spans) so a mid-stay hotel can't hijack the hero; before check-in it stays in so it competes as the natural "next". **Check-out is an end-transition `deriveNow` can't produce**, so the hotel is offered as a next-candidate and the sooner of it / the regular next wins.
 - **In-transit fills the NOW slot** (teal identity + amber time-to-landing progress); the **mid-stay strip** is a slim dismissible teal strip above the hero, shown while the clock is inside a stay's span.
 
+### §3 route grammar extended to the hero (2026-07-18, session 37)
+
+The Index row + booking detail already read a transport booking as its origin→destination, but the **board hero still showed the flight event's title** (a name), not the route (`docs/planning/2026-07-18-session-37-glance-markers-and-flight-route-hero.md`). The §3 grammar now covers the hero too, through one shared derivation:
+
+- **`lib/places.ts` `eventRoute(event, bookings, places)`** resolves a transport-linked event to `{from, to}` place names (or `null` → fall back to the title), keyed on `categoryForBookingType === 'transport'`.
+- **`ui/RouteLabel.tsx`** (lifted out of `BookingDetail`) is the one route component the Index, the detail, and the hero share. **`ui/EventTitle.tsx`** picks route-or-title and is applied to every hero title site (NOW / NEXT / in-transit / group-split / also-now).
+- The **in-transit progress ends** read `time · from` / `to · time` with the countdown between them (per the mockup), so a flight consistently shows _where it goes, not a name_.
+
 ## Alternatives considered
 
 - **Keep the hotel on the hero across the whole stay** (the naive "make hotels span-aware on the hero"). Rejected: it dominates Now/Next for days with nothing actionable — the exact always-there blandness Assaf flagged.

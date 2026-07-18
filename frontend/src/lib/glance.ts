@@ -55,6 +55,10 @@ export interface GlanceMarker {
   timeMs: number;
   /** The event's own icon (or its category default) — the shared badge glyph. */
   icon: string;
+  /** Stacking row (0 = nearest the bar). Markers whose chips would overlap are
+   *  pushed to a higher lane so labels never collide — a departure + arrival a
+   *  short flight apart can't smear into each other (ADR-0054 amendment). */
+  lane: number;
 }
 
 export interface DayGlance {
@@ -64,6 +68,9 @@ export interface DayGlance {
   segs: GlanceSeg[];
   /** Amber transition markers above the block bar (ADR-0054 amendment). */
   markers: GlanceMarker[];
+  /** How many stacked lanes the markers occupy (0 when there are none) — the
+   *  render sizes the marker lane from this. */
+  markerLaneCount: number;
   /** Now's position in the window (0..1), or null when now is outside it
    *  (i.e. a past/future day being browsed). */
   nowFrac: number | null;
@@ -75,6 +82,27 @@ export interface DayGlance {
  *  fraction of the rail — narrower composites drop the number (keeping the
  *  layered cue) so two short, close-by composites can't overlap chips. */
 const MIN_COUNT_FRAC = 0.14;
+
+/** Two transition-marker chips closer than this fraction of the rail would
+ *  overlap, so the later one is pushed up a lane (stacked, not smeared). Sized
+ *  a touch above a chip's own width so a departure + arrival a short flight
+ *  apart always separate. */
+const MARKER_MIN_GAP_FRAC = 0.28;
+
+/** Stack markers (pre-sorted by frac) into lanes: each goes in the lowest lane
+ *  whose last chip is at least a chip-width away, else a new lane. Returns the
+ *  lane count. Pure and width-independent — the render only needs the lane index
+ *  and total to size the marker band. */
+function assignMarkerLanes(markers: GlanceMarker[]): number {
+  const laneLastFrac: number[] = [];
+  for (const m of markers) {
+    let lane = 0;
+    while (lane < laneLastFrac.length && m.frac - laneLastFrac[lane] < MARKER_MIN_GAP_FRAC) lane++;
+    laneLastFrac[lane] = m.frac;
+    m.lane = lane;
+  }
+  return laneLastFrac.length;
+}
 
 const startMsOf = (e: TripEvent) => Date.parse(e.startsAt!);
 const endMsOf = (e: TripEvent) => (e.endsAt ? Date.parse(e.endsAt) : Date.parse(e.startsAt!));
@@ -164,22 +192,32 @@ export function buildDayGlance(
   const skipped = sameDay.filter((e) => e.status === EVENT_STATUS.SKIPPED && e.startsAt);
   const timed = sameDay.filter((e) => e.startsAt);
 
-  if (tree.length === 0 && skipped.length === 0) {
+  // Transition markers are derived first so their instants can join the window
+  // math below — an ambient booking's transition (an overnight flight's
+  // departure/arrival, a hotel's check-in/out) contributes no counted block to
+  // stretch the window, so without this a late-night marker would land past the
+  // rail's edge and clip. A day is non-empty if it carries any of these too.
+  const transitions = bookingTransitionsOnDate(events, activeDate);
+
+  if (tree.length === 0 && skipped.length === 0 && transitions.length === 0) {
     return {
       empty: true,
       windowStartMs: day07Ms,
       windowEndMs: day23Ms,
       segs: [],
       markers: [],
+      markerLaneCount: 0,
       nowFrac: null,
       remaining: 0,
     };
   }
 
   // Window: 07:00→23:00, stretched to the earliest start / latest end (ADR-0037
-  // overnight ends included; skipped events count for the window so they stay on-rail).
-  const windowStartMs = Math.min(day07Ms, ...timed.map(startMsOf));
-  const windowEndMs = Math.max(day23Ms, ...timed.map(endMsOf));
+  // overnight ends included; skipped events count for the window so they stay
+  // on-rail) and to every transition instant (so no marker falls off the rail).
+  const transitionMs = transitions.map((tr) => tr.atMs);
+  const windowStartMs = Math.min(day07Ms, ...timed.map(startMsOf), ...transitionMs);
+  const windowEndMs = Math.max(day23Ms, ...timed.map(endMsOf), ...transitionMs);
   const span = windowEndMs - windowStartMs || 1;
   const frac = (t: number) => (t - windowStartMs) / span;
   const nextDayOf = (evs: TripEvent[]) =>
@@ -231,7 +269,7 @@ export function buildDayGlance(
   // same-day flight's departure + arrival (edge markers on its counted block),
   // an ambient hotel's check-in / check-out (uncounted). Marking a transition
   // point is not counting a block; the ambient stay stays off the counted rail.
-  const markers: GlanceMarker[] = bookingTransitionsOnDate(events, activeDate).map((tr) => ({
+  const markers: GlanceMarker[] = transitions.map((tr) => ({
     key: `${tr.event.id}-${tr.edge === 'start' ? 's' : 'e'}`,
     frac: frac(tr.atMs),
     labelKey: tr.labelKey,
@@ -239,10 +277,21 @@ export function buildDayGlance(
     icon:
       tr.event.icon ??
       (tr.event.category != null ? CATEGORY_DEFAULT_ICON[tr.event.category] : '📌'),
+    lane: 0,
   }));
   markers.sort((a, b) => a.frac - b.frac);
+  const markerLaneCount = assignMarkerLanes(markers);
 
   const nowFrac = nowMs >= windowStartMs && nowMs <= windowEndMs ? frac(nowMs) : null;
 
-  return { empty: false, windowStartMs, windowEndMs, segs, markers, nowFrac, remaining };
+  return {
+    empty: false,
+    windowStartMs,
+    windowEndMs,
+    segs,
+    markers,
+    markerLaneCount,
+    nowFrac,
+    remaining,
+  };
 }
