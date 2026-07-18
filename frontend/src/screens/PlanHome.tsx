@@ -1,19 +1,42 @@
-// Plan-mode Home — the prep dashboard (modes.md; mockups/plan-mode-v1.html).
+// Plan-mode Home — the prep dashboard (modes.md; mockups/plan-home-readiness-v1.html).
 // The single loud element is the violet prep hero (countdown + readiness) —
 // plan violet, never amber, no pulse (design-language: mode identity, ADR-0028).
 //
 // Readiness and the checklist are DERIVED from the snapshot, never stored
-// (lib/readiness.ts). Only rows we can honestly detect appear; the mockup's
-// Gmail / passport / Google-connection rows wait for their features (see the
-// DEFERRED prep-dashboard tasks) rather than shipping placeholder counts.
+// (lib/readiness.ts, ADR-0061). Each incomplete row's CTA *does the thing* —
+// opens the type-specific create form (flight seeded with the missing leg /
+// lodging), seeds the day builder, or the settings invite — not a bare tab
+// switch. Completed checks collapse into a summary. Only rows we can honestly
+// derive appear; Gmail / Google-connection / WhatsApp stay out (ADR-0045/0004).
+import { useState } from 'react';
 import { useNavigate } from 'react-router-dom';
+import { BOOKING_TYPE } from '@waypoint/shared';
 import { useTrip } from '../state/trip-state';
 import { useClock } from '../lib/useClock';
 import { daysUntilStart, tripPhase } from '../lib/mode';
 import { dayCount, dayPhrase } from '../lib/hebrew';
-import { computeReadiness, type ReadinessCheck } from '../lib/readiness';
+import { computeReadiness, type CheckId, type ReadinessCheck } from '../lib/readiness';
+import { BookingSheet, type BookingSeed } from '../ui/BookingSheet';
+import { TAB_PARAM } from '../state/nav-state';
 import { MS_PER_DAY, type TabId } from '../constants';
 import { t } from '../i18n/he';
+
+const CHECK_ICON: Record<CheckId, string> = {
+  flights: '✈️',
+  lodging: '🏨',
+  itinerary: '📅',
+  documents: '🛂',
+  group: '👥',
+};
+
+interface ChecklistRow {
+  icon: string;
+  title: string;
+  meta: string;
+  /** Documents row: the per-traveller passport indicator (filled = uploaded). */
+  dots?: { have: number; total: number };
+  cta: { label: string; warn?: boolean; onClick: () => void };
+}
 
 // Trip-local day number (1-based) for a calendar-date string — matches the
 // header's day-strip numbering. UTC-midnight diff, no timezone re-reading.
@@ -38,9 +61,13 @@ function formatDateRange(startDate: string, endDate: string): string {
 }
 
 export function PlanHome({ onNavigate }: { onNavigate: (tab: TabId) => void }) {
-  const { trip, events, bookings, users, setActiveDate } = useTrip();
+  const { trip, events, bookings, places, documents, users, setActiveDate } = useTrip();
   const now = useClock();
   const navigate = useNavigate();
+  // A create-form open seeded by a checklist CTA (null = closed). The row that
+  // opened it decides the booking type (and, for a flight, the missing leg).
+  const [sheetSeed, setSheetSeed] = useState<BookingSeed | null>(null);
+  const [showCompleted, setShowCompleted] = useState(false);
 
   const total = dayNumberOf(trip.endDate, trip.startDate);
 
@@ -92,37 +119,58 @@ export function PlanHome({ onNavigate }: { onNavigate: (tab: TabId) => void }) {
   const readiness = computeReadiness({
     startDate: trip.startDate,
     endDate: trip.endDate,
+    destination: trip.destination,
     events,
     bookings,
-    memberCount: users.length,
+    places,
+    documents,
+    travelerIds: users.map((u) => u.id),
   });
-  const incomplete = readiness.checks.filter((c) => !c.done).length;
+  const incompleteChecks = readiness.checks.filter((c) => !c.done);
+  const completedChecks = readiness.checks.filter((c) => c.done);
 
-  // Each derivable check → its row copy + the one action that resolves it.
-  // The CTA targets (Index entry, Plan Day builder, trip settings) are still
-  // Placeholder screens in Plan mode — switching to the right tab is honest
-  // until those land (DEFERRED task #11).
-  const rowFor = (check: ReadinessCheck) => {
+  // Each check → its row copy + the one action that resolves it. Actionable CTAs
+  // open the thing itself (ADR-0061): flight/lodging → the seeded create form,
+  // empty-day → the day builder on the first empty day, group → the settings
+  // invite, documents → the Index documents section.
+  const rowFor = (check: ReadinessCheck): ChecklistRow => {
     const c = t.planHome.checklist;
     switch (check.id) {
-      case 'flights':
+      case 'flights': {
+        // Seed the missing leg: outbound needs a flight TO the destination (seed
+        // its `dest`), a return needs one FROM it (seed its `origin`).
+        const seed: BookingSeed = !check.hasOutbound
+          ? { type: BOOKING_TYPE.FLIGHT, dest: trip.destination }
+          : { type: BOOKING_TYPE.FLIGHT, origin: trip.destination };
+        const meta = check.done
+          ? c.flightsDoneMeta
+          : !check.hasOutbound && !check.hasReturn
+            ? c.flightsMissingBothMeta
+            : check.hasOutbound
+              ? c.flightsMissingReturnMeta
+              : c.flightsMissingOutboundMeta;
         return {
-          icon: '✈️',
+          icon: CHECK_ICON.flights,
           title: c.flightsTitle,
-          meta: check.done ? c.flightsDoneMeta : c.flightsMissingMeta,
-          cta: { label: c.addBooking, onClick: () => onNavigate('index') },
+          meta,
+          cta: { label: c.addFlight, warn: true, onClick: () => setSheetSeed(seed) },
         };
+      }
       case 'lodging':
         return {
-          icon: '🏨',
+          icon: CHECK_ICON.lodging,
           title: c.lodgingTitle,
           meta: check.done ? c.lodgingDoneMeta : c.lodgingMissingMeta,
-          cta: { label: c.addBooking, onClick: () => onNavigate('index') },
+          cta: {
+            label: c.addLodging,
+            warn: true,
+            onClick: () => setSheetSeed({ type: BOOKING_TYPE.HOTEL }),
+          },
         };
       case 'itinerary': {
         const nums = readiness.emptyDates.map((d) => dayNumberOf(d, trip.startDate)).join(', ');
         return {
-          icon: '📅',
+          icon: CHECK_ICON.itinerary,
           title: check.done ? c.itineraryDoneTitle : c.itineraryTitle(check.count ?? 0),
           meta: check.done ? c.itineraryDoneMeta : c.itineraryMeta(nums),
           cta: {
@@ -134,9 +182,22 @@ export function PlanHome({ onNavigate }: { onNavigate: (tab: TabId) => void }) {
           },
         };
       }
+      case 'documents':
+        return {
+          icon: CHECK_ICON.documents,
+          title: c.documentsTitle,
+          meta: check.done
+            ? c.documentsDoneMeta
+            : c.documentsMissingMeta(check.count ?? 0, check.total ?? 0),
+          dots: { have: check.count ?? 0, total: check.total ?? 0 },
+          cta: {
+            label: c.uploadDocs,
+            onClick: () => navigate(`/?${TAB_PARAM}=index&focus=docs`),
+          },
+        };
       case 'group':
         return {
-          icon: '👥',
+          icon: CHECK_ICON.group,
           title: check.done ? c.groupTitle : c.groupMissingTitle,
           meta: check.done ? c.groupDoneMeta(users.length) : c.groupMissingMeta,
           cta: { label: c.invite, onClick: () => navigate(`/trip/${trip.id}/settings`) },
@@ -179,33 +240,83 @@ export function PlanHome({ onNavigate }: { onNavigate: (tab: TabId) => void }) {
 
       <div className="sec-title">
         {t.planHome.checklist.title}
-        <span className="hint">
-          {incomplete === 0
-            ? t.planHome.checklist.allDone
-            : t.planHome.checklist.remaining(incomplete)}
+        <span className="sec-title-end">
+          {incompleteChecks.length === 0 && (
+            <span className="hint">{t.planHome.checklist.allDone}</span>
+          )}
+          {completedChecks.length > 0 && (
+            <button
+              type="button"
+              className="chk-toggle"
+              onClick={() => setShowCompleted((v) => !v)}
+            >
+              {showCompleted
+                ? t.planHome.checklist.hideCompleted
+                : t.planHome.checklist.showCompleted(completedChecks.length)}
+            </button>
+          )}
         </span>
       </div>
-      <div className="checklist">
-        {readiness.checks.map((check) => {
-          const row = rowFor(check)!;
-          return (
-            <div className="chk-row" key={check.id}>
-              <div className="chk-ic">{row.icon}</div>
-              <div className="chk-main">
-                <div className="chk-t">{row.title}</div>
-                <div className="chk-m">{row.meta}</div>
-              </div>
-              {check.done ? (
-                <div className="chk-ok">✓ {t.planHome.checklist.done}</div>
-              ) : (
-                <button className="chk-cta" onClick={row.cta.onClick}>
+
+      {incompleteChecks.length > 0 && (
+        <div className="checklist">
+          {incompleteChecks.map((check) => {
+            const row = rowFor(check);
+            return (
+              <div className="chk-row" key={check.id}>
+                <div className="chk-ic">{row.icon}</div>
+                <div className="chk-main">
+                  <div className="chk-t">{row.title}</div>
+                  <div className="chk-m">
+                    {row.meta}
+                    {row.dots && (
+                      <span className="chk-ppl" aria-hidden="true">
+                        {Array.from({ length: row.dots.total }).map((_, i) => (
+                          <i key={i} className={i < row.dots!.have ? 'on' : undefined} />
+                        ))}
+                      </span>
+                    )}
+                  </div>
+                </div>
+                <button
+                  className={row.cta.warn ? 'chk-cta warn' : 'chk-cta'}
+                  onClick={row.cta.onClick}
+                >
                   {row.cta.label}
                 </button>
-              )}
-            </div>
-          );
-        })}
-      </div>
+              </div>
+            );
+          })}
+        </div>
+      )}
+
+      {completedChecks.length > 0 &&
+        (showCompleted ? (
+          <div className="checklist">
+            {completedChecks.map((check) => {
+              const row = rowFor(check);
+              return (
+                <div className="chk-row" key={check.id}>
+                  <div className="chk-ic">{row.icon}</div>
+                  <div className="chk-main">
+                    <div className="chk-t">{row.title}</div>
+                    <div className="chk-m">{row.meta}</div>
+                  </div>
+                  <div className="chk-ok">✓ {t.planHome.checklist.done}</div>
+                </div>
+              );
+            })}
+          </div>
+        ) : (
+          <div className="chk-done-sum">
+            <span className="ok">✓ {t.planHome.checklist.completedSummary}</span>
+            {completedChecks.map((check) => (
+              <span className="pill" key={check.id}>
+                {CHECK_ICON[check.id]} {t.planHome.checklist.summaryLabels[check.id]}
+              </span>
+            ))}
+          </div>
+        ))}
 
       <div className="sec-title">{t.planHome.stats.title}</div>
       <div className="prep-stats">
@@ -232,6 +343,10 @@ export function PlanHome({ onNavigate }: { onNavigate: (tab: TabId) => void }) {
           <div className="prep-stat-l">{t.planHome.stats.emptyDays}</div>
         </div>
       </div>
+
+      {sheetSeed && (
+        <BookingSheet booking={null} seed={sheetSeed} onClose={() => setSheetSeed(null)} />
+      )}
     </>
   );
 }
