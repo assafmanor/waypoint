@@ -4,6 +4,10 @@
 **Date:** 2026-07-17
 **Refines:** [0045](0045-trip-home-real-data-only.md) (the day-at-a-glance card this fixes), [0041](0041-parallel-overlapping-events.md) (`buildTimeTree` / the block model an ambient span must sit outside of), [0018](0018-timeline-data-model-shape.md) (the `endDate` ambient-span field that becomes the discriminator), [0047](0047-booking-event-linkage-and-notes.md) (a hotel = one Booking backing one Event with an `endDate` span), [0037](0037-overnight-events.md) (distinguishes a true multi-day span from a single overnight tail), [0011](0011-hard-soft-event-model.md) (hard/soft is orthogonal; ambient is a third, presentational axis)
 
+## Rebased on ADR-0063 (2026-07-18) — "ambient" is one profile behaviour, not a bare `endDate` check
+
+[ADR-0063](0063-category-time-behaviour-profile.md) generalizes this decision. "Ambient-span" is no longer "any event with `endDate` set"; it is a **category whose time-profile has `ambientWhenMultiDay`, when the event is actually multi-day** (`lodging`, `transport` are the seeded ones). Every behaviour below stands unchanged — backdrop across days, excluded from `buildTimeTree` / the rail / `remaining`, hard/soft-orthogonal. Only the **discriminator** moves from `e.endDate != null` (§Consequences) to `isAmbient(e)` (profile + multi-day), so the same rule now covers non-booking events and any future ambient category. The amendment below (check-in/out markers) is the profile's `transitions` rendered on the rail.
+
 ## Amendment (2026-07-18, Assaf triage) — the glance marks check-in / check-out moments (still uncounted)
 
 Reviewing the design, Assaf asked that the day-at-a-glance still **mark** the transition moments of an ambient span, even though the stay itself is backdrop: "היום במבט: לסמן צ'ק אין צ'ק אאוט וכו' אבל לא [לספור אותם בלוז]." The refinement, additive to the decision below:

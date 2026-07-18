@@ -2,7 +2,17 @@
 
 **Status:** Proposed
 **Date:** 2026-07-18
-**Refines:** [0045](0045-trip-home-real-data-only.md) (the hero was declared "unchanged" there; it now gains booking-aware presentation), [0054](0054-ambient-span-events-off-the-day-schedule.md) (ambient hotels are backdrop on the day schedule — this decides how they surface on the hero and as an in-progress treatment), [0053](0053-index-booking-detail-view-and-merged-edit-reach.md) (the booking detail view whose appearance this improves), [0049](0049-index-tab-mode-and-lifecycle.md) (the Index booking row), [0011](0011-hard-soft-event-model.md) (a booking backs a hard event), [0004](0004-integrations-are-pipes.md) (bookings feed existing surfaces, never their own screen), [0047](0047-booking-event-linkage-and-notes.md)/[0048](0048-index-build-data-model-refinements.md) (the Booking↔Event model + `Booking.details` the presentation reads)
+**Refines:** [0063](0063-category-time-behaviour-profile.md) (this ADR applies its `bracketed` profile to the Home & Index — see the rebase note below), [0045](0045-trip-home-real-data-only.md) (the hero was declared "unchanged" there; it now gains booking-aware presentation), [0054](0054-ambient-span-events-off-the-day-schedule.md) (ambient hotels are backdrop on the day schedule — this decides how they surface on the hero and as an in-progress treatment), [0053](0053-index-booking-detail-view-and-merged-edit-reach.md) (the booking detail view whose appearance this improves), [0049](0049-index-tab-mode-and-lifecycle.md) (the Index booking row), [0011](0011-hard-soft-event-model.md) (a booking backs a hard event), [0004](0004-integrations-are-pipes.md) (bookings feed existing surfaces, never their own screen), [0047](0047-booking-event-linkage-and-notes.md)/[0048](0048-index-build-data-model-refinements.md) (the Booking↔Event model + `Booking.details` the presentation reads)
+
+## Rebased on ADR-0063 (2026-07-18)
+
+After this ADR was first written, Assaf raised the underlying architecture: don't special-case hotels/flights on each screen — make "shows at start & end, passive in the middle" a **first-class, configurable concept**. That became [ADR-0063](0063-category-time-behaviour-profile.md) (a derived per-`category` time-behaviour profile: `bracketed` + `ambientWhenMultiDay`). **This ADR is now the _application_ of that profile to the Home & Index**, not hotel/flight-specific logic:
+
+- §1's "hotel around check-in/out, transport at departure/arrival" = **render a `bracketed` event by its profile's `transitions` + padding windows.** Hotel and transport are simply the two seeded bracketed categories (`lodging`, `transport`); the hero branches on `isBracketed(event)`, not on type.
+- §2's "inside a booking now" treatment = **a `bracketed` event whose span currently contains the clock.**
+- §3's shared appearance grammar reads the profile (transition labels, bracketed vs point) so hero/row/detail stay consistent and any future bracketed category is handled for free.
+
+The decisions below stand; read "hotel/flight" as "the `lodging`/`transport` profiles." The exact padding-window values are still this ADR's mockup to settle.
 
 ## Context
 
