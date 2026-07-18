@@ -473,18 +473,16 @@ export async function fetchDocumentContent(
   return blob;
 }
 
-/** Rename / change type, and optionally replace the file (ADR-0052). Always
- *  multipart (matching upload) so metadata-only and replace share one route. */
+/** Rename / change type (ADR-0052, replace-file dropped in the 2026-07-18
+ *  amendment). Multipart matching upload so it shares the one PATCH route. */
 export async function updateDocument(
   tripId: string,
   docId: string,
   input: { title?: string; type?: DocumentType },
-  file?: File,
 ): Promise<TripDocument> {
   const form = new FormData();
   if (input.title !== undefined) form.set('title', input.title);
   if (input.type !== undefined) form.set('type', input.type);
-  if (file) form.set('file', file);
   const res = await apiFetch(`${documentsUrl(tripId)}/${docId}`, { method: 'PATCH', body: form });
   if (!res.ok) return throwApiError(res);
   return tripDocumentSchema.parse(await res.json());
