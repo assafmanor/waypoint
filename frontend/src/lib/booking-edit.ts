@@ -92,6 +92,15 @@ export function buildEventSeed(
   return { date, startsAt, endsAt, kind, icon, category };
 }
 
+/** True if a `date` or `datetime-local` value's day part falls outside the trip's
+ *  [startDate, endDate]. Blank is in-range (an index-only booking has no schedule
+ *  to bound). The span inputs' native min/max are a hint browsers don't hard-block
+ *  on typed input, so this stays the real guard on save. */
+export function dateOutOfTripRange(value: string, startDate: string, endDate: string): boolean {
+  const day = value.split('T')[0];
+  return !!day && (day < startDate || day > endDate);
+}
+
 /** A native datetime-local value ("YYYY-MM-DDTHH:MM") → its date + time parts. */
 function splitLocal(dt: string): { date: string; time: string } | null {
   const [date, time] = dt.split('T');
