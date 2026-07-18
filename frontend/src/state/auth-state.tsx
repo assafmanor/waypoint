@@ -10,6 +10,7 @@ import {
   setOnSessionExpired,
 } from '../lib/api';
 import { isNetworkError, isOffline } from '../lib/outbox';
+import { wipeLocalData } from '../lib/cache';
 import { ME_STORAGE_KEY } from '../constants';
 
 export type AuthStatus = 'loading' | 'anon' | 'authed';
@@ -62,6 +63,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       setMe(null);
       setStatus('anon');
       clearCachedMe();
+      void wipeLocalData();
     });
     return () => setOnSessionExpired(null);
   }, []);
@@ -109,6 +111,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
 
   const logout = async () => {
     await requestLogout();
+    await wipeLocalData();
     setMe(null);
     setStatus('anon');
     clearCachedMe();
