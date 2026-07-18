@@ -10,6 +10,8 @@ Guidance for Claude (and any coding agent) working in this repo. Read this first
 
 Code and documentation live together. **Any consequential decision gets an ADR** (`docs/decisions/`); **any working session gets a dated note** (`docs/planning/`); docs describe the current state and are kept in sync with the code. If you change a documented behavior or decision, update the doc/ADR in the same change.
 
+**Bracket every task with a backlog check.** Before starting, scan `docs/backlog.md` for a matching item — it may already scope the work, or mark it deferred/blocked. If none matches, add one, so the work is tracked before it's built. When the task ships, prune the line(s) it completes in the same change; when work is decided but deferred, add or update a line. The backlog stays current alongside the ADRs and planning notes (ADR-0046).
+
 ## Where things are
 
 - `docs/INDEX.md` — the map of all documentation. **Start here.**
