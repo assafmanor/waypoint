@@ -6,7 +6,7 @@
 // The flag glyph is generated from the ISO-3166 alpha-2 code (two regional-
 // indicator symbols), so the list is bounded and principled without hand-typing
 // glyphs. This is a CURATED popular-destination list, not all ~250 ISO regions:
-// for a small-group travel app the long tail is never exercised, and appending a
+// popular destinations cover the overwhelming common case, and appending a
 // row later is pure data. `he` is the Hebrew display name; `aliases` feed
 // auto-suggest + search (Hebrew variants, abbreviations, English, iconic cities).
 //

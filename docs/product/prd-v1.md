@@ -4,21 +4,21 @@
 
 ## 1. Goal of v1
 
-Ship a usable trip control-center for **one real trip with one real group of ~5 friends**. Success is measured on the ground, not in a store: _did we actually reach for it during the trip instead of scattering across WhatsApp, screenshots, and Google Maps?_
+Ship a usable trip control-center, proven on **one real trip with one real group of ~5 friends** as the near-term target. (That's v1's proof, not the app's ceiling — Waypoint is built to serve many trips and many users; see [ADR-0065](../decisions/0065-app-scope-many-trips-small-groups.md).) Success is measured on the ground, not in a store: _did we actually reach for it during the trip instead of scattering across WhatsApp, screenshots, and Google Maps?_
 
 The north-star behavior: **during the trip, the app is the first thing you open to answer "what now / what next."**
 
 ## 2. Who it's for
 
-Five friends traveling abroad together. Each is a peer — there is no "admin who owns the trip" in the everyday sense (though someone creates it). Everyone can see everything and edit soft plans. See [personas.md](personas.md).
+One trip's group is ~5 friends traveling abroad together (the app hosts many such groups). Each is a peer — there is no "admin who owns the trip" in the everyday sense (though someone creates it). Everyone can see everything and edit soft plans. See [personas.md](personas.md).
 
 ## 3. Platform decision ✅
 
 **Device targets (ADR-0017):** **phone-primary** — the design baseline is the phone, used in hand on the ground. **Tablet** is secondary and matters most for **Plan mode** (input/research use the width). **Desktop** is a rare, graceful-minimum case. Mobile-first, touch-first, responsive by breakpoints.
 
-**Decided (ADR-0007):** a **mobile-first responsive web app (PWA)** — installable to the home screen, works offline for the index/documents, one codebase, no app-store friction for a 5-person private tool.
+**Decided (ADR-0007):** a **mobile-first responsive web app (PWA)** — installable to the home screen, works offline for the index/documents, one codebase, no app-store friction for a private, invite-only tool.
 
-- **Why not native:** app-store distribution, review, and per-platform builds are overhead a private tool doesn't need. A PWA installs from a link.
+- **Why not native:** app-store distribution, review, and per-platform builds are overhead an invite-only web tool doesn't need. A PWA installs from a link.
 - **What we give up:** some native niceties (background location, rich push on iOS is limited, true offline maps). We accept these for v1; revisit if a specific need bites.
 - **Revisit trigger:** if live location-based discovery or reliable push becomes core, reconsider a thin native shell (e.g. Capacitor) wrapping the same web app.
 
@@ -68,8 +68,8 @@ Five friends traveling abroad together. Each is a peer — there is no "admin wh
 - Expense splitting / Splitwise-style settlement (nice-to-have; v1.1+).
 - Shared photo album (Google Photos) (v1.1+).
 - Live GPS location sharing between members.
-- Public/discovery/social features. This is private, invite-only.
-- Building for scale (many trips, many users). Architected to allow it, not optimized for it.
+- Public/discovery/social features. Waypoint is invite-only (a privacy choice, not a user-count cap — see [ADR-0065](../decisions/0065-app-scope-many-trips-small-groups.md)).
+- _Optimizing_ for scale (performance-hardening for many concurrent trips/users). The app is architected to grow there and intended to — v1 just doesn't tune for it yet.
 
 ## 6. Success criteria
 
