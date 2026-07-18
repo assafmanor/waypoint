@@ -4,6 +4,8 @@ import { EVENT_STATUS } from '@waypoint/shared';
 import { db } from '../db';
 import { EVENTS, MAYBE_ITEMS } from '../fixtures';
 import { initOutboxCount } from '../lib/outbox';
+import { DEFAULT_SCHEDULE_SLOT } from '../constants';
+import { zonedIso } from '../lib/time';
 import {
   applyCreateEvent,
   applyGuardedDelay,
@@ -16,6 +18,7 @@ import {
   applySchedule,
   applySetStatus,
   applyUndo,
+  buildScheduleEvent,
   type VerbDeps,
 } from './verbs';
 import type { Action } from './trip-state';
@@ -363,6 +366,48 @@ describe('applySchedule (T-058: persists the maybe-item consumed flag server-sid
       { verb: 'create', input: expect.objectContaining({ id: 'ev-new' }) },
       { verb: 'consumeMaybeItem', maybeItemId: 'mb-skytree' },
     ]);
+  });
+});
+
+describe('buildScheduleEvent (F-02: quick-schedule builds instants in the trip timezone)', () => {
+  const m = MAYBE_ITEMS[0];
+  const now = '2026-07-15T00:00:00.000Z';
+
+  // A DST-active summer date, so a fixed-offset shortcut would be wrong in both zones.
+  it.each([
+    ['Europe/London', '2026-07-15'], // BST, UTC+1
+    ['America/New_York', '2026-07-15'], // EDT, UTC-4
+  ])(
+    'resolves the default slot in %s for a quick-schedule (no fields), not Asia/Tokyo',
+    (timezone, activeDate) => {
+      const trip = { id: 'trip-x', timezone };
+
+      const event = buildScheduleEvent(trip, activeDate, m, now);
+
+      expect(event.startsAt).toBe(zonedIso(activeDate, DEFAULT_SCHEDULE_SLOT.START, timezone));
+      expect(event.endsAt).toBe(zonedIso(activeDate, DEFAULT_SCHEDULE_SLOT.END, timezone));
+      // Regression guard: the old code interpolated a hardcoded +09:00 offset,
+      // which lands on a different instant for any non-Tokyo trip.
+      const tokyoInstant = Date.parse(`${activeDate}T${DEFAULT_SCHEDULE_SLOT.START}:00+09:00`);
+      expect(Date.parse(event.startsAt!)).not.toBe(tokyoInstant);
+    },
+  );
+
+  it('honours explicit fields (builder picker) over the default slot', () => {
+    const trip = { id: 'trip-x', timezone: 'Europe/London' };
+    const fields = {
+      date: '2026-07-16',
+      title: 'Picked',
+      kind: 'soft' as const,
+      startsAt: '2026-07-16T10:00:00.000Z',
+      endsAt: '2026-07-16T11:00:00.000Z',
+    };
+
+    const event = buildScheduleEvent(trip, '2026-07-15', m, now, fields);
+
+    expect(event.startsAt).toBe(fields.startsAt);
+    expect(event.endsAt).toBe(fields.endsAt);
+    expect(event.date).toBe(fields.date);
   });
 });
 
