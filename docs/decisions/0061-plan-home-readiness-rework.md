@@ -1,6 +1,6 @@
 # 0061 — Plan-mode Home "what's missing to complete" rework
 
-**Status:** Proposed
+**Status:** Accepted (Assaf sign-off 2026-07-18; mockup `mockups/plan-home-readiness-v1.html`)
 **Date:** 2026-07-18
 **Refines:** [0045](0045-trip-home-real-data-only.md) (real-data-only home — the sibling principle the checklist already follows), [0004](0004-integrations-are-pipes.md) (deferred suggestions wait for their pipes/data). Builds on the plan-home built in `planning/2026-07-14-session-06-plan-home.md`.
 
@@ -27,18 +27,28 @@ Assaf (2026-07-18): "כפתורי מסך הבית במצב תכנון 'מה חס
 
 3. **The exact final check set, copy, ordering, and CTA behavior are settled in a design pass** (a mockup + this ADR flipping to Accepted). This ADR fixes the direction and the constraint (real data only, derived), not the final row list.
 
-## Open questions (for the design pass — Assaf)
+## Settled (Assaf sign-off, 2026-07-18; mockup `mockups/plan-home-readiness-v1.html`)
 
-- Which new suggestions does Assaf specifically want surfaced first (documents/passport is the strongest candidate — confirm)?
-- Should readiness stay purely advisory, or ever gate / nudge the "go live" mode switch? (Today advisory.)
-- Should completed checks stay visible as ✓ rows, or collapse once done to keep the list about _what's missing_?
-- Do we want a per-traveller dimension (e.g. "everyone's passport uploaded") or trip-level only, given the small-group model?
+- **Check set (all derived, real-data-only):** keep the four existing — 🏨 `lodging`, 📅 `itinerary` (empty days), ✈️ `flights`, 👥 `group` — each with a CTA that _does the thing_ (opens the add-booking sheet / seeds the day builder on the first empty day / the settings invite), not a bare tab-switch. **Add exactly one new check:** 🛂 **documents/passports** (per-traveller, from the snapshot documents list post-ADR-0058).
+- **Confirmation-code completeness (🔑) is dropped** — considered, but "too minor for its own row" (Assaf). It can live as a subtle inline hint on a booking later, not as a readiness check.
+- **Documents is a per-traveller rollup** ("2 מתוך 5 העלו דרכון", with a small per-person indicator), breakdown on tap — fits the small-group model.
+- **Completed checks collapse into a one-line summary** ("✓ הושלמו · ✈️ טיסות · 👥 הקבוצה") with a "show completed" toggle, so the list stays about _what's missing_.
+- **Readiness stays advisory** — a nudge, never a blocker; it does **not** gate the go-live mode switch.
+- **Left out** (no data/feature, ADR-0045/0004): Google-connection, Gmail import, WhatsApp reminder.
+
+## Refinement (2026-07-18, Assaf) — type-specific CTA targets + flights = round-trip
+
+- **Each actionable row's CTA opens the type-specific create form, pre-set** — not a generic "add booking." The 🏨 lodging row opens the **create-lodging** form (booking type = hotel); the ✈️ flights row opens the **create-flight** form (booking type = flight, seeded with the missing direction where known). The row already knows which type is missing, so it seeds the form. (📅 empty-day → the day builder on the first empty day; 👥 group → the settings invite — unchanged.)
+- **The flights check is round-trip aware.** It is complete only when there is **at least one flight to the destination (outbound) _and_ at least one flight from the destination (return)** — "a way in and a way out." A single one-way flight leaves the check **open**, with copy naming the missing leg ("יש טיסת הלוך · חסרה טיסת חזור") and a CTA that opens the create-flight form for that direction. Derived from flight bookings' origin/destination `Place` FKs (ADR-0048/0051): an outbound leg's destination is the trip destination, a return leg's origin is the trip destination. "Source"/home need not be stored — only that a leg lands at the destination and a leg leaves it.
+- **Degradation until the Place-picker lands** (backlog; direction rests on name-only Places today): if a flight's origin/destination isn't recorded, the check can't confirm that leg, so it **stays open** — conservatively nudging the traveller to record both legs rather than falsely reading "done." Revisit if that proves too strict in practice.
+
+`readiness.ts`: the `flights` check reads flight bookings' origin/destination Places and requires both directions (a small pure predicate, unit-tested). `PlanHome.tsx`: each CTA passes the target booking type (and, for the return flight, the direction) into the create form.
 
 ## Consequences
 
 - `lib/readiness.ts` (new/changed pure checks + a unit test per check, matching `readiness.test.ts`) and `screens/PlanHome.tsx` (row behavior/CTAs), plus `i18n/he.ts` copy (no em dashes; `·` for separators).
 - A documents check reads the snapshot documents list (ADR-0058) — no new fetch, offline-safe.
-- Design record + mockup land first; implementation follows on its own change.
+- Design record + mockup (`mockups/plan-home-readiness-v1.html`, session 32) land first; implementation follows on its own change.
 - No data-model or backend change anticipated (all inputs already in the snapshot).
 
 ## Alternatives considered

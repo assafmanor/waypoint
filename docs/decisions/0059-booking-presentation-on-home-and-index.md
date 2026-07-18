@@ -1,6 +1,6 @@
 # 0059 — Booking presentation across the Trip-mode Home & Index (hero transition windows, an "inside a booking" treatment, and a shared appearance pass)
 
-**Status:** Proposed
+**Status:** Accepted (Assaf sign-off 2026-07-18; mockup `mockups/booking-presentation-v1.html`)
 **Date:** 2026-07-18
 **Refines:** [0063](0063-category-time-behaviour-profile.md) (this ADR applies its `bracketed` profile to the Home & Index — see the rebase note below), [0045](0045-trip-home-real-data-only.md) (the hero was declared "unchanged" there; it now gains booking-aware presentation), [0054](0054-ambient-span-events-off-the-day-schedule.md) (ambient hotels are backdrop on the day schedule — this decides how they surface on the hero and as an in-progress treatment), [0053](0053-index-booking-detail-view-and-merged-edit-reach.md) (the booking detail view whose appearance this improves), [0049](0049-index-tab-mode-and-lifecycle.md) (the Index booking row), [0011](0011-hard-soft-event-model.md) (a booking backs a hard event), [0004](0004-integrations-are-pipes.md) (bookings feed existing surfaces, never their own screen), [0047](0047-booking-event-linkage-and-notes.md)/[0048](0048-index-build-data-model-refinements.md) (the Booking↔Event model + `Booking.details` the presentation reads)
 
@@ -67,11 +67,15 @@ The through-line: bookings are the trip's hard spine (ADR-0011), but the app pre
 - **Timeline transition markers are amber, in a dedicated lane, and cover flights too** (revised after first review, 2026-07-18 — see ADR-0054 amendment): they read as **time anchors** (amber), matching the hero's `המראה`/`צ׳ק-אין` labels, and sit in their **own row above the block bar** so segments can't swallow the labels. They render for **every** bracketed transition — a hotel's check-in/out (standalone markers, uncounted) and a flight's departure/arrival (edge markers on its counted block).
 - Still open for sign-off: the exact window durations (below), and whether transport gate/terminal data exists to show.
 
-## Open questions (for the mockup pass)
+## Answers (Assaf sign-off, 2026-07-18) — all resolved
 
-- The exact pre-check-in / post-check-in-grace / pre-check-out / departure-lead durations.
-- Whether transport gate/terminal is available to show — today `Booking.details` carries code/provider/route but gate may not be modeled; the mockup shows only fields we actually have (real-data-only, ADR-0045).
-- ~~Whether the in-transit treatment needs a distinct visual from the hotel in-progress treatment or shares one component.~~ **Proposed in the mockup: one teal grammar, two placements** (see "Settled in the mockup" above) — pending sign-off.
+- **Window durations (accepted defaults, tunable in implementation without a new ADR):**
+  - **Hotel check-in** surfaces on the hero as the normal now/next item once it's the nearest upcoming transition on the check-in day, plus a **2h grace after** check-in ("just checked in"), then it recedes to the ambient strip.
+  - **Hotel check-out** surfaces from **3h before** check-out (and from the start of the check-out day once earlier items are done).
+  - **Transport departure** surfaces as the normal "next" (a hard event surfaces naturally); the **in-transit** treatment runs departure→arrival; **arrival** is emphasized in the final **~45 min**.
+  - Expressed as named constants (e.g. `CHECKIN_GRACE_MIN=120`, `CHECKOUT_LEAD_MIN=180`, `ARRIVAL_EMPHASIS_MIN=45`); tuning them later does not need a new ADR.
+- **Gate/terminal is not shown** — it isn't modeled today (`Booking.details` carries code/provider/route, no gate field), and real-data-only (ADR-0045) forbids faking it. If a gate/terminal field is added later it slots into the hero + detail with no change to this decision.
+- **In-transit vs hotel in-progress:** resolved — **one teal grammar, two placements** (see "Settled in the mockup" above).
 
 ## Alternatives considered
 

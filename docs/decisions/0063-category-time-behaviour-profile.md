@@ -1,6 +1,6 @@
 # 0063 — A per-category time-behaviour profile: bracketed spans + ambient multi-day (derived, not stored)
 
-**Status:** Proposed
+**Status:** Accepted (Assaf sign-off 2026-07-18)
 **Date:** 2026-07-18
 **Refines:** [0038](0038-icons-and-canonical-category.md) (adds a time-behaviour profile to the canonical `category` registry it established), [0054](0054-ambient-span-events-off-the-day-schedule.md) (generalizes "ambient-span" from a bare `endDate` check into one profile behaviour — the behaviours there stand), [0011](0011-hard-soft-event-model.md) (hard/soft is the commitment axis; this is a separate time-presentation axis), [0018](0018-timeline-data-model-shape.md) (derive, don't store — the profile is a lookup, nothing new is persisted)
 **Relates:** [0059](0059-booking-presentation-on-home-and-index.md) (the hero/appearance work that becomes an application of this profile), [0047](0047-booking-event-linkage-and-notes.md)/[0048](0048-index-build-data-model-refinements.md)/[0051](0051-place-normalization-and-authority.md) (Booking↔Event; the `endDate` span; Event as sole time authority), [0037](0037-overnight-events.md) (a single overnight tail vs a true multi-day span)
