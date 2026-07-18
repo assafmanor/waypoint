@@ -56,14 +56,22 @@ The through-line: bookings are the trip's hard spine (ADR-0011), but the app pre
 - The hero block (`Home.tsx` `deriveNow` region, lines 47/56-61/118-258) gains a small pure helper — "is now in a check-in / check-out window, or in-transit, or mid-stay?" — driving both §1 (which booking is the hero item) and §2 (the in-progress treatment). Unit-testable like `glance.ts` / `readiness.ts`.
 - **Subsumes the backlog's "board hero booking presentation" item** (§1 is that work).
 - **Cross-refs:** §2's in-progress hotel treatment builds on ADR-0054's ambient backdrop; §3's detail view is ADR-0053's component; the glance transition markers are ADR-0054 §amendment (2026-07-18). Together these three ADRs make bookings coherent across Home + Index.
-- **Design record first.** This ADR + a companion mockup `mockups/booking-presentation-v1.html` land before implementation; the mockup settles the transition-window durations, the in-progress grammar, and the shared row/detail/hero look, then this ADR flips to Accepted.
+- **Design record first.** This ADR + the companion mockup `mockups/booking-presentation-v1.html` (built session 32, 2026-07-18) land before implementation; the mockup demonstrates the profile-driven states (pre-check-in / mid-stay / pre-check-out / pre-departure / in-transit) across the hero, the Index row, and the detail view. It flips to Accepted on Assaf's sign-off.
 - Copy additions go in `he.ts` (in-transit / check-in-out / "you're staying at" strings), no em dashes (use `·`).
+
+## Settled in the mockup (2026-07-18, `mockups/booking-presentation-v1.html`) — for sign-off
+
+- **The "inside a booking" treatment uses teal (location), not amber.** It is a _"where you are"_ statement — at the hotel, in the air — so on the ADR-0028 budget it is a **location** cue (teal), which deliberately sets it apart from the amber time-critical hero. This is the concrete answer to Assaf's "העיצוב מאוד סתמי": the in-progress state now has its own principled colour identity instead of reading like a generic block.
+- **One grammar, two placements** (resolves open question 3): a single teal "inside a booking" grammar, placed differently by whether the event is ambient. An **ambient hotel mid-stay** shows a teal strip; a **bracketed point in progress** (a flight in the air) **fills the hero's NOW slot** (the flight _is_ the current activity), with amber only on the time-to-landing progress. Not two components — one visual grammar, two positions driven by `isAmbient`.
+- **The mid-stay strip is slim, dismissible, and subordinate to the hero** (revised after first review, 2026-07-18). Assaf flagged that a full backdrop _card_ above the hero read as the most important thing — wrong, since the hero must stay the one loud element (design-language / ADR-0045). So it became a **thin one-line strip with a ✕**, transient; the _persistent_ "you're staying here" signal is the **day-strip teal underline + the day-view backdrop (ADR-0054) + the Index**, not a hero-competing card.
+- **Timeline transition markers are amber, in a dedicated lane, and cover flights too** (revised after first review, 2026-07-18 — see ADR-0054 amendment): they read as **time anchors** (amber), matching the hero's `המראה`/`צ׳ק-אין` labels, and sit in their **own row above the block bar** so segments can't swallow the labels. They render for **every** bracketed transition — a hotel's check-in/out (standalone markers, uncounted) and a flight's departure/arrival (edge markers on its counted block).
+- Still open for sign-off: the exact window durations (below), and whether transport gate/terminal data exists to show.
 
 ## Open questions (for the mockup pass)
 
 - The exact pre-check-in / post-check-in-grace / pre-check-out / departure-lead durations.
 - Whether transport gate/terminal is available to show — today `Booking.details` carries code/provider/route but gate may not be modeled; the mockup shows only fields we actually have (real-data-only, ADR-0045).
-- Whether the in-transit treatment needs a distinct visual from the hotel in-progress treatment or shares one "inside a booking" component.
+- ~~Whether the in-transit treatment needs a distinct visual from the hotel in-progress treatment or shares one component.~~ **Proposed in the mockup: one teal grammar, two placements** (see "Settled in the mockup" above) — pending sign-off.
 
 ## Alternatives considered
 

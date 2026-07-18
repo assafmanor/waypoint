@@ -1,0 +1,1543 @@
+<!doctype html>
+<!-- Booking presentation across the Trip-mode Home & Index — v1 (2026-07-18 session 32).
+     Design record for ADR-0059, which is the APPLICATION of ADR-0063's per-category
+     time-behaviour profile (bracketed + ambientWhenMultiDay) to the Home & Index.
+
+     What this mockup settles / shows:
+       1. HERO renders a `bracketed` booking at its TRANSITION moments only, never
+          across its whole span (ADR-0059 §1 = ADR-0063 `bracketed` + `transitions`):
+            - hotel  → check-in (before + a short grace after) · check-out (before)
+            - transport → departure (המראה) · arrival (נחיתה)
+          Scenario chips below drive the hero through these states.
+       2. "INSIDE A BOOKING NOW" treatment (ADR-0059 §2) — the new, non-generic design.
+          Principled colour (ADR-0028): it is a LOCATION statement ("where you are"),
+          so it uses TEAL, which sets it apart from the amber time-critical hero.
+          One grammar, two placements:
+            - ambient hotel mid-stay → a SLIM, DISMISSIBLE, transient teal strip above
+              the hero (subordinate to it — the persistent stay signal is the day-strip
+              underline + the day-view backdrop + the Index; the strip is a quiet
+              reminder with a ✕). [revised after Assaf feedback: was a loud card.]
+            - a bracketed point in progress (flight in the air) → it fills the hero's
+              NOW slot (the flight IS your current activity), with amber only on the
+              time-to-landing.
+       3. SHARED grammar on all three surfaces (ADR-0059 §3): board hero, Index row,
+          read-only detail view — same type badge, type-labelled timing, code chip.
+       4. GLANCE marks every bracketed TRANSITION on the rail (ADR-0054 rebased on 0063:
+          the profile's `transitions`), in a DEDICATED LANE above the blocks so bar
+          segments can't swallow the labels. Markers are AMBER (time anchors, like the
+          hero labels). Covers BOTH: hotel check-in/out (standalone, uncounted — the
+          ambient stay isn't a block) AND transport departure/arrival (edge markers on
+          the flight's counted block). [revised after Assaf feedback: labels were
+          swallowed; flights were missing; markers were teal.]
+
+     Colours are ADR-0028 tokens: amber = time & commitment; teal = location/"where
+     you are"; --ok/--miss = status; neutral otherwise. No decorative reuse. RTL.
+     Where this and the design docs conflict, the docs win. -->
+<html lang="he" dir="rtl">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>הצגת הזמנות · בית + אינדקס · מוקאפ v1</title>
+    <link rel="preconnect" href="https://fonts.googleapis.com" />
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+    <link
+      href="https://fonts.googleapis.com/css2?family=Assistant:wght@400;500;600;700&family=Secular+One&family=JetBrains+Mono:wght@500;700&display=swap"
+      rel="stylesheet"
+    />
+    <style>
+      :root {
+        --ink: #16233d;
+        --indigo: #1b2a4a;
+        --board: #0e1729;
+        --board-2: #152137;
+        --screen: #e7eaef;
+        --card: #ffffff;
+        --paper: #f3efe6;
+        --amber: #e9a63c;
+        --amber-deep: #c9822a;
+        --teal: #2c9c90;
+        --teal-deep: #1f7a70;
+        --ok: #3c9a6b;
+        --miss: #c2584e;
+        --muted: #6c7488;
+        --line: rgba(22, 35, 61, 0.1);
+        --soft-line: rgba(22, 35, 61, 0.28);
+        --shadow: 0 18px 40px -18px rgba(14, 23, 41, 0.45);
+      }
+      * {
+        box-sizing: border-box;
+        margin: 0;
+        padding: 0;
+      }
+      html,
+      body {
+        min-height: 100%;
+      }
+      body {
+        font-family: 'Assistant', sans-serif;
+        background:
+          radial-gradient(120% 90% at 80% -10%, #2a3e68 0%, transparent 55%),
+          radial-gradient(120% 90% at 0% 110%, #1a2a4a 0%, transparent 50%), #0f1a31;
+        color: var(--ink);
+        min-height: 100vh;
+        padding: 30px 16px 64px;
+        -webkit-font-smoothing: antialiased;
+      }
+      .wrap {
+        max-width: 1180px;
+        margin: 0 auto;
+      }
+      .lede {
+        text-align: center;
+        color: #d7deec;
+        max-width: 720px;
+        margin: 0 auto 8px;
+      }
+      .lede h1 {
+        font-family: 'Secular One', sans-serif;
+        color: #fff;
+        font-size: 25px;
+        font-weight: 400;
+      }
+      .lede p {
+        color: #aeb9d4;
+        font-size: 13.5px;
+        margin-top: 8px;
+        line-height: 1.55;
+      }
+      .lede code {
+        font-family: 'JetBrains Mono', monospace;
+        color: #f0c785;
+        font-size: 12px;
+      }
+
+      /* scenario chips */
+      .chips {
+        display: flex;
+        flex-wrap: wrap;
+        gap: 8px;
+        justify-content: center;
+        margin: 20px auto 22px;
+      }
+      .chip {
+        font: inherit;
+        font-size: 13px;
+        font-weight: 600;
+        color: #cdd6ea;
+        background: rgba(255, 255, 255, 0.07);
+        border: 1px solid rgba(255, 255, 255, 0.16);
+        border-radius: 999px;
+        padding: 8px 15px;
+        cursor: pointer;
+        transition: 0.14s;
+        display: flex;
+        align-items: center;
+        gap: 7px;
+      }
+      .chip:hover {
+        background: rgba(255, 255, 255, 0.13);
+      }
+      .chip.on {
+        background: var(--amber);
+        border-color: var(--amber);
+        color: #3a2405;
+      }
+      .chip.on.loc {
+        background: var(--teal);
+        border-color: var(--teal);
+        color: #05221f;
+      }
+
+      .cols {
+        display: flex;
+        gap: 30px;
+        justify-content: center;
+        align-items: flex-start;
+        flex-wrap: wrap;
+      }
+      .col {
+        display: flex;
+        flex-direction: column;
+        align-items: center;
+        gap: 12px;
+      }
+      .col-cap {
+        color: #aeb9d4;
+        font-size: 12.5px;
+        font-weight: 600;
+        letter-spacing: 0.02em;
+      }
+      .col-cap b {
+        color: #fff;
+      }
+
+      .phone {
+        background: var(--screen);
+        border-radius: 38px;
+        box-shadow:
+          var(--shadow),
+          0 0 0 10px #0b1526,
+          0 0 0 12px #223257;
+        overflow: hidden;
+        position: relative;
+        width: 392px;
+        height: 812px;
+        display: flex;
+        flex-direction: column;
+      }
+      .statusbar {
+        background: var(--indigo);
+        color: #dce3f2;
+        display: flex;
+        justify-content: space-between;
+        align-items: center;
+        padding: 11px 22px 8px;
+        font-size: 13px;
+        font-weight: 600;
+        font-family: 'JetBrains Mono', monospace;
+      }
+      .statusbar .dots {
+        letter-spacing: 2px;
+        opacity: 0.85;
+      }
+      .header {
+        background: var(--indigo);
+        color: #fff;
+        padding: 8px 20px 16px;
+      }
+      .trip-row {
+        display: flex;
+        justify-content: space-between;
+        align-items: center;
+      }
+      .trip-name {
+        font-family: 'Secular One', sans-serif;
+        font-size: 22px;
+      }
+      .trip-sub {
+        color: #9daac8;
+        font-size: 13px;
+        margin-top: 4px;
+        font-weight: 500;
+      }
+      .trip-sub .dot {
+        opacity: 0.5;
+        margin: 0 6px;
+      }
+      .gear-btn {
+        width: 33px;
+        height: 33px;
+        border-radius: 50%;
+        display: grid;
+        place-items: center;
+        background: rgba(255, 255, 255, 0.12);
+        border: 1px solid rgba(255, 255, 255, 0.22);
+        color: #fff;
+        font-size: 15px;
+        flex: 0 0 auto;
+      }
+      .day-strip {
+        display: flex;
+        gap: 6px;
+        margin-top: 14px;
+      }
+      .day-pill {
+        flex: 1;
+        text-align: center;
+        font-size: 11px;
+        font-weight: 600;
+        padding: 6px 0 7px;
+        border-radius: 9px;
+        color: #8494b5;
+        background: rgba(255, 255, 255, 0.05);
+      }
+      .day-pill .n {
+        display: block;
+        font-family: 'JetBrains Mono', monospace;
+        font-size: 14px;
+        margin-top: 2px;
+        color: #b9c4de;
+      }
+      .day-pill.on {
+        background: var(--amber);
+        color: #3a2405;
+      }
+      .day-pill.on .n {
+        color: #3a2405;
+      }
+      .day-pill.past {
+        opacity: 0.45;
+      }
+      /* a covered lodging night gets a faint teal underline in the strip
+         (ambient backdrop echoes here too, not just the day body) */
+      .day-pill.stay {
+        box-shadow: inset 0 -3px 0 rgba(44, 156, 144, 0.6);
+      }
+
+      .body {
+        flex: 1;
+        overflow-y: auto;
+        padding: 15px 15px 30px;
+      }
+      .body::-webkit-scrollbar {
+        width: 0;
+      }
+
+      /* ===== "inside a booking" backdrop band — teal = where you are (ADR-0059 §2) ===== */
+      /* slim, dismissible, transient — subordinate to the hero (not a card).
+         The PERSISTENT "you're staying here" signal is the day-strip teal
+         underline + the day-view backdrop + the Index; this strip is a quiet
+         reminder shown at relevant times, dismissible with ✕. */
+      .stay-strip {
+        display: none;
+        align-items: center;
+        gap: 8px;
+        background: rgba(44, 156, 144, 0.09);
+        border: 1px solid rgba(44, 156, 144, 0.24);
+        border-radius: 11px;
+        padding: 7px 10px;
+        margin-bottom: 11px;
+      }
+      .stay-strip .ss-ic {
+        font-size: 14px;
+        flex: 0 0 auto;
+        opacity: 0.9;
+      }
+      .stay-strip .ss-txt {
+        flex: 1;
+        min-width: 0;
+        font-size: 12px;
+        color: var(--muted);
+        white-space: nowrap;
+        overflow: hidden;
+        text-overflow: ellipsis;
+      }
+      .stay-strip .ss-txt b {
+        color: var(--teal-deep);
+        font-weight: 700;
+      }
+      .stay-strip .ss-txt .mono {
+        font-family: 'JetBrains Mono', monospace;
+        font-weight: 700;
+      }
+      .stay-strip .ss-x {
+        flex: 0 0 auto;
+        font: inherit;
+        font-size: 13px;
+        line-height: 1;
+        color: var(--muted);
+        background: none;
+        border: 0;
+        cursor: pointer;
+        padding: 2px 4px;
+        border-radius: 6px;
+        opacity: 0.7;
+      }
+      .stay-strip .ss-x:hover {
+        background: rgba(22, 35, 61, 0.06);
+        opacity: 1;
+      }
+
+      /* ===== board hero ===== */
+      .board {
+        background: linear-gradient(180deg, var(--board-2), var(--board));
+        border-radius: 22px;
+        padding: 18px 18px 16px;
+        color: #eaf0ff;
+        box-shadow: 0 20px 34px -20px rgba(8, 14, 28, 0.9);
+        position: relative;
+        overflow: hidden;
+      }
+      .board::before {
+        content: '';
+        position: absolute;
+        inset: 0;
+        background: radial-gradient(90% 60% at 85% 0%, rgba(233, 166, 60, 0.16), transparent 60%);
+        pointer-events: none;
+      }
+      .board.transit::before {
+        background: radial-gradient(90% 60% at 85% 0%, rgba(44, 156, 144, 0.2), transparent 60%);
+      }
+      .board-top {
+        display: flex;
+        justify-content: space-between;
+        align-items: center;
+        position: relative;
+      }
+      .live {
+        display: flex;
+        align-items: center;
+        gap: 7px;
+        font-size: 11px;
+        font-weight: 600;
+        letter-spacing: 0.14em;
+        color: #8fa0c4;
+      }
+      .live .blip {
+        width: 7px;
+        height: 7px;
+        border-radius: 50%;
+        background: var(--amber);
+        animation: pulse 2s infinite;
+      }
+      .live.loc .blip {
+        background: var(--teal);
+      }
+      @keyframes pulse {
+        0% {
+          box-shadow: 0 0 0 0 rgba(233, 166, 60, 0.55);
+        }
+        70% {
+          box-shadow: 0 0 0 8px rgba(233, 166, 60, 0);
+        }
+        100% {
+          box-shadow: 0 0 0 0 rgba(233, 166, 60, 0);
+        }
+      }
+      .clock {
+        font-family: 'JetBrains Mono', monospace;
+        font-size: 15px;
+        font-weight: 700;
+        color: #c3cee8;
+      }
+      .now-label {
+        color: var(--amber);
+        font-size: 12px;
+        font-weight: 700;
+        letter-spacing: 0.1em;
+        margin-top: 14px;
+      }
+      .now-label.loc {
+        color: #5ec5b6;
+      }
+      .now-title {
+        font-family: 'Secular One', sans-serif;
+        font-size: 21px;
+        margin-top: 3px;
+        color: #fff;
+      }
+      .now-meta {
+        color: #93a2c4;
+        font-size: 13px;
+        margin-top: 4px;
+        display: flex;
+        align-items: center;
+        gap: 7px;
+        flex-wrap: wrap;
+      }
+      .tlabel {
+        font-weight: 700;
+        color: #f0c785;
+        background: rgba(233, 166, 60, 0.14);
+        border-radius: 5px;
+        padding: 1px 7px;
+        font-size: 11.5px;
+      }
+      .tlabel.loc {
+        color: #7fd8cc;
+        background: rgba(44, 156, 144, 0.16);
+      }
+      .code {
+        font-family: 'JetBrains Mono', monospace;
+        color: #c9b78a;
+        background: rgba(233, 166, 60, 0.12);
+        padding: 1px 6px;
+        border-radius: 5px;
+        font-weight: 700;
+        font-size: 12px;
+      }
+      .lockmini {
+        color: #c9b78a;
+        font-size: 11px;
+        font-weight: 600;
+      }
+      .board-divider {
+        height: 1px;
+        background: rgba(255, 255, 255, 0.09);
+        margin: 15px 0 13px;
+      }
+      .next-row {
+        display: flex;
+        justify-content: space-between;
+        align-items: flex-end;
+        gap: 10px;
+      }
+      .next-label {
+        color: #7e8fb4;
+        font-size: 11px;
+        font-weight: 700;
+        letter-spacing: 0.1em;
+      }
+      .next-title {
+        font-family: 'Secular One', sans-serif;
+        font-size: 18px;
+        color: #eaf0ff;
+        margin-top: 4px;
+      }
+      .next-meta {
+        color: #93a2c4;
+        font-size: 12.5px;
+        margin-top: 4px;
+        display: flex;
+        align-items: center;
+        gap: 6px;
+        flex-wrap: wrap;
+      }
+      .countdown {
+        text-align: center;
+        background: rgba(233, 166, 60, 0.14);
+        border: 1px solid rgba(233, 166, 60, 0.32);
+        border-radius: 13px;
+        padding: 8px 12px;
+        min-width: 74px;
+        flex: 0 0 auto;
+      }
+      .countdown.loc {
+        background: rgba(44, 156, 144, 0.16);
+        border-color: rgba(44, 156, 144, 0.36);
+      }
+      .countdown .t {
+        font-family: 'JetBrains Mono', monospace;
+        font-size: 20px;
+        font-weight: 700;
+        color: var(--amber);
+        line-height: 1;
+      }
+      .countdown.loc .t {
+        color: #5ec5b6;
+      }
+      .countdown .u {
+        font-size: 10px;
+        color: #b9985c;
+        letter-spacing: 0.08em;
+        margin-top: 3px;
+      }
+      .countdown.loc .u {
+        color: #6bbdb2;
+      }
+      /* flight in-transit progress (amber = time to landing) */
+      .transit-prog {
+        margin-top: 15px;
+      }
+      .transit-prog .rail {
+        height: 4px;
+        border-radius: 4px;
+        background: rgba(255, 255, 255, 0.14);
+        position: relative;
+      }
+      .transit-prog .fill {
+        position: absolute;
+        inset-block: 0;
+        inset-inline-start: 0;
+        width: 55%;
+        border-radius: 4px;
+        background: linear-gradient(90deg, var(--amber-deep), var(--amber));
+      }
+      .transit-prog .plane {
+        position: absolute;
+        inset-inline-start: 55%;
+        top: 50%;
+        transform: translate(50%, -50%);
+        font-size: 13px;
+      }
+      .transit-prog .ends {
+        display: flex;
+        justify-content: space-between;
+        margin-top: 7px;
+        font-size: 10.5px;
+        font-weight: 600;
+        color: #8fa0c4;
+      }
+      .transit-prog .ends .mono {
+        font-family: 'JetBrains Mono', monospace;
+      }
+
+      .hero-variant {
+        display: none;
+      }
+      .hero-variant.on {
+        display: block;
+      }
+
+      /* ===== day at a glance — proportional rail + uncounted transition markers ===== */
+      .sec-title {
+        font-size: 12px;
+        font-weight: 700;
+        color: var(--muted);
+        letter-spacing: 0.06em;
+        margin: 20px 4px 10px;
+      }
+      .glance-day {
+        background: var(--card);
+        border: 1px solid var(--line);
+        border-radius: 16px;
+        padding: 15px 16px 16px;
+      }
+      .rail {
+        position: relative;
+        margin: 6px 0 22px;
+      }
+      /* upper lane: transition-marker chips get their OWN row so block bars can
+         never swallow their labels (fix for the "swallowed text" issue).
+         Markers are AMBER = time anchors (hard-commitment times), same family as
+         the hero's המראה/צ׳ק-אין labels; teal stays for "where you are now". */
+      .rail .marks {
+        position: relative;
+        height: 32px;
+      }
+      .rail .tmark {
+        position: absolute;
+        inset-inline-start: var(--x);
+        bottom: 0;
+        transform: translateX(50%);
+        display: flex;
+        flex-direction: column;
+        align-items: center;
+      }
+      .rail .tmark .chip {
+        display: inline-flex;
+        align-items: center;
+        gap: 4px;
+        white-space: nowrap;
+        font-size: 10px;
+        font-weight: 700;
+        color: var(--amber-deep);
+        background: rgba(233, 166, 60, 0.16);
+        border: 1px solid rgba(233, 166, 60, 0.34);
+        border-radius: 999px;
+        padding: 2px 8px;
+      }
+      .rail .tmark .chip .mono {
+        font-family: 'JetBrains Mono', monospace;
+      }
+      .rail .tmark .stem {
+        width: 1.5px;
+        height: 7px;
+        background: rgba(201, 130, 42, 0.5);
+      }
+      /* lower lane: the proportional block bar */
+      .rail .bars {
+        position: relative;
+        height: 22px;
+      }
+      .rail .track {
+        position: absolute;
+        inset-inline: 0;
+        top: 8px;
+        height: 6px;
+        border-radius: 4px;
+        background: rgba(22, 35, 61, 0.08);
+      }
+      .rail .blk {
+        position: absolute;
+        top: 4px;
+        height: 14px;
+        border-radius: 4px;
+      }
+      .rail .blk.done {
+        background: var(--ok);
+      }
+      .rail .blk.now {
+        background: var(--amber);
+        box-shadow: 0 0 0 3px rgba(233, 166, 60, 0.2);
+      }
+      .rail .blk.up {
+        background: transparent;
+        border: 1.5px solid var(--soft-line);
+      }
+      /* a flight is a COUNTED bracketed block; its edges carry the departure/
+         arrival markers above (issue 3). A subtle amber outline ties block↔markers. */
+      .rail .blk.flight {
+        background: rgba(233, 166, 60, 0.28);
+        border: 1px solid var(--amber);
+      }
+      .rail .nowmark {
+        position: absolute;
+        top: -2px;
+        width: 2px;
+        height: 22px;
+        background: var(--amber);
+        transform: translateX(50%);
+      }
+      .glance-stats {
+        display: flex;
+      }
+      .gstat {
+        flex: 1;
+        text-align: center;
+      }
+      .gstat + .gstat {
+        border-inline-start: 1px solid var(--line);
+      }
+      .gstat .v {
+        font-family: 'JetBrains Mono', monospace;
+        font-size: 20px;
+        font-weight: 700;
+        color: var(--ink);
+        line-height: 1;
+      }
+      .gstat .v.hard {
+        color: var(--amber-deep);
+      }
+      .gstat .k {
+        font-size: 11px;
+        color: var(--muted);
+        font-weight: 600;
+        margin-top: 5px;
+      }
+      .glance-note {
+        margin-top: 13px;
+        padding-top: 11px;
+        border-top: 1px solid var(--line);
+        font-size: 12px;
+        color: var(--muted);
+        display: flex;
+        align-items: center;
+        gap: 7px;
+      }
+      .glance-note .tealdot {
+        color: var(--teal-deep);
+        font-weight: 700;
+      }
+
+      /* ===== Index surfaces (row grammar + read-only detail) ===== */
+      .idx-toggle {
+        display: flex;
+        gap: 6px;
+        background: rgba(22, 35, 61, 0.06);
+        border-radius: 999px;
+        padding: 3px;
+        margin: 2px 0 14px;
+      }
+      .idx-toggle button {
+        flex: 1;
+        font: inherit;
+        font-size: 12.5px;
+        font-weight: 600;
+        color: var(--muted);
+        background: none;
+        border: 0;
+        border-radius: 999px;
+        padding: 7px 0;
+        cursor: pointer;
+      }
+      .idx-toggle button.on {
+        background: var(--card);
+        color: var(--ink);
+        box-shadow: 0 2px 8px -4px rgba(22, 35, 61, 0.4);
+      }
+      .idx-view {
+        display: none;
+      }
+      .idx-view.on {
+        display: block;
+      }
+
+      .bk-row {
+        display: flex;
+        align-items: center;
+        gap: 12px;
+        background: var(--card);
+        border: 1px solid var(--line);
+        border-radius: 14px;
+        padding: 12px 13px;
+        margin-bottom: 9px;
+      }
+      .bk-badge {
+        width: 42px;
+        height: 42px;
+        flex: 0 0 auto;
+        border-radius: 12px;
+        display: grid;
+        place-items: center;
+        font-size: 21px;
+        background: rgba(22, 35, 61, 0.05);
+        position: relative;
+      }
+      .bk-badge.stay {
+        background: rgba(44, 156, 144, 0.12);
+      }
+      .bk-badge.trans {
+        background: rgba(233, 166, 60, 0.12);
+      }
+      .bk-main {
+        flex: 1;
+        min-width: 0;
+      }
+      .bk-title {
+        font-weight: 700;
+        font-size: 15px;
+        color: var(--ink);
+        display: flex;
+        align-items: center;
+        gap: 6px;
+      }
+      .bk-title .lock {
+        font-size: 11px;
+        color: var(--amber-deep);
+      }
+      .bk-time {
+        font-size: 12px;
+        color: var(--muted);
+        margin-top: 3px;
+        display: flex;
+        align-items: center;
+        gap: 6px;
+        flex-wrap: wrap;
+      }
+      .bk-time .seg-label {
+        font-weight: 700;
+        color: var(--ink);
+      }
+      .bk-time .mono {
+        font-family: 'JetBrains Mono', monospace;
+        font-weight: 600;
+      }
+      .bk-time .arrow {
+        color: var(--soft-line);
+      }
+      .bk-code {
+        font-family: 'JetBrains Mono', monospace;
+        font-size: 11px;
+        font-weight: 700;
+        color: var(--amber-deep);
+        background: rgba(233, 166, 60, 0.1);
+        border-radius: 6px;
+        padding: 2px 7px;
+        flex: 0 0 auto;
+      }
+      .bk-kebab {
+        flex: 0 0 auto;
+        color: var(--muted);
+        font-size: 18px;
+        background: none;
+        border: 0;
+        cursor: pointer;
+        padding: 4px 6px;
+        line-height: 1;
+      }
+      .idx-lead {
+        font-size: 11px;
+        font-weight: 700;
+        color: var(--muted);
+        letter-spacing: 0.06em;
+        margin: 4px 4px 9px;
+      }
+
+      /* read-only detail view */
+      .bk-detail {
+        background: var(--card);
+        border: 1px solid var(--line);
+        border-radius: 18px;
+        overflow: hidden;
+      }
+      .bkd-head {
+        display: flex;
+        align-items: center;
+        gap: 13px;
+        padding: 16px 16px 14px;
+        border-bottom: 1px solid var(--line);
+        position: relative;
+      }
+      .bkd-head .bk-badge {
+        width: 48px;
+        height: 48px;
+        font-size: 24px;
+      }
+      .bkd-head h3 {
+        font-family: 'Secular One', sans-serif;
+        font-size: 19px;
+        font-weight: 400;
+        color: var(--ink);
+        line-height: 1.1;
+      }
+      .bkd-head .type {
+        font-size: 12px;
+        color: var(--muted);
+        font-weight: 600;
+        margin-top: 3px;
+      }
+      .bkd-edit {
+        position: absolute;
+        top: 14px;
+        inset-inline-end: 14px;
+        font: inherit;
+        font-size: 12.5px;
+        font-weight: 600;
+        color: var(--ink);
+        background: rgba(22, 35, 61, 0.06);
+        border: 0;
+        border-radius: 999px;
+        padding: 6px 13px;
+        cursor: pointer;
+      }
+      .bkd-hard {
+        display: flex;
+        align-items: center;
+        gap: 7px;
+        margin: 12px 16px 0;
+        padding: 8px 11px;
+        border-radius: 10px;
+        background: rgba(233, 166, 60, 0.09);
+        color: var(--amber-deep);
+        font-size: 12px;
+        font-weight: 600;
+      }
+      .bkd-facts {
+        padding: 14px 16px 18px;
+        display: grid;
+        gap: 13px;
+      }
+      .fact {
+        display: grid;
+        grid-template-columns: 92px 1fr;
+        gap: 10px;
+        align-items: baseline;
+      }
+      .fact .fk {
+        font-size: 12px;
+        color: var(--muted);
+        font-weight: 600;
+      }
+      .fact .fv {
+        font-size: 13.5px;
+        color: var(--ink);
+        font-weight: 500;
+      }
+      .fact .fv .mono {
+        font-family: 'JetBrains Mono', monospace;
+        font-weight: 700;
+      }
+      .fact .fv .big {
+        font-weight: 700;
+      }
+      .timerow {
+        display: flex;
+        align-items: center;
+        gap: 10px;
+      }
+      .timerow .leg {
+        text-align: center;
+      }
+      .timerow .leg .k {
+        font-size: 10px;
+        color: var(--muted);
+        font-weight: 700;
+        letter-spacing: 0.04em;
+      }
+      .timerow .leg .v {
+        font-family: 'JetBrains Mono', monospace;
+        font-weight: 700;
+        font-size: 15px;
+        color: var(--ink);
+        margin-top: 2px;
+      }
+      .timerow .leg .d {
+        font-size: 11px;
+        color: var(--muted);
+        margin-top: 1px;
+      }
+      .timerow .span {
+        flex: 1;
+        height: 2px;
+        background: repeating-linear-gradient(
+          90deg,
+          var(--soft-line) 0,
+          var(--soft-line) 4px,
+          transparent 4px,
+          transparent 8px
+        );
+        position: relative;
+      }
+      .timerow .span::after {
+        content: '2 לילות';
+        position: absolute;
+        top: -18px;
+        left: 50%;
+        transform: translateX(-50%);
+        font-size: 10.5px;
+        color: var(--muted);
+        font-weight: 600;
+        white-space: nowrap;
+      }
+
+      /* legend / design notes */
+      .legend {
+        max-width: 1000px;
+        margin: 30px auto 0;
+        background: rgba(255, 255, 255, 0.04);
+        border: 1px solid rgba(255, 255, 255, 0.12);
+        border-radius: 18px;
+        padding: 20px 22px;
+        color: #d7deec;
+      }
+      .legend h2 {
+        font-family: 'Secular One', sans-serif;
+        font-weight: 400;
+        color: #fff;
+        font-size: 17px;
+        margin-bottom: 12px;
+      }
+      .legend table {
+        width: 100%;
+        border-collapse: collapse;
+        font-size: 12.5px;
+      }
+      .legend th,
+      .legend td {
+        text-align: right;
+        padding: 8px 10px;
+        border-bottom: 1px solid rgba(255, 255, 255, 0.09);
+        vertical-align: top;
+      }
+      .legend th {
+        color: #aeb9d4;
+        font-weight: 700;
+        font-size: 11.5px;
+        letter-spacing: 0.03em;
+      }
+      .legend td code {
+        font-family: 'JetBrains Mono', monospace;
+        color: #f0c785;
+        font-size: 11.5px;
+      }
+      .legend .tag {
+        display: inline-block;
+        font-size: 10.5px;
+        font-weight: 700;
+        border-radius: 5px;
+        padding: 1px 6px;
+      }
+      .legend .tag.amber {
+        color: #3a2405;
+        background: var(--amber);
+      }
+      .legend .tag.teal {
+        color: #05221f;
+        background: var(--teal);
+      }
+      .legend .notes {
+        margin-top: 14px;
+        font-size: 12.5px;
+        line-height: 1.6;
+        color: #b9c4de;
+      }
+      .legend .notes b {
+        color: #fff;
+      }
+      .legend .notes .q {
+        color: #f0c785;
+        font-weight: 700;
+      }
+
+      @media (prefers-reduced-motion: reduce) {
+        * {
+          animation: none !important;
+          transition: none !important;
+        }
+      }
+    </style>
+  </head>
+  <body>
+    <div class="wrap">
+      <div class="lede">
+        <h1>הצגת הזמנות · בית + אינדקס</h1>
+        <p>
+          ADR-0059 כ<b style="color: #fff">יישום</b> של פרופיל ההתנהגות-בזמן לפי קטגוריה
+          (<code>ADR-0063</code>). ההזמנה מוצגת ב<b style="color: #fff">רגעי המעבר</b> שלה בלבד, לא
+          לאורך כל הטווח. בחרו תרחיש כדי להריץ את ההירו דרך המצבים.
+        </p>
+      </div>
+
+      <div class="chips" id="chips">
+        <button class="chip on" data-s="precheckin">🏨 לפני צ׳ק-אין</button>
+        <button class="chip loc" data-s="instay">🏨 תוך כדי שהות</button>
+        <button class="chip" data-s="precheckout">🏨 לפני צ׳ק-אאוט</button>
+        <button class="chip" data-s="preflight">✈️ לפני המראה</button>
+        <button class="chip loc" data-s="intransit">✈️ בטיסה</button>
+      </div>
+
+      <div class="cols">
+        <!-- ============ PHONE A: HOME ============ -->
+        <div class="col">
+          <div class="col-cap">בית · <b>מצב טיול</b></div>
+          <div class="phone">
+            <div class="statusbar">
+              <span id="clk">08:05</span><span class="dots">●●● 4G ▮</span>
+            </div>
+            <div class="header">
+              <div class="trip-row">
+                <div>
+                  <div class="trip-name">יפן ׳26</div>
+                  <div class="trip-sub" id="tripsub">
+                    טוקיו<span class="dot">•</span>יום 3 מתוך 10
+                  </div>
+                </div>
+                <div class="gear-btn">⚙</div>
+              </div>
+              <div class="day-strip" id="daystrip">
+                <div class="day-pill past">א׳<span class="n">05</span></div>
+                <div class="day-pill past">ב׳<span class="n">06</span></div>
+                <div class="day-pill on stay">ג׳<span class="n">07</span></div>
+                <div class="day-pill stay">ד׳<span class="n">08</span></div>
+                <div class="day-pill stay">ה׳<span class="n">09</span></div>
+                <div class="day-pill">ו׳<span class="n">10</span></div>
+              </div>
+            </div>
+
+            <div class="body">
+              <!-- inside-a-booking: a SLIM, DISMISSIBLE, transient strip (not a card).
+                   Subordinate to the hero; the persistent stay signal is the day-strip
+                   underline + the day-view backdrop + the Index. -->
+              <div class="stay-strip" id="band">
+                <span class="ss-ic">🏨</span>
+                <span class="ss-txt"
+                  >שוהים ב־<b>Granbell Shinjuku</b> · לילה
+                  <span class="mono" dir="ltr">2/5</span></span
+                >
+                <button class="ss-x" id="bandX" aria-label="הסתר">✕</button>
+              </div>
+
+              <!-- HERO variants (one visible per scenario) -->
+              <div class="board" id="board">
+                <!-- precheckin: hotel check-in is the NEXT bracketed transition -->
+                <div class="hero-variant on" data-v="precheckin">
+                  <div class="board-top">
+                    <div class="live"><span class="blip"></span>עכשיו</div>
+                    <div class="clock" dir="ltr">08:05</div>
+                  </div>
+                  <div class="now-label">זמן חופשי · גמיש</div>
+                  <div class="now-title">🚶 בוקר חופשי · שינג׳וקו</div>
+                  <div class="now-meta">עד <span dir="ltr">15:00</span></div>
+                  <div class="board-divider"></div>
+                  <div class="next-row">
+                    <div>
+                      <div class="next-label">הבא בתור</div>
+                      <div class="next-title">🏨 Granbell Shinjuku</div>
+                      <div class="next-meta">
+                        <span class="tlabel">צ׳ק-אין</span><span class="mono" dir="ltr">15:00</span>
+                        <span class="lockmini">🔒 קשיח</span>
+                        <span class="code" dir="ltr">#HTL-8842</span>
+                      </div>
+                    </div>
+                    <div class="countdown">
+                      <div class="t" dir="ltr">6:55</div>
+                      <div class="u">שעות</div>
+                    </div>
+                  </div>
+                </div>
+
+                <!-- instay: mid-stay — hotel recedes to the band above; hero shows the
+                     real current activity, not the hotel -->
+                <div class="hero-variant" data-v="instay">
+                  <div class="board-top">
+                    <div class="live"><span class="blip"></span>עכשיו</div>
+                    <div class="clock" dir="ltr">13:20</div>
+                  </div>
+                  <div class="now-label">פעילות · גמיש</div>
+                  <div class="now-title">🍜 ארוחת צהריים · אומן</div>
+                  <div class="now-meta">עד <span dir="ltr">14:15</span></div>
+                  <div class="board-divider"></div>
+                  <div class="next-row">
+                    <div>
+                      <div class="next-label">הבא בתור</div>
+                      <div class="next-title">⛩️ מקדש מייג׳י</div>
+                      <div class="next-meta"><span dir="ltr">15:00</span></div>
+                    </div>
+                    <div class="countdown">
+                      <div class="t" dir="ltr">100</div>
+                      <div class="u">דקות</div>
+                    </div>
+                  </div>
+                </div>
+
+                <!-- precheckout: hotel check-out is the next bracketed transition -->
+                <div class="hero-variant" data-v="precheckout">
+                  <div class="board-top">
+                    <div class="live"><span class="blip"></span>עכשיו</div>
+                    <div class="clock" dir="ltr">09:30</div>
+                  </div>
+                  <div class="now-label">בוקר · גמיש</div>
+                  <div class="now-title">☕ ארוחת בוקר במלון</div>
+                  <div class="now-meta">עד <span dir="ltr">10:30</span></div>
+                  <div class="board-divider"></div>
+                  <div class="next-row">
+                    <div>
+                      <div class="next-label">הבא בתור</div>
+                      <div class="next-title">🏨 Granbell Shinjuku</div>
+                      <div class="next-meta">
+                        <span class="tlabel">צ׳ק-אאוט</span
+                        ><span class="mono" dir="ltr">11:00</span>
+                        <span class="lockmini">🔒 קשיח</span>
+                      </div>
+                    </div>
+                    <div class="countdown">
+                      <div class="t" dir="ltr">90</div>
+                      <div class="u">דקות</div>
+                    </div>
+                  </div>
+                </div>
+
+                <!-- preflight: transport departure is the next bracketed transition -->
+                <div class="hero-variant" data-v="preflight">
+                  <div class="board-top">
+                    <div class="live"><span class="blip"></span>עכשיו</div>
+                    <div class="clock" dir="ltr">06:10</div>
+                  </div>
+                  <div class="now-label">בדרך לשדה · גמיש</div>
+                  <div class="now-title">🚆 Narita Express</div>
+                  <div class="now-meta">עד <span dir="ltr">07:05</span></div>
+                  <div class="board-divider"></div>
+                  <div class="next-row">
+                    <div>
+                      <div class="next-label">הבא בתור</div>
+                      <div class="next-title">✈️ NH6 · טוקיו ← אוסקה</div>
+                      <div class="next-meta">
+                        <span class="tlabel">המראה</span><span class="mono" dir="ltr">08:20</span>
+                        <span class="lockmini">🔒 קשיח</span>
+                        <span class="code" dir="ltr">NH6</span>
+                      </div>
+                    </div>
+                    <div class="countdown">
+                      <div class="t" dir="ltr">2:10</div>
+                      <div class="u">שעות</div>
+                    </div>
+                  </div>
+                </div>
+
+                <!-- intransit: the flight IS the current activity — fills the NOW slot,
+                     teal "in transit" identity + amber time-to-landing -->
+                <div class="hero-variant transit" data-v="intransit">
+                  <div class="board-top">
+                    <div class="live loc"><span class="blip"></span>בטיסה</div>
+                    <div class="clock" dir="ltr">15:45</div>
+                  </div>
+                  <div class="now-label loc">כרגע · בדרך</div>
+                  <div class="now-title">✈️ NH6 · בדרך לאוסקה</div>
+                  <div class="now-meta">
+                    <span class="tlabel loc">נחיתה</span><span class="mono" dir="ltr">16:40</span>
+                    <span class="code" dir="ltr">NH6</span>
+                  </div>
+                  <div class="transit-prog">
+                    <div class="rail">
+                      <div class="fill"></div>
+                      <div class="plane">✈️</div>
+                    </div>
+                    <div class="ends">
+                      <span class="mono" dir="ltr">08:20 · טוקיו</span>
+                      <span>עוד 55 דק׳</span>
+                      <span class="mono" dir="ltr">אוסקה · 16:40</span>
+                    </div>
+                  </div>
+                </div>
+              </div>
+
+              <!-- day at a glance — illustrative "arrival day": a morning flight
+                   (counted block + 🛫🛬 edge markers) and an afternoon hotel check-in
+                   (standalone marker, uncounted). Markers live in their own lane so
+                   block bars can't swallow their labels. -->
+              <div class="sec-title">היום במבט</div>
+              <div class="glance-day">
+                <div class="rail" id="rail">
+                  <!-- upper lane: transition markers (amber = time anchors) -->
+                  <div class="marks">
+                    <div class="tmark" style="--x: 14%">
+                      <span class="chip">🛫 <span class="mono" dir="ltr">08:20</span></span>
+                      <span class="stem"></span>
+                    </div>
+                    <div class="tmark" style="--x: 34%">
+                      <span class="chip">🛬 <span class="mono" dir="ltr">10:40</span></span>
+                      <span class="stem"></span>
+                    </div>
+                    <div class="tmark" style="--x: 66%">
+                      <span class="chip">🏨 צ׳ק-אין <span class="mono" dir="ltr">15:00</span></span>
+                      <span class="stem"></span>
+                    </div>
+                  </div>
+                  <!-- lower lane: proportional blocks -->
+                  <div class="bars">
+                    <div class="track"></div>
+                    <div class="blk done" style="inset-inline-start: 3%; width: 8%"></div>
+                    <div class="blk flight" style="inset-inline-start: 14%; width: 20%"></div>
+                    <div class="blk now" style="inset-inline-start: 45%; width: 10%"></div>
+                    <div class="blk up" style="inset-inline-start: 70%; width: 13%"></div>
+                    <div class="blk up" style="inset-inline-start: 87%; width: 10%"></div>
+                    <div class="nowmark" style="inset-inline-start: 50%"></div>
+                  </div>
+                </div>
+                <div class="glance-stats">
+                  <div class="gstat">
+                    <div class="v">2</div>
+                    <div class="k">הושלמו</div>
+                  </div>
+                  <div class="gstat">
+                    <div class="v">3</div>
+                    <div class="k">נותרו</div>
+                  </div>
+                  <div class="gstat">
+                    <div class="v hard">1</div>
+                    <div class="k">🔒 עוגן קשיח</div>
+                  </div>
+                </div>
+                <div class="glance-note">
+                  מעברים (🛫 🛬 🏨) מסומנים בציר · שהות המלון (רקע) <b>אינה נספרת</b> בלוז
+                </div>
+              </div>
+            </div>
+          </div>
+        </div>
+
+        <!-- ============ PHONE B: INDEX SURFACES ============ -->
+        <div class="col">
+          <div class="col-cap">אינדקס · <b>שורה + תצוגת פרטים</b></div>
+          <div class="phone">
+            <div class="statusbar"><span>08:05</span><span class="dots">●●● 4G ▮</span></div>
+            <div class="header">
+              <div class="trip-row">
+                <div>
+                  <div class="trip-name">יפן ׳26</div>
+                  <div class="trip-sub">אינדקס<span class="dot">•</span>הזמנות ומסמכים</div>
+                </div>
+                <div class="gear-btn">⚙</div>
+              </div>
+            </div>
+            <div class="body">
+              <div class="idx-toggle" id="idxToggle">
+                <button class="on" data-idx="list">רשימה</button>
+                <button data-idx="detail">תצוגת פרטים</button>
+              </div>
+
+              <!-- LIST: booking rows in the shared grammar -->
+              <div class="idx-view on" data-idx="list">
+                <div class="idx-lead">קרובות</div>
+                <div class="bk-row">
+                  <div class="bk-badge trans">✈️</div>
+                  <div class="bk-main">
+                    <div class="bk-title">NH6 · טוקיו ← אוסקה <span class="lock">🔒</span></div>
+                    <div class="bk-time">
+                      <span class="seg-label">המראה</span>
+                      <span class="mono" dir="ltr">ד׳ 08 · 08:20</span>
+                    </div>
+                  </div>
+                  <span class="bk-code" dir="ltr">NH6</span>
+                  <button class="bk-kebab" aria-label="פעולות">⋯</button>
+                </div>
+
+                <div class="bk-row">
+                  <div class="bk-badge stay">🏨</div>
+                  <div class="bk-main">
+                    <div class="bk-title">Granbell Shinjuku <span class="lock">🔒</span></div>
+                    <div class="bk-time">
+                      <span class="seg-label">צ׳ק-אין</span>
+                      <span class="mono" dir="ltr">ג׳ 07 · 15:00</span>
+                      <span class="arrow">→</span>
+                      <span class="seg-label">צ׳ק-אאוט</span>
+                      <span class="mono" dir="ltr">ו׳ 10 · 11:00</span>
+                    </div>
+                  </div>
+                  <button class="bk-kebab" aria-label="פעולות">⋯</button>
+                </div>
+
+                <div class="bk-row">
+                  <div class="bk-badge">🍜</div>
+                  <div class="bk-main">
+                    <div class="bk-title">Ichiran Ramen <span class="lock">🔒</span></div>
+                    <div class="bk-time">
+                      <span class="seg-label">הזמנה</span>
+                      <span class="mono" dir="ltr">ג׳ 07 · 19:30</span>
+                    </div>
+                  </div>
+                  <span class="bk-code" dir="ltr">#4471</span>
+                  <button class="bk-kebab" aria-label="פעולות">⋯</button>
+                </div>
+              </div>
+
+              <!-- DETAIL: read-only detail view (richer hierarchy) -->
+              <div class="idx-view" data-idx="detail">
+                <div class="bk-detail">
+                  <div class="bkd-head">
+                    <div class="bk-badge stay">🏨</div>
+                    <div>
+                      <h3>Granbell Shinjuku</h3>
+                      <div class="type">מלון · שהייה</div>
+                    </div>
+                    <button class="bkd-edit">✏️ עריכה</button>
+                  </div>
+                  <div class="bkd-hard">🔒 הזמנה קשיחה · שינוי מוגן</div>
+                  <div class="bkd-facts">
+                    <div class="fact">
+                      <div class="fk">זמנים</div>
+                      <div class="fv">
+                        <div class="timerow">
+                          <div class="leg">
+                            <div class="k">צ׳ק-אין</div>
+                            <div class="v" dir="ltr">15:00</div>
+                            <div class="d">ג׳ · 07.07</div>
+                          </div>
+                          <div class="span"></div>
+                          <div class="leg">
+                            <div class="k">צ׳ק-אאוט</div>
+                            <div class="v" dir="ltr">11:00</div>
+                            <div class="d">ו׳ · 10.07</div>
+                          </div>
+                        </div>
+                      </div>
+                    </div>
+                    <div class="fact">
+                      <div class="fk">קוד אישור</div>
+                      <div class="fv"><span class="mono">HTL-8842</span></div>
+                    </div>
+                    <div class="fact">
+                      <div class="fk">ספק</div>
+                      <div class="fv">Booking.com</div>
+                    </div>
+                    <div class="fact">
+                      <div class="fk">חדר</div>
+                      <div class="fv">Double · קומה 14, ללא עישון</div>
+                    </div>
+                    <div class="fact">
+                      <div class="fk">WiFi</div>
+                      <div class="fv">
+                        <span class="mono">Granbell-Guest</span> ·
+                        <span class="mono">welcome26</span>
+                      </div>
+                    </div>
+                    <div class="fact">
+                      <div class="fk">הערות</div>
+                      <div class="fv">כניסה מהכניסה הדרומית, הקבלה בקומה 2.</div>
+                    </div>
+                  </div>
+                </div>
+              </div>
+            </div>
+          </div>
+        </div>
+      </div>
+
+      <!-- ============ profile legend / design notes ============ -->
+      <div class="legend">
+        <h2>הפרופיל מאחורי הכל · CATEGORY_TIME_PROFILE (ADR-0063)</h2>
+        <table>
+          <thead>
+            <tr>
+              <th>קטגוריה</th>
+              <th><code>bracketed</code></th>
+              <th><code>ambientWhenMultiDay</code></th>
+              <th>מעברים (<code>transitions</code>)</th>
+              <th>הירו</th>
+            </tr>
+          </thead>
+          <tbody>
+            <tr>
+              <td>🏨 <code>lodging</code></td>
+              <td>✓</td>
+              <td>✓ (רב-יומי → רקע, לא נספר)</td>
+              <td>צ׳ק-אין · צ׳ק-אאוט</td>
+              <td>מעברים + פס "אתם שוהים" <span class="tag teal">teal</span></td>
+            </tr>
+            <tr>
+              <td>✈️ <code>transport</code></td>
+              <td>✓</td>
+              <td>✓ (טיסת יום → נספרת; השכרת רכב רב-יומית → רקע)</td>
+              <td>המראה · נחיתה</td>
+              <td>
+                מעברים <span class="tag amber">amber</span> · "בטיסה"
+                <span class="tag teal">teal</span>
+              </td>
+            </tr>
+            <tr>
+              <td>🍜 שאר הקטגוריות</td>
+              <td>—</td>
+              <td>—</td>
+              <td>—</td>
+              <td>אירוע/בלוק רגיל (נקודה בזמן)</td>
+            </tr>
+          </tbody>
+        </table>
+        <div class="notes">
+          <p>
+            <b>צבע = משמעות (ADR-0028):</b> <span class="tag amber">amber</span> לזמן ומחויבות (רגע
+            המעבר, הספירה לאחור), <span class="tag teal">teal</span> ל<b>מיקום / "איפה אתם"</b> (הפס
+            "אתם שוהים", מצב "בטיסה"). זו התשובה ל"העיצוב מאוד סתמי": מצב "תוך כדי הזמנה" הוא אמירת
+            מיקום, ולכן teal מבדיל אותו מההירו האמבר של הזמן.
+          </p>
+          <p>
+            <b>מצב אחד, שתי הנחות:</b> להזמנה רב-יומית (מלון) זהו
+            <b>פס דק, זמני וניתן לסגירה (✕)</b> מעל ההירו — <b>כפוף</b> לו, לא מתחרה בו (הסימון
+            הקבוע לשהות הוא הקו התחתון בפס-הימים + הרקע בתצוגת היום + האינדקס); לנקודה תחומה תוך-כדי
+            (טיסה באוויר) הוא <b>ממלא את ה-NOW</b>
+            (הטיסה היא הפעילות עצמה).
+          </p>
+          <p>
+            <b>מעברים בציר "היום במבט":</b> בלוֹז מסומנים כל המעברים התחומים ב<b
+              >נתיב ייעודי מעל הבלוקים</b
+            >
+            (כדי שלא ייבלעו), בצבע <span class="tag amber">amber</span> (עוגני זמן, כמו תוויות
+            ההירו). מלון: צ׳ק-אין/אאוט כסימון עצמאי (רקע, <b>לא נספר</b>); טיסה: המראה/נחיתה כסימוני
+            קצה על הבלוק הנספר.
+          </p>
+          <p>
+            <b>שאלות פתוחות לאסף (לפני מימוש):</b>
+            <span class="q">·</span> משכי החלונות: כמה לפני צ׳ק-אין / grace אחרי / לפני צ׳ק-אאוט /
+            lead להמראה? <span class="q">·</span> האם יש נתוני שער/טרמינל לטיסה להצגה (אחרת לא
+            ממציאים — ADR-0045)? <span class="q">·</span> מצב "בטיסה/שוהים" — קומפוננטה אחת משותפת
+            או וריאנטים נפרדים?
+          </p>
+        </div>
+      </div>
+    </div>
+
+    <script>
+      const chips = document.getElementById('chips');
+      const board = document.getElementById('board');
+      const band = document.getElementById('band');
+      const bandX = document.getElementById('bandX');
+      const tripsub = document.getElementById('tripsub');
+      const clk = document.getElementById('clk');
+
+      // per-scenario: which hero variant, whether the stay strip is relevant, header clock/day
+      const S = {
+        precheckin: { clock: '08:05', band: false, sub: 'טוקיו · יום 3 מתוך 10' },
+        instay: { clock: '13:20', band: true, sub: 'טוקיו · יום 4 מתוך 10' },
+        precheckout: { clock: '09:30', band: true, sub: 'טוקיו · יום 6 מתוך 10' },
+        preflight: { clock: '06:10', band: false, sub: 'טוקיו · יום 6 מתוך 10' },
+        intransit: { clock: '15:45', band: false, sub: 'בדרך לאוסקה · יום 6' },
+      };
+
+      function setScenario(name) {
+        const cfg = S[name];
+        board.querySelectorAll('.hero-variant').forEach((v) => {
+          v.classList.toggle('on', v.dataset.v === name);
+        });
+        // the strip is transient + dismissible: switching to a stay scenario re-shows it
+        band.style.display = cfg.band ? 'flex' : 'none';
+        clk.textContent = cfg.clock;
+        tripsub.innerHTML = cfg.sub.replace(' · ', '<span class="dot">•</span>');
+        chips
+          .querySelectorAll('.chip')
+          .forEach((c) => c.classList.toggle('on', c.dataset.s === name));
+      }
+
+      chips.addEventListener('click', (e) => {
+        const b = e.target.closest('.chip');
+        if (b) setScenario(b.dataset.s);
+      });
+      bandX.addEventListener('click', () => {
+        band.style.display = 'none';
+      });
+
+      // index list/detail toggle
+      const idxToggle = document.getElementById('idxToggle');
+      idxToggle.addEventListener('click', (e) => {
+        const b = e.target.closest('button');
+        if (!b) return;
+        idxToggle.querySelectorAll('button').forEach((x) => x.classList.toggle('on', x === b));
+        document
+          .querySelectorAll('.idx-view')
+          .forEach((v) => v.classList.toggle('on', v.dataset.idx === b.dataset.idx));
+      });
+
+      setScenario('precheckin');
+    </script>
+  </body>
+</html>
