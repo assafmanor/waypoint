@@ -54,7 +54,13 @@ import {
   clearTripCache,
   readCachedSnapshot,
 } from '../lib/cache';
-import { flushOutbox, isOffline, restOrQueue } from '../lib/outbox';
+import {
+  flushOutbox,
+  getSyncFailures,
+  isOffline,
+  restOrQueue,
+  subscribeSyncFailures,
+} from '../lib/outbox';
 import { openTripStream } from '../lib/ws';
 import { getNow } from '../lib/useClock';
 import { clampDate, shiftIso, todayInTz } from '../lib/time';
@@ -496,25 +502,46 @@ function TripReady({
       }
     }
 
+    // Full-snapshot resync: a gap/hello-ahead (onResync), or a phantom optimistic
+    // entity the server rejected on flush (F-03) — the RESYNC drops it from the
+    // reactive lists so the UI stops showing a change that was never saved.
+    function resyncSnapshot() {
+      fetchSnapshot(tripId).then(
+        (s) => {
+          lastSeqRef.current = s.latestSeq;
+          void cacheSnapshot(tripId, s);
+          dispatch({ type: 'RESYNC', events: s.events, maybeItems: s.maybeItems });
+          setTrip(s.trip);
+          setMembers(s.members);
+          setBookings(s.bookings);
+          setPlaces(s.places);
+          setDocuments(s.documents);
+          onReconnected();
+        },
+        () => {}, // ponytail: transient refetch failure — next change/hello retries the resync.
+      );
+    }
+
+    // Incremental catch-up: flush our own queued writes first, then replay what we
+    // missed. Used both on an `online`/visibility transition and on a WS-driven
+    // reconnect (F-04) — the difference is only whether the socket is reopened
+    // (handleOnline does; the WS reconnect already reopened it before calling back).
+    function catchUp(): Promise<void> {
+      return flushOutbox(tripId)
+        .then(() => fetchChanges(tripId, lastSeqRef.current))
+        .then((changes) => {
+          for (const change of changes) applyRemoteChange(change);
+          onReconnected();
+        });
+    }
+
     function connect(sinceSeq: string) {
       closeSocket = openTripStream(tripId, sinceSeq, {
         onChange: applyRemoteChange,
-        onResync: () => {
-          fetchSnapshot(tripId).then(
-            (s) => {
-              lastSeqRef.current = s.latestSeq;
-              void cacheSnapshot(tripId, s);
-              dispatch({ type: 'RESYNC', events: s.events, maybeItems: s.maybeItems });
-              setTrip(s.trip);
-              setMembers(s.members);
-              setBookings(s.bookings);
-              setPlaces(s.places);
-              setDocuments(s.documents);
-              onReconnected();
-            },
-            () => {}, // ponytail: transient refetch failure — next change/hello retries the resync.
-          );
-        },
+        onResync: resyncSnapshot,
+        // The socket reopened itself after a silent foreground drop (F-04); run
+        // the same catch-up handleOnline does, but don't reopen — ws.ts owns it.
+        onReconnect: () => void catchUp().catch(() => {}),
       });
     }
     connect(snapshot.latestSeq);
@@ -525,13 +552,10 @@ function TripReady({
     // what we missed), then replay `changes?sinceSeq=` and reopen the socket
     // rather than waiting for it to notice the drop on its own.
     function handleOnline() {
-      flushOutbox(tripId)
-        .then(() => fetchChanges(tripId, lastSeqRef.current))
-        .then((changes) => {
-          for (const change of changes) applyRemoteChange(change);
+      catchUp()
+        .then(() => {
           closeSocket?.();
           connect(lastSeqRef.current);
-          onReconnected();
         })
         .catch(() => {}); // ponytail: next 'online' event (or a WS gap) retries.
     }
@@ -560,9 +584,22 @@ function TripReady({
     }
     document.addEventListener('visibilitychange', handleVisibility);
 
+    // F-03: a queued write dropped on flush leaves a phantom optimistic entity in
+    // the reactive lists (the outbox already wrote it through to the cache). On a
+    // genuinely new failure for *this* trip, resync so the rejected entity drops.
+    // Count-gated (not fired on clear/dismiss) so it can't loop.
+    const failuresForTrip = () => getSyncFailures().filter((f) => f.tripId === tripId).length;
+    let seenFailures = failuresForTrip();
+    const unsubscribeFailures = subscribeSyncFailures(() => {
+      const next = failuresForTrip();
+      if (next > seenFailures) resyncSnapshot();
+      seenFailures = next;
+    });
+
     return () => {
       window.removeEventListener('online', handleOnline);
       document.removeEventListener('visibilitychange', handleVisibility);
+      unsubscribeFailures();
       closeSocket?.();
     };
     // Reconnect only on trip switch — `snapshot.latestSeq` is just this effect's initial cursor.

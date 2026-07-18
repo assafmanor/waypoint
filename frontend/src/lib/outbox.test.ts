@@ -3,10 +3,12 @@ import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { db } from '../db';
 import { EVENTS } from '../fixtures';
 import {
+  clearSyncFailures,
   enqueueOutbox,
   flushAllOutbox,
   flushOutbox,
   getOutboxCount,
+  getSyncFailures,
   initOutboxCount,
   type OutboxOp,
 } from './outbox';
@@ -122,6 +124,66 @@ describe('flushOutbox (FIFO)', () => {
     await expect(flushOutbox(TRIP_ID)).resolves.toBeUndefined();
     expect(call).toBe(2); // ev-2 still attempted — ev-1 didn't block the queue
     expect(await db.outbox.count()).toBe(0);
+  });
+
+  it('records a non-allowlisted 4xx as a sync failure, drops the entry, and continues to the next', async () => {
+    let call = 0;
+    vi.stubGlobal(
+      'fetch',
+      vi.fn(() => {
+        call += 1;
+        // ev-1's booking create (call 1) is rejected by a validation rule (400),
+        // ev-2 (call 2) succeeds.
+        if (call === 1) {
+          return Promise.resolve(
+            new Response(JSON.stringify({ error: { code: 'BOOKING_INVALID' } }), { status: 400 }),
+          );
+        }
+        return Promise.resolve(new Response(canonicalBody(), { status: 200 }));
+      }),
+    );
+
+    clearSyncFailures();
+    await enqueueOutbox(TRIP_ID, {
+      verb: 'createBooking',
+      input: { id: 'bk-1', type: 'restaurant', title: 'מסעדה' },
+    } as OutboxOp);
+    await enqueueOutbox(TRIP_ID, statusOp('ev-2'));
+
+    await expect(flushOutbox(TRIP_ID)).resolves.toBeUndefined();
+    expect(call).toBe(2); // ev-2 still attempted — the failed create didn't block it
+    expect(await db.outbox.count()).toBe(0); // both entries removed
+
+    const failures = getSyncFailures();
+    expect(failures).toHaveLength(1);
+    expect(failures[0]).toMatchObject({
+      tripId: TRIP_ID,
+      verb: 'createBooking',
+      code: 'BOOKING_INVALID',
+    });
+  });
+
+  it('drops a MOVE_INTO_PAST 4xx quietly, recording no sync failure', async () => {
+    vi.stubGlobal(
+      'fetch',
+      vi.fn(() =>
+        Promise.resolve(
+          new Response(JSON.stringify({ error: { code: 'MOVE_INTO_PAST' } }), { status: 409 }),
+        ),
+      ),
+    );
+
+    clearSyncFailures();
+    await enqueueOutbox(TRIP_ID, {
+      verb: 'move',
+      eventId: 'ev-1',
+      input: { minutes: 30 },
+      confirm: false,
+    } as OutboxOp);
+
+    await expect(flushOutbox(TRIP_ID)).resolves.toBeUndefined();
+    expect(await db.outbox.count()).toBe(0);
+    expect(getSyncFailures()).toHaveLength(0);
   });
 
   it('a duplicate create retry is idempotent — the backend returns 200 for an already-applied client id', async () => {

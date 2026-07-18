@@ -22,7 +22,14 @@ import {
   useTripTab,
 } from './state/nav-state';
 import { EdgeSwipeBack } from './ui/EdgeSwipeBack';
-import { flushAllOutbox, isOffline, useIsOffline, useOutboxCount } from './lib/outbox';
+import {
+  clearSyncFailures,
+  flushAllOutbox,
+  isOffline,
+  useIsOffline,
+  useOutboxCount,
+  useSyncFailures,
+} from './lib/outbox';
 import { loadTripList } from './lib/cache';
 import { resolveLanding } from './lib/active-trip';
 import { consumeIntent, hasIntent, saveIntent } from './lib/intent';
@@ -162,6 +169,7 @@ function Header({
   // is a direct signal from that fetch actually failing, so OR the two.
   const offline = useIsOffline() || usingCachedSnapshot;
   const pendingCount = useOutboxCount();
+  const syncFailures = useSyncFailures();
   const total =
     Math.round((Date.parse(trip.endDate) - Date.parse(trip.startDate)) / MS_PER_DAY) + 1;
   const dayNumber =
@@ -277,6 +285,19 @@ function Header({
       {pendingCount > 0 && (
         <div className="offline-badge">
           {ICONS.sync} {t.header.pendingSync(pendingCount)}
+        </div>
+      )}
+      {syncFailures.length > 0 && (
+        <div
+          className="offline-badge"
+          role="button"
+          tabIndex={0}
+          onClick={() => clearSyncFailures()}
+          onKeyDown={(e) => {
+            if (e.key === 'Enter' || e.key === ' ') clearSyncFailures();
+          }}
+        >
+          {ICONS.warn} {t.header.syncFailed(syncFailures.length)}
         </div>
       )}
       <div className="day-strip">

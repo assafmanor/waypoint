@@ -39,3 +39,5 @@ Thumbs.db
 .obsidian/graph.json
 .obsidian/themes/
 .obsidian/appearance.json
+# Claude Code agent worktrees (transient scratch space)
+.claude/worktrees/

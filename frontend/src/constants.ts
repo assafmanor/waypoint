@@ -33,6 +33,17 @@ export const TOAST_DURATION_MS = 3600;
 /** Live-clock tick. */
 export const CLOCK_TICK_MS = 1000;
 
+/** Realtime socket liveness (F-04, sync-and-offline.md "Realtime channel"). The
+ *  client pings on `WS_HEARTBEAT_INTERVAL_MS`; a watchdog forces a reconnect if
+ *  no frame (a `pong` or any message) lands within `WS_WATCHDOG_TIMEOUT_MS`, so a
+ *  silently dropped socket (proxy/idle timeout, server restart) is caught while
+ *  foregrounded and online, not only on the next `online`/visibility event.
+ *  Reconnect uses bounded exponential backoff from base → cap, with jitter. */
+export const WS_HEARTBEAT_INTERVAL_MS = 25_000;
+export const WS_WATCHDOG_TIMEOUT_MS = 60_000;
+export const WS_RECONNECT_BASE_MS = 1_000;
+export const WS_RECONNECT_CAP_MS = 30_000;
+
 /** The waking window the day-progress bar spans, in trip-local hours. */
 export const DAY_WINDOW = { START_HOUR: 7, END_HOUR: 23 } as const;
 

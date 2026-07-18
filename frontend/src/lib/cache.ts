@@ -15,8 +15,10 @@ import {
   type User,
 } from '@waypoint/shared';
 import { db } from '../db';
+import { ACTIVE_TRIP_STORAGE_KEY } from '../constants';
 import { fetchTrips } from './api';
-import type { OutboxOp } from './outbox';
+import { clearAllCachedDocuments } from './doc-cache';
+import { initOutboxCount, type OutboxOp } from './outbox';
 
 /** The slice of TripSnapshot with no dedicated Dexie table of its own. */
 export interface SnapshotMeta {
@@ -172,6 +174,38 @@ export async function applyChangeToCache(tripId: string, change: Change): Promis
     default:
       return;
   }
+}
+
+/** Wipes every trace of the signed-in session's local data (sign-out / session
+ *  loss, F-01): all Dexie tables, the per-device active-trip pointer, and the
+ *  decrypted document blobs, then re-primes the (now empty) outbox badge. Each
+ *  subsystem is isolated so one failure can't leave another's data behind. */
+export async function wipeLocalData(): Promise<void> {
+  try {
+    await db.transaction(
+      'rw',
+      [db.events, db.bookings, db.documents, db.snapshotMeta, db.tripList, db.outbox],
+      async () => {
+        await Promise.all([
+          db.events.clear(),
+          db.bookings.clear(),
+          db.documents.clear(),
+          db.snapshotMeta.clear(),
+          db.tripList.clear(),
+          db.outbox.clear(),
+        ]);
+      },
+    );
+  } catch {
+    // best-effort: fall through to the other subsystems below.
+  }
+  try {
+    localStorage.removeItem(ACTIVE_TRIP_STORAGE_KEY);
+  } catch {
+    // ignore
+  }
+  await clearAllCachedDocuments();
+  await initOutboxCount().catch(() => {});
 }
 
 /** Drops every cached row for a trip (used when the trip is deleted). */

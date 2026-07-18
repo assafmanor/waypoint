@@ -77,6 +77,19 @@ async function evictOtherVersions(cache: Cache, baseUrl: string, keep: string): 
   await Promise.all(stale.map((req) => cache.delete(req)));
 }
 
+/** Drop the entire document-blob store (on sign-out / session loss), so decrypted
+ *  passports and insurance can't be read under the next session on the device.
+ *  No-op when the Cache API is unavailable; best-effort. */
+export async function clearAllCachedDocuments(): Promise<void> {
+  const store = cacheStore();
+  if (!store) return;
+  try {
+    await store.delete(CACHE_NAME);
+  } catch {
+    // best-effort
+  }
+}
+
 /** Evict every cached version of a document (on delete/replace). `contentUrl` is the
  *  version-less `/content` URL; all `?v=` variants under it are removed. */
 export async function evictCachedDocument(contentUrl: string): Promise<void> {
