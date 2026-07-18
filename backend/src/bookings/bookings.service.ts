@@ -157,7 +157,9 @@ export class BookingsService {
         if (existingEvent) {
           const event = await tx.event.update({
             where: { id: existingEvent.id },
-            data: this.eventUpdateFromSeed(actorUserId, input.event!),
+            // A booking-linked event's title mirrors the booking (ADR-0053) — keep the
+            // invariant on update as the create path does, not just its date/times/icon.
+            data: { title: booking.title, ...this.eventUpdateFromSeed(actorUserId, input.event!) },
           });
           ops.push({
             entityType: 'event',

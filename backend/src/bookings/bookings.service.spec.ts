@@ -235,6 +235,23 @@ describe('BookingsService', () => {
     expect(persisted?.confirmationCode).toBe('HOTEL-9');
   });
 
+  it('syncs the linked event title when the booking is renamed (merged path)', async () => {
+    const tripId = await newTrip();
+    const booking = await service.create(tripId, DEV_USER, {
+      type: 'hotel',
+      title: 'Park Hyatt',
+      event: eventSeed(),
+    });
+
+    await service.update(tripId, booking.id, DEV_USER, {
+      title: 'Park Hyatt Tokyo',
+      event: eventSeed(),
+    });
+
+    const event = await prisma.event.findUnique({ where: { bookingId: booking.id } });
+    expect(event?.title).toBe('Park Hyatt Tokyo');
+  });
+
   it('clears the confirmation code when edited to empty (merged path)', async () => {
     const tripId = await newTrip();
     const booking = await service.create(tripId, DEV_USER, {
