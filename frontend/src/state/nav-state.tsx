@@ -31,6 +31,14 @@ export const DAY_PARAM = 'day';
 export const HOME_TAB: TabId = 'home';
 /** Where leaving a trip lands (ADR-0033 all-trips home). */
 const EXIT_TRIP_TO = '/trips';
+/** Top-level entry surfaces where a structural back has nowhere in-app to go, so
+ *  it is a no-op rather than falling off to /login or out of the app (ADR-0035
+ *  §2.5 root guard). Mirrors the root routes in `App.tsx` `AppRoutes`: the
+ *  catch-all `/` (RootSurface / in-trip shell / zero-state), `/trips` (all-trips),
+ *  and `/login`. Single-sourced so adding a new top-level surface is ONE obvious
+ *  edit — shell routes (`/new`, `/join/:token`, `/trip/:id/settings`) are NOT
+ *  roots; they back out to their parent, so they must stay off this list. */
+const ROOT_PATHS: readonly string[] = ['/', '/trips', '/login'];
 /** How long the "swipe again to leave the trip" confirmation stays armed. */
 export const EXIT_CONFIRM_MS = 3000;
 
@@ -99,7 +107,7 @@ export function structuralBackStep(ctx: {
     return { kind: 'exit-trip' }; // Home base → out to all-trips (root guard).
   }
   // Roots (all-trips / zero-state / sign-in) have nothing behind them in-app.
-  if (ctx.pathname === '/' || ctx.pathname === '/trips' || ctx.pathname === '/login') {
+  if (ROOT_PATHS.includes(ctx.pathname)) {
     return { kind: 'none' };
   }
   return ctx.canGoBack ? { kind: 'back' } : { kind: 'push', to: '/' };
