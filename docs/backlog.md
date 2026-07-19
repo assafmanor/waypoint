@@ -72,7 +72,7 @@ B-01–B-06 and B-08–B-13 shipped (ADR-0068–0076); B-07 shipped (ADR-0067). 
 
 ## Home / glance
 
-- **Glance transition-label clutter** — the day-at-a-glance transition markers (`.glance-marks`/`.tmark` in `Home.tsx`, ADR-0054/0059) render each edge as a full amber pill (icon · word · time), positioned by time and lane-stacked on collision; on a multi-transition travel day (a red-eye flight + a ferry) all four heavy pills ladder into two rows and smear. Redesign drafted in `mockups/glance-transition-labels-v1.html` (journey-bracket default that pairs a booking's two edges into one proportional span + a legs-line fallback for dense days); awaiting sign-off before an ADR + build.
+- **Unified glance rail-annotation grammar** — the day-at-a-glance carries two unrelated label systems that don't rhyme: amber transition pills *above* the rail (`.glance-marks`/`.tmark`, ADR-0054/0059/0064) and neutral count chips *below* (`×N` / `כולל N` for overlap/containment, ADR-0041). On a busy travel day they read as noise. Redesign drafted across `mockups/glance-transition-labels-v1.html` (transition-only exploration) → `mockups/glance-timeline-labels-v2.html` (the unifier: one pill primitive, tint = family [amber time-anchor / neutral structure], connector = shape [bar+feet span / stem point / tick block-note]; a same-day flight/ferry is a span, a lone hotel check-in is a point, overlap/containment are block-notes; legs-line collapse past 2 lanes; edge anchor-in + short-span handling). Awaiting sign-off before an ADR + build.
 
 ## Testing
 

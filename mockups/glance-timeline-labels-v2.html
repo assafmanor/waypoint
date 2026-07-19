@@ -1,0 +1,770 @@
+<!doctype html>
+<!-- "היום במבט" glance — a UNIFIED timeline-annotation grammar (2026-07-19, v2).
+     Supersedes glance-transition-labels-v1.html: v1 solved transition pills in
+     isolation; v2 unifies EVERY rail annotation into one visual language.
+
+     Today two unrelated systems live on the rail (Home.tsx / glance.ts):
+       • transition markers ABOVE  — amber pills [icon · word · time], lane-stacked
+         (booking edges: check-in/out, departure/arrival · ADR-0054/0059/0064)
+       • count chips BELOW          — neutral chips ×N / כולל N on a block
+         (overlap cluster / containment envelope · ADR-0041)
+     They don't rhyme, so a busy day reads as noise.
+
+     v2 grammar — one pill primitive, meaning carried by TWO orthogonal axes:
+       TINT  = family:   amber = a time anchor (commitment) · neutral = structure
+       CONNECTOR = shape: bar+feet = a SPAN (two instants of one booking)
+                          stem     = a POINT (one instant)
+                          tick     = a BLOCK note (sits below its block)
+     So a same-day flight/ferry is a span, a lone hotel check-in (its check-out
+     is another day) is a point, and overlap/containment are block notes — all
+     the same pill, differing only by tint (meaning) and connector (shape).
+
+     Reconciliations shown: a crowded arrival/departure day, the legs-line
+     collapse when the anchor band would exceed two lanes, and edge/short-span
+     handling. Tokens = ADR-0028; mono wraps only Latin/numeric runs (Hebrew
+     never inside mono). Where this and the docs conflict, the docs win. -->
+<html lang="he" dir="rtl">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>היום במבט · שפת תוויות אחידה</title>
+    <link rel="preconnect" href="https://fonts.googleapis.com" />
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+    <link
+      href="https://fonts.googleapis.com/css2?family=Assistant:wght@400;500;600;700&family=Secular+One&family=JetBrains+Mono:wght@500;700&display=swap"
+      rel="stylesheet"
+    />
+    <style>
+      :root {
+        --ink: #16233d;
+        --indigo: #1b2a4a;
+        --card: #ffffff;
+        --amber: #e9a63c;
+        --amber-deep: #c9822a;
+        --teal: #2c9c90;
+        --ok: #3c9a6b;
+        --miss: #c2584e;
+        --muted: #6c7488;
+        --line: rgba(22, 35, 61, 0.1);
+        --soft-line: rgba(22, 35, 61, 0.24);
+        --font-mono: 'JetBrains Mono', ui-monospace, Menlo, monospace;
+      }
+      * {
+        box-sizing: border-box;
+        margin: 0;
+        padding: 0;
+      }
+      body {
+        font-family: 'Assistant', system-ui, -apple-system, 'Arial Hebrew', sans-serif;
+        background: var(--indigo);
+        color: var(--ink);
+        min-height: 100vh;
+        padding: 26px 16px 56px;
+        -webkit-font-smoothing: antialiased;
+      }
+      .wrap {
+        max-width: 440px;
+        margin: 0 auto;
+      }
+      .title {
+        color: #fff;
+        font-family: 'Secular One', system-ui, sans-serif;
+        font-size: 22px;
+        text-align: center;
+      }
+      .lede {
+        color: #aeb9d4;
+        font-size: 13px;
+        line-height: 1.55;
+        text-align: center;
+        margin: 8px 0 20px;
+      }
+      .lede b {
+        color: #fff;
+        font-weight: 600;
+      }
+
+      /* ---- the grammar spec ---- */
+      .spec {
+        background: rgba(255, 255, 255, 0.05);
+        border: 1px solid rgba(255, 255, 255, 0.1);
+        border-radius: 14px;
+        padding: 15px 16px;
+        margin-bottom: 26px;
+      }
+      .spec h4 {
+        color: #dce3f2;
+        font-size: 12px;
+        font-weight: 700;
+        letter-spacing: 0.04em;
+        margin-bottom: 12px;
+      }
+      .spec .grid {
+        display: grid;
+        grid-template-columns: auto 1fr;
+        gap: 11px 12px;
+        align-items: center;
+      }
+      .spec .ex {
+        display: flex;
+        justify-content: center;
+        min-width: 96px;
+      }
+      .spec .desc {
+        font-size: 12px;
+        color: #b9c4de;
+        line-height: 1.4;
+      }
+      .spec .desc b {
+        color: #fff;
+        font-weight: 600;
+      }
+      .spec .rule {
+        height: 1px;
+        background: rgba(255, 255, 255, 0.09);
+        grid-column: 1 / -1;
+      }
+
+      .opt {
+        margin-bottom: 26px;
+      }
+      .opt-head {
+        display: flex;
+        align-items: center;
+        gap: 8px;
+        margin-bottom: 10px;
+      }
+      .opt-head .n {
+        color: #fff;
+        font-weight: 700;
+        font-size: 14px;
+      }
+      .opt-head .rec {
+        font-size: 10.5px;
+        font-weight: 700;
+        color: #12203a;
+        background: var(--amber);
+        padding: 2px 8px;
+        border-radius: 20px;
+      }
+      .opt-head .tag {
+        font-size: 10.5px;
+        font-weight: 700;
+        color: #cdd6ea;
+        background: rgba(255, 255, 255, 0.09);
+        border: 1px solid rgba(255, 255, 255, 0.16);
+        padding: 2px 8px;
+        border-radius: 20px;
+      }
+      .opt-note {
+        color: #93a2c4;
+        font-size: 12px;
+        line-height: 1.55;
+        margin-top: 11px;
+      }
+      .opt-note .good {
+        color: #9ad4b3;
+        font-weight: 600;
+      }
+      .opt-note .warn {
+        color: #e6a79e;
+        font-weight: 600;
+      }
+      .opt-note b {
+        color: #cdd6ea;
+      }
+      .sec {
+        font-size: 12px;
+        font-weight: 700;
+        color: rgba(255, 255, 255, 0.75);
+        letter-spacing: 0.06em;
+        margin: 0 2px 9px;
+      }
+
+      /* ================= the glance card ================= */
+      .glance-day {
+        background: var(--card);
+        border: 1px solid var(--line);
+        border-radius: 16px;
+        padding: 15px 16px 16px;
+      }
+
+      /* shared annotation pill primitive */
+      .achip {
+        display: inline-flex;
+        align-items: center;
+        gap: 4px;
+        white-space: nowrap;
+        font-size: 10px;
+        font-weight: 700;
+        border-radius: 999px;
+        padding: 2px 8px;
+        border: 1px solid transparent;
+      }
+      .achip .mono {
+        font-family: var(--font-mono);
+      }
+      .achip .g {
+        font-size: 11px;
+      }
+      /* tint = family */
+      .achip.amber {
+        color: var(--amber-deep);
+        background: rgba(233, 166, 60, 0.16);
+        border-color: rgba(233, 166, 60, 0.34);
+      }
+      .achip.amber .arr {
+        color: var(--amber);
+        opacity: 0.85;
+      }
+      .achip.amber .plus1 {
+        color: var(--amber-deep);
+        font-family: var(--font-mono);
+        font-size: 9px;
+      }
+      /* structure note: neutral, with a layered top edge echoing seg.multi */
+      .achip.note {
+        color: var(--muted);
+        background: rgba(22, 35, 61, 0.05);
+        border-color: var(--line);
+        box-shadow: inset 0 2px 0 rgba(22, 35, 61, 0.1);
+      }
+      .achip.note .mono {
+        color: var(--ink);
+      }
+
+      /* upper band: point + span anchors, lane-stacked */
+      .ann-above {
+        position: relative;
+        margin-bottom: 3px;
+      }
+      /* a POINT anchor (one instant) — pill + single stem */
+      .solo {
+        position: absolute;
+        bottom: 0;
+        width: 0;
+        display: flex;
+        flex-direction: column;
+        align-items: center;
+      }
+      .solo.at-start {
+        align-items: flex-start;
+      }
+      .solo.at-end {
+        align-items: flex-end;
+      }
+      .solo .stem {
+        width: 1.5px;
+        background: rgba(201, 130, 42, 0.55);
+      }
+      /* a SPAN anchor (two instants of one booking) — centered pill + a bar whose
+         feet mark the exact departure/arrival instants */
+      .brk {
+        position: absolute;
+        bottom: 0;
+      }
+      .brk .cap {
+        position: absolute;
+        bottom: 11px;
+        inset-inline-start: 50%;
+        transform: translateX(50%);
+      }
+      .brk.at-start .cap {
+        inset-inline-start: 0;
+        transform: none;
+      }
+      .brk.at-end .cap {
+        inset-inline-start: auto;
+        inset-inline-end: 0;
+        transform: none;
+      }
+      .brk .bar {
+        position: absolute;
+        bottom: 2px;
+        inset-inline: 0;
+        height: 7px;
+        border: 1.5px solid var(--amber);
+        border-top: 0;
+        border-radius: 0 0 5px 5px;
+      }
+
+      /* the proportional block rail (shared) */
+      .rail {
+        position: relative;
+        height: 14px;
+        background: rgba(22, 35, 61, 0.07);
+        border-radius: 5px;
+      }
+      .seg {
+        position: absolute;
+        top: 0;
+        height: 14px;
+        border-radius: 3px;
+        min-width: 6px;
+      }
+      .seg.done {
+        background: var(--ok);
+      }
+      .seg.passed {
+        background: rgba(22, 35, 61, 0.3);
+      }
+      .seg.now {
+        background: var(--amber);
+      }
+      .seg.upcoming {
+        background: transparent;
+        box-shadow: inset 0 0 0 1.5px rgba(22, 35, 61, 0.24);
+      }
+      .seg.trans {
+        background: rgba(233, 166, 60, 0.26);
+        box-shadow: inset 0 0 0 1px var(--amber);
+      }
+      /* composite (cluster/envelope) → layered top edge, matches the note chip */
+      .seg.multi {
+        box-shadow:
+          inset 0 3px 0 rgba(255, 255, 255, 0.55),
+          inset 0 0 0 1px rgba(22, 35, 61, 0.14);
+      }
+      .seg.multi.upcoming {
+        box-shadow:
+          inset 0 3px 0 rgba(22, 35, 61, 0.12),
+          inset 0 0 0 1.5px rgba(22, 35, 61, 0.24);
+      }
+      .nowmark {
+        position: absolute;
+        top: -5px;
+        bottom: -5px;
+        width: 2px;
+        background: var(--amber);
+        border-radius: 2px;
+        z-index: 2;
+      }
+      .nowmark::after {
+        content: '';
+        position: absolute;
+        top: -6px;
+        left: 50%;
+        transform: translateX(-50%);
+        width: 7px;
+        height: 7px;
+        border-radius: 50%;
+        background: var(--amber);
+        box-shadow: 0 0 0 3px rgba(233, 166, 60, 0.22);
+      }
+
+      /* lower band: block notes, tick UP to the block */
+      .ann-below {
+        position: relative;
+        margin-top: 3px;
+        height: 22px;
+      }
+      .note-mark {
+        position: absolute;
+        top: 0;
+        transform: translateX(50%);
+        display: flex;
+        flex-direction: column;
+        align-items: center;
+      }
+      .note-mark .tick {
+        width: 1.5px;
+        height: 5px;
+        background: rgba(22, 35, 61, 0.2);
+      }
+
+      .rail-ends {
+        display: flex;
+        justify-content: space-between;
+        margin-top: 8px;
+        font-size: 10px;
+        color: var(--muted);
+        font-weight: 600;
+      }
+      .rail-ends span {
+        font-family: var(--font-mono);
+      }
+
+      /* legs collapse line (dense-day fallback) */
+      .legs {
+        display: flex;
+        flex-wrap: wrap;
+        gap: 6px 7px;
+        margin-top: 12px;
+      }
+
+      /* lead + foot */
+      .lead {
+        display: flex;
+        align-items: baseline;
+        justify-content: space-between;
+        gap: 12px;
+        margin-top: 13px;
+      }
+      .lead .big {
+        display: flex;
+        align-items: baseline;
+        gap: 8px;
+      }
+      .lead .big .v {
+        font-family: var(--font-mono);
+        font-size: 30px;
+        font-weight: 700;
+        line-height: 1;
+        color: var(--ink);
+      }
+      .lead .big .k {
+        font-size: 13px;
+        font-weight: 700;
+        color: var(--muted);
+      }
+      .lead .anchor {
+        text-align: end;
+        font-size: 11.5px;
+        color: var(--amber-deep);
+        font-weight: 700;
+      }
+      .lead .anchor .tm {
+        font-family: var(--font-mono);
+      }
+
+      .hr {
+        height: 1px;
+        background: rgba(255, 255, 255, 0.08);
+        margin: 2px 0 24px;
+      }
+    </style>
+  </head>
+  <body>
+    <div class="wrap">
+      <div class="title">היום במבט · שפת תוויות אחידה</div>
+      <p class="lede">
+        גלולה אחת, שני צירי משמעות: <b>גוון</b> = משפחה (אמבר = עוגן זמן · ניטרלי = מבנה),
+        <b>מחבר</b> = צורה (בר עם רגליים = טווח · גבעול = נקודה · קו קצר = תווית-בלוק).
+      </p>
+
+      <!-- ================= GRAMMAR SPEC ================= -->
+      <div class="spec">
+        <h4>שלוש צורות · שתי משפחות · פרימיטיב אחד</h4>
+        <div class="grid">
+          <div class="ex">
+            <div style="position: relative; height: 30px; width: 90px">
+              <div class="brk at-start" style="inset-inline-start: 6px; width: 72px">
+                <span class="cap"
+                  ><span class="achip amber"
+                    >✈️ <span class="mono" dir="ltr">01:00</span> <span class="arr">→</span>
+                    <span class="mono" dir="ltr">04:30</span></span
+                  ></span
+                >
+                <span class="bar"></span>
+              </div>
+            </div>
+          </div>
+          <div class="desc">
+            <b>טווח (Span)</b> — שני קצוות של הזמנה אחת באותו יום: טיסה/מעבורת. פיל אחד ממורכז + בר
+            שרגליו מסמנות את שני הרגעים.
+          </div>
+          <div class="rule"></div>
+
+          <div class="ex">
+            <div style="position: relative; height: 30px; width: 90px">
+              <div class="solo" style="inset-inline-start: 45px">
+                <span class="achip amber">🏨 צ׳ק-אין <span class="mono" dir="ltr">15:00</span></span>
+                <span class="stem" style="height: 9px"></span>
+              </div>
+            </div>
+          </div>
+          <div class="desc">
+            <b>נקודה (Point)</b> — רגע בודד: צ׳ק-אין/אאוט למלון שקצהו השני ביום אחר, המראה/נחיתה בלי
+            בן-זוג היום. פיל + גבעול, נושא את <b>המילה</b> (אין זוג שירמז על הכיוון).
+          </div>
+          <div class="rule"></div>
+
+          <div class="ex">
+            <div style="position: relative; height: 30px; width: 90px">
+              <div class="note-mark" style="inset-inline-start: 45px; top: 4px">
+                <span class="tick"></span>
+                <span class="achip note" style="margin-top: 3px">×2</span>
+              </div>
+            </div>
+          </div>
+          <div class="desc">
+            <b>תווית-בלוק (Note)</b> — מבנה, לא מחויבות: חפיפה <span dir="ltr">×N</span> או הכלה
+            <b>כולל N</b>. ניטרלי (מחוץ לתקציב האמבר), יושב <b>מתחת</b> לבלוק שלו.
+          </div>
+        </div>
+      </div>
+
+      <!-- ================= PANEL A · ordinary day ================= -->
+      <div class="opt">
+        <div class="opt-head">
+          <span class="n">יום רגיל · שתי המשפחות יחד</span>
+        </div>
+        <div class="sec">היום במבט</div>
+        <div class="glance-day">
+          <div class="ann-above" style="height: 24px">
+            <div class="solo" style="inset-inline-start: 50%">
+              <span class="achip amber">🏨 צ׳ק-אין <span class="mono" dir="ltr">15:00</span></span>
+              <span class="stem" style="height: 9px"></span>
+            </div>
+          </div>
+          <div class="rail">
+            <div class="seg done" style="inset-inline-start: 12%; width: 7%"></div>
+            <div class="seg multi passed" style="inset-inline-start: 34%; width: 13%"></div>
+            <div class="seg now" style="inset-inline-start: 50%; width: 6%"></div>
+            <div class="seg multi upcoming" style="inset-inline-start: 60%; width: 22%"></div>
+            <div class="nowmark" style="inset-inline-start: 52%"></div>
+          </div>
+          <div class="ann-below">
+            <div class="note-mark" style="inset-inline-start: 40.5%">
+              <span class="tick"></span>
+              <span class="achip note" style="margin-top: 3px">×2</span>
+            </div>
+            <div class="note-mark" style="inset-inline-start: 71%">
+              <span class="tick"></span>
+              <span class="achip note" style="margin-top: 3px">כולל 3</span>
+            </div>
+          </div>
+          <div class="rail-ends"><span dir="ltr">07:00</span><span dir="ltr">23:00</span></div>
+          <div class="lead">
+            <div class="big"><span class="v" dir="ltr">3</span><span class="k">נותרו היום</span></div>
+            <div class="anchor">🔒 עוגן קשיח<br /><span class="tm" dir="ltr">15:00</span></div>
+          </div>
+        </div>
+        <div class="opt-note">
+          עוגן-זמן (צ׳ק-אין, אמבר) <b>מעל</b> · מבנה (חפיפה <span dir="ltr">×2</span>, הכלה כולל 3,
+          ניטרלי) <b>מתחת</b>. המשפחות אף פעם לא נערמות זו על זו, וה<span class="good"
+            >קו התחתון המשוכב</span
+          >
+          של תווית-הבלוק חוזר על הקצה המשוכב של הבלוק עצמו.
+        </div>
+      </div>
+      <div class="hr"></div>
+
+      <!-- ================= PANEL B · arrival day (edges) ================= -->
+      <div class="opt">
+        <div class="opt-head">
+          <span class="n">יום הגעה · נקודות בקצה</span>
+          <span class="tag">anchor-in</span>
+        </div>
+        <div class="sec">היום במבט</div>
+        <div class="glance-day">
+          <div class="ann-above" style="height: 24px">
+            <!-- arrival at the window's right edge → anchors inward (at-start) -->
+            <div class="solo at-start" style="inset-inline-start: 0%">
+              <span class="achip amber">✈️ נחיתה <span class="mono" dir="ltr">06:00</span></span>
+              <span class="stem" style="height: 9px"></span>
+            </div>
+            <div class="solo" style="inset-inline-start: 53%">
+              <span class="achip amber">🏨 צ׳ק-אין <span class="mono" dir="ltr">15:00</span></span>
+              <span class="stem" style="height: 9px"></span>
+            </div>
+          </div>
+          <div class="rail">
+            <div class="seg trans done" style="inset-inline-start: 0%; width: 5%"></div>
+            <div class="seg done" style="inset-inline-start: 6%; width: 9%"></div>
+            <div class="seg now" style="inset-inline-start: 40%; width: 7%"></div>
+            <div class="seg multi upcoming" style="inset-inline-start: 76%; width: 12%"></div>
+            <div class="nowmark" style="inset-inline-start: 56%"></div>
+          </div>
+          <div class="ann-below">
+            <div class="note-mark" style="inset-inline-start: 82%">
+              <span class="tick"></span>
+              <span class="achip note" style="margin-top: 3px">×2</span>
+            </div>
+          </div>
+          <div class="rail-ends"><span dir="ltr">06:00</span><span dir="ltr">23:00</span></div>
+          <div class="lead">
+            <div class="big"><span class="v" dir="ltr">2</span><span class="k">נותרו היום</span></div>
+            <div class="anchor">🔒 עוגן קשיח<br /><span class="tm" dir="ltr">15:00</span></div>
+          </div>
+        </div>
+        <div class="opt-note">
+          נחיתה <span class="mono" dir="ltr">06:00</span> היא נקודה בודדה (ההמראה הייתה אתמול) בקצה
+          הימני — הגלולה <span class="good">נצמדת פנימה</span> וגדלה לכיוון המרכז כדי לא להיחתך. חלון
+          הציר כבר נמתח עד הרגע המוקדם ביותר (glance.ts), כך שדבר לא נופל מהסקאלה.
+        </div>
+      </div>
+      <div class="hr"></div>
+
+      <!-- ================= PANEL C1 · departure day, busy default ============= -->
+      <div class="opt">
+        <div class="opt-head">
+          <span class="n">יום עזיבה · צפוף (ברירת מחדל)</span>
+        </div>
+        <div class="sec">היום במבט</div>
+        <div class="glance-day">
+          <div class="ann-above" style="height: 46px">
+            <!-- checkout point (lane 0), ferry span (lane 0), flight span (lane 0);
+                 checkout + ferry are close → ferry pill pushed to lane 1 -->
+            <div class="solo" style="inset-inline-start: 12%">
+              <span class="achip amber">🏨 צ׳ק-אאוט <span class="mono" dir="ltr">11:00</span></span>
+              <span class="stem" style="height: 9px"></span>
+            </div>
+            <div class="brk" style="inset-inline-start: 24%; width: 12%; bottom: 22px">
+              <span class="cap"
+                ><span class="achip amber"
+                  >⛴️ <span class="mono" dir="ltr">13:00</span> <span class="arr">→</span>
+                  <span class="mono" dir="ltr">15:00</span></span
+                ></span
+              >
+              <span class="bar" style="bottom: -20px; height: 27px"></span>
+            </div>
+            <div class="brk at-end" style="inset-inline-start: 73%; width: 27%">
+              <span class="cap"
+                ><span class="achip amber"
+                  >✈️ <span class="mono" dir="ltr">21:00</span> <span class="arr">→</span>
+                  <span class="mono" dir="ltr">01:30</span> <span class="plus1">+1</span></span
+                ></span
+              >
+              <span class="bar"></span>
+            </div>
+          </div>
+          <div class="rail">
+            <div class="seg trans passed" style="inset-inline-start: 24%; width: 12%"></div>
+            <div class="seg now multi" style="inset-inline-start: 48%; width: 10%"></div>
+            <div class="seg trans upcoming" style="inset-inline-start: 73%; width: 27%"></div>
+            <div class="nowmark" style="inset-inline-start: 18%"></div>
+          </div>
+          <div class="ann-below">
+            <div class="note-mark" style="inset-inline-start: 53%">
+              <span class="tick"></span>
+              <span class="achip note" style="margin-top: 3px">×2</span>
+            </div>
+          </div>
+          <div class="rail-ends"><span dir="ltr">09:00</span><span dir="ltr">01:30</span></div>
+          <div class="lead">
+            <div class="big"><span class="v" dir="ltr">3</span><span class="k">נותרו היום</span></div>
+            <div class="anchor">🔒 עוגן קשיח<br /><span class="tm" dir="ltr">21:00</span></div>
+          </div>
+        </div>
+        <div class="opt-note">
+          צ׳ק-אאוט (נקודה) + מעבורת (טווח) + טיסת לילה (טווח, <span class="mono" dir="ltr">+1</span>
+          על רגל הנחיתה שחוצה חצות). הבר של הטיסה נצמד ל<b>קצה השמאלי</b>. עדיין קריא ב-2 מסלולים —
+          אבל זו התקרה. הוסיפו הזמנה רביעית והפתרון למטה.
+        </div>
+      </div>
+      <div class="hr"></div>
+
+      <!-- ================= PANEL C2 · legs-line collapse ================= -->
+      <div class="opt">
+        <div class="opt-head">
+          <span class="n">אותו יום · קיפול לשורת מקטעים</span>
+          <span class="rec">נפילה חיננית</span>
+        </div>
+        <div class="sec">היום במבט</div>
+        <div class="glance-day">
+          <!-- when the anchor band would exceed 2 lanes, collapse it: the rail keeps
+               blocks + now + block-notes; the anchors drop to a flow line -->
+          <div class="rail">
+            <div class="seg trans passed" style="inset-inline-start: 24%; width: 12%"></div>
+            <div class="seg now multi" style="inset-inline-start: 48%; width: 10%"></div>
+            <div class="seg trans upcoming" style="inset-inline-start: 73%; width: 27%"></div>
+            <div class="nowmark" style="inset-inline-start: 18%"></div>
+          </div>
+          <div class="ann-below" style="height: 22px">
+            <div class="note-mark" style="inset-inline-start: 53%">
+              <span class="tick"></span>
+              <span class="achip note" style="margin-top: 3px">×2</span>
+            </div>
+          </div>
+          <div class="rail-ends"><span dir="ltr">09:00</span><span dir="ltr">01:30</span></div>
+          <div class="legs">
+            <span class="achip amber">🏨 צ׳ק-אאוט <span class="mono" dir="ltr">11:00</span></span>
+            <span class="achip amber"
+              >⛴️ <span class="mono" dir="ltr">13:00</span> <span class="arr">→</span>
+              <span class="mono" dir="ltr">15:00</span></span
+            >
+            <span class="achip amber"
+              >✈️ <span class="mono" dir="ltr">21:00</span> <span class="arr">→</span>
+              <span class="mono" dir="ltr">01:30</span> <span class="plus1">+1</span></span
+            >
+          </div>
+          <div class="lead">
+            <div class="big"><span class="v" dir="ltr">3</span><span class="k">נותרו היום</span></div>
+            <div class="anchor">🔒 עוגן קשיח<br /><span class="tm" dir="ltr">21:00</span></div>
+          </div>
+        </div>
+        <div class="opt-note">
+          <span class="good">אותה גלולה בדיוק</span>, פריסה זורמת במקום ממוקמת → אפס חפיפה מעצם
+          המבנה, מסודרת לפי שעה כמו לוח יציאות. הבלוקים האמבר בציר עדיין מראים <b>מתי בערך</b>. זו
+          ההרחבה של כלל <span class="mono" dir="ltr">MARKER_MIN_GAP_FRAC</span> הקיים: מעל סף צפיפות,
+          הנתיב מתקפל. הכי חסין ל-360px ולימי קצה של הטיול.
+        </div>
+      </div>
+      <div class="hr"></div>
+
+      <!-- ================= PANEL D · short span ================= -->
+      <div class="opt">
+        <div class="opt-head">
+          <span class="n">טווח קצר · הזמן חי בפיל, לא ברגליים</span>
+        </div>
+        <div class="sec">היום במבט</div>
+        <div class="glance-day">
+          <div class="ann-above" style="height: 24px">
+            <!-- 35-min flight: tiny bar, but the pill is one centered object so the
+                 two times never collide (v1's "times at the feet" problem is gone) -->
+            <div class="brk" style="inset-inline-start: 31.6%; width: 2.6%">
+              <span class="cap"
+                ><span class="achip amber"
+                  >✈️ <span class="mono" dir="ltr">08:00</span> <span class="arr">→</span>
+                  <span class="mono" dir="ltr">08:35</span></span
+                ></span
+              >
+              <span class="bar"></span>
+            </div>
+          </div>
+          <div class="rail">
+            <div class="seg trans upcoming" style="inset-inline-start: 31.6%; width: 2.6%"></div>
+            <div class="nowmark" style="inset-inline-start: 10%"></div>
+          </div>
+          <div class="rail-ends"><span dir="ltr">00:40</span><span dir="ltr">23:50</span></div>
+          <div class="lead">
+            <div class="big"><span class="v" dir="ltr">1</span><span class="k">נותרו היום</span></div>
+            <div class="anchor">🔒 עוגן קשיח<br /><span class="tm" dir="ltr">08:00</span></div>
+          </div>
+        </div>
+        <div class="opt-note">
+          בטווח צר הבר מתכווץ אבל <span class="good">הפיל נשאר אובייקט אחד ממורכז</span> — שתי השעות
+          חיות בתוכו, אז הן לא יכולות להתנגש (הבעיה של v1 שהציב שעות בקצות הבר נעלמה). הרגליים הן רק
+          נקודות מיקום.
+        </div>
+      </div>
+      <div class="hr"></div>
+
+      <!-- ================= recommendation ================= -->
+      <div class="spec" style="margin-bottom: 0">
+        <h4>המלצה · שפה אחת, מימוש הדרגתי</h4>
+        <div class="grid">
+          <div class="desc" style="grid-column: 1 / -1">
+            <b>1 · פרימיטיב אחיד.</b> החליפו את שתי מערכות התוויות בגלולה אחת (<span
+              class="mono"
+              dir="ltr"
+              >.achip</span
+            >), עם גוון=משפחה ומחבר=צורה. עוגני-זמן אמבר מעל, תוויות-מבנה ניטרליות מתחת.
+          </div>
+          <div class="rule"></div>
+          <div class="desc" style="grid-column: 1 / -1">
+            <b>2 · טווח מול נקודה, כלל אחד.</b> כל הזמנה תחומה (מלון/תחבורה): שני קצוות באותו יום →
+            טווח; קצה אחד היום → נקודה עם מילה. מלון שנפרש על ימים נופל אוטומטית לנקודה בכל קצה. זה
+            מאחד מלון עם טיסה/מעבורת תחת גזירה אחת (<span class="mono" dir="ltr"
+              >bookingTransitionsOnDate</span
+            >
+            כבר מחזירה start/end — צריך רק לצמד לפי booking כששניהם באותו יום).
+          </div>
+          <div class="rule"></div>
+          <div class="desc" style="grid-column: 1 / -1">
+            <b>3 · צפיפות → קיפול.</b> הכלילו את <span class="mono" dir="ltr">assignMarkerLanes</span>
+            לשתי הלהקות; כשלהקת העוגנים חורגת מ-2 מסלולים, קפלו לשורת מקטעים (C2). מספרי בלוק כבר
+            נושרים מתחת ל-<span class="mono" dir="ltr">MIN_COUNT_FRAC</span> — אותו עיקרון.
+          </div>
+          <div class="rule"></div>
+          <div class="desc" style="grid-column: 1 / -1">
+            <b>4 · קצוות.</b> כל עוגן בתוך <span class="mono" dir="ltr">MARKER_EDGE_FRAC</span>
+            מקצה נצמד פנימה (קיים כבר ל-tmark, מרחיבים לטווח + נקודה). החלון נמתח לרגע המוקדם/מאוחר
+            ביותר, כך ששום עוגן לא נחתך.
+          </div>
+        </div>
+      </div>
+    </div>
+  </body>
+</html>
