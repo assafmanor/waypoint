@@ -1,6 +1,12 @@
 import { describe, expect, it } from 'vitest';
 import type { EventCategory, TripEvent } from './entities';
-import { CATEGORY_TIME_PROFILE, isAmbient, isBracketed, isMultiDay } from './icons';
+import {
+  CATEGORY_TIME_PROFILE,
+  eventTransitionKeys,
+  isAmbient,
+  isBracketed,
+  isMultiDay,
+} from './icons';
 
 const ORDINARY_CATEGORIES: EventCategory[] = [
   'food',
@@ -77,6 +83,43 @@ describe('isMultiDay', () => {
   it('is false with no endDate (single overnight tail) or a same-day endDate', () => {
     expect(isMultiDay(ev({ date: '2026-07-07' }))).toBe(false);
     expect(isMultiDay(ev({ date: '2026-07-07', endDate: '2026-07-07' }))).toBe(false);
+  });
+});
+
+describe('eventTransitionKeys', () => {
+  it('resolves generic departure/arrival for a train (or any non-flight transport)', () => {
+    for (const icon of ['🚄', '🚆', '🚌', '⛴️', '🚗']) {
+      expect(eventTransitionKeys(ev({ category: 'transport', icon }))).toEqual({
+        startKey: 'departure',
+        endKey: 'arrival',
+      });
+    }
+  });
+
+  it('resolves the same generic keys for transport with no icon (manual event)', () => {
+    expect(eventTransitionKeys(ev({ category: 'transport', icon: undefined }))).toEqual({
+      startKey: 'departure',
+      endKey: 'arrival',
+    });
+  });
+
+  it('refines to take-off/landing for a flight (✈️)', () => {
+    expect(eventTransitionKeys(ev({ category: 'transport', icon: '✈️' }))).toEqual({
+      startKey: 'flightDeparture',
+      endKey: 'flightArrival',
+    });
+  });
+
+  it('resolves check-in/check-out for lodging', () => {
+    expect(eventTransitionKeys(ev({ category: 'lodging', icon: '🏨' }))).toEqual({
+      startKey: 'checkIn',
+      endKey: 'checkOut',
+    });
+  });
+
+  it('is undefined for a non-bracketed or unset category', () => {
+    expect(eventTransitionKeys(ev({ category: 'food' }))).toBeUndefined();
+    expect(eventTransitionKeys(ev({ category: undefined }))).toBeUndefined();
   });
 });
 

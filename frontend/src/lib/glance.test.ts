@@ -161,10 +161,26 @@ describe('buildDayGlance', () => {
     expect(g.segs.some((s) => s.key === 'flight')).toBe(true);
     expect(g.remaining).toBe(1);
     const keys = g.markers.map((m) => m.labelKey);
-    expect(keys).toEqual(['departure', 'arrival']); // sorted by clock position
-    const dep = g.markers.find((m) => m.labelKey === 'departure')!;
+    // A flight refines to take-off/landing, not the generic departure/arrival.
+    expect(keys).toEqual(['flightDeparture', 'flightArrival']); // sorted by clock position
+    const dep = g.markers.find((m) => m.labelKey === 'flightDeparture')!;
     expect(dep.frac).toBeCloseTo(2 / 16, 5); // 09:00 is 2h into the 07:00 window
     expect(dep.icon).toBe('✈️');
+  });
+
+  it('marks a same-day train with generic departure/arrival, not flight wording', () => {
+    const events = [
+      ev({
+        id: 'train',
+        category: 'transport',
+        kind: EVENT_KIND.HARD,
+        icon: '🚄',
+        startsAt: at('09:00'),
+        endsAt: at('11:00'),
+      }),
+    ];
+    const g = buildDayGlance(events, DATE, ms('08:00'), day07, day23, TZ);
+    expect(g.markers.map((m) => m.labelKey)).toEqual(['departure', 'arrival']);
   });
 
   it('stacks two close transition markers into separate lanes (no chip overlap)', () => {
