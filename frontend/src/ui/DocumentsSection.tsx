@@ -10,6 +10,7 @@ import { type DocumentSummary } from '@waypoint/shared';
 import { useTrip } from '../state/trip-state';
 import { usePendingUploads, useSyncStatus } from '../lib/outbox';
 import { SyncBadge } from './feedback';
+import { ListRow } from './domain';
 import { groupDocuments, formatSize } from '../lib/documents';
 import { DocumentUploadSheet } from './DocumentUploadSheet';
 import { DocumentViewer } from './DocumentViewer';
@@ -116,21 +117,15 @@ function DocumentRow({
 }) {
   const status = useSyncStatus(d.id);
   return (
-    <div className={'li doc' + (isPending ? ' pending' : '')}>
-      <button
-        type="button"
-        className="li-open"
-        onClick={onOpen}
-        disabled={isPending}
-        aria-label={d.title}
-      >
-        <div className="badge2">{DOCUMENT_TYPE_ICON[d.type]}</div>
-        <div className="main">
-          <div className="t">{d.title}</div>
-        </div>
-      </button>
-      <div className="right">
-        {isPending ? (
+    <ListRow
+      icon={DOCUMENT_TYPE_ICON[d.type]}
+      onOpen={onOpen}
+      openLabel={d.title}
+      disabled={isPending}
+      title={d.title}
+      className={isPending ? 'pending' : undefined}
+      right={
+        isPending ? (
           <span className="doc-uploading">
             <Spinner /> {t.docs.upload.saving}
           </span>
@@ -140,20 +135,14 @@ function DocumentRow({
             <span className="size" dir="ltr">
               {formatSize(d.sizeBytes)}
             </span>
-            <span className="time" aria-hidden="true">
+            <span className="doc-lock" aria-hidden="true">
               🔒
             </span>
-            <button
-              type="button"
-              className="kebab"
-              onClick={onManage}
-              aria-label={t.docs.manage.actions}
-            >
-              ⋯
-            </button>
           </>
-        )}
-      </div>
-    </div>
+        )
+      }
+      onManage={isPending ? undefined : onManage}
+      manageLabel={t.docs.manage.actions}
+    />
   );
 }
