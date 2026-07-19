@@ -348,7 +348,7 @@ export const t = {
       emoji: '🎉',
       title: 'יש טיול!',
       sub: 'עכשיו הכי חשוב - להכניס את החבורה.',
-      inviteLabel: 'לינק הזמנה · הקש להעתקה ושיתוף',
+      inviteLabel: 'לינק הזמנה · לחצו להעתקה ושיתוף',
       invitePending: 'טוען לינק הזמנה…',
       inviteFailed: 'הלינק יהיה מוכן בהגדרות הטיול',
       inviteCopied: 'הלינק הועתק · שתף בקבוצת הוואטסאפ',
@@ -566,8 +566,8 @@ export const t = {
     heading: (day: number, weekday: string, destination: string) =>
       `יום ${day} · ${weekday} · ${destination}`,
     maybeShelf: 'מדף האולי',
-    tapToSchedule: 'הקשה משבצת ליום',
-    skippedTag: 'דילגת · הקש להחזרה',
+    tapToSchedule: 'לחצו כדי לשבץ ליום',
+    skippedTag: 'דילגתם · לחצו להחזרה',
     scheduleTitle: (title: string) => `שיבוץ · ${title}`,
     // Concurrency (ADR-0041): a cluster of partially-overlapping events, and the
     // "contains N" note on an envelope that nests shorter events inside it.
