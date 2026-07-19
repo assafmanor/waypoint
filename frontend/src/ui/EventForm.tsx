@@ -22,12 +22,11 @@ import { zonedIso, isoToTimeInput, hardConflicts, formatTime, resolveEndIso } fr
 import { useUnsavedGuard } from '../lib/useUnsavedGuard';
 import { DEFAULT_EVENT_ICON } from '../constants';
 import { t } from '../i18n/he';
-import { TimePicker } from './TimePicker';
 import { IconPicker } from './IconPicker';
 import { Modal } from './primitives/Modal';
 import { Field } from './primitives/Field';
 import { FormActions } from './primitives/FormActions';
-import { DateTimeField } from './primitives/DateTimeField';
+import { WhenField } from './primitives/WhenField';
 import { ConfirmDialog } from './primitives/ConfirmDialog';
 
 export function EventForm({
@@ -205,24 +204,19 @@ export function EventForm({
             </div>
           </Field>
 
-          <Field label={t.eventForm.dateLabel} htmlFor="ef-date">
-            <DateTimeField
-              mode="date"
-              id="ef-date"
-              min={trip.startDate}
-              max={trip.endDate}
-              value={date}
-              onChange={setDate}
-            />
-          </Field>
-
-          <TimePicker
+          <WhenField
+            variant="day"
+            dateId="ef-date"
+            date={date}
             start={start}
             end={end}
             onChange={(next) => {
+              setDate(next.date);
               setStart(next.start);
               setEnd(next.end);
             }}
+            minDate={trip.startDate}
+            maxDate={trip.endDate}
           />
 
           {conflicts.length > 0 && (

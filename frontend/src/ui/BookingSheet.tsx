@@ -6,9 +6,10 @@
 // unlink choice when a booking is tied to an event (ADR-0047 §3).
 //
 // Structure folded onto the shared editing grammar (U-01/U-02/U-05): fields wear
-// the Field shell, dates flow through DateTimeField (no native datetime-local),
-// the footer is FormActions, delete routes through the generic ConfirmDialog,
-// and a dirty close is guarded by a discard confirm.
+// the Field shell, every date/time flows through the WhenField standard (a span
+// for two-endpoint bookings, a single day otherwise — never a cramped native
+// datetime box), the footer is FormActions, delete routes through the generic
+// ConfirmDialog, and a dirty close is guarded by a discard confirm.
 import { useState } from 'react';
 import {
   BOOKING_TYPE,
@@ -23,10 +24,9 @@ import { Sheet } from './Sheet';
 import { IconPicker } from './IconPicker';
 import { Icon } from './Icon';
 import { NavArrow } from './NavArrow';
-import { TimePicker } from './TimePicker';
 import { Field } from './primitives/Field';
 import { FormActions } from './primitives/FormActions';
-import { DateTimeField } from './primitives/DateTimeField';
+import { WhenField } from './primitives/WhenField';
 import { ConfirmDialog } from './primitives/ConfirmDialog';
 import { useUnsavedGuard } from '../lib/useUnsavedGuard';
 import {
@@ -40,7 +40,7 @@ import {
   routeTitle,
 } from '../lib/booking-edit';
 import { placeName } from '../lib/places';
-import { isoToTimeInput } from '../lib/time';
+import { isoToTimeInput, zonedIso } from '../lib/time';
 import { timingLabels } from '../lib/booking-timing';
 import { BOOKING_TYPE_ICON } from '../constants';
 import { t } from '../i18n/he';
@@ -51,8 +51,6 @@ interface Wifi {
 }
 
 const BOOKING_TYPES = Object.values(BOOKING_TYPE);
-/** The day part of a "YYYY-MM-DDTHH:MM" span value (empty when unset). */
-const dayOf = (v: string) => v.split('T')[0] ?? '';
 const isTransportType = (ty: BookingType) =>
   ty === BOOKING_TYPE.FLIGHT || ty === BOOKING_TYPE.TRAIN;
 // Two-endpoint schedule (start + end, may span days): transport departure→arrival,
@@ -144,10 +142,6 @@ export function BookingSheet({
   const isTransport = isTransportType(type);
   const isHotel = type === BOOKING_TYPE.HOTEL;
   const isSpan = isSpanType(type);
-  // Bound the span datetime inputs to the trip's day range (matches the
-  // single-date input's min/max). DateTimeField honours "YYYY-MM-DDTHH:MM".
-  const spanMin = `${trip.startDate}T00:00`;
-  const spanMax = `${trip.endDate}T23:59`;
 
   const dirty =
     type !== initialType ||
@@ -207,6 +201,18 @@ export function BookingSheet({
     if (isSpan ? outOfRange(spanStart) || outOfRange(spanEnd) : outOfRange(date)) {
       return setError(t.index.form.dateOutOfRange);
     }
+    // A span's end must be after its start. WhenField bounds the end's earliest
+    // day to the start day; this also rejects a same-day end at/before the start
+    // time (a time-less end stays open-ended, so only guard when both have one).
+    if (isSpan) {
+      const [sDay, sTime] = spanStart.split('T');
+      const [eDay, eTime] = spanEnd.split('T');
+      if (sTime && eTime) {
+        const s = Date.parse(zonedIso(sDay, sTime, trip.timezone));
+        const e = Date.parse(zonedIso(eDay, eTime, trip.timezone));
+        if (e <= s) return setError(t.index.form.endBeforeStart);
+      }
+    }
     setSaving(true);
     try {
       // Author places before the booking that FK-references them (see createPlace).
@@ -250,7 +256,15 @@ export function BookingSheet({
         ariaLabel={isCreate ? t.index.form.createTitle : t.index.sheet.editTitle}
         onClose={requestClose}
       >
-        <div className="booking-sheet">
+        <div
+          className="booking-sheet"
+          // Reveal the focused field above the on-screen keyboard within the
+          // scrolling sheet (matches EventForm — the keyboard never covers a field).
+          onFocusCapture={(e) => {
+            if (e.target instanceof HTMLElement)
+              e.target.scrollIntoView({ block: 'center', behavior: 'smooth' });
+          }}
+        >
           {isCreate && (
             <div className="bs-typesel">
               {BOOKING_TYPES.map((ty) => (
@@ -336,6 +350,48 @@ export function BookingSheet({
               place-picker hint under them. */}
           {isTransport && <div className="bs-route-hint">📍 {t.index.form.routeHint}</div>}
 
+          {/* "When" comes first (right after the identity row), through the one
+              WhenField standard — a span for two-endpoint bookings, a single day
+              otherwise. Never a cramped native datetime box (U-05). */}
+          {isSpan ? (
+            <>
+              <WhenField
+                variant="span"
+                start={spanStart}
+                end={spanEnd}
+                onChange={({ start: s, end: e }) => {
+                  setSpanStart(s);
+                  setSpanEnd(e);
+                }}
+                minDate={trip.startDate}
+                maxDate={trip.endDate}
+                labels={spanLabels(type)}
+                defaultDate={trip.startDate}
+                timeZone={trip.timezone}
+              />
+              {spanStart && <KindToggle kind={kind} onPick={pickKind} />}
+            </>
+          ) : (
+            <>
+              <WhenField
+                variant="day"
+                dateId="bs-date"
+                dateLabel={t.index.form.dateLabel}
+                date={date}
+                start={start}
+                end={end}
+                onChange={({ date: d, start: s, end: e }) => {
+                  setDate(d);
+                  setStart(s);
+                  setEnd(e);
+                }}
+                minDate={trip.startDate}
+                maxDate={trip.endDate}
+              />
+              {date && <KindToggle kind={kind} onPick={pickKind} />}
+            </>
+          )}
+
           <Field label={t.index.sheet.codeLabel} htmlFor="bs-code">
             <input id="bs-code" dir="ltr" value={code} onChange={(e) => setCode(e.target.value)} />
           </Field>
@@ -375,69 +431,6 @@ export function BookingSheet({
           <Field label={t.index.sheet.notesLabel} htmlFor="bs-notes">
             <textarea id="bs-notes" value={notes} onChange={(e) => setNotes(e.target.value)} />
           </Field>
-
-          {isSpan ? (
-            <>
-              {/* Two endpoints (flight departure→arrival, hotel check-in→check-out,
-                  activity start→end) that may fall on different days. Stacked full
-                  width as a journey (amber-dotted legs) so each grouped date│time
-                  control has room — not squeezed into a two-up grid. The arrival
-                  defaults to the departure's day so only its time needs picking. */}
-              <div className="bs-when">
-                <div className="bs-when-leg">
-                  <Field label={spanLabels(type).start}>
-                    <DateTimeField
-                      mode="datetime"
-                      min={spanMin}
-                      max={spanMax}
-                      value={spanStart}
-                      onChange={setSpanStart}
-                      defaultDate={trip.startDate}
-                    />
-                  </Field>
-                </div>
-                <div className="bs-when-leg">
-                  <Field label={spanLabels(type).end}>
-                    <DateTimeField
-                      mode="datetime"
-                      min={spanMin}
-                      max={spanMax}
-                      value={spanEnd}
-                      onChange={setSpanEnd}
-                      defaultDate={dayOf(spanStart) || trip.startDate}
-                    />
-                  </Field>
-                </div>
-              </div>
-              {spanStart && <KindToggle kind={kind} onPick={pickKind} />}
-            </>
-          ) : (
-            <>
-              <Field label={t.index.form.dateLabel} htmlFor="bs-date">
-                <DateTimeField
-                  mode="date"
-                  id="bs-date"
-                  min={trip.startDate}
-                  max={trip.endDate}
-                  value={date}
-                  onChange={setDate}
-                />
-              </Field>
-              {date && (
-                <>
-                  <TimePicker
-                    start={start}
-                    end={end}
-                    onChange={(next) => {
-                      setStart(next.start);
-                      setEnd(next.end);
-                    }}
-                  />
-                  <KindToggle kind={kind} onPick={pickKind} />
-                </>
-              )}
-            </>
-          )}
 
           {error && (
             <p className="field-error" role="alert">

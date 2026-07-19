@@ -180,6 +180,7 @@ export const t = {
       destShort: 'יעד',
       routeRequired: 'צריך מוצא או יעד',
       dateOutOfRange: 'התאריך מחוץ לטווח הטיול',
+      endBeforeStart: 'זמן הסיום צריך להיות אחרי ההתחלה',
       autoCaption: 'נבחר לפי סוג ההזמנה',
       reset: 'איפוס',
     },
@@ -774,6 +775,16 @@ export const t = {
     durHours: (n: number) => `${n} שעות`,
     durHoursMinutes: (h: number, m: number) => `${h}:${String(m).padStart(2, '0')} שע׳`,
     durMinutes: (m: number) => `${m} דק׳`,
+  },
+  // The "when" standard (WhenField). Shared span-endpoint copy for the tap-to-open
+  // time field, the derived duration read-out, and the crosses-a-day marker.
+  whenField: {
+    dateCap: 'תאריך',
+    timeCap: 'שעה',
+    addTime: 'הוסף שעה',
+    exactTime: 'שעה מדויקת',
+    durationPrefix: 'משך:',
+    crossesDay: 'חוצה יממה',
   },
   // Trip settings (ADR-0039): admin-governed. Mode-neutral chrome.
   settings: {
