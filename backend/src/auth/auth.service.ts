@@ -53,6 +53,13 @@ export class AuthService {
     const tokens = await exchangeGoogleCode(code, codeVerifier);
     const info = await fetchGoogleUserinfo(tokens.access_token);
 
+    // Reject an unverified Google email (B-12): account-linking keys on `email`, so
+    // an attacker who could sign in with an unverified address matching a real
+    // user's email would otherwise link into their account. Standard hardening.
+    if (!info.email_verified) {
+      throw new UnauthorizedException('Google account email is not verified');
+    }
+
     const existingIdentity = await this.prisma.authIdentity.findUnique({
       where: { provider_providerAccountId: { provider: 'google', providerAccountId: info.sub } },
     });
@@ -63,22 +70,26 @@ export class AuthService {
       ? encryptAtRest(tokens.refresh_token, requireEnv(TOKEN_ENCRYPTION_KEY), TOKEN_ENCRYPTION_KEY)
       : null;
 
-    const user = await this.prisma.user.upsert({
-      where: { email: info.email },
-      create: { email: info.email, displayName: info.name ?? info.email },
-      update: {},
-    });
-
-    await this.prisma.authIdentity.upsert({
-      where: { provider_providerAccountId: { provider: 'google', providerAccountId: info.sub } },
-      create: {
-        userId: user.id,
-        provider: 'google',
-        providerAccountId: info.sub,
-        refreshTokenEnc,
-        scopes,
-      },
-      update: { userId: user.id, scopes, ...(refreshTokenEnc && { refreshTokenEnc }) },
+    // Provision User + AuthIdentity atomically (B-12): the identity upsert failing
+    // after the user upsert used to leave a user with no linked identity.
+    const user = await this.prisma.$transaction(async (tx) => {
+      const user = await tx.user.upsert({
+        where: { email: info.email },
+        create: { email: info.email, displayName: info.name ?? info.email },
+        update: {},
+      });
+      await tx.authIdentity.upsert({
+        where: { provider_providerAccountId: { provider: 'google', providerAccountId: info.sub } },
+        create: {
+          userId: user.id,
+          provider: 'google',
+          providerAccountId: info.sub,
+          refreshTokenEnc,
+          scopes,
+        },
+        update: { userId: user.id, scopes, ...(refreshTokenEnc && { refreshTokenEnc }) },
+      });
+      return user;
     });
 
     return this.issueSession(user.id, user.email);

@@ -51,7 +51,9 @@ Full write-up + evidence in [reviews/frontend-architecture-review.md](reviews/fr
 
 Full write-up + evidence (incl. a reproduced concurrency probe) in [reviews/backend-architecture-review.md](reviews/backend-architecture-review.md). Nothing shipped yet. The **Revocable invite tokens** line under "Security & correctness" above is the same item as B-07.
 
-- **B-11/B-12/B-13 (Low)** — refresh-rotation grace window; check Google `email_verified` + define the email-change/account-link policy; orphan-blob reconciler + validate document `ownerUserId ∈ members` + standardize change `after` payloads.
+- **Orphan-blob reconciler** (deferred, from B-13/ADR-0076) — a periodic sweep listing storage keys not referenced by any `Document.fileRef`; the upload path still biases toward orphaning a blob over losing a document, with no reconciliation. Acceptable at current scale.
+- **Standardize change `after` payloads** (deferred, from B-13/ADR-0076) — several services log the partial `input` as a change's `after` rather than the persisted DTO, so `after`'s shape is inconsistent across entity types (affects feed rendering / any future replay, not correctness today).
+- **Google email-change account-link policy** (from B-12/ADR-0076) — account-linking keys on `User.email`, so a changed Google primary email creates a new `User` the identity re-points to, orphaning the old one. Current policy: treat as a new account. Revisit if an identity-merge feature is ever wanted.
 
 ## Testing
 

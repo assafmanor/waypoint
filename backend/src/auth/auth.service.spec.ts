@@ -27,8 +27,8 @@ const GOOGLE_TOKENS = {
   scope: 'openid email profile',
 };
 
-function fakeUserinfo(sub: string, email: string) {
-  return { sub, email, email_verified: true, name: 'Test User' };
+function fakeUserinfo(sub: string, email: string, emailVerified = true) {
+  return { sub, email, email_verified: emailVerified, name: 'Test User' };
 }
 
 describe('AuthService', () => {
@@ -71,6 +71,19 @@ describe('AuthService', () => {
 
     const sessions = await prisma.session.findMany({ where: { userId: user.id } });
     expect(sessions).toHaveLength(1);
+  });
+
+  // B-12: account-linking keys on email, so an unverified Google email must be
+  // rejected — otherwise it could link into a real user's account.
+  it('rejects an unverified Google email and provisions nothing', async () => {
+    const sub = `sub-${randomUUID()}`;
+    const email = `${randomUUID()}@example.com`;
+    vi.mocked(googleClient.fetchGoogleUserinfo).mockResolvedValue(fakeUserinfo(sub, email, false));
+
+    await expect(service.handleGoogleCallback('code', 'verifier')).rejects.toBeInstanceOf(
+      UnauthorizedException,
+    );
+    expect(await prisma.user.findUnique({ where: { email } })).toBeNull();
   });
 
   it('returns null (needs consent retry) when Google omits a refresh token and none is stored', async () => {

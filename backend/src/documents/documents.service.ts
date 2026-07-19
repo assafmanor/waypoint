@@ -1,5 +1,10 @@
 import { randomUUID } from 'node:crypto';
-import { Injectable, NotFoundException, UnsupportedMediaTypeException } from '@nestjs/common';
+import {
+  BadRequestException,
+  Injectable,
+  NotFoundException,
+  UnsupportedMediaTypeException,
+} from '@nestjs/common';
 import { Prisma, type Document as PrismaDocument } from '@prisma/client';
 import {
   isAllowedDocumentMimeType,
@@ -71,6 +76,7 @@ export class DocumentsService {
     file: UploadedFile,
   ): Promise<TripDocument> {
     assertAllowedMime(file.mimetype);
+    await this.assertOwnerIsMember(tripId, input.ownerUserId);
     const id = input.id ?? randomUUID();
 
     // Idempotent re-POST (ADR-0018/0056): an offline-outbox flush can retry an
@@ -216,6 +222,19 @@ export class DocumentsService {
       mimeType: document.mimeType,
       title: document.title,
     };
+  }
+
+  /** A document's `ownerUserId` (client-supplied) must be a member of the trip
+   *  (B-13) — otherwise a document could be attributed to a non-member. */
+  private async assertOwnerIsMember(tripId: string, ownerUserId?: string): Promise<void> {
+    if (!ownerUserId) return;
+    const membership = await this.prisma.membership.findUnique({
+      where: { tripId_userId: { tripId, userId: ownerUserId } },
+      select: { id: true },
+    });
+    if (!membership) {
+      throw new BadRequestException(`ownerUserId is not a member of this trip: ${ownerUserId}`);
+    }
   }
 
   private async requireDocument(tripId: string, documentId: string): Promise<PrismaDocument> {

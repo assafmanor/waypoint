@@ -3,7 +3,11 @@ import { randomUUID } from 'node:crypto';
 import { readdir, readFile, rm } from 'node:fs/promises';
 import { join } from 'node:path';
 import { afterAll, afterEach, beforeAll, describe, expect, it } from 'vitest';
-import { NotFoundException, UnsupportedMediaTypeException } from '@nestjs/common';
+import {
+  BadRequestException,
+  NotFoundException,
+  UnsupportedMediaTypeException,
+} from '@nestjs/common';
 import { PrismaService } from '../prisma/prisma.service';
 import { ChangeService } from '../sync/change.service';
 import { SyncGateway } from '../sync/sync.gateway';
@@ -90,6 +94,24 @@ describe('DocumentsService', () => {
 
     expect(await prisma.document.findMany({ where: { tripId } })).toEqual([]);
     await expect(readdir(LOCAL_STORAGE_DIR)).rejects.toMatchObject({ code: 'ENOENT' });
+  });
+
+  // B-13: a client-supplied ownerUserId must be a member of the trip — otherwise
+  // a document could be attributed to a non-member.
+  it('rejects a create whose ownerUserId is not a trip member', async () => {
+    const tripId = await newTrip();
+    const payload = Buffer.from('passport');
+
+    await expect(
+      service.create(
+        tripId,
+        DEV_USER,
+        { type: 'passport', title: 'Passport', ownerUserId: 'u-not-a-member' },
+        { buffer: payload, mimetype: 'application/pdf', size: payload.length },
+      ),
+    ).rejects.toBeInstanceOf(BadRequestException);
+
+    expect(await prisma.document.findMany({ where: { tripId } })).toEqual([]);
   });
 
   it('rejects image/svg+xml uploads (SVG can carry inline script)', async () => {
