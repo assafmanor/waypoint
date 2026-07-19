@@ -26,6 +26,10 @@ async function bootstrap() {
   }
 
   const app = await NestFactory.create<NestExpressApplication>(AppModule);
+  // Graceful shutdown (B-08): let Nest run OnModuleDestroy/OnApplicationShutdown on
+  // SIGTERM/SIGINT — Prisma disconnects cleanly and the WS server closes on deploy,
+  // instead of in-flight requests/frames being cut mid-transaction.
+  app.enableShutdownHooks();
   // Needed for the refresh-token cookie to survive the dev-only cross-origin
   // gap (:5173 → :3000); no-op in prod, which is single-origin (ADR-0020).
   app.enableCors({ origin: process.env[FRONTEND_URL] ?? DEFAULT_FRONTEND_URL, credentials: true });

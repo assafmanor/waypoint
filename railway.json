@@ -5,7 +5,7 @@
     "dockerfilePath": "Dockerfile"
   },
   "deploy": {
-    "healthcheckPath": "/health",
+    "healthcheckPath": "/health/ready",
     "healthcheckTimeout": 300,
     "preDeployCommand": "npx prisma migrate deploy",
     "restartPolicyType": "ON_FAILURE",

@@ -52,7 +52,6 @@ Full write-up + evidence in [reviews/frontend-architecture-review.md](reviews/fr
 Full write-up + evidence (incl. a reproduced concurrency probe) in [reviews/backend-architecture-review.md](reviews/backend-architecture-review.md). Nothing shipped yet. The **Revocable invite tokens** line under "Security & correctness" above is the same item as B-07.
 
 - **B-02 WS eviction on removal** (High) — `SyncGateway` authorizes membership only at upgrade; `removeMember` never closes the socket, so a removed member keeps receiving the trip's live changes. Add `disconnectUser(tripId,userId)` and call it from `removeMember`/`deleteTrip`.
-- **B-08 graceful shutdown + readiness** (Med) — `app.enableShutdownHooks()`; split `/health` (liveness) from a DB-touching `/health/ready` used as the deploy gate.
 - **B-09 growth gaps** (Med) — `@@index([userId])` on `Membership`; bound `/changes`; race-safe last-admin promotion.
 - **B-10 rate limiting** (Med) — endpoint-specific throttles (tight on auth/invite, generous on sync) that don't break offline reconnect bursts.
 - **B-11/B-12/B-13 (Low)** — refresh-rotation grace window; check Google `email_verified` + define the email-change/account-link policy; orphan-blob reconciler + validate document `ownerUserId ∈ members` + standardize change `after` payloads.

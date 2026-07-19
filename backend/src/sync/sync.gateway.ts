@@ -1,6 +1,6 @@
 import type { IncomingMessage, Server as HttpServer } from 'node:http';
 import type { Duplex } from 'node:stream';
-import { Injectable, Logger } from '@nestjs/common';
+import { Injectable, Logger, type OnApplicationShutdown } from '@nestjs/common';
 import type { Change } from '@waypoint/shared';
 import { WebSocket, WebSocketServer } from 'ws';
 import { parseCookieHeader } from '../auth/cookies.util';
@@ -24,7 +24,7 @@ type ServerMessage =
 
 /** WS /trips/:tripId/stream — realtime fan-out (ADR-0019, sync-and-offline.md). */
 @Injectable()
-export class SyncGateway {
+export class SyncGateway implements OnApplicationShutdown {
   private readonly logger = new Logger(SyncGateway.name);
   private readonly wss = new WebSocketServer({ noServer: true });
   private readonly channels = new Map<string, Map<WebSocket, string>>(); // tripId -> (socket -> userId)
@@ -38,6 +38,16 @@ export class SyncGateway {
         socket.destroy();
       });
     });
+  }
+
+  /** Graceful shutdown (B-08): close every live socket and the WS server so a
+   *  deploy/SIGTERM doesn't sever frames mid-flight or leak the listener. */
+  onApplicationShutdown(): void {
+    for (const channel of this.channels.values()) {
+      for (const client of channel.keys()) client.close(1001, 'server shutting down');
+    }
+    this.channels.clear();
+    this.wss.close();
   }
 
   private async handleUpgrade(req: IncomingMessage, socket: Duplex, head: Buffer): Promise<void> {
