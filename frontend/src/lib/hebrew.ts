@@ -15,6 +15,17 @@ export function monthCount(n: number): { value: string; unit: string } {
   return { value: String(n), unit: 'חודשים' };
 }
 
+/** Nights (a hotel stay's duration). No dual form here — unlike days/months,
+ *  it's "לילה" for one and a plain numeral "N לילות" from two up (not "ליליים"). */
+export function nightCount(n: number): { value: string; unit: string } {
+  if (n === 1) return { value: '', unit: 'לילה' };
+  return { value: String(n), unit: 'לילות' };
+}
+
+export function nightPhrase(n: number): string {
+  return joinCount(nightCount(n));
+}
+
 /** Same rule, as a single string — for plain-text contexts (chip labels). */
 export function dayPhrase(n: number): string {
   return joinCount(dayCount(n));

@@ -131,6 +131,7 @@ export const t = {
       actions: 'פעולות',
       delete: 'מחיקה',
       timing: 'מתי',
+      duration: 'משך',
       unscheduled: 'לא משובצת במסלול',
       code: 'קוד אישור',
       provider: 'ספק',

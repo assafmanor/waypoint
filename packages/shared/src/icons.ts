@@ -215,9 +215,22 @@ export interface CategoryTimeProfile {
     startKey: string;
     endKey: string;
   };
+  /** How this category's *duration* reads when shown in a preview (ADR-0063
+   *  extension): transport in **hours** (a flight is hours, even overnight),
+   *  lodging in **nights**, everything else **auto** — hours when it stays on one
+   *  calendar day, days when it spans days. Derived display only; the frontend
+   *  formatter turns it into words. */
+  durationUnit: DurationUnit;
 }
 
-const ORDINARY_PROFILE: CategoryTimeProfile = { bracketed: false, ambientWhenMultiDay: false };
+/** The unit a category's duration is expressed in (ADR-0063 extension). */
+export type DurationUnit = 'hours' | 'nights' | 'auto';
+
+const ORDINARY_PROFILE: CategoryTimeProfile = {
+  bracketed: false,
+  ambientWhenMultiDay: false,
+  durationUnit: 'auto',
+};
 
 export const CATEGORY_TIME_PROFILE: Record<EventCategory, CategoryTimeProfile> = {
   // Generic transport wording (departure/arrival) is correct for every mode — a
@@ -228,11 +241,13 @@ export const CATEGORY_TIME_PROFILE: Record<EventCategory, CategoryTimeProfile> =
     bracketed: true,
     ambientWhenMultiDay: true,
     transitions: { startKey: 'departure', endKey: 'arrival' },
+    durationUnit: 'hours',
   },
   lodging: {
     bracketed: true,
     ambientWhenMultiDay: true,
     transitions: { startKey: 'checkIn', endKey: 'checkOut' },
+    durationUnit: 'nights',
   },
   food: ORDINARY_PROFILE,
   sightseeing: ORDINARY_PROFILE,
@@ -270,6 +285,12 @@ export const eventTransitionKeys = (
   const override = event.icon != null ? ICON_TRANSITION_KEYS[event.icon] : undefined;
   return override ?? profileFor(event.category).transitions;
 };
+
+/** The unit an event's duration reads in, from its category profile (ADR-0063
+ *  extension). Keys on `category` so every surface formats duration the same way
+ *  — no per-type branching. A null/unset category uses the ordinary 'auto'. */
+export const eventDurationUnit = (event: Pick<TripEvent, 'category'>): DurationUnit =>
+  profileFor(event.category).durationUnit;
 
 type TimedEvent = Pick<TripEvent, 'category' | 'date' | 'endDate'>;
 
