@@ -13,14 +13,14 @@ Waypoint's experience layer is **well above its stage** and unmistakably designe
 
 The gaps are not visual taste; they are **systemic structure**. The screens were built ahead of the shared UI substrate the design docs promised, so several patterns are solved once per screen instead of once: modals exist in two incompatible families (and the most-used form, `EventForm`, is outside both the back-gesture and focus systems), empty/loading/error/sync feedback is bespoke per screen, and the spacing/type ramps that `design-language.md` mandates live only in prose — `tokens.css` has no spacing or type tokens, so 6.5k lines of CSS hard-code them. None of this is a rewrite; it is a **foundations-first consolidation** that most screens then shed code into.
 
-| Dimension | Health | One-line read |
-| --- | --- | --- |
-| **UX health** | **Good** | The now/next model is right and largely realized; friction is at the edges (forms, feedback, map gap). |
-| **Visual-design health** | **Strong** | Coherent, restrained, on-brand; the color budget is respected in the components sampled. |
-| **Product clarity** | **Strong** | Hard/soft, Plan/Trip, now/next are legible; the missing pillar (Map/location) is the clarity risk. |
-| **Mobile usability** | **Good, phone-only** | Excellent at ~390px; there are **no width breakpoints** — tablet/desktop get a centered 430px column. |
-| **Accessibility maturity** | **Mid** | Real progress (`useDialogFocus`, live-region status, non-color coding) but `EventForm` and zoom (ADR-0062) are open holes. |
-| **Design-system maturity** | **Emerging** | Great token _philosophy_ and a lexicon; thin token _implementation_ and few shared components. |
+| Dimension                  | Health               | One-line read                                                                                                              |
+| -------------------------- | -------------------- | -------------------------------------------------------------------------------------------------------------------------- |
+| **UX health**              | **Good**             | The now/next model is right and largely realized; friction is at the edges (forms, feedback, map gap).                     |
+| **Visual-design health**   | **Strong**           | Coherent, restrained, on-brand; the color budget is respected in the components sampled.                                   |
+| **Product clarity**        | **Strong**           | Hard/soft, Plan/Trip, now/next are legible; the missing pillar (Map/location) is the clarity risk.                         |
+| **Mobile usability**       | **Good, phone-only** | Excellent at ~390px; there are **no width breakpoints** — tablet/desktop get a centered 430px column.                      |
+| **Accessibility maturity** | **Mid**              | Real progress (`useDialogFocus`, live-region status, non-color coding) but `EventForm` and zoom (ADR-0062) are open holes. |
+| **Design-system maturity** | **Emerging**         | Great token _philosophy_ and a lexicon; thin token _implementation_ and few shared components.                             |
 
 **Top three user risks**
 
@@ -100,6 +100,7 @@ Recommendations in this review are held against these. They are derived from the
 Each entry: goal · entry · steps · strengths · friction · errors/offline · a11y · recommended · implementation.
 
 ### J1 — First open → auth
+
 - **Goal:** understand the product, sign in. **Entry:** `/login` (or any deep link → intent saved → login).
 - **Strengths:** the landing is genuinely good — dark board teaser (marketing exception, correctly the one board surface), a concise Hebrew value line, a three-feature strip, one Google CTA. Offline disables the CTA with a clear note.
 - **Friction:** the teaser is `aria-hidden` static fixture data (fine). Google is stated as text only (no logo) — deliberate and clean.
@@ -107,68 +108,82 @@ Each entry: goal · entry · steps · strengths · friction · errors/offline ·
 - **a11y:** single CTA, semantic `<h1>`. **Recommended:** keep. **Implementation:** none. **Preserve.**
 
 ### J2 — Zero-state (authed, no trips)
+
 - **Goal:** create or join a first trip. **Strengths:** the "board off / אין שידור" dormant board is a strong concept — it teaches the payoff before any data exists — with two equal create/join actions and a teach line (ADR-0024 §2). Offline disables both with a note.
 - **Friction:** the `board-off` is a bespoke component (one of ~6 empty/dormant treatments, §9). Fine in isolation; a systemic duplication.
 - **Recommended:** keep the concept; back it with the shared EmptyState family (§11). **Implementation:** cosmetic; fold into the empty-state primitive later.
 
 ### J3 — Create trip
+
 - **Goal:** a trip in three inputs. **Strengths:** exemplary progressive disclosure (ADR-0032): destination → dates → auto-suggested name+flag → live soft-grammar draft preview → a distinct post-create **invite beat** (`Created`) that puts the link in front of the creator immediately. Date validation is inline and specific ("תאריך הסיום לפני ההתחלה" / "התאריך כבר עבר").
 - **Friction:** the CTA only renders when `canCreate` — a first-timer sees no button until all fields are valid, with no hint of what's missing (the draft preview partly compensates). Consider a disabled CTA with a reason, so the affordance is always visible (principle 1: tell the user the next step). **Timezone** is silently the device tz (documented deferral, ADR open Q5).
 - **Offline:** create is disabled with a note that a friend's link still opens — good honesty.
 - **Recommended:** always-present CTA (disabled + reason). **Implementation:** screen-specific; adopt the shared form action-bar (§11) so the disabled+reason pattern is uniform.
 
 ### J4 — Join
+
 - **Goal:** join from a link. **Strengths:** the boarding-pass ticket (perforation, countdown, anonymous 🙂 avatars from a members-count-only public preview) is delightful and safe (no member names leak). One explicit tap (anon → "Continue with Google" saves intent → resumes here as "Join"). Already-member → straight in; removed → "הוסרת מהטיול…"; expired/invalid/offline each have distinct copy.
 - **Friction:** none material. The countdown/length use dual/plural Hebrew correctly.
 - **a11y:** avatars `aria-hidden`. **Recommended:** keep. **Preserve** — this is a model flow.
 
 ### J5 — Select / switch trip
+
 - **Goal:** pick or change the active trip. **Entry:** header trip-name **▾** → `/trips`. **Strengths:** sectioned list (now/soon/past), a prominent (glowless, per the board-scarcity rule) live-trip hero, offline note. Discoverable.
 - **Friction:** switching a trip unmounts into a **full-screen** `snapshot.loading` `<h1>` (state/trip-state.tsx) — a layout-jump flash rather than a skeleton that preserves chrome (§16). On weak connectivity abroad this is a blank-ish beat.
 - **Recommended:** a skeleton that keeps the header + tab frame while the snapshot loads. **Implementation:** shared LoadingState/Skeleton primitive (§11); depends on the app-shell layout primitive so chrome can render before content.
 
 ### J6 — Open during an active trip → "what now / what next"
+
 - **Goal:** zero-tap answer. **Strengths:** the board delivers — live pill, clock, now-title with hard/soft label, next-row with countdown + code chip + lock, day-progress with a now-knob. In-transit (flight in air) reframes to a teal "where you are" hero with a plane-progress bar and from→to route ends. Group-split and "ועוד N עכשיו" handle concurrency. Empty day is a calm teach card, not a 0/0. This is the product's best screen. **Preserve.**
-- **Friction:** no **leave-by / travel-time** (needs location; deferred with the map — U-06). The glance rail is information-dense (markers, lanes, composite counts, +1); _design judgment_: validate it stays readable on a genuinely busy day (the brief's warning about impressive-but-unreadable timelines). 
+- **Friction:** no **leave-by / travel-time** (needs location; deferred with the map — U-06). The glance rail is information-dense (markers, lanes, composite counts, +1); _design judgment_: validate it stays readable on a genuinely busy day (the brief's warning about impressive-but-unreadable timelines).
 - **Recommended:** keep; add leave-by when maps land; pressure-test the rail with real dense data. **Implementation:** none now; leave-by is a domain+API dependency (place data on events).
 
 ### J7 — Navigate to a specific day
+
 - **Goal:** jump to day N. **Entry:** the header day-strip (horizontal pills). **Strengths:** today keeps an amber anchor wherever you browse; past/future selection is neutral/violet; a day-scope ribbon + "חזרה להיום" when off-today (ADR-0043). Good "where's now" answerability.
 - **Friction:** the strip is the **only** day nav and is a horizontal scroll of narrow pills; on a 3-week trip, finding a specific day means scrubbing, and touch-target width needs verification (principle 7, _validate_). The selected day is **not in the URL** (frontend review open Q4), so reload/share always lands on today.
 - **Recommended:** keep the strip; consider day in the URL for deep-linking; verify pill hit-area ≥44px. **Implementation:** URL-state change (small) + a DayStrip component that owns sizing (§12).
 
 ### J8 — Create / edit a booking
+
 - **Goal:** add a flight/hotel/etc. with its code. **Strengths:** one merged create/edit `Sheet` (ADR-0047/0048); type cards; icon-picker with derived category + a revert affordance; transport identity = route inputs (not a name); hotel room/WiFi; per-type span vs. single-date scheduling; a thoughtful delete-both-vs-unlink prompt for linked events. Rich and correct.
 - **Friction:** uses native `datetime-local` for spans but the custom `TimePicker` for single-day times — two paradigms in one form family (U-05). Save/Cancel order + labels differ from `EventForm` (U-02). Backdrop-tap closes with no unsaved-changes guard on a long form (U-05).
 - **Offline:** optimistic + queued; but a later hard-fail is a global badge, not a per-booking marker (U-04 / F-03).
 - **Recommended:** unify date/time controls + action-bar + guard. **Implementation:** §11 form-system + date/time field component.
 
 ### J9 — Add / schedule a flexible plan (maybe shelf)
+
 - **Goal:** drop an idea onto a day. **Strengths:** tap a shelf card → a small time-prefilled `ScheduleSheet` → done (Tier-1, ADR-0025). Scheduled ideas leave the shelf; skipped soft events park back onto it (ADR-0027). Clean, low-ceremony.
 - **Friction:** the shelf card's third line renders `maybeMeta(id)` — a **fixture** that returns real text only for seeded demo ids and `''` for every real UUID item (U-07). So for real data the meta slot is dead. `MaybeItem` has no real meta field to show there.
 - **Recommended:** remove the fixture meta or replace with a real derived field (e.g. source/added-by/day-count). **Implementation:** drop the `fixtures` import from `DayView`/`PlanDay` (ties to F-05); a MaybeCard component owns the slot's real content.
 
 ### J10 — Reorder / retime plans
+
 - **Goal:** change order/timing. **Strengths (Plan):** drag a soft row's grip (or ▲/▼ a11y fallback) to reassign soft slots; hard events pinned; atomic + undoable (ADR-0011/0027). **Trip:** ±30 nudge adapts to phase (no pulling into the past), delay ripples soft followers with an amber suggestion bar. Genuinely travel-shaped verbs.
 - **Friction:** none major. The reorder grip is drag-first; the ▲/▼ fallback is the a11y path — verify it's reachable/visible (_validate_).
 - **Recommended:** keep. **Preserve** the verb model.
 
 ### J11 — Find a place / address
+
 - **Goal:** "where do we go / what's near." **Reality:** **not available** — Map is a placeholder; navigate-to-next is deferred (U-06). The "ניווט" verb on event cards deep-links out (good), but discovery/near-me/leave-by are absent.
 - **Recommended:** treat Map as the highest-value _next build_, not a v1.1 nicety, given it's a stated pillar and a full nav slot. **Implementation:** new surface; out of this review's remediation scope but flagged as the #1 IA gap.
 
 ### J12 — Open a travel document
+
 - **Goal:** get a passport/insurance PDF, offline. **Strengths:** grouped by type, encrypted badge, mobile-first open/download, HEIC fallback, per-row ⋯ manage, optimistic "uploading" rows from the outbox, a shared `Spinner`. Offline read via Cache API. Solid (ADR-0052/0056/0058).
 - **Friction:** viewer inline-render/MIME safety is a **backend** concern (backend review B-03) — from a UX angle, "open in tab" for an untrusted upload is the risk; the recommended download-not-open should be honored in the viewer.
 - **Recommended:** align the viewer with B-03 (attachment/download). **Implementation:** small viewer change gated on the backend header fix.
 
 ### J13 — Act while offline
+
 - **Strengths:** reads work; writes queue with an honest "queued" toast; header shows offline + pending. **Friction:** failed-sync is a **global** dismissable badge (F-03 fix), not attached to the entity that failed; there's no retry/dead-letter affordance (U-04). **Recommended:** per-item sync state + a review surface (§11 sync pattern). **Implementation:** state-model + a `SyncStatus` component.
 
 ### J14 — Return after a peer changed the trip
+
 - **Strengths:** WS fan-out updates lists live; reconnect runs catch-up; idle-resume resets to Home+today (ADR-0060). **Friction:** there is **no change-feed / "Noam moved ramen to 20:00"** in the UI (a PRD 4.2 item) — peer changes appear silently by mutation, so a returning user can't see _what_ changed, only the new state. This is the collaboration model's most visible gap (U-09). **Recommended:** a lightweight, dismissable change-feed. **Implementation:** state (recent-changes buffer, likely from the WS `change` stream) + a feed component; a domain/state addition, not visual-only.
 
 ### J15 — Loading failure / invalid-empty data
+
 - **Strengths:** snapshot error → a titled full-screen state; join invalid/expired → distinct copy; empty index/docs/day each teach. **Friction:** the snapshot error is a dead-end `<h1>` with no retry button (state/trip-state.tsx) (U-10). Empty/loading/error are each bespoke (§9). **Recommended:** shared ErrorState with a retry action. **Implementation:** §11 feedback family.
 
 ---
@@ -178,31 +193,38 @@ Each entry: goal · entry · steps · strengths · friction · errors/offline ·
 Systemic issues are stated once in §7 and referenced by ID here rather than repeated.
 
 ### Home (Trip mode) — `screens/Home.tsx`
+
 - **Purpose / primary question:** "what now, what next, how much free time?" **Hierarchy:** board (loud) → quick-access → glance. Correct.
 - **Actions:** tap next-code/WiFi/documents tiles (deep-link into Index); copy WiFi; dismiss stay-strip; jump to day builder from the empty glance.
 - **Strengths:** derived + fixture-free (ADR-0045); in-transit/group-split/empty states designed; deep-links carry `?booking=`/`?focus=docs`. **Best-in-app.**
 - **Problems:** no leave-by (U-06); glance density (_judgment_). **Edge states:** thoroughly handled. **Mobile/RTL:** dir=ltr on all numeric/code runs; logical insets on rail markers. **a11y:** progress `aria-hidden` (the numbers are the content — acceptable); the also-now expander uses `aria-expanded`. **Recommendation:** preserve; validate rail with dense data; add leave-by with maps.
 
 ### Day-by-day (Trip mode) — `screens/DayView.tsx`
+
 - **Primary question:** "what today, what's next, can this move, are we there yet?" **Strengths:** now-line + scroll-to-now; phase-derived receding; inline settle ("היינו שם?"); hard-edit guard + conflict flags; ripple bar; concurrency forest; archive chrome. Deep, correct, travel-shaped.
 - **Problems:** a very large component (~800 lines) owning many inline sub-components (U-03); `maybeMeta` fixture on shelf cards (U-07); `EventForm` opened here is the unmanaged modal (U-01). **Mobile:** the expanded verb strip is horizontally busy — verify no overflow/`44px` on the `−/+` stepper (_validate_). **RTL:** the `+1` next-day marker, mono time ranges, and route labels are dir-handled. **Recommendation:** extract EventCard/MaybeCard; fold EventForm into the modal primitive.
 
 ### Index — `screens/Index.tsx`
+
 - **Primary question:** "what are our bookings + codes, and are they scheduled?" **Strengths:** upcoming/past split; category-tinted badge + lock; code chip in mono/ltr; link cue vs. "לא משובצת"; row body → read-only detail, ⋯ → manage (mirrors documents); offline badge; deep-link consumption. Clean and offline-first.
 - **Problems:** the ⋯ kebab is a raw glyph (acceptable — not an arrow/caret, so outside the lint rule) but is styled per-use; the row/detail/manage triad is bespoke and repeated for documents — a candidate for a shared `ListRow` + `RowManageSheet` (U-03). **Empty:** teaches (mentions Gmail import — a not-yet-built pipe; wording is aspirational but honest). **RTL:** `RouteLabel` mirrors correctly. **Recommendation:** extract a shared list-row/manage pattern shared with DocumentsSection.
 
 ### PlanHome — `screens/PlanHome.tsx`
+
 - **Primary question:** "how ready are we; what's missing?" **Strengths:** violet prep hero (countdown + readiness bar, never amber — mode discipline held); real-derived checklist whose CTAs _do the thing_ (seeded create form / day builder / invite / upload); completed checks collapse to pills; a calm past-trip retrospective. Strong (ADR-0061).
 - **Problems:** the checklist row, stat tile, and prep hero are bespoke layouts (shared with nothing); `formatDateRange` is a local util (dates are formatted ad-hoc in several screens — a candidate for a shared date-format lib). **RTL:** `%` and counts are dir=ltr. **Recommendation:** keep; extract stat-tile + checklist-row if Plan grows.
 
 ### Booking / Event forms — `ui/BookingSheet.tsx`, `ui/EventForm.tsx`
+
 - See U-01, U-02, U-05. **Strengths:** rich, type-aware, good validation copy. **Problems:** the two forms are the clearest example of divergent editing grammar. **Recommendation:** §11 form-system.
 
 ### Trip settings — `screens/TripSettings.tsx`
+
 - **Primary question:** "who's here, what can I change?" **Strengths:** real-role gating (`isAdmin` from `me`+membership; server-enforced per ADR-0039); details form, member action sheet (promote/remove), invite with rotate, removed-members allow-back, leave/delete danger zone; mode-neutral chrome; confirms via the shared `Confirm` (with `useOverlay`+focus). Coherent.
 - **Problems:** its own inline `Confirm` component (a third confirmation implementation alongside `ConfirmDialog` and `DeletePrompt`) (U-02). Sampled, not fully read. **Recommendation:** route all confirms through one `ConfirmDialog`.
 
 ### Map — `App.tsx Placeholder`
+
 - **Dead placeholder** in a primary nav slot (U-06). Biggest IA gap vs. the product model.
 
 ---
@@ -344,50 +366,50 @@ IDs `U-xx` (distinct from the frontend review's `F-xx` and backend `B-xx`). Orde
 
 ## 9. Design-system assessment
 
-| Area | Consistent? | Tokenize? | Shared component? | Screen-specific? | Deprecate/consolidate |
-| --- | --- | --- | --- | --- | --- |
-| **Colors** | Yes — strict budget, honored | Already tokens (`tokens.css`) | — | — | Sweep remaining hardcoded hexes (dark-mode prereq) |
-| **Typography** | Ramp documented, **not** in CSS | **Add `--text-*`/`--leading-*`** (U-08) | Heading/Text helpers optional | — | Raw font-size px |
-| **Spacing** | 4px grid documented, **not** in CSS | **Add `--space-*`** (U-08) | `Stack`/`Inline` primitives | — | Raw margin/padding px |
-| **Layout** | Phone-only; **no breakpoints** | Add breakpoint tokens | App-shell, Screen, Section, Sticky-action | — | The blanket `max-width:430px` (make responsive) |
-| **Elevation** | 3 levels documented | `--shadow` exists; add raised/floating | — | — | Ad-hoc shadows |
-| **Borders/radii** | Ramp documented | Add `--radius-*` | — | — | Raw radius px |
-| **Icons** | Strong (`Icon`/`NavArrow` + lint) | — | Extend `Icon` (gear U-11) | Emoji-as-content | Emoji-as-control (`⚙`) |
-| **Buttons** | Mostly (semantic budget) | Use `--cta`/status tokens | `Button` variants | — | Per-screen button classes (`.bs-save`, `.create-btn`, `.plan-btn`…) |
-| **Inputs** | Divergent date/time (U-05) | — | `DateTimeField`, `Field` | — | `datetime-local` vs `TimePicker` split |
-| **Cards / list rows** | Divergent (U-03) | — | `ListRow`, `Card`, domain cards | Content only | Duplicated `.li`/`MaybeCard` |
-| **Dialogs / sheets** | **Two+ families** (U-02) | — | One `Modal`/`Sheet` + one `ConfirmDialog` | — | `.event-form-*`, 3 confirm impls |
-| **Toasts / banners** | Toast good; badges ad-hoc | Status tokens | Keep `Toast`; add `StatusBanner` | — | Stacked `.offline-badge` |
-| **Loading** | Text/spinner, **no skeletons** | — | `Skeleton`/`LoadingState` | — | Full-screen load `<h1>` |
-| **Empty** | ~6 bespoke | — | `EmptyState` | Content only | `board-off`, `empty-card`, etc. → one shell |
-| **Error** | Bespoke, no retry | — | `ErrorState` | — | Snapshot dead-end |
-| **Offline/sync** | Global badges + toasts | Status tokens | `SyncBadge` + review sheet (U-04) | — | Timed failed-badge |
+| Area                  | Consistent?                         | Tokenize?                               | Shared component?                         | Screen-specific? | Deprecate/consolidate                                               |
+| --------------------- | ----------------------------------- | --------------------------------------- | ----------------------------------------- | ---------------- | ------------------------------------------------------------------- |
+| **Colors**            | Yes — strict budget, honored        | Already tokens (`tokens.css`)           | —                                         | —                | Sweep remaining hardcoded hexes (dark-mode prereq)                  |
+| **Typography**        | Ramp documented, **not** in CSS     | **Add `--text-*`/`--leading-*`** (U-08) | Heading/Text helpers optional             | —                | Raw font-size px                                                    |
+| **Spacing**           | 4px grid documented, **not** in CSS | **Add `--space-*`** (U-08)              | `Stack`/`Inline` primitives               | —                | Raw margin/padding px                                               |
+| **Layout**            | Phone-only; **no breakpoints**      | Add breakpoint tokens                   | App-shell, Screen, Section, Sticky-action | —                | The blanket `max-width:430px` (make responsive)                     |
+| **Elevation**         | 3 levels documented                 | `--shadow` exists; add raised/floating  | —                                         | —                | Ad-hoc shadows                                                      |
+| **Borders/radii**     | Ramp documented                     | Add `--radius-*`                        | —                                         | —                | Raw radius px                                                       |
+| **Icons**             | Strong (`Icon`/`NavArrow` + lint)   | —                                       | Extend `Icon` (gear U-11)                 | Emoji-as-content | Emoji-as-control (`⚙`)                                             |
+| **Buttons**           | Mostly (semantic budget)            | Use `--cta`/status tokens               | `Button` variants                         | —                | Per-screen button classes (`.bs-save`, `.create-btn`, `.plan-btn`…) |
+| **Inputs**            | Divergent date/time (U-05)          | —                                       | `DateTimeField`, `Field`                  | —                | `datetime-local` vs `TimePicker` split                              |
+| **Cards / list rows** | Divergent (U-03)                    | —                                       | `ListRow`, `Card`, domain cards           | Content only     | Duplicated `.li`/`MaybeCard`                                        |
+| **Dialogs / sheets**  | **Two+ families** (U-02)            | —                                       | One `Modal`/`Sheet` + one `ConfirmDialog` | —                | `.event-form-*`, 3 confirm impls                                    |
+| **Toasts / banners**  | Toast good; badges ad-hoc           | Status tokens                           | Keep `Toast`; add `StatusBanner`          | —                | Stacked `.offline-badge`                                            |
+| **Loading**           | Text/spinner, **no skeletons**      | —                                       | `Skeleton`/`LoadingState`                 | —                | Full-screen load `<h1>`                                             |
+| **Empty**             | ~6 bespoke                          | —                                       | `EmptyState`                              | Content only     | `board-off`, `empty-card`, etc. → one shell                         |
+| **Error**             | Bespoke, no retry                   | —                                       | `ErrorState`                              | —                | Snapshot dead-end                                                   |
+| **Offline/sync**      | Global badges + toasts              | Status tokens                           | `SyncBadge` + review sheet (U-04)         | —                | Timed failed-badge                                                  |
 
 ---
 
 ## 10. UX pattern inventory
 
-| Pattern | Current implementations | Inconsistencies | Recommended canonical behavior | Shared component/primitive | Migration scope |
-| --- | --- | --- | --- | --- | --- |
-| Screen header | `header`, `new-head`, `zero-head`, `born-head`, `land-top`, `join-top` | Each bespoke | One `ScreenHeader` (title/back/actions slots); the in-trip shell header stays distinct | `ScreenHeader`, app-shell | Medium |
-| Primary action | `.create-btn`/`.plan-btn`/`.bs-save`/`.form-save`/`.addbtn`/`.join-cta-btn` | Labels + classes vary | One `Button variant="primary"` (neutral `--cta`) | `Button` | Medium |
-| Secondary action | `.bs-cancel`/`.confirm-cancel`/`.later-btn` | Order + labels vary | `Button variant="ghost"`; canonical order | `Button`, `FormActions` | Small |
-| Destructive action | `.bs-delete`/`.row-action.danger`/`.confirm-ok bs-danger-ok` | Placement varies | `Button tone="danger"`; always confirmed | `Button`, `ConfirmDialog` | Small |
-| Bottom action bar | inline per form | None shared | `FormActions` (primary/secondary/destructive) sticky on mobile | `FormActions`, sticky primitive | Medium |
-| Form field | `.bs-field`/`.form-field`/`.field` | 3 field shells | One `Field({label,error,children})` | `Field` | Medium |
-| Validation error | `.bs-error`/`.field-error`/`.form-error`/`.form-conflict` | 4 shapes | `Field` owns error slot + `aria-describedby` | `Field` | Small |
-| Empty state | `board-off`/`empty-card`/`glance-day.empty`/`past-build-hint` | ~6 shells | `EmptyState` shell, per-screen content | `EmptyState` | Medium |
-| Error state | snapshot `<h1>`, join copy | No retry | `ErrorState({onRetry})` | `ErrorState` | Small |
-| Loading state | `BootScreen`/`snapshot.loading`/`Spinner` | No skeletons | `Skeleton` preserving chrome | `Skeleton`/`LoadingState` | Medium |
-| Offline state | `.offline-badge` + disabled controls | Badge-only | `StatusBanner` + disabled-with-note pattern | `StatusBanner` | Small |
-| Saving state | optimistic + toast | Per-item invisible | `SyncBadge` per entity (U-04) | `SyncBadge` | Medium |
-| Sync failure | global timed badge (F-03) | Not per-item, no retry | Persistent summary → review/retry sheet | `SyncStatus` + review sheet | Medium |
-| Confirmation | `ConfirmDialog` + `DeletePrompt` + settings `Confirm` | 3 impls | One `ConfirmDialog` (tone/variants) | `ConfirmDialog` | Small |
-| Booking card/row | `Index` `.li bk` | Shares shape with docs, not code | `ListRow` + `BookingRow` domain wrapper | `ListRow`, `BookingRow` | Medium |
-| Flexible-plan card | `MaybeCard` ×2 (DayView, PlanDay) | Duplicated | One `MaybeCard` | `MaybeCard` | Small |
-| Day navigation | header `day-strip` | Single, not in URL | `DayStrip` component; consider URL day | `DayStrip` | Small–Medium |
-| Trip switcher | header name▾ → `/trips` | Consistent | Keep; extract `TripSwitcherButton` | (light) | Small |
-| Modal / bottom sheet | `Sheet` vs `.event-form-*` vs `.confirm-*` | Two+ families | One `Modal`/`Sheet` primitive | `Modal`/`Sheet` | Medium |
+| Pattern              | Current implementations                                                     | Inconsistencies                  | Recommended canonical behavior                                                         | Shared component/primitive      | Migration scope |
+| -------------------- | --------------------------------------------------------------------------- | -------------------------------- | -------------------------------------------------------------------------------------- | ------------------------------- | --------------- |
+| Screen header        | `header`, `new-head`, `zero-head`, `born-head`, `land-top`, `join-top`      | Each bespoke                     | One `ScreenHeader` (title/back/actions slots); the in-trip shell header stays distinct | `ScreenHeader`, app-shell       | Medium          |
+| Primary action       | `.create-btn`/`.plan-btn`/`.bs-save`/`.form-save`/`.addbtn`/`.join-cta-btn` | Labels + classes vary            | One `Button variant="primary"` (neutral `--cta`)                                       | `Button`                        | Medium          |
+| Secondary action     | `.bs-cancel`/`.confirm-cancel`/`.later-btn`                                 | Order + labels vary              | `Button variant="ghost"`; canonical order                                              | `Button`, `FormActions`         | Small           |
+| Destructive action   | `.bs-delete`/`.row-action.danger`/`.confirm-ok bs-danger-ok`                | Placement varies                 | `Button tone="danger"`; always confirmed                                               | `Button`, `ConfirmDialog`       | Small           |
+| Bottom action bar    | inline per form                                                             | None shared                      | `FormActions` (primary/secondary/destructive) sticky on mobile                         | `FormActions`, sticky primitive | Medium          |
+| Form field           | `.bs-field`/`.form-field`/`.field`                                          | 3 field shells                   | One `Field({label,error,children})`                                                    | `Field`                         | Medium          |
+| Validation error     | `.bs-error`/`.field-error`/`.form-error`/`.form-conflict`                   | 4 shapes                         | `Field` owns error slot + `aria-describedby`                                           | `Field`                         | Small           |
+| Empty state          | `board-off`/`empty-card`/`glance-day.empty`/`past-build-hint`               | ~6 shells                        | `EmptyState` shell, per-screen content                                                 | `EmptyState`                    | Medium          |
+| Error state          | snapshot `<h1>`, join copy                                                  | No retry                         | `ErrorState({onRetry})`                                                                | `ErrorState`                    | Small           |
+| Loading state        | `BootScreen`/`snapshot.loading`/`Spinner`                                   | No skeletons                     | `Skeleton` preserving chrome                                                           | `Skeleton`/`LoadingState`       | Medium          |
+| Offline state        | `.offline-badge` + disabled controls                                        | Badge-only                       | `StatusBanner` + disabled-with-note pattern                                            | `StatusBanner`                  | Small           |
+| Saving state         | optimistic + toast                                                          | Per-item invisible               | `SyncBadge` per entity (U-04)                                                          | `SyncBadge`                     | Medium          |
+| Sync failure         | global timed badge (F-03)                                                   | Not per-item, no retry           | Persistent summary → review/retry sheet                                                | `SyncStatus` + review sheet     | Medium          |
+| Confirmation         | `ConfirmDialog` + `DeletePrompt` + settings `Confirm`                       | 3 impls                          | One `ConfirmDialog` (tone/variants)                                                    | `ConfirmDialog`                 | Small           |
+| Booking card/row     | `Index` `.li bk`                                                            | Shares shape with docs, not code | `ListRow` + `BookingRow` domain wrapper                                                | `ListRow`, `BookingRow`         | Medium          |
+| Flexible-plan card   | `MaybeCard` ×2 (DayView, PlanDay)                                           | Duplicated                       | One `MaybeCard`                                                                        | `MaybeCard`                     | Small           |
+| Day navigation       | header `day-strip`                                                          | Single, not in URL               | `DayStrip` component; consider URL day                                                 | `DayStrip`                      | Small–Medium    |
+| Trip switcher        | header name▾ → `/trips`                                                     | Consistent                       | Keep; extract `TripSwitcherButton`                                                     | (light)                         | Small           |
+| Modal / bottom sheet | `Sheet` vs `.event-form-*` vs `.confirm-*`                                  | Two+ families                    | One `Modal`/`Sheet` primitive                                                          | `Modal`/`Sheet`                 | Medium          |
 
 ---
 
@@ -396,16 +418,19 @@ IDs `U-xx` (distinct from the frontend review's `F-xx` and backend `B-xx`). Orde
 The through-line: **build the substrate the design docs already describe, then let screens shed code into it.** Nothing here is a rewrite; it is extraction + tokenization + consolidation, staged so the app stays usable throughout.
 
 ### Design foundations (tokens)
+
 - **Add non-color tokens** (U-08): `--space-1..6` (4px grid → the `{8,12,16,20,24}` set), `--text-display..micro` + `--leading-*`, `--radius-8/12/16/22/999`, `--elevation-flat/raised/floating`. Color + motion tokens already exist and are good.
 - **Breakpoint tokens + safe-area:** define `--bp-tablet`/`--bp-desktop` and adopt `env(safe-area-inset-*)` in the app-shell/sticky primitives (phone PWA). Today there are **zero** width breakpoints.
 - **Status tokens:** formalize `pending`/`synced`/`failed` mappings (reuse `--ok`/`--miss` + a neutral) for `SyncBadge`/`StatusBanner`.
 - **Focus states:** keep the teal-on-light / amber-on-dark focus rings; ensure every new primitive inherits them.
 
 ### Layout primitives
+
 - `AppShell` (header + scrollable body frame + bottom-nav + safe-area) — lets loading/error render **inside** chrome (fixes the full-screen flash, U-10).
 - `Screen` container, `Section` (owns the `sec-title` pattern), `Stack`/`Inline` (token-spaced), `StickyActionBar` (mobile primary actions), `ResponsiveGrid` (unblocks tablet Plan). These retire the blanket `max-width:430px` in favor of breakpoint-aware max-widths.
 
 ### Shared components (responsibility · states · variants · must-not-own · a11y · RTL · replaces)
+
 - **`Modal`/`Sheet`** — portal + overlay-stack + focus. States: open/closing. Variants: bottom-sheet, centered-dialog. Must not own: form logic. a11y: `role=dialog`, focus-in/trap-optional/restore, Escape. RTL: logical insets. **Replaces:** `.event-form-*` (U-01) and unifies with `Sheet`.
 - **`ConfirmDialog`** — tone (`neutral|danger|hard`), title/body/confirm-label. **Replaces:** `DeletePrompt`, settings `Confirm` (U-02).
 - **`FormActions` / `Field` / `DateTimeField`** — canonical action order/labels; one field shell with error+`aria-describedby`; one date/time control over `TimePicker`. **Replaces:** `.bs-*`/`.form-*`/`.field*` variants + the `datetime-local` split (U-02, U-05).
@@ -415,21 +440,25 @@ The through-line: **build the substrate the design docs already describe, then l
 - **`Icon` extension:** add `settings` (U-11).
 
 ### Shared interaction patterns (canonical behavior)
+
 - **Saving/optimistic/pending/failed/retry:** one `SyncStatusModel` per entity, surfaced by `SyncBadge` + a review sheet; toasts stay for lightweight confirms, not as the only failure channel (U-04).
 - **Delete/undo:** destructive → `ConfirmDialog`; reversible → toast-undo (already the pattern) — keep the split.
 - **Navigation with unsaved changes:** `useUnsavedGuard(dirty)` intercepts overlay-close/back consistently (U-05, U-01).
 - **Loading / empty / permission failures / destructive confirmation:** each has exactly one component; screens pass content, not structure.
 
 ### State & domain requirements (not solvable with visual-only changes)
+
 - **Per-entity sync status** (U-04) — needs the outbox to expose id-keyed lookup + a rollback-on-reject reconcile (builds on F-03).
 - **Change-feed** (U-09) — a bounded recent-changes buffer off the WS `change` stream, with **correct authorship** (depends on F-05 threading `me` into writes).
 - **Selected day in URL** (U-06/J7, frontend review Q4) — a route-state change for deep-linkable days.
 - **Place data on events** — prerequisite for leave-by and the Map surface (U-06); domain + API.
 
 ### Screen composition (the target discipline)
+
 Screens **orchestrate data and compose** `AppShell → Section → domain cards/feedback`. They should not: hold >~300 lines of layout, duplicate list/card markup, re-declare foundations in CSS, or embed sync/empty/error logic inline. Domain components may depend on generic UI + tokens but **not** on trip state directly (pass props); generic UI must not import domain types.
 
 ### Migration strategy
+
 1. **Foundations before polish:** tokens (U-08) + `AppShell`/`Modal`/feedback family first — every later change reads them.
 2. **High-risk flows first:** fold `EventForm` into `Modal` (U-01) and ship `SyncBadge` (U-04) early — they carry the top user risks.
 3. **Consolidate opportunistically:** when a screen is touched, extract its row/card into the shared component and delete the local copy (no indefinite parallel patterns).
@@ -460,20 +489,20 @@ Rules: tokens depend on nothing; generic UI never imports trip-domain types or s
 
 ## 13. Recommendation dependency map
 
-| Recommendation | Depends on | Enables | Shared / screen | Design owner | Impl area | Migration order |
-| --- | --- | --- | --- | --- | --- | --- |
-| U-08 tokens (space/type/radius/elev/bp) | — | dark mode, all extractions | Shared | DS | tokens | **1** |
-| `AppShell` + layout primitives | U-08 | chrome-preserving load, tablet | Shared | DS+FE | ui/layout | **1** |
-| `Modal`/`Sheet` unify + U-01 | AppShell | consistent editing, a11y | Shared | FE | ui/primitives | **1** |
-| Feedback family + U-10 | AppShell | consistent states, retry | Shared | DS+FE | ui/feedback | **1** |
-| `SyncBadge` + U-04 | F-03 (done) | trust, offline clarity | Shared+state | FE | feedback+outbox | **1–2** |
-| `ConfirmDialog` consolidation (U-02) | Modal | one confirm grammar | Shared | FE | ui/primitives | **2** |
-| `Field`/`FormActions`/`DateTimeField` (U-02/U-05) | Modal | one form grammar | Shared | DS+FE | ui/primitives | **2** |
-| `ListRow`/domain cards (U-03) | U-08, primitives | smaller screens, no dup | Shared | FE | ui/domain | **2–3** |
-| U-07 fixture removal | F-05 | clean shelf meta | Screen+state | FE | screens+state | **2** |
-| ChangeFeed (U-09) | F-05, WS stream | visible collaboration | Shared+state | PM+FE | domain+state | **3** |
-| Day-in-URL (J7) | — | deep-linkable days | Screen+URL | FE | routing | **3** |
-| Map surface (U-06) | place data, Maps API | location pillar, leave-by | New surface | PM+DS+FE | new | **Product** |
+| Recommendation                                    | Depends on           | Enables                        | Shared / screen | Design owner | Impl area       | Migration order |
+| ------------------------------------------------- | -------------------- | ------------------------------ | --------------- | ------------ | --------------- | --------------- |
+| U-08 tokens (space/type/radius/elev/bp)           | —                    | dark mode, all extractions     | Shared          | DS           | tokens          | **1**           |
+| `AppShell` + layout primitives                    | U-08                 | chrome-preserving load, tablet | Shared          | DS+FE        | ui/layout       | **1**           |
+| `Modal`/`Sheet` unify + U-01                      | AppShell             | consistent editing, a11y       | Shared          | FE           | ui/primitives   | **1**           |
+| Feedback family + U-10                            | AppShell             | consistent states, retry       | Shared          | DS+FE        | ui/feedback     | **1**           |
+| `SyncBadge` + U-04                                | F-03 (done)          | trust, offline clarity         | Shared+state    | FE           | feedback+outbox | **1–2**         |
+| `ConfirmDialog` consolidation (U-02)              | Modal                | one confirm grammar            | Shared          | FE           | ui/primitives   | **2**           |
+| `Field`/`FormActions`/`DateTimeField` (U-02/U-05) | Modal                | one form grammar               | Shared          | DS+FE        | ui/primitives   | **2**           |
+| `ListRow`/domain cards (U-03)                     | U-08, primitives     | smaller screens, no dup        | Shared          | FE           | ui/domain       | **2–3**         |
+| U-07 fixture removal                              | F-05                 | clean shelf meta               | Screen+state    | FE           | screens+state   | **2**           |
+| ChangeFeed (U-09)                                 | F-05, WS stream      | visible collaboration          | Shared+state    | PM+FE        | domain+state    | **3**           |
+| Day-in-URL (J7)                                   | —                    | deep-linkable days             | Screen+URL      | FE           | routing         | **3**           |
+| Map surface (U-06)                                | place data, Maps API | location pillar, leave-by      | New surface     | PM+DS+FE     | new             | **Product**     |
 
 ---
 
@@ -482,24 +511,28 @@ Rules: tokens depend on nothing; generic UI never imports trip-domain types or s
 Organized by dependency, **not** by screen — foundations before dependent screen changes.
 
 ### Phase 1 — Foundations & critical usability
+
 - **User outcome:** editing behaves the same everywhere and can't be lost; saves are legible; loads don't flash; the app is ready to grow without compounding inconsistency.
 - **Design work:** define space/type/radius/elevation/breakpoint tokens; spec `Modal`, the feedback family, and `SyncBadge` states.
 - **Engineering:** U-08 tokens; `AppShell`+layout primitives; unify `Modal`/`Sheet` and **fold `EventForm` in (U-01)**; feedback family + snapshot retry + chrome-preserving load (U-10); `SyncBadge` + per-entity status (U-04).
 - **Dependencies:** none external (F-03/F-08 already shipped). **Risks:** touching the modal/overlay path — mitigate with the existing `nav-state` tests + new jsdom focus tests. **Validation:** jsdom (focus/back/close), offline→reject→per-row failed, trip-switch keeps chrome. **Exit:** one modal primitive in use; every empty/error/loading via the family; every editable entity shows sync state.
 
 ### Phase 2 — Core journey improvements
+
 - **User outcome:** consistent forms and lists; peer changes become visible.
 - **Design:** canonical form action-bar/field/date-time; `ConfirmDialog` variants; `ListRow`; ChangeFeed placement.
 - **Engineering:** U-02 confirm+form consolidation; U-05 date/time+unsaved-guard; `ListRow`+`BookingRow` (Index+Documents share); U-07 fixture removal (with F-05); ChangeFeed (U-09).
 - **Dependencies:** Phase 1 primitives; F-05 for authorship. **Risks:** form regressions — snapshot the two forms first. **Validation:** device RTL picker check; two-client change-feed test. **Exit:** one form grammar; Index/Documents share a row; a peer edit is narrated.
 
 ### Phase 3 — Component consolidation
+
 - **User outcome:** invisible to users; the codebase stops drifting.
 - **Design:** finalize the domain-component set (Board, EventCard, MaybeCard, DayStrip, GlanceCard, StatTile).
 - **Engineering:** extract domain cards out of `DayView`/`PlanDay`/`Home`; delete duplicate markup and superseded CSS (`.event-form-*`, extra confirm/empty shells); day-in-URL.
 - **Dependencies:** Phases 1–2. **Risks:** large surface — do screen-by-screen behind the components. **Validation:** LOC drop; one source per pattern; visual regression per screen. **Exit:** screens compose; no duplicated cards; `screens.css` materially smaller.
 
 ### Phase 4 — Polish & optimization
+
 - **User outcome:** refinement; dark mode becomes shippable.
 - **Work:** sweep remaining hardcoded hexes → tokens and ship dark mode (U-08 unblocked); glance-rail dense-data tuning (U-14); U-11/U-12/U-13 quick wins; motion polish; self-host fonts (F-11) for offline first-paint.
 - **Dependencies:** Phase 1 tokens. **Validation:** dark-mode contrast pass; long-content/RTL sweep. **Exit:** dark mode on; token coverage complete.
