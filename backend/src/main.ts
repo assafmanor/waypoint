@@ -8,13 +8,36 @@ import { cleanupOpenApiDoc } from 'nestjs-zod';
 import { AppModule } from './app.module';
 import { SyncGateway } from './sync/sync.gateway';
 import { DEFAULT_FRONTEND_URL, FRONTEND_URL } from './common/env';
-import { SpaFallbackFilter, STATIC_ROOT } from './common/spa-fallback.filter';
+import { AllExceptionsFilter, SPA_INDEX, STATIC_ROOT } from './common/all-exceptions.filter';
+import { ConfigValidationError, validateConfig } from './common/validate-config';
 
 async function bootstrap() {
+  // Fail fast on a misconfigured deploy (B-04) before doing anything else — never
+  // boot "healthy" only to fail at the first login/upload, and never run the
+  // DEV_AUTH bypass in production.
+  try {
+    validateConfig();
+  } catch (err) {
+    if (err instanceof ConfigValidationError) {
+      console.error(`Refusing to start.\n${err.message}`);
+      process.exit(1);
+    }
+    throw err;
+  }
+
   const app = await NestFactory.create<NestExpressApplication>(AppModule);
+  // Graceful shutdown (B-08): let Nest run OnModuleDestroy/OnApplicationShutdown on
+  // SIGTERM/SIGINT — Prisma disconnects cleanly and the WS server closes on deploy,
+  // instead of in-flight requests/frames being cut mid-transaction.
+  app.enableShutdownHooks();
   // Needed for the refresh-token cookie to survive the dev-only cross-origin
   // gap (:5173 → :3000); no-op in prod, which is single-origin (ADR-0020).
   app.enableCors({ origin: process.env[FRONTEND_URL] ?? DEFAULT_FRONTEND_URL, credentials: true });
+
+  // Trust exactly one proxy hop (Railway's) in production so rate limiting (B-10)
+  // keys on the real client IP via X-Forwarded-For — but never trust XFF in dev,
+  // where it'd let a client spoof its IP.
+  if (process.env.NODE_ENV === 'production') app.set('trust proxy', 1);
 
   // Raw `ws` upgrade handling for WS /trips/:tripId/stream (sync-and-offline.md).
   app.get(SyncGateway).attach(app.getHttpServer() as HttpServer);
@@ -27,10 +50,13 @@ async function bootstrap() {
   ); // ADR-0023: fixes up refs/nullability for the zod-derived (createZodDto) schemas
   SwaggerModule.setup('api/docs', app, document);
 
-  if (existsSync(STATIC_ROOT)) {
-    app.useStaticAssets(STATIC_ROOT);
-    app.useGlobalFilters(new SpaFallbackFilter());
-  }
+  // One global filter for the whole app: the documented error envelope (B-05),
+  // and — in production, where the built PWA exists — the SPA shell fallback for
+  // browser navigations. Passing the index path only when it exists keeps the
+  // fallback off in dev/test (JSON for everything).
+  const spaAvailable = existsSync(STATIC_ROOT);
+  if (spaAvailable) app.useStaticAssets(STATIC_ROOT);
+  app.useGlobalFilters(new AllExceptionsFilter(spaAvailable ? SPA_INDEX : undefined));
 
   const port = process.env.PORT ? Number(process.env.PORT) : 3000;
   await app.listen(port);

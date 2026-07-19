@@ -17,7 +17,7 @@ The unifying primitive is the **`Change`** record. Every **data-plane** mutation
 
 ## Realtime channel
 
-- Transport: **WebSocket** at `WS /trips/:tripId/stream`, authenticated with the session JWT; server verifies membership before subscribing.
+- Transport: **WebSocket** at `WS /trips/:tripId/stream`, authenticated with the session JWT; server verifies membership before subscribing. Membership is re-enforced on revocation, not only at upgrade: removing a member (or deleting the trip) **closes their live socket** server-side (`SyncGateway.disconnectUser`/`disconnectTrip`, ADR-0074) so a removed member stops receiving changes immediately, matching the REST 404 (backend-review B-02).
 - On the server, an in-process **per-trip channel manager** keeps the set of connected sockets for each `tripId` and broadcasts to them. Fine for this scale; swap for Postgres `LISTEN/NOTIFY` or a bus only if we ever run multiple API instances.
 
 ### Message shapes (server → client)
@@ -85,7 +85,7 @@ A quick nudge (the `+`/`−` stepper, as opposed to an explicit `date` change) i
 ### Bootstrap & catch-up
 
 - **Initial load / deep desync:** `GET /trips/:tripId/snapshot` returns the full current trip state **plus `latestSeq`**, read in one transaction (a coherent baseline with one cursor). Sets `lastSeq`.
-- **Reconnect within the log:** `GET /trips/:tripId/changes?sinceSeq=<lastSeq>` replays anything missed, then re-subscribe to the socket. (Timestamp cursors are lossy on ms collisions — always cursor on `seq`.)
+- **Reconnect within the log:** `GET /trips/:tripId/changes?sinceSeq=<lastSeq>` replays anything missed, then re-subscribe to the socket. (Timestamp cursors are lossy on ms collisions — always cursor on `seq`.) The response is **paged** at `CHANGES_PAGE_LIMIT` rows (shared constant, B-09) so a very old or reset cursor can't stream the whole log in one shot; the client keeps fetching from the last returned `seq` while a page comes back full, then stops on the first short page.
 
 ## What we explicitly do NOT build in v1
 

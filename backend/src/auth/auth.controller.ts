@@ -9,6 +9,7 @@ import {
   UnauthorizedException,
 } from '@nestjs/common';
 import { ApiBearerAuth, ApiOkResponse, ApiTags } from '@nestjs/swagger';
+import { Throttle } from '@nestjs/throttler';
 import {
   accessTokenResponseSchema,
   meSchema,
@@ -106,6 +107,9 @@ export class AuthController {
 
   @Post('refresh')
   @Public()
+  // Tight per-IP cap (B-10): a public, cheap-to-hit endpoint. Well above a real
+  // client's rotation cadence (a 15-min access token), tight enough to blunt abuse.
+  @Throttle({ default: { limit: 20, ttl: 60_000 } })
   @HttpCode(200)
   @ApiOkResponse({ type: AccessTokenDto })
   @ZodSerializerDto(AccessTokenDto)

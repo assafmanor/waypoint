@@ -22,7 +22,7 @@ import type {
   UpdateTripInput,
 } from '@waypoint/shared';
 import { PrismaService } from '../prisma/prisma.service';
-import { ChangeService } from '../sync/change.service';
+import { ChangeService, type ChangeOp } from '../sync/change.service';
 import { generateInviteCode } from './invite.util';
 import {
   toBookingDto,
@@ -147,6 +147,7 @@ export class TripsService {
     await this.assertAdmin(tripId, actorUserId);
     await this.prisma.trip.delete({ where: { id: tripId } });
     this.changes.broadcastEphemeral(tripId, this.syntheticChange(tripId, actorUserId));
+    this.changes.disconnectTrip(tripId); // close every member's live stream (B-02)
   }
 
   /** The trip's one durable invite (ADR-0067): returns the current code, minting
@@ -266,15 +267,18 @@ export class TripsService {
       await this.assertAdmin(tripId, actorUserId);
     }
 
-    await this.changes.mutate({
+    // Delete + the last-admin check/promotion run in ONE transaction, which holds
+    // the per-trip advisory lock (ADR-0068). That makes the read-then-promote
+    // race-safe (B-09): two concurrent removals fully serialize, so a trip is never
+    // left admin-less and never double-promotes. If no admin remains but members
+    // do, the earliest-joined member is promoted (ADR-0039).
+    await this.changes.mutateMany<null>({
       tripId,
       actorUserId,
-      entityType: 'membership',
-      entityId: target.id,
-      action: 'delete',
-      before: toMembershipDto(target),
       apply: async (tx) => {
-        const deleted = await tx.membership.delete({ where: { id: target.id } });
+        await tx.membership.delete({ where: { id: target.id } });
+        // An admin kick also blocks rejoin via the live invite link (ADR-0067);
+        // a self-leave writes no block. In the same txn as the delete.
         if (isAdminKick) {
           await tx.tripBlock.upsert({
             where: { tripId_userId: { tripId, userId: targetUserId } },
@@ -282,11 +286,42 @@ export class TripsService {
             update: { blockedBy: actorUserId, blockedAt: new Date() },
           });
         }
-        return deleted;
+
+        const ops: ChangeOp[] = [
+          {
+            entityType: 'membership',
+            entityId: target.id,
+            action: 'delete',
+            before: toMembershipDto(target),
+          },
+        ];
+
+        const remaining = await tx.membership.findMany({
+          where: { tripId },
+          orderBy: { joinedAt: 'asc' },
+        });
+        if (remaining.length > 0 && !remaining.some((m) => m.role === 'admin')) {
+          const next = remaining[0];
+          const promoted = await tx.membership.update({
+            where: { id: next.id },
+            data: { role: 'admin' },
+          });
+          ops.push({
+            entityType: 'membership',
+            entityId: next.id,
+            action: 'update',
+            before: toMembershipDto(next),
+            after: toMembershipDto(promoted),
+          });
+        }
+
+        return { entity: null, ops };
       },
     });
 
-    await this.ensureAdminExists(tripId, actorUserId);
+    // Evict the removed member's live WS stream (B-02) — WS membership is checked
+    // only at upgrade, so without this they keep receiving the trip's changes.
+    this.changes.disconnectUser(tripId, targetUserId);
   }
 
   /** Admin-only list of members an admin has kicked (ADR-0067) — the "Removed"
@@ -311,29 +346,6 @@ export class TripsService {
   async unblockMember(tripId: string, actorUserId: string, targetUserId: string): Promise<void> {
     await this.assertAdmin(tripId, actorUserId);
     await this.prisma.tripBlock.deleteMany({ where: { tripId, userId: targetUserId } });
-  }
-
-  /** After a removal, if no admin remains but members do, promote the
-   *  earliest-joined member (arbitrary but stable) so a trip is never
-   *  admin-less (ADR-0039). The promotion is itself a data-plane change. */
-  private async ensureAdminExists(tripId: string, actorUserId: string): Promise<void> {
-    const remaining = await this.prisma.membership.findMany({
-      where: { tripId },
-      orderBy: { joinedAt: 'asc' },
-    });
-    if (remaining.length === 0 || remaining.some((m) => m.role === 'admin')) return;
-
-    const next = remaining[0];
-    await this.changes.mutate({
-      tripId,
-      actorUserId,
-      entityType: 'membership',
-      entityId: next.id,
-      action: 'update',
-      before: toMembershipDto(next),
-      after: toMembershipDto({ ...next, role: 'admin' }),
-      apply: (tx) => tx.membership.update({ where: { id: next.id }, data: { role: 'admin' } }),
-    });
   }
 
   /** Throws 403 unless the actor is an `admin` of the trip. Assumes membership
@@ -401,25 +413,37 @@ export class TripsService {
     return trips.map((t) => toTripDto(t, t._count.memberships));
   }
 
+  /**
+   * A coherent baseline + cursor (ADR-0019). Read at RepeatableRead so all
+   * entity lists reflect one consistent snapshot, and read `latestSeq` FIRST so
+   * the cursor can only ever be stale-*low* relative to the entities — a client
+   * then harmlessly re-applies the extra change via `/changes` (idempotent). The
+   * inverse (cursor ahead of the entities) is B-01's data loss, and the
+   * write-side per-trip lock (ADR-0067) guarantees a visible `latestSeq` means
+   * every lower `seq` has already committed, so no entity it counts is missing.
+   */
   async getSnapshot(tripId: string): Promise<TripSnapshot> {
-    const [trip, members, events, bookings, documents, maybeItems, places, latestChange] =
-      await this.prisma.$transaction([
-        this.prisma.trip.findUniqueOrThrow({ where: { id: tripId } }),
-        this.prisma.membership.findMany({ where: { tripId }, include: { user: true } }),
-        this.prisma.event.findMany({
-          where: { tripId },
-          orderBy: [{ date: 'asc' }, { sortOrder: 'asc' }],
-        }),
-        this.prisma.booking.findMany({ where: { tripId } }),
-        this.prisma.document.findMany({ where: { tripId }, orderBy: { createdAt: 'asc' } }),
-        this.prisma.maybeItem.findMany({ where: { tripId } }),
-        this.prisma.place.findMany({ where: { tripId }, orderBy: { createdAt: 'asc' } }),
-        this.prisma.change.findFirst({
-          where: { tripId },
-          orderBy: { seq: 'desc' },
-          select: { seq: true },
-        }),
-      ]);
+    const [latestChange, trip, members, events, bookings, documents, maybeItems, places] =
+      await this.prisma.$transaction(
+        [
+          this.prisma.change.findFirst({
+            where: { tripId },
+            orderBy: { seq: 'desc' },
+            select: { seq: true },
+          }),
+          this.prisma.trip.findUniqueOrThrow({ where: { id: tripId } }),
+          this.prisma.membership.findMany({ where: { tripId }, include: { user: true } }),
+          this.prisma.event.findMany({
+            where: { tripId },
+            orderBy: [{ date: 'asc' }, { sortOrder: 'asc' }],
+          }),
+          this.prisma.booking.findMany({ where: { tripId } }),
+          this.prisma.document.findMany({ where: { tripId }, orderBy: { createdAt: 'asc' } }),
+          this.prisma.maybeItem.findMany({ where: { tripId } }),
+          this.prisma.place.findMany({ where: { tripId }, orderBy: { createdAt: 'asc' } }),
+        ],
+        { isolationLevel: Prisma.TransactionIsolationLevel.RepeatableRead },
+      );
 
     return {
       trip: toTripDto(trip),

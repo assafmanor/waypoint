@@ -1,13 +1,13 @@
 import type { IncomingMessage, Server as HttpServer } from 'node:http';
 import type { Duplex } from 'node:stream';
-import { Injectable, Logger } from '@nestjs/common';
+import { Injectable, Logger, type OnApplicationShutdown } from '@nestjs/common';
 import type { Change } from '@waypoint/shared';
 import { WebSocket, WebSocketServer } from 'ws';
 import { parseCookieHeader } from '../auth/cookies.util';
 import { DEV_PRINCIPAL } from '../auth/jwt-auth.guard';
 import type { Principal } from '../auth/principal';
 import { hashRefreshToken } from '../auth/token.util';
-import { DEV_AUTH } from '../common/env';
+import { isDevAuthEnabled } from '../common/env';
 import { PrismaService } from '../prisma/prisma.service';
 
 const REFRESH_COOKIE = 'wp_refresh';
@@ -24,7 +24,7 @@ type ServerMessage =
 
 /** WS /trips/:tripId/stream — realtime fan-out (ADR-0019, sync-and-offline.md). */
 @Injectable()
-export class SyncGateway {
+export class SyncGateway implements OnApplicationShutdown {
   private readonly logger = new Logger(SyncGateway.name);
   private readonly wss = new WebSocketServer({ noServer: true });
   private readonly channels = new Map<string, Map<WebSocket, string>>(); // tripId -> (socket -> userId)
@@ -38,6 +38,16 @@ export class SyncGateway {
         socket.destroy();
       });
     });
+  }
+
+  /** Graceful shutdown (B-08): close every live socket and the WS server so a
+   *  deploy/SIGTERM doesn't sever frames mid-flight or leak the listener. */
+  onApplicationShutdown(): void {
+    for (const channel of this.channels.values()) {
+      for (const client of channel.keys()) client.close(1001, 'server shutting down');
+    }
+    this.channels.clear();
+    this.wss.close();
   }
 
   private async handleUpgrade(req: IncomingMessage, socket: Duplex, head: Buffer): Promise<void> {
@@ -72,7 +82,7 @@ export class SyncGateway {
   private async authenticate(req: IncomingMessage): Promise<Principal | null> {
     const refreshToken = parseCookieHeader(req.headers.cookie)[REFRESH_COOKIE];
     if (!refreshToken) {
-      return process.env[DEV_AUTH] === '1' ? DEV_PRINCIPAL : null;
+      return isDevAuthEnabled() ? DEV_PRINCIPAL : null;
     }
 
     const session = await this.prisma.session.findUnique({
@@ -107,6 +117,35 @@ export class SyncGateway {
       if (channel?.size === 0) this.channels.delete(tripId);
       this.broadcastPresence(tripId);
     });
+  }
+
+  /**
+   * Evict a removed member's live sockets (B-02). WS membership is checked only
+   * at upgrade, so without this a removed member keeps receiving every subsequent
+   * change to a trip they were removed from. Closes their sockets and prunes the
+   * channel map; called from `removeMember` after the membership delete commits.
+   */
+  disconnectUser(tripId: string, userId: string): void {
+    const channel = this.channels.get(tripId);
+    if (!channel) return;
+    let closedAny = false;
+    for (const [client, uid] of channel) {
+      if (uid !== userId) continue;
+      client.close(1008, 'membership revoked');
+      channel.delete(client);
+      closedAny = true;
+    }
+    if (channel.size === 0) this.channels.delete(tripId);
+    else if (closedAny) this.broadcastPresence(tripId);
+  }
+
+  /** Close every socket for a trip (used on trip deletion) so no member keeps a
+   *  live stream to a trip that no longer exists (B-02). */
+  disconnectTrip(tripId: string): void {
+    const channel = this.channels.get(tripId);
+    if (!channel) return;
+    for (const client of channel.keys()) client.close(1008, 'trip deleted');
+    this.channels.delete(tripId);
   }
 
   /** Called by ChangeService after a mutation commits — never before (ADR-0019). */

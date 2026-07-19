@@ -108,6 +108,52 @@ describe('ChangeService', () => {
     expect(BigInt(second.change.seq)).toBeGreaterThan(BigInt(first.change.seq));
   });
 
+  // B-01: `Change.seq` (BIGSERIAL) is allocated at INSERT, not at commit, so
+  // without serialization a higher seq can become visible before a lower one
+  // commits and a client's cursor skips the lower change forever. The per-trip
+  // advisory lock (lockTrip) makes concurrent writes queue, so seq order ==
+  // commit order. This reproduces the interleaving: a slow writer holds the lock
+  // while a fast writer fires; on the buggy (lock-less) path the fast write would
+  // commit first with a *lower* seq — here it must wait and commit second.
+  it('serializes concurrent writes per trip so seq order == commit order (B-01)', async () => {
+    const tripId = await newTrip();
+
+    const slowWrite = service
+      .mutate({
+        tripId,
+        actorUserId: DEV_USER,
+        entityType: 'place',
+        entityId: 'pending',
+        action: 'create',
+        apply: async (tx) => {
+          await tx.$queryRaw`SELECT 1 FROM (SELECT pg_sleep(0.4)) _s`;
+          return tx.place.create({ data: { tripId, name: 'slow', updatedBy: DEV_USER } });
+        },
+      })
+      .then((r) => ({ ...r, finishedAt: Date.now() }));
+
+    // Let the slow writer take the per-trip lock first, then fire a fast writer.
+    await new Promise((resolve) => setTimeout(resolve, 100));
+    const fastWrite = service
+      .mutate({
+        tripId,
+        actorUserId: DEV_USER,
+        entityType: 'place',
+        entityId: 'pending',
+        action: 'create',
+        apply: (tx) => tx.place.create({ data: { tripId, name: 'fast', updatedBy: DEV_USER } }),
+      })
+      .then((r) => ({ ...r, finishedAt: Date.now() }));
+
+    const [slow, fast] = await Promise.all([slowWrite, fastWrite]);
+
+    // The fast writer blocks on the slow writer's lock, so it commits second and
+    // gets the higher seq. Without the lock it would finish ~300ms sooner with a
+    // lower seq — both assertions fail on the buggy path.
+    expect(fast.finishedAt).toBeGreaterThanOrEqual(slow.finishedAt);
+    expect(BigInt(fast.change.seq)).toBeGreaterThan(BigInt(slow.change.seq));
+  });
+
   it('mutateMany commits several Changes atomically and broadcasts them in order', async () => {
     const tripId = await newTrip();
     const broadcast = vi.spyOn(gateway, 'broadcast');

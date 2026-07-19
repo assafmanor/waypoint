@@ -12,6 +12,7 @@ import {
 } from '@waypoint/shared';
 import { PrismaService } from '../prisma/prisma.service';
 import { ChangeService } from '../sync/change.service';
+import { assertBookingInTrip, assertPlacesInTrip } from '../common/trip-scope.util';
 import { toBookingDto, toEventDto } from '../trips/trips.mapper';
 
 export interface RippleSuggestion {
@@ -58,6 +59,11 @@ export class EventsService {
   }
 
   async create(tripId: string, actorUserId: string, input: CreateEventInput): Promise<TripEvent> {
+    // Trip-scope client-supplied references (B-06). A linked event's place lives
+    // on its booking (ADR-0048), so only validate placeId when it isn't linked.
+    await assertBookingInTrip(this.prisma, tripId, input.bookingId);
+    if (!input.bookingId) await assertPlacesInTrip(this.prisma, tripId, [input.placeId]);
+
     const id = input.id ?? randomUUID();
     try {
       const { entity } = await this.changes.mutate({
@@ -116,6 +122,11 @@ export class EventsService {
     // place lives on the booking — force placeId null; only an unlinked event keeps one.
     const willBeLinked =
       input.bookingId !== undefined ? Boolean(input.bookingId) : Boolean(before.bookingId);
+
+    // Trip-scope client-supplied references (B-06), same as create.
+    await assertBookingInTrip(this.prisma, tripId, input.bookingId);
+    if (!willBeLinked) await assertPlacesInTrip(this.prisma, tripId, [input.placeId]);
+
     const placeIdData = willBeLinked
       ? { placeId: null }
       : input.placeId !== undefined
