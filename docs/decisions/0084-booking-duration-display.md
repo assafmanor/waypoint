@@ -29,6 +29,13 @@ The wrong fix is a `switch (booking.type)` in every surface — the exact per-ty
 - It's derived and keys on `category`, so it applies to any event, not only Bookings (a manual `lodging` event with an `endDate` reads in nights too), matching ADR-0063 §4.
 - Hebrew nights take a plain numeral from two up ("2 לילות"), **not** a dual word — unlike days/months ("יומיים"/"חודשיים"). `nightCount` encodes that exception.
 
+### Amendment (2026-07-19) — a booking's duration keys on its type, and the edit form reads nights
+
+Two follow-ups after the first build:
+
+- **Key the unit on `booking.type`, not the linked event's `category`.** A booked event's category is icon-overridable (ADR-0038 amendment), so a hotel badged with a ⭐ read in days. `bookingDurationUnit(type)` resolves the unit from the type — matching `timingLabels`, which already keys the check-in/out wording on the type — and the Index row + detail view pass it. `formatBookingDuration` takes the unit as an optional third arg (defaulting to the event's category) so it stays reusable.
+- **The edit form's span read-out reads nights too.** The `WhenField` `span` variant is elapsed-time by default ("משך: יום" for a 43h stay); it now takes a `durationUnit` and, for `nights`, phrases the two calendar days as לילות with no "crosses a day" note (a stay always does). `BookingSheet` passes `bookingDurationUnit(type)`.
+
 ## Alternatives considered
 
 - **A `switch (booking.type)` per surface.** Rejected — the per-type scattering ADR-0063 exists to prevent; three-plus copies that drift.

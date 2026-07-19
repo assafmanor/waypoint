@@ -9,7 +9,7 @@ import { BOOKING_TYPE, type Booking, type Place, type Trip } from '@waypoint/sha
 import { useTrip } from '../state/trip-state';
 import { useClock } from '../lib/useClock';
 import { splitBookings, scheduleLabel, type BookingRow } from '../lib/index-bookings';
-import { formatBookingDuration } from '../lib/booking-timing';
+import { bookingDurationUnit, formatBookingDuration } from '../lib/booking-timing';
 import { placeName } from '../lib/places';
 import { badgeClassForBookingType } from '../lib/transitions';
 import { useSyncStatus } from '../lib/outbox';
@@ -193,9 +193,14 @@ function BookingLi({
           <span className="link-cue">
             🔗 {scheduleLabel(event, booking, trip, now)}
             {(() => {
-              // Duration alongside the transition time, phrased per category
-              // (hours / nights / days) via the shared formatter (ADR-0063).
-              const dur = formatBookingDuration(event, trip.timezone);
+              // Duration alongside the transition time, phrased per the booking
+              // type (hours / nights / days) via the shared formatter (ADR-0063);
+              // the type is the authority, not the icon-overridable event category.
+              const dur = formatBookingDuration(
+                event,
+                trip.timezone,
+                bookingDurationUnit(booking.type),
+              );
               return dur ? <span className="bk-dur"> · {dur}</span> : null;
             })()}
           </span>

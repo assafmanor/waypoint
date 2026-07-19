@@ -17,7 +17,6 @@ import {
   EVENT_KIND,
   type Booking,
   type BookingType,
-  type EventCategory,
 } from '@waypoint/shared';
 import { useTrip } from '../state/trip-state';
 import { Sheet } from './Sheet';
@@ -41,7 +40,7 @@ import {
 } from '../lib/booking-edit';
 import { placeName } from '../lib/places';
 import { isoToTimeInput, zonedIso } from '../lib/time';
-import { timingLabels } from '../lib/booking-timing';
+import { bookingDurationUnit, timingLabels } from '../lib/booking-timing';
 import { BOOKING_TYPE_ICON } from '../constants';
 import { t } from '../i18n/he';
 
@@ -91,7 +90,6 @@ export function BookingSheet({
 
   // Initial values captured up front so the unsaved-changes guard can diff them.
   const initialIcon = linkedEvent?.icon ?? BOOKING_TYPE_ICON[initialType];
-  const initialCategory = linkedEvent?.category ?? BOOKING_TYPE_TO_CATEGORY[initialType];
   const initialTitle = booking?.title ?? '';
   const initialCode = booking?.confirmationCode ?? '';
   const initialOrigin = placeName(places, booking?.fromPlaceId) ?? seed?.origin ?? '';
@@ -116,7 +114,6 @@ export function BookingSheet({
   const [type, setType] = useState<BookingType>(initialType);
   const [iconTouched, setIconTouched] = useState(false);
   const [icon, setIcon] = useState(initialIcon);
-  const [category, setCategory] = useState<EventCategory>(initialCategory);
   const [title, setTitle] = useState(initialTitle);
   const [code, setCode] = useState(initialCode);
   const [origin, setOrigin] = useState(initialOrigin);
@@ -142,11 +139,14 @@ export function BookingSheet({
   const isTransport = isTransportType(type);
   const isHotel = type === BOOKING_TYPE.HOTEL;
   const isSpan = isSpanType(type);
+  // A booked event's category is its booking type's — canonical (ADR-0038), not
+  // the picked glyph. The IconPicker only sets the badge icon; a ⭐ on a hotel
+  // stays lodging, so nights/check-in-out/ambient behaviour all follow the type.
+  const category = BOOKING_TYPE_TO_CATEGORY[type];
 
   const dirty =
     type !== initialType ||
     icon !== initialIcon ||
-    category !== initialCategory ||
     title !== initialTitle ||
     code !== initialCode ||
     origin !== initialOrigin ||
@@ -166,10 +166,7 @@ export function BookingSheet({
 
   const changeType = (next: BookingType) => {
     setType(next);
-    if (!iconTouched) {
-      setIcon(BOOKING_TYPE_ICON[next]);
-      setCategory(BOOKING_TYPE_TO_CATEGORY[next]);
-    }
+    if (!iconTouched) setIcon(BOOKING_TYPE_ICON[next]);
     if (!kindTouched) setKind(defaultKind(next));
   };
   const pickKind = (k: 'hard' | 'soft') => {
@@ -286,9 +283,10 @@ export function BookingSheet({
           <div className="titlerow">
             <IconPicker
               icon={icon}
-              onChange={(next, cat) => {
+              // Booking icon is a badge only — the category comes from the type
+              // (ADR-0038), so the picker's category suggestion is ignored here.
+              onChange={(next) => {
                 setIcon(next);
-                if (cat) setCategory(cat);
                 setIconTouched(true);
               }}
             />
@@ -337,7 +335,6 @@ export function BookingSheet({
                 className="bs-revert"
                 onClick={() => {
                   setIcon(BOOKING_TYPE_ICON[type]);
-                  setCategory(BOOKING_TYPE_TO_CATEGORY[type]);
                   setIconTouched(false);
                 }}
               >
@@ -368,6 +365,7 @@ export function BookingSheet({
                 labels={spanLabels(type)}
                 defaultDate={trip.startDate}
                 timeZone={trip.timezone}
+                durationUnit={bookingDurationUnit(type)}
               />
               {spanStart && <KindToggle kind={kind} onPick={pickKind} />}
             </>

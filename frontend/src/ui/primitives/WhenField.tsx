@@ -17,8 +17,10 @@
 // full-width native date or a tap-to-open TimeField that owns its own panel, and
 // every time panel auto-closes the moment a value is picked.
 import { useEffect, useMemo, useRef, useState } from 'react';
+import { type DurationUnit } from '@waypoint/shared';
 import { DEVICE_LOCALE, MS_PER_DAY } from '../../constants';
 import { formatCountdown, zonedIso } from '../../lib/time';
+import { nightPhrase } from '../../lib/hebrew';
 import { TimePicker } from '../TimePicker';
 import { TimeField } from './TimeField';
 import { Field } from './Field';
@@ -60,6 +62,10 @@ type SpanProps = {
   /** Fallback day for the start leg when only a time is picked first. */
   defaultDate?: string;
   timeZone: string;
+  /** How the span's duration reads (ADR-0063). `nights` phrases it in לילות from
+   *  the two calendar days (a hotel is nights, not "יום"); anything else keeps the
+   *  elapsed-time read-out. Omitted → elapsed time. */
+  durationUnit?: DurationUnit;
 };
 
 export type WhenFieldProps = DayProps | SpanProps;
@@ -99,6 +105,7 @@ function WhenSpan({
   labels,
   defaultDate,
   timeZone,
+  durationUnit,
 }: SpanProps) {
   const setStart = (v: string) => onChange({ start: v, end });
   const setEnd = (v: string) => onChange({ start, end: v });
@@ -145,11 +152,20 @@ function WhenSpan({
         defaultDate={startDay || defaultDate}
         badge={crossesDays ? `+${daysApart}` : undefined}
       />
-      {duration != null && (
+      {/* A lodging span reads in nights, derived from the two calendar days (no
+          "crosses a day" note — a stay always does). Everything else keeps the
+          elapsed-time read-out, once both times are in. */}
+      {durationUnit === 'nights' && daysApart > 0 ? (
         <div className="wf-dur">
-          {t.whenField.durationPrefix} <b>{durationPhrase(duration)}</b>
-          {crossesDays && <span className="wf-dur-note"> · {t.whenField.crossesDay}</span>}
+          {t.whenField.durationPrefix} <b>{nightPhrase(daysApart)}</b>
         </div>
+      ) : (
+        duration != null && (
+          <div className="wf-dur">
+            {t.whenField.durationPrefix} <b>{durationPhrase(duration)}</b>
+            {crossesDays && <span className="wf-dur-note"> · {t.whenField.crossesDay}</span>}
+          </div>
+        )
       )}
     </div>
   );

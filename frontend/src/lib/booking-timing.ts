@@ -4,8 +4,10 @@
 // sheet, and the Index row so the wording never drifts between them.
 import {
   BOOKING_TYPE,
+  categoryForBookingType,
   eventDurationUnit,
   type BookingType,
+  type DurationUnit,
   type TripEvent,
 } from '@waypoint/shared';
 import { MS_PER_DAY } from '../constants';
@@ -43,11 +45,19 @@ const dayDiff = (from: string, to: string): number =>
  *
  *  Returns null when there's nothing to measure (no schedule, or a same-day
  *  point with no end). */
+/** The duration unit for a *booking*, keyed on its type rather than the linked
+ *  event's category. A booked event's category is icon-overridable (a hotel given
+ *  a ⭐ badge lands a non-lodging category on its event, ADR-0038), which would
+ *  read the stay in days; the type is the authority. Mirrors `timingLabels`,
+ *  which already keys the check-in/out wording on `booking.type`. */
+export const bookingDurationUnit = (type: BookingType): DurationUnit =>
+  eventDurationUnit({ category: categoryForBookingType(type) });
+
 export function formatBookingDuration(
   event: Pick<TripEvent, 'category' | 'date' | 'endDate' | 'startsAt' | 'endsAt'>,
   timeZone: string,
+  unit: DurationUnit = eventDurationUnit(event),
 ): string | null {
-  const unit = eventDurationUnit(event);
   const startDay = event.startsAt ? todayInTz(timeZone, new Date(event.startsAt)) : event.date;
   const endDay =
     event.endDate ?? (event.endsAt ? todayInTz(timeZone, new Date(event.endsAt)) : undefined);
