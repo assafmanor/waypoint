@@ -92,4 +92,25 @@ Two near-disjoint agents (forms/modals vs outbox/sync/docs), integrated **E → 
 
 **Deferred (backlogged):** event-timeline-row `SyncBadge` (EventCard has no badge slot; low value); the ~6 empty-shell → `EmptyState` + `.offline-badge` → `StatusBanner` consolidation (opportunistic, Phase-4).
 
-_(Wave 4 appended as it lands.)_
+### Wave 4 — collaboration + dark mode (2 parallel worktree agents) — DONE
+
+Two disjoint agents (C = TS/component/Home strip; DM = CSS-only), merged C → DM (zero conflicts — `backlog.md` auto-merged since they pruned different findings).
+
+- **C — group ChangeFeed (U-09)** (commit 45e589d, ADR-0081): a bounded (last 20) recent-changes buffer (`state/change-feed.tsx`) fed off the existing `applyRemoteChange` WS choke point — it **narrates, never re-applies**; a quiet dismissable `ui/domain/ChangeFeed` strip on the Trip-mode Home below the board (not a second loud surface); own edits filtered out; polite live region; attribution via F-05's `actorUserId` + roster. 9 jsdom tests.
+- **DM — dark-mode hex sweep (U-08 Phase-4 tail)**: 39 hard-coded hexes in `App.css`/`screens.css` → semantic tokens; 2 tokens added (`--faint`, `--amber-ink`) with dark remaps; 71 hexes intentionally left (Google brand, on-fill ink, always-dark chrome, always-violet plan hero) with markers. Dark remap now complete → **dark mode is shippable behind the `data-theme` toggle**. Contrast **computed** (not observed — no runtime): all key pairs clear AA in both themes except `--faint` in light (2.63:1, the _unchanged_ original hint value, not a regression); caught + fixed a real regression (archive-banner text → `--ink`). `design-language.md` updated.
+
+**Gate (integrated):** frontend typecheck ✅ (explicit `tsc`), build ✅, **503 tests (52 files)**, lint 0 errors (7 pre-existing warnings), backend build ✅, `format:check` ✅.
+
+---
+
+## Final state (all waves shipped)
+
+**Shipped:** U-01, U-02, U-03, U-04, U-05, U-07, U-08 (tokens + dark-color sweep), U-09, U-10 (family + snapshot states), U-11, U-12, U-13 — via the shared layer (tokens → primitives → feedback → domain), each with superseded code deleted (no old+new duplication) and jsdom tests on every primitive. ADRs 0077–0081. Day-in-URL (`?day=`) added (review Q5). Test suite 360 → **503**.
+
+**Flagged to product (not started, per scope):** U-06 (Map surface / location pillar).
+
+**Validation-only (not code):** U-14 (glance-rail density on a 3-week trip) — needs real-data testing, tracked in the review §7/§17.
+
+**Deferred / opportunistic (backlogged):** event-row `SyncBadge` (no slot on `EventCard`); the ~6 empty shells → `EmptyState` + `.offline-badge` → `StatusBanner`; raw-px→token migration in the legacy CSS + a CI raw-px lint budget; the nested-overlay Escape refinement; live in-browser dark-mode contrast + theme-toggle wiring.
+
+**Verification honesty:** the runnable floor here was frontend typecheck + build + unit tests + lint + format + backend build (no Docker/Postgres, so backend `#test` and a live app drive were unavailable). Contrast is computed, not observed. Three Wave-3 + zero Wave-4 agents hit a shared account rate limit mid-gate; their completed work was salvaged from their worktrees and re-verified centrally.
