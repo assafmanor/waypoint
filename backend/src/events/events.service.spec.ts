@@ -1,6 +1,6 @@
 import 'reflect-metadata';
 import { afterAll, afterEach, describe, expect, it, vi } from 'vitest';
-import { ConflictException } from '@nestjs/common';
+import { BadRequestException, ConflictException } from '@nestjs/common';
 import { EVENT_KIND, EVENT_STATUS } from '@waypoint/shared';
 import { PrismaService } from '../prisma/prisma.service';
 import { ChangeService } from '../sync/change.service';
@@ -41,6 +41,64 @@ describe('EventsService', () => {
   });
 
   afterAll(() => prisma.$disconnect());
+
+  // B-06: events wrote client-supplied bookingId/placeId unchecked, so a member of
+  // trip A could reference trip B's booking/place (corrupting the Event↔Booking 1:1
+  // across trips and escaping the same-trip hard-event guard). Both are now
+  // trip-scoped and a cross-trip reference is a 400.
+  it("rejects an event referencing another trip's booking (cross-trip)", async () => {
+    const tripA = await newTrip();
+    const tripB = await newTrip();
+    const foreignBooking = await prisma.booking.create({
+      data: { tripId: tripB, type: 'hotel', title: 'B hotel', updatedBy: DEV_USER },
+    });
+
+    await expect(
+      service.create(tripA, DEV_USER, {
+        date: DAY,
+        title: 'Linked to B',
+        kind: EVENT_KIND.SOFT,
+        bookingId: foreignBooking.id,
+        source: 'manual',
+      }),
+    ).rejects.toBeInstanceOf(BadRequestException);
+
+    expect(await service.list(tripA)).toEqual([]);
+  });
+
+  it("rejects an event referencing another trip's place (cross-trip)", async () => {
+    const tripA = await newTrip();
+    const tripB = await newTrip();
+    const foreignPlace = await prisma.place.create({
+      data: { tripId: tripB, name: 'B place', updatedBy: DEV_USER },
+    });
+
+    await expect(
+      service.create(tripA, DEV_USER, {
+        date: DAY,
+        title: 'At B place',
+        kind: EVENT_KIND.SOFT,
+        placeId: foreignPlace.id,
+        source: 'manual',
+      }),
+    ).rejects.toBeInstanceOf(BadRequestException);
+  });
+
+  it('accepts an event referencing a place in the same trip', async () => {
+    const tripId = await newTrip();
+    const place = await prisma.place.create({
+      data: { tripId, name: 'A place', updatedBy: DEV_USER },
+    });
+
+    const created = await service.create(tripId, DEV_USER, {
+      date: DAY,
+      title: 'At A place',
+      kind: EVENT_KIND.SOFT,
+      placeId: place.id,
+      source: 'manual',
+    });
+    expect(created.placeId).toBe(place.id);
+  });
 
   it('creates an event through ChangeService and reads it back via list()', async () => {
     const tripId = await newTrip();
