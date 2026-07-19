@@ -1,39 +1,29 @@
 // WhenField — the one sanctioned way any form collects a date/time (U-05, the
-// "when" standard). Two variants cover every case, present and future:
+// "when" standard). Both variants build on the SAME shared time atom (TimeField),
+// so the event and booking pickers behave identically — they differ only in what
+// they compose around it:
 //
-//  - variant="day"  → a single day + a same-day start→end time range. The date is
-//    the native full-width date field (a real OS calendar, can't be clipped); the
-//    time is the amber TimePicker (quantized quick-pick + exact fallback, overnight
-//    aware, ADR-0036/0037). Value: { date, start, end }.
+//  - variant="day"  → a single day + the event TimePicker (start + duration,
+//    single calendar day, overnight-aware — ADR-0036/0037). Value: { date, start, end }.
 //
 //  - variant="span" → two endpoints (departure→arrival, check-in→check-out,
-//    start→end) that may fall on any two trip days — NOT capped to one calendar
-//    day. Each endpoint is the SAME event grammar: a full-width native date field
-//    plus a tap-to-open amber time picker. A derived "+N days" badge and a duration
-//    read-out sit between the legs. Value per endpoint: "YYYY-MM-DDTHH:MM"
+//    start→end) that may fall on any two trip days (NOT capped to one day). Each
+//    endpoint is a native date field + a TimeField; a derived "+N days" badge and
+//    a duration read-out sit below. Value per endpoint: "YYYY-MM-DDTHH:MM"
 //    (exactly what buildSpanSeed already consumes).
 //
 // The rule the standard enforces: a date/time input is NEVER a raw native control
-// squeezed into a horizontal row (the cropped-date / AM-PM bug). Every part is
-// either a full-width native field or a tap-to-open field that owns its own panel,
-// and every panel auto-closes the moment a value is picked (like the TimePicker).
+// squeezed into a horizontal row (the cropped-date / AM-PM bug). Every part is a
+// full-width native date or a tap-to-open TimeField that owns its own panel, and
+// every time panel auto-closes the moment a value is picked.
 import { useEffect, useMemo, useRef, useState } from 'react';
-import { DEVICE_LOCALE, MINUTES_PER_DAY, MS_PER_DAY } from '../../constants';
+import { DEVICE_LOCALE, MS_PER_DAY } from '../../constants';
 import { formatCountdown, zonedIso } from '../../lib/time';
-import { nearestRoundSlot } from '../TimePicker';
 import { TimePicker } from '../TimePicker';
+import { TimeField } from './TimeField';
 import { Field } from './Field';
 import { t } from '../../i18n/he';
 import './when-field.css';
-
-const STEP = 15;
-const pad = (n: number) => String(n).padStart(2, '0');
-const toMin = (hhmm: string) => {
-  const [h, m] = hhmm.split(':').map(Number);
-  return h * 60 + m;
-};
-const toHHMM = (min: number) => `${pad(Math.floor(min / 60))}:${pad(min % 60)}`;
-const ALL_TIMES = Array.from({ length: MINUTES_PER_DAY / STEP }, (_, i) => i * STEP);
 
 const dayOf = (v: string) => v.split('T')[0] ?? '';
 const timeOf = (v: string) => v.split('T')[1] ?? '';
@@ -42,13 +32,6 @@ const timeOf = (v: string) => v.split('T')[1] ?? '';
  *  shifts a calendar-day count). */
 function dayDiff(from: string, to: string): number {
   return Math.round((Date.parse(`${to}T00:00:00Z`) - Date.parse(`${from}T00:00:00Z`)) / MS_PER_DAY);
-}
-
-/** Scroll the selected row — or the nearest-round suggestion for an off-grid
- *  value — to the vertical centre of its list on open (mirrors the TimePicker). */
-function centreSelected(list: HTMLDivElement | null) {
-  const on = list?.querySelector<HTMLElement>('.tp-list-on, .tp-list-suggest');
-  if (on && list) list.scrollTop = on.offsetTop - list.clientHeight / 2 + on.clientHeight / 2;
 }
 
 type DayProps = {
@@ -85,7 +68,7 @@ export function WhenField(props: WhenFieldProps) {
   return props.variant === 'day' ? <WhenDay {...props} /> : <WhenSpan {...props} />;
 }
 
-// ── variant="day": native date + the amber range TimePicker ──────────────────
+// ── variant="day": native date + the event TimePicker (start + duration) ──────
 function WhenDay({ date, start, end, onChange, minDate, maxDate, dateId, dateLabel }: DayProps) {
   return (
     <div className="wf">
@@ -106,7 +89,7 @@ function WhenDay({ date, start, end, onChange, minDate, maxDate, dateId, dateLab
   );
 }
 
-// ── variant="span": two [native date + tap-to-open time] legs, uncapped ───────
+// ── variant="span": two [native date + TimeField] endpoints, uncapped ─────────
 function WhenSpan({
   start,
   end,
@@ -177,11 +160,11 @@ function durationPhrase(mins: number): string {
   return `${value} ${unit}`;
 }
 
-// One span endpoint: a full-width native date + a tap-to-open amber time field
-// whose panel opens full width below the row and auto-closes on pick. Local
-// parts (date/time) are held so a half-entered endpoint never wipes the part
-// just picked — the combined "YYYY-MM-DDTHH:MM" is emitted only when a date
-// exists (a bare time falls back to defaultDate, either entry order works).
+// One span endpoint: a native date cell + the shared TimeField, in a flex-wrap
+// row so the TimeField's panel wraps full-width below both. Local date/time parts
+// are held so a half-entered endpoint never wipes the part just picked — the
+// combined "YYYY-MM-DDTHH:MM" is emitted only when a date exists (a bare time
+// borrows defaultDate, so either entry order works).
 function SpanLeg({
   label,
   value,
@@ -201,7 +184,6 @@ function SpanLeg({
 }) {
   const [date, setDate] = useState(() => dayOf(value));
   const [time, setTime] = useState(() => timeOf(value));
-  const [open, setOpen] = useState(false);
   const lastEmit = useRef(value);
 
   useEffect(() => {
@@ -222,14 +204,6 @@ function SpanLeg({
     onChange(combined);
   };
 
-  const timeMin = time ? toMin(time) : null;
-  const suggest = timeMin != null && timeMin % STEP !== 0 ? nearestRoundSlot(timeMin) : null;
-
-  const pick = (min: number) => {
-    commit(date || defaultDate || '', toHHMM(min));
-    setOpen(false);
-  };
-
   return (
     <div className="wf-leg">
       <div className="wf-leg-cap">
@@ -241,11 +215,11 @@ function SpanLeg({
         )}
       </div>
       <div className="wf-leg-row">
-        <label className="wf-cell wf-cell-date">
-          <span className="wf-cell-cap">{t.whenField.dateCap}</span>
+        <label className="tp-field wf-date-cell">
+          <span className="tp-cap">{t.whenField.dateCap}</span>
           <input
             type="date"
-            className="wf-cell-val"
+            className="tp-val wf-date-val"
             lang={DEVICE_LOCALE}
             min={minDate}
             max={maxDate}
@@ -253,63 +227,14 @@ function SpanLeg({
             onChange={(e) => commit(e.target.value, time)}
           />
         </label>
-        <button
-          type="button"
-          className={'wf-cell wf-cell-time' + (open ? ' open' : '')}
-          onClick={() => setOpen((o) => !o)}
-        >
-          <span className="wf-cell-cap">{t.whenField.timeCap}</span>
-          <span className="wf-cell-val wf-time-val" dir="ltr">
-            {time || <span className="wf-time-ph">{t.whenField.addTime}</span>}
-          </span>
-        </button>
+        <TimeField
+          value={time}
+          onChange={(hhmm) => commit(date || defaultDate || '', hhmm)}
+          onClear={() => commit(date, '')}
+          label={t.whenField.timeCap}
+          placeholder={t.whenField.addTime}
+        />
       </div>
-
-      {open && <div className="tp-backdrop" onClick={() => setOpen(false)} />}
-      {open && (
-        <div className="tp-panel wf-panel">
-          <div className="tp-exact">
-            <span className="tp-exact-lbl">{t.whenField.exactTime}</span>
-            <input
-              type="time"
-              step={60}
-              lang="he"
-              dir="ltr"
-              className="tp-time-input"
-              value={time}
-              onChange={(e) => e.target.value && pick(toMin(e.target.value))}
-            />
-          </div>
-          <div className="tp-list" ref={centreSelected}>
-            {ALL_TIMES.map((min) => (
-              <button
-                key={min}
-                type="button"
-                className={
-                  min === timeMin ? 'tp-list-on' : min === suggest ? 'tp-list-suggest' : undefined
-                }
-                onClick={() => pick(min)}
-              >
-                <span dir="ltr">{toHHMM(min)}</span>
-              </button>
-            ))}
-          </div>
-          {/* The clear lives inside the picker (not floating between the legs):
-              clearing this endpoint's time and closing, like picking a row. */}
-          {time && (
-            <button
-              type="button"
-              className="wf-panel-clear"
-              onClick={() => {
-                commit(date, '');
-                setOpen(false);
-              }}
-            >
-              {t.eventForm.noTime}
-            </button>
-          )}
-        </div>
-      )}
     </div>
   );
 }

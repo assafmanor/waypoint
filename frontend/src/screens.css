@@ -755,6 +755,7 @@
 }
 .tp-fields {
   display: flex;
+  flex-wrap: wrap;
   gap: 9px;
 }
 .tp-field {
@@ -847,13 +848,34 @@
 .tp-panel {
   position: relative;
   z-index: 6;
-  margin-top: 6px;
+  /* A full-width line that wraps BELOW the trigger row (the triggers + panel
+     share one flex-wrap row; the panel's 100% basis + order push it under them,
+     so it's never nested in a flex trigger nor an overflow-clipped popover). */
+  order: 1;
+  flex: 0 0 100%;
   width: 100%;
   background: var(--card);
   border: 1px solid var(--line);
   border-radius: 12px;
   box-shadow: 0 12px 26px -14px rgba(14, 23, 41, 0.35);
   overflow: hidden;
+}
+/* Clear-time footer inside the picker panel (not floating in the form layout). */
+.tp-panel-clear {
+  display: block;
+  width: 100%;
+  border: none;
+  border-top: 1px solid var(--line);
+  background: var(--card);
+  padding: 11px 13px;
+  font: inherit;
+  font-size: 13px;
+  font-weight: 600;
+  color: var(--muted);
+  cursor: pointer;
+}
+.tp-panel-clear:active {
+  background: var(--paper);
 }
 .tp-exact {
   display: flex;

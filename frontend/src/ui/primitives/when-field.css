@@ -1,7 +1,8 @@
-/* WhenField (U-05 "when" standard). The date part is the native full-width date
-   field (.wf-date) so it can never be clipped and shows a real OS calendar; the
-   time part reuses the amber TimePicker chrome (.tp-*) so single-day and span
-   read as one grammar. Logical properties only (RTL). */
+/* WhenField (U-05 "when" standard). The day variant's date is the native
+   full-width field (.wf-date). The span reuses the event picker's chrome: each
+   endpoint is a native date cell + the shared TimeField, both wearing the same
+   .tp-field cap+value box (screens.css), so date and time align and the span
+   reads as one grammar with the event picker. Logical properties only (RTL). */
 
 .wf {
   display: flex;
@@ -27,10 +28,7 @@
   border-color: var(--teal);
 }
 
-/* ── span: two endpoints, each a [date | time] pair in the SAME cap+value box
-   grammar as the event TimePicker (.tp-field). Neutral labels/caps; amber is
-   reserved for the time value only (design-language: amber = the clock). No
-   decorative dot/dashed-connector/container — spacing groups the two legs. */
+/* ── span: two endpoints; neutral labels, amber reserved for the time value ── */
 .wf-span {
   gap: var(--space-4);
 }
@@ -53,100 +51,32 @@
   border-radius: 999px;
 }
 
+/* Trigger row: the date cell + the TimeField trigger sit side by side; the
+   TimeField's panel (.tp-panel, flex-basis:100%) wraps to a full-width line
+   below them. */
 .wf-leg-row {
   display: flex;
-  gap: var(--space-2);
+  flex-wrap: wrap;
+  gap: 9px;
   align-items: stretch;
 }
-
-/* One endpoint field — mirrors .tp-field (cap over value), so date and time
-   align on the same baseline and read as one grammar with the event picker. */
-.wf-cell {
-  flex: 1 1 0;
-  min-inline-size: 0;
-  text-align: start;
-  background: var(--card);
-  border: 1px solid var(--line);
-  border-radius: var(--radius-12, 12px);
-  padding: 7px 11px 8px;
-  cursor: pointer;
-  display: flex;
-  flex-direction: column;
-  gap: 1px;
-  font: inherit;
-  transition: border-color 0.12s ease;
-}
-.wf-cell-date {
+/* The date endpoint wears the shared .tp-field box (screens.css) with the native
+   date input as its value line — the cell owns the border, the input is bare. */
+.wf-date-cell {
   flex: 1.3 1 0;
 }
-.wf-cell:active {
-  border-color: var(--soft-line);
-}
-.wf-cell-time.open {
-  border-color: var(--amber);
-  box-shadow: 0 0 0 2px rgba(233, 166, 60, 0.16);
-}
-.wf-cell-cap {
-  font-size: var(--text-caption, 11px);
-  font-weight: 700;
-  color: var(--muted);
-}
-/* Value line — mono for both date and time so they read as one family and sit
-   at the same size/baseline (the app renders every date in mono; the time value
-   carries the amber accent, the date stays ink). */
-.wf-cell-val {
-  font-family: var(--font-mono);
-  font-size: 16px;
-  font-weight: 700;
-  color: var(--ink);
-  letter-spacing: 0.01em;
-  min-block-size: 24px;
-  display: flex;
-  align-items: center;
-}
-/* the native date input, unchromed inside the cell (the cell owns the border) */
-input.wf-cell-val {
+input.wf-date-val {
   border: 0;
   background: transparent;
   padding: 0;
   inline-size: 100%;
+  min-inline-size: 0;
   direction: ltr;
+  color: var(--ink);
   color-scheme: light;
 }
-input.wf-cell-val:focus-visible {
+input.wf-date-val:focus-visible {
   outline: none;
-}
-.wf-time-val {
-  color: var(--amber-deep);
-}
-.wf-time-ph {
-  font-family: var(--font-body);
-  font-size: 14px;
-  font-weight: 600;
-  color: var(--muted);
-}
-
-/* The endpoint's time panel spans the whole leg (full width below the row) —
-   it is NOT nested inside the compact time trigger, so it can't be clipped. */
-.wf-panel {
-  margin-top: var(--space-2);
-}
-/* Clear-time footer inside the panel (not floating between the legs). */
-.wf-panel-clear {
-  display: block;
-  inline-size: 100%;
-  border: 0;
-  border-top: 1px solid var(--line);
-  background: var(--card);
-  padding: var(--space-3);
-  font: inherit;
-  font-size: var(--text-secondary, 13px);
-  font-weight: 600;
-  color: var(--muted);
-  cursor: pointer;
-}
-.wf-panel-clear:active {
-  background: var(--paper);
 }
 
 .wf-dur {
