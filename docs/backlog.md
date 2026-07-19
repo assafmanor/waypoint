@@ -46,6 +46,20 @@ Full write-up + evidence in [reviews/frontend-architecture-review.md](reviews/fr
 - **Self-host fonts (F-11)** — fonts load from the Google CDN, so they aren't precached (offline first paint uses a fallback) and add an external dependency; self-host the woff2 subset.
 - **Minor sync-robustness (F-12, F-14, F-15)** — flush loop for writes enqueued mid-flush; a `crypto.randomUUID` fallback for non-secure test hosts; derive the outbox pending-count from the store rather than a shared counter.
 
+## UI/UX review follow-ups (open findings)
+
+Full write-up + evidence in [reviews/ui-ux-review.md](reviews/ui-ux-review.md) (advisory, 2026-07-19). No production code changed. Ordered roughly by the review's phased roadmap; the design-system consolidations are the point — fix the shared root, not each screen.
+
+- **U-01 `EventForm` outside the modal/focus system** (High) — the most-used form is a bespoke `.event-form-*` overlay with no `useOverlay` (back-gesture won't close it) and no `useDialogFocus` (no focus-in/trap/Escape/restore, unlike F-08's fixes). Fold it into the one shared `Sheet`/`Modal` primitive.
+- **U-04 per-item save/sync state** (High) — save confidence is a transient toast + a global header badge; no per-entity `synced/pending/failed` marker or retry (builds on F-03). Add a `SyncStatusModel` + `SyncBadge` + a review/retry surface.
+- **U-08 tokenize spacing + type** (Med, foundation) — `tokens.css` has color/motion/font tokens only; the documented spacing 4px-grid and 8-step type ramp are hard-coded px across 6.5k lines of CSS. Add `--space-*`/`--text-*`/`--radius-*`/`--elevation-*`/breakpoint tokens; unblocks dark mode + consistent extraction.
+- **U-10 shared feedback family** (Med) — empty/loading/error/offline are ~6 bespoke shells; no skeletons; the snapshot error dead-ends without retry; trip-switch flashes a full-screen `<h1>`. Introduce `EmptyState`/`ErrorState`/`Skeleton`/`StatusBanner` + an `AppShell` that renders load/error inside the chrome.
+- **U-02 / U-05 one editing grammar** (Med) — two+ modal families (`Sheet` vs `.confirm-*` vs `.event-form-*`), three confirm impls, divergent Save/Cancel order+labels, native `datetime-local` vs the custom `TimePicker`, and no unsaved-changes guard. Consolidate to one `Modal`/`ConfirmDialog`/`FormActions`/`Field`/`DateTimeField` + a `useUnsavedGuard`.
+- **U-03 domain components** (Med) — `PlanDay` 1115 / `DayView` ~800 lines own layout + cards inline; `MaybeCard` and the Index/Documents list-row are duplicated. Extract `ListRow`/`RowManageSheet`, `MaybeCard`, `Board`, `EventCard`, `DayStrip`, `StatTile`.
+- **U-09 group change-feed** (Med) — peer edits mutate state silently; PRD 4.2's "Noam moved ramen to 20:00" doesn't exist. Needs a WS-fed recent-changes buffer (attribution depends on F-05) + a quiet `ChangeFeed`.
+- **U-06 Map / location gap** (Med, product) — the Map tab is a dead placeholder in a primary nav slot and navigate-to-next is deferred, so "where do we go / when do we leave" has no live answer. Overlaps the "Map tab" item above; prioritization is a product call.
+- **U-07 / U-11 / U-12 / U-13 quick wins** (Low) — drop the `maybeMeta` fixture from the live shelf cards (with F-05); add a `settings` glyph to `Icon` for the `⚙` emoji control; point `Spinner`'s aria-label at a `t` key; show the create-trip CTA disabled-with-reason. Do the small ones via the shared primitives once they exist, not as one-offs.
+
 ## Backend review follow-ups (open findings)
 
 Full write-up + evidence (incl. a reproduced concurrency probe) in [reviews/backend-architecture-review.md](reviews/backend-architecture-review.md).
