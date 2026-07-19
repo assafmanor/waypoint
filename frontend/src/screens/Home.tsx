@@ -1,8 +1,10 @@
 // Home — the departure-board hero (the one loud element), a real-data-only
 // quick-access grid, and a derived "day at a glance" card. Nothing on this
 // screen is a fixture for an unbuilt feature (ADR-0045). "Now/Next" and the
-// glance are derived from the clock + events, never stored (ADR-0018).
-import { useState, type CSSProperties } from 'react';
+// glance are derived from the clock + events, never stored (ADR-0018). The
+// board + glance render via the D0 domain components (ui/domain, U-03); this
+// screen orchestrates the data and feeds them, layout lives in the components.
+import { useState } from 'react';
 import { useNavigate } from 'react-router-dom';
 import {
   BOOKING_TYPE,
@@ -15,8 +17,15 @@ import {
 } from '@waypoint/shared';
 import { useTrip } from '../state/trip-state';
 import { useToast } from '../ui/Toast';
-import { Icon } from '../ui/Icon';
 import { EventTitle } from '../ui/EventTitle';
+import {
+  Board,
+  GlanceCard,
+  type BoardNext,
+  type BoardRow,
+  type BoardTransit,
+  type BoardVariant,
+} from '../ui/domain';
 import { useClock } from '../lib/useClock';
 import { nextCodedBooking } from '../lib/home-quick';
 import { eventRoute } from '../lib/places';
@@ -34,7 +43,6 @@ import {
 } from '../lib/time';
 import { buildDayGlance, ambientEventsOnDate } from '../lib/glance';
 import { deriveHeroBooking } from '../lib/hero-booking';
-import { transitionLabel } from '../lib/transitions';
 import {
   CODE_PREFIX,
   DAY_WINDOW,
@@ -51,12 +59,6 @@ const startTransitionKey = (e: TripEvent): string | undefined =>
   isBracketed(e) ? eventTransitionKeys(e)?.startKey : undefined;
 
 const hourLabel = (hour: number) => `${String(hour).padStart(2, '0')}:00`;
-
-/** A marker chip within this fraction of a rail edge anchors inward (to the edge)
- *  instead of centering on its point, so it can't clip off the rail. */
-const MARKER_EDGE_FRAC = 0.12;
-const markerAnchor = (frac: number): string =>
-  frac <= MARKER_EDGE_FRAC ? 'at-start' : frac >= 1 - MARKER_EDGE_FRAC ? 'at-end' : '';
 
 /** WiFi lives on the hotel booking's details blob now (ADR-0047), not a TripNote.
  *  Derived quick-access: absent when there's no hotel booking with WiFi. */
@@ -98,7 +100,6 @@ export function Home({ onNavigate }: { onNavigate?: (tab: TabId) => void }) {
   // then it's a group-split ("עכשיו · במקביל"), shown as equals.
   const alsoNow = nowAll.slice(1);
   const groupSplit = nowAll.length >= 2 && nowAll.every((e) => e.kind === EVENT_KIND.SOFT);
-  const [alsoOpen, setAlsoOpen] = useState(false);
 
   // The NEXT item: normally deriveNow's next, but check-out is an END transition
   // deriveNow can't surface — offer the hotel and pick whichever comes sooner.
@@ -154,7 +155,6 @@ export function Home({ onNavigate }: { onNavigate?: (tab: TabId) => void }) {
   const day07 = Date.parse(zonedIso(activeDate, hourLabel(DAY_WINDOW.START_HOUR), tz));
   const day23 = Date.parse(zonedIso(activeDate, hourLabel(DAY_WINDOW.END_HOUR), tz));
   const glance = buildDayGlance(events, activeDate, nowMs, day07, day23, tz);
-  const remaining = glance.remaining;
   // Ambient-span stays active today (a hotel spanning several nights, ADR-0054).
   // No persistent band on Home (ADR-0064 §A): the hero surfaces the transition
   // moments and the glance draws the check-in/out markers. This only feeds the
@@ -218,6 +218,57 @@ export function Home({ onNavigate }: { onNavigate?: (tab: TabId) => void }) {
     toast(ICONS.wifi, t.quick.wifiCopied);
   };
 
+  // ── Board props (U-03): the screen picks the variant + feeds every slot; the
+  // Board owns the markup, states, and the "ועוד N" expander. Title nodes stay
+  // here (the screen still renders <EventTitle>), the component takes them as
+  // props (dependency direction §12). ──
+  const boardVariant: BoardVariant =
+    inTransit && transitEvent
+      ? 'in-transit'
+      : groupSplit
+        ? 'group-split'
+        : nowEvent
+          ? 'now'
+          : 'free';
+  const boardNowEvent = inTransit && transitEvent ? transitEvent : nowEvent;
+  const transit: BoardTransit | undefined =
+    inTransit && transitEvent
+      ? {
+          labelKey: hero.labelKey ?? 'arrival',
+          arriving,
+          endTime: transitEvent.endsAt ? formatTime(transitEvent.endsAt, tz) : undefined,
+          code: transitCode,
+          progress: transitProgress,
+          startTime: transitEvent.startsAt ? formatTime(transitEvent.startsAt, tz) : undefined,
+          fromPlace: transitRoute?.from,
+          toPlace: transitRoute?.to,
+          showCountdown: countdown !== null,
+        }
+      : undefined;
+  const splitRows: BoardRow[] = nowAll.map((e) => ({
+    key: e.id,
+    icon: e.icon,
+    title: <EventTitle event={e} bookings={bookings} places={places} />,
+    until: e.endsAt ? formatTime(e.endsAt, tz) : undefined,
+  }));
+  const alsoNowRows: BoardRow[] = alsoNow.map((e) => ({
+    key: e.id,
+    icon: e.icon,
+    title: <EventTitle event={e} bookings={bookings} places={places} />,
+    until: e.endsAt ? formatTime(e.endsAt, tz) : undefined,
+    hard: e.kind === EVENT_KIND.HARD,
+  }));
+  const boardNext: BoardNext | null = shownNext
+    ? {
+        title: <EventTitle event={shownNext} bookings={bookings} places={places} />,
+        icon: shownNext.icon,
+        labelKey: nextLabelKey,
+        time: nextInstant ? formatTime(nextInstant, tz) : undefined,
+        hard: shownNext.kind === EVENT_KIND.HARD,
+        code: nextCode,
+      }
+    : null;
+
   return (
     <>
       {/* "Inside a booking now" (ADR-0059 §2): a slim, dismissible teal strip for
@@ -246,220 +297,31 @@ export function Home({ onNavigate }: { onNavigate?: (tab: TabId) => void }) {
         </div>
       )}
 
-      <div className={'board' + (inTransit ? ' transit' : '')}>
-        <div className="board-top">
-          <div className={'live' + (inTransit ? ' loc' : '')}>
-            <span className="blip" />
-            {inTransit ? t.board.inTransitLive : t.common.now}
-          </div>
-          <div className="clock" dir="ltr">
-            {formatTime(now, tz)}
-          </div>
-        </div>
-
-        {inTransit && transitEvent ? (
-          <>
-            <div className="now-label loc">{t.board.inTransitLabel}</div>
-            <div className="now-title">
-              {transitEvent.icon && <span className="board-ic">{transitEvent.icon}</span>}
-              <EventTitle event={transitEvent} bookings={bookings} places={places} />
-            </div>
-            <div className="now-meta">
-              <span className={'tlabel loc' + (arriving ? ' emph' : '')}>
-                {transitionLabel(hero.labelKey ?? 'arrival')}
-              </span>
-              {transitEvent.endsAt && <span dir="ltr">{formatTime(transitEvent.endsAt, tz)}</span>}
-              {transitCode && (
-                <span className="code" dir="ltr">
-                  {transitCode}
-                </span>
-              )}
-            </div>
-            {transitEvent.startsAt && transitEvent.endsAt && (
-              <div className="transit-prog">
-                <div className="tp-track">
-                  <div className="tp-fill" style={{ width: `${transitProgress * 100}%` }} />
-                  <div
-                    className="tp-plane"
-                    style={{ insetInlineStart: `${transitProgress * 100}%` }}
-                  >
-                    ✈️
-                  </div>
-                </div>
-                {/* The ends anchor departure and arrival by place + time (ADR-0059
-                    §3: from/to, not a name); the middle counts down to landing. */}
-                <div className="tp-ends">
-                  <span className="tp-end">
-                    <span className="mono" dir="ltr">
-                      {formatTime(transitEvent.startsAt, tz)}
-                    </span>
-                    {transitRoute?.from && <span className="pl">{transitRoute.from}</span>}
-                  </span>
-                  {countdown && (
-                    <span className="tp-left">
-                      {t.board.until}{' '}
-                      <span className="mono" dir="ltr">
-                        {formatTime(transitEvent.endsAt, tz)}
-                      </span>
-                    </span>
-                  )}
-                  <span className="tp-end end">
-                    {transitRoute?.to && <span className="pl">{transitRoute.to}</span>}
-                    <span className="mono" dir="ltr">
-                      {formatTime(transitEvent.endsAt, tz)}
-                    </span>
-                  </span>
-                </div>
-              </div>
-            )}
-          </>
-        ) : groupSplit ? (
-          <div className="now-split">
-            <div className="now-label">{t.board.concurrentNow}</div>
-            <div className="also-list">
-              {nowAll.map((e) => (
-                <div className="also-row" key={e.id}>
-                  {e.icon && <span className="ic">{e.icon}</span>}
-                  <span className="nm">
-                    <EventTitle event={e} bookings={bookings} places={places} />
-                  </span>
-                  {e.endsAt && (
-                    <span className="tm">
-                      {t.board.until} <span dir="ltr">{formatTime(e.endsAt, tz)}</span>
-                    </span>
-                  )}
-                </div>
-              ))}
-            </div>
-          </div>
-        ) : nowEvent ? (
-          <>
-            <div className="now-label">
-              {nowEvent.kind === EVENT_KIND.HARD ? `${ICONS.lock} ${t.event.hard}` : t.event.soft}
-            </div>
-            <div className="now-title">
-              {nowEvent.icon && <span className="board-ic">{nowEvent.icon}</span>}
-              <EventTitle event={nowEvent} bookings={bookings} places={places} />
-            </div>
-            {nowEvent.endsAt && (
-              <div className="now-meta">
-                {t.board.until} <span dir="ltr">{formatTime(nowEvent.endsAt, tz)}</span>
-              </div>
-            )}
-            {conflicts.length > 0 && (
-              <div className="now-conflict">
-                {ICONS.warn}{' '}
-                {t.event.conflictWarn(conflicts[0].title, formatTime(conflicts[0].startsAt!, tz))}
-              </div>
-            )}
-            {alsoNow.length > 0 && (
-              <div className="also-now">
-                <button
-                  className="also-toggle"
-                  onClick={() => setAlsoOpen((v) => !v)}
-                  aria-expanded={alsoOpen}
-                >
-                  <span className="dot" aria-hidden="true" />
-                  {t.board.alsoNow(alsoNow.length)}
-                  <span className="chev" aria-hidden="true">
-                    <Icon name="caret" dir={alsoOpen ? 'up' : 'down'} />
-                  </span>
-                </button>
-                {alsoOpen && (
-                  <div className="also-list">
-                    {alsoNow.map((e) => (
-                      <div className="also-row" key={e.id}>
-                        {e.icon && <span className="ic">{e.icon}</span>}
-                        <span className="nm">
-                          <EventTitle event={e} bookings={bookings} places={places} />
-                        </span>
-                        {e.kind === EVENT_KIND.HARD && (
-                          <span className="mini-lock" aria-hidden="true">
-                            {ICONS.lock}
-                          </span>
-                        )}
-                        {e.endsAt && (
-                          <span className="tm">
-                            {t.board.until} <span dir="ltr">{formatTime(e.endsAt, tz)}</span>
-                          </span>
-                        )}
-                      </div>
-                    ))}
-                  </div>
-                )}
-              </div>
-            )}
-          </>
-        ) : (
-          <>
-            <div className="now-label">{t.board.freeLabel}</div>
-            <div className="now-title">{t.board.freeTitle}</div>
-          </>
-        )}
-
-        {/* In transit, the transit-progress bar replaces the next-row + day rail
-            (the flight IS the current activity). */}
-        {!inTransit && (
-          <>
-            <div className="board-divider" />
-            <div className="next-row">
-              <div>
-                <div className="next-label">{t.board.nextLabel}</div>
-                <div className="next-title">
-                  {shownNext?.icon && <span className="board-ic">{shownNext.icon}</span>}
-                  {shownNext ? (
-                    <EventTitle event={shownNext} bookings={bookings} places={places} />
-                  ) : (
-                    t.board.endOfDay
-                  )}
-                </div>
-                {shownNext && (
-                  <div className="next-meta">
-                    {/* A bracketed booking leads with its transition label
-                        (המראה / צ׳ק-אין …) — the shared grammar (ADR-0059 §3). */}
-                    {nextLabelKey && (
-                      <span className="tlabel">{transitionLabel(nextLabelKey)}</span>
-                    )}
-                    {nextInstant && <span dir="ltr">{formatTime(nextInstant, tz)}</span>}
-                    {shownNext.kind === EVENT_KIND.HARD && (
-                      <span className="lockmini">
-                        {ICONS.lock} {t.event.hard}
-                      </span>
-                    )}
-                    {nextCode && (
-                      <span className="code" dir="ltr">
-                        {nextCode}
-                      </span>
-                    )}
-                  </div>
-                )}
-              </div>
-              {countdown !== null && (
-                <div className="countdown">
-                  {countdown.value && (
-                    <div className="t" dir="ltr">
-                      {countdown.value}
-                    </div>
-                  )}
-                  <div className="u">{countdown.unit}</div>
-                </div>
-              )}
-            </div>
-
-            <div className="progress" aria-hidden="true">
-              <div className="track">
-                <div className="fill" style={{ width: `${progress}%` }} />
-                <div className="knob" style={{ insetInlineStart: `${progress}%` }} />
-              </div>
-              <div className="ends">
-                <span dir="ltr">{hourLabel(DAY_WINDOW.START_HOUR)}</span>
-                <span>{t.common.now}</span>
-                <span dir="ltr">{hourLabel(DAY_WINDOW.END_HOUR)}</span>
-              </div>
-            </div>
-          </>
-        )}
-      </div>
+      <Board
+        variant={boardVariant}
+        clock={formatTime(now, tz)}
+        nowIcon={boardNowEvent?.icon}
+        nowTitle={
+          boardNowEvent ? (
+            <EventTitle event={boardNowEvent} bookings={bookings} places={places} />
+          ) : undefined
+        }
+        nowKind={nowEvent?.kind === EVENT_KIND.HARD ? 'hard' : 'soft'}
+        nowUntil={nowEvent?.endsAt ? formatTime(nowEvent.endsAt, tz) : undefined}
+        conflict={
+          conflicts.length > 0
+            ? { title: conflicts[0].title, atLabel: formatTime(conflicts[0].startsAt!, tz) }
+            : undefined
+        }
+        transit={transit}
+        splitRows={splitRows}
+        alsoNow={alsoNowRows}
+        next={boardNext}
+        countdown={countdown}
+        progress={progress}
+        windowStartHour={hourLabel(DAY_WINDOW.START_HOUR)}
+        windowEndHour={hourLabel(DAY_WINDOW.END_HOUR)}
+      />
 
       <div className="sec-title">{t.quick.title}</div>
       {/* ADR-0050: derived tiles (next code, WiFi) deep-link into the Index and
@@ -502,122 +364,14 @@ export function Home({ onNavigate }: { onNavigate?: (tab: TabId) => void }) {
       </div>
 
       <div className="sec-title">{t.glance.title}</div>
-      {glance.empty ? (
-        <div className="glance-day empty">
-          <div className="ei" aria-hidden="true">
-            🗓️
-          </div>
-          <div className="et">{t.glance.emptyTitle}</div>
-          <div className="es">{t.glance.emptySub}</div>
-          <button className="ea" onClick={() => onNavigate?.('days')}>
-            <span className="plus">{ICONS.add}</span> {t.glance.emptyAdd}
-          </button>
-        </div>
-      ) : (
-        <div className="glance-day">
-          {/* Amber transition markers in a dedicated lane above the block bar so
-              segments can't swallow their labels (ADR-0054 amendment / ADR-0059).
-              Chips stack into lanes when they'd overlap, and the ones nearest an
-              edge anchor inward so they never clip off the rail. */}
-          {glance.markers.length > 0 && (
-            <div
-              className="glance-marks"
-              aria-hidden="true"
-              style={{ '--lanes': glance.markerLaneCount } as CSSProperties}
-            >
-              {glance.markers.map((m) => (
-                <div
-                  className={`tmark ${markerAnchor(m.frac)}`}
-                  key={m.key}
-                  style={
-                    { insetInlineStart: `${m.frac * 100}%`, '--lane': m.lane } as CSSProperties
-                  }
-                >
-                  <span className="chip">
-                    <span className="mi">{m.icon}</span> {transitionLabel(m.labelKey)}{' '}
-                    <span className="mono" dir="ltr">
-                      {formatTime(new Date(m.timeMs), tz)}
-                    </span>
-                  </span>
-                  <span className="stem" />
-                </div>
-              ))}
-            </div>
-          )}
-          <div className="rail" aria-hidden="true">
-            {glance.segs.map((s) => (
-              <div
-                key={s.key}
-                className={`seg ${s.phase}${s.composite ? ' multi' : ''}${s.point ? ' point' : ''}`}
-                style={{
-                  insetInlineStart: `${s.startFrac * 100}%`,
-                  ...(s.point ? {} : { width: `${Math.max(0, s.endFrac - s.startFrac) * 100}%` }),
-                }}
-              >
-                {s.showCount && (
-                  <span className="n">
-                    {s.clusterLike ? t.glance.concurrent(s.count) : t.glance.contains(s.count)}
-                  </span>
-                )}
-                {s.nextDay && (
-                  <span className="plus1" dir="ltr">
-                    {t.glance.nextDay}
-                  </span>
-                )}
-              </div>
-            ))}
-            {glance.nowFrac !== null && (
-              <div className="nowmark" style={{ insetInlineStart: `${glance.nowFrac * 100}%` }} />
-            )}
-          </div>
-          <div className="rail-ends">
-            <span dir="ltr">{formatTime(new Date(glance.windowStartMs), tz)}</span>
-            <span dir="ltr">{formatTime(new Date(glance.windowEndMs), tz)}</span>
-          </div>
-          <div className="lead">
-            <div className="big">
-              <span className="v" dir="ltr">
-                {remaining}
-              </span>
-              <span className="k">{t.glance.remaining}</span>
-            </div>
-            {hardAhead && (
-              <div className="anchor">
-                {ICONS.lock} {t.glance.hardAnchor}
-                <br />
-                <span className="tm" dir="ltr">
-                  {formatTime(hardAhead.startsAt!, tz)}
-                </span>
-              </div>
-            )}
-          </div>
-          {(freeUntil || dayEnd) && (
-            <div className="glance-foot">
-              {freeUntil && (
-                <span>
-                  🕓 {t.glance.freeUntil}{' '}
-                  <span className="mono" dir="ltr">
-                    {freeUntil}
-                  </span>
-                </span>
-              )}
-              {freeUntil && dayEnd && (
-                <span className="dot" aria-hidden="true">
-                  ·
-                </span>
-              )}
-              {dayEnd && (
-                <span>
-                  {t.glance.dayEnds}{' '}
-                  <b className="mono" dir="ltr">
-                    ~{dayEnd}
-                  </b>
-                </span>
-              )}
-            </div>
-          )}
-        </div>
-      )}
+      <GlanceCard
+        glance={glance}
+        tz={tz}
+        hardAnchorTime={hardAhead ? formatTime(hardAhead.startsAt!, tz) : undefined}
+        freeUntil={freeUntil}
+        dayEnd={dayEnd}
+        onAdd={() => onNavigate?.('days')}
+      />
     </>
   );
 }
