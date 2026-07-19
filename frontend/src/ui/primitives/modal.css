@@ -1,0 +1,71 @@
+/* The single overlay primitive (ADR-0079). Two variants share one scrim +
+   focus/close machinery (Modal.tsx); only shape/position differ. Built on the
+   Wave-0 non-color tokens (radius/elevation/spacing, ADR-0082) and logical
+   properties so RTL needs no left/right. Neutral chrome only — never amber/teal
+   (unlike the legacy .confirm-card, which is deliberately amber for the
+   hard-edit guard); semantic hues stay reserved for meaning, not chrome.
+   The old sheet, confirm, and event-form class families remain in screens.css
+   until their consumers fold onto this primitive (Wave 2). */
+
+.modal-overlay {
+  position: fixed;
+  inset: 0;
+  background: rgba(22, 35, 61, 0.45);
+  display: flex;
+  justify-content: center;
+  /* Peer of the legacy .sheet-/.confirm-overlays (also z-index 20): a nested,
+     body-portalled prompt paints above by DOM order, not a higher z-index. */
+  z-index: 20;
+  animation: modal-fade var(--t-base) var(--ease-standard);
+}
+
+/* sheet — bottom-anchored, full-width, rounded top (phone-first, ADR-0017). */
+.modal-overlay[data-variant='sheet'] {
+  align-items: flex-end;
+}
+/* dialog — centered, constrained, gutter so it never touches the screen edge. */
+.modal-overlay[data-variant='dialog'] {
+  align-items: center;
+  padding: var(--space-6);
+}
+
+.modal-card {
+  width: 100%;
+  background: var(--card);
+  border: 1px solid var(--line);
+  box-shadow: var(--elevation-floating);
+  /* Focus lands here (tabIndex -1); it is not keyboard-tabbable, so no ring. */
+  outline: none;
+}
+
+.modal-overlay[data-variant='sheet'] .modal-card {
+  max-width: 480px;
+  border-start-start-radius: var(--radius-16);
+  border-start-end-radius: var(--radius-16);
+  padding: var(--space-4);
+  /* Clear the home indicator on the bottom-anchored variant. */
+  padding-block-end: calc(var(--space-4) + var(--safe-bottom));
+}
+
+.modal-overlay[data-variant='dialog'] .modal-card {
+  max-width: 340px;
+  border-radius: var(--radius-16);
+  padding: var(--space-4);
+}
+
+.modal-title {
+  font-weight: 700;
+  font-size: var(--text-h3);
+  line-height: var(--leading-snug);
+  color: var(--indigo);
+  margin-block-end: var(--space-3);
+}
+
+@keyframes modal-fade {
+  from {
+    opacity: 0;
+  }
+  to {
+    opacity: 1;
+  }
+}

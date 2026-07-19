@@ -30,6 +30,8 @@ Active-trip selection is `tripId` in `localStorage` — per-device, **not** sync
 
 The in-trip **tab** (`?tab=` — home/map/index/days) and open **overlays** (a marker in `location.state`) are also real history entries, so "back" walks _within_ the app (ADR-0035).
 
+The selected **day** is deep-linkable + reload-surviving via **`?day=YYYY-MM-DD`** (UI/UX review J7 / open Q5): `resolveActiveDate` seeds `activeDate` from the param on load, and `setActiveDate` mirrors the selection back onto the _current_ history entry (`replace`, not a new entry — day scrubbing doesn't inflate the back stack). A missing, malformed, or out-of-range `?day=` falls back to today. The idle-resume reset-to-today (ADR-0060) and Plan-mode day preservation are unchanged; today keeps its amber anchor wherever you browse (ADR-0043).
+
 ## Back & the return gesture (ADR-0035)
 
 React-router is the **single owner of history**; in-app navigation _is_ history, so every "back" trigger resolves to one guarded action, `goBack()`:

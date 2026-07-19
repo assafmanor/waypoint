@@ -1,0 +1,466 @@
+/* GlanceCard — the day-at-a-glance rail (design-language: GlanceCard), extracted
+   from screens/Home.tsx (U-03). The rail model + amber time-anchor grammar
+   (spans/points/collapsed legs line) is ADR-0077 (unified glance rail-annotation
+   grammar); this file is that grammar's stylesheet, relocated verbatim from
+   screens.css so the component owns its own CSS. Scoped under .glance-day. */
+
+/* ── block bar + segments + lead + foot (glance core) ─────────────────────── */
+.glance-day {
+  background: var(--card);
+  border: 1px solid var(--line);
+  border-radius: 16px;
+  padding: 15px 16px 16px;
+}
+/* Ambient-span backdrop (a hotel / multi-day booking, ADR-0054): shown above the
+   day's blocks on the strictly-middle nights it covers, teal-tinted (it's a place,
+   not a time). Day-screen only — Home carries no persistent band (ADR-0064 §A). */
+.day-ambient .ambient {
+  display: flex;
+  align-items: center;
+  gap: 9px;
+  background: color-mix(in srgb, var(--teal) 8%, transparent);
+  border: 1px solid color-mix(in srgb, var(--teal) 30%, transparent);
+  border-radius: 12px;
+  padding: 9px 12px;
+}
+.day-ambient .ai {
+  font-size: 16px;
+  flex: 0 0 auto;
+}
+.day-ambient .an {
+  font-size: 12.5px;
+  font-weight: 700;
+  color: var(--ink);
+}
+.day-ambient .as {
+  margin-inline-start: auto;
+  font-size: 11px;
+  font-weight: 600;
+  color: var(--muted);
+}
+.day-ambient {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  margin-bottom: 12px;
+}
+
+/* ── per-day transition entry (ADR-0064 §B) ─────────────────────────────
+   A multi-day booking's edge (check-in/out, departure/arrival) as a compact,
+   read-only reference row interleaved in the day timeline by instant. Amber =
+   time + commitment (ADR-0028) — a hard, time-anchored moment; shorter than a
+   full event card so it reads as a marker, not a settle-able block. */
+.transition-row {
+  display: flex;
+  align-items: stretch;
+  margin-bottom: 10px;
+  background: color-mix(in srgb, var(--amber) 7%, var(--card));
+  border: 1px solid color-mix(in srgb, var(--amber) 32%, transparent);
+  border-inline-start: 3px solid var(--amber);
+  border-radius: 12px;
+  overflow: hidden;
+}
+.tr-face {
+  flex: 1;
+  min-width: 0;
+  display: flex;
+  align-items: center;
+  gap: 11px;
+  padding: 10px 13px;
+  background: none;
+  border: 0;
+  font: inherit;
+  color: inherit;
+  text-align: inherit;
+  cursor: pointer;
+}
+.tr-face:disabled {
+  cursor: default;
+}
+.tr-face:focus-visible {
+  outline: 2.5px solid var(--amber);
+  outline-offset: -2px;
+}
+.tr-badge {
+  width: 32px;
+  height: 32px;
+  border-radius: 10px;
+  display: grid;
+  place-items: center;
+  font-size: 16px;
+  flex: 0 0 auto;
+  background: rgba(233, 166, 60, 0.14);
+}
+.tr-main {
+  flex: 1;
+  min-width: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 1px;
+}
+.tr-label {
+  font-size: 11px;
+  font-weight: 700;
+  color: var(--amber-deep);
+}
+.tr-title {
+  font-size: 13.5px;
+  font-weight: 700;
+  color: var(--ink);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.tr-time {
+  flex: 0 0 auto;
+  font-family: var(--font-mono);
+  font-size: 12.5px;
+  font-weight: 700;
+  color: var(--amber-deep);
+  white-space: nowrap;
+}
+.tr-nav {
+  flex: 0 0 auto;
+  align-self: center;
+  margin-inline-end: 10px;
+  padding: 6px 12px;
+  font: inherit;
+  font-size: 12px;
+  font-weight: 700;
+  color: var(--amber-deep);
+  background: rgba(233, 166, 60, 0.14);
+  border: 1px solid color-mix(in srgb, var(--amber) 30%, transparent);
+  border-radius: 9px;
+  cursor: pointer;
+}
+/* one segment per top-level block (ADR-0041): wide gaps between blocks; a
+   cluster is a tight sub-tick bundle. NOT a time scale — the board owns that. */
+/* proportional time rail: window start (earliest) at the RTL right edge,
+   window end at the left. Segments are positioned by time (lib/glance). */
+.rail {
+  position: relative;
+  height: 14px;
+  background: rgba(22, 35, 61, 0.07); /* free time / empty track */
+  border-radius: 5px;
+}
+.seg {
+  position: absolute;
+  top: 0;
+  height: 14px;
+  border-radius: 3px;
+  min-width: 6px; /* floor so short events stay visible */
+}
+.seg.done {
+  background: var(--ok);
+}
+.seg.passed {
+  background: rgba(22, 35, 61, 0.3);
+}
+.seg.now {
+  background: var(--amber);
+}
+.seg.upcoming {
+  background: transparent;
+  box-shadow: inset 0 0 0 1.5px rgba(22, 35, 61, 0.24); /* hollow = ahead */
+}
+.seg.skipped {
+  background: repeating-linear-gradient(-45deg, rgba(22, 35, 61, 0.26) 0 3px, transparent 3px 6px);
+  box-shadow: inset 0 0 0 1px rgba(22, 35, 61, 0.12);
+}
+.seg.point {
+  width: 4px;
+  min-width: 4px;
+}
+/* a same-day bracketed booking's counted block, tied to its span anchor above
+   (ADR-0077): amber outline = time & commitment */
+.seg.trans {
+  background: rgba(233, 166, 60, 0.26);
+  box-shadow: inset 0 0 0 1px var(--amber);
+}
+.seg.trans.upcoming {
+  background: rgba(233, 166, 60, 0.16);
+  box-shadow: inset 0 0 0 1.5px var(--amber);
+}
+/* composite (cluster/envelope, any depth) → "layered" top edge + count chip */
+.seg.multi {
+  box-shadow:
+    inset 0 3px 0 rgba(255, 255, 255, 0.55),
+    inset 0 0 0 1px rgba(22, 35, 61, 0.12);
+}
+.seg.multi.upcoming {
+  box-shadow:
+    inset 0 3px 0 rgba(22, 35, 61, 0.12),
+    inset 0 0 0 1.5px rgba(22, 35, 61, 0.24);
+}
+/* structure note (ADR-0077): overlap ×N / containment כולל N — the neutral
+   member of the pill family, below the rail with a layered top edge echoing the
+   composite block's own `.multi` edge. Neutral, not amber: structure is
+   information, not a commitment (ADR-0028). */
+.seg .n {
+  position: absolute;
+  top: 18px; /* below the rail — the now-dot owns the top edge */
+  left: 50%;
+  transform: translateX(-50%);
+  z-index: 3; /* above the now-line so the count is never obscured */
+  font-size: 9px;
+  font-weight: 700;
+  color: var(--muted);
+  background: var(--card);
+  border: 1px solid var(--line);
+  box-shadow: inset 0 2px 0 rgba(22, 35, 61, 0.1);
+  border-radius: 20px;
+  padding: 1px 6px;
+  white-space: nowrap;
+}
+.seg .plus1 {
+  position: absolute;
+  top: 18px;
+  inset-inline-end: -4px;
+  z-index: 3;
+  font-size: 9px;
+  font-weight: 700;
+  color: var(--amber-deep);
+  font-family: var(--font-mono);
+}
+.nowmark {
+  position: absolute;
+  top: -5px;
+  bottom: -5px;
+  width: 2px;
+  background: var(--amber);
+  border-radius: 2px;
+  z-index: 2;
+}
+/* the dot sits on TOP of the rail (the count / +1 chips live below it now, so
+   they can't collide) */
+.nowmark::after {
+  content: '';
+  position: absolute;
+  top: -6px;
+  left: 50%;
+  transform: translateX(-50%);
+  width: 7px;
+  height: 7px;
+  border-radius: 50%;
+  background: var(--amber);
+  box-shadow: 0 0 0 3px rgba(233, 166, 60, 0.22);
+}
+.rail-ends {
+  display: flex;
+  justify-content: space-between;
+  margin-top: 22px; /* clears the count-chip band that now sits under the rail */
+  font-size: 10px;
+  color: var(--muted);
+  font-weight: 600;
+}
+.rail-ends span {
+  font-family: var(--font-mono);
+}
+.lead {
+  display: flex;
+  align-items: baseline;
+  justify-content: space-between;
+  gap: 12px;
+  margin-top: 13px;
+}
+.lead .big {
+  display: flex;
+  align-items: baseline;
+  gap: 8px;
+}
+.lead .big .v {
+  font-family: var(--font-mono);
+  font-size: 32px;
+  font-weight: 700;
+  line-height: 1;
+  color: var(--ink);
+}
+.lead .big .k {
+  font-size: 14px;
+  font-weight: 700;
+  color: var(--muted);
+}
+.lead .anchor {
+  text-align: end;
+  font-size: 12px;
+  color: var(--amber-deep);
+  font-weight: 700;
+}
+.lead .anchor .tm {
+  font-family: var(--font-mono);
+}
+.glance-foot {
+  margin-top: 13px;
+  padding-top: 12px;
+  border-top: 1px solid var(--line);
+  font-size: 12.5px;
+  color: var(--muted);
+  display: flex;
+  align-items: center;
+  gap: 7px;
+  flex-wrap: wrap;
+}
+.glance-foot .dot {
+  opacity: 0.5;
+}
+.glance-foot b {
+  color: var(--ink);
+  font-weight: 700;
+}
+.glance-foot .mono {
+  font-family: var(--font-mono);
+  font-weight: 700;
+}
+/* empty day: calm teach state — not a hidden card, not a 0/0 bar */
+.glance-day.empty {
+  text-align: center;
+  padding: 22px 18px 20px;
+}
+.glance-day.empty .ei {
+  font-size: 26px;
+  opacity: 0.75;
+}
+.glance-day.empty .et {
+  font-family: var(--font-head);
+  font-size: 16px;
+  color: var(--ink);
+  margin-top: 7px;
+}
+.glance-day.empty .es {
+  font-size: 12.5px;
+  color: var(--muted);
+  margin-top: 5px;
+  line-height: 1.5;
+}
+.glance-day.empty .ea {
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+  margin-top: 13px;
+  font: inherit;
+  font-size: 12.5px;
+  font-weight: 700;
+  color: var(--ink);
+  background: #fff;
+  border: 1px solid var(--soft-line);
+  border-radius: 999px;
+  padding: 7px 15px;
+  cursor: pointer;
+}
+.glance-day.empty .ea .plus {
+  color: var(--amber-deep);
+}
+.glance-day.empty .ea:focus-visible {
+  outline: 2.5px solid var(--teal);
+  outline-offset: 2px;
+}
+
+/* ── the amber time-anchor band (spans/points) + collapsed legs line ──────── */
+.achip {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  white-space: nowrap;
+  font-size: 10px;
+  font-weight: 700;
+  border-radius: 999px;
+  padding: 2px 8px;
+  border: 1px solid transparent;
+}
+.achip .mono {
+  font-family: var(--font-mono);
+}
+.achip .mi {
+  font-size: 11px;
+}
+/* amber = a time anchor (a hard, time-anchored commitment; ADR-0028) */
+.achip.amber {
+  color: var(--amber-deep);
+  background: rgba(233, 166, 60, 0.16);
+  border-color: rgba(233, 166, 60, 0.34);
+}
+/* the range arrow is a NavArrow SVG (Assistant has no arrow glyph); it sizes to
+   the pill's font and inherits amber via currentColor */
+.achip.amber .arr {
+  color: var(--amber);
+  opacity: 0.9;
+  font-size: 12px;
+}
+.achip.amber .plus1 {
+  color: var(--amber-deep);
+  font-family: var(--font-mono);
+  font-size: 9px;
+}
+
+/* the amber time-anchor band above the block bar. Anchors that would overlap
+   stack into lanes (--lane, 20px each) and the ones near an edge anchor inward,
+   so labels never collide or clip off the rail; a crowded day collapses to the
+   legs line below instead (ADR-0077 §D). */
+.glance-marks {
+  position: relative;
+  height: calc(var(--lanes, 1) * 20px + 10px);
+  margin-bottom: 2px;
+}
+/* a POINT anchor — zero-width so `align-items` centers the pill on the exact
+   instant; the stem grows with the lane so every pill connects down to the bar. */
+.glance-marks .tmark {
+  position: absolute;
+  bottom: 0;
+  width: 0;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+}
+.glance-marks .tmark.at-start {
+  align-items: flex-start;
+}
+.glance-marks .tmark.at-end {
+  align-items: flex-end;
+}
+.glance-marks .tmark .stem {
+  width: 1.5px;
+  height: calc(var(--lane, 0) * 20px + 7px);
+  background: rgba(201, 130, 42, 0.5);
+}
+/* a SPAN anchor — a centered pill over a bottom-open bracket whose feet mark the
+   two instants; the bar sits at the rail edge (lane-independent) while the pill
+   rises with its lane. */
+.glance-marks .span-anchor {
+  position: absolute;
+  bottom: 0;
+  height: 100%;
+}
+.glance-marks .span-anchor .bar {
+  position: absolute;
+  bottom: 0;
+  inset-inline: 0;
+  height: 6px;
+  border: 1.5px solid var(--amber);
+  border-top: 0;
+  border-radius: 0 0 5px 5px;
+  opacity: 0.9;
+}
+.glance-marks .span-anchor .cap {
+  position: absolute;
+  bottom: calc(var(--lane, 0) * 20px + 8px);
+  inset-inline-start: 50%;
+  transform: translateX(50%);
+}
+.glance-marks .span-anchor.at-start .cap {
+  inset-inline-start: 0;
+  transform: none;
+}
+.glance-marks .span-anchor.at-end .cap {
+  inset-inline-start: auto;
+  inset-inline-end: 0;
+  transform: none;
+}
+
+/* legs line — the crowded-day collapse: the same amber pills, flow-laid so
+   overlap is impossible by construction (ADR-0077 §D). */
+.glance-legs {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px 7px;
+  margin-top: 12px;
+}

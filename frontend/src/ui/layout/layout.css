@@ -1,0 +1,93 @@
+/* Layout primitives (ui/layout) — token-driven structure that retires inline,
+   per-screen layout (review §11). Spacing/type/radius come from the Wave-0
+   tokens in styles/tokens.css; never a raw px here. RTL-safe: block-axis and
+   logical properties only, never left/right. AppShell reuses the shell classes
+   in App.css (`.app`/`.body`/`.nav`) — its frame styling lives there. */
+
+/* Screen — breakpoint-aware content column. Phone identical to the old blanket
+   width; a graceful wider column on tablet, centered/capped on desktop. The
+   @media literals mirror --bp-tablet / --bp-desktop (CSS can't read custom
+   props inside a media condition). */
+.wp-screen {
+  width: 100%;
+  max-width: 430px;
+  margin-inline: auto;
+}
+.wp-screen[data-size='wide'] {
+  max-width: 430px;
+}
+@media (min-width: 768px) {
+  .wp-screen {
+    max-width: 640px;
+  }
+  .wp-screen[data-size='wide'] {
+    max-width: 720px;
+  }
+}
+@media (min-width: 1024px) {
+  .wp-screen {
+    max-width: 720px;
+  }
+  .wp-screen[data-size='wide'] {
+    max-width: 960px;
+  }
+}
+
+/* Section — a titled content block; the title is a real heading. */
+.wp-section {
+  display: block;
+}
+.wp-section-head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: var(--space-3);
+  margin-block: var(--space-6) var(--space-3);
+  margin-inline: var(--space-1);
+}
+.wp-section-title {
+  font-family: var(--font-body);
+  font-size: var(--text-secondary);
+  font-weight: 700;
+  line-height: var(--leading-snug);
+  letter-spacing: 0.06em;
+  color: var(--muted);
+}
+.wp-section-actions {
+  display: flex;
+  align-items: center;
+  gap: var(--space-3);
+}
+
+/* Stack / Inline — token-spaced flex. gap + align/justify ride inline styles
+   (the token reference), so the ramp is the only source of spacing. */
+.wp-stack {
+  display: flex;
+  flex-direction: column;
+  min-width: 0;
+}
+.wp-inline {
+  display: flex;
+  flex-direction: row;
+  min-width: 0;
+}
+
+/* StickyActionBar — bottom-pinned primary actions, clearing the home-indicator. */
+.wp-sticky-actions {
+  position: sticky;
+  bottom: 0;
+  z-index: 2;
+  display: flex;
+  gap: var(--space-3);
+  padding: var(--space-3) var(--space-4) calc(var(--space-3) + var(--safe-bottom));
+  background: var(--card);
+  border-top: 1px solid var(--line);
+}
+.wp-sticky-actions > * {
+  flex: 1;
+}
+
+/* ResponsiveGrid — auto-fit columns; template + gap ride inline styles. */
+.wp-grid {
+  display: grid;
+}

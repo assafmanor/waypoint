@@ -11,12 +11,15 @@ import { useClock } from '../lib/useClock';
 import { splitBookings, scheduleLabel, type BookingRow } from '../lib/index-bookings';
 import { placeName } from '../lib/places';
 import { badgeClassForBookingType } from '../lib/transitions';
+import { useSyncStatus } from '../lib/outbox';
 import { BOOKING_TYPE_ICON, CODE_PREFIX, ICONS } from '../constants';
 import { BookingSheet } from '../ui/BookingSheet';
 import { BookingDetail } from '../ui/BookingDetail';
 import { RouteLabel } from '../ui/RouteLabel';
 import { BookingManageSheet } from '../ui/BookingManageSheet';
 import { DocumentsSection } from '../ui/DocumentsSection';
+import { ListRow, type BadgeTone } from '../ui/domain';
+import { SyncBadge } from '../ui/feedback';
 import { Icon } from '../ui/Icon';
 import { t } from '../i18n/he';
 
@@ -157,57 +160,54 @@ function BookingLi({
   const icon = event?.icon ?? BOOKING_TYPE_ICON[booking.type];
   // Shared booking grammar (ADR-0059 §3): the badge is tinted by category (teal
   // for a stay, amber for transport), and a hard booking wears the lock.
-  const badgeTint = badgeClassForBookingType(booking.type);
+  const badgeClass = badgeClassForBookingType(booking.type);
+  const badgeTone: BadgeTone | undefined =
+    badgeClass === 'stay' || badgeClass === 'trans' ? badgeClass : undefined;
   const isHard = event?.kind === 'hard';
+  // Per-row sync affordance (U-04, ADR-0080): "did this booking actually save?"
+  const status = useSyncStatus(booking.id);
 
-  // A flex row (not a single button) so the "⋯" can sit alongside the tap-to-open
-  // area, mirroring the document row (ADR-0052). Tap the body → detail view; the
-  // "⋯" → the manage sheet (edit / delete).
+  // The shared list-row (U-03): the badge+title open the read-only detail view
+  // (ADR-0053); the "⋯" opens the manage sheet (edit / delete). Code chip and the
+  // sync badge ride the trailing slot.
   return (
-    <div className="li bk">
-      <button
-        type="button"
-        className="li-open"
-        onClick={() => onOpen(booking)}
-        aria-label={booking.title}
-      >
-        <div className={'badge2' + (badgeTint ? ` ${badgeTint}` : '')}>{icon}</div>
-        <div className="main">
-          <div className="t">
-            <BookingTitle booking={booking} places={places} />
-            {isHard && (
-              <span className="bk-lock" aria-hidden="true">
-                {ICONS.lock}
-              </span>
-            )}
-            <span className="tag-type">{t.index.bookingType[booking.type]}</span>
-          </div>
-          <div className="m">
-            {event ? (
-              <span className="link-cue">🔗 {scheduleLabel(event, booking, trip, now)}</span>
-            ) : (
-              <span className="unlinked">{t.index.unlinked}</span>
-            )}
-          </div>
-        </div>
-      </button>
-      <div className="right">
-        {booking.confirmationCode && (
-          <div className="code" dir="ltr">
-            {CODE_PREFIX}
-            {booking.confirmationCode}
-          </div>
-        )}
-        <button
-          type="button"
-          className="kebab"
-          onClick={() => onManage(booking)}
-          aria-label={t.index.detail.actions}
-        >
-          ⋯
-        </button>
-      </div>
-    </div>
+    <ListRow
+      icon={icon}
+      badgeTone={badgeTone}
+      onOpen={() => onOpen(booking)}
+      openLabel={booking.title}
+      title={
+        <>
+          <BookingTitle booking={booking} places={places} />
+          {isHard && (
+            <span className="bk-lock" aria-hidden="true">
+              {ICONS.lock}
+            </span>
+          )}
+          <span className="tag-type">{t.index.bookingType[booking.type]}</span>
+        </>
+      }
+      meta={
+        event ? (
+          <span className="link-cue">🔗 {scheduleLabel(event, booking, trip, now)}</span>
+        ) : (
+          <span className="unlinked">{t.index.unlinked}</span>
+        )
+      }
+      right={
+        <>
+          {booking.confirmationCode && (
+            <span className="code" dir="ltr">
+              {CODE_PREFIX}
+              {booking.confirmationCode}
+            </span>
+          )}
+          <SyncBadge state={status.state} reason={status.reason} />
+        </>
+      }
+      onManage={() => onManage(booking)}
+      manageLabel={t.index.detail.actions}
+    />
   );
 }
 

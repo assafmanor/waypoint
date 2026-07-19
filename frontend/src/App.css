@@ -1,14 +1,46 @@
-/* App shell + header. Phone-first (~390px); centered with a max-width on larger
-   screens (ADR-0017). Ported from mockups/trip-dashboard-v2.html. */
+/* App shell + header. Phone-first (~390px); a breakpoint-aware centered column
+   on larger screens (ADR-0017 / design-language "Responsive"). Ported from
+   mockups/trip-dashboard-v2.html. Owned by AppShell (ui/layout). */
+
+/* Dark-mode note (U-08, ADR-0082 / ADR-0028): themeable colors read tokens
+   (tokens.css), so they re-map under [data-theme='dark']. The literal hexes that
+   remain are INTENTIONALLY theme-fixed and carry a "fixed:" (or "brand") marker:
+   - light text/decor painted onto the ALWAYS-dark trip-mode chrome (the indigo
+     header, the dormant board, the join/land departure boards, the boarding-pass
+     ticket, the trip-hero) — these surfaces stay dark in both themes, so their
+     light ink stays put;
+   - ink that rides a semantic FILL (dark ink on an amber pill, white on a plan /
+     miss / cta fill) — the fill re-maps, the on-fill ink must not;
+   - Google brand colors.
+   Everything on a paper/card surface was swept onto tokens. */
 .app {
   max-width: 430px;
-  margin: 0 auto;
+  margin-inline: auto;
   height: 100vh;
   height: 100dvh;
   display: flex;
   flex-direction: column;
   background: var(--screen);
   position: relative;
+  /* Clear side notches (landscape) with logical padding only — never
+     left/right. The app is RTL, so inline-start maps to the physical right
+     edge and inline-end to the physical left; both fall back to 0px. */
+  padding-inline-start: var(--safe-right);
+  padding-inline-end: var(--safe-left);
+}
+/* Breakpoint-aware column — the @media literals mirror --bp-tablet /
+   --bp-desktop (CSS can't read custom props in a media condition). Phone is
+   byte-identical to the old blanket 430px; tablet/desktop scale up gracefully
+   instead of a stretched phone strip. */
+@media (min-width: 768px) {
+  .app {
+    max-width: 560px;
+  }
+}
+@media (min-width: 1024px) {
+  .app {
+    max-width: 640px;
+  }
 }
 
 .body {
@@ -35,7 +67,9 @@
 .header {
   background: var(--indigo);
   color: #fff;
-  padding: 14px 20px 16px;
+  /* Top padding clears the notch via --safe-top (0px on non-notched devices,
+     so phone is unchanged). Block axis only — not an inline direction. */
+  padding: calc(14px + var(--safe-top)) 20px 16px;
   position: relative;
   z-index: 0;
 }
@@ -248,7 +282,7 @@
 }
 .toggle button.on {
   background: var(--amber);
-  color: #3a2405;
+  color: #3a2405; /* fixed: dark ink on the amber fill (fill re-maps, ink must not) */
 }
 /* Plan mode never uses amber (design-language: mode identity): the selected
    mode pill and selected day go plan violet. Solid --plan reads as the pressed
@@ -256,7 +290,7 @@
    chrome block below). */
 .app[data-mode='plan'] .toggle button.on {
   background: var(--plan);
-  color: #fff;
+  color: #fff; /* fixed: white on the plan-violet fill */
 }
 .toggle .auto {
   color: #7e8fb4;
@@ -266,107 +300,9 @@
   white-space: nowrap;
 }
 
-.day-strip {
-  display: flex;
-  gap: 6px;
-  margin-top: 14px;
-  overflow-x: auto;
-}
-.day-strip::-webkit-scrollbar {
-  height: 0;
-}
-/* Column layout (not absolute-above-the-pill) is deliberate: .day-strip is a
-   horizontal scroll container, and overflow-x: auto forces overflow-y: auto
-   too (CSS can't pair one axis auto with the other visible) — a label
-   positioned above the pill's own top edge lands in that container's
-   scrollable overflow, above scrollTop 0, which is permanently clipped. */
-.day-pill-wrap {
-  display: flex;
-  flex-direction: column;
-  justify-content: flex-end;
-  flex: 0 0 auto;
-}
-.month-label {
-  text-align: center;
-  font-size: 10.5px;
-  font-weight: 600;
-  color: #8494b5;
-  white-space: nowrap;
-  margin-bottom: 4px;
-}
-.day-pill {
-  position: relative;
-  min-width: 42px;
-  text-align: center;
-  font: inherit;
-  font-size: 11px;
-  font-weight: 600;
-  padding: 7px 0 8px;
-  border: none;
-  border-radius: 9px;
-  color: #8494b5;
-  background: rgba(255, 255, 255, 0.05);
-  cursor: pointer;
-}
-.day-pill .n {
-  display: block;
-  font-family: var(--font-mono);
-  font-size: 14px;
-  margin-top: 2px;
-  color: #b9c4de;
-}
-.day-pill.on {
-  background: var(--amber);
-  color: #3a2405;
-}
-.day-pill.on .n {
-  color: #3a2405;
-}
-/* In plan mode no day is "now", so selection is violet (design-language: mode identity). */
-.app[data-mode='plan'] .day-pill.on {
-  background: var(--plan);
-  color: #fff;
-}
-.app[data-mode='plan'] .day-pill.on .n {
-  color: #fff;
-}
-.day-pill.past {
-  opacity: 0.45;
-}
-/* Trip mode anchors amber to TODAY, not to the selection (ADR-0043 / ADR-0028).
-   today-anchor: a small amber dot marking the live day wherever you browse.
-   sel-history: a non-today selected day is a neutral highlight (history isn't
-   "now"). sel-future: a selected future day is violet (plan-ahead). future:
-   upcoming days sit slightly back. */
-.day-pill.today-anchor::after {
-  content: '';
-  position: absolute;
-  top: 5px;
-  inset-inline-end: 7px;
-  width: 6px;
-  height: 6px;
-  border-radius: 999px;
-  background: var(--amber);
-  box-shadow: 0 0 0 2px rgba(233, 166, 60, 0.25);
-}
-.day-pill.sel-history {
-  background: rgba(255, 255, 255, 0.16);
-  color: #eaf0ff;
-  box-shadow: inset 0 0 0 1px rgba(255, 255, 255, 0.28);
-}
-.day-pill.sel-history .n {
-  color: #fff;
-}
-.day-pill.sel-future {
-  background: var(--plan);
-  color: #fff;
-}
-.day-pill.sel-future .n {
-  color: #fff;
-}
-.day-pill.future {
-  opacity: 0.6;
-}
+/* The day-strip itself (`.day-strip` / `.day-pill*` / `.month-label`) now lives
+   in the DayStrip domain component (ui/domain/day-strip.css, review U-03). Only
+   the day-scope context ribbon below stays here — it is header chrome, not a pill. */
 
 /* Day-scope context ribbon under the strip when viewing a non-today day in Trip
    mode (ADR-0043 / ADR-0029) — names the state and taps back to today. */
@@ -444,6 +380,7 @@
   height: 12px;
   border-radius: 50%;
   flex: 0 0 auto;
+  /* brand: Google — the four-color mark, identical in both themes */
   background: conic-gradient(#4285f4 0 25%, #ea4335 0 50%, #fbbc05 0 75%, #34a853 0);
 }
 .zero-body {
@@ -642,7 +579,7 @@
   margin-top: auto;
   padding-top: 24px;
   text-align: center;
-  color: #98a0b0;
+  color: var(--faint);
   font-size: 12px;
   line-height: 1.6;
 }
@@ -711,7 +648,7 @@
   padding: 12px 14px;
 }
 .field input::placeholder {
-  color: #a6acba;
+  color: var(--faint);
   font-weight: 500;
 }
 .field input:focus-visible {
@@ -721,7 +658,7 @@
 }
 .field .hint {
   font-size: 11.5px;
-  color: #98a0b0;
+  color: var(--faint);
   margin-top: 5px;
 }
 .date-row {
@@ -774,7 +711,7 @@
   color: var(--ink);
 }
 .draft .t .ghost {
-  color: #a6acba;
+  color: var(--faint);
 }
 .draft .m {
   font-size: 12px;
@@ -818,7 +755,7 @@
 }
 .new-note {
   text-align: center;
-  color: #98a0b0;
+  color: var(--faint);
   font-size: 11.5px;
   margin-top: 10px;
   line-height: 1.5;
@@ -940,7 +877,7 @@
   flex: 1;
 }
 .born-teach {
-  color: #98a0b0;
+  color: var(--faint);
   font-size: 12px;
   margin-top: 10px;
   line-height: 1.55;
@@ -1179,7 +1116,7 @@
   justify-content: center;
   gap: 10px;
   width: 100%;
-  background: #fff;
+  background: #fff; /* fixed: white sign-in button on the always-dark join board */
   color: #1a1a1a;
   border: 0;
   border-radius: 14px;
@@ -1196,6 +1133,7 @@
   width: 18px;
   height: 18px;
   border-radius: 50%;
+  /* brand: Google */
   background: conic-gradient(#4285f4 0 25%, #ea4335 0 50%, #fbbc05 0 75%, #34a853 0);
 }
 .join-note {
@@ -1407,7 +1345,9 @@
   backdrop-filter: blur(12px);
   border-top: 1px solid var(--line);
   display: flex;
-  padding: 9px 8px;
+  /* Bottom padding clears the home-indicator via --safe-bottom (0px otherwise,
+     so phone is unchanged). */
+  padding: 9px 8px calc(9px + var(--safe-bottom));
   /* The active tab's "you are here" pill follows mode identity: the neutral
      chrome indigo in Trip mode, --plan violet in Plan mode (below). It never
      borrows amber (time) or teal (location) — see design-language.md. */
@@ -1572,14 +1512,14 @@
 
 /* finished trips read one notch quieter */
 .trip-card.is-past {
-  background: #fbfbfc;
+  background: var(--card);
 }
 .trip-card.is-past .flag {
   filter: saturate(0.7);
   opacity: 0.9;
 }
 .trip-card.is-past .t {
-  color: #4a5673;
+  color: var(--muted);
 }
 
 /* Active-trip hero (ADR-0033) — the single loud element on a paper page. Uses
@@ -1679,11 +1619,11 @@
 }
 .chip.soon {
   color: var(--ink);
-  background: #fff;
+  background: var(--card);
   border: 1px solid var(--soft-line);
 }
 .chip.past {
-  color: #a0a7b4;
+  color: var(--faint);
   background: transparent;
   border: 1px solid var(--line);
 }
@@ -1803,27 +1743,9 @@
 .app[data-mode='plan'] .toggle .auto {
   color: var(--muted);
 }
-.app[data-mode='plan'] .day-pill {
-  background: rgba(22, 35, 61, 0.05);
-  color: var(--muted);
-}
-.app[data-mode='plan'] .day-pill .n {
-  color: var(--ink);
-}
-.app[data-mode='plan'] .month-label {
-  color: var(--muted);
-}
-
-/* Plan-mode empty-day marker on the day strip (mockups/plan-mode-v1.html):
-   a dashed pill with a red number — a gap to go fill. Never on the selected
-   day (:not(.on)), whose violet fill wins. */
-.app[data-mode='plan'] .day-pill.empty:not(.on) {
-  border: 1px dashed var(--soft-line);
-  background: transparent;
-}
-.app[data-mode='plan'] .day-pill.empty:not(.on) .n {
-  color: var(--miss);
-}
+/* The Plan-mode day-strip re-skin (light pills, violet selection, dashed
+   empty-day markers) moved into the DayStrip component, keyed off its own
+   `[data-mode='plan']` (ui/domain/day-strip.css). */
 
 /* Return gesture (ADR-0035 §5). #app-shift is the layer the pull moves: the
    screen tracks the finger ~1:1 and, on a committed structural back, slides

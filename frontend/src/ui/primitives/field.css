@@ -1,0 +1,49 @@
+/* One field shell (U-05). Token-based (Wave-0), logical properties only for RTL.
+   Neutral chrome: the control border/background stay neutral; a focused control
+   picks up teal (design-language: teal = location, but reused app-wide as the
+   input focus hue), and the error slot uses --miss. */
+
+.field {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-1);
+}
+
+.field-label {
+  font-size: var(--text-caption);
+  font-weight: 700;
+  color: var(--muted);
+}
+
+.field input,
+.field textarea,
+.field select {
+  font: inherit;
+  font-size: var(--text-body);
+  font-weight: 500;
+  color: var(--ink);
+  background: var(--card);
+  border: 1px solid var(--line);
+  border-radius: var(--radius-12);
+  padding-block: var(--space-2);
+  padding-inline: var(--space-3);
+}
+
+.field textarea {
+  min-height: 56px;
+  resize: vertical;
+}
+
+.field input:focus-visible,
+.field textarea:focus-visible,
+.field select:focus-visible {
+  outline: none;
+  border-color: var(--teal);
+}
+
+.field-error {
+  margin: 0;
+  font-size: var(--text-caption);
+  font-weight: 700;
+  color: var(--miss);
+}

@@ -4,8 +4,12 @@
 // hotel room/WiFi, notes, and an optional date/time that seeds the linked
 // itinerary event (the backend upserts it). Delete surfaces the delete-both-vs-
 // unlink choice when a booking is tied to an event (ADR-0047 §3).
+//
+// Structure folded onto the shared editing grammar (U-01/U-02/U-05): fields wear
+// the Field shell, dates flow through DateTimeField (no native datetime-local),
+// the footer is FormActions, delete routes through the generic ConfirmDialog,
+// and a dirty close is guarded by a discard confirm.
 import { useState } from 'react';
-import { createPortal } from 'react-dom';
 import {
   BOOKING_TYPE,
   BOOKING_TYPE_TO_CATEGORY,
@@ -20,6 +24,11 @@ import { IconPicker } from './IconPicker';
 import { Icon } from './Icon';
 import { NavArrow } from './NavArrow';
 import { TimePicker } from './TimePicker';
+import { Field } from './primitives/Field';
+import { FormActions } from './primitives/FormActions';
+import { DateTimeField } from './primitives/DateTimeField';
+import { ConfirmDialog } from './primitives/ConfirmDialog';
+import { useUnsavedGuard } from '../lib/useUnsavedGuard';
 import {
   mergeBookingDetails,
   deleteFlags,
@@ -33,7 +42,7 @@ import {
 import { placeName } from '../lib/places';
 import { isoToTimeInput } from '../lib/time';
 import { timingLabels } from '../lib/booking-timing';
-import { BOOKING_TYPE_ICON, DEVICE_LOCALE } from '../constants';
+import { BOOKING_TYPE_ICON } from '../constants';
 import { t } from '../i18n/he';
 
 interface Wifi {
@@ -78,40 +87,53 @@ export function BookingSheet({
   const initialType = booking?.type ?? seed?.type ?? BOOKING_TYPE.FLIGHT;
   const wifi = booking?.details?.wifi as Wifi | undefined;
 
+  const defaultKind = (ty: BookingType) => (isSpanType(ty) ? EVENT_KIND.HARD : EVENT_KIND.SOFT);
+
+  // Initial values captured up front so the unsaved-changes guard can diff them.
+  const initialIcon = linkedEvent?.icon ?? BOOKING_TYPE_ICON[initialType];
+  const initialCategory = linkedEvent?.category ?? BOOKING_TYPE_TO_CATEGORY[initialType];
+  const initialTitle = booking?.title ?? '';
+  const initialCode = booking?.confirmationCode ?? '';
+  const initialOrigin = placeName(places, booking?.fromPlaceId) ?? seed?.origin ?? '';
+  const initialDest = placeName(places, booking?.toPlaceId) ?? seed?.dest ?? '';
+  const initialRoom = (booking?.details?.room as string | undefined) ?? '';
+  const initialNotes = (booking?.details?.notes as string | undefined) ?? '';
+  const initialWifiNetwork = wifi?.network ?? '';
+  const initialWifiPassword = wifi?.password ?? '';
+  const initialDate = linkedEvent?.date ?? '';
+  const initialStart = linkedEvent?.startsAt
+    ? isoToTimeInput(linkedEvent.startsAt, trip.timezone)
+    : '';
+  const initialEnd = linkedEvent?.endsAt ? isoToTimeInput(linkedEvent.endsAt, trip.timezone) : '';
+  const initialSpanStart = linkedEvent?.startsAt
+    ? isoToDateTimeLocal(linkedEvent.startsAt, trip.timezone)
+    : '';
+  const initialSpanEnd = linkedEvent?.endsAt
+    ? isoToDateTimeLocal(linkedEvent.endsAt, trip.timezone)
+    : '';
+  const initialKind: 'hard' | 'soft' = linkedEvent?.kind ?? defaultKind(initialType);
+
   const [type, setType] = useState<BookingType>(initialType);
   const [iconTouched, setIconTouched] = useState(false);
-  const [icon, setIcon] = useState(linkedEvent?.icon ?? BOOKING_TYPE_ICON[initialType]);
-  const [category, setCategory] = useState<EventCategory>(
-    linkedEvent?.category ?? BOOKING_TYPE_TO_CATEGORY[initialType],
-  );
-  const [title, setTitle] = useState(booking?.title ?? '');
-  const [code, setCode] = useState(booking?.confirmationCode ?? '');
-  const [origin, setOrigin] = useState(
-    placeName(places, booking?.fromPlaceId) ?? seed?.origin ?? '',
-  );
-  const [dest, setDest] = useState(placeName(places, booking?.toPlaceId) ?? seed?.dest ?? '');
-  const [room, setRoom] = useState((booking?.details?.room as string | undefined) ?? '');
-  const [notes, setNotes] = useState((booking?.details?.notes as string | undefined) ?? '');
-  const [wifiNetwork, setWifiNetwork] = useState(wifi?.network ?? '');
-  const [wifiPassword, setWifiPassword] = useState(wifi?.password ?? '');
+  const [icon, setIcon] = useState(initialIcon);
+  const [category, setCategory] = useState<EventCategory>(initialCategory);
+  const [title, setTitle] = useState(initialTitle);
+  const [code, setCode] = useState(initialCode);
+  const [origin, setOrigin] = useState(initialOrigin);
+  const [dest, setDest] = useState(initialDest);
+  const [room, setRoom] = useState(initialRoom);
+  const [notes, setNotes] = useState(initialNotes);
+  const [wifiNetwork, setWifiNetwork] = useState(initialWifiNetwork);
+  const [wifiPassword, setWifiPassword] = useState(initialWifiPassword);
   // Non-transport scheduling: a single day + optional same-day time span.
-  const [date, setDate] = useState(linkedEvent?.date ?? '');
-  const [start, setStart] = useState(
-    linkedEvent?.startsAt ? isoToTimeInput(linkedEvent.startsAt, trip.timezone) : '',
-  );
-  const [end, setEnd] = useState(
-    linkedEvent?.endsAt ? isoToTimeInput(linkedEvent.endsAt, trip.timezone) : '',
-  );
+  const [date, setDate] = useState(initialDate);
+  const [start, setStart] = useState(initialStart);
+  const [end, setEnd] = useState(initialEnd);
   // Span scheduling (transport departure/arrival, hotel check-in/check-out): two
   // explicit datetimes that may fall on different days.
-  const [spanStart, setSpanStart] = useState(
-    linkedEvent?.startsAt ? isoToDateTimeLocal(linkedEvent.startsAt, trip.timezone) : '',
-  );
-  const [spanEnd, setSpanEnd] = useState(
-    linkedEvent?.endsAt ? isoToDateTimeLocal(linkedEvent.endsAt, trip.timezone) : '',
-  );
-  const defaultKind = (ty: BookingType) => (isSpanType(ty) ? EVENT_KIND.HARD : EVENT_KIND.SOFT);
-  const [kind, setKind] = useState<'hard' | 'soft'>(linkedEvent?.kind ?? defaultKind(initialType));
+  const [spanStart, setSpanStart] = useState(initialSpanStart);
+  const [spanEnd, setSpanEnd] = useState(initialSpanEnd);
+  const [kind, setKind] = useState<'hard' | 'soft'>(initialKind);
   const [kindTouched, setKindTouched] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [saving, setSaving] = useState(false);
@@ -120,10 +142,31 @@ export function BookingSheet({
   const isTransport = isTransportType(type);
   const isHotel = type === BOOKING_TYPE.HOTEL;
   const isSpan = isSpanType(type);
-  // Bound the span datetime-local inputs to the trip's day range (matches the
-  // single-date input's min/max); datetime-local honours "YYYY-MM-DDTHH:MM".
+  // Bound the span datetime inputs to the trip's day range (matches the
+  // single-date input's min/max). DateTimeField honours "YYYY-MM-DDTHH:MM".
   const spanMin = `${trip.startDate}T00:00`;
   const spanMax = `${trip.endDate}T23:59`;
+
+  const dirty =
+    type !== initialType ||
+    icon !== initialIcon ||
+    category !== initialCategory ||
+    title !== initialTitle ||
+    code !== initialCode ||
+    origin !== initialOrigin ||
+    dest !== initialDest ||
+    room !== initialRoom ||
+    notes !== initialNotes ||
+    wifiNetwork !== initialWifiNetwork ||
+    wifiPassword !== initialWifiPassword ||
+    date !== initialDate ||
+    start !== initialStart ||
+    end !== initialEnd ||
+    spanStart !== initialSpanStart ||
+    spanEnd !== initialSpanEnd ||
+    kind !== initialKind;
+  const { guardedClose, prompting, confirmDiscard, cancelDiscard } = useUnsavedGuard(dirty);
+  const requestClose = () => guardedClose(onClose);
 
   const changeType = (next: BookingType) => {
     setType(next);
@@ -203,7 +246,7 @@ export function BookingSheet({
     <>
       <Sheet
         ariaLabel={isCreate ? t.index.form.createTitle : t.index.sheet.editTitle}
-        onClose={onClose}
+        onClose={requestClose}
       >
         <div className="booking-sheet">
           {isCreate && (
@@ -291,95 +334,85 @@ export function BookingSheet({
               place-picker hint under them. */}
           {isTransport && <div className="bs-route-hint">📍 {t.index.form.routeHint}</div>}
 
-          <label className="bs-field">
-            {t.index.sheet.codeLabel}
-            <input dir="ltr" value={code} onChange={(e) => setCode(e.target.value)} />
-          </label>
+          <Field label={t.index.sheet.codeLabel} htmlFor="bs-code">
+            <input id="bs-code" dir="ltr" value={code} onChange={(e) => setCode(e.target.value)} />
+          </Field>
 
           {isHotel && (
             <>
-              <label className="bs-field">
-                {t.index.sheet.roomLabel}
-                <input value={room} onChange={(e) => setRoom(e.target.value)} />
-              </label>
+              <Field label={t.index.sheet.roomLabel} htmlFor="bs-room">
+                <input id="bs-room" value={room} onChange={(e) => setRoom(e.target.value)} />
+              </Field>
               <div className="bs-wifi">
                 <div className="bs-wifi-head">
                   📶 {t.index.sheet.wifiTitle}
                   <span className="bs-hint"> · {t.index.sheet.wifiHotelOnly}</span>
                 </div>
                 <div className="bs-row2">
-                  <label className="bs-field">
-                    {t.index.sheet.wifiNetwork}
+                  <Field label={t.index.sheet.wifiNetwork} htmlFor="bs-wifi-net">
                     <input
+                      id="bs-wifi-net"
                       dir="ltr"
                       value={wifiNetwork}
                       onChange={(e) => setWifiNetwork(e.target.value)}
                     />
-                  </label>
-                  <label className="bs-field">
-                    {t.index.sheet.wifiPassword}
+                  </Field>
+                  <Field label={t.index.sheet.wifiPassword} htmlFor="bs-wifi-pass">
                     <input
+                      id="bs-wifi-pass"
                       dir="ltr"
                       value={wifiPassword}
                       onChange={(e) => setWifiPassword(e.target.value)}
                     />
-                  </label>
+                  </Field>
                 </div>
               </div>
             </>
           )}
 
-          <label className="bs-field">
-            {t.index.sheet.notesLabel}
-            <textarea value={notes} onChange={(e) => setNotes(e.target.value)} />
-          </label>
+          <Field label={t.index.sheet.notesLabel} htmlFor="bs-notes">
+            <textarea id="bs-notes" value={notes} onChange={(e) => setNotes(e.target.value)} />
+          </Field>
 
           {isSpan ? (
             <>
               {/* Two endpoints (flight departure→arrival, hotel check-in→check-out,
                   activity start→end) that may fall on different days — each a full
-                  datetime, side by side. dir=ltr keeps the date+time reading L→R. */}
+                  datetime, side by side. */}
               <div className="bs-row2">
-                <label className="bs-field">
-                  {spanLabels(type).start}
-                  <input
-                    type="datetime-local"
-                    dir="ltr"
-                    lang={DEVICE_LOCALE}
+                <Field label={spanLabels(type).start}>
+                  <DateTimeField
+                    mode="datetime"
                     min={spanMin}
                     max={spanMax}
                     value={spanStart}
-                    onChange={(e) => setSpanStart(e.target.value)}
+                    onChange={setSpanStart}
                   />
-                </label>
-                <label className="bs-field">
-                  {spanLabels(type).end}
-                  <input
-                    type="datetime-local"
-                    dir="ltr"
-                    lang={DEVICE_LOCALE}
+                </Field>
+                <Field label={spanLabels(type).end}>
+                  <DateTimeField
+                    mode="datetime"
                     min={spanMin}
                     max={spanMax}
                     value={spanEnd}
-                    onChange={(e) => setSpanEnd(e.target.value)}
+                    onChange={setSpanEnd}
                   />
-                </label>
+                </Field>
               </div>
               {spanStart && <KindToggle kind={kind} onPick={pickKind} />}
             </>
           ) : (
             <>
-              <label className="bs-field">
-                {t.index.form.dateLabel}
-                <input
-                  type="date"
-                  lang={DEVICE_LOCALE}
+              <Field label={t.index.form.dateLabel} htmlFor="bs-date">
+                <DateTimeField
+                  mode="date"
+                  id="bs-date"
                   min={trip.startDate}
                   max={trip.endDate}
                   value={date}
-                  onChange={(e) => setDate(e.target.value)}
+                  onChange={setDate}
                 />
-              </label>
+              </Field>
               {date && (
                 <>
                   <TimePicker
@@ -396,21 +429,21 @@ export function BookingSheet({
             </>
           )}
 
-          {error && <p className="bs-error">{error}</p>}
-
-          <div className="bs-actions">
-            <button type="button" className="bs-save" onClick={save} disabled={saving}>
-              {t.index.sheet.save}
-            </button>
-            <button type="button" className="bs-cancel" onClick={onClose}>
-              {t.index.sheet.cancel}
-            </button>
-          </div>
-          {!isCreate && (
-            <button type="button" className="bs-delete" onClick={() => setDeleting(true)}>
-              🗑️ {t.index.sheet.delete}
-            </button>
+          {error && (
+            <p className="field-error" role="alert">
+              {error}
+            </p>
           )}
+
+          <FormActions
+            primary={{ label: t.common.save, onClick: save, disabled: saving }}
+            secondary={{ label: t.common.cancel, onClick: requestClose }}
+            destructive={
+              isCreate
+                ? undefined
+                : { label: t.index.sheet.delete, onClick: () => setDeleting(true) }
+            }
+          />
         </div>
       </Sheet>
 
@@ -426,6 +459,18 @@ export function BookingSheet({
           }}
         />
       )}
+
+      {prompting && (
+        <ConfirmDialog
+          tone="danger"
+          title={t.common.discardTitle}
+          body={t.common.discardBody}
+          confirmLabel={t.common.discardConfirm}
+          cancelLabel={t.common.discardCancel}
+          onConfirm={confirmDiscard}
+          onCancel={cancelDiscard}
+        />
+      )}
     </>
   );
 }
@@ -438,8 +483,7 @@ function KindToggle({
   onPick: (k: 'hard' | 'soft') => void;
 }) {
   return (
-    <div className="bs-field">
-      {t.index.form.kindLabel}
+    <Field label={t.index.form.kindLabel}>
       <div className="kind-toggle">
         <button
           type="button"
@@ -456,7 +500,7 @@ function KindToggle({
           {t.index.form.kindHard}
         </button>
       </div>
-    </div>
+    </Field>
   );
 }
 
@@ -471,58 +515,45 @@ export function DeletePrompt({
   onCancel: () => void;
   onChoose: (choice: 'both' | 'unlink') => void;
 }) {
-  // Portalled to <body> with a lifted z-index so it sits above the booking
-  // Sheet's own body-portalled overlay (both are z-20 otherwise, and the sheet,
-  // being in the DOM, would win hit-testing).
-  const body = !hasLinkedEvent ? (
-    <div className="confirm-overlay bs-modal-overlay" onClick={onCancel}>
-      <div
-        className="confirm-card"
-        role="alertdialog"
-        aria-modal="true"
-        aria-label={t.index.del.plainTitle}
-        onClick={(e) => e.stopPropagation()}
-      >
-        <div className="confirm-title">🗑️ {t.index.del.plainTitle}</div>
-        <p className="confirm-body">{t.index.del.plainBody}</p>
-        <div className="confirm-actions">
-          <button className="confirm-cancel" onClick={onCancel}>
-            {t.index.del.cancel}
-          </button>
-          <button className="confirm-ok bs-danger-ok" onClick={() => onChoose('unlink')}>
-            {t.index.del.confirmDelete}
-          </button>
-        </div>
-      </div>
-    </div>
-  ) : (
-    <div className="confirm-overlay bs-modal-overlay" onClick={onCancel}>
-      <div
-        className="confirm-card"
-        role="alertdialog"
-        aria-modal="true"
-        aria-label={t.index.del.linkedTitle}
-        onClick={(e) => e.stopPropagation()}
-      >
-        <div className="confirm-title">🔗 {t.index.del.linkedTitle}</div>
-        <p className="confirm-body">{t.index.del.linkedBody}</p>
-        {linkedIsHard && <p className="bs-hard-note">🔒 {t.index.del.hardNote}</p>}
-        <div className="bs-choices">
-          <button className="bs-choice danger" onClick={() => onChoose('both')}>
-            <div className="bs-choice-t">{t.index.del.both}</div>
-            <div className="bs-choice-s">{t.index.del.bothSub}</div>
-          </button>
-          <button className="bs-choice" onClick={() => onChoose('unlink')}>
-            <div className="bs-choice-t">{t.index.del.unlink}</div>
-            <div className="bs-choice-s">{t.index.del.unlinkSub}</div>
-          </button>
-        </div>
-        <button className="confirm-cancel bs-choice-cancel" onClick={onCancel}>
-          {t.index.del.cancel}
+  // A booking with no linked event is a plain confirm; a linked one offers the
+  // delete-both-vs-unlink choice (ADR-0047 §3). Both route through the generic
+  // danger dialog — Modal portals it above the open booking sheet.
+  if (!hasLinkedEvent) {
+    return (
+      <ConfirmDialog
+        tone="danger"
+        icon="🗑️"
+        title={t.index.del.plainTitle}
+        body={t.index.del.plainBody}
+        confirmLabel={t.index.del.confirmDelete}
+        cancelLabel={t.index.del.cancel}
+        onConfirm={() => onChoose('unlink')}
+        onCancel={onCancel}
+      />
+    );
+  }
+  return (
+    <ConfirmDialog
+      tone="danger"
+      icon="🔗"
+      title={t.index.del.linkedTitle}
+      body={t.index.del.linkedBody}
+      onCancel={onCancel}
+    >
+      {linkedIsHard && <p className="bs-hard-note">🔒 {t.index.del.hardNote}</p>}
+      <div className="bs-choices">
+        <button type="button" className="bs-choice danger" onClick={() => onChoose('both')}>
+          <div className="bs-choice-t">{t.index.del.both}</div>
+          <div className="bs-choice-s">{t.index.del.bothSub}</div>
+        </button>
+        <button type="button" className="bs-choice" onClick={() => onChoose('unlink')}>
+          <div className="bs-choice-t">{t.index.del.unlink}</div>
+          <div className="bs-choice-s">{t.index.del.unlinkSub}</div>
         </button>
       </div>
-    </div>
+      <button type="button" className="confirm-cancel bs-choice-cancel" onClick={onCancel}>
+        {t.index.del.cancel}
+      </button>
+    </ConfirmDialog>
   );
-
-  return createPortal(body, document.body);
 }

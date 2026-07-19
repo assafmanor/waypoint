@@ -9,6 +9,26 @@ export const t = {
     yes: 'כן',
     no: 'לא',
     now: 'עכשיו',
+    loading: 'טוען',
+    // Canonical action labels — one wording shared by every FormActions bar and
+    // confirm dialog (U-02), so Save/Cancel/Delete never drift between forms.
+    save: 'שמירה',
+    cancel: 'ביטול',
+    delete: 'מחיקה',
+    // Unsaved-changes discard confirm (U-05), shown when closing a dirty form.
+    discardTitle: 'לצאת בלי לשמור?',
+    discardBody: 'יש שינויים שעדיין לא נשמרו. אם תצא עכשיו הם יאבדו.',
+    discardConfirm: 'צא בלי לשמור',
+    discardCancel: 'המשך עריכה',
+  },
+  // Shared feedback-state family (ADR-0078): generic copy for the empty / loading
+  // / error / status shells. Screens pass their own specific copy; these are the
+  // sensible defaults (retry, a neutral "loading", a generic error title, dismiss).
+  feedback: {
+    retry: 'נסו שוב',
+    loading: 'טוען',
+    errorTitle: 'משהו השתבש',
+    dismiss: 'סגירה',
   },
   // Visible directional arrows render as SVGs (ui/NavArrow, ui/Icon) so they
   // centre cleanly — the Assistant body font has no arrow glyphs and the
@@ -31,15 +51,53 @@ export const t = {
     leavingIn: (phrase: string) => `יוצאים בעוד ${phrase}`,
     pendingSync: (count: number) => `${count} שינויים מחכים לסנכרון`,
     offlineNow: 'אופליין · נתונים שמורים',
-    // A queued write that the server rejected on flush (F-03) — real data loss if
-    // left silent. Tapping the badge dismisses it.
-    syncFailed: (count: number) =>
-      count === 1 ? 'שינוי אחד לא נשמר · הקישו לסגירה' : `${count} שינויים לא נשמרו · הקישו לסגירה`,
     // Day-scope context ribbon under the strip when viewing a non-today day in
     // Trip mode (ADR-0043 / ADR-0029), plus the one-tap way back to today.
     pastDay: 'יום שהיה · היסטוריה',
     futureDay: 'יום עתידי · תצוגה מקדימה',
     backToToday: 'חזרה להיום',
+  },
+  // Per-entity sync status (U-04, ADR-0080): the per-row SyncBadge, the header
+  // failed-summary affordance, and the review/retry (dead-letter) sheet.
+  sync: {
+    badge: {
+      synced: 'נשמר',
+      pending: 'ממתין לסנכרון',
+      failed: 'לא נשמר',
+    },
+    // Persistent header affordance — replaces the old timed failed badge. Never
+    // clears on a timer; opens the review sheet.
+    summary: (count: number) => (count === 1 ? 'שינוי אחד לא נשמר' : `${count} שינויים לא נשמרו`),
+    // Human label per outbox verb, describing the change that did not save.
+    verb: {
+      create: 'הוספת אירוע',
+      update: 'עדכון אירוע',
+      setStatus: 'עדכון סטטוס אירוע',
+      move: 'הזזת אירוע',
+      delete: 'מחיקת אירוע',
+      consumeMaybeItem: 'קידום רעיון',
+      createMaybeItem: 'הוספת רעיון',
+      deleteMaybeItem: 'מחיקת רעיון',
+      updateTrip: 'עדכון פרטי הטיול',
+      setMemberRole: 'עדכון הרשאות חבר',
+      removeMember: 'הסרת חבר',
+      deleteTrip: 'מחיקת הטיול',
+      createBooking: 'הוספת הזמנה',
+      updateBooking: 'עדכון הזמנה',
+      deleteBooking: 'מחיקת הזמנה',
+      createPlace: 'הוספת מקום',
+      updatePlace: 'עדכון מקום',
+      uploadDocument: 'העלאת מסמך',
+    } as Record<string, string>,
+    review: {
+      title: 'שינויים שלא נשמרו',
+      intro: 'השינויים האלה נדחו בסנכרון. אפשר לנסות שוב או להשליך.',
+      reason: 'השרת דחה את השינוי',
+      retry: 'נסו שוב',
+      discard: 'השליכו',
+      discardAll: 'השליכו הכל',
+      empty: 'אין שינויים שממתינים לטיפול.',
+    },
   },
   placeholder: {
     comingSoon: 'המסך הזה עוד בעבודה.',
@@ -213,6 +271,9 @@ export const t = {
   snapshot: {
     loading: 'טוען את הטיול…',
     errorTitle: 'לא הצלחנו לטעון את הטיול',
+    // Chrome-preserving error state (U-10): a friendly cause line instead of the
+    // raw error, next to a working retry button.
+    errorBody: 'בדקו את החיבור ונסו שוב.',
   },
   shell: {
     booting: 'טוען…',
@@ -277,6 +338,7 @@ export const t = {
       draftMeta: (destination: string, days: number) => `${destination} · ${days} ימים`,
       draftTag: 'טיוטה',
       createButton: 'יאללה, יש טיול 🎉',
+      ctaReason: 'מלאו יעד, תאריכים ושם כדי להמשיך',
       offlineNote: 'יצירת טיול צריכה חיבור · לינק שחבר שולח ייפתח גם עכשיו',
       note: 'אזור זמן ומטבע מסתדרים לפי היעד · תקציב אפשר להוסיף אחר כך',
     },
@@ -355,6 +417,39 @@ export const t = {
     documents: 'מסמכים',
     docsInvite: 'הוסיפו מסמך',
     wifiCopied: 'קוד ה-WiFi הועתק ללוח',
+  },
+  // Group change-feed (ADR-0081, review U-09): a quiet strip narrating recent
+  // SHARED peer edits. The subject is inlined in each lead; a moved-to clock time
+  // is appended separately as a dir="ltr" island (never inside these strings).
+  // Verbs are masculine by convention (actor gender is unknown), matching the
+  // settings/toast copy. No em dashes.
+  changeFeed: {
+    title: 'עדכונים מהקבוצה',
+    clearAll: 'נקה הכל',
+    clearAllLabel: 'נקה את כל העדכונים',
+    dismiss: 'הסתר עדכון',
+    someone: 'מישהו',
+    nouns: {
+      event: 'האירוע',
+      booking: 'ההזמנה',
+      place: 'המקום',
+      document: 'המסמך',
+      member: 'משתתף',
+      trip: 'הטיול',
+      item: 'הפריט',
+    },
+    movedTo: (subject: string) => `הזיז את ${subject} ל־`,
+    moved: (subject: string) => `הזיז את ${subject}`,
+    added: (subject: string) => `הוסיף את ${subject}`,
+    removed: (subject: string) => `מחק את ${subject}`,
+    updated: (subject: string) => `עדכן את ${subject}`,
+    joined: 'הצטרף לטיול',
+    relTime: {
+      now: 'עכשיו',
+      prefix: 'לפני',
+      minUnit: 'ד׳',
+      hrUnit: 'ש׳',
+    },
   },
   // Day-at-a-glance: derived from events (ADR-0045). Counts are phase-based and
   // run on top-level blocks (ADR-0041), so a passed-unmarked event drops out of

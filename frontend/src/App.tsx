@@ -23,7 +23,6 @@ import {
 } from './state/nav-state';
 import { EdgeSwipeBack } from './ui/EdgeSwipeBack';
 import {
-  clearSyncFailures,
   flushAllOutbox,
   isOffline,
   useIsOffline,
@@ -35,9 +34,12 @@ import { resolveLanding } from './lib/active-trip';
 import { consumeIntent, hasIntent, saveIntent } from './lib/intent';
 import { ToastProvider } from './ui/Toast';
 import { ConfirmProvider } from './ui/ConfirmDialog';
+import { AppShell } from './ui/layout';
 import { Sheet } from './ui/Sheet';
+import { SyncReviewSheet } from './ui/SyncReviewSheet';
 import { Icon } from './ui/Icon';
 import { NavArrow } from './ui/NavArrow';
+import { DayStrip } from './ui/domain/DayStrip';
 import { Home } from './screens/Home';
 import { Login } from './screens/Login';
 import { ZeroState } from './screens/ZeroState';
@@ -159,7 +161,8 @@ function Header({
   const { mode } = useMode();
   const now = useClock();
   // Plan mode surfaces empty days on the strip (dashed + red number), the
-  // day-selector cue from mockups/plan-mode-v1.html — a gap to go fill.
+  // day-selector cue from mockups/plan-mode-v1.html — a gap to go fill. DayStrip
+  // reads this per-day as `hasEvents`.
   const datesWithEvents = new Set(events.map((e) => e.date));
   const { targetRef: tripNameRef, containerRef: tripNameWrapRef } = useShrinkToFit<
     HTMLSpanElement,
@@ -178,6 +181,7 @@ function Header({
   const offline = useIsOffline() || usingCachedSnapshot;
   const pendingCount = useOutboxCount();
   const syncFailures = useSyncFailures();
+  const [syncReviewOpen, setSyncReviewOpen] = useState(false);
   const total =
     Math.round((Date.parse(trip.endDate) - Date.parse(trip.startDate)) / MS_PER_DAY) + 1;
   const dayNumber =
@@ -195,7 +199,8 @@ function Header({
       date,
       dayOfMonth: date.slice(8),
       letter: weekdayLetter.format(new Date(`${date}T00:00:00Z`)),
-      monthLabel,
+      monthLabel: monthLabel ?? undefined,
+      hasEvents: datesWithEvents.has(date),
     };
   });
   // Trip mode anchors amber to TODAY (the live day), not to the selection
@@ -203,21 +208,8 @@ function Header({
   // day violet (plan-ahead), and today keeps its amber dot wherever you browse —
   // so "where's now?" is always answerable from the chrome. Plan mode has no
   // "now", so it keeps its own violet-selection + empty-day grammar unchanged.
+  // The pill-state logic itself now lives in the DayStrip domain component.
   const today = todayInTz(trip.timezone, now);
-  const pillClass = (date: string) => {
-    const c = ['day-pill'];
-    const selected = date === activeDate;
-    if (mode === 'trip') {
-      if (selected) c.push(date === today ? 'on' : date < today ? 'sel-history' : 'sel-future');
-      else if (date === today) c.push('today-anchor');
-      else c.push(date < today ? 'past' : 'future');
-    } else {
-      if (selected) c.push('on');
-      else if (date < activeDate) c.push('past');
-      if (!datesWithEvents.has(date)) c.push('empty');
-    }
-    return c.join(' ');
-  };
   // Day-scope context ribbon (ADR-0029/0043): only in Trip mode, only off today.
   const dayScope =
     mode === 'trip' && activeDate !== today ? (activeDate < today ? 'past' : 'future') : null;
@@ -281,7 +273,7 @@ function Header({
             </button>
           )}
           <button className="gear-btn" onClick={onOpenSettings} aria-label={t.shell.stub.settings}>
-            ⚙
+            <Icon name="settings" />
           </button>
         </div>
       </div>
@@ -298,33 +290,28 @@ function Header({
             {ICONS.sync} {t.header.pendingSync(pendingCount)}
           </div>
         )}
+        {/* Persistent failed-summary → review/retry sheet (U-04, ADR-0080). Unlike
+            the old badge it never clears on a timer or tap-to-dismiss: it opens the
+            dead-letter sheet where each rejected write is retried or discarded, so a
+            rejected write can't silently vanish at the next resync. */}
         {syncFailures.length > 0 && (
-          <div
-            className="offline-badge"
-            role="button"
-            tabIndex={0}
-            onClick={() => clearSyncFailures()}
-            onKeyDown={(e) => {
-              if (e.key === 'Enter' || e.key === ' ') clearSyncFailures();
-            }}
+          <button
+            type="button"
+            className="offline-badge sync-failed-summary"
+            onClick={() => setSyncReviewOpen(true)}
           >
-            {ICONS.warn} {t.header.syncFailed(syncFailures.length)}
-          </div>
+            {ICONS.warn} {t.sync.summary(syncFailures.length)}
+          </button>
         )}
       </div>
-      <div className="day-strip">
-        {days.map((d) => (
-          <div key={d.date} className="day-pill-wrap">
-            {d.monthLabel && <span className="month-label">{d.monthLabel}</span>}
-            <button className={pillClass(d.date)} onClick={() => onSelectDay(d.date)}>
-              {d.letter}
-              <span className="n" dir="ltr">
-                {d.dayOfMonth}
-              </span>
-            </button>
-          </div>
-        ))}
-      </div>
+      {syncReviewOpen && <SyncReviewSheet onClose={() => setSyncReviewOpen(false)} />}
+      <DayStrip
+        days={days}
+        selected={activeDate}
+        today={today}
+        mode={mode}
+        onSelect={onSelectDay}
+      />
       {dayScope && (
         <button
           className={'day-context ' + dayScope}
@@ -445,34 +432,47 @@ function Shell() {
     const id = setTimeout(() => setSwitching(null), readDurationMs(token) + SWITCH_TAIL_MS);
     return () => clearTimeout(id);
   }, [switching]);
+  // The frame composes AppShell (ui/layout): header + scrollable body + bottom
+  // nav under one persistent chrome, so a body-only state (skeleton/error) can
+  // render without unmounting header or nav (U-10). Mode/switching pass through
+  // to `data-mode`/`data-switching`, so every existing `.app[...]` CSS selector
+  // still applies; `bodyKey={tab}` keeps the per-tab remount + fade.
   return (
-    <div className="app" data-mode={mode} data-switching={switching ?? undefined}>
-      <Header
-        onSelectDay={onSelectDay}
-        onOpenSwitcher={() => navigate('/trips')}
-        onOpenAccount={() => setAccountOpen(true)}
-        onOpenSettings={() => navigate(`/trip/${trip.id}/settings`)}
-      />
-      <main className="body" key={tab}>
-        <Suspense fallback={<BootScreen text={t.shell.booting} />}>
-          <Screen tab={tab} onNavigate={goToTab} />
-        </Suspense>
-      </main>
-      <nav className="nav">
-        {TABS.map((tabDef) => (
-          <button
-            key={tabDef.id}
-            className={tabDef.id === tab ? 'on' : ''}
-            onClick={() => goToTab(tabDef.id)}
-            aria-current={tabDef.id === tab}
-          >
-            <span className="ic">{tabDef.icon}</span>
-            {t.tabs[tabDef.id]}
-          </button>
-        ))}
-      </nav>
-      {accountOpen && <AccountSheet onClose={() => setAccountOpen(false)} onSignOut={logout} />}
-    </div>
+    <AppShell
+      mode={mode}
+      switching={switching ?? undefined}
+      bodyKey={tab}
+      header={
+        <Header
+          onSelectDay={onSelectDay}
+          onOpenSwitcher={() => navigate('/trips')}
+          onOpenAccount={() => setAccountOpen(true)}
+          onOpenSettings={() => navigate(`/trip/${trip.id}/settings`)}
+        />
+      }
+      nav={
+        <nav className="nav">
+          {TABS.map((tabDef) => (
+            <button
+              key={tabDef.id}
+              className={tabDef.id === tab ? 'on' : ''}
+              onClick={() => goToTab(tabDef.id)}
+              aria-current={tabDef.id === tab}
+            >
+              <span className="ic">{tabDef.icon}</span>
+              {t.tabs[tabDef.id]}
+            </button>
+          ))}
+        </nav>
+      }
+      overlay={
+        accountOpen && <AccountSheet onClose={() => setAccountOpen(false)} onSignOut={logout} />
+      }
+    >
+      <Suspense fallback={<BootScreen text={t.shell.booting} />}>
+        <Screen tab={tab} onNavigate={goToTab} />
+      </Suspense>
+    </AppShell>
   );
 }
 

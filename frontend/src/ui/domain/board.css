@@ -1,0 +1,403 @@
+/* Board / departure-board hero (domain, review U-03). Ported faithfully from
+   `.board` + its sub-elements in screens.css, under new `wp-board*` classes.
+   The one loud element: the only dark, glowing, pulsing surface. Amber = time
+   (now/countdown/knob/pulse); the in-transit "where you are" state shifts the
+   glow + pill to teal (location). The board-power/glow ignite on going live is
+   driven by the ancestor `.app[data-mode='trip']` (the mode-transition system),
+   disabled under prefers-reduced-motion by the global App.css rule. */
+
+.wp-board {
+  background: linear-gradient(180deg, var(--board-2), var(--board));
+  border-radius: var(--radius-22);
+  padding: 18px 18px 16px;
+  color: #eaf0ff;
+  box-shadow: 0 20px 34px -20px rgba(8, 14, 28, 0.9);
+  position: relative;
+  overflow: hidden;
+}
+.wp-board::before {
+  content: '';
+  position: absolute;
+  inset: 0;
+  background: radial-gradient(90% 60% at 85% 0%, rgba(233, 166, 60, 0.16), transparent 60%);
+  pointer-events: none;
+}
+/* In-transit: the glow + pill shift amber→teal (location). */
+.wp-board.transit::before {
+  background: radial-gradient(90% 60% at 85% 0%, rgba(44, 156, 144, 0.2), transparent 60%);
+}
+
+/* "Power on" when the trip surface appears (Plan→Trip going-live climax). */
+@keyframes wp-board-power {
+  from {
+    filter: brightness(0.55) saturate(0.55);
+  }
+}
+@keyframes wp-board-glow {
+  from {
+    opacity: 0;
+  }
+}
+.app[data-mode='trip'] .wp-board {
+  animation: wp-board-power var(--t-cinematic) var(--ease-emphasized) 0.12s both;
+}
+.app[data-mode='trip'] .wp-board::before {
+  animation: wp-board-glow var(--t-cinematic) var(--ease-emphasized) 0.12s both;
+}
+
+.wp-board-top {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  position: relative;
+}
+.wp-board-live {
+  display: flex;
+  align-items: center;
+  gap: 7px;
+  font-size: var(--text-caption);
+  font-weight: 600;
+  letter-spacing: 0.14em;
+  color: #8fa0c4;
+}
+.wp-board-live .blip {
+  width: 7px;
+  height: 7px;
+  border-radius: 50%;
+  background: var(--amber);
+  animation: wp-board-pulse 2s infinite;
+}
+.wp-board-live.loc .blip {
+  background: var(--teal);
+}
+@keyframes wp-board-pulse {
+  0% {
+    box-shadow: 0 0 0 0 rgba(233, 166, 60, 0.55);
+  }
+  70% {
+    box-shadow: 0 0 0 8px rgba(233, 166, 60, 0);
+  }
+  100% {
+    box-shadow: 0 0 0 0 rgba(233, 166, 60, 0);
+  }
+}
+.wp-board-clock {
+  font-family: var(--font-mono);
+  font-size: 15px;
+  font-weight: 700;
+  color: #c3cee8;
+}
+
+.wp-board-now-label {
+  color: var(--amber);
+  font-size: var(--text-secondary);
+  font-weight: 700;
+  letter-spacing: 0.1em;
+  margin-top: 14px;
+}
+.wp-board-now-label.loc {
+  color: #5ec5b6;
+}
+.wp-board-now-title {
+  font-family: var(--font-head);
+  font-size: var(--text-h2);
+  margin-top: 3px;
+  color: #fff;
+}
+.wp-board-ic {
+  margin-inline-end: 6px;
+}
+.wp-board-now-meta {
+  color: #93a2c4;
+  font-size: var(--text-secondary);
+  margin-top: 3px;
+  display: flex;
+  align-items: center;
+  gap: 7px;
+  flex-wrap: wrap;
+}
+.wp-board-now-meta .code,
+.wp-board-next-meta .code {
+  font-family: var(--font-mono);
+  color: #c9b78a;
+  background: rgba(233, 166, 60, 0.12);
+  padding: 1px 6px;
+  border-radius: 5px;
+  font-weight: 700;
+}
+/* Transition label chip (המראה / צ׳ק-אין …). Amber = time; teal = in-transit. */
+.wp-board-now-meta .tlabel,
+.wp-board-next-meta .tlabel {
+  font-weight: 700;
+  color: #f0c785;
+  background: rgba(233, 166, 60, 0.14);
+  border-radius: 5px;
+  padding: 1px 7px;
+  font-size: 11.5px;
+}
+.wp-board-now-meta .tlabel.loc {
+  color: #7fd8cc;
+  background: rgba(44, 156, 144, 0.16);
+}
+.wp-board-now-meta .tlabel.emph {
+  box-shadow: 0 0 0 1px rgba(44, 156, 144, 0.5);
+}
+.wp-board-now-conflict {
+  color: var(--amber-deep);
+  font-size: var(--text-caption);
+  margin-top: var(--space-1);
+}
+/* Route on the hero (ADR-0059 §3): a flight reads as origin→destination. */
+.wp-board-now-title .route,
+.wp-board-next-title .route {
+  direction: rtl;
+}
+.wp-board-now-title .route .arr {
+  color: rgba(255, 255, 255, 0.5);
+}
+.wp-board-next-title .route .arr {
+  color: rgba(147, 162, 196, 0.85);
+}
+
+.wp-board-divider {
+  height: 1px;
+  background: rgba(255, 255, 255, 0.09);
+  margin: 15px 0 13px;
+}
+
+/* Concurrency (ADR-0041): the quiet "ועוד N עכשיו" expander + the group-split
+   list. Board-dark palette so it stays subordinate to the one loud now-title. */
+.wp-board-also-now {
+  margin-top: var(--space-3);
+  border-top: 1px dashed rgba(147, 162, 196, 0.25);
+  padding-top: 11px;
+}
+.wp-board-also-toggle {
+  display: flex;
+  align-items: center;
+  gap: var(--space-2);
+  background: none;
+  border: 0;
+  padding: 0;
+  font: inherit;
+  font-size: var(--text-secondary);
+  font-weight: 700;
+  color: #cdd8ef;
+  cursor: pointer;
+}
+.wp-board-also-toggle .dot {
+  width: 7px;
+  height: 7px;
+  border-radius: 50%;
+  background: #6f83ad;
+}
+.wp-board-also-toggle .chev {
+  color: #8ea1c6;
+  font-size: var(--text-caption);
+}
+.wp-board-also-list {
+  display: flex;
+  flex-direction: column;
+  gap: 9px;
+  margin-top: 10px;
+}
+.wp-board-also-row {
+  display: flex;
+  align-items: center;
+  gap: 9px;
+  font-size: var(--text-secondary);
+}
+.wp-board-also-row .ic {
+  width: 26px;
+  height: 26px;
+  border-radius: var(--radius-8);
+  background: rgba(255, 255, 255, 0.07);
+  display: grid;
+  place-items: center;
+  font-size: var(--text-body);
+  flex: none;
+}
+.wp-board-also-row .nm {
+  flex: 1;
+  min-width: 0;
+  color: #e4ebf8;
+  font-weight: 600;
+}
+.wp-board-also-row .tm {
+  color: #93a2c4;
+  font-size: var(--text-caption);
+  flex: none;
+}
+.wp-board-also-row .mini-lock {
+  color: var(--amber);
+  font-size: var(--text-caption);
+  flex: none;
+}
+/* Group split — no single hero; the concurrent soft events read as equals. */
+.wp-board-now-split {
+  margin-top: 14px;
+}
+.wp-board-now-split .wp-board-also-row {
+  font-size: 15px;
+}
+.wp-board-now-split .wp-board-also-row .ic {
+  width: 32px;
+  height: 32px;
+  font-size: 16px;
+}
+.wp-board-now-split .wp-board-also-row .nm {
+  font-family: var(--font-head);
+}
+
+.wp-board-next-row {
+  display: flex;
+  justify-content: space-between;
+  align-items: flex-end;
+  gap: 10px;
+}
+.wp-board-next-label {
+  color: #7e8fb4;
+  font-size: var(--text-caption);
+  font-weight: 700;
+  letter-spacing: 0.1em;
+}
+.wp-board-next-title {
+  font-family: var(--font-head);
+  font-size: var(--text-h3);
+  color: #eaf0ff;
+  margin-top: var(--space-1);
+}
+.wp-board-next-meta {
+  color: #93a2c4;
+  font-size: 12.5px;
+  margin-top: 3px;
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  flex-wrap: wrap;
+}
+.wp-board-next-meta .lockmini {
+  color: #c9b78a;
+  font-size: var(--text-caption);
+  font-weight: 600;
+}
+.wp-board-countdown {
+  text-align: center;
+  background: rgba(233, 166, 60, 0.14);
+  border: 1px solid rgba(233, 166, 60, 0.32);
+  border-radius: 13px;
+  padding: var(--space-2) var(--space-3);
+  min-width: 74px;
+  flex: 0 0 auto;
+}
+.wp-board-countdown .t {
+  font-family: var(--font-mono);
+  font-size: var(--text-h2);
+  font-weight: 700;
+  color: var(--amber);
+  line-height: 1;
+}
+.wp-board-countdown .u {
+  font-size: 10px;
+  color: #b9985c;
+  letter-spacing: 0.08em;
+  margin-top: 3px;
+}
+
+.wp-board-progress {
+  margin-top: 16px;
+  position: relative;
+}
+.wp-board-progress .track {
+  height: 3px;
+  background: rgba(255, 255, 255, 0.12);
+  border-radius: 3px;
+  position: relative;
+}
+.wp-board-progress .fill {
+  position: absolute;
+  inset-block: 0;
+  inset-inline-start: 0;
+  background: linear-gradient(90deg, var(--amber-deep), var(--amber));
+  border-radius: 3px;
+}
+.wp-board-progress .knob {
+  position: absolute;
+  top: 50%;
+  width: 11px;
+  height: 11px;
+  background: var(--amber);
+  border-radius: 50%;
+  transform: translate(50%, -50%);
+  box-shadow: 0 0 0 3px rgba(233, 166, 60, 0.25);
+}
+.wp-board-progress .ends {
+  display: flex;
+  justify-content: space-between;
+  margin-top: 7px;
+  font-family: var(--font-body);
+  font-weight: 600;
+  font-size: 10px;
+  color: #7688ac;
+}
+.wp-board-progress .ends span[dir='ltr'] {
+  font-family: var(--font-mono);
+  font-weight: 400;
+}
+
+/* In-transit time-to-landing progress — amber (time). */
+.wp-board-transit-prog {
+  margin-top: 15px;
+}
+.wp-board-transit-prog .tp-track {
+  height: 4px;
+  border-radius: 4px;
+  background: rgba(255, 255, 255, 0.14);
+  position: relative;
+}
+.wp-board-transit-prog .tp-fill {
+  position: absolute;
+  inset-block: 0;
+  inset-inline-start: 0;
+  border-radius: 4px;
+  background: linear-gradient(90deg, var(--amber-deep), var(--amber));
+}
+.wp-board-transit-prog .tp-plane {
+  position: absolute;
+  top: 50%;
+  transform: translate(50%, -50%);
+  font-size: 13px;
+}
+.wp-board-transit-prog .tp-ends {
+  display: flex;
+  align-items: baseline;
+  justify-content: space-between;
+  gap: var(--space-2);
+  margin-top: 7px;
+  font-size: 10.5px;
+  font-weight: 600;
+  color: #8fa0c4;
+}
+.wp-board-transit-prog .tp-ends .mono {
+  font-family: var(--font-mono);
+}
+.wp-board-transit-prog .tp-end {
+  display: inline-flex;
+  align-items: baseline;
+  gap: 5px;
+  min-width: 0;
+}
+.wp-board-transit-prog .tp-end.end {
+  justify-content: flex-end;
+  text-align: end;
+}
+.wp-board-transit-prog .tp-end .pl {
+  max-width: 96px;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.wp-board-transit-prog .tp-left {
+  flex: 0 0 auto;
+  white-space: nowrap;
+}

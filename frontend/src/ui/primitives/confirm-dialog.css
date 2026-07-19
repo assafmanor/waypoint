@@ -1,0 +1,68 @@
+/* One confirm dialog (U-02), rendered inside the neutral Modal `dialog` card.
+   The card chrome stays neutral (ADR-0079); `tone` colors only the confirm
+   action and a subtle heading accent. Token-based, logical properties (RTL). */
+
+.confirm-heading {
+  font-weight: 700;
+  font-size: var(--text-h3);
+  color: var(--ink);
+  display: flex;
+  align-items: center;
+  gap: var(--space-2);
+}
+
+.confirm-text {
+  font-size: var(--text-secondary);
+  color: var(--muted);
+  line-height: var(--leading-normal);
+  margin-block: var(--space-2) var(--space-4);
+}
+
+.confirm-actions {
+  display: flex;
+  gap: var(--space-2);
+  justify-content: flex-end;
+}
+
+.confirm-actions button {
+  font: inherit;
+  font-size: var(--text-secondary);
+  font-weight: 700;
+  border-radius: var(--radius-8);
+  padding-block: var(--space-2);
+  padding-inline: var(--space-4);
+  cursor: pointer;
+}
+
+.confirm-cancel {
+  border: 1px solid var(--line);
+  background: var(--card);
+  color: var(--ink);
+}
+
+.confirm-confirm {
+  border: 0;
+  color: var(--cta-text);
+  background: var(--cta);
+}
+
+/* danger = a destructive confirm (delete/leave): --miss fill, light text. */
+.confirm[data-tone='danger'] .confirm-confirm {
+  background: var(--miss);
+  color: #fff;
+}
+
+/* hard = the hard-edit commitment guard (ADR-0011): amber fill + amber heading
+   accent — the one place the confirm deliberately wears the commitment hue. */
+.confirm[data-tone='hard'] .confirm-confirm {
+  background: var(--amber);
+  color: #3a2405;
+}
+.confirm[data-tone='hard'] .confirm-heading {
+  color: var(--amber-deep);
+}
+
+.confirm-actions button:focus-visible {
+  outline: 2.5px solid var(--teal);
+  outline-offset: 2px;
+}

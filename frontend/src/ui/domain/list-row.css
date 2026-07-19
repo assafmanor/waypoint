@@ -1,0 +1,148 @@
+/* ListRow + RowManageSheet (domain, review U-03). Ported faithfully from the
+   Index booking row (`.index .li.bk`) and the Documents row (`.index .li.doc`)
+   + the shared `.row-action` menu in screens.css, under new `wp-` classes so
+   nothing overlaps the legacy rules until the screens migrate and delete them.
+   Amber = time/commitment, teal = location (design-language color budget);
+   spacing/radius/type from the Wave-0 tokens where they map to the ramp. */
+
+.wp-listrow {
+  display: flex;
+  align-items: center;
+  border-bottom: 1px solid var(--line);
+}
+.wp-listrow:last-child {
+  border-bottom: none;
+}
+
+.wp-listrow-open {
+  display: flex;
+  align-items: center;
+  gap: 11px;
+  flex: 1;
+  min-width: 0;
+  background: transparent;
+  border: none;
+  font: inherit;
+  color: inherit;
+  text-align: start;
+  cursor: pointer;
+  padding: var(--space-3) 14px;
+}
+.wp-listrow-open:hover {
+  background: color-mix(in srgb, var(--ink) 4%, transparent);
+}
+.wp-listrow-open:focus-visible {
+  outline: 2px solid var(--teal);
+  outline-offset: -2px;
+}
+.wp-listrow-open:disabled {
+  cursor: default;
+}
+
+.wp-listrow-badge {
+  width: 36px;
+  height: 36px;
+  border-radius: 11px;
+  background: var(--paper);
+  display: grid;
+  place-items: center;
+  font-size: var(--text-h3);
+  flex: 0 0 auto;
+}
+/* Category tint (ADR-0059 §3): teal = a stay, amber = transport. */
+.wp-listrow-badge.stay {
+  background: color-mix(in srgb, var(--teal) 12%, transparent);
+}
+.wp-listrow-badge.trans {
+  background: rgba(233, 166, 60, 0.12);
+}
+
+.wp-listrow-main {
+  flex: 1;
+  min-width: 0;
+}
+.wp-listrow-title {
+  font-size: 13.5px;
+  font-weight: 700;
+  display: flex;
+  align-items: center;
+  gap: var(--space-1) 6px;
+  flex-wrap: wrap;
+}
+.wp-listrow-meta {
+  font-size: 11.5px;
+  color: var(--muted);
+  margin-top: 3px;
+  display: block;
+}
+
+.wp-listrow-right {
+  display: flex;
+  align-items: center;
+  gap: var(--space-2);
+  padding-inline-end: var(--space-3);
+  flex: 0 0 auto;
+  text-align: end;
+}
+.wp-listrow-kebab {
+  width: 30px;
+  height: 30px;
+  border-radius: 9px;
+  display: grid;
+  place-items: center;
+  background: none;
+  border: 0;
+  color: var(--muted);
+  font-size: var(--text-h3);
+  line-height: 1;
+  cursor: pointer;
+}
+.wp-listrow-kebab:hover {
+  background: color-mix(in srgb, var(--ink) 6%, transparent);
+  color: var(--ink);
+}
+
+/* RowManageSheet action list — the `⋯` menu items (ported from `.row-action`).
+   Violet hover: managing a row is a neutral action; the plan-tint hover matches
+   the shipped sheet. Danger action reads in the miss color. */
+.wp-row-actions {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  margin: var(--space-1) 0;
+}
+.wp-row-action {
+  display: flex;
+  align-items: center;
+  gap: 11px;
+  width: 100%;
+  text-align: start;
+  font: inherit;
+  font-size: var(--text-body);
+  font-weight: 600;
+  color: var(--ink);
+  background: var(--card);
+  border: 1px solid var(--line);
+  border-radius: var(--radius-12);
+  padding: 13px 14px;
+  cursor: pointer;
+}
+.wp-row-action:hover {
+  border-color: var(--plan);
+  background: var(--plan-tint);
+}
+.wp-row-action:focus-visible {
+  outline: 2.5px solid var(--plan);
+  outline-offset: 2px;
+}
+.wp-row-action.danger {
+  color: var(--miss);
+}
+.wp-row-action.danger:hover {
+  border-color: var(--miss);
+  background: rgba(198, 40, 40, 0.06);
+}
+.wp-row-action-ic {
+  font-size: var(--text-h3);
+  flex: 0 0 auto;
+}

@@ -1,307 +1,13 @@
 /* Home + Day-by-day components, ported from mockups/trip-dashboard-v2.html.
    Amber = time/commitment only; teal = location/nav only; plan violet = plan actions (design-language.md). */
 
-/* departure-board hero */
-.board {
-  background: linear-gradient(180deg, var(--board-2), var(--board));
-  border-radius: 22px;
-  padding: 18px 18px 16px;
-  color: #eaf0ff;
-  box-shadow: 0 20px 34px -20px rgba(8, 14, 28, 0.9);
-  position: relative;
-  overflow: hidden;
-}
-.board::before {
-  content: '';
-  position: absolute;
-  inset: 0;
-  background: radial-gradient(90% 60% at 85% 0%, rgba(233, 166, 60, 0.16), transparent 60%);
-  pointer-events: none;
-}
-/* The board "powers on" when the trip surface appears — the same surface the
-   zero-state renders dormant (design-language: motion & designed transitions).
-   This is the Plan→Trip "going live" climax: dim-to-lit plus the amber glow
-   igniting. It's staged with a short delay so it lands AFTER the chrome has
-   started warming (App.css [data-switching]); `both` keeps the board dim during
-   that delay. Timed to --t-cinematic; the global prefers-reduced-motion rule
-   disables it. */
-@keyframes board-power {
-  from {
-    filter: brightness(0.55) saturate(0.55);
-  }
-}
-@keyframes board-glow {
-  from {
-    opacity: 0;
-  }
-}
-.app[data-mode='trip'] .board {
-  animation: board-power var(--t-cinematic) var(--ease-emphasized) 0.12s both;
-}
-.app[data-mode='trip'] .board::before {
-  animation: board-glow var(--t-cinematic) var(--ease-emphasized) 0.12s both;
-}
-.board-top {
-  display: flex;
-  justify-content: space-between;
-  align-items: center;
-  position: relative;
-}
-.live {
-  display: flex;
-  align-items: center;
-  gap: 7px;
-  font-size: 11px;
-  font-weight: 600;
-  letter-spacing: 0.14em;
-  color: #8fa0c4;
-}
-.live .blip {
-  width: 7px;
-  height: 7px;
-  border-radius: 50%;
-  background: var(--amber);
-  animation: pulse 2s infinite;
-}
-@keyframes pulse {
-  0% {
-    box-shadow: 0 0 0 0 rgba(233, 166, 60, 0.55);
-  }
-  70% {
-    box-shadow: 0 0 0 8px rgba(233, 166, 60, 0);
-  }
-  100% {
-    box-shadow: 0 0 0 0 rgba(233, 166, 60, 0);
-  }
-}
-.clock {
-  font-family: var(--font-mono);
-  font-size: 15px;
-  font-weight: 700;
-  color: #c3cee8;
-}
-.now-label {
-  color: var(--amber);
-  font-size: 12px;
-  font-weight: 700;
-  letter-spacing: 0.1em;
-  margin-top: 14px;
-}
-.now-title {
-  font-family: var(--font-head);
-  font-size: 21px;
-  margin-top: 3px;
-  color: #fff;
-}
-/* Event badge on the board's now/next titles (ADR-0038). Emoji is content on
-   the dark board; a hair of inline-end spacing sets it off from the title. */
-.board-ic {
-  margin-inline-end: 6px;
-}
-.now-meta {
-  color: #93a2c4;
-  font-size: 13px;
-  margin-top: 3px;
-}
-.now-conflict {
-  color: var(--amber-deep);
-  font-size: 12px;
-  margin-top: 4px;
-}
-.board-divider {
-  height: 1px;
-  background: rgba(255, 255, 255, 0.09);
-  margin: 15px 0 13px;
-}
-
-/* Board concurrency (ADR-0041): the quiet "ועוד N עכשיו" expander under the hero,
-   and the group-split list when several soft events run at once. Board-dark
-   palette (light blues), so it stays subordinate to the one loud now-title. */
-.also-now {
-  margin-top: 12px;
-  border-top: 1px dashed rgba(147, 162, 196, 0.25);
-  padding-top: 11px;
-}
-.also-toggle {
-  display: flex;
-  align-items: center;
-  gap: 8px;
-  background: none;
-  border: 0;
-  padding: 0;
-  font: inherit;
-  font-size: 13px;
-  font-weight: 700;
-  color: #cdd8ef;
-  cursor: pointer;
-}
-.also-toggle .dot {
-  width: 7px;
-  height: 7px;
-  border-radius: 50%;
-  background: #6f83ad;
-}
-.also-toggle .chev {
-  color: #8ea1c6;
-  font-size: 11px;
-}
-.also-list {
-  display: flex;
-  flex-direction: column;
-  gap: 9px;
-  margin-top: 10px;
-}
-.also-row {
-  display: flex;
-  align-items: center;
-  gap: 9px;
-  font-size: 13px;
-}
-.also-row .ic {
-  width: 26px;
-  height: 26px;
-  border-radius: 8px;
-  background: rgba(255, 255, 255, 0.07);
-  display: grid;
-  place-items: center;
-  font-size: 14px;
-  flex: none;
-}
-.also-row .nm {
-  flex: 1;
-  min-width: 0;
-  color: #e4ebf8;
-  font-weight: 600;
-}
-.also-row .tm {
-  color: #93a2c4;
-  font-size: 12px;
-  flex: none;
-}
-.also-row .mini-lock {
-  color: var(--amber);
-  font-size: 11px;
-  flex: none;
-}
-/* Group split — no single hero; the concurrent soft events read as equals. */
-.now-split {
-  margin-top: 14px;
-}
-.now-split .also-row {
-  font-size: 15px;
-}
-.now-split .also-row .ic {
-  width: 32px;
-  height: 32px;
-  font-size: 16px;
-}
-.now-split .also-row .nm {
-  font-family: var(--font-head);
-}
-.next-row {
-  display: flex;
-  justify-content: space-between;
-  align-items: flex-end;
-  gap: 10px;
-}
-.next-label {
-  color: #7e8fb4;
-  font-size: 11px;
-  font-weight: 700;
-  letter-spacing: 0.1em;
-}
-.next-title {
-  font-family: var(--font-head);
-  font-size: 18px;
-  color: #eaf0ff;
-  margin-top: 4px;
-}
-.next-meta {
-  color: #93a2c4;
-  font-size: 12.5px;
-  margin-top: 3px;
-  display: flex;
-  align-items: center;
-  gap: 6px;
-  flex-wrap: wrap;
-}
-.next-meta .code {
-  font-family: var(--font-mono);
-  color: #c9b78a;
-  background: rgba(233, 166, 60, 0.12);
-  padding: 1px 6px;
-  border-radius: 5px;
-  font-weight: 700;
-}
-.lockmini {
-  color: #c9b78a;
-  font-size: 11px;
-  font-weight: 600;
-}
-.countdown {
-  text-align: center;
-  background: rgba(233, 166, 60, 0.14);
-  border: 1px solid rgba(233, 166, 60, 0.32);
-  border-radius: 13px;
-  padding: 8px 12px;
-  min-width: 74px;
-  flex: 0 0 auto;
-}
-.countdown .t {
-  font-family: var(--font-mono);
-  font-size: 20px;
-  font-weight: 700;
-  color: var(--amber);
-  line-height: 1;
-}
-.countdown .u {
-  font-size: 10px;
-  color: #b9985c;
-  letter-spacing: 0.08em;
-  margin-top: 3px;
-}
-.progress {
-  margin-top: 16px;
-  position: relative;
-}
-.progress .track {
-  height: 3px;
-  background: rgba(255, 255, 255, 0.12);
-  border-radius: 3px;
-  position: relative;
-}
-.progress .fill {
-  position: absolute;
-  inset-block: 0;
-  inset-inline-start: 0;
-  background: linear-gradient(90deg, var(--amber-deep), var(--amber));
-  border-radius: 3px;
-}
-.progress .knob {
-  position: absolute;
-  top: 50%;
-  width: 11px;
-  height: 11px;
-  background: var(--amber);
-  border-radius: 50%;
-  transform: translate(50%, -50%);
-  box-shadow: 0 0 0 3px rgba(233, 166, 60, 0.25);
-}
-.progress .ends {
-  display: flex;
-  justify-content: space-between;
-  margin-top: 7px;
-  /* mixed line: JetBrains Mono has no Hebrew glyphs, so the row is body font
-     and only the numeric endpoints go mono (design-language: typography) */
-  font-family: var(--font-body);
-  font-weight: 600;
-  font-size: 10px;
-  color: #7688ac;
-}
-.progress .ends span[dir='ltr'] {
-  font-family: var(--font-mono);
-  font-weight: 400;
-}
+/* Dark-mode note (U-08, ADR-0082): themeable colors read tokens and re-map under
+   [data-theme='dark']. Remaining literal hexes are INTENTIONALLY theme-fixed and
+   carry a "fixed:" marker: white/ink that rides a semantic FILL (on --plan / --ok /
+   --miss / --amber / --ink — the fill re-maps, the on-fill ink must not); light ink
+   on the always-loud PLAN hero (.prep, a saturated violet surface in both themes);
+   the shared white spinner (drawn on colored/dark fills); and ink on a colored
+   avatar (avatar bg is set inline). Paper/card colors were swept onto tokens. */
 
 /* section titles */
 .sec-title {
@@ -317,7 +23,7 @@
 .sec-title .hint {
   font-weight: 500;
   letter-spacing: 0;
-  color: #98a0b0;
+  color: var(--faint);
   font-size: 11px;
 }
 .sec-title-end {
@@ -331,7 +37,7 @@
   font-weight: 700;
   letter-spacing: 0;
   border: 1px solid var(--line);
-  background: #fff;
+  background: var(--card);
   color: var(--ink);
   border-radius: 8px;
   padding: 5px 9px;
@@ -339,7 +45,7 @@
 }
 .new-event-btn:hover {
   background: var(--ink);
-  color: #fff;
+  color: var(--cta-text);
   border-color: var(--ink);
 }
 
@@ -422,14 +128,6 @@
   margin-top: 3px;
 }
 
-/* day-at-a-glance card (ADR-0045) — derived from events; replaces the old
-   weather/FX/budget glance row. Block bar + a lead "נותרו" count. */
-.glance-day {
-  background: var(--card);
-  border: 1px solid var(--line);
-  border-radius: 16px;
-  padding: 15px 16px 16px;
-}
 /* Ambient-span backdrop (a hotel / multi-day booking, ADR-0054): shown above the
    day's blocks on the strictly-middle nights it covers, teal-tinted (it's a place,
    not a time). Day-screen only — Home carries no persistent band (ADR-0064 §A). */
@@ -552,129 +250,6 @@
   border-radius: 9px;
   cursor: pointer;
 }
-/* one segment per top-level block (ADR-0041): wide gaps between blocks; a
-   cluster is a tight sub-tick bundle. NOT a time scale — the board owns that. */
-/* proportional time rail: window start (earliest) at the RTL right edge,
-   window end at the left. Segments are positioned by time (lib/glance). */
-.rail {
-  position: relative;
-  height: 14px;
-  background: rgba(22, 35, 61, 0.07); /* free time / empty track */
-  border-radius: 5px;
-}
-.seg {
-  position: absolute;
-  top: 0;
-  height: 14px;
-  border-radius: 3px;
-  min-width: 6px; /* floor so short events stay visible */
-}
-.seg.done {
-  background: var(--ok);
-}
-.seg.passed {
-  background: rgba(22, 35, 61, 0.3);
-}
-.seg.now {
-  background: var(--amber);
-}
-.seg.upcoming {
-  background: transparent;
-  box-shadow: inset 0 0 0 1.5px rgba(22, 35, 61, 0.24); /* hollow = ahead */
-}
-.seg.skipped {
-  background: repeating-linear-gradient(-45deg, rgba(22, 35, 61, 0.26) 0 3px, transparent 3px 6px);
-  box-shadow: inset 0 0 0 1px rgba(22, 35, 61, 0.12);
-}
-.seg.point {
-  width: 4px;
-  min-width: 4px;
-}
-/* a same-day bracketed booking's counted block, tied to its span anchor above
-   (ADR-0077): amber outline = time & commitment */
-.seg.trans {
-  background: rgba(233, 166, 60, 0.26);
-  box-shadow: inset 0 0 0 1px var(--amber);
-}
-.seg.trans.upcoming {
-  background: rgba(233, 166, 60, 0.16);
-  box-shadow: inset 0 0 0 1.5px var(--amber);
-}
-/* composite (cluster/envelope, any depth) → "layered" top edge + count chip */
-.seg.multi {
-  box-shadow:
-    inset 0 3px 0 rgba(255, 255, 255, 0.55),
-    inset 0 0 0 1px rgba(22, 35, 61, 0.12);
-}
-.seg.multi.upcoming {
-  box-shadow:
-    inset 0 3px 0 rgba(22, 35, 61, 0.12),
-    inset 0 0 0 1.5px rgba(22, 35, 61, 0.24);
-}
-/* structure note (ADR-0077): overlap ×N / containment כולל N — the neutral
-   member of the pill family, below the rail with a layered top edge echoing the
-   composite block's own `.multi` edge. Neutral, not amber: structure is
-   information, not a commitment (ADR-0028). */
-.seg .n {
-  position: absolute;
-  top: 18px; /* below the rail — the now-dot owns the top edge */
-  left: 50%;
-  transform: translateX(-50%);
-  z-index: 3; /* above the now-line so the count is never obscured */
-  font-size: 9px;
-  font-weight: 700;
-  color: var(--muted);
-  background: var(--card);
-  border: 1px solid var(--line);
-  box-shadow: inset 0 2px 0 rgba(22, 35, 61, 0.1);
-  border-radius: 20px;
-  padding: 1px 6px;
-  white-space: nowrap;
-}
-.seg .plus1 {
-  position: absolute;
-  top: 18px;
-  inset-inline-end: -4px;
-  z-index: 3;
-  font-size: 9px;
-  font-weight: 700;
-  color: var(--amber-deep);
-  font-family: var(--font-mono);
-}
-.nowmark {
-  position: absolute;
-  top: -5px;
-  bottom: -5px;
-  width: 2px;
-  background: var(--amber);
-  border-radius: 2px;
-  z-index: 2;
-}
-/* the dot sits on TOP of the rail (the count / +1 chips live below it now, so
-   they can't collide) */
-.nowmark::after {
-  content: '';
-  position: absolute;
-  top: -6px;
-  left: 50%;
-  transform: translateX(-50%);
-  width: 7px;
-  height: 7px;
-  border-radius: 50%;
-  background: var(--amber);
-  box-shadow: 0 0 0 3px rgba(233, 166, 60, 0.22);
-}
-.rail-ends {
-  display: flex;
-  justify-content: space-between;
-  margin-top: 22px; /* clears the count-chip band that now sits under the rail */
-  font-size: 10px;
-  color: var(--muted);
-  font-weight: 600;
-}
-.rail-ends span {
-  font-family: var(--font-mono);
-}
 .lead {
   display: flex;
   align-items: baseline;
@@ -708,221 +283,7 @@
 .lead .anchor .tm {
   font-family: var(--font-mono);
 }
-.glance-foot {
-  margin-top: 13px;
-  padding-top: 12px;
-  border-top: 1px solid var(--line);
-  font-size: 12.5px;
-  color: var(--muted);
-  display: flex;
-  align-items: center;
-  gap: 7px;
-  flex-wrap: wrap;
-}
-.glance-foot .dot {
-  opacity: 0.5;
-}
-.glance-foot b {
-  color: var(--ink);
-  font-weight: 700;
-}
-.glance-foot .mono {
-  font-family: var(--font-mono);
-  font-weight: 700;
-}
-/* empty day: calm teach state — not a hidden card, not a 0/0 bar */
-.glance-day.empty {
-  text-align: center;
-  padding: 22px 18px 20px;
-}
-.glance-day.empty .ei {
-  font-size: 26px;
-  opacity: 0.75;
-}
-.glance-day.empty .et {
-  font-family: var(--font-head);
-  font-size: 16px;
-  color: var(--ink);
-  margin-top: 7px;
-}
-.glance-day.empty .es {
-  font-size: 12.5px;
-  color: var(--muted);
-  margin-top: 5px;
-  line-height: 1.5;
-}
-.glance-day.empty .ea {
-  display: inline-flex;
-  align-items: center;
-  gap: 5px;
-  margin-top: 13px;
-  font: inherit;
-  font-size: 12.5px;
-  font-weight: 700;
-  color: var(--ink);
-  background: #fff;
-  border: 1px solid var(--soft-line);
-  border-radius: 999px;
-  padding: 7px 15px;
-  cursor: pointer;
-}
-.glance-day.empty .ea .plus {
-  color: var(--amber-deep);
-}
-.glance-day.empty .ea:focus-visible {
-  outline: 2.5px solid var(--teal);
-  outline-offset: 2px;
-}
 
-/* itinerary items */
-.item {
-  background: var(--card);
-  border: 1px solid var(--line);
-  border-radius: 15px;
-  margin-bottom: 10px;
-  overflow: hidden;
-}
-.item.soft {
-  background: repeating-linear-gradient(-45deg, #fff 0 9px, #fbfaf7 9px 18px);
-  border: 1px dashed var(--soft-line);
-}
-.item.now {
-  border-color: var(--amber);
-  box-shadow: 0 0 0 3px rgba(233, 166, 60, 0.13);
-}
-/* A passed event recedes — quieter than a live one, still legible reference
-   (ADR-0043). Derived from the clock, never a stored status. The hatch of a
-   soft card flattens so it reads settled, not provisional. */
-.item.passed {
-  opacity: 0.66;
-}
-.item.passed.soft {
-  background: #f7f7f9;
-  border-style: solid;
-  border-color: var(--line);
-}
-/* A done event settles like a passed one, plus a positive ✓ (ok-green, a record,
-   not a clock event — never amber). Replaces the old flat 50% face dim. */
-.item.done {
-  opacity: 0.85;
-  background: #f6faf7;
-  border-color: rgba(60, 154, 107, 0.32);
-  border-style: solid;
-}
-.item.done .badge {
-  background: rgba(60, 154, 107, 0.12);
-}
-.face .check {
-  flex: 0 0 auto;
-  width: 22px;
-  height: 22px;
-  border-radius: 999px;
-  display: grid;
-  place-items: center;
-  font-size: 12px;
-  font-weight: 700;
-  color: #fff;
-  background: var(--ok);
-}
-/* The done ✓ as a tap-to-undo control (ADR-0043 revision): the record badge
-   doubles as a one-tap restore. Stays --ok green (a record, never amber,
-   ADR-0028); on hover/focus the ✓ morphs to an undo arrow with a soft ring, and
-   a thin persistent ring hints it's tappable on touch (no hover). The row's
-   שחזר stays as the discoverable twin. Only rendered off a read-only day. */
-.face .check.btn {
-  position: relative;
-  cursor: pointer;
-  transition:
-    box-shadow var(--t-quick),
-    transform var(--t-quick);
-}
-.check.btn .mark,
-.check.btn .undo {
-  grid-area: 1 / 1;
-  transition:
-    opacity var(--t-quick),
-    transform var(--t-quick);
-}
-.check.btn .undo {
-  opacity: 0;
-  transform: scale(0.6);
-  font-size: 13px;
-}
-.check.btn:hover,
-.check.btn:focus-visible {
-  box-shadow: 0 0 0 4px rgba(60, 154, 107, 0.18);
-  transform: scale(1.06);
-}
-.check.btn:hover .mark,
-.check.btn:focus-visible .mark {
-  opacity: 0;
-  transform: scale(0.6);
-}
-.check.btn:hover .undo,
-.check.btn:focus-visible .undo {
-  opacity: 1;
-  transform: scale(1);
-}
-.check.btn:focus-visible {
-  outline: 2.5px solid var(--teal);
-  outline-offset: 2px;
-}
-.check.btn:active {
-  transform: scale(0.92);
-}
-.check.btn::after {
-  content: '';
-  position: absolute;
-  inset: -4px;
-  border-radius: 999px;
-  box-shadow: 0 0 0 1.5px rgba(60, 154, 107, 0.35);
-}
-/* Settle variant: a calm, non-expanding card (a div, not the toggle button). */
-.face.static {
-  cursor: default;
-}
-.face {
-  display: flex;
-  align-items: center;
-  gap: 12px;
-  padding: 14px 15px;
-  cursor: pointer;
-  width: 100%;
-  background: none;
-  border: 0;
-  font: inherit;
-  color: inherit;
-  text-align: inherit;
-}
-.face:focus-visible {
-  outline: 2.5px solid var(--teal);
-  outline-offset: -2px;
-}
-.badge {
-  width: 40px;
-  height: 40px;
-  border-radius: 12px;
-  display: grid;
-  place-items: center;
-  font-size: 19px;
-  flex: 0 0 auto;
-  background: var(--paper);
-}
-.item.soft .badge {
-  background: rgba(22, 35, 61, 0.05);
-}
-.face .main {
-  flex: 1;
-  min-width: 0;
-}
-.face .main .t {
-  font-weight: 700;
-  font-size: 14.5px;
-  display: flex;
-  align-items: center;
-  gap: 7px;
-  flex-wrap: wrap;
-}
 .tag-hard {
   font-size: 10px;
   font-weight: 700;
@@ -963,155 +324,6 @@
   align-items: center;
   gap: 3px;
 }
-.face .main .m {
-  font-size: 12px;
-  color: var(--muted);
-  margin-top: 3px;
-  display: flex;
-  align-items: center;
-  gap: 6px;
-  flex-wrap: wrap;
-}
-.face .time {
-  font-family: var(--font-mono);
-  font-size: 13px;
-  font-weight: 700;
-  color: var(--ink);
-  flex: 0 0 auto;
-  text-align: end;
-}
-.item.soft .face .time {
-  color: var(--muted);
-}
-.face .chev {
-  color: #b5bcc9;
-  font-size: 13px;
-  flex: 0 0 auto;
-  display: grid;
-  place-items: center;
-  transition: transform 0.2s;
-}
-.item.open .chev {
-  transform: rotate(180deg);
-}
-
-.actions {
-  max-height: 0;
-  overflow: hidden;
-  transition: max-height 0.28s ease;
-  background: #fafbfd;
-  border-top: 1px solid transparent;
-}
-.item.open .actions {
-  max-height: 220px;
-  border-top-color: var(--line);
-}
-.act-row {
-  display: flex;
-  gap: 7px;
-  padding: 12px 14px;
-  flex-wrap: wrap;
-}
-.act {
-  font: inherit;
-  font-size: 12px;
-  font-weight: 600;
-  border: 1px solid var(--line);
-  background: #fff;
-  color: var(--ink);
-  border-radius: 9px;
-  padding: 7px 11px;
-  cursor: pointer;
-  transition: 0.12s;
-}
-.act:hover {
-  background: var(--ink);
-  color: #fff;
-  border-color: var(--ink);
-}
-.act.go {
-  border-color: var(--teal);
-  color: var(--teal);
-}
-.act.go:hover {
-  background: var(--teal);
-  color: #fff;
-}
-.act.danger {
-  border-color: rgba(181, 67, 47, 0.4);
-  color: #b5432f;
-}
-.act.danger:hover {
-  background: #b5432f;
-  color: #fff;
-  border-color: #b5432f;
-}
-.act-row-end {
-  display: flex;
-  gap: 7px;
-  margin-inline-start: auto;
-}
-.act.icon-only {
-  padding: 7px 10px;
-  font-size: 14px;
-  line-height: 1;
-}
-/* Overflow ⋯ opening the Tier-2 action sheet (edit · delete, ADR-0025). Set
-   apart from the quick verbs: no border until touched, so the strip reads as
-   "verbs + a quiet more". */
-.act.icon-only.more {
-  border-color: transparent;
-  color: var(--muted);
-  font-size: 17px;
-  padding: 6px 9px;
-}
-.act.icon-only.more:hover {
-  background: var(--paper);
-  color: var(--ink);
-  border-color: var(--line);
-}
-.act:focus-visible {
-  outline: 2.5px solid var(--teal);
-  outline-offset: 2px;
-}
-.act.stepper {
-  display: flex;
-  align-items: stretch;
-  padding: 0;
-}
-.act.stepper .step {
-  font: inherit;
-  font-size: 14px;
-  font-weight: 700;
-  line-height: 1;
-  border: none;
-  background: transparent;
-  color: inherit;
-  padding: 7px 10px;
-  cursor: pointer;
-}
-.act.stepper .step-label {
-  display: flex;
-  align-items: center;
-  padding: 7px 6px;
-  border-inline: 1px solid var(--line);
-  color: var(--muted);
-  font-size: 11px;
-}
-.hard-warn {
-  font-size: 11px;
-  color: var(--amber-deep);
-  padding: 0 14px 12px;
-  display: flex;
-  align-items: center;
-  gap: 6px;
-}
-.conflict-flag {
-  display: block;
-  font-size: 11px;
-  color: var(--amber-deep);
-  margin-top: 2px;
-}
 
 /* ripple suggestion bar — pinned to the top of the scroll viewport so the
    ripple prompt stays reachable however far the day is scrolled (it's the one
@@ -1135,7 +347,7 @@
   flex: 1;
   font-size: 12.5px;
   font-weight: 600;
-  color: #7a5a1e;
+  color: var(--amber-ink);
 }
 .ripple button {
   font: inherit;
@@ -1148,11 +360,11 @@
 }
 .ripple .yes {
   background: var(--amber);
-  color: #3a2405;
+  color: #3a2405; /* fixed: dark ink on the amber fill */
 }
 .ripple .no {
   background: transparent;
-  color: #8a6a2e;
+  color: var(--amber-ink);
 }
 
 /* ── concurrency: nests + clusters (ADR-0041) ──
@@ -1244,42 +456,11 @@
   opacity: 0.8;
 }
 
-/* Inline settle strip on a passed-but-unmarked soft event (ADR-0043): the
-   "still on?" moment, made one tap — the reframed Done's natural home. */
-.settle {
-  display: flex;
-  align-items: center;
-  gap: 8px;
-  padding: 0 15px 12px 66px;
-  margin-top: -2px;
-}
-.item.soft .settle {
-  padding-inline-end: 62px;
-}
-.settle-q {
-  font-size: 11.5px;
-  font-weight: 600;
-  color: var(--muted);
-  margin-inline-end: auto;
-}
-.settle button {
-  font: inherit;
-  font-size: 11.5px;
-  font-weight: 700;
-  border-radius: 999px;
-  padding: 5px 13px;
-  cursor: pointer;
-  border: 1px solid var(--line);
-  background: var(--card);
-  color: var(--ink);
-}
+/* The "we were there" affirmative in a settle chooser (ADR-0043/0044): green
+   record accent, shared by the Plan-mode archive settle sheet. */
 .settle-yes {
   border-color: rgba(60, 154, 107, 0.4) !important;
   color: var(--ok) !important;
-}
-.settle button:focus-visible {
-  outline: 2.5px solid var(--teal);
-  outline-offset: 2px;
 }
 
 /* Past-day archive (ADR-0029/0040): a calm read-only banner + a slightly cooled,
@@ -1291,13 +472,15 @@
   display: flex;
   align-items: center;
   gap: 9px;
-  background: #eceae4;
+  background: var(--paper);
   border: 1px solid rgba(22, 35, 61, 0.09);
   border-radius: 12px;
   padding: 9px 12px;
   margin-bottom: 12px;
   font-size: 12px;
-  color: #5f6577;
+  color: var(
+    --ink
+  ); /* was #5f6577; --ink matches the banner's own ab-back ink and holds AA on --paper */
   font-weight: 600;
 }
 .archive-banner .ab-ic {
@@ -1382,57 +565,6 @@
 .shelf::-webkit-scrollbar {
   height: 0;
 }
-.maybe {
-  scroll-snap-align: start;
-  flex: 0 0 auto;
-  width: 150px;
-  text-align: start;
-  background: repeating-linear-gradient(-45deg, #fff 0 9px, #fbfaf7 9px 18px);
-  border: 1px dashed var(--soft-line);
-  border-radius: 15px;
-  padding: 12px;
-  cursor: pointer;
-  transition: 0.14s;
-  font: inherit;
-  color: var(--ink);
-  display: block;
-}
-.maybe:hover {
-  transform: translateY(-2px);
-  border-color: var(--plan); /* scheduling is a plan action (design-language: color budget) */
-}
-.maybe:focus-visible {
-  outline: 2.5px solid var(--teal);
-  outline-offset: 2px;
-}
-.maybe.consumed {
-  opacity: 0.4;
-  cursor: default;
-}
-.maybe .mi {
-  font-size: 20px;
-  display: block;
-}
-.maybe .mt {
-  font-weight: 700;
-  font-size: 13.5px;
-  margin-top: 6px;
-  line-height: 1.15;
-  display: block;
-}
-.maybe .mm {
-  font-size: 11px;
-  color: var(--muted);
-  margin-top: 4px;
-  display: block;
-}
-.maybe .add {
-  margin-top: 9px;
-  font-size: 11px;
-  font-weight: 700;
-  color: var(--plan-deep); /* plan action, not location */
-  display: block;
-}
 
 /* empty note */
 .empty-note {
@@ -1444,77 +576,6 @@
 }
 
 /* hard-event edit confirmation dialog */
-.confirm-overlay {
-  position: fixed;
-  inset: 0;
-  background: rgba(22, 35, 61, 0.45);
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  padding: 24px;
-  z-index: 20;
-  animation: fade 0.18s ease;
-}
-.confirm-card {
-  width: 100%;
-  max-width: 340px;
-  background: var(--card);
-  border: 1px solid rgba(233, 166, 60, 0.35);
-  border-radius: 15px;
-  padding: 18px;
-  box-shadow: 0 20px 40px -14px rgba(0, 0, 0, 0.35);
-}
-.confirm-title {
-  font-weight: 700;
-  font-size: 15px;
-  color: var(--ink);
-  display: flex;
-  align-items: center;
-  gap: 6px;
-}
-.confirm-body {
-  font-size: 13px;
-  color: var(--muted);
-  margin: 8px 0 16px;
-  line-height: 1.5;
-}
-.confirm-actions {
-  display: flex;
-  gap: 8px;
-  justify-content: flex-end;
-}
-.confirm-actions button {
-  font: inherit;
-  font-size: 13px;
-  font-weight: 700;
-  border-radius: 9px;
-  padding: 8px 14px;
-  cursor: pointer;
-}
-.confirm-cancel {
-  border: 1px solid var(--line);
-  background: #fff;
-  color: var(--ink);
-}
-.confirm-cancel:focus-visible,
-.confirm-ok:focus-visible,
-.form-save:focus-visible {
-  outline: 2.5px solid var(--teal);
-  outline-offset: 2px;
-}
-/* amber = the hard-edit/commitment guard only (design-language: color budget) */
-.confirm-ok {
-  border: 0;
-  background: var(--amber);
-  color: #3a2405;
-}
-/* generic form submit = neutral CTA, never amber (design-language: color budget) */
-.form-save {
-  border: 0;
-  background: var(--cta);
-  color: var(--cta-text);
-}
-
 /* shell header sheets — switcher/account (T-039/ADR-0024): indigo/neutral only,
  * never amber/teal (unlike .confirm-card, which is deliberately amber for the
  * hard-edit guard). Bottom-anchored, phone-first (ADR-0017). */
@@ -1565,7 +626,7 @@
   display: grid;
   place-items: center;
   margin: 0 auto;
-  color: #12203a;
+  color: #12203a; /* fixed: ink on a colored avatar (bg set inline) */
   font-weight: 700;
   font-size: 26px;
   font-family: var(--font-head);
@@ -1586,7 +647,7 @@
 }
 .acct-provider {
   font-size: 11.5px;
-  color: #98a0b0;
+  color: var(--faint);
   margin-top: 8px;
   text-align: center;
 }
@@ -1596,7 +657,7 @@
   font-size: 14px;
   font-weight: 700;
   color: var(--ink);
-  background: #fff;
+  background: var(--card);
   border: 1px solid var(--soft-line);
   border-radius: 13px;
   padding: 13px;
@@ -1622,43 +683,12 @@
   padding: 10px 14px;
   cursor: pointer;
   border: 1px solid var(--line);
-  background: #fff;
+  background: var(--card);
   color: var(--ink);
 }
 
-/* event create/edit form (T-047) — a bottom sheet so the autofocused title's
-   keyboard doesn't cover the fields (paired with interactive-widget=
-   resizes-content in index.html). */
-.event-form-overlay {
-  align-items: flex-end;
-  padding: 0;
-}
-.event-form-card {
-  width: 100%;
-  max-width: 380px;
-  max-height: 90vh;
-  max-height: 90dvh;
-  overflow-y: auto;
-  background: var(--card);
-  border: 1px solid var(--line);
-  border-radius: 15px 15px 0 0;
-  border-bottom: 0;
-  padding: 18px;
-  padding-bottom: calc(18px + env(safe-area-inset-bottom));
-  box-shadow: 0 -12px 40px -14px rgba(0, 0, 0, 0.35);
-  display: flex;
-  flex-direction: column;
-  gap: 12px;
-  animation: sheet-up 0.22s ease;
-}
-@keyframes sheet-up {
-  from {
-    transform: translateY(100%);
-  }
-  to {
-    transform: translateY(0);
-  }
-}
+/* Event/booking form field label shell (used by TimePicker's own wrapper; the
+   forms themselves now use the shared Field primitive, U-05). */
 .form-field {
   display: flex;
   flex-direction: column;
@@ -1672,7 +702,7 @@
   font-size: 14px;
   font-weight: 500;
   color: var(--ink);
-  background: #fff;
+  background: var(--card);
   border: 1px solid var(--line);
   border-radius: 9px;
   padding: 9px 10px;
@@ -1698,7 +728,7 @@
   font-size: 12.5px;
   font-weight: 700;
   border: 1px solid var(--line);
-  background: #fff;
+  background: var(--card);
   color: var(--muted);
   border-radius: 9px;
   padding: 8px 6px;
@@ -1717,11 +747,6 @@
   background: rgba(22, 35, 61, 0.04);
   color: var(--ink);
 }
-.form-error {
-  color: #b5432f;
-  margin: 0;
-}
-
 /* ===== time picker (T-054, ADR-0036) =====
    Compact start + duration fields that open a scroll list with a typeable
    exact-time fallback. Time is amber (design-language color budget). */
@@ -1736,7 +761,7 @@
   flex: 1;
   min-width: 0;
   text-align: start;
-  background: #fff;
+  background: var(--card);
   border: 1px solid var(--line);
   border-radius: 10px;
   padding: 7px 11px 8px;
@@ -1824,7 +849,7 @@
   z-index: 6;
   margin-top: 6px;
   width: 100%;
-  background: #fff;
+  background: var(--card);
   border: 1px solid var(--line);
   border-radius: 12px;
   box-shadow: 0 12px 26px -14px rgba(14, 23, 41, 0.35);
@@ -1853,7 +878,7 @@
   font-size: 16px;
   font-weight: 700;
   color: var(--amber-deep);
-  background: #fff;
+  background: var(--card);
   border: 1px solid var(--line);
   border-radius: 8px;
   padding: 5px 8px;
@@ -1962,7 +987,7 @@
   max-width: 398px;
   margin: 0 auto;
   background: var(--ink);
-  color: #fff;
+  color: var(--cta-text);
   border-radius: 13px;
   padding: 13px 16px;
   font-size: 13.5px;
@@ -2010,7 +1035,7 @@
   background: linear-gradient(180deg, var(--plan-deep), var(--plan));
   border-radius: 22px;
   padding: 18px 18px 16px;
-  color: #f2effc;
+  color: #f2effc; /* fixed: light ink on the always-violet plan hero */
   box-shadow: 0 20px 34px -20px rgba(46, 33, 104, 0.7);
   position: relative;
   overflow: hidden;
@@ -2039,7 +1064,7 @@
   font-size: 34px;
   line-height: 1;
   margin-top: 4px;
-  color: #fff;
+  color: #fff; /* fixed: on the plan hero */
 }
 .prep-count-u {
   font-family: var(--font-body);
@@ -2071,7 +1096,7 @@
 }
 .prep-ready-top b {
   font-family: var(--font-mono);
-  color: #fff;
+  color: #fff; /* fixed: on the plan hero */
 }
 .prep-track {
   height: 7px;
@@ -2081,7 +1106,7 @@
 }
 .prep-fill {
   height: 100%;
-  background: linear-gradient(90deg, rgba(255, 255, 255, 0.82), #fff);
+  background: linear-gradient(90deg, rgba(255, 255, 255, 0.82), #fff); /* fixed: on the plan hero */
   border-radius: 6px;
   transition: width 0.4s ease;
 }
@@ -2227,24 +1252,6 @@
   display: grid;
   grid-template-columns: repeat(3, 1fr);
   gap: 9px;
-}
-.prep-stat {
-  background: var(--card);
-  border: 1px solid var(--line);
-  border-radius: 13px;
-  padding: 12px 8px;
-  text-align: center;
-}
-.prep-stat-v {
-  font-family: var(--font-mono);
-  font-size: 21px;
-  font-weight: 700;
-}
-.prep-stat-l {
-  font-size: 10.5px;
-  color: var(--muted);
-  margin-top: 3px;
-  font-weight: 600;
 }
 
 /* ============================================================
@@ -2440,7 +1447,9 @@
   padding: 10px 12px;
 }
 .bld.soft {
-  background: repeating-linear-gradient(-45deg, #fff 0 9px, #fbfaf7 9px 18px);
+  /* the near-invisible warm stripe (#fff/#fbfaf7) collapses onto --card — its
+     closest token — so it re-maps on dark; the dashed border carries the soft cue */
+  background: var(--card);
   border: 1px dashed var(--soft-line);
 }
 .bld-bd {
@@ -2733,55 +1742,6 @@
   outline-offset: 1px;
 }
 
-/* Maybe card is now a container (schedule body + remove ✕) rather than one
-   button, so ideas can be removed from the shelf (Plan-mode Tier 3). */
-.maybe {
-  position: relative;
-}
-.maybe-body {
-  display: block;
-  width: 100%;
-  text-align: start;
-  font: inherit;
-  color: inherit;
-  background: none;
-  border: 0;
-  padding: 0;
-  cursor: pointer;
-}
-.maybe-body:disabled {
-  cursor: default;
-}
-.maybe-body:focus-visible {
-  outline: 2.5px solid var(--plan);
-  outline-offset: 2px;
-  border-radius: 8px;
-}
-.maybe-remove {
-  position: absolute;
-  top: 6px;
-  inset-inline-end: 6px;
-  width: 20px;
-  height: 20px;
-  display: grid;
-  place-items: center;
-  border: 0;
-  border-radius: 50%;
-  background: rgba(22, 35, 61, 0.06);
-  color: var(--muted);
-  font-size: 11px;
-  line-height: 1;
-  cursor: pointer;
-}
-.maybe-remove:hover {
-  background: var(--miss);
-  color: #fff;
-}
-.maybe-remove:focus-visible {
-  outline: 2px solid var(--miss);
-  outline-offset: 1px;
-}
-
 /* add-idea row under the shelf */
 .add-idea {
   display: flex;
@@ -2840,7 +1800,7 @@
   place-items: center;
   border: 0;
   background: none;
-  color: #c0c6d2;
+  color: var(--soft-line); /* faint drag affordance — matches soft-line rendered on the card */
   font-size: 15px;
   line-height: 1;
   cursor: grab;
@@ -3045,15 +2005,14 @@
   flex: 0 0 auto;
 }
 
-/* A skipped soft event parked on the shelf (ADR-0027): same card as an idea,
-   but its action is restore (neutral, not the violet "schedule" action). */
-.maybe.skipped-card .add {
+/* A skipped soft event parked on the shelf (ADR-0027) reuses the MaybeCard, but
+   its action is restore (neutral, not the violet "schedule" action). */
+.wp-maybecard.skipped-card .wp-maybecard-add {
   color: var(--muted);
 }
 
 /* Time cells may now show a start–end range; keep them on one line. */
-.bld-time,
-.item .time {
+.bld-time {
   white-space: nowrap;
 }
 
@@ -3260,7 +2219,7 @@
 .set-fld select {
   font: inherit;
   width: 100%;
-  background: #fafbfd;
+  background: var(--card);
   border: 1px solid var(--soft-line);
   border-radius: 10px;
   padding: 10px 12px;
@@ -3447,7 +2406,7 @@
   place-items: center;
   font-size: 20px;
   line-height: 1;
-  background: #fff;
+  background: var(--card);
   border: 1px solid var(--line);
   border-radius: 11px;
   cursor: pointer;
@@ -3477,7 +2436,7 @@
   top: calc(100% + 6px);
   inset-inline-start: 0;
   width: min(300px, calc(100vw - 32px));
-  background: #fff;
+  background: var(--card);
   border: 1px solid var(--line);
   border-radius: 13px;
   box-shadow: 0 14px 30px -14px rgba(14, 23, 41, 0.4);
@@ -3531,7 +2490,7 @@
 }
 .icon-cat.on {
   color: var(--ink);
-  background: #fff;
+  background: var(--card);
   border-color: var(--ink);
 }
 .icon-grid-scroll {
@@ -3569,7 +2528,7 @@
   font: inherit;
   font-size: 13px;
   color: var(--ink);
-  background: #fff;
+  background: var(--card);
   border: 1px solid var(--line);
   border-radius: 9px;
   padding: 0 10px;
@@ -3635,119 +2594,15 @@
   border-radius: 16px;
   overflow: hidden;
 }
-.index .li {
-  display: flex;
-  align-items: center;
-  gap: 11px;
-  padding: 12px 14px;
-  border: none;
-  border-bottom: 1px solid var(--line);
-  width: 100%;
-  background: transparent;
-  font: inherit;
-  color: inherit;
-  text-align: inherit;
-  cursor: pointer;
-}
-.index .li:last-child {
-  border-bottom: none;
-}
-.index .li:hover {
-  background: color-mix(in srgb, var(--ink) 4%, transparent);
-}
-.index .li:focus-visible {
-  outline: 2px solid var(--teal);
-  outline-offset: -2px;
-}
-.index .li .badge2 {
-  width: 36px;
-  height: 36px;
-  border-radius: 11px;
-  background: var(--paper);
-  display: grid;
-  place-items: center;
-  font-size: 17px;
-  flex: 0 0 auto;
-}
-.index .li .main {
-  flex: 1;
-  min-width: 0;
-}
-.index .li .main .t {
-  font-size: 13.5px;
-  font-weight: 700;
-  display: flex;
-  align-items: center;
-  gap: 6px;
-  flex-wrap: wrap;
-}
-.index .li .main .m {
-  font-size: 11.5px;
-  color: var(--muted);
-  margin-top: 3px;
-}
-.index .li .right {
-  text-align: end;
-  flex: 0 0 auto;
-}
-.index .li .right .code {
+/* Booking + document rows migrated onto the shared ListRow (`wp-listrow*`, review
+   U-03); its frame/badge/title/meta/kebab live in ui/domain/list-row.css. Only the
+   trailing-slot CONTENT keeps Index-scoped rules: the confirmation-code chip
+   (mono, amber = commitment) rides the `right` slot. */
+.index .code {
   font-family: var(--font-mono);
   font-size: 11.5px;
   font-weight: 700;
   color: var(--amber-deep);
-}
-/* Booking row (ADR-0053 revision): a flex container, not a single button, so the
-   "⋯" can sit beside the tap-to-open area (same shape as the document row). The
-   badge+title open the detail view; code · ⋯ sit on the same line in .right. */
-.index .li.bk {
-  padding: 0;
-  cursor: default;
-}
-.index .li.bk:hover {
-  background: transparent;
-}
-.index .li.bk .li-open {
-  display: flex;
-  align-items: center;
-  gap: 11px;
-  flex: 1;
-  min-width: 0;
-  background: transparent;
-  border: none;
-  font: inherit;
-  color: inherit;
-  text-align: start;
-  cursor: pointer;
-  padding: 12px 14px;
-}
-.index .li.bk .li-open:hover {
-  background: color-mix(in srgb, var(--ink) 4%, transparent);
-}
-.index .li.bk .li-open:focus-visible {
-  outline: 2px solid var(--teal);
-  outline-offset: -2px;
-}
-.index .li.bk .right {
-  display: flex;
-  align-items: center;
-  gap: 10px;
-  padding-inline-end: 12px;
-}
-.index .li.bk .right .kebab {
-  width: 30px;
-  height: 30px;
-  border-radius: 9px;
-  display: grid;
-  place-items: center;
-  background: none;
-  border: 0;
-  color: var(--muted);
-  font-size: 17px;
-  cursor: pointer;
-}
-.index .li.bk .right .kebab:hover {
-  background: color-mix(in srgb, var(--ink) 6%, transparent);
-  color: var(--ink);
 }
 .index .tag-type {
   font-size: 9.5px;
@@ -3786,10 +2641,10 @@
   letter-spacing: 0.04em;
   margin: 18px 2px 8px;
 }
-.index .listcard.past .li {
+.index .listcard.past .wp-listrow {
   opacity: 0.6;
 }
-.index .listcard.past .li .right .code {
+.index .listcard.past .code {
   color: var(--muted);
 }
 .index .empty-card {
@@ -3999,7 +2854,7 @@
   cursor: pointer;
 }
 
-/* delete/unlink prompt — rides inside the generic .confirm-card */
+/* delete/unlink prompt — the choices ride inside the generic ConfirmDialog. */
 .bs-hard-note {
   font-size: 12px;
   font-weight: 700;
@@ -4042,9 +2897,6 @@
 }
 .bs-danger-ok {
   background: var(--miss);
-}
-.bs-modal-overlay {
-  z-index: 30;
 }
 
 /* Index add-booking button + empty-state CTA */
@@ -4146,25 +2998,6 @@
   color: var(--muted);
   margin-top: -6px;
 }
-/* Span times (departure/arrival, check-in/check-out) wear the app's amber "time
-   & commitment" treatment (design-language) so they read like the events time
-   picker without swapping the reliable native multi-day control. The box styling
-   is inherited from .bs-field input; only the value + native accent turn amber. */
-.booking-sheet .bs-field input[type='datetime-local'] {
-  accent-color: var(--amber);
-  color: var(--amber-deep);
-  font-family: var(--font-mono);
-  font-weight: 600;
-  /* Compact so the full date+time fits (two sit side by side in a row) without
-     clipping; dir=ltr on the element keeps it reading left-to-right. */
-  font-size: 11.5px;
-  padding-inline: 8px;
-  min-width: 0;
-}
-.booking-sheet .bs-field input[type='datetime-local']:focus-visible {
-  border-color: var(--amber);
-  outline: none;
-}
 .booking-sheet .bs-error {
   font-size: 12px;
   font-weight: 700;
@@ -4257,7 +3090,8 @@
 }
 
 /* ===== Documents section (DocumentsSection.tsx) — grouped by type, per the
-   trip-index mockup. Rows reuse .index .li; only doc-specific bits added. ===== */
+   trip-index mockup. Rows use the shared ListRow (`wp-listrow*`); only the
+   group headers + trailing-slot content (size · lock glyph) stay here. ===== */
 .index .doc-group {
   margin-top: 4px;
 }
@@ -4267,69 +3101,15 @@
   color: var(--muted);
   padding: 6px 2px 7px;
 }
-.index .li.doc .main .t {
-  font-weight: 600;
-}
-.index .li .right .time {
-  font-size: 13px;
-  color: var(--muted);
-}
-/* Doc row (ADR-0052): a flex container, not a single button — the "⋯" can't nest
-   inside a row button. The badge+title are one clickable area (.li-open, opens the
-   viewer); size · lock · ⋯ sit on the same line in .right. */
-.index .li.doc {
-  padding: 0;
-  cursor: default;
-}
-.index .li.doc:hover {
-  background: transparent;
-}
-.index .li.doc .li-open {
-  display: flex;
-  align-items: center;
-  gap: 11px;
-  flex: 1;
-  min-width: 0;
-  background: transparent;
-  border: none;
-  font: inherit;
-  color: inherit;
-  text-align: start;
-  cursor: pointer;
-  padding: 12px 14px;
-}
-.index .li.doc .li-open:hover {
-  background: color-mix(in srgb, var(--ink) 4%, transparent);
-}
-.index .li.doc .li-open:focus-visible {
-  outline: 2px solid var(--teal);
-  outline-offset: -2px;
-}
-.index .li.doc .right {
-  display: flex;
-  align-items: center;
-  gap: 8px;
-  padding-inline-end: 12px;
-}
-.index .li.doc .right .size {
+/* Document row trailing slot (ADR-0052): the size and the encrypted-lock glyph
+   ride the shared row's `right` slot alongside the SyncBadge (U-04). */
+.index .size {
   font-size: 11.5px;
   color: var(--muted);
 }
-.index .li.doc .right .kebab {
-  width: 30px;
-  height: 30px;
-  border-radius: 9px;
-  display: grid;
-  place-items: center;
-  background: none;
-  border: 0;
+.index .doc-lock {
+  font-size: 13px;
   color: var(--muted);
-  font-size: 17px;
-  cursor: pointer;
-}
-.index .li.doc .right .kebab:hover {
-  background: color-mix(in srgb, var(--ink) 6%, transparent);
-  color: var(--ink);
 }
 .index .empty-card.doc {
   border-style: dashed;
@@ -4343,12 +3123,6 @@
   align-items: center;
   gap: 8px;
 }
-/* Per-document manage menu (DocumentManageSheet) rides inside the generic sheet;
-   reuses .row-action / .booking-sheet chrome, so only the wrapper needs a rule. */
-.doc-manage .row-actions {
-  margin: 2px 0;
-}
-
 /* The one shared spinner (Spinner.tsx, ADR-0052 §4). */
 .spinner {
   display: inline-block;
@@ -4356,7 +3130,7 @@
   height: 15px;
   border-radius: 50%;
   border: 2px solid rgba(255, 255, 255, 0.45);
-  border-top-color: #fff;
+  border-top-color: #fff; /* fixed: white spinner — drawn on colored/dark fills */
   animation: spin 0.7s linear infinite;
   flex: 0 0 auto;
   vertical-align: -2px;
@@ -4570,238 +3344,16 @@
   opacity: 1;
 }
 
-/* In-transit hero (a flight in the air fills the NOW slot). Teal identity on the
-   live pill + label; the board glow shifts amber→teal. */
-.board.transit::before {
-  background: radial-gradient(90% 60% at 85% 0%, rgba(44, 156, 144, 0.2), transparent 60%);
-}
-.live.loc .blip {
-  background: var(--teal);
-}
-.now-label.loc {
-  color: #5ec5b6;
-}
-/* Transition label chip (המראה / צ׳ק-אין …) on the hero now/next meta. Amber =
-   time; the teal variant belongs to the in-transit "where you are" state. */
-.now-meta .tlabel,
-.next-meta .tlabel {
-  font-weight: 700;
-  color: #f0c785;
-  background: rgba(233, 166, 60, 0.14);
-  border-radius: 5px;
-  padding: 1px 7px;
-  font-size: 11.5px;
-}
-.now-meta .tlabel.loc {
-  color: #7fd8cc;
-  background: rgba(44, 156, 144, 0.16);
-}
-.now-meta .tlabel.emph {
-  box-shadow: 0 0 0 1px rgba(44, 156, 144, 0.5);
-}
-.now-meta {
-  display: flex;
-  align-items: center;
-  gap: 7px;
-  flex-wrap: wrap;
-}
-/* Transport route on the board hero (ADR-0059 §3): a flight reads as its
-   origin→destination, not a name. The shared .route arrow is muted for the light
-   Index; on the dark board it needs a light stroke to stay legible. */
-.now-title .route,
-.next-title .route {
-  direction: rtl;
-}
-.now-title .route .arr,
-.next-title .route .arr {
-  color: rgba(255, 255, 255, 0.5);
-}
-.next-title .route .arr {
-  color: rgba(147, 162, 196, 0.85);
-}
-/* time-to-landing progress — amber (time), scoped so it never inherits the
-   glance .rail styles */
-.transit-prog {
-  margin-top: 15px;
-}
-.transit-prog .tp-track {
-  height: 4px;
-  border-radius: 4px;
-  background: rgba(255, 255, 255, 0.14);
-  position: relative;
-}
-.transit-prog .tp-fill {
-  position: absolute;
-  inset-block: 0;
-  inset-inline-start: 0;
-  border-radius: 4px;
-  background: linear-gradient(90deg, var(--amber-deep), var(--amber));
-}
-.transit-prog .tp-plane {
-  position: absolute;
-  top: 50%;
-  transform: translate(50%, -50%);
-  font-size: 13px;
-}
-.transit-prog .tp-ends {
-  display: flex;
-  align-items: baseline;
-  justify-content: space-between;
-  gap: 8px;
-  margin-top: 7px;
-  font-size: 10.5px;
-  font-weight: 600;
-  color: #8fa0c4;
-}
-.transit-prog .tp-ends .mono {
-  font-family: var(--font-mono);
-}
-/* Each end pairs the time with its place (from · / · to); the middle is the
-   countdown to landing (ADR-0059 §3 from/to grammar). */
-.transit-prog .tp-end {
-  display: inline-flex;
-  align-items: baseline;
-  gap: 5px;
-  min-width: 0;
-}
-.transit-prog .tp-end.end {
-  justify-content: flex-end;
-  text-align: end;
-}
-.transit-prog .tp-end .pl {
-  max-width: 96px;
-  overflow: hidden;
-  text-overflow: ellipsis;
-  white-space: nowrap;
-}
-.transit-prog .tp-left {
-  flex: 0 0 auto;
-  white-space: nowrap;
-}
-
-/* Glance rail annotations (ADR-0077) — one pill primitive, meaning on two axes:
-   tint = family (amber = time-anchor / neutral = structure), connector = shape
-   (a span's bar+feet, a point's stem, a block note's placement below the rail). */
-.achip {
-  display: inline-flex;
-  align-items: center;
-  gap: 4px;
-  white-space: nowrap;
-  font-size: 10px;
-  font-weight: 700;
-  border-radius: 999px;
-  padding: 2px 8px;
-  border: 1px solid transparent;
-}
-.achip .mono {
-  font-family: var(--font-mono);
-}
-.achip .mi {
-  font-size: 11px;
-}
-/* amber = a time anchor (a hard, time-anchored commitment; ADR-0028) */
-.achip.amber {
-  color: var(--amber-deep);
-  background: rgba(233, 166, 60, 0.16);
-  border-color: rgba(233, 166, 60, 0.34);
-}
-/* the range arrow is a NavArrow SVG (Assistant has no arrow glyph); it sizes to
-   the pill's font and inherits amber via currentColor */
-.achip.amber .arr {
-  color: var(--amber);
-  opacity: 0.9;
-  font-size: 12px;
-}
-.achip.amber .plus1 {
-  color: var(--amber-deep);
-  font-family: var(--font-mono);
-  font-size: 9px;
-}
-
-/* the amber time-anchor band above the block bar. Anchors that would overlap
-   stack into lanes (--lane, 20px each) and the ones near an edge anchor inward,
-   so labels never collide or clip off the rail; a crowded day collapses to the
-   legs line below instead (ADR-0077 §D). */
-.glance-marks {
-  position: relative;
-  height: calc(var(--lanes, 1) * 20px + 10px);
-  margin-bottom: 2px;
-}
-/* a POINT anchor — zero-width so `align-items` centers the pill on the exact
-   instant; the stem grows with the lane so every pill connects down to the bar. */
-.glance-marks .tmark {
-  position: absolute;
-  bottom: 0;
-  width: 0;
-  display: flex;
-  flex-direction: column;
-  align-items: center;
-}
-.glance-marks .tmark.at-start {
-  align-items: flex-start;
-}
-.glance-marks .tmark.at-end {
-  align-items: flex-end;
-}
-.glance-marks .tmark .stem {
-  width: 1.5px;
-  height: calc(var(--lane, 0) * 20px + 7px);
-  background: rgba(201, 130, 42, 0.5);
-}
-/* a SPAN anchor — a centered pill over a bottom-open bracket whose feet mark the
-   two instants; the bar sits at the rail edge (lane-independent) while the pill
-   rises with its lane. */
-.glance-marks .span-anchor {
-  position: absolute;
-  bottom: 0;
-  height: 100%;
-}
-.glance-marks .span-anchor .bar {
-  position: absolute;
-  bottom: 0;
-  inset-inline: 0;
-  height: 6px;
-  border: 1.5px solid var(--amber);
-  border-top: 0;
-  border-radius: 0 0 5px 5px;
-  opacity: 0.9;
-}
-.glance-marks .span-anchor .cap {
-  position: absolute;
-  bottom: calc(var(--lane, 0) * 20px + 8px);
-  inset-inline-start: 50%;
-  transform: translateX(50%);
-}
-.glance-marks .span-anchor.at-start .cap {
-  inset-inline-start: 0;
-  transform: none;
-}
-.glance-marks .span-anchor.at-end .cap {
-  inset-inline-start: auto;
-  inset-inline-end: 0;
-  transform: none;
-}
-
-/* legs line — the crowded-day collapse: the same amber pills, flow-laid so
-   overlap is impossible by construction (ADR-0077 §D). */
-.glance-legs {
-  display: flex;
-  flex-wrap: wrap;
-  gap: 6px 7px;
-  margin-top: 12px;
-}
-
 /* Shared badge tint (ADR-0059 §3): teal for a stay, amber for transport — on the
    Index row badge and the detail-view badge alike. */
-.badge2.stay,
 .bk-badge.stay {
   background: color-mix(in srgb, var(--teal) 12%, transparent);
 }
-.badge2.trans,
 .bk-badge.trans {
   background: rgba(233, 166, 60, 0.12);
 }
-.li.bk .bk-lock {
+/* Hard-booking lock, riding the shared row's title slot (ADR-0011 · ADR-0059 §3). */
+.index .bk-lock {
   font-size: 11px;
   color: var(--amber-deep);
   flex: 0 0 auto;

@@ -29,23 +29,21 @@ import {
   todayInTz,
   zonedIso,
   resolveEndIso,
-  crossesMidnight,
-  type EventPhase,
   type TimeGroup,
   type TimeItem,
 } from '../lib/time';
 import { nextSlot } from '../lib/gaps';
 import { dayTransitions, mergeDayEntries, type DayEntry } from '../lib/day-entries';
-import { CODE_PREFIX, DELAY_STEP_MINUTES, ICONS, MS_PER_DAY } from '../constants';
+import { CODE_PREFIX, ICONS, MS_PER_DAY } from '../constants';
 import { t } from '../i18n/he';
-import { TRIP_TZ_OFFSET, maybeMeta } from '../fixtures';
 import { EventForm } from '../ui/EventForm';
 import { BookingSheet } from '../ui/BookingSheet';
 import { BookingDetail } from '../ui/BookingDetail';
 import { TransitionRow } from '../ui/TransitionRow';
 import { Sheet } from '../ui/Sheet';
 import { TimePicker } from '../ui/TimePicker';
-import { Icon } from '../ui/Icon';
+import { EventCard, type EventPhaseName } from '../ui/domain/EventCard';
+import { MaybeCard } from '../ui/domain/MaybeCard';
 
 const daysBetween = (from: string, to: string) =>
   Math.round((Date.parse(to) - Date.parse(from)) / MS_PER_DAY);
@@ -113,7 +111,7 @@ export function DayView() {
   const weekday = new Intl.DateTimeFormat('he-IL', {
     weekday: 'long',
     timeZone: trip.timezone,
-  }).format(new Date(`${activeDate}T12:00:00${TRIP_TZ_OFFSET}`));
+  }).format(new Date(zonedIso(activeDate, '12:00', trip.timezone)));
   const heading = t.day.heading(dayNumber, weekday, trip.destination);
 
   const dayCtx: DayCtx = {
@@ -298,23 +296,25 @@ export function DayView() {
             {maybeItems
               .filter((m) => !m.consumed)
               .map((m) => (
-                <MaybeCard key={m.id} item={m} onSchedule={() => setScheduleItem(m)} />
+                <MaybeCard
+                  key={m.id}
+                  icon={m.icon}
+                  title={m.title}
+                  action={`${ICONS.add} ${t.actions.scheduleToDay}`}
+                  onSchedule={() => setScheduleItem(m)}
+                />
               ))}
             {/* Skipped soft events park here, restorable (ADR-0027 parking lot). */}
             {skippedToday.map((e) => (
-              <button
+              <MaybeCard
                 key={e.id}
-                className="maybe skipped-card"
-                onClick={() => verbs.restore(e)}
-                title={t.day.skippedTag}
-              >
-                <span className="mi">{e.icon}</span>
-                <span className="mt">{e.title}</span>
-                <span className="mm">{t.day.skippedTag}</span>
-                <span className="add">
-                  {ICONS.restore} {t.actions.restore}
-                </span>
-              </button>
+                className="skipped-card"
+                icon={e.icon}
+                title={e.title}
+                meta={t.day.skippedTag}
+                action={`${ICONS.restore} ${t.actions.restore}`}
+                onSchedule={() => verbs.restore(e)}
+              />
             ))}
           </div>
         </>
@@ -360,7 +360,7 @@ function NowLine({ ref, now, tz }: { ref: React.Ref<HTMLDivElement>; now: Date; 
 }
 
 // Shared wiring threaded through the recursive concurrency render (ADR-0041), so
-// a nested/clustered EventItem keeps every quick-verb it has at the top level.
+// a nested/clustered EventCard keeps every quick-verb it has at the top level.
 interface DayCtx {
   tz: string;
   now: Date;
@@ -427,20 +427,56 @@ function DayTree({ groups, depth, ctx }: { groups: TimeGroup[]; depth: number; c
 function ItemNode({ item, depth, ctx }: { item: TimeItem; depth: number; ctx: DayCtx }) {
   const e = item.event;
   const hasKids = item.children.length > 0;
+  const booking = e.bookingId ? ctx.bookings.find((b) => b.id === e.bookingId) : undefined;
+  const code = booking?.confirmationCode ? `${CODE_PREFIX}${booking.confirmationCode}` : undefined;
+  const conflicts = hardConflicts(e, ctx.dayEvents);
+
+  // The screen derives the phase from the clock (ADR-0043) and passes it in. On a
+  // read-only past day every planned soft event is there to be settled (ADR-0029),
+  // including untimed ones the clock alone would call 'upcoming' — force 'passed'
+  // so the card shows the settle strip, matching the pre-migration EventItem.
+  const raw = eventPhase(e, ctx.now);
+  const phase: EventPhaseName =
+    ctx.readOnly &&
+    e.kind === EVENT_KIND.SOFT &&
+    e.status === EVENT_STATUS.PLANNED &&
+    raw !== 'done'
+      ? 'passed'
+      : raw === 'skipped'
+        ? 'upcoming'
+        : raw;
+
   const card = (
-    <EventItem
-      event={e}
-      tz={ctx.tz}
-      now={ctx.now}
+    <EventCard
+      icon={e.icon}
+      title={e.title}
+      titleText={e.title}
+      placeName={eventPlaceName(e, ctx.bookings, ctx.places)}
+      code={code}
+      kind={e.kind === EVENT_KIND.HARD ? 'hard' : 'soft'}
+      phase={phase}
       readOnly={ctx.readOnly}
       isOpen={ctx.openId === e.id}
       onToggle={() => ctx.toggle(e.id)}
-      booking={e.bookingId ? ctx.bookings.find((b) => b.id === e.bookingId) : undefined}
-      placeName={eventPlaceName(e, ctx.bookings, ctx.places)}
-      conflicts={hardConflicts(e, ctx.dayEvents)}
-      verbs={ctx.verbs}
-      onEdit={() => ctx.onEdit(e)}
+      startsAt={e.startsAt}
+      endsAt={e.endsAt}
+      tz={ctx.tz}
+      conflict={
+        conflicts.length > 0
+          ? { title: conflicts[0].title, startsAt: conflicts[0].startsAt! }
+          : undefined
+      }
       nestedCount={hasKids ? countDescendants(item) : undefined}
+      onNavigate={() => ctx.verbs.navigate(e)}
+      onDone={() => ctx.verbs.done(e)}
+      onSkip={() => ctx.verbs.skip(e)}
+      onDelay={() => ctx.verbs.delay(e)}
+      onEarlier={() => ctx.verbs.earlier(e)}
+      onOnWay={() => ctx.verbs.onWay(e)}
+      onRestore={() => ctx.verbs.restore(e)}
+      onSwap={() => ctx.verbs.swap(e)}
+      onEdit={() => ctx.onEdit(e)}
+      onRemove={() => ctx.verbs.remove(e)}
     />
   );
   if (!hasKids) return card;
@@ -483,314 +519,5 @@ function ScheduleSheet({
         {ICONS.schedule} {t.actions.scheduleToDay}
       </button>
     </Sheet>
-  );
-}
-
-function EventItem({
-  event,
-  tz,
-  now,
-  readOnly,
-  isOpen,
-  onToggle,
-  booking,
-  placeName,
-  conflicts,
-  verbs,
-  onEdit,
-  nestedCount,
-}: {
-  event: TripEvent;
-  tz: string;
-  now: Date;
-  readOnly: boolean;
-  isOpen: boolean;
-  onToggle: () => void;
-  booking?: Booking;
-  placeName?: string;
-  conflicts: TripEvent[];
-  verbs: ReturnType<typeof useVerbs>;
-  onEdit: () => void;
-  // Set on an envelope event that nests others: the "כולל N" contents count.
-  nestedCount?: number;
-}) {
-  const isHard = event.kind === EVENT_KIND.HARD;
-  const phase: EventPhase = eventPhase(event, now);
-  const isDone = phase === 'done';
-  const isNow = phase === 'now';
-  const isPassed = phase === 'passed';
-  // A passed-but-unmarked soft event settles inline ("we did this / skip") — the
-  // honest "still on?" moment (ADR-0027/0043). On a past day every planned soft
-  // event is there to be settled. Hard events aren't settled this way.
-  const showSettle = !isHard && event.status === EVENT_STATUS.PLANNED && (isPassed || readOnly);
-
-  // Tier-2 structural edits (edit details, delete) don't belong on the exposed
-  // quick-verb strip in Trip mode — ADR-0025 puts them behind a per-item bottom
-  // sheet ("unlock this one thing"). Locked entirely on a read-only past day.
-  const [menuOpen, setMenuOpen] = useState(false);
-  const runAction = (fn: () => void) => {
-    setMenuOpen(false);
-    fn();
-  };
-
-  const code = booking?.confirmationCode ? `${CODE_PREFIX}${booking.confirmationCode}` : undefined;
-  const meta = [placeName, code && `${t.event.bookingLabel} ${code}`].filter(Boolean).join(' · ');
-
-  const tag = isDone ? (
-    <span className="tag-done">
-      {ICONS.done} {t.event.didThis}
-    </span>
-  ) : isHard ? (
-    <span className="tag-hard">
-      {ICONS.lock} {t.event.hard}
-    </span>
-  ) : isPassed ? (
-    <span className="tag-phase">{t.event.notMarked}</span>
-  ) : (
-    <span className="tag-soft">{isNow ? t.event.softNow : t.event.soft}</span>
-  );
-
-  const cls = [
-    'item',
-    event.kind === EVENT_KIND.SOFT ? 'soft' : '',
-    isNow ? 'now' : '',
-    isDone ? 'done' : '',
-    isPassed && !isDone ? 'passed' : '',
-    isOpen && !showSettle ? 'open' : '',
-  ]
-    .filter(Boolean)
-    .join(' ');
-
-  const titleBlock = (
-    <span className="main">
-      <span className="t">
-        {event.title}
-        {tag}
-        {nestedCount !== undefined && (
-          <span className="nest-note">{t.day.contains(nestedCount)}</span>
-        )}
-      </span>
-      <span className="m">{meta}</span>
-      {conflicts.length > 0 && (
-        <span className="conflict-flag">
-          {ICONS.warn}{' '}
-          {t.event.conflictWarn(conflicts[0].title, formatTime(conflicts[0].startsAt!, tz))}
-        </span>
-      )}
-    </span>
-  );
-
-  const timeBlock = event.startsAt && (
-    <span className="time" dir="ltr">
-      {formatTime(event.startsAt, tz)}
-      {event.endsAt && `–${formatTime(event.endsAt, tz)}`}
-      {event.endsAt && crossesMidnight(event.startsAt, event.endsAt, tz) && (
-        <sup className="xmid" title={t.event.nextDay}>
-          +1
-        </sup>
-      )}
-    </span>
-  );
-
-  // Settle variant: a calm, non-expanding card + the inline settle strip. Its own
-  // return so the forward-verb strip below stays focused on live/upcoming events.
-  if (showSettle) {
-    return (
-      <div className={cls}>
-        <div className="face static">
-          <span className="badge">{event.icon}</span>
-          {titleBlock}
-          {timeBlock}
-        </div>
-        <div className="settle">
-          <span className="settle-q">{t.day.settleAsk}</span>
-          <button className="settle-yes" onClick={() => verbs.done(event)}>
-            {ICONS.done} {t.actions.wasThere}
-          </button>
-          <button className="settle-skip" onClick={() => verbs.skip(event)}>
-            {t.actions.skip}
-          </button>
-        </div>
-      </div>
-    );
-  }
-
-  return (
-    <div className={cls}>
-      <button className="face" onClick={onToggle} aria-expanded={isOpen}>
-        <span className="badge">{event.icon}</span>
-        {titleBlock}
-        {/* The done ✓ doubles as a one-tap undo (ADR-0043 revision): tapping it
-            restores the event, the fast twin of the row's שחזר. It's a
-            role=button inside the face (not a nested <button>) that stops
-            propagation so it undoes without also toggling the row open. Stays
-            interactive on a read-only past day too: settling is reversible
-            wherever it's allowed — restore is the inverse of the Done/Skip that
-            ADR-0029/0043 keep for the archive's retrospective job. */}
-        {isDone && (
-          <span
-            className="check btn"
-            role="button"
-            tabIndex={0}
-            aria-label={t.actions.undoDone}
-            title={t.actions.undoDone}
-            onClick={(e) => {
-              e.stopPropagation();
-              verbs.restore(event);
-            }}
-            onKeyDown={(e) => {
-              if (e.key === 'Enter' || e.key === ' ') {
-                e.preventDefault();
-                e.stopPropagation();
-                verbs.restore(event);
-              }
-            }}
-          >
-            <span className="mark" aria-hidden="true">
-              {ICONS.done}
-            </span>
-            <span className="undo" aria-hidden="true">
-              <Icon name="undo" />
-            </span>
-          </span>
-        )}
-        {timeBlock}
-        <span className="chev" aria-hidden="true">
-          <Icon name="caret" dir="down" />
-        </span>
-      </button>
-      <div className="actions">
-        <div className="act-row">
-          {isDone ? (
-            <>
-              {/* שחזר stays on a past day too — un-settling is the inverse of the
-                  retrospective Done the archive already allows (ADR-0043 §2). */}
-              <button className="act" onClick={() => verbs.restore(event)}>
-                {t.actions.restore}
-              </button>
-              <button className="act go" onClick={() => verbs.navigate(event)}>
-                {t.actions.navigate}
-              </button>
-            </>
-          ) : isHard ? (
-            <>
-              <button className="act go" onClick={() => verbs.navigate(event)}>
-                {t.actions.navigate}
-              </button>
-              {!readOnly && (
-                <>
-                  <button className="act" onClick={() => verbs.onWay(event)}>
-                    {t.actions.onWay}
-                  </button>
-                  <button className="act" onClick={() => verbs.delay(event)}>
-                    {t.actions.delayBy(DELAY_STEP_MINUTES)}
-                  </button>
-                </>
-              )}
-            </>
-          ) : (
-            <>
-              <button className="act" onClick={() => verbs.done(event)}>
-                {t.actions.done}
-              </button>
-              <button className="act" onClick={() => verbs.skip(event)}>
-                {t.actions.skip}
-              </button>
-              {/* The nudge adapts to phase (ADR-0043): both ways upcoming; +30
-                  only for a now event (can't pull it into the past). */}
-              <div className="act stepper">
-                {!isNow && (
-                  <button
-                    className="step"
-                    onClick={() => verbs.earlier(event)}
-                    aria-label={t.actions.earlierBy(DELAY_STEP_MINUTES)}
-                  >
-                    −
-                  </button>
-                )}
-                <span className="step-label">{t.actions.stepMinutes(DELAY_STEP_MINUTES)}</span>
-                <button
-                  className="step"
-                  onClick={() => verbs.delay(event)}
-                  aria-label={t.actions.delayBy(DELAY_STEP_MINUTES)}
-                >
-                  +
-                </button>
-              </div>
-              <button className="act go" onClick={() => verbs.navigate(event)}>
-                {t.actions.navigate}
-              </button>
-            </>
-          )}
-          {!readOnly && (
-            <span className="act-row-end">
-              <button
-                className="act icon-only more"
-                onClick={() => setMenuOpen(true)}
-                aria-label={t.actions.more}
-              >
-                {ICONS.more}
-              </button>
-            </span>
-          )}
-        </div>
-        {isHard && (
-          <div className="hard-warn">
-            {ICONS.warn} {t.event.hardWarn} {code && <span dir="ltr">{code}</span>}
-          </div>
-        )}
-      </div>
-      {menuOpen && (
-        <Sheet title={event.title} onClose={() => setMenuOpen(false)}>
-          <div className="row-actions">
-            {/* Swap is Tier-1 but low-frequency on the ground (it kicks you to the
-                shelf to pick a replacement) — kept reachable here so the inline
-                strip stays to the forward verbs. Soft events only. */}
-            {!isDone && !isHard && (
-              <button className="row-action" onClick={() => runAction(() => verbs.swap(event))}>
-                <span className="row-action-ic" aria-hidden="true">
-                  {ICONS.swap}
-                </span>
-                {t.actions.swap}
-              </button>
-            )}
-            <button className="row-action" onClick={() => runAction(onEdit)}>
-              <span className="row-action-ic" aria-hidden="true">
-                {ICONS.edit}
-              </span>
-              {t.actions.edit}
-            </button>
-            <button
-              className="row-action danger"
-              onClick={() => runAction(() => verbs.remove(event))}
-            >
-              <span className="row-action-ic" aria-hidden="true">
-                {ICONS.trash}
-              </span>
-              {t.actions.delete}
-            </button>
-          </div>
-        </Sheet>
-      )}
-    </div>
-  );
-}
-
-function MaybeCard({ item, onSchedule }: { item: MaybeItem; onSchedule: () => void }) {
-  return (
-    <button
-      className={'maybe' + (item.consumed ? ' consumed' : '')}
-      onClick={onSchedule}
-      disabled={item.consumed}
-    >
-      <span className="mi">{item.icon}</span>
-      <span className="mt">{item.title}</span>
-      <span className="mm">{maybeMeta(item.id)}</span>
-      <span className="add">
-        {item.consumed
-          ? `${ICONS.done} ${t.actions.scheduled}`
-          : `${ICONS.add} ${t.actions.scheduleToDay}`}
-      </span>
-    </button>
   );
 }

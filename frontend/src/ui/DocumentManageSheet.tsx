@@ -6,6 +6,7 @@
 import { useState } from 'react';
 import { DOCUMENT_TYPE, type DocumentSummary, type DocumentType } from '@waypoint/shared';
 import { Sheet } from './Sheet';
+import { RowManageSheet } from './domain';
 import { Spinner } from './Spinner';
 import { deleteDocument, updateDocument } from '../lib/api';
 import { useToast } from './Toast';
@@ -55,26 +56,27 @@ export function DocumentManageSheet({
       onClose();
     });
 
+  if (mode === 'menu') {
+    return (
+      <RowManageSheet
+        ariaLabel={t.docs.manage.actions}
+        onClose={onClose}
+        actions={[
+          { label: t.docs.manage.edit, icon: '✏️', onSelect: () => setMode('edit') },
+          {
+            label: t.docs.manage.delete,
+            icon: '🗑️',
+            danger: true,
+            onSelect: () => setMode('delete'),
+          },
+        ]}
+      />
+    );
+  }
+
   return (
     <Sheet ariaLabel={t.docs.manage.actions} onClose={onClose}>
       <div className="doc-manage">
-        {mode === 'menu' && (
-          <div className="row-actions">
-            <button type="button" className="row-action" onClick={() => setMode('edit')}>
-              <span className="row-action-ic" aria-hidden="true">
-                ✏️
-              </span>
-              {t.docs.manage.edit}
-            </button>
-            <button type="button" className="row-action danger" onClick={() => setMode('delete')}>
-              <span className="row-action-ic" aria-hidden="true">
-                🗑️
-              </span>
-              {t.docs.manage.delete}
-            </button>
-          </div>
-        )}
-
         {mode === 'edit' && (
           <div className="booking-sheet doc-upload">
             <label className="bs-field">

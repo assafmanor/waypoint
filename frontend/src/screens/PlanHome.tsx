@@ -18,6 +18,7 @@ import { dayCount, dayPhrase } from '../lib/hebrew';
 import { computeReadiness, type CheckId, type ReadinessCheck } from '../lib/readiness';
 import { BookingSheet, type BookingSeed } from '../ui/BookingSheet';
 import { DocumentUploadSheet } from '../ui/DocumentUploadSheet';
+import { StatTile } from '../ui/domain';
 import { MS_PER_DAY, type TabId } from '../constants';
 import { t } from '../i18n/he';
 
@@ -88,24 +89,9 @@ export function PlanHome({ onNavigate }: { onNavigate: (tab: TabId) => void }) {
 
         <div className="sec-title">{t.planHome.past.summary}</div>
         <div className="prep-stats">
-          <div className="prep-stat">
-            <div className="prep-stat-v" dir="ltr">
-              {total}
-            </div>
-            <div className="prep-stat-l">{t.planHome.past.days}</div>
-          </div>
-          <div className="prep-stat">
-            <div className="prep-stat-v" dir="ltr">
-              {events.length}
-            </div>
-            <div className="prep-stat-l">{t.planHome.stats.events}</div>
-          </div>
-          <div className="prep-stat">
-            <div className="prep-stat-v" dir="ltr">
-              {bookings.length}
-            </div>
-            <div className="prep-stat-l">{t.planHome.stats.bookings}</div>
-          </div>
+          <StatTile value={total} label={t.planHome.past.days} />
+          <StatTile value={events.length} label={t.planHome.stats.events} />
+          <StatTile value={bookings.length} label={t.planHome.stats.bookings} />
         </div>
 
         <button className="addbtn" onClick={() => onNavigate('days')}>
@@ -320,28 +306,16 @@ export function PlanHome({ onNavigate }: { onNavigate: (tab: TabId) => void }) {
 
       <div className="sec-title">{t.planHome.stats.title}</div>
       <div className="prep-stats">
-        <div className="prep-stat">
-          <div className="prep-stat-v" dir="ltr">
-            {bookings.length}
-          </div>
-          <div className="prep-stat-l">{t.planHome.stats.bookings}</div>
-        </div>
-        <div className="prep-stat">
-          <div className="prep-stat-v" dir="ltr">
-            {events.length}
-          </div>
-          <div className="prep-stat-l">{t.planHome.stats.events}</div>
-        </div>
-        <div className="prep-stat">
-          <div
-            className="prep-stat-v"
-            dir="ltr"
-            style={readiness.emptyDates.length > 0 ? { color: 'var(--miss)' } : undefined}
-          >
-            {readiness.emptyDates.length}
-          </div>
-          <div className="prep-stat-l">{t.planHome.stats.emptyDays}</div>
-        </div>
+        <StatTile value={bookings.length} label={t.planHome.stats.bookings} />
+        <StatTile value={events.length} label={t.planHome.stats.events} />
+        <StatTile
+          value={
+            <span style={readiness.emptyDates.length > 0 ? { color: 'var(--miss)' } : undefined}>
+              {readiness.emptyDates.length}
+            </span>
+          }
+          label={t.planHome.stats.emptyDays}
+        />
       </div>
 
       {sheetSeed && (
