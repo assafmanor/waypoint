@@ -139,6 +139,7 @@ export class TripsService {
     await this.assertAdmin(tripId, actorUserId);
     await this.prisma.trip.delete({ where: { id: tripId } });
     this.changes.broadcastEphemeral(tripId, this.syntheticChange(tripId, actorUserId));
+    this.changes.disconnectTrip(tripId); // close every member's live stream (B-02)
   }
 
   createInviteToken(tripId: string): string {
@@ -252,6 +253,10 @@ export class TripsService {
         return { entity: null, ops };
       },
     });
+
+    // Evict the removed member's live WS stream (B-02) — WS membership is checked
+    // only at upgrade, so without this they keep receiving the trip's changes.
+    this.changes.disconnectUser(tripId, targetUserId);
   }
 
   /** Throws 403 unless the actor is an `admin` of the trip. Assumes membership

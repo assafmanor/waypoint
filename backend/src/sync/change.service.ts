@@ -140,4 +140,15 @@ export class ChangeService {
   broadcastEphemeral(tripId: string, change: Change): void {
     this.gateway.broadcast(tripId, change);
   }
+
+  /** Evict a removed member's live WS sockets (B-02) — a passthrough to the
+   *  gateway so domain services depend only on ChangeService (like broadcast). */
+  disconnectUser(tripId: string, userId: string): void {
+    this.gateway.disconnectUser(tripId, userId);
+  }
+
+  /** Close every socket for a deleted trip (B-02). */
+  disconnectTrip(tripId: string): void {
+    this.gateway.disconnectTrip(tripId);
+  }
 }

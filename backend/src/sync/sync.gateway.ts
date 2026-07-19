@@ -119,6 +119,35 @@ export class SyncGateway implements OnApplicationShutdown {
     });
   }
 
+  /**
+   * Evict a removed member's live sockets (B-02). WS membership is checked only
+   * at upgrade, so without this a removed member keeps receiving every subsequent
+   * change to a trip they were removed from. Closes their sockets and prunes the
+   * channel map; called from `removeMember` after the membership delete commits.
+   */
+  disconnectUser(tripId: string, userId: string): void {
+    const channel = this.channels.get(tripId);
+    if (!channel) return;
+    let closedAny = false;
+    for (const [client, uid] of channel) {
+      if (uid !== userId) continue;
+      client.close(1008, 'membership revoked');
+      channel.delete(client);
+      closedAny = true;
+    }
+    if (channel.size === 0) this.channels.delete(tripId);
+    else if (closedAny) this.broadcastPresence(tripId);
+  }
+
+  /** Close every socket for a trip (used on trip deletion) so no member keeps a
+   *  live stream to a trip that no longer exists (B-02). */
+  disconnectTrip(tripId: string): void {
+    const channel = this.channels.get(tripId);
+    if (!channel) return;
+    for (const client of channel.keys()) client.close(1008, 'trip deleted');
+    this.channels.delete(tripId);
+  }
+
   /** Called by ChangeService after a mutation commits — never before (ADR-0019). */
   broadcast(tripId: string, change: Change): void {
     const channel = this.channels.get(tripId);

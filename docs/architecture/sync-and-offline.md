@@ -17,7 +17,7 @@ The unifying primitive is the **`Change`** record. Every **data-plane** mutation
 
 ## Realtime channel
 
-- Transport: **WebSocket** at `WS /trips/:tripId/stream`, authenticated with the session JWT; server verifies membership before subscribing.
+- Transport: **WebSocket** at `WS /trips/:tripId/stream`, authenticated with the session JWT; server verifies membership before subscribing. Membership is re-enforced on revocation, not only at upgrade: removing a member (or deleting the trip) **closes their live socket** server-side (`SyncGateway.disconnectUser`/`disconnectTrip`, ADR-0074) so a removed member stops receiving changes immediately, matching the REST 404 (backend-review B-02).
 - On the server, an in-process **per-trip channel manager** keeps the set of connected sockets for each `tripId` and broadcasts to them. Fine for this scale; swap for Postgres `LISTEN/NOTIFY` or a bus only if we ever run multiple API instances.
 
 ### Message shapes (server → client)
