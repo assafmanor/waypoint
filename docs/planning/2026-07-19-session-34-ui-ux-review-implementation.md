@@ -64,4 +64,15 @@ Four worktree-isolated agents, disjoint file ownership, integrated in order **P1
 
 **Left for later waves (no old+new duplication introduced):** `.confirm-*`/`.event-form-*` deleted when consumers migrate (Wave 2 E); the ~6 empty shells + snapshot retry + chrome-preserving load + `.offline-badge` migrate onto the feedback family in Wave 3.
 
-_(Waves 2–4 appended as they land.)_
+### Wave 2 — editing grammar + sync status (2 parallel worktree agents) — DONE
+
+Two near-disjoint agents (forms/modals vs outbox/sync/docs), integrated **E → S** (E fast-forwards from the Wave-1 tip; S is a 3-way merge, the only conflict `backlog.md`, resolved by keeping E's shipped-U-01 + S's landed-U-04 lines; `he.ts` + README/INDEX auto-merged).
+
+- **E — one editing grammar (U-01 + U-02 + U-05)** (commit 41ca546): `EventForm` folded into `Modal variant="sheet"` (U-01 closed — back/Escape/backdrop/focus all work; `.event-form-*` deleted); one variant-driven `ConfirmDialog` (tone `neutral`/`danger`/`hard` on `Modal variant="dialog"`) replacing all three confirm impls (hard-edit gate kept its `ConfirmProvider`/`useConfirmHardEdit` API, booking `DeletePrompt`, TripSettings `Confirm`); `FormActions` (canonical: primary→cancel, destructive own row) + `Field` (error slot + `aria-describedby`) + `DateTimeField` (retires native `datetime-local`) + `useUnsavedGuard` wired into both forms. Deleted `.confirm-*`/`.event-form-*`/`.bs-modal-overlay` (grep-verified). +20 jsdom tests. Consolidation decisions folded into ADR-0079.
+- **S — per-entity sync status (U-04)** (commit 833a964, ADR-0080): id-keyed lookup on `lib/outbox.ts` + `useSyncStatus(entityId)` → `synced|pending|failed(reason)` (frontend-only, from the outbox + F-03 store); non-color-coded `SyncBadge` (✓/↑/! glyphs + accessible name on the `--sync-*` tokens); a persistent `SyncReviewSheet` dead-letter (retry re-enqueues, never auto-clears) replacing the timed failed-badge in `App.tsx`; reference wiring on `DocumentsSection` rows. +6 outbox + jsdom tests.
+
+**Gate (integrated):** frontend typecheck/build ✅, **450 tests (42 files)**, lint 0 errors (7 pre-existing warnings), backend build ✅, `format:check` ✅.
+
+**Known follow-up (backlogged):** nested-overlay Escape can close two overlays at once (a `useDialogFocus`/overlay-stack refinement, not this wave's scope). **Remaining for Wave 3:** migrate booking + event rows onto `<SyncBadge>`; the domain-component extractions.
+
+_(Waves 3–4 appended as they land.)_
