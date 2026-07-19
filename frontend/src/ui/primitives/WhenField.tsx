@@ -152,7 +152,10 @@ function WhenSpan({
         label={labels.end}
         value={end}
         onChange={setEnd}
-        minDate={minDate}
+        // The end can't fall before the start: its earliest selectable day is the
+        // start's day (falling back to the trip start until a start is picked).
+        // Latest stays the trip end, so the end is bounded to [start, tripEnd].
+        minDate={startDay || minDate}
         maxDate={maxDate}
         // The arrival day defaults to the departure day, so a same-day trip needs
         // only its time picked; a later day is still freely selectable.

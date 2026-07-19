@@ -37,6 +37,16 @@ describe('WhenField — day variant', () => {
 describe('WhenField — span variant', () => {
   afterEach(() => cleanup());
 
+  it('bounds the end date to [start, tripEnd] so it can never precede the start', () => {
+    render(<WhenField {...spanProps} start="2026-07-26T08:00" end="" onChange={vi.fn()} />);
+    const dates = document.querySelectorAll('input[type="date"]');
+    // Start leg: full trip range. End leg: earliest is the start's day.
+    expect((dates[0] as HTMLInputElement).min).toBe('2026-07-01');
+    expect((dates[0] as HTMLInputElement).max).toBe('2026-07-31');
+    expect((dates[1] as HTMLInputElement).min).toBe('2026-07-26');
+    expect((dates[1] as HTMLInputElement).max).toBe('2026-07-31');
+  });
+
   it('seeds both endpoints and marks a crossed day with a +N badge', () => {
     render(
       <WhenField

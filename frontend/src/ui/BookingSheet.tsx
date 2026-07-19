@@ -40,7 +40,7 @@ import {
   routeTitle,
 } from '../lib/booking-edit';
 import { placeName } from '../lib/places';
-import { isoToTimeInput } from '../lib/time';
+import { isoToTimeInput, zonedIso } from '../lib/time';
 import { timingLabels } from '../lib/booking-timing';
 import { BOOKING_TYPE_ICON } from '../constants';
 import { t } from '../i18n/he';
@@ -200,6 +200,18 @@ export function BookingSheet({
     const outOfRange = (v: string) => dateOutOfTripRange(v, trip.startDate, trip.endDate);
     if (isSpan ? outOfRange(spanStart) || outOfRange(spanEnd) : outOfRange(date)) {
       return setError(t.index.form.dateOutOfRange);
+    }
+    // A span's end must be after its start. WhenField bounds the end's earliest
+    // day to the start day; this also rejects a same-day end at/before the start
+    // time (a time-less end stays open-ended, so only guard when both have one).
+    if (isSpan) {
+      const [sDay, sTime] = spanStart.split('T');
+      const [eDay, eTime] = spanEnd.split('T');
+      if (sTime && eTime) {
+        const s = Date.parse(zonedIso(sDay, sTime, trip.timezone));
+        const e = Date.parse(zonedIso(eDay, eTime, trip.timezone));
+        if (e <= s) return setError(t.index.form.endBeforeStart);
+      }
     }
     setSaving(true);
     try {
