@@ -45,7 +45,6 @@ import { CODE_PREFIX, DEFAULT_MAYBE_ICON, ICONS, MS_PER_DAY, MINUTES_PER_HOUR } 
 import { dayTransitions, mergeDayEntries, type DayEntry } from '../lib/day-entries';
 import type { BookingTransition } from '../lib/glance';
 import { t } from '../i18n/he';
-import { TRIP_TZ_OFFSET, maybeMeta } from '../fixtures';
 import { EventForm } from '../ui/EventForm';
 import { BookingSheet } from '../ui/BookingSheet';
 import { BookingDetail } from '../ui/BookingDetail';
@@ -54,6 +53,7 @@ import { IconPicker } from '../ui/IconPicker';
 import { Icon } from '../ui/Icon';
 import { NavArrow } from '../ui/NavArrow';
 import { Sheet } from '../ui/Sheet';
+import { MaybeCard } from '../ui/domain/MaybeCard';
 
 const daysBetween = (from: string, to: string) =>
   Math.round((Date.parse(to) - Date.parse(from)) / MS_PER_DAY);
@@ -162,7 +162,7 @@ export function PlanDay() {
   const weekday = new Intl.DateTimeFormat('he-IL', {
     weekday: 'long',
     timeZone: trip.timezone,
-  }).format(new Date(`${activeDate}T12:00:00${TRIP_TZ_OFFSET}`));
+  }).format(new Date(zonedIso(activeDate, '12:00', trip.timezone)));
 
   const closeForm = () => {
     setFormTarget(null);
@@ -288,12 +288,15 @@ export function PlanDay() {
               .map((m) => (
                 <MaybeCard
                   key={m.id}
-                  item={m}
+                  icon={m.icon}
+                  title={m.title}
+                  action={`${ICONS.add} ${t.actions.scheduleToDay}`}
                   onSchedule={() => {
                     setGapFill(nextSlot(dayEvents, activeDate, tz));
                     setScheduleMaybe(m);
                   }}
                   onRemove={() => verbs.removeMaybe(m)}
+                  removeLabel={t.planDay.removeIdea}
                 />
               ))}
           </div>
@@ -501,7 +504,6 @@ function GapFillSheet({
             <span className="gapfill-ic">{m.icon}</span>
             <span className="gapfill-main">
               <span className="gapfill-t">{m.title}</span>
-              <span className="gapfill-m">{maybeMeta(m.id)}</span>
             </span>
             <span className="gapfill-add">{ICONS.add}</span>
           </button>
@@ -1041,34 +1043,6 @@ function BuilderRow({
           </div>
         </Sheet>
       )}
-    </div>
-  );
-}
-
-function MaybeCard({
-  item,
-  onSchedule,
-  onRemove,
-}: {
-  item: MaybeItem;
-  onSchedule: () => void;
-  onRemove: () => void;
-}) {
-  // Consumed (scheduled) ideas are filtered out before render (ADR-0027), so a
-  // card is always an actionable, unplaced idea: schedule it or remove it.
-  return (
-    <div className="maybe">
-      <button className="maybe-remove" onClick={onRemove} aria-label={t.planDay.removeIdea}>
-        ✕
-      </button>
-      <button className="maybe-body" onClick={onSchedule}>
-        <span className="mi">{item.icon}</span>
-        <span className="mt">{item.title}</span>
-        <span className="mm">{maybeMeta(item.id)}</span>
-        <span className="add">
-          {ICONS.add} {t.actions.scheduleToDay}
-        </span>
-      </button>
     </div>
   );
 }
