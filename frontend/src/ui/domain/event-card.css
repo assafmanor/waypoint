@@ -1,0 +1,383 @@
+/* EventCard / VerbRow (domain, review U-03). Ported faithfully from `.item` /
+   `.face` / `.actions` / `.settle` in screens.css, under new `wp-event*`
+   classes so nothing overlaps the legacy rules until DayView migrates. The
+   hard/soft triple-coding (ADR-0011): solid + amber for hard, dashed + hatch +
+   muted for soft; amber `now` ring; the done record is --ok green, never amber
+   (ADR-0028). */
+
+.wp-event {
+  background: var(--card);
+  border: 1px solid var(--line);
+  border-radius: 15px;
+  margin-bottom: 10px;
+  overflow: hidden;
+}
+.wp-event.soft {
+  background: repeating-linear-gradient(-45deg, #fff 0 9px, #fbfaf7 9px 18px);
+  border: 1px dashed var(--soft-line);
+}
+.wp-event.now {
+  border-color: var(--amber);
+  box-shadow: 0 0 0 3px rgba(233, 166, 60, 0.13);
+}
+/* A passed event recedes (derived from the clock, ADR-0043); a soft card's hatch
+   flattens so it reads settled, not provisional. */
+.wp-event.passed {
+  opacity: 0.66;
+}
+.wp-event.passed.soft {
+  background: #f7f7f9;
+  border-style: solid;
+  border-color: var(--line);
+}
+/* A done event settles + a positive ✓ (--ok, a record, never amber). */
+.wp-event.done {
+  opacity: 0.85;
+  background: #f6faf7;
+  border-color: rgba(60, 154, 107, 0.32);
+  border-style: solid;
+}
+.wp-event.done .wp-event-badge {
+  background: rgba(60, 154, 107, 0.12);
+}
+
+/* Face — the tappable header (a toggle button; the settle variant is a div). */
+.wp-event-face {
+  display: flex;
+  align-items: center;
+  gap: var(--space-3);
+  padding: 14px 15px;
+  cursor: pointer;
+  width: 100%;
+  background: none;
+  border: 0;
+  font: inherit;
+  color: inherit;
+  text-align: inherit;
+}
+.wp-event-face.static {
+  cursor: default;
+}
+.wp-event-face:focus-visible {
+  outline: 2.5px solid var(--teal);
+  outline-offset: -2px;
+}
+.wp-event-badge {
+  width: 40px;
+  height: 40px;
+  border-radius: var(--radius-12);
+  display: grid;
+  place-items: center;
+  font-size: 19px;
+  flex: 0 0 auto;
+  background: var(--paper);
+}
+.wp-event.soft .wp-event-badge {
+  background: rgba(22, 35, 61, 0.05);
+}
+
+/* Done ✓ as a tap-to-undo control (ADR-0043 revision) — --ok green; hover/focus
+   morphs the ✓ to an undo arrow; a thin persistent ring hints it's tappable. */
+.wp-event-check {
+  flex: 0 0 auto;
+  width: 22px;
+  height: 22px;
+  border-radius: var(--radius-999);
+  display: grid;
+  place-items: center;
+  font-size: var(--text-caption);
+  font-weight: 700;
+  color: #fff;
+  background: var(--ok);
+}
+.wp-event-check.btn {
+  position: relative;
+  cursor: pointer;
+  transition:
+    box-shadow var(--t-quick),
+    transform var(--t-quick);
+}
+.wp-event-check .mark,
+.wp-event-check .undo {
+  grid-area: 1 / 1;
+  transition:
+    opacity var(--t-quick),
+    transform var(--t-quick);
+}
+.wp-event-check .undo {
+  opacity: 0;
+  transform: scale(0.6);
+  font-size: 13px;
+}
+.wp-event-check.btn:hover,
+.wp-event-check.btn:focus-visible {
+  box-shadow: 0 0 0 4px rgba(60, 154, 107, 0.18);
+  transform: scale(1.06);
+}
+.wp-event-check.btn:hover .mark,
+.wp-event-check.btn:focus-visible .mark {
+  opacity: 0;
+  transform: scale(0.6);
+}
+.wp-event-check.btn:hover .undo,
+.wp-event-check.btn:focus-visible .undo {
+  opacity: 1;
+  transform: scale(1);
+}
+.wp-event-check.btn:focus-visible {
+  outline: 2.5px solid var(--teal);
+  outline-offset: 2px;
+}
+.wp-event-check.btn:active {
+  transform: scale(0.92);
+}
+.wp-event-check.btn::after {
+  content: '';
+  position: absolute;
+  inset: -4px;
+  border-radius: var(--radius-999);
+  box-shadow: 0 0 0 1.5px rgba(60, 154, 107, 0.35);
+}
+
+.wp-event-main {
+  flex: 1;
+  min-width: 0;
+}
+.wp-event-t {
+  font-weight: 700;
+  font-size: var(--text-body);
+  display: flex;
+  align-items: center;
+  gap: 7px;
+  flex-wrap: wrap;
+}
+.wp-event-m {
+  font-size: var(--text-secondary);
+  color: var(--muted);
+  margin-top: 3px;
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  flex-wrap: wrap;
+}
+.wp-event-time {
+  font-family: var(--font-mono);
+  font-size: var(--text-secondary);
+  font-weight: 700;
+  color: var(--ink);
+  flex: 0 0 auto;
+  text-align: end;
+  white-space: nowrap;
+}
+.wp-event.soft .wp-event-time {
+  color: var(--muted);
+}
+.wp-event-xmid {
+  font-size: 9px;
+}
+.wp-event-chev {
+  color: #b5bcc9;
+  font-size: var(--text-secondary);
+  flex: 0 0 auto;
+  display: grid;
+  place-items: center;
+  transition: transform var(--t-base);
+}
+.wp-event.open .wp-event-chev {
+  transform: rotate(180deg);
+}
+
+/* Hard/soft tags (triple-coding): amber for hard, muted for soft/passed, --ok
+   for done. */
+.wp-event-tag-hard {
+  font-size: 10px;
+  font-weight: 700;
+  color: var(--amber-deep);
+  background: rgba(233, 166, 60, 0.14);
+  padding: 2px 6px;
+  border-radius: 6px;
+  display: inline-flex;
+  align-items: center;
+  gap: 3px;
+}
+.wp-event-tag-soft {
+  font-size: 10px;
+  font-weight: 700;
+  color: var(--muted);
+  background: rgba(22, 35, 61, 0.06);
+  padding: 2px 6px;
+  border-radius: 6px;
+}
+.wp-event-tag-phase {
+  font-size: 10px;
+  font-weight: 700;
+  color: var(--muted);
+  background: rgba(22, 35, 61, 0.05);
+  padding: 2px 6px;
+  border-radius: 6px;
+}
+.wp-event-tag-done {
+  font-size: 10px;
+  font-weight: 700;
+  color: var(--ok);
+  background: rgba(60, 154, 107, 0.13);
+  padding: 2px 6px;
+  border-radius: 6px;
+  display: inline-flex;
+  align-items: center;
+  gap: 3px;
+}
+
+.wp-event-nest-note {
+  font-size: var(--text-caption);
+  font-weight: 700;
+  color: var(--muted);
+  white-space: nowrap;
+}
+.wp-event-conflict-flag {
+  display: block;
+  font-size: var(--text-caption);
+  color: var(--amber-deep);
+  margin-top: 2px;
+}
+
+/* Expanding verb strip. */
+.wp-event-actions {
+  max-height: 0;
+  overflow: hidden;
+  transition: max-height var(--t-base) ease;
+  background: #fafbfd;
+  border-top: 1px solid transparent;
+}
+.wp-event.open .wp-event-actions {
+  max-height: 220px;
+  border-top-color: var(--line);
+}
+.wp-event-act-row {
+  display: flex;
+  gap: 7px;
+  padding: var(--space-3) 14px;
+  flex-wrap: wrap;
+}
+.wp-event-act {
+  font: inherit;
+  font-size: var(--text-secondary);
+  font-weight: 600;
+  border: 1px solid var(--line);
+  background: #fff;
+  color: var(--ink);
+  border-radius: 9px;
+  padding: 7px 11px;
+  cursor: pointer;
+  transition:
+    background var(--t-quick),
+    color var(--t-quick);
+}
+.wp-event-act:hover {
+  background: var(--ink);
+  color: #fff;
+  border-color: var(--ink);
+}
+.wp-event-act.go {
+  border-color: var(--teal);
+  color: var(--teal);
+}
+.wp-event-act.go:hover {
+  background: var(--teal);
+  color: #fff;
+}
+.wp-event-act:focus-visible {
+  outline: 2.5px solid var(--teal);
+  outline-offset: 2px;
+}
+.wp-event-act-row-end {
+  display: flex;
+  gap: 7px;
+  margin-inline-start: auto;
+}
+.wp-event-act.icon-only {
+  padding: 7px 10px;
+  font-size: var(--text-body);
+  line-height: 1;
+}
+/* The quiet "more" ⋯ — no border until touched. */
+.wp-event-act.icon-only.more {
+  border-color: transparent;
+  color: var(--muted);
+  font-size: var(--text-h3);
+  padding: 6px 9px;
+}
+.wp-event-act.icon-only.more:hover {
+  background: var(--paper);
+  color: var(--ink);
+  border-color: var(--line);
+}
+.wp-event-act.stepper {
+  display: flex;
+  align-items: stretch;
+  padding: 0;
+}
+.wp-event-act.stepper .step {
+  font: inherit;
+  font-size: var(--text-body);
+  font-weight: 700;
+  line-height: 1;
+  border: none;
+  background: transparent;
+  color: inherit;
+  padding: 7px 10px;
+  cursor: pointer;
+}
+.wp-event-act.stepper .step-label {
+  display: flex;
+  align-items: center;
+  padding: 7px 6px;
+  border-inline: 1px solid var(--line);
+  color: var(--muted);
+  font-size: var(--text-caption);
+}
+.wp-event-hard-warn {
+  font-size: var(--text-caption);
+  color: var(--amber-deep);
+  padding: 0 14px var(--space-3);
+  display: flex;
+  align-items: center;
+  gap: 6px;
+}
+
+/* Settle strip (a passed-but-unmarked soft event). */
+.wp-event-settle {
+  display: flex;
+  align-items: center;
+  gap: var(--space-2);
+  padding: 0 15px 12px 66px;
+  margin-top: -2px;
+}
+.wp-event.soft .wp-event-settle {
+  padding-inline-end: 62px;
+}
+.wp-event-settle-q {
+  font-size: 11.5px;
+  font-weight: 600;
+  color: var(--muted);
+  margin-inline-end: auto;
+}
+.wp-event-settle button {
+  font: inherit;
+  font-size: 11.5px;
+  font-weight: 700;
+  border-radius: var(--radius-999);
+  padding: 5px 13px;
+  cursor: pointer;
+  border: 1px solid var(--line);
+  background: var(--card);
+  color: var(--ink);
+}
+.wp-event-settle-yes {
+  border-color: rgba(60, 154, 107, 0.4) !important;
+  color: var(--ok) !important;
+}
+.wp-event-settle button:focus-visible {
+  outline: 2.5px solid var(--teal);
+  outline-offset: 2px;
+}

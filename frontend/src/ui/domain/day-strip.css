@@ -1,0 +1,124 @@
+/* DayStrip (domain, review U-03). Ported faithfully from `.day-strip` /
+   `.day-pill` in App.css, under new `wp-` classes. Mode is driven by a
+   `data-mode` on the strip root (self-contained) instead of the ancestor
+   `.app[data-mode]`, so the component owns its plan-mode overrides. Amber
+   anchors TODAY (Trip); violet is the plan accent (design-language mode
+   identity + color budget). */
+
+.wp-daystrip {
+  display: flex;
+  gap: 6px;
+  margin-top: 14px;
+  overflow-x: auto;
+}
+.wp-daystrip::-webkit-scrollbar {
+  height: 0;
+}
+
+/* Column layout (label above pill inside the scroll container) — see the note
+   in App.css: an absolutely-placed label lands in clipped scroll overflow. */
+.wp-daypill-wrap {
+  display: flex;
+  flex-direction: column;
+  justify-content: flex-end;
+  flex: 0 0 auto;
+}
+.wp-month-label {
+  text-align: center;
+  font-size: 10.5px;
+  font-weight: 600;
+  color: #8494b5;
+  white-space: nowrap;
+  margin-bottom: var(--space-1);
+}
+
+.wp-daypill {
+  position: relative;
+  min-width: 44px; /* ≥44px touch target (design-language a11y) */
+  text-align: center;
+  font: inherit;
+  font-size: var(--text-caption);
+  font-weight: 600;
+  padding: 7px 0 var(--space-2);
+  border: none;
+  border-radius: 9px;
+  color: #8494b5;
+  background: rgba(255, 255, 255, 0.05);
+  cursor: pointer;
+}
+.wp-daypill .n {
+  display: block;
+  font-family: var(--font-mono);
+  font-size: 14px;
+  margin-top: 2px;
+  color: #b9c4de;
+}
+.wp-daypill.on {
+  background: var(--amber);
+  color: #3a2405;
+}
+.wp-daypill.on .n {
+  color: #3a2405;
+}
+.wp-daypill.past {
+  opacity: 0.45;
+}
+/* today-anchor: amber dot marking the live day wherever you browse. */
+.wp-daypill.today-anchor::after {
+  content: '';
+  position: absolute;
+  top: 5px;
+  inset-inline-end: 7px;
+  width: 6px;
+  height: 6px;
+  border-radius: var(--radius-999);
+  background: var(--amber);
+  box-shadow: 0 0 0 2px rgba(233, 166, 60, 0.25);
+}
+/* sel-history: a non-today selected day is a neutral highlight. */
+.wp-daypill.sel-history {
+  background: rgba(255, 255, 255, 0.16);
+  color: #eaf0ff;
+  box-shadow: inset 0 0 0 1px rgba(255, 255, 255, 0.28);
+}
+.wp-daypill.sel-history .n {
+  color: #fff;
+}
+/* sel-future: a selected future day is violet (plan-ahead). */
+.wp-daypill.sel-future {
+  background: var(--plan);
+  color: #fff;
+}
+.wp-daypill.sel-future .n {
+  color: #fff;
+}
+.wp-daypill.future {
+  opacity: 0.6;
+}
+
+/* ── Plan mode ── no day is "now": selection is violet; empty days show the
+   dashed red-number gap marker (mockups/plan-mode-v1.html). */
+.wp-daystrip[data-mode='plan'] .wp-daypill {
+  background: rgba(22, 35, 61, 0.05);
+  color: var(--muted);
+}
+.wp-daystrip[data-mode='plan'] .wp-daypill .n {
+  color: var(--ink);
+}
+.wp-daystrip[data-mode='plan'] .wp-month-label {
+  color: var(--muted);
+}
+.wp-daystrip[data-mode='plan'] .wp-daypill.on {
+  background: var(--plan);
+  color: #fff;
+}
+.wp-daystrip[data-mode='plan'] .wp-daypill.on .n {
+  color: #fff;
+}
+.wp-daystrip[data-mode='plan'] .wp-daypill.empty:not(.on) {
+  border: 1px dashed var(--soft-line);
+  background: transparent;
+}
+.wp-daystrip[data-mode='plan'] .wp-daypill.empty:not(.on) .n {
+  color: var(--miss);
+}
