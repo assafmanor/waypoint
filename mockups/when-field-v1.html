@@ -1,0 +1,668 @@
+<!doctype html>
+<html lang="he" dir="rtl">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>WhenField — one date/time standard</title>
+    <style>
+      :root {
+        --ink: #16233d;
+        --indigo: #1b2a4a;
+        --board: #0e1729;
+        --screen: #e7eaef;
+        --card: #ffffff;
+        --amber: #e9a63c;
+        --amber-deep: #c9822a;
+        --amber-ink: #7a5a1e;
+        --amber-tint: rgba(233, 166, 60, 0.14);
+        --teal: #2c9c90;
+        --muted: #6c7488;
+        --faint: #98a0b0;
+        --line: rgba(22, 35, 61, 0.12);
+        --soft-line: rgba(22, 35, 61, 0.28);
+        --plan: #6e59d6;
+        --ok: #3c9a6b;
+        --miss: #c2584e;
+        --radius: 12px;
+        --font-body: 'Assistant', system-ui, sans-serif;
+        --font-mono: 'JetBrains Mono', ui-monospace, monospace;
+      }
+      * {
+        box-sizing: border-box;
+      }
+      body {
+        margin: 0;
+        background: var(--screen);
+        color: var(--ink);
+        font-family: var(--font-body);
+        line-height: 1.5;
+        padding: 24px 14px 60px;
+      }
+      h1 {
+        font-size: 22px;
+        margin: 0 0 4px;
+      }
+      .sub {
+        color: var(--muted);
+        max-width: 720px;
+        margin: 0 auto 22px;
+        text-align: center;
+        font-size: 14px;
+      }
+      .head {
+        text-align: center;
+      }
+      .grid {
+        display: flex;
+        flex-wrap: wrap;
+        gap: 22px;
+        justify-content: center;
+        align-items: flex-start;
+      }
+      .phone {
+        width: 360px;
+        max-width: 100%;
+        background: var(--card);
+        border-radius: 26px;
+        border: 1px solid var(--line);
+        box-shadow: 0 18px 40px -18px rgba(14, 23, 41, 0.45);
+        overflow: hidden;
+      }
+      .phone-top {
+        background: var(--board);
+        color: #fff;
+        padding: 12px 16px;
+        font-size: 13px;
+        display: flex;
+        justify-content: space-between;
+        align-items: center;
+      }
+      .tag {
+        font-size: 11px;
+        padding: 2px 8px;
+        border-radius: 999px;
+        font-weight: 700;
+      }
+      .tag.bad {
+        background: rgba(194, 88, 78, 0.18);
+        color: #ffd9d4;
+      }
+      .tag.good {
+        background: rgba(60, 154, 107, 0.22);
+        color: #c9f2dd;
+      }
+      .body {
+        padding: 16px;
+      }
+      .caption {
+        font-size: 11px;
+        color: var(--muted);
+        letter-spacing: 0.02em;
+        margin: 0 2px 6px;
+        font-weight: 700;
+      }
+      .idrow {
+        display: flex;
+        gap: 8px;
+        align-items: center;
+        margin-bottom: 4px;
+      }
+      .glyph {
+        width: 40px;
+        height: 40px;
+        border-radius: 10px;
+        border: 1px solid var(--line);
+        display: grid;
+        place-items: center;
+        font-size: 20px;
+        flex: 0 0 auto;
+      }
+      .route {
+        flex: 1;
+        display: flex;
+        gap: 6px;
+        align-items: center;
+        border: 1px solid var(--line);
+        border-radius: 10px;
+        padding: 6px 10px;
+      }
+      .route input {
+        border: 0;
+        outline: 0;
+        font: inherit;
+        width: 100%;
+        background: transparent;
+        text-align: center;
+      }
+      .route .arr {
+        color: var(--teal);
+      }
+      .field-lbl {
+        font-size: 12px;
+        color: var(--muted);
+        margin: 14px 2px 5px;
+        font-weight: 700;
+      }
+      .stub {
+        border: 1px solid var(--line);
+        border-radius: 10px;
+        padding: 9px 11px;
+        color: var(--faint);
+        font-size: 13px;
+        background: #fafbfc;
+      }
+
+      /* ── BEFORE: the broken cramped native row ── */
+      .bad-when {
+        display: flex;
+        border: 1px solid var(--line);
+        border-radius: 10px;
+        overflow: hidden;
+      }
+      .bad-when .d {
+        flex: 1 1 auto;
+        min-width: 0;
+        padding: 9px 10px;
+        white-space: nowrap;
+        overflow: hidden;
+        color: var(--faint);
+        font-size: 13px;
+      }
+      .bad-when .t {
+        flex: 0 0 auto;
+        padding: 9px 10px;
+        border-inline-start: 1px solid var(--line);
+        color: var(--amber-deep);
+        font-family: var(--font-mono);
+        font-weight: 600;
+      }
+      .kbd {
+        margin-top: 10px;
+        background: #cfd4dc;
+        border-radius: 8px 8px 0 0;
+        padding: 10px;
+        text-align: center;
+        color: #55607a;
+        font-size: 12px;
+      }
+      .note-bad {
+        color: var(--miss);
+        font-size: 12px;
+        margin: 8px 2px 0;
+      }
+
+      /* ── AFTER: the WhenField standard ── */
+      .when {
+        border: 1px solid var(--line);
+        border-radius: var(--radius);
+        overflow: hidden;
+      }
+      .leg {
+        padding: 10px 12px;
+      }
+      .leg + .leg {
+        border-top: 1px dashed var(--amber);
+      }
+      .leg-cap {
+        font-size: 11px;
+        font-weight: 700;
+        color: var(--amber-ink);
+        margin-bottom: 6px;
+        display: flex;
+        align-items: center;
+        gap: 5px;
+      }
+      .leg-cap .dot {
+        width: 7px;
+        height: 7px;
+        border-radius: 50%;
+        background: var(--amber);
+      }
+      .picks {
+        display: flex;
+        gap: 8px;
+        align-items: stretch;
+      }
+      .pick {
+        border: 1px solid var(--line);
+        border-radius: 10px;
+        background: var(--card);
+        padding: 7px 10px;
+        text-align: start;
+        font: inherit;
+        cursor: pointer;
+        display: flex;
+        flex-direction: column;
+        gap: 1px;
+      }
+      /* native date field — full flex width, so the date is never clipped */
+      .pick.date.native {
+        flex: 1 1 auto;
+        min-width: 0;
+        font-size: 15px;
+        color: var(--ink);
+        color-scheme: light;
+      }
+      .pick.time {
+        flex: 0 0 auto;
+        min-width: 104px;
+      }
+      .pick:active {
+        border-color: var(--teal);
+      }
+      .pick.on {
+        border-color: var(--teal);
+        box-shadow: 0 0 0 2px rgba(44, 156, 144, 0.18);
+      }
+      .pick .pc {
+        font-size: 10px;
+        color: var(--muted);
+        font-weight: 700;
+      }
+      .pick .pv {
+        font-size: 15px;
+        font-weight: 600;
+        direction: ltr;
+        text-align: start;
+      }
+      .pick.date .pv {
+        color: var(--ink);
+      }
+      .pick.time .pv {
+        color: var(--amber-deep);
+        font-family: var(--font-mono);
+      }
+      .plus {
+        display: inline-block;
+        font-size: 9px;
+        vertical-align: super;
+        color: var(--amber-deep);
+        font-family: var(--font-mono);
+        margin-inline-start: 3px;
+      }
+      .dur {
+        margin: 8px 2px 0;
+        font-size: 12px;
+        color: var(--muted);
+      }
+      .dur b {
+        color: var(--ink);
+      }
+
+      /* scroll-list panel (TimePicker grammar) */
+      .panel {
+        margin-top: 8px;
+        border: 1px solid var(--line);
+        border-radius: 10px;
+        background: var(--card);
+        box-shadow: 0 12px 30px -14px rgba(14, 23, 41, 0.4);
+        overflow: hidden;
+        display: none;
+      }
+      .panel.open {
+        display: block;
+      }
+      .panel-exact {
+        display: flex;
+        align-items: center;
+        justify-content: space-between;
+        gap: 8px;
+        padding: 8px 10px;
+        border-bottom: 1px solid var(--line);
+        background: #fafbfc;
+      }
+      .panel-exact span {
+        font-size: 11px;
+        color: var(--muted);
+      }
+      .panel-exact input {
+        font: inherit;
+        font-family: var(--font-mono);
+        border: 1px solid var(--line);
+        border-radius: 8px;
+        padding: 4px 8px;
+        direction: ltr;
+      }
+      .list {
+        max-height: 168px;
+        overflow-y: auto;
+      }
+      .list button {
+        display: block;
+        width: 100%;
+        text-align: center;
+        border: 0;
+        background: transparent;
+        font: inherit;
+        font-family: var(--font-mono);
+        padding: 9px;
+        cursor: pointer;
+        direction: ltr;
+      }
+      .list button:hover {
+        background: var(--amber-tint);
+      }
+      .list button.on {
+        background: var(--amber);
+        color: #fff;
+        font-weight: 700;
+      }
+      .list.days button {
+        font-family: var(--font-body);
+        direction: rtl;
+      }
+
+      .kind {
+        display: flex;
+        gap: 6px;
+        margin-top: 12px;
+      }
+      .kind button {
+        flex: 1;
+        border: 1px solid var(--line);
+        border-radius: 10px;
+        padding: 8px;
+        background: var(--card);
+        font: inherit;
+        font-size: 13px;
+        cursor: pointer;
+      }
+      .kind button.on {
+        background: var(--amber-tint);
+        border-color: var(--amber);
+        color: var(--amber-ink);
+        font-weight: 700;
+      }
+      .actions {
+        display: flex;
+        gap: 8px;
+        margin-top: 16px;
+      }
+      .actions .save {
+        flex: 1;
+        background: var(--ink);
+        color: #fff;
+        border: 0;
+        border-radius: 10px;
+        padding: 11px;
+        font: inherit;
+        font-weight: 700;
+      }
+      .actions .cancel {
+        border: 1px solid var(--line);
+        background: var(--card);
+        border-radius: 10px;
+        padding: 11px 16px;
+        font: inherit;
+      }
+
+      .legend {
+        max-width: 760px;
+        margin: 30px auto 0;
+        background: var(--card);
+        border: 1px solid var(--line);
+        border-radius: 14px;
+        padding: 18px 20px;
+      }
+      .legend h2 {
+        font-size: 15px;
+        margin: 0 0 10px;
+      }
+      .legend ul {
+        margin: 0;
+        padding-inline-start: 18px;
+      }
+      .legend li {
+        margin-bottom: 7px;
+        font-size: 13.5px;
+      }
+      .legend .k {
+        font-weight: 700;
+        color: var(--teal);
+      }
+      code {
+        background: #eef0f4;
+        padding: 1px 5px;
+        border-radius: 5px;
+        font-family: var(--font-mono);
+        font-size: 12px;
+      }
+      .modes {
+        display: flex;
+        gap: 8px;
+        flex-wrap: wrap;
+        margin-top: 10px;
+      }
+      .mode {
+        border: 1px solid var(--line);
+        border-radius: 10px;
+        padding: 8px 12px;
+        font-size: 12.5px;
+        background: #fafbfc;
+      }
+      .mode b {
+        color: var(--plan);
+      }
+    </style>
+  </head>
+  <body>
+    <div class="head">
+      <h1>WhenField — one date/time standard</h1>
+      <p class="sub">
+        Today two grammars exist. Events use a clean date field + amber scroll-list time picker;
+        multi-day bookings use a cramped native date│time box that clips the date and shows AM/PM
+        (right). The proposal: one <b>WhenField</b> primitive every form uses — single instant,
+        single-day range, or a multi-day span — always our own tap-to-open fields (never a squeezed
+        native box), always at the top of the form, always cleared by the keyboard.
+      </p>
+    </div>
+
+    <div class="grid">
+      <!-- ───────────── BEFORE ───────────── -->
+      <div class="phone">
+        <div class="phone-top">
+          <span>עריכת הזמנה · טיסה</span>
+          <span class="tag bad">היום — שבור</span>
+        </div>
+        <div class="body">
+          <div class="caption">שם / מסלול</div>
+          <div class="idrow">
+            <div class="glyph">✈️</div>
+            <div class="route">
+              <input value="TLV" />
+              <span class="arr">←</span>
+              <input value="NRT" />
+            </div>
+          </div>
+          <div class="field-lbl">קוד אישור</div>
+          <div class="stub">—</div>
+          <div class="field-lbl">הערות</div>
+          <div class="stub" style="height: 44px">—</div>
+
+          <div class="field-lbl">🛫 המראה</div>
+          <div class="bad-when">
+            <div class="d">mm/dd/yyyy</div>
+            <div class="t">:23&nbsp;PM</div>
+          </div>
+          <div class="field-lbl">🛬 נחיתה</div>
+          <div class="bad-when">
+            <div class="d">mm/dd/yyyy</div>
+            <div class="t">— —</div>
+          </div>
+          <div class="note-bad">
+            ✕ תאריך נחתך · פורמט AM/PM · בתחתית הטופס · המקלדת מכסה את השדה
+          </div>
+          <div class="kbd">⌨︎ מקלדת מכסה את השדות</div>
+        </div>
+      </div>
+
+      <!-- ───────────── AFTER ───────────── -->
+      <div class="phone">
+        <div class="phone-top">
+          <span>עריכת הזמנה · טיסה</span>
+          <span class="tag good">מוצע — סטנדרט</span>
+        </div>
+        <div class="body">
+          <div class="caption">שם / מסלול</div>
+          <div class="idrow">
+            <div class="glyph">✈️</div>
+            <div class="route">
+              <input value="TLV" />
+              <span class="arr">←</span>
+              <input value="NRT" />
+            </div>
+          </div>
+
+          <!-- When comes FIRST, right after the identity row. Each leg = a
+               full-width native date field (real OS calendar, like events, can't
+               be clipped) beside a compact tap-to-open amber time field. -->
+          <div class="field-lbl">מתי</div>
+          <div class="when">
+            <div class="leg">
+              <div class="leg-cap"><span class="dot"></span> המראה</div>
+              <div class="picks">
+                <input class="pick date native" type="date" value="2026-07-26" />
+                <button class="pick time on" data-panel="t1">
+                  <span class="pc">שעה</span>
+                  <span class="pv">23:20</span>
+                </button>
+              </div>
+              <div class="panel" id="t1">
+                <div class="panel-exact">
+                  <span>שעה מדויקת</span>
+                  <input type="time" value="23:20" />
+                </div>
+                <div class="list" data-kind="time"></div>
+              </div>
+            </div>
+
+            <div class="leg">
+              <div class="leg-cap">
+                <span class="dot"></span> נחיתה
+                <sup class="plus">+1 · חוצה יממה</sup>
+              </div>
+              <div class="picks">
+                <input class="pick date native" type="date" value="2026-07-27" />
+                <button class="pick time" data-panel="t2">
+                  <span class="pc">שעה</span>
+                  <span class="pv">17:05</span>
+                </button>
+              </div>
+              <div class="panel" id="t2">
+                <div class="panel-exact">
+                  <span>שעה מדויקת</span>
+                  <input type="time" value="17:05" />
+                </div>
+                <div class="list" data-kind="time"></div>
+              </div>
+            </div>
+          </div>
+          <div class="dur">משך: <b>17 שעות 45 דק׳</b> · חוצה יממה</div>
+
+          <div class="kind">
+            <button>גמיש</button>
+            <button class="on">קבוע 🔒</button>
+          </div>
+
+          <div class="field-lbl">קוד אישור</div>
+          <div class="stub">—</div>
+          <div class="field-lbl">הערות</div>
+          <div class="stub" style="height: 44px">—</div>
+
+          <div class="actions">
+            <button class="save">שמירה</button>
+            <button class="cancel">ביטול</button>
+          </div>
+        </div>
+      </div>
+    </div>
+
+    <div class="legend">
+      <h2>The standard, in one place</h2>
+      <ul>
+        <li>
+          <span class="k">One primitive, three modes.</span> Every form's date/time flows through
+          <code>WhenField</code> — never a raw native control in a row.
+          <div class="modes">
+            <div class="mode"><b>point</b> — a day + optional time (restaurant, generic event)</div>
+            <div class="mode"><b>range</b> — same-day start→end (today's event picker)</div>
+            <div class="mode">
+              <b>span</b> — start→end across any number of days (flight, hotel)
+            </div>
+          </div>
+        </li>
+        <li>
+          <span class="k">Date = the native field, like events.</span> A full-width
+          <code>&lt;input type="date"&gt;</code> (a real OS calendar) that can't be clipped — beside
+          a <em>compact</em> custom time field, so the date always keeps its room. The cropped-date
+          bug in the screenshot came from a wide native time input squeezing the date; a compact
+          custom time field structurally prevents it.
+        </li>
+        <li>
+          <span class="k">Time = the event grammar everywhere.</span> The same amber scroll-list
+          picker (with an exact native fallback, always 24h) drives single-day and span alike, and
+          auto-closes on pick. Span just isn't capped at the overnight cutoff — the end carries a
+          <code>+N</code> day badge and a derived duration read-out.
+        </li>
+        <li>
+          <span class="k">Placement is part of the standard.</span> "When" always sits first in the
+          form body, directly under the identity row (title, or route origin→destination).
+        </li>
+        <li>
+          <span class="k">Keyboard-safe by construction.</span> Picking is done in the panel (no
+          keyboard); the exact-entry input scrolls itself above the keyboard. This lives in the
+          shared form container, so every current and future form inherits it.
+        </li>
+      </ul>
+    </div>
+
+    <script>
+      const pad = (n) => String(n).padStart(2, '0');
+      document.querySelectorAll('.list[data-kind="time"]').forEach((list) => {
+        for (let m = 0; m < 1440; m += 15) {
+          const b = document.createElement('button');
+          b.textContent = `${pad(Math.floor(m / 60))}:${pad(m % 60)}`;
+          list.appendChild(b);
+        }
+      });
+      const closeLeg = (leg) => {
+        leg.querySelectorAll('.panel').forEach((p) => p.classList.remove('open'));
+        leg.querySelectorAll('.pick').forEach((p) => p.classList.remove('on'));
+      };
+
+      document.querySelectorAll('.pick[data-panel]').forEach((btn) => {
+        btn.addEventListener('click', () => {
+          const panel = document.getElementById(btn.dataset.panel);
+          const isOpen = panel.classList.contains('open');
+          closeLeg(btn.closest('.leg'));
+          if (!isOpen) {
+            panel.classList.add('open');
+            btn.classList.add('on');
+            const on = panel.querySelector('.list .on') || panel.querySelector('.list button');
+            if (on) on.scrollIntoView({ block: 'center' });
+          }
+        });
+      });
+
+      // Selecting a value writes it back into the field and AUTO-CLOSES the panel —
+      // the required behavior (matches the event TimePicker: pick a row → close).
+      document.querySelectorAll('.list').forEach((list) => {
+        list.addEventListener('click', (e) => {
+          const row = e.target.closest('button');
+          if (!row) return;
+          const leg = list.closest('.leg');
+          const opener = leg.querySelector('.pick.on');
+          if (opener) {
+            const val = opener.querySelector('.pv');
+            const plus = val.querySelector('.plus'); // preserve the +N day badge
+            val.textContent = row.textContent;
+            if (plus) val.appendChild(plus);
+          }
+          list.querySelectorAll('button').forEach((b) => b.classList.remove('on'));
+          row.classList.add('on');
+          closeLeg(leg);
+        });
+      });
+    </script>
+  </body>
+</html>

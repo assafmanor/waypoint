@@ -1,0 +1,138 @@
+/* WhenField (U-05 "when" standard). The date part is the native full-width date
+   field (.wf-date) so it can never be clipped and shows a real OS calendar; the
+   time part reuses the amber TimePicker chrome (.tp-*) so single-day and span
+   read as one grammar. Logical properties only (RTL). */
+
+.wf {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-3);
+}
+
+/* Native date field — full width, neutral chrome (matches the .field control). */
+.wf-date {
+  inline-size: 100%;
+  min-inline-size: 0;
+  font: inherit;
+  border: 1px solid var(--line);
+  border-radius: var(--radius-12, 12px);
+  background: var(--card);
+  padding-block: var(--space-2);
+  padding-inline: var(--space-3);
+  color: var(--ink);
+  color-scheme: light;
+}
+.wf-date:focus-visible {
+  outline: none;
+  border-color: var(--teal);
+}
+
+/* ── span: two endpoint legs joined by an amber "journey" connector ── */
+.wf-span {
+  gap: 0;
+  border: 1px solid var(--line);
+  border-radius: var(--radius-12, 12px);
+  overflow: visible;
+}
+.wf-leg {
+  position: relative;
+  padding: var(--space-3);
+}
+.wf-leg + .wf-leg {
+  border-top: 1px dashed var(--amber);
+}
+.wf-leg-cap {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  font-size: var(--text-caption, 11px);
+  font-weight: 700;
+  color: var(--amber-ink);
+  margin-block-end: var(--space-2);
+}
+.wf-leg-dot {
+  inline-size: 7px;
+  block-size: 7px;
+  border-radius: 50%;
+  background: var(--amber);
+  flex: 0 0 auto;
+}
+.wf-leg-badge {
+  font-family: var(--font-mono);
+  font-size: 9px;
+  font-weight: 700;
+  color: var(--amber-deep);
+  margin-inline-start: 4px;
+}
+
+.wf-leg-row {
+  display: flex;
+  gap: var(--space-2);
+  align-items: stretch;
+}
+.wf-leg-row .wf-date {
+  flex: 1 1 auto;
+}
+
+/* Tap-to-open time trigger — amber "time & commitment" family, compact so the
+   native date beside it keeps full room (the fix for the cropped-date bug). */
+.wf-time {
+  flex: 0 0 auto;
+  min-inline-size: 104px;
+  text-align: start;
+  background: var(--card);
+  border: 1px solid var(--line);
+  border-radius: var(--radius-12, 12px);
+  padding: var(--space-2) var(--space-3);
+  cursor: pointer;
+  display: flex;
+  flex-direction: column;
+  gap: 1px;
+  font: inherit;
+  transition: border-color 0.12s ease;
+}
+.wf-time:active {
+  border-color: var(--soft-line);
+}
+.wf-time.open {
+  border-color: var(--amber);
+  box-shadow: 0 0 0 2px rgba(233, 166, 60, 0.16);
+}
+.wf-time-cap {
+  font-size: var(--text-caption, 11px);
+  font-weight: 700;
+  color: var(--muted);
+}
+.wf-time-val {
+  font-family: var(--font-mono);
+  font-size: 17px;
+  font-weight: 700;
+  color: var(--amber-deep);
+  letter-spacing: 0.01em;
+  min-block-size: 22px;
+}
+.wf-time-ph {
+  font-family: var(--font-body);
+  font-size: 13px;
+  font-weight: 600;
+  color: var(--muted);
+}
+
+/* The endpoint's time panel spans the whole leg (full width below the row) —
+   it is NOT nested inside the compact time trigger, so it can't be clipped. */
+.wf-panel {
+  margin-top: var(--space-2);
+}
+
+.wf-dur {
+  padding: var(--space-2) var(--space-3) var(--space-3);
+  font-size: var(--text-secondary, 13px);
+  color: var(--muted);
+}
+.wf-dur b {
+  color: var(--ink);
+  font-weight: 700;
+}
+.wf-dur-note {
+  color: var(--amber-ink);
+}

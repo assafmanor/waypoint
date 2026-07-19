@@ -775,6 +775,15 @@ export const t = {
     durHoursMinutes: (h: number, m: number) => `${h}:${String(m).padStart(2, '0')} שע׳`,
     durMinutes: (m: number) => `${m} דק׳`,
   },
+  // The "when" standard (WhenField). Shared span-endpoint copy for the tap-to-open
+  // time field, the derived duration read-out, and the crosses-a-day marker.
+  whenField: {
+    timeCap: 'שעה',
+    addTime: 'הוסף שעה',
+    exactTime: 'שעה מדויקת',
+    durationPrefix: 'משך:',
+    crossesDay: 'חוצה יממה',
+  },
   // Trip settings (ADR-0039): admin-governed. Mode-neutral chrome.
   settings: {
     title: 'הגדרות הטיול',
