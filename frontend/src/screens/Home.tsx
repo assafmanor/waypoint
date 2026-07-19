@@ -20,6 +20,7 @@ import { useToast } from '../ui/Toast';
 import { EventTitle } from '../ui/EventTitle';
 import {
   Board,
+  ChangeFeed,
   GlanceCard,
   type BoardNext,
   type BoardRow,
@@ -71,7 +72,8 @@ function hotelWifi(bookings: Booking[]): HotelWifi | undefined {
 }
 
 export function Home({ onNavigate }: { onNavigate?: (tab: TabId) => void }) {
-  const { trip, bookings, places, events, activeDate } = useTrip();
+  const { trip, bookings, places, events, activeDate, changeFeed, dismissChange, clearChangeFeed } =
+    useTrip();
   const toast = useToast();
   const navigate = useNavigate();
   const now = useClock();
@@ -321,6 +323,16 @@ export function Home({ onNavigate }: { onNavigate?: (tab: TabId) => void }) {
         progress={progress}
         windowStartHour={hourLabel(DAY_WINDOW.START_HOUR)}
         windowEndHour={hourLabel(DAY_WINDOW.END_HOUR)}
+      />
+
+      {/* Group change-feed (ADR-0081, U-09): a quiet strip below the board that
+          narrates recent peer edits (attributed). Auto-collapses when empty, so
+          it costs no space until a peer changes something. Not a second board. */}
+      <ChangeFeed
+        entries={changeFeed}
+        now={nowMs}
+        onDismiss={dismissChange}
+        onDismissAll={clearChangeFeed}
       />
 
       <div className="sec-title">{t.quick.title}</div>

@@ -4,6 +4,7 @@
 // so the reducer can be swapped for REST calls without touching the screens.
 import {
   createContext,
+  useCallback,
   useContext,
   useEffect,
   useMemo,
@@ -64,6 +65,13 @@ import {
   subscribeSyncFailures,
 } from '../lib/outbox';
 import { openTripStream } from '../lib/ws';
+import {
+  CHANGE_FEED_LIMIT,
+  appendChangeEntry,
+  describeChange,
+  dismissChangeEntry,
+  type ChangeEntry,
+} from './change-feed';
 import { getNow } from '../lib/useClock';
 import { clampDate, shiftIso, todayInTz } from '../lib/time';
 import { useToast } from '../ui/Toast';
@@ -346,6 +354,12 @@ interface TripContextValue {
   dispatch: React.Dispatch<Action>;
   settings: SettingsVerbs;
   indexVerbs: IndexVerbs;
+  // Group change-feed (ADR-0081, U-09): a bounded, newest-first list of recent
+  // SHARED peer edits, narrated (not re-applied) off the same WS `change` stream.
+  // Own edits are filtered out; resets on trip switch (TripReady remounts).
+  changeFeed: ChangeEntry[];
+  dismissChange: (id: string) => void;
+  clearChangeFeed: () => void;
   // Set once the active trip is deleted (locally or by a remote admin, ADR-0039);
   // the shell/settings screen navigate out to /trips when this flips.
   tripDeleted: boolean;
@@ -486,6 +500,24 @@ function TripReady({
   // reflect live. The bytes still load lazily via /content + the ADR-0055 cache.
   const [documents, setDocuments] = useState<DocumentSummary[]>(snapshot.documents);
 
+  // Group change-feed buffer (ADR-0081, U-09). Narrated from the same WS change
+  // stream in applyRemoteChange below — never a second socket, never re-applied.
+  // Re-inits to empty on trip switch (TripReady remounts). The describe context
+  // (roster / me / tz) is held in a ref so the [tripId]-scoped effect narrates
+  // with fresh values without re-subscribing the socket on every render.
+  const [changeFeed, setChangeFeed] = useState<ChangeEntry[]>([]);
+  const feedCtxRef = useRef({
+    users: snapshot.users,
+    meId: me?.user.id,
+    tz: snapshot.trip.timezone,
+  });
+  feedCtxRef.current = { users: snapshot.users, meId: me?.user.id, tz: trip.timezone };
+  const dismissChange = useCallback(
+    (id: string) => setChangeFeed((prev) => dismissChangeEntry(prev, id)),
+    [],
+  );
+  const clearChangeFeed = useCallback(() => setChangeFeed([]), []);
+
   // The selected day is deep-linkable + reload-surviving via `?day=` (J7 / review
   // Q5), yet stays React-state-owned so every existing reset/preserve rule (the
   // Trip-mode Home snap-to-today, the idle-resume reset, Plan-mode preservation —
@@ -563,6 +595,13 @@ function TripReady({
       lastSeqRef.current = change.seq;
       void applyChangeToCache(tripId, change);
       dispatch({ type: 'REMOTE_EVENT_CHANGE', change });
+      // Narrate (don't re-apply) into the change-feed: a peer edit becomes a
+      // visible, attributed line (ADR-0081). Our own edits return null (already
+      // optimistic on our screen). Covers WS-live + reconnect catch-up (both
+      // funnel here); a full RESYNC replaces state wholesale and isn't narrated.
+      const { users, meId, tz } = feedCtxRef.current;
+      const entry = describeChange(change, users, meId, tz);
+      if (entry) setChangeFeed((prev) => appendChangeEntry(prev, entry, CHANGE_FEED_LIMIT));
       if (change.entityType === 'trip') {
         if (change.action === 'delete') setTripDeleted(true);
         else setTrip((prev) => applyControlChangeToTrip(prev, change));
@@ -900,6 +939,9 @@ function TripReady({
       dispatch,
       settings,
       indexVerbs,
+      changeFeed,
+      dismissChange,
+      clearChangeFeed,
       tripDeleted,
       usingCachedSnapshot,
     }),
@@ -913,6 +955,9 @@ function TripReady({
       documents,
       settings,
       indexVerbs,
+      changeFeed,
+      dismissChange,
+      clearChangeFeed,
       tripDeleted,
       usingCachedSnapshot,
       activeDate,

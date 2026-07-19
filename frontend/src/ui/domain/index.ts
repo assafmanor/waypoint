@@ -26,3 +26,6 @@ export type { StatTileProps } from './StatTile';
 
 export { ListRow, RowManageSheet } from './ListRow';
 export type { ListRowProps, RowAction, BadgeTone } from './ListRow';
+
+export { ChangeFeed } from './ChangeFeed';
+export type { ChangeFeedProps } from './ChangeFeed';
