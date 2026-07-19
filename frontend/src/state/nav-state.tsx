@@ -85,16 +85,24 @@ export function resolveActiveDate(
 /** The structural half of `goBack()` (ADR-0035 §2), after any open overlay has
  *  already been closed. Precedence: non-Home tab → Home; Home base → leave the
  *  trip; shell route → parent; roots → no-op (never fall off-app). Leaving the
- *  trip is surfaced as its own step so the caller can gate it behind a confirm. */
+ *  trip is surfaced as its own step so the caller can gate it behind a confirm.
+ *
+ *  A non-Home tab returns to Home by a history `back` only when Home is provably
+ *  the entry directly behind (`homeBehind`) — the same hardening the nav-bar Home
+ *  tap got (ADR-0035 §3, 2026-07-19). When Home is NOT behind (a cold deep link
+ *  onto a tab, or foreign history left by the OAuth round-trip / an external app
+ *  launch / an idx desync), a blind `back` traverses somewhere that isn't Home
+ *  and the gesture silently strands, so route to `/` explicitly instead. */
 export function structuralBackStep(ctx: {
   insideTrip: boolean;
   tab: string | null;
   pathname: string;
   canGoBack: boolean;
+  homeBehind: boolean;
 }): NavStep {
   if (ctx.insideTrip) {
     if (ctx.tab && ctx.tab !== HOME_TAB) {
-      return ctx.canGoBack ? { kind: 'back' } : { kind: 'replace', to: '/' };
+      return ctx.homeBehind ? { kind: 'back' } : { kind: 'replace', to: '/' };
     }
     return { kind: 'exit-trip' }; // Home base → out to all-trips (root guard).
   }
@@ -133,17 +141,27 @@ export type BackKind = 'overlay' | 'exit-confirm' | 'exit' | 'structural' | 'non
  *  - `close-overlay` — a sheet/dialog is open → cancel the back, close it;
  *  - `arm-exit` — at the in-trip Home base, first back → cancel, arm + toast;
  *  - `do-exit` — at Home, second back within the window → cancel, go to /trips;
- *  - `allow` — nothing to intercept; let react-router's back peel tab/route. */
-export type SystemBackDecision = 'close-overlay' | 'arm-exit' | 'do-exit' | 'allow';
+ *  - `go-home` — a non-Home tab whose Home base is NOT provably behind → cancel,
+ *    go to Home explicitly (the Android twin of the gesture's `homeBehind` guard);
+ *  - `allow` — Home is behind (or we're outside a trip) → let react-router's back
+ *    peel the tab/route natively. */
+export type SystemBackDecision = 'close-overlay' | 'arm-exit' | 'do-exit' | 'go-home' | 'allow';
 
 export function systemBackDecision(ctx: {
   hasOverlay: boolean;
   insideTrip: boolean;
   atHome: boolean;
+  homeBehind: boolean;
   armed: boolean;
 }): SystemBackDecision {
   if (ctx.hasOverlay) return 'close-overlay';
   if (ctx.insideTrip && ctx.atHome) return ctx.armed ? 'do-exit' : 'arm-exit';
+  // On a non-Home tab, let the OS back peel to Home natively only when Home is
+  // provably the entry behind. When it isn't — a cold deep link onto a tab or
+  // foreign history (OAuth round-trip / external launch / idx desync) — a raw OS
+  // back traverses into that foreign entry or off-app entirely, so cancel it and
+  // go Home explicitly (matches the return gesture's structuralBackStep).
+  if (ctx.insideTrip && !ctx.homeBehind) return 'go-home';
   return 'allow';
 }
 
@@ -189,6 +207,17 @@ function historyIdx(): number {
   return typeof idx === 'number' ? idx : 0;
 }
 
+/** Whether the in-trip Home base is provably the entry directly behind us — the
+ *  precondition for taking the `back` shortcut to Home (ADR-0035 §3). A Home→tab
+ *  push sits exactly one entry ahead of the base and tab→tab replaces never
+ *  advance past it, so Home is behind iff we're one index above the recorded base.
+ *  `null` (Home not yet visited this session) is never "behind". Shared by the
+ *  nav-bar Home tap (`useTripTab`) and the return gesture / system-back
+ *  (`useReturnControls`) so both resolve Home identically. */
+function homeIsBehind(homeBaseIdx: number | null): boolean {
+  return homeBaseIdx !== null && historyIdx() === homeBaseIdx + 1;
+}
+
 function runStep(navigate: NavigateFunction, step: NavStep): void {
   switch (step.kind) {
     case 'push':
@@ -230,7 +259,14 @@ export function NavProvider({ children }: { children: ReactNode }) {
       if (e.navigationType !== 'traverse' || !e.cancelable) return;
       const destIdx = e.destination?.index;
       const curIdx = navApi.currentEntry?.index;
-      if (typeof destIdx !== 'number' || typeof curIdx !== 'number' || destIdx >= curIdx) return;
+      // Skip only a provably-FORWARD traverse. A backward one — or one whose
+      // destination index is indeterminate because it leaves the app (the Home
+      // base sitting at history index 0 on a cold launch / OAuth round-trip) —
+      // must still route through the intent below: that is exactly when the
+      // in-trip root guard has to keep the user in-app (arm → /trips) instead of
+      // the OS silently exiting. Early-returning here was the "Home exits the
+      // app instead of going to all-trips" bug.
+      if (typeof destIdx === 'number' && typeof curIdx === 'number' && destIdx >= curIdx) return;
       const atHome =
         insideTripRef.current &&
         window.location.pathname === '/' &&
@@ -239,6 +275,7 @@ export function NavProvider({ children }: { children: ReactNode }) {
         hasOverlay: stackRef.current.length > 0,
         insideTrip: insideTripRef.current,
         atHome,
+        homeBehind: homeIsBehind(homeBaseIdxRef.current),
         armed: getNow() - exitPendingRef.current < EXIT_CONFIRM_MS,
       });
       switch (decision) {
@@ -255,6 +292,10 @@ export function NavProvider({ children }: { children: ReactNode }) {
           e.preventDefault();
           exitPendingRef.current = 0;
           navigate(EXIT_TRIP_TO); // deterministic — never traverse off-app.
+          break;
+        case 'go-home':
+          e.preventDefault();
+          navigate('/', { replace: true }); // deterministic Home, never a blind back.
           break;
         case 'allow':
           break; // let react-router's back peel the tab/route.
@@ -360,11 +401,7 @@ export function useTripTab(): { tab: TabId; goToTab: (t: TabId) => void } {
     if (tab === HOME_TAB) homeBaseIdxRef.current = historyIdx();
   }, [tab, homeBaseIdxRef]);
   const goToTab = useCallback(
-    (next: TabId) => {
-      const homeBehind =
-        homeBaseIdxRef.current !== null && historyIdx() === homeBaseIdxRef.current + 1;
-      runStep(navigate, tabStep(tab, next, homeBehind));
-    },
+    (next: TabId) => runStep(navigate, tabStep(tab, next, homeIsBehind(homeBaseIdxRef.current))),
     [tab, navigate, homeBaseIdxRef],
   );
   return { tab, goToTab };
@@ -388,6 +425,7 @@ export function useReturnControls() {
       tab: params.get(TAB_PARAM),
       pathname: location.pathname,
       canGoBack: historyIdx() > 0,
+      homeBehind: homeIsBehind(nav.homeBaseIdxRef.current),
     });
     if (step.kind === 'exit-trip') {
       // Leaving a trip is confirmed: the first back arms it, a second within the
