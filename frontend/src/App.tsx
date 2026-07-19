@@ -73,7 +73,7 @@ import {
   type TabId,
 } from './constants';
 import { daysUntilStart, type Mode } from './lib/mode';
-import { addDays, formatDaysUntil, monthLabelFor, todayInTz } from './lib/time';
+import { addDays, monthLabelFor, todayInTz } from './lib/time';
 import { t } from './i18n/he';
 import './App.css';
 import './screens.css';
@@ -243,7 +243,7 @@ function Header({
               const daysToGo = mode === 'plan' ? daysUntilStart(trip, now) : null;
               return daysToGo === null
                 ? t.header.dayOf(dayNumber, total)
-                : t.header.leavingIn(formatDaysUntil(daysToGo));
+                : t.header.leavingIn(daysToGo);
             })()}
           </div>
         </div>

@@ -1,7 +1,7 @@
 // Hebrew UI copy — the active locale. All user-facing strings live here so logic
 // stays language-agnostic (conventions.md). Interpolated copy is a function;
 // runs that must render left-to-right (times, codes) stay as JSX in the caller.
-import { formatDaysUntil } from '../lib/time';
+import { countdownText } from '../lib/time';
 
 export const t = {
   common: {
@@ -47,8 +47,9 @@ export const t = {
   header: {
     dayOf: (day: number, total: number) => `יום ${day} מתוך ${total}`,
     // Plan mode, pre-trip: the header leads with the countdown to departure
-    // instead of "day X of Y" (mockups/plan-mode-v1.html).
-    leavingIn: (phrase: string) => `יוצאים בעוד ${phrase}`,
+    // instead of "day X of Y" (mockups/plan-mode-v1.html). Reads relative near
+    // the date (ADR-0085): "יוצאים מחר", "יוצאים בעוד 3 ימים".
+    leavingIn: (days: number) => `יוצאים ${countdownText(days)}`,
     pendingSync: (count: number) => `${count} שינויים מחכים לסנכרון`,
     offlineNow: 'אופליין · נתונים שמורים',
     // Day-scope context ribbon under the strip when viewing a non-today day in
@@ -107,8 +108,6 @@ export const t = {
     offlineBadge: 'עובד אופליין',
     pastHead: 'כבר מאחוריכם',
     unlinked: 'לא משובצת במסלול',
-    today: 'היום',
-    dayN: (n: number) => `יום ${n}`,
     bookingType: {
       flight: 'טיסה',
       hotel: 'לינה',
@@ -118,7 +117,7 @@ export const t = {
       other: 'אחר',
     },
     emptyTitle: 'האינדקס עוד ריק',
-    emptyBody: 'כרטיסי טיסה, מלונות והזמנות אחרים יופיעו כאן, ידנית או מיובאים אוטומטית מ-Gmail',
+    emptyBody: 'כרטיסי טיסה, מלונות והזמנות אחרות יופיעו כאן, ידנית או מיובאים אוטומטית מ-Gmail',
     toast: {
       saved: 'ההזמנה נשמרה',
       savedQueued: 'יישמר כשנחזור לרשת',
@@ -366,7 +365,6 @@ export const t = {
       heroTitle: 'הוזמנת לטיול!',
       heroBody: 'החברים כבר בפנים - נשארה רק ההצטרפות שלך.',
       ticketBadge: 'כרטיס הזמנה',
-      countdownPrefix: 'בעוד',
       members: (count: number) => (count === 1 ? 'חבר אחד כבר בפנים' : `${count} חברים כבר בפנים`),
       membersSub: 'מחכים רק לך',
       joinButton: 'הצטרפות לטיול',
@@ -383,7 +381,7 @@ export const t = {
       sectionNow: 'עכשיו',
       sectionSoon: 'בקרוב',
       sectionPast: 'הסתיים',
-      chipSoon: (days: number) => `בעוד ${formatDaysUntil(days)}`,
+      chipSoon: (days: number) => countdownText(days),
       chipPast: 'הסתיים',
       create: 'טיול חדש',
       offlineNote: 'מעבר בין טיולים שמורים עובד גם אופליין · יצירה צריכה חיבור',
@@ -496,7 +494,7 @@ export const t = {
   // passports / Google-connection rows wait for their features (see DEFERRED).
   planHome: {
     prep: {
-      departIn: 'היציאה בעוד',
+      departIn: 'היציאה',
       // Fallback for the rare plan-mode-while-the-trip-runs case (a manual
       // override peeking at Plan mid-trip): no countdown to show.
       underway: 'הטיול בעיצומו',

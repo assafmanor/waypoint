@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { dayCount, dayPhrase, monthCount, monthPhrase } from './hebrew';
+import { dayCount, dayPhrase, monthCount, monthPhrase, nightPhrase } from './hebrew';
 
 describe('dayCount', () => {
   it('has no numeral for 1 (dual/singular forms replace it)', () => {
@@ -37,5 +37,13 @@ describe('monthPhrase', () => {
     expect(monthPhrase(1)).toBe('חודש');
     expect(monthPhrase(2)).toBe('חודשיים');
     expect(monthPhrase(4)).toBe('4 חודשים');
+  });
+});
+
+describe('nightPhrase', () => {
+  it('spells out one night ("לילה אחד") but counts from two up', () => {
+    expect(nightPhrase(1)).toBe('לילה אחד');
+    expect(nightPhrase(2)).toBe('2 לילות');
+    expect(nightPhrase(5)).toBe('5 לילות');
   });
 });

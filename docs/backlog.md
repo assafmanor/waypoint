@@ -72,6 +72,10 @@ B-01–B-06 and B-08–B-13 shipped (ADR-0068–0076); B-07 shipped (ADR-0067). 
 - **Standardize change `after` payloads** (deferred, from B-13/ADR-0076) — several services log the partial `input` as a change's `after` rather than the persisted DTO, so `after`'s shape is inconsistent across entity types (affects feed rendering / any future replay, not correctness today).
 - **Google email-change account-link policy** (from B-12/ADR-0076) — account-linking keys on `User.email`, so a changed Google primary email creates a new `User` the identity re-points to, orphaning the old one. Current policy: treat as a new account. Revisit if an identity-merge feature is ever wanted.
 
+## Copy & voice
+
+- **Hebrew voice/gender consistency** (from session 42, ADR-0085's item-4 pass) — most of the app speaks plural-neutral ("נסו", "בדקו", "הוסיפו"), but the zero-state and join screens switch to singular-masculine ("אתה זה שמארגן", "הצטרף", "פתח אותו", "מחובר"). Pick one voice (likely plural-neutral, matching the toast/settings copy) and sweep `i18n/he.ts`. A tone decision, not a bug — worth an ADR if the choice isn't obvious.
+
 ## Testing
 
 - **e2e smoke** (Playwright) — conventions call for one; none exists. Boot the app, cross the tabs, assert each renders and the console is clean. Catches white-screen regressions unit tests miss.

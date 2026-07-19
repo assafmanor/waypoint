@@ -8,7 +8,7 @@ import {
   MINUTES_PER_HOUR,
   MINUTES_PER_DAY,
 } from '../constants';
-import { dayCount, dayPhrase, monthPhrase } from './hebrew';
+import { dayCount, dayPhrase, monthCount } from './hebrew';
 
 /** "Today" in a specific timezone as YYYY-MM-DD — the trip's own calendar day,
  *  not the browser's (mirrors backend/prisma/seed.mjs's todayInTz). `at` is
@@ -189,13 +189,43 @@ export function formatCountdown(totalMinutes: number): Countdown {
   return dayCount(Math.floor(totalMinutes / MINUTES_PER_DAY));
 }
 
-/** Phrases a calendar-day countdown (all-trips "בעוד …" chip) — exact day
- *  counts up close, then rounded month counts once the start is more than
- *  COUNTDOWN_MONTHS_THRESHOLD months out (dual/plural via monthPhrase). */
-export function formatDaysUntil(days: number): string {
+/** Calendar-relative day phrasing (ADR-0085): a whole-day offset from today
+ *  (target − today) as a standalone label — the Index booking rows read this so
+ *  "when is this?" answers relative to now, not as a trip day-number. Near days
+ *  get their own Hebrew words in both directions (מחר/מחרתיים, אתמול/שלשום);
+ *  farther out counts up ("עוד N ימים" / "לפני N ימים", dual/plural via dayPhrase). */
+export function relativeDay(delta: number): string {
+  if (delta === 0) return 'היום';
+  if (delta === 1) return 'מחר';
+  if (delta === 2) return 'מחרתיים';
+  if (delta === -1) return 'אתמול';
+  if (delta === -2) return 'שלשום';
+  return delta > 0 ? `עוד ${dayPhrase(delta)}` : `לפני ${dayPhrase(-delta)}`;
+}
+
+/** Forward countdown to a future date, split for display (ADR-0085): the board
+ *  hero's next-event countdown, the trip-list "בעוד" chip, the header
+ *  "יוצאים בעוד", the join ticket, the Plan departure count all read this. The
+ *  next calendar day is "מחר", the one after "מחרתיים" — standalone words that
+ *  drop the "בעוד" connective (there is no "בעוד מחר"); from three days up it's a
+ *  count with the connective, rounding to months past COUNTDOWN_MONTHS_THRESHOLD.
+ *  `value`/`unit` keep the numeral separable for the surfaces that style it LTR;
+ *  `prefix` is the connective to render before the count (empty for the words). */
+export function countdownParts(days: number): { value: string; unit: string; prefix: string } {
+  if (days <= 0) return { value: '', unit: 'היום', prefix: '' };
+  if (days === 1) return { value: '', unit: 'מחר', prefix: '' };
+  if (days === 2) return { value: '', unit: 'מחרתיים', prefix: '' };
   const months = days / DAYS_PER_MONTH;
-  if (months > COUNTDOWN_MONTHS_THRESHOLD) return monthPhrase(Math.round(months));
-  return dayPhrase(days);
+  const count =
+    months > COUNTDOWN_MONTHS_THRESHOLD ? monthCount(Math.round(months)) : dayCount(days);
+  return { ...count, prefix: 'בעוד' };
+}
+
+/** The countdownParts split as one plain string ("בעוד 3 ימים" / "מחר") — for the
+ *  text-only surfaces (trip-list chip, header) that don't style the numeral. */
+export function countdownText(days: number): string {
+  const { prefix, value, unit } = countdownParts(days);
+  return [prefix, value, unit].filter(Boolean).join(' ');
 }
 
 /** 0..1 position of `at` across the active day's waking window, in the trip timezone. */
