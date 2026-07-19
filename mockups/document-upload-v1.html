@@ -485,31 +485,36 @@
         overflow: hidden;
         clip: rect(0 0 0 0);
       }
-      /* empty drop-zone: a neutral --cta target, states the contract up front */
-      .dz {
+      /* empty pick: two equal-weight targets — upload & capture side by side.
+         Camera is a peer of file-upload, not a secondary link (phone-first). */
+      .pick-grid {
+        display: grid;
+        grid-template-columns: 1fr 1fr;
+        gap: 8px;
+      }
+      .pick-tile {
         display: flex;
         flex-direction: column;
         align-items: center;
-        gap: 6px;
-        width: 100%;
+        gap: 8px;
         font: inherit;
         text-align: center;
         background: color-mix(in srgb, var(--ink) 2.5%, var(--card));
         border: 1.5px dashed var(--soft-line);
         border-radius: 14px;
-        padding: 22px 16px;
+        padding: 20px 12px;
         cursor: pointer;
         transition:
           border-color 0.15s ease,
           background 0.15s ease;
       }
-      .dz:hover,
-      .dz:focus-visible {
+      .pick-tile:hover,
+      .pick-tile:focus-visible {
         outline: none;
         border-color: var(--cta);
         background: color-mix(in srgb, var(--ink) 6%, var(--card));
       }
-      .dz-ic {
+      .pick-tile-ic {
         width: 42px;
         height: 42px;
         border-radius: 12px;
@@ -519,35 +524,18 @@
         background: var(--card);
         border: 1px solid var(--line);
       }
-      .dz-primary {
-        font-size: 13.5px;
+      .pick-tile-lbl {
+        font-size: 13px;
         font-weight: 700;
         color: var(--ink);
       }
-      .dz-hint {
+      /* the accept + size contract, once, under both tiles */
+      .pick-hint {
+        text-align: center;
         font-size: 11.5px;
         font-weight: 500;
         color: var(--muted);
-      }
-      /* capture: the phone-first second path, secondary to the zone */
-      .capture {
-        display: inline-flex;
-        align-items: center;
-        justify-content: center;
-        gap: 7px;
-        width: 100%;
-        font: inherit;
-        font-size: 12.5px;
-        font-weight: 700;
-        color: var(--ink);
-        background: var(--card);
-        border: 1px solid var(--soft-line);
-        border-radius: 11px;
-        padding: 11px;
-        cursor: pointer;
-      }
-      .capture:hover {
-        border-color: var(--cta);
+        margin-top: 8px;
       }
       /* picked-file preview card: thumbnail + meta + clear */
       .dz-file {
@@ -787,20 +775,30 @@
                 </div>
               </div>
 
+              <!-- name — comes before the file (chosen name, then the file it
+                   attaches to); auto-fills from the filename if left empty -->
+              <label class="bs-field"
+                >שם
+                <input type="text" id="docname" placeholder="שם לזיהוי המסמך" />
+              </label>
+
               <!-- the pick control -->
               <div>
                 <div class="field-label">קובץ</div>
 
-                <!-- EMPTY: drop-zone + capture (states shown/hidden by JS) -->
-                <div id="pick-empty" style="display: flex; flex-direction: column; gap: 8px">
-                  <button type="button" class="dz" onclick="setState('image')">
-                    <span class="dz-ic">⬆️</span>
-                    <span class="dz-primary">בחרו קובץ</span>
-                    <span class="dz-hint">תמונה או PDF · עד 10MB</span>
-                  </button>
-                  <button type="button" class="capture" onclick="setState('image')">
-                    <span>📷</span> צלמו עכשיו
-                  </button>
+                <!-- EMPTY: two equal-weight targets — upload & capture -->
+                <div id="pick-empty">
+                  <div class="pick-grid">
+                    <button type="button" class="pick-tile" onclick="setState('image')">
+                      <span class="pick-tile-ic">⬆️</span>
+                      <span class="pick-tile-lbl">העלאת קובץ</span>
+                    </button>
+                    <button type="button" class="pick-tile" onclick="setState('image')">
+                      <span class="pick-tile-ic">📷</span>
+                      <span class="pick-tile-lbl">צלמו עכשיו</span>
+                    </button>
+                  </div>
+                  <div class="pick-hint">תמונה או PDF · עד 10MB</div>
                 </div>
 
                 <!-- PICKED: preview card (thumb swapped image/pdf by JS) -->
@@ -843,12 +841,6 @@
                 </div>
               </div>
 
-              <!-- name -->
-              <label class="bs-field"
-                >שם
-                <input type="text" value="דרכון · אסף" placeholder="למשל: דרכון · אסף"
-              /></label>
-
               <div class="bs-actions">
                 <button class="bs-save" id="save">העלה</button>
                 <button class="bs-cancel">בטל</button>
@@ -863,20 +855,21 @@
       <h3>מה השתנה</h3>
       <ul>
         <li>
-          <b>אזור־בחירה מעוצב</b> במקום <code>&lt;input type=file&gt;</code> הגולמי — מציג את
-          מה שמותר (תמונה/PDF) ואת המגבלה (10MB) עוד <b>לפני</b> הבחירה.
+          <b>שתי אפשרויות שוות־משקל</b> — <b>העלאת קובץ</b> ו<b>צלמו עכשיו</b> זו לצד זו,
+          במקום כפתור הדפדפן הגולמי. המותר (תמונה/PDF) והמגבלה (10MB) מוצגים <b>לפני</b>
+          הבחירה.
         </li>
         <li>
-          <b>צילום ישיר</b> כנתיב מדרגה־ראשונה — דרכון מצלמים, לא מחפשים בקבצים
-          (<code>capture=environment</code>, phone-first). נעלם היכן שאין מצלמה.
+          <b>צילום ישיר</b> כנתיב מדרגה־ראשונה, לא לינק משני — דרכון מצלמים, לא מחפשים
+          בקבצים (<code>capture=environment</code>, phone-first). נעלם היכן שאין מצלמה.
+        </li>
+        <li>
+          <b>שם לפני הקובץ</b> — סדר הקריאה בגיליון: סוג → שם → קובץ. השם ממלא את עצמו משם
+          הקובץ אם נשאר ריק.
         </li>
         <li>
           <b>תצוגה מקדימה</b> של הקובץ הנבחר — תמונה ממוזערת (או אריח PDF), שם הקובץ,
-          סוג·גודל, ו־✕ אחד לניקוי.
-        </li>
-        <li>
-          <b>אייקון הכותרת עוקב אחרי הסוג</b> שנבחר (📕/🛡️/🎫/📄), כך שהגיליון לא נפתח כערימת
-          שדות ללא כותרת.
+          סוג·גודל, ו־✕ אחד לניקוי. אייקון הכותרת עוקב אחרי הסוג שנבחר (📕/🛡️/🎫/📄).
         </li>
       </ul>
       <h3>מה נשאר כמו שהיה</h3>
@@ -905,9 +898,22 @@
         fname = $('fname'),
         fsub = $('fsub');
 
+      const docname = $('docname');
       const FILES = {
-        image: { name: 'passport-assaf.jpg', sub: 'תמונה · 1.2MB', cls: 'thumb img', label: '' },
-        pdf: { name: 'insurance-harel.pdf', sub: 'PDF · 0.6MB', cls: 'thumb pdf', label: 'PDF' },
+        image: {
+          name: 'passport-assaf.jpg',
+          fill: 'passport-assaf',
+          sub: 'תמונה · 1.2MB',
+          cls: 'thumb img',
+          label: '',
+        },
+        pdf: {
+          name: 'insurance-harel.pdf',
+          fill: 'insurance-harel',
+          sub: 'PDF · 0.6MB',
+          cls: 'thumb pdf',
+          label: 'PDF',
+        },
       };
 
       function setState(s) {
@@ -921,7 +927,8 @@
         save.innerHTML = 'העלה';
 
         if (s === 'empty') {
-          empty.style.display = 'flex';
+          empty.style.display = 'block';
+          docname.value = '';
           save.disabled = true;
         } else if (s === 'image' || s === 'pdf') {
           fileCard.style.display = 'block';
@@ -934,7 +941,7 @@
           save.disabled = true;
           save.innerHTML = '<span class="spin"></span> מעלה…';
         } else if (s === 'error') {
-          empty.style.display = 'flex';
+          empty.style.display = 'block';
           err.style.display = 'block';
           save.disabled = true;
         }
@@ -949,6 +956,8 @@
         thumb.textContent = f.label;
         fname.textContent = f.name;
         fsub.textContent = f.sub;
+        // name auto-fills from the filename when left empty (ADR-0086)
+        if (!docname.value.trim()) docname.value = f.fill;
       }
 
       // type selector — selecting a type updates the header icon (ADR-0086 §4)
