@@ -70,6 +70,18 @@ B-01–B-06 and B-08–B-13 shipped (ADR-0068–0076); B-07 shipped (ADR-0067). 
 - **Standardize change `after` payloads** (deferred, from B-13/ADR-0076) — several services log the partial `input` as a change's `after` rather than the persisted DTO, so `after`'s shape is inconsistent across entity types (affects feed rendering / any future replay, not correctness today).
 - **Google email-change account-link policy** (from B-12/ADR-0076) — account-linking keys on `User.email`, so a changed Google primary email creates a new `User` the identity re-points to, orphaning the old one. Current policy: treat as a new account. Revisit if an identity-merge feature is ever wanted.
 
+## Product-design review follow-ups (open findings)
+
+Full write-up + evidence in [reviews/product-design-review.md](reviews/product-design-review.md) (advisory, 2026-07-19; no production code or product docs changed). Findings are **product-design** findings, largely **decision-gated** — resolve the Phase-0 contracts before dependent surface work (review §20). Ordered by the review's roadmap; several elevate or re-frame prior UI/UX findings (U-06 Map, U-09 change-feed, U-04 sync-status) at the thesis/scope level.
+
+- **Phase 0 — product contracts (P-08, P-04-wording, P-07-toggle, P-05).** Refresh the drifted living docs to match the built product (`data-model.md` stale: missing `Invite`/`TripBlock`/`EventCategory`/`category`/`Trip.icon`; PRD/feature-catalog still list cut scope; overview offline model says docs aren't cached). Decide the **deployment trust-domain** (single-operator vs multi-tenant) — gates the document guarantee (ADR-0034 only holds trip-scoped, ADR-0065). Correct document-security copy; hide/label the dead calendar-sync toggle; freeze booking-presentation polish.
+- **P-01 spatial answer (Critical/thesis).** The Now/Next thesis is spatially hollow — Map is a dead placeholder, `navigate`/`on-my-way` are toast stubs, no place data authored. Ship the minimum: name-only place authoring + a Maps deep-link `navigate` (+ leave-by where coords exist). Blocked on the Google Cloud setup already in this backlog; name-only authoring can start first.
+- **P-02 deviate-safely verbs (High).** `do-it-now` (ADR-0027's slip-recovery centerpiece) is unimplemented; `swap` is skip-then-prompt, not a swap. Complete both (reuse `POST /events/:id/move`).
+- **P-03 collaboration awareness (High).** No change-feed (PRD 4.2) and no per-item sync status — peer edits are silent, saves are only globally confirmed. Build a WS-fed `ChangeFeed` + a `SyncStatusModel`/badge/retry. Prereq: standardize `Change.after` (already a backend follow-up above).
+- **P-09 emergency numbers (Med).** The practical-layer pillar has collapsed to WiFi-only; add static, offline emergency numbers by destination country (a `packages/shared` table, no backend).
+- **P-06 rule catalog + capability resolver (Med).** Editability is governed by mode × tier × day-scope × trip-phase across ~7 ADRs with no single source of truth. Publish the §14 rule catalog and one `capabilities.ts` resolver all surfaces consult.
+- **P-11 time/offline disclosure (Low/Med).** Make "now" honest across timezones (label when device≠trip zone; default-duration for blank-end events — see the Open question below) and surface per-document/pre-departure offline-readiness.
+
 ## Testing
 
 - **e2e smoke** (Playwright) — conventions call for one; none exists. Boot the app, cross the tabs, assert each renders and the console is clean. Catches white-screen regressions unit tests miss.
