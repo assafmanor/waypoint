@@ -10,6 +10,16 @@ export const t = {
     no: 'לא',
     now: 'עכשיו',
     loading: 'טוען',
+    // Canonical action labels — one wording shared by every FormActions bar and
+    // confirm dialog (U-02), so Save/Cancel/Delete never drift between forms.
+    save: 'שמירה',
+    cancel: 'ביטול',
+    delete: 'מחיקה',
+    // Unsaved-changes discard confirm (U-05), shown when closing a dirty form.
+    discardTitle: 'לצאת בלי לשמור?',
+    discardBody: 'יש שינויים שעדיין לא נשמרו. אם תצא עכשיו הם יאבדו.',
+    discardConfirm: 'צא בלי לשמור',
+    discardCancel: 'המשך עריכה',
   },
   // Shared feedback-state family (ADR-0078): generic copy for the empty / loading
   // / error / status shells. Screens pass their own specific copy; these are the

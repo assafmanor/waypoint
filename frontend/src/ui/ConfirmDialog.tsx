@@ -1,11 +1,14 @@
 // Hard-event edit confirmation gate (T-030 / ADR-0011). A single app-level
 // dialog, reached via useConfirmHardEdit() from any screen/verb — so a second
 // trigger (e.g. a swipe gesture) opens the same dialog instead of a duplicate.
+//
+// The rendering is the generic tone="hard" ConfirmDialog (U-02): the overlay
+// stack, focus contract, and amber commitment treatment all live in the shared
+// primitive now. This file keeps only the provider/context public API intact.
 import { createContext, useCallback, useContext, useRef, useState, type ReactNode } from 'react';
 import type { TripEvent } from '@waypoint/shared';
 import { ICONS } from '../constants';
-import { useOverlay } from '../state/nav-state';
-import { useDialogFocus } from '../lib/useDialogFocus';
+import { ConfirmDialog } from './primitives/ConfirmDialog';
 import { t } from '../i18n/he';
 
 export type ConfirmHardEditAction = 'edit' | 'delete';
@@ -35,67 +38,29 @@ export function ConfirmProvider({ children }: { children: ReactNode }) {
     setPending(null);
   };
 
+  const title = pending?.action === 'delete' ? t.confirm.hardDeleteTitle : t.confirm.hardEditTitle;
+  const body = pending
+    ? pending.action === 'delete'
+      ? t.confirm.hardDeleteBody(pending.event.title)
+      : t.confirm.hardEditBody(pending.event.title)
+    : '';
+
   return (
     <ConfirmContext.Provider value={confirmHardEdit}>
       {children}
       {pending && (
-        <ConfirmCard
-          event={pending.event}
-          action={pending.action}
-          onCancel={() => settle(false)}
+        <ConfirmDialog
+          tone="hard"
+          icon={ICONS.lock}
+          title={title}
+          body={body}
+          confirmLabel={t.common.yes}
+          cancelLabel={t.common.no}
           onConfirm={() => settle(true)}
+          onCancel={() => settle(false)}
         />
       )}
     </ConfirmContext.Provider>
-  );
-}
-
-// Split out so it can register as an overlay (ADR-0035 §4) — mounted only while
-// pending, its useOverlay makes the return gesture / back cancel the dialog.
-function ConfirmCard({
-  event,
-  action,
-  onCancel,
-  onConfirm,
-}: {
-  event: TripEvent;
-  action: ConfirmHardEditAction;
-  onCancel: () => void;
-  onConfirm: () => void;
-}) {
-  useOverlay(onCancel);
-  const cardRef = useRef<HTMLDivElement>(null);
-  useDialogFocus(cardRef, onCancel, { trap: true });
-  const title = action === 'delete' ? t.confirm.hardDeleteTitle : t.confirm.hardEditTitle;
-  const body =
-    action === 'delete'
-      ? t.confirm.hardDeleteBody(event.title)
-      : t.confirm.hardEditBody(event.title);
-  return (
-    <div className="confirm-overlay" onClick={onCancel}>
-      <div
-        ref={cardRef}
-        tabIndex={-1}
-        className="confirm-card"
-        role="alertdialog"
-        aria-modal="true"
-        aria-label={title}
-        onClick={(e) => e.stopPropagation()}
-      >
-        <div className="confirm-title">
-          {ICONS.lock} {title}
-        </div>
-        <p className="confirm-body">{body}</p>
-        <div className="confirm-actions">
-          <button className="confirm-cancel" onClick={onCancel}>
-            {t.common.no}
-          </button>
-          <button className="confirm-ok" onClick={onConfirm}>
-            {t.common.yes}
-          </button>
-        </div>
-      </div>
-    </div>
   );
 }
 

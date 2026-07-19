@@ -1,0 +1,78 @@
+/* A form body inside a Modal sheet: the scroll container the sticky action bar
+   pins to (U-01/U-02). Capped height keeps a long form within the sheet; the
+   RTL left-edge scrollbar is hidden (it reads as a stray line). */
+.modal-form {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-3);
+  max-height: 75vh;
+  max-height: 75dvh;
+  overflow-y: auto;
+  scrollbar-width: none;
+}
+.modal-form::-webkit-scrollbar {
+  display: none;
+}
+
+/* One form action bar (U-02). Sticky to the bottom of its scroll container so
+   the primary stays reachable while a long form scrolls; the card background
+   masks fields sliding under it. Token-based, logical properties only (RTL). */
+
+.form-actions {
+  position: sticky;
+  inset-block-end: 0;
+  z-index: 1;
+  display: flex;
+  gap: var(--space-3);
+  padding-block-start: var(--space-3);
+  background: var(--card);
+}
+
+.form-actions button {
+  font: inherit;
+  font-weight: 700;
+  font-size: var(--text-secondary);
+  border-radius: var(--radius-12);
+  padding: var(--space-3);
+  cursor: pointer;
+}
+
+/* Primary spans the row; the ghost secondary is a small trailing pill. */
+.fa-primary {
+  flex: 1;
+  border: none;
+  background: var(--cta);
+  color: var(--cta-text);
+}
+.fa-primary:disabled {
+  opacity: 0.6;
+  cursor: default;
+}
+
+.fa-secondary {
+  flex: 0 0 auto;
+  padding-inline: var(--space-5);
+  background: transparent;
+  color: var(--muted);
+  border: 1px solid var(--soft-line);
+}
+
+/* Destructive: de-emphasized text button on its own row, never a filled CTA. */
+.fa-destructive {
+  align-self: center;
+  margin-block-start: var(--space-1);
+  font: inherit;
+  font-weight: 700;
+  font-size: var(--text-secondary);
+  color: var(--miss);
+  background: transparent;
+  border: none;
+  padding: var(--space-2);
+  cursor: pointer;
+}
+
+.form-actions button:focus-visible,
+.fa-destructive:focus-visible {
+  outline: 2.5px solid var(--teal);
+  outline-offset: 2px;
+}

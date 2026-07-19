@@ -4,7 +4,7 @@
 // broadcast + offline outbox) via the trip-state settings verbs. Mode-neutral
 // paper chrome (reached from both modes, outside the mode Shell). Design
 // reference: mockups/trip-settings-v1.html.
-import { useCallback, useEffect, useRef, useState, type ReactNode } from 'react';
+import { useCallback, useEffect, useState } from 'react';
 import { useNavigate } from 'react-router-dom';
 import {
   DESTINATIONS,
@@ -15,8 +15,7 @@ import {
 } from '@waypoint/shared';
 import { useTrip } from '../state/trip-state';
 import { useAuth } from '../state/auth-state';
-import { useOverlay } from '../state/nav-state';
-import { useDialogFocus } from '../lib/useDialogFocus';
+import { ConfirmDialog, type ConfirmTone } from '../ui/primitives/ConfirmDialog';
 import { IconPicker } from '../ui/IconPicker';
 import { Sheet } from '../ui/Sheet';
 import { useToast } from '../ui/Toast';
@@ -41,6 +40,7 @@ const withCurrent = (options: string[], current?: string) =>
   current && !options.includes(current) ? [current, ...options] : options;
 
 type ConfirmState = {
+  tone: ConfirmTone;
   title: string;
   body: string;
   confirmLabel: string;
@@ -82,6 +82,7 @@ export function TripSettings() {
 
   const leaveTrip = () =>
     setConfirm({
+      tone: 'danger',
       title: t.settings.leaveConfirmTitle,
       body: t.settings.leaveConfirmBody(trip.name),
       confirmLabel: t.settings.leaveAction,
@@ -98,6 +99,7 @@ export function TripSettings() {
 
   const deleteTrip = () =>
     setConfirm({
+      tone: 'danger',
       title: t.settings.deleteConfirmTitle,
       body: t.settings.deleteConfirmBody(trip.name),
       confirmLabel: t.settings.deleteAction,
@@ -112,6 +114,7 @@ export function TripSettings() {
   const removeMember = (m: Membership) => {
     const name = userFor(m.userId)?.displayName ?? '';
     setConfirm({
+      tone: 'danger',
       title: t.settings.removeConfirmTitle,
       body: t.settings.removeConfirmBody(name),
       confirmLabel: t.settings.removeMember,
@@ -158,6 +161,7 @@ export function TripSettings() {
   // Revoke + replace the link (admin-only, ADR-0067) — the old code dies at once.
   const resetInvite = () =>
     setConfirm({
+      tone: 'neutral',
       title: t.settings.inviteReset,
       body: t.settings.inviteResetHint,
       confirmLabel: t.settings.inviteReset,
@@ -388,10 +392,12 @@ export function TripSettings() {
       )}
 
       {confirm && (
-        <Confirm
+        <ConfirmDialog
+          tone={confirm.tone}
           title={confirm.title}
           body={confirm.body}
           confirmLabel={confirm.confirmLabel}
+          cancelLabel={t.settings.cancel}
           onConfirm={() => {
             confirm.onConfirm();
             setConfirm(null);
@@ -608,47 +614,5 @@ function MemberSheet({
         {t.settings.cancel}
       </button>
     </Sheet>
-  );
-}
-
-function Confirm({
-  title,
-  body,
-  confirmLabel,
-  onConfirm,
-  onCancel,
-}: {
-  title: string;
-  body: string;
-  confirmLabel: string;
-  onConfirm: () => void;
-  onCancel: () => void;
-}): ReactNode {
-  useOverlay(onCancel);
-  const cardRef = useRef<HTMLDivElement>(null);
-  useDialogFocus(cardRef, onCancel, { trap: true });
-  return (
-    <div className="confirm-overlay" onClick={onCancel}>
-      <div
-        ref={cardRef}
-        tabIndex={-1}
-        className="confirm-card"
-        role="alertdialog"
-        aria-modal="true"
-        aria-label={title}
-        onClick={(e) => e.stopPropagation()}
-      >
-        <div className="confirm-title">{title}</div>
-        <p className="confirm-body">{body}</p>
-        <div className="confirm-actions">
-          <button className="confirm-cancel" onClick={onCancel}>
-            {t.settings.cancel}
-          </button>
-          <button className="confirm-ok" onClick={onConfirm}>
-            {confirmLabel}
-          </button>
-        </div>
-      </div>
-    </div>
   );
 }

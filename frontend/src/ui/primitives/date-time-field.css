@@ -1,0 +1,22 @@
+/* One date/time control (U-05). The date input inherits the neutral .field
+   control styling; the datetime mode stacks a date over a time input, and the
+   time wears the app's amber "time & commitment" accent (design-language) so it
+   reads like the events time picker. Logical properties only (RTL). */
+
+.dtf-datetime {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-1);
+}
+
+.dtf-time {
+  accent-color: var(--amber);
+  color: var(--amber-deep);
+  font-family: var(--font-mono);
+  font-weight: 600;
+}
+
+.dtf-time:focus-visible {
+  outline: none;
+  border-color: var(--amber);
+}
