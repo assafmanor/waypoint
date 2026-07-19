@@ -561,11 +561,7 @@
       .thumb.img {
         background:
           linear-gradient(135deg, rgba(255, 255, 255, 0.25), transparent 60%),
-          repeating-linear-gradient(
-            -55deg,
-            #7c1d1d 0 9px,
-            #8f2626 9px 18px
-          );
+          repeating-linear-gradient(-55deg, #7c1d1d 0 9px, #8f2626 9px 18px);
         position: relative;
       }
       .thumb.img::after {
@@ -688,8 +684,8 @@
   </head>
   <body>
     <div class="caption">
-      <b>העלאת מסמך · v1</b> — הקונטרול לבחירת קובץ עוצב מחדש (ADR-0086). במקום כפתור
-      הדפדפן הגולמי · אזור־בחירה, צילום ישיר, ותצוגה מקדימה של הקובץ.
+      <b>העלאת מסמך · v1</b> — הקונטרול לבחירת קובץ עוצב מחדש (ADR-0086). במקום כפתור הדפדפן הגולמי
+      · אזור־בחירה, צילום ישיר, ותצוגה מקדימה של הקובץ.
     </div>
     <div class="adr-note">
       ADR-0086 · מרחיב את ADR-0052 (מחזור־חיי מסמך) · phone-first (ADR-0017)
@@ -757,20 +753,16 @@
                 <div class="field-label">סוג</div>
                 <div class="bs-typesel" id="typesel">
                   <button type="button" class="bs-typecard on" data-ic="📕">
-                    <span class="bs-typecard-ic">📕</span
-                    ><span class="bs-typecard-lbl">דרכון</span>
+                    <span class="bs-typecard-ic">📕</span><span class="bs-typecard-lbl">דרכון</span>
                   </button>
                   <button type="button" class="bs-typecard" data-ic="🛡️">
-                    <span class="bs-typecard-ic">🛡️</span
-                    ><span class="bs-typecard-lbl">ביטוח</span>
+                    <span class="bs-typecard-ic">🛡️</span><span class="bs-typecard-lbl">ביטוח</span>
                   </button>
                   <button type="button" class="bs-typecard" data-ic="🎫">
-                    <span class="bs-typecard-ic">🎫</span
-                    ><span class="bs-typecard-lbl">ויזה</span>
+                    <span class="bs-typecard-ic">🎫</span><span class="bs-typecard-lbl">ויזה</span>
                   </button>
                   <button type="button" class="bs-typecard" data-ic="📄">
-                    <span class="bs-typecard-ic">📄</span
-                    ><span class="bs-typecard-lbl">אחר</span>
+                    <span class="bs-typecard-ic">📄</span><span class="bs-typecard-lbl">אחר</span>
                   </button>
                 </div>
               </div>
@@ -855,28 +847,28 @@
       <h3>מה השתנה</h3>
       <ul>
         <li>
-          <b>שתי אפשרויות שוות־משקל</b> — <b>העלאת קובץ</b> ו<b>צלמו עכשיו</b> זו לצד זו,
-          במקום כפתור הדפדפן הגולמי. המותר (תמונה/PDF) והמגבלה (10MB) מוצגים <b>לפני</b>
+          <b>שתי אפשרויות שוות־משקל</b> — <b>העלאת קובץ</b> ו<b>צלמו עכשיו</b> זו לצד זו, במקום
+          כפתור הדפדפן הגולמי. המותר (תמונה/PDF) והמגבלה (10MB) מוצגים <b>לפני</b>
           הבחירה.
         </li>
         <li>
-          <b>צילום ישיר</b> כנתיב מדרגה־ראשונה, לא לינק משני — דרכון מצלמים, לא מחפשים
-          בקבצים (<code>capture=environment</code>, phone-first). נעלם היכן שאין מצלמה.
+          <b>צילום ישיר</b> כנתיב מדרגה־ראשונה, לא לינק משני — דרכון מצלמים, לא מחפשים בקבצים
+          (<code>capture=environment</code>, phone-first). נעלם היכן שאין מצלמה.
         </li>
         <li>
-          <b>שם לפני הקובץ</b> — סדר הקריאה בגיליון: סוג → שם → קובץ. השם ממלא את עצמו משם
-          הקובץ אם נשאר ריק.
+          <b>שם לפני הקובץ</b> — סדר הקריאה בגיליון: סוג → שם → קובץ. השם ממלא את עצמו משם הקובץ אם
+          נשאר ריק.
         </li>
         <li>
-          <b>תצוגה מקדימה</b> של הקובץ הנבחר — תמונה ממוזערת (או אריח PDF), שם הקובץ,
-          סוג·גודל, ו־✕ אחד לניקוי. אייקון הכותרת עוקב אחרי הסוג שנבחר (📕/🛡️/🎫/📄).
+          <b>תצוגה מקדימה</b> של הקובץ הנבחר — תמונה ממוזערת (או אריח PDF), שם הקובץ, סוג·גודל, ו־✕
+          אחד לניקוי. אייקון הכותרת עוקב אחרי הסוג שנבחר (📕/🛡️/🎫/📄).
         </li>
       </ul>
       <h3>מה נשאר כמו שהיה</h3>
       <ul>
         <li>
-          ה־<code>&lt;input&gt;</code> האמיתי נשאר (מוסתר) — מסנן ה־accept וכל החיווט לא
-          משתנים. אין שינוי backend / shared / מודל־נתונים.
+          ה־<code>&lt;input&gt;</code> האמיתי נשאר (מוסתר) — מסנן ה־accept וכל החיווט לא משתנים. אין
+          שינוי backend / shared / מודל־נתונים.
         </li>
         <li>
           הספינר, בר ההתקדמות, ושגיאות מודעות־סיבה — verbatim מ־ADR-0052. הצבעים ניטרליים
