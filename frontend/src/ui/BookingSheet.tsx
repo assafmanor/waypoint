@@ -18,6 +18,7 @@ import { useTrip } from '../state/trip-state';
 import { Sheet } from './Sheet';
 import { IconPicker } from './IconPicker';
 import { Icon } from './Icon';
+import { RouteLabel } from './RouteLabel';
 import { TimePicker } from './TimePicker';
 import {
   mergeBookingDetails,
@@ -27,6 +28,7 @@ import {
   dateOutOfTripRange,
   findPlaceByName,
   isoToDateTimeLocal,
+  routeTitle,
 } from '../lib/booking-edit';
 import { placeName } from '../lib/places';
 import { isoToTimeInput } from '../lib/time';
@@ -145,8 +147,17 @@ export function BookingSheet({
   };
 
   const save = async () => {
-    const finalTitle = title.trim();
-    if (!finalTitle) return setError(t.index.form.titleRequired);
+    // Transport is identified by its route, not a name (ADR-0059 §3): derive the
+    // stored title from origin→destination (it backs the linked event's title and
+    // any place-less fallback), so a flight never carries a hand-typed name.
+    let finalTitle: string;
+    if (isTransport) {
+      finalTitle = routeTitle(origin, dest, t.arrows.route);
+      if (!finalTitle) return setError(t.index.form.routeRequired);
+    } else {
+      finalTitle = title.trim();
+      if (!finalTitle) return setError(t.index.form.titleRequired);
+    }
     const outOfRange = (v: string) => dateOutOfTripRange(v, trip.startDate, trip.endDate);
     if (isSpan ? outOfRange(spanStart) || outOfRange(spanEnd) : outOfRange(date)) {
       return setError(t.index.form.dateOutOfRange);
@@ -222,14 +233,27 @@ export function BookingSheet({
                 setIconTouched(true);
               }}
             />
-            <input
-              className="bs-title"
-              value={title}
-              onChange={(e) => setTitle(e.target.value)}
-              placeholder={t.index.sheet.titlePlaceholder}
-              aria-label={t.index.sheet.titlePlaceholder}
-              autoFocus={isCreate}
-            />
+            {isTransport ? (
+              // A flight's identity is its route, not a name (ADR-0059 §3): the
+              // name field becomes a live origin→destination preview, fed by the
+              // route inputs below.
+              <div className="bs-route-preview">
+                {origin.trim() || dest.trim() ? (
+                  <RouteLabel from={origin.trim() || undefined} to={dest.trim() || undefined} />
+                ) : (
+                  <span className="ghost">{t.index.form.routeGhost}</span>
+                )}
+              </div>
+            ) : (
+              <input
+                className="bs-title"
+                value={title}
+                onChange={(e) => setTitle(e.target.value)}
+                placeholder={t.index.sheet.titlePlaceholder}
+                aria-label={t.index.sheet.titlePlaceholder}
+                autoFocus={isCreate}
+              />
+            )}
           </div>
 
           <div className="bs-caption">
@@ -252,17 +276,18 @@ export function BookingSheet({
             )}
           </div>
 
-          <label className="bs-field">
-            {t.index.sheet.codeLabel}
-            <input dir="ltr" value={code} onChange={(e) => setCode(e.target.value)} />
-          </label>
-
+          {/* The route is a flight's identity (it feeds the preview above), so it
+              leads the form — where the name field sits for other types. */}
           {isTransport && (
             <>
               <div className="bs-row2">
                 <label className="bs-field">
                   {t.index.form.originLabel}
-                  <input value={origin} onChange={(e) => setOrigin(e.target.value)} />
+                  <input
+                    value={origin}
+                    onChange={(e) => setOrigin(e.target.value)}
+                    autoFocus={isCreate}
+                  />
                 </label>
                 <label className="bs-field">
                   {t.index.form.destLabel}
@@ -272,6 +297,11 @@ export function BookingSheet({
               <div className="bs-route-hint">📍 {t.index.form.routeHint}</div>
             </>
           )}
+
+          <label className="bs-field">
+            {t.index.sheet.codeLabel}
+            <input dir="ltr" value={code} onChange={(e) => setCode(e.target.value)} />
+          </label>
 
           {isHotel && (
             <>

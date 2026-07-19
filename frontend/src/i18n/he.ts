@@ -116,6 +116,10 @@ export const t = {
       kindHard: '🔒 קשיח',
       kindSoft: 'גמיש',
       titleRequired: 'צריך שם להזמנה',
+      // Transport is identified by its route, not a name (ADR-0059 §3): the form
+      // shows a live מוצא←יעד preview instead of a name field, and requires a route.
+      routeGhost: 'מוצא ← יעד',
+      routeRequired: 'צריך מוצא או יעד',
       dateOutOfRange: 'התאריך מחוץ לטווח הטיול',
       autoCaption: 'נבחר לפי סוג ההזמנה',
       reset: 'איפוס',
