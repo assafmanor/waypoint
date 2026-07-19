@@ -4,7 +4,7 @@
 // flight at departure / arrival (arrival emphasized), and a flight in the air
 // fills the NOW slot ("in transit"). Pure and clock-driven — nothing stored
 // (ADR-0018). The Home component renders from the discriminated result.
-import { CATEGORY_TIME_PROFILE, isAmbient, isBracketed, type TripEvent } from '@waypoint/shared';
+import { eventTransitionKeys, isAmbient, isBracketed, type TripEvent } from '@waypoint/shared';
 
 const MS_PER_MIN = 60_000;
 
@@ -30,8 +30,8 @@ export interface HeroBooking {
   kind: HeroBookingKind;
   /** The bracketed event surfacing (absent only for 'none'). */
   event?: TripEvent;
-  /** i18n transition key for the surfaced end, from the category profile
-   *  (`checkIn`/`checkOut`/`departure`/`arrival`). */
+  /** i18n transition key for the surfaced end, by mode via `eventTransitionKeys`
+   *  (`checkIn`/`checkOut`/`departure`/`arrival`/`flightDeparture`/`flightArrival`). */
   labelKey?: string;
 }
 
@@ -52,7 +52,7 @@ const RANK: Record<HeroBookingKind, number> = {
 /** How a single bracketed event surfaces right now, or null if it doesn't. */
 function classify(e: TripEvent, nowMs: number, today: string): HeroBooking | null {
   if (!isBracketed(e) || !e.startsAt || e.category == null) return null;
-  const trans = CATEGORY_TIME_PROFILE[e.category].transitions;
+  const trans = eventTransitionKeys(e);
   if (!trans) return null;
   const s = startMs(e);
   const end = endMs(e);

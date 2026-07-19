@@ -43,7 +43,24 @@ const hotel = (over: Partial<TripEvent> = {}) =>
   });
 
 const flight = (over: Partial<TripEvent> = {}) =>
-  ev({ id: 'flight', category: 'transport', startsAt: at('09:00'), endsAt: at('11:00'), ...over });
+  ev({
+    id: 'flight',
+    category: 'transport',
+    icon: '✈️',
+    startsAt: at('09:00'),
+    endsAt: at('11:00'),
+    ...over,
+  });
+
+const train = (over: Partial<TripEvent> = {}) =>
+  ev({
+    id: 'train',
+    category: 'transport',
+    icon: '🚄',
+    startsAt: at('09:00'),
+    endsAt: at('11:00'),
+    ...over,
+  });
 
 describe('deriveHeroBooking — hotel check-in (grace after)', () => {
   const h = hotel();
@@ -93,7 +110,7 @@ describe('deriveHeroBooking — flight departure / in-transit / arrival', () => 
   it('surfaces departure exactly at the lead edge', () => {
     const r = deriveHeroBooking([f], dep - DEPARTURE_LEAD_MIN * MIN, DATE);
     expect(r.kind).toBe('transition-departure');
-    expect(r.labelKey).toBe('departure');
+    expect(r.labelKey).toBe('flightDeparture');
   });
   it('does not surface departure before the lead edge', () => {
     expect(deriveHeroBooking([f], dep - DEPARTURE_LEAD_MIN * MIN - MIN, DATE).kind).toBe('none');
@@ -106,10 +123,24 @@ describe('deriveHeroBooking — flight departure / in-transit / arrival', () => 
   it('emphasizes arrival inside the arrival window', () => {
     const r = deriveHeroBooking([f], arr - ARRIVAL_EMPHASIS_MIN * MIN + MIN, DATE);
     expect(r.kind).toBe('transition-arrival');
-    expect(r.labelKey).toBe('arrival');
+    expect(r.labelKey).toBe('flightArrival');
   });
   it('is none after the flight has landed', () => {
     expect(deriveHeroBooking([f], arr + MIN, DATE).kind).toBe('none');
+  });
+});
+
+describe('deriveHeroBooking — a train reads generic departure / arrival', () => {
+  const tr = train(); // 09:00 → 11:00
+  it('labels departure by mode, not with flight wording', () => {
+    const r = deriveHeroBooking([tr], ms('09:00') - DEPARTURE_LEAD_MIN * MIN, DATE);
+    expect(r.kind).toBe('transition-departure');
+    expect(r.labelKey).toBe('departure');
+  });
+  it('labels arrival by mode, not with flight wording', () => {
+    const r = deriveHeroBooking([tr], ms('11:00') - ARRIVAL_EMPHASIS_MIN * MIN + MIN, DATE);
+    expect(r.kind).toBe('transition-arrival');
+    expect(r.labelKey).toBe('arrival');
   });
 });
 

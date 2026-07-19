@@ -8,8 +8,8 @@
 // in as struck segments (never counted in "remaining").
 import {
   CATEGORY_DEFAULT_ICON,
-  CATEGORY_TIME_PROFILE,
   EVENT_STATUS,
+  eventTransitionKeys,
   isAmbient,
   isBracketed,
   type TripEvent,
@@ -122,14 +122,15 @@ export function ambientEventsOnDate(events: TripEvent[], date: string): TripEven
  *  (check-in / departure) when the event's own `date` is `date`, and/or its end
  *  (check-out / arrival) when `endDate ?? date` is `date`. The single shared
  *  derivation behind BOTH the Home glance markers and the day-screen transition
- *  entries, so the two can never diverge. Reads `isBracketed` + the category
- *  profile's `transitions` (ADR-0063); nothing is stored. */
+ *  entries, so the two can never diverge. Reads `isBracketed` + the event's
+ *  `transitions` — by mode, not just category (ADR-0063); nothing is stored. */
 export interface BookingTransition {
   event: TripEvent;
   edge: 'start' | 'end';
   /** The transition instant, in ms. */
   atMs: number;
-  /** i18n transition key from the profile (`checkIn`/`departure`…). */
+  /** i18n transition key for this end, by mode (`checkIn`/`departure`/
+   *  `flightDeparture`…), from `eventTransitionKeys`. */
   labelKey: string;
 }
 
@@ -137,7 +138,7 @@ export function bookingTransitionsOnDate(events: TripEvent[], date: string): Boo
   const out: BookingTransition[] = [];
   for (const e of events) {
     if (!isBracketed(e) || e.category == null) continue;
-    const trans = CATEGORY_TIME_PROFILE[e.category].transitions;
+    const trans = eventTransitionKeys(e);
     if (!trans) continue;
     if (e.date === date && e.startsAt) {
       out.push({ event: e, edge: 'start', atMs: Date.parse(e.startsAt), labelKey: trans.startKey });

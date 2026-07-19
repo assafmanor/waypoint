@@ -220,6 +220,10 @@ export interface CategoryTimeProfile {
 const ORDINARY_PROFILE: CategoryTimeProfile = { bracketed: false, ambientWhenMultiDay: false };
 
 export const CATEGORY_TIME_PROFILE: Record<EventCategory, CategoryTimeProfile> = {
+  // Generic transport wording (departure/arrival) is correct for every mode — a
+  // train, bus, ferry or car all leave and arrive. A mode whose vocabulary
+  // differs (aviation's take-off/landing) refines it per-glyph via
+  // `ICON_TRANSITION_KEYS`; nothing hard-codes flight words for the category.
   transport: {
     bracketed: true,
     ambientWhenMultiDay: true,
@@ -239,10 +243,33 @@ export const CATEGORY_TIME_PROFILE: Record<EventCategory, CategoryTimeProfile> =
   other: ORDINARY_PROFILE,
 };
 
+/** Per-glyph transition-wording overrides for modes whose ends read differently
+ *  from their category default (ADR-0063 refinement). A flight's ends are
+ *  take-off / landing, not the generic departure / arrival every other transport
+ *  mode uses. Bounded and declarative like the icon set itself (ADR-0038): a new
+ *  mode with distinct wording adds a glyph here and every time-aware surface
+ *  (hero, glance markers, day entries) picks it up — no per-screen branching. */
+export const ICON_TRANSITION_KEYS: Record<string, { startKey: string; endKey: string }> = {
+  '✈️': { startKey: 'flightDeparture', endKey: 'flightArrival' },
+};
+
 /** The profile for an event's category. A null/unset category (ADR-0038) uses
  *  the ordinary profile (a plain point/block). */
 const profileFor = (category: EventCategory | null | undefined): CategoryTimeProfile =>
   category != null ? CATEGORY_TIME_PROFILE[category] : ORDINARY_PROFILE;
+
+/** The two i18n transition keys for a bracketed event's ends, or `undefined`
+ *  when its category isn't bracketed. Resolves finer than category so wording is
+ *  by mode, not hard-coded: an event's own glyph (`ICON_TRANSITION_KEYS`) wins
+ *  over the category default — a train reads departure/arrival, a flight reads
+ *  take-off/landing — with the category profile as the fallback for every other
+ *  glyph and for manual (non-booking) events (ADR-0063 §4). */
+export const eventTransitionKeys = (
+  event: Pick<TripEvent, 'category' | 'icon'>,
+): { startKey: string; endKey: string } | undefined => {
+  const override = event.icon != null ? ICON_TRANSITION_KEYS[event.icon] : undefined;
+  return override ?? profileFor(event.category).transitions;
+};
 
 type TimedEvent = Pick<TripEvent, 'category' | 'date' | 'endDate'>;
 
