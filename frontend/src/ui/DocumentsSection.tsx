@@ -11,7 +11,8 @@ import { useTrip } from '../state/trip-state';
 import { usePendingUploads, useSyncStatus } from '../lib/outbox';
 import { SyncBadge } from './feedback';
 import { ListRow } from './domain';
-import { groupDocuments, formatSize } from '../lib/documents';
+import { groupDocuments } from '../lib/documents';
+import { formatBytes } from '../lib/bytes';
 import { DocumentUploadSheet } from './DocumentUploadSheet';
 import { DocumentViewer } from './DocumentViewer';
 import { DocumentManageSheet } from './DocumentManageSheet';
@@ -133,7 +134,7 @@ function DocumentRow({
           <>
             <SyncBadge state={status.state} reason={status.reason} />
             <span className="size" dir="ltr">
-              {formatSize(d.sizeBytes)}
+              {formatBytes(d.sizeBytes)}
             </span>
             <span className="doc-lock" aria-hidden="true">
               🔒

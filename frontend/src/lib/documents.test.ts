@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest';
 import { DOCUMENT_TYPE, type DocumentSummary, type DocumentType } from '@waypoint/shared';
-import { formatSize, groupDocuments } from './documents';
+import { groupDocuments } from './documents';
 
 const ISO = '2026-07-01T00:00:00Z';
 const doc = (id: string, type: DocumentType): DocumentSummary => ({
@@ -28,13 +28,5 @@ describe('groupDocuments', () => {
 
   it('returns [] for no documents', () => {
     expect(groupDocuments([])).toEqual([]);
-  });
-});
-
-describe('formatSize', () => {
-  it('formats bytes / KB / MB', () => {
-    expect(formatSize(512)).toBe('512B');
-    expect(formatSize(2048)).toBe('2KB');
-    expect(formatSize(1.5 * 1024 * 1024)).toBe('1.5MB');
   });
 });

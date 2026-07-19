@@ -768,7 +768,7 @@
               </div>
 
               <!-- name — comes before the file (chosen name, then the file it
-                   attaches to); auto-fills from the filename if left empty -->
+                   attaches to). Not derived from the filename; empty → type label -->
               <label class="bs-field"
                 >שם
                 <input type="text" id="docname" placeholder="שם לזיהוי המסמך" />
@@ -856,8 +856,8 @@
           (<code>capture=environment</code>, phone-first). נעלם היכן שאין מצלמה.
         </li>
         <li>
-          <b>שם לפני הקובץ</b> — סדר הקריאה בגיליון: סוג → שם → קובץ. השם ממלא את עצמו משם הקובץ אם
-          נשאר ריק.
+          <b>שם לפני הקובץ</b> — סדר הקריאה בגיליון: סוג → שם → קובץ. השם לא נגזר משם הקובץ · אם
+          נשאר ריק, ברירת המחדל היא שם הסוג (למשל "דרכון").
         </li>
         <li>
           <b>תצוגה מקדימה</b> של הקובץ הנבחר — תמונה ממוזערת (או אריח PDF), שם הקובץ, סוג·גודל, ו־✕
@@ -890,22 +890,9 @@
         fname = $('fname'),
         fsub = $('fsub');
 
-      const docname = $('docname');
       const FILES = {
-        image: {
-          name: 'passport-assaf.jpg',
-          fill: 'passport-assaf',
-          sub: 'תמונה · 1.2MB',
-          cls: 'thumb img',
-          label: '',
-        },
-        pdf: {
-          name: 'insurance-harel.pdf',
-          fill: 'insurance-harel',
-          sub: 'PDF · 0.6MB',
-          cls: 'thumb pdf',
-          label: 'PDF',
-        },
+        image: { name: 'passport-assaf.jpg', sub: 'תמונה · 1.2MB', cls: 'thumb img', label: '' },
+        pdf: { name: 'insurance-harel.pdf', sub: 'PDF · 0.6MB', cls: 'thumb pdf', label: 'PDF' },
       };
 
       function setState(s) {
@@ -920,7 +907,6 @@
 
         if (s === 'empty') {
           empty.style.display = 'block';
-          docname.value = '';
           save.disabled = true;
         } else if (s === 'image' || s === 'pdf') {
           fileCard.style.display = 'block';
@@ -948,8 +934,6 @@
         thumb.textContent = f.label;
         fname.textContent = f.name;
         fsub.textContent = f.sub;
-        // name auto-fills from the filename when left empty (ADR-0086)
-        if (!docname.value.trim()) docname.value = f.fill;
       }
 
       // type selector — selecting a type updates the header icon (ADR-0086 §4)

@@ -23,10 +23,3 @@ export function groupDocuments(docs: DocumentSummary[]): DocumentGroup[] {
     docs: docs.filter((d) => d.type === type),
   })).filter((g) => g.docs.length > 0);
 }
-
-/** Human file size, e.g. "1.2MB" / "540KB" — the honest meta on a doc row. */
-export function formatSize(bytes: number): string {
-  if (bytes >= 1024 * 1024) return `${(bytes / (1024 * 1024)).toFixed(1)}MB`;
-  if (bytes >= 1024) return `${Math.round(bytes / 1024)}KB`;
-  return `${bytes}B`;
-}

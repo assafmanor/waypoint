@@ -2966,40 +2966,8 @@
   cursor: pointer;
 }
 
-/* Booking form: type-card grid + auto-caption + transport hint + validation. */
-.booking-sheet .bs-typesel {
-  display: grid;
-  grid-template-columns: repeat(3, 1fr);
-  gap: 8px;
-}
-.booking-sheet .bs-typecard {
-  display: flex;
-  flex-direction: column;
-  align-items: center;
-  gap: 5px;
-  font: inherit;
-  background: var(--card);
-  border: 1px solid var(--line);
-  border-radius: 13px;
-  padding: 12px 6px;
-  cursor: pointer;
-}
-.booking-sheet .bs-typecard-ic {
-  font-size: 20px;
-  line-height: 1;
-}
-.booking-sheet .bs-typecard-lbl {
-  font-size: 11.5px;
-  font-weight: 700;
-  color: var(--muted);
-}
-.booking-sheet .bs-typecard.on {
-  border-color: var(--cta);
-  background: color-mix(in srgb, var(--ink) 5%, transparent);
-}
-.booking-sheet .bs-typecard.on .bs-typecard-lbl {
-  color: var(--ink);
-}
+/* Booking form: auto-caption + transport hint + validation. The type-card grid
+   moved to the shared ChoiceGrid primitive (ADR-0086). */
 /* Title box (matches the other fields) + IconPicker chip on the trailing side. */
 .booking-sheet .bs-title {
   flex: 1;
@@ -3200,14 +3168,24 @@
   }
 }
 
-/* Upload sheet: 4 doc types in a 2×2 grid; a plain file input. */
-.doc-upload .bs-typesel {
-  grid-template-columns: repeat(2, 1fr);
+/* Upload sheet header (ADR-0086): the icon (tracking the chosen type) + title.
+   The type grid is the shared ChoiceGrid, the pick control the shared FilePicker;
+   only this header is bespoke chrome. */
+.du-head-text {
+  display: flex;
+  flex-direction: column;
+  gap: 1px;
+  min-width: 0;
 }
-.doc-upload .bs-field input[type='file'] {
-  font: inherit;
-  font-size: 12.5px;
-  color: var(--ink);
+.du-head-title {
+  font-weight: 700;
+  font-size: 15px;
+  color: var(--indigo);
+}
+.du-head-sub {
+  font-size: 11.5px;
+  font-weight: 500;
+  color: var(--muted);
 }
 
 /* Viewer overlay: near-fullscreen, above sheets (z 30). */

@@ -9,6 +9,7 @@
 // cancel as a ghost pill. A destructive action (delete) sits on its own row
 // BELOW the primary/secondary pair, de-emphasized, so it never reads as the
 // expected next tap. RTL-correct via logical properties (flex + gap only).
+import { Spinner } from '../Spinner';
 import './form-actions.css';
 
 interface Action {
@@ -17,6 +18,9 @@ interface Action {
   /** Submit buttons omit onClick and let the surrounding <form> handle submit. */
   type?: 'button' | 'submit';
   disabled?: boolean;
+  /** Awaiting a result: show the shared Spinner in place of the label and block
+   *  re-taps (ADR-0052 §4). Applies to the primary action. */
+  busy?: boolean;
 }
 
 export function FormActions({
@@ -35,9 +39,9 @@ export function FormActions({
           type={primary.type ?? 'button'}
           className="fa-primary"
           onClick={primary.onClick}
-          disabled={primary.disabled}
+          disabled={primary.disabled || primary.busy}
         >
-          {primary.label}
+          {primary.busy ? <Spinner /> : primary.label}
         </button>
         {secondary && (
           <button

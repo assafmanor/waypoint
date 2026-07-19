@@ -21,6 +21,13 @@ export const t = {
     discardConfirm: 'צא בלי לשמור',
     discardCancel: 'המשך עריכה',
   },
+  // FilePicker (ADR-0086): the two pick tiles + preview clear, shared by every
+  // attachment surface so the wording never drifts.
+  filePicker: {
+    upload: 'העלאת קובץ',
+    capture: 'צלמו עכשיו',
+    remove: 'הסר',
+  },
   // Shared feedback-state family (ADR-0078): generic copy for the empty / loading
   // / error / status shells. Screens pass their own specific copy; these are the
   // sensible defaults (retry, a neutral "loading", a generic error title, dismiss).
@@ -221,10 +228,13 @@ export const t = {
     },
     upload: {
       title: 'העלאת מסמך',
-      fileLabel: 'קובץ (תמונה או PDF)',
+      subtitle: 'מוצפן מקצה לקצה',
+      typeLabel: 'סוג',
+      fileLabel: 'קובץ',
+      pickHint: (mb: number) => `תמונה או PDF · עד ${mb}MB`,
       fileRequired: 'צריך לבחור קובץ',
       titleLabel: 'שם',
-      titlePlaceholder: 'למשל: דרכון · אסף',
+      titlePlaceholder: 'שם לזיהוי המסמך',
       save: 'העלה',
       saving: 'מעלה…',
       cancel: 'בטל',

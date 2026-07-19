@@ -3,17 +3,24 @@
 // that renames and changes the type together; delete is guarded (an encrypted
 // document is irreversible). Each action calls the backend PATCH/DELETE; the live
 // list updates from the WS self-echo (ADR-0058), so no callback is needed.
-import { useState } from 'react';
+import { useId, useState } from 'react';
 import { DOCUMENT_TYPE, type DocumentSummary, type DocumentType } from '@waypoint/shared';
 import { Sheet } from './Sheet';
 import { RowManageSheet } from './domain';
 import { Spinner } from './Spinner';
+import { Field } from './primitives/Field';
+import { FormActions } from './primitives/FormActions';
+import { ChoiceGrid } from './primitives/ChoiceGrid';
 import { deleteDocument, updateDocument } from '../lib/api';
 import { useToast } from './Toast';
 import { DOCUMENT_TYPE_ICON, ICONS } from '../constants';
 import { t } from '../i18n/he';
 
-const DOC_TYPES = Object.values(DOCUMENT_TYPE);
+const TYPE_OPTIONS = Object.values(DOCUMENT_TYPE).map((ty) => ({
+  value: ty,
+  icon: DOCUMENT_TYPE_ICON[ty],
+  label: t.docs.type[ty],
+}));
 
 type Mode = 'menu' | 'edit' | 'delete';
 
@@ -27,6 +34,7 @@ export function DocumentManageSheet({
   onClose: () => void;
 }) {
   const toast = useToast();
+  const nameId = useId();
   const [mode, setMode] = useState<Mode>('menu');
   const [title, setTitle] = useState(doc.title);
   const [type, setType] = useState<DocumentType>(doc.type);
@@ -78,35 +86,28 @@ export function DocumentManageSheet({
     <Sheet ariaLabel={t.docs.manage.actions} onClose={onClose}>
       <div className="doc-manage">
         {mode === 'edit' && (
-          <div className="booking-sheet doc-upload">
-            <label className="bs-field">
-              {t.docs.manage.nameField}
-              <input value={title} onChange={(e) => setTitle(e.target.value)} autoFocus />
-            </label>
-            <div className="bs-typesel">
-              {DOC_TYPES.map((ty) => (
-                <button
-                  key={ty}
-                  type="button"
-                  className={'bs-typecard' + (ty === type ? ' on' : '')}
-                  onClick={() => setType(ty)}
-                  disabled={busy}
-                >
-                  <span className="bs-typecard-ic" aria-hidden="true">
-                    {DOCUMENT_TYPE_ICON[ty]}
-                  </span>
-                  <span className="bs-typecard-lbl">{t.docs.type[ty]}</span>
-                </button>
-              ))}
-            </div>
-            <div className="bs-actions">
-              <button type="button" className="bs-save" onClick={save} disabled={busy}>
-                {busy ? <Spinner /> : t.docs.manage.save}
-              </button>
-              <button type="button" className="bs-cancel" onClick={() => setMode('menu')}>
-                {t.docs.manage.cancel}
-              </button>
-            </div>
+          <div className="booking-sheet">
+            <Field label={t.docs.manage.nameField} htmlFor={nameId}>
+              <input
+                id={nameId}
+                value={title}
+                onChange={(e) => setTitle(e.target.value)}
+                autoFocus
+              />
+            </Field>
+            <Field label={t.docs.upload.typeLabel}>
+              <ChoiceGrid
+                options={TYPE_OPTIONS}
+                value={type}
+                onChange={setType}
+                disabled={busy}
+                ariaLabel={t.docs.upload.typeLabel}
+              />
+            </Field>
+            <FormActions
+              primary={{ label: t.docs.manage.save, onClick: save, busy }}
+              secondary={{ label: t.docs.manage.cancel, onClick: () => setMode('menu') }}
+            />
           </div>
         )}
 
