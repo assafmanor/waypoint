@@ -38,14 +38,22 @@ export interface GlanceSeg {
   point: boolean;
   /** End lands on the next calendar day (ADR-0037) — carries the "+1" marker. */
   nextDay: boolean;
+  /** This block is a same-day bracketed booking also drawn as a span anchor
+   *  above (ADR-0077): tint it amber to tie block↔span, and let the span pill
+   *  own the "+1" so it isn't shown twice. */
+  spanned: boolean;
 }
 
-/** A transition marker on the rail's dedicated upper lane (ADR-0054 amendment,
- *  rebased on ADR-0063): a bracketed event's start/end (check-in/check-out,
- *  departure/arrival) as an amber time-anchor chip. A marker is a *point* that
- *  happens in the day, not a counted block — an ambient hotel's markers stay
- *  uncounted; a flight's are edge markers on its counted block. */
-export interface GlanceMarker {
+/** A time-anchor above the block bar (ADR-0077): a bracketed booking's
+ *  transition(s) that land on the day, amber = time & commitment (ADR-0028).
+ *  Two shapes share the amber pill primitive, differing only by connector:
+ *   - a `point` (single instant, stem) — one edge lands today (a multi-day
+ *     hotel's check-in / check-out; a bracket whose other end is another day);
+ *     it carries the transition *word* (no partner edge to imply direction).
+ *   - a `span` (two instants, a bar + feet) — both edges land today (a same-day
+ *     flight / ferry); it carries icon + range, order implying dep/arr. */
+export interface GlancePointAnchor {
+  kind: 'point';
   key: string;
   /** Position from the window start (0..1), same scale as the block segments. */
   frac: number;
@@ -55,22 +63,45 @@ export interface GlanceMarker {
   timeMs: number;
   /** The event's own icon (or its category default) — the shared badge glyph. */
   icon: string;
-  /** Stacking row (0 = nearest the bar). Markers whose chips would overlap are
-   *  pushed to a higher lane so labels never collide — a departure + arrival a
-   *  short flight apart can't smear into each other (ADR-0054 amendment). */
+  /** Stacking row (0 = nearest the bar). Anchors whose pills would overlap are
+   *  pushed to a higher lane so labels never collide (ADR-0077). */
   lane: number;
 }
+export interface GlanceSpanAnchor {
+  kind: 'span';
+  key: string;
+  /** The two edges' positions from the window start (0..1). */
+  startFrac: number;
+  endFrac: number;
+  /** The two transition instants, for the mono time labels in the pill. */
+  startMs: number;
+  endMs: number;
+  /** i18n keys for the two edges — not rendered by default (order implies
+   *  direction; ADR-0077 keeps span words off), kept so a start-edge word is a
+   *  one-line addition if testing wants it. */
+  startLabelKey: string;
+  endLabelKey: string;
+  icon: string;
+  /** The arrival crosses midnight (ADR-0037) — the pill carries the "+1". */
+  nextDay: boolean;
+  lane: number;
+}
+export type GlanceAnchor = GlancePointAnchor | GlanceSpanAnchor;
 
 export interface DayGlance {
   empty: boolean;
   windowStartMs: number;
   windowEndMs: number;
   segs: GlanceSeg[];
-  /** Amber transition markers above the block bar (ADR-0054 amendment). */
-  markers: GlanceMarker[];
-  /** How many stacked lanes the markers occupy (0 when there are none) — the
-   *  render sizes the marker lane from this. */
-  markerLaneCount: number;
+  /** Amber time-anchors above the block bar (ADR-0077) — spans + points. */
+  anchors: GlanceAnchor[];
+  /** How many stacked lanes the anchors occupy (0 when there are none) — the
+   *  render sizes the anchor band from this. */
+  anchorLaneCount: number;
+  /** The anchor band would exceed `MAX_ANCHOR_LANES` (a crowded first/last trip
+   *  day): the render collapses the positioned anchors to a flow "legs line"
+   *  below the rail instead, where overlap is impossible (ADR-0077 §D). */
+  anchorsCollapsed: boolean;
   /** Now's position in the window (0..1), or null when now is outside it
    *  (i.e. a past/future day being browsed). */
   nowFrac: number | null;
@@ -83,25 +114,34 @@ export interface DayGlance {
  *  layered cue) so two short, close-by composites can't overlap chips. */
 const MIN_COUNT_FRAC = 0.14;
 
-/** Two transition-marker chips closer than this fraction of the rail would
- *  overlap, so the later one is pushed up a lane (stacked, not smeared). Sized
- *  a touch above a chip's own width so a departure + arrival a short flight
- *  apart always separate. */
+/** Two anchor pills whose centres are closer than this fraction of the rail
+ *  would overlap, so the later one is pushed up a lane (stacked, not smeared).
+ *  Sized a touch above a pill's own width. */
 const MARKER_MIN_GAP_FRAC = 0.28;
 
-/** Stack markers (pre-sorted by frac) into lanes: each goes in the lowest lane
- *  whose last chip is at least a chip-width away, else a new lane. Returns the
- *  lane count. Pure and width-independent — the render only needs the lane index
- *  and total to size the marker band. */
-function assignMarkerLanes(markers: GlanceMarker[]): number {
-  const laneLastFrac: number[] = [];
-  for (const m of markers) {
+/** Past this many anchor lanes the band is too tall for a glance, so the render
+ *  collapses to the flow legs line instead (ADR-0077 §D). */
+const MAX_ANCHOR_LANES = 2;
+
+/** An anchor's centre on the rail (0..1): a point is its instant; a span is the
+ *  midpoint of its bar, where its pill sits. */
+const anchorCenter = (a: GlanceAnchor): number =>
+  a.kind === 'span' ? (a.startFrac + a.endFrac) / 2 : a.frac;
+
+/** Stack anchors (pre-sorted by centre) into lanes: each goes in the lowest lane
+ *  whose last pill centre is at least a pill-width away, else a new lane. Mutates
+ *  `lane` and returns the lane count. Pure and width-independent — the render only
+ *  needs the lane index and total to size the band. */
+function assignAnchorLanes(anchors: GlanceAnchor[]): number {
+  const laneLastCenter: number[] = [];
+  for (const a of anchors) {
+    const c = anchorCenter(a);
     let lane = 0;
-    while (lane < laneLastFrac.length && m.frac - laneLastFrac[lane] < MARKER_MIN_GAP_FRAC) lane++;
-    laneLastFrac[lane] = m.frac;
-    m.lane = lane;
+    while (lane < laneLastCenter.length && c - laneLastCenter[lane] < MARKER_MIN_GAP_FRAC) lane++;
+    laneLastCenter[lane] = c;
+    a.lane = lane;
   }
-  return laneLastFrac.length;
+  return laneLastCenter.length;
 }
 
 const startMsOf = (e: TripEvent) => Date.parse(e.startsAt!);
@@ -206,8 +246,9 @@ export function buildDayGlance(
       windowStartMs: day07Ms,
       windowEndMs: day23Ms,
       segs: [],
-      markers: [],
-      markerLaneCount: 0,
+      anchors: [],
+      anchorLaneCount: 0,
+      anchorsCollapsed: false,
       nowFrac: null,
       remaining: 0,
     };
@@ -223,6 +264,15 @@ export function buildDayGlance(
   const frac = (t: number) => (t - windowStartMs) / span;
   const nextDayOf = (evs: TripEvent[]) =>
     evs.some((e) => e.endsAt != null && crossesMidnight(e.startsAt!, e.endsAt, timeZone));
+
+  // A same-day bracket contributes two transitions on this day → it is drawn as
+  // a span anchor above, so its counted block is tinted + yields the "+1" to the
+  // pill (ADR-0077). Events with a single transition today (a multi-day hotel's
+  // one edge) are points, not spans.
+  const transitionsByEvent = new Map<string, number>();
+  for (const tr of transitions)
+    transitionsByEvent.set(tr.event.id, (transitionsByEvent.get(tr.event.id) ?? 0) + 1);
+  const isSpanEvent = (id: string) => (transitionsByEvent.get(id) ?? 0) >= 2;
 
   const segs: GlanceSeg[] = [];
 
@@ -242,6 +292,7 @@ export function buildDayGlance(
       showCount: composite && frac(e) - frac(s) >= MIN_COUNT_FRAC,
       point: !composite && g.kind === 'single' && g.item.event.endsAt == null,
       nextDay: nextDayOf(evs),
+      spanned: g.kind === 'single' && isSpanEvent(g.item.event.id),
     });
   }
 
@@ -257,6 +308,7 @@ export function buildDayGlance(
       showCount: false,
       point: e.endsAt == null,
       nextDay: e.endsAt != null && crossesMidnight(e.startsAt!, e.endsAt, timeZone),
+      spanned: false,
     });
   }
 
@@ -265,23 +317,56 @@ export function buildDayGlance(
     return p === 'now' || p === 'upcoming';
   }).length;
 
-  // Transition markers (ADR-0054 amendment) derive from the one shared function
-  // (ADR-0064) — every bracketed event's start/end that lands on this day: a
-  // same-day flight's departure + arrival (edge markers on its counted block),
-  // an ambient hotel's check-in / check-out (uncounted). Marking a transition
-  // point is not counting a block; the ambient stay stays off the counted rail.
-  const markers: GlanceMarker[] = transitions.map((tr) => ({
-    key: `${tr.event.id}-${tr.edge === 'start' ? 's' : 'e'}`,
-    frac: frac(tr.atMs),
-    labelKey: tr.labelKey,
-    timeMs: tr.atMs,
-    icon:
-      tr.event.icon ??
-      (tr.event.category != null ? CATEGORY_DEFAULT_ICON[tr.event.category] : '📌'),
-    lane: 0,
-  }));
-  markers.sort((a, b) => a.frac - b.frac);
-  const markerLaneCount = assignMarkerLanes(markers);
+  // Time-anchors (ADR-0077) derive from the one shared function (ADR-0064) —
+  // every bracketed booking's start/end that lands on this day, grouped by
+  // event and paired: both edges today → a span (a same-day flight/ferry), a
+  // single edge today → a point (a multi-day hotel's check-in / check-out).
+  // Marking a transition is not counting a block; an ambient stay stays off the
+  // counted rail.
+  const iconOf = (e: TripEvent) =>
+    e.icon ?? (e.category != null ? CATEGORY_DEFAULT_ICON[e.category] : '📌');
+  const byEvent = new Map<string, BookingTransition[]>();
+  for (const tr of transitions) {
+    const list = byEvent.get(tr.event.id);
+    if (list) list.push(tr);
+    else byEvent.set(tr.event.id, [tr]);
+  }
+  const anchors: GlanceAnchor[] = [];
+  for (const trs of byEvent.values()) {
+    const e = trs[0].event;
+    if (trs.length >= 2) {
+      const start = trs.find((tr) => tr.edge === 'start') ?? trs[0];
+      const end = trs.find((tr) => tr.edge === 'end') ?? trs[1];
+      anchors.push({
+        kind: 'span',
+        key: e.id,
+        startFrac: frac(start.atMs),
+        endFrac: frac(end.atMs),
+        startMs: start.atMs,
+        endMs: end.atMs,
+        startLabelKey: start.labelKey,
+        endLabelKey: end.labelKey,
+        icon: iconOf(e),
+        nextDay:
+          e.startsAt != null && e.endsAt != null && crossesMidnight(e.startsAt, e.endsAt, timeZone),
+        lane: 0,
+      });
+    } else {
+      const tr = trs[0];
+      anchors.push({
+        kind: 'point',
+        key: `${e.id}-${tr.edge === 'start' ? 's' : 'e'}`,
+        frac: frac(tr.atMs),
+        labelKey: tr.labelKey,
+        timeMs: tr.atMs,
+        icon: iconOf(e),
+        lane: 0,
+      });
+    }
+  }
+  anchors.sort((a, b) => anchorCenter(a) - anchorCenter(b));
+  const anchorLaneCount = assignAnchorLanes(anchors);
+  const anchorsCollapsed = anchorLaneCount > MAX_ANCHOR_LANES;
 
   const nowFrac = nowMs >= windowStartMs && nowMs <= windowEndMs ? frac(nowMs) : null;
 
@@ -290,8 +375,9 @@ export function buildDayGlance(
     windowStartMs,
     windowEndMs,
     segs,
-    markers,
-    markerLaneCount,
+    anchors,
+    anchorLaneCount,
+    anchorsCollapsed,
     nowFrac,
     remaining,
   };

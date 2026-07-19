@@ -16,6 +16,7 @@ import {
 import { useTrip } from '../state/trip-state';
 import { useToast } from '../ui/Toast';
 import { Icon } from '../ui/Icon';
+import { NavArrow } from '../ui/NavArrow';
 import { EventTitle } from '../ui/EventTitle';
 import { useClock } from '../lib/useClock';
 import { nextCodedBooking } from '../lib/home-quick';
@@ -515,40 +516,75 @@ export function Home({ onNavigate }: { onNavigate?: (tab: TabId) => void }) {
         </div>
       ) : (
         <div className="glance-day">
-          {/* Amber transition markers in a dedicated lane above the block bar so
-              segments can't swallow their labels (ADR-0054 amendment / ADR-0059).
-              Chips stack into lanes when they'd overlap, and the ones nearest an
-              edge anchor inward so they never clip off the rail. */}
-          {glance.markers.length > 0 && (
+          {/* Amber time-anchors in a dedicated band above the block bar so
+              segments can't swallow their labels (ADR-0077). A span (both edges
+              today) is a bar + feet under one centered pill; a point (one edge
+              today) is a stem + pill carrying the transition word. Anchors stack
+              into lanes when they'd overlap and anchor inward near an edge; a
+              crowded day collapses to the legs line below instead. */}
+          {glance.anchors.length > 0 && !glance.anchorsCollapsed && (
             <div
               className="glance-marks"
               aria-hidden="true"
-              style={{ '--lanes': glance.markerLaneCount } as CSSProperties}
+              style={{ '--lanes': glance.anchorLaneCount } as CSSProperties}
             >
-              {glance.markers.map((m) => (
-                <div
-                  className={`tmark ${markerAnchor(m.frac)}`}
-                  key={m.key}
-                  style={
-                    { insetInlineStart: `${m.frac * 100}%`, '--lane': m.lane } as CSSProperties
-                  }
-                >
-                  <span className="chip">
-                    <span className="mi">{m.icon}</span> {transitionLabel(m.labelKey)}{' '}
-                    <span className="mono" dir="ltr">
-                      {formatTime(new Date(m.timeMs), tz)}
+              {glance.anchors.map((a) =>
+                a.kind === 'span' ? (
+                  <div
+                    className={`span-anchor ${markerAnchor((a.startFrac + a.endFrac) / 2)}`}
+                    key={a.key}
+                    style={
+                      {
+                        insetInlineStart: `${a.startFrac * 100}%`,
+                        width: `${Math.max(0, a.endFrac - a.startFrac) * 100}%`,
+                        '--lane': a.lane,
+                      } as CSSProperties
+                    }
+                  >
+                    <span className="cap">
+                      <span className="achip amber">
+                        <span className="mi">{a.icon}</span>{' '}
+                        <span className="mono" dir="ltr">
+                          {formatTime(new Date(a.startMs), tz)}
+                        </span>
+                        <NavArrow variant="forward" className="arr" />
+                        <span className="mono" dir="ltr">
+                          {formatTime(new Date(a.endMs), tz)}
+                        </span>
+                        {a.nextDay && (
+                          <span className="plus1" dir="ltr">
+                            {t.glance.nextDay}
+                          </span>
+                        )}
+                      </span>
                     </span>
-                  </span>
-                  <span className="stem" />
-                </div>
-              ))}
+                    <span className="bar" />
+                  </div>
+                ) : (
+                  <div
+                    className={`tmark ${markerAnchor(a.frac)}`}
+                    key={a.key}
+                    style={
+                      { insetInlineStart: `${a.frac * 100}%`, '--lane': a.lane } as CSSProperties
+                    }
+                  >
+                    <span className="achip amber">
+                      <span className="mi">{a.icon}</span> {transitionLabel(a.labelKey)}{' '}
+                      <span className="mono" dir="ltr">
+                        {formatTime(new Date(a.timeMs), tz)}
+                      </span>
+                    </span>
+                    <span className="stem" />
+                  </div>
+                ),
+              )}
             </div>
           )}
           <div className="rail" aria-hidden="true">
             {glance.segs.map((s) => (
               <div
                 key={s.key}
-                className={`seg ${s.phase}${s.composite ? ' multi' : ''}${s.point ? ' point' : ''}`}
+                className={`seg ${s.phase}${s.composite ? ' multi' : ''}${s.point ? ' point' : ''}${s.spanned ? ' trans' : ''}`}
                 style={{
                   insetInlineStart: `${s.startFrac * 100}%`,
                   ...(s.point ? {} : { width: `${Math.max(0, s.endFrac - s.startFrac) * 100}%` }),
@@ -559,7 +595,8 @@ export function Home({ onNavigate }: { onNavigate?: (tab: TabId) => void }) {
                     {s.clusterLike ? t.glance.concurrent(s.count) : t.glance.contains(s.count)}
                   </span>
                 )}
-                {s.nextDay && (
+                {/* a spanned block's "+1" is carried by its span pill above, not here */}
+                {s.nextDay && !s.spanned && (
                   <span className="plus1" dir="ltr">
                     {t.glance.nextDay}
                   </span>
@@ -574,6 +611,38 @@ export function Home({ onNavigate }: { onNavigate?: (tab: TabId) => void }) {
             <span dir="ltr">{formatTime(new Date(glance.windowStartMs), tz)}</span>
             <span dir="ltr">{formatTime(new Date(glance.windowEndMs), tz)}</span>
           </div>
+          {/* Crowded day (ADR-0077 §D): the anchors couldn't fit in the band, so
+              they collapse here to a flow legs line — same amber pill, no overlap. */}
+          {glance.anchorsCollapsed && (
+            <div className="glance-legs">
+              {glance.anchors.map((a) =>
+                a.kind === 'span' ? (
+                  <span className="achip amber" key={a.key}>
+                    <span className="mi">{a.icon}</span>{' '}
+                    <span className="mono" dir="ltr">
+                      {formatTime(new Date(a.startMs), tz)}
+                    </span>
+                    <NavArrow variant="forward" className="arr" />
+                    <span className="mono" dir="ltr">
+                      {formatTime(new Date(a.endMs), tz)}
+                    </span>
+                    {a.nextDay && (
+                      <span className="plus1" dir="ltr">
+                        {t.glance.nextDay}
+                      </span>
+                    )}
+                  </span>
+                ) : (
+                  <span className="achip amber" key={a.key}>
+                    <span className="mi">{a.icon}</span> {transitionLabel(a.labelKey)}{' '}
+                    <span className="mono" dir="ltr">
+                      {formatTime(new Date(a.timeMs), tz)}
+                    </span>
+                  </span>
+                ),
+              )}
+            </div>
+          )}
           <div className="lead">
             <div className="big">
               <span className="v" dir="ltr">

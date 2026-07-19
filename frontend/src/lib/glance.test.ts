@@ -33,7 +33,7 @@ describe('buildDayGlance', () => {
     const g = buildDayGlance([], DATE, ms('12:00'), day07, day23, TZ);
     expect(g.empty).toBe(true);
     expect(g.segs).toHaveLength(0);
-    expect(g.markers).toHaveLength(0);
+    expect(g.anchors).toHaveLength(0);
   });
 
   it('places sequential events and counts only now+upcoming as remaining', () => {
@@ -145,7 +145,7 @@ describe('buildDayGlance', () => {
     expect(g.remaining).toBe(2); // b + c only — the hotel is backdrop
   });
 
-  it('marks a same-day flight departure + arrival as edge markers on its counted block', () => {
+  it('pairs a same-day flight into one span anchor over its counted block', () => {
     const events = [
       ev({
         id: 'flight',
@@ -157,18 +157,26 @@ describe('buildDayGlance', () => {
       }),
     ];
     const g = buildDayGlance(events, DATE, ms('08:00'), day07, day23, TZ);
-    // The same-day flight is a counted block AND carries two markers.
-    expect(g.segs.some((s) => s.key === 'flight')).toBe(true);
+    // The same-day flight is a counted block AND a single paired span anchor.
+    const seg = g.segs.find((s) => s.key === 'flight')!;
+    expect(seg).toBeDefined();
+    expect(seg.spanned).toBe(true); // block tinted + yields "+1" to the span pill
     expect(g.remaining).toBe(1);
-    const keys = g.markers.map((m) => m.labelKey);
-    // A flight refines to take-off/landing, not the generic departure/arrival.
-    expect(keys).toEqual(['flightDeparture', 'flightArrival']); // sorted by clock position
-    const dep = g.markers.find((m) => m.labelKey === 'flightDeparture')!;
-    expect(dep.frac).toBeCloseTo(2 / 16, 5); // 09:00 is 2h into the 07:00 window
-    expect(dep.icon).toBe('✈️');
+    expect(g.anchors).toHaveLength(1);
+    const span = g.anchors[0];
+    expect(span.kind).toBe('span');
+    if (span.kind === 'span') {
+      // A flight refines to take-off/landing, not the generic departure/arrival.
+      expect(span.startLabelKey).toBe('flightDeparture');
+      expect(span.endLabelKey).toBe('flightArrival');
+      expect(span.startFrac).toBeCloseTo(2 / 16, 5); // 09:00 is 2h into the 07:00 window
+      expect(span.endFrac).toBeCloseTo(4 / 16, 5); // 11:00 is 4h in
+      expect(span.icon).toBe('✈️');
+      expect(span.nextDay).toBe(false);
+    }
   });
 
-  it('marks a same-day train with generic departure/arrival, not flight wording', () => {
+  it('keeps the generic departure/arrival wording for a same-day train span', () => {
     const events = [
       ev({
         id: 'train',
@@ -180,12 +188,17 @@ describe('buildDayGlance', () => {
       }),
     ];
     const g = buildDayGlance(events, DATE, ms('08:00'), day07, day23, TZ);
-    expect(g.markers.map((m) => m.labelKey)).toEqual(['departure', 'arrival']);
+    const span = g.anchors[0];
+    expect(span.kind).toBe('span');
+    if (span.kind === 'span') {
+      expect(span.startLabelKey).toBe('departure');
+      expect(span.endLabelKey).toBe('arrival');
+    }
   });
 
-  it('stacks two close transition markers into separate lanes (no chip overlap)', () => {
-    // A short red-eye: departure + arrival only ~1h apart on a 16h window (~6%),
-    // well under the chip-width gap, so they must not share a lane.
+  it('draws a short red-eye as one span, not two stacked markers', () => {
+    // Departure + arrival ~1h apart: as separate pills they used to ladder into
+    // two lanes; as a span they are one object (ADR-0077).
     const events = [
       ev({
         id: 'flight',
@@ -197,24 +210,68 @@ describe('buildDayGlance', () => {
       }),
     ];
     const g = buildDayGlance(events, DATE, ms('12:00'), day07, day23, TZ);
-    expect(g.markers).toHaveLength(2);
-    expect(g.markerLaneCount).toBe(2);
-    expect(g.markers.map((m) => m.lane).sort()).toEqual([0, 1]);
+    expect(g.anchors).toHaveLength(1);
+    expect(g.anchors[0].kind).toBe('span');
+    expect(g.anchorLaneCount).toBe(1);
+    expect(g.anchorsCollapsed).toBe(false);
   });
 
-  it('keeps well-separated markers on a single lane', () => {
+  it('keeps well-separated anchors on a single lane', () => {
     const events = [
+      // an ambient hotel check-in (a point) far from a morning flight (a span)
+      ev({
+        id: 'hotel',
+        category: 'lodging',
+        startsAt: at('15:00'),
+        endsAt: at('11:00', '2026-07-10'),
+        endDate: '2026-07-10',
+      }),
       ev({
         id: 'flight',
         category: 'transport',
         kind: EVENT_KIND.HARD,
         startsAt: at('08:00'),
-        endsAt: at('20:00'), // 12h apart → far beyond the gap
+        endsAt: at('09:30'),
       }),
     ];
     const g = buildDayGlance(events, DATE, ms('12:00'), day07, day23, TZ);
-    expect(g.markerLaneCount).toBe(1);
-    expect(g.markers.every((m) => m.lane === 0)).toBe(true);
+    expect(g.anchors).toHaveLength(2);
+    expect(g.anchorLaneCount).toBe(1);
+    expect(g.anchorsCollapsed).toBe(false);
+    expect(g.anchors.every((a) => a.lane === 0)).toBe(true);
+  });
+
+  it('collapses a crowded anchor band to the legs line (ADR-0077 §D)', () => {
+    // Three transition anchors clustered around midday → they would need >2
+    // lanes, so the band collapses.
+    const events = [
+      ev({
+        id: 'hotelOut',
+        category: 'lodging',
+        date: '2026-07-04',
+        startsAt: at('15:00', '2026-07-04'),
+        endsAt: at('11:30'), // check-out today
+        endDate: DATE,
+      }),
+      ev({
+        id: 'hotelIn',
+        category: 'lodging',
+        startsAt: at('12:30'), // check-in today
+        endsAt: at('11:00', '2026-07-10'),
+        endDate: '2026-07-10',
+      }),
+      ev({
+        id: 'ferry',
+        category: 'transport',
+        kind: EVENT_KIND.HARD,
+        startsAt: at('13:00'),
+        endsAt: at('14:00'),
+      }),
+    ];
+    const g = buildDayGlance(events, DATE, ms('12:00'), day07, day23, TZ);
+    expect(g.anchors).toHaveLength(3);
+    expect(g.anchorLaneCount).toBeGreaterThan(2);
+    expect(g.anchorsCollapsed).toBe(true);
   });
 
   it('stretches the window to a late transition so its marker stays on the rail', () => {
@@ -233,12 +290,15 @@ describe('buildDayGlance', () => {
       }),
     ];
     const g = buildDayGlance(events, DATE, ms('20:00'), day07, day23, TZ);
-    // Ambient → not a counted block, but its departure marks this day.
+    // Ambient → not a counted block, but its departure marks this day (a point,
+    // since the arrival lands on the next day).
     expect(g.segs.some((s) => s.key === 'redeye')).toBe(false);
-    const dep = g.markers.find((m) => m.labelKey === 'departure')!;
+    const dep = g.anchors.find((a) => a.kind === 'point' && a.labelKey === 'departure');
     expect(dep).toBeDefined();
-    expect(dep.frac).toBeGreaterThanOrEqual(0);
-    expect(dep.frac).toBeLessThanOrEqual(1);
+    if (dep && dep.kind === 'point') {
+      expect(dep.frac).toBeGreaterThanOrEqual(0);
+      expect(dep.frac).toBeLessThanOrEqual(1);
+    }
     expect(g.windowEndMs).toBe(ms('23:30')); // stretched to the departure instant
   });
 
@@ -265,8 +325,10 @@ describe('buildDayGlance', () => {
       TZ,
     );
     expect(g.empty).toBe(false);
-    expect(g.markers).toHaveLength(1);
-    expect(g.markers[0].labelKey).toBe('checkOut');
+    expect(g.anchors).toHaveLength(1);
+    const a = g.anchors[0];
+    expect(a.kind).toBe('point');
+    if (a.kind === 'point') expect(a.labelKey).toBe('checkOut');
     expect(g.remaining).toBe(0);
   });
 
@@ -284,9 +346,13 @@ describe('buildDayGlance', () => {
     ];
     const g = buildDayGlance(events, DATE, ms('09:00'), day07, day23, TZ);
     expect(g.segs.some((s) => s.key === 'hotel')).toBe(false); // uncounted
-    expect(g.markers).toHaveLength(1);
-    expect(g.markers[0].labelKey).toBe('checkIn');
-    expect(g.markers[0].frac).toBeCloseTo(8 / 16, 5); // 15:00 → 8h into the window
+    expect(g.anchors).toHaveLength(1);
+    const a = g.anchors[0];
+    expect(a.kind).toBe('point');
+    if (a.kind === 'point') {
+      expect(a.labelKey).toBe('checkIn');
+      expect(a.frac).toBeCloseTo(8 / 16, 5); // 15:00 → 8h into the window
+    }
   });
 
   it('marks an ambient hotel check-out on its check-out day (backdrop, not a block)', () => {
@@ -317,8 +383,10 @@ describe('buildDayGlance', () => {
     );
     // On the check-out day the hotel is not a block, but its check-out is marked.
     expect(g.segs.some((s) => s.key === 'hotel')).toBe(false);
-    expect(g.markers).toHaveLength(1);
-    expect(g.markers[0].labelKey).toBe('checkOut');
+    expect(g.anchors).toHaveLength(1);
+    const a = g.anchors[0];
+    expect(a.kind).toBe('point');
+    if (a.kind === 'point') expect(a.labelKey).toBe('checkOut');
   });
 
   it('shows no rail marker on a middle night of a stay', () => {
@@ -342,7 +410,7 @@ describe('buildDayGlance', () => {
       ms('23:00', middle),
       TZ,
     );
-    expect(g.markers).toHaveLength(0);
+    expect(g.anchors).toHaveLength(0);
     expect(g.remaining).toBe(0); // walk already passed; hotel uncounted
   });
 
