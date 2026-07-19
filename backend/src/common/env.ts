@@ -38,3 +38,10 @@ export function requireEnv(name: string): string {
   if (!value) throw new Error(`${name} not configured`);
   return value;
 }
+
+/** The `DEV_AUTH` un-tokened-request bypass, gated so it can never be live in
+ *  production (defense-in-depth behind the boot-time refusal in validateConfig,
+ *  backend-review B-04). */
+export function isDevAuthEnabled(): boolean {
+  return process.env[DEV_AUTH] === '1' && process.env.NODE_ENV !== 'production';
+}

@@ -9,8 +9,22 @@ import { AppModule } from './app.module';
 import { SyncGateway } from './sync/sync.gateway';
 import { DEFAULT_FRONTEND_URL, FRONTEND_URL } from './common/env';
 import { AllExceptionsFilter, SPA_INDEX, STATIC_ROOT } from './common/all-exceptions.filter';
+import { ConfigValidationError, validateConfig } from './common/validate-config';
 
 async function bootstrap() {
+  // Fail fast on a misconfigured deploy (B-04) before doing anything else — never
+  // boot "healthy" only to fail at the first login/upload, and never run the
+  // DEV_AUTH bypass in production.
+  try {
+    validateConfig();
+  } catch (err) {
+    if (err instanceof ConfigValidationError) {
+      console.error(`Refusing to start.\n${err.message}`);
+      process.exit(1);
+    }
+    throw err;
+  }
+
   const app = await NestFactory.create<NestExpressApplication>(AppModule);
   // Needed for the refresh-token cookie to survive the dev-only cross-origin
   // gap (:5173 → :3000); no-op in prod, which is single-origin (ADR-0020).

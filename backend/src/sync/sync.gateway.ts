@@ -7,7 +7,7 @@ import { parseCookieHeader } from '../auth/cookies.util';
 import { DEV_PRINCIPAL } from '../auth/jwt-auth.guard';
 import type { Principal } from '../auth/principal';
 import { hashRefreshToken } from '../auth/token.util';
-import { DEV_AUTH } from '../common/env';
+import { isDevAuthEnabled } from '../common/env';
 import { PrismaService } from '../prisma/prisma.service';
 
 const REFRESH_COOKIE = 'wp_refresh';
@@ -72,7 +72,7 @@ export class SyncGateway {
   private async authenticate(req: IncomingMessage): Promise<Principal | null> {
     const refreshToken = parseCookieHeader(req.headers.cookie)[REFRESH_COOKIE];
     if (!refreshToken) {
-      return process.env[DEV_AUTH] === '1' ? DEV_PRINCIPAL : null;
+      return isDevAuthEnabled() ? DEV_PRINCIPAL : null;
     }
 
     const session = await this.prisma.session.findUnique({
