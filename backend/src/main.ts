@@ -8,7 +8,7 @@ import { cleanupOpenApiDoc } from 'nestjs-zod';
 import { AppModule } from './app.module';
 import { SyncGateway } from './sync/sync.gateway';
 import { DEFAULT_FRONTEND_URL, FRONTEND_URL } from './common/env';
-import { SpaFallbackFilter, STATIC_ROOT } from './common/spa-fallback.filter';
+import { AllExceptionsFilter, SPA_INDEX, STATIC_ROOT } from './common/all-exceptions.filter';
 
 async function bootstrap() {
   const app = await NestFactory.create<NestExpressApplication>(AppModule);
@@ -27,10 +27,13 @@ async function bootstrap() {
   ); // ADR-0023: fixes up refs/nullability for the zod-derived (createZodDto) schemas
   SwaggerModule.setup('api/docs', app, document);
 
-  if (existsSync(STATIC_ROOT)) {
-    app.useStaticAssets(STATIC_ROOT);
-    app.useGlobalFilters(new SpaFallbackFilter());
-  }
+  // One global filter for the whole app: the documented error envelope (B-05),
+  // and — in production, where the built PWA exists — the SPA shell fallback for
+  // browser navigations. Passing the index path only when it exists keeps the
+  // fallback off in dev/test (JSON for everything).
+  const spaAvailable = existsSync(STATIC_ROOT);
+  if (spaAvailable) app.useStaticAssets(STATIC_ROOT);
+  app.useGlobalFilters(new AllExceptionsFilter(spaAvailable ? SPA_INDEX : undefined));
 
   const port = process.env.PORT ? Number(process.env.PORT) : 3000;
   await app.listen(port);

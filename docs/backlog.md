@@ -53,7 +53,6 @@ Full write-up + evidence (incl. a reproduced concurrency probe) in [reviews/back
 
 - **B-02 WS eviction on removal** (High) — `SyncGateway` authorizes membership only at upgrade; `removeMember` never closes the socket, so a removed member keeps receiving the trip's live changes. Add `disconnectUser(tripId,userId)` and call it from `removeMember`/`deleteTrip`.
 - **B-04 fail-fast config** (Med) — validate secrets/keys at startup and refuse to boot with `DEV_AUTH=1` under `NODE_ENV=production`.
-- **B-05 error envelope + date/timezone validation** (Med) — add a global exception filter emitting the documented `{error:{code}}` shape (guards/Prisma errors currently don't) and tighten `date`/`startsAt`/`timezone` in `packages/shared` so malformed input is a 400, not a 500.
 - **B-06 event cross-trip refs** (Med) — `events.service` writes client `bookingId`/`placeId` without trip-scoping (bookings already validate places); add the same check.
 - **B-08 graceful shutdown + readiness** (Med) — `app.enableShutdownHooks()`; split `/health` (liveness) from a DB-touching `/health/ready` used as the deploy gate.
 - **B-09 growth gaps** (Med) — `@@index([userId])` on `Membership`; bound `/changes`; race-safe last-admin promotion.
