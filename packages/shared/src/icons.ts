@@ -308,3 +308,34 @@ export const isMultiDay = (event: Pick<TripEvent, 'date' | 'endDate'>): boolean 
  *  ambient-when-multi-day AND it is currently multi-day (ADR-0054, rebased). */
 export const isAmbient = (event: TimedEvent): boolean =>
   profileFor(event.category).ambientWhenMultiDay && isMultiDay(event);
+
+/** The closing edge of an event: the boundary past which it is behind you, for
+ *  every now-relative "is this over?" question (the Index past/upcoming split,
+ *  ADR-0049). Derived purely from the event's own timing *shape*, never its type
+ *  or category — so a new booking type, category, or bracketed/ambient profile
+ *  inherits correct behaviour with no new branching here:
+ *
+ *   - `endsAt` set          → the exact end instant (a flight's arrival, a hotel's
+ *                             check-out, an activity's end)
+ *   - multi-day, no end time → the whole check-out day (`endDate`): an in-progress
+ *                             stay is behind you only once its last day is, never
+ *                             the morning after check-in
+ *   - a single moment (`startsAt`, no end) → that instant (an arrival-less flight
+ *                             or open-ended activity is behind you once it happens)
+ *   - only a `date`         → the whole day: an untimed booking lingers till midnight
+ *
+ *  Returns a discriminated boundary the caller resolves against its own clock —
+ *  an `'instant'` compares to `now` (epoch ms); a `'day'` compares to the trip's
+ *  own today (YYYY-MM-DD, lexical). Keeping derivation here (clock-free, unit-
+ *  testable) and resolution at the caller (which owns `now` + timezone, ADR-0026)
+ *  is what lets this stay pure and shared. */
+export type EventEndBoundary = { kind: 'instant'; at: number } | { kind: 'day'; date: string };
+
+export const eventEndBoundary = (
+  event: Pick<TripEvent, 'date' | 'endDate' | 'startsAt' | 'endsAt'>,
+): EventEndBoundary => {
+  if (event.endsAt) return { kind: 'instant', at: Date.parse(event.endsAt) };
+  if (isMultiDay(event)) return { kind: 'day', date: event.endDate! };
+  if (event.startsAt) return { kind: 'instant', at: Date.parse(event.startsAt) };
+  return { kind: 'day', date: event.date };
+};

@@ -17,15 +17,35 @@ The key property: the Index is a **durable reference surface** (ADR-0004 — int
 **2. Lifecycle drives content state, independent of mode:**
 
 - **Before (brand-new trip):** everything is upcoming; teaching empty states ("האינדקס עוד ריק") that lead to the add flow, never a silent empty list. "Before the trip _with_ bookings" is simply the during view minus the past section.
-- **During:** bookings already behind you mute into a **"כבר מאחוריכם" past section** below the upcoming/active ones, so a ten-day trip's used bookings don't crowd the next flight. Past bookings stay openable (durable record — a flown flight's code for a delay claim, a receipt). The active booking (the hotel you're in) reads "פעיל".
+- **During:** bookings already behind you mute into a **"כבר מאחוריכם" past section** below the upcoming/active ones, so a ten-day trip's used bookings don't crowd the next flight. "Behind you" is measured against the booking's **closing edge, not its calendar day** (see the boundary rule below): a flight drops the moment it lands, a hotel the moment its check-out passes — not at the next midnight. Past bookings stay openable (durable record — a flown flight's code for a delay claim, a receipt). The active booking (the hotel you're in) reads "פעיל".
 - **After (archive):** the finished trip is **read-only** (ADR-0040/0044) — no add/edit affordances, no "פעיל"/now states, an "🗄️ הטיול הסתיים · תצוגה בלבד" banner, and the desaturated archive **wash** (ADR-0043's past-day treatment). **Documents remain openable** (you still want the visa scan or the insurance policy after the trip); bookings remain viewable.
 
 **3. Bookings and documents are peers, with matched add affordances.** Both lists get the same prominent "＋ הוסף הזמנה" / "＋ הוסף מסמך" entry (removed in the read-only archive). An earlier draft had a prominent add-booking button but a quiet bottom-of-card add-document link; the asymmetry made the document action easy to miss. Peer lists, peer affordances.
 
+### Refinement (2026-07-19): the closing-edge boundary rule
+
+The original ("Event's end is behind now") was implemented **day-granular** — a booking dropped to past only once its whole calendar day was behind you (`lastDay(event) < today`). That kept a mid-stay hotel from filing itself under "past" the morning after check-in, but it also kept a flight that landed at 04:30 and a check-out completed at 10:00 sitting in the active list until the next midnight, which reads as a bug (they plainly already happened).
+
+We reconcile the code to the ADR's stated intent — an **end-instant** rule — via one type-agnostic primitive, so it composes cleanly and no new booking type/category/profile can silently break it. A booking's **closing edge** is derived purely from its linked event's timing _shape_, never its type:
+
+| Event shape                                       | Closing edge            | Past when     |
+| ------------------------------------------------- | ----------------------- | ------------- |
+| `endsAt` set (arrival / check-out / activity end) | that instant            | instant < now |
+| multi-day, no end **time** (`endDate` only)       | the whole check-out day | day < today   |
+| a single moment (`startsAt`, no end)              | that instant            | instant < now |
+| only a `date` (no clock time)                     | the whole day           | day < today   |
+
+This keeps the two cases the day-rule got right — a **mid-stay hotel** (its closing edge is the future check-out, so it never drops early) and an **untimed booking** (lingers till midnight) — while a timed point-in-time booking drops the moment it's genuinely behind you.
+
+- **The primitive is `eventEndBoundary(event)` in `@waypoint/shared`** (beside `isMultiDay`/`isAmbient`/`eventDurationUnit`, ADR-0063's time-shape derivations). It's **clock-free and unit-tested**, returning a discriminated `{ kind: 'instant' } | { kind: 'day' }` boundary; the frontend's `isEventPast(event, at, tz)` (in `lib/time.ts`) resolves it against the trip clock + timezone (ADR-0026). Splitting shape-derivation (shared) from clock-resolution (frontend) is what keeps it pure.
+- **Type-agnostic by construction:** it branches on the presence of `endsAt`/`endDate`/`startsAt`/`date`, not on booking type or category. A new bracketed type, a new ambient category, or a manual (non-booking) event inherits correct past/upcoming behaviour with no edit here — which was the design goal.
+- **Trade-off — gradual re-sorting:** an instant rule migrates one row at a time across the day as each booking's edge passes, rather than the day-rule's all-at-once midnight flip. That is more movement than §1's "stable reference list" preference, but it is exactly what "already behind you" should mean, and it is gradual and predictable (each row crosses precisely when it's done), not churn.
+- **Distinct from `eventPhase`'s `passed`** (`lib/time.ts`), which is single-day-scoped (`start ≤ at < end` within one day) for the Day view's now-line; `isEventPast` spans the whole trip and honours multi-day `endDate`. They are cousins over the same clock, deliberately not unified.
+
 ## Consequences
 
 - **One Index screen, skinned and state-switched — not six permutations.** Mode = a chrome reskin (the plan-mode chrome already exists); lifecycle = the content states in §2. `mockups/trip-index-v1.html` demonstrates the Trip-chrome × {during, before, archive} states; the Plan reskin is the known drafting-table chrome applied to the same content.
-- **The past/upcoming split needs a "now" reference**, which the app already derives (ADR-0026 real clock); a booking is "past" when its linked Event's end is behind now. Unlinked bookings (no Event) are never "past" — they sit with upcoming until scheduled.
+- **The past/upcoming split needs a "now" reference**, which the app already derives (ADR-0026 real clock); a booking is "past" when its linked Event's **closing edge** is behind now (the §2 refinement above makes "closing edge" precise). Unlinked bookings (no Event) are never "past" — they sit with upcoming until scheduled.
 - **Archive read-only is consistent with ADR-0040/0044:** the finished trip is a read-only _structural_ archive. Bookings/documents have nothing to "settle" (unlike day-view events), so the Index archive is purely read + open, no settle verbs.
 - No new data is required — every state is derived from existing fields (link status, Event end vs. now, trip lifecycle) plus the mode flag.
 

@@ -3,7 +3,7 @@
 // lives on its 1:1 linked event (ADR-0047); an unlinked booking has no place on
 // the timeline yet, so it's always "upcoming" (something still to schedule).
 import { type Booking, type Trip, type TripEvent } from '@waypoint/shared';
-import { formatTime, todayInTz } from './time';
+import { formatTime, isEventPast, todayInTz } from './time';
 import { plainTimingLabel, timingLabels } from './booking-timing';
 import { MS_PER_DAY } from '../constants';
 import { t } from '../i18n/he';
@@ -14,11 +14,6 @@ export interface BookingRow {
 }
 
 const ms = (iso?: string) => (iso ? Date.parse(iso) : 0);
-
-/** The last calendar day a booking occupies: its check-out for a multi-day span
- *  (endDate), otherwise its single day. Used so an in-progress stay is not filed
- *  under "past" until its check-out has actually passed. */
-const lastDay = (event: TripEvent) => event.endDate ?? event.date;
 
 /** Sort key for a row: scheduled rows by their event's instant (ascending),
  *  unscheduled rows last (they still need placing on the itinerary). */
@@ -35,14 +30,16 @@ export function splitBookings(
   timezone: string,
   now: number,
 ): { upcoming: BookingRow[]; past: BookingRow[] } {
-  const today = todayInTz(timezone, new Date(now));
+  const at = new Date(now);
   const rows: BookingRow[] = bookings.map((booking) => ({
     booking,
     event: events.find((e) => e.bookingId === booking.id),
   }));
-  // A multi-day stay stays "upcoming" through check-out day — it drops to "past"
-  // only once its last day is behind us, not the morning after check-in.
-  const isPast = (r: BookingRow) => !!r.event && lastDay(r.event) < today;
+  // A booking is behind you once its linked event's closing edge has passed
+  // (ADR-0049): a flight at landing, a hotel at check-out, an untimed booking at
+  // midnight. An unlinked booking has no place on the timeline yet, so it's never
+  // past. The edge is derived type-agnostically by `eventEndBoundary`.
+  const isPast = (r: BookingRow) => !!r.event && isEventPast(r.event, at, timezone);
   return {
     upcoming: rows.filter((r) => !isPast(r)).sort(byWhen),
     past: rows.filter(isPast).sort(byWhen),
