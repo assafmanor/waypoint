@@ -92,6 +92,12 @@ export const CHANGE_ACTION = {
   STATUS: 'status',
 } as const satisfies Record<string, ChangeAction>;
 
+/** Max `Change` rows one `GET /changes` page returns (backend-review B-09). A very
+ *  old or reset cursor otherwise streams a trip's entire history unbounded; the
+ *  client cursors on `seq` and keeps fetching while a page comes back full. Shared
+ *  so the server's `take` and the client's continuation loop agree. */
+export const CHANGES_PAGE_LIMIT = 500;
+
 /** Trip name length cap — keeps the header switcher pill to one line
  *  (app-shell.md §5). Validated server-side (createTripSchema) and enforced
  *  client-side (the create form's input `maxLength`). */

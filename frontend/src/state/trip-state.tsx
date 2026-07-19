@@ -14,6 +14,7 @@ import {
 } from 'react';
 import {
   BOOKING_SOURCE,
+  CHANGES_PAGE_LIMIT,
   EVENT_STATUS,
   type Booking,
   type Change,
@@ -537,13 +538,17 @@ function TripReady({
     // missed. Used both on an `online`/visibility transition and on a WS-driven
     // reconnect (F-04) — the difference is only whether the socket is reopened
     // (handleOnline does; the WS reconnect already reopened it before calling back).
-    function catchUp(): Promise<void> {
-      return flushOutbox(tripId)
-        .then(() => fetchChanges(tripId, lastSeqRef.current))
-        .then((changes) => {
-          for (const change of changes) applyRemoteChange(change);
-          onReconnected();
-        });
+    async function catchUp(): Promise<void> {
+      await flushOutbox(tripId);
+      // `/changes` is paged (CHANGES_PAGE_LIMIT, ADR-0068/B-09): keep fetching from
+      // the last applied seq while a page comes back full, so a long or reset cursor
+      // catches up across pages instead of stopping after the first.
+      for (;;) {
+        const changes = await fetchChanges(tripId, lastSeqRef.current);
+        for (const change of changes) applyRemoteChange(change);
+        if (changes.length < CHANGES_PAGE_LIMIT) break;
+      }
+      onReconnected();
     }
 
     function connect(sinceSeq: string) {

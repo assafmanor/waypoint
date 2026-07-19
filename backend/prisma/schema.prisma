@@ -168,6 +168,9 @@ model Membership {
 
   @@unique([tripId, userId])
   @@index([tripId])
+  // getMe / listForUser filter by userId alone; the composite unique above leads
+  // with tripId, so those scan without this (backend-review B-09).
+  @@index([userId])
 }
 
 model Event {

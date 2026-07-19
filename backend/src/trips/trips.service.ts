@@ -20,7 +20,7 @@ import type {
   UpdateTripInput,
 } from '@waypoint/shared';
 import { PrismaService } from '../prisma/prisma.service';
-import { ChangeService } from '../sync/change.service';
+import { ChangeService, type ChangeOp } from '../sync/change.service';
 import {
   toBookingDto,
   toDocumentSummaryDto,
@@ -211,39 +211,46 @@ export class TripsService {
       await this.assertAdmin(tripId, actorUserId);
     }
 
-    await this.changes.mutate({
+    // Delete + the last-admin check/promotion run in ONE transaction, which holds
+    // the per-trip advisory lock (ADR-0068). That makes the read-then-promote
+    // race-safe (B-09): two concurrent removals fully serialize, so a trip is never
+    // left admin-less and never double-promotes. If no admin remains but members
+    // do, the earliest-joined member is promoted (ADR-0039).
+    await this.changes.mutateMany<null>({
       tripId,
       actorUserId,
-      entityType: 'membership',
-      entityId: target.id,
-      action: 'delete',
-      before: toMembershipDto(target),
-      apply: (tx) => tx.membership.delete({ where: { id: target.id } }),
-    });
+      apply: async (tx) => {
+        await tx.membership.delete({ where: { id: target.id } });
+        const ops: ChangeOp[] = [
+          {
+            entityType: 'membership',
+            entityId: target.id,
+            action: 'delete',
+            before: toMembershipDto(target),
+          },
+        ];
 
-    await this.ensureAdminExists(tripId, actorUserId);
-  }
+        const remaining = await tx.membership.findMany({
+          where: { tripId },
+          orderBy: { joinedAt: 'asc' },
+        });
+        if (remaining.length > 0 && !remaining.some((m) => m.role === 'admin')) {
+          const next = remaining[0];
+          const promoted = await tx.membership.update({
+            where: { id: next.id },
+            data: { role: 'admin' },
+          });
+          ops.push({
+            entityType: 'membership',
+            entityId: next.id,
+            action: 'update',
+            before: toMembershipDto(next),
+            after: toMembershipDto(promoted),
+          });
+        }
 
-  /** After a removal, if no admin remains but members do, promote the
-   *  earliest-joined member (arbitrary but stable) so a trip is never
-   *  admin-less (ADR-0039). The promotion is itself a data-plane change. */
-  private async ensureAdminExists(tripId: string, actorUserId: string): Promise<void> {
-    const remaining = await this.prisma.membership.findMany({
-      where: { tripId },
-      orderBy: { joinedAt: 'asc' },
-    });
-    if (remaining.length === 0 || remaining.some((m) => m.role === 'admin')) return;
-
-    const next = remaining[0];
-    await this.changes.mutate({
-      tripId,
-      actorUserId,
-      entityType: 'membership',
-      entityId: next.id,
-      action: 'update',
-      before: toMembershipDto(next),
-      after: toMembershipDto({ ...next, role: 'admin' }),
-      apply: (tx) => tx.membership.update({ where: { id: next.id }, data: { role: 'admin' } }),
+        return { entity: null, ops };
+      },
     });
   }
 

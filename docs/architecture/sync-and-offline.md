@@ -85,7 +85,7 @@ A quick nudge (the `+`/`−` stepper, as opposed to an explicit `date` change) i
 ### Bootstrap & catch-up
 
 - **Initial load / deep desync:** `GET /trips/:tripId/snapshot` returns the full current trip state **plus `latestSeq`**, read in one transaction (a coherent baseline with one cursor). Sets `lastSeq`.
-- **Reconnect within the log:** `GET /trips/:tripId/changes?sinceSeq=<lastSeq>` replays anything missed, then re-subscribe to the socket. (Timestamp cursors are lossy on ms collisions — always cursor on `seq`.)
+- **Reconnect within the log:** `GET /trips/:tripId/changes?sinceSeq=<lastSeq>` replays anything missed, then re-subscribe to the socket. (Timestamp cursors are lossy on ms collisions — always cursor on `seq`.) The response is **paged** at `CHANGES_PAGE_LIMIT` rows (shared constant, B-09) so a very old or reset cursor can't stream the whole log in one shot; the client keeps fetching from the last returned `seq` while a page comes back full, then stops on the first short page.
 
 ## What we explicitly do NOT build in v1
 

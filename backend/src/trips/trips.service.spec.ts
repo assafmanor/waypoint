@@ -288,6 +288,29 @@ describe('TripsService', () => {
     expect(members.find((m) => m.userId === PEER_USER)?.role).toBe('admin');
   });
 
+  // B-09: the last-admin check + promotion runs inside the removal transaction
+  // (under the per-trip advisory lock, ADR-0068), so two concurrent removals of
+  // the two admins serialize — the trip keeps exactly one admin instead of being
+  // left admin-less (both seeing the other still present and neither promoting).
+  it('keeps exactly one admin when both admins are removed concurrently', async () => {
+    const trip = await service.createTrip(DEV_USER, NEW_TRIP_INPUT);
+    createdTripIds.push(trip.id);
+    await service.joinByToken(PEER_USER, service.createInviteToken(trip.id));
+    await service.joinByToken(OTHER_PEER_USER, service.createInviteToken(trip.id));
+    await service.setMemberRole(trip.id, DEV_USER, PEER_USER, { role: 'admin' });
+
+    // DEV and PEER are both admins; OTHER_PEER is a plain peer. Remove both admins
+    // at once — the survivor must be promoted so the trip is never admin-less.
+    await Promise.all([
+      service.removeMember(trip.id, DEV_USER, DEV_USER),
+      service.removeMember(trip.id, PEER_USER, PEER_USER),
+    ]);
+
+    const { members } = await service.getTripWithMembers(trip.id);
+    expect(members).toHaveLength(1);
+    expect(members).toEqual([expect.objectContaining({ userId: OTHER_PEER_USER, role: 'admin' })]);
+  });
+
   it('does not auto-promote while an admin still remains', async () => {
     const trip = await service.createTrip(DEV_USER, NEW_TRIP_INPUT);
     createdTripIds.push(trip.id);

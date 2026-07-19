@@ -57,7 +57,7 @@ User×Trip join — enables collaboration, multi-trip (ADR-0021), and per-user c
 - `id`, `tripId`, `userId`, `role` (`MembershipRole`: `admin` | `peer` — creator is `admin`, ADR-0005)
 - `calendarSyncEnabled Boolean` (per-trip intent; capability derives from the user's Google `AuthIdentity.scopes`)
 - `joinedAt`
-- `@@unique([tripId, userId])`, `@@index([tripId])`
+- `@@unique([tripId, userId])`, `@@index([tripId])`, `@@index([userId])` (the last for `getMe`/`listForUser`, which filter by `userId` alone — the composite leads with `tripId`; backend-review B-09)
 
 ### Event ⭐ (the core)
 

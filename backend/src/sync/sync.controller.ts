@@ -1,6 +1,6 @@
 import { BadRequestException, Controller, Get, Param, Query, UseGuards } from '@nestjs/common';
 import { ApiBearerAuth, ApiOkResponse, ApiTags } from '@nestjs/swagger';
-import { changeSchema, type Change } from '@waypoint/shared';
+import { changeSchema, CHANGES_PAGE_LIMIT, type Change } from '@waypoint/shared';
 import { createZodDto, ZodSerializerDto } from 'nestjs-zod';
 import { PrismaService } from '../prisma/prisma.service';
 import { MembershipGuard } from '../trips/membership.guard';
@@ -25,9 +25,13 @@ export class SyncController {
     if (!/^\d+$/.test(sinceSeqParam)) {
       throw new BadRequestException('sinceSeq must be a non-negative integer');
     }
+    // Bounded page (B-09): a very old / reset cursor won't stream the whole log in
+    // one response. The client keeps fetching with the last seq until a short page
+    // signals it has caught up (CHANGES_PAGE_LIMIT is shared so both ends agree).
     const rows = await this.prisma.change.findMany({
       where: { tripId, seq: { gt: BigInt(sinceSeqParam) } },
       orderBy: { seq: 'asc' },
+      take: CHANGES_PAGE_LIMIT,
     });
     return rows.map(toChangeDto);
   }
