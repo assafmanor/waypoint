@@ -1,6 +1,6 @@
 // Trip-timezone formatting + client-side "now" derivation.
 // "Now" is never stored (ADR-0018) — it's computed from event startsAt/endsAt vs the clock.
-import { EVENT_KIND, EVENT_STATUS, type TripEvent } from '@waypoint/shared';
+import { EVENT_KIND, EVENT_STATUS, eventEndBoundary, type TripEvent } from '@waypoint/shared';
 import {
   COUNTDOWN_MONTHS_THRESHOLD,
   DAY_WINDOW,
@@ -141,6 +141,26 @@ export function eventPhase(event: TripEvent, at: Date): EventPhase {
   if (t < start) return 'upcoming';
   if (t < end) return 'now';
   return 'passed';
+}
+
+/** Whether an event's occupancy is behind you at `at`, in the trip timezone —
+ *  the single trip-wide "is this past?" rule (ADR-0049), used to file bookings
+ *  under the Index's "כבר מאחוריכם". Resolves the shared, type-agnostic
+ *  `eventEndBoundary`: an instant boundary crosses on the clock (a flight is past
+ *  once it lands, a hotel once its check-out passes), a day boundary only once its
+ *  day is strictly before today (an untimed booking lingers till midnight, a
+ *  mid-stay hotel never drops early). Distinct from `eventPhase`'s `passed`, which
+ *  is single-day-scoped (start ≤ at < end within one day) for the now-line; this
+ *  one spans the whole trip and honours multi-day `endDate`. */
+export function isEventPast(
+  event: Pick<TripEvent, 'date' | 'endDate' | 'startsAt' | 'endsAt'>,
+  at: Date,
+  timeZone: string,
+): boolean {
+  const boundary = eventEndBoundary(event);
+  return boundary.kind === 'instant'
+    ? boundary.at < at.getTime()
+    : boundary.date < todayInTz(timeZone, at);
 }
 
 /** Whole minutes until an instant (floored at 0). */
