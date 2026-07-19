@@ -1,0 +1,103 @@
+/* ChangeFeed (domain, ADR-0081 / review U-09). A quiet, neutral strip — NOT a
+   second loud element (the board is the only loud surface). Chrome only: no
+   amber/teal/plan (those stay semantic). Spacing/type/radius from tokens. RTL
+   via logical props; the clock time + relative numeral are LTR islands. */
+
+.wp-changefeed {
+  margin-block-start: var(--space-4);
+  border: 1px solid var(--line);
+  border-radius: var(--radius-12);
+  background: var(--card);
+  padding: var(--space-2) var(--space-3) var(--space-1);
+}
+
+.cf-head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: var(--space-2);
+  padding-block-end: var(--space-1);
+}
+
+.cf-title {
+  font-size: var(--text-caption);
+  font-weight: 700;
+  color: var(--muted);
+}
+
+.cf-clear {
+  border: 0;
+  background: none;
+  color: var(--muted);
+  font-size: var(--text-caption);
+  font-weight: 600;
+  padding: var(--space-1) var(--space-2);
+  border-radius: var(--radius-8);
+  cursor: pointer;
+}
+.cf-clear:hover {
+  color: var(--ink);
+}
+
+.cf-list {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+}
+
+.cf-item {
+  display: flex;
+  align-items: baseline;
+  gap: var(--space-2);
+  padding-block: var(--space-1);
+  border-block-start: 1px solid var(--line);
+  font-size: var(--text-secondary);
+  color: var(--ink);
+}
+.cf-item:first-child {
+  border-block-start: 0;
+}
+
+.cf-line {
+  flex: 1 1 auto;
+  min-width: 0;
+  line-height: 1.4;
+}
+
+.cf-actor {
+  font-weight: 700;
+}
+
+.cf-time {
+  font-family: var(--font-mono);
+  font-weight: 600;
+  margin-inline-start: 2px;
+  unicode-bidi: isolate;
+}
+
+.cf-meta {
+  flex: 0 0 auto;
+  font-size: var(--text-micro);
+  color: var(--muted);
+  white-space: nowrap;
+}
+
+.cf-num {
+  font-family: var(--font-mono);
+  unicode-bidi: isolate;
+}
+
+.cf-x {
+  flex: 0 0 auto;
+  border: 0;
+  background: none;
+  color: var(--muted);
+  font-size: var(--text-caption);
+  line-height: 1;
+  padding: var(--space-1);
+  border-radius: var(--radius-8);
+  cursor: pointer;
+}
+.cf-x:hover {
+  color: var(--ink);
+}
