@@ -240,24 +240,46 @@ Dark mode is a **token remap, not a redesign**. Because every component reads `v
 
 **Dark remap table** (as wired in `tokens.css`):
 
-| Token                      | Light                 | Dark                                                       |
-| -------------------------- | --------------------- | ---------------------------------------------------------- |
-| `--ink`                    | `#16233D`             | `#E7EAF2`                                                  |
-| `--screen`                 | `#E7EAEF`             | `#0F1726`                                                  |
-| `--card`                   | `#FFFFFF`             | `#1A2740`                                                  |
-| `--paper`                  | `#F3EFE6`             | `#2E2A20`                                                  |
-| `--indigo`                 | `#1B2A4A`             | `#131F38`                                                  |
-| `--board` / `--board-2`    | `#0E1729` / `#152137` | `#0A1120` / `#101B30`                                      |
-| `--amber` / `--amber-deep` | `#E9A63C` / `#C9822A` | `#F0B254` / `#D89440`                                      |
-| `--teal`                   | `#2C9C90`             | `#3FB3A5`                                                  |
-| `--plan` / `--plan-deep`   | `#6E59D6` / `#5747B4` | `#8B79E8` / `#A99AF2` (deep is used as _text_, so lighter) |
-| `--muted`                  | `#6C7488`             | `#93A0B8`                                                  |
-| `--line` / `--soft-line`   | ink @ .10/.28         | light @ .10/.30                                            |
-| `--cta` / `--cta-text`     | `#16233D` / `#FFF`    | `#E7EAF2` / `#12203A`                                      |
-| `--ok` / `--miss`          | `#3C9A6B` / `#C2584E` | `#4CBF85` / `#E07A6E`                                      |
+| Token                      | Light                 | Dark                                                                                       |
+| -------------------------- | --------------------- | ------------------------------------------------------------------------------------------ |
+| `--ink`                    | `#16233D`             | `#E7EAF2`                                                                                  |
+| `--screen`                 | `#E7EAEF`             | `#0F1726`                                                                                  |
+| `--card`                   | `#FFFFFF`             | `#1A2740`                                                                                  |
+| `--paper`                  | `#F3EFE6`             | `#2E2A20`                                                                                  |
+| `--indigo`                 | `#1B2A4A`             | `#131F38`                                                                                  |
+| `--board` / `--board-2`    | `#0E1729` / `#152137` | `#0A1120` / `#101B30`                                                                      |
+| `--amber` / `--amber-deep` | `#E9A63C` / `#C9822A` | `#F0B254` / `#D89440`                                                                      |
+| `--amber-ink`              | `#7A5A1E`             | `#F0B254` (dark-amber text on a light amber _tint_; the tint darkens, so the ink lightens) |
+| `--teal`                   | `#2C9C90`             | `#3FB3A5`                                                                                  |
+| `--plan` / `--plan-deep`   | `#6E59D6` / `#5747B4` | `#8B79E8` / `#A99AF2` (deep is used as _text_, so lighter)                                 |
+| `--muted`                  | `#6C7488`             | `#93A0B8`                                                                                  |
+| `--faint`                  | `#98A0B0`             | `#8592AB` (faint hint/placeholder text, one step past `--muted`)                           |
+| `--line` / `--soft-line`   | ink @ .10/.28         | light @ .10/.30                                                                            |
+| `--cta` / `--cta-text`     | `#16233D` / `#FFF`    | `#E7EAF2` / `#12203A`                                                                      |
+| `--ok` / `--miss`          | `#3C9A6B` / `#C2584E` | `#4CBF85` / `#E07A6E`                                                                      |
 
-**Remaining work before dark mode can ship** (why this is "readiness", not "done"):
+**Status — shippable behind the `data-theme` toggle** (U-08 / ADR-0077 tail):
 
-1. Sweep hardcoded hexes into tokens — e.g., `#fff` hovers, `#FAFBFD` row hovers, header-scoped `#9DAAC8`-family text colors.
-2. Contrast pass: amber on dark is for **numbers/short labels ≥12px bold** only; verify toggles and muted text.
-3. Component QA on the board: the glow radials use literal rgba — acceptable (glow is amber-semantic), but verify against the darker board value.
+The hardcoded-hex sweep is **done**. `App.css` and `screens.css` now read tokens for
+every themeable color; the remaining literal hexes are intentionally theme-fixed and
+carry a `/* fixed: … */` (or `/* brand */`) marker — light ink painted on the
+always-dark trip-mode chrome (header, dormant board, join/land boards, ticket,
+trip-hero), ink that rides a semantic fill (dark ink on an amber pill; white on a
+plan / ok / miss / cta / ink fill), light ink on the always-violet plan hero, the
+shared white spinner, ink on colored avatars, and the Google brand mark. Two tokens
+were added to carry drifted values onto the remap: `--faint` (faint hint/placeholder
+text) and `--amber-ink` (dark-amber text on a light amber tint). The dark block in
+`tokens.css` now covers every color token.
+
+**Before flipping it on for users** (what's left is verification, not wiring):
+
+1. **Live contrast pass** in a real dark render. Computed WCAG ratios (light + dark)
+   were checked during the sweep and clear AA for body text (e.g. `--ink` on
+   `--card`, `--muted`/`--faint` on `--card`) and AA-large / UI for the amber-on-board
+   and on-fill pairs; these need one in-browser confirmation (no runtime existed at
+   sweep time). Amber on dark stays reserved for **numbers/short labels ≥12px bold**.
+2. **Component QA on the board:** the glow radials use literal rgba — acceptable (glow
+   is amber-semantic) — but verify against the darker dark board value (`#0A1120`).
+3. **A theme toggle + persistence** (and the trip-mode "follow system / default dark
+   at night" default, above) still need wiring — the remap is inert until something
+   sets `data-theme="dark"`.

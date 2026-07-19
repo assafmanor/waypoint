@@ -11,8 +11,11 @@
   --paper: #f3efe6;
   --amber: #e9a63c;
   --amber-deep: #c9822a;
+  --amber-ink: #7a5a1e; /* dark-amber text on a light amber TINT (e.g. the ripple bar);
+                           the tint darkens on dark, so this lightens (see dark block) */
   --teal: #2c9c90;
   --muted: #6c7488;
+  --faint: #98a0b0; /* faint hint/placeholder/secondary text — one step lighter than --muted */
   --line: rgba(22, 35, 61, 0.1);
   --soft-line: rgba(22, 35, 61, 0.28);
   --shadow: 0 18px 40px -18px rgba(14, 23, 41, 0.45);
@@ -159,8 +162,10 @@ body {
   --paper: #2e2a20; /* keeps its warmth, dark */
   --amber: #f0b254;
   --amber-deep: #d89440;
+  --amber-ink: #f0b254; /* amber text now: the tint sits on a dark screen, so ink→light amber */
   --teal: #3fb3a5;
   --muted: #93a0b8;
+  --faint: #8592ab; /* dim light — quieter than --muted, still clears AA on --card */
   --line: rgba(231, 234, 242, 0.1);
   --soft-line: rgba(231, 234, 242, 0.3);
   --shadow: 0 18px 40px -18px rgba(0, 0, 0, 0.6);
