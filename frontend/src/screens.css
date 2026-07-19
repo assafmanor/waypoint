@@ -759,155 +759,6 @@
   outline-offset: 2px;
 }
 
-/* itinerary items */
-.item {
-  background: var(--card);
-  border: 1px solid var(--line);
-  border-radius: 15px;
-  margin-bottom: 10px;
-  overflow: hidden;
-}
-.item.soft {
-  background: repeating-linear-gradient(-45deg, #fff 0 9px, #fbfaf7 9px 18px);
-  border: 1px dashed var(--soft-line);
-}
-.item.now {
-  border-color: var(--amber);
-  box-shadow: 0 0 0 3px rgba(233, 166, 60, 0.13);
-}
-/* A passed event recedes — quieter than a live one, still legible reference
-   (ADR-0043). Derived from the clock, never a stored status. The hatch of a
-   soft card flattens so it reads settled, not provisional. */
-.item.passed {
-  opacity: 0.66;
-}
-.item.passed.soft {
-  background: #f7f7f9;
-  border-style: solid;
-  border-color: var(--line);
-}
-/* A done event settles like a passed one, plus a positive ✓ (ok-green, a record,
-   not a clock event — never amber). Replaces the old flat 50% face dim. */
-.item.done {
-  opacity: 0.85;
-  background: #f6faf7;
-  border-color: rgba(60, 154, 107, 0.32);
-  border-style: solid;
-}
-.item.done .badge {
-  background: rgba(60, 154, 107, 0.12);
-}
-.face .check {
-  flex: 0 0 auto;
-  width: 22px;
-  height: 22px;
-  border-radius: 999px;
-  display: grid;
-  place-items: center;
-  font-size: 12px;
-  font-weight: 700;
-  color: #fff;
-  background: var(--ok);
-}
-/* The done ✓ as a tap-to-undo control (ADR-0043 revision): the record badge
-   doubles as a one-tap restore. Stays --ok green (a record, never amber,
-   ADR-0028); on hover/focus the ✓ morphs to an undo arrow with a soft ring, and
-   a thin persistent ring hints it's tappable on touch (no hover). The row's
-   שחזר stays as the discoverable twin. Only rendered off a read-only day. */
-.face .check.btn {
-  position: relative;
-  cursor: pointer;
-  transition:
-    box-shadow var(--t-quick),
-    transform var(--t-quick);
-}
-.check.btn .mark,
-.check.btn .undo {
-  grid-area: 1 / 1;
-  transition:
-    opacity var(--t-quick),
-    transform var(--t-quick);
-}
-.check.btn .undo {
-  opacity: 0;
-  transform: scale(0.6);
-  font-size: 13px;
-}
-.check.btn:hover,
-.check.btn:focus-visible {
-  box-shadow: 0 0 0 4px rgba(60, 154, 107, 0.18);
-  transform: scale(1.06);
-}
-.check.btn:hover .mark,
-.check.btn:focus-visible .mark {
-  opacity: 0;
-  transform: scale(0.6);
-}
-.check.btn:hover .undo,
-.check.btn:focus-visible .undo {
-  opacity: 1;
-  transform: scale(1);
-}
-.check.btn:focus-visible {
-  outline: 2.5px solid var(--teal);
-  outline-offset: 2px;
-}
-.check.btn:active {
-  transform: scale(0.92);
-}
-.check.btn::after {
-  content: '';
-  position: absolute;
-  inset: -4px;
-  border-radius: 999px;
-  box-shadow: 0 0 0 1.5px rgba(60, 154, 107, 0.35);
-}
-/* Settle variant: a calm, non-expanding card (a div, not the toggle button). */
-.face.static {
-  cursor: default;
-}
-.face {
-  display: flex;
-  align-items: center;
-  gap: 12px;
-  padding: 14px 15px;
-  cursor: pointer;
-  width: 100%;
-  background: none;
-  border: 0;
-  font: inherit;
-  color: inherit;
-  text-align: inherit;
-}
-.face:focus-visible {
-  outline: 2.5px solid var(--teal);
-  outline-offset: -2px;
-}
-.badge {
-  width: 40px;
-  height: 40px;
-  border-radius: 12px;
-  display: grid;
-  place-items: center;
-  font-size: 19px;
-  flex: 0 0 auto;
-  background: var(--paper);
-}
-.item.soft .badge {
-  background: rgba(22, 35, 61, 0.05);
-}
-.face .main {
-  flex: 1;
-  min-width: 0;
-}
-.face .main .t {
-  font-weight: 700;
-  font-size: 14.5px;
-  display: flex;
-  align-items: center;
-  gap: 7px;
-  flex-wrap: wrap;
-}
 .tag-hard {
   font-size: 10px;
   font-weight: 700;
@@ -947,155 +798,6 @@
   display: inline-flex;
   align-items: center;
   gap: 3px;
-}
-.face .main .m {
-  font-size: 12px;
-  color: var(--muted);
-  margin-top: 3px;
-  display: flex;
-  align-items: center;
-  gap: 6px;
-  flex-wrap: wrap;
-}
-.face .time {
-  font-family: var(--font-mono);
-  font-size: 13px;
-  font-weight: 700;
-  color: var(--ink);
-  flex: 0 0 auto;
-  text-align: end;
-}
-.item.soft .face .time {
-  color: var(--muted);
-}
-.face .chev {
-  color: #b5bcc9;
-  font-size: 13px;
-  flex: 0 0 auto;
-  display: grid;
-  place-items: center;
-  transition: transform 0.2s;
-}
-.item.open .chev {
-  transform: rotate(180deg);
-}
-
-.actions {
-  max-height: 0;
-  overflow: hidden;
-  transition: max-height 0.28s ease;
-  background: #fafbfd;
-  border-top: 1px solid transparent;
-}
-.item.open .actions {
-  max-height: 220px;
-  border-top-color: var(--line);
-}
-.act-row {
-  display: flex;
-  gap: 7px;
-  padding: 12px 14px;
-  flex-wrap: wrap;
-}
-.act {
-  font: inherit;
-  font-size: 12px;
-  font-weight: 600;
-  border: 1px solid var(--line);
-  background: #fff;
-  color: var(--ink);
-  border-radius: 9px;
-  padding: 7px 11px;
-  cursor: pointer;
-  transition: 0.12s;
-}
-.act:hover {
-  background: var(--ink);
-  color: #fff;
-  border-color: var(--ink);
-}
-.act.go {
-  border-color: var(--teal);
-  color: var(--teal);
-}
-.act.go:hover {
-  background: var(--teal);
-  color: #fff;
-}
-.act.danger {
-  border-color: rgba(181, 67, 47, 0.4);
-  color: #b5432f;
-}
-.act.danger:hover {
-  background: #b5432f;
-  color: #fff;
-  border-color: #b5432f;
-}
-.act-row-end {
-  display: flex;
-  gap: 7px;
-  margin-inline-start: auto;
-}
-.act.icon-only {
-  padding: 7px 10px;
-  font-size: 14px;
-  line-height: 1;
-}
-/* Overflow ⋯ opening the Tier-2 action sheet (edit · delete, ADR-0025). Set
-   apart from the quick verbs: no border until touched, so the strip reads as
-   "verbs + a quiet more". */
-.act.icon-only.more {
-  border-color: transparent;
-  color: var(--muted);
-  font-size: 17px;
-  padding: 6px 9px;
-}
-.act.icon-only.more:hover {
-  background: var(--paper);
-  color: var(--ink);
-  border-color: var(--line);
-}
-.act:focus-visible {
-  outline: 2.5px solid var(--teal);
-  outline-offset: 2px;
-}
-.act.stepper {
-  display: flex;
-  align-items: stretch;
-  padding: 0;
-}
-.act.stepper .step {
-  font: inherit;
-  font-size: 14px;
-  font-weight: 700;
-  line-height: 1;
-  border: none;
-  background: transparent;
-  color: inherit;
-  padding: 7px 10px;
-  cursor: pointer;
-}
-.act.stepper .step-label {
-  display: flex;
-  align-items: center;
-  padding: 7px 6px;
-  border-inline: 1px solid var(--line);
-  color: var(--muted);
-  font-size: 11px;
-}
-.hard-warn {
-  font-size: 11px;
-  color: var(--amber-deep);
-  padding: 0 14px 12px;
-  display: flex;
-  align-items: center;
-  gap: 6px;
-}
-.conflict-flag {
-  display: block;
-  font-size: 11px;
-  color: var(--amber-deep);
-  margin-top: 2px;
 }
 
 /* ripple suggestion bar — pinned to the top of the scroll viewport so the
@@ -1229,42 +931,11 @@
   opacity: 0.8;
 }
 
-/* Inline settle strip on a passed-but-unmarked soft event (ADR-0043): the
-   "still on?" moment, made one tap — the reframed Done's natural home. */
-.settle {
-  display: flex;
-  align-items: center;
-  gap: 8px;
-  padding: 0 15px 12px 66px;
-  margin-top: -2px;
-}
-.item.soft .settle {
-  padding-inline-end: 62px;
-}
-.settle-q {
-  font-size: 11.5px;
-  font-weight: 600;
-  color: var(--muted);
-  margin-inline-end: auto;
-}
-.settle button {
-  font: inherit;
-  font-size: 11.5px;
-  font-weight: 700;
-  border-radius: 999px;
-  padding: 5px 13px;
-  cursor: pointer;
-  border: 1px solid var(--line);
-  background: var(--card);
-  color: var(--ink);
-}
+/* The "we were there" affirmative in a settle chooser (ADR-0043/0044): green
+   record accent, shared by the Plan-mode archive settle sheet. */
 .settle-yes {
   border-color: rgba(60, 154, 107, 0.4) !important;
   color: var(--ok) !important;
-}
-.settle button:focus-visible {
-  outline: 2.5px solid var(--teal);
-  outline-offset: 2px;
 }
 
 /* Past-day archive (ADR-0029/0040): a calm read-only banner + a slightly cooled,
@@ -1366,57 +1037,6 @@
 }
 .shelf::-webkit-scrollbar {
   height: 0;
-}
-.maybe {
-  scroll-snap-align: start;
-  flex: 0 0 auto;
-  width: 150px;
-  text-align: start;
-  background: repeating-linear-gradient(-45deg, #fff 0 9px, #fbfaf7 9px 18px);
-  border: 1px dashed var(--soft-line);
-  border-radius: 15px;
-  padding: 12px;
-  cursor: pointer;
-  transition: 0.14s;
-  font: inherit;
-  color: var(--ink);
-  display: block;
-}
-.maybe:hover {
-  transform: translateY(-2px);
-  border-color: var(--plan); /* scheduling is a plan action (design-language: color budget) */
-}
-.maybe:focus-visible {
-  outline: 2.5px solid var(--teal);
-  outline-offset: 2px;
-}
-.maybe.consumed {
-  opacity: 0.4;
-  cursor: default;
-}
-.maybe .mi {
-  font-size: 20px;
-  display: block;
-}
-.maybe .mt {
-  font-weight: 700;
-  font-size: 13.5px;
-  margin-top: 6px;
-  line-height: 1.15;
-  display: block;
-}
-.maybe .mm {
-  font-size: 11px;
-  color: var(--muted);
-  margin-top: 4px;
-  display: block;
-}
-.maybe .add {
-  margin-top: 9px;
-  font-size: 11px;
-  font-weight: 700;
-  color: var(--plan-deep); /* plan action, not location */
-  display: block;
 }
 
 /* empty note */
@@ -2611,55 +2231,6 @@
   outline-offset: 1px;
 }
 
-/* Maybe card is now a container (schedule body + remove ✕) rather than one
-   button, so ideas can be removed from the shelf (Plan-mode Tier 3). */
-.maybe {
-  position: relative;
-}
-.maybe-body {
-  display: block;
-  width: 100%;
-  text-align: start;
-  font: inherit;
-  color: inherit;
-  background: none;
-  border: 0;
-  padding: 0;
-  cursor: pointer;
-}
-.maybe-body:disabled {
-  cursor: default;
-}
-.maybe-body:focus-visible {
-  outline: 2.5px solid var(--plan);
-  outline-offset: 2px;
-  border-radius: 8px;
-}
-.maybe-remove {
-  position: absolute;
-  top: 6px;
-  inset-inline-end: 6px;
-  width: 20px;
-  height: 20px;
-  display: grid;
-  place-items: center;
-  border: 0;
-  border-radius: 50%;
-  background: rgba(22, 35, 61, 0.06);
-  color: var(--muted);
-  font-size: 11px;
-  line-height: 1;
-  cursor: pointer;
-}
-.maybe-remove:hover {
-  background: var(--miss);
-  color: #fff;
-}
-.maybe-remove:focus-visible {
-  outline: 2px solid var(--miss);
-  outline-offset: 1px;
-}
-
 /* add-idea row under the shelf */
 .add-idea {
   display: flex;
@@ -2923,15 +2494,14 @@
   flex: 0 0 auto;
 }
 
-/* A skipped soft event parked on the shelf (ADR-0027): same card as an idea,
-   but its action is restore (neutral, not the violet "schedule" action). */
-.maybe.skipped-card .add {
+/* A skipped soft event parked on the shelf (ADR-0027) reuses the MaybeCard, but
+   its action is restore (neutral, not the violet "schedule" action). */
+.wp-maybecard.skipped-card .wp-maybecard-add {
   color: var(--muted);
 }
 
 /* Time cells may now show a start–end range; keep them on one line. */
-.bld-time,
-.item .time {
+.bld-time {
   white-space: nowrap;
 }
 
