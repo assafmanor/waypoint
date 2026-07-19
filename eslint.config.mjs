@@ -63,4 +63,38 @@ export default tseslint.config(
       ],
     },
   },
+  {
+    // ADR-0035: every overlay must register with the back stack so one back /
+    // Escape / return-gesture closes it instead of navigating out from under it.
+    // `createPortal` is the tell of a free-floating overlay, and registration
+    // lives in `useOverlay` — reached for free by rendering through the single
+    // `Modal` primitive (Sheet/ConfirmDialog/RowManageSheet wrap it). A bespoke
+    // portal that skips this floats over the app invisibly to the back model, the
+    // exact regression this rule prevents. `no-restricted-imports` is a distinct
+    // rule key from the `no-restricted-syntax` block above, so the two coexist
+    // without either overriding the other for these files.
+    //
+    // Allowlist: `Modal` (the one primitive that owns the portal) and
+    // `DocumentViewer` (a full-screen viewer that legitimately needs its own
+    // portal but is already back-aware — it calls `useOverlay` directly). A new
+    // portal file failing this must EITHER build on `Modal` (preferred) or, if it
+    // truly needs a raw portal, call `useOverlay()` and add itself here.
+    files: ['frontend/src/**/*.{ts,tsx}'],
+    ignores: ['frontend/src/ui/primitives/Modal.tsx', 'frontend/src/ui/DocumentViewer.tsx'],
+    rules: {
+      'no-restricted-imports': [
+        'error',
+        {
+          paths: [
+            {
+              name: 'react-dom',
+              importNames: ['createPortal'],
+              message:
+                'Overlays must register with the back stack (ADR-0035): render through the Modal primitive (ui/primitives/Modal — Sheet/ConfirmDialog/RowManageSheet wrap it) so back/Escape/the return gesture close them. If you truly need a bespoke portal, call useOverlay() and add the file to the allowlist in eslint.config.mjs.',
+            },
+          ],
+        },
+      ],
+    },
+  },
 );
