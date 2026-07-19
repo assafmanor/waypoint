@@ -427,6 +427,128 @@
         font-family: var(--font-mono);
       }
 
+      /* ---- alternatives head-to-head ---- */
+      .solo .stem.neutral {
+        background: rgba(22, 35, 61, 0.22);
+      }
+      .gname {
+        display: flex;
+        align-items: center;
+        gap: 7px;
+        flex-wrap: wrap;
+        margin: 0 2px 8px;
+        font-size: 12.5px;
+        font-weight: 700;
+        color: #fff;
+      }
+      .gname .rec {
+        font-size: 10px;
+        font-weight: 700;
+        color: #12203a;
+        background: var(--amber);
+        padding: 1px 7px;
+        border-radius: 20px;
+      }
+      .gname .sub {
+        font-weight: 500;
+        color: #93a2c4;
+        font-size: 11px;
+      }
+      /* grammar 3 · rail-integrated */
+      .cEnd {
+        position: absolute;
+        bottom: 100%;
+        margin-bottom: 3px;
+        font-family: var(--font-mono);
+        font-size: 8.5px;
+        font-weight: 700;
+        color: var(--amber-deep);
+        white-space: nowrap;
+      }
+      .cEnd.s {
+        inset-inline-start: 0;
+        transform: translateX(50%);
+      }
+      .cEnd.e {
+        inset-inline-end: 0;
+        transform: translateX(-50%);
+      }
+      .notch {
+        position: absolute;
+        top: -6px;
+        transform: translateX(50%);
+        width: 0;
+        height: 0;
+        border-inline: 4px solid transparent;
+        border-top: 6px solid var(--amber);
+      }
+      .blkcount {
+        position: absolute;
+        top: 50%;
+        left: 50%;
+        transform: translate(-50%, -50%);
+        font-size: 9px;
+        font-weight: 700;
+        color: #fff;
+        font-family: var(--font-mono);
+      }
+      .seg.confC {
+        background: rgba(22, 35, 61, 0.46);
+        box-shadow: none;
+      }
+      .cbelow {
+        position: relative;
+        height: 15px;
+        margin-top: 6px;
+      }
+      .cbelow .clab {
+        position: absolute;
+        transform: translateX(50%);
+        font-size: 9.5px;
+        font-weight: 700;
+        color: var(--muted);
+        white-space: nowrap;
+      }
+      .cbelow .clab .mono {
+        font-family: var(--font-mono);
+      }
+      /* comparison table */
+      .cmp {
+        width: 100%;
+        border-collapse: collapse;
+        font-size: 11.5px;
+        margin-top: 2px;
+      }
+      .cmp th,
+      .cmp td {
+        text-align: right;
+        padding: 7px 8px;
+        border-bottom: 1px solid rgba(255, 255, 255, 0.09);
+        vertical-align: top;
+        color: #b9c4de;
+        line-height: 1.35;
+      }
+      .cmp th {
+        color: #aeb9d4;
+        font-weight: 700;
+        font-size: 10.5px;
+      }
+      .cmp td b {
+        color: #fff;
+        font-weight: 600;
+      }
+      .cmp .y {
+        color: #9ad4b3;
+        font-weight: 700;
+      }
+      .cmp .nn {
+        color: #e6a79e;
+        font-weight: 700;
+      }
+      .cmp .mono {
+        font-family: var(--font-mono);
+      }
+
       .hr {
         height: 1px;
         background: rgba(255, 255, 255, 0.08);
@@ -727,6 +849,172 @@
           בטווח צר הבר מתכווץ אבל <span class="good">הפיל נשאר אובייקט אחד ממורכז</span> — שתי השעות
           חיות בתוכו, אז הן לא יכולות להתנגש (הבעיה של v1 שהציב שעות בקצות הבר נעלמה). הרגליים הן רק
           נקודות מיקום.
+        </div>
+      </div>
+      <div class="hr"></div>
+
+      <!-- ================= ALTERNATIVES · head-to-head ================= -->
+      <div class="opt">
+        <div class="opt-head">
+          <span class="n">דרכים שלא נבחרו · שלושה דקדוקים על אותו יום</span>
+        </div>
+        <p class="opt-note" style="margin: 0 0 14px">
+          יום מעורב אחד — נקודה (צ׳ק-אין), טווח (מעבורת <span class="mono" dir="ltr">10:30 → 13:00</span
+          >) וחפיפה (<span dir="ltr">×2</span>) — בשלוש דרכים להרכיב מהן שפה אחת.
+        </p>
+
+        <!-- grammar 1 · two bands (recommended) -->
+        <div class="gname">
+          דקדוק 1 · שתי-להקות <span class="rec">מומלץ</span>
+          <span class="sub">גוון = משפחה · מחבר = צורה</span>
+        </div>
+        <div class="glance-day" style="margin-bottom: 16px">
+          <div class="ann-above" style="height: 24px">
+            <div class="brk" style="inset-inline-start: 21.9%; width: 15.6%">
+              <span class="cap"
+                ><span class="achip amber"
+                  >⛴️ <span class="mono" dir="ltr">10:30</span> <span class="arr">→</span>
+                  <span class="mono" dir="ltr">13:00</span></span
+                ></span
+              >
+              <span class="bar"></span>
+            </div>
+            <div class="solo" style="inset-inline-start: 50%">
+              <span class="achip amber">🏨 צ׳ק-אין <span class="mono" dir="ltr">15:00</span></span>
+              <span class="stem" style="height: 9px"></span>
+            </div>
+          </div>
+          <div class="rail">
+            <div class="seg done" style="inset-inline-start: 6%; width: 6%"></div>
+            <div class="seg trans passed" style="inset-inline-start: 21.9%; width: 15.6%"></div>
+            <div class="seg now" style="inset-inline-start: 44%; width: 5%"></div>
+            <div class="seg multi upcoming" style="inset-inline-start: 65.6%; width: 6.3%"></div>
+            <div class="nowmark" style="inset-inline-start: 44%"></div>
+          </div>
+          <div class="ann-below">
+            <div class="note-mark" style="inset-inline-start: 68.7%">
+              <span class="tick"></span>
+              <span class="achip note" style="margin-top: 3px">×2</span>
+            </div>
+          </div>
+          <div class="rail-ends"><span dir="ltr">07:00</span><span dir="ltr">23:00</span></div>
+        </div>
+
+        <!-- grammar 2 · one band, color-only -->
+        <div class="gname">
+          דקדוק 2 · להקה-אחת <span class="sub">הכל מעל · משפחה בצבע בלבד, בלי צורת-מחבר</span>
+        </div>
+        <div class="glance-day" style="margin-bottom: 16px">
+          <div class="ann-above" style="height: 46px">
+            <div class="solo" style="inset-inline-start: 21.9%">
+              <span class="achip amber">⛴️ יציאה <span class="mono" dir="ltr">10:30</span></span>
+              <span class="stem" style="height: 9px"></span>
+            </div>
+            <div class="solo" style="inset-inline-start: 37.5%; bottom: 22px">
+              <span class="achip amber">⛴️ הגעה <span class="mono" dir="ltr">13:00</span></span>
+              <span class="stem" style="height: 31px"></span>
+            </div>
+            <div class="solo" style="inset-inline-start: 50%">
+              <span class="achip amber">🏨 צ׳ק-אין <span class="mono" dir="ltr">15:00</span></span>
+              <span class="stem" style="height: 9px"></span>
+            </div>
+            <div class="solo" style="inset-inline-start: 68.7%; bottom: 22px">
+              <span class="achip note">×2</span>
+              <span class="stem neutral" style="height: 31px"></span>
+            </div>
+          </div>
+          <div class="rail">
+            <div class="seg done" style="inset-inline-start: 6%; width: 6%"></div>
+            <div class="seg trans passed" style="inset-inline-start: 21.9%; width: 15.6%"></div>
+            <div class="seg now" style="inset-inline-start: 44%; width: 5%"></div>
+            <div class="seg multi upcoming" style="inset-inline-start: 65.6%; width: 6.3%"></div>
+            <div class="nowmark" style="inset-inline-start: 44%"></div>
+          </div>
+          <div class="rail-ends" style="margin-top: 5px">
+            <span dir="ltr">07:00</span><span dir="ltr">23:00</span>
+          </div>
+        </div>
+
+        <!-- grammar 3 · rail-integrated -->
+        <div class="gname">
+          דקדוק 3 · מוטמע-בציר <span class="sub">הבר מדבר · מינימום כרום צף</span>
+        </div>
+        <div class="glance-day" style="margin-bottom: 16px">
+          <div style="height: 14px"></div>
+          <div class="rail">
+            <div class="seg done" style="inset-inline-start: 6%; width: 6%"></div>
+            <div class="seg trans passed" style="inset-inline-start: 21.9%; width: 15.6%">
+              <span class="cEnd s">10:30</span><span class="cEnd e">13:00</span>
+            </div>
+            <div class="notch" style="inset-inline-start: 50%"></div>
+            <div class="seg now" style="inset-inline-start: 44%; width: 5%"></div>
+            <div class="seg confC" style="inset-inline-start: 65.6%; width: 6.3%">
+              <span class="blkcount">×2</span>
+            </div>
+            <div class="nowmark" style="inset-inline-start: 44%"></div>
+          </div>
+          <div class="cbelow">
+            <span class="clab" style="inset-inline-start: 50%"
+              >🏨 <span class="mono" dir="ltr">15:00</span></span
+            >
+          </div>
+          <div class="rail-ends"><span dir="ltr">07:00</span><span dir="ltr">23:00</span></div>
+        </div>
+
+        <table class="cmp">
+          <thead>
+            <tr>
+              <th>קריטריון</th>
+              <th>1 · שתי-להקות</th>
+              <th>2 · להקה-אחת</th>
+              <th>3 · מוטמע-בציר</th>
+            </tr>
+          </thead>
+          <tbody>
+            <tr>
+              <td><b>צימוד קצוות</b></td>
+              <td><span class="y">✓</span> בר מחבר</td>
+              <td><span class="nn">✗</span> שתי גלולות נפרדות</td>
+              <td><span class="y">✓</span> הבלוק עצמו</td>
+            </tr>
+            <tr>
+              <td><b>צפיפות אנכית</b></td>
+              <td>נמוכה · 2 להקות</td>
+              <td><span class="nn">גבוהה</span> · הכל נערם מעל</td>
+              <td><span class="y">הכי נמוכה</span></td>
+            </tr>
+            <tr>
+              <td><b>מילים</b></td>
+              <td>על נקודות (צ׳ק-אין/נחיתה)</td>
+              <td>על הכל · כבד</td>
+              <td><span class="nn">אין מקום</span></td>
+            </tr>
+            <tr>
+              <td><b>טווח קצר</b></td>
+              <td><span class="y">בטוח</span> · שעות בתוך הפיל</td>
+              <td>בטוח · נקודות</td>
+              <td><span class="nn">שעות נדחסות בקצוות</span></td>
+            </tr>
+            <tr>
+              <td><b>בהירות חפיפה</b></td>
+              <td>תווית ניטרלית נפרדת</td>
+              <td>מתחרה באמבר באותה להקה</td>
+              <td><span class="nn">קריפטי</span> · <span dir="ltr">×N</span> על בלוק כהה</td>
+            </tr>
+            <tr>
+              <td><b>שקט ויזואלי</b></td>
+              <td>בינוני</td>
+              <td>נמוך</td>
+              <td><span class="y">הכי גבוה</span></td>
+            </tr>
+          </tbody>
+        </table>
+        <div class="opt-note">
+          <b>למה 1:</b> היחיד שמצמד קצוות <span class="good">וגם</span> נותן מקום למילים
+          <span class="good">וגם</span> שומר על צפיפות נמוכה — הפיצול מעל/מתחת הוא מה שמונע ערימה.
+          <b>3</b> הכי שקט אבל מאבד מילים ומחזיר את התנגשות-הטווח-הקצר של v1; <b>2</b> הכי פשוט לבנייה
+          אבל נערם לגובה ומאבד את הצימוד. אפשר להשאיל מ-3 את השקט (למשל בלוק אמבר מספיק ברור בלי בר
+          כפול) כאופציה עתידית.
         </div>
       </div>
       <div class="hr"></div>
