@@ -1,0 +1,220 @@
+/* Feedback-state family (ADR-0078). One shell for empty / loading / error /
+   status; screens pass content. Spacing/type/radius/elevation come only from the
+   Wave-0 tokens (ADR-0077); feedback semantics use the status tokens
+   (--ok/--miss/--muted + --sync-*), never the amber/teal/plan budget. All
+   box-model geometry uses logical properties so it mirrors under `dir="rtl"`. */
+
+/* ── EmptyState + ErrorState share a centered, calm column ─────────────────── */
+.fb-empty,
+.fb-error {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  text-align: center;
+  gap: var(--space-3);
+  padding-block: var(--space-6);
+  padding-inline: var(--space-5);
+}
+
+.fb-empty-icon,
+.fb-error-icon {
+  font-size: 30px;
+  line-height: 1;
+}
+
+.fb-empty-title,
+.fb-error-title {
+  font-family: var(--font-head);
+  font-size: var(--text-h3);
+  line-height: var(--leading-snug);
+  color: var(--ink);
+}
+
+.fb-empty-body,
+.fb-error-body {
+  font-size: var(--text-secondary);
+  line-height: var(--leading-normal);
+  color: var(--muted);
+  max-inline-size: 32ch;
+}
+
+/* Neutral CTA — generic action, so --cta (never a semantic hue). */
+.fb-empty-action {
+  margin-block-start: var(--space-1);
+  padding-block: var(--space-2);
+  padding-inline: var(--space-5);
+  border: 0;
+  border-radius: var(--radius-999);
+  background: var(--cta);
+  color: var(--cta-text);
+  font-family: var(--font-body);
+  font-size: var(--text-body);
+  font-weight: 600;
+  cursor: pointer;
+}
+.fb-empty-action:active {
+  transform: translateY(1px);
+}
+
+/* ErrorState: --miss on the title marks the failure without borrowing amber. */
+.fb-error-title {
+  color: var(--miss);
+}
+.fb-error-retry {
+  display: inline-flex;
+  align-items: center;
+  gap: var(--space-2);
+  margin-block-start: var(--space-1);
+  padding-block: var(--space-2);
+  padding-inline: var(--space-4);
+  border: 1px solid var(--line);
+  border-radius: var(--radius-999);
+  background: var(--card);
+  color: var(--ink);
+  font-family: var(--font-body);
+  font-size: var(--text-body);
+  font-weight: 600;
+  cursor: pointer;
+}
+.fb-error-retry:active {
+  transform: translateY(1px);
+}
+.fb-error-retry .icon {
+  font-size: var(--text-h3);
+}
+
+/* ── LoadingState — body-level, renders inside AppShell chrome ─────────────── */
+.fb-loading {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-4);
+  padding-block: var(--space-5);
+  padding-inline: var(--space-4);
+}
+.fb-loading-cue {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: var(--space-2);
+  color: var(--muted);
+}
+.fb-loading-label {
+  font-size: var(--text-secondary);
+  color: var(--muted);
+}
+.fb-loading-skel {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-3);
+}
+
+/* ── Skeleton — shape primitives with a subtle shimmer ────────────────────── */
+.fb-skel {
+  display: block;
+  background: color-mix(in srgb, var(--muted) 20%, var(--card));
+  position: relative;
+  overflow: hidden;
+}
+.fb-skel-line {
+  block-size: var(--text-body);
+  inline-size: 100%;
+  border-radius: var(--radius-8);
+}
+.fb-skel-block {
+  block-size: 64px;
+  inline-size: 100%;
+  border-radius: var(--radius-12);
+}
+.fb-skel-circle {
+  block-size: 40px;
+  inline-size: 40px;
+  border-radius: var(--radius-999);
+}
+.fb-skel-lines {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-2);
+}
+
+.fb-skel::after {
+  content: '';
+  position: absolute;
+  inset: 0;
+  transform: translateX(-100%);
+  background: linear-gradient(
+    90deg,
+    transparent,
+    color-mix(in srgb, var(--card) 60%, transparent),
+    transparent
+  );
+  animation: fb-shimmer 1.4s ease-in-out infinite;
+}
+
+@keyframes fb-shimmer {
+  to {
+    transform: translateX(100%);
+  }
+}
+
+/* Reduced motion → static placeholder, no sweep (matches .spinner in screens.css). */
+@media (prefers-reduced-motion: reduce) {
+  .fb-skel::after {
+    animation: none;
+  }
+}
+
+/* ── StatusBanner — inline status/offline/stale message ───────────────────── */
+.fb-banner {
+  display: flex;
+  align-items: center;
+  gap: var(--space-3);
+  padding-block: var(--space-2);
+  padding-inline: var(--space-4);
+  border-radius: var(--radius-12);
+  border: 1px solid var(--tone-line);
+  background: color-mix(in srgb, var(--tone) 12%, var(--card));
+  font-size: var(--text-secondary);
+  line-height: var(--leading-normal);
+  color: var(--ink);
+}
+.fb-banner-text {
+  flex: 1 1 auto;
+}
+
+/* Tone → status token. offline uses --sync-pending (a calm neutral, not an
+   error); warn is the attention state (--miss); ok is success (--ok). None reach
+   into the amber/teal/plan budget. */
+.fb-banner-neutral {
+  --tone: var(--muted);
+  --tone-line: var(--line);
+}
+.fb-banner-offline {
+  --tone: var(--sync-pending);
+  --tone-line: var(--soft-line);
+}
+.fb-banner-warn {
+  --tone: var(--miss);
+  --tone-line: color-mix(in srgb, var(--miss) 40%, transparent);
+}
+.fb-banner-ok {
+  --tone: var(--ok);
+  --tone-line: color-mix(in srgb, var(--ok) 40%, transparent);
+}
+
+.fb-banner-dismiss {
+  flex: 0 0 auto;
+  inline-size: 24px;
+  block-size: 24px;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  border: 0;
+  border-radius: var(--radius-999);
+  background: transparent;
+  color: var(--muted);
+  font-size: var(--text-caption);
+  cursor: pointer;
+}
+.fb-banner-dismiss:active {
+  transform: translateY(1px);
+}

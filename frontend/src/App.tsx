@@ -35,6 +35,7 @@ import { resolveLanding } from './lib/active-trip';
 import { consumeIntent, hasIntent, saveIntent } from './lib/intent';
 import { ToastProvider } from './ui/Toast';
 import { ConfirmProvider } from './ui/ConfirmDialog';
+import { AppShell } from './ui/layout';
 import { Sheet } from './ui/Sheet';
 import { Icon } from './ui/Icon';
 import { NavArrow } from './ui/NavArrow';
@@ -281,7 +282,7 @@ function Header({
             </button>
           )}
           <button className="gear-btn" onClick={onOpenSettings} aria-label={t.shell.stub.settings}>
-            ⚙
+            <Icon name="settings" />
           </button>
         </div>
       </div>
@@ -445,34 +446,47 @@ function Shell() {
     const id = setTimeout(() => setSwitching(null), readDurationMs(token) + SWITCH_TAIL_MS);
     return () => clearTimeout(id);
   }, [switching]);
+  // The frame composes AppShell (ui/layout): header + scrollable body + bottom
+  // nav under one persistent chrome, so a body-only state (skeleton/error) can
+  // render without unmounting header or nav (U-10). Mode/switching pass through
+  // to `data-mode`/`data-switching`, so every existing `.app[...]` CSS selector
+  // still applies; `bodyKey={tab}` keeps the per-tab remount + fade.
   return (
-    <div className="app" data-mode={mode} data-switching={switching ?? undefined}>
-      <Header
-        onSelectDay={onSelectDay}
-        onOpenSwitcher={() => navigate('/trips')}
-        onOpenAccount={() => setAccountOpen(true)}
-        onOpenSettings={() => navigate(`/trip/${trip.id}/settings`)}
-      />
-      <main className="body" key={tab}>
-        <Suspense fallback={<BootScreen text={t.shell.booting} />}>
-          <Screen tab={tab} onNavigate={goToTab} />
-        </Suspense>
-      </main>
-      <nav className="nav">
-        {TABS.map((tabDef) => (
-          <button
-            key={tabDef.id}
-            className={tabDef.id === tab ? 'on' : ''}
-            onClick={() => goToTab(tabDef.id)}
-            aria-current={tabDef.id === tab}
-          >
-            <span className="ic">{tabDef.icon}</span>
-            {t.tabs[tabDef.id]}
-          </button>
-        ))}
-      </nav>
-      {accountOpen && <AccountSheet onClose={() => setAccountOpen(false)} onSignOut={logout} />}
-    </div>
+    <AppShell
+      mode={mode}
+      switching={switching ?? undefined}
+      bodyKey={tab}
+      header={
+        <Header
+          onSelectDay={onSelectDay}
+          onOpenSwitcher={() => navigate('/trips')}
+          onOpenAccount={() => setAccountOpen(true)}
+          onOpenSettings={() => navigate(`/trip/${trip.id}/settings`)}
+        />
+      }
+      nav={
+        <nav className="nav">
+          {TABS.map((tabDef) => (
+            <button
+              key={tabDef.id}
+              className={tabDef.id === tab ? 'on' : ''}
+              onClick={() => goToTab(tabDef.id)}
+              aria-current={tabDef.id === tab}
+            >
+              <span className="ic">{tabDef.icon}</span>
+              {t.tabs[tabDef.id]}
+            </button>
+          ))}
+        </nav>
+      }
+      overlay={
+        accountOpen && <AccountSheet onClose={() => setAccountOpen(false)} onSignOut={logout} />
+      }
+    >
+      <Suspense fallback={<BootScreen text={t.shell.booting} />}>
+        <Screen tab={tab} onNavigate={goToTab} />
+      </Suspense>
+    </AppShell>
   );
 }
 

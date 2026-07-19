@@ -49,4 +49,19 @@ Out of scope: **U-06** (Map surface — product-owned, flagged not started), **U
 
 Done inline on `claude/waypoint-ui-ux-impl-6swnuo` (serial, no parallelism to gain from a worktree; lands the foundation before Wave 1 branches). Added `--space-1..6`, `--text-*` + `--leading-*`, `--radius-8/12/16/22/999`, `--elevation-flat/raised/floating`, `--bp-tablet/desktop`, `--safe-*`, `--sync-*` to `tokens.css`, matching the design-language ramps 1:1; dark-remap parity (only `--elevation-raised` re-maps; the rest are theme-independent). ADR-0077 written; README + INDEX + backlog updated. **Defined-not-migrated** per U-08 — primitives are born on these, screens convert opportunistically. Gate: frontend typecheck/build/test + backend build + lint + format all green.
 
-_(Waves 1–4 appended as they land.)_
+### Wave 1 — primitives (4 parallel worktree agents) — DONE
+
+Four worktree-isolated agents, disjoint file ownership, integrated in order **P1 → P2 → P3 → P4** by direct file checkout (code files are disjoint by design) + hand-reconciliation of the shared docs/`he.ts`.
+
+- **P1 — `ui/layout/*`** (`AppShell`, `Screen`, `Section`, `Stack`, `Inline`, `StickyActionBar`, `ResponsiveGrid`): slot-based shell frame that can host body-only states (unblocks U-10 chrome-preserving load), breakpoint-aware widths (retires the blanket `max-width:430px`), safe-area adoption. `App.tsx` `Shell()` frame + `App.css` shell block refactored onto `AppShell`; phone behavior preserved. 14 jsdom tests.
+- **P2 — `Modal` primitive** (`ui/primitives/Modal.tsx` + `modal.css`, ADR-0079): `sheet`/`dialog` variants sharing `useOverlay` + `useDialogFocus`; trap off for `sheet` (nested-prompt reachability), on for `dialog`. `Sheet.tsx` refactored to a thin wrapper; its ~14 consumers unchanged. Consumers fold on in Wave 2 (`.confirm-*`/`.event-form-*` still live). Modal + Sheet jsdom tests.
+- **P3 — feedback family** (`ui/feedback/*`, ADR-0078): `EmptyState`, `ErrorState` (optional retry, `role="alert"`), `LoadingState`+`Skeleton` (reduced-motion aware), `StatusBanner` (toned, polite live-region). New `t.feedback.*` i18n namespace. 17 jsdom tests. No screen migrated yet.
+- **P4 — quick wins**: `settings` glyph added to `Icon`; header `⚙` emoji swapped to `<Icon name="settings" />` (wired at integration); `Spinner` aria-label → `t.common.loading` (U-11, U-12 shipped).
+
+**Integration notes:** P1/P2/P4 branched off the pre-Wave-0 commit; P1 re-added Wave-0-like tokens with slightly different values — I kept the canonical ADR-0077 `tokens.css` (P1's tokens were a strict subset; only `--leading-snug` differs, 1.25 vs 1.3, imperceptible). `he.ts` combined (P3 `feedback` namespace + P4 `common.loading`). README/INDEX/backlog reconciled to carry all of 0077/0078/0079 + the landed-vs-remaining status per finding.
+
+**Gate (integrated):** frontend typecheck/build ✅, **416 tests pass (35 files, +40 new)**, lint 0 errors (7 pre-existing warnings), backend build ✅, `format:check` ✅. Backend `#test` unrun (no Postgres — sandbox limit).
+
+**Left for later waves (no old+new duplication introduced):** `.confirm-*`/`.event-form-*` deleted when consumers migrate (Wave 2 E); the ~6 empty shells + snapshot retry + chrome-preserving load + `.offline-badge` migrate onto the feedback family in Wave 3.
+
+_(Waves 2–4 appended as they land.)_

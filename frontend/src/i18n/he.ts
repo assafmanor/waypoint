@@ -9,6 +9,16 @@ export const t = {
     yes: 'כן',
     no: 'לא',
     now: 'עכשיו',
+    loading: 'טוען',
+  },
+  // Shared feedback-state family (ADR-0078): generic copy for the empty / loading
+  // / error / status shells. Screens pass their own specific copy; these are the
+  // sensible defaults (retry, a neutral "loading", a generic error title, dismiss).
+  feedback: {
+    retry: 'נסו שוב',
+    loading: 'טוען',
+    errorTitle: 'משהו השתבש',
+    dismiss: 'סגירה',
   },
   // Visible directional arrows render as SVGs (ui/NavArrow, ui/Icon) so they
   // centre cleanly — the Assistant body font has no arrow glyphs and the
