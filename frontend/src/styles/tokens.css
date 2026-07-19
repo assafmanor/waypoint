@@ -44,6 +44,75 @@
   --font-head: 'Secular One', sans-serif;
   --font-body: 'Assistant', sans-serif;
   --font-mono: 'JetBrains Mono', monospace;
+
+  /* ── Non-color foundation tokens (U-08, ADR-0077) ──────────────────────────
+     design-language.md documents the spacing/type/radius/elevation ramps in
+     prose; before this they lived nowhere in CSS, so 6.5k lines hard-coded them
+     and drifted. These make the ramps enforceable: pick from the token, never
+     invent a value. Theme-independent (a 16px gap is 16px on dark too), so the
+     dark block below re-maps only what actually changes with theme (elevation).
+     Migration is opportunistic — primitives are born on these; screens convert
+     as they're touched. */
+
+  /* Spacing — 4px base grid; component padding from {8,12,16,20,24}. */
+  --space-1: 4px;
+  --space-2: 8px;
+  --space-3: 12px;
+  --space-4: 16px;
+  --space-5: 20px;
+  --space-6: 24px;
+
+  /* Type ramp (design-language "Type ramp"). Assistant unless the call site
+     sets --font-head (Secular One for display/h1/h2/h3). Values are the
+     documented steps; off-ramp sizes in legacy CSS converge onto these. */
+  --text-display: 34px; /* landing hero */
+  --text-h1: 26px; /* screen titles */
+  --text-h2: 21px; /* board now-title */
+  --text-h3: 17px; /* card titles (17–18) */
+  --text-body: 14.5px; /* default text */
+  --text-secondary: 13px; /* meta, descriptions (12–13) */
+  --text-caption: 11px; /* labels, hints */
+  --text-micro: 10.5px; /* tags, badges */
+
+  /* Line-height ramp (unitless). Headings ride tight; body reads at normal. */
+  --leading-tight: 1.1; /* display/board titles */
+  --leading-snug: 1.25; /* h1–h3 */
+  --leading-normal: 1.45; /* body */
+  --leading-relaxed: 1.6; /* long descriptions */
+
+  /* Radius ramp: 8 chips/tags · 12 inner (badges/inputs) · 16 cards ·
+     22 hero surfaces · 999 pills. */
+  --radius-8: 8px;
+  --radius-12: 12px;
+  --radius-16: 16px;
+  --radius-22: 22px;
+  --radius-999: 999px;
+
+  /* Elevation — three levels only. flat = border, no shadow; raised = soft
+     (interactive cards); floating = strong (board, toasts, sheets = --shadow). */
+  --elevation-flat: none;
+  --elevation-raised: 0 8px 20px -14px rgba(14, 23, 41, 0.35);
+  --elevation-floating: var(--shadow);
+
+  /* Breakpoints (design-language "Responsive"). CSS @media cannot read custom
+     properties, so these document the values for JS/container-query use and
+     keep one source of truth; media queries mirror them as literals. */
+  --bp-tablet: 768px;
+  --bp-desktop: 1024px;
+
+  /* Safe-area insets (phone PWA). The app-shell + sticky primitives pad by
+     these so content clears the notch / home indicator. Zero on non-notched. */
+  --safe-top: env(safe-area-inset-top, 0px);
+  --safe-bottom: env(safe-area-inset-bottom, 0px);
+  --safe-left: env(safe-area-inset-left, 0px);
+  --safe-right: env(safe-area-inset-right, 0px);
+
+  /* Sync/status mapping (U-04 SyncBadge, U-10 StatusBanner). Reuses the status
+     mini-palette + a neutral for "pending", so failed/synced inherit the dark
+     remap of --ok/--miss for free. */
+  --sync-synced: var(--ok);
+  --sync-pending: var(--muted);
+  --sync-failed: var(--miss);
 }
 
 * {
@@ -103,4 +172,11 @@ body {
   --cta-text: #12203a;
   --ok: #4cbf85;
   --miss: #e07a6e;
+
+  /* Non-color tokens (spacing/type/radius/leading/breakpoints/safe-area) are
+     theme-independent and inherit unchanged. Only elevation re-maps: shadows
+     read deeper on dark surfaces. --elevation-floating tracks --shadow (above);
+     --raised needs its own darker value. Sync tokens track --ok/--miss/--muted,
+     all already re-mapped, so they need no restatement here. */
+  --elevation-raised: 0 8px 20px -14px rgba(0, 0, 0, 0.5);
 }
