@@ -50,22 +50,15 @@ Full write-up + evidence in [reviews/frontend-architecture-review.md](reviews/fr
 
 Full write-up + evidence (incl. a reproduced concurrency probe) in [reviews/backend-architecture-review.md](reviews/backend-architecture-review.md).
 
-- ~~**B-07 invite revocability + rejoin-after-removal**~~ — **shipped** (ADR-0067): invites are a durable per-trip `Invite` row keyed by a short base58 code that is itself the credential (no HMAC token), one stable get-or-create link with an admin rotate/revoke, valid until the trip ends; an admin kick writes a `TripBlock` that blocks rejoin via the live link, with an admin "Removed" allow-back list; `GET /invites/:code` returns `tripId` so an existing member is redirected into the trip.
-- **B-01 sync cursor consistency** (High, confirmed) — `Change.seq` (`BIGSERIAL`) is not commit-ordered and reads run at READ COMMITTED, so `getSnapshot` (reads entities before `latestSeq`) and `/changes` catch-up can advance a client's cursor past a concurrently-committed change it never received. Fix: read `latestSeq` first + snapshot at a stronger isolation level; advance the catch-up cursor only across a contiguous committed prefix.
-- **B-02 WS eviction on removal** (High) — `SyncGateway` authorizes membership only at upgrade; `removeMember` never closes the socket, so a removed member keeps receiving the trip's live changes. Add `disconnectUser(tripId,userId)` and call it from `removeMember`/`deleteTrip`.
-- **B-03 document inline-render / MIME** (High) — `/content` echoes a caller-controlled `Content-Type` with no `Content-Disposition`/`nosniff` and there's no upload allow-list, so an uploaded HTML/SVG "document" runs script in the app origin (co-traveler token theft). Send `attachment`+`nosniff`, allow-list MIME, download-not-open in the viewer.
-- **B-04 fail-fast config** (Med) — validate secrets/keys at startup and refuse to boot with `DEV_AUTH=1` under `NODE_ENV=production`.
-- **B-05 error envelope + date/timezone validation** (Med) — add a global exception filter emitting the documented `{error:{code}}` shape (guards/Prisma errors currently don't) and tighten `date`/`startsAt`/`timezone` in `packages/shared` so malformed input is a 400, not a 500.
-- **B-06 event cross-trip refs** (Med) — `events.service` writes client `bookingId`/`placeId` without trip-scoping (bookings already validate places); add the same check.
-- **B-08 graceful shutdown + readiness** (Med) — `app.enableShutdownHooks()`; split `/health` (liveness) from a DB-touching `/health/ready` used as the deploy gate.
-- **B-09 growth gaps** (Med) — `@@index([userId])` on `Membership`; bound `/changes`; race-safe last-admin promotion.
-- **B-10 rate limiting** (Med) — endpoint-specific throttles (tight on auth/invite, generous on sync) that don't break offline reconnect bursts.
-- **B-11/B-12/B-13 (Low)** — refresh-rotation grace window; check Google `email_verified` + define the email-change/account-link policy; orphan-blob reconciler + validate document `ownerUserId ∈ members` + standardize change `after` payloads.
+B-01–B-06 and B-08–B-13 shipped (ADR-0068–0076); B-07 shipped (ADR-0067). Remaining are the pieces deliberately deferred out of B-12/B-13:
+
+- **Orphan-blob reconciler** (deferred, from B-13/ADR-0076) — a periodic sweep listing storage keys not referenced by any `Document.fileRef`; the upload path still biases toward orphaning a blob over losing a document, with no reconciliation. Acceptable at current scale.
+- **Standardize change `after` payloads** (deferred, from B-13/ADR-0076) — several services log the partial `input` as a change's `after` rather than the persisted DTO, so `after`'s shape is inconsistent across entity types (affects feed rendering / any future replay, not correctness today).
+- **Google email-change account-link policy** (from B-12/ADR-0076) — account-linking keys on `User.email`, so a changed Google primary email creates a new `User` the identity re-points to, orphaning the old one. Current policy: treat as a new account. Revisit if an identity-merge feature is ever wanted.
 
 ## Testing
 
 - **e2e smoke** (Playwright) — conventions call for one; none exists. Boot the app, cross the tabs, assert each renders and the console is clean. Catches white-screen regressions unit tests miss.
-- **Backend high-risk coverage (backend review §14)** — concurrency test for B-01 (snapshot/catch-up skip), removed-member WS eviction (B-02), document `text/html` rejection / `attachment` header (B-03), event cross-trip refs (B-06), error-envelope consistency (B-05), last-admin double-removal.
 
 ## Open question
 

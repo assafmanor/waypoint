@@ -1,11 +1,17 @@
 import { randomUUID } from 'node:crypto';
-import { Injectable, NotFoundException } from '@nestjs/common';
+import {
+  BadRequestException,
+  Injectable,
+  NotFoundException,
+  UnsupportedMediaTypeException,
+} from '@nestjs/common';
 import { Prisma, type Document as PrismaDocument } from '@prisma/client';
-import type {
-  CreateDocumentInput,
-  DocumentSummary,
-  TripDocument,
-  UpdateDocumentInput,
+import {
+  isAllowedDocumentMimeType,
+  type CreateDocumentInput,
+  type DocumentSummary,
+  type TripDocument,
+  type UpdateDocumentInput,
 } from '@waypoint/shared';
 import { decryptAtRest, encryptAtRest } from '../common/crypto.util';
 import { DOC_ENCRYPTION_KEY, requireEnv } from '../common/env';
@@ -37,6 +43,17 @@ export interface UploadedFile {
   size: number;
 }
 
+/** Reject any upload outside the document allow-list before it is encrypted or
+ *  stored (backend-review B-03), so an executable "document" (HTML/SVG/XHTML)
+ *  never reaches storage and no orphan blob is written for a rejected type. */
+function assertAllowedMime(mimeType: string): void {
+  if (!isAllowedDocumentMimeType(mimeType)) {
+    throw new UnsupportedMediaTypeException({
+      error: { code: 'UNSUPPORTED_MEDIA_TYPE', message: `Unsupported file type: ${mimeType}` },
+    });
+  }
+}
+
 @Injectable()
 export class DocumentsService {
   constructor(
@@ -58,6 +75,8 @@ export class DocumentsService {
     input: CreateDocumentInput,
     file: UploadedFile,
   ): Promise<TripDocument> {
+    assertAllowedMime(file.mimetype);
+    await this.assertOwnerIsMember(tripId, input.ownerUserId);
     const id = input.id ?? randomUUID();
 
     // Idempotent re-POST (ADR-0018/0056): an offline-outbox flush can retry an
@@ -126,6 +145,7 @@ export class DocumentsService {
 
     let fileFields: { fileRef: string; mimeType: string; sizeBytes: number } | undefined;
     if (file) {
+      assertAllowedMime(file.mimetype);
       const fileRef = randomUUID();
       const encrypted = encryptAtRest(
         file.buffer.toString('base64'),
@@ -181,7 +201,7 @@ export class DocumentsService {
   async getContent(
     tripId: string,
     documentId: string,
-  ): Promise<{ buffer: Buffer; mimeType: string }> {
+  ): Promise<{ buffer: Buffer; mimeType: string; title: string }> {
     const document = await this.requireDocument(tripId, documentId);
     // The row exists but its blob may not (storage misconfigured, or a blob lost to
     // an ephemeral filesystem on redeploy — the failure mode ADR-0031's S3 choice
@@ -197,7 +217,24 @@ export class DocumentsService {
       requireEnv(DOC_ENCRYPTION_KEY),
       DOC_ENCRYPTION_KEY,
     );
-    return { buffer: Buffer.from(decrypted, 'base64'), mimeType: document.mimeType };
+    return {
+      buffer: Buffer.from(decrypted, 'base64'),
+      mimeType: document.mimeType,
+      title: document.title,
+    };
+  }
+
+  /** A document's `ownerUserId` (client-supplied) must be a member of the trip
+   *  (B-13) — otherwise a document could be attributed to a non-member. */
+  private async assertOwnerIsMember(tripId: string, ownerUserId?: string): Promise<void> {
+    if (!ownerUserId) return;
+    const membership = await this.prisma.membership.findUnique({
+      where: { tripId_userId: { tripId, userId: ownerUserId } },
+      select: { id: true },
+    });
+    if (!membership) {
+      throw new BadRequestException(`ownerUserId is not a member of this trip: ${ownerUserId}`);
+    }
   }
 
   private async requireDocument(tripId: string, documentId: string): Promise<PrismaDocument> {

@@ -18,6 +18,7 @@ import {
 } from '@waypoint/shared';
 import { PrismaService } from '../prisma/prisma.service';
 import { ChangeService, type ChangeOp } from '../sync/change.service';
+import { assertPlacesInTrip } from '../common/trip-scope.util';
 import { toBookingDto, toEventDto } from '../trips/trips.mapper';
 
 const isTransport = (type: BookingType): boolean =>
@@ -40,7 +41,11 @@ export class BookingsService {
 
   async create(tripId: string, actorUserId: string, input: CreateBookingInput): Promise<Booking> {
     this.assertPlaceShape(input.type, input);
-    await this.assertPlacesInTrip(tripId, [input.placeId, input.fromPlaceId, input.toPlaceId]);
+    await assertPlacesInTrip(this.prisma, tripId, [
+      input.placeId,
+      input.fromPlaceId,
+      input.toPlaceId,
+    ]);
     const id = input.id ?? randomUUID();
 
     // Untimed booking (index-only, ADR-0047): a single Change, no Event.
@@ -114,7 +119,11 @@ export class BookingsService {
       fromPlaceId: 'fromPlaceId' in input ? input.fromPlaceId : (before.fromPlaceId ?? undefined),
       toPlaceId: 'toPlaceId' in input ? input.toPlaceId : (before.toPlaceId ?? undefined),
     });
-    await this.assertPlacesInTrip(tripId, [input.placeId, input.fromPlaceId, input.toPlaceId]);
+    await assertPlacesInTrip(this.prisma, tripId, [
+      input.placeId,
+      input.fromPlaceId,
+      input.toPlaceId,
+    ]);
 
     // Booking-only update (no event touched) → single Change.
     if (!input.event) {
@@ -368,20 +377,6 @@ export class BookingsService {
       }
     } else if (input.fromPlaceId || input.toPlaceId) {
       throw new BadRequestException('Only transport bookings have origin/destination places');
-    }
-  }
-
-  private async assertPlacesInTrip(tripId: string, ids: (string | undefined)[]): Promise<void> {
-    const present = ids.filter((id): id is string => Boolean(id));
-    if (present.length === 0) return;
-    const found = await this.prisma.place.findMany({
-      where: { tripId, id: { in: present } },
-      select: { id: true },
-    });
-    const foundIds = new Set(found.map((p) => p.id));
-    const missing = present.filter((id) => !foundIds.has(id));
-    if (missing.length > 0) {
-      throw new BadRequestException(`Unknown place(s) for this trip: ${missing.join(', ')}`);
     }
   }
 

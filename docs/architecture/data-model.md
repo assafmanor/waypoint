@@ -57,7 +57,7 @@ User×Trip join — enables collaboration, multi-trip (ADR-0021), and per-user c
 - `id`, `tripId`, `userId`, `role` (`MembershipRole`: `admin` | `peer` — creator is `admin`, ADR-0005)
 - `calendarSyncEnabled Boolean` (per-trip intent; capability derives from the user's Google `AuthIdentity.scopes`)
 - `joinedAt`
-- `@@unique([tripId, userId])`, `@@index([tripId])`
+- `@@unique([tripId, userId])`, `@@index([tripId])`, `@@index([userId])` (the last for `getMe`/`listForUser`, which filter by `userId` alone — the composite leads with `tripId`; backend-review B-09)
 
 ### Event ⭐ (the core)
 
@@ -67,7 +67,7 @@ A block on the timeline. **Hard or soft** — the decisive field (ADR-0011).
 - `endDate @db.Date?` — **null = single-day point-in-time block; non-null = multi-day ambient span** (wedding/festival), rendered as a strip like a hotel (ADR-0018)
 - `title`, `icon?`, `kind` (`hard` | `soft`)
 - `startsAt DateTime?`, `endsAt DateTime?` — **UTC instants**, may cross midnight; displayed via `Trip.timezone`
-- `placeId?` — **FK → Place** (ADR-0048). Authoritative only for an _unlinked_ event; when `bookingId` is set it is forced null and the place resolves from the booking (the authority rule, ADR-0051).
+- `placeId?` — **FK → Place** (ADR-0048). Authoritative only for an _unlinked_ event; when `bookingId` is set it is forced null and the place resolves from the booking (the authority rule, ADR-0051). Both `placeId` and `bookingId` are **trip-scoped on write** (`EventsService`, shared `common/trip-scope.util.ts`) — a client-supplied id pointing at another trip's place/booking is a 400, matching what bookings already enforce (backend-review B-06).
 - `status` (`EventStatus`: `planned` | `done` | `skipped` — **no `now`**; "now" is computed client-side from times)
 - `bookingId?` **`@unique`** — strict 1:1 with Booking (ADR-0047, enforced in the schema per ADR-0051); a hard event usually links a Booking holding the commitment
 - `sortOrder Int` (within the date), `source` (`manual` | `gmail` | `maybe_shelf` | `integration`)

@@ -1,6 +1,6 @@
 import { CanActivate, ExecutionContext, Injectable, UnauthorizedException } from '@nestjs/common';
 import { Reflector } from '@nestjs/core';
-import { DEV_AUTH } from '../common/env';
+import { isDevAuthEnabled } from '../common/env';
 import type { Principal } from './principal';
 import { IS_PUBLIC_KEY } from './public.decorator';
 import { verifyAccessToken } from './token.util';
@@ -36,7 +36,7 @@ export class JwtAuthGuard implements CanActivate {
     const token = header?.startsWith('Bearer ') ? header.slice('Bearer '.length) : undefined;
 
     if (!token) {
-      if (process.env[DEV_AUTH] === '1') {
+      if (isDevAuthEnabled()) {
         req.user = DEV_PRINCIPAL;
         return true;
       }

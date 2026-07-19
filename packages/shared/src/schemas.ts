@@ -17,16 +17,41 @@ import { MAX_TRIP_NAME_LENGTH } from './constants';
 // ponytail: charset+length guard, tighten to exact cuid2/uuid grammar if it ever matters.
 export const entityIdSchema = z.string().regex(/^[a-z0-9-]{8,64}$/i, 'invalid id format');
 
+// Domain-typed temporal fields (backend-review B-05 / ADR-0068's error contract):
+// bare `z.string()` accepted "banana" as a date/timezone, which surfaced as a
+// Prisma 500 or an `Intl` RangeError deep in the request instead of a 400. These
+// reject malformed input at the edge, identically on client and server (ADR-0023).
+
+/** A calendar date, `YYYY-MM-DD`, that is also a real day (rejects `2026-02-30`). */
+export const dateOnlySchema = z.iso.date();
+
+/** An ISO-8601 datetime with a `Z` or numeric offset (rejects `banana`). */
+export const isoDateTimeSchema = z.iso.datetime({ offset: true });
+
+function isValidTimeZone(tz: string): boolean {
+  try {
+    new Intl.DateTimeFormat('en-US', { timeZone: tz });
+    return true;
+  } catch {
+    return false;
+  }
+}
+
+/** A valid IANA time zone (e.g. `Asia/Tokyo`), checked with the same ICU the app
+ *  uses at runtime, so a bad zone is a 400 here rather than a `RangeError` 500 in
+ *  `Intl.DateTimeFormat` on the next nudge (assertValidMoveTarget). */
+export const timezoneSchema = z.string().refine(isValidTimeZone, 'invalid IANA time zone');
+
 const eventFieldsSchema = z.object({
   id: entityIdSchema.optional(),
-  date: z.string(), // ISO date (YYYY-MM-DD)
-  endDate: z.string().optional(),
+  date: dateOnlySchema,
+  endDate: dateOnlySchema.optional(),
   title: z.string().min(1),
   icon: z.string().optional(),
   category: eventCategorySchema.optional(),
   kind: eventKindSchema,
-  startsAt: z.string().optional(), // UTC instant
-  endsAt: z.string().optional(),
+  startsAt: isoDateTimeSchema.optional(), // UTC instant
+  endsAt: isoDateTimeSchema.optional(),
   placeId: z.string().optional(), // FK → Place; cleared server-side when bookingId is set (ADR-0048)
   bookingId: z.string().optional(),
   sortOrder: z.number().int().optional(),
@@ -52,8 +77,8 @@ export type UpdateEventInput = z.infer<typeof updateEventSchema>;
 
 /** Move an event to another date/time/order. ADR-0018 (no dayId). */
 export const moveEventSchema = z.object({
-  date: z.string().optional(),
-  startsAt: z.string().optional(),
+  date: dateOnlySchema.optional(),
+  startsAt: isoDateTimeSchema.optional(),
   sortOrder: z.number().int().optional(),
 });
 export type MoveEventInput = z.infer<typeof moveEventSchema>;
@@ -67,10 +92,10 @@ export type EventStatusUpdateInput = z.infer<typeof eventStatusUpdateSchema>;
  *  service — the linked event's place comes from the booking (ADR-0048). */
 export const bookingEventSeedSchema = z.object({
   id: entityIdSchema.optional(),
-  date: z.string(),
-  startsAt: z.string().optional(),
-  endsAt: z.string().optional(),
-  endDate: z.string().optional(),
+  date: dateOnlySchema,
+  startsAt: isoDateTimeSchema.optional(),
+  endsAt: isoDateTimeSchema.optional(),
+  endDate: dateOnlySchema.optional(),
   kind: eventKindSchema.optional(),
   icon: z.string().optional(),
   category: eventCategorySchema.optional(),
@@ -132,9 +157,9 @@ export const createTripSchema = z
   .object({
     name: z.string().min(1).max(MAX_TRIP_NAME_LENGTH),
     destination: z.string().min(1),
-    startDate: z.string(),
-    endDate: z.string(),
-    timezone: z.string().default('UTC'),
+    startDate: dateOnlySchema,
+    endDate: dateOnlySchema,
+    timezone: timezoneSchema.default('UTC'),
     currency: z.string().optional(),
     dailyBudgetMinor: z.number().int().optional(),
     icon: z.string().optional(),
@@ -158,9 +183,9 @@ export const updateTripSchema = z
     name: z.string().min(1).max(MAX_TRIP_NAME_LENGTH),
     destination: z.string().min(1),
     icon: z.string(),
-    startDate: z.string(),
-    endDate: z.string(),
-    timezone: z.string(),
+    startDate: dateOnlySchema,
+    endDate: dateOnlySchema,
+    timezone: timezoneSchema,
     currency: z.string(),
     dailyBudgetMinor: z.number().int(),
   })

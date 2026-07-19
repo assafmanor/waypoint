@@ -16,6 +16,7 @@ import {
   ApiOkResponse,
   ApiTags,
 } from '@nestjs/swagger';
+import { Throttle } from '@nestjs/throttler';
 import {
   createTripSchema,
   invitePreviewSchema,
@@ -82,6 +83,7 @@ export class TripsController {
   }
 
   @Post('join/:code')
+  @Throttle({ default: { limit: 20, ttl: 60_000 } }) // code-guessing / join abuse (B-10)
   @ApiCreatedResponse({ type: MembershipDto })
   @ZodSerializerDto(MembershipDto)
   join(
@@ -228,6 +230,8 @@ export class InvitesController {
   constructor(private readonly trips: TripsService) {}
 
   @Get(':code')
+  // Public short-code lookup otherwise hammerable for code-guessing (B-10) — tight per-IP cap.
+  @Throttle({ default: { limit: 20, ttl: 60_000 } })
   @ApiOkResponse({ type: InvitePreviewDto })
   @ZodSerializerDto(InvitePreviewDto)
   preview(@Param('code') code: string): Promise<InvitePreview> {

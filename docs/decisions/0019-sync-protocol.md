@@ -27,7 +27,7 @@
 ## Consequences
 
 - `ChangeService` + the WS gateway live in a core **SyncModule** that every mutating module depends on — so it is built **before** the first CRUD module, not after.
-- Known bounded wrinkle: under concurrent transactions, commit order can differ from `seq` assignment order, so a cursor could theoretically skip a not-yet-committed smaller `seq`. Near-impossible at ~5 writers/trip; fix is a per-trip advisory lock around the write — noted, deferred.
+- Known bounded wrinkle: under concurrent transactions, commit order can differ from `seq` assignment order, so a cursor could theoretically skip a not-yet-committed smaller `seq`. ~~Near-impossible at ~5 writers/trip; fix is a per-trip advisory lock around the write — noted, deferred.~~ **Implemented in [ADR-0068](0068-sync-cursor-commit-consistency.md)** (backend-review B-01 reproduced it): the per-trip advisory lock makes `seq` order == commit order, and `getSnapshot` reads `latestSeq` first at RepeatableRead.
 - No CRDT/OT in v1; the `Change` log keeps that upgrade open per-entity.
 
 ## Alternatives considered

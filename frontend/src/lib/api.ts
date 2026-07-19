@@ -83,10 +83,24 @@ export async function apiFetch(url: string, init: RequestInit = {}): Promise<Res
 let refreshInFlight: Promise<boolean> | null = null;
 
 export function refreshAccessToken(): Promise<boolean> {
-  refreshInFlight ??= doRefresh().finally(() => {
+  refreshInFlight ??= withRefreshLock(doRefresh).finally(() => {
     refreshInFlight = null;
   });
   return refreshInFlight;
+}
+
+// Cross-tab single-flight (backend-review B-11): the httpOnly refresh cookie
+// rotates on each use, so two *tabs* refreshing at once make the loser present a
+// now-stale cookie and get logged out. A Web Lock serializes refresh across tabs
+// (the shared cookie is already rotated when the next tab runs), on top of the
+// in-tab promise coalescing above. Falls back to a bare call where the Locks API
+// is unavailable (older browsers, test env).
+function withRefreshLock(run: () => Promise<boolean>): Promise<boolean> {
+  const locks = typeof navigator !== 'undefined' ? navigator.locks : undefined;
+  if (!locks) return run();
+  // The Locks API resolves to the callback's awaited value at runtime; lib.dom's
+  // generic captures the promise, so assert the flattened result.
+  return locks.request('wp-refresh', () => run()) as unknown as Promise<boolean>;
 }
 
 async function doRefresh(): Promise<boolean> {

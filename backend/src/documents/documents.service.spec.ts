@@ -3,7 +3,11 @@ import { randomUUID } from 'node:crypto';
 import { readdir, readFile, rm } from 'node:fs/promises';
 import { join } from 'node:path';
 import { afterAll, afterEach, beforeAll, describe, expect, it } from 'vitest';
-import { NotFoundException } from '@nestjs/common';
+import {
+  BadRequestException,
+  NotFoundException,
+  UnsupportedMediaTypeException,
+} from '@nestjs/common';
 import { PrismaService } from '../prisma/prisma.service';
 import { ChangeService } from '../sync/change.service';
 import { SyncGateway } from '../sync/sync.gateway';
@@ -70,6 +74,58 @@ describe('DocumentsService', () => {
 
     const change = await prisma.change.findFirst({ where: { tripId, entityId: created.id } });
     expect(change).toMatchObject({ entityType: 'document', action: 'create' });
+  });
+
+  // B-03: an executable "document" (HTML/SVG/XHTML) uploaded by one member runs
+  // script in the app origin when a co-traveler opens it. The allow-list rejects
+  // those types before anything is encrypted or stored — no row, no orphan blob.
+  it('rejects a disallowed upload MIME type (text/html) before storing anything', async () => {
+    const tripId = await newTrip();
+    const payload = Buffer.from('<script>alert(document.cookie)</script>');
+
+    await expect(
+      service.create(
+        tripId,
+        DEV_USER,
+        { type: 'other', title: 'itinerary' },
+        { buffer: payload, mimetype: 'text/html', size: payload.length },
+      ),
+    ).rejects.toBeInstanceOf(UnsupportedMediaTypeException);
+
+    expect(await prisma.document.findMany({ where: { tripId } })).toEqual([]);
+    await expect(readdir(LOCAL_STORAGE_DIR)).rejects.toMatchObject({ code: 'ENOENT' });
+  });
+
+  // B-13: a client-supplied ownerUserId must be a member of the trip — otherwise
+  // a document could be attributed to a non-member.
+  it('rejects a create whose ownerUserId is not a trip member', async () => {
+    const tripId = await newTrip();
+    const payload = Buffer.from('passport');
+
+    await expect(
+      service.create(
+        tripId,
+        DEV_USER,
+        { type: 'passport', title: 'Passport', ownerUserId: 'u-not-a-member' },
+        { buffer: payload, mimetype: 'application/pdf', size: payload.length },
+      ),
+    ).rejects.toBeInstanceOf(BadRequestException);
+
+    expect(await prisma.document.findMany({ where: { tripId } })).toEqual([]);
+  });
+
+  it('rejects image/svg+xml uploads (SVG can carry inline script)', async () => {
+    const tripId = await newTrip();
+    const payload = Buffer.from('<svg xmlns="http://www.w3.org/2000/svg"></svg>');
+
+    await expect(
+      service.create(
+        tripId,
+        DEV_USER,
+        { type: 'other', title: 'diagram' },
+        { buffer: payload, mimetype: 'image/svg+xml', size: payload.length },
+      ),
+    ).rejects.toBeInstanceOf(UnsupportedMediaTypeException);
   });
 
   it('lists document metadata without exposing fileRef', async () => {

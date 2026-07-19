@@ -11,7 +11,7 @@
 - **Authorization:** every trip-scoped route checks the caller's `Membership` for that `tripId`. No membership → `404` (not `403`, to avoid leaking existence).
 - **IDs are client-generated** opaque strings (cuid/uuid), validated for format server-side (ADR-0018). Timestamps are ISO-8601 UTC.
 - Mutations go through `ChangeService` — entity write + `Change` in one transaction, broadcast post-commit (ADR-0019).
-- Errors: `{ "error": { "code": string, "message": string, "details"?: object } }` with appropriate HTTP status.
+- Errors: `{ "error": { "code": string, "message": string, "details"?: object } }` with appropriate HTTP status — enforced for **every** error by one global exception filter (ADR-0070), including guard 401/404s and mapped Prisma codes (`P2002`→409, `P2025`→404, `P2003`→409). Malformed dates/timezone are a `400 VALIDATION_ERROR`, not a 500 (the shared schema types `date`/`startsAt`/`timezone`).
 - Mutations that change shared trip state also emit a `Change` and broadcast it (see [sync-and-offline.md](sync-and-offline.md)).
 
 ## Health
