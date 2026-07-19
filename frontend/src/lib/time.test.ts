@@ -5,11 +5,12 @@ import {
   buildTimeTree,
   clampDate,
   dayProgress,
+  countdownParts,
   deriveNow,
   eventPhase,
   formatCountdown,
-  formatDaysUntil,
   formatTime,
+  relativeDay,
   hardConflicts,
   isoToTimeInput,
   minutesUntil,
@@ -234,18 +235,40 @@ describe('formatCountdown', () => {
   });
 });
 
-describe('formatDaysUntil', () => {
-  it('phrases exact day counts up to two months out', () => {
-    expect(formatDaysUntil(1)).toBe('יום');
-    expect(formatDaysUntil(2)).toBe('יומיים');
-    expect(formatDaysUntil(45)).toBe('45 ימים');
-    expect(formatDaysUntil(60)).toBe('60 ימים');
+describe('relativeDay', () => {
+  it('names near days in both directions', () => {
+    expect(relativeDay(0)).toBe('היום');
+    expect(relativeDay(1)).toBe('מחר');
+    expect(relativeDay(2)).toBe('מחרתיים');
+    expect(relativeDay(-1)).toBe('אתמול');
+    expect(relativeDay(-2)).toBe('שלשום');
+  });
+
+  it('counts up past two days out (dual/plural via dayPhrase)', () => {
+    expect(relativeDay(3)).toBe('עוד 3 ימים');
+    expect(relativeDay(9)).toBe('עוד 9 ימים');
+    expect(relativeDay(-3)).toBe('לפני 3 ימים');
+    expect(relativeDay(-7)).toBe('לפני 7 ימים');
+  });
+});
+
+describe('countdownParts', () => {
+  it('reads near days as standalone words (no "בעוד" connective)', () => {
+    expect(countdownParts(0)).toEqual({ value: '', unit: 'היום', prefix: '' });
+    expect(countdownParts(1)).toEqual({ value: '', unit: 'מחר', prefix: '' });
+    expect(countdownParts(2)).toEqual({ value: '', unit: 'מחרתיים', prefix: '' });
+  });
+
+  it('counts up with the connective past two days out', () => {
+    expect(countdownParts(3)).toEqual({ value: '3', unit: 'ימים', prefix: 'בעוד' });
+    expect(countdownParts(45)).toEqual({ value: '45', unit: 'ימים', prefix: 'בעוד' });
+    expect(countdownParts(60)).toEqual({ value: '60', unit: 'ימים', prefix: 'בעוד' });
   });
 
   it('rounds to months past two months out (dual form included)', () => {
-    expect(formatDaysUntil(61)).toBe('חודשיים');
-    expect(formatDaysUntil(100)).toBe('3 חודשים');
-    expect(formatDaysUntil(200)).toBe('7 חודשים');
+    expect(countdownParts(61)).toEqual({ value: '', unit: 'חודשיים', prefix: 'בעוד' });
+    expect(countdownParts(100)).toEqual({ value: '3', unit: 'חודשים', prefix: 'בעוד' });
+    expect(countdownParts(200)).toEqual({ value: '7', unit: 'חודשים', prefix: 'בעוד' });
   });
 });
 

@@ -14,7 +14,8 @@ import { BOOKING_TYPE } from '@waypoint/shared';
 import { useTrip } from '../state/trip-state';
 import { useClock } from '../lib/useClock';
 import { daysUntilStart, tripPhase } from '../lib/mode';
-import { dayCount, dayPhrase } from '../lib/hebrew';
+import { dayPhrase } from '../lib/hebrew';
+import { countdownParts } from '../lib/time';
 import { computeReadiness, type CheckId, type ReadinessCheck } from '../lib/readiness';
 import { BookingSheet, type BookingSeed } from '../ui/BookingSheet';
 import { DocumentUploadSheet } from '../ui/DocumentUploadSheet';
@@ -102,7 +103,7 @@ export function PlanHome({ onNavigate }: { onNavigate: (tab: TabId) => void }) {
   }
 
   const days = daysUntilStart(trip, now);
-  const countdown = days === null ? null : dayCount(days);
+  const countdown = days === null ? null : countdownParts(days);
   const readiness = computeReadiness({
     startDate: trip.startDate,
     endDate: trip.endDate,
@@ -194,11 +195,14 @@ export function PlanHome({ onNavigate }: { onNavigate: (tab: TabId) => void }) {
   return (
     <>
       <div className="prep">
-        {/* No "היציאה בעוד" label once the trip is underway — the countdown line
-            reads "הטיול בעיצומו" on its own (would otherwise concatenate oddly). */}
+        {/* No "היציאה" label once the trip is underway — the countdown line
+            reads "הטיול בעיצומו" on its own (would otherwise concatenate oddly).
+            The "בעוד" connective rides with the count (ADR-0085), so a near date
+            reads "היציאה · מחר" and a far one "היציאה · בעוד 3 ימים". */}
         {countdown && <div className="prep-k">{t.planHome.prep.departIn}</div>}
         {countdown ? (
           <div className="prep-count">
+            {countdown.prefix && <span className="prep-count-u">{countdown.prefix}</span>}{' '}
             {countdown.value && (
               <span className="prep-count-n" dir="ltr">
                 {countdown.value}

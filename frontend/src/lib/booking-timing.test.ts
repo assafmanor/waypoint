@@ -32,7 +32,7 @@ describe('formatBookingDuration (per-category unit, ADR-0063 extension)', () => 
         ev({ category: 'lodging', date: '2026-07-16', endDate: '2026-07-17' }),
         TZ,
       ),
-    ).toBe('לילה');
+    ).toBe('לילה אחד');
   });
 
   it('a same-day activity reads in hours', () => {

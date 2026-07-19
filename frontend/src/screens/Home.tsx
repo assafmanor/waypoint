@@ -32,6 +32,7 @@ import { nextCodedBooking } from '../lib/home-quick';
 import { eventRoute } from '../lib/places';
 import { TAB_PARAM } from '../state/nav-state';
 import {
+  countdownParts,
   dayProgress,
   deriveNow,
   eventPhase,
@@ -48,6 +49,7 @@ import {
   CODE_PREFIX,
   DAY_WINDOW,
   ICONS,
+  MINUTES_PER_DAY,
   MS_PER_DAY,
   STAY_STRIP_DISMISS_STORAGE_KEY,
   type TabId,
@@ -124,7 +126,23 @@ export function Home({ onNavigate }: { onNavigate?: (tab: TabId) => void }) {
     ? `${CODE_PREFIX}${nextBooking.confirmationCode}`
     : undefined;
   const progress = Math.round(dayProgress(now, tz) * 100);
-  const countdown = nextInstant ? formatCountdown(minutesUntil(nextInstant, now)) : null;
+  // Board countdown: minutes/hours while the next event is under a day out; past
+  // that, a calendar-relative day word (ADR-0085) — "מחר"/"מחרתיים" derived from
+  // the event's date, not the raw hour-count (37h out is calendar-"מחרתיים",
+  // never a duration-"יום"). Durations elsewhere stay counts (formatCountdown).
+  const minsToNext = nextInstant ? minutesUntil(nextInstant, now) : 0;
+  const nextDayDelta = nextInstant
+    ? Math.round(
+        (Date.parse(`${todayInTz(tz, new Date(nextInstant))}T00:00:00Z`) -
+          Date.parse(`${today}T00:00:00Z`)) /
+          MS_PER_DAY,
+      )
+    : 0;
+  const countdown = !nextInstant
+    ? null
+    : minsToNext >= MINUTES_PER_DAY
+      ? countdownParts(nextDayDelta)
+      : formatCountdown(minsToNext);
 
   // In-transit hero derivations (flight in the air): time-to-landing progress
   // and the code chip.

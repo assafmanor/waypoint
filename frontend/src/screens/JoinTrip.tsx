@@ -35,6 +35,7 @@ import {
 } from '../lib/api';
 import { consumeJoinIntent, saveIntent, saveJoinIntent } from '../lib/intent';
 import { dayCount } from '../lib/hebrew';
+import { countdownParts } from '../lib/time';
 import { DEFAULT_TRIP_ICON, DOT_SEPARATOR, MS_PER_DAY } from '../constants';
 import { t } from '../i18n/he';
 
@@ -184,7 +185,7 @@ function Ready({ preview }: { preview: InvitePreview }) {
   const tripDays =
     Math.round((Date.parse(preview.endDate) - Date.parse(preview.startDate)) / MS_PER_DAY) + 1;
   const avatarCount = Math.min(preview.memberCount, MAX_AVATARS);
-  const startCount = dayCount(daysUntilStart);
+  const startCount = countdownParts(daysUntilStart);
   const lengthCount = dayCount(tripDays);
 
   return (
@@ -203,7 +204,7 @@ function Ready({ preview }: { preview: InvitePreview }) {
               <span className="ticket-badge">✈️ {t.shell.join.ticketBadge}</span>
               {daysUntilStart > 0 && (
                 <span className="ticket-countdown">
-                  {t.shell.join.countdownPrefix}{' '}
+                  {startCount.prefix && <>{startCount.prefix} </>}
                   {startCount.value && (
                     <>
                       <span className="num" dir="ltr">

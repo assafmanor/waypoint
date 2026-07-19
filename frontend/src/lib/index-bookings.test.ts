@@ -175,6 +175,25 @@ describe('scheduleLabel (span-aware, ADR-0053)', () => {
     expect(label).not.toContain('צ׳ק-אאוט');
   });
 
+  it('reads the day relative to today, not as a trip day-number (ADR-0085)', () => {
+    // today 07-07: a flight tomorrow / in three days reads מחר / עוד N ימים.
+    const flight = booking('f', 'flight', BOOKING_TYPE.FLIGHT);
+    const tomorrow = scheduleLabel(
+      linkedEvent('f', '2026-07-08', '08:30'),
+      flight,
+      TRIP,
+      new Date(NOW),
+    );
+    expect(tomorrow).toBe('המראה · מחר · 08:30');
+    const soon = scheduleLabel(
+      linkedEvent('f', '2026-07-10', '08:30'),
+      flight,
+      TRIP,
+      new Date(NOW),
+    );
+    expect(soon).toContain('עוד 3 ימים');
+  });
+
   it('shows the check-out day (no time) mid-stay', () => {
     const ev = span_(linkedEvent('h', '2026-07-05', '15:00'), '2026-07-14', '11:00');
     const label = scheduleLabel(ev, hotel, TRIP, new Date(NOW)); // today 07-07, mid-stay
