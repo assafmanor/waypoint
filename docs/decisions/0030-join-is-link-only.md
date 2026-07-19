@@ -1,6 +1,6 @@
 # 0030 — Joining a trip is link-only (no short invite codes)
 
-**Status:** Accepted
+**Status:** Superseded by [0067](0067-revocable-code-invites-and-removal-blocks.md)
 **Date:** 2026-07-14
 **Builds on:** [0024](0024-app-shell-and-trip-lifecycle.md) (app shell, invite/join flow), [0020](0020-auth-session-architecture.md) (HMAC-signed tokens)
 

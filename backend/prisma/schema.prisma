@@ -94,6 +94,7 @@ model User {
   maybeItems         MaybeItem[]
   changes            Change[]
   calendarEventLinks CalendarEventLink[]
+  tripBlocks         TripBlock[]
 }
 
 // Provider identity + that provider's OAuth material, one per (user, provider). ADR-0020.
@@ -151,8 +152,42 @@ model Trip {
   maybeItems  MaybeItem[]
   places      Place[]
   changes     Change[]
+  invite      Invite?
+  blocks      TripBlock[]
 
   @@index([createdBy])
+}
+
+// One durable, revocable invite per trip (ADR-0067). The short random `code` is
+// both the public handle in /join/<code> and the grant itself — join resolves
+// code → row → tripId (no separate token). Rotating mints a fresh code in place,
+// so the old one stops resolving. Validity is until the trip ends (checked live
+// against Trip.endDate) or an admin rotates; no fixed timer.
+model Invite {
+  id        String   @id @default(cuid())
+  tripId    String   @unique
+  code      String   @unique
+  createdBy String
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  trip Trip @relation(fields: [tripId], references: [id], onDelete: Cascade)
+}
+
+// A user barred from rejoining a trip via its invite (ADR-0067). Written when an
+// admin removes another member (not on a self-leave); checked at join. Gates
+// joining only — all access stays gated by Membership.
+model TripBlock {
+  tripId    String
+  userId    String
+  blockedBy String
+  blockedAt DateTime @default(now())
+
+  trip Trip @relation(fields: [tripId], references: [id], onDelete: Cascade)
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@id([tripId, userId])
+  @@index([userId])
 }
 
 model Membership {

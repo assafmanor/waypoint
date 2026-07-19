@@ -1,10 +1,11 @@
-import { createHmac, randomUUID } from 'node:crypto';
+import { randomUUID } from 'node:crypto';
 import {
   BadRequestException,
+  ConflictException,
   ForbiddenException,
+  GoneException,
   Injectable,
   NotFoundException,
-  UnauthorizedException,
 } from '@nestjs/common';
 import { Prisma } from '@prisma/client';
 import type {
@@ -13,6 +14,7 @@ import type {
   InvitePreview,
   JoinTripInput,
   Membership,
+  RemovedMember,
   Trip,
   TripSnapshot,
   UpdateMembershipPrefsInput,
@@ -21,6 +23,7 @@ import type {
 } from '@waypoint/shared';
 import { PrismaService } from '../prisma/prisma.service';
 import { ChangeService, type ChangeOp } from '../sync/change.service';
+import { generateInviteCode } from './invite.util';
 import {
   toBookingDto,
   toDocumentSummaryDto,
@@ -33,20 +36,25 @@ import {
   toUserDto,
 } from './trips.mapper';
 
-// Stateless invite tokens (auth-and-google.md): base64url(`${tripId}.${expiresAtMs}`) + '.' + HMAC.
-// No DB record, so nothing to revoke — acceptable per ADR-0005 (invite revoke isn't gated in v1).
-const INVITE_TTL_MS = 7 * 24 * 60 * 60 * 1000;
-
 const toDateOnly = (d: Date): string => d.toISOString().slice(0, 10);
 
-function inviteSecret(): string {
-  const secret = process.env.JWT_SECRET;
-  if (!secret) throw new Error('JWT_SECRET not configured');
-  return secret;
-}
-
-function signInvitePayload(payload: string): string {
-  return createHmac('sha256', inviteSecret()).update(payload).digest('base64url');
+/** A trip is "over" once its end date has passed in the trip's own timezone
+ *  (ADR-0067) — that's when an invite code stops working. Falls back to UTC if
+ *  the stored timezone is unusable. */
+function tripHasEnded(endDate: Date, timezone: string): boolean {
+  const endKey = toDateOnly(endDate);
+  let todayKey: string;
+  try {
+    todayKey = new Intl.DateTimeFormat('en-CA', {
+      timeZone: timezone,
+      year: 'numeric',
+      month: '2-digit',
+      day: '2-digit',
+    }).format(new Date());
+  } catch {
+    todayKey = toDateOnly(new Date());
+  }
+  return todayKey > endKey;
 }
 
 @Injectable()
@@ -142,14 +150,57 @@ export class TripsService {
     this.changes.disconnectTrip(tripId); // close every member's live stream (B-02)
   }
 
-  createInviteToken(tripId: string): string {
-    const payload = `${tripId}.${Date.now() + INVITE_TTL_MS}`;
-    const encoded = Buffer.from(payload).toString('base64url');
-    return `${encoded}.${signInvitePayload(payload)}`;
+  /** The trip's one durable invite (ADR-0067): returns the current code, minting
+   *  one only if the trip has none. Stable across calls, so opening trip-settings
+   *  shows the same link rather than churning a new one each time. */
+  async getOrCreateInvite(tripId: string, actorUserId: string): Promise<string> {
+    const existing = await this.prisma.invite.findUnique({ where: { tripId } });
+    if (existing) return existing.code;
+    return this.mintInvite(tripId, actorUserId);
   }
 
-  async joinByToken(userId: string, token: string, input: JoinTripInput = {}): Promise<Membership> {
-    const tripId = this.verifyInviteToken(token);
+  /** Revoke + replace the trip's invite (ADR-0067): a fresh code + token overwrite
+   *  the row in place, so the previously shared code stops resolving at once. */
+  async rotateInvite(tripId: string, actorUserId: string): Promise<string> {
+    await this.assertAdmin(tripId, actorUserId);
+    return this.mintInvite(tripId, actorUserId);
+  }
+
+  /** Upsert the trip's single invite row with a new code (retrying on the rare
+   *  code collision against the @unique). */
+  private async mintInvite(tripId: string, actorUserId: string): Promise<string> {
+    for (let attempt = 0; attempt < 5; attempt++) {
+      const code = generateInviteCode();
+      try {
+        await this.prisma.invite.upsert({
+          where: { tripId },
+          create: { tripId, code, createdBy: actorUserId },
+          update: { code },
+        });
+        return code;
+      } catch (err) {
+        if (err instanceof Prisma.PrismaClientKnownRequestError && err.code === 'P2002') continue;
+        throw err;
+      }
+    }
+    throw new ConflictException('Could not allocate a unique invite code');
+  }
+
+  async joinByCode(userId: string, code: string, input: JoinTripInput = {}): Promise<Membership> {
+    const tripId = await this.resolveActiveInvite(code);
+
+    const blocked = await this.prisma.tripBlock.findUnique({
+      where: { tripId_userId: { tripId, userId } },
+    });
+    if (blocked) {
+      throw new ForbiddenException({
+        error: {
+          code: 'REMOVED_FROM_TRIP',
+          message: 'You were removed from this trip. Ask an admin to re-invite you.',
+        },
+      });
+    }
+
     const membership = await this.prisma.membership.upsert({
       where: { tripId_userId: { tripId, userId } },
       update: { ...input },
@@ -201,14 +252,18 @@ export class TripsService {
 
   /** Admin-only unless removing yourself (leaving the trip) — ADR-0005. Data-plane
    *  via ChangeService so the roster updates live (ADR-0039). If removing the last
-   *  admin would leave the trip admin-less, another member is auto-promoted. */
+   *  admin would leave the trip admin-less, another member is auto-promoted. An
+   *  admin *kick* (actor ≠ target) also writes a `TripBlock` in the same transaction
+   *  so the removed member can't rejoin via the live invite link (ADR-0067); a
+   *  self-leave writes none. */
   async removeMember(tripId: string, actorUserId: string, targetUserId: string): Promise<void> {
     const target = await this.prisma.membership.findUnique({
       where: { tripId_userId: { tripId, userId: targetUserId } },
     });
     if (!target) throw new NotFoundException('Member not found');
 
-    if (actorUserId !== targetUserId) {
+    const isAdminKick = actorUserId !== targetUserId;
+    if (isAdminKick) {
       await this.assertAdmin(tripId, actorUserId);
     }
 
@@ -222,6 +277,16 @@ export class TripsService {
       actorUserId,
       apply: async (tx) => {
         await tx.membership.delete({ where: { id: target.id } });
+        // An admin kick also blocks rejoin via the live invite link (ADR-0067);
+        // a self-leave writes no block. In the same txn as the delete.
+        if (isAdminKick) {
+          await tx.tripBlock.upsert({
+            where: { tripId_userId: { tripId, userId: targetUserId } },
+            create: { tripId, userId: targetUserId, blockedBy: actorUserId },
+            update: { blockedBy: actorUserId, blockedAt: new Date() },
+          });
+        }
+
         const ops: ChangeOp[] = [
           {
             entityType: 'membership',
@@ -259,6 +324,30 @@ export class TripsService {
     this.changes.disconnectUser(tripId, targetUserId);
   }
 
+  /** Admin-only list of members an admin has kicked (ADR-0067) — the "Removed"
+   *  section in trip-settings, the handle for re-inviting them. */
+  async listBlocked(tripId: string, actorUserId: string): Promise<RemovedMember[]> {
+    await this.assertAdmin(tripId, actorUserId);
+    const blocks = await this.prisma.tripBlock.findMany({
+      where: { tripId },
+      orderBy: { blockedAt: 'desc' },
+      include: { user: true },
+    });
+    return blocks.map((b) => ({
+      userId: b.userId,
+      displayName: b.user.displayName,
+      avatarColor: b.user.avatarColor,
+      blockedAt: b.blockedAt.toISOString(),
+    }));
+  }
+
+  /** Admin re-invite (ADR-0067): clear a block so the person can rejoin via the
+   *  live link. Idempotent — an already-absent block is a no-op. */
+  async unblockMember(tripId: string, actorUserId: string, targetUserId: string): Promise<void> {
+    await this.assertAdmin(tripId, actorUserId);
+    await this.prisma.tripBlock.deleteMany({ where: { tripId, userId: targetUserId } });
+  }
+
   /** Throws 403 unless the actor is an `admin` of the trip. Assumes membership
    *  is already confirmed (MembershipGuard); a non-member reads as non-admin. */
   private async assertAdmin(tripId: string, userId: string): Promise<void> {
@@ -284,32 +373,35 @@ export class TripsService {
     };
   }
 
-  /** Public preview for the join screen (ADR-0024) — token invalid or trip gone both 404. */
-  async getInvitePreview(token: string): Promise<InvitePreview> {
-    let tripId: string;
-    try {
-      tripId = this.verifyInviteToken(token);
-    } catch {
-      throw new NotFoundException('Invite not found');
-    }
-    const trip = await this.prisma.trip.findUnique({ where: { id: tripId } });
-    if (!trip) throw new NotFoundException('Invite not found');
-    const memberCount = await this.prisma.membership.count({ where: { tripId } });
+  /** Public preview for the join screen (ADR-0024) — code invalid, trip gone, or
+   *  trip already over all read as 404/410 (nothing joinable to preview). */
+  async getInvitePreview(code: string): Promise<InvitePreview> {
+    const tripId = await this.resolveActiveInvite(code);
+    const [trip, memberCount] = await this.prisma.$transaction([
+      this.prisma.trip.findUniqueOrThrow({ where: { id: tripId } }),
+      this.prisma.membership.count({ where: { tripId } }),
+    ]);
     return toInvitePreviewDto(trip, memberCount);
   }
 
-  private verifyInviteToken(token: string): string {
-    const [encoded, signature] = token.split('.');
-    if (!encoded || !signature) throw new BadRequestException('Malformed invite token');
-    const payload = Buffer.from(encoded, 'base64url').toString('utf-8');
-    if (signInvitePayload(payload) !== signature) {
-      throw new UnauthorizedException('Invalid invite token');
+  /** Resolve a public invite code to its trip, enforcing every join gate that is
+   *  independent of the caller (ADR-0067): the code exists, the trip exists, and
+   *  the trip hasn't ended. A missing code is a 404 (no existence oracle); an over
+   *  trip is a 410. The code itself is the grant — there is no token to verify. */
+  private async resolveActiveInvite(code: string): Promise<string> {
+    const invite = await this.prisma.invite.findUnique({ where: { code } });
+    if (!invite) throw new NotFoundException('Invite not found');
+    const trip = await this.prisma.trip.findUnique({
+      where: { id: invite.tripId },
+      select: { endDate: true, timezone: true },
+    });
+    if (!trip) throw new NotFoundException('Invite not found');
+    if (tripHasEnded(trip.endDate, trip.timezone)) {
+      throw new GoneException({
+        error: { code: 'INVITE_EXPIRED', message: 'This trip has ended.' },
+      });
     }
-    const [tripId, expiresAt] = payload.split('.');
-    if (!tripId || Date.now() > Number(expiresAt)) {
-      throw new UnauthorizedException('Invite token expired');
-    }
-    return tripId;
+    return invite.tripId;
   }
 
   async listForUser(userId: string): Promise<Trip[]> {

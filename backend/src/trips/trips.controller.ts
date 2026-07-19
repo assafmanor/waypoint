@@ -23,6 +23,7 @@ import {
   inviteUrlSchema,
   joinTripSchema,
   membershipSchema,
+  removedMemberSchema,
   tripSchema,
   tripSnapshotSchema,
   tripWithMembersSchema,
@@ -31,6 +32,7 @@ import {
   updateTripSchema,
   type InvitePreview,
   type Membership,
+  type RemovedMember,
   type Trip,
   type TripSnapshot,
 } from '@waypoint/shared';
@@ -55,6 +57,7 @@ class JoinTripDto extends createZodDto(joinTripSchema) {}
 class UpdateMembershipPrefsDto extends createZodDto(updateMembershipPrefsSchema) {}
 class UpdateTripDto extends createZodDto(updateTripSchema) {}
 class UpdateMembershipRoleDto extends createZodDto(updateMembershipRoleSchema) {}
+class RemovedMemberDto extends createZodDto(removedMemberSchema) {}
 
 @ApiTags('trips')
 @ApiBearerAuth()
@@ -79,16 +82,16 @@ export class TripsController {
     return this.trips.createTrip(user.userId, body);
   }
 
-  @Post('join/:token')
-  @Throttle({ default: { limit: 20, ttl: 60_000 } }) // token-guessing / join abuse (B-10)
+  @Post('join/:code')
+  @Throttle({ default: { limit: 20, ttl: 60_000 } }) // code-guessing / join abuse (B-10)
   @ApiCreatedResponse({ type: MembershipDto })
   @ZodSerializerDto(MembershipDto)
   join(
     @CurrentUser() user: Principal,
-    @Param('token') token: string,
+    @Param('code') code: string,
     @Body(new ZodValidationPipe(joinTripSchema)) body: JoinTripDto,
   ): Promise<Membership> {
-    return this.trips.joinByToken(user.userId, token, body);
+    return this.trips.joinByCode(user.userId, code, body);
   }
 
   @Patch(':tripId/members/me')
@@ -153,12 +156,57 @@ export class TripsController {
     return this.trips.getSnapshot(tripId);
   }
 
+  // Get-or-create the trip's one stable invite link (ADR-0067) — the same code
+  // every call, so trip-settings shows a single link instead of churning new ones.
   @Post(':tripId/invite')
   @UseGuards(MembershipGuard)
   @ApiCreatedResponse({ type: InviteUrlDto })
   @ZodSerializerDto(InviteUrlDto)
-  invite(@Param('tripId') tripId: string): { inviteUrl: string } {
-    return { inviteUrl: `/join/${this.trips.createInviteToken(tripId)}` };
+  async invite(
+    @CurrentUser() user: Principal,
+    @Param('tripId') tripId: string,
+  ): Promise<{ inviteUrl: string }> {
+    const code = await this.trips.getOrCreateInvite(tripId, user.userId);
+    return { inviteUrl: `/join/${code}` };
+  }
+
+  // Revoke + replace the link (admin-only, ADR-0067): the previously shared code
+  // stops resolving at once.
+  @Post(':tripId/invite/rotate')
+  @UseGuards(MembershipGuard)
+  @ApiCreatedResponse({ type: InviteUrlDto })
+  @ZodSerializerDto(InviteUrlDto)
+  async rotateInvite(
+    @CurrentUser() user: Principal,
+    @Param('tripId') tripId: string,
+  ): Promise<{ inviteUrl: string }> {
+    const code = await this.trips.rotateInvite(tripId, user.userId);
+    return { inviteUrl: `/join/${code}` };
+  }
+
+  // The "Removed" section: members an admin kicked, so they can be allowed back (ADR-0067).
+  @Get(':tripId/blocks')
+  @UseGuards(MembershipGuard)
+  @ApiOkResponse({ type: [RemovedMemberDto] })
+  @ZodSerializerDto([RemovedMemberDto])
+  listBlocked(
+    @CurrentUser() user: Principal,
+    @Param('tripId') tripId: string,
+  ): Promise<RemovedMember[]> {
+    return this.trips.listBlocked(tripId, user.userId);
+  }
+
+  // Allow a removed member back in (admin re-invite, ADR-0067): clear their block.
+  @Delete(':tripId/blocks/:userId')
+  @UseGuards(MembershipGuard)
+  @HttpCode(204)
+  @ApiNoContentResponse()
+  unblock(
+    @CurrentUser() user: Principal,
+    @Param('tripId') tripId: string,
+    @Param('userId') userId: string,
+  ): Promise<void> {
+    return this.trips.unblockMember(tripId, user.userId, userId);
   }
 
   @Delete(':tripId/members/:userId')
@@ -181,12 +229,12 @@ export class TripsController {
 export class InvitesController {
   constructor(private readonly trips: TripsService) {}
 
-  @Get(':token')
-  // Public HMAC oracle otherwise hammerable (B-10) — tight per-IP cap.
+  @Get(':code')
+  // Public short-code lookup otherwise hammerable for code-guessing (B-10) — tight per-IP cap.
   @Throttle({ default: { limit: 20, ttl: 60_000 } })
   @ApiOkResponse({ type: InvitePreviewDto })
   @ZodSerializerDto(InvitePreviewDto)
-  preview(@Param('token') token: string): Promise<InvitePreview> {
-    return this.trips.getInvitePreview(token);
+  preview(@Param('code') code: string): Promise<InvitePreview> {
+    return this.trips.getInvitePreview(code);
   }
 }

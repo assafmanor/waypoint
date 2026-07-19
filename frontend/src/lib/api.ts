@@ -9,6 +9,7 @@ import {
   meSchema,
   membershipSchema,
   placeSchema,
+  removedMemberSchema,
   tripDocumentSchema,
   tripEventSchema,
   tripSchema,
@@ -33,6 +34,7 @@ import {
   type MoveEventInput,
   type MembershipRole,
   type Place,
+  type RemovedMember,
   type Trip,
   type TripEvent,
   type TripSnapshot,
@@ -179,30 +181,56 @@ export async function removeMember(tripId: string, userId: string): Promise<void
   if (!res.ok && res.status !== 404) return throwApiError(res);
 }
 
-/** Generates/refreshes the trip's invite link (T-065, ADR-0030 — link-only). */
+/** The trip's one stable invite link (ADR-0067): get-or-create, so repeated calls
+ *  return the same short-code link rather than churning a new one. */
 export async function createInvite(tripId: string): Promise<InviteUrl> {
   const res = await apiFetch(`${API_BASE_URL}/trips/${tripId}/invite`, { method: 'POST' });
   if (!res.ok) return throwApiError(res);
   return inviteUrlSchema.parse(await res.json());
 }
 
-/** Public/unguarded preview for the join screen (T-042, ADR-0024) — no auth needed. */
-export async function fetchInvitePreview(token: string): Promise<InvitePreview> {
-  const res = await fetch(`${API_BASE_URL}/invites/${token}`);
+/** Revoke + replace the invite link (admin-only, ADR-0067): the old code dies. */
+export async function rotateInvite(tripId: string): Promise<InviteUrl> {
+  const res = await apiFetch(`${API_BASE_URL}/trips/${tripId}/invite/rotate`, { method: 'POST' });
+  if (!res.ok) return throwApiError(res);
+  return inviteUrlSchema.parse(await res.json());
+}
+
+/** Public/unguarded preview for the join screen (ADR-0024/0067) — no auth needed.
+ *  404 = unknown code, 410 = trip already ended. */
+export async function fetchInvitePreview(code: string): Promise<InvitePreview> {
+  const res = await fetch(`${API_BASE_URL}/invites/${code}`);
   if (!res.ok) return throwApiError(res);
   return invitePreviewSchema.parse(await res.json());
 }
 
 /** Idempotent — rejoining an already-joined trip keeps the existing role and
- *  re-applies `calendarSyncEnabled` (api-contract.md). */
-export async function joinTrip(token: string, input: JoinTripInput = {}): Promise<Membership> {
-  const res = await apiFetch(`${API_BASE_URL}/trips/join/${token}`, {
+ *  re-applies `calendarSyncEnabled` (api-contract.md). 403 REMOVED_FROM_TRIP if
+ *  the caller was kicked and not yet allowed back (ADR-0067). */
+export async function joinTrip(code: string, input: JoinTripInput = {}): Promise<Membership> {
+  const res = await apiFetch(`${API_BASE_URL}/trips/join/${code}`, {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
     body: JSON.stringify(input),
   });
   if (!res.ok) return throwApiError(res);
   return membershipSchema.parse(await res.json());
+}
+
+/** Admin-only "Removed" list — members an admin kicked (ADR-0067). */
+export async function fetchRemovedMembers(tripId: string): Promise<RemovedMember[]> {
+  const res = await apiFetch(`${API_BASE_URL}/trips/${tripId}/blocks`);
+  if (!res.ok) return throwApiError(res);
+  return removedMemberSchema.array().parse(await res.json());
+}
+
+/** Admin re-invite (ADR-0067): clear a member's block so the live link works for
+ *  them again. Idempotent; 404 tolerated. */
+export async function allowMemberBack(tripId: string, userId: string): Promise<void> {
+  const res = await apiFetch(`${API_BASE_URL}/trips/${tripId}/blocks/${userId}`, {
+    method: 'DELETE',
+  });
+  if (!res.ok && res.status !== 404) return throwApiError(res);
 }
 
 const snapshotUrl = (tripId: string) => `${API_BASE_URL}/trips/${tripId}/snapshot`;
@@ -245,6 +273,15 @@ export const isMoveIntoPastError = (err: unknown): boolean =>
 export const MOVE_CROSSES_DAY = 'MOVE_CROSSES_DAY';
 export const isMoveCrossesDayError = (err: unknown): boolean =>
   err instanceof ApiError && err.code === MOVE_CROSSES_DAY;
+
+// Invite/join outcomes the join screen phrases specially (ADR-0067).
+export const REMOVED_FROM_TRIP = 'REMOVED_FROM_TRIP';
+export const isRemovedFromTripError = (err: unknown): boolean =>
+  err instanceof ApiError && err.code === REMOVED_FROM_TRIP;
+
+export const INVITE_EXPIRED = 'INVITE_EXPIRED';
+export const isInviteExpiredError = (err: unknown): boolean =>
+  err instanceof ApiError && err.code === INVITE_EXPIRED;
 
 async function throwApiError(res: Response): Promise<never> {
   const body = (await res.json().catch(() => undefined)) as

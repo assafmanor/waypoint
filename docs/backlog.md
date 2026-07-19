@@ -28,7 +28,6 @@ Decomposed to run simultaneously; disjoint file ownership (map in the session-29
 
 ## Security & correctness
 
-- **Revocable invite tokens** — `trips.service.ts` signs stateless `base64url(tripId.expiresAt) + HMAC` tokens with no DB row. If `JWT_SECRET` leaks, anyone with it can forge a peer membership for any trip ID with any expiry, and no invite can be revoked early. A short `Invite` row fixes that and reads as a normal link instead of a phishing blob (the token becomes the row id). Revisit the invite-link copy/expiry messaging while in there.
 - **Minor-unit currency** — `lib/money.ts` treats amounts as whole units. Correct for JPY, wrong for ILS/USD. Fix before a non-JPY trip.
 - **Admin role permission matrix** — ADR-0005 is admin/peer only; if roles grow, decide the matrix in an ADR first.
 
@@ -49,7 +48,9 @@ Full write-up + evidence in [reviews/frontend-architecture-review.md](reviews/fr
 
 ## Backend review follow-ups (open findings)
 
-Full write-up + evidence (incl. a reproduced concurrency probe) in [reviews/backend-architecture-review.md](reviews/backend-architecture-review.md). Nothing shipped yet. The **Revocable invite tokens** line under "Security & correctness" above is the same item as B-07.
+Full write-up + evidence (incl. a reproduced concurrency probe) in [reviews/backend-architecture-review.md](reviews/backend-architecture-review.md).
+
+B-01–B-06 and B-08–B-13 shipped (ADR-0068–0076); B-07 shipped (ADR-0067). Remaining are the pieces deliberately deferred out of B-12/B-13:
 
 - **Orphan-blob reconciler** (deferred, from B-13/ADR-0076) — a periodic sweep listing storage keys not referenced by any `Document.fileRef`; the upload path still biases toward orphaning a blob over losing a document, with no reconciliation. Acceptable at current scale.
 - **Standardize change `after` payloads** (deferred, from B-13/ADR-0076) — several services log the partial `input` as a change's `after` rather than the persisted DTO, so `after`'s shape is inconsistent across entity types (affects feed rendering / any future replay, not correctness today).
@@ -58,7 +59,6 @@ Full write-up + evidence (incl. a reproduced concurrency probe) in [reviews/back
 ## Testing
 
 - **e2e smoke** (Playwright) — conventions call for one; none exists. Boot the app, cross the tabs, assert each renders and the console is clean. Catches white-screen regressions unit tests miss.
-- **Backend high-risk coverage (backend review §14)** — concurrency test for B-01 (snapshot/catch-up skip), removed-member WS eviction (B-02), document `text/html` rejection / `attachment` header (B-03), event cross-trip refs (B-06), error-envelope consistency (B-05), last-admin double-removal.
 
 ## Open question
 

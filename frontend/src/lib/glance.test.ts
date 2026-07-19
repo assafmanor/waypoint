@@ -167,6 +167,93 @@ describe('buildDayGlance', () => {
     expect(dep.icon).toBe('✈️');
   });
 
+  it('stacks two close transition markers into separate lanes (no chip overlap)', () => {
+    // A short red-eye: departure + arrival only ~1h apart on a 16h window (~6%),
+    // well under the chip-width gap, so they must not share a lane.
+    const events = [
+      ev({
+        id: 'flight',
+        category: 'transport',
+        kind: EVENT_KIND.HARD,
+        icon: '✈️',
+        startsAt: at('22:00'),
+        endsAt: at('23:00'),
+      }),
+    ];
+    const g = buildDayGlance(events, DATE, ms('12:00'), day07, day23, TZ);
+    expect(g.markers).toHaveLength(2);
+    expect(g.markerLaneCount).toBe(2);
+    expect(g.markers.map((m) => m.lane).sort()).toEqual([0, 1]);
+  });
+
+  it('keeps well-separated markers on a single lane', () => {
+    const events = [
+      ev({
+        id: 'flight',
+        category: 'transport',
+        kind: EVENT_KIND.HARD,
+        startsAt: at('08:00'),
+        endsAt: at('20:00'), // 12h apart → far beyond the gap
+      }),
+    ];
+    const g = buildDayGlance(events, DATE, ms('12:00'), day07, day23, TZ);
+    expect(g.markerLaneCount).toBe(1);
+    expect(g.markers.every((m) => m.lane === 0)).toBe(true);
+  });
+
+  it('stretches the window to a late transition so its marker stays on the rail', () => {
+    // An overnight (ambient) flight departs late and lands after midnight: it is
+    // not a counted block that stretches the window, so without folding the
+    // transition instants in, the arrival marker would land past frac 1 and clip.
+    const events = [
+      ev({
+        id: 'redeye',
+        category: 'transport',
+        kind: EVENT_KIND.HARD,
+        date: DATE,
+        startsAt: at('23:30'),
+        endsAt: at('02:00', '2026-07-08'),
+        endDate: '2026-07-08',
+      }),
+    ];
+    const g = buildDayGlance(events, DATE, ms('20:00'), day07, day23, TZ);
+    // Ambient → not a counted block, but its departure marks this day.
+    expect(g.segs.some((s) => s.key === 'redeye')).toBe(false);
+    const dep = g.markers.find((m) => m.labelKey === 'departure')!;
+    expect(dep).toBeDefined();
+    expect(dep.frac).toBeGreaterThanOrEqual(0);
+    expect(dep.frac).toBeLessThanOrEqual(1);
+    expect(g.windowEndMs).toBe(ms('23:30')); // stretched to the departure instant
+  });
+
+  it('is not empty on a day carrying only a transition marker', () => {
+    // A hotel whose check-out lands on a day with no other events: the marker
+    // must still render (previously the day read as empty and dropped it).
+    const checkoutDay = '2026-07-10';
+    const events = [
+      ev({
+        id: 'hotel',
+        category: 'lodging',
+        date: '2026-07-07',
+        startsAt: at('15:00', '2026-07-07'),
+        endsAt: at('11:00', checkoutDay),
+        endDate: checkoutDay,
+      }),
+    ];
+    const g = buildDayGlance(
+      events,
+      checkoutDay,
+      ms('08:00', checkoutDay),
+      ms('07:00', checkoutDay),
+      ms('23:00', checkoutDay),
+      TZ,
+    );
+    expect(g.empty).toBe(false);
+    expect(g.markers).toHaveLength(1);
+    expect(g.markers[0].labelKey).toBe('checkOut');
+    expect(g.remaining).toBe(0);
+  });
+
   it('marks an ambient hotel check-in on its check-in day, uncounted', () => {
     const events = [
       ev({

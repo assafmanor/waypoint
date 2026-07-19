@@ -216,8 +216,11 @@ export type CreateMaybeItemInput = z.infer<typeof createMaybeItemSchema>;
 export const inviteUrlSchema = z.object({ inviteUrl: z.string() });
 export type InviteUrl = z.infer<typeof inviteUrlSchema>;
 
-/** `GET /invites/:token` response — public preview shown before joining (ADR-0024). */
+/** `GET /invites/:code` response — public preview shown before joining (ADR-0024).
+ *  Carries `tripId` so an authed visitor already in the trip is redirected in
+ *  rather than shown the invite ticket (ADR-0067). */
 export const invitePreviewSchema = z.object({
+  tripId: z.string(),
   tripName: z.string(),
   icon: z.string().optional(), // the trip's chosen glyph, shown on the ticket
   destination: z.string(),
@@ -226,6 +229,16 @@ export const invitePreviewSchema = z.object({
   memberCount: z.number().int(),
 });
 export type InvitePreview = z.infer<typeof invitePreviewSchema>;
+
+/** `GET /trips/:tripId/blocks` item — a member an admin kicked, shown in the
+ *  trip-settings "Removed" section so they can be allowed back (ADR-0067). */
+export const removedMemberSchema = z.object({
+  userId: z.string(),
+  displayName: z.string(),
+  avatarColor: z.string(),
+  blockedAt: z.string(),
+});
+export type RemovedMember = z.infer<typeof removedMemberSchema>;
 
 /** `POST /auth/refresh` response — the access JWT lives in memory client-side, never a cookie (ADR-0020). */
 export const accessTokenResponseSchema = z.object({ accessToken: z.string() });

@@ -6,7 +6,7 @@
 import { BOOKING_TYPE, type Booking, type BookingType } from '@waypoint/shared';
 import { useTrip } from '../state/trip-state';
 import { Sheet } from './Sheet';
-import { NavArrow } from './NavArrow';
+import { RouteLabel } from './RouteLabel';
 import { placeName } from '../lib/places';
 import { formatTime } from '../lib/time';
 import { timingLabels } from '../lib/booking-timing';
@@ -117,21 +117,6 @@ export function BookingDetail({
         </div>
       </div>
     </Sheet>
-  );
-}
-
-/** Origin → destination for a transport booking. Laid out RTL (flex, not text
- *  bidi) so the origin sits at the start/right and the arrow points at the
- *  destination regardless of whether the place names are Hebrew or Latin. */
-export function RouteLabel({ from, to }: { from?: string; to?: string }) {
-  return (
-    <span className="route">
-      <bdi>{from ?? '-'}</bdi>
-      <span className="arr" aria-hidden="true">
-        <NavArrow variant="forward" />
-      </span>
-      <bdi>{to ?? '-'}</bdi>
-    </span>
   );
 }
 

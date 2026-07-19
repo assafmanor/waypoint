@@ -2,7 +2,7 @@
 // quick-access grid, and a derived "day at a glance" card. Nothing on this
 // screen is a fixture for an unbuilt feature (ADR-0045). "Now/Next" and the
 // glance are derived from the clock + events, never stored (ADR-0018).
-import { useState } from 'react';
+import { useState, type CSSProperties } from 'react';
 import { useNavigate } from 'react-router-dom';
 import {
   BOOKING_TYPE,
@@ -16,8 +16,10 @@ import {
 import { useTrip } from '../state/trip-state';
 import { useToast } from '../ui/Toast';
 import { Icon } from '../ui/Icon';
+import { EventTitle } from '../ui/EventTitle';
 import { useClock } from '../lib/useClock';
 import { nextCodedBooking } from '../lib/home-quick';
+import { eventRoute } from '../lib/places';
 import { TAB_PARAM } from '../state/nav-state';
 import {
   dayProgress,
@@ -51,6 +53,12 @@ const startTransitionKey = (e: TripEvent): string | undefined =>
 
 const hourLabel = (hour: number) => `${String(hour).padStart(2, '0')}:00`;
 
+/** A marker chip within this fraction of a rail edge anchors inward (to the edge)
+ *  instead of centering on its point, so it can't clip off the rail. */
+const MARKER_EDGE_FRAC = 0.12;
+const markerAnchor = (frac: number): string =>
+  frac <= MARKER_EDGE_FRAC ? 'at-start' : frac >= 1 - MARKER_EDGE_FRAC ? 'at-end' : '';
+
 /** WiFi lives on the hotel booking's details blob now (ADR-0047), not a TripNote.
  *  Derived quick-access: absent when there's no hotel booking with WiFi. */
 type HotelWifi = { network?: string; password?: string };
@@ -62,7 +70,7 @@ function hotelWifi(bookings: Booking[]): HotelWifi | undefined {
 }
 
 export function Home({ onNavigate }: { onNavigate?: (tab: TabId) => void }) {
-  const { trip, bookings, events, activeDate } = useTrip();
+  const { trip, bookings, places, events, activeDate } = useTrip();
   const toast = useToast();
   const navigate = useNavigate();
   const now = useClock();
@@ -131,6 +139,9 @@ export function Home({ onNavigate }: { onNavigate?: (tab: TabId) => void }) {
   const transitCode = transitBooking?.confirmationCode
     ? `${CODE_PREFIX}${transitBooking.confirmationCode}`
     : undefined;
+  // Origin/destination anchor the in-transit progress ends (ADR-0059 §3): a
+  // flight reads as where it goes, not a name.
+  const transitRoute = transitEvent ? eventRoute(transitEvent, bookings, places) : null;
 
   const wifi = hotelWifi(bookings);
   // Quick-access derived tiles (ADR-0050): the next confirmation code you'll need
@@ -252,7 +263,7 @@ export function Home({ onNavigate }: { onNavigate?: (tab: TabId) => void }) {
             <div className="now-label loc">{t.board.inTransitLabel}</div>
             <div className="now-title">
               {transitEvent.icon && <span className="board-ic">{transitEvent.icon}</span>}
-              {transitEvent.title}
+              <EventTitle event={transitEvent} bookings={bookings} places={places} />
             </div>
             <div className="now-meta">
               <span className={'tlabel loc' + (arriving ? ' emph' : '')}>
@@ -276,20 +287,28 @@ export function Home({ onNavigate }: { onNavigate?: (tab: TabId) => void }) {
                     ✈️
                   </div>
                 </div>
+                {/* The ends anchor departure and arrival by place + time (ADR-0059
+                    §3: from/to, not a name); the middle counts down to landing. */}
                 <div className="tp-ends">
-                  <span className="mono" dir="ltr">
-                    {formatTime(transitEvent.startsAt, tz)}
+                  <span className="tp-end">
+                    <span className="mono" dir="ltr">
+                      {formatTime(transitEvent.startsAt, tz)}
+                    </span>
+                    {transitRoute?.from && <span className="pl">{transitRoute.from}</span>}
                   </span>
                   {countdown && (
-                    <span>
+                    <span className="tp-left">
                       {t.board.until}{' '}
                       <span className="mono" dir="ltr">
                         {formatTime(transitEvent.endsAt, tz)}
                       </span>
                     </span>
                   )}
-                  <span className="mono" dir="ltr">
-                    {formatTime(transitEvent.endsAt, tz)}
+                  <span className="tp-end end">
+                    {transitRoute?.to && <span className="pl">{transitRoute.to}</span>}
+                    <span className="mono" dir="ltr">
+                      {formatTime(transitEvent.endsAt, tz)}
+                    </span>
                   </span>
                 </div>
               </div>
@@ -302,7 +321,9 @@ export function Home({ onNavigate }: { onNavigate?: (tab: TabId) => void }) {
               {nowAll.map((e) => (
                 <div className="also-row" key={e.id}>
                   {e.icon && <span className="ic">{e.icon}</span>}
-                  <span className="nm">{e.title}</span>
+                  <span className="nm">
+                    <EventTitle event={e} bookings={bookings} places={places} />
+                  </span>
                   {e.endsAt && (
                     <span className="tm">
                       {t.board.until} <span dir="ltr">{formatTime(e.endsAt, tz)}</span>
@@ -319,7 +340,7 @@ export function Home({ onNavigate }: { onNavigate?: (tab: TabId) => void }) {
             </div>
             <div className="now-title">
               {nowEvent.icon && <span className="board-ic">{nowEvent.icon}</span>}
-              {nowEvent.title}
+              <EventTitle event={nowEvent} bookings={bookings} places={places} />
             </div>
             {nowEvent.endsAt && (
               <div className="now-meta">
@@ -350,7 +371,9 @@ export function Home({ onNavigate }: { onNavigate?: (tab: TabId) => void }) {
                     {alsoNow.map((e) => (
                       <div className="also-row" key={e.id}>
                         {e.icon && <span className="ic">{e.icon}</span>}
-                        <span className="nm">{e.title}</span>
+                        <span className="nm">
+                          <EventTitle event={e} bookings={bookings} places={places} />
+                        </span>
                         {e.kind === EVENT_KIND.HARD && (
                           <span className="mini-lock" aria-hidden="true">
                             {ICONS.lock}
@@ -385,7 +408,11 @@ export function Home({ onNavigate }: { onNavigate?: (tab: TabId) => void }) {
                 <div className="next-label">{t.board.nextLabel}</div>
                 <div className="next-title">
                   {shownNext?.icon && <span className="board-ic">{shownNext.icon}</span>}
-                  {shownNext ? shownNext.title : t.board.endOfDay}
+                  {shownNext ? (
+                    <EventTitle event={shownNext} bookings={bookings} places={places} />
+                  ) : (
+                    t.board.endOfDay
+                  )}
                 </div>
                 {shownNext && (
                   <div className="next-meta">
@@ -490,11 +517,23 @@ export function Home({ onNavigate }: { onNavigate?: (tab: TabId) => void }) {
       ) : (
         <div className="glance-day">
           {/* Amber transition markers in a dedicated lane above the block bar so
-              segments can't swallow their labels (ADR-0054 amendment / ADR-0059). */}
+              segments can't swallow their labels (ADR-0054 amendment / ADR-0059).
+              Chips stack into lanes when they'd overlap, and the ones nearest an
+              edge anchor inward so they never clip off the rail. */}
           {glance.markers.length > 0 && (
-            <div className="glance-marks" aria-hidden="true">
+            <div
+              className="glance-marks"
+              aria-hidden="true"
+              style={{ '--lanes': glance.markerLaneCount } as CSSProperties}
+            >
               {glance.markers.map((m) => (
-                <div className="tmark" key={m.key} style={{ insetInlineStart: `${m.frac * 100}%` }}>
+                <div
+                  className={`tmark ${markerAnchor(m.frac)}`}
+                  key={m.key}
+                  style={
+                    { insetInlineStart: `${m.frac * 100}%`, '--lane': m.lane } as CSSProperties
+                  }
+                >
                   <span className="chip">
                     <span className="mi">{m.icon}</span> {transitionLabel(m.labelKey)}{' '}
                     <span className="mono" dir="ltr">
