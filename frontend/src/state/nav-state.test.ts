@@ -25,12 +25,13 @@ describe('tabStep — Home-anchor tab model (ADR-0035 §3)', () => {
     expect(tabStep('days', 'index', true)).toEqual({ kind: 'replace', to: '/?tab=index' });
   });
 
-  it('steps back to the base when returning to Home', () => {
+  it('steps back to the base when Home is provably the entry behind', () => {
     expect(tabStep('index', 'home', true)).toEqual({ kind: 'back' });
   });
 
-  it('replaces to Home when there is no in-app entry behind (cold deep link)', () => {
+  it('routes to Home explicitly when Home is NOT behind — a cold deep link onto a tab, or foreign history (OAuth round-trip / external launch / idx desync) — so the tap never strands on a blind back', () => {
     expect(tabStep('index', 'home', false)).toEqual({ kind: 'replace', to: '/' });
+    expect(tabStep('map', 'home', false)).toEqual({ kind: 'replace', to: '/' });
   });
 });
 
