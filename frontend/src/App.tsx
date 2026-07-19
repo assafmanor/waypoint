@@ -39,6 +39,7 @@ import { Sheet } from './ui/Sheet';
 import { SyncReviewSheet } from './ui/SyncReviewSheet';
 import { Icon } from './ui/Icon';
 import { NavArrow } from './ui/NavArrow';
+import { DayStrip } from './ui/domain/DayStrip';
 import { Home } from './screens/Home';
 import { Login } from './screens/Login';
 import { ZeroState } from './screens/ZeroState';
@@ -160,7 +161,8 @@ function Header({
   const { mode } = useMode();
   const now = useClock();
   // Plan mode surfaces empty days on the strip (dashed + red number), the
-  // day-selector cue from mockups/plan-mode-v1.html — a gap to go fill.
+  // day-selector cue from mockups/plan-mode-v1.html — a gap to go fill. DayStrip
+  // reads this per-day as `hasEvents`.
   const datesWithEvents = new Set(events.map((e) => e.date));
   const { targetRef: tripNameRef, containerRef: tripNameWrapRef } = useShrinkToFit<
     HTMLSpanElement,
@@ -197,7 +199,8 @@ function Header({
       date,
       dayOfMonth: date.slice(8),
       letter: weekdayLetter.format(new Date(`${date}T00:00:00Z`)),
-      monthLabel,
+      monthLabel: monthLabel ?? undefined,
+      hasEvents: datesWithEvents.has(date),
     };
   });
   // Trip mode anchors amber to TODAY (the live day), not to the selection
@@ -205,21 +208,8 @@ function Header({
   // day violet (plan-ahead), and today keeps its amber dot wherever you browse —
   // so "where's now?" is always answerable from the chrome. Plan mode has no
   // "now", so it keeps its own violet-selection + empty-day grammar unchanged.
+  // The pill-state logic itself now lives in the DayStrip domain component.
   const today = todayInTz(trip.timezone, now);
-  const pillClass = (date: string) => {
-    const c = ['day-pill'];
-    const selected = date === activeDate;
-    if (mode === 'trip') {
-      if (selected) c.push(date === today ? 'on' : date < today ? 'sel-history' : 'sel-future');
-      else if (date === today) c.push('today-anchor');
-      else c.push(date < today ? 'past' : 'future');
-    } else {
-      if (selected) c.push('on');
-      else if (date < activeDate) c.push('past');
-      if (!datesWithEvents.has(date)) c.push('empty');
-    }
-    return c.join(' ');
-  };
   // Day-scope context ribbon (ADR-0029/0043): only in Trip mode, only off today.
   const dayScope =
     mode === 'trip' && activeDate !== today ? (activeDate < today ? 'past' : 'future') : null;
@@ -315,19 +305,7 @@ function Header({
         )}
       </div>
       {syncReviewOpen && <SyncReviewSheet onClose={() => setSyncReviewOpen(false)} />}
-      <div className="day-strip">
-        {days.map((d) => (
-          <div key={d.date} className="day-pill-wrap">
-            {d.monthLabel && <span className="month-label">{d.monthLabel}</span>}
-            <button className={pillClass(d.date)} onClick={() => onSelectDay(d.date)}>
-              {d.letter}
-              <span className="n" dir="ltr">
-                {d.dayOfMonth}
-              </span>
-            </button>
-          </div>
-        ))}
-      </div>
+      <DayStrip days={days} selected={activeDate} today={today} mode={mode} onSelect={onSelectDay} />
       {dayScope && (
         <button
           className={'day-context ' + dayScope}

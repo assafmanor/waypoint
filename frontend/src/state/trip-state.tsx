@@ -12,6 +12,7 @@ import {
   useState,
   type ReactNode,
 } from 'react';
+import { useSearchParams } from 'react-router-dom';
 import {
   BOOKING_SOURCE,
   CHANGES_PAGE_LIMIT,
@@ -69,6 +70,9 @@ import { useToast } from '../ui/Toast';
 import { ICONS } from '../constants';
 import { EVENTS, MAYBE_ITEMS } from '../fixtures';
 import { useAuth } from './auth-state';
+import { DAY_PARAM, resolveActiveDate } from './nav-state';
+import { AppShell } from '../ui/layout';
+import { ErrorState, LoadingState, Skeleton } from '../ui/feedback';
 import { t } from '../i18n/he';
 
 export type { RippleSuggestion };
@@ -360,6 +364,9 @@ export function TripProvider({ tripId, children }: { tripId: string; children: R
   const [snapshot, setSnapshot] = useState<TripSnapshot | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [usingCachedSnapshot, setUsingCachedSnapshot] = useState(false);
+  // Bumped by the error state's retry (U-10): re-runs the boot fetch below,
+  // which first clears the snapshot back to the loading state, then refetches.
+  const [reloadNonce, setReloadNonce] = useState(0);
 
   useEffect(() => {
     let cancelled = false;
@@ -396,21 +403,37 @@ export function TripProvider({ tripId, children }: { tripId: string; children: R
     return () => {
       cancelled = true;
     };
-  }, [tripId]);
+  }, [tripId, reloadNonce]);
 
+  // Loading + error render INSIDE the AppShell frame (U-10) rather than as a
+  // full-screen centred <h1>: a trip-switch keeps the shell chrome instead of
+  // flashing a layout jump, and the error is recoverable (retry re-runs the
+  // fetch) instead of a dead-end. The real Header needs the not-yet-loaded trip,
+  // so the frame carries a body-only skeleton / error until the snapshot lands.
   if (error) {
     return (
-      <div className="boot-screen">
-        <h1>{t.snapshot.errorTitle}</h1>
-        <p>{error}</p>
-      </div>
+      <AppShell>
+        <ErrorState
+          title={t.snapshot.errorTitle}
+          body={t.snapshot.errorBody}
+          onRetry={() => setReloadNonce((n) => n + 1)}
+        />
+      </AppShell>
     );
   }
   if (!snapshot) {
     return (
-      <div className="boot-screen">
-        <h1>{t.snapshot.loading}</h1>
-      </div>
+      <AppShell>
+        <LoadingState
+          label={t.snapshot.loading}
+          skeleton={
+            <>
+              <Skeleton shape="block" height={128} />
+              <Skeleton shape="line" lines={3} />
+            </>
+          }
+        />
+      </AppShell>
     );
   }
   return (
@@ -463,16 +486,36 @@ function TripReady({
   // reflect live. The bytes still load lazily via /content + the ADR-0055 cache.
   const [documents, setDocuments] = useState<DocumentSummary[]>(snapshot.documents);
 
+  // The selected day is deep-linkable + reload-surviving via `?day=` (J7 / review
+  // Q5), yet stays React-state-owned so every existing reset/preserve rule (the
+  // Trip-mode Home snap-to-today, the idle-resume reset, Plan-mode preservation —
+  // ADR-0035/0060) is untouched. The URL is a mirror of that state, not a second
+  // source: state seeds from the param on mount, and an effect writes it back.
+  const [searchParams, setSearchParams] = useSearchParams();
+  // "Today", clamped to the (reactive) trip range — the Trip-mode amber anchor
+  // and the reset target. Recomputed per render so a midnight/idle rollover lands
+  // on the new today. Also the value the URL param is omitted for (a clean `/`).
+  const defaultDay = clampDate(
+    todayInTz(trip.timezone, new Date(getNow())),
+    trip.startDate,
+    trip.endDate,
+  );
   // Clamped to the trip's own date range: "today" is only the *initial* default,
   // then the day-strip/DayView navigate it via setActiveDate — without clamping,
   // a session left open across a trip-timezone midnight (or one that outlives
   // the trip) drifts `activeDate` past the last real day and the day view
-  // silently goes empty.
+  // silently goes empty. A deep-linked `?day=` seeds it; an invalid/out-of-range
+  // param falls back to today (resolveActiveDate).
   const [activeDate, setActiveDateRaw] = useState(() =>
-    clampDate(
-      todayInTz(snapshot.trip.timezone, new Date(getNow())),
+    resolveActiveDate(
+      searchParams.get(DAY_PARAM),
       snapshot.trip.startDate,
       snapshot.trip.endDate,
+      clampDate(
+        todayInTz(snapshot.trip.timezone, new Date(getNow())),
+        snapshot.trip.startDate,
+        snapshot.trip.endDate,
+      ),
     ),
   );
   // Clamp against the *reactive* trip, not the boot snapshot: after an admin edits
@@ -480,6 +523,32 @@ function TripReady({
   // so selection must clamp to it too — otherwise a newly-added day snaps back out.
   const setActiveDate = (date: string) =>
     setActiveDateRaw(clampDate(date, trip.startDate, trip.endDate));
+
+  // Mirror the selected day into `?day=` on the *current* history entry with
+  // `replace` (a lateral change, not a back layer — ADR-0035 §4). Omitted when it
+  // equals today, so Trip-mode Home stays a clean `/`. This keeps reload/share of
+  // the current view on the same day; tab pushes that drop the param are re-healed
+  // here. No loop: it no-ops once the URL already matches.
+  useEffect(() => {
+    const current = searchParams.get(DAY_PARAM);
+    const wanted = activeDate === defaultDay ? null : activeDate;
+    if (current === wanted) return;
+    const next = new URLSearchParams(searchParams);
+    if (wanted) next.set(DAY_PARAM, wanted);
+    else next.delete(DAY_PARAM);
+    setSearchParams(next, { replace: true });
+  }, [activeDate, defaultDay, searchParams, setSearchParams]);
+
+  // Adopt a day that changes in the URL underneath us — a back/forward traversal
+  // to an entry pinning a different day, or an external deep link. An ABSENT param
+  // is a deliberate no-op: a tab push drops it but the selection must persist, and
+  // Plan-mode Home preserves the day (ADR-0035). Invalid/out-of-range → today.
+  useEffect(() => {
+    const param = searchParams.get(DAY_PARAM);
+    if (param === null) return;
+    const resolved = resolveActiveDate(param, trip.startDate, trip.endDate, defaultDay);
+    setActiveDateRaw((prev) => (resolved === prev ? prev : resolved));
+  }, [searchParams, trip.startDate, trip.endDate, defaultDay]);
 
   const lastSeqRef = useRef(snapshot.latestSeq);
 

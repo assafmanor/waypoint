@@ -288,107 +288,9 @@
   white-space: nowrap;
 }
 
-.day-strip {
-  display: flex;
-  gap: 6px;
-  margin-top: 14px;
-  overflow-x: auto;
-}
-.day-strip::-webkit-scrollbar {
-  height: 0;
-}
-/* Column layout (not absolute-above-the-pill) is deliberate: .day-strip is a
-   horizontal scroll container, and overflow-x: auto forces overflow-y: auto
-   too (CSS can't pair one axis auto with the other visible) — a label
-   positioned above the pill's own top edge lands in that container's
-   scrollable overflow, above scrollTop 0, which is permanently clipped. */
-.day-pill-wrap {
-  display: flex;
-  flex-direction: column;
-  justify-content: flex-end;
-  flex: 0 0 auto;
-}
-.month-label {
-  text-align: center;
-  font-size: 10.5px;
-  font-weight: 600;
-  color: #8494b5;
-  white-space: nowrap;
-  margin-bottom: 4px;
-}
-.day-pill {
-  position: relative;
-  min-width: 42px;
-  text-align: center;
-  font: inherit;
-  font-size: 11px;
-  font-weight: 600;
-  padding: 7px 0 8px;
-  border: none;
-  border-radius: 9px;
-  color: #8494b5;
-  background: rgba(255, 255, 255, 0.05);
-  cursor: pointer;
-}
-.day-pill .n {
-  display: block;
-  font-family: var(--font-mono);
-  font-size: 14px;
-  margin-top: 2px;
-  color: #b9c4de;
-}
-.day-pill.on {
-  background: var(--amber);
-  color: #3a2405;
-}
-.day-pill.on .n {
-  color: #3a2405;
-}
-/* In plan mode no day is "now", so selection is violet (design-language: mode identity). */
-.app[data-mode='plan'] .day-pill.on {
-  background: var(--plan);
-  color: #fff;
-}
-.app[data-mode='plan'] .day-pill.on .n {
-  color: #fff;
-}
-.day-pill.past {
-  opacity: 0.45;
-}
-/* Trip mode anchors amber to TODAY, not to the selection (ADR-0043 / ADR-0028).
-   today-anchor: a small amber dot marking the live day wherever you browse.
-   sel-history: a non-today selected day is a neutral highlight (history isn't
-   "now"). sel-future: a selected future day is violet (plan-ahead). future:
-   upcoming days sit slightly back. */
-.day-pill.today-anchor::after {
-  content: '';
-  position: absolute;
-  top: 5px;
-  inset-inline-end: 7px;
-  width: 6px;
-  height: 6px;
-  border-radius: 999px;
-  background: var(--amber);
-  box-shadow: 0 0 0 2px rgba(233, 166, 60, 0.25);
-}
-.day-pill.sel-history {
-  background: rgba(255, 255, 255, 0.16);
-  color: #eaf0ff;
-  box-shadow: inset 0 0 0 1px rgba(255, 255, 255, 0.28);
-}
-.day-pill.sel-history .n {
-  color: #fff;
-}
-.day-pill.sel-future {
-  background: var(--plan);
-  color: #fff;
-}
-.day-pill.sel-future .n {
-  color: #fff;
-}
-.day-pill.future {
-  opacity: 0.6;
-}
+/* The day-strip itself (`.day-strip` / `.day-pill*` / `.month-label`) now lives
+   in the DayStrip domain component (ui/domain/day-strip.css, review U-03). Only
+   the day-scope context ribbon below stays here — it is header chrome, not a pill. */
 
 /* Day-scope context ribbon under the strip when viewing a non-today day in Trip
    mode (ADR-0043 / ADR-0029) — names the state and taps back to today. */
@@ -1827,27 +1729,9 @@
 .app[data-mode='plan'] .toggle .auto {
   color: var(--muted);
 }
-.app[data-mode='plan'] .day-pill {
-  background: rgba(22, 35, 61, 0.05);
-  color: var(--muted);
-}
-.app[data-mode='plan'] .day-pill .n {
-  color: var(--ink);
-}
-.app[data-mode='plan'] .month-label {
-  color: var(--muted);
-}
-
-/* Plan-mode empty-day marker on the day strip (mockups/plan-mode-v1.html):
-   a dashed pill with a red number — a gap to go fill. Never on the selected
-   day (:not(.on)), whose violet fill wins. */
-.app[data-mode='plan'] .day-pill.empty:not(.on) {
-  border: 1px dashed var(--soft-line);
-  background: transparent;
-}
-.app[data-mode='plan'] .day-pill.empty:not(.on) .n {
-  color: var(--miss);
-}
+/* The Plan-mode day-strip re-skin (light pills, violet selection, dashed
+   empty-day markers) moved into the DayStrip component, keyed off its own
+   `[data-mode='plan']` (ui/domain/day-strip.css). */
 
 /* Return gesture (ADR-0035 §5). #app-shift is the layer the pull moves: the
    screen tracks the finger ~1:1 and, on a committed structural back, slides

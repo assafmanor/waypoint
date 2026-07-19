@@ -271,6 +271,9 @@ export const t = {
   snapshot: {
     loading: 'טוען את הטיול…',
     errorTitle: 'לא הצלחנו לטעון את הטיול',
+    // Chrome-preserving error state (U-10): a friendly cause line instead of the
+    // raw error, next to a working retry button.
+    errorBody: 'בדקו את החיבור ונסו שוב.',
   },
   shell: {
     booting: 'טוען…',
