@@ -3,6 +3,7 @@ import type { EventCategory, TripEvent } from './entities';
 import {
   CATEGORY_TIME_PROFILE,
   eventDurationUnit,
+  eventEndBoundary,
   eventTransitionKeys,
   isAmbient,
   isBracketed,
@@ -156,5 +157,52 @@ describe('isAmbient', () => {
     for (const category of ORDINARY_CATEGORIES) {
       expect(isAmbient(ev({ category, date: '2026-07-07', endDate: '2026-07-09' }))).toBe(false);
     }
+  });
+});
+
+describe('eventEndBoundary', () => {
+  it('uses the exact end instant when endsAt is set (arrival / check-out / activity end)', () => {
+    const endsAt = '2026-07-07T14:30:00Z';
+    expect(eventEndBoundary(ev({ startsAt: '2026-07-07T10:30:00Z', endsAt }))).toEqual({
+      kind: 'instant',
+      at: Date.parse(endsAt),
+    });
+  });
+
+  it('falls back to the whole check-out day for a multi-day stay with no end time', () => {
+    expect(
+      eventEndBoundary(
+        ev({ date: '2026-07-05', endDate: '2026-07-09', startsAt: '2026-07-05T15:00:00Z' }),
+      ),
+    ).toEqual({ kind: 'day', date: '2026-07-09' });
+  });
+
+  it('prefers the end instant over the day even for a multi-day stay (check-out wins over check-in)', () => {
+    const endsAt = '2026-07-09T11:00:00Z';
+    expect(
+      eventEndBoundary(
+        ev({
+          date: '2026-07-05',
+          endDate: '2026-07-09',
+          startsAt: '2026-07-05T15:00:00Z',
+          endsAt,
+        }),
+      ),
+    ).toEqual({ kind: 'instant', at: Date.parse(endsAt) });
+  });
+
+  it('uses the single moment for a same-day event with only a start', () => {
+    const startsAt = '2026-07-07T09:00:00Z';
+    expect(eventEndBoundary(ev({ startsAt }))).toEqual({
+      kind: 'instant',
+      at: Date.parse(startsAt),
+    });
+  });
+
+  it('falls back to the whole day for an untimed event (only a date)', () => {
+    expect(eventEndBoundary(ev({ date: '2026-07-07' }))).toEqual({
+      kind: 'day',
+      date: '2026-07-07',
+    });
   });
 });

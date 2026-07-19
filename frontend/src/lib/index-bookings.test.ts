@@ -29,7 +29,12 @@ const booking = (
   updatedBy: 'u1',
 });
 
-const linkedEvent = (bookingId: string, date: string, hhmm = '09:00'): TripEvent => ({
+const linkedEvent = (
+  bookingId: string,
+  date: string,
+  hhmm = '09:00',
+  endHhmm?: string,
+): TripEvent => ({
   id: `ev-${bookingId}`,
   tripId: 't1',
   date,
@@ -37,6 +42,7 @@ const linkedEvent = (bookingId: string, date: string, hhmm = '09:00'): TripEvent
   kind: EVENT_KIND.HARD,
   status: EVENT_STATUS.PLANNED,
   startsAt: `${date}T${hhmm}:00+09:00`,
+  ...(endHhmm ? { endsAt: `${date}T${endHhmm}:00+09:00` } : {}),
   bookingId,
   sortOrder: 1,
   source: 'manual',
@@ -44,6 +50,14 @@ const linkedEvent = (bookingId: string, date: string, hhmm = '09:00'): TripEvent
   updatedAt: ISO,
   updatedBy: 'u1',
 });
+
+/** Strip a linked event's clock times, leaving only its calendar date. */
+const untimed = (event: TripEvent): TripEvent => {
+  const bare = { ...event };
+  delete bare.startsAt;
+  delete bare.endsAt;
+  return bare;
+};
 
 /** Turn a single-day linked event into a multi-day span (check-in → check-out). */
 const span_ = (event: TripEvent, endDate: string, hhmm: string): TripEvent => ({
@@ -63,9 +77,46 @@ describe('splitBookings', () => {
     expect(past[0].event?.id).toBe('ev-b1');
   });
 
-  it('keeps a same-day linked booking upcoming (today is not past)', () => {
-    const b = booking('b1', 'today');
-    const { past, upcoming } = splitBookings([b], [linkedEvent('b1', '2026-07-07')], TZ, NOW);
+  it('files a same-day booking under past once its end instant has passed', () => {
+    // arrives 11:00, now is 12:00 — behind you, even though it is still "today"
+    const b = booking('b1', 'landed');
+    const { past, upcoming } = splitBookings(
+      [b],
+      [linkedEvent('b1', '2026-07-07', '09:00', '11:00')],
+      TZ,
+      NOW,
+    );
+    expect(past.map((r) => r.booking.id)).toEqual(['b1']);
+    expect(upcoming).toHaveLength(0);
+  });
+
+  it('keeps a same-day booking upcoming while its end instant is still ahead', () => {
+    // starts 14:00 / ends 16:00, now is 12:00 — still to come
+    const b = booking('b1', 'later today');
+    const { past, upcoming } = splitBookings(
+      [b],
+      [linkedEvent('b1', '2026-07-07', '14:00', '16:00')],
+      TZ,
+      NOW,
+    );
+    expect(upcoming.map((r) => r.booking.id)).toEqual(['b1']);
+    expect(past).toHaveLength(0);
+  });
+
+  it('files a same-day end-less booking under past once its single moment has passed', () => {
+    const b = booking('b1', 'departed'); // departs 09:00, no arrival time; now 12:00
+    const { past } = splitBookings([b], [linkedEvent('b1', '2026-07-07', '09:00')], TZ, NOW);
+    expect(past.map((r) => r.booking.id)).toEqual(['b1']);
+  });
+
+  it('keeps an untimed booking on today upcoming until midnight', () => {
+    const b = booking('b1', 'no clock time');
+    const { past, upcoming } = splitBookings(
+      [b],
+      [untimed(linkedEvent('b1', '2026-07-07'))],
+      TZ,
+      NOW,
+    );
     expect(upcoming.map((r) => r.booking.id)).toEqual(['b1']);
     expect(past).toHaveLength(0);
   });
