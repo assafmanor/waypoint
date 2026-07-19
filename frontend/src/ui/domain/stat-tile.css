@@ -1,0 +1,21 @@
+/* StatTile (domain, review U-03). Ported faithfully from `.prep-stat` in
+   screens.css, under new `wp-` classes. Flat card, mono value, muted label. */
+
+.wp-stattile {
+  background: var(--card);
+  border: 1px solid var(--line);
+  border-radius: 13px;
+  padding: var(--space-3) var(--space-2);
+  text-align: center;
+}
+.wp-stattile-v {
+  font-family: var(--font-mono);
+  font-size: var(--text-h2);
+  font-weight: 700;
+}
+.wp-stattile-l {
+  font-size: 10.5px;
+  color: var(--muted);
+  margin-top: 3px;
+  font-weight: 600;
+}

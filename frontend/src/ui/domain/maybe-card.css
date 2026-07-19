@@ -1,0 +1,105 @@
+/* MaybeCard (domain, review U-03). Ported faithfully from `.maybe` + its two
+   forms in screens.css (the DayView single-button card and the PlanDay
+   remove+body card), under new `wp-` classes. The dashed hatch + violet
+   scheduling accent are the soft grammar (ADR-0011) + plan color budget. */
+
+.wp-maybecard {
+  position: relative;
+  scroll-snap-align: start;
+  flex: 0 0 auto;
+  width: 150px;
+  text-align: start;
+  background: repeating-linear-gradient(-45deg, #fff 0 9px, #fbfaf7 9px 18px);
+  border: 1px dashed var(--soft-line);
+  border-radius: 15px;
+  padding: var(--space-3);
+  cursor: pointer;
+  transition: transform var(--t-quick) var(--ease-standard);
+  font: inherit;
+  color: var(--ink);
+  display: block;
+}
+.wp-maybecard:hover {
+  transform: translateY(-2px);
+  /* scheduling is a plan action (design-language color budget) */
+  border-color: var(--plan);
+}
+.wp-maybecard:focus-visible {
+  outline: 2.5px solid var(--teal);
+  outline-offset: 2px;
+}
+.wp-maybecard.consumed {
+  opacity: 0.4;
+  cursor: default;
+}
+
+.wp-maybecard-ic {
+  font-size: var(--text-h2);
+  display: block;
+}
+.wp-maybecard-title {
+  font-weight: 700;
+  font-size: 13.5px;
+  margin-top: 6px;
+  line-height: 1.15;
+  display: block;
+}
+.wp-maybecard-meta {
+  font-size: var(--text-caption);
+  color: var(--muted);
+  margin-top: var(--space-1);
+  display: block;
+}
+.wp-maybecard-add {
+  margin-top: 9px;
+  font-size: var(--text-caption);
+  font-weight: 700;
+  color: var(--plan-deep); /* plan action, not location */
+  display: block;
+}
+
+/* Remove variant (PlanDay shelf): the body carries the schedule tap, a corner
+   button removes the idea. The card itself stays a positioning context. */
+.wp-maybecard-body {
+  display: block;
+  width: 100%;
+  text-align: start;
+  font: inherit;
+  color: inherit;
+  background: none;
+  border: 0;
+  padding: 0;
+  cursor: pointer;
+}
+.wp-maybecard-body:disabled {
+  cursor: default;
+}
+.wp-maybecard-body:focus-visible {
+  outline: 2.5px solid var(--plan);
+  outline-offset: 2px;
+  border-radius: var(--radius-8);
+}
+.wp-maybecard-remove {
+  position: absolute;
+  top: 6px;
+  inset-inline-end: 6px;
+  width: 20px;
+  height: 20px;
+  display: grid;
+  place-items: center;
+  border: 0;
+  border-radius: 50%;
+  background: rgba(22, 35, 61, 0.06);
+  color: var(--muted);
+  font-size: var(--text-caption);
+  line-height: 1;
+  cursor: pointer;
+}
+.wp-maybecard-remove:hover {
+  background: var(--miss);
+  color: #fff;
+}
+.wp-maybecard-remove:focus-visible {
+  outline: 2px solid var(--miss);
+  outline-offset: 1px;
+}
