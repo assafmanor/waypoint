@@ -74,20 +74,22 @@
   flex: 1 1 auto;
 }
 
-/* Tap-to-open time trigger — amber "time & commitment" family, compact so the
-   native date beside it keeps full room (the fix for the cropped-date bug). */
+/* Tap-to-open time trigger — a single-line control the same height as the native
+   date beside it, its value vertically centred so the two share a baseline (no
+   stacked cap: the leg label already names the endpoint, and the date has none).
+   Amber "time & commitment" family; compact so the date keeps full room. */
 .wf-time {
   flex: 0 0 auto;
-  min-inline-size: 104px;
-  text-align: start;
+  min-inline-size: 92px;
   background: var(--card);
   border: 1px solid var(--line);
   border-radius: var(--radius-12, 12px);
-  padding: var(--space-2) var(--space-3);
+  padding-block: var(--space-2);
+  padding-inline: var(--space-3);
   cursor: pointer;
   display: flex;
-  flex-direction: column;
-  gap: 1px;
+  align-items: center;
+  justify-content: center;
   font: inherit;
   transition: border-color 0.12s ease;
 }
@@ -98,18 +100,12 @@
   border-color: var(--amber);
   box-shadow: 0 0 0 2px rgba(233, 166, 60, 0.16);
 }
-.wf-time-cap {
-  font-size: var(--text-caption, 11px);
-  font-weight: 700;
-  color: var(--muted);
-}
 .wf-time-val {
   font-family: var(--font-mono);
-  font-size: 17px;
+  font-size: 15px;
   font-weight: 700;
   color: var(--amber-deep);
   letter-spacing: 0.01em;
-  min-block-size: 22px;
 }
 .wf-time-ph {
   font-family: var(--font-body);

@@ -255,8 +255,8 @@ function SpanLeg({
           type="button"
           className={'wf-time' + (open ? ' open' : '')}
           onClick={() => setOpen((o) => !o)}
+          aria-label={t.whenField.timeCap}
         >
-          <span className="wf-time-cap">{t.whenField.timeCap}</span>
           <span className="wf-time-val" dir="ltr">
             {time || <span className="wf-time-ph">{t.whenField.addTime}</span>}
           </span>
