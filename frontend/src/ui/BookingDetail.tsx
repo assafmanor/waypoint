@@ -9,7 +9,7 @@ import { Sheet } from './Sheet';
 import { RouteLabel } from './RouteLabel';
 import { placeName } from '../lib/places';
 import { formatTime } from '../lib/time';
-import { formatBookingDuration, timingLabels } from '../lib/booking-timing';
+import { bookingDurationUnit, formatBookingDuration, timingLabels } from '../lib/booking-timing';
 import { badgeClassForBookingType } from '../lib/transitions';
 import { BOOKING_TYPE_ICON, CODE_PREFIX } from '../constants';
 import { t } from '../i18n/he';
@@ -57,9 +57,12 @@ export function BookingDetail({
   const startsAt = linkedEvent?.startsAt;
   const endsAt = linkedEvent?.endsAt;
   const labels = timingLabels(booking.type);
-  // Duration read-out, phrased per category (hours / nights / days) — the same
-  // shared formatter the Index row uses (ADR-0063 extension).
-  const duration = linkedEvent ? formatBookingDuration(linkedEvent, tz) : null;
+  // Duration read-out, phrased per the booking type (hours / nights / days) — the
+  // same shared formatter the Index row uses (ADR-0063 extension), keyed on the
+  // type not the icon-overridable event category.
+  const duration = linkedEvent
+    ? formatBookingDuration(linkedEvent, tz, bookingDurationUnit(booking.type))
+    : null;
 
   const isRoute = isTransport(booking.type) && !!(from || to);
   // The route reads in the RTL flow (origin on the start/right, arrow pointing to

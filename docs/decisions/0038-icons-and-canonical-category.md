@@ -49,6 +49,10 @@ The stored `icon` also **surfaces read-side** wherever a trip or event is shown 
 
 **6. The picker chrome is neutral — selection never spends a semantic hue.** Amber/teal/violet stay reserved for time/place/plan (ADR-0028); the selected cell uses an ink fill, non-colour-redundant (fill + ring). The picker is an ordinary form control. The derived category is surfaced in the picker head so the saved semantic is legible.
 
+### Amendment (2026-07-19) — for a _booking_, the icon is glyph-only; the type owns the category
+
+§4 says a booked event derives its `category` from `Booking.type`, but the booking form (`BookingSheet`) was also letting the IconPicker's per-glyph category suggestion overwrite it — so a hotel given a ⭐ badge (the `general` group → `other`) stored a **non-lodging** category on its event, and every category-keyed behaviour (duration in nights, check-in/out bracketing, ambient backdrop) silently read wrong. Resolved in favour of the §4 rule: **in the booking form the picker sets the badge glyph only; `category` is always `categoryForBookingType(type)`.** The icon→category suggestion still applies where there is no type to defer to — the manual `EventForm` and the maybe-shelf. (Legacy events mis-saved before this fix self-correct on their next save; the duration read on the Index/detail/edit surfaces resolves the unit from `booking.type` regardless, so those read correctly even before a re-save.)
+
 ## Consequences
 
 - **Schema + migration.** Add `enum EventCategory`; add `category EventCategory?` to `Event` and `MaybeItem`; add `icon String?` to `Trip`. Backfill: events with a linked `Booking` derive `category` from `Booking.type`; everything else stays `null`. `@waypoint/shared` gains `eventCategorySchema`, `ICON_SET`, `categoryForBookingType()`, `iconForCategory()`, and `category`/`icon` on the create/update schemas — kept in sync with the Prisma schema (non-negotiable rule 3).

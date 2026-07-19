@@ -64,6 +64,22 @@ describe('WhenField — span variant', () => {
     expect(screen.getByText(/משך:/)).toBeTruthy();
   });
 
+  it('reads a lodging span in nights from the two calendar days (no crosses-a-day note)', () => {
+    render(
+      <WhenField
+        {...spanProps}
+        labels={{ start: 'צ׳ק-אין 🏨', end: 'צ׳ק-אאוט 🧳' }}
+        durationUnit="nights"
+        start="2026-07-15T15:00"
+        end="2026-07-17T10:00"
+        onChange={vi.fn()}
+      />,
+    );
+    // Two calendar days apart → "2 לילות", not the elapsed-time "יום".
+    expect(screen.getByText(/משך:/).textContent).toContain('2 לילות');
+    expect(screen.queryByText(/חוצה יממה/)).toBeNull();
+  });
+
   it('opens a time panel and AUTO-CLOSES it when a time is picked', () => {
     const onChange = vi.fn();
     render(<WhenField {...spanProps} start="2026-07-26" end="" onChange={onChange} />);
