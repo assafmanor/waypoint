@@ -115,9 +115,15 @@ export interface DayGlance {
 const MIN_COUNT_FRAC = 0.14;
 
 /** Two anchor pills whose centres are closer than this fraction of the rail
- *  would overlap, so the later one is pushed up a lane (stacked, not smeared).
- *  Sized a touch above a pill's own width. */
-const MARKER_MIN_GAP_FRAC = 0.28;
+ *  would overlap, so the later one is pushed up a lane (stacked, not smeared) —
+ *  and past `MAX_ANCHOR_LANES` the whole band collapses to the legs line. This
+ *  is what makes "would cover another" the real collapse trigger, so it has to
+ *  match a real pill's width, not undershoot it. Sized to the phone (mobile-
+ *  first, ADR-0017): a heavy pill (icon + Hebrew word + mono time, or icon +
+ *  two times + arrow) is ~116px, and the glance rail is ~320px inside the card
+ *  at a 360px viewport → ~0.36. The old 0.28 undershot this, so two pills that
+ *  actually overlapped still shared a lane and smeared (ADR-0077). */
+const MARKER_MIN_GAP_FRAC = 0.36;
 
 /** Past this many anchor lanes the band is too tall for a glance, so the render
  *  collapses to the flow legs line instead (ADR-0077 §D). */
