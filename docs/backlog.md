@@ -70,6 +70,10 @@ B-01–B-06 and B-08–B-13 shipped (ADR-0068–0076); B-07 shipped (ADR-0067). 
 - **Standardize change `after` payloads** (deferred, from B-13/ADR-0076) — several services log the partial `input` as a change's `after` rather than the persisted DTO, so `after`'s shape is inconsistent across entity types (affects feed rendering / any future replay, not correctness today).
 - **Google email-change account-link policy** (from B-12/ADR-0076) — account-linking keys on `User.email`, so a changed Google primary email creates a new `User` the identity re-points to, orphaning the old one. Current policy: treat as a new account. Revisit if an identity-merge feature is ever wanted.
 
+## Home / glance
+
+- **Build the unified glance rail-annotation grammar (ADR-0077)** — replace the two current label systems (amber transition pills above the rail, `.glance-marks`/`.tmark`; neutral `×N` / `כולל N` count chips below, `.seg .n`) with the one pill primitive from ADR-0077: tint = family (amber time-anchor / neutral structure), connector = shape (bar+feet span / stem point / tick block-note). Same-day flight/ferry → a span, a lone hotel check-in → a point, overlap/containment → block-notes; legs-line collapse past 2 lanes; edge anchor-in + short-span (times inside the centered pill). Derivation reuses `bookingTransitionsOnDate` (add same-day pairing); touches `lib/glance.ts`, `screens/Home.tsx`, `screens.css`. Design in `mockups/glance-timeline-labels-v2.html`. Build-time tweaks: span words on/off; collapse trigger (lanes vs count).
+
 ## Testing
 
 - **e2e smoke** (Playwright) — conventions call for one; none exists. Boot the app, cross the tabs, assert each renders and the console is clean. Catches white-screen regressions unit tests miss.
