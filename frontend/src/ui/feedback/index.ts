@@ -8,4 +8,5 @@ export { ErrorState } from './ErrorState';
 export { LoadingState } from './LoadingState';
 export { Skeleton } from './Skeleton';
 export { StatusBanner } from './StatusBanner';
+export { SyncBadge } from './SyncBadge';
 export type { FeedbackAction, BannerTone } from './types';

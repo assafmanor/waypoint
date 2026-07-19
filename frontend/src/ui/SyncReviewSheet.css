@@ -1,0 +1,133 @@
+/* The header failed-summary affordance reuses the `.offline-badge` chrome but is
+   a <button> (opens this sheet), so it needs the button-default resets the div
+   badge never did. Lives here because this stylesheet loads at app boot. */
+.sync-failed-summary {
+  font-family: var(--font-body);
+  cursor: pointer;
+}
+.sync-failed-summary:active {
+  transform: translateY(1px);
+}
+
+/* SyncReviewSheet — the U-04 dead-letter review/retry list (ADR-0080). Tokens
+   only (Wave-0); failure semantics use the sync/status tokens, never the
+   amber/teal/plan budget. Logical properties throughout so it mirrors under
+   dir="rtl". */
+.sync-review {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-3);
+  padding-block-end: var(--space-2);
+}
+
+.sync-review-intro {
+  font-size: var(--text-secondary);
+  line-height: var(--leading-normal);
+  color: var(--muted);
+}
+
+.sync-review-empty {
+  font-size: var(--text-body);
+  color: var(--muted);
+  text-align: center;
+  padding-block: var(--space-5);
+}
+
+.sync-review-list {
+  list-style: none;
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-2);
+}
+
+.sync-review-item {
+  display: flex;
+  align-items: center;
+  gap: var(--space-3);
+  padding-block: var(--space-3);
+  padding-inline: var(--space-3);
+  border: 1px solid var(--line);
+  border-inline-start: 3px solid var(--sync-failed);
+  border-radius: var(--radius-12);
+  background: var(--card);
+}
+
+.sync-review-main {
+  flex: 1 1 auto;
+  min-inline-size: 0;
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-1);
+}
+
+.sync-review-what {
+  font-size: var(--text-body);
+  font-weight: 600;
+  color: var(--ink);
+}
+
+.sync-review-reason {
+  display: flex;
+  align-items: center;
+  gap: var(--space-2);
+  font-size: var(--text-secondary);
+  color: var(--muted);
+}
+
+.sync-review-code {
+  font-family: var(--font-mono);
+  font-size: var(--text-caption);
+  color: var(--sync-failed);
+}
+
+.sync-review-actions {
+  flex: 0 0 auto;
+  display: flex;
+  align-items: center;
+  gap: var(--space-2);
+}
+
+.sync-review-retry {
+  padding-block: var(--space-2);
+  padding-inline: var(--space-4);
+  border: 0;
+  border-radius: var(--radius-999);
+  background: var(--cta);
+  color: var(--cta-text);
+  font-family: var(--font-body);
+  font-size: var(--text-secondary);
+  font-weight: 600;
+  cursor: pointer;
+}
+.sync-review-retry:active {
+  transform: translateY(1px);
+}
+
+.sync-review-discard {
+  padding-block: var(--space-2);
+  padding-inline: var(--space-3);
+  border: 1px solid var(--line);
+  border-radius: var(--radius-999);
+  background: transparent;
+  color: var(--muted);
+  font-family: var(--font-body);
+  font-size: var(--text-secondary);
+  cursor: pointer;
+}
+.sync-review-discard:active {
+  transform: translateY(1px);
+}
+
+.sync-review-discard-all {
+  align-self: flex-end;
+  margin-block-start: var(--space-1);
+  padding-block: var(--space-2);
+  padding-inline: var(--space-3);
+  border: 0;
+  border-radius: var(--radius-999);
+  background: transparent;
+  color: var(--muted);
+  font-family: var(--font-body);
+  font-size: var(--text-secondary);
+  cursor: pointer;
+}

@@ -1,7 +1,7 @@
 // Offline write outbox (T-013, sync-and-offline.md "Write offline"). Flush
 // reuses lib/api.ts's REST functions directly — verbs.ts stays the only place
 // that builds optimistic dispatch + undo.
-import { useEffect, useState, useSyncExternalStore } from 'react';
+import { useEffect, useMemo, useState, useSyncExternalStore } from 'react';
 import type {
   CreateBookingInput,
   CreateDocumentInput,
@@ -75,6 +75,41 @@ export interface OutboxEntry {
   op: OutboxOp;
 }
 
+/** The entity id a queued op targets, for the id-keyed per-entity sync-status
+ *  lookup (U-04, ADR-0080). Create-family ops carry the client-generated id in
+ *  `input.id`; the rest name their target directly. Trip-level ops
+ *  (updateTrip/deleteTrip) have no row-level entity, so they map to '' — they
+ *  still surface in the review sheet by verb, never by a per-row badge. */
+export function outboxOpEntityId(op: OutboxOp): string {
+  switch (op.verb) {
+    case 'create':
+    case 'createMaybeItem':
+    case 'createBooking':
+    case 'createPlace':
+    case 'uploadDocument':
+      return op.input.id ?? '';
+    case 'update':
+    case 'setStatus':
+    case 'move':
+    case 'delete':
+      return op.eventId;
+    case 'consumeMaybeItem':
+    case 'deleteMaybeItem':
+      return op.maybeItemId;
+    case 'updateBooking':
+    case 'deleteBooking':
+      return op.bookingId;
+    case 'updatePlace':
+      return op.placeId;
+    case 'setMemberRole':
+    case 'removeMember':
+      return op.userId;
+    case 'updateTrip':
+    case 'deleteTrip':
+      return '';
+  }
+}
+
 /** A `fetch` network failure (offline, DNS, dropped connection) vs. a real HTTP
  *  error response — only the former should be queued instead of surfaced. */
 export function isNetworkError(err: unknown): boolean {
@@ -110,12 +145,29 @@ function setPendingCount(n: number): void {
   listeners.forEach((l) => l());
 }
 
+// Per-entity pending index (U-04, ADR-0080): how many queued ops target each
+// entity id. Kept in memory alongside `pendingCount` so `useSyncStatus` has a
+// synchronous snapshot for `useSyncExternalStore` without an async IndexedDB
+// read on every render. Maintained incrementally by enqueue/flush, rebuilt by
+// `initOutboxCount` from the persisted queue.
+const pendingByEntity = new Map<string, number>();
+
+function bumpPending(entityId: string, delta: number): void {
+  if (!entityId) return;
+  const next = (pendingByEntity.get(entityId) ?? 0) + delta;
+  if (next <= 0) pendingByEntity.delete(entityId);
+  else pendingByEntity.set(entityId, next);
+}
+
 /** Primes the in-memory count from IndexedDB so a queue left over from a
  *  previous session (closed while offline) shows up without a first mutation.
  *  Sync failures are in-memory only (not persisted), so a fresh prime resets
  *  them too — nothing has failed to sync yet this session. */
 export async function initOutboxCount(): Promise<void> {
-  setPendingCount(await db.outbox.count());
+  const entries = await db.outbox.toArray();
+  pendingByEntity.clear();
+  for (const entry of entries) bumpPending(outboxOpEntityId(entry.op), 1);
+  setPendingCount(entries.length);
   clearSyncFailures();
 }
 
@@ -125,21 +177,49 @@ export async function initOutboxCount(): Promise<void> {
 // can surface "N changes couldn't be saved" and the mounted trip can reconcile
 // the phantom optimistic entity. ---
 export interface SyncFailure {
+  /** Stable key for per-item retry/dismiss in the review sheet (ADR-0080). */
+  id: number;
   tripId: string;
+  /** The entity the rejected write targeted — powers the id-keyed `failed`
+   *  lookup so the same booking/document shows `failed` on its own row. */
+  entityId: string;
   verb: OutboxOp['verb'];
   code?: string;
+  /** The original op, kept so "retry" can re-enqueue the exact write (U-04
+   *  dead-letter). Held in memory only, like the rest of the failure store. */
+  op: OutboxOp;
 }
 
 const failureListeners = new Set<Listener>();
 let syncFailures: SyncFailure[] = [];
+let nextFailureId = 1;
 
 function emitSyncFailures(): void {
   failureListeners.forEach((l) => l());
 }
 
-function recordSyncFailure(failure: SyncFailure): void {
-  syncFailures = [...syncFailures, failure];
+function recordSyncFailure(failure: Omit<SyncFailure, 'id'>): void {
+  syncFailures = [...syncFailures, { id: nextFailureId++, ...failure }];
   emitSyncFailures();
+}
+
+/** Discard a single failure (user dismissed it from the review sheet). */
+export function dismissSyncFailure(id: number): void {
+  const next = syncFailures.filter((f) => f.id !== id);
+  if (next.length === syncFailures.length) return;
+  syncFailures = next;
+  emitSyncFailures();
+}
+
+/** Re-enqueue a rejected write for another attempt (U-04 dead-letter retry) and
+ *  drop its failure record; kicks a background flush right away when online, or
+ *  leaves it queued for the next reconnect when offline. */
+export async function retrySyncFailure(id: number): Promise<void> {
+  const failure = syncFailures.find((f) => f.id === id);
+  if (!failure) return;
+  await enqueueOutbox(failure.tripId, failure.op);
+  dismissSyncFailure(id);
+  if (!isOffline()) void flushOutbox(failure.tripId);
 }
 
 export function subscribeSyncFailures(listener: Listener): () => void {
@@ -162,6 +242,54 @@ export function clearSyncFailures(): void {
 
 export function useSyncFailures(): SyncFailure[] {
   return useSyncExternalStore(subscribeSyncFailures, getSyncFailures);
+}
+
+// --- Per-entity sync status (U-04, ADR-0080): one derived model per entity from
+// the outbox pending index + the failed store, id-keyed. `failed` outranks
+// `pending` — a rejected write the user must act on beats a later queued edit to
+// the same entity. ---
+export type SyncState = 'synced' | 'pending' | 'failed';
+
+export interface SyncStatus {
+  state: SyncState;
+  /** The server rejection code, when `state === 'failed'`. */
+  reason?: string;
+}
+
+export function getSyncStatus(entityId: string): SyncStatus {
+  const failure = syncFailures.find((f) => f.entityId === entityId);
+  if (failure) return { state: 'failed', reason: failure.code };
+  if ((pendingByEntity.get(entityId) ?? 0) > 0) return { state: 'pending' };
+  return { state: 'synced' };
+}
+
+// A primitive snapshot key so `useSyncExternalStore` compares by value (a fresh
+// object each render would loop). The hook re-inflates it to a `SyncStatus`.
+function syncStatusKey(entityId: string): string {
+  const status = getSyncStatus(entityId);
+  return status.state === 'failed' ? `failed:${status.reason ?? ''}` : status.state;
+}
+
+function subscribeSyncStatus(listener: Listener): () => void {
+  listeners.add(listener);
+  failureListeners.add(listener);
+  return () => {
+    listeners.delete(listener);
+    failureListeners.delete(listener);
+  };
+}
+
+/** Reactive per-entity sync status (U-04). Recomputes when the outbox or the
+ *  failed store changes; reads local state only, so it works offline. */
+export function useSyncStatus(entityId: string): SyncStatus {
+  const key = useSyncExternalStore(subscribeSyncStatus, () => syncStatusKey(entityId));
+  return useMemo(() => {
+    if (key.startsWith('failed')) {
+      const reason = key.slice('failed:'.length);
+      return { state: 'failed', reason: reason || undefined };
+    }
+    return { state: key as SyncState };
+  }, [key]);
 }
 
 // Known-unfixable rejections that are safe to drop quietly: a time-move that was
@@ -191,6 +319,7 @@ export async function enqueueOutbox(tripId: string, op: OutboxOp): Promise<void>
   } catch {
     // ignore — the outbox entry is the source of truth; the cache is a mirror.
   }
+  bumpPending(outboxOpEntityId(op), 1);
   setPendingCount(pendingCount + 1);
 }
 
@@ -395,15 +524,23 @@ async function doFlushOutbox(tripId: string): Promise<void> {
     } catch (err) {
       if (err instanceof ApiError && err.status >= 400 && err.status < 500) {
         if (!err.code || !QUIET_DROP_CODES.has(err.code)) {
-          recordSyncFailure({ tripId, verb: entry.op.verb, code: err.code });
+          recordSyncFailure({
+            tripId,
+            entityId: outboxOpEntityId(entry.op),
+            verb: entry.op.verb,
+            code: err.code,
+            op: entry.op,
+          });
         }
         await db.outbox.delete(entry.seq!);
+        bumpPending(outboxOpEntityId(entry.op), -1);
         setPendingCount(pendingCount - 1);
         continue;
       }
       throw err;
     }
     await db.outbox.delete(entry.seq!);
+    bumpPending(outboxOpEntityId(entry.op), -1);
     setPendingCount(pendingCount - 1);
   }
 }
