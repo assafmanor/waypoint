@@ -18,7 +18,7 @@ import { useTrip } from '../state/trip-state';
 import { Sheet } from './Sheet';
 import { IconPicker } from './IconPicker';
 import { Icon } from './Icon';
-import { RouteLabel } from './RouteLabel';
+import { NavArrow } from './NavArrow';
 import { TimePicker } from './TimePicker';
 import {
   mergeBookingDetails,
@@ -234,15 +234,26 @@ export function BookingSheet({
               }}
             />
             {isTransport ? (
-              // A flight's identity is its route, not a name (ADR-0059 §3): the
-              // name field becomes a live origin→destination preview, fed by the
-              // route inputs below.
-              <div className="bs-route-preview">
-                {origin.trim() || dest.trim() ? (
-                  <RouteLabel from={origin.trim() || undefined} to={dest.trim() || undefined} />
-                ) : (
-                  <span className="ghost">{t.index.form.routeGhost}</span>
-                )}
+              // A flight's identity is its route, not a name (ADR-0059 §3): the two
+              // route endpoints ARE the title row — editable inputs beside the icon,
+              // not a read-only preview that reads as a tappable title.
+              <div className="bs-route-inputs">
+                <input
+                  value={origin}
+                  onChange={(e) => setOrigin(e.target.value)}
+                  placeholder={t.index.form.originShort}
+                  aria-label={t.index.form.originLabel}
+                  autoFocus={isCreate}
+                />
+                <span className="arr" aria-hidden="true">
+                  <NavArrow variant="forward" />
+                </span>
+                <input
+                  value={dest}
+                  onChange={(e) => setDest(e.target.value)}
+                  placeholder={t.index.form.destShort}
+                  aria-label={t.index.form.destLabel}
+                />
               </div>
             ) : (
               <input
@@ -276,27 +287,9 @@ export function BookingSheet({
             )}
           </div>
 
-          {/* The route is a flight's identity (it feeds the preview above), so it
-              leads the form — where the name field sits for other types. */}
-          {isTransport && (
-            <>
-              <div className="bs-row2">
-                <label className="bs-field">
-                  {t.index.form.originLabel}
-                  <input
-                    value={origin}
-                    onChange={(e) => setOrigin(e.target.value)}
-                    autoFocus={isCreate}
-                  />
-                </label>
-                <label className="bs-field">
-                  {t.index.form.destLabel}
-                  <input value={dest} onChange={(e) => setDest(e.target.value)} />
-                </label>
-              </div>
-              <div className="bs-route-hint">📍 {t.index.form.routeHint}</div>
-            </>
-          )}
+          {/* The route endpoints live in the title row above; this only adds the
+              place-picker hint under them. */}
+          {isTransport && <div className="bs-route-hint">📍 {t.index.form.routeHint}</div>}
 
           <label className="bs-field">
             {t.index.sheet.codeLabel}

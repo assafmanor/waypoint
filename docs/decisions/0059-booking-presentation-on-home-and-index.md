@@ -96,9 +96,9 @@ The Index row + booking detail already read a transport booking as its origin→
 
 ### §3 reaches the entry form — a flight has no name field (2026-07-19, session 38)
 
-The presentation surfaces all read a flight as its route, but the **add/edit form still asked for (and required) a hand-typed name** — the one place a flight name was still authored (`docs/planning/2026-07-19-session-38-flight-form-route-identity.md`). "Flights don't need a name" applies here too:
+The presentation surfaces all read a flight as its route, but the **add/edit form still asked for (and required) a hand-typed name** — the one place a flight name was still authored (`docs/planning/2026-07-19-session-38-flight-form-route-identity.md`, refined in `…-session-39-…`). "Flights don't need a name" applies here too:
 
-- For a transport type the **name input is replaced by a live `מוצא ← יעד` route preview** (the shared `RouteLabel`, fed by the origin/destination fields, which now lead the form where the name field sits for other types). A muted ghost shows the format until a route is entered.
+- For a transport type the **name input is replaced by the two route-endpoint inputs themselves** (`מוצא` → `יעד`, side by side beside the icon in the title row, the route arrow between). This started as a read-only `RouteLabel` preview but that read as a tappable title (Assaf); the shipped form makes the endpoints the directly-editable title row. The origin/destination fields therefore lead the form, where the name field sits for other types.
 - The stored `Booking.title` is **derived from the route** (`lib/booking-edit.ts` `routeTitle(origin, dest, arrow)` — pure + unit-tested), so it still backs the linked event's title (the backend mirrors it, `bookings.service.ts`) and any place-less fallback. Save **requires a route** for transport (`routeRequired`) instead of a title.
 - Non-transport types are unchanged (name field + `titleRequired`). Keyed on `isTransportType`, so it is not flight-specific.
 
