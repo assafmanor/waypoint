@@ -1,6 +1,8 @@
-// Self-contained event create/edit form (T-047). Rendered as a modal today;
-// T-053 wraps this same component in a Trip-mode bottom sheet later — it owns
-// only the fields + save/cancel, not its presentation container.
+// Self-contained event create/edit form (T-047). Renders its fields + submit
+// INSIDE the single Modal primitive (variant="sheet", ADR-0079 / U-01) — so the
+// overlay stack (system-back), focus-in/Escape/restore, and backdrop-close all
+// work like every other sheet; this component owns only the fields, not the
+// presentation container. A dirty close is guarded by a discard confirm (U-05).
 import { useMemo, useState, type FormEvent } from 'react';
 import {
   createEventSchema,
@@ -17,10 +19,16 @@ import { useAuth } from '../state/auth-state';
 import { useVerbs } from '../state/verbs';
 import { getNow } from '../lib/useClock';
 import { zonedIso, isoToTimeInput, hardConflicts, formatTime, resolveEndIso } from '../lib/time';
-import { DEFAULT_EVENT_ICON, DEVICE_LOCALE } from '../constants';
+import { useUnsavedGuard } from '../lib/useUnsavedGuard';
+import { DEFAULT_EVENT_ICON } from '../constants';
 import { t } from '../i18n/he';
 import { TimePicker } from './TimePicker';
 import { IconPicker } from './IconPicker';
+import { Modal } from './primitives/Modal';
+import { Field } from './primitives/Field';
+import { FormActions } from './primitives/FormActions';
+import { DateTimeField } from './primitives/DateTimeField';
+import { ConfirmDialog } from './primitives/ConfirmDialog';
 
 export function EventForm({
   event,
@@ -43,20 +51,37 @@ export function EventForm({
   const verbs = useVerbs();
   const tz = trip.timezone;
 
-  const [title, setTitle] = useState(event?.title ?? maybeItem?.title ?? '');
-  const [date, setDate] = useState(event?.date ?? defaults?.date ?? activeDate);
-  const [start, setStart] = useState(
-    event?.startsAt ? isoToTimeInput(event.startsAt, tz) : (defaults?.start ?? ''),
-  );
-  const [end, setEnd] = useState(
-    event?.endsAt ? isoToTimeInput(event.endsAt, tz) : (defaults?.end ?? ''),
-  );
-  const [kind, setKind] = useState<TripEvent['kind']>(event?.kind ?? EVENT_KIND.SOFT);
-  const [icon, setIcon] = useState(event?.icon ?? maybeItem?.icon ?? DEFAULT_EVENT_ICON);
-  const [category, setCategory] = useState<EventCategory | undefined>(
-    event?.category ?? maybeItem?.category,
-  );
+  // Initial values captured up front so the unsaved-changes guard can diff
+  // against them (props are stable while the form is open).
+  const initialTitle = event?.title ?? maybeItem?.title ?? '';
+  const initialDate = event?.date ?? defaults?.date ?? activeDate;
+  const initialStart = event?.startsAt
+    ? isoToTimeInput(event.startsAt, tz)
+    : (defaults?.start ?? '');
+  const initialEnd = event?.endsAt ? isoToTimeInput(event.endsAt, tz) : (defaults?.end ?? '');
+  const initialKind: TripEvent['kind'] = event?.kind ?? EVENT_KIND.SOFT;
+  const initialIcon = event?.icon ?? maybeItem?.icon ?? DEFAULT_EVENT_ICON;
+  const initialCategory = event?.category ?? maybeItem?.category;
+
+  const [title, setTitle] = useState(initialTitle);
+  const [date, setDate] = useState(initialDate);
+  const [start, setStart] = useState(initialStart);
+  const [end, setEnd] = useState(initialEnd);
+  const [kind, setKind] = useState<TripEvent['kind']>(initialKind);
+  const [icon, setIcon] = useState(initialIcon);
+  const [category, setCategory] = useState<EventCategory | undefined>(initialCategory);
   const [error, setError] = useState<string | null>(null);
+
+  const dirty =
+    title !== initialTitle ||
+    date !== initialDate ||
+    start !== initialStart ||
+    end !== initialEnd ||
+    kind !== initialKind ||
+    icon !== initialIcon ||
+    category !== initialCategory;
+  const { guardedClose, prompting, confirmDiscard, cancelDiscard } = useUnsavedGuard(dirty);
+  const requestClose = () => guardedClose(onClose);
 
   // Live hard-conflict warning (ADR-0011): a soft event whose span overlaps a
   // same-day hard event is flagged as it's edited — same check the day view and
@@ -144,104 +169,111 @@ export function EventForm({
     onClose();
   };
 
+  const heading = event
+    ? t.eventForm.editTitle
+    : maybeItem
+      ? t.eventForm.scheduleTitle
+      : t.eventForm.newTitle;
+
   return (
-    <div className="confirm-overlay event-form-overlay" onClick={onClose}>
-      <form
-        className="event-form-card"
-        onClick={(e) => e.stopPropagation()}
-        onSubmit={submit}
-        // Reveal the focused field above the keyboard within the scrolling sheet.
-        onFocusCapture={(e) => {
-          if (e.target instanceof HTMLElement)
-            e.target.scrollIntoView({ block: 'center', behavior: 'smooth' });
-        }}
-      >
-        <div className="confirm-title">
-          {event
-            ? t.eventForm.editTitle
-            : maybeItem
-              ? t.eventForm.scheduleTitle
-              : t.eventForm.newTitle}
-        </div>
-
-        <div className="form-field">
-          {t.eventForm.titleLabel}
-          <div className="title-row">
-            <IconPicker
-              icon={icon}
-              onChange={(next, cat) => {
-                setIcon(next);
-                setCategory(cat);
-              }}
-            />
-            <input
-              className="title-input"
-              value={title}
-              onChange={(e) => setTitle(e.target.value)}
-              placeholder={t.eventForm.titlePlaceholder}
-              autoFocus
-            />
-          </div>
-        </div>
-
-        <label className="form-field">
-          {t.eventForm.dateLabel}
-          <input
-            type="date"
-            lang={DEVICE_LOCALE}
-            min={trip.startDate}
-            max={trip.endDate}
-            value={date}
-            onChange={(e) => setDate(e.target.value)}
-          />
-        </label>
-
-        <TimePicker
-          start={start}
-          end={end}
-          onChange={(next) => {
-            setStart(next.start);
-            setEnd(next.end);
+    <>
+      <Modal variant="sheet" title={heading} onClose={requestClose}>
+        <form
+          className="modal-form"
+          onSubmit={submit}
+          // Reveal the focused field above the keyboard within the scrolling sheet.
+          onFocusCapture={(e) => {
+            if (e.target instanceof HTMLElement)
+              e.target.scrollIntoView({ block: 'center', behavior: 'smooth' });
           }}
+        >
+          <Field label={t.eventForm.titleLabel}>
+            <div className="title-row">
+              <IconPicker
+                icon={icon}
+                onChange={(next, cat) => {
+                  setIcon(next);
+                  setCategory(cat);
+                }}
+              />
+              <input
+                className="title-input"
+                value={title}
+                onChange={(e) => setTitle(e.target.value)}
+                placeholder={t.eventForm.titlePlaceholder}
+              />
+            </div>
+          </Field>
+
+          <Field label={t.eventForm.dateLabel} htmlFor="ef-date">
+            <DateTimeField
+              mode="date"
+              id="ef-date"
+              min={trip.startDate}
+              max={trip.endDate}
+              value={date}
+              onChange={setDate}
+            />
+          </Field>
+
+          <TimePicker
+            start={start}
+            end={end}
+            onChange={(next) => {
+              setStart(next.start);
+              setEnd(next.end);
+            }}
+          />
+
+          {conflicts.length > 0 && (
+            <p className="form-conflict">
+              ⚠︎ {t.event.conflictWarn(conflicts[0].title, formatTime(conflicts[0].startsAt!, tz))}
+            </p>
+          )}
+
+          <Field label={t.eventForm.kindLabel}>
+            <div className="kind-toggle">
+              <button
+                type="button"
+                className={'soft' + (kind === EVENT_KIND.SOFT ? ' on' : '')}
+                onClick={() => setKind(EVENT_KIND.SOFT)}
+              >
+                {t.eventForm.kindSoft}
+              </button>
+              <button
+                type="button"
+                className={'hard' + (kind === EVENT_KIND.HARD ? ' on' : '')}
+                onClick={() => setKind(EVENT_KIND.HARD)}
+              >
+                {t.eventForm.kindHard}
+              </button>
+            </div>
+          </Field>
+
+          {error && (
+            <p className="field-error" role="alert">
+              {error}
+            </p>
+          )}
+
+          <FormActions
+            primary={{ label: t.common.save, type: 'submit' }}
+            secondary={{ label: t.common.cancel, onClick: requestClose }}
+          />
+        </form>
+      </Modal>
+
+      {prompting && (
+        <ConfirmDialog
+          tone="danger"
+          title={t.common.discardTitle}
+          body={t.common.discardBody}
+          confirmLabel={t.common.discardConfirm}
+          cancelLabel={t.common.discardCancel}
+          onConfirm={confirmDiscard}
+          onCancel={cancelDiscard}
         />
-
-        {conflicts.length > 0 && (
-          <p className="form-conflict">
-            ⚠︎ {t.event.conflictWarn(conflicts[0].title, formatTime(conflicts[0].startsAt!, tz))}
-          </p>
-        )}
-
-        <div className="form-field">
-          {t.eventForm.kindLabel}
-          <div className="kind-toggle">
-            <button
-              type="button"
-              className={'soft' + (kind === EVENT_KIND.SOFT ? ' on' : '')}
-              onClick={() => setKind(EVENT_KIND.SOFT)}
-            >
-              {t.eventForm.kindSoft}
-            </button>
-            <button
-              type="button"
-              className={'hard' + (kind === EVENT_KIND.HARD ? ' on' : '')}
-              onClick={() => setKind(EVENT_KIND.HARD)}
-            >
-              {t.eventForm.kindHard}
-            </button>
-          </div>
-        </div>
-
-        {error && <p className="confirm-body form-error">{error}</p>}
-
-        <div className="confirm-actions">
-          <button type="button" className="confirm-cancel" onClick={onClose}>
-            {t.eventForm.cancel}
-          </button>
-          <button type="submit" className="form-save">
-            {t.eventForm.save}
-          </button>
-        </div>
-      </form>
-    </div>
+      )}
+    </>
   );
 }
