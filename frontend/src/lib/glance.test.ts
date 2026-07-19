@@ -241,6 +241,36 @@ describe('buildDayGlance', () => {
     expect(g.anchors.every((a) => a.lane === 0)).toBe(true);
   });
 
+  it('pushes two pill-width-apart anchors onto separate lanes (no smear)', () => {
+    // A checkout (point) and a check-in (point) ~0.30 of the rail apart: wide
+    // enough that the old gap (0.28) kept them on one lane, where two heavy
+    // pills still visually cover each other. The gap now matches a real phone
+    // pill (~0.36), so they split to two lanes instead of smearing (ADR-0077).
+    const events = [
+      ev({
+        id: 'hotelOut',
+        category: 'lodging',
+        date: '2026-07-04',
+        startsAt: at('15:00', '2026-07-04'),
+        endsAt: at('10:00'), // check-out today → a point at 0.1875
+        endDate: DATE,
+      }),
+      ev({
+        id: 'hotelIn',
+        category: 'lodging',
+        startsAt: at('14:48'), // check-in today → a point at ~0.4875 (gap ~0.30)
+        endsAt: at('11:00', '2026-07-10'),
+        endDate: '2026-07-10',
+      }),
+    ];
+    const g = buildDayGlance(events, DATE, ms('12:00'), day07, day23, TZ);
+    expect(g.anchors).toHaveLength(2);
+    expect(g.anchors.every((a) => a.kind === 'point')).toBe(true);
+    expect(g.anchorLaneCount).toBe(2);
+    expect(g.anchorsCollapsed).toBe(false); // two lanes is still readable above
+    expect(g.anchors[0].lane).not.toBe(g.anchors[1].lane);
+  });
+
   it('collapses a crowded anchor band to the legs line (ADR-0077 §D)', () => {
     // Three transition anchors clustered around midday → they would need >2
     // lanes, so the band collapses.
