@@ -233,31 +233,33 @@ function SpanLeg({
   return (
     <div className="wf-leg">
       <div className="wf-leg-cap">
-        <span className="wf-leg-dot" aria-hidden="true" />
         {label}
         {badge && (
-          <sup className="wf-leg-badge" title={t.whenField.crossesDay}>
+          <span className="wf-leg-badge" title={t.whenField.crossesDay}>
             {badge}
-          </sup>
+          </span>
         )}
       </div>
       <div className="wf-leg-row">
-        <input
-          type="date"
-          className="wf-date"
-          lang={DEVICE_LOCALE}
-          min={minDate}
-          max={maxDate}
-          value={date}
-          onChange={(e) => commit(e.target.value, time)}
-        />
+        <label className="wf-cell wf-cell-date">
+          <span className="wf-cell-cap">{t.whenField.dateCap}</span>
+          <input
+            type="date"
+            className="wf-cell-val"
+            lang={DEVICE_LOCALE}
+            min={minDate}
+            max={maxDate}
+            value={date}
+            onChange={(e) => commit(e.target.value, time)}
+          />
+        </label>
         <button
           type="button"
-          className={'wf-time' + (open ? ' open' : '')}
+          className={'wf-cell wf-cell-time' + (open ? ' open' : '')}
           onClick={() => setOpen((o) => !o)}
-          aria-label={t.whenField.timeCap}
         >
-          <span className="wf-time-val" dir="ltr">
+          <span className="wf-cell-cap">{t.whenField.timeCap}</span>
+          <span className="wf-cell-val wf-time-val" dir="ltr">
             {time || <span className="wf-time-ph">{t.whenField.addTime}</span>}
           </span>
         </button>
@@ -292,13 +294,21 @@ function SpanLeg({
               </button>
             ))}
           </div>
+          {/* The clear lives inside the picker (not floating between the legs):
+              clearing this endpoint's time and closing, like picking a row. */}
+          {time && (
+            <button
+              type="button"
+              className="wf-panel-clear"
+              onClick={() => {
+                commit(date, '');
+                setOpen(false);
+              }}
+            >
+              {t.eventForm.noTime}
+            </button>
+          )}
         </div>
-      )}
-
-      {time && (
-        <button type="button" className="tp-clear" onClick={() => commit(date, '')}>
-          {t.eventForm.noTime}
-        </button>
       )}
     </div>
   );

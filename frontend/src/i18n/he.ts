@@ -779,6 +779,7 @@ export const t = {
   // The "when" standard (WhenField). Shared span-endpoint copy for the tap-to-open
   // time field, the derived duration read-out, and the crosses-a-day marker.
   whenField: {
+    dateCap: 'תאריך',
     timeCap: 'שעה',
     addTime: 'הוסף שעה',
     exactTime: 'שעה מדויקת',
