@@ -3844,6 +3844,38 @@
   border-bottom: 1.5px solid var(--soft-line);
   padding: 4px 2px;
 }
+/* Transport identity: the origin→destination endpoints ARE the title row (a
+   flight has no name — ADR-0059 §3). Two underlined inputs beside the icon with
+   the route arrow between, styled like .bs-title so they read as the title, but
+   plainly editable (not a read-only preview that looked tappable). */
+.booking-sheet .bs-route-inputs {
+  flex: 1;
+  min-width: 0;
+  display: flex;
+  align-items: center;
+  gap: 6px;
+}
+.booking-sheet .bs-route-inputs input {
+  flex: 1;
+  min-width: 0;
+  font: inherit;
+  font-weight: 700;
+  font-size: 15px;
+  color: var(--ink);
+  background: transparent;
+  border: none;
+  border-bottom: 1.5px solid var(--soft-line);
+  padding: 4px 2px;
+}
+.booking-sheet .bs-route-inputs input:focus-visible {
+  outline: none;
+  border-color: var(--teal);
+}
+.booking-sheet .bs-route-inputs .arr {
+  flex: 0 0 auto;
+  color: var(--muted);
+  display: inline-flex;
+}
 .booking-sheet .bs-schedule {
   font-size: 11.5px;
   font-weight: 600;
