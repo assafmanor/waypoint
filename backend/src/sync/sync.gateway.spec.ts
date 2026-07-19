@@ -3,13 +3,15 @@ import { once } from 'node:events';
 import { afterAll, beforeAll, describe, expect, it } from 'vitest';
 import { WebSocket } from 'ws';
 import { PrismaService } from '../prisma/prisma.service';
+import { hashRefreshToken } from '../auth/token.util';
 import { SyncGateway } from './sync.gateway';
 
-// Live-WS integration test (backend-review B-02). Uses DEV_AUTH (backend/.env) so
-// an un-tokened upgrade authenticates as the seeded dev user u-assaf, who is a
-// member of the seeded trip — exercising the real upgrade + eviction path.
+// Live-WS integration test (backend-review B-02). Authenticates the upgrade with a
+// real session cookie (not DEV_AUTH, which isn't set in CI) for the seeded dev user
+// u-assaf, a member of the seeded trip — exercising the real upgrade + eviction path.
 const SEEDED_TRIP = 'trip-japan-26';
 const DEV_USER = 'u-assaf';
+const REFRESH_TOKEN = 'b02-test-refresh-token';
 
 describe('SyncGateway.disconnectUser (B-02)', () => {
   const prisma = new PrismaService();
@@ -18,6 +20,13 @@ describe('SyncGateway.disconnectUser (B-02)', () => {
   let port: number;
 
   beforeAll(async () => {
+    await prisma.session.create({
+      data: {
+        userId: DEV_USER,
+        refreshTokenHash: hashRefreshToken(REFRESH_TOKEN),
+        expiresAt: new Date(Date.now() + 3_600_000),
+      },
+    });
     server = createServer();
     gateway.attach(server);
     await new Promise<void>((resolve) => server.listen(0, '127.0.0.1', resolve));
@@ -26,11 +35,16 @@ describe('SyncGateway.disconnectUser (B-02)', () => {
 
   afterAll(async () => {
     await new Promise<void>((resolve) => server.close(() => resolve()));
+    await prisma.session.deleteMany({
+      where: { refreshTokenHash: hashRefreshToken(REFRESH_TOKEN) },
+    });
     await prisma.$disconnect();
   });
 
   function connect(): Promise<WebSocket> {
-    const ws = new WebSocket(`ws://127.0.0.1:${port}/trips/${SEEDED_TRIP}/stream`);
+    const ws = new WebSocket(`ws://127.0.0.1:${port}/trips/${SEEDED_TRIP}/stream`, {
+      headers: { Cookie: `wp_refresh=${REFRESH_TOKEN}` },
+    });
     // Resolve once the server has registered us (the `hello` frame follows onConnection).
     return new Promise((resolve, reject) => {
       ws.once('message', () => resolve(ws));
