@@ -7,6 +7,7 @@ import {
   deleteFlags,
   findPlaceByName,
   mergeBookingDetails,
+  routeTitle,
 } from './booking-edit';
 
 const TZ = 'Asia/Tokyo';
@@ -157,5 +158,24 @@ describe('buildSpanSeed', () => {
     );
     expect(seed?.endDate).toBeUndefined();
     expect(seed?.date).toBe('2026-07-20');
+  });
+});
+
+describe('routeTitle', () => {
+  it('joins origin and destination with the route arrow', () => {
+    expect(routeTitle('נתב״ג', 'נריטה', '←')).toBe('נתב״ג ← נריטה');
+  });
+
+  it('trims each endpoint', () => {
+    expect(routeTitle('  TLV ', ' NRT ', '←')).toBe('TLV ← NRT');
+  });
+
+  it('drops a blank endpoint (no dangling arrow)', () => {
+    expect(routeTitle('TLV', '', '←')).toBe('TLV');
+    expect(routeTitle('', 'NRT', '←')).toBe('NRT');
+  });
+
+  it('is empty when both endpoints are blank (→ route required)', () => {
+    expect(routeTitle('  ', '', '←')).toBe('');
   });
 });

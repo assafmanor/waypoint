@@ -94,6 +94,14 @@ The Index row + booking detail already read a transport booking as its origin→
 - **`ui/RouteLabel.tsx`** (lifted out of `BookingDetail`) is the one route component the Index, the detail, and the hero share. **`ui/EventTitle.tsx`** picks route-or-title and is applied to every hero title site (NOW / NEXT / in-transit / group-split / also-now).
 - The **in-transit progress ends** read `time · from` / `to · time` with the countdown between them (per the mockup), so a flight consistently shows _where it goes, not a name_.
 
+### §3 reaches the entry form — a flight has no name field (2026-07-19, session 38)
+
+The presentation surfaces all read a flight as its route, but the **add/edit form still asked for (and required) a hand-typed name** — the one place a flight name was still authored (`docs/planning/2026-07-19-session-38-flight-form-route-identity.md`). "Flights don't need a name" applies here too:
+
+- For a transport type the **name input is replaced by a live `מוצא ← יעד` route preview** (the shared `RouteLabel`, fed by the origin/destination fields, which now lead the form where the name field sits for other types). A muted ghost shows the format until a route is entered.
+- The stored `Booking.title` is **derived from the route** (`lib/booking-edit.ts` `routeTitle(origin, dest, arrow)` — pure + unit-tested), so it still backs the linked event's title (the backend mirrors it, `bookings.service.ts`) and any place-less fallback. Save **requires a route** for transport (`routeRequired`) instead of a title.
+- Non-transport types are unchanged (name field + `titleRequired`). Keyed on `isTransportType`, so it is not flight-specific.
+
 ## Alternatives considered
 
 - **Keep the hotel on the hero across the whole stay** (the naive "make hotels span-aware on the hero"). Rejected: it dominates Now/Next for days with nothing actionable — the exact always-there blandness Assaf flagged.

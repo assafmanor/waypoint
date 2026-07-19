@@ -55,6 +55,15 @@ export function deleteFlags(choice: 'both' | 'unlink'): {
     : { deleteEvents: false, confirm: true };
 }
 
+/** A transport booking's stored title is derived from its route, not hand-typed
+ *  (ADR-0059 §3): `origin ← dest` (using the app's route arrow; either endpoint
+ *  may be blank). Returns '' when both are blank — the sheet reads that as
+ *  "route required". This title backs the linked event's title and any
+ *  place-less fallback, so a flight never carries a name. */
+export function routeTitle(origin: string, dest: string, arrow: string): string {
+  return [origin.trim(), dest.trim()].filter(Boolean).join(` ${arrow} `);
+}
+
 /** Match a typed place name to an existing Place (trimmed, case-insensitive) so
  *  re-typing a name reuses its row instead of spawning a duplicate. Returns
  *  `undefined` for a blank name or no match — the caller then authors a new one.
