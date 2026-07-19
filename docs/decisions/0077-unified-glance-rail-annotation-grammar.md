@@ -63,6 +63,7 @@ Generalize the existing `assignMarkerLanes` (ADR-0054 amendment) to run over the
 - Supersedes the **marker treatment** of ADR-0054's amendment and ADR-0059 §4 (the amber-pill-per-edge) and re-expresses ADR-0041's glance count chips through the shared primitive; the underlying models (`bookingTransitionsOnDate`, `buildTimeTree`) are unchanged.
 - **Generality:** keys on the `bracketed` profile (ADR-0063), so any future bracketed category (a multi-day rail pass, a car rental) gets spans/points for free.
 - **Open, deferred to build:** whether a span should also carry words (start with icon + range; add a start-foot word only if testing shows icon + order is unclear) and whether the collapse trigger should be lane-count (chosen: > 2 lanes) or a raw anchor count — both are single-constant tweaks settled during implementation.
+- **Post-build fix (2026-07-19):** the lane-gap constant `MARKER_MIN_GAP_FRAC` was `0.28`, narrower than a real pill on a phone, so two anchors that actually overlapped still shared one lane and smeared (never crossing the > 2-lane collapse) — visible on a crowded day. Sized it to a real phone pill (~116px on a ~320px rail → **0.36**) so "would cover another" is the real trigger: touching pills split to a new lane and, past two lanes, collapse to the legs line. Pure tune in `lib/glance.ts` + a phone-width regression test; no grammar change.
 
 ## Alternatives considered
 

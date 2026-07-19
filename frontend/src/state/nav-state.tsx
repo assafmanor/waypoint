@@ -50,11 +50,16 @@ export type NavStep =
   | { kind: 'none' };
 
 /** Home-anchor tab model (ADR-0035 §3): Home→tab pushes, tab→tab replaces (no
- *  accumulating trail), tab→Home steps back to the base (or replaces to it when
- *  there is no in-app entry behind — a cold deep link). */
-export function tabStep(current: TabId, next: TabId, canGoBack: boolean): NavStep {
+ *  accumulating trail), tab→Home steps back to the base — but only when that base
+ *  is provably the entry directly behind (`homeBehind`). A Home→tab push sits
+ *  exactly one entry ahead of the base; tab→tab replaces never advance past it.
+ *  When Home is NOT behind — a cold deep link onto a tab, or foreign history left
+ *  by the OAuth round-trip / an external app launch / an idx desync — a blind
+ *  `back` traverses somewhere that isn't Home (and can silently strand the tap),
+ *  so route to `/` explicitly instead. */
+export function tabStep(current: TabId, next: TabId, homeBehind: boolean): NavStep {
   if (next === current) return { kind: 'none' };
-  if (next === HOME_TAB) return canGoBack ? { kind: 'back' } : { kind: 'replace', to: '/' };
+  if (next === HOME_TAB) return homeBehind ? { kind: 'back' } : { kind: 'replace', to: '/' };
   if (current === HOME_TAB) return { kind: 'push', to: `/?${TAB_PARAM}=${next}` };
   return { kind: 'replace', to: `/?${TAB_PARAM}=${next}` };
 }
@@ -168,6 +173,10 @@ interface NavContextValue {
   setInsideTrip: (v: boolean) => void;
   insideTripRef: React.MutableRefObject<boolean>;
   exitPendingRef: React.MutableRefObject<number>;
+  /** History index of the in-trip Home base while we're sitting on it, so the
+   *  tab→Home tap can tell whether a plain `back` would actually land on Home
+   *  (ADR-0035 §3 hardening). `null` until Home has been visited this session. */
+  homeBaseIdxRef: React.MutableRefObject<number | null>;
 }
 
 const NavContext = createContext<NavContextValue | null>(null);
@@ -204,6 +213,7 @@ export function NavProvider({ children }: { children: ReactNode }) {
   const seqRef = useRef(0);
   const insideTripRef = useRef(false);
   const exitPendingRef = useRef(0);
+  const homeBaseIdxRef = useRef<number | null>(null);
   const navigate = useNavigate();
   const showToast = useToast();
 
@@ -283,6 +293,7 @@ export function NavProvider({ children }: { children: ReactNode }) {
       },
       insideTripRef,
       exitPendingRef,
+      homeBaseIdxRef,
     }),
     [],
   );
@@ -338,10 +349,23 @@ export function useMarkInsideTrip() {
 export function useTripTab(): { tab: TabId; goToTab: (t: TabId) => void } {
   const [params] = useSearchParams();
   const navigate = useNavigate();
+  const { homeBaseIdxRef } = useNav();
   const tab = (params.get(TAB_PARAM) as TabId | null) ?? HOME_TAB;
+  // Record the Home base's history index whenever we're on it, so tab→Home can
+  // tell whether a plain `back` would land on Home. `historyIdx() > 0` alone is
+  // not enough — it's true whenever *any* history exists, even foreign entries
+  // (an OAuth round-trip, an external launch, a desync) sitting behind a tab, and
+  // a blind `back` into those strands the tap (the "Home tab does nothing" bug).
+  useEffect(() => {
+    if (tab === HOME_TAB) homeBaseIdxRef.current = historyIdx();
+  }, [tab, homeBaseIdxRef]);
   const goToTab = useCallback(
-    (next: TabId) => runStep(navigate, tabStep(tab, next, historyIdx() > 0)),
-    [tab, navigate],
+    (next: TabId) => {
+      const homeBehind =
+        homeBaseIdxRef.current !== null && historyIdx() === homeBaseIdxRef.current + 1;
+      runStep(navigate, tabStep(tab, next, homeBehind));
+    },
+    [tab, navigate, homeBaseIdxRef],
   );
   return { tab, goToTab };
 }
