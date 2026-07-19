@@ -51,7 +51,6 @@ Full write-up + evidence in [reviews/frontend-architecture-review.md](reviews/fr
 
 Full write-up + evidence (incl. a reproduced concurrency probe) in [reviews/backend-architecture-review.md](reviews/backend-architecture-review.md). Nothing shipped yet. The **Revocable invite tokens** line under "Security & correctness" above is the same item as B-07.
 
-- **B-10 rate limiting** (Med) — endpoint-specific throttles (tight on auth/invite, generous on sync) that don't break offline reconnect bursts.
 - **B-11/B-12/B-13 (Low)** — refresh-rotation grace window; check Google `email_verified` + define the email-change/account-link policy; orphan-blob reconciler + validate document `ownerUserId ∈ members` + standardize change `after` payloads.
 
 ## Testing

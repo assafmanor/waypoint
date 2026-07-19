@@ -34,6 +34,11 @@ async function bootstrap() {
   // gap (:5173 → :3000); no-op in prod, which is single-origin (ADR-0020).
   app.enableCors({ origin: process.env[FRONTEND_URL] ?? DEFAULT_FRONTEND_URL, credentials: true });
 
+  // Trust exactly one proxy hop (Railway's) in production so rate limiting (B-10)
+  // keys on the real client IP via X-Forwarded-For — but never trust XFF in dev,
+  // where it'd let a client spoof its IP.
+  if (process.env.NODE_ENV === 'production') app.set('trust proxy', 1);
+
   // Raw `ws` upgrade handling for WS /trips/:tripId/stream (sync-and-offline.md).
   app.get(SyncGateway).attach(app.getHttpServer() as HttpServer);
 

@@ -16,6 +16,7 @@ import {
   ApiOkResponse,
   ApiTags,
 } from '@nestjs/swagger';
+import { Throttle } from '@nestjs/throttler';
 import {
   createTripSchema,
   invitePreviewSchema,
@@ -79,6 +80,7 @@ export class TripsController {
   }
 
   @Post('join/:token')
+  @Throttle({ default: { limit: 20, ttl: 60_000 } }) // token-guessing / join abuse (B-10)
   @ApiCreatedResponse({ type: MembershipDto })
   @ZodSerializerDto(MembershipDto)
   join(
@@ -180,6 +182,8 @@ export class InvitesController {
   constructor(private readonly trips: TripsService) {}
 
   @Get(':token')
+  // Public HMAC oracle otherwise hammerable (B-10) — tight per-IP cap.
+  @Throttle({ default: { limit: 20, ttl: 60_000 } })
   @ApiOkResponse({ type: InvitePreviewDto })
   @ZodSerializerDto(InvitePreviewDto)
   preview(@Param('token') token: string): Promise<InvitePreview> {
