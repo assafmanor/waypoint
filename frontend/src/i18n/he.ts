@@ -180,7 +180,7 @@ export const t = {
       destShort: 'יעד',
       routeRequired: 'צריך מוצא או יעד',
       dateOutOfRange: 'התאריך מחוץ לטווח הטיול',
-      endBeforeStart: 'הסיום צריך להיות אחרי ההתחלה',
+      endBeforeStart: 'זמן סיום צריך להיות אחרי ההתחלה',
       autoCaption: 'נבחר לפי סוג ההזמנה',
       reset: 'איפוס',
     },
