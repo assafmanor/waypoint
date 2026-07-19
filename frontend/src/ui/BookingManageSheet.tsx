@@ -5,7 +5,7 @@
 import { useState } from 'react';
 import { type Booking } from '@waypoint/shared';
 import { useTrip } from '../state/trip-state';
-import { Sheet } from './Sheet';
+import { RowManageSheet } from './domain';
 import { DeletePrompt } from './BookingSheet';
 import { deleteFlags } from '../lib/booking-edit';
 import { t } from '../i18n/he';
@@ -38,21 +38,18 @@ export function BookingManageSheet({
   }
 
   return (
-    <Sheet ariaLabel={t.index.detail.actions} onClose={onClose}>
-      <div className="row-actions">
-        <button type="button" className="row-action" onClick={() => onEdit(booking)}>
-          <span className="row-action-ic" aria-hidden="true">
-            ✏️
-          </span>
-          {t.index.detail.edit}
-        </button>
-        <button type="button" className="row-action danger" onClick={() => setDeleting(true)}>
-          <span className="row-action-ic" aria-hidden="true">
-            🗑️
-          </span>
-          {t.index.detail.delete}
-        </button>
-      </div>
-    </Sheet>
+    <RowManageSheet
+      ariaLabel={t.index.detail.actions}
+      onClose={onClose}
+      actions={[
+        { label: t.index.detail.edit, icon: '✏️', onSelect: () => onEdit(booking) },
+        {
+          label: t.index.detail.delete,
+          icon: '🗑️',
+          danger: true,
+          onSelect: () => setDeleting(true),
+        },
+      ]}
+    />
   );
 }

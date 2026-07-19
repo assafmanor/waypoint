@@ -3513,119 +3513,15 @@
   border-radius: 16px;
   overflow: hidden;
 }
-.index .li {
-  display: flex;
-  align-items: center;
-  gap: 11px;
-  padding: 12px 14px;
-  border: none;
-  border-bottom: 1px solid var(--line);
-  width: 100%;
-  background: transparent;
-  font: inherit;
-  color: inherit;
-  text-align: inherit;
-  cursor: pointer;
-}
-.index .li:last-child {
-  border-bottom: none;
-}
-.index .li:hover {
-  background: color-mix(in srgb, var(--ink) 4%, transparent);
-}
-.index .li:focus-visible {
-  outline: 2px solid var(--teal);
-  outline-offset: -2px;
-}
-.index .li .badge2 {
-  width: 36px;
-  height: 36px;
-  border-radius: 11px;
-  background: var(--paper);
-  display: grid;
-  place-items: center;
-  font-size: 17px;
-  flex: 0 0 auto;
-}
-.index .li .main {
-  flex: 1;
-  min-width: 0;
-}
-.index .li .main .t {
-  font-size: 13.5px;
-  font-weight: 700;
-  display: flex;
-  align-items: center;
-  gap: 6px;
-  flex-wrap: wrap;
-}
-.index .li .main .m {
-  font-size: 11.5px;
-  color: var(--muted);
-  margin-top: 3px;
-}
-.index .li .right {
-  text-align: end;
-  flex: 0 0 auto;
-}
-.index .li .right .code {
+/* Booking + document rows migrated onto the shared ListRow (`wp-listrow*`, review
+   U-03); its frame/badge/title/meta/kebab live in ui/domain/list-row.css. Only the
+   trailing-slot CONTENT keeps Index-scoped rules: the confirmation-code chip
+   (mono, amber = commitment) rides the `right` slot. */
+.index .code {
   font-family: var(--font-mono);
   font-size: 11.5px;
   font-weight: 700;
   color: var(--amber-deep);
-}
-/* Booking row (ADR-0053 revision): a flex container, not a single button, so the
-   "⋯" can sit beside the tap-to-open area (same shape as the document row). The
-   badge+title open the detail view; code · ⋯ sit on the same line in .right. */
-.index .li.bk {
-  padding: 0;
-  cursor: default;
-}
-.index .li.bk:hover {
-  background: transparent;
-}
-.index .li.bk .li-open {
-  display: flex;
-  align-items: center;
-  gap: 11px;
-  flex: 1;
-  min-width: 0;
-  background: transparent;
-  border: none;
-  font: inherit;
-  color: inherit;
-  text-align: start;
-  cursor: pointer;
-  padding: 12px 14px;
-}
-.index .li.bk .li-open:hover {
-  background: color-mix(in srgb, var(--ink) 4%, transparent);
-}
-.index .li.bk .li-open:focus-visible {
-  outline: 2px solid var(--teal);
-  outline-offset: -2px;
-}
-.index .li.bk .right {
-  display: flex;
-  align-items: center;
-  gap: 10px;
-  padding-inline-end: 12px;
-}
-.index .li.bk .right .kebab {
-  width: 30px;
-  height: 30px;
-  border-radius: 9px;
-  display: grid;
-  place-items: center;
-  background: none;
-  border: 0;
-  color: var(--muted);
-  font-size: 17px;
-  cursor: pointer;
-}
-.index .li.bk .right .kebab:hover {
-  background: color-mix(in srgb, var(--ink) 6%, transparent);
-  color: var(--ink);
 }
 .index .tag-type {
   font-size: 9.5px;
@@ -3664,10 +3560,10 @@
   letter-spacing: 0.04em;
   margin: 18px 2px 8px;
 }
-.index .listcard.past .li {
+.index .listcard.past .wp-listrow {
   opacity: 0.6;
 }
-.index .listcard.past .li .right .code {
+.index .listcard.past .code {
   color: var(--muted);
 }
 .index .empty-card {
@@ -4113,7 +4009,8 @@
 }
 
 /* ===== Documents section (DocumentsSection.tsx) — grouped by type, per the
-   trip-index mockup. Rows reuse .index .li; only doc-specific bits added. ===== */
+   trip-index mockup. Rows use the shared ListRow (`wp-listrow*`); only the
+   group headers + trailing-slot content (size · lock glyph) stay here. ===== */
 .index .doc-group {
   margin-top: 4px;
 }
@@ -4123,69 +4020,15 @@
   color: var(--muted);
   padding: 6px 2px 7px;
 }
-.index .li.doc .main .t {
-  font-weight: 600;
-}
-.index .li .right .time {
-  font-size: 13px;
-  color: var(--muted);
-}
-/* Doc row (ADR-0052): a flex container, not a single button — the "⋯" can't nest
-   inside a row button. The badge+title are one clickable area (.li-open, opens the
-   viewer); size · lock · ⋯ sit on the same line in .right. */
-.index .li.doc {
-  padding: 0;
-  cursor: default;
-}
-.index .li.doc:hover {
-  background: transparent;
-}
-.index .li.doc .li-open {
-  display: flex;
-  align-items: center;
-  gap: 11px;
-  flex: 1;
-  min-width: 0;
-  background: transparent;
-  border: none;
-  font: inherit;
-  color: inherit;
-  text-align: start;
-  cursor: pointer;
-  padding: 12px 14px;
-}
-.index .li.doc .li-open:hover {
-  background: color-mix(in srgb, var(--ink) 4%, transparent);
-}
-.index .li.doc .li-open:focus-visible {
-  outline: 2px solid var(--teal);
-  outline-offset: -2px;
-}
-.index .li.doc .right {
-  display: flex;
-  align-items: center;
-  gap: 8px;
-  padding-inline-end: 12px;
-}
-.index .li.doc .right .size {
+/* Document row trailing slot (ADR-0052): the size and the encrypted-lock glyph
+   ride the shared row's `right` slot alongside the SyncBadge (U-04). */
+.index .size {
   font-size: 11.5px;
   color: var(--muted);
 }
-.index .li.doc .right .kebab {
-  width: 30px;
-  height: 30px;
-  border-radius: 9px;
-  display: grid;
-  place-items: center;
-  background: none;
-  border: 0;
+.index .doc-lock {
+  font-size: 13px;
   color: var(--muted);
-  font-size: 17px;
-  cursor: pointer;
-}
-.index .li.doc .right .kebab:hover {
-  background: color-mix(in srgb, var(--ink) 6%, transparent);
-  color: var(--ink);
 }
 .index .empty-card.doc {
   border-style: dashed;
@@ -4199,12 +4042,6 @@
   align-items: center;
   gap: 8px;
 }
-/* Per-document manage menu (DocumentManageSheet) rides inside the generic sheet;
-   reuses .row-action / .booking-sheet chrome, so only the wrapper needs a rule. */
-.doc-manage .row-actions {
-  margin: 2px 0;
-}
-
 /* The one shared spinner (Spinner.tsx, ADR-0052 §4). */
 .spinner {
   display: inline-block;
@@ -4586,15 +4423,14 @@
 
 /* Shared badge tint (ADR-0059 §3): teal for a stay, amber for transport — on the
    Index row badge and the detail-view badge alike. */
-.badge2.stay,
 .bk-badge.stay {
   background: color-mix(in srgb, var(--teal) 12%, transparent);
 }
-.badge2.trans,
 .bk-badge.trans {
   background: rgba(233, 166, 60, 0.12);
 }
-.li.bk .bk-lock {
+/* Hard-booking lock, riding the shared row's title slot (ADR-0011 · ADR-0059 §3). */
+.index .bk-lock {
   font-size: 11px;
   color: var(--amber-deep);
   flex: 0 0 auto;
