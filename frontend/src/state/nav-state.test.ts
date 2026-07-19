@@ -4,8 +4,8 @@
 import { describe, expect, it } from 'vitest';
 import {
   RESET_TO_HOME_AFTER_HIDDEN_MS,
+  daySelectTarget,
   resolveActiveDate,
-  shouldResetDayToToday,
   shouldResetToHomeOnResume,
   structuralBackStep,
   systemBackDecision,
@@ -107,18 +107,27 @@ describe('systemBackDecision — Android system-back routing (ADR-0035 §5)', ()
   });
 });
 
-describe('shouldResetDayToToday — every route to Home lands on today (ADR-0035, 2026-07-18)', () => {
-  it('resets the day when a structural back lands on Home in Trip mode', () => {
-    expect(shouldResetDayToToday('home', 'trip')).toBe(true);
+describe('daySelectTarget — single-source day selection (ADR-0035 §4)', () => {
+  const TODAY = '2026-07-08';
+
+  it('always lands on the days tab, carrying a non-today day in ?day=', () => {
+    expect(daySelectTarget('home', '2026-07-10', TODAY)).toEqual({
+      to: '/?tab=days&day=2026-07-10',
+      replace: false,
+    });
   });
 
-  it('preserves the selected day in Plan mode (not today-anchored)', () => {
-    expect(shouldResetDayToToday('home', 'plan')).toBe(false);
+  it('omits ?day= when the day is today, so the URL stays clean (Home derives to today)', () => {
+    expect(daySelectTarget('days', TODAY, TODAY)).toEqual({ to: '/?tab=days', replace: true });
   });
 
-  it('does not reset while on a non-Home tab', () => {
-    expect(shouldResetDayToToday('days', 'trip')).toBe(false);
-    expect(shouldResetDayToToday('index', 'trip')).toBe(false);
+  it('pushes from Home (back returns to Home), replaces from any non-Home tab (lateral, §4)', () => {
+    // Home → days is a drill-in: push, so a back peels it back to Home.
+    expect(daySelectTarget('home', '2026-07-10', TODAY).replace).toBe(false);
+    // days → another day, or index → days, is lateral: replace, so back never
+    // walks through every day you tapped.
+    expect(daySelectTarget('days', '2026-07-10', TODAY).replace).toBe(true);
+    expect(daySelectTarget('index', '2026-07-10', TODAY).replace).toBe(true);
   });
 });
 
