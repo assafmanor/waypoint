@@ -22,6 +22,11 @@ import { t } from '../i18n/he';
 
 /** In-trip tab is a real, reload-surviving history entry (ADR-0035 §3). */
 export const TAB_PARAM = 'tab';
+/** The selected day, deep-linkable + reload-surviving via `?day=YYYY-MM-DD`
+ *  (J7 / review Q5). Like `?tab=` it lives in the URL, but unlike a tab it is a
+ *  LATERAL view change (ADR-0035 §4), so callers write it with `replace` — back
+ *  never walks through the days you tapped. */
+export const DAY_PARAM = 'day';
 /** The anchor tab: back from any other tab returns here, then exits to /trips. */
 export const HOME_TAB: TabId = 'home';
 /** Where leaving a trip lands (ADR-0033 all-trips home). */
@@ -52,6 +57,24 @@ export function tabStep(current: TabId, next: TabId, canGoBack: boolean): NavSte
   if (next === HOME_TAB) return canGoBack ? { kind: 'back' } : { kind: 'replace', to: '/' };
   if (current === HOME_TAB) return { kind: 'push', to: `/?${TAB_PARAM}=${next}` };
   return { kind: 'replace', to: `/?${TAB_PARAM}=${next}` };
+}
+
+const ISO_DATE = /^\d{4}-\d{2}-\d{2}$/;
+
+/** Resolve the `?day=` param to a selected day (J7 / review Q5). A missing,
+ *  malformed, or out-of-range value falls back to `fallback` (today, clamped to
+ *  the trip range) so a stale or hostile deep link lands gracefully on today
+ *  instead of an empty/undefined day. Range is a lexical compare, valid for ISO
+ *  date strings (matches `lib/time.clampDate`). */
+export function resolveActiveDate(
+  param: string | null,
+  startDate: string,
+  endDate: string,
+  fallback: string,
+): string {
+  if (!param || !ISO_DATE.test(param)) return fallback;
+  if (param < startDate || param > endDate) return fallback;
+  return param;
 }
 
 /** The structural half of `goBack()` (ADR-0035 §2), after any open overlay has

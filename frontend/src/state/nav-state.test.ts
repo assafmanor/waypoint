@@ -4,6 +4,7 @@
 import { describe, expect, it } from 'vitest';
 import {
   RESET_TO_HOME_AFTER_HIDDEN_MS,
+  resolveActiveDate,
   shouldResetDayToToday,
   shouldResetToHomeOnResume,
   structuralBackStep,
@@ -117,6 +118,35 @@ describe('shouldResetDayToToday — every route to Home lands on today (ADR-0035
   it('does not reset while on a non-Home tab', () => {
     expect(shouldResetDayToToday('days', 'trip')).toBe(false);
     expect(shouldResetDayToToday('index', 'trip')).toBe(false);
+  });
+});
+
+describe('resolveActiveDate — day-in-URL round-trip (J7 / review Q5)', () => {
+  const START = '2026-07-05';
+  const END = '2026-07-14';
+  const TODAY = '2026-07-08';
+
+  it('round-trips a valid in-range ?day= param', () => {
+    expect(resolveActiveDate('2026-07-10', START, END, TODAY)).toBe('2026-07-10');
+    // the range endpoints are inclusive
+    expect(resolveActiveDate(START, START, END, TODAY)).toBe(START);
+    expect(resolveActiveDate(END, START, END, TODAY)).toBe(END);
+  });
+
+  it('falls back to today when the param is missing', () => {
+    expect(resolveActiveDate(null, START, END, TODAY)).toBe(TODAY);
+    expect(resolveActiveDate('', START, END, TODAY)).toBe(TODAY);
+  });
+
+  it('falls back to today for a malformed param', () => {
+    expect(resolveActiveDate('not-a-date', START, END, TODAY)).toBe(TODAY);
+    expect(resolveActiveDate('2026-7-9', START, END, TODAY)).toBe(TODAY);
+    expect(resolveActiveDate('2026-07-10T00:00', START, END, TODAY)).toBe(TODAY);
+  });
+
+  it('falls back to today when the param is out of the trip range', () => {
+    expect(resolveActiveDate('2026-07-04', START, END, TODAY)).toBe(TODAY); // before start
+    expect(resolveActiveDate('2026-07-15', START, END, TODAY)).toBe(TODAY); // after end
   });
 });
 
