@@ -1,6 +1,6 @@
 /* The single overlay primitive (ADR-0079). Two variants share one scrim +
    focus/close machinery (Modal.tsx); only shape/position differ. Built on the
-   Wave-0 non-color tokens (radius/elevation/spacing, ADR-0077) and logical
+   Wave-0 non-color tokens (radius/elevation/spacing, ADR-0082) and logical
    properties so RTL needs no left/right. Neutral chrome only — never amber/teal
    (unlike the legacy .confirm-card, which is deliberately amber for the
    hard-edit guard); semantic hues stay reserved for meaning, not chrome.

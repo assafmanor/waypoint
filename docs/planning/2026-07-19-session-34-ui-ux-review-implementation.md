@@ -35,7 +35,7 @@ Out of scope: **U-06** (Map surface — product-owned, flagged not started), **U
 
 ## ADR number reservations (avoid parallel-agent collisions)
 
-- **0077** — adopt non-color design tokens (Wave 0). ✅ written.
+- **0082** — adopt non-color design tokens (Wave 0). ✅ written.
 - **0078** — shared feedback-state family (Wave 1 P3).
 - **0079** — single Modal/Sheet primitive (Wave 1 P2).
 - **0080** — per-entity SyncStatus model (Wave 2 S).
@@ -47,7 +47,7 @@ Out of scope: **U-06** (Map surface — product-owned, flagged not started), **U
 
 ### Wave 0 — tokens (U-08 token layer) — DONE
 
-Done inline on `claude/waypoint-ui-ux-impl-6swnuo` (serial, no parallelism to gain from a worktree; lands the foundation before Wave 1 branches). Added `--space-1..6`, `--text-*` + `--leading-*`, `--radius-8/12/16/22/999`, `--elevation-flat/raised/floating`, `--bp-tablet/desktop`, `--safe-*`, `--sync-*` to `tokens.css`, matching the design-language ramps 1:1; dark-remap parity (only `--elevation-raised` re-maps; the rest are theme-independent). ADR-0077 written; README + INDEX + backlog updated. **Defined-not-migrated** per U-08 — primitives are born on these, screens convert opportunistically. Gate: frontend typecheck/build/test + backend build + lint + format all green.
+Done inline on `claude/waypoint-ui-ux-impl-6swnuo` (serial, no parallelism to gain from a worktree; lands the foundation before Wave 1 branches). Added `--space-1..6`, `--text-*` + `--leading-*`, `--radius-8/12/16/22/999`, `--elevation-flat/raised/floating`, `--bp-tablet/desktop`, `--safe-*`, `--sync-*` to `tokens.css`, matching the design-language ramps 1:1; dark-remap parity (only `--elevation-raised` re-maps; the rest are theme-independent). ADR-0082 written; README + INDEX + backlog updated. **Defined-not-migrated** per U-08 — primitives are born on these, screens convert opportunistically. Gate: frontend typecheck/build/test + backend build + lint + format all green.
 
 ### Wave 1 — primitives (4 parallel worktree agents) — DONE
 
@@ -58,7 +58,7 @@ Four worktree-isolated agents, disjoint file ownership, integrated in order **P1
 - **P3 — feedback family** (`ui/feedback/*`, ADR-0078): `EmptyState`, `ErrorState` (optional retry, `role="alert"`), `LoadingState`+`Skeleton` (reduced-motion aware), `StatusBanner` (toned, polite live-region). New `t.feedback.*` i18n namespace. 17 jsdom tests. No screen migrated yet.
 - **P4 — quick wins**: `settings` glyph added to `Icon`; header `⚙` emoji swapped to `<Icon name="settings" />` (wired at integration); `Spinner` aria-label → `t.common.loading` (U-11, U-12 shipped).
 
-**Integration notes:** P1/P2/P4 branched off the pre-Wave-0 commit; P1 re-added Wave-0-like tokens with slightly different values — I kept the canonical ADR-0077 `tokens.css` (P1's tokens were a strict subset; only `--leading-snug` differs, 1.25 vs 1.3, imperceptible). `he.ts` combined (P3 `feedback` namespace + P4 `common.loading`). README/INDEX/backlog reconciled to carry all of 0077/0078/0079 + the landed-vs-remaining status per finding.
+**Integration notes:** P1/P2/P4 branched off the pre-Wave-0 commit; P1 re-added Wave-0-like tokens with slightly different values — I kept the canonical ADR-0082 `tokens.css` (P1's tokens were a strict subset; only `--leading-snug` differs, 1.25 vs 1.3, imperceptible). `he.ts` combined (P3 `feedback` namespace + P4 `common.loading`). README/INDEX/backlog reconciled to carry all of 0082/0078/0079 + the landed-vs-remaining status per finding.
 
 **Gate (integrated):** frontend typecheck/build ✅, **416 tests pass (35 files, +40 new)**, lint 0 errors (7 pre-existing warnings), backend build ✅, `format:check` ✅. Backend `#test` unrun (no Postgres — sandbox limit).
 
@@ -105,7 +105,7 @@ Two disjoint agents (C = TS/component/Home strip; DM = CSS-only), merged C → D
 
 ## Final state (all waves shipped)
 
-**Shipped:** U-01, U-02, U-03, U-04, U-05, U-07, U-08 (tokens + dark-color sweep), U-09, U-10 (family + snapshot states), U-11, U-12, U-13 — via the shared layer (tokens → primitives → feedback → domain), each with superseded code deleted (no old+new duplication) and jsdom tests on every primitive. ADRs 0077–0081. Day-in-URL (`?day=`) added (review Q5). Test suite 360 → **503**.
+**Shipped:** U-01, U-02, U-03, U-04, U-05, U-07, U-08 (tokens + dark-color sweep), U-09, U-10 (family + snapshot states), U-11, U-12, U-13 — via the shared layer (tokens → primitives → feedback → domain), each with superseded code deleted (no old+new duplication) and jsdom tests on every primitive. ADRs 0082–0081. Day-in-URL (`?day=`) added (review Q5). Test suite 360 → **503**.
 
 **Flagged to product (not started, per scope):** U-06 (Map surface / location pillar).
 

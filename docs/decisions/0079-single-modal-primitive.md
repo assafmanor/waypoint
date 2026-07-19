@@ -12,7 +12,7 @@ The experience layer grew two-plus incompatible modal families before the shared
 - **The `.confirm-overlay/.confirm-card` family** — `ConfirmDialog`, `BookingSheet`'s `DeletePrompt`, and `TripSettings`' inline `Confirm`: three separate centered-dialog implementations, each re-solving overlay + focus + direction.
 - **`EventForm`'s bespoke `.event-form-*` overlay** — the app's most-used editing surface, registered with **neither** the overlay stack **nor** the focus system (review **U-01**, the top user risk): the return gesture / system-back does not close it, and it has no focus-in, no Escape, no focus-restore, no trap. A keyboard or screen-reader user can Tab behind it; a touch user gets back behavior inconsistent with every other sheet, risking an orphaned or lost in-progress edit.
 
-The root cause is structural, not cosmetic: **there is no one overlay primitive.** Every new sheet or dialog re-implements the scrim, the portal, the overlay-stack registration, and the focus contract — so a11y and RTL work is multiplied and drifts (review **U-02**). The Wave-0 non-color tokens (radius/elevation/spacing, ADR-0077) now exist, so a token-based primitive is finally buildable without hard-coding px.
+The root cause is structural, not cosmetic: **there is no one overlay primitive.** Every new sheet or dialog re-implements the scrim, the portal, the overlay-stack registration, and the focus contract — so a11y and RTL work is multiplied and drifts (review **U-02**). The Wave-0 non-color tokens (radius/elevation/spacing, ADR-0082) now exist, so a token-based primitive is finally buildable without hard-coding px.
 
 ## Decision
 

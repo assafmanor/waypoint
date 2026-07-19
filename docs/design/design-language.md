@@ -258,7 +258,7 @@ Dark mode is a **token remap, not a redesign**. Because every component reads `v
 | `--cta` / `--cta-text`     | `#16233D` / `#FFF`    | `#E7EAF2` / `#12203A`                                                                      |
 | `--ok` / `--miss`          | `#3C9A6B` / `#C2584E` | `#4CBF85` / `#E07A6E`                                                                      |
 
-**Status — shippable behind the `data-theme` toggle** (U-08 / ADR-0077 tail):
+**Status — shippable behind the `data-theme` toggle** (U-08 / ADR-0082 tail):
 
 The hardcoded-hex sweep is **done**. `App.css` and `screens.css` now read tokens for
 every themeable color; the remaining literal hexes are intentionally theme-fixed and

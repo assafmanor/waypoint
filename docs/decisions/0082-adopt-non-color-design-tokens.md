@@ -1,4 +1,4 @@
-# 0077 — Adopt non-color design tokens (spacing, type, radius, elevation, breakpoints)
+# 0082 — Adopt non-color design tokens (spacing, type, radius, elevation, breakpoints)
 
 **Status:** Accepted (2026-07-19)
 **Date:** 2026-07-19

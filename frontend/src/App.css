@@ -2,7 +2,7 @@
    on larger screens (ADR-0017 / design-language "Responsive"). Ported from
    mockups/trip-dashboard-v2.html. Owned by AppShell (ui/layout). */
 
-/* Dark-mode note (U-08, ADR-0077 / ADR-0028): themeable colors read tokens
+/* Dark-mode note (U-08, ADR-0082 / ADR-0028): themeable colors read tokens
    (tokens.css), so they re-map under [data-theme='dark']. The literal hexes that
    remain are INTENTIONALLY theme-fixed and carry a "fixed:" (or "brand") marker:
    - light text/decor painted onto the ALWAYS-dark trip-mode chrome (the indigo

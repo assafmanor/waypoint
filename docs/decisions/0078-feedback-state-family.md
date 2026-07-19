@@ -2,7 +2,7 @@
 
 **Status:** Accepted (2026-07-19)
 **Date:** 2026-07-19
-**Relates:** [0077](0077-adopt-non-color-design-tokens.md) (the Wave-0 spacing/type/radius/elevation + status/sync tokens this family is built on), [0052](0052-document-lifecycle-view-manage-and-feedback.md) (the shared `Spinner` the loading state reuses), [0028](0028-plan-violet-color-budget-dark-ready.md) (the color budget: feedback semantics use the status tokens, never amber/teal/plan). Implements finding **U-10** of the UI/UX review (`../reviews/ui-ux-review.md`).
+**Relates:** [0082](0082-adopt-non-color-design-tokens.md) (the Wave-0 spacing/type/radius/elevation + status/sync tokens this family is built on), [0052](0052-document-lifecycle-view-manage-and-feedback.md) (the shared `Spinner` the loading state reuses), [0028](0028-plan-violet-color-budget-dark-ready.md) (the color budget: feedback semantics use the status tokens, never amber/teal/plan). Implements finding **U-10** of the UI/UX review (`../reviews/ui-ux-review.md`).
 
 ## Context
 
@@ -24,7 +24,7 @@ Build one feedback-state family under `frontend/src/ui/feedback/` that owns the 
 - **`LoadingState` / `Skeleton`** — chrome-preserving loading. `Skeleton` gives `line`/`block`/`circle` shape primitives with a subtle shimmer that collapses to static under `prefers-reduced-motion`; `LoadingState` composes the shared `Spinner` (ADR-0052) as the single announced live-region plus an optional skeleton.
 - **`StatusBanner({ tone, children, onDismiss? })`** — an inline banner for offline/stale/status messages; `tone ∈ neutral|offline|warn|ok` maps to the status tokens; polite live-region (`aria-live="polite"`), optional dismiss. Generalizes the ad-hoc `.offline-badge`.
 
-**Tokens.** Spacing/type/radius/elevation come only from the Wave-0 tokens (ADR-0077). Feedback semantics use the status tokens (`--ok`/`--miss`/`--muted` + `--sync-*`) — never the amber/teal/plan budget, which stays reserved for time/location/plan. Generic CTAs use the neutral `--cta`.
+**Tokens.** Spacing/type/radius/elevation come only from the Wave-0 tokens (ADR-0082). Feedback semantics use the status tokens (`--ok`/`--miss`/`--muted` + `--sync-*`) — never the amber/teal/plan budget, which stays reserved for time/location/plan. Generic CTAs use the neutral `--cta`.
 
 **a11y.** `ErrorState` announces its error text (`role="alert"`); `StatusBanner` is a polite live-region; the `Skeleton` shimmer respects `prefers-reduced-motion`; decorative icons are `aria-hidden`; `LoadingState` announces exactly once (the `Spinner`'s `role="status"` label; the visible label is mirrored and hidden).
 
@@ -34,10 +34,10 @@ Build one feedback-state family under `frontend/src/ui/feedback/` that owns the 
 
 ## Consequences
 
-- The ~6 bespoke empty shells collapse to one `EmptyState` **as screens migrate** in later waves — no indefinite duplication, but also no big-bang rewrite: the family exists now, screens shed into it opportunistically (the same define-then-adopt posture as ADR-0077).
+- The ~6 bespoke empty shells collapse to one `EmptyState` **as screens migrate** in later waves — no indefinite duplication, but also no big-bang rewrite: the family exists now, screens shed into it opportunistically (the same define-then-adopt posture as ADR-0082).
 - The chrome-preserving trip-switch load and the snapshot **retry** land when `state/trip-state.tsx` (and the Home/Index/Day screens) migrate onto `LoadingState`/`ErrorState` — the primitives are ready; the wiring is a later wave gated on the `AppShell` layout primitive.
 - Loading gains skeletons (a perceived-performance win) without each screen re-inventing them; reduced-motion users get static placeholders.
-- Status/offline messaging has one banner with a fixed tone→token mapping, so offline/stale/ok read consistently and inherit the dark remap for free (the status tokens are already dark-mapped, ADR-0077).
+- Status/offline messaging has one banner with a fixed tone→token mapping, so offline/stale/ok read consistently and inherit the dark remap for free (the status tokens are already dark-mapped, ADR-0082).
 - One more `ui/` family to keep coherent; bounded, because it is the canonical home for these states and screens delete their bespoke copies as they adopt it.
 
 ## Alternatives considered

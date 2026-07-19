@@ -2,7 +2,7 @@
 
 **Status:** Accepted (2026-07-19)
 **Date:** 2026-07-19
-**Relates:** [0077](0077-adopt-non-color-design-tokens.md) (the `--sync-synced`/`--sync-pending`/`--sync-failed` status tokens this uses), [0078](0078-feedback-state-family.md) (the feedback family `SyncBadge` joins), [0019](0019-sync-protocol.md) (the change log / optimistic-write path this reads state from), [0042](0042-shared-state-is-offline-syncable.md) (the outbox this derives from). Builds on the frontend-architecture review's **F-03** (the failed-sync store). Implements finding **U-04** of the UI/UX review (`../reviews/ui-ux-review.md`).
+**Relates:** [0082](0082-adopt-non-color-design-tokens.md) (the `--sync-synced`/`--sync-pending`/`--sync-failed` status tokens this uses), [0078](0078-feedback-state-family.md) (the feedback family `SyncBadge` joins), [0019](0019-sync-protocol.md) (the change log / optimistic-write path this reads state from), [0042](0042-shared-state-is-offline-syncable.md) (the outbox this derives from). Builds on the frontend-architecture review's **F-03** (the failed-sync store). Implements finding **U-04** of the UI/UX review (`../reviews/ui-ux-review.md`).
 
 ## Context
 
@@ -23,14 +23,14 @@ One **`SyncStatus` model per entity**, `synced | pending | failed(reason)`, deri
 - **Persistent failed-summary → review/retry sheet (`ui/SyncReviewSheet.tsx`).** The timed/dismissable header failed-badge is **replaced** by a persistent summary affordance (kept in the header's existing polite live region, so a new failure is announced) that opens a review sheet built on `Sheet`/`Modal` (ADR-0079). The sheet lists each failed write with its reason and a per-item **retry** (re-enqueue via the outbox, then flush when online) and **discard**, plus a discard-all. It **never clears on a timer** — this is the dead-letter surface, so a rejected write stays recoverable until the user acts. The pending count badge is unchanged.
 - **DocumentsSection is the reference wiring.** The least-contended row list adopts `<SyncBadge state={useSyncStatus(doc.id)}>` first, proving the pattern end to end. Booking and event rows migrate in Wave 3.
 
-**Tokens.** Sync states use `--sync-synced`/`--sync-pending`/`--sync-failed` (which track `--ok`/`--muted`/`--miss`, ADR-0077), never the amber/teal/plan budget; the retry button uses the neutral `--cta`. New Hebrew copy lives under a `t.sync.*` namespace; no em dashes.
+**Tokens.** Sync states use `--sync-synced`/`--sync-pending`/`--sync-failed` (which track `--ok`/`--muted`/`--miss`, ADR-0082), never the amber/teal/plan budget; the retry button uses the neutral `--cta`. New Hebrew copy lives under a `t.sync.*` namespace; no em dashes.
 
 ## Consequences
 
 - **Per-item legibility.** Every editable entity can show its own save state; "did this save?" is answerable per row, not only via a global badge.
 - **A rejected write is recoverable, not silently lost.** The dead-letter sheet keeps each failure with its reason and a retry; nothing disappears on a timer. This closes the F-03 data-loss risk at the UX layer.
 - **Toasts return to their lane.** With durable per-item + dead-letter state, the toast is for lightweight confirms, not the only failure channel.
-- **Status tokens formalized in use.** `SyncBadge` is the first real consumer of the ADR-0077 `--sync-*` mappings, alongside `StatusBanner`.
+- **Status tokens formalized in use.** `SyncBadge` is the first real consumer of the ADR-0082 `--sync-*` mappings, alongside `StatusBanner`.
 - **Derived, so it stays in sync for free.** Because status is derived from the outbox + failed store, any write that already routes through the outbox lights up pending/failed with no per-call wiring; new row lists only add the badge.
 - **Reference-only wiring now.** Only documents show the badge this wave; bookings/events still rely on the global surfaces until Wave 3. The header summary already covers their failures.
 

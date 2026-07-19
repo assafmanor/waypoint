@@ -1,6 +1,6 @@
 /* Feedback-state family (ADR-0078). One shell for empty / loading / error /
    status; screens pass content. Spacing/type/radius/elevation come only from the
-   Wave-0 tokens (ADR-0077); feedback semantics use the status tokens
+   Wave-0 tokens (ADR-0082); feedback semantics use the status tokens
    (--ok/--miss/--muted + --sync-*), never the amber/teal/plan budget. All
    box-model geometry uses logical properties so it mirrors under `dir="rtl"`. */
 

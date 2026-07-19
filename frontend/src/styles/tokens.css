@@ -48,7 +48,7 @@
   --font-body: 'Assistant', sans-serif;
   --font-mono: 'JetBrains Mono', monospace;
 
-  /* ── Non-color foundation tokens (U-08, ADR-0077) ──────────────────────────
+  /* ── Non-color foundation tokens (U-08, ADR-0082) ──────────────────────────
      design-language.md documents the spacing/type/radius/elevation ramps in
      prose; before this they lived nowhere in CSS, so 6.5k lines hard-coded them
      and drifted. These make the ramps enforceable: pick from the token, never

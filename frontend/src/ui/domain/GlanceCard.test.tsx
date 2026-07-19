@@ -24,6 +24,7 @@ const populated: DayGlance = {
       showCount: false,
       point: false,
       nextDay: false,
+      spanned: false,
     },
     {
       key: 'b',
@@ -36,6 +37,7 @@ const populated: DayGlance = {
       showCount: false,
       point: false,
       nextDay: false,
+      spanned: false,
     },
     {
       key: 'c',
@@ -48,12 +50,22 @@ const populated: DayGlance = {
       showCount: true,
       point: false,
       nextDay: false,
+      spanned: false,
     },
   ],
-  markers: [
-    { key: 'm1', frac: 0.5, labelKey: 'checkin', timeMs: DAY + 15 * 3600_000, icon: '🏨', lane: 0 },
+  anchors: [
+    {
+      kind: 'point',
+      key: 'p1',
+      frac: 0.5,
+      labelKey: 'checkin',
+      timeMs: DAY + 15 * 3600_000,
+      icon: '🏨',
+      lane: 0,
+    },
   ],
-  markerLaneCount: 1,
+  anchorLaneCount: 1,
+  anchorsCollapsed: false,
   nowFrac: 0.45,
   remaining: 4,
 };
@@ -68,14 +80,15 @@ describe('GlanceCard', () => {
       windowStartMs: DAY,
       windowEndMs: DAY,
       segs: [],
-      markers: [],
-      markerLaneCount: 0,
+      anchors: [],
+      anchorLaneCount: 0,
+      anchorsCollapsed: false,
       nowFrac: null,
       remaining: 0,
     };
     const { container } = render(<GlanceCard glance={empty} tz={TZ} onAdd={onAdd} />);
-    expect(container.querySelector('.wp-glance.empty')).toBeTruthy();
-    expect(container.querySelector('.wp-glance-rail')).toBeNull();
+    expect(container.querySelector('.glance-day.empty')).toBeTruthy();
+    expect(container.querySelector('.rail')).toBeNull();
     expect(screen.getByText(t.glance.emptyTitle)).toBeTruthy();
     fireEvent.click(screen.getByRole('button'));
     expect(onAdd).toHaveBeenCalledTimes(1);
@@ -83,19 +96,51 @@ describe('GlanceCard', () => {
 
   it('populated: renders the rail segments with per-phase coding + the now-marker', () => {
     const { container } = render(<GlanceCard glance={populated} tz={TZ} />);
-    expect(container.querySelector('.wp-glance-seg.done')).toBeTruthy();
-    expect(container.querySelector('.wp-glance-seg.now')).toBeTruthy();
+    expect(container.querySelector('.seg.done')).toBeTruthy();
+    expect(container.querySelector('.seg.now')).toBeTruthy();
     // Hollow-ahead composite carries the layered "multi" cue.
-    expect(container.querySelector('.wp-glance-seg.upcoming.multi')).toBeTruthy();
-    expect(container.querySelector('.wp-glance-nowmark')).toBeTruthy();
+    expect(container.querySelector('.seg.upcoming.multi')).toBeTruthy();
+    expect(container.querySelector('.nowmark')).toBeTruthy();
   });
 
-  it('renders the lead "נותרו" count and a transition marker chip (uncounted)', () => {
+  it('renders the lead "נותרו" count and a point time-anchor pill (ADR-0077)', () => {
     const { container } = render(<GlanceCard glance={populated} tz={TZ} />);
-    expect(container.querySelector('.wp-glance-lead .v')?.textContent).toBe('4');
+    expect(container.querySelector('.lead .v')?.textContent).toBe('4');
     expect(screen.getByText(t.glance.remaining)).toBeTruthy();
-    // The uncounted check-in marker (ADR-0054/0059) sits in the marker lane.
-    expect(container.querySelector('.wp-glance-marks .wp-glance-tmark')).toBeTruthy();
+    // The check-in point anchor sits in the amber time-anchor band above the bar.
+    expect(container.querySelector('.glance-marks .tmark .achip.amber')).toBeTruthy();
+  });
+
+  it('renders a span anchor (both edges today) as a bar + centered pill', () => {
+    const spanGlance: DayGlance = {
+      ...populated,
+      anchors: [
+        {
+          kind: 'span',
+          key: 's1',
+          startFrac: 0.2,
+          endFrac: 0.6,
+          startMs: DAY + 10 * 3600_000,
+          endMs: DAY + 14 * 3600_000,
+          startLabelKey: 'departure',
+          endLabelKey: 'arrival',
+          icon: '✈️',
+          nextDay: false,
+          lane: 0,
+        },
+      ],
+    };
+    const { container } = render(<GlanceCard glance={spanGlance} tz={TZ} />);
+    expect(container.querySelector('.glance-marks .span-anchor .bar')).toBeTruthy();
+    expect(container.querySelector('.glance-marks .span-anchor .achip.amber')).toBeTruthy();
+  });
+
+  it('a crowded day collapses the anchor band to the legs line (ADR-0077 §D)', () => {
+    const collapsed: DayGlance = { ...populated, anchorsCollapsed: true };
+    const { container } = render(<GlanceCard glance={collapsed} tz={TZ} />);
+    // The positioned band is gone; the flow legs line carries the same pills.
+    expect(container.querySelector('.glance-marks')).toBeNull();
+    expect(container.querySelector('.glance-legs .achip.amber')).toBeTruthy();
   });
 
   it('shows the hard anchor + foot (free-until / day-end) when provided', () => {
@@ -108,8 +153,8 @@ describe('GlanceCard', () => {
         dayEnd="22:00"
       />,
     );
-    expect(container.querySelector('.wp-glance-lead .anchor')?.textContent).toContain('15:00');
-    expect(container.querySelector('.wp-glance-foot')?.textContent).toContain('12:30');
-    expect(container.querySelector('.wp-glance-foot')?.textContent).toContain('22:00');
+    expect(container.querySelector('.lead .anchor')?.textContent).toContain('15:00');
+    expect(container.querySelector('.glance-foot')?.textContent).toContain('12:30');
+    expect(container.querySelector('.glance-foot')?.textContent).toContain('22:00');
   });
 });

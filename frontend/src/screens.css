@@ -1,7 +1,7 @@
 /* Home + Day-by-day components, ported from mockups/trip-dashboard-v2.html.
    Amber = time/commitment only; teal = location/nav only; plan violet = plan actions (design-language.md). */
 
-/* Dark-mode note (U-08, ADR-0077): themeable colors read tokens and re-map under
+/* Dark-mode note (U-08, ADR-0082): themeable colors read tokens and re-map under
    [data-theme='dark']. Remaining literal hexes are INTENTIONALLY theme-fixed and
    carry a "fixed:" marker: white/ink that rides a semantic FILL (on --plan / --ok /
    --miss / --amber / --ink — the fill re-maps, the on-fill ink must not); light ink
