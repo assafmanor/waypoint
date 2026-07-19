@@ -1,0 +1,972 @@
+<!doctype html>
+<!-- Document upload — the redesigned pick control (2026-07-19 session), promoting
+     ADR-0086. The shipped upload sheet (frontend/src/ui/DocumentUploadSheet.tsx)
+     reused the booking-sheet chrome for its type selector / title / actions /
+     progress / errors (all ADR-0052), but the FILE-PICK CONTROL ITSELF was never
+     designed — it is the browser's native <input type="file">, the LTR "Choose
+     File · No file chosen" button in the live screenshot. This mockup replaces
+     it with:
+
+       1. A designed DROP-ZONE (dashed tap target) that states the accept +
+          size contract up front, driving an off-screen real <input> so the
+          accept filter and all wiring are unchanged (ADR-0086 §1).
+       2. A first-class CAPTURE button (accept=image/* capture=environment) —
+          photograph a passport straight from the sheet, phone-first (§2 /
+          ADR-0017). Feature-detected: absent where there's no camera.
+       3. A picked-file PREVIEW card — thumbnail (image objectURL / PDF tile),
+          filename, type·size, one ✕ to clear (§3).
+       4. A titlerow whose icon tracks the chosen type badge (§4 / ADR-0052 §6).
+       5. The uploading / error states layered onto the preview, reusing
+          ADR-0052's spinner / .progress bar / cause-aware .bs-error verbatim (§5).
+
+     DESIGN FIDELITY: tokens + the .booking-sheet / .scrim / .sheet-card /
+     .bs-typecard / .bs-actions / .progress / .bs-error CSS are lifted verbatim
+     from the shipped app (tokens.css, screens.css, index-fixes-v1.html). Only
+     the NET-NEW pick control (.dz / .dz-file / .thumb / .capture) is authored
+     here, and only from existing tokens — a neutral --cta CTA, never amber/teal
+     (ADR-0028, CLAUDE.md rule 4). The phone bezel + status bar are mockup
+     presentation chrome, not app CSS. Where this and the design docs conflict,
+     the docs win.
+
+     Demo toggle drives the pick control through its states:
+       ריק · תמונה · PDF · מעלה · שגיאה  (empty · image · pdf · uploading · error). -->
+<html lang="he" dir="rtl">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>העלאת מסמך · מוקאפ v1</title>
+    <link rel="preconnect" href="https://fonts.googleapis.com" />
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+    <link
+      href="https://fonts.googleapis.com/css2?family=Assistant:wght@400;500;600;700&family=Secular+One&family=JetBrains+Mono:wght@500;700&display=swap"
+      rel="stylesheet"
+    />
+    <style>
+      /* ===== Real design tokens — verbatim from frontend/src/styles/tokens.css ===== */
+      :root {
+        --ink: #16233d;
+        --indigo: #1b2a4a;
+        --board: #0e1729;
+        --screen: #e7eaef;
+        --card: #ffffff;
+        --paper: #f3efe6;
+        --amber: #e9a63c;
+        --amber-deep: #c9822a;
+        --teal: #2c9c90;
+        --muted: #6c7488;
+        --line: rgba(22, 35, 61, 0.1);
+        --soft-line: rgba(22, 35, 61, 0.28);
+        --plan: #6e59d6;
+        --plan-tint: rgba(110, 89, 214, 0.1);
+        --cta: var(--ink);
+        --cta-text: #ffffff;
+        --ok: #3c9a6b;
+        --miss: #c2584e;
+        --font-head: 'Secular One', sans-serif;
+        --font-body: 'Assistant', sans-serif;
+        --font-mono: 'JetBrains Mono', monospace;
+      }
+      * {
+        box-sizing: border-box;
+        margin: 0;
+        padding: 0;
+        -webkit-tap-highlight-color: transparent;
+      }
+
+      /* ===== Mockup presentation chrome (NOT app CSS) ===== */
+      body {
+        font-family: var(--font-body);
+        background:
+          radial-gradient(120% 90% at 80% -10%, #2a3e68 0%, transparent 55%),
+          radial-gradient(120% 90% at 0% 110%, #1a2a4a 0%, transparent 50%), #0f1a31;
+        color: var(--ink);
+        min-height: 100vh;
+        display: flex;
+        flex-direction: column;
+        align-items: center;
+        padding: 24px 16px 48px;
+        -webkit-font-smoothing: antialiased;
+      }
+      .caption {
+        text-align: center;
+        color: #aeb9d4;
+        font-size: 12.5px;
+        margin-bottom: 6px;
+        font-weight: 500;
+        max-width: 470px;
+      }
+      .caption b {
+        color: #fff;
+        font-weight: 600;
+      }
+      .adr-note {
+        text-align: center;
+        color: #7f8db0;
+        font-size: 11px;
+        margin-bottom: 14px;
+      }
+      .demo-toggle {
+        display: inline-flex;
+        background: rgba(255, 255, 255, 0.08);
+        border: 1px solid rgba(255, 255, 255, 0.16);
+        border-radius: 999px;
+        padding: 3px;
+        gap: 2px;
+        margin-bottom: 16px;
+        flex-wrap: wrap;
+        justify-content: center;
+      }
+      .demo-toggle button {
+        font: inherit;
+        font-size: 12px;
+        font-weight: 600;
+        color: #9daac8;
+        background: none;
+        border: 0;
+        border-radius: 999px;
+        padding: 6px 15px;
+        cursor: pointer;
+      }
+      .demo-toggle button.on {
+        background: #fff;
+        color: var(--ink);
+      }
+      .device {
+        width: 100%;
+        max-width: 430px;
+        border-radius: 40px;
+        box-shadow:
+          0 18px 40px -18px rgba(14, 23, 41, 0.45),
+          0 0 0 10px #0b1526,
+          0 0 0 12px #223257;
+        overflow: hidden;
+        position: relative;
+        height: 860px;
+        display: flex;
+        flex-direction: column;
+      }
+      .statusbar {
+        background: var(--indigo);
+        color: #dce3f2;
+        display: flex;
+        justify-content: space-between;
+        align-items: center;
+        padding: 11px 22px 6px;
+        font-size: 13px;
+        font-weight: 600;
+        font-family: var(--font-mono);
+        flex: 0 0 auto;
+      }
+      .statusbar .dots {
+        letter-spacing: 2px;
+        opacity: 0.85;
+      }
+
+      /* ===== App shell — verbatim from App.css ===== */
+      .app {
+        flex: 1;
+        min-height: 0;
+        display: flex;
+        flex-direction: column;
+        background: var(--screen);
+        position: relative;
+      }
+      .header {
+        background: var(--indigo);
+        color: #fff;
+        padding: 14px 20px 15px;
+        flex: 0 0 auto;
+      }
+      .h-mode {
+        display: inline-flex;
+        align-items: center;
+        gap: 6px;
+        font-size: 11px;
+        font-weight: 700;
+        color: #c7d0e6;
+        background: rgba(255, 255, 255, 0.08);
+        border-radius: 999px;
+        padding: 4px 11px;
+      }
+      .h-title {
+        font-family: var(--font-head);
+        font-size: 21px;
+        margin-top: 9px;
+      }
+      .h-sub {
+        font-size: 12px;
+        color: #a9b4d0;
+        margin-top: 3px;
+      }
+      .body {
+        flex: 1;
+        overflow-y: auto;
+        padding: 16px 16px 20px;
+      }
+      .body::-webkit-scrollbar {
+        width: 0;
+      }
+      /* dimmed index behind the sheet — just enough to read as context */
+      .sec-title {
+        font-size: 12px;
+        font-weight: 700;
+        color: var(--muted);
+        margin: 2px 2px 10px;
+        display: flex;
+        align-items: center;
+        gap: 6px;
+      }
+      .doc-group-h {
+        font-size: 11px;
+        font-weight: 700;
+        color: var(--muted);
+        margin: 14px 2px 7px;
+      }
+      .li {
+        display: flex;
+        align-items: center;
+        gap: 11px;
+        background: var(--card);
+        border: 1px solid var(--line);
+        border-radius: 13px;
+        padding: 11px 13px;
+        margin-bottom: 8px;
+      }
+      .badge2 {
+        width: 34px;
+        height: 34px;
+        border-radius: 9px;
+        display: grid;
+        place-items: center;
+        font-size: 17px;
+        background: var(--paper);
+        flex: 0 0 auto;
+      }
+      .li-main {
+        flex: 1;
+        min-width: 0;
+      }
+      .li-t {
+        font-size: 13.5px;
+        font-weight: 600;
+        color: var(--ink);
+      }
+      .li-s {
+        font-size: 11px;
+        color: var(--muted);
+        margin-top: 1px;
+      }
+      .li-kebab {
+        color: var(--muted);
+        font-size: 17px;
+        font-weight: 700;
+        padding: 0 4px;
+      }
+
+      /* ===== Overlay: scrim + sheet-card — verbatim from screens.css ===== */
+      .scrim {
+        position: absolute;
+        inset: 0;
+        background: rgba(9, 15, 26, 0.5);
+        display: flex;
+        align-items: flex-end;
+        z-index: 25;
+      }
+      .sheet-card {
+        width: 100%;
+        max-width: 480px;
+        background: var(--card);
+        border: 1px solid var(--line);
+        border-radius: 18px 18px 0 0;
+        padding: 18px;
+        box-shadow: 0 -20px 40px -14px rgba(0, 0, 0, 0.35);
+        max-height: 88%;
+        overflow-y: auto;
+      }
+      .sheet-card::-webkit-scrollbar {
+        width: 0;
+      }
+
+      /* ===== Upload sheet chrome — .booking-sheet / bs-* verbatim ===== */
+      .booking-sheet {
+        display: flex;
+        flex-direction: column;
+        gap: 13px;
+      }
+      .titlerow {
+        display: flex;
+        align-items: center;
+        gap: 10px;
+      }
+      .bs-icon {
+        width: 40px;
+        height: 40px;
+        border-radius: 12px;
+        background: var(--paper);
+        display: grid;
+        place-items: center;
+        font-size: 19px;
+        flex: 0 0 auto;
+        transition: transform 0.15s ease;
+      }
+      .bs-heading {
+        font-weight: 700;
+        font-size: 15px;
+        color: var(--indigo);
+      }
+      .bs-heading-sub {
+        font-size: 11.5px;
+        font-weight: 500;
+        color: var(--muted);
+        margin-top: 1px;
+      }
+      .field-label {
+        font-size: 11.5px;
+        font-weight: 700;
+        color: var(--muted);
+        margin: 2px 2px 1px;
+      }
+      .bs-typesel {
+        display: grid;
+        grid-template-columns: repeat(4, 1fr);
+        gap: 7px;
+      }
+      .bs-typecard {
+        display: flex;
+        flex-direction: column;
+        align-items: center;
+        gap: 5px;
+        font: inherit;
+        background: var(--card);
+        border: 1px solid var(--line);
+        border-radius: 13px;
+        padding: 11px 4px;
+        cursor: pointer;
+      }
+      .bs-typecard-ic {
+        font-size: 19px;
+        line-height: 1;
+      }
+      .bs-typecard-lbl {
+        font-size: 11px;
+        font-weight: 700;
+        color: var(--muted);
+      }
+      .bs-typecard.on {
+        border-color: var(--cta);
+        background: color-mix(in srgb, var(--ink) 5%, transparent);
+      }
+      .bs-typecard.on .bs-typecard-lbl {
+        color: var(--ink);
+      }
+      .bs-field {
+        display: flex;
+        flex-direction: column;
+        gap: 4px;
+        font-size: 11.5px;
+        font-weight: 700;
+        color: var(--muted);
+      }
+      .bs-field input[type='text'] {
+        font: inherit;
+        font-weight: 500;
+        font-size: 13.5px;
+        color: var(--ink);
+        background: var(--card);
+        border: 1px solid var(--soft-line);
+        border-radius: 10px;
+        padding: 10px 11px;
+      }
+      .bs-field input[type='text']:focus-visible {
+        outline: none;
+        border-color: var(--teal);
+      }
+      .bs-actions {
+        display: flex;
+        gap: 10px;
+        margin-top: 2px;
+      }
+      .bs-save,
+      .bs-cancel {
+        font: inherit;
+        font-weight: 700;
+        font-size: 13px;
+        border-radius: 12px;
+        padding: 13px;
+        cursor: pointer;
+        display: inline-flex;
+        align-items: center;
+        justify-content: center;
+        gap: 8px;
+      }
+      .bs-save {
+        flex: 1;
+        background: var(--cta);
+        color: var(--cta-text);
+        border: none;
+      }
+      .bs-save:disabled {
+        opacity: 0.55;
+        cursor: default;
+      }
+      .bs-cancel {
+        flex: 0 0 auto;
+        padding: 13px 20px;
+        background: transparent;
+        color: var(--muted);
+        border: 1px solid var(--soft-line);
+      }
+
+      /* ===== Shared spinner + progress + error — verbatim from ADR-0052 ===== */
+      .spin {
+        width: 15px;
+        height: 15px;
+        border-radius: 50%;
+        border: 2px solid rgba(255, 255, 255, 0.4);
+        border-top-color: #fff;
+        animation: sp 0.7s linear infinite;
+        flex: 0 0 auto;
+      }
+      .spin.ink {
+        border-color: rgba(22, 35, 61, 0.2);
+        border-top-color: var(--ink);
+      }
+      @keyframes sp {
+        to {
+          transform: rotate(360deg);
+        }
+      }
+      .progress {
+        height: 7px;
+        border-radius: 999px;
+        background: rgba(22, 35, 61, 0.1);
+        overflow: hidden;
+        margin: 9px 2px 3px;
+      }
+      .progress .bar {
+        height: 100%;
+        width: 62%;
+        background: var(--cta);
+        border-radius: 999px;
+      }
+      .progress-cap {
+        font-size: 11px;
+        color: var(--muted);
+        font-weight: 600;
+        margin: 0 2px;
+      }
+      .bs-error {
+        display: flex;
+        gap: 9px;
+        align-items: flex-start;
+        font-size: 12px;
+        color: var(--miss);
+        font-weight: 600;
+        background: color-mix(in srgb, var(--miss) 8%, transparent);
+        border: 1px solid color-mix(in srgb, var(--miss) 30%, transparent);
+        border-radius: 11px;
+        padding: 10px 11px;
+      }
+      .bs-error b {
+        display: block;
+        margin-bottom: 2px;
+      }
+      .bs-error .sub {
+        font-weight: 500;
+        color: color-mix(in srgb, var(--miss) 78%, var(--ink));
+      }
+
+      /* ===== NET-NEW pick control (ADR-0086) — authored from tokens ===== */
+      /* the real <input>s live off-screen; the zone / capture button drive them */
+      .visually-hidden {
+        position: absolute;
+        width: 1px;
+        height: 1px;
+        overflow: hidden;
+        clip: rect(0 0 0 0);
+      }
+      /* empty drop-zone: a neutral --cta target, states the contract up front */
+      .dz {
+        display: flex;
+        flex-direction: column;
+        align-items: center;
+        gap: 6px;
+        width: 100%;
+        font: inherit;
+        text-align: center;
+        background: color-mix(in srgb, var(--ink) 2.5%, var(--card));
+        border: 1.5px dashed var(--soft-line);
+        border-radius: 14px;
+        padding: 22px 16px;
+        cursor: pointer;
+        transition:
+          border-color 0.15s ease,
+          background 0.15s ease;
+      }
+      .dz:hover,
+      .dz:focus-visible {
+        outline: none;
+        border-color: var(--cta);
+        background: color-mix(in srgb, var(--ink) 6%, var(--card));
+      }
+      .dz-ic {
+        width: 42px;
+        height: 42px;
+        border-radius: 12px;
+        display: grid;
+        place-items: center;
+        font-size: 21px;
+        background: var(--card);
+        border: 1px solid var(--line);
+      }
+      .dz-primary {
+        font-size: 13.5px;
+        font-weight: 700;
+        color: var(--ink);
+      }
+      .dz-hint {
+        font-size: 11.5px;
+        font-weight: 500;
+        color: var(--muted);
+      }
+      /* capture: the phone-first second path, secondary to the zone */
+      .capture {
+        display: inline-flex;
+        align-items: center;
+        justify-content: center;
+        gap: 7px;
+        width: 100%;
+        font: inherit;
+        font-size: 12.5px;
+        font-weight: 700;
+        color: var(--ink);
+        background: var(--card);
+        border: 1px solid var(--soft-line);
+        border-radius: 11px;
+        padding: 11px;
+        cursor: pointer;
+      }
+      .capture:hover {
+        border-color: var(--cta);
+      }
+      /* picked-file preview card: thumbnail + meta + clear */
+      .dz-file {
+        display: flex;
+        align-items: center;
+        gap: 11px;
+        background: var(--card);
+        border: 1px solid var(--line);
+        border-radius: 13px;
+        padding: 10px 11px;
+      }
+      .thumb {
+        width: 48px;
+        height: 48px;
+        border-radius: 10px;
+        flex: 0 0 auto;
+        display: grid;
+        place-items: center;
+        overflow: hidden;
+        background: var(--paper);
+      }
+      /* image thumb — a stand-in passport photo (real app renders an objectURL) */
+      .thumb.img {
+        background:
+          linear-gradient(135deg, rgba(255, 255, 255, 0.25), transparent 60%),
+          repeating-linear-gradient(
+            -55deg,
+            #7c1d1d 0 9px,
+            #8f2626 9px 18px
+          );
+        position: relative;
+      }
+      .thumb.img::after {
+        content: '📕';
+        font-size: 20px;
+        filter: drop-shadow(0 1px 1px rgba(0, 0, 0, 0.35));
+      }
+      /* pdf / undecodable-image thumb — a distinct file tile */
+      .thumb.pdf {
+        background: color-mix(in srgb, var(--miss) 12%, var(--card));
+        color: var(--miss);
+        font-size: 10px;
+        font-weight: 800;
+        font-family: var(--font-mono);
+        letter-spacing: 0.5px;
+      }
+      .dz-file-main {
+        flex: 1;
+        min-width: 0;
+      }
+      .dz-file-name {
+        font-size: 13px;
+        font-weight: 600;
+        color: var(--ink);
+        white-space: nowrap;
+        overflow: hidden;
+        text-overflow: ellipsis;
+        direction: ltr;
+        text-align: start;
+      }
+      .dz-file-sub {
+        font-size: 11px;
+        color: var(--muted);
+        margin-top: 2px;
+      }
+      .dz-clear {
+        width: 34px;
+        height: 34px;
+        flex: 0 0 auto;
+        border-radius: 9px;
+        display: grid;
+        place-items: center;
+        font-size: 15px;
+        color: var(--muted);
+        background: transparent;
+        border: 1px solid var(--line);
+        cursor: pointer;
+      }
+      .dz-clear:hover {
+        border-color: var(--miss);
+        color: var(--miss);
+      }
+
+      /* below-device design notes (mockup chrome) */
+      .notes {
+        max-width: 430px;
+        margin-top: 20px;
+        color: #c3cce3;
+        font-size: 12px;
+        line-height: 1.65;
+      }
+      .notes h3 {
+        color: #fff;
+        font-size: 12.5px;
+        font-weight: 700;
+        margin: 14px 0 5px;
+      }
+      .notes b {
+        color: #fff;
+        font-weight: 600;
+      }
+      .notes code {
+        font-family: var(--font-mono);
+        font-size: 11px;
+        color: #dfe6f6;
+        background: rgba(255, 255, 255, 0.08);
+        padding: 1px 5px;
+        border-radius: 5px;
+      }
+      .notes ul {
+        padding-inline-start: 18px;
+      }
+      .before {
+        max-width: 430px;
+        width: 100%;
+        margin: 0 0 16px;
+        background: rgba(255, 255, 255, 0.05);
+        border: 1px dashed rgba(255, 255, 255, 0.18);
+        border-radius: 12px;
+        padding: 12px 14px;
+      }
+      .before .lbl {
+        font-size: 10.5px;
+        font-weight: 700;
+        letter-spacing: 0.4px;
+        color: #8b98bb;
+        margin-bottom: 7px;
+      }
+      /* the native control we're replacing, faithfully rendered LTR */
+      .native-file {
+        direction: ltr;
+        font-family: -apple-system, system-ui, sans-serif;
+        font-size: 13px;
+        color: #111;
+        background: #efefef;
+        border: 1px solid #9a9a9a;
+        border-radius: 4px;
+        padding: 5px 8px;
+        display: inline-flex;
+        align-items: center;
+        gap: 8px;
+      }
+      .native-file .btn {
+        background: linear-gradient(#fafafa, #e3e3e3);
+        border: 1px solid #9a9a9a;
+        border-radius: 4px;
+        padding: 3px 9px;
+      }
+    </style>
+  </head>
+  <body>
+    <div class="caption">
+      <b>העלאת מסמך · v1</b> — הקונטרול לבחירת קובץ עוצב מחדש (ADR-0086). במקום כפתור
+      הדפדפן הגולמי · אזור־בחירה, צילום ישיר, ותצוגה מקדימה של הקובץ.
+    </div>
+    <div class="adr-note">
+      ADR-0086 · מרחיב את ADR-0052 (מחזור־חיי מסמך) · phone-first (ADR-0017)
+    </div>
+
+    <!-- the eyesore we're replacing, rendered faithfully -->
+    <div class="before">
+      <div class="lbl">לפני — הקונטרול הגולמי של הדפדפן</div>
+      <span class="native-file"><span class="btn">Choose File</span> No file chosen</span>
+    </div>
+
+    <div class="demo-toggle" id="toggle">
+      <button data-s="empty" class="on">ריק</button>
+      <button data-s="image">תמונה</button>
+      <button data-s="pdf">PDF</button>
+      <button data-s="uploading">מעלה</button>
+      <button data-s="error">שגיאה</button>
+    </div>
+
+    <div class="device">
+      <div class="statusbar"><span>1:13</span><span class="dots">● ● ●</span></div>
+      <div class="app">
+        <div class="header">
+          <span class="h-mode">🧭 טיול</span>
+          <div class="h-title">לפה לשם ולכאן ’26</div>
+          <div class="h-sub">מסמכים · מוצפנים ונשמרים בבטחה</div>
+        </div>
+        <div class="body">
+          <div class="sec-title">🔒 מסמכים</div>
+          <div class="doc-group-h">דרכונים</div>
+          <div class="li">
+            <div class="badge2">📕</div>
+            <div class="li-main">
+              <div class="li-t">דרכון · אסף</div>
+              <div class="li-s">1.1MB · מוצפן</div>
+            </div>
+            <div class="li-kebab">⋯</div>
+          </div>
+          <div class="doc-group-h">ביטוח נסיעות</div>
+          <div class="li">
+            <div class="badge2">🛡️</div>
+            <div class="li-main">
+              <div class="li-t">ביטוח · הראל</div>
+              <div class="li-s">640KB · מוצפן</div>
+            </div>
+            <div class="li-kebab">⋯</div>
+          </div>
+        </div>
+
+        <!-- ===== the redesigned upload sheet ===== -->
+        <div class="scrim">
+          <div class="sheet-card">
+            <div class="booking-sheet doc-upload">
+              <!-- title row — icon tracks the chosen type (ADR-0086 §4) -->
+              <div class="titlerow">
+                <div class="bs-icon" id="head-ic">📕</div>
+                <div>
+                  <div class="bs-heading">העלאת מסמך</div>
+                  <div class="bs-heading-sub">מוצפן מקצה לקצה</div>
+                </div>
+              </div>
+
+              <!-- type selector — four distinct badges (ADR-0052 §6) -->
+              <div>
+                <div class="field-label">סוג</div>
+                <div class="bs-typesel" id="typesel">
+                  <button type="button" class="bs-typecard on" data-ic="📕">
+                    <span class="bs-typecard-ic">📕</span
+                    ><span class="bs-typecard-lbl">דרכון</span>
+                  </button>
+                  <button type="button" class="bs-typecard" data-ic="🛡️">
+                    <span class="bs-typecard-ic">🛡️</span
+                    ><span class="bs-typecard-lbl">ביטוח</span>
+                  </button>
+                  <button type="button" class="bs-typecard" data-ic="🎫">
+                    <span class="bs-typecard-ic">🎫</span
+                    ><span class="bs-typecard-lbl">ויזה</span>
+                  </button>
+                  <button type="button" class="bs-typecard" data-ic="📄">
+                    <span class="bs-typecard-ic">📄</span
+                    ><span class="bs-typecard-lbl">אחר</span>
+                  </button>
+                </div>
+              </div>
+
+              <!-- the pick control -->
+              <div>
+                <div class="field-label">קובץ</div>
+
+                <!-- EMPTY: drop-zone + capture (states shown/hidden by JS) -->
+                <div id="pick-empty" style="display: flex; flex-direction: column; gap: 8px">
+                  <button type="button" class="dz" onclick="setState('image')">
+                    <span class="dz-ic">⬆️</span>
+                    <span class="dz-primary">בחרו קובץ</span>
+                    <span class="dz-hint">תמונה או PDF · עד 10MB</span>
+                  </button>
+                  <button type="button" class="capture" onclick="setState('image')">
+                    <span>📷</span> צלמו עכשיו
+                  </button>
+                </div>
+
+                <!-- PICKED: preview card (thumb swapped image/pdf by JS) -->
+                <div id="pick-file" style="display: none">
+                  <div class="dz-file">
+                    <div class="thumb img" id="thumb"></div>
+                    <div class="dz-file-main">
+                      <div class="dz-file-name" id="fname">passport-assaf.jpg</div>
+                      <div class="dz-file-sub" id="fsub">תמונה · 1.2MB</div>
+                    </div>
+                    <button
+                      type="button"
+                      class="dz-clear"
+                      id="clear"
+                      aria-label="הסר"
+                      onclick="setState('empty')"
+                    >
+                      ✕
+                    </button>
+                  </div>
+                  <!-- uploading — spinner replaces ✕, determinate bar below -->
+                  <div id="up-progress" style="display: none">
+                    <div class="progress"><div class="bar"></div></div>
+                    <div class="progress-cap">מעלה… 62% · 0.7MB מתוך 1.2MB</div>
+                  </div>
+                </div>
+
+                <!-- error — cause-aware, keeps values (ADR-0052 §5) -->
+                <div id="up-error" style="display: none; margin-top: 8px">
+                  <div class="bs-error">
+                    <span>⚠️</span>
+                    <span
+                      ><b>הקובץ גדול מדי</b
+                      ><span class="sub"
+                        >המקסימום 10MB. נסו לכווץ או לצלם מחדש. הפרטים נשמרו · אפשר לבחור קובץ
+                        אחר.</span
+                      ></span
+                    >
+                  </div>
+                </div>
+              </div>
+
+              <!-- name -->
+              <label class="bs-field"
+                >שם
+                <input type="text" value="דרכון · אסף" placeholder="למשל: דרכון · אסף"
+              /></label>
+
+              <div class="bs-actions">
+                <button class="bs-save" id="save">העלה</button>
+                <button class="bs-cancel">בטל</button>
+              </div>
+            </div>
+          </div>
+        </div>
+      </div>
+    </div>
+
+    <div class="notes">
+      <h3>מה השתנה</h3>
+      <ul>
+        <li>
+          <b>אזור־בחירה מעוצב</b> במקום <code>&lt;input type=file&gt;</code> הגולמי — מציג את
+          מה שמותר (תמונה/PDF) ואת המגבלה (10MB) עוד <b>לפני</b> הבחירה.
+        </li>
+        <li>
+          <b>צילום ישיר</b> כנתיב מדרגה־ראשונה — דרכון מצלמים, לא מחפשים בקבצים
+          (<code>capture=environment</code>, phone-first). נעלם היכן שאין מצלמה.
+        </li>
+        <li>
+          <b>תצוגה מקדימה</b> של הקובץ הנבחר — תמונה ממוזערת (או אריח PDF), שם הקובץ,
+          סוג·גודל, ו־✕ אחד לניקוי.
+        </li>
+        <li>
+          <b>אייקון הכותרת עוקב אחרי הסוג</b> שנבחר (📕/🛡️/🎫/📄), כך שהגיליון לא נפתח כערימת
+          שדות ללא כותרת.
+        </li>
+      </ul>
+      <h3>מה נשאר כמו שהיה</h3>
+      <ul>
+        <li>
+          ה־<code>&lt;input&gt;</code> האמיתי נשאר (מוסתר) — מסנן ה־accept וכל החיווט לא
+          משתנים. אין שינוי backend / shared / מודל־נתונים.
+        </li>
+        <li>
+          הספינר, בר ההתקדמות, ושגיאות מודעות־סיבה — verbatim מ־ADR-0052. הצבעים ניטרליים
+          (<code>--cta</code>) · לא ענבר/טורקיז (ADR-0028).
+        </li>
+      </ul>
+    </div>
+
+    <script>
+      // Demo only — the real sheet drives these off File objects (ADR-0086).
+      const $ = (id) => document.getElementById(id);
+      const empty = $('pick-empty'),
+        fileCard = $('pick-file'),
+        prog = $('up-progress'),
+        err = $('up-error'),
+        clear = $('clear'),
+        save = $('save'),
+        thumb = $('thumb'),
+        fname = $('fname'),
+        fsub = $('fsub');
+
+      const FILES = {
+        image: { name: 'passport-assaf.jpg', sub: 'תמונה · 1.2MB', cls: 'thumb img', label: '' },
+        pdf: { name: 'insurance-harel.pdf', sub: 'PDF · 0.6MB', cls: 'thumb pdf', label: 'PDF' },
+      };
+
+      function setState(s) {
+        // reset
+        empty.style.display = 'none';
+        fileCard.style.display = 'none';
+        prog.style.display = 'none';
+        err.style.display = 'none';
+        clear.style.display = '';
+        save.disabled = false;
+        save.innerHTML = 'העלה';
+
+        if (s === 'empty') {
+          empty.style.display = 'flex';
+          save.disabled = true;
+        } else if (s === 'image' || s === 'pdf') {
+          fileCard.style.display = 'block';
+          applyFile(FILES[s]);
+        } else if (s === 'uploading') {
+          fileCard.style.display = 'block';
+          applyFile(FILES.image);
+          prog.style.display = 'block';
+          clear.style.display = 'none';
+          save.disabled = true;
+          save.innerHTML = '<span class="spin"></span> מעלה…';
+        } else if (s === 'error') {
+          empty.style.display = 'flex';
+          err.style.display = 'block';
+          save.disabled = true;
+        }
+        // reflect on the toggle
+        document
+          .querySelectorAll('#toggle button')
+          .forEach((b) => b.classList.toggle('on', b.dataset.s === s));
+      }
+
+      function applyFile(f) {
+        thumb.className = f.cls;
+        thumb.textContent = f.label;
+        fname.textContent = f.name;
+        fsub.textContent = f.sub;
+      }
+
+      // type selector — selecting a type updates the header icon (ADR-0086 §4)
+      document.querySelectorAll('#typesel .bs-typecard').forEach((c) => {
+        c.addEventListener('click', () => {
+          document
+            .querySelectorAll('#typesel .bs-typecard')
+            .forEach((x) => x.classList.remove('on'));
+          c.classList.add('on');
+          $('head-ic').textContent = c.dataset.ic;
+        });
+      });
+
+      document
+        .querySelectorAll('#toggle button')
+        .forEach((b) => b.addEventListener('click', () => setState(b.dataset.s)));
+
+      setState('empty');
+    </script>
+  </body>
+</html>
