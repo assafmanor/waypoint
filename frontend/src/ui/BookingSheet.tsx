@@ -51,6 +51,8 @@ interface Wifi {
 }
 
 const BOOKING_TYPES = Object.values(BOOKING_TYPE);
+/** The day part of a "YYYY-MM-DDTHH:MM" span value (empty when unset). */
+const dayOf = (v: string) => v.split('T')[0] ?? '';
 const isTransportType = (ty: BookingType) =>
   ty === BOOKING_TYPE.FLIGHT || ty === BOOKING_TYPE.TRAIN;
 // Two-endpoint schedule (start + end, may span days): transport departure→arrival,
@@ -377,27 +379,35 @@ export function BookingSheet({
           {isSpan ? (
             <>
               {/* Two endpoints (flight departure→arrival, hotel check-in→check-out,
-                  activity start→end) that may fall on different days — each a full
-                  datetime, side by side. */}
-              <div className="bs-row2">
-                <Field label={spanLabels(type).start}>
-                  <DateTimeField
-                    mode="datetime"
-                    min={spanMin}
-                    max={spanMax}
-                    value={spanStart}
-                    onChange={setSpanStart}
-                  />
-                </Field>
-                <Field label={spanLabels(type).end}>
-                  <DateTimeField
-                    mode="datetime"
-                    min={spanMin}
-                    max={spanMax}
-                    value={spanEnd}
-                    onChange={setSpanEnd}
-                  />
-                </Field>
+                  activity start→end) that may fall on different days. Stacked full
+                  width as a journey (amber-dotted legs) so each grouped date│time
+                  control has room — not squeezed into a two-up grid. The arrival
+                  defaults to the departure's day so only its time needs picking. */}
+              <div className="bs-when">
+                <div className="bs-when-leg">
+                  <Field label={spanLabels(type).start}>
+                    <DateTimeField
+                      mode="datetime"
+                      min={spanMin}
+                      max={spanMax}
+                      value={spanStart}
+                      onChange={setSpanStart}
+                      defaultDate={trip.startDate}
+                    />
+                  </Field>
+                </div>
+                <div className="bs-when-leg">
+                  <Field label={spanLabels(type).end}>
+                    <DateTimeField
+                      mode="datetime"
+                      min={spanMin}
+                      max={spanMax}
+                      value={spanEnd}
+                      onChange={setSpanEnd}
+                      defaultDate={dayOf(spanStart) || trip.startDate}
+                    />
+                  </Field>
+                </div>
               </div>
               {spanStart && <KindToggle kind={kind} onPick={pickKind} />}
             </>

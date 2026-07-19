@@ -1,22 +1,56 @@
-/* One date/time control (U-05). The date input inherits the neutral .field
-   control styling; the datetime mode stacks a date over a time input, and the
-   time wears the app's amber "time & commitment" accent (design-language) so it
-   reads like the events time picker. Logical properties only (RTL). */
+/* One date/time control (U-05). The date input (mode="date") inherits the neutral
+   .field control styling. The datetime mode groups a native date + a native time
+   into one bordered field, split by a hairline — so a span endpoint reads as a
+   single "when" control, not two loose boxes. The time wears the app's amber
+   "time & commitment" accent (design-language). Logical properties only (RTL). */
 
 .dtf-datetime {
   display: flex;
-  flex-direction: column;
-  gap: var(--space-1);
+  align-items: stretch;
+  border: 1px solid var(--line);
+  border-radius: var(--radius-12);
+  background: var(--card);
+  overflow: hidden;
+}
+
+.dtf-datetime:focus-within {
+  border-color: var(--teal);
+}
+
+/* Reset the two grouped inputs from the .field control chrome — the wrapper owns
+   the border/background now. Higher specificity so this wins over `.field input`
+   regardless of stylesheet order. */
+.dtf-datetime input.dtf-date,
+.dtf-datetime input.dtf-time {
+  border: none;
+  border-radius: 0;
+  background: transparent;
+  padding-block: var(--space-2);
+  padding-inline: var(--space-3);
+}
+
+.dtf-date {
+  flex: 1 1 auto;
+  min-inline-size: 0;
+}
+
+.dtf-sep {
+  flex: 0 0 auto;
+  inline-size: 1px;
+  align-self: stretch;
+  background: var(--line);
 }
 
 .dtf-time {
+  flex: 0 0 auto;
   accent-color: var(--amber);
   color: var(--amber-deep);
   font-family: var(--font-mono);
   font-weight: 600;
+  text-align: center;
 }
 
-.dtf-time:focus-visible {
+.dtf-datetime input.dtf-date:focus-visible,
+.dtf-datetime input.dtf-time:focus-visible {
   outline: none;
-  border-color: var(--amber);
 }

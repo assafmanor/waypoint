@@ -69,6 +69,7 @@ import {
   ICONS,
   MEMBER_AVATAR_CAP,
   MS_PER_DAY,
+  OUTBOX_RETRY_MS,
   TABS,
   type TabId,
 } from './constants';
@@ -656,19 +657,40 @@ function AppRoutes() {
 // Device-wide outbox flush (ADR-0042): a write queued offline must sync the
 // moment connectivity returns — even from the all-trips list or zero-state,
 // where no trip's realtime effect is mounted to flush its queue. Flushes every
-// trip's queue on `online` and once on mount (to drain a queue left over from a
-// prior offline session). Only while authed — a flush needs the session. The
-// mounted trip still runs its own reconnect (flush + catch-up + resubscribe);
-// flushOutbox coalesces so the two never double-POST.
+// trip's queue on `online`, on window `focus`, and once on mount (to drain a
+// queue left over from a prior offline session). Only while authed — a flush
+// needs the session. The mounted trip still runs its own reconnect (flush +
+// catch-up + resubscribe); flushOutbox coalesces so the two never double-POST.
 function OutboxAutoFlush() {
   const { status } = useAuth();
+  const pending = useOutboxCount();
   useEffect(() => {
     if (status !== 'authed') return;
     const flush = () => void flushAllOutbox();
     if (!isOffline()) flush();
+    // `focus` covers the case `online` misses: a write queued on a transient
+    // network blip while navigator.onLine never flipped fires no `online` event,
+    // so nothing would otherwise re-drive the flush.
     window.addEventListener('online', flush);
-    return () => window.removeEventListener('online', flush);
+    window.addEventListener('focus', flush);
+    return () => {
+      window.removeEventListener('online', flush);
+      window.removeEventListener('focus', flush);
+    };
   }, [status]);
+
+  // Safety net: while anything is queued, retry on a gentle interval until it
+  // drains, so the "N changes waiting" summary can never wedge on forever when no
+  // connectivity transition arrives to trigger a flush. Gated on pending > 0 so
+  // it's inert on the happy path.
+  useEffect(() => {
+    if (status !== 'authed' || pending === 0) return;
+    const id = window.setInterval(() => {
+      if (!isOffline()) void flushAllOutbox();
+    }, OUTBOX_RETRY_MS);
+    return () => window.clearInterval(id);
+  }, [status, pending]);
+
   return null;
 }
 
