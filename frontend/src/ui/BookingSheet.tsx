@@ -25,6 +25,7 @@ import { Icon } from './Icon';
 import { NavArrow } from './NavArrow';
 import { Field } from './primitives/Field';
 import { FormActions } from './primitives/FormActions';
+import { ChoiceGrid } from './primitives/ChoiceGrid';
 import { WhenField } from './primitives/WhenField';
 import { ConfirmDialog } from './primitives/ConfirmDialog';
 import { useUnsavedGuard } from '../lib/useUnsavedGuard';
@@ -49,7 +50,11 @@ interface Wifi {
   password?: string;
 }
 
-const BOOKING_TYPES = Object.values(BOOKING_TYPE);
+const BOOKING_TYPE_OPTIONS = Object.values(BOOKING_TYPE).map((ty) => ({
+  value: ty,
+  icon: BOOKING_TYPE_ICON[ty],
+  label: t.index.bookingType[ty],
+}));
 const isTransportType = (ty: BookingType) =>
   ty === BOOKING_TYPE.FLIGHT || ty === BOOKING_TYPE.TRAIN;
 // Two-endpoint schedule (start + end, may span days): transport departure→arrival,
@@ -263,21 +268,13 @@ export function BookingSheet({
           }}
         >
           {isCreate && (
-            <div className="bs-typesel">
-              {BOOKING_TYPES.map((ty) => (
-                <button
-                  key={ty}
-                  type="button"
-                  className={'bs-typecard' + (ty === type ? ' on' : '')}
-                  onClick={() => changeType(ty)}
-                >
-                  <span className="bs-typecard-ic" aria-hidden="true">
-                    {BOOKING_TYPE_ICON[ty]}
-                  </span>
-                  <span className="bs-typecard-lbl">{t.index.bookingType[ty]}</span>
-                </button>
-              ))}
-            </div>
+            <ChoiceGrid
+              options={BOOKING_TYPE_OPTIONS}
+              value={type}
+              onChange={changeType}
+              columns={3}
+              ariaLabel={t.index.form.kindLabel}
+            />
           )}
 
           <div className="titlerow">

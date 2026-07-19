@@ -1,0 +1,159 @@
+/* FilePicker (ADR-0086). Two equal-weight pick tiles + a picked-file preview
+   card, authored from the Wave-0 tokens. Neutral --cta chrome only, never a
+   semantic hue (design-language color budget). The real <input>s are off-screen
+   (.file-picker-input) and driven by the tiles. */
+
+.file-picker-tiles {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: var(--space-2);
+}
+.file-picker-tiles.solo {
+  grid-template-columns: 1fr;
+}
+
+/* a pick target: dashed --cta tile, upload & capture read as peers */
+.file-tile {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: var(--space-2);
+  font: inherit;
+  text-align: center;
+  background: color-mix(in srgb, var(--ink) 2.5%, var(--card));
+  border: 1.5px dashed var(--soft-line);
+  border-radius: var(--radius-12);
+  padding: var(--space-5) var(--space-3);
+  cursor: pointer;
+  transition:
+    border-color 0.15s ease,
+    background 0.15s ease;
+}
+.file-tile:hover,
+.file-tile:focus-visible {
+  outline: none;
+  border-color: var(--cta);
+  background: color-mix(in srgb, var(--ink) 6%, var(--card));
+}
+.file-tile:disabled {
+  cursor: default;
+  opacity: 0.6;
+}
+.file-tile-ic {
+  width: 42px;
+  height: 42px;
+  border-radius: var(--radius-12);
+  display: grid;
+  place-items: center;
+  font-size: 21px;
+  background: var(--card);
+  border: 1px solid var(--line);
+}
+.file-tile-lbl {
+  font-size: var(--text-secondary);
+  font-weight: 700;
+  color: var(--ink);
+}
+
+/* the accept + size contract, once, under both tiles */
+.file-picker-hint {
+  text-align: center;
+  font-size: var(--text-caption);
+  font-weight: 500;
+  color: var(--muted);
+  margin-top: var(--space-2);
+}
+
+/* off-screen real inputs (kept in the a11y/tab flow only via the tiles) */
+.file-picker-input {
+  position: absolute;
+  width: 1px;
+  height: 1px;
+  padding: 0;
+  overflow: hidden;
+  clip: rect(0 0 0 0);
+  white-space: nowrap;
+  border: 0;
+}
+
+/* picked-file preview: thumbnail + meta + clear */
+.file-preview {
+  display: flex;
+  align-items: center;
+  gap: 11px;
+  background: var(--card);
+  border: 1px solid var(--line);
+  border-radius: var(--radius-12);
+  padding: 10px 11px;
+}
+.file-preview-thumb {
+  width: 48px;
+  height: 48px;
+  border-radius: var(--radius-8);
+  flex: 0 0 auto;
+  display: grid;
+  place-items: center;
+  overflow: hidden;
+  /* non-image tile: a distinct file chip (mirrors the viewer's decode-fail path,
+     ADR-0052 §1) — a PDF or an undecodable image lands here */
+  background: color-mix(in srgb, var(--miss) 12%, var(--card));
+}
+.file-preview-thumb.img {
+  background: var(--paper);
+}
+.file-preview-thumb img {
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+  image-orientation: from-image;
+}
+.file-preview-ext {
+  font-size: 10px;
+  font-weight: 800;
+  font-family: var(--font-mono);
+  letter-spacing: 0.5px;
+  color: var(--miss);
+}
+.file-preview-main {
+  flex: 1;
+  min-width: 0;
+}
+.file-preview-name {
+  display: block;
+  font-size: var(--text-secondary);
+  font-weight: 600;
+  color: var(--ink);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  text-align: start;
+}
+.file-preview-sub {
+  display: block;
+  font-size: var(--text-caption);
+  color: var(--muted);
+  margin-top: 2px;
+}
+.file-preview-clear {
+  width: 34px;
+  height: 34px;
+  flex: 0 0 auto;
+  border-radius: var(--radius-8);
+  display: grid;
+  place-items: center;
+  font-size: 15px;
+  color: var(--muted);
+  background: transparent;
+  border: 1px solid var(--line);
+  cursor: pointer;
+}
+.file-preview-clear:hover,
+.file-preview-clear:focus-visible {
+  outline: none;
+  border-color: var(--miss);
+  color: var(--miss);
+}
+.file-preview-clear:disabled {
+  cursor: default;
+  opacity: 0.6;
+}

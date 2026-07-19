@@ -1,0 +1,49 @@
+/* ChoiceGrid — icon/label single-select cards. Ported from the shipped
+   `.bs-typesel`/`.bs-typecard` document + booking selectors in screens.css, under
+   component-scoped classes, spacing/radius/type from the Wave-0 tokens where they
+   map. Selected = neutral --cta ring + faint ink fill (never a semantic hue). */
+
+.choice-grid {
+  display: grid;
+  grid-template-columns: repeat(var(--choice-cols, 4), 1fr);
+  gap: var(--space-2);
+}
+
+.choice-card {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 5px;
+  font: inherit;
+  background: var(--card);
+  border: 1px solid var(--line);
+  border-radius: var(--radius-12);
+  padding: var(--space-3) var(--space-1);
+  cursor: pointer;
+}
+.choice-card:focus-visible {
+  outline: none;
+  border-color: var(--cta);
+}
+.choice-card:disabled {
+  cursor: default;
+  opacity: 0.6;
+}
+
+.choice-card-ic {
+  font-size: var(--text-h3);
+  line-height: 1;
+}
+.choice-card-lbl {
+  font-size: var(--text-caption);
+  font-weight: 700;
+  color: var(--muted);
+}
+
+.choice-card.on {
+  border-color: var(--cta);
+  background: color-mix(in srgb, var(--ink) 5%, transparent);
+}
+.choice-card.on .choice-card-lbl {
+  color: var(--ink);
+}
