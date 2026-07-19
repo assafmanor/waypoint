@@ -2,6 +2,7 @@ import { describe, expect, it } from 'vitest';
 import type { EventCategory, TripEvent } from './entities';
 import {
   CATEGORY_TIME_PROFILE,
+  eventDurationUnit,
   eventTransitionKeys,
   isAmbient,
   isBracketed,
@@ -43,11 +44,13 @@ describe('CATEGORY_TIME_PROFILE', () => {
       bracketed: true,
       ambientWhenMultiDay: true,
       transitions: { startKey: 'departure', endKey: 'arrival' },
+      durationUnit: 'hours',
     });
     expect(CATEGORY_TIME_PROFILE.lodging).toEqual({
       bracketed: true,
       ambientWhenMultiDay: true,
       transitions: { startKey: 'checkIn', endKey: 'checkOut' },
+      durationUnit: 'nights',
     });
   });
 
@@ -56,8 +59,20 @@ describe('CATEGORY_TIME_PROFILE', () => {
       expect(CATEGORY_TIME_PROFILE[category]).toEqual({
         bracketed: false,
         ambientWhenMultiDay: false,
+        durationUnit: 'auto',
       });
     }
+  });
+});
+
+describe('eventDurationUnit', () => {
+  it('reads hours for transport, nights for lodging, auto otherwise', () => {
+    expect(eventDurationUnit(ev({ category: 'transport' }))).toBe('hours');
+    expect(eventDurationUnit(ev({ category: 'lodging' }))).toBe('nights');
+    for (const category of ORDINARY_CATEGORIES) {
+      expect(eventDurationUnit(ev({ category }))).toBe('auto');
+    }
+    expect(eventDurationUnit(ev({ category: undefined }))).toBe('auto');
   });
 });
 
