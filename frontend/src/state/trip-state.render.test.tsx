@@ -93,7 +93,10 @@ describe('day-in-URL round-trip (J7 / review Q5)', () => {
 
 describe('snapshot error state (U-10)', () => {
   it('renders ErrorState with a retry that re-runs the fetch and recovers', async () => {
-    h.fetchSnapshot.mockReset().mockRejectedValueOnce(new Error('boom')).mockResolvedValue(SNAPSHOT);
+    h.fetchSnapshot
+      .mockReset()
+      .mockRejectedValueOnce(new Error('boom'))
+      .mockResolvedValue(SNAPSHOT);
 
     renderAt('/', <div>CONTENT</div>);
 

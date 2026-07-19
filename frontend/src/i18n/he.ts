@@ -338,6 +338,7 @@ export const t = {
       draftMeta: (destination: string, days: number) => `${destination} · ${days} ימים`,
       draftTag: 'טיוטה',
       createButton: 'יאללה, יש טיול 🎉',
+      ctaReason: 'מלאו יעד, תאריכים ושם כדי להמשיך',
       offlineNote: 'יצירת טיול צריכה חיבור · לינק שחבר שולח ייפתח גם עכשיו',
       note: 'אזור זמן ומטבע מסתדרים לפי היעד · תקציב אפשר להוסיף אחר כך',
     },

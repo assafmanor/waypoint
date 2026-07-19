@@ -75,4 +75,21 @@ Two near-disjoint agents (forms/modals vs outbox/sync/docs), integrated **E → 
 
 **Known follow-up (backlogged):** nested-overlay Escape can close two overlays at once (a `useDialogFocus`/overlay-stack refinement, not this wave's scope). **Remaining for Wave 3:** migrate booking + event rows onto `<SyncBadge>`; the domain-component extractions.
 
-_(Waves 3–4 appended as they land.)_
+### Wave 3 — domain components + screen migration (U-03, U-07, U-10/U-04 remainders, U-13) — DONE
+
+**D0 serial first**, then four parallel screen agents, integrated by `git merge` (all four merged with **zero conflicts** — ort handled the disjoint `screens.css` regions + append-only `he.ts`).
+
+- **D0** (commit d533383): created `ui/domain/*` standalone — `ListRow`+`RowManageSheet`, `MaybeCard`, `Board`, `EventCard`, `DayStrip`, `GlanceCard`, `StatTile`; presentational (data via props, no `state/*`), new `wp-*` classes + co-located CSS, one `*.test.tsx` each (37 tests). Integration caught a typecheck error D0's own gate missed (a test passed `atLabel` outside the `conflict` type — vitest strips types so its tests were green); fixed on merge. **Lesson applied: run `tsc` explicitly at every integration, not just tests.**
+- **D-home** (e7d4f2b): `Home.tsx` → `Board`/`GlanceCard`; `PlanHome.tsx` `.prep-stat` → `StatTile`. `screens.css` −659.
+- **D-day** (4848f25): `DayView.tsx`/`PlanDay.tsx` → `EventCard`/`MaybeCard`; **U-07** — removed the `maybeMeta`/`../fixtures` import, real derived `MaybeCard` meta, `TRIP_TZ_OFFSET`→real trip tz. `screens.css` −442.
+- **D-index** (fe8c780): `Index.tsx`/`DocumentsSection.tsx` + both manage menus → `ListRow`/`RowManageSheet`; `<SyncBadge>` on booking rows (U-04 remainder). `screens.css` net −176.
+- **D-route** (04f717b): App.tsx header → `DayStrip`; **day-in-URL** (`?day=YYYY-MM-DD`, `resolveActiveDate`, invalid→today, mirrored on the current history entry — review open Q5 answered "yes, in the URL"); **U-10** snapshot loading/error → chrome-preserving `LoadingState` + `ErrorState`+retry. `app-shell.md` routing note added at integration.
+- **Integrator**: U-13 (CreateTrip CTA always visible + disabled-with-reason via `t.shell.newTrip.ctaReason`; `FormActions` is a form-footer primitive and a poor fit for the centered hero CTA, so implemented directly — the user outcome, not a one-off pattern).
+
+**Resilience note:** three of the four screen agents (D-home/D-day/D-route) were terminated mid-final-gate by a shared **account session limit**, not by any code failure — their work sat complete-but-uncommitted in their worktrees. Salvaged by committing each worktree's tree on its branch (`--no-verify`), then integrating + running the full gate centrally.
+
+**Gate (integrated):** frontend typecheck ✅ (explicit `tsc`), build ✅, **495 tests (51 files)**, lint 0 errors (7 pre-existing warnings), backend build ✅, `format:check` ✅.
+
+**Deferred (backlogged):** event-timeline-row `SyncBadge` (EventCard has no badge slot; low value); the ~6 empty-shell → `EmptyState` + `.offline-badge` → `StatusBanner` consolidation (opportunistic, Phase-4).
+
+_(Wave 4 appended as it lands.)_

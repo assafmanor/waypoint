@@ -305,7 +305,13 @@ function Header({
         )}
       </div>
       {syncReviewOpen && <SyncReviewSheet onClose={() => setSyncReviewOpen(false)} />}
-      <DayStrip days={days} selected={activeDate} today={today} mode={mode} onSelect={onSelectDay} />
+      <DayStrip
+        days={days}
+        selected={activeDate}
+        today={today}
+        mode={mode}
+        onSelect={onSelectDay}
+      />
       {dayScope && (
         <button
           className={'day-context ' + dayScope}

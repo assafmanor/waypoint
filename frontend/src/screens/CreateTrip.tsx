@@ -194,11 +194,16 @@ export function CreateTrip() {
         </div>
 
         <div className="new-cta">
-          {canCreate && (
-            <button className="create-btn" onClick={submit} disabled={offline || submitting}>
-              {t.shell.newTrip.createButton}
-            </button>
-          )}
+          {/* U-13: the CTA is always visible, disabled with a reason until the
+              form is complete, so a first-timer always sees the next step. */}
+          <button
+            className="create-btn"
+            onClick={submit}
+            disabled={!canCreate || offline || submitting}
+          >
+            {t.shell.newTrip.createButton}
+          </button>
+          {!canCreate && !offline && <p className="new-note">{t.shell.newTrip.ctaReason}</p>}
           {offline && <p className="offline-note">{t.shell.newTrip.offlineNote}</p>}
           <p className="new-note">{t.shell.newTrip.note}</p>
         </div>
