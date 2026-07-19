@@ -4,14 +4,24 @@ import { db } from '../db';
 import { EVENTS } from '../fixtures';
 import {
   clearSyncFailures,
+  dismissSyncFailure,
   enqueueOutbox,
   flushAllOutbox,
   flushOutbox,
   getOutboxCount,
   getSyncFailures,
+  getSyncStatus,
   initOutboxCount,
+  outboxOpEntityId,
+  retrySyncFailure,
   type OutboxOp,
 } from './outbox';
+
+const bookingOp = (id: string): OutboxOp =>
+  ({ verb: 'createBooking', input: { id, type: 'restaurant', title: 'מסעדה' } }) as OutboxOp;
+
+const reject400 = (code: string) =>
+  vi.fn(() => Promise.resolve(new Response(JSON.stringify({ error: { code } }), { status: 400 })));
 
 // initOutboxCount() re-primes the in-memory count from IndexedDB — tests share
 // that module-level counter, so each test starts from a known (0) state.
@@ -250,6 +260,73 @@ describe('flushAllOutbox (device-wide)', () => {
     // trip-a's entry survives (5xx halt), trip-b's drained.
     const remaining = await db.outbox.toArray();
     expect(remaining.map((e) => e.tripId)).toEqual(['trip-a']);
+  });
+});
+
+describe('per-entity sync status (U-04, ADR-0080)', () => {
+  it('maps each op family to its target entity id', () => {
+    expect(outboxOpEntityId(bookingOp('bk'))).toBe('bk');
+    expect(outboxOpEntityId({ verb: 'delete', eventId: 'ev', confirm: false })).toBe('ev');
+    expect(
+      outboxOpEntityId({ verb: 'updateBooking', bookingId: 'bk2', input: {} } as OutboxOp),
+    ).toBe('bk2');
+    expect(
+      outboxOpEntityId({ verb: 'createPlace', input: { id: 'pl', name: 'x' } } as OutboxOp),
+    ).toBe('pl');
+    // Trip-level ops have no row-level entity → '' (surfaced in the sheet by verb).
+    expect(outboxOpEntityId({ verb: 'updateTrip', input: {} } as OutboxOp)).toBe('');
+  });
+
+  it('reports pending for an entity with a queued op, synced otherwise', async () => {
+    expect(getSyncStatus('bk-none')).toEqual({ state: 'synced' });
+    await enqueueOutbox(TRIP_ID, bookingOp('bk-pending'));
+    expect(getSyncStatus('bk-pending')).toEqual({ state: 'pending' });
+    expect(getSyncStatus('bk-none')).toEqual({ state: 'synced' });
+  });
+
+  it('reports failed + reason after a non-allowlisted 4xx, keyed by entity id', async () => {
+    vi.stubGlobal('fetch', reject400('BOOKING_INVALID'));
+    await enqueueOutbox(TRIP_ID, bookingOp('bk-fail'));
+    await flushOutbox(TRIP_ID);
+    expect(getSyncStatus('bk-fail')).toEqual({ state: 'failed', reason: 'BOOKING_INVALID' });
+  });
+
+  it('failed outranks a still-pending op on the same entity', async () => {
+    vi.stubGlobal('fetch', reject400('BOOKING_INVALID'));
+    await enqueueOutbox(TRIP_ID, bookingOp('bk-x'));
+    await flushOutbox(TRIP_ID); // records the failure, drops the entry
+    vi.stubGlobal('navigator', { onLine: false }); // queue a follow-up offline
+    await enqueueOutbox(TRIP_ID, bookingOp('bk-x'));
+    expect(getSyncStatus('bk-x').state).toBe('failed');
+  });
+
+  it('retrySyncFailure re-enqueues the failed op and clears its failure record', async () => {
+    vi.stubGlobal('fetch', reject400('BOOKING_INVALID'));
+    await enqueueOutbox(TRIP_ID, bookingOp('bk-retry'));
+    await flushOutbox(TRIP_ID);
+    expect(await db.outbox.count()).toBe(0);
+    const [failure] = getSyncFailures();
+    expect(failure.entityId).toBe('bk-retry');
+
+    // Retry offline so the re-enqueued op stays put (no immediate flush).
+    vi.stubGlobal('navigator', { onLine: false });
+    await retrySyncFailure(failure.id);
+    expect(getSyncFailures()).toHaveLength(0);
+    expect(await db.outbox.count()).toBe(1);
+    expect(getSyncStatus('bk-retry')).toEqual({ state: 'pending' });
+  });
+
+  it('dismissSyncFailure drops only the named failure (no bulk auto-clear)', async () => {
+    vi.stubGlobal('fetch', reject400('BOOKING_INVALID'));
+    await enqueueOutbox(TRIP_ID, bookingOp('bk-a'));
+    await enqueueOutbox(TRIP_ID, bookingOp('bk-b'));
+    await flushOutbox(TRIP_ID);
+    expect(getSyncFailures()).toHaveLength(2);
+
+    dismissSyncFailure(getSyncFailures()[0].id);
+    const rest = getSyncFailures();
+    expect(rest).toHaveLength(1);
+    expect(rest[0].entityId).toBe('bk-b');
   });
 });
 

@@ -23,7 +23,6 @@ import {
 } from './state/nav-state';
 import { EdgeSwipeBack } from './ui/EdgeSwipeBack';
 import {
-  clearSyncFailures,
   flushAllOutbox,
   isOffline,
   useIsOffline,
@@ -37,6 +36,7 @@ import { ToastProvider } from './ui/Toast';
 import { ConfirmProvider } from './ui/ConfirmDialog';
 import { AppShell } from './ui/layout';
 import { Sheet } from './ui/Sheet';
+import { SyncReviewSheet } from './ui/SyncReviewSheet';
 import { Icon } from './ui/Icon';
 import { NavArrow } from './ui/NavArrow';
 import { Home } from './screens/Home';
@@ -179,6 +179,7 @@ function Header({
   const offline = useIsOffline() || usingCachedSnapshot;
   const pendingCount = useOutboxCount();
   const syncFailures = useSyncFailures();
+  const [syncReviewOpen, setSyncReviewOpen] = useState(false);
   const total =
     Math.round((Date.parse(trip.endDate) - Date.parse(trip.startDate)) / MS_PER_DAY) + 1;
   const dayNumber =
@@ -299,20 +300,21 @@ function Header({
             {ICONS.sync} {t.header.pendingSync(pendingCount)}
           </div>
         )}
+        {/* Persistent failed-summary → review/retry sheet (U-04, ADR-0080). Unlike
+            the old badge it never clears on a timer or tap-to-dismiss: it opens the
+            dead-letter sheet where each rejected write is retried or discarded, so a
+            rejected write can't silently vanish at the next resync. */}
         {syncFailures.length > 0 && (
-          <div
-            className="offline-badge"
-            role="button"
-            tabIndex={0}
-            onClick={() => clearSyncFailures()}
-            onKeyDown={(e) => {
-              if (e.key === 'Enter' || e.key === ' ') clearSyncFailures();
-            }}
+          <button
+            type="button"
+            className="offline-badge sync-failed-summary"
+            onClick={() => setSyncReviewOpen(true)}
           >
-            {ICONS.warn} {t.header.syncFailed(syncFailures.length)}
-          </div>
+            {ICONS.warn} {t.sync.summary(syncFailures.length)}
+          </button>
         )}
       </div>
+      {syncReviewOpen && <SyncReviewSheet onClose={() => setSyncReviewOpen(false)} />}
       <div className="day-strip">
         {days.map((d) => (
           <div key={d.date} className="day-pill-wrap">

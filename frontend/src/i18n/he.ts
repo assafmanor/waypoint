@@ -41,15 +41,53 @@ export const t = {
     leavingIn: (phrase: string) => `יוצאים בעוד ${phrase}`,
     pendingSync: (count: number) => `${count} שינויים מחכים לסנכרון`,
     offlineNow: 'אופליין · נתונים שמורים',
-    // A queued write that the server rejected on flush (F-03) — real data loss if
-    // left silent. Tapping the badge dismisses it.
-    syncFailed: (count: number) =>
-      count === 1 ? 'שינוי אחד לא נשמר · הקישו לסגירה' : `${count} שינויים לא נשמרו · הקישו לסגירה`,
     // Day-scope context ribbon under the strip when viewing a non-today day in
     // Trip mode (ADR-0043 / ADR-0029), plus the one-tap way back to today.
     pastDay: 'יום שהיה · היסטוריה',
     futureDay: 'יום עתידי · תצוגה מקדימה',
     backToToday: 'חזרה להיום',
+  },
+  // Per-entity sync status (U-04, ADR-0080): the per-row SyncBadge, the header
+  // failed-summary affordance, and the review/retry (dead-letter) sheet.
+  sync: {
+    badge: {
+      synced: 'נשמר',
+      pending: 'ממתין לסנכרון',
+      failed: 'לא נשמר',
+    },
+    // Persistent header affordance — replaces the old timed failed badge. Never
+    // clears on a timer; opens the review sheet.
+    summary: (count: number) => (count === 1 ? 'שינוי אחד לא נשמר' : `${count} שינויים לא נשמרו`),
+    // Human label per outbox verb, describing the change that did not save.
+    verb: {
+      create: 'הוספת אירוע',
+      update: 'עדכון אירוע',
+      setStatus: 'עדכון סטטוס אירוע',
+      move: 'הזזת אירוע',
+      delete: 'מחיקת אירוע',
+      consumeMaybeItem: 'קידום רעיון',
+      createMaybeItem: 'הוספת רעיון',
+      deleteMaybeItem: 'מחיקת רעיון',
+      updateTrip: 'עדכון פרטי הטיול',
+      setMemberRole: 'עדכון הרשאות חבר',
+      removeMember: 'הסרת חבר',
+      deleteTrip: 'מחיקת הטיול',
+      createBooking: 'הוספת הזמנה',
+      updateBooking: 'עדכון הזמנה',
+      deleteBooking: 'מחיקת הזמנה',
+      createPlace: 'הוספת מקום',
+      updatePlace: 'עדכון מקום',
+      uploadDocument: 'העלאת מסמך',
+    } as Record<string, string>,
+    review: {
+      title: 'שינויים שלא נשמרו',
+      intro: 'השינויים האלה נדחו בסנכרון. אפשר לנסות שוב או להשליך.',
+      reason: 'השרת דחה את השינוי',
+      retry: 'נסו שוב',
+      discard: 'השליכו',
+      discardAll: 'השליכו הכל',
+      empty: 'אין שינויים שממתינים לטיפול.',
+    },
   },
   placeholder: {
     comingSoon: 'המסך הזה עוד בעבודה.',

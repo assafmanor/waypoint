@@ -8,7 +8,8 @@
 import { useState } from 'react';
 import { type DocumentSummary } from '@waypoint/shared';
 import { useTrip } from '../state/trip-state';
-import { usePendingUploads } from '../lib/outbox';
+import { usePendingUploads, useSyncStatus } from '../lib/outbox';
+import { SyncBadge } from './feedback';
 import { groupDocuments, formatSize } from '../lib/documents';
 import { DocumentUploadSheet } from './DocumentUploadSheet';
 import { DocumentViewer } from './DocumentViewer';
@@ -74,49 +75,15 @@ export function DocumentsSection() {
         <div className="doc-group" key={g.type}>
           <div className="gt">{t.docs.group[g.type]}</div>
           <div className="listcard">
-            {g.docs.map((d) => {
-              const isPending = pendingIds.has(d.id);
-              return (
-                <div className={'li doc' + (isPending ? ' pending' : '')} key={d.id}>
-                  <button
-                    type="button"
-                    className="li-open"
-                    onClick={() => setViewing(d)}
-                    disabled={isPending}
-                    aria-label={d.title}
-                  >
-                    <div className="badge2">{DOCUMENT_TYPE_ICON[d.type]}</div>
-                    <div className="main">
-                      <div className="t">{d.title}</div>
-                    </div>
-                  </button>
-                  <div className="right">
-                    {isPending ? (
-                      <span className="doc-uploading">
-                        <Spinner /> {t.docs.upload.saving}
-                      </span>
-                    ) : (
-                      <>
-                        <span className="size" dir="ltr">
-                          {formatSize(d.sizeBytes)}
-                        </span>
-                        <span className="time" aria-hidden="true">
-                          🔒
-                        </span>
-                        <button
-                          type="button"
-                          className="kebab"
-                          onClick={() => setManaging(d)}
-                          aria-label={t.docs.manage.actions}
-                        >
-                          ⋯
-                        </button>
-                      </>
-                    )}
-                  </div>
-                </div>
-              );
-            })}
+            {g.docs.map((d) => (
+              <DocumentRow
+                key={d.id}
+                doc={d}
+                isPending={pendingIds.has(d.id)}
+                onOpen={() => setViewing(d)}
+                onManage={() => setManaging(d)}
+              />
+            ))}
           </div>
         </div>
       ))}
@@ -129,5 +96,64 @@ export function DocumentsSection() {
         <DocumentManageSheet tripId={trip.id} doc={managing} onClose={() => setManaging(null)} />
       )}
     </>
+  );
+}
+
+// One document row. Split out so it can read its own per-entity sync status
+// (U-04, ADR-0080) — the reference wiring for the SyncBadge pattern; bookings and
+// events adopt it in Wave 3. A queued upload keeps its verbose "uploading"
+// spinner; a committed row carries a subtle SyncBadge answering "did it save?".
+function DocumentRow({
+  doc: d,
+  isPending,
+  onOpen,
+  onManage,
+}: {
+  doc: DocumentSummary;
+  isPending: boolean;
+  onOpen: () => void;
+  onManage: () => void;
+}) {
+  const status = useSyncStatus(d.id);
+  return (
+    <div className={'li doc' + (isPending ? ' pending' : '')}>
+      <button
+        type="button"
+        className="li-open"
+        onClick={onOpen}
+        disabled={isPending}
+        aria-label={d.title}
+      >
+        <div className="badge2">{DOCUMENT_TYPE_ICON[d.type]}</div>
+        <div className="main">
+          <div className="t">{d.title}</div>
+        </div>
+      </button>
+      <div className="right">
+        {isPending ? (
+          <span className="doc-uploading">
+            <Spinner /> {t.docs.upload.saving}
+          </span>
+        ) : (
+          <>
+            <SyncBadge state={status.state} reason={status.reason} />
+            <span className="size" dir="ltr">
+              {formatSize(d.sizeBytes)}
+            </span>
+            <span className="time" aria-hidden="true">
+              🔒
+            </span>
+            <button
+              type="button"
+              className="kebab"
+              onClick={onManage}
+              aria-label={t.docs.manage.actions}
+            >
+              ⋯
+            </button>
+          </>
+        )}
+      </div>
+    </div>
   );
 }

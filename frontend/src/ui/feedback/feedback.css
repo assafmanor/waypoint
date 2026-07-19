@@ -218,3 +218,36 @@
 .fb-banner-dismiss:active {
   transform: translateY(1px);
 }
+
+/* ── SyncBadge — per-entity sync marker (U-04, ADR-0080) ──────────────────────
+   Non-color-coded: the glyph SHAPE (✓/↑/!) carries the state, color only
+   reinforces it. Colors come only from the sync tokens (--sync-*), never the
+   amber/teal/plan budget. A round chip so it reads as a status dot, not a CTA. */
+.sync-badge {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  inline-size: 18px;
+  block-size: 18px;
+  border-radius: var(--radius-999);
+  font-size: var(--text-micro);
+  font-weight: 700;
+  line-height: 1;
+  flex: 0 0 auto;
+}
+.sync-badge-glyph {
+  /* LTR glyphs stay upright under dir="rtl". */
+  direction: ltr;
+}
+.sync-badge-synced {
+  color: var(--sync-synced);
+  background: color-mix(in srgb, var(--sync-synced) 14%, transparent);
+}
+.sync-badge-pending {
+  color: var(--sync-pending);
+  background: color-mix(in srgb, var(--sync-pending) 18%, transparent);
+}
+.sync-badge-failed {
+  color: var(--sync-failed);
+  background: color-mix(in srgb, var(--sync-failed) 16%, transparent);
+}
