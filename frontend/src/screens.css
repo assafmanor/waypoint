@@ -1,6 +1,14 @@
 /* Home + Day-by-day components, ported from mockups/trip-dashboard-v2.html.
    Amber = time/commitment only; teal = location/nav only; plan violet = plan actions (design-language.md). */
 
+/* Dark-mode note (U-08, ADR-0077): themeable colors read tokens and re-map under
+   [data-theme='dark']. Remaining literal hexes are INTENTIONALLY theme-fixed and
+   carry a "fixed:" marker: white/ink that rides a semantic FILL (on --plan / --ok /
+   --miss / --amber / --ink — the fill re-maps, the on-fill ink must not); light ink
+   on the always-loud PLAN hero (.prep, a saturated violet surface in both themes);
+   the shared white spinner (drawn on colored/dark fills); and ink on a colored
+   avatar (avatar bg is set inline). Paper/card colors were swept onto tokens. */
+
 /* section titles */
 .sec-title {
   font-size: 12px;
@@ -15,7 +23,7 @@
 .sec-title .hint {
   font-weight: 500;
   letter-spacing: 0;
-  color: #98a0b0;
+  color: var(--faint);
   font-size: 11px;
 }
 .sec-title-end {
@@ -29,7 +37,7 @@
   font-weight: 700;
   letter-spacing: 0;
   border: 1px solid var(--line);
-  background: #fff;
+  background: var(--card);
   color: var(--ink);
   border-radius: 8px;
   padding: 5px 9px;
@@ -37,7 +45,7 @@
 }
 .new-event-btn:hover {
   background: var(--ink);
-  color: #fff;
+  color: var(--cta-text);
   border-color: var(--ink);
 }
 
@@ -339,7 +347,7 @@
   flex: 1;
   font-size: 12.5px;
   font-weight: 600;
-  color: #7a5a1e;
+  color: var(--amber-ink);
 }
 .ripple button {
   font: inherit;
@@ -352,11 +360,11 @@
 }
 .ripple .yes {
   background: var(--amber);
-  color: #3a2405;
+  color: #3a2405; /* fixed: dark ink on the amber fill */
 }
 .ripple .no {
   background: transparent;
-  color: #8a6a2e;
+  color: var(--amber-ink);
 }
 
 /* ── concurrency: nests + clusters (ADR-0041) ──
@@ -464,13 +472,15 @@
   display: flex;
   align-items: center;
   gap: 9px;
-  background: #eceae4;
+  background: var(--paper);
   border: 1px solid rgba(22, 35, 61, 0.09);
   border-radius: 12px;
   padding: 9px 12px;
   margin-bottom: 12px;
   font-size: 12px;
-  color: #5f6577;
+  color: var(
+    --ink
+  ); /* was #5f6577; --ink matches the banner's own ab-back ink and holds AA on --paper */
   font-weight: 600;
 }
 .archive-banner .ab-ic {
@@ -616,7 +626,7 @@
   display: grid;
   place-items: center;
   margin: 0 auto;
-  color: #12203a;
+  color: #12203a; /* fixed: ink on a colored avatar (bg set inline) */
   font-weight: 700;
   font-size: 26px;
   font-family: var(--font-head);
@@ -637,7 +647,7 @@
 }
 .acct-provider {
   font-size: 11.5px;
-  color: #98a0b0;
+  color: var(--faint);
   margin-top: 8px;
   text-align: center;
 }
@@ -647,7 +657,7 @@
   font-size: 14px;
   font-weight: 700;
   color: var(--ink);
-  background: #fff;
+  background: var(--card);
   border: 1px solid var(--soft-line);
   border-radius: 13px;
   padding: 13px;
@@ -673,7 +683,7 @@
   padding: 10px 14px;
   cursor: pointer;
   border: 1px solid var(--line);
-  background: #fff;
+  background: var(--card);
   color: var(--ink);
 }
 
@@ -692,7 +702,7 @@
   font-size: 14px;
   font-weight: 500;
   color: var(--ink);
-  background: #fff;
+  background: var(--card);
   border: 1px solid var(--line);
   border-radius: 9px;
   padding: 9px 10px;
@@ -718,7 +728,7 @@
   font-size: 12.5px;
   font-weight: 700;
   border: 1px solid var(--line);
-  background: #fff;
+  background: var(--card);
   color: var(--muted);
   border-radius: 9px;
   padding: 8px 6px;
@@ -751,7 +761,7 @@
   flex: 1;
   min-width: 0;
   text-align: start;
-  background: #fff;
+  background: var(--card);
   border: 1px solid var(--line);
   border-radius: 10px;
   padding: 7px 11px 8px;
@@ -839,7 +849,7 @@
   z-index: 6;
   margin-top: 6px;
   width: 100%;
-  background: #fff;
+  background: var(--card);
   border: 1px solid var(--line);
   border-radius: 12px;
   box-shadow: 0 12px 26px -14px rgba(14, 23, 41, 0.35);
@@ -868,7 +878,7 @@
   font-size: 16px;
   font-weight: 700;
   color: var(--amber-deep);
-  background: #fff;
+  background: var(--card);
   border: 1px solid var(--line);
   border-radius: 8px;
   padding: 5px 8px;
@@ -977,7 +987,7 @@
   max-width: 398px;
   margin: 0 auto;
   background: var(--ink);
-  color: #fff;
+  color: var(--cta-text);
   border-radius: 13px;
   padding: 13px 16px;
   font-size: 13.5px;
@@ -1025,7 +1035,7 @@
   background: linear-gradient(180deg, var(--plan-deep), var(--plan));
   border-radius: 22px;
   padding: 18px 18px 16px;
-  color: #f2effc;
+  color: #f2effc; /* fixed: light ink on the always-violet plan hero */
   box-shadow: 0 20px 34px -20px rgba(46, 33, 104, 0.7);
   position: relative;
   overflow: hidden;
@@ -1054,7 +1064,7 @@
   font-size: 34px;
   line-height: 1;
   margin-top: 4px;
-  color: #fff;
+  color: #fff; /* fixed: on the plan hero */
 }
 .prep-count-u {
   font-family: var(--font-body);
@@ -1086,7 +1096,7 @@
 }
 .prep-ready-top b {
   font-family: var(--font-mono);
-  color: #fff;
+  color: #fff; /* fixed: on the plan hero */
 }
 .prep-track {
   height: 7px;
@@ -1096,7 +1106,7 @@
 }
 .prep-fill {
   height: 100%;
-  background: linear-gradient(90deg, rgba(255, 255, 255, 0.82), #fff);
+  background: linear-gradient(90deg, rgba(255, 255, 255, 0.82), #fff); /* fixed: on the plan hero */
   border-radius: 6px;
   transition: width 0.4s ease;
 }
@@ -1437,7 +1447,9 @@
   padding: 10px 12px;
 }
 .bld.soft {
-  background: repeating-linear-gradient(-45deg, #fff 0 9px, #fbfaf7 9px 18px);
+  /* the near-invisible warm stripe (#fff/#fbfaf7) collapses onto --card — its
+     closest token — so it re-maps on dark; the dashed border carries the soft cue */
+  background: var(--card);
   border: 1px dashed var(--soft-line);
 }
 .bld-bd {
@@ -1788,7 +1800,7 @@
   place-items: center;
   border: 0;
   background: none;
-  color: #c0c6d2;
+  color: var(--soft-line); /* faint drag affordance — matches soft-line rendered on the card */
   font-size: 15px;
   line-height: 1;
   cursor: grab;
@@ -2207,7 +2219,7 @@
 .set-fld select {
   font: inherit;
   width: 100%;
-  background: #fafbfd;
+  background: var(--card);
   border: 1px solid var(--soft-line);
   border-radius: 10px;
   padding: 10px 12px;
@@ -2394,7 +2406,7 @@
   place-items: center;
   font-size: 20px;
   line-height: 1;
-  background: #fff;
+  background: var(--card);
   border: 1px solid var(--line);
   border-radius: 11px;
   cursor: pointer;
@@ -2424,7 +2436,7 @@
   top: calc(100% + 6px);
   inset-inline-start: 0;
   width: min(300px, calc(100vw - 32px));
-  background: #fff;
+  background: var(--card);
   border: 1px solid var(--line);
   border-radius: 13px;
   box-shadow: 0 14px 30px -14px rgba(14, 23, 41, 0.4);
@@ -2478,7 +2490,7 @@
 }
 .icon-cat.on {
   color: var(--ink);
-  background: #fff;
+  background: var(--card);
   border-color: var(--ink);
 }
 .icon-grid-scroll {
@@ -2516,7 +2528,7 @@
   font: inherit;
   font-size: 13px;
   color: var(--ink);
-  background: #fff;
+  background: var(--card);
   border: 1px solid var(--line);
   border-radius: 9px;
   padding: 0 10px;
@@ -3118,7 +3130,7 @@
   height: 15px;
   border-radius: 50%;
   border: 2px solid rgba(255, 255, 255, 0.45);
-  border-top-color: #fff;
+  border-top-color: #fff; /* fixed: white spinner — drawn on colored/dark fills */
   animation: spin 0.7s linear infinite;
   flex: 0 0 auto;
   vertical-align: -2px;
