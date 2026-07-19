@@ -44,6 +44,11 @@ export const WS_WATCHDOG_TIMEOUT_MS = 60_000;
 export const WS_RECONNECT_BASE_MS = 1_000;
 export const WS_RECONNECT_CAP_MS = 30_000;
 
+/** Retry cadence for a non-empty write outbox (U-04): while anything is queued,
+ *  re-attempt the flush on this interval so the "N changes waiting" summary can't
+ *  wedge on when no connectivity transition arrives to trigger a drain. */
+export const OUTBOX_RETRY_MS = 15_000;
+
 /** The waking window the day-progress bar spans, in trip-local hours. */
 export const DAY_WINDOW = { START_HOUR: 7, END_HOUR: 23 } as const;
 

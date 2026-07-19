@@ -80,6 +80,17 @@ describe('EventCard', () => {
     expect(container.querySelector('.wp-event-act.stepper')).toBeTruthy();
   });
 
+  it('shows a sync badge for a queued/failed edit and none when synced (U-04)', () => {
+    const pending = render(wrap(<EventCard {...base} sync="pending" />));
+    expect(pending.container.querySelector('.sync-badge-pending')).toBeTruthy();
+    cleanup();
+    const failed = render(wrap(<EventCard {...base} sync="failed" />));
+    expect(failed.container.querySelector('.sync-badge-failed')).toBeTruthy();
+    cleanup();
+    const synced = render(wrap(<EventCard {...base} sync="synced" />));
+    expect(synced.container.querySelector('.sync-badge')).toBeNull();
+  });
+
   it('toggles open on the face and reports aria-expanded', () => {
     const onToggle = vi.fn();
     render(wrap(<EventCard {...base} onToggle={onToggle} />));

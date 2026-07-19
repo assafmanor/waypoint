@@ -2786,6 +2786,34 @@
   grid-template-columns: 1fr 1fr;
   gap: 10px;
 }
+/* Span scheduling (ADR-0059): the two endpoints stacked full width as a journey.
+   Each leg carries an amber dot + amber-tinted label (departure/arrival ARE time
+   commitments), giving the grouped date│time control the room the old two-up grid
+   denied it. */
+.booking-sheet .bs-when {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-3);
+}
+.booking-sheet .bs-when .field-label {
+  display: inline-flex;
+  align-items: center;
+  gap: var(--space-2);
+  color: var(--amber-ink);
+}
+.booking-sheet .bs-when .field-label::before {
+  content: '';
+  flex: 0 0 auto;
+  inline-size: 8px;
+  block-size: 8px;
+  border-radius: var(--radius-999);
+  background: var(--amber);
+}
+.booking-sheet .bs-when-leg:last-child .field-label::before {
+  /* arrival dot reads as the destination — hollow to the departure's fill */
+  background: var(--card);
+  box-shadow: inset 0 0 0 2px var(--amber);
+}
 .booking-sheet .bs-wifi {
   display: flex;
   flex-direction: column;
