@@ -15,7 +15,6 @@ import { AuthProvider, useAuth } from './state/auth-state';
 import { ActiveTripIdProvider, useActiveTripId } from './state/active-trip-id';
 import {
   NavProvider,
-  shouldResetDayToToday,
   shouldResetToHomeOnResume,
   useCloseAllOverlays,
   useMarkInsideTrip,
@@ -368,25 +367,16 @@ function Shell() {
   useEffect(() => {
     if (tripDeleted) navigate('/trips', { replace: true });
   }, [tripDeleted, navigate]);
-  const onSelectDay = (date: string) => {
-    setActiveDate(date);
-    goToTab('days');
-  };
-
-  // "Back to now": landing on Home in Trip mode snaps the day-strip to today, so
-  // every route to Home converges here (nav-bar tap, goToTab, the return gesture,
-  // system-back) instead of each caller resetting the day itself. The board is a
-  // live/today surface (ADR-0043); Plan mode has no "now", so it keeps the
-  // selected day. Latest-ref keeps the effect keyed purely on the Home landing.
-  const snapDayToTodayRef = useRef<() => void>(() => {});
-  snapDayToTodayRef.current = () => setActiveDate(todayInTz(trip.timezone, new Date(getNow())));
-  useEffect(() => {
-    if (shouldResetDayToToday(tab, mode)) snapDayToTodayRef.current();
-  }, [tab, mode]);
+  // Selecting a day shows it in the day view. `setActiveDate` is the single
+  // choke point (state/trip-state): it writes the one source of truth (`?day=`)
+  // and lands on the `days` tab in one navigation, so Home — reached without a
+  // `?day=` — always derives to today with no reset effect (ADR-0035 §4).
+  const onSelectDay = setActiveDate;
 
   // Reopen-after-idle (ADR-0060): when the app returns to the foreground after a
   // long idle stretch (≥ RESET_TO_HOME_AFTER_HIDDEN_MS) in Trip mode, reset to a
-  // clean Home + today — close any open sheet, go to the Home base, snap the day.
+  // clean Home — close any open sheet and go to the Home base. Home carries no
+  // `?day=`, so landing there is already today (no separate day-snap needed).
   // Distinct from trip-state's ~30s data-resync (that refreshes data; this resets
   // the view); both listen independently. Refs keep the listener bound once.
   const modeRef = useRef(mode);
@@ -403,7 +393,6 @@ function Shell() {
       if (!shouldResetToHomeOnResume(awayMs, modeRef.current)) return;
       closeAllOverlays();
       navigate('/', { replace: true });
-      snapDayToTodayRef.current();
     };
     document.addEventListener('visibilitychange', onVisibility);
     return () => document.removeEventListener('visibilitychange', onVisibility);

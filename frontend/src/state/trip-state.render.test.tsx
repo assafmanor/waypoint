@@ -78,15 +78,20 @@ beforeEach(() => {
 });
 afterEach(() => cleanup());
 
-describe('day-in-URL round-trip (J7 / review Q5)', () => {
-  it('seeds activeDate from a valid in-range ?day= param', async () => {
-    renderAt('/?day=2026-07-10', <DayProbe />);
+describe('day-in-URL round-trip (J7 / review Q5, single-source day ADR-0035 §4)', () => {
+  it('seeds activeDate from a valid in-range ?day= param on the days tab', async () => {
+    renderAt('/?tab=days&day=2026-07-10', <DayProbe />);
     expect(await screen.findByText('DAY:2026-07-10')).toBeTruthy();
   });
 
   it('falls back to today for an invalid/out-of-range ?day= param', async () => {
-    renderAt('/?day=bogus', <DayProbe />);
+    renderAt('/?tab=days&day=bogus', <DayProbe />);
     // getNow is pinned to 2026-07-08 in Asia/Tokyo → today, and it is in range.
+    expect(await screen.findByText('DAY:2026-07-08')).toBeTruthy();
+  });
+
+  it('is today-anchored on the Home tab: a stray ?day= cannot make Home show another day', async () => {
+    renderAt('/?day=2026-07-10', <DayProbe />); // no ?tab= → Home
     expect(await screen.findByText('DAY:2026-07-08')).toBeTruthy();
   });
 });

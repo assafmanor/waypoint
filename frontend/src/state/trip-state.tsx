@@ -13,7 +13,7 @@ import {
   useState,
   type ReactNode,
 } from 'react';
-import { useSearchParams } from 'react-router-dom';
+import { useNavigate, useSearchParams } from 'react-router-dom';
 import {
   BOOKING_SOURCE,
   CHANGES_PAGE_LIMIT,
@@ -75,10 +75,10 @@ import {
 import { getNow } from '../lib/useClock';
 import { clampDate, shiftIso, todayInTz } from '../lib/time';
 import { useToast } from '../ui/Toast';
-import { ICONS } from '../constants';
+import { ICONS, type TabId } from '../constants';
 import { EVENTS, MAYBE_ITEMS } from '../fixtures';
 import { useAuth } from './auth-state';
-import { DAY_PARAM, resolveActiveDate } from './nav-state';
+import { DAY_PARAM, HOME_TAB, TAB_PARAM, daySelectTarget, resolveActiveDate } from './nav-state';
 import { AppShell } from '../ui/layout';
 import { ErrorState, LoadingState, Skeleton } from '../ui/feedback';
 import { t } from '../i18n/he';
@@ -518,69 +518,47 @@ function TripReady({
   );
   const clearChangeFeed = useCallback(() => setChangeFeed([]), []);
 
-  // The selected day is deep-linkable + reload-surviving via `?day=` (J7 / review
-  // Q5), yet stays React-state-owned so every existing reset/preserve rule (the
-  // Trip-mode Home snap-to-today, the idle-resume reset, Plan-mode preservation —
-  // ADR-0035/0060) is untouched. The URL is a mirror of that state, not a second
-  // source: state seeds from the param on mount, and an effect writes it back.
-  const [searchParams, setSearchParams] = useSearchParams();
-  // "Today", clamped to the (reactive) trip range — the Trip-mode amber anchor
-  // and the reset target. Recomputed per render so a midnight/idle rollover lands
-  // on the new today. Also the value the URL param is omitted for (a clean `/`).
+  // The selected day has ONE source of truth: the `?day=` URL param (ADR-0035 §4,
+  // single-source day). `activeDate` derives from it every render — there is no
+  // second copy of the day in React state to reset or keep in sync, which is what
+  // used to fight itself (a reset effect vs. a URL-mirror effect racing to a
+  // ping-pong that needed a second tap to settle). Home is only ever reached
+  // without a `?day=` (day-selection always targets the `days` tab, `daySelectTarget`),
+  // so Home ALWAYS derives to today, in every mode, with no reset effect at all.
+  const [searchParams] = useSearchParams();
+  const navigate = useNavigate();
+  // "Today", clamped to the (reactive) trip range — the Trip-mode amber anchor and
+  // the value the URL param is omitted for (a clean `/`). Recomputed per render so
+  // a midnight/idle rollover lands on the new today.
   const defaultDay = clampDate(
     todayInTz(trip.timezone, new Date(getNow())),
     trip.startDate,
     trip.endDate,
   );
-  // Clamped to the trip's own date range: "today" is only the *initial* default,
-  // then the day-strip/DayView navigate it via setActiveDate — without clamping,
-  // a session left open across a trip-timezone midnight (or one that outlives
-  // the trip) drifts `activeDate` past the last real day and the day view
-  // silently goes empty. A deep-linked `?day=` seeds it; an invalid/out-of-range
-  // param falls back to today (resolveActiveDate).
-  const [activeDate, setActiveDateRaw] = useState(() =>
-    resolveActiveDate(
-      searchParams.get(DAY_PARAM),
-      snapshot.trip.startDate,
-      snapshot.trip.endDate,
-      clampDate(
-        todayInTz(snapshot.trip.timezone, new Date(getNow())),
-        snapshot.trip.startDate,
-        snapshot.trip.endDate,
-      ),
-    ),
+  // Derived, tab-aware: the Home tab is today-anchored (both modes), so it ALWAYS
+  // resolves to today regardless of any `?day=` — even a stray or hand-crafted one
+  // can't make Home show a past/future day. Off Home, the day comes from `?day=`,
+  // resolved against the *reactive* trip range (not the boot snapshot) so a live
+  // admin date-edit (ADR-0039) re-clamps it; a missing/invalid/out-of-range param
+  // falls back to today, so a stale deep link lands gracefully.
+  const currentTab = (searchParams.get(TAB_PARAM) as TabId | null) ?? HOME_TAB;
+  const activeDate =
+    currentTab === HOME_TAB
+      ? defaultDay
+      : resolveActiveDate(searchParams.get(DAY_PARAM), trip.startDate, trip.endDate, defaultDay);
+  // Selecting a day = navigating to it in the day view. Writes the single source
+  // (`?day=`, cleared when it's today) and lands on the `days` tab in one step, so
+  // the day can never be dropped by a follow-up tab navigation. `replace` vs.
+  // `push` follows the Home-anchor rule (a jump from Home pushes so back returns
+  // Home; a lateral day change replaces). Clamped to the reactive trip range.
+  const setActiveDate = useCallback(
+    (date: string) => {
+      const clamped = clampDate(date, trip.startDate, trip.endDate);
+      const { to, replace } = daySelectTarget(currentTab, clamped, defaultDay);
+      navigate(to, { replace });
+    },
+    [navigate, currentTab, trip.startDate, trip.endDate, defaultDay],
   );
-  // Clamp against the *reactive* trip, not the boot snapshot: after an admin edits
-  // the trip dates live (data-plane, ADR-0039) the day-strip renders the new range,
-  // so selection must clamp to it too — otherwise a newly-added day snaps back out.
-  const setActiveDate = (date: string) =>
-    setActiveDateRaw(clampDate(date, trip.startDate, trip.endDate));
-
-  // Mirror the selected day into `?day=` on the *current* history entry with
-  // `replace` (a lateral change, not a back layer — ADR-0035 §4). Omitted when it
-  // equals today, so Trip-mode Home stays a clean `/`. This keeps reload/share of
-  // the current view on the same day; tab pushes that drop the param are re-healed
-  // here. No loop: it no-ops once the URL already matches.
-  useEffect(() => {
-    const current = searchParams.get(DAY_PARAM);
-    const wanted = activeDate === defaultDay ? null : activeDate;
-    if (current === wanted) return;
-    const next = new URLSearchParams(searchParams);
-    if (wanted) next.set(DAY_PARAM, wanted);
-    else next.delete(DAY_PARAM);
-    setSearchParams(next, { replace: true });
-  }, [activeDate, defaultDay, searchParams, setSearchParams]);
-
-  // Adopt a day that changes in the URL underneath us — a back/forward traversal
-  // to an entry pinning a different day, or an external deep link. An ABSENT param
-  // is a deliberate no-op: a tab push drops it but the selection must persist, and
-  // Plan-mode Home preserves the day (ADR-0035). Invalid/out-of-range → today.
-  useEffect(() => {
-    const param = searchParams.get(DAY_PARAM);
-    if (param === null) return;
-    const resolved = resolveActiveDate(param, trip.startDate, trip.endDate, defaultDay);
-    setActiveDateRaw((prev) => (resolved === prev ? prev : resolved));
-  }, [searchParams, trip.startDate, trip.endDate, defaultDay]);
 
   const lastSeqRef = useRef(snapshot.latestSeq);
 
@@ -961,6 +939,7 @@ function TripReady({
       tripDeleted,
       usingCachedSnapshot,
       activeDate,
+      setActiveDate,
     ],
   );
   return <TripContext.Provider value={value}>{children}</TripContext.Provider>;

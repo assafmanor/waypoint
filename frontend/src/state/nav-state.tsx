@@ -22,10 +22,13 @@ import { t } from '../i18n/he';
 
 /** In-trip tab is a real, reload-surviving history entry (ADR-0035 §3). */
 export const TAB_PARAM = 'tab';
-/** The selected day, deep-linkable + reload-surviving via `?day=YYYY-MM-DD`
- *  (J7 / review Q5). Like `?tab=` it lives in the URL, but unlike a tab it is a
- *  LATERAL view change (ADR-0035 §4), so callers write it with `replace` — back
- *  never walks through the days you tapped. */
+/** The selected day — the SINGLE source of truth for it (ADR-0035 §4, 2026-07-19b);
+ *  `activeDate` derives from this, there is no second copy in React state. Deep-
+ *  linkable + reload-surviving via `?day=YYYY-MM-DD` (J7 / review Q5). Like `?tab=`
+ *  it lives in the URL, but unlike a tab it is a LATERAL view change, so a change
+ *  within the days tab is written with `replace` (via `daySelectTarget`) — back
+ *  never walks through the days you tapped. Home carries no `?day=`, so it always
+ *  derives to today. */
 export const DAY_PARAM = 'day';
 /** The anchor tab: back from any other tab returns here, then exits to /trips. */
 export const HOME_TAB: TabId = 'home';
@@ -70,6 +73,24 @@ export function tabStep(current: TabId, next: TabId, homeBehind: boolean): NavSt
   if (next === HOME_TAB) return homeBehind ? { kind: 'back' } : { kind: 'replace', to: '/' };
   if (current === HOME_TAB) return { kind: 'push', to: `/?${TAB_PARAM}=${next}` };
   return { kind: 'replace', to: `/?${TAB_PARAM}=${next}` };
+}
+
+/** Where a day-selection lands (ADR-0035 §4, single-source day). The selected day
+ *  lives in exactly ONE place — the `?day=` URL param — and `activeDate` derives
+ *  from it (state/trip-state), so there is no second copy to reset or keep in
+ *  sync. Selecting a day therefore always shows it in the day/event view (the
+ *  `days` tab); `date === today` omits `?day=` so the URL stays clean. Because
+ *  Home is reached without a `?day=` (this only ever targets the `days` tab),
+ *  Home ALWAYS derives to today, in every mode, with no reset effect. A jump from
+ *  Home pushes (so back returns to Home); an already-non-Home tab is a lateral
+ *  change (replace), so back never walks through the days you tapped (§4). */
+export function daySelectTarget(
+  currentTab: TabId,
+  date: string,
+  today: string,
+): { to: string; replace: boolean } {
+  const dayQuery = date === today ? '' : `&${DAY_PARAM}=${date}`;
+  return { to: `/?${TAB_PARAM}=days${dayQuery}`, replace: currentTab !== HOME_TAB };
 }
 
 const ISO_DATE = /^\d{4}-\d{2}-\d{2}$/;
@@ -119,15 +140,6 @@ export function structuralBackStep(ctx: {
     return { kind: 'none' };
   }
   return ctx.canGoBack ? { kind: 'back' } : { kind: 'push', to: '/' };
-}
-
-/** The trip-vs-plan rule shared by every route to Home (ADR-0035, 2026-07-18):
- *  landing on the Home tab snaps the day-strip back to today in Trip mode; Plan
- *  mode preserves the selected day (it isn't today-anchored). The single choke
- *  point behind the nav-bar tap, `goToTab`, the return gesture and system-back —
- *  all converge on the Home tab, so the reset is keyed off that, not per-caller. */
-export function shouldResetDayToToday(tab: TabId, mode: Mode): boolean {
-  return tab === HOME_TAB && mode === 'trip';
 }
 
 /** Whether a warm resume should reset navigation to Home + today (ADR-0060):

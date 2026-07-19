@@ -23,9 +23,9 @@ So if you leave the app deep in the Index or on some past day and come back an h
 
 ## Consequences
 
-- **Frontend only, no data-model/backend change.** Record hidden-at on `hidden`; on `visible`, if `elapsed ≥ RESET_TO_HOME_AFTER_HIDDEN_MS` and `mode === 'trip'`, navigate to Home, `setActiveDate(todayInTz(...))`, and clear the overlay stack.
-- _As built:_ a **sibling `visibilitychange` listener in `App.tsx Shell`** — not in `trip-state.tsx` (its `mode` isn't visible there: `ModeProvider` is a child of `TripProvider`) nor in `nav-state.tsx` (which has no `setActiveDate`). Shell is where `navigate`, `setActiveDate`, `mode` and the overlay stack all converge. It uses `shouldResetToHomeOnResume(awayMs, mode)` + `RESET_TO_HOME_AFTER_HIDDEN_MS` (`nav-state.tsx`), `useCloseAllOverlays()`, and the same `shouldResetDayToToday` Home-landing reset the ADR-0035 refinement wired.
-- Composes with ADR-0035's day-to-today reset on back-to-Home (2026-07-18 refinement): both routes (gesture-back and idle-resume) now converge on "Home shows today."
+- **Frontend only, no data-model/backend change.** Record hidden-at on `hidden`; on `visible`, if `elapsed ≥ RESET_TO_HOME_AFTER_HIDDEN_MS` and `mode === 'trip'`, navigate to Home and clear the overlay stack. Landing on Home is landing on today — no separate day-snap needed (see the day-model note below).
+- _As built:_ a **sibling `visibilitychange` listener in `App.tsx Shell`** — not in `trip-state.tsx` (its `mode` isn't visible there: `ModeProvider` is a child of `TripProvider`) nor in `nav-state.tsx`. Shell is where `navigate`, `mode` and the overlay stack all converge. It uses `shouldResetToHomeOnResume(awayMs, mode)` + `RESET_TO_HOME_AFTER_HIDDEN_MS` (`nav-state.tsx`) and `useCloseAllOverlays()`.
+- Composes with ADR-0035's "Home shows today": both routes (gesture-back and idle-resume) converge there. **Updated by ADR-0035's 2026-07-19b single-source-day refinement:** the day is now derived from the URL (Home carries no `?day=`, so it derives to today), so idle-resume just `navigate('/')`s — the explicit `setActiveDate(todayInTz(...))` / `shouldResetDayToToday` day-snap this ADR originally wired is gone. The "Home = today" guarantee is now structural, in every mode.
 - The 30-second data resync still fires independently; a long idle triggers both a data catch-up and the nav reset.
 - **Edge:** resuming exactly at the boundary, or with the device clock changed across timezones, uses wall-clock elapsed since `hidden`; `todayInTz` already handles the trip timezone.
 
