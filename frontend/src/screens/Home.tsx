@@ -6,8 +6,8 @@ import { useState, type CSSProperties } from 'react';
 import { useNavigate } from 'react-router-dom';
 import {
   BOOKING_TYPE,
-  CATEGORY_TIME_PROFILE,
   EVENT_KIND,
+  eventTransitionKeys,
   isAmbient,
   isBracketed,
   type Booking,
@@ -45,11 +45,10 @@ import {
 } from '../constants';
 import { t } from '../i18n/he';
 
-/** The start transition label key for a bracketed upcoming event (ADR-0063). */
+/** The start transition label key for a bracketed upcoming event (ADR-0063),
+ *  by mode — a flight's take-off, a train's departure (via eventTransitionKeys). */
 const startTransitionKey = (e: TripEvent): string | undefined =>
-  isBracketed(e) && e.category != null
-    ? CATEGORY_TIME_PROFILE[e.category].transitions?.startKey
-    : undefined;
+  isBracketed(e) ? eventTransitionKeys(e)?.startKey : undefined;
 
 const hourLabel = (hour: number) => `${String(hour).padStart(2, '0')}:00`;
 

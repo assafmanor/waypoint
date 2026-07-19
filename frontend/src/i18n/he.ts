@@ -378,11 +378,16 @@ export const t = {
     ambientNight: (night: number, nights: number) => `לילה ${night} מתוך ${nights}`,
     // Amber transition markers on the rail + the shared booking grammar (ADR-0059
     // §3 / ADR-0063 profile keys): the two ends of a bracketed booking.
+    // Wording is by mode, not hard-coded (ADR-0063 refinement): the generic
+    // departure/arrival covers every surface transport (train, bus, ferry, car);
+    // a flight refines to take-off/landing via ICON_TRANSITION_KEYS.
     transition: {
       checkIn: 'צ׳ק-אין',
       checkOut: 'צ׳ק-אאוט',
-      departure: 'המראה',
-      arrival: 'נחיתה',
+      departure: 'יציאה',
+      arrival: 'הגעה',
+      flightDeparture: 'המראה',
+      flightArrival: 'נחיתה',
     },
     // "Inside a booking" mid-stay strip (ADR-0059 §2) — teal "where you are".
     stayingPrefix: 'שוהים ב־',
