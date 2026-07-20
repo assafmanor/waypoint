@@ -3,6 +3,7 @@ import { ConflictException, Injectable, NotFoundException } from '@nestjs/common
 import { Prisma, type Event as PrismaEvent } from '@prisma/client';
 import {
   ENTITY_TYPE,
+  ERROR_CODE,
   EVENT_KIND,
   EVENT_STATUS,
   type CreateEventInput,
@@ -270,7 +271,7 @@ export class EventsService {
       : null;
     throw new ConflictException({
       error: {
-        code: 'HARD_EVENT_REQUIRES_CONFIRM',
+        code: ERROR_CODE.HARD_EVENT_REQUIRES_CONFIRM,
         message: 'This is a hard event — confirm to proceed.',
         details: {
           bookingId: event.bookingId ?? undefined,
@@ -292,7 +293,7 @@ export class EventsService {
     if (new Date(newStartsAt).getTime() <= Date.now()) {
       throw new ConflictException({
         error: {
-          code: 'MOVE_INTO_PAST',
+          code: ERROR_CODE.MOVE_INTO_PAST,
           message: 'Cannot move an event to start in the past.',
         },
       });
@@ -306,7 +307,7 @@ export class EventsService {
     if (localDateKey(newStartsAt, trip.timezone) !== eventDay) {
       throw new ConflictException({
         error: {
-          code: 'MOVE_CROSSES_DAY',
+          code: ERROR_CODE.MOVE_CROSSES_DAY,
           message: 'Cannot move an event to a different day — use Plan mode to reschedule it.',
         },
       });

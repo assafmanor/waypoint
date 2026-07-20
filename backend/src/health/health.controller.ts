@@ -1,4 +1,5 @@
 import { Controller, Get, ServiceUnavailableException } from '@nestjs/common';
+import { ERROR_CODE } from '@waypoint/shared';
 import { Public } from '../auth/public.decorator';
 import { PrismaService } from '../prisma/prisma.service';
 
@@ -28,7 +29,7 @@ export class HealthController {
       await this.prisma.$queryRaw`SELECT 1`;
     } catch {
       throw new ServiceUnavailableException({
-        error: { code: 'NOT_READY', message: 'Database unreachable' },
+        error: { code: ERROR_CODE.NOT_READY, message: 'Database unreachable' },
       });
     }
     return { status: 'ready', time: new Date().toISOString() };

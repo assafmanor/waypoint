@@ -2,6 +2,7 @@
 // reuses lib/api.ts's REST functions directly — verbs.ts stays the only place
 // that builds optimistic dispatch + undo.
 import { useEffect, useMemo, useState, useSyncExternalStore } from 'react';
+import { ERROR_CODE } from '@waypoint/shared';
 import type {
   CreateBookingInput,
   CreateDocumentInput,
@@ -29,8 +30,6 @@ import {
   deleteEvent,
   deleteMaybeItem,
   deleteTrip,
-  MOVE_CROSSES_DAY,
-  MOVE_INTO_PAST,
   moveEvent,
   removeMember,
   setEventStatus,
@@ -43,31 +42,64 @@ import {
 } from './api';
 import { applyOutboxOpToCache } from './cache';
 
+/** The queued-write discriminants (T-013): one named value per outbox op, so no
+ *  enqueue or flush site spells a magic string. Mirrors the shared domain enums
+ *  (`ENTITY_TYPE`, `CHANGE_ACTION`) but lives here, not in `@waypoint/shared`:
+ *  the outbox is the frontend's offline write queue — the server never sees a
+ *  verb, each maps to a REST call in `runOp`. */
+export const OUTBOX_VERB = {
+  CREATE: 'create',
+  UPDATE: 'update',
+  SET_STATUS: 'setStatus',
+  MOVE: 'move',
+  DELETE: 'delete',
+  CONSUME_MAYBE_ITEM: 'consumeMaybeItem',
+  CREATE_MAYBE_ITEM: 'createMaybeItem',
+  DELETE_MAYBE_ITEM: 'deleteMaybeItem',
+  UPDATE_TRIP: 'updateTrip',
+  SET_MEMBER_ROLE: 'setMemberRole',
+  REMOVE_MEMBER: 'removeMember',
+  DELETE_TRIP: 'deleteTrip',
+  CREATE_BOOKING: 'createBooking',
+  UPDATE_BOOKING: 'updateBooking',
+  DELETE_BOOKING: 'deleteBooking',
+  CREATE_PLACE: 'createPlace',
+  UPDATE_PLACE: 'updatePlace',
+  UPLOAD_DOCUMENT: 'uploadDocument',
+} as const;
+
+export type OutboxVerb = (typeof OUTBOX_VERB)[keyof typeof OUTBOX_VERB];
+
 export type OutboxOp =
-  | { verb: 'create'; input: CreateEventInput }
-  | { verb: 'update'; eventId: string; input: UpdateEventInput; confirm: boolean }
-  | { verb: 'setStatus'; eventId: string; status: EventStatus }
-  | { verb: 'move'; eventId: string; input: MoveEventInput; confirm: boolean }
-  | { verb: 'delete'; eventId: string; confirm: boolean }
-  | { verb: 'consumeMaybeItem'; maybeItemId: string }
+  | { verb: typeof OUTBOX_VERB.CREATE; input: CreateEventInput }
+  | { verb: typeof OUTBOX_VERB.UPDATE; eventId: string; input: UpdateEventInput; confirm: boolean }
+  | { verb: typeof OUTBOX_VERB.SET_STATUS; eventId: string; status: EventStatus }
+  | { verb: typeof OUTBOX_VERB.MOVE; eventId: string; input: MoveEventInput; confirm: boolean }
+  | { verb: typeof OUTBOX_VERB.DELETE; eventId: string; confirm: boolean }
+  | { verb: typeof OUTBOX_VERB.CONSUME_MAYBE_ITEM; maybeItemId: string }
   // Maybe-shelf build actions (Plan-mode Tier 3) — offline-capable (ADR-0042).
-  | { verb: 'createMaybeItem'; input: CreateMaybeItemInput }
-  | { verb: 'deleteMaybeItem'; maybeItemId: string }
+  | { verb: typeof OUTBOX_VERB.CREATE_MAYBE_ITEM; input: CreateMaybeItemInput }
+  | { verb: typeof OUTBOX_VERB.DELETE_MAYBE_ITEM; maybeItemId: string }
   // Trip-settings mutations (ADR-0039) — offline-capable like the timeline.
-  | { verb: 'updateTrip'; input: UpdateTripInput }
-  | { verb: 'setMemberRole'; userId: string; role: MembershipRole }
-  | { verb: 'removeMember'; userId: string }
-  | { verb: 'deleteTrip' }
+  | { verb: typeof OUTBOX_VERB.UPDATE_TRIP; input: UpdateTripInput }
+  | { verb: typeof OUTBOX_VERB.SET_MEMBER_ROLE; userId: string; role: MembershipRole }
+  | { verb: typeof OUTBOX_VERB.REMOVE_MEMBER; userId: string }
+  | { verb: typeof OUTBOX_VERB.DELETE_TRIP }
   // Index writes (ADR-0047/0048) — bookings + places, offline-capable.
-  | { verb: 'createBooking'; input: CreateBookingInput }
-  | { verb: 'updateBooking'; bookingId: string; input: UpdateBookingInput }
-  | { verb: 'deleteBooking'; bookingId: string; confirm: boolean; deleteEvents: boolean }
-  | { verb: 'createPlace'; input: CreatePlaceInput }
-  | { verb: 'updatePlace'; placeId: string; input: UpdatePlaceInput }
+  | { verb: typeof OUTBOX_VERB.CREATE_BOOKING; input: CreateBookingInput }
+  | { verb: typeof OUTBOX_VERB.UPDATE_BOOKING; bookingId: string; input: UpdateBookingInput }
+  | {
+      verb: typeof OUTBOX_VERB.DELETE_BOOKING;
+      bookingId: string;
+      confirm: boolean;
+      deleteEvents: boolean;
+    }
+  | { verb: typeof OUTBOX_VERB.CREATE_PLACE; input: CreatePlaceInput }
+  | { verb: typeof OUTBOX_VERB.UPDATE_PLACE; placeId: string; input: UpdatePlaceInput }
   // Document upload (ADR-0056) — the first outbox op to carry binary: the file
   // rides as a `File` (a `Blob`, which Dexie persists) so the sheet can close
   // instantly and the upload flushes in the background / on reconnect.
-  | { verb: 'uploadDocument'; input: CreateDocumentInput; file: File };
+  | { verb: typeof OUTBOX_VERB.UPLOAD_DOCUMENT; input: CreateDocumentInput; file: File };
 
 export interface OutboxEntry {
   seq?: number;
@@ -86,30 +118,30 @@ export interface OutboxEntry {
  *  still surface in the review sheet by verb, never by a per-row badge. */
 export function outboxOpEntityId(op: OutboxOp): string {
   switch (op.verb) {
-    case 'create':
-    case 'createMaybeItem':
-    case 'createBooking':
-    case 'createPlace':
-    case 'uploadDocument':
+    case OUTBOX_VERB.CREATE:
+    case OUTBOX_VERB.CREATE_MAYBE_ITEM:
+    case OUTBOX_VERB.CREATE_BOOKING:
+    case OUTBOX_VERB.CREATE_PLACE:
+    case OUTBOX_VERB.UPLOAD_DOCUMENT:
       return op.input.id ?? '';
-    case 'update':
-    case 'setStatus':
-    case 'move':
-    case 'delete':
+    case OUTBOX_VERB.UPDATE:
+    case OUTBOX_VERB.SET_STATUS:
+    case OUTBOX_VERB.MOVE:
+    case OUTBOX_VERB.DELETE:
       return op.eventId;
-    case 'consumeMaybeItem':
-    case 'deleteMaybeItem':
+    case OUTBOX_VERB.CONSUME_MAYBE_ITEM:
+    case OUTBOX_VERB.DELETE_MAYBE_ITEM:
       return op.maybeItemId;
-    case 'updateBooking':
-    case 'deleteBooking':
+    case OUTBOX_VERB.UPDATE_BOOKING:
+    case OUTBOX_VERB.DELETE_BOOKING:
       return op.bookingId;
-    case 'updatePlace':
+    case OUTBOX_VERB.UPDATE_PLACE:
       return op.placeId;
-    case 'setMemberRole':
-    case 'removeMember':
+    case OUTBOX_VERB.SET_MEMBER_ROLE:
+    case OUTBOX_VERB.REMOVE_MEMBER:
       return op.userId;
-    case 'updateTrip':
-    case 'deleteTrip':
+    case OUTBOX_VERB.UPDATE_TRIP:
+    case OUTBOX_VERB.DELETE_TRIP:
       return '';
   }
 }
@@ -122,8 +154,8 @@ export function outboxOpEntityId(op: OutboxOp): string {
  *  effects adds a case here and needs no change at the call sites. */
 function outboxOpSideEffectIds(op: OutboxOp): string[] {
   switch (op.verb) {
-    case 'createBooking':
-    case 'updateBooking':
+    case OUTBOX_VERB.CREATE_BOOKING:
+    case OUTBOX_VERB.UPDATE_BOOKING:
       return op.input.event?.id ? [op.input.event.id] : [];
     default:
       return [];
@@ -329,7 +361,13 @@ export function useSyncFailures(): SyncFailure[] {
 // the outbox pending index + the failed store, id-keyed. `failed` outranks
 // `pending` — a rejected write the user must act on beats a later queued edit to
 // the same entity. ---
-export type SyncState = 'synced' | 'pending' | 'failed';
+export const SYNC_STATE = {
+  SYNCED: 'synced',
+  PENDING: 'pending',
+  FAILED: 'failed',
+} as const;
+
+export type SyncState = (typeof SYNC_STATE)[keyof typeof SYNC_STATE];
 
 export interface SyncStatus {
   state: SyncState;
@@ -341,16 +379,18 @@ export function getSyncStatus(entityId: string): SyncStatus {
   // Match on every entity the failed op touched (primary + side effects), so a
   // rejected booking write marks its linked event failed too, not just the booking.
   const failure = syncFailures.find((f) => outboxOpEntityIds(f.op).includes(entityId));
-  if (failure) return { state: 'failed', reason: failure.code };
-  if ((pendingByEntity.get(entityId) ?? 0) > 0) return { state: 'pending' };
-  return { state: 'synced' };
+  if (failure) return { state: SYNC_STATE.FAILED, reason: failure.code };
+  if ((pendingByEntity.get(entityId) ?? 0) > 0) return { state: SYNC_STATE.PENDING };
+  return { state: SYNC_STATE.SYNCED };
 }
 
 // A primitive snapshot key so `useSyncExternalStore` compares by value (a fresh
 // object each render would loop). The hook re-inflates it to a `SyncStatus`.
 function syncStatusKey(entityId: string): string {
   const status = getSyncStatus(entityId);
-  return status.state === 'failed' ? `failed:${status.reason ?? ''}` : status.state;
+  return status.state === SYNC_STATE.FAILED
+    ? `${SYNC_STATE.FAILED}:${status.reason ?? ''}`
+    : status.state;
 }
 
 function subscribeSyncStatus(listener: Listener): () => void {
@@ -367,9 +407,9 @@ function subscribeSyncStatus(listener: Listener): () => void {
 export function useSyncStatus(entityId: string): SyncStatus {
   const key = useSyncExternalStore(subscribeSyncStatus, () => syncStatusKey(entityId));
   return useMemo(() => {
-    if (key.startsWith('failed')) {
-      const reason = key.slice('failed:'.length);
-      return { state: 'failed', reason: reason || undefined };
+    if (key.startsWith(SYNC_STATE.FAILED)) {
+      const reason = key.slice(`${SYNC_STATE.FAILED}:`.length);
+      return { state: SYNC_STATE.FAILED, reason: reason || undefined };
     }
     return { state: key as SyncState };
   }, [key]);
@@ -378,7 +418,7 @@ export function useSyncStatus(entityId: string): SyncStatus {
 // Known-unfixable rejections that are safe to drop quietly: a time-move that was
 // valid when queued offline but has since gone stale. Retrying only makes it more
 // stale, and the user already saw the optimistic move — no failure to surface.
-const QUIET_DROP_CODES = new Set<string>([MOVE_INTO_PAST, MOVE_CROSSES_DAY]);
+const QUIET_DROP_CODES = new Set<string>([ERROR_CODE.MOVE_INTO_PAST, ERROR_CODE.MOVE_CROSSES_DAY]);
 
 export function subscribeOutboxCount(listener: Listener): () => void {
   listeners.add(listener);
@@ -440,7 +480,7 @@ export async function readPendingUploads(tripId: string): Promise<PendingUpload[
   const entries = await db.outbox.where('tripId').equals(tripId).sortBy('seq');
   const uploads: PendingUpload[] = [];
   for (const entry of entries) {
-    if (entry.op.verb !== 'uploadDocument') continue;
+    if (entry.op.verb !== OUTBOX_VERB.UPLOAD_DOCUMENT) continue;
     const { input, file } = entry.op;
     uploads.push({
       seq: entry.seq!,
@@ -482,7 +522,7 @@ export async function queueDocumentUpload(
   input: CreateDocumentInput,
   file: File,
 ): Promise<void> {
-  await enqueueOutbox(tripId, { verb: 'uploadDocument', input, file });
+  await enqueueOutbox(tripId, { verb: OUTBOX_VERB.UPLOAD_DOCUMENT, input, file });
   if (!isOffline()) void flushOutbox(tripId);
 }
 
@@ -512,61 +552,61 @@ export async function restOrQueue<T>(
 
 async function runOp(tripId: string, op: OutboxOp): Promise<void> {
   switch (op.verb) {
-    case 'create':
+    case OUTBOX_VERB.CREATE:
       await createEvent(tripId, op.input);
       return;
-    case 'update':
+    case OUTBOX_VERB.UPDATE:
       await updateEvent(tripId, op.eventId, op.input, op.confirm);
       return;
-    case 'setStatus':
+    case OUTBOX_VERB.SET_STATUS:
       await setEventStatus(tripId, op.eventId, op.status);
       return;
-    case 'move':
+    case OUTBOX_VERB.MOVE:
       await moveEvent(tripId, op.eventId, op.input, op.confirm);
       return;
-    case 'delete':
+    case OUTBOX_VERB.DELETE:
       await deleteEvent(tripId, op.eventId, op.confirm);
       return;
-    case 'consumeMaybeItem':
+    case OUTBOX_VERB.CONSUME_MAYBE_ITEM:
       await consumeMaybeItem(tripId, op.maybeItemId);
       return;
-    case 'createMaybeItem':
+    case OUTBOX_VERB.CREATE_MAYBE_ITEM:
       await createMaybeItem(tripId, op.input);
       return;
-    case 'deleteMaybeItem':
+    case OUTBOX_VERB.DELETE_MAYBE_ITEM:
       await deleteMaybeItem(tripId, op.maybeItemId);
       return;
-    case 'updateTrip':
+    case OUTBOX_VERB.UPDATE_TRIP:
       await updateTrip(tripId, op.input);
       return;
-    case 'setMemberRole':
+    case OUTBOX_VERB.SET_MEMBER_ROLE:
       await setMemberRole(tripId, op.userId, op.role);
       return;
-    case 'removeMember':
+    case OUTBOX_VERB.REMOVE_MEMBER:
       await removeMember(tripId, op.userId);
       return;
-    case 'deleteTrip':
+    case OUTBOX_VERB.DELETE_TRIP:
       await deleteTrip(tripId);
       return;
-    case 'createBooking':
+    case OUTBOX_VERB.CREATE_BOOKING:
       await createBooking(tripId, op.input);
       return;
-    case 'updateBooking':
+    case OUTBOX_VERB.UPDATE_BOOKING:
       await updateBooking(tripId, op.bookingId, op.input);
       return;
-    case 'deleteBooking':
+    case OUTBOX_VERB.DELETE_BOOKING:
       await deleteBooking(tripId, op.bookingId, {
         confirm: op.confirm,
         deleteEvents: op.deleteEvents,
       });
       return;
-    case 'createPlace':
+    case OUTBOX_VERB.CREATE_PLACE:
       await createPlace(tripId, op.input);
       return;
-    case 'updatePlace':
+    case OUTBOX_VERB.UPDATE_PLACE:
       await updatePlace(tripId, op.placeId, op.input);
       return;
-    case 'uploadDocument':
+    case OUTBOX_VERB.UPLOAD_DOCUMENT:
       // The client-generated id makes this re-POST idempotent (ADR-0056): a retry
       // after the first attempt already landed is treated as already-applied
       // server-side rather than creating a second document / blob.

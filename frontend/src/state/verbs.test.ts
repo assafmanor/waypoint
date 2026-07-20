@@ -3,7 +3,7 @@ import { afterEach, describe, expect, it, vi } from 'vitest';
 import { EVENT_STATUS } from '@waypoint/shared';
 import { db } from '../db';
 import { EVENTS, MAYBE_ITEMS } from '../fixtures';
-import { initOutboxCount } from '../lib/outbox';
+import { initOutboxCount, OUTBOX_VERB } from '../lib/outbox';
 import { DEFAULT_SCHEDULE_SLOT } from '../constants';
 import { zonedIso } from '../lib/time';
 import {
@@ -21,7 +21,7 @@ import {
   buildScheduleEvent,
   type VerbDeps,
 } from './verbs';
-import type { Action } from './trip-state';
+import { TRIP_ACTION, type Action } from './trip-state';
 
 function fakeDeps(confirmHardEdit?: VerbDeps['confirmHardEdit']): VerbDeps & { actions: Action[] } {
   const actions: Action[] = [];
@@ -54,11 +54,11 @@ describe('applySetStatus (optimistic apply / rollback)', () => {
     await applySetStatus(deps, event, EVENT_STATUS.DONE);
 
     expect(deps.actions[0]).toEqual({
-      type: 'SET_STATUS',
+      type: TRIP_ACTION.SET_STATUS,
       id: event.id,
       status: EVENT_STATUS.DONE,
     });
-    expect(deps.actions[1]).toEqual({ type: 'RECONCILE_EVENT', event: canonical });
+    expect(deps.actions[1]).toEqual({ type: TRIP_ACTION.RECONCILE_EVENT, event: canonical });
     expect(deps.toast).not.toHaveBeenCalled();
   });
 
@@ -68,11 +68,11 @@ describe('applySetStatus (optimistic apply / rollback)', () => {
     await applySetStatus(deps, event, EVENT_STATUS.DONE);
 
     expect(deps.actions[0]).toEqual({
-      type: 'SET_STATUS',
+      type: TRIP_ACTION.SET_STATUS,
       id: event.id,
       status: EVENT_STATUS.DONE,
     });
-    expect(deps.actions[1]).toEqual({ type: 'UNDO' });
+    expect(deps.actions[1]).toEqual({ type: TRIP_ACTION.UNDO });
     expect(deps.toast).toHaveBeenCalledTimes(1);
   });
 
@@ -91,7 +91,7 @@ describe('applySetStatus (optimistic apply / rollback)', () => {
     const deps = fakeDeps();
     await applySetStatus(deps, event, EVENT_STATUS.DONE);
 
-    expect(deps.actions[1]).toEqual({ type: 'UNDO' });
+    expect(deps.actions[1]).toEqual({ type: TRIP_ACTION.UNDO });
     const [, message] = (deps.toast as ReturnType<typeof vi.fn>).mock.calls[0];
     vi.stubGlobal('fetch', vi.fn().mockResolvedValue(new Response(null, { status: 500 })));
     const genericDeps = fakeDeps();
@@ -117,7 +117,7 @@ describe('applyGuardedDelay (hard-event confirmation gate, ADR-0011)', () => {
 
     expect(confirmHardEdit).toHaveBeenCalledWith(hardEvent);
     expect(applied).toBe(true);
-    expect(deps.actions.some((a) => a.type === 'DELAY')).toBe(true);
+    expect(deps.actions.some((a) => a.type === TRIP_ACTION.DELAY)).toBe(true);
     // the backend's own hard-event guard (T-010) also requires `confirm=true`
     // on the write itself, independent of this client-side gate.
     expect(fetchMock).toHaveBeenCalledWith(
@@ -151,7 +151,7 @@ describe('applyGuardedDelay (hard-event confirmation gate, ADR-0011)', () => {
 
     expect(confirmHardEdit).not.toHaveBeenCalled();
     expect(applied).toBe(true);
-    expect(deps.actions.some((a) => a.type === 'DELAY')).toBe(true);
+    expect(deps.actions.some((a) => a.type === TRIP_ACTION.DELAY)).toBe(true);
     expect(fetchMock).toHaveBeenCalledWith(
       expect.not.stringContaining('confirm=true'),
       expect.anything(),
@@ -171,8 +171,8 @@ describe('applyCreateEvent', () => {
 
     await applyCreateEvent(deps, draft);
 
-    expect(deps.actions[0]).toEqual({ type: 'CREATE_EVENT', event: draft });
-    expect(deps.actions[1]).toEqual({ type: 'RECONCILE_EVENT', event: canonical });
+    expect(deps.actions[0]).toEqual({ type: TRIP_ACTION.CREATE_EVENT, event: draft });
+    expect(deps.actions[1]).toEqual({ type: TRIP_ACTION.RECONCILE_EVENT, event: canonical });
     expect(fetchMock).toHaveBeenCalledWith(
       expect.stringContaining('/events'),
       expect.objectContaining({ method: 'POST' }),
@@ -197,7 +197,7 @@ describe('applyGuardedUpdate (hard-event confirmation gate, ADR-0011)', () => {
 
     expect(confirmHardEdit).toHaveBeenCalledWith(hardEvent, 'edit');
     expect(applied).toBe(true);
-    expect(deps.actions.some((a) => a.type === 'UPDATE_EVENT')).toBe(true);
+    expect(deps.actions.some((a) => a.type === TRIP_ACTION.UPDATE_EVENT)).toBe(true);
     expect(fetchMock).toHaveBeenCalledWith(
       expect.stringContaining('confirm=true'),
       expect.objectContaining({ method: 'PATCH' }),
@@ -250,7 +250,7 @@ describe('applyGuardedDelete (hard-event confirmation gate, ADR-0011)', () => {
 
     expect(confirmHardEdit).toHaveBeenCalledWith(hardEvent, 'delete');
     expect(applied).toBe(true);
-    expect(deps.actions).toEqual([{ type: 'DELETE_EVENT', id: hardEvent.id }]);
+    expect(deps.actions).toEqual([{ type: TRIP_ACTION.DELETE_EVENT, id: hardEvent.id }]);
     expect(fetchMock).toHaveBeenCalledWith(
       expect.stringContaining('confirm=true'),
       expect.objectContaining({ method: 'DELETE' }),
@@ -292,8 +292,8 @@ describe('applyGuardedDelete (hard-event confirmation gate, ADR-0011)', () => {
 
     await applyGuardedDelete(deps, softEvent);
 
-    expect(deps.actions[0]).toEqual({ type: 'DELETE_EVENT', id: softEvent.id });
-    expect(deps.actions[1]).toEqual({ type: 'UNDO' });
+    expect(deps.actions[0]).toEqual({ type: TRIP_ACTION.DELETE_EVENT, id: softEvent.id });
+    expect(deps.actions[1]).toEqual({ type: TRIP_ACTION.UNDO });
     expect(deps.toast).toHaveBeenCalledTimes(1);
   });
 });
@@ -315,7 +315,7 @@ describe('applyUndo', () => {
 
     await applyUndo(deps);
 
-    expect(deps.actions).toEqual([{ type: 'UNDO' }]);
+    expect(deps.actions).toEqual([{ type: TRIP_ACTION.UNDO }]);
     expect(fetchMock).toHaveBeenCalledWith(
       expect.stringContaining('/events/ev-goldengai/status'),
       expect.objectContaining({ body: JSON.stringify({ status: EVENT_STATUS.PLANNED }) }),
@@ -363,8 +363,8 @@ describe('applySchedule (T-058: persists the maybe-item consumed flag server-sid
     expect(fetchMock).not.toHaveBeenCalled();
     const queued = (await db.outbox.toArray()).map((e) => e.op);
     expect(queued).toEqual([
-      { verb: 'create', input: expect.objectContaining({ id: 'ev-new' }) },
-      { verb: 'consumeMaybeItem', maybeItemId: 'mb-skytree' },
+      { verb: OUTBOX_VERB.CREATE, input: expect.objectContaining({ id: 'ev-new' }) },
+      { verb: OUTBOX_VERB.CONSUME_MAYBE_ITEM, maybeItemId: 'mb-skytree' },
     ]);
   });
 });
@@ -425,13 +425,15 @@ describe('offline write outbox (T-013)', () => {
     await applySetStatus(deps, event, EVENT_STATUS.DONE);
 
     expect(fetchMock).not.toHaveBeenCalled();
-    expect(deps.actions).toEqual([{ type: 'SET_STATUS', id: event.id, status: EVENT_STATUS.DONE }]); // no UNDO — the optimistic change is what's queued, not rolled back
+    expect(deps.actions).toEqual([
+      { type: TRIP_ACTION.SET_STATUS, id: event.id, status: EVENT_STATUS.DONE },
+    ]); // no UNDO — the optimistic change is what's queued, not rolled back
     expect(deps.toast).not.toHaveBeenCalled();
 
     const queued = await db.outbox.toArray();
     expect(queued).toHaveLength(1);
     expect(queued[0].op).toEqual({
-      verb: 'setStatus',
+      verb: OUTBOX_VERB.SET_STATUS,
       eventId: event.id,
       status: EVENT_STATUS.DONE,
     });
@@ -443,7 +445,7 @@ describe('offline write outbox (T-013)', () => {
 
     await applyCreateEvent(deps, event);
 
-    expect(deps.actions.some((a) => a.type === 'UNDO')).toBe(false);
+    expect(deps.actions.some((a) => a.type === TRIP_ACTION.UNDO)).toBe(false);
     expect(deps.toast).not.toHaveBeenCalled();
     expect(await db.outbox.count()).toBe(1);
   });
@@ -454,7 +456,7 @@ describe('offline write outbox (T-013)', () => {
 
     await applySetStatus(deps, event, EVENT_STATUS.DONE);
 
-    expect(deps.actions[1]).toEqual({ type: 'UNDO' });
+    expect(deps.actions[1]).toEqual({ type: TRIP_ACTION.UNDO });
     expect(deps.toast).toHaveBeenCalledTimes(1);
     expect(await db.outbox.count()).toBe(0);
   });
@@ -482,8 +484,8 @@ describe('applyReorder', () => {
     const deps = fakeDeps();
     await applyReorder(deps, patches, [a, b]);
 
-    expect(deps.actions[0]).toEqual({ type: 'REORDER', patches });
-    expect(deps.actions.filter((x) => x.type === 'RECONCILE_EVENT')).toHaveLength(2);
+    expect(deps.actions[0]).toEqual({ type: TRIP_ACTION.REORDER, patches });
+    expect(deps.actions.filter((x) => x.type === TRIP_ACTION.RECONCILE_EVENT)).toHaveLength(2);
     expect(deps.toast).not.toHaveBeenCalled();
   });
 
@@ -491,7 +493,7 @@ describe('applyReorder', () => {
     vi.stubGlobal('fetch', vi.fn().mockResolvedValue(new Response(null, { status: 500 })));
     const deps = fakeDeps();
     await applyReorder(deps, patches, [a, b]);
-    expect(deps.actions.some((x) => x.type === 'UNDO')).toBe(true);
+    expect(deps.actions.some((x) => x.type === TRIP_ACTION.UNDO)).toBe(true);
     expect(deps.toast).toHaveBeenCalled();
   });
 
@@ -530,8 +532,8 @@ describe('applyPark (move a soft event to the maybe shelf)', () => {
 
     await applyPark(deps, event, item);
 
-    expect(deps.actions[0]).toEqual({ type: 'PARK_EVENT', eventId: event.id, item });
-    expect(deps.actions.some((a) => a.type === 'UNDO')).toBe(false);
+    expect(deps.actions[0]).toEqual({ type: TRIP_ACTION.PARK_EVENT, eventId: event.id, item });
+    expect(deps.actions.some((a) => a.type === TRIP_ACTION.UNDO)).toBe(false);
     expect(deps.lastAction.current).toEqual({ kind: 'park', event, maybeId: item.id });
     expect(calls[0].url).toContain('/maybe-items');
     expect(calls[1]).toEqual(
@@ -549,8 +551,8 @@ describe('applyPark (move a soft event to the maybe shelf)', () => {
 
     await applyPark(deps, event, item);
 
-    expect(deps.actions[0]).toEqual({ type: 'PARK_EVENT', eventId: event.id, item });
-    expect(deps.actions.at(-1)).toEqual({ type: 'UNDO' });
+    expect(deps.actions[0]).toEqual({ type: TRIP_ACTION.PARK_EVENT, eventId: event.id, item });
+    expect(deps.actions.at(-1)).toEqual({ type: TRIP_ACTION.UNDO });
     expect(deps.toast).toHaveBeenCalledTimes(1);
   });
 });
@@ -565,15 +567,15 @@ describe('applyAddMaybe / applyRemoveMaybe (shelf build/remove)', () => {
     );
     const deps = fakeDeps();
     await applyAddMaybe(deps, item);
-    expect(deps.actions[0]).toEqual({ type: 'ADD_MAYBE', item });
-    expect(deps.actions.some((a) => a.type === 'UNDO')).toBe(false);
+    expect(deps.actions[0]).toEqual({ type: TRIP_ACTION.ADD_MAYBE, item });
+    expect(deps.actions.some((a) => a.type === TRIP_ACTION.UNDO)).toBe(false);
   });
 
   it('rolls back the optimistic add and toasts on failure', async () => {
     vi.stubGlobal('fetch', vi.fn().mockResolvedValue(new Response(null, { status: 500 })));
     const deps = fakeDeps();
     await applyAddMaybe(deps, item);
-    expect(deps.actions.at(-1)).toEqual({ type: 'UNDO' });
+    expect(deps.actions.at(-1)).toEqual({ type: TRIP_ACTION.UNDO });
     expect(deps.toast).toHaveBeenCalled();
   });
 
@@ -582,7 +584,7 @@ describe('applyAddMaybe / applyRemoveMaybe (shelf build/remove)', () => {
     vi.stubGlobal('fetch', fetchMock);
     const deps = fakeDeps();
     await applyRemoveMaybe(deps, item);
-    expect(deps.actions[0]).toEqual({ type: 'REMOVE_MAYBE', id: item.id });
+    expect(deps.actions[0]).toEqual({ type: TRIP_ACTION.REMOVE_MAYBE, id: item.id });
     expect(fetchMock).toHaveBeenCalledWith(
       expect.stringContaining(`/maybe-items/${item.id}`),
       expect.objectContaining({ method: 'DELETE' }),
@@ -593,7 +595,7 @@ describe('applyAddMaybe / applyRemoveMaybe (shelf build/remove)', () => {
     vi.stubGlobal('fetch', vi.fn().mockResolvedValue(new Response(null, { status: 500 })));
     const deps = fakeDeps();
     await applyRemoveMaybe(deps, item);
-    expect(deps.actions.at(-1)).toEqual({ type: 'UNDO' });
+    expect(deps.actions.at(-1)).toEqual({ type: TRIP_ACTION.UNDO });
     expect(deps.toast).toHaveBeenCalled();
   });
 });

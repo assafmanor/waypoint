@@ -14,6 +14,7 @@ import {
   tripEventSchema,
   tripSchema,
   tripSnapshotSchema,
+  ERROR_CODE,
   type Booking,
   type Change,
   type CreateBookingInput,
@@ -46,6 +47,15 @@ import {
 import { evictCachedDocument, readCachedBlob, writeCachedBlob } from './doc-cache';
 
 export const API_BASE_URL = import.meta.env.VITE_API_BASE_URL ?? '';
+
+/** HTTP methods the request helpers use. Named because `RequestInit.method` is
+ *  typed `string`, so a bare `'POST'` typo (`'PSOT'`) fails silently at runtime
+ *  rather than at compile time. GET is the fetch default and left implicit. */
+export const HTTP_METHOD = {
+  POST: 'POST',
+  PATCH: 'PATCH',
+  DELETE: 'DELETE',
+} as const;
 
 // In memory only, never localStorage (ADR-0020) — module-level so apiFetch
 // can read it without every caller going through a hook.
@@ -105,7 +115,7 @@ function withRefreshLock(run: () => Promise<boolean>): Promise<boolean> {
 
 async function doRefresh(): Promise<boolean> {
   const res = await fetch(`${API_BASE_URL}/auth/refresh`, {
-    method: 'POST',
+    method: HTTP_METHOD.POST,
     credentials: 'include',
   });
   if (!res.ok) return false;
@@ -114,7 +124,7 @@ async function doRefresh(): Promise<boolean> {
 }
 
 export async function requestLogout(): Promise<void> {
-  await fetch(`${API_BASE_URL}/auth/logout`, { method: 'POST', credentials: 'include' });
+  await fetch(`${API_BASE_URL}/auth/logout`, { method: HTTP_METHOD.POST, credentials: 'include' });
   accessToken = null;
 }
 
@@ -132,7 +142,7 @@ export async function fetchTrips(): Promise<Trip[]> {
 
 export async function createTrip(input: CreateTripInput): Promise<Trip> {
   const res = await apiFetch(`${API_BASE_URL}/trips`, {
-    method: 'POST',
+    method: HTTP_METHOD.POST,
     headers: { 'Content-Type': 'application/json' },
     body: JSON.stringify(input),
   });
@@ -144,7 +154,7 @@ export async function createTrip(input: CreateTripInput): Promise<Trip> {
  *  logs the change, so it reaches other members and reconciles like the timeline. */
 export async function updateTrip(tripId: string, input: UpdateTripInput): Promise<Trip> {
   const res = await apiFetch(`${API_BASE_URL}/trips/${tripId}`, {
-    method: 'PATCH',
+    method: HTTP_METHOD.PATCH,
     headers: { 'Content-Type': 'application/json' },
     body: JSON.stringify(input),
   });
@@ -154,7 +164,7 @@ export async function updateTrip(tripId: string, input: UpdateTripInput): Promis
 
 /** Admin-only trip deletion (ADR-0039). 404 tolerated (already gone). */
 export async function deleteTrip(tripId: string): Promise<void> {
-  const res = await apiFetch(`${API_BASE_URL}/trips/${tripId}`, { method: 'DELETE' });
+  const res = await apiFetch(`${API_BASE_URL}/trips/${tripId}`, { method: HTTP_METHOD.DELETE });
   if (!res.ok && res.status !== 404) return throwApiError(res);
 }
 
@@ -165,7 +175,7 @@ export async function setMemberRole(
   role: MembershipRole,
 ): Promise<Membership> {
   const res = await apiFetch(`${API_BASE_URL}/trips/${tripId}/members/${userId}`, {
-    method: 'PATCH',
+    method: HTTP_METHOD.PATCH,
     headers: { 'Content-Type': 'application/json' },
     body: JSON.stringify({ role }),
   });
@@ -176,7 +186,7 @@ export async function setMemberRole(
 /** Remove a member (admin) or leave (self) — ADR-0005/0039. 404 tolerated. */
 export async function removeMember(tripId: string, userId: string): Promise<void> {
   const res = await apiFetch(`${API_BASE_URL}/trips/${tripId}/members/${userId}`, {
-    method: 'DELETE',
+    method: HTTP_METHOD.DELETE,
   });
   if (!res.ok && res.status !== 404) return throwApiError(res);
 }
@@ -184,14 +194,18 @@ export async function removeMember(tripId: string, userId: string): Promise<void
 /** The trip's one stable invite link (ADR-0067): get-or-create, so repeated calls
  *  return the same short-code link rather than churning a new one. */
 export async function createInvite(tripId: string): Promise<InviteUrl> {
-  const res = await apiFetch(`${API_BASE_URL}/trips/${tripId}/invite`, { method: 'POST' });
+  const res = await apiFetch(`${API_BASE_URL}/trips/${tripId}/invite`, {
+    method: HTTP_METHOD.POST,
+  });
   if (!res.ok) return throwApiError(res);
   return inviteUrlSchema.parse(await res.json());
 }
 
 /** Revoke + replace the invite link (admin-only, ADR-0067): the old code dies. */
 export async function rotateInvite(tripId: string): Promise<InviteUrl> {
-  const res = await apiFetch(`${API_BASE_URL}/trips/${tripId}/invite/rotate`, { method: 'POST' });
+  const res = await apiFetch(`${API_BASE_URL}/trips/${tripId}/invite/rotate`, {
+    method: HTTP_METHOD.POST,
+  });
   if (!res.ok) return throwApiError(res);
   return inviteUrlSchema.parse(await res.json());
 }
@@ -209,7 +223,7 @@ export async function fetchInvitePreview(code: string): Promise<InvitePreview> {
  *  the caller was kicked and not yet allowed back (ADR-0067). */
 export async function joinTrip(code: string, input: JoinTripInput = {}): Promise<Membership> {
   const res = await apiFetch(`${API_BASE_URL}/trips/join/${code}`, {
-    method: 'POST',
+    method: HTTP_METHOD.POST,
     headers: { 'Content-Type': 'application/json' },
     body: JSON.stringify(input),
   });
@@ -228,7 +242,7 @@ export async function fetchRemovedMembers(tripId: string): Promise<RemovedMember
  *  them again. Idempotent; 404 tolerated. */
 export async function allowMemberBack(tripId: string, userId: string): Promise<void> {
   const res = await apiFetch(`${API_BASE_URL}/trips/${tripId}/blocks/${userId}`, {
-    method: 'DELETE',
+    method: HTTP_METHOD.DELETE,
   });
   if (!res.ok && res.status !== 404) return throwApiError(res);
 }
@@ -262,26 +276,21 @@ export class ApiError extends Error {
   }
 }
 
-export const HARD_EVENT_REQUIRES_CONFIRM = 'HARD_EVENT_REQUIRES_CONFIRM';
 export const isHardEventConfirmError = (err: unknown): boolean =>
-  err instanceof ApiError && err.code === HARD_EVENT_REQUIRES_CONFIRM;
+  err instanceof ApiError && err.code === ERROR_CODE.HARD_EVENT_REQUIRES_CONFIRM;
 
-export const MOVE_INTO_PAST = 'MOVE_INTO_PAST';
 export const isMoveIntoPastError = (err: unknown): boolean =>
-  err instanceof ApiError && err.code === MOVE_INTO_PAST;
+  err instanceof ApiError && err.code === ERROR_CODE.MOVE_INTO_PAST;
 
-export const MOVE_CROSSES_DAY = 'MOVE_CROSSES_DAY';
 export const isMoveCrossesDayError = (err: unknown): boolean =>
-  err instanceof ApiError && err.code === MOVE_CROSSES_DAY;
+  err instanceof ApiError && err.code === ERROR_CODE.MOVE_CROSSES_DAY;
 
 // Invite/join outcomes the join screen phrases specially (ADR-0067).
-export const REMOVED_FROM_TRIP = 'REMOVED_FROM_TRIP';
 export const isRemovedFromTripError = (err: unknown): boolean =>
-  err instanceof ApiError && err.code === REMOVED_FROM_TRIP;
+  err instanceof ApiError && err.code === ERROR_CODE.REMOVED_FROM_TRIP;
 
-export const INVITE_EXPIRED = 'INVITE_EXPIRED';
 export const isInviteExpiredError = (err: unknown): boolean =>
-  err instanceof ApiError && err.code === INVITE_EXPIRED;
+  err instanceof ApiError && err.code === ERROR_CODE.INVITE_EXPIRED;
 
 async function throwApiError(res: Response): Promise<never> {
   const body = (await res.json().catch(() => undefined)) as
@@ -297,7 +306,7 @@ export async function fetchSnapshot(tripId: string): Promise<TripSnapshot> {
 
 export async function createEvent(tripId: string, input: CreateEventInput): Promise<TripEvent> {
   const res = await apiFetch(eventsUrl(tripId), {
-    method: 'POST',
+    method: HTTP_METHOD.POST,
     headers: { 'Content-Type': 'application/json' },
     body: JSON.stringify(input),
   });
@@ -313,7 +322,7 @@ export async function updateEvent(
 ): Promise<TripEvent> {
   const url = `${eventUrl(tripId, eventId)}${confirm ? '?confirm=true' : ''}`;
   const res = await apiFetch(url, {
-    method: 'PATCH',
+    method: HTTP_METHOD.PATCH,
     headers: { 'Content-Type': 'application/json' },
     body: JSON.stringify(input),
   });
@@ -327,7 +336,7 @@ export async function setEventStatus(
   status: EventStatus,
 ): Promise<TripEvent> {
   const res = await apiFetch(`${eventUrl(tripId, eventId)}/status`, {
-    method: 'POST',
+    method: HTTP_METHOD.POST,
     headers: { 'Content-Type': 'application/json' },
     body: JSON.stringify({ status }),
   });
@@ -357,7 +366,7 @@ export async function moveEvent(
 ): Promise<MoveEventResult> {
   const url = `${eventUrl(tripId, eventId)}/move${confirm ? '?confirm=true' : ''}`;
   const res = await apiFetch(url, {
-    method: 'POST',
+    method: HTTP_METHOD.POST,
     headers: { 'Content-Type': 'application/json' },
     body: JSON.stringify(input),
   });
@@ -368,7 +377,7 @@ export async function moveEvent(
 
 export async function deleteEvent(tripId: string, eventId: string, confirm = false): Promise<void> {
   const url = `${eventUrl(tripId, eventId)}${confirm ? '?confirm=true' : ''}`;
-  const res = await apiFetch(url, { method: 'DELETE' });
+  const res = await apiFetch(url, { method: HTTP_METHOD.DELETE });
   if (!res.ok && res.status !== 404) return throwApiError(res);
 }
 
@@ -384,7 +393,9 @@ export async function fetchChanges(tripId: string, sinceSeq: string): Promise<Ch
  *  only flip this locally, so a resync after an offline reconnect silently
  *  reverted an already-scheduled item back to unscheduled. */
 export async function consumeMaybeItem(tripId: string, maybeItemId: string): Promise<void> {
-  const res = await apiFetch(consumeMaybeItemUrl(tripId, maybeItemId), { method: 'POST' });
+  const res = await apiFetch(consumeMaybeItemUrl(tripId, maybeItemId), {
+    method: HTTP_METHOD.POST,
+  });
   if (!res.ok) return throwApiError(res);
 }
 
@@ -394,7 +405,7 @@ export async function createMaybeItem(
   input: CreateMaybeItemInput,
 ): Promise<MaybeItem> {
   const res = await apiFetch(maybeItemsUrl(tripId), {
-    method: 'POST',
+    method: HTTP_METHOD.POST,
     headers: { 'Content-Type': 'application/json' },
     body: JSON.stringify(input),
   });
@@ -404,7 +415,7 @@ export async function createMaybeItem(
 
 /** Remove an idea from the shelf. 404 is tolerated (already gone), matching deleteEvent. */
 export async function deleteMaybeItem(tripId: string, maybeItemId: string): Promise<void> {
-  const res = await apiFetch(maybeItemUrl(tripId, maybeItemId), { method: 'DELETE' });
+  const res = await apiFetch(maybeItemUrl(tripId, maybeItemId), { method: HTTP_METHOD.DELETE });
   if (!res.ok && res.status !== 404) return throwApiError(res);
 }
 
@@ -412,7 +423,7 @@ export async function deleteMaybeItem(tripId: string, maybeItemId: string): Prom
  *  event atomically server-side (ADR-0048). */
 export async function createBooking(tripId: string, input: CreateBookingInput): Promise<Booking> {
   const res = await apiFetch(bookingsUrl(tripId), {
-    method: 'POST',
+    method: HTTP_METHOD.POST,
     headers: { 'Content-Type': 'application/json' },
     body: JSON.stringify(input),
   });
@@ -426,7 +437,7 @@ export async function updateBooking(
   input: UpdateBookingInput,
 ): Promise<Booking> {
   const res = await apiFetch(bookingUrl(tripId, bookingId), {
-    method: 'PATCH',
+    method: HTTP_METHOD.PATCH,
     headers: { 'Content-Type': 'application/json' },
     body: JSON.stringify(input),
   });
@@ -448,7 +459,7 @@ export async function deleteBooking(
   if (opts.deleteEvents) params.set('deleteEvents', 'true');
   const qs = params.toString();
   const res = await apiFetch(`${bookingUrl(tripId, bookingId)}${qs ? `?${qs}` : ''}`, {
-    method: 'DELETE',
+    method: HTTP_METHOD.DELETE,
   });
   if (!res.ok && res.status !== 404) return throwApiError(res);
 }
@@ -457,7 +468,7 @@ export async function deleteBooking(
  *  Places picker enriches googlePlaceId/lat/lng later. */
 export async function createPlace(tripId: string, input: CreatePlaceInput): Promise<Place> {
   const res = await apiFetch(placesUrl(tripId), {
-    method: 'POST',
+    method: HTTP_METHOD.POST,
     headers: { 'Content-Type': 'application/json' },
     body: JSON.stringify(input),
   });
@@ -471,7 +482,7 @@ export async function updatePlace(
   input: UpdatePlaceInput,
 ): Promise<Place> {
   const res = await apiFetch(placeUrl(tripId, placeId), {
-    method: 'PATCH',
+    method: HTTP_METHOD.PATCH,
     headers: { 'Content-Type': 'application/json' },
     body: JSON.stringify(input),
   });
@@ -492,7 +503,7 @@ export async function uploadDocument(
   if (input.id) form.set('id', input.id);
   if (input.ownerUserId) form.set('ownerUserId', input.ownerUserId);
   form.set('file', file);
-  const res = await apiFetch(documentsUrl(tripId), { method: 'POST', body: form });
+  const res = await apiFetch(documentsUrl(tripId), { method: HTTP_METHOD.POST, body: form });
   if (!res.ok) return throwApiError(res);
   return tripDocumentSchema.parse(await res.json());
 }
@@ -534,14 +545,17 @@ export async function updateDocument(
   const form = new FormData();
   if (input.title !== undefined) form.set('title', input.title);
   if (input.type !== undefined) form.set('type', input.type);
-  const res = await apiFetch(`${documentsUrl(tripId)}/${docId}`, { method: 'PATCH', body: form });
+  const res = await apiFetch(`${documentsUrl(tripId)}/${docId}`, {
+    method: HTTP_METHOD.PATCH,
+    body: form,
+  });
   if (!res.ok) return throwApiError(res);
   return tripDocumentSchema.parse(await res.json());
 }
 
 /** Delete a document (row + encrypted blob, server-side). 204, no body. */
 export async function deleteDocument(tripId: string, docId: string): Promise<void> {
-  const res = await apiFetch(`${documentsUrl(tripId)}/${docId}`, { method: 'DELETE' });
+  const res = await apiFetch(`${documentsUrl(tripId)}/${docId}`, { method: HTTP_METHOD.DELETE });
   if (!res.ok) return throwApiError(res);
 }
 

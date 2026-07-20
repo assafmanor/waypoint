@@ -13,7 +13,7 @@ import {
   type TripEvent,
   type UpdateEventInput,
 } from '@waypoint/shared';
-import { useTrip, type Action, type RippleSuggestion } from './trip-state';
+import { useTrip, TRIP_ACTION, type Action, type RippleSuggestion } from './trip-state';
 import { useToast } from '../ui/Toast';
 import { useConfirmHardEdit, type ConfirmHardEditAction } from '../ui/ConfirmDialog';
 import {
@@ -30,7 +30,13 @@ import {
   setEventStatus,
   updateEvent,
 } from '../lib/api';
-import { enqueueOutbox, isNetworkError, isOffline, type OutboxOp } from '../lib/outbox';
+import {
+  enqueueOutbox,
+  isNetworkError,
+  isOffline,
+  OUTBOX_VERB,
+  type OutboxOp,
+} from '../lib/outbox';
 import { getNow } from '../lib/useClock';
 import { isoToTimeInput, zonedIso } from '../lib/time';
 import { planReorder } from '../lib/reorder';
@@ -138,17 +144,17 @@ export async function applySetStatus(
   event: TripEvent,
   status: TripEvent['status'],
 ): Promise<void> {
-  deps.dispatch({ type: 'SET_STATUS', id: event.id, status });
+  deps.dispatch({ type: TRIP_ACTION.SET_STATUS, id: event.id, status });
   deps.lastAction.current = { kind: 'status', id: event.id, previous: event.status };
   try {
     const canonical = await restOrQueue(
       deps.tripId,
-      { verb: 'setStatus', eventId: event.id, status },
+      { verb: OUTBOX_VERB.SET_STATUS, eventId: event.id, status },
       () => setEventStatus(deps.tripId, event.id, status),
     );
-    if (canonical) deps.dispatch({ type: 'RECONCILE_EVENT', event: canonical });
+    if (canonical) deps.dispatch({ type: TRIP_ACTION.RECONCILE_EVENT, event: canonical });
   } catch (err) {
-    deps.dispatch({ type: 'UNDO' });
+    deps.dispatch({ type: TRIP_ACTION.UNDO });
     writeErrorToast(deps.toast, err);
   }
 }
@@ -156,21 +162,21 @@ export async function applySetStatus(
 export async function applyDelay(deps: VerbDeps, event: TripEvent, minutes: number): Promise<void> {
   const previous = { date: event.date, startsAt: event.startsAt };
   const isHard = event.kind === EVENT_KIND.HARD;
-  deps.dispatch({ type: 'DELAY', id: event.id, minutes });
+  deps.dispatch({ type: TRIP_ACTION.DELAY, id: event.id, minutes });
   deps.lastAction.current = { kind: 'move', id: event.id, previous, isHard };
   const input = { startsAt: event.startsAt ? shiftForMove(event.startsAt, minutes) : undefined };
   try {
     const result = await restOrQueue<MoveEventResult>(
       deps.tripId,
-      { verb: 'move', eventId: event.id, input, confirm: isHard },
+      { verb: OUTBOX_VERB.MOVE, eventId: event.id, input, confirm: isHard },
       () => moveEvent(deps.tripId, event.id, input, isHard),
     );
     if (result) {
-      deps.dispatch({ type: 'RECONCILE_EVENT', event: result.event });
-      deps.dispatch({ type: 'SET_RIPPLE', ripple: result.rippleSuggestion ?? null });
+      deps.dispatch({ type: TRIP_ACTION.RECONCILE_EVENT, event: result.event });
+      deps.dispatch({ type: TRIP_ACTION.SET_RIPPLE, ripple: result.rippleSuggestion ?? null });
     }
   } catch (err) {
-    deps.dispatch({ type: 'UNDO' });
+    deps.dispatch({ type: TRIP_ACTION.UNDO });
     writeErrorToast(deps.toast, err);
   }
 }
@@ -248,14 +254,14 @@ export async function applySchedule(
   event: TripEvent,
   maybeId: string,
 ): Promise<void> {
-  deps.dispatch({ type: 'SCHEDULE', event, maybeId });
+  deps.dispatch({ type: TRIP_ACTION.SCHEDULE, event, maybeId });
   deps.lastAction.current = { kind: 'create', id: event.id };
   const input = toCreateEventInput(event);
   try {
-    const canonical = await restOrQueue(deps.tripId, { verb: 'create', input }, () =>
+    const canonical = await restOrQueue(deps.tripId, { verb: OUTBOX_VERB.CREATE, input }, () =>
       createEvent(deps.tripId, input),
     );
-    if (canonical) deps.dispatch({ type: 'RECONCILE_EVENT', event: canonical });
+    if (canonical) deps.dispatch({ type: TRIP_ACTION.RECONCILE_EVENT, event: canonical });
     // Persists the consumed flag server-side (T-058) so a resync after an
     // offline reconnect doesn't revert this maybe-item back to unscheduled.
     // Separate call rather than a combined backend "schedule" endpoint because
@@ -263,26 +269,28 @@ export async function applySchedule(
     // if that derivation ever moves server-side, drop this call and the
     // consume() service method (backend/src/maybe-items/maybe-items.service.ts)
     // together in favor of one endpoint.
-    await restOrQueue(deps.tripId, { verb: 'consumeMaybeItem', maybeItemId: maybeId }, () =>
-      consumeMaybeItem(deps.tripId, maybeId),
+    await restOrQueue(
+      deps.tripId,
+      { verb: OUTBOX_VERB.CONSUME_MAYBE_ITEM, maybeItemId: maybeId },
+      () => consumeMaybeItem(deps.tripId, maybeId),
     );
   } catch (err) {
-    deps.dispatch({ type: 'UNDO' });
+    deps.dispatch({ type: TRIP_ACTION.UNDO });
     writeErrorToast(deps.toast, err);
   }
 }
 
 export async function applyCreateEvent(deps: VerbDeps, event: TripEvent): Promise<void> {
-  deps.dispatch({ type: 'CREATE_EVENT', event });
+  deps.dispatch({ type: TRIP_ACTION.CREATE_EVENT, event });
   deps.lastAction.current = { kind: 'create', id: event.id };
   const input = toCreateEventInput(event);
   try {
-    const canonical = await restOrQueue(deps.tripId, { verb: 'create', input }, () =>
+    const canonical = await restOrQueue(deps.tripId, { verb: OUTBOX_VERB.CREATE, input }, () =>
       createEvent(deps.tripId, input),
     );
-    if (canonical) deps.dispatch({ type: 'RECONCILE_EVENT', event: canonical });
+    if (canonical) deps.dispatch({ type: TRIP_ACTION.RECONCILE_EVENT, event: canonical });
   } catch (err) {
-    deps.dispatch({ type: 'UNDO' });
+    deps.dispatch({ type: TRIP_ACTION.UNDO });
     writeErrorToast(deps.toast, err);
   }
 }
@@ -300,17 +308,17 @@ export async function applyUpdateEvent(
 ): Promise<void> {
   const previous = previousOf(event, patch);
   const isHard = event.kind === EVENT_KIND.HARD;
-  deps.dispatch({ type: 'UPDATE_EVENT', id: event.id, patch });
+  deps.dispatch({ type: TRIP_ACTION.UPDATE_EVENT, id: event.id, patch });
   deps.lastAction.current = { kind: 'update', id: event.id, previous, isHard };
   try {
     const canonical = await restOrQueue(
       deps.tripId,
-      { verb: 'update', eventId: event.id, input: patch, confirm: isHard },
+      { verb: OUTBOX_VERB.UPDATE, eventId: event.id, input: patch, confirm: isHard },
       () => updateEvent(deps.tripId, event.id, patch, isHard),
     );
-    if (canonical) deps.dispatch({ type: 'RECONCILE_EVENT', event: canonical });
+    if (canonical) deps.dispatch({ type: TRIP_ACTION.RECONCILE_EVENT, event: canonical });
   } catch (err) {
-    deps.dispatch({ type: 'UNDO' });
+    deps.dispatch({ type: TRIP_ACTION.UNDO });
     writeErrorToast(deps.toast, err);
   }
 }
@@ -332,14 +340,16 @@ export async function applyGuardedUpdate(
 
 export async function applyDeleteEvent(deps: VerbDeps, event: TripEvent): Promise<void> {
   const isHard = event.kind === EVENT_KIND.HARD;
-  deps.dispatch({ type: 'DELETE_EVENT', id: event.id });
+  deps.dispatch({ type: TRIP_ACTION.DELETE_EVENT, id: event.id });
   deps.lastAction.current = { kind: 'delete', event };
   try {
-    await restOrQueue(deps.tripId, { verb: 'delete', eventId: event.id, confirm: isHard }, () =>
-      deleteEvent(deps.tripId, event.id, isHard),
+    await restOrQueue(
+      deps.tripId,
+      { verb: OUTBOX_VERB.DELETE, eventId: event.id, confirm: isHard },
+      () => deleteEvent(deps.tripId, event.id, isHard),
     );
   } catch (err) {
-    deps.dispatch({ type: 'UNDO' });
+    deps.dispatch({ type: TRIP_ACTION.UNDO });
     writeErrorToast(deps.toast, err);
   }
 }
@@ -366,7 +376,7 @@ export async function applyReorder(
 ): Promise<void> {
   if (patches.length === 0) return;
   const byId = new Map(affected.map((e) => [e.id, e]));
-  deps.dispatch({ type: 'REORDER', patches });
+  deps.dispatch({ type: TRIP_ACTION.REORDER, patches });
   deps.lastAction.current = {
     kind: 'reorder',
     items: patches.map((p) => ({ id: p.id, previous: slotOf(byId.get(p.id)!), isHard: false })),
@@ -376,16 +386,16 @@ export async function applyReorder(
       patches.map((p) =>
         restOrQueue(
           deps.tripId,
-          { verb: 'update', eventId: p.id, input: p.patch, confirm: false },
+          { verb: OUTBOX_VERB.UPDATE, eventId: p.id, input: p.patch, confirm: false },
           () => updateEvent(deps.tripId, p.id, p.patch, false),
         ),
       ),
     );
     for (const canonical of results) {
-      if (canonical) deps.dispatch({ type: 'RECONCILE_EVENT', event: canonical });
+      if (canonical) deps.dispatch({ type: TRIP_ACTION.RECONCILE_EVENT, event: canonical });
     }
   } catch (err) {
-    deps.dispatch({ type: 'UNDO' });
+    deps.dispatch({ type: TRIP_ACTION.UNDO });
     writeErrorToast(deps.toast, err);
   }
 }
@@ -395,28 +405,30 @@ export async function applyReorder(
 // id means the optimistic item already matches the server row, so success needs
 // no reconcile; a failure rolls back the optimistic state.
 export async function applyAddMaybe(deps: VerbDeps, item: MaybeItem): Promise<void> {
-  deps.dispatch({ type: 'ADD_MAYBE', item });
+  deps.dispatch({ type: TRIP_ACTION.ADD_MAYBE, item });
   deps.lastAction.current = { kind: 'addMaybe', id: item.id };
   const input = { id: item.id, title: item.title, icon: item.icon, category: item.category };
   try {
-    await restOrQueue(deps.tripId, { verb: 'createMaybeItem', input }, () =>
+    await restOrQueue(deps.tripId, { verb: OUTBOX_VERB.CREATE_MAYBE_ITEM, input }, () =>
       createMaybeItem(deps.tripId, input),
     );
   } catch (err) {
-    deps.dispatch({ type: 'UNDO' });
+    deps.dispatch({ type: TRIP_ACTION.UNDO });
     writeErrorToast(deps.toast, err);
   }
 }
 
 export async function applyRemoveMaybe(deps: VerbDeps, item: MaybeItem): Promise<void> {
-  deps.dispatch({ type: 'REMOVE_MAYBE', id: item.id });
+  deps.dispatch({ type: TRIP_ACTION.REMOVE_MAYBE, id: item.id });
   deps.lastAction.current = { kind: 'removeMaybe', item };
   try {
-    await restOrQueue(deps.tripId, { verb: 'deleteMaybeItem', maybeItemId: item.id }, () =>
-      deleteMaybeItem(deps.tripId, item.id),
+    await restOrQueue(
+      deps.tripId,
+      { verb: OUTBOX_VERB.DELETE_MAYBE_ITEM, maybeItemId: item.id },
+      () => deleteMaybeItem(deps.tripId, item.id),
     );
   } catch (err) {
-    deps.dispatch({ type: 'UNDO' });
+    deps.dispatch({ type: TRIP_ACTION.UNDO });
     writeErrorToast(deps.toast, err);
   }
 }
@@ -425,7 +437,7 @@ export async function applyRemoveMaybe(deps: VerbDeps, item: MaybeItem): Promise
 // remove it from the day — so any event can become a reschedulable idea, not
 // just ones that started on the shelf. Offline-capable (Tier-3 build action), one undo.
 export async function applyPark(deps: VerbDeps, event: TripEvent, item: MaybeItem): Promise<void> {
-  deps.dispatch({ type: 'PARK_EVENT', eventId: event.id, item });
+  deps.dispatch({ type: TRIP_ACTION.PARK_EVENT, eventId: event.id, item });
   deps.lastAction.current = { kind: 'park', event, maybeId: item.id };
   const input = {
     id: item.id,
@@ -435,14 +447,16 @@ export async function applyPark(deps: VerbDeps, event: TripEvent, item: MaybeIte
     placeId: item.placeId,
   };
   try {
-    await restOrQueue(deps.tripId, { verb: 'createMaybeItem', input }, () =>
+    await restOrQueue(deps.tripId, { verb: OUTBOX_VERB.CREATE_MAYBE_ITEM, input }, () =>
       createMaybeItem(deps.tripId, input),
     );
-    await restOrQueue(deps.tripId, { verb: 'delete', eventId: event.id, confirm: false }, () =>
-      deleteEvent(deps.tripId, event.id),
+    await restOrQueue(
+      deps.tripId,
+      { verb: OUTBOX_VERB.DELETE, eventId: event.id, confirm: false },
+      () => deleteEvent(deps.tripId, event.id),
     );
   } catch (err) {
-    deps.dispatch({ type: 'UNDO' });
+    deps.dispatch({ type: TRIP_ACTION.UNDO });
     writeErrorToast(deps.toast, err);
   }
 }
@@ -456,20 +470,20 @@ export async function applyRippleApply(
     const before = events.find((e) => e.id === c.id);
     return { id: c.id, previous: { date: before?.date ?? '', startsAt: before?.startsAt } };
   });
-  deps.dispatch({ type: 'RIPPLE_APPLY' });
+  deps.dispatch({ type: TRIP_ACTION.RIPPLE_APPLY });
   deps.lastAction.current = { kind: 'rippleApply', items };
   try {
     for (const c of ripple.candidates) {
       const input = { startsAt: c.startsAt };
       const result = await restOrQueue<MoveEventResult>(
         deps.tripId,
-        { verb: 'move', eventId: c.id, input, confirm: false },
+        { verb: OUTBOX_VERB.MOVE, eventId: c.id, input, confirm: false },
         () => moveEvent(deps.tripId, c.id, input),
       );
-      if (result) deps.dispatch({ type: 'RECONCILE_EVENT', event: result.event });
+      if (result) deps.dispatch({ type: TRIP_ACTION.RECONCILE_EVENT, event: result.event });
     }
   } catch (err) {
-    deps.dispatch({ type: 'UNDO' });
+    deps.dispatch({ type: TRIP_ACTION.UNDO });
     writeErrorToast(deps.toast, err);
   }
 }
@@ -479,7 +493,7 @@ async function reverseRest(tripId: string, desc: UndoDescriptor): Promise<void> 
     case 'status':
       await restOrQueue(
         tripId,
-        { verb: 'setStatus', eventId: desc.id, status: desc.previous },
+        { verb: OUTBOX_VERB.SET_STATUS, eventId: desc.id, status: desc.previous },
         () => setEventStatus(tripId, desc.id, desc.previous),
       );
       return;
@@ -487,22 +501,26 @@ async function reverseRest(tripId: string, desc: UndoDescriptor): Promise<void> 
       const input = { date: desc.previous.date, startsAt: desc.previous.startsAt };
       await restOrQueue(
         tripId,
-        { verb: 'move', eventId: desc.id, input, confirm: desc.isHard },
+        { verb: OUTBOX_VERB.MOVE, eventId: desc.id, input, confirm: desc.isHard },
         () => moveEvent(tripId, desc.id, input, desc.isHard),
       );
       return;
     }
     case 'create':
-      await restOrQueue(tripId, { verb: 'delete', eventId: desc.id, confirm: false }, () =>
-        deleteEvent(tripId, desc.id),
+      await restOrQueue(
+        tripId,
+        { verb: OUTBOX_VERB.DELETE, eventId: desc.id, confirm: false },
+        () => deleteEvent(tripId, desc.id),
       );
       return;
     case 'rippleApply':
       await Promise.all(
         desc.items.map((i) => {
           const input = { date: i.previous.date, startsAt: i.previous.startsAt };
-          return restOrQueue(tripId, { verb: 'move', eventId: i.id, input, confirm: false }, () =>
-            moveEvent(tripId, i.id, input),
+          return restOrQueue(
+            tripId,
+            { verb: OUTBOX_VERB.MOVE, eventId: i.id, input, confirm: false },
+            () => moveEvent(tripId, i.id, input),
           );
         }),
       );
@@ -510,13 +528,15 @@ async function reverseRest(tripId: string, desc: UndoDescriptor): Promise<void> 
     case 'update':
       await restOrQueue(
         tripId,
-        { verb: 'update', eventId: desc.id, input: desc.previous, confirm: desc.isHard },
+        { verb: OUTBOX_VERB.UPDATE, eventId: desc.id, input: desc.previous, confirm: desc.isHard },
         () => updateEvent(tripId, desc.id, desc.previous, desc.isHard),
       );
       return;
     case 'delete': {
       const input = toCreateEventInput(desc.event);
-      await restOrQueue(tripId, { verb: 'create', input }, () => createEvent(tripId, input));
+      await restOrQueue(tripId, { verb: OUTBOX_VERB.CREATE, input }, () =>
+        createEvent(tripId, input),
+      );
       return;
     }
     case 'reorder':
@@ -524,14 +544,14 @@ async function reverseRest(tripId: string, desc: UndoDescriptor): Promise<void> 
         desc.items.map((i) =>
           restOrQueue(
             tripId,
-            { verb: 'update', eventId: i.id, input: i.previous, confirm: i.isHard },
+            { verb: OUTBOX_VERB.UPDATE, eventId: i.id, input: i.previous, confirm: i.isHard },
             () => updateEvent(tripId, i.id, i.previous, i.isHard),
           ),
         ),
       );
       return;
     case 'addMaybe':
-      await restOrQueue(tripId, { verb: 'deleteMaybeItem', maybeItemId: desc.id }, () =>
+      await restOrQueue(tripId, { verb: OUTBOX_VERB.DELETE_MAYBE_ITEM, maybeItemId: desc.id }, () =>
         deleteMaybeItem(tripId, desc.id),
       );
       return;
@@ -542,25 +562,29 @@ async function reverseRest(tripId: string, desc: UndoDescriptor): Promise<void> 
         icon: desc.item.icon,
         category: desc.item.category,
       };
-      await restOrQueue(tripId, { verb: 'createMaybeItem', input }, () =>
+      await restOrQueue(tripId, { verb: OUTBOX_VERB.CREATE_MAYBE_ITEM, input }, () =>
         createMaybeItem(tripId, input),
       );
       return;
     }
     case 'park': {
       // Un-park: drop the idea and put the event back.
-      await restOrQueue(tripId, { verb: 'deleteMaybeItem', maybeItemId: desc.maybeId }, () =>
-        deleteMaybeItem(tripId, desc.maybeId),
+      await restOrQueue(
+        tripId,
+        { verb: OUTBOX_VERB.DELETE_MAYBE_ITEM, maybeItemId: desc.maybeId },
+        () => deleteMaybeItem(tripId, desc.maybeId),
       );
       const input = toCreateEventInput(desc.event);
-      await restOrQueue(tripId, { verb: 'create', input }, () => createEvent(tripId, input));
+      await restOrQueue(tripId, { verb: OUTBOX_VERB.CREATE, input }, () =>
+        createEvent(tripId, input),
+      );
     }
   }
 }
 
 export async function applyUndo(deps: VerbDeps): Promise<void> {
   const desc = deps.lastAction.current;
-  deps.dispatch({ type: 'UNDO' });
+  deps.dispatch({ type: TRIP_ACTION.UNDO });
   deps.lastAction.current = null;
   if (!desc) return;
   try {
@@ -706,6 +730,6 @@ export function useVerbs() {
       void applyRippleApply(deps, ripple, events);
       toast(ICONS.done, t.toast.rippleApplied, undo);
     },
-    rippleDismiss: () => dispatch({ type: 'RIPPLE_DISMISS' }),
+    rippleDismiss: () => dispatch({ type: TRIP_ACTION.RIPPLE_DISMISS }),
   };
 }

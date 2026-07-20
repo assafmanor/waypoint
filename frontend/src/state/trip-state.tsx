@@ -64,6 +64,7 @@ import {
   flushOutbox,
   getSyncFailures,
   isOffline,
+  OUTBOX_VERB,
   restOrQueue,
   subscribeSyncFailures,
 } from '../lib/outbox';
@@ -104,35 +105,60 @@ interface State extends Snapshot {
   undo: Snapshot | null; // state to restore for the last undoable action
 }
 
+/** Reducer action discriminants. Named so the reducer `switch`, every
+ *  `dispatch`, and the `Action` union all reference one source instead of
+ *  spelling the string (the same treatment as the outbox `OUTBOX_VERB`). */
+export const TRIP_ACTION = {
+  SET_STATUS: 'SET_STATUS',
+  DELAY: 'DELAY',
+  SCHEDULE: 'SCHEDULE',
+  RIPPLE_APPLY: 'RIPPLE_APPLY',
+  RIPPLE_DISMISS: 'RIPPLE_DISMISS',
+  UNDO: 'UNDO',
+  CREATE_EVENT: 'CREATE_EVENT',
+  UPDATE_EVENT: 'UPDATE_EVENT',
+  DELETE_EVENT: 'DELETE_EVENT',
+  REORDER: 'REORDER',
+  ADD_MAYBE: 'ADD_MAYBE',
+  REMOVE_MAYBE: 'REMOVE_MAYBE',
+  PARK_EVENT: 'PARK_EVENT',
+  RECONCILE_EVENT: 'RECONCILE_EVENT',
+  SET_RIPPLE: 'SET_RIPPLE',
+  REMOTE_EVENT_CHANGE: 'REMOTE_EVENT_CHANGE',
+  RESYNC: 'RESYNC',
+} as const;
+
+export type TripActionType = (typeof TRIP_ACTION)[keyof typeof TRIP_ACTION];
+
 export type Action =
-  | { type: 'SET_STATUS'; id: string; status: TripEvent['status'] }
-  | { type: 'DELAY'; id: string; minutes: number }
-  | { type: 'SCHEDULE'; event: TripEvent; maybeId: string }
-  | { type: 'RIPPLE_APPLY' }
-  | { type: 'RIPPLE_DISMISS' }
-  | { type: 'UNDO' }
+  | { type: typeof TRIP_ACTION.SET_STATUS; id: string; status: TripEvent['status'] }
+  | { type: typeof TRIP_ACTION.DELAY; id: string; minutes: number }
+  | { type: typeof TRIP_ACTION.SCHEDULE; event: TripEvent; maybeId: string }
+  | { type: typeof TRIP_ACTION.RIPPLE_APPLY }
+  | { type: typeof TRIP_ACTION.RIPPLE_DISMISS }
+  | { type: typeof TRIP_ACTION.UNDO }
   // T-047: create/edit/delete UI verbs.
-  | { type: 'CREATE_EVENT'; event: TripEvent }
-  | { type: 'UPDATE_EVENT'; id: string; patch: Partial<TripEvent> }
-  | { type: 'DELETE_EVENT'; id: string }
+  | { type: typeof TRIP_ACTION.CREATE_EVENT; event: TripEvent }
+  | { type: typeof TRIP_ACTION.UPDATE_EVENT; id: string; patch: Partial<TripEvent> }
+  | { type: typeof TRIP_ACTION.DELETE_EVENT; id: string }
   // Plan-mode builder reorder: swap two adjacent events' slots atomically so
   // undo captures one pre-swap snapshot (a two-UPDATE_EVENT sequence would
   // overwrite the undo snapshot on the second dispatch).
   // Plan-mode builder reorder: reassign soft events' time slots atomically so
   // undo captures one pre-reorder snapshot (a sequence of UPDATE_EVENTs would
   // overwrite the undo snapshot on each dispatch).
-  | { type: 'REORDER'; patches: { id: string; patch: Partial<TripEvent> }[] }
+  | { type: typeof TRIP_ACTION.REORDER; patches: { id: string; patch: Partial<TripEvent> }[] }
   // Maybe-shelf add/remove (Plan-mode Tier 3 build-the-shelf).
-  | { type: 'ADD_MAYBE'; item: MaybeItem }
-  | { type: 'REMOVE_MAYBE'; id: string }
+  | { type: typeof TRIP_ACTION.ADD_MAYBE; item: MaybeItem }
+  | { type: typeof TRIP_ACTION.REMOVE_MAYBE; id: string }
   // Park an event onto the shelf: it leaves the day and becomes a maybe idea,
   // atomically (one undo snapshot).
-  | { type: 'PARK_EVENT'; eventId: string; item: MaybeItem }
+  | { type: typeof TRIP_ACTION.PARK_EVENT; eventId: string; item: MaybeItem }
   // T-014: the REST write layer (verbs.ts) reconciles/broadcasts through these.
-  | { type: 'RECONCILE_EVENT'; event: TripEvent }
-  | { type: 'SET_RIPPLE'; ripple: RippleSuggestion | null }
-  | { type: 'REMOTE_EVENT_CHANGE'; change: Change }
-  | { type: 'RESYNC'; events: TripEvent[]; maybeItems: MaybeItem[] };
+  | { type: typeof TRIP_ACTION.RECONCILE_EVENT; event: TripEvent }
+  | { type: typeof TRIP_ACTION.SET_RIPPLE; ripple: RippleSuggestion | null }
+  | { type: typeof TRIP_ACTION.REMOTE_EVENT_CHANGE; change: Change }
+  | { type: typeof TRIP_ACTION.RESYNC; events: TripEvent[]; maybeItems: MaybeItem[] };
 
 // Compare/sort by instant, never by string: a delayed event's startsAt is a
 // Z-normalised ISO while fixtures carry an explicit offset — lexical compare
@@ -151,13 +177,13 @@ export function initialState(seed: Snapshot = { events: EVENTS, maybeItems: MAYB
 
 export function reducer(state: State, action: Action): State {
   switch (action.type) {
-    case 'SET_STATUS': {
+    case TRIP_ACTION.SET_STATUS: {
       const events = state.events.map((e) =>
         e.id === action.id ? { ...e, status: action.status } : e,
       );
       return { ...state, events, ripple: null, undo: snapshotOf(state) };
     }
-    case 'DELAY': {
+    case TRIP_ACTION.DELAY: {
       // Ripple is server-authoritative now (T-014) — verbs.ts's move() response
       // sets it via SET_RIPPLE once the REST call resolves.
       const events = state.events.map((e) =>
@@ -171,14 +197,14 @@ export function reducer(state: State, action: Action): State {
       );
       return { ...state, events, ripple: null, undo: snapshotOf(state) };
     }
-    case 'SCHEDULE': {
+    case TRIP_ACTION.SCHEDULE: {
       const events = [...state.events, action.event];
       const maybeItems = state.maybeItems.map((m) =>
         m.id === action.maybeId ? { ...m, consumed: true } : m,
       );
       return { ...state, events, maybeItems, ripple: null, undo: snapshotOf(state) };
     }
-    case 'RIPPLE_APPLY': {
+    case TRIP_ACTION.RIPPLE_APPLY: {
       if (!state.ripple) return state;
       const moves = new Map(state.ripple.candidates.map((c) => [c.id, c]));
       const events = state.events.map((e) => {
@@ -187,23 +213,23 @@ export function reducer(state: State, action: Action): State {
       });
       return { ...state, events, ripple: null, undo: snapshotOf(state) };
     }
-    case 'RIPPLE_DISMISS':
+    case TRIP_ACTION.RIPPLE_DISMISS:
       return { ...state, ripple: null };
-    case 'UNDO':
+    case TRIP_ACTION.UNDO:
       return state.undo ? { ...state, ...state.undo, ripple: null, undo: null } : state;
-    case 'CREATE_EVENT': {
+    case TRIP_ACTION.CREATE_EVENT: {
       const events = [...state.events, action.event];
       return { ...state, events, ripple: null, undo: snapshotOf(state) };
     }
-    case 'UPDATE_EVENT': {
+    case TRIP_ACTION.UPDATE_EVENT: {
       const events = state.events.map((e) => (e.id === action.id ? { ...e, ...action.patch } : e));
       return { ...state, events, ripple: null, undo: snapshotOf(state) };
     }
-    case 'DELETE_EVENT': {
+    case TRIP_ACTION.DELETE_EVENT: {
       const events = state.events.filter((e) => e.id !== action.id);
       return { ...state, events, ripple: null, undo: snapshotOf(state) };
     }
-    case 'REORDER': {
+    case TRIP_ACTION.REORDER: {
       const patches = new Map(action.patches.map((p) => [p.id, p.patch]));
       const events = state.events.map((e) => {
         const patch = patches.get(e.id);
@@ -211,21 +237,21 @@ export function reducer(state: State, action: Action): State {
       });
       return { ...state, events, ripple: null, undo: snapshotOf(state) };
     }
-    case 'ADD_MAYBE':
+    case TRIP_ACTION.ADD_MAYBE:
       return {
         ...state,
         maybeItems: [...state.maybeItems, action.item],
         ripple: null,
         undo: snapshotOf(state),
       };
-    case 'REMOVE_MAYBE':
+    case TRIP_ACTION.REMOVE_MAYBE:
       return {
         ...state,
         maybeItems: state.maybeItems.filter((m) => m.id !== action.id),
         ripple: null,
         undo: snapshotOf(state),
       };
-    case 'PARK_EVENT':
+    case TRIP_ACTION.PARK_EVENT:
       return {
         ...state,
         events: state.events.filter((e) => e.id !== action.eventId),
@@ -233,18 +259,18 @@ export function reducer(state: State, action: Action): State {
         ripple: null,
         undo: snapshotOf(state),
       };
-    case 'RECONCILE_EVENT': {
+    case TRIP_ACTION.RECONCILE_EVENT: {
       const exists = state.events.some((e) => e.id === action.event.id);
       const events = exists
         ? state.events.map((e) => (e.id === action.event.id ? action.event : e))
         : [...state.events, action.event];
       return { ...state, events };
     }
-    case 'SET_RIPPLE':
+    case TRIP_ACTION.SET_RIPPLE:
       return { ...state, ripple: action.ripple };
-    case 'REMOTE_EVENT_CHANGE':
+    case TRIP_ACTION.REMOTE_EVENT_CHANGE:
       return { ...state, events: applyRemoteEventChange(state.events, action.change) };
-    case 'RESYNC':
+    case TRIP_ACTION.RESYNC:
       return { ...state, events: action.events, maybeItems: action.maybeItems, ripple: null };
     default:
       return state;
@@ -573,7 +599,7 @@ function TripReady({
   // in lib/cache.ts. Setters + dispatch are stable, so this only rebinds per trip.
   const memoryChannels = useMemo<Partial<Record<EntityType, (change: Change) => void>>>(
     () => ({
-      [ENTITY_TYPE.EVENT]: (change) => dispatch({ type: 'REMOTE_EVENT_CHANGE', change }),
+      [ENTITY_TYPE.EVENT]: (change) => dispatch({ type: TRIP_ACTION.REMOTE_EVENT_CHANGE, change }),
       [ENTITY_TYPE.TRIP]: (change) =>
         change.action === CHANGE_ACTION.DELETE
           ? setTripDeleted(true)
@@ -636,7 +662,7 @@ function TripReady({
         (s) => {
           lastSeqRef.current = s.latestSeq;
           void cacheSnapshot(tripId, s);
-          dispatch({ type: 'RESYNC', events: s.events, maybeItems: s.maybeItems });
+          dispatch({ type: TRIP_ACTION.RESYNC, events: s.events, maybeItems: s.maybeItems });
           setTrip(s.trip);
           setMembers(s.members);
           setBookings(s.bookings);
@@ -749,8 +775,10 @@ function TripReady({
         const previous = trip;
         setTrip((prev) => ({ ...prev, ...input })); // optimistic
         try {
-          const canonical = await restOrQueue(tripId, { verb: 'updateTrip', input }, () =>
-            apiUpdateTrip(tripId, input),
+          const canonical = await restOrQueue(
+            tripId,
+            { verb: OUTBOX_VERB.UPDATE_TRIP, input },
+            () => apiUpdateTrip(tripId, input),
           );
           if (canonical) setTrip(canonical); // reconcile with server truth
           // Honest toast: `undefined` means the write was queued offline, not saved
@@ -768,8 +796,10 @@ function TripReady({
         const previous = members;
         setMembers((prev) => prev.map((m) => (m.userId === userId ? { ...m, role } : m)));
         try {
-          const canonical = await restOrQueue(tripId, { verb: 'setMemberRole', userId, role }, () =>
-            apiSetMemberRole(tripId, userId, role),
+          const canonical = await restOrQueue(
+            tripId,
+            { verb: OUTBOX_VERB.SET_MEMBER_ROLE, userId, role },
+            () => apiSetMemberRole(tripId, userId, role),
           );
           if (canonical)
             setMembers((prev) => prev.map((m) => (m.id === canonical.id ? canonical : m)));
@@ -786,7 +816,7 @@ function TripReady({
         const previous = members;
         setMembers((prev) => prev.filter((m) => m.userId !== userId));
         try {
-          await restOrQueue(tripId, { verb: 'removeMember', userId }, () =>
+          await restOrQueue(tripId, { verb: OUTBOX_VERB.REMOVE_MEMBER, userId }, () =>
             apiRemoveMember(tripId, userId),
           );
         } catch (err) {
@@ -796,7 +826,7 @@ function TripReady({
       },
       deleteTrip: async () => {
         try {
-          await restOrQueue(tripId, { verb: 'deleteTrip' }, () => apiDeleteTrip(tripId));
+          await restOrQueue(tripId, { verb: OUTBOX_VERB.DELETE_TRIP }, () => apiDeleteTrip(tripId));
           void clearTripCache(tripId);
           setTripDeleted(true);
         } catch (err) {
@@ -829,7 +859,7 @@ function TripReady({
         try {
           const canonical = await restOrQueue(
             tripId,
-            { verb: 'createBooking', input: withId },
+            { verb: OUTBOX_VERB.CREATE_BOOKING, input: withId },
             () => apiCreateBooking(tripId, withId),
           );
           if (canonical) setBookings((prev) => prev.map((b) => (b.id === id ? canonical : b)));
@@ -867,7 +897,7 @@ function TripReady({
         try {
           const canonical = await restOrQueue(
             tripId,
-            { verb: 'updateBooking', bookingId, input },
+            { verb: OUTBOX_VERB.UPDATE_BOOKING, bookingId, input },
             () => apiUpdateBooking(tripId, bookingId, input),
           );
           if (canonical)
@@ -904,7 +934,7 @@ function TripReady({
           await restOrQueue(
             tripId,
             {
-              verb: 'deleteBooking',
+              verb: OUTBOX_VERB.DELETE_BOOKING,
               bookingId,
               confirm: !!opts.confirm,
               deleteEvents: !!opts.deleteEvents,
@@ -933,8 +963,10 @@ function TripReady({
         const previous = places;
         setPlaces((prev) => [...prev, optimistic]);
         try {
-          const canonical = await restOrQueue(tripId, { verb: 'createPlace', input: withId }, () =>
-            apiCreatePlace(tripId, withId),
+          const canonical = await restOrQueue(
+            tripId,
+            { verb: OUTBOX_VERB.CREATE_PLACE, input: withId },
+            () => apiCreatePlace(tripId, withId),
           );
           if (canonical) setPlaces((prev) => prev.map((p) => (p.id === id ? canonical : p)));
         } catch (err) {
@@ -948,8 +980,10 @@ function TripReady({
         const previous = places;
         setPlaces((prev) => prev.map((p) => (p.id === placeId ? { ...p, ...input } : p)));
         try {
-          const canonical = await restOrQueue(tripId, { verb: 'updatePlace', placeId, input }, () =>
-            apiUpdatePlace(tripId, placeId, input),
+          const canonical = await restOrQueue(
+            tripId,
+            { verb: OUTBOX_VERB.UPDATE_PLACE, placeId, input },
+            () => apiUpdatePlace(tripId, placeId, input),
           );
           if (canonical) setPlaces((prev) => prev.map((p) => (p.id === placeId ? canonical : p)));
         } catch (err) {
