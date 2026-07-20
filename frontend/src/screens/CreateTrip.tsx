@@ -19,6 +19,7 @@ import {
 } from '@waypoint/shared';
 import { useIsOffline } from '../lib/outbox';
 import { useActiveTripId } from '../state/active-trip-id';
+import { useAppBack } from '../state/nav-state';
 import { createInvite, createTrip } from '../lib/api';
 import { suggestTripName } from '../lib/trip-name';
 import { useToast } from '../ui/Toast';
@@ -33,6 +34,7 @@ const DEVICE_TZ = Intl.DateTimeFormat().resolvedOptions().timeZone;
 
 export function CreateTrip() {
   const navigate = useNavigate();
+  const goBack = useAppBack();
   const { setTripId } = useActiveTripId();
   const offline = useIsOffline();
   const [createdTrip, setCreatedTrip] = useState<Trip | null>(null);
@@ -97,7 +99,7 @@ export function CreateTrip() {
     <div className="app">
       <header className="new-head">
         <div className="new-head-row">
-          <button className="back" onClick={() => navigate(-1)} aria-label={t.shell.newTrip.back}>
+          <button className="back" onClick={goBack} aria-label={t.shell.newTrip.back}>
             <NavArrow variant="back" />
           </button>
           <div className="new-title">{t.shell.newTrip.title}</div>

@@ -1,6 +1,6 @@
 # 0035 — In-app "back" is one guarded history step; the PWA return gesture triggers it
 
-**Status:** Accepted
+**Status:** Accepted — **mechanism superseded by [0090](0090-back-is-computed-from-nav-state.md)** (2026-07-20). The **behavior** below stands and is still the reference — the layer-peeling precedence (§2), the two-tap trip-exit confirm, the single-source day model (§4), and the RTL return gesture (§5). What changed: back is no longer resolved by traversing browser history (`history.back()` / `navigate(-1)` + the `homeBehind` / history-index machinery in the 2026-07-19 refinements); it is computed as a pure function of the current nav state and executed as an explicit navigation. Read §2/§4/§5 for _what_ back does; read [0090](0090-back-is-computed-from-nav-state.md) for _how_ it's now resolved.
 **Date:** 2026-07-14
 **Refines:** [0024](0024-app-shell-and-trip-lifecycle.md) (app shell & routing), [0033](0033-all-trips-home.md) (all-trips as the "out and across" surface), [0007](0007-platform-pwa.md) (installed PWA), [0017](0017-mobile-first-device-targets.md) (phone-first, touch-first)
 

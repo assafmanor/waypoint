@@ -692,7 +692,7 @@ export function App() {
             <ConfirmProvider>
               <OutboxAutoFlush />
               {/* #app-shift is the parallax target the return gesture nudges
-                  (ADR-0035 §5); EdgeSwipeBack sits outside it so it isn't moved. */}
+                  (ADR-0090); EdgeSwipeBack sits outside it so it isn't moved. */}
               <div id="app-shift">
                 <AppRoutes />
               </div>
