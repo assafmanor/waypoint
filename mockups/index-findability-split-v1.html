@@ -33,7 +33,20 @@
      Demo toggle: טיול עמוס (17 bookings) vs טיול קטן (a handful) — same data as
      v1, so the two files compare like for like. Chrome is Trip (night); Plan is
      the same content under the drafting-table reskin (ADR-0049 — mode is chrome
-     only). -->
+     only).
+
+     SCALE CHECK (2026-07-20, same session): Assaf wants to add more content
+     types to the Index later — notes, research, media. Three disabled "בקרוב"
+     placeholder tiles were added below the two real ones to see how a 5-tile
+     landing reads once that happens, rather than guessing. This is the strongest
+     argument FOR the split: a landing scales by adding one tile per type; the v1
+     single-page approach scales by stacking another whole collapsible
+     section+chips+search+add-button per type, which gets crowded past ~2. One
+     naming flag: "מחקר" (research) already names a shipped-scoped feature — place
+     search + pin → maybe-shelf on the Map tab (feature-catalog.md, Plan mode). An
+     Index "research" tile needs to mean something else (saved links/ideas?) or
+     it duplicates that surface — worth resolving before this is real, not a
+     mockup detail. -->
 <html lang="he" dir="rtl">
   <head>
     <meta charset="UTF-8" />
@@ -366,6 +379,18 @@
         font-size: 17px;
         flex: 0 0 auto;
       }
+      .tile.placeholder {
+        opacity: 0.55;
+        cursor: default;
+      }
+      .tile-soon {
+        font-size: 9.5px;
+        font-weight: 700;
+        color: var(--muted);
+        background: rgba(22, 35, 61, 0.06);
+        border-radius: 999px;
+        padding: 1.5px 7px;
+      }
 
       /* ===== NEW: the sub-screen back row, replacing the tab-level chrome
          while inside a dedicated bookings/documents screen. ===== */
@@ -667,7 +692,9 @@
     <p class="adr-note">
       הזמנות ומסמכים הופכים לשני "אריחים" במסך נחיתה; לחיצה פותחת מסך ייעודי +
       שורת חזרה. הצ׳יפים / החיפוש / כיווץ העבר זהים ל-v1 — אבל כיווץ המקטע (מנגנון
-      4 שם) מיותר כאן: כל רשימה כבר מקבלת מסך שלם לבד.
+      4 שם) מיותר כאן: כל רשימה כבר מקבלת מסך שלם לבד. שלושת האריחים המעומעמים
+      "בקרוב" הם בדיקת קנה-מידה בלבד — לא פיצ׳ר אמיתי — לבחון איך נחיתה עם 5
+      אריחים נראית לקראת הערות/מחקר/מדיה.
     </p>
 
     <div class="demo-toggle" role="tablist" aria-label="גודל טיול">
@@ -733,6 +760,43 @@
               <div class="tile-sub">🔒 דרכונים · ביטוח נסיעות · ויזות · אחר</div>
             </div>
             <div class="tile-chev">‹</div>
+          </button>
+
+          <!-- ===== SCALE CHECK (not a real feature) — three placeholder tiles for
+               content types Assaf mentioned wanting later (notes/research/media),
+               added ONLY to see how a 5-tile landing reads once Index outgrows
+               bookings+documents. Disabled + "בקרוב" badge, no screen behind them. ===== -->
+          <button type="button" class="tile placeholder" disabled>
+            <div class="tile-ic">📝</div>
+            <div class="tile-main">
+              <div class="tile-top">
+                <span class="tile-t">הערות</span>
+                <span class="tile-soon">בקרוב</span>
+              </div>
+              <div class="tile-sub">הערות חופשיות לקבוצה</div>
+            </div>
+          </button>
+
+          <button type="button" class="tile placeholder" disabled>
+            <div class="tile-ic">🔎</div>
+            <div class="tile-main">
+              <div class="tile-top">
+                <span class="tile-t">מחקר</span>
+                <span class="tile-soon">בקרוב</span>
+              </div>
+              <div class="tile-sub">שמור קישורים ורעיונות</div>
+            </div>
+          </button>
+
+          <button type="button" class="tile placeholder" disabled>
+            <div class="tile-ic">🖼️</div>
+            <div class="tile-main">
+              <div class="tile-top">
+                <span class="tile-t">מדיה</span>
+                <span class="tile-soon">בקרוב</span>
+              </div>
+              <div class="tile-sub">תמונות וסרטונים מהטיול</div>
+            </div>
           </button>
         </div>
 
