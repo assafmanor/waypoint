@@ -154,7 +154,7 @@ export function Home({ onNavigate }: { onNavigate?: (tab: TabId) => void }) {
   const wifi = hotelWifi(bookings, events, nowMs);
   // Quick-access derived tiles (ADR-0050): the next confirmation code you'll need
   // (may differ from the board's immediate next event) + WiFi from the hotel
-  // booking, shown only while you're checked in (ADR-0087). Each is absent when
+  // booking, shown only while you're checked in (ADR-0088). Each is absent when
   // there's no source; the grid reflows.
   const nextCoded = nextCodedBooking(bookings, events, now.getTime());
   const quickTileCount = (nextCoded ? 1 : 0) + (wifi ? 1 : 0) + 1; // documents is always present

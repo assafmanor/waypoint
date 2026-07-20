@@ -19,7 +19,7 @@ export interface HotelWifi {
 const hasWifi = (w?: HotelWifi): w is HotelWifi => !!w && (!!w.network || !!w.password);
 
 /** The hotel WiFi to surface on Home's quick-access — only while you're checked in
- *  (ADR-0087): among hotel bookings carrying `details.wifi`, the one whose linked
+ *  (ADR-0088): among hotel bookings carrying `details.wifi`, the one whose linked
  *  stay event span contains `now` (check-in ≤ now < check-out). Matches ADR-0059's
  *  "inside a booking = where you are": before check-in and after check-out the
  *  tile is absent, so WiFi surfaces exactly when it's useful. A hotel with no

@@ -1,4 +1,4 @@
-# 0087 — Home WiFi quick-access is gated to the hotel stay
+# 0088 — Home WiFi quick-access is gated to the hotel stay
 
 **Status:** Accepted (2026-07-20)
 **Date:** 2026-07-20
