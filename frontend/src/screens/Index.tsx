@@ -12,7 +12,7 @@ import { splitBookings, scheduleLabel, type BookingRow } from '../lib/index-book
 import { bookingDurationUnit, formatBookingDuration } from '../lib/booking-timing';
 import { placeName } from '../lib/places';
 import { badgeClassForBookingType } from '../lib/transitions';
-import { EntitySyncBadge } from '../ui/EntitySyncBadge';
+import { EntitySyncBadge, useUnsynced } from '../ui/EntitySyncBadge';
 import { BOOKING_TYPE_ICON, CODE_PREFIX, ICONS } from '../constants';
 import { BookingSheet } from '../ui/BookingSheet';
 import { BookingDetail } from '../ui/BookingDetail';
@@ -164,6 +164,8 @@ function BookingLi({
   const badgeTone: BadgeTone | undefined =
     badgeClass === 'stay' || badgeClass === 'trans' ? badgeClass : undefined;
   const isHard = event?.kind === 'hard';
+  // A queued (pending) write fades the row to read as provisional (ADR-0092).
+  const unsynced = useUnsynced(booking.id);
 
   // The shared list-row (U-03): the badge+title open the read-only detail view
   // (ADR-0053); the "⋯" opens the manage sheet (edit / delete). The code chip
@@ -215,6 +217,7 @@ function BookingLi({
         )
       }
       sync={<EntitySyncBadge id={booking.id} />}
+      unsynced={unsynced}
       onManage={() => onManage(booking)}
       manageLabel={t.index.detail.actions}
     />

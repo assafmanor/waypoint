@@ -41,6 +41,10 @@ export interface EventCardProps {
    *  pending/failed cloud otherwise — so a settled day stays uncluttered. Renders
    *  on the meta line (below the title) so it can never reflow the title. */
   sync?: ReactNode;
+  /** Fades the card to read as provisional while a write is in transit
+   *  (ADR-0092): the screen passes `useUnsynced(id)`. Pending only — a failed
+   *  card stays full-opacity so its `cloud-bang` keeps drawing attention. */
+  unsynced?: boolean;
   /** A read-only past day (ADR-0029): create/edit/move locked; settle stays. */
   readOnly?: boolean;
   isOpen: boolean;
@@ -75,6 +79,7 @@ export function EventCard(props: EventCardProps) {
     kind,
     phase,
     sync,
+    unsynced,
     readOnly = false,
     isOpen,
     onToggle,
@@ -131,6 +136,7 @@ export function EventCard(props: EventCardProps) {
     isNow ? 'now' : '',
     isDone ? 'done' : '',
     isPassed && !isDone ? 'passed' : '',
+    unsynced ? 'unsynced' : '',
     isOpen && !showSettle ? 'open' : '',
   ]
     .filter(Boolean)

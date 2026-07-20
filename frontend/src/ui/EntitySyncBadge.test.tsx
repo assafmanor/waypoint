@@ -15,7 +15,7 @@ vi.mock('../lib/outbox', async (importOriginal) => {
   return { ...actual, useSyncStatus: () => h.status };
 });
 
-import { EntitySyncBadge } from './EntitySyncBadge';
+import { EntitySyncBadge, useUnsynced } from './EntitySyncBadge';
 
 describe('EntitySyncBadge', () => {
   afterEach(() => cleanup());
@@ -40,5 +40,26 @@ describe('EntitySyncBadge', () => {
     h.status = { state: 'synced' };
     render(<EntitySyncBadge id="x" showSynced />);
     expect(screen.getByRole('img', { name: t.sync.badge.synced })).toBeTruthy();
+  });
+});
+
+describe('useUnsynced (ADR-0092)', () => {
+  afterEach(() => cleanup());
+
+  // A probe component so the hook runs under React; renders the boolean it returns.
+  function Probe() {
+    return <span data-testid="u">{String(useUnsynced('x'))}</span>;
+  }
+
+  it('is true only while pending — synced and failed are not dimmed', () => {
+    h.status = { state: 'pending' };
+    expect(render(<Probe />).getByTestId('u').textContent).toBe('true');
+    cleanup();
+    h.status = { state: 'synced' };
+    expect(render(<Probe />).getByTestId('u').textContent).toBe('false');
+    cleanup();
+    // failed stays prominent (full opacity) — its cloud-bang must not recede.
+    h.status = { state: 'failed', reason: 'X' };
+    expect(render(<Probe />).getByTestId('u').textContent).toBe('false');
   });
 });

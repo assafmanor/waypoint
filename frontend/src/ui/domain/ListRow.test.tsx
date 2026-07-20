@@ -53,6 +53,14 @@ describe('ListRow', () => {
     expect(container.querySelector('.wp-listrow-badge.stay')).toBeTruthy();
   });
 
+  it('fades the row while unsynced (provisional), full-opacity otherwise (ADR-0092)', () => {
+    const on = render(<ListRow icon="📄" onOpen={() => {}} openLabel="d" title="d" unsynced />);
+    expect(on.container.querySelector('.wp-listrow.is-unsynced')).toBeTruthy();
+    cleanup();
+    const off = render(<ListRow icon="📄" onOpen={() => {}} openLabel="d" title="d" />);
+    expect(off.container.querySelector('.wp-listrow.is-unsynced')).toBeNull();
+  });
+
   it('renders a right slot (a per-row SyncBadge lives here — the Wave-2 wiring)', () => {
     render(
       <ListRow

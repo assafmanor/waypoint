@@ -40,6 +40,7 @@ import {
   routeTitle,
 } from '../lib/booking-edit';
 import { placeName } from '../lib/places';
+import { withChangeGroup } from '../lib/outbox';
 import { isoToTimeInput, zonedIso } from '../lib/time';
 import { bookingDurationUnit, timingLabels } from '../lib/booking-timing';
 import { BOOKING_TYPE_ICON } from '../constants';
@@ -217,35 +218,43 @@ export function BookingSheet({
     }
     setSaving(true);
     try {
-      // Author places before the booking that FK-references them (see createPlace).
-      const fromPlaceId = isTransport ? await resolvePlaceId(origin) : undefined;
-      const toPlaceId = isTransport ? await resolvePlaceId(dest) : undefined;
-      const details = mergeBookingDetails(booking?.details, {
-        room: isHotel ? room : undefined,
-        notes,
-        wifiNetwork: isHotel ? wifiNetwork : undefined,
-        wifiPassword: isHotel ? wifiPassword : undefined,
-      });
-      const event = isSpan
-        ? buildSpanSeed({ startAt: spanStart, endAt: spanEnd, kind, icon, category }, trip.timezone)
-        : buildEventSeed({ date, start, end, kind, icon, category }, trip.timezone);
-      const base = {
-        title: finalTitle,
-        // Send the trimmed value even when empty: an empty string is the explicit
-        // "clear the code" intent (undefined would be dropped by JSON.stringify and
-        // read as "leave unchanged"). The backend normalizes empty → null.
-        confirmationCode: code.trim(),
-        details,
-        event,
-      };
-      if (isCreate) {
-        await indexVerbs.createBooking({ type, ...base, fromPlaceId, toPlaceId });
-      } else {
-        await indexVerbs.updateBooking(booking.id, {
-          ...base,
-          ...(isTransport ? { fromPlaceId, toPlaceId } : {}),
+      // One user action → one change group (ADR-0092): the places backing a
+      // transport route and the booking itself queue together and count as a
+      // single pending change, not three.
+      await withChangeGroup(async () => {
+        // Author places before the booking that FK-references them (see createPlace).
+        const fromPlaceId = isTransport ? await resolvePlaceId(origin) : undefined;
+        const toPlaceId = isTransport ? await resolvePlaceId(dest) : undefined;
+        const details = mergeBookingDetails(booking?.details, {
+          room: isHotel ? room : undefined,
+          notes,
+          wifiNetwork: isHotel ? wifiNetwork : undefined,
+          wifiPassword: isHotel ? wifiPassword : undefined,
         });
-      }
+        const event = isSpan
+          ? buildSpanSeed(
+              { startAt: spanStart, endAt: spanEnd, kind, icon, category },
+              trip.timezone,
+            )
+          : buildEventSeed({ date, start, end, kind, icon, category }, trip.timezone);
+        const base = {
+          title: finalTitle,
+          // Send the trimmed value even when empty: an empty string is the explicit
+          // "clear the code" intent (undefined would be dropped by JSON.stringify and
+          // read as "leave unchanged"). The backend normalizes empty → null.
+          confirmationCode: code.trim(),
+          details,
+          event,
+        };
+        if (isCreate) {
+          await indexVerbs.createBooking({ type, ...base, fromPlaceId, toPlaceId });
+        } else {
+          await indexVerbs.updateBooking(booking.id, {
+            ...base,
+            ...(isTransport ? { fromPlaceId, toPlaceId } : {}),
+          });
+        }
+      });
       onClose();
     } catch {
       setSaving(false); // the verb already toasted + rolled back

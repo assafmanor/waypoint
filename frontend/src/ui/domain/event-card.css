@@ -40,6 +40,13 @@
 .wp-event.done .wp-event-badge {
   background: rgba(60, 154, 107, 0.12);
 }
+/* An in-transit (pending) write reads as provisional (ADR-0092): the card fades
+   until the server confirms it, matching the Index/Documents rows. Pending only
+   — a failed card stays crisp so its cloud-bang keeps drawing attention. Placed
+   after .passed/.done so it wins when a queued edit lands on a past event. */
+.wp-event.unsynced {
+  opacity: 0.6;
+}
 
 /* Face — the tappable header (a toggle button; the settle variant is a div). */
 .wp-event-face {
