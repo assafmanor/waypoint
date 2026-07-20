@@ -6,8 +6,9 @@
 
      WHAT'S DIFFERENT FROM v1: the Index becomes a small LANDING with two tiles
      (🎫 הזמנות · 📎 מסמכים), each showing its count + a one-line preview. Tapping a
-     tile pushes a dedicated full screen for that list, with a back row ("→
-     אינדקס") to return. Because each list now owns its whole screen, the v1
+     tile pushes a dedicated full screen for that list, with an icon-only back
+     button + "אינדקס" label to return (matching the shipped `.back` pattern —
+     TripSettings.tsx/AllTrips.tsx). Because each list now owns its whole screen, the v1
      per-section shrink chevron (mechanism #4) is GONE — there's no second section
      competing for space anymore, so nothing needs collapsing away. Everything else
      carries over unchanged: the category filter chips + search box on the
@@ -240,6 +241,37 @@
         font-size: 11px;
         flex: 0 0 auto;
       }
+      /* Real SVG icons (ui/NavArrow.tsx, ui/Icon.tsx), not Unicode arrow glyphs —
+         glyphs like ‹/› are Bidi_Mirrored and silently flip direction inside
+         dir="rtl" (confirmed: intended-left "‹" renders pointing right here),
+         and a text triangle sits off-baseline in this font. SVGs + explicit
+         transforms are the only reliable way to control direction. Drawn for
+         the RTL locale: "forward" points left, "back" (scaleX(-1)) points right. */
+      .icon,
+      .nav-arrow {
+        display: inline-block;
+        vertical-align: -0.125em;
+        width: 1em;
+        height: 1em;
+        flex: 0 0 auto;
+      }
+      .nav-arrow-back {
+        transform: scaleX(-1);
+      }
+      /* Transport route (ui/RouteLabel.tsx): origin → destination laid out via
+         flex (direction: rtl), not embedded as text — a "→" character inside
+         RTL text also silently mirrors (confirmed on "טוקיו → קיוטו": it
+         rendered pointing at the origin, not the destination). */
+      .route {
+        display: inline-flex;
+        direction: rtl;
+        align-items: baseline;
+        font-weight: 700;
+      }
+      .route .arr {
+        color: var(--muted);
+        padding: 0 4px;
+      }
       .trip-sub {
         color: #9daac8;
         font-size: 13px;
@@ -393,29 +425,37 @@
       }
 
       /* ===== NEW: the sub-screen back row, replacing the tab-level chrome
-         while inside a dedicated bookings/documents screen. ===== */
+         while inside a dedicated bookings/documents screen. Icon-only button +
+         adjacent label, matching the shipped `.back` pattern (TripSettings.tsx/
+         AllTrips.tsx: an icon button holding just <NavArrow variant="back" />,
+         no text baked into the same control). ===== */
       .back-row {
+        display: flex;
+        align-items: center;
+        gap: 10px;
         padding-top: 12px;
         margin-bottom: 6px;
       }
-      .back-btn {
-        display: inline-flex;
-        align-items: center;
-        gap: 6px;
-        font: inherit;
-        font-weight: 700;
-        font-size: 13px;
+      .back-icon-btn {
+        width: 34px;
+        height: 34px;
+        border-radius: 10px;
+        background: var(--card);
+        border: 1px solid var(--line);
+        display: grid;
+        place-items: center;
         color: var(--ink);
-        background: none;
-        border: 0;
-        padding: 7px 6px 7px 2px;
-        margin-inline-start: -6px;
-        border-radius: 8px;
+        font-size: 15px;
         cursor: pointer;
       }
-      .back-btn:hover,
-      .back-btn:active {
+      .back-icon-btn:hover,
+      .back-icon-btn:active {
         background: rgba(22, 35, 61, 0.06);
+      }
+      .back-label {
+        font-family: 'Secular One', sans-serif;
+        font-size: 14.5px;
+        color: var(--ink);
       }
 
       .sec-title {
@@ -716,7 +756,7 @@
           <div>
             <button class="trip-switch" aria-label="החלף טיול · לכל הטיולים">
               <span class="trip-name">יפן ׳26</span>
-              <span class="chev">▾</span>
+              <span class="chev"><svg class="icon" viewBox="0 0 24 24" fill="currentColor" aria-hidden="true"><path d="M5 9l7 7 7-7z" /></svg></span>
             </button>
             <div class="trip-sub">טוקיו<span class="dot">•</span>יום 3 מתוך 10</div>
           </div>
@@ -747,7 +787,7 @@
               </div>
               <div class="tile-sub">🔗 הבא: Ichiran Ramen · היום 19:30 · 5 מהעבר</div>
             </div>
-            <div class="tile-chev">‹</div>
+            <div class="tile-chev"><svg class="nav-arrow nav-arrow-forward" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M20 12H4m6-6l-6 6 6 6" /></svg></div>
           </button>
 
           <button type="button" class="tile" onclick="showView('documents')">
@@ -759,7 +799,7 @@
               </div>
               <div class="tile-sub">🔒 דרכונים · ביטוח נסיעות · ויזות · אחר</div>
             </div>
-            <div class="tile-chev">‹</div>
+            <div class="tile-chev"><svg class="nav-arrow nav-arrow-forward" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M20 12H4m6-6l-6 6 6 6" /></svg></div>
           </button>
 
           <!-- ===== SCALE CHECK (not a real feature) — three placeholder tiles for
@@ -803,7 +843,8 @@
         <!-- ===== bookings: its own screen now, chips/search/past unchanged ===== -->
         <div class="view" id="view-bookings">
           <div class="back-row">
-            <button class="back-btn" onclick="showView('landing')">→ אינדקס</button>
+            <button class="back-icon-btn" onclick="showView('landing')" aria-label="חזרה לאינדקס"><svg class="nav-arrow nav-arrow-back" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M20 12H4m6-6l-6 6 6 6" /></svg></button>
+            <span class="back-label">אינדקס</span>
           </div>
 
           <div class="sec-title">
@@ -855,7 +896,7 @@
             <div class="li" data-cat="flight" data-search="ana832 טוקיו קיוטו na832">
               <div class="badge2">✈️</div>
               <div class="main">
-                <div class="t">טוקיו → קיוטו <span class="tag-type">טיסה</span></div>
+                <div class="t"><span class="route"><bdi>טוקיו</bdi><span class="arr"><svg class="nav-arrow nav-arrow-forward" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M20 12H4m6-6l-6 6 6 6" /></svg></span><bdi>קיוטו</bdi></span> <span class="tag-type">טיסה</span></div>
                 <div class="m"><span class="link-cue">🔗 מחר · 07:40</span></div>
               </div>
               <div class="right"><div class="code" dir="ltr">#NA832</div></div>
@@ -921,7 +962,7 @@
             <div class="li" data-cat="flight" data-search="nh845 חזרה טוקיו">
               <div class="badge2">✈️</div>
               <div class="main">
-                <div class="t">קיוטו → טוקיו (חזרה) <span class="tag-type">טיסה</span></div>
+                <div class="t"><span class="route"><bdi>קיוטו</bdi><span class="arr"><svg class="nav-arrow nav-arrow-forward" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M20 12H4m6-6l-6 6 6 6" /></svg></span><bdi>טוקיו</bdi></span> (חזרה) <span class="tag-type">טיסה</span></div>
                 <div class="m"><span class="link-cue">🔗 עוד 6 ימים · 21:10</span></div>
               </div>
               <div class="right"><div class="code" dir="ltr">#NH845</div></div>
@@ -1014,7 +1055,8 @@
         <!-- ===== documents: its own screen, content unchanged from v1 ===== -->
         <div class="view" id="view-documents">
           <div class="back-row">
-            <button class="back-btn" onclick="showView('landing')">→ אינדקס</button>
+            <button class="back-icon-btn" onclick="showView('landing')" aria-label="חזרה לאינדקס"><svg class="nav-arrow nav-arrow-back" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M20 12H4m6-6l-6 6 6 6" /></svg></button>
+            <span class="back-label">אינדקס</span>
           </div>
 
           <div class="sec-title">

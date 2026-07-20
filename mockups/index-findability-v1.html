@@ -229,6 +229,37 @@
         font-size: 11px;
         flex: 0 0 auto;
       }
+      /* Real SVG icons (ui/NavArrow.tsx, ui/Icon.tsx), not Unicode arrow glyphs —
+         glyphs like ‹/› are Bidi_Mirrored and silently flip direction inside
+         dir="rtl" (confirmed: intended-left "‹" renders pointing right here),
+         and a text triangle sits off-baseline in this font. SVGs + explicit
+         transforms are the only reliable way to control direction. Drawn for
+         the RTL locale: "forward" points left, "back" (scaleX(-1)) points right. */
+      .icon,
+      .nav-arrow {
+        display: inline-block;
+        vertical-align: -0.125em;
+        width: 1em;
+        height: 1em;
+        flex: 0 0 auto;
+      }
+      .nav-arrow-back {
+        transform: scaleX(-1);
+      }
+      /* Transport route (ui/RouteLabel.tsx): origin → destination laid out via
+         flex (direction: rtl), not embedded as text — a "→" character inside
+         RTL text also silently mirrors (confirmed on "טוקיו → קיוטו": it
+         rendered pointing at the origin, not the destination). */
+      .route {
+        display: inline-flex;
+        direction: rtl;
+        align-items: baseline;
+        font-weight: 700;
+      }
+      .route .arr {
+        color: var(--muted);
+        padding: 0 4px;
+      }
       .trip-sub {
         color: #9daac8;
         font-size: 13px;
@@ -651,7 +682,7 @@
           <div>
             <button class="trip-switch" aria-label="החלף טיול · לכל הטיולים">
               <span class="trip-name">יפן ׳26</span>
-              <span class="chev">▾</span>
+              <span class="chev"><svg class="icon" viewBox="0 0 24 24" fill="currentColor" aria-hidden="true"><path d="M5 9l7 7 7-7z" /></svg></span>
             </button>
             <div class="trip-sub">טוקיו<span class="dot">•</span>יום 3 מתוך 10</div>
           </div>
@@ -679,7 +710,7 @@
             aria-expanded="true"
             aria-controls="bookings-body"
           >
-            <span class="sec-chevron">▾</span>
+            <span class="sec-chevron"><svg class="icon" viewBox="0 0 24 24" fill="currentColor" aria-hidden="true"><path d="M5 9l7 7 7-7z" /></svg></span>
             <span>הזמנות</span>
             <span class="sec-count" id="count-bookings">17</span>
           </button>
@@ -730,7 +761,7 @@
           <div class="li" data-cat="flight" data-search="ana832 טוקיו קיוטו na832">
             <div class="badge2">✈️</div>
             <div class="main">
-              <div class="t">טוקיו → קיוטו <span class="tag-type">טיסה</span></div>
+              <div class="t"><span class="route"><bdi>טוקיו</bdi><span class="arr"><svg class="nav-arrow nav-arrow-forward" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M20 12H4m6-6l-6 6 6 6" /></svg></span><bdi>קיוטו</bdi></span> <span class="tag-type">טיסה</span></div>
               <div class="m"><span class="link-cue">🔗 מחר · 07:40</span></div>
             </div>
             <div class="right"><div class="code" dir="ltr">#NA832</div></div>
@@ -796,7 +827,7 @@
           <div class="li" data-cat="flight" data-search="nh845 חזרה טוקיו">
             <div class="badge2">✈️</div>
             <div class="main">
-              <div class="t">קיוטו → טוקיו (חזרה) <span class="tag-type">טיסה</span></div>
+              <div class="t"><span class="route"><bdi>קיוטו</bdi><span class="arr"><svg class="nav-arrow nav-arrow-forward" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M20 12H4m6-6l-6 6 6 6" /></svg></span><bdi>טוקיו</bdi></span> (חזרה) <span class="tag-type">טיסה</span></div>
               <div class="m"><span class="link-cue">🔗 עוד 6 ימים · 21:10</span></div>
             </div>
             <div class="right"><div class="code" dir="ltr">#NH845</div></div>
@@ -894,7 +925,7 @@
             aria-expanded="true"
             aria-controls="documents-body"
           >
-            <span class="sec-chevron">▾</span>
+            <span class="sec-chevron"><svg class="icon" viewBox="0 0 24 24" fill="currentColor" aria-hidden="true"><path d="M5 9l7 7 7-7z" /></svg></span>
             <span>מסמכים</span>
             <span class="sec-count" id="count-documents">6</span>
           </button>
