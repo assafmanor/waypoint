@@ -154,6 +154,15 @@ export function JoinTrip() {
             </linearGradient>
           </defs>
           <circle cx="256" cy="256" r="256" fill="url(#jg-board)" />
+          <circle
+            cx="256"
+            cy="256"
+            r="246"
+            fill="none"
+            stroke="#3FB3A3"
+            strokeWidth="18"
+            opacity={0.9}
+          />
           <g transform="translate(256 268) scale(0.66) translate(-256 -260)">
             <path
               d="M256 44 C150 44 66 126 66 230 C66 348 206 436 256 476 C306 436 446 348 446 230 C446 126 362 44 256 44 Z"
