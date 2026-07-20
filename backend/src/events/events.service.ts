@@ -2,6 +2,7 @@ import { randomUUID } from 'node:crypto';
 import { ConflictException, Injectable, NotFoundException } from '@nestjs/common';
 import { Prisma, type Event as PrismaEvent } from '@prisma/client';
 import {
+  ENTITY_TYPE,
   EVENT_KIND,
   EVENT_STATUS,
   type CreateEventInput,
@@ -69,7 +70,7 @@ export class EventsService {
       const { entity } = await this.changes.mutate({
         tripId,
         actorUserId,
-        entityType: 'event',
+        entityType: ENTITY_TYPE.EVENT,
         entityId: id,
         action: 'create',
         after: input,
@@ -136,7 +137,7 @@ export class EventsService {
     const { entity } = await this.changes.mutate({
       tripId,
       actorUserId,
-      entityType: 'event',
+      entityType: ENTITY_TYPE.EVENT,
       entityId: eventId,
       action: 'update',
       before: toEventDto(before),
@@ -175,7 +176,7 @@ export class EventsService {
     const { entity } = await this.changes.mutate({
       tripId,
       actorUserId,
-      entityType: 'event',
+      entityType: ENTITY_TYPE.EVENT,
       entityId: eventId,
       action: 'status',
       after: { status },
@@ -209,7 +210,7 @@ export class EventsService {
     const { entity } = await this.changes.mutate({
       tripId,
       actorUserId,
-      entityType: 'event',
+      entityType: ENTITY_TYPE.EVENT,
       entityId: eventId,
       action: 'move',
       before: toEventDto(before),
@@ -247,7 +248,7 @@ export class EventsService {
     await this.changes.mutate({
       tripId,
       actorUserId,
-      entityType: 'event',
+      entityType: ENTITY_TYPE.EVENT,
       entityId: eventId,
       action: 'delete',
       before: toEventDto(before),

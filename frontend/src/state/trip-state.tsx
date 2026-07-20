@@ -16,10 +16,13 @@ import {
 import { useNavigate, useSearchParams } from 'react-router-dom';
 import {
   BOOKING_SOURCE,
+  CHANGE_ACTION,
   CHANGES_PAGE_LIMIT,
+  ENTITY_TYPE,
   EVENT_STATUS,
   type Booking,
   type Change,
+  type EntityType,
   type CreateBookingInput,
   type CreatePlaceInput,
   type DocumentSummary,
@@ -257,7 +260,7 @@ function applyRemoteEventChange(events: TripEvent[], change: Change): TripEvent[
   // have no consuming UI yet (T-048 etc.), so this stays event-only. The Dexie
   // cache still stays coherent for all entity types via lib/cache.ts (T-058),
   // independent of what this reducer renders.
-  if (change.entityType !== 'event') return events;
+  if (change.entityType !== ENTITY_TYPE.EVENT) return events;
   if (change.action === 'delete') return events.filter((e) => e.id !== change.entityId);
   const partial = change.after as Partial<TripEvent> | undefined;
   if (!partial) return events;
@@ -279,7 +282,7 @@ function applyRemoteEventChange(events: TripEvent[], change: Change): TripEvent[
  *  handled separately (it tears the whole trip down), so this only applies an
  *  `update`'s partial and otherwise returns the trip unchanged. */
 export function applyControlChangeToTrip(trip: Trip, change: Change): Trip {
-  if (change.entityType !== 'trip' || change.action === 'delete') return trip;
+  if (change.entityType !== ENTITY_TYPE.TRIP || change.action === CHANGE_ACTION.DELETE) return trip;
   const partial = change.after as Partial<Trip> | undefined;
   return partial ? { ...trip, ...partial } : trip;
 }
@@ -287,7 +290,7 @@ export function applyControlChangeToTrip(trip: Trip, change: Change): Trip {
 /** Merge a remote `membership` change (role change / removal / join) into the
  *  local roster, keyed by membership id (ADR-0039). */
 export function applyControlChangeToMembers(members: Membership[], change: Change): Membership[] {
-  if (change.entityType !== 'membership') return members;
+  if (change.entityType !== ENTITY_TYPE.MEMBERSHIP) return members;
   if (change.action === 'delete') return members.filter((m) => m.id !== change.entityId);
   const next = change.after as Membership | undefined;
   if (!next) return members;
@@ -563,35 +566,45 @@ function TripReady({
 
   const lastSeqRef = useRef(snapshot.latestSeq);
 
-  // The ONE applier for a single entity change (ADR-0093): fans it into the Dexie
-  // cache and every consuming store (event reducer, trip/roster, bookings/places/
-  // documents). A live WS echo runs this after its seq + change-feed bookkeeping
-  // (applyRemoteChange, below); an offline optimistic write reuses it verbatim
-  // (via the synthetic Changes from `outbox-effects`), so there is no separate
-  // offline sync handler per entity type. Setters + dispatch are stable, so this
-  // only re-binds on a trip switch.
-  const applyEntityChange = useCallback(
-    (change: Change) => {
-      void applyChangeToCache(tripId, change);
-      dispatch({ type: 'REMOTE_EVENT_CHANGE', change });
-      if (change.entityType === 'trip') {
-        if (change.action === 'delete') setTripDeleted(true);
-        else setTrip((prev) => applyControlChangeToTrip(prev, change));
-      } else if (change.entityType === 'membership') {
-        setMembers((prev) => applyControlChangeToMembers(prev, change));
-      } else if (change.entityType === 'booking') {
-        setBookings((prev) => applyControlChangeToList(prev, change));
-      } else if (change.entityType === 'place') {
-        setPlaces((prev) => applyControlChangeToList(prev, change));
-      } else if (change.entityType === 'document') {
-        // A replace/delete invalidates the client blob cache (see applyRemoteChange).
-        if (change.action === 'update' || change.action === 'delete') {
+  // Per-entity memory channels (ADR-0094): each entity type declares how a Change
+  // applies to its in-memory store — the reactive lists, or the event reducer. No
+  // per-type branching in the apply path, so adding an entity type (or moving one
+  // between stores) is a single entry here; the cache half is the mirror registry
+  // in lib/cache.ts. Setters + dispatch are stable, so this only rebinds per trip.
+  const memoryChannels = useMemo<Partial<Record<EntityType, (change: Change) => void>>>(
+    () => ({
+      [ENTITY_TYPE.EVENT]: (change) => dispatch({ type: 'REMOTE_EVENT_CHANGE', change }),
+      [ENTITY_TYPE.TRIP]: (change) =>
+        change.action === CHANGE_ACTION.DELETE
+          ? setTripDeleted(true)
+          : setTrip((prev) => applyControlChangeToTrip(prev, change)),
+      [ENTITY_TYPE.MEMBERSHIP]: (change) =>
+        setMembers((prev) => applyControlChangeToMembers(prev, change)),
+      [ENTITY_TYPE.BOOKING]: (change) =>
+        setBookings((prev) => applyControlChangeToList(prev, change)),
+      [ENTITY_TYPE.PLACE]: (change) => setPlaces((prev) => applyControlChangeToList(prev, change)),
+      [ENTITY_TYPE.DOCUMENT]: (change) => {
+        // A replace/delete invalidates the client blob cache: the /content URL is
+        // reused across a replace with no fresh updatedAt to re-key it (ADR-0055/0058).
+        if (change.action === CHANGE_ACTION.UPDATE || change.action === CHANGE_ACTION.DELETE) {
           void evictDocumentBlob(tripId, change.entityId);
         }
         setDocuments((prev) => applyControlChangeToList(prev, change));
-      }
-    },
+      },
+    }),
     [tripId],
+  );
+
+  // The ONE applier for a single entity change (ADR-0093/0094): mirror to the Dexie
+  // cache, then route to the entity's memory channel. A live WS echo runs this after
+  // its seq + change-feed bookkeeping (applyRemoteChange, below); an offline
+  // optimistic write reuses it verbatim, so there is no separate offline handler.
+  const applyEntityChange = useCallback(
+    (change: Change) => {
+      void applyChangeToCache(tripId, change);
+      memoryChannels[change.entityType]?.(change);
+    },
+    [tripId, memoryChannels],
   );
 
   useEffect(() => {

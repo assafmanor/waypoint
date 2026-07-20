@@ -7,6 +7,7 @@ import {
 } from '@nestjs/common';
 import { Prisma, type Document as PrismaDocument } from '@prisma/client';
 import {
+  ENTITY_TYPE,
   isAllowedDocumentMimeType,
   type CreateDocumentInput,
   type DocumentSummary,
@@ -98,7 +99,7 @@ export class DocumentsService {
       const { entity } = await this.changes.mutate({
         tripId,
         actorUserId,
-        entityType: 'document',
+        entityType: ENTITY_TYPE.DOCUMENT,
         entityId: id,
         action: 'create',
         after: { ...input, mimeType: file.mimetype, sizeBytes: file.size },
@@ -159,7 +160,7 @@ export class DocumentsService {
     const { entity } = await this.changes.mutate({
       tripId,
       actorUserId,
-      entityType: 'document',
+      entityType: ENTITY_TYPE.DOCUMENT,
       entityId: documentId,
       action: 'update',
       before: toDocumentSummaryDto(existing),
@@ -189,7 +190,7 @@ export class DocumentsService {
     await this.changes.mutate({
       tripId,
       actorUserId,
-      entityType: 'document',
+      entityType: ENTITY_TYPE.DOCUMENT,
       entityId: documentId,
       action: 'delete',
       before: toDocumentSummaryDto(existing),

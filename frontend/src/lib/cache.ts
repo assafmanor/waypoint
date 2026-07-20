@@ -2,18 +2,19 @@
 // snapshot into Dexie on every successful fetch/change/resync so the app can
 // render the last-known state with zero connectivity.
 import {
+  CHANGE_ACTION,
+  ENTITY_TYPE,
   EVENT_STATUS,
-  type Booking,
   type Change,
-  type DocumentSummary,
+  type EntityType,
   type MaybeItem,
   type Membership,
   type Place,
   type Trip,
-  type TripEvent,
   type TripSnapshot,
   type User,
 } from '@waypoint/shared';
+import { type Table } from 'dexie';
 import { db } from '../db';
 import { ACTIVE_TRIP_STORAGE_KEY } from '../constants';
 import { fetchTrips } from './api';
@@ -78,102 +79,94 @@ export async function readCachedSnapshot(tripId: string): Promise<TripSnapshot |
   };
 }
 
+/** The fields of a `Change` the appliers actually read (ADR-0094). A live WS echo
+ *  passes a full `Change`; an offline optimistic write passes this subset. */
+export type EntityChange = Pick<Change, 'entityType' | 'entityId' | 'action' | 'after'>;
+
 function applyToRow<T extends { id: string }>(
   existing: T | undefined,
-  change: Change,
+  change: EntityChange,
 ): T | undefined {
-  if (change.action === 'delete') return undefined;
+  if (change.action === CHANGE_ACTION.DELETE) return undefined;
   const partial = change.after as Partial<T> | undefined;
   if (!partial) return existing;
   return { ...(existing as T), ...partial, id: change.entityId } as T;
 }
 
+/** Where each entity type's cached rows live (ADR-0094) — an own Dexie table, a
+ *  list on `snapshotMeta`, or the meta `trip` scalar. The mirror of the memory
+ *  channels in trip-state: one entry per entity type, so `applyChangeToCache` is
+ *  a table lookup and adding/moving an entity type is a single edit here. */
+type CacheRow = { id: string; tripId?: string };
+type CacheChannel =
+  | { table: Table<CacheRow, string> }
+  | { metaList: 'maybeItems' | 'places' | 'members' }
+  | { metaTrip: true };
+
+const CACHE_CHANNELS: Record<EntityType, CacheChannel> = {
+  [ENTITY_TYPE.EVENT]: { table: db.events as unknown as Table<CacheRow, string> },
+  [ENTITY_TYPE.BOOKING]: { table: db.bookings as unknown as Table<CacheRow, string> },
+  // Documents ride the snapshot (ADR-0058), summary only — `fileRef` never
+  // reaches the client (ADR-0015/0034); blob bytes cache separately (ADR-0055).
+  [ENTITY_TYPE.DOCUMENT]: { table: db.documents as unknown as Table<CacheRow, string> },
+  [ENTITY_TYPE.MAYBE_ITEM]: { metaList: 'maybeItems' },
+  [ENTITY_TYPE.PLACE]: { metaList: 'places' },
+  // Trip settings are data-plane (ADR-0039), so the roster + trip row stay
+  // coherent too — else an offline reader shows a stale name/member on cold load.
+  [ENTITY_TYPE.MEMBERSHIP]: { metaList: 'members' },
+  [ENTITY_TYPE.TRIP]: { metaTrip: true },
+};
+
+/** Upsert/delete a change into one of `snapshotMeta`'s embedded lists. */
+async function applyChangeToMetaList(
+  tripId: string,
+  listKey: 'maybeItems' | 'places' | 'members',
+  change: EntityChange,
+): Promise<void> {
+  const meta = await db.snapshotMeta.get(tripId);
+  if (!meta) return;
+  const list = meta[listKey] as CacheRow[];
+  const existing = list.find((x) => x.id === change.entityId);
+  const row = applyToRow<CacheRow>(existing, change);
+  const next = row && { ...row, tripId };
+  const updated = next
+    ? existing
+      ? list.map((x) => (x.id === next.id ? next : x))
+      : [...list, next]
+    : list.filter((x) => x.id !== change.entityId);
+  await db.snapshotMeta.put({ ...meta, [listKey]: updated } as SnapshotMeta);
+}
+
 /** Keeps the Dexie cache coherent with every data-plane entity type in the
- *  snapshot (events, bookings, maybeItems, places) — not just events — so a
- *  remote change never silently falls out of the offline cache. */
-export async function applyChangeToCache(tripId: string, change: Change): Promise<void> {
-  switch (change.entityType) {
-    case 'event': {
-      const existing = await db.events.get(change.entityId);
-      const next = applyToRow<TripEvent>(existing, change);
-      if (next) await db.events.put({ ...next, tripId });
-      else await db.events.delete(change.entityId);
-      return;
-    }
-    case 'booking': {
-      const existing = await db.bookings.get(change.entityId);
-      const next = applyToRow<Booking>(existing, change);
-      if (next) await db.bookings.put({ ...next, tripId });
-      else await db.bookings.delete(change.entityId);
-      return;
-    }
-    // Documents ride the snapshot (ADR-0058); keep the mirror coherent on every
-    // remote change like the other lists. Summary only — `fileRef` never reaches
-    // the client (ADR-0015/0034); blob bytes cache separately (ADR-0055).
-    case 'document': {
-      const existing = await db.documents.get(change.entityId);
-      const next = applyToRow<DocumentSummary>(existing, change);
-      if (next) await db.documents.put({ ...next, tripId });
-      else await db.documents.delete(change.entityId);
-      return;
-    }
-    case 'maybeItem': {
-      const meta = await db.snapshotMeta.get(tripId);
-      if (!meta) return;
-      const existing = meta.maybeItems.find((m) => m.id === change.entityId);
-      const next = applyToRow<MaybeItem>(existing, change);
-      const maybeItems = next
-        ? existing
-          ? meta.maybeItems.map((m) => (m.id === next.id ? next : m))
-          : [...meta.maybeItems, next]
-        : meta.maybeItems.filter((m) => m.id !== change.entityId);
-      await db.snapshotMeta.put({ ...meta, maybeItems });
-      return;
-    }
-    case 'place': {
-      const meta = await db.snapshotMeta.get(tripId);
-      if (!meta) return;
-      const existing = meta.places.find((p) => p.id === change.entityId);
-      const next = applyToRow<Place>(existing, change);
-      const places = next
-        ? existing
-          ? meta.places.map((p) => (p.id === next.id ? next : p))
-          : [...meta.places, next]
-        : meta.places.filter((p) => p.id !== change.entityId);
-      await db.snapshotMeta.put({ ...meta, places });
-      return;
-    }
-    // Trip settings are data-plane now (ADR-0039), so keep the cached snapshot's
-    // trip row and roster coherent too — otherwise an offline reader would show a
-    // renamed trip or removed member snapping back on the next cold load.
-    case 'trip': {
-      // A trip delete wipes everything for this trip; drop the cache entirely.
-      if (change.action === 'delete') {
-        await clearTripCache(tripId);
-        return;
-      }
-      const meta = await db.snapshotMeta.get(tripId);
-      const partial = change.after as Partial<Trip> | undefined;
-      if (!meta || !partial) return;
-      await db.snapshotMeta.put({ ...meta, trip: { ...meta.trip, ...partial } });
-      return;
-    }
-    case 'membership': {
-      const meta = await db.snapshotMeta.get(tripId);
-      if (!meta) return;
-      const existing = meta.members.find((m) => m.id === change.entityId);
-      const next = applyToRow<Membership>(existing, change);
-      const members = next
-        ? existing
-          ? meta.members.map((m) => (m.id === next.id ? next : m))
-          : [...meta.members, next]
-        : meta.members.filter((m) => m.id !== change.entityId);
-      await db.snapshotMeta.put({ ...meta, members });
-      return;
-    }
-    default:
-      return;
+ *  snapshot so a change (a WS echo or an offline optimistic write) never silently
+ *  falls out of the offline cache. Table-driven off `CACHE_CHANNELS`. */
+export async function applyChangeToCache(tripId: string, change: EntityChange): Promise<void> {
+  const channel = CACHE_CHANNELS[change.entityType];
+  if (!channel) return;
+  if ('table' in channel) {
+    const existing = await channel.table.get(change.entityId);
+    const next = applyToRow<CacheRow>(existing, change);
+    if (next) await channel.table.put({ ...next, tripId });
+    else await channel.table.delete(change.entityId);
+    return;
   }
+  if ('metaList' in channel) {
+    await applyChangeToMetaList(tripId, channel.metaList, change);
+    return;
+  }
+  // A trip delete wipes everything for this trip; drop the cache entirely.
+  if (change.action === CHANGE_ACTION.DELETE) {
+    await clearTripCache(tripId);
+    return;
+  }
+  const partial = change.after as Partial<Trip> | undefined;
+  if (!partial) return;
+  const meta = await db.snapshotMeta.get(tripId);
+  if (meta) await db.snapshotMeta.put({ ...meta, trip: { ...meta.trip, ...partial } });
+  // The all-trips list shows a trip's name/dates/icon too — keep it coherent so a
+  // rename doesn't snap back on the next cold load (matches the offline path).
+  const listed = await db.tripList.get(tripId);
+  if (listed) await db.tripList.put({ ...listed, ...partial });
 }
 
 /** Wipes every trace of the signed-in session's local data (sign-out / session
@@ -260,140 +253,149 @@ export async function loadTripList(): Promise<{ trips: Trip[]; fromCache: boolea
 // the user just did. (Online writes don't need this: the server's own WS echo
 // runs applyChangeToCache for them.)
 export async function applyOutboxOpToCache(tripId: string, op: OutboxOp): Promise<void> {
+  for (const change of await outboxOpToCacheChanges(tripId, op)) {
+    await applyChangeToCache(tripId, change);
+  }
+}
+
+/** Maps a queued outbox op to the cache Change(s) it implies (ADR-0094), so the
+ *  offline mirror reuses the one registry-driven `applyChangeToCache` instead of
+ *  re-implementing per-entity persistence. A booking's seeded linked event isn't
+ *  here — the write verb emits it via `bookingLinkedEventChange` through the same
+ *  applier. Async only for member ops, which resolve the membership id from the
+ *  cached roster (the op carries `userId`; the cache keys by membership id, like
+ *  the WS echo). `[]` for ops with no cached entity (a queued document upload
+ *  renders as a pending row, ADR-0056, not a cached document). */
+async function outboxOpToCacheChanges(tripId: string, op: OutboxOp): Promise<EntityChange[]> {
+  const one = (c: EntityChange): EntityChange[] => [c];
   switch (op.verb) {
-    case 'create': {
-      // Verbs always client-generate the id (ADR-0018); guard the optional type.
-      if (!op.input.id) return;
-      const existing = await db.events.get(op.input.id);
-      await db.events.put({
-        status: EVENT_STATUS.PLANNED,
-        ...existing,
-        ...op.input,
-        tripId,
-      } as TripEvent);
-      return;
-    }
+    case 'create':
+      if (!op.input.id) return [];
+      // A new event starts planned (the server default); the seed carries no status.
+      return one({
+        entityType: ENTITY_TYPE.EVENT,
+        entityId: op.input.id,
+        action: CHANGE_ACTION.CREATE,
+        after: { ...op.input, status: EVENT_STATUS.PLANNED },
+      });
     case 'update':
-    case 'move': {
-      const existing = await db.events.get(op.eventId);
-      if (existing) await db.events.put({ ...existing, ...op.input });
-      return;
-    }
-    case 'setStatus': {
-      const existing = await db.events.get(op.eventId);
-      if (existing) await db.events.put({ ...existing, status: op.status });
-      return;
-    }
-    case 'delete': {
-      await db.events.delete(op.eventId);
-      return;
-    }
-    case 'consumeMaybeItem': {
-      const meta = await db.snapshotMeta.get(tripId);
-      if (!meta) return;
-      await db.snapshotMeta.put({
-        ...meta,
-        maybeItems: meta.maybeItems.map((m) =>
-          m.id === op.maybeItemId ? { ...m, consumed: true } : m,
-        ),
+      return one({
+        entityType: ENTITY_TYPE.EVENT,
+        entityId: op.eventId,
+        action: CHANGE_ACTION.UPDATE,
+        after: op.input,
       });
-      return;
-    }
-    case 'createMaybeItem': {
-      const meta = await db.snapshotMeta.get(tripId);
-      if (!meta || !op.input.id) return;
-      const id = op.input.id;
-      const existing = meta.maybeItems.find((m) => m.id === id);
-      const item = { consumed: false, ...existing, ...op.input, id, tripId } as MaybeItem;
-      const maybeItems = existing
-        ? meta.maybeItems.map((m) => (m.id === id ? item : m))
-        : [...meta.maybeItems, item];
-      await db.snapshotMeta.put({ ...meta, maybeItems });
-      return;
-    }
-    case 'deleteMaybeItem': {
-      const meta = await db.snapshotMeta.get(tripId);
-      if (!meta) return;
-      await db.snapshotMeta.put({
-        ...meta,
-        maybeItems: meta.maybeItems.filter((m) => m.id !== op.maybeItemId),
+    case 'move':
+      return one({
+        entityType: ENTITY_TYPE.EVENT,
+        entityId: op.eventId,
+        action: CHANGE_ACTION.MOVE,
+        after: op.input,
       });
-      return;
-    }
-    case 'updateTrip': {
-      const meta = await db.snapshotMeta.get(tripId);
-      if (meta) await db.snapshotMeta.put({ ...meta, trip: { ...meta.trip, ...op.input } });
-      // Keep the all-trips list coherent too (name/dates/icon show there).
-      const listed = await db.tripList.get(tripId);
-      if (listed) await db.tripList.put({ ...listed, ...op.input });
-      return;
-    }
-    case 'setMemberRole': {
-      const meta = await db.snapshotMeta.get(tripId);
-      if (!meta) return;
-      await db.snapshotMeta.put({
-        ...meta,
-        members: meta.members.map((m) => (m.userId === op.userId ? { ...m, role: op.role } : m)),
+    case 'setStatus':
+      return one({
+        entityType: ENTITY_TYPE.EVENT,
+        entityId: op.eventId,
+        action: CHANGE_ACTION.STATUS,
+        after: { status: op.status },
       });
-      return;
-    }
-    case 'removeMember': {
-      const meta = await db.snapshotMeta.get(tripId);
-      if (!meta) return;
-      await db.snapshotMeta.put({
-        ...meta,
-        members: meta.members.filter((m) => m.userId !== op.userId),
+    case 'delete':
+      return one({
+        entityType: ENTITY_TYPE.EVENT,
+        entityId: op.eventId,
+        action: CHANGE_ACTION.DELETE,
       });
-      return;
-    }
-    case 'deleteTrip': {
-      await clearTripCache(tripId);
-      return;
-    }
-    // Index writes (ADR-0047/0048). The booking row is mirrored here; its seeded
-    // linked event rides the SAME generic change-appliers as a live WS echo
-    // (ADR-0093) — emitted by the write verb via `bookingLinkedEventChange` and
-    // applied through `applyChangeToCache` + the in-memory `applyEntityChange`, so
-    // there's no separate offline handler for it.
+    case 'createMaybeItem':
+      if (!op.input.id) return [];
+      return one({
+        entityType: ENTITY_TYPE.MAYBE_ITEM,
+        entityId: op.input.id,
+        action: CHANGE_ACTION.CREATE,
+        after: { consumed: false, ...op.input },
+      });
+    case 'consumeMaybeItem':
+      return one({
+        entityType: ENTITY_TYPE.MAYBE_ITEM,
+        entityId: op.maybeItemId,
+        action: CHANGE_ACTION.UPDATE,
+        after: { consumed: true },
+      });
+    case 'deleteMaybeItem':
+      return one({
+        entityType: ENTITY_TYPE.MAYBE_ITEM,
+        entityId: op.maybeItemId,
+        action: CHANGE_ACTION.DELETE,
+      });
     case 'createBooking': {
-      if (!op.input.id) return;
+      if (!op.input.id) return [];
       const { event: _seed, ...fields } = op.input;
-      const existing = await db.bookings.get(op.input.id);
-      await db.bookings.put({ ...existing, ...fields, tripId, id: op.input.id } as Booking);
-      return;
+      return one({
+        entityType: ENTITY_TYPE.BOOKING,
+        entityId: op.input.id,
+        action: CHANGE_ACTION.CREATE,
+        after: fields,
+      });
     }
     case 'updateBooking': {
-      const existing = await db.bookings.get(op.bookingId);
-      if (existing) {
-        const { event: _seed, ...fields } = op.input;
-        await db.bookings.put({ ...existing, ...fields });
-      }
-      return;
-    }
-    case 'deleteBooking': {
-      await db.bookings.delete(op.bookingId);
-      return;
-    }
-    case 'createPlace': {
-      const meta = await db.snapshotMeta.get(tripId);
-      if (!meta || !op.input.id) return;
-      const id = op.input.id;
-      const existing = meta.places.find((p) => p.id === id);
-      const place = { ...existing, ...op.input, id, tripId } as Place;
-      const places = existing
-        ? meta.places.map((p) => (p.id === id ? place : p))
-        : [...meta.places, place];
-      await db.snapshotMeta.put({ ...meta, places });
-      return;
-    }
-    case 'updatePlace': {
-      const meta = await db.snapshotMeta.get(tripId);
-      if (!meta) return;
-      await db.snapshotMeta.put({
-        ...meta,
-        places: meta.places.map((p) => (p.id === op.placeId ? { ...p, ...op.input } : p)),
+      const { event: _seed, ...fields } = op.input;
+      return one({
+        entityType: ENTITY_TYPE.BOOKING,
+        entityId: op.bookingId,
+        action: CHANGE_ACTION.UPDATE,
+        after: fields,
       });
-      return;
     }
+    case 'deleteBooking':
+      return one({
+        entityType: ENTITY_TYPE.BOOKING,
+        entityId: op.bookingId,
+        action: CHANGE_ACTION.DELETE,
+      });
+    case 'createPlace':
+      if (!op.input.id) return [];
+      return one({
+        entityType: ENTITY_TYPE.PLACE,
+        entityId: op.input.id,
+        action: CHANGE_ACTION.CREATE,
+        after: op.input,
+      });
+    case 'updatePlace':
+      return one({
+        entityType: ENTITY_TYPE.PLACE,
+        entityId: op.placeId,
+        action: CHANGE_ACTION.UPDATE,
+        after: op.input,
+      });
+    case 'updateTrip':
+      return one({
+        entityType: ENTITY_TYPE.TRIP,
+        entityId: tripId,
+        action: CHANGE_ACTION.UPDATE,
+        after: op.input,
+      });
+    case 'deleteTrip':
+      return one({ entityType: ENTITY_TYPE.TRIP, entityId: tripId, action: CHANGE_ACTION.DELETE });
+    case 'setMemberRole':
+    case 'removeMember': {
+      // Resolve userId → membership id, so the offline mirror keys members the
+      // same way the WS echo does (ADR-0094; consistent membership keying).
+      const meta = await db.snapshotMeta.get(tripId);
+      const member = meta?.members.find((m) => m.userId === op.userId);
+      if (!member) return [];
+      return op.verb === 'removeMember'
+        ? one({
+            entityType: ENTITY_TYPE.MEMBERSHIP,
+            entityId: member.id,
+            action: CHANGE_ACTION.DELETE,
+          })
+        : one({
+            entityType: ENTITY_TYPE.MEMBERSHIP,
+            entityId: member.id,
+            action: CHANGE_ACTION.UPDATE,
+            after: { role: op.role },
+          });
+    }
+    case 'uploadDocument':
+      return [];
   }
 }

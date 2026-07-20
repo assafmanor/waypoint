@@ -1,7 +1,12 @@
 import { randomUUID } from 'node:crypto';
 import { Injectable, NotFoundException } from '@nestjs/common';
 import { Prisma, type Place as PrismaPlace } from '@prisma/client';
-import { type CreatePlaceInput, type Place, type UpdatePlaceInput } from '@waypoint/shared';
+import {
+  ENTITY_TYPE,
+  type CreatePlaceInput,
+  type Place,
+  type UpdatePlaceInput,
+} from '@waypoint/shared';
 import { PrismaService } from '../prisma/prisma.service';
 import { ChangeService } from '../sync/change.service';
 import { toPlaceDto } from '../trips/trips.mapper';
@@ -27,7 +32,7 @@ export class PlacesService {
       const { entity } = await this.changes.mutate({
         tripId,
         actorUserId,
-        entityType: 'place',
+        entityType: ENTITY_TYPE.PLACE,
         entityId: id,
         action: 'create',
         after: input,
@@ -66,7 +71,7 @@ export class PlacesService {
     const { entity } = await this.changes.mutate({
       tripId,
       actorUserId,
-      entityType: 'place',
+      entityType: ENTITY_TYPE.PLACE,
       entityId: placeId,
       action: 'update',
       before: toPlaceDto(before),

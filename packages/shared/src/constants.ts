@@ -7,6 +7,7 @@ import type {
   BookingType,
   ChangeAction,
   DocumentType,
+  EntityType,
   EventCategory,
   EventKind,
   EventSource,
@@ -91,6 +92,19 @@ export const CHANGE_ACTION = {
   DELETE: 'delete',
   STATUS: 'status',
 } as const satisfies Record<string, ChangeAction>;
+
+/** The entity kinds a Change targets (ADR-0094) — the single source the backend
+ *  Change log and the frontend applier registries (cache + memory channels) both
+ *  key off, so no layer hardcodes the strings. */
+export const ENTITY_TYPE = {
+  EVENT: 'event',
+  BOOKING: 'booking',
+  DOCUMENT: 'document',
+  MAYBE_ITEM: 'maybeItem',
+  PLACE: 'place',
+  TRIP: 'trip',
+  MEMBERSHIP: 'membership',
+} as const satisfies Record<string, EntityType>;
 
 /** Max `Change` rows one `GET /changes` page returns (backend-review B-09). A very
  *  old or reset cursor otherwise streams a trip's entire history unbounded; the

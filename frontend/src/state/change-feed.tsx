@@ -9,7 +9,7 @@
 // as local state in trip-state's TripReady, so it resets on trip switch (the
 // component remounts) and stays in-memory + offline-safe (no changes arrive
 // offline → the feed stays quiet). The `ChangeFeed` component reads it.
-import type { Change, User } from '@waypoint/shared';
+import { CHANGE_ACTION, ENTITY_TYPE, type Change, type User } from '@waypoint/shared';
 import { formatTime } from '../lib/time';
 import { t } from '../i18n/he';
 
@@ -82,9 +82,9 @@ export function describeChange(
 
   let lead: string;
   let time: string | undefined;
-  if (change.entityType === 'membership' && change.action === 'create') {
+  if (change.entityType === ENTITY_TYPE.MEMBERSHIP && change.action === CHANGE_ACTION.CREATE) {
     lead = cf.joined; // "X joined the trip" — subject == actor, so omit it
-  } else if (change.action === 'delete') {
+  } else if (change.action === CHANGE_ACTION.DELETE) {
     lead = cf.removed(subject);
   } else if (change.action === 'create') {
     lead = cf.added(subject);

@@ -8,6 +8,7 @@ import {
 import { Prisma, type Booking as PrismaBooking } from '@prisma/client';
 import {
   BOOKING_TYPE,
+  ENTITY_TYPE,
   EVENT_KIND,
   bookingEventFields,
   type Booking,
@@ -54,7 +55,7 @@ export class BookingsService {
         const { entity } = await this.changes.mutate({
           tripId,
           actorUserId,
-          entityType: 'booking',
+          entityType: ENTITY_TYPE.BOOKING,
           entityId: id,
           action: 'create',
           after: input,
@@ -85,13 +86,13 @@ export class BookingsService {
             entity: booking,
             ops: [
               {
-                entityType: 'booking',
+                entityType: ENTITY_TYPE.BOOKING,
                 entityId: booking.id,
                 action: 'create',
                 after: toBookingDto(booking),
               },
               {
-                entityType: 'event',
+                entityType: ENTITY_TYPE.EVENT,
                 entityId: event.id,
                 action: 'create',
                 after: toEventDto(event),
@@ -130,7 +131,7 @@ export class BookingsService {
       const { entity } = await this.changes.mutate({
         tripId,
         actorUserId,
-        entityType: 'booking',
+        entityType: ENTITY_TYPE.BOOKING,
         entityId: bookingId,
         action: 'update',
         before: toBookingDto(before),
@@ -156,7 +157,7 @@ export class BookingsService {
         });
         const ops: ChangeOp[] = [
           {
-            entityType: 'booking',
+            entityType: ENTITY_TYPE.BOOKING,
             entityId: bookingId,
             action: 'update',
             before: toBookingDto(before),
@@ -171,7 +172,7 @@ export class BookingsService {
             data: { title: booking.title, ...this.eventUpdateFromSeed(actorUserId, input.event!) },
           });
           ops.push({
-            entityType: 'event',
+            entityType: ENTITY_TYPE.EVENT,
             entityId: event.id,
             action: 'update',
             before: toEventDto(existingEvent),
@@ -183,7 +184,7 @@ export class BookingsService {
             data: this.eventDataFromBooking(tripId, actorUserId, booking, input.event!, eventId),
           });
           ops.push({
-            entityType: 'event',
+            entityType: ENTITY_TYPE.EVENT,
             entityId: event.id,
             action: 'create',
             after: toEventDto(event),
@@ -213,7 +214,7 @@ export class BookingsService {
       await this.changes.mutate({
         tripId,
         actorUserId,
-        entityType: 'booking',
+        entityType: ENTITY_TYPE.BOOKING,
         entityId: bookingId,
         action: 'delete',
         before: toBookingDto(before),
@@ -230,7 +231,7 @@ export class BookingsService {
         if (deleteEvents) {
           await tx.event.delete({ where: { id: linkedEvent.id } });
           ops.push({
-            entityType: 'event',
+            entityType: ENTITY_TYPE.EVENT,
             entityId: linkedEvent.id,
             action: 'delete',
             before: toEventDto(linkedEvent),
@@ -241,7 +242,7 @@ export class BookingsService {
             data: { bookingId: null, updatedBy: actorUserId },
           });
           ops.push({
-            entityType: 'event',
+            entityType: ENTITY_TYPE.EVENT,
             entityId: event.id,
             action: 'update',
             before: toEventDto(linkedEvent),
@@ -250,7 +251,7 @@ export class BookingsService {
         }
         await tx.booking.delete({ where: { id: bookingId } });
         ops.push({
-          entityType: 'booking',
+          entityType: ENTITY_TYPE.BOOKING,
           entityId: bookingId,
           action: 'delete',
           before: toBookingDto(before),
