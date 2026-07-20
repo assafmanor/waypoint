@@ -17,15 +17,17 @@
           confirmation code across both upcoming and past; a non-empty query
           force-opens the past section so a match hiding there isn't silently
           missed, and restores the manual collapse state once cleared.
-       4. A sticky "הזמנות · מסמכים" jump nav under the header, since the two
-          sections together make for a long scroll on a loaded trip.
+       4. Each section (bookings, documents) collapses independently via a
+          chevron disclosure in its own title row — shrinking a section you
+          don't need right now to one line (title + count), rather than a
+          separate jump nav to scroll past it.
 
      DESIGN FIDELITY: tokens + shared classes (.sec-title/.addbtn/.listcard/.li/
      .badge2/.tag-type/.link-cue/.unlinked/.code/.past-head) are lifted verbatim
      from trip-index-v1.html / the shipped screens.css — this file only adds the
-     net-new chip row, search control, sticky nav, and past-toggle wiring, all
-     built from existing tokens. Where this and the design docs conflict, docs
-     win.
+     net-new chip row, search control, section-chevron, and past-toggle wiring,
+     all built from existing tokens. Where this and the design docs conflict,
+     docs win.
 
      Demo toggle: טיול עמוס (the target case — 17 bookings across all 6 types)
      vs טיול קטן (a handful of bookings — chips/search step back so they don't
@@ -284,53 +286,6 @@
         width: 0;
       }
 
-      /* ===== NEW: sticky bookings/documents jump nav (mechanism #4) ===== */
-      .index-nav {
-        position: sticky;
-        top: 0;
-        z-index: 5;
-        display: flex;
-        gap: 6px;
-        background: var(--screen);
-        padding: 12px 0 8px;
-        margin-bottom: 4px;
-      }
-      .index-nav::after {
-        content: '';
-        position: absolute;
-        left: 0;
-        right: 0;
-        bottom: 0;
-        height: 10px;
-        background: linear-gradient(var(--screen), transparent);
-        transform: translateY(100%);
-        pointer-events: none;
-      }
-      .nav-pill {
-        flex: 1;
-        display: flex;
-        align-items: center;
-        justify-content: center;
-        gap: 6px;
-        background: var(--card);
-        border: 1px solid var(--line);
-        border-radius: 12px;
-        padding: 8px 10px;
-        font: inherit;
-        font-size: 12px;
-        font-weight: 700;
-        color: var(--muted);
-        cursor: pointer;
-      }
-      .nav-pill .n {
-        font-family: 'JetBrains Mono', monospace;
-        font-size: 10.5px;
-        background: rgba(22, 35, 61, 0.06);
-        border-radius: 999px;
-        padding: 1px 6px;
-        color: var(--ink);
-      }
-
       .sec-title {
         font-family: 'Secular One', sans-serif;
         font-size: 14.5px;
@@ -356,6 +311,44 @@
         background: rgba(22, 35, 61, 0.06);
         border-radius: 999px;
         padding: 2px 8px;
+      }
+
+      /* ===== NEW: per-section shrink (mechanism #4) — a chevron disclosure in
+         the section title collapses that whole section to one line (title +
+         count), instead of a jump nav. Bookings and documents collapse
+         independently. ===== */
+      .sec-chevron {
+        width: 22px;
+        height: 22px;
+        flex: 0 0 auto;
+        display: grid;
+        place-items: center;
+        border: 0;
+        border-radius: 6px;
+        background: none;
+        color: var(--muted);
+        font-size: 11px;
+        cursor: pointer;
+        transition: transform 0.15s ease;
+      }
+      .sec-chevron:hover {
+        background: rgba(22, 35, 61, 0.06);
+      }
+      .sec-chevron.collapsed {
+        transform: rotate(-90deg);
+      }
+      .sec-count {
+        font-family: 'JetBrains Mono', monospace;
+        font-size: 10.5px;
+        font-weight: 700;
+        color: var(--ink);
+        background: rgba(22, 35, 61, 0.06);
+        border-radius: 999px;
+        padding: 1px 7px;
+      }
+      #bookings-body.collapsed,
+      #documents-body.collapsed {
+        display: none;
       }
 
       /* ===== NEW: category filter chips (mechanism #2) — neutral, not tinted;
@@ -605,11 +598,12 @@
   </head>
   <body>
     <p class="caption">
-      אינדקס · <b>איתור בטיול עמוס</b> · קטגוריות + חיפוש + כיווץ עבר + ניווט דביק
+      אינדקס · <b>איתור בטיול עמוס</b> · קטגוריות + חיפוש + כיווץ עבר + כיווץ מקטעים
     </p>
     <p class="adr-note">
-      כיווץ "כבר מאחוריכם" משכפל את הטוגל של מסך הבית · תכנון (ADR-0061). הצ׳יפים
-      והחיפוש חלים רק על ההזמנות; המסמכים נשארים מקובצים כפי שהם היום.
+      כל מקטע (הזמנות / מסמכים) מתכווץ בנפרד דרך החץ בכותרת שלו. כיווץ "כבר
+      מאחוריכם" משכפל את הטוגל של מסך הבית · תכנון (ADR-0061). הצ׳יפים והחיפוש
+      חלים רק על ההזמנות; המסמכים נשארים מקובצים כפי שהם היום.
     </p>
 
     <div class="demo-toggle" role="tablist" aria-label="גודל טיול">
@@ -647,25 +641,28 @@
       </div>
 
       <div class="body">
-        <!-- ===== sticky jump nav ===== -->
-        <div class="index-nav">
-          <button class="nav-pill" onclick="jump('sec-bookings')">
-            🎫 הזמנות <span class="n" id="nav-count-bookings">17</span>
+        <div class="sec-title">
+          <button
+            class="sec-chevron"
+            id="chevron-bookings"
+            onclick="toggleSection('bookings')"
+            aria-expanded="true"
+            aria-controls="bookings-body"
+            aria-label="כווץ/הרחב הזמנות"
+          >
+            ▾
           </button>
-          <button class="nav-pill" onclick="jump('sec-documents')">
-            📎 מסמכים <span class="n">6</span>
-          </button>
-        </div>
-
-        <div class="sec-title" id="sec-bookings">
-          הזמנות <span class="badge-offline">⬇ עובד אופליין</span>
-          <span class="sec-title-end">
+          <span>הזמנות</span>
+          <span class="sec-count" id="count-bookings">17</span>
+          <span class="badge-offline">⬇ עובד אופליין</span>
+          <span class="sec-title-end" id="bookings-title-end">
             <button class="search-btn" onclick="toggleSearch()" aria-label="חיפוש הזמנות">
               🔍
             </button>
           </span>
         </div>
 
+        <div id="bookings-body">
         <div class="search-row">
           <div class="search-box" id="search-box">
             <span>🔍</span>
@@ -859,10 +856,25 @@
             </div>
           </div>
         </div>
-
-        <div class="sec-title" id="sec-documents">
-          מסמכים <span class="badge-offline">🔒 מוצפן</span>
         </div>
+
+        <div class="sec-title">
+          <button
+            class="sec-chevron"
+            id="chevron-documents"
+            onclick="toggleSection('documents')"
+            aria-expanded="true"
+            aria-controls="documents-body"
+            aria-label="כווץ/הרחב מסמכים"
+          >
+            ▾
+          </button>
+          <span>מסמכים</span>
+          <span class="sec-count" id="count-documents">6</span>
+          <span class="badge-offline">🔒 מוצפן</span>
+        </div>
+
+        <div id="documents-body">
         <button type="button" class="addbtn">＋ הוסף מסמך</button>
         <div class="doc-group">
           <div class="gt">דרכונים</div>
@@ -914,6 +926,7 @@
             </div>
           </div>
         </div>
+        </div>
       </div>
     </div>
 
@@ -939,7 +952,7 @@
         document.getElementById('past-toggle').textContent = busy
           ? `הצג הזמנות מהעבר (5)`
           : `הצג הזמנות מהעבר (1)`;
-        document.getElementById('nav-count-bookings').textContent = busy ? '17' : '4';
+        document.getElementById('count-bookings').textContent = busy ? '17' : '4';
         if (!busy) {
           activeCat = 'all';
           document
@@ -1016,8 +1029,22 @@
         }
       }
 
-      function jump(id) {
-        document.getElementById(id).scrollIntoView({ behavior: 'smooth', block: 'start' });
+      // Each section shrinks independently: collapsing hides everything below
+      // its title down to just the title + count, no jump nav needed.
+      function toggleSection(name) {
+        const body = document.getElementById(name + '-body');
+        const chevron = document.getElementById('chevron-' + name);
+        const collapsed = body.classList.toggle('collapsed');
+        chevron.classList.toggle('collapsed', collapsed);
+        chevron.setAttribute('aria-expanded', String(!collapsed));
+        if (name === 'bookings') {
+          // The search button lives in the title row, outside the collapsible
+          // body — hide it too while collapsed, since its target is hidden.
+          document.getElementById('bookings-title-end').style.display = collapsed
+            ? 'none'
+            : 'flex';
+          if (collapsed) document.getElementById('search-box').classList.remove('on');
+        }
       }
 
       let mins = 52,
