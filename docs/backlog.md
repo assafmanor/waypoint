@@ -77,6 +77,10 @@ B-01–B-06 and B-08–B-13 shipped (ADR-0068–0076); B-07 shipped (ADR-0067). 
 
 - **Hebrew voice/gender consistency** (from session 42, ADR-0085's item-4 pass) — most of the app speaks plural-neutral ("נסו", "בדקו", "הוסיפו"), but the zero-state and join screens switch to singular-masculine ("אתה זה שמארגן", "הצטרף", "פתח אותו", "מחובר"). Pick one voice (likely plural-neutral, matching the toast/settings copy) and sweep `i18n/he.ts`. A tone decision, not a bug — worth an ADR if the choice isn't obvious.
 
+## Brand
+
+- **Finalize + wire the app logo** — four directions explored in [`mockups/logo-v1.html`](../mockups/logo-v1.html) (recommendation: Direction A "Waypoint Marker", with Direction B "Board Pin" as the alternate dark app-icon). Once a direction is chosen: lock the SVG, regenerate `frontend/public/favicon.svg` + `icon-mark-bright.svg` + the PWA PNGs (192/512/maskable) + `apple-touch-icon.png`, swap the inline lockups in `Login.tsx`/`JoinTrip.tsx`, and record the choice in an ADR.
+
 ## Testing
 
 - **e2e smoke** (Playwright) — conventions call for one; none exists. Boot the app, cross the tabs, assert each renders and the console is clean. Catches white-screen regressions unit tests miss.
