@@ -7,7 +7,7 @@ import {
   type Booking,
   type TripEvent,
 } from '@waypoint/shared';
-import { nextCodedBooking } from './home-quick';
+import { hotelWifi, nextCodedBooking } from './home-quick';
 
 const NOW = Date.parse('2026-07-20T12:00:00+09:00');
 const ISO = '2026-07-01T00:00:00Z';
@@ -69,5 +69,57 @@ describe('nextCodedBooking', () => {
 
   it('returns undefined when nothing qualifies', () => {
     expect(nextCodedBooking([], [], NOW)).toBeUndefined();
+  });
+});
+
+const WIFI = { network: 'Net', password: 'pw' };
+
+const hotel = (id: string, wifi?: { network?: string; password?: string }): Booking => ({
+  ...booking(id),
+  type: BOOKING_TYPE.HOTEL,
+  details: wifi ? { wifi } : undefined,
+});
+
+const stay = (bookingId: string, startOffsetH: number, endOffsetH: number): TripEvent => ({
+  ...linked(bookingId, startOffsetH),
+  startsAt: at(startOffsetH),
+  endsAt: at(endOffsetH),
+});
+
+describe('hotelWifi', () => {
+  it('shows WiFi while checked in (now inside the stay span)', () => {
+    const bookings = [hotel('h', WIFI)];
+    const events = [stay('h', -10, 20)];
+    expect(hotelWifi(bookings, events, NOW)).toEqual(WIFI);
+  });
+
+  it('hides WiFi before check-in', () => {
+    const bookings = [hotel('h', WIFI)];
+    const events = [stay('h', 2, 30)];
+    expect(hotelWifi(bookings, events, NOW)).toBeUndefined();
+  });
+
+  it('hides WiFi after check-out', () => {
+    const bookings = [hotel('h', WIFI)];
+    const events = [stay('h', -30, -2)];
+    expect(hotelWifi(bookings, events, NOW)).toBeUndefined();
+  });
+
+  it('falls back to a hotel with WiFi but no scheduled stay', () => {
+    const bookings = [hotel('h', WIFI)];
+    expect(hotelWifi(bookings, [], NOW)).toEqual(WIFI);
+  });
+
+  it('prefers the hotel whose stay currently contains now over an unscheduled one', () => {
+    const active = { network: 'Active', password: 'now' };
+    const bookings = [hotel('h-unsched', WIFI), hotel('h-active', active)];
+    const events = [stay('h-active', -5, 5)];
+    expect(hotelWifi(bookings, events, NOW)).toEqual(active);
+  });
+
+  it('ignores a hotel with no WiFi and non-hotel bookings', () => {
+    const bookings = [hotel('h-empty'), booking('b-code', 'C')];
+    const events = [stay('h-empty', -5, 5), linked('b-code', -1)];
+    expect(hotelWifi(bookings, events, NOW)).toBeUndefined();
   });
 });

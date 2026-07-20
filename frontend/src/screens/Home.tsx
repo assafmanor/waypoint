@@ -7,12 +7,10 @@
 import { useState } from 'react';
 import { useNavigate } from 'react-router-dom';
 import {
-  BOOKING_TYPE,
   EVENT_KIND,
   eventTransitionKeys,
   isAmbient,
   isBracketed,
-  type Booking,
   type TripEvent,
 } from '@waypoint/shared';
 import { useTrip } from '../state/trip-state';
@@ -28,7 +26,7 @@ import {
   type BoardVariant,
 } from '../ui/domain';
 import { useClock } from '../lib/useClock';
-import { nextCodedBooking } from '../lib/home-quick';
+import { hotelWifi, nextCodedBooking } from '../lib/home-quick';
 import { eventRoute } from '../lib/places';
 import { TAB_PARAM } from '../state/nav-state';
 import {
@@ -62,16 +60,6 @@ const startTransitionKey = (e: TripEvent): string | undefined =>
   isBracketed(e) ? eventTransitionKeys(e)?.startKey : undefined;
 
 const hourLabel = (hour: number) => `${String(hour).padStart(2, '0')}:00`;
-
-/** WiFi lives on the hotel booking's details blob now (ADR-0047), not a TripNote.
- *  Derived quick-access: absent when there's no hotel booking with WiFi. */
-type HotelWifi = { network?: string; password?: string };
-function hotelWifi(bookings: Booking[]): HotelWifi | undefined {
-  const details = bookings.find((b) => b.type === BOOKING_TYPE.HOTEL)?.details;
-  const wifi = details?.wifi as HotelWifi | undefined;
-  if (!wifi || (!wifi.network && !wifi.password)) return undefined;
-  return wifi;
-}
 
 export function Home({ onNavigate }: { onNavigate?: (tab: TabId) => void }) {
   const { trip, bookings, places, events, activeDate, changeFeed, dismissChange, clearChangeFeed } =
@@ -163,10 +151,11 @@ export function Home({ onNavigate }: { onNavigate?: (tab: TabId) => void }) {
   // flight reads as where it goes, not a name.
   const transitRoute = transitEvent ? eventRoute(transitEvent, bookings, places) : null;
 
-  const wifi = hotelWifi(bookings);
+  const wifi = hotelWifi(bookings, events, nowMs);
   // Quick-access derived tiles (ADR-0050): the next confirmation code you'll need
   // (may differ from the board's immediate next event) + WiFi from the hotel
-  // booking. Each is absent when there's no source; the grid reflows.
+  // booking, shown only while you're checked in (ADR-0088). Each is absent when
+  // there's no source; the grid reflows.
   const nextCoded = nextCodedBooking(bookings, events, now.getTime());
   const quickTileCount = (nextCoded ? 1 : 0) + (wifi ? 1 : 0) + 1; // documents is always present
   const quickCols = Math.min(3, Math.max(2, quickTileCount));
