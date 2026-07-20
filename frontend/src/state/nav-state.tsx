@@ -272,12 +272,14 @@ export function NavProvider({ children }: { children: ReactNode }) {
   // Route the platform system-back (Android hardware/edge back, desktop button)
   // through the SAME resolveBack as the gesture (ADR-0090). On Android the OS
   // owns the screen edges, so it pre-empts the custom swipe; the Navigation API
-  // lets us cancel the back *traversal* and run our own decision instead. We
-  // never `allow` a structural traverse — in-trip history is flat and its
-  // contents are exactly the unreliable thing we refuse to depend on — so every
-  // cancelable backward traverse is preventDefault'd and replaced with the
-  // explicit action. Our own programmatic navigations are `push`/`replace`, not
-  // `traverse`, so they don't re-enter this handler.
+  // lets us cancel the back *traversal* and run our own decision instead. Every
+  // cancelable backward traverse inside a trip is preventDefault'd and replaced
+  // with the explicit action, so react-router's own back never peels a structural
+  // step (its target — what the browser stack holds — is exactly the unreliable
+  // thing we refuse to depend on). The traverse is only cancelable when there's an
+  // in-app entry behind us; `useTripBackGuard` guarantees one so the OS back can't
+  // slip out of the app uncatchably. Our own programmatic navigations are
+  // `push`/`replace`, not `traverse`, so they don't re-enter this handler.
   useEffect(() => {
     const navApi = getNavigation();
     if (!navApi) return; // Safari/iOS: no system back; the edge gesture covers it.
@@ -370,6 +372,42 @@ export function useMarkInsideTrip() {
     setInsideTrip(true);
     return () => setInsideTrip(false);
   }, [setInsideTrip]);
+}
+
+/** Android/Chromium system-back guard (ADR-0090). The OS back is a history
+ *  *traversal*: it needs an in-app entry behind the current one to traverse into.
+ *  When the trip shell mounts at the very bottom of the history stack — a cold
+ *  launch straight into the live trip (`resolveLanding`), the common installed-PWA
+ *  case — there is nothing behind, so the OS back traverses *out of the app*, and
+ *  an app-leaving traversal is **non-cancelable**: the interceptor can't stop it
+ *  and the app just exits (the reported "swipe exits the app" bug). Push one
+ *  duplicate "guard" entry so the OS back always traverses into an in-app,
+ *  cancelable entry the interceptor handles — it `preventDefault()`s before the URL
+ *  changes, so the guard is never seen and never consumed (every in-trip back is
+ *  cancelled, so the index never drops onto it). This is the *fuel* the OS back
+ *  needs; the back *decision* stays a pure function of state (`resolveBack`), never
+ *  reading history. No-op without the Navigation API (iOS/Safari have no OS back;
+ *  the edge gesture calls `resolveBack` directly) or when an entry already sits
+ *  behind us (entered from /trips, an OAuth round-trip, etc.). */
+export function useTripBackGuard() {
+  const navigate = useNavigate();
+  const armedRef = useRef(false);
+  useEffect(() => {
+    if (armedRef.current) return;
+    const navApi = getNavigation();
+    if (!navApi) return; // iOS/Safari: no system back to guard against.
+    if (!needsBackGuard(navApi.currentEntry?.index)) return; // already have fuel behind us.
+    armedRef.current = true;
+    navigate(window.location.pathname + window.location.search); // push a same-URL guard.
+  }, [navigate]);
+}
+
+/** Whether the trip shell needs a guard history entry pushed behind it: true only
+ *  at the very bottom of the stack (index 0), where the OS back has nothing in-app
+ *  to traverse into. Any entry behind us (index > 0) is already cancelable fuel.
+ *  Pure so the guard trigger is unit-tested without a Navigation API. */
+export function needsBackGuard(currentIndex: number | null | undefined): boolean {
+  return (currentIndex ?? 0) === 0;
 }
 
 /** The in-trip tab (ADR-0090). Every move is an explicit `replace` to the tab's

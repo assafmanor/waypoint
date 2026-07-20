@@ -8,6 +8,7 @@ import {
   RESET_TO_HOME_AFTER_HIDDEN_MS,
   backSlides,
   daySelectTarget,
+  needsBackGuard,
   resolveActiveDate,
   resolveBack,
   shouldResetToHomeOnResume,
@@ -104,6 +105,20 @@ describe('tabTarget — where a tab tap navigates (always replace, flat history)
     expect(tabTarget('days')).toBe('/?tab=days');
     expect(tabTarget('index')).toBe('/?tab=index');
     expect(tabTarget('map')).toBe('/?tab=map');
+  });
+});
+
+describe('needsBackGuard — Android OS-back needs an in-app entry to traverse into (ADR-0090)', () => {
+  it('guards only at the very bottom of the history stack (cold launch into the trip)', () => {
+    expect(needsBackGuard(0)).toBe(true);
+    // a missing/undefined index reads as the bottom → guard, to be safe
+    expect(needsBackGuard(undefined)).toBe(true);
+    expect(needsBackGuard(null)).toBe(true);
+  });
+
+  it('does not guard when an entry already sits behind us (entered from /trips, OAuth, …)', () => {
+    expect(needsBackGuard(1)).toBe(false);
+    expect(needsBackGuard(5)).toBe(false);
   });
 });
 
