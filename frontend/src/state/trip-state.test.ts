@@ -128,6 +128,22 @@ describe('REMOTE_EVENT_CHANGE (WS)', () => {
     });
     expect(s1).toEqual(initialState());
   });
+
+  // The contract the offline booking→event 'update' mirror relies on (ADR-0093):
+  // a partial change that omits `status` merges without resetting a settled event.
+  it('a partial update preserves an existing status (schedule-only merge)', () => {
+    const s0 = reducer(initialState(), {
+      type: 'SET_STATUS',
+      id: 'ev-goldengai',
+      status: EVENT_STATUS.DONE,
+    });
+    const s1 = reducer(s0, {
+      type: 'REMOTE_EVENT_CHANGE',
+      change: { ...baseChange, action: 'update', after: { startsAt: undefined } },
+    });
+    expect(find(s1, 'ev-goldengai').startsAt).toBeUndefined();
+    expect(find(s1, 'ev-goldengai').status).toBe(EVENT_STATUS.DONE);
+  });
 });
 
 describe('control-plane change application (ADR-0039)', () => {

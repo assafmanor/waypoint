@@ -1,6 +1,14 @@
 // Booking edit helpers (ADR-0047). Kept pure so the merge/flag/seed logic is
 // unit-testable without rendering the sheet.
-import type { Booking, BookingEventSeed, EventCategory, EventKind, Place } from '@waypoint/shared';
+import type {
+  Booking,
+  BookingEventSeed,
+  EventCategory,
+  EventKind,
+  Place,
+  TripEvent,
+} from '@waypoint/shared';
+import { EVENT_SOURCE, EVENT_STATUS, bookingEventFields } from '@waypoint/shared';
 import { zonedIso, resolveEndIso, isoToTimeInput, todayInTz } from './time';
 
 /** Editable free-form detail fields the sheet exposes (the rest of the booking's
@@ -151,5 +159,34 @@ export function buildSpanSeed(
     kind: input.kind,
     icon: input.icon,
     category: input.category,
+  };
+}
+
+/** Build the linked itinerary event a timed booking implies (ADR-0093), mirroring
+ *  the server's derivation (`eventDataFromBooking`): the title tracks the booking,
+ *  the category defaults to the booking type's, the place stays null (a linked
+ *  event's place comes from the booking, ADR-0048), and `bookingId` ties them.
+ *  Used for the optimistic mirror so a booking saved offline shows its schedule +
+ *  lands on the timeline immediately; the `seed.id` is the id the server will
+ *  upsert under, so the write reconciles in place on flush (no duplicate). The
+ *  caller must give the seed an id. */
+export function eventFromBookingSeed(
+  booking: Pick<Booking, 'id' | 'tripId' | 'title' | 'type'>,
+  seed: BookingEventSeed & { id: string },
+  meta: { updatedBy: string; nowIso: string },
+): TripEvent {
+  // The booking→event mapping is shared with the server (bookingEventFields), so
+  // the two can't diverge; this only adds the client-side event shape around it.
+  return {
+    ...bookingEventFields(booking, seed),
+    id: seed.id,
+    tripId: booking.tripId,
+    placeId: undefined,
+    status: EVENT_STATUS.PLANNED,
+    sortOrder: 0,
+    source: EVENT_SOURCE.MANUAL,
+    createdAt: meta.nowIso,
+    updatedAt: meta.nowIso,
+    updatedBy: meta.updatedBy,
   };
 }
