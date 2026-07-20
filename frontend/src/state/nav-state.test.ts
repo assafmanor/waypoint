@@ -1,200 +1,129 @@
-// Pure navigation-decision tests for the in-app back model (ADR-0035). The
-// hooks that wrap these (useTripTab / useAppBack) are React+router bound; the
-// decisions themselves are pure and are what's worth pinning down.
+// Pure navigation-decision tests for the in-app back model (ADR-0090, keeping
+// ADR-0035's behavior). The hooks that wrap these (useTripTab / useAppBack /
+// EdgeSwipeBack / the system-back interceptor) are React+router+DOM bound; the
+// decision itself is one pure function of the current nav state, and that — plus
+// the small pure targets around it — is what's worth pinning down.
 import { describe, expect, it } from 'vitest';
 import {
   RESET_TO_HOME_AFTER_HIDDEN_MS,
+  backSlides,
   daySelectTarget,
   resolveActiveDate,
+  resolveBack,
   shouldResetToHomeOnResume,
-  structuralBackStep,
-  systemBackDecision,
-  tabStep,
+  tabTarget,
+  type NavSnapshot,
 } from './nav-state';
 
-describe('tabStep — Home-anchor tab model (ADR-0035 §3)', () => {
-  it('is a no-op when already on the target tab', () => {
-    expect(tabStep('days', 'days', true)).toEqual({ kind: 'none' });
+describe('resolveBack — the one layer-peeling decision (ADR-0090, behavior of ADR-0035 §2)', () => {
+  const base: NavSnapshot = {
+    hasOverlay: false,
+    insideTrip: false,
+    tab: null,
+    pathname: '/',
+    armed: false,
+  };
+
+  it('closes the topmost overlay first, from anywhere', () => {
+    expect(resolveBack({ ...base, hasOverlay: true })).toEqual({ kind: 'close-overlay' });
+    // even at the in-trip Home base, an open overlay wins.
+    expect(resolveBack({ ...base, hasOverlay: true, insideTrip: true, tab: 'home' })).toEqual({
+      kind: 'close-overlay',
+    });
   });
 
-  it('pushes when leaving Home for another tab (so back returns to Home)', () => {
-    expect(tabStep('home', 'days', false)).toEqual({ kind: 'push', to: '/?tab=days' });
+  it('sends a non-Home tab to Home explicitly (never a blind history traversal)', () => {
+    for (const tab of ['days', 'index', 'map']) {
+      expect(resolveBack({ ...base, insideTrip: true, tab })).toEqual({ kind: 'to-home' });
+    }
   });
 
-  it('replaces when switching between non-Home tabs (no accumulating trail)', () => {
-    expect(tabStep('days', 'index', true)).toEqual({ kind: 'replace', to: '/?tab=index' });
+  it('arms the leave-trip confirm on the first back at the Home base (tab null or "home")', () => {
+    expect(resolveBack({ ...base, insideTrip: true, tab: null })).toEqual({ kind: 'arm-exit' });
+    expect(resolveBack({ ...base, insideTrip: true, tab: 'home' })).toEqual({ kind: 'arm-exit' });
   });
 
-  it('steps back to the base when Home is provably the entry behind', () => {
-    expect(tabStep('index', 'home', true)).toEqual({ kind: 'back' });
+  it('leaves the trip on the second back within the confirm window', () => {
+    expect(resolveBack({ ...base, insideTrip: true, tab: 'home', armed: true })).toEqual({
+      kind: 'exit-trip',
+    });
   });
 
-  it('routes to Home explicitly when Home is NOT behind — a cold deep link onto a tab, or foreign history (OAuth round-trip / external launch / idx desync) — so the tap never strands on a blind back', () => {
-    expect(tabStep('index', 'home', false)).toEqual({ kind: 'replace', to: '/' });
-    expect(tabStep('map', 'home', false)).toEqual({ kind: 'replace', to: '/' });
-  });
-});
-
-describe('structuralBackStep — goBack precedence (ADR-0035 §2)', () => {
-  it('non-Home tab steps back to Home when Home is provably the entry behind', () => {
+  it('an open overlay closes before the exit confirm even when armed', () => {
     expect(
-      structuralBackStep({
-        insideTrip: true,
-        tab: 'days',
-        pathname: '/',
-        canGoBack: true,
-        homeBehind: true,
-      }),
-    ).toEqual({ kind: 'back' });
+      resolveBack({ ...base, hasOverlay: true, insideTrip: true, tab: 'home', armed: true }),
+    ).toEqual({ kind: 'close-overlay' });
   });
 
-  it('non-Home tab routes to Home explicitly when Home is NOT behind — a cold deep link onto a tab, or foreign history (OAuth round-trip / external launch / idx desync) — even though in-app history exists, so the gesture never strands on a blind back', () => {
-    expect(
-      structuralBackStep({
-        insideTrip: true,
-        tab: 'map',
-        pathname: '/',
-        canGoBack: true,
-        homeBehind: false,
-      }),
-    ).toEqual({ kind: 'replace', to: '/' });
-  });
-
-  it('Home base in a trip resolves to the trip-exit step (gated by a confirm)', () => {
-    expect(
-      structuralBackStep({
-        insideTrip: true,
-        tab: null,
-        pathname: '/',
-        canGoBack: true,
-        homeBehind: false,
-      }),
-    ).toEqual({ kind: 'exit-trip' });
-    // tab=home is equivalent to the base.
-    expect(
-      structuralBackStep({
-        insideTrip: true,
-        tab: 'home',
-        pathname: '/',
-        canGoBack: true,
-        homeBehind: false,
-      }),
-    ).toEqual({ kind: 'exit-trip' });
-  });
-
-  it('a shell route steps back to its parent', () => {
-    expect(
-      structuralBackStep({
-        insideTrip: false,
-        tab: null,
-        pathname: '/new',
-        canGoBack: true,
-        homeBehind: false,
-      }),
-    ).toEqual({ kind: 'back' });
-  });
-
-  it('a cold-loaded shell route falls into the app rather than off it', () => {
-    expect(
-      structuralBackStep({
-        insideTrip: false,
-        tab: null,
-        pathname: '/new',
-        canGoBack: false,
-        homeBehind: false,
-      }),
-    ).toEqual({ kind: 'push', to: '/' });
+  it('backs a shell route out to its explicit parent (cold-launch safe, no history needed)', () => {
+    // create / join → the all-trips home
+    expect(resolveBack({ ...base, pathname: '/new' })).toEqual({ kind: 'to', path: '/trips' });
+    expect(resolveBack({ ...base, pathname: '/join/abc123' })).toEqual({
+      kind: 'to',
+      path: '/trips',
+    });
+    // trip-settings is opened from inside the trip → back into the trip (`/`)
+    expect(resolveBack({ ...base, pathname: '/trip/t1/settings' })).toEqual({
+      kind: 'to',
+      path: '/',
+    });
   });
 
   it('is a no-op at the roots (all-trips / zero-state / sign-in) — never falls off-app', () => {
     for (const pathname of ['/trips', '/', '/login']) {
-      expect(
-        structuralBackStep({
-          insideTrip: false,
-          tab: null,
-          pathname,
-          canGoBack: true,
-          homeBehind: false,
-        }),
-      ).toEqual({ kind: 'none' });
+      expect(resolveBack({ ...base, pathname })).toEqual({ kind: 'none' });
     }
   });
-});
 
-describe('systemBackDecision — Android system-back routing (ADR-0035 §5)', () => {
-  const base = {
-    hasOverlay: false,
-    insideTrip: false,
-    atHome: false,
-    homeBehind: true,
-    armed: false,
-  };
-
-  it('closes an open overlay first, regardless of where you are', () => {
-    expect(systemBackDecision({ ...base, hasOverlay: true })).toBe('close-overlay');
-    expect(systemBackDecision({ ...base, hasOverlay: true, insideTrip: true, atHome: true })).toBe(
-      'close-overlay',
-    );
-  });
-
-  it('arms the leave-trip confirm on the first back at the in-trip Home base', () => {
-    expect(systemBackDecision({ ...base, insideTrip: true, atHome: true, armed: false })).toBe(
-      'arm-exit',
-    );
-  });
-
-  it('leaves the trip on a second back within the confirm window', () => {
-    // At the Home base the exit confirm takes precedence over homeBehind, so the
-    // OS back never traverses off-app even when Home sits at history index 0.
-    expect(
-      systemBackDecision({
-        ...base,
-        insideTrip: true,
-        atHome: true,
-        homeBehind: false,
-        armed: true,
-      }),
-    ).toBe('do-exit');
-  });
-
-  it('lets a non-Home tab back through natively when Home is provably behind', () => {
-    expect(systemBackDecision({ ...base, insideTrip: true, atHome: false, homeBehind: true })).toBe(
-      'allow',
-    );
-  });
-
-  it('goes Home explicitly from a non-Home tab when Home is NOT behind (foreign / cold-launch history) — the Android twin of the gesture guard', () => {
-    expect(
-      systemBackDecision({ ...base, insideTrip: true, atHome: false, homeBehind: false }),
-    ).toBe('go-home');
-  });
-
-  it('lets a back through to react-router when outside a trip', () => {
-    expect(systemBackDecision({ ...base, insideTrip: false, homeBehind: false })).toBe('allow');
+  it('insideTrip disambiguates `/` = trip Home base from `/` = zero-state', () => {
+    expect(resolveBack({ ...base, pathname: '/', insideTrip: true })).toEqual({ kind: 'arm-exit' });
+    expect(resolveBack({ ...base, pathname: '/', insideTrip: false })).toEqual({ kind: 'none' });
   });
 });
 
-describe('daySelectTarget — single-source day selection (ADR-0035 §4)', () => {
+describe('backSlides — which actions move to a new screen (gesture animation)', () => {
+  it('slides for structural navigation', () => {
+    expect(backSlides({ kind: 'to-home' })).toBe(true);
+    expect(backSlides({ kind: 'to', path: '/trips' })).toBe(true);
+    expect(backSlides({ kind: 'exit-trip' })).toBe(true);
+  });
+
+  it('springs back (no slide) for overlay-dismiss / arm-confirm / no-op', () => {
+    expect(backSlides({ kind: 'close-overlay' })).toBe(false);
+    expect(backSlides({ kind: 'arm-exit' })).toBe(false);
+    expect(backSlides({ kind: 'none' })).toBe(false);
+  });
+});
+
+describe('tabTarget — where a tab tap navigates (always replace, flat history)', () => {
+  it('routes Home to the clean `/` so it derives to today', () => {
+    expect(tabTarget('home')).toBe('/');
+  });
+
+  it('routes any other tab to its `?tab=` URL', () => {
+    expect(tabTarget('days')).toBe('/?tab=days');
+    expect(tabTarget('index')).toBe('/?tab=index');
+    expect(tabTarget('map')).toBe('/?tab=map');
+  });
+});
+
+describe('daySelectTarget — single-source day selection (ADR-0035 §4, retained)', () => {
   const TODAY = '2026-07-08';
 
   it('always lands on the days tab, carrying a non-today day in ?day=', () => {
-    expect(daySelectTarget('home', '2026-07-10', TODAY)).toEqual({
+    expect(daySelectTarget('2026-07-10', TODAY)).toEqual({
       to: '/?tab=days&day=2026-07-10',
-      replace: false,
+      replace: true,
     });
   });
 
   it('omits ?day= when the day is today, so the URL stays clean (Home derives to today)', () => {
-    expect(daySelectTarget('days', TODAY, TODAY)).toEqual({ to: '/?tab=days', replace: true });
+    expect(daySelectTarget(TODAY, TODAY)).toEqual({ to: '/?tab=days', replace: true });
   });
 
-  it('pushes from Home (back returns to Home), replaces from any non-Home tab (lateral, §4)', () => {
-    // Home → days is a drill-in: push, so a back peels it back to Home.
-    expect(daySelectTarget('home', '2026-07-10', TODAY).replace).toBe(false);
-    // days → another day, or index → days, is lateral: replace, so back never
-    // walks through every day you tapped.
-    expect(daySelectTarget('days', '2026-07-10', TODAY).replace).toBe(true);
-    expect(daySelectTarget('index', '2026-07-10', TODAY).replace).toBe(true);
+  it('always replaces — back from a day resolves to Home from state, not by walking days', () => {
+    expect(daySelectTarget('2026-07-10', TODAY).replace).toBe(true);
+    expect(daySelectTarget(TODAY, TODAY).replace).toBe(true);
   });
 });
 

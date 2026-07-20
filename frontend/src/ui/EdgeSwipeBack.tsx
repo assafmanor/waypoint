@@ -9,7 +9,7 @@
 // natural. On a committed structural back the screen slides fully off before the
 // content swaps; overlay-dismiss / confirm-to-exit spring back instead.
 import { useEffect } from 'react';
-import { useHasOverlay, useReturnControls } from '../state/nav-state';
+import { backSlides, useHasOverlay, useReturnControls } from '../state/nav-state';
 
 /** Width of the trailing-edge band a pull must start in to count as "back". */
 const EDGE_ZONE_PX = 24;
@@ -123,20 +123,20 @@ export function EdgeSwipeBack() {
         paint(0, true); // below threshold → spring back
         return;
       }
-      const c = classify();
-      if (c.kind === 'structural' || c.kind === 'exit') {
-        // Real navigation: finish the screen off, then swap content and reset in
-        // the same frame so the incoming screen appears at rest (it fades via
-        // .body's own animation).
+      const action = classify();
+      if (backSlides(action)) {
+        // Real navigation (tab→Home / shell-parent / leave-trip): finish the
+        // screen off, then swap content and reset in the same frame so the
+        // incoming screen appears at rest (it fades via .body's own animation).
         paint(window.innerWidth, true);
         window.setTimeout(() => {
-          run(c);
+          run(action);
           requestAnimationFrame(clearInline);
         }, SLIDE_MS);
       } else {
-        // Overlay dismiss / confirm-to-exit / no-op: the underlying screen stays
+        // Overlay dismiss / arm-exit confirm / no-op: the underlying screen stays
         // put — spring it back and let the sheet (or toast) handle itself.
-        run(c);
+        run(action);
         paint(0, true);
       }
     };

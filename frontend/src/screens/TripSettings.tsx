@@ -15,6 +15,7 @@ import {
 } from '@waypoint/shared';
 import { useTrip } from '../state/trip-state';
 import { useAuth } from '../state/auth-state';
+import { useAppBack } from '../state/nav-state';
 import { ConfirmDialog, type ConfirmTone } from '../ui/primitives/ConfirmDialog';
 import { IconPicker } from '../ui/IconPicker';
 import { Sheet } from '../ui/Sheet';
@@ -49,6 +50,7 @@ type ConfirmState = {
 
 export function TripSettings() {
   const navigate = useNavigate();
+  const goBack = useAppBack();
   const { trip, members, users, settings, tripDeleted } = useTrip();
   const { me } = useAuth();
   const toast = useToast();
@@ -190,7 +192,7 @@ export function TripSettings() {
     <div className="app">
       <header className="new-head">
         <div className="new-head-row">
-          <button className="back" onClick={() => navigate(-1)} aria-label={t.settings.back}>
+          <button className="back" onClick={goBack} aria-label={t.settings.back}>
             <NavArrow variant="back" />
           </button>
           <div className="new-title">{t.settings.title}</div>
