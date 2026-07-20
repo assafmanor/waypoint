@@ -802,11 +802,10 @@
       אינדקס · <b>וריאציית השוואה · מסכים נפרדים</b> · לעומת index-findability-v1
     </p>
     <p class="adr-note">
-      הזמנות ומסמכים הופכים לשני "אריחים" במסך נחיתה; לחיצה פותחת מסך ייעודי +
-      שורת חזרה. הצ׳יפים / החיפוש / כיווץ העבר זהים ל-v1 — אבל כיווץ המקטע (מנגנון
-      4 שם) מיותר כאן: כל רשימה כבר מקבלת מסך שלם לבד. שלושת האריחים המעומעמים
-      "בקרוב" הם בדיקת קנה-מידה בלבד — לא פיצ׳ר אמיתי — לבחון איך נחיתה עם 5
-      אריחים נראית לקראת הערות/מחקר/מדיה.
+      הזמנות ומסמכים הופכים לשני "אריחים" במסך נחיתה; לחיצה פותחת מסך ייעודי + שורת חזרה. הצ׳יפים /
+      החיפוש / כיווץ העבר זהים ל-v1 — אבל כיווץ המקטע (מנגנון 4 שם) מיותר כאן: כל רשימה כבר מקבלת
+      מסך שלם לבד. שלושת האריחים המעומעמים "בקרוב" הם בדיקת קנה-מידה בלבד — לא פיצ׳ר אמיתי — לבחון
+      איך נחיתה עם 5 אריחים נראית לקראת הערות/מחקר/מדיה.
     </p>
 
     <div class="demo-toggle" role="tablist" aria-label="גודל טיול">
@@ -828,7 +827,10 @@
           <div>
             <button class="trip-switch" aria-label="החלף טיול · לכל הטיולים">
               <span class="trip-name">יפן ׳26</span>
-              <span class="chev"><svg class="icon" viewBox="0 0 24 24" fill="currentColor" aria-hidden="true"><path d="M5 9l7 7 7-7z" /></svg></span>
+              <span class="chev"
+                ><svg class="icon" viewBox="0 0 24 24" fill="currentColor" aria-hidden="true">
+                  <path d="M5 9l7 7 7-7z" /></svg
+              ></span>
             </button>
             <div class="trip-sub">טוקיו<span class="dot">•</span>יום 3 מתוך 10</div>
           </div>
@@ -859,7 +861,20 @@
               </div>
               <div class="tile-sub">🔗 הבא: Ichiran Ramen · היום 19:30 · 5 מהעבר</div>
             </div>
-            <div class="tile-chev"><svg class="nav-arrow nav-arrow-forward" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M20 12H4m6-6l-6 6 6 6" /></svg></div>
+            <div class="tile-chev">
+              <svg
+                class="nav-arrow nav-arrow-forward"
+                viewBox="0 0 24 24"
+                fill="none"
+                stroke="currentColor"
+                stroke-width="2.2"
+                stroke-linecap="round"
+                stroke-linejoin="round"
+                aria-hidden="true"
+              >
+                <path d="M20 12H4m6-6l-6 6 6 6" />
+              </svg>
+            </div>
           </button>
 
           <button type="button" class="tile" onclick="showView('documents')">
@@ -871,7 +886,20 @@
               </div>
               <div class="tile-sub">🔒 דרכונים · ביטוח נסיעות · ויזות · אחר</div>
             </div>
-            <div class="tile-chev"><svg class="nav-arrow nav-arrow-forward" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M20 12H4m6-6l-6 6 6 6" /></svg></div>
+            <div class="tile-chev">
+              <svg
+                class="nav-arrow nav-arrow-forward"
+                viewBox="0 0 24 24"
+                fill="none"
+                stroke="currentColor"
+                stroke-width="2.2"
+                stroke-linecap="round"
+                stroke-linejoin="round"
+                aria-hidden="true"
+              >
+                <path d="M20 12H4m6-6l-6 6 6 6" />
+              </svg>
+            </div>
           </button>
 
           <!-- ===== SCALE CHECK (not a real feature) — three placeholder tiles for
@@ -915,7 +943,20 @@
         <!-- ===== bookings: its own screen now, chips/search/past unchanged ===== -->
         <div class="view" id="view-bookings">
           <div class="back-row">
-            <button class="back-icon-btn" onclick="showView('landing')" aria-label="חזרה לאינדקס"><svg class="nav-arrow nav-arrow-back" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M20 12H4m6-6l-6 6 6 6" /></svg></button>
+            <button class="back-icon-btn" onclick="showView('landing')" aria-label="חזרה לאינדקס">
+              <svg
+                class="nav-arrow nav-arrow-back"
+                viewBox="0 0 24 24"
+                fill="none"
+                stroke="currentColor"
+                stroke-width="2.2"
+                stroke-linecap="round"
+                stroke-linejoin="round"
+                aria-hidden="true"
+              >
+                <path d="M20 12H4m6-6l-6 6 6 6" />
+              </svg>
+            </button>
             <span class="back-label">אינדקס</span>
           </div>
 
@@ -959,7 +1000,9 @@
             <button class="chip" data-cat="activity" onclick="selectChip('activity', this)">
               🎟️ פעילות
             </button>
-            <button class="chip" data-cat="other" onclick="selectChip('other', this)">📄 אחר</button>
+            <button class="chip" data-cat="other" onclick="selectChip('other', this)">
+              📄 אחר
+            </button>
           </div>
 
           <button type="button" class="addbtn">＋ הוסף הזמנה</button>
@@ -968,7 +1011,25 @@
             <div class="li" data-cat="flight" data-search="ana832 טוקיו קיוטו na832">
               <div class="badge2">✈️</div>
               <div class="main">
-                <div class="t"><span class="route"><bdi>טוקיו</bdi><span class="arr"><svg class="nav-arrow nav-arrow-forward" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M20 12H4m6-6l-6 6 6 6" /></svg></span><bdi>קיוטו</bdi></span> <span class="tag-type">טיסה</span></div>
+                <div class="t">
+                  <span class="route"
+                    ><bdi>טוקיו</bdi
+                    ><span class="arr"
+                      ><svg
+                        class="nav-arrow nav-arrow-forward"
+                        viewBox="0 0 24 24"
+                        fill="none"
+                        stroke="currentColor"
+                        stroke-width="2.2"
+                        stroke-linecap="round"
+                        stroke-linejoin="round"
+                        aria-hidden="true"
+                      >
+                        <path d="M20 12H4m6-6l-6 6 6 6" /></svg></span
+                    ><bdi>קיוטו</bdi></span
+                  >
+                  <span class="tag-type">טיסה</span>
+                </div>
                 <div class="m"><span class="link-cue">🔗 מחר · 07:40</span></div>
               </div>
               <div class="right"><div class="code" dir="ltr">#NA832</div></div>
@@ -1034,7 +1095,25 @@
             <div class="li" data-cat="flight" data-search="nh845 חזרה טוקיו">
               <div class="badge2">✈️</div>
               <div class="main">
-                <div class="t"><span class="route"><bdi>קיוטו</bdi><span class="arr"><svg class="nav-arrow nav-arrow-forward" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M20 12H4m6-6l-6 6 6 6" /></svg></span><bdi>טוקיו</bdi></span> (חזרה) <span class="tag-type">טיסה</span></div>
+                <div class="t">
+                  <span class="route"
+                    ><bdi>קיוטו</bdi
+                    ><span class="arr"
+                      ><svg
+                        class="nav-arrow nav-arrow-forward"
+                        viewBox="0 0 24 24"
+                        fill="none"
+                        stroke="currentColor"
+                        stroke-width="2.2"
+                        stroke-linecap="round"
+                        stroke-linejoin="round"
+                        aria-hidden="true"
+                      >
+                        <path d="M20 12H4m6-6l-6 6 6 6" /></svg></span
+                    ><bdi>טוקיו</bdi></span
+                  >
+                  (חזרה) <span class="tag-type">טיסה</span>
+                </div>
                 <div class="m"><span class="link-cue">🔗 עוד 6 ימים · 21:10</span></div>
               </div>
               <div class="right"><div class="code" dir="ltr">#NH845</div></div>
@@ -1127,7 +1206,20 @@
         <!-- ===== documents: its own screen, content unchanged from v1 ===== -->
         <div class="view" id="view-documents">
           <div class="back-row">
-            <button class="back-icon-btn" onclick="showView('landing')" aria-label="חזרה לאינדקס"><svg class="nav-arrow nav-arrow-back" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M20 12H4m6-6l-6 6 6 6" /></svg></button>
+            <button class="back-icon-btn" onclick="showView('landing')" aria-label="חזרה לאינדקס">
+              <svg
+                class="nav-arrow nav-arrow-back"
+                viewBox="0 0 24 24"
+                fill="none"
+                stroke="currentColor"
+                stroke-width="2.2"
+                stroke-linecap="round"
+                stroke-linejoin="round"
+                aria-hidden="true"
+              >
+                <path d="M20 12H4m6-6l-6 6 6 6" />
+              </svg>
+            </button>
             <span class="back-label">אינדקס</span>
           </div>
 

@@ -741,9 +741,9 @@
       אינדקס · <b>איתור בטיול עמוס</b> · קטגוריות + חיפוש + כיווץ עבר + כיווץ מקטעים
     </p>
     <p class="adr-note">
-      כל מקטע (הזמנות / מסמכים) מתכווץ בנפרד דרך החץ בכותרת שלו. כיווץ "כבר
-      מאחוריכם" משכפל את הטוגל של מסך הבית · תכנון (ADR-0061). הצ׳יפים והחיפוש
-      חלים רק על ההזמנות; המסמכים נשארים מקובצים כפי שהם היום.
+      כל מקטע (הזמנות / מסמכים) מתכווץ בנפרד דרך החץ בכותרת שלו. כיווץ "כבר מאחוריכם" משכפל את הטוגל
+      של מסך הבית · תכנון (ADR-0061). הצ׳יפים והחיפוש חלים רק על ההזמנות; המסמכים נשארים מקובצים כפי
+      שהם היום.
     </p>
 
     <div class="demo-toggle" role="tablist" aria-label="גודל טיול">
@@ -765,7 +765,10 @@
           <div>
             <button class="trip-switch" aria-label="החלף טיול · לכל הטיולים">
               <span class="trip-name">יפן ׳26</span>
-              <span class="chev"><svg class="icon" viewBox="0 0 24 24" fill="currentColor" aria-hidden="true"><path d="M5 9l7 7 7-7z" /></svg></span>
+              <span class="chev"
+                ><svg class="icon" viewBox="0 0 24 24" fill="currentColor" aria-hidden="true">
+                  <path d="M5 9l7 7 7-7z" /></svg
+              ></span>
             </button>
             <div class="trip-sub">טוקיו<span class="dot">•</span>יום 3 מתוך 10</div>
           </div>
@@ -793,7 +796,10 @@
             aria-expanded="true"
             aria-controls="bookings-body"
           >
-            <span class="sec-chevron"><svg class="icon" viewBox="0 0 24 24" fill="currentColor" aria-hidden="true"><path d="M5 9l7 7 7-7z" /></svg></span>
+            <span class="sec-chevron"
+              ><svg class="icon" viewBox="0 0 24 24" fill="currentColor" aria-hidden="true">
+                <path d="M5 9l7 7 7-7z" /></svg
+            ></span>
             <span>הזמנות</span>
             <span class="sec-count" id="count-bookings">17</span>
           </button>
@@ -805,199 +811,237 @@
         </div>
 
         <div id="bookings-body">
-        <div class="search-row">
-          <div class="search-box" id="search-box">
-            <span>🔍</span>
-            <input
-              id="search-input"
-              type="text"
-              placeholder="חפשו לפי שם או קוד אישור…"
-              oninput="applyFilters()"
-            />
-            <button class="clear" onclick="clearSearch()" aria-label="נקה חיפוש">✕</button>
+          <div class="search-row">
+            <div class="search-box" id="search-box">
+              <span>🔍</span>
+              <input
+                id="search-input"
+                type="text"
+                placeholder="חפשו לפי שם או קוד אישור…"
+                oninput="applyFilters()"
+              />
+              <button class="clear" onclick="clearSearch()" aria-label="נקה חיפוש">✕</button>
+            </div>
           </div>
-        </div>
 
-        <div class="chip-row" id="chip-row">
-          <button class="chip on" data-cat="all" onclick="selectChip('all', this)">הכל</button>
-          <button class="chip" data-cat="flight" onclick="selectChip('flight', this)">
-            ✈️ טיסה
-          </button>
-          <button class="chip" data-cat="hotel" onclick="selectChip('hotel', this)">
-            🏨 לינה
-          </button>
-          <button class="chip" data-cat="restaurant" onclick="selectChip('restaurant', this)">
-            🍜 מסעדה
-          </button>
-          <button class="chip" data-cat="train" onclick="selectChip('train', this)">
-            🚄 רכבת
-          </button>
-          <button class="chip" data-cat="activity" onclick="selectChip('activity', this)">
-            🎟️ פעילות
-          </button>
-          <button class="chip" data-cat="other" onclick="selectChip('other', this)">📄 אחר</button>
-        </div>
-
-        <button type="button" class="addbtn">＋ הוסף הזמנה</button>
-
-        <div class="listcard" id="upcoming-list">
-          <div class="li" data-cat="flight" data-search="ana832 טוקיו קיוטו na832">
-            <div class="badge2">✈️</div>
-            <div class="main">
-              <div class="t"><span class="route"><bdi>טוקיו</bdi><span class="arr"><svg class="nav-arrow nav-arrow-forward" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M20 12H4m6-6l-6 6 6 6" /></svg></span><bdi>קיוטו</bdi></span> <span class="tag-type">טיסה</span></div>
-              <div class="m"><span class="link-cue">🔗 מחר · 07:40</span></div>
-            </div>
-            <div class="right"><div class="code" dir="ltr">#NA832</div></div>
-          </div>
-          <div class="li" data-cat="hotel" data-search="shinjuku granbell גרנבל צ'ק-אאוט gb-2291">
-            <div class="badge2">🏨</div>
-            <div class="main">
-              <div class="t">Shinjuku Granbell <span class="tag-type">לינה</span></div>
-              <div class="m">
-                <span class="link-cue">🔗 צ׳ק-אאוט מחרתיים · 11:00</span> · חדר 512
-              </div>
-            </div>
-            <div class="right"><div class="code" dir="ltr">#GB-2291</div></div>
-          </div>
-          <div class="li" data-cat="restaurant" data-search="ichiran ramen איצ'ירן ראמן 4471">
-            <div class="badge2">🍜</div>
-            <div class="main">
-              <div class="t">Ichiran Ramen <span class="tag-type">מסעדה</span></div>
-              <div class="m"><span class="link-cue">🔗 היום · 19:30</span> · שולחן ל-5</div>
-            </div>
-            <div class="right"><div class="code" dir="ltr">#4471</div></div>
-          </div>
-          <div class="li" data-cat="other" data-search="שכירת רכב toyota yaris rc-5540">
-            <div class="badge2">🚗</div>
-            <div class="main">
-              <div class="t">שכירת רכב · Toyota Yaris <span class="tag-type">אחר</span></div>
-              <div class="m"><span class="link-cue">🔗 עוד 5 ימים · 09:00</span></div>
-            </div>
-            <div class="right"><div class="code" dir="ltr">#RC-5540</div></div>
-          </div>
-          <div class="li" data-cat="train" data-search="שינקנסן חזרה jr-91">
-            <div class="badge2">🚄</div>
-            <div class="main">
-              <div class="t">שינקנסן · חזרה <span class="tag-type">רכבת</span></div>
-              <div class="m"><span class="unlinked">לא משובצת במסלול</span></div>
-            </div>
-            <div class="right"><div class="code" dir="ltr">#JR-91</div></div>
-          </div>
-          <div class="li" data-cat="activity" data-search="teamlab planets tl-220">
-            <div class="badge2">🎟️</div>
-            <div class="main">
-              <div class="t">teamLab Planets <span class="tag-type">פעילות</span></div>
-              <div class="m"><span class="link-cue">🔗 עוד 3 ימים · 10:00</span></div>
-            </div>
-            <div class="right"><div class="code" dir="ltr">#TL-220</div></div>
-          </div>
-          <div class="li" data-cat="restaurant" data-search="sushi dai סושי דאי sd-12">
-            <div class="badge2">🍜</div>
-            <div class="main">
-              <div class="t">Sushi Dai <span class="tag-type">מסעדה</span></div>
-              <div class="m"><span class="link-cue">🔗 עוד יומיים · 08:00</span></div>
-            </div>
-            <div class="right"><div class="code" dir="ltr">#SD-12</div></div>
-          </div>
-          <div class="li" data-cat="hotel" data-search="kyoto ryokan קיוטו ריוקאן kr-771">
-            <div class="badge2">🏨</div>
-            <div class="main">
-              <div class="t">Kyoto Ryokan <span class="tag-type">לינה</span></div>
-              <div class="m"><span class="link-cue">🔗 צ׳ק-אין עוד 4 ימים</span></div>
-            </div>
-            <div class="right"><div class="code" dir="ltr">#KR-771</div></div>
-          </div>
-          <div class="li" data-cat="flight" data-search="nh845 חזרה טוקיו">
-            <div class="badge2">✈️</div>
-            <div class="main">
-              <div class="t"><span class="route"><bdi>קיוטו</bdi><span class="arr"><svg class="nav-arrow nav-arrow-forward" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M20 12H4m6-6l-6 6 6 6" /></svg></span><bdi>טוקיו</bdi></span> (חזרה) <span class="tag-type">טיסה</span></div>
-              <div class="m"><span class="link-cue">🔗 עוד 6 ימים · 21:10</span></div>
-            </div>
-            <div class="right"><div class="code" dir="ltr">#NH845</div></div>
-          </div>
-          <div class="li" data-cat="train" data-search="jr pass מקומי jr-55">
-            <div class="badge2">🚄</div>
-            <div class="main">
-              <div class="t">JR Pass · שימוש מקומי <span class="tag-type">רכבת</span></div>
-              <div class="m"><span class="unlinked">לא משובצת במסלול</span></div>
-            </div>
-            <div class="right"><div class="code" dir="ltr">#JR-55</div></div>
-          </div>
-          <div class="li" data-cat="activity" data-search="fushimi inari פושימי אינרי fi-90">
-            <div class="badge2">🎟️</div>
-            <div class="main">
-              <div class="t">Fushimi Inari · יום שלם <span class="tag-type">פעילות</span></div>
-              <div class="m"><span class="link-cue">🔗 עוד 4 ימים · 07:00</span></div>
-            </div>
-            <div class="right"><div class="code" dir="ltr">#FI-90</div></div>
-          </div>
-          <div class="li" data-cat="other" data-search="ביטוח נסיעה נוסף ot-1">
-            <div class="badge2">📄</div>
-            <div class="main">
-              <div class="t">ביטוח נסיעה משלים <span class="tag-type">אחר</span></div>
-              <div class="m"><span class="unlinked">לא משובצת במסלול</span></div>
-            </div>
-            <div class="right"><div class="code" dir="ltr">#OT-1</div></div>
-          </div>
-        </div>
-
-        <div id="no-match-upcoming" class="no-match" style="display: none; margin-top: 10px">
-          אין הזמנות תואמות
-        </div>
-
-        <div class="sec-title" style="margin-top: 18px">
-          <span class="sec-title-end" style="margin-inline-start: 0">
-            <button class="past-toggle" id="past-toggle" onclick="togglePast()">
-              הצג הזמנות מהעבר (5)
+          <div class="chip-row" id="chip-row">
+            <button class="chip on" data-cat="all" onclick="selectChip('all', this)">הכל</button>
+            <button class="chip" data-cat="flight" onclick="selectChip('flight', this)">
+              ✈️ טיסה
             </button>
-          </span>
-        </div>
+            <button class="chip" data-cat="hotel" onclick="selectChip('hotel', this)">
+              🏨 לינה
+            </button>
+            <button class="chip" data-cat="restaurant" onclick="selectChip('restaurant', this)">
+              🍜 מסעדה
+            </button>
+            <button class="chip" data-cat="train" onclick="selectChip('train', this)">
+              🚄 רכבת
+            </button>
+            <button class="chip" data-cat="activity" onclick="selectChip('activity', this)">
+              🎟️ פעילות
+            </button>
+            <button class="chip" data-cat="other" onclick="selectChip('other', this)">
+              📄 אחר
+            </button>
+          </div>
 
-        <div id="past-section">
-          <div class="past-head">כבר מאחוריכם</div>
-          <div class="listcard past" id="past-list">
-            <div class="li" data-cat="flight" data-search="nh831 הגעה טוקיו">
+          <button type="button" class="addbtn">＋ הוסף הזמנה</button>
+
+          <div class="listcard" id="upcoming-list">
+            <div class="li" data-cat="flight" data-search="ana832 טוקיו קיוטו na832">
               <div class="badge2">✈️</div>
               <div class="main">
-                <div class="t">טוקיו · הגעה <span class="tag-type">טיסה</span></div>
-                <div class="m"><span class="link-cue">🔗 ביום 1 · הגעה</span></div>
+                <div class="t">
+                  <span class="route"
+                    ><bdi>טוקיו</bdi
+                    ><span class="arr"
+                      ><svg
+                        class="nav-arrow nav-arrow-forward"
+                        viewBox="0 0 24 24"
+                        fill="none"
+                        stroke="currentColor"
+                        stroke-width="2.2"
+                        stroke-linecap="round"
+                        stroke-linejoin="round"
+                        aria-hidden="true"
+                      >
+                        <path d="M20 12H4m6-6l-6 6 6 6" /></svg></span
+                    ><bdi>קיוטו</bdi></span
+                  >
+                  <span class="tag-type">טיסה</span>
+                </div>
+                <div class="m"><span class="link-cue">🔗 מחר · 07:40</span></div>
               </div>
-              <div class="right"><div class="code" dir="ltr">NH831</div></div>
+              <div class="right"><div class="code" dir="ltr">#NA832</div></div>
             </div>
-            <div class="li" data-cat="hotel" data-search="tokyo apa אפא">
+            <div class="li" data-cat="hotel" data-search="shinjuku granbell גרנבל צ'ק-אאוט gb-2291">
               <div class="badge2">🏨</div>
               <div class="main">
-                <div class="t">Tokyo APA <span class="tag-type">לינה</span></div>
-                <div class="m"><span class="link-cue">🔗 צ׳ק-אאוט אתמול</span></div>
+                <div class="t">Shinjuku Granbell <span class="tag-type">לינה</span></div>
+                <div class="m">
+                  <span class="link-cue">🔗 צ׳ק-אאוט מחרתיים · 11:00</span> · חדר 512
+                </div>
               </div>
-              <div class="right"><div class="code" dir="ltr">#AP-330</div></div>
+              <div class="right"><div class="code" dir="ltr">#GB-2291</div></div>
             </div>
-            <div class="li" data-cat="restaurant" data-search="ippudo איפודו">
+            <div class="li" data-cat="restaurant" data-search="ichiran ramen איצ'ירן ראמן 4471">
               <div class="badge2">🍜</div>
               <div class="main">
-                <div class="t">Ippudo <span class="tag-type">מסעדה</span></div>
-                <div class="m"><span class="link-cue">🔗 אתמול · 19:00</span></div>
+                <div class="t">Ichiran Ramen <span class="tag-type">מסעדה</span></div>
+                <div class="m"><span class="link-cue">🔗 היום · 19:30</span> · שולחן ל-5</div>
               </div>
-              <div class="right"><div class="code" dir="ltr">#IP-8</div></div>
+              <div class="right"><div class="code" dir="ltr">#4471</div></div>
             </div>
-            <div class="li" data-cat="train" data-search="narita express נאריטה אקספרס">
+            <div class="li" data-cat="other" data-search="שכירת רכב toyota yaris rc-5540">
+              <div class="badge2">🚗</div>
+              <div class="main">
+                <div class="t">שכירת רכב · Toyota Yaris <span class="tag-type">אחר</span></div>
+                <div class="m"><span class="link-cue">🔗 עוד 5 ימים · 09:00</span></div>
+              </div>
+              <div class="right"><div class="code" dir="ltr">#RC-5540</div></div>
+            </div>
+            <div class="li" data-cat="train" data-search="שינקנסן חזרה jr-91">
               <div class="badge2">🚄</div>
               <div class="main">
-                <div class="t">Narita Express <span class="tag-type">רכבת</span></div>
-                <div class="m"><span class="link-cue">🔗 שלשום</span></div>
+                <div class="t">שינקנסן · חזרה <span class="tag-type">רכבת</span></div>
+                <div class="m"><span class="unlinked">לא משובצת במסלול</span></div>
               </div>
-              <div class="right"><div class="code" dir="ltr">#NE-4</div></div>
+              <div class="right"><div class="code" dir="ltr">#JR-91</div></div>
             </div>
-            <div class="li" data-cat="activity" data-search="tokyo tower מגדל טוקיו">
+            <div class="li" data-cat="activity" data-search="teamlab planets tl-220">
               <div class="badge2">🎟️</div>
               <div class="main">
-                <div class="t">Tokyo Tower <span class="tag-type">פעילות</span></div>
-                <div class="m"><span class="link-cue">🔗 לפני 3 ימים</span></div>
+                <div class="t">teamLab Planets <span class="tag-type">פעילות</span></div>
+                <div class="m"><span class="link-cue">🔗 עוד 3 ימים · 10:00</span></div>
               </div>
-              <div class="right"><div class="code" dir="ltr">#TT-2</div></div>
+              <div class="right"><div class="code" dir="ltr">#TL-220</div></div>
+            </div>
+            <div class="li" data-cat="restaurant" data-search="sushi dai סושי דאי sd-12">
+              <div class="badge2">🍜</div>
+              <div class="main">
+                <div class="t">Sushi Dai <span class="tag-type">מסעדה</span></div>
+                <div class="m"><span class="link-cue">🔗 עוד יומיים · 08:00</span></div>
+              </div>
+              <div class="right"><div class="code" dir="ltr">#SD-12</div></div>
+            </div>
+            <div class="li" data-cat="hotel" data-search="kyoto ryokan קיוטו ריוקאן kr-771">
+              <div class="badge2">🏨</div>
+              <div class="main">
+                <div class="t">Kyoto Ryokan <span class="tag-type">לינה</span></div>
+                <div class="m"><span class="link-cue">🔗 צ׳ק-אין עוד 4 ימים</span></div>
+              </div>
+              <div class="right"><div class="code" dir="ltr">#KR-771</div></div>
+            </div>
+            <div class="li" data-cat="flight" data-search="nh845 חזרה טוקיו">
+              <div class="badge2">✈️</div>
+              <div class="main">
+                <div class="t">
+                  <span class="route"
+                    ><bdi>קיוטו</bdi
+                    ><span class="arr"
+                      ><svg
+                        class="nav-arrow nav-arrow-forward"
+                        viewBox="0 0 24 24"
+                        fill="none"
+                        stroke="currentColor"
+                        stroke-width="2.2"
+                        stroke-linecap="round"
+                        stroke-linejoin="round"
+                        aria-hidden="true"
+                      >
+                        <path d="M20 12H4m6-6l-6 6 6 6" /></svg></span
+                    ><bdi>טוקיו</bdi></span
+                  >
+                  (חזרה) <span class="tag-type">טיסה</span>
+                </div>
+                <div class="m"><span class="link-cue">🔗 עוד 6 ימים · 21:10</span></div>
+              </div>
+              <div class="right"><div class="code" dir="ltr">#NH845</div></div>
+            </div>
+            <div class="li" data-cat="train" data-search="jr pass מקומי jr-55">
+              <div class="badge2">🚄</div>
+              <div class="main">
+                <div class="t">JR Pass · שימוש מקומי <span class="tag-type">רכבת</span></div>
+                <div class="m"><span class="unlinked">לא משובצת במסלול</span></div>
+              </div>
+              <div class="right"><div class="code" dir="ltr">#JR-55</div></div>
+            </div>
+            <div class="li" data-cat="activity" data-search="fushimi inari פושימי אינרי fi-90">
+              <div class="badge2">🎟️</div>
+              <div class="main">
+                <div class="t">Fushimi Inari · יום שלם <span class="tag-type">פעילות</span></div>
+                <div class="m"><span class="link-cue">🔗 עוד 4 ימים · 07:00</span></div>
+              </div>
+              <div class="right"><div class="code" dir="ltr">#FI-90</div></div>
+            </div>
+            <div class="li" data-cat="other" data-search="ביטוח נסיעה נוסף ot-1">
+              <div class="badge2">📄</div>
+              <div class="main">
+                <div class="t">ביטוח נסיעה משלים <span class="tag-type">אחר</span></div>
+                <div class="m"><span class="unlinked">לא משובצת במסלול</span></div>
+              </div>
+              <div class="right"><div class="code" dir="ltr">#OT-1</div></div>
             </div>
           </div>
-        </div>
+
+          <div id="no-match-upcoming" class="no-match" style="display: none; margin-top: 10px">
+            אין הזמנות תואמות
+          </div>
+
+          <div class="sec-title" style="margin-top: 18px">
+            <span class="sec-title-end" style="margin-inline-start: 0">
+              <button class="past-toggle" id="past-toggle" onclick="togglePast()">
+                הצג הזמנות מהעבר (5)
+              </button>
+            </span>
+          </div>
+
+          <div id="past-section">
+            <div class="past-head">כבר מאחוריכם</div>
+            <div class="listcard past" id="past-list">
+              <div class="li" data-cat="flight" data-search="nh831 הגעה טוקיו">
+                <div class="badge2">✈️</div>
+                <div class="main">
+                  <div class="t">טוקיו · הגעה <span class="tag-type">טיסה</span></div>
+                  <div class="m"><span class="link-cue">🔗 ביום 1 · הגעה</span></div>
+                </div>
+                <div class="right"><div class="code" dir="ltr">NH831</div></div>
+              </div>
+              <div class="li" data-cat="hotel" data-search="tokyo apa אפא">
+                <div class="badge2">🏨</div>
+                <div class="main">
+                  <div class="t">Tokyo APA <span class="tag-type">לינה</span></div>
+                  <div class="m"><span class="link-cue">🔗 צ׳ק-אאוט אתמול</span></div>
+                </div>
+                <div class="right"><div class="code" dir="ltr">#AP-330</div></div>
+              </div>
+              <div class="li" data-cat="restaurant" data-search="ippudo איפודו">
+                <div class="badge2">🍜</div>
+                <div class="main">
+                  <div class="t">Ippudo <span class="tag-type">מסעדה</span></div>
+                  <div class="m"><span class="link-cue">🔗 אתמול · 19:00</span></div>
+                </div>
+                <div class="right"><div class="code" dir="ltr">#IP-8</div></div>
+              </div>
+              <div class="li" data-cat="train" data-search="narita express נאריטה אקספרס">
+                <div class="badge2">🚄</div>
+                <div class="main">
+                  <div class="t">Narita Express <span class="tag-type">רכבת</span></div>
+                  <div class="m"><span class="link-cue">🔗 שלשום</span></div>
+                </div>
+                <div class="right"><div class="code" dir="ltr">#NE-4</div></div>
+              </div>
+              <div class="li" data-cat="activity" data-search="tokyo tower מגדל טוקיו">
+                <div class="badge2">🎟️</div>
+                <div class="main">
+                  <div class="t">Tokyo Tower <span class="tag-type">פעילות</span></div>
+                  <div class="m"><span class="link-cue">🔗 לפני 3 ימים</span></div>
+                </div>
+                <div class="right"><div class="code" dir="ltr">#TT-2</div></div>
+              </div>
+            </div>
+          </div>
         </div>
 
         <div class="sec-title">
@@ -1008,7 +1052,10 @@
             aria-expanded="true"
             aria-controls="documents-body"
           >
-            <span class="sec-chevron"><svg class="icon" viewBox="0 0 24 24" fill="currentColor" aria-hidden="true"><path d="M5 9l7 7 7-7z" /></svg></span>
+            <span class="sec-chevron"
+              ><svg class="icon" viewBox="0 0 24 24" fill="currentColor" aria-hidden="true">
+                <path d="M5 9l7 7 7-7z" /></svg
+            ></span>
             <span>מסמכים</span>
             <span class="sec-count" id="count-documents">6</span>
           </button>
@@ -1016,57 +1063,57 @@
         </div>
 
         <div id="documents-body">
-        <button type="button" class="addbtn">＋ הוסף מסמך</button>
-        <div class="doc-group">
-          <div class="gt">דרכונים</div>
-          <div class="listcard">
-            <div class="li doc">
-              <div class="badge2">📕</div>
-              <div class="main"><div class="t">דרכון · אסף</div></div>
-              <div class="right"><div class="time">🔒</div></div>
-            </div>
-            <div class="li doc">
-              <div class="badge2">📕</div>
-              <div class="main"><div class="t">דרכון · נועה</div></div>
-              <div class="right"><div class="time">🔒</div></div>
-            </div>
-          </div>
-        </div>
-        <div class="doc-group">
-          <div class="gt">ביטוח נסיעות</div>
-          <div class="listcard">
-            <div class="li doc">
-              <div class="badge2">🛡️</div>
-              <div class="main"><div class="t">פוליסה + מספר חירום</div></div>
-              <div class="right"><div class="time">🔒</div></div>
+          <button type="button" class="addbtn">＋ הוסף מסמך</button>
+          <div class="doc-group">
+            <div class="gt">דרכונים</div>
+            <div class="listcard">
+              <div class="li doc">
+                <div class="badge2">📕</div>
+                <div class="main"><div class="t">דרכון · אסף</div></div>
+                <div class="right"><div class="time">🔒</div></div>
+              </div>
+              <div class="li doc">
+                <div class="badge2">📕</div>
+                <div class="main"><div class="t">דרכון · נועה</div></div>
+                <div class="right"><div class="time">🔒</div></div>
+              </div>
             </div>
           </div>
-        </div>
-        <div class="doc-group">
-          <div class="gt">ויזות</div>
-          <div class="listcard">
-            <div class="li doc">
-              <div class="badge2">🎫</div>
-              <div class="main"><div class="t">ויזה · יפן</div></div>
-              <div class="right"><div class="time">🔒</div></div>
+          <div class="doc-group">
+            <div class="gt">ביטוח נסיעות</div>
+            <div class="listcard">
+              <div class="li doc">
+                <div class="badge2">🛡️</div>
+                <div class="main"><div class="t">פוליסה + מספר חירום</div></div>
+                <div class="right"><div class="time">🔒</div></div>
+              </div>
             </div>
           </div>
-        </div>
-        <div class="doc-group">
-          <div class="gt">אחר</div>
-          <div class="listcard">
-            <div class="li doc">
-              <div class="badge2">📄</div>
-              <div class="main"><div class="t">אישור חיסונים</div></div>
-              <div class="right"><div class="time">🔒</div></div>
-            </div>
-            <div class="li doc">
-              <div class="badge2">📄</div>
-              <div class="main"><div class="t">ביטוח רכב שכור</div></div>
-              <div class="right"><div class="time">🔒</div></div>
+          <div class="doc-group">
+            <div class="gt">ויזות</div>
+            <div class="listcard">
+              <div class="li doc">
+                <div class="badge2">🎫</div>
+                <div class="main"><div class="t">ויזה · יפן</div></div>
+                <div class="right"><div class="time">🔒</div></div>
+              </div>
             </div>
           </div>
-        </div>
+          <div class="doc-group">
+            <div class="gt">אחר</div>
+            <div class="listcard">
+              <div class="li doc">
+                <div class="badge2">📄</div>
+                <div class="main"><div class="t">אישור חיסונים</div></div>
+                <div class="right"><div class="time">🔒</div></div>
+              </div>
+              <div class="li doc">
+                <div class="badge2">📄</div>
+                <div class="main"><div class="t">ביטוח רכב שכור</div></div>
+                <div class="right"><div class="time">🔒</div></div>
+              </div>
+            </div>
+          </div>
         </div>
       </div>
     </div>
@@ -1192,9 +1239,7 @@
         if (name === 'bookings') {
           // The search button lives in the title row, outside the collapsible
           // body — hide it too while collapsed, since its target is hidden.
-          document.getElementById('bookings-title-end').style.display = collapsed
-            ? 'none'
-            : 'flex';
+          document.getElementById('bookings-title-end').style.display = collapsed ? 'none' : 'flex';
           if (collapsed) document.getElementById('search-box').classList.remove('on');
         }
       }
