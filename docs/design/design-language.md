@@ -56,6 +56,7 @@ Color carries meaning so the eye can parse a screen **without reading**. Each se
 - **Teal = the place.** Map, navigation, location affordances, "near me". Nothing else.
 - **Violet (`--plan`) = the plan.** Plan-mode chrome, readiness, builder and scheduling affordances. Nothing else.
 - **`--ok` / `--miss` = status.** Positive/negative states (FX ▲/▼, budget health, checklist ✓/✗) are _statuses_, not places — they never borrow teal.
+- **Per-entity sync = the `--sync-*` tokens.** The `SyncBadge` is a **cloud glyph** — `cloud-check` (saved) / `cloud-up` (pending) / `cloud-bang` (failed) — on a booking, document, event, or any syncable, wired via `EntitySyncBadge`. It's an **exception indicator: silent when synced**, shown only for pending/failed, the same on lists and the timeline. Shape carries the state (legible without color); color comes only from `--sync-synced`/`--sync-pending`/`--sync-failed` (which track `--ok`/`--muted`/`--miss`), never amber. Distinct from the day-view **done ✓** (a green circle, a completion record). See ADR-0080 / ADR-0091.
 - **Generic primary buttons are neutral.** "＋ טיול חדש", "הצטרף לטיול", form submits use `--cta`/`--cta-text` — never amber. Amber on a button is allowed only when the action itself is time-semantic (e.g., "דחה 30 דק׳" confirmation, ripple "כן").
 
 A small **decorative palette** (avatar identity colors, map pin categories) exists alongside these — always pastel/muted, never amber or teal, so it reads as gentle variety rather than a second meaning system. See the Map pins entry below.

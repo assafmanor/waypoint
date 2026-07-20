@@ -17,8 +17,6 @@ import { formatTime, crossesMidnight } from '../../lib/time';
 import { DELAY_STEP_MINUTES } from '../../constants';
 import { ICONS } from '../../constants';
 import { Icon } from '../Icon';
-import { SyncBadge } from '../feedback';
-import type { SyncState } from '../../lib/outbox';
 import { RowManageSheet, type RowAction } from './ListRow';
 import { t } from '../../i18n/he';
 import './event-card.css';
@@ -38,11 +36,11 @@ export interface EventCardProps {
   code?: string;
   kind: EventKind;
   phase: EventPhaseName;
-  /** Per-entity sync state (U-04, ADR-0080). A pending (↑) / failed (!) badge
-   *  answers "did my edit save?" on the timeline; 'synced' shows nothing so a
-   *  settled day stays uncluttered (the dense counterpart to the Index/Documents
-   *  rows, which show every state). */
-  sync?: SyncState;
+  /** Per-entity sync marker node (U-04, ADR-0080/0091). The screen passes
+   *  `<EntitySyncBadge id=… />`, which is silent when synced and shows a
+   *  pending/failed cloud otherwise — so a settled day stays uncluttered. Renders
+   *  on the meta line (below the title) so it can never reflow the title. */
+  sync?: ReactNode;
   /** A read-only past day (ADR-0029): create/edit/move locked; settle stays. */
   readOnly?: boolean;
   isOpen: boolean;
@@ -143,12 +141,14 @@ export function EventCard(props: EventCardProps) {
       <span className="wp-event-t">
         {title}
         {tag}
-        {sync && sync !== 'synced' && <SyncBadge state={sync} />}
         {nestedCount !== undefined && (
           <span className="wp-event-nest-note">{t.day.contains(nestedCount)}</span>
         )}
       </span>
-      <span className="wp-event-m">{meta}</span>
+      <span className="wp-event-m">
+        {sync}
+        {meta}
+      </span>
       {conflict && (
         <span className="wp-event-conflict-flag">
           {ICONS.warn} {t.event.conflictWarn(conflict.title, formatTime(conflict.startsAt, tz))}

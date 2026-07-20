@@ -32,8 +32,13 @@ export interface ListRowProps {
   title: ReactNode;
   /** Optional secondary line (schedule cue, "not scheduled", …). */
   meta?: ReactNode;
-  /** Trailing content before the kebab: code · size · SyncBadge · spinner. */
+  /** Trailing content before the kebab: code · size · spinner. */
   right?: ReactNode;
+  /** Per-entity sync marker, rendered in a fixed column before the kebab so it
+   *  aligns across every row type (ADR-0091 §alignment). Pass
+   *  `<EntitySyncBadge id=… />`; it's silent when synced, so the column is often
+   *  empty — its reserved width (list-row.css) keeps neighbours aligned. */
+  sync?: ReactNode;
   /** When set, renders the `⋯` kebab wired to open a RowManageSheet. */
   onManage?: () => void;
   /** Accessible name for the kebab (required when `onManage` is set). */
@@ -51,6 +56,7 @@ export function ListRow({
   title,
   meta,
   right,
+  sync,
   onManage,
   manageLabel,
   className,
@@ -70,9 +76,10 @@ export function ListRow({
           {meta != null && <span className="wp-listrow-meta">{meta}</span>}
         </span>
       </button>
-      {(right != null || onManage) && (
+      {(right != null || onManage || sync != null) && (
         <div className="wp-listrow-right">
           {right}
+          {sync != null && <span className="wp-listrow-sync">{sync}</span>}
           {onManage && (
             <button
               type="button"

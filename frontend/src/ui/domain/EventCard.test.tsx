@@ -6,6 +6,7 @@ import { MemoryRouter } from 'react-router-dom';
 import { ToastProvider } from '../Toast';
 import { NavProvider } from '../../state/nav-state';
 import { EventCard, type EventCardProps } from './EventCard';
+import { SyncBadge } from '../feedback';
 import { t } from '../../i18n/he';
 
 const TZ = 'Asia/Tokyo';
@@ -80,15 +81,15 @@ describe('EventCard', () => {
     expect(container.querySelector('.wp-event-act.stepper')).toBeTruthy();
   });
 
-  it('shows a sync badge for a queued/failed edit and none when synced (U-04)', () => {
-    const pending = render(wrap(<EventCard {...base} sync="pending" />));
-    expect(pending.container.querySelector('.sync-badge-pending')).toBeTruthy();
+  it('renders the sync marker slot on the meta line, nothing when omitted (U-04/ADR-0091)', () => {
+    const withBadge = render(wrap(<EventCard {...base} sync={<SyncBadge state="pending" />} />));
+    // The marker lands on the meta line (below the title), never the title row.
+    expect(withBadge.container.querySelector('.wp-event-m .sync-badge-pending')).toBeTruthy();
+    expect(withBadge.container.querySelector('.wp-event-t .sync-badge')).toBeNull();
     cleanup();
-    const failed = render(wrap(<EventCard {...base} sync="failed" />));
-    expect(failed.container.querySelector('.sync-badge-failed')).toBeTruthy();
-    cleanup();
-    const synced = render(wrap(<EventCard {...base} sync="synced" />));
-    expect(synced.container.querySelector('.sync-badge')).toBeNull();
+    // Silent-when-synced is EntitySyncBadge's job: given no node, the card shows none.
+    const none = render(wrap(<EventCard {...base} />));
+    expect(none.container.querySelector('.sync-badge')).toBeNull();
   });
 
   it('toggles open on the face and reports aria-expanded', () => {

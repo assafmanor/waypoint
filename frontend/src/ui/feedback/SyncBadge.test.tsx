@@ -14,20 +14,21 @@ describe('SyncBadge', () => {
     const el = screen.getByRole('img');
     expect(el.getAttribute('aria-label')).toBe(t.sync.badge[state]);
     expect(el.getAttribute('title')).toBe(t.sync.badge[state]);
-    // A non-color cue is present: a glyph, marked aria-hidden so SR reads only the label.
+    // A non-color cue is present: the cloud glyph (an SVG icon), marked
+    // aria-hidden so the screen reader announces only the label.
     const glyph = el.querySelector('.sync-badge-glyph');
-    expect(glyph?.textContent).toBeTruthy();
+    expect(glyph?.tagName.toLowerCase()).toBe('svg');
     expect(glyph?.getAttribute('aria-hidden')).toBe('true');
   });
 
-  it('gives each state a distinct glyph so color is not the only signal', () => {
-    const glyphs = STATES.map((state) => {
+  it('gives each state a distinct cloud shape so color is not the only signal', () => {
+    const shapes = STATES.map((state) => {
       const { container } = render(<SyncBadge state={state} />);
-      const g = container.querySelector('.sync-badge-glyph')?.textContent ?? '';
+      const d = container.querySelector('.sync-badge-glyph path')?.getAttribute('d') ?? '';
       cleanup();
-      return g;
+      return d;
     });
-    expect(new Set(glyphs).size).toBe(STATES.length);
+    expect(new Set(shapes).size).toBe(STATES.length);
   });
 
   it('carries a state class so the sync tokens (not amber/teal/plan) drive color', () => {

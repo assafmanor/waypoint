@@ -44,7 +44,7 @@ import { Sheet } from '../ui/Sheet';
 import { TimePicker } from '../ui/TimePicker';
 import { EventCard, type EventPhaseName } from '../ui/domain/EventCard';
 import { MaybeCard } from '../ui/domain/MaybeCard';
-import { useSyncStatus } from '../lib/outbox';
+import { EntitySyncBadge } from '../ui/EntitySyncBadge';
 
 const daysBetween = (from: string, to: string) =>
   Math.round((Date.parse(to) - Date.parse(from)) / MS_PER_DAY);
@@ -431,9 +431,6 @@ function ItemNode({ item, depth, ctx }: { item: TimeItem; depth: number; ctx: Da
   const booking = e.bookingId ? ctx.bookings.find((b) => b.id === e.bookingId) : undefined;
   const code = booking?.confirmationCode ? `${CODE_PREFIX}${booking.confirmationCode}` : undefined;
   const conflicts = hardConflicts(e, ctx.dayEvents);
-  // Per-event sync marker (U-04, ADR-0080): a queued/failed edit shows ↑/! on the
-  // card, so "did my change save?" is answerable here, not only in the header count.
-  const sync = useSyncStatus(e.id).state;
 
   // The screen derives the phase from the clock (ADR-0043) and passes it in. On a
   // read-only past day every planned soft event is there to be settled (ADR-0029),
@@ -459,7 +456,7 @@ function ItemNode({ item, depth, ctx }: { item: TimeItem; depth: number; ctx: Da
       code={code}
       kind={e.kind === EVENT_KIND.HARD ? 'hard' : 'soft'}
       phase={phase}
-      sync={sync}
+      sync={<EntitySyncBadge id={e.id} />}
       readOnly={ctx.readOnly}
       isOpen={ctx.openId === e.id}
       onToggle={() => ctx.toggle(e.id)}

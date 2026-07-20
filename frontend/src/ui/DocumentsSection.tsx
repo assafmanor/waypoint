@@ -8,8 +8,8 @@
 import { useState } from 'react';
 import { type DocumentSummary } from '@waypoint/shared';
 import { useTrip } from '../state/trip-state';
-import { usePendingUploads, useSyncStatus } from '../lib/outbox';
-import { SyncBadge } from './feedback';
+import { usePendingUploads } from '../lib/outbox';
+import { EntitySyncBadge } from './EntitySyncBadge';
 import { ListRow } from './domain';
 import { groupDocuments } from '../lib/documents';
 import { formatBytes } from '../lib/bytes';
@@ -116,7 +116,6 @@ function DocumentRow({
   onOpen: () => void;
   onManage: () => void;
 }) {
-  const status = useSyncStatus(d.id);
   return (
     <ListRow
       icon={DOCUMENT_TYPE_ICON[d.type]}
@@ -132,7 +131,6 @@ function DocumentRow({
           </span>
         ) : (
           <>
-            <SyncBadge state={status.state} reason={status.reason} />
             <span className="size" dir="ltr">
               {formatBytes(d.sizeBytes)}
             </span>
@@ -142,6 +140,7 @@ function DocumentRow({
           </>
         )
       }
+      sync={isPending ? undefined : <EntitySyncBadge id={d.id} />}
       onManage={isPending ? undefined : onManage}
       manageLabel={t.docs.manage.actions}
     />
