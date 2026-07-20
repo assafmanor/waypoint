@@ -313,28 +313,44 @@
         padding: 2px 8px;
       }
 
-      /* ===== NEW: per-section shrink (mechanism #4) — a chevron disclosure in
-         the section title collapses that whole section to one line (title +
-         count), instead of a jump nav. Bookings and documents collapse
-         independently. ===== */
+      /* ===== NEW: per-section shrink (mechanism #4) — tap the WHOLE title
+         (not just a tiny icon) to collapse that section to one line (title +
+         count), instead of a jump nav. The chevron sits in a filled circle so
+         it reads as a control even at a glance; the title text joins the same
+         button for a large, easy-to-notice tap target. Bookings and documents
+         collapse independently. ===== */
+      .sec-toggle {
+        display: flex;
+        align-items: center;
+        gap: 7px;
+        font: inherit;
+        font-family: 'Secular One', sans-serif;
+        font-size: 14.5px;
+        color: var(--ink);
+        background: none;
+        border: 0;
+        padding: 5px 9px 5px 5px;
+        margin-inline-start: -9px;
+        border-radius: 10px;
+        cursor: pointer;
+      }
+      .sec-toggle:hover,
+      .sec-toggle:active {
+        background: rgba(22, 35, 61, 0.07);
+      }
       .sec-chevron {
-        width: 22px;
-        height: 22px;
+        width: 21px;
+        height: 21px;
         flex: 0 0 auto;
         display: grid;
         place-items: center;
-        border: 0;
-        border-radius: 6px;
-        background: none;
-        color: var(--muted);
-        font-size: 11px;
-        cursor: pointer;
+        border-radius: 50%;
+        background: rgba(22, 35, 61, 0.09);
+        color: var(--ink);
+        font-size: 12px;
         transition: transform 0.15s ease;
       }
-      .sec-chevron:hover {
-        background: rgba(22, 35, 61, 0.06);
-      }
-      .sec-chevron.collapsed {
+      .sec-toggle.collapsed .sec-chevron {
         transform: rotate(-90deg);
       }
       .sec-count {
@@ -643,17 +659,16 @@
       <div class="body">
         <div class="sec-title">
           <button
-            class="sec-chevron"
-            id="chevron-bookings"
+            class="sec-toggle"
+            id="toggle-bookings"
             onclick="toggleSection('bookings')"
             aria-expanded="true"
             aria-controls="bookings-body"
-            aria-label="כווץ/הרחב הזמנות"
           >
-            ▾
+            <span class="sec-chevron">▾</span>
+            <span>הזמנות</span>
+            <span class="sec-count" id="count-bookings">17</span>
           </button>
-          <span>הזמנות</span>
-          <span class="sec-count" id="count-bookings">17</span>
           <span class="badge-offline">⬇ עובד אופליין</span>
           <span class="sec-title-end" id="bookings-title-end">
             <button class="search-btn" onclick="toggleSearch()" aria-label="חיפוש הזמנות">
@@ -860,17 +875,16 @@
 
         <div class="sec-title">
           <button
-            class="sec-chevron"
-            id="chevron-documents"
+            class="sec-toggle"
+            id="toggle-documents"
             onclick="toggleSection('documents')"
             aria-expanded="true"
             aria-controls="documents-body"
-            aria-label="כווץ/הרחב מסמכים"
           >
-            ▾
+            <span class="sec-chevron">▾</span>
+            <span>מסמכים</span>
+            <span class="sec-count" id="count-documents">6</span>
           </button>
-          <span>מסמכים</span>
-          <span class="sec-count" id="count-documents">6</span>
           <span class="badge-offline">🔒 מוצפן</span>
         </div>
 
@@ -1030,13 +1044,15 @@
       }
 
       // Each section shrinks independently: collapsing hides everything below
-      // its title down to just the title + count, no jump nav needed.
+      // its title down to just the title + count, no jump nav needed. The
+      // whole title (chevron + text + count) is one big tap target, not just
+      // the icon, so the control is easy to notice.
       function toggleSection(name) {
         const body = document.getElementById(name + '-body');
-        const chevron = document.getElementById('chevron-' + name);
+        const toggle = document.getElementById('toggle-' + name);
         const collapsed = body.classList.toggle('collapsed');
-        chevron.classList.toggle('collapsed', collapsed);
-        chevron.setAttribute('aria-expanded', String(!collapsed));
+        toggle.classList.toggle('collapsed', collapsed);
+        toggle.setAttribute('aria-expanded', String(!collapsed));
         if (name === 'bookings') {
           // The search button lives in the title row, outside the collapsible
           // body — hide it too while collapsed, since its target is hidden.
