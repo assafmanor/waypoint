@@ -105,3 +105,30 @@ This mirrors the existing ADR-router instruction in the same section ("read
 the router first... locate the specific ADR(s)... and read only those") —
 domain `CLAUDE.md` files get the identical explicit-lookup treatment ADRs
 already had.
+
+## Amendment 2 (2026-07-20, same day) — generalizing a one-off is also "reuse"; ask before a major refactor
+
+Rule 8's original wording only covered the case where generalized infra
+already exists ("look for the one already doing that job... and extend it")
+and the case where nothing at all exists yet ("if none exists, build it so the
+next similar need is a one-line addition"). It said nothing about the middle
+case: no generalized infra yet, but an existing **one-off** already does
+almost the same thing at a single call site. Left unstated, the easy default
+is to write a second one-off beside the first — which is exactly the
+mechanism ADR-0078/0079/0094/0095 each had to undo after the fact (a second
+copy, then a third, before someone finally generalized all of them at once).
+
+Rule 8 now says explicitly: when no generalized infra exists, check for a
+similar one-off first and **generalize that one-off** (to cover both the old
+case and the new one) rather than duplicating it. This pulls the
+generalization moment earlier — at the second occurrence instead of the
+fourth or fifth.
+
+This has a cost the rule also names: generalizing someone else's existing
+one-off can be a small extraction, or it can be a substantial refactor of code
+the agent didn't originally write and doesn't own the context for. The rule
+draws the line there — a small extraction, do it; a substantial refactor,
+**ask first**. Neither silently taking on unbounded refactor scope nor
+silently reverting to a second one-off (the failure mode this amendment
+exists to prevent) is acceptable without a decision from the person who asked
+for the feature.
