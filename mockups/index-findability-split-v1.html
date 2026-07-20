@@ -47,7 +47,24 @@
      search + pin → maybe-shelf on the Map tab (feature-catalog.md, Plan mode). An
      Index "research" tile needs to mean something else (saved links/ideas?) or
      it duplicates that surface — worth resolving before this is real, not a
-     mockup detail. -->
+     mockup detail.
+
+     ARROW FIX (2026-07-20, same session): every directional glyph (tile
+     chevron, back arrow, route arrow, trip-switch caret) is now the real
+     ui/NavArrow.tsx SVG, not a Unicode character — confirmed by a rendering
+     test that ‹/›/→ are Bidi_Mirrored and silently flip direction inside
+     dir="rtl" (the tile's "‹" was rendering pointing right instead of left).
+     The back button also switched to the shipped icon-only `.back` pattern
+     (TripSettings.tsx/AllTrips.tsx) instead of an inline arrow+label combo.
+
+     WOW PASS (2026-07-20, same session) — motion, not more color or content,
+     since amber/teal/violet stay reserved (design-language.md) and Index gets
+     no board-hero (ADR-0028): the past-list animates open/shut (max-height+
+     opacity) instead of snapping via display:none; a chip/search change
+     reveals matching rows with a small per-row stagger instead of an
+     all-at-once flip; every tappable control (tile/chip/addbtn/search-btn/
+     past-toggle/back-icon-btn) gets a brief scale-down on tap. All motion
+     honours prefers-reduced-motion via the existing wildcard rule below. -->
 <html lang="he" dir="rtl">
   <head>
     <meta charset="UTF-8" />
@@ -368,6 +385,10 @@
         font: inherit;
         color: inherit;
         cursor: pointer;
+        transition: transform 0.12s ease;
+      }
+      .tile:not(.placeholder):active {
+        transform: scale(0.97);
       }
       .tile-ic {
         width: 42px;
@@ -447,10 +468,16 @@
         color: var(--ink);
         font-size: 15px;
         cursor: pointer;
+        transition:
+          background 0.15s ease,
+          transform 0.12s ease;
       }
-      .back-icon-btn:hover,
+      .back-icon-btn:hover {
+        background: rgba(22, 35, 61, 0.06);
+      }
       .back-icon-btn:active {
         background: rgba(22, 35, 61, 0.06);
+        transform: scale(0.93);
       }
       .back-label {
         font-family: 'Secular One', sans-serif;
@@ -509,11 +536,19 @@
         border-radius: 999px;
         padding: 6px 12px;
         cursor: pointer;
+        transition:
+          background 0.15s ease,
+          color 0.15s ease,
+          border-color 0.15s ease,
+          transform 0.12s ease;
       }
       .chip.on {
         background: var(--ink);
         border-color: var(--ink);
         color: #fff;
+      }
+      .chip:active {
+        transform: scale(0.94);
       }
 
       /* ===== search (mechanism #3) — unchanged from v1 ===== */
@@ -531,6 +566,10 @@
         font-size: 14px;
         cursor: pointer;
         color: var(--muted);
+        transition: transform 0.12s ease;
+      }
+      .search-btn:active {
+        transform: scale(0.92);
       }
       .search-box {
         display: none;
@@ -588,6 +627,10 @@
         padding: 11px;
         cursor: pointer;
         margin-bottom: 10px;
+        transition: transform 0.12s ease;
+      }
+      .addbtn:active {
+        transform: scale(0.98);
       }
 
       .listcard {
@@ -603,13 +646,32 @@
         padding: 12px 14px;
         border-bottom: 1px solid var(--line);
         cursor: pointer;
+        max-height: 200px;
+        opacity: 1;
+        transition:
+          opacity 0.22s ease,
+          transform 0.22s ease,
+          max-height 0.22s ease,
+          padding 0.22s ease;
       }
       .li:last-child {
         border-bottom: none;
       }
-      .li.hidden,
       .li.size-hidden {
         display: none;
+      }
+      /* A filtered-out row shrinks + fades instead of vanishing; a newly-shown
+         row gets a small per-row transition-delay (set in JS) so a chip/search
+         change reveals rows with a gentle stagger, not an all-at-once flip. */
+      .li.hidden {
+        opacity: 0;
+        transform: translateY(-4px) scale(0.97);
+        max-height: 0;
+        padding-top: 0;
+        padding-bottom: 0;
+        overflow: hidden;
+        pointer-events: none;
+        border-bottom-color: transparent;
       }
       .li .badge2 {
         width: 36px;
@@ -683,6 +745,10 @@
         border-radius: 999px;
         padding: 4px 11px;
         cursor: pointer;
+        transition: transform 0.12s ease;
+      }
+      .past-toggle:active {
+        transform: scale(0.95);
       }
       .past-head {
         font-size: 11px;
@@ -698,10 +764,16 @@
         color: var(--muted);
       }
       #past-section {
-        display: none;
+        overflow: hidden;
+        max-height: 0;
+        opacity: 0;
+        transition:
+          max-height 0.32s ease,
+          opacity 0.22s ease;
       }
       #past-section.on {
-        display: block;
+        max-height: 1200px;
+        opacity: 1;
       }
 
       .doc-group .gt {
@@ -1191,6 +1263,31 @@
           : `הצג הזמנות מהעבר (${count})`;
       }
 
+      // A filter change reveals rows with a gentle cascade rather than an
+      // all-at-once flip: each newly-visible row gets a small incremental
+      // transition-delay (capped so a long list doesn't drag).
+      const STAGGER_MS = 24;
+      const STAGGER_MAX_MS = 220;
+
+      function filterList(selector, q, shownIndex) {
+        let visible = 0;
+        document.querySelectorAll(selector).forEach((li) => {
+          if (li.classList.contains('size-hidden')) return;
+          const matchesCat = activeCat === 'all' || li.dataset.cat === activeCat;
+          const matchesQ = !q || li.dataset.search.includes(q);
+          const show = matchesCat && matchesQ;
+          li.classList.toggle('hidden', !show);
+          if (show) {
+            li.style.transitionDelay = `${Math.min(shownIndex.i * STAGGER_MS, STAGGER_MAX_MS)}ms`;
+            shownIndex.i++;
+            visible++;
+          } else {
+            li.style.transitionDelay = '0ms';
+          }
+        });
+        return visible;
+      }
+
       function applyFilters() {
         const q = document.getElementById('search-input').value.trim().toLowerCase();
         searching = q.length > 0;
@@ -1198,25 +1295,9 @@
         // silently missed; clearing it restores whatever the user had toggled.
         document.getElementById('past-section').classList.toggle('on', pastOpen || searching);
 
-        let upcomingVisible = 0;
-        document.querySelectorAll('#upcoming-list .li').forEach((li) => {
-          if (li.classList.contains('size-hidden')) return;
-          const matchesCat = activeCat === 'all' || li.dataset.cat === activeCat;
-          const matchesQ = !q || li.dataset.search.includes(q);
-          const show = matchesCat && matchesQ;
-          li.classList.toggle('hidden', !show);
-          if (show) upcomingVisible++;
-        });
-
-        let pastVisible = 0;
-        document.querySelectorAll('#past-list .li').forEach((li) => {
-          if (li.classList.contains('size-hidden')) return;
-          const matchesCat = activeCat === 'all' || li.dataset.cat === activeCat;
-          const matchesQ = !q || li.dataset.search.includes(q);
-          const show = matchesCat && matchesQ;
-          li.classList.toggle('hidden', !show);
-          if (show) pastVisible++;
-        });
+        const shownIndex = { i: 0 };
+        const upcomingVisible = filterList('#upcoming-list .li', q, shownIndex);
+        filterList('#past-list .li', q, shownIndex);
 
         document.getElementById('no-match-upcoming').style.display =
           upcomingVisible === 0 ? 'block' : 'none';

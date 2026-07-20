@@ -35,7 +35,22 @@
      Demo toggle: טיול עמוס (the target case — 17 bookings across all 6 types)
      vs טיול קטן (a handful of bookings — chips/search step back so they don't
      add chrome nobody needs yet). Chrome is Trip (night); Plan is the same
-     content under the drafting-table reskin (ADR-0049 — mode is chrome only). -->
+     content under the drafting-table reskin (ADR-0049 — mode is chrome only).
+
+     ARROW FIX (2026-07-20, same session): every directional glyph (section
+     chevron, route arrow, trip-switch caret) is now the real ui/NavArrow.tsx /
+     ui/Icon.tsx SVG, not a Unicode character — confirmed by a rendering test
+     that ‹/›/→ are Bidi_Mirrored and silently flip direction inside dir="rtl"
+     (the sec-chevron's ▾ wasn't mirrored, but was swapped too for consistency).
+
+     WOW PASS (2026-07-20, same session) — motion, not more color or content,
+     since amber/teal/violet stay reserved (design-language.md) and Index gets
+     no board-hero (ADR-0028): sections + the past-list animate open/shut
+     (max-height+opacity) instead of snapping via display:none; a chip/search
+     change reveals matching rows with a small per-row stagger instead of an
+     all-at-once flip; every tappable control (chip/addbtn/search-btn/
+     past-toggle/sec-toggle) gets a brief scale-down on tap. All motion honours
+     prefers-reduced-motion via the existing wildcard rule below. -->
 <html lang="he" dir="rtl">
   <head>
     <meta charset="UTF-8" />
@@ -374,10 +389,16 @@
         margin-inline-start: -9px;
         border-radius: 10px;
         cursor: pointer;
+        transition:
+          background 0.15s ease,
+          transform 0.12s ease;
       }
-      .sec-toggle:hover,
+      .sec-toggle:hover {
+        background: rgba(22, 35, 61, 0.07);
+      }
       .sec-toggle:active {
         background: rgba(22, 35, 61, 0.07);
+        transform: scale(0.98);
       }
       .sec-chevron {
         width: 21px;
@@ -403,9 +424,26 @@
         border-radius: 999px;
         padding: 1px 7px;
       }
+      /* ===== WOW PASS (motion, not more color/content): sections animate
+         open/shut instead of snapping via display:none — a max-height+opacity
+         transition, generous enough to never clip real content. Respects
+         prefers-reduced-motion via the wildcard rule at the bottom. ===== */
+      #bookings-body,
+      #documents-body {
+        overflow: hidden;
+        max-height: 3000px;
+        opacity: 1;
+        transition:
+          max-height 0.32s ease,
+          opacity 0.22s ease;
+      }
       #bookings-body.collapsed,
       #documents-body.collapsed {
-        display: none;
+        max-height: 0;
+        opacity: 0;
+        transition:
+          max-height 0.28s ease,
+          opacity 0.16s ease;
       }
 
       /* ===== NEW: category filter chips (mechanism #2) — neutral, not tinted;
@@ -435,11 +473,19 @@
         border-radius: 999px;
         padding: 6px 12px;
         cursor: pointer;
+        transition:
+          background 0.15s ease,
+          color 0.15s ease,
+          border-color 0.15s ease,
+          transform 0.12s ease;
       }
       .chip.on {
         background: var(--ink);
         border-color: var(--ink);
         color: #fff;
+      }
+      .chip:active {
+        transform: scale(0.94);
       }
 
       /* ===== NEW: search (mechanism #3) — icon collapses to an input ===== */
@@ -457,6 +503,10 @@
         font-size: 14px;
         cursor: pointer;
         color: var(--muted);
+        transition: transform 0.12s ease;
+      }
+      .search-btn:active {
+        transform: scale(0.92);
       }
       .search-box {
         display: none;
@@ -514,6 +564,10 @@
         padding: 11px;
         cursor: pointer;
         margin-bottom: 10px;
+        transition: transform 0.12s ease;
+      }
+      .addbtn:active {
+        transform: scale(0.98);
       }
 
       .listcard {
@@ -529,13 +583,32 @@
         padding: 12px 14px;
         border-bottom: 1px solid var(--line);
         cursor: pointer;
+        max-height: 200px;
+        opacity: 1;
+        transition:
+          opacity 0.22s ease,
+          transform 0.22s ease,
+          max-height 0.22s ease,
+          padding 0.22s ease;
       }
       .li:last-child {
         border-bottom: none;
       }
-      .li.hidden,
       .li.size-hidden {
         display: none;
+      }
+      /* A filtered-out row shrinks + fades instead of vanishing; a newly-shown
+         row gets a small per-row transition-delay (set in JS) so a chip/search
+         change reveals rows with a gentle stagger, not an all-at-once flip. */
+      .li.hidden {
+        opacity: 0;
+        transform: translateY(-4px) scale(0.97);
+        max-height: 0;
+        padding-top: 0;
+        padding-bottom: 0;
+        overflow: hidden;
+        pointer-events: none;
+        border-bottom-color: transparent;
       }
       .li .badge2 {
         width: 36px;
@@ -611,6 +684,10 @@
         border-radius: 999px;
         padding: 4px 11px;
         cursor: pointer;
+        transition: transform 0.12s ease;
+      }
+      .past-toggle:active {
+        transform: scale(0.95);
       }
       .past-head {
         font-size: 11px;
@@ -626,10 +703,16 @@
         color: var(--muted);
       }
       #past-section {
-        display: none;
+        overflow: hidden;
+        max-height: 0;
+        opacity: 0;
+        transition:
+          max-height 0.32s ease,
+          opacity 0.22s ease;
       }
       #past-section.on {
-        display: block;
+        max-height: 1200px;
+        opacity: 1;
       }
 
       .doc-group .gt {
@@ -1052,6 +1135,31 @@
           : `הצג הזמנות מהעבר (${count})`;
       }
 
+      // A filter change reveals rows with a gentle cascade rather than an
+      // all-at-once flip: each newly-visible row gets a small incremental
+      // transition-delay (capped so a long list doesn't drag).
+      const STAGGER_MS = 24;
+      const STAGGER_MAX_MS = 220;
+
+      function filterList(selector, q, shownIndex) {
+        let visible = 0;
+        document.querySelectorAll(selector).forEach((li) => {
+          if (li.classList.contains('size-hidden')) return;
+          const matchesCat = activeCat === 'all' || li.dataset.cat === activeCat;
+          const matchesQ = !q || li.dataset.search.includes(q);
+          const show = matchesCat && matchesQ;
+          li.classList.toggle('hidden', !show);
+          if (show) {
+            li.style.transitionDelay = `${Math.min(shownIndex.i * STAGGER_MS, STAGGER_MAX_MS)}ms`;
+            shownIndex.i++;
+            visible++;
+          } else {
+            li.style.transitionDelay = '0ms';
+          }
+        });
+        return visible;
+      }
+
       function applyFilters() {
         const q = document.getElementById('search-input').value.trim().toLowerCase();
         searching = q.length > 0;
@@ -1059,25 +1167,9 @@
         // silently missed; clearing it restores whatever the user had toggled.
         document.getElementById('past-section').classList.toggle('on', pastOpen || searching);
 
-        let upcomingVisible = 0;
-        document.querySelectorAll('#upcoming-list .li').forEach((li) => {
-          if (li.classList.contains('size-hidden')) return;
-          const matchesCat = activeCat === 'all' || li.dataset.cat === activeCat;
-          const matchesQ = !q || li.dataset.search.includes(q);
-          const show = matchesCat && matchesQ;
-          li.classList.toggle('hidden', !show);
-          if (show) upcomingVisible++;
-        });
-
-        let pastVisible = 0;
-        document.querySelectorAll('#past-list .li').forEach((li) => {
-          if (li.classList.contains('size-hidden')) return;
-          const matchesCat = activeCat === 'all' || li.dataset.cat === activeCat;
-          const matchesQ = !q || li.dataset.search.includes(q);
-          const show = matchesCat && matchesQ;
-          li.classList.toggle('hidden', !show);
-          if (show) pastVisible++;
-        });
+        const shownIndex = { i: 0 };
+        const upcomingVisible = filterList('#upcoming-list .li', q, shownIndex);
+        filterList('#past-list .li', q, shownIndex);
 
         document.getElementById('no-match-upcoming').style.display =
           upcomingVisible === 0 ? 'block' : 'none';
