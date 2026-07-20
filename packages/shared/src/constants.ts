@@ -106,6 +106,48 @@ export const ENTITY_TYPE = {
   MEMBERSHIP: 'membership',
 } as const satisfies Record<string, EntityType>;
 
+/** The `code` field of the error envelope (api-contract.md §14). One source the
+ *  backend throws and the client branches on, so neither side spells the string:
+ *  the exception filter maps HTTP statuses + Prisma faults to these, services throw
+ *  the domain ones directly, and the frontend `ApiError.code` matches them. */
+export const ERROR_CODE = {
+  // HTTP-status / infrastructure faults (mapped in the global exception filter).
+  BAD_REQUEST: 'BAD_REQUEST',
+  UNAUTHORIZED: 'UNAUTHORIZED',
+  FORBIDDEN: 'FORBIDDEN',
+  NOT_FOUND: 'NOT_FOUND',
+  CONFLICT: 'CONFLICT',
+  CONSTRAINT_VIOLATION: 'CONSTRAINT_VIOLATION',
+  UNSUPPORTED_MEDIA_TYPE: 'UNSUPPORTED_MEDIA_TYPE',
+  PAYLOAD_TOO_LARGE: 'PAYLOAD_TOO_LARGE',
+  RATE_LIMITED: 'RATE_LIMITED',
+  INTERNAL_ERROR: 'INTERNAL_ERROR',
+  ERROR: 'ERROR',
+  NOT_READY: 'NOT_READY',
+  VALIDATION_ERROR: 'VALIDATION_ERROR',
+  // Domain outcomes services throw and the client phrases specially.
+  HARD_EVENT_REQUIRES_CONFIRM: 'HARD_EVENT_REQUIRES_CONFIRM',
+  MOVE_INTO_PAST: 'MOVE_INTO_PAST',
+  MOVE_CROSSES_DAY: 'MOVE_CROSSES_DAY',
+  REMOVED_FROM_TRIP: 'REMOVED_FROM_TRIP',
+  INVITE_EXPIRED: 'INVITE_EXPIRED',
+} as const;
+
+export type ErrorCode = (typeof ERROR_CODE)[keyof typeof ERROR_CODE];
+
+/** Realtime stream message discriminants (F-04, sync-and-offline.md). The server
+ *  and client each define their own payload shapes, but share this one vocabulary
+ *  so a rename can't drift the two ends of the wire apart. */
+export const WS_MESSAGE_TYPE = {
+  HELLO: 'hello',
+  CHANGE: 'change',
+  PRESENCE: 'presence',
+  PING: 'ping',
+  PONG: 'pong',
+} as const;
+
+export type WsMessageType = (typeof WS_MESSAGE_TYPE)[keyof typeof WS_MESSAGE_TYPE];
+
 /** Max `Change` rows one `GET /changes` page returns (backend-review B-09). A very
  *  old or reset cursor otherwise streams a trip's entire history unbounded; the
  *  client cursors on `seq` and keeps fetching while a page comes back full. Shared

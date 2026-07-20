@@ -9,6 +9,7 @@ import {
 } from '@nestjs/common';
 import { Prisma } from '@prisma/client';
 import type { Request, Response } from 'express';
+import { ERROR_CODE } from '@waypoint/shared';
 
 // Where the production image puts the built PWA; never exists in dev (ADR-0020).
 export const STATIC_ROOT = join(__dirname, '..', '..', 'public');
@@ -21,14 +22,14 @@ export interface ErrorEnvelope {
 }
 
 const STATUS_CODES: Record<number, string> = {
-  [HttpStatus.BAD_REQUEST]: 'BAD_REQUEST',
-  [HttpStatus.UNAUTHORIZED]: 'UNAUTHORIZED',
-  [HttpStatus.FORBIDDEN]: 'FORBIDDEN',
-  [HttpStatus.NOT_FOUND]: 'NOT_FOUND',
-  [HttpStatus.CONFLICT]: 'CONFLICT',
-  [HttpStatus.UNSUPPORTED_MEDIA_TYPE]: 'UNSUPPORTED_MEDIA_TYPE',
-  [HttpStatus.PAYLOAD_TOO_LARGE]: 'PAYLOAD_TOO_LARGE',
-  [HttpStatus.TOO_MANY_REQUESTS]: 'RATE_LIMITED',
+  [HttpStatus.BAD_REQUEST]: ERROR_CODE.BAD_REQUEST,
+  [HttpStatus.UNAUTHORIZED]: ERROR_CODE.UNAUTHORIZED,
+  [HttpStatus.FORBIDDEN]: ERROR_CODE.FORBIDDEN,
+  [HttpStatus.NOT_FOUND]: ERROR_CODE.NOT_FOUND,
+  [HttpStatus.CONFLICT]: ERROR_CODE.CONFLICT,
+  [HttpStatus.UNSUPPORTED_MEDIA_TYPE]: ERROR_CODE.UNSUPPORTED_MEDIA_TYPE,
+  [HttpStatus.PAYLOAD_TOO_LARGE]: ERROR_CODE.PAYLOAD_TOO_LARGE,
+  [HttpStatus.TOO_MANY_REQUESTS]: ERROR_CODE.RATE_LIMITED,
 };
 
 /**
@@ -96,7 +97,7 @@ function toEnvelope(exception: unknown): { status: number; body: ErrorEnvelope }
   // Anything else is an unexpected fault: never leak its message to the client.
   return {
     status: HttpStatus.INTERNAL_SERVER_ERROR,
-    body: { error: { code: 'INTERNAL_ERROR', message: 'Internal server error' } },
+    body: { error: { code: ERROR_CODE.INTERNAL_ERROR, message: 'Internal server error' } },
   };
 }
 
@@ -108,18 +109,24 @@ function prismaEnvelope(err: Prisma.PrismaClientKnownRequestError): {
 } {
   switch (err.code) {
     case 'P2002':
-      return { status: HttpStatus.CONFLICT, body: envelope('CONFLICT', 'Resource already exists') };
+      return {
+        status: HttpStatus.CONFLICT,
+        body: envelope(ERROR_CODE.CONFLICT, 'Resource already exists'),
+      };
     case 'P2025':
-      return { status: HttpStatus.NOT_FOUND, body: envelope('NOT_FOUND', 'Resource not found') };
+      return {
+        status: HttpStatus.NOT_FOUND,
+        body: envelope(ERROR_CODE.NOT_FOUND, 'Resource not found'),
+      };
     case 'P2003':
       return {
         status: HttpStatus.CONFLICT,
-        body: envelope('CONSTRAINT_VIOLATION', 'Referenced resource is missing or in use'),
+        body: envelope(ERROR_CODE.CONSTRAINT_VIOLATION, 'Referenced resource is missing or in use'),
       };
     default:
       return {
         status: HttpStatus.INTERNAL_SERVER_ERROR,
-        body: envelope('INTERNAL_ERROR', 'Internal server error'),
+        body: envelope(ERROR_CODE.INTERNAL_ERROR, 'Internal server error'),
       };
   }
 }
@@ -127,7 +134,7 @@ function prismaEnvelope(err: Prisma.PrismaClientKnownRequestError): {
 const envelope = (code: string, message: string): ErrorEnvelope => ({ error: { code, message } });
 
 function codeFor(status: number): string {
-  return STATUS_CODES[status] ?? (status >= 500 ? 'INTERNAL_ERROR' : 'ERROR');
+  return STATUS_CODES[status] ?? (status >= 500 ? ERROR_CODE.INTERNAL_ERROR : ERROR_CODE.ERROR);
 }
 
 function isEnvelope(value: unknown): value is ErrorEnvelope {

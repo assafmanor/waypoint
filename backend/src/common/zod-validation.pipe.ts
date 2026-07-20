@@ -1,5 +1,6 @@
 import { BadRequestException, type PipeTransform } from '@nestjs/common';
 import type { ZodType } from 'zod';
+import { ERROR_CODE } from '@waypoint/shared';
 
 /** Validates a request body against a @waypoint/shared zod schema (api-contract.md). */
 export class ZodValidationPipe implements PipeTransform {
@@ -10,7 +11,7 @@ export class ZodValidationPipe implements PipeTransform {
     if (!result.success) {
       throw new BadRequestException({
         error: {
-          code: 'VALIDATION_ERROR',
+          code: ERROR_CODE.VALIDATION_ERROR,
           message: result.error.message,
           details: result.error.flatten(),
         },

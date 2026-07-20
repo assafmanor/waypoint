@@ -9,6 +9,7 @@ import { Prisma, type Booking as PrismaBooking } from '@prisma/client';
 import {
   BOOKING_TYPE,
   ENTITY_TYPE,
+  ERROR_CODE,
   EVENT_KIND,
   bookingEventFields,
   type Booking,
@@ -403,7 +404,7 @@ export class BookingsService {
     if (dependents.length === 0) return;
     throw new ConflictException({
       error: {
-        code: 'HARD_EVENT_REQUIRES_CONFIRM',
+        code: ERROR_CODE.HARD_EVENT_REQUIRES_CONFIRM,
         message: 'A hard event still references this booking — confirm to proceed.',
         details: { events: dependents.map(toEventDto) },
       },

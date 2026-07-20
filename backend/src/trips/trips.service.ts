@@ -21,7 +21,7 @@ import type {
   UpdateMembershipRoleInput,
   UpdateTripInput,
 } from '@waypoint/shared';
-import { ENTITY_TYPE } from '@waypoint/shared';
+import { ENTITY_TYPE, ERROR_CODE } from '@waypoint/shared';
 import { PrismaService } from '../prisma/prisma.service';
 import { ChangeService, type ChangeOp } from '../sync/change.service';
 import { generateInviteCode } from './invite.util';
@@ -196,7 +196,7 @@ export class TripsService {
     if (blocked) {
       throw new ForbiddenException({
         error: {
-          code: 'REMOVED_FROM_TRIP',
+          code: ERROR_CODE.REMOVED_FROM_TRIP,
           message: 'You were removed from this trip. Ask an admin to re-invite you.',
         },
       });
@@ -399,7 +399,7 @@ export class TripsService {
     if (!trip) throw new NotFoundException('Invite not found');
     if (tripHasEnded(trip.endDate, trip.timezone)) {
       throw new GoneException({
-        error: { code: 'INVITE_EXPIRED', message: 'This trip has ended.' },
+        error: { code: ERROR_CODE.INVITE_EXPIRED, message: 'This trip has ended.' },
       });
     }
     return invite.tripId;

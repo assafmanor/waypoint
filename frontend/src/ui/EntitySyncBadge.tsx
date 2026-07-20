@@ -8,14 +8,14 @@
 //
 // Lives at the ui/ root (not ui/domain/ or ui/feedback/): it depends on the
 // outbox data hook, so it isn't a pure presentational primitive.
-import { useSyncStatus } from '../lib/outbox';
+import { SYNC_STATE, useSyncStatus } from '../lib/outbox';
 import { SyncBadge } from './feedback';
 
 export function EntitySyncBadge({ id, showSynced = false }: { id: string; showSynced?: boolean }) {
   const { state, reason } = useSyncStatus(id);
   // Steady state is silent — the badge earns its space only as an exception.
   // `showSynced` is the escape hatch if a surface ever wants the persistent ✓.
-  if (state === 'synced' && !showSynced) return null;
+  if (state === SYNC_STATE.SYNCED && !showSynced) return null;
   return <SyncBadge state={state} reason={reason} />;
 }
 
@@ -27,5 +27,5 @@ export function EntitySyncBadge({ id, showSynced = false }: { id: string; showSy
 // The badge (via useSyncStatus) is the state signal; this is the same read for
 // the container's opacity, so both derive from one source.
 export function useUnsynced(id: string): boolean {
-  return useSyncStatus(id).state === 'pending';
+  return useSyncStatus(id).state === SYNC_STATE.PENDING;
 }

@@ -8,6 +8,7 @@ import {
 import { Prisma, type Document as PrismaDocument } from '@prisma/client';
 import {
   ENTITY_TYPE,
+  ERROR_CODE,
   isAllowedDocumentMimeType,
   type CreateDocumentInput,
   type DocumentSummary,
@@ -50,7 +51,10 @@ export interface UploadedFile {
 function assertAllowedMime(mimeType: string): void {
   if (!isAllowedDocumentMimeType(mimeType)) {
     throw new UnsupportedMediaTypeException({
-      error: { code: 'UNSUPPORTED_MEDIA_TYPE', message: `Unsupported file type: ${mimeType}` },
+      error: {
+        code: ERROR_CODE.UNSUPPORTED_MEDIA_TYPE,
+        message: `Unsupported file type: ${mimeType}`,
+      },
     });
   }
 }

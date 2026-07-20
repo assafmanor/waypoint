@@ -1,7 +1,7 @@
 import type { IncomingMessage, Server as HttpServer } from 'node:http';
 import type { Duplex } from 'node:stream';
 import { Injectable, Logger, type OnApplicationShutdown } from '@nestjs/common';
-import type { Change } from '@waypoint/shared';
+import { WS_MESSAGE_TYPE, type Change } from '@waypoint/shared';
 import { WebSocket, WebSocketServer } from 'ws';
 import { parseCookieHeader } from '../auth/cookies.util';
 import { DEV_PRINCIPAL } from '../auth/jwt-auth.guard';
@@ -17,10 +17,10 @@ const REFRESH_COOKIE = 'wp_refresh';
 const STREAM_PATH_RE = /^\/trips\/([^/?]+)\/stream(?:\?.*)?$/;
 
 type ServerMessage =
-  | { type: 'hello'; serverTime: string; latestSeq: string }
-  | { type: 'change'; seq: string; change: Change }
-  | { type: 'presence'; members: { userId: string; connected: boolean }[] }
-  | { type: 'pong' };
+  | { type: typeof WS_MESSAGE_TYPE.HELLO; serverTime: string; latestSeq: string }
+  | { type: typeof WS_MESSAGE_TYPE.CHANGE; seq: string; change: Change }
+  | { type: typeof WS_MESSAGE_TYPE.PRESENCE; members: { userId: string; connected: boolean }[] }
+  | { type: typeof WS_MESSAGE_TYPE.PONG };
 
 /** WS /trips/:tripId/stream — realtime fan-out (ADR-0019, sync-and-offline.md). */
 @Injectable()
@@ -104,13 +104,18 @@ export class SyncGateway implements OnApplicationShutdown {
 
     this.latestSeq(tripId)
       .then((latestSeq) => {
-        this.send(client, { type: 'hello', serverTime: new Date().toISOString(), latestSeq });
+        this.send(client, {
+          type: WS_MESSAGE_TYPE.HELLO,
+          serverTime: new Date().toISOString(),
+          latestSeq,
+        });
         this.broadcastPresence(tripId);
       })
       .catch((err: unknown) => this.logger.error('WS hello failed', err));
 
     client.on('message', (raw: Buffer) => {
-      if (parseMessageType(raw) === 'ping') this.send(client, { type: 'pong' });
+      if (parseMessageType(raw) === WS_MESSAGE_TYPE.PING)
+        this.send(client, { type: WS_MESSAGE_TYPE.PONG });
     });
     client.on('close', () => {
       channel?.delete(client);
@@ -153,7 +158,7 @@ export class SyncGateway implements OnApplicationShutdown {
     const channel = this.channels.get(tripId);
     if (!channel) return;
     for (const client of channel.keys()) {
-      this.send(client, { type: 'change', seq: change.seq, change });
+      this.send(client, { type: WS_MESSAGE_TYPE.CHANGE, seq: change.seq, change });
     }
   }
 
@@ -165,7 +170,7 @@ export class SyncGateway implements OnApplicationShutdown {
       connected: true,
     }));
     for (const client of channel.keys()) {
-      this.send(client, { type: 'presence', members });
+      this.send(client, { type: WS_MESSAGE_TYPE.PRESENCE, members });
     }
   }
 

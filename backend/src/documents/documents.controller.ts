@@ -25,6 +25,7 @@ import {
 import {
   createDocumentSchema,
   documentSummarySchema,
+  ERROR_CODE,
   MAX_DOCUMENT_SIZE_BYTES,
   tripDocumentSchema,
   updateDocumentSchema,
@@ -72,7 +73,7 @@ export class DocumentsController {
   ): Promise<TripDocument> {
     if (!file) {
       throw new BadRequestException({
-        error: { code: 'VALIDATION_ERROR', message: 'file is required' },
+        error: { code: ERROR_CODE.VALIDATION_ERROR, message: 'file is required' },
       });
     }
     return this.documents.create(tripId, user.userId, body, file);

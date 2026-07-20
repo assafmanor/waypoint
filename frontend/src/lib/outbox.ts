@@ -2,6 +2,7 @@
 // reuses lib/api.ts's REST functions directly — verbs.ts stays the only place
 // that builds optimistic dispatch + undo.
 import { useEffect, useMemo, useState, useSyncExternalStore } from 'react';
+import { ERROR_CODE } from '@waypoint/shared';
 import type {
   CreateBookingInput,
   CreateDocumentInput,
@@ -29,8 +30,6 @@ import {
   deleteEvent,
   deleteMaybeItem,
   deleteTrip,
-  MOVE_CROSSES_DAY,
-  MOVE_INTO_PAST,
   moveEvent,
   removeMember,
   setEventStatus,
@@ -362,7 +361,13 @@ export function useSyncFailures(): SyncFailure[] {
 // the outbox pending index + the failed store, id-keyed. `failed` outranks
 // `pending` — a rejected write the user must act on beats a later queued edit to
 // the same entity. ---
-export type SyncState = 'synced' | 'pending' | 'failed';
+export const SYNC_STATE = {
+  SYNCED: 'synced',
+  PENDING: 'pending',
+  FAILED: 'failed',
+} as const;
+
+export type SyncState = (typeof SYNC_STATE)[keyof typeof SYNC_STATE];
 
 export interface SyncStatus {
   state: SyncState;
@@ -374,16 +379,18 @@ export function getSyncStatus(entityId: string): SyncStatus {
   // Match on every entity the failed op touched (primary + side effects), so a
   // rejected booking write marks its linked event failed too, not just the booking.
   const failure = syncFailures.find((f) => outboxOpEntityIds(f.op).includes(entityId));
-  if (failure) return { state: 'failed', reason: failure.code };
-  if ((pendingByEntity.get(entityId) ?? 0) > 0) return { state: 'pending' };
-  return { state: 'synced' };
+  if (failure) return { state: SYNC_STATE.FAILED, reason: failure.code };
+  if ((pendingByEntity.get(entityId) ?? 0) > 0) return { state: SYNC_STATE.PENDING };
+  return { state: SYNC_STATE.SYNCED };
 }
 
 // A primitive snapshot key so `useSyncExternalStore` compares by value (a fresh
 // object each render would loop). The hook re-inflates it to a `SyncStatus`.
 function syncStatusKey(entityId: string): string {
   const status = getSyncStatus(entityId);
-  return status.state === 'failed' ? `failed:${status.reason ?? ''}` : status.state;
+  return status.state === SYNC_STATE.FAILED
+    ? `${SYNC_STATE.FAILED}:${status.reason ?? ''}`
+    : status.state;
 }
 
 function subscribeSyncStatus(listener: Listener): () => void {
@@ -400,9 +407,9 @@ function subscribeSyncStatus(listener: Listener): () => void {
 export function useSyncStatus(entityId: string): SyncStatus {
   const key = useSyncExternalStore(subscribeSyncStatus, () => syncStatusKey(entityId));
   return useMemo(() => {
-    if (key.startsWith('failed')) {
-      const reason = key.slice('failed:'.length);
-      return { state: 'failed', reason: reason || undefined };
+    if (key.startsWith(SYNC_STATE.FAILED)) {
+      const reason = key.slice(`${SYNC_STATE.FAILED}:`.length);
+      return { state: SYNC_STATE.FAILED, reason: reason || undefined };
     }
     return { state: key as SyncState };
   }, [key]);
@@ -411,7 +418,7 @@ export function useSyncStatus(entityId: string): SyncStatus {
 // Known-unfixable rejections that are safe to drop quietly: a time-move that was
 // valid when queued offline but has since gone stale. Retrying only makes it more
 // stale, and the user already saw the optimistic move — no failure to surface.
-const QUIET_DROP_CODES = new Set<string>([MOVE_INTO_PAST, MOVE_CROSSES_DAY]);
+const QUIET_DROP_CODES = new Set<string>([ERROR_CODE.MOVE_INTO_PAST, ERROR_CODE.MOVE_CROSSES_DAY]);
 
 export function subscribeOutboxCount(listener: Listener): () => void {
   listeners.add(listener);

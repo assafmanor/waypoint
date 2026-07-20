@@ -3,7 +3,7 @@
 // own reconnect (bounded exponential backoff) + heartbeat so a foreground socket
 // drop (proxy/idle timeout, server restart) is detected and recovered, not left
 // silently stale until the next online/visibility event (F-04).
-import type { Change } from '@waypoint/shared';
+import { WS_MESSAGE_TYPE, type Change } from '@waypoint/shared';
 import {
   WS_HEARTBEAT_INTERVAL_MS,
   WS_RECONNECT_BASE_MS,
@@ -33,10 +33,10 @@ function streamUrl(tripId: string): string {
 }
 
 type ServerMessage =
-  | { type: 'hello'; latestSeq: string }
-  | { type: 'change'; seq: string; change: Change }
-  | { type: 'presence' }
-  | { type: 'pong' };
+  | { type: typeof WS_MESSAGE_TYPE.HELLO; latestSeq: string }
+  | { type: typeof WS_MESSAGE_TYPE.CHANGE; seq: string; change: Change }
+  | { type: typeof WS_MESSAGE_TYPE.PRESENCE }
+  | { type: typeof WS_MESSAGE_TYPE.PONG };
 
 /** Backoff delay for reconnect attempt `n` (0-based): exponential from base,
  *  clamped to the cap, with "equal jitter" so a fleet of clients reconnecting
@@ -86,7 +86,7 @@ export function openTripStream(
     stopLiveness();
     heartbeatTimer = setInterval(() => {
       try {
-        ws?.send(JSON.stringify({ type: 'ping' }));
+        ws?.send(JSON.stringify({ type: WS_MESSAGE_TYPE.PING }));
       } catch {
         // A send on a not-open socket throws; the watchdog/close path recovers.
       }
@@ -140,10 +140,10 @@ export function openTripStream(
       } catch {
         return;
       }
-      if (msg.type === 'hello') {
+      if (msg.type === WS_MESSAGE_TYPE.HELLO) {
         if (BigInt(msg.latestSeq) > lastSeq) handlers.onResync();
         lastSeq = BigInt(msg.latestSeq);
-      } else if (msg.type === 'change') {
+      } else if (msg.type === WS_MESSAGE_TYPE.CHANGE) {
         const seq = BigInt(msg.seq);
         const isGap = seq > lastSeq + 1n;
         lastSeq = seq;
