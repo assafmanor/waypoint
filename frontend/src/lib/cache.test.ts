@@ -14,6 +14,7 @@ import {
   wipeLocalData,
 } from './cache';
 import { ACTIVE_TRIP_STORAGE_KEY } from '../constants';
+import { OUTBOX_VERB } from './outbox';
 
 const TRIP_ID = EVENTS[0].tripId;
 
@@ -277,7 +278,7 @@ describe('applyOutboxOpToCache (offline write-through)', () => {
     await cacheSnapshot(TRIP_ID, snapshot());
     const newId = 'ev-offline-1';
     await applyOutboxOpToCache(TRIP_ID, {
-      verb: 'create',
+      verb: OUTBOX_VERB.CREATE,
       input: {
         id: newId,
         date: '2026-07-02',
@@ -293,7 +294,7 @@ describe('applyOutboxOpToCache (offline write-through)', () => {
   it('applies a status change to a cached event', async () => {
     await cacheSnapshot(TRIP_ID, snapshot());
     await applyOutboxOpToCache(TRIP_ID, {
-      verb: 'setStatus',
+      verb: OUTBOX_VERB.SET_STATUS,
       eventId: EVENTS[0].id,
       status: 'done',
     });
@@ -302,14 +303,21 @@ describe('applyOutboxOpToCache (offline write-through)', () => {
 
   it('removes an offline-deleted event from the cache', async () => {
     await cacheSnapshot(TRIP_ID, snapshot());
-    await applyOutboxOpToCache(TRIP_ID, { verb: 'delete', eventId: EVENTS[0].id, confirm: false });
+    await applyOutboxOpToCache(TRIP_ID, {
+      verb: OUTBOX_VERB.DELETE,
+      eventId: EVENTS[0].id,
+      confirm: false,
+    });
     expect(await db.events.get(EVENTS[0].id)).toBeUndefined();
   });
 
   it('applies an offline trip-settings edit to both the snapshot and the list', async () => {
     await cacheSnapshot(TRIP_ID, snapshot());
     await cacheTripList([trip({ id: TRIP_ID, name: 'Old name' })]);
-    await applyOutboxOpToCache(TRIP_ID, { verb: 'updateTrip', input: { name: 'New name' } });
+    await applyOutboxOpToCache(TRIP_ID, {
+      verb: OUTBOX_VERB.UPDATE_TRIP,
+      input: { name: 'New name' },
+    });
 
     expect((await readCachedSnapshot(TRIP_ID))?.trip.name).toBe('New name');
     expect((await readCachedTripList()).find((t) => t.id === TRIP_ID)?.name).toBe('New name');
@@ -320,14 +328,17 @@ describe('applyOutboxOpToCache (offline write-through)', () => {
     const before = (await readCachedSnapshot(TRIP_ID))!.maybeItems.length;
 
     await applyOutboxOpToCache(TRIP_ID, {
-      verb: 'createMaybeItem',
+      verb: OUTBOX_VERB.CREATE_MAYBE_ITEM,
       input: { id: 'mb-offline', title: 'Offline idea', icon: '💡' },
     });
     let cached = await readCachedSnapshot(TRIP_ID);
     expect(cached?.maybeItems).toHaveLength(before + 1);
     expect(cached?.maybeItems.find((m) => m.id === 'mb-offline')?.title).toBe('Offline idea');
 
-    await applyOutboxOpToCache(TRIP_ID, { verb: 'deleteMaybeItem', maybeItemId: 'mb-offline' });
+    await applyOutboxOpToCache(TRIP_ID, {
+      verb: OUTBOX_VERB.DELETE_MAYBE_ITEM,
+      maybeItemId: 'mb-offline',
+    });
     cached = await readCachedSnapshot(TRIP_ID);
     expect(cached?.maybeItems).toHaveLength(before);
     expect(cached?.maybeItems.find((m) => m.id === 'mb-offline')).toBeUndefined();
@@ -336,7 +347,7 @@ describe('applyOutboxOpToCache (offline write-through)', () => {
   it('mirrors an offline booking create/delete, stripping the event seed', async () => {
     await cacheSnapshot(TRIP_ID, snapshot());
     await applyOutboxOpToCache(TRIP_ID, {
-      verb: 'createBooking',
+      verb: OUTBOX_VERB.CREATE_BOOKING,
       input: {
         id: 'bk-offline',
         type: 'hotel',
@@ -349,7 +360,7 @@ describe('applyOutboxOpToCache (offline write-through)', () => {
     expect((row as Record<string, unknown>).event).toBeUndefined();
 
     await applyOutboxOpToCache(TRIP_ID, {
-      verb: 'deleteBooking',
+      verb: OUTBOX_VERB.DELETE_BOOKING,
       bookingId: 'bk-offline',
       confirm: false,
       deleteEvents: false,
@@ -360,7 +371,7 @@ describe('applyOutboxOpToCache (offline write-through)', () => {
   it('mirrors an offline place create into the cached snapshot', async () => {
     await cacheSnapshot(TRIP_ID, snapshot());
     await applyOutboxOpToCache(TRIP_ID, {
-      verb: 'createPlace',
+      verb: OUTBOX_VERB.CREATE_PLACE,
       input: { id: 'pl-offline', name: 'Offline place' },
     });
     const cached = await readCachedSnapshot(TRIP_ID);
@@ -370,7 +381,7 @@ describe('applyOutboxOpToCache (offline write-through)', () => {
   it('defaults a new offline event to planned (no status on the create input)', async () => {
     await cacheSnapshot(TRIP_ID, snapshot());
     await applyOutboxOpToCache(TRIP_ID, {
-      verb: 'create',
+      verb: OUTBOX_VERB.CREATE,
       input: { id: 'ev-plan', date: '2026-07-02', title: 'x', kind: 'soft', source: 'manual' },
     });
     expect((await db.events.get('ev-plan'))?.status).toBe('planned');
@@ -387,11 +398,15 @@ describe('applyOutboxOpToCache (offline write-through)', () => {
       joinedAt: '2026-07-01T00:00:00.000Z',
     };
     await cacheSnapshot(TRIP_ID, snapshot({ members: [member] }));
-    await applyOutboxOpToCache(TRIP_ID, { verb: 'setMemberRole', userId: 'u-noam', role: 'admin' });
+    await applyOutboxOpToCache(TRIP_ID, {
+      verb: OUTBOX_VERB.SET_MEMBER_ROLE,
+      userId: 'u-noam',
+      role: 'admin',
+    });
     expect((await readCachedSnapshot(TRIP_ID))?.members.find((m) => m.id === 'mem-1')?.role).toBe(
       'admin',
     );
-    await applyOutboxOpToCache(TRIP_ID, { verb: 'removeMember', userId: 'u-noam' });
+    await applyOutboxOpToCache(TRIP_ID, { verb: OUTBOX_VERB.REMOVE_MEMBER, userId: 'u-noam' });
     expect((await readCachedSnapshot(TRIP_ID))?.members).toHaveLength(0);
   });
 });
@@ -422,7 +437,7 @@ describe('wipeLocalData (sign-out / session loss, F-01)', () => {
     await cacheTripList([trip({ id: TRIP_ID })]);
     await db.outbox.add({
       tripId: TRIP_ID,
-      op: { verb: 'delete', eventId: EVENTS[0].id, confirm: false },
+      op: { verb: OUTBOX_VERB.DELETE, eventId: EVENTS[0].id, confirm: false },
     });
     localStorage.setItem(ACTIVE_TRIP_STORAGE_KEY, TRIP_ID);
 

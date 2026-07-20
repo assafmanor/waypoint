@@ -13,6 +13,7 @@ import {
   flushOutbox,
   getSyncFailures,
   initOutboxCount,
+  OUTBOX_VERB,
   type OutboxOp,
 } from '../lib/outbox';
 import { SyncReviewSheet } from './SyncReviewSheet';
@@ -33,7 +34,10 @@ function wrap(node: ReactNode) {
 }
 
 const bookingOp = (id: string): OutboxOp =>
-  ({ verb: 'createBooking', input: { id, type: 'restaurant', title: 'מסעדה' } }) as OutboxOp;
+  ({
+    verb: OUTBOX_VERB.CREATE_BOOKING,
+    input: { id, type: 'restaurant', title: 'מסעדה' },
+  }) as OutboxOp;
 
 /** Drive a queued booking write to a recorded sync failure (a non-allowlisted 4xx). */
 async function recordFailure(id: string): Promise<void> {

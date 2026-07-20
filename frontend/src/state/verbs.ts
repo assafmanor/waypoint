@@ -30,7 +30,13 @@ import {
   setEventStatus,
   updateEvent,
 } from '../lib/api';
-import { enqueueOutbox, isNetworkError, isOffline, type OutboxOp } from '../lib/outbox';
+import {
+  enqueueOutbox,
+  isNetworkError,
+  isOffline,
+  OUTBOX_VERB,
+  type OutboxOp,
+} from '../lib/outbox';
 import { getNow } from '../lib/useClock';
 import { isoToTimeInput, zonedIso } from '../lib/time';
 import { planReorder } from '../lib/reorder';
@@ -143,7 +149,7 @@ export async function applySetStatus(
   try {
     const canonical = await restOrQueue(
       deps.tripId,
-      { verb: 'setStatus', eventId: event.id, status },
+      { verb: OUTBOX_VERB.SET_STATUS, eventId: event.id, status },
       () => setEventStatus(deps.tripId, event.id, status),
     );
     if (canonical) deps.dispatch({ type: 'RECONCILE_EVENT', event: canonical });
@@ -162,7 +168,7 @@ export async function applyDelay(deps: VerbDeps, event: TripEvent, minutes: numb
   try {
     const result = await restOrQueue<MoveEventResult>(
       deps.tripId,
-      { verb: 'move', eventId: event.id, input, confirm: isHard },
+      { verb: OUTBOX_VERB.MOVE, eventId: event.id, input, confirm: isHard },
       () => moveEvent(deps.tripId, event.id, input, isHard),
     );
     if (result) {
@@ -252,7 +258,7 @@ export async function applySchedule(
   deps.lastAction.current = { kind: 'create', id: event.id };
   const input = toCreateEventInput(event);
   try {
-    const canonical = await restOrQueue(deps.tripId, { verb: 'create', input }, () =>
+    const canonical = await restOrQueue(deps.tripId, { verb: OUTBOX_VERB.CREATE, input }, () =>
       createEvent(deps.tripId, input),
     );
     if (canonical) deps.dispatch({ type: 'RECONCILE_EVENT', event: canonical });
@@ -263,8 +269,10 @@ export async function applySchedule(
     // if that derivation ever moves server-side, drop this call and the
     // consume() service method (backend/src/maybe-items/maybe-items.service.ts)
     // together in favor of one endpoint.
-    await restOrQueue(deps.tripId, { verb: 'consumeMaybeItem', maybeItemId: maybeId }, () =>
-      consumeMaybeItem(deps.tripId, maybeId),
+    await restOrQueue(
+      deps.tripId,
+      { verb: OUTBOX_VERB.CONSUME_MAYBE_ITEM, maybeItemId: maybeId },
+      () => consumeMaybeItem(deps.tripId, maybeId),
     );
   } catch (err) {
     deps.dispatch({ type: 'UNDO' });
@@ -277,7 +285,7 @@ export async function applyCreateEvent(deps: VerbDeps, event: TripEvent): Promis
   deps.lastAction.current = { kind: 'create', id: event.id };
   const input = toCreateEventInput(event);
   try {
-    const canonical = await restOrQueue(deps.tripId, { verb: 'create', input }, () =>
+    const canonical = await restOrQueue(deps.tripId, { verb: OUTBOX_VERB.CREATE, input }, () =>
       createEvent(deps.tripId, input),
     );
     if (canonical) deps.dispatch({ type: 'RECONCILE_EVENT', event: canonical });
@@ -305,7 +313,7 @@ export async function applyUpdateEvent(
   try {
     const canonical = await restOrQueue(
       deps.tripId,
-      { verb: 'update', eventId: event.id, input: patch, confirm: isHard },
+      { verb: OUTBOX_VERB.UPDATE, eventId: event.id, input: patch, confirm: isHard },
       () => updateEvent(deps.tripId, event.id, patch, isHard),
     );
     if (canonical) deps.dispatch({ type: 'RECONCILE_EVENT', event: canonical });
@@ -335,8 +343,10 @@ export async function applyDeleteEvent(deps: VerbDeps, event: TripEvent): Promis
   deps.dispatch({ type: 'DELETE_EVENT', id: event.id });
   deps.lastAction.current = { kind: 'delete', event };
   try {
-    await restOrQueue(deps.tripId, { verb: 'delete', eventId: event.id, confirm: isHard }, () =>
-      deleteEvent(deps.tripId, event.id, isHard),
+    await restOrQueue(
+      deps.tripId,
+      { verb: OUTBOX_VERB.DELETE, eventId: event.id, confirm: isHard },
+      () => deleteEvent(deps.tripId, event.id, isHard),
     );
   } catch (err) {
     deps.dispatch({ type: 'UNDO' });
@@ -376,7 +386,7 @@ export async function applyReorder(
       patches.map((p) =>
         restOrQueue(
           deps.tripId,
-          { verb: 'update', eventId: p.id, input: p.patch, confirm: false },
+          { verb: OUTBOX_VERB.UPDATE, eventId: p.id, input: p.patch, confirm: false },
           () => updateEvent(deps.tripId, p.id, p.patch, false),
         ),
       ),
@@ -399,7 +409,7 @@ export async function applyAddMaybe(deps: VerbDeps, item: MaybeItem): Promise<vo
   deps.lastAction.current = { kind: 'addMaybe', id: item.id };
   const input = { id: item.id, title: item.title, icon: item.icon, category: item.category };
   try {
-    await restOrQueue(deps.tripId, { verb: 'createMaybeItem', input }, () =>
+    await restOrQueue(deps.tripId, { verb: OUTBOX_VERB.CREATE_MAYBE_ITEM, input }, () =>
       createMaybeItem(deps.tripId, input),
     );
   } catch (err) {
@@ -412,8 +422,10 @@ export async function applyRemoveMaybe(deps: VerbDeps, item: MaybeItem): Promise
   deps.dispatch({ type: 'REMOVE_MAYBE', id: item.id });
   deps.lastAction.current = { kind: 'removeMaybe', item };
   try {
-    await restOrQueue(deps.tripId, { verb: 'deleteMaybeItem', maybeItemId: item.id }, () =>
-      deleteMaybeItem(deps.tripId, item.id),
+    await restOrQueue(
+      deps.tripId,
+      { verb: OUTBOX_VERB.DELETE_MAYBE_ITEM, maybeItemId: item.id },
+      () => deleteMaybeItem(deps.tripId, item.id),
     );
   } catch (err) {
     deps.dispatch({ type: 'UNDO' });
@@ -435,11 +447,13 @@ export async function applyPark(deps: VerbDeps, event: TripEvent, item: MaybeIte
     placeId: item.placeId,
   };
   try {
-    await restOrQueue(deps.tripId, { verb: 'createMaybeItem', input }, () =>
+    await restOrQueue(deps.tripId, { verb: OUTBOX_VERB.CREATE_MAYBE_ITEM, input }, () =>
       createMaybeItem(deps.tripId, input),
     );
-    await restOrQueue(deps.tripId, { verb: 'delete', eventId: event.id, confirm: false }, () =>
-      deleteEvent(deps.tripId, event.id),
+    await restOrQueue(
+      deps.tripId,
+      { verb: OUTBOX_VERB.DELETE, eventId: event.id, confirm: false },
+      () => deleteEvent(deps.tripId, event.id),
     );
   } catch (err) {
     deps.dispatch({ type: 'UNDO' });
@@ -463,7 +477,7 @@ export async function applyRippleApply(
       const input = { startsAt: c.startsAt };
       const result = await restOrQueue<MoveEventResult>(
         deps.tripId,
-        { verb: 'move', eventId: c.id, input, confirm: false },
+        { verb: OUTBOX_VERB.MOVE, eventId: c.id, input, confirm: false },
         () => moveEvent(deps.tripId, c.id, input),
       );
       if (result) deps.dispatch({ type: 'RECONCILE_EVENT', event: result.event });
@@ -479,7 +493,7 @@ async function reverseRest(tripId: string, desc: UndoDescriptor): Promise<void> 
     case 'status':
       await restOrQueue(
         tripId,
-        { verb: 'setStatus', eventId: desc.id, status: desc.previous },
+        { verb: OUTBOX_VERB.SET_STATUS, eventId: desc.id, status: desc.previous },
         () => setEventStatus(tripId, desc.id, desc.previous),
       );
       return;
@@ -487,22 +501,26 @@ async function reverseRest(tripId: string, desc: UndoDescriptor): Promise<void> 
       const input = { date: desc.previous.date, startsAt: desc.previous.startsAt };
       await restOrQueue(
         tripId,
-        { verb: 'move', eventId: desc.id, input, confirm: desc.isHard },
+        { verb: OUTBOX_VERB.MOVE, eventId: desc.id, input, confirm: desc.isHard },
         () => moveEvent(tripId, desc.id, input, desc.isHard),
       );
       return;
     }
     case 'create':
-      await restOrQueue(tripId, { verb: 'delete', eventId: desc.id, confirm: false }, () =>
-        deleteEvent(tripId, desc.id),
+      await restOrQueue(
+        tripId,
+        { verb: OUTBOX_VERB.DELETE, eventId: desc.id, confirm: false },
+        () => deleteEvent(tripId, desc.id),
       );
       return;
     case 'rippleApply':
       await Promise.all(
         desc.items.map((i) => {
           const input = { date: i.previous.date, startsAt: i.previous.startsAt };
-          return restOrQueue(tripId, { verb: 'move', eventId: i.id, input, confirm: false }, () =>
-            moveEvent(tripId, i.id, input),
+          return restOrQueue(
+            tripId,
+            { verb: OUTBOX_VERB.MOVE, eventId: i.id, input, confirm: false },
+            () => moveEvent(tripId, i.id, input),
           );
         }),
       );
@@ -510,13 +528,15 @@ async function reverseRest(tripId: string, desc: UndoDescriptor): Promise<void> 
     case 'update':
       await restOrQueue(
         tripId,
-        { verb: 'update', eventId: desc.id, input: desc.previous, confirm: desc.isHard },
+        { verb: OUTBOX_VERB.UPDATE, eventId: desc.id, input: desc.previous, confirm: desc.isHard },
         () => updateEvent(tripId, desc.id, desc.previous, desc.isHard),
       );
       return;
     case 'delete': {
       const input = toCreateEventInput(desc.event);
-      await restOrQueue(tripId, { verb: 'create', input }, () => createEvent(tripId, input));
+      await restOrQueue(tripId, { verb: OUTBOX_VERB.CREATE, input }, () =>
+        createEvent(tripId, input),
+      );
       return;
     }
     case 'reorder':
@@ -524,14 +544,14 @@ async function reverseRest(tripId: string, desc: UndoDescriptor): Promise<void> 
         desc.items.map((i) =>
           restOrQueue(
             tripId,
-            { verb: 'update', eventId: i.id, input: i.previous, confirm: i.isHard },
+            { verb: OUTBOX_VERB.UPDATE, eventId: i.id, input: i.previous, confirm: i.isHard },
             () => updateEvent(tripId, i.id, i.previous, i.isHard),
           ),
         ),
       );
       return;
     case 'addMaybe':
-      await restOrQueue(tripId, { verb: 'deleteMaybeItem', maybeItemId: desc.id }, () =>
+      await restOrQueue(tripId, { verb: OUTBOX_VERB.DELETE_MAYBE_ITEM, maybeItemId: desc.id }, () =>
         deleteMaybeItem(tripId, desc.id),
       );
       return;
@@ -542,18 +562,22 @@ async function reverseRest(tripId: string, desc: UndoDescriptor): Promise<void> 
         icon: desc.item.icon,
         category: desc.item.category,
       };
-      await restOrQueue(tripId, { verb: 'createMaybeItem', input }, () =>
+      await restOrQueue(tripId, { verb: OUTBOX_VERB.CREATE_MAYBE_ITEM, input }, () =>
         createMaybeItem(tripId, input),
       );
       return;
     }
     case 'park': {
       // Un-park: drop the idea and put the event back.
-      await restOrQueue(tripId, { verb: 'deleteMaybeItem', maybeItemId: desc.maybeId }, () =>
-        deleteMaybeItem(tripId, desc.maybeId),
+      await restOrQueue(
+        tripId,
+        { verb: OUTBOX_VERB.DELETE_MAYBE_ITEM, maybeItemId: desc.maybeId },
+        () => deleteMaybeItem(tripId, desc.maybeId),
       );
       const input = toCreateEventInput(desc.event);
-      await restOrQueue(tripId, { verb: 'create', input }, () => createEvent(tripId, input));
+      await restOrQueue(tripId, { verb: OUTBOX_VERB.CREATE, input }, () =>
+        createEvent(tripId, input),
+      );
     }
   }
 }

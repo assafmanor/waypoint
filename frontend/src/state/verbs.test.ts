@@ -3,7 +3,7 @@ import { afterEach, describe, expect, it, vi } from 'vitest';
 import { EVENT_STATUS } from '@waypoint/shared';
 import { db } from '../db';
 import { EVENTS, MAYBE_ITEMS } from '../fixtures';
-import { initOutboxCount } from '../lib/outbox';
+import { initOutboxCount, OUTBOX_VERB } from '../lib/outbox';
 import { DEFAULT_SCHEDULE_SLOT } from '../constants';
 import { zonedIso } from '../lib/time';
 import {
@@ -363,8 +363,8 @@ describe('applySchedule (T-058: persists the maybe-item consumed flag server-sid
     expect(fetchMock).not.toHaveBeenCalled();
     const queued = (await db.outbox.toArray()).map((e) => e.op);
     expect(queued).toEqual([
-      { verb: 'create', input: expect.objectContaining({ id: 'ev-new' }) },
-      { verb: 'consumeMaybeItem', maybeItemId: 'mb-skytree' },
+      { verb: OUTBOX_VERB.CREATE, input: expect.objectContaining({ id: 'ev-new' }) },
+      { verb: OUTBOX_VERB.CONSUME_MAYBE_ITEM, maybeItemId: 'mb-skytree' },
     ]);
   });
 });
@@ -431,7 +431,7 @@ describe('offline write outbox (T-013)', () => {
     const queued = await db.outbox.toArray();
     expect(queued).toHaveLength(1);
     expect(queued[0].op).toEqual({
-      verb: 'setStatus',
+      verb: OUTBOX_VERB.SET_STATUS,
       eventId: event.id,
       status: EVENT_STATUS.DONE,
     });

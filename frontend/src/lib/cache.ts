@@ -19,7 +19,7 @@ import { db } from '../db';
 import { ACTIVE_TRIP_STORAGE_KEY } from '../constants';
 import { fetchTrips } from './api';
 import { clearAllCachedDocuments } from './doc-cache';
-import { initOutboxCount, type OutboxOp } from './outbox';
+import { initOutboxCount, OUTBOX_VERB, type OutboxOp } from './outbox';
 
 /** The slice of TripSnapshot with no dedicated Dexie table of its own. */
 export interface SnapshotMeta {
@@ -269,7 +269,7 @@ export async function applyOutboxOpToCache(tripId: string, op: OutboxOp): Promis
 async function outboxOpToCacheChanges(tripId: string, op: OutboxOp): Promise<EntityChange[]> {
   const one = (c: EntityChange): EntityChange[] => [c];
   switch (op.verb) {
-    case 'create':
+    case OUTBOX_VERB.CREATE:
       if (!op.input.id) return [];
       // A new event starts planned (the server default); the seed carries no status.
       return one({
@@ -278,34 +278,34 @@ async function outboxOpToCacheChanges(tripId: string, op: OutboxOp): Promise<Ent
         action: CHANGE_ACTION.CREATE,
         after: { ...op.input, status: EVENT_STATUS.PLANNED },
       });
-    case 'update':
+    case OUTBOX_VERB.UPDATE:
       return one({
         entityType: ENTITY_TYPE.EVENT,
         entityId: op.eventId,
         action: CHANGE_ACTION.UPDATE,
         after: op.input,
       });
-    case 'move':
+    case OUTBOX_VERB.MOVE:
       return one({
         entityType: ENTITY_TYPE.EVENT,
         entityId: op.eventId,
         action: CHANGE_ACTION.MOVE,
         after: op.input,
       });
-    case 'setStatus':
+    case OUTBOX_VERB.SET_STATUS:
       return one({
         entityType: ENTITY_TYPE.EVENT,
         entityId: op.eventId,
         action: CHANGE_ACTION.STATUS,
         after: { status: op.status },
       });
-    case 'delete':
+    case OUTBOX_VERB.DELETE:
       return one({
         entityType: ENTITY_TYPE.EVENT,
         entityId: op.eventId,
         action: CHANGE_ACTION.DELETE,
       });
-    case 'createMaybeItem':
+    case OUTBOX_VERB.CREATE_MAYBE_ITEM:
       if (!op.input.id) return [];
       return one({
         entityType: ENTITY_TYPE.MAYBE_ITEM,
@@ -313,20 +313,20 @@ async function outboxOpToCacheChanges(tripId: string, op: OutboxOp): Promise<Ent
         action: CHANGE_ACTION.CREATE,
         after: { consumed: false, ...op.input },
       });
-    case 'consumeMaybeItem':
+    case OUTBOX_VERB.CONSUME_MAYBE_ITEM:
       return one({
         entityType: ENTITY_TYPE.MAYBE_ITEM,
         entityId: op.maybeItemId,
         action: CHANGE_ACTION.UPDATE,
         after: { consumed: true },
       });
-    case 'deleteMaybeItem':
+    case OUTBOX_VERB.DELETE_MAYBE_ITEM:
       return one({
         entityType: ENTITY_TYPE.MAYBE_ITEM,
         entityId: op.maybeItemId,
         action: CHANGE_ACTION.DELETE,
       });
-    case 'createBooking': {
+    case OUTBOX_VERB.CREATE_BOOKING: {
       if (!op.input.id) return [];
       const { event: _seed, ...fields } = op.input;
       return one({
@@ -336,7 +336,7 @@ async function outboxOpToCacheChanges(tripId: string, op: OutboxOp): Promise<Ent
         after: fields,
       });
     }
-    case 'updateBooking': {
+    case OUTBOX_VERB.UPDATE_BOOKING: {
       const { event: _seed, ...fields } = op.input;
       return one({
         entityType: ENTITY_TYPE.BOOKING,
@@ -345,13 +345,13 @@ async function outboxOpToCacheChanges(tripId: string, op: OutboxOp): Promise<Ent
         after: fields,
       });
     }
-    case 'deleteBooking':
+    case OUTBOX_VERB.DELETE_BOOKING:
       return one({
         entityType: ENTITY_TYPE.BOOKING,
         entityId: op.bookingId,
         action: CHANGE_ACTION.DELETE,
       });
-    case 'createPlace':
+    case OUTBOX_VERB.CREATE_PLACE:
       if (!op.input.id) return [];
       return one({
         entityType: ENTITY_TYPE.PLACE,
@@ -359,30 +359,30 @@ async function outboxOpToCacheChanges(tripId: string, op: OutboxOp): Promise<Ent
         action: CHANGE_ACTION.CREATE,
         after: op.input,
       });
-    case 'updatePlace':
+    case OUTBOX_VERB.UPDATE_PLACE:
       return one({
         entityType: ENTITY_TYPE.PLACE,
         entityId: op.placeId,
         action: CHANGE_ACTION.UPDATE,
         after: op.input,
       });
-    case 'updateTrip':
+    case OUTBOX_VERB.UPDATE_TRIP:
       return one({
         entityType: ENTITY_TYPE.TRIP,
         entityId: tripId,
         action: CHANGE_ACTION.UPDATE,
         after: op.input,
       });
-    case 'deleteTrip':
+    case OUTBOX_VERB.DELETE_TRIP:
       return one({ entityType: ENTITY_TYPE.TRIP, entityId: tripId, action: CHANGE_ACTION.DELETE });
-    case 'setMemberRole':
-    case 'removeMember': {
+    case OUTBOX_VERB.SET_MEMBER_ROLE:
+    case OUTBOX_VERB.REMOVE_MEMBER: {
       // Resolve userId → membership id, so the offline mirror keys members the
       // same way the WS echo does (ADR-0094; consistent membership keying).
       const meta = await db.snapshotMeta.get(tripId);
       const member = meta?.members.find((m) => m.userId === op.userId);
       if (!member) return [];
-      return op.verb === 'removeMember'
+      return op.verb === OUTBOX_VERB.REMOVE_MEMBER
         ? one({
             entityType: ENTITY_TYPE.MEMBERSHIP,
             entityId: member.id,
@@ -395,7 +395,7 @@ async function outboxOpToCacheChanges(tripId: string, op: OutboxOp): Promise<Ent
             after: { role: op.role },
           });
     }
-    case 'uploadDocument':
+    case OUTBOX_VERB.UPLOAD_DOCUMENT:
       return [];
   }
 }

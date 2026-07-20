@@ -15,23 +15,27 @@ import {
   initOutboxCount,
   outboxOpEntityId,
   outboxOpEntityIds,
+  OUTBOX_VERB,
   retrySyncFailure,
   withChangeGroup,
   type OutboxOp,
 } from './outbox';
 
 const bookingOp = (id: string): OutboxOp =>
-  ({ verb: 'createBooking', input: { id, type: 'restaurant', title: 'מסעדה' } }) as OutboxOp;
+  ({
+    verb: OUTBOX_VERB.CREATE_BOOKING,
+    input: { id, type: 'restaurant', title: 'מסעדה' },
+  }) as OutboxOp;
 
 // A timed booking: its `event` seed carries the linked event's id (ADR-0093).
 const bookingWithEventOp = (id: string, eventId: string): OutboxOp =>
   ({
-    verb: 'createBooking',
+    verb: OUTBOX_VERB.CREATE_BOOKING,
     input: { id, type: 'restaurant', title: 'מסעדה', event: { id: eventId, date: '2026-07-05' } },
   }) as OutboxOp;
 
 const placeOp = (id: string): OutboxOp =>
-  ({ verb: 'createPlace', input: { id, name: 'מקום' } }) as OutboxOp;
+  ({ verb: OUTBOX_VERB.CREATE_PLACE, input: { id, name: 'מקום' } }) as OutboxOp;
 
 const reject400 = (code: string) =>
   vi.fn(() => Promise.resolve(new Response(JSON.stringify({ error: { code } }), { status: 400 })));
@@ -43,7 +47,7 @@ const TRIP_ID = EVENTS[0].tripId;
 const canonicalBody = () => JSON.stringify(EVENTS[0]);
 
 function statusOp(eventId: string): OutboxOp {
-  return { verb: 'setStatus', eventId, status: 'done' };
+  return { verb: OUTBOX_VERB.SET_STATUS, eventId, status: 'done' };
 }
 
 beforeEach(async () => {
@@ -168,7 +172,7 @@ describe('flushOutbox (FIFO)', () => {
 
     clearSyncFailures();
     await enqueueOutbox(TRIP_ID, {
-      verb: 'createBooking',
+      verb: OUTBOX_VERB.CREATE_BOOKING,
       input: { id: 'bk-1', type: 'restaurant', title: 'מסעדה' },
     } as OutboxOp);
     await enqueueOutbox(TRIP_ID, statusOp('ev-2'));
@@ -181,7 +185,7 @@ describe('flushOutbox (FIFO)', () => {
     expect(failures).toHaveLength(1);
     expect(failures[0]).toMatchObject({
       tripId: TRIP_ID,
-      verb: 'createBooking',
+      verb: OUTBOX_VERB.CREATE_BOOKING,
       code: 'BOOKING_INVALID',
     });
   });
@@ -198,7 +202,7 @@ describe('flushOutbox (FIFO)', () => {
 
     clearSyncFailures();
     await enqueueOutbox(TRIP_ID, {
-      verb: 'move',
+      verb: OUTBOX_VERB.MOVE,
       eventId: 'ev-1',
       input: { minutes: 30 },
       confirm: false,
@@ -218,7 +222,7 @@ describe('flushOutbox (FIFO)', () => {
       vi.fn().mockResolvedValue(new Response(canonicalBody(), { status: 200 })),
     );
     await enqueueOutbox(TRIP_ID, {
-      verb: 'create',
+      verb: OUTBOX_VERB.CREATE,
       input: {
         id: EVENTS[0].id,
         date: EVENTS[0].date,
@@ -279,15 +283,24 @@ describe('flushAllOutbox (device-wide)', () => {
 describe('per-entity sync status (U-04, ADR-0080)', () => {
   it('maps each op family to its target entity id', () => {
     expect(outboxOpEntityId(bookingOp('bk'))).toBe('bk');
-    expect(outboxOpEntityId({ verb: 'delete', eventId: 'ev', confirm: false })).toBe('ev');
+    expect(outboxOpEntityId({ verb: OUTBOX_VERB.DELETE, eventId: 'ev', confirm: false })).toBe(
+      'ev',
+    );
     expect(
-      outboxOpEntityId({ verb: 'updateBooking', bookingId: 'bk2', input: {} } as OutboxOp),
+      outboxOpEntityId({
+        verb: OUTBOX_VERB.UPDATE_BOOKING,
+        bookingId: 'bk2',
+        input: {},
+      } as OutboxOp),
     ).toBe('bk2');
     expect(
-      outboxOpEntityId({ verb: 'createPlace', input: { id: 'pl', name: 'x' } } as OutboxOp),
+      outboxOpEntityId({
+        verb: OUTBOX_VERB.CREATE_PLACE,
+        input: { id: 'pl', name: 'x' },
+      } as OutboxOp),
     ).toBe('pl');
     // Trip-level ops have no row-level entity → '' (surfaced in the sheet by verb).
-    expect(outboxOpEntityId({ verb: 'updateTrip', input: {} } as OutboxOp)).toBe('');
+    expect(outboxOpEntityId({ verb: OUTBOX_VERB.UPDATE_TRIP, input: {} } as OutboxOp)).toBe('');
   });
 
   it('reports pending for an entity with a queued op, synced otherwise', async () => {

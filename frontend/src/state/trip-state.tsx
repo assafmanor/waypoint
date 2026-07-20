@@ -64,6 +64,7 @@ import {
   flushOutbox,
   getSyncFailures,
   isOffline,
+  OUTBOX_VERB,
   restOrQueue,
   subscribeSyncFailures,
 } from '../lib/outbox';
@@ -749,8 +750,10 @@ function TripReady({
         const previous = trip;
         setTrip((prev) => ({ ...prev, ...input })); // optimistic
         try {
-          const canonical = await restOrQueue(tripId, { verb: 'updateTrip', input }, () =>
-            apiUpdateTrip(tripId, input),
+          const canonical = await restOrQueue(
+            tripId,
+            { verb: OUTBOX_VERB.UPDATE_TRIP, input },
+            () => apiUpdateTrip(tripId, input),
           );
           if (canonical) setTrip(canonical); // reconcile with server truth
           // Honest toast: `undefined` means the write was queued offline, not saved
@@ -768,8 +771,10 @@ function TripReady({
         const previous = members;
         setMembers((prev) => prev.map((m) => (m.userId === userId ? { ...m, role } : m)));
         try {
-          const canonical = await restOrQueue(tripId, { verb: 'setMemberRole', userId, role }, () =>
-            apiSetMemberRole(tripId, userId, role),
+          const canonical = await restOrQueue(
+            tripId,
+            { verb: OUTBOX_VERB.SET_MEMBER_ROLE, userId, role },
+            () => apiSetMemberRole(tripId, userId, role),
           );
           if (canonical)
             setMembers((prev) => prev.map((m) => (m.id === canonical.id ? canonical : m)));
@@ -786,7 +791,7 @@ function TripReady({
         const previous = members;
         setMembers((prev) => prev.filter((m) => m.userId !== userId));
         try {
-          await restOrQueue(tripId, { verb: 'removeMember', userId }, () =>
+          await restOrQueue(tripId, { verb: OUTBOX_VERB.REMOVE_MEMBER, userId }, () =>
             apiRemoveMember(tripId, userId),
           );
         } catch (err) {
@@ -796,7 +801,7 @@ function TripReady({
       },
       deleteTrip: async () => {
         try {
-          await restOrQueue(tripId, { verb: 'deleteTrip' }, () => apiDeleteTrip(tripId));
+          await restOrQueue(tripId, { verb: OUTBOX_VERB.DELETE_TRIP }, () => apiDeleteTrip(tripId));
           void clearTripCache(tripId);
           setTripDeleted(true);
         } catch (err) {
@@ -829,7 +834,7 @@ function TripReady({
         try {
           const canonical = await restOrQueue(
             tripId,
-            { verb: 'createBooking', input: withId },
+            { verb: OUTBOX_VERB.CREATE_BOOKING, input: withId },
             () => apiCreateBooking(tripId, withId),
           );
           if (canonical) setBookings((prev) => prev.map((b) => (b.id === id ? canonical : b)));
@@ -867,7 +872,7 @@ function TripReady({
         try {
           const canonical = await restOrQueue(
             tripId,
-            { verb: 'updateBooking', bookingId, input },
+            { verb: OUTBOX_VERB.UPDATE_BOOKING, bookingId, input },
             () => apiUpdateBooking(tripId, bookingId, input),
           );
           if (canonical)
@@ -904,7 +909,7 @@ function TripReady({
           await restOrQueue(
             tripId,
             {
-              verb: 'deleteBooking',
+              verb: OUTBOX_VERB.DELETE_BOOKING,
               bookingId,
               confirm: !!opts.confirm,
               deleteEvents: !!opts.deleteEvents,
@@ -933,8 +938,10 @@ function TripReady({
         const previous = places;
         setPlaces((prev) => [...prev, optimistic]);
         try {
-          const canonical = await restOrQueue(tripId, { verb: 'createPlace', input: withId }, () =>
-            apiCreatePlace(tripId, withId),
+          const canonical = await restOrQueue(
+            tripId,
+            { verb: OUTBOX_VERB.CREATE_PLACE, input: withId },
+            () => apiCreatePlace(tripId, withId),
           );
           if (canonical) setPlaces((prev) => prev.map((p) => (p.id === id ? canonical : p)));
         } catch (err) {
@@ -948,8 +955,10 @@ function TripReady({
         const previous = places;
         setPlaces((prev) => prev.map((p) => (p.id === placeId ? { ...p, ...input } : p)));
         try {
-          const canonical = await restOrQueue(tripId, { verb: 'updatePlace', placeId, input }, () =>
-            apiUpdatePlace(tripId, placeId, input),
+          const canonical = await restOrQueue(
+            tripId,
+            { verb: OUTBOX_VERB.UPDATE_PLACE, placeId, input },
+            () => apiUpdatePlace(tripId, placeId, input),
           );
           if (canonical) setPlaces((prev) => prev.map((p) => (p.id === placeId ? canonical : p)));
         } catch (err) {
