@@ -84,6 +84,16 @@
   flex: 0 0 auto;
   text-align: end;
 }
+/* Fixed sync column (ADR-0091): reserves its width even when the badge is silent
+   (synced → EntitySyncBadge renders null), so the marker sits in the same place
+   on every row and neighbours stay aligned. */
+.wp-listrow-sync {
+  inline-size: 19px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  flex: 0 0 auto;
+}
 .wp-listrow-kebab {
   width: 30px;
   height: 30px;

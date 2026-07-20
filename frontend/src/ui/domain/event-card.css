@@ -156,7 +156,9 @@
   color: var(--muted);
   margin-top: 3px;
   display: flex;
-  align-items: center;
+  /* flex-start (not center) so the sync marker (ADR-0091) stays on the first line
+     and the meta text wraps beneath it — the badge never reflows the title. */
+  align-items: flex-start;
   gap: 6px;
   flex-wrap: wrap;
 }

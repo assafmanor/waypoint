@@ -12,7 +12,7 @@ import { splitBookings, scheduleLabel, type BookingRow } from '../lib/index-book
 import { bookingDurationUnit, formatBookingDuration } from '../lib/booking-timing';
 import { placeName } from '../lib/places';
 import { badgeClassForBookingType } from '../lib/transitions';
-import { useSyncStatus } from '../lib/outbox';
+import { EntitySyncBadge } from '../ui/EntitySyncBadge';
 import { BOOKING_TYPE_ICON, CODE_PREFIX, ICONS } from '../constants';
 import { BookingSheet } from '../ui/BookingSheet';
 import { BookingDetail } from '../ui/BookingDetail';
@@ -20,7 +20,6 @@ import { RouteLabel } from '../ui/RouteLabel';
 import { BookingManageSheet } from '../ui/BookingManageSheet';
 import { DocumentsSection } from '../ui/DocumentsSection';
 import { ListRow, type BadgeTone } from '../ui/domain';
-import { SyncBadge } from '../ui/feedback';
 import { Icon } from '../ui/Icon';
 import { t } from '../i18n/he';
 
@@ -165,12 +164,11 @@ function BookingLi({
   const badgeTone: BadgeTone | undefined =
     badgeClass === 'stay' || badgeClass === 'trans' ? badgeClass : undefined;
   const isHard = event?.kind === 'hard';
-  // Per-row sync affordance (U-04, ADR-0080): "did this booking actually save?"
-  const status = useSyncStatus(booking.id);
 
   // The shared list-row (U-03): the badge+title open the read-only detail view
-  // (ADR-0053); the "⋯" opens the manage sheet (edit / delete). Code chip and the
-  // sync badge ride the trailing slot.
+  // (ADR-0053); the "⋯" opens the manage sheet (edit / delete). The code chip
+  // rides the trailing slot; the sync marker sits in the aligned sync column
+  // (ADR-0091), silent unless pending/failed.
   return (
     <ListRow
       icon={icon}
@@ -209,16 +207,14 @@ function BookingLi({
         )
       }
       right={
-        <>
-          {booking.confirmationCode && (
-            <span className="code" dir="ltr">
-              {CODE_PREFIX}
-              {booking.confirmationCode}
-            </span>
-          )}
-          <SyncBadge state={status.state} reason={status.reason} />
-        </>
+        booking.confirmationCode && (
+          <span className="code" dir="ltr">
+            {CODE_PREFIX}
+            {booking.confirmationCode}
+          </span>
+        )
       }
+      sync={<EntitySyncBadge id={booking.id} />}
       onManage={() => onManage(booking)}
       manageLabel={t.index.detail.actions}
     />
