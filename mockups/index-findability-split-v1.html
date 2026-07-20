@@ -1,0 +1,1136 @@
+<!doctype html>
+<!-- Index findability — SPLIT-SCREENS variant (2026-07-20 session). A side-by-side
+     comparison companion to index-findability-v1.html, built after Assaf asked to
+     revisit the general idea: "maybe we need separate screens navigable from the
+     index?" instead of one long page with collapsible sections.
+
+     WHAT'S DIFFERENT FROM v1: the Index becomes a small LANDING with two tiles
+     (🎫 הזמנות · 📎 מסמכים), each showing its count + a one-line preview. Tapping a
+     tile pushes a dedicated full screen for that list, with a back row ("→
+     אינדקס") to return. Because each list now owns its whole screen, the v1
+     per-section shrink chevron (mechanism #4) is GONE — there's no second section
+     competing for space anymore, so nothing needs collapsing away. Everything else
+     carries over unchanged: the category filter chips + search box on the
+     bookings screen (mechanisms #2/#3), the past-bookings collapse mirroring
+     ADR-0061 (mechanism #1), and documents keeping their existing type-grouping,
+     untouched.
+
+     THE TRADE THIS VARIANT MAKES: it fully solves "the combined page is long"
+     (each screen only ever shows one list) at the cost of a navigation layer that
+     didn't exist before — an extra tap to reach documents from bookings and back,
+     a new back-target to define (ADR-0035/0090's resolveBack), and it walks back
+     ADR-0049 §3's "bookings and documents are peers on ONE screen" decision. It
+     does NOT, by itself, make a long bookings list easier to scan any better than
+     v1 already does — that's still the chips/search/past-collapse, present here
+     unchanged.
+
+     DESIGN FIDELITY: same tokens + shared classes as v1 (.sec-title/.addbtn/
+     .listcard/.li/.badge2/.tag-type/.link-cue/.unlinked/.code/.past-head), lifted
+     from trip-index-v1.html / the shipped screens.css. The landing tile and the
+     back-row are net-new, built from existing tokens only. Where this and the
+     design docs conflict, docs win.
+
+     Demo toggle: טיול עמוס (17 bookings) vs טיול קטן (a handful) — same data as
+     v1, so the two files compare like for like. Chrome is Trip (night); Plan is
+     the same content under the drafting-table reskin (ADR-0049 — mode is chrome
+     only). -->
+<html lang="he" dir="rtl">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>אינדקס · מסכים נפרדים · מוקאפ השוואה</title>
+    <link rel="preconnect" href="https://fonts.googleapis.com" />
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+    <link
+      href="https://fonts.googleapis.com/css2?family=Assistant:wght@400;500;600;700&family=Secular+One&family=JetBrains+Mono:wght@500;700&display=swap"
+      rel="stylesheet"
+    />
+    <style>
+      :root {
+        --ink: #16233d;
+        --indigo: #1b2a4a;
+        --screen: #e7eaef;
+        --card: #ffffff;
+        --paper: #f3efe6;
+        --amber: #e9a63c;
+        --amber-deep: #c9822a;
+        --teal: #2c9c90;
+        --plan: #6e59d6;
+        --ok: #3c9a6b;
+        --miss: #c2584e;
+        --muted: #6c7488;
+        --line: rgba(22, 35, 61, 0.1);
+        --soft-line: rgba(22, 35, 61, 0.28);
+      }
+      * {
+        box-sizing: border-box;
+        margin: 0;
+        padding: 0;
+      }
+      html,
+      body {
+        height: 100%;
+      }
+      body {
+        font-family: 'Assistant', system-ui, sans-serif;
+        background:
+          radial-gradient(120% 90% at 80% -10%, #2a3e68 0%, transparent 55%),
+          radial-gradient(120% 90% at 0% 110%, #1a2a4a 0%, transparent 50%), #0f1a31;
+        color: var(--ink);
+        min-height: 100vh;
+        display: flex;
+        flex-direction: column;
+        align-items: center;
+        padding: 24px 16px 40px;
+        -webkit-font-smoothing: antialiased;
+      }
+      .caption {
+        text-align: center;
+        color: #aeb9d4;
+        font-size: 12.5px;
+        margin-bottom: 6px;
+        font-weight: 500;
+        max-width: 420px;
+      }
+      .caption b {
+        color: #fff;
+        font-weight: 600;
+      }
+      .adr-note {
+        text-align: center;
+        color: #7f8db0;
+        font-size: 11px;
+        margin-bottom: 14px;
+        max-width: 400px;
+      }
+
+      .demo-toggle {
+        display: inline-flex;
+        background: rgba(255, 255, 255, 0.08);
+        border: 1px solid rgba(255, 255, 255, 0.16);
+        border-radius: 999px;
+        padding: 3px;
+        gap: 2px;
+        margin-bottom: 16px;
+      }
+      .demo-toggle button {
+        font: inherit;
+        font-size: 12px;
+        font-weight: 600;
+        color: #9daac8;
+        background: none;
+        border: 0;
+        border-radius: 999px;
+        padding: 6px 15px;
+        cursor: pointer;
+      }
+      .demo-toggle button.on {
+        background: #fff;
+        color: var(--ink);
+      }
+
+      .phone {
+        width: 100%;
+        max-width: 392px;
+        background: var(--screen);
+        border-radius: 38px;
+        box-shadow:
+          0 18px 40px -18px rgba(14, 23, 41, 0.45),
+          0 0 0 10px #0b1526,
+          0 0 0 12px #223257;
+        overflow: hidden;
+        position: relative;
+        height: 812px;
+        display: flex;
+        flex-direction: column;
+      }
+      .statusbar {
+        background: var(--indigo);
+        color: #dce3f2;
+        display: flex;
+        justify-content: space-between;
+        align-items: center;
+        padding: 11px 22px 8px;
+        font-size: 13px;
+        font-weight: 600;
+        font-family: 'JetBrains Mono', monospace;
+      }
+      .statusbar .dots {
+        letter-spacing: 2px;
+        opacity: 0.85;
+      }
+      .header {
+        background: var(--indigo);
+        color: #fff;
+        padding: 6px 20px 14px;
+      }
+      .mode-row {
+        display: flex;
+        justify-content: center;
+        margin: 2px 0 12px;
+      }
+      .mode-toggle {
+        display: inline-flex;
+        background: rgba(255, 255, 255, 0.08);
+        border: 1px solid rgba(255, 255, 255, 0.14);
+        border-radius: 999px;
+        padding: 3px;
+        gap: 2px;
+      }
+      .mode-toggle .m {
+        font: inherit;
+        font-size: 13px;
+        font-weight: 600;
+        color: #9daac8;
+        background: none;
+        border: 0;
+        border-radius: 999px;
+        padding: 6px 16px;
+        cursor: pointer;
+        display: flex;
+        align-items: center;
+        gap: 6px;
+      }
+      .mode-toggle .m.on {
+        background: var(--amber);
+        color: #3a2405;
+      }
+      .trip-row {
+        display: flex;
+        justify-content: space-between;
+        align-items: flex-start;
+      }
+      .trip-switch {
+        display: inline-flex;
+        align-items: center;
+        gap: 8px;
+        background: rgba(255, 255, 255, 0.09);
+        border: 1px solid rgba(255, 255, 255, 0.16);
+        border-radius: 999px;
+        padding: 5px 8px 5px 14px;
+        font: inherit;
+        color: inherit;
+        cursor: pointer;
+      }
+      .trip-name {
+        font-family: 'Secular One', sans-serif;
+        font-size: 22px;
+        line-height: 1.05;
+      }
+      .trip-switch .chev {
+        width: 22px;
+        height: 22px;
+        border-radius: 50%;
+        background: rgba(255, 255, 255, 0.14);
+        display: grid;
+        place-items: center;
+        font-size: 11px;
+        flex: 0 0 auto;
+      }
+      .trip-sub {
+        color: #9daac8;
+        font-size: 13px;
+        margin-top: 5px;
+        font-weight: 500;
+      }
+      .trip-sub .dot {
+        opacity: 0.5;
+        margin: 0 6px;
+      }
+      .header-actions {
+        display: flex;
+        align-items: center;
+        gap: 8px;
+      }
+      .avatars {
+        display: flex;
+        flex-direction: row-reverse;
+        margin-inline-end: 4px;
+      }
+      .av {
+        width: 30px;
+        height: 30px;
+        border-radius: 50%;
+        display: grid;
+        place-items: center;
+        color: #12203a;
+        font-weight: 700;
+        font-size: 12px;
+        border: 2px solid var(--indigo);
+        margin-inline-start: -9px;
+      }
+      .av.more {
+        background: rgba(255, 255, 255, 0.14);
+        color: #dce3f2;
+        font-size: 11px;
+      }
+      .gear-btn {
+        width: 32px;
+        height: 32px;
+        border-radius: 50%;
+        display: grid;
+        place-items: center;
+        background: rgba(255, 255, 255, 0.12);
+        border: 1px solid rgba(255, 255, 255, 0.22);
+        color: #fff;
+        font-size: 14px;
+        cursor: pointer;
+      }
+
+      .body {
+        flex: 1;
+        overflow-y: auto;
+        padding: 0 16px 40px;
+        position: relative;
+      }
+      .body::-webkit-scrollbar {
+        width: 0;
+      }
+      .view {
+        display: none;
+      }
+      .view.on {
+        display: block;
+      }
+
+      /* Offline status is a page-level fact — shown once, on the landing. */
+      .index-status {
+        padding-top: 12px;
+        margin-bottom: 4px;
+      }
+      .badge-offline {
+        font-size: 10.5px;
+        font-weight: 600;
+        color: var(--muted);
+        background: rgba(22, 35, 61, 0.06);
+        border-radius: 999px;
+        padding: 2px 8px;
+      }
+
+      /* ===== NEW: the landing's two tiles — bookings/documents as equally
+         weighted entry points (ADR-0049 §3's "peers", carried into a menu). ===== */
+      .tile {
+        display: flex;
+        align-items: center;
+        gap: 12px;
+        width: 100%;
+        text-align: start;
+        background: var(--card);
+        border: 1px solid var(--line);
+        border-radius: 16px;
+        padding: 14px;
+        margin-top: 12px;
+        font: inherit;
+        color: inherit;
+        cursor: pointer;
+      }
+      .tile-ic {
+        width: 42px;
+        height: 42px;
+        border-radius: 12px;
+        background: var(--paper);
+        display: grid;
+        place-items: center;
+        font-size: 20px;
+        flex: 0 0 auto;
+      }
+      .tile-main {
+        flex: 1;
+        min-width: 0;
+      }
+      .tile-top {
+        display: flex;
+        align-items: center;
+        gap: 8px;
+      }
+      .tile-t {
+        font-family: 'Secular One', sans-serif;
+        font-size: 15px;
+      }
+      .tile-count {
+        font-family: 'JetBrains Mono', monospace;
+        font-size: 10.5px;
+        font-weight: 700;
+        color: var(--ink);
+        background: rgba(22, 35, 61, 0.06);
+        border-radius: 999px;
+        padding: 1px 7px;
+      }
+      .tile-sub {
+        font-size: 11.5px;
+        color: var(--muted);
+        margin-top: 4px;
+      }
+      .tile-chev {
+        color: var(--muted);
+        font-size: 17px;
+        flex: 0 0 auto;
+      }
+
+      /* ===== NEW: the sub-screen back row, replacing the tab-level chrome
+         while inside a dedicated bookings/documents screen. ===== */
+      .back-row {
+        padding-top: 12px;
+        margin-bottom: 6px;
+      }
+      .back-btn {
+        display: inline-flex;
+        align-items: center;
+        gap: 6px;
+        font: inherit;
+        font-weight: 700;
+        font-size: 13px;
+        color: var(--ink);
+        background: none;
+        border: 0;
+        padding: 7px 6px 7px 2px;
+        margin-inline-start: -6px;
+        border-radius: 8px;
+        cursor: pointer;
+      }
+      .back-btn:hover,
+      .back-btn:active {
+        background: rgba(22, 35, 61, 0.06);
+      }
+
+      .sec-title {
+        font-family: 'Secular One', sans-serif;
+        font-size: 14.5px;
+        color: var(--ink);
+        display: flex;
+        align-items: center;
+        gap: 8px;
+        margin: 4px 2px 9px;
+      }
+      .sec-title-end {
+        margin-inline-start: auto;
+        display: flex;
+        align-items: center;
+        gap: 8px;
+      }
+      .sec-count {
+        font-family: 'JetBrains Mono', monospace;
+        font-size: 10.5px;
+        font-weight: 700;
+        color: var(--ink);
+        background: rgba(22, 35, 61, 0.06);
+        border-radius: 999px;
+        padding: 1px 7px;
+      }
+
+      /* ===== category filter chips (mechanism #2) — unchanged from v1 ===== */
+      .chip-row {
+        display: flex;
+        gap: 6px;
+        overflow-x: auto;
+        margin-bottom: 10px;
+        padding-bottom: 2px;
+        scrollbar-width: none;
+      }
+      .chip-row::-webkit-scrollbar {
+        height: 0;
+      }
+      .chip {
+        flex: 0 0 auto;
+        display: flex;
+        align-items: center;
+        gap: 5px;
+        background: var(--card);
+        border: 1px solid var(--line);
+        color: var(--muted);
+        font: inherit;
+        font-size: 12px;
+        font-weight: 700;
+        border-radius: 999px;
+        padding: 6px 12px;
+        cursor: pointer;
+      }
+      .chip.on {
+        background: var(--ink);
+        border-color: var(--ink);
+        color: #fff;
+      }
+
+      /* ===== search (mechanism #3) — unchanged from v1 ===== */
+      .search-row {
+        margin-bottom: 10px;
+      }
+      .search-btn {
+        width: 34px;
+        height: 34px;
+        border-radius: 10px;
+        background: var(--card);
+        border: 1px solid var(--line);
+        display: grid;
+        place-items: center;
+        font-size: 14px;
+        cursor: pointer;
+        color: var(--muted);
+      }
+      .search-box {
+        display: none;
+        align-items: center;
+        gap: 8px;
+        background: var(--card);
+        border: 1px solid var(--soft-line);
+        border-radius: 12px;
+        padding: 8px 12px;
+      }
+      .search-box.on {
+        display: flex;
+      }
+      .search-box input {
+        flex: 1;
+        border: 0;
+        outline: 0;
+        font: inherit;
+        font-size: 13px;
+        background: none;
+        color: var(--ink);
+      }
+      .search-box .clear {
+        border: 0;
+        background: rgba(22, 35, 61, 0.08);
+        border-radius: 50%;
+        width: 18px;
+        height: 18px;
+        font-size: 10px;
+        color: var(--muted);
+        cursor: pointer;
+        display: grid;
+        place-items: center;
+      }
+      .no-match {
+        text-align: center;
+        color: var(--muted);
+        font-size: 12px;
+        font-weight: 600;
+        padding: 16px 10px;
+        background: var(--card);
+        border: 1px dashed var(--soft-line);
+        border-radius: 14px;
+      }
+
+      .addbtn {
+        width: 100%;
+        background: transparent;
+        border: 1.5px dashed var(--soft-line);
+        color: var(--muted);
+        font: inherit;
+        font-weight: 700;
+        font-size: 12.5px;
+        border-radius: 13px;
+        padding: 11px;
+        cursor: pointer;
+        margin-bottom: 10px;
+      }
+
+      .listcard {
+        background: var(--card);
+        border: 1px solid var(--line);
+        border-radius: 16px;
+        overflow: hidden;
+      }
+      .li {
+        display: flex;
+        align-items: center;
+        gap: 11px;
+        padding: 12px 14px;
+        border-bottom: 1px solid var(--line);
+        cursor: pointer;
+      }
+      .li:last-child {
+        border-bottom: none;
+      }
+      .li.hidden,
+      .li.size-hidden {
+        display: none;
+      }
+      .li .badge2 {
+        width: 36px;
+        height: 36px;
+        border-radius: 11px;
+        background: var(--paper);
+        display: grid;
+        place-items: center;
+        font-size: 17px;
+        flex: 0 0 auto;
+      }
+      .li .main {
+        flex: 1;
+        min-width: 0;
+      }
+      .li .main .t {
+        font-size: 13.5px;
+        font-weight: 700;
+        display: flex;
+        align-items: center;
+        gap: 6px;
+        flex-wrap: wrap;
+      }
+      .li .main .m {
+        font-size: 11.5px;
+        color: var(--muted);
+        margin-top: 3px;
+        display: flex;
+        align-items: center;
+        gap: 5px;
+        flex-wrap: wrap;
+      }
+      .li .right {
+        text-align: end;
+        flex: 0 0 auto;
+      }
+      .li .right .code {
+        font-family: 'JetBrains Mono', monospace;
+        font-size: 11.5px;
+        font-weight: 700;
+        color: var(--amber-deep);
+      }
+      .tag-type {
+        font-size: 9.5px;
+        font-weight: 700;
+        color: var(--muted);
+        background: rgba(22, 35, 61, 0.06);
+        border-radius: 6px;
+        padding: 1.5px 6px;
+      }
+      .link-cue {
+        color: var(--muted);
+        font-size: 10.5px;
+        font-weight: 700;
+      }
+      .unlinked {
+        color: var(--muted);
+        font-size: 10.5px;
+        font-weight: 700;
+      }
+
+      /* ===== past bookings collapse (mechanism #1) — unchanged from v1,
+         mirrors ADR-0061's Plan Home checklist toggle. ===== */
+      .past-toggle {
+        font: inherit;
+        font-size: 11px;
+        font-weight: 700;
+        color: var(--ink);
+        background: #fff;
+        border: 1px solid var(--soft-line);
+        border-radius: 999px;
+        padding: 4px 11px;
+        cursor: pointer;
+      }
+      .past-head {
+        font-size: 11px;
+        font-weight: 700;
+        color: var(--muted);
+        letter-spacing: 0.04em;
+        margin: 18px 2px 8px;
+      }
+      .listcard.past .li {
+        opacity: 0.6;
+      }
+      .listcard.past .li .code {
+        color: var(--muted);
+      }
+      #past-section {
+        display: none;
+      }
+      #past-section.on {
+        display: block;
+      }
+
+      .doc-group .gt {
+        font-size: 11px;
+        font-weight: 700;
+        color: var(--muted);
+        padding: 10px 14px 2px;
+      }
+      .li.doc .main .t {
+        font-weight: 600;
+      }
+      .li.doc .right .time {
+        font-size: 11px;
+      }
+
+      @media (prefers-reduced-motion: reduce) {
+        * {
+          animation: none !important;
+          transition: none !important;
+        }
+      }
+    </style>
+  </head>
+  <body>
+    <p class="caption">
+      אינדקס · <b>וריאציית השוואה · מסכים נפרדים</b> · לעומת index-findability-v1
+    </p>
+    <p class="adr-note">
+      הזמנות ומסמכים הופכים לשני "אריחים" במסך נחיתה; לחיצה פותחת מסך ייעודי +
+      שורת חזרה. הצ׳יפים / החיפוש / כיווץ העבר זהים ל-v1 — אבל כיווץ המקטע (מנגנון
+      4 שם) מיותר כאן: כל רשימה כבר מקבלת מסך שלם לבד.
+    </p>
+
+    <div class="demo-toggle" role="tablist" aria-label="גודל טיול">
+      <button class="on" onclick="setSize('busy', this)">טיול עמוס</button>
+      <button onclick="setSize('small', this)">טיול קטן</button>
+    </div>
+
+    <div class="phone">
+      <div class="statusbar"><span id="sbclock">18:52</span><span class="dots">●●● 4G ▮</span></div>
+
+      <div class="header">
+        <div class="mode-row">
+          <div class="mode-toggle">
+            <button class="m on">🧭 טיול</button>
+            <button class="m">✏️ תכנון</button>
+          </div>
+        </div>
+        <div class="trip-row">
+          <div>
+            <button class="trip-switch" aria-label="החלף טיול · לכל הטיולים">
+              <span class="trip-name">יפן ׳26</span>
+              <span class="chev">▾</span>
+            </button>
+            <div class="trip-sub">טוקיו<span class="dot">•</span>יום 3 מתוך 10</div>
+          </div>
+          <div class="header-actions">
+            <div class="avatars" title="נועם · דנה · מאור · רון">
+              <div class="av more">+2</div>
+              <div class="av" style="background: #e88c8c">ד</div>
+              <div class="av" style="background: #5ec5b6">נ</div>
+            </div>
+            <button class="gear-btn" aria-label="הגדרות הטיול">⚙</button>
+          </div>
+        </div>
+      </div>
+
+      <div class="body">
+        <!-- ===== landing: two peer tiles ===== -->
+        <div class="view on" id="view-landing">
+          <div class="index-status">
+            <span class="badge-offline">⬇ עובד אופליין</span>
+          </div>
+
+          <button type="button" class="tile" onclick="showView('bookings')">
+            <div class="tile-ic">🎫</div>
+            <div class="tile-main">
+              <div class="tile-top">
+                <span class="tile-t">הזמנות</span>
+                <span class="tile-count" id="tile-count-bookings">17</span>
+              </div>
+              <div class="tile-sub">🔗 הבא: Ichiran Ramen · היום 19:30 · 5 מהעבר</div>
+            </div>
+            <div class="tile-chev">‹</div>
+          </button>
+
+          <button type="button" class="tile" onclick="showView('documents')">
+            <div class="tile-ic">📎</div>
+            <div class="tile-main">
+              <div class="tile-top">
+                <span class="tile-t">מסמכים</span>
+                <span class="tile-count">6</span>
+              </div>
+              <div class="tile-sub">🔒 דרכונים · ביטוח נסיעות · ויזות · אחר</div>
+            </div>
+            <div class="tile-chev">‹</div>
+          </button>
+        </div>
+
+        <!-- ===== bookings: its own screen now, chips/search/past unchanged ===== -->
+        <div class="view" id="view-bookings">
+          <div class="back-row">
+            <button class="back-btn" onclick="showView('landing')">→ אינדקס</button>
+          </div>
+
+          <div class="sec-title">
+            <span>הזמנות</span>
+            <span class="sec-count" id="count-bookings">17</span>
+            <span class="sec-title-end">
+              <button class="search-btn" onclick="toggleSearch()" aria-label="חיפוש הזמנות">
+                🔍
+              </button>
+            </span>
+          </div>
+
+          <div class="search-row">
+            <div class="search-box" id="search-box">
+              <span>🔍</span>
+              <input
+                id="search-input"
+                type="text"
+                placeholder="חפשו לפי שם או קוד אישור…"
+                oninput="applyFilters()"
+              />
+              <button class="clear" onclick="clearSearch()" aria-label="נקה חיפוש">✕</button>
+            </div>
+          </div>
+
+          <div class="chip-row" id="chip-row">
+            <button class="chip on" data-cat="all" onclick="selectChip('all', this)">הכל</button>
+            <button class="chip" data-cat="flight" onclick="selectChip('flight', this)">
+              ✈️ טיסה
+            </button>
+            <button class="chip" data-cat="hotel" onclick="selectChip('hotel', this)">
+              🏨 לינה
+            </button>
+            <button class="chip" data-cat="restaurant" onclick="selectChip('restaurant', this)">
+              🍜 מסעדה
+            </button>
+            <button class="chip" data-cat="train" onclick="selectChip('train', this)">
+              🚄 רכבת
+            </button>
+            <button class="chip" data-cat="activity" onclick="selectChip('activity', this)">
+              🎟️ פעילות
+            </button>
+            <button class="chip" data-cat="other" onclick="selectChip('other', this)">📄 אחר</button>
+          </div>
+
+          <button type="button" class="addbtn">＋ הוסף הזמנה</button>
+
+          <div class="listcard" id="upcoming-list">
+            <div class="li" data-cat="flight" data-search="ana832 טוקיו קיוטו na832">
+              <div class="badge2">✈️</div>
+              <div class="main">
+                <div class="t">טוקיו → קיוטו <span class="tag-type">טיסה</span></div>
+                <div class="m"><span class="link-cue">🔗 מחר · 07:40</span></div>
+              </div>
+              <div class="right"><div class="code" dir="ltr">#NA832</div></div>
+            </div>
+            <div class="li" data-cat="hotel" data-search="shinjuku granbell גרנבל צ'ק-אאוט gb-2291">
+              <div class="badge2">🏨</div>
+              <div class="main">
+                <div class="t">Shinjuku Granbell <span class="tag-type">לינה</span></div>
+                <div class="m">
+                  <span class="link-cue">🔗 צ׳ק-אאוט מחרתיים · 11:00</span> · חדר 512
+                </div>
+              </div>
+              <div class="right"><div class="code" dir="ltr">#GB-2291</div></div>
+            </div>
+            <div class="li" data-cat="restaurant" data-search="ichiran ramen איצ'ירן ראמן 4471">
+              <div class="badge2">🍜</div>
+              <div class="main">
+                <div class="t">Ichiran Ramen <span class="tag-type">מסעדה</span></div>
+                <div class="m"><span class="link-cue">🔗 היום · 19:30</span> · שולחן ל-5</div>
+              </div>
+              <div class="right"><div class="code" dir="ltr">#4471</div></div>
+            </div>
+            <div class="li" data-cat="other" data-search="שכירת רכב toyota yaris rc-5540">
+              <div class="badge2">🚗</div>
+              <div class="main">
+                <div class="t">שכירת רכב · Toyota Yaris <span class="tag-type">אחר</span></div>
+                <div class="m"><span class="link-cue">🔗 עוד 5 ימים · 09:00</span></div>
+              </div>
+              <div class="right"><div class="code" dir="ltr">#RC-5540</div></div>
+            </div>
+            <div class="li" data-cat="train" data-search="שינקנסן חזרה jr-91">
+              <div class="badge2">🚄</div>
+              <div class="main">
+                <div class="t">שינקנסן · חזרה <span class="tag-type">רכבת</span></div>
+                <div class="m"><span class="unlinked">לא משובצת במסלול</span></div>
+              </div>
+              <div class="right"><div class="code" dir="ltr">#JR-91</div></div>
+            </div>
+            <div class="li" data-cat="activity" data-search="teamlab planets tl-220">
+              <div class="badge2">🎟️</div>
+              <div class="main">
+                <div class="t">teamLab Planets <span class="tag-type">פעילות</span></div>
+                <div class="m"><span class="link-cue">🔗 עוד 3 ימים · 10:00</span></div>
+              </div>
+              <div class="right"><div class="code" dir="ltr">#TL-220</div></div>
+            </div>
+            <div class="li" data-cat="restaurant" data-search="sushi dai סושי דאי sd-12">
+              <div class="badge2">🍜</div>
+              <div class="main">
+                <div class="t">Sushi Dai <span class="tag-type">מסעדה</span></div>
+                <div class="m"><span class="link-cue">🔗 עוד יומיים · 08:00</span></div>
+              </div>
+              <div class="right"><div class="code" dir="ltr">#SD-12</div></div>
+            </div>
+            <div class="li" data-cat="hotel" data-search="kyoto ryokan קיוטו ריוקאן kr-771">
+              <div class="badge2">🏨</div>
+              <div class="main">
+                <div class="t">Kyoto Ryokan <span class="tag-type">לינה</span></div>
+                <div class="m"><span class="link-cue">🔗 צ׳ק-אין עוד 4 ימים</span></div>
+              </div>
+              <div class="right"><div class="code" dir="ltr">#KR-771</div></div>
+            </div>
+            <div class="li" data-cat="flight" data-search="nh845 חזרה טוקיו">
+              <div class="badge2">✈️</div>
+              <div class="main">
+                <div class="t">קיוטו → טוקיו (חזרה) <span class="tag-type">טיסה</span></div>
+                <div class="m"><span class="link-cue">🔗 עוד 6 ימים · 21:10</span></div>
+              </div>
+              <div class="right"><div class="code" dir="ltr">#NH845</div></div>
+            </div>
+            <div class="li" data-cat="train" data-search="jr pass מקומי jr-55">
+              <div class="badge2">🚄</div>
+              <div class="main">
+                <div class="t">JR Pass · שימוש מקומי <span class="tag-type">רכבת</span></div>
+                <div class="m"><span class="unlinked">לא משובצת במסלול</span></div>
+              </div>
+              <div class="right"><div class="code" dir="ltr">#JR-55</div></div>
+            </div>
+            <div class="li" data-cat="activity" data-search="fushimi inari פושימי אינרי fi-90">
+              <div class="badge2">🎟️</div>
+              <div class="main">
+                <div class="t">Fushimi Inari · יום שלם <span class="tag-type">פעילות</span></div>
+                <div class="m"><span class="link-cue">🔗 עוד 4 ימים · 07:00</span></div>
+              </div>
+              <div class="right"><div class="code" dir="ltr">#FI-90</div></div>
+            </div>
+            <div class="li" data-cat="other" data-search="ביטוח נסיעה נוסף ot-1">
+              <div class="badge2">📄</div>
+              <div class="main">
+                <div class="t">ביטוח נסיעה משלים <span class="tag-type">אחר</span></div>
+                <div class="m"><span class="unlinked">לא משובצת במסלול</span></div>
+              </div>
+              <div class="right"><div class="code" dir="ltr">#OT-1</div></div>
+            </div>
+          </div>
+
+          <div id="no-match-upcoming" class="no-match" style="display: none; margin-top: 10px">
+            אין הזמנות תואמות
+          </div>
+
+          <div class="sec-title" style="margin-top: 18px">
+            <span class="sec-title-end" style="margin-inline-start: 0">
+              <button class="past-toggle" id="past-toggle" onclick="togglePast()">
+                הצג הזמנות מהעבר (5)
+              </button>
+            </span>
+          </div>
+
+          <div id="past-section">
+            <div class="past-head">כבר מאחוריכם</div>
+            <div class="listcard past" id="past-list">
+              <div class="li" data-cat="flight" data-search="nh831 הגעה טוקיו">
+                <div class="badge2">✈️</div>
+                <div class="main">
+                  <div class="t">טוקיו · הגעה <span class="tag-type">טיסה</span></div>
+                  <div class="m"><span class="link-cue">🔗 ביום 1 · הגעה</span></div>
+                </div>
+                <div class="right"><div class="code" dir="ltr">NH831</div></div>
+              </div>
+              <div class="li" data-cat="hotel" data-search="tokyo apa אפא">
+                <div class="badge2">🏨</div>
+                <div class="main">
+                  <div class="t">Tokyo APA <span class="tag-type">לינה</span></div>
+                  <div class="m"><span class="link-cue">🔗 צ׳ק-אאוט אתמול</span></div>
+                </div>
+                <div class="right"><div class="code" dir="ltr">#AP-330</div></div>
+              </div>
+              <div class="li" data-cat="restaurant" data-search="ippudo איפודו">
+                <div class="badge2">🍜</div>
+                <div class="main">
+                  <div class="t">Ippudo <span class="tag-type">מסעדה</span></div>
+                  <div class="m"><span class="link-cue">🔗 אתמול · 19:00</span></div>
+                </div>
+                <div class="right"><div class="code" dir="ltr">#IP-8</div></div>
+              </div>
+              <div class="li" data-cat="train" data-search="narita express נאריטה אקספרס">
+                <div class="badge2">🚄</div>
+                <div class="main">
+                  <div class="t">Narita Express <span class="tag-type">רכבת</span></div>
+                  <div class="m"><span class="link-cue">🔗 שלשום</span></div>
+                </div>
+                <div class="right"><div class="code" dir="ltr">#NE-4</div></div>
+              </div>
+              <div class="li" data-cat="activity" data-search="tokyo tower מגדל טוקיו">
+                <div class="badge2">🎟️</div>
+                <div class="main">
+                  <div class="t">Tokyo Tower <span class="tag-type">פעילות</span></div>
+                  <div class="m"><span class="link-cue">🔗 לפני 3 ימים</span></div>
+                </div>
+                <div class="right"><div class="code" dir="ltr">#TT-2</div></div>
+              </div>
+            </div>
+          </div>
+        </div>
+
+        <!-- ===== documents: its own screen, content unchanged from v1 ===== -->
+        <div class="view" id="view-documents">
+          <div class="back-row">
+            <button class="back-btn" onclick="showView('landing')">→ אינדקס</button>
+          </div>
+
+          <div class="sec-title">
+            <span>מסמכים</span>
+            <span class="sec-count">6</span>
+            <span class="badge-offline">🔒 מוצפן</span>
+          </div>
+
+          <button type="button" class="addbtn">＋ הוסף מסמך</button>
+          <div class="doc-group">
+            <div class="gt">דרכונים</div>
+            <div class="listcard">
+              <div class="li doc">
+                <div class="badge2">📕</div>
+                <div class="main"><div class="t">דרכון · אסף</div></div>
+                <div class="right"><div class="time">🔒</div></div>
+              </div>
+              <div class="li doc">
+                <div class="badge2">📕</div>
+                <div class="main"><div class="t">דרכון · נועה</div></div>
+                <div class="right"><div class="time">🔒</div></div>
+              </div>
+            </div>
+          </div>
+          <div class="doc-group">
+            <div class="gt">ביטוח נסיעות</div>
+            <div class="listcard">
+              <div class="li doc">
+                <div class="badge2">🛡️</div>
+                <div class="main"><div class="t">פוליסה + מספר חירום</div></div>
+                <div class="right"><div class="time">🔒</div></div>
+              </div>
+            </div>
+          </div>
+          <div class="doc-group">
+            <div class="gt">ויזות</div>
+            <div class="listcard">
+              <div class="li doc">
+                <div class="badge2">🎫</div>
+                <div class="main"><div class="t">ויזה · יפן</div></div>
+                <div class="right"><div class="time">🔒</div></div>
+              </div>
+            </div>
+          </div>
+          <div class="doc-group">
+            <div class="gt">אחר</div>
+            <div class="listcard">
+              <div class="li doc">
+                <div class="badge2">📄</div>
+                <div class="main"><div class="t">אישור חיסונים</div></div>
+                <div class="right"><div class="time">🔒</div></div>
+              </div>
+              <div class="li doc">
+                <div class="badge2">📄</div>
+                <div class="main"><div class="t">ביטוח רכב שכור</div></div>
+                <div class="right"><div class="time">🔒</div></div>
+              </div>
+            </div>
+          </div>
+        </div>
+      </div>
+    </div>
+
+    <script>
+      let activeCat = 'all';
+      let pastOpen = false; // manual collapse state, restored after a search clears
+      let searching = false;
+
+      function showView(name) {
+        document.querySelectorAll('.view').forEach((v) => v.classList.remove('on'));
+        document.getElementById('view-' + name).classList.add('on');
+        document.querySelector('.body').scrollTop = 0;
+      }
+
+      function setSize(size, btn) {
+        document.querySelectorAll('.demo-toggle button').forEach((b) => b.classList.remove('on'));
+        btn.classList.add('on');
+        const busy = size === 'busy';
+        // The small-trip case: chips/search step back when there isn't enough
+        // volume to need them — a handful of bookings doesn't need a filter UI.
+        document.getElementById('chip-row').style.display = busy ? 'flex' : 'none';
+        document.querySelector('.search-btn').style.display = busy ? 'grid' : 'none';
+        document.querySelectorAll('#upcoming-list .li').forEach((li, i) => {
+          li.classList.toggle('size-hidden', !busy && i >= 3);
+        });
+        document.querySelectorAll('#past-list .li').forEach((li, i) => {
+          li.classList.toggle('size-hidden', !busy && i >= 1);
+        });
+        document.getElementById('past-toggle').textContent = busy
+          ? `הצג הזמנות מהעבר (5)`
+          : `הצג הזמנות מהעבר (1)`;
+        document.getElementById('count-bookings').textContent = busy ? '17' : '4';
+        document.getElementById('tile-count-bookings').textContent = busy ? '17' : '4';
+        if (!busy) {
+          activeCat = 'all';
+          document
+            .querySelectorAll('.chip')
+            .forEach((c) => c.classList.toggle('on', c.dataset.cat === 'all'));
+        }
+        applyFilters();
+      }
+
+      function selectChip(cat, btn) {
+        activeCat = cat;
+        document.querySelectorAll('.chip').forEach((c) => c.classList.remove('on'));
+        btn.classList.add('on');
+        applyFilters();
+      }
+
+      function toggleSearch() {
+        const box = document.getElementById('search-box');
+        box.classList.toggle('on');
+        if (box.classList.contains('on')) document.getElementById('search-input').focus();
+        else clearSearch();
+      }
+      function clearSearch() {
+        document.getElementById('search-input').value = '';
+        applyFilters();
+      }
+
+      function togglePast() {
+        pastOpen = !pastOpen;
+        renderPastState();
+      }
+      function renderPastState() {
+        document.getElementById('past-section').classList.toggle('on', pastOpen || searching);
+        const count = document.querySelectorAll(
+          '#past-list .li:not(.size-hidden):not(.hidden)',
+        ).length;
+        document.getElementById('past-toggle').textContent = pastOpen
+          ? 'הסתר הזמנות מהעבר'
+          : `הצג הזמנות מהעבר (${count})`;
+      }
+
+      function applyFilters() {
+        const q = document.getElementById('search-input').value.trim().toLowerCase();
+        searching = q.length > 0;
+        // A non-empty query force-opens "past" so a match hiding there isn't
+        // silently missed; clearing it restores whatever the user had toggled.
+        document.getElementById('past-section').classList.toggle('on', pastOpen || searching);
+
+        let upcomingVisible = 0;
+        document.querySelectorAll('#upcoming-list .li').forEach((li) => {
+          if (li.classList.contains('size-hidden')) return;
+          const matchesCat = activeCat === 'all' || li.dataset.cat === activeCat;
+          const matchesQ = !q || li.dataset.search.includes(q);
+          const show = matchesCat && matchesQ;
+          li.classList.toggle('hidden', !show);
+          if (show) upcomingVisible++;
+        });
+
+        let pastVisible = 0;
+        document.querySelectorAll('#past-list .li').forEach((li) => {
+          if (li.classList.contains('size-hidden')) return;
+          const matchesCat = activeCat === 'all' || li.dataset.cat === activeCat;
+          const matchesQ = !q || li.dataset.search.includes(q);
+          const show = matchesCat && matchesQ;
+          li.classList.toggle('hidden', !show);
+          if (show) pastVisible++;
+        });
+
+        document.getElementById('no-match-upcoming').style.display =
+          upcomingVisible === 0 ? 'block' : 'none';
+        if (!searching) renderPastState();
+        else {
+          document.getElementById('past-toggle').textContent = `הסתר הזמנות מהעבר`;
+        }
+      }
+
+      let mins = 52,
+        hrs = 18;
+      setInterval(() => {
+        mins++;
+        if (mins >= 60) {
+          mins = 0;
+          hrs = (hrs + 1) % 24;
+        }
+        document.getElementById('sbclock').textContent =
+          String(hrs).padStart(2, '0') + ':' + String(mins).padStart(2, '0');
+      }, 4000);
+    </script>
+  </body>
+</html>
