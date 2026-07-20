@@ -114,6 +114,30 @@ export function outboxOpEntityId(op: OutboxOp): string {
   }
 }
 
+/** Entities a queued op *derives* beyond its primary row — entities the server
+ *  materializes from the op that have no op (and no id-keyed pending entry) of
+ *  their own. Today: a timed booking write also creates/updates its linked event
+ *  (ADR-0093), whose id rides `input.event.id`. Declared in one place so every
+ *  side effect flows into the id list below automatically; a future op with side
+ *  effects adds a case here and needs no change at the call sites. */
+function outboxOpSideEffectIds(op: OutboxOp): string[] {
+  switch (op.verb) {
+    case 'createBooking':
+    case 'updateBooking':
+      return op.input.event?.id ? [op.input.event.id] : [];
+    default:
+      return [];
+  }
+}
+
+/** Every entity id a queued op touches: the primary (`outboxOpEntityId`) plus all
+ *  side effects. The per-entity sync status (`useSyncStatus`) keys off this, so a
+ *  derived entity — e.g. an event added offline from a booking seed — shows the
+ *  pending/failed marker while its write is queued, instead of looking synced. */
+export function outboxOpEntityIds(op: OutboxOp): string[] {
+  return [outboxOpEntityId(op), ...outboxOpSideEffectIds(op)].filter(Boolean);
+}
+
 /** A `fetch` network failure (offline, DNS, dropped connection) vs. a real HTTP
  *  error response — only the former should be queued instead of surfaced. */
 export function isNetworkError(err: unknown): boolean {
@@ -206,6 +230,12 @@ function bumpPending(entityId: string, delta: number): void {
   else pendingByEntity.set(entityId, next);
 }
 
+/** Adjust the pending index for every entity an op touches (primary + side
+ *  effects), so enqueue/flush/prime all stay in sync through one path. */
+function bumpPendingForOp(op: OutboxOp, delta: number): void {
+  for (const id of outboxOpEntityIds(op)) bumpPending(id, delta);
+}
+
 /** Primes the in-memory count from IndexedDB so a queue left over from a
  *  previous session (closed while offline) shows up without a first mutation.
  *  Sync failures are in-memory only (not persisted), so a fresh prime resets
@@ -215,7 +245,7 @@ export async function initOutboxCount(): Promise<void> {
   pendingByEntity.clear();
   pendingGroups.clear();
   for (const entry of entries) {
-    bumpPending(outboxOpEntityId(entry.op), 1);
+    bumpPendingForOp(entry.op, 1);
     bumpGroup(entryGroupId(entry), 1);
   }
   setPendingCount(entries.length);
@@ -308,7 +338,9 @@ export interface SyncStatus {
 }
 
 export function getSyncStatus(entityId: string): SyncStatus {
-  const failure = syncFailures.find((f) => f.entityId === entityId);
+  // Match on every entity the failed op touched (primary + side effects), so a
+  // rejected booking write marks its linked event failed too, not just the booking.
+  const failure = syncFailures.find((f) => outboxOpEntityIds(f.op).includes(entityId));
   if (failure) return { state: 'failed', reason: failure.code };
   if ((pendingByEntity.get(entityId) ?? 0) > 0) return { state: 'pending' };
   return { state: 'synced' };
@@ -384,7 +416,7 @@ export async function enqueueOutbox(tripId: string, op: OutboxOp): Promise<void>
   } catch {
     // ignore — the outbox entry is the source of truth; the cache is a mirror.
   }
-  bumpPending(outboxOpEntityId(op), 1);
+  bumpPendingForOp(op, 1);
   bumpGroup(groupId, 1);
   setPendingCount(pendingCount + 1);
 }
@@ -599,7 +631,7 @@ async function doFlushOutbox(tripId: string): Promise<void> {
           });
         }
         await db.outbox.delete(entry.seq!);
-        bumpPending(outboxOpEntityId(entry.op), -1);
+        bumpPendingForOp(entry.op, -1);
         bumpGroup(entryGroupId(entry), -1);
         setPendingCount(pendingCount - 1);
         continue;
@@ -607,7 +639,7 @@ async function doFlushOutbox(tripId: string): Promise<void> {
       throw err;
     }
     await db.outbox.delete(entry.seq!);
-    bumpPending(outboxOpEntityId(entry.op), -1);
+    bumpPendingForOp(entry.op, -1);
     bumpGroup(entryGroupId(entry), -1);
     setPendingCount(pendingCount - 1);
   }

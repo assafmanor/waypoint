@@ -14,6 +14,7 @@ import {
   getSyncStatus,
   initOutboxCount,
   outboxOpEntityId,
+  outboxOpEntityIds,
   retrySyncFailure,
   withChangeGroup,
   type OutboxOp,
@@ -21,6 +22,13 @@ import {
 
 const bookingOp = (id: string): OutboxOp =>
   ({ verb: 'createBooking', input: { id, type: 'restaurant', title: 'מסעדה' } }) as OutboxOp;
+
+// A timed booking: its `event` seed carries the linked event's id (ADR-0093).
+const bookingWithEventOp = (id: string, eventId: string): OutboxOp =>
+  ({
+    verb: 'createBooking',
+    input: { id, type: 'restaurant', title: 'מסעדה', event: { id: eventId, date: '2026-07-05' } },
+  }) as OutboxOp;
 
 const placeOp = (id: string): OutboxOp =>
   ({ verb: 'createPlace', input: { id, name: 'מקום' } }) as OutboxOp;
@@ -287,6 +295,32 @@ describe('per-entity sync status (U-04, ADR-0080)', () => {
     await enqueueOutbox(TRIP_ID, bookingOp('bk-pending'));
     expect(getSyncStatus('bk-pending')).toEqual({ state: 'pending' });
     expect(getSyncStatus('bk-none')).toEqual({ state: 'synced' });
+  });
+
+  it('outboxOpEntityIds includes a booking write’s linked-event side effect (ADR-0093)', () => {
+    expect(outboxOpEntityIds(bookingWithEventOp('bk', 'ev')).sort()).toEqual(['bk', 'ev']);
+    // No seed → just the primary; and an op with no side effects is unchanged.
+    expect(outboxOpEntityIds(bookingOp('bk'))).toEqual(['bk']);
+  });
+
+  it('marks a booking-seeded event pending too, so it shows the badge (not just the booking)', async () => {
+    await enqueueOutbox(TRIP_ID, bookingWithEventOp('bk-timed', 'ev-seeded'));
+    expect(getSyncStatus('bk-timed')).toEqual({ state: 'pending' });
+    expect(getSyncStatus('ev-seeded')).toEqual({ state: 'pending' });
+  });
+
+  it('a re-prime from IndexedDB keeps the seeded event in the pending index', async () => {
+    await enqueueOutbox(TRIP_ID, bookingWithEventOp('bk-timed', 'ev-seeded'));
+    await initOutboxCount();
+    expect(getSyncStatus('ev-seeded')).toEqual({ state: 'pending' });
+  });
+
+  it('a failed booking write marks its linked event failed too', async () => {
+    vi.stubGlobal('fetch', reject400('BOOKING_INVALID'));
+    await enqueueOutbox(TRIP_ID, bookingWithEventOp('bk-fail', 'ev-fail'));
+    await flushOutbox(TRIP_ID);
+    expect(getSyncStatus('bk-fail')).toEqual({ state: 'failed', reason: 'BOOKING_INVALID' });
+    expect(getSyncStatus('ev-fail')).toEqual({ state: 'failed', reason: 'BOOKING_INVALID' });
   });
 
   it('reports failed + reason after a non-allowlisted 4xx, keyed by entity id', async () => {
