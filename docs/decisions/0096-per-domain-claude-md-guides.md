@@ -86,3 +86,22 @@ standing instead of one hop away.
 **One combined root section instead of three files.** Rejected: it would force
 loading backend infra references while doing frontend-only work and vice versa,
 against the Context Engineering rule the root file already states.
+
+## Amendment (2026-07-20, same day) — explicit proactive read, not implicit auto-load
+
+The original decision assumed the auto-load-per-directory mechanism was
+sufficient on its own. It isn't: most sessions open at the repo **root**, which
+loads only root `CLAUDE.md` — a nested `backend/CLAUDE.md`-style file only
+enters context once the agent is actually reading/editing inside that
+directory. A task discussed and even partly reasoned about before any file in
+that tree is touched can proceed with no domain guidance loaded at all, silently
+defeating the whole point of ADR-0096.
+
+Fixed by adding an explicit instruction to root `CLAUDE.md`'s "Context
+Engineering" section (which every session does load): identify which
+package(s) a task touches as early as possible and **actively read** that
+package's `CLAUDE.md`, rather than relying on it having loaded implicitly.
+This mirrors the existing ADR-router instruction in the same section ("read
+the router first... locate the specific ADR(s)... and read only those") —
+domain `CLAUDE.md` files get the identical explicit-lookup treatment ADRs
+already had.
