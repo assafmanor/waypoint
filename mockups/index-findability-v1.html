@@ -21,6 +21,9 @@
           chevron disclosure in its own title row — shrinking a section you
           don't need right now to one line (title + count), rather than a
           separate jump nav to scroll past it.
+       5. "⬇ עובד אופליין" moved off the bookings title into its own line above
+          both sections — it's a page-level fact (this whole tab reads from
+          the cache), not something the bookings section alone owns.
 
      DESIGN FIDELITY: tokens + shared classes (.sec-title/.addbtn/.listcard/.li/
      .badge2/.tag-type/.link-cue/.unlinked/.code/.past-head) are lifted verbatim
@@ -284,6 +287,13 @@
       }
       .body::-webkit-scrollbar {
         width: 0;
+      }
+
+      /* Offline status is a page-level fact (this whole tab reads from the
+         cache), not something either section owns — one independent line
+         above both, not repeated per section title. */
+      .index-status {
+        padding-top: 12px;
       }
 
       .sec-title {
@@ -657,6 +667,10 @@
       </div>
 
       <div class="body">
+        <div class="index-status">
+          <span class="badge-offline">⬇ עובד אופליין</span>
+        </div>
+
         <div class="sec-title">
           <button
             class="sec-toggle"
@@ -669,7 +683,6 @@
             <span>הזמנות</span>
             <span class="sec-count" id="count-bookings">17</span>
           </button>
-          <span class="badge-offline">⬇ עובד אופליין</span>
           <span class="sec-title-end" id="bookings-title-end">
             <button class="search-btn" onclick="toggleSearch()" aria-label="חיפוש הזמנות">
               🔍
