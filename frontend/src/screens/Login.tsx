@@ -15,15 +15,43 @@ export function Login() {
     <div className="app land">
       <div className="land-top">
         <div className="land-logo">Waypoint</div>
-        {/* inlined (not <img>) so the vector stays crisp at this size —
-            Chrome rasterizes small <img src="*.svg"> and it comes out
-            aliased/pixelated. */}
+        {/* The Waypoint mark: a map marker (teal = place) with a glowing amber
+            core (amber = the live "now"), on a board disc so it reads on the dark
+            chrome. Mirrors public/icon-mark-bright.svg. Inlined (not <img>) so the
+            vector stays crisp at this size — Chrome rasterizes small
+            <img src="*.svg"> and it comes out aliased/pixelated. */}
         <svg className="land-icon" viewBox="0 0 512 512" aria-hidden="true">
-          <circle cx="256" cy="256" r="256" fill="#E9A63C" />
-          <rect x="88" y="140" width="248" height="52" rx="26" fill="#152137" />
-          <circle cx="398" cy="166" r="26" fill="#152137" />
-          <rect x="152" y="248" width="272" height="48" rx="24" fill="#152137" opacity={0.55} />
-          <rect x="216" y="330" width="208" height="48" rx="24" fill="#152137" opacity={0.3} />
+          <defs>
+            <linearGradient id="lg-teal" x1="0" y1="0" x2="0" y2="1">
+              <stop offset="0" stopColor="#37B3A3" />
+              <stop offset="1" stopColor="#1F7D73" />
+            </linearGradient>
+            <linearGradient id="lg-amber" x1="0" y1="0" x2="0" y2="1">
+              <stop offset="0" stopColor="#F2B65A" />
+              <stop offset="1" stopColor="#E09A2F" />
+            </linearGradient>
+            <linearGradient id="lg-board" x1="0" y1="0" x2="0" y2="1">
+              <stop offset="0" stopColor="#182642" />
+              <stop offset="1" stopColor="#0E1729" />
+            </linearGradient>
+          </defs>
+          <circle cx="256" cy="256" r="256" fill="url(#lg-board)" />
+          <g transform="translate(256 268) scale(0.66) translate(-256 -260)">
+            <path
+              d="M256 44 C150 44 66 126 66 230 C66 348 206 436 256 476 C306 436 446 348 446 230 C446 126 362 44 256 44 Z"
+              fill="url(#lg-teal)"
+            />
+            <circle
+              cx="256"
+              cy="216"
+              r="96"
+              fill="none"
+              stroke="#F2B65A"
+              strokeWidth="9"
+              opacity={0.42}
+            />
+            <circle cx="256" cy="216" r="60" fill="url(#lg-amber)" />
+          </g>
         </svg>
       </div>
 
