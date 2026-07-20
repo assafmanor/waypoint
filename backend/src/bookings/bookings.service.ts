@@ -8,8 +8,8 @@ import {
 import { Prisma, type Booking as PrismaBooking } from '@prisma/client';
 import {
   BOOKING_TYPE,
-  BOOKING_TYPE_TO_CATEGORY,
   EVENT_KIND,
+  bookingEventFields,
   type Booking,
   type BookingEventSeed,
   type BookingType,
@@ -311,19 +311,27 @@ export class BookingsService {
     seed: BookingEventSeed,
     eventId: string,
   ): Prisma.EventUncheckedCreateInput {
+    // The booking→event mapping is shared with the client (bookingEventFields, so
+    // the optimistic offline mirror can't diverge from what we persist, ADR-0093);
+    // this only adapts it to Prisma (ISO strings → Date) and adds the server-owned
+    // id / actor / null place.
+    const f = bookingEventFields(
+      { id: booking.id, title: booking.title, type: booking.type },
+      seed,
+    );
     return {
       id: eventId,
       tripId,
-      date: new Date(seed.date),
-      endDate: seed.endDate ? new Date(seed.endDate) : undefined,
-      title: booking.title,
-      icon: seed.icon,
-      category: seed.category ?? BOOKING_TYPE_TO_CATEGORY[booking.type],
-      kind: seed.kind ?? EVENT_KIND.HARD,
-      startsAt: seed.startsAt ? new Date(seed.startsAt) : undefined,
-      endsAt: seed.endsAt ? new Date(seed.endsAt) : undefined,
+      date: new Date(f.date),
+      endDate: f.endDate ? new Date(f.endDate) : undefined,
+      title: f.title,
+      icon: f.icon,
+      category: f.category,
+      kind: f.kind,
+      startsAt: f.startsAt ? new Date(f.startsAt) : undefined,
+      endsAt: f.endsAt ? new Date(f.endsAt) : undefined,
       placeId: null,
-      bookingId: booking.id,
+      bookingId: f.bookingId,
       updatedBy: actorUserId,
     };
   }

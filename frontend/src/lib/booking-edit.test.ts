@@ -1,10 +1,11 @@
 import { describe, expect, it } from 'vitest';
-import type { Place } from '@waypoint/shared';
+import { EVENT_KIND, EVENT_STATUS, type Booking, type Place } from '@waypoint/shared';
 import {
   buildEventSeed,
   buildSpanSeed,
   dateOutOfTripRange,
   deleteFlags,
+  eventFromBookingSeed,
   findPlaceByName,
   mergeBookingDetails,
   routeTitle,
@@ -177,5 +178,47 @@ describe('routeTitle', () => {
 
   it('is empty when both endpoints are blank (→ route required)', () => {
     expect(routeTitle('  ', '', '←')).toBe('');
+  });
+});
+
+describe('eventFromBookingSeed', () => {
+  const booking = (extra: Partial<Booking> = {}): Booking =>
+    ({
+      id: 'bk-1',
+      tripId: 't1',
+      type: 'restaurant',
+      title: 'מסעדה יקרה',
+      source: 'manual',
+      createdAt: '2026-07-01T00:00:00Z',
+      updatedAt: '2026-07-01T00:00:00Z',
+      updatedBy: 'u1',
+      ...extra,
+    }) as Booking;
+  const meta = { updatedBy: 'u1', nowIso: '2026-07-02T00:00:00Z' };
+
+  it('mirrors the server derivation: title from booking, category from type, bookingId set', () => {
+    const ev = eventFromBookingSeed(
+      booking(),
+      { id: 'ev-1', date: '2026-07-05', startsAt: '2026-07-05T11:00:00Z' },
+      meta,
+    );
+    expect(ev.id).toBe('ev-1');
+    expect(ev.title).toBe('מסעדה יקרה'); // linked event mirrors the booking (ADR-0053)
+    expect(ev.bookingId).toBe('bk-1');
+    expect(ev.category).toBe('food'); // BOOKING_TYPE_TO_CATEGORY[restaurant]
+    expect(ev.kind).toBe(EVENT_KIND.HARD); // seed carried no kind → default
+    expect(ev.status).toBe(EVENT_STATUS.PLANNED);
+    expect(ev.placeId).toBeUndefined(); // a linked event's place comes from the booking
+    expect(ev.startsAt).toBe('2026-07-05T11:00:00Z');
+  });
+
+  it('honors an explicit kind/category on the seed', () => {
+    const ev = eventFromBookingSeed(
+      booking({ type: 'flight' }),
+      { id: 'ev-2', date: '2026-07-05', kind: EVENT_KIND.SOFT, category: 'transport' },
+      meta,
+    );
+    expect(ev.kind).toBe(EVENT_KIND.SOFT);
+    expect(ev.category).toBe('transport');
   });
 });

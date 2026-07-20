@@ -231,12 +231,18 @@ export function BookingSheet({
           wifiNetwork: isHotel ? wifiNetwork : undefined,
           wifiPassword: isHotel ? wifiPassword : undefined,
         });
-        const event = isSpan
+        const seed = isSpan
           ? buildSpanSeed(
               { startAt: spanStart, endAt: spanEnd, kind, icon, category },
               trip.timezone,
             )
           : buildEventSeed({ date, start, end, kind, icon, category }, trip.timezone);
+        // Give the seed a stable event id (ADR-0093): the existing linked event's
+        // on edit, a fresh one otherwise. The server upserts under it, so the
+        // optimistic linked event the verb mirrors reconciles in place on flush.
+        const event = seed
+          ? { ...seed, id: seed.id ?? linkedEvent?.id ?? crypto.randomUUID() }
+          : undefined;
         const base = {
           title: finalTitle,
           // Send the trimmed value even when empty: an empty string is the explicit

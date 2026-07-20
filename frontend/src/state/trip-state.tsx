@@ -74,6 +74,7 @@ import {
 } from './change-feed';
 import { getNow } from '../lib/useClock';
 import { clampDate, shiftIso, todayInTz } from '../lib/time';
+import { bookingLinkedEventChange } from '../lib/outbox-effects';
 import { useToast } from '../ui/Toast';
 import { ICONS, type TabId } from '../constants';
 import { EVENTS, MAYBE_ITEMS } from '../fixtures';
@@ -562,24 +563,17 @@ function TripReady({
 
   const lastSeqRef = useRef(snapshot.latestSeq);
 
-  useEffect(() => {
-    lastSeqRef.current = snapshot.latestSeq;
-    let closeSocket: (() => void) | null = null;
-
-    // Fan a remote change into every consumer: the event reducer, the Dexie
-    // cache, and the reactive trip/roster state (ADR-0039). Setters are stable,
-    // so this closes over them safely without effect-dep churn.
-    function applyRemoteChange(change: Change) {
-      lastSeqRef.current = change.seq;
+  // The ONE applier for a single entity change (ADR-0093): fans it into the Dexie
+  // cache and every consuming store (event reducer, trip/roster, bookings/places/
+  // documents). A live WS echo runs this after its seq + change-feed bookkeeping
+  // (applyRemoteChange, below); an offline optimistic write reuses it verbatim
+  // (via the synthetic Changes from `outbox-effects`), so there is no separate
+  // offline sync handler per entity type. Setters + dispatch are stable, so this
+  // only re-binds on a trip switch.
+  const applyEntityChange = useCallback(
+    (change: Change) => {
       void applyChangeToCache(tripId, change);
       dispatch({ type: 'REMOTE_EVENT_CHANGE', change });
-      // Narrate (don't re-apply) into the change-feed: a peer edit becomes a
-      // visible, attributed line (ADR-0081). Our own edits return null (already
-      // optimistic on our screen). Covers WS-live + reconnect catch-up (both
-      // funnel here); a full RESYNC replaces state wholesale and isn't narrated.
-      const { users, meId, tz } = feedCtxRef.current;
-      const entry = describeChange(change, users, meId, tz);
-      if (entry) setChangeFeed((prev) => appendChangeEntry(prev, entry, CHANGE_FEED_LIMIT));
       if (change.entityType === 'trip') {
         if (change.action === 'delete') setTripDeleted(true);
         else setTrip((prev) => applyControlChangeToTrip(prev, change));
@@ -590,14 +584,35 @@ function TripReady({
       } else if (change.entityType === 'place') {
         setPlaces((prev) => applyControlChangeToList(prev, change));
       } else if (change.entityType === 'document') {
-        // A replace/delete invalidates the client blob cache: the `/content` URL is
-        // reused across a replace and the WS payload carries no fresh `updatedAt` to
-        // re-key it (ADR-0055/0058), so evict to force a fresh fetch on next open.
+        // A replace/delete invalidates the client blob cache (see applyRemoteChange).
         if (change.action === 'update' || change.action === 'delete') {
           void evictDocumentBlob(tripId, change.entityId);
         }
         setDocuments((prev) => applyControlChangeToList(prev, change));
       }
+    },
+    [tripId],
+  );
+
+  useEffect(() => {
+    lastSeqRef.current = snapshot.latestSeq;
+    let closeSocket: (() => void) | null = null;
+
+    // Fan a remote change into every consumer: the event reducer, the Dexie
+    // cache, and the reactive trip/roster state (ADR-0039). Setters are stable,
+    // so this closes over them safely without effect-dep churn.
+    function applyRemoteChange(change: Change) {
+      lastSeqRef.current = change.seq;
+      // Narrate (don't re-apply) into the change-feed: a peer edit becomes a
+      // visible, attributed line (ADR-0081). Our own edits return null (already
+      // optimistic on our screen). Covers WS-live + reconnect catch-up (both
+      // funnel here); a full RESYNC replaces state wholesale and isn't narrated.
+      const { users, meId, tz } = feedCtxRef.current;
+      const entry = describeChange(change, users, meId, tz);
+      if (entry) setChangeFeed((prev) => appendChangeEntry(prev, entry, CHANGE_FEED_LIMIT));
+      // The actual fan-out (cache + every store) is the shared applier — the same
+      // one an offline optimistic write uses (ADR-0093).
+      applyEntityChange(change);
     }
 
     // Full-snapshot resync: a gap/hello-ahead (onResync), or a phantom optimistic
@@ -705,7 +720,8 @@ function TripReady({
       closeSocket?.();
     };
     // Reconnect only on trip switch — `snapshot.latestSeq` is just this effect's initial cursor.
-  }, [tripId]);
+    // `applyEntityChange` is stable per trip, so it doesn't retrigger the socket.
+  }, [tripId, applyEntityChange]);
 
   // --- Trip-settings verbs (ADR-0039): optimistic + reconcile/rollback, queued
   // offline via the outbox — the same shape as the event verbs, but over the
@@ -786,7 +802,7 @@ function TripReady({
       createBooking: async (input) => {
         const id = input.id ?? crypto.randomUUID();
         const withId = { ...input, id };
-        const { event: _seed, ...fields } = withId;
+        const { event: seed, ...fields } = withId;
         const optimistic = {
           source: BOOKING_SOURCE.MANUAL,
           ...fields,
@@ -804,6 +820,21 @@ function TripReady({
             () => apiCreateBooking(tripId, withId),
           );
           if (canonical) setBookings((prev) => prev.map((b) => (b.id === id ? canonical : b)));
+          // Queued offline: the server hasn't derived the linked event yet, so
+          // mirror it optimistically (ADR-0093) through the SAME applier a WS
+          // echo uses — the timed booking shows its schedule + lands on the
+          // timeline now, not only on reconnect. Same seed id → the echo reconciles
+          // it in place on flush. Online the echo delivers it, so only queued needs it.
+          if (!canonical && seed?.id) {
+            applyEntityChange(
+              bookingLinkedEventChange(
+                optimistic,
+                { ...seed, id: seed.id },
+                { actorUserId: authorId, nowIso: stamp() },
+                'create',
+              ),
+            );
+          }
           toast(
             canonical ? ICONS.done : ICONS.sync,
             canonical ? t.index.toast.saved : t.index.toast.savedQueued,
@@ -817,7 +848,8 @@ function TripReady({
       },
       updateBooking: async (bookingId, input) => {
         const previous = bookings;
-        const { event: _seed, ...fields } = input;
+        const { event: seed, ...fields } = input;
+        const merged = bookings.find((b) => b.id === bookingId);
         setBookings((prev) => prev.map((b) => (b.id === bookingId ? { ...b, ...fields } : b)));
         try {
           const canonical = await restOrQueue(
@@ -827,6 +859,21 @@ function TripReady({
           );
           if (canonical)
             setBookings((prev) => prev.map((b) => (b.id === bookingId ? canonical : b)));
+          // Queued offline: mirror the linked event the update seeds (ADR-0093)
+          // through the shared applier. The 'update' change carries only the seed's
+          // schedule fields, so an existing linked event updates in place with its
+          // status preserved, and a newly-timed booking gains one; the WS echo
+          // reconciles on flush. Online the echo handles it.
+          if (!canonical && seed?.id && merged) {
+            applyEntityChange(
+              bookingLinkedEventChange(
+                { ...merged, ...fields },
+                { ...seed, id: seed.id },
+                { actorUserId: authorId, nowIso: stamp() },
+                'update',
+              ),
+            );
+          }
           toast(
             canonical ? ICONS.done : ICONS.sync,
             canonical ? t.index.toast.saved : t.index.toast.savedQueued,
@@ -899,7 +946,7 @@ function TripReady({
         }
       },
     };
-  }, [tripId, bookings, places, toast, authorId]);
+  }, [tripId, bookings, places, toast, authorId, applyEntityChange]);
 
   const value = useMemo<TripContextValue>(
     () => ({

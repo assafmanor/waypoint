@@ -350,9 +350,11 @@ export async function applyOutboxOpToCache(tripId: string, op: OutboxOp): Promis
       await clearTripCache(tripId);
       return;
     }
-    // Index writes (ADR-0047/0048). ponytail: the booking row / place is mirrored,
-    // but a seeded linked event's offline coherence is deferred to the booking-form
-    // checkpoint — online, the WS echo mirrors the event either way.
+    // Index writes (ADR-0047/0048). The booking row is mirrored here; its seeded
+    // linked event rides the SAME generic change-appliers as a live WS echo
+    // (ADR-0093) — emitted by the write verb via `bookingLinkedEventChange` and
+    // applied through `applyChangeToCache` + the in-memory `applyEntityChange`, so
+    // there's no separate offline handler for it.
     case 'createBooking': {
       if (!op.input.id) return;
       const { event: _seed, ...fields } = op.input;
