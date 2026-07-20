@@ -202,12 +202,32 @@ describe('scheduleLabel (span-aware, ADR-0053)', () => {
     expect(label).not.toContain('צ׳ק-אין');
   });
 
-  it('shows the check-out time on the check-out day', () => {
+  it('drops the verb once check-out has passed, even on the same day', () => {
+    // checked out today at 11:00, now is 12:00 — already behind you (ADR-0089).
     const ev = span_(linkedEvent('h', '2026-07-04', '15:00'), '2026-07-07', '11:00');
-    const label = scheduleLabel(ev, hotel, TRIP, new Date(NOW)); // today 07-07 = check-out day
-    expect(label).toContain('צ׳ק-אאוט');
-    expect(label).toContain('היום');
-    expect(label).toContain('11:00');
+    const label = scheduleLabel(ev, hotel, TRIP, new Date(NOW));
+    expect(label).not.toContain('צ׳ק-אאוט');
+    expect(label).toBe('היום · 11:00');
+  });
+
+  it('drops the transition verb for a booking behind you (ADR-0089)', () => {
+    const flight = booking('f', 'flight', BOOKING_TYPE.FLIGHT);
+    const past = scheduleLabel(
+      linkedEvent('f', '2026-07-05', '08:30'),
+      flight,
+      TRIP,
+      new Date(NOW),
+    );
+    expect(past).not.toContain('המראה');
+    expect(past).toBe('שלשום · 08:30');
+    // still names the verb while it's ahead of you
+    const ahead = scheduleLabel(
+      linkedEvent('f', '2026-07-09', '08:30'),
+      flight,
+      TRIP,
+      new Date(NOW),
+    );
+    expect(ahead).toContain('המראה');
   });
 
   it('shows the check-in day on the check-in day itself', () => {

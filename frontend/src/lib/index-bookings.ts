@@ -58,23 +58,30 @@ function dayLabel(date: string, today: string): string {
 /** The row's schedule line, prefixed with what the time _is_ for this booking type
  *  (ADR-0053 refinement). A multi-day booking (endDate set) flips from its check-in
  *  to its check-out once the check-in day has passed: the check-out day during the
- *  stay, and the check-out _time_ on the check-out day itself. */
+ *  stay, and the check-out _time_ on the check-out day itself.
+ *
+ *  A booking already behind you (ADR-0089) drops the transition verb: naming the
+ *  action ("נחיתה", "צ׳ק-אאוט") only helps while it's still ahead of you — once
+ *  it's in the "כבר מאחוריכם" list the day + duration answer "when was it", and
+ *  the verb is noise. Past-ness is the same edge `splitBookings` files on. */
 export function scheduleLabel(event: TripEvent, booking: Booking, trip: Trip, now: Date): string {
   const today = todayInTz(trip.timezone, now);
   const labels = timingLabels(booking.type);
   const multiDay = !!event.endDate && event.endDate !== event.date;
+  const past = isEventPast(event, now, trip.timezone);
+  const join = (...parts: (string | undefined)[]) => parts.filter(Boolean).join(' · ');
 
   if (multiDay && today > event.date) {
     const day = dayLabel(event.endDate!, today);
-    const label = plainTimingLabel(labels.end);
+    const label = past ? undefined : plainTimingLabel(labels.end);
     // Before the check-out day the day is enough; on the day itself, name the time.
     return event.endDate === today && event.endsAt
-      ? `${label} · ${day} · ${formatTime(event.endsAt, trip.timezone)}`
-      : `${label} · ${day}`;
+      ? join(label, day, formatTime(event.endsAt, trip.timezone))
+      : join(label, day);
   }
 
   const day = dayLabel(event.date, today);
   if (!event.startsAt) return day;
-  const label = plainTimingLabel(labels.start);
-  return `${label} · ${day} · ${formatTime(event.startsAt, trip.timezone)}`;
+  const label = past ? undefined : plainTimingLabel(labels.start);
+  return join(label, day, formatTime(event.startsAt, trip.timezone));
 }
