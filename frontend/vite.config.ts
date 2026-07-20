@@ -1,5 +1,5 @@
 import { fileURLToPath } from 'node:url';
-import { defineConfig } from 'vite';
+import { configDefaults, defineConfig } from 'vitest/config';
 import react from '@vitejs/plugin-react';
 import { VitePWA } from 'vite-plugin-pwa';
 // Relative source import: the app-graph alias below doesn't apply to this
@@ -60,4 +60,10 @@ export default defineConfig({
     }),
   ],
   server: { port: 5173 },
+  test: {
+    // The Playwright e2e specs (frontend/e2e/*.spec.ts) run under `pnpm e2e`, not
+    // vitest — they import @playwright/test and drive a real browser. Keep them
+    // out of the jsdom unit run so `pnpm test` doesn't try to execute them.
+    exclude: [...configDefaults.exclude, 'e2e/**'],
+  },
 });

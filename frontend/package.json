@@ -10,7 +10,8 @@
     "preview:build": "vite build && vite preview",
     "typecheck": "tsc --noEmit",
     "lint": "eslint .",
-    "test": "vitest run"
+    "test": "vitest run",
+    "e2e": "playwright test"
   },
   "dependencies": {
     "@waypoint/shared": "workspace:*",
@@ -20,6 +21,7 @@
     "react-router-dom": "^7.18.1"
   },
   "devDependencies": {
+    "@playwright/test": "^1.61.1",
     "@testing-library/dom": "^10",
     "@testing-library/react": "^16",
     "@types/react": "^19.2.17",
