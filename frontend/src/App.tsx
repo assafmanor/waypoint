@@ -27,6 +27,7 @@ import {
   isOffline,
   useIsOffline,
   useOutboxCount,
+  usePendingChangeCount,
   useSyncFailures,
 } from './lib/outbox';
 import { loadTripList } from './lib/cache';
@@ -180,7 +181,10 @@ function Header({
   // environments' 'offline' event is unreliable) — usingCachedSnapshot (T-058)
   // is a direct signal from that fetch actually failing, so OR the two.
   const offline = useIsOffline() || usingCachedSnapshot;
-  const pendingCount = useOutboxCount();
+  // Pending change *groups*, so one user action (a booking + the places backing
+  // its route) reads as one change, not three (ADR-0092). The flush loop below
+  // keeps the true op total via useOutboxCount.
+  const pendingCount = usePendingChangeCount();
   const syncFailures = useSyncFailures();
   const [syncReviewOpen, setSyncReviewOpen] = useState(false);
   const total =

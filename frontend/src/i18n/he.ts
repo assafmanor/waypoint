@@ -237,6 +237,7 @@ export const t = {
       titlePlaceholder: 'שם לזיהוי המסמך',
       save: 'העלה',
       saving: 'מעלה…',
+      queued: 'ממתין להעלאה',
       cancel: 'בטל',
       saved: 'המסמך הועלה',
       failed: 'ההעלאה נכשלה, נסו שוב',

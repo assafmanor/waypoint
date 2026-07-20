@@ -8,8 +8,8 @@
 import { useState } from 'react';
 import { type DocumentSummary } from '@waypoint/shared';
 import { useTrip } from '../state/trip-state';
-import { usePendingUploads } from '../lib/outbox';
-import { EntitySyncBadge } from './EntitySyncBadge';
+import { usePendingUploads, useIsOffline } from '../lib/outbox';
+import { EntitySyncBadge, useUnsynced } from './EntitySyncBadge';
 import { ListRow } from './domain';
 import { groupDocuments } from '../lib/documents';
 import { formatBytes } from '../lib/bytes';
@@ -101,10 +101,12 @@ export function DocumentsSection() {
   );
 }
 
-// One document row. Split out so it can read its own per-entity sync status
-// (U-04, ADR-0080) — the reference wiring for the SyncBadge pattern; bookings and
-// events adopt it in Wave 3. A queued upload keeps its verbose "uploading"
-// spinner; a committed row carries a subtle SyncBadge answering "did it save?".
+// One document row. A queued upload and a committed row share one grammar now
+// (ADR-0092): both carry the connected cloud sync marker (cloud-up while the
+// upload is queued/in-flight, silent once synced) and fade while pending. A
+// queued upload keeps a progress affordance in its trailing slot — a spinner
+// while the flush is genuinely in flight (online), a static "waiting" when
+// offline, since nothing is uploading until the network returns.
 function DocumentRow({
   doc: d,
   isPending,
@@ -116,6 +118,8 @@ function DocumentRow({
   onOpen: () => void;
   onManage: () => void;
 }) {
+  const offline = useIsOffline();
+  const unsynced = useUnsynced(d.id);
   return (
     <ListRow
       icon={DOCUMENT_TYPE_ICON[d.type]}
@@ -123,11 +127,17 @@ function DocumentRow({
       openLabel={d.title}
       disabled={isPending}
       title={d.title}
-      className={isPending ? 'pending' : undefined}
+      unsynced={unsynced}
       right={
         isPending ? (
           <span className="doc-uploading">
-            <Spinner /> {t.docs.upload.saving}
+            {offline ? (
+              t.docs.upload.queued
+            ) : (
+              <>
+                <Spinner /> {t.docs.upload.saving}
+              </>
+            )}
           </span>
         ) : (
           <>
@@ -140,7 +150,7 @@ function DocumentRow({
           </>
         )
       }
-      sync={isPending ? undefined : <EntitySyncBadge id={d.id} />}
+      sync={<EntitySyncBadge id={d.id} />}
       onManage={isPending ? undefined : onManage}
       manageLabel={t.docs.manage.actions}
     />

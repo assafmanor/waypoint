@@ -9,16 +9,21 @@ import {
   flushAllOutbox,
   flushOutbox,
   getOutboxCount,
+  getPendingChangeCount,
   getSyncFailures,
   getSyncStatus,
   initOutboxCount,
   outboxOpEntityId,
   retrySyncFailure,
+  withChangeGroup,
   type OutboxOp,
 } from './outbox';
 
 const bookingOp = (id: string): OutboxOp =>
   ({ verb: 'createBooking', input: { id, type: 'restaurant', title: 'מסעדה' } }) as OutboxOp;
+
+const placeOp = (id: string): OutboxOp =>
+  ({ verb: 'createPlace', input: { id, name: 'מקום' } }) as OutboxOp;
 
 const reject400 = (code: string) =>
   vi.fn(() => Promise.resolve(new Response(JSON.stringify({ error: { code } }), { status: 400 })));
@@ -344,6 +349,60 @@ describe('outbox pending count', () => {
     expect(getOutboxCount()).toBe(2);
 
     await flushOutbox(TRIP_ID);
+    expect(getOutboxCount()).toBe(0);
+  });
+
+  it('counts one user action as one change, grouping the ops it enqueues (ADR-0092)', async () => {
+    // A one-booking flight enqueues its two route places + the booking under one
+    // change group. The true op total is 3 (drives the flush), but the header
+    // summary counts pending groups → "1 change".
+    await withChangeGroup(async () => {
+      await enqueueOutbox(TRIP_ID, placeOp('pl-from'));
+      await enqueueOutbox(TRIP_ID, placeOp('pl-to'));
+      await enqueueOutbox(TRIP_ID, bookingOp('bk-flight'));
+    });
+    expect(getOutboxCount()).toBe(3);
+    expect(getPendingChangeCount()).toBe(1);
+
+    // The grouping is persisted, so it survives a re-prime from IndexedDB.
+    await initOutboxCount();
+    expect(getOutboxCount()).toBe(3);
+    expect(getPendingChangeCount()).toBe(1);
+  });
+
+  it('counts standalone enqueues (outside a group) as one change each', async () => {
+    await enqueueOutbox(TRIP_ID, statusOp('ev-1'));
+    await enqueueOutbox(TRIP_ID, statusOp('ev-2'));
+    expect(getPendingChangeCount()).toBe(2);
+  });
+
+  it('drains a group from the change count only once all its ops flush', async () => {
+    const placeBody = JSON.stringify({
+      id: 'pl-1',
+      tripId: TRIP_ID,
+      name: 'מקום',
+      createdAt: '',
+      updatedAt: '',
+      updatedBy: 'u',
+    });
+    vi.stubGlobal(
+      'fetch',
+      vi.fn((url: string) =>
+        Promise.resolve(
+          new Response(String(url).includes('/places') ? placeBody : canonicalBody(), {
+            status: 200,
+          }),
+        ),
+      ),
+    );
+    await withChangeGroup(async () => {
+      await enqueueOutbox(TRIP_ID, placeOp('pl-1'));
+      await enqueueOutbox(TRIP_ID, statusOp('ev-1'));
+    });
+    expect(getPendingChangeCount()).toBe(1); // two ops, one change
+    expect(getOutboxCount()).toBe(2);
+    await flushOutbox(TRIP_ID);
+    expect(getPendingChangeCount()).toBe(0);
     expect(getOutboxCount()).toBe(0);
   });
 });

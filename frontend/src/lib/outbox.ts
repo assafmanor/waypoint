@@ -73,6 +73,10 @@ export interface OutboxEntry {
   seq?: number;
   tripId: string;
   op: OutboxOp;
+  /** The change group this op belongs to (ADR-0092): ops from one user action
+   *  share an id so the header counts them as one change. Optional — legacy
+   *  entries and standalone enqueues fall back to counting per-op. */
+  groupId?: string;
 }
 
 /** The entity id a queued op targets, for the id-keyed per-entity sync-status
@@ -145,6 +149,49 @@ function setPendingCount(n: number): void {
   listeners.forEach((l) => l());
 }
 
+// --- Change groups (ADR-0092). One user action can enqueue several ops — saving
+// a booking authors the two places backing its route plus the booking itself —
+// but that's ONE change to the user. The header "N changes waiting to sync"
+// summary counts pending *groups*, not raw ops, so a one-booking flight reads as
+// "1 change" not "3". `pendingCount` still tracks every op (it drives the FIFO
+// flush + ordering); grouping is a display concern layered on top, robust to
+// which entities are user-visible (places becoming first-class doesn't change
+// the count — a place authored for a booking still belongs to that booking's
+// group). Ops enqueued outside any `withChangeGroup` scope get their own unique
+// group, so a standalone edit is one change. ---
+const pendingGroups = new Map<string, number>();
+
+function bumpGroup(groupId: string, delta: number): void {
+  const next = (pendingGroups.get(groupId) ?? 0) + delta;
+  if (next <= 0) pendingGroups.delete(groupId);
+  else pendingGroups.set(groupId, next);
+}
+
+// The group ops enqueued during the current user action join. Module-level, set
+// by `withChangeGroup` and restored on exit; user actions are sequential (one
+// modal save at a time), so there's no interleaving to guard against.
+let activeGroupId: string | undefined;
+
+/** Run a user action so every write it enqueues counts as ONE change (ADR-0092).
+ *  Wrap the action at its boundary (e.g. BookingSheet.save, which enqueues a
+ *  booking plus the places backing its route). Outside a group, each enqueue is
+ *  its own change. Nestable — the previous group is restored on exit. */
+export async function withChangeGroup<T>(run: () => Promise<T>): Promise<T> {
+  const previous = activeGroupId;
+  activeGroupId = crypto.randomUUID();
+  try {
+    return await run();
+  } finally {
+    activeGroupId = previous;
+  }
+}
+
+/** The group a persisted entry belongs to. Legacy entries (queued before ADR-0092,
+ *  no `groupId`) fall back to a per-op key so each still counts as one change. */
+function entryGroupId(entry: OutboxEntry): string {
+  return entry.groupId ?? `seq:${entry.seq}`;
+}
+
 // Per-entity pending index (U-04, ADR-0080): how many queued ops target each
 // entity id. Kept in memory alongside `pendingCount` so `useSyncStatus` has a
 // synchronous snapshot for `useSyncExternalStore` without an async IndexedDB
@@ -166,7 +213,11 @@ function bumpPending(entityId: string, delta: number): void {
 export async function initOutboxCount(): Promise<void> {
   const entries = await db.outbox.toArray();
   pendingByEntity.clear();
-  for (const entry of entries) bumpPending(outboxOpEntityId(entry.op), 1);
+  pendingGroups.clear();
+  for (const entry of entries) {
+    bumpPending(outboxOpEntityId(entry.op), 1);
+    bumpGroup(entryGroupId(entry), 1);
+  }
   setPendingCount(entries.length);
   clearSyncFailures();
 }
@@ -310,8 +361,22 @@ export function useOutboxCount(): number {
   return useSyncExternalStore(subscribeOutboxCount, getOutboxCount);
 }
 
+/** The count for the header "N changes waiting to sync" summary: pending change
+ *  *groups* (ADR-0092), so one user action (a booking + the places backing its
+ *  route) reads as one change. Distinct from `getOutboxCount`, the true op total
+ *  that drives the flush machinery. */
+export function getPendingChangeCount(): number {
+  return pendingGroups.size;
+}
+
+export function usePendingChangeCount(): number {
+  return useSyncExternalStore(subscribeOutboxCount, getPendingChangeCount);
+}
+
 export async function enqueueOutbox(tripId: string, op: OutboxOp): Promise<void> {
-  await db.outbox.add({ tripId, op });
+  // Join the active user action's change group, or stand alone as its own change.
+  const groupId = activeGroupId ?? crypto.randomUUID();
+  await db.outbox.add({ tripId, op, groupId });
   // Mirror the queued change into the read cache so a reopen while still offline
   // shows it (best-effort — a cache failure must not block queueing the write).
   try {
@@ -320,6 +385,7 @@ export async function enqueueOutbox(tripId: string, op: OutboxOp): Promise<void>
     // ignore — the outbox entry is the source of truth; the cache is a mirror.
   }
   bumpPending(outboxOpEntityId(op), 1);
+  bumpGroup(groupId, 1);
   setPendingCount(pendingCount + 1);
 }
 
@@ -534,6 +600,7 @@ async function doFlushOutbox(tripId: string): Promise<void> {
         }
         await db.outbox.delete(entry.seq!);
         bumpPending(outboxOpEntityId(entry.op), -1);
+        bumpGroup(entryGroupId(entry), -1);
         setPendingCount(pendingCount - 1);
         continue;
       }
@@ -541,6 +608,7 @@ async function doFlushOutbox(tripId: string): Promise<void> {
     }
     await db.outbox.delete(entry.seq!);
     bumpPending(outboxOpEntityId(entry.op), -1);
+    bumpGroup(entryGroupId(entry), -1);
     setPendingCount(pendingCount - 1);
   }
 }

@@ -39,6 +39,10 @@ export interface ListRowProps {
    *  `<EntitySyncBadge id=… />`; it's silent when synced, so the column is often
    *  empty — its reserved width (list-row.css) keeps neighbours aligned. */
   sync?: ReactNode;
+  /** Fades the row to read as provisional while a write is in transit (ADR-0092):
+   *  the connected screen passes `useUnsynced(id)`. Pending only — a failed row
+   *  stays full-opacity so its `cloud-bang` keeps drawing attention. */
+  unsynced?: boolean;
   /** When set, renders the `⋯` kebab wired to open a RowManageSheet. */
   onManage?: () => void;
   /** Accessible name for the kebab (required when `onManage` is set). */
@@ -57,12 +61,17 @@ export function ListRow({
   meta,
   right,
   sync,
+  unsynced,
   onManage,
   manageLabel,
   className,
 }: ListRowProps) {
   return (
-    <div className={'wp-listrow' + (className ? ` ${className}` : '')}>
+    <div
+      className={
+        'wp-listrow' + (unsynced ? ' is-unsynced' : '') + (className ? ` ${className}` : '')
+      }
+    >
       <button
         type="button"
         className="wp-listrow-open"

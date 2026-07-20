@@ -92,6 +92,14 @@ describe('EventCard', () => {
     expect(none.container.querySelector('.sync-badge')).toBeNull();
   });
 
+  it('fades the card while unsynced (provisional), full-opacity otherwise (ADR-0092)', () => {
+    const on = render(wrap(<EventCard {...base} unsynced />));
+    expect(on.container.querySelector('.wp-event.unsynced')).toBeTruthy();
+    cleanup();
+    const off = render(wrap(<EventCard {...base} />));
+    expect(off.container.querySelector('.wp-event.unsynced')).toBeNull();
+  });
+
   it('toggles open on the face and reports aria-expanded', () => {
     const onToggle = vi.fn();
     render(wrap(<EventCard {...base} onToggle={onToggle} />));

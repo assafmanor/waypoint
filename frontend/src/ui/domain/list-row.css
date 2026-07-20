@@ -13,6 +13,13 @@
 .wp-listrow:last-child {
   border-bottom: none;
 }
+/* An in-transit (pending) write reads as provisional (ADR-0092): the whole row
+   fades until the server confirms it. Pending only — a failed row stays crisp so
+   its cloud-bang keeps drawing attention. The 19px cloud-up marker stays legible
+   at this opacity, so it still reads as "saving". */
+.wp-listrow.is-unsynced {
+  opacity: 0.6;
+}
 
 .wp-listrow-open {
   display: flex;

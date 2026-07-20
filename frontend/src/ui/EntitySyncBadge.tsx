@@ -18,3 +18,14 @@ export function EntitySyncBadge({ id, showSynced = false }: { id: string; showSy
   if (state === 'synced' && !showSynced) return null;
   return <SyncBadge state={state} reason={reason} />;
 }
+
+// Whether this entity has a write in transit — a queued (`pending`) op not yet
+// confirmed by the server. Drives the "unsynced" dimming (ADR-0092): a row/card
+// with a pending write reads as provisional (~0.6 opacity). `failed` is
+// deliberately NOT dimmed — a rejected write must stay prominent (its
+// `cloud-bang` + the header review sheet call for action, they mustn't recede).
+// The badge (via useSyncStatus) is the state signal; this is the same read for
+// the container's opacity, so both derive from one source.
+export function useUnsynced(id: string): boolean {
+  return useSyncStatus(id).state === 'pending';
+}

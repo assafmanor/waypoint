@@ -44,7 +44,7 @@ import { Sheet } from '../ui/Sheet';
 import { TimePicker } from '../ui/TimePicker';
 import { EventCard, type EventPhaseName } from '../ui/domain/EventCard';
 import { MaybeCard } from '../ui/domain/MaybeCard';
-import { EntitySyncBadge } from '../ui/EntitySyncBadge';
+import { EntitySyncBadge, useUnsynced } from '../ui/EntitySyncBadge';
 
 const daysBetween = (from: string, to: string) =>
   Math.round((Date.parse(to) - Date.parse(from)) / MS_PER_DAY);
@@ -431,6 +431,8 @@ function ItemNode({ item, depth, ctx }: { item: TimeItem; depth: number; ctx: Da
   const booking = e.bookingId ? ctx.bookings.find((b) => b.id === e.bookingId) : undefined;
   const code = booking?.confirmationCode ? `${CODE_PREFIX}${booking.confirmationCode}` : undefined;
   const conflicts = hardConflicts(e, ctx.dayEvents);
+  // A queued (pending) edit fades the card to read as provisional (ADR-0092).
+  const unsynced = useUnsynced(e.id);
 
   // The screen derives the phase from the clock (ADR-0043) and passes it in. On a
   // read-only past day every planned soft event is there to be settled (ADR-0029),
@@ -457,6 +459,7 @@ function ItemNode({ item, depth, ctx }: { item: TimeItem; depth: number; ctx: Da
       kind={e.kind === EVENT_KIND.HARD ? 'hard' : 'soft'}
       phase={phase}
       sync={<EntitySyncBadge id={e.id} />}
+      unsynced={unsynced}
       readOnly={ctx.readOnly}
       isOpen={ctx.openId === e.id}
       onToggle={() => ctx.toggle(e.id)}
