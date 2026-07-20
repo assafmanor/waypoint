@@ -18,6 +18,7 @@ import {
   shouldResetToHomeOnResume,
   useCloseAllOverlays,
   useMarkInsideTrip,
+  useTripBackGuard,
   useTripTab,
 } from './state/nav-state';
 import { EdgeSwipeBack } from './ui/EdgeSwipeBack';
@@ -357,6 +358,9 @@ function Shell() {
   const { tab, goToTab } = useTripTab();
   const [accountOpen, setAccountOpen] = useState(false);
   useMarkInsideTrip();
+  // Give Android's OS back an in-app entry to traverse into (ADR-0090) so a cold
+  // launch straight into the trip can't let a system-back slip out of the app.
+  useTripBackGuard();
   const { mode } = useMode();
   const { trip, setActiveDate, tripDeleted } = useTrip();
   const { logout } = useAuth();

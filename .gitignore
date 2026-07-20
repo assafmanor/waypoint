@@ -23,6 +23,12 @@ backend/storage/
 out/
 coverage/
 .turbo/
+
+# Playwright e2e artifacts
+test-results/
+playwright-report/
+blob-report/
+.playwright/
 *.tsbuildinfo
 
 # OS / editor cruft
