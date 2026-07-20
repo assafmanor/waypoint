@@ -158,6 +158,53 @@ describe('applyChangeToCache', () => {
     ).resolves.toBeUndefined();
     expect(await readCachedSnapshot(TRIP_ID)).toBeNull();
   });
+
+  // Registry channels beyond events (ADR-0094): own Dexie table (booking), a
+  // snapshotMeta list (place, membership), the meta trip scalar.
+  it('upserts + deletes a booking via its own Dexie table', async () => {
+    await cacheSnapshot(TRIP_ID, snapshot());
+    await applyChangeToCache(TRIP_ID, {
+      ...baseChange,
+      entityType: 'booking',
+      entityId: 'bk-new',
+      action: 'create',
+      after: { type: 'restaurant', title: 'מסעדה' },
+    });
+    expect((await db.bookings.get('bk-new'))?.title).toBe('מסעדה');
+    await applyChangeToCache(TRIP_ID, {
+      ...baseChange,
+      entityType: 'booking',
+      entityId: 'bk-new',
+      action: 'delete',
+      after: undefined,
+    });
+    expect(await db.bookings.get('bk-new')).toBeUndefined();
+  });
+
+  it('upserts a place into the snapshotMeta list', async () => {
+    await cacheSnapshot(TRIP_ID, snapshot());
+    await applyChangeToCache(TRIP_ID, {
+      ...baseChange,
+      entityType: 'place',
+      entityId: 'pl-new',
+      action: 'create',
+      after: { name: 'קיוטו' },
+    });
+    const cached = await readCachedSnapshot(TRIP_ID);
+    expect(cached?.places.find((p) => p.id === 'pl-new')?.name).toBe('קיוטו');
+  });
+
+  it('merges a trip-settings change onto the cached trip scalar', async () => {
+    await cacheSnapshot(TRIP_ID, snapshot());
+    await applyChangeToCache(TRIP_ID, {
+      ...baseChange,
+      entityType: 'trip',
+      entityId: TRIP_ID,
+      action: 'update',
+      after: { name: 'שם חדש' },
+    });
+    expect((await readCachedSnapshot(TRIP_ID))?.trip.name).toBe('שם חדש');
+  });
 });
 
 describe('cacheSnapshot mirrors documents (ADR-0058)', () => {
@@ -318,6 +365,34 @@ describe('applyOutboxOpToCache (offline write-through)', () => {
     });
     const cached = await readCachedSnapshot(TRIP_ID);
     expect(cached?.places.find((p) => p.id === 'pl-offline')?.name).toBe('Offline place');
+  });
+
+  it('defaults a new offline event to planned (no status on the create input)', async () => {
+    await cacheSnapshot(TRIP_ID, snapshot());
+    await applyOutboxOpToCache(TRIP_ID, {
+      verb: 'create',
+      input: { id: 'ev-plan', date: '2026-07-02', title: 'x', kind: 'soft', source: 'manual' },
+    });
+    expect((await db.events.get('ev-plan'))?.status).toBe('planned');
+  });
+
+  it('applies an offline member role change, keyed by membership id (userId resolved)', async () => {
+    // The op carries userId; the cache (like the WS echo) keys memberships by id.
+    const member = {
+      id: 'mem-1',
+      tripId: TRIP_ID,
+      userId: 'u-noam',
+      role: 'peer' as const,
+      calendarSyncEnabled: false,
+      joinedAt: '2026-07-01T00:00:00.000Z',
+    };
+    await cacheSnapshot(TRIP_ID, snapshot({ members: [member] }));
+    await applyOutboxOpToCache(TRIP_ID, { verb: 'setMemberRole', userId: 'u-noam', role: 'admin' });
+    expect((await readCachedSnapshot(TRIP_ID))?.members.find((m) => m.id === 'mem-1')?.role).toBe(
+      'admin',
+    );
+    await applyOutboxOpToCache(TRIP_ID, { verb: 'removeMember', userId: 'u-noam' });
+    expect((await readCachedSnapshot(TRIP_ID))?.members).toHaveLength(0);
   });
 });
 

@@ -21,6 +21,7 @@ import type {
   UpdateMembershipRoleInput,
   UpdateTripInput,
 } from '@waypoint/shared';
+import { ENTITY_TYPE } from '@waypoint/shared';
 import { PrismaService } from '../prisma/prisma.service';
 import { ChangeService, type ChangeOp } from '../sync/change.service';
 import { generateInviteCode } from './invite.util';
@@ -113,7 +114,7 @@ export class TripsService {
     const { entity } = await this.changes.mutate({
       tripId,
       actorUserId,
-      entityType: 'trip',
+      entityType: ENTITY_TYPE.TRIP,
       entityId: tripId,
       action: 'update',
       before: toTripDto(before),
@@ -240,7 +241,7 @@ export class TripsService {
     const { entity } = await this.changes.mutate({
       tripId,
       actorUserId,
-      entityType: 'membership',
+      entityType: ENTITY_TYPE.MEMBERSHIP,
       entityId: target.id,
       action: 'update',
       before: toMembershipDto(target),
@@ -289,7 +290,7 @@ export class TripsService {
 
         const ops: ChangeOp[] = [
           {
-            entityType: 'membership',
+            entityType: ENTITY_TYPE.MEMBERSHIP,
             entityId: target.id,
             action: 'delete',
             before: toMembershipDto(target),
@@ -307,7 +308,7 @@ export class TripsService {
             data: { role: 'admin' },
           });
           ops.push({
-            entityType: 'membership',
+            entityType: ENTITY_TYPE.MEMBERSHIP,
             entityId: next.id,
             action: 'update',
             before: toMembershipDto(next),
@@ -366,7 +367,7 @@ export class TripsService {
       seq: '0', // not persisted; the trip's feed is gone, so the cursor is moot
       tripId,
       actorUserId,
-      entityType: 'trip',
+      entityType: ENTITY_TYPE.TRIP,
       entityId: tripId,
       action: 'delete',
       createdAt: new Date().toISOString(),

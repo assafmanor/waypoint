@@ -1,6 +1,6 @@
 import { Injectable, NotFoundException } from '@nestjs/common';
 import { Prisma, type MaybeItem as PrismaMaybeItem } from '@prisma/client';
-import type { CreateMaybeItemInput, MaybeItem } from '@waypoint/shared';
+import { ENTITY_TYPE, type CreateMaybeItemInput, type MaybeItem } from '@waypoint/shared';
 import { randomUUID } from 'node:crypto';
 import { PrismaService } from '../prisma/prisma.service';
 import { ChangeService } from '../sync/change.service';
@@ -24,7 +24,7 @@ export class MaybeItemsService {
       const { entity } = await this.changes.mutate({
         tripId,
         actorUserId,
-        entityType: 'maybeItem',
+        entityType: ENTITY_TYPE.MAYBE_ITEM,
         entityId: id,
         action: 'create',
         after: input,
@@ -60,7 +60,7 @@ export class MaybeItemsService {
     await this.changes.mutate({
       tripId,
       actorUserId,
-      entityType: 'maybeItem',
+      entityType: ENTITY_TYPE.MAYBE_ITEM,
       entityId: maybeItemId,
       action: 'delete',
       before: toMaybeItemDto(before),
@@ -86,7 +86,7 @@ export class MaybeItemsService {
     const { entity } = await this.changes.mutate({
       tripId,
       actorUserId,
-      entityType: 'maybeItem',
+      entityType: ENTITY_TYPE.MAYBE_ITEM,
       entityId: maybeItemId,
       action: 'update',
       before: toMaybeItemDto(before),

@@ -12,7 +12,7 @@
 // future derived entity (a booking's document, say) means one more entry here,
 // applied through the appliers everything else already uses.
 import type { Booking, BookingEventSeed, Change } from '@waypoint/shared';
-import { bookingEventFields } from '@waypoint/shared';
+import { ENTITY_TYPE, bookingEventFields } from '@waypoint/shared';
 import { eventFromBookingSeed } from './booking-edit';
 
 /** The linked itinerary event change a booking write implies (ADR-0093), as
@@ -43,7 +43,7 @@ export function bookingLinkedEventChange(
     seq: '',
     tripId: booking.tripId,
     actorUserId: ctx.actorUserId,
-    entityType: 'event',
+    entityType: ENTITY_TYPE.EVENT,
     entityId: seed.id,
     action: mode,
     after,

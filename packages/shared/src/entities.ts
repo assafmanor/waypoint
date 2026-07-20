@@ -63,6 +63,20 @@ export type DocumentType = z.infer<typeof documentTypeSchema>;
 export const changeActionSchema = z.enum(['create', 'update', 'move', 'delete', 'status']);
 export type ChangeAction = z.infer<typeof changeActionSchema>;
 
+/** The entity kinds a Change (and the sync appliers) can target — the single
+ *  source both the backend Change log and the frontend applier registries key
+ *  off (ADR-0094). Named values live in `ENTITY_TYPE` (constants.ts). */
+export const entityTypeSchema = z.enum([
+  'event',
+  'booking',
+  'document',
+  'maybeItem',
+  'place',
+  'trip',
+  'membership',
+]);
+export type EntityType = z.infer<typeof entityTypeSchema>;
+
 export const userSchema = z.object({
   id: idSchema,
   email: z.string(),
@@ -250,7 +264,7 @@ export const changeSchema = z.object({
   seq: z.string(), // BigInt serialized as string to avoid JS precision loss (ADR-0019)
   tripId: idSchema,
   actorUserId: idSchema,
-  entityType: z.string(),
+  entityType: entityTypeSchema,
   entityId: idSchema,
   action: changeActionSchema,
   before: z.record(z.string(), z.unknown()).optional(),
