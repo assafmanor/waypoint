@@ -4,13 +4,14 @@
 // system-back returns to the landing before falling through to the normal
 // tab → Home rule; a nested BookingDetail/BookingManageSheet/BookingSheet
 // registers on top of that via its own Modal, so it closes first in turn.
-import { useEffect, useState } from 'react';
+import { useEffect, useRef, useState } from 'react';
 import { BOOKING_TYPE, type Booking, type Place, type Trip } from '@waypoint/shared';
 import { useTrip } from '../state/trip-state';
 import { useOverlay } from '../state/nav-state';
 import { useClock } from '../lib/useClock';
 import {
   CATEGORY_ALL,
+  countByCategory,
   scheduleLabel,
   splitBookings,
   visibleRows,
@@ -32,15 +33,6 @@ import { ChoiceGrid, type Choice } from './primitives/ChoiceGrid';
 import { Collapsible, CollapseToggle } from './primitives/Collapsible';
 import { EmptyState } from './feedback';
 import { t } from '../i18n/he';
-
-const CATEGORY_OPTIONS: Choice<CategoryFilter>[] = [
-  { value: CATEGORY_ALL, icon: '', label: t.index.filter.all },
-  ...Object.values(BOOKING_TYPE).map((type) => ({
-    value: type,
-    icon: BOOKING_TYPE_ICON[type],
-    label: t.index.bookingType[type],
-  })),
-];
 
 export function IndexBookingsView({
   onClose,
@@ -64,6 +56,7 @@ export function IndexBookingsView({
   const [sheet, setSheet] = useState<Booking | 'create' | null>(null);
   const [detail, setDetail] = useState<Booking | null>(null);
   const [manage, setManage] = useState<Booking | null>(null);
+  const searchInputRef = useRef<HTMLInputElement>(null);
 
   // Runs once against the id this screen was opened with — a fresh mount
   // handles the next deep-link (Index.tsx remounts this view per navigation).
@@ -90,66 +83,41 @@ export function IndexBookingsView({
   const filtering = category !== CATEGORY_ALL || searching;
   const noResults = filtering && upcomingMatchCount === 0;
 
-  const closeSearch = () => {
-    setSearchOpen(false);
-    setQuery('');
+  // Toggling the search icon covers/uncovers the chip row in place (ADR-0100
+  // §3), so the input stays mounted (never conditionally rendered) for the
+  // CSS transition to animate — focus is imperative, matching the mockup's
+  // own toggleSearch(). Closing clears the query, same as before.
+  const toggleSearch = () => {
+    if (searchOpen) {
+      setSearchOpen(false);
+      setQuery('');
+    } else {
+      setSearchOpen(true);
+      searchInputRef.current?.focus();
+    }
   };
+
+  const categoryCounts = countByCategory(bookings);
+  const categoryOptions: Choice<CategoryFilter>[] = [
+    { value: CATEGORY_ALL, icon: '', label: t.index.filter.all, count: bookings.length },
+    ...Object.values(BOOKING_TYPE).map((type) => ({
+      value: type,
+      icon: BOOKING_TYPE_ICON[type],
+      label: t.index.bookingType[type],
+      count: categoryCounts[type],
+    })),
+  ];
 
   return (
     <div className="idx-screen">
-      <IndexBackRow onBack={onClose} />
-
-      <div className="sec-title">
-        {searchOpen ? (
-          <div className="search-active">
-            <div className="search-inline">
-              <span className="search-inline-ic">
-                <Icon name="search" />
-              </span>
-              <input
-                type="text"
-                autoFocus
-                value={query}
-                placeholder={t.index.search.placeholder}
-                onChange={(e) => setQuery(e.target.value)}
-              />
-              {query && (
-                <button
-                  type="button"
-                  className="search-inline-clear"
-                  aria-label={t.index.search.clear}
-                  onClick={() => setQuery('')}
-                >
-                  <Icon name="close" />
-                </button>
-              )}
-            </div>
-            <button type="button" className="search-cancel" onClick={closeSearch}>
-              {t.index.search.cancel}
-            </button>
-          </div>
-        ) : (
-          <>
-            <span className="sec-title-main">
-              {t.index.bookingsTitle}
-              <span className="sec-count" dir="ltr">
-                {bookings.length}
-              </span>
-            </span>
-            <span className="sec-title-end">
-              <button
-                type="button"
-                className="search-btn"
-                aria-label={t.index.search.button}
-                onClick={() => setSearchOpen(true)}
-              >
-                <Icon name="search" />
-                {t.index.search.label}
-              </button>
-            </span>
-          </>
-        )}
-      </div>
+      <IndexBackRow
+        onBack={onClose}
+        end={
+          <span className="idx-head-count" dir="ltr">
+            {t.index.head.count(bookings.length)}
+          </span>
+        }
+      />
 
       {bookings.length === 0 ? (
         <div className="empty-card">
@@ -162,13 +130,44 @@ export function IndexBookingsView({
         </div>
       ) : (
         <>
-          <ChoiceGrid
-            options={CATEGORY_OPTIONS}
-            value={category}
-            onChange={setCategory}
-            layout="pills"
-            ariaLabel={t.index.filter.categoryLabel}
-          />
+          <div className="filter-row">
+            <div className={'chip-slot' + (searchOpen ? ' searching' : '')}>
+              <ChoiceGrid
+                options={categoryOptions}
+                value={category}
+                onChange={setCategory}
+                layout="pills"
+                ariaLabel={t.index.filter.categoryLabel}
+              />
+              <div className="search-inline2">
+                <input
+                  ref={searchInputRef}
+                  type="text"
+                  value={query}
+                  placeholder={t.index.search.placeholder}
+                  onChange={(e) => setQuery(e.target.value)}
+                />
+                {query && (
+                  <button
+                    type="button"
+                    className="clear"
+                    aria-label={t.index.search.clear}
+                    onClick={() => setQuery('')}
+                  >
+                    <Icon name="close" />
+                  </button>
+                )}
+              </div>
+            </div>
+            <button
+              type="button"
+              className={'search-icon-btn' + (searchOpen ? ' on' : '')}
+              aria-label={t.index.search.button}
+              onClick={toggleSearch}
+            >
+              <Icon name="search" />
+            </button>
+          </div>
 
           <button type="button" className="addbtn" onClick={() => setSheet('create')}>
             {t.index.form.add}
