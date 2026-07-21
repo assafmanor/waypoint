@@ -329,11 +329,7 @@ defined no-op for local layers; true root exits natively.**
 ```ts
 // state/back-registry.ts (new)
 type BackLayerType =
-  | 'route'
-  | 'local-subview'
-  | 'repeatable-state'
-  | 'transient-overlay'
-  | 'exit-boundary';
+  'route' | 'local-subview' | 'repeatable-state' | 'transient-overlay' | 'exit-boundary';
 type BackTrigger = 'system' | 'app-button' | 'escape' | 'explicit-close' | 'browser-forward';
 type BackResult = { handled: false } | { handled: true; remainsActive: boolean };
 interface BackLayer {
