@@ -11,6 +11,10 @@ This is not the record of the project. The **why** lives in [decisions/](decisio
 - **Map tab** — Plan-mode research surface: Places search, pins (from `Place`), results → "+ maybe". Blocked on Google Cloud setup below. **Navigate-to-next** (deferred out of ADR-0045; routes to the transport origin `Place`, ADR-0048) lands here too.
 - **Archive presentation** — ADR-0044 settled the behavior of a finished trip and explicitly left how the archive _looks_ as a follow-up (the Index's read-only archive state is designed in ADR-0049; other tabs' archive presentation is still open).
 
+## Index bookings header/search redesign (ADR-0100 — decided, not yet built)
+
+- **Port `mockups/index-bookings-compact-v2.html` into the real app** — the compact merged `idx-head` back+title+count row, the denser chip+search row with its cover-in-place search animation, the minimal non-circular SVG search icon, the `scroll-snap`+`mask-image` chip-edge fade, and the Trip/Plan mode-tinted accent all need porting into `ui/IndexBookingsView.tsx`/`ui/IndexBackRow.tsx`/`screens.css` (and `Icon.tsx` if any new glyph is needed). This supersedes the interim search-bar-replaces-title-row implementation already on `claude/index-screens-followups-fixes`. The documents screen (`IndexDocumentsView.tsx`) should pick up the same merged-header shape for back-arrow consistency, per ADR-0100's Consequences.
+
 ## Documents: performance & caching (two parallel tasks — see `planning/2026-07-17-session-29-document-caching-and-fast-uploads.md`)
 
 Decomposed to run simultaneously; disjoint file ownership (map in the session-29 note). Both **Proposed**.
