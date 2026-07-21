@@ -609,25 +609,29 @@
         border-radius: 50%;
         width: 18px;
         height: 18px;
-        font-size: 10px;
         color: var(--muted);
         cursor: pointer;
         display: grid;
         place-items: center;
       }
+      .search-inline2 .clear svg {
+        width: 9px;
+        height: 9px;
+      }
       /* Fixed at the row's left end — outside the scrolling chip strip, always
          reachable, never scrolls away. Tints with the mode accent while open
-         so it doubles as the "search is active" indicator. */
+         so it doubles as the "search is active" indicator. A minimal line-icon
+         (real SVG, not an emoji) in the same rounded-SQUARE shape as
+         .back-icon-btn — not a circle — matching the reference screenshot. */
       .search-icon-btn {
         flex: 0 0 auto;
         width: 32px;
         height: 32px;
-        border-radius: 50%;
+        border-radius: 10px;
         background: var(--card);
         border: 1px solid var(--line);
         display: grid;
         place-items: center;
-        font-size: 13px;
         color: var(--muted);
         cursor: pointer;
         transition:
@@ -635,6 +639,10 @@
           background 0.18s ease,
           border-color 0.18s ease,
           color 0.18s ease;
+      }
+      .search-icon-btn svg {
+        width: 15px;
+        height: 15px;
       }
       .search-icon-btn.on {
         background: var(--idx-accent);
@@ -969,7 +977,19 @@
                   placeholder="חפשו לפי שם או קוד אישור…"
                   oninput="applyFilters()"
                 />
-                <button class="clear" onclick="clearSearch()" aria-label="נקה חיפוש">✕</button>
+                <button class="clear" onclick="clearSearch()" aria-label="נקה חיפוש">
+                  <svg
+                    viewBox="0 0 24 24"
+                    fill="none"
+                    stroke="currentColor"
+                    stroke-width="2.4"
+                    stroke-linecap="round"
+                    stroke-linejoin="round"
+                    aria-hidden="true"
+                  >
+                    <path d="M6 18 18 6M6 6l12 12" />
+                  </svg>
+                </button>
               </div>
             </div>
             <button
@@ -979,7 +999,19 @@
               onclick="toggleSearch()"
               aria-label="חיפוש הזמנות"
             >
-              🔍
+              <svg
+                viewBox="0 0 24 24"
+                fill="none"
+                stroke="currentColor"
+                stroke-width="2.2"
+                stroke-linecap="round"
+                stroke-linejoin="round"
+                aria-hidden="true"
+              >
+                <path
+                  d="m21 21-5.197-5.197m0 0A7.5 7.5 0 1 0 5.196 5.196a7.5 7.5 0 0 0 10.607 10.607Z"
+                />
+              </svg>
             </button>
           </div>
 
