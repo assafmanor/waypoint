@@ -519,6 +519,33 @@
         gap: 6px;
         overflow-x: auto;
         scrollbar-width: none;
+        /* Without this, the row can rest at ANY scroll offset — including one
+           that bisects a chip right at the boundary next to the fixed search
+           button, visible even on first load before any scrolling happens.
+           scroll-snap forces every resting position (initial and post-scroll)
+           to align a chip's own edge with the container's. That fixes the
+           FIRST visible chip (nearest scroll-start); it can't fix the LAST
+           one (nearest the opposite edge) since the container's width is
+           never an exact multiple of chip widths — there's always a trailing
+           chip peeking in. Rather than hard-clip that peek (which read as
+           broken, not as a scroll hint), a mask fades it to transparent at
+           both edges — a physical left→right gradient, so it's the same in
+           either text direction. */
+        scroll-snap-type: x mandatory;
+        -webkit-mask-image: linear-gradient(
+          to right,
+          transparent 0,
+          black 14px,
+          black calc(100% - 14px),
+          transparent 100%
+        );
+        mask-image: linear-gradient(
+          to right,
+          transparent 0,
+          black 14px,
+          black calc(100% - 14px),
+          transparent 100%
+        );
         transition:
           opacity 0.16s ease,
           transform 0.22s cubic-bezier(0.3, 0.9, 0.4, 1);
@@ -545,6 +572,7 @@
         border-radius: 999px;
         padding: 6px 11px;
         cursor: pointer;
+        scroll-snap-align: start;
         transition:
           background 0.15s ease,
           color 0.15s ease,
