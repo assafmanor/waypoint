@@ -8,9 +8,8 @@ import { useEffect, useState } from 'react';
 import { BOOKING_TYPE, type Booking, type Place, type Trip } from '@waypoint/shared';
 import { useTrip } from '../state/trip-state';
 import { useMode } from '../state/mode-state';
-import { useOverlay } from '../state/nav-state';
+import { useBackLayer, type BackResult } from '../state/nav-state';
 import { useClock } from '../lib/useClock';
-import { peelBack } from '../lib/backPeel';
 import {
   CATEGORY_ALL,
   countByCategory,
@@ -85,14 +84,22 @@ export function IndexBookingsView({
   const activeCategory: CategoryFilter =
     category !== CATEGORY_ALL && categoryCounts[category] === 0 ? CATEGORY_ALL : category;
 
-  // Back peels the category filter first (ADR-0102/`lib/backPeel`) — a
-  // filtered screen isn't ready to leave yet, it's ready to show everything
-  // again; only a clean "הכל" state actually exits to the landing. Registered
-  // as the overlay's close handler too, so system-back/Escape get the same
-  // peel, not just a tap on the visible arrow.
-  const backOrResetCategory = () =>
-    peelBack(activeCategory !== CATEGORY_ALL, () => setCategory(CATEGORY_ALL), onClose);
-  useOverlay(backOrResetCategory);
+  // Back peels the category filter first (ADR-0102) — a filtered screen isn't
+  // ready to leave yet, it's ready to show everything again; only a clean "הכל"
+  // state actually exits to the landing. As a repeatable back layer it returns
+  // `remainsActive: true` on the reset, so the screen stays registered and the
+  // NEXT system-back/Escape peels here again instead of leaking past the still-
+  // mounted screen into the tab → Home rule (ADR-0103, the fix for the divergent
+  // back). Wired to the visible arrow too, so tap and system-back behave alike.
+  const backOrResetCategory = (): BackResult => {
+    if (activeCategory !== CATEGORY_ALL) {
+      setCategory(CATEGORY_ALL);
+      return { remainsActive: true };
+    }
+    onClose();
+    return { remainsActive: false };
+  };
+  useBackLayer(backOrResetCategory);
 
   const upcomingVisible = visibleRows(upcoming, activeCategory, query);
   const pastVisible = visibleRows(past, activeCategory, query, upcomingVisible.nextIndex);

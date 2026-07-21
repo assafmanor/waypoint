@@ -1,16 +1,14 @@
-// Browser-contract e2e for the Index sub-screen back behaviour (ADR-0098/0102),
-// driving REAL system-back traversals — the layer the jsdom unit tests can't
-// reach. These lock the baseline for the ADR-0103 overhaul (session 65):
-//   - the clean Documents subview peel (correct today),
-//   - the category-filter peel on the FIRST back (correct today),
-//   - and the DIVERGENCE on the SECOND back (broken today): once the filter has
-//     reset, `runBack('close-overlay')` has already pop()'d the still-mounted
-//     bookings screen off the stack, so the next system-back leaks past it into
-//     the tab -> Home rule and SKIPS the Index landing.
-// The broken case is written as the DESIRED behaviour under test.fail(): it
-// fails today (documenting the bug) and flips to a plain pass once ADR-0103's
-// non-destructive layer registry keeps a repeatable layer registered. Remove the
-// test.fail() annotation in the fix PR.
+// Browser-contract e2e for the Index sub-screen back behaviour (ADR-0098/0102/
+// 0103), driving REAL system-back traversals — the layer the jsdom unit tests
+// can't reach:
+//   - the clean Documents subview peel,
+//   - the category-filter peel on the FIRST back (resets, screen stays),
+//   - and the SECOND back returning to the Index landing, not Home. That last
+//     case regressed before ADR-0103: `runBack('close-overlay')` pop()'d the
+//     still-mounted bookings screen off the stack while only resetting the
+//     filter, so the next system-back leaked past it into the tab -> Home rule
+//     and skipped the landing. ADR-0103's non-destructive layer registry keeps a
+//     repeatable layer registered after it handles a back, closing that gap.
 import { test, expect, type Page } from '@playwright/test';
 import { bootIntoTrip, TWO_TYPE_BOOKINGS } from './boot';
 
@@ -61,24 +59,23 @@ test('bookings filter: the first system back resets the category, staying on the
   await expect(page).toHaveURL(/[?&]tab=index/);
 });
 
-test.fail(
-  'bookings filter: after the reset, the next system back returns to the landing, not Home (ADR-0103)',
-  async ({ page }) => {
-    // BROKEN TODAY. The first back pops the bookings screen off the overlay
-    // stack while only resetting the filter (it stays mounted, unregistered), so
-    // this second back finds no overlay and resolves tab=index -> Home, skipping
-    // the landing entirely. Under the ADR-0103 non-destructive layer registry a
-    // repeatable filter layer stays registered, so this becomes a plain pass —
-    // drop the test.fail() then.
-    await openBookingsScreen(page);
-    await page.getByRole('radio', { name: 'טיסה' }).click();
-    await expect(page.getByRole('radio', { name: 'טיסה' })).toBeChecked();
+test('bookings filter: after the reset, the next system back returns to the landing, not Home (ADR-0103)', async ({
+  page,
+}) => {
+  // Fixed by ADR-0103's non-destructive back-layer registry. Previously the
+  // first back pop()'d the bookings screen off the overlay stack while only
+  // resetting the filter (it stayed mounted, unregistered), so this second back
+  // found no overlay and resolved tab=index -> Home, skipping the landing. Now
+  // the repeatable filter layer stays registered after the reset, so this back
+  // peels to the Index landing as expected.
+  await openBookingsScreen(page);
+  await page.getByRole('radio', { name: 'טיסה' }).click();
+  await expect(page.getByRole('radio', { name: 'טיסה' })).toBeChecked();
 
-    await systemBack(page); // resets the filter (screen stays)
-    await expect(page.getByRole('radio', { name: 'הכל' })).toBeChecked();
+  await systemBack(page); // resets the filter (screen stays)
+  await expect(page.getByRole('radio', { name: 'הכל' })).toBeChecked();
 
-    await systemBack(page); // DESIRED: back to the Index landing
-    await expect(page.locator('.index-status')).toBeVisible();
-    await expect(page).toHaveURL(/[?&]tab=index/);
-  },
-);
+  await systemBack(page); // back to the Index landing, not Home
+  await expect(page.locator('.index-status')).toBeVisible();
+  await expect(page).toHaveURL(/[?&]tab=index/);
+});
