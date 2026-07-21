@@ -96,6 +96,13 @@ export const DOCUMENT_TYPE_ICON = {
 /** Icon for a manually added maybe-shelf idea (no icon picker yet). */
 export const DEFAULT_MAYBE_ICON = '💡';
 
+/** Per-row reveal stagger for the Index bookings filter (ADR-0098 §4 motion): a
+ *  chip/search change reveals newly-matching rows with an incrementing
+ *  transition-delay instead of an all-at-once flip, capped so a long list
+ *  doesn't drag the reveal out. */
+export const FILTER_STAGGER_MS = 24;
+export const FILTER_STAGGER_MAX_MS = 220;
+
 /** Placeholder row icon on the all-trips list (ADR-0033) — `destination` is
  *  free text, no structured country to derive a real flag from. */
 export const DEFAULT_TRIP_ICON = '🧳';

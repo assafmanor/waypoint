@@ -111,6 +111,30 @@ export const t = {
     comingSoon: 'המסך הזה עוד בעבודה.',
   },
   index: {
+    // Landing (ADR-0098): a bookings tile + a documents tile, each pushing its
+    // own dedicated screen; the back-row returns here.
+    back: 'אינדקס',
+    backAria: 'חזרה לאינדקס',
+    tile: {
+      nextPrefix: 'הבא:',
+      pastCount: (n: number) => `${n} מהעבר`,
+      emptyBookings: 'אין עדיין הזמנות',
+      emptyDocuments: 'אין עדיין מסמכים',
+    },
+    filter: {
+      all: 'הכל',
+      categoryLabel: 'סינון לפי סוג',
+      noResultsTitle: 'אין הזמנות תואמות',
+    },
+    search: {
+      button: 'חיפוש הזמנות',
+      placeholder: 'חפשו לפי שם או קוד אישור…',
+      clear: 'נקה חיפוש',
+    },
+    pastToggle: {
+      show: (n: number) => `הצג הזמנות מהעבר (${n})`,
+      hide: 'הסתר הזמנות מהעבר',
+    },
     bookingsTitle: 'הזמנות',
     offlineBadge: 'עובד אופליין',
     pastHead: 'כבר מאחוריכם',

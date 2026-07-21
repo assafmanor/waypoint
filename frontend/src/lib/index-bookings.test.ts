@@ -8,7 +8,15 @@ import {
   type TripEvent,
 } from '@waypoint/shared';
 import { type Trip } from '@waypoint/shared';
-import { scheduleLabel, splitBookings } from './index-bookings';
+import {
+  CATEGORY_ALL,
+  matchesCategory,
+  matchesQuery,
+  scheduleLabel,
+  splitBookings,
+  visibleRows,
+} from './index-bookings';
+import { FILTER_STAGGER_MAX_MS, FILTER_STAGGER_MS } from '../constants';
 
 const TZ = 'Asia/Tokyo';
 const NOW = Date.parse('2026-07-07T12:00:00+09:00'); // "today" = 2026-07-07 in Tokyo
@@ -236,5 +244,76 @@ describe('scheduleLabel (span-aware, ADR-0053)', () => {
     expect(label).toContain('צ׳ק-אין');
     expect(label).toContain('היום');
     expect(label).toContain('15:00');
+  });
+});
+
+describe('matchesCategory (ADR-0098 §2 category filter)', () => {
+  it('matches everything for "all"', () => {
+    expect(matchesCategory(booking('b1', 'x', BOOKING_TYPE.FLIGHT), CATEGORY_ALL)).toBe(true);
+    expect(matchesCategory(booking('b1', 'x', BOOKING_TYPE.HOTEL), CATEGORY_ALL)).toBe(true);
+  });
+
+  it("matches only the booking's own type otherwise", () => {
+    expect(matchesCategory(booking('b1', 'x', BOOKING_TYPE.FLIGHT), BOOKING_TYPE.FLIGHT)).toBe(
+      true,
+    );
+    expect(matchesCategory(booking('b1', 'x', BOOKING_TYPE.HOTEL), BOOKING_TYPE.FLIGHT)).toBe(
+      false,
+    );
+  });
+});
+
+describe('matchesQuery (ADR-0098 §2 search)', () => {
+  it('matches everything for a blank query', () => {
+    expect(matchesQuery(booking('b1', 'Ichiran Ramen'), '')).toBe(true);
+    expect(matchesQuery(booking('b1', 'Ichiran Ramen'), '   ')).toBe(true);
+  });
+
+  it('matches by title, case-insensitively', () => {
+    expect(matchesQuery(booking('b1', 'Ichiran Ramen'), 'ramen')).toBe(true);
+    expect(matchesQuery(booking('b1', 'Ichiran Ramen'), 'RAMEN')).toBe(true);
+    expect(matchesQuery(booking('b1', 'Ichiran Ramen'), 'sushi')).toBe(false);
+  });
+
+  it('matches by confirmation code, case-insensitively', () => {
+    const b = { ...booking('b1', 'x'), confirmationCode: 'NA832' };
+    expect(matchesQuery(b, 'na832')).toBe(true);
+    expect(matchesQuery(b, 'zz')).toBe(false);
+  });
+});
+
+describe('visibleRows (ADR-0098 §4 stagger)', () => {
+  const rows = (n: number, type: Booking['type'] = BOOKING_TYPE.HOTEL) =>
+    Array.from({ length: n }, (_, i) => ({ booking: booking(`b${i}`, `row${i}`, type) }));
+
+  it('marks every row visible and increments the delay for "all" with no query', () => {
+    const { rows: out, nextIndex } = visibleRows(rows(3), CATEGORY_ALL, '');
+    expect(out.every((r) => r.visible)).toBe(true);
+    expect(out.map((r) => r.delayMs)).toEqual([0, FILTER_STAGGER_MS, FILTER_STAGGER_MS * 2]);
+    expect(nextIndex).toBe(3);
+  });
+
+  it('hides non-matching rows with a zero delay, and only counts visible ones toward the stagger', () => {
+    const mixed = [
+      { booking: booking('b1', 'x', BOOKING_TYPE.FLIGHT) },
+      { booking: booking('b2', 'y', BOOKING_TYPE.HOTEL) },
+      { booking: booking('b3', 'z', BOOKING_TYPE.FLIGHT) },
+    ];
+    const { rows: out, nextIndex } = visibleRows(mixed, BOOKING_TYPE.FLIGHT, '');
+    expect(out.map((r) => r.visible)).toEqual([true, false, true]);
+    expect(out[1].delayMs).toBe(0);
+    expect(out[2].delayMs).toBe(FILTER_STAGGER_MS); // second VISIBLE row, not third row
+    expect(nextIndex).toBe(2);
+  });
+
+  it('caps the delay at FILTER_STAGGER_MAX_MS for a long list', () => {
+    const { rows: out } = visibleRows(rows(50), CATEGORY_ALL, '');
+    expect(out.at(-1)?.delayMs).toBe(FILTER_STAGGER_MAX_MS);
+  });
+
+  it('chains a startIndex so upcoming → past shares one continuous stagger', () => {
+    const upcoming = visibleRows(rows(2), CATEGORY_ALL, '');
+    const past = visibleRows(rows(2), CATEGORY_ALL, '', upcoming.nextIndex);
+    expect(past.rows.map((r) => r.delayMs)).toEqual([FILTER_STAGGER_MS * 2, FILTER_STAGGER_MS * 3]);
   });
 });
