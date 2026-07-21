@@ -8,6 +8,7 @@ import {
   isAmbient,
   isBracketed,
   isMultiDay,
+  searchVibeIcons,
 } from './icons';
 
 const ORDINARY_CATEGORIES: EventCategory[] = [
@@ -157,6 +158,22 @@ describe('isAmbient', () => {
     for (const category of ORDINARY_CATEGORIES) {
       expect(isAmbient(ev({ category, date: '2026-07-07', endDate: '2026-07-09' }))).toBe(false);
     }
+  });
+});
+
+describe('searchVibeIcons', () => {
+  it('matches a glyph by any of its Hebrew or English terms, case-insensitively', () => {
+    expect(searchVibeIcons('סקי')).toContain('🎿');
+    expect(searchVibeIcons('SKI')).toContain('🎿');
+  });
+
+  it('returns none for a blank query (the picker shows the spaced clusters instead)', () => {
+    expect(searchVibeIcons('')).toHaveLength(0);
+    expect(searchVibeIcons('   ')).toHaveLength(0);
+  });
+
+  it('returns none for an unmatched query', () => {
+    expect(searchVibeIcons('zzzznotaterm')).toHaveLength(0);
   });
 });
 

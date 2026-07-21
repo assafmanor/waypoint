@@ -90,3 +90,4 @@ B-01–B-06 and B-08–B-13 shipped (ADR-0068–0076); B-07 shipped (ADR-0067). 
 ## Reusable UI follow-ups
 
 - **`SearchOverlay` beyond bookings** (from session 63, ADR-0101) — the full-screen search-mode primitive (`ui/primitives/SearchOverlay.tsx`) is wired up for the Index bookings screen only. A documents search (or any other "type to filter, on a full screen" need) should adopt it directly rather than growing a second one-off, whenever one is actually needed.
+- **Search bookings by linked place** (from session 64, ADR-0102) — the Index bookings search matches title/confirmation code/category vocabulary via an extensible term array (`lib/index-bookings.ts`'s `searchTerms`); a linked place's name was explicitly named as the next facet to add, once wanted — a one-line push into that array, not a new mechanism.

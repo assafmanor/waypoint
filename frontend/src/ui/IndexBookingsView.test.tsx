@@ -39,6 +39,16 @@ const hotel: Booking = {
   updatedAt: '2026-07-19T00:00:00Z',
   updatedBy: 'u1',
 };
+const restaurant: Booking = {
+  id: 'b4',
+  tripId: 't1',
+  type: BOOKING_TYPE.RESTAURANT,
+  title: 'Ichiran Ramen',
+  source: BOOKING_SOURCE.MANUAL,
+  createdAt: '2026-07-19T00:00:00Z',
+  updatedAt: '2026-07-19T00:00:00Z',
+  updatedBy: 'u1',
+};
 // A past FLIGHT so the flight category has a past match while the hotel
 // category (still non-empty overall) has none — exercises the past-toggle's
 // per-category gate distinctly from the trip-wide past count.
@@ -137,9 +147,24 @@ describe('IndexBookingsView (ADR-0098/ADR-0101)', () => {
     expect(screen.queryByText(t.index.back)).toBeNull();
   });
 
-  it('calls onClose when the back button is tapped', () => {
+  it('calls onClose when the back button is tapped with no category filter active', () => {
     const onClose = vi.fn();
     render(wrap(<IndexBookingsView onClose={onClose} />));
+    fireEvent.click(screen.getByRole('button', { name: t.index.backAria }));
+    expect(onClose).toHaveBeenCalledTimes(1);
+  });
+
+  it('back resets an active category filter instead of leaving, then leaves on the next tap (ADR-0102)', () => {
+    const onClose = vi.fn();
+    render(wrap(<IndexBookingsView onClose={onClose} />));
+    fireEvent.click(screen.getByRole('radio', { name: t.index.bookingType.hotel }));
+
+    fireEvent.click(screen.getByRole('button', { name: t.index.backAria }));
+    expect(onClose).not.toHaveBeenCalled();
+    expect(
+      screen.getByRole('radio', { name: t.index.filter.all }).getAttribute('aria-checked'),
+    ).toBe('true');
+
     fireEvent.click(screen.getByRole('button', { name: t.index.backAria }));
     expect(onClose).toHaveBeenCalledTimes(1);
   });
@@ -175,6 +200,44 @@ describe('IndexBookingsView (ADR-0098/ADR-0101)', () => {
     const hotelRow = screen.getByRole('button', { name: 'Shinjuku Granbell' });
     expect(flightRow.closest('.idx-row')?.className).not.toContain('hidden');
     expect(hotelRow.closest('.idx-row')?.className).toContain('hidden');
+  });
+
+  it('search mode ignores whatever category was selected before opening it (ADR-0102)', () => {
+    tripBookings = [flight, hotel, restaurant];
+    render(wrap(<IndexBookingsView onClose={() => {}} />));
+    fireEvent.click(screen.getByRole('radio', { name: t.index.bookingType.flight }));
+    fireEvent.click(screen.getByRole('button', { name: t.index.search.button }));
+    // Every booking is visible in search mode, despite the flight chip having
+    // been selected before entering it.
+    for (const title of ['טוקיו', 'Shinjuku Granbell', 'Ichiran Ramen']) {
+      expect(
+        screen.getByRole('button', { name: title }).closest('.idx-row')?.className,
+      ).not.toContain('hidden');
+    }
+  });
+
+  it('matches a query against the booking type label, singular or plural (ADR-0102)', () => {
+    tripBookings = [flight, hotel, restaurant];
+    render(wrap(<IndexBookingsView onClose={() => {}} />));
+    fireEvent.click(screen.getByRole('button', { name: t.index.search.button }));
+    const input = screen.getByPlaceholderText(t.index.search.placeholder);
+    const rowClass = (title: string) =>
+      screen.getByRole('button', { name: title }).closest('.idx-row')?.className;
+
+    fireEvent.change(input, { target: { value: t.index.bookingTypePlural.restaurant } });
+    expect(rowClass('Ichiran Ramen')).not.toContain('hidden');
+    expect(rowClass('טוקיו')).toContain('hidden');
+
+    fireEvent.change(input, { target: { value: t.index.bookingType.restaurant } });
+    expect(rowClass('Ichiran Ramen')).not.toContain('hidden');
+
+    fireEvent.change(input, { target: { value: t.index.bookingTypePlural.flight } });
+    expect(rowClass('טוקיו')).not.toContain('hidden');
+    expect(rowClass('Ichiran Ramen')).toContain('hidden');
+
+    fireEvent.change(input, { target: { value: 'airbnb' } });
+    expect(rowClass('Shinjuku Granbell')).not.toContain('hidden');
+    expect(rowClass('טוקיו')).toContain('hidden');
   });
 
   it('shows the shared EmptyState when a search matches nothing', () => {

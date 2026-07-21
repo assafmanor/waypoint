@@ -10,6 +10,7 @@ import { useTrip } from '../state/trip-state';
 import { useMode } from '../state/mode-state';
 import { useOverlay } from '../state/nav-state';
 import { useClock } from '../lib/useClock';
+import { peelBack } from '../lib/backPeel';
 import {
   CATEGORY_ALL,
   countByCategory,
@@ -45,7 +46,6 @@ export function IndexBookingsView({
    *  that booking's detail on top of this screen once mounted. */
   initialBookingId?: string;
 }) {
-  useOverlay(onClose);
   const { trip, bookings, places, events } = useTrip();
   const { mode } = useMode();
   const now = useClock();
@@ -85,6 +85,15 @@ export function IndexBookingsView({
   const activeCategory: CategoryFilter =
     category !== CATEGORY_ALL && categoryCounts[category] === 0 ? CATEGORY_ALL : category;
 
+  // Back peels the category filter first (ADR-0102/`lib/backPeel`) — a
+  // filtered screen isn't ready to leave yet, it's ready to show everything
+  // again; only a clean "הכל" state actually exits to the landing. Registered
+  // as the overlay's close handler too, so system-back/Escape get the same
+  // peel, not just a tap on the visible arrow.
+  const backOrResetCategory = () =>
+    peelBack(activeCategory !== CATEGORY_ALL, () => setCategory(CATEGORY_ALL), onClose);
+  useOverlay(backOrResetCategory);
+
   const upcomingVisible = visibleRows(upcoming, activeCategory, query);
   const pastVisible = visibleRows(past, activeCategory, query, upcomingVisible.nextIndex);
   const upcomingMatchCount = upcomingVisible.rows.filter((r) => r.visible).length;
@@ -102,9 +111,12 @@ export function IndexBookingsView({
   };
 
   // Search mode merges upcoming + past into one flat, live-filtered list (no
-  // separate past collapse inside it — see `ui/primitives/SearchOverlay`).
+  // separate past collapse inside it — see `ui/primitives/SearchOverlay`), and
+  // always searches every category regardless of whatever chip was selected
+  // before opening it (ADR-0102) — search is a deliberate escape hatch from
+  // the current filter, not a continuation of it.
   const searchRows = [...upcoming, ...past];
-  const searchVisible = visibleRows(searchRows, activeCategory, query);
+  const searchVisible = visibleRows(searchRows, CATEGORY_ALL, query);
   const searchMatchCount = searchVisible.rows.filter((r) => r.visible).length;
 
   // Zero-count booking types don't get a chip at all (ADR-0101) — "הכל" always
@@ -128,7 +140,7 @@ export function IndexBookingsView({
     <div className="idx-screen">
       <IndexBackRow
         title={t.index.bookingsTitle}
-        onBack={onClose}
+        onBack={backOrResetCategory}
         end={
           <span className="idx-head-count" dir="ltr">
             {t.index.head.count(bookings.length)}

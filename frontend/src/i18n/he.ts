@@ -142,7 +142,7 @@ export const t = {
     search: {
       button: 'חיפוש הזמנות',
       modeTitle: 'חיפוש הזמנות',
-      placeholder: 'חפשו לפי שם או קוד אישור…',
+      placeholder: 'חפשו לפי שם, קוד אישור או קטגוריה…',
       clear: 'נקה חיפוש',
       backAria: 'סגירת חיפוש',
     },
@@ -160,6 +160,46 @@ export const t = {
       train: 'רכבת',
       activity: 'פעילות',
       other: 'אחר',
+    },
+    // Plural forms feed search (ADR-0102: "מסעדות"/"טיסות" should also find
+    // that type's bookings, not just the singular label) — not shown as UI
+    // copy anywhere themselves. `other` has no natural plural noun ("אחר" is
+    // an adjective, not a countable category name); kept identical to the
+    // singular rather than the grammatically-correct-but-useless "אחרים".
+    bookingTypePlural: {
+      flight: 'טיסות',
+      hotel: 'לינות',
+      restaurant: 'מסעדות',
+      train: 'רכבות',
+      activity: 'פעילויות',
+      other: 'אחר',
+    },
+    // Extra alternate/colloquial search terms per type, beyond the
+    // singular/plural label — someone searching for a hotel booking is just
+    // as likely to type the lodging kind ("מלון", "הוסטל", "airbnb") as the
+    // generic "לינה" (ADR-0102). Populated per type with the alternate words
+    // people actually search by for that kind of booking; `train` and `other`
+    // have no real alternate vocabulary beyond their singular/plural, so stay
+    // empty rather than padded with weak, unlikely-to-be-typed synonyms.
+    bookingTypeSynonyms: {
+      flight: ['מטוס'],
+      hotel: [
+        'מלון',
+        'מלונות',
+        'מוטל',
+        'מוטלים',
+        'הוסטל',
+        'הוסטלים',
+        'דירה',
+        'דירות',
+        'airbnb',
+        'b&b',
+        'bnb',
+      ],
+      restaurant: ['אוכל', 'ארוחה', 'קפה', 'בר'],
+      train: [],
+      activity: ['טיול', 'אטרקציה', 'כרטיס'],
+      other: [],
     },
     emptyTitle: 'עוד אין הזמנות שמורות',
     emptyBody: 'טיסות, לינה ושאר ההזמנות שלכם יופיעו כאן · ידנית או מיובאות אוטומטית מ-Gmail',
