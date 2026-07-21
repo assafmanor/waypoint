@@ -24,6 +24,9 @@ export type { GlanceCardProps } from './GlanceCard';
 export { StatTile } from './StatTile';
 export type { StatTileProps } from './StatTile';
 
+export { IndexTile } from './IndexTile';
+export type { IndexTileProps } from './IndexTile';
+
 export { ListRow, RowManageSheet } from './ListRow';
 export type { ListRowProps, RowAction, BadgeTone } from './ListRow';
 

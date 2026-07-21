@@ -1,0 +1,29 @@
+/* Collapsible — animated open/shut container + its count-in-label toggle
+   (ADR-0098 reuse audit: generalized out of PlanHome's showCompleted/.chk-toggle
+   pattern so Index's past-bookings collapse doesn't grow a second one-off).
+   Callers own all visual chrome (color/background/border) via their own
+   className appended alongside `wp-collapse-toggle`/`wp-collapsible` — this
+   file carries only the shared behavior. */
+.wp-collapse-toggle {
+  font: inherit;
+  cursor: pointer;
+  transition: transform 0.12s ease;
+}
+.wp-collapse-toggle:active {
+  transform: scale(0.95);
+}
+
+/* max-height + opacity, never display:none, so a reveal/hide reads as motion
+   instead of a snap. prefers-reduced-motion disables this globally (App.css). */
+.wp-collapsible {
+  overflow: hidden;
+  max-height: 0;
+  opacity: 0;
+  transition:
+    max-height 0.32s ease,
+    opacity 0.22s ease;
+}
+.wp-collapsible.on {
+  max-height: 2000px;
+  opacity: 1;
+}

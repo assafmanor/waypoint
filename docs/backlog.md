@@ -11,17 +11,6 @@ This is not the record of the project. The **why** lives in [decisions/](decisio
 - **Map tab** — Plan-mode research surface: Places search, pins (from `Place`), results → "+ maybe". Blocked on Google Cloud setup below. **Navigate-to-next** (deferred out of ADR-0045; routes to the transport origin `Place`, ADR-0048) lands here too.
 - **Archive presentation** — ADR-0044 settled the behavior of a finished trip and explicitly left how the archive _looks_ as a follow-up (the Index's read-only archive state is designed in ADR-0049; other tabs' archive presentation is still open).
 
-## Index redesign: landing + dedicated screens (ADR-0098, Accepted, not yet built)
-
-Full spec in [decisions/0098-index-landing-and-dedicated-screens.md](decisions/0098-index-landing-and-dedicated-screens.md); implementation handoff + reuse/navigation notes in `planning/2026-07-20-session-59-index-landing-and-dedicated-screens.md`. Mockup: `mockups/index-findability-split-v1.html`.
-
-- **The Index landing + two dedicated screens** — replace `Index.tsx`'s single-page bookings+documents layout with a landing (two tiles) and local view state pushing a full-screen bookings or documents view; back-to-landing via `useOverlay`, not a new route (ADR-0098 §5).
-- **Bookings screen: category filter chips + search + past-collapse** — extend `ChoiceGrid` with a pill/scroll layout for the filter chips rather than a new component; mirror ADR-0061's Plan Home toggle exactly for the past-bookings collapse.
-- **Generalize the collapsible-summary pattern out of `PlanHome.tsx`** — Index's past-toggle would otherwise be a second copy of `showCompleted`/`.chk-toggle`; extract one shared primitive both screens call, carrying ADR-0098's animated open/shut motion (a welcome side-effect: Plan Home's collapse gains real motion too).
-- **"No results" state → `EmptyState`** (`ui/feedback`), not a bespoke div.
-- **Adapt the Home quick-access deep-links (ADR-0050)** — `?booking=<id>` sets the local view to `'bookings'` before opening the detail sheet; `?focus=docs` sets the view straight to `'documents'` (no more section to scroll to).
-- **Real `NavArrow`/`Icon` SVGs, no Unicode arrow glyphs** — anywhere the new screens add a directional indicator.
-
 ## Documents: performance & caching (two parallel tasks — see `planning/2026-07-17-session-29-document-caching-and-fast-uploads.md`)
 
 Decomposed to run simultaneously; disjoint file ownership (map in the session-29 note). Both **Proposed**.

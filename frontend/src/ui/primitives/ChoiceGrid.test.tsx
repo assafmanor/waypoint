@@ -41,4 +41,13 @@ describe('ChoiceGrid', () => {
       '--choice-cols: 3',
     );
   });
+
+  it('renders a scrollable pill row in pills layout, still a single-select radiogroup', () => {
+    const { container } = render(
+      <ChoiceGrid options={OPTIONS} value="a" onChange={() => {}} layout="pills" />,
+    );
+    expect(container.querySelector('.choice-grid.pills')).toBeTruthy();
+    expect(screen.getByRole('radio', { name: 'Alpha' }).className).toContain('choice-pill on');
+    expect(screen.getByRole('radio', { name: 'Bravo' }).className).not.toContain('on');
+  });
 });

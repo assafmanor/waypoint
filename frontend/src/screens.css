@@ -2692,6 +2692,182 @@
   line-height: 1.55;
 }
 
+/* ===== Index landing + dedicated screens (ADR-0098, mockups/
+   index-findability-split-v1.html). The offline badge is a page-level fact,
+   shown once on the landing; IndexTile (ui/domain/index-tile.css) owns the
+   tile itself. ===== */
+.index .index-status {
+  padding-top: 2px;
+  margin-bottom: 2px;
+}
+
+/* Sub-screen header: an icon-only back button + adjacent label, matching the
+   shipped `.back` pattern (TripSettings/AllTrips). */
+.index .back-row {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding-top: 2px;
+  margin-bottom: 6px;
+}
+/* The shared `.sec-title`'s 22px top margin is sized for separating a section
+   from hero/board chrome above it elsewhere in the app; right under this
+   compact back-row it reads as a large empty gap (a real bug users noticed —
+   the sub-screen header looked like an oversized, mostly-blank block). Pull
+   it in to the mockup's own spacing for this combination. Covers both
+   dedicated screens: IndexBookingsView's own `.sec-title` and
+   DocumentsSection's (unchanged, ADR-0098 §2), since both sit directly after
+   this back-row. */
+.index .back-row + .sec-title {
+  margin-top: 4px;
+}
+.index .back-icon-btn {
+  width: 34px;
+  height: 34px;
+  border-radius: 10px;
+  background: var(--card);
+  border: 1px solid var(--line);
+  display: grid;
+  place-items: center;
+  color: var(--ink);
+  cursor: pointer;
+  transition:
+    background 0.15s ease,
+    transform 0.12s ease;
+}
+.index .back-icon-btn:hover {
+  background: color-mix(in srgb, var(--ink) 6%, transparent);
+}
+.index .back-icon-btn:active {
+  transform: scale(0.93);
+}
+.index .back-label {
+  font-family: var(--font-head);
+  font-size: 14.5px;
+  color: var(--ink);
+}
+
+/* Groups the title text + count pill as ONE flex item, so the shared
+   `.sec-title`'s `justify-content: space-between` (built for exactly two
+   children — a label and a trailing `.sec-title-end`) still lands the count
+   right beside the title instead of floating it in the middle of the row. */
+.index .sec-title-main {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+/* Booking count — a quiet secondary fact, not a second heading. */
+.index .sec-count {
+  font-family: var(--font-mono);
+  font-size: 10.5px;
+  font-weight: 600;
+  color: var(--muted);
+  background: color-mix(in srgb, var(--ink) 5%, transparent);
+  border-radius: var(--radius-999);
+  padding: 1px 7px;
+}
+
+/* Category filter chips (ChoiceGrid pills layout, ui/primitives/choice-grid.css)
+   sit right under the search row — just spacing here. */
+.index .choice-grid.pills {
+  margin-bottom: 10px;
+}
+
+/* Search (ADR-0098 §2): an icon button reveals an inline text input. */
+.index .search-btn {
+  width: 34px;
+  height: 34px;
+  border-radius: 10px;
+  background: var(--card);
+  border: 1px solid var(--line);
+  display: grid;
+  place-items: center;
+  cursor: pointer;
+  color: var(--muted);
+  transition: transform 0.12s ease;
+}
+.index .search-btn:active {
+  transform: scale(0.92);
+}
+.index .search-row {
+  margin-bottom: 10px;
+}
+.index .search-box {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  background: var(--card);
+  border: 1px solid var(--soft-line);
+  border-radius: 12px;
+  padding: 8px 12px;
+}
+.index .search-box input {
+  flex: 1;
+  min-width: 0;
+  border: 0;
+  outline: 0;
+  font: inherit;
+  font-size: 13px;
+  background: none;
+  color: var(--ink);
+}
+.index .search-box .clear {
+  flex: 0 0 auto;
+  border: 0;
+  background: color-mix(in srgb, var(--ink) 8%, transparent);
+  border-radius: 50%;
+  width: 18px;
+  height: 18px;
+  font-size: 10px;
+  color: var(--muted);
+  cursor: pointer;
+  display: grid;
+  place-items: center;
+}
+
+/* Past-bookings toggle (ADR-0098 §2, mirrors ADR-0061's chk-toggle exactly —
+   but neutral, not plan-violet: the Index is mode-agnostic content, ADR-0049,
+   so it can't reach for a Plan-only accent). */
+.index .past-toggle {
+  font-size: 11px;
+  font-weight: 700;
+  color: var(--ink);
+  background: var(--card);
+  border: 1px solid var(--soft-line);
+  border-radius: var(--radius-999);
+  padding: 4px 11px;
+}
+.index .idx-past-title {
+  margin-top: 18px;
+}
+
+/* Per-row reveal motion (ADR-0098 §4): a filtered-out row shrinks + fades
+   instead of vanishing; a newly-shown row carries a small per-row
+   transition-delay (`lib/index-bookings.ts` `visibleRows`) so a chip/search
+   change reveals matches with a gentle stagger, not an all-at-once flip.
+   prefers-reduced-motion disables the transition globally (App.css). */
+.index .idx-row {
+  overflow: hidden;
+  max-height: 140px;
+  opacity: 1;
+  transition:
+    opacity 0.22s ease,
+    transform 0.22s ease,
+    max-height 0.22s ease;
+}
+.index .idx-row.hidden {
+  opacity: 0;
+  transform: translateY(-4px) scale(0.97);
+  max-height: 0;
+  pointer-events: none;
+}
+.index .idx-row.hidden .wp-listrow {
+  border-bottom-color: transparent;
+}
+.index .listcard .idx-row:last-child .wp-listrow {
+  border-bottom: none;
+}
+
 /* ===== Booking edit sheet (BookingSheet.tsx) — rides inside the generic
    .sheet-card; all rules scoped under .booking-sheet. ===== */
 .booking-sheet {

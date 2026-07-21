@@ -1,237 +1,122 @@
-// Index tab — the trip's bookings reference (ADR-0047/0049): flights, hotels,
-// restaurants and the like, with their confirmation codes and whether each is
-// scheduled on the itinerary. Tap a row to edit/delete it (BookingSheet); the
-// add-booking form is a later checkpoint. Content is identical in Plan/Trip mode
-// (ADR-0049) — the mode only tints the chrome, so this reads mode-agnostically.
-import { useEffect, useRef, useState } from 'react';
+// Index tab — a landing with two peer tiles (ADR-0098): bookings and documents
+// (ADR-0047/0049) each push their own dedicated full screen instead of sharing
+// one long page. The sub-screens are LOCAL VIEW STATE here, not routes — Index
+// already renders inside the one TripProvider the trip Shell mounts, and a
+// route would remount it for no reason (ADR-0098 §5). Back-to-landing is each
+// sub-view's own `useOverlay` registration, not this component's concern.
+// Content is identical in Plan/Trip mode (ADR-0049) — mode only tints chrome.
+import { useEffect, useState } from 'react';
 import { useSearchParams } from 'react-router-dom';
-import { BOOKING_TYPE, type Booking, type Place, type Trip } from '@waypoint/shared';
 import { useTrip } from '../state/trip-state';
 import { useClock } from '../lib/useClock';
-import { splitBookings, scheduleLabel, type BookingRow } from '../lib/index-bookings';
-import { bookingDurationUnit, formatBookingDuration } from '../lib/booking-timing';
-import { placeName } from '../lib/places';
-import { badgeClassForBookingType } from '../lib/transitions';
-import { EntitySyncBadge, useUnsynced } from '../ui/EntitySyncBadge';
-import { BOOKING_TYPE_ICON, CODE_PREFIX, ICONS } from '../constants';
-import { BookingSheet } from '../ui/BookingSheet';
-import { BookingDetail } from '../ui/BookingDetail';
-import { RouteLabel } from '../ui/RouteLabel';
-import { BookingManageSheet } from '../ui/BookingManageSheet';
-import { DocumentsSection } from '../ui/DocumentsSection';
-import { ListRow, type BadgeTone } from '../ui/domain';
+import { splitBookings, scheduleLabel } from '../lib/index-bookings';
+import { groupDocuments } from '../lib/documents';
+import { BookingTitle } from '../ui/BookingTitle';
+import { IndexBookingsView } from '../ui/IndexBookingsView';
+import { IndexDocumentsView } from '../ui/IndexDocumentsView';
+import { IndexTile } from '../ui/domain';
 import { Icon } from '../ui/Icon';
+import { ICONS } from '../constants';
 import { t } from '../i18n/he';
 
-const isTransport = (b: Booking): boolean =>
-  b.type === BOOKING_TYPE.FLIGHT || b.type === BOOKING_TYPE.TRAIN;
+type IndexView = 'landing' | 'bookings' | 'documents';
 
 export function Index() {
-  const { trip, bookings, places, events } = useTrip();
+  const { trip, bookings, places, events, documents } = useTrip();
   const now = useClock();
-  const { upcoming, past } = splitBookings(bookings, events, trip.timezone, now.getTime());
-  // null = closed; 'create' = new booking; a Booking = editing that one.
-  const [sheet, setSheet] = useState<Booking | 'create' | null>(null);
-  // The read-only detail view (ADR-0053) — tapping a row opens this, not the edit
-  // sheet; editing from here opens `sheet`.
-  const [detail, setDetail] = useState<Booking | null>(null);
-  // The row's "⋯" opens the manage sheet (edit / delete), like a document row.
-  const [manage, setManage] = useState<Booking | null>(null);
-  const openDetail = (booking: Booking) => setDetail(booking);
-  const editFrom = (booking: Booking) => {
-    setDetail(null);
-    setManage(null);
-    setSheet(booking);
-  };
+  const [view, setView] = useState<IndexView>('landing');
+  // Set alongside `view` by the ?booking= deep-link below, and handed to a
+  // freshly-mounted IndexBookingsView so it opens that booking's detail. A
+  // manual tile tap clears it first, so re-entering the bookings screen later
+  // doesn't reopen a stale detail from an earlier deep link.
+  const [pendingBookingId, setPendingBookingId] = useState<string | undefined>();
 
-  const docsRef = useRef<HTMLDivElement>(null);
-
-  // Deep-links from Home's quick-access (ADR-0050): ?booking=<id> opens that
-  // booking's sheet; ?focus=docs scrolls to the documents section. The params are
-  // cleared after so back/reload don't re-trigger.
+  // Home's quick-access deep-links (ADR-0050): ?booking=<id> opens the bookings
+  // screen with that booking's detail on top; ?focus=docs opens the documents
+  // screen directly (there's no longer a section on this page to scroll to).
+  // The params are cleared after so back/reload don't re-trigger.
   const [params, setParams] = useSearchParams();
   useEffect(() => {
     const id = params.get('booking');
     const focus = params.get('focus');
     if (!id && !focus) return;
     if (id) {
-      const target = bookings.find((b) => b.id === id);
-      if (target) setDetail(target);
+      setPendingBookingId(id);
+      setView('bookings');
     }
     if (focus === 'docs') {
-      docsRef.current?.scrollIntoView({ behavior: 'smooth', block: 'start' });
+      setView('documents');
     }
     const next = new URLSearchParams(params);
     next.delete('booking');
     next.delete('focus');
     setParams(next, { replace: true });
-  }, [params, bookings, setParams]);
+  }, [params, setParams]);
+
+  const openBookings = () => {
+    setPendingBookingId(undefined);
+    setView('bookings');
+  };
+  const backToLanding = () => setView('landing');
+
+  if (view === 'bookings') {
+    return (
+      <div className="index">
+        <IndexBookingsView onClose={backToLanding} initialBookingId={pendingBookingId} />
+      </div>
+    );
+  }
+  if (view === 'documents') {
+    return (
+      <div className="index">
+        <IndexDocumentsView onClose={backToLanding} />
+      </div>
+    );
+  }
+
+  const { upcoming, past } = splitBookings(bookings, events, trip.timezone, now.getTime());
+  const next = upcoming[0];
+  const bookingsSubtitle = next ? (
+    <>
+      🔗 {t.index.tile.nextPrefix} <BookingTitle booking={next.booking} places={places} />
+      {next.event && <> · {scheduleLabel(next.event, next.booking, trip, now)}</>}
+      {past.length > 0 && <> · {t.index.tile.pastCount(past.length)}</>}
+    </>
+  ) : (
+    t.index.tile.emptyBookings
+  );
+
+  const docGroups = groupDocuments(documents);
+  const documentsSubtitle =
+    docGroups.length > 0 ? (
+      <>🔒 {docGroups.map((g) => t.docs.group[g.type]).join(' · ')}</>
+    ) : (
+      t.index.tile.emptyDocuments
+    );
 
   return (
     <div className="index">
-      <div className="sec-title">
-        {t.index.bookingsTitle}
+      {/* Offline status is a page-level fact — shown once, on the landing. */}
+      <div className="index-status">
         <span className="badge-offline">
           <Icon name="download" /> {t.index.offlineBadge}
         </span>
       </div>
 
-      {bookings.length === 0 ? (
-        <div className="empty-card">
-          <div className="ei">📇</div>
-          <div className="et">{t.index.emptyTitle}</div>
-          <div className="es">{t.index.emptyBody}</div>
-          <button type="button" className="ea" onClick={() => setSheet('create')}>
-            {t.index.form.add}
-          </button>
-        </div>
-      ) : (
-        <>
-          <button type="button" className="addbtn" onClick={() => setSheet('create')}>
-            {t.index.form.add}
-          </button>
-          <div className="listcard">
-            {upcoming.map((row) => (
-              <BookingLi
-                key={row.booking.id}
-                row={row}
-                places={places}
-                trip={trip}
-                now={now}
-                onOpen={openDetail}
-                onManage={setManage}
-              />
-            ))}
-          </div>
-          {past.length > 0 && (
-            <>
-              <div className="past-head">{t.index.pastHead}</div>
-              <div className="listcard past">
-                {past.map((row) => (
-                  <BookingLi
-                    key={row.booking.id}
-                    row={row}
-                    places={places}
-                    trip={trip}
-                    now={now}
-                    onOpen={openDetail}
-                    onManage={setManage}
-                  />
-                ))}
-              </div>
-            </>
-          )}
-        </>
-      )}
-
-      <div ref={docsRef}>
-        <DocumentsSection />
-      </div>
-
-      {detail && (
-        <BookingDetail booking={detail} onClose={() => setDetail(null)} onEdit={editFrom} />
-      )}
-      {manage && (
-        <BookingManageSheet booking={manage} onClose={() => setManage(null)} onEdit={editFrom} />
-      )}
-      {sheet && (
-        <BookingSheet booking={sheet === 'create' ? null : sheet} onClose={() => setSheet(null)} />
-      )}
+      <IndexTile
+        icon={ICONS.ticket}
+        title={t.index.bookingsTitle}
+        count={bookings.length}
+        subtitle={bookingsSubtitle}
+        onOpen={openBookings}
+      />
+      <IndexTile
+        icon={ICONS.documents}
+        title={t.docs.title}
+        count={documents.length}
+        subtitle={documentsSubtitle}
+        onOpen={() => setView('documents')}
+      />
     </div>
   );
-}
-
-function BookingLi({
-  row,
-  places,
-  trip,
-  now,
-  onOpen,
-  onManage,
-}: {
-  row: BookingRow;
-  places: Place[];
-  trip: Trip;
-  now: Date;
-  onOpen: (booking: Booking) => void;
-  onManage: (booking: Booking) => void;
-}) {
-  const { booking, event } = row;
-  const icon = event?.icon ?? BOOKING_TYPE_ICON[booking.type];
-  // Shared booking grammar (ADR-0059 §3): the badge is tinted by category (teal
-  // for a stay, amber for transport), and a hard booking wears the lock.
-  const badgeClass = badgeClassForBookingType(booking.type);
-  const badgeTone: BadgeTone | undefined =
-    badgeClass === 'stay' || badgeClass === 'trans' ? badgeClass : undefined;
-  const isHard = event?.kind === 'hard';
-  // A queued (pending) write fades the row to read as provisional (ADR-0092).
-  const unsynced = useUnsynced(booking.id);
-
-  // The shared list-row (U-03): the badge+title open the read-only detail view
-  // (ADR-0053); the "⋯" opens the manage sheet (edit / delete). The code chip
-  // rides the trailing slot; the sync marker sits in the aligned sync column
-  // (ADR-0091), silent unless pending/failed.
-  return (
-    <ListRow
-      icon={icon}
-      badgeTone={badgeTone}
-      onOpen={() => onOpen(booking)}
-      openLabel={booking.title}
-      title={
-        <>
-          <BookingTitle booking={booking} places={places} />
-          {isHard && (
-            <span className="bk-lock" aria-hidden="true">
-              {ICONS.lock}
-            </span>
-          )}
-          <span className="tag-type">{t.index.bookingType[booking.type]}</span>
-        </>
-      }
-      meta={
-        event ? (
-          <span className="link-cue">
-            🔗 {scheduleLabel(event, booking, trip, now)}
-            {(() => {
-              // Duration alongside the transition time, phrased per the booking
-              // type (hours / nights / days) via the shared formatter (ADR-0063);
-              // the type is the authority, not the icon-overridable event category.
-              const dur = formatBookingDuration(
-                event,
-                trip.timezone,
-                bookingDurationUnit(booking.type),
-              );
-              return dur ? <span className="bk-dur"> · {dur}</span> : null;
-            })()}
-          </span>
-        ) : (
-          <span className="unlinked">{t.index.unlinked}</span>
-        )
-      }
-      right={
-        booking.confirmationCode && (
-          <span className="code" dir="ltr">
-            {CODE_PREFIX}
-            {booking.confirmationCode}
-          </span>
-        )
-      }
-      sync={<EntitySyncBadge id={booking.id} />}
-      unsynced={unsynced}
-      onManage={() => onManage(booking)}
-      manageLabel={t.index.detail.actions}
-    />
-  );
-}
-
-/** Transport shows its origin → destination Places (ADR-0048); everything else
- *  shows the booking title. Falls back to the title if a transport row has no
- *  endpoints yet. */
-function BookingTitle({ booking, places }: { booking: Booking; places: Place[] }) {
-  const from = placeName(places, booking.fromPlaceId);
-  const to = placeName(places, booking.toPlaceId);
-  if (isTransport(booking) && (from || to)) {
-    return <RouteLabel from={from} to={to} />;
-  }
-  return <span>{booking.title}</span>;
 }
