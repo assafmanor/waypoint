@@ -44,10 +44,39 @@ const SNAPSHOT = {
 };
 const ME = { user: USER, memberships: [MEMBERSHIP] };
 
+/** Two unlinked bookings of DIFFERENT types, so the Index bookings screen shows
+ *  category filter chips (one per type with count > 0, ADR-0101) — the fixture
+ *  the back-navigation category-filter repro (ADR-0103) needs. Unlinked (no
+ *  event) is enough: the chips derive from `countByCategory`, not the timeline. */
+export const TWO_TYPE_BOOKINGS = [
+  {
+    id: 'bk-flight',
+    tripId: 't1',
+    type: 'flight',
+    title: 'Tokyo flight',
+    source: 'manual',
+    createdAt: '2024-01-01T00:00:00.000Z',
+    updatedAt: '2024-01-01T00:00:00.000Z',
+    updatedBy: 'u1',
+  },
+  {
+    id: 'bk-hotel',
+    tripId: 't1',
+    type: 'hotel',
+    title: 'Shinjuku hotel',
+    source: 'manual',
+    createdAt: '2024-01-01T00:00:00.000Z',
+    updatedAt: '2024-01-01T00:00:00.000Z',
+    updatedBy: 'u1',
+  },
+];
+
 /** Register the boot route mocks + seed the two per-device localStorage keys, so
  *  a plain `page.goto('/')` cold-boots straight into the trip Home as the FIRST
- *  history entry (index 0) — exactly the case the Android back-guard exists for. */
-export async function bootIntoTrip(page: Page): Promise<void> {
+ *  history entry (index 0) — exactly the case the Android back-guard exists for.
+ *  Pass `bookings` to seed the trip snapshot (default: none). */
+export async function bootIntoTrip(page: Page, opts: { bookings?: unknown[] } = {}): Promise<void> {
+  const snapshot = { ...SNAPSHOT, bookings: opts.bookings ?? SNAPSHOT.bookings };
   await page.route(
     (u) => u.pathname.endsWith('/auth/refresh'),
     (r) => r.fulfill({ json: { accessToken: 'test-token' } }),
@@ -62,7 +91,7 @@ export async function bootIntoTrip(page: Page): Promise<void> {
   );
   await page.route(
     (u) => u.pathname === '/trips/t1/snapshot',
-    (r) => r.fulfill({ json: SNAPSHOT }),
+    (r) => r.fulfill({ json: snapshot }),
   );
   await page.route(
     (u) => u.pathname === '/trips/t1/changes',
