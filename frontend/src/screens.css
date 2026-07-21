@@ -2710,6 +2710,17 @@
   padding-top: 2px;
   margin-bottom: 6px;
 }
+/* The shared `.sec-title`'s 22px top margin is sized for separating a section
+   from hero/board chrome above it elsewhere in the app; right under this
+   compact back-row it reads as a large empty gap (a real bug users noticed —
+   the sub-screen header looked like an oversized, mostly-blank block). Pull
+   it in to the mockup's own spacing for this combination. Covers both
+   dedicated screens: IndexBookingsView's own `.sec-title` and
+   DocumentsSection's (unchanged, ADR-0098 §2), since both sit directly after
+   this back-row. */
+.index .back-row + .sec-title {
+  margin-top: 4px;
+}
 .index .back-icon-btn {
   width: 34px;
   height: 34px;
