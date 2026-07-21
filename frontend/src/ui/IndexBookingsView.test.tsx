@@ -1,7 +1,7 @@
 // @vitest-environment jsdom
 import { afterEach, describe, it, expect, vi } from 'vitest';
 import { type ReactNode } from 'react';
-import { cleanup, fireEvent, render, screen } from '@testing-library/react';
+import { cleanup, fireEvent, render, screen, within } from '@testing-library/react';
 import { MemoryRouter } from 'react-router-dom';
 import { BOOKING_SOURCE, BOOKING_TYPE, type Booking } from '@waypoint/shared';
 
@@ -118,7 +118,7 @@ describe('IndexBookingsView (ADR-0098)', () => {
 
   it("opens that booking's detail on mount when given an initialBookingId (ADR-0050 deep link)", () => {
     render(wrap(<IndexBookingsView onClose={() => {}} initialBookingId="b2" />));
-    expect(screen.getByRole('dialog')).toBeTruthy();
-    expect(screen.getByText('Shinjuku Granbell')).toBeTruthy();
+    const dialog = screen.getByRole('dialog');
+    expect(within(dialog).getByText('Shinjuku Granbell')).toBeTruthy();
   });
 });

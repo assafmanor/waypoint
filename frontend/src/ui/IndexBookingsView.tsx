@@ -117,7 +117,7 @@ export function IndexBookingsView({
 
       {searchOpen && (
         <div className="search-row">
-          <div className="search-box on">
+          <div className="search-box">
             <span aria-hidden="true">🔍</span>
             <input
               type="text"

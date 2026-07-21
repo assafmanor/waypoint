@@ -20,6 +20,7 @@ import { computeReadiness, type CheckId, type ReadinessCheck } from '../lib/read
 import { BookingSheet, type BookingSeed } from '../ui/BookingSheet';
 import { DocumentUploadSheet } from '../ui/DocumentUploadSheet';
 import { StatTile } from '../ui/domain';
+import { CollapseToggle, Collapsible } from '../ui/primitives/Collapsible';
 import { MS_PER_DAY, type TabId } from '../constants';
 import { t } from '../i18n/he';
 
@@ -235,15 +236,13 @@ export function PlanHome({ onNavigate }: { onNavigate: (tab: TabId) => void }) {
             <span className="hint">{t.planHome.checklist.allDone}</span>
           )}
           {completedChecks.length > 0 && (
-            <button
-              type="button"
+            <CollapseToggle
+              expanded={showCompleted}
+              onToggle={() => setShowCompleted((v) => !v)}
+              expandLabel={t.planHome.checklist.showCompleted(completedChecks.length)}
+              collapseLabel={t.planHome.checklist.hideCompleted}
               className="chk-toggle"
-              onClick={() => setShowCompleted((v) => !v)}
-            >
-              {showCompleted
-                ? t.planHome.checklist.hideCompleted
-                : t.planHome.checklist.showCompleted(completedChecks.length)}
-            </button>
+            />
           )}
         </span>
       </div>
@@ -280,9 +279,22 @@ export function PlanHome({ onNavigate }: { onNavigate: (tab: TabId) => void }) {
         </div>
       )}
 
-      {completedChecks.length > 0 &&
-        (showCompleted ? (
-          <div className="checklist">
+      {completedChecks.length > 0 && (
+        <>
+          {/* The collapsed teaser (a static pill row, not itself animated) sits
+              above the animated checklist so the count-in-label toggle always
+              has something legible to point at while collapsed. */}
+          {!showCompleted && (
+            <div className="chk-done-sum">
+              <span className="ok">✓ {t.planHome.checklist.completedSummary}</span>
+              {completedChecks.map((check) => (
+                <span className="pill" key={check.id}>
+                  {CHECK_ICON[check.id]} {t.planHome.checklist.summaryLabels[check.id]}
+                </span>
+              ))}
+            </div>
+          )}
+          <Collapsible expanded={showCompleted} className="checklist">
             {completedChecks.map((check) => {
               const row = rowFor(check);
               return (
@@ -296,17 +308,9 @@ export function PlanHome({ onNavigate }: { onNavigate: (tab: TabId) => void }) {
                 </div>
               );
             })}
-          </div>
-        ) : (
-          <div className="chk-done-sum">
-            <span className="ok">✓ {t.planHome.checklist.completedSummary}</span>
-            {completedChecks.map((check) => (
-              <span className="pill" key={check.id}>
-                {CHECK_ICON[check.id]} {t.planHome.checklist.summaryLabels[check.id]}
-              </span>
-            ))}
-          </div>
-        ))}
+          </Collapsible>
+        </>
+      )}
 
       <div className="sec-title">{t.planHome.stats.title}</div>
       <div className="prep-stats">
