@@ -1,0 +1,1364 @@
+<!doctype html>
+<!-- Index bookings screen — COMPACT / MODE-COLOR v2 (2026-07-21 session, feedback
+     on the shipped ADR-0098 build). Assaf: "the search bar and the closeby area
+     [doesn't] read as polished... I can't exactly say what." Two fixes landed on
+     the real app first (search bar replaces the title row instead of stacking a
+     row; the search toggle got a text label to match every other icon in that
+     header slot). Then a reference screenshot: "I like this one much better:
+     Plan vs. Trip mode color palette (colored icons can be deferred for now),
+     much more compact top and search bars." One correction on the reference
+     itself: its back arrow sat alone at the far edge pointing the wrong way —
+     fixed here to sit beside "אינדקס" and point right, matching the shipped
+     `.back` pattern (TripSettings.tsx/AllTrips.tsx, NavArrow's `back` variant).
+
+     WHAT'S DIFFERENT FROM THE SHIPPED BUILD (index-findability-split-v1.html):
+     1. The back-row and the title/count row MERGE into one compact line:
+        [← visually-right-pointing-arrow][אינדקס] ............ [18 הזמנות]
+        instead of two stacked rows. Saves the ~40px the two-row header cost.
+     2. The category chips + search become one denser row: each chip carries
+        label + icon + count together ("רכבת 🚄 2"), the selected "הכל" chip
+        shows its own count ("הכל 18"), and search is a small icon-only circle
+        at the end of the row (context comes from sitting among the other pills
+        — unlike the shipped build's now-labelled toggle, which sits ALONE in
+        its own row with nothing to anchor it, per the fix already on main).
+     3. Plan vs. Trip mode color palette: tapping the mode pill re-skins the
+        WHOLE screen — header chrome (dark indigo Trip / light paper Plan,
+        design-language.md's mode-identity table), and — new here — the
+        Index's own accent (selected chip / "הכל" fill / add-button / search
+        icon): neutral ink in Trip mode (unchanged from the shipped build),
+        plan violet in Plan mode. This is a real scope question, not yet an
+        ADR: ADR-0098 built the Index as strictly mode-agnostic content
+        ("neutral — never tinted, amber/teal/violet stay reserved"). Extending
+        Plan mode's own violet identity to the Index's chrome/controls (NOT
+        per-category tinting — every category chip still shares the one
+        accent) is closer to precedent than it first looks: the nav-bar's
+        active-tab indicator already follows mode identity today. Still,
+        Index's mode-agnostic decision doesn't reverse itself here — flag it
+        for an ADR amendment if this direction is confirmed. Colored category
+        badges (the 🚄/✈️/🏨 icons themselves) are explicitly DEFERRED per
+        Assaf — badges stay neutral paper in both modes.
+     4. Documents screen gets the identical merged back+title+count row for
+        consistency ("then the document view could look the same") — its
+        content (type-grouped list) is otherwise untouched.
+
+     NOT explored here: the reference screenshot's darker/denser list-row
+     styling, the heart/favorite icon on a booking row, or per-list-row color —
+     out of scope for this pass, which is header/chip-row density + mode color
+     only. Past-bookings collapse, the empty/no-match states, and the motion
+     pass carry over unchanged from index-findability-split-v1.html. -->
+<html lang="he" dir="rtl">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>אינדקס · הזמנות · מוקאפ קומפקטי v2</title>
+    <link rel="preconnect" href="https://fonts.googleapis.com" />
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+    <link
+      href="https://fonts.googleapis.com/css2?family=Assistant:wght@400;500;600;700&family=Secular+One&family=JetBrains+Mono:wght@500;700&display=swap"
+      rel="stylesheet"
+    />
+    <style>
+      :root {
+        --ink: #16233d;
+        --indigo: #1b2a4a;
+        --screen: #e7eaef;
+        --card: #ffffff;
+        --paper: #f3efe6;
+        --amber: #e9a63c;
+        --amber-deep: #c9822a;
+        --teal: #2c9c90;
+        --plan: #6e59d6;
+        --plan-deep: #5747b4;
+        --plan-tint: rgba(110, 89, 214, 0.1);
+        --ok: #3c9a6b;
+        --miss: #c2584e;
+        --muted: #6c7488;
+        --line: rgba(22, 35, 61, 0.1);
+        --soft-line: rgba(22, 35, 61, 0.28);
+        /* The Index's own accent — neutral ink in Trip mode (unchanged from the
+           shipped build), swapped to plan violet under [data-mode="plan"] below.
+           Everything that reads this token shares ONE accent; no per-category
+           tinting. */
+        --idx-accent: var(--ink);
+        --idx-accent-text: #fff;
+      }
+      * {
+        box-sizing: border-box;
+        margin: 0;
+        padding: 0;
+      }
+      html,
+      body {
+        height: 100%;
+      }
+      body {
+        font-family: 'Assistant', system-ui, sans-serif;
+        background:
+          radial-gradient(120% 90% at 80% -10%, #2a3e68 0%, transparent 55%),
+          radial-gradient(120% 90% at 0% 110%, #1a2a4a 0%, transparent 50%), #0f1a31;
+        color: var(--ink);
+        min-height: 100vh;
+        display: flex;
+        flex-direction: column;
+        align-items: center;
+        padding: 24px 16px 40px;
+        -webkit-font-smoothing: antialiased;
+      }
+      .caption {
+        text-align: center;
+        color: #aeb9d4;
+        font-size: 12.5px;
+        margin-bottom: 6px;
+        font-weight: 500;
+        max-width: 420px;
+      }
+      .caption b {
+        color: #fff;
+        font-weight: 600;
+      }
+      .adr-note {
+        text-align: center;
+        color: #7f8db0;
+        font-size: 11px;
+        margin-bottom: 14px;
+        max-width: 400px;
+      }
+
+      .demo-toggle {
+        display: inline-flex;
+        background: rgba(255, 255, 255, 0.08);
+        border: 1px solid rgba(255, 255, 255, 0.16);
+        border-radius: 999px;
+        padding: 3px;
+        gap: 2px;
+        margin-bottom: 16px;
+      }
+      .demo-toggle button {
+        font: inherit;
+        font-size: 12px;
+        font-weight: 600;
+        color: #9daac8;
+        background: none;
+        border: 0;
+        border-radius: 999px;
+        padding: 6px 15px;
+        cursor: pointer;
+      }
+      .demo-toggle button.on {
+        background: #fff;
+        color: var(--ink);
+      }
+
+      .phone {
+        width: 100%;
+        max-width: 392px;
+        background: var(--screen);
+        border-radius: 38px;
+        box-shadow:
+          0 18px 40px -18px rgba(14, 23, 41, 0.45),
+          0 0 0 10px #0b1526,
+          0 0 0 12px #223257;
+        overflow: hidden;
+        position: relative;
+        height: 812px;
+        display: flex;
+        flex-direction: column;
+        transition:
+          background 0.3s ease,
+          color 0.3s ease;
+      }
+      .statusbar {
+        background: var(--indigo);
+        color: #dce3f2;
+        display: flex;
+        justify-content: space-between;
+        align-items: center;
+        padding: 11px 22px 8px;
+        font-size: 13px;
+        font-weight: 600;
+        font-family: 'JetBrains Mono', monospace;
+        transition: background 0.3s ease;
+      }
+      .statusbar .dots {
+        letter-spacing: 2px;
+        opacity: 0.85;
+      }
+      .header {
+        background: var(--indigo);
+        color: #fff;
+        padding: 6px 20px 14px;
+        transition:
+          background 0.3s ease,
+          color 0.3s ease;
+      }
+      .mode-row {
+        display: flex;
+        justify-content: center;
+        margin: 2px 0 12px;
+      }
+      .mode-toggle {
+        display: inline-flex;
+        background: rgba(255, 255, 255, 0.08);
+        border: 1px solid rgba(255, 255, 255, 0.14);
+        border-radius: 999px;
+        padding: 3px;
+        gap: 2px;
+      }
+      .mode-toggle .m {
+        font: inherit;
+        font-size: 13px;
+        font-weight: 600;
+        color: #9daac8;
+        background: none;
+        border: 0;
+        border-radius: 999px;
+        padding: 6px 16px;
+        cursor: pointer;
+        display: flex;
+        align-items: center;
+        gap: 6px;
+      }
+      .mode-toggle .m.on {
+        background: var(--amber);
+        color: #3a2405;
+      }
+      .trip-row {
+        display: flex;
+        justify-content: space-between;
+        align-items: flex-start;
+      }
+      .trip-switch {
+        display: inline-flex;
+        align-items: center;
+        gap: 8px;
+        background: rgba(255, 255, 255, 0.09);
+        border: 1px solid rgba(255, 255, 255, 0.16);
+        border-radius: 999px;
+        padding: 5px 8px 5px 14px;
+        font: inherit;
+        color: inherit;
+        cursor: pointer;
+      }
+      .trip-name {
+        font-family: 'Secular One', sans-serif;
+        font-size: 22px;
+        line-height: 1.05;
+      }
+      .trip-switch .chev {
+        width: 22px;
+        height: 22px;
+        border-radius: 50%;
+        background: rgba(255, 255, 255, 0.14);
+        display: grid;
+        place-items: center;
+        font-size: 11px;
+        flex: 0 0 auto;
+      }
+      .icon,
+      .nav-arrow {
+        display: inline-block;
+        vertical-align: -0.125em;
+        width: 1em;
+        height: 1em;
+        flex: 0 0 auto;
+      }
+      .nav-arrow-back {
+        transform: scaleX(-1);
+      }
+      .route {
+        display: inline-flex;
+        direction: rtl;
+        align-items: baseline;
+        font-weight: 700;
+      }
+      .route .arr {
+        color: var(--muted);
+        padding: 0 4px;
+      }
+      .trip-sub {
+        color: #9daac8;
+        font-size: 13px;
+        margin-top: 5px;
+        font-weight: 500;
+      }
+      .trip-sub .dot {
+        opacity: 0.5;
+        margin: 0 6px;
+      }
+      .header-actions {
+        display: flex;
+        align-items: center;
+        gap: 8px;
+      }
+      .avatars {
+        display: flex;
+        flex-direction: row-reverse;
+        margin-inline-end: 4px;
+      }
+      .av {
+        width: 30px;
+        height: 30px;
+        border-radius: 50%;
+        display: grid;
+        place-items: center;
+        color: #12203a;
+        font-weight: 700;
+        font-size: 12px;
+        border: 2px solid var(--indigo);
+        margin-inline-start: -9px;
+        transition: border-color 0.3s ease;
+      }
+      .av.more {
+        background: rgba(255, 255, 255, 0.14);
+        color: #dce3f2;
+        font-size: 11px;
+      }
+      .gear-btn {
+        width: 32px;
+        height: 32px;
+        border-radius: 50%;
+        display: grid;
+        place-items: center;
+        background: rgba(255, 255, 255, 0.12);
+        border: 1px solid rgba(255, 255, 255, 0.22);
+        color: #fff;
+        font-size: 14px;
+        cursor: pointer;
+        transition:
+          background 0.3s ease,
+          border-color 0.3s ease,
+          color 0.3s ease;
+      }
+
+      /* ===== Plan-mode "drafting table" chrome (design-language.md mode
+         identity: light paper header + violet accents, vs. Trip's dark indigo +
+         amber). Only the header re-skins — the body stays on --screen/--card in
+         both modes ("the board is rationed" — Index carries no board-hero). ===== */
+      .phone[data-mode='plan'] .statusbar,
+      .phone[data-mode='plan'] .header {
+        background: var(--paper);
+        color: var(--ink);
+      }
+      .phone[data-mode='plan'] .statusbar {
+        color: var(--ink);
+      }
+      .phone[data-mode='plan'] .mode-toggle {
+        background: rgba(22, 35, 61, 0.05);
+        border-color: var(--soft-line);
+      }
+      .phone[data-mode='plan'] .mode-toggle .m {
+        color: var(--muted);
+      }
+      .phone[data-mode='plan'] .mode-toggle .m.on {
+        background: var(--plan);
+        color: #fff;
+      }
+      .phone[data-mode='plan'] .trip-switch {
+        background: var(--card);
+        border-color: var(--line);
+        color: var(--ink);
+      }
+      .phone[data-mode='plan'] .trip-switch .chev {
+        background: var(--plan-tint);
+        color: var(--plan-deep);
+      }
+      .phone[data-mode='plan'] .trip-sub {
+        color: var(--muted);
+      }
+      .phone[data-mode='plan'] .av {
+        border-color: var(--paper);
+      }
+      .phone[data-mode='plan'] .av.more {
+        background: var(--plan-tint);
+        color: var(--plan-deep);
+      }
+      .phone[data-mode='plan'] .gear-btn {
+        background: var(--plan-tint);
+        border-color: transparent;
+        color: var(--plan-deep);
+      }
+      .phone[data-mode='plan'] .daystrip .d {
+        background: var(--card);
+        border-color: var(--line);
+        color: var(--ink);
+      }
+      .phone[data-mode='plan'] .daystrip .d.on {
+        background: var(--plan);
+        border-color: var(--plan);
+        color: #fff;
+      }
+      /* The Index's own accent follows the mode (new in v2) — neutral ink stays
+         the Trip-mode default (--idx-accent's :root value), plan violet only
+         under this attribute. One shared accent, not per-category color. */
+      .phone[data-mode='plan'] {
+        --idx-accent: var(--plan);
+        --idx-accent-text: #fff;
+      }
+
+      .daystrip {
+        display: flex;
+        gap: 6px;
+        overflow-x: auto;
+        scrollbar-width: none;
+        margin-top: 12px;
+      }
+      .daystrip::-webkit-scrollbar {
+        height: 0;
+      }
+      .daystrip .d {
+        flex: 0 0 auto;
+        width: 40px;
+        text-align: center;
+        background: rgba(255, 255, 255, 0.08);
+        border: 1px solid rgba(255, 255, 255, 0.14);
+        border-radius: 11px;
+        padding: 6px 0;
+        font-size: 10.5px;
+        color: #b9c2d8;
+      }
+      .daystrip .d b {
+        display: block;
+        font-size: 14px;
+        color: #fff;
+      }
+      .daystrip .d.on {
+        background: var(--amber);
+        border-color: var(--amber);
+        color: #3a2405;
+      }
+      .daystrip .d.on b {
+        color: #3a2405;
+      }
+
+      .body {
+        flex: 1;
+        overflow-y: auto;
+        padding: 0 16px 40px;
+        position: relative;
+      }
+      .body::-webkit-scrollbar {
+        width: 0;
+      }
+
+      /* ===== 1. the merged back+title+count row (v2's main structural change).
+         Reading right-to-left: [back arrow][אינדקס] ............ [count pill].
+         The arrow sits immediately beside the title it returns to — matching
+         the shipped `.back` pattern everywhere else (TripSettings/AllTrips) —
+         instead of floating alone at the opposite edge (the reference
+         screenshot's own arrangement, which is what Assaf flagged to fix). ===== */
+      .idx-head {
+        display: flex;
+        align-items: center;
+        justify-content: space-between;
+        padding-top: 12px;
+        margin-bottom: 10px;
+      }
+      .idx-head-start {
+        display: flex;
+        align-items: center;
+        gap: 10px;
+      }
+      .back-icon-btn {
+        width: 32px;
+        height: 32px;
+        border-radius: 10px;
+        background: var(--card);
+        border: 1px solid var(--line);
+        display: grid;
+        place-items: center;
+        color: var(--ink);
+        font-size: 14px;
+        cursor: pointer;
+        transition:
+          background 0.15s ease,
+          transform 0.12s ease;
+      }
+      .back-icon-btn:active {
+        transform: scale(0.93);
+      }
+      .idx-head-title {
+        font-family: 'Secular One', sans-serif;
+        font-size: 16px;
+        color: var(--ink);
+      }
+      .idx-head-count {
+        font-family: 'JetBrains Mono', monospace;
+        font-size: 11px;
+        font-weight: 700;
+        color: var(--muted);
+        background: rgba(22, 35, 61, 0.06);
+        border-radius: 999px;
+        padding: 3px 10px;
+      }
+
+      /* ===== 2. one dense chip+search row (v3 refinement) — the search icon is
+         a FIXED control at the row's left end (never part of the scrolling
+         chip collection, always reachable without scrolling); tapping it
+         expands a search bar that COVERS the chip strip in place (not a
+         separate row) with a small "grows from the icon" animation, chips
+         fading out as the bar fades/scales in. Reversed once from a v2 draft
+         that put search inline at the scroll's trailing end — Assaf: fixed on
+         the left, not scrolling away. ===== */
+      .filter-row {
+        display: flex;
+        align-items: center;
+        gap: 8px;
+        margin-bottom: 10px;
+      }
+      .chip-slot {
+        flex: 1;
+        min-width: 0;
+        position: relative;
+        height: 32px;
+      }
+      .chip-scroll {
+        position: absolute;
+        inset: 0;
+        display: flex;
+        align-items: center;
+        gap: 6px;
+        overflow-x: auto;
+        scrollbar-width: none;
+        /* Without this, the row can rest at ANY scroll offset — including one
+           that bisects a chip right at the boundary next to the fixed search
+           button, visible even on first load before any scrolling happens.
+           scroll-snap forces every resting position (initial and post-scroll)
+           to align a chip's own edge with the container's. That fixes the
+           FIRST visible chip (nearest scroll-start); it can't fix the LAST
+           one (nearest the opposite edge) since the container's width is
+           never an exact multiple of chip widths — there's always a trailing
+           chip peeking in. Rather than hard-clip that peek (which read as
+           broken, not as a scroll hint), a mask fades it to transparent at
+           both edges — a physical left→right gradient, so it's the same in
+           either text direction. */
+        scroll-snap-type: x mandatory;
+        -webkit-mask-image: linear-gradient(
+          to right,
+          transparent 0,
+          black 14px,
+          black calc(100% - 14px),
+          transparent 100%
+        );
+        mask-image: linear-gradient(
+          to right,
+          transparent 0,
+          black 14px,
+          black calc(100% - 14px),
+          transparent 100%
+        );
+        transition:
+          opacity 0.16s ease,
+          transform 0.22s cubic-bezier(0.3, 0.9, 0.4, 1);
+      }
+      .chip-scroll::-webkit-scrollbar {
+        height: 0;
+      }
+      .chip-slot.searching .chip-scroll {
+        opacity: 0;
+        transform: translateX(-6px) scale(0.98);
+        pointer-events: none;
+      }
+      .chip2 {
+        flex: 0 0 auto;
+        display: flex;
+        align-items: center;
+        gap: 5px;
+        background: var(--card);
+        border: 1px solid var(--line);
+        color: var(--muted);
+        font: inherit;
+        font-size: 11.5px;
+        font-weight: 700;
+        border-radius: 999px;
+        padding: 6px 11px;
+        cursor: pointer;
+        scroll-snap-align: start;
+        transition:
+          background 0.15s ease,
+          color 0.15s ease,
+          border-color 0.15s ease,
+          transform 0.12s ease;
+      }
+      .chip2 .cnt {
+        font-family: 'JetBrains Mono', monospace;
+        opacity: 0.75;
+      }
+      .chip2.on {
+        background: var(--idx-accent);
+        border-color: var(--idx-accent);
+        color: var(--idx-accent-text);
+      }
+      .chip2.on .cnt {
+        opacity: 0.85;
+      }
+      .chip2:active {
+        transform: scale(0.94);
+      }
+      /* The overlay search bar — same box as the chip strip it covers, grown
+         in from the icon's side (transform-origin: left, since the icon sits
+         fixed at the left end) rather than just fading in place. */
+      .search-inline2 {
+        position: absolute;
+        inset: 0;
+        display: flex;
+        align-items: center;
+        gap: 8px;
+        background: var(--card);
+        border: 1px solid var(--soft-line);
+        border-radius: 999px;
+        padding: 0 12px;
+        opacity: 0;
+        transform: scaleX(0.88);
+        transform-origin: left center;
+        pointer-events: none;
+        transition:
+          opacity 0.2s ease,
+          transform 0.26s cubic-bezier(0.22, 0.8, 0.3, 1.1);
+      }
+      .chip-slot.searching .search-inline2 {
+        opacity: 1;
+        transform: scaleX(1);
+        pointer-events: auto;
+      }
+      .search-inline2 input {
+        flex: 1;
+        min-width: 0;
+        border: 0;
+        outline: 0;
+        font: inherit;
+        font-size: 13px;
+        background: none;
+        color: var(--ink);
+      }
+      .search-inline2 .clear {
+        flex: 0 0 auto;
+        border: 0;
+        background: rgba(22, 35, 61, 0.08);
+        border-radius: 50%;
+        width: 18px;
+        height: 18px;
+        color: var(--muted);
+        cursor: pointer;
+        display: grid;
+        place-items: center;
+      }
+      .search-inline2 .clear svg {
+        width: 9px;
+        height: 9px;
+      }
+      /* Fixed at the row's left end — outside the scrolling chip strip, always
+         reachable, never scrolls away. Tints with the mode accent while open
+         so it doubles as the "search is active" indicator. A minimal line-icon
+         (real SVG, not an emoji) in the same rounded-SQUARE shape as
+         .back-icon-btn — not a circle — matching the reference screenshot. */
+      .search-icon-btn {
+        flex: 0 0 auto;
+        width: 32px;
+        height: 32px;
+        border-radius: 10px;
+        background: var(--card);
+        border: 1px solid var(--line);
+        display: grid;
+        place-items: center;
+        color: var(--muted);
+        cursor: pointer;
+        transition:
+          transform 0.12s ease,
+          background 0.18s ease,
+          border-color 0.18s ease,
+          color 0.18s ease;
+      }
+      .search-icon-btn svg {
+        width: 15px;
+        height: 15px;
+      }
+      .search-icon-btn.on {
+        background: var(--idx-accent);
+        border-color: var(--idx-accent);
+        color: var(--idx-accent-text);
+      }
+      .search-icon-btn:active {
+        transform: scale(0.9);
+      }
+      .no-match {
+        text-align: center;
+        color: var(--muted);
+        font-size: 12px;
+        font-weight: 600;
+        padding: 16px 10px;
+        background: var(--card);
+        border: 1px dashed var(--soft-line);
+        border-radius: 14px;
+      }
+
+      .addbtn {
+        width: 100%;
+        background: transparent;
+        border: 1.5px dashed var(--soft-line);
+        color: var(--idx-accent);
+        font: inherit;
+        font-weight: 700;
+        font-size: 12.5px;
+        border-radius: 13px;
+        padding: 11px;
+        cursor: pointer;
+        margin-bottom: 10px;
+        transition:
+          transform 0.12s ease,
+          color 0.2s ease;
+      }
+      .addbtn:active {
+        transform: scale(0.98);
+      }
+
+      .listcard {
+        background: var(--card);
+        border: 1px solid var(--line);
+        border-radius: 16px;
+        overflow: hidden;
+      }
+      .li {
+        display: flex;
+        align-items: center;
+        gap: 11px;
+        padding: 12px 14px;
+        border-bottom: 1px solid var(--line);
+        cursor: pointer;
+        max-height: 200px;
+        opacity: 1;
+        transition:
+          opacity 0.22s ease,
+          transform 0.22s ease,
+          max-height 0.22s ease,
+          padding 0.22s ease;
+      }
+      .li:last-child {
+        border-bottom: none;
+      }
+      .li.size-hidden {
+        display: none;
+      }
+      .li.hidden {
+        opacity: 0;
+        transform: translateY(-4px) scale(0.97);
+        max-height: 0;
+        padding-top: 0;
+        padding-bottom: 0;
+        overflow: hidden;
+        pointer-events: none;
+        border-bottom-color: transparent;
+      }
+      .li .badge2 {
+        width: 36px;
+        height: 36px;
+        border-radius: 11px;
+        background: var(--paper);
+        display: grid;
+        place-items: center;
+        font-size: 17px;
+        flex: 0 0 auto;
+      }
+      .li .main {
+        flex: 1;
+        min-width: 0;
+      }
+      .li .main .t {
+        font-size: 13.5px;
+        font-weight: 700;
+        display: flex;
+        align-items: center;
+        gap: 6px;
+        flex-wrap: wrap;
+      }
+      .li .main .m {
+        font-size: 11.5px;
+        color: var(--muted);
+        margin-top: 3px;
+        display: flex;
+        align-items: center;
+        gap: 5px;
+        flex-wrap: wrap;
+      }
+      .li .right {
+        text-align: end;
+        flex: 0 0 auto;
+      }
+      .li .right .code {
+        font-family: 'JetBrains Mono', monospace;
+        font-size: 11.5px;
+        font-weight: 700;
+        color: var(--amber-deep);
+      }
+      .tag-type {
+        font-size: 9.5px;
+        font-weight: 700;
+        color: var(--muted);
+        background: rgba(22, 35, 61, 0.06);
+        border-radius: 6px;
+        padding: 1.5px 6px;
+      }
+      .link-cue {
+        color: var(--muted);
+        font-size: 10.5px;
+        font-weight: 700;
+      }
+      .unlinked {
+        color: var(--muted);
+        font-size: 10.5px;
+        font-weight: 700;
+      }
+
+      .past-toggle {
+        font: inherit;
+        font-size: 11px;
+        font-weight: 700;
+        color: var(--idx-accent);
+        background: #fff;
+        border: 1px solid var(--soft-line);
+        border-radius: 999px;
+        padding: 4px 11px;
+        cursor: pointer;
+        transition:
+          transform 0.12s ease,
+          color 0.2s ease;
+      }
+      .past-toggle:active {
+        transform: scale(0.95);
+      }
+      .past-head {
+        font-size: 11px;
+        font-weight: 700;
+        color: var(--muted);
+        letter-spacing: 0.04em;
+        margin: 18px 2px 8px;
+      }
+      .listcard.past .li {
+        opacity: 0.6;
+      }
+      .listcard.past .li .code {
+        color: var(--muted);
+      }
+      #past-section {
+        overflow: hidden;
+        max-height: 0;
+        opacity: 0;
+        transition:
+          max-height 0.32s ease,
+          opacity 0.22s ease;
+      }
+      #past-section.on {
+        max-height: 1200px;
+        opacity: 1;
+      }
+      .sec-title-end {
+        margin-inline-start: auto;
+      }
+
+      .doc-group .gt {
+        font-size: 11px;
+        font-weight: 700;
+        color: var(--muted);
+        padding: 10px 14px 2px;
+      }
+      .li.doc .main .t {
+        font-weight: 600;
+      }
+      .badge-offline {
+        font-size: 10.5px;
+        font-weight: 600;
+        color: var(--muted);
+        background: rgba(22, 35, 61, 0.06);
+        border-radius: 999px;
+        padding: 2px 8px;
+      }
+
+      .view {
+        display: none;
+      }
+      .view.on {
+        display: block;
+      }
+
+      @media (prefers-reduced-motion: reduce) {
+        * {
+          animation: none !important;
+          transition: none !important;
+        }
+      }
+    </style>
+  </head>
+  <body>
+    <p class="caption">
+      אינדקס · הזמנות · <b>מוקאפ קומפקטי v2</b> · לעומת index-findability-split-v1
+    </p>
+    <p class="adr-note">
+      שורת חזרה+כותרת+מונה אחת קומפקטית במקום שתיים; חץ החזרה חוזר לשבת ליד "אינדקס" ומצביע ימינה
+      (לא בודד בקצה השני, ולא שמאלה) — התיקון שהתבקש על גבי צילום המסך שאסף שיתף. שורת צ׳יפים+חיפוש
+      אחת צפופה. פלטת פלאן/טיול: לחיצה על מתג המצב מחליפה גם את כרום הכותרת וגם את גוון הפעולה
+      המשותף של האינדקס (ניטרלי בטיול, סגול-פלאן בתכנון) — לא צביעה לפי קטגוריה. אייקוני צבע נדחים
+      לעת עתה.
+    </p>
+
+    <div class="demo-toggle" role="tablist" aria-label="מצב">
+      <button class="on" onclick="setMode('trip', this)">🧭 טיול</button>
+      <button onclick="setMode('plan', this)">✏️ תכנון</button>
+    </div>
+
+    <div class="phone" id="phone" data-mode="trip">
+      <div class="statusbar"><span id="sbclock">18:52</span><span class="dots">●●● 4G ▮</span></div>
+
+      <div class="header">
+        <div class="mode-row">
+          <div class="mode-toggle">
+            <button class="m" id="pill-trip">🧭 טיול</button>
+            <button class="m" id="pill-plan">✏️ תכנון</button>
+          </div>
+        </div>
+        <div class="trip-row">
+          <div>
+            <button class="trip-switch" aria-label="החלף טיול · לכל הטיולים">
+              <span class="trip-name">יפן ׳26</span>
+              <span class="chev"
+                ><svg class="icon" viewBox="0 0 24 24" fill="currentColor" aria-hidden="true">
+                  <path d="M5 9l7 7 7-7z" /></svg
+              ></span>
+            </button>
+            <div class="trip-sub">טוקיו<span class="dot">•</span>יום 3 מתוך 10</div>
+          </div>
+          <div class="header-actions">
+            <div class="avatars" title="נועם · דנה · מאור · רון">
+              <div class="av more">+2</div>
+              <div class="av" style="background: #e88c8c">ד</div>
+              <div class="av" style="background: #5ec5b6">נ</div>
+            </div>
+            <button class="gear-btn" aria-label="הגדרות הטיול">⚙</button>
+          </div>
+        </div>
+        <div class="daystrip">
+          <div class="d">ה׳<b>23</b></div>
+          <div class="d">ד׳<b>22</b></div>
+          <div class="d on">ג׳<b>21</b></div>
+          <div class="d">ב׳<b>20</b></div>
+          <div class="d">א׳<b>19</b></div>
+          <div class="d">ש׳<b>18</b></div>
+          <div class="d">ו׳<b>17</b></div>
+        </div>
+      </div>
+
+      <div class="body">
+        <!-- ===== bookings screen ===== -->
+        <div class="view on" id="view-bookings">
+          <div class="idx-head">
+            <div class="idx-head-start">
+              <button class="back-icon-btn" aria-label="חזרה לאינדקס">
+                <svg
+                  class="nav-arrow nav-arrow-back"
+                  viewBox="0 0 24 24"
+                  fill="none"
+                  stroke="currentColor"
+                  stroke-width="2.2"
+                  stroke-linecap="round"
+                  stroke-linejoin="round"
+                  aria-hidden="true"
+                >
+                  <path d="M20 12H4m6-6l-6 6 6 6" />
+                </svg>
+              </button>
+              <span class="idx-head-title">אינדקס</span>
+            </div>
+            <span class="idx-head-count" id="count-bookings">17 הזמנות</span>
+          </div>
+
+          <div class="filter-row">
+            <div class="chip-slot" id="chip-slot">
+              <div class="chip-scroll" id="chip-row">
+                <button class="chip2 on" data-cat="all" onclick="selectChip('all', this)">
+                  <span>הכל</span><span class="cnt" id="count-all">17</span>
+                </button>
+                <button class="chip2" data-cat="flight" onclick="selectChip('flight', this)">
+                  <span>טיסה</span><span>✈️</span><span class="cnt">4</span>
+                </button>
+                <button class="chip2" data-cat="hotel" onclick="selectChip('hotel', this)">
+                  <span>לינה</span><span>🏨</span><span class="cnt">5</span>
+                </button>
+                <button
+                  class="chip2"
+                  data-cat="restaurant"
+                  onclick="selectChip('restaurant', this)"
+                >
+                  <span>מסעדה</span><span>🍜</span><span class="cnt">3</span>
+                </button>
+                <button class="chip2" data-cat="train" onclick="selectChip('train', this)">
+                  <span>רכבת</span><span>🚄</span><span class="cnt">2</span>
+                </button>
+                <button class="chip2" data-cat="activity" onclick="selectChip('activity', this)">
+                  <span>פעילות</span><span>🎟️</span><span class="cnt">2</span>
+                </button>
+                <button class="chip2" data-cat="other" onclick="selectChip('other', this)">
+                  <span>אחר</span><span>📄</span><span class="cnt">1</span>
+                </button>
+              </div>
+              <div class="search-inline2" id="search-inline2">
+                <input
+                  id="search-input"
+                  type="text"
+                  placeholder="חפשו לפי שם או קוד אישור…"
+                  oninput="applyFilters()"
+                />
+                <button class="clear" onclick="clearSearch()" aria-label="נקה חיפוש">
+                  <svg
+                    viewBox="0 0 24 24"
+                    fill="none"
+                    stroke="currentColor"
+                    stroke-width="2.4"
+                    stroke-linecap="round"
+                    stroke-linejoin="round"
+                    aria-hidden="true"
+                  >
+                    <path d="M6 18 18 6M6 6l12 12" />
+                  </svg>
+                </button>
+              </div>
+            </div>
+            <button
+              type="button"
+              class="search-icon-btn"
+              id="search-icon-btn"
+              onclick="toggleSearch()"
+              aria-label="חיפוש הזמנות"
+            >
+              <svg
+                viewBox="0 0 24 24"
+                fill="none"
+                stroke="currentColor"
+                stroke-width="2.2"
+                stroke-linecap="round"
+                stroke-linejoin="round"
+                aria-hidden="true"
+              >
+                <path
+                  d="m21 21-5.197-5.197m0 0A7.5 7.5 0 1 0 5.196 5.196a7.5 7.5 0 0 0 10.607 10.607Z"
+                />
+              </svg>
+            </button>
+          </div>
+
+          <button type="button" class="addbtn">＋ הוסף הזמנה</button>
+
+          <div class="listcard" id="upcoming-list">
+            <div class="li" data-cat="flight" data-search="ana832 טוקיו קיוטו na832">
+              <div class="badge2">✈️</div>
+              <div class="main">
+                <div class="t">
+                  <span class="route"
+                    ><bdi>טוקיו</bdi
+                    ><span class="arr"
+                      ><svg
+                        class="nav-arrow nav-arrow-forward"
+                        viewBox="0 0 24 24"
+                        fill="none"
+                        stroke="currentColor"
+                        stroke-width="2.2"
+                        stroke-linecap="round"
+                        stroke-linejoin="round"
+                        aria-hidden="true"
+                      >
+                        <path d="M20 12H4m6-6l-6 6 6 6" /></svg></span
+                    ><bdi>קיוטו</bdi></span
+                  >
+                  <span class="tag-type">טיסה</span>
+                </div>
+                <div class="m"><span class="link-cue">🔗 מחר · 07:40</span></div>
+              </div>
+              <div class="right"><div class="code" dir="ltr">#NA832</div></div>
+            </div>
+            <div class="li" data-cat="hotel" data-search="shinjuku granbell גרנבל צ'ק-אאוט gb-2291">
+              <div class="badge2">🏨</div>
+              <div class="main">
+                <div class="t">Shinjuku Granbell <span class="tag-type">לינה</span></div>
+                <div class="m">
+                  <span class="link-cue">🔗 צ׳ק-אאוט מחרתיים · 11:00</span> · חדר 512
+                </div>
+              </div>
+              <div class="right"><div class="code" dir="ltr">#GB-2291</div></div>
+            </div>
+            <div class="li" data-cat="restaurant" data-search="ichiran ramen איצ'ירן ראמן 4471">
+              <div class="badge2">🍜</div>
+              <div class="main">
+                <div class="t">Ichiran Ramen <span class="tag-type">מסעדה</span></div>
+                <div class="m"><span class="link-cue">🔗 היום · 19:30</span> · שולחן ל-5</div>
+              </div>
+              <div class="right"><div class="code" dir="ltr">#4471</div></div>
+            </div>
+            <div class="li" data-cat="train" data-search="שינקנסן חזרה jr-91">
+              <div class="badge2">🚄</div>
+              <div class="main">
+                <div class="t">שינקנסן · חזרה <span class="tag-type">רכבת</span></div>
+                <div class="m"><span class="unlinked">לא משובצת במסלול</span></div>
+              </div>
+              <div class="right"><div class="code" dir="ltr">#JR-91</div></div>
+            </div>
+            <div class="li" data-cat="activity" data-search="teamlab planets tl-220">
+              <div class="badge2">🎟️</div>
+              <div class="main">
+                <div class="t">teamLab Planets <span class="tag-type">פעילות</span></div>
+                <div class="m"><span class="link-cue">🔗 עוד 3 ימים · 10:00</span></div>
+              </div>
+              <div class="right"><div class="code" dir="ltr">#TL-220</div></div>
+            </div>
+          </div>
+
+          <div id="no-match-upcoming" class="no-match" style="display: none; margin-top: 10px">
+            אין הזמנות תואמות
+          </div>
+
+          <div class="idx-head" style="margin-top: 18px; margin-bottom: 0">
+            <span class="sec-title-end">
+              <button class="past-toggle" id="past-toggle" onclick="togglePast()">
+                הצג הזמנות מהעבר (5)
+              </button>
+            </span>
+          </div>
+
+          <div id="past-section">
+            <div class="past-head">כבר מאחוריכם</div>
+            <div class="listcard past" id="past-list">
+              <div class="li" data-cat="flight" data-search="nh831 הגעה טוקיו">
+                <div class="badge2">✈️</div>
+                <div class="main">
+                  <div class="t">טוקיו · הגעה <span class="tag-type">טיסה</span></div>
+                  <div class="m"><span class="link-cue">🔗 ביום 1 · הגעה</span></div>
+                </div>
+                <div class="right"><div class="code" dir="ltr">NH831</div></div>
+              </div>
+              <div class="li" data-cat="hotel" data-search="tokyo apa אפא">
+                <div class="badge2">🏨</div>
+                <div class="main">
+                  <div class="t">Tokyo APA <span class="tag-type">לינה</span></div>
+                  <div class="m"><span class="link-cue">🔗 צ׳ק-אאוט אתמול</span></div>
+                </div>
+                <div class="right"><div class="code" dir="ltr">#AP-330</div></div>
+              </div>
+              <div class="li" data-cat="restaurant" data-search="ippudo איפודו">
+                <div class="badge2">🍜</div>
+                <div class="main">
+                  <div class="t">Ippudo <span class="tag-type">מסעדה</span></div>
+                  <div class="m"><span class="link-cue">🔗 אתמול · 19:00</span></div>
+                </div>
+                <div class="right"><div class="code" dir="ltr">#IP-8</div></div>
+              </div>
+              <div class="li" data-cat="train" data-search="narita express נאריטה אקספרס">
+                <div class="badge2">🚄</div>
+                <div class="main">
+                  <div class="t">Narita Express <span class="tag-type">רכבת</span></div>
+                  <div class="m"><span class="link-cue">🔗 שלשום</span></div>
+                </div>
+                <div class="right"><div class="code" dir="ltr">#NE-4</div></div>
+              </div>
+              <div class="li" data-cat="activity" data-search="tokyo tower מגדל טוקיו">
+                <div class="badge2">🎟️</div>
+                <div class="main">
+                  <div class="t">Tokyo Tower <span class="tag-type">פעילות</span></div>
+                  <div class="m"><span class="link-cue">🔗 לפני 3 ימים</span></div>
+                </div>
+                <div class="right"><div class="code" dir="ltr">#TT-2</div></div>
+              </div>
+            </div>
+          </div>
+        </div>
+
+        <!-- ===== documents screen — the same merged back+title+count row,
+             content unchanged from the shipped build ===== -->
+        <div class="view" id="view-documents">
+          <div class="idx-head">
+            <div class="idx-head-start">
+              <button class="back-icon-btn" aria-label="חזרה לאינדקס">
+                <svg
+                  class="nav-arrow nav-arrow-back"
+                  viewBox="0 0 24 24"
+                  fill="none"
+                  stroke="currentColor"
+                  stroke-width="2.2"
+                  stroke-linecap="round"
+                  stroke-linejoin="round"
+                  aria-hidden="true"
+                >
+                  <path d="M20 12H4m6-6l-6 6 6 6" />
+                </svg>
+              </button>
+              <span class="idx-head-title">אינדקס</span>
+            </div>
+            <span class="badge-offline">🔒 מוצפן</span>
+          </div>
+
+          <button type="button" class="addbtn">＋ הוסף מסמך</button>
+          <div class="doc-group">
+            <div class="gt">דרכונים</div>
+            <div class="listcard">
+              <div class="li doc">
+                <div class="badge2">📕</div>
+                <div class="main"><div class="t">דרכון · אסף</div></div>
+              </div>
+              <div class="li doc">
+                <div class="badge2">📕</div>
+                <div class="main"><div class="t">דרכון · נועה</div></div>
+              </div>
+            </div>
+          </div>
+          <div class="doc-group">
+            <div class="gt">ביטוח נסיעות</div>
+            <div class="listcard">
+              <div class="li doc">
+                <div class="badge2">🛡️</div>
+                <div class="main"><div class="t">פוליסה + מספר חירום</div></div>
+              </div>
+            </div>
+          </div>
+        </div>
+      </div>
+
+      <div style="display: flex; justify-content: center; gap: 8px; padding: 10px 0 4px">
+        <button
+          type="button"
+          onclick="showView('bookings')"
+          style="
+            font: inherit;
+            font-size: 11px;
+            font-weight: 700;
+            color: var(--muted);
+            background: none;
+            border: 0;
+            padding: 4px 8px;
+            cursor: pointer;
+          "
+        >
+          ← הזמנות
+        </button>
+        <button
+          type="button"
+          onclick="showView('documents')"
+          style="
+            font: inherit;
+            font-size: 11px;
+            font-weight: 700;
+            color: var(--muted);
+            background: none;
+            border: 0;
+            padding: 4px 8px;
+            cursor: pointer;
+          "
+        >
+          מסמכים →
+        </button>
+      </div>
+    </div>
+
+    <script>
+      let activeCat = 'all';
+      let pastOpen = false;
+      let searching = false;
+
+      function showView(name) {
+        document.querySelectorAll('.view').forEach((v) => v.classList.remove('on'));
+        document.getElementById('view-' + name).classList.add('on');
+        document.querySelector('.body').scrollTop = 0;
+      }
+
+      function setMode(mode, btn) {
+        document.querySelectorAll('.demo-toggle button').forEach((b) => b.classList.remove('on'));
+        btn.classList.add('on');
+        document.getElementById('phone').dataset.mode = mode;
+        document.getElementById('pill-trip').classList.toggle('on', mode === 'trip');
+        document.getElementById('pill-plan').classList.toggle('on', mode === 'plan');
+      }
+
+      function selectChip(cat, btn) {
+        activeCat = cat;
+        document.querySelectorAll('.chip2').forEach((c) => c.classList.remove('on'));
+        btn.classList.add('on');
+        applyFilters();
+      }
+
+      function toggleSearch() {
+        const slot = document.getElementById('chip-slot');
+        const btn = document.getElementById('search-icon-btn');
+        const opening = !slot.classList.contains('searching');
+        slot.classList.toggle('searching', opening);
+        btn.classList.toggle('on', opening);
+        if (opening) document.getElementById('search-input').focus();
+        else clearSearch();
+      }
+      function clearSearch() {
+        document.getElementById('search-input').value = '';
+        applyFilters();
+      }
+
+      function togglePast() {
+        pastOpen = !pastOpen;
+        renderPastState();
+      }
+      function renderPastState() {
+        document.getElementById('past-section').classList.toggle('on', pastOpen || searching);
+        const count = document.querySelectorAll(
+          '#past-list .li:not(.size-hidden):not(.hidden)',
+        ).length;
+        document.getElementById('past-toggle').textContent = pastOpen
+          ? 'הסתר הזמנות מהעבר'
+          : `הצג הזמנות מהעבר (${count})`;
+      }
+
+      const STAGGER_MS = 24;
+      const STAGGER_MAX_MS = 220;
+
+      function filterList(selector, q, shownIndex) {
+        let visible = 0;
+        document.querySelectorAll(selector).forEach((li) => {
+          if (li.classList.contains('size-hidden')) return;
+          const matchesCat = activeCat === 'all' || li.dataset.cat === activeCat;
+          const matchesQ = !q || li.dataset.search.includes(q);
+          const show = matchesCat && matchesQ;
+          li.classList.toggle('hidden', !show);
+          if (show) {
+            li.style.transitionDelay = `${Math.min(shownIndex.i * STAGGER_MS, STAGGER_MAX_MS)}ms`;
+            shownIndex.i++;
+            visible++;
+          } else {
+            li.style.transitionDelay = '0ms';
+          }
+        });
+        return visible;
+      }
+
+      function applyFilters() {
+        const q = document.getElementById('search-input').value.trim().toLowerCase();
+        searching = q.length > 0;
+        document.getElementById('past-section').classList.toggle('on', pastOpen || searching);
+
+        const shownIndex = { i: 0 };
+        const upcomingVisible = filterList('#upcoming-list .li', q, shownIndex);
+        filterList('#past-list .li', q, shownIndex);
+
+        document.getElementById('no-match-upcoming').style.display =
+          upcomingVisible === 0 ? 'block' : 'none';
+        if (!searching) renderPastState();
+        else {
+          document.getElementById('past-toggle').textContent = `הסתר הזמנות מהעבר`;
+        }
+      }
+
+      setMode('trip', document.querySelector('.demo-toggle button'));
+
+      let mins = 52,
+        hrs = 18;
+      setInterval(() => {
+        mins++;
+        if (mins >= 60) {
+          mins = 0;
+          hrs = (hrs + 1) % 24;
+        }
+        document.getElementById('sbclock').textContent =
+          String(hrs).padStart(2, '0') + ':' + String(mins).padStart(2, '0');
+      }, 4000);
+    </script>
+  </body>
+</html>

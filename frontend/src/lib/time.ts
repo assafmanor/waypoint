@@ -145,7 +145,7 @@ export function eventPhase(event: TripEvent, at: Date): EventPhase {
 
 /** Whether an event's occupancy is behind you at `at`, in the trip timezone —
  *  the single trip-wide "is this past?" rule (ADR-0049), used to file bookings
- *  under the Index's "כבר מאחוריכם". Resolves the shared, type-agnostic
+ *  under the Index's past-bookings list. Resolves the shared, type-agnostic
  *  `eventEndBoundary`: an instant boundary crosses on the clock (a flight is past
  *  once it lands, a hotel once its check-out passes), a day boundary only once its
  *  day is strictly before today (an untimed booking lingers till midnight, a

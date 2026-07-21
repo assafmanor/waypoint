@@ -1,7 +1,8 @@
 // The single overlay primitive (ADR-0079). Every sheet/dialog in the app is a
-// Modal: one place carries the overlay-stack registration (so system-back / the
-// return gesture closes it first, ADR-0035) and the focus contract (focus-in +
-// Escape + focus-restore, optional Tab-trap, F-08). Two variants — a bottom
+// Modal: one place carries the overlay-stack registration (so back — system-
+// back, a shell back button — closes it first, ADR-0035/0090) and the focus
+// contract (focus-in + Escape + focus-restore, optional Tab-trap, F-08). Two
+// variants — a bottom
 // `sheet` and a centered `dialog` — share all that machinery; only shape and
 // position differ (modal.css). `Sheet` is a thin wrapper over `variant="sheet"`;
 // the `.confirm-*`/`.event-form-*` families fold on in Wave 2.
@@ -34,8 +35,8 @@ export function Modal({
   trap?: boolean;
   children: ReactNode;
 }) {
-  // Register as the topmost overlay so back / the return gesture closes this
-  // before touching structural navigation (ADR-0035 §4).
+  // Register as the topmost overlay so a back trigger closes this before
+  // touching structural navigation (ADR-0035 §4).
   useOverlay(onClose);
   const cardRef = useRef<HTMLDivElement>(null);
   // Trap default is variant-driven, and deliberately opposite per variant:

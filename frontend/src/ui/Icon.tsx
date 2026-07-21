@@ -9,7 +9,16 @@
 // `dir` rotates the icon (canonical orientation points down / is upright).
 
 type IconName =
-  'caret' | 'undo' | 'reset' | 'download' | 'settings' | 'cloud-check' | 'cloud-up' | 'cloud-bang';
+  | 'caret'
+  | 'undo'
+  | 'reset'
+  | 'download'
+  | 'settings'
+  | 'search'
+  | 'close'
+  | 'cloud-check'
+  | 'cloud-up'
+  | 'cloud-bang';
 type Dir = 'up' | 'right' | 'down' | 'left';
 
 // Cloud base shared by the three per-entity sync glyphs (SyncBadge, ADR-0080/0091).
@@ -25,6 +34,11 @@ const PATHS: Record<IconName, string> = {
   // Cog outline + centre circle (replaces the lone ⚙ emoji-as-control, U-11).
   settings:
     'M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 0 1 0 2.83 2 2 0 0 1-2.83 0l-.06-.06a1.65 1.65 0 0 0-1.82-.33 1.65 1.65 0 0 0-1 1.51V21a2 2 0 0 1-2 2 2 2 0 0 1-2-2v-.09A1.65 1.65 0 0 0 9 19.4a1.65 1.65 0 0 0-1.82.33l-.06.06a2 2 0 0 1-2.83 0 2 2 0 0 1 0-2.83l.06-.06a1.65 1.65 0 0 0 .33-1.82 1.65 1.65 0 0 0-1.51-1H3a2 2 0 0 1-2-2 2 2 0 0 1 2-2h.09A1.65 1.65 0 0 0 4.6 9a1.65 1.65 0 0 0-.33-1.82l-.06-.06a2 2 0 0 1 0-2.83 2 2 0 0 1 2.83 0l.06.06a1.65 1.65 0 0 0 1.82.33H9a1.65 1.65 0 0 0 1-1.51V3a2 2 0 0 1 2-2 2 2 0 0 1 2 2v.09a1.65 1.65 0 0 0 1 1.51 1.65 1.65 0 0 0 1.82-.33l.06-.06a2 2 0 0 1 2.83 0 2 2 0 0 1 0 2.83l-.06.06a1.65 1.65 0 0 0-.33 1.82V9a1.65 1.65 0 0 0 1.51 1H21a2 2 0 0 1 2 2 2 2 0 0 1-2 2h-.09a1.65 1.65 0 0 0-1.51 1zM15 12a3 3 0 1 1-6 0 3 3 0 0 1 6 0',
+  // Magnifying glass (the Index bookings-screen search control, ADR-0098) +
+  // a plain X (its clear/close affordance) — replacing 🔍/✕ raw glyphs on a
+  // real UI control, per "emoji are content, icons are UI" (design-language.md).
+  search: 'm21 21-5.197-5.197m0 0A7.5 7.5 0 1 0 5.196 5.196a7.5 7.5 0 0 0 10.607 10.607Z',
+  close: 'M6 18 18 6M6 6l12 12',
   // Per-entity sync glyphs — a cloud + a distinct inner mark per state (ADR-0091).
   'cloud-check': CLOUD + ' M9.3 13.6l1.9 1.9 3.6-3.8',
   'cloud-up': CLOUD + ' M11.8 16.6v-4.6 M9.6 14l2.2-2.2 2.2 2.2',

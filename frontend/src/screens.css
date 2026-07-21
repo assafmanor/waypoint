@@ -2656,13 +2656,6 @@
 .index .route {
   font-weight: 700;
 }
-.index .past-head {
-  font-size: 11px;
-  font-weight: 700;
-  color: var(--muted);
-  letter-spacing: 0.04em;
-  margin: 18px 2px 8px;
-}
 .index .listcard.past .wp-listrow {
   opacity: 0.6;
 }
@@ -2773,35 +2766,72 @@
   margin-bottom: 10px;
 }
 
-/* Search (ADR-0098 §2): an icon button reveals an inline text input. */
+/* Search (ADR-0098 §2, redesigned): tapping the button REPLACES the title row
+   with a search bar — the familiar iOS/Android "search bar takes over the
+   title" pattern — instead of opening a second row below it. Fixes the
+   earlier version's two stacked magnifying-glass icons (the toggle button
+   stayed visible above an identical icon inside the opened box) and a clear
+   "✕" that sat before the text with nothing yet to clear.
+   The toggle itself matches `.new-event-btn` (PlanDay/DayView's identical
+   `.sec-title-end` slot) — an icon+label chip, not a bare icon-only circle:
+   every OTHER control in this exact header slot carries a text label, and a
+   lone unlabelled icon floating at the far end of a wide row read as
+   orphaned/unfinished rather than a deliberate control. */
 .index .search-btn {
-  width: 34px;
-  height: 34px;
-  border-radius: 10px;
-  background: var(--card);
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+  font: inherit;
+  font-size: 11px;
+  font-weight: 700;
+  letter-spacing: 0;
   border: 1px solid var(--line);
-  display: grid;
-  place-items: center;
+  background: var(--card);
+  color: var(--ink);
+  border-radius: 8px;
+  padding: 5px 9px;
   cursor: pointer;
-  color: var(--muted);
-  transition: transform 0.12s ease;
+  transition:
+    background 0.15s ease,
+    transform 0.12s ease;
+}
+.index .search-btn .icon {
+  font-size: 13px;
+}
+.index .search-btn:hover {
+  background: var(--ink);
+  color: var(--cta-text);
+  border-color: var(--ink);
 }
 .index .search-btn:active {
-  transform: scale(0.92);
+  transform: scale(0.95);
 }
-.index .search-row {
-  margin-bottom: 10px;
-}
-.index .search-box {
+/* Fills the row on its own — the shared `.sec-title` uses
+   `justify-content: space-between`, built for exactly two children; while
+   search is active this is the row's only child. */
+.index .search-active {
   display: flex;
   align-items: center;
   gap: 8px;
+  width: 100%;
+}
+.index .search-inline {
+  flex: 1;
+  min-width: 0;
+  display: flex;
+  align-items: center;
+  gap: 6px;
   background: var(--card);
   border: 1px solid var(--soft-line);
-  border-radius: 12px;
-  padding: 8px 12px;
+  border-radius: var(--radius-999);
+  padding: 7px 12px;
 }
-.index .search-box input {
+.index .search-inline-ic {
+  flex: 0 0 auto;
+  color: var(--muted);
+  font-size: 13px;
+}
+.index .search-inline input {
   flex: 1;
   min-width: 0;
   border: 0;
@@ -2811,7 +2841,8 @@
   background: none;
   color: var(--ink);
 }
-.index .search-box .clear {
+/* Only rendered once there's text to clear — never sits idle before it. */
+.index .search-inline-clear {
   flex: 0 0 auto;
   border: 0;
   background: color-mix(in srgb, var(--ink) 8%, transparent);
@@ -2823,6 +2854,20 @@
   cursor: pointer;
   display: grid;
   place-items: center;
+}
+.index .search-cancel {
+  flex: 0 0 auto;
+  font: inherit;
+  font-size: 12.5px;
+  font-weight: 700;
+  color: var(--muted);
+  background: none;
+  border: 0;
+  padding: 4px 2px;
+  cursor: pointer;
+}
+.index .search-cancel:active {
+  opacity: 0.6;
 }
 
 /* Past-bookings toggle (ADR-0098 §2, mirrors ADR-0061's chk-toggle exactly —
