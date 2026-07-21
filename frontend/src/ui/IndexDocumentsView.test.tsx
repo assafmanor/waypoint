@@ -30,13 +30,14 @@ function wrap(node: ReactNode) {
   );
 }
 
-describe('IndexDocumentsView (ADR-0098)', () => {
+describe('IndexDocumentsView (ADR-0098/ADR-0101)', () => {
   afterEach(() => cleanup());
 
-  it('renders the back row and the (unchanged) DocumentsSection content', () => {
+  it('renders the back row titled "מסמכים" (ADR-0101) and the (unchanged) DocumentsSection content', () => {
     render(wrap(<IndexDocumentsView onClose={() => {}} />));
     expect(screen.getByRole('button', { name: t.index.backAria })).toBeTruthy();
-    expect(screen.getByText(t.index.back)).toBeTruthy();
+    expect(screen.getByText(t.docs.title)).toBeTruthy();
+    expect(screen.queryByText(t.index.back)).toBeNull();
     expect(screen.getByText(t.docs.emptyTitle)).toBeTruthy();
   });
 

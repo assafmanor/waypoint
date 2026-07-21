@@ -218,7 +218,7 @@ function Header({
   const dayScope =
     mode === 'trip' && activeDate !== today ? (activeDate < today ? 'past' : 'future') : null;
   return (
-    <header className="header">
+    <header className="header mode-chrome" data-mode={mode}>
       <ModeToggle />
       <div className="trip-row">
         <div className="trip-name-wrap" ref={tripNameWrapRef}>

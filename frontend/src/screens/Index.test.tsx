@@ -41,6 +41,7 @@ vi.mock('../lib/outbox', async (importOriginal) => {
 
 import { ToastProvider } from '../ui/Toast';
 import { NavProvider } from '../state/nav-state';
+import { ModeProvider } from '../state/mode-state';
 import { Index } from './Index';
 import { t } from '../i18n/he';
 
@@ -48,7 +49,9 @@ function wrap(node: ReactNode, initialEntries?: string[]) {
   return (
     <MemoryRouter initialEntries={initialEntries}>
       <ToastProvider>
-        <NavProvider>{node}</NavProvider>
+        <NavProvider>
+          <ModeProvider>{node}</ModeProvider>
+        </NavProvider>
       </ToastProvider>
     </MemoryRouter>
   );

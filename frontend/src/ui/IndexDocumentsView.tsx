@@ -7,7 +7,8 @@
 // encrypted badge moved up into the merged `idx-head` row (ADR-0100 §1/
 // Consequences — the same merged header shape as bookings, for back-arrow-
 // direction consistency); DocumentsSection no longer renders its own
-// duplicate title/badge row.
+// duplicate title/badge row. The header names this screen ("מסמכים", ADR-0101)
+// rather than the generic "אינדקס".
 import { useOverlay } from '../state/nav-state';
 import { IndexBackRow } from './IndexBackRow';
 import { DocumentsSection } from './DocumentsSection';
@@ -18,6 +19,7 @@ export function IndexDocumentsView({ onClose }: { onClose: () => void }) {
   return (
     <div className="idx-screen">
       <IndexBackRow
+        title={t.docs.title}
         onBack={onClose}
         end={<span className="badge-offline">🔒 {t.docs.encrypted}</span>}
       />

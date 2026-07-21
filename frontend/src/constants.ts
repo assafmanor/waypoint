@@ -149,6 +149,7 @@ export type TabId = (typeof TABS)[number]['id'];
 export const ICONS = {
   navigate: '🧭',
   ticket: '🎫',
+  search: '🔍',
   atm: '🏧',
   wifi: '📶',
   documents: '🛂',

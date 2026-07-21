@@ -1,6 +1,6 @@
 // @vitest-environment jsdom
 import { afterEach, describe, it, expect, vi } from 'vitest';
-import { type ReactNode } from 'react';
+import { useRef, type ReactNode } from 'react';
 import { cleanup, fireEvent, render, screen } from '@testing-library/react';
 import { MemoryRouter } from 'react-router-dom';
 import { ToastProvider } from '../Toast';
@@ -138,6 +138,32 @@ describe('Modal', () => {
     fireEvent.keyDown(document, { key: 'Tab' });
     // No wrap: focus stays where the browser would take it (still last in jsdom).
     expect(document.activeElement).toBe(last);
+  });
+
+  it('variant="full" does not close on backdrop click (ADR-0101)', () => {
+    const onClose = vi.fn();
+    render(
+      wrap(
+        <Modal variant="full" ariaLabel="m" onClose={onClose}>
+          <button>inner</button>
+        </Modal>,
+      ),
+    );
+    fireEvent.click(document.querySelector('.modal-overlay')!);
+    expect(onClose).not.toHaveBeenCalled();
+  });
+
+  it('variant="full" focuses initialFocusRef instead of the container', () => {
+    function FullWithInput({ onClose }: { onClose: () => void }) {
+      const inputRef = useRef<HTMLInputElement>(null);
+      return (
+        <Modal variant="full" ariaLabel="m" onClose={onClose} initialFocusRef={inputRef}>
+          <input ref={inputRef} placeholder="search" />
+        </Modal>
+      );
+    }
+    render(wrap(<FullWithInput onClose={() => {}} />));
+    expect(document.activeElement).toBe(screen.getByPlaceholderText('search'));
   });
 });
 

@@ -2765,98 +2765,31 @@
   --idx-accent: var(--plan);
 }
 
-/* One dense chip+search row (ADR-0100 §2): the search icon is a FIXED
-   control at the row's left end (RTL: last DOM child, outside the scrolling
-   chip strip, always reachable) — the category chips (ChoiceGrid pills) fill
-   the remaining space between it and the row's right edge. */
+/* One dense chip+search row (ADR-0100 §2, retargeted by ADR-0101): the search
+   icon is a FIXED control at the row's left end (RTL: last DOM child, outside
+   the scrolling chip strip, always reachable) — the category chips
+   (ChoiceGrid pills) fill the remaining space between it and the row's right
+   edge. Tapping it now opens the full-screen `SearchOverlay` (ADR-0101)
+   instead of covering the chips in place — the ADR-0100 §3 cover-in-place
+   mechanism (`.chip-slot`/`.search-inline2`) is retired; the chip row is
+   permanent, plain-flow content again. */
 .index .filter-row {
   display: flex;
   align-items: center;
   gap: 8px;
   margin-bottom: 10px;
 }
-.index .chip-slot {
+.index .filter-row .choice-grid.pills {
   flex: 1;
   min-width: 0;
-  position: relative;
-  height: 32px;
-}
-/* The chip row and the search overlay share this one box (ADR-0100 §3):
-   opening search COVERS the chips in place instead of pushing a second row
-   in — the chips fade/shift out, the search bar grows in from the icon's
-   side over the same space. */
-.index .chip-slot .choice-grid.pills {
-  position: absolute;
-  inset: 0;
-  align-items: center;
-  transition:
-    opacity 0.16s ease,
-    transform 0.22s cubic-bezier(0.3, 0.9, 0.4, 1);
-}
-.index .chip-slot.searching .choice-grid.pills {
-  opacity: 0;
-  transform: translateX(-6px) scale(0.98);
-  pointer-events: none;
 }
 .index .choice-pill.on {
   background: var(--idx-accent);
   border-color: var(--idx-accent);
   color: var(--idx-accent-text);
 }
-.index .search-inline2 {
-  position: absolute;
-  inset: 0;
-  display: flex;
-  align-items: center;
-  gap: 8px;
-  background: var(--card);
-  border: 1px solid var(--soft-line);
-  border-radius: var(--radius-999);
-  padding: 0 12px;
-  opacity: 0;
-  transform: scaleX(0.88);
-  transform-origin: left center;
-  pointer-events: none;
-  transition:
-    opacity 0.2s ease,
-    transform 0.26s cubic-bezier(0.22, 0.8, 0.3, 1.1);
-}
-.index .chip-slot.searching .search-inline2 {
-  opacity: 1;
-  transform: scaleX(1);
-  pointer-events: auto;
-}
-.index .search-inline2 input {
-  flex: 1;
-  min-width: 0;
-  border: 0;
-  outline: 0;
-  font: inherit;
-  font-size: 13px;
-  background: none;
-  color: var(--ink);
-}
-/* Only rendered once there's text to clear — never sits idle before it. */
-.index .search-inline2 .clear {
-  flex: 0 0 auto;
-  border: 0;
-  background: color-mix(in srgb, var(--ink) 8%, transparent);
-  border-radius: 50%;
-  width: 18px;
-  height: 18px;
-  color: var(--muted);
-  cursor: pointer;
-  display: grid;
-  place-items: center;
-}
-.index .search-inline2 .clear .icon {
-  width: 9px;
-  height: 9px;
-}
-/* Fixed at the row's left end, never scrolls away. A minimal real-SVG
-   control (ADR-0100 §4) in the same rounded-SQUARE shape as `.back-icon-btn`
-   — not a circle. Tints with the mode accent while open, doubling as the
-   "search is active" indicator. */
+/* A minimal real-SVG control (ADR-0100 §4) in the same rounded-SQUARE shape
+   as `.back-icon-btn` — not a circle. */
 .index .search-icon-btn {
   flex: 0 0 auto;
   width: 32px;
@@ -2877,11 +2810,6 @@
 .index .search-icon-btn .icon {
   width: 15px;
   height: 15px;
-}
-.index .search-icon-btn.on {
-  background: var(--idx-accent);
-  border-color: var(--idx-accent);
-  color: var(--idx-accent-text);
 }
 .index .search-icon-btn:active {
   transform: scale(0.9);
