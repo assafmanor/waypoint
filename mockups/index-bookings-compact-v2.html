@@ -491,22 +491,45 @@
         padding: 3px 10px;
       }
 
-      /* ===== 2. one dense chip+search row — replaces the shipped build's two
-         rows (search-row, then chip-row). Each category chip carries
-         label+icon+count together; the selected "הכל" chip shows its own
-         count; search is a small icon-only circle at the row's end (context
-         comes from sitting among the other pills). ===== */
+      /* ===== 2. one dense chip+search row (v3 refinement) — the search icon is
+         a FIXED control at the row's left end (never part of the scrolling
+         chip collection, always reachable without scrolling); tapping it
+         expands a search bar that COVERS the chip strip in place (not a
+         separate row) with a small "grows from the icon" animation, chips
+         fading out as the bar fades/scales in. Reversed once from a v2 draft
+         that put search inline at the scroll's trailing end — Assaf: fixed on
+         the left, not scrolling away. ===== */
       .filter-row {
+        display: flex;
+        align-items: center;
+        gap: 8px;
+        margin-bottom: 10px;
+      }
+      .chip-slot {
+        flex: 1;
+        min-width: 0;
+        position: relative;
+        height: 32px;
+      }
+      .chip-scroll {
+        position: absolute;
+        inset: 0;
         display: flex;
         align-items: center;
         gap: 6px;
         overflow-x: auto;
         scrollbar-width: none;
-        margin-bottom: 10px;
-        padding-bottom: 2px;
+        transition:
+          opacity 0.16s ease,
+          transform 0.22s cubic-bezier(0.3, 0.9, 0.4, 1);
       }
-      .filter-row::-webkit-scrollbar {
+      .chip-scroll::-webkit-scrollbar {
         height: 0;
+      }
+      .chip-slot.searching .chip-scroll {
+        opacity: 0;
+        transform: translateX(-6px) scale(0.98);
+        pointer-events: none;
       }
       .chip2 {
         flex: 0 0 auto;
@@ -543,38 +566,35 @@
       .chip2:active {
         transform: scale(0.94);
       }
-      .search-icon-btn {
-        flex: 0 0 auto;
-        width: 30px;
-        height: 30px;
-        border-radius: 50%;
-        background: var(--card);
-        border: 1px solid var(--line);
-        display: grid;
-        place-items: center;
-        font-size: 13px;
-        color: var(--muted);
-        cursor: pointer;
-        transition: transform 0.12s ease;
-      }
-      .search-icon-btn:active {
-        transform: scale(0.9);
-      }
-      .search-box {
-        display: none;
+      /* The overlay search bar — same box as the chip strip it covers, grown
+         in from the icon's side (transform-origin: left, since the icon sits
+         fixed at the left end) rather than just fading in place. */
+      .search-inline2 {
+        position: absolute;
+        inset: 0;
+        display: flex;
         align-items: center;
         gap: 8px;
         background: var(--card);
         border: 1px solid var(--soft-line);
         border-radius: 999px;
-        padding: 7px 12px;
-        margin-bottom: 10px;
+        padding: 0 12px;
+        opacity: 0;
+        transform: scaleX(0.88);
+        transform-origin: left center;
+        pointer-events: none;
+        transition:
+          opacity 0.2s ease,
+          transform 0.26s cubic-bezier(0.22, 0.8, 0.3, 1.1);
       }
-      .search-box.on {
-        display: flex;
+      .chip-slot.searching .search-inline2 {
+        opacity: 1;
+        transform: scaleX(1);
+        pointer-events: auto;
       }
-      .search-box input {
+      .search-inline2 input {
         flex: 1;
+        min-width: 0;
         border: 0;
         outline: 0;
         font: inherit;
@@ -582,7 +602,8 @@
         background: none;
         color: var(--ink);
       }
-      .search-box .clear {
+      .search-inline2 .clear {
+        flex: 0 0 auto;
         border: 0;
         background: rgba(22, 35, 61, 0.08);
         border-radius: 50%;
@@ -593,6 +614,35 @@
         cursor: pointer;
         display: grid;
         place-items: center;
+      }
+      /* Fixed at the row's left end — outside the scrolling chip strip, always
+         reachable, never scrolls away. Tints with the mode accent while open
+         so it doubles as the "search is active" indicator. */
+      .search-icon-btn {
+        flex: 0 0 auto;
+        width: 32px;
+        height: 32px;
+        border-radius: 50%;
+        background: var(--card);
+        border: 1px solid var(--line);
+        display: grid;
+        place-items: center;
+        font-size: 13px;
+        color: var(--muted);
+        cursor: pointer;
+        transition:
+          transform 0.12s ease,
+          background 0.18s ease,
+          border-color 0.18s ease,
+          color 0.18s ease;
+      }
+      .search-icon-btn.on {
+        background: var(--idx-accent);
+        border-color: var(--idx-accent);
+        color: var(--idx-accent-text);
+      }
+      .search-icon-btn:active {
+        transform: scale(0.9);
       }
       .no-match {
         text-align: center;
@@ -883,42 +933,49 @@
             <span class="idx-head-count" id="count-bookings">17 הזמנות</span>
           </div>
 
-          <div class="search-box" id="search-box">
-            <span aria-hidden="true">🔍</span>
-            <input
-              id="search-input"
-              type="text"
-              placeholder="חפשו לפי שם או קוד אישור…"
-              oninput="applyFilters()"
-            />
-            <button class="clear" onclick="clearSearch()" aria-label="נקה חיפוש">✕</button>
-          </div>
-
-          <div class="filter-row" id="chip-row">
-            <button class="chip2 on" data-cat="all" onclick="selectChip('all', this)">
-              <span>הכל</span><span class="cnt" id="count-all">17</span>
-            </button>
-            <button class="chip2" data-cat="flight" onclick="selectChip('flight', this)">
-              <span>טיסה</span><span>✈️</span><span class="cnt">4</span>
-            </button>
-            <button class="chip2" data-cat="hotel" onclick="selectChip('hotel', this)">
-              <span>לינה</span><span>🏨</span><span class="cnt">5</span>
-            </button>
-            <button class="chip2" data-cat="restaurant" onclick="selectChip('restaurant', this)">
-              <span>מסעדה</span><span>🍜</span><span class="cnt">3</span>
-            </button>
-            <button class="chip2" data-cat="train" onclick="selectChip('train', this)">
-              <span>רכבת</span><span>🚄</span><span class="cnt">2</span>
-            </button>
-            <button class="chip2" data-cat="activity" onclick="selectChip('activity', this)">
-              <span>פעילות</span><span>🎟️</span><span class="cnt">2</span>
-            </button>
-            <button class="chip2" data-cat="other" onclick="selectChip('other', this)">
-              <span>אחר</span><span>📄</span><span class="cnt">1</span>
-            </button>
+          <div class="filter-row">
+            <div class="chip-slot" id="chip-slot">
+              <div class="chip-scroll" id="chip-row">
+                <button class="chip2 on" data-cat="all" onclick="selectChip('all', this)">
+                  <span>הכל</span><span class="cnt" id="count-all">17</span>
+                </button>
+                <button class="chip2" data-cat="flight" onclick="selectChip('flight', this)">
+                  <span>טיסה</span><span>✈️</span><span class="cnt">4</span>
+                </button>
+                <button class="chip2" data-cat="hotel" onclick="selectChip('hotel', this)">
+                  <span>לינה</span><span>🏨</span><span class="cnt">5</span>
+                </button>
+                <button
+                  class="chip2"
+                  data-cat="restaurant"
+                  onclick="selectChip('restaurant', this)"
+                >
+                  <span>מסעדה</span><span>🍜</span><span class="cnt">3</span>
+                </button>
+                <button class="chip2" data-cat="train" onclick="selectChip('train', this)">
+                  <span>רכבת</span><span>🚄</span><span class="cnt">2</span>
+                </button>
+                <button class="chip2" data-cat="activity" onclick="selectChip('activity', this)">
+                  <span>פעילות</span><span>🎟️</span><span class="cnt">2</span>
+                </button>
+                <button class="chip2" data-cat="other" onclick="selectChip('other', this)">
+                  <span>אחר</span><span>📄</span><span class="cnt">1</span>
+                </button>
+              </div>
+              <div class="search-inline2" id="search-inline2">
+                <input
+                  id="search-input"
+                  type="text"
+                  placeholder="חפשו לפי שם או קוד אישור…"
+                  oninput="applyFilters()"
+                />
+                <button class="clear" onclick="clearSearch()" aria-label="נקה חיפוש">✕</button>
+              </div>
+            </div>
             <button
               type="button"
               class="search-icon-btn"
+              id="search-icon-btn"
               onclick="toggleSearch()"
               aria-label="חיפוש הזמנות"
             >
@@ -1163,9 +1220,12 @@
       }
 
       function toggleSearch() {
-        const box = document.getElementById('search-box');
-        box.classList.toggle('on');
-        if (box.classList.contains('on')) document.getElementById('search-input').focus();
+        const slot = document.getElementById('chip-slot');
+        const btn = document.getElementById('search-icon-btn');
+        const opening = !slot.classList.contains('searching');
+        slot.classList.toggle('searching', opening);
+        btn.classList.toggle('on', opening);
+        if (opening) document.getElementById('search-input').focus();
         else clearSearch();
       }
       function clearSearch() {
