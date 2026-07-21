@@ -50,6 +50,8 @@ The pieces in the repo:
 
 **Never set in production:** `DEV_AUTH` (auth bypass) and `FRONTEND_URL` (dev-only CORS; prod is single-origin). `VITE_API_BASE_URL` stays unset — the client defaults to same-origin. Later additions when their features land: `REDIS_URL` (v1.1) and `VITE_GOOGLE_MAPS_API_KEY` (build-time arg).
 
+**Never copy these verbatim into staging (ADR-0104):** `JWT_SECRET`, `TOKEN_ENCRYPTION_KEY`, `DOC_ENCRYPTION_KEY` need their own freshly-generated values; `DATABASE_URL` must be a reference variable resolving to staging's own Postgres, never production's connection string; `S3_*` should point at a separate staging bucket (or stay unset); `GOOGLE_OAUTH_REDIRECT_URI` uses the staging domain. See the staging section below.
+
 **Document blob cache (ADR-0055).** A read-through, **ciphertext-only** cache below `getObject` (`backend/src/documents/blob-cache.ts`): an in-memory LRU (`DOC_CACHE_MAX_BYTES`, default 64 MB) plus an optional local-FS tier (`DOC_CACHE_DIR`). Keyed by the immutable `fileRef`, so it needs eviction on delete/replace only, never content invalidation. All three vars are optional — unconfigured, the cache runs memory-only and nothing breaks. Both tiers hold exactly the bytes S3 holds (ciphertext), so the operator trust boundary (ADR-0034) is unchanged, and the FS tier is a cache, never a source of truth — the ephemeral filesystem (below) is fine for it, a miss just falls through to S3. `DOC_CACHE_DISABLED` is the kill switch. The client mirrors this with a Cache-API blob cache (`frontend/src/lib/doc-cache.ts`) so repeat and offline opens skip the network.
 
 ## One-time setup runbook
@@ -70,6 +72,30 @@ The pieces in the repo:
 - Documents: upload a file and re-open it. The `S3_*` vars are **required in production** — with them unset the backend refuses the dev-only local-disk fallback and fails loud (`S3_BUCKET not configured`) rather than silently writing to the ephemeral container filesystem and losing every blob on the next redeploy (storage.ts).
 - Note: the API connects to Postgres at boot (`PrismaService.onModuleInit`) — the healthcheck failing right after a deploy usually means `DATABASE_URL` is wrong/missing, not app breakage.
 
+## Staging environment (ADR-0104)
+
+A second **environment** inside the same Railway project (not a second project, per ADR-0031) — its own service instance (same Dockerfile/`railway.json`), its own Postgres, and (once needed) its own Storage Bucket. Deploys come from a persistent `staging` git branch, gated by CI rather than fired directly by Railway's git webhook:
+
+```
+GitHub staging branch ──push──▶ .github/workflows/deploy-staging.yml
+                                  ├─ calls ci.yml's jobs (typecheck/build/test/lint/e2e)
+                                  └─ on green: `railway up` (Railway CLI) ──▶ Railway "staging" environment
+                                                                              ├─ waypoint service (staging)
+                                                                              └─ Postgres (staging, separate from prod)
+```
+
+**One-time setup (human, Railway + GitHub dashboards):**
+
+1. Railway project → **New Environment** → name it `staging`. Add a Postgres plugin scoped to it (same as production step 3 in the runbook above — it's per-environment, not shared).
+2. Staging service → Settings → **Source**: track the `staging` branch, then turn **off** its git auto-deploy trigger (deploys come from the Action below, not the webhook, so a red test run never reaches staging).
+3. Staging service → Settings → **Networking** → Generate Domain.
+4. Set the env var table above on the **staging** service — with the differences called out there: fresh `JWT_SECRET`/`TOKEN_ENCRYPTION_KEY`/`DOC_ENCRYPTION_KEY`, `DATABASE_URL` referencing staging's own Postgres (`${{Postgres.DATABASE_URL}}` picked from within the staging environment), `GOOGLE_OAUTH_REDIRECT_URI` using the staging domain, `S3_*` pointed at a separate staging bucket (or left unset).
+5. Google Cloud Console: add the staging domain to Authorized JavaScript origins and `https://<staging-domain>/auth/google/callback` to Authorized redirect URIs on the **same** OAuth client (it accepts multiple redirect URIs — no need for a second client).
+6. Railway → Project Settings → **Tokens** → create a **project token scoped to the staging environment** (not the account-wide token). Add it to the GitHub repo as the `RAILWAY_STAGING_TOKEN` secret.
+7. Create and push the `staging` branch from `main`, then push once to confirm `deploy-staging.yml` runs the test jobs and deploys.
+
+**Verify:** same checklist as production (above), run against the staging domain.
+
 ## Migrations
 
 `npx prisma migrate deploy` runs as Railway's **pre-deploy command** — in the new image, before it replaces the running one. This is why `prisma` (CLI) and `dotenv` are production `dependencies` of the backend, not dev-only.
@@ -87,8 +113,7 @@ Serves the full single-origin app (PWA + API + WS) on `:3000` — the same image
 ## Still open (deliberately)
 
 1. Custom domain (default `*.up.railway.app` subdomain is fine for a private tool).
-2. Staging environment — skipped for v1; Railway PR environments can cover it later.
-3. CI on PRs (typecheck/build/test via GitHub Actions) — worth adding; deploys don't depend on it.
+2. Railway's ephemeral PR-preview environments — a possible future addition for per-PR preview links; the persistent `staging` environment (ADR-0104) covers the "stable pre-production URL" need instead.
 
 ## Non-goals for v1
 
