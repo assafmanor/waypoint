@@ -115,6 +115,11 @@ export const t = {
     // own dedicated screen; the back-row returns here.
     back: 'אינדקס',
     backAria: 'חזרה לאינדקס',
+    // Merged idx-head row (ADR-0100 §1): the booking count sits at the row's
+    // trailing end, beside the back+title group.
+    head: {
+      count: (n: number) => `${n} הזמנות`,
+    },
     tile: {
       nextPrefix: 'הבא:',
       pastCount: (n: number) => `${n} מהעבר`,
@@ -126,12 +131,12 @@ export const t = {
       categoryLabel: 'סינון לפי סוג',
       noResultsTitle: 'אין הזמנות תואמות',
     },
+    // The search icon toggles the overlay open/closed (ADR-0100 §3) — no
+    // separate cancel control anymore, tapping it again closes and clears.
     search: {
       button: 'חיפוש הזמנות',
-      label: 'חיפוש',
       placeholder: 'חפשו לפי שם או קוד אישור…',
       clear: 'נקה חיפוש',
-      cancel: 'ביטול',
     },
     pastToggle: {
       show: (n: number) => `הצג הזמנות מהעבר (${n})`,

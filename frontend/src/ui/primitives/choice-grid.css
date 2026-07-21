@@ -57,6 +57,30 @@
   gap: var(--space-2);
   padding-block-end: 2px;
   scrollbar-width: none;
+  /* scroll-snap-type + scroll-snap-align (below) align the row's resting
+     scroll position to a chip boundary at the leading edge, including on
+     first load — without it the row can rest at any offset, bisecting the
+     chip nearest the container edge. It can't fix the TRAILING edge (the
+     container width is never an exact multiple of chip widths, so a peek is
+     inherent); a mask-image fade handles that so the peek reads as a "scroll
+     for more" affordance instead of a hard cutoff (ADR-0100 §6). The gradient
+     direction is physical (`to right`), correct in both directions since RTL
+     only reorders flex children, not `mask-image`'s own coordinate space. */
+  scroll-snap-type: x mandatory;
+  -webkit-mask-image: linear-gradient(
+    to right,
+    transparent 0,
+    black 14px,
+    black calc(100% - 14px),
+    transparent 100%
+  );
+  mask-image: linear-gradient(
+    to right,
+    transparent 0,
+    black 14px,
+    black calc(100% - 14px),
+    transparent 100%
+  );
 }
 .choice-grid.pills::-webkit-scrollbar {
   height: 0;
@@ -75,11 +99,19 @@
   border-radius: var(--radius-999);
   padding: 6px 12px;
   cursor: pointer;
+  scroll-snap-align: start;
   transition:
     background 0.15s ease,
     color 0.15s ease,
     border-color 0.15s ease,
     transform 0.12s ease;
+}
+.choice-pill-count {
+  font-family: var(--font-mono);
+  opacity: 0.75;
+}
+.choice-pill.on .choice-pill-count {
+  opacity: 0.85;
 }
 .choice-pill:active {
   transform: scale(0.94);

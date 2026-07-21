@@ -2694,29 +2694,29 @@
   margin-bottom: 2px;
 }
 
-/* Sub-screen header: an icon-only back button + adjacent label, matching the
-   shipped `.back` pattern (TripSettings/AllTrips). */
-.index .back-row {
+/* Merged back+title+count header row (ADR-0100 §1): the back button + the
+   "אינדקס" label and the screen's trailing fact (booking count / documents'
+   encrypted badge) share ONE compact line instead of a back-row plus a
+   separate title/count row underneath — the two-row version read as an
+   oversized, mostly-blank block right under the header (a real bug Assaf
+   flagged from a screenshot). `idx-head-start` groups the back button + label
+   so the arrow reads as "go back from Index," not a floating control; shared
+   by both dedicated screens (IndexBackRow.tsx). */
+.index .idx-head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding-top: 2px;
+  margin-bottom: 10px;
+}
+.index .idx-head-start {
   display: flex;
   align-items: center;
   gap: 10px;
-  padding-top: 2px;
-  margin-bottom: 6px;
-}
-/* The shared `.sec-title`'s 22px top margin is sized for separating a section
-   from hero/board chrome above it elsewhere in the app; right under this
-   compact back-row it reads as a large empty gap (a real bug users noticed —
-   the sub-screen header looked like an oversized, mostly-blank block). Pull
-   it in to the mockup's own spacing for this combination. Covers both
-   dedicated screens: IndexBookingsView's own `.sec-title` and
-   DocumentsSection's (unchanged, ADR-0098 §2), since both sit directly after
-   this back-row. */
-.index .back-row + .sec-title {
-  margin-top: 4px;
 }
 .index .back-icon-btn {
-  width: 34px;
-  height: 34px;
+  width: 32px;
+  height: 32px;
   border-radius: 10px;
   background: var(--card);
   border: 1px solid var(--line);
@@ -2734,104 +2734,99 @@
 .index .back-icon-btn:active {
   transform: scale(0.93);
 }
-.index .back-label {
+.index .idx-head-title {
   font-family: var(--font-head);
-  font-size: 14.5px;
+  font-size: 16px;
   color: var(--ink);
 }
-
-/* Groups the title text + count pill as ONE flex item, so the shared
-   `.sec-title`'s `justify-content: space-between` (built for exactly two
-   children — a label and a trailing `.sec-title-end`) still lands the count
-   right beside the title instead of floating it in the middle of the row. */
-.index .sec-title-main {
-  display: flex;
-  align-items: center;
-  gap: 8px;
-}
-/* Booking count — a quiet secondary fact, not a second heading. */
-.index .sec-count {
+/* Booking count / documents' encrypted badge — a quiet secondary fact at the
+   row's other end, not a second heading. */
+.index .idx-head-count {
   font-family: var(--font-mono);
-  font-size: 10.5px;
-  font-weight: 600;
-  color: var(--muted);
-  background: color-mix(in srgb, var(--ink) 5%, transparent);
-  border-radius: var(--radius-999);
-  padding: 1px 7px;
-}
-
-/* Category filter chips (ChoiceGrid pills layout, ui/primitives/choice-grid.css)
-   sit right under the search row — just spacing here. */
-.index .choice-grid.pills {
-  margin-bottom: 10px;
-}
-
-/* Search (ADR-0098 §2, redesigned): tapping the button REPLACES the title row
-   with a search bar — the familiar iOS/Android "search bar takes over the
-   title" pattern — instead of opening a second row below it. Fixes the
-   earlier version's two stacked magnifying-glass icons (the toggle button
-   stayed visible above an identical icon inside the opened box) and a clear
-   "✕" that sat before the text with nothing yet to clear.
-   The toggle itself matches `.new-event-btn` (PlanDay/DayView's identical
-   `.sec-title-end` slot) — an icon+label chip, not a bare icon-only circle:
-   every OTHER control in this exact header slot carries a text label, and a
-   lone unlabelled icon floating at the far end of a wide row read as
-   orphaned/unfinished rather than a deliberate control. */
-.index .search-btn {
-  display: inline-flex;
-  align-items: center;
-  gap: 5px;
-  font: inherit;
   font-size: 11px;
   font-weight: 700;
-  letter-spacing: 0;
-  border: 1px solid var(--line);
-  background: var(--card);
-  color: var(--ink);
-  border-radius: 8px;
-  padding: 5px 9px;
-  cursor: pointer;
-  transition:
-    background 0.15s ease,
-    transform 0.12s ease;
+  color: var(--muted);
+  background: color-mix(in srgb, var(--ink) 6%, transparent);
+  border-radius: var(--radius-999);
+  padding: 3px 10px;
 }
-.index .search-btn .icon {
-  font-size: 13px;
+
+/* The Index's own selected-state accent (ADR-0100 §5): neutral ink in Trip
+   mode (unchanged from the ADR-0098 build), plan violet in Plan mode — the
+   same per-mode selection-accent rule the day-strip already follows
+   (ADR-0028, wp-daystrip[data-mode='plan']); this just wires the Index's own
+   chip/search/past-toggle chrome to it. Not per-category color — every
+   consumer shares this one token. */
+.index {
+  --idx-accent: var(--ink);
+  --idx-accent-text: #fff;
 }
-.index .search-btn:hover {
-  background: var(--ink);
-  color: var(--cta-text);
-  border-color: var(--ink);
+.app[data-mode='plan'] .index {
+  --idx-accent: var(--plan);
 }
-.index .search-btn:active {
-  transform: scale(0.95);
-}
-/* Fills the row on its own — the shared `.sec-title` uses
-   `justify-content: space-between`, built for exactly two children; while
-   search is active this is the row's only child. */
-.index .search-active {
+
+/* One dense chip+search row (ADR-0100 §2): the search icon is a FIXED
+   control at the row's left end (RTL: last DOM child, outside the scrolling
+   chip strip, always reachable) — the category chips (ChoiceGrid pills) fill
+   the remaining space between it and the row's right edge. */
+.index .filter-row {
   display: flex;
   align-items: center;
   gap: 8px;
-  width: 100%;
+  margin-bottom: 10px;
 }
-.index .search-inline {
+.index .chip-slot {
   flex: 1;
   min-width: 0;
+  position: relative;
+  height: 32px;
+}
+/* The chip row and the search overlay share this one box (ADR-0100 §3):
+   opening search COVERS the chips in place instead of pushing a second row
+   in — the chips fade/shift out, the search bar grows in from the icon's
+   side over the same space. */
+.index .chip-slot .choice-grid.pills {
+  position: absolute;
+  inset: 0;
+  align-items: center;
+  transition:
+    opacity 0.16s ease,
+    transform 0.22s cubic-bezier(0.3, 0.9, 0.4, 1);
+}
+.index .chip-slot.searching .choice-grid.pills {
+  opacity: 0;
+  transform: translateX(-6px) scale(0.98);
+  pointer-events: none;
+}
+.index .choice-pill.on {
+  background: var(--idx-accent);
+  border-color: var(--idx-accent);
+  color: var(--idx-accent-text);
+}
+.index .search-inline2 {
+  position: absolute;
+  inset: 0;
   display: flex;
   align-items: center;
-  gap: 6px;
+  gap: 8px;
   background: var(--card);
   border: 1px solid var(--soft-line);
   border-radius: var(--radius-999);
-  padding: 7px 12px;
+  padding: 0 12px;
+  opacity: 0;
+  transform: scaleX(0.88);
+  transform-origin: left center;
+  pointer-events: none;
+  transition:
+    opacity 0.2s ease,
+    transform 0.26s cubic-bezier(0.22, 0.8, 0.3, 1.1);
 }
-.index .search-inline-ic {
-  flex: 0 0 auto;
-  color: var(--muted);
-  font-size: 13px;
+.index .chip-slot.searching .search-inline2 {
+  opacity: 1;
+  transform: scaleX(1);
+  pointer-events: auto;
 }
-.index .search-inline input {
+.index .search-inline2 input {
   flex: 1;
   min-width: 0;
   border: 0;
@@ -2842,41 +2837,63 @@
   color: var(--ink);
 }
 /* Only rendered once there's text to clear — never sits idle before it. */
-.index .search-inline-clear {
+.index .search-inline2 .clear {
   flex: 0 0 auto;
   border: 0;
   background: color-mix(in srgb, var(--ink) 8%, transparent);
   border-radius: 50%;
   width: 18px;
   height: 18px;
-  font-size: 10px;
   color: var(--muted);
   cursor: pointer;
   display: grid;
   place-items: center;
 }
-.index .search-cancel {
-  flex: 0 0 auto;
-  font: inherit;
-  font-size: 12.5px;
-  font-weight: 700;
-  color: var(--muted);
-  background: none;
-  border: 0;
-  padding: 4px 2px;
-  cursor: pointer;
+.index .search-inline2 .clear .icon {
+  width: 9px;
+  height: 9px;
 }
-.index .search-cancel:active {
-  opacity: 0.6;
+/* Fixed at the row's left end, never scrolls away. A minimal real-SVG
+   control (ADR-0100 §4) in the same rounded-SQUARE shape as `.back-icon-btn`
+   — not a circle. Tints with the mode accent while open, doubling as the
+   "search is active" indicator. */
+.index .search-icon-btn {
+  flex: 0 0 auto;
+  width: 32px;
+  height: 32px;
+  border-radius: 10px;
+  background: var(--card);
+  border: 1px solid var(--line);
+  display: grid;
+  place-items: center;
+  color: var(--muted);
+  cursor: pointer;
+  transition:
+    transform 0.12s ease,
+    background 0.18s ease,
+    border-color 0.18s ease,
+    color 0.18s ease;
+}
+.index .search-icon-btn .icon {
+  width: 15px;
+  height: 15px;
+}
+.index .search-icon-btn.on {
+  background: var(--idx-accent);
+  border-color: var(--idx-accent);
+  color: var(--idx-accent-text);
+}
+.index .search-icon-btn:active {
+  transform: scale(0.9);
 }
 
-/* Past-bookings toggle (ADR-0098 §2, mirrors ADR-0061's chk-toggle exactly —
-   but neutral, not plan-violet: the Index is mode-agnostic content, ADR-0049,
-   so it can't reach for a Plan-only accent). */
+/* Past-bookings toggle (ADR-0098 §2, mirrors ADR-0061's chk-toggle). Colored
+   with the Index's own accent (ADR-0100 §5) like the chip/search chrome —
+   neutral ink in Trip mode, plan violet in Plan mode. */
 .index .past-toggle {
   font-size: 11px;
   font-weight: 700;
-  color: var(--ink);
+  color: var(--idx-accent);
   background: var(--card);
   border: 1px solid var(--soft-line);
   border-radius: var(--radius-999);
@@ -3170,9 +3187,12 @@
   background: var(--miss);
 }
 
-/* Index add-booking button + empty-state CTA */
+/* Index add-booking button + empty-state CTA. Color follows the Index's own
+   accent (ADR-0100 §5) instead of the shared `.addbtn`'s plan-deep default —
+   neutral ink in Trip mode, plan violet in Plan mode. */
 .index .addbtn {
   margin-bottom: 10px;
+  color: var(--idx-accent);
 }
 .index .empty-card .ea {
   margin-top: 14px;

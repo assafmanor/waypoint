@@ -4,7 +4,9 @@
 // (via the WS self-echo) reflect live, and the list reads offline like every other
 // snapshot entity. Queued uploads (ADR-0056) render as pending "uploading" rows
 // straight from the outbox, so they survive a reopen and reconcile to the real row
-// once flushed.
+// once flushed. The title/encrypted-badge header lives in IndexDocumentsView's
+// merged `idx-head` row now (ADR-0100 Consequences), not here — this component
+// is content only.
 import { useState } from 'react';
 import { type DocumentSummary } from '@waypoint/shared';
 import { useTrip } from '../state/trip-state';
@@ -51,11 +53,6 @@ export function DocumentsSection() {
 
   return (
     <>
-      <div className="sec-title">
-        {t.docs.title}
-        <span className="badge-offline">🔒 {t.docs.encrypted}</span>
-      </div>
-
       {!isEmpty && (
         <button type="button" className="addbtn" onClick={() => setUploading(true)}>
           {t.docs.add}

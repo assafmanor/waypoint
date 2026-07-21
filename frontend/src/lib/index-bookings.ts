@@ -2,7 +2,13 @@
 // into past / upcoming for the during-trip view (ADR-0049). A booking's schedule
 // lives on its 1:1 linked event (ADR-0047); an unlinked booking has no place on
 // the timeline yet, so it's always "upcoming" (something still to schedule).
-import { type Booking, type BookingType, type Trip, type TripEvent } from '@waypoint/shared';
+import {
+  BOOKING_TYPE,
+  type Booking,
+  type BookingType,
+  type Trip,
+  type TripEvent,
+} from '@waypoint/shared';
 import { formatTime, isEventPast, relativeDay, todayInTz } from './time';
 import { plainTimingLabel, timingLabels } from './booking-timing';
 import { FILTER_STAGGER_MAX_MS, FILTER_STAGGER_MS, MS_PER_DAY } from '../constants';
@@ -16,6 +22,18 @@ export type CategoryFilter = BookingType | typeof CATEGORY_ALL;
 /** Category-chip match: "all" passes everything, otherwise an exact type match. */
 export function matchesCategory(booking: Booking, category: CategoryFilter): boolean {
   return category === CATEGORY_ALL || booking.type === category;
+}
+
+/** Per-type booking counts for the category chip row (ADR-0100 §2: each chip
+ *  carries its own count, e.g. "רכבת 🚄 2"). Every `BookingType` is
+ *  initialized to 0 so a type with no bookings yet still renders a chip. */
+export function countByCategory(bookings: Booking[]): Record<BookingType, number> {
+  const counts = Object.fromEntries(Object.values(BOOKING_TYPE).map((type) => [type, 0])) as Record<
+    BookingType,
+    number
+  >;
+  for (const booking of bookings) counts[booking.type]++;
+  return counts;
 }
 
 /** Search match: title or confirmation code, case-insensitive. An empty/blank

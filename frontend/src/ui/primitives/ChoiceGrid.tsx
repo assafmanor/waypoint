@@ -12,6 +12,11 @@ export interface Choice<T extends string> {
    *  empty string omits the icon slot entirely (e.g. a plain "all" option). */
   icon: string;
   label: string;
+  /** Trailing count badge, `pills` layout only (the Index category filter,
+   *  ADR-0100 §2 — each chip carries label+icon+count). Decorative/aria-hidden
+   *  like the icon, so it never changes the option's accessible name.
+   *  `undefined` omits the slot entirely. */
+  count?: number;
 }
 
 export function ChoiceGrid<T extends string>({
@@ -54,12 +59,26 @@ export function ChoiceGrid<T extends string>({
           onClick={() => onChange(o.value)}
           disabled={disabled}
         >
-          {o.icon !== '' && (
-            <span className={pills ? undefined : 'choice-card-ic'} aria-hidden="true">
-              {o.icon}
-            </span>
+          {pills ? (
+            <>
+              <span>{o.label}</span>
+              {o.icon !== '' && <span aria-hidden="true">{o.icon}</span>}
+              {o.count !== undefined && (
+                <span className="choice-pill-count" aria-hidden="true">
+                  {o.count}
+                </span>
+              )}
+            </>
+          ) : (
+            <>
+              {o.icon !== '' && (
+                <span className="choice-card-ic" aria-hidden="true">
+                  {o.icon}
+                </span>
+              )}
+              <span className="choice-card-lbl">{o.label}</span>
+            </>
           )}
-          <span className={pills ? undefined : 'choice-card-lbl'}>{o.label}</span>
         </button>
       ))}
     </div>
