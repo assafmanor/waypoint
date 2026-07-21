@@ -190,10 +190,19 @@ function getNavigation(): NavigationLike | undefined {
   return (window as unknown as { navigation?: NavigationLike }).navigation;
 }
 
-type OverlayEntry = { id: number; close: () => void };
+/** What a back layer's handler reports after handling a back: whether its owner
+ *  remains an active back layer afterwards. `true` — the layer handled the back
+ *  but stays (a repeatable layer, e.g. resetting a filter without leaving the
+ *  screen), so it is NOT removed and peels the next back too. `false` — the layer
+ *  is now done (a closed overlay/subview), so it leaves the stack. The executor
+ *  peels off this result instead of unconditionally popping (ADR-0103) — the fix
+ *  for a handler that consumes a back yet keeps its owner mounted. */
+export type BackResult = { remainsActive: boolean };
+
+type OverlayEntry = { id: number; handle: () => BackResult };
 
 interface NavContextValue {
-  registerOverlay: (close: () => void) => number;
+  registerOverlay: (handle: () => BackResult) => number;
   unregisterOverlay: (id: number) => void;
   closeAllOverlays: () => void;
   hasOverlay: () => boolean;
@@ -251,9 +260,21 @@ export function NavProvider({ children }: { children: ReactNode }) {
   const runBack = useCallback(
     (action: BackAction) => {
       switch (action.kind) {
-        case 'close-overlay':
-          stackRef.current.pop()?.close();
+        case 'close-overlay': {
+          // Peel the topmost layer NON-destructively: run its handler, and only
+          // drop it from the stack if it reports it's no longer active. A
+          // repeatable layer (e.g. an Index filter reset) stays mounted AND
+          // registered, so the next back still peels there instead of leaking
+          // past the still-visible screen into a structural step (ADR-0103).
+          // Removal is by identity — the owner's own unmount cleanup then no-ops.
+          const stack = stackRef.current;
+          const top = stack[stack.length - 1];
+          if (top && !top.handle().remainsActive) {
+            const i = stack.indexOf(top);
+            if (i >= 0) stack.splice(i, 1);
+          }
           break;
+        }
         case 'arm-exit':
           exitPendingRef.current = getNow();
           showToast(ICONS.navigate, t.shell.leaveTripHint);
@@ -307,9 +328,9 @@ export function NavProvider({ children }: { children: ReactNode }) {
 
   const value = useMemo<NavContextValue>(
     () => ({
-      registerOverlay: (close) => {
+      registerOverlay: (handle) => {
         const id = ++seqRef.current;
-        stackRef.current.push({ id, close });
+        stackRef.current.push({ id, handle });
         return id;
       },
       unregisterOverlay: (id) => {
@@ -317,10 +338,12 @@ export function NavProvider({ children }: { children: ReactNode }) {
         if (i >= 0) stackRef.current.splice(i, 1);
       },
       // Drain the whole stack (ADR-0060 idle-resume): snapshot then clear before
-      // closing, so each close()'s unregister can't splice the array mid-loop.
+      // handling, so each handler's unregister can't splice the array mid-loop.
+      // The result is ignored — the idle-resume reset navigates to Home right
+      // after, unmounting every layer regardless of what it reports.
       closeAllOverlays: () => {
         const all = stackRef.current.splice(0);
-        for (const o of all) o.close();
+        for (const o of all) o.handle();
       },
       hasOverlay: () => stackRef.current.length > 0,
       setInsideTrip: (v) => {
@@ -342,17 +365,34 @@ function useNav() {
   return ctx;
 }
 
-/** Register the calling component as the topmost overlay while it is mounted, so
- *  a back trigger closes it first. Used by the `Modal` primitive — every
- *  sheet/dialog inherits back-to-close with no call-site work. */
-export function useOverlay(onClose: () => void) {
+/** Register the calling component as the topmost back LAYER while it is mounted.
+ *  On a back trigger the handler runs and reports whether the layer remains
+ *  active: `{ remainsActive: true }` handles the back but stays registered (a
+ *  repeatable layer — e.g. resetting a filter without leaving the screen), so the
+ *  next back peels here again; `{ remainsActive: false }` hands off (the owner
+ *  closes/unmounts). The stack peels non-destructively off this result (ADR-0103).
+ *  Latest-ref so a re-created handler is honored without re-registering (no
+ *  duplicate stack entry across renders / Strict Mode). */
+export function useBackLayer(handle: () => BackResult) {
   const { registerOverlay, unregisterOverlay } = useNav();
-  const closeRef = useRef(onClose);
-  closeRef.current = onClose;
+  const handleRef = useRef(handle);
+  handleRef.current = handle;
   useEffect(() => {
-    const id = registerOverlay(() => closeRef.current());
+    const id = registerOverlay(() => handleRef.current());
     return () => unregisterOverlay(id);
   }, [registerOverlay, unregisterOverlay]);
+}
+
+/** A dismissible overlay: one back closes it (its owner then unmounts). A thin
+ *  shim over `useBackLayer` for the common "always closes" case — used by the
+ *  `Modal` primitive, so every sheet/dialog inherits back-to-close with no
+ *  call-site work. Reach for `useBackLayer` directly when a back should sometimes
+ *  be consumed without leaving the screen (ADR-0103). */
+export function useOverlay(onClose: () => void) {
+  useBackLayer(() => {
+    onClose();
+    return { remainsActive: false };
+  });
 }
 
 /** Close every open overlay at once. Used by the idle-resume reset (ADR-0060) so
