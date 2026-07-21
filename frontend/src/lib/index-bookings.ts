@@ -4,6 +4,7 @@
 // the timeline yet, so it's always "upcoming" (something still to schedule).
 import {
   BOOKING_TYPE,
+  matchesAnyTerm,
   type Booking,
   type BookingType,
   type Trip,
@@ -12,6 +13,7 @@ import {
 import { formatTime, isEventPast, relativeDay, todayInTz } from './time';
 import { plainTimingLabel, timingLabels } from './booking-timing';
 import { FILTER_STAGGER_MAX_MS, FILTER_STAGGER_MS, MS_PER_DAY } from '../constants';
+import { t } from '../i18n/he';
 
 /** The bookings-screen category filter (ADR-0098 §2): every `BookingType` plus
  *  an "all" option. Kept beside the type it filters, not a bare string literal
@@ -36,14 +38,29 @@ export function countByCategory(bookings: Booking[]): Record<BookingType, number
   return counts;
 }
 
-/** Search match: title or confirmation code, case-insensitive. An empty/blank
- *  query matches everything (ADR-0098 §2). */
+/** A booking's searchable terms (ADR-0102): title, confirmation code, its
+ *  type's Hebrew label in both grammatical numbers ("מסעדה"/"מסעדות" both find
+ *  a restaurant booking), and any alternate vocabulary for that type ("מלון"/
+ *  "הוסטל"/"airbnb" all find a hotel booking) — an array, not a fixed handful
+ *  of `||`-chained fields, so a future searchable facet (e.g. a linked
+ *  place's name) is a one-line push here, not a new branch in `matchesQuery`
+ *  itself. */
+function searchTerms(booking: Booking): (string | undefined)[] {
+  return [
+    booking.title,
+    booking.confirmationCode,
+    t.index.bookingType[booking.type],
+    t.index.bookingTypePlural[booking.type],
+    ...t.index.bookingTypeSynonyms[booking.type],
+  ];
+}
+
+/** Search match: title, confirmation code, or category label (singular or
+ *  plural), case/punctuation-insensitive. An empty/blank query matches
+ *  everything (ADR-0098 §2). */
 export function matchesQuery(booking: Booking, query: string): boolean {
-  const q = query.trim().toLowerCase();
-  if (!q) return true;
-  return (
-    booking.title.toLowerCase().includes(q) || !!booking.confirmationCode?.toLowerCase().includes(q)
-  );
+  if (!query.trim()) return true;
+  return matchesAnyTerm(query, searchTerms(booking));
 }
 
 export interface BookingRow {

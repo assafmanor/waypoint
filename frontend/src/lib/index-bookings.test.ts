@@ -280,6 +280,35 @@ describe('matchesQuery (ADR-0098 §2 search)', () => {
     expect(matchesQuery(b, 'na832')).toBe(true);
     expect(matchesQuery(b, 'zz')).toBe(false);
   });
+
+  it("matches by the booking's type label, singular or plural (ADR-0102)", () => {
+    const r = booking('b1', 'Ichiran Ramen', BOOKING_TYPE.RESTAURANT);
+    expect(matchesQuery(r, 'מסעדה')).toBe(true);
+    expect(matchesQuery(r, 'מסעדות')).toBe(true);
+    expect(matchesQuery(r, 'טיסה')).toBe(false);
+  });
+
+  it("doesn't cross-match a different type's label", () => {
+    const flight = booking('b1', 'x', BOOKING_TYPE.FLIGHT);
+    expect(matchesQuery(flight, 'מסעדה')).toBe(false);
+    expect(matchesQuery(flight, 'טיסות')).toBe(true);
+  });
+
+  it('matches a hotel booking by alternate lodging vocabulary, not just "לינה" (ADR-0102)', () => {
+    const h = booking('b1', 'x', BOOKING_TYPE.HOTEL);
+    expect(matchesQuery(h, 'מלון')).toBe(true);
+    expect(matchesQuery(h, 'הוסטל')).toBe(true);
+    expect(matchesQuery(h, 'דירה')).toBe(true);
+    expect(matchesQuery(h, 'airbnb')).toBe(true);
+    expect(matchesQuery(h, 'AIRBNB')).toBe(true);
+  });
+
+  it('matches the other types by their alternate vocabulary too (ADR-0102)', () => {
+    expect(matchesQuery(booking('b1', 'x', BOOKING_TYPE.FLIGHT), 'מטוס')).toBe(true);
+    expect(matchesQuery(booking('b2', 'x', BOOKING_TYPE.RESTAURANT), 'ארוחה')).toBe(true);
+    expect(matchesQuery(booking('b3', 'x', BOOKING_TYPE.ACTIVITY), 'טיול')).toBe(true);
+    expect(matchesQuery(booking('b3', 'x', BOOKING_TYPE.ACTIVITY), 'כרטיס')).toBe(true);
+  });
 });
 
 describe('visibleRows (ADR-0098 §4 stagger)', () => {

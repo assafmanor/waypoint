@@ -10,6 +10,7 @@
 // by `IconGroup.id` — never here (this package is shapes + data, ADR-0009).
 
 import type { BookingType, EventCategory, TripEvent } from './entities';
+import { matchesAnyTerm } from './search-terms';
 
 /** A browse-group in the picker. `category` is the canonical semantic value
  *  persisted when a glyph from this group is chosen — the UI groups (10) are
@@ -142,21 +143,11 @@ export const TRIP_VIBE_TERMS: Record<string, readonly string[]> = {
   '❄️': ['חורף', 'שלג', 'winter', 'snow'],
 };
 
-const normalizeTerm = (s: string): string =>
-  s
-    .toLowerCase()
-    .replace(/["'`׳״]/g, '')
-    .replace(/\s+/g, ' ')
-    .trim();
-
 /** Vibe glyphs whose terms match a search query (empty query → none; the picker
  *  shows the spaced clusters instead). */
 export const searchVibeIcons = (query: string): readonly string[] => {
-  const q = normalizeTerm(query);
-  if (!q) return [];
-  return TRIP_ICON_SET.filter((g) =>
-    (TRIP_VIBE_TERMS[g] ?? []).some((term) => normalizeTerm(term).includes(q)),
-  );
+  if (!query.trim()) return [];
+  return TRIP_ICON_SET.filter((g) => matchesAnyTerm(query, TRIP_VIBE_TERMS[g] ?? []));
 };
 
 /** Default glyph per canonical category (the picker's suggestion + the badge a

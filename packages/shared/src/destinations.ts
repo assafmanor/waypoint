@@ -13,6 +13,7 @@
 // Caveat: flag emoji do not render on Windows (they show the letter pair, e.g.
 // "IS"). We're phone-primary (ADR-0017), so this affects the desktop graceful
 // minimum only.
+import { matchesAnyTerm, normalizeSearchTerm } from './search-terms';
 
 /** ISO-3166 alpha-2 code → flag emoji (regional-indicator pair). */
 export const flagFromCode = (code: string): string =>
@@ -100,23 +101,16 @@ export const DESTINATIONS: readonly Destination[] = [
   { code: 'IL', he: 'ישראל', aliases: ['israel', 'תל אביב', 'tel aviv', 'ירושלים'] },
 ];
 
-const normalize = (s: string): string =>
-  s
-    .toLowerCase()
-    .replace(/["'`.׳״]/g, '') // strip quotes incl. Hebrew geresh/gershayim
-    .replace(/\s+/g, ' ')
-    .trim();
-
 /** Best-effort flag from a free-text destination (auto-suggest, overridable).
  *  Short (≤2-char) aliases match only as whole tokens to avoid false hits
  *  (e.g. "us" inside "australia"); longer aliases match as substrings. */
 export const suggestFlagFromDestination = (text: string | undefined): string | undefined => {
   if (!text?.trim()) return undefined;
-  const n = normalize(text);
+  const n = normalizeSearchTerm(text);
   const tokens = new Set(n.split(' '));
   for (const d of DESTINATIONS) {
     for (const alias of [...d.aliases, d.he]) {
-      const a = normalize(alias);
+      const a = normalizeSearchTerm(alias);
       if (!a) continue;
       const hit = a.length <= 2 ? tokens.has(a) : n.includes(a);
       if (hit) return flagFromCode(d.code);
@@ -125,11 +119,12 @@ export const suggestFlagFromDestination = (text: string | undefined): string | u
   return undefined;
 };
 
-/** Destinations whose name/aliases match a search query (trip picker search). */
+/** Destinations whose name/aliases match a search query (trip picker search).
+ *  A blank query intentionally returns everything (the picker's default
+ *  browse list), checked here rather than relying on `matchesAnyTerm`'s
+ *  natural blank-matches-something fallthrough, since an empty `DESTINATIONS`
+ *  filter would otherwise still need this same early return. */
 export const searchDestinations = (query: string): readonly Destination[] => {
-  const q = normalize(query);
-  if (!q) return DESTINATIONS;
-  return DESTINATIONS.filter((d) =>
-    [d.he, ...d.aliases, d.code].some((term) => normalize(term).includes(q)),
-  );
+  if (!query.trim()) return DESTINATIONS;
+  return DESTINATIONS.filter((d) => matchesAnyTerm(query, [d.he, ...d.aliases, d.code]));
 };

@@ -5,3 +5,4 @@ export * from './destinations';
 export * from './icons';
 export * from './schemas';
 export * from './server-routes';
+export * from './search-terms';
