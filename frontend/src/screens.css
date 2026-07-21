@@ -2736,13 +2736,22 @@
   color: var(--ink);
 }
 
-/* Booking count pill beside the bookings-screen title. */
+/* Groups the title text + count pill as ONE flex item, so the shared
+   `.sec-title`'s `justify-content: space-between` (built for exactly two
+   children — a label and a trailing `.sec-title-end`) still lands the count
+   right beside the title instead of floating it in the middle of the row. */
+.index .sec-title-main {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+/* Booking count — a quiet secondary fact, not a second heading. */
 .index .sec-count {
   font-family: var(--font-mono);
   font-size: 10.5px;
-  font-weight: 700;
-  color: var(--ink);
-  background: color-mix(in srgb, var(--ink) 6%, transparent);
+  font-weight: 600;
+  color: var(--muted);
+  background: color-mix(in srgb, var(--ink) 5%, transparent);
   border-radius: var(--radius-999);
   padding: 1px 7px;
 }

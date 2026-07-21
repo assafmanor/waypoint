@@ -99,9 +99,11 @@ export function IndexBookingsView({
       <IndexBackRow onBack={onClose} />
 
       <div className="sec-title">
-        <span>{t.index.bookingsTitle}</span>
-        <span className="sec-count" dir="ltr">
-          {bookings.length}
+        <span className="sec-title-main">
+          {t.index.bookingsTitle}
+          <span className="sec-count" dir="ltr">
+            {bookings.length}
+          </span>
         </span>
         <span className="sec-title-end">
           <button
