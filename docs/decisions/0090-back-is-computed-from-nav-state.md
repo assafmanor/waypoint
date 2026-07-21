@@ -2,7 +2,7 @@
 
 **Status:** Accepted (Assaf sign-off 2026-07-20)
 **Date:** 2026-07-20
-**Supersedes the _mechanism_ of:** [0035](0035-in-app-back-and-return-gesture.md) — its **behavior** (the §2 layer-peeling precedence, the two-tap trip-exit confirm, the single-source day model §4, the RTL return gesture §5) is **retained unchanged**; only _how_ a back is resolved changes. ADR-0035 stays the behavioral reference; this ADR replaces §1's "in-app navigation _is_ history" bet and every refinement that grew from it (the 2026-07-19 / -19b / -19c history-index machinery).
+**Supersedes the _mechanism_ of:** [0035](0035-in-app-back-and-return-gesture.md) — its **behavior** (the §2 layer-peeling precedence, the two-tap trip-exit confirm, the single-source day model §4) is **retained unchanged**; only _how_ a back is resolved changes. ADR-0035 stays the behavioral reference; this ADR replaces §1's "in-app navigation _is_ history" bet and every refinement that grew from it (the 2026-07-19 / -19b / -19c history-index machinery). §5, the RTL return gesture, was later retired outright by [0099](0099-retire-the-custom-edge-swipe-gesture.md) (2026-07-21) — every mention of it below (as a trigger alongside system-back/tabs/shell buttons) is historical.
 **Refines:** [0060](0060-reopen-after-idle-returns-to-trip-home.md) (idle-resume still `navigate('/')`s to Home; unchanged), [0007](0007-platform-pwa.md) (installed PWA, no system back on iOS), [0017](0017-mobile-first-device-targets.md) (phone-first; desktop = graceful minimum), [0079](0079-single-modal-primitive.md) (the overlay-stack registration this consults).
 
 ## Context

@@ -21,7 +21,6 @@ import {
   useTripBackGuard,
   useTripTab,
 } from './state/nav-state';
-import { EdgeSwipeBack } from './ui/EdgeSwipeBack';
 import {
   flushAllOutbox,
   isOffline,
@@ -699,12 +698,7 @@ export function App() {
           <NavProvider>
             <ConfirmProvider>
               <OutboxAutoFlush />
-              {/* #app-shift is the parallax target the return gesture nudges
-                  (ADR-0090); EdgeSwipeBack sits outside it so it isn't moved. */}
-              <div id="app-shift">
-                <AppRoutes />
-              </div>
-              <EdgeSwipeBack />
+              <AppRoutes />
               {import.meta.env.DEV && <DevTimeTravel />}
             </ConfirmProvider>
           </NavProvider>

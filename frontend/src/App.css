@@ -1746,11 +1746,3 @@
 /* The Plan-mode day-strip re-skin (light pills, violet selection, dashed
    empty-day markers) moved into the DayStrip component, keyed off its own
    `[data-mode='plan']` (ui/domain/day-strip.css). */
-
-/* Return gesture (ADR-0035 §5). #app-shift is the layer the pull moves: the
-   screen tracks the finger ~1:1 and, on a committed structural back, slides
-   fully off before the new screen swaps in (ui/EdgeSwipeBack drives transform +
-   a trailing shadow inline). will-change keeps the slide on the compositor. */
-#app-shift {
-  will-change: transform;
-}

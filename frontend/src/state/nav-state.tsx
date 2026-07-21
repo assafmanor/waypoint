@@ -7,12 +7,14 @@
 // are unknowable and get polluted by OAuth round-trips, PWA cold launches, and
 // react-router idx desyncs — the whole class of bug ADR-0035 kept re-patching).
 //
-// Every "back" trigger — the edge gesture (ui/EdgeSwipeBack), the platform
-// system-back (Navigation API interceptor below), the nav-bar Home tab, a shell
-// back button — resolves the SAME `resolveBack` and runs the SAME executor.
-// Adding a trigger never re-encodes the precedence; changing the behavior is a
-// one-function edit (`resolveBack`). Overlays register into an in-memory stack
-// that `resolveBack` consults first.
+// Every "back" trigger — the platform system-back (Navigation API interceptor
+// below), the nav-bar Home tab, a shell back button — resolves the SAME
+// `resolveBack` and runs the SAME executor. Adding a trigger never re-encodes
+// the precedence; changing the behavior is a one-function edit (`resolveBack`).
+// Overlays register into an in-memory stack that `resolveBack` consults first.
+// (A custom edge-swipe gesture trigger existed here too, ADR-0035 §5; retired
+// by ADR-0099 — Android/desktop system-back and explicit back buttons/taps
+// cover it, and the app no longer offers a custom gesture surface at all.)
 import {
   createContext,
   useCallback,
@@ -172,8 +174,10 @@ export function shouldResetToHomeOnResume(awayMs: number, mode: Mode): boolean {
 }
 
 // Minimal shape of the Navigation API we use (lib.dom lacks it in this TS
-// version). Present on Chromium (Android/desktop); absent on Safari/iOS — where
-// there's no system back to intercept anyway, so the edge gesture covers it.
+// version). Present on Chromium (Android/desktop); absent on Safari/iOS, which
+// has no system back to intercept and (since ADR-0099 retired the custom edge
+// gesture) no in-app gesture back either — iOS navigates via explicit taps
+// only (tabs, back buttons, backdrop-to-close).
 interface NavigateEventLike extends Event {
   navigationType: string;
   cancelable: boolean;
@@ -270,9 +274,9 @@ export function NavProvider({ children }: { children: ReactNode }) {
   );
 
   // Route the platform system-back (Android hardware/edge back, desktop button)
-  // through the SAME resolveBack as the gesture (ADR-0090). On Android the OS
-  // owns the screen edges, so it pre-empts the custom swipe; the Navigation API
-  // lets us cancel the back *traversal* and run our own decision instead. Every
+  // through the SAME resolveBack as every other trigger (ADR-0090). The
+  // Navigation API lets us cancel the back *traversal* and run our own
+  // decision instead. Every
   // cancelable backward traverse inside a trip is preventDefault'd and replaced
   // with the explicit action, so react-router's own back never peels a structural
   // step (its target — what the browser stack holds — is exactly the unreliable
@@ -282,7 +286,7 @@ export function NavProvider({ children }: { children: ReactNode }) {
   // `push`/`replace`, not `traverse`, so they don't re-enter this handler.
   useEffect(() => {
     const navApi = getNavigation();
-    if (!navApi) return; // Safari/iOS: no system back; the edge gesture covers it.
+    if (!navApi) return; // Safari/iOS: no system back to intercept.
     const onNavigate = (evt: Event) => {
       const e = evt as NavigateEventLike;
       if (e.navigationType !== 'traverse' || !e.cancelable) return;
@@ -339,8 +343,8 @@ function useNav() {
 }
 
 /** Register the calling component as the topmost overlay while it is mounted, so
- *  `goBack()`/the return gesture closes it first. Used by the `Modal` primitive —
- *  every sheet/dialog inherits back-to-close with no call-site work. */
+ *  a back trigger closes it first. Used by the `Modal` primitive — every
+ *  sheet/dialog inherits back-to-close with no call-site work. */
 export function useOverlay(onClose: () => void) {
   const { registerOverlay, unregisterOverlay } = useNav();
   const closeRef = useRef(onClose);
@@ -349,13 +353,6 @@ export function useOverlay(onClose: () => void) {
     const id = registerOverlay(() => closeRef.current());
     return () => unregisterOverlay(id);
   }, [registerOverlay, unregisterOverlay]);
-}
-
-/** Whether an overlay is currently open — the return gesture uses it to let a
- *  pull start anywhere (not just the trailing edge) when there's a sheet to
- *  dismiss over. Returns a live getter, stable across renders. */
-export function useHasOverlay(): () => boolean {
-  return useNav().hasOverlay;
 }
 
 /** Close every open overlay at once. Used by the idle-resume reset (ADR-0060) so
@@ -386,9 +383,10 @@ export function useMarkInsideTrip() {
  *  changes, so the guard is never seen and never consumed (every in-trip back is
  *  cancelled, so the index never drops onto it). This is the *fuel* the OS back
  *  needs; the back *decision* stays a pure function of state (`resolveBack`), never
- *  reading history. No-op without the Navigation API (iOS/Safari have no OS back;
- *  the edge gesture calls `resolveBack` directly) or when an entry already sits
- *  behind us (entered from /trips, an OAuth round-trip, etc.). */
+ *  reading history. No-op without the Navigation API (iOS/Safari has no OS back
+ *  to guard — and, since ADR-0099 retired the custom edge gesture, no in-app
+ *  gesture back either; iOS navigates via explicit taps only) or when an entry
+ *  already sits behind us (entered from /trips, an OAuth round-trip, etc.). */
 export function useTripBackGuard() {
   const navigate = useNavigate();
   const armedRef = useRef(false);

@@ -1,8 +1,9 @@
 // Pure navigation-decision tests for the in-app back model (ADR-0090, keeping
-// ADR-0035's behavior). The hooks that wrap these (useTripTab / useAppBack /
-// EdgeSwipeBack / the system-back interceptor) are React+router+DOM bound; the
-// decision itself is one pure function of the current nav state, and that — plus
-// the small pure targets around it — is what's worth pinning down.
+// ADR-0035's behavior; the custom edge-gesture trigger it also covered was
+// retired by ADR-0099). The hooks that wrap these (useTripTab / useAppBack /
+// the system-back interceptor) are React+router+DOM bound; the decision
+// itself is one pure function of the current nav state, and that — plus the
+// small pure targets around it — is what's worth pinning down.
 import { describe, expect, it } from 'vitest';
 import {
   RESET_TO_HOME_AFTER_HIDDEN_MS,
