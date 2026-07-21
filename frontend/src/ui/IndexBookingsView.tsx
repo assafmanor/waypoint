@@ -144,6 +144,7 @@ export function IndexBookingsView({
                 onClick={() => setSearchOpen(true)}
               >
                 <Icon name="search" />
+                {t.index.search.label}
               </button>
             </span>
           </>

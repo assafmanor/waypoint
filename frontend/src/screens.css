@@ -2773,26 +2773,45 @@
   margin-bottom: 10px;
 }
 
-/* Search (ADR-0098 §2, redesigned): tapping the icon button REPLACES the
-   title row with a search bar — the familiar iOS/Android "search bar takes
-   over the title" pattern — instead of opening a second row below it. Fixes
-   the earlier version's two stacked magnifying-glass icons (the toggle button
+/* Search (ADR-0098 §2, redesigned): tapping the button REPLACES the title row
+   with a search bar — the familiar iOS/Android "search bar takes over the
+   title" pattern — instead of opening a second row below it. Fixes the
+   earlier version's two stacked magnifying-glass icons (the toggle button
    stayed visible above an identical icon inside the opened box) and a clear
-   "✕" that sat before the text with nothing yet to clear. */
+   "✕" that sat before the text with nothing yet to clear.
+   The toggle itself matches `.new-event-btn` (PlanDay/DayView's identical
+   `.sec-title-end` slot) — an icon+label chip, not a bare icon-only circle:
+   every OTHER control in this exact header slot carries a text label, and a
+   lone unlabelled icon floating at the far end of a wide row read as
+   orphaned/unfinished rather than a deliberate control. */
 .index .search-btn {
-  width: 34px;
-  height: 34px;
-  border-radius: 10px;
-  background: var(--card);
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+  font: inherit;
+  font-size: 11px;
+  font-weight: 700;
+  letter-spacing: 0;
   border: 1px solid var(--line);
-  display: grid;
-  place-items: center;
+  background: var(--card);
+  color: var(--ink);
+  border-radius: 8px;
+  padding: 5px 9px;
   cursor: pointer;
-  color: var(--muted);
-  transition: transform 0.12s ease;
+  transition:
+    background 0.15s ease,
+    transform 0.12s ease;
+}
+.index .search-btn .icon {
+  font-size: 13px;
+}
+.index .search-btn:hover {
+  background: var(--ink);
+  color: var(--cta-text);
+  border-color: var(--ink);
 }
 .index .search-btn:active {
-  transform: scale(0.92);
+  transform: scale(0.95);
 }
 /* Fills the row on its own — the shared `.sec-title` uses
    `justify-content: space-between`, built for exactly two children; while

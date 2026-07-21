@@ -128,6 +128,7 @@ export const t = {
     },
     search: {
       button: 'חיפוש הזמנות',
+      label: 'חיפוש',
       placeholder: 'חפשו לפי שם או קוד אישור…',
       clear: 'נקה חיפוש',
       cancel: 'ביטול',
