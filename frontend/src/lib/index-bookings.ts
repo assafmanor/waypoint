@@ -110,7 +110,7 @@ function dayLabel(date: string, today: string): string {
  *
  *  A booking already behind you (ADR-0089) drops the transition verb: naming the
  *  action ("נחיתה", "צ׳ק-אאוט") only helps while it's still ahead of you — once
- *  it's in the "כבר מאחוריכם" list the day + duration answer "when was it", and
+ *  it's in the past-bookings list the day + duration answer "when was it", and
  *  the verb is noise. Past-ness is the same edge `splitBookings` files on. */
 export function scheduleLabel(event: TripEvent, booking: Booking, trip: Trip, now: Date): string {
   const today = todayInTz(trip.timezone, now);

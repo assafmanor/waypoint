@@ -139,7 +139,6 @@ export const t = {
     },
     bookingsTitle: 'הזמנות',
     offlineBadge: 'עובד אופליין',
-    pastHead: 'כבר מאחוריכם',
     unlinked: 'לא משובצת במסלול',
     bookingType: {
       flight: 'טיסה',

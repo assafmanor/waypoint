@@ -209,7 +209,6 @@ export function IndexBookingsView({
                 </span>
               </div>
               <Collapsible expanded={pastExpanded}>
-                <div className="past-head">{t.index.pastHead}</div>
                 <div className="listcard past">
                   {pastVisible.rows.map(({ row, visible, delayMs }) => (
                     <div

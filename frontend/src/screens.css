@@ -2656,13 +2656,6 @@
 .index .route {
   font-weight: 700;
 }
-.index .past-head {
-  font-size: 11px;
-  font-weight: 700;
-  color: var(--muted);
-  letter-spacing: 0.04em;
-  margin: 18px 2px 8px;
-}
 .index .listcard.past .wp-listrow {
   opacity: 0.6;
 }
