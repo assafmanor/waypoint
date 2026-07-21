@@ -130,6 +130,7 @@ export const t = {
       button: 'חיפוש הזמנות',
       placeholder: 'חפשו לפי שם או קוד אישור…',
       clear: 'נקה חיפוש',
+      cancel: 'ביטול',
     },
     pastToggle: {
       show: (n: number) => `הצג הזמנות מהעבר (${n})`,

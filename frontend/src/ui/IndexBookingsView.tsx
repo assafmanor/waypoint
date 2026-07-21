@@ -26,6 +26,7 @@ import { BookingDetail } from './BookingDetail';
 import { BookingManageSheet } from './BookingManageSheet';
 import { BookingTitle } from './BookingTitle';
 import { IndexBackRow } from './IndexBackRow';
+import { Icon } from './Icon';
 import { ListRow, type BadgeTone } from './domain';
 import { ChoiceGrid, type Choice } from './primitives/ChoiceGrid';
 import { Collapsible, CollapseToggle } from './primitives/Collapsible';
@@ -99,46 +100,55 @@ export function IndexBookingsView({
       <IndexBackRow onBack={onClose} />
 
       <div className="sec-title">
-        <span className="sec-title-main">
-          {t.index.bookingsTitle}
-          <span className="sec-count" dir="ltr">
-            {bookings.length}
-          </span>
-        </span>
-        <span className="sec-title-end">
-          <button
-            type="button"
-            className="search-btn"
-            aria-label={t.index.search.button}
-            onClick={() => (searchOpen ? closeSearch() : setSearchOpen(true))}
-          >
-            🔍
-          </button>
-        </span>
-      </div>
-
-      {searchOpen && (
-        <div className="search-row">
-          <div className="search-box">
-            <span aria-hidden="true">🔍</span>
-            <input
-              type="text"
-              autoFocus
-              value={query}
-              placeholder={t.index.search.placeholder}
-              onChange={(e) => setQuery(e.target.value)}
-            />
-            <button
-              type="button"
-              className="clear"
-              aria-label={t.index.search.clear}
-              onClick={() => setQuery('')}
-            >
-              ✕
+        {searchOpen ? (
+          <div className="search-active">
+            <div className="search-inline">
+              <span className="search-inline-ic">
+                <Icon name="search" />
+              </span>
+              <input
+                type="text"
+                autoFocus
+                value={query}
+                placeholder={t.index.search.placeholder}
+                onChange={(e) => setQuery(e.target.value)}
+              />
+              {query && (
+                <button
+                  type="button"
+                  className="search-inline-clear"
+                  aria-label={t.index.search.clear}
+                  onClick={() => setQuery('')}
+                >
+                  <Icon name="close" />
+                </button>
+              )}
+            </div>
+            <button type="button" className="search-cancel" onClick={closeSearch}>
+              {t.index.search.cancel}
             </button>
           </div>
-        </div>
-      )}
+        ) : (
+          <>
+            <span className="sec-title-main">
+              {t.index.bookingsTitle}
+              <span className="sec-count" dir="ltr">
+                {bookings.length}
+              </span>
+            </span>
+            <span className="sec-title-end">
+              <button
+                type="button"
+                className="search-btn"
+                aria-label={t.index.search.button}
+                onClick={() => setSearchOpen(true)}
+              >
+                <Icon name="search" />
+              </button>
+            </span>
+          </>
+        )}
+      </div>
 
       {bookings.length === 0 ? (
         <div className="empty-card">
