@@ -6,7 +6,9 @@
 //
 // Focus lands on the dialog *container* (give it tabIndex={-1}), never the first
 // field — auto-focusing an input would pop the on-screen keyboard the moment a
-// bottom sheet opens on mobile.
+// bottom sheet opens on mobile. `initialFocusRef` is the opt-in exception
+// (ADR-0101): a full-screen search mode WANTS the keyboard immediately, since
+// entering it is itself the "type now" action — the one caller that passes it.
 import { useEffect, useRef, type RefObject } from 'react';
 
 const FOCUSABLE = [
@@ -21,9 +23,9 @@ const FOCUSABLE = [
 export function useDialogFocus(
   ref: RefObject<HTMLElement | null>,
   onClose: () => void,
-  options: { trap?: boolean } = {},
+  options: { trap?: boolean; initialFocusRef?: RefObject<HTMLElement | null> } = {},
 ) {
-  const { trap = false } = options;
+  const { trap = false, initialFocusRef } = options;
   // Latest-ref so a re-created onClose doesn't re-run the effect (which would
   // re-focus the container mid-interaction).
   const onCloseRef = useRef(onClose);
@@ -32,7 +34,7 @@ export function useDialogFocus(
   useEffect(() => {
     const node = ref.current;
     const previouslyFocused = document.activeElement as HTMLElement | null;
-    node?.focus();
+    (initialFocusRef?.current ?? node)?.focus();
 
     const onKeyDown = (e: KeyboardEvent) => {
       if (e.key === 'Escape') {
@@ -65,5 +67,5 @@ export function useDialogFocus(
       // Restore focus to whatever opened the dialog, if it's still around.
       previouslyFocused?.focus?.();
     };
-  }, [ref, trap]);
+  }, [ref, trap, initialFocusRef]);
 }

@@ -15,12 +15,28 @@ function Dialog({ onClose, trap }: { onClose: () => void; trap?: boolean }) {
   );
 }
 
+function DialogWithInitialFocus({ onClose }: { onClose: () => void }) {
+  const ref = useRef<HTMLDivElement>(null);
+  const inputRef = useRef<HTMLInputElement>(null);
+  useDialogFocus(ref, onClose, { initialFocusRef: inputRef });
+  return (
+    <div ref={ref} tabIndex={-1} role="dialog" aria-label="d">
+      <input ref={inputRef} placeholder="search" />
+    </div>
+  );
+}
+
 describe('useDialogFocus', () => {
   afterEach(() => cleanup());
 
   it('moves focus to the dialog container on open (not the first field)', () => {
     render(<Dialog onClose={() => {}} />);
     expect(document.activeElement).toBe(screen.getByRole('dialog'));
+  });
+
+  it('focuses initialFocusRef instead of the container when given (ADR-0101 search mode)', () => {
+    render(<DialogWithInitialFocus onClose={() => {}} />);
+    expect(document.activeElement).toBe(screen.getByPlaceholderText('search'));
   });
 
   it('closes on Escape', () => {

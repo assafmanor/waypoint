@@ -1,0 +1,95 @@
+/* Generic full-screen search mode (ADR-0101), rides inside `.modal-overlay[data-
+   variant='full'] .modal-card` (Modal.tsx/modal.css). Self-contained — not
+   scoped under `.index` — so it reads the same wherever it's reused. */
+.search-overlay {
+  display: flex;
+  flex-direction: column;
+  height: 100%;
+}
+
+/* Compact top bar replacing the collapsed trip header: back control + label +
+   optional context chip, one line. Carries `.mode-chrome` (App.css, ADR-0101)
+   for its background/color/texture — this file only adds the row layout and
+   padding; `.chrome-ghost-btn`/`.chrome-chip` (also App.css) supply the back
+   button and context-chip treatment so both stay readable in either mode
+   tint without a second copy of those rules. */
+.search-overlay-bar {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  flex: 0 0 auto;
+  padding: calc(var(--space-3) + var(--safe-top)) var(--space-4) var(--space-3);
+}
+.search-overlay-title {
+  font-family: var(--font-head);
+  font-size: var(--text-h3);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  flex: 0 1 auto;
+}
+/* Sits right beside the title, not pushed to the row's far end — it reads as
+   a small annotation on "what" you're searching, not a trailing fact like a
+   count badge (contrast `.idx-head-count`, which IS pushed to the far end). */
+.search-overlay-context {
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+/* Pinned search field, always visible (no cover-in-place animation needed —
+   this whole screen only exists to search). Enough top margin to clear the
+   chrome bar's own color as a distinct band, not butt directly against it. */
+.search-overlay-field {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  flex: 0 0 auto;
+  margin: var(--space-4) var(--space-4) var(--space-3);
+  background: var(--card);
+  border: 1px solid var(--soft-line);
+  border-radius: var(--radius-999);
+  padding: 0 var(--space-3);
+  height: 40px;
+  color: var(--muted);
+}
+.search-overlay-field .icon {
+  width: 15px;
+  height: 15px;
+  flex: 0 0 auto;
+}
+.search-overlay-field input {
+  flex: 1;
+  min-width: 0;
+  border: 0;
+  outline: 0;
+  font: inherit;
+  font-size: var(--text-body);
+  background: none;
+  color: var(--ink);
+}
+.search-overlay-field .clear {
+  flex: 0 0 auto;
+  border: 0;
+  background: color-mix(in srgb, var(--ink) 8%, transparent);
+  border-radius: 50%;
+  width: 20px;
+  height: 20px;
+  color: var(--muted);
+  cursor: pointer;
+  display: grid;
+  place-items: center;
+}
+.search-overlay-field .clear .icon {
+  width: 10px;
+  height: 10px;
+}
+
+/* All remaining space between the field and the on-screen keyboard — a
+   scrollable, live-filtered results list. */
+.search-overlay-results {
+  flex: 1;
+  min-height: 0;
+  overflow-y: auto;
+  padding: 0 var(--space-4) calc(var(--space-4) + var(--safe-bottom));
+}

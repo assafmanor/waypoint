@@ -85,3 +85,8 @@ B-01–B-06 and B-08–B-13 shipped (ADR-0068–0076); B-07 shipped (ADR-0067). 
 ## Open question
 
 - **Blank-end events** — `EventForm` allows a blank end time, but the derived now-window and ripple both key off `endsAt` (`lib/time.ts` reads a missing end as zero-length), so an end-less event never reads as "now" and never ripples. Probably: derive a default-duration end for the now-window, leave ripple to real ends.
+- **General back-navigation inconsistency** (from session 63) — Assaf reports back "sort of working, but sometimes not as expected" app-wide, not scoped to any one screen. Traced the Index sub-screens specifically (`useOverlay`/`resolveBack`, ADR-0090) and a live browser-back drive confirmed those are correct; no concrete repro exists yet for the wider report. Needs an actual reproduction (device/browser, which trigger, which screen) before it can be diagnosed — don't guess at a fix without one.
+
+## Reusable UI follow-ups
+
+- **`SearchOverlay` beyond bookings** (from session 63, ADR-0101) — the full-screen search-mode primitive (`ui/primitives/SearchOverlay.tsx`) is wired up for the Index bookings screen only. A documents search (or any other "type to filter, on a full screen" need) should adopt it directly rather than growing a second one-off, whenever one is actually needed.

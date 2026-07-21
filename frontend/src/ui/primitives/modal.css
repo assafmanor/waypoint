@@ -1,4 +1,4 @@
-/* The single overlay primitive (ADR-0079). Two variants share one scrim +
+/* The single overlay primitive (ADR-0079). Three variants share one scrim +
    focus/close machinery (Modal.tsx); only shape/position differ. Built on the
    Wave-0 non-color tokens (radius/elevation/spacing, ADR-0082) and logical
    properties so RTL needs no left/right. Neutral chrome only — never amber/teal
@@ -28,6 +28,15 @@
   align-items: center;
   padding: var(--space-6);
 }
+/* full — a full-viewport screen, not a floating card over dimmed content
+   (ADR-0101): opaque (matches the app's own page background) since it
+   REPLACES the trip header + bottom nav rather than sitting above them, and
+   there's nothing "outside" it to see or tap-dismiss to (see Modal.tsx's
+   backdrop-click gate). Used today by `SearchOverlay`; reusable for any
+   future full-screen mode. */
+.modal-overlay[data-variant='full'] {
+  background: var(--screen);
+}
 
 .modal-card {
   width: 100%;
@@ -51,6 +60,20 @@
   max-width: 340px;
   border-radius: var(--radius-16);
   padding: var(--space-4);
+}
+
+.modal-overlay[data-variant='full'] .modal-card {
+  height: 100%;
+  max-width: none;
+  /* The card fills 100% of the overlay, so it's what's actually visible —
+     override the base rule's white `--card` fill with the same page-grey the
+     overlay itself uses, or the overlay's own background would never show. */
+  background: var(--screen);
+  border: 0;
+  box-shadow: none;
+  display: flex;
+  flex-direction: column;
+  overflow: hidden;
 }
 
 .modal-title {

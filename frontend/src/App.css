@@ -65,20 +65,34 @@
 
 /* header */
 .header {
-  background: var(--indigo);
-  color: #fff;
   /* Top padding clears the notch via --safe-top (0px on non-notched devices,
      so phone is unchanged). Block axis only — not an inline direction. */
   padding: calc(14px + var(--safe-top)) 20px 16px;
-  position: relative;
   z-index: 0;
+}
+/* Mode-tinted chrome surface (ADR-0028 identity + ADR-0101 reuse): the trip
+   header's blue Trip-mode base / light Plan-mode "drafting table" re-skin,
+   extracted into a shared class so another surface carrying the same "this
+   is app chrome" identity (the full-screen search mode's compact top bar,
+   ui/primitives/search-overlay.css) can reuse it verbatim instead of
+   duplicating these rules. Self-scoped on the surface's OWN `data-mode`
+   attribute (not `.app[data-mode]`) so it still works on a `Modal` that
+   portals to `document.body`, outside the `.app` DOM subtree — `.header`
+   carries `data-mode` itself for exactly this reason (App.tsx), even though
+   `.app[data-mode]` alone would already cover it in place. */
+.header,
+.mode-chrome {
+  background: var(--indigo);
+  color: #fff;
+  position: relative;
 }
 /* The drafting grid is a plan-mode texture cue (design-language: mode identity).
    It lives on a dedicated layer, not the header's background-image, so the
    mode-switch transition can DISSOLVE it (background-image can't be animated).
    Off in Trip mode, faded in for Plan; duration follows --switch-dur (unset =
    0s = instant when not mid-switch). */
-.header::before {
+.header::before,
+.mode-chrome::before {
   content: '';
   position: absolute;
   inset: 0;
@@ -90,11 +104,13 @@
     repeating-linear-gradient(90deg, rgba(110, 89, 214, 0.05) 0 1px, transparent 1px 22px);
   transition: opacity var(--switch-dur, 0s) var(--ease-standard);
 }
-.app[data-mode='plan'] .header::before {
+.app[data-mode='plan'] .header::before,
+.mode-chrome[data-mode='plan']::before {
   opacity: 1;
 }
 /* Keep header content above the grid layer. */
-.header > * {
+.header > *,
+.mode-chrome > * {
   position: relative;
   z-index: 1;
 }
@@ -182,8 +198,12 @@
 }
 /* Settings is a UI control, not an identity chip (ADR-0043 / design-language
    "emoji are content, icons are UI"): a borderless ghost icon beside the round
-   identity avatars, so it reads as a control and drops one competing circle. */
-.gear-btn {
+   identity avatars, so it reads as a control and drops one competing circle.
+   `.chrome-ghost-btn` generalizes this exact treatment (ADR-0101) for any
+   other icon control living directly on `.mode-chrome` — e.g. the search-mode
+   top bar's back button — rather than a second copy of the same rules. */
+.gear-btn,
+.chrome-ghost-btn {
   width: 32px;
   height: 32px;
   border-radius: 9px;
@@ -195,10 +215,12 @@
   font-size: 18px;
   cursor: pointer;
 }
-.gear-btn:hover {
+.gear-btn:hover,
+.chrome-ghost-btn:hover {
   color: #fff;
 }
-.gear-btn:focus-visible {
+.gear-btn:focus-visible,
+.chrome-ghost-btn:focus-visible {
   outline: 2.5px solid var(--amber);
   outline-offset: 2px;
 }
@@ -240,12 +262,16 @@
 }
 /* Offline/pending-sync badges (T-013) — muted like the offline map state in
    mockups/trip-dashboard-v2.html (.map-offline-banner), not amber/teal: this
-   is a background/system signal, not a "now" or "location" one (ADR rule #4). */
-.offline-badge {
+   is a background/system signal, not a "now" or "location" one (ADR rule #4).
+   `.chrome-chip` generalizes the translucent-pill-on-`.mode-chrome` treatment
+   (ADR-0101) for any other small annotation living directly on that surface —
+   e.g. the search-mode top bar's trip-name context label — reusing the same
+   readable-on-both-mode-tints styling rather than a second copy. */
+.offline-badge,
+.chrome-chip {
   display: inline-flex;
   align-items: center;
   gap: 6px;
-  margin-top: 8px;
   padding: 4px 10px;
   border-radius: 20px;
   background: rgba(255, 255, 255, 0.08);
@@ -253,6 +279,9 @@
   color: #8fa0c4;
   font-size: 11.5px;
   font-weight: 600;
+}
+.offline-badge {
+  margin-top: 8px;
 }
 /* mode toggle (design-language.md's Plan-mode components, mockups/plan-mode-v1.html) */
 .modebar {
@@ -1683,7 +1712,8 @@
    faint drafting grid, so the mode is readable from the chrome alone before any
    content. Scoped entirely under [data-mode='plan'] — Trip mode is untouched.
    ============================================================ */
-.app[data-mode='plan'] .header {
+.app[data-mode='plan'] .header,
+.mode-chrome[data-mode='plan'] {
   color: var(--ink);
   background-color: var(--card);
   /* drafting grid lives on .header::before (transitionable) — see the base rule */
@@ -1705,13 +1735,16 @@
 .app[data-mode='plan'] .trip-name-btn:focus-visible {
   outline-color: var(--plan);
 }
-.app[data-mode='plan'] .gear-btn {
+.app[data-mode='plan'] .gear-btn,
+.mode-chrome[data-mode='plan'] .chrome-ghost-btn {
   color: var(--plan-deep);
 }
-.app[data-mode='plan'] .gear-btn:hover {
+.app[data-mode='plan'] .gear-btn:hover,
+.mode-chrome[data-mode='plan'] .chrome-ghost-btn:hover {
   color: var(--plan);
 }
-.app[data-mode='plan'] .gear-btn:focus-visible {
+.app[data-mode='plan'] .gear-btn:focus-visible,
+.mode-chrome[data-mode='plan'] .chrome-ghost-btn:focus-visible {
   outline-color: var(--plan);
 }
 /* Avatar overlap rings match the (now light) header surface; the ringed
@@ -1729,7 +1762,8 @@
     0 0 0 2px var(--card),
     0 0 0 3.5px rgba(110, 89, 214, 0.5);
 }
-.app[data-mode='plan'] .offline-badge {
+.app[data-mode='plan'] .offline-badge,
+.mode-chrome[data-mode='plan'] .chrome-chip {
   background: rgba(22, 35, 61, 0.05);
   border-color: var(--line);
   color: var(--muted);

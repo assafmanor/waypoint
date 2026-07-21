@@ -129,14 +129,22 @@ export const t = {
     filter: {
       all: 'הכל',
       categoryLabel: 'סינון לפי סוג',
-      noResultsTitle: 'אין הזמנות תואמות',
+      // "No active bookings" rather than "no matching bookings" (ADR-0101):
+      // the old copy read as if nothing exists at all, when matches often DO
+      // exist just collapsed under "past". `pastMatchHint` only shows when
+      // that's actually the case, pointing at the toggle below it.
+      noResultsTitle: 'אין הזמנות פעילות כרגע',
+      pastMatchHint: (n: number) => `${n} מההזמנות שלכם כבר מאחוריכם`,
     },
-    // The search icon toggles the overlay open/closed (ADR-0100 §3) — no
-    // separate cancel control anymore, tapping it again closes and clears.
+    // The search icon opens the full-screen search mode (ADR-0101,
+    // `ui/primitives/SearchOverlay`) — a compact top bar + pinned field +
+    // live scrollable results, replacing the old cover-in-place chip row.
     search: {
       button: 'חיפוש הזמנות',
+      modeTitle: 'חיפוש הזמנות',
       placeholder: 'חפשו לפי שם או קוד אישור…',
       clear: 'נקה חיפוש',
+      backAria: 'סגירת חיפוש',
     },
     pastToggle: {
       show: (n: number) => `הצג הזמנות מהעבר (${n})`,
@@ -153,8 +161,8 @@ export const t = {
       activity: 'פעילות',
       other: 'אחר',
     },
-    emptyTitle: 'האינדקס עוד ריק',
-    emptyBody: 'כרטיסי טיסה, מלונות והזמנות אחרות יופיעו כאן, ידנית או מיובאים אוטומטית מ-Gmail',
+    emptyTitle: 'עוד אין הזמנות שמורות',
+    emptyBody: 'טיסות, לינה ושאר ההזמנות שלכם יופיעו כאן · ידנית או מיובאות אוטומטית מ-Gmail',
     toast: {
       saved: 'ההזמנה נשמרה',
       savedQueued: 'יישמר כשנחזור לרשת',
