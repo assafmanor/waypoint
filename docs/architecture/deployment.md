@@ -89,6 +89,18 @@ GitHub staging branch ──push──▶ .github/workflows/deploy-staging.yml
 
 **Standard procedure for using it:** most changes ship the normal way — task branch → PR → `main` — without ever touching staging. Reach for staging when a change is risky or hard to fully verify locally (auth flow changes, anything you want to see live against real Google OAuth and a real deployed build): push the task branch to `staging` (or open a PR into it) first, verify it live, then open the normal PR into `main`. Staging's database is disposable — treat it as a scratch testing lane, not a durable environment; it can be wiped and reset without ceremony.
 
+**Syncing `staging` with `main`.** `staging` is kept as "`main` plus at most one active experiment," not a persistent ahead-of-main integration branch — this repo ships PR-per-task straight to `main`, and staging stays a lightweight, disposable add-on to that rather than a second gate everything queues through:
+
+- **Idle (not testing anything):** `staging` == `main`, exactly.
+- **Starting a test:** confirm staging is at `main`'s tip (run the reset below if unsure), then push/merge the task branch onto `staging`.
+- **After the test** (merged to `main` or abandoned, either way): reset `staging` back to `main`'s tip. If the change merged first, staging naturally picks it up; if abandoned, the experimental commits just disappear from staging.
+
+The idle case above is **automatic**: `.github/workflows/sync-staging.yml` runs on every push to `main` and fast-forwards `staging` to match — but only via a plain (non-force) push, so it's a no-op whenever `staging` has diverged (i.e., someone's mid-test). A diverged `staging` is left alone, never silently clobbered.
+
+The "after a test" case needs one manual step, because a squash-merged PR lands as a brand-new commit `staging`'s original commits aren't an ancestor of (even though the content matches) — so the automatic fast-forward can't tell that case apart from "still testing" and correctly declines to touch it. Run the manual **`Reset Staging to Main`** GitHub Action (`.github/workflows/reset-staging.yml`, `workflow_dispatch` — Actions tab → select it → **Run workflow**, works from the GitHub mobile UI too, no local git needed) once you're done, whether the test merged or was abandoned. It force-points `staging` at whatever `main` currently is.
+
+This doesn't support two people testing unrelated changes on staging at once — they'd clobber each other — which is fine at the current team size and worth revisiting only if that stops being true.
+
 **One-time setup that actually worked (human, Railway + GitHub dashboards):**
 
 Railway's **Duplicate Environment** (environment dropdown → New Environment → duplicate from `production`) is the right starting point — it forks `waypoint` and `Postgres` as their own per-environment deployments automatically. It does **not**, however, fork every resource, and it copies every variable's **literal value**, including ones that must differ. After duplicating:
