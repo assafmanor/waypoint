@@ -4,6 +4,10 @@
 **Date:** 2026-07-21
 **Builds on:** [0031](0031-hosting-on-railway.md) (hosting on Railway, one project for everything)
 
+## Amendment (2026-07-22, post-standup) — `FRONTEND_URL` is required, not unset
+
+Standing up staging surfaced that this ADR's own claim below — "`DEV_AUTH` and `FRONTEND_URL` stay unset, exactly as in production" — is wrong about `FRONTEND_URL`. `AuthController`'s Google callback redirects the browser to `frontendUrl()` after every login (success or cancelled), which falls back to `http://localhost:5173` when the env var is unset. Every deployed environment, staging included, needs `FRONTEND_URL` explicitly set to its own origin, or Google login silently redirects to `localhost` (or, if copied verbatim from another environment during setup, to _that_ environment's domain instead of the one the user is actually on). `docs/architecture/deployment.md` carries the corrected guidance and the full staging runbook, including the Duplicate-Environment approach that was actually used (this ADR's original setup section below assumed a from-scratch build that was never exercised). The rest of this ADR — the decision itself — stands.
+
 ## Context
 
 [deployment.md](../architecture/deployment.md) explicitly deferred a staging environment for v1 ("Railway PR environments can cover it later") and flagged "CI on PRs" as worth adding. CI (`.github/workflows/ci.yml`) has since shipped. A staging environment is now wanted: a stable, always-on deploy target for testing changes against real Google OAuth + a real (non-production) database before they reach `main`/production, reachable at a fixed URL the group can revisit (unlike an ephemeral per-PR preview).
