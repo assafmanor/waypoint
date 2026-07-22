@@ -3,8 +3,12 @@ name: Deploy Staging
 # Gated deploy (ADR-0104): the staging Railway service's git auto-deploy
 # trigger is turned OFF. This workflow is the only path to a staging
 # deploy, and only reaches Railway if the reused CI jobs pass first.
+# PRs into staging run the test job only (validation); the deploy job
+# only fires on an actual push (merge) to staging.
 on:
   push:
+    branches: [staging]
+  pull_request:
     branches: [staging]
 
 jobs:
@@ -13,6 +17,7 @@ jobs:
 
   deploy:
     needs: test
+    if: github.event_name == 'push'
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
