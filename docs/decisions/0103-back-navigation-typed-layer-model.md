@@ -162,20 +162,31 @@ activation. This is a deliberate, **bounded** revision of §2's "flat history / 
 return to ADR-0035's history-first model: structural back still _computes_ its destination and
 never traverses blindly; only overlays ride their own same-URL markers.
 
+**Bug 3 — structural two-tap trip-exit (shipped fix, ride-and-correct).** The same activation
+limit hits Home → arm → exit on a _cold-launched_ trip: the 2nd (armed) back arrives
+non-cancelable, so the interceptor can't `preventDefault` it and the OS traverses onto the
+guard's Home-duplicate fuel — looping back to Home instead of leaving to All Trips (the reported
+"press again to leave, second back returns to trip home"). Rather than reseed history so All
+Trips sits one entry below the trip (a naive `replace('/trips')` + push remounts the shell
+mid-boot and was reverted), the interceptor now **rides then corrects**, mirroring the overlay
+fix: on a non-cancelable structural back it lets the traverse commit and, in a `queueMicrotask`,
+redirects to `/trips` **iff** the resolved action was `exit-trip` (`correctionForUncancelableBack`).
+The redirect is a `push`, not a `traverse`, so it doesn't re-enter the interceptor; every other
+action already lands on the correct same-URL entry (an arm keeps Home; a root `none` stays a
+legitimate native exit), so only an exit is corrected. The caught (cancelable) two-tap path is
+unchanged. Verified device-only (Playwright can't withhold the activation, so the ride path is
+covered by the pure `correctionForUncancelableBack` unit test; the cancelable two-tap and
+cold-launch guard stay e2e-covered).
+
 **Shipped in this decision:** the typed non-destructive registry (§1); the fresh-load guard;
-history-backed overlays; the env-gated nav-debug HUD. Real-Chromium e2e covers nested-overlay
-multi-back peel, search close, the filter lifecycle, the cold-launch guard, and tab/exit
-structural back.
+history-backed overlays; the structural exit ride-and-correct; the env-gated nav-debug HUD.
+Real-Chromium e2e covers nested-overlay multi-back peel, search close, the filter lifecycle, the
+cold-launch guard, and tab/exit structural back.
 
 **Deferred / still open (not built in this decision):**
 
 - Trigger-aware `resolveBack` + Escape unification (§2) and URL-param durability (§3) — still
   the intended direction, not yet built.
-- **Structural two-tap trip-exit under the activation gate.** The same limit hits Home → arm →
-  exit on a _cold-launched_ trip: the 2nd (armed) back is non-cancelable, so the OS traverses
-  onto the guard's Home-duplicate fuel instead of All Trips, looping back to Home. A robust fix
-  needs a history invariant (All Trips always exactly one entry below the trip) — a larger
-  structural change; **backlogged**, explicitly out of scope here.
 
 ## Consequences
 
