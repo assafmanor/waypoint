@@ -1,4 +1,4 @@
-# 0105 — Maps & Places epic: one mode-re-emphasized tab, picker-first, list-before-map, and the scope boundary
+# 0106 — Maps & Places epic: one mode-re-emphasized tab, picker-first, list-before-map, and the scope boundary
 
 **Status:** Accepted (scope + phasing). Design & front-end/back-end architecture deliberately deferred to the follow-on sessions — this ADR is the durable _frame_ the epic grows inside, not its final shape.
 **Date:** 2026-07-22

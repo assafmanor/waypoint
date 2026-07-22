@@ -1,7 +1,7 @@
-# 2026-07-22 · Session 67 — Maps & Places epic: PM scoping
+# 2026-07-22 · Session 68 — Maps & Places epic: PM scoping
 
 **Type:** Product-management session (no code). Sets the scope frame and phasing for the Maps & Places work; design, FE-arch, and BE-arch are explicit follow-ons.
-**Output:** [ADR-0105](../decisions/0105-maps-and-places-epic-scope-and-phasing.md) + backlog rework + this note.
+**Output:** [ADR-0106](../decisions/0106-maps-and-places-epic-scope-and-phasing.md) + backlog rework + this note.
 
 ## Why now
 
@@ -14,7 +14,7 @@ The Map is the last unbuilt core tab — a dead `<Placeholder>` in a primary nav
 - **Standing blocker:** the Google Cloud project (OAuth consent, Maps/Places keys, billing) — the human task gating any real Google surface.
 - **Already-decided scope not to re-litigate:** own-device location IN / member GPS sharing OUT (ADR-0006); navigate-to-next deferred _to this work_ (ADR-0045); integrations are pipes but Map is a first-class _surface_ (ADR-0004); we deep-link to Google Maps, we don't rebuild nav; pin colour derives from `category` (ADR-0038).
 
-## Decisions taken (→ ADR-0105)
+## Decisions taken (→ ADR-0106)
 
 Three framing calls were made by Assaf via a scoping question set:
 
@@ -42,11 +42,11 @@ Ordering was confirmed to match Assaf's instinct — the non-obvious call being 
 
 ## Schema verification pass
 
-Checked the place-usage derivation against `schema.prisma` + `packages/shared` before treating it as real (captured as ADR-0105's "Data-model verification" section). Confirmed: the snapshot ships `places`/`maybeItems`/`events`/`bookings` together (offline-safe holds), and `Place` is multiply-referenced (union semantics correct). Five refinements banked into the ADR: `isMaybe` keys on `MaybeItem.consumed`; a booking's day comes only from its linked event (unlinked booking → no day); transport contributes both from/to pins; event place resolution is conditional (reuse `lib/places.ts` + shared `bookingEventFields`, don't re-derive); coordless "Place-lite" rows are list-able but not pin-able (confirms Phase 3 can partly run before the picker). One open design Q surfaced: multi-day place under the day filter — every span day vs. edge days (follow 0054/0064's ambient-vs-edge precedent).
+Checked the place-usage derivation against `schema.prisma` + `packages/shared` before treating it as real (captured as ADR-0106's "Data-model verification" section). Confirmed: the snapshot ships `places`/`maybeItems`/`events`/`bookings` together (offline-safe holds), and `Place` is multiply-referenced (union semantics correct). Five refinements banked into the ADR: `isMaybe` keys on `MaybeItem.consumed`; a booking's day comes only from its linked event (unlinked booking → no day); transport contributes both from/to pins; event place resolution is conditional (reuse `lib/places.ts` + shared `bookingEventFields`, don't re-derive); coordless "Place-lite" rows are list-able but not pin-able (confirms Phase 3 can partly run before the picker). One open design Q surfaced: multi-day place under the day filter — every span day vs. edge days (follow 0054/0064's ambient-vs-edge precedent).
 
 ## Embedded-map (Phase 6) decisions
 
-Feasibility discussion on the fast-follow map converged into concrete Phase-6 decisions (captured in ADR-0105's dated "Embedded map" section):
+Feasibility discussion on the fast-follow map converged into concrete Phase-6 decisions (captured in ADR-0106's dated "Embedded map" section):
 
 - **Maps JavaScript API, not the Embed API** — the free iframe can't be brand-styled; the JS API is required for our palette + custom pins/routes, accepting billed dynamic map loads because the Map is a primary surface.
 - **Fully brand-styled** — cloud styling (`mapId`) for the base cartography, `AdvancedMarkerElement` for our own HTML pins (the ADR-0087 Waypoint marker as the literal pin), night/day styles swapping on `data-theme` (0028/0082); Google logo/attribution stay (ToS).
