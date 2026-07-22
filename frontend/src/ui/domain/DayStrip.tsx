@@ -8,6 +8,12 @@
 //
 // Presentational only: days + selection + callback via props; no trip-state. The
 // day-scope ribbon under the strip stays in the header (it's not a pill).
+//
+// Auto-scroll: the selected pill is centered in the strip on mount and on every
+// selection change, mirroring DayView's now-line centering (ADR-0027/0043) so a
+// trip with many days-before never leaves the active pill clipped at the edge.
+import { useEffect, useRef } from 'react';
+import { prefersReducedMotion } from '../../lib/motion';
 import './day-strip.css';
 
 export interface DayStripDay {
@@ -60,12 +66,25 @@ function pillClass(
 }
 
 export function DayStrip({ days, selected, today, mode, onSelect }: DayStripProps) {
+  const selectedRef = useRef<HTMLButtonElement>(null);
+
+  useEffect(() => {
+    const el = selectedRef.current;
+    if (!el) return;
+    el.scrollIntoView({
+      block: 'nearest',
+      inline: 'center',
+      behavior: prefersReducedMotion() ? 'auto' : 'smooth',
+    });
+  }, [selected]);
+
   return (
     <div className="wp-daystrip" data-mode={mode}>
       {days.map((d) => (
         <div key={d.date} className="wp-daypill-wrap">
           {d.monthLabel && <span className="wp-month-label">{d.monthLabel}</span>}
           <button
+            ref={d.date === selected ? selectedRef : undefined}
             type="button"
             className={pillClass(d.date, { selected, today, mode, hasEvents: d.hasEvents })}
             onClick={() => onSelect(d.date)}
