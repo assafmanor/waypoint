@@ -1,0 +1,1399 @@
+<title>Loading states — Waypoint</title>
+<!--
+  Waypoint · Loading states (v1)
+  ------------------------------
+  A DESIGN MOCKUP / reference, in the spirit of the other mockups/*.html. Designs
+  the three loading moments the app has today, which currently read as three
+  unrelated things: a bare word (BootScreen `shell.booting`), a generic shimmer
+  (`LoadingState` for `snapshot.loading`), and an inline row status
+  (`docs.upload.saving`). It proposes ONE loading language in three weights — a
+  filling departure-line that echoes the shipped day-progress + readiness bars.
+
+  DECISIONS captured here:
+   · BOOT (tier 3) — the loud "board power-on": the dormant departure board warming
+     up (glow ramp = warm-up, NOT the reserved live pulse; mono carries the numerals
+     since JetBrains Mono has no Hebrew glyphs). Theme, unlike mode, is known at boot
+     (a device setting), so it is theme-aware:
+        light = COOL PAPER (`--screen`) day ground, ink numerals + a small amber halo;
+        dark  = the night board, amber lit.
+     Amber stays a TIME ACCENT (the clock + its halo), never a field — a full amber
+     ground was tried and rejected as off-budget (design-language: amber = time only).
+     DARK is DESIGNED here but NOT implemented this task — a token remap, inert until
+     `data-theme='dark'` ships (design-language "dark-mode readiness").
+   · SNAPSHOT (tier 2) — replace the anonymous shimmer with a CONTENT-SHAPED skeleton
+     that pre-draws the real Home. The one tier that needs a per-mode variant: Trip
+     resolves to the dark board, Plan to the violet prep dashboard + checklist, so the
+     skeleton shape-matches the mode (chrome is already mode-themed at this point).
+   · UPLOAD (tier 1) — NOT a screen: the optimistic doc row dims to provisional and
+     carries the cloud-up sync marker (ADR-0092), status in the trailing slot. Chosen:
+     a DETERMINATE `NN%` + mini-bar while uploading (size is known, so show it),
+     replacing the indeterminate `מעלה…` spinner; offline stays the static
+     `ממתין להעלאה`. Needs upload-progress wiring (rides ADR-0056's outbox upload).
+     Mode-independent by design (sync grammar, `--sync-*`, orthogonal to the
+     amber/teal/plan budget).
+
+  Grounded in design-language.md (one-loud-element, the rationed board, the color
+  budget, motion tokens, dark-mode readiness), ADR-0028 (color budget), ADR-0052/0078
+  (the shared Spinner + feedback-state family), ADR-0092 (pending-write dim + cloud-up),
+  ADR-0016/0040 (mode is derived — so boot can't know it).
+
+  NOTE ON FONTS: the system stack substitutes Secular One / Assistant / JetBrains Mono
+  (CSP blocks the CDN in the review host). Color + motion are the subject, not type.
+  RTL preserved. All motion respects `prefers-reduced-motion`.
+
+  STATUS: promotes ADR-0105 (Accepted design; build tracked in backlog.md). Build =
+  the light boot + content-shaped skeleton; dark boot ships only with the theme toggle.
+-->
+<style>
+  /* ============================================================
+     PAGE CHROME  (the review document — quiet, cool, indigo-biased)
+     The specimens are the loud thing; the page around them whispers,
+     mirroring Waypoint's own "one loud element" principle.
+     ============================================================ */
+  :root {
+    --pg-ground: #eceef3;
+    --pg-ground-2: #e3e6ee;
+    --pg-panel: #ffffff;
+    --pg-ink: #1a2743;
+    --pg-muted: #5a6480;
+    --pg-faint: #8790a6;
+    --pg-line: rgba(26, 39, 67, 0.12);
+    --pg-line-2: rgba(26, 39, 67, 0.07);
+    --pg-accent: #4b3fb0; /* review accent = a desaturated cousin of plan-violet, NOT an app token */
+
+    /* ---- Waypoint app tokens, verbatim (design-language.md / ADR-0028) ---- */
+    --ink: #16233d;
+    --indigo: #1b2a4a;
+    --board: #0e1729;
+    --board-2: #152137;
+    --screen: #e7eaef;
+    --card: #ffffff;
+    --paper: #f3efe6;
+    --amber: #e9a63c;
+    --amber-deep: #c9822a;
+    --amber-soft: #f2b65a;
+    --teal: #2c9c90;
+    --teal-bright: #37b3a3;
+    --muted: #6c7488;
+    --faint: #98a0b0;
+    --plan: #6e59d6;
+    --plan-deep: #5747b4;
+    --plan-tint: #efecfb;
+    --ok: #3c9a6b;
+    --miss: #c2584e;
+    --line: rgba(22, 35, 61, 0.1);
+    --soft-line: rgba(22, 35, 61, 0.28);
+    --board-ink: #aeb9d4; /* light-blue body text on the board */
+    --sync-pending: #6c7488;
+
+    --wp-head: 'Secular One', 'Assistant', 'Heebo', system-ui, sans-serif;
+    --wp-body: 'Assistant', 'Heebo', system-ui, sans-serif;
+    --wp-mono: 'JetBrains Mono', ui-monospace, 'SF Mono', Menlo, Consolas, monospace;
+    --pg-sans: 'Assistant', system-ui, -apple-system, 'Segoe UI', sans-serif;
+  }
+  @media (prefers-color-scheme: dark) {
+    :root {
+      --pg-ground: #0e1524;
+      --pg-ground-2: #0a1120;
+      --pg-panel: #16203a;
+      --pg-ink: #e7eaf2;
+      --pg-muted: #9aa4bd;
+      --pg-faint: #6f7a95;
+      --pg-line: rgba(231, 234, 242, 0.12);
+      --pg-line-2: rgba(231, 234, 242, 0.06);
+      --pg-accent: #a99af2;
+    }
+  }
+  :root[data-theme='dark'] {
+    --pg-ground: #0e1524;
+    --pg-ground-2: #0a1120;
+    --pg-panel: #16203a;
+    --pg-ink: #e7eaf2;
+    --pg-muted: #9aa4bd;
+    --pg-faint: #6f7a95;
+    --pg-line: rgba(231, 234, 242, 0.12);
+    --pg-line-2: rgba(231, 234, 242, 0.06);
+    --pg-accent: #a99af2;
+  }
+  :root[data-theme='light'] {
+    --pg-ground: #eceef3;
+    --pg-ground-2: #e3e6ee;
+    --pg-panel: #ffffff;
+    --pg-ink: #1a2743;
+    --pg-muted: #5a6480;
+    --pg-faint: #8790a6;
+    --pg-line: rgba(26, 39, 67, 0.12);
+    --pg-line-2: rgba(26, 39, 67, 0.07);
+    --pg-accent: #4b3fb0;
+  }
+
+  * {
+    box-sizing: border-box;
+  }
+  html {
+    -webkit-text-size-adjust: 100%;
+  }
+  body {
+    margin: 0;
+    font-family: var(--pg-sans);
+    color: var(--pg-ink);
+    background:
+      radial-gradient(130% 80% at 88% -8%, rgba(110, 89, 214, 0.12), transparent 55%),
+      radial-gradient(90% 70% at 4% 2%, rgba(233, 166, 60, 0.06), transparent 52%),
+      linear-gradient(180deg, var(--pg-ground-2), var(--pg-ground));
+    background-attachment: fixed;
+    min-height: 100vh;
+    line-height: 1.55;
+  }
+
+  .wrap {
+    max-width: 1180px;
+    margin: 0 auto;
+    padding: clamp(22px, 4vw, 56px) clamp(16px, 4vw, 40px) 96px;
+  }
+
+  /* ---- masthead ---- */
+  .eyebrow {
+    font-size: 11.5px;
+    letter-spacing: 0.24em;
+    text-transform: uppercase;
+    color: var(--pg-accent);
+    font-weight: 700;
+    margin: 0 0 12px;
+  }
+  h1 {
+    font-family: var(--wp-head);
+    font-size: clamp(27px, 4.6vw, 42px);
+    line-height: 1.08;
+    letter-spacing: -0.01em;
+    margin: 0 0 14px;
+    text-wrap: balance;
+    font-weight: 400;
+  }
+  .lede {
+    max-width: 66ch;
+    color: var(--pg-muted);
+    font-size: clamp(14.5px, 1.5vw, 16.5px);
+    margin: 0;
+  }
+  .lede b {
+    color: var(--pg-ink);
+    font-weight: 700;
+  }
+
+  /* ---- legend strip ---- */
+  .legend {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 10px 22px;
+    margin: 26px 0 6px;
+    padding: 14px 18px;
+    background: color-mix(in srgb, var(--pg-panel) 70%, transparent);
+    border: 1px solid var(--pg-line);
+    border-radius: 14px;
+    font-size: 12.5px;
+    color: var(--pg-muted);
+  }
+  .legend b {
+    color: var(--pg-ink);
+  }
+  .sw {
+    display: inline-block;
+    width: 11px;
+    height: 11px;
+    border-radius: 3px;
+    vertical-align: -1px;
+    margin-inline-end: 5px;
+  }
+
+  /* ---- section rhythm ---- */
+  section {
+    margin-top: clamp(46px, 6vw, 78px);
+  }
+  .kicker {
+    display: flex;
+    align-items: baseline;
+    gap: 12px;
+    flex-wrap: wrap;
+  }
+  .kicker .n {
+    font-family: var(--wp-mono);
+    font-size: 13px;
+    font-weight: 700;
+    color: var(--pg-accent);
+    letter-spacing: 0.04em;
+  }
+  .kicker h2 {
+    font-family: var(--wp-head);
+    font-weight: 400;
+    font-size: clamp(20px, 2.6vw, 27px);
+    margin: 0;
+    letter-spacing: -0.01em;
+  }
+  .kicker .tag {
+    font-family: var(--wp-mono);
+    font-size: 11px;
+    color: var(--pg-faint);
+    border: 1px solid var(--pg-line);
+    border-radius: 999px;
+    padding: 2px 9px;
+  }
+  .say {
+    color: var(--pg-muted);
+    max-width: 74ch;
+    margin: 10px 0 0;
+    font-size: 14.5px;
+  }
+  .say code {
+    font-family: var(--wp-mono);
+    font-size: 0.86em;
+    background: color-mix(in srgb, var(--pg-accent) 12%, transparent);
+    color: color-mix(in srgb, var(--pg-accent) 78%, var(--pg-ink));
+    padding: 1px 6px;
+    border-radius: 6px;
+    direction: rtl;
+    unicode-bidi: isolate;
+  }
+
+  /* ---- specimen shelf ---- */
+  .shelf {
+    display: flex;
+    flex-wrap: wrap;
+    gap: clamp(18px, 3vw, 34px);
+    margin-top: 26px;
+    align-items: flex-start;
+  }
+  .spec {
+    display: flex;
+    flex-direction: column;
+    gap: 12px;
+    width: min(300px, 100%);
+  }
+  .spec-cap {
+    display: flex;
+    flex-direction: column;
+    gap: 3px;
+  }
+  .spec-cap .t {
+    font-weight: 700;
+    font-size: 14px;
+    display: flex;
+    align-items: center;
+    gap: 8px;
+  }
+  .spec-cap .d {
+    font-size: 12.5px;
+    color: var(--pg-muted);
+  }
+  .pill {
+    font-family: var(--wp-mono);
+    font-size: 10px;
+    font-weight: 700;
+    letter-spacing: 0.03em;
+    padding: 2px 8px;
+    border-radius: 999px;
+    text-transform: uppercase;
+  }
+  .pill.rec {
+    background: color-mix(in srgb, var(--ok) 20%, transparent);
+    color: color-mix(in srgb, var(--ok) 80%, var(--pg-ink));
+  }
+  .pill.now {
+    background: color-mix(in srgb, var(--pg-ink) 10%, transparent);
+    color: var(--pg-muted);
+  }
+  .pill.alt {
+    background: color-mix(in srgb, var(--plan) 18%, transparent);
+    color: color-mix(in srgb, var(--plan) 82%, var(--pg-ink));
+  }
+
+  /* ============================================================
+     DEVICE FRAME
+     ============================================================ */
+  .device {
+    width: 300px;
+    max-width: 100%;
+    background: linear-gradient(160deg, #263149, #10182a);
+    border-radius: 40px;
+    padding: 8px;
+    box-shadow:
+      0 34px 60px -30px rgba(8, 14, 28, 0.6),
+      0 2px 0 rgba(255, 255, 255, 0.05) inset;
+  }
+  .screen {
+    position: relative;
+    border-radius: 33px;
+    overflow: hidden;
+    aspect-ratio: 300 / 600;
+    background: var(--screen);
+    font-family: var(--wp-body);
+    color: var(--ink);
+    direction: rtl;
+  }
+  .screen.tall {
+    aspect-ratio: 300 / 640;
+  }
+
+  /* ---- app header chrome (trip mode) ---- */
+  .apphead {
+    height: 54px;
+    background: var(--indigo);
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    padding: 0 14px;
+    color: #eaf0ff; /* fixed: light ink on always-dark trip chrome */
+  }
+  .apphead .brand {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    font-family: var(--wp-head);
+    font-size: 15px;
+  }
+  .modepill {
+    font-size: 10.5px;
+    font-weight: 700;
+    background: rgba(255, 255, 255, 0.12);
+    border-radius: 999px;
+    padding: 3px 9px;
+    display: inline-flex;
+    gap: 4px;
+    align-items: center;
+  }
+  .apphead .av {
+    width: 26px;
+    height: 26px;
+    border-radius: 999px;
+    background: linear-gradient(150deg, #7fa8d8, #4b6fae);
+  }
+  .appbody {
+    padding: 14px 13px;
+    display: flex;
+    flex-direction: column;
+    gap: 13px;
+    height: calc(100% - 54px - 56px);
+    overflow: hidden;
+  }
+  .appnav {
+    position: absolute;
+    inset-inline: 0;
+    bottom: 0;
+    height: 56px;
+    background: color-mix(in srgb, var(--card) 82%, transparent);
+    backdrop-filter: blur(8px);
+    border-top: 1px solid var(--line);
+    display: flex;
+    align-items: center;
+    justify-content: space-around;
+    font-size: 19px;
+  }
+  .appnav span {
+    opacity: 0.4;
+  }
+  .appnav span.on {
+    opacity: 1;
+  }
+  .appnav .navpill {
+    background: color-mix(in srgb, var(--indigo) 14%, transparent);
+    border-radius: 999px;
+    padding: 4px 12px;
+  }
+
+  /* ---- Plan-mode chrome: light drafting table + violet accents ---- */
+  .apphead.plan {
+    background: var(--card);
+    color: var(--ink);
+    border-bottom: 1px solid var(--line);
+    /* faint drafting grid — the plan texture cue */
+    background-image:
+      linear-gradient(color-mix(in srgb, var(--plan) 8%, transparent) 1px, transparent 1px),
+      linear-gradient(90deg, color-mix(in srgb, var(--plan) 8%, transparent) 1px, transparent 1px);
+    background-size: 14px 14px;
+  }
+  .apphead.plan .brand {
+    color: var(--ink);
+  }
+  .modepill.plan {
+    background: var(--plan-tint);
+    color: var(--plan-deep);
+  }
+  .apphead.plan .av {
+    background: linear-gradient(150deg, #b0a3ef, #7a67cf);
+  }
+  .appnav .navpill.plan {
+    background: color-mix(in srgb, var(--plan) 16%, transparent);
+  }
+  /* violet prep-hero skeleton (Plan Home resolves to this, not the dark board) */
+  .sk-prep {
+    height: 118px;
+    border-radius: 18px;
+    background: linear-gradient(160deg, var(--plan), var(--plan-deep));
+    padding: 14px;
+    display: flex;
+    flex-direction: column;
+    gap: 11px;
+    overflow: hidden;
+    position: relative;
+  }
+  .sk-prep .sk {
+    background: rgba(255, 255, 255, 0.22);
+  }
+  .sk-prep .sk::after {
+    background: linear-gradient(90deg, transparent, rgba(255, 255, 255, 0.22), transparent);
+  }
+  /* checklist row skeleton: status dot + line + CTA chip */
+  .sk-check {
+    display: flex;
+    align-items: center;
+    gap: 10px;
+    padding: 11px 0;
+    border-bottom: 1px solid var(--line);
+  }
+  .sk-check:last-child {
+    border-bottom: 0;
+  }
+  .sk-dot {
+    width: 16px;
+    height: 16px;
+    border-radius: 999px;
+    flex: 0 0 auto;
+  }
+  .sk-chip {
+    width: 52px;
+    height: 22px;
+    border-radius: 999px;
+    flex: 0 0 auto;
+    margin-inline-start: auto;
+  }
+
+  /* ============================================================
+     TIER 3 — BOOT
+     ============================================================ */
+
+  /* Boot · board power-on — the dormant board warming up.
+     Theme-aware by TOKEN REMAP (design-language "dark-mode readiness"): the board
+     stays the loudest DARK surface in BOTH themes; `.dark` only remaps its depth +
+     amber brightness, nothing is redesigned. Dark is DESIGNED here, not implemented
+     this task — it stays inert until `data-theme='dark'` ships. */
+  /* Boot · one uniform full-bleed surface. Every variant uses ONLY real palette
+     tokens — amber stays a small time accent (the clock + its glow), never a field.
+     Each modifier just remaps the ground + accent depth. `--glow-size` scales the
+     amber halo: a lit glow on dark grounds, a restrained halo on paper grounds. */
+  .boot-board {
+    --bg: linear-gradient(180deg, #152137, #0e1729);
+    --glow: rgba(233, 166, 60, 0.5);
+    --glow-size: 300px;
+    --glow-op: 0.5;
+    --clock: #f2b65a;
+    --amb: #e9a63c;
+    --bink: #aeb9d4;
+    --pill-bg: rgba(233, 166, 60, 0.15);
+    --pill-ink: #f2b65a;
+    --track: rgba(174, 185, 212, 0.18);
+    position: absolute;
+    inset: 0;
+    overflow: hidden;
+    background: var(--bg);
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    justify-content: center;
+    gap: 22px;
+    color: var(--bink);
+  }
+  /* DARK theme target (settled): the deep night board, amber lit */
+  .boot-board.dark {
+    --bg: linear-gradient(180deg, #101b30, #0a1120);
+    --glow: rgba(240, 178, 84, 0.55);
+    --clock: #f6c574;
+    --amb: #f0b254;
+    --bink: #c6cfe2;
+    --pill-bg: rgba(240, 178, 84, 0.15);
+    --pill-ink: #f6c574;
+  }
+  /* LIGHT candidate · Indigo — the app's own chrome color; loud, still glowing amber */
+  .boot-board.indigo {
+    --bg: linear-gradient(180deg, #223a63, #1b2a4a);
+    --glow: rgba(233, 166, 60, 0.46);
+    --clock: #f2b65a;
+    --amb: #e9a63c;
+    --bink: #cfd8ea;
+    --pill-bg: rgba(233, 166, 60, 0.15);
+    --pill-ink: #f2b65a;
+    --track: rgba(207, 216, 234, 0.2);
+  }
+  /* LIGHT candidate · Cool paper (--screen) — genuinely light/day; ink clock, amber halo */
+  .boot-board.paper {
+    --bg: linear-gradient(180deg, #eef1f5, #e2e6ee);
+    --glow: rgba(233, 166, 60, 0.32);
+    --glow-size: 190px;
+    --glow-op: 0.6;
+    --clock: #16233d;
+    --amb: #c9822a;
+    --bink: #6c7488;
+    --pill-bg: rgba(27, 42, 74, 0.08);
+    --pill-ink: #1b2a4a;
+    --track: rgba(22, 35, 61, 0.14);
+  }
+  /* LIGHT candidate · Warm paper (--paper) — the warm token, same day treatment */
+  .boot-board.warm {
+    --bg: linear-gradient(180deg, #f6f2e9, #efe9dc);
+    --glow: rgba(233, 166, 60, 0.36);
+    --glow-size: 190px;
+    --glow-op: 0.62;
+    --clock: #16233d;
+    --amb: #c9822a;
+    --bink: #7a6f5d;
+    --pill-bg: rgba(122, 90, 30, 0.1);
+    --pill-ink: #8a5a1a;
+    --track: rgba(60, 45, 20, 0.14);
+  }
+  .boot-board .glow {
+    position: absolute;
+    top: 42%;
+    left: 50%;
+    width: var(--glow-size);
+    height: var(--glow-size);
+    transform: translate(-50%, -50%);
+    background: radial-gradient(circle, var(--glow), transparent 62%);
+    filter: blur(10px);
+    opacity: var(--glow-op);
+    animation: warm 2.6s ease-in-out infinite alternate;
+    pointer-events: none;
+  }
+  @keyframes warm {
+    to {
+      opacity: 0.8;
+    }
+  }
+  .boot-board .mark {
+    position: relative;
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    gap: 4px;
+    z-index: 1;
+  }
+  .boot-board .clock {
+    font-family: var(--wp-mono);
+    font-weight: 700;
+    font-size: 34px;
+    color: var(--clock);
+    letter-spacing: 0.04em;
+    direction: ltr;
+  }
+  .boot-board .dots {
+    font-family: var(--wp-mono);
+    font-size: 22px;
+    color: var(--amb);
+    letter-spacing: 0.24em;
+    direction: ltr;
+    animation: dotfade 1.4s steps(1) infinite;
+  }
+  @keyframes dotfade {
+    0% {
+      opacity: 0.3;
+    }
+    50% {
+      opacity: 1;
+    }
+    100% {
+      opacity: 0.3;
+    }
+  }
+  .boot-board .load {
+    font-family: var(--wp-head);
+    font-size: 17px;
+    color: var(--bink);
+    z-index: 1;
+  }
+  .boot-board .modepill {
+    z-index: 1;
+    background: var(--pill-bg);
+    color: var(--pill-ink);
+  }
+  /* indeterminate departure-line (echoes the day-progress bar) */
+  .track {
+    position: relative;
+    width: 190px;
+    height: 4px;
+    border-radius: 999px;
+    overflow: hidden;
+    z-index: 1;
+  }
+  .boot-board .track {
+    background: var(--track);
+  }
+  .track .seg {
+    position: absolute;
+    top: 0;
+    bottom: 0;
+    width: 42%;
+    border-radius: 999px;
+    animation: sweep 1.7s cubic-bezier(0.4, 0, 0.2, 1) infinite;
+  }
+  .boot-board .track .seg {
+    background: linear-gradient(90deg, transparent, var(--amb), transparent);
+  }
+  @keyframes sweep {
+    0% {
+      inset-inline-start: -45%;
+    }
+    100% {
+      inset-inline-start: 100%;
+    }
+  }
+  /* ============================================================
+     TIER 2 — SNAPSHOT  (content-shaped skeleton)
+     ============================================================ */
+  .sk {
+    position: relative;
+    overflow: hidden;
+    background: color-mix(in srgb, var(--muted) 18%, var(--card));
+    border-radius: 8px;
+  }
+  .sk::after {
+    content: '';
+    position: absolute;
+    inset: 0;
+    transform: translateX(-100%);
+    background: linear-gradient(
+      90deg,
+      transparent,
+      color-mix(in srgb, var(--card) 65%, transparent),
+      transparent
+    );
+    animation: shimmer 1.4s ease-in-out infinite;
+  }
+  @keyframes shimmer {
+    to {
+      transform: translateX(100%);
+    }
+  }
+  /* the board-hero-shaped skeleton block: dark, so the loudest thing stays loud */
+  .sk-board {
+    height: 128px;
+    border-radius: 18px;
+    background: linear-gradient(180deg, var(--board-2), var(--board));
+    padding: 14px;
+    display: flex;
+    flex-direction: column;
+    gap: 10px;
+    overflow: hidden;
+    position: relative;
+  }
+  .sk-board .sk {
+    background: rgba(174, 185, 212, 0.16);
+  }
+  .sk-board .sk::after {
+    background: linear-gradient(90deg, transparent, rgba(174, 185, 212, 0.18), transparent);
+  }
+  .row {
+    display: flex;
+    gap: 9px;
+    align-items: center;
+  }
+  .sk-glance {
+    background: var(--card);
+    border: 1px solid var(--line);
+    border-radius: 16px;
+    padding: 13px;
+    display: flex;
+    flex-direction: column;
+    gap: 11px;
+  }
+  .sk-rail {
+    height: 26px;
+    border-radius: 8px;
+  }
+  .sk-list {
+    background: var(--card);
+    border: 1px solid var(--line);
+    border-radius: 16px;
+    padding: 4px 13px;
+  }
+  .sk-listrow {
+    display: flex;
+    align-items: center;
+    gap: 11px;
+    padding: 12px 0;
+    border-bottom: 1px solid var(--line);
+  }
+  .sk-listrow:last-child {
+    border-bottom: 0;
+  }
+  .loadcue {
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    gap: 8px;
+    color: var(--muted);
+    font-size: 12.5px;
+    padding-top: 2px;
+  }
+  .spinner {
+    width: 14px;
+    height: 14px;
+    border-radius: 999px;
+    border: 2px solid color-mix(in srgb, var(--ink) 22%, transparent);
+    border-top-color: var(--ink);
+    animation: spin 0.7s linear infinite;
+    flex: 0 0 auto;
+  }
+  @keyframes spin {
+    to {
+      transform: rotate(360deg);
+    }
+  }
+
+  /* the small "current" thumbnail for contrast */
+  .mini {
+    width: 128px;
+    border-radius: 18px;
+    border: 1px solid var(--pg-line);
+    background: var(--screen);
+    padding: 12px 11px;
+    display: flex;
+    flex-direction: column;
+    gap: 9px;
+    direction: rtl;
+  }
+  .mini .loadcue {
+    padding-top: 8px;
+  }
+
+  /* ============================================================
+     TIER 1 — UPLOAD ROW  (pending doc-row status, ADR-0092)
+     ============================================================ */
+  .doclist {
+    background: var(--card);
+    border: 1px solid var(--line);
+    border-radius: 16px;
+    overflow: hidden;
+  }
+  .drow {
+    display: flex;
+    align-items: center;
+    gap: 11px;
+    padding: 12px 13px;
+    border-bottom: 1px solid var(--line);
+  }
+  .drow:last-child {
+    border-bottom: 0;
+  }
+  .drow .dic {
+    font-size: 20px;
+    flex: 0 0 auto;
+    width: 24px;
+    text-align: center;
+  }
+  .drow .dmid {
+    flex: 1 1 auto;
+    min-width: 0;
+    display: flex;
+    flex-direction: column;
+    gap: 3px;
+  }
+  .drow .dt {
+    font-size: 13.5px;
+    font-weight: 600;
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
+  }
+  .drow .dsub {
+    font-family: var(--wp-mono);
+    font-size: 10.5px;
+    color: var(--muted);
+    direction: ltr;
+    text-align: right;
+  }
+  .drow .dright {
+    flex: 0 0 auto;
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    font-size: 11.5px;
+    color: var(--muted);
+  }
+  .drow .cloud {
+    width: 17px;
+    height: 17px;
+    flex: 0 0 auto;
+    color: var(--sync-pending); /* cloud-up, silent when synced (ADR-0091/0092) */
+  }
+  .drow.pending {
+    opacity: 0.6; /* provisional until the write lands (ADR-0092) */
+  }
+  .up-txt {
+    display: inline-flex;
+    align-items: center;
+    gap: 6px;
+  }
+  .up-txt .spinner {
+    width: 12px;
+    height: 12px;
+  }
+  /* determinate mini-bar variant — hugs the title side (leading edge) of the
+     trailing slot so pct + bar read as one unit next to the row content */
+  .up-bar {
+    display: flex;
+    flex-direction: column;
+    gap: 5px;
+    align-items: flex-start;
+  }
+  .up-bar .pct {
+    font-family: var(--wp-mono);
+    font-size: 10.5px;
+    color: var(--muted);
+    direction: ltr;
+  }
+  .up-bar .btrack {
+    width: 62px;
+    height: 3px;
+    border-radius: 999px;
+    background: color-mix(in srgb, var(--muted) 24%, transparent);
+    overflow: hidden;
+  }
+  .up-bar .bfill {
+    height: 100%;
+    border-radius: 999px;
+    background: var(--sync-pending);
+    animation: fill 2.4s ease-in-out infinite;
+  }
+  @keyframes fill {
+    0% {
+      width: 8%;
+    }
+    70% {
+      width: 84%;
+    }
+    100% {
+      width: 84%;
+    }
+  }
+  .lock {
+    font-size: 13px;
+    opacity: 0.7;
+  }
+
+  /* ---- design notes aside ---- */
+  .notes {
+    margin-top: 30px;
+    display: grid;
+    grid-template-columns: repeat(auto-fit, minmax(230px, 1fr));
+    gap: 14px;
+  }
+  .note {
+    background: color-mix(in srgb, var(--pg-panel) 62%, transparent);
+    border: 1px solid var(--pg-line);
+    border-inline-start: 3px solid var(--pg-accent);
+    border-radius: 12px;
+    padding: 13px 15px;
+  }
+  .note h4 {
+    margin: 0 0 5px;
+    font-size: 12.5px;
+    letter-spacing: 0.02em;
+  }
+  .note p {
+    margin: 0;
+    font-size: 12.5px;
+    color: var(--pg-muted);
+    line-height: 1.5;
+  }
+  .note code {
+    font-family: var(--wp-mono);
+    font-size: 0.85em;
+    color: var(--pg-ink);
+  }
+
+  footer {
+    margin-top: 64px;
+    padding-top: 20px;
+    border-top: 1px solid var(--pg-line);
+    color: var(--pg-faint);
+    font-size: 12px;
+  }
+
+  @media (prefers-reduced-motion: reduce) {
+    .glow,
+    .dots,
+    .seg,
+    .sk::after,
+    .spinner,
+    .bfill {
+      animation: none !important;
+    }
+    .boot-board .glow {
+      opacity: 0.6;
+    }
+    .track .seg {
+      inset-inline-start: 30%;
+    }
+    .up-bar .bfill {
+      width: 62%;
+    }
+  }
+</style>
+
+<svg width="0" height="0" style="position: absolute" aria-hidden="true">
+  <defs>
+    <!-- cloud-up: the pending-write sync marker (EntitySyncBadge / ADR-0091).
+         Shape carries the state, so it must be a real glyph, not raw ☁︎. -->
+    <symbol id="ic-cloud-up" viewBox="0 0 24 24">
+      <path
+        d="M7.2 18.2h8.9a3.9 3.9 0 0 0 .5-7.77 5.4 5.4 0 0 0-10.42-1.2A3.7 3.7 0 0 0 7.2 18.2Z"
+        fill="none"
+        stroke="currentColor"
+        stroke-width="1.7"
+        stroke-linejoin="round"
+      />
+      <path
+        d="M12 16.4v-6.1m0 0-2.1 2.1M12 10.3l2.1 2.1"
+        fill="none"
+        stroke="currentColor"
+        stroke-width="1.7"
+        stroke-linecap="round"
+        stroke-linejoin="round"
+      />
+    </symbol>
+  </defs>
+</svg>
+
+<div class="wrap">
+  <p class="eyebrow">Waypoint · states · design review</p>
+  <h1>Three loading states, one loading language</h1>
+  <p class="lede">
+    The app has three loading moments and they read as three unrelated things today: a bare word, a
+    generic shimmer, and an inline row status. This lays out <b>one motif in three weights</b> — a
+    filling departure-line that echoes the day-progress and readiness bars already in the product —
+    in the real tokens. Boot is the loud <b>board power-on</b> (light + a designed-not-built dark);
+    the snapshot pre-draws the real Home per mode; the upload row stays inline sync grammar.
+  </p>
+
+  <div class="legend">
+    <span
+      ><span class="sw" style="background: var(--amber)"></span><b>amber</b> time / the board
+      glow</span
+    >
+    <span
+      ><span class="sw" style="background: var(--teal)"></span><b>teal</b> location / the logo
+      pin</span
+    >
+    <span
+      ><span class="sw" style="background: var(--muted)"></span><b>neutral</b> generic loaders
+      (never amber)</span
+    >
+    <span><b>·</b> board is rationed: dark surface only where the screen is otherwise empty</span>
+  </div>
+
+  <!-- ============================ TIER 3 ============================ -->
+  <section>
+    <div class="kicker">
+      <span class="n">3</span>
+      <h2>Boot &mdash; full screen</h2>
+      <span class="tag">shell.booting</span>
+      <span class="tag">BootScreen</span>
+    </div>
+    <p class="say">
+      The loud <b>board power-on</b> is the direction &mdash; the dormant board warming up, mono
+      clock settling, departure-line sweeping. Copy stays <code>טוען…</code>. <b>Dark theme</b> is
+      the night board, amber lit (designed, not built this task). <b>Light theme</b> is
+      <b>cool paper</b>
+      (<code>--screen</code>): a genuinely light, uniform ground with ink numerals and a small amber
+      halo &mdash; amber stays a time accent, never a field.
+    </p>
+
+    <div class="shelf">
+      <div class="spec">
+        <div class="spec-cap">
+          <div class="t">Light theme &middot; cool paper <span class="pill rec">chosen</span></div>
+          <div class="d">
+            The app background (<code>--screen</code>) as a uniform ground: genuinely light and
+            calm, ink numerals, a restrained amber halo behind the clock, muted label. Same neutral
+            the whole app sits on.
+            <br /><span style="color: var(--pg-faint)"
+              >Set aside: indigo (loud but dark) and warm paper (<code>--paper</code>,
+              warmer).</span
+            >
+          </div>
+        </div>
+        <div class="device">
+          <div class="screen tall">
+            <div class="boot-board paper">
+              <div class="glow"></div>
+              <span class="modepill">🧭 טיול</span>
+              <div class="mark">
+                <div class="clock">21:40</div>
+                <div class="dots">• • •</div>
+              </div>
+              <div class="load">טוען…</div>
+              <div class="track"><div class="seg"></div></div>
+            </div>
+          </div>
+        </div>
+      </div>
+
+      <div class="spec">
+        <div class="spec-cap">
+          <div class="t">Dark theme <span class="pill rec">settled</span></div>
+          <div class="d">
+            The night board, amber lit &mdash; the dark-theme target for whichever light ground
+            wins. Designed, not built this task.
+          </div>
+        </div>
+        <div class="device">
+          <div class="screen tall">
+            <div class="boot-board dark">
+              <div class="glow"></div>
+              <span class="modepill">🧭 טיול</span>
+              <div class="mark">
+                <div class="clock">21:40</div>
+                <div class="dots">• • •</div>
+              </div>
+              <div class="load">טוען…</div>
+              <div class="track"><div class="seg"></div></div>
+            </div>
+          </div>
+        </div>
+      </div>
+    </div>
+
+    <div class="notes">
+      <div class="note">
+        <h4>Amber is an accent, not a ground</h4>
+        <p>
+          Amber = time, used sparingly. Here it&rsquo;s only the clock and a small halo &mdash; the
+          ground is the real <code>--screen</code> neutral the whole app sits on. That&rsquo;s what
+          a full amber field broke.
+        </p>
+      </div>
+      <div class="note">
+        <h4>Light trades loud for genuinely light</h4>
+        <p>
+          The board&rsquo;s loudness comes from a dark ground under an amber glow &mdash; kept in
+          the dark theme. Light theme deliberately goes the other way: cool paper reads calm and
+          unmistakably
+          <i>day</i>, so the two themes feel like different times of day, not near-identical.
+        </p>
+      </div>
+      <div class="note">
+        <h4>Theme is knowable at boot; mode is not</h4>
+        <p>
+          Light/dark is a device setting available immediately, so theming boot is honest. Trip/Plan
+          <i>mode</i> is derived from a trip the snapshot hasn&rsquo;t loaded yet &mdash; so boot
+          reads as <b>brand, not mode</b>, and gets no mode variant.
+        </p>
+      </div>
+      <div class="note">
+        <h4>Warm-up is not the live pulse</h4>
+        <p>
+          Pulse means &ldquo;live this minute&rdquo; and is reserved. The glow <b>ramps</b> as a
+          warm-up, distinct from the sharp blip, so a boot never claims to be live. Mono carries the
+          numerals (no Hebrew glyphs), so the word stays in the heading face.
+        </p>
+      </div>
+    </div>
+  </section>
+
+  <!-- ============================ TIER 2 ============================ -->
+  <section>
+    <div class="kicker">
+      <span class="n">2</span>
+      <h2>Trip snapshot &mdash; inside the chrome</h2>
+      <span class="tag">snapshot.loading</span>
+      <span class="tag">LoadingState</span>
+    </div>
+    <p class="say">
+      The &ldquo;stylized but not enough&rdquo; one. It already renders inside the header/tab frame
+      with a spinner and shimmer &mdash; but the shimmer is anonymous bars. The fix is a
+      <b>content-shaped skeleton</b>: pre-draw the actual Home layout, so what settles in is what
+      you were already looking at. Copy stays <code>טוען את הטיול…</code>. This is the one tier that
+      <b>needs a per-mode variant</b>: Trip Home resolves to the dark board, Plan Home to the violet
+      prep dashboard, so the skeleton has to shape-match the mode it loads into or the settle-in
+      breaks.
+    </p>
+
+    <div class="shelf" style="align-items: flex-start">
+      <div class="spec">
+        <div class="spec-cap">
+          <div class="t">Current <span class="pill now">today</span></div>
+          <div class="d">
+            Generic stacked lines under a spinner. Reads as &ldquo;some list&rdquo;, not &ldquo;your
+            trip&rdquo;.
+          </div>
+        </div>
+        <div class="mini">
+          <div class="sk" style="height: 12px; width: 55%"></div>
+          <div class="sk" style="height: 12px; width: 90%"></div>
+          <div class="sk" style="height: 12px; width: 78%"></div>
+          <div class="sk" style="height: 12px; width: 40%"></div>
+          <div class="loadcue"><span class="spinner"></span> טוען את הטיול…</div>
+        </div>
+      </div>
+
+      <div class="spec">
+        <div class="spec-cap">
+          <div class="t">Trip mode <span class="pill rec">recommend</span></div>
+          <div class="d">
+            Board-hero block (kept dark, so the loudest thing stays loudest), the glance rail, then
+            list rows.
+          </div>
+        </div>
+        <div class="device">
+          <div class="screen">
+            <div class="apphead">
+              <span class="brand">🇯🇵 יפן</span>
+              <span class="modepill">🧭 טיול</span>
+              <span class="av"></span>
+            </div>
+            <div class="appbody">
+              <div class="sk-board">
+                <div class="sk" style="height: 12px; width: 44%"></div>
+                <div class="sk" style="height: 26px; width: 74%; border-radius: 8px"></div>
+                <div class="row" style="margin-top: auto">
+                  <div class="sk" style="height: 14px; width: 30%"></div>
+                  <div class="sk" style="height: 14px; width: 22%; margin-inline-start: auto"></div>
+                </div>
+              </div>
+              <div class="sk-glance">
+                <div class="row">
+                  <div class="sk" style="height: 13px; width: 34%"></div>
+                  <div class="sk" style="height: 13px; width: 18%; margin-inline-start: auto"></div>
+                </div>
+                <div class="sk sk-rail"></div>
+              </div>
+              <div class="sk-list">
+                <div class="sk-listrow">
+                  <div class="sk" style="width: 34px; height: 34px; border-radius: 10px"></div>
+                  <div style="flex: 1; display: flex; flex-direction: column; gap: 6px">
+                    <div class="sk" style="height: 11px; width: 62%"></div>
+                    <div class="sk" style="height: 10px; width: 38%"></div>
+                  </div>
+                </div>
+                <div class="sk-listrow">
+                  <div class="sk" style="width: 34px; height: 34px; border-radius: 10px"></div>
+                  <div style="flex: 1; display: flex; flex-direction: column; gap: 6px">
+                    <div class="sk" style="height: 11px; width: 54%"></div>
+                    <div class="sk" style="height: 10px; width: 30%"></div>
+                  </div>
+                </div>
+              </div>
+              <div class="loadcue"><span class="spinner"></span> טוען את הטיול…</div>
+            </div>
+            <div class="appnav">
+              <span class="on"><span class="navpill">🏠</span></span>
+              <span>🗺️</span>
+              <span>📇</span>
+              <span>📅</span>
+            </div>
+          </div>
+        </div>
+      </div>
+
+      <div class="spec">
+        <div class="spec-cap">
+          <div class="t">Plan mode <span class="pill alt">variant</span></div>
+          <div class="d">
+            Same copy, different shape: the violet prep hero + readiness bar, then checklist rows
+            with CTA chips. Light drafting-table chrome.
+          </div>
+        </div>
+        <div class="device">
+          <div class="screen">
+            <div class="apphead plan">
+              <span class="brand">🇯🇵 יפן</span>
+              <span class="modepill plan">✏️ תכנון</span>
+              <span class="av"></span>
+            </div>
+            <div class="appbody">
+              <div class="sk-prep">
+                <div class="sk" style="height: 12px; width: 40%"></div>
+                <div class="sk" style="height: 22px; width: 58%; border-radius: 8px"></div>
+                <div
+                  class="sk"
+                  style="height: 10px; width: 100%; border-radius: 999px; margin-top: auto"
+                ></div>
+              </div>
+              <div class="sk-list" style="padding: 4px 13px">
+                <div class="sk-check">
+                  <div class="sk sk-dot"></div>
+                  <div class="sk" style="height: 11px; width: 46%"></div>
+                  <div class="sk sk-chip"></div>
+                </div>
+                <div class="sk-check">
+                  <div class="sk sk-dot"></div>
+                  <div class="sk" style="height: 11px; width: 58%"></div>
+                  <div class="sk sk-chip"></div>
+                </div>
+                <div class="sk-check">
+                  <div class="sk sk-dot"></div>
+                  <div class="sk" style="height: 11px; width: 38%"></div>
+                  <div class="sk sk-chip"></div>
+                </div>
+              </div>
+              <div class="loadcue"><span class="spinner"></span> טוען את הטיול…</div>
+            </div>
+            <div class="appnav">
+              <span class="on"><span class="navpill plan">🏠</span></span>
+              <span>🗺️</span>
+              <span>📇</span>
+              <span>📅</span>
+            </div>
+          </div>
+        </div>
+      </div>
+    </div>
+
+    <div class="notes">
+      <div class="note">
+        <h4>Pre-draw the frame, not a placeholder</h4>
+        <p>
+          The skeleton mirrors the real layout the snapshot resolves into, so content
+          <b>settles</b> rather than replaces. Extends the existing <code>Skeleton</code> primitive;
+          no new mechanism.
+        </p>
+      </div>
+      <div class="note">
+        <h4>Trip and Plan diverge here</h4>
+        <p>
+          The only tier that needs a mode variant: Trip&rsquo;s hero is the dark board, Plan&rsquo;s
+          is the violet prep dashboard + checklist. A board skeleton that popped into a violet hero
+          would jar &mdash; so each shape-matches. The chrome is already mode-themed at this point.
+        </p>
+      </div>
+      <div class="note">
+        <h4>The board stays the loudest</h4>
+        <p>
+          Even as a skeleton the trip hero keeps its dark surface, so hierarchy is legible before
+          any text loads &mdash; the eye already knows where &ldquo;now/next&rdquo; will be.
+        </p>
+      </div>
+      <div class="note">
+        <h4>One announced live-region</h4>
+        <p>
+          Skeletons stay <code>aria-hidden</code>; the spinner label announces once. Behavior is
+          unchanged from the shipped <code>LoadingState</code> &mdash; only the visual shape
+          improves.
+        </p>
+      </div>
+    </div>
+  </section>
+
+  <!-- ============================ TIER 1 ============================ -->
+  <section>
+    <div class="kicker">
+      <span class="n">1</span>
+      <h2>Document upload &mdash; inline row status</h2>
+      <span class="tag">docs.upload.saving</span>
+      <span class="tag">DocumentRow · ADR-0092</span>
+    </div>
+    <p class="say">
+      Not a screen: the optimistic doc row shows the real title and dims to provisional while it
+      flushes, carrying the <b>cloud-up</b> sync marker. The status sits in the row&rsquo;s trailing
+      slot, on the title line. Same grammar as every other pending write. Chosen:
+      <b>determinate <code>NN%</code> + a mini-bar</b> while it uploads (an upload has a known size,
+      so show it), and the static <code>ממתין להעלאה</code> when offline (nothing is uploading yet).
+      This replaces the indeterminate <code>מעלה…</code> spinner.
+    </p>
+
+    <div class="shelf">
+      <div class="spec" style="width: min(340px, 100%)">
+        <div class="spec-cap">
+          <div class="t">The doc list, mid-upload</div>
+          <div class="d">
+            Two committed rows, then the two real pending states: uploading (determinate) and
+            offline (queued).
+          </div>
+        </div>
+        <div class="doclist">
+          <div class="drow">
+            <span class="dic">🛂</span>
+            <div class="dmid">
+              <div class="dt">דרכון · assaf</div>
+            </div>
+            <div class="dright"><span class="dsub">240 KB</span><span class="lock">🔒</span></div>
+          </div>
+          <div class="drow">
+            <span class="dic">✈️</span>
+            <div class="dmid">
+              <div class="dt">כרטיס טיסה NH etc</div>
+            </div>
+            <div class="dright"><span class="dsub">1.1 MB</span><span class="lock">🔒</span></div>
+          </div>
+
+          <!-- uploading · determinate NN% + mini-bar (chosen) -->
+          <div class="drow pending">
+            <span class="dic">🏨</span>
+            <div class="dmid">
+              <div class="dt">אישור מלון · קיוטו</div>
+            </div>
+            <div class="dright">
+              <span class="up-bar">
+                <span class="pct">62%</span>
+                <span class="btrack"><span class="bfill"></span></span>
+              </span>
+              <svg class="cloud" aria-hidden="true"><use href="#ic-cloud-up" /></svg>
+            </div>
+          </div>
+
+          <!-- offline · queued -->
+          <div class="drow pending">
+            <span class="dic">📄</span>
+            <div class="dmid">
+              <div class="dt">ביטוח נסיעות</div>
+            </div>
+            <div class="dright">
+              <span>ממתין להעלאה</span>
+              <svg class="cloud" aria-hidden="true"><use href="#ic-cloud-up" /></svg>
+            </div>
+          </div>
+        </div>
+      </div>
+
+      <div class="notes" style="align-self: stretch; flex: 1 1 240px">
+        <div class="note">
+          <h4><code>NN%</code> + mini-bar (chosen)</h4>
+          <p>
+            Determinate: the same filling-line motif, shrunk into the row. An upload has a known
+            size, so it&rsquo;s honest on a slow connection abroad rather than a spinner that could
+            mean anything. Build cost: progress wiring from the upload call (rides ADR-0056&rsquo;s
+            outbox upload).
+          </p>
+        </div>
+        <div class="note">
+          <h4><code>ממתין להעלאה</code> (offline)</h4>
+          <p>
+            No bar &mdash; nothing is uploading until the network returns. Static
+            &ldquo;waiting&rdquo; is the honest state; the row stays dimmed and cloud-up until it
+            flushes, then swaps to the determinate bar.
+          </p>
+        </div>
+        <div class="note">
+          <h4>Replaces the <code>מעלה…</code> spinner</h4>
+          <p>
+            The old indeterminate spinner + word is superseded: it under-informed on flaky networks.
+            The shared <code>Spinner</code> stays for the truly-unknowable cases (form submits,
+            document open/decrypt) &mdash; just not here, where size is known.
+          </p>
+        </div>
+        <div class="note">
+          <h4>No Trip/Plan variant here</h4>
+          <p>
+            The pending-row status is <b>sync grammar</b> (the <code>--sync-*</code> tokens + dim +
+            cloud-up), deliberately orthogonal to the amber/teal/plan mode budget. It looks
+            identical in both modes by design; the loaders stay neutral, never a mode hue.
+          </p>
+        </div>
+      </div>
+    </div>
+  </section>
+
+  <footer>
+    Real tokens from <code>design-language.md</code> / ADR-0028. Fonts fall back to system faces
+    (CSP blocks the CDN) &mdash; motion and color are the subject, not type. All motion respects
+    <code>prefers-reduced-motion</code>. Toggle this page&rsquo;s theme to check both grounds.
+  </footer>
+</div>
