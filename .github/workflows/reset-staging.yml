@@ -1,0 +1,24 @@
+name: Reset Staging to Main
+
+# Manual, on-demand: makes `staging` point at exactly what `main` points at
+# right now (deployment.md's staging sync procedure). Run this before
+# pushing a task branch to staging to test it, and again after you're done
+# (merged or abandoned) so staging never carries more than one pending
+# experiment. Safe to run any time nobody is mid-test on staging — it's a
+# hard reset, not a merge.
+on:
+  workflow_dispatch: {}
+
+permissions:
+  contents: write
+
+jobs:
+  reset:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Point staging at main's current tip
+        run: git push origin origin/main:refs/heads/staging --force
