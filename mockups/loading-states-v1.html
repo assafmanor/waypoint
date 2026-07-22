@@ -25,10 +25,12 @@
      resolves to the dark board, Plan to the violet prep dashboard + checklist, so the
      skeleton shape-matches the mode (chrome is already mode-themed at this point).
    · UPLOAD (tier 1) — NOT a screen: the optimistic doc row dims to provisional and
-     carries the cloud-up sync marker (ADR-0092), status in the trailing slot. Shown
-     both ways — indeterminate `מעלה…` (baseline, no new wiring) and a determinate
-     `NN%` + mini-bar (enhancement, needs upload progress). Mode-independent by design
-     (sync grammar, `--sync-*`, orthogonal to the amber/teal/plan budget).
+     carries the cloud-up sync marker (ADR-0092), status in the trailing slot. Chosen:
+     a DETERMINATE `NN%` + mini-bar while uploading (size is known, so show it),
+     replacing the indeterminate `מעלה…` spinner; offline stays the static
+     `ממתין להעלאה`. Needs upload-progress wiring (rides ADR-0056's outbox upload).
+     Mode-independent by design (sync grammar, `--sync-*`, orthogonal to the
+     amber/teal/plan budget).
 
   Grounded in design-language.md (one-loud-element, the rationed board, the color
   budget, motion tokens, dark-mode readiness), ADR-0028 (color budget), ADR-0052/0078
@@ -1292,8 +1294,10 @@
     <p class="say">
       Not a screen: the optimistic doc row shows the real title and dims to provisional while it
       flushes, carrying the <b>cloud-up</b> sync marker. The status sits in the row&rsquo;s trailing
-      slot, on the title line. Same grammar as every other pending write. Three row states to
-      settle:
+      slot, on the title line. Same grammar as every other pending write. Chosen:
+      <b>determinate <code>NN%</code> + a mini-bar</b> while it uploads (an upload has a known size,
+      so show it), and the static <code>ממתין להעלאה</code> when offline (nothing is uploading yet).
+      This replaces the indeterminate <code>מעלה…</code> spinner.
     </p>
 
     <div class="shelf">
@@ -1301,7 +1305,8 @@
         <div class="spec-cap">
           <div class="t">The doc list, mid-upload</div>
           <div class="d">
-            Two committed rows, then the three pending variants stacked for comparison.
+            Two committed rows, then the two real pending states: uploading (determinate) and
+            offline (queued).
           </div>
         </div>
         <div class="doclist">
@@ -1320,23 +1325,11 @@
             <div class="dright"><span class="dsub">1.1 MB</span><span class="lock">🔒</span></div>
           </div>
 
-          <!-- A · current: spinner + word -->
+          <!-- uploading · determinate NN% + mini-bar (chosen) -->
           <div class="drow pending">
             <span class="dic">🏨</span>
             <div class="dmid">
               <div class="dt">אישור מלון · קיוטו</div>
-            </div>
-            <div class="dright">
-              <span class="up-txt"><span class="spinner"></span> מעלה…</span>
-              <svg class="cloud" aria-hidden="true"><use href="#ic-cloud-up" /></svg>
-            </div>
-          </div>
-
-          <!-- B · determinate mini-bar -->
-          <div class="drow pending">
-            <span class="dic">🎫</span>
-            <div class="dmid">
-              <div class="dt">כרטיס JR Pass</div>
             </div>
             <div class="dright">
               <span class="up-bar">
@@ -1347,7 +1340,7 @@
             </div>
           </div>
 
-          <!-- C · offline queued -->
+          <!-- offline · queued -->
           <div class="drow pending">
             <span class="dic">📄</span>
             <div class="dmid">
@@ -1363,25 +1356,28 @@
 
       <div class="notes" style="align-self: stretch; flex: 1 1 240px">
         <div class="note">
-          <h4>A · <code>מעלה…</code> + spinner (today)</h4>
+          <h4><code>NN%</code> + mini-bar (chosen)</h4>
           <p>
-            Indeterminate. Correct when we can&rsquo;t know progress, but an upload has a known
-            size, so it under-informs on a slow connection abroad.
+            Determinate: the same filling-line motif, shrunk into the row. An upload has a known
+            size, so it&rsquo;s honest on a slow connection abroad rather than a spinner that could
+            mean anything. Build cost: progress wiring from the upload call (rides ADR-0056&rsquo;s
+            outbox upload).
           </p>
         </div>
         <div class="note">
-          <h4>B · <code>62%</code> + mini-bar (proposed)</h4>
+          <h4><code>ממתין להעלאה</code> (offline)</h4>
           <p>
-            Determinate: the same filling-line motif, shrunk into the row. Honest on flaky networks.
-            Needs progress wiring from the upload call &mdash; the one real build cost here.
-          </p>
-        </div>
-        <div class="note">
-          <h4>C · <code>ממתין להעלאה</code> (offline)</h4>
-          <p>
-            No spinner &mdash; nothing is uploading until the network returns. Static
+            No bar &mdash; nothing is uploading until the network returns. Static
             &ldquo;waiting&rdquo; is the honest state; the row stays dimmed and cloud-up until it
-            flushes.
+            flushes, then swaps to the determinate bar.
+          </p>
+        </div>
+        <div class="note">
+          <h4>Replaces the <code>מעלה…</code> spinner</h4>
+          <p>
+            The old indeterminate spinner + word is superseded: it under-informed on flaky networks.
+            The shared <code>Spinner</code> stays for the truly-unknowable cases (form submits,
+            document open/decrypt) &mdash; just not here, where size is known.
           </p>
         </div>
         <div class="note">
