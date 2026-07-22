@@ -4,6 +4,7 @@ import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { S3Client } from '@aws-sdk/client-s3';
+import { DOC_LOCAL_STORAGE_DIR } from '../common/env';
 import { deleteObject, getObject, putObject } from './storage';
 import { resetBlobCacheForTests } from './blob-cache';
 
@@ -63,11 +64,19 @@ describe('storage (S3 branch)', () => {
 });
 
 describe('storage (local-disk fallback)', () => {
-  const LOCAL_DIR = join(process.cwd(), 'storage', 'documents');
+  // A dir private to this spec file (mkdtemp is unique per run) pointed at via
+  // DOC_LOCAL_STORAGE_DIR, so the parallel documents.service spec's cleanup can't rm
+  // the dir out from under a write here — the flaky-ENOENT class both files shared.
+  let localDir: string;
+
+  beforeEach(async () => {
+    localDir = await mkdtemp(join(tmpdir(), 'wp-storage-'));
+    vi.stubEnv(DOC_LOCAL_STORAGE_DIR, localDir);
+  });
 
   afterEach(async () => {
     vi.unstubAllEnvs();
-    await rm(LOCAL_DIR, { recursive: true, force: true });
+    await rm(localDir, { recursive: true, force: true });
   });
 
   it('refuses the local-disk fallback in production (fail loud, not silent data loss)', async () => {

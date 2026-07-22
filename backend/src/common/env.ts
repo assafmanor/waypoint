@@ -11,6 +11,9 @@ export const DOC_ENCRYPTION_KEY = 'DOC_ENCRYPTION_KEY';
 
 // Railway Storage Bucket (S3-compatible, ADR-0031). S3_BUCKET unset → documents
 // fall back to local disk (backend/src/documents/storage.ts).
+// DOC_LOCAL_STORAGE_DIR overrides where that dev-only fallback writes blobs; unset →
+// `<cwd>/storage/documents`. Set it in tests so parallel spec files don't share one dir.
+export const DOC_LOCAL_STORAGE_DIR = 'DOC_LOCAL_STORAGE_DIR';
 export const S3_ENDPOINT = 'S3_ENDPOINT';
 export const S3_BUCKET = 'S3_BUCKET';
 export const S3_ACCESS_KEY_ID = 'S3_ACCESS_KEY_ID';

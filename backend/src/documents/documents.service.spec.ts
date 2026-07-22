@@ -1,6 +1,7 @@
 import 'reflect-metadata';
 import { randomUUID } from 'node:crypto';
 import { readdir, readFile, rm } from 'node:fs/promises';
+import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { afterAll, afterEach, beforeAll, describe, expect, it } from 'vitest';
 import {
@@ -8,6 +9,7 @@ import {
   NotFoundException,
   UnsupportedMediaTypeException,
 } from '@nestjs/common';
+import { DOC_LOCAL_STORAGE_DIR } from '../common/env';
 import { PrismaService } from '../prisma/prisma.service';
 import { ChangeService } from '../sync/change.service';
 import { SyncGateway } from '../sync/sync.gateway';
@@ -16,7 +18,10 @@ import { DocumentsService } from './documents.service';
 // Integration test against the seeded dev Postgres (backend/prisma/seed.mjs, T-015).
 // No S3_BUCKET set — exercises the local-filesystem storage branch (storage.ts).
 const DEV_USER = 'u-assaf';
-const LOCAL_STORAGE_DIR = join(process.cwd(), 'storage', 'documents');
+// A dir private to this spec file: the storage tests run in parallel Vitest workers,
+// and a shared `<cwd>/storage/documents` let one file's afterEach rm the dir mid-test
+// in another (flaky ENOENT). DOC_LOCAL_STORAGE_DIR points storage.ts here instead.
+const LOCAL_STORAGE_DIR = join(tmpdir(), `wp-docs-service-${randomUUID()}`);
 
 describe('DocumentsService', () => {
   const prisma = new PrismaService();
@@ -27,10 +32,13 @@ describe('DocumentsService', () => {
 
   beforeAll(() => {
     process.env.DOC_ENCRYPTION_KEY = Buffer.alloc(32, 7).toString('base64');
+    process.env[DOC_LOCAL_STORAGE_DIR] = LOCAL_STORAGE_DIR;
   });
 
   afterAll(async () => {
     delete process.env.DOC_ENCRYPTION_KEY;
+    delete process.env[DOC_LOCAL_STORAGE_DIR];
+    await rm(LOCAL_STORAGE_DIR, { recursive: true, force: true });
     await prisma.$disconnect();
   });
 
