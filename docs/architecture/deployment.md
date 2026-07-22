@@ -95,7 +95,11 @@ GitHub staging branch ──push──▶ .github/workflows/deploy-staging.yml
 - **Starting a test:** confirm staging is at `main`'s tip (run the reset below if unsure), then push/merge the task branch onto `staging`.
 - **After the test** (merged to `main` or abandoned, either way): reset `staging` back to `main`'s tip. If the change merged first, staging naturally picks it up; if abandoned, the experimental commits just disappear from staging.
 
-The reset is a manual **`Reset Staging to Main`** GitHub Action (`.github/workflows/reset-staging.yml`, `workflow_dispatch` — Actions tab → select it → **Run workflow**, works from the GitHub mobile UI too, no local git needed). It force-points `staging` at whatever `main` currently is. This doesn't support two people testing unrelated changes on staging at once — they'd clobber each other — which is fine at the current team size and worth revisiting only if that stops being true.
+The idle case above is **automatic**: `.github/workflows/sync-staging.yml` runs on every push to `main` and fast-forwards `staging` to match — but only via a plain (non-force) push, so it's a no-op whenever `staging` has diverged (i.e., someone's mid-test). A diverged `staging` is left alone, never silently clobbered.
+
+The "after a test" case needs one manual step, because a squash-merged PR lands as a brand-new commit `staging`'s original commits aren't an ancestor of (even though the content matches) — so the automatic fast-forward can't tell that case apart from "still testing" and correctly declines to touch it. Run the manual **`Reset Staging to Main`** GitHub Action (`.github/workflows/reset-staging.yml`, `workflow_dispatch` — Actions tab → select it → **Run workflow**, works from the GitHub mobile UI too, no local git needed) once you're done, whether the test merged or was abandoned. It force-points `staging` at whatever `main` currently is.
+
+This doesn't support two people testing unrelated changes on staging at once — they'd clobber each other — which is fine at the current team size and worth revisiting only if that stops being true.
 
 **One-time setup that actually worked (human, Railway + GitHub dashboards):**
 

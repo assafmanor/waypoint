@@ -1,0 +1,37 @@
+name: Sync Staging (fast-forward only)
+
+# Auto-runs on every push to main. Fast-forwards staging to match main
+# ONLY when staging has no commits of its own beyond what main already
+# has — i.e. nobody is mid-test on it (deployment.md's staging sync
+# procedure). A plain (non-force) push is git's own built-in safety
+# check here: if staging has diverged, the push is naturally rejected
+# as non-fast-forward and this job just reports that and exits
+# successfully — a diverged staging is a normal, expected state while
+# someone's testing on it, not a failure.
+#
+# The manual full reset for after a test finishes (or is abandoned)
+# lives in reset-staging.yml — that one force-pushes regardless of
+# divergence, this one never does.
+on:
+  push:
+    branches: [main]
+
+permissions:
+  contents: write
+
+jobs:
+  sync:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Fast-forward staging to main (skip if staging has diverged)
+        run: |
+          if git push origin origin/main:refs/heads/staging; then
+            echo "staging fast-forwarded to main."
+          else
+            echo "staging has commits main doesn't (likely mid-test) — left as-is."
+            echo "Run 'Reset Staging to Main' manually once testing is done."
+          fi
