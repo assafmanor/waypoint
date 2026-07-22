@@ -4,11 +4,20 @@ Work we've decided on but haven't built. One line per item. No statuses, no prio
 
 This is not the record of the project. The **why** lives in [decisions/](decisions/) (find the ADR for your domain via the router in [INDEX.md](INDEX.md)); the **what happened** lives in [planning/](planning/) and the git history. See [ADR-0046](decisions/0046-retire-the-task-board.md) for why it's this small.
 
+## Maps & Places epic (scope + phasing in ADR-0106)
+
+The Map is the last unbuilt core tab. [ADR-0106](decisions/0106-maps-and-places-epic-scope-and-phasing.md) is the frame: one mode-re-emphasized tab, picker-first, list-of-pins before an embedded map, filters that are pure client-side derivation. Design / FE-arch / BE-arch sessions come before implementation. Phase order below.
+
+- **Google Cloud project setup** (human, Phase 0) — OAuth consent, Maps/Places API, billing, a restricted key. Gates the whole epic (and calendar sync). See also Integrations below.
+- **Places picker** (Phase 1, keystone) — a Google Places Autocomplete (session tokens) that creates/links + enriches a `Place` (`googlePlaceId` + coords + address, deduped by `googlePlaceId`), wired into every place field (event location, booking location, transport origin/destination, maybe-item). Re-adds EventForm place authoring (the free-text input ADR-0051 removed); name-only `Place` stays the offline fallback.
+- **Places on existing surfaces** (Phase 2) — enriched places show on booking/event detail with a working "open in Maps" deep-link everywhere a place appears.
+- **Map tab v1 — list + filters** (Phase 3) — the `Place` registry as a list; a derived place-usage index driving day/type/maybes filters; Trip mode defaults to today's places, Plan to all.
+- **Trip-mode live jobs** (Phase 4) — device geolocation permission → "near me now" sort; **navigate-to-next** (deferred out of ADR-0045; deep-link to the transport origin `Place`) as the returning fourth Home tile + on the Map.
+- **Plan-mode research** (Phase 5) — search Google on the tab → pin results → "+ maybe" onto the shelf.
+- **Embedded map** (Phase 6, fast-follow) — rendered Google pins; the "by area" filter arrives as pan/zoom.
+
 ## Screens not built
 
-- **`Place`-picker component** — a Google Places search that creates/links a `Place`, used by every place field (event location, booking location, transport origin/destination, maybe-item). Blocked on the Google Cloud setup below; until it ships, place authoring is free-text-only via a name-only `Place`.
-- **EventForm place authoring** — the manual `EventForm`'s free-text location input was **removed** (ADR-0051, deferred with the picker); re-add place authoring (name-only `Place` now, the picker later) so a new manual event can be given a place again.
-- **Map tab** — Plan-mode research surface: Places search, pins (from `Place`), results → "+ maybe". Blocked on Google Cloud setup below. **Navigate-to-next** (deferred out of ADR-0045; routes to the transport origin `Place`, ADR-0048) lands here too.
 - **Archive presentation** — ADR-0044 settled the behavior of a finished trip and explicitly left how the archive _looks_ as a follow-up (the Index's read-only archive state is designed in ADR-0049; other tabs' archive presentation is still open).
 
 ## Documents: performance & caching (two parallel tasks — see `planning/2026-07-17-session-29-document-caching-and-fast-uploads.md`)
@@ -22,7 +31,7 @@ Decomposed to run simultaneously; disjoint file ownership (map in the session-29
 
 ## Integrations
 
-- **Google Cloud project setup** (human) — OAuth consent, Maps/Places, Calendar. Gates the Map tab and calendar sync.
+- **Google Cloud project setup** (human) — OAuth consent, Maps/Places, Calendar. Gates the Maps & Places epic (ADR-0106, Phase 0) and calendar sync.
 - **Calendar one-way sync** (trip → personal, ADR-0003) — the feature itself; nothing reads `Membership.calendarSyncEnabled` today. When built, a linked event's location must resolve via its booking/`Place` — there is no `Event.location` anymore (ADR-0051).
 - **Lazy incremental OAuth consent** — before calendar sync first fires for a member, check `AuthIdentity.scopes` and run Google's incremental-consent redirect if the calendar scope is missing. Per `auth-and-google.md`, scopes are never front-loaded at sign-in. Needed by the item above, not before it.
 
@@ -62,7 +71,7 @@ Full write-up + evidence in [reviews/ui-ux-review.md](reviews/ui-ux-review.md) (
 - **Captured-scan auto-crop / enhance** (Low, deferred from ADR-0086) — the upload `FilePicker` now has a first-class camera-capture path; a document-scanner pass (edge detection + perspective correction + contrast) on a captured passport photo is a larger surface left for later. The pick control ships without it.
 - **Nested-overlay Escape refinement** (Low, from Wave 2 E) — `useDialogFocus` attaches a document-level Escape listener per overlay, so a single Escape over a sheet with a nested prompt (delete/discard) can close both at once. Backdrop-tap and button paths are correct. Fix by making the overlay stack (ADR-0035) own Escape so only the topmost overlay consumes it.
 - ~~**U-09 group change-feed**~~ (Med) — **shipped** (Wave 4 C, ADR-0081): a bounded (last 20) WS-fed recent-changes buffer (`state/change-feed.tsx`) narrating attributed peer edits off the same `change` stream in `applyRemoteChange` (narrate, not re-apply), plus a quiet dismissable `ui/domain/ChangeFeed` strip on the Trip-mode Home below the board. Own edits filtered out; polite live region; auto-collapses when empty; attribution via F-05's `actorUserId` + roster.
-- **U-06 Map / location gap** (Med, product) — the Map tab is a dead placeholder in a primary nav slot and navigate-to-next is deferred, so "where do we go / when do we leave" has no live answer. Overlaps the "Map tab" item above; prioritization is a product call.
+- **U-06 Map / location gap** (Med, product) — the Map tab is a dead placeholder in a primary nav slot and navigate-to-next is deferred, so "where do we go / when do we leave" has no live answer. Now scoped by the Maps & Places epic above (ADR-0106) — closed the moment its Phase 3 (list) renders.
 - ~~**U-07 / U-11 / U-12 / U-13 quick wins**~~ (Low) — **all shipped**: U-11 (`settings` glyph in `Icon`, `⚙` control swapped) + U-12 (`Spinner` aria-label → `t.common.loading`) in Wave 1; U-07 (the `maybeMeta`/`fixtures` import removed from DayView/PlanDay, real derived `MaybeCard` meta) in Wave 3 D-day; U-13 (create-trip CTA always visible, disabled-with-reason via `t.shell.newTrip.ctaReason`) in Wave 3.
 
 ## Backend review follow-ups (open findings)
