@@ -137,7 +137,8 @@
     margin: 0;
     font-family: var(--pg-sans);
     color: var(--pg-ink);
-    background: radial-gradient(130% 80% at 88% -8%, rgba(110, 89, 214, 0.12), transparent 55%),
+    background:
+      radial-gradient(130% 80% at 88% -8%, rgba(110, 89, 214, 0.12), transparent 55%),
       radial-gradient(90% 70% at 4% 2%, rgba(233, 166, 60, 0.06), transparent 52%),
       linear-gradient(180deg, var(--pg-ground-2), var(--pg-ground));
     background-attachment: fixed;
@@ -405,10 +406,8 @@
     color: var(--ink);
     border-bottom: 1px solid var(--line);
     /* faint drafting grid — the plan texture cue */
-    background-image: linear-gradient(
-        color-mix(in srgb, var(--plan) 8%, transparent) 1px,
-        transparent 1px
-      ),
+    background-image:
+      linear-gradient(color-mix(in srgb, var(--plan) 8%, transparent) 1px, transparent 1px),
       linear-gradient(90deg, color-mix(in srgb, var(--plan) 8%, transparent) 1px, transparent 1px);
     background-size: 14px 14px;
   }
