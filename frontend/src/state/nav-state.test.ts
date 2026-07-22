@@ -109,17 +109,27 @@ describe('tabTarget — where a tab tap navigates (always replace, flat history)
   });
 });
 
-describe('needsBackGuard — Android OS-back needs an in-app entry to traverse into (ADR-0090)', () => {
-  it('guards only at the very bottom of the history stack (cold launch into the trip)', () => {
-    expect(needsBackGuard(0)).toBe(true);
+describe('needsBackGuard — Android OS-back needs a same-document entry to traverse into (ADR-0090)', () => {
+  it('guards at the very bottom of the history stack (cold launch into the trip)', () => {
+    expect(needsBackGuard(0, false)).toBe(true);
     // a missing/undefined index reads as the bottom → guard, to be safe
-    expect(needsBackGuard(undefined)).toBe(true);
-    expect(needsBackGuard(null)).toBe(true);
+    expect(needsBackGuard(undefined, false)).toBe(true);
+    expect(needsBackGuard(null, false)).toBe(true);
   });
 
-  it('does not guard when an entry already sits behind us (entered from /trips, OAuth, …)', () => {
-    expect(needsBackGuard(1)).toBe(false);
-    expect(needsBackGuard(5)).toBe(false);
+  it('does not guard on a same-document navigation with an entry already behind us', () => {
+    // index > 0 reached by client-side nav (not a fresh load) has cancelable fuel.
+    expect(needsBackGuard(1, false)).toBe(false);
+    expect(needsBackGuard(5, false)).toBe(false);
+  });
+
+  it('guards on a fresh document load even at index > 0 (reload / eviction / OAuth return)', () => {
+    // The current entry is the floor of a NEW document; everything behind it is a
+    // prior document, so a back into it is a non-cancelable cross-document traverse
+    // — the "sometimes back closes the app" case the index-0-only guard missed.
+    expect(needsBackGuard(3, true)).toBe(true);
+    expect(needsBackGuard(1, true)).toBe(true);
+    expect(needsBackGuard(0, true)).toBe(true);
   });
 });
 

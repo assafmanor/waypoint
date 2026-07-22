@@ -44,6 +44,11 @@ test('system back from a non-Home tab returns to Home, not out of the app', asyn
   await expect(page.locator('nav.nav button').first()).toHaveAttribute('aria-current', 'true');
 });
 
+// The fresh-load guard's index->0-vs-fresh-load decision is covered by the pure
+// unit test (`needsBackGuard(index, freshLoad)` in nav-state.test.ts). A `page.reload()`
+// e2e was tried here too but the hermetic app re-boot after reload races (flaky), and
+// it only re-covers what the unit test already pins — so it's intentionally left out.
+
 test('two system-backs at the Home base leave the trip to the all-trips home', async ({ page }) => {
   // First back at Home arms the two-tap leave confirm — it must NOT exit the app
   // or jump straight to /trips; we stay on Home.
