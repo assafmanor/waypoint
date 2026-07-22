@@ -18,6 +18,7 @@ import {
   type TripEvent,
 } from '@waypoint/shared';
 import { useTrip, byStart } from '../state/trip-state';
+import { prefersReducedMotion } from '../lib/motion';
 import { eventPlaceName } from '../lib/places';
 import { useVerbs } from '../state/verbs';
 import { useClock } from '../lib/useClock';
@@ -158,10 +159,7 @@ export function DayView() {
     if (!isToday) return;
     const el = nowLineRef.current;
     if (!el) return;
-    const reduce =
-      typeof window !== 'undefined' &&
-      window.matchMedia?.('(prefers-reduced-motion: reduce)').matches;
-    el.scrollIntoView({ block: 'center', behavior: reduce ? 'auto' : 'smooth' });
+    el.scrollIntoView({ block: 'center', behavior: prefersReducedMotion() ? 'auto' : 'smooth' });
   }, [activeDate, isToday]);
 
   const untimed = dayEvents.filter((e) => !e.startsAt);

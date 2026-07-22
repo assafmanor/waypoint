@@ -3,6 +3,10 @@ import { afterEach, describe, it, expect, vi } from 'vitest';
 import { cleanup, fireEvent, render } from '@testing-library/react';
 import { DayStrip, type DayStripDay } from './DayStrip';
 
+// jsdom has no layout engine, so it doesn't implement scrollIntoView — the
+// auto-scroll-to-selected effect below calls it on every mount/selection change.
+Element.prototype.scrollIntoView = vi.fn();
+
 const DAYS: DayStripDay[] = [
   { date: '2026-07-18', dayOfMonth: '18', letter: 'ש', hasEvents: true },
   { date: '2026-07-19', dayOfMonth: '19', letter: 'א', monthLabel: 'יולי', hasEvents: false },
@@ -89,5 +93,37 @@ describe('DayStrip', () => {
     expect(pills[0].classList.contains('on')).toBe(true); // selected
     expect(pills[1].classList.contains('empty')).toBe(true); // no events
     expect(pills[0].classList.contains('empty')).toBe(false); // has events
+  });
+
+  it('scrolls the selected pill into view (centered) on mount and on selection change', () => {
+    const scrollIntoView = vi.fn();
+    Element.prototype.scrollIntoView = scrollIntoView;
+    const { container, rerender } = render(
+      <DayStrip
+        days={DAYS}
+        selected="2026-07-19"
+        today="2026-07-19"
+        mode="trip"
+        onSelect={() => {}}
+      />,
+    );
+    expect(scrollIntoView).toHaveBeenCalledWith(
+      expect.objectContaining({ inline: 'center', block: 'nearest' }),
+    );
+    const pills = container.querySelectorAll('.wp-daypill');
+    expect(scrollIntoView.mock.instances[0]).toBe(pills[1]); // the 19th (selected)
+
+    scrollIntoView.mockClear();
+    rerender(
+      <DayStrip
+        days={DAYS}
+        selected="2026-07-20"
+        today="2026-07-19"
+        mode="trip"
+        onSelect={() => {}}
+      />,
+    );
+    expect(scrollIntoView).toHaveBeenCalledTimes(1);
+    expect(scrollIntoView.mock.instances[0]).toBe(pills[2]); // the 20th (now selected)
   });
 });
