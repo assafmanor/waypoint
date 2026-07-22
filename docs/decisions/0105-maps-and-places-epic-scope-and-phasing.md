@@ -74,11 +74,35 @@ One open design question this raised (deferred to the Phase 3 design, not decide
 - **Phase 3 — Map tab v1 (list form) + filters.** The `Place` registry rendered as a list; the place-usage derivation + the day/type/maybes filters (reusing the Index chip grammar — see open questions); Trip-mode defaults to today, Plan to all; per-place view/navigate deep-links.
 - **Phase 4 — Trip-mode live jobs.** Device geolocation permission flow (own-device, [0006](0006-no-live-location-v1.md)) → distance + "near me now" sort (needs no map render — ships independent of Phase 6); navigate-to-next (Home tile + Map).
 - **Phase 5 — Plan-mode research.** Search Google Places from within the Map tab (reusing the picker's search core) → pin results → "+ maybe" onto the shelf; closes the vision's pillar-4 "discovery by location and free time."
-- **Phase 6 — Embedded map (fast-follow).** A rendered Google map with pins; the list becomes its companion; the "by area" filter arrives as pan/zoom.
+- **Phase 6 — Embedded map (fast-follow).** A rendered Google map with pins, built on the Maps **JavaScript API** and fully brand-styled; the list becomes its companion; the "by area" filter arrives as pan/zoom; day-connectors/routes layer on. Detail in the dated section below.
+
+## Embedded map (Phase 6): the JS-API path, styling, and routes (2026-07-22)
+
+Decisions taken this session, refining Phase 6. The list-first posture (Decision 3) is unchanged — these shape the fast-follow map, not the near-term slice.
+
+**A. Build the embedded map on the Maps JavaScript API, not the Embed API.** The free Embed-API iframe cannot be custom-styled and gives little control over pins/routes — viable only as a throwaway stub. The JS API is required for brand fit and for the custom markers/routes below. The trade-off accepted: JS-API dynamic **map loads are billed** (vs. the free iframe) — but the Map is a primary surface, and a stock Google iframe would clash with the app's design language badly enough to justify it. Styling itself adds no cost.
+
+**B. The map is fully brand-styled to the design language.** Cloud-based Map Styling (a `mapId`) recolors/desaturates the base cartography and drops POI clutter; `AdvancedMarkerElement` (vector maps, requires `mapId`) renders our own HTML/CSS pins — the **Waypoint marker** ([0087](0087-app-logo-waypoint-marker.md)) becomes the literal pin, not a Google teardrop. Info windows are our DOM, route polylines take our colors. The Google logo + attribution are required by Google's ToS and stay. Two map styles (night / day) swap on `data-theme`, reusing the existing mode/dark signal ([0028](0028-plan-violet-color-budget-dark-ready.md)/[0082](0082-adopt-non-color-design-tokens.md)).
+
+**C. Design principle — quiet base, loud pins.** The base map is a desaturated **neutral canvas**; semantic colour lives only on the **pins and routes** (teal = location on the pins, amber = time-anchor), never flooded across the base. Map = quiet ground, pins = loud figure — this keeps [0028](0028-plan-violet-color-budget-dark-ready.md)'s colour budget intact (teal stays a _signal_, not decoration; a map drowned in teal would dilute exactly that).
+
+**D. Connecting a day's places is a free-to-paid spectrum.** Chosen by appetite, not one fixed build:
+
+- **Straight connectors (free):** a `Polyline` between consecutive schedule events — shows the day's shape and order (the ordering comes from the timeline we already hold). No routing call.
+- **Whole-day deep-link (free):** a Google Maps directions URL carrying the day's ordered stops as waypoints → "navigate my whole day," opens turn-by-turn in Google Maps. Fits "deep-link, don't rebuild nav" exactly.
+- **Live routes (paid):** the **Routes API** returns real walking/driving/transit polylines **with distance + ETA** between stops (per-request, ~25-waypoint cap), rendered on our styled map.
+
+The free connectors + whole-day deep-link ship with the first Phase-6 cut; live Routes-API ETAs are a paid enhancement sequenced after, gated on the cost decision.
+
+**E. The trip "macro" is per-day, not one route.** All pins on one fit-to-bounds map, with connectors/routes **per day** (colour per day, a day toggle). A single whole-trip route is semantically weak (you base at a hotel and radiate out, you don't travel linearly) and blows the ~25-waypoint cap; the schedule already partitions + orders places by day, so per-day is both cheaper and more meaningful.
+
+**F. Routes are visibility, not navigation.** A rendered route polyline is orientation only; turn-by-turn always deep-links out (vision / [0004](0004-integrations-are-pipes.md)). The pay-off: a route's ETA between two hard anchors is the **"when do we leave"** answer — _"23 min transit → leave by 18:37 for the 19:00 reservation"_ — the U-06 gap and the Now/Next promise rendered spatially, feeding navigate-to-next. That is the reason to pursue paid routes (D) eventually, not just free connectors.
+
+_Accuracy note:_ the JSON-vs-cloud-styling deprecation path, `mapId`/vector specifics, and current Maps pricing (Google changed its pricing model in 2025) shift across Google's releases — the design/FE-arch/BE-arch sessions confirm current API details; the capabilities above are long-standing.
 
 ## Open questions (deferred to the design / FE-arch / BE-arch sessions)
 
-- **Places API key model** — a restricted client-side key vs. a backend proxy for Places calls. The real cost/exposure lever; the BE-arch session's first call.
+- **Places API key model + the Phase-6 cost envelope** — a restricted client-side key vs. a backend proxy for Places calls (the exposure lever); plus the now-decided JS-API path means costing **dynamic map loads** + the paid **Routes API** (live-route ETAs) against current Maps pricing (changed in 2025). The BE-arch session's first call.
 - **One shared search core vs. two components** — the in-form picker (single-select, in a form) and the Map-tab research surface (multi-result, browse-y) share the Google call, session tokens, and result→`Place` dedup logic; only the shell differs. **Leaning:** one shared core, two presentations (avoids the parallel-copy trap [0094](0094-one-pluggable-change-applier-registry.md)/CLAUDE.md rule 8 guards against). Final call in the FE-arch session; nothing about scope/phasing depends on it.
 - **Geolocation permission UX** — when we ask, and how "near me now" degrades if permission is denied (design session).
 - **Multi-facet place semantics** — confirm union semantics + colour-by-most-committed reference (recommended above, not yet ratified).

@@ -44,6 +44,17 @@ Ordering was confirmed to match Assaf's instinct — the non-obvious call being 
 
 Checked the place-usage derivation against `schema.prisma` + `packages/shared` before treating it as real (captured as ADR-0105's "Data-model verification" section). Confirmed: the snapshot ships `places`/`maybeItems`/`events`/`bookings` together (offline-safe holds), and `Place` is multiply-referenced (union semantics correct). Five refinements banked into the ADR: `isMaybe` keys on `MaybeItem.consumed`; a booking's day comes only from its linked event (unlinked booking → no day); transport contributes both from/to pins; event place resolution is conditional (reuse `lib/places.ts` + shared `bookingEventFields`, don't re-derive); coordless "Place-lite" rows are list-able but not pin-able (confirms Phase 3 can partly run before the picker). One open design Q surfaced: multi-day place under the day filter — every span day vs. edge days (follow 0054/0064's ambient-vs-edge precedent).
 
+## Embedded-map (Phase 6) decisions
+
+Feasibility discussion on the fast-follow map converged into concrete Phase-6 decisions (captured in ADR-0105's dated "Embedded map" section):
+
+- **Maps JavaScript API, not the Embed API** — the free iframe can't be brand-styled; the JS API is required for our palette + custom pins/routes, accepting billed dynamic map loads because the Map is a primary surface.
+- **Fully brand-styled** — cloud styling (`mapId`) for the base cartography, `AdvancedMarkerElement` for our own HTML pins (the ADR-0087 Waypoint marker as the literal pin), night/day styles swapping on `data-theme` (0028/0082); Google logo/attribution stay (ToS).
+- **Design principle: quiet base, loud pins** — desaturated neutral canvas, semantic colour only on pins/routes (teal=location, amber=time-anchor), never flooded across the base — keeps 0028's colour budget intact. (Assaf's call.)
+- **Day-connection spectrum** — free straight `Polyline` connectors + a free whole-day Google Maps waypoint deep-link ship first; paid **Routes API** ETAs are a later enhancement.
+- **Trip macro = per-day** connectors/routes on one fit-to-bounds map (not one whole-trip route — semantically weak + waypoint-capped).
+- **Routes are visibility, not nav** (turn-by-turn still deep-links out); a route ETA between hard anchors _is_ the "when do we leave" answer (U-06 / Now-Next / navigate-to-next tie-in) — the reason to pursue paid routes eventually.
+
 ## Left open for the follow-on sessions
 
 - **BE-arch:** Places API key model — restricted client key vs. backend proxy (the cost/exposure lever).
