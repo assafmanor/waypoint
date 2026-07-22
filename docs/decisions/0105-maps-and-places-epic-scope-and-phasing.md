@@ -54,6 +54,18 @@ This ADR is a **product-management scope decision**, taken before the design and
 - **AI / web enrichment of places** (hours, photos, descriptions) — a vNext pipe ([0004](0004-integrations-are-pipes.md)); we keep `source`/keys separable so it stays unblocked, but it is not built here.
 - **Cross-trip `Place` dedup and orphan-`Place` GC** — cheap to leave at this scale ([0051](0051-place-normalization-and-authority.md) accepted both).
 
+## Data-model verification (2026-07-22)
+
+The place-usage derivation and the offline-safe claim were checked against `backend/prisma/schema.prisma` + `packages/shared` this session (not left to recollection). The frame holds — the snapshot ships `places` + `maybeItems` + `events` + `bookings` together, and `Place` is genuinely multiply-referenced (`events[]` / `bookings[]` / `bookingsFrom[]` / `bookingsTo[]` / `maybeItems[]`), so union semantics is correct and the whole filter layer is a pure client-side derivation. Five specifics the schema pins down for Phase 3's design:
+
+1. **`isMaybe` keys on `MaybeItem.consumed`** (a real boolean; a scheduled idea flips to `consumed = true`) — the maybes facet is "referenced by an _unconsumed_ maybe-item," not merely "a maybe-item points here." `MaybeItem` also carries `category`, so type-filtering ideas works too.
+2. **A booking's day comes only from its linked Event** (Booking carries no time). An **unlinked booking has no day** — its place appears under "all" / type / maybes but never under a day filter; a real derivation branch, not an edge case.
+3. **Transport contributes two pins** — a booking references `fromPlaceId` _and_ `toPlaceId`, both dated by the linked event; the nav/pin _target_ derives as origin (0051), but listing/pinning must walk both endpoints.
+4. **Event place resolution is conditional** — `Event.placeId` is authoritative only for _unlinked_ events (nulled when `bookingId` is set), so the place-usage index must build on the **existing resolver** (`frontend/src/lib/places.ts` + shared `bookingEventFields`), not re-derive the linked/unlinked branch.
+5. **Coordless places are list-able but not pin-able** (`Place.lat`/`lng` nullable — "Place-lite"). The list + day/type/maybes filters run on coordless places; "near me" (Phase 4) and map pins (Phase 6) must filter to places _with_ coords. This confirms the degree of freedom: a chunk of Phase 3 can render before the picker populates coordinates — the map and near-me cannot.
+
+One open design question this raised (deferred to the Phase 3 design, not decided here): a multi-day place (`endDate` set, e.g. a hotel) — does the day filter surface it on _every_ day of its span or just the edge days? Follow the timeline's existing ambient-vs-edge precedent (0054/0064) rather than inventing one.
+
 ## Phasing (development order)
 
 - **Phase 0 — Foundations (gates everything).** Google Cloud project (human): OAuth consent, enable Maps JS + Places API, billing, a referrer/IP-restricted key. Plus the key-handling call (Phase 0 of the BE-arch session — see open questions).

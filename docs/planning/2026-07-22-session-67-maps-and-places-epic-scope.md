@@ -40,6 +40,10 @@ Layered on in discussion:
 
 Ordering was confirmed to match Assaf's instinct — the non-obvious call being that _all_ place-authoring (P1) and value-on-existing-surfaces (P2) come **before** the tab renders anything (P3), so the picker earns its keep immediately.
 
+## Schema verification pass
+
+Checked the place-usage derivation against `schema.prisma` + `packages/shared` before treating it as real (captured as ADR-0105's "Data-model verification" section). Confirmed: the snapshot ships `places`/`maybeItems`/`events`/`bookings` together (offline-safe holds), and `Place` is multiply-referenced (union semantics correct). Five refinements banked into the ADR: `isMaybe` keys on `MaybeItem.consumed`; a booking's day comes only from its linked event (unlinked booking → no day); transport contributes both from/to pins; event place resolution is conditional (reuse `lib/places.ts` + shared `bookingEventFields`, don't re-derive); coordless "Place-lite" rows are list-able but not pin-able (confirms Phase 3 can partly run before the picker). One open design Q surfaced: multi-day place under the day filter — every span day vs. edge days (follow 0054/0064's ambient-vs-edge precedent).
+
 ## Left open for the follow-on sessions
 
 - **BE-arch:** Places API key model — restricted client key vs. backend proxy (the cost/exposure lever).
