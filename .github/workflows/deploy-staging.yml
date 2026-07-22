@@ -1,0 +1,37 @@
+name: Deploy Staging
+
+# Gated deploy (ADR-0104): the staging Railway service's git auto-deploy
+# trigger is turned OFF. This workflow is the only path to a staging
+# deploy, and only reaches Railway if the reused CI jobs pass first.
+# PRs into staging run the test job only (validation); the deploy job
+# only fires on an actual push (merge) to staging.
+on:
+  push:
+    branches: [staging]
+  pull_request:
+    branches: [staging]
+
+jobs:
+  test:
+    uses: ./.github/workflows/ci.yml
+
+  deploy:
+    needs: test
+    if: github.event_name == 'push'
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Install Railway CLI
+        run: npm install -g @railway/cli
+
+      - name: Deploy to Railway (staging)
+        # RAILWAY_TOKEN must be a Railway *project* token scoped to the
+        # staging environment (Project Settings -> Tokens), never the
+        # account-wide token — this is the only credential that could
+        # otherwise let a compromised secret reach production.
+        # Adjust --service to match the actual service name in the
+        # Railway project if it differs from "waypoint".
+        run: railway up --service waypoint --environment staging --ci
+        env:
+          RAILWAY_TOKEN: ${{ secrets.RAILWAY_STAGING_TOKEN }}

@@ -5,6 +5,7 @@ on:
     branches: [main]
   push:
     branches: [main]
+  workflow_call: {}
 
 env:
   DATABASE_URL: postgresql://waypoint:waypoint@localhost:5432/waypoint?schema=public
