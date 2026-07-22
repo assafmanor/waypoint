@@ -126,6 +126,21 @@ export function backSlides(action: BackAction): boolean {
   return action.kind === 'to-home' || action.kind === 'to' || action.kind === 'exit-trip';
 }
 
+/** The correction applied when the platform delivered a structural system-back
+ *  NON-cancelable, so the interceptor could not `preventDefault` it. Under the
+ *  activation gate a consecutive system-back (no interaction between presses) grants
+ *  no consumable user activation, so the traverse is not cancelable (WHATWG
+ *  nav-history spec) — the OS then rides onto the same-URL guard entry (trip Home).
+ *  For a trip *exit* that strands the user back on Home instead of All Trips: the
+ *  reported "press again to leave, second back loops to trip home" bug. Every other
+ *  action already lands correctly on that same-URL entry (an arm keeps Home, a
+ *  to-home keeps Home, a root `none` is a legitimate native exit), so only an exit
+ *  needs correcting — redirect to /trips once the uncatchable traversal commits. */
+export type BackCorrection = { kind: 'redirect-exit' } | { kind: 'none' };
+export function correctionForUncancelableBack(action: BackAction): BackCorrection {
+  return action.kind === 'exit-trip' ? { kind: 'redirect-exit' } : { kind: 'none' };
+}
+
 /** Where a tab tap navigates (ADR-0090). Always `replace` — history depth doesn't
  *  resolve back, `resolveBack` does, so in-trip history stays flat. Home → the
  *  clean `/` (no params, so `activeDate` derives to today); any other tab → its
@@ -372,15 +387,28 @@ export function NavProvider({ children }: { children: ReactNode }) {
       }
 
       // Structural back.
-      if (!e.cancelable) return; // can't stop a non-cancelable structural back.
       const action = classifyBack();
+      if (!e.cancelable) {
+        // The activation gate withheld a cancelable traverse, so we can't stop this
+        // back — the OS rides onto the same-URL guard entry (trip Home). For a trip
+        // exit that lands on Home, not All Trips (the reported "second back loops to
+        // trip home"). Let the traverse commit, then redirect to /trips in a
+        // microtask (mirroring the overlay ride) so the exit still reaches its
+        // resolved destination (ADR-0103 device-validation follow-up). Our navigate
+        // is a push, not a traverse, so it doesn't re-enter this handler.
+        if (correctionForUncancelableBack(action).kind === 'redirect-exit') {
+          exitPendingRef.current = 0;
+          queueMicrotask(() => navigate(EXIT_TRIP_TO));
+        }
+        return;
+      }
       if (action.kind === 'none') return; // nothing to peel → let the OS proceed.
       e.preventDefault();
       runBack(action);
     };
     navApi.addEventListener('navigate', onNavigate);
     return () => navApi.removeEventListener('navigate', onNavigate);
-  }, [classifyBack, runBack, reconcileMarkers]);
+  }, [classifyBack, runBack, reconcileMarkers, navigate]);
 
   const value = useMemo<NavContextValue>(
     () => ({

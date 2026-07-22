@@ -8,12 +8,14 @@ import { describe, expect, it } from 'vitest';
 import {
   RESET_TO_HOME_AFTER_HIDDEN_MS,
   backSlides,
+  correctionForUncancelableBack,
   daySelectTarget,
   needsBackGuard,
   resolveActiveDate,
   resolveBack,
   shouldResetToHomeOnResume,
   tabTarget,
+  type BackAction,
   type NavSnapshot,
 } from './nav-state';
 
@@ -80,6 +82,28 @@ describe('resolveBack — the one layer-peeling decision (ADR-0090, behavior of 
   it('insideTrip disambiguates `/` = trip Home base from `/` = zero-state', () => {
     expect(resolveBack({ ...base, pathname: '/', insideTrip: true })).toEqual({ kind: 'arm-exit' });
     expect(resolveBack({ ...base, pathname: '/', insideTrip: false })).toEqual({ kind: 'none' });
+  });
+});
+
+describe('correctionForUncancelableBack — riding an uncatchable structural back (ADR-0103)', () => {
+  it('redirects a trip exit to /trips: the OS rode onto the same-URL guard (Home), so correct it', () => {
+    // The reported bug: under the activation gate the second (armed) back arrives
+    // non-cancelable, the OS traverses onto the trip-Home guard entry, and without a
+    // correction the user loops back to Home instead of leaving to All Trips.
+    expect(correctionForUncancelableBack({ kind: 'exit-trip' })).toEqual({ kind: 'redirect-exit' });
+  });
+
+  it('leaves every other action uncorrected — the ride already lands on the right screen', () => {
+    const others: BackAction[] = [
+      { kind: 'arm-exit' }, // first back rides onto Home and stays on Home — correct
+      { kind: 'to-home' }, // rides onto the same-URL Home entry — correct
+      { kind: 'to', path: '/trips' },
+      { kind: 'close-overlay' },
+      { kind: 'none' }, // a root back is a legitimate native exit — never redirect
+    ];
+    for (const action of others) {
+      expect(correctionForUncancelableBack(action)).toEqual({ kind: 'none' });
+    }
   });
 });
 

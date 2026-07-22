@@ -7,6 +7,7 @@ import {
   S3Client,
 } from '@aws-sdk/client-s3';
 import {
+  DOC_LOCAL_STORAGE_DIR,
   requireEnv,
   S3_ACCESS_KEY_ID,
   S3_BUCKET,
@@ -20,7 +21,11 @@ import { evictCachedBlob, getCachedBlob, putCachedBlob } from './blob-cache';
 // Mirrors this codebase's existing swap idiom (DEV_AUTH branch in jwt-auth.guard.ts /
 // sync.gateway.ts): the real path (S3_BUCKET set) is checked first, local disk is the
 // dev-only fallback — no DI interface, add one only if a second real caller needs it.
-const LOCAL_DIR = join(process.cwd(), 'storage', 'documents');
+// Resolved per call (not a module const) so a test can point it at an isolated dir via
+// DOC_LOCAL_STORAGE_DIR; unset → `<cwd>/storage/documents` as before.
+function localDir(): string {
+  return process.env[DOC_LOCAL_STORAGE_DIR] || join(process.cwd(), 'storage', 'documents');
+}
 
 // Which backend to use: the configured S3 bucket, or `null` for the local-disk
 // fallback. The fallback is dev-only — Railway's container filesystem is ephemeral
@@ -57,8 +62,9 @@ export async function putObject(key: string, body: Buffer): Promise<void> {
   if (bucket) {
     await s3Client().send(new PutObjectCommand({ Bucket: bucket, Key: key, Body: body }));
   } else {
-    await mkdir(LOCAL_DIR, { recursive: true });
-    await writeFile(join(LOCAL_DIR, key), body);
+    const dir = localDir();
+    await mkdir(dir, { recursive: true });
+    await writeFile(join(dir, key), body);
   }
   // Warm the cache so the first open after an upload is served locally (ADR-0055).
   await putCachedBlob(key, body);
@@ -75,7 +81,7 @@ export async function getObject(key: string): Promise<Buffer> {
     const result = await s3Client().send(new GetObjectCommand({ Bucket: bucket, Key: key }));
     bytes = Buffer.from((await result.Body?.transformToByteArray()) ?? []);
   } else {
-    bytes = await readFile(join(LOCAL_DIR, key));
+    bytes = await readFile(join(localDir(), key));
   }
   await putCachedBlob(key, bytes);
   return bytes;
@@ -90,5 +96,5 @@ export async function deleteObject(key: string): Promise<void> {
     await s3Client().send(new DeleteObjectCommand({ Bucket: bucket, Key: key }));
     return;
   }
-  await rm(join(LOCAL_DIR, key), { force: true });
+  await rm(join(localDir(), key), { force: true });
 }

@@ -565,10 +565,14 @@ from the plan above:
   kill — essential because the failure sometimes navigated away from the HUD itself). Ships
   inert in production; used to capture the traces that pinned the activation-gate finding.
 
-- **[deferred] The structural two-tap trip-exit.** Under the activation gate, exiting a trip
-  reliably in two taps needs a **history invariant** (All Trips always exactly one entry below
-  the trip) rather than a same-URL guard. Pre-existing, intermittent, and out of scope for the
-  shipped core — **backlogged** (see `docs/backlog.md`), not fixed here.
+- **[shipped] The structural two-tap trip-exit (ride-and-correct).** Under the activation gate
+  the armed 2nd back arrives non-cancelable, so the OS traverses onto the same-URL guard fuel and
+  loops back to Home instead of leaving to All Trips. Rather than reseed history so All Trips sits
+  one entry below the trip (the naive `replace('/trips')` + push remounts the shell mid-boot and
+  was reverted), the interceptor **rides then corrects**: on a non-cancelable structural back it
+  lets the traverse commit and, in a `queueMicrotask`, redirects to `/trips` iff the resolved
+  action was `exit-trip` (`correctionForUncancelableBack`). No history reseed → no remount; the
+  caught two-tap path is unchanged. Device-only verifiable (the ride path is a pure unit test).
 
 The trigger-aware `resolveBack(snapshot, trigger)` + Escape unification and the URL-param
 durability mirror (Phases 5–6) remain **deferred** as the plan scoped them; the shipped core is
