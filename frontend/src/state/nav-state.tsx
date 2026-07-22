@@ -238,6 +238,18 @@ export function NavProvider({ children }: { children: ReactNode }) {
   const seqRef = useRef(0);
   const insideTripRef = useRef(false);
   const exitPendingRef = useRef(0);
+  // History-backed overlays (ADR-0103): each active overlay layer owns one same-URL
+  // history "marker" entry ahead of the base screen. A system-back then RIDES the
+  // traversal off a marker to close the top layer instead of cancelling the back —
+  // because a user-initiated backward traverse is only cancelable while a consumable
+  // user activation exists (WHATWG nav-history spec), so peeling several stacked
+  // overlays with several back presses exhausts it and the OS force-exits the app
+  // (verified on staging: back 4 came back `cancelable=false` at a fixed index).
+  // `markerDepthRef` counts markers pushed. Marker management is PUSH-ONLY (never a
+  // programmatic history.back) so it's robust to double-invoked effects (Strict
+  // Mode) and needs no async reconciliation: an overlay closed off-back leaves a
+  // "spent" marker a later back harmlessly consumes.
+  const markerDepthRef = useRef(0);
   const navigate = useNavigate();
   const showToast = useToast();
 
@@ -294,29 +306,73 @@ export function NavProvider({ children }: { children: ReactNode }) {
     [navigate, showToast],
   );
 
+  // Marker helpers (ADR-0103) — keep the marker-entry count in step with the overlay layer
+  // count. `pushMarker` adds one same-URL entry (a router push, like the guard, so
+  // React Router stays the sole history writer); `backOffMarker` removes a stray one
+  // (an overlay closed off-back) by traversing off it ourselves, suppressed so the
+  // interceptor doesn't treat it as a user back. Gated on the Navigation API — with
+  // no system-back to ride (iOS/Safari), overlays keep the plain in-memory model.
+  const pushMarker = useCallback(() => {
+    markerDepthRef.current += 1;
+    navigate(window.location.pathname + window.location.search);
+  }, [navigate]);
+
+  const reconcileMarkers = useCallback(() => {
+    if (!getNavigation()) return;
+    // Push-only: give any un-markered layer its marker. We never programmatically
+    // pop — an overlay closed off-back (X / backdrop / Escape / arrow / unmount)
+    // leaves a "spent" marker that a later back harmlessly consumes. Tradeoff:
+    // at most one no-op back after an off-back close, in exchange for dropping the
+    // fragile async history.back() reconciliation (which races Strict Mode's
+    // double-mount and any rapid re-render).
+    while (markerDepthRef.current < stackRef.current.length) pushMarker();
+  }, [pushMarker]);
+
   // Route the platform system-back (Android hardware/edge back, desktop button)
-  // through the SAME resolveBack as every other trigger (ADR-0090). The
-  // Navigation API lets us cancel the back *traversal* and run our own
-  // decision instead. Every
-  // cancelable backward traverse inside a trip is preventDefault'd and replaced
-  // with the explicit action, so react-router's own back never peels a structural
-  // step (its target — what the browser stack holds — is exactly the unreliable
-  // thing we refuse to depend on). The traverse is only cancelable when there's an
-  // in-app entry behind us; `useTripBackGuard` guarantees one so the OS back can't
-  // slip out of the app uncatchably. Our own programmatic navigations are
-  // `push`/`replace`, not `traverse`, so they don't re-enter this handler.
+  // through the SAME resolveBack as every other trigger (ADR-0090). Two paths:
+  //   • An OVERLAY is open → close the topmost layer by RIDING the traversal off its
+  //     marker entry (never preventDefault) — cancelling consecutive backs needs a
+  //     user activation the platform won't grant, so we let the traversal commit
+  //     (same URL, nothing visible moves) and close the layer in response.
+  //   • No overlay → STRUCTURAL back: keep the ADR-0090 interception (preventDefault
+  //     + the explicit resolveBack action). Needs a cancelable traverse; the guard
+  //     fuel makes in-trip ones cancelable. A non-cancelable structural back (true
+  //     root / exhausted) is let through so the OS can leave.
+  // Our own `push`/`replace` navigations aren't `traverse`, so they don't re-enter.
   useEffect(() => {
     const navApi = getNavigation();
     if (!navApi) return; // Safari/iOS: no system back to intercept.
     const onNavigate = (evt: Event) => {
       const e = evt as NavigateEventLike;
-      if (e.navigationType !== 'traverse' || !e.cancelable) return;
+      if (e.navigationType !== 'traverse') return;
       const destIdx = e.destination?.index;
       const curIdx = navApi.currentEntry?.index;
-      // Let a forward traverse (redo) pass; handle backward and app-leaving ones
-      // (an indeterminate destination index when the Home base sits at index 0 on
-      // a cold launch / OAuth round-trip) so the root guard keeps us in-app.
+      // Let a forward traverse (redo) pass.
       if (typeof destIdx === 'number' && typeof curIdx === 'number' && destIdx > curIdx) return;
+
+      // Overlay open → ride the traversal to close the topmost layer.
+      if (stackRef.current.length > 0) {
+        markerDepthRef.current = Math.max(0, markerDepthRef.current - 1);
+        const stack = stackRef.current;
+        const top = stack[stack.length - 1];
+        const res = top?.handle();
+        if (res?.remainsActive) {
+          // A repeatable layer (an Index filter reset, ADR-0103) stays mounted —
+          // re-push its marker once this traversal commits so the next back peels
+          // it again.
+          queueMicrotask(() => reconcileMarkers());
+        } else if (top) {
+          // A dismissible layer is done → drop it NOW so the marker count stays in
+          // step (its own unmount/unregister then no-ops), rather than waiting for
+          // the async unmount and risking a spurious re-push in between.
+          const i = stack.indexOf(top);
+          if (i >= 0) stack.splice(i, 1);
+        }
+        return; // no preventDefault — the marker is popped, the layer is handled.
+      }
+
+      // Structural back.
+      if (!e.cancelable) return; // can't stop a non-cancelable structural back.
       const action = classifyBack();
       if (action.kind === 'none') return; // nothing to peel → let the OS proceed.
       e.preventDefault();
@@ -324,18 +380,23 @@ export function NavProvider({ children }: { children: ReactNode }) {
     };
     navApi.addEventListener('navigate', onNavigate);
     return () => navApi.removeEventListener('navigate', onNavigate);
-  }, [classifyBack, runBack]);
+  }, [classifyBack, runBack, reconcileMarkers]);
 
   const value = useMemo<NavContextValue>(
     () => ({
       registerOverlay: (handle) => {
         const id = ++seqRef.current;
         stackRef.current.push({ id, handle });
+        reconcileMarkers(); // give the new overlay its history marker.
         return id;
       },
       unregisterOverlay: (id) => {
         const i = stackRef.current.findIndex((o) => o.id === id);
         if (i >= 0) stackRef.current.splice(i, 1);
+        // an overlay closed off-back (X / backdrop / Escape / in-app arrow /
+        // unmount) leaves a stray marker — reconcile pops it. A back-close already
+        // popped its marker via the traversal, so this is then a no-op.
+        reconcileMarkers();
       },
       // Drain the whole stack (ADR-0060 idle-resume): snapshot then clear before
       // handling, so each handler's unregister can't splice the array mid-loop.
@@ -344,6 +405,7 @@ export function NavProvider({ children }: { children: ReactNode }) {
       closeAllOverlays: () => {
         const all = stackRef.current.splice(0);
         for (const o of all) o.handle();
+        reconcileMarkers(); // drop every marker to match the emptied stack.
       },
       hasOverlay: () => stackRef.current.length > 0,
       setInsideTrip: (v) => {
@@ -353,7 +415,7 @@ export function NavProvider({ children }: { children: ReactNode }) {
       classifyBack,
       runBack,
     }),
-    [classifyBack, runBack],
+    [classifyBack, runBack, reconcileMarkers],
   );
 
   return <NavContext.Provider value={value}>{children}</NavContext.Provider>;
@@ -411,22 +473,34 @@ export function useMarkInsideTrip() {
   }, [setInsideTrip]);
 }
 
+// True for the lifetime of THIS document; a real page load re-evaluates the module
+// and resets it, a client-side route change does not. Lets the guard tell a fresh
+// document load (cold launch / reload / WebView eviction / OAuth return) apart from
+// in-app navigation — see `needsBackGuard`.
+let freshDocumentLoad = true;
+
 /** Android/Chromium system-back guard (ADR-0090). The OS back is a history
- *  *traversal*: it needs an in-app entry behind the current one to traverse into.
- *  When the trip shell mounts at the very bottom of the history stack — a cold
- *  launch straight into the live trip (`resolveLanding`), the common installed-PWA
- *  case — there is nothing behind, so the OS back traverses *out of the app*, and
- *  an app-leaving traversal is **non-cancelable**: the interceptor can't stop it
- *  and the app just exits (the reported "swipe exits the app" bug). Push one
- *  duplicate "guard" entry so the OS back always traverses into an in-app,
- *  cancelable entry the interceptor handles — it `preventDefault()`s before the URL
- *  changes, so the guard is never seen and never consumed (every in-trip back is
+ *  *traversal*: to intercept it we need a **same-document** entry behind the current
+ *  one to traverse into — only a same-document traverse is cancelable. Two ways to
+ *  end up without one, both of which let the OS back leave the app uncatchably
+ *  (a non-cancelable traverse the interceptor's `!cancelable` check bails on):
+ *   1. a cold launch straight into the live trip (`resolveLanding`) sits at the
+ *      very bottom of the stack (index 0) with nothing behind — the classic
+ *      installed-PWA case; and
+ *   2. a **fresh document load landing above older entries** — a reload, a WebView
+ *      eviction/restore (e.g. after the camera), or an OAuth full-page round-trip.
+ *      Those older entries belong to a PRIOR document, so traversing into them is
+ *      non-cancelable even though the index is > 0. This is the "sometimes back
+ *      closes the app" bug: verified on staging as `cancelable=false` on a mid-stack
+ *      `idx 3->2` back, which the old index-0-only guard never covered.
+ *  In both cases push one duplicate same-URL "guard" entry so the OS back traverses
+ *  into an in-app, cancelable entry the interceptor handles — it `preventDefault()`s
+ *  before the URL changes, so the guard is never consumed (every in-trip back is
  *  cancelled, so the index never drops onto it). This is the *fuel* the OS back
  *  needs; the back *decision* stays a pure function of state (`resolveBack`), never
- *  reading history. No-op without the Navigation API (iOS/Safari has no OS back
- *  to guard — and, since ADR-0099 retired the custom edge gesture, no in-app
- *  gesture back either; iOS navigates via explicit taps only) or when an entry
- *  already sits behind us (entered from /trips, an OAuth round-trip, etc.). */
+ *  reading history. No-op without the Navigation API (iOS/Safari has no OS back to
+ *  guard — and, since ADR-0099 retired the custom edge gesture, no in-app gesture
+ *  back either; iOS navigates via explicit taps only). */
 export function useTripBackGuard() {
   const navigate = useNavigate();
   const armedRef = useRef(false);
@@ -434,18 +508,29 @@ export function useTripBackGuard() {
     if (armedRef.current) return;
     const navApi = getNavigation();
     if (!navApi) return; // iOS/Safari: no system back to guard against.
-    if (!needsBackGuard(navApi.currentEntry?.index)) return; // already have fuel behind us.
+    if (!needsBackGuard(navApi.currentEntry?.index, freshDocumentLoad)) return;
+    freshDocumentLoad = false; // this document now has its own fuel entry.
     armedRef.current = true;
     navigate(window.location.pathname + window.location.search); // push a same-URL guard.
   }, [navigate]);
 }
 
-/** Whether the trip shell needs a guard history entry pushed behind it: true only
- *  at the very bottom of the stack (index 0), where the OS back has nothing in-app
- *  to traverse into. Any entry behind us (index > 0) is already cancelable fuel.
- *  Pure so the guard trigger is unit-tested without a Navigation API. */
-export function needsBackGuard(currentIndex: number | null | undefined): boolean {
-  return (currentIndex ?? 0) === 0;
+/** Whether the trip shell needs a guard history entry pushed behind it. True when
+ *  there is no same-document, interceptable entry behind the current one:
+ *   - the very bottom of the whole stack (index 0 — a cold launch), or
+ *   - a fresh document load (`freshLoad`), whose current entry is always the floor
+ *     of THIS document: everything behind it belongs to a prior document (reload /
+ *     eviction / OAuth), so a back into it is a non-cancelable cross-document
+ *     traverse the interceptor can't stop. A fresh load therefore needs fuel even
+ *     at index > 0 — the case the earlier index-0-only guard missed.
+ *  A same-document client-side navigation (`freshLoad` false) at index > 0 already
+ *  has cancelable fuel behind it and needs none. Pure so the guard trigger is
+ *  unit-tested without a Navigation API. */
+export function needsBackGuard(
+  currentIndex: number | null | undefined,
+  freshLoad: boolean,
+): boolean {
+  return freshLoad || (currentIndex ?? 0) === 0;
 }
 
 /** The in-trip tab (ADR-0090). Every move is an explicit `replace` to the tab's

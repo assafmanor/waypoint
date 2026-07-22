@@ -40,6 +40,7 @@ import { SyncReviewSheet } from './ui/SyncReviewSheet';
 import { Icon } from './ui/Icon';
 import { NavArrow } from './ui/NavArrow';
 import { DayStrip } from './ui/domain/DayStrip';
+import { NavDebugHud } from './ui/NavDebugHud';
 import { Home } from './screens/Home';
 import { Login } from './screens/Login';
 import { ZeroState } from './screens/ZeroState';
@@ -700,6 +701,8 @@ export function App() {
               <OutboxAutoFlush />
               <AppRoutes />
               {import.meta.env.DEV && <DevTimeTravel />}
+              {/* Nav-debug HUD, gated behind VITE_NAV_DEBUG (inert in production). */}
+              <NavDebugHud />
             </ConfirmProvider>
           </NavProvider>
         </ToastProvider>

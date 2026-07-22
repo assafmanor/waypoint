@@ -1,7 +1,7 @@
 # 0103 — Back navigation: a typed, non-destructive layer model over ADR-0090's resolver
 
-**Status:** Proposed
-**Date:** 2026-07-21
+**Status:** Accepted (core shipped + device-validated; deferred items enumerated under "Device validation")
+**Date:** 2026-07-21 (revised 2026-07-22 after physical-Android validation)
 
 ## Context
 
@@ -125,6 +125,58 @@ trigger-source + Escape unification → URL-param durability → search → stru
 hardening → Forward/reload tests → Android validation → dead-code removal. Phases through
 the registry fix ship independently of the durability work.
 
+## Device validation (2026-07-22) — what shipped, and the platform finding that reshaped it
+
+The registry fix (§1) shipped first (PR #213) and closed the reported filter divergence.
+Validating the rest on a Railway **staging** build with an on-screen nav-trace HUD
+(`VITE_NAV_DEBUG`, kept in the tree — `lib/navDebug.ts` + `ui/NavDebugHud.tsx`, inert in
+production) then surfaced two more "back closes the app" bugs on a physical Android PWA, and
+one platform fact that reshaped the overlay half of this decision.
+
+**The platform finding (the reframe).** Per the WHATWG nav-history spec, a _user-initiated_
+backward traversal is only cancelable while the window holds a **consumable user activation**
+— and the hardware/gesture back button does **not** grant one. So a page can reliably
+`preventDefault` only about **one** system-back per real interaction. The original Decision's
+premise ("intercept every system-back") therefore cannot hold for _consecutive_ backs:
+peeling several stacked overlays with several presses exhausts the activation and the OS
+force-exits. Confirmed on-device — after three intercepted backs the 4th read
+`cancelable=false` at a fixed history index and the app left.
+
+**Bug 1 — cross-document exit (shipped fix).** After a reload / WebView eviction (e.g.
+returning from the camera) / OAuth round-trip, the fresh document sits above prior-document
+entries; a back into them is a non-cancelable _cross-document_ traverse. The old guard only
+fueled a **cold-launch index 0**. Fix: `useTripBackGuard` now pushes its same-URL fuel entry
+on **any fresh document load** inside a trip (`needsBackGuard(index, freshLoad)`).
+
+**Bug 2 — multi-back exit (shipped fix, a bounded departure).** Since we cannot cancel
+consecutive backs, overlays stop relying on cancellation: each active overlay layer now owns
+one **same-URL history "marker" entry**, and a system-back **rides** the traversal off the
+marker to close the top layer (never `preventDefault`). No cancellation → no activation
+dependency → no force-exit at any stack depth. Marker bookkeeping is **push-only** (never a
+programmatic `history.back` — StrictMode-safe, and never traverses blindly, honoring ADR-0090
+§3); an overlay closed off-back (X/backdrop/Escape) leaves a "spent" marker a later back
+harmlessly consumes (cost: at most one no-op back after an off-back close). **Structural** back
+(tabs → Home → exit) keeps the ADR-0090 interception — single structural backs have a fresh
+activation. This is a deliberate, **bounded** revision of §2's "flat history / interception-first"
+(overlays now push markers, so in-trip history is no longer strictly flat) — but **not** a
+return to ADR-0035's history-first model: structural back still _computes_ its destination and
+never traverses blindly; only overlays ride their own same-URL markers.
+
+**Shipped in this decision:** the typed non-destructive registry (§1); the fresh-load guard;
+history-backed overlays; the env-gated nav-debug HUD. Real-Chromium e2e covers nested-overlay
+multi-back peel, search close, the filter lifecycle, the cold-launch guard, and tab/exit
+structural back.
+
+**Deferred / still open (not built in this decision):**
+
+- Trigger-aware `resolveBack` + Escape unification (§2) and URL-param durability (§3) — still
+  the intended direction, not yet built.
+- **Structural two-tap trip-exit under the activation gate.** The same limit hits Home → arm →
+  exit on a _cold-launched_ trip: the 2nd (armed) back is non-cancelable, so the OS traverses
+  onto the guard's Home-duplicate fuel instead of All Trips, looping back to Home. A robust fix
+  needs a history invariant (All Trips always exactly one entry below the trip) — a larger
+  structural change; **backlogged**, explicitly out of scope here.
+
 ## Consequences
 
 - **Easier:** one back removes exactly one semantic layer; the filter-reset handler stays
@@ -146,8 +198,10 @@ the registry fix ship independently of the durability work.
   _mechanism_ retired; keeps ADR-0098's registry-peeled subviews (adds a URL mirror, not a
   route); keeps ADR-0101's full-screen search as a `TransientOverlayLayer`; folds ADR-0102's
   `peelBack` into a `RepeatableStateLayer` (honoring its "don't thread screen state into
-  `resolveBack`" rejection); preserves ADR-0099 (no custom gesture). Remains **Proposed**
-  pending review of the two open product decisions below.
+  `resolveBack`" rejection); preserves ADR-0099 (no custom gesture). **Refines ADR-0090 §4**:
+  overlays now push same-URL history markers (bounded), so in-trip history is no longer strictly
+  flat — see "Device validation." The shipped core is **Accepted**; the deferred items there stay
+  open.
 
 ## Alternatives considered
 

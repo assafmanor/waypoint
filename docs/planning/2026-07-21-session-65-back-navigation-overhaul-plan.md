@@ -1,8 +1,8 @@
 # Session 65 — Back-navigation architecture overhaul (investigation + implementation-ready plan)
 
 **Date:** 2026-07-21
-**Status:** Planning note (investigation complete; production overhaul deferred to a later session)
-**Outputs:** Proposed [ADR-0103](../decisions/0103-back-navigation-typed-layer-model.md); backlog line updated (no duplicate).
+**Status:** Planning note (investigation complete; core shipped + device-validated — see §33 addendum, 2026-07-22)
+**Outputs:** [ADR-0103](../decisions/0103-back-navigation-typed-layer-model.md) (Accepted, core shipped); backlog line updated (no duplicate).
 
 > Evidence labels used throughout: **[code]** verified in current code · **[e2e]**
 > reproduced in an automated browser test · **[manual]** reproduced by hand ·
@@ -526,3 +526,51 @@ The production refactor (this note is planning + repro-test design only); iOS ge
 absent (ADR-0099); no HashRouter / nested-route-per-subview / history-first; `SearchOverlay` for
 Documents and search-by-linked-place (existing backlog lines) ride the search migration when
 wanted; the ADR-0079 nested-overlay Escape refinement folds into Phase 5.
+
+---
+
+## 33. Device-validation addendum (2026-07-22)
+
+The plan's core moved from Proposed to shipped over sessions that followed. What the device
+testing on a Railway **staging** environment (ADR-0104) actually taught us — and what changed
+from the plan above:
+
+- **[manual] The platform user-activation gate.** A user-initiated backward traversal is
+  cancelable **only** while the window holds a consumable user activation, and the hardware
+  back button does **not** grant one (WHATWG nav-history spec; WICG navigation-api; MDN
+  `NavigateEvent`). A page can therefore cancel about **one** system-back per real interaction.
+  This invalidates the plan's implicit assumption that the interceptor can `preventDefault`
+  every consecutive system-back. It is the root of the "press back twice, layers don't peel"
+  and the intermittent two-tap-exit reports.
+
+- **[shipped] The registry fix (Phases 3–4).** The typed non-destructive `BackLayer`
+  registry — `BackResult { remainsActive }`, `useBackLayer`, the `useOverlay` shim, a
+  repeatable layer returning `remainsActive: true` — landed and closed the Index
+  filter/back divergence that motivated the whole investigation (#213).
+
+- **[shipped] Fresh-document-load back-guard.** Device testing surfaced a case the
+  index-0-only cold-launch guard missed: a **fresh document load** (reload / WebView eviction /
+  OAuth return) sits above prior-document entries, and a back into them is a non-cancelable
+  **cross-document** traverse — the "sometimes back closes the app entirely" report. Fixed by
+  widening the guard to `needsBackGuard(currentIndex, freshLoad) = freshLoad || index === 0`.
+
+- **[shipped] History-backed overlays.** To peel **consecutive** overlays under the activation
+  gate, each overlay owns a same-URL history marker and system-back **rides** the traversal
+  (no `preventDefault`) to close the top layer. Marker reconciliation is push-only
+  (StrictMode-safe, never a programmatic `history.back`, honoring ADR-0090 §3's "never traverse
+  blindly"). Tradeoff: one no-op back immediately after an off-back close ("spent marker").
+
+- **[shipped] Env-gated debug HUD.** `VITE_NAV_DEBUG` build-time flag gates a passive
+  `navigate`-observer HUD that persists a trace ring-buffer to `localStorage` (survives an app
+  kill — essential because the failure sometimes navigated away from the HUD itself). Ships
+  inert in production; used to capture the traces that pinned the activation-gate finding.
+
+- **[deferred] The structural two-tap trip-exit.** Under the activation gate, exiting a trip
+  reliably in two taps needs a **history invariant** (All Trips always exactly one entry below
+  the trip) rather than a same-URL guard. Pre-existing, intermittent, and out of scope for the
+  shipped core — **backlogged** (see `docs/backlog.md`), not fixed here.
+
+The trigger-aware `resolveBack(snapshot, trigger)` + Escape unification and the URL-param
+durability mirror (Phases 5–6) remain **deferred** as the plan scoped them; the shipped core is
+independent of both. ADR-0103's Status is updated to **Accepted (core shipped + device-validated)**
+accordingly.

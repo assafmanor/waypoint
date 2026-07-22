@@ -59,6 +59,41 @@ test('bookings filter: the first system back resets the category, staying on the
   await expect(page).toHaveURL(/[?&]tab=index/);
 });
 
+test('nested overlays: consecutive system-backs peel the modal, then the subview, then land (ADR-0103)', async ({
+  page,
+}) => {
+  // History-backed overlays (ADR-0103): each overlay owns a same-URL history entry,
+  // so a system-back RIDES the traversal to close it rather than cancelling the
+  // back. This is the multi-layer case that force-exited the app on device (the OS
+  // won't let a page cancel several consecutive backs). Here two layers (the
+  // add-booking sheet over the bookings subview) close one-per-back, no overshoot.
+  await openBookingsScreen(page);
+  await page.locator('.addbtn').click(); // open the add-booking sheet (a modal on top)
+  await expect(page.getByRole('dialog')).toBeVisible();
+
+  await systemBack(page); // closes the modal, back to the bookings subview
+  await expect(page.getByRole('dialog')).toHaveCount(0);
+  await expect(page.locator('.idx-screen')).toBeVisible();
+
+  await systemBack(page); // closes the subview, back to the Index landing
+  await expect(page.locator('.index-status')).toBeVisible();
+  await expect(page).toHaveURL(/[?&]tab=index/);
+});
+
+test('search overlay: system back closes search, staying on the bookings screen (ADR-0103)', async ({
+  page,
+}) => {
+  await openBookingsScreen(page);
+  await page.locator('.search-icon-btn').click();
+  await expect(page.locator('.search-overlay')).toBeVisible();
+  await page.locator('.search-overlay-field input').fill('flight');
+
+  await systemBack(page); // closes the full-screen search overlay, not the screen under it
+  await expect(page.locator('.search-overlay')).toHaveCount(0);
+  await expect(page.locator('.idx-screen')).toBeVisible();
+  await expect(page).toHaveURL(/[?&]tab=index/);
+});
+
 test('bookings filter: after the reset, the next system back returns to the landing, not Home (ADR-0103)', async ({
   page,
 }) => {
