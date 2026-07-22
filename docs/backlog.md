@@ -23,7 +23,6 @@ Decomposed to run simultaneously; disjoint file ownership (map in the session-29
 ## Integrations
 
 - **Google Cloud project setup** (human) — OAuth consent, Maps/Places, Calendar. Gates the Map tab and calendar sync.
-- **Railway staging environment dashboard setup** (human, ADR-0104) — one-time manual steps not automatable from this repo: create the `staging` environment + its own Postgres in the Railway project, generate fresh `JWT_SECRET`/`TOKEN_ENCRYPTION_KEY`/`DOC_ENCRYPTION_KEY`, add the staging redirect URI to the Google OAuth client, generate a staging-scoped Railway project token and add it as the `RAILWAY_STAGING_TOKEN` GitHub secret, turn off the staging service's git auto-deploy trigger, and push the `staging` branch. Runbook in `deployment.md`'s staging section.
 - **Calendar one-way sync** (trip → personal, ADR-0003) — the feature itself; nothing reads `Membership.calendarSyncEnabled` today. When built, a linked event's location must resolve via its booking/`Place` — there is no `Event.location` anymore (ADR-0051).
 - **Lazy incremental OAuth consent** — before calendar sync first fires for a member, check `AuthIdentity.scopes` and run Google's incremental-consent redirect if the calendar scope is missing. Per `auth-and-google.md`, scopes are never front-loaded at sign-in. Needed by the item above, not before it.
 
