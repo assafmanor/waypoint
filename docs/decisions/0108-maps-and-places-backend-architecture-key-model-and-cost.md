@@ -20,17 +20,17 @@ Two facts from the codebase frame all three (verified this session, not recalled
 
 Google **retired the universal $200/month credit in March 2025** and replaced it with a **per-SKU free tier** and an Essentials / Pro / Enterprise tier split (the field mask you request decides the tier). Confirmed figures, at the 10K–100K/month volume band, USD per 1,000 calls:
 
-| SKU (what triggers it)                              | Price /1,000 | Free /month |
-| --------------------------------------------------- | ------------ | ----------- |
-| **Autocomplete** — per-request, standalone          | ~$2.83       | (per-SKU)   |
-| **Autocomplete** — inside a Pro/Enterprise session  | **$0**       | —           |
-| **Place Details** — Essentials tier                 | ~$5          | 10,000      |
-| **Place Details** — Pro tier                        | ~$17         | 5,000       |
-| **Place Details** — Enterprise tier                 | ~$20         | 1,000       |
-| **Dynamic Maps** (Maps JS API map load, Phase 6)    | ~$7          | 10,000      |
-| **Routes API — Compute Routes**, Essentials/Basic   | ~$5          | 10,000      |
-| **Routes API — Compute Routes**, Advanced           | ~$10         | —           |
-| **Routes API — Compute Routes**, Preferred          | ~$15         | —           |
+| SKU (what triggers it)                             | Price /1,000 | Free /month |
+| -------------------------------------------------- | ------------ | ----------- |
+| **Autocomplete** — per-request, standalone         | ~$2.83       | (per-SKU)   |
+| **Autocomplete** — inside a Pro/Enterprise session | **$0**       | —           |
+| **Place Details** — Essentials tier                | ~$5          | 10,000      |
+| **Place Details** — Pro tier                       | ~$17         | 5,000       |
+| **Place Details** — Enterprise tier                | ~$20         | 1,000       |
+| **Dynamic Maps** (Maps JS API map load, Phase 6)   | ~$7          | 10,000      |
+| **Routes API — Compute Routes**, Essentials/Basic  | ~$5          | 10,000      |
+| **Routes API — Compute Routes**, Advanced          | ~$10         | —           |
+| **Routes API — Compute Routes**, Preferred         | ~$15         | —           |
 
 Two consequences of the tier split matter for cost: **a session terminated by a Place Details call bills every Autocomplete keystroke in that session at $0**, and **the field mask decides the Place Details / Routes tier** — request only the fields we cache and we stay in the cheapest tier that returns them (the exact field→tier mapping shifts across Google releases; confirm it at implementation against Google's current field list, don't hardcode a recalled mapping). At this app's scale (small groups per trip, ADR-0065) real spend sits well inside the free monthly allowances; the design goal is that a **leak or abuse can't blow past them**, not that steady-state usage is expensive.
 
@@ -108,11 +108,11 @@ Recorded now so Phase 6 inherits a decided shape, not re-litigation:
 
 **Targets — comfortably above real use, well below what makes scripting worth it** (the two paid buckets are the point; all env-tunable via named constants in `env.ts`, defaults below):
 
-| Proxy route            | Per-minute / member·trip | Per-day / member·trip | Reasoning                                                                                          |
-| ---------------------- | ------------------------ | --------------------- | -------------------------------------------------------------------------------------------------- |
-| Search / autocomplete relay | 120                 | 2,000                 | Free within a session, but the scrape surface; a debounced human can't sustain this, a script trips it fast |
-| Place Details (enrich-on-pick) | 30               | 500                   | A heavy planner completes a few picks/min; dedup makes re-picks free — 30/min is ~10× real use, ~$0.15/min ceiling |
-| Routes (Phase 6)       | 30                       | 500                   | A per-day macro fires ~10–25 at once; 30/min covers re-renders, the daily cap bounds a drip attack |
+| Proxy route                    | Per-minute / member·trip | Per-day / member·trip | Reasoning                                                                                                          |
+| ------------------------------ | ------------------------ | --------------------- | ------------------------------------------------------------------------------------------------------------------ |
+| Search / autocomplete relay    | 120                      | 2,000                 | Free within a session, but the scrape surface; a debounced human can't sustain this, a script trips it fast        |
+| Place Details (enrich-on-pick) | 30                       | 500                   | A heavy planner completes a few picks/min; dedup makes re-picks free — 30/min is ~10× real use, ~$0.15/min ceiling |
+| Routes (Phase 6)               | 30                       | 500                   | A per-day macro fires ~10–25 at once; 30/min covers re-renders, the daily cap bounds a drip attack                 |
 
 The per-day window is defense-in-depth against a slow-drip script that stays under the per-minute cap. A breach returns the standard 429 + `Retry-After` envelope (ADR-0070) the frontend already handles. Numbers are a starting point tuned once Phase-0 gives real usage data — the _mechanism and the per-member·trip keying_ are the decision, not the exact integers.
 
