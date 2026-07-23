@@ -106,6 +106,15 @@
     border-color 0.15s ease,
     transform 0.12s ease;
 }
+/* The event/idea category selector (ADR-0109 §11) wants a slightly larger tap
+   target than the compact Index filter chips that share `.choice-pill`; scoped
+   to the `.category-pills` wrapper so the Index chips stay as designed (ADR-0100). */
+.category-pills .choice-pill {
+  font-size: var(--text-secondary);
+  padding: 8px 14px;
+  gap: 6px;
+}
+
 .choice-pill-count {
   font-family: var(--font-mono);
   opacity: 0.75;
