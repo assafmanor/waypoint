@@ -11,12 +11,10 @@
 import { useEffect, useId, useRef, useState } from 'react';
 import {
   ICON_SET,
-  categoryForIcon,
   flagFromCode,
   searchDestinations,
   searchVibeIcons,
   type Destination,
-  type EventCategory,
 } from '@waypoint/shared';
 import { t } from '../i18n/he';
 
@@ -30,7 +28,10 @@ export function IconPicker({
   destinations,
 }: {
   icon: string;
-  onChange: (icon: string, category: EventCategory | undefined) => void;
+  // Glyph-only — the icon is a pure badge and no longer decides `category`
+  // (ADR-0109 §11 / ADR-0038 §4 amendment): category is an explicit field
+  // (ChoiceGrid) for manual events/ideas, and the booking type for seeded ones.
+  onChange: (icon: string) => void;
   ariaLabel?: string;
   // Trip mode: archetype vibe clusters (spaced, no labels) shown first; flags last.
   flatClusters?: readonly (readonly string[])[];
@@ -63,9 +64,8 @@ export function IconPicker({
     setQuery('');
   };
 
-  // Trip picks carry no category; event picks derive it from the glyph.
   const pick = (glyph: string) => {
-    onChange(glyph, tripMode ? undefined : categoryForIcon(glyph));
+    onChange(glyph);
     setOpen(false);
   };
 
@@ -84,7 +84,6 @@ export function IconPicker({
   );
 
   const groups = activeCat === ALL ? ICON_SET : ICON_SET.filter((g) => g.id === activeCat);
-  const currentCategory = categoryForIcon(icon);
   // Trip search covers vibe glyphs AND flags; vibe icons render first, flags last.
   const searching = tripMode && query.trim().length > 0;
   const vibeMatches = searching ? searchVibeIcons(query) : [];
@@ -108,11 +107,6 @@ export function IconPicker({
         <div className="icon-panel" id={panelId} role="dialog" aria-label={t.iconPicker.title}>
           <div className="icon-panel-head">
             <span className="lbl">{t.iconPicker.title}</span>
-            {!tripMode && currentCategory && (
-              <span className="cat-readout">
-                {t.iconPicker.categoryReadout(t.iconPicker.categories[currentCategory])}
-              </span>
-            )}
           </div>
 
           {tripMode ? (

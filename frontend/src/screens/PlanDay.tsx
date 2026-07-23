@@ -19,6 +19,7 @@ import {
 import {
   EVENT_KIND,
   EVENT_STATUS,
+  iconForCategory,
   isAmbient,
   type Booking,
   type EventCategory,
@@ -50,6 +51,8 @@ import { BookingSheet } from '../ui/BookingSheet';
 import { BookingDetail } from '../ui/BookingDetail';
 import { TransitionRow } from '../ui/TransitionRow';
 import { IconPicker } from '../ui/IconPicker';
+import { ChoiceGrid } from '../ui/primitives/ChoiceGrid';
+import { EVENT_CATEGORY_OPTIONS } from '../lib/category-options';
 import { Icon } from '../ui/Icon';
 import { NavArrow } from '../ui/NavArrow';
 import { Sheet } from '../ui/Sheet';
@@ -1056,7 +1059,14 @@ function AddIdea({
 }) {
   const [title, setTitle] = useState('');
   const [icon, setIcon] = useState(DEFAULT_MAYBE_ICON);
+  const [iconTouched, setIconTouched] = useState(false);
   const [category, setCategory] = useState<EventCategory | undefined>(undefined);
+  // Category is an explicit choice now (ADR-0109 §11), not derived from the icon;
+  // picking one defaults the badge glyph unless the user chose one.
+  const pickCategory = (next: EventCategory) => {
+    setCategory(next);
+    if (!iconTouched) setIcon(iconForCategory(next));
+  };
   const submit = (e: FormEvent) => {
     e.preventDefault();
     const trimmed = title.trim();
@@ -1064,26 +1074,36 @@ function AddIdea({
     onAdd(trimmed, icon, category);
     setTitle('');
     setIcon(DEFAULT_MAYBE_ICON);
+    setIconTouched(false);
     setCategory(undefined);
   };
   return (
     <form className="add-idea" onSubmit={submit}>
-      <IconPicker
-        icon={icon}
-        onChange={(next, cat) => {
-          setIcon(next);
-          setCategory(cat);
-        }}
+      <div className="add-idea-row">
+        <IconPicker
+          icon={icon}
+          onChange={(next) => {
+            setIcon(next);
+            setIconTouched(true);
+          }}
+        />
+        <input
+          value={title}
+          onChange={(e) => setTitle(e.target.value)}
+          placeholder={t.planDay.addIdeaPlaceholder}
+          aria-label={t.planDay.addIdea}
+        />
+        <button type="submit" className="add-idea-btn" disabled={!title.trim()}>
+          {ICONS.add}
+        </button>
+      </div>
+      <ChoiceGrid
+        layout="pills"
+        options={EVENT_CATEGORY_OPTIONS}
+        value={category}
+        onChange={pickCategory}
+        ariaLabel={t.planDay.addIdeaCategory}
       />
-      <input
-        value={title}
-        onChange={(e) => setTitle(e.target.value)}
-        placeholder={t.planDay.addIdeaPlaceholder}
-        aria-label={t.planDay.addIdea}
-      />
-      <button type="submit" className="add-idea-btn" disabled={!title.trim()}>
-        {ICONS.add}
-      </button>
     </form>
   );
 }
