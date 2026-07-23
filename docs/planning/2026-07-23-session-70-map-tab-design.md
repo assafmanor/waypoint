@@ -41,11 +41,16 @@ The mockup's day strip was rebuilt to match the shipped component (header chrome
 
 Added a mockup panel + ADR-0108 §12 designing the picker interaction (the epic's keystone, previously only referenced): Autocomplete search → predictions (with a visible "כבר בטיול" `googlePlaceId`-dedup chip that links instead of duplicating) → create-or-link an enriched `Place` (coords · address · timezone · rating) cached on the row (pick once, free/offline re-read) → the name-only "Place-lite" fallback that auto-enriches on next pick. Session-token cost stated in the UI. Assumes ADR-0106's "one shared search core, two presentations" lean. Also added the **frontend `CLAUDE.md` reuse audit** to ADR-0108 (ChoiceGrid for chips + category selector, ui/feedback for empty/offline/loading, ListRow for the row, WhenField for the zone chip, Modal/useOverlay for overlays, `Record<EventCategory>` lookups, IconPicker glyph-only) after checking the design against those rules.
 
+## Decision — defer the Phase 5 & Phase 6 _detailed_ designs (2026-07-23)
+
+Asked whether to design the remaining pieces now or later, the call was **defer** (recorded in ADR-0108's "Scope of this design session, and what is deliberately deferred"). The Map **surface** design is complete; the **detailed** design of **Phase 5 (research results)** and the **fully-rendered Phase 6 map** — plus **navigate-to-next** — is deferred to their own build sessions. Why: they're the last phases, gated on Google Cloud + BE-arch; Phase 6 is pricing/API-sensitive (ADR-0106 says confirm current Maps API/pricing at build time) and its direction (ADR-0106 §A–F) + look/integration (ADR-0108 §3/§10) are already fixed; Phase 5 reuses the picker's search core (§12) + the existing result-card grammar, so it's best mocked against the real picker. A future chat should treat those mockups as intentionally not-yet-done and pick them up in/just-before their implementation phase.
+
 ## Explicitly left for follow-on sessions (not this one)
 
 - **FE-arch (roadmap #3):** the place-usage derivation module, the one-shared-search-core-vs-two-components call (leaning shared), and how ADR-0107's per-event zone threads through `lib/time.ts`/`lib/places.ts`. ADR-0108 fixes _what it looks like and how it behaves_, not the module layout.
 - **BE-arch (roadmap #2):** the Places API key model + the Phase-6 cost envelope + the offline lat/lng→zone library.
 - **Google Cloud setup (roadmap #0, human):** still gates all real work.
+- **Phase 5 / Phase 6 detailed design + navigate-to-next:** deferred to their build (see the decision above).
 
 ## Review round 2 (Assaf feedback — six points + follow-ups)
 

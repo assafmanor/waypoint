@@ -131,6 +131,18 @@ The mockup is standalone HTML and deliberately hand-rolls everything — it is a
 - **Per-enum lookups are `Record<EventCategory, …>` `as const`** (like `constants.ts`'s `BOOKING_TYPE_ICON`), not switches/ternaries: the category→pin-colour palette and the category→default-glyph both. Enum values import from `@waypoint/shared` (`EventCategory`, `categoryForBookingType`, `iconForCategory`); the new `Place.rating`/`userRatingsTotal` shapes live in `@waypoint/shared`, mirrored to `schema.prisma` (non-negotiable rule 3). All copy → `i18n/he.ts`, tunables → `constants.ts`.
 - **`IconPicker` stops writing `category`** (glyph-only in every host — §11 / ADR-0038 amendment): it already passes `undefined` in Trip mode (`onChange(glyph, tripMode ? undefined : categoryForIcon(glyph))`); the change is to make that unconditional and let the `ChoiceGrid` (manual) or `Booking.type` (seeded) own the category. `categoryForIcon` is retired as a category source.
 
+## Scope of this design session, and what is deliberately deferred
+
+This session (ADR-0106 roadmap #1) designed the Map **surface** in depth and is considered **complete**: the list-first Phase-3 tab, the day-strip reconciliation, the filter chips, the mode defaults, the **category-coloured pin/marker** (list badge + map teardrop), the **geolocation/near-me** UX, **places + timezones in the forms** (one place / two places, explicit category), **ratings**, the **Phase-1 Places-picker flow** (§12), the **Phase-6 map look + the map↔list integration vision** (§10), and a **reuse audit**.
+
+**Deferred, by explicit decision (2026-07-23): the _detailed_ design of Phase 5 (research results) and the _fully-rendered_ Phase 6 map — to their own build sessions, not now.** Rationale:
+
+- Both are the **last phases** and ship after 1–4; nothing renders until the picker (P1) works, which is gated on the human Google Cloud setup + the BE-arch key/cost model.
+- **Phase 6 is pricing/API-sensitive:** ADR-0106 itself says the design/FE-arch/BE-arch sessions must "confirm current API details" (Google changed Maps pricing in 2025). Its **direction is already fixed** (ADR-0106 §A–F: JS API, brand `mapId` styling, `AdvancedMarkerElement` pins, connector→route spectrum, per-day macro, routes-are-visibility) and its **look + list integration are captured here** (§3 pins, §10 integration). Pixel-detailing the rendered map before that confirmation would likely go stale.
+- **Phase 5 reuses the picker's shared search core** (§12) and the existing result-card grammar (`plan-mode-v1.html` "Place research", design-language "Plan-mode components"), so it is low-risk and best mocked **against the real picker** when built.
+
+So a future chat should treat the P5-results and full-P6-map mockups as **not-yet-done and intentionally so** — pick them up in (or just before) their implementation phase, re-confirming current Maps/Places API + pricing first. Everything needed to _start_ is in ADR-0106 (direction/phasing), this ADR (surface/pins/integration), and ADR-0107 (time). `navigate-to-next` (ADR-0106 D6 / ADR-0045) is likewise left to its Phase-4 build.
+
 ## Consequences
 
 - **Design-language is updated in this change** (CLAUDE.md founding principle): the "Map" entry and the decorative-palette sentence describe **category-coloured pins** (5-hue palette, ADR-0038/0028) — list = rounded category badge, map = category teardrop — restoring, not dropping, "map pin categories" in the decorative palette. The `trip-dashboard-v2.html` map sketch's pin colours are kept; its teardrop-in-a-list is superseded by the rounded badge. The mockup catalog gains this file's entry.
