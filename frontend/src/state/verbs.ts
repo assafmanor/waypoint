@@ -212,6 +212,7 @@ export interface ScheduleFields {
   endsAt?: string;
   icon?: string;
   category?: EventCategory;
+  placeId?: string;
 }
 
 // Build the TripEvent a schedule verb dispatches. With `fields` (the builder's
@@ -240,7 +241,8 @@ export function buildScheduleEvent(
       ? fields.startsAt
       : zonedIso(activeDate, DEFAULT_SCHEDULE_SLOT.START, trip.timezone),
     endsAt: fields ? fields.endsAt : zonedIso(activeDate, DEFAULT_SCHEDULE_SLOT.END, trip.timezone),
-    placeId: m.placeId,
+    // A place picked in the schedule form wins over the idea's carried-over one.
+    placeId: fields?.placeId ?? m.placeId,
     sortOrder: 99,
     source: EVENT_SOURCE.MAYBE_SHELF,
     createdAt: now,

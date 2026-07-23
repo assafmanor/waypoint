@@ -32,6 +32,7 @@ import {
   type Trip,
   type TripEvent,
   type Place,
+  type ResolvePlaceInput,
   type TripSnapshot,
   type UpdateBookingInput,
   type UpdatePlaceInput,
@@ -48,6 +49,7 @@ import {
   fetchSnapshot,
   isHardEventConfirmError,
   removeMember as apiRemoveMember,
+  resolvePlace as apiResolvePlace,
   setMemberRole as apiSetMemberRole,
   updateBooking as apiUpdateBooking,
   updatePlace as apiUpdatePlace,
@@ -368,6 +370,11 @@ export interface IndexVerbs {
   // so the queued place op still runs before the booking op).
   createPlace: (input: CreatePlaceInput) => Promise<string>;
   updatePlace: (placeId: string, input: UpdatePlaceInput) => Promise<void>;
+  // The Places picker's terminating enrich-on-pick (ADR-0108 §3 / ADR-0110 §1).
+  // Online-only (needs Google, so never queued); the returned canonical row is
+  // adopted into `places` immediately for the form's use, and the WS `place` echo
+  // reconciles it through the existing registry (server-minted id → no duplicate).
+  resolvePlace: (input: ResolvePlaceInput) => Promise<Place>;
 }
 
 interface TripContextValue {
@@ -1003,6 +1010,20 @@ function TripReady({
           toast(ICONS.warn, t.toast.writeFailed);
           throw err;
         }
+      },
+      resolvePlace: async (input) => {
+        // Online-only: no optimistic row (the FE can't produce coords/zone) and no
+        // outbox (needs Google). Errors — offline, 429, a bad id — propagate to the
+        // picker, which degrades softly (name-only fallback / retry cue, ADR-0110 §1).
+        const place = await apiResolvePlace(tripId, input);
+        // Adopt the canonical row now: replace it if present (dedup hit, or an
+        // enriched Place-lite keeps its id) or append (a freshly minted place).
+        setPlaces((prev) =>
+          prev.some((p) => p.id === place.id)
+            ? prev.map((p) => (p.id === place.id ? place : p))
+            : [...prev, place],
+        );
+        return place;
       },
     };
   }, [tripId, bookings, places, toast, authorId, applyEntityChange]);

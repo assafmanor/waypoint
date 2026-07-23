@@ -1,0 +1,146 @@
+/* Places picker (ADR-0110 §1 / ADR-0109 §12). Teal is the location affordance
+   (design-language rule 4); selection chrome stays neutral. */
+.place-picker {
+  display: flex;
+  align-items: center;
+  gap: var(--space-2);
+}
+
+.pp-trigger {
+  flex: 1;
+  display: flex;
+  align-items: center;
+  gap: var(--space-2);
+  min-height: 44px;
+  padding: var(--space-2) var(--space-3);
+  border: 1px solid var(--line);
+  border-radius: var(--radius-12);
+  background: var(--card);
+  color: var(--faint);
+  font: inherit;
+  text-align: start;
+  cursor: pointer;
+}
+
+.pp-trigger.filled {
+  color: var(--ink);
+}
+
+.pp-trigger-icon {
+  color: var(--teal);
+  flex: none;
+}
+
+.pp-trigger-label {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.pp-clear {
+  flex: none;
+  width: 32px;
+  height: 32px;
+  border: none;
+  border-radius: var(--radius-999);
+  background: transparent;
+  color: var(--muted);
+  font-size: 0.9rem;
+  cursor: pointer;
+}
+
+.pp-sheet {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-3);
+}
+
+.pp-search {
+  width: 100%;
+  min-height: 44px;
+  padding: var(--space-2) var(--space-3);
+  border: 1px solid var(--line);
+  border-radius: var(--radius-12);
+  background: var(--card);
+  color: var(--ink);
+  font: inherit;
+}
+
+.pp-results {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-1);
+  max-height: 46vh;
+  overflow-y: auto;
+}
+
+.pp-result {
+  width: 100%;
+  display: flex;
+  flex-wrap: wrap;
+  align-items: baseline;
+  gap: var(--space-1) var(--space-2);
+  padding: var(--space-3);
+  border: none;
+  border-radius: var(--radius-12);
+  background: transparent;
+  color: var(--ink);
+  font: inherit;
+  text-align: start;
+  cursor: pointer;
+}
+
+.pp-result:hover:not(:disabled),
+.pp-result:focus-visible {
+  background: var(--line);
+}
+
+.pp-result:disabled {
+  opacity: 0.5;
+  cursor: default;
+}
+
+.pp-primary {
+  font-weight: 600;
+}
+
+.pp-secondary {
+  color: var(--muted);
+  font-size: 0.85rem;
+}
+
+.pp-chip {
+  margin-inline-start: auto;
+  padding: 2px var(--space-2);
+  border-radius: var(--radius-999);
+  background: color-mix(in srgb, var(--teal) 16%, transparent);
+  color: var(--teal);
+  font-size: 0.75rem;
+  white-space: nowrap;
+}
+
+.pp-name-only {
+  align-self: flex-start;
+  padding: var(--space-2) var(--space-3);
+  border: 1px dashed var(--line);
+  border-radius: var(--radius-12);
+  background: transparent;
+  color: var(--ink);
+  font: inherit;
+  cursor: pointer;
+}
+
+.pp-name-only:disabled {
+  opacity: 0.5;
+  cursor: default;
+}
+
+.pp-cost-footer {
+  margin: 0;
+  color: var(--faint);
+  font-size: 0.75rem;
+  text-align: center;
+}

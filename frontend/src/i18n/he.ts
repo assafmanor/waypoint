@@ -864,6 +864,20 @@ export const t = {
     durHoursMinutes: (h: number, m: number) => `${h}:${String(m).padStart(2, '0')} שע׳`,
     durMinutes: (m: number) => `${m} דק׳`,
   },
+  // Places picker (ADR-0110 / ADR-0109 §12). The search is a paid Google relay
+  // behind our proxy; the footer carries Google's required attribution.
+  placePicker: {
+    open: 'בחירת מקום',
+    empty: 'הוספת מקום',
+    clear: 'הסרת המקום',
+    title: 'מקום',
+    searchPlaceholder: 'חיפוש מקום…',
+    alreadyInTrip: 'כבר בטיול',
+    saveNameOnly: (name: string) => `שמירת "${name}" כשם בלבד`,
+    costFooter: 'מופעל על ידי Google',
+    rateLimited: 'יותר מדי חיפושים · נסו שוב בעוד רגע',
+    failed: 'החיפוש נכשל · בדקו את החיבור או שמרו שם בלבד',
+  },
   // The "when" standard (WhenField). Shared span-endpoint copy for the tap-to-open
   // time field, the derived duration read-out, and the crosses-a-day marker.
   whenField: {

@@ -8,6 +8,7 @@ import {
   maybeItemSchema,
   meSchema,
   membershipSchema,
+  placePredictionSchema,
   placeSchema,
   removedMemberSchema,
   tripDocumentSchema,
@@ -35,6 +36,8 @@ import {
   type MoveEventInput,
   type MembershipRole,
   type Place,
+  type PlacePrediction,
+  type ResolvePlaceInput,
   type RemovedMember,
   type Trip,
   type TripEvent,
@@ -282,6 +285,11 @@ export const isHardEventConfirmError = (err: unknown): boolean =>
 export const isMoveIntoPastError = (err: unknown): boolean =>
   err instanceof ApiError && err.code === ERROR_CODE.MOVE_INTO_PAST;
 
+/** The Places proxy's per-member·trip rate limit tripped (ADR-0108 §5). The picker
+ *  degrades softly on this (a "try again" cue), never a hard error (ADR-0110 §1). */
+export const isRateLimitedError = (err: unknown): boolean =>
+  err instanceof ApiError && err.code === ERROR_CODE.RATE_LIMITED;
+
 export const isMoveCrossesDayError = (err: unknown): boolean =>
   err instanceof ApiError && err.code === ERROR_CODE.MOVE_CROSSES_DAY;
 
@@ -483,6 +491,38 @@ export async function updatePlace(
 ): Promise<Place> {
   const res = await apiFetch(placeUrl(tripId, placeId), {
     method: HTTP_METHOD.PATCH,
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify(input),
+  });
+  if (!res.ok) return throwApiError(res);
+  return placeSchema.parse(await res.json());
+}
+
+/** Debounced Google Places Autocomplete relay through the backend proxy (ADR-0108
+ *  §1 / ADR-0110 §1). The `sessionToken` groups these keystrokes with the terminating
+ *  {@link resolvePlace} so Google bills the searches at $0; `signal` lets a superseding
+ *  keystroke abort the in-flight request. Online-only — never outboxed (needs Google). */
+export async function searchPlaces(
+  tripId: string,
+  { input, sessionToken, signal }: { input: string; sessionToken: string; signal?: AbortSignal },
+): Promise<PlacePrediction[]> {
+  const res = await apiFetch(`${placesUrl(tripId)}/search`, {
+    method: HTTP_METHOD.POST,
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ input, sessionToken }),
+    signal,
+  });
+  if (!res.ok) return throwApiError(res);
+  return placePredictionSchema.array().parse(await res.json());
+}
+
+/** The terminating enrich-on-pick (create-or-link) call (ADR-0108 §3 / ADR-0110 §1).
+ *  Passes the **same** session token as the searches (what bills in-session autocomplete
+ *  at $0). `enrichPlaceId` enriches an existing coordless Place-lite in place. Server-side
+ *  dedup on (tripId, googlePlaceId) — the caller just adopts the returned row. Online-only. */
+export async function resolvePlace(tripId: string, input: ResolvePlaceInput): Promise<Place> {
+  const res = await apiFetch(`${placesUrl(tripId)}/resolve`, {
+    method: HTTP_METHOD.POST,
     headers: { 'Content-Type': 'application/json' },
     body: JSON.stringify(input),
   });
