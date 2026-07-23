@@ -228,6 +228,7 @@ export const t = {
       editTitle: 'עריכת הזמנה',
       titlePlaceholder: 'שם ההזמנה',
       codeLabel: 'קוד אישור',
+      locationLabel: 'מיקום',
       roomLabel: 'חדר',
       notesLabel: 'הערות',
       wifiTitle: 'WiFi',

@@ -25,6 +25,7 @@ import { Icon } from './Icon';
 import { NavArrow } from './NavArrow';
 import { Field } from './primitives/Field';
 import { FormActions } from './primitives/FormActions';
+import { PlacePicker } from './primitives/PlacePicker';
 import { ChoiceGrid } from './primitives/ChoiceGrid';
 import { WhenField } from './primitives/WhenField';
 import { ConfirmDialog } from './primitives/ConfirmDialog';
@@ -100,6 +101,8 @@ export function BookingSheet({
   const initialCode = booking?.confirmationCode ?? '';
   const initialOrigin = placeName(places, booking?.fromPlaceId) ?? seed?.origin ?? '';
   const initialDest = placeName(places, booking?.toPlaceId) ?? seed?.dest ?? '';
+  // Single-place types (hotel/restaurant/activity/other) carry one placeId (ADR-0048).
+  const initialPlaceId = booking?.placeId;
   const initialRoom = (booking?.details?.room as string | undefined) ?? '';
   const initialNotes = (booking?.details?.notes as string | undefined) ?? '';
   const initialWifiNetwork = wifi?.network ?? '';
@@ -124,6 +127,7 @@ export function BookingSheet({
   const [code, setCode] = useState(initialCode);
   const [origin, setOrigin] = useState(initialOrigin);
   const [dest, setDest] = useState(initialDest);
+  const [placeId, setPlaceId] = useState<string | undefined>(initialPlaceId);
   const [room, setRoom] = useState(initialRoom);
   const [notes, setNotes] = useState(initialNotes);
   const [wifiNetwork, setWifiNetwork] = useState(initialWifiNetwork);
@@ -157,6 +161,7 @@ export function BookingSheet({
     code !== initialCode ||
     origin !== initialOrigin ||
     dest !== initialDest ||
+    placeId !== initialPlaceId ||
     room !== initialRoom ||
     notes !== initialNotes ||
     wifiNetwork !== initialWifiNetwork ||
@@ -252,12 +257,16 @@ export function BookingSheet({
           details,
           event,
         };
+        // Transport carries fromPlaceId/toPlaceId; every other type a single
+        // placeId — mutually exclusive (ADR-0048), so send only the relevant side.
         if (isCreate) {
-          await indexVerbs.createBooking({ type, ...base, fromPlaceId, toPlaceId });
+          await indexVerbs.createBooking(
+            isTransport ? { type, ...base, fromPlaceId, toPlaceId } : { type, ...base, placeId },
+          );
         } else {
           await indexVerbs.updateBooking(booking.id, {
             ...base,
-            ...(isTransport ? { fromPlaceId, toPlaceId } : {}),
+            ...(isTransport ? { fromPlaceId, toPlaceId } : { placeId }),
           });
         }
       });
@@ -400,6 +409,14 @@ export function BookingSheet({
               />
               {date && <KindToggle kind={kind} onPick={pickKind} />}
             </>
+          )}
+
+          {/* Single-place types carry a location; transport's places are its
+              route endpoints above (ADR-0048). */}
+          {!isTransport && (
+            <Field label={t.index.sheet.locationLabel}>
+              <PlacePicker value={placeId} onChange={setPlaceId} />
+            </Field>
           )}
 
           <Field label={t.index.sheet.codeLabel} htmlFor="bs-code">
