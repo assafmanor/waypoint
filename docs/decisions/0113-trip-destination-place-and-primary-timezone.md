@@ -2,7 +2,7 @@
 
 **Status:** Proposed (feature scope + shape; not built)
 **Date:** 2026-07-23
-**Refines:** [0032](0032-minimal-trip-creation.md) (destination stops being free text and `timezone` stops being a manual `UTC` default — both are set via one smart destination field at creation, keeping creation minimal), [0107](0107-per-place-timezones-and-multi-zone-time.md) (this is _where_ `Trip.timezone` — the primary/destination zone — gets chosen; per-event/place zones remain the engine and the primary stays the fallback; **origin stays a derived segment concept, not a stored trip field — upheld, §3/§5**) (relates [0108](0108-maps-and-places-backend-architecture-key-model-and-cost.md)/[0110](0110-maps-and-places-frontend-architecture.md) the Places proxy/picker it extends, [0018](0018-timeline-data-model-shape.md) the trip shape, [0038](0038-icons-and-canonical-category.md) the existing country-flag picker in trip mode)
+**Refines:** [0032](0032-minimal-trip-creation.md) (destination stops being free text and `timezone` stops being a manual `UTC` default — both are set via one smart destination field at creation, keeping creation minimal), [0107](0107-per-place-timezones-and-multi-zone-time.md) (this is _where_ `Trip.timezone` — the primary/destination zone — gets chosen; per-event/place zones remain the engine and the primary stays the fallback; **origin stays a derived segment concept, not a stored trip field — upheld, §3/§5**) (relates [0108](0108-maps-and-places-backend-architecture-key-model-and-cost.md)/[0110](0110-maps-and-places-frontend-architecture.md) the Places proxy/picker it extends and the `ZonePicker` §3 planned — realized here as the shared zone control, [0039](0039-trip-settings-admin-governed-data-plane.md) whose 5-item timezone `<select>` this widens, [0018](0018-timeline-data-model-shape.md) the trip shape, [0038](0038-icons-and-canonical-category.md) the existing country-flag picker in trip mode)
 
 ## Context
 
@@ -14,6 +14,8 @@ Two constraints shape the solution:
 - **No trip exists yet at creation.** The Places proxy (ADR-0108/0110) is trip-scoped (`trips/:tripId/places`, behind `MembershipGuard`, and `resolve` _persists_ a trip `Place`), so it can't be reused as-is before the trip exists.
 
 The tension is only in the **primary timezone**: a city or single-zone country has one obvious zone; a multi-zone country (US, Australia, Russia, Canada, Brazil) has none. `geo-tz` maps a _point_ to one zone — right for a city, arbitrary for a country centroid.
+
+And however the zone is set, it must be **manually adjustable from a real list**. Today trip settings picks the zone from a hardcoded 5-item `<select>` (`TZ_OPTIONS` = Tokyo/Jerusalem/London/New_York/UTC) even though `timezoneSchema` already accepts _any_ valid IANA zone — the UI is the only thing that's narrow. The zone chip ADR-0110 §3 planned (`ZonePicker`) is the same "let me pick a zone" control, still unbuilt. So this ADR also owns **how you choose a zone**, once, for every surface.
 
 ## Decision
 
@@ -32,12 +34,15 @@ The tension is only in the **primary timezone**: a city or single-zone country h
 
 5. **Minimal creation preserved (ADR-0032).** Destination stays a single field (now a picker); the primary timezone is a derived, editable default shown inline — never a required step. Seeding `currency` from the country is possible but optional/deferred.
 
+6. **How you choose a zone = one shared `ZonePicker`, over the full IANA set.** A net-new `ui/primitives/ZonePicker` (via `Modal`/`useOverlay`): a **searchable** list built from **`Intl.supportedValuesOf('timeZone')`** — the runtime's complete IANA zone set, so there is no hardcoded list to curate and no dataset to ship or age. Each row reads as a friendly label (city + current UTC offset, e.g. "Tokyo · GMT+9"); **relevant candidates are surfaced first** (the device zone, the trip's place zones, the current value) with search by city/zone/offset over everything else. This one primitive is the single answer to "pick a zone" across **three call sites**: the creation primary-zone default's edit/note affordance (Decision 2), **trip settings** (it replaces the 5-item `TZ_OPTIONS` `<select>`), and the **per-event zone chip** ADR-0110 §3 planned (`displayTimezone` override). Reuse-before-adding (CLAUDE.md rule 8): build it once here, wire it everywhere a zone is chosen.
+
 ## Consequences
 
 - **Trip schema migration:** add structured destination fields (`destinationGooglePlaceId?`, `destinationLat?`, `destinationLng?`, `destinationCountryCode?`); `timezone` is now set at creation instead of defaulting to `UTC`. Mirror in `@waypoint/shared` + `createTripSchema` (non-negotiable rule 3).
 - **New backend endpoint(s) + client method**, with a **per-user** throttle (the per-member·trip tracker doesn't apply before a trip exists). Reuses the already-bundled `geo-tz` for the single-point case.
 - **Optional static dataset:** a small offline country-code → IANA-zones map, used only to (a) decide whether to show the "spans multiple zones" note and (b) pre-filter the change-picker's candidates. Not required — the derived default works without it, with a full IANA search as the change fallback.
 - **FE:** the creation form gains a destination picker; the trip-scoped `usePlaceSearch` can't be reused verbatim (it needs a trip and persists), so either generalize the search core (inject the search fn + a no-persist mode) or add a lighter creation-only search hook — an implementation call at build.
+- **The 5-item `TZ_OPTIONS` `<select>` is retired** in favour of the shared `ZonePicker`; trip settings, creation, and the event zone chip all pick zones the same way. `timezoneSchema` already accepts any IANA zone, so no validation change — only the UI widens from 5 zones to the full set.
 - **Consistent with the offline rule:** creation is inherently online (it needs Google), like the rest of the picker; nothing here is expected to work offline.
 
 ## Alternatives considered
