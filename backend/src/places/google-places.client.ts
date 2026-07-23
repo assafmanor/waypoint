@@ -10,6 +10,10 @@ import { GOOGLE_MAPS_SERVER_KEY, requireEnv } from '../common/env';
 const AUTOCOMPLETE_URL = 'https://places.googleapis.com/v1/places:autocomplete';
 const PLACE_DETAILS_BASE = 'https://places.googleapis.com/v1/places';
 
+/** Cap on the upstream error body we log — enough to carry Google's `error.status`
+ *  + message (the diagnostic bit), bounded so a stray large body can't flood logs. */
+const MAX_ERROR_BODY_LOG = 500;
+
 /**
  * The Place Details field mask — the single lever that sets the SKU tier we're
  * billed at (ADR-0108 §3). Confirmed against Google's live field→tier list
@@ -119,8 +123,15 @@ export class GooglePlacesClient {
       throw new ServiceUnavailableException('Places service unavailable');
     }
     if (!res.ok) {
-      // Never surface Google's body (may carry key/quota detail) — log status only.
-      this.logger.error(`Places API responded ${res.status} for ${new URL(url).pathname}`);
+      // Log Google's error body **server-side only** (never returned to the client):
+      // it carries the actionable reason — PERMISSION_DENIED, "Places API (New) has
+      // not been used…", a referrer/IP-restriction message, quota state — and NOT the
+      // API key, so it's safe to log and is the fastest way to diagnose a 403/misconfig.
+      const detail = (await res.text().catch(() => '')).slice(0, MAX_ERROR_BODY_LOG);
+      this.logger.error(
+        `Places API responded ${res.status} for ${new URL(url).pathname}` +
+          (detail ? `: ${detail}` : ''),
+      );
       // A 400/404 means the caller sent a bad input/googlePlaceId — a permanent client
       // error, so surface a 400 (retrying can't help). Everything else (a bad/over-quota
       // key = 401/403/429, or a 5xx) is an upstream fault the client should treat as
