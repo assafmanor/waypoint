@@ -37,6 +37,10 @@ Assaf showed the real shipped day strip (both modes) and asked how it fits the m
 
 The mockup's day strip was rebuilt to match the shipped component (header chrome, weekday-over-number, amber-anchor/violet-selection/dashed-red empty days) and verified in both modes.
 
+## Review round 3 — Places picker flow (Phase-1 keystone)
+
+Added a mockup panel + ADR-0108 §12 designing the picker interaction (the epic's keystone, previously only referenced): Autocomplete search → predictions (with a visible "כבר בטיול" `googlePlaceId`-dedup chip that links instead of duplicating) → create-or-link an enriched `Place` (coords · address · timezone · rating) cached on the row (pick once, free/offline re-read) → the name-only "Place-lite" fallback that auto-enriches on next pick. Session-token cost stated in the UI. Assumes ADR-0106's "one shared search core, two presentations" lean. Also added the **frontend `CLAUDE.md` reuse audit** to ADR-0108 (ChoiceGrid for chips + category selector, ui/feedback for empty/offline/loading, ListRow for the row, WhenField for the zone chip, Modal/useOverlay for overlays, `Record<EventCategory>` lookups, IconPicker glyph-only) after checking the design against those rules.
+
 ## Explicitly left for follow-on sessions (not this one)
 
 - **FE-arch (roadmap #3):** the place-usage derivation module, the one-shared-search-core-vs-two-components call (leaning shared), and how ADR-0107's per-event zone threads through `lib/time.ts`/`lib/places.ts`. ADR-0108 fixes _what it looks like and how it behaves_, not the module layout.

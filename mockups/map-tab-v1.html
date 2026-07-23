@@ -1393,6 +1393,181 @@
         font-size: 15px;
       }
 
+      /* ---- Places picker flow (Phase 1 keystone) ---- */
+      .pk {
+        background: #fff;
+        border-radius: 12px;
+        padding: 13px;
+      }
+      .pk + .pk {
+        margin-top: 12px;
+      }
+      .pk-input {
+        display: flex;
+        align-items: center;
+        gap: 8px;
+        border: 1px solid var(--teal);
+        border-radius: 11px;
+        padding: 9px 11px;
+        box-shadow: 0 0 0 3px var(--teal-tint);
+      }
+      .pk-input svg {
+        width: 16px;
+        height: 16px;
+        color: var(--teal-deep);
+        flex: 0 0 auto;
+      }
+      .pk-input .q {
+        font-size: 13.5px;
+        font-weight: 600;
+        color: var(--ink);
+        flex: 1;
+      }
+      .pk-input .caret {
+        width: 1.5px;
+        height: 15px;
+        background: var(--teal-deep);
+        animation: blink 1s steps(1) infinite;
+      }
+      @keyframes blink {
+        50% {
+          opacity: 0;
+        }
+      }
+      .pk-preds {
+        border: 1px solid var(--line);
+        border-top: 0;
+        border-radius: 0 0 11px 11px;
+        margin: 0 6px;
+        overflow: hidden;
+      }
+      .pk-pred {
+        display: flex;
+        align-items: center;
+        gap: 9px;
+        padding: 9px 11px;
+        border-top: 1px solid var(--line);
+        cursor: pointer;
+      }
+      .pk-pred:first-child {
+        border-top: 0;
+      }
+      .pk-pred:hover {
+        background: #f7f9fc;
+      }
+      .pk-pred .mk {
+        color: var(--muted);
+        font-size: 14px;
+        flex: 0 0 auto;
+      }
+      .pk-pred .pt {
+        flex: 1;
+        min-width: 0;
+      }
+      .pk-pred .pn {
+        font-size: 13px;
+        font-weight: 700;
+        color: var(--ink);
+      }
+      .pk-pred .ps {
+        font-size: 11px;
+        color: var(--muted);
+        margin-top: 1px;
+      }
+      .pk-pred .dup {
+        font-size: 10px;
+        font-weight: 700;
+        color: var(--teal-deep);
+        background: var(--teal-tint);
+        border-radius: 999px;
+        padding: 2px 8px;
+        flex: 0 0 auto;
+      }
+      .pk-foot {
+        font-size: 10px;
+        color: var(--faint);
+        margin: 8px 6px 0;
+        display: flex;
+        align-items: center;
+        gap: 5px;
+      }
+      .pk-enriched {
+        display: flex;
+        align-items: flex-start;
+        gap: 10px;
+        border: 1px solid var(--line);
+        border-radius: 12px;
+        padding: 11px;
+        background: #fbfcfe;
+      }
+      .pk-enriched .en-main {
+        flex: 1;
+        min-width: 0;
+      }
+      .pk-enriched .en-name {
+        font-size: 14px;
+        font-weight: 700;
+        color: var(--ink);
+      }
+      .pk-enriched .en-addr {
+        font-size: 11.5px;
+        color: var(--muted);
+        margin: 2px 0 6px;
+      }
+      .pk-enriched .en-tags {
+        display: flex;
+        flex-wrap: wrap;
+        gap: 5px 8px;
+      }
+      .en-tag {
+        font-size: 11px;
+        font-weight: 700;
+        display: inline-flex;
+        align-items: center;
+        gap: 3px;
+      }
+      .en-tag.rate {
+        color: var(--amber-deep);
+      }
+      .en-tag.tz {
+        color: var(--muted);
+      }
+      .en-tag.geo {
+        color: var(--teal-deep);
+      }
+      .pk-saved {
+        margin-top: 9px;
+        font-size: 11px;
+        font-weight: 600;
+        color: var(--ok);
+        display: flex;
+        align-items: center;
+        gap: 5px;
+      }
+      .pk-fallback {
+        margin-top: 10px;
+        border-top: 1px dashed var(--soft-line);
+        padding-top: 10px;
+        font-size: 11.5px;
+        color: var(--muted);
+      }
+      .pk-fallback b {
+        color: var(--ink);
+      }
+      .pk-lite {
+        margin-top: 7px;
+        display: inline-flex;
+        align-items: center;
+        gap: 6px;
+        border: 1px dashed var(--soft-line);
+        border-radius: 999px;
+        padding: 6px 12px;
+        font-size: 12px;
+        font-weight: 700;
+        color: var(--muted);
+        cursor: pointer;
+      }
+
       /* ---- embedded-map integration diagram (Phase 3 → Phase 6) ---- */
       .integ {
         display: flex;
@@ -1531,7 +1706,8 @@
     <div class="adr-note">
       Toggle <b>mode</b> (Trip pre-selects today · Plan defaults to all) and <b>state</b> (near-me
       granted / denied / offline). Pins are colour-by-category (ADR-0038/0028); commitment is the
-      hard/soft grammar. Panels below: pin legend · Phase-6 map integration · zone chip · forms.
+      hard/soft grammar. Panels below: pin legend · Phase-6 map integration · zone chip · forms ·
+      the Places picker flow (Phase 1).
     </div>
 
     <div class="controls">
@@ -2131,6 +2307,92 @@
           <div class="zone-note">
             שם־בלבד = "Place-lite" (fallback אופליין): ברשימה, אך בלי קואורדינטות/אזור־זמן עד שנבחר
             מקום בבורר.
+          </div>
+        </div>
+      </div>
+
+      <!-- Phase-1 keystone: the Places picker flow (search → enrich → cache) -->
+      <div class="panel" style="width: 640px">
+        <h3>בורר המקומות (שלב 1) — הבסיס של כל האפיק</h3>
+        <p>
+          בורר אחד (Google Autocomplete + <b>session tokens</b>) בכל שדה מיקום. בבחירה:
+          <b>create-or-link</b> ל-<code>Place</code>, מועשר ב-<b
+            >קואורדינטות · כתובת · אזור־זמן · דירוג</b
+          >, מנוכה־כפילויות לפי <code>googlePlaceId</code>, ונשמר <b>על השורה כמטמון</b> (ADR-0048:
+          בוחרים פעם אחת, קריאה חוזרת חינם ואופליין). ה<b>עלות היחידה</b> היא חיפוש חדש — הרשימה,
+          הסינון והקריאה החוזרת לא עולים דבר.
+        </p>
+
+        <div class="pk">
+          <div class="form-title">חיפוש · <span>הקלדה מפעילה השלמה אוטומטית</span></div>
+          <div class="pk-input">
+            <svg
+              viewBox="0 0 24 24"
+              fill="none"
+              stroke="currentColor"
+              stroke-width="2.2"
+              stroke-linecap="round"
+            >
+              <circle cx="11" cy="11" r="7" />
+              <line x1="21" y1="21" x2="16.5" y2="16.5" />
+            </svg>
+            <span class="q">איצ׳יר</span>
+            <span class="caret"></span>
+          </div>
+          <div class="pk-preds">
+            <div class="pk-pred" onclick="toast('כבר בטיול · מקשר למקום הקיים (ללא כפילות)')">
+              <span class="mk">📍</span>
+              <span class="pt">
+                <div class="pn">Ichiran Shinjuku</div>
+                <div class="ps">3 Chome, Shinjuku City · טוקיו</div>
+              </span>
+              <span class="dup">כבר בטיול</span>
+            </div>
+            <div class="pk-pred" onclick="toast('בחירה · יוצר Place מועשר')">
+              <span class="mk">📍</span>
+              <span class="pt">
+                <div class="pn">Ichiran Shibuya</div>
+                <div class="ps">1 Chome, Shibuya City · טוקיו</div>
+              </span>
+            </div>
+            <div class="pk-pred" onclick="toast('בחירה · יוצר Place מועשר')">
+              <span class="mk">📍</span>
+              <span class="pt">
+                <div class="pn">Ichiran Ginza</div>
+                <div class="ps">6 Chome, Chuo City · טוקיו</div>
+              </span>
+            </div>
+          </div>
+          <div class="pk-foot">
+            <span>🔒</span> מופעל ע״י Google · session token אחד לכל חיפוש (חיוב לפי חיפוש, לא לכל
+            הקשה) · דדופ לפי googlePlaceId
+          </div>
+        </div>
+
+        <div class="pk">
+          <div class="form-title">אחרי בחירה · <span>Place מועשר, נשמר על השורה</span></div>
+          <div class="pk-enriched">
+            <div class="badge cat-food"><span class="glyph">🍜</span></div>
+            <div class="en-main">
+              <div class="en-name">איצ׳ירן ראמן · שינג׳וקו</div>
+              <div class="en-addr">3 Chome-34-11 Shinjuku, Shinjuku City, Tokyo 160-0022</div>
+              <div class="en-tags">
+                <span class="en-tag geo">📍 קואורדינטות</span>
+                <span class="en-tag rate">★ 4.6</span>
+                <span class="en-tag tz">🕐 Asia/Tokyo</span>
+              </div>
+            </div>
+          </div>
+          <div class="pk-saved">
+            <span>✓</span> נשמר על ה-<code>Place</code> (מטמון) — קואורדינטות · כתובת · אזור־זמן ·
+            דירוג. קריאה חוזרת חינם, גם אופליין.
+          </div>
+          <div class="pk-fallback">
+            <b>אין רשת או אין תוצאה?</b> אפשר לשמור <b>בשם בלבד</b> — "Place-lite": ברשימה מיד,
+            ומתעשר אוטומטית כשבוחרים אותו בבורר בפעם הבאה.
+            <div class="pk-lite" onclick="toast('נשמר בשם בלבד · Place-lite (ללא קואורדינטות)')">
+              ＋ שמור "בר יין קטן" בשם בלבד
+            </div>
           </div>
         </div>
       </div>
