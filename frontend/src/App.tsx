@@ -35,7 +35,7 @@ import { consumeIntent, hasIntent, saveIntent } from './lib/intent';
 import { ToastProvider } from './ui/Toast';
 import { ConfirmProvider } from './ui/ConfirmDialog';
 import { AppShell } from './ui/layout';
-import { BootScreen } from './ui/feedback';
+import { BootScreen, HomeSkeleton, LoadingState } from './ui/feedback';
 import { Sheet } from './ui/Sheet';
 import { SyncReviewSheet } from './ui/SyncReviewSheet';
 import { Icon } from './ui/Icon';
@@ -460,7 +460,22 @@ function Shell() {
         accountOpen && <AccountSheet onClose={() => setAccountOpen(false)} onSignOut={logout} />
       }
     >
-      <Suspense fallback={<BootScreen />}>
+      {/* Own Suspense boundary, not the outer AppRoutes one (ADR-0105): the
+          header/nav slots above are already mounted, so a lazy tab's chunk
+          fetch (Plan Home / Day-by-day / Index) stays chrome-preserving —
+          BootScreen's full-bleed board would otherwise cover them regardless
+          of nesting (it's sized to the viewport, not its container). Home tab
+          shape-matches with HomeSkeleton like the snapshot loader; the other
+          tabs fall back to the generic cue. */}
+      <Suspense
+        fallback={
+          tab === 'home' ? (
+            <LoadingState skeleton={<HomeSkeleton mode={mode} />} />
+          ) : (
+            <LoadingState />
+          )
+        }
+      >
         <Screen tab={tab} onNavigate={goToTab} />
       </Suspense>
     </AppShell>
@@ -531,7 +546,13 @@ function TripSettingsRoute() {
   if (!id) return <Navigate to="/" replace />;
   return (
     <TripProvider tripId={id}>
-      <TripSettings />
+      {/* Own Suspense boundary: TripSettings is lazy-loaded, and this route is
+          reached from inside a trip — the outer AppRoutes Suspense's BootScreen
+          fallback would otherwise flash the full-screen boot surface over an
+          ordinary in-app navigation. */}
+      <Suspense fallback={<LoadingState />}>
+        <TripSettings />
+      </Suspense>
     </TripProvider>
   );
 }
