@@ -25,6 +25,14 @@ Answered ADR-0106's first deferred open question and picked ADR-0107's timezone 
 
 Also recorded the **confirmed current pricing** (checked 2026-07-23, not from memory — the $200 credit was retired March 2025, replaced by per-SKU free tiers + Essentials/Pro/Enterprise field-mask tiers) and the **Phase-6 cost envelope** (dynamic map loads on the browser key; Routes API through the proxy at the Basic/Essentials field mask; free connectors + whole-day deep-link ship before paid Routes; Routes results not row-cached — traffic-time-sensitive).
 
+## Added after the first pass (review discussion)
+
+Three hardening decisions folded into ADR-0108 after a review question about the browser key's exposure:
+
+- **Clarified the browser-key exposure** (Decision 1 / the discussion): the Maps JS API embeds a key in the browser by design — it can't be proxied, only referrer- + API-restricted + quota-capped, so its blast radius is map loads only. **In the near-term phases (1–5) there is no browser key at all** — everything is proxied; the browser key first appears at Phase 6.
+- **Per-member·trip rate limit on the proxy (new Decision 5)** — `MembershipGuard` stops non-members but not a scripted/compromised member session running up the server-key bill. Reuse the existing `@nestjs/throttler` (global per-IP 300/min, per-route `@Throttle`, `RATE_LIMITED`/429 + `Retry-After`, e2e pattern) with a custom `getTracker` keyed on `${userId}:${tripId}`. Starting targets (env-tunable): search relay 120/min·2,000/day, Place Details 30/min·500/day, Routes 30/min·500/day — comfortably above real use, well below attacker-worthwhile. The keying + mechanism is the decision; integers tune once Phase-0 gives real data.
+- **Phase-0 cost guardrails are a hard gate (new Decision 6)** — a Google Cloud budget alert + a per-SKU daily quota cap (Dynamic Maps / Place Details / Routes) are **required before any key ships**, plus re-confirming pricing at billing setup. The field-mask → SKU-tier confirmation (keep the picker in the cheapest tier that returns id/name/address/location) is also written down explicitly.
+
 ## Follow-on / handoff
 
 - **FE-architecture (next paper session)** inherits a settled boundary: the frontend calls _our_ proxy endpoints, mints the session token, never holds the Places/Routes key. The shared-search-core question (ADR-0106) is now "one vs. two clients of our proxy."

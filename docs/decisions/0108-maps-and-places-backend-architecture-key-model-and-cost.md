@@ -84,7 +84,8 @@ Concrete server flow, all inside the extended `places` module:
   - add `Place.timezone String?` (IANA id, nullable — a Place-lite has none);
   - add `@@unique([tripId, googlePlaceId])` — Postgres treats `NULL`s as distinct, so many name-only (`googlePlaceId = null`) places coexist while any real Google id is unique per trip;
   - `@waypoint/shared` `placeSchema` mirrors `timezone` (non-negotiable rule 3).
-- **Dedup-before-spend (the cost floor):** on a pick, the proxy looks up `place.findFirst({ tripId, googlePlaceId })`. **Hit** → return the cached row, **zero Google spend**, zero new `geo-tz` work. **Miss** → one Place Details call (cheapest field-mask tier that returns what we cache), resolve the zone with `geo-tz`, persist through `ChangeService.mutate` (create-or-link), return. The same place is never enriched twice in a trip (ADR-0106 §5).
+- **Dedup-before-spend (the cost floor):** on a pick, the proxy looks up `place.findFirst({ tripId, googlePlaceId })`. **Hit** → return the cached row, **zero Google spend**, zero new `geo-tz` work. **Miss** → one Place Details call, resolve the zone with `geo-tz`, persist through `ChangeService.mutate` (create-or-link), return. The same place is never enriched twice in a trip (ADR-0106 §5).
+- **Field mask decides the SKU tier — request only what we cache.** The Place Details tier (Essentials ~$5 / Pro ~$17 / Enterprise ~$20 per 1k) is set by the `X-Goog-FieldMask` header. Phase 1 caches `id` / `name` / `address` / `location` only, so the picker's mask must stay within the **cheapest tier that returns those fields**. The exact field→tier mapping shifts across Google releases (ADR-0106 accuracy note), so it is **confirmed against Google's current field list at implementation**, not hardcoded from a recalled mapping; vNext hours/photos knowingly move to a higher tier when that pipe is built.
 - **What's cached on the row:** `googlePlaceId`, `name`, `address`, `lat`, `lng`, `timezone`. Later enrichment (hours, photos — vNext pipe, ADR-0106 OUT) lands as further nullable columns/source keys kept separable; not built here.
 
 **Where it sits (reuse, ADR-0096):** the existing `places` module gains proxy route(s) on `PlacesController` (trip-scoped, already behind `MembershipGuard`) — a search/autocomplete relay and an enrich-on-pick path — backed by a new `google-places.client.ts` (the only new file: the outbound `fetch` wrapper holding the server key). The key name is added **once** to `common/env.ts` (`GOOGLE_MAPS_SERVER_KEY`, read via `requireEnv`), never inlined. Writes go through `ChangeService.mutate` (never a hand-rolled transaction or a direct `Change`/broadcast — the one hard boundary, `backend/CLAUDE.md`); trip/ownership checks extend `trip-scope.util.ts` rather than re-implementing a `findFirst` + throw. No new module, no new cache, no class-validator DTOs.
@@ -97,14 +98,39 @@ Recorded now so Phase 6 inherits a decided shape, not re-litigation:
 - **Routes API** (paid live ETAs, ADR-0106 §D/§F) routes through the **same backend proxy + server key** as Places. Request the **Essentials/Basic** field mask (~$5/1k) unless a feature genuinely needs Advanced/Preferred fields — the "leave by 18:37" ETA between two hard anchors (the §F payoff) is a Basic-tier compute-route. The free connectors + whole-day deep-link (ADR-0106 §D) cost **nothing** and ship first; paid Routes is the sequenced-after enhancement.
 - Routes results are **traffic-time-sensitive**, so they are **not** cached on the `Place` row (unlike static enrichment). If a cache is ever wanted, it's a short-TTL derivation keyed by the day's ordered stops — a Phase-6 call, not decided here.
 
+### 5. Per-member, per-trip rate limits on the proxy — reusing the existing throttler
+
+`MembershipGuard` stops non-members, but not a member (or a hijacked member session) scripting the proxy to run up the **server-key** bill. Session tokens cap cost per _completed_ pick, not raw call volume. So the paid proxy routes carry a rate limit.
+
+**Reuse, don't add (ADR-0096):** the backend already runs `@nestjs/throttler` — a global per-IP default (300/min) in `app.module.ts`, per-route `@Throttle` on abuse targets (auth/join/invite, 20/min, B-10), `ERROR_CODE.RATE_LIMITED` + a 429/`Retry-After` mapping in `all-exceptions.filter.ts`, and an e2e pattern (`throttler.e2e.spec.ts`). The proxy limit is the **same mechanism with a different tracker**: a custom `getTracker` keyed on **`${principal.userId}:${tripId}`** (the actor + the route's `tripId`) instead of IP, so the cap is per member per trip and shared devices/NAT don't collide. The per-IP global stays as the outer backstop.
+
+**Targets — comfortably above real use, well below what makes scripting worth it** (the two paid buckets are the point; all env-tunable via named constants in `env.ts`, defaults below):
+
+| Proxy route            | Per-minute / member·trip | Per-day / member·trip | Reasoning                                                                                          |
+| ---------------------- | ------------------------ | --------------------- | -------------------------------------------------------------------------------------------------- |
+| Search / autocomplete relay | 120                 | 2,000                 | Free within a session, but the scrape surface; a debounced human can't sustain this, a script trips it fast |
+| Place Details (enrich-on-pick) | 30               | 500                   | A heavy planner completes a few picks/min; dedup makes re-picks free — 30/min is ~10× real use, ~$0.15/min ceiling |
+| Routes (Phase 6)       | 30                       | 500                   | A per-day macro fires ~10–25 at once; 30/min covers re-renders, the daily cap bounds a drip attack |
+
+The per-day window is defense-in-depth against a slow-drip script that stays under the per-minute cap. A breach returns the standard 429 + `Retry-After` envelope (ADR-0070) the frontend already handles. Numbers are a starting point tuned once Phase-0 gives real usage data — the _mechanism and the per-member·trip keying_ are the decision, not the exact integers.
+
+### 6. Phase-0 cost guardrails are a hard gate, not optional
+
+The Phase-0 Google Cloud human task (ADR-0106) must, before any real key ships:
+
+- **A Google Cloud budget alert** on the project (e.g. thresholds at 50/90/100% of a set monthly ceiling) — the outer safety net if every in-app guard is somehow bypassed. **Required, not optional.**
+- **A hard per-SKU daily quota cap** on **Dynamic Maps** (the browser key's only reachable SKU) and on Place Details / Routes — this is what actually bounds a forged-referrer abuse of the public map key to a known maximum.
+- **Re-confirm current pricing** when enabling billing (the figures in this ADR were confirmed 2026-07-23; the model doesn't change if a number moves).
+
 ## Consequences
 
 - **The picker's server side is an extension, not a new module** — proxy routes + one HTTP client on the existing `places` module, writing through the existing `ChangeService`. Small, and it keeps the reuse rule (ADR-0096) intact.
 - **The expensive SKUs are never on a public key.** A scraped browser key can only trigger map loads (cheap, quota-capped); Place Details / Routes live behind the server key + `MembershipGuard`. The cost exposure ADR-0106 worried about is bounded structurally, not by trust in referrer restriction.
 - **Cost floor is enforced where the data is:** dedup-before-spend on `(tripId, googlePlaceId)` means re-picking or re-referencing a known place is free; session tokens make autocomplete free within a completed pick. Steady-state spend sits inside the per-SKU free tiers at this scale.
+- **A compromised member session can't run up an open-ended bill:** the proxy's per-member·trip throttle (Decision 5) caps paid-call volume above real use but far below what pays off for an attacker, reusing the existing throttler + `RATE_LIMITED`/429 path; the Phase-0 budget alert + per-SKU daily quota (Decision 6) are the outer net, required before any key ships.
 - **`Place.timezone` has a concrete, free, accurate resolver** (`geo-tz`, server-side, once, cached) — ADR-0107 Phase-1 fold-in is unblocked; the offline story holds (coords only arrive online).
 - **Two schema additions for Phase 1:** `Place.timezone` and `@@unique([tripId, googlePlaceId])`, mirrored in `@waypoint/shared`; no migration of existing rows beyond adding the nullable column + constraint (greenfield place data, no coords in the wild yet).
-- **New env: `GOOGLE_MAPS_SERVER_KEY`** (backend, `env.ts`, boot-required once the picker ships); **`VITE_GOOGLE_MAPS_BROWSER_KEY`** (frontend build, Phase 6). Both minted by the Phase-0 human task, which also re-confirms current pricing.
+- **New env: `GOOGLE_MAPS_SERVER_KEY`** (backend, `env.ts`, boot-required once the picker ships); **`VITE_GOOGLE_MAPS_BROWSER_KEY`** (frontend build, Phase 6); plus env-tunable throttle constants for the proxy's per-minute/per-day caps (Decision 5), named once in `env.ts`. Both keys minted by the Phase-0 human task, which also sets the budget alert + per-SKU quota and re-confirms current pricing.
 - **`api-contract.md` gains the proxy endpoints** when Phase 1 lands (search/relay + enrich-on-pick under `trips/:tripId/places`); noted, not written this session.
 - **FE-arch inherits a settled boundary:** the frontend calls _our_ endpoints, mints the session token, and never holds the Places/Routes key — the shared-search-core question (ADR-0106) is now "one client of our proxy vs. two," which simplifies it.
 
