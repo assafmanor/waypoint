@@ -13,11 +13,18 @@ The reusable search core (ADR-0110 §1) plus its first host. Scoped deliberately
 - **`lib/usePlaceSearch.ts`** (net-new hook) — owns the whole lifecycle so both shells reuse it: the FE-minted session token (lazy on first keystroke, threaded through every search + the terminating `resolvePlace`, retired on pick/reset), the **mandatory pause-gated debounce** (`PLACE_SEARCH_DEBOUNCE_MS` 350 / `PLACE_SEARCH_MIN_CHARS` 2 in `constants.ts`, with per-keystroke abort — a cost control, ADR-0108 §1), snapshot-derived `alreadyInTrip` (a match links to the existing row with **zero** Google spend), soft `rateLimited`/`failed` states, and the `saveNameOnly` offline fallback via the existing `CREATE_PLACE` outbox verb.
 - **`ui/primitives/PlacePicker.tsx`** (net-new) — a trigger + a search sheet, every overlay through `Modal`/`useOverlay` (no hand-rolled portal). Prediction list (primary + secondary), the "כבר בטיול" dedup chip, the name-only fallback, and Google's required "מופעל על ידי Google" attribution footer. `enrichPlaceId` is passed automatically when the current field holds a coordless Place-lite.
 - **`EventForm`** — re-adds place authoring (the free-text input ADR-0051 removed) via the `PlacePicker`, in a `Field` shown for standalone events only (a booking-linked event's place lives on the booking, ADR-0051). A picked place threads through the shelf-`schedule` path too (`ScheduleFields.placeId` → `buildScheduleEvent`).
+- **`BookingSheet`** — a single-place location `PlacePicker` for non-transport types (hotel/restaurant/activity/other), which authored **no** place before; `placeId` is sent on save, mutually exclusive with transport's from/to (ADR-0048).
 - **Tests:** `usePlaceSearch.test.ts` (min-chars gating, one debounced search, dedup-link-without-spend, resolve-with-token+enrichId, soft 429) and `PlacePicker.test.tsx` (placeholder↔name, open→debounce→resolve, name-only fallback).
+
+## Host decisions — two slots consciously deferred
+
+Both confirmed with the requester this session, aligned to the phase that actually needs them (recorded so a later session doesn't read them as an oversight):
+
+- **Transport origin/destination → Phase 6.** Flight/train endpoints stay name-only text for now. They live in a compact inline route-title row that _is_ the booking's identity (ADR-0059 §3); converting to two full-width pickers reshapes that shipped row, and enriched from/to coords mainly serve route pins + ETAs, which are Phase 6.
+- **Maybe-item → Phase 5.** The shelf quick-add is a one-line inline form; idea place-research is the Phase-5 Map-tab research surface (a second shell over the same `usePlaceSearch` this slice built). Wiring a single-select sheet into the quick-add would misfit that UX and front-run the phase.
 
 ## Not in this slice (tracked in backlog)
 
-- **Remaining hosts:** BookingSheet location + transport origin/destination (two-place), the maybe-item add flow.
 - **Explicit category selector** (ADR-0109 §11 / ADR-0038 §4 amendment) — icon glyph-only, `categoryForIcon` retired as a category source, category via `ChoiceGrid`. A separable presentation change (already its own backlog item), not bundled here.
 - Decisions 2–4 of ADR-0110 (place-usage derivation, per-event zone threading, context-aware `setActiveDate`) — Phase 3 / the timezone workstream.
 
