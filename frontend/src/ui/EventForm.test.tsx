@@ -17,6 +17,9 @@ vi.mock('../state/trip-state', () => ({
     },
     activeDate: '2026-07-20',
     events: [],
+    // The place field (PlacePicker) reads the snapshot + the place verbs.
+    places: [],
+    indexVerbs: { createPlace: vi.fn(), resolvePlace: vi.fn() },
   }),
 }));
 vi.mock('../state/auth-state', () => ({ useAuth: () => ({ me: { user: { id: 'u1' } } }) }));

@@ -54,6 +54,15 @@ export const WS_RECONNECT_CAP_MS = 30_000;
  *  wedge on when no connectivity transition arrives to trigger a drain. */
 export const OUTBOX_RETRY_MS = 15_000;
 
+/** Places picker autocomplete debounce (ADR-0108 §1 / ADR-0110 §1). Pause-gated,
+ *  NOT per-keystroke — a **cost** control, not just UX polish: session tokens make
+ *  in-session autocomplete free only when the session ends in a pick, so a
+ *  type-and-abandon session bills per request. A trailing debounce collapses a word
+ *  into ~one or two billable calls; the min-chars floor stops a one-letter query
+ *  from firing at all. */
+export const PLACE_SEARCH_DEBOUNCE_MS = 350;
+export const PLACE_SEARCH_MIN_CHARS = 2;
+
 /** The waking window the day-progress bar spans, in trip-local hours. */
 export const DAY_WINDOW = { START_HOUR: 7, END_HOUR: 23 } as const;
 

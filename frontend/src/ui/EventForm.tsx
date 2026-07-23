@@ -26,6 +26,7 @@ import { IconPicker } from './IconPicker';
 import { Modal } from './primitives/Modal';
 import { Field } from './primitives/Field';
 import { FormActions } from './primitives/FormActions';
+import { PlacePicker } from './primitives/PlacePicker';
 import { WhenField } from './primitives/WhenField';
 import { ConfirmDialog } from './primitives/ConfirmDialog';
 
@@ -61,6 +62,7 @@ export function EventForm({
   const initialKind: TripEvent['kind'] = event?.kind ?? EVENT_KIND.SOFT;
   const initialIcon = event?.icon ?? maybeItem?.icon ?? DEFAULT_EVENT_ICON;
   const initialCategory = event?.category ?? maybeItem?.category;
+  const initialPlaceId = event?.placeId ?? maybeItem?.placeId;
 
   const [title, setTitle] = useState(initialTitle);
   const [date, setDate] = useState(initialDate);
@@ -69,7 +71,12 @@ export function EventForm({
   const [kind, setKind] = useState<TripEvent['kind']>(initialKind);
   const [icon, setIcon] = useState(initialIcon);
   const [category, setCategory] = useState<EventCategory | undefined>(initialCategory);
+  const [placeId, setPlaceId] = useState<string | undefined>(initialPlaceId);
   const [error, setError] = useState<string | null>(null);
+
+  // A booking-linked event's place lives on the booking (ADR-0051), edited there —
+  // so the form only authors a place for a standalone event / a shelf schedule.
+  const showPlace = !event?.bookingId;
 
   const dirty =
     title !== initialTitle ||
@@ -78,7 +85,8 @@ export function EventForm({
     end !== initialEnd ||
     kind !== initialKind ||
     icon !== initialIcon ||
-    category !== initialCategory;
+    category !== initialCategory ||
+    placeId !== initialPlaceId;
   const { guardedClose, prompting, confirmDiscard, cancelDiscard } = useUnsavedGuard(dirty);
   const requestClose = () => guardedClose(onClose);
 
@@ -115,6 +123,7 @@ export function EventForm({
       icon,
       category,
       kind,
+      placeId: showPlace ? placeId : undefined,
       startsAt: start ? zonedIso(date, start, tz) : undefined,
       endsAt: end
         ? start
@@ -147,6 +156,7 @@ export function EventForm({
         endsAt: parsed.data.endsAt,
         icon: parsed.data.icon,
         category: parsed.data.category,
+        placeId: parsed.data.placeId,
       });
     } else {
       const parsed = createEventSchema.safeParse(fields);
@@ -223,6 +233,16 @@ export function EventForm({
             <p className="form-conflict">
               ⚠︎ {t.event.conflictWarn(conflicts[0].title, formatTime(conflicts[0].startsAt!, tz))}
             </p>
+          )}
+
+          {showPlace && (
+            <Field label={t.eventForm.locationLabel}>
+              <PlacePicker
+                value={placeId}
+                onChange={setPlaceId}
+                placeholder={t.eventForm.locationPlaceholder}
+              />
+            </Field>
           )}
 
           <Field label={t.eventForm.kindLabel}>
