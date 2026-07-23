@@ -191,11 +191,21 @@
         overflow: hidden;
         position: relative;
         height: 838px;
+        flex-shrink: 0; /* never let the page's flex column compress the phone */
         display: flex;
         flex-direction: column;
         transition:
           background 0.3s ease,
           color 0.3s ease;
+      }
+      /* only the scroll body flexes; every chrome row keeps its full height */
+      .statusbar,
+      .header,
+      .daystrip,
+      .filterbar,
+      .sortstrip,
+      .nav {
+        flex-shrink: 0;
       }
 
       /* ---- chrome (follows mode; design-language mode-identity table) ---- */
@@ -216,6 +226,39 @@
         padding: 6px 18px 15px;
         transition: background 0.3s ease;
       }
+      /* the standard two-segment mode-toggle (matches the app / other views:
+         amber-selected in Trip, violet-selected in Plan) — NOT a bespoke pill */
+      .mode-row {
+        display: flex;
+        justify-content: center;
+        margin: 2px 0 10px;
+      }
+      .mode-toggle {
+        display: inline-flex;
+        background: rgba(255, 255, 255, 0.08);
+        border: 1px solid rgba(255, 255, 255, 0.14);
+        border-radius: 999px;
+        padding: 3px;
+        gap: 2px;
+      }
+      .mode-toggle .m {
+        font: inherit;
+        font-size: 13px;
+        font-weight: 600;
+        color: #9daac8;
+        background: none;
+        border: 0;
+        border-radius: 999px;
+        padding: 6px 16px;
+        cursor: pointer;
+        display: flex;
+        align-items: center;
+        gap: 6px;
+      }
+      .mode-toggle .m.on {
+        background: var(--amber);
+        color: #3a2405;
+      }
       .header .row1 {
         display: flex;
         align-items: center;
@@ -229,19 +272,6 @@
         display: flex;
         align-items: center;
         gap: 8px;
-      }
-      .modepill {
-        display: inline-flex;
-        align-items: center;
-        gap: 5px;
-        background: rgba(255, 255, 255, 0.12);
-        border: 1px solid rgba(255, 255, 255, 0.22);
-        color: #fff;
-        border-radius: 999px;
-        padding: 5px 12px;
-        font-size: 12px;
-        font-weight: 700;
-        cursor: pointer;
       }
       .header .sub {
         font-size: 12px;
@@ -264,10 +294,16 @@
       [data-mode='plan'] .header h1 {
         color: var(--ink);
       }
-      [data-mode='plan'] .modepill {
-        background: var(--plan-tint);
-        border-color: rgba(110, 89, 214, 0.3);
-        color: var(--plan-deep);
+      [data-mode='plan'] .mode-toggle {
+        background: rgba(22, 35, 61, 0.05);
+        border-color: var(--soft-line);
+      }
+      [data-mode='plan'] .mode-toggle .m {
+        color: var(--muted);
+      }
+      [data-mode='plan'] .mode-toggle .m.on {
+        background: var(--plan);
+        color: #fff;
       }
       [data-mode='plan'] .header .sub {
         color: var(--muted);
@@ -311,24 +347,38 @@
         color: var(--muted);
         font-weight: 600;
       }
-      .day.sel {
-        background: var(--idx-accent);
-        border-color: var(--idx-accent);
+      /* day-strip selection = amber in Trip ("the selected today", a time
+         signal per design-language / ADR-0028), violet in Plan — the app's
+         own day-strip precedent, distinct from the chips' --idx-accent. */
+      .day.sel,
+      .day.allsel {
+        background: var(--amber);
+        border-color: var(--amber);
       }
       .day.sel .dnum,
       .day.sel .dlab {
+        color: #3a2405;
+      }
+      [data-mode='plan'] .day.sel,
+      [data-mode='plan'] .day.allsel {
+        background: var(--plan);
+        border-color: var(--plan);
+      }
+      [data-mode='plan'] .day.sel .dnum,
+      [data-mode='plan'] .day.sel .dlab {
         color: #fff;
       }
       .day.allsel {
-        background: var(--idx-accent);
-        border-color: var(--idx-accent);
-        color: #fff;
+        color: #3a2405;
         display: flex;
         align-items: center;
         font-weight: 700;
         font-size: 12.5px;
         min-width: auto;
         padding: 6px 14px;
+      }
+      [data-mode='plan'] .day.allsel {
+        color: #fff;
       }
 
       /* ---- filter chip row (reuses index-bookings-compact-v2 grammar) ---- */
@@ -1059,10 +1109,6 @@
     </div>
 
     <div class="controls">
-      <div class="seg" id="modeseg">
-        <button class="on" onclick="setMode('trip')">🧭 טיול</button>
-        <button onclick="setMode('plan')">✏️ תכנון</button>
-      </div>
       <div class="seg" id="stateseg">
         <button class="on" onclick="setState('normal')">רגיל</button>
         <button onclick="setState('near')">קרוב עכשיו</button>
@@ -1075,9 +1121,14 @@
       <div class="statusbar"><span>9:41</span><span>מפה 🗺️</span></div>
 
       <div class="header">
+        <div class="mode-row">
+          <div class="mode-toggle" role="tablist" aria-label="מצב">
+            <button class="m on" id="pill-trip" onclick="setMode('trip')">🧭 טיול</button>
+            <button class="m" id="pill-plan" onclick="setMode('plan')">✏️ תכנון</button>
+          </div>
+        </div>
         <div class="row1">
           <h1>🗺️ מפה</h1>
-          <span class="modepill" id="modepill" onclick="toggleMode()">🧭 טיול</span>
         </div>
         <div class="sub" id="headsub">טוקיו · המקומות של היום</div>
       </div>
@@ -1582,29 +1633,21 @@
 
       function setMode(m) {
         mode = m;
-        const phone = document.getElementById('phone');
-        phone.dataset.mode = m;
-        document
-          .querySelectorAll('#modeseg button')
-          .forEach((b, i) => b.classList.toggle('on', (i === 0) === (m === 'trip')));
+        document.getElementById('phone').dataset.mode = m;
+        // the standard two-segment header mode-toggle reflects the active mode
+        document.getElementById('pill-trip').classList.toggle('on', m === 'trip');
+        document.getElementById('pill-plan').classList.toggle('on', m === 'plan');
         // chrome + accent handled by CSS; also flip the default day filter.
-        const pill = document.getElementById('modepill');
         const sub = document.getElementById('headsub');
-        const statusbar = document.querySelector('.statusbar');
         if (m === 'plan') {
-          pill.textContent = '✏️ תכנון';
           sub.textContent = 'טוקיו · כל המקומות';
           dayFilter = null; // Plan defaults to ALL
         } else {
-          pill.textContent = '🧭 טיול';
           sub.textContent = 'טוקיו · המקומות של היום';
           dayFilter = 2; // Trip defaults to TODAY
         }
         syncDayStrip();
         render();
-      }
-      function toggleMode() {
-        setMode(mode === 'trip' ? 'plan' : 'trip');
       }
 
       function syncDayStrip() {
@@ -1693,7 +1736,7 @@
         }, 2100);
       }
 
-      render();
+      setMode('trip'); // sync initial mode + day-strip selection, then render
     </script>
   </body>
 </html>
