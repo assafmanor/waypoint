@@ -10,8 +10,9 @@ Scope, phasing, and the embedded-map direction were already fixed and merged in 
 
 ## What was designed
 
-- **List-first Phase-3 tab, re-emphasized by mode.** Chrome → day-strip → filter chips → near-me/sort strip → the pinned-place list, each row deep-linking out. Trip pre-selects today, Plan defaults to all; the day-strip is the single mode pivot.
-- **Filters reuse the Index grammar** (ADR-0098/0100), not a second copy (CLAUDE.md rule 8): label+count pills, edge-fade mask, covering search, mode-tinted `--idx-accent`. Facets day · type · maybes, all pure offline-safe derivation over the place-usage index.
+- **List-first Phase-3 tab, re-emphasized by mode.** Chrome (incl. day strip) → filter chips → scope/near-me strip → the pinned-place list, each row deep-linking out. Trip pre-selects today, Plan defaults to all.
+- **Day scope reuses the shared header day strip, reconciled** (revised after Assaf showed the real component + flagged the behaviour conflict — see below). Not a bespoke map strip.
+- **Filter chips (type · maybes) reuse the Index grammar** (ADR-0098/0100), not a second copy (CLAUDE.md rule 8): label+count pills, edge-fade mask, covering search, mode-tinted `--idx-accent`, pure offline-safe derivation over the place-usage index.
 - **The pin = the Waypoint marker** (ADR-0087) as a custom AdvancedMarker on "quiet base, loud pins" (ADR-0106 Decision C): teal body = location, **glyph = category** (ADR-0038, not a fill), **amber core = commitment** (colour-by-most-committed, expressed as core state: lit/dim/absent). Kept inside ADR-0028's budget and consistent with the ADR-0105 loading-states palette now on `main` (amber is an accent, not a ground).
 - **ADR-0107's editable timezone chip** on the time input (single chip for a placed event, two for transport with the `+1` tag).
 
@@ -25,6 +26,16 @@ Scope, phasing, and the embedded-map direction were already fixed and merged in 
 ## Notable call — superseding the 5 pastel category pins
 
 The design-language previously sanctioned "teardrop pins in 5 pastel category colours" (+ "map pin categories" in the decorative palette). ADR-0108 **supersedes** that: category moves to the glyph, the pin spends only teal + amber. Rationale: five decorative hues fight "quiet base, loud pins," dilute teal as the location signal (ADR-0028), and duplicate a signal the glyph already carries (ADR-0038). `design-language.md` updated in the same change (founding principle: docs stay in sync).
+
+## Day-strip reconciliation (post-review revision)
+
+Assaf showed the real shipped day strip (both modes) and asked how it fits the map, since **tapping a day currently navigates to the Day view** (`setActiveDate` lands on the `days` tab) — different from the in-place filter the first draft assumed. Read `ui/domain/DayStrip.tsx` + `App.tsx`. Resolution recorded in ADR-0108 §1:
+
+- The strip's real rule is already "focus this day → show it on a day-scoped surface, **in place** if you're on one (the Day view updates in place), else route to the Day view (Home/Index)." The Map is simply a **second day-scoped surface**, so it focuses the day in place — no new inconsistency, it joins the Day view's behaviour.
+- The first draft's bespoke map strip + "כל הימים" pill was wrong (duplicated the shared component, mis-drew it, and can't hold "all days" since the app has one active date). Corrected: reuse the real `DayStrip` verbatim; "all days" is a **map-local scope chip**.
+- One contained nav change flagged for FE-arch: make `setActiveDate` context-aware (stay on a day-scoped tab instead of always jumping to `days`).
+
+The mockup's day strip was rebuilt to match the shipped component (header chrome, weekday-over-number, amber-anchor/violet-selection/dashed-red empty days) and verified in both modes.
 
 ## Explicitly left for follow-on sessions (not this one)
 

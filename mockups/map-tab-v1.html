@@ -8,9 +8,14 @@
      Phase-6 map-preview to pin down the marker visual):
 
      1. THE PINNED-PLACE LIST, one surface re-emphasized by mode.
-        - Trip mode DEFAULTS TO TODAY's places; Plan DEFAULTS TO ALL days.
-          The day filter is the mode pivot and rides the day-strip gesture
-          (ADR-0106 Decision 1). Toggle the mode pill to see the default flip.
+        - DAY SCOPE uses the REAL shared header day strip (ui/domain/DayStrip),
+          not a bespoke one. The map is a day-scoped surface like the Day view,
+          so tapping a strip day FOCUSES it ON THE MAP IN PLACE (no navigation)
+          — the same rule the strip already follows: update in place on a
+          day-scoped surface, route to the Day view from non-day surfaces
+          (Home/Index). Because the app tracks only ONE active date, "all days"
+          can't be a strip state — it's a MAP-LOCAL scope chip ("🗓️ כל הימים").
+          Trip defaults to today, Plan defaults to all (ADR-0106 Decision 1).
         - Every row deep-links out (👁 view in Maps / 🧭 navigate) — we never
           rebuild navigation (ADR-0106 Decision 3/6).
 
@@ -18,10 +23,11 @@
         (ADR-0098/0100, index-bookings-compact-v2.html) — NOT a second copy
         (CLAUDE.md rule 8). Same scrollable pills w/ label+count, edge-fade
         mask, a covering search overlay, and the mode-tinted selected accent
-        (--idx-accent: ink in Trip, --plan in Plan). Facets: יום · סוג · אולי.
-        All three are PURE client-side derivation over the trip snapshot
-        (offline-safe) reading the place-usage index {days[],categories[],
-        isMaybe,isScheduled} — only live search + the Phase-6 map need network.
+        (--idx-accent: ink in Trip, --plan in Plan). Chip facets: סוג (=category)
+        · אולי. (Day scope = the header strip + the all-days chip, above.) All
+        of it is PURE client-side derivation over the trip snapshot (offline-
+        safe) reading the place-usage index {days[],categories[],isMaybe,
+        isScheduled} — only live search + the Phase-6 map need network.
 
      3. THE PIN = the Waypoint marker (ADR-0087) as a custom AdvancedMarker,
         on "quiet neutral base, loud semantic pins" (ADR-0106 Decision C).
@@ -312,73 +318,150 @@
         --idx-accent: var(--plan);
       }
 
-      /* ---- day strip (the mode pivot; Trip pre-selects today, Plan = all) --- */
+      /* ---- day strip: the REAL shared header component (ui/domain/DayStrip),
+         ported faithfully. It lives in the header chrome (dark Trip / light
+         Plan), weekday-letter over mono day-number, amber-anchors today in
+         Trip / violet selection in Plan / dashed-red empty days in Plan. It is
+         NOT a map-only control and carries NO "all days" cell — tapping a day
+         focuses it on the map in place (see the scope strip below for "all"). */
       .daystrip {
         display: flex;
         gap: 6px;
+        margin-top: 12px;
         overflow-x: auto;
-        padding: 10px 14px;
-        background: var(--card);
-        border-bottom: 1px solid var(--line);
         scrollbar-width: none;
       }
       .daystrip::-webkit-scrollbar {
         display: none;
       }
-      .day {
+      .daycell-wrap {
+        display: flex;
+        flex-direction: column;
+        justify-content: flex-end;
         flex: 0 0 auto;
-        min-width: 44px;
-        text-align: center;
-        padding: 6px 9px;
-        border-radius: 12px;
-        border: 1px solid var(--line);
-        background: #fbfcfe;
-        cursor: pointer;
-        transition: all 0.15s ease;
       }
-      .day .dnum {
+      .month-label {
+        text-align: center;
+        font-size: 10.5px;
+        font-weight: 600;
+        color: #8494b5;
+        white-space: nowrap;
+        margin-bottom: 4px;
+      }
+      .daycell {
+        position: relative;
+        min-width: 44px; /* ≥44px touch target */
+        text-align: center;
+        font: inherit;
+        font-size: 11px;
+        font-weight: 600;
+        padding: 7px 0 8px;
+        border: none;
+        border-radius: 9px;
+        color: #8494b5;
+        background: rgba(255, 255, 255, 0.05);
+        cursor: pointer;
+      }
+      .daycell .n {
+        display: block;
         font-family: 'JetBrains Mono', monospace;
-        font-size: 15px;
-        font-weight: 700;
+        font-size: 14px;
+        margin-top: 2px;
+        color: #b9c4de;
+      }
+      .daycell.on {
+        background: var(--amber);
+        color: #3a2405;
+      }
+      .daycell.on .n {
+        color: #3a2405;
+      }
+      .daycell.past {
+        opacity: 0.45;
+      }
+      .daycell.future {
+        opacity: 0.6;
+      }
+      /* a selected non-today day: neutral highlight if past, violet if future */
+      .daycell.sel-history {
+        background: rgba(255, 255, 255, 0.16);
+        color: #eaf0ff;
+        box-shadow: inset 0 0 0 1px rgba(255, 255, 255, 0.28);
+      }
+      .daycell.sel-history .n {
+        color: #fff;
+      }
+      .daycell.sel-future {
+        background: var(--plan);
+        color: #fff;
+      }
+      .daycell.sel-future .n {
+        color: #fff;
+      }
+      /* today-anchor: amber dot marking the live day wherever you browse */
+      .daycell.today-anchor::after {
+        content: '';
+        position: absolute;
+        top: 5px;
+        inset-inline-end: 7px;
+        width: 6px;
+        height: 6px;
+        border-radius: 999px;
+        background: var(--amber);
+        box-shadow: 0 0 0 2px rgba(233, 166, 60, 0.25);
+      }
+      /* Plan mode: no "now" — violet selection, dashed red-number empty days */
+      [data-mode='plan'] .daycell {
+        background: rgba(22, 35, 61, 0.05);
+        color: var(--muted);
+      }
+      [data-mode='plan'] .daycell .n {
         color: var(--ink);
       }
-      .day .dlab {
-        font-size: 9.5px;
+      [data-mode='plan'] .month-label {
         color: var(--muted);
-        font-weight: 600;
       }
-      /* day-strip selection = amber in Trip ("the selected today", a time
-         signal per design-language / ADR-0028), violet in Plan — the app's
-         own day-strip precedent, distinct from the chips' --idx-accent. */
-      .day.sel,
-      .day.allsel {
-        background: var(--amber);
-        border-color: var(--amber);
-      }
-      .day.sel .dnum,
-      .day.sel .dlab {
-        color: #3a2405;
-      }
-      [data-mode='plan'] .day.sel,
-      [data-mode='plan'] .day.allsel {
+      [data-mode='plan'] .daycell.on {
         background: var(--plan);
-        border-color: var(--plan);
-      }
-      [data-mode='plan'] .day.sel .dnum,
-      [data-mode='plan'] .day.sel .dlab {
         color: #fff;
       }
-      .day.allsel {
-        color: #3a2405;
-        display: flex;
+      [data-mode='plan'] .daycell.on .n {
+        color: #fff;
+      }
+      [data-mode='plan'] .daycell.empty:not(.on) {
+        border: 1px dashed var(--soft-line);
+        background: transparent;
+      }
+      [data-mode='plan'] .daycell.empty:not(.on) .n {
+        color: var(--miss);
+      }
+
+      /* ---- day-scope + sort strip (below the chips). "כל הימים" is a
+         MAP-LOCAL scope (the global model has only one active date) — it is the
+         only way to show all days at once; tapping a strip day narrows back to
+         that day. ---- */
+      .scopechip {
+        display: inline-flex;
         align-items: center;
+        gap: 5px;
+        border: 1px solid var(--line);
+        background: #fbfcfe;
+        color: var(--ink);
+        border-radius: 999px;
+        padding: 6px 12px;
+        font-size: 12px;
         font-weight: 700;
-        font-size: 12.5px;
-        min-width: auto;
-        padding: 6px 14px;
+        cursor: pointer;
       }
-      [data-mode='plan'] .day.allsel {
-        color: #fff;
+      .scopechip.on {
+        background: var(--idx-accent);
+        border-color: var(--idx-accent);
+        color: var(--idx-accent-text);
+      }
+      .scopehint {
+        font-size: 11px;
+        color: var(--faint);
+        font-weight: 600;
       }
 
       /* ---- filter chip row (reuses index-bookings-compact-v2 grammar) ---- */
@@ -1131,31 +1214,38 @@
           <h1>🗺️ מפה</h1>
         </div>
         <div class="sub" id="headsub">טוקיו · המקומות של היום</div>
-      </div>
 
-      <!-- day strip: the mode pivot (ADR-0106 Decision 1). Trip pre-selects
-           today; Plan pre-selects "all". Same day-strip gesture widens either. -->
-      <div class="daystrip" id="daystrip">
-        <div class="day allsel" id="dayAll" onclick="pickDay('all')">כל הימים</div>
-        <div class="day" data-day="1" onclick="pickDay(1)">
-          <div class="dnum">23</div>
-          <div class="dlab">ג׳</div>
-        </div>
-        <div class="day sel" data-day="2" onclick="pickDay(2)">
-          <div class="dnum">24</div>
-          <div class="dlab">היום</div>
-        </div>
-        <div class="day" data-day="3" onclick="pickDay(3)">
-          <div class="dnum">25</div>
-          <div class="dlab">ה׳</div>
-        </div>
-        <div class="day" data-day="4" onclick="pickDay(4)">
-          <div class="dnum">26</div>
-          <div class="dlab">ו׳</div>
-        </div>
-        <div class="day" data-day="5" onclick="pickDay(5)">
-          <div class="dnum">27</div>
-          <div class="dlab">ש׳</div>
+        <!-- the shared header day strip (ui/domain/DayStrip) — header chrome,
+             not a map-only control. Tapping a day focuses it ON THE MAP in place
+             (same rule the Day view already follows). No "all days" cell here;
+             "all" is the map-local scope chip in the strip below. -->
+        <div class="daystrip" id="daystrip">
+          <div class="daycell-wrap">
+            <span class="month-label">יולי</span>
+            <button class="daycell" data-day="1" onclick="pickDay(1)">
+              ב׳<span class="n" dir="ltr">23</span>
+            </button>
+          </div>
+          <div class="daycell-wrap">
+            <button class="daycell" data-day="2" onclick="pickDay(2)">
+              ג׳<span class="n" dir="ltr">24</span>
+            </button>
+          </div>
+          <div class="daycell-wrap">
+            <button class="daycell" data-day="3" onclick="pickDay(3)">
+              ד׳<span class="n" dir="ltr">25</span>
+            </button>
+          </div>
+          <div class="daycell-wrap">
+            <button class="daycell" data-day="4" onclick="pickDay(4)">
+              ה׳<span class="n" dir="ltr">26</span>
+            </button>
+          </div>
+          <div class="daycell-wrap">
+            <button class="daycell" data-day="5" onclick="pickDay(5)">
+              ו׳<span class="n" dir="ltr">27</span>
+            </button>
+          </div>
         </div>
       </div>
 
@@ -1204,10 +1294,14 @@
         </div>
       </div>
 
-      <!-- near-me sort strip. The chip is teal (location). Just-in-time perms:
-           tapping it asks (pre-prompt), never on tab open. -->
+      <!-- day-scope + sort strip. "כל הימים" is the MAP-LOCAL all-days scope
+           (the global model has only a single active date); tapping a strip day
+           narrows back to that day. The near-me chip is teal (location) and asks
+           for permission just-in-time (pre-prompt), never on tab open. -->
       <div class="sortstrip">
-        <span class="lbl">מיון:</span>
+        <button class="scopechip" id="allchip" onclick="toggleAllDays()">🗓️ כל הימים</button>
+        <span class="scopehint" id="scopehint"></span>
+        <span style="flex: 1"></span>
         <button class="nearchip" id="nearchip" onclick="tapNearMe()">
           <svg
             viewBox="0 0 24 24"
@@ -1631,35 +1725,73 @@
         document.getElementById('list').innerHTML = html;
       }
 
+      const TODAY = 2; // day index that is "today" in this demo
+      const DAY_DATE = {
+        1: '23 ביולי',
+        2: '24 ביולי',
+        3: '25 ביולי',
+        4: '26 ביולי',
+        5: '27 ביולי',
+      };
+      const EVENT_DAYS = new Set(PLACES.flatMap((p) => p.days)); // for Plan empty-day markers
+
       function setMode(m) {
         mode = m;
         document.getElementById('phone').dataset.mode = m;
         // the standard two-segment header mode-toggle reflects the active mode
         document.getElementById('pill-trip').classList.toggle('on', m === 'trip');
         document.getElementById('pill-plan').classList.toggle('on', m === 'plan');
-        // chrome + accent handled by CSS; also flip the default day filter.
-        const sub = document.getElementById('headsub');
-        if (m === 'plan') {
-          sub.textContent = 'טוקיו · כל המקומות';
-          dayFilter = null; // Plan defaults to ALL
-        } else {
-          sub.textContent = 'טוקיו · המקומות של היום';
-          dayFilter = 2; // Trip defaults to TODAY
-        }
-        syncDayStrip();
+        // mode sets the DEFAULT day scope: Trip → today, Plan → all days.
+        dayFilter = m === 'plan' ? null : TODAY;
+        syncStrip();
         render();
       }
 
-      function syncDayStrip() {
-        document.getElementById('dayAll').classList.toggle('allsel', dayFilter === null);
-        document.querySelectorAll('.day[data-day]').forEach((d) => {
-          d.classList.toggle('sel', +d.dataset.day === dayFilter);
+      // Reflect the current scope on the real day strip + the map-local scope
+      // chip. The strip is single-select (one active date, like the app); the
+      // "all days" state is map-only, shown by clearing the strip selection.
+      function syncStrip() {
+        document.querySelectorAll('.daycell').forEach((cell) => {
+          const d = +cell.dataset.day;
+          cell.className = 'daycell';
+          if (mode === 'trip') {
+            if (dayFilter === d) {
+              cell.classList.add(d === TODAY ? 'on' : d < TODAY ? 'sel-history' : 'sel-future');
+            } else if (d === TODAY) {
+              cell.classList.add('today-anchor'); // amber "today" marker, always
+            } else {
+              cell.classList.add(d < TODAY ? 'past' : 'future');
+            }
+          } else {
+            if (dayFilter === d) cell.classList.add('on');
+            else if (dayFilter !== null && d < dayFilter) cell.classList.add('past');
+            if (!EVENT_DAYS.has(d)) cell.classList.add('empty'); // dashed red-number gap
+          }
         });
+        const isAll = dayFilter === null;
+        document.getElementById('allchip').classList.toggle('on', isAll);
+        document.getElementById('scopehint').textContent = isAll
+          ? 'מציג · כל הימים'
+          : 'מציג · ' + DAY_DATE[dayFilter];
+        document.getElementById('headsub').textContent = isAll
+          ? 'טוקיו · כל המקומות'
+          : dayFilter === TODAY
+            ? 'טוקיו · המקומות של היום'
+            : 'טוקיו · ' + DAY_DATE[dayFilter];
       }
 
+      // Tapping a strip day focuses it ON THE MAP in place (the map is a
+      // day-scoped surface, like the Day view — no navigation away).
       function pickDay(d) {
-        dayFilter = d === 'all' ? null : d;
-        syncDayStrip();
+        dayFilter = d;
+        syncStrip();
+        render();
+      }
+
+      // The map-local "all days" scope: expand to all, or collapse back to today.
+      function toggleAllDays() {
+        dayFilter = dayFilter === null ? TODAY : null;
+        syncStrip();
         render();
       }
 
