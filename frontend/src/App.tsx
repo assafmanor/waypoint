@@ -35,6 +35,7 @@ import { consumeIntent, hasIntent, saveIntent } from './lib/intent';
 import { ToastProvider } from './ui/Toast';
 import { ConfirmProvider } from './ui/ConfirmDialog';
 import { AppShell } from './ui/layout';
+import { BootScreen } from './ui/feedback';
 import { Sheet } from './ui/Sheet';
 import { SyncReviewSheet } from './ui/SyncReviewSheet';
 import { Icon } from './ui/Icon';
@@ -106,14 +107,6 @@ function Placeholder({ tab, mode }: { tab: TabId; mode: Mode }) {
       <h1>{t.tabs[tab]}</h1>
       <p className="placeholder-emphasis">{t.modeEmphasis[tab][mode]}</p>
       <p>{t.placeholder.comingSoon}</p>
-    </div>
-  );
-}
-
-function BootScreen({ text }: { text: string }) {
-  return (
-    <div className="boot-screen">
-      <h1>{text}</h1>
     </div>
   );
 }
@@ -467,7 +460,7 @@ function Shell() {
         accountOpen && <AccountSheet onClose={() => setAccountOpen(false)} onSignOut={logout} />
       }
     >
-      <Suspense fallback={<BootScreen text={t.shell.booting} />}>
+      <Suspense fallback={<BootScreen />}>
         <Screen tab={tab} onNavigate={goToTab} />
       </Suspense>
     </AppShell>
@@ -560,14 +553,18 @@ function RootSurface() {
   const { tripId: storedTripId, pickedThisSession } = useActiveTripId();
   const now = useClock();
 
-  if (trips === null) return <BootScreen text={t.shell.booting} />;
+  if (trips === null) return <BootScreen />;
   if (trips.length === 0) return <ZeroStateWithAccount />;
 
   const landing = resolveLanding(trips, storedTripId, pickedThisSession, now);
   if ('redirect' in landing) return <Navigate to={landing.redirect} replace />;
 
+  // Already-resolved trip dates (ADR-0105): lets the snapshot skeleton pick
+  // its mode shape immediately instead of guessing while the boot fetch runs.
+  const knownTrip = trips.find((tr) => tr.id === landing.tripId) ?? null;
+
   return (
-    <TripProvider tripId={landing.tripId}>
+    <TripProvider tripId={landing.tripId} knownTrip={knownTrip}>
       <ModeProvider>
         <Shell />
       </ModeProvider>
@@ -616,19 +613,15 @@ export function AuthGate() {
     setIntentPending(false);
   }, [status, location.pathname, navigate, isJoinRoute]);
 
-  if (status === 'loading') return <BootScreen text={t.shell.booting} />;
+  if (status === 'loading') return <BootScreen />;
   if (status === 'anon') {
-    return location.pathname === '/login' || isJoinRoute ? (
-      <Outlet />
-    ) : (
-      <BootScreen text={t.shell.booting} />
-    );
+    return location.pathname === '/login' || isJoinRoute ? <Outlet /> : <BootScreen />;
   }
   // A pending deep-link intent (e.g. mid-join after OAuth's redirect to "/")
   // must not let RootSurface mount even for one render — its fetchTrips()
   // would see zero memberships (the join hasn't run yet) and flash ZeroState
   // before the effect above navigates to the real intent path.
-  if (location.pathname === '/login' || intentPending) return <BootScreen text={t.shell.booting} />;
+  if (location.pathname === '/login' || intentPending) return <BootScreen />;
   return <Outlet />;
 }
 
@@ -636,7 +629,7 @@ function AppRoutes() {
   // Suspense boundary for the lazily-loaded route screens (F-07). The fallback is
   // the same boot screen the gate already uses, so a chunk fetch reads as booting.
   return (
-    <Suspense fallback={<BootScreen text={t.shell.booting} />}>
+    <Suspense fallback={<BootScreen />}>
       <Routes>
         <Route element={<AuthGate />}>
           <Route path="login" element={<Login />} />
