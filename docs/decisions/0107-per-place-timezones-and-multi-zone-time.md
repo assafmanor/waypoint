@@ -2,7 +2,7 @@
 
 **Status:** Proposed (rides the Maps & Places epic — [ADR-0106](0106-maps-and-places-epic-scope-and-phasing.md) — for the coordinates it derives zones from; the model here is decided in principle, the schema/mechanism details are for the data-model/architecture session)
 **Date:** 2026-07-22
-**Refines:** [0018](0018-timeline-data-model-shape.md) (events store `startsAt`/`endsAt` as **UTC instants** — the reason this is display-only, not a storage overhaul), [0032](0032-minimal-trip-creation.md) (the single `Trip.timezone` derived from the destination — demoted here), [0036](0036-event-time-setter.md) (`zonedIso` wall-clock↔instant authoring), [0037](0037-overnight-events.md) (the "which day does a boundary event file under" cousin), [0048](0048-index-build-data-model-refinements.md)/[0051](0051-place-normalization-and-authority.md) (the `Place` entity + the linked/unlinked place resolver a zone rides on), [0084](0084-booking-duration-display.md) (duration is an instant-diff, stays zone-independent) (relates [0026](0026-real-clock-and-dev-time-travel.md)/[0070](0070-global-error-envelope-and-temporal-validation.md)/[0003](0003-one-way-calendar-sync.md)/[0106](0106-maps-and-places-epic-scope-and-phasing.md))
+**Refines:** [0018](0018-timeline-data-model-shape.md) (events store `startsAt`/`endsAt` as **UTC instants** — the reason this is display-only, not a storage overhaul), [0032](0032-minimal-trip-creation.md) (the single `Trip.timezone` derived from the destination — demoted here), [0036](0036-event-time-setter.md) (`zonedIso` wall-clock↔instant authoring), [0037](0037-overnight-events.md) (the "which day does a boundary event file under" cousin), [0064](0064-day-transition-entries-and-home-band-trim.md) (the per-day transition rows a zone-crosser's two ends reuse — one per zone), [0048](0048-index-build-data-model-refinements.md)/[0051](0051-place-normalization-and-authority.md) (the `Place` entity + the linked/unlinked place resolver a zone rides on), [0084](0084-booking-duration-display.md) (duration is an instant-diff, stays zone-independent) (relates [0026](0026-real-clock-and-dev-time-travel.md)/[0070](0070-global-error-envelope-and-temporal-validation.md)/[0003](0003-one-way-calendar-sync.md)/[0106](0106-maps-and-places-epic-scope-and-phasing.md))
 
 ## Context
 
@@ -31,14 +31,23 @@ They must differ: if display simply followed the viewer's current context, a din
 **3. An event's display/authoring zone resolves by a priority order:**
 
 1. **Place attached** → the place's zone. **Transport is the one asymmetric case**: `startsAt` renders in the origin (`fromPlace`) zone, `endsAt` in the destination (`toPlace`) zone.
-2. **No place** → the zone of the **itinerary segment** the event sits in. **Zone-crossing transport events partition the timeline into zone segments**: everything before the outbound crossing is the origin/base zone, everything after is the destination zone (and so on per crossing). A placeless event inherits its segment's zone.
-3. **No anchoring transport at all** → the trip base zone.
+2. **No place** → the zone of the **itinerary segment** the event sits in. **Zone-crossing transport events partition the timeline into zone segments**: everything before the outbound crossing is the **origin/home zone** (known once the outbound flight's `fromPlace` is entered), everything after is the destination zone (and so on per crossing). A placeless event inherits its segment's zone.
+3. **No anchoring transport at all** → the **trip primary zone** (see the "base" clarification below).
 
-Worked example (the case that drove this): standing at Ben Gurion on flight day, "**coffee now**" is before the flight → **base (Jerusalem)**; "**dinner tonight**," dropped after the flight in the day's order → **destination (Tokyo)** — correct even though the phone is physically in Israel.
+**"Base" is two different zones — name them apart.** They sit at opposite ends of the outbound flight and must not be conflated:
 
-**4. The live "now" tracks your position — via the itinerary, not GPS.** In Trip mode the clock/now-line/"today" sit in the zone of your **current itinerary segment** (which side of the nearest crossing you're on); in Plan mode they sit in the trip base. Device GPS is **not** the driver (fragile at boundaries, permission-gated, and confidently wrong exactly when zones matter — standing at the base airport, GPS says base even when you mean the destination). Location, if ever used, is a confirmation nudge only.
+- **Origin/home zone** — the pre-outbound-crossing segment (Jerusalem), derived from the outbound flight's `fromPlace`; a _segment_ concept, not a stored trip field.
+- **Trip primary zone** — the destination (Tokyo). This is what `Trip.timezone` demotes to (ADR-0032 already derives it from the destination): the Plan-mode framing anchor and the fallback when no transport is entered yet. It's the "actual trip timezone" a planner refers to before the trip.
 
-**5. `Trip.timezone` is demoted, not deleted.** It stops being every event's display authority and becomes an explicit **trip base/home zone**: the fallback for placeless/pre-transport times and the Plan-mode framing anchor. (Renaming to `baseTimezone` is optional cosmetic.)
+They coincide only for a single-zone trip. One consequence to state, not discover: **before the outbound flight is entered, a pre-departure home event ("leave for airport 15:00") defaults to the trip primary (destination) zone** — the app doesn't know your origin until the flight exists — and **flips to the origin zone once the flight is added**. The editable zone chip (§6) covers the gap.
+
+Worked example (the case that drove this): standing at Ben Gurion on flight day, "**coffee now**" is before the flight → **origin zone (Jerusalem)**; "**dinner tonight**," dropped after the flight in the day's order → **destination (Tokyo)** — correct even though the phone is physically in Israel.
+
+**4. The live "now" tracks your position — via the itinerary, not GPS.** In Trip mode the clock/now-line/"today" sit in the zone of your **current itinerary segment** (which side of the nearest crossing you're on); in Plan mode they sit in the trip primary (destination) zone. Device GPS is **not** the driver (fragile at boundaries, permission-gated, and confidently wrong exactly when zones matter — standing at the origin airport, GPS says origin even when you mean the destination). Location, if ever used, is a confirmation nudge only.
+
+**"Today" and the day-strip bounds roll at the _current segment's_ midnight** — a direct consequence: since the live "now" tracks your current segment, the calendar day rolls over at that zone's midnight, so "today" shifts on the travel day as you cross.
+
+**5. `Trip.timezone` is demoted, not deleted.** It stops being every event's display authority and becomes the explicit **trip primary zone** (the destination, per ADR-0032): the fallback for placeless/pre-transport times and the Plan-mode framing anchor. It is _not_ the origin/home zone — that's a segment concept derived from the outbound flight (§3), never a stored trip field. (Renaming to `primaryTimezone` is optional cosmetic.)
 
 **6. The resolved zone is always a visible, editable field.** The time input shows the inferred zone as a chip (e.g. "🕐 19:00 · Tokyo ▾"), one-tap correctable. Inference is never silently authoritative on the high-cost boundary cases — the design goal is "sensibly defaulted, trivially fixable," not a cleverer silent guess.
 
@@ -47,9 +56,9 @@ Worked example (the case that drove this): standing at Ben Gurion on flight day,
 **8. Edge-case rules:**
 
 - **Attaching a place after authoring a placeless time** → **keep the wall-clock, shift the instant** (you meant the time _there_).
-- **Which day a zone-crosser files under** → its **departure day, in the departure zone** ("today we fly"); the arrival end has its own place/zone.
+- **Which day(s) a zone-crosser files under → each end files under its own zone's calendar day**, via ADR-0064's per-day transition rows: a **departure transition entry** on the **origin day** in the **origin zone**, and an **arrival transition entry** on the **destination day** in the **destination zone**. So the day-strip reads "✈ depart 23:00 TLV" on day N and "✈ arrive 18:00 Tokyo" on day N+1. This reuses the existing transition-row mechanism rather than inventing a "which single day" rule, and it handles the date-line shift correctly (each end's day is computed in that end's zone).
 - **Cross-zone times get a zone tag** so they aren't misread: "23:00 TLV → 18:00 +1 Tokyo".
-- **No signal / mid-flight "local"** → fall back to the trip base.
+- **No signal / mid-flight "local"** → mid-flight (between a crossing's departure and arrival) falls back to the **destination** zone (where you're heading); an unknown zone with no anchoring transport falls back to the **trip primary** zone.
 
 ## Consequences
 
