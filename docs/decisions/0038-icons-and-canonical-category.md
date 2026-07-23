@@ -53,6 +53,16 @@ The stored `icon` also **surfaces read-side** wherever a trip or event is shown 
 
 §4 says a booked event derives its `category` from `Booking.type`, but the booking form (`BookingSheet`) was also letting the IconPicker's per-glyph category suggestion overwrite it — so a hotel given a ⭐ badge (the `general` group → `other`) stored a **non-lodging** category on its event, and every category-keyed behaviour (duration in nights, check-in/out bracketing, ambient backdrop) silently read wrong. Resolved in favour of the §4 rule: **in the booking form the picker sets the badge glyph only; `category` is always `categoryForBookingType(type)`.** The icon→category suggestion still applies where there is no type to defer to — the manual `EventForm` and the maybe-shelf. (Legacy events mis-saved before this fix self-correct on their next save; the duration read on the Index/detail/edit surfaces resolves the unit from `booking.type` regardless, so those read correctly even before a re-save.)
 
+### Amendment (2026-07-23, via ADR-0108) — the event/idea category is an _explicit field_; the icon never decides it
+
+The 2026-07-19 amendment left one asymmetry: a **booking's** category comes from its explicit **type**, but a **manual event's** (and a **maybe-item's**) category was still inferred from the **icon** the user picked (§4 Tier-B/manual). The Maps epic makes that untenable: **`category` now drives the map pin colour** ([ADR-0108](0108-map-tab-design.md) §3), so it must be a deliberate choice, not a side effect of picking a glyph. Resolved to make events behave like bookings:
+
+- **`EventForm` (and the maybe-shelf add-idea flow) gain an explicit `category` selector** — the event's "type", analogous to the booking type selector. `category` is set from _that_, never from the icon.
+- **The icon is glyph-only everywhere now** (booking, event, idea) — no host lets the icon write `category`. Choosing a category still yields a **default glyph** via `iconForCategory` (overridable as a pure badge), so quick entry stays fast; the §4 "manual choice always wins / ↺ reset" applies to the _glyph_, not the category.
+- **No schema change** — `Event.category` / `MaybeItem.category` already exist (this ADR created them); only the _authoring path_ changes. The icon→category suggestion table (§2's "Icon picker browse-groups → category") is retired as a category source; it survives only as a glyph-grouping aid.
+
+This makes §4's "auto-suggest is deterministic, from booking type only" the shape for **all** hosts: category is always an explicit, structured choice (booking type, or the new event/idea category selector), never guessed from a glyph.
+
 ## Consequences
 
 - **Schema + migration.** Add `enum EventCategory`; add `category EventCategory?` to `Event` and `MaybeItem`; add `icon String?` to `Trip`. Backfill: events with a linked `Booking` derive `category` from `Booking.type`; everything else stays `null`. `@waypoint/shared` gains `eventCategorySchema`, `ICON_SET`, `categoryForBookingType()`, `iconForCategory()`, and `category`/`icon` on the create/update schemas — kept in sync with the Prisma schema (non-negotiable rule 3).

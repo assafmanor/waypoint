@@ -43,7 +43,23 @@ The mockup's day strip was rebuilt to match the shipped component (header chrome
 - **BE-arch (roadmap #2):** the Places API key model + the Phase-6 cost envelope + the offline lat/lng→zone library.
 - **Google Cloud setup (roadmap #0, human):** still gates all real work.
 
+## Review round 2 (Assaf feedback — six points + follow-ups)
+
+A second pass on the mockup, which reversed one earlier call and added scope:
+
+1. **Embedded-map integration vision (§10):** the Phase-6 map joins the list as a **map pane + draggable list sheet + `רשימה/מפה` toggle** (maps+list pattern), same pins/filters/derivation. New mockup panel.
+2. **Row audit (§2):** dropped the ambiguous eye/compass icons for **one labeled "נווט"** + row-tap-to-open; fixed the cryptic "יציאה" to **meaningful context** ("18:40 · רכבת לקיוטו"); every element now earns its place.
+3. **Ratings (§9):** pulled `rating`/`userRatingsTotal` into Phase-1 cached enrichment (same Details call), shown as a `★` tag. Amends ADR-0106's enrichment-deferred line.
+4. **Pin colour reverted to category (§3):** the first draft's teal-Waypoint-pin was wrong against the **standing** ADR-0038 §2 / ADR-0028 decorative-palette agreement (5 category hues). Reverted: category colour is the loud figure; teal→affordances, amber→time. Revises **ADR-0106 Decision C**.
+5. **Regular pins (§3):** list = rounded category **badge**; map = category **teardrop**. Also fixed the teardrop pointing **left** instead of down (sharp corner moved to bottom-right so `rotate(45deg)` swings the tip straight down).
+6. **Places & timezones in forms (§8):** new panel — event (1 place + zone chip), transport (2 places + 2 zone chips + `+1`), empty Place-lite picker.
+
+Follow-ups in the same round:
+
+- **Events carry category independent of bookings** (already true, ADR-0038) — the map reads `Event.category`; uncategorised → neutral fallback.
+- **Event category becomes an explicit selector, like a booking's type (§11):** the icon no longer decides category (glyph-only everywhere). **Amends ADR-0038 §4** (recorded there) — motivated by category now driving pin colour. No schema change.
+
 ## Files touched
 
 - New: `docs/decisions/0108-map-tab-design.md`, `mockups/map-tab-v1.html`, this note.
-- Updated: `docs/design/design-language.md` (Map entry + decorative-palette sentence), `docs/design/mockups.md` (new entry + `trip-dashboard-v2` map-section supersession), `docs/decisions/README.md` (0108 row), `docs/INDEX.md` (design-domain router + planning-session rows), `docs/backlog.md` (epic header + Phase 3/4 lines), `docs/decisions/0106-…md` (open-question resolutions annotated).
+- Updated: `docs/decisions/0038-…md` (2026-07-23 amendment: explicit event/idea category, icon glyph-only), `docs/decisions/0106-…md` (open-question resolutions; Decision C teal→category; ratings exception; Phase-1/6 pointers), `docs/design/design-language.md` (Map entry + decorative-palette restored), `docs/design/mockups.md` (entry), `docs/decisions/README.md` (0108 row), `docs/INDEX.md` (design-domain router + planning rows), `docs/backlog.md` (epic + Phase lines, ratings, category selector).
