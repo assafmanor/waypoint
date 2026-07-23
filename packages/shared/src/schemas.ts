@@ -134,6 +134,43 @@ export type CreatePlaceInput = z.infer<typeof createPlaceSchema>;
 export const updatePlaceSchema = createPlaceSchema.partial();
 export type UpdatePlaceInput = z.infer<typeof updatePlaceSchema>;
 
+/** A session token groups a run of Autocomplete keystrokes with the terminating
+ *  Place Details pick so Google bills the searches at $0 (ADR-0108 §1). The FE
+ *  mints it (`crypto.randomUUID()`) and threads the same value through every
+ *  search and the resolve; the proxy forwards it verbatim. Validated only as a
+ *  bounded opaque string — Google's own format check is authoritative. */
+export const sessionTokenSchema = z.string().min(1).max(128);
+
+/** One Autocomplete suggestion crossing the proxy boundary (ADR-0110 §9). The
+ *  proxy flattens Google's `suggestions[].placePrediction` to just what the picker
+ *  renders; `alreadyInTrip` is a client-side derivation over the snapshot, not a
+ *  field here (ADR-0110 §1). */
+export const placePredictionSchema = z.object({
+  googlePlaceId: z.string(),
+  primaryText: z.string(),
+  secondaryText: z.string().optional(),
+});
+export type PlacePrediction = z.infer<typeof placePredictionSchema>;
+
+/** `POST /trips/:tripId/places/search` body — the debounced Autocomplete relay
+ *  (ADR-0108 §1 / ADR-0110 §1). */
+export const searchPlacesSchema = z.object({
+  input: z.string().min(1),
+  sessionToken: sessionTokenSchema,
+});
+export type SearchPlacesInput = z.infer<typeof searchPlacesSchema>;
+
+/** `POST /trips/:tripId/places/resolve` body — the terminating enrich-on-pick
+ *  (create-or-link) call (ADR-0108 §3 / ADR-0110 §1). `enrichPlaceId` names an
+ *  existing coordless Place-lite to enrich in place instead of minting a new row
+ *  (ADR-0110 §1). Server dedup on `(tripId, googlePlaceId)` governs the rest. */
+export const resolvePlaceSchema = z.object({
+  googlePlaceId: z.string().min(1),
+  sessionToken: sessionTokenSchema.optional(),
+  enrichPlaceId: entityIdSchema.optional(),
+});
+export type ResolvePlaceInput = z.infer<typeof resolvePlaceSchema>;
+
 /** `fileRef`/`mimeType`/`sizeBytes` are computed server-side from the uploaded
  *  file (multipart), not client input — this validates the accompanying fields. */
 export const createDocumentSchema = z.object({

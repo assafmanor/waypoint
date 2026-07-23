@@ -262,26 +262,33 @@ model Booking {
 }
 
 // Trip-scoped location registry (ADR-0048). Name-only rows are valid ("Place-lite");
-// googlePlaceId/lat/lng are filled in later by the Google Places picker (Maps work).
+// googlePlaceId/lat/lng/timezone/rating are filled in later by the Google Places
+// picker on a pick (ADR-0108). The row *is* the enrichment cache — dedup-before-spend
+// keys on @@unique([tripId, googlePlaceId]) so a place is enriched at most once per trip
+// (Postgres treats NULLs as distinct, so many name-only rows still coexist).
 model Place {
-  id            String   @id @default(cuid())
-  tripId        String
-  googlePlaceId String?
-  name          String
-  address       String?
-  lat           Float?
-  lng           Float?
-  createdAt     DateTime @default(now())
-  updatedAt     DateTime @updatedAt
-  updatedBy     String
+  id               String   @id @default(cuid())
+  tripId           String
+  googlePlaceId    String?
+  name             String
+  address          String?
+  lat              Float?
+  lng              Float?
+  timezone         String? // IANA zone, resolved once server-side via geo-tz (ADR-0107/0108)
+  rating           Float? // Google aggregate rating 0–5 (ADR-0109 §9)
+  userRatingsTotal Int? // count behind `rating`
+  createdAt        DateTime @default(now())
+  updatedAt        DateTime @updatedAt
+  updatedBy        String
 
-  trip          Trip        @relation(fields: [tripId], references: [id], onDelete: Cascade)
-  events        Event[]     @relation("EventPlace")
-  bookings      Booking[]   @relation("BookingPlace")
-  bookingsFrom  Booking[]   @relation("BookingFromPlace")
-  bookingsTo    Booking[]   @relation("BookingToPlace")
-  maybeItems    MaybeItem[] @relation("MaybeItemPlace")
+  trip         Trip        @relation(fields: [tripId], references: [id], onDelete: Cascade)
+  events       Event[]     @relation("EventPlace")
+  bookings     Booking[]   @relation("BookingPlace")
+  bookingsFrom Booking[]   @relation("BookingFromPlace")
+  bookingsTo   Booking[]   @relation("BookingToPlace")
+  maybeItems   MaybeItem[] @relation("MaybeItemPlace")
 
+  @@unique([tripId, googlePlaceId])
   @@index([tripId])
 }
 

@@ -182,7 +182,8 @@ export type Booking = z.infer<typeof bookingSchema>;
 
 /** Trip-scoped location registry (ADR-0048). Every `placeId` FK points here. A
  *  name-only row is valid ("Place-lite"); the Google Places picker fills in
- *  googlePlaceId/lat/lng later. */
+ *  googlePlaceId/lat/lng/timezone/rating later (ADR-0108). All the Google-derived
+ *  fields are nullable — a Place-lite has none until it's enriched on a pick. */
 export const placeSchema = z.object({
   id: idSchema,
   tripId: idSchema,
@@ -191,6 +192,11 @@ export const placeSchema = z.object({
   address: z.string().optional(),
   lat: z.number().optional(),
   lng: z.number().optional(),
+  /** IANA zone resolved server-side from lat/lng once, at pick time (ADR-0107/0108). */
+  timezone: z.string().optional(),
+  /** Google's aggregate rating (0–5) and its count, cached on the pick (ADR-0109 §9). */
+  rating: z.number().optional(),
+  userRatingsTotal: z.number().optional(),
   createdAt: z.string(),
   updatedAt: z.string(),
   updatedBy: idSchema,

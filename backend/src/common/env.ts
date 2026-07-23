@@ -9,6 +9,27 @@ export const FRONTEND_URL = 'FRONTEND_URL';
 export const DEV_AUTH = 'DEV_AUTH';
 export const DOC_ENCRYPTION_KEY = 'DOC_ENCRYPTION_KEY';
 
+// Google Maps Platform server key (ADR-0108 §1): Places API (New) + (later) Routes,
+// held only by the backend proxy, never sent to the browser. Read via requireEnv at
+// call time so a dev/test box without the key still boots (the picker routes 500 if hit).
+export const GOOGLE_MAPS_SERVER_KEY = 'GOOGLE_MAPS_SERVER_KEY';
+
+// Per-member·trip rate limits on the paid Places proxy routes (ADR-0108 §5). The
+// mechanism + the per-member·trip keying are the decision; these integers are a
+// starting point, env-tunable without a deploy. Two windows per route: a per-minute
+// burst cap and a per-day drip cap.
+export const PLACES_SEARCH_LIMIT_PER_MIN = 'PLACES_SEARCH_LIMIT_PER_MIN';
+export const PLACES_SEARCH_LIMIT_PER_DAY = 'PLACES_SEARCH_LIMIT_PER_DAY';
+export const PLACES_RESOLVE_LIMIT_PER_MIN = 'PLACES_RESOLVE_LIMIT_PER_MIN';
+export const PLACES_RESOLVE_LIMIT_PER_DAY = 'PLACES_RESOLVE_LIMIT_PER_DAY';
+
+/** Defaults for the proxy throttle windows (ADR-0108 §5 table). Search is the free-
+ *  but-scrapeable surface (loose); resolve spends a paid Place Details call (tight). */
+export const DEFAULT_PLACES_SEARCH_LIMIT_PER_MIN = 120;
+export const DEFAULT_PLACES_SEARCH_LIMIT_PER_DAY = 2000;
+export const DEFAULT_PLACES_RESOLVE_LIMIT_PER_MIN = 30;
+export const DEFAULT_PLACES_RESOLVE_LIMIT_PER_DAY = 500;
+
 // Railway Storage Bucket (S3-compatible, ADR-0031). S3_BUCKET unset → documents
 // fall back to local disk (backend/src/documents/storage.ts).
 // DOC_LOCAL_STORAGE_DIR overrides where that dev-only fallback writes blobs; unset →
@@ -40,6 +61,16 @@ export function requireEnv(name: string): string {
   const value = process.env[name];
   if (!value) throw new Error(`${name} not configured`);
   return value;
+}
+
+/** A positive-integer env var with a fallback (used for the tunable throttle
+ *  limits). A missing or non-numeric/non-positive value falls back rather than
+ *  silently disabling a rate limit. */
+export function envInt(name: string, fallback: number): number {
+  const raw = process.env[name];
+  if (raw === undefined) return fallback;
+  const parsed = Number(raw);
+  return Number.isInteger(parsed) && parsed > 0 ? parsed : fallback;
 }
 
 /** The `DEV_AUTH` un-tokened-request bypass, gated so it can never be live in
