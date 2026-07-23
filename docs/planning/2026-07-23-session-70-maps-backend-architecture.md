@@ -34,9 +34,33 @@ Three hardening decisions folded into ADR-0108 after a review question about the
 - **Phase-0 cost guardrails are a hard gate (new Decision 6)** — a Google Cloud budget alert + a per-SKU daily quota cap (Dynamic Maps / Place Details / Routes) are **required before any key ships**, plus re-confirming pricing at billing setup. The field-mask → SKU-tier confirmation (keep the picker in the cheapest tier that returns id/name/address/location) is also written down explicitly.
 - **Mandatory FE debounce on autocomplete (Decision 1)** — the picker must fire an Autocomplete request only on a typing pause, never per keystroke. It's a **cost requirement**: session tokens make in-session autocomplete free only when the session ends in a Place Details pick, so a type-and-abandon session bills each keystroke call per-request (~$2.83/1k); debouncing collapses that and keeps a typist under the search-relay rate limit. The interval is an FE-arch call; pause-gating is not optional. Recorded in the ADR + the backlog Phase-1 line for the FE-arch/implementation handoff.
 
+## FE-architecture handoff — everything frontend this session settled
+
+The BE-arch session made several calls that **constrain the frontend**, but they live inside a _backend_ ADR (0108). Consolidated here so the FE-architecture session inherits them in one place. **Add ADR-0108 to that session's read-first set** (the session-68 roadmap's FE-architecture row is updated to include it).
+
+**Hard requirements the FE must honour (not FE-arch's to re-decide):**
+
+1. **The frontend never holds the Places/Routes key.** All Autocomplete / Place Details / Routes calls go through _our_ backend proxy under `trips/:tripId/places` (trip-scoped, behind `MembershipGuard`). The only Google key the browser ever sees is the Phase-6 map-load key. (ADR-0108 §1)
+2. **Debounced autocomplete — pause-gated, never per keystroke.** Fire a search request only after the user stops typing (each new character resets the timer). This is a **cost requirement**, not UX polish: a type-and-abandon session (no pick) bills each Autocomplete call per-request (~$2.83/1k). The exact interval is FE's call; pause-gating is not optional. (ADR-0108 §1)
+3. **The FE mints + threads the session token.** Generate a session token (UUID) per pick, pass it on every search request _and_ the terminating Place Details call, then retire it after the pick — that's what makes in-session autocomplete bill at $0. (ADR-0108 §1)
+4. **Browser key is Phase-6-only.** `VITE_GOOGLE_MAPS_BROWSER_KEY` is a frontend build var used solely to load the Maps JS API for the embedded map (Phase 6). Phases 1–5 ship **no** Google key in the browser — everything is proxied. (ADR-0108 §1)
+5. **Handle the proxy's rate-limit response gracefully.** The proxy can return `429` / `RATE_LIMITED` + `Retry-After` (ADR-0070 envelope, already handled globally). The picker should degrade softly (a brief "try again" state), not hard-error, if a member ever trips the cap. (ADR-0108 §5)
+
+**Behaviours & data the FE builds on:**
+
+6. **Offline = coordless "Place-lite" only.** Offline the FE can author a name-only `Place` (no coords → no timezone). Leave `Place.timezone` null optimistically and adopt the server-resolved zone when the create/update op round-trips the outbox. Coords _and_ zone only ever arrive online (from a Google pick). (ADR-0108 §2 / ADR-0107)
+7. **The per-event zone resolver reads the cached zone — it does not compute one.** `lib/places.ts` + the ADR-0107 segment-partition helper read `Place.timezone`; the lat/lng→IANA lookup is server-side `geo-tz`, run once at Place write. No client-side zone library. (ADR-0108 §2)
+8. **Dedup is server-enforced.** `@@unique([tripId, googlePlaceId])` + dedup-before-spend mean the FE's create-or-link flow can rely on re-picking a known place returning the cached row (no duplicate, no Google cost). (ADR-0108 §3)
+
+**Open questions still for the FE-architecture session (unchanged):**
+
+- **Shared search-core vs. two components** — now simplified to "one vs. two clients of our proxy" (the in-form picker and the Map-tab research surface). (ADR-0106 open q)
+- **The place-usage / filter derivation** (day/type/maybes; union semantics + colour-by-most-committed reference). (ADR-0106)
+- **Threading ADR-0107's per-event zone** through `lib/time.ts` / `lib/places.ts`, and the `Event.displayTimezone` store-vs-derive sub-question. (ADR-0107)
+- **The debounce interval and the geolocation-permission degrade** — some overlap with the design session running in parallel.
+
 ## Follow-on / handoff
 
-- **FE-architecture (next paper session)** inherits a settled boundary: the frontend calls _our_ proxy endpoints, mints the session token, never holds the Places/Routes key. The shared-search-core question (ADR-0106) is now "one vs. two clients of our proxy."
 - **Google Cloud setup (human, Phase 0)** re-confirms pricing and mints both keys (`GOOGLE_MAPS_SERVER_KEY` backend, `VITE_GOOGLE_MAPS_BROWSER_KEY` frontend).
 - **Phase 1 implementation** carries the two schema additions, the `env.ts` key name, the proxy routes, and the `geo-tz` resolution step; `api-contract.md` gets the proxy endpoints when they land.
 - Nothing about scope/phasing (ADR-0106) or the time model (ADR-0107) changed — this only fills the server/cost/library shape they left open.
