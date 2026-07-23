@@ -7,6 +7,7 @@ import { useMemo, useState, type FormEvent } from 'react';
 import {
   createEventSchema,
   updateEventSchema,
+  iconForCategory,
   EVENT_KIND,
   EVENT_SOURCE,
   EVENT_STATUS,
@@ -22,8 +23,10 @@ import { zonedIso, isoToTimeInput, hardConflicts, formatTime, resolveEndIso } fr
 import { useUnsavedGuard } from '../lib/useUnsavedGuard';
 import { DEFAULT_EVENT_ICON } from '../constants';
 import { t } from '../i18n/he';
+import { EVENT_CATEGORY_OPTIONS } from '../lib/category-options';
 import { IconPicker } from './IconPicker';
 import { Modal } from './primitives/Modal';
+import { ChoiceGrid } from './primitives/ChoiceGrid';
 import { Field } from './primitives/Field';
 import { FormActions } from './primitives/FormActions';
 import { PlacePicker } from './primitives/PlacePicker';
@@ -70,13 +73,25 @@ export function EventForm({
   const [end, setEnd] = useState(initialEnd);
   const [kind, setKind] = useState<TripEvent['kind']>(initialKind);
   const [icon, setIcon] = useState(initialIcon);
+  // The icon is now a pure badge (ADR-0109 §11): picking a category defaults the
+  // glyph via `iconForCategory`, unless the user has deliberately chosen one.
+  // Editing an event that already carries a glyph counts as chosen, so a later
+  // category change doesn't clobber it; a fresh event starts untouched.
+  const [iconTouched, setIconTouched] = useState(Boolean(event?.icon ?? maybeItem?.icon));
   const [category, setCategory] = useState<EventCategory | undefined>(initialCategory);
   const [placeId, setPlaceId] = useState<string | undefined>(initialPlaceId);
   const [error, setError] = useState<string | null>(null);
 
-  // A booking-linked event's place lives on the booking (ADR-0051), edited there —
-  // so the form only authors a place for a standalone event / a shelf schedule.
+  // A booking-linked event's place + category live on the booking (ADR-0051 /
+  // ADR-0109 §11), edited there — so the form only authors them for a standalone
+  // event or a shelf schedule.
   const showPlace = !event?.bookingId;
+  const showCategory = !event?.bookingId;
+
+  const pickCategory = (next: EventCategory) => {
+    setCategory(next);
+    if (!iconTouched) setIcon(iconForCategory(next));
+  };
 
   const dirty =
     title !== initialTitle ||
@@ -200,9 +215,9 @@ export function EventForm({
             <div className="title-row">
               <IconPicker
                 icon={icon}
-                onChange={(next, cat) => {
+                onChange={(next) => {
                   setIcon(next);
-                  setCategory(cat);
+                  setIconTouched(true);
                 }}
               />
               <input
@@ -213,6 +228,18 @@ export function EventForm({
               />
             </div>
           </Field>
+
+          {showCategory && (
+            <Field label={t.eventForm.categoryLabel}>
+              <ChoiceGrid
+                layout="pills"
+                options={EVENT_CATEGORY_OPTIONS}
+                value={category}
+                onChange={pickCategory}
+                ariaLabel={t.eventForm.categoryLabel}
+              />
+            </Field>
+          )}
 
           <WhenField
             variant="day"

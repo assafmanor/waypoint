@@ -1,7 +1,7 @@
 // @vitest-environment jsdom
 import { afterEach, describe, it, expect, vi } from 'vitest';
 import { type ReactNode } from 'react';
-import { cleanup, fireEvent, render, screen } from '@testing-library/react';
+import { cleanup, fireEvent, render, screen, within } from '@testing-library/react';
 import { MemoryRouter } from 'react-router-dom';
 
 // EventForm folds into the Modal primitive (U-01). The state hooks are mocked so
@@ -89,5 +89,15 @@ describe('EventForm (folded into Modal, U-01)', () => {
     expect(screen.getByText(t.common.discardTitle)).toBeTruthy();
     fireEvent.click(screen.getByText(t.common.discardConfirm));
     expect(onClose).toHaveBeenCalledTimes(1);
+  });
+
+  // ADR-0109 §11: category is an explicit ChoiceGrid, not derived from the icon.
+  it('offers an explicit category selector for a manual event and marks the pick', () => {
+    render(wrap(<EventForm onClose={() => {}} />));
+    const group = screen.getByRole('radiogroup', { name: t.eventForm.categoryLabel });
+    const food = within(group).getByRole('radio', { name: t.iconPicker.categories.food });
+    expect(food.getAttribute('aria-checked')).toBe('false');
+    fireEvent.click(food);
+    expect(food.getAttribute('aria-checked')).toBe('true');
   });
 });

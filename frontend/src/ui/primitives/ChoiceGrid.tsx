@@ -29,7 +29,10 @@ export function ChoiceGrid<T extends string>({
   layout = 'grid',
 }: {
   options: Choice<T>[];
-  value: T;
+  /** The selected value, or `undefined` for no selection yet (a single-select
+   *  that starts unset — e.g. the optional event category, ADR-0109 §11). No
+   *  option is highlighted until one matches. */
+  value?: T;
   onChange: (value: T) => void;
   /** Cards per row. Defaults to one row of all options. Ignored in `pills` layout. */
   columns?: number;
