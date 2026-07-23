@@ -211,6 +211,22 @@ export function EventForm({
               e.target.scrollIntoView({ block: 'center', behavior: 'smooth' });
           }}
         >
+          {/* Category leads (ADR-0109 §11): choosing it defaults the badge glyph,
+              so it reads naturally above the icon + name row. */}
+          {showCategory && (
+            <Field label={t.eventForm.categoryLabel}>
+              <div className="category-pills">
+                <ChoiceGrid
+                  layout="pills"
+                  options={EVENT_CATEGORY_OPTIONS}
+                  value={category}
+                  onChange={pickCategory}
+                  ariaLabel={t.eventForm.categoryLabel}
+                />
+              </div>
+            </Field>
+          )}
+
           <Field label={t.eventForm.titleLabel}>
             <div className="title-row">
               <IconPicker
@@ -228,18 +244,6 @@ export function EventForm({
               />
             </div>
           </Field>
-
-          {showCategory && (
-            <Field label={t.eventForm.categoryLabel}>
-              <ChoiceGrid
-                layout="pills"
-                options={EVENT_CATEGORY_OPTIONS}
-                value={category}
-                onChange={pickCategory}
-                ariaLabel={t.eventForm.categoryLabel}
-              />
-            </Field>
-          )}
 
           <WhenField
             variant="day"

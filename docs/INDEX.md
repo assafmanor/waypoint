@@ -147,6 +147,8 @@ Before changing a domain, read **only** the ADR(s) below for it (see the Context
 
 | [planning/2026-07-23-session-76-category-selector-and-sequencing.md](planning/2026-07-23-session-76-category-selector-and-sequencing.md) | Explicit **event/idea category selector** (ADR-0109 §11 / 0038 amendment, shipped): the same `ChoiceGrid` pills the booking-type picker uses, over a shared `EVENT_CATEGORY_OPTIONS` (`lib/category-options.ts`), in `EventForm` + the maybe-shelf `AddIdea`; `IconPicker` is now **glyph-only** (dropped the category arg, retired `categoryForIcon`-as-source); category defaults the badge glyph unless the user chose one; booking-linked events hide the selector; `ChoiceGrid.value` made optional (unset single-select). Plus a **backlog re-sequencing**: transport-as-places moved out of Phase 6 into the **timezone track** (it's a prerequisite for ADR-0107's flight zone-crossing + origin-zone derivation). |
 
+| [planning/2026-07-23-session-77-category-selector-polish.md](planning/2026-07-23-session-77-category-selector-polish.md) | UI follow-up on the category selector: **bigger** category pills (scoped `.category-pills`, so the Index filter chips stay compact) and moved **above** the name/icon row in `EventForm`; and the **maybe-shelf quick-add no longer shows the selector** (a pills row in the one-line day-view jot was awkward, category isn't a must for an idea) — an idea is created uncategorized and gets its category when scheduled into an event. Recorded as the ADR-0038 follow-up. |
+
 Cold-start / source material, kept out of the chronology above:
 
 | Doc                                                                                    | Purpose                                                                   |

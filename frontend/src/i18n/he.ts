@@ -693,7 +693,6 @@ export const t = {
     gapFillEmpty: 'אין רעיונות במדף · הוסף אירוע חדש',
     addIdea: 'הוסף רעיון למדף',
     addIdeaPlaceholder: 'רעיון חדש למדף…',
-    addIdeaCategory: 'קטגוריה',
     removeIdea: 'הסר רעיון',
     gap: (label: string) => `פער של ${label} · ＋ שבץ`,
     gapMinutes: (n: number) => `${n} דק׳`,

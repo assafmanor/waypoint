@@ -1767,13 +1767,8 @@
 /* add-idea row under the shelf */
 .add-idea {
   display: flex;
-  flex-direction: column;
   gap: 8px;
   margin-top: 10px;
-}
-.add-idea-row {
-  display: flex;
-  gap: 8px;
 }
 .add-idea input {
   flex: 1;
