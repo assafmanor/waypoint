@@ -58,7 +58,7 @@ Feasibility discussion on the fast-follow map converged into concrete Phase-6 de
 ## Left open for the follow-on sessions
 
 - **BE-arch:** Places API key model — restricted client key vs. backend proxy (the cost/exposure lever).
-- **FE-arch:** one shared search core vs. two components (leaning shared, two presentations); reuse the Index chip/search/mode-accent grammar (ADR-0098/0100, `lib/index-bookings.ts`) for the Map filter row rather than a second copy.
+- **FE-arch:** one shared search core vs. two components (leaning shared, two presentations); reuse the Index chip/search/mode-accent grammar (ADR-0098/0100, `lib/index-bookings.ts`) for the Map filter row rather than a second copy. **Also inherits ADR-0108's FE requirements** (proxy-only calls, debounced autocomplete, FE-minted session token, graceful 429 handling) — consolidated in the session-70 note's "FE-architecture handoff".
 - **Design:** geolocation permission UX + degrade-if-denied.
 - **Product (minor):** ratify union semantics + colour-by-most-committed for multi-facet places.
 
