@@ -141,6 +141,39 @@ describe('PlacesService', () => {
     expect(enriched.id).toBe(lite.id); // same row, enriched in place — no duplicate
     expect(enriched.googlePlaceId).toBe(SHIBUYA_DETAILS.googlePlaceId);
     expect(enriched.timezone).toBe('Asia/Tokyo');
+    expect(enriched.lat).toBeCloseTo(35.6595);
+    expect(enriched.name).toBe('somewhere in Shibuya'); // user's label preserved (ADR-0110 §1)
+    expect(await prisma.place.count({ where: { tripId } })).toBe(1);
+  });
+
+  it('resolvePlace rejects a foreign/unknown enrichPlaceId before spending a Place Details call', async () => {
+    const tripId = await newTrip();
+
+    await expect(
+      service.resolvePlace(tripId, DEV_USER, {
+        googlePlaceId: SHIBUYA_DETAILS.googlePlaceId,
+        sessionToken: 'tok-1',
+        enrichPlaceId: 'pl-not-in-this-trip',
+      }),
+    ).rejects.toThrow();
+    expect(detailsSpy).not.toHaveBeenCalled(); // validated before the paid call
+  });
+
+  it('create() with an already-present googlePlaceId returns the existing row (dedup, not 404)', async () => {
+    const tripId = await newTrip();
+    const first = await service.create(tripId, DEV_USER, {
+      name: 'Tower A',
+      googlePlaceId: 'ChIJ-dup',
+    });
+
+    // A different client id but the same googlePlaceId trips the new unique constraint;
+    // the P2002 recovery returns the existing row instead of 404ing the never-inserted id.
+    const second = await service.create(tripId, DEV_USER, {
+      name: 'Tower B',
+      googlePlaceId: 'ChIJ-dup',
+    });
+
+    expect(second.id).toBe(first.id);
     expect(await prisma.place.count({ where: { tripId } })).toBe(1);
   });
 });

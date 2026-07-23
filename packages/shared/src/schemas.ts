@@ -155,7 +155,9 @@ export type PlacePrediction = z.infer<typeof placePredictionSchema>;
 /** `POST /trips/:tripId/places/search` body — the debounced Autocomplete relay
  *  (ADR-0108 §1 / ADR-0110 §1). */
 export const searchPlacesSchema = z.object({
-  input: z.string().min(1),
+  // Bounded so an oversized string can't be relayed verbatim to the billed Autocomplete
+  // endpoint; a real place query is short (Google itself caps around this length).
+  input: z.string().min(1).max(200),
   sessionToken: sessionTokenSchema,
 });
 export type SearchPlacesInput = z.infer<typeof searchPlacesSchema>;

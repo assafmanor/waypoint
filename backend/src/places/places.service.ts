@@ -12,7 +12,6 @@ import {
   type SearchPlacesInput,
   type UpdatePlaceInput,
 } from '@waypoint/shared';
-import { assertPlacesInTrip } from '../common/trip-scope.util';
 import { PrismaService } from '../prisma/prisma.service';
 import { ChangeService } from '../sync/change.service';
 import { toPlaceDto } from '../trips/trips.mapper';
@@ -60,10 +59,16 @@ export class PlacesService {
       });
       return toPlaceDto(entity);
     } catch (err) {
-      // Client-generated id (ADR-0018): an offline-outbox retry re-POSTs the same id;
-      // treat the unique-constraint hit as "already applied" (sync-and-offline.md).
       if (err instanceof Prisma.PrismaClientKnownRequestError && err.code === 'P2002') {
-        return toPlaceDto(await this.requirePlace(tripId, id));
+        // Two constraints can trip P2002 now (the @@unique([tripId, googlePlaceId])
+        // added in ADR-0108, alongside the id primary key):
+        //  - same client id re-POSTed → an offline-outbox retry (ADR-0018), already applied;
+        //  - a googlePlaceId already present on another row → dedup, return that row
+        //    rather than a spurious 404 for the never-inserted id.
+        const existing =
+          (await this.prisma.place.findFirst({ where: { id, tripId } })) ??
+          (input.googlePlaceId ? await this.findByGoogleId(tripId, input.googlePlaceId) : null);
+        if (existing) return toPlaceDto(existing);
       }
       throw err;
     }
@@ -122,18 +127,24 @@ export class PlacesService {
   ): Promise<Place> {
     // Dedup-before-spend: the (tripId, googlePlaceId) uniqueness constraint means at
     // most one row per Google place per trip. A hit short-circuits before any spend.
-    const cached = await this.prisma.place.findFirst({
-      where: { tripId, googlePlaceId: input.googlePlaceId },
-    });
+    // This also governs the enrichPlaceId corner (ADR-0110 §1): when the picked place
+    // is already in the trip on another row, dedup wins and that row is returned —
+    // the passed Place-lite is left as-is rather than creating a duplicate.
+    const cached = await this.findByGoogleId(tripId, input.googlePlaceId);
     if (cached) return toPlaceDto(cached);
+
+    // Validate the enrich target (and load its `before` state) BEFORE the paid Place
+    // Details call, so a bogus/foreign enrichPlaceId is rejected without spending a SKU.
+    const target = input.enrichPlaceId
+      ? await this.requirePlace(tripId, input.enrichPlaceId)
+      : null;
 
     const details = await this.google.placeDetails(input.googlePlaceId, input.sessionToken);
     const timezone = this.resolveTimezone(details.lat, details.lng);
 
-    if (input.enrichPlaceId) {
-      return this.enrichExisting(tripId, actorUserId, input.enrichPlaceId, details, timezone);
-    }
-    return this.createEnriched(tripId, actorUserId, details, timezone);
+    return target
+      ? this.enrichExisting(tripId, actorUserId, target, details, timezone)
+      : this.createEnriched(tripId, actorUserId, details, timezone);
   }
 
   /** Resolve the IANA zone once from coords (ADR-0107/0108). `geo-tz` returns [] for
@@ -150,6 +161,7 @@ export class PlacesService {
     timezone: string | undefined,
   ): Promise<Place> {
     const id = randomUUID();
+    // A fresh pick has no user-authored name, so it takes Google's displayName.
     const data = {
       googlePlaceId: details.googlePlaceId,
       name: details.name,
@@ -170,33 +182,23 @@ export class PlacesService {
       });
       return toPlaceDto(entity);
     } catch (err) {
-      // A concurrent pick of the same place in the same trip trips the
-      // (tripId, googlePlaceId) unique constraint — the dedup guarantee holding under
-      // a race. Return the row the other request just wrote (zero extra spend).
-      if (err instanceof Prisma.PrismaClientKnownRequestError && err.code === 'P2002') {
-        const winner = await this.prisma.place.findFirst({
-          where: { tripId, googlePlaceId: details.googlePlaceId },
-        });
-        if (winner) return toPlaceDto(winner);
-      }
-      throw err;
+      return this.recoverDedupRace(err, tripId, details.googlePlaceId);
     }
   }
 
-  /** Adopt the Google id/coords/zone onto an existing coordless Place-lite (the
-   *  "auto-enriches on next pick" flow, ADR-0106 §12 / ADR-0110 §1). */
+  /** Adopt the Google id/coords/address/zone onto an existing coordless Place-lite (the
+   *  "auto-enriches on next pick" flow, ADR-0106 §12 / ADR-0110 §1). The user's own
+   *  name is preserved — ADR-0110 §1 adopts googlePlaceId/coords/timezone, not the
+   *  label the user typed. `before` is the already-scope-checked row from resolvePlace. */
   private async enrichExisting(
     tripId: string,
     actorUserId: string,
-    enrichPlaceId: string,
+    before: PrismaPlace,
     details: PlaceDetails,
     timezone: string | undefined,
   ): Promise<Place> {
-    await assertPlacesInTrip(this.prisma, tripId, [enrichPlaceId]);
-    const before = await this.requirePlace(tripId, enrichPlaceId);
     const data = {
       googlePlaceId: details.googlePlaceId,
-      name: details.name,
       address: details.address,
       lat: details.lat,
       lng: details.lng,
@@ -207,29 +209,40 @@ export class PlacesService {
         tripId,
         actorUserId,
         entityType: ENTITY_TYPE.PLACE,
-        entityId: enrichPlaceId,
+        entityId: before.id,
         action: CHANGE_ACTION.UPDATE,
         before: toPlaceDto(before),
         after: data,
         apply: (tx) =>
           tx.place.update({
-            where: { id: enrichPlaceId },
+            where: { id: before.id },
             data: { updatedBy: actorUserId, ...data },
           }),
       });
       return toPlaceDto(entity);
     } catch (err) {
-      // A concurrent pick already linked this Google place to another row in the trip
-      // (dedup race). The uniqueness constraint wins — return the already-enriched row
-      // rather than a duplicate; the Place-lite stays as-is (ADR-0108 §3).
-      if (err instanceof Prisma.PrismaClientKnownRequestError && err.code === 'P2002') {
-        const winner = await this.prisma.place.findFirst({
-          where: { tripId, googlePlaceId: details.googlePlaceId },
-        });
-        if (winner) return toPlaceDto(winner);
-      }
-      throw err;
+      return this.recoverDedupRace(err, tripId, details.googlePlaceId);
     }
+  }
+
+  /** A concurrent pick of the same Google place in the same trip trips the
+   *  (tripId, googlePlaceId) unique constraint — the dedup guarantee holding under a
+   *  race. Return the row the winning request wrote (zero extra spend); rethrow anything
+   *  else. Shared by the create and enrich paths so the recovery can't drift. */
+  private async recoverDedupRace(
+    err: unknown,
+    tripId: string,
+    googlePlaceId: string,
+  ): Promise<Place> {
+    if (err instanceof Prisma.PrismaClientKnownRequestError && err.code === 'P2002') {
+      const winner = await this.findByGoogleId(tripId, googlePlaceId);
+      if (winner) return toPlaceDto(winner);
+    }
+    throw err;
+  }
+
+  private findByGoogleId(tripId: string, googlePlaceId: string): Promise<PrismaPlace | null> {
+    return this.prisma.place.findFirst({ where: { tripId, googlePlaceId } });
   }
 
   private async requirePlace(tripId: string, placeId: string): Promise<PrismaPlace> {

@@ -1,4 +1,9 @@
-import { Injectable, Logger, ServiceUnavailableException } from '@nestjs/common';
+import {
+  BadRequestException,
+  Injectable,
+  Logger,
+  ServiceUnavailableException,
+} from '@nestjs/common';
 import type { PlacePrediction } from '@waypoint/shared';
 import { GOOGLE_MAPS_SERVER_KEY, requireEnv } from '../common/env';
 
@@ -116,6 +121,13 @@ export class GooglePlacesClient {
     if (!res.ok) {
       // Never surface Google's body (may carry key/quota detail) — log status only.
       this.logger.error(`Places API responded ${res.status} for ${new URL(url).pathname}`);
+      // A 400/404 means the caller sent a bad input/googlePlaceId — a permanent client
+      // error, so surface a 400 (retrying can't help). Everything else (a bad/over-quota
+      // key = 401/403/429, or a 5xx) is an upstream fault the client should treat as
+      // transient — 503, degrade softly (ADR-0108 §5).
+      if (res.status === 400 || res.status === 404) {
+        throw new BadRequestException('Invalid place request');
+      }
       throw new ServiceUnavailableException('Places service unavailable');
     }
     return (await res.json()) as T;
