@@ -12,6 +12,11 @@ export const MS_PER_DAY = 86_400_000;
  *  time inputs). */
 export const DEVICE_LOCALE =
   typeof Intl !== 'undefined' ? Intl.DateTimeFormat().resolvedOptions().locale : 'he';
+
+/** The device's IANA timezone — used only where no trip (and so no
+ *  trip-local timezone) is loaded yet, e.g. the boot screen's clock. */
+export const DEVICE_TIMEZONE =
+  typeof Intl !== 'undefined' ? Intl.DateTimeFormat().resolvedOptions().timeZone : 'UTC';
 export const MINUTES_PER_HOUR = 60;
 export const MINUTES_PER_DAY = MINUTES_PER_HOUR * 24;
 

@@ -128,6 +128,14 @@ Trip mode assumes bad connectivity abroad. Every component ships with its states
 - Offline grammar (already started on the map): desaturated surface + "last saved" banner + stale-data labels. Apply the same grammar to index, board, and glance cards.
 - Empty states teach ("היום ריק — גרור מהמדף"), never dead-end.
 
+### Loading is one language in three weights (ADR-0105)
+
+Boot (full screen) · snapshot (chrome-preserving) · upload row (inline) read as one motif — a filling departure-line — not three unrelated treatments. Shipped so far (`mockups/loading-states-v1.html`, `ui/feedback/`):
+
+- **Boot — `BootScreen`.** The loud "board power-on": a genuinely light cool-paper (`--screen`) ground, ink mono clock + a small amber halo that **ramps** (a warm-up, distinct from the reserved live pulse), and an indeterminate departure-line sweep. Theme-aware, not mode-aware — mode is derived from a trip this screen hasn't loaded yet, so it reads as brand. Replaces every `shell.booting` site (auth check, route-chunk `Suspense`, trips-list load). Dark theme is designed (ADR-0105) but ships only with the `data-theme='dark'` toggle (U-08).
+- **Snapshot — `HomeSkeleton` + `ChromeSkeleton`, inside `LoadingState`.** A content-shaped skeleton pre-draws Home per mode instead of anonymous shimmer bars: Trip = the dark board hero + quick-access tiles + glance rail; Plan = the violet prep hero + readiness bar + checklist rows. The header bar behind it reuses the real `.header`/`.mode-chrome` chrome (so it's already mode-themed) and shows the real trip name/icon immediately when the caller already knows them, so only the avatar shimmers.
+- **Upload row — not yet built.** Still the indeterminate `מעלה…` spinner; the determinate `NN%` + mini-bar needs upload-progress reporting from ADR-0056's outbox upload, which hasn't landed.
+
 ## Core components (from the mockup)
 
 - **Departure-board hero** — live pill ("עכשיו"), clock, now-title, next-row with countdown chip, day progress bar with knob.

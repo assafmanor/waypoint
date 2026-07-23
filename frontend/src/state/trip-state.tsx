@@ -85,7 +85,8 @@ import { EVENTS, MAYBE_ITEMS } from '../fixtures';
 import { useAuth } from './auth-state';
 import { DAY_PARAM, HOME_TAB, TAB_PARAM, daySelectTarget, resolveActiveDate } from './nav-state';
 import { AppShell } from '../ui/layout';
-import { ErrorState, LoadingState, Skeleton } from '../ui/feedback';
+import { ChromeSkeleton, ErrorState, HomeSkeleton, LoadingState } from '../ui/feedback';
+import { deriveMode } from '../lib/mode';
 import { t } from '../i18n/he';
 
 export type { RippleSuggestion };
@@ -404,7 +405,22 @@ const TripContext = createContext<TripContextValue | null>(null);
 // Bootstraps from GET /trips/:tripId/snapshot (T-034); the tripId prop is the
 // seam T-027 fills with a real switcher. Verbs still mutate local state only —
 // writing back to the API is T-014.
-export function TripProvider({ tripId, children }: { tripId: string; children: ReactNode }) {
+export function TripProvider({
+  tripId,
+  knownTrip,
+  children,
+}: {
+  tripId: string;
+  // Best-effort trip fields the caller already has in hand (e.g. RootSurface's
+  // resolved trips list) — used only to pick the snapshot skeleton's mode
+  // shape and pre-fill its header bar (ADR-0105) before the snapshot itself
+  // has loaded. `useMode`/`useTrip` aren't reachable this early: ModeProvider
+  // and the real Header both read `useTrip`, which only exists once TripReady
+  // mounts below. Omitted, the skeleton defaults to the Trip shape with a
+  // placeholder name.
+  knownTrip?: Pick<Trip, 'startDate' | 'endDate' | 'timezone' | 'name' | 'icon'> | null;
+  children: ReactNode;
+}) {
   const [snapshot, setSnapshot] = useState<TripSnapshot | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [usingCachedSnapshot, setUsingCachedSnapshot] = useState(false);
@@ -466,17 +482,13 @@ export function TripProvider({ tripId, children }: { tripId: string; children: R
     );
   }
   if (!snapshot) {
+    // The one tier that needs a mode variant (ADR-0105): the chrome is already
+    // mode-themed by the time this shows, so the skeleton shape-matches what
+    // Home resolves into rather than popping from a mismatched shape.
+    const mode = knownTrip ? deriveMode(knownTrip, new Date(getNow())) : 'trip';
     return (
-      <AppShell>
-        <LoadingState
-          label={t.snapshot.loading}
-          skeleton={
-            <>
-              <Skeleton shape="block" height={128} />
-              <Skeleton shape="line" lines={3} />
-            </>
-          }
-        />
+      <AppShell mode={mode} header={<ChromeSkeleton mode={mode} trip={knownTrip} />}>
+        <LoadingState label={t.snapshot.loading} skeleton={<HomeSkeleton mode={mode} />} />
       </AppShell>
     );
   }

@@ -245,3 +245,182 @@
 .sync-badge-failed {
   color: var(--sync-failed);
 }
+
+/* ── BootScreen — tier 3, the full-bleed "board power-on" (ADR-0105) ───────
+   Light theme only this task: a genuinely light cool-paper (--screen) day
+   ground, ink numerals, a small amber halo. Every color reads a token (via
+   color-mix, never a literal hex) so the block stays remap-ready for the
+   dark boot (designed, not wired, this task — see the ADR). */
+.fb-boot {
+  min-height: 100vh;
+  min-height: 100dvh;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: var(--space-5);
+  padding: var(--space-6);
+  background: var(--screen);
+  text-align: center;
+}
+
+.fb-boot-mark {
+  position: relative;
+  z-index: 1;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: var(--space-1);
+}
+/* The amber halo behind the clock — a small accent, never a field (the
+   "amber is an accent, not a ground" rule the ADR's alternatives rejected). */
+.fb-boot-mark::before {
+  content: '';
+  position: absolute;
+  inset: -58px;
+  z-index: -1;
+  margin: auto;
+  background: radial-gradient(
+    circle,
+    color-mix(in srgb, var(--amber) 32%, transparent),
+    transparent 62%
+  );
+  filter: blur(12px);
+  opacity: 0.6;
+  animation: fb-boot-warm 2.6s ease-in-out infinite alternate;
+  pointer-events: none;
+}
+@keyframes fb-boot-warm {
+  to {
+    opacity: 0.85;
+  }
+}
+
+.fb-boot-clock {
+  font-family: var(--font-mono);
+  font-weight: 700;
+  font-size: 34px;
+  letter-spacing: 0.04em;
+  color: var(--ink);
+}
+.fb-boot-dots {
+  font-family: var(--font-mono);
+  font-size: var(--text-h2);
+  letter-spacing: 0.24em;
+  color: var(--amber-deep);
+  opacity: 1;
+  animation: fb-boot-dotfade 1.4s steps(1) infinite;
+}
+@keyframes fb-boot-dotfade {
+  0% {
+    opacity: 0.3;
+  }
+  50% {
+    opacity: 1;
+  }
+  100% {
+    opacity: 0.3;
+  }
+}
+
+.fb-boot-label {
+  font-family: var(--font-head);
+  font-size: var(--text-h3);
+  color: var(--muted);
+  z-index: 1;
+}
+
+/* Indeterminate departure-line sweep — echoes the day-progress / readiness
+   bars' motif, shrunk to a boot cue. The resting (non-animated) position is
+   the declared value below, so prefers-reduced-motion (App.css's global
+   `animation: none`) freezes it mid-line instead of collapsing off-screen. */
+.fb-boot-track {
+  position: relative;
+  inline-size: min(190px, 55vw);
+  block-size: 4px;
+  border-radius: var(--radius-999);
+  overflow: hidden;
+  background: color-mix(in srgb, var(--ink) 14%, transparent);
+  z-index: 1;
+}
+.fb-boot-seg {
+  position: absolute;
+  inset-block: 0;
+  inset-inline-start: 30%;
+  inline-size: 42%;
+  border-radius: var(--radius-999);
+  background: linear-gradient(90deg, transparent, var(--amber-deep), transparent);
+  animation: fb-boot-sweep 1.7s var(--ease-standard) infinite;
+}
+@keyframes fb-boot-sweep {
+  0% {
+    inset-inline-start: -45%;
+  }
+  100% {
+    inset-inline-start: 100%;
+  }
+}
+
+/* ── ChromeSkeleton — the mode-themed header bar behind the skeleton ───────
+   Renders through the real .header/.mode-chrome/.trip-row/.trip-name-* rules
+   above (App.css), so this only recolors the shimmer for the Trip-mode
+   (indigo/dark) header — Plan mode's header re-skins to --card/light, where
+   the base .fb-skel styling already reads correctly. */
+.header[data-mode='trip'] .fb-skel,
+.mode-chrome[data-mode='trip'] .fb-skel {
+  background: rgba(255, 255, 255, 0.22);
+}
+.header[data-mode='trip'] .fb-skel::after,
+.mode-chrome[data-mode='trip'] .fb-skel::after {
+  background: linear-gradient(90deg, transparent, rgba(255, 255, 255, 0.24), transparent);
+}
+
+/* ── HomeSkeleton — tier 2, the content-shaped snapshot skeleton (ADR-0105) ─
+   Pre-draws the real Home per mode so content settles rather than replaces.
+   Renders through the REAL component classes (.wp-board-*, .quick/.qa,
+   .glance-day, .prep-*, .checklist/.chk-*) with Skeleton bars standing in for
+   text, so this file only needs to recolor the shimmer for the two hero
+   surfaces' own always-dark/violet backgrounds — everything else (padding,
+   radius, spacing, the gradients themselves) comes from the real stylesheets
+   and can't drift out of shape independently (ADR-0096). */
+/* Groups the per-mode shape for aria-hidden without adding its own box — the
+   parent LoadingState's .fb-loading-skel already supplies the flex column +
+   gap layout these blocks stack in. */
+.fb-skel-home {
+  display: contents;
+}
+.wp-board .fb-skel,
+.prep .fb-skel {
+  background: rgba(255, 255, 255, 0.2);
+}
+.wp-board .fb-skel::after,
+.prep .fb-skel::after {
+  background: linear-gradient(90deg, transparent, rgba(255, 255, 255, 0.22), transparent);
+}
+/* The board stays the loudest even as a skeleton (design-language "Dark mode
+   readiness" / ADR-0105 note): the dark .wp-board surface is legible before
+   any text loads, so hierarchy reads immediately — this is the real class,
+   not a copy, so its own gradient/radius/padding just apply as-is. */
+
+/* A generic "label + trailing bit" row for content the real CSS doesn't name
+   a class for (the glance card's own preview line here). */
+.fb-skel-row {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: var(--space-2);
+}
+/* Pill radius override for the progress/readiness tracks (the base Skeleton
+   shapes only ship radius-8/12/999-circle) — the real .track/.prep-track are
+   3-7px tall, where a pill radius reads identically to their own small one. */
+.fb-skel-pill {
+  border-radius: var(--radius-999);
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .fb-boot-mark::before,
+  .fb-boot-dots,
+  .fb-boot-seg {
+    animation: none;
+  }
+}
