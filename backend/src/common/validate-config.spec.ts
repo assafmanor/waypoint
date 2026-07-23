@@ -11,6 +11,7 @@ const prodEnv = (over: Record<string, string | undefined> = {}): NodeJS.ProcessE
   GOOGLE_CLIENT_ID: 'id',
   GOOGLE_CLIENT_SECRET: 'secret',
   GOOGLE_OAUTH_REDIRECT_URI: 'https://app.example.com/auth/google/callback',
+  GOOGLE_MAPS_SERVER_KEY: 'maps-server-key',
   ...over,
 });
 
@@ -38,6 +39,12 @@ describe('validateConfig (B-04)', () => {
   it('rejects a key that does not decode to 32 bytes', () => {
     expect(() => validateConfig(prodEnv({ DOC_ENCRYPTION_KEY: 'too-short' }))).toThrow(
       /DOC_ENCRYPTION_KEY must be base64/,
+    );
+  });
+
+  it('rejects a missing Places server key in production (ADR-0108)', () => {
+    expect(() => validateConfig(prodEnv({ GOOGLE_MAPS_SERVER_KEY: undefined }))).toThrow(
+      /GOOGLE_MAPS_SERVER_KEY is required/,
     );
   });
 

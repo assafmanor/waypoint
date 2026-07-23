@@ -3,6 +3,7 @@ import {
   FRONTEND_URL,
   GOOGLE_CLIENT_ID,
   GOOGLE_CLIENT_SECRET,
+  GOOGLE_MAPS_SERVER_KEY,
   GOOGLE_OAUTH_REDIRECT_URI,
   JWT_SECRET,
   TOKEN_ENCRYPTION_KEY,
@@ -71,6 +72,12 @@ export function validateConfig(env: NodeJS.ProcessEnv = process.env): void {
   for (const name of [GOOGLE_CLIENT_ID, GOOGLE_CLIENT_SECRET] as const) {
     if (isProd && !env[name]) problems.push(`${name} is required`);
   }
+
+  // The Places proxy holds the server key (ADR-0108 §1); a prod deploy without it
+  // would boot "healthy" and only 500 on the first place search. Dev/test may omit
+  // it (the picker routes 500 if exercised — everything else runs).
+  if (isProd && !env[GOOGLE_MAPS_SERVER_KEY])
+    problems.push(`${GOOGLE_MAPS_SERVER_KEY} is required`);
 
   for (const name of [GOOGLE_OAUTH_REDIRECT_URI, FRONTEND_URL] as const) {
     const value = env[name];

@@ -28,6 +28,7 @@
     "@prisma/client": "^7.8.0",
     "@waypoint/shared": "workspace:*",
     "dotenv": "^17.4.2",
+    "geo-tz": "^7.0.7",
     "nestjs-zod": "^5.4.0",
     "pg": "^8.22.0",
     "prisma": "^7.8.0",
