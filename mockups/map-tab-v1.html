@@ -1108,11 +1108,14 @@
           0 4px 7px -1px rgba(0, 0, 0, 0.4),
           0 0 0 3px rgba(233, 166, 60, 0.85);
       }
+      /* lock sits on .mpin (NOT inside the rotated .b), so it stays upright */
       .mapmini .lockdot {
         position: absolute;
-        top: -3px;
-        right: -3px;
-        font-size: 9px;
+        top: -2px;
+        inset-inline-end: -3px;
+        font-size: 10px;
+        line-height: 1;
+        filter: drop-shadow(0 1px 1px rgba(0, 0, 0, 0.4));
       }
       .mapmini .me {
         position: absolute;
@@ -1698,13 +1701,15 @@
             style="left: 60%; top: 40%; width: 22%; transform: rotate(30deg)"
           ></div>
           <div class="mpin cat-transit now" style="left: 30%; top: 47%">
-            <div class="b"><span class="g">🚉</span><span class="lockdot">🔒</span></div>
+            <div class="b"><span class="g">🚉</span></div>
+            <span class="lockdot">🔒</span>
           </div>
           <div class="mpin cat-food" style="left: 63%; top: 41%">
             <div class="b"><span class="g">🍜</span></div>
           </div>
           <div class="mpin cat-lodging" style="left: 80%; top: 66%">
-            <div class="b"><span class="g">🏨</span><span class="lockdot">🔒</span></div>
+            <div class="b"><span class="g">🏨</span></div>
+            <span class="lockdot">🔒</span>
           </div>
           <div class="mpin cat-leisure idea" style="left: 44%; top: 72%">
             <div class="b"><span class="g">🍶</span></div>
