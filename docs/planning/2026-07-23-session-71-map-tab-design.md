@@ -1,8 +1,8 @@
-# Session 70 — Map surface design (ADR-0108)
+# Session 71 — Map surface design (ADR-0109)
 
 **Date:** 2026-07-23
 **Type:** Design session (no app code). Session #1 of ADR-0106's follow-on roadmap ("Design — the Map surface").
-**Output:** [ADR-0108](../decisions/0108-map-tab-design.md) (Accepted, design) + [`mockups/map-tab-v1.html`](../../mockups/map-tab-v1.html), plus doc sync (design-language, mockup catalog, INDEX/README routers, backlog, ADR-0106 open-question annotations).
+**Output:** [ADR-0109](../decisions/0109-map-tab-design.md) (Accepted, design) + [`mockups/map-tab-v1.html`](../../mockups/map-tab-v1.html), plus doc sync (design-language, mockup catalog, INDEX/README routers, backlog, ADR-0106 open-question annotations).
 
 ## Frame (unchanged, inherited)
 
@@ -16,7 +16,7 @@ Scope, phasing, and the embedded-map direction were already fixed and merged in 
 - **The pin = the Waypoint marker** (ADR-0087) as a custom AdvancedMarker on "quiet base, loud pins" (ADR-0106 Decision C): teal body = location, **glyph = category** (ADR-0038, not a fill), **amber core = commitment** (colour-by-most-committed, expressed as core state: lit/dim/absent). Kept inside ADR-0028's budget and consistent with the ADR-0105 loading-states palette now on `main` (amber is an accent, not a ground).
 - **ADR-0107's editable timezone chip** on the time input (single chip for a placed event, two for transport with the `+1` tag).
 
-## Open questions resolved (recorded in ADR-0108, annotated back into ADR-0106)
+## Open questions resolved (recorded in ADR-0109, annotated back into ADR-0106)
 
 1. **Multi-day place under the day filter → edge-loud, middle-ambient** (follows 0054/0064): loud pin on arrival/departure edge days, a quiet ambient "your base" row (no amber core) on strictly-middle days. Neither "every span day (loud)" nor "edge days only".
 2. **Multi-facet place → union semantics + colour-by-most-committed** (ratifies ADR-0106's recommendation): shows under every matching facet, pin takes the most-committed state (`hard > soft > idea`).
@@ -25,11 +25,11 @@ Scope, phasing, and the embedded-map direction were already fixed and merged in 
 
 ## Notable call — superseding the 5 pastel category pins
 
-The design-language previously sanctioned "teardrop pins in 5 pastel category colours" (+ "map pin categories" in the decorative palette). ADR-0108 **supersedes** that: category moves to the glyph, the pin spends only teal + amber. Rationale: five decorative hues fight "quiet base, loud pins," dilute teal as the location signal (ADR-0028), and duplicate a signal the glyph already carries (ADR-0038). `design-language.md` updated in the same change (founding principle: docs stay in sync).
+The design-language previously sanctioned "teardrop pins in 5 pastel category colours" (+ "map pin categories" in the decorative palette). ADR-0109 **supersedes** that: category moves to the glyph, the pin spends only teal + amber. Rationale: five decorative hues fight "quiet base, loud pins," dilute teal as the location signal (ADR-0028), and duplicate a signal the glyph already carries (ADR-0038). `design-language.md` updated in the same change (founding principle: docs stay in sync).
 
 ## Day-strip reconciliation (post-review revision)
 
-Assaf showed the real shipped day strip (both modes) and asked how it fits the map, since **tapping a day currently navigates to the Day view** (`setActiveDate` lands on the `days` tab) — different from the in-place filter the first draft assumed. Read `ui/domain/DayStrip.tsx` + `App.tsx`. Resolution recorded in ADR-0108 §1:
+Assaf showed the real shipped day strip (both modes) and asked how it fits the map, since **tapping a day currently navigates to the Day view** (`setActiveDate` lands on the `days` tab) — different from the in-place filter the first draft assumed. Read `ui/domain/DayStrip.tsx` + `App.tsx`. Resolution recorded in ADR-0109 §1:
 
 - The strip's real rule is already "focus this day → show it on a day-scoped surface, **in place** if you're on one (the Day view updates in place), else route to the Day view (Home/Index)." The Map is simply a **second day-scoped surface**, so it focuses the day in place — no new inconsistency, it joins the Day view's behaviour.
 - The first draft's bespoke map strip + "כל הימים" pill was wrong (duplicated the shared component, mis-drew it, and can't hold "all days" since the app has one active date). Corrected: reuse the real `DayStrip` verbatim; "all days" is a **map-local scope chip**.
@@ -39,15 +39,15 @@ The mockup's day strip was rebuilt to match the shipped component (header chrome
 
 ## Review round 3 — Places picker flow (Phase-1 keystone)
 
-Added a mockup panel + ADR-0108 §12 designing the picker interaction (the epic's keystone, previously only referenced): Autocomplete search → predictions (with a visible "כבר בטיול" `googlePlaceId`-dedup chip that links instead of duplicating) → create-or-link an enriched `Place` (coords · address · timezone · rating) cached on the row (pick once, free/offline re-read) → the name-only "Place-lite" fallback that auto-enriches on next pick. Session-token cost stated in the UI. Assumes ADR-0106's "one shared search core, two presentations" lean. Also added the **frontend `CLAUDE.md` reuse audit** to ADR-0108 (ChoiceGrid for chips + category selector, ui/feedback for empty/offline/loading, ListRow for the row, WhenField for the zone chip, Modal/useOverlay for overlays, `Record<EventCategory>` lookups, IconPicker glyph-only) after checking the design against those rules.
+Added a mockup panel + ADR-0109 §12 designing the picker interaction (the epic's keystone, previously only referenced): Autocomplete search → predictions (with a visible "כבר בטיול" `googlePlaceId`-dedup chip that links instead of duplicating) → create-or-link an enriched `Place` (coords · address · timezone · rating) cached on the row (pick once, free/offline re-read) → the name-only "Place-lite" fallback that auto-enriches on next pick. Session-token cost stated in the UI. Assumes ADR-0106's "one shared search core, two presentations" lean. Also added the **frontend `CLAUDE.md` reuse audit** to ADR-0109 (ChoiceGrid for chips + category selector, ui/feedback for empty/offline/loading, ListRow for the row, WhenField for the zone chip, Modal/useOverlay for overlays, `Record<EventCategory>` lookups, IconPicker glyph-only) after checking the design against those rules.
 
 ## Decision — defer the Phase 5 & Phase 6 _detailed_ designs (2026-07-23)
 
-Asked whether to design the remaining pieces now or later, the call was **defer** (recorded in ADR-0108's "Scope of this design session, and what is deliberately deferred"). The Map **surface** design is complete; the **detailed** design of **Phase 5 (research results)** and the **fully-rendered Phase 6 map** — plus **navigate-to-next** — is deferred to their own build sessions. Why: they're the last phases, gated on Google Cloud + BE-arch; Phase 6 is pricing/API-sensitive (ADR-0106 says confirm current Maps API/pricing at build time) and its direction (ADR-0106 §A–F) + look/integration (ADR-0108 §3/§10) are already fixed; Phase 5 reuses the picker's search core (§12) + the existing result-card grammar, so it's best mocked against the real picker. A future chat should treat those mockups as intentionally not-yet-done and pick them up in/just-before their implementation phase.
+Asked whether to design the remaining pieces now or later, the call was **defer** (recorded in ADR-0109's "Scope of this design session, and what is deliberately deferred"). The Map **surface** design is complete; the **detailed** design of **Phase 5 (research results)** and the **fully-rendered Phase 6 map** — plus **navigate-to-next** — is deferred to their own build sessions. Why: they're the last phases, gated on Google Cloud + BE-arch; Phase 6 is pricing/API-sensitive (ADR-0106 says confirm current Maps API/pricing at build time) and its direction (ADR-0106 §A–F) + look/integration (ADR-0109 §3/§10) are already fixed; Phase 5 reuses the picker's search core (§12) + the existing result-card grammar, so it's best mocked against the real picker. A future chat should treat those mockups as intentionally not-yet-done and pick them up in/just-before their implementation phase.
 
 ## Explicitly left for follow-on sessions (not this one)
 
-- **FE-arch (roadmap #3):** the place-usage derivation module, the one-shared-search-core-vs-two-components call (leaning shared), and how ADR-0107's per-event zone threads through `lib/time.ts`/`lib/places.ts`. ADR-0108 fixes _what it looks like and how it behaves_, not the module layout.
+- **FE-arch (roadmap #3):** the place-usage derivation module, the one-shared-search-core-vs-two-components call (leaning shared), and how ADR-0107's per-event zone threads through `lib/time.ts`/`lib/places.ts`. ADR-0109 fixes _what it looks like and how it behaves_, not the module layout.
 - **BE-arch (roadmap #2):** the Places API key model + the Phase-6 cost envelope + the offline lat/lng→zone library.
 - **Google Cloud setup (roadmap #0, human):** still gates all real work.
 - **Phase 5 / Phase 6 detailed design + navigate-to-next:** deferred to their build (see the decision above).
@@ -70,5 +70,5 @@ Follow-ups in the same round:
 
 ## Files touched
 
-- New: `docs/decisions/0108-map-tab-design.md`, `mockups/map-tab-v1.html`, this note.
-- Updated: `docs/decisions/0038-…md` (2026-07-23 amendment: explicit event/idea category, icon glyph-only), `docs/decisions/0106-…md` (open-question resolutions; Decision C teal→category; ratings exception; Phase-1/6 pointers), `docs/design/design-language.md` (Map entry + decorative-palette restored), `docs/design/mockups.md` (entry), `docs/decisions/README.md` (0108 row), `docs/INDEX.md` (design-domain router + planning rows), `docs/backlog.md` (epic + Phase lines, ratings, category selector).
+- New: `docs/decisions/0109-map-tab-design.md`, `mockups/map-tab-v1.html`, this note.
+- Updated: `docs/decisions/0038-…md` (2026-07-23 amendment: explicit event/idea category, icon glyph-only), `docs/decisions/0106-…md` (open-question resolutions; Decision C teal→category; ratings exception; Phase-1/6 pointers), `docs/design/design-language.md` (Map entry + decorative-palette restored), `docs/design/mockups.md` (entry), `docs/decisions/README.md` (0109 row), `docs/INDEX.md` (design-domain router + planning rows), `docs/backlog.md` (epic + Phase lines, ratings, category selector).

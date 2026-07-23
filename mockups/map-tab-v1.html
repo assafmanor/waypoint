@@ -2,7 +2,7 @@
 <!-- Map tab — LIST-FIRST v1 (2026-07-23 design session, item #1 of ADR-0106's
      follow-on roadmap: "Design — the Map surface"). Read ADR-0106 (scope +
      phasing + the embedded-map §), ADR-0107 (per-place timezones), and this
-     file's promoting ADR-0108 before treating anything here as settled.
+     file's promoting ADR-0109 before treating anything here as settled.
 
      WHAT THIS MOCKS (Phase 3 = the list-first tab; Phase 4 near-me; a small
      Phase-6 map-preview to pin down the marker visual):
@@ -31,7 +31,7 @@
 
      3. THE PIN = colour-by-CATEGORY (ADR-0038 §2 / ADR-0028 decorative
         palette — 5 pastel hues: food/lodging/transit/leisure/services,
-        "never amber or teal"). This RESTORES the earlier agreement; ADR-0108's
+        "never amber or teal"). This RESTORES the earlier agreement; ADR-0109's
         first draft (teal Waypoint + glyph) was wrong against it. In the LIST
         it's a regular rounded category BADGE; on the embedded MAP it's a
         category-coloured teardrop. Commitment is the hard/soft GRAMMAR (solid
@@ -39,7 +39,7 @@
         affordances (near-me · distance · נווט), amber for TIME (route ETA + an
         amber ring on the one "next" stop) — ADR-0028 budget intact.
 
-     RESOLVED OPEN QUESTIONS (recorded in ADR-0108):
+     RESOLVED OPEN QUESTIONS (recorded in ADR-0109):
      4. MULTI-DAY place under the day filter → edge-loud, middle-ambient
         (follows 0054/0064): a loud pin on arrival/departure days, a quiet
         "your base" ambient row on strictly-middle days — never a loud
@@ -744,7 +744,7 @@
         color: var(--plan-deep);
         font-weight: 700;
       }
-      /* rating = cached Google Places value (ADR-0108 §3); a status-ish neutral,
+      /* rating = cached Google Places value (ADR-0109 §3); a status-ish neutral,
          not a semantic hue — the star glyph carries it. */
       .tag.rate {
         color: var(--amber-deep);
@@ -1297,7 +1297,7 @@
       /* explicit category selector — the event's "type", built to look EXACTLY
          like the booking type picker (.typepick/.tp in plan-mode-v1): a card
          grid, icon + label, accent-tinted selected card. The icon is a separate
-         glyph-only badge (ADR-0108 §11). */
+         glyph-only badge (ADR-0109 §11). */
       /* compact, horizontally-scrollable card row (9 categories don't fit a
          grid comfortably); edge-fade mask like the filter chips. No per-card
          colour swatch — the booking type picker has none either, and 5 of the 9
@@ -2425,7 +2425,7 @@
       /* -------- the place-usage model (a stand-in for the derived index) --------
          Each place carries the facets the real derivation produces
          { days[], cat, commit, isMaybe, coords } PLUS cached Google enrichment
-         (rating — proposed for Phase 1, ADR-0108 §3). `when` = scheduled time,
+         (rating — proposed for Phase 1, ADR-0109 §3). `when` = scheduled time,
          `ctx` = what happens there (never a bare "יציאה"). */
       const PLACES = [
         {

@@ -1,4 +1,4 @@
-# 0108 — Map tab design: the list-first surface, the Waypoint pin, geolocation UX, and the resolved open questions
+# 0109 — Map tab design: the list-first surface, the Waypoint pin, geolocation UX, and the resolved open questions
 
 **Status:** Accepted (design)
 **Date:** 2026-07-23
