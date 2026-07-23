@@ -61,6 +61,8 @@ _Accuracy note (inherited from ADR-0106):_ Google's pricing and SKU/field-tier d
 
 **Session tokens survive the proxy.** The frontend mints the session token (a UUID) and passes it on each search request; the proxy forwards it verbatim and reuses it on the terminating Place Details call. Autocomplete keystrokes in the session bill at $0. Latency of relaying keystrokes through our backend is a non-issue at this scale and buys the three wins above.
 
+**FE requirement — debounced autocomplete, not per-keystroke (mandatory).** The frontend picker **must fire an Autocomplete request only after the user pauses typing** (a debounce window; each new character resets the timer and keeps waiting), never one call per keystroke. This is a **cost requirement, not just UX polish**: session tokens make in-session autocomplete free _only when the session terminates in a Place Details pick_ — a **type-and-abandon** session (no selection) bills each Autocomplete call **per-request** (~$2.83/1k). Debouncing collapses a word into ~one or two billable calls instead of one per letter, and keeps a normal typist comfortably under the search-relay rate limit (Decision 5). The exact debounce interval is an FE-arch/implementation call; that the request is pause-gated is not optional. (This ADR is BE-arch; the requirement is recorded here because it is load-bearing for the cost model and belongs in the FE-arch/Phase-1 handoff.)
+
 Rejected: **one restricted client key for everything** (simplest, but puts the ~$20/1k SKU on a spoofable public key — the exact cost exposure ADR-0106 set out to bound); **a full proxy including the map** (impossible — the JS API renders vector tiles in the browser against a URL-embedded key; there is nothing to proxy).
 
 ### 2. `geo-tz` on the backend for lat/lng→IANA, resolved once at Place write time
@@ -132,7 +134,7 @@ The Phase-0 Google Cloud human task (ADR-0106) must, before any real key ships:
 - **Two schema additions for Phase 1:** `Place.timezone` and `@@unique([tripId, googlePlaceId])`, mirrored in `@waypoint/shared`; no migration of existing rows beyond adding the nullable column + constraint (greenfield place data, no coords in the wild yet).
 - **New env: `GOOGLE_MAPS_SERVER_KEY`** (backend, `env.ts`, boot-required once the picker ships); **`VITE_GOOGLE_MAPS_BROWSER_KEY`** (frontend build, Phase 6); plus env-tunable throttle constants for the proxy's per-minute/per-day caps (Decision 5), named once in `env.ts`. Both keys minted by the Phase-0 human task, which also sets the budget alert + per-SKU quota and re-confirms current pricing.
 - **`api-contract.md` gains the proxy endpoints** when Phase 1 lands (search/relay + enrich-on-pick under `trips/:tripId/places`); noted, not written this session.
-- **FE-arch inherits a settled boundary:** the frontend calls _our_ endpoints, mints the session token, and never holds the Places/Routes key — the shared-search-core question (ADR-0106) is now "one client of our proxy vs. two," which simplifies it.
+- **FE-arch inherits a settled boundary:** the frontend calls _our_ endpoints, mints the session token, and never holds the Places/Routes key — the shared-search-core question (ADR-0106) is now "one client of our proxy vs. two," which simplifies it. It also inherits **one hard requirement: debounced (pause-gated) autocomplete** (Decision 1), load-bearing for the cost model.
 
 ## Alternatives considered
 
