@@ -1298,17 +1298,44 @@
          like the booking type picker (.typepick/.tp in plan-mode-v1): a card
          grid, icon + label, accent-tinted selected card. The icon is a separate
          glyph-only badge (ADR-0108 §11). */
-      .catgrid {
-        display: grid;
-        grid-template-columns: repeat(3, 1fr);
-        gap: 8px;
+      /* compact, horizontally-scrollable card row (9 categories don't fit a
+         grid comfortably); edge-fade mask like the filter chips. No per-card
+         colour swatch — the booking type picker has none either, and 5 of the 9
+         categories share the "leisure" hue (repeated swatches read as a bug).
+         The colour shows on the resulting pin + the legend, not here. */
+      .catscroll {
+        display: flex;
+        gap: 7px;
+        overflow-x: auto;
+        scrollbar-width: none;
+        scroll-snap-type: x proximity;
+        padding-bottom: 2px;
+        -webkit-mask-image: linear-gradient(
+          to right,
+          transparent 0,
+          black 12px,
+          black calc(100% - 12px),
+          transparent 100%
+        );
+        mask-image: linear-gradient(
+          to right,
+          transparent 0,
+          black 12px,
+          black calc(100% - 12px),
+          transparent 100%
+        );
+      }
+      .catscroll::-webkit-scrollbar {
+        display: none;
       }
       .catcard {
-        position: relative;
+        flex: 0 0 auto;
+        scroll-snap-align: start;
+        min-width: 60px;
         background: var(--card);
         border: 1px solid var(--line);
-        border-radius: 12px;
-        padding: 11px 4px;
+        border-radius: 11px;
+        padding: 8px 8px;
         text-align: center;
         cursor: pointer;
         transition: 0.12s;
@@ -1318,22 +1345,13 @@
         background: var(--plan-tint);
       }
       .catcard .i {
-        font-size: 18px;
+        font-size: 17px;
       }
       .catcard .l {
-        font-size: 10.5px;
+        font-size: 10px;
         font-weight: 700;
-        margin-top: 4px;
-      }
-      /* the category's pin colour, shown as a corner dot so the colour mapping
-         is legible while choosing */
-      .catcard .sw {
-        position: absolute;
-        top: 6px;
-        inset-inline-start: 6px;
-        width: 9px;
-        height: 9px;
-        border-radius: 3px;
+        margin-top: 3px;
+        white-space: nowrap;
       }
       /* booking-seeded event: category is DERIVED from the booking type
          (read-only), mirroring the booking form's "✨ נבחר לפי סוג ההזמנה". */
@@ -1919,49 +1937,40 @@
           <div class="form-title">אירוע ידני · <span>מקום אחד · קטגוריה מפורשת</span></div>
           <div class="fld">
             <span class="lab">קטגוריה (אותו בורר כמו סוג ההזמנה — קובעת את צבע הפין)</span>
-            <div class="catgrid">
+            <div class="catscroll">
               <div class="catcard on" onclick="toast('קטגוריה: אוכל')">
-                <i class="sw" style="background: var(--cat-food)"></i>
                 <div class="i">🍜</div>
                 <div class="l">אוכל</div>
               </div>
               <div class="catcard" onclick="toast('קטגוריה: תחבורה')">
-                <i class="sw" style="background: var(--cat-transit)"></i>
                 <div class="i">🚉</div>
                 <div class="l">תחבורה</div>
               </div>
               <div class="catcard" onclick="toast('קטגוריה: לינה')">
-                <i class="sw" style="background: var(--cat-lodging)"></i>
                 <div class="i">🏨</div>
                 <div class="l">לינה</div>
               </div>
               <div class="catcard" onclick="toast('קטגוריה: אתרים')">
-                <i class="sw" style="background: var(--cat-leisure)"></i>
                 <div class="i">⛩️</div>
                 <div class="l">אתרים</div>
               </div>
               <div class="catcard" onclick="toast('קטגוריה: טבע')">
-                <i class="sw" style="background: var(--cat-leisure)"></i>
                 <div class="i">🏞️</div>
                 <div class="l">טבע</div>
               </div>
               <div class="catcard" onclick="toast('קטגוריה: פעילות')">
-                <i class="sw" style="background: var(--cat-leisure)"></i>
                 <div class="i">🎫</div>
                 <div class="l">פעילות</div>
               </div>
               <div class="catcard" onclick="toast('קטגוריה: קניות')">
-                <i class="sw" style="background: var(--cat-leisure)"></i>
                 <div class="i">🛍️</div>
                 <div class="l">קניות</div>
               </div>
               <div class="catcard" onclick="toast('קטגוריה: שירותים')">
-                <i class="sw" style="background: var(--cat-services)"></i>
                 <div class="i">🏧</div>
                 <div class="l">שירותים</div>
               </div>
               <div class="catcard" onclick="toast('קטגוריה: אחר')">
-                <i class="sw" style="background: var(--cat-leisure)"></i>
                 <div class="i">📌</div>
                 <div class="l">אחר</div>
               </div>
