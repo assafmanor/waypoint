@@ -2,10 +2,43 @@
 // place lives on its booking (single-place → placeId; transport → origin); an
 // unlinked event owns its own placeId. Consumers resolve a display name through here
 // rather than reading a (now-removed) free-text location off the event.
-import { categoryForBookingType, type Booking, type Place, type TripEvent } from '@waypoint/shared';
+import {
+  categoryForBookingType,
+  type Booking,
+  type MaybeItem,
+  type Place,
+  type TripEvent,
+} from '@waypoint/shared';
 
 const isTransport = (booking: Booking): boolean =>
   categoryForBookingType(booking.type) === 'transport';
+
+/**
+ * Every `placeId` actually referenced by a saved entity — the set that defines
+ * "in the trip". A `Place` row exists the moment it's picked (it doubles as the
+ * dedup/enrichment cache, ADR-0048), but a picked-then-unsaved place has **no**
+ * reference, so it is cache-only, not in the trip: it drops out of this set and
+ * back in the moment something references it. Consumers (the picker's "already in
+ * trip" chip, and the Map tab's place-usage) key off this, not mere row-presence.
+ */
+export function referencedPlaceIds(
+  events: TripEvent[],
+  bookings: Booking[],
+  maybeItems: MaybeItem[],
+): Set<string> {
+  const ids = new Set<string>();
+  const add = (id?: string | null) => {
+    if (id) ids.add(id);
+  };
+  for (const e of events) add(e.placeId);
+  for (const b of bookings) {
+    add(b.placeId);
+    add(b.fromPlaceId);
+    add(b.toPlaceId);
+  }
+  for (const m of maybeItems) add(m.placeId);
+  return ids;
+}
 
 /** The effective placeId to show for an event, following the authority rule. */
 export function eventPlaceId(event: TripEvent, booking?: Booking): string | undefined {

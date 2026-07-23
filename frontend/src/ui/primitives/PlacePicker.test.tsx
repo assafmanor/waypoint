@@ -17,6 +17,9 @@ vi.mock('../../state/trip-state', () => ({
   useTrip: () => ({
     trip: { id: 't1', timezone: 'Asia/Tokyo' },
     places,
+    events: [],
+    bookings: [],
+    maybeItems: [],
     indexVerbs: { createPlace, resolvePlace },
   }),
 }));
