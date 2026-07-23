@@ -69,7 +69,7 @@ One open design question this raised (deferred to the Phase 3 design, not decide
 ## Phasing (development order)
 
 - **Phase 0 — Foundations (gates everything).** Google Cloud project (human): OAuth consent, enable Maps JS + Places API, billing, a referrer/IP-restricted key. Plus the key-handling call (Phase 0 of the BE-arch session — see open questions).
-- **Phase 1 — The Places picker (keystone).** `PlacePicker` over Places Autocomplete with session tokens; on select, create-or-link a `Place` enriched with `googlePlaceId` + coords + address, deduped by `googlePlaceId`; wired into all place fields (EventForm authoring restored). Name-only `Place` authoring stays as the offline fallback.
+- **Phase 1 — The Places picker (keystone).** `PlacePicker` over Places Autocomplete with session tokens; on select, create-or-link a `Place` enriched with `googlePlaceId` + coords + address, deduped by `googlePlaceId`; wired into all place fields (EventForm authoring restored). Name-only `Place` authoring stays as the offline fallback. **Also resolves + caches `Place.timezone` from the coordinates** (free offline lat/lng→zone lookup) — the foundation the multi-zone time model rides on ([ADR-0107](0107-per-place-timezones-and-multi-zone-time.md)).
 - **Phase 2 — Places as real data on existing surfaces.** Enriched places show properly on booking/event detail with a working "open in Maps" deep-link; every surface that shows a place gets the deep-link. (Value before the tab renders anything.)
 - **Phase 3 — Map tab v1 (list form) + filters.** The `Place` registry rendered as a list; the place-usage derivation + the day/type/maybes filters (reusing the Index chip grammar — see open questions); Trip-mode defaults to today, Plan to all; per-place view/navigate deep-links.
 - **Phase 4 — Trip-mode live jobs.** Device geolocation permission flow (own-device, [0006](0006-no-live-location-v1.md)) → distance + "near me now" sort (needs no map render — ships independent of Phase 6); navigate-to-next (Home tile + Map).
@@ -116,6 +116,7 @@ _Accuracy note:_ the JSON-vs-cloud-styling deprecation path, `mapId`/vector spec
 - The entire list + filter layer is offline-safe, keeping CLAUDE.md rule 5 intact for everything except the genuinely-online search and rendered map.
 - Cost is bounded by design: paid Google operations are limited to new searches and (Phase 6) tiles; everything else reads the cached row.
 - Follow-on sessions have a stable frame: this ADR is referenced by the design, FE-arch, and BE-arch sessions rather than each re-deciding scope.
+- **A dependent workstream falls out of the picker:** once places carry coordinates they carry a timezone, which unblocks fixing the single-`Trip.timezone` model that mis-renders zone-crossing transport. That is [ADR-0107](0107-per-place-timezones-and-multi-zone-time.md) (per-place timezones + the multi-zone time model) — its `Place.timezone` foundation folds into Phase 1, its display/authoring/segment layer is a follow-on runnable alongside Phases 2–3 and independent of the map rendering.
 
 ## Alternatives considered
 

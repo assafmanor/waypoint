@@ -62,6 +62,17 @@ Feasibility discussion on the fast-follow map converged into concrete Phase-6 de
 - **Design:** geolocation permission UX + degrade-if-denied.
 - **Product (minor):** ratify union semantics + colour-by-most-committed for multi-facet places.
 
+## Multi-zone time model (→ ADR-0107)
+
+A location question surfaced that turned out to touch the core time primitive: the single `Trip.timezone` renders every event in one zone, which is wrong for zone-crossing transport (a TLV→NRT flight's departure shows in Tokyo time). Diagnosed and designed into a Proposed **ADR-0107**:
+
+- Storage is already zone-correct (instants are absolute, ADR-0018) and the now/next engine is already correct (instant vs clock) — the bug is confined to display/authoring/day-framing.
+- Places carry a timezone (derived from coords via a free offline lat/lng→zone lookup, cached on the row) → the fix **rides the Maps epic's picker** (ADR-0106 Phase 1).
+- Separate three conflated roles: authoring default, **sticky** event display zone, and the live "now" — only the live "now" tracks your position, so a fixed plan never appears to move.
+- Placeless events resolve by itinerary **segment** (zone-crossing transport partitions the timeline; before the outbound = base, after = destination), **not device GPS** (Assaf's counterexample: at the base airport on flight day, GPS confidently returns base even when you mean the destination). Falls back to a demoted `Trip.timezone` base zone. The resolved zone is always a visible, editable chip.
+- Edge rules banked: keep-wall-clock-shift-instant on late place-attach; file a crosser under its departure day/zone; zone-tag cross-zone times.
+- Sequencing: `Place.timezone` folds into Phase 1; the display/authoring/segment layer is a follow-on alongside Phases 2–3, independent of the map render. ADR-0106 updated with this dependent workstream.
+
 ## Next
 
 Design session on the Map surface, then FE + BE architecture sessions, then implementation starting at Phase 1 (the picker) once Google Cloud (Phase 0, human) is done.
