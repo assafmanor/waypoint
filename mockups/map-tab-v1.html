@@ -1,0 +1,1699 @@
+<!doctype html>
+<!-- Map tab — LIST-FIRST v1 (2026-07-23 design session, item #1 of ADR-0106's
+     follow-on roadmap: "Design — the Map surface"). Read ADR-0106 (scope +
+     phasing + the embedded-map §), ADR-0107 (per-place timezones), and this
+     file's promoting ADR-0108 before treating anything here as settled.
+
+     WHAT THIS MOCKS (Phase 3 = the list-first tab; Phase 4 near-me; a small
+     Phase-6 map-preview to pin down the marker visual):
+
+     1. THE PINNED-PLACE LIST, one surface re-emphasized by mode.
+        - Trip mode DEFAULTS TO TODAY's places; Plan DEFAULTS TO ALL days.
+          The day filter is the mode pivot and rides the day-strip gesture
+          (ADR-0106 Decision 1). Toggle the mode pill to see the default flip.
+        - Every row deep-links out (👁 view in Maps / 🧭 navigate) — we never
+          rebuild navigation (ADR-0106 Decision 3/6).
+
+     2. THE FILTER ROW reuses the Index chip/search/mode-accent grammar
+        (ADR-0098/0100, index-bookings-compact-v2.html) — NOT a second copy
+        (CLAUDE.md rule 8). Same scrollable pills w/ label+count, edge-fade
+        mask, a covering search overlay, and the mode-tinted selected accent
+        (--idx-accent: ink in Trip, --plan in Plan). Facets: יום · סוג · אולי.
+        All three are PURE client-side derivation over the trip snapshot
+        (offline-safe) reading the place-usage index {days[],categories[],
+        isMaybe,isScheduled} — only live search + the Phase-6 map need network.
+
+     3. THE PIN = the Waypoint marker (ADR-0087) as a custom AdvancedMarker,
+        on "quiet neutral base, loud semantic pins" (ADR-0106 Decision C).
+        Category is the GLYPH inside (content, ADR-0038), NOT a pin fill —
+        this SUPERSEDES design-language's old "5 pastel category colours"
+        pin. Pin body = teal (location); the amber CORE encodes commitment
+        (colour-by-most-committed, ADR-0106 Decision 4):
+          · hard scheduled  → solid teal + LIT amber core (+ 🔒 micro-cue)
+          · soft scheduled  → solid teal + dim amber core
+          · maybe-only idea → dashed/hollow marker, NO core (soft grammar)
+        Teal stays a signal, amber an accent-not-a-ground (keeps ADR-0028's
+        budget + matches the ADR-0105 loading-states palette now on main).
+
+     RESOLVED OPEN QUESTIONS (recorded in ADR-0108):
+     4. MULTI-DAY place under the day filter → edge-loud, middle-ambient
+        (follows 0054/0064): a loud pin on arrival/departure days, a quiet
+        "your base" ambient row on strictly-middle days — never a loud
+        time-anchored pin mid-stay. Neither "every span day" nor "edges only".
+     5. MULTI-FACET place → union semantics + colour-by-most-committed:
+        % Arabica shows under BOTH אוכל and אולי; its pin takes its most-
+        committed state.
+     6. GEOLOCATION UX → just-in-time, never blocks reads (ADR-0006 own-
+        device). Asked only on tapping "קרוב עכשיו", behind a one-line pre-
+        prompt. Denied → list stays on its default sort, distance chips gone,
+        a quiet re-enable affordance remains. Toggle the STATE control.
+     7. "NEAR ME NOW" without a rendered map (Phase 4 ships before Phase 6) →
+        a re-SORT of the list + distance chips, not a spatial "me" dot. Only
+        coord-bearing places participate; "Place-lite" (name-only) rows can't.
+
+     8. ADR-0107's EDITABLE TIMEZONE CHIP on the time input (bottom panel):
+        "🕐 19:30 · טוקיו ▾", one-tap correctable; transport shows two
+        (origin zone on start, destination on end).
+
+     STATE toggle (top): רגיל · קרוב עכשיו (granted) · מיקום נדחה (denied) ·
+     אופליין. MODE pill re-skins chrome + accent + the default day filter. -->
+<html lang="he" dir="rtl">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>מפה · רשימת מקומות · מוקאפ v1</title>
+    <link rel="preconnect" href="https://fonts.googleapis.com" />
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+    <link
+      href="https://fonts.googleapis.com/css2?family=Assistant:wght@400;500;600;700&family=Secular+One&family=JetBrains+Mono:wght@500;700&display=swap"
+      rel="stylesheet"
+    />
+    <style>
+      :root {
+        --ink: #16233d;
+        --indigo: #1b2a4a;
+        --board: #0e1729;
+        --board-2: #152137;
+        --screen: #e7eaef;
+        --card: #ffffff;
+        --paper: #f3efe6;
+        --amber: #e9a63c;
+        --amber-deep: #c9822a;
+        --amber-ink: #7a5a1e;
+        --teal: #2c9c90;
+        --teal-deep: #227e74;
+        --teal-tint: rgba(44, 156, 144, 0.12);
+        --plan: #6e59d6;
+        --plan-deep: #5747b4;
+        --plan-tint: rgba(110, 89, 214, 0.1);
+        --ok: #3c9a6b;
+        --miss: #c2584e;
+        --muted: #6c7488;
+        --faint: #98a0b0;
+        --line: rgba(22, 35, 61, 0.1);
+        --soft-line: rgba(22, 35, 61, 0.28);
+        /* The tab's own selection accent — the SAME per-mode rule the Index
+           uses (ADR-0100 §5 / ADR-0028): neutral ink in Trip, plan violet in
+           Plan. One accent, no per-category tinting. */
+        --idx-accent: var(--ink);
+        --idx-accent-text: #fff;
+        /* "me / OS location" blue — an OS-map convention, deliberately OUTSIDE
+           the amber/teal/violet budget (design-language "Map" entry). */
+        --me: #2e6be6;
+      }
+      * {
+        box-sizing: border-box;
+        margin: 0;
+        padding: 0;
+      }
+      html,
+      body {
+        height: 100%;
+      }
+      body {
+        font-family: 'Assistant', system-ui, sans-serif;
+        background:
+          radial-gradient(120% 90% at 80% -10%, #2a3e68 0%, transparent 55%),
+          radial-gradient(120% 90% at 0% 110%, #1a2a4a 0%, transparent 50%), #0f1a31;
+        color: var(--ink);
+        min-height: 100vh;
+        display: flex;
+        flex-direction: column;
+        align-items: center;
+        padding: 24px 16px 48px;
+        -webkit-font-smoothing: antialiased;
+      }
+      .caption {
+        text-align: center;
+        color: #aeb9d4;
+        font-size: 12.5px;
+        margin-bottom: 6px;
+        font-weight: 500;
+        max-width: 440px;
+      }
+      .caption b {
+        color: #fff;
+        font-weight: 600;
+      }
+      .adr-note {
+        text-align: center;
+        color: #7f8db0;
+        font-size: 11px;
+        margin-bottom: 14px;
+        max-width: 430px;
+        line-height: 1.5;
+      }
+      .controls {
+        display: flex;
+        flex-wrap: wrap;
+        gap: 8px;
+        justify-content: center;
+        margin-bottom: 16px;
+      }
+      .seg {
+        display: inline-flex;
+        background: rgba(255, 255, 255, 0.08);
+        border: 1px solid rgba(255, 255, 255, 0.16);
+        border-radius: 999px;
+        padding: 3px;
+        gap: 2px;
+      }
+      .seg button {
+        font: inherit;
+        font-size: 12px;
+        font-weight: 600;
+        color: #9daac8;
+        background: none;
+        border: 0;
+        border-radius: 999px;
+        padding: 6px 13px;
+        cursor: pointer;
+        transition: all 0.18s ease;
+      }
+      .seg button.on {
+        background: #fff;
+        color: var(--ink);
+      }
+      .seg.plan button.on {
+        background: var(--plan);
+        color: #fff;
+      }
+
+      .phone {
+        width: 100%;
+        max-width: 392px;
+        background: var(--screen);
+        border-radius: 38px;
+        box-shadow:
+          0 18px 40px -18px rgba(14, 23, 41, 0.45),
+          0 0 0 10px #0b1526,
+          0 0 0 12px #223257;
+        overflow: hidden;
+        position: relative;
+        height: 838px;
+        display: flex;
+        flex-direction: column;
+        transition:
+          background 0.3s ease,
+          color 0.3s ease;
+      }
+
+      /* ---- chrome (follows mode; design-language mode-identity table) ---- */
+      .statusbar {
+        background: var(--indigo);
+        color: #dce3f2;
+        display: flex;
+        justify-content: space-between;
+        align-items: center;
+        padding: 11px 22px 8px;
+        font-size: 13px;
+        font-weight: 600;
+        font-family: 'JetBrains Mono', monospace;
+      }
+      .header {
+        background: var(--indigo);
+        color: #fff;
+        padding: 6px 18px 15px;
+        transition: background 0.3s ease;
+      }
+      .header .row1 {
+        display: flex;
+        align-items: center;
+        justify-content: space-between;
+        gap: 10px;
+      }
+      .header h1 {
+        font-family: 'Secular One', sans-serif;
+        font-size: 20px;
+        font-weight: 400;
+        display: flex;
+        align-items: center;
+        gap: 8px;
+      }
+      .modepill {
+        display: inline-flex;
+        align-items: center;
+        gap: 5px;
+        background: rgba(255, 255, 255, 0.12);
+        border: 1px solid rgba(255, 255, 255, 0.22);
+        color: #fff;
+        border-radius: 999px;
+        padding: 5px 12px;
+        font-size: 12px;
+        font-weight: 700;
+        cursor: pointer;
+      }
+      .header .sub {
+        font-size: 12px;
+        color: #b9c3dc;
+        margin-top: 3px;
+      }
+
+      /* Plan chrome = light drafting table + violet + faint grid */
+      [data-mode='plan'] .statusbar,
+      [data-mode='plan'] .header {
+        background:
+          repeating-linear-gradient(0deg, rgba(110, 89, 214, 0.05) 0 1px, transparent 1px 22px),
+          repeating-linear-gradient(90deg, rgba(110, 89, 214, 0.05) 0 1px, transparent 1px 22px),
+          var(--paper);
+        color: var(--ink);
+      }
+      [data-mode='plan'] .statusbar {
+        color: var(--plan-deep);
+      }
+      [data-mode='plan'] .header h1 {
+        color: var(--ink);
+      }
+      [data-mode='plan'] .modepill {
+        background: var(--plan-tint);
+        border-color: rgba(110, 89, 214, 0.3);
+        color: var(--plan-deep);
+      }
+      [data-mode='plan'] .header .sub {
+        color: var(--muted);
+      }
+      [data-mode='plan'] {
+        --idx-accent: var(--plan);
+      }
+
+      /* ---- day strip (the mode pivot; Trip pre-selects today, Plan = all) --- */
+      .daystrip {
+        display: flex;
+        gap: 6px;
+        overflow-x: auto;
+        padding: 10px 14px;
+        background: var(--card);
+        border-bottom: 1px solid var(--line);
+        scrollbar-width: none;
+      }
+      .daystrip::-webkit-scrollbar {
+        display: none;
+      }
+      .day {
+        flex: 0 0 auto;
+        min-width: 44px;
+        text-align: center;
+        padding: 6px 9px;
+        border-radius: 12px;
+        border: 1px solid var(--line);
+        background: #fbfcfe;
+        cursor: pointer;
+        transition: all 0.15s ease;
+      }
+      .day .dnum {
+        font-family: 'JetBrains Mono', monospace;
+        font-size: 15px;
+        font-weight: 700;
+        color: var(--ink);
+      }
+      .day .dlab {
+        font-size: 9.5px;
+        color: var(--muted);
+        font-weight: 600;
+      }
+      .day.sel {
+        background: var(--idx-accent);
+        border-color: var(--idx-accent);
+      }
+      .day.sel .dnum,
+      .day.sel .dlab {
+        color: #fff;
+      }
+      .day.allsel {
+        background: var(--idx-accent);
+        border-color: var(--idx-accent);
+        color: #fff;
+        display: flex;
+        align-items: center;
+        font-weight: 700;
+        font-size: 12.5px;
+        min-width: auto;
+        padding: 6px 14px;
+      }
+
+      /* ---- filter chip row (reuses index-bookings-compact-v2 grammar) ---- */
+      .filterbar {
+        position: relative;
+        display: flex;
+        align-items: center;
+        gap: 8px;
+        padding: 10px 14px 6px;
+        background: var(--card);
+      }
+      .chiprow {
+        display: flex;
+        gap: 7px;
+        overflow-x: auto;
+        scroll-snap-type: x mandatory;
+        flex: 1;
+        scrollbar-width: none;
+        -webkit-mask-image: linear-gradient(
+          to right,
+          transparent 0,
+          black 14px,
+          black calc(100% - 14px),
+          transparent 100%
+        );
+        mask-image: linear-gradient(
+          to right,
+          transparent 0,
+          black 14px,
+          black calc(100% - 14px),
+          transparent 100%
+        );
+        transition:
+          opacity 0.2s ease,
+          transform 0.2s ease;
+      }
+      .chiprow::-webkit-scrollbar {
+        display: none;
+      }
+      .chip {
+        flex: 0 0 auto;
+        scroll-snap-align: start;
+        display: inline-flex;
+        align-items: center;
+        gap: 5px;
+        border: 1px solid var(--line);
+        background: #fbfcfe;
+        color: var(--ink);
+        border-radius: 999px;
+        padding: 7px 12px;
+        font-size: 12.5px;
+        font-weight: 600;
+        cursor: pointer;
+        white-space: nowrap;
+        transition: all 0.15s ease;
+      }
+      .chip .cnt {
+        font-family: 'JetBrains Mono', monospace;
+        font-size: 11px;
+        font-weight: 700;
+        color: var(--muted);
+      }
+      .chip.on {
+        background: var(--idx-accent);
+        border-color: var(--idx-accent);
+        color: var(--idx-accent-text);
+      }
+      .chip.on .cnt {
+        color: rgba(255, 255, 255, 0.8);
+      }
+      /* the "אולי" facet toggle reads as soft/provisional when off */
+      .chip.maybe {
+        border-style: dashed;
+        border-color: var(--soft-line);
+      }
+      .searchbtn {
+        flex: 0 0 auto;
+        width: 34px;
+        height: 34px;
+        border-radius: 10px;
+        border: 1px solid var(--line);
+        background: #fbfcfe;
+        display: grid;
+        place-items: center;
+        cursor: pointer;
+        color: var(--muted);
+      }
+      .searchbtn.on {
+        color: var(--idx-accent);
+        border-color: var(--idx-accent);
+      }
+
+      /* ---- the near-me / sort strip ---- */
+      .sortstrip {
+        display: flex;
+        align-items: center;
+        gap: 8px;
+        padding: 4px 14px 12px;
+        background: var(--card);
+        border-bottom: 1px solid var(--line);
+      }
+      .sortstrip .lbl {
+        font-size: 11px;
+        color: var(--faint);
+        font-weight: 600;
+      }
+      .nearchip {
+        display: inline-flex;
+        align-items: center;
+        gap: 5px;
+        border: 1px solid var(--teal);
+        color: var(--teal-deep);
+        background: var(--teal-tint);
+        border-radius: 999px;
+        padding: 6px 12px;
+        font-size: 12px;
+        font-weight: 700;
+        cursor: pointer;
+      }
+      .nearchip.on {
+        background: var(--teal);
+        color: #fff;
+      }
+      .nearchip.denied {
+        border-color: var(--soft-line);
+        border-style: dashed;
+        color: var(--muted);
+        background: transparent;
+      }
+      .nearchip svg {
+        width: 13px;
+        height: 13px;
+      }
+
+      /* ---- scroll body ---- */
+      .body {
+        flex: 1;
+        overflow-y: auto;
+        background: var(--screen);
+        padding: 12px 14px 90px;
+      }
+      .grouphead {
+        font-size: 11px;
+        font-weight: 700;
+        color: var(--muted);
+        letter-spacing: 0.02em;
+        margin: 8px 4px 8px;
+        display: flex;
+        align-items: center;
+        gap: 6px;
+      }
+      .grouphead::after {
+        content: '';
+        flex: 1;
+        height: 1px;
+        background: var(--line);
+      }
+
+      /* ---- a place row ---- */
+      .place {
+        display: flex;
+        align-items: center;
+        gap: 11px;
+        background: var(--card);
+        border: 1px solid var(--line);
+        border-radius: 16px;
+        padding: 11px 12px;
+        margin-bottom: 9px;
+        box-shadow: 0 1px 2px rgba(14, 23, 41, 0.04);
+        transition: all 0.15s ease;
+      }
+      .place.soft {
+        border-style: dashed;
+        border-color: var(--soft-line);
+        background:
+          repeating-linear-gradient(-45deg, rgba(22, 35, 61, 0.02) 0 6px, transparent 6px 12px),
+          var(--card);
+      }
+      /* ambient (mid-stay base) row — quiet, de-emphasized, not a loud pin */
+      .place.ambient {
+        background: var(--paper);
+        border-style: solid;
+        border-color: var(--line);
+        opacity: 0.85;
+        box-shadow: none;
+      }
+
+      /* --- THE WAYPOINT PIN (ADR-0087): teal body, glyph = category, amber
+         core = commitment. Quiet base, loud pin. --- */
+      .pin {
+        flex: 0 0 auto;
+        position: relative;
+        width: 34px;
+        height: 40px;
+      }
+      .pin .pinbody {
+        position: absolute;
+        top: 0;
+        left: 3px;
+        width: 28px;
+        height: 28px;
+        border-radius: 50% 50% 50% 2px;
+        transform: rotate(45deg);
+        background: var(--teal);
+        box-shadow: 0 4px 8px -2px rgba(34, 126, 116, 0.5);
+        display: grid;
+        place-items: center;
+      }
+      .pin .glyph {
+        transform: rotate(-45deg);
+        font-size: 14px;
+        line-height: 1;
+      }
+      /* the amber core — commitment / time-anchor */
+      .pin .core {
+        position: absolute;
+        top: 20px;
+        left: 12px;
+        width: 10px;
+        height: 10px;
+        border-radius: 50%;
+        background: var(--amber);
+        border: 2px solid var(--card);
+        z-index: 2;
+      }
+      /* hard scheduled → core LIT (a soft glow, NOT the reserved live pulse) */
+      .pin.hard .core {
+        background: var(--amber);
+        box-shadow: 0 0 0 3px rgba(233, 166, 60, 0.28);
+      }
+      /* soft scheduled → core dim */
+      .pin.soft-sched .core {
+        background: var(--amber);
+        opacity: 0.6;
+      }
+      /* maybe-only → hollow/dashed body, NO core (soft grammar) */
+      .pin.idea .pinbody {
+        background: var(--teal-tint);
+        border: 1.5px dashed var(--teal);
+        box-shadow: none;
+      }
+      .pin.idea .glyph {
+        filter: grayscale(0.1);
+      }
+      .pin.idea .core {
+        display: none;
+      }
+      /* ambient base → desaturated teal, no core */
+      .pin.base .pinbody {
+        background: #a9bcbb;
+        box-shadow: none;
+      }
+      .pin.base .core {
+        display: none;
+      }
+      /* coordless "Place-lite" → no teardrop, a hollow ring placeholder */
+      .pin.nocoord .pinbody {
+        background: transparent;
+        border: 1.5px dashed var(--faint);
+        border-radius: 50%;
+        transform: none;
+        box-shadow: none;
+      }
+      .pin.nocoord .glyph {
+        transform: none;
+        opacity: 0.55;
+      }
+      .pin.nocoord .core {
+        display: none;
+      }
+
+      .place .main {
+        flex: 1;
+        min-width: 0;
+      }
+      .place .t {
+        font-size: 14.5px;
+        font-weight: 700;
+        color: var(--ink);
+        display: flex;
+        align-items: center;
+        gap: 6px;
+      }
+      .place.ambient .t,
+      .place.nocoordrow .t {
+        color: var(--muted);
+      }
+      .lock {
+        font-size: 10px;
+      }
+      .place .m {
+        font-size: 12px;
+        color: var(--muted);
+        margin-top: 2px;
+        display: flex;
+        flex-wrap: wrap;
+        gap: 4px 8px;
+      }
+      .tag {
+        display: inline-flex;
+        align-items: center;
+        gap: 3px;
+      }
+      .tag.time {
+        color: var(--amber-deep);
+        font-weight: 700;
+        font-family: 'JetBrains Mono', monospace;
+        font-size: 11.5px;
+      }
+      .tag.mbadge {
+        color: var(--plan-deep);
+        font-weight: 700;
+      }
+      .place .right {
+        flex: 0 0 auto;
+        display: flex;
+        flex-direction: column;
+        align-items: flex-end;
+        gap: 7px;
+      }
+      .dist {
+        font-family: 'JetBrains Mono', monospace;
+        font-size: 12px;
+        font-weight: 700;
+        color: var(--teal-deep);
+        background: var(--teal-tint);
+        padding: 2px 7px;
+        border-radius: 8px;
+      }
+      .dist.stale {
+        color: var(--muted);
+        background: rgba(108, 116, 136, 0.1);
+      }
+      .actions {
+        display: flex;
+        gap: 6px;
+      }
+      .act {
+        width: 30px;
+        height: 30px;
+        border-radius: 9px;
+        border: 1px solid var(--line);
+        background: #fbfcfe;
+        display: grid;
+        place-items: center;
+        font-size: 14px;
+        cursor: pointer;
+      }
+      .act.nav {
+        border-color: var(--teal);
+        color: var(--teal-deep);
+      }
+      .noplace-hint {
+        font-size: 11px;
+        color: var(--faint);
+        font-style: normal;
+      }
+
+      /* ---- geolocation pre-prompt + denied banners ---- */
+      .geoprompt {
+        display: none;
+        background: var(--card);
+        border: 1px solid var(--teal);
+        border-radius: 14px;
+        padding: 13px 14px;
+        margin-bottom: 12px;
+        box-shadow: 0 6px 16px -8px rgba(34, 126, 116, 0.4);
+      }
+      .geoprompt.show {
+        display: block;
+        animation: fade 0.25s ease;
+      }
+      .geoprompt .gt {
+        font-size: 13.5px;
+        font-weight: 700;
+        display: flex;
+        align-items: center;
+        gap: 6px;
+        margin-bottom: 4px;
+      }
+      .geoprompt .gm {
+        font-size: 12px;
+        color: var(--muted);
+        line-height: 1.5;
+        margin-bottom: 11px;
+      }
+      .geoprompt .gbtns {
+        display: flex;
+        gap: 8px;
+      }
+      .gbtn {
+        font: inherit;
+        font-size: 12.5px;
+        font-weight: 700;
+        border-radius: 10px;
+        padding: 9px 14px;
+        border: 1px solid var(--line);
+        background: #fbfcfe;
+        color: var(--muted);
+        cursor: pointer;
+      }
+      .gbtn.primary {
+        background: var(--teal);
+        color: #fff;
+        border-color: var(--teal);
+      }
+      .banner {
+        display: none;
+        align-items: center;
+        gap: 8px;
+        font-size: 11.5px;
+        font-weight: 600;
+        padding: 9px 12px;
+        border-radius: 12px;
+        margin-bottom: 12px;
+      }
+      .banner.show {
+        display: flex;
+        animation: fade 0.25s ease;
+      }
+      .banner.denied {
+        background: rgba(108, 116, 136, 0.1);
+        border: 1px solid rgba(108, 116, 136, 0.22);
+        color: var(--muted);
+      }
+      .banner.denied .relink {
+        color: var(--teal-deep);
+        font-weight: 700;
+        margin-inline-start: auto;
+        cursor: pointer;
+        white-space: nowrap;
+      }
+      .banner.offline {
+        background: rgba(108, 116, 136, 0.1);
+        border: 1px solid rgba(108, 116, 136, 0.22);
+        color: var(--muted);
+      }
+
+      /* offline: desaturate the whole list + swap live distances for stale */
+      [data-state='offline'] .body .place {
+        filter: grayscale(35%);
+      }
+      [data-state='offline'] .nearchip {
+        display: none;
+      }
+
+      /* ---- empty / no-match ---- */
+      .empty {
+        text-align: center;
+        color: var(--muted);
+        padding: 34px 20px;
+        font-size: 13px;
+      }
+      .empty .ei {
+        font-size: 30px;
+        display: block;
+        margin-bottom: 8px;
+      }
+
+      /* ---- bottom nav ---- */
+      .nav {
+        position: absolute;
+        bottom: 0;
+        left: 0;
+        right: 0;
+        display: flex;
+        justify-content: space-around;
+        padding: 9px 0 14px;
+        background: rgba(255, 255, 255, 0.86);
+        backdrop-filter: blur(12px);
+        border-top: 1px solid var(--line);
+      }
+      .nav button {
+        background: none;
+        border: 0;
+        font: inherit;
+        font-size: 10px;
+        font-weight: 600;
+        color: var(--muted);
+        display: flex;
+        flex-direction: column;
+        align-items: center;
+        gap: 3px;
+        cursor: pointer;
+      }
+      .nav .ic {
+        width: 40px;
+        height: 26px;
+        display: grid;
+        place-items: center;
+        font-size: 18px;
+        border-radius: 999px;
+      }
+      .nav button.on {
+        color: var(--idx-accent);
+      }
+      .nav button.on .ic {
+        background: var(--plan-tint);
+        transform: translateY(2px);
+      }
+      [data-mode='trip'] .nav button.on .ic {
+        background: rgba(27, 42, 74, 0.1);
+      }
+
+      @keyframes fade {
+        from {
+          opacity: 0;
+          transform: translateY(-4px);
+        }
+        to {
+          opacity: 1;
+          transform: translateY(0);
+        }
+      }
+
+      /* =================================================================
+         SIDE PANELS (design annotations, not part of the phone frame)
+         ================================================================= */
+      .panels {
+        display: flex;
+        flex-wrap: wrap;
+        gap: 16px;
+        justify-content: center;
+        max-width: 900px;
+        margin-top: 26px;
+      }
+      .panel {
+        background: #101b31;
+        border: 1px solid #223257;
+        border-radius: 16px;
+        padding: 16px 18px;
+        width: 420px;
+        max-width: 100%;
+      }
+      .panel h3 {
+        color: #fff;
+        font-size: 13.5px;
+        font-family: 'Secular One', sans-serif;
+        font-weight: 400;
+        margin-bottom: 4px;
+      }
+      .panel p {
+        color: #aeb9d4;
+        font-size: 11.5px;
+        line-height: 1.6;
+        margin-bottom: 10px;
+      }
+      .panel p b {
+        color: #fff;
+      }
+
+      /* pin anatomy legend */
+      .legend {
+        display: flex;
+        flex-direction: column;
+        gap: 12px;
+      }
+      .legrow {
+        display: flex;
+        align-items: center;
+        gap: 12px;
+      }
+      .legrow .txt {
+        font-size: 11.5px;
+        color: #cbd5ec;
+        line-height: 1.45;
+      }
+      .legrow .txt b {
+        color: #fff;
+      }
+
+      /* mini rendered-map preview (Phase-6 foreshadow) */
+      .mapmini {
+        height: 200px;
+        border-radius: 14px;
+        position: relative;
+        overflow: hidden;
+        border: 1px solid #223257;
+        /* QUIET NEUTRAL BASE: desaturated cool-paper canvas, faint grid,
+           NO teal flood (ADR-0106 Decision C). */
+        background:
+          repeating-linear-gradient(0deg, #dfe3ea 0 1px, transparent 1px 30px),
+          repeating-linear-gradient(90deg, #dfe3ea 0 1px, transparent 1px 30px),
+          linear-gradient(180deg, #eef1f5, #e7ebf1);
+      }
+      .mapmini .route {
+        position: absolute;
+        height: 2px;
+        background: var(--teal);
+        opacity: 0.5;
+        transform-origin: left center;
+      }
+      .mapmini .mpin {
+        position: absolute;
+        width: 26px;
+        height: 26px;
+        transform: translate(-50%, -100%);
+      }
+      .mapmini .mpin .b {
+        width: 22px;
+        height: 22px;
+        border-radius: 50% 50% 50% 2px;
+        transform: rotate(45deg);
+        background: var(--teal);
+        display: grid;
+        place-items: center;
+        box-shadow: 0 3px 6px -1px rgba(0, 0, 0, 0.35);
+        margin: 0 auto;
+      }
+      .mapmini .mpin .g {
+        transform: rotate(-45deg);
+        font-size: 11px;
+      }
+      .mapmini .mpin .c {
+        position: absolute;
+        bottom: 1px;
+        left: 50%;
+        transform: translateX(-50%);
+        width: 8px;
+        height: 8px;
+        border-radius: 50%;
+        background: var(--amber);
+        border: 1.5px solid #fff;
+      }
+      .mapmini .mpin.idea .b {
+        background: var(--teal-tint);
+        border: 1.5px dashed var(--teal);
+      }
+      .mapmini .mpin.idea .c {
+        display: none;
+      }
+      .mapmini .me {
+        position: absolute;
+        width: 14px;
+        height: 14px;
+        background: var(--me);
+        border: 3px solid #fff;
+        border-radius: 50%;
+        box-shadow: 0 0 0 6px rgba(46, 107, 230, 0.2);
+        transform: translate(-50%, -50%);
+      }
+      .mapmini .attr {
+        position: absolute;
+        bottom: 3px;
+        right: 6px;
+        font-size: 8px;
+        color: #8894ab;
+        font-family: 'JetBrains Mono', monospace;
+      }
+
+      /* the timezone chip demo (ADR-0107) */
+      .tzdemo {
+        background: #fff;
+        border-radius: 12px;
+        padding: 13px;
+      }
+      .tzfield {
+        display: flex;
+        align-items: center;
+        gap: 8px;
+        margin-bottom: 10px;
+      }
+      .tzfield:last-child {
+        margin-bottom: 0;
+      }
+      .tzfield .flabel {
+        font-size: 11px;
+        font-weight: 700;
+        color: var(--muted);
+        width: 44px;
+      }
+      .timebox {
+        font-family: 'JetBrains Mono', monospace;
+        font-size: 14px;
+        font-weight: 700;
+        color: var(--amber-deep);
+        background: rgba(233, 166, 60, 0.12);
+        border: 1px solid rgba(233, 166, 60, 0.4);
+        border-radius: 10px;
+        padding: 7px 11px;
+      }
+      .tzchip {
+        display: inline-flex;
+        align-items: center;
+        gap: 5px;
+        border: 1px solid var(--line);
+        background: #fbfcfe;
+        border-radius: 999px;
+        padding: 6px 10px;
+        font-size: 12px;
+        font-weight: 600;
+        color: var(--ink);
+        cursor: pointer;
+      }
+      .tzchip .clock {
+        font-size: 12px;
+      }
+      .tzchip svg {
+        width: 10px;
+        height: 10px;
+        color: var(--muted);
+      }
+      .tzarrow {
+        color: var(--faint);
+        font-family: 'JetBrains Mono', monospace;
+        font-weight: 700;
+      }
+      .plus1 {
+        font-family: 'JetBrains Mono', monospace;
+        font-size: 10px;
+        font-weight: 700;
+        color: var(--amber-deep);
+        background: rgba(233, 166, 60, 0.14);
+        border-radius: 6px;
+        padding: 1px 4px;
+      }
+    </style>
+  </head>
+  <body>
+    <div class="caption">
+      <b>Map tab · list-first v1</b> — the pinned-place list, Index-grammar filters, the Waypoint
+      pin, and the geolocation UX (ADR-0106 Phase 3–4 · ADR-0108).
+    </div>
+    <div class="adr-note">
+      Toggle <b>mode</b> (Trip pre-selects today · Plan defaults to all) and <b>state</b> (near-me
+      granted / denied / offline). Pin = ADR-0087 marker: teal body, glyph = category, amber core =
+      commitment. Quiet base, loud pins (ADR-0106 · 0028 · 0105).
+    </div>
+
+    <div class="controls">
+      <div class="seg" id="modeseg">
+        <button class="on" onclick="setMode('trip')">🧭 טיול</button>
+        <button onclick="setMode('plan')">✏️ תכנון</button>
+      </div>
+      <div class="seg" id="stateseg">
+        <button class="on" onclick="setState('normal')">רגיל</button>
+        <button onclick="setState('near')">קרוב עכשיו</button>
+        <button onclick="setState('denied')">מיקום נדחה</button>
+        <button onclick="setState('offline')">אופליין</button>
+      </div>
+    </div>
+
+    <div class="phone" id="phone" data-mode="trip" data-state="normal">
+      <div class="statusbar"><span>9:41</span><span>מפה 🗺️</span></div>
+
+      <div class="header">
+        <div class="row1">
+          <h1>🗺️ מפה</h1>
+          <span class="modepill" id="modepill" onclick="toggleMode()">🧭 טיול</span>
+        </div>
+        <div class="sub" id="headsub">טוקיו · המקומות של היום</div>
+      </div>
+
+      <!-- day strip: the mode pivot (ADR-0106 Decision 1). Trip pre-selects
+           today; Plan pre-selects "all". Same day-strip gesture widens either. -->
+      <div class="daystrip" id="daystrip">
+        <div class="day allsel" id="dayAll" onclick="pickDay('all')">כל הימים</div>
+        <div class="day" data-day="1" onclick="pickDay(1)">
+          <div class="dnum">23</div>
+          <div class="dlab">ג׳</div>
+        </div>
+        <div class="day sel" data-day="2" onclick="pickDay(2)">
+          <div class="dnum">24</div>
+          <div class="dlab">היום</div>
+        </div>
+        <div class="day" data-day="3" onclick="pickDay(3)">
+          <div class="dnum">25</div>
+          <div class="dlab">ה׳</div>
+        </div>
+        <div class="day" data-day="4" onclick="pickDay(4)">
+          <div class="dnum">26</div>
+          <div class="dlab">ו׳</div>
+        </div>
+        <div class="day" data-day="5" onclick="pickDay(5)">
+          <div class="dnum">27</div>
+          <div class="dlab">ש׳</div>
+        </div>
+      </div>
+
+      <!-- filter chips: SAME primitive as index-bookings-compact-v2 (ADR-0098/
+           0100). label+count pills, edge-fade mask, covering search, mode
+           accent. Facets: סוג (=category) · אולי. (Day is the strip above.) -->
+      <div class="filterbar">
+        <div class="chiprow" id="chiprow">
+          <button class="chip on" onclick="filterType(this, 'all')">
+            הכל <span class="cnt">7</span>
+          </button>
+          <button class="chip" onclick="filterType(this, 'food')">
+            🍜 אוכל <span class="cnt">2</span>
+          </button>
+          <button class="chip" onclick="filterType(this, 'transport')">
+            🚉 תחבורה <span class="cnt">1</span>
+          </button>
+          <button class="chip" onclick="filterType(this, 'lodging')">
+            🏨 לינה <span class="cnt">1</span>
+          </button>
+          <button class="chip" onclick="filterType(this, 'sightseeing')">
+            ⛩️ אתרים <span class="cnt">1</span>
+          </button>
+          <button class="chip maybe" onclick="filterType(this, 'maybe')">
+            💡 אולי <span class="cnt">2</span>
+          </button>
+        </div>
+        <div
+          class="searchbtn"
+          id="searchbtn"
+          onclick="toast('חיפוש · במצב תכנון מחפש מקומות חדשים ב-Google (שלב 5)')"
+          title="חיפוש"
+        >
+          <svg
+            viewBox="0 0 24 24"
+            width="17"
+            height="17"
+            fill="none"
+            stroke="currentColor"
+            stroke-width="2.2"
+            stroke-linecap="round"
+          >
+            <circle cx="11" cy="11" r="7" />
+            <line x1="21" y1="21" x2="16.5" y2="16.5" />
+          </svg>
+        </div>
+      </div>
+
+      <!-- near-me sort strip. The chip is teal (location). Just-in-time perms:
+           tapping it asks (pre-prompt), never on tab open. -->
+      <div class="sortstrip">
+        <span class="lbl">מיון:</span>
+        <button class="nearchip" id="nearchip" onclick="tapNearMe()">
+          <svg
+            viewBox="0 0 24 24"
+            fill="none"
+            stroke="currentColor"
+            stroke-width="2.2"
+            stroke-linecap="round"
+            stroke-linejoin="round"
+          >
+            <path d="M12 2v3M12 19v3M2 12h3M19 12h3" />
+            <circle cx="12" cy="12" r="5" />
+          </svg>
+          <span id="nearlabel">קרוב עכשיו</span>
+        </button>
+      </div>
+
+      <div class="body" id="body">
+        <!-- geolocation pre-prompt (shown when the user taps "near me now") -->
+        <div class="geoprompt" id="geoprompt">
+          <div class="gt">📍 למיין לפי קרבה</div>
+          <div class="gm">
+            כדי להראות מה קרוב אליכם עכשיו נשתמש במיקום המכשיר. המיקום נשאר במכשיר ואינו משותף עם
+            הקבוצה.
+          </div>
+          <div class="gbtns">
+            <button class="gbtn primary" onclick="grantGeo()">אפשר מיקום</button>
+            <button class="gbtn" onclick="dismissGeo()">לא עכשיו</button>
+          </div>
+        </div>
+
+        <!-- denied banner (permission refused / unavailable) -->
+        <div class="banner denied" id="deniedbanner">
+          <span>📍 מיקום כבוי · הרשימה ממוינת לפי לו״ז</span>
+          <span class="relink" onclick="toast('פתיחת הגדרות מיקום של המכשיר')">הפעלה</span>
+        </div>
+
+        <!-- offline banner (desaturated list + stale distances) -->
+        <div class="banner offline" id="offlinebanner">
+          <span>📡 מצב אופליין · מיקומים אחרונים שנשמרו</span>
+        </div>
+
+        <div id="list"><!-- rows injected --></div>
+      </div>
+
+      <div class="nav">
+        <button><span class="ic">🏠</span>בית</button>
+        <button class="on"><span class="ic">🗺️</span>מפה</button>
+        <button><span class="ic">📇</span>אינדקס</button>
+        <button><span class="ic">📅</span>יום־יום</button>
+      </div>
+    </div>
+
+    <!-- ============ design annotation panels ============ -->
+    <div class="panels">
+      <div class="panel">
+        <h3>הפין: סמן ה־Waypoint (ADR-0087) — בסיס שקט, פינים רועשים</h3>
+        <p>
+          קטגוריה = <b>הגליף</b> (תוכן, ADR-0038), לא צבע הפין. גוף הפין = <b>טורקיז</b> (מקום). ה<b
+            >ליבה הענברית</b
+          >
+          = מחויבות/עוגן־זמן, במיון "לפי הכי מחויב" (ADR-0106). מחליף את "5 צבעי הקטגוריה" הישנים —
+          טורקיז נשאר סיגנל, ענבר נשאר מבטא ולא רקע (ADR-0028/0105).
+        </p>
+        <div class="legend">
+          <div class="legrow">
+            <div class="pin hard">
+              <div class="pinbody"><span class="glyph">🚉</span></div>
+              <div class="core"></div>
+            </div>
+            <div class="txt">
+              <b>קשיח + משובץ</b> — גוף טורקיז מלא, ליבה ענברית דולקת (הילה עדינה, לא הפעימה החיה
+              השמורה) + רמז 🔒.
+            </div>
+          </div>
+          <div class="legrow">
+            <div class="pin soft-sched">
+              <div class="pinbody"><span class="glyph">🍜</span></div>
+              <div class="core"></div>
+            </div>
+            <div class="txt"><b>רך + משובץ</b> — גוף מלא, ליבה ענברית עמומה.</div>
+          </div>
+          <div class="legrow">
+            <div class="pin idea">
+              <div class="pinbody"><span class="glyph">🍶</span></div>
+              <div class="core"></div>
+            </div>
+            <div class="txt">
+              <b>אולי (רעיון לא משובץ)</b> — מתאר מקווקו, ללא ליבה (דקדוק ה"רך").
+            </div>
+          </div>
+          <div class="legrow">
+            <div class="pin base">
+              <div class="pinbody"><span class="glyph">🏨</span></div>
+              <div class="core"></div>
+            </div>
+            <div class="txt">
+              <b>בסיס אמביינטי</b> (לילה אמצעי במלון) — טורקיז מעומעם, שקט, ללא ליבה.
+            </div>
+          </div>
+          <div class="legrow">
+            <div class="pin nocoord">
+              <div class="pinbody"><span class="glyph">📍</span></div>
+            </div>
+            <div class="txt">
+              <b>ללא קואורדינטות</b> ("Place-lite") — טבעת חלולה, ברשימה אך לא ניתן לנווט/למדוד עד
+              הבורר (שלב 1).
+            </div>
+          </div>
+        </div>
+      </div>
+
+      <div class="panel">
+        <h3>המפה המוטמעת (שלב 6, הצצה) — בסיס שקט, פינים רועשים</h3>
+        <p>
+          בד ניטרלי מעומעם (לא הצפת טורקיז), צבע סמנטי רק על הפינים והמסלולים. הנקודה הכחולה של
+          "אני" היא מוסכמת מפות־OS, מחוץ לתקציב ענבר/טורקיז. לוגו Google וייחוס נשארים (ToS).
+        </p>
+        <div class="mapmini">
+          <div
+            class="route"
+            style="left: 30%; top: 45%; width: 32%; transform: rotate(-18deg)"
+          ></div>
+          <div
+            class="route"
+            style="left: 55%; top: 38%; width: 24%; transform: rotate(28deg)"
+          ></div>
+          <div class="mpin" style="left: 30%; top: 46%">
+            <div class="b"><span class="g">🚉</span></div>
+            <div class="c"></div>
+          </div>
+          <div class="mpin" style="left: 62%; top: 40%">
+            <div class="b"><span class="g">🍜</span></div>
+            <div class="c"></div>
+          </div>
+          <div class="mpin" style="left: 78%; top: 64%">
+            <div class="b"><span class="g">🏨</span></div>
+            <div class="c"></div>
+          </div>
+          <div class="mpin idea" style="left: 42%; top: 70%">
+            <div class="b"><span class="g">🍶</span></div>
+            <div class="c"></div>
+          </div>
+          <div class="me" style="left: 38%; top: 58%"></div>
+          <div class="attr">Google</div>
+        </div>
+      </div>
+
+      <div class="panel">
+        <h3>צ׳יפ אזור־הזמן על שדה השעה (ADR-0107)</h3>
+        <p>
+          האזור המשוער מוצג כ<b>צ׳יפ הניתן לתיקון בנגיעה</b> — ברירת מחדל הגיונית, קלה לתיקון, לעולם
+          לא סמכותי חרש בקצוות. תחבורה מציגה <b>שניים</b>: אזור המוצא על ההתחלה, היעד על הסיום.
+        </p>
+        <div class="tzdemo">
+          <div class="tzfield">
+            <span class="flabel">ארוחת ערב</span>
+            <span class="timebox">19:30</span>
+            <span class="tzchip" onclick="toast('בחירת אזור זמן')">
+              <span class="clock">🕐</span> טוקיו
+              <svg
+                viewBox="0 0 24 24"
+                fill="none"
+                stroke="currentColor"
+                stroke-width="2.5"
+                stroke-linecap="round"
+                stroke-linejoin="round"
+              >
+                <polyline points="6 9 12 15 18 9" />
+              </svg>
+            </span>
+          </div>
+          <div class="tzfield">
+            <span class="flabel">טיסה</span>
+            <span class="timebox">23:00</span>
+            <span class="tzchip" onclick="toast('בחירת אזור זמן · מוצא')">
+              <span class="clock">🕐</span> תל אביב
+              <svg
+                viewBox="0 0 24 24"
+                fill="none"
+                stroke="currentColor"
+                stroke-width="2.5"
+                stroke-linecap="round"
+                stroke-linejoin="round"
+              >
+                <polyline points="6 9 12 15 18 9" />
+              </svg>
+            </span>
+            <span class="tzarrow">←</span>
+            <span class="timebox">18:00 <span class="plus1">+1</span></span>
+            <span class="tzchip" onclick="toast('בחירת אזור זמן · יעד')">
+              <span class="clock">🕐</span> טוקיו
+              <svg
+                viewBox="0 0 24 24"
+                fill="none"
+                stroke="currentColor"
+                stroke-width="2.5"
+                stroke-linecap="round"
+                stroke-linejoin="round"
+              >
+                <polyline points="6 9 12 15 18 9" />
+              </svg>
+            </span>
+          </div>
+        </div>
+      </div>
+    </div>
+
+    <div
+      id="toast"
+      style="
+        position: fixed;
+        bottom: 28px;
+        left: 50%;
+        transform: translateX(-50%) translateY(20px);
+        background: #0e1729;
+        color: #fff;
+        padding: 11px 18px;
+        border-radius: 999px;
+        font-size: 13px;
+        font-weight: 600;
+        opacity: 0;
+        transition: all 0.25s ease;
+        pointer-events: none;
+        z-index: 50;
+        box-shadow: 0 10px 30px -8px rgba(0, 0, 0, 0.5);
+        max-width: 320px;
+        text-align: center;
+      "
+    ></div>
+
+    <script>
+      /* -------- the place-usage model (a stand-in for the derived index) --------
+         Each place carries the facets the real derivation produces:
+         { days[], categories[], commit, isMaybe, coords, tz }. commit ∈
+         hard|soft|idea|base  drives the pin core (colour-by-most-committed). */
+      const PLACES = [
+        {
+          id: 'shinjuku',
+          name: 'תחנת שינג׳וקו',
+          glyph: '🚉',
+          cat: 'transport',
+          days: [2],
+          commit: 'hard',
+          lock: true,
+          when: '18:40 · יציאה',
+          sub: 'מוצא הרכבת לקיוטו',
+          dist: '650 מ׳',
+          coords: true,
+        },
+        {
+          id: 'ichiran',
+          name: 'איצ׳ירן ראמן',
+          glyph: '🍜',
+          cat: 'food',
+          days: [2],
+          commit: 'soft',
+          when: '19:30',
+          sub: '4.6★ · פתוח עד 23:00',
+          dist: '210 מ׳',
+          coords: true,
+        },
+        {
+          id: 'arabica',
+          name: '% Arabica',
+          glyph: '☕',
+          cat: 'food',
+          days: [2],
+          commit: 'idea',
+          isMaybe: true,
+          sub: '4.7★ · על המדף · קרוב',
+          dist: '90 מ׳',
+          coords: true,
+        },
+        {
+          id: 'goldengai',
+          name: 'גולדן גאי',
+          glyph: '🍶',
+          cat: 'sightseeing',
+          days: [2, 3],
+          commit: 'idea',
+          isMaybe: true,
+          sub: 'רעיון לערב · על המדף',
+          dist: '1.1 ק״מ',
+          coords: true,
+        },
+        {
+          id: 'hotel',
+          name: 'פארק האיאט טוקיו',
+          glyph: '🏨',
+          cat: 'lodging',
+          days: [1, 2, 3, 4],
+          edgeDays: [1, 4],
+          commit: 'hard',
+          lock: true,
+          sub: 'הבסיס · לילה 2 מתוך 4',
+          ambientToday: true,
+          dist: '0 מ׳',
+          coords: true,
+        },
+        {
+          id: 'meiji',
+          name: 'מקדש מייג׳י',
+          glyph: '⛩️',
+          cat: 'sightseeing',
+          days: [3],
+          commit: 'soft',
+          when: 'מחר · 10:00',
+          sub: 'סיור בוקר',
+          dist: '3.4 ק״מ',
+          coords: true,
+        },
+        {
+          id: 'winebar',
+          name: 'בר יין קטן (הוזן ידנית)',
+          glyph: '📍',
+          cat: 'food',
+          days: [2],
+          commit: 'idea',
+          isMaybe: true,
+          sub: '',
+          noCoord: true,
+          coords: false,
+        },
+      ];
+
+      let mode = 'trip';
+      let state = 'normal';
+      let dayFilter = 2; // Trip default = today
+      let typeFilter = 'all';
+
+      function esc(s) {
+        return s.replace(/&/g, '&amp;').replace(/</g, '&lt;');
+      }
+
+      function pinHtml(p) {
+        let cls = 'idea';
+        if (p.ambientToday && dayFilter !== null && !(p.edgeDays || []).includes(dayFilter))
+          cls = 'base';
+        else if (p.noCoord) cls = 'nocoord';
+        else if (p.commit === 'hard') cls = 'hard';
+        else if (p.commit === 'soft') cls = 'soft-sched';
+        else cls = 'idea';
+        const core =
+          cls === 'nocoord' || cls === 'idea' || cls === 'base' ? '' : '<div class="core"></div>';
+        return `<div class="pin ${cls}"><div class="pinbody"><span class="glyph">${p.glyph}</span></div>${core}</div>`;
+      }
+
+      function rowClass(p) {
+        if (p.ambientToday && dayFilter !== null && !(p.edgeDays || []).includes(dayFilter))
+          return 'ambient';
+        if (p.noCoord) return 'nocoordrow';
+        if (p.commit === 'idea') return 'soft';
+        return '';
+      }
+
+      function metaHtml(p) {
+        const bits = [];
+        if (p.when) bits.push(`<span class="tag time">🕐 ${esc(p.when)}</span>`);
+        if (p.isMaybe && typeFilter === 'all') bits.push(`<span class="tag mbadge">💡 אולי</span>`);
+        if (p.sub) bits.push(`<span class="tag">${esc(p.sub)}</span>`);
+        if (p.noCoord)
+          bits.push(`<span class="noplace-hint">אין מיקום מדויק · הוסיפו דרך הבורר</span>`);
+        return bits.join('');
+      }
+
+      function rightHtml(p) {
+        // near-me granted → distance chips (only for coord-bearing places).
+        // offline → stale label. denied/normal → just the deep-link actions.
+        let dist = '';
+        if (p.coords && state === 'near') dist = `<span class="dist">${esc(p.dist)}</span>`;
+        else if (p.coords && state === 'offline')
+          dist = `<span class="dist stale">מרחק לא זמין</span>`;
+        const nav = p.coords
+          ? `<button class="act nav" onclick="toast('ניווט ב-Google Maps · ${esc(p.name)}')" title="נווט">🧭</button>`
+          : '';
+        const view = p.coords
+          ? `<button class="act" onclick="toast('פתיחה ב-Google Maps · ${esc(p.name)}')" title="הצג">👁️</button>`
+          : `<button class="act" onclick="toast('הוסיפו מיקום דרך הבורר')" title="הוסף מיקום">＋</button>`;
+        return `${dist}<div class="actions">${nav}${view}</div>`;
+      }
+
+      function matches(p) {
+        // day filter (null = all). Multi-day place: edge-loud/middle-ambient,
+        // but it still MATCHES the day (shown, just ambient) — mirrors 0064.
+        if (dayFilter !== null && !p.days.includes(dayFilter)) return false;
+        if (typeFilter === 'all') return true;
+        if (typeFilter === 'maybe') return !!p.isMaybe;
+        return p.cat === typeFilter;
+      }
+
+      function render() {
+        let list = PLACES.filter(matches);
+        // near-me sort: coord places by distance; coordless sink to the end.
+        if (state === 'near') {
+          const km = (d) => (!d ? 1e9 : d.includes('ק״מ') ? parseFloat(d) * 1000 : parseFloat(d));
+          list = [...list].sort((a, b) => {
+            if (!a.coords) return 1;
+            if (!b.coords) return -1;
+            return km(a.dist) - km(b.dist);
+          });
+        }
+
+        let html = '';
+        if (state === 'near' && list.some((p) => p.coords)) {
+          html += `<div class="grouphead">לפי קרבה אליך</div>`;
+        }
+        if (list.length === 0) {
+          html = `<div class="empty"><span class="ei">🗺️</span>אין מקומות בסינון הזה.<br />שנו יום או סוג, או הוסיפו מקום.</div>`;
+        } else {
+          list.forEach((p) => {
+            html += `<div class="place ${rowClass(p)}">
+              ${pinHtml(p)}
+              <div class="main">
+                <div class="t">${esc(p.name)}${p.lock ? '<span class="lock">🔒</span>' : ''}</div>
+                <div class="m">${metaHtml(p)}</div>
+              </div>
+              <div class="right">${rightHtml(p)}</div>
+            </div>`;
+          });
+        }
+        document.getElementById('list').innerHTML = html;
+      }
+
+      function setMode(m) {
+        mode = m;
+        const phone = document.getElementById('phone');
+        phone.dataset.mode = m;
+        document
+          .querySelectorAll('#modeseg button')
+          .forEach((b, i) => b.classList.toggle('on', (i === 0) === (m === 'trip')));
+        // chrome + accent handled by CSS; also flip the default day filter.
+        const pill = document.getElementById('modepill');
+        const sub = document.getElementById('headsub');
+        const statusbar = document.querySelector('.statusbar');
+        if (m === 'plan') {
+          pill.textContent = '✏️ תכנון';
+          sub.textContent = 'טוקיו · כל המקומות';
+          dayFilter = null; // Plan defaults to ALL
+        } else {
+          pill.textContent = '🧭 טיול';
+          sub.textContent = 'טוקיו · המקומות של היום';
+          dayFilter = 2; // Trip defaults to TODAY
+        }
+        syncDayStrip();
+        render();
+      }
+      function toggleMode() {
+        setMode(mode === 'trip' ? 'plan' : 'trip');
+      }
+
+      function syncDayStrip() {
+        document.getElementById('dayAll').classList.toggle('allsel', dayFilter === null);
+        document.querySelectorAll('.day[data-day]').forEach((d) => {
+          d.classList.toggle('sel', +d.dataset.day === dayFilter);
+        });
+      }
+
+      function pickDay(d) {
+        dayFilter = d === 'all' ? null : d;
+        syncDayStrip();
+        render();
+      }
+
+      function filterType(el, t) {
+        typeFilter = t;
+        document.querySelectorAll('.chip').forEach((c) => c.classList.remove('on'));
+        el.classList.add('on');
+        render();
+      }
+
+      function setState(s) {
+        state = s;
+        document.getElementById('phone').dataset.state = s;
+        document
+          .querySelectorAll('#stateseg button')
+          .forEach((b) => b.classList.toggle('on', b.textContent.trim() === stateLabel(s)));
+        const near = document.getElementById('nearchip');
+        const nearlabel = document.getElementById('nearlabel');
+        const denied = document.getElementById('deniedbanner');
+        const offline = document.getElementById('offlinebanner');
+        const geoprompt = document.getElementById('geoprompt');
+        geoprompt.classList.remove('show');
+        denied.classList.remove('show');
+        offline.classList.remove('show');
+        near.classList.remove('on', 'denied');
+        nearlabel.textContent = 'קרוב עכשיו';
+        if (s === 'near') {
+          near.classList.add('on');
+          nearlabel.textContent = 'קרוב · דלוק';
+        } else if (s === 'denied') {
+          near.classList.add('denied');
+          nearlabel.textContent = 'מיקום כבוי';
+          denied.classList.add('show');
+        } else if (s === 'offline') {
+          offline.classList.add('show');
+        }
+        render();
+      }
+      function stateLabel(s) {
+        return { normal: 'רגיל', near: 'קרוב עכשיו', denied: 'מיקום נדחה', offline: 'אופליין' }[s];
+      }
+
+      function tapNearMe() {
+        if (state === 'near') {
+          setState('normal');
+          return;
+        }
+        if (state === 'denied') {
+          toast('המיקום נדחה · הפעילו בהגדרות המכשיר');
+          return;
+        }
+        // just-in-time: show the pre-prompt (never auto-ask on tab open)
+        document.getElementById('geoprompt').classList.add('show');
+        document.getElementById('body').scrollTop = 0;
+      }
+      function grantGeo() {
+        document.getElementById('geoprompt').classList.remove('show');
+        setState('near');
+      }
+      function dismissGeo() {
+        document.getElementById('geoprompt').classList.remove('show');
+      }
+
+      let toastT;
+      function toast(msg) {
+        const t = document.getElementById('toast');
+        t.textContent = msg;
+        t.style.opacity = '1';
+        t.style.transform = 'translateX(-50%) translateY(0)';
+        clearTimeout(toastT);
+        toastT = setTimeout(() => {
+          t.style.opacity = '0';
+          t.style.transform = 'translateX(-50%) translateY(20px)';
+        }, 2100);
+      }
+
+      render();
+    </script>
+  </body>
+</html>

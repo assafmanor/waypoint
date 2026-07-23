@@ -64,7 +64,7 @@ The place-usage derivation and the offline-safe claim were checked against `back
 4. **Event place resolution is conditional** — `Event.placeId` is authoritative only for _unlinked_ events (nulled when `bookingId` is set), so the place-usage index must build on the **existing resolver** (`frontend/src/lib/places.ts` + shared `bookingEventFields`), not re-derive the linked/unlinked branch.
 5. **Coordless places are list-able but not pin-able** (`Place.lat`/`lng` nullable — "Place-lite"). The list + day/type/maybes filters run on coordless places; "near me" (Phase 4) and map pins (Phase 6) must filter to places _with_ coords. This confirms the degree of freedom: a chunk of Phase 3 can render before the picker populates coordinates — the map and near-me cannot.
 
-One open design question this raised (deferred to the Phase 3 design, not decided here): a multi-day place (`endDate` set, e.g. a hotel) — does the day filter surface it on _every_ day of its span or just the edge days? Follow the timeline's existing ambient-vs-edge precedent (0054/0064) rather than inventing one.
+One open design question this raised (deferred to the Phase 3 design, not decided here): a multi-day place (`endDate` set, e.g. a hotel) — does the day filter surface it on _every_ day of its span or just the edge days? Follow the timeline's existing ambient-vs-edge precedent (0054/0064) rather than inventing one. **Resolved in [ADR-0108](0108-map-tab-design.md) §5: edge-loud, middle-ambient** — a normal loud pin on the arrival/departure edge days, a quiet ambient "your base" row (no amber core) on strictly-middle days, matching 0064's transition-entry-on-edges / backdrop-on-middle-nights split.
 
 ## Phasing (development order)
 
@@ -102,11 +102,13 @@ _Accuracy note:_ the JSON-vs-cloud-styling deprecation path, `mapId`/vector spec
 
 ## Open questions (deferred to the design / FE-arch / BE-arch sessions)
 
+> **Design questions below are now resolved in [ADR-0108](0108-map-tab-design.md)** (the design session): geolocation permission UX (§6–7), multi-facet union + colour-by-most-committed (§4, ratified), and the Index-filter-grammar reuse (§2). The remaining open items are the FE-arch / BE-arch ones.
+
 - **Places API key model + the Phase-6 cost envelope** — a restricted client-side key vs. a backend proxy for Places calls (the exposure lever); plus the now-decided JS-API path means costing **dynamic map loads** + the paid **Routes API** (live-route ETAs) against current Maps pricing (changed in 2025). The BE-arch session's first call.
 - **One shared search core vs. two components** — the in-form picker (single-select, in a form) and the Map-tab research surface (multi-result, browse-y) share the Google call, session tokens, and result→`Place` dedup logic; only the shell differs. **Leaning:** one shared core, two presentations (avoids the parallel-copy trap [0094](0094-one-pluggable-change-applier-registry.md)/CLAUDE.md rule 8 guards against). Final call in the FE-arch session; nothing about scope/phasing depends on it.
-- **Geolocation permission UX** — when we ask, and how "near me now" degrades if permission is denied (design session).
-- **Multi-facet place semantics** — confirm union semantics + colour-by-most-committed reference (recommended above, not yet ratified).
-- **Reuse the Index filter grammar** — the Index bookings screen already ships category filter **chips + search + a mode-tinted selected accent** ([0098](0098-index-landing-and-dedicated-screens.md)/[0100](0100-index-bookings-header-search-redesign.md), helpers in `lib/index-bookings.ts`). The Map filter row should extend that primitive, not grow a second one; the FE-arch session confirms the extraction.
+- ~~**Geolocation permission UX**~~ — **resolved in [ADR-0108](0108-map-tab-design.md) §6–7:** just-in-time (asked only on tapping "near me now", behind a reason-first pre-prompt, never on tab open); denied/unavailable degrades to the default sort with distance chips dropped and a quiet re-enable affordance — reads never depend on location.
+- ~~**Multi-facet place semantics**~~ — **ratified in [ADR-0108](0108-map-tab-design.md) §4:** union semantics + colour-by-most-committed, the latter expressed via the Waypoint pin's amber-core state (`hard > soft > idea`).
+- ~~**Reuse the Index filter grammar**~~ — **confirmed in [ADR-0108](0108-map-tab-design.md) §2:** the Map filter row is the `index-bookings-compact-v2` chip/search/mode-accent grammar extended, not a second copy; the FE-arch session still confirms the concrete `ChoiceGrid`/`lib/index-bookings.ts` extraction.
 
 ## Consequences
 
