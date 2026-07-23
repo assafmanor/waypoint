@@ -4,9 +4,9 @@
 
 ## Local toolchain (your machine, once)
 
-- [ ] 👤 **Node.js 22 LTS** (`.nvmrc` pins 22; use nvm/fnm: `nvm use`).
-- [ ] 👤 **pnpm** via Corepack: `corepack enable && corepack prepare pnpm@9.12.0 --activate`.
-- [ ] 👤 **Docker Desktop** (for local Postgres + Redis via `docker-compose.yml`).
+- [x] 👤 **Node.js 22 LTS** (`.nvmrc` pins 22; use nvm/fnm: `nvm use`).
+- [x] 👤 **pnpm** via Corepack: `corepack enable && corepack prepare pnpm@9.12.0 --activate`.
+- [x] 👤 **Docker Desktop** (for local Postgres + Redis via `docker-compose.yml`).
 - [ ] `pnpm install` at the repo root (regenerates `node_modules` for your OS; the sandbox couldn't pre-build these).
 
 ## First run (verifies the scaffold)
@@ -71,25 +71,25 @@ The key model is **decided** — [ADR-0108](../decisions/0108-maps-and-places-ba
 
 **1. Enable the Places API.** APIs & Services → **Library** (`https://console.cloud.google.com/apis/library`), confirm the picker at the top shows the **waypoint** project, then:
 
-- [ ] 👤 **Places API (New)** — Autocomplete + Place Details behind the Phase-1 picker (called server-side through our proxy, ADR-0108). If the library lists both "Places API (New)" and the legacy "Places API," enable **Places API (New)**; the exact endpoints are confirmed at Phase-1 implementation (ADR-0106/0108 accuracy note). Enabling the legacy one too is harmless if unsure (usage, not enablement, bills).
+- [x] 👤 **Places API (New)** — Autocomplete + Place Details behind the Phase-1 picker (called server-side through our proxy, ADR-0108). If the library lists both "Places API (New)" and the legacy "Places API," enable **Places API (New)**; the exact endpoints are confirmed at Phase-1 implementation (ADR-0106/0108 accuracy note). Enabling the legacy one too is harmless if unsure (usage, not enablement, bills).
 - Maps JavaScript API and Routes API are **Phase 6** — leave them off for now (see the deferred slice below).
 
 **2. Billing + hard cost guardrails (ADR-0108 §6 — required before any key ships).** Maps/Places return `REQUEST_DENIED` without billing, and cost discipline is a hard gate here, not a nicety.
 
-- [ ] 👤 Billing (`https://console.cloud.google.com/billing`) → confirm the project is **linked** to an active billing account (if sign-in/Calendar already work this may be true — verify the link, not just that an account exists).
-- [ ] 👤 **Budget + alert** (Billing → Budgets & alerts): set a monthly ceiling with alerts (e.g. 50/90/100%). The outer safety net if every in-app guard is bypassed. **Required.**
-- [ ] 👤 **Per-SKU daily quota cap** (APIs & Services → Places API (New) → **Quotas & limits**): cap **Place Details** and **Autocomplete** requests/day to a sane ceiling. This is what actually bounds an abuse/leak to a known maximum. (Dynamic Maps + Routes quota caps are added with the Phase-6 slice.)
-- [ ] 👤 **Re-confirm current pricing** at billing setup — Google retired the $200/mo universal credit in March 2025 for per-SKU free tiers + Essentials/Pro/Enterprise field-mask tiers (ADR-0108 recorded figures confirmed 2026-07-23). Don't rely on remembered numbers; the _architecture_ doesn't change if a figure moved, but the quota ceilings you set should reflect today's prices.
+- [x] 👤 Billing (`https://console.cloud.google.com/billing`) → confirm the project is **linked** to an active billing account (if sign-in/Calendar already work this may be true — verify the link, not just that an account exists).
+- [x] 👤 **Budget + alert** (Billing → Budgets & alerts): set a monthly ceiling with alerts (e.g. 50/90/100%). The outer safety net if every in-app guard is bypassed. **Required.**
+- [x] 👤 **Per-SKU daily quota cap** (APIs & Services → Places API (New) → **Quotas & limits**): cap **Place Details** and **Autocomplete** requests/day to a sane ceiling. This is what actually bounds an abuse/leak to a known maximum. (Dynamic Maps + Routes quota caps are added with the Phase-6 slice.)
+- [x] 👤 **Re-confirm current pricing** at billing setup — Google retired the $200/mo universal credit in March 2025 for per-SKU free tiers + Essentials/Pro/Enterprise field-mask tiers (ADR-0108 recorded figures confirmed 2026-07-23). Don't rely on remembered numbers; the _architecture_ doesn't change if a figure moved, but the quota ceilings you set should reflect today's prices.
 
 **3. OAuth consent screen — no change needed.** Maps/Places authenticate with an **API key**, not OAuth scopes, so Phase 0 adds **no** consent-screen scopes and needs no re-verification. (The only OAuth work remains the sign-in/Calendar scopes above.)
 
 **4. Create the server key (`GOOGLE_MAPS_SERVER_KEY`).** Credentials → **Create credentials → API key**, then **Edit** the key immediately:
 
-- [ ] 👤 **API restrictions** → **Restrict key** → **Places API (New)** only. (Add **Routes API** to this same key at Phase 6 — it's the same server key.)
-- [ ] 👤 **Application restrictions** → **IP addresses**, set to the backend's egress IP(s):
+- [x] 👤 **API restrictions** → **Restrict key** → **Places API (New)** only. (Add **Routes API** to this same key at Phase 6 — it's the same server key.)
+- [x] 👤 **Application restrictions** → **IP addresses**, set to the backend's egress IP(s):
   - **Production (Railway):** its egress IP — note Railway does not guarantee a static egress IP on every plan, so if you can't pin one, leave application restriction as **None** and rely on the key being **API-restricted + held server-side only + behind `MembershipGuard` + the proxy rate limits** (ADR-0108 §1/§5). Never expose this key to the browser regardless.
   - **Local dev:** an IP restriction will block calls from your dev machine (home/office IPs vary). Simplest is to leave this key IP-unrestricted (API-restricted only) for now, or mint a separate throwaway dev key; either way it stays in your local `.env`, never the repo.
-- [ ] 👤 **Store it in `.env` (local) and Railway env vars only — never in the repo** (CLAUDE.md rule 7). Backend var `GOOGLE_MAPS_SERVER_KEY` (read via `requireEnv` in `backend/src/common/env.ts` once the Phase-1 proxy lands — not wired yet, so setting it now is harmless). **Not** a `VITE_` var — the backend holds it, the browser never sees it. Record _what exists_ (not the value) in the password manager.
+- [x] 👤 **Store it in `.env` (local) and Railway env vars only — never in the repo** (CLAUDE.md rule 7). Backend var `GOOGLE_MAPS_SERVER_KEY` (read via `requireEnv` in `backend/src/common/env.ts` once the Phase-1 proxy lands — not wired yet, so setting it now is harmless). **Not** a `VITE_` var — the backend holds it, the browser never sees it. Record _what exists_ (not the value) in the password manager.
 
 Setting `GOOGLE_MAPS_SERVER_KEY` today does nothing until the Phase-1 proxy code reads it — so `.env.example` gets a commented placeholder (below), but you can safely mint + store the key now so Phase 1 is unblocked the moment it starts.
 
@@ -103,6 +103,8 @@ Listed so it isn't forgotten; none of this is needed for Phases 1–5, and per A
 - [ ] ⏸️ 👤 **Add per-SKU daily quota caps** for **Dynamic Maps** and **Routes** (the same hard-gate as the near-term Place Details cap).
 
 **Status after the near-term slice:** Places API enabled + billing/budget/quota set + `GOOGLE_MAPS_SERVER_KEY` minted and stored = Phase 1 (the picker) is fully unblocked. The Phase-6 browser key and map/Routes APIs wait until that phase by design.
+
+**Done 2026-07-23:** the near-term slice above is complete — Places API (New) enabled on the existing `waypoint` project, a billing budget alert + a per-day request quota cap set, and `GOOGLE_MAPS_SERVER_KEY` minted and stored in local `.env` + Railway. Phase 1 (the picker) is unblocked; the Phase-6 boxes remain for that phase.
 
 ## Secrets
 
