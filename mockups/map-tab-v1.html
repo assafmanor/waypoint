@@ -1,0 +1,2781 @@
+<!doctype html>
+<!-- Map tab — LIST-FIRST v1 (2026-07-23 design session, item #1 of ADR-0106's
+     follow-on roadmap: "Design — the Map surface"). Read ADR-0106 (scope +
+     phasing + the embedded-map §), ADR-0107 (per-place timezones), and this
+     file's promoting ADR-0109 before treating anything here as settled.
+
+     WHAT THIS MOCKS (Phase 3 = the list-first tab; Phase 4 near-me; a small
+     Phase-6 map-preview to pin down the marker visual):
+
+     1. THE PINNED-PLACE LIST, one surface re-emphasized by mode.
+        - DAY SCOPE uses the REAL shared header day strip (ui/domain/DayStrip),
+          not a bespoke one. The map is a day-scoped surface like the Day view,
+          so tapping a strip day FOCUSES it ON THE MAP IN PLACE (no navigation)
+          — the same rule the strip already follows: update in place on a
+          day-scoped surface, route to the Day view from non-day surfaces
+          (Home/Index). Because the app tracks only ONE active date, "all days"
+          can't be a strip state — it's a MAP-LOCAL scope chip ("🗓️ כל הימים").
+          Trip defaults to today, Plan defaults to all (ADR-0106 Decision 1).
+        - Every row deep-links out (👁 view in Maps / 🧭 navigate) — we never
+          rebuild navigation (ADR-0106 Decision 3/6).
+
+     2. THE FILTER ROW reuses the Index chip/search/mode-accent grammar
+        (ADR-0098/0100, index-bookings-compact-v2.html) — NOT a second copy
+        (CLAUDE.md rule 8). Same scrollable pills w/ label+count, edge-fade
+        mask, a covering search overlay, and the mode-tinted selected accent
+        (--idx-accent: ink in Trip, --plan in Plan). Chip facets: סוג (=category)
+        · אולי. (Day scope = the header strip + the all-days chip, above.) All
+        of it is PURE client-side derivation over the trip snapshot (offline-
+        safe) reading the place-usage index {days[],categories[],isMaybe,
+        isScheduled} — only live search + the Phase-6 map need network.
+
+     3. THE PIN = colour-by-CATEGORY (ADR-0038 §2 / ADR-0028 decorative
+        palette — 5 pastel hues: food/lodging/transit/leisure/services,
+        "never amber or teal"). This RESTORES the earlier agreement; ADR-0109's
+        first draft (teal Waypoint + glyph) was wrong against it. In the LIST
+        it's a regular rounded category BADGE; on the embedded MAP it's a
+        category-coloured teardrop. Commitment is the hard/soft GRAMMAR (solid
+        + 🔒 hard / dashed maybe), not colour. Teal stays for LOCATION
+        affordances (near-me · distance · נווט), amber for TIME (route ETA + an
+        amber ring on the one "next" stop) — ADR-0028 budget intact.
+
+     RESOLVED OPEN QUESTIONS (recorded in ADR-0109):
+     4. MULTI-DAY place under the day filter → edge-loud, middle-ambient
+        (follows 0054/0064): a loud pin on arrival/departure days, a quiet
+        "your base" ambient row on strictly-middle days — never a loud
+        time-anchored pin mid-stay. Neither "every span day" nor "edges only".
+     5. MULTI-FACET place → union semantics + colour-by-most-committed:
+        % Arabica shows under BOTH אוכל and אולי; its pin takes its most-
+        committed state.
+     6. GEOLOCATION UX → just-in-time, never blocks reads (ADR-0006 own-
+        device). Asked only on tapping "קרוב עכשיו", behind a one-line pre-
+        prompt. Denied → list stays on its default sort, distance chips gone,
+        a quiet re-enable affordance remains. Toggle the STATE control.
+     7. "NEAR ME NOW" without a rendered map (Phase 4 ships before Phase 6) →
+        a re-SORT of the list + distance chips, not a spatial "me" dot. Only
+        coord-bearing places participate; "Place-lite" (name-only) rows can't.
+
+     8. ADR-0107's EDITABLE TIMEZONE CHIP on the time input (bottom panel):
+        "🕐 19:30 · טוקיו ▾", one-tap correctable; transport shows two
+        (origin zone on start, destination on end).
+
+     STATE toggle (top): רגיל · קרוב עכשיו (granted) · מיקום נדחה (denied) ·
+     אופליין. MODE pill re-skins chrome + accent + the default day filter. -->
+<html lang="he" dir="rtl">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>מפה · רשימת מקומות · מוקאפ v1</title>
+    <link rel="preconnect" href="https://fonts.googleapis.com" />
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+    <link
+      href="https://fonts.googleapis.com/css2?family=Assistant:wght@400;500;600;700&family=Secular+One&family=JetBrains+Mono:wght@500;700&display=swap"
+      rel="stylesheet"
+    />
+    <style>
+      :root {
+        --ink: #16233d;
+        --indigo: #1b2a4a;
+        --board: #0e1729;
+        --board-2: #152137;
+        --screen: #e7eaef;
+        --card: #ffffff;
+        --paper: #f3efe6;
+        --amber: #e9a63c;
+        --amber-deep: #c9822a;
+        --amber-ink: #7a5a1e;
+        --teal: #2c9c90;
+        --teal-deep: #227e74;
+        --teal-tint: rgba(44, 156, 144, 0.12);
+        --plan: #6e59d6;
+        --plan-deep: #5747b4;
+        --plan-tint: rgba(110, 89, 214, 0.1);
+        --ok: #3c9a6b;
+        --miss: #c2584e;
+        --muted: #6c7488;
+        --faint: #98a0b0;
+        --line: rgba(22, 35, 61, 0.1);
+        --soft-line: rgba(22, 35, 61, 0.28);
+        /* The tab's own selection accent — the SAME per-mode rule the Index
+           uses (ADR-0100 §5 / ADR-0028): neutral ink in Trip, plan violet in
+           Plan. One accent, no per-category tinting. */
+        --idx-accent: var(--ink);
+        --idx-accent-text: #fff;
+        /* "me / OS location" blue — an OS-map convention, deliberately OUTSIDE
+           the amber/teal/violet budget (design-language "Map" entry). */
+        --me: #2e6be6;
+        /* CATEGORY PIN PALETTE (ADR-0038 §2 / ADR-0028 decorative palette) —
+           pastel, "never amber or teal", one hue per pin category. The pin/badge
+           fill is category-coded; teal stays for LOCATION AFFORDANCES (near-me,
+           distance, navigate), amber for TIME (route ETAs, the live now/next). */
+        --cat-food: #e8998a;
+        --cat-lodging: #9c8ce8;
+        --cat-transit: #8cb6e8;
+        --cat-leisure: #9cc9a0;
+        --cat-services: #d9c08a;
+      }
+      * {
+        box-sizing: border-box;
+        margin: 0;
+        padding: 0;
+      }
+      html,
+      body {
+        height: 100%;
+      }
+      body {
+        font-family: 'Assistant', system-ui, sans-serif;
+        background:
+          radial-gradient(120% 90% at 80% -10%, #2a3e68 0%, transparent 55%),
+          radial-gradient(120% 90% at 0% 110%, #1a2a4a 0%, transparent 50%), #0f1a31;
+        color: var(--ink);
+        min-height: 100vh;
+        display: flex;
+        flex-direction: column;
+        align-items: center;
+        padding: 24px 16px 48px;
+        -webkit-font-smoothing: antialiased;
+      }
+      .caption {
+        text-align: center;
+        color: #aeb9d4;
+        font-size: 12.5px;
+        margin-bottom: 6px;
+        font-weight: 500;
+        max-width: 440px;
+      }
+      .caption b {
+        color: #fff;
+        font-weight: 600;
+      }
+      .adr-note {
+        text-align: center;
+        color: #7f8db0;
+        font-size: 11px;
+        margin-bottom: 14px;
+        max-width: 430px;
+        line-height: 1.5;
+      }
+      .controls {
+        display: flex;
+        flex-wrap: wrap;
+        gap: 8px;
+        justify-content: center;
+        margin-bottom: 16px;
+      }
+      .seg {
+        display: inline-flex;
+        background: rgba(255, 255, 255, 0.08);
+        border: 1px solid rgba(255, 255, 255, 0.16);
+        border-radius: 999px;
+        padding: 3px;
+        gap: 2px;
+      }
+      .seg button {
+        font: inherit;
+        font-size: 12px;
+        font-weight: 600;
+        color: #9daac8;
+        background: none;
+        border: 0;
+        border-radius: 999px;
+        padding: 6px 13px;
+        cursor: pointer;
+        transition: all 0.18s ease;
+      }
+      .seg button.on {
+        background: #fff;
+        color: var(--ink);
+      }
+      .seg.plan button.on {
+        background: var(--plan);
+        color: #fff;
+      }
+
+      .phone {
+        width: 100%;
+        max-width: 392px;
+        background: var(--screen);
+        border-radius: 38px;
+        box-shadow:
+          0 18px 40px -18px rgba(14, 23, 41, 0.45),
+          0 0 0 10px #0b1526,
+          0 0 0 12px #223257;
+        overflow: hidden;
+        position: relative;
+        height: 838px;
+        flex-shrink: 0; /* never let the page's flex column compress the phone */
+        display: flex;
+        flex-direction: column;
+        transition:
+          background 0.3s ease,
+          color 0.3s ease;
+      }
+      /* only the scroll body flexes; every chrome row keeps its full height */
+      .statusbar,
+      .header,
+      .daystrip,
+      .filterbar,
+      .sortstrip,
+      .nav {
+        flex-shrink: 0;
+      }
+
+      /* ---- chrome (follows mode; design-language mode-identity table) ---- */
+      .statusbar {
+        background: var(--indigo);
+        color: #dce3f2;
+        display: flex;
+        justify-content: space-between;
+        align-items: center;
+        padding: 11px 22px 8px;
+        font-size: 13px;
+        font-weight: 600;
+        font-family: 'JetBrains Mono', monospace;
+      }
+      .header {
+        background: var(--indigo);
+        color: #fff;
+        padding: 6px 18px 15px;
+        transition: background 0.3s ease;
+      }
+      /* the standard two-segment mode-toggle (matches the app / other views:
+         amber-selected in Trip, violet-selected in Plan) — NOT a bespoke pill */
+      .mode-row {
+        display: flex;
+        justify-content: center;
+        margin: 2px 0 10px;
+      }
+      .mode-toggle {
+        display: inline-flex;
+        background: rgba(255, 255, 255, 0.08);
+        border: 1px solid rgba(255, 255, 255, 0.14);
+        border-radius: 999px;
+        padding: 3px;
+        gap: 2px;
+      }
+      .mode-toggle .m {
+        font: inherit;
+        font-size: 13px;
+        font-weight: 600;
+        color: #9daac8;
+        background: none;
+        border: 0;
+        border-radius: 999px;
+        padding: 6px 16px;
+        cursor: pointer;
+        display: flex;
+        align-items: center;
+        gap: 6px;
+      }
+      .mode-toggle .m.on {
+        background: var(--amber);
+        color: #3a2405;
+      }
+      .header .row1 {
+        display: flex;
+        align-items: center;
+        justify-content: space-between;
+        gap: 10px;
+      }
+      .header h1 {
+        font-family: 'Secular One', sans-serif;
+        font-size: 20px;
+        font-weight: 400;
+        display: flex;
+        align-items: center;
+        gap: 8px;
+      }
+      .header .sub {
+        font-size: 12px;
+        color: #b9c3dc;
+        margin-top: 3px;
+      }
+
+      /* Plan chrome = light drafting table + violet + faint grid */
+      [data-mode='plan'] .statusbar,
+      [data-mode='plan'] .header {
+        background:
+          repeating-linear-gradient(0deg, rgba(110, 89, 214, 0.05) 0 1px, transparent 1px 22px),
+          repeating-linear-gradient(90deg, rgba(110, 89, 214, 0.05) 0 1px, transparent 1px 22px),
+          var(--paper);
+        color: var(--ink);
+      }
+      [data-mode='plan'] .statusbar {
+        color: var(--plan-deep);
+      }
+      [data-mode='plan'] .header h1 {
+        color: var(--ink);
+      }
+      [data-mode='plan'] .mode-toggle {
+        background: rgba(22, 35, 61, 0.05);
+        border-color: var(--soft-line);
+      }
+      [data-mode='plan'] .mode-toggle .m {
+        color: var(--muted);
+      }
+      [data-mode='plan'] .mode-toggle .m.on {
+        background: var(--plan);
+        color: #fff;
+      }
+      [data-mode='plan'] .header .sub {
+        color: var(--muted);
+      }
+      [data-mode='plan'] {
+        --idx-accent: var(--plan);
+      }
+
+      /* ---- day strip: the REAL shared header component (ui/domain/DayStrip),
+         ported faithfully. It lives in the header chrome (dark Trip / light
+         Plan), weekday-letter over mono day-number, amber-anchors today in
+         Trip / violet selection in Plan / dashed-red empty days in Plan. It is
+         NOT a map-only control and carries NO "all days" cell — tapping a day
+         focuses it on the map in place (see the scope strip below for "all"). */
+      .daystrip {
+        display: flex;
+        gap: 6px;
+        margin-top: 12px;
+        overflow-x: auto;
+        scrollbar-width: none;
+      }
+      .daystrip::-webkit-scrollbar {
+        display: none;
+      }
+      .daycell-wrap {
+        display: flex;
+        flex-direction: column;
+        justify-content: flex-end;
+        flex: 0 0 auto;
+      }
+      .month-label {
+        text-align: center;
+        font-size: 10.5px;
+        font-weight: 600;
+        color: #8494b5;
+        white-space: nowrap;
+        margin-bottom: 4px;
+      }
+      .daycell {
+        position: relative;
+        min-width: 44px; /* ≥44px touch target */
+        text-align: center;
+        font: inherit;
+        font-size: 11px;
+        font-weight: 600;
+        padding: 7px 0 8px;
+        border: none;
+        border-radius: 9px;
+        color: #8494b5;
+        background: rgba(255, 255, 255, 0.05);
+        cursor: pointer;
+      }
+      .daycell .n {
+        display: block;
+        font-family: 'JetBrains Mono', monospace;
+        font-size: 14px;
+        margin-top: 2px;
+        color: #b9c4de;
+      }
+      .daycell.on {
+        background: var(--amber);
+        color: #3a2405;
+      }
+      .daycell.on .n {
+        color: #3a2405;
+      }
+      .daycell.past {
+        opacity: 0.45;
+      }
+      .daycell.future {
+        opacity: 0.6;
+      }
+      /* a selected non-today day: neutral highlight if past, violet if future */
+      .daycell.sel-history {
+        background: rgba(255, 255, 255, 0.16);
+        color: #eaf0ff;
+        box-shadow: inset 0 0 0 1px rgba(255, 255, 255, 0.28);
+      }
+      .daycell.sel-history .n {
+        color: #fff;
+      }
+      .daycell.sel-future {
+        background: var(--plan);
+        color: #fff;
+      }
+      .daycell.sel-future .n {
+        color: #fff;
+      }
+      /* today-anchor: amber dot marking the live day wherever you browse */
+      .daycell.today-anchor::after {
+        content: '';
+        position: absolute;
+        top: 5px;
+        inset-inline-end: 7px;
+        width: 6px;
+        height: 6px;
+        border-radius: 999px;
+        background: var(--amber);
+        box-shadow: 0 0 0 2px rgba(233, 166, 60, 0.25);
+      }
+      /* Plan mode: no "now" — violet selection, dashed red-number empty days */
+      [data-mode='plan'] .daycell {
+        background: rgba(22, 35, 61, 0.05);
+        color: var(--muted);
+      }
+      [data-mode='plan'] .daycell .n {
+        color: var(--ink);
+      }
+      [data-mode='plan'] .month-label {
+        color: var(--muted);
+      }
+      [data-mode='plan'] .daycell.on {
+        background: var(--plan);
+        color: #fff;
+      }
+      [data-mode='plan'] .daycell.on .n {
+        color: #fff;
+      }
+      [data-mode='plan'] .daycell.empty:not(.on) {
+        border: 1px dashed var(--soft-line);
+        background: transparent;
+      }
+      [data-mode='plan'] .daycell.empty:not(.on) .n {
+        color: var(--miss);
+      }
+
+      /* ---- day-scope + sort strip (below the chips). "כל הימים" is a
+         MAP-LOCAL scope (the global model has only one active date) — it is the
+         only way to show all days at once; tapping a strip day narrows back to
+         that day. ---- */
+      .scopechip {
+        display: inline-flex;
+        align-items: center;
+        gap: 5px;
+        border: 1px solid var(--line);
+        background: #fbfcfe;
+        color: var(--ink);
+        border-radius: 999px;
+        padding: 6px 12px;
+        font-size: 12px;
+        font-weight: 700;
+        cursor: pointer;
+      }
+      .scopechip.on {
+        background: var(--idx-accent);
+        border-color: var(--idx-accent);
+        color: var(--idx-accent-text);
+      }
+      .scopehint {
+        font-size: 11px;
+        color: var(--faint);
+        font-weight: 600;
+      }
+
+      /* ---- filter chip row (reuses index-bookings-compact-v2 grammar) ---- */
+      .filterbar {
+        position: relative;
+        display: flex;
+        align-items: center;
+        gap: 8px;
+        padding: 10px 14px 6px;
+        background: var(--card);
+      }
+      .chiprow {
+        display: flex;
+        gap: 7px;
+        overflow-x: auto;
+        scroll-snap-type: x mandatory;
+        flex: 1;
+        scrollbar-width: none;
+        -webkit-mask-image: linear-gradient(
+          to right,
+          transparent 0,
+          black 14px,
+          black calc(100% - 14px),
+          transparent 100%
+        );
+        mask-image: linear-gradient(
+          to right,
+          transparent 0,
+          black 14px,
+          black calc(100% - 14px),
+          transparent 100%
+        );
+        transition:
+          opacity 0.2s ease,
+          transform 0.2s ease;
+      }
+      .chiprow::-webkit-scrollbar {
+        display: none;
+      }
+      .chip {
+        flex: 0 0 auto;
+        scroll-snap-align: start;
+        display: inline-flex;
+        align-items: center;
+        gap: 5px;
+        border: 1px solid var(--line);
+        background: #fbfcfe;
+        color: var(--ink);
+        border-radius: 999px;
+        padding: 7px 12px;
+        font-size: 12.5px;
+        font-weight: 600;
+        cursor: pointer;
+        white-space: nowrap;
+        transition: all 0.15s ease;
+      }
+      .chip .cnt {
+        font-family: 'JetBrains Mono', monospace;
+        font-size: 11px;
+        font-weight: 700;
+        color: var(--muted);
+      }
+      .chip.on {
+        background: var(--idx-accent);
+        border-color: var(--idx-accent);
+        color: var(--idx-accent-text);
+      }
+      .chip.on .cnt {
+        color: rgba(255, 255, 255, 0.8);
+      }
+      /* the "אולי" facet toggle reads as soft/provisional when off */
+      .chip.maybe {
+        border-style: dashed;
+        border-color: var(--soft-line);
+      }
+      .searchbtn {
+        flex: 0 0 auto;
+        width: 34px;
+        height: 34px;
+        border-radius: 10px;
+        border: 1px solid var(--line);
+        background: #fbfcfe;
+        display: grid;
+        place-items: center;
+        cursor: pointer;
+        color: var(--muted);
+      }
+      .searchbtn.on {
+        color: var(--idx-accent);
+        border-color: var(--idx-accent);
+      }
+
+      /* ---- the near-me / sort strip ---- */
+      .sortstrip {
+        display: flex;
+        align-items: center;
+        gap: 8px;
+        padding: 4px 14px 12px;
+        background: var(--card);
+        border-bottom: 1px solid var(--line);
+      }
+      .sortstrip .lbl {
+        font-size: 11px;
+        color: var(--faint);
+        font-weight: 600;
+      }
+      .nearchip {
+        display: inline-flex;
+        align-items: center;
+        gap: 5px;
+        border: 1px solid var(--teal);
+        color: var(--teal-deep);
+        background: var(--teal-tint);
+        border-radius: 999px;
+        padding: 6px 12px;
+        font-size: 12px;
+        font-weight: 700;
+        cursor: pointer;
+      }
+      .nearchip.on {
+        background: var(--teal);
+        color: #fff;
+      }
+      .nearchip.denied {
+        border-color: var(--soft-line);
+        border-style: dashed;
+        color: var(--muted);
+        background: transparent;
+      }
+      .nearchip svg {
+        width: 13px;
+        height: 13px;
+      }
+
+      /* ---- scroll body ---- */
+      .body {
+        flex: 1;
+        overflow-y: auto;
+        background: var(--screen);
+        padding: 12px 14px 90px;
+      }
+      .grouphead {
+        font-size: 11px;
+        font-weight: 700;
+        color: var(--muted);
+        letter-spacing: 0.02em;
+        margin: 8px 4px 8px;
+        display: flex;
+        align-items: center;
+        gap: 6px;
+      }
+      .grouphead::after {
+        content: '';
+        flex: 1;
+        height: 1px;
+        background: var(--line);
+      }
+
+      /* ---- a place row ---- */
+      .place {
+        display: flex;
+        align-items: center;
+        gap: 11px;
+        background: var(--card);
+        border: 1px solid var(--line);
+        border-radius: 16px;
+        padding: 11px 12px;
+        margin-bottom: 9px;
+        box-shadow: 0 1px 2px rgba(14, 23, 41, 0.04);
+        transition: all 0.15s ease;
+      }
+      .place.soft {
+        border-style: dashed;
+        border-color: var(--soft-line);
+        background:
+          repeating-linear-gradient(-45deg, rgba(22, 35, 61, 0.02) 0 6px, transparent 6px 12px),
+          var(--card);
+      }
+      /* ambient (mid-stay base) row — quiet, de-emphasized, not a loud pin */
+      .place.ambient {
+        background: var(--paper);
+        border-style: solid;
+        border-color: var(--line);
+        opacity: 0.85;
+        box-shadow: none;
+      }
+
+      /* --- LIST BADGE: a regular rounded category badge (NOT a map teardrop —
+         the teardrop lives on the map, §map-preview). Fill = category colour
+         (ADR-0038); commitment is carried by the ROW grammar (solid+lock hard /
+         dashed-hatch maybe), not the badge. --- */
+      .badge {
+        flex: 0 0 auto;
+        width: 40px;
+        height: 40px;
+        border-radius: 12px;
+        display: grid;
+        place-items: center;
+        font-size: 19px;
+        line-height: 1;
+      }
+      .badge.cat-food {
+        background: var(--cat-food);
+      }
+      .badge.cat-lodging {
+        background: var(--cat-lodging);
+      }
+      .badge.cat-transit {
+        background: var(--cat-transit);
+      }
+      .badge.cat-leisure {
+        background: var(--cat-leisure);
+      }
+      .badge.cat-services {
+        background: var(--cat-services);
+      }
+      /* maybe idea → the badge softens (lighter, dashed ring) to read provisional */
+      .place.soft .badge {
+        opacity: 0.72;
+        box-shadow: inset 0 0 0 1.5px var(--soft-line);
+        background-blend-mode: luminosity;
+      }
+      /* ambient base + coordless → muted/neutral badge */
+      .place.ambient .badge {
+        filter: saturate(0.5);
+        opacity: 0.7;
+      }
+      .badge.nocoord {
+        background: transparent;
+        border: 1.5px dashed var(--faint);
+        opacity: 0.7;
+      }
+
+      .place .main {
+        flex: 1;
+        min-width: 0;
+      }
+      .place .t {
+        font-size: 14.5px;
+        font-weight: 700;
+        color: var(--ink);
+        display: flex;
+        align-items: center;
+        gap: 6px;
+      }
+      .place.ambient .t,
+      .place.nocoordrow .t {
+        color: var(--muted);
+      }
+      .lock {
+        font-size: 10px;
+      }
+      .place .m {
+        font-size: 12px;
+        color: var(--muted);
+        margin-top: 2px;
+        display: flex;
+        flex-wrap: wrap;
+        gap: 4px 8px;
+      }
+      .tag {
+        display: inline-flex;
+        align-items: center;
+        gap: 3px;
+      }
+      .tag.time {
+        color: var(--amber-deep);
+        font-weight: 700;
+        font-family: 'JetBrains Mono', monospace;
+        font-size: 11.5px;
+      }
+      .tag.mbadge {
+        color: var(--plan-deep);
+        font-weight: 700;
+      }
+      /* rating = cached Google Places value (ADR-0109 §3); a status-ish neutral,
+         not a semantic hue — the star glyph carries it. */
+      .tag.rate {
+        color: var(--amber-deep);
+        font-weight: 700;
+      }
+      .place {
+        cursor: pointer;
+      }
+      .place .right {
+        flex: 0 0 auto;
+        display: flex;
+        flex-direction: column;
+        align-items: flex-end;
+        gap: 7px;
+      }
+      .dist {
+        font-family: 'JetBrains Mono', monospace;
+        font-size: 12px;
+        font-weight: 700;
+        color: var(--teal-deep);
+        background: var(--teal-tint);
+        padding: 2px 7px;
+        border-radius: 8px;
+      }
+      .dist.stale {
+        color: var(--muted);
+        background: rgba(108, 116, 136, 0.1);
+      }
+      /* ONE labeled trailing action. On the ground the useful verb is directions,
+         so the button is "נווט" (teal = location). Viewing the place is the ROW
+         TAP (opens the place detail / Google Maps place) — no cryptic eye icon,
+         no mystery compass; every control is labeled and justified. */
+      .navbtn {
+        display: inline-flex;
+        align-items: center;
+        gap: 5px;
+        border: 1px solid var(--teal);
+        color: var(--teal-deep);
+        background: var(--teal-tint);
+        border-radius: 999px;
+        padding: 6px 12px;
+        font: inherit;
+        font-size: 12px;
+        font-weight: 700;
+        cursor: pointer;
+        white-space: nowrap;
+      }
+      .navbtn svg {
+        width: 13px;
+        height: 13px;
+      }
+      .addbtn {
+        display: inline-flex;
+        align-items: center;
+        gap: 5px;
+        border: 1px dashed var(--soft-line);
+        color: var(--muted);
+        background: transparent;
+        border-radius: 999px;
+        padding: 6px 12px;
+        font: inherit;
+        font-size: 12px;
+        font-weight: 700;
+        cursor: pointer;
+        white-space: nowrap;
+      }
+      .noplace-hint {
+        font-size: 11px;
+        color: var(--faint);
+        font-style: normal;
+      }
+
+      /* ---- geolocation pre-prompt + denied banners ---- */
+      .geoprompt {
+        display: none;
+        background: var(--card);
+        border: 1px solid var(--teal);
+        border-radius: 14px;
+        padding: 13px 14px;
+        margin-bottom: 12px;
+        box-shadow: 0 6px 16px -8px rgba(34, 126, 116, 0.4);
+      }
+      .geoprompt.show {
+        display: block;
+        animation: fade 0.25s ease;
+      }
+      .geoprompt .gt {
+        font-size: 13.5px;
+        font-weight: 700;
+        display: flex;
+        align-items: center;
+        gap: 6px;
+        margin-bottom: 4px;
+      }
+      .geoprompt .gm {
+        font-size: 12px;
+        color: var(--muted);
+        line-height: 1.5;
+        margin-bottom: 11px;
+      }
+      .geoprompt .gbtns {
+        display: flex;
+        gap: 8px;
+      }
+      .gbtn {
+        font: inherit;
+        font-size: 12.5px;
+        font-weight: 700;
+        border-radius: 10px;
+        padding: 9px 14px;
+        border: 1px solid var(--line);
+        background: #fbfcfe;
+        color: var(--muted);
+        cursor: pointer;
+      }
+      .gbtn.primary {
+        background: var(--teal);
+        color: #fff;
+        border-color: var(--teal);
+      }
+      .banner {
+        display: none;
+        align-items: center;
+        gap: 8px;
+        font-size: 11.5px;
+        font-weight: 600;
+        padding: 9px 12px;
+        border-radius: 12px;
+        margin-bottom: 12px;
+      }
+      .banner.show {
+        display: flex;
+        animation: fade 0.25s ease;
+      }
+      .banner.denied {
+        background: rgba(108, 116, 136, 0.1);
+        border: 1px solid rgba(108, 116, 136, 0.22);
+        color: var(--muted);
+      }
+      .banner.denied .relink {
+        color: var(--teal-deep);
+        font-weight: 700;
+        margin-inline-start: auto;
+        cursor: pointer;
+        white-space: nowrap;
+      }
+      .banner.offline {
+        background: rgba(108, 116, 136, 0.1);
+        border: 1px solid rgba(108, 116, 136, 0.22);
+        color: var(--muted);
+      }
+
+      /* offline: desaturate the whole list + swap live distances for stale */
+      [data-state='offline'] .body .place {
+        filter: grayscale(35%);
+      }
+      [data-state='offline'] .nearchip {
+        display: none;
+      }
+
+      /* ---- empty / no-match ---- */
+      .empty {
+        text-align: center;
+        color: var(--muted);
+        padding: 34px 20px;
+        font-size: 13px;
+      }
+      .empty .ei {
+        font-size: 30px;
+        display: block;
+        margin-bottom: 8px;
+      }
+
+      /* ---- bottom nav ---- */
+      .nav {
+        position: absolute;
+        bottom: 0;
+        left: 0;
+        right: 0;
+        display: flex;
+        justify-content: space-around;
+        padding: 9px 0 14px;
+        background: rgba(255, 255, 255, 0.86);
+        backdrop-filter: blur(12px);
+        border-top: 1px solid var(--line);
+      }
+      .nav button {
+        background: none;
+        border: 0;
+        font: inherit;
+        font-size: 10px;
+        font-weight: 600;
+        color: var(--muted);
+        display: flex;
+        flex-direction: column;
+        align-items: center;
+        gap: 3px;
+        cursor: pointer;
+      }
+      .nav .ic {
+        width: 40px;
+        height: 26px;
+        display: grid;
+        place-items: center;
+        font-size: 18px;
+        border-radius: 999px;
+      }
+      .nav button.on {
+        color: var(--idx-accent);
+      }
+      .nav button.on .ic {
+        background: var(--plan-tint);
+        transform: translateY(2px);
+      }
+      [data-mode='trip'] .nav button.on .ic {
+        background: rgba(27, 42, 74, 0.1);
+      }
+
+      @keyframes fade {
+        from {
+          opacity: 0;
+          transform: translateY(-4px);
+        }
+        to {
+          opacity: 1;
+          transform: translateY(0);
+        }
+      }
+
+      /* =================================================================
+         SIDE PANELS (design annotations, not part of the phone frame)
+         ================================================================= */
+      .panels {
+        display: flex;
+        flex-wrap: wrap;
+        gap: 16px;
+        justify-content: center;
+        max-width: 900px;
+        margin-top: 26px;
+      }
+      .panel {
+        background: #101b31;
+        border: 1px solid #223257;
+        border-radius: 16px;
+        padding: 16px 18px;
+        width: 420px;
+        max-width: 100%;
+      }
+      .panel h3 {
+        color: #fff;
+        font-size: 13.5px;
+        font-family: 'Secular One', sans-serif;
+        font-weight: 400;
+        margin-bottom: 4px;
+      }
+      .panel p {
+        color: #aeb9d4;
+        font-size: 11.5px;
+        line-height: 1.6;
+        margin-bottom: 10px;
+      }
+      .panel p b {
+        color: #fff;
+      }
+
+      /* pin anatomy legend */
+      .legend {
+        display: flex;
+        flex-direction: column;
+        gap: 12px;
+      }
+      .legrow {
+        display: flex;
+        align-items: center;
+        gap: 12px;
+      }
+      .legrow .txt {
+        font-size: 11.5px;
+        color: #cbd5ec;
+        line-height: 1.45;
+      }
+      .legrow .txt b {
+        color: #fff;
+      }
+
+      /* mini rendered-map preview (Phase-6 foreshadow) */
+      .mapmini {
+        height: 200px;
+        border-radius: 14px;
+        position: relative;
+        overflow: hidden;
+        border: 1px solid #223257;
+        /* QUIET NEUTRAL BASE: desaturated cool-paper canvas, faint grid,
+           NO teal flood (ADR-0106 Decision C). */
+        background:
+          repeating-linear-gradient(0deg, #dfe3ea 0 1px, transparent 1px 30px),
+          repeating-linear-gradient(90deg, #dfe3ea 0 1px, transparent 1px 30px),
+          linear-gradient(180deg, #eef1f5, #e7ebf1);
+      }
+      /* route/connector = a thin path line; the ETA label on it is amber (time,
+         the "when do we leave" answer — ADR-0106-D). */
+      .mapmini .route {
+        position: absolute;
+        height: 2.5px;
+        background: var(--ink);
+        opacity: 0.28;
+        border-radius: 2px;
+        transform-origin: left center;
+      }
+      /* REGULAR centred teardrop pins, tip on the point. Fill = CATEGORY colour
+         (ADR-0038), not teal. Commitment: solid+lock (hard) / dashed (maybe). */
+      .mapmini .mpin {
+        position: absolute;
+        width: 26px;
+        height: 32px;
+        transform: translate(-50%, -100%);
+      }
+      .mapmini .mpin .b {
+        position: relative;
+        width: 24px;
+        height: 24px;
+        margin: 0 auto;
+        /* sharp corner BOTTOM-RIGHT so rotate(45deg) swings the tip straight
+           DOWN (onto the location), not to the left */
+        border-radius: 50% 50% 2px 50%;
+        transform: rotate(45deg);
+        display: grid;
+        place-items: center;
+        box-shadow: 0 4px 7px -1px rgba(0, 0, 0, 0.4);
+      }
+      .mapmini .mpin.cat-food .b {
+        background: var(--cat-food);
+      }
+      .mapmini .mpin.cat-lodging .b {
+        background: var(--cat-lodging);
+      }
+      .mapmini .mpin.cat-transit .b {
+        background: var(--cat-transit);
+      }
+      .mapmini .mpin.cat-leisure .b {
+        background: var(--cat-leisure);
+      }
+      .mapmini .mpin.cat-services .b {
+        background: var(--cat-services);
+      }
+      .mapmini .mpin .g {
+        transform: rotate(-45deg);
+        font-size: 12px;
+      }
+      /* maybe idea → dashed, lightened (soft grammar) */
+      .mapmini .mpin.idea .b {
+        opacity: 0.8;
+        box-shadow: 0 2px 5px -1px rgba(0, 0, 0, 0.25);
+        outline: 1.5px dashed rgba(22, 35, 61, 0.4);
+        outline-offset: -1.5px;
+      }
+      /* the next committed stop keeps an amber ring — the ONE time-anchor cue
+         (amber = time), not on every pin */
+      .mapmini .mpin.now .b {
+        box-shadow:
+          0 4px 7px -1px rgba(0, 0, 0, 0.4),
+          0 0 0 3px rgba(233, 166, 60, 0.85);
+      }
+      /* lock sits on .mpin (NOT inside the rotated .b), so it stays upright */
+      .mapmini .lockdot {
+        position: absolute;
+        top: -2px;
+        inset-inline-end: -3px;
+        font-size: 10px;
+        line-height: 1;
+        filter: drop-shadow(0 1px 1px rgba(0, 0, 0, 0.4));
+      }
+      .mapmini .me {
+        position: absolute;
+        width: 14px;
+        height: 14px;
+        background: var(--me);
+        border: 3px solid #fff;
+        border-radius: 50%;
+        box-shadow: 0 0 0 6px rgba(46, 107, 230, 0.2);
+        transform: translate(-50%, -50%);
+      }
+      .mapmini .attr {
+        position: absolute;
+        bottom: 3px;
+        right: 6px;
+        font-size: 8px;
+        color: #8894ab;
+        font-family: 'JetBrains Mono', monospace;
+      }
+
+      /* the timezone chip demo (ADR-0107) */
+      .tzdemo {
+        background: #fff;
+        border-radius: 12px;
+        padding: 13px;
+      }
+      .tzfield {
+        display: flex;
+        align-items: center;
+        gap: 8px;
+        margin-bottom: 10px;
+      }
+      .tzfield:last-child {
+        margin-bottom: 0;
+      }
+      .tzfield .flabel {
+        font-size: 11px;
+        font-weight: 700;
+        color: var(--muted);
+        width: 44px;
+      }
+      .timebox {
+        font-family: 'JetBrains Mono', monospace;
+        font-size: 14px;
+        font-weight: 700;
+        color: var(--amber-deep);
+        background: rgba(233, 166, 60, 0.12);
+        border: 1px solid rgba(233, 166, 60, 0.4);
+        border-radius: 10px;
+        padding: 7px 11px;
+      }
+      .tzchip {
+        display: inline-flex;
+        align-items: center;
+        gap: 5px;
+        border: 1px solid var(--line);
+        background: #fbfcfe;
+        border-radius: 999px;
+        padding: 6px 10px;
+        font-size: 12px;
+        font-weight: 600;
+        color: var(--ink);
+        cursor: pointer;
+      }
+      .tzchip .clock {
+        font-size: 12px;
+      }
+      .tzchip svg {
+        width: 10px;
+        height: 10px;
+        color: var(--muted);
+      }
+      .tzarrow {
+        color: var(--faint);
+        font-family: 'JetBrains Mono', monospace;
+        font-weight: 700;
+      }
+      .plus1 {
+        font-family: 'JetBrains Mono', monospace;
+        font-size: 10px;
+        font-weight: 700;
+        color: var(--amber-deep);
+        background: rgba(233, 166, 60, 0.14);
+        border-radius: 6px;
+        padding: 1px 4px;
+      }
+
+      /* ---- forms card (place picker + zone chip, ADR-0106 P1 / ADR-0107) ---- */
+      .formcard {
+        background: #fff;
+        border-radius: 12px;
+        padding: 13px;
+      }
+      .formcard + .formcard {
+        margin-top: 12px;
+      }
+      .form-title {
+        font-size: 12px;
+        font-weight: 700;
+        color: var(--ink);
+        margin-bottom: 9px;
+      }
+      .form-title span {
+        color: var(--faint);
+        font-weight: 600;
+      }
+      .fld {
+        margin-bottom: 9px;
+      }
+      .fld:last-child {
+        margin-bottom: 0;
+      }
+      .fld > .lab {
+        display: block;
+        font-size: 10.5px;
+        font-weight: 700;
+        color: var(--muted);
+        margin-bottom: 4px;
+      }
+      /* the PlacePicker field: a selected place shows its category badge +
+         address; an empty field shows the search affordance. */
+      .placefield {
+        display: flex;
+        align-items: center;
+        gap: 9px;
+        border: 1px solid var(--line);
+        border-radius: 11px;
+        padding: 8px 10px;
+        background: #fbfcfe;
+        cursor: pointer;
+      }
+      .placefield.empty {
+        border-style: dashed;
+        border-color: var(--soft-line);
+        color: var(--muted);
+        font-size: 12.5px;
+        font-weight: 600;
+      }
+      .placefield .badge {
+        width: 30px;
+        height: 30px;
+        border-radius: 9px;
+        font-size: 15px;
+      }
+      .placefield .pf-main {
+        flex: 1;
+        min-width: 0;
+      }
+      .placefield .pf-name {
+        font-size: 13px;
+        font-weight: 700;
+        color: var(--ink);
+      }
+      .placefield .pf-sub {
+        font-size: 11px;
+        color: var(--muted);
+        margin-top: 1px;
+      }
+      .placefield .pf-search {
+        margin-inline-start: auto;
+        color: var(--teal-deep);
+      }
+      .placefield .pf-search svg {
+        width: 15px;
+        height: 15px;
+      }
+      .whenrow {
+        display: flex;
+        align-items: center;
+        gap: 7px;
+        flex-wrap: wrap;
+      }
+      .zone-note {
+        font-size: 10.5px;
+        color: var(--faint);
+        margin-top: 6px;
+        line-height: 1.5;
+      }
+      /* explicit category selector — the event's "type", built to look EXACTLY
+         like the booking type picker (.typepick/.tp in plan-mode-v1): a card
+         grid, icon + label, accent-tinted selected card. The icon is a separate
+         glyph-only badge (ADR-0109 §11). */
+      /* compact, horizontally-scrollable card row (9 categories don't fit a
+         grid comfortably); edge-fade mask like the filter chips. No per-card
+         colour swatch — the booking type picker has none either, and 5 of the 9
+         categories share the "leisure" hue (repeated swatches read as a bug).
+         The colour shows on the resulting pin + the legend, not here. */
+      .catscroll {
+        display: flex;
+        gap: 7px;
+        overflow-x: auto;
+        scrollbar-width: none;
+        scroll-snap-type: x proximity;
+        padding-bottom: 2px;
+        -webkit-mask-image: linear-gradient(
+          to right,
+          transparent 0,
+          black 12px,
+          black calc(100% - 12px),
+          transparent 100%
+        );
+        mask-image: linear-gradient(
+          to right,
+          transparent 0,
+          black 12px,
+          black calc(100% - 12px),
+          transparent 100%
+        );
+      }
+      .catscroll::-webkit-scrollbar {
+        display: none;
+      }
+      .catcard {
+        flex: 0 0 auto;
+        scroll-snap-align: start;
+        min-width: 60px;
+        background: var(--card);
+        border: 1px solid var(--line);
+        border-radius: 11px;
+        padding: 8px 8px;
+        text-align: center;
+        cursor: pointer;
+        transition: 0.12s;
+      }
+      .catcard.on {
+        border-color: var(--plan);
+        background: var(--plan-tint);
+      }
+      .catcard .i {
+        font-size: 17px;
+      }
+      .catcard .l {
+        font-size: 10px;
+        font-weight: 700;
+        margin-top: 3px;
+        white-space: nowrap;
+      }
+      /* booking-seeded event: category is DERIVED from the booking type
+         (read-only), mirroring the booking form's "✨ נבחר לפי סוג ההזמנה". */
+      .derived {
+        display: flex;
+        align-items: center;
+        gap: 8px;
+        background: var(--paper);
+        border: 1px solid var(--line);
+        border-radius: 11px;
+        padding: 9px 11px;
+        font-size: 12px;
+        font-weight: 600;
+        color: var(--muted);
+      }
+      .derived .val {
+        display: inline-flex;
+        align-items: center;
+        gap: 5px;
+        color: var(--ink);
+        font-weight: 700;
+      }
+      .derived .val .sw {
+        width: 10px;
+        height: 10px;
+        border-radius: 3px;
+      }
+      .iconpick {
+        display: inline-flex;
+        align-items: center;
+        gap: 6px;
+        font-size: 11.5px;
+        color: var(--muted);
+      }
+      .iconpick .badge {
+        width: 30px;
+        height: 30px;
+        border-radius: 9px;
+        font-size: 15px;
+      }
+
+      /* ---- Places picker flow (Phase 1 keystone) ---- */
+      .pk {
+        background: #fff;
+        border-radius: 12px;
+        padding: 13px;
+      }
+      .pk + .pk {
+        margin-top: 12px;
+      }
+      .pk-input {
+        display: flex;
+        align-items: center;
+        gap: 8px;
+        border: 1px solid var(--teal);
+        border-radius: 11px;
+        padding: 9px 11px;
+        box-shadow: 0 0 0 3px var(--teal-tint);
+      }
+      .pk-input svg {
+        width: 16px;
+        height: 16px;
+        color: var(--teal-deep);
+        flex: 0 0 auto;
+      }
+      .pk-input .q {
+        font-size: 13.5px;
+        font-weight: 600;
+        color: var(--ink);
+        flex: 1;
+      }
+      .pk-input .caret {
+        width: 1.5px;
+        height: 15px;
+        background: var(--teal-deep);
+        animation: blink 1s steps(1) infinite;
+      }
+      @keyframes blink {
+        50% {
+          opacity: 0;
+        }
+      }
+      .pk-preds {
+        border: 1px solid var(--line);
+        border-top: 0;
+        border-radius: 0 0 11px 11px;
+        margin: 0 6px;
+        overflow: hidden;
+      }
+      .pk-pred {
+        display: flex;
+        align-items: center;
+        gap: 9px;
+        padding: 9px 11px;
+        border-top: 1px solid var(--line);
+        cursor: pointer;
+      }
+      .pk-pred:first-child {
+        border-top: 0;
+      }
+      .pk-pred:hover {
+        background: #f7f9fc;
+      }
+      .pk-pred .mk {
+        color: var(--muted);
+        font-size: 14px;
+        flex: 0 0 auto;
+      }
+      .pk-pred .pt {
+        flex: 1;
+        min-width: 0;
+      }
+      .pk-pred .pn {
+        font-size: 13px;
+        font-weight: 700;
+        color: var(--ink);
+      }
+      .pk-pred .ps {
+        font-size: 11px;
+        color: var(--muted);
+        margin-top: 1px;
+      }
+      .pk-pred .dup {
+        font-size: 10px;
+        font-weight: 700;
+        color: var(--teal-deep);
+        background: var(--teal-tint);
+        border-radius: 999px;
+        padding: 2px 8px;
+        flex: 0 0 auto;
+      }
+      .pk-foot {
+        font-size: 10px;
+        color: var(--faint);
+        margin: 8px 6px 0;
+        display: flex;
+        align-items: center;
+        gap: 5px;
+      }
+      .pk-enriched {
+        display: flex;
+        align-items: flex-start;
+        gap: 10px;
+        border: 1px solid var(--line);
+        border-radius: 12px;
+        padding: 11px;
+        background: #fbfcfe;
+      }
+      .pk-enriched .en-main {
+        flex: 1;
+        min-width: 0;
+      }
+      .pk-enriched .en-name {
+        font-size: 14px;
+        font-weight: 700;
+        color: var(--ink);
+      }
+      .pk-enriched .en-addr {
+        font-size: 11.5px;
+        color: var(--muted);
+        margin: 2px 0 6px;
+      }
+      .pk-enriched .en-tags {
+        display: flex;
+        flex-wrap: wrap;
+        gap: 5px 8px;
+      }
+      .en-tag {
+        font-size: 11px;
+        font-weight: 700;
+        display: inline-flex;
+        align-items: center;
+        gap: 3px;
+      }
+      .en-tag.rate {
+        color: var(--amber-deep);
+      }
+      .en-tag.tz {
+        color: var(--muted);
+      }
+      .en-tag.geo {
+        color: var(--teal-deep);
+      }
+      .pk-saved {
+        margin-top: 9px;
+        font-size: 11px;
+        font-weight: 600;
+        color: var(--ok);
+        display: flex;
+        align-items: center;
+        gap: 5px;
+      }
+      .pk-fallback {
+        margin-top: 10px;
+        border-top: 1px dashed var(--soft-line);
+        padding-top: 10px;
+        font-size: 11.5px;
+        color: var(--muted);
+      }
+      .pk-fallback b {
+        color: var(--ink);
+      }
+      .pk-lite {
+        margin-top: 7px;
+        display: inline-flex;
+        align-items: center;
+        gap: 6px;
+        border: 1px dashed var(--soft-line);
+        border-radius: 999px;
+        padding: 6px 12px;
+        font-size: 12px;
+        font-weight: 700;
+        color: var(--muted);
+        cursor: pointer;
+      }
+
+      /* ---- embedded-map integration diagram (Phase 3 → Phase 6) ---- */
+      .integ {
+        display: flex;
+        gap: 12px;
+      }
+      .integ .step {
+        flex: 1;
+        text-align: center;
+      }
+      .integ .cap {
+        font-size: 10.5px;
+        color: #aeb9d4;
+        font-weight: 600;
+        margin-top: 6px;
+      }
+      .integ .cap b {
+        color: #fff;
+      }
+      .integ .arrow {
+        align-self: center;
+        color: #5f6f92;
+        font-family: 'JetBrains Mono', monospace;
+        font-weight: 700;
+      }
+      .mini {
+        border-radius: 12px;
+        overflow: hidden;
+        border: 1px solid #26324c;
+        height: 168px;
+        display: flex;
+        flex-direction: column;
+        background: #0e1729;
+      }
+      .mini .mseg {
+        display: flex;
+        font-size: 9px;
+        font-weight: 700;
+        border-bottom: 1px solid #26324c;
+      }
+      .mini .mseg button {
+        flex: 1;
+        padding: 5px 0;
+        border: 0;
+        background: none;
+        color: #7f8db0;
+        font: inherit;
+        font-weight: 700;
+      }
+      .mini .mseg button.on {
+        background: #1a2740;
+        color: #fff;
+      }
+      .mini .mrows {
+        flex: 1;
+        padding: 6px;
+        display: flex;
+        flex-direction: column;
+        gap: 5px;
+        overflow: hidden;
+        background: #e7eaef;
+      }
+      .mini .mrow {
+        display: flex;
+        align-items: center;
+        gap: 6px;
+        background: #fff;
+        border-radius: 7px;
+        padding: 5px 6px;
+      }
+      .mini .mrow .mb {
+        width: 16px;
+        height: 16px;
+        border-radius: 5px;
+        flex: 0 0 auto;
+        font-size: 9px;
+        display: grid;
+        place-items: center;
+      }
+      .mini .mrow .ml {
+        height: 4px;
+        border-radius: 2px;
+        background: rgba(22, 35, 61, 0.18);
+        flex: 1;
+      }
+      .mini .mapzone {
+        position: relative;
+        background:
+          repeating-linear-gradient(0deg, #d7dce4 0 1px, transparent 1px 22px),
+          repeating-linear-gradient(90deg, #d7dce4 0 1px, transparent 1px 22px),
+          linear-gradient(180deg, #eef1f5, #e7ebf1);
+      }
+      .mini .mapzone.top {
+        height: 82px;
+        border-bottom: 1px solid #cfd6e0;
+      }
+      .mini .mapzone.full {
+        flex: 1;
+      }
+      .mini .sheet {
+        flex: 1;
+        background: #e7eaef;
+        padding: 5px 6px;
+        display: flex;
+        flex-direction: column;
+        gap: 5px;
+      }
+      .mini .grabber {
+        width: 26px;
+        height: 3px;
+        border-radius: 3px;
+        background: rgba(22, 35, 61, 0.25);
+        margin: 1px auto 3px;
+      }
+      .mini .dot {
+        position: absolute;
+        width: 12px;
+        height: 15px;
+        transform: translate(-50%, -100%);
+      }
+      .mini .dot i {
+        display: block;
+        width: 11px;
+        height: 11px;
+        border-radius: 50% 50% 2px 50%; /* tip straight down (see .mpin .b) */
+        transform: rotate(45deg);
+        box-shadow: 0 2px 3px -1px rgba(0, 0, 0, 0.4);
+      }
+    </style>
+  </head>
+  <body>
+    <div class="caption">
+      <b>Map tab · list-first v1</b> — the pinned-place list, Index-grammar filters,
+      category-coloured pins, geolocation, the Phase-6 map-integration vision, and places+timezones
+      in forms.
+    </div>
+    <div class="adr-note">
+      Toggle <b>mode</b> (Trip pre-selects today · Plan defaults to all) and <b>state</b> (near-me
+      granted / denied / offline). Pins are colour-by-category (ADR-0038/0028); commitment is the
+      hard/soft grammar. Panels below: pin legend · Phase-6 map integration · zone chip · forms ·
+      the Places picker flow (Phase 1).
+    </div>
+
+    <div class="controls">
+      <div class="seg" id="stateseg">
+        <button class="on" onclick="setState('normal')">רגיל</button>
+        <button onclick="setState('near')">קרוב עכשיו</button>
+        <button onclick="setState('denied')">מיקום נדחה</button>
+        <button onclick="setState('offline')">אופליין</button>
+      </div>
+    </div>
+
+    <div class="phone" id="phone" data-mode="trip" data-state="normal">
+      <div class="statusbar"><span>9:41</span><span>מפה 🗺️</span></div>
+
+      <div class="header">
+        <div class="mode-row">
+          <div class="mode-toggle" role="tablist" aria-label="מצב">
+            <button class="m on" id="pill-trip" onclick="setMode('trip')">🧭 טיול</button>
+            <button class="m" id="pill-plan" onclick="setMode('plan')">✏️ תכנון</button>
+          </div>
+        </div>
+        <div class="row1">
+          <h1>🗺️ מפה</h1>
+        </div>
+        <div class="sub" id="headsub">טוקיו · המקומות של היום</div>
+
+        <!-- the shared header day strip (ui/domain/DayStrip) — header chrome,
+             not a map-only control. Tapping a day focuses it ON THE MAP in place
+             (same rule the Day view already follows). No "all days" cell here;
+             "all" is the map-local scope chip in the strip below. -->
+        <div class="daystrip" id="daystrip">
+          <div class="daycell-wrap">
+            <span class="month-label">יולי</span>
+            <button class="daycell" data-day="1" onclick="pickDay(1)">
+              ב׳<span class="n" dir="ltr">23</span>
+            </button>
+          </div>
+          <div class="daycell-wrap">
+            <button class="daycell" data-day="2" onclick="pickDay(2)">
+              ג׳<span class="n" dir="ltr">24</span>
+            </button>
+          </div>
+          <div class="daycell-wrap">
+            <button class="daycell" data-day="3" onclick="pickDay(3)">
+              ד׳<span class="n" dir="ltr">25</span>
+            </button>
+          </div>
+          <div class="daycell-wrap">
+            <button class="daycell" data-day="4" onclick="pickDay(4)">
+              ה׳<span class="n" dir="ltr">26</span>
+            </button>
+          </div>
+          <div class="daycell-wrap">
+            <button class="daycell" data-day="5" onclick="pickDay(5)">
+              ו׳<span class="n" dir="ltr">27</span>
+            </button>
+          </div>
+        </div>
+      </div>
+
+      <!-- filter chips: SAME primitive as index-bookings-compact-v2 (ADR-0098/
+           0100). label+count pills, edge-fade mask, covering search, mode
+           accent. Facets: סוג (=category) · אולי. (Day is the strip above.) -->
+      <div class="filterbar">
+        <div class="chiprow" id="chiprow">
+          <button class="chip on" onclick="filterType(this, 'all')">
+            הכל <span class="cnt">7</span>
+          </button>
+          <button class="chip" onclick="filterType(this, 'food')">
+            🍜 אוכל <span class="cnt">2</span>
+          </button>
+          <button class="chip" onclick="filterType(this, 'transport')">
+            🚉 תחבורה <span class="cnt">1</span>
+          </button>
+          <button class="chip" onclick="filterType(this, 'lodging')">
+            🏨 לינה <span class="cnt">1</span>
+          </button>
+          <button class="chip" onclick="filterType(this, 'sightseeing')">
+            ⛩️ אתרים <span class="cnt">1</span>
+          </button>
+          <button class="chip maybe" onclick="filterType(this, 'maybe')">
+            💡 אולי <span class="cnt">2</span>
+          </button>
+        </div>
+        <div
+          class="searchbtn"
+          id="searchbtn"
+          onclick="toast('חיפוש · במצב תכנון מחפש מקומות חדשים ב-Google (שלב 5)')"
+          title="חיפוש"
+        >
+          <svg
+            viewBox="0 0 24 24"
+            width="17"
+            height="17"
+            fill="none"
+            stroke="currentColor"
+            stroke-width="2.2"
+            stroke-linecap="round"
+          >
+            <circle cx="11" cy="11" r="7" />
+            <line x1="21" y1="21" x2="16.5" y2="16.5" />
+          </svg>
+        </div>
+      </div>
+
+      <!-- day-scope + sort strip. "כל הימים" is the MAP-LOCAL all-days scope
+           (the global model has only a single active date); tapping a strip day
+           narrows back to that day. The near-me chip is teal (location) and asks
+           for permission just-in-time (pre-prompt), never on tab open. -->
+      <div class="sortstrip">
+        <button class="scopechip" id="allchip" onclick="toggleAllDays()">🗓️ כל הימים</button>
+        <span class="scopehint" id="scopehint"></span>
+        <span style="flex: 1"></span>
+        <button class="nearchip" id="nearchip" onclick="tapNearMe()">
+          <svg
+            viewBox="0 0 24 24"
+            fill="none"
+            stroke="currentColor"
+            stroke-width="2.2"
+            stroke-linecap="round"
+            stroke-linejoin="round"
+          >
+            <path d="M12 2v3M12 19v3M2 12h3M19 12h3" />
+            <circle cx="12" cy="12" r="5" />
+          </svg>
+          <span id="nearlabel">קרוב עכשיו</span>
+        </button>
+      </div>
+
+      <div class="body" id="body">
+        <!-- geolocation pre-prompt (shown when the user taps "near me now") -->
+        <div class="geoprompt" id="geoprompt">
+          <div class="gt">📍 למיין לפי קרבה</div>
+          <div class="gm">
+            כדי להראות מה קרוב אליכם עכשיו נשתמש במיקום המכשיר. המיקום נשאר במכשיר ואינו משותף עם
+            הקבוצה.
+          </div>
+          <div class="gbtns">
+            <button class="gbtn primary" onclick="grantGeo()">אפשר מיקום</button>
+            <button class="gbtn" onclick="dismissGeo()">לא עכשיו</button>
+          </div>
+        </div>
+
+        <!-- denied banner (permission refused / unavailable) -->
+        <div class="banner denied" id="deniedbanner">
+          <span>📍 מיקום כבוי · הרשימה ממוינת לפי לו״ז</span>
+          <span class="relink" onclick="toast('פתיחת הגדרות מיקום של המכשיר')">הפעלה</span>
+        </div>
+
+        <!-- offline banner (desaturated list + stale distances) -->
+        <div class="banner offline" id="offlinebanner">
+          <span>📡 מצב אופליין · מיקומים אחרונים שנשמרו</span>
+        </div>
+
+        <div id="list"><!-- rows injected --></div>
+      </div>
+
+      <div class="nav">
+        <button><span class="ic">🏠</span>בית</button>
+        <button class="on"><span class="ic">🗺️</span>מפה</button>
+        <button><span class="ic">📇</span>אינדקס</button>
+        <button><span class="ic">📅</span>יום־יום</button>
+      </div>
+    </div>
+
+    <!-- ============ design annotation panels ============ -->
+    <div class="panels">
+      <div class="panel">
+        <h3>הפין: צבע = קטגוריה (ADR-0038/0028), לא הכול טורקיז</h3>
+        <p>
+          חמישה גוני פסטל, אחד לכל קטגוריה (אוכל · לינה · תחבורה · פנאי · שירותים), הפלטה הדקורטיבית
+          המאושרת ב-ADR-0028 ("לעולם לא ענבר/טורקיז"). <b>מחויבות</b> אינה צבע אלא דקדוק קשיח/רך
+          (מלא + 🔒 / מקווקו). ב<b>רשימה</b> הבאדג׳ הוא ריבוע מעוגל רגיל; ה<b>טיפה</b> (סמן המפה)
+          שמורה למפה המוטמעת. טורקיז נשאר לאָפֶקטים של מיקום (קרוב · מרחק · נווט), ענבר לזמן (ETA).
+        </p>
+        <div class="legend">
+          <div class="legrow">
+            <div class="badge cat-transit"><span class="glyph">🚉</span></div>
+            <div class="txt"><b>תחבורה</b> — כחול; קשיח מוצג במסגרת הכרטיס + 🔒.</div>
+          </div>
+          <div class="legrow">
+            <div class="badge cat-food"><span class="glyph">🍜</span></div>
+            <div class="txt"><b>אוכל / שתייה</b> — אדמדם.</div>
+          </div>
+          <div class="legrow">
+            <div class="badge cat-lodging"><span class="glyph">🏨</span></div>
+            <div class="txt"><b>לינה</b> — סגלגל; לילה אמצעי = שורת בסיס אמביינטית מעומעמת.</div>
+          </div>
+          <div class="legrow">
+            <div class="badge cat-leisure"><span class="glyph">⛩️</span></div>
+            <div class="txt"><b>פנאי / אתרים / טבע / קניות</b> — ירקרק (מתמזגים לגוון אחד).</div>
+          </div>
+          <div class="legrow">
+            <div class="badge cat-services"><span class="glyph">🏧</span></div>
+            <div class="txt"><b>שירותים</b> — חולי.</div>
+          </div>
+          <div class="legrow">
+            <div class="badge nocoord"><span class="glyph">🍷</span></div>
+            <div class="txt">
+              <b>ללא קואורדינטות</b> ("Place-lite") — טבעת מקווקות, ברשימה אך לא ניתן לנווט/למדוד עד
+              הבורר (שלב 1).
+            </div>
+          </div>
+        </div>
+      </div>
+
+      <div class="panel">
+        <h3>המפה המוטמעת (שלב 6) — בסיס שקט, פינים בצבע קטגוריה</h3>
+        <p>
+          בד ניטרלי מעומעם (לא הצפת צבע), הצבע חי רק על הפינים. טיפות רגילות (החוד על הנקודה), צבע =
+          קטגוריה; קשיח = 🔒, אולי = מקווקו. <b>טבעת ענברית</b> = היעד הבא בזמן (עוגן־זמן יחיד, לא
+          על כל פין). הנקודה הכחולה "אני" היא מוסכמת מפות־OS; לוגו Google + ייחוס נשארים (ToS).
+        </p>
+        <div class="mapmini">
+          <div
+            class="route"
+            style="left: 30%; top: 46%; width: 34%; transform: rotate(-16deg)"
+          ></div>
+          <div
+            class="route"
+            style="left: 60%; top: 40%; width: 22%; transform: rotate(30deg)"
+          ></div>
+          <div class="mpin cat-transit now" style="left: 30%; top: 47%">
+            <div class="b"><span class="g">🚉</span></div>
+            <span class="lockdot">🔒</span>
+          </div>
+          <div class="mpin cat-food" style="left: 63%; top: 41%">
+            <div class="b"><span class="g">🍜</span></div>
+          </div>
+          <div class="mpin cat-lodging" style="left: 80%; top: 66%">
+            <div class="b"><span class="g">🏨</span></div>
+            <span class="lockdot">🔒</span>
+          </div>
+          <div class="mpin cat-leisure idea" style="left: 44%; top: 72%">
+            <div class="b"><span class="g">🍶</span></div>
+          </div>
+          <div class="me" style="left: 38%; top: 58%"></div>
+          <div class="attr">Google</div>
+        </div>
+      </div>
+
+      <div class="panel">
+        <h3>צ׳יפ אזור־הזמן על שדה השעה (ADR-0107)</h3>
+        <p>
+          האזור המשוער מוצג כ<b>צ׳יפ הניתן לתיקון בנגיעה</b> — ברירת מחדל הגיונית, קלה לתיקון, לעולם
+          לא סמכותי חרש בקצוות. תחבורה מציגה <b>שניים</b>: אזור המוצא על ההתחלה, היעד על הסיום.
+        </p>
+        <div class="tzdemo">
+          <div class="tzfield">
+            <span class="flabel">ארוחת ערב</span>
+            <span class="timebox">19:30</span>
+            <span class="tzchip" onclick="toast('בחירת אזור זמן')">
+              <span class="clock">🕐</span> טוקיו
+              <svg
+                viewBox="0 0 24 24"
+                fill="none"
+                stroke="currentColor"
+                stroke-width="2.5"
+                stroke-linecap="round"
+                stroke-linejoin="round"
+              >
+                <polyline points="6 9 12 15 18 9" />
+              </svg>
+            </span>
+          </div>
+          <div class="tzfield">
+            <span class="flabel">טיסה</span>
+            <span class="timebox">23:00</span>
+            <span class="tzchip" onclick="toast('בחירת אזור זמן · מוצא')">
+              <span class="clock">🕐</span> תל אביב
+              <svg
+                viewBox="0 0 24 24"
+                fill="none"
+                stroke="currentColor"
+                stroke-width="2.5"
+                stroke-linecap="round"
+                stroke-linejoin="round"
+              >
+                <polyline points="6 9 12 15 18 9" />
+              </svg>
+            </span>
+            <span class="tzarrow">←</span>
+            <span class="timebox">18:00 <span class="plus1">+1</span></span>
+            <span class="tzchip" onclick="toast('בחירת אזור זמן · יעד')">
+              <span class="clock">🕐</span> טוקיו
+              <svg
+                viewBox="0 0 24 24"
+                fill="none"
+                stroke="currentColor"
+                stroke-width="2.5"
+                stroke-linecap="round"
+                stroke-linejoin="round"
+              >
+                <polyline points="6 9 12 15 18 9" />
+              </svg>
+            </span>
+          </div>
+        </div>
+      </div>
+
+      <!-- #1 — how the Phase-6 embedded map joins the list-first view -->
+      <div class="panel" style="width: 640px">
+        <h3>שלב 6: איך המפה המוטמעת נכנסת לתצוגת הרשימה</h3>
+        <p>
+          הרשימה (שלב 3) נבנתה כך שהמפה נשלפת <b>לתוכה</b>, לא במקומה (ADR-0106 החלטה 3). המפה
+          מתווספת כפאנל מעל, והרשימה הופכת ל<b>גיליון תחתון נגרר</b> — דפוס מפה+רשימה מוכר; מתג
+          <b>רשימה / מפה</b> נותן מסך מלא לכל אחד. אותם פינים, אותם סינונים, אותה נגזרת אופליין —
+          המפה רק מוסיפה בד מרחבי + נקודת "אני".
+        </p>
+        <div class="integ">
+          <div class="step">
+            <div class="mini">
+              <div class="mrows">
+                <div class="mrow">
+                  <span class="mb" style="background: var(--cat-transit)">🚉</span>
+                  <span class="ml"></span>
+                </div>
+                <div class="mrow">
+                  <span class="mb" style="background: var(--cat-food)">🍜</span>
+                  <span class="ml"></span>
+                </div>
+                <div class="mrow">
+                  <span class="mb" style="background: var(--cat-leisure)">⛩️</span>
+                  <span class="ml"></span>
+                </div>
+                <div class="mrow">
+                  <span class="mb" style="background: var(--cat-lodging)">🏨</span>
+                  <span class="ml"></span>
+                </div>
+              </div>
+            </div>
+            <div class="cap"><b>שלב 3</b> · רשימה בלבד (היום)</div>
+          </div>
+          <div class="arrow">←</div>
+          <div class="step">
+            <div class="mini">
+              <div class="mseg"><button class="on">רשימה</button><button>מפה</button></div>
+              <div class="mapzone top">
+                <div class="dot" style="left: 30%; top: 55%">
+                  <i style="background: var(--cat-transit)"></i>
+                </div>
+                <div class="dot" style="left: 62%; top: 40%">
+                  <i style="background: var(--cat-food)"></i>
+                </div>
+                <div class="dot" style="left: 78%; top: 70%">
+                  <i style="background: var(--cat-lodging)"></i>
+                </div>
+              </div>
+              <div class="sheet">
+                <div class="grabber"></div>
+                <div class="mrow">
+                  <span class="mb" style="background: var(--cat-transit)">🚉</span>
+                  <span class="ml"></span>
+                </div>
+                <div class="mrow">
+                  <span class="mb" style="background: var(--cat-food)">🍜</span>
+                  <span class="ml"></span>
+                </div>
+              </div>
+            </div>
+            <div class="cap"><b>שלב 6</b> · מפה למעלה + גיליון רשימה נגרר</div>
+          </div>
+          <div class="arrow">←</div>
+          <div class="step">
+            <div class="mini">
+              <div class="mseg"><button>רשימה</button><button class="on">מפה</button></div>
+              <div class="mapzone full">
+                <div class="dot" style="left: 28%; top: 40%">
+                  <i style="background: var(--cat-transit)"></i>
+                </div>
+                <div class="dot" style="left: 58%; top: 34%">
+                  <i style="background: var(--cat-food)"></i>
+                </div>
+                <div class="dot" style="left: 74%; top: 58%">
+                  <i style="background: var(--cat-lodging)"></i>
+                </div>
+                <div class="dot" style="left: 46%; top: 66%">
+                  <i style="background: var(--cat-leisure)"></i>
+                </div>
+              </div>
+              <div class="sheet" style="flex: 0 0 auto">
+                <div class="grabber"></div>
+                <div class="mrow">
+                  <span class="mb" style="background: var(--cat-food)">🍜</span>
+                  <span class="ml"></span>
+                </div>
+              </div>
+            </div>
+            <div class="cap">מסך מלא · מפה (גיליון מציץ)</div>
+          </div>
+        </div>
+      </div>
+
+      <!-- #6 — places & timezones in the authoring forms (picker + zone chip) -->
+      <div class="panel" style="width: 640px">
+        <h3>מקומות ואזורי־זמן בטפסים (ADR-0106 שלב 1 · ADR-0107)</h3>
+        <p>
+          אותו <b>בורר מקומות</b> (Google Autocomplete, session tokens) בכל שדה מיקום — אירוע,
+          הזמנה, מוצא/יעד בתחבורה, פריט־אולי. מקום נבחר מציג באדג׳ קטגוריה + כתובת; שדה ריק מציג
+          חיפוש. שדה השעה נושא <b>צ׳יפ אזור־זמן</b> הניתן לתיקון בנגיעה (ADR-0107).
+        </p>
+        <div class="formcard">
+          <div class="form-title">אירוע ידני · <span>מקום אחד · קטגוריה מפורשת</span></div>
+          <div class="fld">
+            <span class="lab">קטגוריה (אותו בורר כמו סוג ההזמנה — קובעת את צבע הפין)</span>
+            <div class="catscroll">
+              <div class="catcard on" onclick="toast('קטגוריה: אוכל')">
+                <div class="i">🍜</div>
+                <div class="l">אוכל</div>
+              </div>
+              <div class="catcard" onclick="toast('קטגוריה: תחבורה')">
+                <div class="i">🚉</div>
+                <div class="l">תחבורה</div>
+              </div>
+              <div class="catcard" onclick="toast('קטגוריה: לינה')">
+                <div class="i">🏨</div>
+                <div class="l">לינה</div>
+              </div>
+              <div class="catcard" onclick="toast('קטגוריה: אתרים')">
+                <div class="i">⛩️</div>
+                <div class="l">אתרים</div>
+              </div>
+              <div class="catcard" onclick="toast('קטגוריה: טבע')">
+                <div class="i">🏞️</div>
+                <div class="l">טבע</div>
+              </div>
+              <div class="catcard" onclick="toast('קטגוריה: פעילות')">
+                <div class="i">🎫</div>
+                <div class="l">פעילות</div>
+              </div>
+              <div class="catcard" onclick="toast('קטגוריה: קניות')">
+                <div class="i">🛍️</div>
+                <div class="l">קניות</div>
+              </div>
+              <div class="catcard" onclick="toast('קטגוריה: שירותים')">
+                <div class="i">🏧</div>
+                <div class="l">שירותים</div>
+              </div>
+              <div class="catcard" onclick="toast('קטגוריה: אחר')">
+                <div class="i">📌</div>
+                <div class="l">אחר</div>
+              </div>
+            </div>
+          </div>
+          <div class="fld">
+            <span class="lab">מיקום</span>
+            <div class="placefield" onclick="toast('בורר המקומות · Google Autocomplete')">
+              <div class="badge cat-food"><span class="glyph">🍜</span></div>
+              <div class="pf-main">
+                <div class="pf-name">איצ׳ירן ראמן</div>
+                <div class="pf-sub">Nishishinjuku, Shinjuku City · טוקיו</div>
+              </div>
+              <span class="pf-search"
+                ><svg
+                  viewBox="0 0 24 24"
+                  fill="none"
+                  stroke="currentColor"
+                  stroke-width="2.2"
+                  stroke-linecap="round"
+                >
+                  <circle cx="11" cy="11" r="7" />
+                  <line x1="21" y1="21" x2="16.5" y2="16.5" /></svg
+              ></span>
+            </div>
+          </div>
+          <div class="fld">
+            <span class="lab">אייקון (גליף בלבד — לא קובע קטגוריה)</span>
+            <div class="iconpick" onclick="toast('בורר אייקונים · גליף בלבד')">
+              <div class="badge cat-food"><span class="glyph">🍜</span></div>
+              ברירת מחדל מהקטגוריה · ניתן להחליף
+            </div>
+          </div>
+          <div class="fld">
+            <span class="lab">מתי</span>
+            <div class="whenrow">
+              <span class="timebox">19:30</span>
+              <span class="tzchip" onclick="toast('בחירת אזור זמן')">
+                <span class="clock">🕐</span> טוקיו
+                <svg
+                  viewBox="0 0 24 24"
+                  fill="none"
+                  stroke="currentColor"
+                  stroke-width="2.5"
+                  stroke-linecap="round"
+                  stroke-linejoin="round"
+                >
+                  <polyline points="6 9 12 15 18 9" />
+                </svg>
+              </span>
+            </div>
+          </div>
+          <div class="zone-note">
+            הקטגוריה מפורשת (אותו בורר כמו סוג ההזמנה), האייקון רק באדג׳. האזור נגזר מהמקום (טוקיו)
+            — תמיד ניתן לתקן.
+          </div>
+        </div>
+
+        <div class="formcard">
+          <div class="form-title">אירוע מהזמנה · <span>קטגוריה נגזרת (קריאה בלבד)</span></div>
+          <div class="fld">
+            <span class="lab">קטגוריה</span>
+            <div class="derived">
+              <span>✨ נגזר מסוג ההזמנה</span>
+              <span class="val"
+                ><i class="sw" style="background: var(--cat-transit)"></i>תחבורה</span
+              >
+            </div>
+          </div>
+          <div class="zone-note">
+            אירוע שנוצר מ<b>זרע הזמנה</b> (טיסה/מלון/רכבת…) לא מציג בורר קטגוריה — הקטגוריה נגזרת
+            אוטומטית מ<code>Booking.type</code> וקריאה־בלבד (ADR-0038: הסוג הוא בעל הקטגוריה). הבורר
+            המפורש הוא לאירוע ידני בלבד.
+          </div>
+        </div>
+
+        <div class="formcard">
+          <div class="form-title">תחבורה · <span>שתי נקודות</span></div>
+          <div class="fld">
+            <span class="lab">מוצא</span>
+            <div class="placefield" onclick="toast('בורר המקומות · מוצא')">
+              <div class="badge cat-transit"><span class="glyph">🛫</span></div>
+              <div class="pf-main">
+                <div class="pf-name">נמל התעופה בן גוריון (TLV)</div>
+                <div class="pf-sub">תל אביב</div>
+              </div>
+            </div>
+          </div>
+          <div class="fld">
+            <span class="lab">יעד</span>
+            <div class="placefield" onclick="toast('בורר המקומות · יעד')">
+              <div class="badge cat-transit"><span class="glyph">🛬</span></div>
+              <div class="pf-main">
+                <div class="pf-name">נמל התעופה הָנֶדָה (HND)</div>
+                <div class="pf-sub">טוקיו</div>
+              </div>
+            </div>
+          </div>
+          <div class="fld">
+            <span class="lab">מתי</span>
+            <div class="whenrow">
+              <span class="timebox">23:00</span>
+              <span class="tzchip" onclick="toast('אזור זמן · מוצא')">
+                <span class="clock">🕐</span> תל אביב
+                <svg
+                  viewBox="0 0 24 24"
+                  fill="none"
+                  stroke="currentColor"
+                  stroke-width="2.5"
+                  stroke-linecap="round"
+                  stroke-linejoin="round"
+                >
+                  <polyline points="6 9 12 15 18 9" />
+                </svg>
+              </span>
+              <span class="tzarrow">←</span>
+              <span class="timebox">18:00 <span class="plus1">+1</span></span>
+              <span class="tzchip" onclick="toast('אזור זמן · יעד')">
+                <span class="clock">🕐</span> טוקיו
+                <svg
+                  viewBox="0 0 24 24"
+                  fill="none"
+                  stroke="currentColor"
+                  stroke-width="2.5"
+                  stroke-linecap="round"
+                  stroke-linejoin="round"
+                >
+                  <polyline points="6 9 12 15 18 9" />
+                </svg>
+              </span>
+            </div>
+          </div>
+          <div class="zone-note">
+            תחבורה חוצת־אזורים: ההתחלה באזור המוצא, הסיום באזור היעד (ADR-0107 §3). כך "23:00 TLV ←
+            18:00 +1 טוקיו".
+          </div>
+        </div>
+
+        <div class="formcard">
+          <div class="form-title">מקום חדש · <span>מצב ריק / Place-lite</span></div>
+          <div class="fld">
+            <span class="lab">מיקום</span>
+            <div class="placefield empty" onclick="toast('בורר המקומות · חיפוש')">
+              <span class="pf-search"
+                ><svg
+                  viewBox="0 0 24 24"
+                  fill="none"
+                  stroke="currentColor"
+                  stroke-width="2.2"
+                  stroke-linecap="round"
+                >
+                  <circle cx="11" cy="11" r="7" />
+                  <line x1="21" y1="21" x2="16.5" y2="16.5" /></svg
+              ></span>
+              חיפוש מקום ב-Google, או שמירה בשם בלבד (ללא רשת)
+            </div>
+          </div>
+          <div class="zone-note">
+            שם־בלבד = "Place-lite" (fallback אופליין): ברשימה, אך בלי קואורדינטות/אזור־זמן עד שנבחר
+            מקום בבורר.
+          </div>
+        </div>
+      </div>
+
+      <!-- Phase-1 keystone: the Places picker flow (search → enrich → cache) -->
+      <div class="panel" style="width: 640px">
+        <h3>בורר המקומות (שלב 1) — הבסיס של כל האפיק</h3>
+        <p>
+          בורר אחד (Google Autocomplete + <b>session tokens</b>) בכל שדה מיקום. בבחירה:
+          <b>create-or-link</b> ל-<code>Place</code>, מועשר ב-<b
+            >קואורדינטות · כתובת · אזור־זמן · דירוג</b
+          >, מנוכה־כפילויות לפי <code>googlePlaceId</code>, ונשמר <b>על השורה כמטמון</b> (ADR-0048:
+          בוחרים פעם אחת, קריאה חוזרת חינם ואופליין). ה<b>עלות היחידה</b> היא חיפוש חדש — הרשימה,
+          הסינון והקריאה החוזרת לא עולים דבר.
+        </p>
+
+        <div class="pk">
+          <div class="form-title">חיפוש · <span>הקלדה מפעילה השלמה אוטומטית</span></div>
+          <div class="pk-input">
+            <svg
+              viewBox="0 0 24 24"
+              fill="none"
+              stroke="currentColor"
+              stroke-width="2.2"
+              stroke-linecap="round"
+            >
+              <circle cx="11" cy="11" r="7" />
+              <line x1="21" y1="21" x2="16.5" y2="16.5" />
+            </svg>
+            <span class="q">איצ׳יר</span>
+            <span class="caret"></span>
+          </div>
+          <div class="pk-preds">
+            <div class="pk-pred" onclick="toast('כבר בטיול · מקשר למקום הקיים (ללא כפילות)')">
+              <span class="mk">📍</span>
+              <span class="pt">
+                <div class="pn">Ichiran Shinjuku</div>
+                <div class="ps">3 Chome, Shinjuku City · טוקיו</div>
+              </span>
+              <span class="dup">כבר בטיול</span>
+            </div>
+            <div class="pk-pred" onclick="toast('בחירה · יוצר Place מועשר')">
+              <span class="mk">📍</span>
+              <span class="pt">
+                <div class="pn">Ichiran Shibuya</div>
+                <div class="ps">1 Chome, Shibuya City · טוקיו</div>
+              </span>
+            </div>
+            <div class="pk-pred" onclick="toast('בחירה · יוצר Place מועשר')">
+              <span class="mk">📍</span>
+              <span class="pt">
+                <div class="pn">Ichiran Ginza</div>
+                <div class="ps">6 Chome, Chuo City · טוקיו</div>
+              </span>
+            </div>
+          </div>
+          <div class="pk-foot">
+            <span>🔒</span> מופעל ע״י Google · session token אחד לכל חיפוש (חיוב לפי חיפוש, לא לכל
+            הקשה) · דדופ לפי googlePlaceId
+          </div>
+        </div>
+
+        <div class="pk">
+          <div class="form-title">אחרי בחירה · <span>Place מועשר, נשמר על השורה</span></div>
+          <div class="pk-enriched">
+            <div class="badge cat-food"><span class="glyph">🍜</span></div>
+            <div class="en-main">
+              <div class="en-name">איצ׳ירן ראמן · שינג׳וקו</div>
+              <div class="en-addr">3 Chome-34-11 Shinjuku, Shinjuku City, Tokyo 160-0022</div>
+              <div class="en-tags">
+                <span class="en-tag geo">📍 קואורדינטות</span>
+                <span class="en-tag rate">★ 4.6</span>
+                <span class="en-tag tz">🕐 Asia/Tokyo</span>
+              </div>
+            </div>
+          </div>
+          <div class="pk-saved">
+            <span>✓</span> נשמר על ה-<code>Place</code> (מטמון) — קואורדינטות · כתובת · אזור־זמן ·
+            דירוג. קריאה חוזרת חינם, גם אופליין.
+          </div>
+          <div class="pk-fallback">
+            <b>אין רשת או אין תוצאה?</b> אפשר לשמור <b>בשם בלבד</b> — "Place-lite": ברשימה מיד,
+            ומתעשר אוטומטית כשבוחרים אותו בבורר בפעם הבאה.
+            <div class="pk-lite" onclick="toast('נשמר בשם בלבד · Place-lite (ללא קואורדינטות)')">
+              ＋ שמור "בר יין קטן" בשם בלבד
+            </div>
+          </div>
+        </div>
+      </div>
+    </div>
+
+    <div
+      id="toast"
+      style="
+        position: fixed;
+        bottom: 28px;
+        left: 50%;
+        transform: translateX(-50%) translateY(20px);
+        background: #0e1729;
+        color: #fff;
+        padding: 11px 18px;
+        border-radius: 999px;
+        font-size: 13px;
+        font-weight: 600;
+        opacity: 0;
+        transition: all 0.25s ease;
+        pointer-events: none;
+        z-index: 50;
+        box-shadow: 0 10px 30px -8px rgba(0, 0, 0, 0.5);
+        max-width: 320px;
+        text-align: center;
+      "
+    ></div>
+
+    <script>
+      /* -------- the place-usage model (a stand-in for the derived index) --------
+         Each place carries the facets the real derivation produces
+         { days[], cat, commit, isMaybe, coords } PLUS cached Google enrichment
+         (rating — proposed for Phase 1, ADR-0109 §3). `when` = scheduled time,
+         `ctx` = what happens there (never a bare "יציאה"). */
+      const PLACES = [
+        {
+          id: 'shinjuku',
+          name: 'תחנת שינג׳וקו',
+          glyph: '🚉',
+          cat: 'transport',
+          days: [2],
+          commit: 'hard',
+          lock: true,
+          when: '18:40',
+          ctx: 'רכבת לקיוטו', // was a bare "יציאה" — now says WHAT departs
+          dist: '650 מ׳',
+          coords: true,
+        },
+        {
+          id: 'ichiran',
+          name: 'איצ׳ירן ראמן',
+          glyph: '🍜',
+          cat: 'food',
+          days: [2],
+          commit: 'soft',
+          when: '19:30',
+          ctx: 'ארוחת ערב',
+          rating: 4.6,
+          dist: '210 מ׳',
+          coords: true,
+        },
+        {
+          id: 'arabica',
+          name: '% Arabica',
+          glyph: '☕',
+          cat: 'food',
+          days: [2],
+          commit: 'idea',
+          isMaybe: true,
+          shelf: true,
+          rating: 4.7,
+          dist: '90 מ׳',
+          coords: true,
+        },
+        {
+          id: 'goldengai',
+          name: 'גולדן גאי',
+          glyph: '🍶',
+          cat: 'sightseeing',
+          days: [2, 3],
+          commit: 'idea',
+          isMaybe: true,
+          shelf: true,
+          ctx: 'רעיון לערב',
+          rating: 4.4,
+          dist: '1.1 ק״מ',
+          coords: true,
+        },
+        {
+          id: 'hotel',
+          name: 'פארק האיאט טוקיו',
+          glyph: '🏨',
+          cat: 'lodging',
+          days: [1, 2, 3, 4],
+          edgeDays: [1, 4],
+          commit: 'hard',
+          lock: true,
+          ctx: 'הבסיס · לילה 2 מתוך 4',
+          ambientToday: true,
+          dist: '0 מ׳',
+          coords: true,
+        },
+        {
+          id: 'meiji',
+          name: 'מקדש מייג׳י',
+          glyph: '⛩️',
+          cat: 'sightseeing',
+          days: [3],
+          commit: 'soft',
+          when: 'מחר · 10:00',
+          ctx: 'סיור בוקר',
+          rating: 4.6,
+          dist: '3.4 ק״מ',
+          coords: true,
+        },
+        {
+          id: 'winebar',
+          name: 'בר יין קטן',
+          glyph: '🍷',
+          cat: 'food',
+          days: [2],
+          commit: 'idea',
+          isMaybe: true,
+          shelf: true,
+          noCoord: true, // name-only "Place-lite" — no picker enrichment yet
+          coords: false,
+        },
+      ];
+
+      // canonical category → the 5-colour pin palette (ADR-0038 §2)
+      const CAT_PIN = {
+        transport: 'transit',
+        food: 'food',
+        lodging: 'lodging',
+        sightseeing: 'leisure',
+        nature: 'leisure',
+        activity: 'leisure',
+        shopping: 'leisure',
+        services: 'services',
+        other: 'leisure',
+      };
+
+      let mode = 'trip';
+      let state = 'normal';
+      let dayFilter = 2; // Trip default = today
+      let typeFilter = 'all';
+
+      function esc(s) {
+        return s.replace(/&/g, '&amp;').replace(/</g, '&lt;');
+      }
+
+      // LIST BADGE: a rounded category-coloured badge (commitment is the row
+      // grammar, not the badge). Ambient/coordless get the muted treatment.
+      function badgeHtml(p) {
+        const cls = p.noCoord ? 'nocoord' : 'cat-' + (CAT_PIN[p.cat] || 'leisure');
+        return `<div class="badge ${cls}"><span class="glyph">${p.glyph}</span></div>`;
+      }
+
+      function rowClass(p) {
+        if (p.ambientToday && dayFilter !== null && !(p.edgeDays || []).includes(dayFilter))
+          return 'ambient';
+        if (p.noCoord) return 'nocoordrow';
+        if (p.commit === 'idea') return 'soft';
+        return '';
+      }
+
+      // META: every element earns its place. time (amber mono) · what-happens-here
+      // · rating (Google, cached) · "על המדף" for shelf ideas. No bare "יציאה".
+      function metaHtml(p) {
+        const bits = [];
+        if (p.when) bits.push(`<span class="tag time">${esc(p.when)}</span>`);
+        if (p.ctx) bits.push(`<span class="tag">${esc(p.ctx)}</span>`);
+        if (p.rating) bits.push(`<span class="tag rate">★ ${p.rating}</span>`);
+        if (p.shelf && typeFilter === 'all') bits.push(`<span class="tag mbadge">על המדף</span>`);
+        if (p.noCoord)
+          bits.push(`<span class="noplace-hint">אין מיקום מדויק · הוסיפו דרך הבורר</span>`);
+        return bits.join('');
+      }
+
+      // ONE labeled trailing action. Coord place → "נווט" (directions, teal =
+      // location). Coordless → "הוסף מיקום" (opens the picker). Viewing the place
+      // is the ROW TAP — no cryptic eye/compass icons.
+      function rightHtml(p) {
+        let dist = '';
+        if (p.coords && state === 'near') dist = `<span class="dist">${esc(p.dist)}</span>`;
+        else if (p.coords && state === 'offline')
+          dist = `<span class="dist stale">מרחק לא זמין</span>`;
+        const navArrow =
+          '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><path d="M3 11l19-9-9 19-2-8-8-2z"/></svg>';
+        const action = p.coords
+          ? `<button class="navbtn" onclick="event.stopPropagation();toast('ניווט ב-Google Maps · ${esc(p.name)}')">${navArrow} נווט</button>`
+          : `<button class="addbtn" onclick="event.stopPropagation();toast('בורר המקומות · הוספת מיקום ל&quot;${esc(p.name)}&quot;')">＋ מיקום</button>`;
+        return `${dist}${action}`;
+      }
+
+      function matches(p) {
+        // day filter (null = all). Multi-day place: edge-loud/middle-ambient,
+        // but it still MATCHES the day (shown, just ambient) — mirrors 0064.
+        if (dayFilter !== null && !p.days.includes(dayFilter)) return false;
+        if (typeFilter === 'all') return true;
+        if (typeFilter === 'maybe') return !!p.isMaybe;
+        return p.cat === typeFilter;
+      }
+
+      function render() {
+        let list = PLACES.filter(matches);
+        // near-me sort: coord places by distance; coordless sink to the end.
+        if (state === 'near') {
+          const km = (d) => (!d ? 1e9 : d.includes('ק״מ') ? parseFloat(d) * 1000 : parseFloat(d));
+          list = [...list].sort((a, b) => {
+            if (!a.coords) return 1;
+            if (!b.coords) return -1;
+            return km(a.dist) - km(b.dist);
+          });
+        }
+
+        let html = '';
+        if (state === 'near' && list.some((p) => p.coords)) {
+          html += `<div class="grouphead">לפי קרבה אליך</div>`;
+        }
+        if (list.length === 0) {
+          html = `<div class="empty"><span class="ei">🗺️</span>אין מקומות בסינון הזה.<br />שנו יום או סוג, או הוסיפו מקום.</div>`;
+        } else {
+          list.forEach((p) => {
+            // the whole row is tappable → open the place (detail / Maps place),
+            // so there's no separate "view" icon competing with "נווט".
+            html += `<div class="place ${rowClass(p)}" onclick="toast('פרטי מקום · ${esc(p.name)}')">
+              ${badgeHtml(p)}
+              <div class="main">
+                <div class="t">${esc(p.name)}${p.lock ? '<span class="lock">🔒</span>' : ''}</div>
+                <div class="m">${metaHtml(p)}</div>
+              </div>
+              <div class="right">${rightHtml(p)}</div>
+            </div>`;
+          });
+        }
+        document.getElementById('list').innerHTML = html;
+      }
+
+      const TODAY = 2; // day index that is "today" in this demo
+      const DAY_DATE = {
+        1: '23 ביולי',
+        2: '24 ביולי',
+        3: '25 ביולי',
+        4: '26 ביולי',
+        5: '27 ביולי',
+      };
+      const EVENT_DAYS = new Set(PLACES.flatMap((p) => p.days)); // for Plan empty-day markers
+
+      function setMode(m) {
+        mode = m;
+        document.getElementById('phone').dataset.mode = m;
+        // the standard two-segment header mode-toggle reflects the active mode
+        document.getElementById('pill-trip').classList.toggle('on', m === 'trip');
+        document.getElementById('pill-plan').classList.toggle('on', m === 'plan');
+        // mode sets the DEFAULT day scope: Trip → today, Plan → all days.
+        dayFilter = m === 'plan' ? null : TODAY;
+        syncStrip();
+        render();
+      }
+
+      // Reflect the current scope on the real day strip + the map-local scope
+      // chip. The strip is single-select (one active date, like the app); the
+      // "all days" state is map-only, shown by clearing the strip selection.
+      function syncStrip() {
+        document.querySelectorAll('.daycell').forEach((cell) => {
+          const d = +cell.dataset.day;
+          cell.className = 'daycell';
+          if (mode === 'trip') {
+            if (dayFilter === d) {
+              cell.classList.add(d === TODAY ? 'on' : d < TODAY ? 'sel-history' : 'sel-future');
+            } else if (d === TODAY) {
+              cell.classList.add('today-anchor'); // amber "today" marker, always
+            } else {
+              cell.classList.add(d < TODAY ? 'past' : 'future');
+            }
+          } else {
+            if (dayFilter === d) cell.classList.add('on');
+            else if (dayFilter !== null && d < dayFilter) cell.classList.add('past');
+            if (!EVENT_DAYS.has(d)) cell.classList.add('empty'); // dashed red-number gap
+          }
+        });
+        const isAll = dayFilter === null;
+        document.getElementById('allchip').classList.toggle('on', isAll);
+        document.getElementById('scopehint').textContent = isAll
+          ? 'מציג · כל הימים'
+          : 'מציג · ' + DAY_DATE[dayFilter];
+        document.getElementById('headsub').textContent = isAll
+          ? 'טוקיו · כל המקומות'
+          : dayFilter === TODAY
+            ? 'טוקיו · המקומות של היום'
+            : 'טוקיו · ' + DAY_DATE[dayFilter];
+      }
+
+      // Tapping a strip day focuses it ON THE MAP in place (the map is a
+      // day-scoped surface, like the Day view — no navigation away).
+      function pickDay(d) {
+        dayFilter = d;
+        syncStrip();
+        render();
+      }
+
+      // The map-local "all days" scope: expand to all, or collapse back to today.
+      function toggleAllDays() {
+        dayFilter = dayFilter === null ? TODAY : null;
+        syncStrip();
+        render();
+      }
+
+      function filterType(el, t) {
+        typeFilter = t;
+        document.querySelectorAll('.chip').forEach((c) => c.classList.remove('on'));
+        el.classList.add('on');
+        render();
+      }
+
+      function setState(s) {
+        state = s;
+        document.getElementById('phone').dataset.state = s;
+        document
+          .querySelectorAll('#stateseg button')
+          .forEach((b) => b.classList.toggle('on', b.textContent.trim() === stateLabel(s)));
+        const near = document.getElementById('nearchip');
+        const nearlabel = document.getElementById('nearlabel');
+        const denied = document.getElementById('deniedbanner');
+        const offline = document.getElementById('offlinebanner');
+        const geoprompt = document.getElementById('geoprompt');
+        geoprompt.classList.remove('show');
+        denied.classList.remove('show');
+        offline.classList.remove('show');
+        near.classList.remove('on', 'denied');
+        nearlabel.textContent = 'קרוב עכשיו';
+        if (s === 'near') {
+          near.classList.add('on');
+          nearlabel.textContent = 'קרוב · דלוק';
+        } else if (s === 'denied') {
+          near.classList.add('denied');
+          nearlabel.textContent = 'מיקום כבוי';
+          denied.classList.add('show');
+        } else if (s === 'offline') {
+          offline.classList.add('show');
+        }
+        render();
+      }
+      function stateLabel(s) {
+        return { normal: 'רגיל', near: 'קרוב עכשיו', denied: 'מיקום נדחה', offline: 'אופליין' }[s];
+      }
+
+      function tapNearMe() {
+        if (state === 'near') {
+          setState('normal');
+          return;
+        }
+        if (state === 'denied') {
+          toast('המיקום נדחה · הפעילו בהגדרות המכשיר');
+          return;
+        }
+        // just-in-time: show the pre-prompt (never auto-ask on tab open)
+        document.getElementById('geoprompt').classList.add('show');
+        document.getElementById('body').scrollTop = 0;
+      }
+      function grantGeo() {
+        document.getElementById('geoprompt').classList.remove('show');
+        setState('near');
+      }
+      function dismissGeo() {
+        document.getElementById('geoprompt').classList.remove('show');
+      }
+
+      let toastT;
+      function toast(msg) {
+        const t = document.getElementById('toast');
+        t.textContent = msg;
+        t.style.opacity = '1';
+        t.style.transform = 'translateX(-50%) translateY(0)';
+        clearTimeout(toastT);
+        toastT = setTimeout(() => {
+          t.style.opacity = '0';
+          t.style.transform = 'translateX(-50%) translateY(20px)';
+        }, 2100);
+      }
+
+      setMode('trip'); // sync initial mode + day-strip selection, then render
+    </script>
+  </body>
+</html>
