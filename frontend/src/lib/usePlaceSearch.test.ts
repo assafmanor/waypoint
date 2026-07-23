@@ -11,12 +11,18 @@ vi.mock('./api', async (importOriginal) => {
 });
 
 let places: Place[] = [];
+let events: unknown[] = [];
+let bookings: unknown[] = [];
+let maybeItems: unknown[] = [];
 const createPlace = vi.fn();
 const resolvePlace = vi.fn();
 vi.mock('../state/trip-state', () => ({
   useTrip: () => ({
     trip: { id: 't1', timezone: 'Asia/Tokyo' },
     places,
+    events,
+    bookings,
+    maybeItems,
     indexVerbs: { createPlace, resolvePlace },
   }),
 }));
@@ -31,6 +37,9 @@ describe('usePlaceSearch', () => {
   beforeEach(() => {
     vi.useFakeTimers();
     places = [];
+    events = [];
+    bookings = [];
+    maybeItems = [];
     searchMock.mockReset().mockResolvedValue([PREDICTION]);
     createPlace.mockReset().mockResolvedValue('pl-new');
     resolvePlace.mockReset();
@@ -59,15 +68,32 @@ describe('usePlaceSearch', () => {
     expect(result.current.predictions).toEqual([PREDICTION]);
   });
 
-  it('picking a prediction already in the trip links to it with no resolve spend', async () => {
+  it('picking a place already REFERENCED in the trip links to it with no resolve spend', async () => {
     places = [{ id: 'pl-existing', googlePlaceId: 'g-shibuya', name: 'Shibuya' } as Place];
+    // A saved event references it → it is genuinely "in the trip" (ADR-0112).
+    events = [{ id: 'e1', placeId: 'pl-existing' }];
     const { result } = renderHook(() => usePlaceSearch());
+    expect(result.current.alreadyInTrip(PREDICTION)?.id).toBe('pl-existing');
     let picked: Place | undefined;
     await act(async () => {
       picked = await result.current.pick(PREDICTION);
     });
     expect(picked?.id).toBe('pl-existing');
     expect(resolvePlace).not.toHaveBeenCalled();
+  });
+
+  it('a cached-but-unreferenced place is NOT "already in trip"; re-picking it re-resolves (server dedups)', async () => {
+    // The row exists (a prior pick was never saved), but nothing references it.
+    places = [{ id: 'pl-cached', googlePlaceId: 'g-shibuya', name: 'Shibuya' } as Place];
+    events = [];
+    resolvePlace.mockResolvedValue({ id: 'pl-cached', googlePlaceId: 'g-shibuya' } as Place);
+    const { result } = renderHook(() => usePlaceSearch());
+    expect(result.current.alreadyInTrip(PREDICTION)).toBeUndefined();
+    await act(async () => {
+      await result.current.pick(PREDICTION);
+    });
+    // Falls through to resolve; the server dedups to the cached row (zero Google spend).
+    expect(resolvePlace).toHaveBeenCalledTimes(1);
   });
 
   it('picking a new prediction resolves through the proxy with the session token + enrichPlaceId', async () => {

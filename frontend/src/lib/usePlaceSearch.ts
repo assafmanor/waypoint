@@ -1,8 +1,9 @@
-import { useCallback, useEffect, useRef, useState } from 'react';
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import type { Place, PlacePrediction } from '@waypoint/shared';
 import { PLACE_SEARCH_DEBOUNCE_MS, PLACE_SEARCH_MIN_CHARS } from '../constants';
 import { useTrip } from '../state/trip-state';
 import { isRateLimitedError, searchPlaces } from './api';
+import { referencedPlaceIds } from './places';
 
 export interface UsePlaceSearch {
   query: string;
@@ -39,7 +40,7 @@ export interface UsePlaceSearch {
  *   Place-lite, its id — so a pick enriches that row in place instead of minting a duplicate.
  */
 export function usePlaceSearch(enrichPlaceId?: string): UsePlaceSearch {
-  const { trip, places, indexVerbs } = useTrip();
+  const { trip, places, events, bookings, maybeItems, indexVerbs } = useTrip();
   const { createPlace, resolvePlace } = indexVerbs;
   const tripId = trip.id;
 
@@ -103,10 +104,19 @@ export function usePlaceSearch(enrichPlaceId?: string): UsePlaceSearch {
     };
   }, [active, trimmed, tripId, ensureToken]);
 
+  // "In the trip" = referenced by a saved entity, NOT merely cached as a row: a
+  // picked-but-unsaved place stays as a dedup cache row but reads as not-in-trip
+  // (ADR-0112). The chip and the pick short-circuit both key off this, so a
+  // cancelled pick never shows "already in the trip"; re-picking a cached-only row
+  // still dedups server-side at zero Google spend (it just isn't a local link).
+  const referenced = useMemo(
+    () => referencedPlaceIds(events, bookings, maybeItems),
+    [events, bookings, maybeItems],
+  );
   const alreadyInTrip = useCallback(
     (prediction: PlacePrediction): Place | undefined =>
-      places.find((p) => p.googlePlaceId === prediction.googlePlaceId),
-    [places],
+      places.find((p) => p.googlePlaceId === prediction.googlePlaceId && referenced.has(p.id)),
+    [places, referenced],
   );
 
   const pick = useCallback(
