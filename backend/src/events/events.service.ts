@@ -91,6 +91,7 @@ export class EventsService {
               // Authority invariant (ADR-0048): a linked event's place lives on its
               // booking, so it never carries its own placeId.
               placeId: input.bookingId ? null : input.placeId,
+              displayTimezone: input.displayTimezone ?? undefined,
               bookingId: input.bookingId,
               sortOrder: input.sortOrder ?? 0,
               source: input.source,
@@ -155,6 +156,9 @@ export class EventsService {
             ...(input.kind !== undefined && { kind: input.kind }),
             ...(input.startsAt !== undefined && { startsAt: new Date(input.startsAt) }),
             ...(input.endsAt !== undefined && { endsAt: new Date(input.endsAt) }),
+            ...(input.displayTimezone !== undefined && {
+              displayTimezone: input.displayTimezone, // manual zone override (ADR-0107 §7)
+            }),
             ...(input.bookingId !== undefined && { bookingId: input.bookingId }),
             ...placeIdData,
             ...(input.sortOrder !== undefined && { sortOrder: input.sortOrder }),

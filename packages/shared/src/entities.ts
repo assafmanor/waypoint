@@ -160,6 +160,11 @@ export const tripEventSchema = z.object({
   startsAt: z.string().optional(), // UTC instant
   endsAt: z.string().optional(),
   placeId: z.string().optional(), // authoritative only for unlinked events (ADR-0048)
+  /** Manual display-zone override (ADR-0107 §7 / ADR-0110): the only writer is the
+   *  time-field zone chip. Null trusts the derived zone (place > segment > trip
+   *  primary), so adding the outbound flight reorients placeless times; non-null is
+   *  the user's pinned zone, honoured forever. Not a cache of the derived value. */
+  displayTimezone: z.string().optional(),
   status: eventStatusSchema,
   bookingId: idSchema.optional(),
   sortOrder: z.number(),

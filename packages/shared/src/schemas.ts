@@ -53,6 +53,7 @@ const eventFieldsSchema = z.object({
   startsAt: isoDateTimeSchema.optional(), // UTC instant
   endsAt: isoDateTimeSchema.optional(),
   placeId: z.string().optional(), // FK → Place; cleared server-side when bookingId is set (ADR-0048)
+  displayTimezone: z.string().optional(), // manual display-zone override (ADR-0107 §7); the editing chip (slice 4) widens this to nullable to clear it
   bookingId: z.string().optional(),
   sortOrder: z.number().int().optional(),
   source: eventSourceSchema.default('manual'),

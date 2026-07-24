@@ -226,6 +226,7 @@ model Event {
   startsAt  DateTime? // UTC instant
   endsAt    DateTime?
   placeId   String? // authoritative only for unlinked events; cleared when bookingId is set (ADR-0048)
+  displayTimezone String? // manual display-zone override; null trusts the derived zone (ADR-0107 §7)
   status    EventStatus    @default(planned)
   bookingId String?        @unique // strict 1:1 with Booking (ADR-0047)
   sortOrder Int            @default(0)
