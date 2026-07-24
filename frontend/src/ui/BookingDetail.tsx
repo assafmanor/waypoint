@@ -7,11 +7,11 @@ import { BOOKING_TYPE, type Booking, type BookingType } from '@waypoint/shared';
 import { useTrip } from '../state/trip-state';
 import { Sheet } from './Sheet';
 import { RouteLabel } from './RouteLabel';
-import { placeName } from '../lib/places';
+import { bookingDirectionsUrl, placeName } from '../lib/places';
 import { formatTime } from '../lib/time';
 import { bookingDurationUnit, formatBookingDuration, timingLabels } from '../lib/booking-timing';
 import { badgeClassForBookingType } from '../lib/transitions';
-import { BOOKING_TYPE_ICON, CODE_PREFIX } from '../constants';
+import { BOOKING_TYPE_ICON, CODE_PREFIX, ICONS } from '../constants';
 import { t } from '../i18n/he';
 
 interface Wifi {
@@ -64,6 +64,11 @@ export function BookingDetail({
     ? formatBookingDuration(linkedEvent, tz, bookingDurationUnit(booking.type))
     : null;
 
+  // "Open in Maps" deep-link for the booking's place (transport → origin, else
+  // the single place), following the authority rule. Absent when there's no
+  // place or a coordless Place-lite — then no ניווט button (ADR-0106/0109 §Phase 2).
+  const navUrl = bookingDirectionsUrl(booking, places);
+
   const isRoute = isTransport(booking.type) && !!(from || to);
   // The route reads in the RTL flow (origin on the start/right, arrow pointing to
   // the destination) — the trip's UI is Hebrew-first, so the arrow follows it.
@@ -77,6 +82,11 @@ export function BookingDetail({
     <Sheet ariaLabel={heading} onClose={onClose}>
       <div className="bk-detail">
         <div className="bk-actions">
+          {navUrl && (
+            <a className="bk-nav" href={navUrl} target="_blank" rel="noopener noreferrer">
+              <span aria-hidden="true">{ICONS.navigate}</span> {t.actions.navigate}
+            </a>
+          )}
           <button type="button" className="bk-edit" onClick={edit}>
             <span aria-hidden="true">✏️</span> {t.index.detail.edit}
           </button>

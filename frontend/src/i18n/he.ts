@@ -760,7 +760,6 @@ export const t = {
     softDelayed: (minutes: number) => `נדחה ב-${minutes} דקות`,
     softEarlier: (minutes: number) => `הוקדם ב-${minutes} דקות`,
     onWayShared: 'שותף לקבוצה · בדרך',
-    openingNav: 'פותח ניווט',
     scheduled: (title: string, time: string) => `${title} שובץ ל-${time}`,
     rippleApplied: 'האירועים הבאים נדחו',
     eventMoved: 'האירוע הוזז',

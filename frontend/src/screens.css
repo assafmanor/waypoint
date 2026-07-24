@@ -3223,11 +3223,31 @@
   border-color: var(--plan);
   background: var(--plan-tint);
 }
+/* "Open in Maps" deep-link — teal, the location/nav affordance (design-language.md
+   §semantic color budget: teal = location only), sitting beside the plan-violet edit. */
+.bk-nav {
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+  font: inherit;
+  font-size: 12px;
+  font-weight: 700;
+  color: var(--teal);
+  background: var(--card);
+  border: 1px solid var(--teal);
+  border-radius: 999px;
+  padding: 5px 11px;
+  text-decoration: none;
+  cursor: pointer;
+}
+.bk-nav:hover {
+  background: color-mix(in srgb, var(--teal) 10%, transparent);
+}
 .bk-head {
   display: flex;
   align-items: center;
   gap: 11px;
-  padding-inline-end: 92px;
+  padding-inline-end: 168px;
 }
 .bk-badge {
   width: 44px;

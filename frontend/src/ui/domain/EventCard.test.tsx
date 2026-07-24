@@ -183,4 +183,16 @@ describe('EventCard', () => {
     expect(container.querySelector('.wp-event-act.more')).toBeNull();
     expect(screen.getByRole('button', { name: t.actions.navigate })).toBeTruthy();
   });
+
+  it('no location → no ניווט button (onNavigate omitted, Phase 2)', () => {
+    // A place-less event (or a coordless Place-lite) has no mappable location, so
+    // the screen passes no `onNavigate` and the card drops the button entirely.
+    const { rerender } = render(
+      wrap(<EventCard {...base} kind="hard" phase="now" isOpen onNavigate={undefined} />),
+    );
+    expect(screen.queryByRole('button', { name: t.actions.navigate })).toBeNull();
+    // With a handler it comes back.
+    rerender(wrap(<EventCard {...base} kind="hard" phase="now" isOpen onNavigate={() => {}} />));
+    expect(screen.getByRole('button', { name: t.actions.navigate })).toBeTruthy();
+  });
 });

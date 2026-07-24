@@ -57,7 +57,9 @@ export interface EventCardProps {
   /** "כולל N" contents count on an envelope event that nests others. */
   nestedCount?: number;
   // Verbs (callbacks; presence + phase gate which buttons show, faithfully).
-  onNavigate: () => void;
+  // `onNavigate` is present only when the event has a mappable location (a place
+  // with coordinates) — absent → no ניווט button, since there's nowhere to go.
+  onNavigate?: () => void;
   onDone?: () => void;
   onSkip?: () => void;
   onDelay?: () => void;
@@ -267,15 +269,19 @@ export function EventCard(props: EventCardProps) {
               <button type="button" className="wp-event-act" onClick={onRestore}>
                 {t.actions.restore}
               </button>
-              <button type="button" className="wp-event-act go" onClick={onNavigate}>
-                {t.actions.navigate}
-              </button>
+              {onNavigate && (
+                <button type="button" className="wp-event-act go" onClick={onNavigate}>
+                  {t.actions.navigate}
+                </button>
+              )}
             </>
           ) : isHard ? (
             <>
-              <button type="button" className="wp-event-act go" onClick={onNavigate}>
-                {t.actions.navigate}
-              </button>
+              {onNavigate && (
+                <button type="button" className="wp-event-act go" onClick={onNavigate}>
+                  {t.actions.navigate}
+                </button>
+              )}
               {!readOnly && (
                 <>
                   <button type="button" className="wp-event-act" onClick={onOnWay}>
@@ -318,9 +324,11 @@ export function EventCard(props: EventCardProps) {
                   +
                 </button>
               </div>
-              <button type="button" className="wp-event-act go" onClick={onNavigate}>
-                {t.actions.navigate}
-              </button>
+              {onNavigate && (
+                <button type="button" className="wp-event-act go" onClick={onNavigate}>
+                  {t.actions.navigate}
+                </button>
+              )}
             </>
           )}
           {!readOnly && menuActions.length > 0 && (
