@@ -11,6 +11,7 @@ import {
 import type { Trip } from '@waypoint/shared';
 import { TripProvider, useTrip } from './state/trip-state';
 import { ModeProvider, useMode } from './state/mode-state';
+import { MapScopeProvider, useMapScope } from './state/map-scope-state';
 import { AuthProvider, useAuth } from './state/auth-state';
 import { ActiveTripIdProvider, useActiveTripId } from './state/active-trip-id';
 import {
@@ -146,11 +147,15 @@ function Header({
   onOpenSwitcher,
   onOpenAccount,
   onOpenSettings,
+  allScope,
 }: {
   onSelectDay: (date: string) => void;
   onOpenSwitcher: () => void;
   onOpenAccount: () => void;
   onOpenSettings: () => void;
+  /** Map all-days scope is active (ADR-0110 §4): the strip drops its filled
+   *  selection while still anchoring today. */
+  allScope?: boolean;
 }) {
   const { trip, users, activeDate, usingCachedSnapshot, events } = useTrip();
   const { me } = useAuth();
@@ -310,6 +315,7 @@ function Header({
         today={today}
         mode={mode}
         onSelect={onSelectDay}
+        allScope={allScope}
       />
       {dayScope && (
         <button
@@ -355,6 +361,7 @@ function Screen({ tab, onNavigate }: { tab: TabId; onNavigate: (tab: TabId) => v
 function Shell() {
   // Tab lives in the URL (?tab=), Home-anchored, so back peels it (ADR-0035).
   const { tab, goToTab } = useTripTab();
+  const { allDays } = useMapScope();
   const [accountOpen, setAccountOpen] = useState(false);
   useMarkInsideTrip();
   // Give Android's OS back an in-app entry to traverse into (ADR-0090) so a cold
@@ -441,6 +448,7 @@ function Shell() {
           onOpenSwitcher={() => navigate('/trips')}
           onOpenAccount={() => setAccountOpen(true)}
           onOpenSettings={() => navigate(`/trip/${trip.id}/settings`)}
+          allScope={tab === 'map' && allDays}
         />
       }
       nav={
@@ -589,7 +597,9 @@ function RootSurface() {
   return (
     <TripProvider tripId={landing.tripId} knownTrip={knownTrip}>
       <ModeProvider>
-        <Shell />
+        <MapScopeProvider>
+          <Shell />
+        </MapScopeProvider>
       </ModeProvider>
     </TripProvider>
   );

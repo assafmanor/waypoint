@@ -39,6 +39,10 @@ export interface DayStripProps {
   today: string;
   mode: DayStripMode;
   onSelect: (date: string) => void;
+  /** The Map's "all days" scope is active (ADR-0110 §4): no day is singled out,
+   *  so the filled selection is suppressed (today keeps its anchor, empty-day
+   *  markers stay). Tapping any pill exits all-days at the caller. */
+  allScope?: boolean;
 }
 
 /** Pill state classes, faithful to App.tsx's pillClass (ADR-0043/0028). */
@@ -49,10 +53,19 @@ function pillClass(
     today,
     mode,
     hasEvents,
-  }: { selected: string; today: string; mode: DayStripMode; hasEvents?: boolean },
+    allScope,
+  }: {
+    selected: string;
+    today: string;
+    mode: DayStripMode;
+    hasEvents?: boolean;
+    allScope?: boolean;
+  },
 ): string {
   const c = ['wp-daypill'];
-  const isSelected = date === selected;
+  // Under all-days scope no pill is "the selected one", so the filled-selection
+  // classes are withheld — the today-anchor (Trip) and empty markers (Plan) stay.
+  const isSelected = date === selected && !allScope;
   if (mode === 'trip') {
     if (isSelected) c.push(date === today ? 'on' : date < today ? 'sel-history' : 'sel-future');
     else if (date === today) c.push('today-anchor');
@@ -65,10 +78,12 @@ function pillClass(
   return c.join(' ');
 }
 
-export function DayStrip({ days, selected, today, mode, onSelect }: DayStripProps) {
+export function DayStrip({ days, selected, today, mode, onSelect, allScope }: DayStripProps) {
   const selectedRef = useRef<HTMLButtonElement>(null);
 
   useEffect(() => {
+    // Don't force-scroll to a day that isn't visually selected (all-days scope).
+    if (allScope) return;
     const el = selectedRef.current;
     if (!el) return;
     el.scrollIntoView({
@@ -76,7 +91,7 @@ export function DayStrip({ days, selected, today, mode, onSelect }: DayStripProp
       inline: 'center',
       behavior: prefersReducedMotion() ? 'auto' : 'smooth',
     });
-  }, [selected]);
+  }, [selected, allScope]);
 
   return (
     <div className="wp-daystrip" data-mode={mode}>
@@ -86,9 +101,15 @@ export function DayStrip({ days, selected, today, mode, onSelect }: DayStripProp
           <button
             ref={d.date === selected ? selectedRef : undefined}
             type="button"
-            className={pillClass(d.date, { selected, today, mode, hasEvents: d.hasEvents })}
+            className={pillClass(d.date, {
+              selected,
+              today,
+              mode,
+              hasEvents: d.hasEvents,
+              allScope,
+            })}
             onClick={() => onSelect(d.date)}
-            aria-pressed={d.date === selected}
+            aria-pressed={d.date === selected && !allScope}
           >
             {d.letter}
             <span className="n" dir="ltr">

@@ -9,6 +9,7 @@ import { useEffect, useMemo, useRef, useState } from 'react';
 import { iconForCategory, matchesAnyTerm, type EventCategory, type Place } from '@waypoint/shared';
 import { useTrip } from '../state/trip-state';
 import { useMode } from '../state/mode-state';
+import { useMapScope } from '../state/map-scope-state';
 import { useIsOffline } from '../lib/outbox';
 import {
   buildPlaceUsageIndex,
@@ -22,6 +23,7 @@ import { mapsDirectionsUrl, mapsPlaceUrl } from '../lib/places';
 import { EVENT_CATEGORY_OPTIONS } from '../lib/category-options';
 import { CATEGORY_PIN_HUE, ICONS } from '../constants';
 import { ChoiceGrid, type Choice } from '../ui/primitives/ChoiceGrid';
+import { PlacePickerSheet } from '../ui/primitives/PlacePicker';
 import { SearchOverlay } from '../ui/primitives/SearchOverlay';
 import { EmptyState, StatusBanner } from '../ui/feedback';
 import { Icon } from '../ui/Icon';
@@ -37,21 +39,24 @@ export function MapView() {
 
   const [category, setCategory] = useState<PlaceCategoryFilter>(PLACE_CATEGORY_ALL);
   const [maybesOnly, setMaybesOnly] = useState(false);
-  // "All days" is map-local scope (ADR-0110 §4), not the global day param: Trip
-  // defaults to today, Plan to all. It re-defaults on a mode switch, and a strip
-  // day-tap (which changes activeDate) narrows back out of it.
-  const [allDays, setAllDays] = useState(mode === 'plan');
-  useEffect(() => setAllDays(mode === 'plan'), [mode]);
+  // "All days" is map-local scope (ADR-0110 §4), not the global day param, and it
+  // lives in a lifted context so the header DayStrip can drop its selection while
+  // it's on. Trip defaults to today, Plan to all; it re-defaults on a mode switch,
+  // and a strip day-tap (which changes activeDate) narrows back out of it.
+  const { allDays, setAllDays } = useMapScope();
+  useEffect(() => setAllDays(mode === 'plan'), [mode, setAllDays]);
   const prevDate = useRef(activeDate);
   useEffect(() => {
     if (activeDate !== prevDate.current) {
       prevDate.current = activeDate;
       setAllDays(false);
     }
-  }, [activeDate]);
+  }, [activeDate, setAllDays]);
 
   const [searchMode, setSearchMode] = useState(false);
   const [query, setQuery] = useState('');
+  // A coordless Place-lite the user chose to enrich from the map (＋ מיקום).
+  const [enrichTarget, setEnrichTarget] = useState<Place | null>(null);
 
   const usageIndex = useMemo(
     () => buildPlaceUsageIndex(events, bookings, maybeItems, places),
@@ -119,6 +124,7 @@ export function MapView() {
         usage={usage}
         place={place}
         ambient={prominence === 'ambient'}
+        onEnrich={() => setEnrichTarget(place)}
       />
     );
   };
@@ -163,7 +169,7 @@ export function MapView() {
           type="button"
           className={'map-scopechip' + (allDays ? ' on' : '')}
           aria-pressed={allDays}
-          onClick={() => setAllDays((v) => !v)}
+          onClick={() => setAllDays(!allDays)}
         >
           🗓️ {t.map.allDays}
         </button>
@@ -202,22 +208,35 @@ export function MapView() {
           </div>
         </SearchOverlay>
       )}
+
+      {/* Enrich a coordless Place-lite from the map (＋ מיקום): the shared picker
+          sheet, opened on the row's place, updates that row in place on a pick. */}
+      {enrichTarget && (
+        <PlacePickerSheet
+          current={enrichTarget}
+          onPick={() => setEnrichTarget(null)}
+          onClose={() => setEnrichTarget(null)}
+        />
+      )}
     </div>
   );
 }
 
 // One pinned-place row (ADR-0109 §1 anatomy). The whole row taps to VIEW the
 // place on Google Maps (viewing = the row tap); the trailing נווט gives
-// directions. A coordless Place-lite shows a muted "no location" note and no
-// actions. Commitment (hard) shows a 🔒; a pure shelf idea shows "על המדף".
+// directions. A coordless Place-lite offers "＋ מיקום" to enrich it in place.
+// Commitment (hard) shows a 🔒; a pure shelf idea shows "על המדף".
 function PlaceRow({
   usage,
   place,
   ambient,
+  onEnrich,
 }: {
   usage: PlaceUsage;
   place: Place;
   ambient: boolean;
+  /** Open the picker to give a coordless Place-lite real coordinates. */
+  onEnrich: () => void;
 }) {
   const hue = usage.pin.category ? CATEGORY_PIN_HUE[usage.pin.category] : 'leisure';
   const glyph = usage.pin.category ? iconForCategory(usage.pin.category) : '📍';
@@ -293,7 +312,16 @@ function PlaceRow({
             {ICONS.navigate} {t.actions.navigate}
           </a>
         ) : (
-          <span className="map-noplace">{t.map.listedOnly}</span>
+          <button
+            type="button"
+            className="map-addbtn"
+            onClick={(e) => {
+              e.stopPropagation();
+              onEnrich();
+            }}
+          >
+            <span aria-hidden="true">＋</span> {t.map.addLocation}
+          </button>
         )}
       </span>
     </div>

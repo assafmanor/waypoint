@@ -63,6 +63,7 @@ vi.mock('../state/trip-state', () => ({
     places: tripPlaces,
     activeDate: ACTIVE_DATE,
     usingCachedSnapshot: false,
+    indexVerbs: { createPlace: vi.fn(), resolvePlace: vi.fn() },
   }),
 }));
 vi.mock('../state/mode-state', () => ({ useMode: () => ({ mode: currentMode }) }));
@@ -70,6 +71,7 @@ vi.mock('../lib/outbox', () => ({ useIsOffline: () => false }));
 
 import { ToastProvider } from '../ui/Toast';
 import { NavProvider } from '../state/nav-state';
+import { MapScopeProvider } from '../state/map-scope-state';
 import { MapView } from './Map';
 import { t } from '../i18n/he';
 
@@ -77,7 +79,9 @@ function wrap(node: ReactNode) {
   return (
     <MemoryRouter>
       <ToastProvider>
-        <NavProvider>{node}</NavProvider>
+        <NavProvider>
+          <MapScopeProvider>{node}</MapScopeProvider>
+        </NavProvider>
       </ToastProvider>
     </MemoryRouter>
   );
@@ -111,12 +115,19 @@ describe('MapView (Phase 3, ADR-0109/0110)', () => {
     expect(screen.queryByText('idea')).toBeNull(); // a maybe has no day facet
   });
 
-  it('a coord place gets a Google directions link; a coordless one gets the listed-only note', () => {
+  it('a coord place gets a Google directions link; a coordless one gets ＋ מיקום to enrich', () => {
     seed();
     render(wrap(<MapView />));
     const nav = screen.getAllByRole('link', { name: new RegExp(t.actions.navigate) });
     expect(nav[0].getAttribute('href')).toContain('/maps/dir/?api=1&destination=');
-    expect(screen.getByText(t.map.listedOnly)).toBeTruthy();
+    expect(screen.getByRole('button', { name: new RegExp(t.map.addLocation) })).toBeTruthy();
+  });
+
+  it('＋ מיקום opens the shared picker sheet to enrich the coordless place', () => {
+    seed();
+    render(wrap(<MapView />));
+    fireEvent.click(screen.getByRole('button', { name: new RegExp(t.map.addLocation) }));
+    expect(screen.getByText(t.placePicker.title)).toBeTruthy();
   });
 
   it('the all-days chip reveals every place (other days + dayless maybes/bookings)', () => {
