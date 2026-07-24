@@ -120,6 +120,29 @@ describe('EventsService', () => {
     expect(change).toMatchObject({ entityType: 'event', action: 'create' });
   });
 
+  it('persists a manual displayTimezone override on create and update (ADR-0107)', async () => {
+    const tripId = await newTrip();
+
+    const created = await service.create(tripId, DEV_USER, {
+      date: DAY,
+      title: 'Tokyo quick-add',
+      kind: EVENT_KIND.SOFT,
+      startsAt: at('19:00'),
+      displayTimezone: 'Asia/Tokyo',
+      source: 'manual',
+    });
+    expect(created.displayTimezone).toBe('Asia/Tokyo');
+
+    const updated = await service.update(
+      tripId,
+      created.id,
+      DEV_USER,
+      { displayTimezone: 'America/New_York' },
+      false,
+    );
+    expect(updated.displayTimezone).toBe('America/New_York');
+  });
+
   // T-013: a client-generated id (ADR-0018) makes an offline-outbox re-POST
   // idempotent — the retry hits the id's unique constraint, which is treated
   // as "already applied" (returns the existing event) rather than an error.

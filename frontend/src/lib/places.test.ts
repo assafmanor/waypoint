@@ -13,11 +13,14 @@ import {
   bookingDirectionsUrl,
   bookingPlaceUrl,
   eventDirectionsUrl,
+  eventDisplayZones,
   eventPlaceUrl,
   eventRoute,
   mapsDirectionsUrl,
   mapsPlaceUrl,
   referencedPlaceIds,
+  segmentZoneAt,
+  tripZoneCrossings,
 } from './places';
 import type { MaybeItem } from '@waypoint/shared';
 
@@ -189,5 +192,140 @@ describe('Google Maps deep-links (Phase 2: no coordinates → no link)', () => {
     expect(
       bookingPlaceUrl(booking({ id: 'b', type: BOOKING_TYPE.HOTEL }), [withCoords]),
     ).toBeNull();
+  });
+});
+
+describe('per-event display zones (ADR-0107 multi-zone model)', () => {
+  const JLM = 'Asia/Jerusalem';
+  const TYO = 'Asia/Tokyo';
+  const NYC = 'America/New_York';
+  const PRIMARY = TYO; // trip primary = destination (ADR-0107 §5)
+
+  const tlv = place('pl-tlv', 'נתב״ג', { timezone: JLM });
+  const nrt = place('pl-nrt', 'נריטה', { timezone: TYO });
+  const coordless = place('pl-lite', 'שם בלבד'); // Place-lite, no timezone
+  const ZONED = [tlv, nrt, coordless];
+
+  // Outbound flight TLV→NRT departing 20:00Z — the one zone crossing.
+  const flightBk = booking({
+    id: 'bk-fl',
+    type: BOOKING_TYPE.FLIGHT,
+    fromPlaceId: 'pl-tlv',
+    toPlaceId: 'pl-nrt',
+  });
+  const flightEv = event({
+    id: 'ev-fl',
+    bookingId: 'bk-fl',
+    startsAt: '2026-07-07T20:00:00Z',
+    endsAt: '2026-07-08T09:00:00Z',
+  });
+  const crossings = tripZoneCrossings([flightEv], [flightBk], ZONED);
+  const zones = (e: TripEvent, opts?: { bookings?: Booking[] }) =>
+    eventDisplayZones(e, {
+      bookings: opts?.bookings ?? [],
+      places: ZONED,
+      crossings,
+      primaryZone: PRIMARY,
+    });
+
+  describe('tripZoneCrossings', () => {
+    it('builds a crossing for a flight whose endpoint zones differ', () => {
+      expect(crossings).toEqual([
+        { at: Date.parse('2026-07-07T20:00:00Z'), fromZone: JLM, toZone: TYO },
+      ]);
+    });
+
+    it('ignores a same-zone hop and a coordless endpoint', () => {
+      const sameZone = booking({
+        id: 'b1',
+        type: BOOKING_TYPE.TRAIN,
+        fromPlaceId: 'pl-nrt',
+        toPlaceId: 'pl-nrt',
+      });
+      const missingZone = booking({
+        id: 'b2',
+        type: BOOKING_TYPE.FLIGHT,
+        fromPlaceId: 'pl-tlv',
+        toPlaceId: 'pl-lite',
+      });
+      const evs = [
+        event({ id: 'e1', bookingId: 'b1', startsAt: '2026-07-09T10:00:00Z' }),
+        event({ id: 'e2', bookingId: 'b2', startsAt: '2026-07-10T10:00:00Z' }),
+      ];
+      expect(tripZoneCrossings(evs, [sameZone, missingZone], ZONED)).toEqual([]);
+    });
+
+    it('sorts crossings by departure instant', () => {
+      const back = booking({
+        id: 'bk-ret',
+        type: BOOKING_TYPE.FLIGHT,
+        fromPlaceId: 'pl-nrt',
+        toPlaceId: 'pl-tlv',
+      });
+      const retEv = event({ id: 'ev-ret', bookingId: 'bk-ret', startsAt: '2026-07-20T02:00:00Z' });
+      const cs = tripZoneCrossings([retEv, flightEv], [back, flightBk], ZONED);
+      expect(cs.map((c) => c.at)).toEqual([
+        Date.parse('2026-07-07T20:00:00Z'),
+        Date.parse('2026-07-20T02:00:00Z'),
+      ]);
+    });
+  });
+
+  describe('segmentZoneAt', () => {
+    it('reads origin before the crossing and destination at/after it', () => {
+      expect(segmentZoneAt(Date.parse('2026-07-07T05:00:00Z'), crossings)).toBe(JLM);
+      expect(segmentZoneAt(Date.parse('2026-07-07T20:00:00Z'), crossings)).toBe(TYO);
+      expect(segmentZoneAt(Date.parse('2026-07-09T10:00:00Z'), crossings)).toBe(TYO);
+    });
+
+    it('is undefined when nothing anchors the timeline', () => {
+      expect(segmentZoneAt(Date.parse('2026-07-07T05:00:00Z'), [])).toBeUndefined();
+    });
+  });
+
+  describe('eventDisplayZones', () => {
+    it('honours a manual displayTimezone override for both ends, over any place', () => {
+      const pinned = event({
+        id: 'ev-p',
+        placeId: 'pl-nrt',
+        displayTimezone: NYC,
+        startsAt: '2026-07-09T10:00:00Z',
+      });
+      expect(zones(pinned)).toEqual({ start: NYC, end: NYC });
+    });
+
+    it('renders transport start in the origin zone and end in the destination zone', () => {
+      expect(zones(flightEv, { bookings: [flightBk] })).toEqual({ start: JLM, end: TYO });
+    });
+
+    it('drives both ends from a single attached place', () => {
+      const placed = event({ id: 'ev-pl', placeId: 'pl-nrt', startsAt: '2026-07-09T10:00:00Z' });
+      expect(zones(placed)).toEqual({ start: TYO, end: TYO });
+    });
+
+    it('gives a placeless event its itinerary segment zone (origin before, destination after)', () => {
+      const coffee = event({ id: 'ev-c', startsAt: '2026-07-07T05:00:00Z' }); // before the flight
+      const dinner = event({ id: 'ev-d', startsAt: '2026-07-08T10:00:00Z' }); // after the flight
+      expect(zones(coffee)).toEqual({ start: JLM, end: JLM });
+      expect(zones(dinner)).toEqual({ start: TYO, end: TYO });
+    });
+
+    it('falls back to the trip primary zone with no anchoring transport or no time', () => {
+      const noCrossing = (e: TripEvent) =>
+        eventDisplayZones(e, { bookings: [], places: ZONED, crossings: [], primaryZone: PRIMARY });
+      expect(noCrossing(event({ id: 'ev-x', startsAt: '2026-07-07T05:00:00Z' }))).toEqual({
+        start: PRIMARY,
+        end: PRIMARY,
+      });
+      expect(zones(event({ id: 'ev-u', startsAt: undefined }))).toEqual({
+        start: PRIMARY,
+        end: PRIMARY,
+      });
+    });
+
+    it('falls back to the segment zone for a coordless attached place', () => {
+      const liteAfter = event({ id: 'ev-l', placeId: 'pl-lite', startsAt: '2026-07-08T10:00:00Z' });
+      expect(zones(liteAfter)).toEqual({ start: TYO, end: TYO });
+    });
   });
 });

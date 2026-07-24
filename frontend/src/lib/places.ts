@@ -90,6 +90,100 @@ export function eventRoute(event: TripEvent, bookings: Booking[], places: Place[
   return from || to ? { from, to } : null;
 }
 
+// ── Per-event display zones (ADR-0107 multi-zone time model) ────────────────
+// "Which timezone is this event shown in" resolves here, beside the linked/
+// unlinked place authority it rides on (ADR-0107 consequence: this is where the
+// zone naturally lives). Pure + clock-free — callers own `now`. The now/next
+// engine and stored instants are untouched; this is display/authoring only.
+
+/** A zone-crossing transport event: the timeline splits into zone segments at
+ *  its departure instant. Only transport whose origin and destination zones are
+ *  both known **and differ** makes a crossing — a same-zone or coordless hop
+ *  doesn't reorient anything. */
+export interface ZoneCrossing {
+  at: number; // departure instant (ms) — the boundary between the two segments
+  fromZone: string;
+  toZone: string;
+}
+
+/** IANA zone cached on a place row (undefined for a coordless Place-lite). */
+function placeZone(places: Place[], placeId?: string): string | undefined {
+  if (!placeId) return undefined;
+  return places.find((p) => p.id === placeId)?.timezone;
+}
+
+/** The trip's zone-crossings in departure order (ADR-0107 §3). Everything before
+ *  the first crossing sits in its origin zone (the home zone, known once the
+ *  outbound flight's `fromPlace` is entered); each later segment takes the
+ *  preceding crossing's destination zone. */
+export function tripZoneCrossings(
+  events: TripEvent[],
+  bookings: Booking[],
+  places: Place[],
+): ZoneCrossing[] {
+  const crossings: ZoneCrossing[] = [];
+  for (const event of events) {
+    if (!event.bookingId || !event.startsAt) continue;
+    const booking = bookings.find((b) => b.id === event.bookingId);
+    if (!booking || !isTransport(booking)) continue;
+    const fromZone = placeZone(places, booking.fromPlaceId);
+    const toZone = placeZone(places, booking.toPlaceId);
+    if (!fromZone || !toZone || fromZone === toZone) continue;
+    crossings.push({ at: Date.parse(event.startsAt), fromZone, toZone });
+  }
+  return crossings.sort((a, b) => a.at - b.at);
+}
+
+/** The itinerary-segment zone at an instant (ADR-0107 §3 step 2), or undefined
+ *  when no transport anchors the timeline (caller falls back to the trip primary
+ *  zone). Before the first crossing → its origin zone; at/after a crossing's
+ *  departure → its destination zone (so a mid-flight instant reads the
+ *  destination, ADR-0107 §8). */
+export function segmentZoneAt(instantMs: number, crossings: ZoneCrossing[]): string | undefined {
+  if (crossings.length === 0) return undefined;
+  if (instantMs < crossings[0].at) return crossings[0].fromZone;
+  let zone = crossings[0].toZone;
+  for (const crossing of crossings) {
+    if (instantMs >= crossing.at) zone = crossing.toZone;
+    else break;
+  }
+  return zone;
+}
+
+/** The resolved display zones for an event's start and end (they differ only for
+ *  zone-crossing transport). Priority (ADR-0107 §3, ADR-0110 §94-99):
+ *    1. `displayTimezone` manual override — honoured forever, both ends.
+ *    2. Attached place — transport renders start in `fromPlace`, end in
+ *       `toPlace`; any other place drives both ends.
+ *    3. Placeless (or a coordless place) — the itinerary segment's zone.
+ *    4. Nothing anchors it — the trip primary zone. */
+export function eventDisplayZones(
+  event: TripEvent,
+  opts: { bookings: Booking[]; places: Place[]; crossings: ZoneCrossing[]; primaryZone: string },
+): { start: string; end: string } {
+  const { bookings, places, crossings, primaryZone } = opts;
+  if (event.displayTimezone) {
+    return { start: event.displayTimezone, end: event.displayTimezone };
+  }
+
+  const zoneForInstant = (iso: string | undefined): string =>
+    (iso ? segmentZoneAt(Date.parse(iso), crossings) : undefined) ?? primaryZone;
+
+  const booking = event.bookingId ? bookings.find((b) => b.id === event.bookingId) : undefined;
+  if (booking && isTransport(booking)) {
+    return {
+      start: placeZone(places, booking.fromPlaceId) ?? zoneForInstant(event.startsAt),
+      end: placeZone(places, booking.toPlaceId) ?? zoneForInstant(event.endsAt ?? event.startsAt),
+    };
+  }
+
+  const placed = placeZone(places, eventPlaceId(event, booking));
+  if (placed) return { start: placed, end: placed };
+
+  const zone = zoneForInstant(event.startsAt);
+  return { start: zone, end: zone };
+}
+
 // ── Google Maps deep-links (Phase 2, ADR-0106/0109) ─────────────────────────
 // Universal Maps-URL links (no API key, open the Maps app on device): a place
 // is navigable/mappable only when it has real coordinates. A name-only
