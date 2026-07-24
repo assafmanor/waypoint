@@ -977,9 +977,9 @@
   background: rgba(233, 166, 60, 0.06);
   color: var(--amber-deep);
 }
-.tp-list button.tp-list-suggest::after {
-  content: '↩';
-  font-family: var(--font-body);
+/* the hint marker is an <Icon name="undo"> in the markup, not a ::after glyph —
+   the body font has no ↩ and the substituted fallback sits low (design-language) */
+.tp-list button.tp-list-suggest .tp-suggest-ic {
   font-size: 12px;
   color: var(--muted);
 }

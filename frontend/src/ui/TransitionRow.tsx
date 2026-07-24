@@ -11,6 +11,7 @@
 import { CATEGORY_DEFAULT_ICON, type Booking } from '@waypoint/shared';
 import { formatTime } from '../lib/time';
 import { ZoneShiftPill } from './ZoneShiftPill';
+import { TitleLabel } from './TitleLabel';
 import { transitionLabel } from '../lib/transitions';
 import { t } from '../i18n/he';
 import type { TransitionEntry } from '../lib/day-entries';
@@ -54,7 +55,9 @@ export function TransitionRow({
         </span>
         <span className="tr-main">
           <span className="tr-label">{transitionLabel(labelKey)}</span>
-          <span className="tr-title">{event.title}</span>
+          <span className="tr-title">
+            <TitleLabel title={event.title} />
+          </span>
         </span>
         <span className="tr-time" dir="ltr">
           {formatTime(new Date(atMs), zone ?? tz)}

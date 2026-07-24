@@ -8,6 +8,7 @@ import { useTrip } from '../state/trip-state';
 import { Sheet } from './Sheet';
 import { RouteLabel } from './RouteLabel';
 import { bookingPlaceId, mapsDirectionsUrl, mapsPlaceUrl, placeName } from '../lib/places';
+import { routeTitle } from '../lib/route-title';
 import { formatTime } from '../lib/time';
 import { bookingDurationUnit, formatBookingDuration, timingLabels } from '../lib/booking-timing';
 import { badgeClassForBookingType } from '../lib/transitions';
@@ -75,9 +76,10 @@ export function BookingDetail({
   const showLocation = !!(locationText && (dirUrl || navPlace?.address));
 
   const isRoute = isTransport(booking.type) && !!(from || to);
-  // The route reads in the RTL flow (origin on the start/right, arrow pointing to
-  // the destination) — the trip's UI is Hebrew-first, so the arrow follows it.
-  const heading = isRoute ? `${from ?? '-'} ${t.arrows.route} ${to ?? '-'}` : booking.title;
+  // Accessible name only — the visible heading is the RouteLabel below, whose arrow
+  // is an SVG. A screen reader gets the textual separator, with the FULL names: the
+  // detail is the record (ADR-0059 §3 session-95 amendment).
+  const heading = isRoute ? routeTitle(from ?? '-', to ?? '-') : booking.title;
 
   const edit = () => {
     onEdit(booking);

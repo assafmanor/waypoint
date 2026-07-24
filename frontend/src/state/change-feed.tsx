@@ -11,6 +11,7 @@
 // offline → the feed stays quiet). The `ChangeFeed` component reads it.
 import { CHANGE_ACTION, ENTITY_TYPE, type Change, type User } from '@waypoint/shared';
 import { formatTime } from '../lib/time';
+import { shortTitleText } from '../lib/route-title';
 import { t } from '../i18n/he';
 
 /** The last N shared mutations we keep. Bounded so a long-running session can't
@@ -35,16 +36,21 @@ function str(v: unknown): string | undefined {
 }
 
 /** The entity's human name for the line: its own title/name, else a generic
- *  noun. A membership resolves the affected member off the roster. */
+ *  noun. A membership resolves the affected member off the roster.
+ *
+ *  An event/booking title goes through `shortTitleText`: a flight's title is its
+ *  stored route, and a narrated line is the one place a title can only be a string
+ *  — so it at least reads with the same shortened place names as every other
+ *  surface (ADR-0059 §3 session-101 amendment), keeping the textual arrow. */
 function subjectOf(change: Change, users: User[]): string {
   const after = change.after ?? {};
   const before = change.before ?? {};
   const pick = (key: string) => str(after[key]) ?? str(before[key]);
   switch (change.entityType) {
     case 'event':
-      return pick('title') ?? t.changeFeed.nouns.event;
+      return shortTitleText(pick('title') ?? t.changeFeed.nouns.event);
     case 'booking':
-      return pick('title') ?? t.changeFeed.nouns.booking;
+      return shortTitleText(pick('title') ?? t.changeFeed.nouns.booking);
     case 'place':
       return pick('name') ?? t.changeFeed.nouns.place;
     case 'document':

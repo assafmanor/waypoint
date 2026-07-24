@@ -129,7 +129,7 @@ export function RowManageSheet({
   actions,
   onClose,
 }: {
-  title?: string;
+  title?: ReactNode;
   ariaLabel?: string;
   actions: RowAction[];
   onClose: () => void;

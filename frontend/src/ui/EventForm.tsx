@@ -26,6 +26,7 @@ import { DEFAULT_EVENT_ICON } from '../constants';
 import { t } from '../i18n/he';
 import { EVENT_CATEGORY_OPTIONS } from '../lib/category-options';
 import { IconPicker } from './IconPicker';
+import { TitleLabel } from './TitleLabel';
 import { Modal } from './primitives/Modal';
 import { ChoiceGrid } from './primitives/ChoiceGrid';
 import { Field } from './primitives/Field';
@@ -334,7 +335,9 @@ export function EventForm({
 
           {conflicts.length > 0 && (
             <p className="form-conflict">
-              ⚠︎ {t.event.conflictWarn(conflicts[0].title, formatTime(conflicts[0].startsAt!, tz))}
+              ⚠︎ {t.event.conflictWarn.before}
+              <TitleLabel title={conflicts[0].title} />{' '}
+              {t.event.conflictWarn.after(formatTime(conflicts[0].startsAt!, tz))}
             </p>
           )}
 

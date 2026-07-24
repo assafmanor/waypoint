@@ -25,7 +25,7 @@
 // bidi-isolated (in `RouteLabel`, or a `<bdi>` of its own) so Hebrew, Latin and
 // mixed names keep their direction.
 import { type ReactNode } from 'react';
-import { shortPlaceLabel } from '../lib/place-label';
+import { shortRoute } from '../lib/place-label';
 import { type Route } from '../lib/places';
 import { ROUTE_INLINE_MAX_CHARS } from '../constants';
 import { RouteLabel } from './RouteLabel';
@@ -41,8 +41,7 @@ export interface RouteDisplay {
 
 export function routeDisplay(route: Route | null): RouteDisplay {
   if (!route) return {};
-  const from = route.from ? shortPlaceLabel(route.from) : undefined;
-  const to = route.to ? shortPlaceLabel(route.to) : undefined;
+  const { from, to } = shortRoute(route);
 
   const fits = (from?.length ?? 0) + (to?.length ?? 0) <= ROUTE_INLINE_MAX_CHARS;
   // Both endpoints inline, plus the destination's full name as the meta.

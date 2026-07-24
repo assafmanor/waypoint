@@ -25,8 +25,10 @@ export function Modal({
   children,
 }: {
   variant: ModalVariant;
-  /** Optional visible heading; when set it also labels the dialog (aria-labelledby). */
-  title?: string;
+  /** Optional visible heading; when set it also labels the dialog (aria-labelledby),
+   *  so a node heading (e.g. a `TitleLabel` route) still names the dialog by its
+   *  rendered text. */
+  title?: ReactNode;
   /** Accessible name when there is no visible title (e.g. a grip-only sheet). */
   ariaLabel?: string;
   /** Point the dialog at an existing element's id instead of rendering a title. */

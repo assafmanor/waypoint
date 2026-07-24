@@ -39,8 +39,8 @@ import {
   dateOutOfTripRange,
   findPlaceByName,
   isoToDateTimeLocal,
-  routeTitle,
 } from '../lib/booking-edit';
+import { routeTitle } from '../lib/route-title';
 import { bookingZoneOverrides, placeName, placeTimezone } from '../lib/places';
 import { withChangeGroup } from '../lib/outbox';
 import { isoToTimeInput, zoneOffsetMinutes, zonedIso } from '../lib/time';
@@ -258,7 +258,6 @@ export function BookingSheet({
       finalTitle = routeTitle(
         placeName(places, fromPlaceId) ?? '',
         placeName(places, toPlaceId) ?? '',
-        t.arrows.route,
       );
       if (!finalTitle) return setError(t.index.form.routeRequired);
     } else {
