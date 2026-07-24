@@ -19,7 +19,18 @@ import {
 } from '@waypoint/shared';
 import { useTrip, byStart } from '../state/trip-state';
 import { prefersReducedMotion } from '../lib/motion';
-import { eventDirectionsUrl, eventPlaceName, eventPlaceUrl } from '../lib/places';
+import {
+  eventDirectionsUrl,
+  eventEdgeZone,
+  eventPlaceName,
+  eventPlaceUrl,
+  eventZones,
+  segmentZoneAt,
+  tripZoneCrossings,
+  type ZoneContext,
+  type ZoneCrossing,
+} from '../lib/places';
+import { zoneCity } from '../ui/primitives/ZonePicker';
 import { useVerbs } from '../state/verbs';
 import { useClock } from '../lib/useClock';
 import {
@@ -34,7 +45,12 @@ import {
   type TimeItem,
 } from '../lib/time';
 import { nextSlot } from '../lib/gaps';
-import { dayTransitions, mergeDayEntries, type DayEntry } from '../lib/day-entries';
+import {
+  dayTransitions,
+  mergeDayEntries,
+  type DayEntry,
+  type TransitionEntry,
+} from '../lib/day-entries';
 import { CODE_PREFIX, ICONS, MS_PER_DAY } from '../constants';
 import { t } from '../i18n/he';
 import { EventForm } from '../ui/EventForm';
@@ -74,6 +90,16 @@ function showOnMapHandler(
 ): (() => void) | undefined {
   const url = eventPlaceUrl(event, ctx.bookings, ctx.places);
   return url ? () => openMaps(url) : undefined;
+}
+
+/** The zone display props for a transition entry's edge (ADR-0107): the edge's
+ *  zone for the time, and a city label only when it's non-trivial. */
+function transitionZoneProps(
+  entry: TransitionEntry,
+  zoneCtx: ZoneContext,
+): { zone: string; zoneLabel?: string } {
+  const { zone, showLabel } = eventEdgeZone(entry.event, entry.edge, zoneCtx);
+  return { zone, zoneLabel: showLabel ? zoneCity(zone) : undefined };
 }
 
 type DayScope = 'past' | 'today' | 'future';
@@ -136,14 +162,29 @@ export function DayView() {
   );
 
   const dayNumber = daysBetween(trip.startDate, activeDate) + 1;
+  const dayNoon = new Date(zonedIso(activeDate, '12:00', trip.timezone));
   const weekday = new Intl.DateTimeFormat('he-IL', {
     weekday: 'long',
     timeZone: trip.timezone,
-  }).format(new Date(zonedIso(activeDate, '12:00', trip.timezone)));
+  }).format(dayNoon);
   const heading = t.day.heading(dayNumber, weekday, trip.destination);
+
+  // Multi-zone display (ADR-0107): the trip's crossings anchor per-event zones,
+  // and the day's ambient zone (its segment zone at noon, else the trip primary)
+  // is what the non-trivial-suppression rule labels deviations from.
+  const crossings: ZoneCrossing[] = tripZoneCrossings(events, bookings, places);
+  const ambientZone = segmentZoneAt(dayNoon.getTime(), crossings) ?? trip.timezone;
+  const zoneCtx: ZoneContext = {
+    bookings,
+    places,
+    crossings,
+    primaryZone: trip.timezone,
+    ambientZone,
+  };
 
   const dayCtx: DayCtx = {
     tz: trip.timezone,
+    zoneCtx,
     now,
     readOnly,
     openId,
@@ -264,6 +305,7 @@ export function DayView() {
               <TransitionRow
                 entry={entry}
                 tz={dayCtx.tz}
+                {...transitionZoneProps(entry, dayCtx.zoneCtx)}
                 bookings={dayCtx.bookings}
                 onOpen={dayCtx.onOpenDetail}
                 onNavigate={dayCtx.readOnly ? undefined : navigateHandler(entry.event, dayCtx)}
@@ -388,6 +430,9 @@ function NowLine({ ref, now, tz }: { ref: React.Ref<HTMLDivElement>; now: Date; 
 // a nested/clustered EventCard keeps every quick-verb it has at the top level.
 interface DayCtx {
   tz: string;
+  /** The trip's zone crossings + the day's ambient zone, so each event resolves
+   *  its display zone(s) and the non-trivial-suppression rule (ADR-0107). */
+  zoneCtx: ZoneContext;
   now: Date;
   readOnly: boolean;
   openId: string | null;
@@ -490,6 +535,7 @@ function ItemNode({ item, depth, ctx }: { item: TimeItem; depth: number; ctx: Da
       startsAt={e.startsAt}
       endsAt={e.endsAt}
       tz={ctx.tz}
+      zones={eventZones(e, ctx.zoneCtx)}
       conflict={
         conflicts.length > 0
           ? { title: conflicts[0].title, startsAt: conflicts[0].startsAt! }

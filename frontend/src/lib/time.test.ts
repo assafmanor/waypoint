@@ -21,6 +21,7 @@ import {
   zonedIso,
   resolveEndIso,
   crossesMidnight,
+  crossesMidnightZoned,
 } from './time';
 import { DEMO_NOW, EVENTS, TRIP } from '../fixtures';
 
@@ -214,6 +215,30 @@ describe('crossesMidnight', () => {
     expect(
       crossesMidnight(start, zonedIso('2026-07-07', '23:45', 'Asia/Tokyo'), 'Asia/Tokyo'),
     ).toBe(false);
+  });
+});
+
+describe('crossesMidnightZoned', () => {
+  it('reads each end in its own zone — a TLV→Tokyo flight lands "+1" (ADR-0107 §8)', () => {
+    // Depart 23:00 in Tel Aviv; land the next Tokyo calendar day.
+    const dep = zonedIso('2026-07-07', '23:00', 'Asia/Jerusalem');
+    const arr = zonedIso('2026-07-08', '18:00', 'Asia/Tokyo');
+    expect(crossesMidnightZoned(dep, arr, 'Asia/Jerusalem', 'Asia/Tokyo')).toBe(true);
+  });
+
+  it('is false when both ends land on the same calendar day in their own zones', () => {
+    // A short eastward hop that stays within one calendar day at each end.
+    const dep = zonedIso('2026-07-07', '08:00', 'Asia/Jerusalem');
+    const arr = zonedIso('2026-07-07', '15:00', 'Asia/Tokyo');
+    expect(crossesMidnightZoned(dep, arr, 'Asia/Jerusalem', 'Asia/Tokyo')).toBe(false);
+  });
+
+  it('reduces to the single-zone crossesMidnight when both zones match', () => {
+    const start = zonedIso('2026-07-07', '23:00', 'Asia/Tokyo');
+    const end = zonedIso('2026-07-08', '02:00', 'Asia/Tokyo');
+    expect(crossesMidnightZoned(start, end, 'Asia/Tokyo', 'Asia/Tokyo')).toBe(
+      crossesMidnight(start, end, 'Asia/Tokyo'),
+    );
   });
 });
 

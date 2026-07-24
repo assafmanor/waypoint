@@ -236,6 +236,13 @@
   color: var(--amber-deep);
   white-space: nowrap;
 }
+/* Zone label on a transition edge (ADR-0107): quiet, sans, not amber — the time
+   carries the commitment colour, the zone is just a disambiguator. */
+.tr-tz {
+  font-family: var(--font-sans);
+  font-weight: 600;
+  color: var(--muted);
+}
 .tr-nav {
   flex: 0 0 auto;
   align-self: center;

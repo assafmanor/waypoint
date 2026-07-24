@@ -17,12 +17,20 @@ import type { TransitionEntry } from '../lib/day-entries';
 export function TransitionRow({
   entry,
   tz,
+  zone,
+  zoneLabel,
   bookings,
   onOpen,
   onNavigate,
 }: {
   entry: TransitionEntry;
   tz: string;
+  /** This edge's display zone (ADR-0107): a departure reads its origin zone, an
+   *  arrival its destination zone. Falls back to `tz` when not zone-wired. */
+  zone?: string;
+  /** City label for `zone`, shown when it's non-trivial (a zone crossing, or a
+   *  zone differing from the day's ambient). Absent → no label. */
+  zoneLabel?: string;
   bookings: Booking[];
   onOpen: (booking: Booking) => void;
   onNavigate?: () => void;
@@ -47,7 +55,8 @@ export function TransitionRow({
           <span className="tr-title">{event.title}</span>
         </span>
         <span className="tr-time" dir="ltr">
-          {formatTime(new Date(atMs), tz)}
+          {formatTime(new Date(atMs), zone ?? tz)}
+          {zoneLabel && <span className="tr-tz"> · {zoneLabel}</span>}
         </span>
       </button>
       {edge === 'start' && onNavigate && (
