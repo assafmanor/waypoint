@@ -34,6 +34,7 @@ import {
   eventDurationLabel,
   eventEdgeZone,
   eventPlaceName,
+  eventRoute,
   eventZones,
   segmentZoneAt,
   tripZoneCrossings,
@@ -60,7 +61,7 @@ import { EventForm } from '../ui/EventForm';
 import { BookingSheet } from '../ui/BookingSheet';
 import { BookingDetail } from '../ui/BookingDetail';
 import { TransitionRow } from '../ui/TransitionRow';
-import { EventTitle } from '../ui/EventTitle';
+import { useRouteDisplay } from '../ui/useRouteDisplay';
 import { IconPicker } from '../ui/IconPicker';
 import { Icon } from '../ui/Icon';
 import { NavArrow } from '../ui/NavArrow';
@@ -751,19 +752,19 @@ function BuilderNode({
   const hasKids = item.children.length > 0;
   const booking = e.bookingId ? ctx.bookings.find((b) => b.id === e.bookingId) : undefined;
   const zones = eventZones(e, ctx.zoneCtx);
+  // Same route treatment as the Trip-mode day row (ADR-0059 §3 amendment).
+  const route = useRouteDisplay(eventRoute(e, ctx.bookings, ctx.places));
   return (
     <>
       <BuilderRow
         event={e}
         tz={ctx.tz}
-        // Transport reads as its route, each endpoint a separate value, so a long
-        // one stacks instead of wrapping into a block (ADR-0059 §3 amendment).
-        title={<EventTitle event={e} bookings={ctx.bookings} places={ctx.places} stack />}
+        title={route.title}
+        placeName={route.meta ?? eventPlaceName(e, ctx.bookings, ctx.places)}
         zones={zones}
         duration={eventDurationLabel(e, booking, zones)}
         readOnly={ctx.readOnly}
         booking={booking}
-        placeName={eventPlaceName(e, ctx.bookings, ctx.places)}
         onEdit={() => ctx.onEdit(e)}
         onDelete={() => ctx.verbs.remove(e)}
         onPark={soft ? () => ctx.verbs.park(e) : undefined}

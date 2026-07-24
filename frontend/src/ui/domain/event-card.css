@@ -158,27 +158,12 @@
   gap: 7px;
   flex-wrap: wrap;
 }
-/* Clamp a long title (e.g. a two-airport route name) to two lines with an
-   ellipsis so it can't blow up the card (ADR-0107 follow-up). The tag/nest-note
-   are siblings, so they stay visible — flowing to the next flex line when the
-   title is long. min-width:0 lets it shrink inside the flex row. */
+/* The title text is its own flex child so it can shrink inside the row (the
+   hard/soft tag stays a sibling and is never clipped). Deliberately NOT clamped:
+   a long transport route is handled by shortening + the destination-primary
+   fallback (ADR-0059 §3 amendment), and anything else may wrap freely. */
 .wp-event-title-txt {
-  display: -webkit-box;
-  -webkit-line-clamp: 2;
-  line-clamp: 2;
-  -webkit-box-orient: vertical;
-  overflow: hidden;
   min-width: 0;
-}
-/* A stacked route (RouteLabel `stack`) clamps each endpoint on its own, so the
-   whole-title clamp above must stand down — otherwise it would cut the rail off
-   at two lines and hide the destination, the very thing the rail exists to
-   prevent. Where :has() is unsupported the old clamp simply remains. */
-.wp-event-title-txt:has(.route-stack) {
-  display: block;
-  -webkit-line-clamp: none;
-  line-clamp: none;
-  overflow: visible;
 }
 .wp-event-m {
   font-size: var(--text-secondary);
