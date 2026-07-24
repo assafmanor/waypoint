@@ -24,6 +24,7 @@ import { formatDuration } from '../../lib/duration';
 import { nightPhrase } from '../../lib/hebrew';
 import { TimePicker } from '../TimePicker';
 import { TimeField } from './TimeField';
+import { ZoneChip, type ZoneChipProps } from './ZoneChip';
 import { Field } from './Field';
 import { t } from '../../i18n/he';
 import './when-field.css';
@@ -49,6 +50,10 @@ type DayProps = {
   dateId?: string;
   /** Date-field label (defaults to the plain "תאריך"; bookings pass their own). */
   dateLabel?: string;
+  /** The zone the typed times are interpreted in, as a chip under them
+   *  (ADR-0107 §6): shown when passed, editable when it carries an `onChange`.
+   *  Omitted → no chip, and the caller's own zone handling is unchanged. */
+  zone?: ZoneChipProps;
 };
 
 type SpanProps = {
@@ -81,7 +86,17 @@ export function WhenField(props: WhenFieldProps) {
 }
 
 // ── variant="day": native date + the event TimePicker (start + duration) ──────
-function WhenDay({ date, start, end, onChange, minDate, maxDate, dateId, dateLabel }: DayProps) {
+function WhenDay({
+  date,
+  start,
+  end,
+  onChange,
+  minDate,
+  maxDate,
+  dateId,
+  dateLabel,
+  zone,
+}: DayProps) {
   return (
     <div className="wf">
       <Field label={dateLabel ?? t.eventForm.dateLabel} htmlFor={dateId}>
@@ -97,6 +112,9 @@ function WhenDay({ date, start, end, onChange, minDate, maxDate, dateId, dateLab
         />
       </Field>
       <TimePicker start={start} end={end} onChange={(next) => onChange({ date, ...next })} />
+      {/* The zone the times above mean (ADR-0107 §6) — inference is never silently
+          authoritative, so the chip states it and one tap corrects it. */}
+      {zone && <ZoneChip {...zone} />}
     </div>
   );
 }

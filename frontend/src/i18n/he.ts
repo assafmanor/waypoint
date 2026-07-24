@@ -901,6 +901,12 @@ export const t = {
     dateRequired: 'חסר תאריך',
     dateOutOfRange: 'התאריך מחוץ לטווח הטיול',
     endBeforeStart: 'שעת הסיום צריכה להיות אחרי ההתחלה',
+    // The zone chip (ADR-0107 §6): which zone the typed times mean, one tap
+    // correctable. `zonePick` is the button's accessible name; `zoneReset` drops a
+    // manual choice and hands the event back to the automatic zone.
+    zoneLabel: 'השעות באזור',
+    zonePick: (zone: string) => `אזור הזמן של השעות: ${zone}. לשינוי`,
+    zoneReset: 'חזרה לאזור אוטומטי',
     // Time picker (T-054): compact start + duration fields, scroll list with a
     // typeable exact-time fallback. Multi-day events are out of scope, so the
     // duration is capped to the same calendar day.

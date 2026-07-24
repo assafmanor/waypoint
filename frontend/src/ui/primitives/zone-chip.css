@@ -1,0 +1,68 @@
+/* ZoneChip (ADR-0107 §6) — the "these times are in this zone" chip under a form's
+   time fields. Amber: it is a time concept (ADR-0028). Quiet by default (a
+   statement of the inferred zone), and a pinned override reads a shade stronger so
+   "I chose this" is visible without shouting. */
+.zchip {
+  display: flex;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: 8px;
+}
+.zchip-cap {
+  font-size: var(--text-caption, 11px);
+  font-weight: 700;
+  color: var(--muted);
+}
+.zchip-btn,
+.zchip-static {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  font: inherit;
+  font-size: 12px;
+  font-weight: 700;
+  color: var(--amber-deep);
+  background: rgba(233, 166, 60, 0.12);
+  border: 1px solid color-mix(in srgb, var(--amber) 30%, transparent);
+  border-radius: 999px;
+  padding: 4px 10px;
+}
+.zchip-btn {
+  cursor: pointer;
+}
+.zchip-btn.pinned {
+  background: rgba(233, 166, 60, 0.2);
+  border-color: var(--amber);
+}
+.zchip-btn:focus-visible {
+  outline: 2.5px solid var(--amber);
+  outline-offset: 2px;
+}
+.zchip-zone {
+  /* An IANA city + offset is Latin text inside an RTL row. */
+  direction: ltr;
+  unicode-bidi: isolate;
+}
+/* The caret is the shared SVG primitive (never a glyph — Assistant lacks it). */
+.zchip-caret {
+  display: inline-flex;
+  font-size: 10px;
+  opacity: 0.8;
+}
+/* Hand the event back to the derivation — quiet, text-only: it undoes a choice
+   rather than making one. */
+.zchip-reset {
+  font: inherit;
+  font-size: 11px;
+  font-weight: 700;
+  color: var(--muted);
+  background: none;
+  border: 0;
+  padding: 2px 0;
+  text-decoration: underline;
+  cursor: pointer;
+}
+.zchip-reset:focus-visible {
+  outline: 2px solid var(--teal);
+  outline-offset: 2px;
+}

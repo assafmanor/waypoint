@@ -37,6 +37,28 @@ describe('WhenField — day variant', () => {
 describe('WhenField — span variant', () => {
   afterEach(() => cleanup());
 
+  it('day variant: shows the zone chip only when a zone is passed (ADR-0107 §6)', () => {
+    const bare = render(
+      <WhenField variant="day" date="2026-07-20" start="09:00" end="10:00" onChange={() => {}} />,
+    );
+    expect(bare.container.querySelector('.zchip')).toBeNull();
+    cleanup();
+
+    const zoned = render(
+      <WhenField
+        variant="day"
+        date="2026-07-20"
+        start="09:00"
+        end="10:00"
+        onChange={() => {}}
+        zone={{ value: 'Asia/Tokyo' }}
+      />,
+    );
+    expect(zoned.container.querySelector('.zchip-zone')!.textContent).toContain('Tokyo');
+    // No onChange → a statement, not a control (the zone follows a picked place).
+    expect(zoned.container.querySelector('.zchip-btn')).toBeNull();
+  });
+
   it('bounds the end date to [start, tripEnd] so it can never precede the start', () => {
     render(<WhenField {...spanProps} start="2026-07-26T08:00" end="" onChange={vi.fn()} />);
     const dates = document.querySelectorAll('input[type="date"]');

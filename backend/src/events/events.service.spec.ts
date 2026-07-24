@@ -143,6 +143,32 @@ describe('EventsService', () => {
     expect(updated.displayTimezone).toBe('America/New_York');
   });
 
+  it('clears the displayTimezone override with an explicit null (ADR-0107 §6)', async () => {
+    const tripId = await newTrip();
+    const created = await service.create(tripId, DEV_USER, {
+      date: DAY,
+      title: 'pinned',
+      kind: EVENT_KIND.SOFT,
+      startsAt: at('19:00'),
+      displayTimezone: 'Asia/Tokyo',
+      source: 'manual',
+    });
+
+    // null is the chip's reset: hand the event back to the derived zone. An absent
+    // key must leave it alone, so the two cases can't share a representation.
+    const untouched = await service.update(tripId, created.id, DEV_USER, { title: 'still' }, false);
+    expect(untouched.displayTimezone).toBe('Asia/Tokyo');
+
+    const cleared = await service.update(
+      tripId,
+      created.id,
+      DEV_USER,
+      { displayTimezone: null },
+      false,
+    );
+    expect(cleared.displayTimezone).toBeUndefined();
+  });
+
   // T-013: a client-generated id (ADR-0018) makes an offline-outbox re-POST
   // idempotent — the retry hits the id's unique constraint, which is treated
   // as "already applied" (returns the existing event) rather than an error.

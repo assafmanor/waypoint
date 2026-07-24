@@ -53,7 +53,12 @@ const eventFieldsSchema = z.object({
   startsAt: isoDateTimeSchema.optional(), // UTC instant
   endsAt: isoDateTimeSchema.optional(),
   placeId: z.string().optional(), // FK → Place; cleared server-side when bookingId is set (ADR-0048)
-  displayTimezone: z.string().optional(), // manual display-zone override (ADR-0107 §7); the editing chip (slice 4) widens this to nullable to clear it
+  // Manual display-zone override (ADR-0107 §6-7), written only by the zone chip:
+  // a real IANA zone pins the event's display zone forever; **null clears it**
+  // back to the derived zone (place > segment > trip primary); absent leaves it
+  // untouched in a patch. Validated as a zone so a bad value is a 400 here, not a
+  // RangeError deep in `Intl.DateTimeFormat` on the next render.
+  displayTimezone: timezoneSchema.nullish(),
   bookingId: z.string().optional(),
   sortOrder: z.number().int().optional(),
   source: eventSourceSchema.default('manual'),

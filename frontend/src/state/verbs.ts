@@ -38,6 +38,7 @@ import {
   type OutboxOp,
 } from '../lib/outbox';
 import { getNow } from '../lib/useClock';
+import { coerceClearedFields } from '../lib/cache';
 import { isoToTimeInput, zonedIso } from '../lib/time';
 import { planReorder } from '../lib/reorder';
 import { DEFAULT_MAYBE_ICON, DELAY_STEP_MINUTES, DEFAULT_SCHEDULE_SLOT, ICONS } from '../constants';
@@ -110,6 +111,7 @@ function toCreateEventInput(event: TripEvent): CreateEventInput {
     startsAt,
     endsAt,
     placeId,
+    displayTimezone,
     bookingId,
     sortOrder,
     source,
@@ -125,6 +127,7 @@ function toCreateEventInput(event: TripEvent): CreateEventInput {
     startsAt,
     endsAt,
     placeId,
+    displayTimezone,
     bookingId,
     sortOrder,
     source,
@@ -213,6 +216,9 @@ export interface ScheduleFields {
   icon?: string;
   category?: EventCategory;
   placeId?: string;
+  /** A zone the user pinned on the form (ADR-0107 §6) — carried onto the created
+   *  event so a scheduled idea keeps the zone it was authored in. */
+  displayTimezone?: string;
 }
 
 // Build the TripEvent a schedule verb dispatches. With `fields` (the builder's
@@ -243,6 +249,7 @@ export function buildScheduleEvent(
     endsAt: fields ? fields.endsAt : zonedIso(activeDate, DEFAULT_SCHEDULE_SLOT.END, trip.timezone),
     // A place picked in the schedule form wins over the idea's carried-over one.
     placeId: fields?.placeId ?? m.placeId,
+    displayTimezone: fields?.displayTimezone,
     sortOrder: 99,
     source: EVENT_SOURCE.MAYBE_SHELF,
     createdAt: now,
@@ -310,7 +317,13 @@ export async function applyUpdateEvent(
 ): Promise<void> {
   const previous = previousOf(event, patch);
   const isHard = event.kind === EVENT_KIND.HARD;
-  deps.dispatch({ type: TRIP_ACTION.UPDATE_EVENT, id: event.id, patch });
+  // A patch may clear a field with `null` (`displayTimezone`, ADR-0107 §6); local
+  // state uses `undefined` for absent, so coerce before the optimistic merge.
+  deps.dispatch({
+    type: TRIP_ACTION.UPDATE_EVENT,
+    id: event.id,
+    patch: coerceClearedFields<TripEvent>(patch) ?? {},
+  });
   deps.lastAction.current = { kind: 'update', id: event.id, previous, isHard };
   try {
     const canonical = await restOrQueue(
@@ -378,7 +391,13 @@ export async function applyReorder(
 ): Promise<void> {
   if (patches.length === 0) return;
   const byId = new Map(affected.map((e) => [e.id, e]));
-  deps.dispatch({ type: TRIP_ACTION.REORDER, patches });
+  deps.dispatch({
+    type: TRIP_ACTION.REORDER,
+    patches: patches.map((p) => ({
+      id: p.id,
+      patch: coerceClearedFields<TripEvent>(p.patch) ?? {},
+    })),
+  });
   deps.lastAction.current = {
     kind: 'reorder',
     items: patches.map((p) => ({ id: p.id, previous: slotOf(byId.get(p.id)!), isHard: false })),
