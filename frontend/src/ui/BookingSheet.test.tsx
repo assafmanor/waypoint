@@ -57,7 +57,6 @@ vi.mock('../state/trip-state', () => ({
 import { ToastProvider } from './Toast';
 import { NavProvider } from '../state/nav-state';
 import { BookingSheet } from './BookingSheet';
-import { zoneCity } from './primitives/ZonePicker';
 import { t } from '../i18n/he';
 
 function wrap(node: ReactNode) {
@@ -109,13 +108,13 @@ describe('BookingSheet — transport route as picked places (ADR-0113 follow-up)
     // The sheet renders through a Modal portal, so query the document, not the
     // render container.
     render(wrap(<BookingSheet booking={flight} onClose={() => {}} />));
-    // The flight crosses zones (Jerusalem → Tokyo): the note names both zones so
-    // it's clear the departure is origin time and the arrival destination time…
+    // The flight crosses zones (Jerusalem → Tokyo, Tokyo 6h ahead): the note says
+    // each end is local time + the destination is ahead — no English city names.
     const note = document.querySelector('.bs-zone-note');
     expect(note).not.toBeNull();
-    expect(note!.textContent).toContain(t.index.form.zoneAt(zoneCity('Asia/Jerusalem')));
-    expect(note!.textContent).toContain(t.index.form.zoneAt(zoneCity('Asia/Tokyo')));
-    // …and shows the shift (Tokyo is 6h ahead of Jerusalem in summer).
-    expect(document.querySelector('.bs-zone-delta')?.textContent).toContain('+6');
+    expect(note!.textContent).toContain('זמן מקומי בכל עיר');
+    expect(note!.textContent).toContain('קדימה'); // destination (Tokyo) ahead
+    expect(note!.textContent).not.toContain('Tokyo');
+    expect(note!.textContent).not.toContain('Jerusalem');
   });
 });

@@ -42,8 +42,8 @@ import {
 } from '../lib/booking-edit';
 import { placeName, placeTimezone } from '../lib/places';
 import { withChangeGroup } from '../lib/outbox';
-import { formatZoneDelta, isoToTimeInput, zoneOffsetMinutes, zonedIso } from '../lib/time';
-import { zoneCity } from './primitives/ZonePicker';
+import { isoToTimeInput, zoneOffsetMinutes, zonedIso } from '../lib/time';
+import { hoursPhrase } from '../lib/duration';
 import { bookingDurationUnit, timingLabels } from '../lib/booking-timing';
 import { BOOKING_TYPE_ICON } from '../constants';
 import { t } from '../i18n/he';
@@ -550,12 +550,13 @@ export function BookingSheet({
   );
 }
 
-/** The which-zone-are-these-times caption under a booking's schedule (ADR-0107):
- *  a zone-crossing route shows both endpoint zones + the shift, so it's clear the
- *  departure is origin time and the arrival destination time; a single-place
- *  booking shows its zone only when it differs from the trip primary (otherwise
- *  there's no ambiguity). Read-only here — the editable zone chip is a later
- *  slice. */
+/** The which-zone-are-these-times caption under a booking's schedule (ADR-0107).
+ *  Cities aren't named (the route pickers show them); it just reassures that each
+ *  end is its own local time and states how far apart, with direction: a
+ *  zone-crossing route reads "זמן מקומי בכל עיר · ביעד שעה אחורה", a single-place
+ *  booking (in a zone differing from the trip's) "זמן מקומי · המקום שעה קדימה".
+ *  Shown only when there's a real shift — a zero difference is no ambiguity.
+ *  Read-only here; the editable zone chip is a later slice. */
 function ZoneNote({
   startZone,
   endZone,
@@ -567,25 +568,23 @@ function ZoneNote({
   tripZone: string;
   refMs: number;
 }) {
-  if (startZone !== endZone) {
-    const at = new Date(refMs);
-    const delta = zoneOffsetMinutes(at, endZone) - zoneOffsetMinutes(at, startZone);
-    return (
-      <div className="bs-zone-note">
-        🛫 {t.index.form.zoneAt(zoneCity(startZone))} · 🛬 {t.index.form.zoneAt(zoneCity(endZone))}
-        {delta !== 0 && (
-          <>
-            {' · '}
-            <span className="bs-zone-delta">{formatZoneDelta(delta)}</span>
-          </>
-        )}
-      </div>
-    );
-  }
-  if (startZone !== tripZone) {
-    return <div className="bs-zone-note">🕐 {t.index.form.zoneAt(zoneCity(startZone))}</div>;
-  }
-  return null;
+  const at = new Date(refMs);
+  const crossing = startZone !== endZone;
+  // Destination vs origin for a crossing; the place vs the trip's zone otherwise.
+  const delta = crossing
+    ? zoneOffsetMinutes(at, endZone) - zoneOffsetMinutes(at, startZone)
+    : zoneOffsetMinutes(at, startZone) - zoneOffsetMinutes(at, tripZone);
+  if (delta === 0) return null;
+  const mag = hoursPhrase(Math.abs(delta));
+  const ahead = delta > 0;
+  return (
+    <div className="bs-zone-note">
+      🕐{' '}
+      {crossing
+        ? t.index.form.zoneNoteTransport(mag, ahead)
+        : t.index.form.zoneNotePlace(mag, ahead)}
+    </div>
+  );
 }
 
 function KindToggle({
