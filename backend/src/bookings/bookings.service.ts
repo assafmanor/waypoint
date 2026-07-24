@@ -278,6 +278,9 @@ export class BookingsService {
       placeId: input.placeId,
       fromPlaceId: input.fromPlaceId,
       toPlaceId: input.toPlaceId,
+      // Per-end zone overrides (ADR-0107 §6-7); absent → derived from the place.
+      startDisplayTimezone: input.startDisplayTimezone,
+      endDisplayTimezone: input.endDisplayTimezone,
       details: input.details as Prisma.InputJsonValue | undefined,
       updatedBy: actorUserId,
     };
@@ -298,6 +301,14 @@ export class BookingsService {
       ...(input.placeId !== undefined && { placeId: input.placeId }),
       ...(input.fromPlaceId !== undefined && { fromPlaceId: input.fromPlaceId }),
       ...(input.toPlaceId !== undefined && { toPlaceId: input.toPlaceId }),
+      // An explicit null clears the override back to the derived zone (ADR-0107 §6);
+      // an absent key leaves whatever is pinned alone.
+      ...(input.startDisplayTimezone !== undefined && {
+        startDisplayTimezone: input.startDisplayTimezone,
+      }),
+      ...(input.endDisplayTimezone !== undefined && {
+        endDisplayTimezone: input.endDisplayTimezone,
+      }),
       ...(input.details !== undefined && { details: input.details as Prisma.InputJsonValue }),
       updatedBy: actorUserId,
     };

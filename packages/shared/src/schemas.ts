@@ -117,6 +117,12 @@ export const createBookingSchema = z.object({
   placeId: z.string().optional(), // single-place types; mutually exclusive with from/to
   fromPlaceId: z.string().optional(), // transport origin (ADR-0048)
   toPlaceId: z.string().optional(), // transport destination (ADR-0048)
+  // Per-end manual display-zone overrides (ADR-0107 §6-7): `start` is the origin's
+  // zone for transport and the only one a single-place booking uses; `end` is the
+  // destination's. Validated as real IANA zones; **null clears** back to the derived
+  // zone (the place, else the itinerary segment, else the trip primary).
+  startDisplayTimezone: timezoneSchema.nullish(),
+  endDisplayTimezone: timezoneSchema.nullish(),
   details: z.record(z.string(), z.unknown()).optional(),
   event: bookingEventSeedSchema.optional(),
 });

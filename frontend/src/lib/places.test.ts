@@ -19,6 +19,7 @@ import {
   eventPlaceUrl,
   eventRoute,
   eventZones,
+  bookingEndZones,
   currentZone,
   dayAmbientZone,
   mapsDirectionsUrl,
@@ -27,6 +28,7 @@ import {
   segmentZoneAt,
   tripZoneCrossings,
   type ZoneContext,
+  type ZoneCrossing,
 } from './places';
 import { todayInTz } from './time';
 import type { MaybeItem } from '@waypoint/shared';
@@ -500,5 +502,107 @@ describe('dayAmbientZone — the zone a given DAY is framed in (ADR-0107)', () =
     const midFlight = Date.parse('2026-07-07T21:00:00Z');
     expect(currentZone(midFlight, cs, TYO)).toBe(TYO);
     expect(dayAmbientZone('2026-07-07', cs, TYO)).toBe(JLM);
+  });
+});
+
+describe('booking zone overrides — per-end pins (ADR-0107 §6 session-99 amendment)', () => {
+  const JLM = 'Asia/Jerusalem';
+  const KEF = 'Atlantic/Reykjavik';
+  const TYO = 'Asia/Tokyo';
+  // 'pl-lite' is a coordless Place-lite: a real trip place with no timezone, which
+  // is the whole reason an override exists.
+  const PLACES_LITE = [
+    place('pl-tlv', 'נתב״ג', { timezone: JLM }),
+    place('pl-nrt', 'נריטה', { timezone: TYO }),
+    place('pl-lite', 'קפלאוויק'),
+  ];
+  const ctx = (bookings: Booking[], crossings: ZoneCrossing[] = []) => ({
+    bookings,
+    places: PLACES_LITE,
+    crossings,
+    primaryZone: TYO,
+  });
+
+  it('a pinned end wins over the segment fallback, per end', () => {
+    const bk = booking({
+      id: 'bk',
+      type: BOOKING_TYPE.FLIGHT,
+      fromPlaceId: 'pl-tlv',
+      toPlaceId: 'pl-lite',
+      endDisplayTimezone: KEF,
+    });
+    const ev = event({ bookingId: 'bk', startsAt: '2026-07-07T04:15:00Z' });
+    // Origin still derives from its real place; only the unknowable end is pinned.
+    expect(eventDisplayZones(ev, ctx([bk]))).toEqual({ start: JLM, end: KEF });
+  });
+
+  it('a place with a real zone still wins over nothing being pinned', () => {
+    const bk = booking({
+      id: 'bk',
+      type: BOOKING_TYPE.FLIGHT,
+      fromPlaceId: 'pl-tlv',
+      toPlaceId: 'pl-nrt',
+    });
+    const ev = event({ bookingId: 'bk', startsAt: '2026-07-07T04:15:00Z' });
+    expect(eventDisplayZones(ev, ctx([bk]))).toEqual({ start: JLM, end: TYO });
+  });
+
+  it("a single-place booking's start pin drives BOTH ends", () => {
+    const bk = booking({
+      id: 'bk',
+      type: BOOKING_TYPE.HOTEL,
+      placeId: 'pl-lite',
+      startDisplayTimezone: KEF,
+    });
+    const ev = event({ bookingId: 'bk', startsAt: '2026-07-07T14:00:00Z' });
+    expect(eventDisplayZones(ev, ctx([bk]))).toEqual({ start: KEF, end: KEF });
+  });
+
+  it('the EVENT override still outranks a booking pin (both ends)', () => {
+    const bk = booking({
+      id: 'bk',
+      type: BOOKING_TYPE.FLIGHT,
+      fromPlaceId: 'pl-lite',
+      toPlaceId: 'pl-lite',
+      startDisplayTimezone: JLM,
+      endDisplayTimezone: KEF,
+    });
+    const ev = event({
+      bookingId: 'bk',
+      startsAt: '2026-07-07T04:15:00Z',
+      displayTimezone: TYO,
+    });
+    expect(eventDisplayZones(ev, ctx([bk]))).toEqual({ start: TYO, end: TYO });
+  });
+
+  it('pinned zones make a real crossing, so the itinerary partitions on them', () => {
+    // Both endpoints are coordless, so before the pins there is NO crossing at all
+    // and every placeless time falls back to the trip primary.
+    const bk = booking({
+      id: 'bk',
+      type: BOOKING_TYPE.FLIGHT,
+      fromPlaceId: 'pl-lite',
+      toPlaceId: 'pl-lite',
+    });
+    const ev = event({ bookingId: 'bk', startsAt: '2026-07-07T04:15:00Z' });
+    expect(tripZoneCrossings([ev], [bk], PLACES_LITE)).toEqual([]);
+
+    const pinned = { ...bk, startDisplayTimezone: JLM, endDisplayTimezone: KEF };
+    expect(tripZoneCrossings([ev], [pinned], PLACES_LITE)).toEqual([
+      { at: Date.parse('2026-07-07T04:15:00Z'), fromZone: JLM, toZone: KEF },
+    ]);
+  });
+
+  it('bookingEndZones reports "unknown" rather than guessing a zone', () => {
+    const bk = booking({
+      id: 'bk',
+      type: BOOKING_TYPE.FLIGHT,
+      fromPlaceId: 'pl-tlv',
+      toPlaceId: 'pl-lite',
+    });
+    // The caller (the form's chip, the crossing detection) needs to distinguish
+    // "we know this end" from "we fell back", so this returns undefined, not a
+    // fallback zone.
+    expect(bookingEndZones(bk, PLACES_LITE)).toEqual({ from: JLM, to: undefined });
   });
 });

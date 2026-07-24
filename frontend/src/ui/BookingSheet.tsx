@@ -10,7 +10,7 @@
 // for two-endpoint bookings, a single day otherwise — never a cramped native
 // datetime box), the footer is FormActions, delete routes through the generic
 // ConfirmDialog, and a dirty close is guarded by a discard confirm.
-import { useState } from 'react';
+import { useState, useMemo } from 'react';
 import {
   BOOKING_TYPE,
   BOOKING_TYPE_TO_CATEGORY,
@@ -28,6 +28,7 @@ import { FormActions } from './primitives/FormActions';
 import { PlacePicker } from './primitives/PlacePicker';
 import { ChoiceGrid } from './primitives/ChoiceGrid';
 import { WhenField } from './primitives/WhenField';
+import { type ZoneChipProps } from './primitives/ZoneChip';
 import { ConfirmDialog } from './primitives/ConfirmDialog';
 import { useUnsavedGuard } from '../lib/useUnsavedGuard';
 import {
@@ -40,7 +41,7 @@ import {
   isoToDateTimeLocal,
   routeTitle,
 } from '../lib/booking-edit';
-import { placeName, placeTimezone } from '../lib/places';
+import { bookingZoneOverrides, placeName, placeTimezone } from '../lib/places';
 import { withChangeGroup } from '../lib/outbox';
 import { isoToTimeInput, zoneOffsetMinutes, zonedIso } from '../lib/time';
 import { hoursPhrase } from '../lib/duration';
@@ -119,10 +120,20 @@ export function BookingSheet({
   // Each leg reads in its own endpoint's zone (ADR-0107): a flight's departure in
   // its origin, its arrival in its destination; a single-place booking in its
   // place. Falls back to the trip primary zone when no place resolves a zone.
-  const zoneOf = (id?: string) => placeTimezone(places, id) ?? trip.timezone;
+  // A pinned zone (ADR-0107 §6) wins over the place's — it exists precisely for
+  // when no place can answer (a coordless Place-lite, or nothing picked yet).
+  const initialOverrides = bookingZoneOverrides(booking ?? undefined);
+  const initStartOverride = initialOverrides.start ?? null;
+  const initEndOverride = (isTransportType(initialType) ? initialOverrides.end : null) ?? null;
+  const zoneOf = (id: string | undefined, override: string | null) =>
+    override ?? placeTimezone(places, id) ?? trip.timezone;
   const initTransport = isTransportType(initialType);
-  const initStartZone = initTransport ? zoneOf(initialFromPlaceId) : zoneOf(initialPlaceId);
-  const initEndZone = initTransport ? zoneOf(initialToPlaceId) : zoneOf(initialPlaceId);
+  const initStartZone = initTransport
+    ? zoneOf(initialFromPlaceId, initStartOverride)
+    : zoneOf(initialPlaceId, initStartOverride);
+  const initEndZone = initTransport
+    ? zoneOf(initialToPlaceId, initEndOverride)
+    : zoneOf(initialPlaceId, initStartOverride);
   const initialStart = linkedEvent?.startsAt
     ? isoToTimeInput(linkedEvent.startsAt, initStartZone)
     : '';
@@ -143,6 +154,8 @@ export function BookingSheet({
   const [fromPlaceId, setFromPlaceId] = useState<string | undefined>(initialFromPlaceId);
   const [toPlaceId, setToPlaceId] = useState<string | undefined>(initialToPlaceId);
   const [placeId, setPlaceId] = useState<string | undefined>(initialPlaceId);
+  const [startOverride, setStartOverride] = useState<string | null>(initStartOverride);
+  const [endOverride, setEndOverride] = useState<string | null>(initEndOverride);
   const [room, setRoom] = useState(initialRoom);
   const [notes, setNotes] = useState(initialNotes);
   const [wifiNetwork, setWifiNetwork] = useState(initialWifiNetwork);
@@ -161,6 +174,12 @@ export function BookingSheet({
   const [saving, setSaving] = useState(false);
   const [deleting, setDeleting] = useState(false);
 
+  const suggestedZones = useMemo(
+    () =>
+      [...new Set([trip.timezone, ...places.map((p) => p.timezone).filter(Boolean)])] as string[],
+    [trip.timezone, places],
+  );
+
   const isTransport = isTransportType(type);
   const isHotel = type === BOOKING_TYPE.HOTEL;
   const isSpan = isSpanType(type);
@@ -168,8 +187,27 @@ export function BookingSheet({
   // route's origin/destination, a single-place booking in its place (ADR-0107).
   // Changing a pick keeps the typed wall-clock and re-interprets it in the new
   // zone on save (§8). Fall back to the trip primary zone when unresolved.
-  const startZone = isTransport ? zoneOf(fromPlaceId) : zoneOf(placeId);
-  const endZone = isTransport ? zoneOf(toPlaceId) : zoneOf(placeId);
+  const startZone = isTransport
+    ? zoneOf(fromPlaceId, startOverride)
+    : zoneOf(placeId, startOverride);
+  const endZone = isTransport ? zoneOf(toPlaceId, endOverride) : zoneOf(placeId, startOverride);
+  // A chip per time field (ADR-0107 §6). It is **editable only when no place
+  // answers the zone** — a picked place with coordinates carries its own zone, and
+  // correcting it there is the honest edit (§3); a coordless Place-lite (offline, or
+  // a name Google didn't match) or an unpicked endpoint has nothing to derive from,
+  // which is exactly the gap the override fills. Suggested zones are the trip's own.
+  const zoneChip = (
+    placeIdForEnd: string | undefined,
+    value: string,
+    override: string | null,
+    setOverride: (zone: string | null) => void,
+  ): ZoneChipProps => ({
+    value,
+    onChange: placeTimezone(places, placeIdForEnd) ? undefined : setOverride,
+    pinned: override != null,
+    suggested: suggestedZones,
+  });
+
   // A stable instant (trip-start noon) to read the zones' offsets at, for the
   // shift the note shows — exact enough for a "how far apart" figure.
   const zoneRefMs = Date.parse(zonedIso(trip.startDate, '12:00', trip.timezone));
@@ -195,6 +233,8 @@ export function BookingSheet({
     end !== initialEnd ||
     spanStart !== initialSpanStart ||
     spanEnd !== initialSpanEnd ||
+    startOverride !== initStartOverride ||
+    endOverride !== initEndOverride ||
     kind !== initialKind;
   const { guardedClose, prompting, confirmDiscard, cancelDiscard } = useUnsavedGuard(dirty);
   const requestClose = () => guardedClose(onClose);
@@ -269,6 +309,17 @@ export function BookingSheet({
         const event = seed
           ? { ...seed, id: seed.id ?? linkedEvent?.id ?? crypto.randomUUID() }
           : undefined;
+        // Zone overrides (ADR-0107 §6): send a key only when the chip was actually
+        // used, so an untouched form can't freeze today's derived zone; `null` is the
+        // reset. A single-place booking has one zone (`start` drives both ends), so
+        // its end resolves to null — which also clears an end pinned while the type
+        // was still transport, the one way this form can leave a stale one behind.
+        const zonePatch = {
+          ...(startOverride !== initStartOverride && { startDisplayTimezone: startOverride }),
+          ...((isTransport ? endOverride : null) !== initEndOverride && {
+            endDisplayTimezone: isTransport ? endOverride : null,
+          }),
+        };
         const base = {
           title: finalTitle,
           // Send the trimmed value even when empty: an empty string is the explicit
@@ -282,11 +333,14 @@ export function BookingSheet({
         // placeId — mutually exclusive (ADR-0048), so send only the relevant side.
         if (isCreate) {
           await indexVerbs.createBooking(
-            isTransport ? { type, ...base, fromPlaceId, toPlaceId } : { type, ...base, placeId },
+            isTransport
+              ? { type, ...base, ...zonePatch, fromPlaceId, toPlaceId }
+              : { type, ...base, ...zonePatch, placeId },
           );
         } else {
           await indexVerbs.updateBooking(booking.id, {
             ...base,
+            ...zonePatch,
             ...(isTransport ? { fromPlaceId, toPlaceId } : { placeId }),
           });
         }
@@ -420,6 +474,20 @@ export function BookingSheet({
                 timeZone={startZone}
                 endTimeZone={endZone}
                 durationUnit={bookingDurationUnit(type)}
+                zones={{
+                  start: zoneChip(
+                    fromPlaceId ?? placeId,
+                    startZone,
+                    startOverride,
+                    setStartOverride,
+                  ),
+                  end: zoneChip(
+                    isTransport ? toPlaceId : placeId,
+                    endZone,
+                    endOverride,
+                    setEndOverride,
+                  ),
+                }}
               />
               <ZoneNote
                 startZone={startZone}
@@ -445,6 +513,7 @@ export function BookingSheet({
                 }}
                 minDate={trip.startDate}
                 maxDate={trip.endDate}
+                zone={zoneChip(placeId, startZone, startOverride, setStartOverride)}
               />
               <ZoneNote
                 startZone={startZone}
