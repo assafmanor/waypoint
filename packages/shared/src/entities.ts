@@ -185,6 +185,13 @@ export const bookingSchema = z.object({
   placeId: z.string().optional(), // single-place types; mutually exclusive with from/to
   fromPlaceId: z.string().optional(), // transport origin (ADR-0048)
   toPlaceId: z.string().optional(), // transport destination (ADR-0048)
+  // Manual display-zone overrides, one per end (ADR-0107 §6-7 session-99 amendment).
+  // They follow the same authority rule as the place fields: for transport `start`
+  // is the origin's zone and `end` the destination's; for a single-place booking
+  // only `start` is used and it drives both ends. Set only by the form's zone chip,
+  // and only needed when a place can't answer (a coordless Place-lite).
+  startDisplayTimezone: z.string().optional(),
+  endDisplayTimezone: z.string().optional(),
   details: z.record(z.string(), z.unknown()).optional(),
   source: bookingSourceSchema,
   createdAt: z.string(),

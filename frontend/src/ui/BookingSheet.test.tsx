@@ -1,7 +1,7 @@
 // @vitest-environment jsdom
 import { afterEach, describe, it, expect, vi } from 'vitest';
 import { type ReactNode } from 'react';
-import { cleanup, render, screen } from '@testing-library/react';
+import { cleanup, fireEvent, render, screen } from '@testing-library/react';
 import { MemoryRouter } from 'react-router-dom';
 import { BOOKING_SOURCE, BOOKING_TYPE, type Booking, type Place } from '@waypoint/shared';
 
@@ -30,7 +30,17 @@ const places: Place[] = [
     updatedAt: '',
     updatedBy: 'u',
   },
+  // A coordless Place-lite: minted offline or when Google matched nothing, so it
+  // has NO timezone — the case the zone override exists for (ADR-0107 §6).
+  { id: 'pl-lite', tripId: 't1', name: 'קפלאוויק', createdAt: '', updatedAt: '', updatedBy: 'u' },
 ];
+
+const indexVerbs = {
+  createBooking: vi.fn(),
+  updateBooking: vi.fn(),
+  createPlace: vi.fn(),
+  resolvePlace: vi.fn(),
+};
 
 vi.mock('../state/trip-state', () => ({
   useTrip: () => ({
@@ -45,12 +55,7 @@ vi.mock('../state/trip-state', () => ({
     bookings: [],
     maybeItems: [],
     places,
-    indexVerbs: {
-      createBooking: vi.fn(),
-      updateBooking: vi.fn(),
-      createPlace: vi.fn(),
-      resolvePlace: vi.fn(),
-    },
+    indexVerbs,
   }),
 }));
 
@@ -116,5 +121,112 @@ describe('BookingSheet — transport route as picked places (ADR-0113 follow-up)
     expect(note!.textContent).toContain('קדימה'); // destination (Tokyo) ahead
     expect(note!.textContent).not.toContain('Tokyo');
     expect(note!.textContent).not.toContain('Jerusalem');
+  });
+});
+
+describe('BookingSheet — per-end zone overrides (ADR-0107 §6 session-99 amendment)', () => {
+  afterEach(() => {
+    cleanup();
+    indexVerbs.updateBooking.mockClear();
+  });
+
+  /** A flight between a real place and a coordless Place-lite: the destination's
+   *  zone is unknowable, which is exactly when the chip becomes editable. */
+  const halfKnown: Booking = { ...flight, toPlaceId: 'pl-lite' };
+
+  const chips = () => Array.from(document.querySelectorAll('.zchip'));
+
+  it('states each leg zone, and only the unknowable end is correctable', () => {
+    render(wrap(<BookingSheet booking={halfKnown} onClose={() => {}} />));
+    const [start, end] = chips();
+    // Origin: a real place answers the zone → a statement, no control (§3 — the
+    // honest edit is the place itself).
+    expect(start.querySelector('.zchip-btn')).toBeNull();
+    expect(start.querySelector('.zchip-zone')!.textContent).toContain('Jerusalem');
+    // Destination: coordless, so nothing derives it → editable.
+    expect(end.querySelector('.zchip-btn')).not.toBeNull();
+  });
+
+  it('both legs are correctable when neither endpoint resolves a zone', () => {
+    render(
+      wrap(
+        <BookingSheet
+          booking={{ ...flight, fromPlaceId: 'pl-lite', toPlaceId: 'pl-lite' }}
+          onClose={() => {}}
+        />,
+      ),
+    );
+    expect(chips().every((c) => c.querySelector('.zchip-btn'))).toBe(true);
+  });
+
+  it('pins ONE end only — a crossing needs two overrides, not one for both', () => {
+    render(wrap(<BookingSheet booking={halfKnown} onClose={() => {}} />));
+    fireEvent.click(chips()[1].querySelector<HTMLElement>('.zchip-btn')!);
+    fireEvent.change(screen.getByPlaceholderText(t.zonePicker.searchPlaceholder), {
+      target: { value: 'reykjavik' },
+    });
+    fireEvent.click(screen.getByRole('button', { name: /Reykjavik/ }));
+    fireEvent.click(screen.getByText(t.common.save));
+
+    const patch = indexVerbs.updateBooking.mock.calls[0][1];
+    expect(patch.endDisplayTimezone).toBe('Atlantic/Reykjavik');
+    // The origin still derives from its place, so nothing is written for it.
+    expect('startDisplayTimezone' in patch).toBe(false);
+  });
+
+  it('reads a stored override back as pinned, and the reset clears it with null', () => {
+    render(
+      wrap(
+        <BookingSheet
+          booking={{ ...halfKnown, endDisplayTimezone: 'Atlantic/Reykjavik' }}
+          onClose={() => {}}
+        />,
+      ),
+    );
+    const end = chips()[1];
+    expect(end.querySelector('.zchip-btn.pinned')).not.toBeNull();
+    expect(end.querySelector('.zchip-zone')!.textContent).toContain('Reykjavik');
+
+    fireEvent.click(end.querySelector<HTMLElement>('.zchip-reset')!);
+    fireEvent.click(screen.getByText(t.common.save));
+    expect(indexVerbs.updateBooking.mock.calls[0][1].endDisplayTimezone).toBeNull();
+  });
+
+  it('a single-place booking has one chip, and saving clears the unused end', () => {
+    render(
+      wrap(
+        <BookingSheet
+          booking={{
+            ...flight,
+            type: BOOKING_TYPE.RESTAURANT,
+            fromPlaceId: undefined,
+            toPlaceId: undefined,
+            placeId: 'pl-lite',
+          }}
+          onClose={() => {}}
+        />,
+      ),
+    );
+    expect(chips()).toHaveLength(1);
+    fireEvent.click(chips()[0].querySelector<HTMLElement>('.zchip-btn')!);
+    fireEvent.change(screen.getByPlaceholderText(t.zonePicker.searchPlaceholder), {
+      target: { value: 'reykjavik' },
+    });
+    fireEvent.click(screen.getByRole('button', { name: /Reykjavik/ }));
+    fireEvent.click(screen.getByText(t.common.save));
+
+    const patch = indexVerbs.updateBooking.mock.calls[0][1];
+    // One zone drives both ends for a single-place booking, so `start` carries it
+    // and nothing is written for the unused end.
+    expect(patch.startDisplayTimezone).toBe('Atlantic/Reykjavik');
+    expect('endDisplayTimezone' in patch).toBe(false);
+  });
+
+  it('an untouched form sends no zone keys at all', () => {
+    render(wrap(<BookingSheet booking={halfKnown} onClose={() => {}} />));
+    fireEvent.click(screen.getByText(t.common.save));
+    const patch = indexVerbs.updateBooking.mock.calls[0][1];
+    expect('startDisplayTimezone' in patch).toBe(false);
+    expect('endDisplayTimezone' in patch).toBe(false);
   });
 });

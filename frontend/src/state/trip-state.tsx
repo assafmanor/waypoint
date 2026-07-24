@@ -60,6 +60,7 @@ import {
   applyChangeToCache,
   cacheSnapshot,
   clearTripCache,
+  coerceClearedFields,
   coerceTripPatch,
   readCachedSnapshot,
 } from '../lib/cache';
@@ -933,7 +934,10 @@ function TripReady({
         const previous = bookings;
         const { event: seed, ...fields } = input;
         const merged = bookings.find((b) => b.id === bookingId);
-        setBookings((prev) => prev.map((b) => (b.id === bookingId ? { ...b, ...fields } : b)));
+        // A zone override clears with `null` over the wire (ADR-0107 §6); local
+        // entities use `undefined` for absent, so coerce before the optimistic merge.
+        const localFields = coerceClearedFields<Booking>(fields) ?? {};
+        setBookings((prev) => prev.map((b) => (b.id === bookingId ? { ...b, ...localFields } : b)));
         try {
           const canonical = await restOrQueue(
             tripId,

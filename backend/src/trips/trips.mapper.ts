@@ -92,6 +92,8 @@ export const toBookingDto = (b: Booking): SharedBooking => ({
   placeId: b.placeId ?? undefined,
   fromPlaceId: b.fromPlaceId ?? undefined,
   toPlaceId: b.toPlaceId ?? undefined,
+  startDisplayTimezone: b.startDisplayTimezone ?? undefined,
+  endDisplayTimezone: b.endDisplayTimezone ?? undefined,
   details: (b.details as Record<string, unknown> | null) ?? undefined,
   source: b.source,
   createdAt: b.createdAt.toISOString(),

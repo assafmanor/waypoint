@@ -130,25 +130,25 @@ model Session {
 }
 
 model Trip {
-  id               String   @id @default(cuid())
-  name             String
-  destination      String
+  id                       String   @id @default(cuid())
+  name                     String
+  destination              String
   // Structured destination from the creation Places pick (ADR-0113); `destination`
   // stays the display string. Nullable — trips created before ADR-0113 have none.
   destinationGooglePlaceId String?
   destinationLat           Float?
   destinationLng           Float?
   destinationCountryCode   String?
-  startDate        DateTime @db.Date
-  endDate          DateTime @db.Date
-  timezone         String   @default("UTC")
-  currency         String?
-  dailyBudgetMinor Int?
-  icon             String?
-  createdBy        String
-  createdAt        DateTime @default(now())
-  updatedAt        DateTime @updatedAt
-  updatedBy        String
+  startDate                DateTime @db.Date
+  endDate                  DateTime @db.Date
+  timezone                 String   @default("UTC")
+  currency                 String?
+  dailyBudgetMinor         Int?
+  icon                     String?
+  createdBy                String
+  createdAt                DateTime @default(now())
+  updatedAt                DateTime @updatedAt
+  updatedBy                String
 
   creator     User         @relation(fields: [createdBy], references: [id])
   memberships Membership[]
@@ -215,25 +215,25 @@ model Membership {
 }
 
 model Event {
-  id        String         @id @default(cuid())
-  tripId    String
-  date      DateTime       @db.Date
-  endDate   DateTime?      @db.Date // non-null = multi-day ambient span (ADR-0018)
-  title     String
-  icon      String?
-  category  EventCategory?
-  kind      EventKind
-  startsAt  DateTime? // UTC instant
-  endsAt    DateTime?
-  placeId   String? // authoritative only for unlinked events; cleared when bookingId is set (ADR-0048)
+  id              String         @id @default(cuid())
+  tripId          String
+  date            DateTime       @db.Date
+  endDate         DateTime?      @db.Date // non-null = multi-day ambient span (ADR-0018)
+  title           String
+  icon            String?
+  category        EventCategory?
+  kind            EventKind
+  startsAt        DateTime? // UTC instant
+  endsAt          DateTime?
+  placeId         String? // authoritative only for unlinked events; cleared when bookingId is set (ADR-0048)
   displayTimezone String? // manual display-zone override; null trusts the derived zone (ADR-0107 §7)
-  status    EventStatus    @default(planned)
-  bookingId String?        @unique // strict 1:1 with Booking (ADR-0047)
-  sortOrder Int            @default(0)
-  source    EventSource    @default(manual)
-  createdAt DateTime       @default(now())
-  updatedAt DateTime       @updatedAt
-  updatedBy String
+  status          EventStatus    @default(planned)
+  bookingId       String?        @unique // strict 1:1 with Booking (ADR-0047)
+  sortOrder       Int            @default(0)
+  source          EventSource    @default(manual)
+  createdAt       DateTime       @default(now())
+  updatedAt       DateTime       @updatedAt
+  updatedBy       String
 
   trip          Trip                @relation(fields: [tripId], references: [id], onDelete: Cascade)
   booking       Booking?            @relation(fields: [bookingId], references: [id], onDelete: SetNull)
@@ -244,20 +244,24 @@ model Event {
 }
 
 model Booking {
-  id               String        @id @default(cuid())
-  tripId           String
-  type             BookingType
-  title            String
-  confirmationCode String?
-  provider         String?
-  placeId          String? // single-place types (hotel/restaurant/…); mutually exclusive with from/to
-  fromPlaceId      String? // transport origin (map-pin/nav target of the linked Event) — ADR-0048
-  toPlaceId        String? // transport destination — ADR-0048
-  details          Json?
-  source           BookingSource @default(manual)
-  createdAt        DateTime      @default(now())
-  updatedAt        DateTime      @updatedAt
-  updatedBy        String
+  id                   String        @id @default(cuid())
+  tripId               String
+  type                 BookingType
+  title                String
+  confirmationCode     String?
+  provider             String?
+  placeId              String? // single-place types (hotel/restaurant/…); mutually exclusive with from/to
+  fromPlaceId          String? // transport origin (map-pin/nav target of the linked Event) — ADR-0048
+  toPlaceId            String? // transport destination — ADR-0048
+  // Per-end display-zone overrides (ADR-0107): start = transport origin / the single
+  // place; end = transport destination. Null trusts the derivation.
+  startDisplayTimezone String?
+  endDisplayTimezone   String?
+  details              Json?
+  source               BookingSource @default(manual)
+  createdAt            DateTime      @default(now())
+  updatedAt            DateTime      @updatedAt
+  updatedBy            String
 
   trip      Trip   @relation(fields: [tripId], references: [id], onDelete: Cascade)
   event     Event? // strict 1:1 (Event.bookingId @unique, ADR-0047)

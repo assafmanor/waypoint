@@ -122,6 +122,38 @@ export function placeTimezone(places: Place[], placeId?: string): string | undef
   return places.find((p) => p.id === placeId)?.timezone;
 }
 
+/** A booking's per-end zone overrides, resolved by the same authority rule as its
+ *  place fields (ADR-0107 §6-7 session-99 amendment): transport pins its origin's
+ *  zone on `start` and its destination's on `end`; a single-place booking uses only
+ *  `start`, which then drives both ends. Undefined = nothing pinned. */
+export function bookingZoneOverrides(booking: Booking | undefined): {
+  start?: string;
+  end?: string;
+} {
+  if (!booking) return {};
+  const start = booking.startDisplayTimezone;
+  const end = isTransport(booking) ? booking.endDisplayTimezone : start;
+  return { start, end };
+}
+
+/** What zone each end of a booking is in **as far as we know**: the user's pinned
+ *  override, else the endpoint place's cached zone, else undefined (a coordless
+ *  Place-lite with nothing pinned — the caller falls back to the segment/primary).
+ *  The one answer both the crossing detection and the event resolver read, so a
+ *  pinned zone partitions the itinerary exactly like a real place does. */
+export function bookingEndZones(booking: Booking, places: Place[]): { from?: string; to?: string } {
+  const pinned = bookingZoneOverrides(booking);
+  return isTransport(booking)
+    ? {
+        from: pinned.start ?? placeTimezone(places, booking.fromPlaceId),
+        to: pinned.end ?? placeTimezone(places, booking.toPlaceId),
+      }
+    : (() => {
+        const zone = pinned.start ?? placeTimezone(places, booking.placeId);
+        return { from: zone, to: zone };
+      })();
+}
+
 /** The trip's zone-crossings in departure order (ADR-0107 §3). Everything before
  *  the first crossing sits in its origin zone (the home zone, known once the
  *  outbound flight's `fromPlace` is entered); each later segment takes the
@@ -136,8 +168,7 @@ export function tripZoneCrossings(
     if (!event.bookingId || !event.startsAt) continue;
     const booking = bookings.find((b) => b.id === event.bookingId);
     if (!booking || !isTransport(booking)) continue;
-    const fromZone = placeTimezone(places, booking.fromPlaceId);
-    const toZone = placeTimezone(places, booking.toPlaceId);
+    const { from: fromZone, to: toZone } = bookingEndZones(booking, places);
     if (!fromZone || !toZone || fromZone === toZone) continue;
     crossings.push({ at: Date.parse(event.startsAt), fromZone, toZone });
   }
@@ -187,12 +218,18 @@ export function dayAmbientZone(
 }
 
 /** The resolved display zones for an event's start and end (they differ only for
- *  zone-crossing transport). Priority (ADR-0107 §3, ADR-0110 §94-99):
- *    1. `displayTimezone` manual override — honoured forever, both ends.
- *    2. Attached place — transport renders start in `fromPlace`, end in
- *       `toPlace`; any other place drives both ends.
- *    3. Placeless (or a coordless place) — the itinerary segment's zone.
- *    4. Nothing anchors it — the trip primary zone. */
+ *  zone-crossing transport). Priority (ADR-0107 §3/§6, ADR-0110 §94-99):
+ *    1. The event's `displayTimezone` manual override — both ends. (The chip on a
+ *       standalone event; a booking-linked event is pinned per-end instead, below.)
+ *    2. The **booking's** per-end override — the chip in the booking form, which is
+ *       what a zone-crossing pair needs: one override per end, not one for both.
+ *    3. Attached place — transport renders start in `fromPlace`, end in `toPlace`;
+ *       any other place drives both ends.
+ *    4. Placeless (or a coordless place) — the itinerary segment's zone.
+ *    5. Nothing anchors it — the trip primary zone.
+ *
+ *  Steps 2-3 are per-end, so a flight can take its origin from a pinned zone and
+ *  its destination from a real place, or vice versa. */
 export function eventDisplayZones(
   event: TripEvent,
   opts: { bookings: Booking[]; places: Place[]; crossings: ZoneCrossing[]; primaryZone: string },
@@ -207,15 +244,17 @@ export function eventDisplayZones(
 
   const booking = event.bookingId ? bookings.find((b) => b.id === event.bookingId) : undefined;
   if (booking && isTransport(booking)) {
+    const known = bookingEndZones(booking, places);
     return {
-      start: placeTimezone(places, booking.fromPlaceId) ?? zoneForInstant(event.startsAt),
-      end:
-        placeTimezone(places, booking.toPlaceId) ?? zoneForInstant(event.endsAt ?? event.startsAt),
+      start: known.from ?? zoneForInstant(event.startsAt),
+      end: known.to ?? zoneForInstant(event.endsAt ?? event.startsAt),
     };
   }
 
-  const placed = placeTimezone(places, eventPlaceId(event, booking));
-  if (placed) return { start: placed, end: placed };
+  const single = booking
+    ? bookingEndZones(booking, places).from
+    : placeTimezone(places, eventPlaceId(event, booking));
+  if (single) return { start: single, end: single };
 
   const zone = zoneForInstant(event.startsAt);
   return { start: zone, end: zone };

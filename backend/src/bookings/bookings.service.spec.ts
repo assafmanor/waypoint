@@ -273,6 +273,30 @@ describe('BookingsService', () => {
     expect(persisted?.confirmationCode).toBeNull();
   });
 
+  it('persists per-end zone overrides and clears one with null (ADR-0107 §6)', async () => {
+    const tripId = await newTrip();
+
+    const flight = await service.create(tripId, DEV_USER, {
+      type: 'flight',
+      title: 'TLV → KEF',
+      startDisplayTimezone: 'Asia/Jerusalem',
+      endDisplayTimezone: 'Atlantic/Reykjavik',
+    });
+    expect(flight.startDisplayTimezone).toBe('Asia/Jerusalem');
+    expect(flight.endDisplayTimezone).toBe('Atlantic/Reykjavik');
+
+    // An absent key leaves a pin alone; null is the chip's reset, per end.
+    const renamed = await service.update(tripId, flight.id, DEV_USER, { title: 'same flight' });
+    expect(renamed.startDisplayTimezone).toBe('Asia/Jerusalem');
+    expect(renamed.endDisplayTimezone).toBe('Atlantic/Reykjavik');
+
+    const cleared = await service.update(tripId, flight.id, DEV_USER, {
+      endDisplayTimezone: null,
+    });
+    expect(cleared.startDisplayTimezone).toBe('Asia/Jerusalem');
+    expect(cleared.endDisplayTimezone).toBeUndefined();
+  });
+
   it('rejects a place that does not belong to the trip', async () => {
     const tripId = await newTrip();
     await expect(

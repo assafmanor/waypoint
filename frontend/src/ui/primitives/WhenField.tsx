@@ -77,6 +77,10 @@ type SpanProps = {
    *  the two calendar days (a hotel is nights, not "יום"); anything else keeps the
    *  elapsed-time read-out. Omitted → elapsed time. */
   durationUnit?: DurationUnit;
+  /** A zone chip per leg (ADR-0107 §6) — each states the zone that leg's time is
+   *  interpreted in, and is editable when it carries an `onChange`. A crossing
+   *  needs one per end: pinning both to one zone would erase the crossing. */
+  zones?: { start?: ZoneChipProps; end?: ZoneChipProps };
 };
 
 export type WhenFieldProps = DayProps | SpanProps;
@@ -131,6 +135,7 @@ function WhenSpan({
   timeZone,
   endTimeZone = timeZone,
   durationUnit,
+  zones,
 }: SpanProps) {
   const setStart = (v: string) => onChange({ start: v, end });
   const setEnd = (v: string) => onChange({ start, end: v });
@@ -163,6 +168,7 @@ function WhenSpan({
         maxDate={maxDate}
         defaultDate={defaultDate}
       />
+      {zones?.start && <ZoneChip {...zones.start} />}
       <SpanLeg
         label={labels.end}
         value={end}
@@ -177,6 +183,7 @@ function WhenSpan({
         defaultDate={startDay || defaultDate}
         badge={crossesDays ? `+${daysApart}` : undefined}
       />
+      {zones?.end && <ZoneChip {...zones.end} />}
       {/* A lodging span reads in nights, derived from the two calendar days (no
           "crosses a day" note — a stay always does). Everything else keeps the
           elapsed-time read-out, once both times are in. */}
