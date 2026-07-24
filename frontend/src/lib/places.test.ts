@@ -14,6 +14,7 @@ import {
   bookingPlaceUrl,
   eventDirectionsUrl,
   eventDisplayZones,
+  eventDurationLabel,
   eventEdgeZone,
   eventPlaceUrl,
   eventRoute,
@@ -404,6 +405,39 @@ describe('per-event display zones (ADR-0107 multi-zone model)', () => {
         zone: TYO,
         deltaMinutes: 360,
       });
+    });
+  });
+
+  describe('eventDurationLabel — shown for transport + zone-shifted rows', () => {
+    it('labels a transport row (always)', () => {
+      // The flight has start + end and a transport booking → duration shows.
+      expect(eventDurationLabel(flightEv, flightBk, { deltaMinutes: 360 })).toBeTruthy();
+    });
+
+    it('labels a zone-shifted non-transport row (its raw times can misread)', () => {
+      const dinner = event({
+        id: 'd',
+        startsAt: '2026-07-08T10:00:00Z',
+        endsAt: '2026-07-08T12:00:00Z',
+      });
+      expect(eventDurationLabel(dinner, undefined, { deltaMinutes: -360 })).toBeTruthy();
+    });
+
+    it('is undefined for a same-zone non-transport row (the range is self-evident)', () => {
+      const dinner = event({
+        id: 'd2',
+        startsAt: '2026-07-08T10:00:00Z',
+        endsAt: '2026-07-08T12:00:00Z',
+      });
+      expect(eventDurationLabel(dinner, undefined, { deltaMinutes: undefined })).toBeUndefined();
+    });
+
+    it('is undefined without a start+end span', () => {
+      expect(
+        eventDurationLabel(event({ id: 'd3', startsAt: '2026-07-08T10:00:00Z' }), flightBk, {
+          deltaMinutes: undefined,
+        }),
+      ).toBeUndefined();
     });
   });
 });

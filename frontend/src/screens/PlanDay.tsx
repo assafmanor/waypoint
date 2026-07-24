@@ -30,6 +30,7 @@ import { useTrip, byStart } from '../state/trip-state';
 import { useVerbs } from '../state/verbs';
 import { useClock } from '../lib/useClock';
 import {
+  eventDurationLabel,
   eventEdgeZone,
   eventPlaceName,
   eventZones,
@@ -746,14 +747,17 @@ function BuilderNode({
   const earlierId = soft && si > 0 ? ctx.softEvents[si - 1].id : undefined;
   const laterId = soft && si < ctx.softEvents.length - 1 ? ctx.softEvents[si + 1].id : undefined;
   const hasKids = item.children.length > 0;
+  const booking = e.bookingId ? ctx.bookings.find((b) => b.id === e.bookingId) : undefined;
+  const zones = eventZones(e, ctx.zoneCtx);
   return (
     <>
       <BuilderRow
         event={e}
         tz={ctx.tz}
-        zones={eventZones(e, ctx.zoneCtx)}
+        zones={zones}
+        duration={eventDurationLabel(e, booking, zones)}
         readOnly={ctx.readOnly}
-        booking={e.bookingId ? ctx.bookings.find((b) => b.id === e.bookingId) : undefined}
+        booking={booking}
         placeName={eventPlaceName(e, ctx.bookings, ctx.places)}
         onEdit={() => ctx.onEdit(e)}
         onDelete={() => ctx.verbs.remove(e)}
@@ -793,6 +797,7 @@ function BuilderRow({
   event,
   tz,
   zones,
+  duration,
   readOnly,
   booking,
   placeName,
@@ -813,6 +818,8 @@ function BuilderRow({
   /** Per-event display zones + the shift pill to show (ADR-0107). Absent → the
    *  row renders wholly in `tz` with no pill. */
   zones?: EventZones;
+  /** Elapsed-duration label for transport + zone-shifted rows (ADR-0107/0084). */
+  duration?: string;
   // A finished trip is a read-only archive (ADR-0040): the row is browsable but
   // carries no edit/reorder/delete affordances.
   readOnly?: boolean;
@@ -975,9 +982,14 @@ function BuilderRow({
                     </sup>
                   )}
               </span>
-              {zones?.deltaMinutes != null && (
-                <span className="bld-tzdelta" dir="ltr" title={t.event.zoneShift}>
-                  🕐 {formatZoneDelta(zones.deltaMinutes)}
+              {(duration || zones?.deltaMinutes != null) && (
+                <span className="bld-timemeta">
+                  {duration && <span className="bld-dur">{duration}</span>}
+                  {zones?.deltaMinutes != null && (
+                    <span className="bld-tzdelta" dir="ltr" title={t.event.zoneShift}>
+                      🕐 {formatZoneDelta(zones.deltaMinutes)}
+                    </span>
+                  )}
                 </span>
               )}
             </span>

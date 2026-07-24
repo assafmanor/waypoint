@@ -62,6 +62,10 @@ export interface EventCardProps {
    *  shows how far the clock jumps (destination vs origin for a crossing, else
    *  vs the day's ambient zone). */
   zones?: EventZones;
+  /** Elapsed-duration label to show under the time (ADR-0107/0084). The screen
+   *  passes it for transport + zone-shifted rows, where the raw start–end can
+   *  misread the real span; absent otherwise. */
+  duration?: string;
   /** The first hard conflict, if any (drives the amber conflict flag). */
   conflict?: { title: string; startsAt: string };
   /** "כולל N" contents count on an envelope event that nests others. */
@@ -101,6 +105,7 @@ export function EventCard(props: EventCardProps) {
     endsAt,
     tz,
     zones,
+    duration,
     conflict,
     nestedCount,
     onNavigate,
@@ -161,7 +166,10 @@ export function EventCard(props: EventCardProps) {
   const titleBlock = (
     <span className="wp-event-main">
       <span className="wp-event-t">
-        {title}
+        {/* Clamp the title to keep a long route name (e.g. two full airport
+            names) from blowing up the card; the tag stays a sibling, so it's
+            never clipped, flowing to the next line when the title is long. */}
+        <span className="wp-event-title-txt">{title}</span>
         {tag}
         {nestedCount !== undefined && (
           <span className="wp-event-nest-note">{t.day.contains(nestedCount)}</span>
@@ -192,9 +200,14 @@ export function EventCard(props: EventCardProps) {
           </sup>
         )}
       </span>
-      {zones?.deltaMinutes != null && (
-        <span className="wp-event-tzdelta" dir="ltr" title={t.event.zoneShift}>
-          🕐 {formatZoneDelta(zones.deltaMinutes)}
+      {(duration || zones?.deltaMinutes != null) && (
+        <span className="wp-event-timemeta">
+          {duration && <span className="wp-event-dur">{duration}</span>}
+          {zones?.deltaMinutes != null && (
+            <span className="wp-event-tzdelta" dir="ltr" title={t.event.zoneShift}>
+              🕐 {formatZoneDelta(zones.deltaMinutes)}
+            </span>
+          )}
         </span>
       )}
     </span>

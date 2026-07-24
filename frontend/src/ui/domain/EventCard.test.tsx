@@ -270,4 +270,18 @@ describe('EventCard', () => {
     );
     expect(container.querySelector('.wp-event-tzdelta')).toBeNull();
   });
+
+  it('renders the duration label when the screen passes one', () => {
+    const { container } = render(
+      wrap(
+        <EventCard
+          {...base}
+          startsAt="2026-07-07T20:00:00Z"
+          endsAt="2026-07-08T09:00:00Z"
+          duration="6:45 שע׳"
+        />,
+      ),
+    );
+    expect(container.querySelector('.wp-event-dur')?.textContent).toBe('6:45 שע׳');
+  });
 });

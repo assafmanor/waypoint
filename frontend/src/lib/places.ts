@@ -4,15 +4,20 @@
 // rather than reading a (now-removed) free-text location off the event.
 import {
   categoryForBookingType,
+  eventDurationUnit,
   type Booking,
   type MaybeItem,
   type Place,
   type TripEvent,
 } from '@waypoint/shared';
 import { zoneOffsetMinutes } from './time';
+import { formatDuration } from './duration';
 
-const isTransport = (booking: Booking): boolean =>
-  categoryForBookingType(booking.type) === 'transport';
+/** Whether a booking is transport (flight/train/…): its category is `transport`. */
+export function isTransportBooking(booking: Booking): boolean {
+  return categoryForBookingType(booking.type) === 'transport';
+}
+const isTransport = isTransportBooking;
 
 /**
  * Every `placeId` actually referenced by a saved entity — the set that defines
@@ -247,6 +252,24 @@ export function eventEdgeZone(
     ? zoneOffsetMinutes(at, zone) - zoneOffsetMinutes(at, ctx.ambientZone)
     : 0;
   return { zone, deltaMinutes: deltaMinutes || undefined };
+}
+
+/** The elapsed-duration label to show on a timeline row, or undefined when it
+ *  shouldn't (ADR-0107/0084). A zone shift makes the raw times misread the span
+ *  (07:15→11:00 with −3 looks like 3h45 but is 6h45), so show duration whenever
+ *  the event is **transport** (always — travelers want the flight length) or
+ *  carries a **zone shift**. Duration is instant-based (zone-independent) and
+ *  phrased per the event's category unit (`hours` for transport, ADR-0084). */
+export function eventDurationLabel(
+  event: TripEvent,
+  booking: Booking | undefined,
+  zones: Pick<EventZones, 'deltaMinutes'>,
+): string | undefined {
+  if (!event.startsAt || !event.endsAt) return undefined;
+  const transport = booking ? isTransportBooking(booking) : false;
+  if (!transport && zones.deltaMinutes == null) return undefined;
+  const minutes = (Date.parse(event.endsAt) - Date.parse(event.startsAt)) / 60000;
+  return formatDuration(minutes, eventDurationUnit(event)) ?? undefined;
 }
 
 // ── Google Maps deep-links (Phase 2, ADR-0106/0109) ─────────────────────────
