@@ -24,6 +24,7 @@ import { IconPicker } from '../ui/IconPicker';
 import { Sheet } from '../ui/Sheet';
 import { useToast } from '../ui/Toast';
 import { useIsOffline, useOutboxCount } from '../lib/outbox';
+import { formatTripDates } from '../lib/time';
 import { allowMemberBack, createInvite, fetchRemovedMembers, rotateInvite } from '../lib/api';
 import {
   AVATAR_INITIAL_LENGTH,
@@ -243,7 +244,7 @@ export function TripSettings() {
             <ReadRow
               icon="🗓️"
               label={t.settings.datesLabel}
-              value={`${trip.startDate} ${DOT_SEPARATOR} ${trip.endDate}`}
+              value={formatTripDates(trip.startDate, trip.endDate, { withYear: true })}
               mono
             />
             <ReadRow icon="🕓" label={t.settings.timezoneLabel} value={trip.timezone} mono />

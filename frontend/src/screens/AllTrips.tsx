@@ -17,20 +17,13 @@ import { useIsOffline } from '../lib/outbox';
 import { loadTripList } from '../lib/cache';
 import { tripChip, type TripChip } from '../lib/active-trip';
 import { daysUntilStart } from '../lib/mode';
+import { formatTripDates } from '../lib/time';
 import { useClock } from '../lib/useClock';
 import { AVATAR_INITIAL_LENGTH, DEFAULT_TRIP_ICON, ICONS } from '../constants';
 import { NavArrow } from '../ui/NavArrow';
 import { t } from '../i18n/he';
 
 const NBSP = ' ';
-
-const dateFmt = new Intl.DateTimeFormat('he-IL', {
-  day: '2-digit',
-  month: '2-digit',
-  timeZone: 'UTC',
-});
-const dateRange = (trip: Trip) =>
-  `${dateFmt.format(new Date(`${trip.startDate}T00:00:00Z`))}–${dateFmt.format(new Date(`${trip.endDate}T00:00:00Z`))}`;
 
 // `destination` is free text; hide it when the trip name already carries it
 // (e.g. name "לפה ולשם ׳26" + destination "לפה ולשם") to keep the meta lean.
@@ -53,7 +46,7 @@ function TripMeta({ trip }: { trip: Trip }) {
         </>
       )}
       <span className="num" dir="ltr">
-        {dateRange(trip)}
+        {formatTripDates(trip.startDate, trip.endDate)}
       </span>
       {trip.memberCount !== undefined && (
         <>

@@ -10,10 +10,14 @@
 // stays remap-ready for the dark boot (designed in ADR-0105, not wired here).
 import { formatTime } from '../../lib/time';
 import { useClock } from '../../lib/useClock';
-import { DEVICE_TIMEZONE, DOT_SEPARATOR } from '../../constants';
+import { DEVICE_TIMEZONE } from '../../constants';
 import { t } from '../../i18n/he';
 
-const DOTS = [DOT_SEPARATOR, DOT_SEPARATOR, DOT_SEPARATOR].join(' ');
+// The "filling departure-line" loading motif (design-language §Loading) uses a
+// heavier bullet for visual weight — deliberately not the app's · peer
+// separator (DOT_SEPARATOR), which is too faint to read as boot dots.
+const BOOT_DOT = '•';
+const DOTS = [BOOT_DOT, BOOT_DOT, BOOT_DOT].join(' ');
 
 export function BootScreen() {
   const now = useClock();

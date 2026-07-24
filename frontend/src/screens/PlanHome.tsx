@@ -15,13 +15,13 @@ import { useTrip } from '../state/trip-state';
 import { useClock } from '../lib/useClock';
 import { daysUntilStart, tripPhase } from '../lib/mode';
 import { dayPhrase } from '../lib/hebrew';
-import { countdownParts } from '../lib/time';
+import { countdownParts, formatTripDates } from '../lib/time';
 import { computeReadiness, type CheckId, type ReadinessCheck } from '../lib/readiness';
 import { BookingSheet, type BookingSeed } from '../ui/BookingSheet';
 import { DocumentUploadSheet } from '../ui/DocumentUploadSheet';
 import { StatTile } from '../ui/domain';
 import { CollapseToggle, Collapsible } from '../ui/primitives/Collapsible';
-import { MS_PER_DAY, type TabId } from '../constants';
+import { DOT_SEPARATOR, MS_PER_DAY, type TabId } from '../constants';
 import { t } from '../i18n/he';
 
 const CHECK_ICON: Record<CheckId, string> = {
@@ -48,21 +48,6 @@ const dayNumberOf = (date: string, startDate: string) =>
     (Date.parse(`${date}T00:00:00Z`) - Date.parse(`${startDate}T00:00:00Z`)) / MS_PER_DAY,
   ) + 1;
 
-function formatDateRange(startDate: string, endDate: string): string {
-  const start = new Date(`${startDate}T00:00:00Z`);
-  const end = new Date(`${endDate}T00:00:00Z`);
-  const dayMonth = new Intl.DateTimeFormat('he-IL', {
-    day: 'numeric',
-    month: 'long',
-    timeZone: 'UTC',
-  });
-  const dayOnly = new Intl.DateTimeFormat('he-IL', { day: 'numeric', timeZone: 'UTC' });
-  const sameMonth = start.getUTCMonth() === end.getUTCMonth();
-  return sameMonth
-    ? `${dayOnly.format(start)}–${dayMonth.format(end)}`
-    : `${dayMonth.format(start)} – ${dayMonth.format(end)}`;
-}
-
 export function PlanHome({ onNavigate }: { onNavigate: (tab: TabId) => void }) {
   const { trip, events, bookings, places, documents, users, setActiveDate } = useTrip();
   const now = useClock();
@@ -84,8 +69,8 @@ export function PlanHome({ onNavigate }: { onNavigate: (tab: TabId) => void }) {
           <div className="prep-k">{t.planHome.past.complete}</div>
           <div className="prep-count">{trip.destination}</div>
           <div className="prep-dates">
-            {formatDateRange(trip.startDate, trip.endDate)} <span className="dot">·</span>{' '}
-            {dayPhrase(total)}
+            {formatTripDates(trip.startDate, trip.endDate, { style: 'prose' })}{' '}
+            <span className="dot">{DOT_SEPARATOR}</span> {dayPhrase(total)}
           </div>
         </div>
 
@@ -215,8 +200,8 @@ export function PlanHome({ onNavigate }: { onNavigate: (tab: TabId) => void }) {
           <div className="prep-count">{t.planHome.prep.underway}</div>
         )}
         <div className="prep-dates">
-          {formatDateRange(trip.startDate, trip.endDate)} <span className="dot">·</span>{' '}
-          {dayPhrase(total)}
+          {formatTripDates(trip.startDate, trip.endDate, { style: 'prose' })}{' '}
+          <span className="dot">{DOT_SEPARATOR}</span> {dayPhrase(total)}
         </div>
         <div className="prep-ready">
           <div className="prep-ready-top">

@@ -148,7 +148,11 @@ export const DEFAULT_TRIP_ICON = '🧳';
 /** Prefix shown before confirmation codes (e.g. #4471). */
 export const CODE_PREFIX = '#';
 
-export const DOT_SEPARATOR = '•';
+/** The app's peer-info separator (design-language.md §Typography): the small
+ *  middle dot, e.g. "עכשיו · במקביל". Not the bullet — that heavier glyph is
+ *  the boot loader's decorative dot (BootScreen's own constant), never a
+ *  separator. */
+export const DOT_SEPARATOR = '·';
 
 /** Active-trip override — per-device, not synced (ADR-0021). */
 export const ACTIVE_TRIP_STORAGE_KEY = 'wp_active_trip_id';
