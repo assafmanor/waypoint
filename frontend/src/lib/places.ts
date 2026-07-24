@@ -10,7 +10,8 @@ import {
   type Place,
   type TripEvent,
 } from '@waypoint/shared';
-import { zoneOffsetMinutes } from './time';
+import { zoneOffsetMinutes, zonedIso } from './time';
+import { DAY_NOON } from '../constants';
 import { formatDuration } from './duration';
 
 /** Whether a booking is transport (flight/train/…): its category is `transport`. */
@@ -167,6 +168,22 @@ export function segmentZoneAt(instantMs: number, crossings: ZoneCrossing[]): str
  *  zone (§4). */
 export function currentZone(nowMs: number, crossings: ZoneCrossing[], primaryZone: string): string {
   return segmentZoneAt(nowMs, crossings) ?? primaryZone;
+}
+
+/** The **day's** ambient zone (ADR-0107 session-89/90 amendments): the segment
+ *  zone spanning the day being viewed, sampled at its noon so a boundary
+ *  crossing can't make the day's own frame flip. This is what a day surface
+ *  measures an event's shift against (show a pill only when it differs), and
+ *  what decides whether a day is over for editing (ADR-0029 amendment) — as
+ *  opposed to `currentZone`, which is where *you* are right now. Noon is sampled
+ *  in `primaryZone`: only which calendar day it lands in matters, and every zone
+ *  agrees about noon-ish. */
+export function dayAmbientZone(
+  date: string,
+  crossings: ZoneCrossing[],
+  primaryZone: string,
+): string {
+  return segmentZoneAt(Date.parse(zonedIso(date, DAY_NOON, primaryZone)), crossings) ?? primaryZone;
 }
 
 /** The resolved display zones for an event's start and end (they differ only for

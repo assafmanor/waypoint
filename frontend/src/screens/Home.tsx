@@ -27,7 +27,14 @@ import {
 } from '../ui/domain';
 import { useClock } from '../lib/useClock';
 import { hotelWifi, nextCodedBooking } from '../lib/home-quick';
-import { currentZone, eventRoute } from '../lib/places';
+import {
+  currentZone,
+  dayAmbientZone,
+  eventRoute,
+  eventZones,
+  type ZoneContext,
+} from '../lib/places';
+import { shortPlaceLabel } from '../lib/place-label';
 import { TAB_PARAM } from '../state/nav-state';
 import {
   countdownParts,
@@ -82,6 +89,17 @@ export function Home({ onNavigate }: { onNavigate?: (tab: TabId) => void }) {
   // itinerary segment you're currently in (ADR-0107 §4), not a fixed trip zone.
   const tz = currentZone(nowMs, zoneCrossings, trip.timezone);
   const today = todayInTz(tz, now);
+  // Each hero slot renders in its **own** event's zone (sticky display, ADR-0107
+  // §2-3) — the live zone is only the frame + what a shift is measured against,
+  // so "ambient" here is where you are standing now.
+  const zoneCtx: ZoneContext = {
+    bookings,
+    places,
+    crossings: zoneCrossings,
+    primaryZone: trip.timezone,
+    ambientZone: tz,
+  };
+  const zonesOf = (e: TripEvent | undefined) => (e ? eventZones(e, zoneCtx) : undefined);
 
   // Ambient hotels are backdrop, never a now/next block — once you've checked in
   // they'd otherwise hijack the hero for the whole stay (ADR-0059 §1 / ADR-0054).
@@ -162,6 +180,13 @@ export function Home({ onNavigate }: { onNavigate?: (tab: TabId) => void }) {
   // Origin/destination anchor the in-transit progress ends (ADR-0059 §3): a
   // flight reads as where it goes, not a name.
   const transitRoute = transitEvent ? eventRoute(transitEvent, bookings, places) : null;
+  const nowZones = zonesOf(nowEvent);
+  const transitZones = zonesOf(transitEvent);
+  // The NEXT slot's instant is a start for an ordinary event but an **end** for a
+  // check-out (deriveNow can't surface an end), so its zone follows that edge.
+  const nextZones = zonesOf(shownNext);
+  const nextZone =
+    nextInstant && nextInstant === shownNext?.endsAt ? nextZones?.endZone : nextZones?.startZone;
 
   const wifi = hotelWifi(bookings, events, nowMs);
   // Quick-access derived tiles (ADR-0050): the next confirmation code you'll need
@@ -175,7 +200,14 @@ export function Home({ onNavigate }: { onNavigate?: (tab: TabId) => void }) {
   // ── Day at a glance (derived) — a proportional time rail (lib/glance) ──
   const day07 = Date.parse(zonedIso(activeDate, hourLabel(DAY_WINDOW.START_HOUR), tz));
   const day23 = Date.parse(zonedIso(activeDate, hourLabel(DAY_WINDOW.END_HOUR), tz));
-  const glance = buildDayGlance(events, activeDate, nowMs, day07, day23, tz);
+  // The glance is a **day** surface, so its anchors' shifts read against the day's
+  // own ambient zone (segment-at-noon, as the day timeline does) — not the live
+  // zone, which would nag on every anchor of a day you're merely browsing.
+  const glanceCtx: ZoneContext = {
+    ...zoneCtx,
+    ambientZone: dayAmbientZone(activeDate, zoneCrossings, trip.timezone),
+  };
+  const glance = buildDayGlance(events, activeDate, nowMs, day07, day23, tz, glanceCtx);
   // Ambient-span stays active today (a hotel spanning several nights, ADR-0054).
   // No persistent band on Home (ADR-0064 §A): the hero surfaces the transition
   // moments and the glance draws the check-in/out markers. This only feeds the
@@ -257,26 +289,33 @@ export function Home({ onNavigate }: { onNavigate?: (tab: TabId) => void }) {
       ? {
           labelKey: hero.labelKey ?? 'arrival',
           arriving,
-          endTime: transitEvent.endsAt ? formatTime(transitEvent.endsAt, tz) : undefined,
+          endTime: transitEvent.endsAt
+            ? formatTime(transitEvent.endsAt, transitZones?.endZone ?? tz)
+            : undefined,
           code: transitCode,
           progress: transitProgress,
-          startTime: transitEvent.startsAt ? formatTime(transitEvent.startsAt, tz) : undefined,
-          fromPlace: transitRoute?.from,
-          toPlace: transitRoute?.to,
+          startTime: transitEvent.startsAt
+            ? formatTime(transitEvent.startsAt, transitZones?.startZone ?? tz)
+            : undefined,
+          fromPlace: transitRoute?.from ? shortPlaceLabel(transitRoute.from) : undefined,
+          toPlace: transitRoute?.to ? shortPlaceLabel(transitRoute.to) : undefined,
           showCountdown: countdown !== null,
+          shift: transitZones?.deltaMinutes,
         }
       : undefined;
-  const splitRows: BoardRow[] = nowAll.map((e) => ({
-    key: e.id,
-    icon: e.icon,
-    title: <EventTitle event={e} bookings={bookings} places={places} />,
-    until: e.endsAt ? formatTime(e.endsAt, tz) : undefined,
-  }));
+  const boardRow = (e: TripEvent): BoardRow => {
+    const z = zonesOf(e);
+    return {
+      key: e.id,
+      icon: e.icon,
+      title: <EventTitle event={e} bookings={bookings} places={places} />,
+      until: e.endsAt ? formatTime(e.endsAt, z?.endZone ?? tz) : undefined,
+      shift: z?.deltaMinutes,
+    };
+  };
+  const splitRows: BoardRow[] = nowAll.map(boardRow);
   const alsoNowRows: BoardRow[] = alsoNow.map((e) => ({
-    key: e.id,
-    icon: e.icon,
-    title: <EventTitle event={e} bookings={bookings} places={places} />,
-    until: e.endsAt ? formatTime(e.endsAt, tz) : undefined,
+    ...boardRow(e),
     hard: e.kind === EVENT_KIND.HARD,
   }));
   const boardNext: BoardNext | null = shownNext
@@ -284,9 +323,13 @@ export function Home({ onNavigate }: { onNavigate?: (tab: TabId) => void }) {
         title: <EventTitle event={shownNext} bookings={bookings} places={places} />,
         icon: shownNext.icon,
         labelKey: nextLabelKey,
-        time: nextInstant ? formatTime(nextInstant, tz) : undefined,
+        time: nextInstant ? formatTime(nextInstant, nextZone ?? tz) : undefined,
         hard: shownNext.kind === EVENT_KIND.HARD,
         code: nextCode,
+        // For a zone-crossing flight this is the jump the flight itself makes
+        // (destination minus origin), the same number its day-timeline row shows;
+        // for anything else it's that event's zone vs where you are.
+        shift: nextZones?.deltaMinutes,
       }
     : null;
 
@@ -328,7 +371,10 @@ export function Home({ onNavigate }: { onNavigate?: (tab: TabId) => void }) {
           ) : undefined
         }
         nowKind={nowEvent?.kind === EVENT_KIND.HARD ? 'hard' : 'soft'}
-        nowUntil={nowEvent?.endsAt ? formatTime(nowEvent.endsAt, tz) : undefined}
+        nowUntil={
+          nowEvent?.endsAt ? formatTime(nowEvent.endsAt, nowZones?.endZone ?? tz) : undefined
+        }
+        nowShift={nowZones?.deltaMinutes}
         conflict={
           conflicts.length > 0
             ? { title: conflicts[0].title, atLabel: formatTime(conflicts[0].startsAt!, tz) }

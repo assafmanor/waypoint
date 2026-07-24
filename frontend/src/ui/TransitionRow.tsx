@@ -9,7 +9,8 @@
 // booking has a mappable location). Plan mode has no live "now", so it passes
 // none; a read-only past day, or a location-less booking, passes none too.
 import { CATEGORY_DEFAULT_ICON, type Booking } from '@waypoint/shared';
-import { formatTime, formatZoneDelta } from '../lib/time';
+import { formatTime } from '../lib/time';
+import { ZoneShiftPill } from './ZoneShiftPill';
 import { transitionLabel } from '../lib/transitions';
 import { t } from '../i18n/he';
 import type { TransitionEntry } from '../lib/day-entries';
@@ -57,9 +58,7 @@ export function TransitionRow({
         </span>
         <span className="tr-time" dir="ltr">
           {formatTime(new Date(atMs), zone ?? tz)}
-          {deltaMinutes != null && (
-            <span className="tr-tzdelta">🕐 {formatZoneDelta(deltaMinutes)}</span>
-          )}
+          {deltaMinutes != null && <ZoneShiftPill minutes={deltaMinutes} className="tr-tzdelta" />}
         </span>
       </button>
       {edge === 'start' && onNavigate && (

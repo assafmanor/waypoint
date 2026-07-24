@@ -20,6 +20,7 @@ import {
   eventRoute,
   eventZones,
   currentZone,
+  dayAmbientZone,
   mapsDirectionsUrl,
   mapsPlaceUrl,
   referencedPlaceIds,
@@ -468,5 +469,36 @@ describe('currentZone — the live "now" follows your itinerary segment (ADR-010
     expect(todayInTz(currentZone(at.getTime(), cs, TYO), at)).toBe('2026-07-07'); // pre-crossing → JLM
     const after = new Date('2026-07-07T20:30:00Z'); // 05:30 TYO on the 8th
     expect(todayInTz(currentZone(after.getTime(), cs, TYO), after)).toBe('2026-07-08');
+  });
+});
+
+describe('dayAmbientZone — the zone a given DAY is framed in (ADR-0107)', () => {
+  const JLM = 'Asia/Jerusalem';
+  const TYO = 'Asia/Tokyo';
+  // Outbound crossing departing 2026-07-07 20:00Z (23:00 JLM).
+  const cs = [{ at: Date.parse('2026-07-07T20:00:00Z'), fromZone: JLM, toZone: TYO }];
+
+  it('frames a pre-crossing day in the origin zone and a later day in the destination', () => {
+    expect(dayAmbientZone('2026-07-06', cs, TYO)).toBe(JLM);
+    expect(dayAmbientZone('2026-07-09', cs, TYO)).toBe(TYO);
+  });
+
+  it('samples at noon, so a late-evening crossing leaves its own day on the origin', () => {
+    // The crossing is at 23:00 local, but the day it departs is still lived in the
+    // origin zone — sampling at noon is what keeps that true.
+    expect(dayAmbientZone('2026-07-07', cs, TYO)).toBe(JLM);
+  });
+
+  it('falls back to the trip primary zone with no crossings', () => {
+    expect(dayAmbientZone('2026-07-07', [], TYO)).toBe(TYO);
+  });
+
+  it('is NOT the live zone: mid-flight they disagree, which is the whole point', () => {
+    // 21:00Z on the 7th — you are in the air, so the live zone has already rolled to
+    // Tokyo, while the day you are flying through is still framed in Jerusalem
+    // (ADR-0029 amendment: that is what keeps the travel day editable).
+    const midFlight = Date.parse('2026-07-07T21:00:00Z');
+    expect(currentZone(midFlight, cs, TYO)).toBe(TYO);
+    expect(dayAmbientZone('2026-07-07', cs, TYO)).toBe(JLM);
   });
 });

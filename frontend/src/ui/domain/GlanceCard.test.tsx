@@ -143,6 +143,86 @@ describe('GlanceCard', () => {
     expect(container.querySelector('.glance-legs .achip.amber')).toBeTruthy();
   });
 
+  it('renders each end of a zone-crossing span in its OWN zone + a shift pill', () => {
+    // A same-day TLV→Tokyo flight: 09:00 Jerusalem → 23:00 Tokyo (+6). Rendered in
+    // one zone the arrival would read 17:00 and the shift would be invisible.
+    const crossing: DayGlance = {
+      ...populated,
+      anchors: [
+        {
+          kind: 'span',
+          key: 's1',
+          startFrac: 0.2,
+          endFrac: 0.9,
+          startMs: Date.parse('2026-07-19T09:00:00+03:00'),
+          endMs: Date.parse('2026-07-19T23:00:00+09:00'),
+          startLabelKey: 'departure',
+          endLabelKey: 'arrival',
+          icon: '✈️',
+          nextDay: false,
+          lane: 0,
+          zones: { startZone: 'Asia/Jerusalem', endZone: 'Asia/Tokyo', deltaMinutes: 360 },
+        },
+      ],
+    };
+    const { container } = render(<GlanceCard glance={crossing} tz={TZ} />);
+    const pill = container.querySelector('.glance-marks .span-anchor .achip.amber')!;
+    expect(pill.textContent).toContain('09:00');
+    expect(pill.textContent).toContain('23:00');
+    expect(pill.querySelector('.wp-tzshift')?.textContent).toContain('+6');
+  });
+
+  it('renders a point anchor in its edge zone + its shift', () => {
+    const zoned: DayGlance = {
+      ...populated,
+      anchors: [
+        {
+          ...populated.anchors[0],
+          zone: 'Europe/Paris',
+          deltaMinutes: -420,
+        } as (typeof populated.anchors)[number],
+      ],
+    };
+    const { container } = render(<GlanceCard glance={zoned} tz={TZ} />);
+    const pill = container.querySelector('.glance-marks .tmark .achip.amber')!;
+    // 15:00 Tokyo is 08:00 in Paris — the edge's own zone, not the card's.
+    expect(pill.textContent).toContain('08:00');
+    expect(pill.querySelector('.wp-tzshift')?.textContent).toContain('−7');
+  });
+
+  it('a zone-less anchor renders wholly in the card zone with no pill (single-zone trip)', () => {
+    const { container } = render(<GlanceCard glance={populated} tz={TZ} />);
+    const pill = container.querySelector('.glance-marks .tmark .achip.amber')!;
+    expect(pill.textContent).toContain('15:00');
+    expect(pill.querySelector('.wp-tzshift')).toBeNull();
+  });
+
+  it('the collapsed legs line renders the SAME pill as the band (no divergence)', () => {
+    const anchors = [
+      {
+        kind: 'span' as const,
+        key: 's1',
+        startFrac: 0.2,
+        endFrac: 0.9,
+        startMs: Date.parse('2026-07-19T09:00:00+03:00'),
+        endMs: Date.parse('2026-07-19T23:00:00+09:00'),
+        startLabelKey: 'departure',
+        endLabelKey: 'arrival',
+        icon: '✈️',
+        nextDay: false,
+        lane: 0,
+        zones: { startZone: 'Asia/Jerusalem', endZone: 'Asia/Tokyo', deltaMinutes: 360 },
+      },
+    ];
+    const band = render(<GlanceCard glance={{ ...populated, anchors }} tz={TZ} />);
+    const inBand = band.container.querySelector('.glance-marks .achip.amber')!.textContent;
+    cleanup();
+    const legs = render(
+      <GlanceCard glance={{ ...populated, anchors, anchorsCollapsed: true }} tz={TZ} />,
+    );
+    expect(legs.container.querySelector('.glance-legs .achip.amber')!.textContent).toBe(inBand);
+  });
+
   it('shows the hard anchor + foot (free-until / day-end) when provided', () => {
     const { container } = render(
       <GlanceCard

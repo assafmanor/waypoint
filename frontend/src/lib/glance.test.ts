@@ -1,6 +1,15 @@
 import { describe, expect, it } from 'vitest';
-import { EVENT_KIND, EVENT_SOURCE, EVENT_STATUS, type TripEvent } from '@waypoint/shared';
+import {
+  BOOKING_TYPE,
+  EVENT_KIND,
+  EVENT_SOURCE,
+  EVENT_STATUS,
+  type Booking,
+  type Place,
+  type TripEvent,
+} from '@waypoint/shared';
 import { buildDayGlance, ambientEventsOnDate } from './glance';
+import { tripZoneCrossings, type ZoneContext } from './places';
 
 const TZ = 'Asia/Tokyo';
 const OFF = '+09:00';
@@ -481,5 +490,122 @@ describe('buildDayGlance', () => {
     expect(buildDayGlance(events, DATE, ms('06:00'), day07, day23, TZ).nowFrac).toBeNull();
     // a past day: now is after the window end
     expect(buildDayGlance(events, DATE, ms('23:30'), day07, day23, TZ).nowFrac).toBeNull();
+  });
+});
+
+describe('buildDayGlance — per-anchor display zones (ADR-0107)', () => {
+  const JLM = 'Asia/Jerusalem';
+  const KEF = 'Atlantic/Reykjavik';
+  const place = (id: string, timezone: string): Place => ({
+    id,
+    tripId: 't',
+    name: id,
+    timezone,
+    createdAt: '',
+    updatedAt: '',
+    updatedBy: 'u',
+  });
+  const places = [place('tlv', JLM), place('kef', KEF)];
+  const flightBooking: Booking = {
+    id: 'bk',
+    tripId: 't',
+    type: BOOKING_TYPE.FLIGHT,
+    title: 'flight',
+    source: EVENT_SOURCE.MANUAL,
+    fromPlaceId: 'tlv',
+    toPlaceId: 'kef',
+    createdAt: '',
+    updatedAt: '',
+    updatedBy: 'u',
+  };
+  // A westbound flight: 07:15 Jerusalem → 11:00 Reykjavik, a 6h45 flight that looks
+  // like 3h45 if both ends are painted in one zone.
+  const flight = ev({
+    id: 'flight',
+    bookingId: 'bk',
+    category: 'transport',
+    kind: EVENT_KIND.HARD,
+    icon: '✈️',
+    startsAt: '2026-07-07T07:15:00+03:00',
+    endsAt: '2026-07-07T11:00:00+00:00',
+  });
+  const ctx = (events: TripEvent[]): ZoneContext => ({
+    bookings: [flightBooking],
+    places,
+    crossings: tripZoneCrossings(events, [flightBooking], places),
+    primaryZone: JLM,
+    ambientZone: JLM,
+  });
+
+  it("attaches both ends' zones + the shift to a crossing span anchor", () => {
+    const events = [flight];
+    const g = buildDayGlance(events, DATE, ms('06:00'), day07, day23, JLM, ctx(events));
+    const span = g.anchors[0];
+    expect(span.kind).toBe('span');
+    if (span.kind === 'span') {
+      expect(span.zones?.startZone).toBe(JLM);
+      expect(span.zones?.endZone).toBe(KEF);
+      expect(span.zones?.deltaMinutes).toBe(-180); // Reykjavik is 3h behind
+    }
+  });
+
+  it('leaves anchors zone-less without a context, so an un-wired caller is unchanged', () => {
+    const g = buildDayGlance([flight], DATE, ms('06:00'), day07, day23, JLM);
+    const span = g.anchors[0];
+    if (span.kind === 'span') expect(span.zones).toBeUndefined();
+  });
+
+  it('decides the "+1" per-zone, so a same-local-day arrival is not marked next-day', () => {
+    // 23:00 Jerusalem → 23:00 Reykjavik, a 3h westbound hop that lands the SAME
+    // local day at its destination but reads as 02:00 next-day in the origin's zone.
+    const redEye = ev({
+      id: 'red',
+      bookingId: 'bk',
+      category: 'transport',
+      kind: EVENT_KIND.HARD,
+      startsAt: '2026-07-07T23:00:00+03:00',
+      endsAt: '2026-07-07T23:00:00+00:00',
+    });
+    const events = [redEye];
+    const zoned = buildDayGlance(events, DATE, ms('12:00'), day07, day23, JLM, ctx(events));
+    const flat = buildDayGlance(events, DATE, ms('12:00'), day07, day23, JLM);
+    const zonedSpan = zoned.anchors[0];
+    const flatSpan = flat.anchors[0];
+    if (zonedSpan.kind === 'span') expect(zonedSpan.nextDay).toBe(false);
+    if (flatSpan.kind === 'span') expect(flatSpan.nextDay).toBe(true);
+  });
+
+  it("attaches a point anchor's own edge zone + its shift vs the day ambient", () => {
+    // A hotel whose check-out lands on this day, in a zone 3h behind the ambient.
+    const hotel: Booking = {
+      ...flightBooking,
+      id: 'bk-h',
+      type: BOOKING_TYPE.HOTEL,
+      fromPlaceId: undefined,
+      toPlaceId: undefined,
+      placeId: 'kef',
+    };
+    const stay = ev({
+      id: 'stay',
+      bookingId: 'bk-h',
+      category: 'lodging',
+      date: '2026-07-05',
+      endDate: DATE,
+      startsAt: '2026-07-05T15:00:00+00:00',
+      endsAt: '2026-07-07T10:00:00+00:00',
+    });
+    const g = buildDayGlance([stay], DATE, ms('12:00'), day07, day23, JLM, {
+      bookings: [hotel],
+      places,
+      crossings: [],
+      primaryZone: JLM,
+      ambientZone: JLM,
+    });
+    const point = g.anchors[0];
+    expect(point.kind).toBe('point');
+    if (point.kind === 'point') {
+      expect(point.zone).toBe(KEF);
+      expect(point.deltaMinutes).toBe(-180);
+    }
   });
 });
