@@ -595,18 +595,18 @@ function TripReady({
     currentTab === HOME_TAB
       ? defaultDay
       : resolveActiveDate(searchParams.get(DAY_PARAM), trip.startDate, trip.endDate, defaultDay);
-  // Selecting a day = navigating to it in the day view. Writes the single source
-  // (`?day=`, cleared when it's today) and lands on the `days` tab in one step, so
-  // the day can never be dropped by a follow-up tab navigation. Always `replace`
+  // Selecting a day = focusing it on a day-scoped surface. Writes the single
+  // source (`?day=`, cleared when it's today); from the Day view or Map it stays
+  // in place, otherwise it routes to the Day view (ADR-0110 §4). Always `replace`
   // (a lateral view change, ADR-0090): back from a day resolves to Home from
   // state, not by walking the days you tapped. Clamped to the reactive trip range.
   const setActiveDate = useCallback(
     (date: string) => {
       const clamped = clampDate(date, trip.startDate, trip.endDate);
-      const { to, replace } = daySelectTarget(clamped, defaultDay);
+      const { to, replace } = daySelectTarget(clamped, defaultDay, currentTab);
       navigate(to, { replace });
     },
-    [navigate, trip.startDate, trip.endDate, defaultDay],
+    [navigate, trip.startDate, trip.endDate, defaultDay, currentTab],
   );
 
   const lastSeqRef = useRef(snapshot.latestSeq);

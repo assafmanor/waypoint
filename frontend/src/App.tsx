@@ -53,6 +53,7 @@ const PlanHome = lazy(() => import('./screens/PlanHome').then((m) => ({ default:
 const PlanDay = lazy(() => import('./screens/PlanDay').then((m) => ({ default: m.PlanDay })));
 const DayView = lazy(() => import('./screens/DayView').then((m) => ({ default: m.DayView })));
 const Index = lazy(() => import('./screens/Index').then((m) => ({ default: m.Index })));
+const MapView = lazy(() => import('./screens/Map').then((m) => ({ default: m.MapView })));
 const AllTrips = lazy(() => import('./screens/AllTrips').then((m) => ({ default: m.AllTrips })));
 const CreateTrip = lazy(() =>
   import('./screens/CreateTrip').then((m) => ({ default: m.CreateTrip })),
@@ -343,6 +344,7 @@ function Screen({ tab, onNavigate }: { tab: TabId; onNavigate: (tab: TabId) => v
   if (tab === 'days') return mode === 'trip' ? <DayView /> : <PlanDay />;
   // Index content is mode-agnostic (ADR-0049 — mode tints chrome only).
   if (tab === 'index') return <Index />;
+  if (tab === 'map') return <MapView />;
   return <Placeholder tab={tab} mode={mode} />;
 }
 

@@ -51,6 +51,35 @@ export const t = {
     index: 'אינדקס',
     days: 'יום-יום',
   },
+  // Map tab (Phase 3, ADR-0109/0110): the list-first pinned-place surface.
+  map: {
+    filter: {
+      all: 'הכל',
+      maybes: 'אולי',
+      categoryLabel: 'סינון לפי קטגוריה',
+      noResultsTitle: 'אין מקומות שמתאימים לסינון',
+    },
+    search: {
+      button: 'חיפוש מקומות',
+      modeTitle: 'חיפוש מקומות',
+      placeholder: 'שם או כתובת',
+      clear: 'ניקוי',
+      backAria: 'סגירת חיפוש',
+      noResultsTitle: 'לא נמצאו מקומות',
+    },
+    // Map-local day scope (ADR-0110 §4): the strip focuses one day; this chip
+    // shows every day's places at once.
+    allDays: 'כל הימים',
+    scopeAll: 'כל המקומות בטיול',
+    scopeDay: 'המקומות של היום',
+    // A coordless Place-lite: listed, but nothing to navigate to yet.
+    listedOnly: 'ללא מיקום',
+    shelfTag: 'על המדף',
+    empty: {
+      title: 'אין עדיין מקומות',
+      body: 'מקומות שתוסיפו לאירועים, להזמנות ולמדף האולי יופיעו כאן.',
+    },
+  },
   header: {
     dayOf: (day: number, total: number) => `יום ${day} מתוך ${total}`,
     // Plan mode, pre-trip: the header leads with the countdown to departure
