@@ -40,3 +40,12 @@ Two gaps, surfaced together:
 - **Lock everything on non-today days (past and future alike):** rejected — would also hide Done/Skip/Navigate on a past day and Delay/Swap on a future one, breaking legitimate on-the-ground use (settling yesterday's stragglers, nudging tomorrow's known plan) for no safety gain.
 - **Fold day-scope into the existing tier numbers (e.g. "past-day edit = Tier 3"):** rejected — conflates two different questions (blast radius vs. temporal reachability); a Tier-1 verb like Done doesn't change blast radius by moving to yesterday, so it shouldn't inherit Tier-3's gate-to-Plan-mode UX.
 - **Only handle past days, leave future-day Do-it-now unaddressed:** rejected — same underlying axis, and the incoherence (Do-it-now on a day that hasn't started) is a real, easy-to-hit bug otherwise.
+
+## Amendment (2026-07-24, session 96) — which zone answers "is this day past?"
+
+The Decision above derives day-scope via `todayInTz(trip.timezone, …)`. [ADR-0107](0107-per-place-timezones-and-multi-zone-time.md) slice 3 makes the live "now" follow the **current itinerary segment's** zone instead of the single trip zone, which splits this one comparison into two questions with different answers on a zone-crossing day:
+
+- **The day-scope _label_** (past / today / future, the day-strip pill and the day view's history signal) follows the **live** zone — that is what "past to me, right now" means to someone standing in the destination.
+- **The lock** — everything in "Past day, Trip mode" above — is answered in **the day's own ambient zone** (its itinerary-segment zone at noon): `todayInTz(dayAmbientZone, now) > date`.
+
+They are the same on every single-zone trip and on every non-crossing day. They diverge exactly once: flying east overnight, the live zone rolls the date forward mid-flight, so keying the lock to it would archive the travel day **while you are still living it** — locking create/edit/move on a day whose events are still ahead of you. **A day is over when that day's clock says so.** Nothing else in this ADR changes; the allowed/locked verb sets and the future-day rule are untouched.
