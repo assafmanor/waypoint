@@ -27,7 +27,7 @@ import {
 } from '../ui/domain';
 import { useClock } from '../lib/useClock';
 import { hotelWifi, nextCodedBooking } from '../lib/home-quick';
-import { eventRoute } from '../lib/places';
+import { currentZone, eventRoute } from '../lib/places';
 import { TAB_PARAM } from '../state/nav-state';
 import {
   countdownParts,
@@ -62,13 +62,25 @@ const startTransitionKey = (e: TripEvent): string | undefined =>
 const hourLabel = (hour: number) => `${String(hour).padStart(2, '0')}:00`;
 
 export function Home({ onNavigate }: { onNavigate?: (tab: TabId) => void }) {
-  const { trip, bookings, places, events, activeDate, changeFeed, dismissChange, clearChangeFeed } =
-    useTrip();
+  const {
+    trip,
+    bookings,
+    places,
+    events,
+    zoneCrossings,
+    activeDate,
+    changeFeed,
+    dismissChange,
+    clearChangeFeed,
+  } = useTrip();
   const toast = useToast();
   const navigate = useNavigate();
   const now = useClock();
-  const tz = trip.timezone;
   const nowMs = now.getTime();
+  // The board is Trip mode's live surface, so its framing — "today", the day
+  // window, the progress bar, the now/next clock — reads in the zone of the
+  // itinerary segment you're currently in (ADR-0107 §4), not a fixed trip zone.
+  const tz = currentZone(nowMs, zoneCrossings, trip.timezone);
   const today = todayInTz(tz, now);
 
   // Ambient hotels are backdrop, never a now/next block — once you've checked in

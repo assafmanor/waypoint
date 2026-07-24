@@ -159,6 +159,16 @@ export function segmentZoneAt(instantMs: number, crossings: ZoneCrossing[]): str
   return zone;
 }
 
+/** The zone the live "now" sits in (ADR-0107 §4): the itinerary segment holding
+ *  `nowMs`, falling back to the trip primary zone when no crossing anchors the
+ *  timeline. Trip mode reads the clock, the now-line and "today" through this, so
+ *  they track which side of a crossing you're on — via the itinerary, never GPS.
+ *  Plan mode deliberately does NOT use it: planning is framed in the trip primary
+ *  zone (§4). */
+export function currentZone(nowMs: number, crossings: ZoneCrossing[], primaryZone: string): string {
+  return segmentZoneAt(nowMs, crossings) ?? primaryZone;
+}
+
 /** The resolved display zones for an event's start and end (they differ only for
  *  zone-crossing transport). Priority (ADR-0107 §3, ADR-0110 §94-99):
  *    1. `displayTimezone` manual override — honoured forever, both ends.

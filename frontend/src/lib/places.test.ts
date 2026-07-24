@@ -19,6 +19,7 @@ import {
   eventPlaceUrl,
   eventRoute,
   eventZones,
+  currentZone,
   mapsDirectionsUrl,
   mapsPlaceUrl,
   referencedPlaceIds,
@@ -26,6 +27,7 @@ import {
   tripZoneCrossings,
   type ZoneContext,
 } from './places';
+import { todayInTz } from './time';
 import type { MaybeItem } from '@waypoint/shared';
 
 const place = (id: string, name: string, coords?: Partial<Place>): Place => ({
@@ -439,5 +441,32 @@ describe('per-event display zones (ADR-0107 multi-zone model)', () => {
         }),
       ).toBeUndefined();
     });
+  });
+});
+
+describe('currentZone — the live "now" follows your itinerary segment (ADR-0107 §4)', () => {
+  const JLM = 'Asia/Jerusalem';
+  const TYO = 'Asia/Tokyo';
+  // One outbound crossing, departing 20:00Z.
+  const cs = [{ at: Date.parse('2026-07-07T20:00:00Z'), fromZone: JLM, toZone: TYO }];
+
+  it('reads the origin zone before the crossing and the destination at/after it', () => {
+    expect(currentZone(Date.parse('2026-07-07T05:00:00Z'), cs, TYO)).toBe(JLM);
+    expect(currentZone(Date.parse('2026-07-07T20:00:00Z'), cs, TYO)).toBe(TYO);
+    expect(currentZone(Date.parse('2026-07-09T10:00:00Z'), cs, TYO)).toBe(TYO);
+  });
+
+  it('falls back to the trip primary zone when nothing anchors the timeline', () => {
+    expect(currentZone(Date.parse('2026-07-07T05:00:00Z'), [], TYO)).toBe(TYO);
+  });
+
+  it('rolls the calendar day at the live segment midnight, so "today" re-anchors', () => {
+    // 22:00Z on the 7th: still the 7th in Jerusalem (+3 → 01:00 on the 8th, so the
+    // 8th) — the point is the two zones disagree about the date, and the live zone
+    // is what "today" must follow after the crossing.
+    const at = new Date('2026-07-07T16:00:00Z'); // 19:00 JLM (7th) vs 01:00 TYO (8th)
+    expect(todayInTz(currentZone(at.getTime(), cs, TYO), at)).toBe('2026-07-07'); // pre-crossing → JLM
+    const after = new Date('2026-07-07T20:30:00Z'); // 05:30 TYO on the 8th
+    expect(todayInTz(currentZone(after.getTime(), cs, TYO), after)).toBe('2026-07-08');
   });
 });

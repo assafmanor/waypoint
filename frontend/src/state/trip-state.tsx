@@ -71,6 +71,7 @@ import {
   restOrQueue,
   subscribeSyncFailures,
 } from '../lib/outbox';
+import { currentZone, tripZoneCrossings, type ZoneCrossing } from '../lib/places';
 import { openTripStream } from '../lib/ws';
 import {
   CHANGE_FEED_LIMIT,
@@ -384,6 +385,9 @@ interface TripContextValue {
   members: Membership[];
   bookings: Booking[];
   places: Place[];
+  /** The trip's zone crossings (ADR-0107 §3) — derived once here so every surface
+   *  reads the same partition and the per-minute clock tick never re-derives it. */
+  zoneCrossings: ZoneCrossing[];
   documents: DocumentSummary[];
   activeDate: string;
   setActiveDate: (date: string) => void;
@@ -577,11 +581,24 @@ function TripReady({
   // so Home ALWAYS derives to today, in every mode, with no reset effect at all.
   const [searchParams] = useSearchParams();
   const navigate = useNavigate();
+  // The trip's zone crossings (ADR-0107 §3): derived once here so every surface
+  // reads the same partition instead of recomputing it, and so the per-minute
+  // clock tick never re-derives it — a crossing only moves when transport/places
+  // change.
+  const zoneCrossings = useMemo<ZoneCrossing[]>(
+    () => tripZoneCrossings(state.events, bookings, places),
+    [state.events, bookings, places],
+  );
+
   // "Today", clamped to the (reactive) trip range — the Trip-mode amber anchor and
   // the value the URL param is omitted for (a clean `/`). Recomputed per render so
   // a midnight/idle rollover lands on the new today.
+  //
+  // Read in the LIVE zone (ADR-0107 §4): the calendar day rolls at the current
+  // itinerary segment's midnight, so crossing a zone re-anchors "today" — via the
+  // itinerary, never GPS. Falls back to the trip primary when nothing crosses.
   const defaultDay = clampDate(
-    todayInTz(trip.timezone, new Date(getNow())),
+    todayInTz(currentZone(getNow(), zoneCrossings, trip.timezone), new Date(getNow())),
     trip.startDate,
     trip.endDate,
   );
@@ -1039,6 +1056,7 @@ function TripReady({
       members,
       bookings,
       places,
+      zoneCrossings,
       documents,
       activeDate,
       setActiveDate,
@@ -1061,6 +1079,7 @@ function TripReady({
       members,
       bookings,
       places,
+      zoneCrossings,
       documents,
       settings,
       indexVerbs,

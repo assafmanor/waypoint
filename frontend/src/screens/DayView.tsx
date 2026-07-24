@@ -27,10 +27,9 @@ import {
   eventPlaceUrl,
   eventRoute,
   eventZones,
+  currentZone,
   segmentZoneAt,
-  tripZoneCrossings,
   type ZoneContext,
-  type ZoneCrossing,
 } from '../lib/places';
 import { useVerbs } from '../state/verbs';
 import { useClock } from '../lib/useClock';
@@ -117,8 +116,17 @@ const groupKey = (g: TimeGroup) =>
   g.kind === 'cluster' ? `cl-${g.items[0].event.id}` : g.item.event.id;
 
 export function DayView() {
-  const { trip, events, maybeItems, bookings, places, activeDate, ripple, setActiveDate } =
-    useTrip();
+  const {
+    trip,
+    events,
+    maybeItems,
+    bookings,
+    places,
+    zoneCrossings,
+    activeDate,
+    ripple,
+    setActiveDate,
+  } = useTrip();
   const verbs = useVerbs();
   const now = useClock();
   const [openId, setOpenId] = useState<string | null>(null);
@@ -131,11 +139,22 @@ export function DayView() {
   const [detailTarget, setDetailTarget] = useState<Booking | null>(null);
   const [scheduleItem, setScheduleItem] = useState<MaybeItem | null>(null);
 
-  const today = todayInTz(trip.timezone, now);
+  // The live "now" sits in the zone of the itinerary segment you're in (ADR-0107
+  // §4), so "today" rolls at THAT zone's midnight — cross a zone and the calendar
+  // day re-anchors. Trip mode only; Plan mode frames everything in the trip primary.
+  const liveZone = currentZone(now.getTime(), zoneCrossings, trip.timezone);
+  const today = todayInTz(liveZone, now);
   const dayScope: DayScope = activeDate < today ? 'past' : activeDate > today ? 'future' : 'today';
-  // A past day is a read-only archive within a live trip (ADR-0029): create /
-  // edit / delete / move are locked; Done / Skip / Navigate stay.
-  const readOnly = dayScope === 'past';
+  // The day's OWN ambient zone (its segment zone at noon) — what decides when this
+  // day is over, below.
+  const dayNoon = new Date(zonedIso(activeDate, '12:00', trip.timezone));
+  const ambientZone = segmentZoneAt(dayNoon.getTime(), zoneCrossings) ?? trip.timezone;
+  // A past day is a read-only archive within a live trip (ADR-0029) — but "past"
+  // for EDITING is decided in the day's own zone, not the live one (ADR-0029
+  // amendment / ADR-0107 §4). Otherwise crossing east mid-flight rolls the live
+  // clock into tomorrow and the day you're still flying through would lock itself
+  // while you're living it. A day ends when that day's clock says so.
+  const readOnly = todayInTz(ambientZone, now) > activeDate;
 
   const dayEvents = events
     .filter((e) => e.date === activeDate && e.status !== EVENT_STATUS.SKIPPED && !isAmbient(e))
@@ -163,22 +182,18 @@ export function DayView() {
   );
 
   const dayNumber = daysBetween(trip.startDate, activeDate) + 1;
-  const dayNoon = new Date(zonedIso(activeDate, '12:00', trip.timezone));
   const weekday = new Intl.DateTimeFormat('he-IL', {
     weekday: 'long',
     timeZone: trip.timezone,
   }).format(dayNoon);
   const heading = t.day.heading(dayNumber, weekday, trip.destination);
 
-  // Multi-zone display (ADR-0107): the trip's crossings anchor per-event zones,
-  // and the day's ambient zone (its segment zone at noon, else the trip primary)
-  // is what the non-trivial-suppression rule labels deviations from.
-  const crossings: ZoneCrossing[] = tripZoneCrossings(events, bookings, places);
-  const ambientZone = segmentZoneAt(dayNoon.getTime(), crossings) ?? trip.timezone;
+  // Per-event display zones (ADR-0107): the shared crossings anchor them, and the
+  // day's ambient zone is what the shift pill measures deviations from.
   const zoneCtx: ZoneContext = {
     bookings,
     places,
-    crossings,
+    crossings: zoneCrossings,
     primaryZone: trip.timezone,
     ambientZone,
   };
@@ -298,7 +313,7 @@ export function DayView() {
             key={entry.kind === 'event' ? groupKey(entry.group) : `${entry.event.id}-${entry.edge}`}
           >
             {showNowLine && i === nowLineIndex && (
-              <NowLine ref={nowLineRef} now={now} tz={trip.timezone} />
+              <NowLine ref={nowLineRef} now={now} tz={liveZone} />
             )}
             {entry.kind === 'event' ? (
               <GroupNode group={entry.group} depth={0} ctx={dayCtx} />
@@ -315,7 +330,7 @@ export function DayView() {
           </Fragment>
         ))}
         {showNowLine && nowLineIndex === merged.length && (
-          <NowLine ref={nowLineRef} now={now} tz={trip.timezone} />
+          <NowLine ref={nowLineRef} now={now} tz={liveZone} />
         )}
         {untimed.map((e) => (
           <ItemNode key={e.id} item={{ event: e, children: [] }} depth={0} ctx={dayCtx} />
