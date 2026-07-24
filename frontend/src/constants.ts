@@ -154,6 +154,18 @@ export const CODE_PREFIX = '#';
  *  separator. */
 export const DOT_SEPARATOR = '·';
 
+/** Longest combined origin+destination label (in characters, after
+ *  `shortPlaceLabel`) that still reads as one inline route on a day row; past it
+ *  the row goes destination-primary (ADR-0059 §3 amendment).
+ *
+ *  Deliberately a **character count, not a measured width**: the Trip card and
+ *  the Plan builder row have different amounts of room (the builder also carries
+ *  a drag grip, ▲/▼, and the ⋯ button), so a per-row measurement made the two
+ *  modes disagree about the same flight. A shared threshold takes the same input
+ *  on both surfaces, so they cannot diverge. Tuned for the NARROWER of the two
+ *  (the builder row), so a route that stays inline fits in both. */
+export const ROUTE_INLINE_MAX_CHARS = 26;
+
 /** Active-trip override — per-device, not synced (ADR-0021). */
 export const ACTIVE_TRIP_STORAGE_KEY = 'wp_active_trip_id';
 
