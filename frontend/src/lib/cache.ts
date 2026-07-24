@@ -88,7 +88,10 @@ function applyToRow<T extends { id: string }>(
   change: EntityChange,
 ): T | undefined {
   if (change.action === CHANGE_ACTION.DELETE) return undefined;
-  const partial = change.after as Partial<T> | undefined;
+  // A change may clear a field with `null` (ADR-0107's `displayTimezone`, a trip's
+  // destination); entity types use `undefined` for absent, so a raw merge would
+  // cache a `null` the schema rejects on the next cold load.
+  const partial = coerceClearedFields<T>(change.after);
   if (!partial) return existing;
   return { ...(existing as T), ...partial, id: change.entityId } as T;
 }
@@ -169,17 +172,23 @@ export async function applyChangeToCache(tripId: string, change: EntityChange): 
   if (listed) await db.tripList.put({ ...listed, ...partial });
 }
 
-/** A trip destination field crosses the wire as `null` to clear it
- *  (updateTripSchema), but the local `Trip` uses `undefined` for absent. Coerce
- *  a trip change's `after` so a cleared field overwrites as `undefined` (the key
- *  stays present) rather than persisting a `null` — used by both the cache merge
- *  above and the in-memory merge in trip-state. */
-export function coerceTripPatch(after: unknown): Partial<Trip> | undefined {
-  if (after == null) return undefined;
+/** A **clearable** field crosses the wire as `null` (a trip's destination,
+ *  an event's `displayTimezone` — the "unset me" signal an absent key can't
+ *  express), but local entities use `undefined` for absent. Coerce a patch so a
+ *  cleared field overwrites as `undefined` — the key stays present, so the merge
+ *  still removes the old value — rather than persisting a `null` the entity type
+ *  doesn't allow. One helper for every entity with a clearable field: the trip
+ *  cache/memory merges and the optimistic event update both route through it. */
+export function coerceClearedFields<T>(patch: unknown): Partial<T> | undefined {
+  if (patch == null) return undefined;
   return Object.fromEntries(
-    Object.entries(after as Record<string, unknown>).map(([k, v]) => [k, v ?? undefined]),
-  ) as Partial<Trip>;
+    Object.entries(patch as Record<string, unknown>).map(([k, v]) => [k, v ?? undefined]),
+  ) as Partial<T>;
 }
+
+/** `coerceClearedFields` bound to `Trip` — the trip change/patch call sites. */
+export const coerceTripPatch = (after: unknown): Partial<Trip> | undefined =>
+  coerceClearedFields<Trip>(after);
 
 /** Wipes every trace of the signed-in session's local data (sign-out / session
  *  loss, F-01): all Dexie tables, the per-device active-trip pointer, and the

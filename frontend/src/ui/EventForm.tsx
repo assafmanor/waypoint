@@ -16,6 +16,7 @@ import {
   type TripEvent,
 } from '@waypoint/shared';
 import { useTrip } from '../state/trip-state';
+import { eventDisplayZones, placeTimezone, type ZoneContext } from '../lib/places';
 import { useAuth } from '../state/auth-state';
 import { useVerbs } from '../state/verbs';
 import { getNow } from '../lib/useClock';
@@ -49,19 +50,66 @@ export function EventForm({
   maybeItem?: MaybeItem | null;
   onClose: () => void;
 }) {
-  const { trip, activeDate, events } = useTrip();
+  const { trip, activeDate, events, bookings, places, zoneCrossings } = useTrip();
   const { me } = useAuth();
   const verbs = useVerbs();
-  const tz = trip.timezone;
+
+  // A booking-linked event's place + category live on the booking (ADR-0051 /
+  // ADR-0109 §11), edited there — so the form only authors them for a standalone
+  // event or a shelf schedule.
+  const showPlace = !event?.bookingId;
+  const showCategory = !event?.bookingId;
+
+  // ── Which zone this form authors in (ADR-0107 §2-3) ───────────────────────
+  // The times typed here mean a wall-clock in ONE zone, resolved the same way the
+  // day view resolves the event's display zone: the manual override if pinned,
+  // else the picked place, else the itinerary segment, else the trip primary. An
+  // existing event is read back in that same zone, so the form and the view agree
+  // (the slice-4a rule, now for events too).
+  const zoneCtx: Omit<ZoneContext, 'ambientZone'> = {
+    bookings,
+    places,
+    crossings: zoneCrossings,
+    primaryZone: trip.timezone,
+  };
+  const initialOverride = event?.displayTimezone ?? null;
+  const [override, setOverride] = useState<string | null>(initialOverride);
+
+  // The zone an event with these fields would display in. Placeless times resolve
+  // through their itinerary segment, which needs an instant — and the instant needs
+  // a zone, so this reads the segment twice: once interpreting the typed time in the
+  // trip primary, then again in the zone that produced. Two passes reach the fixed
+  // point wherever the two agree, which is everywhere but a time sitting within a
+  // few hours of a crossing.
+  const derivedZone = (atDate: string, atTime: string, forPlaceId?: string): string => {
+    const resolve = (interpretIn: string): string =>
+      eventDisplayZones(
+        {
+          ...(event ?? {}),
+          displayTimezone: undefined,
+          placeId: showPlace ? forPlaceId : event?.placeId,
+          startsAt: atTime ? zonedIso(atDate, atTime, interpretIn) : undefined,
+        } as TripEvent,
+        zoneCtx,
+      ).start;
+    return resolve(resolve(trip.timezone));
+  };
 
   // Initial values captured up front so the unsaved-changes guard can diff
   // against them (props are stable while the form is open).
   const initialTitle = event?.title ?? maybeItem?.title ?? '';
   const initialDate = event?.date ?? defaults?.date ?? activeDate;
+  const initialZone =
+    initialOverride ??
+    (event
+      ? eventDisplayZones(event, zoneCtx).start
+      : derivedZone(initialDate, defaults?.start ?? '', maybeItem?.placeId));
   const initialStart = event?.startsAt
-    ? isoToTimeInput(event.startsAt, tz)
+    ? isoToTimeInput(event.startsAt, initialZone)
     : (defaults?.start ?? '');
-  const initialEnd = event?.endsAt ? isoToTimeInput(event.endsAt, tz) : (defaults?.end ?? '');
+  const initialEnd = event?.endsAt
+    ? isoToTimeInput(event.endsAt, initialZone)
+    : (defaults?.end ?? '');
   const initialKind: TripEvent['kind'] = event?.kind ?? EVENT_KIND.SOFT;
   const initialIcon = event?.icon ?? maybeItem?.icon ?? DEFAULT_EVENT_ICON;
   const initialCategory = event?.category ?? maybeItem?.category;
@@ -82,18 +130,24 @@ export function EventForm({
   const [placeId, setPlaceId] = useState<string | undefined>(initialPlaceId);
   const [error, setError] = useState<string | null>(null);
 
-  // A booking-linked event's place + category live on the booking (ADR-0051 /
-  // ADR-0109 §11), edited there — so the form only authors them for a standalone
-  // event or a shelf schedule.
-  const showPlace = !event?.bookingId;
-  const showCategory = !event?.bookingId;
-
   const pickCategory = (next: EventCategory) => {
     setCategory(next);
     if (!iconTouched) setIcon(iconForCategory(next));
   };
 
+  // The zone in force right now: the pinned override, else re-derived from the
+  // fields as they stand (changing the place or the day can move it).
+  const tz = override ?? derivedZone(date, start, placeId);
+  // Suggested zones in the picker: what this trip actually touches (its places'
+  // zones + its primary), most relevant first — never the raw IANA list alone.
+  const suggestedZones = useMemo(() => {
+    const zones = [tz, trip.timezone];
+    for (const p of places) if (p.timezone) zones.push(p.timezone);
+    return [...new Set(zones)];
+  }, [tz, trip.timezone, places]);
+
   const dirty =
+    override !== initialOverride ||
     title !== initialTitle ||
     date !== initialDate ||
     start !== initialStart ||
@@ -139,6 +193,10 @@ export function EventForm({
       category,
       kind,
       placeId: showPlace ? placeId : undefined,
+      // Only ever the user's own choice (ADR-0110 §94-99): a pinned zone is sent,
+      // and clearing one sends `null` to hand the event back to the derivation. An
+      // untouched form sends nothing, so it can't freeze today's derived zone.
+      displayTimezone: override !== initialOverride ? override : undefined,
       startsAt: start ? zonedIso(date, start, tz) : undefined,
       endsAt: end
         ? start
@@ -172,6 +230,7 @@ export function EventForm({
         icon: parsed.data.icon,
         category: parsed.data.category,
         placeId: parsed.data.placeId,
+        displayTimezone: parsed.data.displayTimezone ?? undefined,
       });
     } else {
       const parsed = createEventSchema.safeParse(fields);
@@ -180,6 +239,7 @@ export function EventForm({
       const now = new Date(getNow()).toISOString();
       verbs.create({
         ...parsed.data,
+        displayTimezone: parsed.data.displayTimezone ?? undefined,
         id: crypto.randomUUID(),
         tripId: trip.id,
         status: EVENT_STATUS.PLANNED,
@@ -255,6 +315,18 @@ export function EventForm({
               setDate(next.date);
               setStart(next.start);
               setEnd(next.end);
+            }}
+            zone={{
+              value: tz,
+              // A placed event's zone follows its place — correcting it there is
+              // the honest edit, so the chip is read-only once a place is picked
+              // (ADR-0107 §3: place wins). The override exists for the PLACELESS
+              // case, where only the segment/primary fallback would decide.
+              onChange: placeTimezone(places, showPlace ? placeId : undefined)
+                ? undefined
+                : setOverride,
+              pinned: override != null,
+              suggested: suggestedZones,
             }}
             minDate={trip.startDate}
             maxDate={trip.endDate}

@@ -228,6 +228,23 @@ describe('applyChangeToCache', () => {
     expect(trip?.destinationGooglePlaceId).toBeUndefined();
     expect(trip?.destinationLat).toBeUndefined();
   });
+
+  it('coerces a cleared event field to undefined too, not only the trip (ADR-0107)', async () => {
+    await cacheSnapshot(
+      TRIP_ID,
+      snapshot({ events: [{ ...EVENTS[0], displayTimezone: 'Asia/Jerusalem' }] }),
+    );
+    // The zone chip's reset crosses the wire as null; a cached `null` would fail
+    // the entity schema on the next cold load, so it must land as undefined.
+    await applyChangeToCache(TRIP_ID, {
+      ...baseChange,
+      entityId: EVENTS[0].id,
+      action: 'update',
+      after: { displayTimezone: null },
+    });
+    const cached = (await readCachedSnapshot(TRIP_ID))?.events[0];
+    expect(cached?.displayTimezone).toBeUndefined();
+  });
 });
 
 describe('cacheSnapshot mirrors documents (ADR-0058)', () => {
