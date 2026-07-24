@@ -276,7 +276,10 @@ export const t = {
       createTitle: 'הזמנה חדשה',
       originLabel: 'מוצא 📍',
       destLabel: 'יעד 📍',
-      routeHint: 'שמות המקומות מזינים את המפה בהמשך',
+      routeLabel: 'מסלול',
+      // Title-row preview when neither endpoint is picked yet.
+      routePreviewGhost: 'בחרו מוצא ויעד',
+      routeHint: 'מקומות אמיתיים · מזינים את המפה ואזורי הזמן',
       dateLabel: 'תאריך (משבץ במסלול)',
       departLabel: 'יציאה 🛫',
       arriveLabel: 'הגעה 🛬',
