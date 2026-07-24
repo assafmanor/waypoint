@@ -14,6 +14,7 @@ const places: Place[] = [
     name: 'תל אביב',
     lat: 32,
     lng: 34.8,
+    timezone: 'Asia/Jerusalem',
     createdAt: '',
     updatedAt: '',
     updatedBy: 'u',
@@ -24,6 +25,7 @@ const places: Place[] = [
     name: 'טוקיו',
     lat: 35.7,
     lng: 139.7,
+    timezone: 'Asia/Tokyo',
     createdAt: '',
     updatedAt: '',
     updatedBy: 'u',
@@ -55,6 +57,7 @@ vi.mock('../state/trip-state', () => ({
 import { ToastProvider } from './Toast';
 import { NavProvider } from '../state/nav-state';
 import { BookingSheet } from './BookingSheet';
+import { zoneCity } from './primitives/ZonePicker';
 import { t } from '../i18n/he';
 
 function wrap(node: ReactNode) {
@@ -100,5 +103,19 @@ describe('BookingSheet — transport route as picked places (ADR-0113 follow-up)
       wrap(<BookingSheet booking={null} seed={{ type: BOOKING_TYPE.FLIGHT }} onClose={() => {}} />),
     );
     expect(screen.getByText(t.index.form.routePreviewGhost)).toBeTruthy();
+  });
+
+  it('shows a zone note so each leg reads in its own zone (ADR-0107 form authoring)', () => {
+    // The sheet renders through a Modal portal, so query the document, not the
+    // render container.
+    render(wrap(<BookingSheet booking={flight} onClose={() => {}} />));
+    // The flight crosses zones (Jerusalem → Tokyo): the note names both zones so
+    // it's clear the departure is origin time and the arrival destination time…
+    const note = document.querySelector('.bs-zone-note');
+    expect(note).not.toBeNull();
+    expect(note!.textContent).toContain(t.index.form.zoneAt(zoneCity('Asia/Jerusalem')));
+    expect(note!.textContent).toContain(t.index.form.zoneAt(zoneCity('Asia/Tokyo')));
+    // …and shows the shift (Tokyo is 6h ahead of Jerusalem in summer).
+    expect(document.querySelector('.bs-zone-delta')?.textContent).toContain('+6');
   });
 });

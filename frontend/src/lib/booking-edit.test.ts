@@ -160,6 +160,20 @@ describe('buildSpanSeed', () => {
     expect(seed?.endDate).toBeUndefined();
     expect(seed?.date).toBe('2026-07-20');
   });
+
+  it('resolves each leg in its own zone when endTimeZone differs (ADR-0107)', () => {
+    // Depart 07:15 Tel Aviv (IDT, +3) → land 11:00 Reykjavik (GMT+0), same date.
+    const seed = buildSpanSeed(
+      { startAt: '2026-07-24T07:15', endAt: '2026-07-24T11:00', kind: 'hard' },
+      'Asia/Jerusalem',
+      'Atlantic/Reykjavik',
+    )!;
+    expect(seed.startsAt).toBe('2026-07-24T04:15:00.000Z'); // 07:15 +03:00
+    expect(seed.endsAt).toBe('2026-07-24T11:00:00.000Z'); // 11:00 +00:00
+    // True elapsed time is 6h45 — the zone shift is real, not the 3h45 the raw
+    // wall-clocks suggest.
+    expect((Date.parse(seed.endsAt!) - Date.parse(seed.startsAt!)) / 60000).toBe(6 * 60 + 45);
+  });
 });
 
 describe('routeTitle', () => {

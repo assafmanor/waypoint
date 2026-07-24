@@ -3226,6 +3226,19 @@
   color: var(--muted);
   margin-top: -6px;
 }
+/* Which-zone caption under a booking's schedule (ADR-0107): quiet, with the
+   shift in amber (a time concept) so a zone-crossing flight reads clearly. */
+.booking-sheet .bs-zone-note {
+  font-size: 11.5px;
+  font-weight: 600;
+  color: var(--muted);
+  margin-top: 6px;
+}
+.booking-sheet .bs-zone-delta {
+  font-family: var(--font-mono);
+  font-weight: 700;
+  color: var(--amber-deep);
+}
 .booking-sheet .bs-error {
   font-size: 12px;
   font-weight: 700;

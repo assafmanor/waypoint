@@ -40,9 +40,10 @@ import {
   isoToDateTimeLocal,
   routeTitle,
 } from '../lib/booking-edit';
-import { placeName } from '../lib/places';
+import { placeName, placeTimezone } from '../lib/places';
 import { withChangeGroup } from '../lib/outbox';
-import { isoToTimeInput, zonedIso } from '../lib/time';
+import { formatZoneDelta, isoToTimeInput, zoneOffsetMinutes, zonedIso } from '../lib/time';
+import { zoneCity } from './primitives/ZonePicker';
 import { bookingDurationUnit, timingLabels } from '../lib/booking-timing';
 import { BOOKING_TYPE_ICON } from '../constants';
 import { t } from '../i18n/he';
@@ -115,15 +116,22 @@ export function BookingSheet({
   const initialWifiNetwork = wifi?.network ?? '';
   const initialWifiPassword = wifi?.password ?? '';
   const initialDate = linkedEvent?.date ?? '';
+  // Each leg reads in its own endpoint's zone (ADR-0107): a flight's departure in
+  // its origin, its arrival in its destination; a single-place booking in its
+  // place. Falls back to the trip primary zone when no place resolves a zone.
+  const zoneOf = (id?: string) => placeTimezone(places, id) ?? trip.timezone;
+  const initTransport = isTransportType(initialType);
+  const initStartZone = initTransport ? zoneOf(initialFromPlaceId) : zoneOf(initialPlaceId);
+  const initEndZone = initTransport ? zoneOf(initialToPlaceId) : zoneOf(initialPlaceId);
   const initialStart = linkedEvent?.startsAt
-    ? isoToTimeInput(linkedEvent.startsAt, trip.timezone)
+    ? isoToTimeInput(linkedEvent.startsAt, initStartZone)
     : '';
-  const initialEnd = linkedEvent?.endsAt ? isoToTimeInput(linkedEvent.endsAt, trip.timezone) : '';
+  const initialEnd = linkedEvent?.endsAt ? isoToTimeInput(linkedEvent.endsAt, initEndZone) : '';
   const initialSpanStart = linkedEvent?.startsAt
-    ? isoToDateTimeLocal(linkedEvent.startsAt, trip.timezone)
+    ? isoToDateTimeLocal(linkedEvent.startsAt, initStartZone)
     : '';
   const initialSpanEnd = linkedEvent?.endsAt
-    ? isoToDateTimeLocal(linkedEvent.endsAt, trip.timezone)
+    ? isoToDateTimeLocal(linkedEvent.endsAt, initEndZone)
     : '';
   const initialKind: 'hard' | 'soft' = linkedEvent?.kind ?? defaultKind(initialType);
 
@@ -156,6 +164,15 @@ export function BookingSheet({
   const isTransport = isTransportType(type);
   const isHotel = type === BOOKING_TYPE.HOTEL;
   const isSpan = isSpanType(type);
+  // Live per-endpoint zones (from the current picks): departure/arrival in the
+  // route's origin/destination, a single-place booking in its place (ADR-0107).
+  // Changing a pick keeps the typed wall-clock and re-interprets it in the new
+  // zone on save (§8). Fall back to the trip primary zone when unresolved.
+  const startZone = isTransport ? zoneOf(fromPlaceId) : zoneOf(placeId);
+  const endZone = isTransport ? zoneOf(toPlaceId) : zoneOf(placeId);
+  // A stable instant (trip-start noon) to read the zones' offsets at, for the
+  // shift the note shows — exact enough for a "how far apart" figure.
+  const zoneRefMs = Date.parse(zonedIso(trip.startDate, '12:00', trip.timezone));
   // A booked event's category is its booking type's — canonical (ADR-0038), not
   // the picked glyph. The IconPicker only sets the badge icon; a ⭐ on a hotel
   // stays lodging, so nights/check-in-out/ambient behaviour all follow the type.
@@ -219,8 +236,8 @@ export function BookingSheet({
       const [sDay, sTime] = spanStart.split('T');
       const [eDay, eTime] = spanEnd.split('T');
       if (sTime && eTime) {
-        const s = Date.parse(zonedIso(sDay, sTime, trip.timezone));
-        const e = Date.parse(zonedIso(eDay, eTime, trip.timezone));
+        const s = Date.parse(zonedIso(sDay, sTime, startZone));
+        const e = Date.parse(zonedIso(eDay, eTime, endZone));
         if (e <= s) return setError(t.index.form.endBeforeStart);
       }
     }
@@ -242,9 +259,10 @@ export function BookingSheet({
         const seed = isSpan
           ? buildSpanSeed(
               { startAt: spanStart, endAt: spanEnd, kind, icon, category },
-              trip.timezone,
+              startZone,
+              endZone,
             )
-          : buildEventSeed({ date, start, end, kind, icon, category }, trip.timezone);
+          : buildEventSeed({ date, start, end, kind, icon, category }, startZone);
         // Give the seed a stable event id (ADR-0093): the existing linked event's
         // on edit, a fresh one otherwise. The server upserts under it, so the
         // optimistic linked event the verb mirrors reconciles in place on flush.
@@ -399,8 +417,15 @@ export function BookingSheet({
                 maxDate={trip.endDate}
                 labels={spanLabels(type)}
                 defaultDate={trip.startDate}
-                timeZone={trip.timezone}
+                timeZone={startZone}
+                endTimeZone={endZone}
                 durationUnit={bookingDurationUnit(type)}
+              />
+              <ZoneNote
+                startZone={startZone}
+                endZone={endZone}
+                tripZone={trip.timezone}
+                refMs={zoneRefMs}
               />
               {spanStart && <KindToggle kind={kind} onPick={pickKind} />}
             </>
@@ -420,6 +445,12 @@ export function BookingSheet({
                 }}
                 minDate={trip.startDate}
                 maxDate={trip.endDate}
+              />
+              <ZoneNote
+                startZone={startZone}
+                endZone={endZone}
+                tripZone={trip.timezone}
+                refMs={zoneRefMs}
               />
               {date && <KindToggle kind={kind} onPick={pickKind} />}
             </>
@@ -517,6 +548,44 @@ export function BookingSheet({
       )}
     </>
   );
+}
+
+/** The which-zone-are-these-times caption under a booking's schedule (ADR-0107):
+ *  a zone-crossing route shows both endpoint zones + the shift, so it's clear the
+ *  departure is origin time and the arrival destination time; a single-place
+ *  booking shows its zone only when it differs from the trip primary (otherwise
+ *  there's no ambiguity). Read-only here — the editable zone chip is a later
+ *  slice. */
+function ZoneNote({
+  startZone,
+  endZone,
+  tripZone,
+  refMs,
+}: {
+  startZone: string;
+  endZone: string;
+  tripZone: string;
+  refMs: number;
+}) {
+  if (startZone !== endZone) {
+    const at = new Date(refMs);
+    const delta = zoneOffsetMinutes(at, endZone) - zoneOffsetMinutes(at, startZone);
+    return (
+      <div className="bs-zone-note">
+        🛫 {t.index.form.zoneAt(zoneCity(startZone))} · 🛬 {t.index.form.zoneAt(zoneCity(endZone))}
+        {delta !== 0 && (
+          <>
+            {' · '}
+            <span className="bs-zone-delta">{formatZoneDelta(delta)}</span>
+          </>
+        )}
+      </div>
+    );
+  }
+  if (startZone !== tripZone) {
+    return <div className="bs-zone-note">🕐 {t.index.form.zoneAt(zoneCity(startZone))}</div>;
+  }
+  return null;
 }
 
 function KindToggle({
