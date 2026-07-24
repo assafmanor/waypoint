@@ -14,6 +14,7 @@
 import { useMemo, useState } from 'react';
 import { OVERNIGHT } from '../constants';
 import { t } from '../i18n/he';
+import { hoursPhrase } from '../lib/duration';
 import { TimeField, toMin, toHHMM, centreSelected } from './primitives/TimeField';
 
 export { nearestRoundSlot } from './primitives/TimeField';
@@ -45,19 +46,6 @@ export function endToDuration(startMin: number, endMin: number): number | null {
  *  allows (same day, or the overnight cutoff for an afternoon/evening start). */
 export function clampToLatestEnd(startMin: number, endMin: number): number {
   return Math.min(endMin, latestEnd(startMin));
-}
-
-function durationPhrase(min: number): string {
-  const h = Math.floor(min / 60);
-  const m = min % 60;
-  if (h && m) return t.eventForm.durHoursMinutes(h, m);
-  if (h)
-    return h === 1
-      ? t.eventForm.durHour
-      : h === 2
-        ? t.eventForm.durTwoHours
-        : t.eventForm.durHours(h);
-  return t.eventForm.durMinutes(m);
 }
 
 /** Wall-clock HH:MM for an end that may run into the next day (min ≥ 1440). */
@@ -156,7 +144,7 @@ export function TimePicker({
             <span className="tp-val">
               {duration != null ? (
                 <>
-                  <span>{durationPhrase(duration)}</span>
+                  <span>{hoursPhrase(duration)}</span>
                   <span className="tp-endhm" dir="ltr">
                     {t.eventForm.endsAtPrefix} {end}
                     {endIsNextDay && (
@@ -209,7 +197,7 @@ export function TimePicker({
                       }
                       onClick={() => commitDuration(d)}
                     >
-                      <span>{durationPhrase(d)}</span>
+                      <span>{hoursPhrase(d)}</span>
                       <span className="tp-end" dir="ltr">
                         {t.eventForm.endsAtPrefix} {toEndWall(startMin + d)}
                         {isNextDay(startMin + d) && (

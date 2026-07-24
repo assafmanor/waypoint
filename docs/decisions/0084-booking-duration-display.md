@@ -1,7 +1,10 @@
 # 0084 — Booking duration display: one per-category unit, derived
 
-**Status:** Accepted (2026-07-19)
+**Status:** Accepted (2026-07-19) — the `auto` rounding is superseded by [0114](0114-elapsed-duration-ladder.md) (2026-07-24)
 **Date:** 2026-07-19
+
+> **Note (2026-07-24, ADR-0114):** the `auto` unit's "hours on one calendar day, days when it spans days" rule below rounded on a **calendar-date crossing**, so a 23:00→00:00 booking read "יומיים". [ADR-0114](0114-elapsed-duration-ladder.md) replaces that with one **elapsed-time** ladder (minutes → hours → days → weeks → months → years). The per-kind units this ADR established (**nights** for lodging, **hours** for transport) stand unchanged.
+
 **Relates:** [0063](0063-category-time-behaviour-profile.md) (the per-`category` time-behaviour profile this extends — same closed lookup, same derive-don't-store discipline), [0059](0059-booking-presentation-on-home-and-index.md) (the booking row/detail/hero grammar the read-out lands in), [0053](0053-index-booking-detail-view-and-merged-edit-reach.md) (the Index detail view), [0038](0038-icons-and-canonical-category.md) (`category` is the semantic axis this keys on).
 
 ## Context

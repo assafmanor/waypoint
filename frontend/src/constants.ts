@@ -20,9 +20,13 @@ export const DEVICE_TIMEZONE =
 export const MINUTES_PER_HOUR = 60;
 export const MINUTES_PER_DAY = MINUTES_PER_HOUR * 24;
 
-/** Average Gregorian month — good enough for rounding far-out countdowns,
- *  where a ±1-day error is invisible anyway. */
+export const DAYS_PER_WEEK = 7;
+
+/** Average Gregorian month/year — good enough for rounding far-out countdowns
+ *  and the upper rungs of the duration ladder (ADR-0114), where a ±1-day error
+ *  is invisible anyway. */
 export const DAYS_PER_MONTH = 365.25 / 12;
+export const DAYS_PER_YEAR = 365.25;
 
 /** Day countdowns switch to rounded month counts past this many months —
  *  up close the exact day count is the useful number, far out it's noise

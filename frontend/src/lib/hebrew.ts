@@ -8,11 +8,25 @@ export function dayCount(n: number): { value: string; unit: string } {
   return { value: String(n), unit: 'ימים' };
 }
 
+/** Same dual/plural rule for weeks: "שבוע", "שבועיים", then "N שבועות". */
+export function weekCount(n: number): { value: string; unit: string } {
+  if (n === 1) return { value: '', unit: 'שבוע' };
+  if (n === 2) return { value: '', unit: 'שבועיים' };
+  return { value: String(n), unit: 'שבועות' };
+}
+
 /** Same dual/plural rule for months: "חודש", "חודשיים", then "N חודשים". */
 export function monthCount(n: number): { value: string; unit: string } {
   if (n === 1) return { value: '', unit: 'חודש' };
   if (n === 2) return { value: '', unit: 'חודשיים' };
   return { value: String(n), unit: 'חודשים' };
+}
+
+/** Same dual/plural rule for years: "שנה", "שנתיים", then "N שנים". */
+export function yearCount(n: number): { value: string; unit: string } {
+  if (n === 1) return { value: '', unit: 'שנה' };
+  if (n === 2) return { value: '', unit: 'שנתיים' };
+  return { value: String(n), unit: 'שנים' };
 }
 
 /** Nights (a hotel stay's duration). No dual form here — unlike days/months,
@@ -32,8 +46,16 @@ export function dayPhrase(n: number): string {
   return joinCount(dayCount(n));
 }
 
+export function weekPhrase(n: number): string {
+  return joinCount(weekCount(n));
+}
+
 export function monthPhrase(n: number): string {
   return joinCount(monthCount(n));
+}
+
+export function yearPhrase(n: number): string {
+  return joinCount(yearCount(n));
 }
 
 function joinCount({ value, unit }: { value: string; unit: string }): string {

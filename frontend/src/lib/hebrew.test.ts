@@ -1,5 +1,13 @@
 import { describe, expect, it } from 'vitest';
-import { dayCount, dayPhrase, monthCount, monthPhrase, nightPhrase } from './hebrew';
+import {
+  dayCount,
+  dayPhrase,
+  monthCount,
+  monthPhrase,
+  nightPhrase,
+  weekPhrase,
+  yearPhrase,
+} from './hebrew';
 
 describe('dayCount', () => {
   it('has no numeral for 1 (dual/singular forms replace it)', () => {
@@ -37,6 +45,22 @@ describe('monthPhrase', () => {
     expect(monthPhrase(1)).toBe('חודש');
     expect(monthPhrase(2)).toBe('חודשיים');
     expect(monthPhrase(4)).toBe('4 חודשים');
+  });
+});
+
+describe('weekPhrase', () => {
+  it('uses the same dual/plural rule', () => {
+    expect(weekPhrase(1)).toBe('שבוע');
+    expect(weekPhrase(2)).toBe('שבועיים');
+    expect(weekPhrase(5)).toBe('5 שבועות');
+  });
+});
+
+describe('yearPhrase', () => {
+  it('uses the same dual/plural rule', () => {
+    expect(yearPhrase(1)).toBe('שנה');
+    expect(yearPhrase(2)).toBe('שנתיים');
+    expect(yearPhrase(5)).toBe('5 שנים');
   });
 });
 
