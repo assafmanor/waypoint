@@ -170,6 +170,16 @@
   overflow: hidden;
   min-width: 0;
 }
+/* A stacked route (RouteLabel `stack`) clamps each endpoint on its own, so the
+   whole-title clamp above must stand down — otherwise it would cut the rail off
+   at two lines and hide the destination, the very thing the rail exists to
+   prevent. Where :has() is unsupported the old clamp simply remains. */
+.wp-event-title-txt:has(.route-stack) {
+  display: block;
+  -webkit-line-clamp: none;
+  line-clamp: none;
+  overflow: visible;
+}
 .wp-event-m {
   font-size: var(--text-secondary);
   color: var(--muted);

@@ -1517,6 +1517,12 @@
   gap: 6px;
   flex-wrap: wrap;
 }
+/* min-width:0 lets the title shrink below its content width inside the flex row,
+   which is what gives the route's overflow measurement a real bound to compare
+   against (without it a long route just widens the row and never "overflows"). */
+.bld-ttl {
+  min-width: 0;
+}
 .bld-m {
   display: block;
   font-size: 11.5px;
@@ -2714,6 +2720,62 @@
   color: var(--muted);
   font-weight: 400;
   padding: 0 4px;
+}
+/* ── Route overflow layout (RouteLabel `stack`, ADR-0059 §3 amendment) ────────
+   `.route-fit` is the measured container: its width comes from its parent cell,
+   never from this content, so the inline row inside it can be asked "do you
+   overflow?" (useStackOnOverflow). The row goes nowrap + clipped in this mode,
+   so its scrollWidth IS the width it wants; short routes are visually identical
+   to the un-stacked surfaces. */
+.route-fit {
+  display: block;
+  min-width: 0;
+}
+.route-fit .route {
+  display: flex;
+  overflow: hidden;
+  white-space: nowrap;
+}
+/* The stacked rail: a marker column + a value column, one row per endpoint, so
+   each name clamps on its own — a long origin can never truncate or push out the
+   destination. RTL like the inline row, so the rail leads on the right; each
+   value stays in a <bdi>, so Hebrew/Latin/mixed names keep their own direction. */
+.route-stack {
+  display: grid;
+  grid-template-columns: auto minmax(0, 1fr);
+  direction: rtl;
+  align-items: start;
+  column-gap: 6px;
+  row-gap: 1px;
+}
+.route-stack .rs-mark {
+  font-size: 0.8em;
+  margin-top: 0.3em;
+  color: var(--muted);
+}
+/* The connector shares the marker column's width, so the line's centre lands
+   under the origin dot's centre (both SVGs centre their 24-wide viewBox). */
+.route-stack .rs-rail {
+  grid-column: 1 / -1;
+  justify-self: start;
+  display: flex;
+  justify-content: center;
+  width: 0.8em;
+  height: 0.55em;
+  color: var(--line);
+}
+.route-stack .rs-rail .icon {
+  width: 100%;
+  height: 100%;
+}
+.route-stack .rs-val {
+  display: -webkit-box;
+  -webkit-line-clamp: 2;
+  line-clamp: 2;
+  -webkit-box-orient: vertical;
+  overflow: hidden;
+  min-width: 0;
+  line-height: 1.25;
 }
 .index .route {
   font-weight: 700;

@@ -15,6 +15,7 @@ import {
   type FormEvent,
   type KeyboardEvent as ReactKeyboardEvent,
   type PointerEvent as ReactPointerEvent,
+  type ReactNode,
 } from 'react';
 import {
   EVENT_KIND,
@@ -59,6 +60,7 @@ import { EventForm } from '../ui/EventForm';
 import { BookingSheet } from '../ui/BookingSheet';
 import { BookingDetail } from '../ui/BookingDetail';
 import { TransitionRow } from '../ui/TransitionRow';
+import { EventTitle } from '../ui/EventTitle';
 import { IconPicker } from '../ui/IconPicker';
 import { Icon } from '../ui/Icon';
 import { NavArrow } from '../ui/NavArrow';
@@ -754,6 +756,9 @@ function BuilderNode({
       <BuilderRow
         event={e}
         tz={ctx.tz}
+        // Transport reads as its route, each endpoint a separate value, so a long
+        // one stacks instead of wrapping into a block (ADR-0059 §3 amendment).
+        title={<EventTitle event={e} bookings={ctx.bookings} places={ctx.places} stack />}
         zones={zones}
         duration={eventDurationLabel(e, booking, zones)}
         readOnly={ctx.readOnly}
@@ -796,6 +801,7 @@ function BuilderNode({
 function BuilderRow({
   event,
   tz,
+  title,
   zones,
   duration,
   readOnly,
@@ -815,6 +821,9 @@ function BuilderRow({
 }: {
   event: TripEvent;
   tz: string;
+  /** Title node — the screen passes `<EventTitle/>` so a transport row reads as
+   *  its route; falls back to the stored title. */
+  title?: ReactNode;
   /** Per-event display zones + the shift pill to show (ADR-0107). Absent → the
    *  row renders wholly in `tz` with no pill. */
   zones?: EventZones;
@@ -906,7 +915,7 @@ function BuilderRow({
   const mainContent = (
     <>
       <span className="bld-t">
-        <span className="bld-ttl">{event.title}</span>
+        <span className="bld-ttl">{title ?? event.title}</span>
         {isHard ? (
           <span className="tag-hard">
             {ICONS.lock} {t.event.hard}

@@ -60,6 +60,7 @@ import { TransitionRow } from '../ui/TransitionRow';
 import { Sheet } from '../ui/Sheet';
 import { TimePicker } from '../ui/TimePicker';
 import { EventCard, type EventPhaseName } from '../ui/domain/EventCard';
+import { EventTitle } from '../ui/EventTitle';
 import { MaybeCard } from '../ui/domain/MaybeCard';
 import { EntitySyncBadge, useUnsynced } from '../ui/EntitySyncBadge';
 
@@ -522,7 +523,11 @@ function ItemNode({ item, depth, ctx }: { item: TimeItem; depth: number; ctx: Da
   const card = (
     <EventCard
       icon={e.icon}
-      title={e.title}
+      // A transport event reads as its route, origin and destination as separate
+      // values — so a long one stacks instead of truncating away the destination
+      // (ADR-0059 §3 amendment). `titleText` stays the plain stored title for the
+      // menu header + accessible names.
+      title={<EventTitle event={e} bookings={ctx.bookings} places={ctx.places} stack />}
       titleText={e.title}
       placeName={eventPlaceName(e, ctx.bookings, ctx.places)}
       code={code}
