@@ -107,8 +107,11 @@ export interface ZoneCrossing {
   toZone: string;
 }
 
-/** IANA zone cached on a place row (undefined for a coordless Place-lite). */
-function placeZone(places: Place[], placeId?: string): string | undefined {
+/** IANA zone cached on a place row (undefined for a coordless Place-lite). The
+ *  public name for form authoring, where a time field is entered in its
+ *  endpoint's own zone (ADR-0107 §2): a departure in `fromPlace`, an arrival in
+ *  `toPlace`, a single-place booking/event in its place. */
+export function placeTimezone(places: Place[], placeId?: string): string | undefined {
   if (!placeId) return undefined;
   return places.find((p) => p.id === placeId)?.timezone;
 }
@@ -127,8 +130,8 @@ export function tripZoneCrossings(
     if (!event.bookingId || !event.startsAt) continue;
     const booking = bookings.find((b) => b.id === event.bookingId);
     if (!booking || !isTransport(booking)) continue;
-    const fromZone = placeZone(places, booking.fromPlaceId);
-    const toZone = placeZone(places, booking.toPlaceId);
+    const fromZone = placeTimezone(places, booking.fromPlaceId);
+    const toZone = placeTimezone(places, booking.toPlaceId);
     if (!fromZone || !toZone || fromZone === toZone) continue;
     crossings.push({ at: Date.parse(event.startsAt), fromZone, toZone });
   }
@@ -173,12 +176,13 @@ export function eventDisplayZones(
   const booking = event.bookingId ? bookings.find((b) => b.id === event.bookingId) : undefined;
   if (booking && isTransport(booking)) {
     return {
-      start: placeZone(places, booking.fromPlaceId) ?? zoneForInstant(event.startsAt),
-      end: placeZone(places, booking.toPlaceId) ?? zoneForInstant(event.endsAt ?? event.startsAt),
+      start: placeTimezone(places, booking.fromPlaceId) ?? zoneForInstant(event.startsAt),
+      end:
+        placeTimezone(places, booking.toPlaceId) ?? zoneForInstant(event.endsAt ?? event.startsAt),
     };
   }
 
-  const placed = placeZone(places, eventPlaceId(event, booking));
+  const placed = placeTimezone(places, eventPlaceId(event, booking));
   if (placed) return { start: placed, end: placed };
 
   const zone = zoneForInstant(event.startsAt);

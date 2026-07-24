@@ -63,6 +63,11 @@ type SpanProps = {
   /** Fallback day for the start leg when only a time is picked first. */
   defaultDate?: string;
   timeZone: string;
+  /** The end leg's zone, when it differs from the start's (a zone-crossing
+   *  flight: departure in origin, arrival in destination — ADR-0107). Defaults to
+   *  `timeZone`, so a single-zone span (hotel, same-zone hop) is unaffected and
+   *  the elapsed-duration read-out stays correct across the crossing. */
+  endTimeZone?: string;
   /** How the span's duration reads (ADR-0063). `nights` phrases it in לילות from
    *  the two calendar days (a hotel is nights, not "יום"); anything else keeps the
    *  elapsed-time read-out. Omitted → elapsed time. */
@@ -106,6 +111,7 @@ function WhenSpan({
   labels,
   defaultDate,
   timeZone,
+  endTimeZone = timeZone,
   durationUnit,
 }: SpanProps) {
   const setStart = (v: string) => onChange({ start: v, end });
@@ -124,10 +130,10 @@ function WhenSpan({
   const duration = useMemo(() => {
     if (!start || !end || !timeOf(start) || !timeOf(end)) return null;
     const startMs = Date.parse(zonedIso(startDay, timeOf(start), timeZone));
-    const endMs = Date.parse(zonedIso(endDay, timeOf(end), timeZone));
+    const endMs = Date.parse(zonedIso(endDay, timeOf(end), endTimeZone));
     const mins = Math.round((endMs - startMs) / 60000);
     return mins > 0 ? mins : null;
-  }, [start, end, startDay, endDay, timeZone]);
+  }, [start, end, startDay, endDay, timeZone, endTimeZone]);
 
   return (
     <div className="wf wf-span">

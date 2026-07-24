@@ -144,12 +144,16 @@ export function buildSpanSeed(
     category?: EventCategory;
   },
   timeZone: string,
+  // The end leg's zone (ADR-0107): a zone-crossing flight's arrival is entered in
+  // its destination zone, so its wall-clock resolves to the right instant.
+  // Defaults to `timeZone` (a single-zone span — a hotel stay, a same-zone hop).
+  endTimeZone: string = timeZone,
 ): BookingEventSeed | undefined {
   const startParts = splitLocal(input.startAt);
   if (!startParts) return undefined;
   const startsAt = zonedIso(startParts.date, startParts.time, timeZone);
   const endParts = splitLocal(input.endAt);
-  const endsAt = endParts ? zonedIso(endParts.date, endParts.time, timeZone) : undefined;
+  const endsAt = endParts ? zonedIso(endParts.date, endParts.time, endTimeZone) : undefined;
   const endDate = endParts && endParts.date !== startParts.date ? endParts.date : undefined;
   return {
     date: startParts.date,

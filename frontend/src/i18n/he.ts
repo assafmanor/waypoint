@@ -280,6 +280,8 @@ export const t = {
       // Title-row preview when neither endpoint is picked yet.
       routePreviewGhost: 'בחרו מוצא ויעד',
       routeHint: 'מקומות אמיתיים · מזינים את המפה ואזורי הזמן',
+      // Which timezone a booking's times are entered in (ADR-0107): "שעון טוקיו".
+      zoneAt: (city: string) => `שעון ${city}`,
       dateLabel: 'תאריך (משבץ במסלול)',
       departLabel: 'יציאה 🛫',
       arriveLabel: 'הגעה 🛬',
