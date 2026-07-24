@@ -244,8 +244,10 @@ export function TripSettings() {
             <ReadRow
               icon="🗓️"
               label={t.settings.datesLabel}
-              value={formatTripDates(trip.startDate, trip.endDate, { withYear: true })}
-              mono
+              value={formatTripDates(trip.startDate, trip.endDate, {
+                style: 'prose',
+                withYear: true,
+              })}
             />
             <ReadRow icon="🕓" label={t.settings.timezoneLabel} value={trip.timezone} mono />
             <ReadRow

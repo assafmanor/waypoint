@@ -47,7 +47,8 @@ export function monthLabelFor(date: string, prevDate: string | undefined): strin
 // raw-slice ddmm, TripSettings' raw ISO). Trip start/end are calendar-only
 // YYYY-MM-DD (no time, no zone), so they're read in UTC — never the trip/device
 // zone. Two styles: `numeric` (DD.MM–DD.MM) for dense meta rows, tickets, and
-// the settings record; `prose` (Hebrew day + long month) for hero surfaces.
+// the settings record; `prose` (localized Hebrew month names) for the trip
+// record and hero surfaces.
 export type TripDateStyle = 'numeric' | 'prose';
 
 const tripDateNumeric = new Intl.DateTimeFormat('he-IL', {
@@ -55,17 +56,50 @@ const tripDateNumeric = new Intl.DateTimeFormat('he-IL', {
   month: '2-digit',
   timeZone: 'UTC',
 });
+const tripDateDay = new Intl.DateTimeFormat('he-IL', { day: 'numeric', timeZone: 'UTC' });
 const tripDateDayMonth = new Intl.DateTimeFormat('he-IL', {
   day: 'numeric',
   month: 'long',
   timeZone: 'UTC',
 });
-const tripDateDay = new Intl.DateTimeFormat('he-IL', { day: 'numeric', timeZone: 'UTC' });
+const tripDateDayMonthYear = new Intl.DateTimeFormat('he-IL', {
+  day: 'numeric',
+  month: 'long',
+  year: 'numeric',
+  timeZone: 'UTC',
+});
 
-/** Formats a trip's calendar date range for display. `withYear` appends
- *  "· YYYY" for the record-of-truth row (trip settings); other surfaces leave
- *  the year implicit. Prose collapses a same-month range to one month name
- *  ("20–29 ביולי"); a cross-month or cross-year range names both ends. */
+const EN_DASH = '–';
+
+/** Prose range with month names, never repeating a shared month/year (ADR-0028
+ *  RTL copy). `withYear` places the year once, at the end, when both ends share
+ *  it — and on both ends only when the range crosses a year:
+ *    same day               → "11 בספטמבר 2026"
+ *    same month + year      → "11–22 בספטמבר 2026"
+ *    different month, 1 year → "27 בספטמבר – 3 באוקטובר 2026"
+ *    different years        → "27 בדצמבר 2026 – 3 בינואר 2027"
+ *  Without `withYear`, the same shape drops every year (hero surfaces). */
+function proseTripRange(start: Date, end: Date, withYear: boolean): string {
+  const dayMonthEnd = withYear ? tripDateDayMonthYear : tripDateDayMonth;
+  const sameYear = start.getUTCFullYear() === end.getUTCFullYear();
+  const sameMonth = sameYear && start.getUTCMonth() === end.getUTCMonth();
+  const sameDay = sameMonth && start.getUTCDate() === end.getUTCDate();
+
+  if (sameDay) return dayMonthEnd.format(start);
+  if (sameMonth) return `${tripDateDay.format(start)}${EN_DASH}${dayMonthEnd.format(end)}`;
+  if (sameYear) return `${tripDateDayMonth.format(start)} ${EN_DASH} ${dayMonthEnd.format(end)}`;
+  // Crossing a year: name the year on both ends so neither is ambiguous — but
+  // only when years are shown at all; the no-year hero mode stays year-free.
+  const startFmt = withYear ? tripDateDayMonthYear : tripDateDayMonth;
+  return `${startFmt.format(start)} ${EN_DASH} ${dayMonthEnd.format(end)}`;
+}
+
+/** Formats a trip's calendar date range for display. `numeric` is the compact
+ *  DD.MM–DD.MM used in dense meta rows/tickets (with `withYear` appending the
+ *  year via the app separator); `prose` is the localized month-name range used
+ *  by the trip-settings record and hero surfaces (year rules in
+ *  {@link proseTripRange}). Trip dates are calendar-only, so they're read in
+ *  UTC — never the trip/device zone. */
 export function formatTripDates(
   startDate: string,
   endDate: string,
@@ -73,16 +107,8 @@ export function formatTripDates(
 ): string {
   const start = new Date(`${startDate}T00:00:00Z`);
   const end = new Date(`${endDate}T00:00:00Z`);
-  let range: string;
-  if (style === 'prose') {
-    const sameMonth =
-      start.getUTCFullYear() === end.getUTCFullYear() && start.getUTCMonth() === end.getUTCMonth();
-    range = sameMonth
-      ? `${tripDateDay.format(start)}–${tripDateDayMonth.format(end)}`
-      : `${tripDateDayMonth.format(start)} – ${tripDateDayMonth.format(end)}`;
-  } else {
-    range = `${tripDateNumeric.format(start)}–${tripDateNumeric.format(end)}`;
-  }
+  if (style === 'prose') return proseTripRange(start, end, withYear);
+  const range = `${tripDateNumeric.format(start)}${EN_DASH}${tripDateNumeric.format(end)}`;
   return withYear ? `${range} ${DOT_SEPARATOR} ${end.getUTCFullYear()}` : range;
 }
 

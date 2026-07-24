@@ -42,19 +42,52 @@ describe('formatTripDates', () => {
     );
   });
 
-  it('prose: collapses a same-month range to one month name', () => {
+  // Prose with year — the trip-settings record. The four localized cases the
+  // format must handle, year never repeated when both ends share it.
+  it('prose+year, same day: one full date', () => {
+    expect(formatTripDates('2026-09-11', '2026-09-11', { style: 'prose', withYear: true })).toBe(
+      '11 בספטמבר 2026',
+    );
+  });
+
+  it('prose+year, same month & year: day range + one month + year', () => {
+    expect(formatTripDates('2026-09-11', '2026-09-22', { style: 'prose', withYear: true })).toBe(
+      '11–22 בספטמבר 2026',
+    );
+  });
+
+  it('prose+year, different months same year: year once, at the end', () => {
+    expect(formatTripDates('2026-09-27', '2026-10-03', { style: 'prose', withYear: true })).toBe(
+      '27 בספטמבר – 3 באוקטובר 2026',
+    );
+  });
+
+  it('prose+year, December→January: year on both ends', () => {
+    expect(formatTripDates('2026-12-27', '2027-01-03', { style: 'prose', withYear: true })).toBe(
+      '27 בדצמבר 2026 – 3 בינואר 2027',
+    );
+  });
+
+  it('uses an en dash (–), never a hyphen', () => {
+    const range = formatTripDates('2026-09-11', '2026-09-22', { style: 'prose', withYear: true });
+    expect(range).toContain('–');
+    expect(range).not.toContain('-');
+  });
+
+  // Prose without year — hero surfaces (PlanHome) stay year-free in every case.
+  it('prose without year: collapses a same-month range to one month name', () => {
     expect(formatTripDates('2026-07-20', '2026-07-29', { style: 'prose' })).toBe('20–29 ביולי');
   });
 
-  it('prose: names both ends across a month boundary', () => {
+  it('prose without year: names both ends across a month boundary', () => {
     expect(formatTripDates('2026-07-29', '2026-08-03', { style: 'prose' })).toBe(
       '29 ביולי – 3 באוגוסט',
     );
   });
 
-  it('prose: does not collapse a same-month range that crosses a year', () => {
-    expect(formatTripDates('2026-07-20', '2027-07-29', { style: 'prose' })).toBe(
-      '20 ביולי – 29 ביולי',
+  it('prose without year: stays year-free even across a year boundary', () => {
+    expect(formatTripDates('2026-12-27', '2027-01-03', { style: 'prose' })).toBe(
+      '27 בדצמבר – 3 בינואר',
     );
   });
 
