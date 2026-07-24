@@ -1,0 +1,1288 @@
+<!doctype html>
+<!-- Place & Zone picker "wow pass" — v1 (2026-07-24 design session).
+
+     WHY: the shipped PlacePicker (ui/primitives/PlacePicker.tsx) and ZonePicker
+     (ui/primitives/ZonePicker.tsx) work but read PLAIN — a flat trigger, a flat
+     list of hover-tinted rows, no entrance, no selection feel. This mocks up
+     THREE design directions to make both pickers delightful (a small "wow" +
+     micro-animations) WITHOUT spending outside the color/motion budget.
+
+     Both pickers are LOCATION-family, so TEAL is their accent (design-language
+     rule 4: teal = location/map only). A timezone here is derived from a place
+     (ADR-0107/0113), so the zone picker rides the same teal, not amber — amber
+     stays reserved for the clock/commitment on the board. Motion picks from the
+     token ramp (--t-quick 140 / --t-base 240 / eases), never invents values,
+     and every direction is fully disabled under prefers-reduced-motion.
+
+     THREE DIRECTIONS (toggle top-left), each restyling the resting TRIGGERS and
+     the open SHEET for both pickers:
+
+       A · מסך יעדים  (split-flap board) — the app's signature departure board
+          applied to the picker. Rows FLAP into place on a top hinge, staggered,
+          like a board updating; the mono offset/code chips settle last. Most
+          on-brand: the picker feels like the rest of Waypoint.
+
+       B · טפטוף סיכה (pin-drop / living location) — the most spatial, teal-
+          forward read. An empty search shows a soft teal "sonar" ping; a teal
+          location pin tracks the focused row and PLANTS on pick with a ring
+          pulse; the trigger's pin drops into place when filled. Leans into
+          "this is about a place".
+
+       C · קפיצי     (springy / tactile) — motion-first, minimal chrome, most
+          faithful to "one loud element". Clean paper; the wow is the FEEL —
+          spring-eased sheet, rows cascade in, magnetic hover lift, a crisp
+          press + a checkmark that morphs in on select. Cheapest to ship.
+
+     NOT A BUILD: nothing here changes the components yet — it's for choosing a
+     direction. The picked one becomes place-picker.css / zone-picker.css motion
+     (they already read every color as a token, so this is CSS + a little JS,
+     not a rewrite). Read ADR-0028 (color/motion budget), ADR-0110 §1/§3 (the
+     two pickers), ADR-0113 §6 (the shared zone picker) before treating settled.
+
+     Controls: DIRECTION (A/B/C) · PICKER shown open (מקום / אזור זמן) ·
+     תנועה מופחתת (prefers-reduced-motion preview). -->
+<html lang="he" dir="rtl">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>בוחרי מקום ואזור זמן · wow · מוקאפ v1</title>
+    <link rel="preconnect" href="https://fonts.googleapis.com" />
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+    <link
+      href="https://fonts.googleapis.com/css2?family=Assistant:wght@400;500;600;700&family=Secular+One&family=JetBrains+Mono:wght@500;700&display=swap"
+      rel="stylesheet"
+    />
+    <style>
+      :root {
+        --ink: #16233d;
+        --indigo: #1b2a4a;
+        --board: #0e1729;
+        --board-2: #152137;
+        --screen: #e7eaef;
+        --card: #ffffff;
+        --paper: #f3efe6;
+        --amber: #e9a63c;
+        --amber-deep: #c9822a;
+        --teal: #2c9c90;
+        --teal-deep: #227e74;
+        --teal-tint: rgba(44, 156, 144, 0.12);
+        --plan: #6e59d6;
+        --ok: #3c9a6b;
+        --miss: #c2584e;
+        --muted: #6c7488;
+        --faint: #98a0b0;
+        --line: rgba(22, 35, 61, 0.1);
+        --soft-line: rgba(22, 35, 61, 0.28);
+        --font: 'Assistant', system-ui, sans-serif;
+        --mono: 'JetBrains Mono', ui-monospace, monospace;
+        /* motion ramp (tokens.css) */
+        --t-quick: 140ms;
+        --t-base: 240ms;
+        --t-deliberate: 400ms;
+        --ease-standard: cubic-bezier(0.2, 0, 0, 1);
+        --ease-exit: cubic-bezier(0.4, 0, 1, 1);
+        --ease-emphasized: cubic-bezier(0.16, 1, 0.3, 1);
+        --spring: cubic-bezier(0.34, 1.56, 0.64, 1);
+        /* radius ramp */
+        --r-8: 8px;
+        --r-12: 12px;
+        --r-16: 16px;
+        --r-22: 22px;
+      }
+      * {
+        box-sizing: border-box;
+        margin: 0;
+        padding: 0;
+      }
+      html,
+      body {
+        min-height: 100%;
+      }
+      body {
+        font-family: var(--font);
+        background:
+          radial-gradient(120% 90% at 80% -10%, #2a3e68 0%, transparent 55%),
+          radial-gradient(120% 90% at 0% 110%, #1a2a4a 0%, transparent 50%), #0f1a31;
+        color: var(--ink);
+        min-height: 100vh;
+        display: flex;
+        flex-direction: column;
+        align-items: center;
+        padding: 22px 16px 56px;
+        -webkit-font-smoothing: antialiased;
+      }
+      .caption {
+        text-align: center;
+        color: #aeb9d4;
+        font-size: 12.5px;
+        margin-bottom: 4px;
+        font-weight: 500;
+        max-width: 460px;
+      }
+      .caption b {
+        color: #fff;
+        font-weight: 600;
+      }
+      .adr-note {
+        text-align: center;
+        color: #7f8db0;
+        font-size: 11px;
+        margin-bottom: 16px;
+        max-width: 470px;
+        line-height: 1.55;
+      }
+
+      /* ---------- controls ---------- */
+      .controls {
+        display: flex;
+        flex-wrap: wrap;
+        gap: 8px 14px;
+        justify-content: center;
+        align-items: center;
+        margin-bottom: 18px;
+        max-width: 560px;
+      }
+      .ctl {
+        display: flex;
+        align-items: center;
+        gap: 6px;
+      }
+      .ctl-label {
+        color: #8fa0c4;
+        font-size: 11px;
+        font-weight: 700;
+        letter-spacing: 0.02em;
+      }
+      .seg {
+        display: inline-flex;
+        background: rgba(255, 255, 255, 0.07);
+        border: 1px solid rgba(255, 255, 255, 0.14);
+        border-radius: 999px;
+        padding: 3px;
+        gap: 2px;
+      }
+      .seg button {
+        font: inherit;
+        font-size: 12.5px;
+        font-weight: 600;
+        color: #aeb9d4;
+        background: none;
+        border: 0;
+        border-radius: 999px;
+        padding: 6px 13px;
+        cursor: pointer;
+        transition:
+          background var(--t-quick) var(--ease-standard),
+          color var(--t-quick) var(--ease-standard);
+      }
+      .seg button.on {
+        background: #fff;
+        color: var(--ink);
+      }
+      .seg.teal button.on {
+        background: var(--teal);
+        color: #fff;
+      }
+
+      /* ---------- phone ---------- */
+      .phone {
+        width: 100%;
+        max-width: 392px;
+        background: var(--screen);
+        border-radius: 38px;
+        box-shadow:
+          0 18px 40px -18px rgba(14, 23, 41, 0.45),
+          0 0 0 10px #0b1526,
+          0 0 0 12px #223257;
+        overflow: hidden;
+        position: relative;
+        height: 812px;
+        flex-shrink: 0;
+        display: flex;
+        flex-direction: column;
+      }
+      .statusbar {
+        background: var(--indigo);
+        color: #dce3f2;
+        display: flex;
+        justify-content: space-between;
+        align-items: center;
+        padding: 11px 22px 8px;
+        font-size: 13px;
+        font-weight: 600;
+        font-family: var(--mono);
+        flex-shrink: 0;
+      }
+      .header {
+        background: var(--indigo);
+        color: #fff;
+        padding: 4px 18px 16px;
+        flex-shrink: 0;
+      }
+      .header h1 {
+        font-family: 'Secular One', var(--font);
+        font-size: 20px;
+        font-weight: 400;
+        letter-spacing: 0.01em;
+      }
+      .header .sub {
+        color: #9fb0d6;
+        font-size: 12px;
+        margin-top: 3px;
+      }
+
+      /* ---------- form context ---------- */
+      .body {
+        flex: 1;
+        overflow-y: auto;
+        padding: 18px 16px 28px;
+      }
+      .formcard {
+        background: var(--card);
+        border-radius: var(--r-16);
+        border: 1px solid var(--line);
+        box-shadow: 0 1px 2px rgba(22, 35, 61, 0.04);
+        padding: 16px 15px 18px;
+      }
+      .formcard h2 {
+        font-family: 'Secular One', var(--font);
+        font-size: 16px;
+        font-weight: 400;
+        margin-bottom: 3px;
+      }
+      .formcard .hint {
+        color: var(--muted);
+        font-size: 12px;
+        margin-bottom: 15px;
+      }
+      .fieldlabel {
+        font-size: 12px;
+        font-weight: 700;
+        color: var(--muted);
+        margin: 14px 0 7px;
+      }
+      .fieldlabel:first-of-type {
+        margin-top: 4px;
+      }
+
+      /* the mock event title row so the pickers sit in a believable form */
+      .titlerow {
+        display: flex;
+        align-items: center;
+        gap: 10px;
+        padding: 11px 13px;
+        border: 1px solid var(--line);
+        border-radius: var(--r-12);
+        background: var(--card);
+      }
+      .titlerow .g {
+        font-size: 18px;
+      }
+      .titlerow .tt {
+        font-weight: 600;
+        font-size: 14.5px;
+      }
+
+      /* ================= TRIGGERS ================= */
+      /* Place trigger (resting) */
+      .place-picker {
+        display: flex;
+        align-items: center;
+        gap: 8px;
+      }
+      .pp-trigger {
+        flex: 1;
+        display: flex;
+        align-items: center;
+        gap: 10px;
+        min-height: 46px;
+        padding: 10px 13px;
+        border: 1px solid var(--line);
+        border-radius: var(--r-12);
+        background: var(--card);
+        color: var(--faint);
+        font: inherit;
+        font-size: 14.5px;
+        text-align: start;
+        cursor: pointer;
+        position: relative;
+        overflow: hidden;
+        transition:
+          transform var(--t-quick) var(--ease-standard),
+          border-color var(--t-quick) var(--ease-standard),
+          box-shadow var(--t-quick) var(--ease-standard);
+      }
+      .pp-trigger.filled {
+        color: var(--ink);
+      }
+      .pp-trigger-icon {
+        color: var(--teal);
+        flex: none;
+        font-size: 17px;
+        display: inline-flex;
+      }
+      .pp-trigger-label {
+        overflow: hidden;
+        text-overflow: ellipsis;
+        white-space: nowrap;
+        flex: 1;
+      }
+      .pp-sub {
+        color: var(--muted);
+        font-size: 11.5px;
+        white-space: nowrap;
+      }
+      .pp-clear {
+        flex: none;
+        width: 32px;
+        height: 32px;
+        border: none;
+        border-radius: 999px;
+        background: transparent;
+        color: var(--muted);
+        font-size: 13px;
+        cursor: pointer;
+        transition: background var(--t-quick);
+      }
+      .pp-clear:hover {
+        background: var(--line);
+      }
+
+      /* Zone chip (resting) — the per-event zone chip idiom (ADR-0110 §3) */
+      .zone-chip {
+        display: inline-flex;
+        align-items: center;
+        gap: 7px;
+        padding: 8px 13px;
+        border: 1px solid var(--line);
+        border-radius: 999px;
+        background: var(--card);
+        color: var(--ink);
+        font: inherit;
+        font-size: 13.5px;
+        font-weight: 600;
+        cursor: pointer;
+        position: relative;
+        overflow: hidden;
+        transition:
+          transform var(--t-quick) var(--ease-standard),
+          border-color var(--t-quick) var(--ease-standard),
+          box-shadow var(--t-quick) var(--ease-standard);
+      }
+      .zone-chip .zc-glyph {
+        color: var(--teal);
+        font-size: 15px;
+      }
+      .zone-chip .zc-off {
+        font-family: var(--mono);
+        font-size: 12.5px;
+        color: var(--muted);
+        font-weight: 700;
+      }
+      .zone-chip .zc-caret {
+        color: var(--faint);
+        font-size: 10px;
+      }
+
+      .press:active {
+        transform: scale(0.97);
+      }
+
+      /* ================= SHEET SHELL ================= */
+      .backdrop {
+        position: absolute;
+        inset: 0;
+        background: rgba(10, 17, 32, 0.42);
+        backdrop-filter: blur(1.5px);
+        opacity: 0;
+        pointer-events: none;
+        transition: opacity var(--t-base) var(--ease-standard);
+        z-index: 20;
+      }
+      .backdrop.show {
+        opacity: 1;
+        pointer-events: auto;
+      }
+      .sheet {
+        position: absolute;
+        left: 0;
+        right: 0;
+        bottom: 0;
+        background: var(--card);
+        border-radius: var(--r-22) var(--r-22) 0 0;
+        box-shadow: 0 -12px 40px -12px rgba(10, 17, 32, 0.5);
+        padding: 8px 16px calc(16px + env(safe-area-inset-bottom));
+        transform: translateY(102%);
+        transition: transform var(--t-base) var(--ease-standard);
+        z-index: 21;
+        max-height: 88%;
+        display: flex;
+        flex-direction: column;
+      }
+      .sheet.show {
+        transform: translateY(0);
+      }
+      .grab {
+        width: 40px;
+        height: 4px;
+        border-radius: 999px;
+        background: var(--soft-line);
+        opacity: 0.5;
+        margin: 6px auto 10px;
+        flex: none;
+      }
+      .sheet-title {
+        font-family: 'Secular One', var(--font);
+        font-size: 17px;
+        font-weight: 400;
+        text-align: center;
+        margin-bottom: 12px;
+        flex: none;
+      }
+      .search {
+        width: 100%;
+        min-height: 46px;
+        padding: 11px 14px;
+        border: 1px solid var(--line);
+        border-radius: var(--r-12);
+        background: var(--card);
+        color: var(--ink);
+        font: inherit;
+        font-size: 15px;
+        flex: none;
+        transition:
+          border-color var(--t-quick) var(--ease-standard),
+          box-shadow var(--t-quick) var(--ease-standard);
+      }
+      .search:focus {
+        outline: none;
+        border-color: var(--teal);
+        box-shadow: 0 0 0 3px var(--teal-tint);
+      }
+      .results {
+        list-style: none;
+        margin: 12px 0 0;
+        padding: 2px;
+        display: flex;
+        flex-direction: column;
+        gap: 4px;
+        overflow-y: auto;
+        flex: 1;
+      }
+      .result {
+        width: 100%;
+        display: flex;
+        align-items: center;
+        gap: 10px 12px;
+        padding: 12px 12px;
+        border: none;
+        border-radius: var(--r-12);
+        background: transparent;
+        color: var(--ink);
+        font: inherit;
+        text-align: start;
+        cursor: pointer;
+        position: relative;
+      }
+      .result .r-main {
+        display: flex;
+        flex-direction: column;
+        gap: 2px;
+        flex: 1;
+        min-width: 0;
+      }
+      .r-primary {
+        font-weight: 600;
+        font-size: 14.5px;
+      }
+      .r-secondary {
+        color: var(--muted);
+        font-size: 12px;
+        overflow: hidden;
+        text-overflow: ellipsis;
+        white-space: nowrap;
+      }
+      .r-badge {
+        margin-inline-start: auto;
+        padding: 3px 9px;
+        border-radius: 999px;
+        background: var(--teal-tint);
+        color: var(--teal-deep);
+        font-size: 11px;
+        font-weight: 600;
+        white-space: nowrap;
+        flex: none;
+      }
+      .r-off {
+        margin-inline-start: auto;
+        font-family: var(--mono);
+        font-size: 12.5px;
+        font-weight: 700;
+        color: var(--muted);
+        flex: none;
+      }
+      .r-zone {
+        font-family: var(--mono);
+        font-size: 11px;
+        color: var(--faint);
+      }
+      .r-check {
+        flex: none;
+        width: 20px;
+        height: 20px;
+        color: var(--teal);
+        opacity: 0;
+      }
+      .result.selected .r-check {
+        opacity: 1;
+      }
+      .group {
+        padding: 12px 12px 4px;
+        color: var(--faint);
+        font-size: 11px;
+        font-weight: 700;
+        letter-spacing: 0.02em;
+      }
+      .name-only {
+        align-self: flex-start;
+        margin-top: 8px;
+        padding: 9px 13px;
+        border: 1px dashed var(--soft-line);
+        border-radius: var(--r-12);
+        background: transparent;
+        color: var(--ink);
+        font: inherit;
+        font-size: 13px;
+        cursor: pointer;
+        flex: none;
+      }
+      .footer {
+        margin: 10px 0 2px;
+        color: var(--faint);
+        font-size: 11px;
+        text-align: center;
+        flex: none;
+      }
+      .empty-hint {
+        text-align: center;
+        color: var(--faint);
+        font-size: 12.5px;
+        padding: 22px 12px;
+      }
+
+      /* the "location" glyph that some directions plant on a row */
+      .r-pin {
+        position: absolute;
+        inset-inline-start: 6px;
+        top: 50%;
+        color: var(--teal);
+        font-size: 15px;
+        opacity: 0;
+        transform: translateY(-50%) scale(0.6);
+        pointer-events: none;
+      }
+
+      /* ============================================================= *
+       *  DIRECTION A — מסך יעדים (split-flap board)
+       * ============================================================= */
+      /* trigger: a board-tile edge highlight, subtle */
+      .dir-a .pp-trigger,
+      .dir-a .zone-chip {
+        background: linear-gradient(180deg, #fff 0%, #f7f9fc 100%);
+        box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.8);
+      }
+      .dir-a .pp-trigger::before {
+        content: '';
+        position: absolute;
+        inset-inline-start: 0;
+        top: 0;
+        bottom: 0;
+        width: 3px;
+        background: var(--teal);
+        opacity: 0.55;
+      }
+      .dir-a .sheet-title {
+        letter-spacing: 0.04em;
+      }
+      /* rows flap down on a top hinge, staggered, like the board updating */
+      .dir-a.anim .result,
+      .dir-a.anim .group {
+        transform-origin: top center;
+        animation: flapIn var(--t-base) var(--ease-emphasized) both;
+        animation-delay: var(--d);
+      }
+      @keyframes flapIn {
+        0% {
+          opacity: 0;
+          transform: perspective(500px) rotateX(-88deg);
+        }
+        70% {
+          opacity: 1;
+          transform: perspective(500px) rotateX(8deg);
+        }
+        100% {
+          transform: perspective(500px) rotateX(0);
+        }
+      }
+      /* the mono offset/zone settles a beat later, like a flap catching up */
+      .dir-a.anim .r-off,
+      .dir-a.anim .r-zone {
+        animation: flapText var(--t-quick) var(--ease-standard) both;
+        animation-delay: calc(var(--d) + 120ms);
+      }
+      @keyframes flapText {
+        0% {
+          opacity: 0;
+          transform: translateY(-4px);
+        }
+        100% {
+          opacity: 1;
+          transform: translateY(0);
+        }
+      }
+      .dir-a .result:hover,
+      .dir-a .result:focus-visible {
+        background: color-mix(in srgb, var(--teal) 8%, transparent);
+      }
+      .dir-a .result.picking {
+        animation: flapPick 360ms var(--ease-emphasized) both;
+      }
+      @keyframes flapPick {
+        0% {
+          background: var(--teal-tint);
+        }
+        50% {
+          transform: perspective(500px) rotateX(-10deg);
+          background: color-mix(in srgb, var(--teal) 20%, transparent);
+        }
+        100% {
+          transform: perspective(500px) rotateX(0);
+          background: var(--teal-tint);
+        }
+      }
+
+      /* ============================================================= *
+       *  DIRECTION B — טפטוף סיכה (pin-drop / living location)
+       * ============================================================= */
+      .dir-b .pp-trigger {
+        border-color: color-mix(in srgb, var(--teal) 35%, var(--line));
+        box-shadow: 0 0 0 0 var(--teal-tint);
+      }
+      .dir-b .pp-trigger.filled {
+        background:
+          radial-gradient(circle at 12% 50%, var(--teal-tint) 0%, transparent 45%),
+          var(--card);
+      }
+      .dir-b .pp-trigger-icon,
+      .dir-b .zone-chip .zc-glyph {
+        animation: pinBob 2.6s var(--ease-standard) infinite;
+      }
+      @keyframes pinBob {
+        0%,
+        100% {
+          transform: translateY(0);
+        }
+        50% {
+          transform: translateY(-2px);
+        }
+      }
+      /* empty search: a soft teal sonar ping so the sheet feels "live/location" */
+      .dir-b .sonar {
+        display: none;
+        position: relative;
+        height: 120px;
+      }
+      .dir-b.empty .sonar {
+        display: block;
+      }
+      .dir-b .sonar::before,
+      .dir-b .sonar::after {
+        content: '';
+        position: absolute;
+        left: 50%;
+        top: 46%;
+        width: 22px;
+        height: 22px;
+        border-radius: 999px;
+        border: 2px solid var(--teal);
+        transform: translate(-50%, -50%);
+        animation: sonar 2.2s var(--ease-standard) infinite;
+      }
+      .dir-b .sonar::after {
+        animation-delay: 1.1s;
+      }
+      .dir-b .sonar .dot {
+        position: absolute;
+        left: 50%;
+        top: 46%;
+        transform: translate(-50%, -50%);
+        font-size: 26px;
+        color: var(--teal);
+      }
+      @keyframes sonar {
+        0% {
+          opacity: 0.7;
+          transform: translate(-50%, -50%) scale(0.4);
+        }
+        100% {
+          opacity: 0;
+          transform: translate(-50%, -50%) scale(4.4);
+        }
+      }
+      /* rows rise in from below, gently staggered */
+      .dir-b.anim .result,
+      .dir-b.anim .group {
+        animation: riseIn var(--t-base) var(--ease-standard) both;
+        animation-delay: var(--d);
+      }
+      @keyframes riseIn {
+        0% {
+          opacity: 0;
+          transform: translateY(10px);
+        }
+        100% {
+          opacity: 1;
+          transform: translateY(0);
+        }
+      }
+      /* padding-start makes room for the tracking pin */
+      .dir-b .result {
+        padding-inline-start: 30px;
+      }
+      .dir-b .result:hover .r-pin,
+      .dir-b .result:focus-visible .r-pin,
+      .dir-b .result.selected .r-pin {
+        opacity: 1;
+        transform: translateY(-50%) scale(1);
+        transition: all var(--t-quick) var(--spring);
+      }
+      .dir-b .result:hover,
+      .dir-b .result:focus-visible {
+        background: color-mix(in srgb, var(--teal) 7%, transparent);
+      }
+      .dir-b .result.selected {
+        background: var(--teal-tint);
+      }
+      /* pick: the pin plants + a ring pulses out */
+      .dir-b .result.picking .r-pin {
+        opacity: 1;
+        transform: translateY(-50%) scale(1);
+        animation: plant 420ms var(--spring) both;
+      }
+      @keyframes plant {
+        0% {
+          transform: translateY(-140%) scale(1.3);
+          opacity: 0;
+        }
+        60% {
+          transform: translateY(-42%) scale(1);
+          opacity: 1;
+        }
+        100% {
+          transform: translateY(-50%) scale(1);
+        }
+      }
+      .dir-b .result.picking::after {
+        content: '';
+        position: absolute;
+        inset-inline-start: 14px;
+        top: 50%;
+        width: 14px;
+        height: 14px;
+        border-radius: 999px;
+        border: 2px solid var(--teal);
+        transform: translate(-50%, -50%);
+        animation: ring 520ms var(--ease-exit) both;
+      }
+      @keyframes ring {
+        0% {
+          opacity: 0.8;
+          transform: translate(-50%, -50%) scale(0.5);
+        }
+        100% {
+          opacity: 0;
+          transform: translate(-50%, -50%) scale(3.4);
+        }
+      }
+
+      /* ============================================================= *
+       *  DIRECTION C — קפיצי (springy / tactile)
+       * ============================================================= */
+      .dir-c .sheet.show {
+        transition: transform var(--t-base) var(--spring);
+      }
+      .dir-c .pp-trigger:hover,
+      .dir-c .zone-chip:hover {
+        border-color: var(--soft-line);
+        box-shadow: 0 4px 14px -6px rgba(22, 35, 61, 0.28);
+        transform: translateY(-1px);
+      }
+      .dir-c.anim .result,
+      .dir-c.anim .group {
+        animation: springIn 360ms var(--spring) both;
+        animation-delay: var(--d);
+      }
+      @keyframes springIn {
+        0% {
+          opacity: 0;
+          transform: translateY(14px) scale(0.96);
+        }
+        100% {
+          opacity: 1;
+          transform: translateY(0) scale(1);
+        }
+      }
+      .dir-c .result {
+        transition:
+          transform var(--t-quick) var(--spring),
+          background var(--t-quick) var(--ease-standard);
+      }
+      .dir-c .result:hover,
+      .dir-c .result:focus-visible {
+        background: var(--screen);
+        transform: translateX(-3px) scale(1.012);
+      }
+      .dir-c .result:active {
+        transform: scale(0.98);
+      }
+      .dir-c .result.selected {
+        background: var(--teal-tint);
+      }
+      /* a checkmark morphs in on select */
+      .dir-c .result.selected .r-check,
+      .dir-c .result.picking .r-check {
+        opacity: 1;
+        animation: checkPop 320ms var(--spring) both;
+      }
+      @keyframes checkPop {
+        0% {
+          opacity: 0;
+          transform: scale(0.2) rotate(-12deg);
+        }
+        100% {
+          opacity: 1;
+          transform: scale(1) rotate(0);
+        }
+      }
+      .dir-c .result.picking {
+        background: var(--teal-tint);
+      }
+
+      /* ---------- reduced motion: honored via the media query AND the toggle ---------- */
+      @media (prefers-reduced-motion: reduce) {
+        *,
+        *::before,
+        *::after {
+          animation-duration: 0.001ms !important;
+          animation-iteration-count: 1 !important;
+          transition-duration: 0.001ms !important;
+        }
+      }
+      .reduce *,
+      .reduce *::before,
+      .reduce *::after {
+        animation-duration: 0.001ms !important;
+        animation-iteration-count: 1 !important;
+        transition-duration: 0.001ms !important;
+      }
+      .reduce .sonar {
+        display: none !important;
+      }
+
+      /* ---------- side notes (desktop only) ---------- */
+      .notes {
+        max-width: 392px;
+        margin-top: 20px;
+        color: #c4cee6;
+        font-size: 12px;
+        line-height: 1.6;
+      }
+      .notes h3 {
+        color: #fff;
+        font-size: 13px;
+        margin-bottom: 6px;
+        font-weight: 700;
+      }
+      .notes .card {
+        background: rgba(255, 255, 255, 0.05);
+        border: 1px solid rgba(255, 255, 255, 0.1);
+        border-radius: 14px;
+        padding: 13px 15px;
+        margin-bottom: 10px;
+      }
+      .notes b {
+        color: #fff;
+      }
+      .notes .tag {
+        display: inline-block;
+        font-family: var(--mono);
+        font-size: 10.5px;
+        color: #9fe0d6;
+        background: rgba(44, 156, 144, 0.16);
+        border-radius: 6px;
+        padding: 1px 6px;
+        margin: 2px 2px 0 0;
+      }
+      @media (min-width: 900px) {
+        .stage {
+          display: flex;
+          gap: 26px;
+          align-items: flex-start;
+          justify-content: center;
+        }
+        .notes {
+          margin-top: 0;
+        }
+      }
+    </style>
+  </head>
+  <body>
+    <p class="caption"><b>בוחרי מקום ואזור זמן</b> · שדרוג ה־wow + מיקרו־אנימציות</p>
+    <p class="adr-note">
+      שלושה כיוונים לאותם שני בוחרים (PlacePicker · ZonePicker). שניהם ממשפחת המיקום, לכן הצבע הוא
+      טורקיז בלבד (חוק 4) והתנועה נבחרת מסולם ה־tokens. החליפו כיוון, בחרו איזה בוחר פותחים, והפעילו
+      "תנועה מופחתת" לתצוגת prefers-reduced-motion.
+    </p>
+
+    <div class="controls">
+      <div class="ctl">
+        <span class="ctl-label">כיוון</span>
+        <div class="seg" id="dirSeg">
+          <button data-dir="a" class="on">A · מסך יעדים</button>
+          <button data-dir="b">B · סיכה</button>
+          <button data-dir="c">C · קפיצי</button>
+        </div>
+      </div>
+      <div class="ctl">
+        <span class="ctl-label">בוחר</span>
+        <div class="seg teal" id="pickSeg">
+          <button data-pick="place" class="on">📍 מקום</button>
+          <button data-pick="zone">🕐 אזור זמן</button>
+        </div>
+      </div>
+      <div class="ctl">
+        <span class="ctl-label">נגישות</span>
+        <div class="seg" id="rmSeg">
+          <button data-rm="0" class="on">תנועה מלאה</button>
+          <button data-rm="1">מופחתת</button>
+        </div>
+      </div>
+    </div>
+
+    <div class="stage">
+      <div class="phone dir-a" id="phone">
+        <div class="statusbar">
+          <span>9:41</span>
+          <span>🔋 ▂▄▆</span>
+        </div>
+        <div class="header">
+          <h1>עריכת אירוע</h1>
+          <div class="sub">מקום ואזור זמן · הדגמת הבוחרים</div>
+        </div>
+
+        <div class="body">
+          <div class="formcard">
+            <h2>ארוחת ערב בשיבויה</h2>
+            <div class="hint">הקישו על שדה כדי לפתוח את הבוחר.</div>
+
+            <div class="fieldlabel">כותרת</div>
+            <div class="titlerow">
+              <span class="g">🍜</span>
+              <span class="tt">ארוחת ערב בשיבויה</span>
+            </div>
+
+            <div class="fieldlabel">מקום</div>
+            <div class="place-picker" id="placeTriggerWrap"></div>
+
+            <div class="fieldlabel">אזור זמן</div>
+            <div id="zoneTriggerWrap"></div>
+          </div>
+        </div>
+
+        <div class="backdrop" id="backdrop"></div>
+        <div class="sheet" id="sheet">
+          <div class="grab"></div>
+          <div class="sheet-title" id="sheetTitle"></div>
+          <input class="search" id="search" />
+          <div class="sonar" aria-hidden="true"><span class="dot">📍</span></div>
+          <ul class="results" id="results"></ul>
+          <div class="footer" id="footer"></div>
+        </div>
+      </div>
+
+      <div class="notes">
+        <div class="card">
+          <h3>A · מסך יעדים <span style="color: #9fb0d6; font-weight: 400">(split-flap)</span></h3>
+          הבוחר מדבר בשפת הלוח של Waypoint: השורות <b>מתהפכות למקומן על ציר עליון</b> בהדרגה, והצ׳יפ
+          המונו (שעון/קוד) מתיישב אחרון. הכי מזוהה עם המותג.
+          <div>
+            <span class="tag">flapIn</span><span class="tag">stagger</span
+            ><span class="tag">--t-base</span><span class="tag">emphasized</span>
+          </div>
+        </div>
+        <div class="card">
+          <h3>B · טפטוף סיכה <span style="color: #9fb0d6; font-weight: 400">(pin-drop)</span></h3>
+          הכי מרחבי וטורקיז: חיפוש ריק מציג <b>פינג סונאר</b> רך, סיכת מיקום עוקבת אחרי השורה בפוקוס
+          <b>ונשתלת</b> בבחירה עם גל טבעת. נשען על "זה מקום".
+          <div>
+            <span class="tag">sonar</span><span class="tag">pin-track</span
+            ><span class="tag">plant+ring</span><span class="tag">spring</span>
+          </div>
+        </div>
+        <div class="card">
+          <h3>C · קפיצי <span style="color: #9fb0d6; font-weight: 400">(springy)</span></h3>
+          תנועה קודם, קישוט מינימלי, הכי נאמן ל"אלמנט רועש אחד". נייר נקי; ה־wow הוא
+          ה<b>תחושה</b>: שיט קפיצי, שורות מדורגות, הרמה מגנטית בריחוף, ו<b>וי</b> שנולד בבחירה.
+          <div>
+            <span class="tag">springIn</span><span class="tag">magnetic</span
+            ><span class="tag">checkPop</span><span class="tag">--spring</span>
+          </div>
+        </div>
+        <div class="card" style="border-color: rgba(233, 166, 60, 0.25)">
+          <b style="color: #f0c078">תקציב</b> · טורקיז = מיקום (שני הבוחרים), אמבר לא נוגעים בו כאן
+          (הוא של השעון/הלוח). כל התנועה מ־tokens.css ומכובה תחת prefers-reduced-motion.
+        </div>
+      </div>
+    </div>
+
+    <script>
+      // ---- fake data (mirrors the real hooks' shapes) ----
+      const PLACES = [
+        { primary: 'Ichiran Shibuya', secondary: 'טוקיו · ראמן', inTrip: false },
+        { primary: 'מגדל טוקיו', secondary: 'Minato City, טוקיו', inTrip: true },
+        { primary: 'צומת שיבויה', secondary: 'Shibuya Crossing, טוקיו', inTrip: false },
+        { primary: 'מקדש סנסו-ג׳י', secondary: 'Asakusa, טוקיו', inTrip: false },
+        { primary: 'שוק צוקיג׳י', secondary: 'Tsukiji, טוקיו', inTrip: false },
+        { primary: '% Arabica', secondary: 'Higashiyama, קיוטו', inTrip: true },
+        { primary: 'גני הארמון הקיסרי', secondary: 'Chiyoda, טוקיו', inTrip: false },
+        { primary: 'שכונת שינג׳וקו', secondary: 'Shinjuku, טוקיו', inTrip: false },
+      ];
+
+      // zone rows: { city (Latin, mirrors zoneCity), zone (IANA), offset }
+      const ZONES_SUGGESTED = [
+        { city: 'Tokyo', zone: 'Asia/Tokyo', off: 'GMT+9', current: true },
+        { city: 'Jerusalem', zone: 'Asia/Jerusalem', off: 'GMT+3' },
+      ];
+      const ZONES_ALL = [
+        { city: 'Bangkok', zone: 'Asia/Bangkok', off: 'GMT+7' },
+        { city: 'Dubai', zone: 'Asia/Dubai', off: 'GMT+4' },
+        { city: 'Hong Kong', zone: 'Asia/Hong_Kong', off: 'GMT+8' },
+        { city: 'London', zone: 'Europe/London', off: 'GMT+1' },
+        { city: 'Los Angeles', zone: 'America/Los_Angeles', off: 'GMT-7' },
+        { city: 'New York', zone: 'America/New_York', off: 'GMT-4' },
+        { city: 'Paris', zone: 'Europe/Paris', off: 'GMT+2' },
+        { city: 'Seoul', zone: 'Asia/Seoul', off: 'GMT+9' },
+        { city: 'Singapore', zone: 'Asia/Singapore', off: 'GMT+8' },
+        { city: 'Sydney', zone: 'Australia/Sydney', off: 'GMT+10' },
+      ];
+
+      const state = {
+        dir: 'a',
+        pick: 'place',
+        rm: false,
+        place: null, // {primary, secondary}
+        zone: { city: 'Tokyo', zone: 'Asia/Tokyo', off: 'GMT+9' },
+      };
+
+      const phone = document.getElementById('phone');
+      const backdrop = document.getElementById('backdrop');
+      const sheet = document.getElementById('sheet');
+      const sheetTitle = document.getElementById('sheetTitle');
+      const search = document.getElementById('search');
+      const results = document.getElementById('results');
+      const footer = document.getElementById('footer');
+      const sonar = phone.querySelector('.sonar');
+
+      const CHECK =
+        '<svg class="r-check" viewBox="0 0 20 20" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round"><path d="M4 10.5l4 4 8-9"/></svg>';
+
+      // ---------- triggers ----------
+      function renderTriggers() {
+        const pw = document.getElementById('placeTriggerWrap');
+        const p = state.place;
+        pw.innerHTML =
+          `<button class="pp-trigger press${p ? ' filled' : ''}" id="placeTrigger">` +
+          `<span class="pp-trigger-icon">📍</span>` +
+          `<span class="pp-trigger-label">${p ? p.primary : 'הוספת מקום'}</span>` +
+          (p && p.secondary ? `<span class="pp-sub">${p.secondary.split(' · ')[0].split(',')[0]}</span>` : '') +
+          `</button>` +
+          (p ? `<button class="pp-clear" id="placeClear" aria-label="הסרת המקום">✕</button>` : '');
+        document.getElementById('placeTrigger').onclick = () => open('place');
+        if (p) document.getElementById('placeClear').onclick = () => { state.place = null; renderTriggers(); };
+
+        const zw = document.getElementById('zoneTriggerWrap');
+        const z = state.zone;
+        zw.innerHTML =
+          `<button class="zone-chip press" id="zoneTrigger">` +
+          `<span class="zc-glyph">🕐</span>` +
+          `<span>${z.city}</span>` +
+          `<span class="zc-off" dir="ltr">${z.off}</span>` +
+          `<span class="zc-caret">▼</span>` +
+          `</button>`;
+        document.getElementById('zoneTrigger').onclick = () => open('zone');
+      }
+
+      // ---------- rows ----------
+      function placeRow(p, i) {
+        return (
+          `<li><button class="result press" style="--d:${i * 45}ms" data-i="${i}">` +
+          `<span class="r-pin">📍</span>` +
+          `<div class="r-main"><span class="r-primary">${p.primary}</span>` +
+          (p.secondary ? `<span class="r-secondary">${p.secondary}</span>` : '') +
+          `</div>` +
+          (p.inTrip ? `<span class="r-badge">כבר בטיול</span>` : '') +
+          CHECK +
+          `</button></li>`
+        );
+      }
+      function zoneRow(z, i) {
+        const on = z.zone === state.zone.zone;
+        return (
+          `<li><button class="result press${on ? ' selected' : ''}" style="--d:${i * 40}ms" data-zone="${z.zone}">` +
+          `<span class="r-pin">📍</span>` +
+          `<div class="r-main"><span class="r-primary">${z.city}</span>` +
+          `<span class="r-zone" dir="ltr">${z.zone}</span></div>` +
+          `<span class="r-off" dir="ltr">${z.off}</span>` +
+          CHECK +
+          `</button></li>`
+        );
+      }
+
+      // ---------- open / render sheet ----------
+      let idx = 0; // animation-generation guard
+      function open(which) {
+        state.pick = which;
+        document.querySelectorAll('#pickSeg button').forEach((b) =>
+          b.classList.toggle('on', b.dataset.pick === which)
+        );
+        search.value = '';
+        sheetTitle.textContent = which === 'place' ? 'מקום' : 'אזור זמן';
+        search.placeholder = which === 'place' ? 'חיפוש מקום…' : 'חיפוש לפי עיר או אזור…';
+        footer.textContent = which === 'place' ? 'מופעל על ידי Google' : '';
+        renderList('');
+        backdrop.classList.add('show');
+        sheet.classList.add('show');
+        // focus after the slide settles (skip autofocus jump under reduced motion is fine either way)
+        setTimeout(() => search.focus({ preventScroll: true }), state.rm ? 0 : 180);
+      }
+      function close() {
+        backdrop.classList.remove('show');
+        sheet.classList.remove('show');
+      }
+
+      function renderList(q) {
+        idx++;
+        query = q.trim().toLowerCase();
+        const anim = !state.rm;
+        // toggle the direction-B empty sonar
+        phone.classList.toggle('empty', state.dir === 'b' && state.pick === 'place' && !query);
+
+        if (state.pick === 'place') {
+          const rows = PLACES.filter(
+            (p) => !query || p.primary.toLowerCase().includes(query) || p.secondary.toLowerCase().includes(query)
+          );
+          let html = rows.map((p) => placeRow(p, PLACES.indexOf(p))).join('');
+          // name-only fallback when there's a query
+          if (query) {
+            html += `<button class="name-only press" id="nameOnly">שמירת "${q.trim()}" כשם בלבד</button>`;
+          }
+          if (!rows.length && !query) html = '';
+          results.innerHTML = html || `<div class="empty-hint">התחילו להקליד כדי לחפש מקום</div>`;
+          results.querySelectorAll('.result').forEach((el) => {
+            el.onclick = () => pickPlace(PLACES[+el.dataset.i], el);
+          });
+          const no = document.getElementById('nameOnly');
+          if (no) no.onclick = () => pickPlace({ primary: q.trim(), secondary: '' }, no);
+        } else {
+          const match = (z) =>
+            !query ||
+            z.city.toLowerCase().includes(query) ||
+            z.zone.toLowerCase().includes(query) ||
+            z.off.toLowerCase().includes(query);
+          let html = '';
+          let i = 0;
+          if (!query) {
+            html += `<li class="group" style="--d:0ms">מוצע</li>`;
+            ZONES_SUGGESTED.forEach((z) => (html += zoneRow(z, ++i)));
+            html += `<li class="group" style="--d:${++i * 40}ms">כל האזורים</li>`;
+            ZONES_ALL.forEach((z) => (html += zoneRow(z, ++i)));
+          } else {
+            const all = [...ZONES_SUGGESTED, ...ZONES_ALL].filter(match);
+            html = all.length
+              ? all.map((z) => zoneRow(z, ++i)).join('')
+              : `<div class="empty-hint">לא נמצא אזור זמן</div>`;
+          }
+          results.innerHTML = html;
+          results.querySelectorAll('.result').forEach((el) => {
+            el.onclick = () => pickZone(el.dataset.zone, el);
+          });
+        }
+
+        // re-arm entrance animation (retrigger by toggling the .anim class)
+        phone.classList.remove('anim');
+        if (anim) {
+          // force reflow so the animation restarts on each render
+          void results.offsetWidth;
+          phone.classList.add('anim');
+        }
+      }
+
+      function pickPlace(p, el) {
+        commit(el, () => {
+          state.place = { primary: p.primary, secondary: p.secondary };
+          renderTriggers();
+          close();
+        });
+      }
+      function pickZone(zoneId, el) {
+        const z = [...ZONES_SUGGESTED, ...ZONES_ALL].find((x) => x.zone === zoneId);
+        commit(el, () => {
+          state.zone = { city: z.city, zone: z.zone, off: z.off };
+          renderTriggers();
+          close();
+        });
+      }
+      // play the direction's pick animation, then apply
+      function commit(el, apply) {
+        if (state.rm || !el) {
+          apply();
+          return;
+        }
+        el.classList.add('picking', 'selected');
+        const wait = state.dir === 'b' ? 380 : state.dir === 'c' ? 300 : 320;
+        setTimeout(apply, wait);
+      }
+
+      // ---------- controls ----------
+      document.getElementById('dirSeg').onclick = (e) => {
+        const b = e.target.closest('button');
+        if (!b) return;
+        state.dir = b.dataset.dir;
+        document.querySelectorAll('#dirSeg button').forEach((x) => x.classList.toggle('on', x === b));
+        phone.classList.remove('dir-a', 'dir-b', 'dir-c');
+        phone.classList.add('dir-' + state.dir);
+        if (sheet.classList.contains('show')) renderList(search.value);
+      };
+      document.getElementById('pickSeg').onclick = (e) => {
+        const b = e.target.closest('button');
+        if (!b) return;
+        open(b.dataset.pick);
+      };
+      document.getElementById('rmSeg').onclick = (e) => {
+        const b = e.target.closest('button');
+        if (!b) return;
+        state.rm = b.dataset.rm === '1';
+        document.querySelectorAll('#rmSeg button').forEach((x) => x.classList.toggle('on', x === b));
+        phone.classList.toggle('reduce', state.rm);
+      };
+
+      search.addEventListener('input', () => renderList(search.value));
+      backdrop.addEventListener('click', close);
+
+      // ---------- boot ----------
+      renderTriggers();
+      // open the place picker once so the entrance is visible on load
+      open('place');
+    </script>
+  </body>
+</html>
