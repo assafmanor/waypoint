@@ -16,6 +16,8 @@ import {
   isMoveIntoPastError,
   moveEvent,
   refreshAccessToken,
+  resolveDestination,
+  searchDestinations,
   setAccessToken,
   setEventStatus,
   setOnSessionExpired,
@@ -376,6 +378,44 @@ describe('booking + place write calls', () => {
     expect(fetchMock).toHaveBeenCalledWith(
       expect.stringContaining(`/trips/${TRIP.id}/places/${place.id}`),
       expect.objectContaining({ method: 'PATCH' }),
+    );
+  });
+});
+
+describe('destination lookup (ADR-0113, trip-agnostic)', () => {
+  it('searchDestinations posts to /destinations/search and parses predictions', async () => {
+    const predictions = [{ googlePlaceId: 'g-jp', primaryText: 'Japan', secondaryText: '' }];
+    const fetchMock = vi
+      .fn()
+      .mockResolvedValue(new Response(JSON.stringify(predictions), { status: 200 }));
+    vi.stubGlobal('fetch', fetchMock);
+    const result = await searchDestinations({ input: 'jap', sessionToken: 'tok' });
+    expect(result[0].googlePlaceId).toBe('g-jp');
+    expect(fetchMock).toHaveBeenCalledWith(
+      expect.stringContaining('/destinations/search'),
+      expect.objectContaining({ method: 'POST' }),
+    );
+  });
+
+  it('resolveDestination posts to /destinations/resolve and parses the result', async () => {
+    const body = {
+      googlePlaceId: 'g-jp',
+      name: 'Japan',
+      countryCode: 'JP',
+      lat: 36,
+      lng: 138,
+      timezone: 'Asia/Tokyo',
+    };
+    const fetchMock = vi
+      .fn()
+      .mockResolvedValue(new Response(JSON.stringify(body), { status: 200 }));
+    vi.stubGlobal('fetch', fetchMock);
+    const result = await resolveDestination({ googlePlaceId: 'g-jp', sessionToken: 'tok' });
+    expect(result.timezone).toBe('Asia/Tokyo');
+    expect(result.countryCode).toBe('JP');
+    expect(fetchMock).toHaveBeenCalledWith(
+      expect.stringContaining('/destinations/resolve'),
+      expect.objectContaining({ method: 'POST' }),
     );
   });
 });

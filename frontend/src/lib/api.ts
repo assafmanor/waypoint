@@ -5,6 +5,7 @@ import {
   changeSchema,
   inviteUrlSchema,
   invitePreviewSchema,
+  destinationResultSchema,
   maybeItemSchema,
   meSchema,
   membershipSchema,
@@ -24,6 +25,7 @@ import {
   type CreateMaybeItemInput,
   type CreatePlaceInput,
   type CreateTripInput,
+  type DestinationResult,
   type DocumentType,
   type EventStatus,
   type MaybeItem,
@@ -528,6 +530,48 @@ export async function resolvePlace(tripId: string, input: ResolvePlaceInput): Pr
   });
   if (!res.ok) return throwApiError(res);
   return placeSchema.parse(await res.json());
+}
+
+// ── Trip-destination lookup (ADR-0113): trip-agnostic, used at creation before a
+// trip exists. Geo-type-restricted autocomplete + a geocode→zone resolve. Online-only.
+
+const destinationsUrl = `${API_BASE_URL}/destinations`;
+
+/** Destination autocomplete (cities / regions / countries). Same `{ input,
+ *  sessionToken }` shape as the trip-scoped search; `signal` aborts a superseded
+ *  keystroke. */
+export async function searchDestinations({
+  input,
+  sessionToken,
+  signal,
+}: {
+  input: string;
+  sessionToken: string;
+  signal?: AbortSignal;
+}): Promise<PlacePrediction[]> {
+  const res = await apiFetch(`${destinationsUrl}/search`, {
+    method: HTTP_METHOD.POST,
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ input, sessionToken }),
+    signal,
+  });
+  if (!res.ok) return throwApiError(res);
+  return placePredictionSchema.array().parse(await res.json());
+}
+
+/** Geocode a picked destination into `{ googlePlaceId, name, countryCode?, lat?,
+ *  lng?, timezone?, candidateZones? }` (ADR-0113 §4). No persistence. */
+export async function resolveDestination(input: {
+  googlePlaceId: string;
+  sessionToken?: string;
+}): Promise<DestinationResult> {
+  const res = await apiFetch(`${destinationsUrl}/resolve`, {
+    method: HTTP_METHOD.POST,
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify(input),
+  });
+  if (!res.ok) return throwApiError(res);
+  return destinationResultSchema.parse(await res.json());
 }
 
 /** Upload a document (multipart). The browser sets the multipart `Content-Type`

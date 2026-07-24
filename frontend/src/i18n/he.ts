@@ -448,6 +448,13 @@ export const t = {
       lede: 'שלוש שאלות ויש טיול. בשאר נטפל אחר כך.',
       destLabel: 'לאן נוסעים?',
       destPlaceholder: 'יפן, יוון, גיאורגיה…',
+      // Destination picker (ADR-0113) — a Google Places pick at any granularity.
+      destPickerTitle: 'לאן נוסעים?',
+      destSearchPlaceholder: 'עיר, אזור או מדינה…',
+      destUseTyped: (name: string) => `שימוש ב"${name}"`,
+      // The derived primary timezone, shown inline + editable (never a forced step).
+      tzLabel: 'אזור זמן',
+      tzMultiNote: 'היעד משתרע על כמה אזורי זמן · זו נקודת התחלה, אפשר לשנות',
       datesLabel: 'מתי?',
       dateError: 'רגע - תאריך הסיום לפני ההתחלה',
       datePast: 'רגע - התאריך כבר עבר',
