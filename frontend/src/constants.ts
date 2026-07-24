@@ -212,7 +212,9 @@ export const TABS = [
 
 export type TabId = (typeof TABS)[number]['id'];
 
-/** UI iconography (emoji). Icons that are part of a sentence stay in the copy. */
+/** UI iconography (emoji). Icons that are part of a sentence stay in the copy.
+ *  Arrows and carets are deliberately absent: they render as SVGs (`ui/Icon`,
+ *  `ui/NavArrow`) because the body font has no glyphs for them (design-language). */
 export const ICONS = {
   navigate: '🧭',
   ticket: '🎫',
@@ -222,8 +224,6 @@ export const ICONS = {
   documents: '🛂',
   weather: '🌤️',
   fx: '💱',
-  fxUp: '▲',
-  fxDown: '▼',
   budget: '💰',
   lock: '🔒',
   warn: '⚠️',

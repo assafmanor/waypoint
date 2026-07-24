@@ -9,10 +9,15 @@
 // FORM deliberately keep the full names — they're the record and the editor.
 // A day row wants the meta line to follow the same decision, so it goes through
 // `routeDisplay` instead of this component.
+//
+// An event whose booking isn't in reach (an unlinked event, or a title that
+// outlived its places) still falls through to `TitleLabel`, so a stored route
+// title reads as a route rather than as raw text.
 import { type Booking, type Place, type TripEvent } from '@waypoint/shared';
 import { eventRoute } from '../lib/places';
-import { shortPlaceLabel } from '../lib/place-label';
+import { shortRoute } from '../lib/place-label';
 import { RouteLabel } from './RouteLabel';
+import { TitleLabel } from './TitleLabel';
 
 export function EventTitle({
   event,
@@ -24,11 +29,6 @@ export function EventTitle({
   places: Place[];
 }) {
   const route = eventRoute(event, bookings, places);
-  if (!route) return <>{event.title}</>;
-  return (
-    <RouteLabel
-      from={route.from && shortPlaceLabel(route.from)}
-      to={route.to && shortPlaceLabel(route.to)}
-    />
-  );
+  if (!route) return <TitleLabel title={event.title} />;
+  return <RouteLabel {...shortRoute(route)} />;
 }

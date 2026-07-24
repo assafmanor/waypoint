@@ -57,6 +57,7 @@ import { EventForm } from '../ui/EventForm';
 import { BookingSheet } from '../ui/BookingSheet';
 import { BookingDetail } from '../ui/BookingDetail';
 import { TransitionRow } from '../ui/TransitionRow';
+import { TitleLabel } from '../ui/TitleLabel';
 import { Sheet } from '../ui/Sheet';
 import { TimePicker } from '../ui/TimePicker';
 import { EventCard, type EventPhaseName } from '../ui/domain/EventCard';
@@ -543,8 +544,9 @@ function ItemNode({ item, depth, ctx }: { item: TimeItem; depth: number; ctx: Da
   const card = (
     <EventCard
       icon={e.icon}
-      // `titleText` stays the plain stored title for the menu header + a11y names.
-      title={route.title ?? e.title}
+      // No route in reach: the stored title may still BE one, so it goes through
+      // `TitleLabel` rather than out raw. `titleText` stays the plain string.
+      title={route.title ?? <TitleLabel title={e.title} />}
       titleText={e.title}
       placeName={route.meta ?? eventPlaceName(e, ctx.bookings, ctx.places)}
       code={code}

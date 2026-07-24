@@ -8,7 +8,6 @@ import {
   eventFromBookingSeed,
   findPlaceByName,
   mergeBookingDetails,
-  routeTitle,
 } from './booking-edit';
 
 const TZ = 'Asia/Tokyo';
@@ -173,25 +172,6 @@ describe('buildSpanSeed', () => {
     // True elapsed time is 6h45 — the zone shift is real, not the 3h45 the raw
     // wall-clocks suggest.
     expect((Date.parse(seed.endsAt!) - Date.parse(seed.startsAt!)) / 60000).toBe(6 * 60 + 45);
-  });
-});
-
-describe('routeTitle', () => {
-  it('joins origin and destination with the route arrow', () => {
-    expect(routeTitle('נתב״ג', 'נריטה', '←')).toBe('נתב״ג ← נריטה');
-  });
-
-  it('trims each endpoint', () => {
-    expect(routeTitle('  TLV ', ' NRT ', '←')).toBe('TLV ← NRT');
-  });
-
-  it('drops a blank endpoint (no dangling arrow)', () => {
-    expect(routeTitle('TLV', '', '←')).toBe('TLV');
-    expect(routeTitle('', 'NRT', '←')).toBe('NRT');
-  });
-
-  it('is empty when both endpoints are blank (→ route required)', () => {
-    expect(routeTitle('  ', '', '←')).toBe('');
   });
 });
 

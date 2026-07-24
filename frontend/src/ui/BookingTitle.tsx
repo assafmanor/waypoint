@@ -5,8 +5,9 @@
 // Index landing tile's "next" preview.
 import { BOOKING_TYPE, type Booking, type Place } from '@waypoint/shared';
 import { RouteLabel } from './RouteLabel';
+import { TitleLabel } from './TitleLabel';
 import { placeName } from '../lib/places';
-import { shortPlaceLabel } from '../lib/place-label';
+import { shortRoute } from '../lib/place-label';
 
 const isTransport = (b: Booking): boolean =>
   b.type === BOOKING_TYPE.FLIGHT || b.type === BOOKING_TYPE.TRAIN;
@@ -17,7 +18,13 @@ export function BookingTitle({ booking, places }: { booking: Booking; places: Pl
   if (isTransport(booking) && (from || to)) {
     // Shortened like every other glanceable route label (ADR-0059 §3 amendment);
     // the booking detail keeps the full names.
-    return <RouteLabel from={from && shortPlaceLabel(from)} to={to && shortPlaceLabel(to)} />;
+    return <RouteLabel {...shortRoute({ from, to })} />;
   }
-  return <span>{booking.title}</span>;
+  // No endpoints in reach: the stored title may still BE a route, so it reads as
+  // one instead of as raw text (session-101 amendment).
+  return (
+    <span>
+      <TitleLabel title={booking.title} />
+    </span>
+  );
 }

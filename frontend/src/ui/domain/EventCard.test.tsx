@@ -7,6 +7,7 @@ import { ToastProvider } from '../Toast';
 import { NavProvider } from '../../state/nav-state';
 import { EventCard, type EventCardProps } from './EventCard';
 import { SyncBadge } from '../feedback';
+import { ROUTE_TITLE_ARROW, routeTitle } from '../../lib/route-title';
 import { t } from '../../i18n/he';
 
 const TZ = 'Asia/Tokyo';
@@ -143,6 +144,28 @@ describe('EventCard', () => {
       ),
     );
     expect(container.querySelector('.wp-event-conflict-flag')).toBeTruthy();
+  });
+
+  it("a conflicting flight's title reads as its shortened route, with the SVG arrow", () => {
+    const { container } = render(
+      wrap(
+        <EventCard
+          {...base}
+          conflict={{
+            title: routeTitle('נמל התעופה בן גוריון', 'נמל התעופה הבינלאומי קפלאוויק'),
+            startsAt: '2026-07-20T15:00:00+09:00',
+          }}
+        />,
+      ),
+    );
+    const flag = container.querySelector('.wp-event-conflict-flag')!;
+    expect(flag.textContent).toContain('בן גוריון');
+    expect(flag.textContent).toContain('קפלאוויק');
+    // The reported bug: the stored title's FULL names and text arrow leaked here
+    // while the row above showed the shortened SVG route.
+    expect(flag.textContent).not.toContain('נמל התעופה');
+    expect(flag.textContent).not.toContain(ROUTE_TITLE_ARROW);
+    expect(flag.querySelector('.arr svg')).not.toBeNull();
   });
 
   it('the ⋯ menu opens the manage sheet; edit + delete fire their callbacks', () => {

@@ -19,6 +19,7 @@ import { ZoneShiftPill } from '../ZoneShiftPill';
 import { DELAY_STEP_MINUTES } from '../../constants';
 import { ICONS } from '../../constants';
 import { Icon } from '../Icon';
+import { TitleLabel } from '../TitleLabel';
 import { RowManageSheet, type RowAction } from './ListRow';
 import { t } from '../../i18n/he';
 import './event-card.css';
@@ -31,7 +32,8 @@ export interface EventCardProps {
   icon: ReactNode;
   /** Title node — screen passes <EventTitle/> or a string. */
   title: ReactNode;
-  /** Plain title for the Tier-2 menu header + accessible names. */
+  /** The plain stored title, for the Tier-2 menu header — rendered there through
+   *  `TitleLabel`, so a stored route reads as a route rather than raw text. */
   titleText: string;
   placeName?: string;
   /** Full confirmation code incl. prefix (shown in meta + hard-edit warning). */
@@ -182,7 +184,9 @@ export function EventCard(props: EventCardProps) {
       </span>
       {conflict && (
         <span className="wp-event-conflict-flag">
-          {ICONS.warn} {t.event.conflictWarn(conflict.title, formatTime(conflict.startsAt, tz))}
+          {ICONS.warn} {t.event.conflictWarn.before}
+          <TitleLabel title={conflict.title} />{' '}
+          {t.event.conflictWarn.after(formatTime(conflict.startsAt, tz))}
         </span>
       )}
     </span>
@@ -391,7 +395,9 @@ export function EventCard(props: EventCardProps) {
       </div>
       {menuOpen && (
         <RowManageSheet
-          title={titleText}
+          // The menu header is a visible title: a flight names its route there the
+          // same way the card does, not as the raw stored string.
+          title={<TitleLabel title={titleText} />}
           actions={menuActions}
           onClose={() => setMenuOpen(false)}
         />

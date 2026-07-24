@@ -15,6 +15,7 @@ import { useMemo, useState } from 'react';
 import { OVERNIGHT } from '../constants';
 import { t } from '../i18n/he';
 import { hoursPhrase } from '../lib/duration';
+import { Icon } from './Icon';
 import { TimeField, toMin, toHHMM, centreSelected } from './primitives/TimeField';
 
 export { nearestRoundSlot } from './primitives/TimeField';
@@ -206,6 +207,12 @@ export function TimePicker({
                           </sup>
                         )}
                       </span>
+                      {/* The "nearest round" hint marker, in the trailing slot the
+                          selected row's ✓ uses — an SVG, never a text glyph: the
+                          body font has no ↩ and the fallback sits low. */}
+                      {d !== duration && d === suggestDur && (
+                        <Icon name="undo" className="tp-suggest-ic" />
+                      )}
                     </button>
                   ))}
                 </div>

@@ -14,7 +14,7 @@ export function Sheet({
   onClose,
   children,
 }: {
-  title?: string;
+  title?: ReactNode;
   ariaLabel?: string;
   onClose: () => void;
   children: ReactNode;

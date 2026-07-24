@@ -66,6 +66,7 @@ import { Icon } from '../ui/Icon';
 import { NavArrow } from '../ui/NavArrow';
 import { ZoneShiftPill } from '../ui/ZoneShiftPill';
 import { Sheet } from '../ui/Sheet';
+import { TitleLabel } from '../ui/TitleLabel';
 import { MaybeCard } from '../ui/domain/MaybeCard';
 
 const daysBetween = (from: string, to: string) =>
@@ -822,8 +823,9 @@ function BuilderRow({
 }: {
   event: TripEvent;
   tz: string;
-  /** Title node — the screen passes `<EventTitle/>` so a transport row reads as
-   *  its route; falls back to the stored title. */
+  /** Title node — the screen passes the `routeDisplay` title so a transport row
+   *  reads as its route; falls back to the stored title, itself route-aware
+   *  (`TitleLabel`). */
   title?: ReactNode;
   /** Per-event display zones + the shift pill to show (ADR-0107). Absent → the
    *  row renders wholly in `tz` with no pill. */
@@ -916,7 +918,7 @@ function BuilderRow({
   const mainContent = (
     <>
       <span className="bld-t">
-        <span className="bld-ttl">{title ?? event.title}</span>
+        <span className="bld-ttl">{title ?? <TitleLabel title={event.title} />}</span>
         {isHard ? (
           <span className="tag-hard">
             {ICONS.lock} {t.event.hard}
@@ -1059,7 +1061,8 @@ function BuilderRow({
           </span>
         ))}
       {!readOnly && menuOpen && (
-        <Sheet title={event.title} onClose={() => setMenuOpen(false)}>
+        // Visible header: a flight names its route here like the row does.
+        <Sheet title={<TitleLabel title={event.title} />} onClose={() => setMenuOpen(false)}>
           <div className="row-actions">
             <button className="row-action" onClick={() => runAction(onEdit)}>
               <span className="row-action-ic" aria-hidden="true">

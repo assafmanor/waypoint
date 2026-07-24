@@ -37,14 +37,11 @@ export const t = {
     errorTitle: 'משהו השתבש',
     dismiss: 'סגירה',
   },
-  // Visible directional arrows render as SVGs (ui/NavArrow, ui/Icon) so they
-  // centre cleanly — the Assistant body font has no arrow glyphs and the
-  // fallback sits low. This one stays textual: it's only used to build the
-  // screen-reader label for a transport route (origin → destination), never
-  // shown, so an SVG would add nothing.
-  arrows: {
-    route: '←',
-  },
+  // No arrow lives in the copy: every visible arrow renders as an SVG (ui/NavArrow,
+  // ui/Icon) because the Assistant body font has no arrow glyphs and the fallback
+  // sits low. The one textual arrow left in the app is the route-title separator
+  // (lib/route-title's ROUTE_TITLE_ARROW) — stored data + screen-reader labels,
+  // where an SVG says nothing. Lint-guarded for this directory.
   tabs: {
     home: 'בית',
     map: 'מפה',
@@ -776,7 +773,13 @@ export const t = {
     nextDay: 'מסתיים למחרת',
     bookingLabel: 'הזמנה',
     hardWarn: 'קשיח · שינוי מחייב עדכון ההזמנה',
-    conflictWarn: (title: string, time: string) => `חופף ל-${title} (קשיח) · ${time}`,
+    // The conflicting event's title renders as a NODE between these two halves
+    // (`ui/TitleLabel` — a flight reads as its shortened route with the SVG
+    // arrow, ADR-0059 §3 session-101 amendment), not as an interpolated string.
+    conflictWarn: {
+      before: 'חופף ל-',
+      after: (time: string) => `(קשיח) · ${time}`,
+    },
     // Tooltip on the zone-shift pill (ADR-0107): how far this event's clock is
     // from the day's — the destination vs origin for a flight.
     zoneShift: 'הפרש שעון מאזור הזמן של היום',
@@ -840,12 +843,13 @@ export const t = {
         : `${movedTitle} נדחה - לדחות גם את האירועים שאחריו?`,
   },
   confirm: {
+    // Both bodies open with the event's title as a NODE (`ui/TitleLabel`), so the
+    // copy is what follows it — a flight names its route, shortened, with the SVG
+    // arrow, like every other surface (ADR-0059 §3 session-101 amendment).
     hardEditTitle: 'לשנות אירוע קשיח?',
-    hardEditBody: (title: string) =>
-      `${title} מחובר להזמנה אמיתית - שינוי כאן מחייב עדכון שלה. ממשיכים?`,
+    hardEditBody: 'מחובר להזמנה אמיתית - שינוי כאן מחייב עדכון שלה. ממשיכים?',
     hardDeleteTitle: 'למחוק אירוע קשיח?',
-    hardDeleteBody: (title: string) =>
-      `${title} מחובר להזמנה אמיתית - המחיקה לא מבטלת את ההזמנה עצמה. ממשיכים?`,
+    hardDeleteBody: 'מחובר להזמנה אמיתית - המחיקה לא מבטלת את ההזמנה עצמה. ממשיכים?',
   },
   iconPicker: {
     open: 'בחר סמל',

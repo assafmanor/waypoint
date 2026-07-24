@@ -1,6 +1,54 @@
 import tseslint from 'typescript-eslint';
 import prettier from 'eslint-config-prettier';
 
+// `no-restricted-syntax` is one rule key: a later config block that sets it for a
+// file REPLACES the earlier list rather than adding to it. So the frontend
+// selectors are named here and composed per block, instead of a block re-declaring
+// the rule and silently dropping the guards it didn't mention.
+
+// ADR-0026: real clock + dev time-travel. `new Date()`/`Date.now()` read the real
+// wall clock and silently skip the dev time-travel override — always go through
+// useClock() (components) or getNow() (non-hook code) instead.
+const CLOCK_SELECTORS = [
+  {
+    selector: "NewExpression[callee.name='Date'][arguments.length=0]",
+    message: 'Use `new Date(getNow())` (lib/useClock) instead of `new Date()` — ADR-0026.',
+  },
+  {
+    selector:
+      "CallExpression[callee.object.name='Date'][callee.property.name='now'][arguments.length=0]",
+    message: 'Use `getNow()` (lib/useClock) instead of `Date.now()` — ADR-0026.',
+  },
+];
+
+// design-language.md "Emoji are content, icons are UI": UI arrows/carets render as
+// SVGs (ui/NavArrow, ui/Icon). The Assistant body font has no glyphs for these, so
+// a raw glyph falls back to a low-sitting substitute.
+const GLYPHS = '[→←›‹↩↺⬇▾▴▲▼]';
+const GLYPH_MESSAGE =
+  'Use the <NavArrow>/<Icon> primitive, not a raw arrow/caret glyph — Assistant lacks these and the fallback renders low (design-language.md).';
+
+const RENDERED_GLYPH_SELECTORS = [
+  `JSXText[value=/${GLYPHS}/]`,
+  `JSXExpressionContainer Literal[value=/${GLYPHS}/]`,
+  `JSXExpressionContainer TemplateElement[value.raw=/${GLYPHS}/]`,
+].map((selector) => ({ selector, message: GLYPH_MESSAGE }));
+
+// The same rule at its source: UI copy holds no arrow glyph either, since every
+// string in `i18n/` is rendered as-is. A sentence that wraps a directional label is
+// split around it so the call site renders the SVG between the halves (see
+// `event.conflictWarn` / `confirm.hardEditBody`). The app's ONE textual arrow is the
+// route-title separator in `lib/route-title.ts` — stored data + screen-reader
+// labels, where an SVG says nothing.
+const COPY_GLYPH_SELECTORS = [
+  `Literal[value=/${GLYPHS}/]`,
+  `TemplateElement[value.raw=/${GLYPHS}/]`,
+].map((selector) => ({
+  selector,
+  message:
+    'No arrow/caret glyph in UI copy — split the sentence and render <NavArrow>/<Icon> at the call site (design-language.md).',
+}));
+
 export default tseslint.config(
   {
     ignores: ['**/dist/**', '**/node_modules/**', '**/.turbo/**', '_internal/**'],
@@ -30,36 +78,20 @@ export default tseslint.config(
     },
   },
   {
-    // ADR-0026: real clock + dev time-travel. `new Date()`/`Date.now()` read the
-    // real wall clock and silently skip the dev time-travel override — always go
-    // through useClock() (components) or getNow() (non-hook code) instead.
     files: ['frontend/src/**/*.{ts,tsx}'],
     ignores: ['frontend/src/lib/useClock.ts'],
     rules: {
+      'no-restricted-syntax': ['error', ...CLOCK_SELECTORS, ...RENDERED_GLYPH_SELECTORS],
+    },
+  },
+  {
+    files: ['frontend/src/i18n/**/*.ts'],
+    rules: {
       'no-restricted-syntax': [
         'error',
-        {
-          selector: "NewExpression[callee.name='Date'][arguments.length=0]",
-          message: 'Use `new Date(getNow())` (lib/useClock) instead of `new Date()` — ADR-0026.',
-        },
-        {
-          selector:
-            "CallExpression[callee.object.name='Date'][callee.property.name='now'][arguments.length=0]",
-          message: 'Use `getNow()` (lib/useClock) instead of `Date.now()` — ADR-0026.',
-        },
-        {
-          // design-language.md "Emoji are content, icons are UI": UI arrows/carets
-          // render as SVGs (ui/NavArrow, ui/Icon). The Assistant body font has no
-          // glyphs for these, so a raw glyph falls back to a low-sitting substitute.
-          selector: 'JSXText[value=/[→←›‹↩↺⬇▾▴▲▼]/]',
-          message:
-            'Use the <NavArrow>/<Icon> primitive, not a raw arrow/caret glyph — Assistant lacks these and the fallback renders low (design-language.md).',
-        },
-        {
-          selector: 'JSXExpressionContainer Literal[value=/[→←›‹↩↺⬇▾▴▲▼]/]',
-          message:
-            'Use the <NavArrow>/<Icon> primitive, not a raw arrow/caret glyph — Assistant lacks these and the fallback renders low (design-language.md).',
-        },
+        ...CLOCK_SELECTORS,
+        ...RENDERED_GLYPH_SELECTORS,
+        ...COPY_GLYPH_SELECTORS,
       ],
     },
   },

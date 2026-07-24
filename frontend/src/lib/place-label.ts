@@ -27,6 +27,7 @@
 //
 // It deliberately does NOT produce colloquial abbreviations (`נתב״ג`): those need
 // a per-place dictionary, which is what a user-set place nickname is for.
+import { type Route } from './places';
 
 /** Shortest remainder we'll accept — below this the strip clearly ate the name. */
 const MIN_LABEL_CHARS = 2;
@@ -69,4 +70,14 @@ export function shortPlaceLabel(name: string): string {
     return short;
   }
   return full;
+}
+
+/** Both endpoints of a route, shortened — what every glanceable route surface
+ *  shows (`EventTitle`, `BookingTitle`, `TitleLabel`, `routeDisplay`), so they
+ *  can't diverge on which half gets shortened. Absent endpoints stay absent. */
+export function shortRoute(route: Route): Route {
+  return {
+    from: route.from ? shortPlaceLabel(route.from) : undefined,
+    to: route.to ? shortPlaceLabel(route.to) : undefined,
+  };
 }

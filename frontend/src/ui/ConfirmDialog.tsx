@@ -9,6 +9,7 @@ import { createContext, useCallback, useContext, useRef, useState, type ReactNod
 import type { TripEvent } from '@waypoint/shared';
 import { ICONS } from '../constants';
 import { ConfirmDialog } from './primitives/ConfirmDialog';
+import { TitleLabel } from './TitleLabel';
 import { t } from '../i18n/he';
 
 export type ConfirmHardEditAction = 'edit' | 'delete';
@@ -39,11 +40,14 @@ export function ConfirmProvider({ children }: { children: ReactNode }) {
   };
 
   const title = pending?.action === 'delete' ? t.confirm.hardDeleteTitle : t.confirm.hardEditTitle;
-  const body = pending
-    ? pending.action === 'delete'
-      ? t.confirm.hardDeleteBody(pending.event.title)
-      : t.confirm.hardEditBody(pending.event.title)
-    : '';
+  // The event's title leads the sentence as a node: a flight names its route the
+  // same way it does everywhere else, not as the raw stored string.
+  const body = pending && (
+    <>
+      <TitleLabel title={pending.event.title} />{' '}
+      {pending.action === 'delete' ? t.confirm.hardDeleteBody : t.confirm.hardEditBody}
+    </>
+  );
 
   return (
     <ConfirmContext.Provider value={confirmHardEdit}>

@@ -12,6 +12,7 @@
 // labels. The board is rationed to one per screen (design-language).
 import { useState, type ReactNode } from 'react';
 import { Icon } from '../Icon';
+import { TitleLabel } from '../TitleLabel';
 import { ZoneShiftPill } from '../ZoneShiftPill';
 import { transitionLabel } from '../../lib/transitions';
 import { ICONS } from '../../constants';
@@ -245,7 +246,8 @@ export function Board(props: BoardProps) {
           )}
           {conflict && (
             <div className="wp-board-now-conflict">
-              {ICONS.warn} {t.event.conflictWarn(conflict.title, conflict.atLabel)}
+              {ICONS.warn} {t.event.conflictWarn.before}
+              <TitleLabel title={conflict.title} /> {t.event.conflictWarn.after(conflict.atLabel)}
             </div>
           )}
           {alsoNow && alsoNow.length > 0 && (
