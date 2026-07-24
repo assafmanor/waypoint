@@ -19,7 +19,8 @@
 import { useEffect, useMemo, useRef, useState } from 'react';
 import { type DurationUnit } from '@waypoint/shared';
 import { DEVICE_LOCALE, MS_PER_DAY } from '../../constants';
-import { formatCountdown, zonedIso } from '../../lib/time';
+import { zonedIso } from '../../lib/time';
+import { formatDuration } from '../../lib/duration';
 import { nightPhrase } from '../../lib/hebrew';
 import { TimePicker } from '../TimePicker';
 import { TimeField } from './TimeField';
@@ -162,18 +163,13 @@ function WhenSpan({
       ) : (
         duration != null && (
           <div className="wf-dur">
-            {t.whenField.durationPrefix} <b>{durationPhrase(duration)}</b>
+            {t.whenField.durationPrefix} <b>{formatDuration(duration, durationUnit)}</b>
             {crossesDays && <span className="wf-dur-note"> · {t.whenField.crossesDay}</span>}
           </div>
         )
       )}
     </div>
   );
-}
-
-function durationPhrase(mins: number): string {
-  const { value, unit } = formatCountdown(mins);
-  return `${value} ${unit}`;
 }
 
 // One span endpoint: a native date cell + the shared TimeField, in a flex-wrap
