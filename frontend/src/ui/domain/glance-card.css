@@ -391,6 +391,15 @@
   font-family: var(--font-mono);
   font-size: 9px;
 }
+/* Inside an anchor pill the shift is already on an amber wash, so the shared
+   pill drops its own chip treatment here and reads as a bordered token — a wash
+   on a wash muddies both (ADR-0107). */
+.achip.amber .gl-tzdelta {
+  font-size: 9px;
+  padding: 0 4px;
+  background: none;
+  border: 1px solid rgba(233, 166, 60, 0.5);
+}
 
 /* the amber time-anchor band above the block bar. Anchors that would overlap
    stack into lanes (--lane, 20px each) and the ones near an edge anchor inward,

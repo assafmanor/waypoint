@@ -70,6 +70,12 @@ export const PLACE_SEARCH_MIN_CHARS = 2;
 /** The waking window the day-progress bar spans, in trip-local hours. */
 export const DAY_WINDOW = { START_HOUR: 7, END_HOUR: 23 } as const;
 
+/** Noon — the safe wall-clock instant to sample a date at when only the calendar
+ *  day matters and never the time: the day's **ambient zone** (ADR-0107, so a
+ *  crossing near either boundary can't decide which zone frames the whole day)
+ *  and the day's weekday label. Mid-day is far from every DST/midnight edge. */
+export const DAY_NOON = '12:00';
+
 /** Overnight events (ADR-0037): a regular event may end in the small hours of
  *  the next day, but stays filed under its start night. An end at/before the
  *  start is read as next-day only when it lands at/before END_HOUR (07:00) and

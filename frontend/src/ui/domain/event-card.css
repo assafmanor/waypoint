@@ -215,15 +215,6 @@
 /* Zone-shift pill (ADR-0107 multi-zone): shows how far the clock jumps
    (destination vs origin on a crossing, else vs the day's ambient zone), only
    when the shift is non-zero. Amber — a time concept (design-language.md). */
-.wp-event-tzdelta {
-  font-family: var(--font-mono);
-  font-size: 10.5px;
-  font-weight: 700;
-  color: var(--amber-deep);
-  background: var(--amber-wash, rgba(233, 166, 60, 0.14));
-  border-radius: 999px;
-  padding: 1px 7px;
-}
 .wp-event-chev {
   color: #b5bcc9;
   font-size: var(--text-secondary);

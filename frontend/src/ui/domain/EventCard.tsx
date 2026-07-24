@@ -13,8 +13,9 @@
 //
 // Domain UI may use the shared copy/icon/time helpers (not state); it does.
 import { useState, type ReactNode } from 'react';
-import { formatTime, crossesMidnightZoned, formatZoneDelta } from '../../lib/time';
+import { formatTime, crossesMidnightZoned } from '../../lib/time';
 import type { EventZones } from '../../lib/places';
+import { ZoneShiftPill } from '../ZoneShiftPill';
 import { DELAY_STEP_MINUTES } from '../../constants';
 import { ICONS } from '../../constants';
 import { Icon } from '../Icon';
@@ -203,11 +204,7 @@ export function EventCard(props: EventCardProps) {
       {(duration || zones?.deltaMinutes != null) && (
         <span className="wp-event-timemeta">
           {duration && <span className="wp-event-dur">{duration}</span>}
-          {zones?.deltaMinutes != null && (
-            <span className="wp-event-tzdelta" dir="ltr" title={t.event.zoneShift}>
-              🕐 {formatZoneDelta(zones.deltaMinutes)}
-            </span>
-          )}
+          {zones?.deltaMinutes != null && <ZoneShiftPill minutes={zones.deltaMinutes} />}
         </span>
       )}
     </span>

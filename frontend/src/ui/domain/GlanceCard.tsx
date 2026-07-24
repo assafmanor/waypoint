@@ -10,10 +10,11 @@
 // the card only renders it. Domain UI may use the shared copy/label helpers (not
 // state) — it does, for the transition labels + time formatting.
 import { type CSSProperties } from 'react';
-import { type DayGlance } from '../../lib/glance';
+import { type DayGlance, type GlanceAnchor } from '../../lib/glance';
 import { formatTime } from '../../lib/time';
 import { transitionLabel } from '../../lib/transitions';
 import { NavArrow } from '../NavArrow';
+import { ZoneShiftPill } from '../ZoneShiftPill';
 import { ICONS } from '../../constants';
 import { t } from '../../i18n/he';
 import './glance-card.css';
@@ -24,6 +25,44 @@ import './glance-card.css';
 const MARKER_EDGE_FRAC = 0.12;
 const markerAnchor = (frac: number): string =>
   frac <= MARKER_EDGE_FRAC ? 'at-start' : frac >= 1 - MARKER_EDGE_FRAC ? 'at-end' : '';
+
+/** The inside of an anchor pill — shared by the positioned band and the collapsed
+ *  legs line so the two renderings of the same anchor can never diverge. Each end
+ *  reads in its **own** display zone when the anchor carries one (ADR-0107), with
+ *  the shift as the amber pill; without zones everything reads in `tz`, as before. */
+function AnchorPill({ anchor: a, tz }: { anchor: GlanceAnchor; tz: string }) {
+  if (a.kind === 'span') {
+    return (
+      <span className="achip amber">
+        <span className="mi">{a.icon}</span>{' '}
+        <span className="mono" dir="ltr">
+          {formatTime(new Date(a.startMs), a.zones?.startZone ?? tz)}
+        </span>
+        <NavArrow variant="forward" className="arr" />
+        <span className="mono" dir="ltr">
+          {formatTime(new Date(a.endMs), a.zones?.endZone ?? tz)}
+        </span>
+        {a.nextDay && (
+          <span className="plus1" dir="ltr">
+            {t.glance.nextDay}
+          </span>
+        )}
+        {a.zones?.deltaMinutes != null && (
+          <ZoneShiftPill minutes={a.zones.deltaMinutes} className="gl-tzdelta" />
+        )}
+      </span>
+    );
+  }
+  return (
+    <span className="achip amber">
+      <span className="mi">{a.icon}</span> {transitionLabel(a.labelKey)}{' '}
+      <span className="mono" dir="ltr">
+        {formatTime(new Date(a.timeMs), a.zone ?? tz)}
+      </span>
+      {a.deltaMinutes != null && <ZoneShiftPill minutes={a.deltaMinutes} className="gl-tzdelta" />}
+    </span>
+  );
+}
 
 export interface GlanceCardProps {
   glance: DayGlance;
@@ -89,21 +128,7 @@ export function GlanceCard({
                 }
               >
                 <span className="cap">
-                  <span className="achip amber">
-                    <span className="mi">{a.icon}</span>{' '}
-                    <span className="mono" dir="ltr">
-                      {formatTime(new Date(a.startMs), tz)}
-                    </span>
-                    <NavArrow variant="forward" className="arr" />
-                    <span className="mono" dir="ltr">
-                      {formatTime(new Date(a.endMs), tz)}
-                    </span>
-                    {a.nextDay && (
-                      <span className="plus1" dir="ltr">
-                        {t.glance.nextDay}
-                      </span>
-                    )}
-                  </span>
+                  <AnchorPill anchor={a} tz={tz} />
                 </span>
                 <span className="bar" />
               </div>
@@ -113,12 +138,7 @@ export function GlanceCard({
                 key={a.key}
                 style={{ insetInlineStart: `${a.frac * 100}%`, '--lane': a.lane } as CSSProperties}
               >
-                <span className="achip amber">
-                  <span className="mi">{a.icon}</span> {transitionLabel(a.labelKey)}{' '}
-                  <span className="mono" dir="ltr">
-                    {formatTime(new Date(a.timeMs), tz)}
-                  </span>
-                </span>
+                <AnchorPill anchor={a} tz={tz} />
                 <span className="stem" />
               </div>
             ),
@@ -160,32 +180,9 @@ export function GlanceCard({
           collapse here to a flow legs line — same amber pill, no overlap. */}
       {glance.anchorsCollapsed && (
         <div className="glance-legs">
-          {glance.anchors.map((a) =>
-            a.kind === 'span' ? (
-              <span className="achip amber" key={a.key}>
-                <span className="mi">{a.icon}</span>{' '}
-                <span className="mono" dir="ltr">
-                  {formatTime(new Date(a.startMs), tz)}
-                </span>
-                <NavArrow variant="forward" className="arr" />
-                <span className="mono" dir="ltr">
-                  {formatTime(new Date(a.endMs), tz)}
-                </span>
-                {a.nextDay && (
-                  <span className="plus1" dir="ltr">
-                    {t.glance.nextDay}
-                  </span>
-                )}
-              </span>
-            ) : (
-              <span className="achip amber" key={a.key}>
-                <span className="mi">{a.icon}</span> {transitionLabel(a.labelKey)}{' '}
-                <span className="mono" dir="ltr">
-                  {formatTime(new Date(a.timeMs), tz)}
-                </span>
-              </span>
-            ),
-          )}
+          {glance.anchors.map((a) => (
+            <AnchorPill anchor={a} tz={tz} key={a.key} />
+          ))}
         </div>
       )}
       <div className="lead">

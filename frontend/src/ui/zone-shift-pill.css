@@ -1,0 +1,22 @@
+/* ZoneShiftPill (ADR-0107) — the one amber time-shift pill. The three
+   copy-pasted surface classes it replaced (`.wp-event-tzdelta`, `.tr-tzdelta`,
+   `.bld-tzdelta`) were identical but for a 0.5px of font-size and their
+   margins, so those tweaks stay at the surface and the pill itself is one rule. */
+.wp-tzshift {
+  font-family: var(--font-mono);
+  font-size: 10.5px;
+  font-weight: 700;
+  color: var(--amber-deep);
+  background: rgba(233, 166, 60, 0.14);
+  border-radius: 999px;
+  padding: 1px 7px;
+  white-space: nowrap;
+}
+
+/* On the dark board the deep amber-on-wash reads as a smudge — the same pill
+   inverts to a light amber on a stronger wash so it stays legible against the
+   one dark surface (design-language: the board is the only dark surface). */
+.wp-tzshift.on-dark {
+  color: #f0c785;
+  background: rgba(233, 166, 60, 0.2);
+}

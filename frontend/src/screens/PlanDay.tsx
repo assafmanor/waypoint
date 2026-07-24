@@ -45,7 +45,6 @@ import { tripPhase } from '../lib/mode';
 import {
   buildTimeTree,
   formatTime,
-  formatZoneDelta,
   todayInTz,
   zonedIso,
   crossesMidnightZoned,
@@ -65,6 +64,7 @@ import { routeDisplay } from '../ui/route-display';
 import { IconPicker } from '../ui/IconPicker';
 import { Icon } from '../ui/Icon';
 import { NavArrow } from '../ui/NavArrow';
+import { ZoneShiftPill } from '../ui/ZoneShiftPill';
 import { Sheet } from '../ui/Sheet';
 import { MaybeCard } from '../ui/domain/MaybeCard';
 
@@ -996,9 +996,7 @@ function BuilderRow({
                 <span className="bld-timemeta">
                   {duration && <span className="bld-dur">{duration}</span>}
                   {zones?.deltaMinutes != null && (
-                    <span className="bld-tzdelta" dir="ltr" title={t.event.zoneShift}>
-                      🕐 {formatZoneDelta(zones.deltaMinutes)}
-                    </span>
+                    <ZoneShiftPill minutes={zones.deltaMinutes} className="bld-tzdelta" />
                   )}
                 </span>
               )}

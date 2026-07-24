@@ -91,6 +91,69 @@ describe('Board', () => {
     expect(container.querySelector('.wp-board-progress')).toBeNull();
   });
 
+  it('in-transit: the shift pill sits at the destination end, where both times are read', () => {
+    // A flight whose ends are in different zones: 07:15 origin → 11:00 destination
+    // reads as 3h45 unless the −3 is right there beside them (ADR-0107).
+    const { container } = render(
+      <Board
+        variant="in-transit"
+        clock="09:30"
+        nowTitle={<span>טיסה</span>}
+        transit={{
+          labelKey: 'arrival',
+          endTime: '11:00',
+          progress: 0.5,
+          startTime: '07:15',
+          fromPlace: 'בן גוריון',
+          toPlace: 'קפלאוויק',
+          shift: -180,
+        }}
+        next={null}
+      />,
+    );
+    const destination = container.querySelector('.tp-end.end')!;
+    expect(destination.textContent).toContain('11:00');
+    expect(destination.querySelector('.wp-tzshift')?.textContent).toContain('−3');
+    // The origin end stays bare — the shift is stated once, not per end.
+    expect(container.querySelector('.tp-end:not(.end) .wp-tzshift')).toBeNull();
+  });
+
+  it('the next slot carries its own shift; a single-zone next carries none', () => {
+    const shifted = render(
+      <Board
+        variant="free"
+        clock="14:30"
+        next={{ title: <span>טיסה</span>, time: '23:00', shift: 360 }}
+      />,
+    );
+    expect(
+      shifted.container.querySelector('.wp-board-next-meta .wp-tzshift')?.textContent,
+    ).toContain('+6');
+    cleanup();
+    const plain = render(
+      <Board variant="free" clock="14:30" next={{ title: <span>ראמן</span>, time: '19:00' }} />,
+    );
+    expect(plain.container.querySelector('.wp-board-next-meta .wp-tzshift')).toBeNull();
+  });
+
+  it('the now slot and the also-now rows carry their own shifts', () => {
+    const { container } = render(
+      <Board
+        variant="now"
+        clock="14:30"
+        nowKind="soft"
+        nowTitle={<span>ראמן</span>}
+        nowUntil="19:00"
+        nowShift={120}
+        alsoNow={[{ key: 'x', title: <span>מוזיאון</span>, until: '18:00', shift: 120 }]}
+        next={null}
+      />,
+    );
+    expect(container.querySelector('.wp-board-now-meta .wp-tzshift')?.textContent).toContain('+2');
+    fireEvent.click(container.querySelector('.wp-board-also-toggle')!);
+    expect(container.querySelector('.wp-board-also-row .wp-tzshift')?.textContent).toContain('+2');
+  });
+
   it('the "ועוד N" concurrency expander toggles the also-list', () => {
     render(
       <Board

@@ -28,7 +28,7 @@ import {
   eventRoute,
   eventZones,
   currentZone,
-  segmentZoneAt,
+  dayAmbientZone,
   type ZoneContext,
 } from '../lib/places';
 import { useVerbs } from '../state/verbs';
@@ -51,7 +51,7 @@ import {
   type DayEntry,
   type TransitionEntry,
 } from '../lib/day-entries';
-import { CODE_PREFIX, ICONS, MS_PER_DAY } from '../constants';
+import { CODE_PREFIX, DAY_NOON, ICONS, MS_PER_DAY } from '../constants';
 import { t } from '../i18n/he';
 import { EventForm } from '../ui/EventForm';
 import { BookingSheet } from '../ui/BookingSheet';
@@ -147,8 +147,7 @@ export function DayView() {
   const dayScope: DayScope = activeDate < today ? 'past' : activeDate > today ? 'future' : 'today';
   // The day's OWN ambient zone (its segment zone at noon) — what decides when this
   // day is over, below.
-  const dayNoon = new Date(zonedIso(activeDate, '12:00', trip.timezone));
-  const ambientZone = segmentZoneAt(dayNoon.getTime(), zoneCrossings) ?? trip.timezone;
+  const ambientZone = dayAmbientZone(activeDate, zoneCrossings, trip.timezone);
   // A past day is a read-only archive within a live trip (ADR-0029) — but "past"
   // for EDITING is decided in the day's own zone, not the live one (ADR-0029
   // amendment / ADR-0107 §4). Otherwise crossing east mid-flight rolls the live
@@ -185,7 +184,7 @@ export function DayView() {
   const weekday = new Intl.DateTimeFormat('he-IL', {
     weekday: 'long',
     timeZone: trip.timezone,
-  }).format(dayNoon);
+  }).format(new Date(zonedIso(activeDate, DAY_NOON, trip.timezone)));
   const heading = t.day.heading(dayNumber, weekday, trip.destination);
 
   // Per-event display zones (ADR-0107): the shared crossings anchor them, and the

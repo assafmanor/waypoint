@@ -233,7 +233,7 @@ describe('EventCard', () => {
     const { container } = render(
       wrap(<EventCard {...base} startsAt="2026-07-07T10:00:00Z" endsAt="2026-07-07T11:00:00Z" />),
     );
-    expect(container.querySelector('.wp-event-tzdelta')).toBeNull();
+    expect(container.querySelector('.wp-tzshift')).toBeNull();
   });
 
   it('renders each end in its own zone + a shift pill for a zone-crossing event', () => {
@@ -255,7 +255,7 @@ describe('EventCard', () => {
     expect(time).toContain('23:00'); // start read in Jerusalem
     expect(time).toContain('18:00'); // end read in Tokyo
     expect(container.querySelector('.wp-event-xmid')).not.toBeNull(); // +1 across zones
-    expect(container.querySelector('.wp-event-tzdelta')?.textContent).toContain('+6');
+    expect(container.querySelector('.wp-tzshift')?.textContent).toContain('+6');
   });
 
   it('shows no pill when the shift is zero even if zones are named', () => {
@@ -268,7 +268,7 @@ describe('EventCard', () => {
         />,
       ),
     );
-    expect(container.querySelector('.wp-event-tzdelta')).toBeNull();
+    expect(container.querySelector('.wp-tzshift')).toBeNull();
   });
 
   it('renders the duration label when the screen passes one', () => {

@@ -14,7 +14,14 @@ import {
   isBracketed,
   type TripEvent,
 } from '@waypoint/shared';
-import { buildTimeTree, crossesMidnight, type TimeGroup, type TimeItem } from './time';
+import {
+  buildTimeTree,
+  crossesMidnight,
+  crossesMidnightZoned,
+  type TimeGroup,
+  type TimeItem,
+} from './time';
+import { eventEdgeZone, eventZones, type EventZones, type ZoneContext } from './places';
 
 export type SegPhase = 'done' | 'passed' | 'now' | 'upcoming' | 'skipped';
 
@@ -66,6 +73,12 @@ export interface GlancePointAnchor {
   /** Stacking row (0 = nearest the bar). Anchors whose pills would overlap are
    *  pushed to a higher lane so labels never collide (ADR-0077). */
   lane: number;
+  /** This edge's display zone (ADR-0107) — a departure reads its origin zone, an
+   *  arrival its destination. Absent when the caller passed no zone context; the
+   *  render then falls back to the card's base zone, exactly as before. */
+  zone?: string;
+  /** That zone vs the day's ambient → the amber shift pill. Absent = no pill. */
+  deltaMinutes?: number;
 }
 export interface GlanceSpanAnchor {
   kind: 'span';
@@ -82,9 +95,17 @@ export interface GlanceSpanAnchor {
   startLabelKey: string;
   endLabelKey: string;
   icon: string;
-  /** The arrival crosses midnight (ADR-0037) — the pill carries the "+1". */
+  /** The arrival crosses midnight (ADR-0037) — the pill carries the "+1". With
+   *  zones resolved this is the **zoned** crossing (each end on its own clock),
+   *  so an eastbound overnight flight isn't marked "+1" when it lands the same
+   *  local day (ADR-0107). */
   nextDay: boolean;
   lane: number;
+  /** Both ends' display zones + the shift between them (ADR-0107): a same-day
+   *  zone-crossing flight renders its departure in the origin's clock and its
+   *  arrival in the destination's, with the delta as a pill. Absent when the
+   *  caller passed no zone context. */
+  zones?: EventZones;
 }
 export type GlanceAnchor = GlancePointAnchor | GlanceSpanAnchor;
 
@@ -228,6 +249,10 @@ export function buildDayGlance(
   day07Ms: number,
   day23Ms: number,
   timeZone: string,
+  /** Multi-zone context (ADR-0107). Passed → each anchor carries its own
+   *  display zone(s) + shift, so the rail's pills read like the day timeline's
+   *  rows. Omitted → the whole card renders in `timeZone`, as before. */
+  zoneCtx?: ZoneContext,
 ): DayGlance {
   const dayEvents = events.filter((e) => e.date === activeDate);
   // Ambient-span events (a multi-day hotel — `isAmbient`, ADR-0063) are backdrop,
@@ -343,6 +368,7 @@ export function buildDayGlance(
     if (trs.length >= 2) {
       const start = trs.find((tr) => tr.edge === 'start') ?? trs[0];
       const end = trs.find((tr) => tr.edge === 'end') ?? trs[1];
+      const zones = zoneCtx ? eventZones(e, zoneCtx) : undefined;
       anchors.push({
         kind: 'span',
         key: e.id,
@@ -354,11 +380,17 @@ export function buildDayGlance(
         endLabelKey: end.labelKey,
         icon: iconOf(e),
         nextDay:
-          e.startsAt != null && e.endsAt != null && crossesMidnight(e.startsAt, e.endsAt, timeZone),
+          e.startsAt != null &&
+          e.endsAt != null &&
+          (zones
+            ? crossesMidnightZoned(e.startsAt, e.endsAt, zones.startZone, zones.endZone)
+            : crossesMidnight(e.startsAt, e.endsAt, timeZone)),
         lane: 0,
+        zones,
       });
     } else {
       const tr = trs[0];
+      const edge = zoneCtx ? eventEdgeZone(e, tr.edge, zoneCtx) : undefined;
       anchors.push({
         kind: 'point',
         key: `${e.id}-${tr.edge === 'start' ? 's' : 'e'}`,
@@ -367,6 +399,8 @@ export function buildDayGlance(
         timeMs: tr.atMs,
         icon: iconOf(e),
         lane: 0,
+        zone: edge?.zone,
+        deltaMinutes: edge?.deltaMinutes,
       });
     }
   }

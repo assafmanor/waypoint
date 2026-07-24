@@ -12,6 +12,7 @@
 // labels. The board is rationed to one per screen (design-language).
 import { useState, type ReactNode } from 'react';
 import { Icon } from '../Icon';
+import { ZoneShiftPill } from '../ZoneShiftPill';
 import { transitionLabel } from '../../lib/transitions';
 import { ICONS } from '../../constants';
 import { t } from '../../i18n/he';
@@ -19,15 +20,22 @@ import './board.css';
 
 export type BoardVariant = 'now' | 'in-transit' | 'group-split' | 'free';
 
+/** Signed time-shift in minutes (`EventZones.deltaMinutes`) for a slot whose
+ *  times don't read in the zone you're standing in — the board renders it as the
+ *  shared amber pill (ADR-0107). Undefined → no pill, which is every slot on a
+ *  single-zone trip. Times themselves arrive pre-formatted in their own zone. */
+type ZoneShift = number | undefined;
+
 /** A concurrent/also-now row (a group-split equal, or an item under "ועוד N"). */
 export interface BoardRow {
   key: string;
   icon?: ReactNode;
   /** Title node (screen passes <EventTitle/>). */
   title: ReactNode;
-  /** End time (pre-formatted) → "עד HH:MM". */
+  /** End time (pre-formatted, in this row's own end zone) → "עד HH:MM". */
   until?: string;
   hard?: boolean;
+  shift?: ZoneShift;
 }
 
 export interface BoardTransit {
@@ -35,16 +43,20 @@ export interface BoardTransit {
   labelKey: string;
   /** Emphasize the label (an arrival is imminent). */
   arriving?: boolean;
-  /** Landing time (pre-formatted). */
+  /** Landing time (pre-formatted) — in the **destination's** zone (ADR-0107 §3). */
   endTime?: string;
   code?: string;
   /** Flight progress 0..1 (drives the fill + plane). */
   progress: number;
+  /** Departure time (pre-formatted) — in the **origin's** zone. */
   startTime?: string;
   fromPlace?: string;
   toPlace?: string;
   /** Show the middle "עד HH:MM" countdown-to-landing. */
   showCountdown?: boolean;
+  /** Destination clock minus origin clock — the pill beside the landing time, so
+   *  the two ends can't misread as a 3h45 flight when they're 6h45 apart. */
+  shift?: ZoneShift;
 }
 
 export interface BoardNext {
@@ -53,10 +65,12 @@ export interface BoardNext {
   icon?: ReactNode;
   /** Transition label key (המראה / צ׳ק-אין …) if the next is bracketed. */
   labelKey?: string;
-  /** Instant (pre-formatted). */
+  /** Instant (pre-formatted) — in the zone that instant happens in. */
   time?: string;
   hard?: boolean;
   code?: string;
+  /** That zone vs where you are now → the pill beside the time. */
+  shift?: ZoneShift;
 }
 
 export interface BoardProps {
@@ -69,8 +83,10 @@ export interface BoardProps {
   nowTitle?: ReactNode;
   /** Drives the hard-lock vs soft now-label (variant 'now'). */
   nowKind?: 'hard' | 'soft';
-  /** "until" end time for a now event (pre-formatted). */
+  /** "until" end time for a now event (pre-formatted, in its own end zone). */
   nowUntil?: string;
+  /** The now event's shift → the pill beside `nowUntil`. */
+  nowShift?: ZoneShift;
   conflict?: { title: string; atLabel: string };
 
   // in-transit hero.
@@ -104,6 +120,7 @@ function AlsoRow({ row }: { row: BoardRow }) {
           {t.board.until} <span dir="ltr">{row.until}</span>
         </span>
       )}
+      {row.shift != null && <ZoneShiftPill minutes={row.shift} className="on-dark" />}
     </div>
   );
 }
@@ -116,6 +133,7 @@ export function Board(props: BoardProps) {
     nowTitle,
     nowKind,
     nowUntil,
+    nowShift,
     conflict,
     transit,
     splitRows,
@@ -190,6 +208,12 @@ export function Board(props: BoardProps) {
                   <span className="mono" dir="ltr">
                     {transit.endTime}
                   </span>
+                  {/* The two ends are in their own zones now (ADR-0107), so the
+                      shift has to sit where they're read together — otherwise a
+                      07:15 → 11:00 flight reads as 3h45 instead of 6h45. */}
+                  {transit.shift != null && (
+                    <ZoneShiftPill minutes={transit.shift} className="on-dark" />
+                  )}
                 </span>
               </div>
             </div>
@@ -216,6 +240,7 @@ export function Board(props: BoardProps) {
           {nowUntil && (
             <div className="wp-board-now-meta">
               {t.board.until} <span dir="ltr">{nowUntil}</span>
+              {nowShift != null && <ZoneShiftPill minutes={nowShift} className="on-dark" />}
             </div>
           )}
           {conflict && (
@@ -272,6 +297,7 @@ export function Board(props: BoardProps) {
                     <span className="tlabel">{transitionLabel(next.labelKey)}</span>
                   )}
                   {next.time && <span dir="ltr">{next.time}</span>}
+                  {next.shift != null && <ZoneShiftPill minutes={next.shift} className="on-dark" />}
                   {next.hard && (
                     <span className="lockmini">
                       {ICONS.lock} {t.event.hard}
