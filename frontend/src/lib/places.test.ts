@@ -9,16 +9,24 @@ import {
   type Place,
   type TripEvent,
 } from '@waypoint/shared';
-import { eventRoute, referencedPlaceIds } from './places';
+import {
+  bookingDirectionsUrl,
+  eventDirectionsUrl,
+  eventRoute,
+  mapsDirectionsUrl,
+  mapsPlaceUrl,
+  referencedPlaceIds,
+} from './places';
 import type { MaybeItem } from '@waypoint/shared';
 
-const place = (id: string, name: string): Place => ({
+const place = (id: string, name: string, coords?: Partial<Place>): Place => ({
   id,
   tripId: 't',
   name,
   createdAt: '',
   updatedAt: '',
   updatedBy: 'u',
+  ...coords,
 });
 
 const booking = (partial: Partial<Booking> & Pick<Booking, 'id' | 'type'>): Booking => ({
@@ -111,5 +119,60 @@ describe('referencedPlaceIds (ADR-0112: in-trip = referenced, not merely cached)
     const ids = referencedPlaceIds([event({ placeId: 'pl-event' })], [], []);
     expect(ids.has('pl-cached')).toBe(false);
     expect(ids.has('pl-event')).toBe(true);
+  });
+});
+
+describe('Google Maps deep-links (Phase 2: no coordinates → no link)', () => {
+  const withCoords = place('pl-x', 'מקום', { lat: 35.6764, lng: 139.65, googlePlaceId: 'g-x' });
+  const coordless = place('pl-y', 'שם בלבד'); // a name-only Place-lite
+
+  it('mapsDirectionsUrl builds a dir link with the place id when coords exist', () => {
+    expect(mapsDirectionsUrl(withCoords)).toBe(
+      'https://www.google.com/maps/dir/?api=1&destination=35.6764%2C139.65&destination_place_id=g-x',
+    );
+  });
+
+  it('mapsPlaceUrl builds a search link with the place id when coords exist', () => {
+    expect(mapsPlaceUrl(withCoords)).toBe(
+      'https://www.google.com/maps/search/?api=1&query=35.6764%2C139.65&query_place_id=g-x',
+    );
+  });
+
+  it('omits the place-id param when googlePlaceId is absent', () => {
+    const noGoogle = place('pl-z', 'ללא', { lat: 1, lng: 2 });
+    expect(mapsDirectionsUrl(noGoogle)).toBe(
+      'https://www.google.com/maps/dir/?api=1&destination=1%2C2',
+    );
+  });
+
+  it('returns null for a coordless place or undefined (no location, no button)', () => {
+    expect(mapsDirectionsUrl(coordless)).toBeNull();
+    expect(mapsPlaceUrl(coordless)).toBeNull();
+    expect(mapsDirectionsUrl(undefined)).toBeNull();
+  });
+
+  it('eventDirectionsUrl follows the authority rule (transport → origin)', () => {
+    const bk = booking({
+      id: 'bk',
+      type: BOOKING_TYPE.FLIGHT,
+      fromPlaceId: 'pl-x',
+      toPlaceId: 'pl-y',
+    });
+    const url = eventDirectionsUrl(event({ bookingId: 'bk' }), [bk], [withCoords, coordless]);
+    expect(url).toContain('destination=35.6764%2C139.65');
+  });
+
+  it('eventDirectionsUrl is null when the resolved place is coordless', () => {
+    expect(eventDirectionsUrl(event({ placeId: 'pl-y' }), [], [coordless])).toBeNull();
+  });
+
+  it('bookingDirectionsUrl resolves a single-place booking to its place', () => {
+    const bk = booking({ id: 'bk', type: BOOKING_TYPE.HOTEL, placeId: 'pl-x' });
+    expect(bookingDirectionsUrl(bk, [withCoords])).toContain('destination=35.6764%2C139.65');
+  });
+
+  it('bookingDirectionsUrl is null when the booking has no mappable place', () => {
+    const bk = booking({ id: 'bk', type: BOOKING_TYPE.HOTEL });
+    expect(bookingDirectionsUrl(bk, [withCoords])).toBeNull();
   });
 });

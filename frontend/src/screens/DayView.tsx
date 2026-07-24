@@ -19,7 +19,7 @@ import {
 } from '@waypoint/shared';
 import { useTrip, byStart } from '../state/trip-state';
 import { prefersReducedMotion } from '../lib/motion';
-import { eventPlaceName } from '../lib/places';
+import { eventDirectionsUrl, eventPlaceName } from '../lib/places';
 import { useVerbs } from '../state/verbs';
 import { useClock } from '../lib/useClock';
 import {
@@ -49,6 +49,22 @@ import { EntitySyncBadge, useUnsynced } from '../ui/EntitySyncBadge';
 
 const daysBetween = (from: string, to: string) =>
   Math.round((Date.parse(to) - Date.parse(from)) / MS_PER_DAY);
+
+// Open a Google Maps universal URL in a new tab (on device it hands off to the
+// Maps app). Only ever called with a non-null URL — the ניווט button is hidden
+// when the event has no mappable location (ADR-0106/0109 Phase 2).
+const openMaps = (url: string) => window.open(url, '_blank', 'noopener,noreferrer');
+
+// A navigate handler for an event, or `undefined` when it has no mappable place
+// (no place, or a coordless name-only Place-lite). The EventCard/TransitionRow
+// then drop the ניווט button entirely — "no location, no button" (Phase 2).
+function navigateHandler(
+  event: TripEvent,
+  ctx: Pick<DayCtx, 'bookings' | 'places'>,
+): (() => void) | undefined {
+  const url = eventDirectionsUrl(event, ctx.bookings, ctx.places);
+  return url ? () => openMaps(url) : undefined;
+}
 
 type DayScope = 'past' | 'today' | 'future';
 
@@ -240,7 +256,7 @@ export function DayView() {
                 tz={dayCtx.tz}
                 bookings={dayCtx.bookings}
                 onOpen={dayCtx.onOpenDetail}
-                onNavigate={dayCtx.readOnly ? undefined : dayCtx.verbs.navigate}
+                onNavigate={dayCtx.readOnly ? undefined : navigateHandler(entry.event, dayCtx)}
               />
             )}
           </Fragment>
@@ -470,7 +486,7 @@ function ItemNode({ item, depth, ctx }: { item: TimeItem; depth: number; ctx: Da
           : undefined
       }
       nestedCount={hasKids ? countDescendants(item) : undefined}
-      onNavigate={() => ctx.verbs.navigate(e)}
+      onNavigate={navigateHandler(e, ctx)}
       onDone={() => ctx.verbs.done(e)}
       onSkip={() => ctx.verbs.skip(e)}
       onDelay={() => ctx.verbs.delay(e)}

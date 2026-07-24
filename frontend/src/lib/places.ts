@@ -40,11 +40,15 @@ export function referencedPlaceIds(
   return ids;
 }
 
+/** The effective placeId of a booking, following the authority rule: transport
+ *  departs from its origin, every other booking sits at its single place. */
+export function bookingPlaceId(booking: Booking): string | undefined {
+  return isTransport(booking) ? booking.fromPlaceId : booking.placeId;
+}
+
 /** The effective placeId to show for an event, following the authority rule. */
 export function eventPlaceId(event: TripEvent, booking?: Booking): string | undefined {
-  if (event.bookingId && booking) {
-    return isTransport(booking) ? booking.fromPlaceId : booking.placeId;
-  }
+  if (event.bookingId && booking) return bookingPlaceId(booking);
   return event.placeId;
 }
 
@@ -84,4 +88,52 @@ export function eventRoute(event: TripEvent, bookings: Booking[], places: Place[
   const from = placeName(places, booking.fromPlaceId);
   const to = placeName(places, booking.toPlaceId);
   return from || to ? { from, to } : null;
+}
+
+// ── Google Maps deep-links (Phase 2, ADR-0106/0109) ─────────────────────────
+// Universal Maps-URL links (no API key, open the Maps app on device): a place
+// is navigable/mappable only when it has real coordinates. A name-only
+// "Place-lite" (coordless) has no usable location, so these return null and the
+// caller drops the affordance — "no location, no ניווט button".
+const GOOGLE_MAPS = 'https://www.google.com/maps';
+
+function hasCoords(place: Place | undefined): place is Place & { lat: number; lng: number } {
+  return place != null && place.lat != null && place.lng != null;
+}
+
+/** Directions ("נווט") deep-link to a place, or null when it has no coordinates. */
+export function mapsDirectionsUrl(place: Place | undefined): string | null {
+  if (!hasCoords(place)) return null;
+  const destination = encodeURIComponent(`${place.lat},${place.lng}`);
+  const placeId = place.googlePlaceId
+    ? `&destination_place_id=${encodeURIComponent(place.googlePlaceId)}`
+    : '';
+  return `${GOOGLE_MAPS}/dir/?api=1&destination=${destination}${placeId}`;
+}
+
+/** "View this place" deep-link (open in Maps), or null when it has no coordinates. */
+export function mapsPlaceUrl(place: Place | undefined): string | null {
+  if (!hasCoords(place)) return null;
+  const query = encodeURIComponent(`${place.lat},${place.lng}`);
+  const placeId = place.googlePlaceId
+    ? `&query_place_id=${encodeURIComponent(place.googlePlaceId)}`
+    : '';
+  return `${GOOGLE_MAPS}/search/?api=1&query=${query}${placeId}`;
+}
+
+/** Directions link for an event's resolved place (authority rule), or null when
+ *  the event has no place or a coordless one. */
+export function eventDirectionsUrl(
+  event: TripEvent,
+  bookings: Booking[],
+  places: Place[],
+): string | null {
+  const booking = event.bookingId ? bookings.find((b) => b.id === event.bookingId) : undefined;
+  return mapsDirectionsUrl(places.find((p) => p.id === eventPlaceId(event, booking)));
+}
+
+/** Directions link for a booking's resolved place (authority rule), or null when
+ *  the booking has no place or a coordless one. */
+export function bookingDirectionsUrl(booking: Booking, places: Place[]): string | null {
+  return mapsDirectionsUrl(places.find((p) => p.id === bookingPlaceId(booking)));
 }

@@ -5,9 +5,10 @@
 // it carries NO inline settle/skip/delay verbs (mutating half a derived span is
 // ambiguous). Shared by the Trip-mode day view and the Plan-mode builder so the
 // grammar can't diverge. A start edge (check-in / departure) offers Navigate —
-// but only when a caller supplies `onNavigate` (Trip mode, live day). Plan mode
-// has no live "now", so it passes none; a read-only past day passes none too.
-import { CATEGORY_DEFAULT_ICON, type Booking, type TripEvent } from '@waypoint/shared';
+// but only when a caller supplies `onNavigate` (Trip mode, live day, and the
+// booking has a mappable location). Plan mode has no live "now", so it passes
+// none; a read-only past day, or a location-less booking, passes none too.
+import { CATEGORY_DEFAULT_ICON, type Booking } from '@waypoint/shared';
 import { formatTime } from '../lib/time';
 import { transitionLabel } from '../lib/transitions';
 import { t } from '../i18n/he';
@@ -24,7 +25,7 @@ export function TransitionRow({
   tz: string;
   bookings: Booking[];
   onOpen: (booking: Booking) => void;
-  onNavigate?: (event: TripEvent) => void;
+  onNavigate?: () => void;
 }) {
   const { event, edge, atMs, labelKey } = entry;
   const booking = event.bookingId ? bookings.find((b) => b.id === event.bookingId) : undefined;
@@ -50,7 +51,7 @@ export function TransitionRow({
         </span>
       </button>
       {edge === 'start' && onNavigate && (
-        <button className="tr-nav" onClick={() => onNavigate(event)}>
+        <button className="tr-nav" onClick={onNavigate}>
           {t.actions.navigate}
         </button>
       )}

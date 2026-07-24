@@ -648,7 +648,6 @@ export function useVerbs() {
       toast(ICONS.delay, t.toast.eventMoved, undo);
     },
     onWay: (_e: TripEvent) => toast(ICONS.share, t.toast.onWayShared),
-    navigate: (_e: TripEvent) => toast(ICONS.navigate, t.toast.openingNav),
     // Place a shelf idea onto a day. With `fields` (from the builder's
     // EventForm picker) the user chose the day/time/kind; without them it's the
     // Trip-mode one-tap quick-schedule onto today at a default slot (Tier-1).
