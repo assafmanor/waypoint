@@ -25,6 +25,7 @@ import {
   eventEdgeZone,
   eventPlaceName,
   eventPlaceUrl,
+  eventRoute,
   eventZones,
   segmentZoneAt,
   tripZoneCrossings,
@@ -60,7 +61,7 @@ import { TransitionRow } from '../ui/TransitionRow';
 import { Sheet } from '../ui/Sheet';
 import { TimePicker } from '../ui/TimePicker';
 import { EventCard, type EventPhaseName } from '../ui/domain/EventCard';
-import { EventTitle } from '../ui/EventTitle';
+import { useRouteDisplay } from '../ui/useRouteDisplay';
 import { MaybeCard } from '../ui/domain/MaybeCard';
 import { EntitySyncBadge, useUnsynced } from '../ui/EntitySyncBadge';
 
@@ -519,17 +520,18 @@ function ItemNode({ item, depth, ctx }: { item: TimeItem; depth: number; ctx: Da
         : raw;
 
   const zones = eventZones(e, ctx.zoneCtx);
+  // A transport row reads as its (shortened) route, dropping to a
+  // destination-primary line if even that overflows — one decision driving both
+  // the title and the meta so they can't disagree (ADR-0059 §3 amendment).
+  const route = useRouteDisplay(eventRoute(e, ctx.bookings, ctx.places));
 
   const card = (
     <EventCard
       icon={e.icon}
-      // A transport event reads as its route, origin and destination as separate
-      // values — so a long one stacks instead of truncating away the destination
-      // (ADR-0059 §3 amendment). `titleText` stays the plain stored title for the
-      // menu header + accessible names.
-      title={<EventTitle event={e} bookings={ctx.bookings} places={ctx.places} stack />}
+      // `titleText` stays the plain stored title for the menu header + a11y names.
+      title={route.title ?? e.title}
       titleText={e.title}
-      placeName={eventPlaceName(e, ctx.bookings, ctx.places)}
+      placeName={route.meta ?? eventPlaceName(e, ctx.bookings, ctx.places)}
       code={code}
       kind={e.kind === EVENT_KIND.HARD ? 'hard' : 'soft'}
       phase={phase}
