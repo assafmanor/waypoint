@@ -18,6 +18,7 @@ import { useAuth } from '../state/auth-state';
 import { useAppBack } from '../state/nav-state';
 import { ConfirmDialog, type ConfirmTone } from '../ui/primitives/ConfirmDialog';
 import { ZonePicker, zoneLabel } from '../ui/primitives/ZonePicker';
+import { DestinationPicker, type PickedDestination } from '../ui/DestinationPicker';
 import { Icon } from '../ui/Icon';
 import { IconPicker } from '../ui/IconPicker';
 import { Sheet } from '../ui/Sheet';
@@ -448,11 +449,33 @@ function DetailsEditor({
 }) {
   const [name, setName] = useState(trip.name);
   const [destination, setDestination] = useState(trip.destination);
+  // The destination's structured fields, seeded from the stored trip (ADR-0113).
+  // A name-only edit re-sends these unchanged; a resolved pick replaces them; a
+  // "use as typed" pick empties them so the save clears the stale coordinates.
+  const [destPlace, setDestPlace] = useState<Omit<PickedDestination, 'name'>>({
+    googlePlaceId: trip.destinationGooglePlaceId,
+    lat: trip.destinationLat,
+    lng: trip.destinationLng,
+    countryCode: trip.destinationCountryCode,
+  });
+  const [candidateZones, setCandidateZones] = useState<string[] | undefined>(undefined);
   const [icon, setIcon] = useState(trip.icon ?? DEFAULT_TRIP_ICON);
   const [startDate, setStartDate] = useState(trip.startDate);
   const [endDate, setEndDate] = useState(trip.endDate);
   const [timezone, setTimezone] = useState(trip.timezone);
   const [tzPickerOpen, setTzPickerOpen] = useState(false);
+
+  // A picked destination sets the display name + structured fields and, when the
+  // pick resolves a real place, the derived primary timezone (ADR-0113). Unlike
+  // creation, a "use as typed" pick keeps the existing trip zone rather than
+  // resetting it to the device default — an established trip already has a
+  // meaningful zone the editor shouldn't silently discard.
+  const handleDestination = ({ name: destName, ...place }: PickedDestination) => {
+    setDestination(destName);
+    setDestPlace(place);
+    if (place.timezone) setTimezone(place.timezone);
+    setCandidateZones(place.candidateZones);
+  };
   const [currency, setCurrency] = useState(trip.currency ?? '');
   const [budget, setBudget] = useState(trip.dailyBudgetMinor?.toString() ?? '');
   const [saving, setSaving] = useState(false);
@@ -462,6 +485,7 @@ function DetailsEditor({
   const { places } = useTrip();
   const suggestedZones = [
     DEVICE_TIMEZONE,
+    ...(candidateZones ?? []),
     ...places.map((p) => p.timezone).filter((z): z is string => !!z),
   ];
 
@@ -475,6 +499,10 @@ function DetailsEditor({
     const input: UpdateTripInput = {
       name,
       destination,
+      destinationGooglePlaceId: destPlace.googlePlaceId ?? null,
+      destinationLat: destPlace.lat ?? null,
+      destinationLng: destPlace.lng ?? null,
+      destinationCountryCode: destPlace.countryCode ?? null,
       icon: icon || undefined,
       startDate,
       endDate,
@@ -505,8 +533,9 @@ function DetailsEditor({
         <input id="s-name" value={name} onChange={(e) => setName(e.target.value)} />
       </div>
       <div className="set-fld">
-        <label htmlFor="s-dest">{t.settings.destinationLabel}</label>
-        <input id="s-dest" value={destination} onChange={(e) => setDestination(e.target.value)} />
+        <label htmlFor="dest">{t.settings.destinationLabel}</label>
+        <DestinationPicker value={destination} onPick={handleDestination} />
+        {candidateZones && <p className="dest-tz-note">{t.shell.newTrip.tzMultiNote}</p>}
       </div>
       <div className="set-fld">
         <label>{t.settings.iconLabel}</label>

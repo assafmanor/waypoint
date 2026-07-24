@@ -257,6 +257,15 @@ export const updateTripSchema = z
   .object({
     name: z.string().min(1).max(MAX_TRIP_NAME_LENGTH),
     destination: z.string().min(1),
+    // The picked destination's structured fields (ADR-0113). Settings sends
+    // these when the destination is edited via the picker (mirrors
+    // createTripSchema). Nullable — unlike create — so a "use as typed"
+    // destination clears the now-stale coordinates rather than leaving the old
+    // place's point behind.
+    destinationGooglePlaceId: z.string().nullable().optional(),
+    destinationLat: z.number().nullable().optional(),
+    destinationLng: z.number().nullable().optional(),
+    destinationCountryCode: z.string().nullable().optional(),
     icon: z.string(),
     startDate: dateOnlySchema,
     endDate: dateOnlySchema,

@@ -206,6 +206,28 @@ describe('applyChangeToCache', () => {
     });
     expect((await readCachedSnapshot(TRIP_ID))?.trip.name).toBe('שם חדש');
   });
+
+  it('coerces a null destination field to undefined on the cached trip (ADR-0113)', async () => {
+    await cacheSnapshot(
+      TRIP_ID,
+      snapshot({
+        trip: { ...snapshot().trip, destinationGooglePlaceId: 'ChIJ_old', destinationLat: 35.68 },
+      }),
+    );
+    // A "use as typed" edit clears the coordinates over the wire as null; the
+    // cached trip must hold `undefined`, not a stray `null`.
+    await applyChangeToCache(TRIP_ID, {
+      ...baseChange,
+      entityType: 'trip',
+      entityId: TRIP_ID,
+      action: 'update',
+      after: { destination: 'Elsewhere', destinationGooglePlaceId: null, destinationLat: null },
+    });
+    const trip = (await readCachedSnapshot(TRIP_ID))?.trip;
+    expect(trip?.destination).toBe('Elsewhere');
+    expect(trip?.destinationGooglePlaceId).toBeUndefined();
+    expect(trip?.destinationLat).toBeUndefined();
+  });
 });
 
 describe('cacheSnapshot mirrors documents (ADR-0058)', () => {

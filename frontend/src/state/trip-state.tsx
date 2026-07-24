@@ -60,6 +60,7 @@ import {
   applyChangeToCache,
   cacheSnapshot,
   clearTripCache,
+  coerceTripPatch,
   readCachedSnapshot,
 } from '../lib/cache';
 import {
@@ -312,7 +313,7 @@ function applyRemoteEventChange(events: TripEvent[], change: Change): TripEvent[
  *  `update`'s partial and otherwise returns the trip unchanged. */
 export function applyControlChangeToTrip(trip: Trip, change: Change): Trip {
   if (change.entityType !== ENTITY_TYPE.TRIP || change.action === CHANGE_ACTION.DELETE) return trip;
-  const partial = change.after as Partial<Trip> | undefined;
+  const partial = coerceTripPatch(change.after);
   return partial ? { ...trip, ...partial } : trip;
 }
 
@@ -792,7 +793,10 @@ function TripReady({
     return {
       updateTrip: async (input) => {
         const previous = trip;
-        setTrip((prev) => ({ ...prev, ...input })); // optimistic
+        // A cleared destination field arrives as `null`; coerce to the local
+        // `undefined` shape (present keys only, so untouched fields aren't wiped).
+        const patch = coerceTripPatch(input) ?? {};
+        setTrip((prev) => ({ ...prev, ...patch })); // optimistic
         try {
           const canonical = await restOrQueue(
             tripId,
