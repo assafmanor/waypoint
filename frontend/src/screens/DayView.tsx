@@ -30,7 +30,6 @@ import {
   type ZoneContext,
   type ZoneCrossing,
 } from '../lib/places';
-import { zoneCity } from '../ui/primitives/ZonePicker';
 import { useVerbs } from '../state/verbs';
 import { useClock } from '../lib/useClock';
 import {
@@ -93,13 +92,12 @@ function showOnMapHandler(
 }
 
 /** The zone display props for a transition entry's edge (ADR-0107): the edge's
- *  zone for the time, and a city label only when it's non-trivial. */
+ *  zone for the time, and the shift vs the day's ambient zone when non-zero. */
 function transitionZoneProps(
   entry: TransitionEntry,
   zoneCtx: ZoneContext,
-): { zone: string; zoneLabel?: string } {
-  const { zone, showLabel } = eventEdgeZone(entry.event, entry.edge, zoneCtx);
-  return { zone, zoneLabel: showLabel ? zoneCity(zone) : undefined };
+): { zone: string; deltaMinutes?: number } {
+  return eventEdgeZone(entry.event, entry.edge, zoneCtx);
 }
 
 type DayScope = 'past' | 'today' | 'future';

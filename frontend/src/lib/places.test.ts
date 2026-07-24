@@ -340,8 +340,9 @@ describe('per-event display zones (ADR-0107 multi-zone model)', () => {
     ambientZone,
   });
 
-  describe('eventZones — non-trivial-suppression rule', () => {
-    it('shows no label when a single-zone event matches the day ambient', () => {
+  // Jerusalem is UTC+3 in July (IDT), Tokyo is UTC+9 → Tokyo is +360 min ahead.
+  describe('eventZones — the shift drives visibility', () => {
+    it('no shift for a single-zone event matching the day ambient', () => {
       const dinner = event({
         id: 'z1',
         startsAt: '2026-07-08T10:00:00Z',
@@ -350,60 +351,59 @@ describe('per-event display zones (ADR-0107 multi-zone model)', () => {
       expect(eventZones(dinner, ctxWith(TYO))).toEqual({
         startZone: TYO,
         endZone: TYO,
-        showStart: false,
-        showEnd: false,
+        deltaMinutes: undefined,
       });
     });
 
-    it('labels the end of a range when its single zone differs from ambient', () => {
+    it('a single-zone event differing from ambient carries the shift vs the day', () => {
       const coffee = event({
         id: 'z2',
         startsAt: '2026-07-07T05:00:00Z',
         endsAt: '2026-07-07T06:00:00Z',
-      }); // before the flight → JLM, ambient TYO
+      }); // before the flight → JLM, ambient TYO → Jerusalem is 6h behind Tokyo
       expect(eventZones(coffee, ctxWith(TYO))).toEqual({
         startZone: JLM,
         endZone: JLM,
-        showStart: false,
-        showEnd: true,
+        deltaMinutes: -360,
       });
     });
 
-    it('labels the start when a differing single-zone event has no end', () => {
-      const coffee = event({ id: 'z3', startsAt: '2026-07-07T05:00:00Z' }); // JLM, no end
-      expect(eventZones(coffee, ctxWith(TYO))).toEqual({
-        startZone: JLM,
-        endZone: JLM,
-        showStart: true,
-        showEnd: false,
-      });
-    });
-
-    it('labels both ends of a zone-crossing transport regardless of ambient', () => {
-      const expected = { startZone: JLM, endZone: TYO, showStart: true, showEnd: true };
+    it('a zone-crossing transport carries destination-vs-origin, regardless of ambient', () => {
+      const expected = { startZone: JLM, endZone: TYO, deltaMinutes: 360 };
       expect(eventZones(flightEv, ctxWith(JLM))).toEqual(expected);
       expect(eventZones(flightEv, ctxWith(TYO))).toEqual(expected);
     });
   });
 
   describe('eventEdgeZone — transition edges', () => {
-    it('labels a crossing departure in its origin and arrival in its destination', () => {
+    it('carries the edge zone + its shift vs ambient (departure origin, arrival destination)', () => {
+      // Departure edge measured against a Tokyo ambient → Jerusalem is 6h behind.
       expect(eventEdgeZone(flightEv, 'start', ctxWith(TYO))).toEqual({
         zone: JLM,
-        showLabel: true,
+        deltaMinutes: -360,
       });
-      expect(eventEdgeZone(flightEv, 'end', ctxWith(JLM))).toEqual({ zone: TYO, showLabel: true });
+      // Arrival edge measured against a Jerusalem ambient → Tokyo is 6h ahead.
+      expect(eventEdgeZone(flightEv, 'end', ctxWith(JLM))).toEqual({
+        zone: TYO,
+        deltaMinutes: 360,
+      });
     });
 
-    it('leaves a same-zone edge bare when it matches ambient, labels it when it differs', () => {
+    it('a same-zone edge is bare when it matches ambient, shifted when it differs', () => {
       const hotel = event({
         id: 'h',
         placeId: 'pl-nrt', // TYO
         startsAt: '2026-07-09T05:00:00Z',
         endsAt: '2026-07-12T02:00:00Z',
       });
-      expect(eventEdgeZone(hotel, 'start', ctxWith(TYO))).toEqual({ zone: TYO, showLabel: false });
-      expect(eventEdgeZone(hotel, 'start', ctxWith(JLM))).toEqual({ zone: TYO, showLabel: true });
+      expect(eventEdgeZone(hotel, 'start', ctxWith(TYO))).toEqual({
+        zone: TYO,
+        deltaMinutes: undefined,
+      });
+      expect(eventEdgeZone(hotel, 'start', ctxWith(JLM))).toEqual({
+        zone: TYO,
+        deltaMinutes: 360,
+      });
     });
   });
 });

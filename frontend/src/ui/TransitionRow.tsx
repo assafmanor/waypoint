@@ -9,7 +9,7 @@
 // booking has a mappable location). Plan mode has no live "now", so it passes
 // none; a read-only past day, or a location-less booking, passes none too.
 import { CATEGORY_DEFAULT_ICON, type Booking } from '@waypoint/shared';
-import { formatTime } from '../lib/time';
+import { formatTime, formatZoneDelta } from '../lib/time';
 import { transitionLabel } from '../lib/transitions';
 import { t } from '../i18n/he';
 import type { TransitionEntry } from '../lib/day-entries';
@@ -18,7 +18,7 @@ export function TransitionRow({
   entry,
   tz,
   zone,
-  zoneLabel,
+  deltaMinutes,
   bookings,
   onOpen,
   onNavigate,
@@ -28,9 +28,10 @@ export function TransitionRow({
   /** This edge's display zone (ADR-0107): a departure reads its origin zone, an
    *  arrival its destination zone. Falls back to `tz` when not zone-wired. */
   zone?: string;
-  /** City label for `zone`, shown when it's non-trivial (a zone crossing, or a
-   *  zone differing from the day's ambient). Absent → no label. */
-  zoneLabel?: string;
+  /** Signed minutes this edge's clock differs from the day's ambient zone, when
+   *  non-zero — rendered as an amber shift pill. Usually absent (each edge files
+   *  under the day it lands in, whose ambient is that edge's own zone). */
+  deltaMinutes?: number;
   bookings: Booking[];
   onOpen: (booking: Booking) => void;
   onNavigate?: () => void;
@@ -56,7 +57,9 @@ export function TransitionRow({
         </span>
         <span className="tr-time" dir="ltr">
           {formatTime(new Date(atMs), zone ?? tz)}
-          {zoneLabel && <span className="tr-tz"> · {zoneLabel}</span>}
+          {deltaMinutes != null && (
+            <span className="tr-tzdelta">🕐 {formatZoneDelta(deltaMinutes)}</span>
+          )}
         </span>
       </button>
       {edge === 'start' && onNavigate && (

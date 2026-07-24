@@ -768,6 +768,9 @@ export const t = {
     bookingLabel: 'הזמנה',
     hardWarn: 'קשיח · שינוי מחייב עדכון ההזמנה',
     conflictWarn: (title: string, time: string) => `חופף ל-${title} (קשיח) · ${time}`,
+    // Tooltip on the zone-shift pill (ADR-0107): how far this event's clock is
+    // from the day's — the destination vs origin for a flight.
+    zoneShift: 'הפרש שעון מאזור הזמן של היום',
   },
   actions: {
     restore: 'שחזר',

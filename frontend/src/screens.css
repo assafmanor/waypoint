@@ -236,12 +236,16 @@
   color: var(--amber-deep);
   white-space: nowrap;
 }
-/* Zone label on a transition edge (ADR-0107): quiet, sans, not amber — the time
-   carries the commitment colour, the zone is just a disambiguator. */
-.tr-tz {
-  font-family: var(--font-sans);
-  font-weight: 600;
-  color: var(--muted);
+/* Zone-shift pill on a transition edge (ADR-0107): the clock jump vs the day's
+   ambient zone, amber like the time it annotates. Usually absent. */
+.tr-tzdelta {
+  margin-inline-start: 6px;
+  font-size: 10.5px;
+  font-weight: 700;
+  color: var(--amber-deep);
+  background: rgba(233, 166, 60, 0.14);
+  border-radius: 999px;
+  padding: 1px 6px;
 }
 .tr-nav {
   flex: 0 0 auto;
@@ -1524,9 +1528,23 @@
   font-size: 12.5px;
   font-weight: 700;
   flex: 0 0 auto;
+  display: flex;
+  flex-direction: column;
+  align-items: flex-end;
+  gap: 3px;
 }
 .bld.soft .bld-time {
   color: var(--muted);
+}
+/* Zone-shift pill on a Plan-builder row (ADR-0107): matches the day-view pill —
+   amber, mono, how far the clock jumps. Only shown when the shift is non-zero. */
+.bld-tzdelta {
+  font-size: 10px;
+  font-weight: 700;
+  color: var(--amber-deep);
+  background: rgba(233, 166, 60, 0.14);
+  border-radius: 999px;
+  padding: 1px 6px;
 }
 .bld-icon {
   flex: 0 0 auto;
