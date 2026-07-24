@@ -8,7 +8,7 @@
 // names don't fit (ADR-0059 §3 amendment). The booking DETAIL and the booking
 // FORM deliberately keep the full names — they're the record and the editor.
 // A day row wants the meta line to follow the same decision, so it goes through
-// `useRouteDisplay` instead of this component.
+// `routeDisplay` instead of this component.
 import { type Booking, type Place, type TripEvent } from '@waypoint/shared';
 import { eventRoute } from '../lib/places';
 import { shortPlaceLabel } from '../lib/place-label';
