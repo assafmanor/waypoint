@@ -24,6 +24,9 @@ import { createInvite, createTrip } from '../lib/api';
 import { suggestTripName } from '../lib/trip-name';
 import { useToast } from '../ui/Toast';
 import { IconPicker } from '../ui/IconPicker';
+import { DestinationPicker, type PickedDestination } from '../ui/DestinationPicker';
+import { ZonePicker, zoneLabel } from '../ui/primitives/ZonePicker';
+import { Icon } from '../ui/Icon';
 import { MS_PER_DAY, ICONS, DEFAULT_TRIP_ICON, DEVICE_LOCALE } from '../constants';
 import { todayInTz } from '../lib/time';
 import { getNow } from '../lib/useClock';
@@ -40,6 +43,13 @@ export function CreateTrip() {
   const [createdTrip, setCreatedTrip] = useState<Trip | null>(null);
 
   const [destination, setDestination] = useState('');
+  // Structured destination + derived primary timezone from the Places pick (ADR-0113).
+  // A "use as typed" destination leaves the structured fields empty and the zone at
+  // the device default.
+  const [destPlace, setDestPlace] = useState<Omit<PickedDestination, 'name'>>({});
+  const [timezone, setTimezone] = useState(DEVICE_TZ);
+  const [candidateZones, setCandidateZones] = useState<string[] | undefined>(undefined);
+  const [tzPickerOpen, setTzPickerOpen] = useState(false);
   const [startDate, setStartDate] = useState('');
   const [endDate, setEndDate] = useState('');
   const [name, setName] = useState('');
@@ -53,6 +63,19 @@ export function CreateTrip() {
   const suggest = (dest: string, start: string) => {
     if (!nameTouched) setName(suggestTripName(dest, start));
     if (!iconTouched) setIcon(suggestFlagFromDestination(dest) ?? DEFAULT_TRIP_ICON);
+  };
+
+  // A picked destination sets the display name, the structured fields, and the
+  // derived primary timezone (ADR-0113): a single-zone place sets it silently; a
+  // multi-zone country pre-fills it + surfaces the candidate zones for the note +
+  // ZonePicker. A "use as typed" pick clears the structured fields + resets the
+  // zone to the device default. It also re-runs the name/flag auto-suggest.
+  const handleDestination = ({ name: destName, ...place }: PickedDestination) => {
+    setDestination(destName);
+    setDestPlace(place);
+    setTimezone(place.timezone ?? DEVICE_TZ);
+    setCandidateZones(place.candidateZones);
+    suggest(destName, startDate);
   };
 
   // Device-local "today" as YYYY-MM-DD — the floor for a new trip's dates. A
@@ -77,9 +100,13 @@ export function CreateTrip() {
     const parsed = createTripSchema.safeParse({
       name,
       destination,
+      destinationGooglePlaceId: destPlace.googlePlaceId,
+      destinationLat: destPlace.lat,
+      destinationLng: destPlace.lng,
+      destinationCountryCode: destPlace.countryCode,
       startDate,
       endDate,
-      timezone: Intl.DateTimeFormat().resolvedOptions().timeZone,
+      timezone,
       icon,
     });
     if (!parsed.success) return;
@@ -116,15 +143,33 @@ export function CreateTrip() {
 
         <div className="field">
           <label htmlFor="dest">{t.shell.newTrip.destLabel}</label>
-          <input
-            id="dest"
-            value={destination}
-            placeholder={t.shell.newTrip.destPlaceholder}
-            onChange={(e) => {
-              setDestination(e.target.value);
-              suggest(e.target.value, startDate);
-            }}
-          />
+          <DestinationPicker value={destination} onPick={handleDestination} />
+          {destination && (
+            <div className="dest-tz">
+              <button
+                type="button"
+                className="dest-tz-chip"
+                onClick={() => setTzPickerOpen(true)}
+                aria-label={t.shell.newTrip.tzLabel}
+              >
+                <span aria-hidden="true">🕓</span>
+                <span>{zoneLabel(timezone)}</span>
+                <Icon name="caret" dir="down" />
+              </button>
+              {candidateZones && <p className="dest-tz-note">{t.shell.newTrip.tzMultiNote}</p>}
+            </div>
+          )}
+          {tzPickerOpen && (
+            <ZonePicker
+              value={timezone}
+              suggested={[DEVICE_TZ, ...(candidateZones ?? [])]}
+              onChange={(zone) => {
+                setTimezone(zone);
+                setTzPickerOpen(false);
+              }}
+              onClose={() => setTzPickerOpen(false)}
+            />
+          )}
         </div>
 
         <div className="field">

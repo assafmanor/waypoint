@@ -690,6 +690,65 @@
   color: var(--faint);
   margin-top: 5px;
 }
+/* Destination picker trigger (ADR-0113) — an input-shaped button opening the
+   destination search sheet; caret at the end, ghost text until picked. */
+.dest-trigger {
+  width: 100%;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+  font: inherit;
+  font-size: 15px;
+  font-weight: 600;
+  color: var(--ink);
+  background: var(--card);
+  border: 1.5px solid var(--line);
+  border-radius: 13px;
+  padding: 12px 14px;
+  text-align: start;
+  cursor: pointer;
+}
+.dest-trigger .ghost {
+  color: var(--faint);
+  font-weight: 500;
+}
+.dest-trigger .icon {
+  width: 18px;
+  height: 18px;
+  color: var(--muted);
+  flex: none;
+}
+/* The derived primary-zone line under the destination — a quiet chip + an
+   optional multi-zone note. Editable, never a required step (ADR-0113 §2/§5). */
+.dest-tz {
+  margin-top: 8px;
+}
+.dest-tz-chip {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  font: inherit;
+  font-size: 13px;
+  font-weight: 600;
+  color: var(--ink);
+  background: var(--card);
+  border: 1px solid var(--line);
+  border-radius: 999px;
+  padding: 6px 11px;
+  cursor: pointer;
+}
+.dest-tz-chip .icon {
+  width: 15px;
+  height: 15px;
+  color: var(--muted);
+  flex: none;
+}
+.dest-tz-note {
+  font-size: 11.5px;
+  color: var(--faint);
+  margin-top: 6px;
+}
 .date-row {
   display: grid;
   /* minmax(0, 1fr), not 1fr: an unconstrained fr track won't shrink below the
