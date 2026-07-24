@@ -19,7 +19,7 @@ import {
 } from '@waypoint/shared';
 import { useTrip, byStart } from '../state/trip-state';
 import { prefersReducedMotion } from '../lib/motion';
-import { eventDirectionsUrl, eventPlaceName } from '../lib/places';
+import { eventDirectionsUrl, eventPlaceName, eventPlaceUrl } from '../lib/places';
 import { useVerbs } from '../state/verbs';
 import { useClock } from '../lib/useClock';
 import {
@@ -63,6 +63,16 @@ function navigateHandler(
   ctx: Pick<DayCtx, 'bookings' | 'places'>,
 ): (() => void) | undefined {
   const url = eventDirectionsUrl(event, ctx.bookings, ctx.places);
+  return url ? () => openMaps(url) : undefined;
+}
+
+// The view-on-map peer of navigateHandler: opens the place (not directions), or
+// `undefined` when there's no mappable place so the מפה button drops too.
+function showOnMapHandler(
+  event: TripEvent,
+  ctx: Pick<DayCtx, 'bookings' | 'places'>,
+): (() => void) | undefined {
+  const url = eventPlaceUrl(event, ctx.bookings, ctx.places);
   return url ? () => openMaps(url) : undefined;
 }
 
@@ -487,6 +497,7 @@ function ItemNode({ item, depth, ctx }: { item: TimeItem; depth: number; ctx: Da
       }
       nestedCount={hasKids ? countDescendants(item) : undefined}
       onNavigate={navigateHandler(e, ctx)}
+      onShowOnMap={showOnMapHandler(e, ctx)}
       onDone={() => ctx.verbs.done(e)}
       onSkip={() => ctx.verbs.skip(e)}
       onDelay={() => ctx.verbs.delay(e)}

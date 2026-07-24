@@ -57,9 +57,11 @@ export interface EventCardProps {
   /** "כולל N" contents count on an envelope event that nests others. */
   nestedCount?: number;
   // Verbs (callbacks; presence + phase gate which buttons show, faithfully).
-  // `onNavigate` is present only when the event has a mappable location (a place
-  // with coordinates) — absent → no ניווט button, since there's nowhere to go.
+  // `onNavigate` (directions) and `onShowOnMap` (view the place) are the two
+  // location actions — each present only when the event has a mappable place
+  // (coordinates); absent → that button is dropped, since there's nowhere to go.
   onNavigate?: () => void;
+  onShowOnMap?: () => void;
   onDone?: () => void;
   onSkip?: () => void;
   onDelay?: () => void;
@@ -91,6 +93,7 @@ export function EventCard(props: EventCardProps) {
     conflict,
     nestedCount,
     onNavigate,
+    onShowOnMap,
     onDone,
     onSkip,
     onDelay,
@@ -223,6 +226,24 @@ export function EventCard(props: EventCardProps) {
     });
   }
 
+  // The two location actions, shared across every phase's action row: navigate
+  // (directions) + show on map (view). Each renders only when its handler is
+  // supplied — i.e. the event has a mappable place (ADR-0109 amendment).
+  const mapActs = (
+    <>
+      {onNavigate && (
+        <button type="button" className="wp-event-act go" onClick={onNavigate}>
+          {t.actions.navigate}
+        </button>
+      )}
+      {onShowOnMap && (
+        <button type="button" className="wp-event-act go" onClick={onShowOnMap}>
+          {t.actions.showOnMap}
+        </button>
+      )}
+    </>
+  );
+
   return (
     <div className={cls}>
       <button type="button" className="wp-event-face" onClick={onToggle} aria-expanded={isOpen}>
@@ -269,19 +290,11 @@ export function EventCard(props: EventCardProps) {
               <button type="button" className="wp-event-act" onClick={onRestore}>
                 {t.actions.restore}
               </button>
-              {onNavigate && (
-                <button type="button" className="wp-event-act go" onClick={onNavigate}>
-                  {t.actions.navigate}
-                </button>
-              )}
+              {mapActs}
             </>
           ) : isHard ? (
             <>
-              {onNavigate && (
-                <button type="button" className="wp-event-act go" onClick={onNavigate}>
-                  {t.actions.navigate}
-                </button>
-              )}
+              {mapActs}
               {!readOnly && (
                 <>
                   <button type="button" className="wp-event-act" onClick={onOnWay}>
@@ -324,11 +337,7 @@ export function EventCard(props: EventCardProps) {
                   +
                 </button>
               </div>
-              {onNavigate && (
-                <button type="button" className="wp-event-act go" onClick={onNavigate}>
-                  {t.actions.navigate}
-                </button>
-              )}
+              {mapActs}
             </>
           )}
           {!readOnly && menuActions.length > 0 && (

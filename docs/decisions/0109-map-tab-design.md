@@ -7,6 +7,15 @@
 
 Mockup: [`mockups/map-tab-v1.html`](../../mockups/map-tab-v1.html) — the list-first tab in both modes, all four location states (normal / near-me granted / denied / offline), the pin-anatomy legend, a Phase-6 rendered-map preview, and the ADR-0107 zone chip.
 
+## Amendment (2026-07-24) — place location on detail/card surfaces: navigate + view, and the interim view target
+
+Implementing Phase 2 (places on existing surfaces) surfaced a scope boundary in §1's row anatomy. That "**one labelled `נווט`, viewing = the row tap**, no second view control" rule is specifically the **Map-tab list row**, where tapping the row _is_ the view affordance (it opens the place detail / Google Maps place). Two other surfaces have **no tap-to-view** — the **day-timeline `EventCard`** (tapping toggles expand) and the **`BookingDetail` sheet** (you are already inside the detail) — so they must expose viewing explicitly. On those surfaces:
+
+- **The place is shown as a location detail** (`BookingDetail`: a `מיקום` fact with the place name/address, matching the other facts), and it carries **two labelled actions: `ניווט` (directions) and `מפה` (view on map)**. This is _not_ the pair §1 rejected — that rejection was of **two unlabelled, confusable glyphs** (eye vs. compass); labelled text actions are unambiguous. The `EventCard` gets the same `ניווט · מפה` pair in its action row; both drop when the event has no mappable place ("no location, no button", the Phase-2 rule).
+- **Two long-term fates for the two actions:**
+  - **`ניווט` (directions) is a Google Maps deep-link forever** — we never rebuild turn-by-turn navigation (ADR-0106 §F).
+  - **`מפה` (view) is INTERIM.** Today it deep-links to the Google Maps place view because we have no map surface yet. **Once the Map tab (Phase 3) / embedded map (Phase 6) ships, `מפה` should focus _our_ in-app map on the place instead of leaving to Google.** Tracked as a TODO in `lib/places.ts` (`mapsPlaceUrl`) and a backlog line; the Phase-2 Google wiring is the stopgap. The list-row `נווט` + tap-to-view of §1 is unchanged.
+
 ## Context
 
 ADR-0106 fixed the Maps & Places scope: one mode-re-emphasized Map tab, picker-first, **list-of-pins before an embedded map**, filters that are pure client-side derivation. It deliberately left the visual and interaction design to a follow-on session (this one) and named the concrete open design questions to resolve here. Nothing about scope, phasing, or the embedded-map direction is reopened — this ADR is the design layer on top of that frame.

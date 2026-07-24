@@ -3223,12 +3223,25 @@
   border-color: var(--plan);
   background: var(--plan-tint);
 }
-/* "Open in Maps" deep-link — teal, the location/nav affordance (design-language.md
-   §semantic color budget: teal = location only), sitting beside the plan-violet edit. */
-.bk-nav {
-  display: inline-flex;
+.bk-head {
+  display: flex;
   align-items: center;
-  gap: 5px;
+  gap: 11px;
+  padding-inline-end: 92px;
+}
+/* Location fact: the place text stacks above its two teal map links (navigate +
+   מפה). Teal = the location affordance (design-language.md §semantic color budget). */
+.bk-fact-v.bk-loc {
+  display: flex;
+  flex-direction: column;
+  align-items: flex-end;
+  gap: 6px;
+}
+.bk-loc-links {
+  display: flex;
+  gap: 8px;
+}
+.bk-loc-link {
   font: inherit;
   font-size: 12px;
   font-weight: 700;
@@ -3236,18 +3249,11 @@
   background: var(--card);
   border: 1px solid var(--teal);
   border-radius: 999px;
-  padding: 5px 11px;
+  padding: 3px 11px;
   text-decoration: none;
-  cursor: pointer;
 }
-.bk-nav:hover {
+.bk-loc-link:hover {
   background: color-mix(in srgb, var(--teal) 10%, transparent);
-}
-.bk-head {
-  display: flex;
-  align-items: center;
-  gap: 11px;
-  padding-inline-end: 168px;
 }
 .bk-badge {
   width: 44px;
