@@ -17,6 +17,8 @@ import { useTrip } from '../state/trip-state';
 import { useAuth } from '../state/auth-state';
 import { useAppBack } from '../state/nav-state';
 import { ConfirmDialog, type ConfirmTone } from '../ui/primitives/ConfirmDialog';
+import { ZonePicker, zoneLabel } from '../ui/primitives/ZonePicker';
+import { Icon } from '../ui/Icon';
 import { IconPicker } from '../ui/IconPicker';
 import { Sheet } from '../ui/Sheet';
 import { useToast } from '../ui/Toast';
@@ -26,16 +28,16 @@ import {
   AVATAR_INITIAL_LENGTH,
   DEFAULT_TRIP_ICON,
   DEVICE_LOCALE,
+  DEVICE_TIMEZONE,
   DOT_SEPARATOR,
   ICONS,
 } from '../constants';
 import { NavArrow } from '../ui/NavArrow';
 import { t } from '../i18n/he';
 
-// Small, stable option lists for the manual timezone/currency selects (ADR-0039
-// — auto-derivation from the destination is a future update). The trip's own
-// current value is always included so nothing is silently dropped on save.
-const TZ_OPTIONS = ['Asia/Tokyo', 'Asia/Jerusalem', 'Europe/London', 'America/New_York', 'UTC'];
+// Currency stays a small stable select; timezone is now the shared ZonePicker
+// over the full IANA set (ADR-0113 §6), replacing the old 5-item TZ_OPTIONS. The
+// trip's current value is always included so nothing is silently dropped on save.
 const CURRENCY_OPTIONS = ['JPY', 'ILS', 'USD', 'EUR', 'GBP'];
 const withCurrent = (options: string[], current?: string) =>
   current && !options.includes(current) ? [current, ...options] : options;
@@ -450,9 +452,18 @@ function DetailsEditor({
   const [startDate, setStartDate] = useState(trip.startDate);
   const [endDate, setEndDate] = useState(trip.endDate);
   const [timezone, setTimezone] = useState(trip.timezone);
+  const [tzPickerOpen, setTzPickerOpen] = useState(false);
   const [currency, setCurrency] = useState(trip.currency ?? '');
   const [budget, setBudget] = useState(trip.dailyBudgetMinor?.toString() ?? '');
   const [saving, setSaving] = useState(false);
+
+  // Surface the device zone + the trip's own place zones first in the picker
+  // (ADR-0113 §6) — the zones most likely to be wanted, before the full IANA list.
+  const { places } = useTrip();
+  const suggestedZones = [
+    DEVICE_TIMEZONE,
+    ...places.map((p) => p.timezone).filter((z): z is string => !!z),
+  ];
 
   // No floor-to-today here (unlike creation, PR #92): an existing trip may be
   // under way or already past, so editing its dates must stay unbounded below.
@@ -536,14 +547,27 @@ function DetailsEditor({
       </div>
       <div className="set-fld">
         <label htmlFor="s-tz">{t.settings.timezoneLabel}</label>
-        <select id="s-tz" value={timezone} onChange={(e) => setTimezone(e.target.value)}>
-          {withCurrent(TZ_OPTIONS, timezone).map((tz) => (
-            <option key={tz} value={tz}>
-              {tz}
-            </option>
-          ))}
-        </select>
+        <button
+          type="button"
+          id="s-tz"
+          className="set-tz-trigger"
+          onClick={() => setTzPickerOpen(true)}
+        >
+          <span>{zoneLabel(timezone)}</span>
+          <Icon name="caret" dir="down" />
+        </button>
       </div>
+      {tzPickerOpen && (
+        <ZonePicker
+          value={timezone}
+          suggested={suggestedZones}
+          onChange={(zone) => {
+            setTimezone(zone);
+            setTzPickerOpen(false);
+          }}
+          onClose={() => setTzPickerOpen(false)}
+        />
+      )}
       <div className="set-fld">
         <label>{t.settings.budgetLabel}</label>
         <div className="budget-row">

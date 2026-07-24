@@ -912,6 +912,14 @@ export const t = {
     rateLimited: 'יותר מדי חיפושים · נסו שוב בעוד רגע',
     failed: 'החיפוש נכשל · בדקו את החיבור או שמרו שם בלבד',
   },
+  // The shared zone picker (ADR-0113 §6) — trip settings, creation, event chip.
+  zonePicker: {
+    title: 'אזור זמן',
+    searchPlaceholder: 'חיפוש לפי עיר או אזור…',
+    suggested: 'מוצע',
+    allZones: 'כל האזורים',
+    noResults: 'לא נמצא אזור זמן',
+  },
   // The "when" standard (WhenField). Shared span-endpoint copy for the tap-to-open
   // time field, the derived duration read-out, and the crosses-a-day marker.
   whenField: {

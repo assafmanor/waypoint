@@ -2249,6 +2249,31 @@
   font-weight: 600;
   color: var(--ink);
 }
+/* Timezone trigger — a select-shaped button opening the shared ZonePicker
+   (ADR-0113 §6). Matches the input/select chrome; the caret sits at the end. */
+.set-tz-trigger {
+  font: inherit;
+  width: 100%;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+  background: var(--card);
+  border: 1px solid var(--soft-line);
+  border-radius: 10px;
+  padding: 10px 12px;
+  font-size: 14px;
+  font-weight: 600;
+  color: var(--ink);
+  text-align: start;
+  cursor: pointer;
+}
+.set-tz-trigger .icon {
+  width: 18px;
+  height: 18px;
+  color: var(--muted);
+  flex: none;
+}
 .set-fld input.invalid {
   border-color: var(--miss);
 }
