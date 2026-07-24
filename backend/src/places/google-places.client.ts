@@ -10,6 +10,13 @@ import { GOOGLE_MAPS_SERVER_KEY, requireEnv } from '../common/env';
 const AUTOCOMPLETE_URL = 'https://places.googleapis.com/v1/places:autocomplete';
 const PLACE_DETAILS_BASE = 'https://places.googleapis.com/v1/places';
 
+// The app is Hebrew-first (ADR-0009), so ask Google for Hebrew place names +
+// Israel-biased ranking. Google returns the Hebrew name where it has one and
+// falls back to the local/English name otherwise — the name is then cached on
+// the Place row at pick time, so this affects new picks, not already-saved rows.
+const PLACES_LANGUAGE_CODE = 'he';
+const PLACES_REGION_CODE = 'IL';
+
 /** Cap on the upstream error body we log — enough to carry Google's `error.status`
  *  + message (the diagnostic bit), bounded so a stray large body can't flood logs. */
 const MAX_ERROR_BODY_LOG = 500;
@@ -107,6 +114,8 @@ export class GooglePlacesClient {
       body: JSON.stringify({
         input,
         sessionToken,
+        languageCode: PLACES_LANGUAGE_CODE,
+        regionCode: PLACES_REGION_CODE,
         ...(includedPrimaryTypes && { includedPrimaryTypes }),
       }),
     });
@@ -125,6 +134,8 @@ export class GooglePlacesClient {
   async placeDetails(googlePlaceId: string, sessionToken?: string): Promise<PlaceDetails> {
     const url = new URL(`${PLACE_DETAILS_BASE}/${encodeURIComponent(googlePlaceId)}`);
     if (sessionToken) url.searchParams.set('sessionToken', sessionToken);
+    url.searchParams.set('languageCode', PLACES_LANGUAGE_CODE);
+    url.searchParams.set('regionCode', PLACES_REGION_CODE);
     const body = await this.get<PlaceDetailsResponse>(url.toString(), {
       headers: {
         'X-Goog-Api-Key': this.key(),
@@ -146,6 +157,8 @@ export class GooglePlacesClient {
   async geocode(googlePlaceId: string, sessionToken?: string): Promise<GeocodedPlace> {
     const url = new URL(`${PLACE_DETAILS_BASE}/${encodeURIComponent(googlePlaceId)}`);
     if (sessionToken) url.searchParams.set('sessionToken', sessionToken);
+    url.searchParams.set('languageCode', PLACES_LANGUAGE_CODE);
+    url.searchParams.set('regionCode', PLACES_REGION_CODE);
     const body = await this.get<PlaceDetailsResponse>(url.toString(), {
       headers: { 'X-Goog-Api-Key': this.key(), 'X-Goog-FieldMask': GEOCODE_FIELD_MASK },
     });

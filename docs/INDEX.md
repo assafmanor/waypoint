@@ -163,6 +163,8 @@ Before changing a domain, read **only** the ADR(s) below for it (see the Context
 
 | [planning/2026-07-24-session-84-trip-destination-creation.md](planning/2026-07-24-session-84-trip-destination-creation.md) | ADR-0113 **slice 3 (completes it)** — the creation-flow destination picker: `searchDestinations`/`resolveDestination` on `lib/api.ts`, a lighter `lib/useDestinationSearch` hook (session token + debounce, no trip/persist/outbox), and `ui/DestinationPicker` (trigger + search sheet reusing PlacePicker's `.pp-*`). `CreateTrip`'s free-text destination becomes a Places pick that sets structured fields + the **derived-default primary timezone** (inline `🕓 City · GMT±N` chip → shared `ZonePicker`; multi-zone-country note from `candidateZones`); "use as typed" fallback; `createTrip` sends the structured fields + timezone. One primitive (`ZonePicker`), two of three call sites live. **ADR-0113 fully implemented.** |
 
+| [planning/2026-07-24-session-85-places-hebrew-names.md](planning/2026-07-24-session-85-places-hebrew-names.md) | Hebrew place names from Google (small): `google-places.client.ts` now sends `languageCode: 'he'` + `regionCode: 'IL'` on autocomplete (body) and `placeDetails`/`geocode` (query params), so picked place names come back Hebrew where Google has one (local/English fallback), Israel-biased ranking — ADR-0009 Hebrew-first. New-picks-only (cached on the row at pick time); no SKU-tier change. Timezone-label localization left as an optional follow-up. New `google-places.client.spec`. |
+
 Cold-start / source material, kept out of the chronology above:
 
 | Doc                                                                                    | Purpose                                                                   |
