@@ -14,13 +14,16 @@ import {
   bookingPlaceUrl,
   eventDirectionsUrl,
   eventDisplayZones,
+  eventEdgeZone,
   eventPlaceUrl,
   eventRoute,
+  eventZones,
   mapsDirectionsUrl,
   mapsPlaceUrl,
   referencedPlaceIds,
   segmentZoneAt,
   tripZoneCrossings,
+  type ZoneContext,
 } from './places';
 import type { MaybeItem } from '@waypoint/shared';
 
@@ -326,6 +329,81 @@ describe('per-event display zones (ADR-0107 multi-zone model)', () => {
     it('falls back to the segment zone for a coordless attached place', () => {
       const liteAfter = event({ id: 'ev-l', placeId: 'pl-lite', startsAt: '2026-07-08T10:00:00Z' });
       expect(zones(liteAfter)).toEqual({ start: TYO, end: TYO });
+    });
+  });
+
+  const ctxWith = (ambientZone: string): ZoneContext => ({
+    bookings: [flightBk],
+    places: ZONED,
+    crossings,
+    primaryZone: PRIMARY,
+    ambientZone,
+  });
+
+  describe('eventZones — non-trivial-suppression rule', () => {
+    it('shows no label when a single-zone event matches the day ambient', () => {
+      const dinner = event({
+        id: 'z1',
+        startsAt: '2026-07-08T10:00:00Z',
+        endsAt: '2026-07-08T11:00:00Z',
+      }); // after the flight → TYO, ambient TYO
+      expect(eventZones(dinner, ctxWith(TYO))).toEqual({
+        startZone: TYO,
+        endZone: TYO,
+        showStart: false,
+        showEnd: false,
+      });
+    });
+
+    it('labels the end of a range when its single zone differs from ambient', () => {
+      const coffee = event({
+        id: 'z2',
+        startsAt: '2026-07-07T05:00:00Z',
+        endsAt: '2026-07-07T06:00:00Z',
+      }); // before the flight → JLM, ambient TYO
+      expect(eventZones(coffee, ctxWith(TYO))).toEqual({
+        startZone: JLM,
+        endZone: JLM,
+        showStart: false,
+        showEnd: true,
+      });
+    });
+
+    it('labels the start when a differing single-zone event has no end', () => {
+      const coffee = event({ id: 'z3', startsAt: '2026-07-07T05:00:00Z' }); // JLM, no end
+      expect(eventZones(coffee, ctxWith(TYO))).toEqual({
+        startZone: JLM,
+        endZone: JLM,
+        showStart: true,
+        showEnd: false,
+      });
+    });
+
+    it('labels both ends of a zone-crossing transport regardless of ambient', () => {
+      const expected = { startZone: JLM, endZone: TYO, showStart: true, showEnd: true };
+      expect(eventZones(flightEv, ctxWith(JLM))).toEqual(expected);
+      expect(eventZones(flightEv, ctxWith(TYO))).toEqual(expected);
+    });
+  });
+
+  describe('eventEdgeZone — transition edges', () => {
+    it('labels a crossing departure in its origin and arrival in its destination', () => {
+      expect(eventEdgeZone(flightEv, 'start', ctxWith(TYO))).toEqual({
+        zone: JLM,
+        showLabel: true,
+      });
+      expect(eventEdgeZone(flightEv, 'end', ctxWith(JLM))).toEqual({ zone: TYO, showLabel: true });
+    });
+
+    it('leaves a same-zone edge bare when it matches ambient, labels it when it differs', () => {
+      const hotel = event({
+        id: 'h',
+        placeId: 'pl-nrt', // TYO
+        startsAt: '2026-07-09T05:00:00Z',
+        endsAt: '2026-07-12T02:00:00Z',
+      });
+      expect(eventEdgeZone(hotel, 'start', ctxWith(TYO))).toEqual({ zone: TYO, showLabel: false });
+      expect(eventEdgeZone(hotel, 'start', ctxWith(JLM))).toEqual({ zone: TYO, showLabel: true });
     });
   });
 });

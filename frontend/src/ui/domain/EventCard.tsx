@@ -13,7 +13,9 @@
 //
 // Domain UI may use the shared copy/icon/time helpers (not state); it does.
 import { useState, type ReactNode } from 'react';
-import { formatTime, crossesMidnight } from '../../lib/time';
+import { formatTime, crossesMidnightZoned } from '../../lib/time';
+import { zoneCity } from '../primitives/ZonePicker';
+import type { EventZones } from '../../lib/places';
 import { DELAY_STEP_MINUTES } from '../../constants';
 import { ICONS } from '../../constants';
 import { Icon } from '../Icon';
@@ -51,7 +53,14 @@ export interface EventCardProps {
   onToggle: () => void;
   startsAt?: string;
   endsAt?: string;
+  /** Base/ambient timezone — the fallback when `zones` is absent, and the zone
+   *  the conflict-flag time reads in. */
   tz: string;
+  /** Per-event display zones + label visibility (ADR-0107 multi-zone). Absent →
+   *  the event renders wholly in `tz` with no zone label (single-zone trips, and
+   *  surfaces not yet zone-wired). Present → start/end render in their own zones
+   *  and a `· city` label shows on the ends the suppression rule kept. */
+  zones?: EventZones;
   /** The first hard conflict, if any (drives the amber conflict flag). */
   conflict?: { title: string; startsAt: string };
   /** "כולל N" contents count on an envelope event that nests others. */
@@ -90,6 +99,7 @@ export function EventCard(props: EventCardProps) {
     startsAt,
     endsAt,
     tz,
+    zones,
     conflict,
     nestedCount,
     onNavigate,
@@ -168,15 +178,19 @@ export function EventCard(props: EventCardProps) {
     </span>
   );
 
+  const startZone = zones?.startZone ?? tz;
+  const endZone = zones?.endZone ?? tz;
   const timeBlock = startsAt && (
     <span className="wp-event-time" dir="ltr">
-      {formatTime(startsAt, tz)}
-      {endsAt && `–${formatTime(endsAt, tz)}`}
-      {endsAt && crossesMidnight(startsAt, endsAt, tz) && (
+      {formatTime(startsAt, startZone)}
+      {zones?.showStart && <span className="wp-event-tz"> · {zoneCity(startZone)}</span>}
+      {endsAt && `–${formatTime(endsAt, endZone)}`}
+      {endsAt && crossesMidnightZoned(startsAt, endsAt, startZone, endZone) && (
         <sup className="wp-event-xmid" title={t.event.nextDay}>
           +1
         </sup>
       )}
+      {endsAt && zones?.showEnd && <span className="wp-event-tz"> · {zoneCity(endZone)}</span>}
     </span>
   );
 

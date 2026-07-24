@@ -302,7 +302,20 @@ export function resolveEndIso(date: string, start: string, end: string, timeZone
 /** True when the event's end lands on a later calendar day than its start, in
  *  the trip timezone — the signal for the "＋1 / next day" display marker. */
 export function crossesMidnight(startsAt: string, endsAt: string, timeZone: string): boolean {
-  return todayInTz(timeZone, new Date(startsAt)) !== todayInTz(timeZone, new Date(endsAt));
+  return crossesMidnightZoned(startsAt, endsAt, timeZone, timeZone);
+}
+
+/** The zone-crossing generalization of {@link crossesMidnight} (ADR-0107 §8):
+ *  the start day is read in `startZone` and the end day in `endZone`, so a
+ *  TLV→Tokyo flight's "+1" reflects each end's own calendar day. Reduces to
+ *  `crossesMidnight` when the two zones are equal. */
+export function crossesMidnightZoned(
+  startsAt: string,
+  endsAt: string,
+  startZone: string,
+  endZone: string,
+): boolean {
+  return todayInTz(startZone, new Date(startsAt)) !== todayInTz(endZone, new Date(endsAt));
 }
 
 /** Same-day hard event(s) whose span overlaps this soft event's current span.

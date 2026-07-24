@@ -226,4 +226,37 @@ describe('EventCard', () => {
     fireEvent.click(screen.getByRole('button', { name: t.actions.showOnMap }));
     expect(onShowOnMap).toHaveBeenCalledTimes(1);
   });
+
+  // Multi-zone display (ADR-0107): the optional `zones` prop renders each end in
+  // its own zone + a `· city` label on the ends the suppression rule kept.
+  it('renders no zone label without `zones` (single-zone trips stay bare)', () => {
+    const { container } = render(
+      wrap(<EventCard {...base} startsAt="2026-07-07T10:00:00Z" endsAt="2026-07-07T11:00:00Z" />),
+    );
+    expect(container.querySelector('.wp-event-tz')).toBeNull();
+  });
+
+  it('labels a zone-crossing event on both ends, each time in its own zone', () => {
+    const { container } = render(
+      wrap(
+        <EventCard
+          {...base}
+          startsAt="2026-07-07T20:00:00Z" // 23:00 in Jerusalem
+          endsAt="2026-07-08T09:00:00Z" // 18:00 next-day in Tokyo
+          zones={{
+            startZone: 'Asia/Jerusalem',
+            endZone: 'Asia/Tokyo',
+            showStart: true,
+            showEnd: true,
+          }}
+        />,
+      ),
+    );
+    const labels = [...container.querySelectorAll('.wp-event-tz')].map((n) => n.textContent);
+    expect(labels).toEqual([' · Jerusalem', ' · Tokyo']);
+    const time = container.querySelector('.wp-event-time')!.textContent!;
+    expect(time).toContain('23:00'); // start read in Jerusalem
+    expect(time).toContain('18:00'); // end read in Tokyo
+    expect(container.querySelector('.wp-event-xmid')).not.toBeNull(); // +1 across zones
+  });
 });

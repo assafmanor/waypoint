@@ -184,6 +184,60 @@ export function eventDisplayZones(
   return { start: zone, end: zone };
 }
 
+/** Context an event's display zones resolve against — the trip's crossings, the
+ *  fallback trip-primary zone, and the day's **ambient** zone (the segment zone
+ *  spanning the day being viewed) that the non-trivial-suppression rule
+ *  compares against. */
+export interface ZoneContext {
+  bookings: Booking[];
+  places: Place[];
+  crossings: ZoneCrossing[];
+  primaryZone: string;
+  ambientZone: string;
+}
+
+/** An event's resolved display zones plus whether each end shows a zone label.
+ *  The **non-trivial-suppression rule** (ADR-0107 §6 / ADR-0110 amendment): a
+ *  label appears only when its zone differs from the day's ambient zone, and a
+ *  zone-crossing event (start ≠ end, i.e. transport) always labels both ends so
+ *  the crossing reads clearly. A single-zone trip therefore shows no labels. */
+export interface EventZones {
+  startZone: string;
+  endZone: string;
+  showStart: boolean;
+  showEnd: boolean;
+}
+
+/** Range display for a timeline event (EventCard). When start and end share a
+ *  zone, a single label sits at the end of the range (or on the start when there
+ *  is no end); a crossing labels both ends. */
+export function eventZones(event: TripEvent, ctx: ZoneContext): EventZones {
+  const { start, end } = eventDisplayZones(event, ctx);
+  if (start !== end) return { startZone: start, endZone: end, showStart: true, showEnd: true };
+  const differs = start !== ctx.ambientZone;
+  const hasEnd = Boolean(event.endsAt);
+  return {
+    startZone: start,
+    endZone: end,
+    showStart: differs && !hasEnd,
+    showEnd: differs && hasEnd,
+  };
+}
+
+/** Single-edge display for a transition entry (arrival/departure row, ADR-0064):
+ *  the zone for that one edge, and whether to label it. A crossing always labels
+ *  both edges (departure in origin, arrival in destination); a same-zone edge
+ *  (e.g. a hotel check-in) labels only when it differs from the ambient zone. */
+export function eventEdgeZone(
+  event: TripEvent,
+  edge: 'start' | 'end',
+  ctx: ZoneContext,
+): { zone: string; showLabel: boolean } {
+  const { start, end } = eventDisplayZones(event, ctx);
+  const zone = edge === 'start' ? start : end;
+  return { zone, showLabel: start !== end || zone !== ctx.ambientZone };
+}
+
 // ── Google Maps deep-links (Phase 2, ADR-0106/0109) ─────────────────────────
 // Universal Maps-URL links (no API key, open the Maps app on device): a place
 // is navigable/mappable only when it has real coordinates. A name-only

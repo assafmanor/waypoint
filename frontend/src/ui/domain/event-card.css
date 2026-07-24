@@ -184,6 +184,14 @@
 .wp-event-xmid {
   font-size: 9px;
 }
+/* Per-event zone label (ADR-0107 multi-zone): shown only when the zone differs
+   from the day's ambient zone (or on a zone-crossing event). Quiet — it's a
+   disambiguator, not a primary value. */
+.wp-event-tz {
+  font-family: var(--font-sans);
+  font-weight: 600;
+  color: var(--muted);
+}
 .wp-event-chev {
   color: #b5bcc9;
   font-size: var(--text-secondary);
