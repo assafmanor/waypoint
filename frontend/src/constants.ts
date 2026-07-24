@@ -1,6 +1,6 @@
 // App-wide tunables and non-copy literals. UI copy lives in i18n/; domain enum
 // values live in @waypoint/shared. Keep magic numbers/strings out of logic.
-import type { BookingType, DocumentType } from '@waypoint/shared';
+import type { BookingType, DocumentType, EventCategory } from '@waypoint/shared';
 
 export const MS_PER_DAY = 86_400_000;
 
@@ -113,6 +113,26 @@ export const DOCUMENT_TYPE_ICON = {
 
 /** Icon for a manually added maybe-shelf idea (no icon picker yet). */
 export const DEFAULT_MAYBE_ICON = '💡';
+
+/** The 5-hue Map pin/badge palette (ADR-0109 §3 / ADR-0110 §2). The `--cat-*`
+ *  tokens carry the actual colours (styles/tokens.css); this is the hue key. */
+export type PinHue = 'food' | 'lodging' | 'transit' | 'leisure' | 'services';
+
+/** The 9 `EventCategory` values fold onto the 5 pin hues (ADR-0110 §2). A `Record`
+ *  (not a switch) so the compiler flags a missing case if `EventCategory` grows;
+ *  an uncategorised place (all references `category = null`) falls back to
+ *  `leisure` at the call site. */
+export const CATEGORY_PIN_HUE = {
+  transport: 'transit',
+  food: 'food',
+  lodging: 'lodging',
+  sightseeing: 'leisure',
+  nature: 'leisure',
+  activity: 'leisure',
+  shopping: 'leisure',
+  services: 'services',
+  other: 'leisure',
+} as const satisfies Record<EventCategory, PinHue>;
 
 /** Per-row reveal stagger for the Index bookings filter (ADR-0098 §4 motion): a
  *  chip/search change reveals newly-matching rows with an incrementing

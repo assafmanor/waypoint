@@ -175,6 +175,21 @@ describe('daySelectTarget — single-source day selection (ADR-0035 §4, retaine
     expect(daySelectTarget('2026-07-10', TODAY).replace).toBe(true);
     expect(daySelectTarget(TODAY, TODAY).replace).toBe(true);
   });
+
+  // Tab-aware (ADR-0110 §4): a day-scoped tab focuses the day in place.
+  it('preserves a day-scoped tab (Map) so the day focuses in place, not on the Day view', () => {
+    expect(daySelectTarget('2026-07-10', TODAY, 'map')).toEqual({
+      to: '/?tab=map&day=2026-07-10',
+      replace: true,
+    });
+    expect(daySelectTarget(TODAY, TODAY, 'map')).toEqual({ to: '/?tab=map', replace: true });
+  });
+
+  it('preserves the Day view tab, and routes any non-day-scoped tab to the Day view', () => {
+    expect(daySelectTarget('2026-07-10', TODAY, 'days').to).toBe('/?tab=days&day=2026-07-10');
+    expect(daySelectTarget('2026-07-10', TODAY, 'home').to).toBe('/?tab=days&day=2026-07-10');
+    expect(daySelectTarget('2026-07-10', TODAY, 'index').to).toBe('/?tab=days&day=2026-07-10');
+  });
 });
 
 describe('resolveActiveDate — day-in-URL round-trip (J7 / review Q5)', () => {

@@ -31,6 +31,17 @@
   --ok: #3c9a6b;
   --miss: #c2584e;
 
+  /* Category pin palette (ADR-0038 §2 / ADR-0028 decorative palette) — 5 pastel
+     hues, "never amber or teal": colour = category on the Map list badge + pin
+     (the 9 EventCategory values fold onto these 5, see CATEGORY_PIN_HUE). Values
+     ported verbatim from mockups/map-tab-v1.html. Commitment (hard/soft) is the
+     shape grammar, not the fill. */
+  --cat-food: #e8998a;
+  --cat-lodging: #9c8ce8;
+  --cat-transit: #8cb6e8;
+  --cat-leisure: #9cc9a0;
+  --cat-services: #d9c08a;
+
   /* Motion — duration ramp + easings (design-language "Motion & designed
      transitions"). New motion picks from this ramp, the same discipline the
      type ramp and color budget enforce. Budget rule: exactly one --t-cinematic
@@ -177,6 +188,13 @@ body {
   --cta-text: #12203a;
   --ok: #4cbf85;
   --miss: #e07a6e;
+  /* Category pins, nudged brighter so the pastels clear the dark board (dark is
+     readiness-only today, ADR-0028/0105 — inert until data-theme=dark is set). */
+  --cat-food: #f0a99a;
+  --cat-lodging: #ab9cf0;
+  --cat-transit: #9cc2f0;
+  --cat-leisure: #a9d4ad;
+  --cat-services: #e4cd9a;
 
   /* Non-color tokens (spacing/type/radius/leading/breakpoints/safe-area) are
      theme-independent and inherit unchanged. Only elevation re-maps: shadows

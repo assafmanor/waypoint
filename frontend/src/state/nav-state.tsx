@@ -149,17 +149,31 @@ export function tabTarget(next: TabId): string {
   return next === HOME_TAB ? '/' : `/?${TAB_PARAM}=${next}`;
 }
 
+/** Tabs that are day-scoped surfaces (ADR-0110 §4): tapping a strip day focuses
+ *  that day IN PLACE instead of routing to the Day view. The Day view was the
+ *  only such surface; the Map joins it (its content is "this day's places"). */
+export const DAY_SCOPED_TABS = new Set<TabId>(['days', 'map']);
+
 /** Where a day-selection lands (ADR-0035 §4, single-source day; retained). The
  *  selected day lives in exactly ONE place — the `?day=` URL param — and
  *  `activeDate` derives from it (state/trip-state), so there is no second copy to
- *  reset or keep in sync. Selecting a day always shows it in the day/event view
- *  (the `days` tab); `date === today` omits `?day=` so the URL stays clean and
- *  Home derives to today. Always `replace` (a lateral view change, never a new
+ *  reset or keep in sync. `date === today` omits `?day=` so the URL stays clean
+ *  and Home derives to today. Always `replace` (a lateral view change, never a new
  *  history entry): back from a day goes to Home via `resolveBack`, not by walking
- *  the days you tapped. */
-export function daySelectTarget(date: string, today: string): { to: string; replace: boolean } {
+ *  the days you tapped.
+ *
+ *  Tab-aware (ADR-0110 §4): from a day-scoped tab (Day view or Map) it PRESERVES
+ *  that tab so the day focuses in place; from anywhere else it routes to the Day
+ *  view (`days`), the canonical day surface — the strip's real, already-shipped
+ *  rule, now literally true for two surfaces instead of coincidentally one. */
+export function daySelectTarget(
+  date: string,
+  today: string,
+  currentTab: TabId = 'days',
+): { to: string; replace: boolean } {
   const dayQuery = date === today ? '' : `&${DAY_PARAM}=${date}`;
-  return { to: `/?${TAB_PARAM}=days${dayQuery}`, replace: true };
+  const tab = DAY_SCOPED_TABS.has(currentTab) ? currentTab : 'days';
+  return { to: `/?${TAB_PARAM}=${tab}${dayQuery}`, replace: true };
 }
 
 const ISO_DATE = /^\d{4}-\d{2}-\d{2}$/;
