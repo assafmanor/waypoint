@@ -95,6 +95,14 @@ export function eventRoute(event: TripEvent, bookings: Booking[], places: Place[
 // is navigable/mappable only when it has real coordinates. A name-only
 // "Place-lite" (coordless) has no usable location, so these return null and the
 // caller drops the affordance — "no location, no ניווט button".
+//
+// Two long-term fates (ADR-0109 amendment):
+//   • DIRECTIONS (`mapsDirectionsUrl`) stays a Google Maps deep-link forever —
+//     we never rebuild turn-by-turn navigation (ADR-0106 §F).
+//   • VIEW (`mapsPlaceUrl`) is INTERIM. Once the Map tab (Phase 3) / embedded
+//     map (Phase 6) ships, "מפה"/view should focus OUR in-app map on the place
+//     instead of leaving to Google. TODO(phase-3): route the view action to the
+//     Map tab; this Google deep-link is the stopgap until that surface exists.
 const GOOGLE_MAPS = 'https://www.google.com/maps';
 
 function hasCoords(place: Place | undefined): place is Place & { lat: number; lng: number } {
@@ -111,7 +119,8 @@ export function mapsDirectionsUrl(place: Place | undefined): string | null {
   return `${GOOGLE_MAPS}/dir/?api=1&destination=${destination}${placeId}`;
 }
 
-/** "View this place" deep-link (open in Maps), or null when it has no coordinates. */
+/** "View this place" deep-link (open in Maps), or null when it has no coordinates.
+ *  INTERIM (TODO phase-3): becomes an in-app Map-tab focus once that surface exists. */
 export function mapsPlaceUrl(place: Place | undefined): string | null {
   if (!hasCoords(place)) return null;
   const query = encodeURIComponent(`${place.lat},${place.lng}`);
@@ -136,4 +145,21 @@ export function eventDirectionsUrl(
  *  the booking has no place or a coordless one. */
 export function bookingDirectionsUrl(booking: Booking, places: Place[]): string | null {
   return mapsDirectionsUrl(places.find((p) => p.id === bookingPlaceId(booking)));
+}
+
+/** "View on map" link for an event's resolved place, or null when it has no place
+ *  or a coordless one. The peer of {@link eventDirectionsUrl}: navigate vs. view. */
+export function eventPlaceUrl(
+  event: TripEvent,
+  bookings: Booking[],
+  places: Place[],
+): string | null {
+  const booking = event.bookingId ? bookings.find((b) => b.id === event.bookingId) : undefined;
+  return mapsPlaceUrl(places.find((p) => p.id === eventPlaceId(event, booking)));
+}
+
+/** "View on map" link for a booking's resolved place, or null when it has no place
+ *  or a coordless one. The peer of {@link bookingDirectionsUrl}. */
+export function bookingPlaceUrl(booking: Booking, places: Place[]): string | null {
+  return mapsPlaceUrl(places.find((p) => p.id === bookingPlaceId(booking)));
 }

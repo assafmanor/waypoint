@@ -216,6 +216,7 @@ export const t = {
       delete: 'מחיקה',
       timing: 'מתי',
       duration: 'משך',
+      location: 'מיקום',
       unscheduled: 'לא משובצת במסלול',
       code: 'קוד אישור',
       provider: 'ספק',
@@ -735,6 +736,9 @@ export const t = {
     // name / tooltip.
     undoDone: 'בטל סימון · שחזר',
     navigate: 'ניווט',
+    // The view-on-map peer of navigate (directions). Kept to one word so the two
+    // location actions ("ניווט · מפה") stay compact in the crowded card row.
+    showOnMap: 'מפה',
     delayBy: (minutes: number) => `דחה ${minutes} דק׳`,
     earlierBy: (minutes: number) => `הקדם ${minutes} דק׳`,
     stepMinutes: (minutes: number) => `${minutes} דק׳`,

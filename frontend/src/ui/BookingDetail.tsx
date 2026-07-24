@@ -7,11 +7,11 @@ import { BOOKING_TYPE, type Booking, type BookingType } from '@waypoint/shared';
 import { useTrip } from '../state/trip-state';
 import { Sheet } from './Sheet';
 import { RouteLabel } from './RouteLabel';
-import { bookingDirectionsUrl, placeName } from '../lib/places';
+import { bookingPlaceId, mapsDirectionsUrl, mapsPlaceUrl, placeName } from '../lib/places';
 import { formatTime } from '../lib/time';
 import { bookingDurationUnit, formatBookingDuration, timingLabels } from '../lib/booking-timing';
 import { badgeClassForBookingType } from '../lib/transitions';
-import { BOOKING_TYPE_ICON, CODE_PREFIX, ICONS } from '../constants';
+import { BOOKING_TYPE_ICON, CODE_PREFIX } from '../constants';
 import { t } from '../i18n/he';
 
 interface Wifi {
@@ -64,10 +64,15 @@ export function BookingDetail({
     ? formatBookingDuration(linkedEvent, tz, bookingDurationUnit(booking.type))
     : null;
 
-  // "Open in Maps" deep-link for the booking's place (transport → origin, else
-  // the single place), following the authority rule. Absent when there's no
-  // place or a coordless Place-lite — then no ניווט button (ADR-0106/0109 §Phase 2).
-  const navUrl = bookingDirectionsUrl(booking, places);
+  // Location detail (ADR-0109 amendment): the booking's resolved place (transport
+  // → origin, else the single place) shown as a fact like the rest, with navigate
+  // (directions) + מפה (view) links. Links are absent for a coordless Place-lite;
+  // the whole row is skipped when there's neither a map link nor an address to add.
+  const navPlace = places.find((p) => p.id === bookingPlaceId(booking));
+  const dirUrl = mapsDirectionsUrl(navPlace);
+  const viewUrl = mapsPlaceUrl(navPlace);
+  const locationText = navPlace?.address ?? navPlace?.name;
+  const showLocation = !!(locationText && (dirUrl || navPlace?.address));
 
   const isRoute = isTransport(booking.type) && !!(from || to);
   // The route reads in the RTL flow (origin on the start/right, arrow pointing to
@@ -82,11 +87,6 @@ export function BookingDetail({
     <Sheet ariaLabel={heading} onClose={onClose}>
       <div className="bk-detail">
         <div className="bk-actions">
-          {navUrl && (
-            <a className="bk-nav" href={navUrl} target="_blank" rel="noopener noreferrer">
-              <span aria-hidden="true">{ICONS.navigate}</span> {t.actions.navigate}
-            </a>
-          )}
           <button type="button" className="bk-edit" onClick={edit}>
             <span aria-hidden="true">✏️</span> {t.index.detail.edit}
           </button>
@@ -104,6 +104,7 @@ export function BookingDetail({
           <div className="bs-hard-note">🔒 {t.index.detail.hardNote}</div>
         )}
         <div className="bk-facts">
+          {showLocation && <LocationFact text={locationText!} dirUrl={dirUrl} viewUrl={viewUrl} />}
           {!linkedEvent ? (
             <Fact k={t.index.detail.timing} v={t.index.detail.unscheduled} />
           ) : endsAt ? (
@@ -134,6 +135,42 @@ export function BookingDetail({
         </div>
       </div>
     </Sheet>
+  );
+}
+
+// The location fact: the place name/address as the value, plus the two teal
+// location links (navigate = directions, מפה = view). A link renders only when
+// its URL exists — a coordless Place-lite shows the text with no links.
+function LocationFact({
+  text,
+  dirUrl,
+  viewUrl,
+}: {
+  text: string;
+  dirUrl: string | null;
+  viewUrl: string | null;
+}) {
+  return (
+    <div className="bk-fact">
+      <span className="bk-fact-k">{t.index.detail.location}</span>
+      <span className="bk-fact-v bk-loc">
+        <span>{text}</span>
+        {(dirUrl || viewUrl) && (
+          <span className="bk-loc-links">
+            {dirUrl && (
+              <a className="bk-loc-link" href={dirUrl} target="_blank" rel="noopener noreferrer">
+                {t.actions.navigate}
+              </a>
+            )}
+            {viewUrl && (
+              <a className="bk-loc-link" href={viewUrl} target="_blank" rel="noopener noreferrer">
+                {t.actions.showOnMap}
+              </a>
+            )}
+          </span>
+        )}
+      </span>
+    </div>
   );
 }
 

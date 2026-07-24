@@ -11,7 +11,9 @@ import {
 } from '@waypoint/shared';
 import {
   bookingDirectionsUrl,
+  bookingPlaceUrl,
   eventDirectionsUrl,
+  eventPlaceUrl,
   eventRoute,
   mapsDirectionsUrl,
   mapsPlaceUrl,
@@ -174,5 +176,18 @@ describe('Google Maps deep-links (Phase 2: no coordinates → no link)', () => {
   it('bookingDirectionsUrl is null when the booking has no mappable place', () => {
     const bk = booking({ id: 'bk', type: BOOKING_TYPE.HOTEL });
     expect(bookingDirectionsUrl(bk, [withCoords])).toBeNull();
+  });
+
+  it('eventPlaceUrl / bookingPlaceUrl build the view (search) link, null when coordless', () => {
+    const bk = booking({ id: 'bk', type: BOOKING_TYPE.HOTEL, placeId: 'pl-x' });
+    expect(eventPlaceUrl(event({ placeId: 'pl-x' }), [], [withCoords])).toContain(
+      '/search/?api=1&query=35.6764%2C139.65',
+    );
+    expect(bookingPlaceUrl(bk, [withCoords])).toContain('/search/?api=1&query=35.6764%2C139.65');
+    // The view peer follows the same no-coords → null rule as directions.
+    expect(eventPlaceUrl(event({ placeId: 'pl-y' }), [], [coordless])).toBeNull();
+    expect(
+      bookingPlaceUrl(booking({ id: 'b', type: BOOKING_TYPE.HOTEL }), [withCoords]),
+    ).toBeNull();
   });
 });

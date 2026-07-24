@@ -184,15 +184,46 @@ describe('EventCard', () => {
     expect(screen.getByRole('button', { name: t.actions.navigate })).toBeTruthy();
   });
 
-  it('no location → no ניווט button (onNavigate omitted, Phase 2)', () => {
+  it('no location → no ניווט / מפה buttons (handlers omitted, Phase 2)', () => {
     // A place-less event (or a coordless Place-lite) has no mappable location, so
-    // the screen passes no `onNavigate` and the card drops the button entirely.
+    // the screen passes neither handler and the card drops both buttons.
     const { rerender } = render(
-      wrap(<EventCard {...base} kind="hard" phase="now" isOpen onNavigate={undefined} />),
+      wrap(
+        <EventCard
+          {...base}
+          kind="hard"
+          phase="now"
+          isOpen
+          onNavigate={undefined}
+          onShowOnMap={undefined}
+        />,
+      ),
     );
     expect(screen.queryByRole('button', { name: t.actions.navigate })).toBeNull();
-    // With a handler it comes back.
-    rerender(wrap(<EventCard {...base} kind="hard" phase="now" isOpen onNavigate={() => {}} />));
+    expect(screen.queryByRole('button', { name: t.actions.showOnMap })).toBeNull();
+    // With handlers both come back — navigate (directions) + מפה (view).
+    rerender(
+      wrap(
+        <EventCard
+          {...base}
+          kind="hard"
+          phase="now"
+          isOpen
+          onNavigate={() => {}}
+          onShowOnMap={() => {}}
+        />,
+      ),
+    );
     expect(screen.getByRole('button', { name: t.actions.navigate })).toBeTruthy();
+    expect(screen.getByRole('button', { name: t.actions.showOnMap })).toBeTruthy();
+  });
+
+  it('the מפה button fires its view-on-map handler', () => {
+    const onShowOnMap = vi.fn();
+    render(
+      wrap(<EventCard {...base} phase="done" onRestore={() => {}} onShowOnMap={onShowOnMap} />),
+    );
+    fireEvent.click(screen.getByRole('button', { name: t.actions.showOnMap }));
+    expect(onShowOnMap).toHaveBeenCalledTimes(1);
   });
 });
