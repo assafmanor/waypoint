@@ -255,6 +255,28 @@ function offsetAt(at: Date, timeZone: string): string {
   return !name || name === 'GMT' ? '+00:00' : name.replace('GMT', '');
 }
 
+/** A timezone's UTC offset in signed minutes at a specific instant (DST-correct),
+ *  e.g. Asia/Tokyo → 540, America/New_York in July → -240. */
+export function zoneOffsetMinutes(at: Date, timeZone: string): number {
+  const s = offsetAt(at, timeZone); // "+09:00" | "-04:00" | "+05:30" | "+00:00"
+  const sign = s.startsWith('-') ? -1 : 1;
+  const [h, m] = s.slice(1).split(':').map(Number);
+  return sign * (h * 60 + m);
+}
+
+/** A signed inter-zone shift for display (ADR-0107): how far one zone's clock is
+ *  from another's, e.g. "+6 ש׳" (Tokyo vs Tel Aviv), "−3 ש׳" (Reykjavik vs Tel
+ *  Aviv). A whole-hour shift carries the hours unit; a fractional-offset zone
+ *  (India +5:30) reads as H:MM, where the colon already says "hours". Uses the
+ *  minus sign (−), never a hyphen, and never an em dash. */
+export function formatZoneDelta(minutes: number): string {
+  const sign = minutes < 0 ? '−' : '+';
+  const abs = Math.abs(minutes);
+  const h = Math.floor(abs / 60);
+  const m = abs % 60;
+  return m === 0 ? `${sign}${h} ש׳` : `${sign}${h}:${String(m).padStart(2, '0')}`;
+}
+
 /** Combine a form's `date` (YYYY-MM-DD) + `time` (HH:MM) inputs, read as wall-clock
  *  in `timeZone`, into a UTC ISO instant.
  *

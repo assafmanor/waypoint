@@ -9,6 +9,7 @@ import {
   type Place,
   type TripEvent,
 } from '@waypoint/shared';
+import { zoneOffsetMinutes } from './time';
 
 const isTransport = (booking: Booking): boolean =>
   categoryForBookingType(booking.type) === 'transport';
@@ -196,46 +197,52 @@ export interface ZoneContext {
   ambientZone: string;
 }
 
-/** An event's resolved display zones plus whether each end shows a zone label.
- *  The **non-trivial-suppression rule** (ADR-0107 §6 / ADR-0110 amendment): a
- *  label appears only when its zone differs from the day's ambient zone, and a
- *  zone-crossing event (start ≠ end, i.e. transport) always labels both ends so
- *  the crossing reads clearly. A single-zone trip therefore shows no labels. */
+/** An event's resolved display zones plus the **time-zone shift** to surface, in
+ *  signed minutes (ADR-0107 §6 / ADR-0110 amendment). `deltaMinutes` is the
+ *  interesting clock jump — for a zone-crossing event it's the destination clock
+ *  minus the origin clock; for a single-zone event it's that zone minus the
+ *  **day's ambient** zone. The **shift drives visibility**: `undefined` (a zero
+ *  jump — a single-zone trip, or two differently-named zones that share an
+ *  offset) shows nothing. `startZone`/`endZone` still say which zone renders each
+ *  end's clock (they differ only for a crossing). */
 export interface EventZones {
   startZone: string;
   endZone: string;
-  showStart: boolean;
-  showEnd: boolean;
+  deltaMinutes?: number;
 }
 
-/** Range display for a timeline event (EventCard). When start and end share a
- *  zone, a single label sits at the end of the range (or on the start when there
- *  is no end); a crossing labels both ends. */
+/** Range display for a timeline event (EventCard): the two ends' zones + the
+ *  shift pill to show (crossing → destination vs origin; single zone → vs the
+ *  day's ambient). A zero shift resolves to `undefined` — no pill. */
 export function eventZones(event: TripEvent, ctx: ZoneContext): EventZones {
   const { start, end } = eventDisplayZones(event, ctx);
-  if (start !== end) return { startZone: start, endZone: end, showStart: true, showEnd: true };
-  const differs = start !== ctx.ambientZone;
-  const hasEnd = Boolean(event.endsAt);
-  return {
-    startZone: start,
-    endZone: end,
-    showStart: differs && !hasEnd,
-    showEnd: differs && hasEnd,
-  };
+  const startAt = event.startsAt ? new Date(event.startsAt) : undefined;
+  const endAt = event.endsAt ? new Date(event.endsAt) : startAt;
+  let deltaMinutes = 0;
+  if (start !== end && startAt && endAt) {
+    deltaMinutes = zoneOffsetMinutes(endAt, end) - zoneOffsetMinutes(startAt, start);
+  } else if (start === end && startAt) {
+    deltaMinutes = zoneOffsetMinutes(startAt, start) - zoneOffsetMinutes(startAt, ctx.ambientZone);
+  }
+  return { startZone: start, endZone: end, deltaMinutes: deltaMinutes || undefined };
 }
 
 /** Single-edge display for a transition entry (arrival/departure row, ADR-0064):
- *  the zone for that one edge, and whether to label it. A crossing always labels
- *  both edges (departure in origin, arrival in destination); a same-zone edge
- *  (e.g. a hotel check-in) labels only when it differs from the ambient zone. */
+ *  the edge's zone + its shift vs the day's ambient zone (usually 0 — each edge
+ *  files under the day it lands in, whose ambient is that edge's own zone). */
 export function eventEdgeZone(
   event: TripEvent,
   edge: 'start' | 'end',
   ctx: ZoneContext,
-): { zone: string; showLabel: boolean } {
+): { zone: string; deltaMinutes?: number } {
   const { start, end } = eventDisplayZones(event, ctx);
   const zone = edge === 'start' ? start : end;
-  return { zone, showLabel: start !== end || zone !== ctx.ambientZone };
+  const iso = edge === 'start' ? event.startsAt : (event.endsAt ?? event.startsAt);
+  const at = iso ? new Date(iso) : undefined;
+  const deltaMinutes = at
+    ? zoneOffsetMinutes(at, zone) - zoneOffsetMinutes(at, ctx.ambientZone)
+    : 0;
+  return { zone, deltaMinutes: deltaMinutes || undefined };
 }
 
 // ── Google Maps deep-links (Phase 2, ADR-0106/0109) ─────────────────────────

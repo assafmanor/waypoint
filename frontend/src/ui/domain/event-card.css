@@ -175,6 +175,10 @@
   font-weight: 700;
   color: var(--ink);
   flex: 0 0 auto;
+  display: flex;
+  flex-direction: column;
+  align-items: flex-end;
+  gap: 4px;
   text-align: end;
   white-space: nowrap;
 }
@@ -184,13 +188,17 @@
 .wp-event-xmid {
   font-size: 9px;
 }
-/* Per-event zone label (ADR-0107 multi-zone): shown only when the zone differs
-   from the day's ambient zone (or on a zone-crossing event). Quiet — it's a
-   disambiguator, not a primary value. */
-.wp-event-tz {
-  font-family: var(--font-sans);
-  font-weight: 600;
-  color: var(--muted);
+/* Zone-shift pill (ADR-0107 multi-zone): shows how far the clock jumps
+   (destination vs origin on a crossing, else vs the day's ambient zone), only
+   when the shift is non-zero. Amber — a time concept (design-language.md). */
+.wp-event-tzdelta {
+  font-family: var(--font-mono);
+  font-size: 10.5px;
+  font-weight: 700;
+  color: var(--amber-deep);
+  background: var(--amber-wash, rgba(233, 166, 60, 0.14));
+  border-radius: 999px;
+  padding: 1px 7px;
 }
 .wp-event-chev {
   color: #b5bcc9;

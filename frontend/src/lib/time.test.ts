@@ -22,6 +22,8 @@ import {
   resolveEndIso,
   crossesMidnight,
   crossesMidnightZoned,
+  formatZoneDelta,
+  zoneOffsetMinutes,
 } from './time';
 import { DEMO_NOW, EVENTS, TRIP } from '../fixtures';
 
@@ -239,6 +241,24 @@ describe('crossesMidnightZoned', () => {
     expect(crossesMidnightZoned(start, end, 'Asia/Tokyo', 'Asia/Tokyo')).toBe(
       crossesMidnight(start, end, 'Asia/Tokyo'),
     );
+  });
+});
+
+describe('zone offset + delta (ADR-0107)', () => {
+  it('reads a zone offset in signed minutes, DST-correct', () => {
+    const july = new Date('2026-07-15T12:00:00Z');
+    expect(zoneOffsetMinutes(july, 'Asia/Tokyo')).toBe(540); // +9, no DST
+    expect(zoneOffsetMinutes(july, 'Asia/Jerusalem')).toBe(180); // +3 (IDT, summer)
+    expect(zoneOffsetMinutes(july, 'Atlantic/Reykjavik')).toBe(0); // GMT year-round
+    expect(zoneOffsetMinutes(july, 'America/New_York')).toBe(-240); // -4 (EDT)
+    expect(zoneOffsetMinutes(july, 'Asia/Kolkata')).toBe(330); // +5:30
+  });
+
+  it('formats a signed shift, hours unit for whole hours and H:MM for fractional', () => {
+    expect(formatZoneDelta(360)).toBe('+6 ש׳');
+    expect(formatZoneDelta(-180)).toBe('−3 ש׳'); // real minus sign, never a hyphen
+    expect(formatZoneDelta(330)).toBe('+5:30');
+    expect(formatZoneDelta(-345)).toBe('−5:45');
   });
 });
 

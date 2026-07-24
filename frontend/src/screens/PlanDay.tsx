@@ -29,14 +29,23 @@ import {
 import { useTrip, byStart } from '../state/trip-state';
 import { useVerbs } from '../state/verbs';
 import { useClock } from '../lib/useClock';
-import { eventPlaceName } from '../lib/places';
+import {
+  eventEdgeZone,
+  eventPlaceName,
+  eventZones,
+  segmentZoneAt,
+  tripZoneCrossings,
+  type EventZones,
+  type ZoneContext,
+} from '../lib/places';
 import { tripPhase } from '../lib/mode';
 import {
   buildTimeTree,
   formatTime,
+  formatZoneDelta,
   todayInTz,
   zonedIso,
-  crossesMidnight,
+  crossesMidnightZoned,
   type TimeGroup,
   type TimeItem,
 } from '../lib/time';
@@ -159,10 +168,24 @@ export function PlanDay() {
   });
 
   const dayNumber = daysBetween(trip.startDate, activeDate) + 1;
+  const dayNoon = new Date(zonedIso(activeDate, '12:00', trip.timezone));
   const weekday = new Intl.DateTimeFormat('he-IL', {
     weekday: 'long',
     timeZone: trip.timezone,
-  }).format(new Date(zonedIso(activeDate, '12:00', trip.timezone)));
+  }).format(dayNoon);
+
+  // Multi-zone display (ADR-0107): same per-event zone resolution as the Trip-mode
+  // day view — the day's ambient zone (its segment zone at noon, else the trip
+  // primary) is what the shift pill measures against.
+  const crossings = tripZoneCrossings(events, bookings, places);
+  const ambientZone = segmentZoneAt(dayNoon.getTime(), crossings) ?? trip.timezone;
+  const zoneCtx: ZoneContext = {
+    bookings,
+    places,
+    crossings,
+    primaryZone: trip.timezone,
+    ambientZone,
+  };
 
   const closeForm = () => {
     setFormTarget(null);
@@ -172,6 +195,7 @@ export function PlanDay() {
 
   const builderCtx: BuilderCtx = {
     tz,
+    zoneCtx,
     readOnly,
     nowRefMs,
     bookings,
@@ -522,6 +546,8 @@ function GapFillSheet({
 // nested inside an envelope, or a member of an overlap cluster.
 interface BuilderCtx {
   tz: string;
+  /** Per-event zone resolution + the day's ambient zone (ADR-0107 multi-zone). */
+  zoneCtx: ZoneContext;
   readOnly: boolean;
   // Epoch ms of "now" when the builder should show the static now-reference at
   // depth 0 (viewing today, mid-trip); null otherwise (ADR-0043).
@@ -619,6 +645,7 @@ function BuilderGroups({
               <TransitionRow
                 entry={entry}
                 tz={ctx.tz}
+                {...eventEdgeZone(entry.event, entry.edge, ctx.zoneCtx)}
                 bookings={ctx.bookings}
                 onOpen={ctx.onOpenDetail}
               />
@@ -724,6 +751,7 @@ function BuilderNode({
       <BuilderRow
         event={e}
         tz={ctx.tz}
+        zones={eventZones(e, ctx.zoneCtx)}
         readOnly={ctx.readOnly}
         booking={e.bookingId ? ctx.bookings.find((b) => b.id === e.bookingId) : undefined}
         placeName={eventPlaceName(e, ctx.bookings, ctx.places)}
@@ -764,6 +792,7 @@ function BuilderNode({
 function BuilderRow({
   event,
   tz,
+  zones,
   readOnly,
   booking,
   placeName,
@@ -781,6 +810,9 @@ function BuilderRow({
 }: {
   event: TripEvent;
   tz: string;
+  /** Per-event display zones + the shift pill to show (ADR-0107). Absent → the
+   *  row renders wholly in `tz` with no pill. */
+  zones?: EventZones;
   // A finished trip is a read-only archive (ADR-0040): the row is browsable but
   // carries no edit/reorder/delete affordances.
   readOnly?: boolean;
@@ -927,17 +959,30 @@ function BuilderRow({
           {mainContent}
         </button>
       )}
-      {event.startsAt && (
-        <span className="bld-time" dir="ltr">
-          {formatTime(event.startsAt, tz)}
-          {event.endsAt && `–${formatTime(event.endsAt, tz)}`}
-          {event.endsAt && crossesMidnight(event.startsAt, event.endsAt, tz) && (
-            <sup className="xmid" title={t.event.nextDay}>
-              +1
-            </sup>
-          )}
-        </span>
-      )}
+      {event.startsAt &&
+        (() => {
+          const startZone = zones?.startZone ?? tz;
+          const endZone = zones?.endZone ?? tz;
+          return (
+            <span className="bld-time">
+              <span dir="ltr">
+                {formatTime(event.startsAt, startZone)}
+                {event.endsAt && `–${formatTime(event.endsAt, endZone)}`}
+                {event.endsAt &&
+                  crossesMidnightZoned(event.startsAt, event.endsAt, startZone, endZone) && (
+                    <sup className="xmid" title={t.event.nextDay}>
+                      +1
+                    </sup>
+                  )}
+              </span>
+              {zones?.deltaMinutes != null && (
+                <span className="bld-tzdelta" dir="ltr" title={t.event.zoneShift}>
+                  🕐 {formatZoneDelta(zones.deltaMinutes)}
+                </span>
+              )}
+            </span>
+          );
+        })()}
       {!readOnly && (
         <button
           className="bld-icon"

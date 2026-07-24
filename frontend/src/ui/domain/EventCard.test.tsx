@@ -228,15 +228,15 @@ describe('EventCard', () => {
   });
 
   // Multi-zone display (ADR-0107): the optional `zones` prop renders each end in
-  // its own zone + a `· city` label on the ends the suppression rule kept.
-  it('renders no zone label without `zones` (single-zone trips stay bare)', () => {
+  // its own zone + an amber shift pill showing how far the clock jumps.
+  it('renders no shift pill without `zones` (single-zone trips stay bare)', () => {
     const { container } = render(
       wrap(<EventCard {...base} startsAt="2026-07-07T10:00:00Z" endsAt="2026-07-07T11:00:00Z" />),
     );
-    expect(container.querySelector('.wp-event-tz')).toBeNull();
+    expect(container.querySelector('.wp-event-tzdelta')).toBeNull();
   });
 
-  it('labels a zone-crossing event on both ends, each time in its own zone', () => {
+  it('renders each end in its own zone + a shift pill for a zone-crossing event', () => {
     const { container } = render(
       wrap(
         <EventCard
@@ -246,17 +246,28 @@ describe('EventCard', () => {
           zones={{
             startZone: 'Asia/Jerusalem',
             endZone: 'Asia/Tokyo',
-            showStart: true,
-            showEnd: true,
+            deltaMinutes: 360, // Tokyo is 6h ahead of Jerusalem (summer)
           }}
         />,
       ),
     );
-    const labels = [...container.querySelectorAll('.wp-event-tz')].map((n) => n.textContent);
-    expect(labels).toEqual([' · Jerusalem', ' · Tokyo']);
     const time = container.querySelector('.wp-event-time')!.textContent!;
     expect(time).toContain('23:00'); // start read in Jerusalem
     expect(time).toContain('18:00'); // end read in Tokyo
     expect(container.querySelector('.wp-event-xmid')).not.toBeNull(); // +1 across zones
+    expect(container.querySelector('.wp-event-tzdelta')?.textContent).toContain('+6');
+  });
+
+  it('shows no pill when the shift is zero even if zones are named', () => {
+    const { container } = render(
+      wrap(
+        <EventCard
+          {...base}
+          startsAt="2026-07-07T10:00:00Z"
+          zones={{ startZone: 'Asia/Tokyo', endZone: 'Asia/Tokyo', deltaMinutes: undefined }}
+        />,
+      ),
+    );
+    expect(container.querySelector('.wp-event-tzdelta')).toBeNull();
   });
 });
