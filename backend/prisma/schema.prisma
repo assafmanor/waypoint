@@ -133,6 +133,12 @@ model Trip {
   id               String   @id @default(cuid())
   name             String
   destination      String
+  // Structured destination from the creation Places pick (ADR-0113); `destination`
+  // stays the display string. Nullable — trips created before ADR-0113 have none.
+  destinationGooglePlaceId String?
+  destinationLat           Float?
+  destinationLng           Float?
+  destinationCountryCode   String?
   startDate        DateTime @db.Date
   endDate          DateTime @db.Date
   timezone         String   @default("UTC")

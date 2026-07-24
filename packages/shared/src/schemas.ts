@@ -173,6 +173,35 @@ export const resolvePlaceSchema = z.object({
 });
 export type ResolvePlaceInput = z.infer<typeof resolvePlaceSchema>;
 
+// ── Trip-destination endpoints (ADR-0113) — trip-agnostic (no tripId yet at
+// creation), authed + per-user throttled, no persistence. Distinct from the
+// trip-scoped place proxy above; the search request shape is identical, so it
+// reuses `searchPlacesSchema` / `placePredictionSchema`.
+
+/** `POST /destinations/resolve` body — geocode a picked destination place (any
+ *  granularity: city / region / country) into its point + country + zone. */
+export const resolveDestinationSchema = z.object({
+  googlePlaceId: z.string().min(1),
+  sessionToken: sessionTokenSchema.optional(),
+});
+export type ResolveDestinationInput = z.infer<typeof resolveDestinationSchema>;
+
+/** `POST /destinations/resolve` result (ADR-0113 §4). `timezone` is the derived
+ *  default (`geo-tz` on the representative point — always present for a real
+ *  place). `candidateZones` is populated only for a known multi-zone country
+ *  (US, Australia…), so the creation UI can show the "spans several zones" note
+ *  and pre-filter the ZonePicker; absent means treat the single zone as trusted. */
+export const destinationResultSchema = z.object({
+  googlePlaceId: z.string(),
+  name: z.string(),
+  countryCode: z.string().optional(),
+  lat: z.number().optional(),
+  lng: z.number().optional(),
+  timezone: timezoneSchema.optional(),
+  candidateZones: z.array(timezoneSchema).optional(),
+});
+export type DestinationResult = z.infer<typeof destinationResultSchema>;
+
 /** `fileRef`/`mimeType`/`sizeBytes` are computed server-side from the uploaded
  *  file (multipart), not client input — this validates the accompanying fields. */
 export const createDocumentSchema = z.object({
@@ -196,6 +225,13 @@ export const createTripSchema = z
   .object({
     name: z.string().min(1).max(MAX_TRIP_NAME_LENGTH),
     destination: z.string().min(1),
+    // The picked destination's structured fields (ADR-0113). Optional so a bare
+    // API create still works; the creation UI sends them from the Places pick and
+    // sets `timezone` from the derived default rather than leaving it 'UTC'.
+    destinationGooglePlaceId: z.string().optional(),
+    destinationLat: z.number().optional(),
+    destinationLng: z.number().optional(),
+    destinationCountryCode: z.string().optional(),
     startDate: dateOnlySchema,
     endDate: dateOnlySchema,
     timezone: timezoneSchema.default('UTC'),
