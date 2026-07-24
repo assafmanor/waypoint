@@ -21,6 +21,7 @@ import { useTrip, byStart } from '../state/trip-state';
 import { prefersReducedMotion } from '../lib/motion';
 import {
   eventDirectionsUrl,
+  eventDurationLabel,
   eventEdgeZone,
   eventPlaceName,
   eventPlaceUrl,
@@ -516,6 +517,8 @@ function ItemNode({ item, depth, ctx }: { item: TimeItem; depth: number; ctx: Da
         ? 'upcoming'
         : raw;
 
+  const zones = eventZones(e, ctx.zoneCtx);
+
   const card = (
     <EventCard
       icon={e.icon}
@@ -533,7 +536,8 @@ function ItemNode({ item, depth, ctx }: { item: TimeItem; depth: number; ctx: Da
       startsAt={e.startsAt}
       endsAt={e.endsAt}
       tz={ctx.tz}
-      zones={eventZones(e, ctx.zoneCtx)}
+      zones={zones}
+      duration={eventDurationLabel(e, booking, zones)}
       conflict={
         conflicts.length > 0
           ? { title: conflicts[0].title, startsAt: conflicts[0].startsAt! }

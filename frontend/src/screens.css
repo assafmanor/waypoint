@@ -1536,6 +1536,18 @@
 .bld.soft .bld-time {
   color: var(--muted);
 }
+/* Meta line under a builder row's time: elapsed duration + the zone-shift pill
+   (matches the day view). */
+.bld-timemeta {
+  display: flex;
+  align-items: center;
+  gap: 5px;
+}
+.bld-dur {
+  font-size: 10px;
+  font-weight: 700;
+  color: var(--muted);
+}
 /* Zone-shift pill on a Plan-builder row (ADR-0107): matches the day-view pill —
    amber, mono, how far the clock jumps. Only shown when the shift is non-zero. */
 .bld-tzdelta {

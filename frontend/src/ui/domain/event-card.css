@@ -158,6 +158,18 @@
   gap: 7px;
   flex-wrap: wrap;
 }
+/* Clamp a long title (e.g. a two-airport route name) to two lines with an
+   ellipsis so it can't blow up the card (ADR-0107 follow-up). The tag/nest-note
+   are siblings, so they stay visible — flowing to the next flex line when the
+   title is long. min-width:0 lets it shrink inside the flex row. */
+.wp-event-title-txt {
+  display: -webkit-box;
+  -webkit-line-clamp: 2;
+  line-clamp: 2;
+  -webkit-box-orient: vertical;
+  overflow: hidden;
+  min-width: 0;
+}
 .wp-event-m {
   font-size: var(--text-secondary);
   color: var(--muted);
@@ -187,6 +199,23 @@
 }
 .wp-event-xmid {
   font-size: 9px;
+}
+/* The meta line under the time range: elapsed duration + the zone-shift pill
+   (either or both), right-aligned so it sits under the time and never crowds
+   the title. */
+.wp-event-timemeta {
+  display: flex;
+  align-items: center;
+  gap: 5px;
+}
+/* Elapsed duration (ADR-0084/0107) — quiet, since it's context for the range
+   above, shown on transport + zone-shifted rows where the raw times can misread
+   the real span. */
+.wp-event-dur {
+  font-family: var(--font-mono);
+  font-size: 10.5px;
+  font-weight: 700;
+  color: var(--muted);
 }
 /* Zone-shift pill (ADR-0107 multi-zone): shows how far the clock jumps
    (destination vs origin on a crossing, else vs the day's ambient zone), only
