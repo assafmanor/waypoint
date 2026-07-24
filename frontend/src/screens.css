@@ -2721,21 +2721,6 @@
   font-weight: 400;
   padding: 0 4px;
 }
-/* ── Route overflow probe (useRouteDisplay, ADR-0059 §3 amendment) ────────────
-   `.route-fit` is the measured container: its width comes from its parent cell,
-   never from this content, so the inline row inside it can be asked "do you
-   overflow?" (useOverflows). The row goes nowrap + clipped in this mode, so its
-   scrollWidth IS the width it wants. Overflowing swaps the whole row for a
-   destination-primary line — nothing here truncates. */
-.route-fit {
-  display: block;
-  min-width: 0;
-}
-.route-fit .route {
-  display: flex;
-  overflow: hidden;
-  white-space: nowrap;
-}
 .index .route {
   font-weight: 700;
 }

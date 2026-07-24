@@ -61,7 +61,7 @@ import { TransitionRow } from '../ui/TransitionRow';
 import { Sheet } from '../ui/Sheet';
 import { TimePicker } from '../ui/TimePicker';
 import { EventCard, type EventPhaseName } from '../ui/domain/EventCard';
-import { useRouteDisplay } from '../ui/useRouteDisplay';
+import { routeDisplay } from '../ui/route-display';
 import { MaybeCard } from '../ui/domain/MaybeCard';
 import { EntitySyncBadge, useUnsynced } from '../ui/EntitySyncBadge';
 
@@ -523,7 +523,7 @@ function ItemNode({ item, depth, ctx }: { item: TimeItem; depth: number; ctx: Da
   // A transport row reads as its (shortened) route, dropping to a
   // destination-primary line if even that overflows — one decision driving both
   // the title and the meta so they can't disagree (ADR-0059 §3 amendment).
-  const route = useRouteDisplay(eventRoute(e, ctx.bookings, ctx.places));
+  const route = routeDisplay(eventRoute(e, ctx.bookings, ctx.places));
 
   const card = (
     <EventCard

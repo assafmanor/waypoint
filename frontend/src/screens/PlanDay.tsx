@@ -61,7 +61,7 @@ import { EventForm } from '../ui/EventForm';
 import { BookingSheet } from '../ui/BookingSheet';
 import { BookingDetail } from '../ui/BookingDetail';
 import { TransitionRow } from '../ui/TransitionRow';
-import { useRouteDisplay } from '../ui/useRouteDisplay';
+import { routeDisplay } from '../ui/route-display';
 import { IconPicker } from '../ui/IconPicker';
 import { Icon } from '../ui/Icon';
 import { NavArrow } from '../ui/NavArrow';
@@ -753,7 +753,7 @@ function BuilderNode({
   const booking = e.bookingId ? ctx.bookings.find((b) => b.id === e.bookingId) : undefined;
   const zones = eventZones(e, ctx.zoneCtx);
   // Same route treatment as the Trip-mode day row (ADR-0059 §3 amendment).
-  const route = useRouteDisplay(eventRoute(e, ctx.bookings, ctx.places));
+  const route = routeDisplay(eventRoute(e, ctx.bookings, ctx.places));
   return (
     <>
       <BuilderRow

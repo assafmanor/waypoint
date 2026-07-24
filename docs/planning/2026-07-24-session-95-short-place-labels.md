@@ -27,7 +27,9 @@ The key property: the pattern list grows with how many **kinds** of place exist,
 
 **2. Destination-primary fallback.** When even the shortened route overflows, the row's title becomes the destination alone and the meta becomes `מ־<origin>`. The destination keeps the title line because it's where you're going. **Nothing is clamped or truncated** anywhere in this path — an unshortenable name simply wraps.
 
-**3. `ui/useRouteDisplay.tsx` — one decision, both slots.** It returns the title node _and_ the meta line, so they can never disagree, and both day surfaces call it. Measurement is `lib/useOverflows.ts` (session 94's hook, renamed for its new job): compare the inline row's natural nowrap width against the space it has, latch the width it wanted, then compare that against the container on later resizes — bidirectional, no hidden text ruler.
+**3. `ui/route-display.tsx` — one decision, both slots, deterministic.** `routeDisplay(route)` returns the title node _and_ the meta line, so they cannot disagree, and both day surfaces call it. The choice is a pure function of the shortened names (`ROUTE_INLINE_MAX_CHARS`).
+
+This started as a width measurement (session 94's `useOverflows`), and shipping it exposed the flaw: the Plan builder row carries a drag grip, ▲/▼ and the ⋯ button, so it has less title width than the Trip card — and fell back to destination-primary where Trip stayed inline. The same flight read two different ways in the two modes. The code _was_ shared; the input wasn't. A shared threshold takes the same input on both surfaces, so they cannot diverge — and it deletes the `ResizeObserver`, the latched width, the bidirectional re-measure, and the width stubbing in tests. Tuned for the narrower row, so inline means it fits in both.
 
 **4. The meta stops repeating the origin.** Inline it carries the destination's **full** name (so shortening loses nothing); in the fallback it carries `מ־<origin>`.
 
@@ -40,6 +42,6 @@ The key property: the pattern list grows with how many **kinds** of place exist,
 ## Verification
 
 - `lib/place-label.test.ts` (7 cases): Hebrew + English category stripping across places the rules never "saw"; the more specific phrase wins; names with no category phrasing pass through byte-identical (incl. `東京駅`); never strips to nothing; the leftover-modifier guard; whitespace.
-- `ui/useRouteDisplay.test.tsx` (6 cases, widths stubbed since jsdom reports 0): no slots for a non-transport event; inline with **shortened** names + the destination's full name as meta; the destination-primary fallback with `מ־origin`; no ellipsis in either slot in the fallback; a one-ended route.
+- `ui/route-display.test.tsx` (6 cases, no stubbing — the rule is pure): no slots for a non-transport event; inline with **shortened** names + the destination's full name as meta; destination-primary past the threshold; **the same route resolves identically on repeat calls** (the property that keeps the two modes in step); a long one-ended route keeps its title; no ellipsis in either slot.
 - `ui/RouteLabel.test.tsx`: origin/destination as bidi-isolated values with the SVG arrow and no arrow glyph in the text.
-- `typecheck` + `lint` (0 errors) + `build` green; full frontend suite **764** passes; `pnpm format` clean.
+- `typecheck` + `lint` (0 errors) + `build` green; full frontend suite **765** passes; `pnpm format` clean.
