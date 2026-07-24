@@ -67,7 +67,11 @@ export function PlacePicker({
   );
 }
 
-function PlacePickerSheet({
+/** The search sheet, also used standalone by the Map's coordless "＋ מיקום"
+ *  enrich affordance (ADR-0110 §1): opened on a coordless Place-lite, a pick
+ *  enriches that row in place. Exported so a caller can drive it with its own
+ *  trigger instead of the in-form `PlacePicker` trigger. */
+export function PlacePickerSheet({
   current,
   onPick,
   onClose,

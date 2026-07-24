@@ -72,8 +72,8 @@ export const t = {
     allDays: 'כל הימים',
     scopeAll: 'כל המקומות בטיול',
     scopeDay: 'המקומות של היום',
-    // A coordless Place-lite: listed, but nothing to navigate to yet.
-    listedOnly: 'ללא מיקום',
+    // A coordless Place-lite: no coordinates yet — offer to enrich it in place.
+    addLocation: 'מיקום',
     shelfTag: 'על המדף',
     empty: {
       title: 'אין עדיין מקומות',

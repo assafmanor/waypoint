@@ -95,6 +95,26 @@ describe('DayStrip', () => {
     expect(pills[0].classList.contains('empty')).toBe(false); // has events
   });
 
+  it('allScope (Map all-days): drops the filled selection but keeps the today-anchor', () => {
+    const { container } = render(
+      <DayStrip
+        days={DAYS}
+        selected="2026-07-20"
+        today="2026-07-19"
+        mode="trip"
+        onSelect={() => {}}
+        allScope
+      />,
+    );
+    const pills = container.querySelectorAll('.wp-daypill');
+    // The 20th is the active date but must NOT read as selected under all-days.
+    expect(pills[2].classList.contains('sel-future')).toBe(false);
+    expect(pills[2].getAttribute('aria-pressed')).toBe('false');
+    // today still anchors; the 20th falls back to plain future styling.
+    expect(pills[1].classList.contains('today-anchor')).toBe(true);
+    expect(pills[2].classList.contains('future')).toBe(true);
+  });
+
   it('scrolls the selected pill into view (centered) on mount and on selection change', () => {
     const scrollIntoView = vi.fn();
     Element.prototype.scrollIntoView = scrollIntoView;
