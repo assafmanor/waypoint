@@ -22,7 +22,7 @@ import { useTrip } from '../state/trip-state';
 import { Sheet } from './Sheet';
 import { IconPicker } from './IconPicker';
 import { Icon } from './Icon';
-import { NavArrow } from './NavArrow';
+import { RouteLabel } from './RouteLabel';
 import { Field } from './primitives/Field';
 import { FormActions } from './primitives/FormActions';
 import { PlacePicker } from './primitives/PlacePicker';
@@ -99,8 +99,15 @@ export function BookingSheet({
   const initialIcon = linkedEvent?.icon ?? BOOKING_TYPE_ICON[initialType];
   const initialTitle = booking?.title ?? '';
   const initialCode = booking?.confirmationCode ?? '';
-  const initialOrigin = placeName(places, booking?.fromPlaceId) ?? seed?.origin ?? '';
-  const initialDest = placeName(places, booking?.toPlaceId) ?? seed?.dest ?? '';
+  // Transport endpoints are now real picked places (ADR-0113 follow-up), authored
+  // through the same PlacePicker as a single-place booking — no longer free text.
+  // A free-text seed (PlanHome's flight prefill) resolves only to an EXISTING trip
+  // place by name; if none matches, the leg starts empty and the user picks (no
+  // orphan place created on open).
+  const seedFromPlaceId = seed?.origin ? findPlaceByName(places, seed.origin)?.id : undefined;
+  const seedToPlaceId = seed?.dest ? findPlaceByName(places, seed.dest)?.id : undefined;
+  const initialFromPlaceId = booking?.fromPlaceId ?? seedFromPlaceId;
+  const initialToPlaceId = booking?.toPlaceId ?? seedToPlaceId;
   // Single-place types (hotel/restaurant/activity/other) carry one placeId (ADR-0048).
   const initialPlaceId = booking?.placeId;
   const initialRoom = (booking?.details?.room as string | undefined) ?? '';
@@ -125,8 +132,8 @@ export function BookingSheet({
   const [icon, setIcon] = useState(initialIcon);
   const [title, setTitle] = useState(initialTitle);
   const [code, setCode] = useState(initialCode);
-  const [origin, setOrigin] = useState(initialOrigin);
-  const [dest, setDest] = useState(initialDest);
+  const [fromPlaceId, setFromPlaceId] = useState<string | undefined>(initialFromPlaceId);
+  const [toPlaceId, setToPlaceId] = useState<string | undefined>(initialToPlaceId);
   const [placeId, setPlaceId] = useState<string | undefined>(initialPlaceId);
   const [room, setRoom] = useState(initialRoom);
   const [notes, setNotes] = useState(initialNotes);
@@ -159,8 +166,8 @@ export function BookingSheet({
     icon !== initialIcon ||
     title !== initialTitle ||
     code !== initialCode ||
-    origin !== initialOrigin ||
-    dest !== initialDest ||
+    fromPlaceId !== initialFromPlaceId ||
+    toPlaceId !== initialToPlaceId ||
     placeId !== initialPlaceId ||
     room !== initialRoom ||
     notes !== initialNotes ||
@@ -185,21 +192,17 @@ export function BookingSheet({
     setKindTouched(true);
   };
 
-  const resolvePlaceId = async (name: string): Promise<string | undefined> => {
-    const trimmed = name.trim();
-    if (!trimmed) return undefined;
-    return (
-      findPlaceByName(places, trimmed)?.id ?? (await indexVerbs.createPlace({ name: trimmed }))
-    );
-  };
-
   const save = async () => {
     // Transport is identified by its route, not a name (ADR-0059 §3): derive the
     // stored title from origin→destination (it backs the linked event's title and
     // any place-less fallback), so a flight never carries a hand-typed name.
     let finalTitle: string;
     if (isTransport) {
-      finalTitle = routeTitle(origin, dest, t.arrows.route);
+      finalTitle = routeTitle(
+        placeName(places, fromPlaceId) ?? '',
+        placeName(places, toPlaceId) ?? '',
+        t.arrows.route,
+      );
       if (!finalTitle) return setError(t.index.form.routeRequired);
     } else {
       finalTitle = title.trim();
@@ -227,9 +230,9 @@ export function BookingSheet({
       // transport route and the booking itself queue together and count as a
       // single pending change, not three.
       await withChangeGroup(async () => {
-        // Author places before the booking that FK-references them (see createPlace).
-        const fromPlaceId = isTransport ? await resolvePlaceId(origin) : undefined;
-        const toPlaceId = isTransport ? await resolvePlaceId(dest) : undefined;
+        // The route endpoints are already persisted places (the PlacePicker resolved
+        // them on pick); the booking just references their ids. Grouped with the
+        // linked-event write so the pair counts as one pending change (ADR-0092).
         const details = mergeBookingDetails(booking?.details, {
           room: isHotel ? room : undefined,
           notes,
@@ -312,26 +315,19 @@ export function BookingSheet({
               }}
             />
             {isTransport ? (
-              // A flight's identity is its route, not a name (ADR-0059 §3): the two
-              // route endpoints ARE the title row — editable inputs beside the icon,
-              // not a read-only preview that reads as a tappable title.
-              <div className="bs-route-inputs">
-                <input
-                  value={origin}
-                  onChange={(e) => setOrigin(e.target.value)}
-                  placeholder={t.index.form.originShort}
-                  aria-label={t.index.form.originLabel}
-                  autoFocus={isCreate}
-                />
-                <span className="arr" aria-hidden="true">
-                  <NavArrow variant="forward" />
-                </span>
-                <input
-                  value={dest}
-                  onChange={(e) => setDest(e.target.value)}
-                  placeholder={t.index.form.destShort}
-                  aria-label={t.index.form.destLabel}
-                />
+              // A flight's identity is its route, not a name (ADR-0059 §3). The
+              // endpoints are now picked places, so the title row shows a derived
+              // read-only route preview; the two PlacePickers live in the route
+              // field just below (ADR-0059 §3 reshaping, ADR-0113 follow-up).
+              <div className="bs-route-preview">
+                {fromPlaceId || toPlaceId ? (
+                  <RouteLabel
+                    from={placeName(places, fromPlaceId)}
+                    to={placeName(places, toPlaceId)}
+                  />
+                ) : (
+                  <span className="bs-route-ghost">{t.index.form.routePreviewGhost}</span>
+                )}
               </div>
             ) : (
               <input
@@ -364,9 +360,27 @@ export function BookingSheet({
             )}
           </div>
 
-          {/* The route endpoints live in the title row above; this only adds the
-              place-picker hint under them. */}
-          {isTransport && <div className="bs-route-hint">📍 {t.index.form.routeHint}</div>}
+          {/* The route field: two real place pickers (origin → destination), so
+              transport endpoints carry coords + timezones like any other place. */}
+          {isTransport && (
+            <Field label={t.index.form.routeLabel}>
+              <div className="bs-route-pickers">
+                <PlacePicker
+                  value={fromPlaceId}
+                  onChange={setFromPlaceId}
+                  ariaLabel={t.index.form.originLabel}
+                  placeholder={t.index.form.originShort}
+                />
+                <PlacePicker
+                  value={toPlaceId}
+                  onChange={setToPlaceId}
+                  ariaLabel={t.index.form.destLabel}
+                  placeholder={t.index.form.destShort}
+                />
+              </div>
+              <div className="bs-route-hint">📍 {t.index.form.routeHint}</div>
+            </Field>
+          )}
 
           {/* "When" comes first (right after the identity row), through the one
               WhenField standard — a span for two-endpoint bookings, a single day
