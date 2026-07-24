@@ -72,7 +72,7 @@ import {
   restOrQueue,
   subscribeSyncFailures,
 } from '../lib/outbox';
-import { currentZone, tripZoneCrossings, type ZoneCrossing } from '../lib/places';
+import { liveZone, tripZoneCrossings, type ZoneCrossing, type ZoneEvidence } from '../lib/places';
 import { openTripStream } from '../lib/ws';
 import {
   CHANGE_FEED_LIMIT,
@@ -389,6 +389,10 @@ interface TripContextValue {
   /** The trip's zone crossings (ADR-0107 §3) — derived once here so every surface
    *  reads the same partition and the per-minute clock tick never re-derives it. */
   zoneCrossings: ZoneCrossing[];
+  /** Everything a zone question resolves against (crossings + the events/places
+   *  that evidence a day's own zone, ADR-0107 session-100) — bundled once so the
+   *  surfaces can't drift apart on what they resolve from. */
+  zoneEvidence: ZoneEvidence;
   documents: DocumentSummary[];
   activeDate: string;
   setActiveDate: (date: string) => void;
@@ -591,15 +595,27 @@ function TripReady({
     [state.events, bookings, places],
   );
 
+  const zoneEvidence = useMemo<ZoneEvidence>(
+    () => ({
+      events: state.events,
+      bookings,
+      places,
+      crossings: zoneCrossings,
+      primaryZone: trip.timezone,
+    }),
+    [state.events, bookings, places, zoneCrossings, trip.timezone],
+  );
+
   // "Today", clamped to the (reactive) trip range — the Trip-mode amber anchor and
   // the value the URL param is omitted for (a clean `/`). Recomputed per render so
   // a midnight/idle rollover lands on the new today.
   //
-  // Read in the LIVE zone (ADR-0107 §4): the calendar day rolls at the current
-  // itinerary segment's midnight, so crossing a zone re-anchors "today" — via the
-  // itinerary, never GPS. Falls back to the trip primary when nothing crosses.
+  // Read in the LIVE zone (ADR-0107 §4 + session-100): the calendar day rolls at
+  // the midnight of the day you're in — the itinerary segment, refined by that
+  // day's own events — so crossing a zone re-anchors "today" via the itinerary,
+  // never GPS. Falls back to the trip primary when nothing evidences a zone.
   const defaultDay = clampDate(
-    todayInTz(currentZone(getNow(), zoneCrossings, trip.timezone), new Date(getNow())),
+    todayInTz(liveZone(getNow(), zoneEvidence), new Date(getNow())),
     trip.startDate,
     trip.endDate,
   );
@@ -1061,6 +1077,7 @@ function TripReady({
       bookings,
       places,
       zoneCrossings,
+      zoneEvidence,
       documents,
       activeDate,
       setActiveDate,
@@ -1084,6 +1101,7 @@ function TripReady({
       bookings,
       places,
       zoneCrossings,
+      zoneEvidence,
       documents,
       settings,
       indexVerbs,

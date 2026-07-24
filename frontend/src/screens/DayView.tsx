@@ -27,8 +27,8 @@ import {
   eventPlaceUrl,
   eventRoute,
   eventZones,
-  currentZone,
   dayAmbientZone,
+  liveZone,
   type ZoneContext,
 } from '../lib/places';
 import { useVerbs } from '../state/verbs';
@@ -123,6 +123,7 @@ export function DayView() {
     bookings,
     places,
     zoneCrossings,
+    zoneEvidence,
     activeDate,
     ripple,
     setActiveDate,
@@ -142,12 +143,12 @@ export function DayView() {
   // The live "now" sits in the zone of the itinerary segment you're in (ADR-0107
   // §4), so "today" rolls at THAT zone's midnight — cross a zone and the calendar
   // day re-anchors. Trip mode only; Plan mode frames everything in the trip primary.
-  const liveZone = currentZone(now.getTime(), zoneCrossings, trip.timezone);
-  const today = todayInTz(liveZone, now);
+  const nowZone = liveZone(now.getTime(), zoneEvidence);
+  const today = todayInTz(nowZone, now);
   const dayScope: DayScope = activeDate < today ? 'past' : activeDate > today ? 'future' : 'today';
   // The day's OWN ambient zone (its segment zone at noon) — what decides when this
   // day is over, below.
-  const ambientZone = dayAmbientZone(activeDate, zoneCrossings, trip.timezone);
+  const ambientZone = dayAmbientZone(activeDate, zoneEvidence);
   // A past day is a read-only archive within a live trip (ADR-0029) — but "past"
   // for EDITING is decided in the day's own zone, not the live one (ADR-0029
   // amendment / ADR-0107 §4). Otherwise crossing east mid-flight rolls the live
@@ -312,7 +313,7 @@ export function DayView() {
             key={entry.kind === 'event' ? groupKey(entry.group) : `${entry.event.id}-${entry.edge}`}
           >
             {showNowLine && i === nowLineIndex && (
-              <NowLine ref={nowLineRef} now={now} tz={liveZone} />
+              <NowLine ref={nowLineRef} now={now} tz={nowZone} />
             )}
             {entry.kind === 'event' ? (
               <GroupNode group={entry.group} depth={0} ctx={dayCtx} />
@@ -329,7 +330,7 @@ export function DayView() {
           </Fragment>
         ))}
         {showNowLine && nowLineIndex === merged.length && (
-          <NowLine ref={nowLineRef} now={now} tz={liveZone} />
+          <NowLine ref={nowLineRef} now={now} tz={nowZone} />
         )}
         {untimed.map((e) => (
           <ItemNode key={e.id} item={{ event: e, children: [] }} depth={0} ctx={dayCtx} />

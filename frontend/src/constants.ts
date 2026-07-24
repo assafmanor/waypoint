@@ -70,6 +70,13 @@ export const PLACE_SEARCH_MIN_CHARS = 2;
 /** The waking window the day-progress bar spans, in trip-local hours. */
 export const DAY_WINDOW = { START_HOUR: 7, END_HOUR: 23 } as const;
 
+/** How far from "now" an event still evidences which zone you are standing in
+ *  (ADR-0107 session-100). A booking an hour ago or an hour ahead places you; one
+ *  five days out says nothing about the current clock. Half a day either way keeps
+ *  a normal trip day covered end to end without a quiet night borrowing tomorrow's
+ *  flight's destination. */
+export const LIVE_ZONE_WINDOW_MS = 12 * 60 * 60 * 1000;
+
 /** Noon — the safe wall-clock instant to sample a date at when only the calendar
  *  day matters and never the time: the day's **ambient zone** (ADR-0107, so a
  *  crossing near either boundary can't decide which zone frames the whole day)

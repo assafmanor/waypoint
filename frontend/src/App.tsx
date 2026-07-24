@@ -79,7 +79,7 @@ import {
 } from './constants';
 import { daysUntilStart, type Mode } from './lib/mode';
 import { addDays, monthLabelFor, todayInTz } from './lib/time';
-import { currentZone } from './lib/places';
+import { liveZone } from './lib/places';
 import { t } from './i18n/he';
 import './App.css';
 import './screens.css';
@@ -158,7 +158,7 @@ function Header({
    *  selection while still anchoring today. */
   allScope?: boolean;
 }) {
-  const { trip, users, zoneCrossings, activeDate, usingCachedSnapshot, events } = useTrip();
+  const { trip, users, zoneEvidence, activeDate, usingCachedSnapshot, events } = useTrip();
   const { me } = useAuth();
   const { mode } = useMode();
   const now = useClock();
@@ -218,7 +218,7 @@ function Header({
   // (ADR-0107 §4), so the strip's amber anchor follows you across a crossing;
   // Plan mode is framed in the trip primary zone and stays put.
   const today = todayInTz(
-    mode === 'trip' ? currentZone(now.getTime(), zoneCrossings, trip.timezone) : trip.timezone,
+    mode === 'trip' ? liveZone(now.getTime(), zoneEvidence) : trip.timezone,
     now,
   );
   // Day-scope context ribbon (ADR-0029/0043): only in Trip mode, only off today.

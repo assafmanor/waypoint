@@ -22,6 +22,7 @@ import {
   bookingEndZones,
   currentZone,
   dayAmbientZone,
+  liveZone,
   mapsDirectionsUrl,
   mapsPlaceUrl,
   referencedPlaceIds,
@@ -29,8 +30,9 @@ import {
   tripZoneCrossings,
   type ZoneContext,
   type ZoneCrossing,
+  type ZoneEvidence,
 } from './places';
-import { todayInTz } from './time';
+import { todayInTz, zoneOffsetMinutes } from './time';
 import type { MaybeItem } from '@waypoint/shared';
 
 const place = (id: string, name: string, coords?: Partial<Place>): Place => ({
@@ -477,31 +479,249 @@ describe('currentZone — the live "now" follows your itinerary segment (ADR-010
 describe('dayAmbientZone — the zone a given DAY is framed in (ADR-0107)', () => {
   const JLM = 'Asia/Jerusalem';
   const TYO = 'Asia/Tokyo';
+  const NIC = 'Asia/Nicosia'; // same offset as Jerusalem, different zone
   // Outbound crossing departing 2026-07-07 20:00Z (23:00 JLM).
   const cs = [{ at: Date.parse('2026-07-07T20:00:00Z'), fromZone: JLM, toZone: TYO }];
+  /** Evidence with no events at all — the old crossing-only behaviour. */
+  const bare = (crossings = cs, primaryZone = TYO): ZoneEvidence => ({
+    events: [],
+    bookings: [],
+    places: [],
+    crossings,
+    primaryZone,
+  });
 
   it('frames a pre-crossing day in the origin zone and a later day in the destination', () => {
-    expect(dayAmbientZone('2026-07-06', cs, TYO)).toBe(JLM);
-    expect(dayAmbientZone('2026-07-09', cs, TYO)).toBe(TYO);
+    expect(dayAmbientZone('2026-07-06', bare())).toBe(JLM);
+    expect(dayAmbientZone('2026-07-09', bare())).toBe(TYO);
   });
 
   it('samples at noon, so a late-evening crossing leaves its own day on the origin', () => {
     // The crossing is at 23:00 local, but the day it departs is still lived in the
     // origin zone — sampling at noon is what keeps that true.
-    expect(dayAmbientZone('2026-07-07', cs, TYO)).toBe(JLM);
+    expect(dayAmbientZone('2026-07-07', bare())).toBe(JLM);
   });
 
   it('falls back to the trip primary zone with no crossings', () => {
-    expect(dayAmbientZone('2026-07-07', [], TYO)).toBe(TYO);
+    expect(dayAmbientZone('2026-07-07', bare([]))).toBe(TYO);
   });
 
   it('is NOT the live zone: mid-flight they disagree, which is the whole point', () => {
-    // 21:00Z on the 7th — you are in the air, so the live zone has already rolled to
+    // 21:00Z on the 7th — you are in the air, so the segment has already rolled to
     // Tokyo, while the day you are flying through is still framed in Jerusalem
     // (ADR-0029 amendment: that is what keeps the travel day editable).
     const midFlight = Date.parse('2026-07-07T21:00:00Z');
     expect(currentZone(midFlight, cs, TYO)).toBe(TYO);
-    expect(dayAmbientZone('2026-07-07', cs, TYO)).toBe(JLM);
+    expect(dayAmbientZone('2026-07-07', bare())).toBe(JLM);
+  });
+
+  // ── The day's own events outrank the crossing-derived segment (session 100) ──
+  describe("the day's own events", () => {
+    const pl = (id: string, timezone?: string) => place(id, id, timezone ? { timezone } : {});
+    const at = (id: string, date: string, placeId?: string, extra: Partial<TripEvent> = {}) =>
+      event({ id, date, placeId, startsAt: `${date}T09:00:00Z`, ...extra });
+
+    it('frames the day in the zone its own placed events agree on, not the last flight', () => {
+      // The reported bug: after an outbound TLV→Tokyo flight, a later day whose only
+      // events are in Cyprus was framed in TOKYO, so every event on it drew a shift
+      // pill against a zone nothing on that day was in.
+      const evidence: ZoneEvidence = {
+        events: [at('e1', '2026-07-09', 'pl-nic'), at('e2', '2026-07-09', 'pl-jlm')],
+        bookings: [],
+        places: [pl('pl-nic', NIC), pl('pl-jlm', JLM)],
+        crossings: cs,
+        primaryZone: TYO,
+      };
+      expect(dayAmbientZone('2026-07-09', evidence)).toBe(NIC);
+    });
+
+    it('agrees by OFFSET, so two same-time zones are not a mixed day', () => {
+      // Nicosia and Jerusalem are different zone ids that always agree about the
+      // time, so a day split between them has one ambient — and neither event gets
+      // a pill against it (the delta is 0).
+      const evidence: ZoneEvidence = {
+        events: [at('e1', '2026-07-09', 'pl-nic'), at('e2', '2026-07-09', 'pl-jlm')],
+        bookings: [],
+        places: [pl('pl-nic', NIC), pl('pl-jlm', JLM)],
+        crossings: [],
+        primaryZone: TYO,
+      };
+      const ambient = dayAmbientZone('2026-07-09', evidence);
+      const noon = new Date(Date.parse('2026-07-09T09:00:00Z'));
+      expect(zoneOffsetMinutes(noon, ambient)).toBe(zoneOffsetMinutes(noon, JLM));
+    });
+
+    it('abstains on a genuinely mixed day, falling back to the segment (a travel day)', () => {
+      const evidence: ZoneEvidence = {
+        events: [at('e1', '2026-07-09', 'pl-nic'), at('e2', '2026-07-09', 'pl-tyo')],
+        bookings: [],
+        places: [pl('pl-nic', NIC), pl('pl-tyo', TYO)],
+        crossings: cs,
+        primaryZone: 'UTC',
+      };
+      expect(dayAmbientZone('2026-07-09', evidence)).toBe(TYO); // the segment, not a guess
+    });
+
+    it('ignores placeless events, so the vote can never just confirm the segment', () => {
+      // A placeless event's zone IS the segment zone; letting it vote would make the
+      // consensus circular and this rule a no-op.
+      const evidence: ZoneEvidence = {
+        events: [at('e1', '2026-07-09'), at('e2', '2026-07-09')],
+        bookings: [],
+        places: [],
+        crossings: cs,
+        primaryZone: 'UTC',
+      };
+      expect(dayAmbientZone('2026-07-09', evidence)).toBe(TYO);
+    });
+
+    it('ignores a zone-crossing flight: it moves you, it cannot say where the day is', () => {
+      const flight = booking({
+        id: 'bk',
+        type: BOOKING_TYPE.FLIGHT,
+        fromPlaceId: 'pl-jlm',
+        toPlaceId: 'pl-tyo',
+      });
+      const evidence: ZoneEvidence = {
+        events: [at('e1', '2026-07-09', undefined, { bookingId: 'bk' })],
+        bookings: [flight],
+        places: [pl('pl-jlm', JLM), pl('pl-tyo', TYO)],
+        crossings: cs,
+        primaryZone: 'UTC',
+      };
+      expect(dayAmbientZone('2026-07-09', evidence)).toBe(TYO); // the segment
+    });
+
+    it('counts a multi-night stay on its middle nights (where you are sleeping)', () => {
+      const hotel = booking({ id: 'bk-h', type: BOOKING_TYPE.HOTEL, placeId: 'pl-nic' });
+      const evidence: ZoneEvidence = {
+        events: [
+          event({
+            id: 'stay',
+            bookingId: 'bk-h',
+            date: '2026-07-08',
+            endDate: '2026-07-11',
+            startsAt: '2026-07-08T12:00:00Z',
+            endsAt: '2026-07-11T08:00:00Z',
+          }),
+        ],
+        bookings: [hotel],
+        places: [pl('pl-nic', NIC)],
+        crossings: cs,
+        primaryZone: 'UTC',
+      };
+      // The 9th carries no event of its own, but the stay covers it.
+      expect(dayAmbientZone('2026-07-09', evidence)).toBe(NIC);
+    });
+  });
+});
+
+describe('liveZone — the clock follows the day you are in (ADR-0107 session-100)', () => {
+  const JLM = 'Asia/Jerusalem';
+  const KEF = 'Atlantic/Reykjavik';
+  const NIC = 'Asia/Nicosia';
+
+  it("reads the day's own zone, not the zone of the last flight taken", () => {
+    // The reported bug, end to end: a TLV→KEF flight on the 24th makes every later
+    // instant "Iceland" by segment, so the now-line showed 21:31 while the traveler's
+    // day (all Cyprus/Israel bookings) was at 00:31.
+    const crossings = [{ at: Date.parse('2026-07-24T04:15:00Z'), fromZone: JLM, toZone: KEF }];
+    const evidence: ZoneEvidence = {
+      events: [
+        event({
+          id: 'taverna',
+          date: '2026-07-25',
+          placeId: 'pl-nic',
+          startsAt: '2026-07-24T21:00:00Z',
+        }),
+      ],
+      bookings: [],
+      places: [place('pl-nic', 'טברנה', { timezone: NIC })],
+      crossings,
+      primaryZone: JLM,
+    };
+    const nowMs = Date.parse('2026-07-24T21:31:00Z'); // 00:31 the next day in Cyprus
+    expect(currentZone(nowMs, crossings, JLM)).toBe(KEF); // the raw segment
+    expect(liveZone(nowMs, evidence)).toBe(NIC); // what the clock now reads
+    expect(todayInTz(liveZone(nowMs, evidence), new Date(nowMs))).toBe('2026-07-25');
+  });
+
+  it("reads an in-progress event's own zone (the taverna is happening now)", () => {
+    const evidence: ZoneEvidence = {
+      events: [
+        event({
+          id: 'taverna',
+          date: '2026-07-25',
+          placeId: 'pl-nic',
+          startsAt: '2026-07-24T21:30:00Z',
+          endsAt: '2026-07-24T22:30:00Z',
+        }),
+      ],
+      bookings: [],
+      places: [place('pl-nic', 'טברנה', { timezone: NIC })],
+      crossings: [{ at: Date.parse('2026-07-24T04:15:00Z'), fromZone: JLM, toZone: KEF }],
+      primaryZone: JLM,
+    };
+    expect(liveZone(Date.parse('2026-07-24T22:00:00Z'), evidence)).toBe(NIC);
+  });
+
+  it('reads the DESTINATION while a crossing flight is in progress (§8)', () => {
+    const flight = booking({
+      id: 'bk',
+      type: BOOKING_TYPE.FLIGHT,
+      fromPlaceId: 'pl-jlm',
+      toPlaceId: 'pl-kef',
+    });
+    const evidence: ZoneEvidence = {
+      events: [
+        event({
+          id: 'fl',
+          bookingId: 'bk',
+          date: '2026-07-24',
+          startsAt: '2026-07-24T04:15:00Z',
+          endsAt: '2026-07-24T11:00:00Z',
+        }),
+      ],
+      bookings: [flight],
+      places: [
+        place('pl-jlm', 'נתב״ג', { timezone: JLM }),
+        place('pl-kef', 'קפלאוויק', { timezone: KEF }),
+      ],
+      crossings: [{ at: Date.parse('2026-07-24T04:15:00Z'), fromZone: JLM, toZone: KEF }],
+      primaryZone: JLM,
+    };
+    expect(liveZone(Date.parse('2026-07-24T08:00:00Z'), evidence)).toBe(KEF);
+  });
+
+  it('ignores an event days away — it says nothing about the current clock', () => {
+    const evidence: ZoneEvidence = {
+      events: [
+        event({
+          id: 'later',
+          date: '2026-07-30',
+          placeId: 'pl-nic',
+          startsAt: '2026-07-30T09:00:00Z',
+        }),
+      ],
+      bookings: [],
+      places: [place('pl-nic', 'טברנה', { timezone: NIC })],
+      crossings: [{ at: Date.parse('2026-07-24T04:15:00Z'), fromZone: JLM, toZone: KEF }],
+      primaryZone: JLM,
+    };
+    // Falls through to the day frame (here: the segment), not to Cyprus.
+    expect(liveZone(Date.parse('2026-07-24T21:31:00Z'), evidence)).toBe(KEF);
+  });
+
+  it('still follows the segment mid-flight, where the day has no consensus', () => {
+    const crossings = [{ at: Date.parse('2026-07-24T04:15:00Z'), fromZone: JLM, toZone: KEF }];
+    const evidence: ZoneEvidence = {
+      events: [],
+      bookings: [],
+      places: [],
+      crossings,
+      primaryZone: JLM,
+    };
+    expect(liveZone(Date.parse('2026-07-24T06:00:00Z'), evidence)).toBe(KEF);
   });
 });
 

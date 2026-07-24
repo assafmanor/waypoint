@@ -27,13 +27,7 @@ import {
 } from '../ui/domain';
 import { useClock } from '../lib/useClock';
 import { hotelWifi, nextCodedBooking } from '../lib/home-quick';
-import {
-  currentZone,
-  dayAmbientZone,
-  eventRoute,
-  eventZones,
-  type ZoneContext,
-} from '../lib/places';
+import { dayAmbientZone, liveZone, eventRoute, eventZones, type ZoneContext } from '../lib/places';
 import { shortPlaceLabel } from '../lib/place-label';
 import { TAB_PARAM } from '../state/nav-state';
 import {
@@ -75,6 +69,7 @@ export function Home({ onNavigate }: { onNavigate?: (tab: TabId) => void }) {
     places,
     events,
     zoneCrossings,
+    zoneEvidence,
     activeDate,
     changeFeed,
     dismissChange,
@@ -87,7 +82,7 @@ export function Home({ onNavigate }: { onNavigate?: (tab: TabId) => void }) {
   // The board is Trip mode's live surface, so its framing — "today", the day
   // window, the progress bar, the now/next clock — reads in the zone of the
   // itinerary segment you're currently in (ADR-0107 §4), not a fixed trip zone.
-  const tz = currentZone(nowMs, zoneCrossings, trip.timezone);
+  const tz = liveZone(nowMs, zoneEvidence);
   const today = todayInTz(tz, now);
   // Each hero slot renders in its **own** event's zone (sticky display, ADR-0107
   // §2-3) — the live zone is only the frame + what a shift is measured against,
@@ -205,7 +200,7 @@ export function Home({ onNavigate }: { onNavigate?: (tab: TabId) => void }) {
   // zone, which would nag on every anchor of a day you're merely browsing.
   const glanceCtx: ZoneContext = {
     ...zoneCtx,
-    ambientZone: dayAmbientZone(activeDate, zoneCrossings, trip.timezone),
+    ambientZone: dayAmbientZone(activeDate, zoneEvidence),
   };
   const glance = buildDayGlance(events, activeDate, nowMs, day07, day23, tz, glanceCtx);
   // Ambient-span stays active today (a hotel spanning several nights, ADR-0054).
