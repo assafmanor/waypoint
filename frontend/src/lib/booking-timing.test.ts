@@ -49,7 +49,24 @@ describe('formatBookingDuration (per-category unit, ADR-0063 extension)', () => 
     ).toBe('2:30 שע׳');
   });
 
-  it('a multi-day activity reads in (inclusive) days', () => {
+  it('an hour that merely crosses midnight reads in hours, NOT days (ADR-0114)', () => {
+    // The reported bug: a 23:00→00:00 booking touches two calendar dates but is
+    // one hour of elapsed time — it must read "שעה", never "יומיים".
+    expect(
+      formatBookingDuration(
+        ev({
+          category: 'food',
+          date: '2026-07-20',
+          startsAt: '2026-07-20T23:00:00Z',
+          endsAt: '2026-07-21T00:00:00Z',
+        }),
+        TZ,
+      ),
+    ).toBe('שעה');
+  });
+
+  it('a timed multi-day activity reads its ELAPSED length, not an inclusive day count', () => {
+    // 30h elapsed rounds to one day — not "יומיים" (the old calendar-inclusive count).
     expect(
       formatBookingDuration(
         ev({
@@ -61,7 +78,31 @@ describe('formatBookingDuration (per-category unit, ADR-0063 extension)', () => 
         }),
         TZ,
       ),
+    ).toBe('יום');
+    // 48h exactly → two days.
+    expect(
+      formatBookingDuration(
+        ev({
+          category: 'activity',
+          date: '2026-07-16',
+          endDate: '2026-07-18',
+          startsAt: '2026-07-16T10:00:00Z',
+          endsAt: '2026-07-18T10:00:00Z',
+        }),
+        TZ,
+      ),
     ).toBe('יומיים');
+  });
+
+  it('a date-only multi-day span (no clock times) reads in inclusive calendar days', () => {
+    // With no times to measure elapsed, an all-day event across N dates reads in
+    // those (inclusive) days — the one place the calendar span is the right signal.
+    expect(
+      formatBookingDuration(
+        ev({ category: 'activity', date: '2026-07-16', endDate: '2026-07-18' }),
+        TZ,
+      ),
+    ).toBe('3 ימים');
   });
 
   it('returns null when there is nothing to measure', () => {
