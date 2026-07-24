@@ -71,6 +71,10 @@ export class TripsService {
         data: {
           name: input.name,
           destination: input.destination,
+          destinationGooglePlaceId: input.destinationGooglePlaceId,
+          destinationLat: input.destinationLat,
+          destinationLng: input.destinationLng,
+          destinationCountryCode: input.destinationCountryCode,
           startDate: new Date(input.startDate),
           endDate: new Date(input.endDate),
           timezone: input.timezone,

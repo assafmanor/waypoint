@@ -45,11 +45,14 @@ export class PlacesThrottlerGuard extends ThrottlerGuard {
 
   /** Key the limit on the actor + the trip in the route, not the IP — so shared
    *  devices / NAT don't collide and the cap is genuinely per member per trip
-   *  (ADR-0108 §5). Falls back to IP if either is somehow absent. */
+   *  (ADR-0108 §5). A trip-agnostic route (the ADR-0113 destination endpoints,
+   *  which run before any trip exists) has no `tripId`, so it keys per-user;
+   *  IP is the last-resort fallback. */
   protected async getTracker(req: RequestWithPrincipal): Promise<string> {
     const userId = req.user?.userId;
     const tripId = req.params?.tripId;
     if (userId && tripId) return `${userId}:${tripId}`;
+    if (userId) return userId;
     return req.ip ?? 'unknown';
   }
 }

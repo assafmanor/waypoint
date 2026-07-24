@@ -27,11 +27,36 @@ const MAX_ERROR_BODY_LOG = 500;
  */
 const PLACE_DETAILS_FIELD_MASK = ['id', 'displayName', 'formattedAddress', 'location'].join(',');
 
+/** Geocode field mask for the destination resolve (ADR-0113): swaps
+ *  `formattedAddress` for `addressComponents` (both Essentials tier, so this stays
+ *  Pro alongside `displayName`) to read the ISO country code off the country
+ *  component. */
+const GEOCODE_FIELD_MASK = ['id', 'displayName', 'location', 'addressComponents'].join(',');
+
+/** Destination autocomplete is restricted to geo place types (ADR-0113 §1) so a
+ *  city, region, or whole country resolves — never a business/POI. Kept ≤5 per the
+ *  Places API (New) cap on `includedPrimaryTypes`. */
+export const DESTINATION_PRIMARY_TYPES = [
+  'locality',
+  'administrative_area_level_1',
+  'administrative_area_level_2',
+  'country',
+];
+
 /** The subset of the Place Details (New) response we cache on the row. */
 export interface PlaceDetails {
   googlePlaceId: string;
   name: string;
   address?: string;
+  lat?: number;
+  lng?: number;
+}
+
+/** A geocoded destination (ADR-0113): the picked place's point + ISO country. */
+export interface GeocodedPlace {
+  googlePlaceId: string;
+  name: string;
+  countryCode?: string;
   lat?: number;
   lng?: number;
 }
@@ -51,6 +76,7 @@ interface PlaceDetailsResponse {
   displayName?: { text?: string };
   formattedAddress?: string;
   location?: { latitude?: number; longitude?: number };
+  addressComponents?: { shortText?: string; longText?: string; types?: string[] }[];
 }
 
 /**
@@ -68,11 +94,21 @@ export class GooglePlacesClient {
   }
 
   /** Autocomplete relay. The `sessionToken` groups these keystrokes with the
-   *  terminating Place Details pick so Google bills them at $0 (ADR-0108 §1). */
-  async autocomplete(input: string, sessionToken: string): Promise<PlacePrediction[]> {
+   *  terminating Place Details pick so Google bills them at $0 (ADR-0108 §1).
+   *  `includedPrimaryTypes` restricts results to those place types (ADR-0113 §1
+   *  passes the geo-type set for destination search); omitted = unrestricted. */
+  async autocomplete(
+    input: string,
+    sessionToken: string,
+    includedPrimaryTypes?: string[],
+  ): Promise<PlacePrediction[]> {
     const body = await this.post<AutocompleteResponse>(AUTOCOMPLETE_URL, {
       headers: { 'X-Goog-Api-Key': this.key(), 'Content-Type': 'application/json' },
-      body: JSON.stringify({ input, sessionToken }),
+      body: JSON.stringify({
+        input,
+        sessionToken,
+        ...(includedPrimaryTypes && { includedPrimaryTypes }),
+      }),
     });
     return (body.suggestions ?? [])
       .map((s) => s.placePrediction)
@@ -99,6 +135,25 @@ export class GooglePlacesClient {
       googlePlaceId: body.id ?? googlePlaceId,
       name: body.displayName?.text ?? '',
       address: body.formattedAddress,
+      lat: body.location?.latitude,
+      lng: body.location?.longitude,
+    };
+  }
+
+  /** Geocode a picked destination (ADR-0113): its point + ISO country code, read
+   *  off the `country` address component. Same Pro-tier billing as `placeDetails`
+   *  (swaps `formattedAddress` for `addressComponents`, both Essentials). */
+  async geocode(googlePlaceId: string, sessionToken?: string): Promise<GeocodedPlace> {
+    const url = new URL(`${PLACE_DETAILS_BASE}/${encodeURIComponent(googlePlaceId)}`);
+    if (sessionToken) url.searchParams.set('sessionToken', sessionToken);
+    const body = await this.get<PlaceDetailsResponse>(url.toString(), {
+      headers: { 'X-Goog-Api-Key': this.key(), 'X-Goog-FieldMask': GEOCODE_FIELD_MASK },
+    });
+    const country = (body.addressComponents ?? []).find((c) => c.types?.includes('country'));
+    return {
+      googlePlaceId: body.id ?? googlePlaceId,
+      name: body.displayName?.text ?? '',
+      countryCode: country?.shortText,
       lat: body.location?.latitude,
       lng: body.location?.longitude,
     };

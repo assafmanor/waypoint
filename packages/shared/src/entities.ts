@@ -113,6 +113,14 @@ export const tripSchema = z.object({
   id: idSchema,
   name: z.string(),
   destination: z.string(),
+  // Structured destination, set when the free-text field becomes a Google Places
+  // pick at creation (ADR-0113). `destination` stays the display string; these
+  // carry the picked place's identity + the point `timezone` is derived from. All
+  // optional — a trip created before ADR-0113 (or via a bare API call) has none.
+  destinationGooglePlaceId: z.string().optional(),
+  destinationLat: z.number().optional(),
+  destinationLng: z.number().optional(),
+  destinationCountryCode: z.string().optional(),
   startDate: z.string(), // ISO date
   endDate: z.string(), // ISO date
   timezone: z.string(),

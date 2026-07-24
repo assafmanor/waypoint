@@ -97,6 +97,18 @@ Trip-scoped location registry (ADR-0048). Read via the trip snapshot (`places`);
 - **`search`** relays Google Autocomplete (New) under the client-minted `sessionToken`; returns flattened `PlacePrediction`s (`{ googlePlaceId, primaryText, secondaryText? }`). Read-only, no spend when the session ends in a pick. `alreadyInTrip` is **not** returned — it's a client-side derivation over the snapshot (ADR-0110 §1).
 - **`resolve`** is the terminating enrich-on-pick / create-or-link. **Dedup-before-spend:** a `(tripId, googlePlaceId)` hit returns the cached row with **zero** Google spend; a miss spends one Place Details call (Pro-tier field mask, ADR-0111), resolves `timezone` once via `geo-tz`, and persists via `ChangeService.mutate`. `enrichPlaceId` enriches an existing coordless Place-lite **in place** instead of minting a new row (ADR-0110 §1). Google enrichment is online-only — the offline name-only fallback goes through the `POST /places` outbox path, not here. `rating`/`userRatingsTotal` columns exist but are not populated in Phase 1 (ADR-0111).
 
+## Destinations (trip creation)
+
+Trip-agnostic destination lookup for **trip creation** (ADR-0113): there's no trip yet, so these are distinct from the trip-scoped place proxy above — authed by the global `JwtAuthGuard`, **per-user** rate-limited (the shared throttler keys on the actor when there's no `tripId`), and **stateless** (nothing is persisted). Reuse the same `GooglePlacesClient` + `geo-tz`.
+
+| Method | Path                    | Body → Response                                                                       |
+| ------ | ----------------------- | ------------------------------------------------------------------------------------- |
+| POST   | `/destinations/search`  | `searchPlacesSchema` (`{ input, sessionToken }`) → `PlacePrediction[]`                |
+| POST   | `/destinations/resolve` | `resolveDestinationSchema` (`{ googlePlaceId, sessionToken? }`) → `DestinationResult` |
+
+- **`search`** is Autocomplete restricted to geo place types (`includedPrimaryTypes` = locality / administrative-area / country), so a city, region, or whole country resolves — never a business/POI.
+- **`resolve`** geocodes the pick into `{ googlePlaceId, name, countryCode?, lat?, lng?, timezone?, candidateZones? }`. `timezone` is the derived default (`geo-tz` on the representative point). `candidateZones` is present only for a **known multi-zone country** (US, Australia, …) — the signal for the creation UI to show the "spans several zones" note and pre-filter the ZonePicker; absent means the single zone is trusted (ADR-0113 §2). The trip is then created with the resolved destination fields (`destinationGooglePlaceId`/`Lat`/`Lng`/`CountryCode`) + the chosen `timezone`.
+
 ## Maybe shelf
 
 The shelf is read via the trip snapshot (`maybeItems`), not a standalone list. Scheduling an idea onto a day is done client-side — create the `Event` (`POST /events`, `source: maybe_shelf`) and mark the idea consumed — rather than a dedicated `/schedule` endpoint, so day/time/kind are chosen in the builder's event form.
