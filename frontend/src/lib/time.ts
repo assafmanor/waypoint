@@ -5,6 +5,7 @@ import {
   COUNTDOWN_MONTHS_THRESHOLD,
   DAY_WINDOW,
   DAYS_PER_MONTH,
+  DOT_SEPARATOR,
   MINUTES_PER_HOUR,
   MINUTES_PER_DAY,
 } from '../constants';
@@ -38,6 +39,51 @@ const monthAbbrev = new Intl.DateTimeFormat('he-IL', { month: 'short', timeZone:
 export function monthLabelFor(date: string, prevDate: string | undefined): string | null {
   if (prevDate && date.slice(0, 7) === prevDate.slice(0, 7)) return null;
   return monthAbbrev.format(new Date(`${date}T00:00:00Z`));
+}
+
+// ── Trip date-range display ──────────────────────────────────────────────────
+// One helper for every "start–end" trip-range surface, replacing four drifted
+// copies (AllTrips' Intl numeric, PlanHome's prose formatDateRange, JoinTrip's
+// raw-slice ddmm, TripSettings' raw ISO). Trip start/end are calendar-only
+// YYYY-MM-DD (no time, no zone), so they're read in UTC — never the trip/device
+// zone. Two styles: `numeric` (DD.MM–DD.MM) for dense meta rows, tickets, and
+// the settings record; `prose` (Hebrew day + long month) for hero surfaces.
+export type TripDateStyle = 'numeric' | 'prose';
+
+const tripDateNumeric = new Intl.DateTimeFormat('he-IL', {
+  day: '2-digit',
+  month: '2-digit',
+  timeZone: 'UTC',
+});
+const tripDateDayMonth = new Intl.DateTimeFormat('he-IL', {
+  day: 'numeric',
+  month: 'long',
+  timeZone: 'UTC',
+});
+const tripDateDay = new Intl.DateTimeFormat('he-IL', { day: 'numeric', timeZone: 'UTC' });
+
+/** Formats a trip's calendar date range for display. `withYear` appends
+ *  "· YYYY" for the record-of-truth row (trip settings); other surfaces leave
+ *  the year implicit. Prose collapses a same-month range to one month name
+ *  ("20–29 ביולי"); a cross-month or cross-year range names both ends. */
+export function formatTripDates(
+  startDate: string,
+  endDate: string,
+  { style = 'numeric', withYear = false }: { style?: TripDateStyle; withYear?: boolean } = {},
+): string {
+  const start = new Date(`${startDate}T00:00:00Z`);
+  const end = new Date(`${endDate}T00:00:00Z`);
+  let range: string;
+  if (style === 'prose') {
+    const sameMonth =
+      start.getUTCFullYear() === end.getUTCFullYear() && start.getUTCMonth() === end.getUTCMonth();
+    range = sameMonth
+      ? `${tripDateDay.format(start)}–${tripDateDayMonth.format(end)}`
+      : `${tripDateDayMonth.format(start)} – ${tripDateDayMonth.format(end)}`;
+  } else {
+    range = `${tripDateNumeric.format(start)}–${tripDateNumeric.format(end)}`;
+  }
+  return withYear ? `${range} ${DOT_SEPARATOR} ${end.getUTCFullYear()}` : range;
 }
 
 /** Wall-clock parts for an instant, rendered in a specific IANA timezone. */

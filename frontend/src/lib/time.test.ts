@@ -10,6 +10,7 @@ import {
   eventPhase,
   formatCountdown,
   formatTime,
+  formatTripDates,
   relativeDay,
   hardConflicts,
   isoToTimeInput,
@@ -29,6 +30,38 @@ import { DEMO_NOW, EVENTS, TRIP } from '../fixtures';
 
 const tz = TRIP.timezone;
 const startsOf = (id: string) => EVENTS.find((e) => e.id === id)!.startsAt!;
+
+describe('formatTripDates', () => {
+  it('numeric: compact DD.MM–DD.MM, no year by default', () => {
+    expect(formatTripDates('2026-07-20', '2026-07-29')).toBe('20.07–29.07');
+  });
+
+  it('numeric with year: appends the middle-dot separator + year', () => {
+    expect(formatTripDates('2026-07-20', '2026-07-29', { withYear: true })).toBe(
+      '20.07–29.07 · 2026',
+    );
+  });
+
+  it('prose: collapses a same-month range to one month name', () => {
+    expect(formatTripDates('2026-07-20', '2026-07-29', { style: 'prose' })).toBe('20–29 ביולי');
+  });
+
+  it('prose: names both ends across a month boundary', () => {
+    expect(formatTripDates('2026-07-29', '2026-08-03', { style: 'prose' })).toBe(
+      '29 ביולי – 3 באוגוסט',
+    );
+  });
+
+  it('prose: does not collapse a same-month range that crosses a year', () => {
+    expect(formatTripDates('2026-07-20', '2027-07-29', { style: 'prose' })).toBe(
+      '20 ביולי – 29 ביולי',
+    );
+  });
+
+  it('reads dates as calendar days in UTC, immune to the runtime zone', () => {
+    expect(formatTripDates('2026-01-01', '2026-01-01')).toBe('01.01–01.01');
+  });
+});
 
 describe('deriveNow', () => {
   it('picks the in-progress soft block as now and the next planned event', () => {

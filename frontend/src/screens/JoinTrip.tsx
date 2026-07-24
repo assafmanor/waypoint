@@ -35,7 +35,7 @@ import {
 } from '../lib/api';
 import { consumeJoinIntent, saveIntent, saveJoinIntent } from '../lib/intent';
 import { dayCount } from '../lib/hebrew';
-import { countdownParts } from '../lib/time';
+import { countdownParts, formatTripDates } from '../lib/time';
 import { DEFAULT_TRIP_ICON, DOT_SEPARATOR, MS_PER_DAY } from '../constants';
 import { t } from '../i18n/he';
 
@@ -50,8 +50,6 @@ type LoadState =
 // has no real members, so these are anonymous stand-ins.
 const AVATAR_COLORS = ['#5ec5b6', '#e88c8c', '#9c8ce8', '#8cb6e8'];
 const MAX_AVATARS = 4;
-
-const ddmm = (iso: string) => `${iso.slice(8, 10)}.${iso.slice(5, 7)}`;
 
 export function JoinTrip() {
   const { token = '' } = useParams();
@@ -261,7 +259,7 @@ function Ready({ preview }: { preview: InvitePreview }) {
               {/* Latin/numeric runs stay mono + dir=ltr; Hebrew never sits in
                   mono (design-language.md §Typography). */}
               <span className="num" dir="ltr">
-                {ddmm(preview.startDate)} – {ddmm(preview.endDate)}
+                {formatTripDates(preview.startDate, preview.endDate)}
               </span>
               {tripDays > 0 && (
                 <>
