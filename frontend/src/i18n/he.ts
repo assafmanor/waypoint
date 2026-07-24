@@ -780,6 +780,8 @@ export const t = {
     // Tooltip on the zone-shift pill (ADR-0107): how far this event's clock is
     // from the day's — the destination vs origin for a flight.
     zoneShift: 'הפרש שעון מאזור הזמן של היום',
+    // Origin on a destination-primary transport row (ADR-0059 §3 amendment).
+    routeFrom: (origin: string) => `מ־${origin}`,
   },
   actions: {
     restore: 'שחזר',

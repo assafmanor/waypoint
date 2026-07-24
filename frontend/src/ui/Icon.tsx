@@ -18,10 +18,7 @@ type IconName =
   | 'close'
   | 'cloud-check'
   | 'cloud-up'
-  | 'cloud-bang'
-  | 'route-origin'
-  | 'route-line'
-  | 'route-dest';
+  | 'cloud-bang';
 type Dir = 'up' | 'right' | 'down' | 'left';
 
 // Cloud base shared by the three per-entity sync glyphs (SyncBadge, ADR-0080/0091).
@@ -46,15 +43,8 @@ const PATHS: Record<IconName, string> = {
   'cloud-check': CLOUD + ' M9.3 13.6l1.9 1.9 3.6-3.8',
   'cloud-up': CLOUD + ' M11.8 16.6v-4.6 M9.6 14l2.2-2.2 2.2 2.2',
   'cloud-bang': CLOUD + ' M11.8 11.9v2.7 M11.8 16.3v.02',
-  // The stacked-route rail (RouteLabel's overflow layout): an origin dot, a
-  // vertical connector, and a destination arrowhead. Real SVG — never a text
-  // glyph, emoji, or CSS-drawn triangle (same reason as the rest of this file:
-  // substituted fallback glyphs sit off-baseline and drift in their box).
-  'route-origin': 'M12 8a4 4 0 1 0 0 8 4 4 0 0 0 0-8Z',
-  'route-line': 'M12 3v18',
-  'route-dest': 'M12 17 6.5 8h11Z',
 };
-const FILLED: ReadonlySet<IconName> = new Set(['caret', 'route-origin', 'route-dest']);
+const FILLED: ReadonlySet<IconName> = new Set(['caret']);
 const ROTATE: Record<Dir, number> = { down: 0, left: 90, up: 180, right: 270 };
 
 export function Icon({
