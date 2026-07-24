@@ -56,3 +56,15 @@ And however the zone is set, it must be **manually adjustable from a real list**
 ## Open (confirm at build)
 
 The exact `includedPrimaryTypes` set; the country→zones data source; generalize `usePlaceSearch` vs a dedicated creation hook; whether to seed `currency` from the country.
+
+## Amendment (2026-07-24, session 87) — settings destination picker + nullable structured fields on update
+
+Decision 6 named three `ZonePicker` call sites; trip **settings** already picked its zone through the shared picker (slice 2), but its **destination** was still free text. This amendment brings settings to parity with creation by editing the destination through the same `DestinationPicker`, and records the two decisions that fall out of doing it in the edit (rather than create) context.
+
+- **The settings destination is now a picker.** `TripSettings`'s `DetailsEditor` swaps the free-text `destination` input for `DestinationPicker`. A pick sets the display name + structured fields; a **resolved** pick also sets the derived primary timezone (same behaviour as creation, Decision 2), and a multi-zone country surfaces the same note + seeds the `ZonePicker` suggestions with `candidateZones`. `destPlace` is seeded from the stored trip, so a name-only edit re-sends the current structured fields unchanged.
+
+- **`updateTripSchema`'s destination fields are nullable (create's are not).** Editing can _replace_ a destination, so it must be able to _clear_ the structured fields when the new destination doesn't resolve to a place. Create has no prior value to clear, so `createTripSchema` keeps them plain-optional; `updateTripSchema` makes the four fields `nullable().optional()`, and a **"use as typed"** edit sends `null` to clear the now-stale coordinates rather than leaving the old place's point behind. `TripsService.updateTrip`'s existing conditional spread already means `null` → write (clear), `undefined` → leave.
+
+- **`null`-to-clear is coerced back to the entity's `undefined` at the merge boundary.** The wire uses `null` for "cleared"; the local `Trip` entity uses `undefined` for "absent". A shared `coerceTripPatch` (`lib/cache.ts`) normalizes a trip change's `after` (present keys only, so an untouched field isn't wiped) and is applied at **both** trip-merge points — the Dexie cache mirror and the in-memory `applyControlChangeToTrip` — so no stray `null` reaches a cached/in-memory trip. (No reader consumes these fields yet; this keeps them clean for the ADR-0107 map/zone reader.)
+
+- **One deliberate divergence from creation:** a "use as typed" pick in settings keeps the trip's existing timezone rather than resetting it to the device default (creation's behaviour) — an established trip already has a meaningful zone the editor shouldn't silently discard.

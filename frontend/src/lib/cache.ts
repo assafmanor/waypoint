@@ -159,7 +159,7 @@ export async function applyChangeToCache(tripId: string, change: EntityChange): 
     await clearTripCache(tripId);
     return;
   }
-  const partial = change.after as Partial<Trip> | undefined;
+  const partial = coerceTripPatch(change.after);
   if (!partial) return;
   const meta = await db.snapshotMeta.get(tripId);
   if (meta) await db.snapshotMeta.put({ ...meta, trip: { ...meta.trip, ...partial } });
@@ -167,6 +167,18 @@ export async function applyChangeToCache(tripId: string, change: EntityChange): 
   // rename doesn't snap back on the next cold load (matches the offline path).
   const listed = await db.tripList.get(tripId);
   if (listed) await db.tripList.put({ ...listed, ...partial });
+}
+
+/** A trip destination field crosses the wire as `null` to clear it
+ *  (updateTripSchema), but the local `Trip` uses `undefined` for absent. Coerce
+ *  a trip change's `after` so a cleared field overwrites as `undefined` (the key
+ *  stays present) rather than persisting a `null` — used by both the cache merge
+ *  above and the in-memory merge in trip-state. */
+export function coerceTripPatch(after: unknown): Partial<Trip> | undefined {
+  if (after == null) return undefined;
+  return Object.fromEntries(
+    Object.entries(after as Record<string, unknown>).map(([k, v]) => [k, v ?? undefined]),
+  ) as Partial<Trip>;
 }
 
 /** Wipes every trace of the signed-in session's local data (sign-out / session

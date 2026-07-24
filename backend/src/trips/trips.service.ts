@@ -129,6 +129,14 @@ export class TripsService {
           data: {
             ...(input.name !== undefined && { name: input.name }),
             ...(input.destination !== undefined && { destination: input.destination }),
+            ...(input.destinationGooglePlaceId !== undefined && {
+              destinationGooglePlaceId: input.destinationGooglePlaceId,
+            }),
+            ...(input.destinationLat !== undefined && { destinationLat: input.destinationLat }),
+            ...(input.destinationLng !== undefined && { destinationLng: input.destinationLng }),
+            ...(input.destinationCountryCode !== undefined && {
+              destinationCountryCode: input.destinationCountryCode,
+            }),
             ...(input.icon !== undefined && { icon: input.icon }),
             ...(input.startDate !== undefined && { startDate: new Date(input.startDate) }),
             ...(input.endDate !== undefined && { endDate: new Date(input.endDate) }),

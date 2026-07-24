@@ -309,6 +309,40 @@ describe('TripsService', () => {
     expect(updated.destination).toBe(NEW_TRIP_INPUT.destination);
   });
 
+  it('persists a picked destination and clears its fields on a "use as typed" edit', async () => {
+    const tripId = await freshTrip();
+
+    // A resolved pick sets the structured destination fields (ADR-0113).
+    const picked = await service.updateTrip(tripId, DEV_USER, {
+      destination: 'Tokyo',
+      destinationGooglePlaceId: 'ChIJ_tokyo',
+      destinationLat: 35.68,
+      destinationLng: 139.76,
+      destinationCountryCode: 'JP',
+    });
+    expect(picked).toMatchObject({
+      destination: 'Tokyo',
+      destinationGooglePlaceId: 'ChIJ_tokyo',
+      destinationLat: 35.68,
+      destinationLng: 139.76,
+      destinationCountryCode: 'JP',
+    });
+
+    // A "use as typed" edit sends null to clear the now-stale coordinates.
+    const cleared = await service.updateTrip(tripId, DEV_USER, {
+      destination: 'Somewhere Google cannot find',
+      destinationGooglePlaceId: null,
+      destinationLat: null,
+      destinationLng: null,
+      destinationCountryCode: null,
+    });
+    expect(cleared.destination).toBe('Somewhere Google cannot find');
+    expect(cleared.destinationGooglePlaceId).toBeUndefined();
+    expect(cleared.destinationLat).toBeUndefined();
+    expect(cleared.destinationLng).toBeUndefined();
+    expect(cleared.destinationCountryCode).toBeUndefined();
+  });
+
   it('blocks a peer from editing trip details', async () => {
     const tripId = await freshTrip();
     await service.joinByCode(PEER_USER, await service.getOrCreateInvite(tripId, DEV_USER));
