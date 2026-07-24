@@ -280,8 +280,15 @@ export const t = {
       // Title-row preview when neither endpoint is picked yet.
       routePreviewGhost: 'בחרו מוצא ויעד',
       routeHint: 'מקומות אמיתיים · מזינים את המפה ואזורי הזמן',
-      // Which timezone a booking's times are entered in (ADR-0107): "שעון טוקיו".
-      zoneAt: (city: string) => `שעון ${city}`,
+      // Which-zone caption under a booking's schedule (ADR-0107). Cities aren't
+      // named (the route pickers show them); the point is "each end is local
+      // time" + how far apart. `mag` is the Hebrew hour phrase (שעה/שעתיים/…);
+      // `ahead` = the destination clock is ahead of the origin's (else behind).
+      zoneNoteTransport: (mag: string, ahead: boolean) =>
+        `זמן מקומי בכל עיר · ביעד ${mag} ${ahead ? 'קדימה' : 'אחורה'}`,
+      // Single-place booking in a zone that differs from the trip's.
+      zoneNotePlace: (mag: string, ahead: boolean) =>
+        `זמן מקומי · המקום ${mag} ${ahead ? 'קדימה' : 'אחורה'}`,
       dateLabel: 'תאריך (משבץ במסלול)',
       departLabel: 'יציאה 🛫',
       arriveLabel: 'הגעה 🛬',
