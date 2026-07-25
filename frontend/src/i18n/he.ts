@@ -821,16 +821,23 @@ export const t = {
     // while a drag is live (ADR-0116 session-117). It has no slot to offer, so it
     // promises a time chooser rather than a schedule.
     dayDropHere: 'שחררו כאן לבחירת שעה',
+    // An EVENT dropped on that same empty day keeps its time and just changes day
+    // (session-123) — it exists already, so there is nothing to choose.
+    moveDayDropHere: 'שחררו כאן להעברה ליום הזה',
     // …and the mirror image (session-118): a row dragged onto a shelf group leaves the
     // day and becomes an idea. Which group it lands on sets the idea's day, so the two
     // zones name their outcome rather than both saying "drop here".
     parkDropHere: 'שחררו כאן להעברה למדף · ליום הזה',
     parkSomedayDropHere: 'שחררו כאן להעברה למדף · מתישהו',
     gap: (label: string) => `פער של ${label} · ＋ שבץ`,
-    gapMinutes: (n: number) => `${n} דק׳`,
+    // The day's edges (session-123): free time with an event on one side only, so the
+    // chip says which side it is on rather than calling itself a gap "between".
+    gapBefore: (label: string) => `פנוי לפני · ${label} · ＋ שבץ`,
+    gapAfter: (label: string) => `פנוי אחרי · ${label} · ＋ שבץ`,
+    gapMinutes: (n: number) => measure(n, 'דק׳'),
     gapHour: 'שעה',
     gapTwoHours: 'שעתיים',
-    gapHours: (n: number) => `${n} שעות`,
+    gapHours: (n: number) => measure(n, 'שעות'),
     // Overlap cluster (ADR-0041) — deliberately distinct from a gap: a bound
     // violet group, plus a seam tag on the colliding row.
     overlapping: 'חופפים',

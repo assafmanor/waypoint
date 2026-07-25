@@ -113,6 +113,11 @@ export interface RowDropTarget {
   overShelf: ShelfDrop | null;
   /** A day pill on the header strip, which means move it to that day. */
   overDate: string | null;
+  /** A gap chip's slot — free time, on this day or on the one the drag walked to
+   *  (session-123). The same target a shelf card has always had. */
+  fill?: GapDefaults;
+  /** The empty day's drop zone: it names a day but has no slot to offer. */
+  overDay?: boolean;
 }
 
 export const ROW_DROP_ACTION = {
@@ -122,6 +127,8 @@ export const ROW_DROP_ACTION = {
   PARK: 'park',
   /** Onto another day, keeping the event's own clock time. */
   MOVE_TO_DAY: 'moveToDay',
+  /** Into free time — the gap's day and start, the event's own length. */
+  MOVE_INTO: 'moveInto',
   NONE: 'none',
 } as const;
 
@@ -129,13 +136,24 @@ export type RowDropAction =
   | { kind: typeof ROW_DROP_ACTION.REORDER; targetId: string }
   | { kind: typeof ROW_DROP_ACTION.PARK; day: string | null }
   | { kind: typeof ROW_DROP_ACTION.MOVE_TO_DAY; day: string }
+  | { kind: typeof ROW_DROP_ACTION.MOVE_INTO; fill: GapDefaults }
   | { kind: typeof ROW_DROP_ACTION.NONE };
 
 /**
- * A row is dropped on another row, on the shelf, or on a day pill.
+ * A row is dropped on a gap, on another row, on the shelf, on the empty day, or on a
+ * day pill.
  *
- * The day pill is the most specific — it names a day outright — then the shelf, which
- * sits below the list so being over it is the more deliberate act, then a row.
+ * Precedence is its sibling table's, target for target: the day pill first (it names a
+ * day outright), then a gap, then the empty day, then the shelf (which sits below the
+ * list, so being over it is the deliberate act), then a row. Nothing in the DOM can put
+ * two of them under one pointer; the order is written down so the two tables cannot
+ * answer the same pointer differently.
+ *
+ * **A row takes every target a shelf card takes** (session-123). Carrying an event to
+ * another day used to mean releasing on its pill and nothing else — so the only thing
+ * the day itself accepted was the shelf, and an event carried there came back as an
+ * idea. Now free time on any day accepts the row as what it already is: an event, with
+ * its own title and length, moved.
  *
  * A shelf GROUP decides the idea's day rather than whether it parks at all: the day's
  * group keeps it pencilled in for the day it came off (which is what `park` does by
@@ -155,6 +173,17 @@ export function resolveRowDrop(
     return target.overDate === dragged.date
       ? { kind: ROW_DROP_ACTION.NONE }
       : { kind: ROW_DROP_ACTION.MOVE_TO_DAY, day: target.overDate };
+  }
+  // Free time, on this day or on the one the drag walked to. Unlike a pill this is
+  // never a no-op: the gap says a time as well as a day, and the row is not in it.
+  if (target.fill) return { kind: ROW_DROP_ACTION.MOVE_INTO, fill: target.fill };
+  // A day with nothing on it has no gap chip to offer, so the empty state is the
+  // target instead (the same one an idea gets) — and it can only ever be another
+  // day, since the day the row came off has at least that row on it.
+  if (target.overDay) {
+    return activeDate === dragged.date
+      ? { kind: ROW_DROP_ACTION.NONE }
+      : { kind: ROW_DROP_ACTION.MOVE_TO_DAY, day: activeDate };
   }
   if (target.overShelf) {
     return {

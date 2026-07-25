@@ -139,6 +139,54 @@ describe('resolveRowDrop (ADR-0116 session-118)', () => {
   });
 });
 
+// A row takes every target a card takes (session-123). Carrying an event to another
+// day used to mean releasing on its pill and nothing else — so the only thing the day
+// itself accepted was the shelf, and an event carried there came back as an idea.
+describe('a row dropped on free time (ADR-0116 session-123)', () => {
+  const OTHER = '2026-07-28';
+
+  it('moves into the gap it was dropped on', () => {
+    const action = resolveRowDrop(ROW, { ...nowhereRow, fill: FILL }, DAY);
+    expect(action).toEqual({ kind: ROW_DROP_ACTION.MOVE_INTO, fill: FILL });
+  });
+
+  // The gap carries its own day, so a drag that walked to Thursday and let go on a
+  // chip there moves the event to Thursday — as an event, not as an idea.
+  it('follows the gap to another day', () => {
+    const onOther = { date: OTHER, start: '09:00', end: '10:00' };
+    expect(resolveRowDrop(ROW, { ...nowhereRow, fill: onOther }, OTHER)).toEqual({
+      kind: ROW_DROP_ACTION.MOVE_INTO,
+      fill: onOther,
+    });
+  });
+
+  it('prefers a gap over the shelf and over a row', () => {
+    const action = resolveRowDrop(
+      ROW,
+      { overRowId: 'ev-2', overShelf: SHELF_DROP.POOL, overDate: null, fill: FILL },
+      DAY,
+    );
+    expect(action).toEqual({ kind: ROW_DROP_ACTION.MOVE_INTO, fill: FILL });
+  });
+
+  // A day with nothing on it has no chip to offer, so the empty state is the target
+  // instead — the same one an idea gets, meaning the plain move.
+  it('dropped on an empty day, moves to that day keeping its own time', () => {
+    expect(resolveRowDrop(ROW, { ...nowhereRow, overDay: true }, OTHER)).toEqual({
+      kind: ROW_DROP_ACTION.MOVE_TO_DAY,
+      day: OTHER,
+    });
+  });
+
+  // Only reachable if the day on screen is somehow the row's own: there is nothing to
+  // move, and a move-to-self would still cost a write and a change-feed row.
+  it('is a no-op when the empty day is the day the row is already on', () => {
+    expect(resolveRowDrop(ROW, { ...nowhereRow, overDay: true }, DAY)).toEqual({
+      kind: ROW_DROP_ACTION.NONE,
+    });
+  });
+});
+
 // The header's day strip (session-119): both drags can carry a thing to another day.
 describe('a day pill as a drop target', () => {
   const OTHER = '2026-07-28';

@@ -56,7 +56,14 @@ import {
   type TimeGroup,
   type TimeItem,
 } from '../lib/time';
-import { gapBetween, nextSlot, type GapDefaults } from '../lib/gaps';
+import {
+  gapAfterLast,
+  gapBeforeFirst,
+  gapBetween,
+  nextSlot,
+  type Gap,
+  type GapDefaults,
+} from '../lib/gaps';
 import { shelfGroups } from '../lib/shelf';
 import {
   resolveRowDrop,
@@ -117,6 +124,12 @@ type RowDrag = {
   overShelf: ShelfDrop | null;
   /** A day pill: dropping there moves the event to that day (session-119). */
   overDate: string | null;
+  /** A gap chip, and the slot it offers: dropping there moves the event into that free
+   *  time, on whichever day the chip belongs to (session-123). */
+  overGap: string | null;
+  fill?: GapDefaults;
+  /** The empty day's drop zone — which can only be another day (session-123). */
+  overDay: boolean;
 } | null;
 
 /** A shelf card being dragged, and what the pointer is over. */
@@ -135,6 +148,25 @@ type IdeaDrag = {
 /** A gap's identity for the drag hit-test: its own slot. Stable across renders and
  *  unique per day, so no synthetic id has to be invented or stored. */
 const gapKey = (fill: GapDefaults) => `${fill.date}T${fill.start}-${fill.end}`;
+
+// What is under the pointer, asked the same way by both drags (session-123 — the row
+// drag reads gaps and the empty day now, so these stopped being the card drag's own).
+/** The gap chip under the pointer, and the slot it offers. The slot travels on the
+ *  element itself, so no lookup table and no id has to be minted for a chip that only
+ *  exists for this render. */
+const gapAt = (el: Element | null): { key: string; fill: GapDefaults } | null => {
+  const chip = el?.closest('[data-gap-key]') as HTMLElement | null;
+  const { gapKey: key, gapDate, gapStart, gapEnd } = chip?.dataset ?? {};
+  return key && gapDate && gapStart && gapEnd
+    ? { key, fill: { date: gapDate, start: gapStart, end: gapEnd } }
+    : null;
+};
+/** Which shelf group the pointer is over: the day's, or the pool's. */
+const shelfAt = (el: Element | null) =>
+  ((el?.closest('[data-shelf-drop]') as HTMLElement | null)?.dataset.shelfDrop as
+    ShelfDrop | undefined) ?? null;
+/** The empty day's drop zone, which exists only while a drag is in flight. */
+const dayDropAt = (el: Element | null) => el?.closest('[data-day-drop]') != null;
 
 function gapLabel(minutes: number): string {
   if (minutes < MINUTES_PER_HOUR) return t.planDay.gapMinutes(minutes);
@@ -283,7 +315,14 @@ export function PlanDay() {
         ghost.lift(el, at);
         dayAtLift.current = live.current.activeDate;
         setDragging(true);
-        const started = { id, overId: null, overShelf: null, overDate: null };
+        const started = {
+          id,
+          overId: null,
+          overShelf: null,
+          overDate: null,
+          overGap: null,
+          overDay: false,
+        };
         live.current.drag = started;
         setDrag(started);
       },
@@ -315,11 +354,31 @@ export function PlanDay() {
     const el = document.elementFromPoint(point.clientX, point.clientY);
     const overId = (el?.closest('[data-bld-id]') as HTMLElement | null)?.dataset.bldId ?? null;
     const overRow = overId && overId !== d.id && softIndex.has(overId) ? overId : null;
-    const shelfEl = el?.closest('[data-shelf-drop]') as HTMLElement | null;
-    const overShelf = (shelfEl?.dataset.shelfDrop as ShelfDrop | undefined) ?? null;
+    const overShelf = shelfAt(el);
     const overDate = dayPillAt(el);
-    if (overRow === d.overId && overShelf === d.overShelf && overDate === d.overDate) return;
-    const next = { ...d, overId: overRow, overShelf, overDate };
+    // Free time takes the row too now (session-123): the same chips, read the same way
+    // as the card drag reads them, so a row carried to another day has somewhere to land
+    // that isn't the shelf.
+    const gap = gapAt(el);
+    const overDay = dayDropAt(el);
+    if (
+      overRow === d.overId &&
+      overShelf === d.overShelf &&
+      overDate === d.overDate &&
+      (gap?.key ?? null) === d.overGap &&
+      overDay === d.overDay
+    ) {
+      return;
+    }
+    const next = {
+      ...d,
+      overId: overRow,
+      overShelf,
+      overDate,
+      overGap: gap?.key ?? null,
+      fill: gap?.fill,
+      overDay,
+    };
     live.current.drag = next;
     setDrag(next);
     setOverDate(overDate);
@@ -333,7 +392,13 @@ export function PlanDay() {
     if (!event) return false;
     const action = resolveRowDrop(
       { id: target.id, date: event.date },
-      { overRowId: target.overId, overShelf: target.overShelf, overDate: target.overDate },
+      {
+        overRowId: target.overId,
+        overShelf: target.overShelf,
+        overDate: target.overDate,
+        fill: target.fill,
+        overDay: target.overDay,
+      },
       day,
     );
     switch (action.kind) {
@@ -349,9 +414,29 @@ export function PlanDay() {
         // hard event changing days is a commitment change (ADR-0011).
         verbs.update(event, { date: action.day, ...sameTimeOn(event, action.day) });
         return true;
+      case ROW_DROP_ACTION.MOVE_INTO:
+        verbs.update(event, { date: action.fill.date, ...slotFor(event, action.fill) });
+        return true;
       case ROW_DROP_ACTION.NONE:
         return false;
     }
+  };
+
+  /** The slot an EXISTING event gets when it is dropped into free time — a row moved
+   *  into a gap, or a skipped card restored into one. It starts where the gap starts
+   *  and keeps the length it already had: the chip's own end is a prefill for something
+   *  being created (GAP_FILL_MINUTES), never a decision to shorten a two-hour visit to
+   *  an hour. An untimed event has no length to keep, so it takes the chip's block —
+   *  which is the whole point of dropping it on one. */
+  const slotFor = (event: TripEvent, fill: GapDefaults) => {
+    const startsAt = zonedIso(fill.date, fill.start, tz);
+    if (!event.startsAt)
+      return { startsAt, ...(fill.end ? { endsAt: zonedIso(fill.date, fill.end, tz) } : {}) };
+    if (!event.endsAt) return { startsAt };
+    const durationMs = Date.parse(event.endsAt) - Date.parse(event.startsAt);
+    // Absolute ms, so an event long enough to run past midnight keeps its length
+    // instead of needing the date arithmetic ADR-0037 already settled.
+    return { startsAt, endsAt: new Date(Date.parse(startsAt) + durationMs).toISOString() };
   };
 
   /** The event's own start/end wall-clock times, rebuilt on another date. An untimed
@@ -389,15 +474,14 @@ export function PlanDay() {
     const d = live.current.idea;
     if (!d) return;
     const el = document.elementFromPoint(point.clientX, point.clientY);
-    const target = el?.closest('[data-gap-key]') as HTMLElement | null;
-    const overGap = target?.dataset.gapKey ?? null;
+    const gap = gapAt(el);
+    const overGap = gap?.key ?? null;
     // A shelf group is the other kind of target: dropping there re-aims the idea's DAY
     // (a pencil mark) rather than scheduling it (ADR-0116 §2).
-    const shelfEl = el?.closest('[data-shelf-drop]') as HTMLElement | null;
-    const overShelf = (shelfEl?.dataset.shelfDrop as ShelfDrop | undefined) ?? null;
+    const overShelf = shelfAt(el);
     // …on a day with nothing on it there are no gaps at all, so the empty state itself
     // becomes a target while a drag is in flight (session-117)…
-    const overDay = el?.closest('[data-day-drop]') != null;
+    const overDay = dayDropAt(el);
     // …and a day pill on the header strip names a day outright (session-119).
     const overDate = dayPillAt(el);
     if (
@@ -408,18 +492,7 @@ export function PlanDay() {
     ) {
       return;
     }
-    // The slot travels on the element itself, so the drop needs no lookup table and no
-    // id to be minted for a gap that only exists for this render.
-    const { gapDate, gapStart, gapEnd } = target?.dataset ?? {};
-    const next = {
-      ...d,
-      overGap,
-      overShelf,
-      overDay,
-      overDate,
-      fill:
-        gapDate && gapStart && gapEnd ? { date: gapDate, start: gapStart, end: gapEnd } : undefined,
-    };
+    const next = { ...d, overGap, overShelf, overDay, overDate, fill: gap?.fill };
     live.current.idea = next;
     setIdeaDrag(next);
     setOverDate(overDate);
@@ -517,18 +590,16 @@ export function PlanDay() {
    *  into the verb that already performs it. */
   const commitShelfDrop = (subject: ShelfDragSubject, target: ShelfDropTarget): boolean => {
     const action = resolveShelfDrop(subject.kind, target, live.current.activeDate);
-    const slot = (fill: GapDefaults) => ({
-      startsAt: zonedIso(fill.date, fill.start, tz),
-      endsAt: zonedIso(fill.date, fill.end, tz),
-    });
     switch (action.kind) {
       case SHELF_DROP_ACTION.RESTORE_INTO:
         if (subject.kind !== SHELF_DRAG.SKIPPED) return false;
         // Un-skipped and moved in ONE patch, so it is one row in the change feed and
-        // one undo — not "restored" followed by "moved".
+        // one undo — not "restored" followed by "moved". The gap carries its own day,
+        // which is what a card dropped on a gap the drag WALKED to lands on.
         verbs.update(subject.event, {
           status: EVENT_STATUS.PLANNED,
-          ...slot(action.fill),
+          date: action.fill.date,
+          ...slotFor(subject.event, action.fill),
         });
         return true;
       case SHELF_DROP_ACTION.RESTORE:
@@ -563,6 +634,18 @@ export function PlanDay() {
    *  even though the drop means opposite things (re-aim a card / park a row). */
   const overShelf = (group: ShelfDrop) =>
     ideaDrag?.overShelf === group || drag?.overShelf === group;
+  /** …and so is a gap: both drags land in free time, so both light it (session-123). */
+  const overGap = (fill: GapDefaults) =>
+    ideaDrag?.overGap === gapKey(fill) || drag?.overGap === gapKey(fill);
+  /** The day's edge gaps (session-123): the free time before the first event and after
+   *  the last, which `gapBetween` cannot see because each has an event on one side
+   *  only. Absent on a read-only archive, exactly like every other gap chip. */
+  const edgeGaps = readOnly
+    ? { before: null, after: null }
+    : {
+        before: gapBeforeFirst(dayEvents, activeDate, tz),
+        after: gapAfterLast(dayEvents, activeDate, tz),
+      };
 
   const dayNumber = daysBetween(trip.startDate, activeDate) + 1;
   const dayNoon = new Date(zonedIso(activeDate, DAY_NOON, trip.timezone));
@@ -604,7 +687,7 @@ export function PlanDay() {
     },
     onOpenDetail: setDetailTarget,
     onGapFill: (fill) => setGapChoice(fill),
-    ideaDrag,
+    overGap,
     onResolve: (cluster) => {
       setResolveCluster(cluster);
       setResolveMover(null);
@@ -652,19 +735,37 @@ export function PlanDay() {
           // (session-117). While a drag is in flight the empty state itself becomes
           // the target, the same "chrome that exists only while it's useful" move
           // the empty day GROUP already makes on the shelf (§2 amendment). It offers
-          // no slot, so an idea dropped here opens the schedule sheet to pick a time.
+          // no slot, so an idea dropped here opens the schedule sheet to pick a time,
+          // and a ROW dropped here (session-123) simply moves to this day — it can only
+          // be a day the drag walked to, since the day it came off has it on it.
           <div
             className={
               'builder-empty' +
-              (ideaDrag ? ' droppable' : '') +
-              (ideaDrag?.overDay ? ' drop-over' : '')
+              (dragLive ? ' droppable' : '') +
+              (ideaDrag?.overDay || drag?.overDay ? ' drop-over' : '')
             }
-            data-day-drop={ideaDrag ? '' : undefined}
+            data-day-drop={dragLive ? '' : undefined}
           >
-            {ideaDrag ? t.planDay.dayDropHere : readOnly ? t.planDay.pastEmpty : t.planDay.empty}
+            {drag
+              ? t.planDay.moveDayDropHere
+              : ideaDrag
+                ? t.planDay.dayDropHere
+                : readOnly
+                  ? t.planDay.pastEmpty
+                  : t.planDay.empty}
           </div>
         ) : (
           <div>
+            {/* The day's head: free time before the first event, which `gapBetween`
+                cannot see because it has an event on one side only (session-123). */}
+            {edgeGaps.before && (
+              <GapChip
+                gap={edgeGaps.before}
+                label={t.planDay.gapBefore(gapLabel(edgeGaps.before.minutes))}
+                over={overGap(edgeGaps.before.fill)}
+                onFill={setGapChoice}
+              />
+            )}
             {/* Overlaps render as the concurrency forest (ADR-0041): nests for
                 containment, violet clusters for partial overlap. Gap chips sit
                 only between top-level groups — never inside an overlap.
@@ -685,6 +786,16 @@ export function PlanDay() {
                   ctx={builderCtx}
                 />
               ))}
+            {/* …and its tail, below the untimed rows: they hold no clock position, so
+                nothing sits "after the last event" but this. */}
+            {edgeGaps.after && (
+              <GapChip
+                gap={edgeGaps.after}
+                label={t.planDay.gapAfter(gapLabel(edgeGaps.after.minutes))}
+                over={overGap(edgeGaps.after.fill)}
+                onFill={setGapChoice}
+              />
+            )}
           </div>
         )}
 
@@ -1012,8 +1123,9 @@ interface BuilderCtx {
   onOpenDetail: (booking: Booking) => void;
   onGapFill: (fill: GapDefaults) => void;
   onResolve: (cluster: TimeGroup) => void;
-  /** A shelf idea being dragged, and the gap it is currently over (ADR-0116 §5). */
-  ideaDrag: { id: string; overGap: string | null } | null;
+  /** Is a drag currently over this gap? Either drag can be (ADR-0116 §5, extended to
+   *  the row drag in session-123), and both light it the same way. */
+  overGap: (fill: GapDefaults) => boolean;
 }
 
 const groupMembers = (g: TimeGroup): TimeItem[] => (g.kind === 'cluster' ? g.items : [g.item]);
@@ -1042,6 +1154,40 @@ function overlapSeam(items: TimeItem[], idx: number): string | undefined {
     if (ov > best) best = ov;
   }
   return best > 0 ? t.planDay.overlapSeam(gapLabel(Math.round(best / 60000))) : undefined;
+}
+
+/** Free time, as a chip. It is the day's one honest drop target for a drag (ADR-0116
+ *  §5 — no displacement, so no ripple decision to make), and a tap on it opens the
+ *  gap-fill chooser. ONE component for all three kinds of gap — between two events,
+ *  before the first, after the last (session-123) — so they cannot drift apart in what
+ *  they accept. The slot travels on the element itself (`data-gap-*`), which is what
+ *  both hit-tests read. */
+function GapChip({
+  gap,
+  label,
+  over,
+  onFill,
+}: {
+  gap: Gap;
+  label: string;
+  over: boolean;
+  onFill: (fill: GapDefaults) => void;
+}) {
+  return (
+    <div
+      className={'gap' + (over ? ' drop-over' : '')}
+      data-gap-key={gapKey(gap.fill)}
+      data-gap-date={gap.fill.date}
+      data-gap-start={gap.fill.start}
+      data-gap-end={gap.fill.end}
+    >
+      <span className="gap-line" />
+      <button className="gap-add" onClick={() => onFill(gap.fill)}>
+        {label}
+      </button>
+      <span className="gap-line" />
+    </div>
+  );
 }
 
 // One sibling level: partial-overlap clusters get a violet "חופפים" box, lone
@@ -1108,22 +1254,12 @@ function BuilderGroups({
           <Fragment key={key}>
             {nowRef}
             {gap && (
-              // A gap is free time, so it is the one honest drop target for a
-              // dragged idea (ADR-0116 §5): no displacement, no ripple decision.
-              // `data-gap-key` is what the pointer-move hit-test looks for.
-              <div
-                className={'gap' + (ctx.ideaDrag?.overGap === gapKey(gap.fill) ? ' drop-over' : '')}
-                data-gap-key={gapKey(gap.fill)}
-                data-gap-date={gap.fill.date}
-                data-gap-start={gap.fill.start}
-                data-gap-end={gap.fill.end}
-              >
-                <span className="gap-line" />
-                <button className="gap-add" onClick={() => ctx.onGapFill(gap.fill)}>
-                  {t.planDay.gap(gapLabel(gap.minutes))}
-                </button>
-                <span className="gap-line" />
-              </div>
+              <GapChip
+                gap={gap}
+                label={t.planDay.gap(gapLabel(gap.minutes))}
+                over={ctx.overGap(gap.fill)}
+                onFill={ctx.onGapFill}
+              />
             )}
             {g.kind === 'cluster' ? (
               <div className="bld-cluster">

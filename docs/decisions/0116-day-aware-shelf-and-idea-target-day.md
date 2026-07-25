@@ -269,3 +269,48 @@ Session 120's teardown removed the guard **from the element** at the end of ever
 **The guard is only the gesture's to remove when the element is gone from the tree** (`!el.isConnected`) — the orphan case session 120 introduced the escape hatch for, where the ref cleanup deliberately skipped removal and the teardown is the only other chance. A still-mounted element keeps its mount-time listener.
 
 The class of miss is worth naming, because it is now three sessions old: **every e2e in `shelf-drag.spec.ts` booted cold and touched its target once**, which is the one thing a real session never does. Two tests were added for the second gesture — a shelf card and a builder row — and they fail on session 120's code and pass on this one.
+
+## Amendment (2026-07-25, session 123) — the day's edges accept a drop, and a row lands on another day as an event
+
+Two reported gaps in the model, both of the same shape: a place the gesture obviously meant to reach and structurally could not.
+
+### 1. Free time at the day's EDGES is a gap too
+
+A gap chip has always meant "the empty stretch **between** two consecutive events", which quietly excludes the two stretches with an event on one side only — before the day's first event, and after its last. So "drag this in before the flight" had no target, and the only way to put something at the head of a day was the form.
+
+The day now offers up to two more chips, from the same `lib/gaps.ts` and rendered by the same component as every other one, so all three kinds accept exactly the same drops (an idea → the form on that slot, a skipped card → restored into it, a row → moved into it):
+
+- **`gapBeforeFirst`** — from `DAY_WINDOW.START_HOUR` to the first timed event's start.
+- **`gapAfterLast`** — from the last event's end to 23:59, prefilled with `nextSlot`, which is the same slot the foot-of-the-day add button already offers. The chip and the button therefore cannot drift apart; the chip is the one you can drop **onto**.
+
+**Each hugs the event it is named for.** "Before the 10:00 tour" prefills 09:00–10:00, not the start of the day's window — the window is a floor on how far out the chip reaches, never the thing it aims at. `gapBetween` already behaves this way (its slot butts against the event before it); the edges just have a different neighbour to butt against.
+
+**Where there is no time, there is no chip** — the same `GAP_MIN_MINUTES` threshold every gap answers to, applied to four cases the edges introduce:
+
+- a first event at or before the day's window start (07:30 leaves 30 minutes, so nothing);
+- a day whose events are all **untimed** — nothing to hang an edge off, and the untimed rows carry no clock position, so the tail chip renders **below** them;
+- a last event running **past midnight** (ADR-0037): the same-day tail is zero, so no chip, matching `nextSlot`'s existing clamp (ADR-0036);
+- a read-only past trip, which has no gap chips at all (ADR-0040).
+
+**An event before the day's window keeps its edge.** A 05:30 flight measures its leading gap from midnight instead — the small hours in front of it are exactly when "add the taxi before this" gets asked, and a window that swallowed them would be a wall rather than a floor.
+
+### 2. A row takes every target a card takes
+
+Session 119 let a row be carried to another day by **releasing on the day's pill**. That was the only cross-day path: once the drag had actually walked to that day, the only thing on screen that accepted a row was the shelf — and a row dropped there **parks**, which turns the event into an idea. The reported symptom is exactly that: carrying an event to tomorrow gave you a maybe on tomorrow's shelf, not an event on tomorrow.
+
+`resolveRowDrop` now reads the two targets the card table already had, in the same precedence order (`lib/shelf-drop.ts` documents it once for both tables, because nothing in the DOM can put two of them under one pointer and the two must never answer the same pointer differently):
+
+- **a gap chip → `MOVE_INTO`.** The chip carries its own day, so a drag that dwelled onto Thursday and let go on a chip there moves the event to Thursday, at that slot. On the day you are already standing on it is a plain reschedule.
+- **the empty day → `MOVE_TO_DAY`.** No slot to offer, so the event keeps its own clock time, exactly as the pill does. It can only ever be another day: the day the row came off has at least that row on it.
+
+Dropping a row on an **occupied row of another day** stays out, as it has been since §5 — displacing a scheduled event is a ripple decision (ADR-0041), and with free time and the pill both accepting the row there is now no gesture left that needs it.
+
+### 3. An existing event dropped into free time keeps its length
+
+The one write-shape decision the above forces. A gap chip's `end` is a **prefill for something being created** (`GAP_FILL_MINUTES`, capped at the gap) — reading it as an instruction would silently shorten a two-hour visit to an hour every time it was dragged. So a drop into free time gives an event the gap's **start** and the event's **own** duration; an untimed event, having no length to keep, takes the chip's block, which is the point of dropping it on one.
+
+This is one helper (`slotFor`) shared with **`RESTORE_INTO`**, which used to take the chip's slot outright — so a skipped two-hour event came back as one hour. Fixed here rather than left divergent: two gestures that mean "put this existing thing in that free time" must not write different things. `RESTORE_INTO` also now writes the gap's `date`, which was latent since session 119 made it possible to carry a skipped card to another day: the event's slot moved and its `date` field did not.
+
+### What the copy says
+
+The two new chips read `פנוי לפני` / `פנוי אחרי` rather than `פער של` — a gap "of" two hours implies two sides. The empty day gains a third string: an idea dropped there is asked for a time (`שחררו כאן לבחירת שעה`, session 120's create/move line), an **event** dropped there just moves (`שחררו כאן להעברה ליום הזה`).
