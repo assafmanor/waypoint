@@ -156,6 +156,11 @@ export const DEFAULT_MAYBE_ICON = '💡';
  *  band is generous because a thumb holding a card covers a lot of screen. */
 export const DRAG_EDGE_SCROLL_ZONE_PX = 84;
 export const DRAG_EDGE_SCROLL_MAX_PX = 14;
+/** How much vertical overflow an ancestor needs before a drag treats it as THE
+ *  scroller. A horizontally-scrolling strip reports `overflow-y: auto` (CSS makes
+ *  the other axis `auto` when one is not `visible`) and is often a pixel or two
+ *  taller than its box, so without a floor the drag scrolls the strip, not the page. */
+export const DRAG_SCROLLER_MIN_OVERFLOW_PX = 24;
 
 /** Press-and-hold before a shelf card starts dragging (ADR-0116 §5, session-114):
  *  long enough that a scroll flick never arms a drag, short enough that a

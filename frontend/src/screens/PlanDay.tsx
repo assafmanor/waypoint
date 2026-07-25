@@ -54,7 +54,7 @@ import {
 } from '../lib/time';
 import { gapBetween, nextSlot, type GapDefaults } from '../lib/gaps';
 import { shelfGroups } from '../lib/shelf';
-import { useEdgeAutoScroll } from '../lib/edge-autoscroll';
+import { useEdgeAutoScroll, type DragPoint } from '../lib/edge-autoscroll';
 import { useHoldToDrag, useSelectionGuard } from '../lib/useHoldToDrag';
 import {
   CODE_PREFIX,
@@ -194,7 +194,7 @@ export function PlanDay() {
       setDrag({ id, overId: null });
     },
     onPointerMove: (e: ReactPointerEvent) => {
-      autoScroll.track(e.clientY);
+      autoScroll.track({ clientX: e.clientX, clientY: e.clientY });
       setDrag((d) => {
         if (!d) return d;
         const el = document.elementFromPoint(e.clientX, e.clientY);
@@ -240,41 +240,47 @@ export function PlanDay() {
   // scroll normally, because a swipe and a drag are the same movement and only
   // time can tell them apart.
   const holdToDrag = useHoldToDrag();
+  // What the pointer is over right now. Called on every move — and on every frame
+  // the edge auto-scroll actually scrolls, because content moving under a
+  // stationary finger changes the answer just as much as the finger moving does.
+  const hitTestDropTarget = (point: DragPoint) =>
+    setIdeaDrag((d) => {
+      if (!d) return d;
+      const el = document.elementFromPoint(point.clientX, point.clientY);
+      const target = el?.closest('[data-gap-key]') as HTMLElement | null;
+      const next = target?.dataset.gapKey ?? null;
+      // A shelf group is the other kind of target: dropping there re-aims the
+      // idea's DAY (a pencil mark) rather than scheduling it (ADR-0116 §2).
+      const shelfEl = el?.closest('[data-shelf-drop]') as HTMLElement | null;
+      const overShelf = (shelfEl?.dataset.shelfDrop as ShelfDrop | undefined) ?? null;
+      if (next === d.overGap && overShelf === d.overShelf) return d;
+      // The slot travels on the element itself, so the drop needs no lookup table
+      // and no id to be minted for a gap that only exists for this render.
+      const { gapDate, gapStart, gapEnd } = target?.dataset ?? {};
+      return {
+        ...d,
+        overGap: next,
+        overShelf,
+        fill:
+          gapDate && gapStart && gapEnd
+            ? { date: gapDate, start: gapStart, end: gapEnd }
+            : undefined,
+      };
+    });
+
   const ideaDragProps = (m: MaybeItem) =>
     holdToDrag({
       onArm: (el) => {
-        autoScroll.start(el);
+        autoScroll.start(el, hitTestDropTarget);
         setIdeaDrag({ id: m.id, overGap: null, overShelf: null });
       },
       onCancel: () => {
         autoScroll.stop();
         setIdeaDrag(null);
       },
-      onMove: (e) => {
-        autoScroll.track(e.clientY);
-        setIdeaDrag((d) => {
-          if (!d) return d;
-          const el = document.elementFromPoint(e.clientX, e.clientY);
-          const target = el?.closest('[data-gap-key]') as HTMLElement | null;
-          const next = target?.dataset.gapKey ?? null;
-          // A shelf group is the other kind of target: dropping there re-aims the
-          // idea's DAY (a pencil mark) rather than scheduling it (ADR-0116 §2).
-          const shelfEl = el?.closest('[data-shelf-drop]') as HTMLElement | null;
-          const overShelf = (shelfEl?.dataset.shelfDrop as ShelfDrop | undefined) ?? null;
-          if (next === d.overGap && overShelf === d.overShelf) return d;
-          // The slot travels on the element itself, so the drop needs no lookup table
-          // and no id to be minted for a gap that only exists for this render.
-          const { gapDate, gapStart, gapEnd } = target?.dataset ?? {};
-          return {
-            ...d,
-            overGap: next,
-            overShelf,
-            fill:
-              gapDate && gapStart && gapEnd
-                ? { date: gapDate, start: gapStart, end: gapEnd }
-                : undefined,
-          };
-        });
+      onMove: (point) => {
+        autoScroll.track(point);
+        hitTestDropTarget(point);
       },
       onDrop: () => {
         autoScroll.stop();
