@@ -8,6 +8,15 @@
   scroll-snap-align: start;
   flex: 0 0 auto;
   width: 150px;
+  /* Every card is the same height, in every group. `.shelf` is a flex row, so
+     cards already stretched to match WITHIN a strip — but ADR-0116 §2 split the
+     shelf into two strips, and each sized itself to its own tallest card, so a
+     long title in one group made the two rows visibly different. The floor fits
+     the tallest possible card (icon + a 2-line title + meta + the action), and
+     the title clamp below keeps anything from exceeding it. */
+  min-height: 132px;
+  display: flex;
+  flex-direction: column;
   text-align: start;
   background: repeating-linear-gradient(-45deg, #fff 0 9px, #fbfaf7 9px 18px);
   border: 1px dashed var(--soft-line);
@@ -24,9 +33,10 @@
   /* scheduling is a plan action (design-language color budget) */
   border-color: var(--plan);
 }
-.wp-maybecard:focus-visible {
-  outline: 2.5px solid var(--teal);
-  outline-offset: 2px;
+.wp-maybecard:focus-visible,
+.wp-maybecard:has(.wp-maybecard-body:focus-visible) {
+  outline: none;
+  box-shadow: 0 0 0 3px color-mix(in srgb, var(--teal) 45%, transparent);
 }
 .wp-maybecard.consumed {
   opacity: 0.4;
@@ -42,7 +52,13 @@
   font-size: 13.5px;
   margin-top: 6px;
   line-height: 1.15;
-  display: block;
+  /* Clamped so one long place name (a researched hotel carries its whole official
+     name) can't stretch the strip — the same treatment the event card's title
+     already uses. */
+  display: -webkit-box;
+  -webkit-line-clamp: 2;
+  -webkit-box-orient: vertical;
+  overflow: hidden;
 }
 .wp-maybecard-meta {
   font-size: var(--text-caption);
@@ -51,7 +67,8 @@
   display: block;
 }
 .wp-maybecard-add {
-  margin-top: 9px;
+  margin-top: auto;
+  padding-top: 9px;
   font-size: var(--text-caption);
   font-weight: 700;
   color: var(--plan-deep); /* plan action, not location */
@@ -61,7 +78,9 @@
 /* Remove variant (PlanDay shelf): the body carries the schedule tap, a corner
    button removes the idea. The card itself stays a positioning context. */
 .wp-maybecard-body {
-  display: block;
+  display: flex;
+  flex-direction: column;
+  flex: 1;
   width: 100%;
   text-align: start;
   font: inherit;
@@ -75,9 +94,9 @@
   cursor: default;
 }
 .wp-maybecard-body:focus-visible {
-  outline: 2.5px solid var(--plan);
-  outline-offset: 2px;
-  border-radius: var(--radius-8);
+  /* The ring lives on the card (above), at the card's radius — an inner ring here
+     drew its own corners across the card's rounded ones. */
+  outline: none;
 }
 .wp-maybecard-remove {
   position: absolute;
@@ -112,7 +131,8 @@
 }
 .wp-maybecard.dragging {
   opacity: 0.55;
-  outline: 2px solid var(--plan);
-  outline-offset: 2px;
+  border-color: var(--plan);
+  border-style: solid;
+  box-shadow: 0 0 0 3px color-mix(in srgb, var(--plan) 30%, transparent);
   cursor: grabbing;
 }

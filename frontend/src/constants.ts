@@ -151,6 +151,12 @@ export const DOCUMENT_TYPE_ICON = {
 /** Icon for a manually added maybe-shelf idea (no icon picker yet). */
 export const DEFAULT_MAYBE_ICON = '💡';
 
+/** Drag edge auto-scroll (ADR-0116 §5 amendment): how deep the edge band is, and
+ *  the fastest one frame may scroll while the pointer is pinned against it. The
+ *  band is generous because a thumb holding a card covers a lot of screen. */
+export const DRAG_EDGE_SCROLL_ZONE_PX = 84;
+export const DRAG_EDGE_SCROLL_MAX_PX = 14;
+
 /** The 5-hue Map pin/badge palette (ADR-0109 §3 / ADR-0110 §2). The `--cat-*`
  *  tokens carry the actual colours (styles/tokens.css); this is the hue key. */
 export type PinHue = 'food' | 'lodging' | 'transit' | 'leisure' | 'services';

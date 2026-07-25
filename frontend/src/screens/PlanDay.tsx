@@ -54,6 +54,7 @@ import {
 } from '../lib/time';
 import { gapBetween, nextSlot, type GapDefaults } from '../lib/gaps';
 import { shelfGroups } from '../lib/shelf';
+import { useEdgeAutoScroll } from '../lib/edge-autoscroll';
 import {
   CODE_PREFIX,
   DAY_NOON,
@@ -170,13 +171,18 @@ export function PlanDay() {
   // Drag-to-reorder: a soft event's grip is the handle. Pointer capture keeps
   // move/up on the grip; the row under the pointer (data-bld-id) is the drop
   // target. Drop reassigns the soft time slots (verbs.reorder → planReorder).
+  // Both drags share one edge auto-scroll: a drag that can only reach what's
+  // already on screen can't reach the row (or gap) you're aiming for.
+  const autoScroll = useEdgeAutoScroll();
   const [drag, setDrag] = useState<{ id: string; overId: string | null } | null>(null);
   const gripProps = (id: string) => ({
     onPointerDown: (e: ReactPointerEvent) => {
       (e.currentTarget as HTMLElement).setPointerCapture(e.pointerId);
+      autoScroll.start(e.currentTarget as HTMLElement);
       setDrag({ id, overId: null });
     },
     onPointerMove: (e: ReactPointerEvent) => {
+      autoScroll.track(e.clientY);
       setDrag((d) => {
         if (!d) return d;
         const el = document.elementFromPoint(e.clientX, e.clientY);
@@ -186,6 +192,7 @@ export function PlanDay() {
       });
     },
     onPointerUp: () => {
+      autoScroll.stop();
       if (drag?.overId && drag.overId !== drag.id) verbs.reorder(dayEvents, drag.id, drag.overId);
       setDrag(null);
     },
@@ -212,9 +219,11 @@ export function PlanDay() {
   const ideaDragProps = (m: MaybeItem) => ({
     onPointerDown: (e: ReactPointerEvent) => {
       (e.currentTarget as HTMLElement).setPointerCapture(e.pointerId);
+      autoScroll.start(e.currentTarget as HTMLElement);
       setIdeaDrag({ id: m.id, overGap: null });
     },
     onPointerMove: (e: ReactPointerEvent) => {
+      autoScroll.track(e.clientY);
       setIdeaDrag((d) => {
         if (!d) return d;
         const el = document.elementFromPoint(e.clientX, e.clientY);
@@ -235,6 +244,7 @@ export function PlanDay() {
       });
     },
     onPointerUp: () => {
+      autoScroll.stop();
       const fill = ideaDrag?.fill;
       if (fill) {
         verbs.schedule(m, {
