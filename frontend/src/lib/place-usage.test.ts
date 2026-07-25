@@ -214,11 +214,12 @@ describe('comparePlacesBySchedule (the list reads in trip order)', () => {
   const at = (hhmm: string) => `${DAY}T${hhmm}:00Z`;
   const nameOf = (u: PlaceUsage) => u.placeId;
 
-  /** Order the given places as the list would. `nowMs` opts into Trip mode's
-   *  sink-what's-behind-you tier; without it the order is pure sequence. */
-  const order = (idx: Map<string, PlaceUsage>, onDate?: string, nowMs?: number) =>
+  /** Order the given places as the list would. `nowMs` opts into the ahead/behind
+   *  split; without it the order is pure sequence. `today` additionally lets a whole
+   *  passed day count as behind you, which is what catches untimed rows. */
+  const order = (idx: Map<string, PlaceUsage>, onDate?: string, nowMs?: number, today?: string) =>
     [...idx.values()]
-      .sort((a, b) => comparePlacesBySchedule(a, b, { nameOf, onDate, nowMs }))
+      .sort((a, b) => comparePlacesBySchedule(a, b, { nameOf, onDate, nowMs, today }))
       .map((u) => u.placeId);
 
   it('orders a day by the clock, not the alphabet', () => {
@@ -324,7 +325,7 @@ describe('comparePlacesBySchedule (the list reads in trip order)', () => {
     expect(order(idx)).toEqual(['zzz-scheduled', 'aaa-unlinked', 'mmm-idea']);
   });
 
-  describe('what is behind you sinks (Trip mode passes the clock)', () => {
+  describe('ahead of you leads, behind you follows newest-first', () => {
     const NOW = Date.parse(at('14:11'));
 
     /** The reported day: two stops already visited, the next one at 17:00. */
@@ -354,14 +355,14 @@ describe('comparePlacesBySchedule (the list reads in trip order)', () => {
 
     it('puts the next stop first and the visited ones below it', () => {
       const idx = reportedDay();
-      // Pure sequence (Plan mode / no clock) keeps the day chronological…
+      // No clock → pure sequence, the whole day chronological…
       expect(order(idx, DAY)).toEqual(['morning', 'lunch', 'ice-cave']);
-      // …while the live surface leads with what is still ahead.
-      expect(order(idx, DAY, NOW)).toEqual(['ice-cave', 'morning', 'lunch']);
+      // …with a clock, what's ahead leads and what's done follows NEWEST first.
+      expect(order(idx, DAY, NOW)).toEqual(['ice-cave', 'lunch', 'morning']);
     });
 
-    it('the sunk block stays chronological among itself', () => {
-      expect(order(reportedDay(), DAY, NOW).slice(1)).toEqual(['morning', 'lunch']);
+    it('the sunk block reads newest-first — the stop you just left is on top', () => {
+      expect(order(reportedDay(), DAY, NOW).slice(1)).toEqual(['lunch', 'morning']);
     });
 
     it('an event in progress is NOT behind you — it leads', () => {
@@ -426,10 +427,64 @@ describe('comparePlacesBySchedule (the list reads in trip order)', () => {
       expect(order(idx, DAY, NOW)).toEqual(['sometime', 'visited']);
     });
 
-    it('a wholly-past day is unaffected — everything is behind you, so order holds', () => {
+    it('a wholly-past day is one block, so it reads newest-first throughout', () => {
       const idx = reportedDay();
       const tomorrow = Date.parse('2026-07-08T09:00:00Z');
-      expect(order(idx, DAY, tomorrow)).toEqual(['morning', 'lunch', 'ice-cave']);
+      expect(order(idx, DAY, tomorrow)).toEqual(['ice-cave', 'lunch', 'morning']);
+    });
+
+    it('ahead beats behind ACROSS days — the date no longer sorts first', () => {
+      // The bug this fixes: ordering by date first put last week above tonight.
+      const idx = buildPlaceUsageIndex(
+        [
+          event({
+            id: 'e1',
+            placeId: 'last-week',
+            date: '2026-07-02',
+            startsAt: '2026-07-02T09:00:00Z',
+          }),
+          event({
+            id: 'e2',
+            placeId: 'yesterday',
+            date: '2026-07-06',
+            startsAt: '2026-07-06T09:00:00Z',
+          }),
+          event({ id: 'e3', placeId: 'tonight', date: DAY, startsAt: at('20:00') }),
+          event({
+            id: 'e4',
+            placeId: 'next-week',
+            date: '2026-07-14',
+            startsAt: '2026-07-14T09:00:00Z',
+          }),
+        ],
+        [],
+        [],
+        [place('last-week'), place('yesterday'), place('tonight'), place('next-week')],
+      );
+      // Ahead ascending (tonight, then next week); behind descending (yesterday,
+      // then last week) — all-days scope, so no `onDate`.
+      expect(order(idx, undefined, NOW, DAY)).toEqual([
+        'tonight',
+        'next-week',
+        'yesterday',
+        'last-week',
+      ]);
+    });
+
+    it('an untimed event on a passed day sinks with it, despite having no clock', () => {
+      const idx = buildPlaceUsageIndex(
+        [
+          event({ id: 'e1', placeId: 'untimed-past', date: '2026-07-05' }),
+          event({ id: 'e2', placeId: 'tonight', date: DAY, startsAt: at('20:00') }),
+        ],
+        [],
+        [],
+        [place('untimed-past'), place('tonight')],
+      );
+      // Without `today` the clockless row can't be judged, so it leads on date…
+      expect(order(idx, undefined, NOW)).toEqual(['untimed-past', 'tonight']);
+      // …with it, the whole finished day is behind you.
+      expect(order(idx, undefined, NOW, DAY)).toEqual(['tonight', 'untimed-past']);
     });
   });
 

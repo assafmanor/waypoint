@@ -201,8 +201,12 @@ describe('MapView (Phase 3, ADR-0109/0110)', () => {
   describe('list order is trip order (ADR-0109 §1 amendment)', () => {
     const names = () =>
       [...document.querySelectorAll('.place .map-name')].map((n) => n.textContent);
+    // Dawn of the active day, so these fixtures are all still ahead unless a test
+    // says otherwise. Without pinning, the order would depend on when the suite runs.
+    const DAWN = Date.parse(`${ACTIVE_DATE}T00:00:00Z`);
 
     it('today reads by the clock, not the alphabet', () => {
+      setSimulatedNow(DAWN);
       // Alphabetical order would be the exact reverse of the schedule.
       tripPlaces = [place('zoo', true), place('market', true), place('bar', true)];
       tripEvents = [
@@ -234,11 +238,13 @@ describe('MapView (Phase 3, ADR-0109/0110)', () => {
         event({ id: 'e3', placeId: 'ice-cave', startsAt: `${ACTIVE_DATE}T17:00:00Z` }),
       ];
       render(wrap(<MapView />));
-      expect(names()).toEqual(['ice-cave', 'morning', 'lunch']);
+      // Ahead first; then what's done, NEWEST first — lunch (12:00) is the stop you
+      // just left, so it outranks the morning one.
+      expect(names()).toEqual(['ice-cave', 'lunch', 'morning']);
       expect(screen.getByText(t.map.behindHeader)).toBeTruthy();
     });
 
-    it('Plan mode keeps the true sequence, with no behind-you block', () => {
+    it('Plan mode splits the same way — a list opening on last Tuesday is wrong there too', () => {
       setSimulatedNow(Date.parse(`${ACTIVE_DATE}T14:11:00Z`));
       currentMode = 'plan';
       tripPlaces = [place('morning', true), place('ice-cave', true)];
@@ -252,11 +258,48 @@ describe('MapView (Phase 3, ADR-0109/0110)', () => {
         event({ id: 'e2', placeId: 'ice-cave', startsAt: `${ACTIVE_DATE}T17:00:00Z` }),
       ];
       render(wrap(<MapView />));
-      expect(names()).toEqual(['morning', 'ice-cave']);
-      expect(screen.queryByText(t.map.behindHeader)).toBeNull();
+      expect(names()).toEqual(['ice-cave', 'morning']);
+      expect(screen.getByText(t.map.behindHeader)).toBeTruthy();
+    });
+
+    it('all-days scope leads with what is ahead, whatever day it falls on', () => {
+      // The reported bug: ordering by date first put earlier days above tonight.
+      setSimulatedNow(Date.parse(`${ACTIVE_DATE}T14:11:00Z`));
+      tripPlaces = [
+        place('two-days-ago', true),
+        place('yesterday', true),
+        place('tonight', true),
+        place('next-week', true),
+      ];
+      tripEvents = [
+        event({
+          id: 'e1',
+          placeId: 'two-days-ago',
+          date: '2026-07-18',
+          startsAt: '2026-07-18T09:00:00Z',
+        }),
+        event({
+          id: 'e2',
+          placeId: 'yesterday',
+          date: '2026-07-19',
+          startsAt: '2026-07-19T09:00:00Z',
+        }),
+        event({ id: 'e3', placeId: 'tonight', startsAt: `${ACTIVE_DATE}T20:00:00Z` }),
+        event({
+          id: 'e4',
+          placeId: 'next-week',
+          date: '2026-07-24',
+          startsAt: '2026-07-24T09:00:00Z',
+        }),
+      ];
+      render(wrap(<MapView />));
+      fireEvent.click(screen.getByRole('button', { name: new RegExp(t.map.allDays) }));
+      expect(names()).toEqual(['tonight', 'next-week', 'yesterday', 'two-days-ago']);
+      expect(screen.getByText(t.map.behindHeader)).toBeTruthy();
     });
 
     it('a flight’s two endpoints read in travel order, not alphabetically', () => {
+      setSimulatedNow(DAWN);
       tripPlaces = [place('zzz-departure', true), place('aaa-landing', true)];
       tripBookings = [
         {
