@@ -28,6 +28,7 @@ import {
   eventRoute,
   eventZones,
   dayAmbientZone,
+  dayZoneContext,
   liveZone,
   type ZoneContext,
 } from '../lib/places';
@@ -123,7 +124,6 @@ export function DayView() {
     maybeItems,
     bookings,
     places,
-    zoneCrossings,
     zoneEvidence,
     activeDate,
     ripple,
@@ -189,15 +189,9 @@ export function DayView() {
   }).format(new Date(zonedIso(activeDate, DAY_NOON, trip.timezone)));
   const heading = t.day.heading(dayNumber, weekday, trip.destination);
 
-  // Per-event display zones (ADR-0107): the shared crossings anchor them, and the
-  // day's ambient zone is what the shift pill measures deviations from.
-  const zoneCtx: ZoneContext = {
-    bookings,
-    places,
-    crossings: zoneCrossings,
-    primaryZone: trip.timezone,
-    ambientZone,
-  };
+  // Per-event display zones (ADR-0107): one builder over the one evidence, shared
+  // with the Plan-mode builder so the two day surfaces cannot diverge.
+  const zoneCtx = dayZoneContext(activeDate, zoneEvidence);
 
   const dayCtx: DayCtx = {
     tz: trip.timezone,

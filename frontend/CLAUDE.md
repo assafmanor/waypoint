@@ -89,6 +89,15 @@ it": a new structural back case is a rule added to `resolveBack`
   HTTP method (ADR-0095) — name it beside the type it feeds.
 - Redefining an entity shape locally instead of importing it from
   `@waypoint/shared` — the package exists precisely so this can't drift.
+- **A screen assembling its own `ZoneContext`** (or deriving its own
+  `tripZoneCrossings` / ambient zone) instead of `dayZoneContext` /
+  `liveZoneContext` over the one `zoneEvidence` from trip-state (ADR-0107
+  session-100/102). This is the subtle one: the resolver _was_ shared, so the
+  code looked fine — but each screen built its own **input**, and the Plan-mode
+  builder went on measuring zone shifts against the crossing-derived segment for
+  a release after the Trip-mode view had moved to the day's own evidence. Shared
+  logic with per-screen inputs is not shared behaviour. (Same failure mode as the
+  width-measured route layout in ADR-0059's session-95 amendment.)
 - `navigate(-1)` or any read of `window.history.length` for a back action —
   back is computed from nav state (ADR-0090), never traversed.
 

@@ -36,8 +36,7 @@ import {
   eventPlaceName,
   eventRoute,
   eventZones,
-  segmentZoneAt,
-  tripZoneCrossings,
+  dayZoneContext,
   type EventZones,
   type ZoneContext,
 } from '../lib/places';
@@ -52,7 +51,14 @@ import {
   type TimeItem,
 } from '../lib/time';
 import { gapBetween, nextSlot, type GapDefaults } from '../lib/gaps';
-import { CODE_PREFIX, DEFAULT_MAYBE_ICON, ICONS, MS_PER_DAY, MINUTES_PER_HOUR } from '../constants';
+import {
+  CODE_PREFIX,
+  DAY_NOON,
+  DEFAULT_MAYBE_ICON,
+  ICONS,
+  MS_PER_DAY,
+  MINUTES_PER_HOUR,
+} from '../constants';
 import { dayTransitions, mergeDayEntries, type DayEntry } from '../lib/day-entries';
 import type { BookingTransition } from '../lib/glance';
 import { t } from '../i18n/he';
@@ -83,7 +89,7 @@ function gapLabel(minutes: number): string {
 }
 
 export function PlanDay() {
-  const { trip, events, maybeItems, bookings, places, activeDate } = useTrip();
+  const { trip, events, maybeItems, bookings, places, activeDate, zoneEvidence } = useTrip();
   const verbs = useVerbs();
   const now = useClock();
   const tz = trip.timezone;
@@ -173,24 +179,17 @@ export function PlanDay() {
   });
 
   const dayNumber = daysBetween(trip.startDate, activeDate) + 1;
-  const dayNoon = new Date(zonedIso(activeDate, '12:00', trip.timezone));
+  const dayNoon = new Date(zonedIso(activeDate, DAY_NOON, trip.timezone));
   const weekday = new Intl.DateTimeFormat('he-IL', {
     weekday: 'long',
     timeZone: trip.timezone,
   }).format(dayNoon);
 
-  // Multi-zone display (ADR-0107): same per-event zone resolution as the Trip-mode
-  // day view — the day's ambient zone (its segment zone at noon, else the trip
-  // primary) is what the shift pill measures against.
-  const crossings = tripZoneCrossings(events, bookings, places);
-  const ambientZone = segmentZoneAt(dayNoon.getTime(), crossings) ?? trip.timezone;
-  const zoneCtx: ZoneContext = {
-    bookings,
-    places,
-    crossings,
-    primaryZone: trip.timezone,
-    ambientZone,
-  };
+  // Multi-zone display (ADR-0107): literally the same context the Trip-mode day
+  // view builds, from the same evidence — this screen used to derive its own
+  // crossings and its own ambient, which is how the two day surfaces drifted apart
+  // (session 100). One builder, one input, no room to diverge.
+  const zoneCtx = dayZoneContext(activeDate, zoneEvidence);
 
   const closeForm = () => {
     setFormTarget(null);
