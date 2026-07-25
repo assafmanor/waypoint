@@ -62,6 +62,13 @@ vi.mock('../state/trip-state', () => ({
     maybeItems: tripMaybes,
     places: tripPlaces,
     activeDate: ACTIVE_DATE,
+    zoneEvidence: {
+      events: tripEvents,
+      bookings: [],
+      places: tripPlaces,
+      crossings: [],
+      primaryZone: 'Asia/Tokyo',
+    },
     usingCachedSnapshot: false,
     indexVerbs: { createPlace: vi.fn(), resolvePlace: vi.fn() },
   }),
@@ -72,6 +79,7 @@ vi.mock('../lib/outbox', () => ({ useIsOffline: () => false }));
 import { ToastProvider } from '../ui/Toast';
 import { NavProvider } from '../state/nav-state';
 import { MapScopeProvider } from '../state/map-scope-state';
+import { setSimulatedNow } from '../lib/useClock';
 import { MapView } from './Map';
 import { t } from '../i18n/he';
 
@@ -100,6 +108,7 @@ function seed() {
 describe('MapView (Phase 3, ADR-0109/0110)', () => {
   afterEach(() => {
     cleanup();
+    setSimulatedNow(null);
     tripEvents = [];
     tripMaybes = [];
     tripPlaces = [];
@@ -159,5 +168,43 @@ describe('MapView (Phase 3, ADR-0109/0110)', () => {
   it('empty trip → the empty state', () => {
     render(wrap(<MapView />));
     expect(screen.getByText(t.map.empty.title)).toBeTruthy();
+  });
+
+  describe('navigate-to-next cue (Phase 4b, ADR-0106 §6)', () => {
+    // 09:00 Tokyo on the active day, so the seeded events are all still ahead.
+    const NOW = Date.parse('2026-07-20T00:00:00Z');
+    const timed = (id: string, hour: string) =>
+      event({ id, placeId: id, startsAt: `2026-07-20T${hour}:00Z` });
+
+    const nextTag = () => screen.queryByText(new RegExp(t.map.nextStop));
+
+    it('marks exactly one row — the earliest upcoming mappable stop — with its time', () => {
+      setSimulatedNow(NOW);
+      tripPlaces = [place('food', true), place('see', true)];
+      tripEvents = [timed('see', '09:00'), timed('food', '04:00')];
+      render(wrap(<MapView />));
+      const tags = screen.getAllByText(new RegExp(t.map.nextStop));
+      expect(tags).toHaveLength(1);
+      // 04:00Z reads 13:00 in the trip's Tokyo zone (ADR-0107: the event's own zone).
+      expect(tags[0].textContent).toContain('13:00');
+      expect(tags[0].closest('.place')?.textContent).toContain('food');
+    });
+
+    it('is absent in Plan mode — a live "next" says nothing while planning', () => {
+      setSimulatedNow(NOW);
+      currentMode = 'plan';
+      tripPlaces = [place('food', true)];
+      tripEvents = [timed('food', '04:00')];
+      render(wrap(<MapView />));
+      expect(nextTag()).toBeNull();
+    });
+
+    it('is absent when nothing upcoming has coordinates', () => {
+      setSimulatedNow(NOW);
+      tripPlaces = [place('lite', false)];
+      tripEvents = [timed('lite', '04:00')];
+      render(wrap(<MapView />));
+      expect(nextTag()).toBeNull();
+    });
   });
 });

@@ -70,6 +70,11 @@ export const PLACE_SEARCH_MIN_CHARS = 2;
 /** The waking window the day-progress bar spans, in trip-local hours. */
 export const DAY_WINDOW = { START_HOUR: 7, END_HOUR: 23 } as const;
 
+/** Home's quick-access grid at its full approved width (ADR-0045): four tiles —
+ *  next code, WiFi, navigate-to-next, documents. Derived tiles drop out when they
+ *  have no source, and the grid reflows to the visible count. */
+export const QUICK_TILE_MAX_COLS = 4;
+
 /** How far from "now" an event still evidences which zone you are standing in
  *  (ADR-0107 session-100). A booking an hour ago or an hour ahead places you; one
  *  five days out says nothing about the current clock. Half a day either way keeps

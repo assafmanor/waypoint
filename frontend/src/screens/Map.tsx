@@ -19,7 +19,15 @@ import {
   type PlaceCategoryFilter,
   type PlaceUsage,
 } from '../lib/place-usage';
-import { mapsDirectionsUrl, mapsPlaceUrl } from '../lib/places';
+import {
+  eventZones,
+  liveZoneContext,
+  mapsDirectionsUrl,
+  mapsPlaceUrl,
+  nextDestination,
+} from '../lib/places';
+import { formatTime } from '../lib/time';
+import { useClock } from '../lib/useClock';
 import { EVENT_CATEGORY_OPTIONS } from '../lib/category-options';
 import { CATEGORY_PIN_HUE, ICONS } from '../constants';
 import { ChoiceGrid, type Choice } from '../ui/primitives/ChoiceGrid';
@@ -33,9 +41,19 @@ import './map.css';
 const openMaps = (url: string) => window.open(url, '_blank', 'noopener,noreferrer');
 
 export function MapView() {
-  const { trip, events, bookings, maybeItems, places, activeDate, usingCachedSnapshot } = useTrip();
+  const {
+    trip,
+    events,
+    bookings,
+    maybeItems,
+    places,
+    activeDate,
+    zoneEvidence,
+    usingCachedSnapshot,
+  } = useTrip();
   const { mode } = useMode();
   const offline = useIsOffline() || usingCachedSnapshot;
+  const nowMs = useClock().getTime();
 
   const [category, setCategory] = useState<PlaceCategoryFilter>(PLACE_CATEGORY_ALL);
   const [maybesOnly, setMaybesOnly] = useState(false);
@@ -112,6 +130,19 @@ export function MapView() {
       .sort(byName);
   }, [query, allUsages, placeById]);
 
+  // navigate-to-next (ADR-0106 §6) on the list: not a re-sort or a second control,
+  // just the one time-anchor cue the map's colour budget allows (ADR-0109 §6 — the
+  // list form of the rendered map's single amber ring), naming when you leave. The
+  // row's existing נווט is then the navigate-to-next action. Only in Trip mode: a
+  // live "next" says nothing while you're planning.
+  const nextStop = useMemo(() => {
+    if (mode !== 'trip') return undefined;
+    const dest = nextDestination(events, bookings, places, nowMs);
+    if (!dest?.event.startsAt) return undefined;
+    const zone = eventZones(dest.event, liveZoneContext(nowMs, zoneEvidence)).startZone;
+    return { placeId: dest.place.id, time: formatTime(dest.event.startsAt, zone) };
+  }, [mode, events, bookings, places, nowMs, zoneEvidence]);
+
   const renderRow = (usage: PlaceUsage) => {
     const place = placeById.get(usage.placeId);
     if (!place) return null;
@@ -124,6 +155,7 @@ export function MapView() {
         usage={usage}
         place={place}
         ambient={prominence === 'ambient'}
+        nextStopTime={nextStop?.placeId === usage.placeId ? nextStop.time : undefined}
         onEnrich={() => setEnrichTarget(place)}
       />
     );
@@ -230,11 +262,14 @@ function PlaceRow({
   usage,
   place,
   ambient,
+  nextStopTime,
   onEnrich,
 }: {
   usage: PlaceUsage;
   place: Place;
   ambient: boolean;
+  /** Set on the single navigate-to-next row: when you have to be there. */
+  nextStopTime?: string;
   /** Open the picker to give a coordless Place-lite real coordinates. */
   onEnrich: () => void;
 }) {
@@ -252,6 +287,7 @@ function PlaceRow({
     isPureIdea && 'soft',
     ambient && 'ambient',
     usage.coordless && 'nocoord',
+    nextStopTime && 'nextstop',
   ]
     .filter(Boolean)
     .join(' ');
@@ -291,6 +327,11 @@ function PlaceRow({
           )}
         </span>
         <span className="map-m">
+          {nextStopTime && (
+            <span className="map-tag next">
+              {t.map.nextStop} · <span dir="ltr">{nextStopTime}</span>
+            </span>
+          )}
           {meta && <span className="map-tag">{meta}</span>}
           {isPureIdea && <span className="map-tag mbadge">{t.map.shelfTag}</span>}
           {place.rating != null && (

@@ -27,7 +27,14 @@ import {
 } from '../ui/domain';
 import { useClock } from '../lib/useClock';
 import { hotelWifi, nextCodedBooking } from '../lib/home-quick';
-import { dayZoneContext, liveZone, liveZoneContext, eventRoute, eventZones } from '../lib/places';
+import {
+  dayZoneContext,
+  liveZone,
+  liveZoneContext,
+  eventRoute,
+  eventZones,
+  nextDestination,
+} from '../lib/places';
 import { shortPlaceLabel } from '../lib/place-label';
 import { TAB_PARAM } from '../state/nav-state';
 import {
@@ -50,6 +57,7 @@ import {
   ICONS,
   MINUTES_PER_DAY,
   MS_PER_DAY,
+  QUICK_TILE_MAX_COLS,
   STAY_STRIP_DISMISS_STORAGE_KEY,
   type TabId,
 } from '../constants';
@@ -182,8 +190,12 @@ export function Home({ onNavigate }: { onNavigate?: (tab: TabId) => void }) {
   // booking, shown only while you're checked in (ADR-0088). Each is absent when
   // there's no source; the grid reflows.
   const nextCoded = nextCodedBooking(bookings, events, now.getTime());
-  const quickTileCount = (nextCoded ? 1 : 0) + (wifi ? 1 : 0) + 1; // documents is always present
-  const quickCols = Math.min(3, Math.max(2, quickTileCount));
+  // navigate-to-next (ADR-0106 §6): the fourth tile ADR-0045 held back until places
+  // carried real coordinates. Absent when nothing upcoming has a location, so the
+  // grid still reflows — a tile that can't route is worse than no tile.
+  const nextDest = nextDestination(events, bookings, places, nowMs);
+  const quickTileCount = (nextCoded ? 1 : 0) + (wifi ? 1 : 0) + (nextDest ? 1 : 0) + 1; // documents is always present
+  const quickCols = Math.min(QUICK_TILE_MAX_COLS, Math.max(2, quickTileCount));
 
   // ── Day at a glance (derived) — a proportional time rail (lib/glance) ──
   const day07 = Date.parse(zonedIso(activeDate, hourLabel(DAY_WINDOW.START_HOUR), tz));
@@ -413,6 +425,17 @@ export function Home({ onNavigate }: { onNavigate?: (tab: TabId) => void }) {
               </span>
             )}
           </button>
+        )}
+        {/* navigate-to-next: an anchor, not a button — the hand-off out to Maps is
+            a real link (long-press/share work, no popup blocker), and it's the same
+            deep-link the day cards and the Map rows use (ADR-0106 §F). The subtitle
+            names the stop, shortened like every other glanceable surface. */}
+        {nextDest && (
+          <a className="qa" href={nextDest.url} target="_blank" rel="noopener noreferrer">
+            <span className="ic">{ICONS.navigate}</span>
+            <span className="lb">{t.quick.navigateNext}</span>
+            <span className="sub name">{shortPlaceLabel(nextDest.place.name)}</span>
+          </a>
         )}
         {/* Managed tile: always present. Deep-links to the Index documents
             section (ADR-0050). */}
