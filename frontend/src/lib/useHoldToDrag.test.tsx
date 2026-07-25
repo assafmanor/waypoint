@@ -28,14 +28,22 @@ const handlers = {
   onCancel: vi.fn(),
 };
 
-function Card({ onClick }: { onClick?: () => void }) {
+function Card({ onClick, tick = 0 }: { onClick?: () => void; tick?: number }) {
   const holdToDrag = useHoldToDrag();
   return (
     <button type="button" onClick={onClick} {...holdToDrag(handlers)}>
-      idea
+      idea {tick}
     </button>
   );
 }
+
+/** A touchmove as the browser delivers it: cancellable only while the browser hasn't
+ *  yet committed to scrolling. */
+const touchMove = (cancelable = true) => {
+  const e = new Event('touchmove', { cancelable, bubbles: true });
+  card().dispatchEvent(e);
+  return e;
+};
 
 const card = () => screen.getByRole('button');
 const down = (x = 100, y = 100, pointerType = 'touch') =>
@@ -125,6 +133,32 @@ describe('useHoldToDrag', () => {
     expect(onClick).not.toHaveBeenCalled();
   });
 
+  // The dragged card is `pointer-events: none` while it's in flight, so the click a
+  // release fires RETARGETS to whatever sits under the finger — a gap chip, a row.
+  // A capture handler on the card itself never sees it, which is how a drop ended up
+  // opening the new-event sheet.
+  it('swallows that click even when it retargets to another element', () => {
+    const elsewhere = vi.fn();
+    render(
+      <>
+        <Card />
+        <button type="button" onClick={elsewhere}>
+          gap
+        </button>
+      </>,
+    );
+    fireEvent.pointerDown(screen.getByText(/idea/), {
+      clientX: 100,
+      clientY: 100,
+      pointerType: 'touch',
+      pointerId: 1,
+    });
+    vi.advanceTimersByTime(DRAG_HOLD_MS);
+    fireEvent.pointerUp(screen.getByText(/idea/));
+    fireEvent.click(screen.getByText('gap'));
+    expect(elsewhere).not.toHaveBeenCalled();
+  });
+
   it('leaves an ordinary tap clickable', () => {
     const onClick = vi.fn();
     render(<Card onClick={onClick} />);
@@ -171,6 +205,63 @@ describe('useHoldToDrag', () => {
     const selectstart = new Event('selectstart', { cancelable: true, bubbles: true });
     document.dispatchEvent(selectstart);
     expect(selectstart.defaultPrevented).toBe(false);
+  });
+
+  // The reported bug: native touch scrolling kept running during an armed drag, so
+  // the page moved one way while the edge auto-scroll moved it the other and the card
+  // could never settle over a target. The guard has to be attached at MOUNT — by arm
+  // time the browser has already put the gesture on the compositor fast path, where
+  // touchmove is `cancelable: false` and preventDefault is a silent no-op.
+  it('lets a touch scroll normally before the drag arms', () => {
+    render(<Card />);
+    down();
+    expect(touchMove().defaultPrevented).toBe(false);
+  });
+
+  it('suppresses native touch scrolling for the length of an armed drag', () => {
+    render(<Card />);
+    down();
+    vi.advanceTimersByTime(DRAG_HOLD_MS);
+    expect(touchMove().defaultPrevented).toBe(true);
+  });
+
+  it('hands scrolling back the moment the drag ends', () => {
+    render(<Card />);
+    down();
+    vi.advanceTimersByTime(DRAG_HOLD_MS);
+    fireEvent.pointerUp(card());
+    expect(touchMove().defaultPrevented).toBe(false);
+  });
+
+  it('does not fight a touchmove the browser has already made uncancellable', () => {
+    render(<Card />);
+    down();
+    vi.advanceTimersByTime(DRAG_HOLD_MS);
+    // Nothing to assert but the absence of a console warning: calling preventDefault
+    // on a non-cancellable event is a no-op the browser complains about.
+    expect(touchMove(false).defaultPrevented).toBe(false);
+  });
+
+  // The other half of the same report ("the drag activates, but only on some parts of
+  // the card"): the card was never the variable. The hold's cleanup was keyed on a
+  // callback identity that changed every render, so any re-render inside the 280 ms
+  // window — and the builder re-renders every second, on the clock — cleared the
+  // pending timer and the drag silently never armed.
+  it('survives a re-render during the hold', () => {
+    const { rerender } = render(<Card tick={0} />);
+    down();
+    vi.advanceTimersByTime(DRAG_HOLD_MS - 100);
+    rerender(<Card tick={1} />);
+    vi.advanceTimersByTime(100);
+    expect(handlers.onArm).toHaveBeenCalledTimes(1);
+  });
+
+  it('still suppresses native scrolling after a re-render mid-drag', () => {
+    const { rerender } = render(<Card tick={0} />);
+    down();
+    vi.advanceTimersByTime(DRAG_HOLD_MS);
+    rerender(<Card tick={1} />);
+    expect(touchMove().defaultPrevented).toBe(true);
   });
 
   it('a mouse drags immediately — there is no scroll to disambiguate', () => {

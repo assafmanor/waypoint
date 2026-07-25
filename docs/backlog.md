@@ -125,7 +125,8 @@ B-01–B-06 and B-08–B-13 shipped (ADR-0068–0076); B-07 shipped (ADR-0067). 
 
 ## Testing
 
-- **e2e smoke** (Playwright) — conventions call for one; none exists. Boot the app, cross the tabs, assert each renders and the console is clean. Catches white-screen regressions unit tests miss.
+- **e2e smoke** (Playwright) — the harness exists (`frontend/e2e/`: system-back, Index back, the shelf's touch drag), but there is still no boot-and-cross-the-tabs case: assert each tab renders and the console is clean, to catch white-screen regressions unit tests miss.
+- **Real-device pass on the shelf drag** (ADR-0116 session-116) — the gesture is pinned by Chromium e2e, which is not the engine the bugs were reported from, and feel (does the 280 ms hold read as responsive?) is not testable at all. Hold it on a phone before calling the drag done; the stated fallback if it still fights is an explicit visible drag handle, reusing the builder rows' grip idiom.
 
 ## Open question
 

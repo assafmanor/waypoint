@@ -1,7 +1,7 @@
 # Session 112 — The day-aware shelf, and what happened at a place
 
 **Date:** 2026-07-25
-**Branch:** `claude/shelf-day-aware-and-visited`
+**Branch:** `claude/maps-places-phase-5-hykm8z`
 **ADRs:** [0116](../decisions/0116-day-aware-shelf-and-idea-target-day.md) (the shelf) · [0117](../decisions/0117-map-place-outcome-states.md) (the Map)
 **Mockup:** [`mockups/shelf-day-aware-v1.html`](../../mockups/shelf-day-aware-v1.html) — two frames, one design pass
 

@@ -71,12 +71,39 @@ export const TWO_TYPE_BOOKINGS = [
   },
 ];
 
+/** A trip live "now" whatever the box clock reads, but only a week long — the
+ *  default 15-year range makes the header's day strip render thousands of day
+ *  buttons, and on that DOM Playwright's own locator queries start timing out.
+ *  Any spec that measures layout or drives real input wants this. */
+export function shortLiveTripDates(): { startDate: string; endDate: string } {
+  const day = 24 * 60 * 60 * 1000;
+  const iso = (t: number) => new Date(t).toISOString().slice(0, 10);
+  const today = Date.parse(`${new Date().toISOString().slice(0, 10)}T00:00:00.000Z`);
+  return { startDate: iso(today - 3 * day), endDate: iso(today + 3 * day) };
+}
+
 /** Register the boot route mocks + seed the two per-device localStorage keys, so
  *  a plain `page.goto('/')` cold-boots straight into the trip Home as the FIRST
  *  history entry (index 0) — exactly the case the Android back-guard exists for.
  *  Pass `bookings` to seed the trip snapshot (default: none). */
-export async function bootIntoTrip(page: Page, opts: { bookings?: unknown[] } = {}): Promise<void> {
-  const snapshot = { ...SNAPSHOT, bookings: opts.bookings ?? SNAPSHOT.bookings };
+export async function bootIntoTrip(
+  page: Page,
+  opts: {
+    bookings?: unknown[];
+    events?: unknown[];
+    maybeItems?: unknown[];
+    /** Override the trip's date range (see `shortLiveTripDates`). */
+    dates?: { startDate: string; endDate: string };
+  } = {},
+): Promise<void> {
+  const trip = { ...TRIP, ...opts.dates };
+  const snapshot = {
+    ...SNAPSHOT,
+    trip,
+    bookings: opts.bookings ?? SNAPSHOT.bookings,
+    events: opts.events ?? SNAPSHOT.events,
+    maybeItems: opts.maybeItems ?? SNAPSHOT.maybeItems,
+  };
   await page.route(
     (u) => u.pathname.endsWith('/auth/refresh'),
     (r) => r.fulfill({ json: { accessToken: 'test-token' } }),
@@ -87,7 +114,7 @@ export async function bootIntoTrip(page: Page, opts: { bookings?: unknown[] } = 
   );
   await page.route(
     (u) => u.pathname === '/trips',
-    (r) => r.fulfill({ json: [TRIP] }),
+    (r) => r.fulfill({ json: [trip] }),
   );
   await page.route(
     (u) => u.pathname === '/trips/t1/snapshot',
