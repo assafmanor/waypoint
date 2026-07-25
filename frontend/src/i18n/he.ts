@@ -809,6 +809,9 @@ export const t = {
     rowActions: 'פעולות',
     gapFillTitle: (start: string, end: string) => `מילוי הפער · ${start}–${end}`,
     gapFillEmpty: 'אין רעיונות במדף · הוסף אירוע חדש',
+    // Plan mode's shelf also drags (ADR-0116 §5): the hint teaches the hold, since
+    // a press-and-hold is the one part of the gesture nobody guesses.
+    shelfHint: 'לחצו כדי לשבץ · לחיצה ארוכה לגרירה',
     addIdea: 'הוסף רעיון למדף',
     addIdeaPlaceholder: 'רעיון חדש למדף…',
     removeIdea: 'הסר רעיון',

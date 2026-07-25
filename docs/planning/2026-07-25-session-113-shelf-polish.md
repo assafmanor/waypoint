@@ -41,8 +41,23 @@ Both became a spread `box-shadow` ring on the card itself — follows the card's
 
 This is the **first write path for an existing idea**, which the shelf never had: `PATCH /trips/:tripId/maybe-items/:id` with a narrow `updateMaybeItemSchema` (`targetDate` only — the one field with an edit surface), through `ChangeService.mutate` like every data-plane write, plus an `UPDATE_MAYBE_ITEM` outbox verb + cache mirror + a `TRIP_ACTION.UPDATE_MAYBE` reducer case, so it queues offline and undoes like the rest of the shelf. No schema change — `targetDate` shipped in session 112.
 
+## 6. …and `pan-x` was wrong too: hold-to-drag
+
+Raised by the owner right after (4) shipped: if scrolling and dragging conflict, **delay the drag**. Correct — and it exposes that (4) traded one bug for another. `pan-x` let the strip scroll again but stopped the **page** from scrolling when a swipe started on a card, which is worse: the shelf sits at the bottom of a long day, so swiping up from a card is exactly how you'd scroll it.
+
+Direction can't arbitrate, because "swipe up to scroll" and "drag up onto a gap" are the same movement. **Time can.** `lib/useHoldToDrag.ts`: the drag arms after 280 ms of stillness, and any movement past an 8 px slop before that hands the gesture back to the browser. No `touch-action` override survives on the card — both axes scroll normally until the drag is deliberate.
+
+Four things that are each a bug if missed, all covered:
+
+- Setting `touch-action` at arm time is **too late** (the browser decided at touch-start), so the armed drag suppresses scrolling itself via a non-passive `touchmove` + `preventDefault()`.
+- A **mouse arms immediately** — no scroll to disambiguate, and a hold on a desktop would read as broken.
+- The **click a completed drag fires is swallowed**, or a drop would also open the schedule sheet (the card is a button).
+- A long press on a button starts a **text selection / iOS callout**, so the draggable card kills `user-select` and the callout, and prevents the context menu while the hold is live.
+
+The Plan shelf hint now teaches the hold: `לחצו כדי לשבץ · לחיצה ארוכה לגרירה`.
+
 ## Testing
 
-`format` / `lint` / `typecheck` / `build` green; **948 tests / 89 files** (`edge-autoscroll.test.ts` + three `applySetMaybeDay` cases), plus a backend `MaybeItemsService.update` spec covering set → clear → two `Change` rows (runs on CI's Postgres; no DB in this sandbox).
+`format` / `lint` / `typecheck` / `build` green; **958 tests / 90 files** (`edge-autoscroll.test.ts` + three `applySetMaybeDay` cases), plus a backend `MaybeItemsService.update` spec covering set → clear → two `Change` rows (runs on CI's Postgres; no DB in this sandbox). `useHoldToDrag.test.tsx` asserts the arbitration directly (10 cases) — it needs a `PointerEvent` stand-in, since jsdom implements neither pointer events nor pointer capture and the whole mechanism turns on `clientX/clientY` + `pointerType`.
 
 Sizing and stroke are CSS-only, so they're verified by reading against the reported screenshots, not by a test — the shelf has no visual-regression harness. **The auto-scroll still wants a real-device pass** (ADR-0017): the pacing is tested, the touch feel isn't.
