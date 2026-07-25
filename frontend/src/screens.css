@@ -581,6 +581,51 @@
   overflow-x: auto;
   padding: 2px 2px 6px;
   scroll-snap-type: x mandatory;
+  scrollbar-width: none;
+  /* A partially-visible card at the edge is inherent to a scrolling strip; the
+     fade makes it read as "scroll for more" instead of a chopped card (the exact
+     grammar ADR-0100 §6 established for the Index chip row — same declarations,
+     `to right` physical, correct in RTL since direction only reorders flex
+     children, not the mask's coordinate space). */
+  -webkit-mask-image: linear-gradient(
+    to right,
+    transparent 0,
+    black 14px,
+    black calc(100% - 14px),
+    transparent 100%
+  );
+  mask-image: linear-gradient(
+    to right,
+    transparent 0,
+    black 14px,
+    black calc(100% - 14px),
+    transparent 100%
+  );
+}
+/* A shelf group under a dragged idea: dropping here re-aims its DAY, so the whole
+   strip lights up rather than one card (ADR-0116 §2 amendment). */
+.shelf.drop-over {
+  outline: 1px dashed var(--plan);
+  outline-offset: 3px;
+  border-radius: var(--radius-12);
+  background: color-mix(in srgb, var(--plan) 6%, transparent);
+}
+/* The empty day group, conjured up mid-drag so there's a target on a day nothing
+   is pencilled into yet. */
+.shelf-dropzone {
+  flex: 0 0 auto;
+  display: grid;
+  place-items: center;
+  min-height: 132px;
+  width: 100%;
+  min-width: 150px;
+  border: 1px dashed var(--plan);
+  border-radius: 15px;
+  color: var(--plan);
+  font-size: 12px;
+  font-weight: 700;
+  text-align: center;
+  padding: var(--space-3);
 }
 .shelf::-webkit-scrollbar {
   height: 0;

@@ -8,6 +8,7 @@ import type {
   CreateDocumentInput,
   CreateEventInput,
   CreateMaybeItemInput,
+  UpdateMaybeItemInput,
   CreatePlaceInput,
   DocumentType,
   EventStatus,
@@ -25,6 +26,7 @@ import {
   createBooking,
   createEvent,
   createMaybeItem,
+  updateMaybeItem,
   createPlace,
   deleteBooking,
   deleteEvent,
@@ -56,6 +58,7 @@ export const OUTBOX_VERB = {
   CONSUME_MAYBE_ITEM: 'consumeMaybeItem',
   CREATE_MAYBE_ITEM: 'createMaybeItem',
   DELETE_MAYBE_ITEM: 'deleteMaybeItem',
+  UPDATE_MAYBE_ITEM: 'updateMaybeItem',
   UPDATE_TRIP: 'updateTrip',
   SET_MEMBER_ROLE: 'setMemberRole',
   REMOVE_MEMBER: 'removeMember',
@@ -80,6 +83,11 @@ export type OutboxOp =
   // Maybe-shelf build actions (Plan-mode Tier 3) — offline-capable (ADR-0042).
   | { verb: typeof OUTBOX_VERB.CREATE_MAYBE_ITEM; input: CreateMaybeItemInput }
   | { verb: typeof OUTBOX_VERB.DELETE_MAYBE_ITEM; maybeItemId: string }
+  | {
+      verb: typeof OUTBOX_VERB.UPDATE_MAYBE_ITEM;
+      maybeItemId: string;
+      input: UpdateMaybeItemInput;
+    }
   // Trip-settings mutations (ADR-0039) — offline-capable like the timeline.
   | { verb: typeof OUTBOX_VERB.UPDATE_TRIP; input: UpdateTripInput }
   | { verb: typeof OUTBOX_VERB.SET_MEMBER_ROLE; userId: string; role: MembershipRole }
@@ -131,6 +139,7 @@ export function outboxOpEntityId(op: OutboxOp): string {
       return op.eventId;
     case OUTBOX_VERB.CONSUME_MAYBE_ITEM:
     case OUTBOX_VERB.DELETE_MAYBE_ITEM:
+    case OUTBOX_VERB.UPDATE_MAYBE_ITEM:
       return op.maybeItemId;
     case OUTBOX_VERB.UPDATE_BOOKING:
     case OUTBOX_VERB.DELETE_BOOKING:
@@ -575,6 +584,9 @@ async function runOp(tripId: string, op: OutboxOp): Promise<void> {
       return;
     case OUTBOX_VERB.DELETE_MAYBE_ITEM:
       await deleteMaybeItem(tripId, op.maybeItemId);
+      return;
+    case OUTBOX_VERB.UPDATE_MAYBE_ITEM:
+      await updateMaybeItem(tripId, op.maybeItemId, op.input);
       return;
     case OUTBOX_VERB.UPDATE_TRIP:
       await updateTrip(tripId, op.input);

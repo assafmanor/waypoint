@@ -13,7 +13,8 @@
 // is absent; screens pass a real derived field or nothing. The fixture is gone.
 //
 // Presentational only: data + copy via props, no trip-state, no domain types.
-import { type PointerEvent as ReactPointerEvent, type ReactNode } from 'react';
+import { type ReactNode } from 'react';
+import type { HoldToDragProps } from '../../lib/useHoldToDrag';
 import './maybe-card.css';
 
 export interface MaybeCardProps {
@@ -34,14 +35,10 @@ export interface MaybeCardProps {
   removeLabel?: string;
   /** Extra modifier class (e.g. a screen's `skipped-card`). */
   className?: string;
-  /** Pointer handlers that make the card draggable onto a gap (ADR-0116 §5). The
-   *  screen owns the drag mechanics — the same pointer-capture + hit-test the
-   *  builder's reorder grip uses — so the card only has to carry them. */
-  dragProps?: {
-    onPointerDown: (e: ReactPointerEvent) => void;
-    onPointerMove: (e: ReactPointerEvent) => void;
-    onPointerUp: () => void;
-  };
+  /** Handlers that make the card draggable onto a gap (ADR-0116 §5) — from
+   *  `useHoldToDrag`, which arms on a press-and-hold so the strip and the page keep
+   *  scrolling normally. The card only has to carry them. */
+  dragProps?: HoldToDragProps;
   /** This card is the one currently being dragged. */
   dragging?: boolean;
 }

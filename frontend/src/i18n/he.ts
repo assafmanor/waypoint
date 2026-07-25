@@ -175,6 +175,7 @@ export const t = {
       consumeMaybeItem: 'קידום רעיון',
       createMaybeItem: 'הוספת רעיון',
       deleteMaybeItem: 'מחיקת רעיון',
+      updateMaybeItem: 'עדכון רעיון',
       updateTrip: 'עדכון פרטי הטיול',
       setMemberRole: 'עדכון הרשאות חבר',
       removeMember: 'הסרת חבר',
@@ -771,6 +772,8 @@ export const t = {
     // content, so a trip that never uses a target day looks exactly as it did.
     shelfForDay: 'לְיום הזה',
     shelfPool: 'רעיונות',
+    // The empty day group, conjured up mid-drag so there is somewhere to drop.
+    shelfDropHere: 'שחררו כאן ליום הזה',
     maybeShelf: 'מדף האולי',
     tapToSchedule: 'לחצו כדי לשבץ ליום',
     skippedTag: 'דילגתם · לחצו להחזרה',
@@ -806,6 +809,9 @@ export const t = {
     rowActions: 'פעולות',
     gapFillTitle: (start: string, end: string) => `מילוי הפער · ${start}–${end}`,
     gapFillEmpty: 'אין רעיונות במדף · הוסף אירוע חדש',
+    // Plan mode's shelf also drags (ADR-0116 §5): the hint teaches the hold, since
+    // a press-and-hold is the one part of the gesture nobody guesses.
+    shelfHint: 'לחצו כדי לשבץ · לחיצה ארוכה לגרירה',
     addIdea: 'הוסף רעיון למדף',
     addIdeaPlaceholder: 'רעיון חדש למדף…',
     removeIdea: 'הסר רעיון',
@@ -905,6 +911,10 @@ export const t = {
     reordered: 'הסדר עודכן',
     scheduledDay: (title: string) => `${title} נוסף ליום`,
     maybeAdded: 'הרעיון נוסף למדף',
+    // Re-aiming an idea between the shelf's two groups (ADR-0116 §2) — a pencil
+    // mark, so the copy deliberately doesn't say "שובץ" (that's a schedule).
+    maybeAimedAtDay: 'הרעיון סומן ליום הזה',
+    maybeBackToPool: 'הרעיון חזר לרעיונות',
     maybeRemoved: 'הרעיון הוסר מהמדף',
     movedToShelf: 'הועבר למדף האולי',
   },

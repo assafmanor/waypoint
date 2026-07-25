@@ -151,6 +151,19 @@ export const DOCUMENT_TYPE_ICON = {
 /** Icon for a manually added maybe-shelf idea (no icon picker yet). */
 export const DEFAULT_MAYBE_ICON = '💡';
 
+/** Drag edge auto-scroll (ADR-0116 §5 amendment): how deep the edge band is, and
+ *  the fastest one frame may scroll while the pointer is pinned against it. The
+ *  band is generous because a thumb holding a card covers a lot of screen. */
+export const DRAG_EDGE_SCROLL_ZONE_PX = 84;
+export const DRAG_EDGE_SCROLL_MAX_PX = 14;
+
+/** Press-and-hold before a shelf card starts dragging (ADR-0116 §5, session-114):
+ *  long enough that a scroll flick never arms a drag, short enough that a
+ *  deliberate hold doesn't feel stuck. `SLOP` is how far a finger may wander
+ *  during the hold before we call it a scroll and give up the drag. */
+export const DRAG_HOLD_MS = 280;
+export const DRAG_HOLD_SLOP_PX = 8;
+
 /** The 5-hue Map pin/badge palette (ADR-0109 §3 / ADR-0110 §2). The `--cat-*`
  *  tokens carry the actual colours (styles/tokens.css); this is the hue key. */
 export type PinHue = 'food' | 'lodging' | 'transit' | 'leisure' | 'services';

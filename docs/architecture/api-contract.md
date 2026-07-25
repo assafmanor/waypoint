@@ -113,11 +113,12 @@ Trip-agnostic destination lookup for **trip creation** (ADR-0113): there's no tr
 
 The shelf is read via the trip snapshot (`maybeItems`), not a standalone list. Scheduling an idea onto a day is done client-side — create the `Event` (`POST /events`, `source: maybe_shelf`) and mark the idea consumed — rather than a dedicated `/schedule` endpoint, so day/time/kind are chosen in the builder's event form.
 
-| Method | Path                                              | Body → Response                                                           |
-| ------ | ------------------------------------------------- | ------------------------------------------------------------------------- |
-| POST   | `/trips/:tripId/maybe-items`                      | `createMaybeItemSchema` (`{ id?, title, icon?, placeId? }`) → `MaybeItem` |
-| DELETE | `/trips/:tripId/maybe-items/:maybeItemId`         | → `204` (remove an idea)                                                  |
-| POST   | `/trips/:tripId/maybe-items/:maybeItemId/consume` | → `MaybeItem` (marks consumed when scheduled)                             |
+| Method | Path                                              | Body → Response                                                                                                                                           |
+| ------ | ------------------------------------------------- | --------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| POST   | `/trips/:tripId/maybe-items`                      | `createMaybeItemSchema` (`{ id?, title, icon?, category?, placeId?, targetDate? }`) → `MaybeItem`                                                         |
+| PATCH  | `/trips/:tripId/maybe-items/:maybeItemId`         | `updateMaybeItemSchema` (`{ targetDate }`, `null` = "someday") → `MaybeItem` — re-aims an idea's pencilled-in day (ADR-0116 §1); never touches `consumed` |
+| DELETE | `/trips/:tripId/maybe-items/:maybeItemId`         | → `204` (remove an idea)                                                                                                                                  |
+| POST   | `/trips/:tripId/maybe-items/:maybeItemId/consume` | → `MaybeItem` (marks consumed when scheduled)                                                                                                             |
 
 ## Documents
 

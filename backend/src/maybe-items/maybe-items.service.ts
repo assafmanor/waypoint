@@ -1,6 +1,11 @@
 import { Injectable, NotFoundException } from '@nestjs/common';
 import { Prisma, type MaybeItem as PrismaMaybeItem } from '@prisma/client';
-import { ENTITY_TYPE, type CreateMaybeItemInput, type MaybeItem } from '@waypoint/shared';
+import {
+  ENTITY_TYPE,
+  type CreateMaybeItemInput,
+  type MaybeItem,
+  type UpdateMaybeItemInput,
+} from '@waypoint/shared';
 import { randomUUID } from 'node:crypto';
 import { PrismaService } from '../prisma/prisma.service';
 import { ChangeService } from '../sync/change.service';
@@ -96,6 +101,33 @@ export class MaybeItemsService {
         tx.maybeItem.update({
           where: { id: maybeItemId },
           data: { consumed: true, updatedBy: actorUserId },
+        }),
+    });
+    return toMaybeItemDto(entity);
+  }
+
+  /** Re-aim an idea at a day, or back to "someday" with `null` (ADR-0116 §1). A
+   *  pencil mark, not a schedule — nothing about `consumed` changes, so the idea
+   *  stays parked either way. */
+  async update(
+    tripId: string,
+    maybeItemId: string,
+    input: UpdateMaybeItemInput,
+    actorUserId: string,
+  ): Promise<MaybeItem> {
+    const before = await this.requireMaybeItem(tripId, maybeItemId);
+    const { entity } = await this.changes.mutate({
+      tripId,
+      actorUserId,
+      entityType: ENTITY_TYPE.MAYBE_ITEM,
+      entityId: maybeItemId,
+      action: 'update',
+      before: toMaybeItemDto(before),
+      after: input,
+      apply: (tx) =>
+        tx.maybeItem.update({
+          where: { id: maybeItemId },
+          data: { targetDate: input.targetDate ?? null, updatedBy: actorUserId },
         }),
     });
     return toMaybeItemDto(entity);

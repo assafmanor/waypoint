@@ -23,6 +23,7 @@ import {
   type CreateDocumentInput,
   type CreateEventInput,
   type CreateMaybeItemInput,
+  type UpdateMaybeItemInput,
   type CreatePlaceInput,
   type CreateTripInput,
   type DestinationResult,
@@ -416,6 +417,21 @@ export async function createMaybeItem(
 ): Promise<MaybeItem> {
   const res = await apiFetch(maybeItemsUrl(tripId), {
     method: HTTP_METHOD.POST,
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify(input),
+  });
+  if (!res.ok) return throwApiError(res);
+  return maybeItemSchema.parse(await res.json());
+}
+
+/** Re-aim an idea at a day, or back to "someday" with `null` (ADR-0116 §1). */
+export async function updateMaybeItem(
+  tripId: string,
+  maybeItemId: string,
+  input: UpdateMaybeItemInput,
+): Promise<MaybeItem> {
+  const res = await apiFetch(maybeItemUrl(tripId, maybeItemId), {
+    method: HTTP_METHOD.PATCH,
     headers: { 'Content-Type': 'application/json' },
     body: JSON.stringify(input),
   });

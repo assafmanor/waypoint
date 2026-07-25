@@ -1,4 +1,4 @@
-import { Body, Controller, Delete, HttpCode, Param, Post, UseGuards } from '@nestjs/common';
+import { Body, Controller, Delete, HttpCode, Param, Patch, Post, UseGuards } from '@nestjs/common';
 import {
   ApiBearerAuth,
   ApiCreatedResponse,
@@ -6,7 +6,12 @@ import {
   ApiOkResponse,
   ApiTags,
 } from '@nestjs/swagger';
-import { createMaybeItemSchema, maybeItemSchema, type MaybeItem } from '@waypoint/shared';
+import {
+  createMaybeItemSchema,
+  maybeItemSchema,
+  updateMaybeItemSchema,
+  type MaybeItem,
+} from '@waypoint/shared';
 import { createZodDto, ZodSerializerDto } from 'nestjs-zod';
 import { CurrentUser } from '../auth/current-user.decorator';
 import type { Principal } from '../auth/principal';
@@ -17,6 +22,7 @@ import { MaybeItemsService } from './maybe-items.service';
 // ADR-0023: OpenAPI DTOs generated from the @waypoint/shared zod schemas.
 class MaybeItemDto extends createZodDto(maybeItemSchema) {}
 class CreateMaybeItemDto extends createZodDto(createMaybeItemSchema) {}
+class UpdateMaybeItemDto extends createZodDto(updateMaybeItemSchema) {}
 
 @ApiTags('maybe-items')
 @ApiBearerAuth()
@@ -45,6 +51,19 @@ export class MaybeItemsController {
     @Param('maybeItemId') maybeItemId: string,
   ): Promise<void> {
     return this.maybeItems.remove(tripId, maybeItemId, user.userId);
+  }
+
+  /** Re-aim an idea at a day, or back to "someday" (ADR-0116 §1). */
+  @Patch(':maybeItemId')
+  @ApiOkResponse({ type: MaybeItemDto })
+  @ZodSerializerDto(MaybeItemDto)
+  update(
+    @CurrentUser() user: Principal,
+    @Param('tripId') tripId: string,
+    @Param('maybeItemId') maybeItemId: string,
+    @Body(new ZodValidationPipe(updateMaybeItemSchema)) body: UpdateMaybeItemDto,
+  ): Promise<MaybeItem> {
+    return this.maybeItems.update(tripId, maybeItemId, body, user.userId);
   }
 
   @Post(':maybeItemId/consume')

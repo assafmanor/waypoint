@@ -54,6 +54,8 @@ import {
 } from '../lib/time';
 import { gapBetween, nextSlot, type GapDefaults } from '../lib/gaps';
 import { shelfGroups } from '../lib/shelf';
+import { useEdgeAutoScroll } from '../lib/edge-autoscroll';
+import { useHoldToDrag, useSelectionGuard } from '../lib/useHoldToDrag';
 import {
   CODE_PREFIX,
   DAY_NOON,
@@ -80,6 +82,12 @@ import { MaybeCard } from '../ui/domain/MaybeCard';
 
 const daysBetween = (from: string, to: string) =>
   Math.round((Date.parse(to) - Date.parse(from)) / MS_PER_DAY);
+
+/** The shelf's two drop zones (ADR-0116 §2): dropping an idea on the day's group
+ *  pencils it in for that day, the pool clears it back to "someday". Named, so no
+ *  hit-test or `data-` attribute spells a bare string (ADR-0095). */
+export const SHELF_DROP = { DAY: 'day', POOL: 'pool' } as const;
+export type ShelfDrop = (typeof SHELF_DROP)[keyof typeof SHELF_DROP];
 
 /** A gap's identity for the drag hit-test: its own slot. Stable across renders and
  *  unique per day, so no synthetic id has to be invented or stored. */
@@ -170,13 +178,23 @@ export function PlanDay() {
   // Drag-to-reorder: a soft event's grip is the handle. Pointer capture keeps
   // move/up on the grip; the row under the pointer (data-bld-id) is the drop
   // target. Drop reassigns the soft time slots (verbs.reorder → planReorder).
+  // Both drags share one edge auto-scroll: a drag that can only reach what's
+  // already on screen can't reach the row (or gap) you're aiming for.
+  const autoScroll = useEdgeAutoScroll();
+  // The grip is a dedicated handle, so it drags on contact — but it drags across
+  // the same rows, so it needs the same selection guard as the held card.
+  const selection = useSelectionGuard();
   const [drag, setDrag] = useState<{ id: string; overId: string | null } | null>(null);
   const gripProps = (id: string) => ({
     onPointerDown: (e: ReactPointerEvent) => {
       (e.currentTarget as HTMLElement).setPointerCapture(e.pointerId);
+      autoScroll.start(e.currentTarget as HTMLElement);
+      selection.suppress();
+      selection.lock();
       setDrag({ id, overId: null });
     },
     onPointerMove: (e: ReactPointerEvent) => {
+      autoScroll.track(e.clientY);
       setDrag((d) => {
         if (!d) return d;
         const el = document.elementFromPoint(e.clientX, e.clientY);
@@ -186,7 +204,14 @@ export function PlanDay() {
       });
     },
     onPointerUp: () => {
+      autoScroll.stop();
+      selection.release();
       if (drag?.overId && drag.overId !== drag.id) verbs.reorder(dayEvents, drag.id, drag.overId);
+      setDrag(null);
+    },
+    onPointerCancel: () => {
+      autoScroll.stop();
+      selection.release();
       setDrag(null);
     },
   });
@@ -208,49 +233,78 @@ export function PlanDay() {
     id: string;
     overGap: string | null;
     fill?: GapDefaults;
+    /** Which shelf group the pointer is over: the day's, or the pool's. */
+    overShelf: ShelfDrop | null;
   } | null>(null);
-  const ideaDragProps = (m: MaybeItem) => ({
-    onPointerDown: (e: ReactPointerEvent) => {
-      (e.currentTarget as HTMLElement).setPointerCapture(e.pointerId);
-      setIdeaDrag({ id: m.id, overGap: null });
-    },
-    onPointerMove: (e: ReactPointerEvent) => {
-      setIdeaDrag((d) => {
-        if (!d) return d;
-        const el = document.elementFromPoint(e.clientX, e.clientY);
-        const target = el?.closest('[data-gap-key]') as HTMLElement | null;
-        const next = target?.dataset.gapKey ?? null;
-        if (next === d.overGap) return d;
-        // The slot travels on the element itself, so the drop needs no lookup table
-        // and no id to be minted for a gap that only exists for this render.
-        const { gapDate, gapStart, gapEnd } = target?.dataset ?? {};
-        return {
-          ...d,
-          overGap: next,
-          fill:
-            gapDate && gapStart && gapEnd
-              ? { date: gapDate, start: gapStart, end: gapEnd }
-              : undefined,
-        };
-      });
-    },
-    onPointerUp: () => {
-      const fill = ideaDrag?.fill;
-      if (fill) {
-        verbs.schedule(m, {
-          date: fill.date,
-          title: m.title,
-          kind: EVENT_KIND.SOFT,
-          icon: m.icon,
-          category: m.category,
-          placeId: m.placeId,
-          startsAt: zonedIso(fill.date, fill.start, tz),
-          endsAt: zonedIso(fill.date, fill.end, tz),
+  // Press-and-hold arms the drag (session-114): until then the strip and the page
+  // scroll normally, because a swipe and a drag are the same movement and only
+  // time can tell them apart.
+  const holdToDrag = useHoldToDrag();
+  const ideaDragProps = (m: MaybeItem) =>
+    holdToDrag({
+      onArm: (el) => {
+        autoScroll.start(el);
+        setIdeaDrag({ id: m.id, overGap: null, overShelf: null });
+      },
+      onCancel: () => {
+        autoScroll.stop();
+        setIdeaDrag(null);
+      },
+      onMove: (e) => {
+        autoScroll.track(e.clientY);
+        setIdeaDrag((d) => {
+          if (!d) return d;
+          const el = document.elementFromPoint(e.clientX, e.clientY);
+          const target = el?.closest('[data-gap-key]') as HTMLElement | null;
+          const next = target?.dataset.gapKey ?? null;
+          // A shelf group is the other kind of target: dropping there re-aims the
+          // idea's DAY (a pencil mark) rather than scheduling it (ADR-0116 §2).
+          const shelfEl = el?.closest('[data-shelf-drop]') as HTMLElement | null;
+          const overShelf = (shelfEl?.dataset.shelfDrop as ShelfDrop | undefined) ?? null;
+          if (next === d.overGap && overShelf === d.overShelf) return d;
+          // The slot travels on the element itself, so the drop needs no lookup table
+          // and no id to be minted for a gap that only exists for this render.
+          const { gapDate, gapStart, gapEnd } = target?.dataset ?? {};
+          return {
+            ...d,
+            overGap: next,
+            overShelf,
+            fill:
+              gapDate && gapStart && gapEnd
+                ? { date: gapDate, start: gapStart, end: gapEnd }
+                : undefined,
+          };
         });
-      }
-      setIdeaDrag(null);
-    },
-  });
+      },
+      onDrop: () => {
+        autoScroll.stop();
+        // A gap schedules it; a shelf group only re-aims its day.
+        if (!ideaDrag?.fill && ideaDrag?.overShelf) {
+          verbs.setMaybeDay(m, ideaDrag.overShelf === SHELF_DROP.DAY ? activeDate : null);
+          setIdeaDrag(null);
+          return;
+        }
+        const fill = ideaDrag?.fill;
+        if (fill) {
+          verbs.schedule(m, {
+            date: fill.date,
+            title: m.title,
+            kind: EVENT_KIND.SOFT,
+            icon: m.icon,
+            category: m.category,
+            placeId: m.placeId,
+            startsAt: zonedIso(fill.date, fill.start, tz),
+            endsAt: zonedIso(fill.date, fill.end, tz),
+          });
+        }
+        setIdeaDrag(null);
+      },
+    });
+
+  // A pool idea mid-drag is what conjures up the (possibly empty) day group, so
+  // there is something to drop onto on a day nothing is pencilled into yet.
+  const draggingFromPool =
+    ideaDrag != null && shelf.pool.some((m) => m.id === ideaDrag.id) && !ideaDrag.fill;
 
   const dayNumber = daysBetween(trip.startDate, activeDate) + 1;
   const dayNoon = new Date(zonedIso(activeDate, DAY_NOON, trip.timezone));
@@ -382,15 +436,24 @@ export function PlanDay() {
         <div className="builder-side">
           <div className="sec-title">
             {t.day.maybeShelf}
-            <span className="hint">{t.day.tapToSchedule}</span>
+            <span className="hint">{t.planDay.shelfHint}</span>
           </div>
           {/* Two groups (ADR-0116 §2), and Plan mode finally renders ADR-0027's
               union: the day's skipped soft events were invisible here, on the very
               surface you rebuild the day from. */}
-          {(shelf.forDay.length > 0 || shelf.skipped.length > 0) && (
+          {/* The day's group also appears while an idea is being dragged, even when
+              it's empty: without it there would be nothing to drop onto, which is
+              exactly the case you hit on a day you haven't pencilled anything into
+              yet (ADR-0116 §2 amendment). */}
+          {(shelf.forDay.length > 0 || shelf.skipped.length > 0 || draggingFromPool) && (
             <>
-              {shelf.pool.length > 0 && <div className="shelf-group">{t.day.shelfForDay}</div>}
-              <div className="shelf">
+              {(shelf.pool.length > 0 || draggingFromPool) && (
+                <div className="shelf-group">{t.day.shelfForDay}</div>
+              )}
+              <div
+                className={'shelf' + (ideaDrag?.overShelf === SHELF_DROP.DAY ? ' drop-over' : '')}
+                data-shelf-drop={SHELF_DROP.DAY}
+              >
                 {shelf.forDay.map((m) => (
                   <MaybeCard
                     key={m.id}
@@ -415,6 +478,9 @@ export function PlanDay() {
                     onSchedule={() => verbs.restore(e)}
                   />
                 ))}
+                {shelf.forDay.length === 0 && shelf.skipped.length === 0 && (
+                  <div className="shelf-dropzone">{t.day.shelfDropHere}</div>
+                )}
               </div>
             </>
           )}
@@ -423,7 +489,10 @@ export function PlanDay() {
               {(shelf.forDay.length > 0 || shelf.skipped.length > 0) && (
                 <div className="shelf-group">{t.day.shelfPool}</div>
               )}
-              <div className="shelf">
+              <div
+                className={'shelf' + (ideaDrag?.overShelf === SHELF_DROP.POOL ? ' drop-over' : '')}
+                data-shelf-drop={SHELF_DROP.POOL}
+              >
                 {/* Scheduled (consumed) ideas leave the shelf — no dead "שובץ"
                     tombstone (ADR-0027: an idea is parked OR placed, never both). */}
                 {shelf.pool.map((m) => (

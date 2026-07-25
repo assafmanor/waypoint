@@ -341,6 +341,13 @@ async function outboxOpToCacheChanges(tripId: string, op: OutboxOp): Promise<Ent
         action: CHANGE_ACTION.UPDATE,
         after: { consumed: true },
       });
+    case OUTBOX_VERB.UPDATE_MAYBE_ITEM:
+      return one({
+        entityType: ENTITY_TYPE.MAYBE_ITEM,
+        entityId: op.maybeItemId,
+        action: CHANGE_ACTION.UPDATE,
+        after: op.input,
+      });
     case OUTBOX_VERB.DELETE_MAYBE_ITEM:
       return one({
         entityType: ENTITY_TYPE.MAYBE_ITEM,

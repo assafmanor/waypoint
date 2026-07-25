@@ -127,6 +127,7 @@ export const TRIP_ACTION = {
   REORDER: 'REORDER',
   ADD_MAYBE: 'ADD_MAYBE',
   REMOVE_MAYBE: 'REMOVE_MAYBE',
+  UPDATE_MAYBE: 'UPDATE_MAYBE',
   PARK_EVENT: 'PARK_EVENT',
   RECONCILE_EVENT: 'RECONCILE_EVENT',
   SET_RIPPLE: 'SET_RIPPLE',
@@ -157,6 +158,7 @@ export type Action =
   // Maybe-shelf add/remove (Plan-mode Tier 3 build-the-shelf).
   | { type: typeof TRIP_ACTION.ADD_MAYBE; item: MaybeItem }
   | { type: typeof TRIP_ACTION.REMOVE_MAYBE; id: string }
+  | { type: typeof TRIP_ACTION.UPDATE_MAYBE; id: string; patch: Partial<MaybeItem> }
   // Park an event onto the shelf: it leaves the day and becomes a maybe idea,
   // atomically (one undo snapshot).
   | { type: typeof TRIP_ACTION.PARK_EVENT; eventId: string; item: MaybeItem }
@@ -254,6 +256,17 @@ export function reducer(state: State, action: Action): State {
       return {
         ...state,
         maybeItems: state.maybeItems.filter((m) => m.id !== action.id),
+        ripple: null,
+        undo: snapshotOf(state),
+      };
+    // Re-aiming an idea at a day (ADR-0116 §1): a patch, not a lifecycle change —
+    // `consumed` is untouched, so the idea stays parked.
+    case TRIP_ACTION.UPDATE_MAYBE:
+      return {
+        ...state,
+        maybeItems: state.maybeItems.map((m) =>
+          m.id === action.id ? { ...m, ...action.patch } : m,
+        ),
         ripple: null,
         undo: snapshotOf(state),
       };
