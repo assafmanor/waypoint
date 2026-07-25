@@ -15,7 +15,8 @@ import {
 } from '../constants';
 
 /**
- * How far to scroll this frame, from the pointer's viewport position. Negative
+ * How far to scroll this frame, from the pointer's position INSIDE the scroller's
+ * box (`clientY - scrollerTop`) and that box's height — not the viewport's. Negative
  * scrolls up, positive down, 0 anywhere in the middle. The step ramps with how
  * deep into the edge zone the pointer is, so easing toward the edge crawls and
  * pinning against it moves at full speed — a fixed step either overshoots or
@@ -93,7 +94,13 @@ export function useEdgeAutoScroll(): EdgeAutoScroll {
   const tick = useCallback(() => {
     const el = scroller.current;
     if (!el) return;
-    const step = edgeScrollStep(point.current.clientY, el.clientHeight);
+    // The edge bands belong to the SCROLLER's box, not the viewport's: `.body` starts
+    // below the app header, so feeding a raw viewport `clientY` against the
+    // scroller's height offsets both bands by the header's height — a finger resting
+    // in the middle of the list reads as "past the bottom edge" and the list runs
+    // away under it (e2e/shelf-drag.spec.ts pins this).
+    const box = el.getBoundingClientRect();
+    const step = edgeScrollStep(point.current.clientY - box.top, box.height);
     if (step !== 0) {
       const before = el.scrollTop;
       el.scrollTop += step;

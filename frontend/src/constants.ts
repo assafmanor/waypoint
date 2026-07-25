@@ -168,6 +168,9 @@ export const DRAG_SCROLLER_MIN_OVERFLOW_PX = 24;
  *  during the hold before we call it a scroll and give up the drag. */
 export const DRAG_HOLD_MS = 280;
 export const DRAG_HOLD_SLOP_PX = 8;
+/** How long the "swallow the click a completed drag fires" listener stays armed
+ *  before disarming itself. Only a fallback: it normally disarms on that click. */
+export const DRAG_CLICK_SWALLOW_MS = 400;
 
 /** The 5-hue Map pin/badge palette (ADR-0109 §3 / ADR-0110 §2). The `--cat-*`
  *  tokens carry the actual colours (styles/tokens.css); this is the hue key. */

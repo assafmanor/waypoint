@@ -149,6 +149,20 @@ body.wp-dragging * {
   user-select: none !important;
   -webkit-user-select: none !important;
 }
+/* Ownership of the finger is enforced in JS, not here (lib/useHoldToDrag.ts's
+   mount-time non-passive `touchmove` guard). Two CSS routes were tried first and
+   both are dead ends, so they are documented rather than reintroduced:
+     • `touch-action: none` on a live drag — `touch-action` is read when the touch
+       STARTS, so setting it mid-gesture changes nothing;
+     • `overflow-y: hidden` on `.body` for the drag's duration — it does stop native
+       scrolling, but it also makes the container stop reporting as a scroller, and
+       `nearestScroller` (lib/edge-autoscroll.ts) then finds nothing to scroll: the
+       edge auto-scroll dies with it. Proven by e2e/shelf-drag.spec.ts. */
+/* The held card stops answering hit-tests, so the drop target is always what is
+   UNDER the finger rather than the thing being dragged. */
+body.wp-dragging .wp-maybecard.dragging {
+  pointer-events: none;
+}
 
 html,
 body,
