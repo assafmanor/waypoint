@@ -53,9 +53,18 @@ import {
   type TimeItem,
 } from '../lib/time';
 import { gapBetween, nextSlot, type GapDefaults } from '../lib/gaps';
-import { shelfGroups } from '../lib/shelf';
+import { shelfGroups, type ShelfGroups } from '../lib/shelf';
+import {
+  resolveShelfDrop,
+  SHELF_DRAG,
+  SHELF_DROP,
+  SHELF_DROP_ACTION,
+  type ShelfDrop,
+  type ShelfDropTarget,
+} from '../lib/shelf-drop';
 import { useEdgeAutoScroll, type DragPoint } from '../lib/edge-autoscroll';
 import { useHoldToDrag, useSelectionGuard } from '../lib/useHoldToDrag';
+import { useDragGhost } from '../lib/useDragGhost';
 import {
   CODE_PREFIX,
   DAY_NOON,
@@ -83,11 +92,24 @@ import { MaybeCard } from '../ui/domain/MaybeCard';
 const daysBetween = (from: string, to: string) =>
   Math.round((Date.parse(to) - Date.parse(from)) / MS_PER_DAY);
 
-/** The shelf's two drop zones (ADR-0116 §2): dropping an idea on the day's group
- *  pencils it in for that day, the pool clears it back to "someday". Named, so no
- *  hit-test or `data-` attribute spells a bare string (ADR-0095). */
-export const SHELF_DROP = { DAY: 'day', POOL: 'pool' } as const;
-export type ShelfDrop = (typeof SHELF_DROP)[keyof typeof SHELF_DROP];
+/** What is being dragged off the shelf. Both kinds travel the same drag: only the
+ *  drop WRITE differs (`lib/shelf-drop.ts` decides which), so this is a tagged
+ *  subject rather than a second drag implementation. */
+type ShelfDragSubject =
+  | { kind: typeof SHELF_DRAG.IDEA; item: MaybeItem }
+  | { kind: typeof SHELF_DRAG.SKIPPED; event: TripEvent };
+
+const subjectId = (s: ShelfDragSubject) => (s.kind === SHELF_DRAG.IDEA ? s.item.id : s.event.id);
+
+/** Which shelf card an in-flight drag is holding, found by id across all three
+ *  groups — the drag only ever carries an id, and the floating clone needs the card
+ *  itself to render. */
+function findShelfSubject(shelf: ShelfGroups, id: string): ShelfDragSubject | null {
+  const item = [...shelf.forDay, ...shelf.pool].find((m) => m.id === id);
+  if (item) return { kind: SHELF_DRAG.IDEA, item };
+  const event = shelf.skipped.find((e) => e.id === id);
+  return event ? { kind: SHELF_DRAG.SKIPPED, event } : null;
+}
 
 /** A gap's identity for the drag hit-test: its own slot. Stable across renders and
  *  unique per day, so no synthetic id has to be invented or stored. */
@@ -224,7 +246,7 @@ export function PlanDay() {
     setScheduleMaybe(m);
   };
 
-  // Drag a shelf idea onto a gap (ADR-0116 §5). Deliberately the SAME mechanism as
+  // Drag a shelf card onto a gap (ADR-0116 §5). Deliberately the SAME mechanism as
   // the reorder grip above — pointer capture + a hit-test on the element under the
   // pointer — rather than a second drag implementation; only the target attribute
   // (`data-gap-key`) and the drop action differ. Dropping schedules the idea into
@@ -235,6 +257,8 @@ export function PlanDay() {
     fill?: GapDefaults;
     /** Which shelf group the pointer is over: the day's, or the pool's. */
     overShelf: ShelfDrop | null;
+    /** Over the empty day's drop zone, which has no slot to offer (session-117). */
+    overDay: boolean;
   } | null>(null);
   // Press-and-hold arms the drag (session-114): until then the strip and the page
   // scroll normally, because a swipe and a drag are the same movement and only
@@ -253,7 +277,10 @@ export function PlanDay() {
       // idea's DAY (a pencil mark) rather than scheduling it (ADR-0116 §2).
       const shelfEl = el?.closest('[data-shelf-drop]') as HTMLElement | null;
       const overShelf = (shelfEl?.dataset.shelfDrop as ShelfDrop | undefined) ?? null;
-      if (next === d.overGap && overShelf === d.overShelf) return d;
+      // …and on a day with nothing on it there are no gaps at all, so the empty
+      // state itself becomes a target while a drag is in flight (session-117).
+      const overDay = el?.closest('[data-day-drop]') != null;
+      if (next === d.overGap && overShelf === d.overShelf && overDay === d.overDay) return d;
       // The slot travels on the element itself, so the drop needs no lookup table
       // and no id to be minted for a gap that only exists for this render.
       const { gapDate, gapStart, gapEnd } = target?.dataset ?? {};
@@ -261,6 +288,7 @@ export function PlanDay() {
         ...d,
         overGap: next,
         overShelf,
+        overDay,
         fill:
           gapDate && gapStart && gapEnd
             ? { date: gapDate, start: gapStart, end: gapEnd }
@@ -268,11 +296,19 @@ export function PlanDay() {
       };
     });
 
-  const ideaDragProps = (m: MaybeItem) =>
+  // The held card follows the finger (session-117). A clone does, rather than the
+  // card itself, because the card sits in a horizontally scrolling strip that would
+  // clip it the moment it left.
+  const ghost = useDragGhost();
+
+  // One drag, two subjects. Everything up to the release is identical — arm, follow,
+  // hit-test, auto-scroll — so only `onDrop` asks what was being dragged.
+  const shelfDragProps = (subject: ShelfDragSubject) =>
     holdToDrag({
-      onArm: (el) => {
+      onArm: (el, at) => {
         autoScroll.start(el, hitTestDropTarget);
-        setIdeaDrag({ id: m.id, overGap: null, overShelf: null });
+        ghost.lift(el, at);
+        setIdeaDrag({ id: subjectId(subject), overGap: null, overShelf: null, overDay: false });
       },
       onCancel: () => {
         autoScroll.stop();
@@ -280,37 +316,118 @@ export function PlanDay() {
       },
       onMove: (point) => {
         autoScroll.track(point);
+        ghost.track(point);
         hitTestDropTarget(point);
       },
       onDrop: () => {
         autoScroll.stop();
-        // A gap schedules it; a shelf group only re-aims its day.
-        if (!ideaDrag?.fill && ideaDrag?.overShelf) {
-          verbs.setMaybeDay(m, ideaDrag.overShelf === SHELF_DROP.DAY ? activeDate : null);
-          setIdeaDrag(null);
-          return;
-        }
-        const fill = ideaDrag?.fill;
-        if (fill) {
-          verbs.schedule(m, {
-            date: fill.date,
-            title: m.title,
-            kind: EVENT_KIND.SOFT,
-            icon: m.icon,
-            category: m.category,
-            placeId: m.placeId,
-            startsAt: zonedIso(fill.date, fill.start, tz),
-            endsAt: zonedIso(fill.date, fill.end, tz),
-          });
-        }
+        const target = ideaDrag;
         setIdeaDrag(null);
+        if (target) commitShelfDrop(subject, target);
       },
     });
+
+  const ideaDragProps = (m: MaybeItem) => shelfDragProps({ kind: SHELF_DRAG.IDEA, item: m });
+  const skippedDragProps = (e: TripEvent) => shelfDragProps({ kind: SHELF_DRAG.SKIPPED, event: e });
+
+  /** Every shelf card renders through here, including the floating clone — so the
+   *  clone cannot drift from the card it is cloning, and the day's group and the pool
+   *  stop being two near-identical copies of the same markup (rule 8). `ghosted` is
+   *  the clone: no drag handlers (it isn't the thing being touched) and no `dragging`
+   *  placeholder styling (it's the lifted card, not the slot it left). */
+  const shelfCard = (subject: ShelfDragSubject, ghosted = false) => {
+    const lifted = ghosted ? ' lifted' : '';
+    // The source card stays in place as the slot the drag came out of.
+    const dragging = !ghosted && ideaDrag?.id === subjectId(subject);
+    if (subject.kind === SHELF_DRAG.SKIPPED) {
+      const e = subject.event;
+      return (
+        <MaybeCard
+          key={e.id}
+          className={`skipped-card${lifted}`}
+          icon={e.icon}
+          title={e.title}
+          meta={t.day.skippedTag}
+          action={`${ICONS.restore} ${t.actions.restore}`}
+          onSchedule={() => verbs.restore(e)}
+          dragProps={ghosted ? undefined : skippedDragProps(e)}
+          dragging={dragging}
+        />
+      );
+    }
+    const m = subject.item;
+    return (
+      <MaybeCard
+        key={m.id}
+        className={lifted.trim() || undefined}
+        icon={m.icon}
+        title={m.title}
+        // A pool card names the day it's aimed at; the day's own group would only be
+        // repeating the day you're looking at (ADR-0116 §2).
+        meta={
+          m.targetDate && m.targetDate !== activeDate
+            ? relativeDayLabel(m.targetDate, activeDate)
+            : undefined
+        }
+        action={`${ICONS.add} ${t.actions.scheduleToDay}`}
+        onSchedule={() => openSchedule(m)}
+        onRemove={() => verbs.removeMaybe(m)}
+        removeLabel={t.planDay.removeIdea}
+        dragProps={ghosted ? undefined : ideaDragProps(m)}
+        dragging={dragging}
+      />
+    );
+  };
+
+  /** Carry out what the release meant. The decision is `resolveShelfDrop`'s (one
+   *  documented table, unit-tested without a browser); this only turns each outcome
+   *  into the verb that already performs it. */
+  const commitShelfDrop = (subject: ShelfDragSubject, target: ShelfDropTarget) => {
+    const action = resolveShelfDrop(subject.kind, target, activeDate);
+    const slot = (fill: GapDefaults) => ({
+      startsAt: zonedIso(fill.date, fill.start, tz),
+      endsAt: zonedIso(fill.date, fill.end, tz),
+    });
+    switch (action.kind) {
+      case SHELF_DROP_ACTION.SCHEDULE:
+        if (subject.kind !== SHELF_DRAG.IDEA) return;
+        return verbs.schedule(subject.item, {
+          date: action.fill.date,
+          title: subject.item.title,
+          kind: EVENT_KIND.SOFT,
+          icon: subject.item.icon,
+          category: subject.item.category,
+          placeId: subject.item.placeId,
+          ...slot(action.fill),
+        });
+      case SHELF_DROP_ACTION.RESTORE_INTO:
+        if (subject.kind !== SHELF_DRAG.SKIPPED) return;
+        // Un-skipped and moved in ONE patch, so it is one row in the change feed and
+        // one undo — not "restored" followed by "moved".
+        return verbs.update(subject.event, {
+          status: EVENT_STATUS.PLANNED,
+          ...slot(action.fill),
+        });
+      case SHELF_DROP_ACTION.RESTORE:
+        if (subject.kind !== SHELF_DRAG.SKIPPED) return;
+        return verbs.restore(subject.event);
+      case SHELF_DROP_ACTION.CHOOSE_TIME:
+        if (subject.kind !== SHELF_DRAG.IDEA) return;
+        return openSchedule(subject.item);
+      case SHELF_DROP_ACTION.AIM_DAY:
+        if (subject.kind !== SHELF_DRAG.IDEA) return;
+        return verbs.setMaybeDay(subject.item, action.day);
+      case SHELF_DROP_ACTION.NONE:
+        return;
+    }
+  };
 
   // A pool idea mid-drag is what conjures up the (possibly empty) day group, so
   // there is something to drop onto on a day nothing is pencilled into yet.
   const draggingFromPool =
     ideaDrag != null && shelf.pool.some((m) => m.id === ideaDrag.id) && !ideaDrag.fill;
+  /** The card being dragged, so the floating clone can render its content. */
+  const draggedSubject = ideaDrag && findShelfSubject(shelf, ideaDrag.id);
 
   const dayNumber = daysBetween(trip.startDate, activeDate) + 1;
   const dayNoon = new Date(zonedIso(activeDate, DAY_NOON, trip.timezone));
@@ -395,7 +512,22 @@ export function PlanDay() {
         )}
 
         {dayEvents.length === 0 && transitions.length === 0 ? (
-          <div className="builder-empty">{readOnly ? t.planDay.pastEmpty : t.planDay.empty}</div>
+          // An empty day has no gap chips, so it had nothing to drop a card onto —
+          // the one day where dragging an idea in is most obviously the point
+          // (session-117). While a drag is in flight the empty state itself becomes
+          // the target, the same "chrome that exists only while it's useful" move
+          // the empty day GROUP already makes on the shelf (§2 amendment). It offers
+          // no slot, so an idea dropped here opens the schedule sheet to pick a time.
+          <div
+            className={
+              'builder-empty' +
+              (ideaDrag ? ' droppable' : '') +
+              (ideaDrag?.overDay ? ' drop-over' : '')
+            }
+            data-day-drop={ideaDrag ? '' : undefined}
+          >
+            {ideaDrag ? t.planDay.dayDropHere : readOnly ? t.planDay.pastEmpty : t.planDay.empty}
+          </div>
         ) : (
           <div>
             {/* Overlaps render as the concurrency forest (ADR-0041): nests for
@@ -460,30 +592,11 @@ export function PlanDay() {
                 className={'shelf' + (ideaDrag?.overShelf === SHELF_DROP.DAY ? ' drop-over' : '')}
                 data-shelf-drop={SHELF_DROP.DAY}
               >
-                {shelf.forDay.map((m) => (
-                  <MaybeCard
-                    key={m.id}
-                    icon={m.icon}
-                    title={m.title}
-                    action={`${ICONS.add} ${t.actions.scheduleToDay}`}
-                    onSchedule={() => openSchedule(m)}
-                    onRemove={() => verbs.removeMaybe(m)}
-                    removeLabel={t.planDay.removeIdea}
-                    dragProps={ideaDragProps(m)}
-                    dragging={ideaDrag?.id === m.id}
-                  />
-                ))}
-                {shelf.skipped.map((e) => (
-                  <MaybeCard
-                    key={e.id}
-                    className="skipped-card"
-                    icon={e.icon}
-                    title={e.title}
-                    meta={t.day.skippedTag}
-                    action={`${ICONS.restore} ${t.actions.restore}`}
-                    onSchedule={() => verbs.restore(e)}
-                  />
-                ))}
+                {shelf.forDay.map((m) => shelfCard({ kind: SHELF_DRAG.IDEA, item: m }))}
+                {/* A skipped card drags too (session-117): it is the card that most
+                    obviously wants to go back onto the day, and it was the only one
+                    you couldn't put there. */}
+                {shelf.skipped.map((e) => shelfCard({ kind: SHELF_DRAG.SKIPPED, event: e }))}
                 {shelf.forDay.length === 0 && shelf.skipped.length === 0 && (
                   <div className="shelf-dropzone">{t.day.shelfDropHere}</div>
                 )}
@@ -501,20 +614,7 @@ export function PlanDay() {
               >
                 {/* Scheduled (consumed) ideas leave the shelf — no dead "שובץ"
                     tombstone (ADR-0027: an idea is parked OR placed, never both). */}
-                {shelf.pool.map((m) => (
-                  <MaybeCard
-                    key={m.id}
-                    icon={m.icon}
-                    title={m.title}
-                    meta={m.targetDate ? relativeDayLabel(m.targetDate, activeDate) : undefined}
-                    action={`${ICONS.add} ${t.actions.scheduleToDay}`}
-                    onSchedule={() => openSchedule(m)}
-                    onRemove={() => verbs.removeMaybe(m)}
-                    removeLabel={t.planDay.removeIdea}
-                    dragProps={ideaDragProps(m)}
-                    dragging={ideaDrag?.id === m.id}
-                  />
-                ))}
+                {shelf.pool.map((m) => shelfCard({ kind: SHELF_DRAG.IDEA, item: m }))}
               </div>
             </>
           )}
@@ -586,6 +686,20 @@ export function PlanDay() {
             setBookingTarget(b);
           }}
         />
+      )}
+
+      {/* The card under the finger (session-117). A clone rather than the card
+          itself, because the source sits in a horizontally scrolling strip that
+          would clip it the moment it left. `position: fixed` is enough to escape
+          that clipping, so this is NOT an overlay in the ADR-0090 sense — it isn't
+          a back target and must never enter the back stack, which is why it doesn't
+          go through `Modal`/`useOverlay`. Hidden from assistive tech: it's a
+          duplicate of a card that is still in the list, and the drag itself has a
+          keyboard-reachable equivalent in the card's own tap action. */}
+      {draggedSubject && (
+        <div className="wp-dragghost" ref={ghost.ref} aria-hidden="true">
+          {shelfCard(draggedSubject, true)}
+        </div>
       )}
     </div>
   );
