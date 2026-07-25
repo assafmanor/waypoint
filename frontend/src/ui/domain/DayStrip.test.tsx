@@ -146,4 +146,43 @@ describe('DayStrip', () => {
     expect(scrollIntoView).toHaveBeenCalledTimes(1);
     expect(scrollIntoView.mock.instances[0]).toBe(pills[2]); // the 20th (now selected)
   });
+
+  // Spring-loaded pills (ADR-0116 session-119): while a drag is in flight the strip
+  // announces its pills as drop targets and shows which one a drop would land on. The
+  // dwell that actually switches days lives with the drag (`lib/useSpringLoadedDay`),
+  // because only it can hit-test the pointer — a touch pointer is implicitly captured
+  // by the element the touch started on, so the pill's own `pointerenter` never fires.
+  describe('while a drag is in flight', () => {
+    const strip = (props: { dragging?: boolean; overDate?: string | null }) =>
+      render(
+        <DayStrip
+          days={DAYS}
+          selected="2026-07-19"
+          today="2026-07-19"
+          mode="plan"
+          onSelect={vi.fn()}
+          {...props}
+        />,
+      ).container;
+
+    it('marks its pills as drop targets only while dragging', () => {
+      expect(strip({ dragging: true }).querySelectorAll('[data-day-pill]')).toHaveLength(
+        DAYS.length,
+      );
+      cleanup();
+      expect(strip({}).querySelectorAll('[data-day-pill]')).toHaveLength(0);
+    });
+
+    it('lights the pill the drag is over, so the drop reads as landing there', () => {
+      const container = strip({ dragging: true, overDate: '2026-07-20' });
+      const pills = container.querySelectorAll('.wp-daypill');
+      expect(pills[2].className).toContain('drop-over');
+      expect(pills[0].className).not.toContain('drop-over');
+    });
+
+    it('lights nothing when no drag is in flight', () => {
+      const container = strip({ overDate: '2026-07-20' });
+      expect(container.querySelector('.drop-over')).toBeNull();
+    });
+  });
 });

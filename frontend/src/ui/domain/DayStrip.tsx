@@ -43,6 +43,18 @@ export interface DayStripProps {
    *  so the filled selection is suppressed (today keeps its anchor, empty-day
    *  markers stay). Tapping any pill exits all-days at the caller. */
   allScope?: boolean;
+  /** A drag is in flight somewhere in the app (`state/drag-state`). The pills then
+   *  announce themselves as drop targets with `data-day-pill`, which is what the
+   *  drag's hit-test looks for — resting on one switches to that day, so a card or a
+   *  row can be carried to a day that isn't on screen (ADR-0116 session-119). Off, they
+   *  are ordinary buttons. (Distinct from the builder's own `data-day-drop`, which
+   *  marks an EMPTY DAY's drop zone: overloading one attribute for both read as a bug
+   *  waiting to happen.) */
+  dragging?: boolean;
+  /** Which pill the drag is over, so it can show where the drop would land. Comes from
+   *  the drag's hit-test, not from the pill: a touch pointer is implicitly captured by
+   *  the element the touch started on, so `pointerenter` never fires here mid-drag. */
+  overDate?: string | null;
 }
 
 /** Pill state classes, faithful to App.tsx's pillClass (ADR-0043/0028). */
@@ -78,7 +90,16 @@ function pillClass(
   return c.join(' ');
 }
 
-export function DayStrip({ days, selected, today, mode, onSelect, allScope }: DayStripProps) {
+export function DayStrip({
+  days,
+  selected,
+  today,
+  mode,
+  onSelect,
+  allScope,
+  dragging,
+  overDate,
+}: DayStripProps) {
   const selectedRef = useRef<HTMLButtonElement>(null);
 
   useEffect(() => {
@@ -101,15 +122,13 @@ export function DayStrip({ days, selected, today, mode, onSelect, allScope }: Da
           <button
             ref={d.date === selected ? selectedRef : undefined}
             type="button"
-            className={pillClass(d.date, {
-              selected,
-              today,
-              mode,
-              hasEvents: d.hasEvents,
-              allScope,
-            })}
+            className={
+              pillClass(d.date, { selected, today, mode, hasEvents: d.hasEvents, allScope }) +
+              (dragging && overDate === d.date ? ' drop-over' : '')
+            }
             onClick={() => onSelect(d.date)}
             aria-pressed={d.date === selected && !allScope}
+            data-day-pill={dragging ? d.date : undefined}
           >
             {d.letter}
             <span className="n" dir="ltr">

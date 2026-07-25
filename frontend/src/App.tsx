@@ -12,6 +12,7 @@ import type { Trip } from '@waypoint/shared';
 import { TripProvider, useTrip } from './state/trip-state';
 import { ModeProvider, useMode } from './state/mode-state';
 import { MapScopeProvider, useMapScope } from './state/map-scope-state';
+import { DragProvider, useDragState } from './state/drag-state';
 import { AuthProvider, useAuth } from './state/auth-state';
 import { ActiveTripIdProvider, useActiveTripId } from './state/active-trip-id';
 import {
@@ -161,6 +162,9 @@ function Header({
   const { trip, users, zoneEvidence, activeDate, usingCachedSnapshot, events } = useTrip();
   const { me } = useAuth();
   const { mode } = useMode();
+  // A drag in flight anywhere makes the strip's day pills spring-loaded, so a card or
+  // a row can be carried to another day (ADR-0116 session-119).
+  const { dragging, overDate } = useDragState();
   const now = useClock();
   // Plan mode surfaces empty days on the strip (dashed + red number), the
   // day-selector cue from mockups/plan-mode-v1.html — a gap to go fill. DayStrip
@@ -321,6 +325,8 @@ function Header({
         mode={mode}
         onSelect={onSelectDay}
         allScope={allScope}
+        dragging={dragging}
+        overDate={overDate}
       />
       {dayScope && (
         <button
@@ -603,7 +609,9 @@ function RootSurface() {
     <TripProvider tripId={landing.tripId} knownTrip={knownTrip}>
       <ModeProvider>
         <MapScopeProvider>
-          <Shell />
+          <DragProvider>
+            <Shell />
+          </DragProvider>
         </MapScopeProvider>
       </ModeProvider>
     </TripProvider>
