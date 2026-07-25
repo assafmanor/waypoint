@@ -6,7 +6,7 @@
 //
 // Writing these found three defects the reports hadn't separated:
 //
-//   1. the pending hold was cancelled by any re-render inside its 280 ms window —
+//   1. the pending hold was cancelled by any re-render inside its DRAG_HOLD_MS window —
 //      the builder re-renders every second on the clock, so the drag armed or not
 //      by luck. That was the "arms only on some parts of the card" report;
 //   2. the edge auto-scroll compared a VIEWPORT y against the SCROLLER's height,
@@ -240,7 +240,7 @@ test.describe('a day with a wide gap between two events', () => {
 
     // Drag up the screen, staying clear of both edge bands: the ONLY thing that could
     // move the list now is a native pan. Before the fix it did — the listener meant to
-    // suppress it was attached on arm, 280 ms after touchstart, by which point the
+    // suppress it was attached on arm, DRAG_HOLD_MS after touchstart, by which point the
     // gesture was already on the compositor's fast path and `preventDefault` was a
     // no-op on an uncancellable touchmove.
     const span = bands.middleFrom - bands.middleTo;

@@ -244,7 +244,7 @@ describe('useHoldToDrag', () => {
 
   // The other half of the same report ("the drag activates, but only on some parts of
   // the card"): the card was never the variable. The hold's cleanup was keyed on a
-  // callback identity that changed every render, so any re-render inside the 280 ms
+  // callback identity that changed every render, so any re-render inside the hold
   // window — and the builder re-renders every second, on the clock — cleared the
   // pending timer and the drag silently never armed.
   it('survives a re-render during the hold', () => {
