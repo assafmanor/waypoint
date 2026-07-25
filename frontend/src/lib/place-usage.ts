@@ -37,6 +37,15 @@ const COMMITMENT_WEIGHT: Record<PinCommitment, number> = { hard: 3, soft: 2, ide
 export interface DayUsage {
   date: string;
   prominence: 'edge' | 'ambient';
+  /** The moment this place is due on this day, as an absolute instant — the
+   *  earliest of its references' moments here. Absent when nothing anchored to
+   *  this day carries a clock (an untimed event, or a strictly-middle stay night).
+   *  Absolute, not wall-clock, so a zone-crossing day still orders by the sequence
+   *  you actually live it (ADR-0107). */
+  at?: number;
+  /** The day's manual order, for the tie the clock can't break — the same
+   *  `sortOrder` fallback `buildTimeTree` uses (ADR-0043). */
+  sortOrder?: number;
 }
 
 export interface PlaceUsage {
@@ -57,9 +66,21 @@ const isTransport = (booking: Booking): boolean =>
   categoryForBookingType(booking.type) === 'transport';
 
 /** Calendar dates spanned by an event, inclusive. Parsed/stepped in UTC so the
- *  whole-day step is DST-safe (calendar dates carry no zone). */
-function spanDays(event: TripEvent): DayUsage[] {
-  if (!isMultiDay(event)) return [{ date: event.date, prominence: 'edge' }];
+ *  whole-day step is DST-safe (calendar dates carry no zone).
+ *
+ *  `edge` is where the clock lives: a span's first day is due at its start and its
+ *  last day at its end (a hotel's check-in and check-out — the same two moments the
+ *  day view draws as transitions), while a strictly-middle night has no moment at
+ *  all. `endsAt` overrides for a transport DESTINATION, whose moment is the arrival,
+ *  not the departure — so a flight's two endpoints list in travel order. */
+function spanDays(event: TripEvent, edge: 'start' | 'end' = 'start'): DayUsage[] {
+  const startAt = event.startsAt ? Date.parse(event.startsAt) : undefined;
+  const endAt = event.endsAt ? Date.parse(event.endsAt) : undefined;
+  const { sortOrder } = event;
+  if (!isMultiDay(event)) {
+    const at = edge === 'end' ? (endAt ?? startAt) : startAt;
+    return [{ date: event.date, prominence: 'edge', at, sortOrder }];
+  }
   const dates: string[] = [];
   const endT = Date.parse(event.endDate!);
   for (let t = Date.parse(event.date); t <= endT; t += MS_PER_DAY) {
@@ -68,14 +89,20 @@ function spanDays(event: TripEvent): DayUsage[] {
   // An ambient stay (a hotel) reads edge on arrival/departure, ambient in the
   // strictly-middle nights; a non-ambient multi-day event stays loud throughout.
   const ambient = isAmbient(event);
-  return dates.map((date, i) => ({
-    date,
-    prominence: ambient && i !== 0 && i !== dates.length - 1 ? 'ambient' : 'edge',
-  }));
+  return dates.map((date, i) => {
+    const isFirst = i === 0;
+    const isLast = i === dates.length - 1;
+    return {
+      date,
+      prominence: ambient && !isFirst && !isLast ? ('ambient' as const) : ('edge' as const),
+      at: isFirst ? startAt : isLast ? endAt : undefined,
+      sortOrder,
+    };
+  });
 }
 
 interface Accum {
-  days: Map<string, 'edge' | 'ambient'>;
+  days: Map<string, DayUsage>;
   categories: Set<EventCategory>;
   isMaybe: boolean;
   isScheduled: boolean;
@@ -124,8 +151,24 @@ export function buildPlaceUsageIndex(
     if (ref.isEvent) a.isScheduled = true;
     if (ref.isMaybe) a.isMaybe = true;
     for (const d of ref.days) {
-      // Edge wins over ambient when two references land on the same date.
-      if (d.prominence === 'edge' || !a.days.has(d.date)) a.days.set(d.date, d.prominence);
+      const seen = a.days.get(d.date);
+      if (!seen) {
+        a.days.set(d.date, d);
+        continue;
+      }
+      // Two references on one date merge to the loudest prominence and the
+      // EARLIEST moment — the place is due when the first thing there is due.
+      a.days.set(d.date, {
+        date: d.date,
+        prominence: seen.prominence === 'edge' || d.prominence === 'edge' ? 'edge' : 'ambient',
+        at: seen.at == null ? d.at : d.at == null ? seen.at : Math.min(seen.at, d.at),
+        sortOrder:
+          seen.sortOrder == null
+            ? d.sortOrder
+            : d.sortOrder == null
+              ? seen.sortOrder
+              : Math.min(seen.sortOrder, d.sortOrder),
+      });
     }
     if (!a.best || COMMITMENT_WEIGHT[ref.commitment] > COMMITMENT_WEIGHT[a.best.commitment]) {
       a.best = { category: ref.category, commitment: ref.commitment };
@@ -136,14 +179,24 @@ export function buildPlaceUsageIndex(
     const booking = event.bookingId ? bookings.find((b) => b.id === event.bookingId) : undefined;
     const category = event.category ?? (booking ? categoryForBookingType(booking.type) : null);
     const commitment: PinCommitment = event.kind === EVENT_KIND.HARD ? 'hard' : 'soft';
-    const days = spanDays(event);
-    // Transport contributes both endpoints; everything else its resolved place.
-    const placeIds =
+    // Transport contributes both endpoints, each at its OWN moment — the origin
+    // when you depart, the destination when you land — so the two ends of a flight
+    // never tie and list in travel order. Everything else: its resolved place.
+    const endpoints: { placeId?: string | null; edge: 'start' | 'end' }[] =
       booking && isTransport(booking)
-        ? [booking.fromPlaceId, booking.toPlaceId]
-        : [eventPlaceId(event, booking)];
-    for (const pid of placeIds) {
-      addRef(pid, { category, commitment, days, isEvent: true, isMaybe: false });
+        ? [
+            { placeId: booking.fromPlaceId, edge: 'start' },
+            { placeId: booking.toPlaceId, edge: 'end' },
+          ]
+        : [{ placeId: eventPlaceId(event, booking), edge: 'start' }];
+    for (const { placeId, edge } of endpoints) {
+      addRef(placeId, {
+        category,
+        commitment,
+        days: spanDays(event, edge),
+        isEvent: true,
+        isMaybe: false,
+      });
     }
   }
 
@@ -178,9 +231,7 @@ export function buildPlaceUsageIndex(
     const place = byId.get(placeId);
     out.set(placeId, {
       placeId,
-      days: [...a.days.entries()]
-        .map(([date, prominence]) => ({ date, prominence }))
-        .sort((x, y) => x.date.localeCompare(y.date)),
+      days: [...a.days.values()].sort((x, y) => x.date.localeCompare(y.date)),
       categories: [...a.categories],
       isMaybe: a.isMaybe,
       isScheduled: a.isScheduled,
@@ -209,6 +260,49 @@ export interface PlaceFilter {
 export function matchesPlaceFilter(usage: PlaceUsage, filter: PlaceFilter): boolean {
   if (filter.maybesOnly && !usage.isMaybe) return false;
   return filter.category === PLACE_CATEGORY_ALL || usage.categories.includes(filter.category);
+}
+
+// ── List order (ADR-0109 §1 amendment) ───────────────────────────────────────
+
+/**
+ * The list's order: **the order the trip happens in**. Within a day this reuses the
+ * day view's own vocabulary — start instant, then `sortOrder` (`buildTimeTree`), with
+ * untimed events after the clocked ones exactly as `DayView` renders them — so the
+ * map and the timeline can never disagree about the same day.
+ *
+ * Three things have no position in a day's schedule and sink, in this order:
+ * an **untimed** event (a date but no clock), a strictly-middle **ambient** stay
+ * night (backdrop, off the day schedule by ADR-0054), and a reference with **no day
+ * at all** (an unlinked booking or a shelf idea — a Booking carries no time). Place
+ * name is the final tiebreak, so the order is total and stable.
+ *
+ * `onDate` scopes the comparison to one day when the list is day-scoped; without it
+ * each place is ranked by its earliest day (the all-days view).
+ */
+export function comparePlacesBySchedule(
+  a: PlaceUsage,
+  b: PlaceUsage,
+  nameOf: (usage: PlaceUsage) => string,
+  onDate?: string,
+): number {
+  const dayOf = (u: PlaceUsage) => (onDate ? u.days.find((d) => d.date === onDate) : u.days[0]);
+  const da = dayOf(a);
+  const db = dayOf(b);
+  // A place with no day at all comes last, whatever else is true of it.
+  if (!da || !db) {
+    if (da === db) return nameOf(a).localeCompare(nameOf(b));
+    return da ? -1 : 1;
+  }
+  if (da.date !== db.date) return da.date.localeCompare(db.date);
+
+  // Within the day: clocked → untimed → ambient backdrop.
+  const rank = (d: DayUsage) => (d.prominence === 'ambient' ? 2 : d.at == null ? 1 : 0);
+  if (rank(da) !== rank(db)) return rank(da) - rank(db);
+  if (da.at != null && db.at != null && da.at !== db.at) return da.at - db.at;
+  const sa = da.sortOrder ?? 0;
+  const sb = db.sortOrder ?? 0;
+  if (sa !== sb) return sa - sb;
+  return nameOf(a).localeCompare(nameOf(b));
 }
 
 /** Per-category place counts for the chip row (each chip carries its own count,

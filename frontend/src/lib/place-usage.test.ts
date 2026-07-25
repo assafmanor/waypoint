@@ -12,9 +12,11 @@ import {
 } from '@waypoint/shared';
 import {
   buildPlaceUsageIndex,
+  comparePlacesBySchedule,
   countPlacesByCategory,
   matchesPlaceFilter,
   PLACE_CATEGORY_ALL,
+  type PlaceUsage,
 } from './place-usage';
 
 const place = (id: string, coords?: Partial<Place>): Place => ({
@@ -57,6 +59,11 @@ const event = (partial: Partial<TripEvent>): TripEvent => ({
 const maybe = (partial: Partial<MaybeItem> & Pick<MaybeItem, 'id'>): MaybeItem =>
   ({ tripId: 't', title: 'idea', consumed: false, ...partial }) as MaybeItem;
 
+/** The day/prominence mapping alone — the schedule fields have their own tests, and
+ *  projecting keeps these assertions from breaking every time `DayUsage` grows. */
+const dayShape = (usage: PlaceUsage) =>
+  usage.days.map(({ date, prominence }) => ({ date, prominence }));
+
 describe('buildPlaceUsageIndex', () => {
   it('a single-day event → one edge day, its category, scheduled, soft pin', () => {
     const idx = buildPlaceUsageIndex(
@@ -66,7 +73,7 @@ describe('buildPlaceUsageIndex', () => {
       [place('pl')],
     );
     const u = idx.get('pl')!;
-    expect(u.days).toEqual([{ date: '2026-07-07', prominence: 'edge' }]);
+    expect(dayShape(u)).toEqual([{ date: '2026-07-07', prominence: 'edge' }]);
     expect(u.categories).toEqual(['food']);
     expect(u.isScheduled).toBe(true);
     expect(u.isMaybe).toBe(false);
@@ -107,7 +114,7 @@ describe('buildPlaceUsageIndex', () => {
       [],
       [place('pl')],
     );
-    expect(idx.get('pl')?.days).toEqual([
+    expect(dayShape(idx.get('pl')!)).toEqual([
       { date: '2026-07-07', prominence: 'edge' },
       { date: '2026-07-08', prominence: 'ambient' },
       { date: '2026-07-09', prominence: 'ambient' },
@@ -199,5 +206,133 @@ describe('matchesPlaceFilter / countPlacesByCategory', () => {
     expect(counts.food).toBe(2);
     expect(counts.sightseeing).toBe(1);
     expect(counts.lodging).toBe(0);
+  });
+});
+
+describe('comparePlacesBySchedule (the list reads in trip order)', () => {
+  const DAY = '2026-07-07';
+  const at = (hhmm: string) => `${DAY}T${hhmm}:00Z`;
+  const nameOf = (u: PlaceUsage) => u.placeId;
+
+  /** Order the given places as the day-scoped list would. */
+  const order = (idx: Map<string, PlaceUsage>, onDate?: string) =>
+    [...idx.values()]
+      .sort((a, b) => comparePlacesBySchedule(a, b, nameOf, onDate))
+      .map((u) => u.placeId);
+
+  it('orders a day by the clock, not the alphabet', () => {
+    // Named so alphabetical order would be the exact reverse of the schedule.
+    const idx = buildPlaceUsageIndex(
+      [
+        event({ id: 'e1', placeId: 'zoo', date: DAY, startsAt: at('09:00') }),
+        event({ id: 'e2', placeId: 'market', date: DAY, startsAt: at('13:00') }),
+        event({ id: 'e3', placeId: 'bar', date: DAY, startsAt: at('20:00') }),
+      ],
+      [],
+      [],
+      [place('zoo'), place('market'), place('bar')],
+    );
+    expect(order(idx, DAY)).toEqual(['zoo', 'market', 'bar']);
+  });
+
+  it('breaks a same-instant tie on sortOrder, the day view’s own fallback', () => {
+    const idx = buildPlaceUsageIndex(
+      [
+        event({ id: 'e1', placeId: 'second', date: DAY, startsAt: at('09:00'), sortOrder: 5 }),
+        event({ id: 'e2', placeId: 'first', date: DAY, startsAt: at('09:00'), sortOrder: 1 }),
+      ],
+      [],
+      [],
+      [place('second'), place('first')],
+    );
+    expect(order(idx, DAY)).toEqual(['first', 'second']);
+  });
+
+  it('an untimed event sinks below the clocked ones, as the day view renders it', () => {
+    const idx = buildPlaceUsageIndex(
+      [
+        event({ id: 'e1', placeId: 'aaa-untimed', date: DAY }),
+        event({ id: 'e2', placeId: 'zzz-timed', date: DAY, startsAt: at('20:00') }),
+      ],
+      [],
+      [],
+      [place('aaa-untimed'), place('zzz-timed')],
+    );
+    expect(order(idx, DAY)).toEqual(['zzz-timed', 'aaa-untimed']);
+  });
+
+  it('a mid-stay ambient base sits below the day’s schedule (backdrop, ADR-0054)', () => {
+    const MIDDLE = '2026-07-08';
+    const idx = buildPlaceUsageIndex(
+      [
+        // Checked in on the 7th, out on the 10th → the 8th is a middle night, and
+        // its check-in instant is EARLIER than the day's own events.
+        event({
+          id: 'h',
+          placeId: 'hotel',
+          date: DAY,
+          endDate: '2026-07-10',
+          startsAt: at('15:00'),
+          endsAt: '2026-07-10T11:00:00Z',
+        }),
+        event({ id: 'e', placeId: 'lunch', date: MIDDLE, startsAt: `${MIDDLE}T12:00:00Z` }),
+      ],
+      [],
+      [],
+      [place('hotel'), place('lunch')],
+    );
+    expect(order(idx, MIDDLE)).toEqual(['lunch', 'hotel']);
+    // On the arrival day the hotel is an edge with a real check-in, so it leads —
+    // and a place not anchored to the scoped day sinks below it (the screen filters
+    // those out before sorting; the comparator only has to be total).
+    expect(order(idx, DAY)).toEqual(['hotel', 'lunch']);
+  });
+
+  it('a transport event lists its endpoints in travel order, never tied', () => {
+    const bk = booking({
+      id: 'bk',
+      type: BOOKING_TYPE.FLIGHT,
+      fromPlaceId: 'zzz-origin', // alphabetically last, but you leave from here
+      toPlaceId: 'aaa-arrival',
+    });
+    const idx = buildPlaceUsageIndex(
+      [
+        event({
+          id: 'f',
+          bookingId: 'bk',
+          date: DAY,
+          startsAt: at('07:15'),
+          endsAt: at('11:00'),
+        }),
+      ],
+      [bk],
+      [],
+      [place('zzz-origin'), place('aaa-arrival')],
+    );
+    expect(order(idx, DAY)).toEqual(['zzz-origin', 'aaa-arrival']);
+  });
+
+  it('a place with no day at all sinks last, below everything scheduled', () => {
+    const idx = buildPlaceUsageIndex(
+      [event({ id: 'e', placeId: 'zzz-scheduled', date: DAY, startsAt: at('09:00') })],
+      [booking({ id: 'bk', type: BOOKING_TYPE.HOTEL, placeId: 'aaa-unlinked' })],
+      [maybe({ id: 'm', placeId: 'mmm-idea' })],
+      [place('zzz-scheduled'), place('aaa-unlinked'), place('mmm-idea')],
+    );
+    // All-days scope: the dateless pair goes last, alphabetical among themselves.
+    expect(order(idx)).toEqual(['zzz-scheduled', 'aaa-unlinked', 'mmm-idea']);
+  });
+
+  it('across days it reads in trip order, earliest day first', () => {
+    const idx = buildPlaceUsageIndex(
+      [
+        event({ id: 'e1', placeId: 'later', date: '2026-07-09', startsAt: '2026-07-09T08:00:00Z' }),
+        event({ id: 'e2', placeId: 'earlier', date: DAY, startsAt: at('20:00') }),
+      ],
+      [],
+      [],
+      [place('later'), place('earlier')],
+    );
+    expect(order(idx)).toEqual(['earlier', 'later']);
   });
 });
