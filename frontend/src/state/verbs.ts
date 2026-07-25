@@ -772,7 +772,10 @@ export function useVerbs() {
     },
     // Move an event onto the shelf as a maybe idea (any event, not just ones
     // that started there). Soft events only — hard events are commitments.
-    park: (event: TripEvent) => {
+    // `targetDate` overrides the day the idea lands on: `null` is "someday", which is
+    // what dropping a row on the shelf's pool group means (ADR-0116 session-118).
+    // Omitted keeps the default below.
+    park: (event: TripEvent, opts: { targetDate?: string | null } = {}) => {
       const now = new Date(getNow()).toISOString();
       const item: MaybeItem = {
         id: crypto.randomUUID(),
@@ -784,7 +787,7 @@ export function useVerbs() {
         // its pin hue) and the date survives as the idea's pencilled-in day.
         category: event.category,
         placeId: event.placeId,
-        targetDate: event.date,
+        targetDate: opts.targetDate === undefined ? event.date : (opts.targetDate ?? undefined),
         createdBy: authorId,
         consumed: false,
         createdAt: now,

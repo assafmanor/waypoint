@@ -1,6 +1,8 @@
 import { describe, expect, it } from 'vitest';
 import {
+  resolveRowDrop,
   resolveShelfDrop,
+  ROW_DROP_ACTION,
   SHELF_DRAG,
   SHELF_DROP,
   SHELF_DROP_ACTION,
@@ -85,5 +87,43 @@ describe('resolveShelfDrop (ADR-0116 session-117)', () => {
       DAY,
     );
     expect(action).toEqual({ kind: SHELF_DROP_ACTION.SCHEDULE, fill: FILL });
+  });
+});
+
+describe('resolveRowDrop (ADR-0116 session-118)', () => {
+  const nowhere = { overRowId: null, overShelf: null };
+
+  it('dropped on another soft row, reorders', () => {
+    const action = resolveRowDrop('ev-1', { ...nowhere, overRowId: 'ev-2' }, DAY);
+    expect(action).toEqual({ kind: ROW_DROP_ACTION.REORDER, targetId: 'ev-2' });
+  });
+
+  // The mirror of dragging a card onto a gap: the same two groups, the opposite
+  // direction. Which group sets the idea's day, not whether it parks.
+  it("dropped on the day's shelf group, parks it keeping that day", () => {
+    const action = resolveRowDrop('ev-1', { ...nowhere, overShelf: SHELF_DROP.DAY }, DAY);
+    expect(action).toEqual({ kind: ROW_DROP_ACTION.PARK, day: DAY });
+  });
+
+  it('dropped on the pool, parks it as someday', () => {
+    const action = resolveRowDrop('ev-1', { ...nowhere, overShelf: SHELF_DROP.POOL }, DAY);
+    expect(action).toEqual({ kind: ROW_DROP_ACTION.PARK, day: null });
+  });
+
+  // A grip nudged and released is not a request to do anything.
+  it('dropped on itself does nothing', () => {
+    expect(resolveRowDrop('ev-1', { ...nowhere, overRowId: 'ev-1' }, DAY)).toEqual({
+      kind: ROW_DROP_ACTION.NONE,
+    });
+  });
+
+  it('dropped on nothing does nothing', () => {
+    expect(resolveRowDrop('ev-1', nowhere, DAY)).toEqual({ kind: ROW_DROP_ACTION.NONE });
+  });
+
+  // The shelf sits below the list, so being over it is the more deliberate act.
+  it('prefers the shelf when a row is somehow under the pointer too', () => {
+    const action = resolveRowDrop('ev-1', { overRowId: 'ev-2', overShelf: SHELF_DROP.POOL }, DAY);
+    expect(action).toEqual({ kind: ROW_DROP_ACTION.PARK, day: null });
   });
 });

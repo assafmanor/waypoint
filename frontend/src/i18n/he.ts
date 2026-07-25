@@ -819,6 +819,11 @@ export const t = {
     // while a drag is live (ADR-0116 session-117). It has no slot to offer, so it
     // promises a time chooser rather than a schedule.
     dayDropHere: 'שחררו כאן לבחירת שעה',
+    // …and the mirror image (session-118): a row dragged onto a shelf group leaves the
+    // day and becomes an idea. Which group it lands on sets the idea's day, so the two
+    // zones name their outcome rather than both saying "drop here".
+    parkDropHere: 'שחררו כאן להעברה למדף · ליום הזה',
+    parkSomedayDropHere: 'שחררו כאן להעברה למדף · מתישהו',
     gap: (label: string) => `פער של ${label} · ＋ שבץ`,
     gapMinutes: (n: number) => `${n} דק׳`,
     gapHour: 'שעה',
