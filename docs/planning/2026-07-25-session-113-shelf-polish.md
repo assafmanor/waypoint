@@ -27,8 +27,22 @@ Two geometry bugs, not colour:
 
 Both became a spread `box-shadow` ring on the card itself — follows the card's own radius, anti-aliased, and it's the idiom the Map's next-stop ring already uses. Focus stays teal, drag stays violet, and the inner ring is gone (`:has(.wp-maybecard-body:focus-visible)` puts one ring on the card for both variants).
 
+## 4. The strips stopped scrolling (my own regression)
+
+`touch-action: none` on every draggable card — the thing that makes a vertical drag possible at all — also killed the browser's pan gesture on the card, so swiping the shelf sideways only worked if your finger landed in a **gap between** cards. The reported symptom was a "chopped" third idea sitting half off the edge with no way to reach it.
+
+`touch-action: pan-x` splits the gesture along the geometry: sideways scrolls the strip, a vertical drag lifts the card out. The strip also adopts the **edge-fade mask** ADR-0100 §6 established for the Index chip row, so the inherently-partial card at a scrolling strip's edge reads as "more this way" rather than clipped.
+
+## 5. Dragging an idea between the two groups
+
+§2 grouped the shelf by `targetDate` and left **no way to set one** — `park` was the only writer, and both research (ADR-0115) and the quick-add create dateless ideas, so for most ideas the `לְיום הזה` group was unreachable. Dropping an idea on the day's strip pencils it in; dropping it back on the pool clears it to "someday". Deliberately **not** a schedule: a gap chip schedules, a group only re-aims, and the toast says `סומן ליום הזה` rather than reusing `שובץ`.
+
+**The empty day group materializes mid-drag.** On a day with nothing pencilled in, §2's "a header only when its group has content" rule left nothing to drop onto — so while a pool idea is in flight the group appears with a dashed drop zone, and disappears on release.
+
+This is the **first write path for an existing idea**, which the shelf never had: `PATCH /trips/:tripId/maybe-items/:id` with a narrow `updateMaybeItemSchema` (`targetDate` only — the one field with an edit surface), through `ChangeService.mutate` like every data-plane write, plus an `UPDATE_MAYBE_ITEM` outbox verb + cache mirror + a `TRIP_ACTION.UPDATE_MAYBE` reducer case, so it queues offline and undoes like the rest of the shelf. No schema change — `targetDate` shipped in session 112.
+
 ## Testing
 
-`format` / `lint` / `typecheck` / `build` green; **945 tests / 89 files** (up 6: `edge-autoscroll.test.ts`).
+`format` / `lint` / `typecheck` / `build` green; **948 tests / 89 files** (`edge-autoscroll.test.ts` + three `applySetMaybeDay` cases), plus a backend `MaybeItemsService.update` spec covering set → clear → two `Change` rows (runs on CI's Postgres; no DB in this sandbox).
 
 Sizing and stroke are CSS-only, so they're verified by reading against the reported screenshots, not by a test — the shelf has no visual-regression harness. **The auto-scroll still wants a real-device pass** (ADR-0017): the pacing is tested, the touch feel isn't.
