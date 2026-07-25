@@ -117,17 +117,25 @@ export function useHoldToDrag(): (handlers: HoldToDragHandlers) => HoldToDragPro
     document.addEventListener('click', swallow, true);
   }, []);
 
-  // An armed drag must own the finger outright, and WHEN this listener is attached
-  // decides whether it can. Attaching it on arm — 280 ms after `touchstart` — is too
-  // late twice over: the browser has already routed the gesture to the compositor
-  // (so `touchmove` arrives `cancelable: false` and `preventDefault()` is a silent
-  // no-op), and its scroll recognition fires `pointercancel`, which kills the drag
-  // mid-gesture. That is the whole reported bug: native scroll and edge auto-scroll
-  // both moving the list, the card never able to settle over a target.
+  // An armed drag must own the finger outright, and WHEN and WHERE this listener is
+  // attached decide whether it can.
   //
-  // So the listener is attached when the card MOUNTS, before any touch exists,
-  // which is what keeps the gesture cancellable — and it preventDefaults only while
-  // a drag is actually armed, so ordinary scrolling from a card is untouched.
+  // WHEN: at MOUNT, before any touch exists. Attaching it on arm — 280 ms after
+  // `touchstart` — is too late twice over: the browser has already routed the gesture
+  // to the compositor (so `touchmove` arrives `cancelable: false` and
+  // `preventDefault()` is a silent no-op), and its scroll recognition fires
+  // `pointercancel`, which kills the drag mid-gesture (session 116).
+  //
+  // WHERE: on the ELEMENT, and it stays there for the whole gesture even if the
+  // element unmounts (see `attach`). A touch's target is fixed at `touchstart` and
+  // touch events keep being dispatched to it even once it is detached — where they
+  // have no path to `document` or `window`, so a listener anywhere else simply never
+  // runs. That is not theory: with the guard only at document level, the first move
+  // after a day switch produced `lostpointercapture` → a retargeted `pointermove` →
+  // `pointercancel`, with no `touchmove` reaching the window at all (session 120).
+  //
+  // It preventDefaults only while a drag is actually armed, so ordinary scrolling from
+  // a card is untouched.
   const suppressTouchScroll = useRef((e: TouchEvent) => {
     // `cancelable` is false once the browser has committed to scrolling; calling
     // preventDefault then only logs a warning.
@@ -161,7 +169,17 @@ export function useHoldToDrag(): (handlers: HoldToDragHandlers) => HoldToDragPro
     (el: HTMLElement | null) => {
       if (!el) return;
       el.addEventListener('touchmove', suppressTouchScroll, { passive: false });
-      return () => el.removeEventListener('touchmove', suppressTouchScroll);
+      return () => {
+        // Deliberately NOT removed if this element is the one being dragged: it has
+        // unmounted mid-gesture (dwelling on the day strip switches the day, which
+        // unmounts the very row in flight), and since touch events keep going to the
+        // original target even detached, this listener is the only thing left that can
+        // preventDefault them. Without it the browser starts panning and cancels the
+        // pointer, which is exactly the "drag back down from the strip and it dies"
+        // report. The drag's own teardown removes it.
+        if (held.current === el) return;
+        el.removeEventListener('touchmove', suppressTouchScroll);
+      };
     },
     [suppressTouchScroll],
   );
@@ -213,7 +231,9 @@ export function useHoldToDrag(): (handlers: HoldToDragHandlers) => HoldToDragPro
           window.removeEventListener('pointermove', move);
           window.removeEventListener('pointerup', up);
           window.removeEventListener('pointercancel', cancel);
-          document.removeEventListener('touchmove', suppressTouchScroll);
+          // The element's own guard may have outlived its unmount (see `attach`); this
+          // is where it finally comes off.
+          el.removeEventListener('touchmove', suppressTouchScroll);
           reset();
         }
         window.addEventListener('pointermove', move);
@@ -223,12 +243,6 @@ export function useHoldToDrag(): (handlers: HoldToDragHandlers) => HoldToDragPro
         const arm = () => {
           timer.current = null;
           armed.current = true;
-          // A second, DOCUMENT-level copy of the touch-scroll guard, for the same
-          // reason the listeners above are on the window: once the source unmounts,
-          // its own guard goes with it. Attaching this one at arm time is fine —
-          // unlike the element's, it isn't what has to keep the gesture cancellable
-          // (that one already did), it only has to outlive the source.
-          document.addEventListener('touchmove', suppressTouchScroll, { passive: false });
           selection.lock();
           handlers.onArm(el, { clientX: e.clientX, clientY: e.clientY });
         };

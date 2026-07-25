@@ -349,6 +349,25 @@ test.describe('a day with a wide gap between two events', () => {
     await touch(cdp, 'touchEnd');
     await expect(ghost).toHaveCount(0);
   });
+
+  // An idea becoming an event is a CREATE, so the drop opens the form rather than
+  // committing a slot the user never saw — the same thing an empty day already did
+  // (session-120). Everything that already EXISTS still moves silently.
+  test('an idea dropped on a gap opens the form on that slot', async ({ page }) => {
+    const cdp = await page.context().newCDPSession(page);
+    const card = await centre(page, '.wp-maybecard');
+
+    await touch(cdp, 'touchStart', card.x, card.y);
+    await expect(page.locator('.wp-maybecard.dragging')).toBeVisible();
+    await holdOver(cdp, page, '.gap');
+    await touch(cdp, 'touchEnd');
+
+    const form = page.getByRole('dialog');
+    await expect(form).toBeVisible();
+    // Prefilled from the gap chip, not from the day's next opening: the gap runs
+    // 07:00→20:00, so the form starts at 07:00.
+    await expect(form.getByRole('button', { name: /07:00/ })).toBeVisible();
+  });
 });
 
 test.describe('a skipped event on the shelf', () => {
@@ -559,5 +578,35 @@ test.describe('a builder row, dragged by a hold from anywhere on it', () => {
 
     await expect.poll(() => dayParam(page)).toBe(null);
     await expect(page.locator('[data-bld-id="ev-1"]')).toBeVisible();
+  });
+
+  // The reported bug: after the dwell switches days, the first move DOWN into the day
+  // view killed the drag and bounced you back. The switch unmounts the row the touch
+  // started on, and a touch pointer is implicitly captured by that element — so the
+  // question this pins is whether the gesture survives losing its own target.
+  test('survives the day switch and can still be dropped in the new day', async ({ page }) => {
+    const cdp = await page.context().newCDPSession(page);
+    const row = await centre(page, '[data-bld-id="ev-1"]');
+    const ghost = page.locator('.wp-dragghost');
+
+    await touch(cdp, 'touchStart', row.x, row.y);
+    await expect(page.locator('.bld.dragging')).toBeVisible();
+    const pill = await centre(page, `[data-day-pill="${TOMORROW}"]`);
+    await touch(cdp, 'touchMove', pill.x, pill.y);
+    await expect.poll(() => dayParam(page), { timeout: 3000 }).toBe(TOMORROW);
+
+    // Down off the strip and into the day view — the move that used to cancel it.
+    const bands = await bodyBands(page);
+    for (const y of [pill.y + 30, bands.middleTo, bands.middleTo + 40]) {
+      await touch(cdp, 'touchMove', pill.x, y);
+    }
+    await expect(ghost, 'the drag survived leaving the strip').toBeVisible();
+    expect(await dayParam(page)).toBe(TOMORROW);
+
+    // …and it can still be dropped on something in the new day.
+    await holdOver(cdp, page, '[data-shelf-drop="pool"]');
+    await touch(cdp, 'touchEnd');
+    await expect(page.locator('[data-shelf-drop="pool"] .wp-maybecard')).toHaveText(/בוקר/);
+    expect(await dayParam(page)).toBe(TOMORROW);
   });
 });

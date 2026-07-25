@@ -28,31 +28,35 @@ export interface ShelfDropTarget {
 }
 
 export const SHELF_DROP_ACTION = {
-  /** Create the event: an idea into a gap's slot. */
-  SCHEDULE: 'schedule',
   /** Un-skip an existing event AND move it into the gap's slot — one write. */
   RESTORE_INTO: 'restoreInto',
   /** Un-skip an existing event, at the time it already has. */
   RESTORE: 'restore',
   /** Re-aim an idea's target day (a pencil mark, not a schedule). */
   AIM_DAY: 'aimDay',
-  /** Open the schedule sheet: the target knows the day but not the time. */
+  /** Open the schedule form, prefilled with `fill` when the target had a slot to
+   *  offer. Every drop that CREATES an event goes through here (session-120). */
   CHOOSE_TIME: 'chooseTime',
   /** Released over nothing that accepts this card. */
   NONE: 'none',
 } as const;
 
 export type ShelfDropAction =
-  | { kind: typeof SHELF_DROP_ACTION.SCHEDULE; fill: GapDefaults }
   | { kind: typeof SHELF_DROP_ACTION.RESTORE_INTO; fill: GapDefaults }
   | { kind: typeof SHELF_DROP_ACTION.RESTORE }
   | { kind: typeof SHELF_DROP_ACTION.AIM_DAY; day: string | null }
-  | { kind: typeof SHELF_DROP_ACTION.CHOOSE_TIME }
+  | { kind: typeof SHELF_DROP_ACTION.CHOOSE_TIME; fill?: GapDefaults }
   | { kind: typeof SHELF_DROP_ACTION.NONE };
 
 /**
  * The decision table, in precedence order: a gap chip is the most specific target,
  * then the empty day, then a shelf group.
+ *
+ * The dividing line is CREATE vs MOVE (session-120). An idea becoming an event is a
+ * create — nothing existed before, and its time, length and kind are all still open —
+ * so every such drop opens the schedule form, prefilled with whatever slot the target
+ * offered. Anything that already exists just moves, silently: it has a duration and a
+ * title already, and a form there would only be a speed bump.
  *
  * Two asymmetries between the kinds, both deliberate:
  *
@@ -63,10 +67,6 @@ export type ShelfDropAction =
  *   `targetDate` to re-aim, and converting one into an idea is `park` — a different
  *   verb with its own affordance in the row menu, not something a stray drop should
  *   trigger.
- *
- * And on the empty day the kinds diverge for the same underlying reason: the target
- * offers no slot, so an idea (which has no time at all) needs one chosen, while a
- * skipped event already owns one and just goes back.
  */
 export function resolveShelfDrop(
   kind: ShelfDragKind,
@@ -86,8 +86,11 @@ export function resolveShelfDrop(
     const { fill } = target;
     return skipped
       ? { kind: SHELF_DROP_ACTION.RESTORE_INTO, fill }
-      : { kind: SHELF_DROP_ACTION.SCHEDULE, fill };
+      : { kind: SHELF_DROP_ACTION.CHOOSE_TIME, fill };
   }
+  // The empty day knows WHICH day but has no slot to offer, so the form opens with the
+  // day's own next opening instead. A skipped event needs none of that: it already owns
+  // a time, and on an empty day there is nothing to choose between.
   if (target.overDay) {
     return skipped ? { kind: SHELF_DROP_ACTION.RESTORE } : { kind: SHELF_DROP_ACTION.CHOOSE_TIME };
   }
