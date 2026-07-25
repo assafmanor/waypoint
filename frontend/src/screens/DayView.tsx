@@ -27,8 +27,8 @@ import {
   eventPlaceUrl,
   eventRoute,
   eventZones,
-  dayAmbientZone,
   dayZoneContext,
+  isDayOver,
   liveToday,
   liveZone,
   type ZoneContext,
@@ -40,7 +40,6 @@ import {
   eventPhase,
   formatTime,
   hardConflicts,
-  todayInTz,
   zonedIso,
   resolveEndIso,
   type TimeGroup,
@@ -148,15 +147,11 @@ export function DayView() {
   const nowZone = liveZone(now.getTime(), zoneEvidence);
   const today = liveToday(now.getTime(), zoneEvidence);
   const dayScope: DayScope = activeDate < today ? 'past' : activeDate > today ? 'future' : 'today';
-  // The day's OWN ambient zone (its segment zone at noon) — what decides when this
-  // day is over, below.
-  const ambientZone = dayAmbientZone(activeDate, zoneEvidence);
   // A past day is a read-only archive within a live trip (ADR-0029) — but "past"
-  // for EDITING is decided in the day's own zone, not the live one (ADR-0029
-  // amendment / ADR-0107 §4). Otherwise crossing east mid-flight rolls the live
-  // clock into tomorrow and the day you're still flying through would lock itself
-  // while you're living it. A day ends when that day's clock says so.
-  const readOnly = todayInTz(ambientZone, now) > activeDate;
+  // for EDITING is not the live zone's answer, nor even this day's ambient: a day
+  // is over only once it is over in EVERY zone it touched (ADR-0029 session-103
+  // amendment), so a travel day can't lock itself while you're still inside it.
+  const readOnly = isDayOver(activeDate, zoneEvidence, now.getTime());
 
   const dayEvents = events
     .filter((e) => e.date === activeDate && e.status !== EVENT_STATUS.SKIPPED && !isAmbient(e))

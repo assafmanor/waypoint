@@ -49,3 +49,9 @@ The Decision above derives day-scope via `todayInTz(trip.timezone, …)`. [ADR-0
 - **The lock** — everything in "Past day, Trip mode" above — is answered in **the day's own ambient zone** (its itinerary-segment zone at noon): `todayInTz(dayAmbientZone, now) > date`.
 
 They are the same on every single-zone trip and on every non-crossing day. They diverge exactly once: flying east overnight, the live zone rolls the date forward mid-flight, so keying the lock to it would archive the travel day **while you are still living it** — locking create/edit/move on a day whose events are still ahead of you. **A day is over when that day's clock says so.** Nothing else in this ADR changes; the allowed/locked verb sets and the future-day rule are untouched.
+
+## Amendment (2026-07-25, session 103) — a day with several clocks ends at the last one
+
+The session-96 amendment answered the lock in "the day's own ambient zone". That holds for an ordinary day but not for a **travel** day, whose ambient is the eastward destination: flying Tel Aviv → Auckland, at 18:00 of the day you left — still airborne — Auckland has already passed midnight, so the day locked while the traveler was inside it. The hazard session 96 named, in the case it didn't cover.
+
+**A day is over only when it is over in every zone it touched**: the clock that ends it last, i.e. the smallest UTC offset among the day's zones (its events' known zones, both ends of a crossing, and the day's ambient as a floor). `isDayOver(date, evidence, nowMs)` in `lib/places.ts` is the predicate; `DayView` no longer assembles it. Same-offset zones collapse, so a two-name single-offset day gains no extra hour. The verb sets, the future-day rule and the day-scope **label** are all unchanged — the label still follows the live zone, and only the edit gate is generous.

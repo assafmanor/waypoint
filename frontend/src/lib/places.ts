@@ -389,6 +389,52 @@ export interface ZoneContext {
   ambientZone: string;
 }
 
+/** Every zone a day touched, as far as the itinerary knows: the known zones of its
+ *  own events — **both ends** of a crossing, since you were in each — plus the day's
+ *  ambient, which covers a day with no zone-bearing events at all. */
+function dayZones(date: string, evidence: ZoneEvidence): string[] {
+  const { events, bookings, places } = evidence;
+  const zones = new Set<string>([dayAmbientZone(date, evidence)]);
+  for (const e of eventsOnDate(events, date)) {
+    if (e.displayTimezone) {
+      zones.add(e.displayTimezone);
+      continue;
+    }
+    const booking = e.bookingId ? bookings.find((b) => b.id === e.bookingId) : undefined;
+    if (booking) {
+      const { from, to } = bookingEndZones(booking, places);
+      if (from) zones.add(from);
+      if (to) zones.add(to);
+    } else {
+      const placed = placeTimezone(places, e.placeId);
+      if (placed) zones.add(placed);
+    }
+  }
+  return [...zones];
+}
+
+/** Is this day **over**, for the purpose of locking it as a read-only archive
+ *  (ADR-0029 + its session-96/103 amendments)?
+ *
+ *  A day is over only when it is over in **every** zone it touched — the clock that
+ *  ends it last, i.e. the smallest UTC offset among the day's zones. "A day ends
+ *  when that day's clock says so" (session 96); a travel day has more than one
+ *  clock, and the generous reading is the only safe one.
+ *
+ *  Session 96 keyed this to the day's ambient, which fixed the case where the
+ *  ambient is the origin. It does not fix a travel day, whose ambient IS the
+ *  eastward destination: fly Tel Aviv → Auckland and at 18:00 of the day you left,
+ *  still airborne, Auckland has already rolled over — so the day you are inside
+ *  locked itself. That is the exact hazard session 96 set out to prevent. */
+export function isDayOver(date: string, evidence: ZoneEvidence, nowMs: number): boolean {
+  const at = new Date(nowMs);
+  const noon = new Date(Date.parse(zonedIso(date, DAY_NOON, evidence.primaryZone)));
+  const lastToEnd = dayZones(date, evidence).reduce((latest, zone) =>
+    zoneOffsetMinutes(noon, zone) < zoneOffsetMinutes(noon, latest) ? zone : latest,
+  );
+  return todayInTz(lastToEnd, at) > date;
+}
+
 /** Trip-local **today** — the calendar day the live zone puts you in (ADR-0107 §4
  *  + session 102). One function so every surface asking "what day is it now"
  *  gets the same answer: the day view, the Plan-mode builder, the day-strip anchor

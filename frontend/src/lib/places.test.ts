@@ -23,6 +23,7 @@ import {
   currentZone,
   dayAmbientZone,
   dayZoneContext,
+  isDayOver,
   liveToday,
   liveZone,
   liveZoneContext,
@@ -924,5 +925,95 @@ describe('liveToday — one answer to "what day is it now", in both modes (sessi
     // has no mode parameter — the type system is the guarantee.
     expect(liveToday(nowMs, evidence)).toBe(liveToday(nowMs, evidence));
     expect(liveToday.length).toBe(2); // (nowMs, evidence) — nothing else to pass
+  });
+});
+
+describe('isDayOver — a day ends when its LAST clock says so (ADR-0029 session-103)', () => {
+  const JLM = 'Asia/Jerusalem';
+  const AKL = 'Pacific/Auckland';
+  const NIC = 'Asia/Nicosia';
+  const DAY = '2026-07-07';
+  const flight = booking({
+    id: 'bk',
+    type: BOOKING_TYPE.FLIGHT,
+    fromPlaceId: 'pl-tlv',
+    toPlaceId: 'pl-akl',
+  });
+  const places = [
+    place('pl-tlv', 'נתב״ג', { timezone: JLM }),
+    place('pl-akl', 'אוקלנד', { timezone: AKL }),
+    place('pl-nic', 'ניקוסיה', { timezone: NIC }),
+  ];
+  // A far-eastbound red-eye: leaves 02:00 Jerusalem on the 7th, lands in Auckland
+  // on the 8th. The whole of the 7th is "after the crossing", so its ambient is AKL.
+  const airborne = event({
+    id: 'fl',
+    bookingId: 'bk',
+    date: DAY,
+    startsAt: '2026-07-06T23:00:00Z',
+    endsAt: '2026-07-08T02:00:00Z',
+  });
+  const travelDay: ZoneEvidence = {
+    events: [airborne],
+    bookings: [flight],
+    places,
+    crossings: tripZoneCrossings([airborne], [flight], places),
+    primaryZone: JLM,
+  };
+
+  it('does NOT lock a travel day while the traveler is still inside it', () => {
+    // 18:00 on the 7th where they departed — but 03:00 on the 8th in Auckland, the
+    // day's ambient. Keying the gate to the ambient (session 96) locked this.
+    const midFlight = Date.parse('2026-07-07T15:00:00Z');
+    expect(dayAmbientZone(DAY, travelDay)).toBe(AKL); // the ambient really is AKL
+    expect(isDayOver(DAY, travelDay, midFlight)).toBe(false);
+  });
+
+  it('locks it once the day is over in the LAST of its zones', () => {
+    // 00:30 on the 8th in Jerusalem — now the 7th is over everywhere it touched.
+    expect(isDayOver(DAY, travelDay, Date.parse('2026-07-07T21:30:00Z'))).toBe(true);
+    // …and an hour earlier it is not (23:30 on the 7th in Jerusalem).
+    expect(isDayOver(DAY, travelDay, Date.parse('2026-07-07T20:30:00Z'))).toBe(false);
+  });
+
+  it('is unchanged on a single-zone day: its one clock decides', () => {
+    const dinner = event({ id: 'd', date: DAY, placeId: 'pl-nic', startsAt: `${DAY}T17:00:00Z` });
+    const oneZone: ZoneEvidence = {
+      events: [dinner],
+      bookings: [],
+      places,
+      crossings: [],
+      primaryZone: NIC,
+    };
+    // 23:00 Nicosia on the 7th → not over; 00:15 on the 8th → over.
+    expect(isDayOver(DAY, oneZone, Date.parse('2026-07-07T20:00:00Z'))).toBe(false);
+    expect(isDayOver(DAY, oneZone, Date.parse('2026-07-07T21:15:00Z'))).toBe(true);
+  });
+
+  it('treats same-offset zones as one clock (no phantom extra hour)', () => {
+    // Nicosia + Jerusalem both +3: the day ends for both at the same instant.
+    const evening = event({ id: 'a', date: DAY, placeId: 'pl-nic', startsAt: `${DAY}T17:00:00Z` });
+    const later = event({ id: 'b', date: DAY, placeId: 'pl-tlv', startsAt: `${DAY}T18:00:00Z` });
+    const twoNames: ZoneEvidence = {
+      events: [evening, later],
+      bookings: [],
+      places,
+      crossings: [],
+      primaryZone: JLM,
+    };
+    expect(isDayOver(DAY, twoNames, Date.parse('2026-07-07T20:59:00Z'))).toBe(false);
+    expect(isDayOver(DAY, twoNames, Date.parse('2026-07-07T21:01:00Z'))).toBe(true);
+  });
+
+  it('falls back to the ambient for a day with no zone-bearing events', () => {
+    const bare: ZoneEvidence = {
+      events: [],
+      bookings: [],
+      places: [],
+      crossings: [],
+      primaryZone: NIC,
+    };
+    expect(isDayOver(DAY, bare, Date.parse('2026-07-07T20:00:00Z'))).toBe(false);
+    expect(isDayOver(DAY, bare, Date.parse('2026-07-07T21:15:00Z'))).toBe(true);
   });
 });
