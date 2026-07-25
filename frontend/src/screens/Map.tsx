@@ -30,6 +30,8 @@ import {
   nextDestination,
 } from '../lib/places';
 import { formatTime } from '../lib/time';
+import { eventEdgeTransition } from '../lib/transitions';
+import { shortTitleText } from '../lib/route-title';
 import { useClock } from '../lib/useClock';
 import { formatDistance, haversineMeters } from '../lib/distance';
 import { useGeolocation } from '../lib/useGeolocation';
@@ -225,13 +227,39 @@ export function MapView() {
   // list form of the rendered map's single amber ring), naming when you leave. The
   // row's existing נווט is then the navigate-to-next action. Only in Trip mode: a
   // live "next" says nothing while you're planning.
-  const nextStop = useMemo(() => {
+  // The row now states its own time (below), so the cue only has to say WHICH row.
+  const nextStopId = useMemo(() => {
     if (mode !== 'trip') return undefined;
-    const dest = nextDestination(events, bookings, places, nowMs);
-    if (!dest?.event.startsAt) return undefined;
-    const zone = eventZones(dest.event, liveZoneContext(nowMs, zoneEvidence)).startZone;
-    return { placeId: dest.place.id, time: formatTime(dest.event.startsAt, zone) };
-  }, [mode, events, bookings, places, nowMs, zoneEvidence]);
+    return nextDestination(events, bookings, places, nowMs)?.place.id;
+  }, [mode, events, bookings, places, nowMs]);
+
+  // ── The row's meta line: `<time> · <what happens here>` (ADR-0109 §1) ──────
+  // It replaces the address, which said nothing about why the place is on the list
+  // (the shipped row read "Dimitras, Nicosia, Lefkosia 2058" — true and useless).
+  // The time renders in the EVENT's own zone (ADR-0107), and each end of a booking
+  // gets its own: a departure in its origin, an arrival in its destination.
+  const zoneCtx = useMemo(() => liveZoneContext(nowMs, zoneEvidence), [nowMs, zoneEvidence]);
+  const eventById = useMemo(() => new Map(events.map((e) => [e.id, e])), [events]);
+
+  const dayMeta = (usage: PlaceUsage): { time?: string; what?: string } => {
+    const day = placeDay(usage, scopedDate);
+    // A strictly-middle stay night has no moment and nothing happens there — saying
+    // the hotel's own name back on the hotel's row would be pure repetition.
+    if (!day || day.prominence === 'ambient') return {};
+    const event = day.eventId ? eventById.get(day.eventId) : undefined;
+    if (!event) return {};
+    const zones = eventZones(event, zoneCtx);
+    const zone = day.edge === 'end' ? zones.endZone : zones.startZone;
+    return {
+      time: day.at == null ? undefined : formatTime(new Date(day.at), zone),
+      // A bracketed booking says which end this is, in the app's existing per-mode
+      // transition wording (take-off/landing for a flight, departure/arrival for
+      // surface transport, check-in/out for a stay) — never a bare transition word,
+      // because the row's own name and time supply the context §1 asks for. Anything
+      // else says what it is, via its title in display form.
+      what: eventEdgeTransition(event, day.edge) ?? shortTitleText(event.title),
+    };
+  };
 
   // A measured place shows its distance; offline it says so rather than asserting a
   // number it can no longer refresh. A coordless row gets neither (ADR-0109 §7).
@@ -249,13 +277,16 @@ export function MapView() {
     const prominence = allDays
       ? undefined
       : usage.days.find((d) => d.date === activeDate)?.prominence;
+    const { time, what } = dayMeta(usage);
     return (
       <PlaceRow
         key={usage.placeId}
         usage={usage}
         place={place}
         ambient={prominence === 'ambient'}
-        nextStopTime={nextStop?.placeId === usage.placeId ? nextStop.time : undefined}
+        isNextStop={nextStopId === usage.placeId}
+        time={time}
+        what={what}
         distance={distanceLabel(usage)}
         distanceStale={staleDistances}
         onEnrich={() => setEnrichTarget(place)}
@@ -435,7 +466,9 @@ function PlaceRow({
   usage,
   place,
   ambient,
-  nextStopTime,
+  isNextStop,
+  time,
+  what,
   distance,
   distanceStale,
   onEnrich,
@@ -443,8 +476,12 @@ function PlaceRow({
   usage: PlaceUsage;
   place: Place;
   ambient: boolean;
-  /** Set on the single navigate-to-next row: when you have to be there. */
-  nextStopTime?: string;
+  /** The single navigate-to-next row (ADR-0106 §6): amber ring + tag. */
+  isNextStop?: boolean;
+  /** When this place is due today, already in that event's own zone (ADR-0107). */
+  time?: string;
+  /** What happens here — a transition word for a booking end, else the title. */
+  what?: string;
   /** Near-me: how far away, or the offline "can't measure" label. */
   distance?: string;
   /** The distance shown is the offline placeholder, not a measurement. */
@@ -458,15 +495,20 @@ function PlaceRow({
   const isPureIdea = usage.isMaybe && !usage.isScheduled;
   const dirUrl = mapsDirectionsUrl(place);
   const viewUrl = mapsPlaceUrl(place);
+  // What the meta line says, in priority order (ADR-0109 §1): what happens here,
+  // else the address, else the category. The address is the fallback rather than the
+  // headline — on a scheduled row it says nothing about why the place is on the list.
   const meta =
-    place.address ?? (usage.pin.category ? t.iconPicker.categories[usage.pin.category] : undefined);
+    what ??
+    place.address ??
+    (usage.pin.category ? t.iconPicker.categories[usage.pin.category] : undefined);
 
   const rowClass = [
     'place',
     isPureIdea && 'soft',
     ambient && 'ambient',
     usage.coordless && 'nocoord',
-    nextStopTime && 'nextstop',
+    isNextStop && 'nextstop',
   ]
     .filter(Boolean)
     .join(' ');
@@ -506,11 +548,14 @@ function PlaceRow({
           )}
         </span>
         <span className="map-m">
-          {nextStopTime && (
-            <span className="map-tag next">
-              {t.map.nextStop} · <span dir="ltr">{nextStopTime}</span>
+          {/* The time leads the meta line — amber, it IS the row's time anchor — and
+              the next-stop tag no longer repeats it, only says which row is next. */}
+          {time && (
+            <span className="map-tag time" dir="ltr">
+              {time}
             </span>
           )}
+          {isNextStop && <span className="map-tag next">{t.map.nextStop}</span>}
           {meta && <span className="map-tag">{meta}</span>}
           {isPureIdea && <span className="map-tag mbadge">{t.map.shelfTag}</span>}
           {place.rating != null && (

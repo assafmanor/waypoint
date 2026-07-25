@@ -20,7 +20,7 @@ Implementing Phase 2 (places on existing surfaces) surfaced a scope boundary in 
 
 Building Phase 4b ([ADR-0106](0106-maps-and-places-epic-scope-and-phasing.md) §6) needed a decision this ADR hadn't made: navigate-to-next is specified for the **Home tile**, and §6 allocates "a single amber ring on the **next committed stop**" to the **rendered** map — but Phase 4 ships before Phase 6, so the list needed its own form of that cue.
 
-**Decision: the list form of the ring is a cue on one row, not a second affordance.** The row already carries the labelled `נווט` of §1, so what navigate-to-next adds is **which** row is next: an amber `היעד הבא · <time>` tag in the row's meta line plus a soft amber ring on that row, and the row's existing `נווט` **is** the navigate-to-next action. Consequences:
+**Decision: the list form of the ring is a cue on one row, not a second affordance.** The row already carries the labelled `נווט` of §1, so what navigate-to-next adds is **which** row is next: an amber `היעד הבא · <time>` tag in the row's meta line plus a soft amber ring on that row, and the row's existing `נווט` **is** the navigate-to-next action. _(Revised by the session-108 amendment below: the tag dropped its `· <time>` once every row began stating its own time, so it now reads just `היעד הבא`. The rule — one row, one amber cue — is unchanged.)_ Consequences:
 
 - **The one-time-anchor rule of §6 is preserved literally** — exactly one row is ever marked, and amber stays on time (the departure instant), never spent on a second accent per pin.
 - **No re-sort.** Re-ordering the list is reserved for near-me (§7); the next stop keeps its place in the day order, so the two Phase-4 halves don't fight over the list's ordering.
@@ -28,6 +28,26 @@ Building Phase 4b ([ADR-0106](0106-maps-and-places-epic-scope-and-phasing.md) §
 - **Phase 6 needs no rework:** the ring moves onto the pin as §6 always intended and the row keeps its tag — the same "Phase 4 is not throwaway" property §7 claims for near-me.
 
 The time renders in the **event's own** display zone (ADR-0107), like every other time in the app, not the trip primary.
+
+## Amendment (2026-07-25, session 108) — the row meta, built: `<time> · <what>`, and the address demoted
+
+§1 specified the meta line as **`<time> · <what>`** ("18:40 · רכבת לקיוטו") but Phase 3 shipped `address ?? category` — deferred as follow-up (c) because the per-day time overlapped the then-unbuilt timezone display track (ADR-0107). That track is finished, so this is (c), built. The shipped row read `Dimitras, Nicosia, Lefkosia 2058, קפריסין` — true, long, and silent about why the place is on the list.
+
+**What `<what>` is, decided here** (§1 gave an example, not a rule):
+
+- **A bracketed booking's end says which end it is**, in the app's existing per-mode transition vocabulary — take-off/landing for a flight, departure/arrival for surface transport, check-in/out for a stay (`eventTransitionKeys` + `t.glance.transition.*`, ADR-0063). So a row reads `07:15 · המראה`. That is **not** the "bare transition word out of context" §1 forbids: the row names the place, the badge gives the category, and the time is right beside it — the context §1 wanted is already on the row. Rejected the alternative of composing "המראה לקפלאוויק", which needs Hebrew preposition assembly per place name for no added information.
+- **Anything else says its title** in display form (`shortTitleText`, so a stored route title shortens instead of printing two full official names).
+- **The address is demoted to a fallback**, not deleted: it still carries a row that has nothing scheduled — an unlinked booking or a shelf idea, where nothing happens there _yet_ — and the category label remains the last resort.
+- **A strictly-middle stay night says nothing about the event.** Echoing the hotel's own name back on the hotel's row is pure repetition, so it falls through to the address. (Its `לילה N מתוך M` phrasing exists in `t.glance.ambientNight` and would be the natural upgrade; not adopted here to avoid duplicating the day view's stay-night arithmetic.)
+
+**The time renders in that event's own zone** (ADR-0107), per **end**: a departure in its origin, an arrival in its destination. So a flight's two rows read `09:15 · המראה` and `13:00 · נחיתה` — each end's real local clock, never one zone imposed on both.
+
+**Two knock-on simplifications:**
+
+- **The navigate-to-next tag drops its time.** It read `היעד הבא · 17:00`; with the row stating its own time that repeated, so the tag now says only **which** row is next and the meta says when (revising the session-104 amendment's tag content, not its rule).
+- **The session-107 `כבר היינו` header now has corroboration.** It was carrying the whole explanation for the reordering because rows showed no time; each row now states its own, so the partition is self-evident and the header is a label rather than the only evidence.
+
+**Mechanics:** `DayUsage` gains `eventId` + `edge` — the derivation only _points_ at the reference owning the day's moment (following whichever won `at` on a merge), so `place-usage.ts` stays clock- and zone-free and the screen resolves what to say and which zone to say it in. `eventEdgeTransition` was added to the existing `lib/transitions.ts` rather than resolving keys at the call site.
 
 ## Amendment (2026-07-25, session 107) — on a live surface, what's behind you sinks
 

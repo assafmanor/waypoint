@@ -355,7 +355,15 @@
   color: var(--plan-deep);
   font-weight: 700;
 }
-/* navigate-to-next's "when you leave" — amber, the row's time anchor. */
+/* When this place is due — the row's time anchor, so amber, and mono like every
+   other clock reading in the app (ADR-0028 / design-language). */
+.map-tag.time {
+  font-family: var(--font-mono);
+  font-size: 11.5px;
+  font-weight: 700;
+  color: var(--amber-deep);
+}
+/* navigate-to-next: says WHICH row is next; the time beside it says when. */
 .map-tag.next {
   color: var(--amber-deep);
   font-weight: 700;

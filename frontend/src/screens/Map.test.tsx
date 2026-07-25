@@ -28,7 +28,9 @@ const place = (id: string, coords: boolean, at?: { lat: number; lng: number }): 
 const event = (p: Partial<TripEvent> & Pick<TripEvent, 'id' | 'placeId'>): TripEvent => ({
   tripId: 't1',
   date: ACTIVE_DATE,
-  title: p.id,
+  // Distinct from the place name on purpose: the row's meta line renders the title,
+  // so a title equal to the place name makes every getByText(name) ambiguous.
+  title: `${p.id} plan`,
   kind: EVENT_KIND.SOFT,
   status: EVENT_STATUS.PLANNED,
   source: EVENT_SOURCE.MANUAL,
@@ -416,6 +418,101 @@ describe('MapView (Phase 3, ADR-0109/0110)', () => {
     });
   });
 
+  describe('row meta says when and what, not the address (ADR-0109 §1)', () => {
+    const metaOf = (name: string) =>
+      [...document.querySelectorAll('.place')]
+        .find((row) => row.querySelector('.map-name')?.textContent === name)
+        ?.querySelector('.map-m')?.textContent ?? '';
+    const timeOf = (name: string) =>
+      [...document.querySelectorAll('.place')]
+        .find((row) => row.querySelector('.map-name')?.textContent === name)
+        ?.querySelector('.map-tag.time')?.textContent;
+
+    it('a scheduled place reads its time and what happens there, not its address', () => {
+      tripPlaces = [
+        { ...place('museum', true), address: 'Dimitras, Nicosia, Lefkosia 2058' } as Place,
+      ];
+      tripEvents = [
+        event({
+          id: 'e',
+          placeId: 'museum',
+          title: 'מוזיאון הארכיאולוגי',
+          startsAt: `${ACTIVE_DATE}T09:00:00Z`,
+        }),
+      ];
+      render(wrap(<MapView />));
+      expect(timeOf('museum')).toBe('18:00'); // 09:00Z in the trip's Tokyo zone
+      expect(metaOf('museum')).toContain('מוזיאון הארכיאולוגי');
+      expect(metaOf('museum')).not.toContain('Nicosia');
+    });
+
+    it('a flight’s ends read take-off and landing, each in its own zone', () => {
+      tripPlaces = [place('origin', true), place('arrival', true)];
+      tripBookings = [
+        {
+          id: 'bk',
+          tripId: 't1',
+          type: 'flight',
+          title: 'flight',
+          source: 'manual',
+          fromPlaceId: 'origin',
+          toPlaceId: 'arrival',
+          createdAt: '',
+          updatedAt: '',
+          updatedBy: 'u1',
+        } as Booking,
+      ];
+      tripEvents = [
+        event({
+          id: 'f',
+          placeId: undefined,
+          bookingId: 'bk',
+          icon: '✈️',
+          category: 'transport',
+          startsAt: `${ACTIVE_DATE}T00:15:00Z`,
+          endsAt: `${ACTIVE_DATE}T04:00:00Z`,
+        }),
+      ];
+      render(wrap(<MapView />));
+      // The origin says take-off at its departure, the destination landing at its
+      // arrival — never a bare transition word, since the row names the place.
+      expect(timeOf('origin')).toBe('09:15');
+      expect(metaOf('origin')).toContain(t.glance.transition.flightDeparture);
+      expect(timeOf('arrival')).toBe('13:00');
+      expect(metaOf('arrival')).toContain(t.glance.transition.flightArrival);
+    });
+
+    it('an unscheduled shelf idea keeps the address fallback — nothing happens there yet', () => {
+      tripPlaces = [{ ...place('idea', true), address: 'Barshavski St 7' } as Place];
+      tripMaybes = [maybe({ id: 'm', placeId: 'idea' })];
+      render(wrap(<MapView />));
+      fireEvent.click(screen.getByRole('button', { name: new RegExp(t.map.allDays) }));
+      expect(timeOf('idea')).toBeUndefined();
+      expect(metaOf('idea')).toContain('Barshavski St 7');
+    });
+
+    it('a mid-stay night says nothing back — the hotel’s own name is not news', () => {
+      tripPlaces = [{ ...place('hotel', true), address: 'Some St 1' } as Place];
+      tripEvents = [
+        event({
+          id: 'h',
+          placeId: 'hotel',
+          title: 'המלון',
+          category: 'lodging',
+          icon: '🏨',
+          date: '2026-07-19',
+          endDate: '2026-07-22',
+          startsAt: '2026-07-19T06:00:00Z',
+          endsAt: '2026-07-22T02:00:00Z',
+        }),
+      ];
+      render(wrap(<MapView />)); // ACTIVE_DATE (the 20th) is a strictly-middle night
+      expect(timeOf('hotel')).toBeUndefined();
+      expect(metaOf('hotel')).toContain('Some St 1');
+      expect(metaOf('hotel')).not.toContain('המלון');
+    });
+  });
+
   describe('navigate-to-next cue (Phase 4b, ADR-0106 §6)', () => {
     // 09:00 Tokyo on the active day, so the seeded events are all still ahead.
     const NOW = Date.parse('2026-07-20T00:00:00Z');
@@ -424,16 +521,19 @@ describe('MapView (Phase 3, ADR-0109/0110)', () => {
 
     const nextTag = () => screen.queryByText(new RegExp(t.map.nextStop));
 
-    it('marks exactly one row — the earliest upcoming mappable stop — with its time', () => {
+    it('marks exactly one row — the earliest upcoming mappable stop', () => {
       setSimulatedNow(NOW);
       tripPlaces = [place('food', true), place('see', true)];
       tripEvents = [timed('see', '09:00'), timed('food', '04:00')];
       render(wrap(<MapView />));
       const tags = screen.getAllByText(new RegExp(t.map.nextStop));
       expect(tags).toHaveLength(1);
-      // 04:00Z reads 13:00 in the trip's Tokyo zone (ADR-0107: the event's own zone).
-      expect(tags[0].textContent).toContain('13:00');
-      expect(tags[0].closest('.place')?.textContent).toContain('food');
+      const row = tags[0].closest('.place');
+      expect(row?.textContent).toContain('food');
+      // The tag says WHICH row; the row's own meta says when — 04:00Z reads 13:00 in
+      // the trip's Tokyo zone (ADR-0107: the event's own zone).
+      expect(tags[0].textContent).toBe(t.map.nextStop);
+      expect(row?.querySelector('.map-tag.time')?.textContent).toBe('13:00');
     });
 
     it('is absent in Plan mode — a live "next" says nothing while planning', () => {

@@ -51,6 +51,13 @@ export interface DayUsage {
   /** The day's manual order, for the tie the clock can't break — the same
    *  `sortOrder` fallback `buildTimeTree` uses (ADR-0043). */
   sortOrder?: number;
+  /** The event whose moment this is — the one that owns `at` when several land on
+   *  the same date. The screen resolves what to say about it (and which zone to say
+   *  it in); this only points, so the derivation stays clock- and zone-free. */
+  eventId?: string;
+  /** Which end of that event this day sits at: a departure/check-in (`start`) or an
+   *  arrival/check-out (`end`). Undefined mid-span, where neither happens. */
+  edge?: 'start' | 'end';
 }
 
 export interface PlaceUsage {
@@ -86,9 +93,10 @@ function spanDays(event: TripEvent, edge: 'start' | 'end' = 'start'): DayUsage[]
   // running 13:00-18:00 is not behind you at 14:00, and a stay is not behind you
   // until its check-out — the same boundary `eventPhase` uses.
   const until = endAt ?? startAt;
+  const eventId = event.id;
   if (!isMultiDay(event)) {
     const at = edge === 'end' ? (endAt ?? startAt) : startAt;
-    return [{ date: event.date, prominence: 'edge', at, until, sortOrder }];
+    return [{ date: event.date, prominence: 'edge', at, until, sortOrder, eventId, edge }];
   }
   const dates: string[] = [];
   const endT = Date.parse(event.endDate!);
@@ -104,9 +112,14 @@ function spanDays(event: TripEvent, edge: 'start' | 'end' = 'start'): DayUsage[]
     return {
       date,
       prominence: ambient && !isFirst && !isLast ? ('ambient' as const) : ('edge' as const),
+      // A span's own ends are its two moments, whatever `edge` the caller asked for:
+      // the first day departs/checks in, the last arrives/checks out, the middle
+      // nights have neither.
       at: isFirst ? startAt : isLast ? endAt : undefined,
       until,
       sortOrder,
+      eventId,
+      edge: isFirst ? ('start' as const) : isLast ? ('end' as const) : undefined,
     };
   });
 }
@@ -167,11 +180,16 @@ export function buildPlaceUsageIndex(
         continue;
       }
       // Two references on one date merge to the loudest prominence and the
-      // EARLIEST moment — the place is due when the first thing there is due.
+      // EARLIEST moment — the place is due when the first thing there is due — and
+      // the pointer follows whichever reference won that moment, so what the row
+      // says about the day matches the time it shows.
+      const earliest = seen.at == null ? d : d.at == null ? seen : d.at < seen.at ? d : seen;
       a.days.set(d.date, {
         date: d.date,
         prominence: seen.prominence === 'edge' || d.prominence === 'edge' ? 'edge' : 'ambient',
-        at: seen.at == null ? d.at : d.at == null ? seen.at : Math.min(seen.at, d.at),
+        at: earliest.at,
+        eventId: earliest.eventId,
+        edge: earliest.edge,
         // …but the LATEST end: the place is behind you only once everything there is.
         until:
           seen.until == null
