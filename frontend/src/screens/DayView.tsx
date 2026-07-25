@@ -29,6 +29,7 @@ import {
   eventZones,
   dayAmbientZone,
   dayZoneContext,
+  liveToday,
   liveZone,
   type ZoneContext,
 } from '../lib/places';
@@ -145,7 +146,7 @@ export function DayView() {
   // §4), so "today" rolls at THAT zone's midnight — cross a zone and the calendar
   // day re-anchors. Trip mode only; Plan mode frames everything in the trip primary.
   const nowZone = liveZone(now.getTime(), zoneEvidence);
-  const today = todayInTz(nowZone, now);
+  const today = liveToday(now.getTime(), zoneEvidence);
   const dayScope: DayScope = activeDate < today ? 'past' : activeDate > today ? 'future' : 'today';
   // The day's OWN ambient zone (its segment zone at noon) — what decides when this
   // day is over, below.

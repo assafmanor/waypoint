@@ -149,4 +149,12 @@ That is the same failure this ADR's own display layer hit before (and ADR-0059's
 
 - **`dayZoneContext(date, evidence)`** and **`liveZoneContext(nowMs, evidence)`** (`lib/places.ts`) are now the only sanctioned ways to build a `ZoneContext`: every field derives from the one `ZoneEvidence` that `trip-state` memoizes. A day surface (Trip day view, Plan builder, glance rail) gets the day's ambient; a live surface (the board hero) gets where you are now.
 - No screen derives crossings or an ambient zone any more. Recorded in `frontend/CLAUDE.md`'s anti-pattern list so the next surface starts from the builder.
-- Plan mode's own §4 distinction is untouched: its _base_ framing zone stays the trip primary, and its now-reference is still a drafting guide rather than a live clock. What it shares with the Trip-mode view is what it should always have shared — the per-day zone evidence behind the shift pills.
+- What Plan mode shares with the Trip-mode view is what it should always have shared: the per-day zone evidence behind the shift pills.
+
+### The clock is not mode-dependent (revises §4)
+
+§4 said the live "now" sits in the current segment's zone **in Trip mode** and in the trip primary **in Plan mode**. That is wrong, and was reported as such: if it is 00:31 on the trip and you switch to Plan mode to do some building, it is still 00:31. What time it is is a fact about the trip and the clock; the mode decides what you can _do_, not what time it is.
+
+- **`liveToday(nowMs, evidence)` and `liveZone(nowMs, evidence)` are mode-free**, and are read by the day-strip anchor, the Trip-mode day view, the Plan-mode builder's now-reference and the default day. `liveToday` **takes no mode parameter** — the signature is the guarantee, not a convention.
+- Plan mode's now-reference still _means_ what it always did (a static drafting guide for what's left to build today, ADR-0043 — never a live signal). It just no longer prints a different time than the day view printed a tap earlier.
+- What legitimately stays per-surface: the base display zone for an event with no resolved zone, and Plan mode's absence of live verbs. Neither is a clock.

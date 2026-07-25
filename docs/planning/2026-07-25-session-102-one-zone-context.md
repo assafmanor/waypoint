@@ -32,6 +32,12 @@ Plan mode's own ADR-0107 §4 distinction is untouched: its base framing zone is 
 - `lib/places.test.ts` (+4): a day context resolves the reported day to `Asia/Nicosia` and is `toEqual`-identical for the same input (the property that keeps the two day surfaces in step); **both reported pills resolve to `undefined`** (no pill); a live context resolves to the same zone at 00:31 local; the builder passes the shared evidence through by reference rather than re-deriving it.
 - Full suite **826** passes (82 files); `typecheck` + `lint` (0 errors) + `build` green.
 
-## Left alone deliberately
+## Second half: the clock stopped depending on the mode (revises §4)
 
-Plan mode's now-reference stays in the trip primary zone (§4) — in the reported screenshots it read `11:16`, matching the phone, and that is the documented Plan-mode behaviour rather than a second instance of this bug.
+Reported in the same breath, and correct: _"if you're on the trip and now is X in Trip mode and you switch to Plan mode, now should show the same time."_ §4 had specified exactly that split — the live segment zone in Trip mode, the trip primary in Plan mode — and it doesn't survive being stated plainly. What time it is is a fact about the trip and the clock; the mode decides what you can **do**.
+
+- **`liveToday(nowMs, evidence)`** joins `liveZone` in `lib/places.ts`, and both are **mode-free**. The day-strip anchor, the Trip-mode day view, the Plan-mode builder's now-reference and `defaultDay` all read them; the `mode === 'trip' ? … : trip.timezone` branch in `App.tsx` and `PlanDay`'s `todayInTz(trip.timezone, …)` are gone. Four call sites had been repeating `todayInTz(liveZone(…))` — now there is one function, and it takes no mode.
+- Plan mode's now-reference still means the same thing (a static drafting guide, ADR-0043 — not a live signal). It just no longer prints a different time than the day view did a tap earlier.
+- What legitimately stays per-surface: the base display zone for an event with no resolved zone, and Plan mode's absence of live verbs. Neither is a clock.
+
+Tested at the lib level (`liveToday` rolls with the live zone rather than the trip primary; and `liveToday.length === 2` — there is no mode to pass), since the screens have no render harness in this repo.

@@ -37,6 +37,8 @@ import {
   eventRoute,
   eventZones,
   dayZoneContext,
+  liveToday,
+  liveZone,
   type EventZones,
   type ZoneContext,
 } from '../lib/places';
@@ -44,7 +46,6 @@ import { tripPhase } from '../lib/mode';
 import {
   buildTimeTree,
   formatTime,
-  todayInTz,
   zonedIso,
   crossesMidnightZoned,
   type TimeGroup,
@@ -99,8 +100,14 @@ export function PlanDay() {
   // A static "now" reference while building TODAY mid-trip (ADR-0043): a drafting
   // guide for "what's still ahead to build," never a live signal. Only when the
   // day on screen is today and the trip is live — Plan has no "now" otherwise.
+  // The live zone (ADR-0107 §4 + session 102): the clock reads the same in both
+  // modes, so which day counts as "today" — and what the now-reference shows —
+  // doesn't shift when you switch over to build.
+  const nowZone = liveZone(now.getTime(), zoneEvidence);
   const nowRefMs =
-    tripPhase(trip, now) === 'live' && activeDate === todayInTz(tz, now) ? now.getTime() : null;
+    tripPhase(trip, now) === 'live' && activeDate === liveToday(now.getTime(), zoneEvidence)
+      ? now.getTime()
+      : null;
   const [formTarget, setFormTarget] = useState<'new' | TripEvent | null>(null);
   // A booking-linked event edits through the merged BookingSheet (ADR-0053 §2).
   const [bookingTarget, setBookingTarget] = useState<Booking | null>(null);
@@ -202,6 +209,7 @@ export function PlanDay() {
     zoneCtx,
     readOnly,
     nowRefMs,
+    nowZone,
     bookings,
     places,
     verbs,
@@ -556,6 +564,8 @@ interface BuilderCtx {
   // Epoch ms of "now" when the builder should show the static now-reference at
   // depth 0 (viewing today, mid-trip); null otherwise (ADR-0043).
   nowRefMs: number | null;
+  /** The zone the now-reference reads in — the live zone, as in Trip mode. */
+  nowZone: string;
   bookings: Booking[];
   places: Place[];
   verbs: ReturnType<typeof useVerbs>;
@@ -641,7 +651,7 @@ function BuilderGroups({
     <>
       {entries.map((entry, i) => {
         const nowRef =
-          i === nowRefIndex && nowRefMs !== null ? <NowRef ms={nowRefMs} tz={ctx.tz} /> : null;
+          i === nowRefIndex && nowRefMs !== null ? <NowRef ms={nowRefMs} tz={ctx.nowZone} /> : null;
         if (entry.kind === 'transition') {
           return (
             <Fragment key={`${entry.event.id}-${entry.edge}`}>
@@ -707,7 +717,9 @@ function BuilderGroups({
           </Fragment>
         );
       })}
-      {nowRefMs !== null && nowRefIndex === entries.length && <NowRef ms={nowRefMs} tz={ctx.tz} />}
+      {nowRefMs !== null && nowRefIndex === entries.length && (
+        <NowRef ms={nowRefMs} tz={ctx.nowZone} />
+      )}
     </>
   );
 }

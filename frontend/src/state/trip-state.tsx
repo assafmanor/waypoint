@@ -72,7 +72,7 @@ import {
   restOrQueue,
   subscribeSyncFailures,
 } from '../lib/outbox';
-import { liveZone, tripZoneCrossings, type ZoneCrossing, type ZoneEvidence } from '../lib/places';
+import { liveToday, tripZoneCrossings, type ZoneCrossing, type ZoneEvidence } from '../lib/places';
 import { openTripStream } from '../lib/ws';
 import {
   CHANGE_FEED_LIMIT,
@@ -82,7 +82,7 @@ import {
   type ChangeEntry,
 } from './change-feed';
 import { getNow } from '../lib/useClock';
-import { clampDate, shiftIso, todayInTz } from '../lib/time';
+import { clampDate, shiftIso } from '../lib/time';
 import { bookingLinkedEventChange } from '../lib/outbox-effects';
 import { useToast } from '../ui/Toast';
 import { ICONS, type TabId } from '../constants';
@@ -614,11 +614,7 @@ function TripReady({
   // the midnight of the day you're in — the itinerary segment, refined by that
   // day's own events — so crossing a zone re-anchors "today" via the itinerary,
   // never GPS. Falls back to the trip primary when nothing evidences a zone.
-  const defaultDay = clampDate(
-    todayInTz(liveZone(getNow(), zoneEvidence), new Date(getNow())),
-    trip.startDate,
-    trip.endDate,
-  );
+  const defaultDay = clampDate(liveToday(getNow(), zoneEvidence), trip.startDate, trip.endDate);
   // Derived, tab-aware: the Home tab is today-anchored (both modes), so it ALWAYS
   // resolves to today regardless of any `?day=` — even a stray or hand-crafted one
   // can't make Home show a past/future day. Off Home, the day comes from `?day=`,
