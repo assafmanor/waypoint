@@ -75,6 +75,9 @@ export const t = {
     // navigate-to-next on the list (ADR-0106 §6): the one time-anchor cue the map
     // budget allows (ADR-0109 §6, the amber ring's list form), on a single row.
     nextStop: 'היעד הבא',
+    // Trip mode sinks what's already behind you to the bottom of the day, and names
+    // that block so the list isn't silently reordering as the clock passes each stop.
+    behindHeader: 'כבר היינו',
     // "Near me now" (Phase 4a, ADR-0109 §6-7): a list re-sort + teal distance
     // chips, never a spatial dot (there's no rendered map until Phase 6). The
     // permission is asked only on intent, behind the reason-first pre-prompt —

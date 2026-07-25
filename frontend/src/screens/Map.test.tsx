@@ -212,6 +212,48 @@ describe('MapView (Phase 3, ADR-0109/0110)', () => {
       expect(names()).toEqual(['zoo', 'market', 'bar']);
     });
 
+    it('Trip mode leads with what is ahead and labels the block behind you', () => {
+      // The reported day: 14:11, two stops visited, the next one at 17:00.
+      setSimulatedNow(Date.parse(`${ACTIVE_DATE}T14:11:00Z`));
+      tripPlaces = [place('morning', true), place('lunch', true), place('ice-cave', true)];
+      tripEvents = [
+        event({
+          id: 'e1',
+          placeId: 'morning',
+          startsAt: `${ACTIVE_DATE}T09:00:00Z`,
+          endsAt: `${ACTIVE_DATE}T10:00:00Z`,
+        }),
+        event({
+          id: 'e2',
+          placeId: 'lunch',
+          startsAt: `${ACTIVE_DATE}T12:00:00Z`,
+          endsAt: `${ACTIVE_DATE}T13:00:00Z`,
+        }),
+        event({ id: 'e3', placeId: 'ice-cave', startsAt: `${ACTIVE_DATE}T17:00:00Z` }),
+      ];
+      render(wrap(<MapView />));
+      expect(names()).toEqual(['ice-cave', 'morning', 'lunch']);
+      expect(screen.getByText(t.map.behindHeader)).toBeTruthy();
+    });
+
+    it('Plan mode keeps the true sequence, with no behind-you block', () => {
+      setSimulatedNow(Date.parse(`${ACTIVE_DATE}T14:11:00Z`));
+      currentMode = 'plan';
+      tripPlaces = [place('morning', true), place('ice-cave', true)];
+      tripEvents = [
+        event({
+          id: 'e1',
+          placeId: 'morning',
+          startsAt: `${ACTIVE_DATE}T09:00:00Z`,
+          endsAt: `${ACTIVE_DATE}T10:00:00Z`,
+        }),
+        event({ id: 'e2', placeId: 'ice-cave', startsAt: `${ACTIVE_DATE}T17:00:00Z` }),
+      ];
+      render(wrap(<MapView />));
+      expect(names()).toEqual(['morning', 'ice-cave']);
+      expect(screen.queryByText(t.map.behindHeader)).toBeNull();
+    });
+
     it('a flight’s two endpoints read in travel order, not alphabetically', () => {
       tripPlaces = [place('zzz-departure', true), place('aaa-landing', true)];
       tripBookings = [

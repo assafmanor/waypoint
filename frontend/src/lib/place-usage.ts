@@ -43,6 +43,11 @@ export interface DayUsage {
    *  Absolute, not wall-clock, so a zone-crossing day still orders by the sequence
    *  you actually live it (ADR-0107). */
   at?: number;
+  /** When this place stops being current — the LATEST end among its references
+   *  here, so a place stays live while anything there still is. Mirrors
+   *  `eventPhase`'s boundary (`endsAt ?? startsAt`), which is why a 13:00-18:00
+   *  event is not "behind you" at 14:00 and a stay is not behind you mid-stay. */
+  until?: number;
   /** The day's manual order, for the tie the clock can't break — the same
    *  `sortOrder` fallback `buildTimeTree` uses (ADR-0043). */
   sortOrder?: number;
@@ -77,9 +82,13 @@ function spanDays(event: TripEvent, edge: 'start' | 'end' = 'start'): DayUsage[]
   const startAt = event.startsAt ? Date.parse(event.startsAt) : undefined;
   const endAt = event.endsAt ? Date.parse(event.endsAt) : undefined;
   const { sortOrder } = event;
+  // The span's own end is what makes it current, on every day it touches: an event
+  // running 13:00-18:00 is not behind you at 14:00, and a stay is not behind you
+  // until its check-out — the same boundary `eventPhase` uses.
+  const until = endAt ?? startAt;
   if (!isMultiDay(event)) {
     const at = edge === 'end' ? (endAt ?? startAt) : startAt;
-    return [{ date: event.date, prominence: 'edge', at, sortOrder }];
+    return [{ date: event.date, prominence: 'edge', at, until, sortOrder }];
   }
   const dates: string[] = [];
   const endT = Date.parse(event.endDate!);
@@ -96,6 +105,7 @@ function spanDays(event: TripEvent, edge: 'start' | 'end' = 'start'): DayUsage[]
       date,
       prominence: ambient && !isFirst && !isLast ? ('ambient' as const) : ('edge' as const),
       at: isFirst ? startAt : isLast ? endAt : undefined,
+      until,
       sortOrder,
     };
   });
@@ -162,6 +172,13 @@ export function buildPlaceUsageIndex(
         date: d.date,
         prominence: seen.prominence === 'edge' || d.prominence === 'edge' ? 'edge' : 'ambient',
         at: seen.at == null ? d.at : d.at == null ? seen.at : Math.min(seen.at, d.at),
+        // …but the LATEST end: the place is behind you only once everything there is.
+        until:
+          seen.until == null
+            ? d.until
+            : d.until == null
+              ? seen.until
+              : Math.max(seen.until, d.until),
         sortOrder:
           seen.sortOrder == null
             ? d.sortOrder
@@ -279,15 +296,42 @@ export function matchesPlaceFilter(usage: PlaceUsage, filter: PlaceFilter): bool
  * `onDate` scopes the comparison to one day when the list is day-scoped; without it
  * each place is ranked by its earliest day (the all-days view).
  */
+export interface PlaceOrderContext {
+  /** Display name, for the final tiebreak that makes the order total. */
+  nameOf: (usage: PlaceUsage) => string;
+  /** Scope the comparison to one day; omit to rank each place by its earliest day. */
+  onDate?: string;
+  /**
+   * The live clock. When given, a place whose moment has **passed** sinks to the
+   * bottom of its day (ADR-0109 session-107 amendment) — on a live surface the
+   * question is what's ahead, and a place you've already been shouldn't outrank
+   * the stop you're heading to next. Omit on a drafting surface (Plan mode), where
+   * the true sequence matters and "past" says nothing about a trip not yet taken.
+   */
+  nowMs?: number;
+}
+
+/** Whether a place's day is behind you: everything anchored there has ended.
+ *  In progress counts as current — an event running now is maximally relevant. */
+export function isDayUsagePast(day: DayUsage, nowMs: number): boolean {
+  const ends = day.until ?? day.at;
+  return ends != null && nowMs >= ends;
+}
+
+/** The `DayUsage` a place is ranked by in this context: the scoped day, else its
+ *  earliest. `undefined` when the place has no day at all. */
+export function placeDay(usage: PlaceUsage, onDate?: string): DayUsage | undefined {
+  return onDate ? usage.days.find((d) => d.date === onDate) : usage.days[0];
+}
+
 export function comparePlacesBySchedule(
   a: PlaceUsage,
   b: PlaceUsage,
-  nameOf: (usage: PlaceUsage) => string,
-  onDate?: string,
+  ctx: PlaceOrderContext,
 ): number {
-  const dayOf = (u: PlaceUsage) => (onDate ? u.days.find((d) => d.date === onDate) : u.days[0]);
-  const da = dayOf(a);
-  const db = dayOf(b);
+  const { nameOf, onDate, nowMs } = ctx;
+  const da = placeDay(a, onDate);
+  const db = placeDay(b, onDate);
   // A place with no day at all comes last, whatever else is true of it.
   if (!da || !db) {
     if (da === db) return nameOf(a).localeCompare(nameOf(b));
@@ -295,8 +339,11 @@ export function comparePlacesBySchedule(
   }
   if (da.date !== db.date) return da.date.localeCompare(db.date);
 
-  // Within the day: clocked → untimed → ambient backdrop.
-  const rank = (d: DayUsage) => (d.prominence === 'ambient' ? 2 : d.at == null ? 1 : 0);
+  // Within the day: ahead of you, clocked → untimed → ambient backdrop → behind you.
+  const rank = (d: DayUsage) => {
+    if (nowMs != null && isDayUsagePast(d, nowMs)) return 3;
+    return d.prominence === 'ambient' ? 2 : d.at == null ? 1 : 0;
+  };
   if (rank(da) !== rank(db)) return rank(da) - rank(db);
   if (da.at != null && db.at != null && da.at !== db.at) return da.at - db.at;
   const sa = da.sortOrder ?? 0;
