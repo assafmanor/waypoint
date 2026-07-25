@@ -40,6 +40,7 @@ import { EVENT_CATEGORY_OPTIONS } from '../lib/category-options';
 import { CATEGORY_PIN_HUE, DOT_SEPARATOR, ICONS } from '../constants';
 import { ChoiceGrid, type Choice } from '../ui/primitives/ChoiceGrid';
 import { PlacePickerSheet } from '../ui/primitives/PlacePicker';
+import { PlaceResearch } from './PlaceResearch';
 import { SearchOverlay } from '../ui/primitives/SearchOverlay';
 import { EmptyState, StatusBanner } from '../ui/feedback';
 import { Icon } from '../ui/Icon';
@@ -81,6 +82,10 @@ export function MapView() {
 
   const [searchMode, setSearchMode] = useState(false);
   const [query, setQuery] = useState('');
+  // Plan mode's search also researches Google (Phase 5, ADR-0115 §1/§6); Trip mode's
+  // stays a pure filter — discovery on the ground is a different query and a
+  // different SKU, and this is the one surface people use while walking around.
+  const research = mode === 'plan';
   // A coordless Place-lite the user chose to enrich from the map (＋ מיקום).
   const [enrichTarget, setEnrichTarget] = useState<Place | null>(null);
 
@@ -347,7 +352,7 @@ export function MapView() {
         <button
           type="button"
           className="map-search-btn"
-          aria-label={t.map.search.button}
+          aria-label={research ? t.map.search.planButton : t.map.search.button}
           onClick={() => setSearchMode(true)}
         >
           <Icon name="search" />
@@ -425,12 +430,12 @@ export function MapView() {
 
       {searchMode && (
         <SearchOverlay
-          title={t.map.search.modeTitle}
+          title={research ? t.map.search.planModeTitle : t.map.search.modeTitle}
           contextLabel={trip.name}
           mode={mode}
           query={query}
           onQueryChange={setQuery}
-          placeholder={t.map.search.placeholder}
+          placeholder={research ? t.map.search.planPlaceholder : t.map.search.placeholder}
           clearLabel={t.map.search.clear}
           backAria={t.map.search.backAria}
           onClose={() => {
@@ -439,7 +444,23 @@ export function MapView() {
           }}
         >
           <div className="map-screen" data-mode={mode} data-offline={offline || undefined}>
-            {searchResults.length > 0 ? (
+            {/* Plan mode: the same control also researches new places (ADR-0115 §1).
+                The trip's own places stay above, under their own header, and never
+                lose their filter to the paid half; an empty local result is simply
+                absent here rather than a full empty state, because the research
+                block below IS the answer to "it isn't in the trip". */}
+            {research ? (
+              <>
+                {!query.trim() && <p className="map-res-hint">{t.map.search.hint}</p>}
+                {searchResults.length > 0 && (
+                  <>
+                    <div className="map-grouphead">{t.map.research.tripGroup}</div>
+                    {renderList(searchResults)}
+                  </>
+                )}
+                <PlaceResearch query={query} usageIndex={usageIndex} offline={offline} />
+              </>
+            ) : searchResults.length > 0 ? (
               renderList(searchResults)
             ) : (
               <EmptyState icon={ICONS.search} title={t.map.search.noResultsTitle} />

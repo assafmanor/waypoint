@@ -79,6 +79,9 @@ vi.mock('../state/trip-state', () => ({
   }),
 }));
 vi.mock('../state/mode-state', () => ({ useMode: () => ({ mode: currentMode }) }));
+// Plan-mode research writes through the shelf verb; the write itself is covered in
+// PlaceResearch.test.tsx, so the screen only needs the hook to exist.
+vi.mock('../state/verbs', () => ({ useVerbs: () => ({ addMaybe: vi.fn() }) }));
 vi.mock('../lib/outbox', () => ({ useIsOffline: () => isOffline }));
 
 // The device's geolocation, driven per test: `fix` is what a granted request
@@ -630,6 +633,57 @@ describe('MapView (Phase 3, ADR-0109/0110)', () => {
       tripEvents = [timed('lite', '04:00')];
       render(wrap(<MapView />));
       expect(nextTag()).toBeNull();
+    });
+  });
+
+  // Phase 5 (ADR-0115): the same control, two halves. Only the wiring is asserted
+  // here — the research surface's own behaviour lives in PlaceResearch.test.tsx.
+  describe('Plan-mode research on the search control (ADR-0115 §1)', () => {
+    const NOON = Date.parse(`${ACTIVE_DATE}T12:00:00Z`);
+    const openSearch = (label: string) => {
+      fireEvent.click(screen.getByRole('button', { name: new RegExp(label) }));
+    };
+    const armPresent = () => screen.queryByRole('button', { name: t.map.research.armAria }) != null;
+
+    it('Plan mode: typing offers the trip’s own places AND a Google search', () => {
+      setSimulatedNow(NOON);
+      currentMode = 'plan';
+      seed();
+      render(wrap(<MapView />));
+      openSearch(t.map.search.planButton);
+      fireEvent.change(screen.getByPlaceholderText(t.map.search.planPlaceholder), {
+        target: { value: 'food' },
+      });
+      expect(screen.getByText(t.map.research.tripGroup)).toBeTruthy();
+      expect(armPresent()).toBe(true);
+    });
+
+    it('Plan mode: research is offered in both day scopes, not just all-days', () => {
+      setSimulatedNow(NOON);
+      currentMode = 'plan';
+      seed();
+      render(wrap(<MapView />));
+      // Plan defaults to all-days; narrow to the active day and check again, since
+      // the two scopes are separate render paths on this screen.
+      fireEvent.click(screen.getByRole('button', { name: new RegExp(t.map.allDays) }));
+      openSearch(t.map.search.planButton);
+      fireEvent.change(screen.getByPlaceholderText(t.map.search.planPlaceholder), {
+        target: { value: 'food' },
+      });
+      expect(armPresent()).toBe(true);
+    });
+
+    it('Trip mode: the same control stays a pure filter, no paid affordance', () => {
+      setSimulatedNow(NOON);
+      seed();
+      render(wrap(<MapView />));
+      openSearch(t.map.search.button);
+      fireEvent.change(screen.getByPlaceholderText(t.map.search.placeholder), {
+        target: { value: 'food' },
+      });
+      // Twice: the list behind the overlay, and the overlay's own filtered copy.
+      expect(screen.getAllByText('food')).toHaveLength(2);
+      expect(armPresent()).toBe(false);
     });
   });
 });

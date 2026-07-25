@@ -47,6 +47,14 @@ import { useAuth } from './auth-state';
 
 type ShowToast = ReturnType<typeof useToast>;
 
+/** Everything optional about a new shelf idea: the day-view jot passes an icon,
+ *  Plan-mode place research passes the picked place (ADR-0115 §3). */
+export interface AddMaybeOptions {
+  icon?: string;
+  category?: EventCategory;
+  placeId?: string;
+}
+
 type UndoDescriptor =
   | { kind: 'status'; id: string; previous: TripEvent['status'] }
   | { kind: 'move'; id: string; previous: { date: string; startsAt?: string }; isHard: boolean }
@@ -428,7 +436,15 @@ export async function applyReorder(
 export async function applyAddMaybe(deps: VerbDeps, item: MaybeItem): Promise<void> {
   deps.dispatch({ type: TRIP_ACTION.ADD_MAYBE, item });
   deps.lastAction.current = { kind: 'addMaybe', id: item.id };
-  const input = { id: item.id, title: item.title, icon: item.icon, category: item.category };
+  const input = {
+    id: item.id,
+    title: item.title,
+    icon: item.icon,
+    category: item.category,
+    // A researched idea carries the place it was picked from (ADR-0115 §3) — the
+    // same field `applyPark` already sends on this op.
+    placeId: item.placeId,
+  };
   try {
     await restOrQueue(deps.tripId, { verb: OUTBOX_VERB.CREATE_MAYBE_ITEM, input }, () =>
       createMaybeItem(deps.tripId, input),
@@ -681,7 +697,10 @@ export function useVerbs() {
         undo,
       );
     },
-    addMaybe: (title: string, icon?: string, category?: EventCategory) => {
+    // An idea can arrive from the day-view jot (title only) or from Plan-mode
+    // place research (a picked place, ADR-0115 §3) — hence the options bag rather
+    // than a third and fourth positional optional.
+    addMaybe: (title: string, opts: AddMaybeOptions = {}) => {
       const trimmed = title.trim();
       if (!trimmed) return;
       const now = new Date(getNow()).toISOString();
@@ -689,8 +708,9 @@ export function useVerbs() {
         id: crypto.randomUUID(),
         tripId: trip.id,
         title: trimmed,
-        icon: icon ?? DEFAULT_MAYBE_ICON,
-        category,
+        icon: opts.icon ?? DEFAULT_MAYBE_ICON,
+        category: opts.category,
+        placeId: opts.placeId,
         createdBy: authorId,
         consumed: false,
         createdAt: now,
