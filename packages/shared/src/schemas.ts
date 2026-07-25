@@ -305,6 +305,8 @@ export const createMaybeItemSchema = z.object({
   icon: z.string().optional(),
   category: eventCategorySchema.optional(),
   placeId: z.string().optional(),
+  /** The pencilled-in day (ADR-0116 §1); nullish clears it back to "someday". */
+  targetDate: z.string().nullish(),
 });
 export type CreateMaybeItemInput = z.infer<typeof createMaybeItemSchema>;
 

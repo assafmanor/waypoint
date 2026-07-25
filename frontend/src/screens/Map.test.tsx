@@ -636,6 +636,74 @@ describe('MapView (Phase 3, ADR-0109/0110)', () => {
     });
   });
 
+  // ADR-0117 — the row says what happened, and the block header stops claiming a
+  // visit it can't vouch for. Asserted in BOTH scopes with a pinned clock.
+  describe('place outcomes (ADR-0117)', () => {
+    const NOON = Date.parse(`${ACTIVE_DATE}T12:00:00Z`);
+    const at = (hhmm: string) => `${ACTIVE_DATE}T${hhmm}:00Z`;
+    const rowFor = (name: string) =>
+      [...document.querySelectorAll('.place')].find((r) =>
+        r.querySelector('.map-name')?.textContent?.includes(name),
+      );
+
+    it('a visited place says היינו; a skipped one says דילגנו and goes quiet', () => {
+      setSimulatedNow(NOON);
+      tripPlaces = [place('been', true), place('bailed', true)];
+      tripEvents = [
+        event({ id: 'e1', placeId: 'been', startsAt: at('09:00'), status: 'done' }),
+        event({ id: 'e2', placeId: 'bailed', startsAt: at('10:00'), status: 'skipped' }),
+      ];
+      render(wrap(<MapView />));
+      expect(rowFor('been')?.textContent).toContain(t.event.didThis);
+      expect(rowFor('bailed')?.textContent).toContain(t.event.skipped);
+      // The skipped row must NOT claim a visit — the bug this fixes.
+      expect(rowFor('bailed')?.textContent).not.toContain(t.event.didThis);
+      expect(rowFor('bailed')?.className).toContain('skipped');
+    });
+
+    it('a passed-but-unsettled place gets no outcome tag at all', () => {
+      setSimulatedNow(NOON);
+      tripPlaces = [place('unsettled', true)];
+      tripEvents = [event({ id: 'e1', placeId: 'unsettled', startsAt: at('09:00') })];
+      render(wrap(<MapView />));
+      const row = rowFor('unsettled');
+      expect(row?.textContent).not.toContain(t.event.didThis);
+      expect(row?.textContent).not.toContain(t.event.skipped);
+    });
+
+    it('marking a later stop done sinks it behind you, before its time', () => {
+      setSimulatedNow(NOON);
+      tripPlaces = [place('later', true), place('soon', true)];
+      tripEvents = [
+        event({ id: 'e1', placeId: 'later', startsAt: at('20:00'), status: 'done' }),
+        event({ id: 'e2', placeId: 'soon', startsAt: at('18:00') }),
+      ];
+      render(wrap(<MapView />));
+      const names = [...document.querySelectorAll('.place .map-name')].map((n) => n.textContent);
+      expect(names).toEqual(['soon', 'later']);
+      expect(screen.getByText(t.map.behindHeader)).toBeTruthy();
+      expect(screen.getByText(t.map.aheadHeader)).toBeTruthy();
+    });
+
+    it('outcomes read the same in all-days scope', () => {
+      setSimulatedNow(NOON);
+      tripPlaces = [place('been', true)];
+      tripEvents = [event({ id: 'e1', placeId: 'been', startsAt: at('09:00'), status: 'done' })];
+      render(wrap(<MapView />));
+      fireEvent.click(screen.getByRole('button', { name: new RegExp(t.map.allDays) }));
+      expect(rowFor('been')?.textContent).toContain(t.event.didThis);
+    });
+
+    it('an all-ahead list carries no headers at all', () => {
+      setSimulatedNow(Date.parse(`${ACTIVE_DATE}T00:00:00Z`));
+      tripPlaces = [place('soon', true)];
+      tripEvents = [event({ id: 'e1', placeId: 'soon', startsAt: at('18:00') })];
+      render(wrap(<MapView />));
+      expect(screen.queryByText(t.map.aheadHeader)).toBeNull();
+      expect(screen.queryByText(t.map.behindHeader)).toBeNull();
+    });
+  });
+
   // Phase 5 (ADR-0115): the same control, two halves. Only the wiring is asserted
   // here — the research surface's own behaviour lives in PlaceResearch.test.tsx.
   describe('Plan-mode research on the search control (ADR-0115 §1)', () => {

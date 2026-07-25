@@ -285,12 +285,18 @@ export function MapView() {
       ? undefined
       : usage.days.find((d) => d.date === activeDate)?.prominence;
     const { day, time, what } = dayMeta(usage);
+    // What a human said happened here (ADR-0117 §1) — read off the same day the
+    // meta line describes. A strictly-middle stay night reports nothing: nothing
+    // happens there to have an outcome about.
+    const usageDay = placeDay(usage, scopedDate);
+    const outcome = usageDay?.prominence === 'ambient' ? undefined : usageDay?.outcome;
     return (
       <PlaceRow
         key={usage.placeId}
         usage={usage}
         place={place}
         ambient={prominence === 'ambient'}
+        outcome={outcome}
         isNextStop={nextStopId === usage.placeId}
         day={day}
         time={time}
@@ -307,6 +313,9 @@ export function MapView() {
   // sunk block where it starts, so "why is this down here" is answered on screen.
   const renderList = (usages: PlaceUsage[]) => {
     const firstBehind = nearActive ? -1 : usages.findIndex(isBehind);
+    // The ahead header only earns its row when there IS a behind block to be ahead
+    // of (ADR-0117 §3) — on an all-ahead list it would be pure chrome.
+    const showAhead = firstBehind > 0;
     return (
       <>
         {nearActive && usages.some((u) => !u.coordless) && (
@@ -315,6 +324,7 @@ export function MapView() {
         <div className="map-list">
           {usages.map((usage, i) => (
             <Fragment key={usage.placeId}>
+              {i === 0 && showAhead && <div className="map-grouphead">{t.map.aheadHeader}</div>}
               {i === firstBehind && <div className="map-grouphead">{t.map.behindHeader}</div>}
               {renderRow(usage)}
             </Fragment>
@@ -490,6 +500,7 @@ function PlaceRow({
   usage,
   place,
   ambient,
+  outcome,
   isNextStop,
   day,
   time,
@@ -501,6 +512,9 @@ function PlaceRow({
   usage: PlaceUsage;
   place: Place;
   ambient: boolean;
+  /** What a human said happened here (ADR-0117 §1): visited, skipped, or — absent —
+   *  nobody settled it, where the row's position is the only claim. */
+  outcome?: 'done' | 'skipped';
   /** The single navigate-to-next row (ADR-0106 §6): amber ring + tag. */
   isNextStop?: boolean;
   /** Which day, relative (מחר / אתמול / עוד 3 ימים) — only when the list spans
@@ -535,6 +549,9 @@ function PlaceRow({
     'place',
     isPureIdea && 'soft',
     ambient && 'ambient',
+    // A skipped place is quiet: still listed (it may hold a booking, and it can be
+    // restored) but no longer competing with what is actually happening (ADR-0117 §4).
+    outcome === 'skipped' && 'skipped',
     usage.coordless && 'nocoord',
     isNextStop && 'nextstop',
   ]
@@ -589,6 +606,14 @@ function PlaceRow({
             </span>
           )}
           {isNextStop && <span className="map-tag next">{t.map.nextStop}</span>}
+          {/* The outcome, in the app's existing words for it (the day view's own
+              tags) and in the status hues --ok/--miss reserve for exactly this
+              (ADR-0028) — never a new accent on the map's budget. */}
+          {outcome && (
+            <span className={'map-tag ' + (outcome === 'done' ? 'ok' : 'miss')}>
+              {outcome === 'done' ? t.event.didThis : t.event.skipped}
+            </span>
+          )}
           {meta && <span className="map-tag">{meta}</span>}
           {isPureIdea && <span className="map-tag mbadge">{t.map.shelfTag}</span>}
           {place.rating != null && (

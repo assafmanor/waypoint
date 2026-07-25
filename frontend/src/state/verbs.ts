@@ -53,6 +53,8 @@ export interface AddMaybeOptions {
   icon?: string;
   category?: EventCategory;
   placeId?: string;
+  /** The day we're thinking of, pencilled in (ADR-0116 §1) — not a schedule. */
+  targetDate?: string;
 }
 
 type UndoDescriptor =
@@ -444,6 +446,7 @@ export async function applyAddMaybe(deps: VerbDeps, item: MaybeItem): Promise<vo
     // A researched idea carries the place it was picked from (ADR-0115 §3) — the
     // same field `applyPark` already sends on this op.
     placeId: item.placeId,
+    targetDate: item.targetDate,
   };
   try {
     await restOrQueue(deps.tripId, { verb: OUTBOX_VERB.CREATE_MAYBE_ITEM, input }, () =>
@@ -482,6 +485,7 @@ export async function applyPark(deps: VerbDeps, event: TripEvent, item: MaybeIte
     icon: item.icon,
     category: item.category,
     placeId: item.placeId,
+    targetDate: item.targetDate,
   };
   try {
     await restOrQueue(deps.tripId, { verb: OUTBOX_VERB.CREATE_MAYBE_ITEM, input }, () =>
@@ -711,6 +715,7 @@ export function useVerbs() {
         icon: opts.icon ?? DEFAULT_MAYBE_ICON,
         category: opts.category,
         placeId: opts.placeId,
+        targetDate: opts.targetDate,
         createdBy: authorId,
         consumed: false,
         createdAt: now,
@@ -733,7 +738,12 @@ export function useVerbs() {
         tripId: trip.id,
         title: event.title,
         icon: event.icon,
+        // Parking is "not in this slot", not "not this day" (ADR-0116 §4): the
+        // category comes along (it used to be dropped, so a parked restaurant lost
+        // its pin hue) and the date survives as the idea's pencilled-in day.
+        category: event.category,
         placeId: event.placeId,
+        targetDate: event.date,
         createdBy: authorId,
         consumed: false,
         createdAt: now,

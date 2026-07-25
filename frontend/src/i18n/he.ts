@@ -102,9 +102,13 @@ export const t = {
     // navigate-to-next on the list (ADR-0106 §6): the one time-anchor cue the map
     // budget allows (ADR-0109 §6, the amber ring's list form), on a single row.
     nextStop: 'היעד הבא',
-    // Trip mode sinks what's already behind you to the bottom of the day, and names
-    // that block so the list isn't silently reordering as the clock passes each stop.
-    behindHeader: 'כבר היינו',
+    // The list is two blocks (ADR-0109 session-110). The behind-block header is
+    // deliberately NEUTRAL (ADR-0117 §3): it holds three outcomes — visited, skipped,
+    // and passed-with-nobody-saying — and only the first is a visit, so the per-row
+    // tags carry the claim and the header only marks the boundary. The ahead header
+    // appears only when there IS a behind block, so an all-ahead list stays bare.
+    aheadHeader: 'מה שלפנינו',
+    behindHeader: 'מה שמאחורינו',
     // "Near me now" (Phase 4a, ADR-0109 §6-7): a list re-sort + teal distance
     // chips, never a spatial dot (there's no rendered map until Phase 6). The
     // permission is asked only on intent, behind the reason-first pre-prompt —
@@ -763,6 +767,10 @@ export const t = {
   day: {
     heading: (day: number, weekday: string, destination: string) =>
       `יום ${day} · ${weekday} · ${destination}`,
+    // The shelf's two groups (ADR-0116 §2). A header renders only when its group has
+    // content, so a trip that never uses a target day looks exactly as it did.
+    shelfForDay: 'לְיום הזה',
+    shelfPool: 'רעיונות',
     maybeShelf: 'מדף האולי',
     tapToSchedule: 'לחצו כדי לשבץ ליום',
     skippedTag: 'דילגתם · לחצו להחזרה',
@@ -795,7 +803,6 @@ export const t = {
     moveLater: 'אחר',
     drag: 'גרור לסידור',
     pinned: 'אירוע קשיח · מעוגן בזמן',
-    toShelf: 'העבר למדף',
     rowActions: 'פעולות',
     gapFillTitle: (start: string, end: string) => `מילוי הפער · ${start}–${end}`,
     gapFillEmpty: 'אין רעיונות במדף · הוסף אירוע חדש',
@@ -857,6 +864,9 @@ export const t = {
     // The view-on-map peer of navigate (directions). Kept to one word so the two
     // location actions ("ניווט · מפה") stay compact in the crowded card row.
     showOnMap: 'מפה',
+    // "Back to the shelf" (ADR-0116 §4) — canonical here rather than in planDay,
+    // now that both the builder row and the Trip-mode card expose the same verb.
+    toShelf: 'העבר למדף',
     delayBy: (minutes: number) => `דחה ${minutes} דק׳`,
     earlierBy: (minutes: number) => `הקדם ${minutes} דק׳`,
     stepMinutes: (minutes: number) => `${minutes} דק׳`,

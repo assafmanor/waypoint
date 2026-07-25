@@ -15,6 +15,7 @@
 import {
   categoryForBookingType,
   EVENT_KIND,
+  EVENT_STATUS,
   eventCategorySchema,
   isAmbient,
   isMultiDay,
@@ -58,6 +59,15 @@ export interface DayUsage {
   /** Which end of that event this day sits at: a departure/check-in (`start`) or an
    *  arrival/check-out (`end`). Undefined mid-span, where neither happens. */
   edge?: 'start' | 'end';
+  /** What a human said happened here, across ALL of this day's references
+   *  (ADR-0117 §1): `done` if any of them is marked done — you were there — else
+   *  `skipped` if any is skipped, else absent (nobody settled it). A stored fact,
+   *  not a clock read, so the derivation stays clock-free. */
+  outcome?: 'done' | 'skipped';
+  /** Every reference here is settled (done or skipped), so the day is handled
+   *  whatever the clock says (ADR-0117 §2). Distinct from `outcome`: a day with one
+   *  done and one still-planned event has an outcome but is not settled. */
+  settled?: boolean;
 }
 
 export interface PlaceUsage {
@@ -86,6 +96,13 @@ const isTransport = (booking: Booking): boolean =>
  *  all. `endsAt` overrides for a transport DESTINATION, whose moment is the arrival,
  *  not the departure — so a flight's two endpoints list in travel order. */
 function spanDays(event: TripEvent, edge: 'start' | 'end' = 'start'): DayUsage[] {
+  const outcome =
+    event.status === EVENT_STATUS.DONE
+      ? ('done' as const)
+      : event.status === EVENT_STATUS.SKIPPED
+        ? ('skipped' as const)
+        : undefined;
+  const settled = outcome != null;
   const startAt = event.startsAt ? Date.parse(event.startsAt) : undefined;
   const endAt = event.endsAt ? Date.parse(event.endsAt) : undefined;
   const { sortOrder } = event;
@@ -96,7 +113,19 @@ function spanDays(event: TripEvent, edge: 'start' | 'end' = 'start'): DayUsage[]
   const eventId = event.id;
   if (!isMultiDay(event)) {
     const at = edge === 'end' ? (endAt ?? startAt) : startAt;
-    return [{ date: event.date, prominence: 'edge', at, until, sortOrder, eventId, edge }];
+    return [
+      {
+        date: event.date,
+        prominence: 'edge',
+        at,
+        until,
+        sortOrder,
+        eventId,
+        edge,
+        outcome,
+        settled,
+      },
+    ];
   }
   const dates: string[] = [];
   const endT = Date.parse(event.endDate!);
@@ -120,6 +149,8 @@ function spanDays(event: TripEvent, edge: 'start' | 'end' = 'start'): DayUsage[]
       sortOrder,
       eventId,
       edge: isFirst ? ('start' as const) : isLast ? ('end' as const) : undefined,
+      outcome,
+      settled,
     };
   });
 }
@@ -203,6 +234,11 @@ export function buildPlaceUsageIndex(
             : d.sortOrder == null
               ? seen.sortOrder
               : Math.min(seen.sortOrder, d.sortOrder),
+        // A visit wins over a skip (you were there), and the day is settled only
+        // once EVERY reference on it is (ADR-0117 §1/§2).
+        outcome:
+          seen.outcome === 'done' || d.outcome === 'done' ? 'done' : (seen.outcome ?? d.outcome),
+        settled: (seen.settled ?? false) && (d.settled ?? false),
       });
     }
     if (!a.best || COMMITMENT_WEIGHT[ref.commitment] > COMMITMENT_WEIGHT[a.best.commitment]) {
@@ -341,6 +377,9 @@ export interface PlaceOrderContext {
 /** Whether a place's day is behind you: everything anchored there has ended.
  *  In progress counts as current — an event running now is maximally relevant. */
 export function isDayUsagePast(day: DayUsage, nowMs: number, today?: string): boolean {
+  // A human who settled the day outranks the clock (ADR-0117 §2): marking the
+  // 20:00 dinner done at 11:00 means it is handled, not still ahead of you.
+  if (day.settled) return true;
   // A whole calendar day that has passed takes everything on it, clocked or not —
   // otherwise an untimed event on a finished day reads as still to come.
   if (today && day.date !== today) return day.date < today;

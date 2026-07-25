@@ -14,6 +14,7 @@ import {
   buildPlaceUsageIndex,
   comparePlacesBySchedule,
   countPlacesByCategory,
+  isDayUsagePast,
   matchesPlaceFilter,
   PLACE_CATEGORY_ALL,
   type PlaceUsage,
@@ -499,5 +500,73 @@ describe('comparePlacesBySchedule (the list reads in trip order)', () => {
       [place('later'), place('earlier')],
     );
     expect(order(idx)).toEqual(['earlier', 'later']);
+  });
+});
+
+// ADR-0117 — the derivation now reads what a human said happened, so the Map can
+// stop deducing a visit from the clock alone.
+describe('outcome + settled (ADR-0117)', () => {
+  const at = (hhmm: string) => `2026-07-07T${hhmm}:00Z`;
+  const usageFor = (events: TripEvent[]) =>
+    buildPlaceUsageIndex(events, [], [], [place('p')]).get('p')!;
+
+  it('a done event marks the day היינו and settled', () => {
+    const u = usageFor([
+      event({ id: 'e1', placeId: 'p', startsAt: at('09:00'), status: EVENT_STATUS.DONE }),
+    ]);
+    expect(u.days[0]?.outcome).toBe('done');
+    expect(u.days[0]?.settled).toBe(true);
+  });
+
+  it('a skipped event marks the day דילגנו — not a visit', () => {
+    const u = usageFor([
+      event({ id: 'e1', placeId: 'p', startsAt: at('09:00'), status: EVENT_STATUS.SKIPPED }),
+    ]);
+    expect(u.days[0]?.outcome).toBe('skipped');
+  });
+
+  it('a planned event has no outcome and is not settled', () => {
+    const u = usageFor([event({ id: 'e1', placeId: 'p', startsAt: at('09:00') })]);
+    expect(u.days[0]?.outcome).toBeUndefined();
+    expect(u.days[0]?.settled).toBeFalsy();
+  });
+
+  it('a visit wins over a skip on the same day', () => {
+    const u = usageFor([
+      event({ id: 'e1', placeId: 'p', startsAt: at('09:00'), status: EVENT_STATUS.SKIPPED }),
+      event({ id: 'e2', placeId: 'p', startsAt: at('11:00'), status: EVENT_STATUS.DONE }),
+    ]);
+    expect(u.days[0]?.outcome).toBe('done');
+    expect(u.days[0]?.settled).toBe(true);
+  });
+
+  it('one still-planned reference leaves the day unsettled, outcome or not', () => {
+    const u = usageFor([
+      event({ id: 'e1', placeId: 'p', startsAt: at('09:00'), status: EVENT_STATUS.DONE }),
+      event({ id: 'e2', placeId: 'p', startsAt: at('20:00') }),
+    ]);
+    expect(u.days[0]?.outcome).toBe('done');
+    expect(u.days[0]?.settled).toBe(false);
+  });
+
+  describe('isDayUsagePast: a human outranks the clock', () => {
+    const dawn = Date.parse('2026-07-07T00:00:00Z');
+
+    it('a settled day is behind you even before its time', () => {
+      const u = usageFor([
+        event({ id: 'e1', placeId: 'p', startsAt: at('20:00'), status: EVENT_STATUS.DONE }),
+      ]);
+      expect(isDayUsagePast(u.days[0]!, dawn, '2026-07-07')).toBe(true);
+    });
+
+    it('an unsettled day before its time is still ahead of you', () => {
+      const u = usageFor([event({ id: 'e1', placeId: 'p', startsAt: at('20:00') })]);
+      expect(isDayUsagePast(u.days[0]!, dawn, '2026-07-07')).toBe(false);
+    });
+
+    it('an unsettled day whose time has passed is behind you, as before', () => {
+      const u = usageFor([event({ id: 'e1', placeId: 'p', startsAt: at('09:00') })]);
+      expect(isDayUsagePast(u.days[0]!, Date.parse(at('10:00')), '2026-07-07')).toBe(true);
+    });
   });
 });

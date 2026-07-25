@@ -121,6 +121,7 @@ export const toMaybeItemDto = (m: MaybeItem): SharedMaybeItem => ({
   icon: m.icon ?? undefined,
   category: m.category ?? undefined,
   placeId: m.placeId ?? undefined,
+  targetDate: m.targetDate ?? undefined,
   createdBy: m.createdBy,
   consumed: m.consumed,
   createdAt: m.createdAt.toISOString(),

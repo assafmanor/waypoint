@@ -344,6 +344,9 @@ model MaybeItem {
   icon      String?
   category  EventCategory?
   placeId   String?
+  // The day we're thinking of, pencilled in (ADR-0116 §1) — never a schedule: an
+  // idea with a target day still carries no time and never reaches the timeline.
+  targetDate String?
   createdBy String
   consumed  Boolean        @default(false)
   createdAt DateTime       @default(now())
