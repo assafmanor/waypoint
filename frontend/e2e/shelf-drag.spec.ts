@@ -130,7 +130,11 @@ async function holdOver(
   await expect
     .poll(
       async () => {
-        const box = await page.locator(selector).first().boundingBox();
+        const el = page.locator(selector).first();
+        // Scrolled into view first: a target below the fold has a box outside the
+        // viewport, and a CDP touch there lands on nothing at all.
+        await el.scrollIntoViewIfNeeded().catch(() => {});
+        const box = await el.boundingBox();
         if (!box) return false;
         at = { x: box.x + box.width / 2, y: box.y + box.height / 2 };
         await touch(cdp, 'touchMove', at.x, at.y);
@@ -167,8 +171,9 @@ async function openPlanDayBuilder(page: Page) {
   await page.locator('nav.nav button', { hasText: 'יום-יום' }).click();
   // Generous: the day builder is a lazy chunk, and under the dev server several
   // parallel workers asking for it at once can take a while to transform.
+  // `.builder-side` and not `.shelf`: a shelf strip only exists when it has content or
+  // a drag is in flight, and one scenario here deliberately starts with neither.
   await expect(page.locator('.builder-side')).toBeVisible({ timeout: 20_000 });
-  await expect(page.locator('.shelf').first()).toBeVisible();
 }
 
 /** Cold-boot into the Plan day builder with the day seeded as given. Per-scenario
@@ -281,36 +286,27 @@ test.describe('a day with a wide gap between two events', () => {
     page,
   }) => {
     const cdp = await page.context().newCDPSession(page);
-    await page.locator('.body').evaluate((el) => (el.scrollTop = el.scrollHeight));
+    // From the top, with the shelf below the fold, and hold in the BOTTOM band so the
+    // list scrolls down until it can't — which brings the shelf to REST under the
+    // still finger. Deliberately a target the scroll ends on rather than one it sweeps
+    // past: a swept target is under the finger for a frame or two, and asserting on
+    // that races React's batching for reasons that have nothing to do with the
+    // behaviour under test (an earlier version of this case did, and flaked).
+    await page.locator('.body').evaluate((el) => (el.scrollTop = 0));
     const card = await centre(page, '.wp-maybecard');
     const bands = await bodyBands(page);
 
-    // Recorded rather than sampled: the gap SWEEPS past the held finger as the list
-    // moves, so polling for `.drop-over` can miss the window entirely and the test
-    // would fail for a reason that has nothing to do with the behaviour.
-    await page.evaluate(() => {
-      const seen = () => {
-        if (document.querySelector('.gap.drop-over')) {
-          document.documentElement.dataset.sawDropOver = '1';
-        }
-      };
-      new MutationObserver(seen).observe(document.body, {
-        subtree: true,
-        attributes: true,
-        attributeFilter: ['class'],
-      });
-    });
-
     await touch(cdp, 'touchStart', card.x, card.y);
     await expect(page.locator('.wp-maybecard.dragging')).toBeVisible();
-    await touch(cdp, 'touchMove', card.x, bands.topBand);
+    // Note the y: the bottom band, not the shelf's position. Nothing here aims at the
+    // target — the content is what moves.
+    await touch(cdp, 'touchMove', card.x, bands.middleFrom + DRAG_EDGE_SCROLL_ZONE_PX);
 
-    // The finger never moves again: the gap scrolls INTO it. The hit-test used to run
-    // on pointer MOVE only, so nothing ever lit up and the drop landed on nothing —
+    // The hit-test used to run on pointer MOVE only, so a held finger saw a frozen
+    // answer: whatever scrolled under it never lit up and couldn't be dropped on —
     // the "the card never finds a stable place to drop" report.
-    await expect
-      .poll(() => page.locator('html').getAttribute('data-saw-drop-over'), { timeout: 5000 })
-      .toBe('1');
+    await expect(page.locator('.shelf.drop-over')).toBeVisible({ timeout: 5000 });
+    await expect.poll(() => scrollTop(page)).toBeGreaterThan(0);
 
     await touch(cdp, 'touchEnd');
   });
@@ -418,5 +414,73 @@ test.describe('a day with nothing on it', () => {
     // The empty day knows WHICH day but has no slot to offer, so the release opens
     // the schedule sheet instead of inventing a time.
     await expect(page.getByRole('dialog')).toBeVisible();
+  });
+});
+
+test.describe('a builder row dragged by its grip', () => {
+  // The reverse direction (session-118): the shelf could send a card onto the day, and
+  // the day had no way to send a row back. Same two groups, opposite meaning.
+  test.beforeEach(({ page }) =>
+    bootBuilder(page, { events: [event('ev-1', '07:00', 'בוקר')], maybeItems: [] }),
+  );
+
+  // A DOM clone rather than a re-render, which is what lets one ghost serve markup as
+  // different as a shelf card and a builder row.
+  test('lifts a clone of the row that follows the finger', async ({ page }) => {
+    const cdp = await page.context().newCDPSession(page);
+    const grip = await centre(page, '.bld-grip');
+    const ghost = page.locator('.wp-dragghost');
+
+    await expect(ghost).toHaveCount(0);
+    await touch(cdp, 'touchStart', grip.x, grip.y);
+    await expect(ghost).toBeVisible();
+    // It really is the row: same title, and the row's own width rather than a chip's.
+    await expect(ghost.locator('.bld-ttl')).toHaveText('בוקר');
+    const lifted = (await ghost.boundingBox())!;
+    const row = (await page.locator('[data-bld-id="ev-1"]').boundingBox())!;
+    expect(Math.abs(lifted.width - row.width)).toBeLessThan(2);
+
+    await touch(cdp, 'touchMove', grip.x, grip.y - 120);
+    const moved = (await ghost.boundingBox())!;
+    expect(moved.y).toBeLessThan(lifted.y - 60);
+
+    // The clone must not answer hit-tests, or the drop target would always be itself.
+    await expect(ghost).toHaveCSS('pointer-events', 'none');
+    // …and it carries no duplicate of the row's hit-test attribute.
+    await expect(page.locator('[data-bld-id="ev-1"]')).toHaveCount(1);
+
+    await touch(cdp, 'touchEnd');
+    await expect(ghost).toHaveCount(0);
+  });
+
+  // Both groups are conjured up for a row drag: on a day with an empty shelf there
+  // would otherwise be nothing to aim at, and the two groups mean different days.
+  test("dropped on the day's group, the row parks as an idea for that day", async ({ page }) => {
+    const cdp = await page.context().newCDPSession(page);
+    const grip = await centre(page, '.bld-grip');
+
+    await expect(page.locator('.shelf')).toHaveCount(0);
+    await touch(cdp, 'touchStart', grip.x, grip.y);
+    await expect(page.locator('[data-shelf-drop="day"]')).toBeVisible();
+    await expect(page.locator('[data-shelf-drop="pool"]')).toBeVisible();
+
+    await holdOver(cdp, page, '[data-shelf-drop="day"]');
+    await touch(cdp, 'touchEnd');
+
+    // Off the day, onto the shelf — and into the day's group, not the pool.
+    await expect(page.locator('[data-bld-id="ev-1"]')).toHaveCount(0);
+    await expect(page.locator('[data-shelf-drop="day"] .wp-maybecard')).toHaveText(/בוקר/);
+  });
+
+  test('dropped on the pool, it parks as someday instead', async ({ page }) => {
+    const cdp = await page.context().newCDPSession(page);
+    const grip = await centre(page, '.bld-grip');
+
+    await touch(cdp, 'touchStart', grip.x, grip.y);
+    await holdOver(cdp, page, '[data-shelf-drop="pool"]');
+    await touch(cdp, 'touchEnd');
+
+    await expect(page.locator('[data-bld-id="ev-1"]')).toHaveCount(0);
+    await expect(page.locator('[data-shelf-drop="pool"] .wp-maybecard')).toHaveText(/בוקר/);
   });
 });

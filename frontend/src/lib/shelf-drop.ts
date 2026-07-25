@@ -89,3 +89,54 @@ export function resolveShelfDrop(
   }
   return { kind: SHELF_DROP_ACTION.NONE };
 }
+
+/** Where a dragged builder ROW let go. The two directions are deliberately
+ *  symmetric: a card can come off the shelf onto the day, and a row can go the other
+ *  way (ADR-0116 session-118). */
+export interface RowDropTarget {
+  /** Another soft row, by id — the reorder target this drag always had. */
+  overRowId: string | null;
+  /** A shelf group, which means park it: off the day, onto the shelf. */
+  overShelf: ShelfDrop | null;
+}
+
+export const ROW_DROP_ACTION = {
+  /** Reassign the day's soft slots so the dragged row takes this one's place. */
+  REORDER: 'reorder',
+  /** Off the day and onto the shelf as an idea, keeping `day` as its pencil mark. */
+  PARK: 'park',
+  NONE: 'none',
+} as const;
+
+export type RowDropAction =
+  | { kind: typeof ROW_DROP_ACTION.REORDER; targetId: string }
+  | { kind: typeof ROW_DROP_ACTION.PARK; day: string | null }
+  | { kind: typeof ROW_DROP_ACTION.NONE };
+
+/**
+ * A row is dropped either on another row or on the shelf.
+ *
+ * The shelf wins when both are somehow under the pointer, because the shelf sits
+ * below the list and being over it is the more deliberate act. Which GROUP decides
+ * the idea's day rather than whether it parks at all: the day's group keeps it
+ * pencilled in for the day it came off (which is what `park` does by default), the
+ * pool clears it to "someday".
+ *
+ * Dropping a row on ITSELF is nothing — a grip nudged and released.
+ */
+export function resolveRowDrop(
+  draggedId: string,
+  target: RowDropTarget,
+  activeDate: string,
+): RowDropAction {
+  if (target.overShelf) {
+    return {
+      kind: ROW_DROP_ACTION.PARK,
+      day: target.overShelf === SHELF_DROP.DAY ? activeDate : null,
+    };
+  }
+  if (target.overRowId && target.overRowId !== draggedId) {
+    return { kind: ROW_DROP_ACTION.REORDER, targetId: target.overRowId };
+  }
+  return { kind: ROW_DROP_ACTION.NONE };
+}

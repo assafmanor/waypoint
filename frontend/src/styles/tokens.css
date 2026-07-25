@@ -164,6 +164,44 @@ body.wp-dragging .wp-maybecard.dragging {
   pointer-events: none;
 }
 
+/* The floating clone that follows the finger (lib/useDragGhost.ts). Lives here rather
+   than beside either draggable's styles, because ONE of these serves both of the
+   builder's drags — a shelf card and a builder row — by cloning whichever DOM the
+   finger picked up.
+
+   `position: fixed` is what escapes `.shelf`'s horizontal overflow (no ancestor
+   establishes a containing block for it). It is deliberately not an ADR-0090 overlay:
+   not a back target, never in the back stack, so no `Modal`/`useOverlay`. Above the
+   day list and the nav, and it needn't beat the Modal layer — no overlay can be open
+   during a drag. */
+.wp-dragghost {
+  position: fixed;
+  top: 0;
+  /* Physical `left`, deliberately NOT the logical `inset-inline-start` this codebase
+     otherwise prefers: the app is RTL, where the logical property resolves to
+     `right: 0` and anchors the box to the viewport's RIGHT edge — while the transform
+     is computed from `clientX`, which is physical. Mixing the two put the clone a
+     viewport-width away from the finger. */
+  left: 0;
+  z-index: 15;
+  /* Transparent to hit-testing: the drop target is whatever is UNDER the finger, and
+     `elementFromPoint` would otherwise only ever find the clone. */
+  pointer-events: none;
+  /* Size and position are written from JS (the source's box, then the finger), so
+     nothing here may declare a width, height or transform of its own. */
+  will-change: transform;
+}
+/* The clone reads as picked up. A spread `box-shadow` follows whatever radius the
+   cloned element already has — a card's 15px, a row's own — which is why the ring
+   isn't drawn on the wrapper (session 113: an outline at the wrong radius is exactly
+   what read as a "choppy" stroke). */
+.wp-dragghost > * {
+  box-shadow:
+    0 0 0 2px color-mix(in srgb, var(--plan) 55%, transparent),
+    0 14px 28px -10px rgba(14, 23, 41, 0.45);
+  transform: scale(1.04);
+}
+
 html,
 body,
 #root {

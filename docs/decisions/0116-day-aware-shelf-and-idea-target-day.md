@@ -171,3 +171,32 @@ It knows **which** day but has no slot to offer, so the kinds diverge and both r
 All of the above is one table — `lib/shelf-drop.ts`'s `resolveShelfDrop(kind, target, activeDate)` — pure and separate from the screen, with the screen's `onDrop` reduced to turning each outcome into the verb that already performs it. That split exists for a testing reason: these are data writes (one of them restores and moves an event in the same patch), and the drag that produces them **cannot be driven in jsdom** at all. The table is unit-tested exhaustively without a browser; the gesture is covered by the e2e.
 
 The e2e harness grew one capability to make this provable: it now answers `PATCH /trips/:tripId/events/:id` rather than only reads. Without it the optimistic update landed, the real request 404'd against the dev server, and the app correctly rolled itself back — so a test asserting what a drop **produced** was really asserting the rollback.
+
+## Amendment (2026-07-25, session 118) — the drag goes both ways, and one ghost serves both of them
+
+Two requests, and together they close the drag's remaining asymmetries.
+
+### 1. A builder row can be dragged onto the shelf
+
+§5 gave the shelf a way to put a card **onto** the day (a gap chip) and left the day with no way to send a row **back**. The row's grip already dragged — for reorder — so this adds a target rather than a gesture: a shelf group is now a drop target for a row, and dropping there **parks** it.
+
+Which group decides the idea's **day**, not whether it parks at all: the day's group keeps it pencilled in for the day it came off (which is what `park` already did by default, §4), the pool clears it to "someday". `park` gains a `targetDate` override for exactly that second case — the one field with a reason to differ.
+
+**Both groups materialize for a row drag**, not just one. §2's amendment conjured the day's group for a pool idea in flight; a row can target either, and on a day with an empty shelf that means both would otherwise be missing. Each empty zone names its own outcome (`ליום הזה` / `מתישהו`) rather than both saying "drop here", because for this drag the choice of group is the whole decision.
+
+**Reorder still wins on a row and the shelf wins over a row**, resolved in `lib/shelf-drop.ts`'s `resolveRowDrop` beside the card's table: the shelf sits below the list, so being over it is the more deliberate act. Dropping a row on itself is nothing — a grip nudged and released.
+
+### 2. The row drag gets the ghost too, and the ghost became a DOM clone
+
+Session 117 gave the shelf card a floating clone and left the row drag with only the source's dimming, which is the same "correct but uninformative" gap that request was about.
+
+The clone is now a **`cloneNode` of whatever the finger picked up**, rather than a React re-render of it. That is what lets **one** mechanism serve markup as different as a 150 px shelf card and a full-width builder row: neither needs a bespoke "how do I draw myself while dragging" renderer, and the clone cannot drift from the original because it _is_ the original's markup (CLAUDE.md rule 8 — the alternative was a second ghost renderer beside the first). Session 117's `shelfCard(subject, ghosted)` branch is gone with it, and the lift styling moved from the card's own CSS to `.wp-dragghost > *`, where a spread `box-shadow` picks up whatever radius the cloned element already has.
+
+Two things the clone must do that a naive copy wouldn't:
+
+- **It is sized to its source.** Lifted out of its parent, a full-width row (or a card sized by a flex strip) collapses to fit its text.
+- **Ids and `data-*` attributes are stripped, at every depth.** `pointer-events: none` already keeps the clone out of `elementFromPoint`, but a `querySelector` — in app code, or in a test — would happily find a second `[data-bld-id="ev-1"]`. The clone is scenery; it must not be addressable.
+
+### A note on the e2e that came out of this
+
+The "drop target keeps up while the page auto-scrolls" case was rewritten. It used to hold the finger where a **gap chip would sweep past** it, and assert the highlight appeared — which races React's batching: a target under the finger for one or two frames may never be painted, and the test failed under parallel load for a reason unrelated to the behaviour. It now holds in the opposite band so the scroll **ends** with the shelf at rest under the still finger: a stable end state, same invariant, no race. A swept target is not a thing to assert on.

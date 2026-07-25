@@ -133,11 +133,33 @@ export async function bootIntoTrip(
   await page.route(
     (u) => /^\/trips\/t1\/events\/[^/]+$/.test(u.pathname),
     async (route, request) => {
-      if (request.method() !== 'PATCH') return route.fallback();
+      const method = request.method();
+      if (method === 'DELETE') return route.fulfill({ status: 204, body: '' });
+      if (method !== 'PATCH') return route.fallback();
       const id = new URL(request.url()).pathname.split('/').pop();
       const before = seeded.find((e) => e.id === id) ?? { id };
       await route.fulfill({
         json: { ...before, ...(request.postDataJSON() ?? {}), updatedAt: new Date().toISOString() },
+      });
+    },
+  );
+  // Shelf writes, so parking a row (create-idea then delete-event) survives to the
+  // assertion instead of rolling back. Echoes what was sent.
+  await page.route(
+    (u) => u.pathname === '/trips/t1/maybe-items',
+    async (route, request) => {
+      if (request.method() !== 'POST') return route.fallback();
+      const now = new Date().toISOString();
+      await route.fulfill({
+        json: {
+          tripId: 't1',
+          consumed: false,
+          createdBy: 'u1',
+          createdAt: now,
+          updatedAt: now,
+          updatedBy: 'u1',
+          ...(request.postDataJSON() ?? {}),
+        },
       });
     },
   );

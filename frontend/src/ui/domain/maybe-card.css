@@ -154,38 +154,3 @@
   box-shadow: none;
   cursor: grabbing;
 }
-/* …and `.lifted` is the clone: the card as picked up. Full opacity, a crisp violet
-   edge, real elevation, a slight scale. */
-.wp-maybecard.lifted {
-  border-color: var(--plan);
-  border-style: solid;
-  box-shadow:
-    0 0 0 2px color-mix(in srgb, var(--plan) 55%, transparent),
-    0 14px 28px -10px rgba(14, 23, 41, 0.45);
-  transform: scale(1.04);
-}
-
-/* The floating clone's wrapper. `position: fixed` escapes `.shelf`'s horizontal
-   overflow (no ancestor establishes a containing block for it), and the transform is
-   written per-frame from JS, so this must not declare one of its own.
-
-   Above the app chrome but deliberately unremarkable about it: no overlay can be
-   open during a drag, so it doesn't need to beat the Modal layer — it needs to beat
-   the day list and the nav. */
-.wp-dragghost {
-  position: fixed;
-  top: 0;
-  /* Physical `left`, deliberately NOT the logical `inset-inline-start` this codebase
-     otherwise prefers: the app is RTL, where `inset-inline-start: 0` resolves to
-     `right: 0` and anchors the box to the viewport's RIGHT edge — while the transform
-     below is computed from `clientX`, which is physical. Mixing the two put the clone
-     a viewport-width away from the finger. */
-  left: 0;
-  z-index: 15;
-  /* Transparent to hit-testing: the drop target is whatever is UNDER the finger, and
-     `document.elementFromPoint` would otherwise only ever find the clone. */
-  pointer-events: none;
-  /* No width of its own: fixed positioning makes it shrink-to-fit, so it takes the
-     card's, and the 150px lives in exactly one place. */
-  will-change: transform;
-}
