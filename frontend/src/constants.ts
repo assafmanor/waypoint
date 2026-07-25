@@ -70,6 +70,25 @@ export const PLACE_SEARCH_MIN_CHARS = 2;
 /** The waking window the day-progress bar spans, in trip-local hours. */
 export const DAY_WINDOW = { START_HOUR: 7, END_HOUR: 23 } as const;
 
+/** Mean Earth radius, for the near-me haversine (lib/distance.ts). */
+export const EARTH_RADIUS_M = 6_371_000;
+
+/** Where a near-me distance chip changes precision (ADR-0109 §7): sub-kilometre
+ *  distances round to a walkable 10 m, then read as one decimal of a kilometre,
+ *  then as whole kilometres once the decimal stops meaning anything. */
+export const DISTANCE_STEP = {
+  NEAR_ROUND_M: 10,
+  KM_FROM_M: 1000,
+  WHOLE_KM_FROM: 10,
+} as const;
+
+/** Near-me location fix (lib/useGeolocation.ts): a one-shot read, so it may take a
+ *  moment on a cold GPS, and a fix from the last minute is still where you are. */
+export const GEOLOCATION_OPTIONS = {
+  timeout: 10_000,
+  maximumAge: 60_000,
+} as const;
+
 /** Home's quick-access grid at its full approved width (ADR-0045): four tiles —
  *  next code, WiFi, navigate-to-next, documents. Derived tiles drop out when they
  *  have no source, and the grid reflows to the visible count. */
@@ -222,6 +241,8 @@ export type TabId = (typeof TABS)[number]['id'];
  *  `ui/NavArrow`) because the body font has no glyphs for them (design-language). */
 export const ICONS = {
   navigate: '🧭',
+  /** "Near me now" — the device's own position, distinct from navigate's compass. */
+  nearMe: '📍',
   ticket: '🎫',
   search: '🔍',
   atm: '🏧',

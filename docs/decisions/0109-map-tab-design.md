@@ -29,6 +29,22 @@ Building Phase 4b ([ADR-0106](0106-maps-and-places-epic-scope-and-phasing.md) §
 
 The time renders in the **event's own** display zone (ADR-0107), like every other time in the app, not the trip primary.
 
+## Amendment (2026-07-25, session 105) — the hard-denied re-enable affordance: retry or instruct, never a fake deep-link
+
+Building Phase 4a hit a §6 decision the web cannot honour. §6 says the denied banner "offers a re-enable affordance that **deep-links to the OS location settings** when the permission is hard-denied." **No such API exists for a web page** — a site cannot open OS or browser location settings, and once a browser has hard-denied a site, no call can re-trigger its permission prompt. A button there would look like it does something and do nothing.
+
+**Decision: the affordance splits by what is actually possible**, using the Permissions API to tell the two cases apart:
+
+- **Still promptable** (permission `prompt`, or a fix that merely failed — no signal, timeout) → a real **"נסו שוב"** that re-requests. This is the common case and the one worth a button.
+- **Hard-denied** (permission `denied`) → an **instruction**, not a control: "אפשרו מיקום בהגדרות הדפדפן". Honest about where the switch lives, without pretending we can reach it.
+
+Everything else in §6 stands unchanged: never asked on tab open, the reason-first pre-prompt before the OS dialog, and the list never dead-ended — a refusal only ever costs the sort and the chips.
+
+Two smaller notes from the same build, recorded so the code and the design record agree:
+
+- **The pre-prompt is an inline card, not an overlay.** It explains rather than interrupts, and the list stays usable behind it — so it is outside ADR-0090's `Modal`/`useOverlay` rule, which governs overlays.
+- **Offline, `מרחק לא זמין` appears only on rows that were already showing a distance** (near-me on), not on every coord-bearing row as `map-tab-v1.html` renders it. Telling someone a distance is unavailable when they never asked for one is noise; §7's "**any** distance reads…" carries the narrower reading.
+
 ## Context
 
 ADR-0106 fixed the Maps & Places scope: one mode-re-emphasized Map tab, picker-first, **list-of-pins before an embedded map**, filters that are pure client-side derivation. It deliberately left the visual and interaction design to a follow-on session (this one) and named the concrete open design questions to resolve here. Nothing about scope, phasing, or the embedded-map direction is reopened — this ADR is the design layer on top of that frame.

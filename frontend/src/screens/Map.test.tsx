@@ -14,14 +14,14 @@ import {
 
 const ACTIVE_DATE = '2026-07-20';
 
-const place = (id: string, coords: boolean): Place => ({
+const place = (id: string, coords: boolean, at?: { lat: number; lng: number }): Place => ({
   id,
   tripId: 't1',
   name: id,
   createdAt: '',
   updatedAt: '',
   updatedBy: 'u1',
-  ...(coords ? { lat: 35.6, lng: 139.6 } : {}),
+  ...(coords ? (at ?? { lat: 35.6, lng: 139.6 }) : {}),
 });
 
 const event = (p: Partial<TripEvent> & Pick<TripEvent, 'id' | 'placeId'>): TripEvent => ({
@@ -47,6 +47,7 @@ let tripEvents: TripEvent[] = [];
 let tripMaybes: MaybeItem[] = [];
 let tripPlaces: Place[] = [];
 let currentMode = 'trip';
+let isOffline = false;
 
 vi.mock('../state/trip-state', () => ({
   useTrip: () => ({
@@ -74,7 +75,25 @@ vi.mock('../state/trip-state', () => ({
   }),
 }));
 vi.mock('../state/mode-state', () => ({ useMode: () => ({ mode: currentMode }) }));
-vi.mock('../lib/outbox', () => ({ useIsOffline: () => false }));
+vi.mock('../lib/outbox', () => ({ useIsOffline: () => isOffline }));
+
+// The device's geolocation, driven per test: `fix` is what a granted request
+// returns, `errorCode` makes it fail (1 = PERMISSION_DENIED).
+let geoFix: { lat: number; lng: number } | null = null;
+let geoErrorCode: number | null = null;
+const getCurrentPosition = vi.fn(
+  (
+    onSuccess: (p: { coords: { latitude: number; longitude: number } }) => void,
+    onError: (e: { code: number; PERMISSION_DENIED: number }) => void,
+  ) => {
+    if (geoErrorCode != null) onError({ code: geoErrorCode, PERMISSION_DENIED: 1 });
+    else if (geoFix) onSuccess({ coords: { latitude: geoFix.lat, longitude: geoFix.lng } });
+  },
+);
+Object.defineProperty(navigator, 'geolocation', {
+  value: { getCurrentPosition },
+  configurable: true,
+});
 
 import { ToastProvider } from '../ui/Toast';
 import { NavProvider } from '../state/nav-state';
@@ -113,6 +132,10 @@ describe('MapView (Phase 3, ADR-0109/0110)', () => {
     tripMaybes = [];
     tripPlaces = [];
     currentMode = 'trip';
+    isOffline = false;
+    geoFix = null;
+    geoErrorCode = null;
+    getCurrentPosition.mockClear();
   });
 
   it('Trip mode defaults to today: shows today’s places, hides other-day and dayless ones', () => {
@@ -168,6 +191,138 @@ describe('MapView (Phase 3, ADR-0109/0110)', () => {
   it('empty trip → the empty state', () => {
     render(wrap(<MapView />));
     expect(screen.getByText(t.map.empty.title)).toBeTruthy();
+  });
+
+  describe('near me now (Phase 4a, ADR-0109 §6-7)', () => {
+    // Two places on the same Tokyo street, one ~1.1 km further out than the other,
+    // plus a coordless lite. The device sits at `near`.
+    const HERE = { lat: 35.68, lng: 139.76 };
+    const seedNear = () => {
+      tripPlaces = [
+        place('far', true, { lat: 35.69, lng: 139.76 }),
+        place('near', true, HERE),
+        place('lite', false),
+      ];
+      tripEvents = [
+        event({ id: 'far', placeId: 'far' }),
+        event({ id: 'near', placeId: 'near' }),
+        event({ id: 'lite', placeId: 'lite' }),
+      ];
+    };
+    const nearChip = () => screen.getByRole('button', { name: new RegExp(t.map.near.chip) });
+    const rowNames = () =>
+      [...document.querySelectorAll('.place .map-name')].map((n) => n.textContent);
+
+    it('asks for nothing on open — the tab renders fully with zero location', () => {
+      seedNear();
+      render(wrap(<MapView />));
+      expect(getCurrentPosition).not.toHaveBeenCalled();
+      expect(screen.queryByText(t.map.near.prompt.title)).toBeNull();
+      expect(screen.queryByText(t.map.near.groupHeader)).toBeNull();
+      expect(rowNames()).toEqual(['far', 'lite', 'near']); // default day/name order
+    });
+
+    it('the chip states the reason first, and only then asks the device', () => {
+      seedNear();
+      geoFix = HERE;
+      render(wrap(<MapView />));
+      fireEvent.click(nearChip());
+      // The pre-prompt is up and NOTHING has been requested yet (ADR-0109 §6).
+      expect(screen.getByText(t.map.near.prompt.body)).toBeTruthy();
+      expect(getCurrentPosition).not.toHaveBeenCalled();
+
+      fireEvent.click(screen.getByRole('button', { name: t.map.near.prompt.allow }));
+      expect(getCurrentPosition).toHaveBeenCalledTimes(1);
+      expect(screen.queryByText(t.map.near.prompt.body)).toBeNull();
+    });
+
+    it('"לא עכשיו" closes the pre-prompt without asking — nothing is dead-ended', () => {
+      seedNear();
+      render(wrap(<MapView />));
+      fireEvent.click(nearChip());
+      fireEvent.click(screen.getByRole('button', { name: t.map.near.prompt.notNow }));
+      expect(getCurrentPosition).not.toHaveBeenCalled();
+      expect(screen.queryByText(t.map.near.prompt.body)).toBeNull();
+      expect(rowNames()).toEqual(['far', 'lite', 'near']);
+    });
+
+    it('granted: re-sorts nearest-first under the group header, coordless sinking last', () => {
+      seedNear();
+      geoFix = HERE;
+      render(wrap(<MapView />));
+      fireEvent.click(nearChip());
+      fireEvent.click(screen.getByRole('button', { name: t.map.near.prompt.allow }));
+      expect(screen.getByText(t.map.near.groupHeader)).toBeTruthy();
+      expect(rowNames()).toEqual(['near', 'far', 'lite']);
+    });
+
+    it('granted: distance chips read on measured rows, and never on a coordless one', () => {
+      seedNear();
+      geoFix = HERE;
+      render(wrap(<MapView />));
+      fireEvent.click(nearChip());
+      fireEvent.click(screen.getByRole('button', { name: t.map.near.prompt.allow }));
+      const dist = [...document.querySelectorAll('.place')].map(
+        (row) => row.querySelector('.map-dist')?.textContent,
+      );
+      expect(dist[0]).toBe('10 מ׳'); // standing on it
+      expect(dist[1]).toBe('1.1 ק״מ');
+      expect(dist[2]).toBeUndefined(); // the coordless lite can't be measured
+    });
+
+    it('toggling off restores the default order and drops the distances', () => {
+      seedNear();
+      geoFix = HERE;
+      render(wrap(<MapView />));
+      fireEvent.click(nearChip());
+      fireEvent.click(screen.getByRole('button', { name: t.map.near.prompt.allow }));
+      fireEvent.click(nearChip());
+      expect(rowNames()).toEqual(['far', 'lite', 'near']);
+      expect(document.querySelector('.map-dist')).toBeNull();
+      expect(screen.queryByText(t.map.near.groupHeader)).toBeNull();
+    });
+
+    it('denied: the list keeps its own order and says why, with no retry offered', () => {
+      seedNear();
+      geoErrorCode = 1; // PERMISSION_DENIED → hard-denied, a retry cannot re-prompt
+      render(wrap(<MapView />));
+      fireEvent.click(nearChip());
+      fireEvent.click(screen.getByRole('button', { name: t.map.near.prompt.allow }));
+      expect(screen.getByText(new RegExp(t.map.near.deniedBanner))).toBeTruthy();
+      expect(screen.getByText(t.map.near.blockedHint)).toBeTruthy();
+      expect(screen.queryByRole('button', { name: t.map.near.retry })).toBeNull();
+      expect(rowNames()).toEqual(['far', 'lite', 'near']);
+      expect(document.querySelector('.map-dist')).toBeNull();
+    });
+
+    it('unavailable: a retry IS offered, since asking again can still succeed', () => {
+      seedNear();
+      geoErrorCode = 2; // POSITION_UNAVAILABLE
+      render(wrap(<MapView />));
+      fireEvent.click(nearChip());
+      fireEvent.click(screen.getByRole('button', { name: t.map.near.prompt.allow }));
+      expect(screen.getByText(new RegExp(t.map.near.unavailableBanner))).toBeTruthy();
+      const retry = screen.getByRole('button', { name: t.map.near.retry });
+
+      geoErrorCode = null;
+      geoFix = HERE;
+      fireEvent.click(retry);
+      expect(rowNames()).toEqual(['near', 'far', 'lite']);
+    });
+
+    it('offline: the chip is gone and distances say so rather than going stale', () => {
+      seedNear();
+      geoFix = HERE;
+      const view = render(wrap(<MapView />));
+      fireEvent.click(nearChip());
+      fireEvent.click(screen.getByRole('button', { name: t.map.near.prompt.allow }));
+
+      isOffline = true;
+      view.rerender(wrap(<MapView />));
+      expect(screen.queryByRole('button', { name: new RegExp(t.map.near.chip) })).toBeNull();
+      expect(screen.getAllByText(t.map.near.unavailable)).toHaveLength(2); // both coord rows
+      expect(screen.queryByText('1.1 ק״מ')).toBeNull();
+    });
   });
 
   describe('navigate-to-next cue (Phase 4b, ADR-0106 §6)', () => {
