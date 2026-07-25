@@ -86,6 +86,10 @@ export interface EventCardProps {
   onOnWay?: () => void;
   onRestore?: () => void;
   onSwap?: () => void;
+  /** "Back to the shelf" — the event becomes a shelf idea, keeping its title,
+   *  place, category and date (ADR-0116 §4). Soft events only; absent where the
+   *  day-scope gate forbids it (a past day, ADR-0029). */
+  onPark?: () => void;
   onEdit?: () => void;
   onRemove?: () => void;
 }
@@ -120,6 +124,7 @@ export function EventCard(props: EventCardProps) {
     onOnWay,
     onRestore,
     onSwap,
+    onPark,
     onEdit,
     onRemove,
   } = props;
@@ -242,6 +247,13 @@ export function EventCard(props: EventCardProps) {
       label: t.actions.swap,
       icon: ICONS.swap,
       onSelect: () => runAction(onSwap),
+    });
+  }
+  if (!isDone && !isHard && onPark) {
+    menuActions.push({
+      label: t.actions.toShelf,
+      icon: ICONS.toShelf,
+      onSelect: () => runAction(onPark),
     });
   }
   if (onEdit) {

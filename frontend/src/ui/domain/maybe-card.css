@@ -103,3 +103,16 @@
   outline: 2px solid var(--miss);
   outline-offset: 1px;
 }
+
+/* Draggable onto a gap (ADR-0116 §5): the grab cursor states it on a pointer
+   device, and the dragged card thins out so the gap it's over is what reads. */
+.wp-maybecard.draggable {
+  cursor: grab;
+  touch-action: none;
+}
+.wp-maybecard.dragging {
+  opacity: 0.55;
+  outline: 2px solid var(--plan);
+  outline-offset: 2px;
+  cursor: grabbing;
+}

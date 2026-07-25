@@ -1,0 +1,856 @@
+<!doctype html>
+<!-- The day-aware shelf + the Map's outcome states — v1 (2026-07-25).
+     Promoting ADR-0116 (the shelf) and ADR-0117 (the Map). Two frames:
+
+     FRAME 1 — THE SHELF, day-aware (ADR-0116)
+       • An idea gains an OPTIONAL TARGET DAY (MaybeItem.targetDate, nullable).
+         Pencilled in, not scheduled: no time, no slot, not on the timeline,
+         not counted in the day's "remaining". Clearable back to "someday".
+       • The shelf becomes TWO GROUPS: "לְיום הזה" (targetDate === activeDate,
+         plus that day's skipped soft events) and "רעיונות" (dateless first,
+         then ideas aimed at another day, each NAMING its day via relativeDay
+         — ADR-0085, the same choice the Map row made in all-days scope).
+         A group header only appears when it has content, so a trip that never
+         uses the field looks exactly like today's flat strip.
+       • ADR-0027's union is finally rendered in BOTH modes — Plan mode never
+         showed the day's skipped soft events, and it is the surface where
+         invisible-skipped hurts most (you can't rebuild around what you can't
+         see).
+       • SKIP vs PARK stay two verbs, both reachable in both modes:
+         skip = "not happening" (status, stays on its date, restore in place);
+         park = "keep the idea, drop the slot" (becomes a MaybeItem) — and park
+         now carries the event's CATEGORY (it silently dropped it) and its DATE
+         as the idea's targetDate.
+       • SLOTTING: the schedule sheet swaps its bare TimePicker for the app's
+         one date/time primitive (WhenField day variant, ADR-0083), so "put it
+         on Thursday" no longer means navigating to Thursday. Day-scope gates
+         the range (ADR-0029: Trip mode can't create into a past day). A shelf
+         card can also be DRAGGED onto a GAP chip — free time, no displacement
+         — which makes the long-standing "גרור ליום" hint true. Dropping onto an
+         occupied row is out: that's a ripple decision (ADR-0041).
+
+     FRAME 2 — THE MAP LIST, three outcome states (ADR-0117)
+       The list's ahead/behind split is computed purely from the clock today, so
+       a place you SKIPPED sinks under "כבר היינו" — claiming a visit that never
+       happened — and a place you marked done early stays "ahead of you".
+       Three states now, out of EVENT_STATUS + the clock, nothing new stored:
+         היינו   — any reference that day is `done`      (--ok tag)
+         דילגנו  — settled, none done                     (--miss tag, row quiet)
+         (none)  — passed, every reference still planned  (position is the claim)
+       A settled day is behind you whatever the clock says (a human outranks the
+       clock), and the block header becomes "מה שמאחורינו" — it holds three
+       outcomes and only one of them is a visit. -->
+<html lang="he" dir="rtl">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>מדף יומי · מצב מקומות · מוקאפ v1</title>
+    <link rel="preconnect" href="https://fonts.googleapis.com" />
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+    <link
+      href="https://fonts.googleapis.com/css2?family=Assistant:wght@400;500;600;700&family=Secular+One&family=JetBrains+Mono:wght@500;700&display=swap"
+      rel="stylesheet"
+    />
+    <style>
+      :root {
+        --ink: #16233d;
+        --screen: #e7eaef;
+        --card: #ffffff;
+        --paper: #f3efe6;
+        --amber: #e9a63c;
+        --amber-deep: #c9822a;
+        --teal: #2c9c90;
+        --plan: #6e59d6;
+        --plan-deep: #5747b4;
+        --plan-tint: rgba(110, 89, 214, 0.1);
+        --ok: #3c9a6b;
+        --miss: #c2584e;
+        --muted: #6c7488;
+        --faint: #98a0b0;
+        --line: rgba(22, 35, 61, 0.1);
+        --soft-line: rgba(22, 35, 61, 0.28);
+        --cat-food: #e8998a;
+        --cat-lodging: #9c8ce8;
+        --cat-leisure: #9cc9a0;
+      }
+      * {
+        box-sizing: border-box;
+        margin: 0;
+        padding: 0;
+      }
+      body {
+        font-family: 'Assistant', system-ui, sans-serif;
+        background:
+          radial-gradient(120% 90% at 80% -10%, #2a3e68 0%, transparent 55%),
+          radial-gradient(120% 90% at 0% 110%, #1a2a4a 0%, transparent 50%), #0f1a31;
+        color: var(--ink);
+        min-height: 100vh;
+        display: flex;
+        flex-direction: column;
+        align-items: center;
+        padding: 24px 16px 48px;
+        -webkit-font-smoothing: antialiased;
+      }
+      .caption {
+        text-align: center;
+        color: #cfd8ea;
+        margin-bottom: 18px;
+      }
+      .caption h1 {
+        font-family: 'Secular One', sans-serif;
+        font-weight: 400;
+        font-size: 19px;
+        color: #fff;
+      }
+      .caption p {
+        font-size: 12px;
+        color: #9fb0cf;
+        margin-top: 4px;
+        max-width: 620px;
+      }
+      .frames {
+        display: flex;
+        gap: 22px;
+        flex-wrap: wrap;
+        justify-content: center;
+        align-items: flex-start;
+      }
+      .frame {
+        display: flex;
+        flex-direction: column;
+        align-items: center;
+        gap: 9px;
+      }
+      .frame > .lbl {
+        font-size: 11.5px;
+        font-weight: 700;
+        color: #cfd8ea;
+        background: #16233d;
+        border: 1px solid #2c3d63;
+        border-radius: 999px;
+        padding: 5px 13px;
+      }
+      .phone {
+        width: 380px;
+        max-width: 100%;
+        background: var(--screen);
+        border-radius: 34px;
+        box-shadow:
+          0 18px 40px -18px rgba(14, 23, 41, 0.45),
+          0 0 0 9px #0b1526,
+          0 0 0 11px #223257;
+        overflow: hidden;
+        display: flex;
+        flex-direction: column;
+        height: 720px;
+      }
+      /* plan-mode "drafting table" chrome */
+      .chrome {
+        padding: 14px 15px 11px;
+        background: linear-gradient(180deg, #f7f5f0, #f1eee7);
+        border-bottom: 1px solid var(--line);
+      }
+      .chrome.trip {
+        background: linear-gradient(180deg, #1b2a4a, #16233d);
+      }
+      .chrome .top {
+        display: flex;
+        align-items: center;
+        gap: 8px;
+        font-size: 13px;
+        font-weight: 700;
+      }
+      .chrome.trip .top {
+        color: #fff;
+      }
+      .chrome .pill {
+        font-size: 10.5px;
+        font-weight: 700;
+        border-radius: 999px;
+        padding: 3px 9px;
+        background: var(--plan-tint);
+        color: var(--plan-deep);
+        margin-inline-start: auto;
+      }
+      .chrome.trip .pill {
+        background: rgba(233, 166, 60, 0.18);
+        color: var(--amber);
+      }
+      .strip {
+        display: flex;
+        gap: 6px;
+        margin-top: 11px;
+      }
+      .strip .d {
+        flex: 1;
+        text-align: center;
+        border-radius: 9px;
+        padding: 5px 0 6px;
+        background: rgba(22, 35, 61, 0.05);
+      }
+      .chrome.trip .strip .d {
+        background: rgba(255, 255, 255, 0.07);
+      }
+      .strip .d .w {
+        font-size: 9px;
+        color: var(--faint);
+        font-weight: 700;
+      }
+      .strip .d .n {
+        font-family: 'JetBrains Mono', monospace;
+        font-size: 13px;
+        font-weight: 700;
+      }
+      .chrome.trip .strip .d .n {
+        color: #dfe6f5;
+      }
+      .strip .d.sel {
+        background: var(--plan);
+      }
+      .strip .d.sel .w,
+      .strip .d.sel .n {
+        color: #fff;
+      }
+      .chrome.trip .strip .d.sel {
+        background: var(--amber);
+      }
+      .chrome.trip .strip .d.sel .n,
+      .chrome.trip .strip .d.sel .w {
+        color: #16233d;
+      }
+
+      .body {
+        flex: 1;
+        overflow-y: auto;
+        padding: 12px 14px 22px;
+      }
+      .sec {
+        display: flex;
+        align-items: baseline;
+        gap: 7px;
+        font-size: 12.5px;
+        font-weight: 700;
+        margin: 4px 2px 8px;
+      }
+      .sec .hint {
+        font-size: 10.5px;
+        font-weight: 600;
+        color: var(--faint);
+      }
+      /* the shelf group header — the same .map-grouphead idiom the Map uses */
+      .grouphead {
+        display: flex;
+        align-items: center;
+        gap: 6px;
+        font-size: 11px;
+        font-weight: 700;
+        color: var(--muted);
+        margin: 12px 2px 7px;
+      }
+      .grouphead::after {
+        content: '';
+        flex: 1;
+        height: 1px;
+        background: var(--line);
+      }
+      .grouphead .n {
+        font-family: 'JetBrains Mono', monospace;
+        color: var(--faint);
+      }
+
+      /* ── the shelf strip + MaybeCard (the shipped .wp-maybecard grammar) ── */
+      .shelf {
+        display: flex;
+        gap: 10px;
+        overflow-x: auto;
+        padding: 2px 2px 7px;
+      }
+      .maybe {
+        position: relative;
+        flex: 0 0 auto;
+        width: 148px;
+        background: repeating-linear-gradient(-45deg, #fff 0 9px, #fbfaf7 9px 18px);
+        border: 1px dashed var(--soft-line);
+        border-radius: 14px;
+        padding: 11px;
+        cursor: grab;
+      }
+      .maybe .ic {
+        font-size: 17px;
+      }
+      .maybe .t {
+        font-size: 13px;
+        font-weight: 700;
+        margin-top: 3px;
+        white-space: nowrap;
+        overflow: hidden;
+        text-overflow: ellipsis;
+      }
+      .maybe .m {
+        font-size: 10.5px;
+        color: var(--muted);
+        margin-top: 3px;
+        display: flex;
+        align-items: center;
+        gap: 5px;
+        flex-wrap: wrap;
+      }
+      .maybe .add {
+        display: block;
+        font-size: 11px;
+        font-weight: 700;
+        color: var(--plan-deep);
+        margin-top: 8px;
+      }
+      .maybe .x {
+        position: absolute;
+        inset-inline-end: 6px;
+        inset-block-start: 5px;
+        font-size: 11px;
+        color: var(--faint);
+      }
+      /* an idea aimed at another day states WHICH day, in the amber time tag */
+      .daytag {
+        font-family: 'JetBrains Mono', monospace;
+        font-size: 10px;
+        font-weight: 700;
+        color: var(--amber-deep);
+      }
+      .daytag.he {
+        font-family: 'Assistant', sans-serif;
+      }
+      /* a skipped soft event parked on the shelf (ADR-0027, both modes now) */
+      .maybe.skipped {
+        background: var(--paper);
+        border-style: solid;
+        border-color: var(--line);
+      }
+      .maybe.skipped .m {
+        color: var(--miss);
+        font-weight: 700;
+      }
+      .maybe.skipped .add {
+        color: var(--muted);
+      }
+      .maybe.dragging {
+        opacity: 0.55;
+        outline: 2px solid var(--plan);
+        outline-offset: 2px;
+      }
+
+      /* ── the builder rows + a gap chip as a drop target ─────────────────── */
+      .row {
+        display: flex;
+        gap: 10px;
+        align-items: center;
+        background: var(--card);
+        border: 1px solid var(--line);
+        border-radius: 14px;
+        padding: 10px 11px;
+        margin-bottom: 8px;
+      }
+      .row .tm {
+        font-family: 'JetBrains Mono', monospace;
+        font-size: 12px;
+        font-weight: 700;
+        color: var(--amber-deep);
+        flex: 0 0 auto;
+      }
+      .row .ti {
+        font-size: 13.5px;
+        font-weight: 700;
+        flex: 1;
+        min-width: 0;
+      }
+      .row .grip {
+        color: var(--faint);
+        font-size: 13px;
+      }
+      .row.hard {
+        border-inline-start: 3px solid var(--amber);
+      }
+      .gap {
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        gap: 6px;
+        border: 1px dashed var(--soft-line);
+        border-radius: 12px;
+        padding: 9px;
+        margin-bottom: 8px;
+        font-size: 11.5px;
+        font-weight: 700;
+        color: var(--muted);
+        background: rgba(255, 255, 255, 0.4);
+      }
+      .gap.over {
+        border-color: var(--plan);
+        border-style: solid;
+        color: var(--plan-deep);
+        background: var(--plan-tint);
+        box-shadow: 0 0 0 3px rgba(110, 89, 214, 0.16);
+      }
+
+      /* ── the schedule sheet, now a WhenField day variant ────────────────── */
+      .sheet {
+        position: absolute;
+        inset-inline: 0;
+        inset-block-end: 0;
+        background: var(--card);
+        border-radius: 20px 20px 0 0;
+        box-shadow: 0 -12px 30px -12px rgba(14, 23, 41, 0.4);
+        padding: 15px 16px 20px;
+      }
+      .sheet h4 {
+        font-size: 14px;
+        margin-bottom: 12px;
+      }
+      .fieldrow {
+        display: flex;
+        gap: 9px;
+        margin-bottom: 10px;
+      }
+      .field {
+        flex: 1;
+      }
+      .field .cap {
+        font-size: 10.5px;
+        font-weight: 700;
+        color: var(--muted);
+        margin-bottom: 4px;
+      }
+      .field .val {
+        border: 1px solid var(--line);
+        border-radius: 10px;
+        padding: 10px 11px;
+        font-size: 13px;
+        font-weight: 700;
+        background: #fbfbfc;
+      }
+      .field .val.time {
+        font-family: 'JetBrains Mono', monospace;
+        color: var(--amber-deep);
+      }
+      .zonechip {
+        display: inline-flex;
+        align-items: center;
+        gap: 5px;
+        font-size: 11px;
+        font-weight: 700;
+        color: var(--muted);
+        border: 1px solid var(--line);
+        border-radius: 999px;
+        padding: 4px 9px;
+        margin-bottom: 12px;
+      }
+      .cta {
+        display: block;
+        width: 100%;
+        text-align: center;
+        background: var(--plan);
+        color: #fff;
+        border-radius: 12px;
+        padding: 12px;
+        font-size: 13.5px;
+        font-weight: 700;
+      }
+      .note {
+        font-size: 10.5px;
+        color: var(--faint);
+        margin-top: 8px;
+        text-align: center;
+      }
+
+      /* ── frame 2: the Map list rows with outcomes ───────────────────────── */
+      .place {
+        display: flex;
+        align-items: center;
+        gap: 11px;
+        background: var(--card);
+        border: 1px solid var(--line);
+        border-radius: 16px;
+        padding: 11px 12px;
+        margin-bottom: 9px;
+      }
+      .place.quiet {
+        background: var(--paper);
+        opacity: 0.85;
+        box-shadow: none;
+      }
+      .badge {
+        flex: 0 0 auto;
+        width: 40px;
+        height: 40px;
+        border-radius: 12px;
+        display: grid;
+        place-items: center;
+        font-size: 19px;
+      }
+      .badge.food {
+        background: var(--cat-food);
+      }
+      .badge.lodging {
+        background: var(--cat-lodging);
+      }
+      .badge.leisure {
+        background: var(--cat-leisure);
+      }
+      .place.quiet .badge {
+        filter: saturate(0.4);
+        opacity: 0.75;
+      }
+      .place .main {
+        flex: 1;
+        min-width: 0;
+      }
+      .place .nm {
+        font-size: 14.5px;
+        font-weight: 700;
+      }
+      .place .meta {
+        font-size: 11.5px;
+        color: var(--muted);
+        margin-top: 2px;
+        display: flex;
+        gap: 4px 8px;
+        flex-wrap: wrap;
+        align-items: center;
+      }
+      .tag.time {
+        font-family: 'JetBrains Mono', monospace;
+        font-weight: 700;
+        color: var(--amber-deep);
+      }
+      /* the outcome tags — statuses, so --ok / --miss (ADR-0028), never a new accent */
+      .tag.ok {
+        color: var(--ok);
+        font-weight: 700;
+      }
+      .tag.miss {
+        color: var(--miss);
+        font-weight: 700;
+      }
+      .navbtn {
+        flex: 0 0 auto;
+        border: 1px solid var(--teal);
+        color: var(--teal);
+        border-radius: 999px;
+        padding: 6px 12px;
+        font-size: 12px;
+        font-weight: 700;
+      }
+
+      /* ── notes ──────────────────────────────────────────────────────────── */
+      .panels {
+        display: flex;
+        flex-wrap: wrap;
+        gap: 16px;
+        justify-content: center;
+        max-width: 900px;
+        margin-top: 26px;
+      }
+      .panel {
+        background: #101b31;
+        border: 1px solid #223257;
+        border-radius: 16px;
+        padding: 16px 18px;
+        width: 420px;
+        max-width: 100%;
+      }
+      .panel h3 {
+        color: #fff;
+        font-size: 13.5px;
+        font-family: 'Secular One', sans-serif;
+        font-weight: 400;
+        margin-bottom: 6px;
+      }
+      .panel p {
+        color: #aeb9d4;
+        font-size: 11.5px;
+        line-height: 1.65;
+        margin-bottom: 9px;
+      }
+      .panel p b {
+        color: #fff;
+      }
+      .panel p.kill {
+        color: #e5a9a2;
+      }
+      .panel code {
+        font-family: 'JetBrains Mono', monospace;
+        font-size: 10.5px;
+        color: #cfd8ea;
+      }
+    </style>
+  </head>
+  <body>
+    <div class="caption">
+      <h1>מדף יומי · ומה קרה במקום</h1>
+      <p>
+        שני שינויים: לרעיון יש יום מיועד (בעיפרון, לא בלו״ז) והמדף מקבץ לפיו, ורשימת המפה מפסיקה
+        לטעון שהיינו במקום שדילגנו עליו.
+      </p>
+    </div>
+
+    <div class="frames">
+      <!-- ═══ FRAME 1 — the day-aware shelf (Plan mode) ═══ -->
+      <div class="frame">
+        <span class="lbl">1 · המדף, מקובץ לפי יום (Plan)</span>
+        <div class="phone" style="position: relative">
+          <div class="chrome">
+            <div class="top">
+              <span>יפן · אוקטובר</span>
+              <span class="pill">בנייה</span>
+            </div>
+            <div class="strip">
+              <div class="d">
+                <div class="w">א</div>
+                <div class="n">12</div>
+              </div>
+              <div class="d sel">
+                <div class="w">ב</div>
+                <div class="n">13</div>
+              </div>
+              <div class="d">
+                <div class="w">ג</div>
+                <div class="n">14</div>
+              </div>
+              <div class="d">
+                <div class="w">ד</div>
+                <div class="n">15</div>
+              </div>
+              <div class="d">
+                <div class="w">ה</div>
+                <div class="n">16</div>
+              </div>
+            </div>
+          </div>
+
+          <div class="body">
+            <div class="sec">יום שני 13.10 <span class="hint">גררו רעיון לחלון פנוי</span></div>
+            <div class="row hard">
+              <span class="tm">09:15</span><span class="ti">המראה לאוסקה</span>
+            </div>
+            <!-- the drop target: free time, no displacement -->
+            <div class="gap over">＋ חלון פנוי · 13:00-17:00</div>
+            <div class="row">
+              <span class="grip">⣿</span><span class="tm">19:30</span
+              ><span class="ti">ארוחה בשוק</span>
+            </div>
+
+            <!-- group 1: this day -->
+            <div class="grouphead">לְיום הזה <span class="n">2</span></div>
+            <div class="shelf">
+              <div class="maybe dragging">
+                <div class="x">✕</div>
+                <div class="ic">🎨</div>
+                <div class="t">teamLab Borderless</div>
+                <div class="m"><span class="daytag he">היום</span></div>
+                <span class="add">＋ שבצו ליום</span>
+              </div>
+              <!-- ADR-0027's union, now rendered in Plan mode too -->
+              <div class="maybe skipped">
+                <div class="ic">🍜</div>
+                <div class="t">Afuri Ramen</div>
+                <div class="m">דילגנו · לחצו להחזרה</div>
+                <span class="add">↩ החזרה</span>
+              </div>
+            </div>
+
+            <!-- group 2: the pool -->
+            <div class="grouphead">רעיונות <span class="n">3</span></div>
+            <div class="shelf">
+              <div class="maybe">
+                <div class="x">✕</div>
+                <div class="ic">🗼</div>
+                <div class="t">Tokyo Tower</div>
+                <span class="add">＋ שבצו ליום</span>
+              </div>
+              <div class="maybe">
+                <div class="x">✕</div>
+                <div class="ic">♨️</div>
+                <div class="t">אונסן בהאקונה</div>
+                <div class="m"><span class="daytag he">מחר</span></div>
+                <span class="add">＋ שבצו ליום</span>
+              </div>
+              <div class="maybe">
+                <div class="x">✕</div>
+                <div class="ic">🛍️</div>
+                <div class="t">שוק נישיקי</div>
+                <div class="m"><span class="daytag he">עוד 3 ימים</span></div>
+                <span class="add">＋ שבצו ליום</span>
+              </div>
+            </div>
+          </div>
+
+          <!-- the schedule sheet: now the WhenField day variant (date + time) -->
+          <div class="sheet">
+            <h4>שיבוץ · אונסן בהאקונה</h4>
+            <div class="fieldrow">
+              <div class="field">
+                <div class="cap">תאריך</div>
+                <div class="val">14.10.2026</div>
+              </div>
+              <div class="field">
+                <div class="cap">שעה</div>
+                <div class="val time">15:00</div>
+              </div>
+            </div>
+            <span class="zonechip">🕐 Tokyo · GMT+9</span>
+            <span class="cta">＋ שבצו ליום</span>
+            <div class="note">היום מגיע מהיום המיועד של הרעיון, וניתן לשנותו</div>
+          </div>
+        </div>
+      </div>
+
+      <!-- ═══ FRAME 2 — the Map list's outcome states (Trip mode) ═══ -->
+      <div class="frame">
+        <span class="lbl">2 · מה קרה במקום (Trip)</span>
+        <div class="phone">
+          <div class="chrome trip">
+            <div class="top">
+              <span>יפן · יום 3</span>
+              <span class="pill">14:11</span>
+            </div>
+            <div class="strip">
+              <div class="d">
+                <div class="w">א</div>
+                <div class="n">12</div>
+              </div>
+              <div class="d sel">
+                <div class="w">ב</div>
+                <div class="n">13</div>
+              </div>
+              <div class="d">
+                <div class="w">ג</div>
+                <div class="n">14</div>
+              </div>
+              <div class="d">
+                <div class="w">ד</div>
+                <div class="n">15</div>
+              </div>
+              <div class="d">
+                <div class="w">ה</div>
+                <div class="n">16</div>
+              </div>
+            </div>
+          </div>
+
+          <div class="body">
+            <div class="grouphead">מה שלפנינו</div>
+            <div class="place">
+              <div class="badge leisure">🧊</div>
+              <div class="main">
+                <div class="nm">מערת הקרח בקאטלה</div>
+                <div class="meta"><span class="tag time">17:00</span><span>סיור</span></div>
+              </div>
+              <span class="navbtn">🧭 נווט</span>
+            </div>
+
+            <!-- the block that used to say "כבר היינו" for all three cases -->
+            <div class="grouphead">מה שמאחורינו</div>
+            <div class="place">
+              <div class="badge food">🍜</div>
+              <div class="main">
+                <div class="nm">Tavernaki Filippos</div>
+                <div class="meta">
+                  <span class="tag time">12:00</span><span class="tag ok">✓ היינו</span>
+                </div>
+              </div>
+              <span class="navbtn">🧭 נווט</span>
+            </div>
+            <!-- skipped: quiet row, and it no longer claims a visit -->
+            <div class="place quiet">
+              <div class="badge food">☕</div>
+              <div class="main">
+                <div class="nm">% Arabica</div>
+                <div class="meta">
+                  <span class="tag time">10:30</span><span class="tag miss">דילגנו</span>
+                </div>
+              </div>
+              <span class="navbtn">🧭 נווט</span>
+            </div>
+            <!-- passed, nobody said what happened: no tag, position is the claim -->
+            <div class="place">
+              <div class="badge leisure">⛩️</div>
+              <div class="main">
+                <div class="nm">Fushimi Inari</div>
+                <div class="meta"><span class="tag time">09:00</span><span>סיור בוקר</span></div>
+              </div>
+              <span class="navbtn">🧭 נווט</span>
+            </div>
+            <div class="place quiet">
+              <div class="badge lodging">🏨</div>
+              <div class="main">
+                <div class="nm">Hotel Granvia</div>
+                <div class="meta"><span>הבסיס שלנו</span></div>
+              </div>
+              <span class="navbtn">🧭 נווט</span>
+            </div>
+          </div>
+        </div>
+      </div>
+    </div>
+
+    <div class="panels">
+      <div class="panel">
+        <h3>יום מיועד = עיפרון, לא לו״ז</h3>
+        <p>
+          <code>MaybeItem.targetDate</code> אופציונלי ומתאפס בקלות. אין לו שעה, אין לו סלוט, הוא לא
+          נכנס לציר, לא נספר ב"נותרו" ולא מגיע ל"עכשיו/הבא". כל מה שהשתנה: הרעיון יודע לומר
+          <b>לאיזה יום חשבנו עליו</b>.
+        </p>
+        <p>
+          נשקל לגזור "התאמה ליום" מהמקומות והחלונות במקום לשמור שדה — <b>נדחה כמנגנון ראשי</b>: זה
+          ניחוש שאין למשתמש דרך לתקן, והשאלה כאן היא כוונה אנושית. זה כן מועמד טוב למיון בתוך קבוצה,
+          מתישהו.
+        </p>
+      </div>
+
+      <div class="panel">
+        <h3>המדף: שתי קבוצות, וכתובת ליום</h3>
+        <p>
+          <b>לְיום הזה</b> (היום המיועד = היום שנבחר, ועוד הדילוגים של אותו יום) ואז
+          <b>רעיונות</b> — קודם חסרי יום, אחריהם רעיונות שמיועדים ליום אחר <b>שאומרים איזה</b> (מחר
+          / עוד 3 ימים, ADR-0085). כותרת קבוצה מופיעה רק כשיש בה תוכן, כך שטיול שלא נוגע בשדה נראה
+          בדיוק כמו היום.
+        </p>
+        <p>
+          רעיון שמיועד ליום אחר <b>לא מוסתר</b> — אותה בחירה שרשימת המפה עשתה: תווית לכל פריט מבטיחה
+          רק את מה שהיא יודעת, סינון קשה היה משכיח רעיונות בימים שלא נפתחים.
+        </p>
+      </div>
+
+      <div class="panel">
+        <h3>דילוג מול החזרה למדף</h3>
+        <p>
+          <b>דילוג</b> = "לא קורה" (סטטוס; האירוע נשאר על התאריך שלו וחוזר במקום). <b>park</b> =
+          "שומרים את הרעיון, מוותרים על הסלוט" (הופך ל-MaybeItem). שניהם, בשני המודים.
+        </p>
+        <p class="kill">
+          שני תיקונים ל-park תוך כדי: הוא <b>איבד את הקטגוריה</b> של האירוע (מסעדה חוזרת בלי
+          קטגוריה, והסיכה במפה מאבדת גוון), ומעכשיו הוא גם לוקח את <b>התאריך</b> אל היום המיועד —
+          לוותר על סלוט זה לא לוותר על היום.
+        </p>
+        <p>
+          איחוד שני הפעלים לאחד נדחה: הוא מוחק את העובדה שמשהו <b>היה משובץ</b> ל-14:00 ולא קרה, וזה
+          בדיוק מה שפס ההסדרה קיים בשבילו.
+        </p>
+      </div>
+
+      <div class="panel">
+        <h3>שלושה מצבים, מנתונים שכבר קיימים</h3>
+        <p>
+          הפיצול לפנינו/מאחורינו נגזר היום <b>מהשעון בלבד</b>, ולכן מקום שדילגנו עליו שוקע תחת "כבר
+          היינו". שלושה מצבים מתוך <code>EVENT_STATUS</code> והשעון, בלי שדה חדש: <b>היינו</b> (יש
+          הפניה עם done), <b>דילגנו</b> (הוסדר, אף אחד לא done), ו<b>עבר בלי הכרעה</b>
+          (אין תג — המקום ברשימה הוא ההצהרה).
+        </p>
+        <p>
+          יום <b>שהוסדר</b> נמצא מאחורינו גם אם השעה לא עברה: אדם שסימן גובר על השעון. וכותרת הבלוק
+          הופכת ל"מה שמאחורינו" — הבלוק מחזיק שלוש תוצאות, ורק אחת מהן ביקור.
+        </p>
+      </div>
+    </div>
+  </body>
+</html>

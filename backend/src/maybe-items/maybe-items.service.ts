@@ -37,6 +37,7 @@ export class MaybeItemsService {
               icon: input.icon,
               category: input.category,
               placeId: input.placeId,
+              targetDate: input.targetDate,
               consumed: false,
               createdBy: actorUserId,
               updatedBy: actorUserId,

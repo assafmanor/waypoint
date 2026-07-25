@@ -261,6 +261,10 @@ export const maybeItemSchema = z.object({
   icon: z.string().optional(),
   category: eventCategorySchema.optional(), // canonical semantic type (ADR-0038)
   placeId: z.string().optional(),
+  /** The day we're thinking of, pencilled in (ADR-0116 §1) — an ISO date, or absent
+   *  for "someday". NOT a schedule: an idea with a target day carries no time, no
+   *  slot, and never appears on the timeline; it only groups on the shelf. */
+  targetDate: z.string().nullish(),
   createdBy: idSchema,
   consumed: z.boolean(),
   createdAt: z.string(),

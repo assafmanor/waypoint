@@ -46,12 +46,14 @@ import { tripPhase } from '../lib/mode';
 import {
   buildTimeTree,
   formatTime,
+  relativeDayLabel,
   zonedIso,
   crossesMidnightZoned,
   type TimeGroup,
   type TimeItem,
 } from '../lib/time';
 import { gapBetween, nextSlot, type GapDefaults } from '../lib/gaps';
+import { shelfGroups } from '../lib/shelf';
 import {
   CODE_PREFIX,
   DAY_NOON,
@@ -78,6 +80,10 @@ import { MaybeCard } from '../ui/domain/MaybeCard';
 
 const daysBetween = (from: string, to: string) =>
   Math.round((Date.parse(to) - Date.parse(from)) / MS_PER_DAY);
+
+/** A gap's identity for the drag hit-test: its own slot. Stable across renders and
+ *  unique per day, so no synthetic id has to be invented or stored. */
+const gapKey = (fill: GapDefaults) => `${fill.date}T${fill.start}-${fill.end}`;
 
 function gapLabel(minutes: number): string {
   if (minutes < MINUTES_PER_HOUR) return t.planDay.gapMinutes(minutes);
@@ -185,6 +191,67 @@ export function PlanDay() {
     },
   });
 
+  // The shelf, grouped by the one shared derivation (ADR-0116 §2) — same call the
+  // Trip-mode day view makes, so the two shelves cannot drift again.
+  const shelf = shelfGroups(maybeItems, events, activeDate);
+  const openSchedule = (m: MaybeItem) => {
+    setGapFill(nextSlot(dayEvents, activeDate, tz));
+    setScheduleMaybe(m);
+  };
+
+  // Drag a shelf idea onto a gap (ADR-0116 §5). Deliberately the SAME mechanism as
+  // the reorder grip above — pointer capture + a hit-test on the element under the
+  // pointer — rather than a second drag implementation; only the target attribute
+  // (`data-gap-key`) and the drop action differ. Dropping schedules the idea into
+  // that gap's slot: exactly the write the gap-fill sheet already performs.
+  const [ideaDrag, setIdeaDrag] = useState<{
+    id: string;
+    overGap: string | null;
+    fill?: GapDefaults;
+  } | null>(null);
+  const ideaDragProps = (m: MaybeItem) => ({
+    onPointerDown: (e: ReactPointerEvent) => {
+      (e.currentTarget as HTMLElement).setPointerCapture(e.pointerId);
+      setIdeaDrag({ id: m.id, overGap: null });
+    },
+    onPointerMove: (e: ReactPointerEvent) => {
+      setIdeaDrag((d) => {
+        if (!d) return d;
+        const el = document.elementFromPoint(e.clientX, e.clientY);
+        const target = el?.closest('[data-gap-key]') as HTMLElement | null;
+        const next = target?.dataset.gapKey ?? null;
+        if (next === d.overGap) return d;
+        // The slot travels on the element itself, so the drop needs no lookup table
+        // and no id to be minted for a gap that only exists for this render.
+        const { gapDate, gapStart, gapEnd } = target?.dataset ?? {};
+        return {
+          ...d,
+          overGap: next,
+          fill:
+            gapDate && gapStart && gapEnd
+              ? { date: gapDate, start: gapStart, end: gapEnd }
+              : undefined,
+        };
+      });
+    },
+    onPointerUp: () => {
+      const fill = ideaDrag?.fill;
+      if (fill) {
+        verbs.schedule(m, {
+          date: fill.date,
+          title: m.title,
+          kind: EVENT_KIND.SOFT,
+          icon: m.icon,
+          category: m.category,
+          placeId: m.placeId,
+          startsAt: zonedIso(fill.date, fill.start, tz),
+          endsAt: zonedIso(fill.date, fill.end, tz),
+        });
+      }
+      setIdeaDrag(null);
+    },
+  });
+
   const dayNumber = daysBetween(trip.startDate, activeDate) + 1;
   const dayNoon = new Date(zonedIso(activeDate, DAY_NOON, trip.timezone));
   const weekday = new Intl.DateTimeFormat('he-IL', {
@@ -225,6 +292,7 @@ export function PlanDay() {
     },
     onOpenDetail: setDetailTarget,
     onGapFill: (fill) => setGapChoice(fill),
+    ideaDrag,
     onResolve: (cluster) => {
       setResolveCluster(cluster);
       setResolveMover(null);
@@ -316,26 +384,65 @@ export function PlanDay() {
             {t.day.maybeShelf}
             <span className="hint">{t.day.tapToSchedule}</span>
           </div>
-          <div className="shelf">
-            {/* Scheduled (consumed) ideas leave the shelf — no dead "שובץ"
-                tombstone (ADR-0027: an idea is parked OR placed, never both). */}
-            {maybeItems
-              .filter((m) => !m.consumed)
-              .map((m) => (
-                <MaybeCard
-                  key={m.id}
-                  icon={m.icon}
-                  title={m.title}
-                  action={`${ICONS.add} ${t.actions.scheduleToDay}`}
-                  onSchedule={() => {
-                    setGapFill(nextSlot(dayEvents, activeDate, tz));
-                    setScheduleMaybe(m);
-                  }}
-                  onRemove={() => verbs.removeMaybe(m)}
-                  removeLabel={t.planDay.removeIdea}
-                />
-              ))}
-          </div>
+          {/* Two groups (ADR-0116 §2), and Plan mode finally renders ADR-0027's
+              union: the day's skipped soft events were invisible here, on the very
+              surface you rebuild the day from. */}
+          {(shelf.forDay.length > 0 || shelf.skipped.length > 0) && (
+            <>
+              {shelf.pool.length > 0 && <div className="shelf-group">{t.day.shelfForDay}</div>}
+              <div className="shelf">
+                {shelf.forDay.map((m) => (
+                  <MaybeCard
+                    key={m.id}
+                    icon={m.icon}
+                    title={m.title}
+                    action={`${ICONS.add} ${t.actions.scheduleToDay}`}
+                    onSchedule={() => openSchedule(m)}
+                    onRemove={() => verbs.removeMaybe(m)}
+                    removeLabel={t.planDay.removeIdea}
+                    dragProps={ideaDragProps(m)}
+                    dragging={ideaDrag?.id === m.id}
+                  />
+                ))}
+                {shelf.skipped.map((e) => (
+                  <MaybeCard
+                    key={e.id}
+                    className="skipped-card"
+                    icon={e.icon}
+                    title={e.title}
+                    meta={t.day.skippedTag}
+                    action={`${ICONS.restore} ${t.actions.restore}`}
+                    onSchedule={() => verbs.restore(e)}
+                  />
+                ))}
+              </div>
+            </>
+          )}
+          {shelf.pool.length > 0 && (
+            <>
+              {(shelf.forDay.length > 0 || shelf.skipped.length > 0) && (
+                <div className="shelf-group">{t.day.shelfPool}</div>
+              )}
+              <div className="shelf">
+                {/* Scheduled (consumed) ideas leave the shelf — no dead "שובץ"
+                    tombstone (ADR-0027: an idea is parked OR placed, never both). */}
+                {shelf.pool.map((m) => (
+                  <MaybeCard
+                    key={m.id}
+                    icon={m.icon}
+                    title={m.title}
+                    meta={m.targetDate ? relativeDayLabel(m.targetDate, activeDate) : undefined}
+                    action={`${ICONS.add} ${t.actions.scheduleToDay}`}
+                    onSchedule={() => openSchedule(m)}
+                    onRemove={() => verbs.removeMaybe(m)}
+                    removeLabel={t.planDay.removeIdea}
+                    dragProps={ideaDragProps(m)}
+                    dragging={ideaDrag?.id === m.id}
+                  />
+                ))}
+              </div>
+            </>
+          )}
           <AddIdea onAdd={(title, icon, category) => verbs.addMaybe(title, { icon, category })} />
         </div>
       )}
@@ -583,6 +690,8 @@ interface BuilderCtx {
   onOpenDetail: (booking: Booking) => void;
   onGapFill: (fill: GapDefaults) => void;
   onResolve: (cluster: TimeGroup) => void;
+  /** A shelf idea being dragged, and the gap it is currently over (ADR-0116 §5). */
+  ideaDrag: { id: string; overGap: string | null } | null;
 }
 
 const groupMembers = (g: TimeGroup): TimeItem[] => (g.kind === 'cluster' ? g.items : [g.item]);
@@ -677,7 +786,16 @@ function BuilderGroups({
           <Fragment key={key}>
             {nowRef}
             {gap && (
-              <div className="gap">
+              // A gap is free time, so it is the one honest drop target for a
+              // dragged idea (ADR-0116 §5): no displacement, no ripple decision.
+              // `data-gap-key` is what the pointer-move hit-test looks for.
+              <div
+                className={'gap' + (ctx.ideaDrag?.overGap === gapKey(gap.fill) ? ' drop-over' : '')}
+                data-gap-key={gapKey(gap.fill)}
+                data-gap-date={gap.fill.date}
+                data-gap-start={gap.fill.start}
+                data-gap-end={gap.fill.end}
+              >
                 <span className="gap-line" />
                 <button className="gap-add" onClick={() => ctx.onGapFill(gap.fill)}>
                   {t.planDay.gap(gapLabel(gap.minutes))}
@@ -1086,7 +1204,7 @@ function BuilderRow({
                 <span className="row-action-ic" aria-hidden="true">
                   {ICONS.toShelf}
                 </span>
-                {t.planDay.toShelf}
+                {t.actions.toShelf}
               </button>
             )}
             <button className="row-action danger" onClick={() => runAction(onDelete)}>

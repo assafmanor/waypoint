@@ -40,11 +40,13 @@ import {
   eventPhase,
   formatTime,
   hardConflicts,
+  relativeDayLabel,
   zonedIso,
   resolveEndIso,
   type TimeGroup,
   type TimeItem,
 } from '../lib/time';
+import { shelfGroups } from '../lib/shelf';
 import { nextSlot } from '../lib/gaps';
 import {
   dayTransitions,
@@ -60,7 +62,7 @@ import { BookingDetail } from '../ui/BookingDetail';
 import { TransitionRow } from '../ui/TransitionRow';
 import { TitleLabel } from '../ui/TitleLabel';
 import { Sheet } from '../ui/Sheet';
-import { TimePicker } from '../ui/TimePicker';
+import { WhenField } from '../ui/primitives/WhenField';
 import { EventCard, type EventPhaseName } from '../ui/domain/EventCard';
 import { routeDisplay } from '../ui/route-display';
 import { MaybeCard } from '../ui/domain/MaybeCard';
@@ -171,12 +173,10 @@ export function DayView() {
       stayNights(e),
       Math.round((Date.parse(activeDate) - Date.parse(e.date)) / MS_PER_DAY) + 1,
     );
-  // ADR-0027 — the shelf is a parking lot: a skipped soft event parks here
-  // (durable, reversible) instead of just vanishing. Scoped to the day it was
-  // skipped on, alongside the unplaced maybe ideas.
-  const skippedToday = events.filter(
-    (e) => e.date === activeDate && e.kind === EVENT_KIND.SOFT && e.status === EVENT_STATUS.SKIPPED,
-  );
+  // The shelf, grouped (ADR-0116 §2) by one shared derivation both hosts call —
+  // ideas pencilled in for this day, the rest of the pool, and (ADR-0027's parking
+  // lot) the day's skipped soft events, durable and restorable in place.
+  const shelf = shelfGroups(maybeItems, events, activeDate);
 
   const dayNumber = daysBetween(trip.startDate, activeDate) + 1;
   const weekday = new Intl.DateTimeFormat('he-IL', {
@@ -365,32 +365,59 @@ export function DayView() {
             {t.day.maybeShelf}
             <span className="hint">{t.day.tapToSchedule}</span>
           </div>
-          <div className="shelf">
-            {/* Scheduled (consumed) ideas leave the shelf — no dead tombstone (ADR-0027). */}
-            {maybeItems
-              .filter((m) => !m.consumed)
-              .map((m) => (
-                <MaybeCard
-                  key={m.id}
-                  icon={m.icon}
-                  title={m.title}
-                  action={`${ICONS.add} ${t.actions.scheduleToDay}`}
-                  onSchedule={() => setScheduleItem(m)}
-                />
-              ))}
-            {/* Skipped soft events park here, restorable (ADR-0027 parking lot). */}
-            {skippedToday.map((e) => (
-              <MaybeCard
-                key={e.id}
-                className="skipped-card"
-                icon={e.icon}
-                title={e.title}
-                meta={t.day.skippedTag}
-                action={`${ICONS.restore} ${t.actions.restore}`}
-                onSchedule={() => verbs.restore(e)}
-              />
-            ))}
-          </div>
+          {/* Two groups (ADR-0116 §2): what's pencilled in for this day — plus the
+              day's skipped events, which belong to it — then the rest of the pool,
+              each out-of-day idea naming its own day. A header appears only when its
+              group has content, so a trip with no target days reads as one strip. */}
+          {(shelf.forDay.length > 0 || shelf.skipped.length > 0) && (
+            <>
+              {shelf.pool.length > 0 && <div className="shelf-group">{t.day.shelfForDay}</div>}
+              <div className="shelf">
+                {shelf.forDay.map((m) => (
+                  <MaybeCard
+                    key={m.id}
+                    icon={m.icon}
+                    title={m.title}
+                    action={`${ICONS.add} ${t.actions.scheduleToDay}`}
+                    onSchedule={() => setScheduleItem(m)}
+                  />
+                ))}
+                {/* Skipped soft events park here, restorable (ADR-0027 parking lot). */}
+                {shelf.skipped.map((e) => (
+                  <MaybeCard
+                    key={e.id}
+                    className="skipped-card"
+                    icon={e.icon}
+                    title={e.title}
+                    meta={t.day.skippedTag}
+                    action={`${ICONS.restore} ${t.actions.restore}`}
+                    onSchedule={() => verbs.restore(e)}
+                  />
+                ))}
+              </div>
+            </>
+          )}
+          {shelf.pool.length > 0 && (
+            <>
+              {(shelf.forDay.length > 0 || shelf.skipped.length > 0) && (
+                <div className="shelf-group">{t.day.shelfPool}</div>
+              )}
+              <div className="shelf">
+                {/* Scheduled (consumed) ideas leave the shelf — no dead tombstone
+                    (ADR-0027); `shelfGroups` already dropped them. */}
+                {shelf.pool.map((m) => (
+                  <MaybeCard
+                    key={m.id}
+                    icon={m.icon}
+                    title={m.title}
+                    meta={m.targetDate ? relativeDayLabel(m.targetDate, today) : undefined}
+                    action={`${ICONS.add} ${t.actions.scheduleToDay}`}
+                    onSchedule={() => setScheduleItem(m)}
+                  />
+                ))}
+              </div>
+            </>
+          )}
         </>
       )}
 
@@ -398,14 +425,20 @@ export function DayView() {
         <ScheduleSheet
           item={scheduleItem}
           defaults={nextSlot(dayEvents, activeDate, trip.timezone)}
-          onConfirm={(start, end) => {
+          // The day is now part of the sheet (ADR-0116 §5), defaulting to the idea's
+          // own pencilled-in day: putting something on Thursday stops requiring a
+          // trip to Thursday first. Day-scope still gates the range — scheduling is
+          // a create, and creates are locked on a past day in Trip mode (ADR-0029).
+          date={scheduleItem.targetDate ?? activeDate}
+          minDate={today > trip.startDate ? today : trip.startDate}
+          maxDate={trip.endDate}
+          onConfirm={(date, start, end) => {
             verbs.schedule(scheduleItem, {
-              date: activeDate,
+              date,
               title: scheduleItem.title,
               kind: EVENT_KIND.SOFT,
-              startsAt: start ? zonedIso(activeDate, start, trip.timezone) : undefined,
-              endsAt:
-                end && start ? resolveEndIso(activeDate, start, end, trip.timezone) : undefined,
+              startsAt: start ? zonedIso(date, start, trip.timezone) : undefined,
+              endsAt: end && start ? resolveEndIso(date, start, end, trip.timezone) : undefined,
             });
             setScheduleItem(null);
           }}
@@ -567,6 +600,7 @@ function ItemNode({ item, depth, ctx }: { item: TimeItem; depth: number; ctx: Da
       onOnWay={() => ctx.verbs.onWay(e)}
       onRestore={() => ctx.verbs.restore(e)}
       onSwap={() => ctx.verbs.swap(e)}
+      onPark={ctx.readOnly ? undefined : () => ctx.verbs.park(e)}
       onEdit={() => ctx.onEdit(e)}
       onRemove={() => ctx.verbs.remove(e)}
     />
@@ -582,32 +616,45 @@ function ItemNode({ item, depth, ctx }: { item: TimeItem; depth: number; ctx: Da
   );
 }
 
-// Trip-mode quick-schedule: tap a shelf idea, adjust the prefilled time, done
-// (ADR-0025 Tier-1). Just the time — day/kind/location is Plan-mode building.
+// Trip-mode quick-schedule: tap a shelf idea, adjust the prefilled day + time, done
+// (ADR-0025 Tier-1). The day joined the sheet in ADR-0116 §5, which also retires the
+// last bespoke time-only control here in favour of the app's one date/time primitive
+// (`WhenField`, ADR-0083) — so this sheet gains the zone chip's grammar for free.
+// Kind/location stay Plan-mode building.
 function ScheduleSheet({
   item,
   defaults,
+  date,
+  minDate,
+  maxDate,
   onConfirm,
   onClose,
 }: {
   item: MaybeItem;
   defaults: { start: string; end: string };
-  onConfirm: (start: string, end: string) => void;
+  date: string;
+  minDate: string;
+  maxDate: string;
+  onConfirm: (date: string, start: string, end: string) => void;
   onClose: () => void;
 }) {
-  const [start, setStart] = useState(defaults.start);
-  const [end, setEnd] = useState(defaults.end);
+  const [when, setWhen] = useState({ date, start: defaults.start, end: defaults.end });
   return (
     <Sheet title={t.day.scheduleTitle(item.title)} onClose={onClose}>
-      <TimePicker
-        start={start}
-        end={end}
-        onChange={(next) => {
-          setStart(next.start);
-          setEnd(next.end);
-        }}
+      <WhenField
+        variant="day"
+        date={when.date}
+        start={when.start}
+        end={when.end}
+        minDate={minDate}
+        maxDate={maxDate}
+        onChange={setWhen}
       />
-      <button type="button" className="sched-confirm" onClick={() => onConfirm(start, end)}>
+      <button
+        type="button"
+        className="sched-confirm"
+        onClick={() => onConfirm(when.date, when.start, when.end)}
+      >
         {ICONS.schedule} {t.actions.scheduleToDay}
       </button>
     </Sheet>

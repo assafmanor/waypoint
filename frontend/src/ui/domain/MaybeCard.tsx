@@ -13,7 +13,7 @@
 // is absent; screens pass a real derived field or nothing. The fixture is gone.
 //
 // Presentational only: data + copy via props, no trip-state, no domain types.
-import { type ReactNode } from 'react';
+import { type PointerEvent as ReactPointerEvent, type ReactNode } from 'react';
 import './maybe-card.css';
 
 export interface MaybeCardProps {
@@ -34,6 +34,16 @@ export interface MaybeCardProps {
   removeLabel?: string;
   /** Extra modifier class (e.g. a screen's `skipped-card`). */
   className?: string;
+  /** Pointer handlers that make the card draggable onto a gap (ADR-0116 §5). The
+   *  screen owns the drag mechanics — the same pointer-capture + hit-test the
+   *  builder's reorder grip uses — so the card only has to carry them. */
+  dragProps?: {
+    onPointerDown: (e: ReactPointerEvent) => void;
+    onPointerMove: (e: ReactPointerEvent) => void;
+    onPointerUp: () => void;
+  };
+  /** This card is the one currently being dragged. */
+  dragging?: boolean;
 }
 
 export function MaybeCard({
@@ -46,6 +56,8 @@ export function MaybeCard({
   onRemove,
   removeLabel,
   className,
+  dragProps,
+  dragging,
 }: MaybeCardProps) {
   const inner = (
     <>
@@ -55,13 +67,18 @@ export function MaybeCard({
       <span className="wp-maybecard-add">{action}</span>
     </>
   );
-  const cls = 'wp-maybecard' + (disabled ? ' consumed' : '') + (className ? ` ${className}` : '');
+  const cls =
+    'wp-maybecard' +
+    (disabled ? ' consumed' : '') +
+    (dragging ? ' dragging' : '') +
+    (dragProps ? ' draggable' : '') +
+    (className ? ` ${className}` : '');
 
   // Remove variant: a container with a corner button + a body button, so the
   // remove control isn't nested inside the schedule button.
   if (onRemove) {
     return (
-      <div className={cls}>
+      <div className={cls} {...dragProps}>
         <button
           type="button"
           className="wp-maybecard-remove"
@@ -83,7 +100,7 @@ export function MaybeCard({
   }
 
   return (
-    <button type="button" className={cls} onClick={onSchedule} disabled={disabled}>
+    <button type="button" className={cls} onClick={onSchedule} disabled={disabled} {...dragProps}>
       {inner}
     </button>
   );

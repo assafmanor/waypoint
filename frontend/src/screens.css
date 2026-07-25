@@ -3655,3 +3655,33 @@
   color: var(--amber-deep);
   flex: 0 0 auto;
 }
+
+/* The shelf's group headers (ADR-0116 §2) — the same quiet divider the Map list's
+   group headers use, so "this day / the pool" reads like every other grouped list
+   in the app. Rendered only when there's more than one group to separate. */
+.shelf-group {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  font-size: 11px;
+  font-weight: 700;
+  color: var(--muted);
+  margin: 8px 2px 6px;
+}
+.shelf-group::after {
+  content: '';
+  flex: 1;
+  height: 1px;
+  background: var(--line);
+}
+
+/* A gap under a dragged idea (ADR-0116 §5): free time lighting up as the one place
+   a drop can land — no displacement, so no ripple decision to make. */
+.gap.drop-over .gap-add {
+  border-color: var(--plan);
+  background: color-mix(in srgb, var(--plan) 12%, transparent);
+  color: var(--plan);
+}
+.gap.drop-over .gap-line {
+  background: var(--plan);
+}

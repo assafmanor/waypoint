@@ -544,6 +544,25 @@ describe('applyPark (move a soft event to the maybe shelf)', () => {
     );
     expect(deps.toast).not.toHaveBeenCalled();
   });
+  // ADR-0116 §4: parking is "not in this slot", not "not this day" — and it used to
+  // drop the category, so a parked restaurant came back uncategorised.
+  it('sends the category and the day the event was on', async () => {
+    const bodies: unknown[] = [];
+    vi.stubGlobal(
+      'fetch',
+      vi.fn((_url: string, init?: RequestInit) => {
+        if (init?.body) bodies.push(JSON.parse(String(init.body)));
+        return Promise.resolve(new Response(JSON.stringify(item), { status: 201 }));
+      }),
+    );
+    const withFacets = { ...item, category: 'food' as const, targetDate: event.date };
+
+    await applyPark(fakeDeps(), event, withFacets);
+
+    expect(bodies[0]).toEqual(
+      expect.objectContaining({ category: 'food', targetDate: event.date }),
+    );
+  });
 
   it('rolls back and toasts when the create fails', async () => {
     vi.stubGlobal('fetch', vi.fn().mockResolvedValue(new Response(null, { status: 500 })));
