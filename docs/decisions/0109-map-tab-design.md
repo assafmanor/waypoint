@@ -16,6 +16,19 @@ Implementing Phase 2 (places on existing surfaces) surfaced a scope boundary in 
   - **`ניווט` (directions) is a Google Maps deep-link forever** — we never rebuild turn-by-turn navigation (ADR-0106 §F).
   - **`מפה` (view) is INTERIM.** Today it deep-links to the Google Maps place view because we have no map surface yet. **Once the Map tab (Phase 3) / embedded map (Phase 6) ships, `מפה` should focus _our_ in-app map on the place instead of leaving to Google.** Tracked as a TODO in `lib/places.ts` (`mapsPlaceUrl`) and a backlog line; the Phase-2 Google wiring is the stopgap. The list-row `נווט` + tap-to-view of §1 is unchanged.
 
+## Amendment (2026-07-25, session 104) — navigate-to-next on the list is §6's amber ring, not a new control
+
+Building Phase 4b ([ADR-0106](0106-maps-and-places-epic-scope-and-phasing.md) §6) needed a decision this ADR hadn't made: navigate-to-next is specified for the **Home tile**, and §6 allocates "a single amber ring on the **next committed stop**" to the **rendered** map — but Phase 4 ships before Phase 6, so the list needed its own form of that cue.
+
+**Decision: the list form of the ring is a cue on one row, not a second affordance.** The row already carries the labelled `נווט` of §1, so what navigate-to-next adds is **which** row is next: an amber `היעד הבא · <time>` tag in the row's meta line plus a soft amber ring on that row, and the row's existing `נווט` **is** the navigate-to-next action. Consequences:
+
+- **The one-time-anchor rule of §6 is preserved literally** — exactly one row is ever marked, and amber stays on time (the departure instant), never spent on a second accent per pin.
+- **No re-sort.** Re-ordering the list is reserved for near-me (§7); the next stop keeps its place in the day order, so the two Phase-4 halves don't fight over the list's ordering.
+- **Trip mode only.** A live "next" says nothing while you are planning, which matches the tab's mode re-emphasis (§2).
+- **Phase 6 needs no rework:** the ring moves onto the pin as §6 always intended and the row keeps its tag — the same "Phase 4 is not throwaway" property §7 claims for near-me.
+
+The time renders in the **event's own** display zone (ADR-0107), like every other time in the app, not the trip primary.
+
 ## Context
 
 ADR-0106 fixed the Maps & Places scope: one mode-re-emphasized Map tab, picker-first, **list-of-pins before an embedded map**, filters that are pure client-side derivation. It deliberately left the visual and interaction design to a follow-on session (this one) and named the concrete open design questions to resolve here. Nothing about scope, phasing, or the embedded-map direction is reopened — this ADR is the design layer on top of that frame.

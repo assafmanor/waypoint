@@ -29,6 +29,7 @@ import {
   liveZoneContext,
   mapsDirectionsUrl,
   mapsPlaceUrl,
+  nextDestination,
   referencedPlaceIds,
   segmentZoneAt,
   tripZoneCrossings,
@@ -207,6 +208,88 @@ describe('Google Maps deep-links (Phase 2: no coordinates → no link)', () => {
     expect(
       bookingPlaceUrl(booking({ id: 'b', type: BOOKING_TYPE.HOTEL }), [withCoords]),
     ).toBeNull();
+  });
+});
+
+describe('nextDestination (navigate-to-next, ADR-0106 §6)', () => {
+  const hotel = place('pl-hotel', 'מלון', { lat: 35.68, lng: 139.76, googlePlaceId: 'g-hotel' });
+  const airport = place('pl-tlv2', 'נתב״ג', { lat: 32.0, lng: 34.88, googlePlaceId: 'g-tlv' });
+  const arrival = place('pl-nrt2', 'נריטה', { lat: 35.77, lng: 140.39 });
+  const nameOnly = place('pl-lite', 'שם בלבד');
+  const PL = [hotel, airport, arrival, nameOnly];
+  const NOW = Date.parse('2026-07-07T09:00:00Z');
+  const at = (h: string) => `2026-07-07T${h}:00Z`;
+
+  it('picks the earliest upcoming event with a mappable place', () => {
+    const later = event({ id: 'later', placeId: 'pl-hotel', startsAt: at('15:00') });
+    const sooner = event({ id: 'sooner', placeId: 'pl-nrt2', startsAt: at('11:00') });
+    const result = nextDestination([later, sooner], [], PL, NOW);
+    expect(result?.event.id).toBe('sooner');
+    expect(result?.place.id).toBe('pl-nrt2');
+    expect(result?.url).toContain('destination=35.77%2C140.39');
+  });
+
+  it('resolves transport to its ORIGIN — you go to the airport you fly from', () => {
+    const flight = booking({
+      id: 'bk',
+      type: BOOKING_TYPE.FLIGHT,
+      fromPlaceId: 'pl-tlv2',
+      toPlaceId: 'pl-nrt2',
+    });
+    const result = nextDestination(
+      [event({ id: 'fl', bookingId: 'bk', startsAt: at('12:00') })],
+      [flight],
+      PL,
+      NOW,
+    );
+    expect(result?.place.id).toBe('pl-tlv2');
+  });
+
+  it('looks past an event with no place, and past a coordless Place-lite', () => {
+    const placeless = event({ id: 'soft', startsAt: at('10:00'), kind: EVENT_KIND.SOFT });
+    const lite = event({ id: 'lite', placeId: 'pl-lite', startsAt: at('10:30') });
+    const mappable = event({ id: 'real', placeId: 'pl-hotel', startsAt: at('14:00') });
+    expect(nextDestination([placeless, lite, mappable], [], PL, NOW)?.event.id).toBe('real');
+  });
+
+  it('ignores what is behind you, in progress, done, skipped, or untimed', () => {
+    const passed = event({ id: 'passed', placeId: 'pl-hotel', startsAt: at('07:00') });
+    const inProgress = event({
+      id: 'inprog',
+      placeId: 'pl-hotel',
+      startsAt: at('08:00'),
+      endsAt: at('10:00'),
+    });
+    const done = event({
+      id: 'done',
+      placeId: 'pl-hotel',
+      startsAt: at('11:00'),
+      status: EVENT_STATUS.DONE,
+    });
+    const skipped = event({
+      id: 'skipped',
+      placeId: 'pl-hotel',
+      startsAt: at('12:00'),
+      status: EVENT_STATUS.SKIPPED,
+    });
+    const untimed = event({ id: 'untimed', placeId: 'pl-hotel' });
+    expect(
+      nextDestination([passed, inProgress, done, skipped, untimed], [], PL, NOW),
+    ).toBeUndefined();
+  });
+
+  it('offers a hotel before check-in but not once you are inside the stay', () => {
+    const stay = (startsAt: string) =>
+      event({ id: 'stay', placeId: 'pl-hotel', startsAt, endsAt: at('20:00') });
+    expect(nextDestination([stay(at('15:00'))], [], PL, NOW)?.place.id).toBe('pl-hotel');
+    expect(nextDestination([stay(at('08:00'))], [], PL, NOW)).toBeUndefined();
+  });
+
+  it('is undefined when nothing upcoming has a location (no tile rather than a wrong one)', () => {
+    expect(nextDestination([], [], PL, NOW)).toBeUndefined();
+    expect(
+      nextDestination([event({ id: 'x', placeId: 'pl-lite', startsAt: at('18:00') })], [], PL, NOW),
+    ).toBeUndefined();
   });
 });
 

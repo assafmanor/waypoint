@@ -10,7 +10,7 @@ import {
   type Place,
   type TripEvent,
 } from '@waypoint/shared';
-import { todayInTz, zoneOffsetMinutes, zonedIso } from './time';
+import { eventPhase, todayInTz, zoneOffsetMinutes, zonedIso } from './time';
 import { DAY_NOON, LIVE_ZONE_WINDOW_MS } from '../constants';
 import { formatDuration } from './duration';
 
@@ -616,4 +616,52 @@ export function eventPlaceUrl(
  *  or a coordless one. The peer of {@link bookingDirectionsUrl}. */
 export function bookingPlaceUrl(booking: Booking, places: Place[]): string | null {
   return mapsPlaceUrl(places.find((p) => p.id === bookingPlaceId(booking)));
+}
+
+/** Where you have to get to next, and the event that puts you there. */
+export interface NextDestination {
+  event: TripEvent;
+  place: Place;
+  /** Directions deep-link — resolved here, so it is never null for a result. */
+  url: string;
+}
+
+/**
+ * The next place you have to get to (ADR-0106 §6 navigate-to-next): among timed
+ * upcoming events, the earliest one whose resolved place is **mappable** — has
+ * coordinates, so a directions link can be built. The authority rule applies, so
+ * transport resolves to its **origin**: the next stop before a flight is the
+ * departure airport, not where it lands.
+ *
+ * Like its Home quick-access sibling `nextCodedBooking`, this may resolve to a
+ * later event than the board's immediate next: a placeless soft event is nothing
+ * to navigate to, so the derivation looks past it. Returns
+ * `undefined` when nothing upcoming has a location — the tile/cue is then absent
+ * rather than pointing somewhere it can't (ADR-0045).
+ *
+ * A checked-in hotel needs no filtering: its stay event is already in progress, so
+ * `upcoming` excludes it; before check-in it is a legitimate next destination.
+ */
+export function nextDestination(
+  events: TripEvent[],
+  bookings: Booking[],
+  places: Place[],
+  nowMs: number,
+): NextDestination | undefined {
+  const at = new Date(nowMs);
+  let best: NextDestination | undefined;
+  let bestStart = Infinity;
+  for (const event of events) {
+    if (!event.startsAt) continue;
+    if (eventPhase(event, at) !== 'upcoming') continue;
+    const start = Date.parse(event.startsAt);
+    if (start >= bestStart) continue;
+    const booking = event.bookingId ? bookings.find((b) => b.id === event.bookingId) : undefined;
+    const place = places.find((p) => p.id === eventPlaceId(event, booking));
+    const url = place && mapsDirectionsUrl(place);
+    if (!place || !url) continue;
+    best = { event, place, url };
+    bestStart = start;
+  }
+  return best;
 }

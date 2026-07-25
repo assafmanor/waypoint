@@ -49,14 +49,17 @@
   border-color: var(--ink);
 }
 
-/* quick-access grid — three real shortcuts (navigate-to-next deferred to the
-   maps work, ADR-0045; returns to 4 columns then) */
+/* quick-access grid — the four real shortcuts (ADR-0045; navigate-to-next joined
+   them with the maps work, ADR-0106 §6). The column count is set inline from the
+   visible-tile count, so a derived tile with no source just reflows the row. */
 .quick {
   display: grid;
   grid-template-columns: repeat(3, 1fr);
   gap: 9px;
 }
 .qa {
+  display: block; /* navigate-to-next is an <a>; the rest are <button>s */
+  text-decoration: none;
   background: var(--card);
   border: 1px solid var(--line);
   border-radius: 15px;
@@ -100,13 +103,24 @@
 .qa .lb .plus {
   color: var(--amber-deep);
 }
-/* filled-tile subtitle (e.g. the WiFi network name) — muted mono, mockup A */
+/* filled-tile subtitle (e.g. the WiFi network name, the next stop's name) — muted
+   mono, mockup A. One line: at four columns a tile is ~75px wide, so a long value
+   ellipsises rather than growing the whole row. */
 .qa .sub {
   display: block;
   font-family: var(--font-mono);
   font-size: 9.5px;
   color: var(--muted);
   margin-top: 3px;
+  overflow: hidden;
+  white-space: nowrap;
+  text-overflow: ellipsis;
+}
+/* a place name is prose, not a technical value — mono reads wrong for it (and
+   Hebrew has no mono face to fall back to). */
+.qa .sub.name {
+  font-family: inherit;
+  font-size: 10px;
 }
 /* empty / needs-setup tile: soft dashed "add" affordance, never a dead card */
 .qa.empty {

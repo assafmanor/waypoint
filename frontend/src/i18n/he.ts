@@ -72,6 +72,9 @@ export const t = {
     // A coordless Place-lite: no coordinates yet — offer to enrich it in place.
     addLocation: 'מיקום',
     shelfTag: 'על המדף',
+    // navigate-to-next on the list (ADR-0106 §6): the one time-anchor cue the map
+    // budget allows (ADR-0109 §6, the amber ring's list form), on a single row.
+    nextStop: 'היעד הבא',
     empty: {
       title: 'אין עדיין מקומות',
       body: 'מקומות שתוסיפו לאירועים, להזמנות ולמדף האולי יופיעו כאן.',
@@ -549,6 +552,9 @@ export const t = {
   quick: {
     title: 'גישה מהירה',
     nextTicket: 'הכרטיס הבא',
+    // The fourth tile, back from ADR-0045's deferral now that places carry real
+    // coordinates (ADR-0106 §6): a directions deep-link to the next stop.
+    navigateNext: 'ניווט ליעד הבא',
     wifiCode: 'קוד WiFi',
     documents: 'מסמכים',
     docsInvite: 'הוסיפו מסמך',
