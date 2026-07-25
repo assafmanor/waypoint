@@ -10,9 +10,9 @@ import {
   type Trip,
   type TripEvent,
 } from '@waypoint/shared';
-import { formatTime, isEventPast, relativeDay, todayInTz } from './time';
+import { formatTime, isEventPast, relativeDayLabel, todayInTz } from './time';
 import { plainTimingLabel, timingLabels } from './booking-timing';
-import { FILTER_STAGGER_MAX_MS, FILTER_STAGGER_MS, MS_PER_DAY } from '../constants';
+import { FILTER_STAGGER_MAX_MS, FILTER_STAGGER_MS } from '../constants';
 import { t } from '../i18n/he';
 
 /** The bookings-screen category filter (ADR-0098 §2): every `BookingType` plus
@@ -128,16 +128,6 @@ export function splitBookings(
   };
 }
 
-/** A booking's day as a relative label (ADR-0085) — היום / מחר / עוד N ימים ahead,
- *  אתמול / שלשום / לפני N ימים for the ones already behind you. Both dates are
- *  trip-tz calendar days (YYYY-MM-DD), so the diff is whole-day and DST-safe. */
-function dayLabel(date: string, today: string): string {
-  const delta = Math.round(
-    (Date.parse(`${date}T00:00:00Z`) - Date.parse(`${today}T00:00:00Z`)) / MS_PER_DAY,
-  );
-  return relativeDay(delta);
-}
-
 /** The row's schedule line, prefixed with what the time _is_ for this booking type
  *  (ADR-0053 refinement). A multi-day booking (endDate set) flips from its check-in
  *  to its check-out once the check-in day has passed: the check-out day during the
@@ -155,7 +145,7 @@ export function scheduleLabel(event: TripEvent, booking: Booking, trip: Trip, no
   const join = (...parts: (string | undefined)[]) => parts.filter(Boolean).join(' · ');
 
   if (multiDay && today > event.date) {
-    const day = dayLabel(event.endDate!, today);
+    const day = relativeDayLabel(event.endDate!, today);
     const label = past ? undefined : plainTimingLabel(labels.end);
     // Before the check-out day the day is enough; on the day itself, name the time.
     return event.endDate === today && event.endsAt
@@ -163,7 +153,7 @@ export function scheduleLabel(event: TripEvent, booking: Booking, trip: Trip, no
       : join(label, day);
   }
 
-  const day = dayLabel(event.date, today);
+  const day = relativeDayLabel(event.date, today);
   if (!event.startsAt) return day;
   const label = past ? undefined : plainTimingLabel(labels.start);
   return join(label, day, formatTime(event.startsAt, trip.timezone));

@@ -482,6 +482,42 @@ describe('MapView (Phase 3, ADR-0109/0110)', () => {
       expect(metaOf('arrival')).toContain(t.glance.transition.flightArrival);
     });
 
+    it('all-days scope names the day too, since a bare time would read as today', () => {
+      setSimulatedNow(Date.parse(`${ACTIVE_DATE}T02:00:00Z`)); // 11:00 Tokyo on the 20th
+      tripPlaces = [place('today-stop', true), place('tomorrow-stop', true)];
+      tripEvents = [
+        event({ id: 'e1', placeId: 'today-stop', startsAt: `${ACTIVE_DATE}T09:00:00Z` }),
+        event({
+          id: 'e2',
+          placeId: 'tomorrow-stop',
+          date: '2026-07-21',
+          startsAt: '2026-07-21T01:00:00Z',
+        }),
+      ];
+      render(wrap(<MapView />));
+      fireEvent.click(screen.getByRole('button', { name: new RegExp(t.map.allDays) }));
+      // One tag carries both, the Index's `scheduleLabel` composition.
+      expect(timeOf('today-stop')).toBe(`היום · 18:00`);
+      expect(timeOf('tomorrow-stop')).toBe(`מחר · 10:00`);
+    });
+
+    it('day scope shows only the time — the strip already names the day', () => {
+      setSimulatedNow(Date.parse(`${ACTIVE_DATE}T02:00:00Z`));
+      tripPlaces = [place('stop', true)];
+      tripEvents = [event({ id: 'e', placeId: 'stop', startsAt: `${ACTIVE_DATE}T09:00:00Z` })];
+      render(wrap(<MapView />));
+      expect(timeOf('stop')).toBe('18:00');
+    });
+
+    it('an untimed event still says which day when the list spans several', () => {
+      setSimulatedNow(Date.parse(`${ACTIVE_DATE}T02:00:00Z`));
+      tripPlaces = [place('sometime', true)];
+      tripEvents = [event({ id: 'e', placeId: 'sometime', date: '2026-07-22' })];
+      render(wrap(<MapView />));
+      fireEvent.click(screen.getByRole('button', { name: new RegExp(t.map.allDays) }));
+      expect(timeOf('sometime')).toBe('מחרתיים');
+    });
+
     it('an unscheduled shelf idea keeps the address fallback — nothing happens there yet', () => {
       tripPlaces = [{ ...place('idea', true), address: 'Barshavski St 7' } as Place];
       tripMaybes = [maybe({ id: 'm', placeId: 'idea' })];

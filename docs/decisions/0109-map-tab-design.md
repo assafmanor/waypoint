@@ -29,6 +29,18 @@ Building Phase 4b ([ADR-0106](0106-maps-and-places-epic-scope-and-phasing.md) §
 
 The time renders in the **event's own** display zone (ADR-0107), like every other time in the app, not the trip primary.
 
+## Amendment (2026-07-25, session 109) — in all-days scope the row names its day
+
+Session 108 gave every row its time. Reported straight after: in **all-days** scope a bare `09:00` on a place three days out reads as today. §1's `<time>` was written for a day-scoped list and says nothing about the scope that spans the trip.
+
+**Decision: when the list spans several days, the day leads the same tag** — `מחר · 09:00` — reusing `relativeDay` (ADR-0085: היום/מחר/מחרתיים/אתמול/שלשום, then עוד N ימים / לפני N ימים) in exactly the composition the Index bookings row already uses (`scheduleLabel`'s `join(label, day, time)`). **Day-scoped, nothing changes**: the strip and the scope hint already name the day, so `היום ·` on every row would be pure noise. An untimed event now also gains its day, which it previously had no way to state.
+
+**On crowding, which is the real risk here:** the day shares the **existing** amber tag rather than adding a chip, so the meta line grows in width but not in element count, and it already wraps (`.map-m` is a wrapping flex row). The clock stays a `dir="ltr"` island **inside** the tag, not the whole tag, since the day word is Hebrew.
+
+**Day group headers were considered and rejected**, though they look like the better answer — the all-days list is already day-ordered, `.map-grouphead` already exists, and a header costs zero row width. The flaw is completeness: a place appears **once**, under its earliest day (union semantics, §4). A hotel spanning days 1–4 would sit only in day 1's group, so a "day 3" header would promise "these are day 3's places" and silently omit the bed you're sleeping in. A per-row label makes no such claim — it says when _this place's_ first moment is. Revisit only if the list ever moves to one row per place-day.
+
+`relativeDayLabel(date, today)` was generalized out of `lib/index-bookings.ts` (where it was a private one-off) into `lib/time.ts` beside `relativeDay`, rather than adding a second copy — CLAUDE.md rule 8.
+
 ## Amendment (2026-07-25, session 108) — the row meta, built: `<time> · <what>`, and the address demoted
 
 §1 specified the meta line as **`<time> · <what>`** ("18:40 · רכבת לקיוטו") but Phase 3 shipped `address ?? category` — deferred as follow-up (c) because the per-day time overlapped the then-unbuilt timezone display track (ADR-0107). That track is finished, so this is (c), built. The shipped row read `Dimitras, Nicosia, Lefkosia 2058, קפריסין` — true, long, and silent about why the place is on the list.
