@@ -139,6 +139,17 @@
   -webkit-tap-highlight-color: transparent;
 }
 
+/* An armed drag (lib/useHoldToDrag.ts) turns selection off page-wide: the finger
+   travels over rows, headers and gaps, and any of them would otherwise start
+   selecting text under it mid-drag. `!important` because it has to beat whatever
+   the elements under the finger set for themselves, and it lasts only until the
+   drop. The card's own `user-select: none` handles the press itself. */
+body.wp-dragging,
+body.wp-dragging * {
+  user-select: none !important;
+  -webkit-user-select: none !important;
+}
+
 html,
 body,
 #root {

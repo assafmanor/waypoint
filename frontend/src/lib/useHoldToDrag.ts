@@ -14,6 +14,53 @@
 import { useCallback, useEffect, useRef } from 'react';
 import { DRAG_HOLD_MS, DRAG_HOLD_SLOP_PX } from '../constants';
 
+/** Parked on `<body>` for the length of an armed drag: turns selection off
+ *  page-wide, since the finger travels over everything but the card it started on
+ *  (styles/tokens.css). A structural class name, not UI copy. */
+const DRAGGING_BODY_CLASS = 'wp-dragging';
+
+export interface SelectionGuard {
+  /** Cancel `selectstart` while a gesture is pending — the long press itself is
+   *  what asks the platform to start selecting, and `user-select: none` on the
+   *  pressed element doesn't stop that. */
+  suppress: () => void;
+  /** …and once a drag is really live, turn selection off page-wide: the finger
+   *  travels over rows and headers, any of which would start selecting under it. */
+  lock: () => void;
+  /** Hand selection back (drop, cancel, or "that was a scroll after all"). */
+  release: () => void;
+}
+
+/** Shared by both of the builder's drags — the hold-gated shelf card below and the
+ *  reorder grip, which arms immediately but drags over the same text. */
+export function useSelectionGuard(): SelectionGuard {
+  const preventer = useRef<((e: Event) => void) | null>(null);
+
+  const suppress = useCallback(() => {
+    if (preventer.current) return;
+    const prevent = (e: Event) => e.preventDefault();
+    preventer.current = prevent;
+    document.addEventListener('selectstart', prevent);
+  }, []);
+
+  const lock = useCallback(() => {
+    document.body.classList.add(DRAGGING_BODY_CLASS);
+  }, []);
+
+  const release = useCallback(() => {
+    if (preventer.current) document.removeEventListener('selectstart', preventer.current);
+    preventer.current = null;
+    document.body.classList.remove(DRAGGING_BODY_CLASS);
+    // A selection that slipped through before the listener attached would otherwise
+    // stay highlighted under the card after the drop.
+    document.getSelection()?.removeAllRanges();
+  }, []);
+
+  useEffect(() => release, [release]);
+
+  return { suppress, lock, release };
+}
+
 export interface HoldToDragHandlers {
   /** The hold completed: the drag is live from here. Receives the held element,
    *  which is what an edge-autoscroll needs to find its scroller. */
@@ -58,14 +105,17 @@ export function useHoldToDrag(): (handlers: HoldToDragHandlers) => HoldToDragPro
     blockScroll.current = null;
   }, []);
 
+  const selection = useSelectionGuard();
+
   const reset = useCallback(() => {
     if (timer.current) clearTimeout(timer.current);
     timer.current = null;
     armed.current = false;
     origin.current = null;
     releaseScroll();
+    selection.release();
     held.current = null;
-  }, [releaseScroll]);
+  }, [releaseScroll, selection]);
 
   useEffect(() => reset, [reset]);
 
@@ -76,6 +126,7 @@ export function useHoldToDrag(): (handlers: HoldToDragHandlers) => HoldToDragPro
         const el = e.currentTarget as HTMLElement;
         held.current = el;
         origin.current = { x: e.clientX, y: e.clientY };
+        selection.suppress();
         const arm = () => {
           timer.current = null;
           armed.current = true;
@@ -83,6 +134,7 @@ export function useHoldToDrag(): (handlers: HoldToDragHandlers) => HoldToDragPro
           const preventer = (te: TouchEvent) => te.preventDefault();
           blockScroll.current = preventer;
           el.addEventListener('touchmove', preventer, { passive: false });
+          selection.lock();
           handlers.onArm(el);
         };
         // A mouse has no scroll/drag ambiguity to resolve (the wheel scrolls), so
@@ -128,6 +180,6 @@ export function useHoldToDrag(): (handlers: HoldToDragHandlers) => HoldToDragPro
         if (armed.current || timer.current) e.preventDefault();
       },
     }),
-    [reset],
+    [reset, selection],
   );
 }

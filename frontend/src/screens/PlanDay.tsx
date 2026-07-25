@@ -55,7 +55,7 @@ import {
 import { gapBetween, nextSlot, type GapDefaults } from '../lib/gaps';
 import { shelfGroups } from '../lib/shelf';
 import { useEdgeAutoScroll } from '../lib/edge-autoscroll';
-import { useHoldToDrag } from '../lib/useHoldToDrag';
+import { useHoldToDrag, useSelectionGuard } from '../lib/useHoldToDrag';
 import {
   CODE_PREFIX,
   DAY_NOON,
@@ -181,11 +181,16 @@ export function PlanDay() {
   // Both drags share one edge auto-scroll: a drag that can only reach what's
   // already on screen can't reach the row (or gap) you're aiming for.
   const autoScroll = useEdgeAutoScroll();
+  // The grip is a dedicated handle, so it drags on contact — but it drags across
+  // the same rows, so it needs the same selection guard as the held card.
+  const selection = useSelectionGuard();
   const [drag, setDrag] = useState<{ id: string; overId: string | null } | null>(null);
   const gripProps = (id: string) => ({
     onPointerDown: (e: ReactPointerEvent) => {
       (e.currentTarget as HTMLElement).setPointerCapture(e.pointerId);
       autoScroll.start(e.currentTarget as HTMLElement);
+      selection.suppress();
+      selection.lock();
       setDrag({ id, overId: null });
     },
     onPointerMove: (e: ReactPointerEvent) => {
@@ -200,7 +205,13 @@ export function PlanDay() {
     },
     onPointerUp: () => {
       autoScroll.stop();
+      selection.release();
       if (drag?.overId && drag.overId !== drag.id) verbs.reorder(dayEvents, drag.id, drag.overId);
+      setDrag(null);
+    },
+    onPointerCancel: () => {
+      autoScroll.stop();
+      selection.release();
       setDrag(null);
     },
   });

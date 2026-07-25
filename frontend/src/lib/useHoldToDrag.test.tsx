@@ -134,6 +134,45 @@ describe('useHoldToDrag', () => {
     expect(onClick).toHaveBeenCalledTimes(1);
   });
 
+  // The other thing a long press means to the platform: `user-select: none` on the
+  // card doesn't stop it, because `selectstart` is what begins the selection and the
+  // finger ends up over other elements entirely.
+  it('cancels selectstart for as long as the hold lasts', () => {
+    render(<Card />);
+    down();
+    const selectstart = new Event('selectstart', { cancelable: true, bubbles: true });
+    document.dispatchEvent(selectstart);
+    expect(selectstart.defaultPrevented).toBe(true);
+  });
+
+  it('turns selection off page-wide while armed, and restores it on drop', () => {
+    render(<Card />);
+    down();
+    expect(document.body.classList.contains('wp-dragging')).toBe(false);
+    vi.advanceTimersByTime(DRAG_HOLD_MS);
+    expect(document.body.classList.contains('wp-dragging')).toBe(true);
+    fireEvent.pointerUp(card());
+    expect(document.body.classList.contains('wp-dragging')).toBe(false);
+  });
+
+  it('stops cancelling selection once the gesture is over', () => {
+    render(<Card />);
+    down();
+    fireEvent.pointerUp(card());
+    const selectstart = new Event('selectstart', { cancelable: true, bubbles: true });
+    document.dispatchEvent(selectstart);
+    expect(selectstart.defaultPrevented).toBe(false);
+  });
+
+  it('a scroll flick releases the selection guard with the drag', () => {
+    render(<Card />);
+    down(100, 100);
+    move(100, 60); // a scroll, so the pending drag is dropped
+    const selectstart = new Event('selectstart', { cancelable: true, bubbles: true });
+    document.dispatchEvent(selectstart);
+    expect(selectstart.defaultPrevented).toBe(false);
+  });
+
   it('a mouse drags immediately — there is no scroll to disambiguate', () => {
     render(<Card />);
     down(100, 100, 'mouse');

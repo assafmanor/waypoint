@@ -54,10 +54,16 @@ Four things that are each a bug if missed, all covered:
 - The **click a completed drag fires is swallowed**, or a drop would also open the schedule sheet (the card is a button).
 - A long press on a button starts a **text selection / iOS callout**, so the draggable card kills `user-select` and the callout, and prevents the context menu while the hold is live.
 
+## 7. …and killing `user-select` on the card wasn't enough either
+
+Reported straight after (6): holding still starts a text selection. Two reasons `user-select: none` on the card can't cover it — **`selectstart` is the event that actually begins a selection** (the press asks for it before any style question arises), and once the finger moves it's selecting whatever sits **under** it, which is a row or a header, never the card it started on.
+
+So the guard works at the document level: a pending hold cancels `selectstart` page-wide, an armed drag parks `body.wp-dragging` (a `!important` selection kill that beats whatever the elements under the finger set), and release hands selection back and clears anything that slipped through. It's `useSelectionGuard`, shared with the **reorder grip** — that drag arms on contact rather than on a hold, but it travels over the same text, so it had the same latent bug.
+
 The Plan shelf hint now teaches the hold: `לחצו כדי לשבץ · לחיצה ארוכה לגרירה`.
 
 ## Testing
 
-`format` / `lint` / `typecheck` / `build` green; **958 tests / 90 files** (`edge-autoscroll.test.ts` + three `applySetMaybeDay` cases), plus a backend `MaybeItemsService.update` spec covering set → clear → two `Change` rows (runs on CI's Postgres; no DB in this sandbox). `useHoldToDrag.test.tsx` asserts the arbitration directly (10 cases) — it needs a `PointerEvent` stand-in, since jsdom implements neither pointer events nor pointer capture and the whole mechanism turns on `clientX/clientY` + `pointerType`.
+`format` / `lint` / `typecheck` / `build` green; **962 tests / 90 files** (`edge-autoscroll.test.ts` + three `applySetMaybeDay` cases), plus a backend `MaybeItemsService.update` spec covering set → clear → two `Change` rows (runs on CI's Postgres; no DB in this sandbox). `useHoldToDrag.test.tsx` asserts the arbitration directly (10 cases) — it needs a `PointerEvent` stand-in, since jsdom implements neither pointer events nor pointer capture and the whole mechanism turns on `clientX/clientY` + `pointerType`.
 
 Sizing and stroke are CSS-only, so they're verified by reading against the reported screenshots, not by a test — the shelf has no visual-regression harness. **The auto-scroll still wants a real-device pass** (ADR-0017): the pacing is tested, the touch feel isn't.
