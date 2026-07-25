@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest';
 import { EVENT_KIND, EVENT_STATUS, type TripEvent } from '@waypoint/shared';
-import { gapBetween, nextSlot } from './gaps';
+import { gapAfterLast, gapBeforeFirst, gapBetween, nextSlot } from './gaps';
 
 const TZ = 'Asia/Tokyo';
 const NOW = '2026-07-01T00:00:00Z';
@@ -51,6 +51,83 @@ describe('gapBetween', () => {
   it('returns null when the next event has no start time', () => {
     const untimed = { ...ev('b', '00:00'), startsAt: undefined };
     expect(gapBetween(ev('a', '10:00'), untimed, TZ)).toBeNull();
+  });
+});
+
+const DATE = '2026-07-07';
+const untimed = (id: string): TripEvent => ({ ...ev(id, '00:00'), startsAt: undefined });
+
+// The day's edges: free time with an event on ONE side only, which gapBetween
+// structurally cannot see (session-123).
+describe('gapBeforeFirst', () => {
+  it('runs from the day window to the first event, hugging it', () => {
+    // 07:00 → 10:00 free; the prefill is the hour BEFORE the tour, not the hour
+    // after breakfast — "before this" is the whole gesture.
+    const gap = gapBeforeFirst([ev('tour', '10:00'), ev('dinner', '19:00')], DATE, TZ);
+    expect(gap!.minutes).toBe(180);
+    expect(gap!.fill).toEqual({ date: DATE, start: '09:00', end: '10:00' });
+  });
+
+  it('fills exactly a gap shorter than the default block', () => {
+    const gap = gapBeforeFirst([ev('a', '08:00')], DATE, TZ);
+    expect(gap!.minutes).toBe(60);
+    expect(gap!.fill).toEqual({ date: DATE, start: '07:00', end: '08:00' });
+  });
+
+  it('returns null when the day starts too early to leave room', () => {
+    expect(gapBeforeFirst([ev('early', '07:30')], DATE, TZ)).toBeNull(); // 30 min
+    expect(gapBeforeFirst([ev('sharp', '07:00')], DATE, TZ)).toBeNull(); // none at all
+  });
+
+  it('measures from midnight when the first event beats the day window', () => {
+    // A 05:30 flight: the small hours in front of it are exactly when "add the taxi
+    // before this" gets asked, so the window is a floor, not a wall.
+    const gap = gapBeforeFirst([ev('flight', '05:30')], DATE, TZ);
+    expect(gap!.minutes).toBe(330);
+    expect(gap!.fill).toEqual({ date: DATE, start: '04:30', end: '05:30' });
+  });
+
+  it('reads the earliest start, not the first row', () => {
+    const gap = gapBeforeFirst([ev('late', '18:00'), ev('early', '09:00')], DATE, TZ);
+    expect(gap!.fill.end).toBe('09:00');
+  });
+
+  it('returns null with nothing timed to hang off', () => {
+    expect(gapBeforeFirst([], DATE, TZ)).toBeNull();
+    expect(gapBeforeFirst([untimed('idea')], DATE, TZ)).toBeNull();
+  });
+});
+
+describe('gapAfterLast', () => {
+  it('runs from the last event to the end of the day, hugging it', () => {
+    const gap = gapAfterLast([ev('a', '09:00'), ev('b', '19:00', '20:00')], DATE, TZ);
+    expect(gap!.minutes).toBe(239); // 20:00 → 23:59
+    // The same slot the foot-of-the-day add button offers.
+    expect(gap!.fill).toEqual(nextSlot([ev('a', '09:00'), ev('b', '19:00', '20:00')], DATE, TZ));
+    expect(gap!.fill).toEqual({ date: DATE, start: '20:00', end: '21:00' });
+  });
+
+  it('uses the latest end, not the last-by-start row', () => {
+    const gap = gapAfterLast(
+      [ev('long', '10:00', '16:00'), ev('short', '12:00', '13:00')],
+      DATE,
+      TZ,
+    );
+    expect(gap!.fill.start).toBe('16:00');
+  });
+
+  it('returns null when the day is already full to the small hours', () => {
+    expect(gapAfterLast([ev('late', '22:00', '23:15')], DATE, TZ)).toBeNull(); // 44 min
+  });
+
+  it('returns null when the last event runs past midnight (ADR-0037 overnight)', () => {
+    const club = { ...ev('club', '23:00'), endsAt: '2026-07-08T02:00:00+09:00' };
+    expect(gapAfterLast([club], DATE, TZ)).toBeNull();
+  });
+
+  it('returns null with nothing timed to hang off', () => {
+    expect(gapAfterLast([], DATE, TZ)).toBeNull();
+    expect(gapAfterLast([untimed('idea')], DATE, TZ)).toBeNull();
   });
 });
 

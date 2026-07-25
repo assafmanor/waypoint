@@ -443,6 +443,58 @@ test.describe('a day with nothing on it', () => {
   });
 });
 
+// The day's EDGES (session-123): free time before the first event and after the last,
+// which `gapBetween` structurally cannot see because each has an event on ONE side
+// only. Same chip, same drop contract, so "drag it before the first" stops being the
+// one thing the gesture could not say.
+test.describe("a day's edge gaps", () => {
+  test.beforeEach(({ page }) =>
+    bootBuilder(page, {
+      events: [event('ev-1', '09:00', 'בוקר'), event('ev-2', '12:00', 'צהריים')],
+      maybeItems: IDEAS,
+    }),
+  );
+
+  test('offers a chip before the first event and after the last', async ({ page }) => {
+    // 07:00 (the day window) → 09:00 before it, 09:00 → 12:00 between, 12:00 → 23:59
+    // after. Each hugs the event it is named for, so the leading one starts at 08:00.
+    await expect(page.locator('.gap')).toHaveCount(3);
+    await expect(page.locator('.gap').first()).toHaveAttribute('data-gap-start', '08:00');
+    await expect(page.locator('.gap').last()).toHaveAttribute('data-gap-start', '12:00');
+  });
+
+  test('an idea dropped before the first event opens the form on the hour before it', async ({
+    page,
+  }) => {
+    const cdp = await page.context().newCDPSession(page);
+    const card = await centre(page, '.wp-maybecard');
+
+    await touch(cdp, 'touchStart', card.x, card.y);
+    await expect(page.locator('.wp-maybecard.dragging')).toBeVisible();
+    await holdOver(cdp, page, '.gap[data-gap-start="08:00"]');
+    await touch(cdp, 'touchEnd');
+
+    const form = page.getByRole('dialog');
+    await expect(form).toBeVisible();
+    await expect(form.getByRole('button', { name: /08:00/ })).toBeVisible();
+  });
+
+  // A row takes the same targets a card does (session-123), and it moves silently:
+  // it exists already, so there is nothing to choose in a form.
+  test('a row dropped there moves in front of the first event', async ({ page }) => {
+    const cdp = await page.context().newCDPSession(page);
+    const row = await centre(page, '[data-bld-id="ev-2"]');
+
+    await touch(cdp, 'touchStart', row.x, row.y);
+    await expect(page.locator('.bld.dragging')).toBeVisible();
+    await holdOver(cdp, page, '.gap[data-gap-start="08:00"]');
+    await touch(cdp, 'touchEnd');
+
+    await expect(page.locator('[data-bld-id="ev-2"] .bld-time')).toContainText('08:00');
+    await expect(page.getByRole('dialog')).toHaveCount(0);
+  });
+});
+
 test.describe('a builder row, dragged by a hold from anywhere on it', () => {
   // The reverse direction (session-118): the shelf could send a card onto the day, and
   // the day had no way to send a row back. Same two groups, opposite meaning.
@@ -558,6 +610,31 @@ test.describe('a builder row, dragged by a hold from anywhere on it', () => {
     await expect(page.locator('[data-bld-id="ev-1"]')).toBeVisible();
     expect(await dayParam(page)).toBe(TOMORROW);
     expect(before).not.toBe(TOMORROW);
+  });
+
+  // The other half of session-123: an event carried to another day had only the shelf
+  // to land on once it got there, which turns it into an IDEA. The empty day takes it
+  // as what it already is.
+  test('carried onto an empty day, it lands as an event and not as an idea', async ({ page }) => {
+    const cdp = await page.context().newCDPSession(page);
+    const row = await centre(page, '[data-bld-id="ev-1"]');
+
+    await touch(cdp, 'touchStart', row.x, row.y);
+    await expect(page.locator('.bld.dragging')).toBeVisible();
+    const pill = await centre(page, `[data-day-pill="${TOMORROW}"]`);
+    await touch(cdp, 'touchMove', pill.x, pill.y);
+    await expect.poll(() => dayParam(page), { timeout: 3000 }).toBe(TOMORROW);
+
+    // Tomorrow has nothing on it, so the empty state is the drop zone — armed for a
+    // row now, not just for a card.
+    await holdOver(cdp, page, '.builder-empty');
+    await touch(cdp, 'touchEnd');
+
+    await expect(page.locator('[data-bld-id="ev-1"]')).toBeVisible();
+    await expect(page.locator('[data-bld-id="ev-1"] .bld-time')).toContainText('07:00');
+    // Not on the shelf: that is what dropping it on a shelf group would have meant.
+    await expect(page.locator('.wp-maybecard')).toHaveCount(0);
+    expect(await dayParam(page)).toBe(TOMORROW);
   });
 
   // Cancelling puts the day back: the switch was scaffolding for a drag that didn't
