@@ -259,3 +259,13 @@ Asked as a question, and the answer that holds is a line between **create** and 
 `SHELF_DROP_ACTION.SCHEDULE` is retired — with creates routed through `CHOOSE_TIME` (which now carries an optional prefill) there is nothing left that schedules an idea straight from a drop.
 
 **Not changed, deliberately:** tapping a gap chip and picking an idea from the gap-fill sheet still commits into that slot. There the gap is the _premise_ — you chose the slot, then the idea — whereas in a drag you chose the idea and the gap is where your finger landed, so the slot is the part worth confirming.
+
+## Amendment (2026-07-25, session 122) — the mount-time guard outlives the gesture, not the other way round
+
+The session-120 amendment above is right about _where_ the touch-scroll guard lives and wrong about _when_ it comes off. Reported immediately after it shipped: "after starting the drag operation and starting the move it cancels briefly after, and the auto-scroll isn't working."
+
+Session 120's teardown removed the guard **from the element** at the end of every gesture — but that listener is the one attached at **mount**, before any touch exists, which is the whole reason an armed drag can suppress the native pan at all (the WHEN half of the same comment). The ref callback is stable, so nothing ever re-attaches it. So the first gesture on a card — a drag, a tap, even a scroll that never armed — stripped the card's permanent guard, and from then on that card's drags panned the page and got their pointer cancelled a moment after the finger moved. The auto-scroll "not working" was the same bug seen from the other end: the drag was dead before it could reach an edge band.
+
+**The guard is only the gesture's to remove when the element is gone from the tree** (`!el.isConnected`) — the orphan case session 120 introduced the escape hatch for, where the ref cleanup deliberately skipped removal and the teardown is the only other chance. A still-mounted element keeps its mount-time listener.
+
+The class of miss is worth naming, because it is now three sessions old: **every e2e in `shelf-drag.spec.ts` booted cold and touched its target once**, which is the one thing a real session never does. Two tests were added for the second gesture — a shelf card and a builder row — and they fail on session 120's code and pass on this one.

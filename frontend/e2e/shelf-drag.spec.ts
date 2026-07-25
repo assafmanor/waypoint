@@ -610,3 +610,68 @@ test.describe('a builder row, dragged by a hold from anywhere on it', () => {
     expect(await dayParam(page)).toBe(TOMORROW);
   });
 });
+
+// The gesture has to work TWICE. Every test above starts from a cold boot and touches
+// its target once, which is the one thing a real session never does — and the gap this
+// class of bug keeps falling through (reported after session 120: "starting the move it
+// cancels briefly after, and the auto-scroll isn't working").
+test.describe('a second gesture on the same element', () => {
+  test.beforeEach(({ page }) => bootBuilder(page, { events: EVENTS, maybeItems: IDEAS }));
+
+  test('a shelf card still owns the finger on its second drag', async ({ page }) => {
+    const cdp = await page.context().newCDPSession(page);
+    const bands = await bodyBands(page);
+
+    // Gesture one: lift and release on nothing. Nothing about it should leave the card
+    // worse off for the next one.
+    const first = await centre(page, `${POOL_STRIP} .wp-maybecard`);
+    await touch(cdp, 'touchStart', first.x, first.y);
+    await expect(page.locator('.wp-maybecard.dragging')).toBeVisible();
+    await touch(cdp, 'touchEnd');
+    await expect(page.locator('.wp-maybecard.dragging')).toHaveCount(0);
+
+    // Gesture two, same card: arm, then move up the screen clear of both edge bands.
+    const again = await centre(page, `${POOL_STRIP} .wp-maybecard`);
+    await touch(cdp, 'touchStart', again.x, again.y);
+    await expect(page.locator('.wp-maybecard.dragging')).toBeVisible();
+    await touch(cdp, 'touchMove', again.x, bands.middleFrom);
+    await page.waitForTimeout(300);
+    const before = await scrollTop(page);
+
+    const span = bands.middleFrom - bands.middleTo;
+    for (const step of [0.25, 0.5, 0.75, 1]) {
+      await touch(cdp, 'touchMove', again.x, bands.middleFrom - span * step);
+    }
+    // The two halves of the report, in order: the list must not pan under the finger…
+    expect(await scrollTop(page), 'the second drag still suppresses the native pan').toBe(before);
+    // …and the drag must still be alive after the moves (a pan cancels the pointer).
+    await expect(page.locator('.wp-maybecard.dragging'), 'the second drag survived').toBeVisible();
+
+    await touch(cdp, 'touchEnd');
+  });
+
+  test('a builder row still auto-scrolls on its second drag', async ({ page }) => {
+    const cdp = await page.context().newCDPSession(page);
+    await page.locator('.body').evaluate((el) => (el.scrollTop = el.scrollHeight));
+    const bands = await bodyBands(page);
+
+    const first = await centre(page, '[data-bld-id="ev-1"]');
+    await touch(cdp, 'touchStart', first.x, first.y);
+    await expect(page.locator('.bld.dragging')).toBeVisible();
+    await touch(cdp, 'touchEnd');
+    await expect(page.locator('.bld.dragging')).toHaveCount(0);
+
+    await page.locator('.body').evaluate((el) => (el.scrollTop = el.scrollHeight));
+    const before = await scrollTop(page);
+    const again = await centre(page, '[data-bld-id="ev-1"]');
+    await touch(cdp, 'touchStart', again.x, again.y);
+    await expect(page.locator('.bld.dragging')).toBeVisible();
+    await touch(cdp, 'touchMove', again.x, bands.topBand);
+
+    // Held in the top band: the page scrolls up, and the drag is still live to do it.
+    await expect.poll(() => scrollTop(page), { timeout: 3000 }).toBeLessThan(before);
+    await expect(page.locator('.wp-dragghost')).toBeVisible();
+
+    await touch(cdp, 'touchEnd');
+  });
+});
