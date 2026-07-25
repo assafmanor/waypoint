@@ -29,6 +29,25 @@ Building Phase 4b ([ADR-0106](0106-maps-and-places-epic-scope-and-phasing.md) §
 
 The time renders in the **event's own** display zone (ADR-0107), like every other time in the app, not the trip primary.
 
+## Amendment (2026-07-25, session 107) — on a live surface, what's behind you sinks
+
+Session 106 made the list read in trip order. A screenshot of the shipped result showed that isn't enough on its own: at **14:11**, a day's rows read `Tavernaki Filippos · Avram's Grandson · מערת הקרח בקאטלה` — the two places already visited on top, and the row carrying `היעד הבא · 17:00` **last**. Chronological order is right about the sequence and wrong about the priority: the map is Trip mode's live surface, and the question there is what's ahead.
+
+**Decision: in Trip mode a place whose moment has passed sinks to the bottom of its day**, below everything still ahead of you. The rule is a tier, not a different order — within each tier the day view's start-then-`sortOrder` vocabulary is untouched, so §106's "the map and the timeline cannot disagree" still holds in the only sense that matters: they order the same events the same way. What differs is that the timeline expresses "done vs ahead" with its **now-line** (position = time, [ADR-0043](0043-day-view-now-line-and-derived-phases.md)) while the list has no time axis to hang one on, so it expresses the same split by partitioning.
+
+The within-day order is therefore: **ahead of you (clocked) → untimed → ambient backdrop → behind you.**
+
+Four specifics:
+
+- **"Behind you" means everything there has ended**, using `eventPhase`'s own boundary (`endsAt ?? startsAt`). An event running 13:00-18:00 is **not** behind you at 14:00 — in-progress is maximally relevant and keeps its chronological lead — and a stay is not behind you mid-stay, only once check-out passes. A place with several references there is behind you only once the **latest** of them has ended.
+- **An untimed event outranks a visited one.** Nothing about it says it's done, so it stays above the block that is.
+- **The sunk block stays chronological among itself** — same rule, lower tier — so the day reads "what's left, in order" then "what happened, in order" rather than zigzagging.
+- **Trip mode only.** Plan mode passes no clock: it drafts the sequence, where "past" says nothing about a trip not yet taken, and reordering under an editor's hands would be actively unhelpful. This matches the mode split navigate-to-next and near-me already use.
+
+**The block is labelled `כבר היינו`**, reusing the near-me group header (`.map-grouphead`). Without it the list would silently reorder as the clock passes each stop, with no on-screen answer to "why is that down there" — the rows carry no time of their own yet. (That gap is the still-deferred follow-up (c), richer `<time> · <what>` row meta; it would make the partition self-evident and is now unblocked.)
+
+A wholly-past day is unaffected: everything is in the same tier, so its order is exactly what it was.
+
 ## Amendment (2026-07-25, session 106) — the list's default order is the order the trip happens in
 
 §1 designed the row but never said what orders the rows, and the Phase-3 build filled the gap with `date`, then **place name**. Inside Trip mode's default scope — one day — every place shares that date, so **today's map was alphabetical**. Two things were wrong with that, and the second is why this is an amendment rather than a feature:

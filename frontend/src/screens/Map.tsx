@@ -5,7 +5,7 @@
 // the chip counts and each row's category badge/commitment. No rendered map yet
 // (that's Phase 6): rows deep-link out to Google Maps (ADR-0106 "deep-link, don't
 // rebuild nav") — the row tap views the place, the trailing נווט gives directions.
-import { useEffect, useMemo, useRef, useState } from 'react';
+import { Fragment, useEffect, useMemo, useRef, useState } from 'react';
 import { iconForCategory, matchesAnyTerm, type EventCategory, type Place } from '@waypoint/shared';
 import { useTrip } from '../state/trip-state';
 import { useMode } from '../state/mode-state';
@@ -15,7 +15,9 @@ import {
   buildPlaceUsageIndex,
   comparePlacesBySchedule,
   countPlacesByCategory,
+  isDayUsagePast,
   matchesPlaceFilter,
+  placeDay,
   PLACE_CATEGORY_ALL,
   type PlaceCategoryFilter,
   type PlaceUsage,
@@ -168,9 +170,25 @@ export function MapView() {
   // within a day, the day view's own start-then-sortOrder vocabulary, so the two
   // surfaces can't disagree. Day-scoped, it ranks by that day's moments; all-days,
   // by each place's earliest day.
-  const nameOf = (u: PlaceUsage) => placeById.get(u.placeId)?.name ?? '';
-  const bySchedule = (a: PlaceUsage, b: PlaceUsage) =>
-    comparePlacesBySchedule(a, b, nameOf, allDays ? undefined : activeDate);
+  //
+  // Trip mode also sinks what's behind you (session-107 amendment): the live question
+  // is what's ahead, so a place you've already been must not outrank the stop you're
+  // heading to. Plan mode passes no clock — it drafts the sequence, where "past" says
+  // nothing about a trip not yet taken.
+  const scopedDate = allDays ? undefined : activeDate;
+  const orderCtx = {
+    nameOf: (u: PlaceUsage) => placeById.get(u.placeId)?.name ?? '',
+    onDate: scopedDate,
+    nowMs: mode === 'trip' ? nowMs : undefined,
+  };
+  const bySchedule = (a: PlaceUsage, b: PlaceUsage) => comparePlacesBySchedule(a, b, orderCtx);
+  // Which rows the sink applies to — the list labels that block rather than
+  // reordering silently as the clock passes each stop.
+  const isBehind = (u: PlaceUsage) => {
+    if (orderCtx.nowMs == null) return false;
+    const day = placeDay(u, scopedDate);
+    return day ? isDayUsagePast(day, orderCtx.nowMs) : false;
+  };
 
   // Near-me order: measured places nearest-first, and a coordless Place-lite sinks
   // to the end with no distance — it can't be measured until the picker enriches it
@@ -245,16 +263,27 @@ export function MapView() {
     );
   };
 
-  // The list, plus the "לפי קרבה אליך" group header near-me sorts under. One shared
-  // renderer so the search overlay's list gets the same treatment.
-  const renderList = (usages: PlaceUsage[]) => (
-    <>
-      {nearActive && usages.some((u) => !u.coordless) && (
-        <div className="map-grouphead">{t.map.near.groupHeader}</div>
-      )}
-      <div className="map-list">{usages.map(renderRow)}</div>
-    </>
-  );
+  // The list and its group headers. One shared renderer so the search overlay's list
+  // gets the same treatment. Near-me labels the whole list; schedule order labels the
+  // sunk block where it starts, so "why is this down here" is answered on screen.
+  const renderList = (usages: PlaceUsage[]) => {
+    const firstBehind = nearActive ? -1 : usages.findIndex(isBehind);
+    return (
+      <>
+        {nearActive && usages.some((u) => !u.coordless) && (
+          <div className="map-grouphead">{t.map.near.groupHeader}</div>
+        )}
+        <div className="map-list">
+          {usages.map((usage, i) => (
+            <Fragment key={usage.placeId}>
+              {i === firstBehind && <div className="map-grouphead">{t.map.behindHeader}</div>}
+              {renderRow(usage)}
+            </Fragment>
+          ))}
+        </div>
+      </>
+    );
+  };
 
   return (
     <div className="map-screen" data-mode={mode} data-offline={offline || undefined}>

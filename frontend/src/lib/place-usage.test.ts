@@ -214,10 +214,11 @@ describe('comparePlacesBySchedule (the list reads in trip order)', () => {
   const at = (hhmm: string) => `${DAY}T${hhmm}:00Z`;
   const nameOf = (u: PlaceUsage) => u.placeId;
 
-  /** Order the given places as the day-scoped list would. */
-  const order = (idx: Map<string, PlaceUsage>, onDate?: string) =>
+  /** Order the given places as the list would. `nowMs` opts into Trip mode's
+   *  sink-what's-behind-you tier; without it the order is pure sequence. */
+  const order = (idx: Map<string, PlaceUsage>, onDate?: string, nowMs?: number) =>
     [...idx.values()]
-      .sort((a, b) => comparePlacesBySchedule(a, b, nameOf, onDate))
+      .sort((a, b) => comparePlacesBySchedule(a, b, { nameOf, onDate, nowMs }))
       .map((u) => u.placeId);
 
   it('orders a day by the clock, not the alphabet', () => {
@@ -321,6 +322,115 @@ describe('comparePlacesBySchedule (the list reads in trip order)', () => {
     );
     // All-days scope: the dateless pair goes last, alphabetical among themselves.
     expect(order(idx)).toEqual(['zzz-scheduled', 'aaa-unlinked', 'mmm-idea']);
+  });
+
+  describe('what is behind you sinks (Trip mode passes the clock)', () => {
+    const NOW = Date.parse(at('14:11'));
+
+    /** The reported day: two stops already visited, the next one at 17:00. */
+    const reportedDay = () =>
+      buildPlaceUsageIndex(
+        [
+          event({
+            id: 'e1',
+            placeId: 'lunch',
+            date: DAY,
+            startsAt: at('12:00'),
+            endsAt: at('13:00'),
+          }),
+          event({
+            id: 'e2',
+            placeId: 'morning',
+            date: DAY,
+            startsAt: at('09:00'),
+            endsAt: at('10:00'),
+          }),
+          event({ id: 'e3', placeId: 'ice-cave', date: DAY, startsAt: at('17:00') }),
+        ],
+        [],
+        [],
+        [place('lunch'), place('morning'), place('ice-cave')],
+      );
+
+    it('puts the next stop first and the visited ones below it', () => {
+      const idx = reportedDay();
+      // Pure sequence (Plan mode / no clock) keeps the day chronological…
+      expect(order(idx, DAY)).toEqual(['morning', 'lunch', 'ice-cave']);
+      // …while the live surface leads with what is still ahead.
+      expect(order(idx, DAY, NOW)).toEqual(['ice-cave', 'morning', 'lunch']);
+    });
+
+    it('the sunk block stays chronological among itself', () => {
+      expect(order(reportedDay(), DAY, NOW).slice(1)).toEqual(['morning', 'lunch']);
+    });
+
+    it('an event in progress is NOT behind you — it leads', () => {
+      const idx = buildPlaceUsageIndex(
+        [
+          event({
+            id: 'e1',
+            placeId: 'ongoing',
+            date: DAY,
+            startsAt: at('13:00'),
+            endsAt: at('18:00'),
+          }),
+          event({ id: 'e2', placeId: 'later', date: DAY, startsAt: at('20:00') }),
+        ],
+        [],
+        [],
+        [place('ongoing'), place('later')],
+      );
+      expect(order(idx, DAY, NOW)).toEqual(['ongoing', 'later']);
+    });
+
+    it('a stay mid-stay is not behind you, but is once check-out passes', () => {
+      const stay = (checkout: string) =>
+        buildPlaceUsageIndex(
+          [
+            event({
+              id: 'h',
+              placeId: 'hotel',
+              date: DAY,
+              endDate: DAY,
+              startsAt: at('09:00'),
+              endsAt: checkout,
+            }),
+            event({ id: 'e', placeId: 'dinner', date: DAY, startsAt: at('20:00') }),
+          ],
+          [],
+          [],
+          [place('hotel'), place('dinner')],
+        );
+      // Check-out still ahead → the stay keeps its chronological lead.
+      expect(order(stay(at('18:00')), DAY, NOW)).toEqual(['hotel', 'dinner']);
+      // Check-out passed → it sinks below the evening that is still ahead.
+      expect(order(stay(at('11:00')), DAY, NOW)).toEqual(['dinner', 'hotel']);
+    });
+
+    it('an untimed event outranks a visited one — nothing says it is done', () => {
+      const idx = buildPlaceUsageIndex(
+        [
+          event({
+            id: 'e1',
+            placeId: 'visited',
+            date: DAY,
+            startsAt: at('09:00'),
+            endsAt: at('10:00'),
+          }),
+          event({ id: 'e2', placeId: 'sometime', date: DAY }),
+        ],
+        [],
+        [],
+        [place('visited'), place('sometime')],
+      );
+      expect(order(idx, DAY, NOW)).toEqual(['sometime', 'visited']);
+    });
+
+    it('a wholly-past day is unaffected — everything is behind you, so order holds', () => {
+      const idx = reportedDay();
+      const tomorrow = Date.parse('2026-07-08T09:00:00Z');
+      expect(order(idx, DAY, tomorrow)).toEqual(['morning', 'lunch', 'ice-cave']);
+    });
   });
 
   it('across days it reads in trip order, earliest day first', () => {
