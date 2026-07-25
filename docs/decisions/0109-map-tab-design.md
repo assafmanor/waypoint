@@ -29,6 +29,24 @@ Building Phase 4b ([ADR-0106](0106-maps-and-places-epic-scope-and-phasing.md) §
 
 The time renders in the **event's own** display zone (ADR-0107), like every other time in the app, not the trip primary.
 
+## Amendment (2026-07-25, session 106) — the list's default order is the order the trip happens in
+
+§1 designed the row but never said what orders the rows, and the Phase-3 build filled the gap with `date`, then **place name**. Inside Trip mode's default scope — one day — every place shares that date, so **today's map was alphabetical**. Two things were wrong with that, and the second is why this is an amendment rather than a feature:
+
+1. An alphabetical list of today's places answers nothing — a 20:00 bar can lead a day whose 09:00 stop is at the bottom. The tab's job is "what now / what next"; the order should be the one you will live.
+2. **§6's own copy already promised otherwise.** The denied banner reads `מיקום כבוי · הרשימה ממוינת לפי לו״ז` — "sorted by the itinerary" — which was true across days and false within one. Shipped copy was making a claim the sort didn't honour.
+
+**Decision: the default order is the order the trip happens in**, and within a day it reuses **the day view's own vocabulary** rather than inventing a second one — start instant, then `sortOrder` (`buildTimeTree`), with untimed events after the clocked ones exactly as `DayView` renders them. The map and the timeline therefore cannot disagree about the same day. This is the ADR-0107 session-102 lesson applied to ordering: a shared **rule**, not two surfaces each deriving their own.
+
+Three things have no position in a day's schedule and sink, in this order: an **untimed** event (a date, no clock), a strictly-middle **ambient** stay night (backdrop — [ADR-0054](0054-ambient-span-events-off-the-day-schedule.md) puts ambient spans off the day schedule, so it sits below it rather than leading the day on its days-old check-in instant), and a reference with **no day at all** — an unlinked booking or a shelf idea, which a `Booking` carries no time for. That last tier is also a fix: dateless places previously sorted to the **top** of the all-days list, above everything scheduled, because an empty date string compares first. Place name remains the final tiebreak, so the order is total and stable.
+
+Two consequences worth recording:
+
+- **A transport event's two endpoints carry their own moments** — the origin at departure, the destination at arrival — so a flight's ends never tie and always list in travel order. Previously both inherited the departure instant.
+- **The instant is absolute, not wall-clock.** On a zone-crossing day the list still reads in the sequence you actually live it, which is what ADR-0107's per-event display zones are _about_ — the zone is presentation, the ordering is the instant.
+
+**No sort control, and no second sort.** Near-me (§7) stays the tab's only ordering toggle; it now falls back to schedule order for ties and unmeasured rows instead of the alphabet. An explicit sort affordance was considered and rejected for now: with the default honest, a picker would add surface without answering a question the two existing orders don't already cover. Commitment-ranked ordering (hard → soft → idea) is the axis a third sort would add, and it is **not** adopted here — the hard/soft grammar already marks commitment on every row (🔒, dashed), so ranking by it would restate what the row already says.
+
 ## Amendment (2026-07-25, session 105) — the hard-denied re-enable affordance: retry or instruct, never a fake deep-link
 
 Building Phase 4a hit a §6 decision the web cannot honour. §6 says the denied banner "offers a re-enable affordance that **deep-links to the OS location settings** when the permission is hard-denied." **No such API exists for a web page** — a site cannot open OS or browser location settings, and once a browser has hard-denied a site, no call can re-trigger its permission prompt. A button there would look like it does something and do nothing.

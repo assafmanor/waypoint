@@ -7,6 +7,7 @@ import {
   EVENT_KIND,
   EVENT_SOURCE,
   EVENT_STATUS,
+  type Booking,
   type MaybeItem,
   type Place,
   type TripEvent,
@@ -46,6 +47,7 @@ const maybe = (p: Partial<MaybeItem> & Pick<MaybeItem, 'id'>): MaybeItem =>
 let tripEvents: TripEvent[] = [];
 let tripMaybes: MaybeItem[] = [];
 let tripPlaces: Place[] = [];
+let tripBookings: Booking[] = [];
 let currentMode = 'trip';
 let isOffline = false;
 
@@ -59,13 +61,13 @@ vi.mock('../state/trip-state', () => ({
       endDate: '2026-07-25',
     },
     events: tripEvents,
-    bookings: [],
+    bookings: tripBookings,
     maybeItems: tripMaybes,
     places: tripPlaces,
     activeDate: ACTIVE_DATE,
     zoneEvidence: {
       events: tripEvents,
-      bookings: [],
+      bookings: tripBookings,
       places: tripPlaces,
       crossings: [],
       primaryZone: 'Asia/Tokyo',
@@ -131,6 +133,7 @@ describe('MapView (Phase 3, ADR-0109/0110)', () => {
     tripEvents = [];
     tripMaybes = [];
     tripPlaces = [];
+    tripBookings = [];
     currentMode = 'trip';
     isOffline = false;
     geoFix = null;
@@ -191,6 +194,52 @@ describe('MapView (Phase 3, ADR-0109/0110)', () => {
   it('empty trip → the empty state', () => {
     render(wrap(<MapView />));
     expect(screen.getByText(t.map.empty.title)).toBeTruthy();
+  });
+
+  describe('list order is trip order (ADR-0109 §1 amendment)', () => {
+    const names = () =>
+      [...document.querySelectorAll('.place .map-name')].map((n) => n.textContent);
+
+    it('today reads by the clock, not the alphabet', () => {
+      // Alphabetical order would be the exact reverse of the schedule.
+      tripPlaces = [place('zoo', true), place('market', true), place('bar', true)];
+      tripEvents = [
+        event({ id: 'e1', placeId: 'bar', startsAt: `${ACTIVE_DATE}T20:00:00Z` }),
+        event({ id: 'e2', placeId: 'market', startsAt: `${ACTIVE_DATE}T13:00:00Z` }),
+        event({ id: 'e3', placeId: 'zoo', startsAt: `${ACTIVE_DATE}T09:00:00Z` }),
+      ];
+      render(wrap(<MapView />));
+      expect(names()).toEqual(['zoo', 'market', 'bar']);
+    });
+
+    it('a flight’s two endpoints read in travel order, not alphabetically', () => {
+      tripPlaces = [place('zzz-departure', true), place('aaa-landing', true)];
+      tripBookings = [
+        {
+          id: 'bk',
+          tripId: 't1',
+          type: 'flight',
+          title: 'flight',
+          source: 'manual',
+          fromPlaceId: 'zzz-departure',
+          toPlaceId: 'aaa-landing',
+          createdAt: '',
+          updatedAt: '',
+          updatedBy: 'u1',
+        } as Booking,
+      ];
+      tripEvents = [
+        event({
+          id: 'f',
+          placeId: undefined,
+          bookingId: 'bk',
+          startsAt: `${ACTIVE_DATE}T07:15:00Z`,
+          endsAt: `${ACTIVE_DATE}T11:00:00Z`,
+        }),
+      ];
+      render(wrap(<MapView />));
+      expect(names()).toEqual(['zzz-departure', 'aaa-landing']);
+    });
   });
 
   describe('near me now (Phase 4a, ADR-0109 §6-7)', () => {

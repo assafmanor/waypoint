@@ -13,6 +13,7 @@ import { useMapScope } from '../state/map-scope-state';
 import { useIsOffline } from '../lib/outbox';
 import {
   buildPlaceUsageIndex,
+  comparePlacesBySchedule,
   countPlacesByCategory,
   matchesPlaceFilter,
   PLACE_CATEGORY_ALL,
@@ -163,23 +164,27 @@ export function MapView() {
     })),
   ];
 
-  const byName = (a: PlaceUsage, b: PlaceUsage) =>
-    (a.days[0]?.date ?? '').localeCompare(b.days[0]?.date ?? '') ||
-    (placeById.get(a.placeId)?.name ?? '').localeCompare(placeById.get(b.placeId)?.name ?? '');
+  // The default order is the order the trip HAPPENS in (ADR-0109 §1 amendment) —
+  // within a day, the day view's own start-then-sortOrder vocabulary, so the two
+  // surfaces can't disagree. Day-scoped, it ranks by that day's moments; all-days,
+  // by each place's earliest day.
+  const nameOf = (u: PlaceUsage) => placeById.get(u.placeId)?.name ?? '';
+  const bySchedule = (a: PlaceUsage, b: PlaceUsage) =>
+    comparePlacesBySchedule(a, b, nameOf, allDays ? undefined : activeDate);
 
   // Near-me order: measured places nearest-first, and a coordless Place-lite sinks
   // to the end with no distance — it can't be measured until the picker enriches it
-  // (ADR-0109 §7). Ties and unmeasured rows fall back to the default day/name order,
-  // so the list is never arbitrary.
+  // (ADR-0109 §7). Ties and unmeasured rows fall back to the schedule order, so the
+  // list is never arbitrary.
   const byDistance = (a: PlaceUsage, b: PlaceUsage) => {
     const da = distances.get(a.placeId);
     const db = distances.get(b.placeId);
-    if (da == null && db == null) return byName(a, b);
+    if (da == null && db == null) return bySchedule(a, b);
     if (da == null) return 1;
     if (db == null) return -1;
-    return da - db || byName(a, b);
+    return da - db || bySchedule(a, b);
   };
-  const listOrder = nearActive ? byDistance : byName;
+  const listOrder = nearActive ? byDistance : bySchedule;
 
   const visible = dayScoped
     .filter((u) => matchesPlaceFilter(u, { category: activeCategory, maybesOnly }))
