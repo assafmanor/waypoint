@@ -28,6 +28,8 @@ import {
 } from '../lib/places';
 import { formatTime } from '../lib/time';
 import { useClock } from '../lib/useClock';
+import { formatDistance, haversineMeters } from '../lib/distance';
+import { useGeolocation } from '../lib/useGeolocation';
 import { EVENT_CATEGORY_OPTIONS } from '../lib/category-options';
 import { CATEGORY_PIN_HUE, ICONS } from '../constants';
 import { ChoiceGrid, type Choice } from '../ui/primitives/ChoiceGrid';
@@ -76,6 +78,57 @@ export function MapView() {
   // A coordless Place-lite the user chose to enrich from the map (＋ מיקום).
   const [enrichTarget, setEnrichTarget] = useState<Place | null>(null);
 
+  // ── "Near me now" (Phase 4a, ADR-0109 §6-7) ───────────────────────────────
+  // Strictly additive: the tab has already rendered everything above without any
+  // location, and nothing below turns a refusal into a dead end. `nearMe` is the
+  // user's intent; `nearActive` is whether we can actually honour it right now.
+  const geo = useGeolocation();
+  const [nearMe, setNearMe] = useState(false);
+  const [promptOpen, setPromptOpen] = useState(false);
+  const [noticeDismissed, setNoticeDismissed] = useState(false);
+  const nearActive = nearMe && !offline && geo.status === 'granted' && !!geo.coords;
+  // Offline you cannot re-locate, so a distance would be a stale claim: the chip
+  // goes away and the rows that were showing numbers say so instead.
+  const staleDistances = nearMe && offline;
+  const locationRefused = geo.status === 'denied' || geo.status === 'unavailable';
+  const showNotice = nearMe && !offline && locationRefused && !noticeDismissed;
+
+  const askForLocation = () => {
+    setPromptOpen(false);
+    setNearMe(true);
+    setNoticeDismissed(false);
+    geo.request();
+  };
+  const toggleNearMe = () => {
+    if (nearMe) {
+      setNearMe(false);
+      return;
+    }
+    // A fix we already hold needs no second prompt; otherwise state the reason
+    // first (ADR-0109 §6 — never a cold permission dialog).
+    if (geo.status === 'granted' && geo.coords) {
+      setNearMe(true);
+      return;
+    }
+    if (geo.blocked) {
+      setNearMe(true);
+      setNoticeDismissed(false);
+      return;
+    }
+    setPromptOpen(true);
+  };
+
+  const distances = useMemo(() => {
+    const here = geo.coords;
+    const byPlace = new Map<string, number>();
+    if (!here) return byPlace;
+    for (const place of places) {
+      if (place.lat == null || place.lng == null) continue;
+      byPlace.set(place.id, haversineMeters(here, { lat: place.lat, lng: place.lng }));
+    }
+    return byPlace;
+  }, [geo.coords, places]);
+
   const usageIndex = useMemo(
     () => buildPlaceUsageIndex(events, bookings, maybeItems, places),
     [events, bookings, maybeItems, places],
@@ -114,21 +167,35 @@ export function MapView() {
     (a.days[0]?.date ?? '').localeCompare(b.days[0]?.date ?? '') ||
     (placeById.get(a.placeId)?.name ?? '').localeCompare(placeById.get(b.placeId)?.name ?? '');
 
+  // Near-me order: measured places nearest-first, and a coordless Place-lite sinks
+  // to the end with no distance — it can't be measured until the picker enriches it
+  // (ADR-0109 §7). Ties and unmeasured rows fall back to the default day/name order,
+  // so the list is never arbitrary.
+  const byDistance = (a: PlaceUsage, b: PlaceUsage) => {
+    const da = distances.get(a.placeId);
+    const db = distances.get(b.placeId);
+    if (da == null && db == null) return byName(a, b);
+    if (da == null) return 1;
+    if (db == null) return -1;
+    return da - db || byName(a, b);
+  };
+  const listOrder = nearActive ? byDistance : byName;
+
   const visible = dayScoped
     .filter((u) => matchesPlaceFilter(u, { category: activeCategory, maybesOnly }))
-    .sort(byName);
+    .sort(listOrder);
 
   // Search spans every place in the trip (name + address), ignoring day scope and
   // filters — the same "search is global" rule as the Index.
   const searchResults = useMemo(() => {
-    if (!query.trim()) return allUsages.slice().sort(byName);
+    if (!query.trim()) return allUsages.slice().sort(listOrder);
     return allUsages
       .filter((u) => {
         const p = placeById.get(u.placeId);
         return p && matchesAnyTerm(query, [p.name, p.address]);
       })
-      .sort(byName);
-  }, [query, allUsages, placeById]);
+      .sort(listOrder);
+  }, [query, allUsages, placeById, nearActive, distances]);
 
   // navigate-to-next (ADR-0106 §6) on the list: not a re-sort or a second control,
   // just the one time-anchor cue the map's colour budget allows (ADR-0109 §6 — the
@@ -143,6 +210,16 @@ export function MapView() {
     return { placeId: dest.place.id, time: formatTime(dest.event.startsAt, zone) };
   }, [mode, events, bookings, places, nowMs, zoneEvidence]);
 
+  // A measured place shows its distance; offline it says so rather than asserting a
+  // number it can no longer refresh. A coordless row gets neither (ADR-0109 §7).
+  const distanceLabel = (usage: PlaceUsage): string | undefined => {
+    if (usage.coordless) return undefined;
+    if (staleDistances) return t.map.near.unavailable;
+    if (!nearActive) return undefined;
+    const meters = distances.get(usage.placeId);
+    return meters == null ? undefined : formatDistance(meters);
+  };
+
   const renderRow = (usage: PlaceUsage) => {
     const place = placeById.get(usage.placeId);
     if (!place) return null;
@@ -156,13 +233,26 @@ export function MapView() {
         place={place}
         ambient={prominence === 'ambient'}
         nextStopTime={nextStop?.placeId === usage.placeId ? nextStop.time : undefined}
+        distance={distanceLabel(usage)}
+        distanceStale={staleDistances}
         onEnrich={() => setEnrichTarget(place)}
       />
     );
   };
 
+  // The list, plus the "לפי קרבה אליך" group header near-me sorts under. One shared
+  // renderer so the search overlay's list gets the same treatment.
+  const renderList = (usages: PlaceUsage[]) => (
+    <>
+      {nearActive && usages.some((u) => !u.coordless) && (
+        <div className="map-grouphead">{t.map.near.groupHeader}</div>
+      )}
+      <div className="map-list">{usages.map(renderRow)}</div>
+    </>
+  );
+
   return (
-    <div className="map-screen" data-mode={mode}>
+    <div className="map-screen" data-mode={mode} data-offline={offline || undefined}>
       {offline && <StatusBanner tone="offline">{t.header.offlineNow}</StatusBanner>}
 
       <div className="map-filter-row">
@@ -205,15 +295,64 @@ export function MapView() {
         >
           🗓️ {t.map.allDays}
         </button>
+        {/* Offline the chip is gone, not disabled: you cannot re-locate, so there is
+            nothing to offer (ADR-0109 §7). */}
+        {!offline && (
+          <button
+            type="button"
+            className={
+              'map-nearchip' +
+              (nearActive ? ' on' : '') +
+              (nearMe && locationRefused ? ' refused' : '')
+            }
+            aria-pressed={nearActive}
+            onClick={toggleNearMe}
+          >
+            {ICONS.nearMe} {geo.status === 'locating' ? t.map.near.locating : t.map.near.chip}
+          </button>
+        )}
         <span className="map-scopehint">{allDays ? t.map.scopeAll : t.map.scopeDay}</span>
       </div>
+
+      {/* The reason-first pre-prompt (ADR-0109 §6): stated before the OS dialog, and
+          it says the location stays on the device (ADR-0006). An inline card, not an
+          overlay — it explains rather than interrupts, and the list stays usable. */}
+      {promptOpen && (
+        <div className="map-geoprompt" role="group" aria-label={t.map.near.prompt.title}>
+          <div className="gt">📍 {t.map.near.prompt.title}</div>
+          <div className="gm">{t.map.near.prompt.body}</div>
+          <div className="gbtns">
+            <button type="button" className="map-gbtn primary" onClick={askForLocation}>
+              {t.map.near.prompt.allow}
+            </button>
+            <button type="button" className="map-gbtn" onClick={() => setPromptOpen(false)}>
+              {t.map.near.prompt.notNow}
+            </button>
+          </div>
+        </div>
+      )}
+
+      {/* Refused or unavailable: say what the list is sorted by instead, and offer a
+          retry only when asking again can actually re-prompt. */}
+      {showNotice && (
+        <StatusBanner tone="neutral" onDismiss={() => setNoticeDismissed(true)}>
+          {geo.status === 'denied' ? t.map.near.deniedBanner : t.map.near.unavailableBanner}
+          {geo.blocked ? (
+            <span className="map-geohint">{t.map.near.blockedHint}</span>
+          ) : (
+            <button type="button" className="map-georetry" onClick={askForLocation}>
+              {t.map.near.retry}
+            </button>
+          )}
+        </StatusBanner>
+      )}
 
       {allUsages.length === 0 ? (
         <EmptyState icon="🗺️" title={t.map.empty.title} body={t.map.empty.body} />
       ) : visible.length === 0 ? (
         <EmptyState icon={ICONS.search} title={t.map.filter.noResultsTitle} />
       ) : (
-        <div className="map-list">{visible.map(renderRow)}</div>
+        renderList(visible)
       )}
 
       {searchMode && (
@@ -231,9 +370,9 @@ export function MapView() {
             setQuery('');
           }}
         >
-          <div className="map-screen" data-mode={mode}>
+          <div className="map-screen" data-mode={mode} data-offline={offline || undefined}>
             {searchResults.length > 0 ? (
-              <div className="map-list">{searchResults.map(renderRow)}</div>
+              renderList(searchResults)
             ) : (
               <EmptyState icon={ICONS.search} title={t.map.search.noResultsTitle} />
             )}
@@ -263,6 +402,8 @@ function PlaceRow({
   place,
   ambient,
   nextStopTime,
+  distance,
+  distanceStale,
   onEnrich,
 }: {
   usage: PlaceUsage;
@@ -270,6 +411,10 @@ function PlaceRow({
   ambient: boolean;
   /** Set on the single navigate-to-next row: when you have to be there. */
   nextStopTime?: string;
+  /** Near-me: how far away, or the offline "can't measure" label. */
+  distance?: string;
+  /** The distance shown is the offline placeholder, not a measurement. */
+  distanceStale?: boolean;
   /** Open the picker to give a coordless Place-lite real coordinates. */
   onEnrich: () => void;
 }) {
@@ -342,6 +487,16 @@ function PlaceRow({
         </span>
       </span>
       <span className="map-right">
+        {distance && (
+          // A measurement is a number-led island (like the ★ rating); the offline
+          // placeholder is ordinary Hebrew prose and must not be forced LTR.
+          <span
+            className={'map-dist' + (distanceStale ? ' stale' : '')}
+            dir={distanceStale ? undefined : 'ltr'}
+          >
+            {distance}
+          </span>
+        )}
         {dirUrl ? (
           <a
             className="map-navbtn"

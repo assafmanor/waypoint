@@ -75,6 +75,32 @@ export const t = {
     // navigate-to-next on the list (ADR-0106 §6): the one time-anchor cue the map
     // budget allows (ADR-0109 §6, the amber ring's list form), on a single row.
     nextStop: 'היעד הבא',
+    // "Near me now" (Phase 4a, ADR-0109 §6-7): a list re-sort + teal distance
+    // chips, never a spatial dot (there's no rendered map until Phase 6). The
+    // permission is asked only on intent, behind the reason-first pre-prompt —
+    // which states the on-device promise ADR-0006 makes, in plain words.
+    near: {
+      chip: 'קרוב עכשיו',
+      locating: 'מאתר…',
+      groupHeader: 'לפי קרבה אליך',
+      meters: (m: number) => `${m} מ׳`,
+      km: (km: number) => `${km} ק״מ`,
+      // Offline: you can't re-locate, so a number would be a stale claim.
+      unavailable: 'מרחק לא זמין',
+      prompt: {
+        title: 'למיין לפי קרבה',
+        body: 'כדי להראות מה קרוב אליכם עכשיו נשתמש במיקום המכשיר. המיקום נשאר במכשיר ואינו משותף עם הקבוצה.',
+        allow: 'אפשר מיקום',
+        notNow: 'לא עכשיו',
+      },
+      // Denied / unavailable: near-me is strictly additive, so the list just stays
+      // on its own order and says why. A retry is offered only when asking again
+      // can actually re-prompt; once the browser hard-denies, only settings help.
+      deniedBanner: 'מיקום כבוי · הרשימה ממוינת לפי לו״ז',
+      retry: 'נסו שוב',
+      blockedHint: 'אפשרו מיקום בהגדרות הדפדפן',
+      unavailableBanner: 'לא הצלחנו לאתר את המיקום · הרשימה ממוינת לפי לו״ז',
+    },
     empty: {
       title: 'אין עדיין מקומות',
       body: 'מקומות שתוסיפו לאירועים, להזמנות ולמדף האולי יופיעו כאן.',
