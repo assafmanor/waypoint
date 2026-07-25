@@ -1,0 +1,853 @@
+<!doctype html>
+<!-- Plan-mode place RESEARCH — v1 (2026-07-25, Phase 5 of ADR-0106's Maps &
+     Places epic). ADR-0109 deliberately deferred this design to its build
+     session ("Scope of this design session, and what is deliberately
+     deferred") and said to mock it AGAINST THE REAL PICKER, reusing the
+     picker's shared search core and the result-card grammar sketched in
+     plan-mode-v1.html. This file is that mockup; its promoting ADR is 0115.
+
+     WHAT THIS MOCKS
+     Search Google from the Map tab → the result becomes a pinned place →
+     "＋ אולי" puts it on the maybe shelf. There is no rendered map until
+     Phase 6, so "pinning a result" IS the write: the picked place is
+     resolved once (coords · address · timezone, cached on the Place row),
+     an unconsumed MaybeItem references it, and it shows up in the Map list
+     as a shelf idea — the same list this overlay sits on top of.
+
+     THE ONE THING THAT MAKES PHASE 5 DIFFERENT (and drives every decision
+     below): it is the first surface in the app that spends money per user
+     keystroke. Phases 3-4 were pure client-side derivation over the
+     snapshot. So:
+
+     1. THE GOOGLE HALF IS ARMED BY INTENT, NOT BY OPENING. One search
+        control, as ADR-0109 §2 says — but it opens on the FREE half: it
+        filters the trip's own places (offline-safe derivation, the Trip-mode
+        behaviour, unchanged). The paid half sits behind an explicit
+        "חיפוש בגוגל" action. Filtering your own list and buying an
+        Autocomplete session must not be the same gesture. Once armed,
+        typing behaves exactly like the in-form picker (pause-gated debounce,
+        one session token) until the overlay closes — mid-session keystrokes
+        are the cheap part; the first call is the commitment.
+
+     2. THE CARD SAYS ONLY WHAT THE RELAY ACTUALLY RETURNS: primary name +
+        secondary address. plan-mode-v1.html's research card drew "4.5★ ·
+        1.2 ק״מ" and a category glyph — all three are fiction against the
+        shipped pipe: ★ is an Enterprise-tier field we deliberately do not
+        fetch (ADR-0111), a prediction carries no coordinates so there is no
+        distance to compute, and place types aren't in our field mask. So
+        the badge is the neutral pin, the meta is the address, and the row
+        taps out to Google Maps (a free deep-link by place_id) to vet a
+        place before spending on it. Superseded on those three points.
+
+     3. ALREADY IN THE TRIP → STATED, NOT RE-ADDABLE. The snapshot-derived
+        dedup (free, offline-consistent) turns "＋ אולי" into a chip: "על
+        המדף" when an unconsumed idea already points at the place, "כבר
+        בטיול" when anything else does. No duplicate ideas, zero spend.
+
+     4. OFFLINE THE GOOGLE HALF IS ABSENT, NOT DISABLED — the same rule the
+        near-me chip already follows (ADR-0109 §7 / session-105): you can't
+        reach Google, so there is nothing to offer. The free filter half
+        stays, and the Plan day-view's own quick-add still adds an idea by
+        name.
+
+     STATE toggle: ריק (the free half only) · טוען · תוצאות · נוסף למדף ·
+     חסימת קצב · אופליין. -->
+<html lang="he" dir="rtl">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>מחקר מקומות · Plan mode · מוקאפ v1</title>
+    <link rel="preconnect" href="https://fonts.googleapis.com" />
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+    <link
+      href="https://fonts.googleapis.com/css2?family=Assistant:wght@400;500;600;700&family=Secular+One&family=JetBrains+Mono:wght@500;700&display=swap"
+      rel="stylesheet"
+    />
+    <style>
+      :root {
+        --ink: #16233d;
+        --screen: #e7eaef;
+        --card: #ffffff;
+        --paper: #f3efe6;
+        --amber: #e9a63c;
+        --amber-deep: #c9822a;
+        --teal: #2c9c90;
+        --plan: #6e59d6;
+        --plan-deep: #5747b4;
+        --plan-tint: rgba(110, 89, 214, 0.1);
+        --miss: #c2584e;
+        --muted: #6c7488;
+        --faint: #98a0b0;
+        --line: rgba(22, 35, 61, 0.1);
+        --soft-line: rgba(22, 35, 61, 0.28);
+        /* the tab's per-mode selection accent (ADR-0100 §5 / ADR-0028) — this
+           surface is Plan-only, so it is always the violet */
+        --idx-accent: var(--plan);
+        /* category pin palette (ADR-0038 §2) — only the neutral leisure hue is
+           reachable here: a Google prediction carries no category, and an idea
+           gets one when it's scheduled, not when it's shelved. */
+        --cat-leisure: #9cc9a0;
+        --cat-food: #e8998a;
+      }
+      * {
+        box-sizing: border-box;
+        margin: 0;
+        padding: 0;
+      }
+      body {
+        font-family: 'Assistant', system-ui, sans-serif;
+        background:
+          radial-gradient(120% 90% at 80% -10%, #2a3e68 0%, transparent 55%),
+          radial-gradient(120% 90% at 0% 110%, #1a2a4a 0%, transparent 50%), #0f1a31;
+        color: var(--ink);
+        min-height: 100vh;
+        display: flex;
+        flex-direction: column;
+        align-items: center;
+        padding: 24px 16px 48px;
+        -webkit-font-smoothing: antialiased;
+      }
+      .caption {
+        text-align: center;
+        color: #cfd8ea;
+        margin-bottom: 16px;
+      }
+      .caption h1 {
+        font-family: 'Secular One', sans-serif;
+        font-weight: 400;
+        font-size: 19px;
+        color: #fff;
+      }
+      .caption p {
+        font-size: 12px;
+        color: #9fb0cf;
+        margin-top: 4px;
+        max-width: 560px;
+      }
+      .states {
+        display: flex;
+        gap: 7px;
+        flex-wrap: wrap;
+        justify-content: center;
+        margin-bottom: 18px;
+      }
+      .states button {
+        font: inherit;
+        font-size: 11.5px;
+        font-weight: 700;
+        color: #cfd8ea;
+        background: #16233d;
+        border: 1px solid #2c3d63;
+        border-radius: 999px;
+        padding: 7px 13px;
+        cursor: pointer;
+      }
+      .states button.on {
+        background: var(--plan);
+        border-color: var(--plan);
+        color: #fff;
+      }
+
+      .phone {
+        width: 100%;
+        max-width: 392px;
+        background: var(--screen);
+        border-radius: 38px;
+        box-shadow:
+          0 18px 40px -18px rgba(14, 23, 41, 0.45),
+          0 0 0 10px #0b1526,
+          0 0 0 12px #223257;
+        overflow: hidden;
+        position: relative;
+        height: 812px;
+        flex-shrink: 0;
+        display: flex;
+        flex-direction: column;
+      }
+
+      /* ── the search-overlay shell (ui/primitives/SearchOverlay, ADR-0101) ── */
+      .ov-bar {
+        display: flex;
+        align-items: center;
+        gap: 9px;
+        padding: 16px 14px 11px;
+        background: linear-gradient(180deg, #f7f5f0, #f1eee7);
+        border-bottom: 1px solid var(--line);
+      }
+      .ov-bar .back {
+        width: 30px;
+        height: 30px;
+        border-radius: 9px;
+        border: 1px solid var(--line);
+        background: #fff;
+        display: grid;
+        place-items: center;
+        color: var(--muted);
+        font-size: 15px;
+        cursor: pointer;
+      }
+      .ov-bar .ttl {
+        font-size: 14px;
+        font-weight: 700;
+      }
+      .ov-bar .chip {
+        font-size: 11px;
+        font-weight: 700;
+        color: var(--plan-deep);
+        background: var(--plan-tint);
+        border-radius: 999px;
+        padding: 3px 9px;
+        margin-inline-start: auto;
+      }
+      .ov-field {
+        display: flex;
+        align-items: center;
+        gap: 9px;
+        margin: 11px 14px 4px;
+        background: var(--card);
+        border: 1px solid var(--line);
+        border-radius: 12px;
+        padding: 11px 13px;
+      }
+      .ov-field .mag {
+        color: var(--muted);
+        font-size: 14px;
+      }
+      .ov-field input {
+        flex: 1;
+        font: inherit;
+        font-size: 13.5px;
+        border: 0;
+        background: none;
+        color: var(--ink);
+      }
+      .ov-field input:focus {
+        outline: none;
+      }
+      .ov-body {
+        flex: 1;
+        overflow-y: auto;
+        padding: 8px 14px 20px;
+      }
+
+      /* ── group headers: the shipped .map-grouphead (near-me / כבר היינו) ── */
+      .grouphead {
+        display: flex;
+        align-items: center;
+        gap: 6px;
+        font-size: 11px;
+        font-weight: 700;
+        color: var(--muted);
+        margin: 10px 4px 8px;
+      }
+      .grouphead::after {
+        content: '';
+        flex: 1;
+        height: 1px;
+        background: var(--line);
+      }
+      .grouphead .n {
+        font-family: 'JetBrains Mono', monospace;
+        color: var(--faint);
+      }
+
+      /* ── the row: the SHIPPED .place grammar (map.css), not a second row ── */
+      .place {
+        display: flex;
+        align-items: center;
+        gap: 11px;
+        background: var(--card);
+        border: 1px solid var(--line);
+        border-radius: 16px;
+        padding: 11px 12px;
+        margin-bottom: 9px;
+        box-shadow: 0 1px 2px rgba(14, 23, 41, 0.04);
+      }
+      .place.soft {
+        border-style: dashed;
+        border-color: var(--soft-line);
+        background:
+          repeating-linear-gradient(-45deg, rgba(22, 35, 61, 0.02) 0 6px, transparent 6px 12px),
+          var(--card);
+      }
+      .badge {
+        flex: 0 0 auto;
+        width: 40px;
+        height: 40px;
+        border-radius: 12px;
+        display: grid;
+        place-items: center;
+        font-size: 19px;
+        line-height: 1;
+      }
+      .badge.leisure {
+        background: var(--cat-leisure);
+      }
+      .badge.food {
+        background: var(--cat-food);
+      }
+      /* a Google result is not in the trip yet: it has no category and no row of
+         its own, so its badge is the neutral pin outline — the same "listed, not
+         yet ours" reading the coordless Place-lite badge already has. */
+      .badge.result {
+        background: transparent;
+        border: 1.5px dashed var(--faint);
+        color: var(--muted);
+        font-size: 16px;
+      }
+      .main {
+        flex: 1;
+        min-width: 0;
+      }
+      .t {
+        font-size: 14.5px;
+        font-weight: 700;
+        display: flex;
+        align-items: center;
+        gap: 6px;
+      }
+      .t .nm {
+        overflow: hidden;
+        text-overflow: ellipsis;
+        white-space: nowrap;
+      }
+      .m {
+        font-size: 12px;
+        color: var(--muted);
+        margin-top: 2px;
+        display: flex;
+        flex-wrap: wrap;
+        gap: 4px 8px;
+      }
+      .m .sec {
+        overflow: hidden;
+        text-overflow: ellipsis;
+        white-space: nowrap;
+      }
+      .tag.time {
+        font-family: 'JetBrains Mono', monospace;
+        font-size: 11.5px;
+        font-weight: 700;
+        color: var(--amber-deep);
+      }
+      .tag.mbadge {
+        color: var(--plan-deep);
+        font-weight: 700;
+      }
+      .right {
+        flex: 0 0 auto;
+        display: flex;
+        flex-direction: column;
+        align-items: flex-end;
+        gap: 7px;
+      }
+      /* ＋ אולי — a Plan-mode building action, so plan violet: the same accent
+         the shelf and the builder already use. Not teal (that's location
+         affordances: נווט / distance) and not amber (time). */
+      .addmaybe {
+        display: inline-flex;
+        align-items: center;
+        gap: 5px;
+        border: 1px solid var(--plan);
+        color: var(--plan-deep);
+        background: var(--plan-tint);
+        border-radius: 999px;
+        padding: 6px 12px;
+        font: inherit;
+        font-size: 12px;
+        font-weight: 700;
+        cursor: pointer;
+        white-space: nowrap;
+      }
+      .addmaybe:hover {
+        background: var(--plan);
+        color: #fff;
+      }
+      .addmaybe[disabled] {
+        opacity: 0.55;
+        cursor: default;
+      }
+      /* the shipped trailing action on a trip place: directions, teal = location */
+      .navbtn {
+        display: inline-flex;
+        align-items: center;
+        gap: 5px;
+        border: 1px solid var(--teal);
+        color: var(--teal);
+        background: var(--card);
+        border-radius: 999px;
+        padding: 6px 12px;
+        font-size: 12px;
+        font-weight: 700;
+        white-space: nowrap;
+      }
+      /* already ours: a statement, not a control */
+      .instate {
+        font-size: 11.5px;
+        font-weight: 700;
+        color: var(--plan-deep);
+        background: var(--plan-tint);
+        border-radius: 999px;
+        padding: 5px 10px;
+        white-space: nowrap;
+      }
+      .instate.trip {
+        color: var(--muted);
+        background: rgba(22, 35, 61, 0.06);
+      }
+
+      /* ── the arm-the-paid-half card ─────────────────────────────────────── */
+      .arm {
+        display: flex;
+        align-items: center;
+        gap: 11px;
+        width: 100%;
+        text-align: start;
+        background: var(--card);
+        border: 1px dashed var(--plan);
+        border-radius: 16px;
+        padding: 13px 14px;
+        margin: 10px 0 4px;
+        font: inherit;
+        cursor: pointer;
+      }
+      .arm:hover {
+        background: var(--plan-tint);
+      }
+      .arm .g {
+        width: 26px;
+        height: 26px;
+        border-radius: 50%;
+        flex: 0 0 auto;
+        background: conic-gradient(#4285f4 0 25%, #ea4335 0 50%, #fbbc05 0 75%, #34a853 0);
+      }
+      .arm .at {
+        font-size: 13.5px;
+        font-weight: 700;
+        color: var(--ink);
+      }
+      .arm .am {
+        font-size: 11.5px;
+        color: var(--muted);
+        margin-top: 2px;
+        line-height: 1.45;
+      }
+      .arm .go {
+        margin-inline-start: auto;
+        color: var(--plan-deep);
+        font-size: 17px;
+      }
+
+      /* ── feedback: skeletons, banners, empty, footer ────────────────────── */
+      .skel {
+        height: 64px;
+        border-radius: 16px;
+        margin-bottom: 9px;
+        background: linear-gradient(90deg, #eceef2 25%, #f6f7f9 50%, #eceef2 75%);
+        background-size: 200% 100%;
+        animation: sh 1.3s linear infinite;
+      }
+      @keyframes sh {
+        to {
+          background-position: -200% 0;
+        }
+      }
+      .banner {
+        display: flex;
+        align-items: center;
+        gap: 8px;
+        font-size: 12px;
+        font-weight: 600;
+        border-radius: 12px;
+        padding: 10px 12px;
+        margin: 8px 0;
+      }
+      .banner.warn {
+        color: #8a5a12;
+        background: rgba(233, 166, 60, 0.14);
+        border: 1px solid rgba(233, 166, 60, 0.35);
+      }
+      .banner.offline {
+        color: var(--muted);
+        background: rgba(22, 35, 61, 0.05);
+        border: 1px solid var(--line);
+      }
+      .hint {
+        font-size: 12px;
+        color: var(--faint);
+        line-height: 1.5;
+        margin: 2px 4px 10px;
+      }
+      .empty {
+        text-align: center;
+        color: var(--muted);
+        font-size: 12.5px;
+        padding: 22px 10px;
+        line-height: 1.6;
+      }
+      .empty .ic {
+        font-size: 26px;
+        display: block;
+        margin-bottom: 7px;
+      }
+      .foot {
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        gap: 6px;
+        font-size: 10.5px;
+        color: var(--faint);
+        margin-top: 14px;
+      }
+      .foot .g {
+        width: 10px;
+        height: 10px;
+        border-radius: 50%;
+        background: conic-gradient(#4285f4 0 25%, #ea4335 0 50%, #fbbc05 0 75%, #34a853 0);
+      }
+
+      /* the confirmation toast (ui/Toast) with its undo */
+      .toast {
+        position: absolute;
+        inset-inline: 16px;
+        bottom: 18px;
+        display: flex;
+        align-items: center;
+        gap: 9px;
+        background: #16233d;
+        color: #fff;
+        border-radius: 14px;
+        padding: 12px 14px;
+        font-size: 12.5px;
+        font-weight: 600;
+        box-shadow: 0 10px 24px -10px rgba(0, 0, 0, 0.5);
+        opacity: 0;
+        transform: translateY(10px);
+        transition: 0.18s;
+      }
+      .toast.show {
+        opacity: 1;
+        transform: none;
+      }
+      .toast .undo {
+        margin-inline-start: auto;
+        color: var(--amber);
+        font-weight: 700;
+        text-decoration: underline;
+        cursor: pointer;
+      }
+
+      .hide {
+        display: none !important;
+      }
+
+      /* ── notes panels ───────────────────────────────────────────────────── */
+      .panels {
+        display: flex;
+        flex-wrap: wrap;
+        gap: 16px;
+        justify-content: center;
+        max-width: 900px;
+        margin-top: 26px;
+      }
+      .panel {
+        background: #101b31;
+        border: 1px solid #223257;
+        border-radius: 16px;
+        padding: 16px 18px;
+        width: 420px;
+        max-width: 100%;
+      }
+      .panel h3 {
+        color: #fff;
+        font-size: 13.5px;
+        font-family: 'Secular One', sans-serif;
+        font-weight: 400;
+        margin-bottom: 6px;
+      }
+      .panel p {
+        color: #aeb9d4;
+        font-size: 11.5px;
+        line-height: 1.65;
+        margin-bottom: 10px;
+      }
+      .panel p b {
+        color: #fff;
+      }
+      .panel p.kill {
+        color: #e5a9a2;
+      }
+      .panel code {
+        font-family: 'JetBrains Mono', monospace;
+        font-size: 10.5px;
+        color: #cfd8ea;
+      }
+    </style>
+  </head>
+  <body>
+    <div class="caption">
+      <h1>מחקר מקומות · Plan mode</h1>
+      <p>
+        Phase 5 של אפיק המפה: חיפוש בגוגל מתוך טאב המפה, נעיצת התוצאה, והוספה למדף האולי. החצי
+        החינמי נפתח ראשון; החיפוש בגוגל נדלק בכוונה.
+      </p>
+    </div>
+
+    <div class="states">
+      <button data-state="idle" class="on">ריק</button>
+      <button data-state="loading">טוען</button>
+      <button data-state="results">תוצאות</button>
+      <button data-state="added">נוסף למדף</button>
+      <button data-state="limited">חסימת קצב</button>
+      <button data-state="offline">אופליין</button>
+    </div>
+
+    <div class="phone">
+      <!-- SearchOverlay shell: back + title + trip chip, then the pinned field -->
+      <div class="ov-bar">
+        <div class="back">→</div>
+        <span class="ttl">חיפוש ומחקר מקומות</span>
+        <span class="chip">יפן · אוקטובר</span>
+      </div>
+      <div class="ov-field">
+        <span class="mag">🔍</span>
+        <input id="q" value="" placeholder="שם, כתובת, או מקום חדש בגוגל" />
+      </div>
+
+      <div class="ov-body">
+        <!-- ── offline: the free half only, and it says why ─────────────── -->
+        <div class="banner offline hide" id="b-offline">
+          <span>📡</span><span>אין חיבור · חיפוש בגוגל לא זמין, המקומות של הטיול כן</span>
+        </div>
+
+        <!-- ── rate limited: soft, the free half keeps working ──────────── -->
+        <div class="banner warn hide" id="b-limited">
+          <span>⏳</span><span>יותר מדי חיפושים · נסו שוב בעוד רגע</span>
+        </div>
+
+        <!-- ── the free half: the trip's own places (pure derivation) ───── -->
+        <!-- Unchanged from what ships today: the very same rows the Map list
+             renders, filtered by the typed query. No redesign in the free half. -->
+        <div id="sec-trip">
+          <div class="grouphead">בטיול <span class="n">2</span></div>
+          <div class="place">
+            <div class="badge food">🍜</div>
+            <div class="main">
+              <div class="t"><span class="nm">Afuri Ramen</span></div>
+              <div class="m">
+                <span class="tag time">מחר · 19:30</span><span class="sec">ארוחת ערב</span>
+              </div>
+            </div>
+            <div class="right">
+              <span class="navbtn">🧭 נווט</span>
+            </div>
+          </div>
+          <div class="place soft">
+            <div class="badge leisure">💡</div>
+            <div class="main">
+              <div class="t"><span class="nm">teamLab Planets</span></div>
+              <div class="m">
+                <span class="sec">Toyosu, Koto City</span><span class="tag mbadge">על המדף</span>
+              </div>
+            </div>
+            <div class="right">
+              <span class="navbtn">🧭 נווט</span>
+            </div>
+          </div>
+        </div>
+
+        <!-- ── the arm: the only door to a paid call ────────────────────── -->
+        <button class="arm" id="arm">
+          <span class="g"></span>
+          <span>
+            <span class="at">חיפוש בגוגל</span>
+            <span class="am"
+              >מקומות שעוד לא בטיול. החיפוש עולה לנו כסף, אז הוא נדלק כשאתם מבקשים.</span
+            >
+          </span>
+          <span class="go">←</span>
+        </button>
+
+        <!-- ── the paid half, once armed ────────────────────────────────── -->
+        <div id="sec-google" class="hide">
+          <div class="grouphead">מגוגל</div>
+
+          <div id="g-loading" class="hide">
+            <div class="skel"></div>
+            <div class="skel" style="opacity: 0.75"></div>
+            <div class="skel" style="opacity: 0.5"></div>
+          </div>
+
+          <div id="g-results" class="hide">
+            <!-- a fresh result: name + secondary address, nothing invented -->
+            <div class="place" id="r-1">
+              <div class="badge result">📍</div>
+              <div class="main">
+                <div class="t"><span class="nm">teamLab Borderless</span></div>
+                <div class="m"><span class="sec">Azabudai Hills, Minato City, Tokyo</span></div>
+              </div>
+              <div class="right">
+                <button class="addmaybe" id="add-1">＋ אולי</button>
+              </div>
+            </div>
+
+            <!-- already on the shelf: stated, not re-addable (zero spend) -->
+            <div class="place">
+              <div class="badge result">📍</div>
+              <div class="main">
+                <div class="t"><span class="nm">teamLab Planets TOKYO</span></div>
+                <div class="m"><span class="sec">6-1-16 Toyosu, Koto City, Tokyo</span></div>
+              </div>
+              <div class="right">
+                <span class="instate">על המדף</span>
+              </div>
+            </div>
+
+            <!-- already scheduled: same rule, different reason -->
+            <div class="place">
+              <div class="badge result">📍</div>
+              <div class="main">
+                <div class="t"><span class="nm">Afuri Ramen Roppongi</span></div>
+                <div class="m"><span class="sec">Roppongi, Minato City, Tokyo</span></div>
+              </div>
+              <div class="right">
+                <span class="instate trip">כבר בטיול</span>
+              </div>
+            </div>
+          </div>
+
+          <div id="g-none" class="hide">
+            <div class="empty"><span class="ic">🔍</span>לא נמצאו מקומות בגוגל</div>
+          </div>
+
+          <div class="foot"><span class="g"></span>מופעל על ידי Google</div>
+        </div>
+
+        <!-- ── nothing typed yet: the list is already there (unchanged), so the
+             teach is one quiet line, not an empty state ─────────────────── -->
+        <div id="sec-hint" class="hint">
+          חפשו כדי לסנן את מקומות הטיול, או להוסיף מקום חדש מגוגל למדף האולי.
+        </div>
+      </div>
+
+      <div class="toast" id="toast">
+        <span>📌</span><span>נוסף למדף האולי</span><span class="undo">בטל</span>
+      </div>
+    </div>
+
+    <div class="panels">
+      <div class="panel">
+        <h3>למה החיפוש בגוגל נדלק בכוונה</h3>
+        <p>
+          זה המסך הראשון באפליקציה ש<b>מוציא כסף על הקשה</b>. פאזות 3-4 היו גזירה מקומית בלבד. אותו
+          שדה חיפוש מסנן את המקומות של הטיול (חינם, עובד אופליין) — ואם זה גם היה מפעיל חיפוש בגוגל,
+          כל "איפה השורה של המלון" היה חיוב.
+        </p>
+        <p>
+          אחרי ההדלקה זה בדיוק ה־picker: <code>PLACE_SEARCH_MIN_CHARS</code> ואז debounce על עצירת
+          הקלדה, אסימון סשן אחד לכל הבחירה, ו־dedup לפני חיוב בשרת. הקשה בתוך סשן היא הזול; הקריאה
+          הראשונה היא ההתחייבות.
+        </p>
+      </div>
+
+      <div class="panel">
+        <h3>מה כרטיס תוצאה מרשה לעצמו לומר</h3>
+        <p>
+          <b>שם + כתובת משנית.</b> זה מה שה־Autocomplete relay מחזיר, וזה הכל. הקשה על השורה פותחת
+          את המקום בגוגל מפות (deep-link לפי place_id — חינם) כדי לבדוק אותו לפני שמשלמים עליו.
+        </p>
+        <p class="kill">
+          מה שירד מ־plan-mode-v1.html: <b>★ דירוג</b> (שדה Enterprise שאנחנו לא מביאים, ADR-0111),
+          <b>מרחק</b> (לתחזית אין קואורדינטות), ו<b>גליף קטגוריה</b> (types לא ב־field mask). שלושתם
+          היו נתונים שאין לנו.
+        </p>
+      </div>
+
+      <div class="panel">
+        <h3>"＋ אולי" = הנעיצה</h3>
+        <p>
+          אין מפה מרונדרת עד פאזה 6, ולכן <b>הנעיצה היא הכתיבה</b>: בחירה אחת מעשירה
+          <code>Place</code> (קואורדינטות · כתובת · אזור זמן, נשמר על השורה), רעיון לא־מנוצל מצביע
+          עליו, ומכאן המקום <b>מוזכר</b> — כלומר בטיול (ADR-0112) — ומופיע ברשימת המפה עם התג "על
+          המדף" ובמדף של Plan mode.
+        </p>
+        <p>
+          הרעיון נוצר <b>בלי קטגוריה</b>, כמו כל jot במדף: הקטגוריה נתפסת כשמשבצים אותו לאירוע. גם
+          גוגל לא נותן לנו אותה בזול. הטוסט הוא הטוסט הקיים, עם <b>בטל</b> — הביטול מסיר את הרעיון,
+          שורת ה־Place נשארת כמטמון dedup, והוספה חוזרת חינם.
+        </p>
+      </div>
+
+      <div class="panel">
+        <h3>גבולות</h3>
+        <p>
+          <b>Plan mode בלבד.</b> בשטח החיפוש נשאר סינון הרשימה: "מה פתוח לידי עכשיו" הוא שאילתה אחרת
+          (nearby / open-now) ו־SKU אחר. אם וכאשר — ADR משלו.
+        </p>
+        <p>
+          <b>אופליין החצי בגוגל נעלם, לא מושתק</b> — אותו כלל של צ'יפ "קרוב עכשיו" (ADR-0109 §7):
+          כשאין מה להציע, לא מציעים. הוספת רעיון בשם בלבד ממשיכה לעבוד מתוך תצוגת היום ב־Plan.
+        </p>
+        <p>
+          <b>חסימת קצב היא רכה</b> (429 → באנר, ADR-0108 §5), והחצי החינמי לא נפגע ממנה. ריבוי
+          הוספות מרשימה אחת = בחירה לכל אחת, ולכן קריאת Details לכל אחת; חזרה על אותו מקום חינם בגלל
+          ה־dedup.
+        </p>
+      </div>
+    </div>
+
+    <script>
+      const q = document.getElementById('q');
+      const secTrip = document.getElementById('sec-trip');
+      const secGoogle = document.getElementById('sec-google');
+      const secHint = document.getElementById('sec-hint');
+      const arm = document.getElementById('arm');
+      const gLoading = document.getElementById('g-loading');
+      const gResults = document.getElementById('g-results');
+      const gNone = document.getElementById('g-none');
+      const bOffline = document.getElementById('b-offline');
+      const bLimited = document.getElementById('b-limited');
+      const toast = document.getElementById('toast');
+      const r1 = document.getElementById('r-1');
+
+      const show = (el, on) => el.classList.toggle('hide', !on);
+
+      function render(state) {
+        const typed = state !== 'idle';
+        q.value = typed ? 'teamLab' : '';
+        // Idle isn't empty: the trip's own places are already listed (that half is
+        // unchanged), so the teach is one quiet line and the arm waits for a query.
+        show(secHint, !typed);
+        show(secTrip, true);
+        show(arm, typed && !['offline', 'loading', 'results', 'added', 'limited'].includes(state));
+        show(secGoogle, ['loading', 'results', 'added', 'limited'].includes(state));
+        show(gLoading, state === 'loading');
+        show(gResults, ['results', 'added'].includes(state));
+        show(gNone, false);
+        show(bOffline, state === 'offline');
+        show(bLimited, state === 'limited');
+        toast.classList.toggle('show', state === 'added');
+        // the added row flips to a statement — the row itself is the confirmation,
+        // not the list behind the overlay (which may be scoped to another day).
+        r1.querySelector('.right').innerHTML =
+          state === 'added'
+            ? '<span class="instate">על המדף</span>'
+            : '<button class="addmaybe">＋ אולי</button>';
+      }
+
+      document.querySelectorAll('.states button').forEach((b) => {
+        b.onclick = () => {
+          document.querySelectorAll('.states button').forEach((x) => x.classList.remove('on'));
+          b.classList.add('on');
+          render(b.dataset.state);
+        };
+      });
+      arm.onclick = () => {
+        document.querySelectorAll('.states button').forEach((x) => x.classList.remove('on'));
+        document.querySelector('[data-state="results"]').classList.add('on');
+        render('results');
+      };
+      render('idle');
+    </script>
+  </body>
+</html>

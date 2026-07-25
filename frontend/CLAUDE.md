@@ -102,3 +102,15 @@ Vitest + React Testing Library. Component tests for the interaction verbs; a
 new `ui/domain/` or `ui/primitives/` component ships with its own test file
 alongside it (the existing `*.test.tsx` co-location is the pattern, not the
 exception).
+
+Two rules that exist because their absence hid real bugs for three review
+rounds (the Map tab's ordering, ADR-0109 session-110):
+
+- **Pin the clock.** A test whose fixtures carry fixed dates must set its own
+  `now` via `setSimulatedNow` (`lib/useClock.ts`) — otherwise it silently reads
+  the real system clock, so it means something different every day it runs and
+  passes for the wrong reason. Reset it in `afterEach`.
+- **Assert across both day scopes** on any day-scoped surface (the Day view and
+  the **Map**, `DAY_SCOPED_TABS`). The Map's day-scoped and all-days paths are
+  genuinely different renders: an ordering bug that only showed in all-days
+  survived three sessions because every test for it was day-scoped.

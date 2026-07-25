@@ -423,3 +423,126 @@
 .map-addbtn:hover {
   border-color: var(--muted);
 }
+
+/* ── Plan-mode place research (Phase 5, ADR-0115) ────────────────────────────
+   The Google half of the search overlay. It reuses the list's own row grammar
+   above (.place / .map-badge / .map-main / .map-right) — these are only the
+   pieces that don't exist yet: the arm card, the ＋ אולי action, the "already
+   ours" statement, and the neutral result badge. ＋ אולי is plan violet: adding
+   an idea is a Plan-mode building action, not a location affordance (teal) or a
+   time anchor (amber) — the budget stays where ADR-0028 put it. */
+.map-res-hint {
+  font-size: 12px;
+  color: var(--faint);
+  line-height: 1.5;
+  margin: 2px 4px 10px;
+}
+
+/* the only door to a paid call — dashed because nothing has been spent yet */
+.map-arm {
+  display: flex;
+  align-items: center;
+  gap: 11px;
+  width: 100%;
+  text-align: start;
+  background: var(--card);
+  border: 1px dashed var(--plan);
+  border-radius: 16px;
+  padding: 13px 14px;
+  margin: 10px 0 4px;
+  font: inherit;
+  cursor: pointer;
+}
+.map-arm:hover {
+  background: color-mix(in srgb, var(--plan) 8%, transparent);
+}
+.map-arm-g {
+  flex: 0 0 auto;
+  width: 26px;
+  height: 26px;
+  border-radius: 50%;
+  background: conic-gradient(#4285f4 0 25%, #ea4335 0 50%, #fbbc05 0 75%, #34a853 0);
+}
+.map-arm-txt .at {
+  display: block;
+  font-size: 13.5px;
+  font-weight: 700;
+  color: var(--ink);
+}
+.map-arm-txt .am {
+  display: block;
+  font-size: 11.5px;
+  color: var(--muted);
+  margin-top: 2px;
+  line-height: 1.45;
+}
+
+/* a result row: the whole name block is a real link out to the Google place, so
+   a candidate can be vetted before we pay to resolve it (ADR-0115 §2). */
+.map-res-open {
+  display: flex;
+  align-items: center;
+  gap: 11px;
+  flex: 1;
+  min-width: 0;
+  text-decoration: none;
+  color: inherit;
+}
+.place.result {
+  cursor: default;
+}
+/* not ours yet: the same dashed neutral pin a coordless Place-lite wears */
+.map-badge.result {
+  background: transparent;
+  border: 1.5px dashed var(--faint);
+  color: var(--muted);
+  font-size: 16px;
+}
+.map-addmaybe {
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+  border: 1px solid var(--plan);
+  color: var(--plan);
+  background: color-mix(in srgb, var(--plan) 10%, transparent);
+  border-radius: 999px;
+  padding: 6px 12px;
+  font: inherit;
+  font-size: 12px;
+  font-weight: 700;
+  cursor: pointer;
+  white-space: nowrap;
+}
+.map-addmaybe:hover:not(:disabled) {
+  background: var(--plan);
+  color: var(--cta-text);
+}
+.map-addmaybe:disabled {
+  opacity: 0.55;
+  cursor: default;
+}
+/* already ours: a statement, not a control */
+.map-instate {
+  font-size: 11.5px;
+  font-weight: 700;
+  color: var(--muted);
+  background: rgba(22, 35, 61, 0.06);
+  border-radius: 999px;
+  padding: 5px 10px;
+  white-space: nowrap;
+}
+.map-instate.shelf {
+  color: var(--plan);
+  background: color-mix(in srgb, var(--plan) 10%, transparent);
+}
+
+.map-res-skel {
+  border-radius: 16px;
+  margin-bottom: 9px;
+}
+.map-res-foot {
+  text-align: center;
+  font-size: 10.5px;
+  color: var(--faint);
+  margin-top: 12px;
+}

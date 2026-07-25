@@ -63,6 +63,30 @@ export const t = {
       clear: 'ניקוי',
       backAria: 'סגירת חיפוש',
       noResultsTitle: 'לא נמצאו מקומות',
+      // Plan mode: the same control also researches new places (ADR-0115 §1), so
+      // it says so before you type.
+      planButton: 'חיפוש ומחקר מקומות',
+      planModeTitle: 'חיפוש ומחקר מקומות',
+      planPlaceholder: 'שם, כתובת, או מקום חדש בגוגל',
+      hint: 'חפשו כדי לסנן את מקומות הטיול, או להוסיף מקום חדש מגוגל למדף האולי.',
+    },
+    // Plan-mode place research (Phase 5, ADR-0115). The Google half is armed by
+    // intent: it is the first thing in the app that costs money per keystroke, so
+    // the copy says that out loud instead of hiding it.
+    research: {
+      tripGroup: 'בטיול',
+      googleGroup: 'מגוגל',
+      arm: 'חיפוש בגוגל',
+      armBody: 'מקומות שעוד לא בטיול. החיפוש עולה לנו כסף, אז הוא נדלק כשאתם מבקשים.',
+      armAria: 'הדלקת חיפוש בגוגל',
+      add: 'אולי',
+      addAria: (name: string) => `הוספת ${name} למדף האולי`,
+      onShelf: 'על המדף',
+      inTrip: 'כבר בטיול',
+      searching: 'מחפש בגוגל…',
+      noResults: 'לא נמצאו מקומות בגוגל',
+      // Offline the arm is gone rather than disabled (the near-me rule, ADR-0109 §7).
+      offline: 'אין חיבור · חיפוש בגוגל לא זמין, המקומות של הטיול כן',
     },
     // Map-local day scope (ADR-0110 §4): the strip focuses one day; this chip
     // shows every day's places at once.

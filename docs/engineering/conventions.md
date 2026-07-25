@@ -65,6 +65,7 @@ waypoint/
 - Small, focused commits. Branch per task, descriptive name (e.g. `index-bookings-documents-spec`) — task-ID-style names (`t-003-…`) are stale since ADR-0046 retired the task board.
 - **Create the branch before the first commit** — including docs-only changes. Never commit directly onto local `main`, even briefly with the intent to move it onto a branch later.
 - Never commit `.env`, secrets, or anything the `.gitignore` excludes (don't override it).
+- **The repo squash-merges, so re-baseline instead of stacking.** Once your PR merges, the branch's history exists on `main` under a _different_ SHA. Continuing to commit on the old branch (or branching off it) makes git see the same work twice and reports a phantom conflict. After a merge, start follow-up work from `origin/main` — `git fetch origin main && git checkout -B <branch> origin/main` — and if you've already stacked commits on the merged head, move just those: `git rebase --onto origin/main <old-head>`.
 - **A finished task ends in a pull request.** Open one as the last step of every task — don't wait to be asked, and don't leave finished work sitting on a pushed branch. Review happens on the PR, and CI only gates a PR against `main` (below), so work with no PR is work nothing has checked.
 
 ## Definition of Done

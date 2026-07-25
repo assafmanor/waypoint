@@ -336,7 +336,7 @@ export function PlanDay() {
                 />
               ))}
           </div>
-          <AddIdea onAdd={(title, icon, category) => verbs.addMaybe(title, icon, category)} />
+          <AddIdea onAdd={(title, icon, category) => verbs.addMaybe(title, { icon, category })} />
         </div>
       )}
 

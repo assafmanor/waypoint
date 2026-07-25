@@ -8,6 +8,7 @@ import {
   type Booking,
   type MaybeItem,
   type Place,
+  type PlacePrediction,
   type TripEvent,
 } from '@waypoint/shared';
 import { eventPhase, todayInTz, zoneOffsetMinutes, zonedIso } from './time';
@@ -573,15 +574,27 @@ export function mapsDirectionsUrl(place: Place | undefined): string | null {
   return `${GOOGLE_MAPS}/dir/?api=1&destination=${destination}${placeId}`;
 }
 
+/** The one "show this on Google Maps" URL: a required free-text query, refined by
+ *  a `place_id` when we know it. Coordinates make the best query; a search result
+ *  has none yet, so it queries by name (ADR-0115 §2 — vetting a candidate before
+ *  we spend on it, still no API call, no key, no cost). */
+function mapsSearchUrl(query: string, googlePlaceId?: string): string {
+  const refine = googlePlaceId ? `&query_place_id=${encodeURIComponent(googlePlaceId)}` : '';
+  return `${GOOGLE_MAPS}/search/?api=1&query=${encodeURIComponent(query)}${refine}`;
+}
+
 /** "View this place" deep-link (open in Maps), or null when it has no coordinates.
  *  INTERIM (TODO phase-3): becomes an in-app Map-tab focus once that surface exists. */
 export function mapsPlaceUrl(place: Place | undefined): string | null {
   if (!hasCoords(place)) return null;
-  const query = encodeURIComponent(`${place.lat},${place.lng}`);
-  const placeId = place.googlePlaceId
-    ? `&query_place_id=${encodeURIComponent(place.googlePlaceId)}`
-    : '';
-  return `${GOOGLE_MAPS}/search/?api=1&query=${query}${placeId}`;
+  return mapsSearchUrl(`${place.lat},${place.lng}`, place.googlePlaceId);
+}
+
+/** "View this candidate" for a Google search result, which carries a name and a
+ *  `googlePlaceId` but no coordinates until it is picked (ADR-0115 §2). */
+export function mapsPredictionUrl(prediction: PlacePrediction): string {
+  const label = [prediction.primaryText, prediction.secondaryText].filter(Boolean).join(', ');
+  return mapsSearchUrl(label, prediction.googlePlaceId);
 }
 
 /** Directions link for an event's resolved place (authority rule), or null when
