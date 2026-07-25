@@ -2,7 +2,8 @@
 // reach what's already on screen is a drag that can't reach the gap you're aiming
 // for — the day's list is taller than the viewport, and the shelf sits at the
 // bottom of it. So while the pointer is held near the top or bottom edge, the
-// surrounding scroller keeps moving under it.
+// surrounding scroller keeps moving under it — but only once the drag has REACHED
+// that edge, never because it was lifted there (`gateEdgeStep`).
 //
 // Shared by BOTH of the builder's drags (a shelf idea onto a gap, and a soft row's
 // reorder grip): the reorder drag had the same reach limit, so this is one
@@ -42,6 +43,35 @@ export function edgeScrollStep(
   return 0;
 }
 
+/** Which edge band a step is pulling toward, or `null` from the middle. The bands
+ *  never overlap (`edgeScrollStep` shrinks them on a short viewport), so a pointer
+ *  is in at most one of them and a single value describes it. */
+export type EdgeLatch = 'up' | 'down' | null;
+
+export function edgeDirection(step: number): EdgeLatch {
+  if (step < 0) return 'up';
+  if (step > 0) return 'down';
+  return null;
+}
+
+/**
+ * A drag that ARMS inside an edge band must not scroll on its own. The shelf sits
+ * at the bottom of the list and the header at the top, so a card or a row picked up
+ * near either end is already deep in a band, and the page ran away under a finger
+ * that had not moved yet: you pressed, held, and the list took off.
+ *
+ * So the band the drag started in is latched off, and stays off until the pointer
+ * leaves it — after that it scrolls like any other. The opposite band is never
+ * latched: moving toward it is a deliberate reach for something off-screen, which is
+ * what the auto-scroll exists for.
+ *
+ * Returns the step to apply and the latch as it stands after this frame.
+ */
+export function gateEdgeStep(step: number, latch: EdgeLatch): { step: number; latch: EdgeLatch } {
+  if (edgeDirection(step) !== latch) return { step, latch: null };
+  return { step: 0, latch };
+}
+
 /** The nearest ancestor that actually scrolls vertically — the app's scroll
  *  container is `.body`, not the window, so this walks up rather than assuming.
  *
@@ -66,12 +96,15 @@ export interface DragPoint {
 }
 
 export interface EdgeAutoScroll {
-  /** Begin tracking, resolving the scroller from the dragged element. `onFrame`
+  /** Begin tracking, resolving the scroller from the dragged element. `at` is where
+   *  the drag was lifted: it seeds the tracked position (the loop runs before the
+   *  first move arrives, and an unseeded origin reads as "pinned to the top edge")
+   *  and decides which band, if any, starts out latched off. `onFrame`
    *  fires after every frame that actually scrolled, with the pointer's last known
    *  position: content moved under a stationary finger, so whatever the drag is
    *  hovering has changed and its hit-test has to run again. Without it, holding at
    *  the edge scrolls a gap into view that never lights up and can't be dropped on. */
-  start: (from: HTMLElement | null, onFrame?: (point: DragPoint) => void) => void;
+  start: (from: HTMLElement | null, at: DragPoint, onFrame?: (point: DragPoint) => void) => void;
   /** Feed the pointer's viewport position on every move. */
   track: (point: DragPoint) => void;
   /** Stop scrolling (drop, cancel, or unmount). */
@@ -83,12 +116,14 @@ export function useEdgeAutoScroll(): EdgeAutoScroll {
   const point = useRef<DragPoint>({ clientX: 0, clientY: 0 });
   const onFrame = useRef<((p: DragPoint) => void) | null>(null);
   const frame = useRef<number | null>(null);
+  const latch = useRef<EdgeLatch>(null);
 
   const stop = useCallback(() => {
     if (frame.current != null) cancelAnimationFrame(frame.current);
     frame.current = null;
     scroller.current = null;
     onFrame.current = null;
+    latch.current = null;
   }, []);
 
   const tick = useCallback(() => {
@@ -100,7 +135,12 @@ export function useEdgeAutoScroll(): EdgeAutoScroll {
     // in the middle of the list reads as "past the bottom edge" and the list runs
     // away under it (e2e/shelf-drag.spec.ts pins this).
     const box = el.getBoundingClientRect();
-    const step = edgeScrollStep(point.current.clientY - box.top, box.height);
+    // Gated, so the band the drag was lifted in stays quiet until the pointer leaves it.
+    const { step, latch: next } = gateEdgeStep(
+      edgeScrollStep(point.current.clientY - box.top, box.height),
+      latch.current,
+    );
+    latch.current = next;
     if (step !== 0) {
       const before = el.scrollTop;
       el.scrollTop += step;
@@ -113,11 +153,19 @@ export function useEdgeAutoScroll(): EdgeAutoScroll {
   }, []);
 
   const start = useCallback(
-    (from: HTMLElement | null, frameCallback?: (p: DragPoint) => void) => {
+    (from: HTMLElement | null, at: DragPoint, frameCallback?: (p: DragPoint) => void) => {
       stop();
-      scroller.current = nearestScroller(from);
+      const el = nearestScroller(from);
+      scroller.current = el;
       onFrame.current = frameCallback ?? null;
-      if (scroller.current) frame.current = requestAnimationFrame(tick);
+      // Seeded from the lift point rather than left at the previous drag's last
+      // position (or, on the first drag, at 0,0 — which reads as pinned against the
+      // top edge, so every drag began by yanking the list upward).
+      point.current = at;
+      if (!el) return;
+      const box = el.getBoundingClientRect();
+      latch.current = edgeDirection(edgeScrollStep(at.clientY - box.top, box.height));
+      frame.current = requestAnimationFrame(tick);
     },
     [stop, tick],
   );

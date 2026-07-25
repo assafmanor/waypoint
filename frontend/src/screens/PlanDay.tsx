@@ -311,7 +311,7 @@ export function PlanDay() {
   const rowDragProps = (id: string) =>
     holdToDrag({
       onArm: (el, at) => {
-        autoScroll.start(el, hitTestRowDrop);
+        autoScroll.start(el, at, hitTestRowDrop);
         ghost.lift(el, at);
         dayAtLift.current = live.current.activeDate;
         setDragging(true);
@@ -503,7 +503,7 @@ export function PlanDay() {
   const shelfDragProps = (subject: ShelfDragSubject) =>
     holdToDrag({
       onArm: (el, at) => {
-        autoScroll.start(el, hitTestDropTarget);
+        autoScroll.start(el, at, hitTestDropTarget);
         ghost.lift(el, at);
         dayAtLift.current = live.current.activeDate;
         setDragging(true);
