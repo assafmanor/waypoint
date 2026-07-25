@@ -13,6 +13,7 @@ import {
   applyAddMaybe,
   applyGuardedUpdate,
   applyPark,
+  applySetMaybeDay,
   applyRemoveMaybe,
   applyReorder,
   applySchedule,
@@ -615,6 +616,73 @@ describe('applyAddMaybe / applyRemoveMaybe (shelf build/remove)', () => {
     const deps = fakeDeps();
     await applyRemoveMaybe(deps, item);
     expect(deps.actions.at(-1)).toEqual({ type: TRIP_ACTION.UNDO });
+    expect(deps.toast).toHaveBeenCalled();
+  });
+});
+
+// ADR-0116 §2 amendment: dragging an idea between the shelf's two groups re-aims
+// its day. A pencil mark — `consumed` is untouched, so it stays parked.
+describe('applySetMaybeDay (re-aim an idea at a day)', () => {
+  const item = {
+    id: 'mb-idea',
+    tripId: 'trip-japan-26',
+    title: 'רעיון',
+    createdBy: 'u-assaf',
+    consumed: false,
+    createdAt: 'now',
+    updatedAt: 'now',
+    updatedBy: 'u-assaf',
+  };
+
+  const capture = () => {
+    const calls: Array<{ url: string; method?: string; body: unknown }> = [];
+    vi.stubGlobal(
+      'fetch',
+      vi.fn((url: string, init?: RequestInit) => {
+        calls.push({
+          url: String(url),
+          method: init?.method,
+          body: init?.body ? JSON.parse(String(init.body)) : undefined,
+        });
+        return Promise.resolve(new Response(JSON.stringify(item), { status: 200 }));
+      }),
+    );
+    return calls;
+  };
+
+  it('PATCHes the target day and patches local state optimistically', async () => {
+    const calls = capture();
+    const deps = fakeDeps();
+
+    await applySetMaybeDay(deps, item, '2026-07-20');
+
+    expect(deps.actions[0]).toEqual({
+      type: TRIP_ACTION.UPDATE_MAYBE,
+      id: item.id,
+      patch: { targetDate: '2026-07-20' },
+    });
+    expect(deps.actions.some((a) => a.type === TRIP_ACTION.UNDO)).toBe(false);
+    expect(calls[0].method).toBe('PATCH');
+    expect(calls[0].url).toContain(`/maybe-items/${item.id}`);
+    expect(calls[0].body).toEqual({ targetDate: '2026-07-20' });
+  });
+
+  it('clears the day back to "someday" with null', async () => {
+    const calls = capture();
+    await applySetMaybeDay(fakeDeps(), { ...item, targetDate: '2026-07-20' }, null);
+    expect(calls[0].body).toEqual({ targetDate: null });
+  });
+
+  it('rolls back and toasts when the write fails', async () => {
+    vi.stubGlobal(
+      'fetch',
+      vi.fn(() => Promise.resolve(new Response('nope', { status: 500 }))),
+    );
+    const deps = fakeDeps();
+
+    await applySetMaybeDay(deps, item, '2026-07-20');
+
+    expect(deps.actions.some((a) => a.type === TRIP_ACTION.UNDO)).toBe(true);
     expect(deps.toast).toHaveBeenCalled();
   });
 });

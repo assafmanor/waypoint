@@ -90,6 +90,25 @@ describe('MaybeItemsService', () => {
     expect(change).toMatchObject({ entityType: 'maybeItem' });
   });
 
+  // ADR-0116 §1: the day is a pencil mark — set it, clear it, `consumed` untouched.
+  it('re-aims an idea at a day, and back to "someday", through ChangeService', async () => {
+    const tripId = await newTrip();
+    const item = await prisma.maybeItem.create({
+      data: { tripId, title: 'Onsen', createdBy: DEV_USER, updatedBy: DEV_USER },
+    });
+
+    const aimed = await service.update(tripId, item.id, { targetDate: '2026-07-20' }, DEV_USER);
+    expect(aimed).toMatchObject({ targetDate: '2026-07-20', consumed: false });
+
+    const cleared = await service.update(tripId, item.id, { targetDate: null }, DEV_USER);
+    expect(cleared.targetDate).toBeUndefined();
+
+    const changes = await prisma.change.count({
+      where: { tripId, entityId: item.id, action: 'update' },
+    });
+    expect(changes).toBe(2);
+  });
+
   it('throws for a maybe item that does not belong to the trip', async () => {
     const tripId = await newTrip();
     const otherTripId = await newTrip();

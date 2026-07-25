@@ -29,6 +29,7 @@ import {
   moveEvent,
   setEventStatus,
   updateEvent,
+  updateMaybeItem,
 } from '../lib/api';
 import {
   enqueueOutbox,
@@ -67,6 +68,7 @@ type UndoDescriptor =
   | { kind: 'reorder'; items: { id: string; previous: UpdateEventInput; isHard: boolean }[] }
   | { kind: 'addMaybe'; id: string }
   | { kind: 'removeMaybe'; item: MaybeItem }
+  | { kind: 'maybeDay'; item: MaybeItem }
   | { kind: 'park'; event: TripEvent; maybeId: string };
 
 export interface VerbDeps {
@@ -458,6 +460,33 @@ export async function applyAddMaybe(deps: VerbDeps, item: MaybeItem): Promise<vo
   }
 }
 
+// Re-aim an idea at a day, or back to "someday" (ADR-0116 §1). A pencil mark, so
+// nothing about the idea's lifecycle changes — `consumed` is untouched and it
+// stays parked. Offline-capable like every other shelf action (ADR-0042).
+export async function applySetMaybeDay(
+  deps: VerbDeps,
+  item: MaybeItem,
+  targetDate: string | null,
+): Promise<void> {
+  deps.dispatch({
+    type: TRIP_ACTION.UPDATE_MAYBE,
+    id: item.id,
+    patch: { targetDate: targetDate ?? undefined },
+  });
+  deps.lastAction.current = { kind: 'maybeDay', item };
+  const input = { targetDate };
+  try {
+    await restOrQueue(
+      deps.tripId,
+      { verb: OUTBOX_VERB.UPDATE_MAYBE_ITEM, maybeItemId: item.id, input },
+      () => updateMaybeItem(deps.tripId, item.id, input),
+    );
+  } catch (err) {
+    deps.dispatch({ type: TRIP_ACTION.UNDO });
+    writeErrorToast(deps.toast, err);
+  }
+}
+
 export async function applyRemoveMaybe(deps: VerbDeps, item: MaybeItem): Promise<void> {
   deps.dispatch({ type: TRIP_ACTION.REMOVE_MAYBE, id: item.id });
   deps.lastAction.current = { kind: 'removeMaybe', item };
@@ -596,6 +625,11 @@ async function reverseRest(tripId: string, desc: UndoDescriptor): Promise<void> 
         deleteMaybeItem(tripId, desc.id),
       );
       return;
+    case 'maybeDay':
+      await updateMaybeItem(tripId, desc.item.id, {
+        targetDate: desc.item.targetDate ?? null,
+      });
+      return;
     case 'removeMaybe': {
       const input = {
         id: desc.item.id,
@@ -728,6 +762,13 @@ export function useVerbs() {
     removeMaybe: (m: MaybeItem) => {
       void applyRemoveMaybe(deps, m);
       toast(ICONS.trash, t.toast.maybeRemoved, undo);
+    },
+    // Drag an idea between the shelf's two groups (ADR-0116 §2): onto this day
+    // pencils it in, back to the pool clears it. Not a schedule — no time, no slot.
+    setMaybeDay: (m: MaybeItem, targetDate: string | null) => {
+      if ((m.targetDate ?? null) === targetDate) return;
+      void applySetMaybeDay(deps, m, targetDate);
+      toast(ICONS.schedule, targetDate ? t.toast.maybeAimedAtDay : t.toast.maybeBackToPool, undo);
     },
     // Move an event onto the shelf as a maybe idea (any event, not just ones
     // that started there). Soft events only — hard events are commitments.

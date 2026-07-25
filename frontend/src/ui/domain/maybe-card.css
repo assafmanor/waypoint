@@ -124,10 +124,17 @@
 }
 
 /* Draggable onto a gap (ADR-0116 §5): the grab cursor states it on a pointer
-   device, and the dragged card thins out so the gap it's over is what reads. */
+   device, and the dragged card thins out so the gap it's over is what reads.
+
+   `pan-x`, NOT `none`: the shelf is a horizontally-scrolling strip, and `none`
+   killed the browser's pan gesture on every card — so swiping the strip did
+   nothing unless your finger landed in a gap between cards, which read as a
+   chopped, unreachable card (reported from the running app). The gesture split now
+   matches the geometry: sideways scrolls the shelf, a vertical drag lifts the card
+   out of it. */
 .wp-maybecard.draggable {
   cursor: grab;
-  touch-action: none;
+  touch-action: pan-x;
 }
 .wp-maybecard.dragging {
   opacity: 0.55;

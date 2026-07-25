@@ -310,6 +310,14 @@ export const createMaybeItemSchema = z.object({
 });
 export type CreateMaybeItemInput = z.infer<typeof createMaybeItemSchema>;
 
+/** `PATCH /trips/:tripId/maybe-items/:id` — re-aiming an idea at a day, or back to
+ *  "someday" with `null` (ADR-0116 §1 + its session-114 amendment). Deliberately
+ *  narrow: the day is the only field with an edit surface today. */
+export const updateMaybeItemSchema = z.object({
+  targetDate: z.string().nullish(),
+});
+export type UpdateMaybeItemInput = z.infer<typeof updateMaybeItemSchema>;
+
 /** `POST /trips/:tripId/invite` response. */
 export const inviteUrlSchema = z.object({ inviteUrl: z.string() });
 export type InviteUrl = z.infer<typeof inviteUrlSchema>;
