@@ -389,6 +389,49 @@ export interface ZoneContext {
   ambientZone: string;
 }
 
+/** Trip-local **today** — the calendar day the live zone puts you in (ADR-0107 §4
+ *  + session 102). One function so every surface asking "what day is it now"
+ *  gets the same answer: the day view, the Plan-mode builder, the day-strip anchor
+ *  and the default day all read this. **It takes no mode**: what time it is is a
+ *  fact about the trip and the clock, so switching to Plan mode to build must not
+ *  change "now" — which is exactly what a per-surface `todayInTz(trip.timezone, …)`
+ *  did. */
+export function liveToday(nowMs: number, evidence: ZoneEvidence): string {
+  return todayInTz(liveZone(nowMs, evidence), new Date(nowMs));
+}
+
+/** The zone context for a **day** surface (the Trip-mode day view, the Plan-mode
+ *  builder, the glance rail): every field derived from the one `ZoneEvidence`, with
+ *  the day's own ambient zone. This exists because a hand-assembled context is how
+ *  the two day surfaces drifted apart once already — the resolver was shared, the
+ *  *inputs* were not, so Plan mode kept measuring shifts against the crossing-derived
+ *  segment after the Trip-mode view had moved to the day's own evidence (session
+ *  100). **Build a `ZoneContext` through this or `liveZoneContext`, never by hand.** */
+export function dayZoneContext(date: string, evidence: ZoneEvidence): ZoneContext {
+  const { bookings, places, crossings, primaryZone } = evidence;
+  return {
+    bookings,
+    places,
+    crossings,
+    primaryZone,
+    ambientZone: dayAmbientZone(date, evidence),
+  };
+}
+
+/** The zone context for a **live** surface (the board hero): the ambient is where
+ *  you are standing right now, so a shift reads "this event is somewhere other than
+ *  here" rather than "…than this day". Same one-evidence rule as `dayZoneContext`. */
+export function liveZoneContext(nowMs: number, evidence: ZoneEvidence): ZoneContext {
+  const { bookings, places, crossings, primaryZone } = evidence;
+  return {
+    bookings,
+    places,
+    crossings,
+    primaryZone,
+    ambientZone: liveZone(nowMs, evidence),
+  };
+}
+
 /** An event's resolved display zones plus the **time-zone shift** to surface, in
  *  signed minutes (ADR-0107 §6 / ADR-0110 amendment). `deltaMinutes` is the
  *  interesting clock jump — for a zone-crossing event it's the destination clock

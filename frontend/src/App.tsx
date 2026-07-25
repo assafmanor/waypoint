@@ -78,8 +78,8 @@ import {
   type TabId,
 } from './constants';
 import { daysUntilStart, type Mode } from './lib/mode';
-import { addDays, monthLabelFor, todayInTz } from './lib/time';
-import { liveZone } from './lib/places';
+import { addDays, monthLabelFor } from './lib/time';
+import { liveToday } from './lib/places';
 import { t } from './i18n/he';
 import './App.css';
 import './screens.css';
@@ -214,13 +214,11 @@ function Header({
   // so "where's now?" is always answerable from the chrome. Plan mode has no
   // "now", so it keeps its own violet-selection + empty-day grammar unchanged.
   // The pill-state logic itself now lives in the DayStrip domain component.
-  // Trip mode's "today" rolls at the CURRENT itinerary segment's midnight
-  // (ADR-0107 §4), so the strip's amber anchor follows you across a crossing;
-  // Plan mode is framed in the trip primary zone and stays put.
-  const today = todayInTz(
-    mode === 'trip' ? liveZone(now.getTime(), zoneEvidence) : trip.timezone,
-    now,
-  );
+  // "Today" rolls at the midnight of the day you're in (ADR-0107 §4 + the
+  // session-102 amendment) — the same answer in BOTH modes. What time it is is a
+  // fact about the trip and the clock, not about which surface you're looking at:
+  // switching to Plan mode to do some building must not change "now".
+  const today = liveToday(now.getTime(), zoneEvidence);
   // Day-scope context ribbon (ADR-0029/0043): only in Trip mode, only off today.
   const dayScope =
     mode === 'trip' && activeDate !== today ? (activeDate < today ? 'past' : 'future') : null;

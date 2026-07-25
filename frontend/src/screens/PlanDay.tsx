@@ -36,8 +36,9 @@ import {
   eventPlaceName,
   eventRoute,
   eventZones,
-  segmentZoneAt,
-  tripZoneCrossings,
+  dayZoneContext,
+  liveToday,
+  liveZone,
   type EventZones,
   type ZoneContext,
 } from '../lib/places';
@@ -45,14 +46,20 @@ import { tripPhase } from '../lib/mode';
 import {
   buildTimeTree,
   formatTime,
-  todayInTz,
   zonedIso,
   crossesMidnightZoned,
   type TimeGroup,
   type TimeItem,
 } from '../lib/time';
 import { gapBetween, nextSlot, type GapDefaults } from '../lib/gaps';
-import { CODE_PREFIX, DEFAULT_MAYBE_ICON, ICONS, MS_PER_DAY, MINUTES_PER_HOUR } from '../constants';
+import {
+  CODE_PREFIX,
+  DAY_NOON,
+  DEFAULT_MAYBE_ICON,
+  ICONS,
+  MS_PER_DAY,
+  MINUTES_PER_HOUR,
+} from '../constants';
 import { dayTransitions, mergeDayEntries, type DayEntry } from '../lib/day-entries';
 import type { BookingTransition } from '../lib/glance';
 import { t } from '../i18n/he';
@@ -83,7 +90,7 @@ function gapLabel(minutes: number): string {
 }
 
 export function PlanDay() {
-  const { trip, events, maybeItems, bookings, places, activeDate } = useTrip();
+  const { trip, events, maybeItems, bookings, places, activeDate, zoneEvidence } = useTrip();
   const verbs = useVerbs();
   const now = useClock();
   const tz = trip.timezone;
@@ -93,8 +100,14 @@ export function PlanDay() {
   // A static "now" reference while building TODAY mid-trip (ADR-0043): a drafting
   // guide for "what's still ahead to build," never a live signal. Only when the
   // day on screen is today and the trip is live — Plan has no "now" otherwise.
+  // The live zone (ADR-0107 §4 + session 102): the clock reads the same in both
+  // modes, so which day counts as "today" — and what the now-reference shows —
+  // doesn't shift when you switch over to build.
+  const nowZone = liveZone(now.getTime(), zoneEvidence);
   const nowRefMs =
-    tripPhase(trip, now) === 'live' && activeDate === todayInTz(tz, now) ? now.getTime() : null;
+    tripPhase(trip, now) === 'live' && activeDate === liveToday(now.getTime(), zoneEvidence)
+      ? now.getTime()
+      : null;
   const [formTarget, setFormTarget] = useState<'new' | TripEvent | null>(null);
   // A booking-linked event edits through the merged BookingSheet (ADR-0053 §2).
   const [bookingTarget, setBookingTarget] = useState<Booking | null>(null);
@@ -173,24 +186,17 @@ export function PlanDay() {
   });
 
   const dayNumber = daysBetween(trip.startDate, activeDate) + 1;
-  const dayNoon = new Date(zonedIso(activeDate, '12:00', trip.timezone));
+  const dayNoon = new Date(zonedIso(activeDate, DAY_NOON, trip.timezone));
   const weekday = new Intl.DateTimeFormat('he-IL', {
     weekday: 'long',
     timeZone: trip.timezone,
   }).format(dayNoon);
 
-  // Multi-zone display (ADR-0107): same per-event zone resolution as the Trip-mode
-  // day view — the day's ambient zone (its segment zone at noon, else the trip
-  // primary) is what the shift pill measures against.
-  const crossings = tripZoneCrossings(events, bookings, places);
-  const ambientZone = segmentZoneAt(dayNoon.getTime(), crossings) ?? trip.timezone;
-  const zoneCtx: ZoneContext = {
-    bookings,
-    places,
-    crossings,
-    primaryZone: trip.timezone,
-    ambientZone,
-  };
+  // Multi-zone display (ADR-0107): literally the same context the Trip-mode day
+  // view builds, from the same evidence — this screen used to derive its own
+  // crossings and its own ambient, which is how the two day surfaces drifted apart
+  // (session 100). One builder, one input, no room to diverge.
+  const zoneCtx = dayZoneContext(activeDate, zoneEvidence);
 
   const closeForm = () => {
     setFormTarget(null);
@@ -203,6 +209,7 @@ export function PlanDay() {
     zoneCtx,
     readOnly,
     nowRefMs,
+    nowZone,
     bookings,
     places,
     verbs,
@@ -557,6 +564,8 @@ interface BuilderCtx {
   // Epoch ms of "now" when the builder should show the static now-reference at
   // depth 0 (viewing today, mid-trip); null otherwise (ADR-0043).
   nowRefMs: number | null;
+  /** The zone the now-reference reads in — the live zone, as in Trip mode. */
+  nowZone: string;
   bookings: Booking[];
   places: Place[];
   verbs: ReturnType<typeof useVerbs>;
@@ -642,7 +651,7 @@ function BuilderGroups({
     <>
       {entries.map((entry, i) => {
         const nowRef =
-          i === nowRefIndex && nowRefMs !== null ? <NowRef ms={nowRefMs} tz={ctx.tz} /> : null;
+          i === nowRefIndex && nowRefMs !== null ? <NowRef ms={nowRefMs} tz={ctx.nowZone} /> : null;
         if (entry.kind === 'transition') {
           return (
             <Fragment key={`${entry.event.id}-${entry.edge}`}>
@@ -708,7 +717,9 @@ function BuilderGroups({
           </Fragment>
         );
       })}
-      {nowRefMs !== null && nowRefIndex === entries.length && <NowRef ms={nowRefMs} tz={ctx.tz} />}
+      {nowRefMs !== null && nowRefIndex === entries.length && (
+        <NowRef ms={nowRefMs} tz={ctx.nowZone} />
+      )}
     </>
   );
 }

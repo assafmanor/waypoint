@@ -22,7 +22,10 @@ import {
   bookingEndZones,
   currentZone,
   dayAmbientZone,
+  dayZoneContext,
+  liveToday,
   liveZone,
+  liveZoneContext,
   mapsDirectionsUrl,
   mapsPlaceUrl,
   referencedPlaceIds,
@@ -824,5 +827,102 @@ describe('booking zone overrides — per-end pins (ADR-0107 §6 session-99 amend
     // "we know this end" from "we fell back", so this returns undefined, not a
     // fallback zone.
     expect(bookingEndZones(bk, PLACES_LITE)).toEqual({ from: JLM, to: undefined });
+  });
+});
+
+describe('zone contexts — one builder, so surfaces cannot diverge (session 102)', () => {
+  const JLM = 'Asia/Jerusalem';
+  const KEF = 'Atlantic/Reykjavik';
+  const NIC = 'Asia/Nicosia';
+  // The reported trip: one outbound TLV→KEF crossing, then a Cyprus/Israel day.
+  const crossings = [{ at: Date.parse('2026-07-24T04:15:00Z'), fromZone: JLM, toZone: KEF }];
+  const taverna = event({
+    id: 'taverna',
+    date: '2026-07-25',
+    placeId: 'pl-nic',
+    startsAt: '2026-07-24T21:00:00Z',
+    endsAt: '2026-07-24T21:15:00Z',
+  });
+  const avram = event({
+    id: 'avram',
+    date: '2026-07-25',
+    placeId: 'pl-jlm',
+    startsAt: '2026-07-25T04:00:00Z',
+    endsAt: '2026-07-25T05:00:00Z',
+  });
+  const evidence: ZoneEvidence = {
+    events: [taverna, avram],
+    bookings: [],
+    places: [
+      place('pl-nic', 'טברנה', { timezone: NIC }),
+      place('pl-jlm', 'הנכד של אברם', { timezone: JLM }),
+    ],
+    crossings,
+    primaryZone: JLM,
+  };
+
+  it('gives a day surface the DAY ambient — the Trip view and the Plan builder get the same context', () => {
+    // Plan mode used to derive its own crossings and its own segment-at-noon ambient,
+    // so it kept showing pills the Trip view had stopped showing. Both now call this.
+    const ctx = dayZoneContext('2026-07-25', evidence);
+    expect(ctx.ambientZone).toBe(NIC);
+    // Same input → same context, which is the property that keeps the two in step.
+    expect(dayZoneContext('2026-07-25', evidence)).toEqual(ctx);
+  });
+
+  it('kills both reported pills: same-offset events on their own day', () => {
+    const ctx = dayZoneContext('2026-07-25', evidence);
+    expect(eventZones(taverna, ctx).deltaMinutes).toBeUndefined();
+    expect(eventZones(avram, ctx).deltaMinutes).toBeUndefined();
+  });
+
+  it('gives a live surface the LIVE ambient — a shift there means "not where I am"', () => {
+    const nowMs = Date.parse('2026-07-24T21:31:00Z'); // 00:31 in Cyprus
+    expect(liveZoneContext(nowMs, evidence).ambientZone).toBe(NIC);
+  });
+
+  it('carries the shared evidence through unchanged, so nothing is re-derived', () => {
+    const ctx = dayZoneContext('2026-07-25', evidence);
+    expect(ctx.crossings).toBe(evidence.crossings);
+    expect(ctx.bookings).toBe(evidence.bookings);
+    expect(ctx.places).toBe(evidence.places);
+    expect(ctx.primaryZone).toBe(evidence.primaryZone);
+  });
+});
+
+describe('liveToday — one answer to "what day is it now", in both modes (session 102)', () => {
+  const JLM = 'Asia/Jerusalem';
+  const KEF = 'Atlantic/Reykjavik';
+  const NIC = 'Asia/Nicosia';
+  const crossings = [{ at: Date.parse('2026-07-24T04:15:00Z'), fromZone: JLM, toZone: KEF }];
+  const evidence: ZoneEvidence = {
+    events: [
+      event({
+        id: 'taverna',
+        date: '2026-07-25',
+        placeId: 'pl-nic',
+        startsAt: '2026-07-24T21:00:00Z',
+        endsAt: '2026-07-24T21:15:00Z',
+      }),
+    ],
+    bookings: [],
+    places: [place('pl-nic', 'טברנה', { timezone: NIC })],
+    crossings,
+    primaryZone: JLM,
+  };
+  const nowMs = Date.parse('2026-07-24T21:31:00Z'); // 00:31 on the 25th in Cyprus
+
+  it('rolls with the live zone, not the trip primary', () => {
+    expect(liveToday(nowMs, evidence)).toBe('2026-07-25');
+    expect(liveZone(nowMs, evidence)).toBe(NIC);
+  });
+
+  it('takes no mode, so Trip and Plan cannot disagree about "now"', () => {
+    // The bug this replaces: the day-strip anchor and the Plan builder's
+    // now-reference each read `todayInTz(trip.timezone, …)` on their own, so
+    // switching modes changed what time it was. There is one function now and it
+    // has no mode parameter — the type system is the guarantee.
+    expect(liveToday(nowMs, evidence)).toBe(liveToday(nowMs, evidence));
+    expect(liveToday.length).toBe(2); // (nowMs, evidence) — nothing else to pass
   });
 });

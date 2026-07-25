@@ -27,7 +27,7 @@ import {
 } from '../ui/domain';
 import { useClock } from '../lib/useClock';
 import { hotelWifi, nextCodedBooking } from '../lib/home-quick';
-import { dayAmbientZone, liveZone, eventRoute, eventZones, type ZoneContext } from '../lib/places';
+import { dayZoneContext, liveZone, liveZoneContext, eventRoute, eventZones } from '../lib/places';
 import { shortPlaceLabel } from '../lib/place-label';
 import { TAB_PARAM } from '../state/nav-state';
 import {
@@ -68,7 +68,6 @@ export function Home({ onNavigate }: { onNavigate?: (tab: TabId) => void }) {
     bookings,
     places,
     events,
-    zoneCrossings,
     zoneEvidence,
     activeDate,
     changeFeed,
@@ -87,13 +86,7 @@ export function Home({ onNavigate }: { onNavigate?: (tab: TabId) => void }) {
   // Each hero slot renders in its **own** event's zone (sticky display, ADR-0107
   // §2-3) — the live zone is only the frame + what a shift is measured against,
   // so "ambient" here is where you are standing now.
-  const zoneCtx: ZoneContext = {
-    bookings,
-    places,
-    crossings: zoneCrossings,
-    primaryZone: trip.timezone,
-    ambientZone: tz,
-  };
+  const zoneCtx = liveZoneContext(nowMs, zoneEvidence);
   const zonesOf = (e: TripEvent | undefined) => (e ? eventZones(e, zoneCtx) : undefined);
 
   // Ambient hotels are backdrop, never a now/next block — once you've checked in
@@ -196,12 +189,9 @@ export function Home({ onNavigate }: { onNavigate?: (tab: TabId) => void }) {
   const day07 = Date.parse(zonedIso(activeDate, hourLabel(DAY_WINDOW.START_HOUR), tz));
   const day23 = Date.parse(zonedIso(activeDate, hourLabel(DAY_WINDOW.END_HOUR), tz));
   // The glance is a **day** surface, so its anchors' shifts read against the day's
-  // own ambient zone (segment-at-noon, as the day timeline does) — not the live
-  // zone, which would nag on every anchor of a day you're merely browsing.
-  const glanceCtx: ZoneContext = {
-    ...zoneCtx,
-    ambientZone: dayAmbientZone(activeDate, zoneEvidence),
-  };
+  // own ambient zone (the same context both day timelines use) — not the live zone,
+  // which would nag on every anchor of a day you're merely browsing.
+  const glanceCtx = dayZoneContext(activeDate, zoneEvidence);
   const glance = buildDayGlance(events, activeDate, nowMs, day07, day23, tz, glanceCtx);
   // Ambient-span stays active today (a hotel spanning several nights, ADR-0054).
   // No persistent band on Home (ADR-0064 §A): the hero surfaces the transition
