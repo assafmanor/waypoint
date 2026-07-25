@@ -156,6 +156,12 @@ export const DEFAULT_MAYBE_ICON = '💡';
  *  band is generous because a thumb holding a card covers a lot of screen. */
 export const DRAG_EDGE_SCROLL_ZONE_PX = 84;
 export const DRAG_EDGE_SCROLL_MAX_PX = 14;
+/** How far a drag lifted INSIDE a band must push toward that edge before the band
+ *  starts scrolling (the other release is leaving the band). Above the hold's own
+ *  slop, so the wobble of a thumb settling on a card never reads as a push, and well
+ *  under the band's depth, so aiming at the edge you started near stays one small
+ *  movement rather than a detour. */
+export const DRAG_EDGE_SCROLL_RELEASE_PX = 16;
 /** How much vertical overflow an ancestor needs before a drag treats it as THE
  *  scroller. A horizontally-scrolling strip reports `overflow-y: auto` (CSS makes
  *  the other axis `auto` when one is not `visible`) and is often a pixel or two
