@@ -8,6 +8,7 @@ import {
   DOT_SEPARATOR,
   MINUTES_PER_HOUR,
   MINUTES_PER_DAY,
+  MS_PER_DAY,
 } from '../constants';
 import { dayCount, dayPhrase, monthCount } from './hebrew';
 
@@ -273,6 +274,17 @@ export function relativeDay(delta: number): string {
   if (delta === -1) return 'אתמול';
   if (delta === -2) return 'שלשום';
   return delta > 0 ? `עוד ${dayPhrase(delta)}` : `לפני ${dayPhrase(-delta)}`;
+}
+
+/** {@link relativeDay} for a calendar date against today — the form every surface
+ *  actually wants. Both are trip-local `YYYY-MM-DD`, so the diff is whole-day and
+ *  DST-safe (a calendar date carries no zone). Read by the Index booking rows and
+ *  the Map row's meta when its list spans more than one day. */
+export function relativeDayLabel(date: string, today: string): string {
+  const delta = Math.round(
+    (Date.parse(`${date}T00:00:00Z`) - Date.parse(`${today}T00:00:00Z`)) / MS_PER_DAY,
+  );
+  return relativeDay(delta);
 }
 
 /** Forward countdown to a future date, split for display (ADR-0085): the board

@@ -24,19 +24,20 @@ import {
 } from '../lib/place-usage';
 import {
   eventZones,
+  liveToday,
   liveZoneContext,
   mapsDirectionsUrl,
   mapsPlaceUrl,
   nextDestination,
 } from '../lib/places';
-import { formatTime } from '../lib/time';
+import { formatTime, relativeDayLabel } from '../lib/time';
 import { eventEdgeTransition } from '../lib/transitions';
 import { shortTitleText } from '../lib/route-title';
 import { useClock } from '../lib/useClock';
 import { formatDistance, haversineMeters } from '../lib/distance';
 import { useGeolocation } from '../lib/useGeolocation';
 import { EVENT_CATEGORY_OPTIONS } from '../lib/category-options';
-import { CATEGORY_PIN_HUE, ICONS } from '../constants';
+import { CATEGORY_PIN_HUE, DOT_SEPARATOR, ICONS } from '../constants';
 import { ChoiceGrid, type Choice } from '../ui/primitives/ChoiceGrid';
 import { PlacePickerSheet } from '../ui/primitives/PlacePicker';
 import { SearchOverlay } from '../ui/primitives/SearchOverlay';
@@ -241,23 +242,29 @@ export function MapView() {
   const zoneCtx = useMemo(() => liveZoneContext(nowMs, zoneEvidence), [nowMs, zoneEvidence]);
   const eventById = useMemo(() => new Map(events.map((e) => [e.id, e])), [events]);
 
-  const dayMeta = (usage: PlaceUsage): { time?: string; what?: string } => {
-    const day = placeDay(usage, scopedDate);
+  const dayMeta = (usage: PlaceUsage): { day?: string; time?: string; what?: string } => {
+    const usageDay = placeDay(usage, scopedDate);
     // A strictly-middle stay night has no moment and nothing happens there — saying
     // the hotel's own name back on the hotel's row would be pure repetition.
-    if (!day || day.prominence === 'ambient') return {};
-    const event = day.eventId ? eventById.get(day.eventId) : undefined;
-    if (!event) return {};
+    if (!usageDay || usageDay.prominence === 'ambient') return {};
+    // Which day only matters when the list spans several: day-scoped, the strip and
+    // the scope hint already name it, so `היום ·` on every row would be pure noise.
+    const day = allDays
+      ? relativeDayLabel(usageDay.date, liveToday(nowMs, zoneEvidence))
+      : undefined;
+    const event = usageDay.eventId ? eventById.get(usageDay.eventId) : undefined;
+    if (!event) return { day };
     const zones = eventZones(event, zoneCtx);
-    const zone = day.edge === 'end' ? zones.endZone : zones.startZone;
+    const zone = usageDay.edge === 'end' ? zones.endZone : zones.startZone;
     return {
-      time: day.at == null ? undefined : formatTime(new Date(day.at), zone),
+      day,
+      time: usageDay.at == null ? undefined : formatTime(new Date(usageDay.at), zone),
       // A bracketed booking says which end this is, in the app's existing per-mode
       // transition wording (take-off/landing for a flight, departure/arrival for
       // surface transport, check-in/out for a stay) — never a bare transition word,
       // because the row's own name and time supply the context §1 asks for. Anything
       // else says what it is, via its title in display form.
-      what: eventEdgeTransition(event, day.edge) ?? shortTitleText(event.title),
+      what: eventEdgeTransition(event, usageDay.edge) ?? shortTitleText(event.title),
     };
   };
 
@@ -277,7 +284,7 @@ export function MapView() {
     const prominence = allDays
       ? undefined
       : usage.days.find((d) => d.date === activeDate)?.prominence;
-    const { time, what } = dayMeta(usage);
+    const { day, time, what } = dayMeta(usage);
     return (
       <PlaceRow
         key={usage.placeId}
@@ -285,6 +292,7 @@ export function MapView() {
         place={place}
         ambient={prominence === 'ambient'}
         isNextStop={nextStopId === usage.placeId}
+        day={day}
         time={time}
         what={what}
         distance={distanceLabel(usage)}
@@ -467,6 +475,7 @@ function PlaceRow({
   place,
   ambient,
   isNextStop,
+  day,
   time,
   what,
   distance,
@@ -478,7 +487,10 @@ function PlaceRow({
   ambient: boolean;
   /** The single navigate-to-next row (ADR-0106 §6): amber ring + tag. */
   isNextStop?: boolean;
-  /** When this place is due today, already in that event's own zone (ADR-0107). */
+  /** Which day, relative (מחר / אתמול / עוד 3 ימים) — only when the list spans
+   *  several, since a day-scoped list already names its day (ADR-0085). */
+  day?: string;
+  /** When this place is due that day, already in that event's own zone (ADR-0107). */
   time?: string;
   /** What happens here — a transition word for a booking end, else the title. */
   what?: string;
@@ -548,11 +560,16 @@ function PlaceRow({
           )}
         </span>
         <span className="map-m">
-          {/* The time leads the meta line — amber, it IS the row's time anchor — and
-              the next-stop tag no longer repeats it, only says which row is next. */}
-          {time && (
-            <span className="map-tag time" dir="ltr">
-              {time}
+          {/* When leads the meta line — amber, it IS the row's time anchor — and the
+              next-stop tag no longer repeats it, only says which row is next. Day and
+              time share one tag (the Index's `scheduleLabel` composition), so a
+              multi-day list gains width but not another chip. The clock stays an
+              LTR island inside the Hebrew day word, never the whole tag. */}
+          {(day || time) && (
+            <span className="map-tag time">
+              {day}
+              {day && time && ` ${DOT_SEPARATOR} `}
+              {time && <span dir="ltr">{time}</span>}
             </span>
           )}
           {isNextStop && <span className="map-tag next">{t.map.nextStop}</span>}
