@@ -8,7 +8,11 @@
 // reorder grip): the reorder drag had the same reach limit, so this is one
 // mechanism rather than a second copy (CLAUDE.md rule 8).
 import { useCallback, useEffect, useRef } from 'react';
-import { DRAG_EDGE_SCROLL_MAX_PX, DRAG_EDGE_SCROLL_ZONE_PX } from '../constants';
+import {
+  DRAG_EDGE_SCROLL_MAX_PX,
+  DRAG_EDGE_SCROLL_ZONE_PX,
+  DRAG_SCROLLER_MIN_OVERFLOW_PX,
+} from '../constants';
 
 /**
  * How far to scroll this frame, from the pointer's viewport position. Negative
@@ -38,55 +42,81 @@ export function edgeScrollStep(
 }
 
 /** The nearest ancestor that actually scrolls vertically — the app's scroll
- *  container is `.body`, not the window, so this walks up rather than assuming. */
-function scrollableAncestor(from: HTMLElement | null): HTMLElement | null {
+ *  container is `.body`, not the window, so this walks up rather than assuming.
+ *
+ *  The overflow threshold is load-bearing, not defensive: a horizontally-scrolling
+ *  strip (`.shelf { overflow-x: auto }`) reports `overflowY: auto` too, because CSS
+ *  makes the other axis compute to `auto` when one axis is not `visible`. Such a
+ *  strip is usually a pixel or two taller than its box, so a bare
+ *  `scrollHeight > clientHeight` test picks the STRIP as the scroller and the drag
+ *  ends up nudging it instead of scrolling the page. */
+export function nearestScroller(from: HTMLElement | null): HTMLElement | null {
   for (let el = from; el; el = el.parentElement) {
     const { overflowY } = getComputedStyle(el);
     const scrolls = overflowY === 'auto' || overflowY === 'scroll';
-    if (scrolls && el.scrollHeight > el.clientHeight) return el;
+    if (scrolls && el.scrollHeight - el.clientHeight > DRAG_SCROLLER_MIN_OVERFLOW_PX) return el;
   }
   return null;
 }
 
+export interface DragPoint {
+  clientX: number;
+  clientY: number;
+}
+
 export interface EdgeAutoScroll {
-  /** Begin tracking, resolving the scroller from the dragged element. */
-  start: (from: HTMLElement | null) => void;
-  /** Feed the pointer's viewport `clientY` on every move. */
-  track: (clientY: number) => void;
+  /** Begin tracking, resolving the scroller from the dragged element. `onFrame`
+   *  fires after every frame that actually scrolled, with the pointer's last known
+   *  position: content moved under a stationary finger, so whatever the drag is
+   *  hovering has changed and its hit-test has to run again. Without it, holding at
+   *  the edge scrolls a gap into view that never lights up and can't be dropped on. */
+  start: (from: HTMLElement | null, onFrame?: (point: DragPoint) => void) => void;
+  /** Feed the pointer's viewport position on every move. */
+  track: (point: DragPoint) => void;
   /** Stop scrolling (drop, cancel, or unmount). */
   stop: () => void;
 }
 
 export function useEdgeAutoScroll(): EdgeAutoScroll {
   const scroller = useRef<HTMLElement | null>(null);
-  const y = useRef(0);
+  const point = useRef<DragPoint>({ clientX: 0, clientY: 0 });
+  const onFrame = useRef<((p: DragPoint) => void) | null>(null);
   const frame = useRef<number | null>(null);
 
   const stop = useCallback(() => {
     if (frame.current != null) cancelAnimationFrame(frame.current);
     frame.current = null;
     scroller.current = null;
+    onFrame.current = null;
   }, []);
 
   const tick = useCallback(() => {
     const el = scroller.current;
     if (!el) return;
-    const step = edgeScrollStep(y.current, el.clientHeight);
-    if (step !== 0) el.scrollTop += step;
+    const step = edgeScrollStep(point.current.clientY, el.clientHeight);
+    if (step !== 0) {
+      const before = el.scrollTop;
+      el.scrollTop += step;
+      // Only when it really moved: at the top or bottom of the scroller the step is
+      // still non-zero but nothing changes, and re-running the hit-test then would
+      // be pure churn.
+      if (el.scrollTop !== before) onFrame.current?.(point.current);
+    }
     frame.current = requestAnimationFrame(tick);
   }, []);
 
   const start = useCallback(
-    (from: HTMLElement | null) => {
+    (from: HTMLElement | null, frameCallback?: (p: DragPoint) => void) => {
       stop();
-      scroller.current = scrollableAncestor(from);
+      scroller.current = nearestScroller(from);
+      onFrame.current = frameCallback ?? null;
       if (scroller.current) frame.current = requestAnimationFrame(tick);
     },
     [stop, tick],
   );
 
-  const track = useCallback((clientY: number) => {
-    y.current = clientY;
+  const track = useCallback((next: DragPoint) => {
+    point.current = next;
   }, []);
 
   // A drag interrupted by an unmount (a mode switch, a day change) must not leave

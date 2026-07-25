@@ -139,10 +139,21 @@
   -webkit-user-select: none;
   -webkit-touch-callout: none;
 }
+/* A held card is LIFTED, not faded. The 0.55 opacity this started with borrows a
+   convention from drag implementations where a ghost follows the finger and the
+   source dims to show it left — nothing follows the finger here, so the card is the
+   only feedback there is, and fading it (ring included) made the one thing you're
+   holding the faintest thing on screen. So: full opacity, a crisp violet edge, real
+   elevation, and a slight scale — it reads as picked up. */
 .wp-maybecard.dragging {
-  opacity: 0.55;
   border-color: var(--plan);
   border-style: solid;
-  box-shadow: 0 0 0 3px color-mix(in srgb, var(--plan) 30%, transparent);
+  box-shadow:
+    0 0 0 2px color-mix(in srgb, var(--plan) 55%, transparent),
+    0 10px 22px -8px rgba(14, 23, 41, 0.4);
+  transform: scale(1.03);
+  /* Above its neighbours, so the ring and shadow aren't clipped by the next card. */
+  position: relative;
+  z-index: 1;
   cursor: grabbing;
 }
