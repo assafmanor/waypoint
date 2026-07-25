@@ -105,6 +105,10 @@ export function PlaceResearch({
         </div>
       )}
 
+      {/* Armed but still under the min-chars floor: say why nothing is happening,
+          rather than leaving a bare header over an empty section. */}
+      {!search.active && <p className="map-res-hint">{t.map.research.typeMore}</p>}
+
       {!search.loading && search.active && search.predictions.length === 0 && !search.failed && (
         <EmptyState icon={ICONS.search} title={t.map.research.noResults} />
       )}
