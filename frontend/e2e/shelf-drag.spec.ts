@@ -26,7 +26,7 @@
 // reach of any automated test (ADR-0017 still wants a real-device pass).
 import { test, expect, type Page, type CDPSession } from '@playwright/test';
 import { bootIntoTrip, shortLiveTripDates } from './boot';
-import { DRAG_EDGE_SCROLL_ZONE_PX } from '../src/constants';
+import { DRAG_EDGE_SCROLL_RELEASE_PX, DRAG_EDGE_SCROLL_ZONE_PX } from '../src/constants';
 
 // Phone-sized and touch-capable: the drag is a touch gesture on a ~390px screen
 // (ADR-0017), and `hasTouch` is what makes the browser arbitrate scroll-vs-drag
@@ -416,6 +416,38 @@ test.describe('a drag lifted inside an edge band', () => {
     // scrolls like any other.
     await touch(cdp, 'touchMove', x, bands.middleTo);
     await touch(cdp, 'touchMove', x, bands.topBand);
+    await expect.poll(() => scrollTop(page), { timeout: 3000 }).toBeLessThan(before);
+
+    await touch(cdp, 'touchEnd');
+  });
+
+  // The follow-up report: "near an edge, if you want to drag in the direction of the
+  // edge, it doesn't allow you even after starting the move." Leaving the band was
+  // the only release, so the one edge you could not reach was the one you started
+  // next to — you had to walk a band's depth away from it and come back.
+  test('scrolls as soon as the drag pushes on toward that same edge', async ({ page }) => {
+    const cdp = await page.context().newCDPSession(page);
+    // A row parked a little way INTO the top band, so there is room to push further
+    // toward the edge without leaving `.body` for the header chrome.
+    await page
+      .locator('[data-bld-id="ev-5"]')
+      .evaluate((el) => el.scrollIntoView({ block: 'start' }));
+    await page.locator('.body').evaluate((el) => (el.scrollTop -= 50));
+    const row = (await page.locator('[data-bld-id="ev-5"]').boundingBox())!;
+    const body = await boxOf(page, '.body');
+    const from = row.y + 8;
+    expect(from, 'lifted inside the top band').toBeLessThan(body.y + DRAG_EDGE_SCROLL_ZONE_PX);
+    expect(from, 'with room to push toward the edge').toBeGreaterThan(
+      body.y + DRAG_EDGE_SCROLL_RELEASE_PX,
+    );
+    const before = await scrollTop(page);
+    expect(before).toBeGreaterThan(0);
+
+    await touch(cdp, 'touchStart', row.x + row.width / 2, from);
+    await expect(page.locator('.bld.dragging')).toBeVisible();
+    // Straight on toward the top edge, staying inside the band the whole way — no
+    // detour out of it and back.
+    await touch(cdp, 'touchMove', row.x + row.width / 2, body.y + 6);
     await expect.poll(() => scrollTop(page), { timeout: 3000 }).toBeLessThan(before);
 
     await touch(cdp, 'touchEnd');

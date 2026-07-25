@@ -2,13 +2,14 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { act, cleanup, renderHook } from '@testing-library/react';
 import {
+  edgeLatchAt,
   edgeScrollStep,
   gateEdgeStep,
   nearestScroller,
   useEdgeAutoScroll,
   type EdgeLatch,
 } from './edge-autoscroll';
-import { DRAG_EDGE_SCROLL_ZONE_PX } from '../constants';
+import { DRAG_EDGE_SCROLL_RELEASE_PX, DRAG_EDGE_SCROLL_ZONE_PX } from '../constants';
 
 // The pacing only (ADR-0116 §5 amendment): the rAF loop and the scroller lookup
 // need real layout, but how fast a held pointer scrolls is pure arithmetic.
@@ -53,26 +54,58 @@ describe('edgeScrollStep', () => {
 // moving": the shelf sits at the bottom of the list, so a card is nearly always
 // picked up inside a band, and the drag opened by running the list away.
 describe('gateEdgeStep', () => {
-  it('holds off the band the drag was lifted in', () => {
-    expect(gateEdgeStep(14, 'down').step).toBe(0);
-    expect(gateEdgeStep(-14, 'up').step).toBe(0);
+  // Lifted 20px from the bottom of the box and 20px from the top respectively.
+  const bottom: EdgeLatch = { dir: 'down', from: 580 };
+  const top: EdgeLatch = { dir: 'up', from: 20 };
+
+  it('holds off the band the drag was lifted in while the pointer rests there', () => {
+    expect(gateEdgeStep(14, 580, bottom).step).toBe(0);
+    expect(gateEdgeStep(-14, 20, top).step).toBe(0);
+  });
+
+  it('ignores a wobble on the spot, in either direction', () => {
+    expect(gateEdgeStep(14, 586, bottom).step).toBe(0);
+    expect(gateEdgeStep(14, 570, bottom).step).toBe(0);
+  });
+
+  it('releases as soon as the drag pushes on toward that same edge', () => {
+    // The second half of the report: an edge you started near was an edge you could
+    // not scroll toward at all without walking away from it first.
+    expect(gateEdgeStep(14, 580 + DRAG_EDGE_SCROLL_RELEASE_PX, bottom)).toEqual({
+      step: 14,
+      latch: null,
+    });
+    expect(gateEdgeStep(-14, 20 - DRAG_EDGE_SCROLL_RELEASE_PX, top)).toEqual({
+      step: -14,
+      latch: null,
+    });
   });
 
   it('lets the opposite band scroll straight away — that reach is deliberate', () => {
-    expect(gateEdgeStep(-14, 'down')).toEqual({ step: -14, latch: null });
-    expect(gateEdgeStep(14, 'up')).toEqual({ step: 14, latch: null });
+    expect(gateEdgeStep(-14, 20, bottom)).toEqual({ step: -14, latch: null });
+    expect(gateEdgeStep(14, 580, top)).toEqual({ step: 14, latch: null });
   });
 
   it('releases the latch once the pointer leaves the band, and scrolls on its return', () => {
-    const left = gateEdgeStep(0, 'down');
+    const left = gateEdgeStep(0, 300, bottom);
     expect(left).toEqual({ step: 0, latch: null });
-    expect(gateEdgeStep(14, left.latch).step).toBe(14);
+    expect(gateEdgeStep(14, 580, left.latch).step).toBe(14);
   });
 
   it('is transparent to a drag lifted clear of both bands', () => {
-    const latch: EdgeLatch = null;
-    expect(gateEdgeStep(0, latch)).toEqual({ step: 0, latch: null });
-    expect(gateEdgeStep(-9, latch)).toEqual({ step: -9, latch: null });
+    expect(gateEdgeStep(0, 300, null)).toEqual({ step: 0, latch: null });
+    expect(gateEdgeStep(-9, 30, null)).toEqual({ step: -9, latch: null });
+  });
+});
+
+describe('edgeLatchAt', () => {
+  it('latches the band a drag was lifted in, remembering where', () => {
+    expect(edgeLatchAt(14, 580)).toEqual({ dir: 'down', from: 580 });
+    expect(edgeLatchAt(-14, 20)).toEqual({ dir: 'up', from: 20 });
+  });
+
+  it('latches nothing for a drag lifted in the middle', () => {
+    expect(edgeLatchAt(0, 300)).toBeNull();
   });
 });
 
@@ -124,6 +157,9 @@ describe('useEdgeAutoScroll', () => {
   const inTopBand = BOX.top + 8;
   const inBottomBand = BOX.top + BOX.height - 8;
   const clearOfBands = BOX.top + BOX.height - DRAG_EDGE_SCROLL_ZONE_PX - 40;
+  /** Just inside the bottom band, with room to push further into it — a card lifted
+   *  from the shelf lands about here. */
+  const enteringBottomBand = BOX.top + BOX.height - DRAG_EDGE_SCROLL_ZONE_PX + 12;
 
   it('does not scroll while the finger rests where the drag was lifted', () => {
     const { el, card } = scrollerWithCard();
@@ -144,6 +180,37 @@ describe('useEdgeAutoScroll', () => {
 
     act(() => result.current.start(card, { clientX: 0, clientY: clearOfBands }));
     const before = el.scrollTop;
+    runFrames();
+
+    expect(el.scrollTop).toBe(before);
+  });
+
+  it('scrolls when the drag pushes on toward the edge it was lifted at', () => {
+    // The follow-up report: near an edge, dragging TOWARD that edge did nothing at all
+    // — the latch waited for the pointer to leave a band it had never left.
+    const { el, card } = scrollerWithCard();
+    const { result } = renderHook(() => useEdgeAutoScroll());
+
+    act(() => result.current.start(card, { clientX: 0, clientY: enteringBottomBand }));
+    const before = el.scrollTop;
+    act(() =>
+      result.current.track({
+        clientX: 0,
+        clientY: enteringBottomBand + DRAG_EDGE_SCROLL_RELEASE_PX,
+      }),
+    );
+    runFrames();
+
+    expect(el.scrollTop).toBeGreaterThan(before);
+  });
+
+  it('still ignores the wobble of a thumb settling on the card', () => {
+    const { el, card } = scrollerWithCard();
+    const { result } = renderHook(() => useEdgeAutoScroll());
+
+    act(() => result.current.start(card, { clientX: 0, clientY: enteringBottomBand }));
+    const before = el.scrollTop;
+    act(() => result.current.track({ clientX: 0, clientY: enteringBottomBand + 3 }));
     runFrames();
 
     expect(el.scrollTop).toBe(before);

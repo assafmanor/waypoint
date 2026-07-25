@@ -61,6 +61,28 @@ actually goes (up, onto the day).
   steps clear of the band first — the same thing a finger does, and now part of the
   contract rather than incidental.
 
+## Follow-up in the same session — the latch was too strict
+
+Reported after the first fix shipped: "near an edge, if you want to drag in the
+direction of the edge, it doesn't allow you even after starting the move."
+
+Leaving the band was the only release, which is a _position_ test on a problem about
+_intent_ — and it made the one edge you could not reach the one you started next to.
+A card lifted in the shelf had to be walked a full band's depth up the screen and
+back down before the bottom band would answer, which is precisely the gesture "drag
+this further down" should have been.
+
+The latch now also releases when the pointer has moved `DRAG_EDGE_SCROLL_RELEASE_PX`
+(16 px) **toward** its own edge, which is why it remembers where the drag was lifted
+(`{ dir, from }`) rather than just which band. 16 px is above `DRAG_HOLD_SLOP_PX` (8),
+so the wobble of a thumb settling on a card never reads as a push, and roughly a
+fifth of the band's depth, so asking for the near edge stays one small movement.
+
+Both halves are pinned: `gateEdgeStep` cases for the wobble and the push, hook cases
+for each through the real loop, and an e2e that lifts a row inside the top band and
+pushes straight on toward the top edge without ever leaving it (verified failing
+against the exit-only latch).
+
 ## Still open
 
 The real-device pass on the builder's drags (backlog) is unchanged and still wants
