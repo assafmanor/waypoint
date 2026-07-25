@@ -158,3 +158,20 @@ That is the same failure this ADR's own display layer hit before (and ADR-0059's
 - **`liveToday(nowMs, evidence)` and `liveZone(nowMs, evidence)` are mode-free**, and are read by the day-strip anchor, the Trip-mode day view, the Plan-mode builder's now-reference and the default day. `liveToday` **takes no mode parameter** — the signature is the guarantee, not a convention.
 - Plan mode's now-reference still _means_ what it always did (a static drafting guide for what's left to build today, ADR-0043 — never a live signal). It just no longer prints a different time than the day view printed a tap earlier.
 - What legitimately stays per-surface: the base display zone for an event with no resolved zone, and Plan mode's absence of live verbs. Neither is a clock.
+
+## Amendment (2026-07-25, session 103) — the mixed travel day, settled
+
+Two questions were left open about a day whose events span more than one zone. Settling them needed probing the real resolvers against the reported trip, and the answers came out asymmetric: one was already right, one was a live bug.
+
+**1. The shift-pill baseline on a travel day: no change, and here is why.** On the reported day 24 (Iceland arrival, then a Copenhagen dinner and an Israeli restaurant), the ambient resolves to `Atlantic/Reykjavik` — where the traveler actually is from 11:00 on — and the pills read: the Iceland event bare, the flight `−3` (its crossing), Copenhagen `+2`, the Israeli restaurant `+3`. Every one of those is correct: those events **are** somewhere other than the day. Two alternatives were considered and rejected:
+
+- **Duration-weighting the day's events** picks _where the longest event is_, not where you are — on day 24 it elects Copenhagen, which is worse than the segment answer.
+- **Chaining each event against the previous one's zone** turns a single comparable baseline into relative deltas (`+2`, then `+1` — from what?), which is harder to read, not easier.
+
+The noon sample keeps one wart worth naming rather than fixing: it is taken at noon **in the trip primary zone**, so the sampling _instant_ shifts with the primary zone, and two trips with identical itineraries but different primaries can frame a midday-departure day on opposite sides of the crossing. The visible consequence is confined to which side of one crossing a single day's pills baseline against, and every attempted fix traded it for a worse failure mode. Recorded as accepted, not overlooked.
+
+**2. The read-only gate on a travel day: a real bug, fixed.** Session 96 moved the gate off the live zone onto the day's ambient, because the live zone rolls forward mid-flight and would lock the day you are flying through. On a **travel** day the ambient _is_ the eastward destination, so the hazard survived unchanged: fly Tel Aviv → Auckland departing 02:00, and at 18:00 of the day you left — still airborne — Auckland has already rolled past midnight, so the day locked itself while the traveler was inside it.
+
+- **A day is over only when it is over in every zone it touched** — the clock that ends it last, i.e. the smallest UTC offset among the day's zones (its events' known zones, **both ends** of a crossing since you were in each, plus the ambient as the floor). Session 96's sentence stands, read for a day with several clocks: _a day ends when that day's clock says so_ — the last of them.
+- `isDayOver(date, evidence, nowMs)` (`lib/places.ts`) owns the predicate, so the screen no longer assembles the rule (session-102 principle). Same-offset zones collapse, so a Nicosia + Jerusalem day gains no phantom extra hour.
+- The day-scope **label** still follows the live zone (session 96) — unchanged. Only the gate is generous.
