@@ -231,9 +231,14 @@ export function useHoldToDrag(): (handlers: HoldToDragHandlers) => HoldToDragPro
           window.removeEventListener('pointermove', move);
           window.removeEventListener('pointerup', up);
           window.removeEventListener('pointercancel', cancel);
-          // The element's own guard may have outlived its unmount (see `attach`); this
-          // is where it finally comes off.
-          el.removeEventListener('touchmove', suppressTouchScroll);
+          // ONLY for an element that unmounted mid-gesture: the ref cleanup
+          // deliberately left its guard attached (see `attach`), and this is the only
+          // other chance to take it off. A still-connected element KEEPS its
+          // mount-time guard — that listener is the thing that makes the NEXT gesture
+          // suppressible at all (see WHEN above; the ref callback is stable, so
+          // nothing would ever re-attach it). Removing it unconditionally is what made
+          // a second drag on the same card pan the page and die mid-move.
+          if (!el.isConnected) el.removeEventListener('touchmove', suppressTouchScroll);
           reset();
         }
         window.addEventListener('pointermove', move);
