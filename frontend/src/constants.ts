@@ -171,6 +171,11 @@ export const DRAG_HOLD_SLOP_PX = 8;
 /** How long the "swallow the click a completed drag fires" listener stays armed
  *  before disarming itself. Only a fallback: it normally disarms on that click. */
 export const DRAG_CLICK_SWALLOW_MS = 400;
+/** How long a drag must rest over a day pill before the strip switches to that day
+ *  (ADR-0116 session-119) — the spring-loaded-folder idiom. Longer than the hold that
+ *  starts the drag: a drag crosses several pills on its way anywhere, and every one it
+ *  merely passes over must not open. */
+export const DRAG_DAY_DWELL_MS = 450;
 
 /** The 5-hue Map pin/badge palette (ADR-0109 §3 / ADR-0110 §2). The `--cat-*`
  *  tokens carry the actual colours (styles/tokens.css); this is the hue key. */

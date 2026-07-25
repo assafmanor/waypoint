@@ -1838,41 +1838,6 @@
   outline-offset: 2px;
 }
 
-/* builder reorder controls — compact ▲/▼ that swap a row's slot with its
-   neighbor (a plan action; up/down chosen over drag for touch reliability). */
-.bld-reorder {
-  display: flex;
-  flex-direction: column;
-  flex: 0 0 auto;
-  gap: 2px;
-}
-.bld-move {
-  width: 22px;
-  height: 18px;
-  display: grid;
-  place-items: center;
-  border: 0;
-  background: none;
-  color: var(--muted);
-  font-size: 9px;
-  line-height: 1;
-  cursor: pointer;
-  border-radius: 5px;
-  padding: 0;
-}
-.bld-move:hover:not(:disabled) {
-  background: var(--plan-tint);
-  color: var(--plan-deep);
-}
-.bld-move:disabled {
-  opacity: 0.25;
-  cursor: default;
-}
-.bld-move:focus-visible {
-  outline: 2px solid var(--plan);
-  outline-offset: 1px;
-}
-
 /* add-idea row under the shelf */
 .add-idea {
   display: flex;
@@ -1916,44 +1881,17 @@
   cursor: default;
 }
 
-/* Builder reorder: a drag grip (primary) + ▲/▼ stack (a11y/keyboard fallback).
+/* A soft row drags on a press-and-hold from anywhere on it (session-119): no grip,
+   no ▲/▼ stack, and deliberately NO `touch-action` override — the row sits in a
+   scrolling page, so scrolling must stay the default until the hold arms, exactly as
+   on the shelf card. Reorder keeps a keyboard path in the row's ⋯ sheet.
    Hard rows show a static anchor glyph instead — they're pinned (ADR-0011). */
-.bld-reorder {
-  flex-direction: row;
-  align-items: center;
-  gap: 3px;
-}
-.bld-grip {
-  flex: 0 0 auto;
-  width: 22px;
-  height: 30px;
-  display: grid;
-  place-items: center;
-  border: 0;
-  background: none;
-  color: var(--soft-line); /* faint drag affordance — matches soft-line rendered on the card */
-  font-size: 15px;
-  line-height: 1;
+.bld.draggable {
   cursor: grab;
-  border-radius: 6px;
-  /* let the grip own touch gestures so a drag doesn't scroll the list */
-  touch-action: none;
-}
-.bld-grip:active {
-  cursor: grabbing;
-}
-.bld-grip:hover {
-  background: var(--plan-tint);
-  color: var(--plan-deep);
-}
-.bld-grip:focus-visible {
-  outline: 2px solid var(--plan);
-  outline-offset: 1px;
-}
-.bld-move-stack {
-  display: flex;
-  flex-direction: column;
-  gap: 2px;
+  /* A long press on a row otherwise starts a text selection or the iOS callout. */
+  user-select: none;
+  -webkit-user-select: none;
+  -webkit-touch-callout: none;
 }
 .bld-anchor {
   flex: 0 0 auto;

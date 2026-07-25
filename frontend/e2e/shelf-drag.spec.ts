@@ -34,6 +34,13 @@ import { DRAG_EDGE_SCROLL_ZONE_PX } from '../src/constants';
 test.use({ hasTouch: true, isMobile: true, viewport: { width: 390, height: 660 } });
 
 const TODAY = new Date().toISOString().slice(0, 10); // trip timezone is UTC
+const TOMORROW = new Date(Date.parse(`${TODAY}T00:00:00.000Z`) + 86_400_000)
+  .toISOString()
+  .slice(0, 10);
+
+/** The `?day=` param — the app's single source for which day is on screen, omitted
+ *  when it is today (ADR-0035), so `null` means "back on the day we started". */
+const dayParam = (page: Page) => new URL(page.url()).searchParams.get('day');
 
 const event = (id: string, hhmm: string, title: string, status = 'planned') => ({
   id,
@@ -417,7 +424,7 @@ test.describe('a day with nothing on it', () => {
   });
 });
 
-test.describe('a builder row dragged by its grip', () => {
+test.describe('a builder row, dragged by a hold from anywhere on it', () => {
   // The reverse direction (session-118): the shelf could send a card onto the day, and
   // the day had no way to send a row back. Same two groups, opposite meaning.
   test.beforeEach(({ page }) =>
@@ -428,19 +435,19 @@ test.describe('a builder row dragged by its grip', () => {
   // different as a shelf card and a builder row.
   test('lifts a clone of the row that follows the finger', async ({ page }) => {
     const cdp = await page.context().newCDPSession(page);
-    const grip = await centre(page, '.bld-grip');
+    const row = await centre(page, '[data-bld-id="ev-1"]');
     const ghost = page.locator('.wp-dragghost');
 
     await expect(ghost).toHaveCount(0);
-    await touch(cdp, 'touchStart', grip.x, grip.y);
+    await touch(cdp, 'touchStart', row.x, row.y);
     await expect(ghost).toBeVisible();
     // It really is the row: same title, and the row's own width rather than a chip's.
     await expect(ghost.locator('.bld-ttl')).toHaveText('בוקר');
     const lifted = (await ghost.boundingBox())!;
-    const row = (await page.locator('[data-bld-id="ev-1"]').boundingBox())!;
-    expect(Math.abs(lifted.width - row.width)).toBeLessThan(2);
+    const source = (await page.locator('[data-bld-id="ev-1"]').boundingBox())!;
+    expect(Math.abs(lifted.width - source.width)).toBeLessThan(2);
 
-    await touch(cdp, 'touchMove', grip.x, grip.y - 120);
+    await touch(cdp, 'touchMove', row.x, row.y - 120);
     const moved = (await ghost.boundingBox())!;
     expect(moved.y).toBeLessThan(lifted.y - 60);
 
@@ -457,10 +464,10 @@ test.describe('a builder row dragged by its grip', () => {
   // would otherwise be nothing to aim at, and the two groups mean different days.
   test("dropped on the day's group, the row parks as an idea for that day", async ({ page }) => {
     const cdp = await page.context().newCDPSession(page);
-    const grip = await centre(page, '.bld-grip');
+    const row = await centre(page, '[data-bld-id="ev-1"]');
 
     await expect(page.locator('.shelf')).toHaveCount(0);
-    await touch(cdp, 'touchStart', grip.x, grip.y);
+    await touch(cdp, 'touchStart', row.x, row.y);
     await expect(page.locator('[data-shelf-drop="day"]')).toBeVisible();
     await expect(page.locator('[data-shelf-drop="pool"]')).toBeVisible();
 
@@ -474,13 +481,83 @@ test.describe('a builder row dragged by its grip', () => {
 
   test('dropped on the pool, it parks as someday instead', async ({ page }) => {
     const cdp = await page.context().newCDPSession(page);
-    const grip = await centre(page, '.bld-grip');
+    const row = await centre(page, '[data-bld-id="ev-1"]');
 
-    await touch(cdp, 'touchStart', grip.x, grip.y);
+    await touch(cdp, 'touchStart', row.x, row.y);
     await holdOver(cdp, page, '[data-shelf-drop="pool"]');
     await touch(cdp, 'touchEnd');
 
     await expect(page.locator('[data-bld-id="ev-1"]')).toHaveCount(0);
     await expect(page.locator('[data-shelf-drop="pool"] .wp-maybecard')).toHaveText(/בוקר/);
+  });
+
+  // The grip is gone (session-119): the row arms on a hold from wherever your thumb
+  // lands, exactly like a shelf card, and there is no ⠿ or ▲/▼ left on it.
+  test('arms from anywhere on the row, and the row carries no handle or arrows', async ({
+    page,
+  }) => {
+    const cdp = await page.context().newCDPSession(page);
+    await expect(page.locator('.bld-grip')).toHaveCount(0);
+    await expect(page.locator('.bld-move')).toHaveCount(0);
+
+    const box = await boxOf(page, '[data-bld-id="ev-1"]');
+    const spots = [
+      { name: 'leading edge', x: box.x + 6, y: box.y + box.height / 2 },
+      { name: 'title', x: box.x + box.width * 0.4, y: box.y + box.height / 2 },
+      { name: 'trailing edge', x: box.x + box.width - 6, y: box.y + box.height / 2 },
+    ];
+    for (const spot of spots) {
+      await touch(cdp, 'touchStart', spot.x, spot.y);
+      await expect(page.locator('.bld.dragging'), `held the ${spot.name}`).toBeVisible();
+      await touch(cdp, 'touchEnd');
+      await expect(page.locator('.bld.dragging')).toHaveCount(0);
+    }
+  });
+
+  // Carrying a row to another day: resting on a day pill switches the builder to that
+  // day UNDER the drag, which unmounts the very row being dragged — the reason the
+  // gesture listens on the window rather than through pointer capture.
+  test('dwelling on another day pill switches the day mid-drag', async ({ page }) => {
+    const cdp = await page.context().newCDPSession(page);
+    const row = await centre(page, '[data-bld-id="ev-1"]');
+    const before = await dayParam(page);
+
+    await touch(cdp, 'touchStart', row.x, row.y);
+    await expect(page.locator('.bld.dragging')).toBeVisible();
+
+    const pill = await centre(page, `[data-day-pill="${TOMORROW}"]`);
+    await touch(cdp, 'touchMove', pill.x, pill.y);
+    // Lit immediately, switched only after the dwell — a drag crosses pills on its way.
+    await expect(page.locator(`[data-day-pill="${TOMORROW}"]`)).toHaveClass(/drop-over/);
+    await expect.poll(() => dayParam(page), { timeout: 3000 }).toBe(TOMORROW);
+    // The row it started on belongs to the old day and is gone; the drag is not.
+    await expect(page.locator('[data-bld-id="ev-1"]')).toHaveCount(0);
+    await expect(page.locator('.wp-dragghost')).toBeVisible();
+
+    // Released on the pill, the event moves to that day.
+    await touch(cdp, 'touchEnd');
+    await expect(page.locator('[data-bld-id="ev-1"]')).toBeVisible();
+    expect(await dayParam(page)).toBe(TOMORROW);
+    expect(before).not.toBe(TOMORROW);
+  });
+
+  // Cancelling puts the day back: the switch was scaffolding for a drag that didn't
+  // happen, and a day change is `replace` navigation with no back step to undo it.
+  test('a drop on nothing returns to the day the drag started on', async ({ page }) => {
+    const cdp = await page.context().newCDPSession(page);
+    const row = await centre(page, '[data-bld-id="ev-1"]');
+
+    await touch(cdp, 'touchStart', row.x, row.y);
+    await expect(page.locator('.bld.dragging')).toBeVisible();
+    const pill = await centre(page, `[data-day-pill="${TOMORROW}"]`);
+    await touch(cdp, 'touchMove', pill.x, pill.y);
+    await expect.poll(() => dayParam(page), { timeout: 3000 }).toBe(TOMORROW);
+
+    // Release over the header chrome, which accepts nothing.
+    await touch(cdp, 'touchMove', pill.x, 4);
+    await touch(cdp, 'touchEnd');
+
+    await expect.poll(() => dayParam(page)).toBe(null);
+    await expect(page.locator('[data-bld-id="ev-1"]')).toBeVisible();
   });
 });

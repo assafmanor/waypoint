@@ -200,3 +200,31 @@ Two things the clone must do that a naive copy wouldn't:
 ### A note on the e2e that came out of this
 
 The "drop target keeps up while the page auto-scrolls" case was rewritten. It used to hold the finger where a **gap chip would sweep past** it, and assert the highlight appeared — which races React's batching: a target under the finger for one or two frames may never be painted, and the test failed under parallel load for a reason unrelated to the behaviour. It now holds in the opposite band so the scroll **ends** with the shelf at rest under the still finger: a stable end state, same invariant, no race. A swept target is not a thing to assert on.
+
+## Amendment (2026-07-25, session 119) — one gesture for everything, and the day strip joins the drag
+
+Two requests. Together they finish the model: every draggable thing in the builder now uses the same gesture, and the drag can reach days that aren't on screen.
+
+### 1. The row's grip and its ▲/▼ pair are retired; a row drags on a hold, from anywhere
+
+A soft row needed a dedicated ⠿ handle for one reason: its drag armed **on contact**, so making the whole row draggable would have eaten the row's tap (which opens the edit sheet). Time arbitrates now — the same press-and-hold the shelf card uses, through the same hook — so the handle has no job left. Both it and the ▲/▼ stack beside it are gone, and the row gets that width back on a phone (ADR-0017).
+
+**Reorder keeps a non-pointer path**, deliberately: `הקדם`/`אחר` move into the row's ⋯ sheet, which is where row actions belong anyway (the ADR's own rule) and is reachable by keyboard and screen reader. Dragging is now the _primary_ way to reorder, not the only one — retiring the arrows without that would have removed reordering from anyone not using a pointer.
+
+### 2. The header's day strip is part of the drag
+
+The drag could only reach the day already on screen. Now, while a drag is in flight:
+
+- the strip's pills become **drop targets** — releasing on one puts the dragged thing on that day (an idea gets its target day, a row is **moved** there keeping its own clock time, guarded because a hard event changing days is a commitment change);
+- **resting on a pill switches to that day**, the spring-loaded-folder idiom, so you can carry a card or a row into a day and then drop it on a gap there. Gated on a dwell (`DRAG_DAY_DWELL_MS`), which is the whole substance of it: a drag crosses several pills on its way anywhere, and opening every day it merely passes over would be unusable.
+- A **skipped** card is not accepted by a pill: it belongs to the day it was skipped on, and moving it elsewhere is a reschedule rather than a pencil mark.
+
+**Cancelling puts the day back.** A drop that resolves to nothing — or a cancelled gesture — returns to the day the drag was lifted from, however many days it dwelled through. A committed drop keeps the new day, because you just put something there and want to see it. The asymmetry is the point: the day switch is **scaffolding for the drag**, and day changes are `replace` navigation with no back step (ADR-0035/0090), so a switch left behind by an abandoned gesture would have no reverse gear at all.
+
+### Three things this required, each a bug if missed
+
+**The drag must outlive its source.** Switching the day unmounts the very row being dragged. With `setPointerCapture` the browser releases capture when the captured element goes away, and with React handlers on the element they unmount with it — either way the gesture silently freezes mid-air. So `useHoldToDrag` listens on the **window** and uses no pointer capture, and its touch-scroll guard gains a document-level copy at arm time (the element's own is what keeps the gesture cancellable in the first place, but it dies with the element).
+
+**A drop must read live state, not the state it was born in.** The window listeners hold the handlers from the render at touch-down — before any drag existed. Every value a release needs (the active date, the day's events, and the drag's own target) is therefore read from a ref updated each render. This also closes something latent since the drag shipped: a collaborator's change landing mid-gesture used to be dropped onto a stale list.
+
+**The pills cannot detect the pointer themselves.** A touch pointer is _implicitly captured_ by the element the touch started on, so `pointerenter`/`pointerleave` never fire on anything the finger travels over — a pill-owned dwell simply never runs (it didn't, on the first attempt). Only `elementFromPoint` knows, so the builder does the hit-testing and publishes what it found; the strip renders it. That is why `state/drag-state.tsx` exists, shaped exactly like `map-scope-state`: two components in different parts of the tree needing one piece of ephemeral view state. It carries only what the strip has to _render_ — never what is being dragged, or what a drop means.

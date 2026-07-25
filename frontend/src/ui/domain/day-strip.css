@@ -122,3 +122,12 @@
 .wp-daystrip[data-mode='plan'] .wp-daypill.empty:not(.on) .n {
   color: var(--miss);
 }
+
+/* Spring-loaded while a drag is in flight (ADR-0116 session-119): resting on a pill
+   opens that day, so a card or a row can be carried to another day, and releasing on
+   one puts it there. The ring is the same violet drop cue the builder's gap chips and
+   shelf groups use, so "this is where it would land" reads identically everywhere —
+   and it is drawn as a spread box-shadow, which follows the pill's own radius. */
+.wp-daypill.drop-over {
+  box-shadow: 0 0 0 2px var(--plan);
+}

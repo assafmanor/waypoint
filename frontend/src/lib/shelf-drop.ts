@@ -23,6 +23,8 @@ export interface ShelfDropTarget {
   overShelf: ShelfDrop | null;
   /** The empty day's drop zone, which exists only mid-drag and offers no slot. */
   overDay: boolean;
+  /** A day pill on the header strip: name a day without scheduling a time. */
+  overDate?: string | null;
 }
 
 export const SHELF_DROP_ACTION = {
@@ -72,6 +74,14 @@ export function resolveShelfDrop(
   activeDate: string,
 ): ShelfDropAction {
   const skipped = kind === SHELF_DRAG.SKIPPED;
+  // A day pill names a day and nothing else, which is exactly a pencil mark — so for an
+  // idea it is the same outcome as its own shelf group, reachable without scrolling
+  // the shelf into view (session-119). A SKIPPED event is deliberately not accepted:
+  // it belongs to the day it was skipped on, and moving it elsewhere is a reschedule,
+  // not a pencil mark. Most specific target, so it wins.
+  if (target.overDate && !skipped) {
+    return { kind: SHELF_DROP_ACTION.AIM_DAY, day: target.overDate };
+  }
   if (target.fill) {
     const { fill } = target;
     return skipped
@@ -98,6 +108,8 @@ export interface RowDropTarget {
   overRowId: string | null;
   /** A shelf group, which means park it: off the day, onto the shelf. */
   overShelf: ShelfDrop | null;
+  /** A day pill on the header strip, which means move it to that day. */
+  overDate: string | null;
 }
 
 export const ROW_DROP_ACTION = {
@@ -105,37 +117,49 @@ export const ROW_DROP_ACTION = {
   REORDER: 'reorder',
   /** Off the day and onto the shelf as an idea, keeping `day` as its pencil mark. */
   PARK: 'park',
+  /** Onto another day, keeping the event's own clock time. */
+  MOVE_TO_DAY: 'moveToDay',
   NONE: 'none',
 } as const;
 
 export type RowDropAction =
   | { kind: typeof ROW_DROP_ACTION.REORDER; targetId: string }
   | { kind: typeof ROW_DROP_ACTION.PARK; day: string | null }
+  | { kind: typeof ROW_DROP_ACTION.MOVE_TO_DAY; day: string }
   | { kind: typeof ROW_DROP_ACTION.NONE };
 
 /**
- * A row is dropped either on another row or on the shelf.
+ * A row is dropped on another row, on the shelf, or on a day pill.
  *
- * The shelf wins when both are somehow under the pointer, because the shelf sits
- * below the list and being over it is the more deliberate act. Which GROUP decides
- * the idea's day rather than whether it parks at all: the day's group keeps it
- * pencilled in for the day it came off (which is what `park` does by default), the
- * pool clears it to "someday".
+ * The day pill is the most specific — it names a day outright — then the shelf, which
+ * sits below the list so being over it is the more deliberate act, then a row.
  *
- * Dropping a row on ITSELF is nothing — a grip nudged and released.
+ * A shelf GROUP decides the idea's day rather than whether it parks at all: the day's
+ * group keeps it pencilled in for the day it came off (which is what `park` does by
+ * default), the pool clears it to "someday".
+ *
+ * Dropping a row on itself, or on the day it is already on, is nothing.
  */
 export function resolveRowDrop(
-  draggedId: string,
+  dragged: { id: string; date: string },
   target: RowDropTarget,
   activeDate: string,
 ): RowDropAction {
+  // Compared against the EVENT's day, not the day on screen: resting on a pill has
+  // already switched the view to it, so comparing with `activeDate` would read the
+  // deliberate release that follows as a no-op and undo the whole gesture.
+  if (target.overDate) {
+    return target.overDate === dragged.date
+      ? { kind: ROW_DROP_ACTION.NONE }
+      : { kind: ROW_DROP_ACTION.MOVE_TO_DAY, day: target.overDate };
+  }
   if (target.overShelf) {
     return {
       kind: ROW_DROP_ACTION.PARK,
       day: target.overShelf === SHELF_DROP.DAY ? activeDate : null,
     };
   }
-  if (target.overRowId && target.overRowId !== draggedId) {
+  if (target.overRowId && target.overRowId !== dragged.id) {
     return { kind: ROW_DROP_ACTION.REORDER, targetId: target.overRowId };
   }
   return { kind: ROW_DROP_ACTION.NONE };

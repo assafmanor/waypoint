@@ -804,7 +804,6 @@ export const t = {
     addToDay: 'הוסף אירוע',
     moveEarlier: 'הקדם',
     moveLater: 'אחר',
-    drag: 'גרור לסידור',
     pinned: 'אירוע קשיח · מעוגן בזמן',
     rowActions: 'פעולות',
     gapFillTitle: (start: string, end: string) => `מילוי הפער · ${start}–${end}`,

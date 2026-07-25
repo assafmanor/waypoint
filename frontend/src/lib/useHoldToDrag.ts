@@ -85,9 +85,6 @@ export interface HoldToDragProps {
    *  props onto the element the finger actually touches. */
   ref: (el: HTMLElement | null) => (() => void) | void;
   onPointerDown: (e: React.PointerEvent) => void;
-  onPointerMove: (e: React.PointerEvent) => void;
-  onPointerUp: () => void;
-  onPointerCancel: () => void;
   /** A long press on a button otherwise starts a text selection / context menu. */
   onContextMenu: (e: React.MouseEvent) => void;
 }
@@ -178,12 +175,60 @@ export function useHoldToDrag(): (handlers: HoldToDragHandlers) => HoldToDragPro
         held.current = el;
         origin.current = { x: e.clientX, y: e.clientY };
         selection.suppress();
+
+        // Move/up/cancel are listened for on the WINDOW rather than on the element,
+        // and pointer capture is deliberately not used — because the dragged element
+        // may legitimately disappear mid-drag. Dwelling on the day strip switches the
+        // day under you (ADR-0116 session-119), which unmounts the very row you are
+        // dragging: with capture, the browser releases it and the gesture silently
+        // freezes; with element handlers, they unmount with it. The window outlives
+        // both, so the drag is independent of its source's lifetime.
+        const move = (ev: PointerEvent) => {
+          if (!armed.current) {
+            // Moved before the hold completed → this was a scroll. Drop the pending
+            // drag so the browser keeps the gesture.
+            const from = origin.current;
+            if (!from) return;
+            const far =
+              Math.abs(ev.clientX - from.x) > DRAG_HOLD_SLOP_PX ||
+              Math.abs(ev.clientY - from.y) > DRAG_HOLD_SLOP_PX;
+            if (far) end();
+            return;
+          }
+          handlers.onMove({ clientX: ev.clientX, clientY: ev.clientY });
+        };
+        const up = () => {
+          const wasArmed = armed.current;
+          end();
+          if (!wasArmed) return;
+          swallowNextClick();
+          handlers.onDrop();
+        };
+        const cancel = () => {
+          const wasArmed = armed.current;
+          end();
+          if (wasArmed) handlers.onCancel();
+        };
+        function end() {
+          window.removeEventListener('pointermove', move);
+          window.removeEventListener('pointerup', up);
+          window.removeEventListener('pointercancel', cancel);
+          document.removeEventListener('touchmove', suppressTouchScroll);
+          reset();
+        }
+        window.addEventListener('pointermove', move);
+        window.addEventListener('pointerup', up);
+        window.addEventListener('pointercancel', cancel);
+
         const arm = () => {
           timer.current = null;
           armed.current = true;
-          el.setPointerCapture(e.pointerId);
-          // The touch-scroll suppression is already live (see `suppressTouchScroll`);
-          // arming is what switches it on.
+          // A second, DOCUMENT-level copy of the touch-scroll guard, for the same
+          // reason the listeners above are on the window: once the source unmounts,
+          // its own guard goes with it. Attaching this one at arm time is fine —
+          // unlike the element's, it isn't what has to keep the gesture cancellable
+          // (that one already did), it only has to outlive the source.
+          document.addEventListener('touchmove', suppressTouchScroll, { passive: false });
           selection.lock();
           handlers.onArm(el, { clientX: e.clientX, clientY: e.clientY });
         };
@@ -191,32 +236,6 @@ export function useHoldToDrag(): (handlers: HoldToDragHandlers) => HoldToDragPro
         // a pointer device drags immediately — waiting would just feel broken.
         if (e.pointerType === 'mouse') arm();
         else timer.current = setTimeout(arm, DRAG_HOLD_MS);
-      },
-      onPointerMove: (e) => {
-        if (!armed.current) {
-          // Moved before the hold completed → this was a scroll. Drop the pending
-          // drag so the browser keeps the gesture.
-          const from = origin.current;
-          if (!from) return;
-          const far =
-            Math.abs(e.clientX - from.x) > DRAG_HOLD_SLOP_PX ||
-            Math.abs(e.clientY - from.y) > DRAG_HOLD_SLOP_PX;
-          if (far) reset();
-          return;
-        }
-        handlers.onMove(e);
-      },
-      onPointerUp: () => {
-        const wasArmed = armed.current;
-        reset();
-        if (!wasArmed) return;
-        swallowNextClick();
-        handlers.onDrop();
-      },
-      onPointerCancel: () => {
-        const wasArmed = armed.current;
-        reset();
-        if (wasArmed) handlers.onCancel();
       },
       onContextMenu: (e) => {
         // Only while the hold is live — a right-click on an idle card is nobody's

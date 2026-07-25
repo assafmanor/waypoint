@@ -6,15 +6,17 @@
 // row, not a strip of icons — the phone has no width for it (ADR-0017).
 //
 // Editing reuses EventForm (add + edit, incl. hard↔soft flip, time, and
-// cross-day via its date field). Reorder = drag a soft row's grip (or the ▲/▼
-// fallback) to reassign the day's soft time slots (verbs.reorder → planReorder);
-// the list stays time-ordered and hard events are pinned anchors (ADR-0011).
+// cross-day via its date field). A soft row is dragged by a press-and-hold from
+// anywhere on it (session-119, no grip and no ▲/▼ pair — those live in the ⋯ sheet
+// now): dropping on another row reassigns the day's soft slots (verbs.reorder →
+// planReorder), on a shelf group parks it, on the day strip moves it to that day.
+// The list stays time-ordered and hard events are pinned anchors (ADR-0011).
 import {
   Fragment,
+  useRef,
   useState,
   type FormEvent,
   type KeyboardEvent as ReactKeyboardEvent,
-  type PointerEvent as ReactPointerEvent,
   type ReactNode,
 } from 'react';
 import {
@@ -28,6 +30,8 @@ import {
   type TripEvent,
 } from '@waypoint/shared';
 import { useTrip, byStart } from '../state/trip-state';
+import { useDragState } from '../state/drag-state';
+import { useSpringLoadedDay } from '../lib/useSpringLoadedDay';
 import { useVerbs } from '../state/verbs';
 import { useClock } from '../lib/useClock';
 import {
@@ -65,7 +69,7 @@ import {
   type ShelfDropTarget,
 } from '../lib/shelf-drop';
 import { useEdgeAutoScroll, type DragPoint } from '../lib/edge-autoscroll';
-import { useHoldToDrag, useSelectionGuard } from '../lib/useHoldToDrag';
+import { useHoldToDrag, type HoldToDragProps } from '../lib/useHoldToDrag';
 import { useDragGhost } from '../lib/useDragGhost';
 import {
   CODE_PREFIX,
@@ -103,6 +107,31 @@ type ShelfDragSubject =
 
 const subjectId = (s: ShelfDragSubject) => (s.kind === SHELF_DRAG.IDEA ? s.item.id : s.event.id);
 
+/** A builder row being dragged, and what the pointer is over. */
+type RowDrag = {
+  id: string;
+  /** Another soft row, to swap slots with. */
+  overId: string | null;
+  /** A shelf group: dropping there takes the row OFF the day and parks it as an idea
+   *  (session-118) — the reverse of dragging a card onto a gap, and the same targets. */
+  overShelf: ShelfDrop | null;
+  /** A day pill: dropping there moves the event to that day (session-119). */
+  overDate: string | null;
+} | null;
+
+/** A shelf card being dragged, and what the pointer is over. */
+type IdeaDrag = {
+  id: string;
+  overGap: string | null;
+  fill?: GapDefaults;
+  /** Which shelf group the pointer is over: the day's, or the pool's. */
+  overShelf: ShelfDrop | null;
+  /** Over the empty day's drop zone, which has no slot to offer (session-117). */
+  overDay: boolean;
+  /** A day pill: dropping there aims the idea at that day (session-119). */
+  overDate: string | null;
+} | null;
+
 /** A gap's identity for the drag hit-test: its own slot. Stable across renders and
  *  unique per day, so no synthetic id has to be invented or stored. */
 const gapKey = (fill: GapDefaults) => `${fill.date}T${fill.start}-${fill.end}`;
@@ -118,7 +147,8 @@ function gapLabel(minutes: number): string {
 }
 
 export function PlanDay() {
-  const { trip, events, maybeItems, bookings, places, activeDate, zoneEvidence } = useTrip();
+  const { trip, events, maybeItems, bookings, places, activeDate, setActiveDate, zoneEvidence } =
+    useTrip();
   const verbs = useVerbs();
   const now = useClock();
   const tz = trip.timezone;
@@ -189,85 +219,151 @@ export function PlanDay() {
   const softEvents = dayEvents.filter((e) => e.kind === EVENT_KIND.SOFT);
   const softIndex = new Map(softEvents.map((e, i) => [e.id, i]));
 
-  // The builder has two drags — a soft row by its grip, and a shelf card by a hold —
-  // and they share every mechanism between them: one edge auto-scroll (a drag that can
-  // only reach what's already on screen can't reach the row, gap or group you're
-  // aiming for), one selection guard (both travel over the same text), one ghost.
+  // The builder has two drags — a soft row and a shelf card — and as of session-119
+  // they are the same gesture (press-and-hold, from anywhere on the thing) over the
+  // same mechanisms: one edge auto-scroll, so a drag can reach a target that isn't on
+  // screen yet; one ghost, so the thing you're holding follows your finger; and one
+  // hold arbitrator, which also owns the selection guard.
   const autoScroll = useEdgeAutoScroll();
-  const selection = useSelectionGuard();
   const ghost = useDragGhost();
-  const [drag, setDrag] = useState<{
-    id: string;
-    overId: string | null;
-    /** A shelf group under the pointer: dropping there takes the row OFF the day and
-     *  parks it as an idea (session-118). The reverse of dragging a card onto a gap,
-     *  and the same targets. */
-    overShelf: ShelfDrop | null;
-  } | null>(null);
-  const gripProps = (id: string) => ({
-    onPointerDown: (e: ReactPointerEvent) => {
-      const grip = e.currentTarget as HTMLElement;
-      grip.setPointerCapture(e.pointerId);
-      autoScroll.start(grip, hitTestRowDrop);
-      // The ghost clones the ROW, not the grip — the grip is just the handle.
-      const row = grip.closest('[data-bld-id]');
-      if (row) ghost.lift(row as HTMLElement, { clientX: e.clientX, clientY: e.clientY });
-      selection.suppress();
-      selection.lock();
-      setDrag({ id, overId: null, overShelf: null });
-    },
-    onPointerMove: (e: ReactPointerEvent) => {
-      const point = { clientX: e.clientX, clientY: e.clientY };
-      autoScroll.track(point);
-      ghost.track(point);
-      hitTestRowDrop(point);
-    },
-    onPointerUp: () => {
-      autoScroll.stop();
-      selection.release();
-      const target = drag;
-      setDrag(null);
-      if (target) commitRowDrop(target);
-    },
-    onPointerCancel: () => {
-      autoScroll.stop();
-      selection.release();
-      setDrag(null);
-    },
-  });
+  const holdToDrag = useHoldToDrag();
+  // The header's day strip renders from these: `dragging` arms its pills as drop
+  // targets, `overDate` shows which one a drop would land on (session-119).
+  const { setDragging, overDate, setOverDate } = useDragState();
+  // …and resting on a pill switches to that day, so a card or a row can be carried to
+  // a day that isn't on screen. The dwell lives here because only the drag can
+  // hit-test the pointer — see the hook for why the pill can't do it itself.
+  useSpringLoadedDay(overDate, activeDate, setActiveDate);
+
+  // A drag now OUTLIVES the render it began in: the window listeners that track it
+  // hold the handlers from the render at touch-down, and dwelling on the day strip
+  // changes the day — and therefore this screen's whole day-scoped world — underneath
+  // it. So anything a drop needs is read live from here rather than closed over. (It
+  // also stops a collaborator's change landing mid-gesture from being dropped onto a
+  // stale list, which was always latent.)
+  // Assigned during render, deliberately: every value here is read only from an event
+  // handler, never during rendering, so there is nothing to tear. `drag`/`ideaDrag`
+  // are in here for the same staleness reason — a release closes over the state as it
+  // was at touch-down, when no drag had started yet, so the drop must read what the
+  // last hit-test actually found.
+  const live = useRef({ activeDate, dayEvents, drag: null as RowDrag, idea: null as IdeaDrag });
+  live.current.activeDate = activeDate;
+  live.current.dayEvents = dayEvents;
+  /** The day the drag was lifted from, to go back to if it comes to nothing. */
+  const dayAtLift = useRef(activeDate);
+  /** A cancelled or invalid drop leaves no trace, and that includes which day you are
+   *  looking at: the day switch was scaffolding for a drag that didn't happen. A
+   *  COMMITTED drop keeps the new day — you just put something there. Day changes are
+   *  `replace` navigation with no back step (ADR-0035/0090), so a switch left behind by
+   *  an abandoned gesture would have no reverse gear at all. */
+  const restoreDay = () => {
+    if (live.current.activeDate !== dayAtLift.current) setActiveDate(dayAtLift.current);
+  };
+  /** Everything a finished drag must put back, whichever way it ended. */
+  const endDrag = () => {
+    autoScroll.stop();
+    setDragging(false);
+    setOverDate(null);
+  };
+  /** Which day pill, if any, is under the pointer — the header strip marks its own
+   *  (`data-day-pill`, not to be confused with an empty day's `data-day-drop`). */
+  const dayPillAt = (el: Element | null) =>
+    (el?.closest('[data-day-pill]') as HTMLElement | null)?.dataset.dayPill ?? null;
+  const [drag, setDrag] = useState<RowDrag>(null);
+  // A row drags on a press-and-hold from ANYWHERE on it (session-119) — the same
+  // gesture the shelf card uses, through the same hook. It used to need a dedicated
+  // ⠿ grip because the drag armed on contact and would otherwise have eaten the row's
+  // tap; time arbitrates instead, so the handle (and the ▲/▼ fallback beside it) is
+  // retired and the row gets that width back. Reorder stays keyboard-reachable in the
+  // row's ⋯ sheet, which is where row actions live anyway.
+  const rowDragProps = (id: string) =>
+    holdToDrag({
+      onArm: (el, at) => {
+        autoScroll.start(el, hitTestRowDrop);
+        ghost.lift(el, at);
+        dayAtLift.current = live.current.activeDate;
+        setDragging(true);
+        const started = { id, overId: null, overShelf: null, overDate: null };
+        live.current.drag = started;
+        setDrag(started);
+      },
+      onCancel: () => {
+        endDrag();
+        setDrag(null);
+        restoreDay();
+      },
+      onMove: (point) => {
+        autoScroll.track(point);
+        ghost.track(point);
+        hitTestRowDrop(point);
+      },
+      onDrop: () => {
+        endDrag();
+        const target = live.current.drag;
+        live.current.drag = null;
+        setDrag(null);
+        if (!target || !commitRowDrop(target)) restoreDay();
+      },
+    });
 
   // Same shape as the shelf drag's hit-test, and for the same reason: it runs on every
   // move AND on every frame the auto-scroll actually scrolls, because content moving
   // under a stationary finger changes the answer just as much as the finger moving.
-  const hitTestRowDrop = (point: DragPoint) =>
-    setDrag((d) => {
-      if (!d) return d;
-      const el = document.elementFromPoint(point.clientX, point.clientY);
-      const overId = (el?.closest('[data-bld-id]') as HTMLElement | null)?.dataset.bldId ?? null;
-      const nextRow = overId && overId !== d.id && softIndex.has(overId) ? overId : null;
-      const shelfEl = el?.closest('[data-shelf-drop]') as HTMLElement | null;
-      const overShelf = (shelfEl?.dataset.shelfDrop as ShelfDrop | undefined) ?? null;
-      if (nextRow === d.overId && overShelf === d.overShelf) return d;
-      return { ...d, overId: nextRow, overShelf };
-    });
+  const hitTestRowDrop = (point: DragPoint) => {
+    const d = live.current.drag;
+    if (!d) return;
+    const el = document.elementFromPoint(point.clientX, point.clientY);
+    const overId = (el?.closest('[data-bld-id]') as HTMLElement | null)?.dataset.bldId ?? null;
+    const overRow = overId && overId !== d.id && softIndex.has(overId) ? overId : null;
+    const shelfEl = el?.closest('[data-shelf-drop]') as HTMLElement | null;
+    const overShelf = (shelfEl?.dataset.shelfDrop as ShelfDrop | undefined) ?? null;
+    const overDate = dayPillAt(el);
+    if (overRow === d.overId && overShelf === d.overShelf && overDate === d.overDate) return;
+    const next = { ...d, overId: overRow, overShelf, overDate };
+    live.current.drag = next;
+    setDrag(next);
+    setOverDate(overDate);
+  };
 
-  const commitRowDrop = (target: {
-    id: string;
-    overId: string | null;
-    overShelf: ShelfDrop | null;
-  }) => {
+  /** Carry out a row's release. Returns whether it committed anything, which is what
+   *  decides if a mid-drag day switch sticks. */
+  const commitRowDrop = (target: NonNullable<RowDrag>): boolean => {
+    const { activeDate: day, dayEvents: rows } = live.current;
+    const event = rows.find((e) => e.id === target.id) ?? dayEvents.find((e) => e.id === target.id);
+    if (!event) return false;
     const action = resolveRowDrop(
-      target.id,
-      { overRowId: target.overId, overShelf: target.overShelf },
-      activeDate,
+      { id: target.id, date: event.date },
+      { overRowId: target.overId, overShelf: target.overShelf, overDate: target.overDate },
+      day,
     );
-    if (action.kind === ROW_DROP_ACTION.REORDER) {
-      return verbs.reorder(dayEvents, target.id, action.targetId);
+    switch (action.kind) {
+      case ROW_DROP_ACTION.REORDER:
+        verbs.reorder(rows, target.id, action.targetId);
+        return true;
+      case ROW_DROP_ACTION.PARK:
+        verbs.park(event, { targetDate: action.day });
+        return true;
+      case ROW_DROP_ACTION.MOVE_TO_DAY:
+        // The event keeps its clock time on the new day, so the drop is "this, but
+        // on Thursday" rather than "this, at some other time too". Guarded, because a
+        // hard event changing days is a commitment change (ADR-0011).
+        verbs.update(event, { date: action.day, ...sameTimeOn(event, action.day) });
+        return true;
+      case ROW_DROP_ACTION.NONE:
+        return false;
     }
-    if (action.kind === ROW_DROP_ACTION.PARK) {
-      const event = dayEvents.find((e) => e.id === target.id);
-      if (event) verbs.park(event, { targetDate: action.day });
-    }
+  };
+
+  /** The event's own start/end wall-clock times, rebuilt on another date. An untimed
+   *  event has none, and moving it is just the date. */
+  const sameTimeOn = (event: TripEvent, date: string) => {
+    if (!event.startsAt) return {};
+    const start = formatTime(new Date(event.startsAt), tz);
+    const end = event.endsAt ? formatTime(new Date(event.endsAt), tz) : null;
+    return {
+      startsAt: zonedIso(date, start, tz),
+      ...(end ? { endsAt: zonedIso(date, end, tz) } : {}),
+    };
   };
 
   // The shelf, grouped by the one shared derivation (ADR-0116 §2) — same call the
@@ -283,50 +379,49 @@ export function PlanDay() {
   // pointer — rather than a second drag implementation; only the target attribute
   // (`data-gap-key`) and the drop action differ. Dropping schedules the idea into
   // that gap's slot: exactly the write the gap-fill sheet already performs.
-  const [ideaDrag, setIdeaDrag] = useState<{
-    id: string;
-    overGap: string | null;
-    fill?: GapDefaults;
-    /** Which shelf group the pointer is over: the day's, or the pool's. */
-    overShelf: ShelfDrop | null;
-    /** Over the empty day's drop zone, which has no slot to offer (session-117). */
-    overDay: boolean;
-  } | null>(null);
-  // Press-and-hold arms the drag (session-114): until then the strip and the page
-  // scroll normally, because a swipe and a drag are the same movement and only
-  // time can tell them apart.
-  const holdToDrag = useHoldToDrag();
+  const [ideaDrag, setIdeaDrag] = useState<IdeaDrag>(null);
   // What the pointer is over right now. Called on every move — and on every frame
   // the edge auto-scroll actually scrolls, because content moving under a
   // stationary finger changes the answer just as much as the finger moving does.
-  const hitTestDropTarget = (point: DragPoint) =>
-    setIdeaDrag((d) => {
-      if (!d) return d;
-      const el = document.elementFromPoint(point.clientX, point.clientY);
-      const target = el?.closest('[data-gap-key]') as HTMLElement | null;
-      const next = target?.dataset.gapKey ?? null;
-      // A shelf group is the other kind of target: dropping there re-aims the
-      // idea's DAY (a pencil mark) rather than scheduling it (ADR-0116 §2).
-      const shelfEl = el?.closest('[data-shelf-drop]') as HTMLElement | null;
-      const overShelf = (shelfEl?.dataset.shelfDrop as ShelfDrop | undefined) ?? null;
-      // …and on a day with nothing on it there are no gaps at all, so the empty
-      // state itself becomes a target while a drag is in flight (session-117).
-      const overDay = el?.closest('[data-day-drop]') != null;
-      if (next === d.overGap && overShelf === d.overShelf && overDay === d.overDay) return d;
-      // The slot travels on the element itself, so the drop needs no lookup table
-      // and no id to be minted for a gap that only exists for this render.
-      const { gapDate, gapStart, gapEnd } = target?.dataset ?? {};
-      return {
-        ...d,
-        overGap: next,
-        overShelf,
-        overDay,
-        fill:
-          gapDate && gapStart && gapEnd
-            ? { date: gapDate, start: gapStart, end: gapEnd }
-            : undefined,
-      };
-    });
+  const hitTestDropTarget = (point: DragPoint) => {
+    const d = live.current.idea;
+    if (!d) return;
+    const el = document.elementFromPoint(point.clientX, point.clientY);
+    const target = el?.closest('[data-gap-key]') as HTMLElement | null;
+    const overGap = target?.dataset.gapKey ?? null;
+    // A shelf group is the other kind of target: dropping there re-aims the idea's DAY
+    // (a pencil mark) rather than scheduling it (ADR-0116 §2).
+    const shelfEl = el?.closest('[data-shelf-drop]') as HTMLElement | null;
+    const overShelf = (shelfEl?.dataset.shelfDrop as ShelfDrop | undefined) ?? null;
+    // …on a day with nothing on it there are no gaps at all, so the empty state itself
+    // becomes a target while a drag is in flight (session-117)…
+    const overDay = el?.closest('[data-day-drop]') != null;
+    // …and a day pill on the header strip names a day outright (session-119).
+    const overDate = dayPillAt(el);
+    if (
+      overGap === d.overGap &&
+      overShelf === d.overShelf &&
+      overDay === d.overDay &&
+      overDate === d.overDate
+    ) {
+      return;
+    }
+    // The slot travels on the element itself, so the drop needs no lookup table and no
+    // id to be minted for a gap that only exists for this render.
+    const { gapDate, gapStart, gapEnd } = target?.dataset ?? {};
+    const next = {
+      ...d,
+      overGap,
+      overShelf,
+      overDay,
+      overDate,
+      fill:
+        gapDate && gapStart && gapEnd ? { date: gapDate, start: gapStart, end: gapEnd } : undefined,
+    };
+    live.current.idea = next;
+    setIdeaDrag(next);
+    setOverDate(overDate);
+  };
 
   // One drag, two subjects. Everything up to the release is identical — arm, follow,
   // hit-test, auto-scroll — so only `onDrop` asks what was being dragged.
@@ -335,11 +430,22 @@ export function PlanDay() {
       onArm: (el, at) => {
         autoScroll.start(el, hitTestDropTarget);
         ghost.lift(el, at);
-        setIdeaDrag({ id: subjectId(subject), overGap: null, overShelf: null, overDay: false });
+        dayAtLift.current = live.current.activeDate;
+        setDragging(true);
+        const started = {
+          id: subjectId(subject),
+          overGap: null,
+          overShelf: null,
+          overDay: false,
+          overDate: null,
+        };
+        live.current.idea = started;
+        setIdeaDrag(started);
       },
       onCancel: () => {
-        autoScroll.stop();
+        endDrag();
         setIdeaDrag(null);
+        restoreDay();
       },
       onMove: (point) => {
         autoScroll.track(point);
@@ -347,10 +453,11 @@ export function PlanDay() {
         hitTestDropTarget(point);
       },
       onDrop: () => {
-        autoScroll.stop();
-        const target = ideaDrag;
+        endDrag();
+        const target = live.current.idea;
+        live.current.idea = null;
         setIdeaDrag(null);
-        if (target) commitShelfDrop(subject, target);
+        if (!target || !commitShelfDrop(subject, target)) restoreDay();
       },
     });
 
@@ -406,16 +513,16 @@ export function PlanDay() {
   /** Carry out what the release meant. The decision is `resolveShelfDrop`'s (one
    *  documented table, unit-tested without a browser); this only turns each outcome
    *  into the verb that already performs it. */
-  const commitShelfDrop = (subject: ShelfDragSubject, target: ShelfDropTarget) => {
-    const action = resolveShelfDrop(subject.kind, target, activeDate);
+  const commitShelfDrop = (subject: ShelfDragSubject, target: ShelfDropTarget): boolean => {
+    const action = resolveShelfDrop(subject.kind, target, live.current.activeDate);
     const slot = (fill: GapDefaults) => ({
       startsAt: zonedIso(fill.date, fill.start, tz),
       endsAt: zonedIso(fill.date, fill.end, tz),
     });
     switch (action.kind) {
       case SHELF_DROP_ACTION.SCHEDULE:
-        if (subject.kind !== SHELF_DRAG.IDEA) return;
-        return verbs.schedule(subject.item, {
+        if (subject.kind !== SHELF_DRAG.IDEA) return false;
+        verbs.schedule(subject.item, {
           date: action.fill.date,
           title: subject.item.title,
           kind: EVENT_KIND.SOFT,
@@ -424,25 +531,30 @@ export function PlanDay() {
           placeId: subject.item.placeId,
           ...slot(action.fill),
         });
+        return true;
       case SHELF_DROP_ACTION.RESTORE_INTO:
-        if (subject.kind !== SHELF_DRAG.SKIPPED) return;
+        if (subject.kind !== SHELF_DRAG.SKIPPED) return false;
         // Un-skipped and moved in ONE patch, so it is one row in the change feed and
         // one undo — not "restored" followed by "moved".
-        return verbs.update(subject.event, {
+        verbs.update(subject.event, {
           status: EVENT_STATUS.PLANNED,
           ...slot(action.fill),
         });
+        return true;
       case SHELF_DROP_ACTION.RESTORE:
-        if (subject.kind !== SHELF_DRAG.SKIPPED) return;
-        return verbs.restore(subject.event);
+        if (subject.kind !== SHELF_DRAG.SKIPPED) return false;
+        verbs.restore(subject.event);
+        return true;
       case SHELF_DROP_ACTION.CHOOSE_TIME:
-        if (subject.kind !== SHELF_DRAG.IDEA) return;
-        return openSchedule(subject.item);
+        if (subject.kind !== SHELF_DRAG.IDEA) return false;
+        openSchedule(subject.item);
+        return true;
       case SHELF_DROP_ACTION.AIM_DAY:
-        if (subject.kind !== SHELF_DRAG.IDEA) return;
-        return verbs.setMaybeDay(subject.item, action.day);
+        if (subject.kind !== SHELF_DRAG.IDEA) return false;
+        verbs.setMaybeDay(subject.item, action.day);
+        return true;
       case SHELF_DROP_ACTION.NONE:
-        return;
+        return false;
     }
   };
 
@@ -494,7 +606,7 @@ export function PlanDay() {
     softEvents,
     softIndex,
     drag,
-    gripProps,
+    rowDragProps,
     onEdit: (e) => {
       const booking = e.bookingId ? bookings.find((b) => b.id === e.bookingId) : undefined;
       if (booking) setBookingTarget(booking);
@@ -904,11 +1016,7 @@ interface BuilderCtx {
   softEvents: TripEvent[];
   softIndex: Map<string, number>;
   drag: { id: string; overId: string | null } | null;
-  gripProps: (id: string) => {
-    onPointerDown: (e: ReactPointerEvent) => void;
-    onPointerMove: (e: ReactPointerEvent) => void;
-    onPointerUp: () => void;
-  };
+  rowDragProps: (id: string) => HoldToDragProps;
   onEdit: (event: TripEvent) => void;
   // Tapping a transition row opens the read-only booking detail (ADR-0064).
   onOpenDetail: (booking: Booking) => void;
@@ -1122,7 +1230,7 @@ function BuilderNode({
         onEdit={() => ctx.onEdit(e)}
         onDelete={() => ctx.verbs.remove(e)}
         onPark={soft ? () => ctx.verbs.park(e) : undefined}
-        grip={soft && !ctx.readOnly ? ctx.gripProps(e.id) : undefined}
+        dragProps={soft && !ctx.readOnly ? ctx.rowDragProps(e.id) : undefined}
         dragging={ctx.drag?.id === e.id}
         over={ctx.drag?.overId === e.id}
         onMoveEarlier={
@@ -1165,7 +1273,7 @@ function BuilderRow({
   onEdit,
   onDelete,
   onPark,
-  grip,
+  dragProps,
   dragging,
   over,
   onMoveEarlier,
@@ -1194,15 +1302,14 @@ function BuilderRow({
   onDelete: () => void;
   // Present only for soft rows — move the event to the shelf as an idea.
   onPark?: () => void;
-  // Present only for soft rows (hard events are pinned anchors, not draggable).
-  grip?: {
-    onPointerDown: (e: ReactPointerEvent) => void;
-    onPointerMove: (e: ReactPointerEvent) => void;
-    onPointerUp: () => void;
-  };
+  /** Press-and-hold to drag, from anywhere on the row (session-119). Present only
+   *  for soft rows — hard events are pinned anchors, not draggable (ADR-0011). */
+  dragProps?: HoldToDragProps;
   dragging?: boolean;
   over?: boolean;
-  // undefined at the ends of the soft list (nothing to swap with)
+  /** Reorder by one slot, from the ⋯ sheet — the keyboard-reachable path now that
+   *  the row's ▲/▼ buttons are retired (session-119). undefined at the ends of the
+   *  soft list, where there is nothing to swap with. */
   onMoveEarlier?: () => void;
   onMoveLater?: () => void;
   // Set on an envelope row that nests others: the "כולל N" contents count.
@@ -1227,6 +1334,7 @@ function BuilderRow({
   const cls = [
     'bld',
     isHard ? '' : 'soft',
+    dragProps ? 'draggable' : '',
     dragging ? 'dragging' : '',
     over ? 'over' : '',
     isSkipped ? 'is-skip' : '',
@@ -1235,7 +1343,7 @@ function BuilderRow({
     .join(' ');
 
   // Row actions live behind one ⋯ button (a bottom sheet), not a strip of inline
-  // icons — a phone row only has width for grip + title + time + one affordance
+  // icons — a phone row only has width for a title, a time and one affordance
   // (mockups/plan-mode-v1.html). Edit is also reachable by tapping the row body.
   const [menuOpen, setMenuOpen] = useState(false);
   const runAction = (fn: () => void) => {
@@ -1289,37 +1397,15 @@ function BuilderRow({
   );
 
   return (
-    <div className={cls} data-bld-id={event.id}>
-      {grip ? (
-        <span className="bld-reorder">
-          <button className="bld-grip" aria-label={t.planDay.drag} {...grip}>
-            ⠿
-          </button>
-          <span className="bld-move-stack">
-            <button
-              className="bld-move"
-              onClick={onMoveEarlier}
-              disabled={!onMoveEarlier}
-              aria-label={t.planDay.moveEarlier}
-            >
-              <Icon name="caret" dir="up" />
-            </button>
-            <button
-              className="bld-move"
-              onClick={onMoveLater}
-              disabled={!onMoveLater}
-              aria-label={t.planDay.moveLater}
-            >
-              <Icon name="caret" dir="down" />
-            </button>
-          </span>
-        </span>
-      ) : isHard ? (
+    // The whole row is the drag surface (session-119): no ⠿ handle, no ▲/▼ pair. It
+    // could only arm on contact from a dedicated handle before; a press-and-hold can
+    // arm from anywhere without eating the row's tap, so the row gets that width back
+    // and the gesture matches the shelf's exactly.
+    <div className={cls} data-bld-id={event.id} {...dragProps}>
+      {isHard && (
         <span className="bld-anchor" aria-label={t.planDay.pinned} title={t.planDay.pinned}>
           {ICONS.lock}
         </span>
-      ) : (
-        <span className="bld-reorder" aria-hidden="true" />
       )}
       <span className="bld-bd" aria-hidden="true">
         {event.icon}
@@ -1423,6 +1509,27 @@ function BuilderRow({
               </span>
               {t.actions.edit}
             </button>
+            {/* Reorder lives here now that the row's ▲/▼ buttons are retired
+                (session-119). Dragging is the primary way, but it is a pointer
+                gesture: this is the keyboard- and screen-reader-reachable path, and
+                the sheet is where row actions belong anyway. Omitted at the ends of
+                the soft list, where there is nothing to swap with. */}
+            {onMoveEarlier && (
+              <button className="row-action" onClick={() => runAction(onMoveEarlier)}>
+                <span className="row-action-ic" aria-hidden="true">
+                  <Icon name="caret" dir="up" />
+                </span>
+                {t.planDay.moveEarlier}
+              </button>
+            )}
+            {onMoveLater && (
+              <button className="row-action" onClick={() => runAction(onMoveLater)}>
+                <span className="row-action-ic" aria-hidden="true">
+                  <Icon name="caret" dir="down" />
+                </span>
+                {t.planDay.moveLater}
+              </button>
+            )}
             {onPark && (
               <button className="row-action" onClick={() => runAction(onPark)}>
                 <span className="row-action-ic" aria-hidden="true">

@@ -264,6 +264,38 @@ describe('useHoldToDrag', () => {
     expect(touchMove().defaultPrevented).toBe(true);
   });
 
+  // The drag must outlive the thing it started on: dwelling over the day strip
+  // switches the day under you, which unmounts the very row being dragged
+  // (session-119). Pointer capture would be released and element handlers would
+  // unmount with it, so move/up live on the window.
+  it('keeps tracking after the dragged element unmounts', () => {
+    let show = true;
+    function Host() {
+      const holdToDrag = useHoldToDrag();
+      return show ? (
+        <button type="button" {...holdToDrag(handlers)}>
+          idea
+        </button>
+      ) : (
+        <span>gone</span>
+      );
+    }
+    const { rerender } = render(<Host />);
+    down();
+    vi.advanceTimersByTime(DRAG_HOLD_MS);
+    expect(handlers.onArm).toHaveBeenCalledTimes(1);
+
+    show = false;
+    rerender(<Host />);
+
+    // The source is gone; the gesture is not.
+    fireEvent.pointerMove(window, { clientX: 100, clientY: 260, pointerId: 1 });
+    expect(handlers.onMove).toHaveBeenCalledWith(expect.objectContaining({ clientY: 260 }));
+    fireEvent.pointerUp(window, { pointerId: 1 });
+    expect(handlers.onDrop).toHaveBeenCalledTimes(1);
+    expect(handlers.onCancel).not.toHaveBeenCalled();
+  });
+
   it('a mouse drags immediately — there is no scroll to disambiguate', () => {
     render(<Card />);
     down(100, 100, 'mouse');
