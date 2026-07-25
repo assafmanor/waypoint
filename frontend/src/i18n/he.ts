@@ -87,6 +87,9 @@ export const t = {
       noResults: 'לא נמצאו מקומות בגוגל',
       // Offline the arm is gone rather than disabled (the near-me rule, ADR-0109 §7).
       offline: 'אין חיבור · חיפוש בגוגל לא זמין, המקומות של הטיול כן',
+      // Armed, but the query is still under the min-chars floor: say why nothing is
+      // happening instead of leaving a bare header over an empty section.
+      typeMore: 'הקלידו עוד כדי לחפש',
     },
     // Map-local day scope (ADR-0110 §4): the strip focuses one day; this chip
     // shows every day's places at once.

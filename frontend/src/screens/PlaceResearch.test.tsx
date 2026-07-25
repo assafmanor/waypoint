@@ -14,6 +14,7 @@ let predictions: PlacePrediction[] = [];
 let referenced: Record<string, Place> = {};
 let loading = false;
 let rateLimited = false;
+let active = true;
 
 vi.mock('../lib/usePlaceSearch', () => ({
   usePlaceSearch: () => ({
@@ -23,7 +24,7 @@ vi.mock('../lib/usePlaceSearch', () => ({
     loading,
     rateLimited,
     failed: false,
-    active: true,
+    active,
     alreadyInTrip: (p: PlacePrediction) => referenced[p.googlePlaceId],
     pick,
     saveNameOnly: vi.fn(),
@@ -67,6 +68,7 @@ describe('PlaceResearch (Phase 5, ADR-0115)', () => {
     referenced = {};
     loading = false;
     rateLimited = false;
+    active = true;
   });
   afterEach(() => {
     cleanup();
@@ -156,6 +158,14 @@ describe('PlaceResearch (Phase 5, ADR-0115)', () => {
     arm();
     expect(screen.getByText(t.placePicker.rateLimited)).toBeTruthy();
     expect(screen.getByText('teamLab Borderless')).toBeTruthy();
+  });
+
+  it('armed but under the min-chars floor says so instead of showing a bare header', () => {
+    active = false;
+    view({ query: 't' });
+    arm();
+    expect(screen.getByText(t.map.research.typeMore)).toBeTruthy();
+    expect(screen.queryByText(t.map.research.noResults)).toBeNull();
   });
 
   it('no Google match says so', () => {
