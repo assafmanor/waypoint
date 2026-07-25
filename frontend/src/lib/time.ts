@@ -11,6 +11,7 @@ import {
   MS_PER_DAY,
 } from '../constants';
 import { dayCount, dayPhrase, monthCount } from './hebrew';
+import { ltrIsolate, measure } from './bidi';
 
 /** "Today" in a specific timezone as YYYY-MM-DD — the trip's own calendar day,
  *  not the browser's (mirrors backend/prisma/seed.mjs's todayInTz). `at` is
@@ -352,13 +353,20 @@ export function zoneOffsetMinutes(at: Date, timeZone: string): number {
  *  from another's, e.g. "+6 ש׳" (Tokyo vs Tel Aviv), "−3 ש׳" (Reykjavik vs Tel
  *  Aviv). A whole-hour shift carries the hours unit; a fractional-offset zone
  *  (India +5:30) reads as H:MM, where the colon already says "hours". Uses the
- *  minus sign (−), never a hyphen, and never an em dash. */
+ *  minus sign (−), never a hyphen, and never an em dash.
+ *
+ *  The signed number is an LTR island and the unit sits outside it (ADR-0118):
+ *  without the isolate the "−" is a neutral character in the RTL flow and lands on
+ *  the wrong side of the digits, and without the unit outside it the pill would
+ *  read "ש׳ 3−". */
 export function formatZoneDelta(minutes: number): string {
   const sign = minutes < 0 ? '−' : '+';
   const abs = Math.abs(minutes);
   const h = Math.floor(abs / 60);
   const m = abs % 60;
-  return m === 0 ? `${sign}${h} ש׳` : `${sign}${h}:${String(m).padStart(2, '0')}`;
+  return m === 0
+    ? measure(`${sign}${h}`, 'ש׳')
+    : ltrIsolate(`${sign}${h}:${String(m).padStart(2, '0')}`);
 }
 
 /** Combine a form's `date` (YYYY-MM-DD) + `time` (HH:MM) inputs, read as wall-clock

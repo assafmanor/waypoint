@@ -138,7 +138,7 @@ function DocumentRow({
           </span>
         ) : (
           <>
-            <span className="size" dir="ltr">
+            <span className="size" dir="auto">
               {formatBytes(d.sizeBytes)}
             </span>
             <span className="doc-lock" aria-hidden="true">

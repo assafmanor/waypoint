@@ -190,7 +190,7 @@ export function PlanHome({ onNavigate }: { onNavigate: (tab: TabId) => void }) {
           <div className="prep-count">
             {countdown.prefix && <span className="prep-count-u">{countdown.prefix}</span>}{' '}
             {countdown.value && (
-              <span className="prep-count-n" dir="ltr">
+              <span className="prep-count-n" dir="auto">
                 {countdown.value}
               </span>
             )}{' '}
@@ -206,7 +206,7 @@ export function PlanHome({ onNavigate }: { onNavigate: (tab: TabId) => void }) {
         <div className="prep-ready">
           <div className="prep-ready-top">
             <span>{t.planHome.prep.readiness}</span>
-            <b dir="ltr">{readiness.pct}%</b>
+            <b dir="auto">{readiness.pct}%</b>
           </div>
           <div className="prep-track">
             <div className="prep-fill" style={{ width: `${readiness.pct}%` }} />

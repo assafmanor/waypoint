@@ -7,12 +7,20 @@ import { t } from '../i18n/he';
 describe('ZoneShiftPill', () => {
   afterEach(() => cleanup());
 
-  it('renders a signed shift LTR with the clock glyph and the shift title', () => {
+  it('renders a signed shift with the clock glyph and the shift title', () => {
     const { container } = render(<ZoneShiftPill minutes={360} />);
     const pill = container.querySelector('.wp-tzshift')!;
     expect(pill.textContent).toContain('+6');
-    expect(pill.getAttribute('dir')).toBe('ltr');
     expect(pill.getAttribute('title')).toBe(t.event.zoneShift);
+  });
+
+  it('reads number-then-unit: the pill is never forced LTR over its Hebrew (ADR-0118)', () => {
+    const { container } = render(<ZoneShiftPill minutes={-180} />);
+    const pill = container.querySelector('.wp-tzshift')!;
+    // dir="ltr" here laid the pill out left-to-right, so it read "ש׳ 3−". The pill
+    // stays in the RTL flow; only the signed number is an LTR island.
+    expect(pill.getAttribute('dir')).toBeNull();
+    expect(pill.textContent).toBe('🕐 \u2066−3\u2069 ש׳');
   });
 
   it('a negative shift uses a real minus sign, never a hyphen', () => {

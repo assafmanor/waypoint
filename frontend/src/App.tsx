@@ -517,7 +517,7 @@ function AccountSheet({ onClose, onSignOut }: { onClose: () => void; onSignOut: 
         </div>
       )}
       <div className="acct-name">{me?.user.displayName}</div>
-      <div className="acct-mail" dir="ltr">
+      <div className="acct-mail" dir="auto">
         {me?.user.email}
       </div>
       <div className="acct-provider">{t.shell.account.provider}</div>

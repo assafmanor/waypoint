@@ -33,7 +33,7 @@ const metaDestination = (trip: Trip): string | null => {
   return dest;
 };
 
-// Meta line: spaced middots, dates & member count in mono `dir="ltr"` so the
+// Meta line: spaced middots, dates & member count in mono `dir="auto"` so the
 // numeric runs render correctly in the RTL flow (design-language: mono = dates).
 function TripMeta({ trip }: { trip: Trip }) {
   const dest = metaDestination(trip);
@@ -45,13 +45,13 @@ function TripMeta({ trip }: { trip: Trip }) {
           <span className="sep" aria-hidden="true" />
         </>
       )}
-      <span className="num" dir="ltr">
+      <span className="num" dir="auto">
         {formatTripDates(trip.startDate, trip.endDate)}
       </span>
       {trip.memberCount !== undefined && (
         <>
           <span className="sep" aria-hidden="true" />
-          <span className="ppl" dir="ltr">
+          <span className="ppl" dir="auto">
             {trip.memberCount}
           </span>
           {NBSP}

@@ -880,7 +880,7 @@ function ResolveSheet({
               {e.icon}
             </span>
             <span className="nm">{e.title}</span>
-            <span className="tm" dir="ltr">
+            <span className="tm" dir="auto">
               {formatTime(e.startsAt!, tz)}
               {e.endsAt && `–${formatTime(e.endsAt, tz)}`}
             </span>
@@ -926,7 +926,7 @@ function ResolveSheet({
         <span className="ttl">
           {t.planDay.resolveAfter} · {others.length === 1 ? others[0].title : t.planDay.overlapping}
         </span>
-        <span className="tm" dir="ltr">
+        <span className="tm" dir="auto">
           {fmt(afterStart)}
         </span>
       </button>
@@ -938,7 +938,7 @@ function ResolveSheet({
           {t.planDay.resolveBefore} ·{' '}
           {others.length === 1 ? others[0].title : t.planDay.overlapping}
         </span>
-        <span className="tm" dir="ltr">
+        <span className="tm" dir="auto">
           {fmt(beforeStart)}
         </span>
       </button>
@@ -1130,7 +1130,7 @@ function BuilderGroups({
                 <div className="bld-cluster-head">
                   <span className="lead">
                     <span aria-hidden="true">⧉</span> {t.planDay.overlapping} ·{' '}
-                    <span className="win" dir="ltr">
+                    <span className="win" dir="auto">
                       {formatTime(new Date(g.startMs), ctx.tz)}–
                       {formatTime(new Date(g.endMs), ctx.tz)}
                     </span>
@@ -1174,7 +1174,7 @@ function NowRef({ ms, tz }: { ms: number; tz: string }) {
       <span className="nowref-tag">
         <span className="nowref-ring" aria-hidden="true" />
         {t.common.now}{' '}
-        <span className="nowref-tm" dir="ltr">
+        <span className="nowref-tm" dir="auto">
           {formatTime(new Date(ms), tz)}
         </span>
       </span>
@@ -1413,7 +1413,7 @@ function BuilderRow({
           const endZone = zones?.endZone ?? tz;
           return (
             <span className="bld-time">
-              <span dir="ltr">
+              <span dir="auto">
                 {formatTime(event.startsAt, startZone)}
                 {event.endsAt && `–${formatTime(event.endsAt, endZone)}`}
                 {event.endsAt &&

@@ -240,7 +240,7 @@ function Ready({ preview }: { preview: InvitePreview }) {
                   {startCount.prefix && <>{startCount.prefix} </>}
                   {startCount.value && (
                     <>
-                      <span className="num" dir="ltr">
+                      <span className="num" dir="auto">
                         {startCount.value}
                       </span>{' '}
                     </>
@@ -256,9 +256,9 @@ function Ready({ preview }: { preview: InvitePreview }) {
             <div className="ticket-meta">
               {preview.destination}
               <span className="dot">{DOT_SEPARATOR}</span>
-              {/* Latin/numeric runs stay mono + dir=ltr; Hebrew never sits in
+              {/* Latin/numeric runs stay mono + dir=auto; Hebrew never sits in
                   mono (design-language.md §Typography). */}
-              <span className="num" dir="ltr">
+              <span className="num" dir="auto">
                 {formatTripDates(preview.startDate, preview.endDate)}
               </span>
               {tripDays > 0 && (
@@ -266,7 +266,7 @@ function Ready({ preview }: { preview: InvitePreview }) {
                   <span className="dot">{DOT_SEPARATOR}</span>
                   {lengthCount.value && (
                     <>
-                      <span className="num" dir="ltr">
+                      <span className="num" dir="auto">
                         {lengthCount.value}
                       </span>{' '}
                     </>

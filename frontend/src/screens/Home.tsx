@@ -343,7 +343,7 @@ export function Home({ onNavigate }: { onNavigate?: (tab: TabId) => void }) {
           <span className="ss-txt">
             {t.glance.stayingPrefix}
             <b>{stayNow.title}</b> · {t.glance.nightLabel}{' '}
-            <span className="mono" dir="ltr">
+            <span className="mono" dir="auto">
               {stayNight(stayNow)}/{stayNights(stayNow)}
             </span>
           </span>
@@ -409,7 +409,7 @@ export function Home({ onNavigate }: { onNavigate?: (tab: TabId) => void }) {
           >
             <span className="ic">{ICONS.ticket}</span>
             <span className="lb">{t.quick.nextTicket}</span>
-            <span className="code" dir="ltr">
+            <span className="code" dir="auto">
               {CODE_PREFIX}
               {nextCoded.booking.confirmationCode}
             </span>
@@ -420,7 +420,7 @@ export function Home({ onNavigate }: { onNavigate?: (tab: TabId) => void }) {
             <span className="ic">{ICONS.wifi}</span>
             <span className="lb">{t.quick.wifiCode}</span>
             {wifi.network && (
-              <span className="sub" dir="ltr">
+              <span className="sub" dir="auto">
                 {wifi.network}
               </span>
             )}

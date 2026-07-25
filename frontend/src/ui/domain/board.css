@@ -340,7 +340,9 @@
   font-size: 10px;
   color: #7688ac;
 }
-.wp-board-progress .ends span[dir='ltr'] {
+/* The two clock ends are the direction-carrying spans in this row (dir="auto",
+   ADR-0118) — mono is for their numeric run, never for Hebrew beside it. */
+.wp-board-progress .ends span[dir] {
   font-family: var(--font-mono);
   font-weight: 400;
 }

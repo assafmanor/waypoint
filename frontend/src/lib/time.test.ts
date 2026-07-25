@@ -26,6 +26,7 @@ import {
   formatZoneDelta,
   zoneOffsetMinutes,
 } from './time';
+import { withoutBidiControls } from './bidi';
 import { DEMO_NOW, EVENTS, TRIP } from '../fixtures';
 
 const tz = TRIP.timezone;
@@ -321,10 +322,18 @@ describe('zone offset + delta (ADR-0107)', () => {
   });
 
   it('formats a signed shift, hours unit for whole hours and H:MM for fractional', () => {
-    expect(formatZoneDelta(360)).toBe('+6 ש׳');
-    expect(formatZoneDelta(-180)).toBe('−3 ש׳'); // real minus sign, never a hyphen
-    expect(formatZoneDelta(330)).toBe('+5:30');
-    expect(formatZoneDelta(-345)).toBe('−5:45');
+    const plain = (minutes: number) => withoutBidiControls(formatZoneDelta(minutes));
+    expect(plain(360)).toBe('+6 ש׳');
+    expect(plain(-180)).toBe('−3 ש׳'); // real minus sign, never a hyphen
+    expect(plain(330)).toBe('+5:30');
+    expect(plain(-345)).toBe('−5:45');
+  });
+
+  it('isolates the signed number and leaves the unit in the RTL flow (ADR-0118)', () => {
+    // Without the isolate the "−" drifts to the wrong side of the digits; with the
+    // unit inside it, the pill would read "ש׳ 3−".
+    expect(formatZoneDelta(-180)).toBe('\u2066−3\u2069 ש׳');
+    expect(formatZoneDelta(330)).toBe('\u2066+5:30\u2069');
   });
 });
 

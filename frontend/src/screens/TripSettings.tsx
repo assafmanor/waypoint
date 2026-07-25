@@ -340,7 +340,7 @@ export function TripSettings() {
         </div>
         {invite && invite !== 'loading' ? (
           <div className="invite-box" onClick={copyInvite}>
-            <span className="code" dir="ltr">
+            <span className="code" dir="auto">
               {invite.url}
             </span>
             <span className="cp">{ICONS.clipboard}</span>

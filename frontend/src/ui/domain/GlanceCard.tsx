@@ -35,15 +35,15 @@ function AnchorPill({ anchor: a, tz }: { anchor: GlanceAnchor; tz: string }) {
     return (
       <span className="achip amber">
         <span className="mi">{a.icon}</span>{' '}
-        <span className="mono" dir="ltr">
+        <span className="mono" dir="auto">
           {formatTime(new Date(a.startMs), a.zones?.startZone ?? tz)}
         </span>
         <NavArrow variant="forward" className="arr" />
-        <span className="mono" dir="ltr">
+        <span className="mono" dir="auto">
           {formatTime(new Date(a.endMs), a.zones?.endZone ?? tz)}
         </span>
         {a.nextDay && (
-          <span className="plus1" dir="ltr">
+          <span className="plus1" dir="auto">
             {t.glance.nextDay}
           </span>
         )}
@@ -56,7 +56,7 @@ function AnchorPill({ anchor: a, tz }: { anchor: GlanceAnchor; tz: string }) {
   return (
     <span className="achip amber">
       <span className="mi">{a.icon}</span> {transitionLabel(a.labelKey)}{' '}
-      <span className="mono" dir="ltr">
+      <span className="mono" dir="auto">
         {formatTime(new Date(a.timeMs), a.zone ?? tz)}
       </span>
       {a.deltaMinutes != null && <ZoneShiftPill minutes={a.deltaMinutes} className="gl-tzdelta" />}
@@ -162,7 +162,7 @@ export function GlanceCard({
             )}
             {/* a spanned block's "+1" is carried by its span pill above, not here */}
             {s.nextDay && !s.spanned && (
-              <span className="plus1" dir="ltr">
+              <span className="plus1" dir="auto">
                 {t.glance.nextDay}
               </span>
             )}
@@ -173,8 +173,8 @@ export function GlanceCard({
         )}
       </div>
       <div className="rail-ends">
-        <span dir="ltr">{formatTime(new Date(glance.windowStartMs), tz)}</span>
-        <span dir="ltr">{formatTime(new Date(glance.windowEndMs), tz)}</span>
+        <span dir="auto">{formatTime(new Date(glance.windowStartMs), tz)}</span>
+        <span dir="auto">{formatTime(new Date(glance.windowEndMs), tz)}</span>
       </div>
       {/* Crowded day (ADR-0077 §D): the anchors couldn't fit in the band, so they
           collapse here to a flow legs line — same amber pill, no overlap. */}
@@ -187,7 +187,7 @@ export function GlanceCard({
       )}
       <div className="lead">
         <div className="big">
-          <span className="v" dir="ltr">
+          <span className="v" dir="auto">
             {glance.remaining}
           </span>
           <span className="k">{t.glance.remaining}</span>
@@ -196,7 +196,7 @@ export function GlanceCard({
           <div className="anchor">
             {ICONS.lock} {t.glance.hardAnchor}
             <br />
-            <span className="tm" dir="ltr">
+            <span className="tm" dir="auto">
               {hardAnchorTime}
             </span>
           </div>
@@ -207,7 +207,7 @@ export function GlanceCard({
           {freeUntil && (
             <span>
               🕓 {t.glance.freeUntil}{' '}
-              <span className="mono" dir="ltr">
+              <span className="mono" dir="auto">
                 {freeUntil}
               </span>
             </span>
@@ -220,7 +220,7 @@ export function GlanceCard({
           {dayEnd && (
             <span>
               {t.glance.dayEnds}{' '}
-              <b className="mono" dir="ltr">
+              <b className="mono" dir="auto">
                 ~{dayEnd}
               </b>
             </span>

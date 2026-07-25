@@ -28,7 +28,7 @@ export function IndexTile({ icon, title, count, subtitle, onOpen }: IndexTilePro
       <span className="wp-idx-tile-main">
         <span className="wp-idx-tile-top">
           <span className="wp-idx-tile-t">{title}</span>
-          <span className="wp-idx-tile-count" dir="ltr">
+          <span className="wp-idx-tile-count" dir="auto">
             {count}
           </span>
         </span>

@@ -458,7 +458,7 @@ function NowLine({ ref, now, tz }: { ref: React.Ref<HTMLDivElement>; now: Date; 
     <div className="nowline" ref={ref} aria-label={t.day.nowLineAria(formatTime(now, tz))}>
       <span className="nowline-chip">
         <span className="nowline-dot" aria-hidden="true" />
-        <span dir="ltr">{formatTime(now, tz)}</span>{' '}
+        <span dir="auto">{formatTime(now, tz)}</span>{' '}
         <span className="nowline-lbl">{t.common.now}</span>
       </span>
       <span className="nowline-rule" />
@@ -504,7 +504,7 @@ function GroupNode({ group, depth, ctx }: { group: TimeGroup; depth: number; ctx
             ⎣
           </span>{' '}
           {t.day.concurrent} ·{' '}
-          <span className="win" dir="ltr">
+          <span className="win" dir="auto">
             {formatTime(new Date(group.startMs), ctx.tz)}–
             {formatTime(new Date(group.endMs), ctx.tz)}
           </span>

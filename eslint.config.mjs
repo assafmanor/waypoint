@@ -49,6 +49,25 @@ const COPY_GLYPH_SELECTORS = [
     'No arrow/caret glyph in UI copy — split the sentence and render <NavArrow>/<Icon> at the call site (design-language.md).',
 }));
 
+// ADR-0118: in an RTL app, `dir="ltr"` on an element that renders Hebrew lays the
+// whole element out left-to-right, so the Hebrew reader meets the last logical word
+// first — "9 ק״מ" reads "ק״מ 9", "+3 ש׳" reads "ש׳ 3+". `dir="auto"` is never worse
+// (with no strong character, and with a Latin-led one, it resolves LTR exactly as
+// before) and self-corrects the moment the content is Hebrew-led. The LTR island
+// belongs to the numeric run inside the string — `ltrIsolate`/`measure` in
+// `lib/bidi.ts` — not to the element wrapping it together with its unit.
+//
+// `<input>` is exempt: a code/time field's value is Latin by construction, and for
+// date/time controls `dir` also drives the native control's own layout.
+const BIDI_SELECTORS = [
+  {
+    selector:
+      'JSXOpeningElement[name.name!="input"] > JSXAttribute[name.name="dir"][value.value="ltr"]',
+    message:
+      'Use dir="auto" (or no dir) — a hardcoded dir="ltr" flips a number+unit token in Hebrew ("9 ק״מ" → "ק״מ 9"). Isolate the numeric run instead: ltrIsolate/measure in lib/bidi.ts (ADR-0118).',
+  },
+];
+
 export default tseslint.config(
   {
     ignores: ['**/dist/**', '**/node_modules/**', '**/.turbo/**', '_internal/**'],
@@ -81,7 +100,12 @@ export default tseslint.config(
     files: ['frontend/src/**/*.{ts,tsx}'],
     ignores: ['frontend/src/lib/useClock.ts'],
     rules: {
-      'no-restricted-syntax': ['error', ...CLOCK_SELECTORS, ...RENDERED_GLYPH_SELECTORS],
+      'no-restricted-syntax': [
+        'error',
+        ...CLOCK_SELECTORS,
+        ...RENDERED_GLYPH_SELECTORS,
+        ...BIDI_SELECTORS,
+      ],
     },
   },
   {

@@ -149,7 +149,7 @@ export function IndexBookingsView({
         title={t.index.bookingsTitle}
         onBack={backOrResetCategory}
         end={
-          <span className="idx-head-count" dir="ltr">
+          <span className="idx-head-count" dir="auto">
             {t.index.head.count(bookings.length)}
           </span>
         }
@@ -384,7 +384,7 @@ function BookingLi({
       }
       right={
         booking.confirmationCode && (
-          <span className="code" dir="ltr">
+          <span className="code" dir="auto">
             {CODE_PREFIX}
             {booking.confirmationCode}
           </span>

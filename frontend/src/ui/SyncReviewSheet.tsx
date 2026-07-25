@@ -33,7 +33,7 @@ export function SyncReviewSheet({ onClose }: { onClose: () => void }) {
                     <span className="sync-review-reason">
                       {t.sync.review.reason}
                       {f.code && (
-                        <code className="sync-review-code" dir="ltr">
+                        <code className="sync-review-code" dir="auto">
                           {f.code}
                         </code>
                       )}

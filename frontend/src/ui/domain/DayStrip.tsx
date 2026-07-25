@@ -19,7 +19,7 @@ import './day-strip.css';
 export interface DayStripDay {
   /** ISO date (YYYY-MM-DD) — the pill's identity + onSelect argument. */
   date: string;
-  /** Day-of-month, shown in mono (dir=ltr). */
+  /** Day-of-month, shown in mono (dir=auto). */
   dayOfMonth: string;
   /** Narrow weekday letter (locale-derived by the caller). */
   letter: string;
@@ -131,7 +131,7 @@ export function DayStrip({
             data-day-pill={dragging ? d.date : undefined}
           >
             {d.letter}
-            <span className="n" dir="ltr">
+            <span className="n" dir="auto">
               {d.dayOfMonth}
             </span>
           </button>

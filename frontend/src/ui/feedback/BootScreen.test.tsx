@@ -30,7 +30,7 @@ describe('BootScreen', () => {
   it('renders a mono, LTR-wrapped clock reading the current time', () => {
     const { container } = render(<BootScreen />);
     const clock = container.querySelector('.fb-boot-clock');
-    expect(clock?.getAttribute('dir')).toBe('ltr');
+    expect(clock?.getAttribute('dir')).toBe('auto');
     expect(clock?.textContent).toMatch(/^\d{1,2}:\d{2}$/);
   });
 });

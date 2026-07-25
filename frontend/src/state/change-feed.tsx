@@ -20,7 +20,7 @@ export const CHANGE_FEED_LIMIT = 20;
 
 /** One narrated line. `lead` is the sentence with the subject inlined but WITHOUT
  *  the trailing clock time; `time` (a moved-to `HH:MM`) renders as a separate
- *  `dir="ltr"` island so the number stays LTR inside the RTL line. */
+ *  `dir="auto"` island so the number stays LTR inside the RTL line. */
 export interface ChangeEntry {
   id: string; // change.id — dedup + dismiss key
   seq: string; // ordering / diagnostics

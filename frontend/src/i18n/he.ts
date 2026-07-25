@@ -2,6 +2,7 @@
 // stays language-agnostic (conventions.md). Interpolated copy is a function;
 // runs that must render left-to-right (times, codes) stay as JSX in the caller.
 import { countdownText } from '../lib/time';
+import { measure } from '../lib/bidi';
 
 export const t = {
   common: {
@@ -117,8 +118,10 @@ export const t = {
       chip: 'קרוב עכשיו',
       locating: 'מאתר…',
       groupHeader: 'לפי קרבה אליך',
-      meters: (m: number) => `${m} מ׳`,
-      km: (km: number) => `${km} ק״מ`,
+      // Number-then-unit via `measure` (ADR-0118): the numeral is the LTR island,
+      // the Hebrew unit stays in the RTL flow, so the chip reads "9 ק״מ".
+      meters: (m: number) => measure(m, 'מ׳'),
+      km: (km: number) => measure(km, 'ק״מ'),
       // Offline: you can't re-locate, so a number would be a stale claim.
       unavailable: 'מרחק לא זמין',
       prompt: {
@@ -623,7 +626,7 @@ export const t = {
   },
   // Group change-feed (ADR-0081, review U-09): a quiet strip narrating recent
   // SHARED peer edits. The subject is inlined in each lead; a moved-to clock time
-  // is appended separately as a dir="ltr" island (never inside these strings).
+  // is appended separately as a dir="auto" island (never inside these strings).
   // Verbs are masculine by convention (actor gender is unknown), matching the
   // settings/toast copy. No em dashes.
   changeFeed: {

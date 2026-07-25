@@ -54,7 +54,7 @@ export function ChangeFeed({ entries, now, onDismiss, onDismissAll }: ChangeFeed
               <span className="cf-line">
                 <b className="cf-actor">{e.actorName}</b> {e.lead}
                 {e.time && (
-                  <span className="cf-time" dir="ltr">
+                  <span className="cf-time" dir="auto">
                     {e.time}
                   </span>
                 )}
@@ -65,7 +65,7 @@ export function ChangeFeed({ entries, now, onDismiss, onDismissAll }: ChangeFeed
                 ) : (
                   <>
                     {rt.prefix}{' '}
-                    <span className="cf-num" dir="ltr">
+                    <span className="cf-num" dir="auto">
                       {rel.n}
                     </span>{' '}
                     {rel.unit}

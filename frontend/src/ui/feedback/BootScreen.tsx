@@ -25,10 +25,10 @@ export function BootScreen() {
   return (
     <div className="fb-boot" role="status" aria-live="polite" aria-label={t.shell.booting}>
       <div className="fb-boot-mark" aria-hidden="true">
-        <div className="fb-boot-clock" dir="ltr">
+        <div className="fb-boot-clock" dir="auto">
           {clock}
         </div>
-        <div className="fb-boot-dots" dir="ltr">
+        <div className="fb-boot-dots" dir="auto">
           {DOTS}
         </div>
       </div>

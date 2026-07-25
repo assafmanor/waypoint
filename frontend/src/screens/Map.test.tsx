@@ -107,6 +107,7 @@ import { NavProvider } from '../state/nav-state';
 import { MapScopeProvider } from '../state/map-scope-state';
 import { setSimulatedNow } from '../lib/useClock';
 import { MapView } from './Map';
+import { withoutBidiControls } from '../lib/bidi';
 import { t } from '../i18n/he';
 
 function wrap(node: ReactNode) {
@@ -351,6 +352,13 @@ describe('MapView (Phase 3, ADR-0109/0110)', () => {
     const nearChip = () => screen.getByRole('button', { name: new RegExp(t.map.near.chip) });
     const rowNames = () =>
       [...document.querySelectorAll('.place .map-name')].map((n) => n.textContent);
+    // The chip's numeral is an LTR island (ADR-0118), so its text carries invisible
+    // bidi controls — read the plain characters, except where order is the point.
+    const distanceChips = () =>
+      [...document.querySelectorAll('.place')].map((row) => {
+        const chip = row.querySelector('.map-dist');
+        return chip ? withoutBidiControls(chip.textContent ?? '') : undefined;
+      });
 
     it('asks for nothing on open — the tab renders fully with zero location', () => {
       seedNear();
@@ -401,12 +409,23 @@ describe('MapView (Phase 3, ADR-0109/0110)', () => {
       render(wrap(<MapView />));
       fireEvent.click(nearChip());
       fireEvent.click(screen.getByRole('button', { name: t.map.near.prompt.allow }));
-      const dist = [...document.querySelectorAll('.place')].map(
-        (row) => row.querySelector('.map-dist')?.textContent,
-      );
+      const dist = distanceChips();
       expect(dist[0]).toBe('10 מ׳'); // standing on it
       expect(dist[1]).toBe('1.1 ק״מ');
       expect(dist[2]).toBeUndefined(); // the coordless lite can't be measured
+    });
+
+    it('the chip reads number-then-unit: never forced LTR over its Hebrew (ADR-0118)', () => {
+      seedNear();
+      geoFix = HERE;
+      render(wrap(<MapView />));
+      fireEvent.click(nearChip());
+      fireEvent.click(screen.getByRole('button', { name: t.map.near.prompt.allow }));
+      const chip = document.querySelector('.map-dist')!;
+      // dir="ltr" here laid the whole token out left-to-right, so a Hebrew reader
+      // met the unit first ("ק״מ 9"). The numeral is the island, not the token.
+      expect(chip.getAttribute('dir')).toBeNull();
+      expect(chip.textContent).toBe('\u206610\u2069 מ׳');
     });
 
     it('toggling off restores the default order and drops the distances', () => {
@@ -460,7 +479,7 @@ describe('MapView (Phase 3, ADR-0109/0110)', () => {
       view.rerender(wrap(<MapView />));
       expect(screen.queryByRole('button', { name: new RegExp(t.map.near.chip) })).toBeNull();
       expect(screen.getAllByText(t.map.near.unavailable)).toHaveLength(2); // both coord rows
-      expect(screen.queryByText('1.1 ק״מ')).toBeNull();
+      expect(distanceChips()).not.toContain('1.1 ק״מ');
     });
   });
 

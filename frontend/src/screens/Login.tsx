@@ -77,14 +77,14 @@ export function Login() {
       <div className="teaser" aria-hidden="true">
         <div className="row">
           <span className="lbl">{t.shell.login.teaserLabel}</span>
-          <span className="clk" dir="ltr">
+          <span className="clk" dir="auto">
             {t.shell.login.teaserTime}
           </span>
         </div>
         <div className="ttl">{t.shell.login.teaserTitle}</div>
         <div className="mt">{t.shell.login.teaserMeta}</div>
         <div className="cd">
-          <b dir="ltr">{t.shell.login.teaserCountdown}</b>
+          <b dir="auto">{t.shell.login.teaserCountdown}</b>
           <i>{t.shell.login.teaserCountdownUnit}</i>
         </div>
       </div>

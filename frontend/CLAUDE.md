@@ -95,6 +95,15 @@ it": a new structural back case is a rule added to `resolveBack`
   the two day surfaces diverged for a release (ADR-0107 session-102).
 - `navigate(-1)` or any read of `window.history.length` for a back action —
   back is computed from nav state (ADR-0090), never traversed.
+- **`dir="ltr"` on anything but an `<input>`** (lint-blocked, ADR-0118). It sets
+  the base direction of the whole element, so a token carrying a Hebrew unit
+  lays out left-to-right and reads unit-first: `9 ק״מ` became `ק״מ 9`, `+3 ש׳`
+  became `ש׳ 3+`. Use `dir="auto"` (or no `dir`), and make the **numeric run**
+  the island via `ltrIsolate` / `measure` in `lib/bidi.ts` — a number-and-unit
+  string is `measure(9, 'ק״מ')`, never a hand-built template. A signed number
+  needs the isolate independently: in the RTL flow the `−` of `−3` drifts to the
+  wrong side of the digits. Same care for `direction: ltr` in CSS, which lint
+  can't see.
 
 ## Testing
 
