@@ -322,3 +322,16 @@ Reported directly: the press-and-hold felt a beat too quick to read as deliberat
 Android's own long-press timeout (`ViewConfiguration.getLongPressTimeout()`) defaults to 500 ms, and it is what the platform's long-press haptic fires against — the length of hold a phone's own gestures have already taught the hand to expect. `DRAG_HOLD_MS` now matches it, so the shelf's hold arms right where the gesture already feels confirmed rather than at an arbitrary shorter point.
 
 `DRAG_DAY_DWELL_MS` (the spring-loaded-folder dwell over a day pill, session 119) exists only to stay longer than the hold — a drag crosses several pills on its way anywhere, and every one it merely passes over must not open. It moves from 450 ms to 700 ms to keep that margin; the ratio between the two, not either absolute number, is what the invariant actually needs.
+
+## Amendment (2026-07-25, session 125) — the auto-scroll waits to be reached
+
+Reported off the phone: "when near the top or bottom of the screen, when you start dragging, it starts scrolling in the direction you're close to before you even started moving." Two independent causes, both in the **first frames** of a drag rather than in the pacing §5's amendment settled:
+
+1. **The loop tracked `0,0` until the first move arrived.** `start()` began the rAF loop but seeded nothing, so `edgeScrollStep` read the pointer as pinned against the very top of the scroller — every drag, wherever it was lifted, opened by yanking the list upward at full speed until the finger moved. The lift point is now passed to `start()` and seeds the tracked position, which is what `onArm` always had to hand.
+2. **A drag lifted inside a band was indistinguishable from one that had reached it.** The two are opposite intentions: reaching an edge asks for what is off-screen, but resting at one is just where the thing you picked up happened to be. And it is nearly always where it happened to be — the shelf sits at the bottom of the list, so a card is picked up **inside** the bottom band by construction.
+
+So the band a drag is lifted in is **latched off, and stays off until the pointer leaves it** (`gateEdgeStep`); from then on it scrolls like any other. The opposite band is never latched — moving toward it is the deliberate reach the auto-scroll exists for. A latch is per-drag: `start` computes it, `stop` clears it.
+
+**Rejected: gating on distance moved instead** ("don't scroll until the finger has travelled N px"). It answers the words of the report and not the behaviour: a card lifted at the bottom of the shelf is still in the bottom band after 20 px, so the list would run away a heartbeat later — and the drag from the shelf is aimed _up_, at the day, which the distance gate would have started fighting immediately.
+
+The unit tests cover the gate as arithmetic and the loop's first frames with a hand-cranked rAF (`lib/edge-autoscroll.test.ts`); the e2e pins it where the report came from — a row parked at the top of the scroller, held still, with the list not moving under it, then leaving the band and coming back to prove the band still works (`e2e/shelf-drag.spec.ts`). One existing e2e case had to learn the same contract: it lifted a card from the shelf and held in the bottom band, which now requires stepping clear of the band once, exactly as a finger does.

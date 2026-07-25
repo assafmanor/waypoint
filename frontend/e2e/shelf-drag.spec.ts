@@ -305,6 +305,11 @@ test.describe('a day with a wide gap between two events', () => {
 
     await touch(cdp, 'touchStart', card.x, card.y);
     await expect(page.locator('.wp-maybecard.dragging')).toBeVisible();
+    // Out of the band first, and that step is part of the contract rather than
+    // padding: the shelf sits at the bottom, so the card was LIFTED inside the bottom
+    // band, and a band the drag started in stays latched off until it leaves once
+    // (`gateEdgeStep`) — otherwise picking a card up scrolls the page on its own.
+    await touch(cdp, 'touchMove', card.x, bands.middleTo);
     // Note the y: the bottom band, not the shelf's position. Nothing here aims at the
     // target — the content is what moves.
     await touch(cdp, 'touchMove', card.x, bands.middleFrom + DRAG_EDGE_SCROLL_ZONE_PX);
@@ -367,6 +372,78 @@ test.describe('a day with a wide gap between two events', () => {
     // Prefilled from the gap chip, not from the day's next opening: the gap runs
     // 07:00→20:00, so the form starts at 07:00.
     await expect(form.getByRole('button', { name: /07:00/ })).toBeVisible();
+  });
+});
+
+// Reported off the phone: "when you start dragging near the top or bottom of the
+// screen it starts scrolling that way before you even started moving." Two causes,
+// both about the FIRST frames of a drag rather than about the pacing: the loop
+// tracked 0,0 until the first move arrived (which reads as pinned against the top
+// edge), and a drag lifted inside a band was indistinguishable from one that had
+// reached it. A tall day, so there is room to run away in both directions.
+test.describe('a drag lifted inside an edge band', () => {
+  const TALL_DAY = ['08:00', '09:30', '11:00', '12:30', '14:00', '15:30', '17:00', '18:30'].map(
+    (hhmm, i) => event(`ev-${i + 1}`, hhmm, `אירוע ${i + 1}`),
+  );
+
+  test.beforeEach(({ page }) => bootBuilder(page, { events: TALL_DAY, maybeItems: IDEAS }));
+
+  test('holds the list still until the drag has left that band', async ({ page }) => {
+    const cdp = await page.context().newCDPSession(page);
+    // Park a middle row at the very top of the scroller: its own position is then
+    // inside the top band, with plenty of list above it for a runaway to be visible.
+    await page
+      .locator('[data-bld-id="ev-5"]')
+      .evaluate((el) => el.scrollIntoView({ block: 'start' }));
+    const row = (await page.locator('[data-bld-id="ev-5"]').boundingBox())!;
+    const bands = await bodyBands(page);
+    const body = await boxOf(page, '.body');
+    expect(row.y, 'the row really is in the top band').toBeLessThan(
+      body.y + DRAG_EDGE_SCROLL_ZONE_PX,
+    );
+    const before = await scrollTop(page);
+    expect(before, 'and there is list above it to scroll to').toBeGreaterThan(0);
+
+    const x = row.x + row.width / 2;
+    await touch(cdp, 'touchStart', x, row.y + 8);
+    await expect(page.locator('.bld.dragging')).toBeVisible();
+    // Long enough for tens of frames: pre-fix this ran the list to the top at
+    // DRAG_EDGE_SCROLL_MAX_PX a frame, under a finger that never moved.
+    await page.waitForTimeout(500);
+    expect(await scrollTop(page), 'the list stayed where the drag found it').toBe(before);
+
+    // …and the band is not disabled, only deferred: leave it and come back, and it
+    // scrolls like any other.
+    await touch(cdp, 'touchMove', x, bands.middleTo);
+    await touch(cdp, 'touchMove', x, bands.topBand);
+    await expect.poll(() => scrollTop(page), { timeout: 3000 }).toBeLessThan(before);
+
+    await touch(cdp, 'touchEnd');
+  });
+
+  // The opposite band was never latched, and must not be: reaching for something
+  // off-screen is the whole reason the auto-scroll exists.
+  test('still reaches the far edge straight away', async ({ page }) => {
+    const cdp = await page.context().newCDPSession(page);
+    await page
+      .locator('[data-bld-id="ev-5"]')
+      .evaluate((el) => el.scrollIntoView({ block: 'start' }));
+    const row = (await page.locator('[data-bld-id="ev-5"]').boundingBox())!;
+    const bands = await bodyBands(page);
+    const before = await scrollTop(page);
+
+    await touch(cdp, 'touchStart', row.x + row.width / 2, row.y + 8);
+    await expect(page.locator('.bld.dragging')).toBeVisible();
+    await touch(
+      cdp,
+      'touchMove',
+      row.x + row.width / 2,
+      bands.middleFrom + DRAG_EDGE_SCROLL_ZONE_PX,
+    );
+
+    await expect.poll(() => scrollTop(page), { timeout: 3000 }).toBeGreaterThan(before);
+
+    await touch(cdp, 'touchEnd');
   });
 });
 
