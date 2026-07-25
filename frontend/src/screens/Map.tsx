@@ -169,28 +169,25 @@ export function MapView() {
     })),
   ];
 
-  // The default order is the order the trip HAPPENS in (ADR-0109 §1 amendment) —
-  // within a day, the day view's own start-then-sortOrder vocabulary, so the two
-  // surfaces can't disagree. Day-scoped, it ranks by that day's moments; all-days,
-  // by each place's earliest day.
-  //
-  // Trip mode also sinks what's behind you (session-107 amendment): the live question
-  // is what's ahead, so a place you've already been must not outrank the stop you're
-  // heading to. Plan mode passes no clock — it drafts the sequence, where "past" says
-  // nothing about a trip not yet taken.
+  // Two blocks, and the split comes first (ADR-0109 §1 + session-110 amendments):
+  // what's next and coming up leads — whatever day it falls on — then what's behind
+  // you, newest first. Within each, the day view's own start-then-sortOrder vocabulary,
+  // so the two surfaces can't disagree about a day. In BOTH modes: a list that opens
+  // on last Tuesday is wrong while you're planning too.
   const scopedDate = allDays ? undefined : activeDate;
+  const today = liveToday(nowMs, zoneEvidence);
   const orderCtx = {
     nameOf: (u: PlaceUsage) => placeById.get(u.placeId)?.name ?? '',
     onDate: scopedDate,
-    nowMs: mode === 'trip' ? nowMs : undefined,
+    nowMs,
+    today,
   };
   const bySchedule = (a: PlaceUsage, b: PlaceUsage) => comparePlacesBySchedule(a, b, orderCtx);
-  // Which rows the sink applies to — the list labels that block rather than
+  // Which rows are in the sunk block — the list labels where it starts rather than
   // reordering silently as the clock passes each stop.
   const isBehind = (u: PlaceUsage) => {
-    if (orderCtx.nowMs == null) return false;
     const day = placeDay(u, scopedDate);
-    return day ? isDayUsagePast(day, orderCtx.nowMs) : false;
+    return day ? isDayUsagePast(day, nowMs, today) : false;
   };
 
   // Near-me order: measured places nearest-first, and a coordless Place-lite sinks
@@ -249,9 +246,7 @@ export function MapView() {
     if (!usageDay || usageDay.prominence === 'ambient') return {};
     // Which day only matters when the list spans several: day-scoped, the strip and
     // the scope hint already name it, so `היום ·` on every row would be pure noise.
-    const day = allDays
-      ? relativeDayLabel(usageDay.date, liveToday(nowMs, zoneEvidence))
-      : undefined;
+    const day = allDays ? relativeDayLabel(usageDay.date, today) : undefined;
     const event = usageDay.eventId ? eventById.get(usageDay.eventId) : undefined;
     if (!event) return { day };
     const zones = eventZones(event, zoneCtx);

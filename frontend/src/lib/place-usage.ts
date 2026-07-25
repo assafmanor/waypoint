@@ -300,19 +300,25 @@ export function matchesPlaceFilter(usage: PlaceUsage, filter: PlaceFilter): bool
 // ── List order (ADR-0109 §1 amendment) ───────────────────────────────────────
 
 /**
- * The list's order: **the order the trip happens in**. Within a day this reuses the
- * day view's own vocabulary — start instant, then `sortOrder` (`buildTimeTree`), with
- * untimed events after the clocked ones exactly as `DayView` renders them — so the
- * map and the timeline can never disagree about the same day.
+ * The list's order. With a clock (`nowMs`) it is two blocks, and the split comes
+ * first — before the date:
  *
- * Three things have no position in a day's schedule and sink, in this order:
- * an **untimed** event (a date but no clock), a strictly-middle **ambient** stay
- * night (backdrop, off the day schedule by ADR-0054), and a reference with **no day
- * at all** (an unlinked booking or a shelf idea — a Booking carries no time). Place
- * name is the final tiebreak, so the order is total and stable.
+ * 1. **Ahead of you** — next and coming up, earliest first, whatever day it falls on.
+ *    Within a day this reuses the day view's own vocabulary (start instant, then
+ *    `sortOrder`, untimed after the clocked ones exactly as `DayView` renders them),
+ *    so the map and the timeline can never disagree about a day. A strictly-middle
+ *    **ambient** stay night trails both, being backdrop rather than schedule (ADR-0054).
+ * 2. **Behind you** — newest first: the stop you just left is the one you might still
+ *    want, and the trip's opening day is the least interesting row on screen. No
+ *    within-day hierarchy applies here; everything in this block is equally done.
+ *
+ * A reference with **no day at all** (an unlinked booking or a shelf idea — a Booking
+ * carries no time) has no position in either block and comes last. Place name is the
+ * final tiebreak, so the order is total and stable.
  *
  * `onDate` scopes the comparison to one day when the list is day-scoped; without it
- * each place is ranked by its earliest day (the all-days view).
+ * each place is ranked by its earliest day (the all-days view). Omitting `nowMs`
+ * yields pure sequence, with no ahead/behind split at all.
  */
 export interface PlaceOrderContext {
   /** Display name, for the final tiebreak that makes the order total. */
@@ -320,18 +326,24 @@ export interface PlaceOrderContext {
   /** Scope the comparison to one day; omit to rank each place by its earliest day. */
   onDate?: string;
   /**
-   * The live clock. When given, a place whose moment has **passed** sinks to the
-   * bottom of its day (ADR-0109 session-107 amendment) — on a live surface the
-   * question is what's ahead, and a place you've already been shouldn't outrank
-   * the stop you're heading to next. Omit on a drafting surface (Plan mode), where
-   * the true sequence matters and "past" says nothing about a trip not yet taken.
+   * The live clock. When given, the list splits **ahead of you / behind you** before
+   * anything else (ADR-0109 session-110 amendment) — what's next and coming up leads,
+   * whatever day it falls on, and what's done follows most-recent-first. Omit only to
+   * get pure sequence with no clock at all.
    */
   nowMs?: number;
+  /** Today's trip-local date (`YYYY-MM-DD`). Lets a whole day count as behind you, so
+   *  an **untimed** event on a day that has passed sinks with the rest of it rather
+   *  than floating at the top for want of a clock. */
+  today?: string;
 }
 
 /** Whether a place's day is behind you: everything anchored there has ended.
  *  In progress counts as current — an event running now is maximally relevant. */
-export function isDayUsagePast(day: DayUsage, nowMs: number): boolean {
+export function isDayUsagePast(day: DayUsage, nowMs: number, today?: string): boolean {
+  // A whole calendar day that has passed takes everything on it, clocked or not —
+  // otherwise an untimed event on a finished day reads as still to come.
+  if (today && day.date !== today) return day.date < today;
   const ends = day.until ?? day.at;
   return ends != null && nowMs >= ends;
 }
@@ -347,7 +359,7 @@ export function comparePlacesBySchedule(
   b: PlaceUsage,
   ctx: PlaceOrderContext,
 ): number {
-  const { nameOf, onDate, nowMs } = ctx;
+  const { nameOf, onDate, nowMs, today } = ctx;
   const da = placeDay(a, onDate);
   const db = placeDay(b, onDate);
   // A place with no day at all comes last, whatever else is true of it.
@@ -355,15 +367,29 @@ export function comparePlacesBySchedule(
     if (da === db) return nameOf(a).localeCompare(nameOf(b));
     return da ? -1 : 1;
   }
-  if (da.date !== db.date) return da.date.localeCompare(db.date);
 
-  // Within the day: ahead of you, clocked → untimed → ambient backdrop → behind you.
-  const rank = (d: DayUsage) => {
-    if (nowMs != null && isDayUsagePast(d, nowMs)) return 3;
-    return d.prominence === 'ambient' ? 2 : d.at == null ? 1 : 0;
-  };
-  if (rank(da) !== rank(db)) return rank(da) - rank(db);
-  if (da.at != null && db.at != null && da.at !== db.at) return da.at - db.at;
+  // Ahead of you beats behind you BEFORE the date is even considered. Ordering by
+  // date first was the bug: across several days it put last Tuesday above the stop
+  // you're heading to this evening, because the sink only ever applied within a day.
+  const behind = (d: DayUsage) => nowMs != null && isDayUsagePast(d, nowMs, today);
+  if (behind(da) !== behind(db)) return behind(da) ? 1 : -1;
+
+  // What's done reads newest-first: the thing you just left is the one you might
+  // still want, and the trip's opening day is the least interesting row on screen.
+  const dir = behind(da) ? -1 : 1;
+  if (da.date !== db.date) return dir * da.date.localeCompare(db.date);
+  // Within a day, ahead of you: clocked → untimed → ambient backdrop. The sunk block
+  // has no such hierarchy — everything there is equally done — so it goes by clock.
+  if (!behind(da)) {
+    const rank = (d: DayUsage) => (d.prominence === 'ambient' ? 2 : d.at == null ? 1 : 0);
+    if (rank(da) !== rank(db)) return rank(da) - rank(db);
+  }
+  // A row with no clock can't claim recency, so it trails the timed ones either way.
+  if (da.at == null || db.at == null) {
+    if (da.at !== db.at) return da.at == null ? 1 : -1;
+  } else if (da.at !== db.at) {
+    return dir * (da.at - db.at);
+  }
   const sa = da.sortOrder ?? 0;
   const sb = db.sortOrder ?? 0;
   if (sa !== sb) return sa - sb;

@@ -29,6 +29,27 @@ Building Phase 4b ([ADR-0106](0106-maps-and-places-epic-scope-and-phasing.md) §
 
 The time renders in the **event's own** display zone (ADR-0107), like every other time in the app, not the trip primary.
 
+## Amendment (2026-07-25, session 110) — two blocks: ahead of you, then behind you newest-first
+
+Session 107 sank what's behind you **to the bottom of its day**. Reported as still wrong, and it was, in two ways:
+
+1. **A bug.** The comparison ordered by **date before** the ahead/behind rank, so the sink only ever operated _within_ one day. In all-days scope the list still opened on the trip's earliest day — last Tuesday above the stop you're heading to this evening. Day-scoped it looked right, which is why it survived three sessions.
+2. **A wrong call.** Session 107 kept the sunk block chronological. It should read **newest-first**: the stop you just left is the one you might still want, and the trip's opening day is the least interesting row on screen.
+
+**Decision: the list is two blocks, and the split is the outermost key — above the date.**
+
+1. **Ahead of you** — next and coming up, earliest first, **whatever day it falls on**. Within a day, still the day view's own start-then-`sortOrder` vocabulary, so the two surfaces cannot disagree about a day; a strictly-middle **ambient** stay night still trails, being backdrop rather than schedule (ADR-0054).
+2. **Behind you** — **newest first**, by date then instant. No within-day hierarchy applies here: everything in this block is equally done, so untimed and ambient rows stop being ranked and simply trail the timed ones (a row with no clock cannot claim recency).
+
+A reference with **no day at all** still comes last, in neither block.
+
+**Two further revisions of session 107:**
+
+- **It applies in both modes.** Session 107 made it Trip-only, reasoning that Plan drafts the sequence. A list that opens on last Tuesday is wrong while you are planning too, and the mode gate bought nothing — so the clock is now always passed. Plan mode planning a future trip is unaffected: nothing is past.
+- **A whole passed day counts as behind you** (`isDayUsagePast` gained `today`). Otherwise an **untimed** event on a finished day floats into the _ahead_ block for want of a clock, which is exactly the class of error this amendment is fixing.
+
+The `כבר היינו` header still labels where the sunk block starts, and now marks a genuine boundary in the all-days list rather than a within-day tail.
+
 ## Amendment (2026-07-25, session 109) — in all-days scope the row names its day
 
 Session 108 gave every row its time. Reported straight after: in **all-days** scope a bare `09:00` on a place three days out reads as today. §1's `<time>` was written for a day-scoped list and says nothing about the scope that spans the trip.
@@ -65,7 +86,7 @@ Session 108 gave every row its time. Reported straight after: in **all-days** sc
 
 Session 106 made the list read in trip order. A screenshot of the shipped result showed that isn't enough on its own: at **14:11**, a day's rows read `Tavernaki Filippos · Avram's Grandson · מערת הקרח בקאטלה` — the two places already visited on top, and the row carrying `היעד הבא · 17:00` **last**. Chronological order is right about the sequence and wrong about the priority: the map is Trip mode's live surface, and the question there is what's ahead.
 
-**Decision: in Trip mode a place whose moment has passed sinks to the bottom of its day**, below everything still ahead of you. The rule is a tier, not a different order — within each tier the day view's start-then-`sortOrder` vocabulary is untouched, so §106's "the map and the timeline cannot disagree" still holds in the only sense that matters: they order the same events the same way. What differs is that the timeline expresses "done vs ahead" with its **now-line** (position = time, [ADR-0043](0043-day-view-now-line-and-derived-phases.md)) while the list has no time axis to hang one on, so it expresses the same split by partitioning.
+**Decision: in Trip mode a place whose moment has passed sinks to the bottom of its day**, below everything still ahead of you. _(Superseded by the session-110 amendment above: the split is now the outermost key rather than a within-day tier — it applied only inside a day, so an all-days list still opened on the trip's earliest day — the sunk block reads newest-first rather than chronological, and it applies in both modes. The principle below, and its reconciliation with the day view, stand.)_ The rule is a tier, not a different order — within each tier the day view's start-then-`sortOrder` vocabulary is untouched, so §106's "the map and the timeline cannot disagree" still holds in the only sense that matters: they order the same events the same way. What differs is that the timeline expresses "done vs ahead" with its **now-line** (position = time, [ADR-0043](0043-day-view-now-line-and-derived-phases.md)) while the list has no time axis to hang one on, so it expresses the same split by partitioning.
 
 The within-day order is therefore: **ahead of you (clocked) → untimed → ambient backdrop → behind you.**
 
