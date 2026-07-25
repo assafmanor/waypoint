@@ -228,3 +228,34 @@ The drag could only reach the day already on screen. Now, while a drag is in fli
 **A drop must read live state, not the state it was born in.** The window listeners hold the handlers from the render at touch-down — before any drag existed. Every value a release needs (the active date, the day's events, and the drag's own target) is therefore read from a ref updated each render. This also closes something latent since the drag shipped: a collaborator's change landing mid-gesture used to be dropped onto a stale list.
 
 **The pills cannot detect the pointer themselves.** A touch pointer is _implicitly captured_ by the element the touch started on, so `pointerenter`/`pointerleave` never fire on anything the finger travels over — a pill-owned dwell simply never runs (it didn't, on the first attempt). Only `elementFromPoint` knows, so the builder does the hit-testing and publishes what it found; the strip renders it. That is why `state/drag-state.tsx` exists, shaped exactly like `map-scope-state`: two components in different parts of the tree needing one piece of ephemeral view state. It carries only what the strip has to _render_ — never what is being dragged, or what a drop means.
+
+## Amendment (2026-07-25, session 120) — a touch keeps its target, and every create goes through the form
+
+### 1. The reported bug: the drag died coming back off the day strip
+
+Session 119's mid-drag day switch worked in one direction only. Reported: lift a row, dwell on another day (the day switches — fine), then move **down off the strip into the day view** and the drag cancels, the day snaps back, nothing happened.
+
+Session 119 already knew the day switch unmounts the dragged row and moved the gesture's move/up listeners to the **window** for exactly that reason. What it got wrong was the _touch-scroll guard_. Instrumenting the reported sequence showed the actual mechanism, which is not what the previous amendment assumed:
+
+```
+lostpointercapture  target=document
+pointermove         target=header      ← retargeted, reaches the window fine
+pointercancel       target=header      ← the browser takes the gesture
+```
+
+— and **no `touchmove` reaching the window at all**. A touch's target is fixed at `touchstart`, and touch events keep being dispatched to that node even once it is detached, where it has no path to `document` or `window`. So the document-level copy of the guard that session 119 added could never run; nothing called `preventDefault`; the browser started panning and cancelled the pointer.
+
+**The guard therefore lives on the element and outlives the element.** The ref's cleanup deliberately does _not_ remove it when the unmounting element is the one being dragged — the drag's own teardown does. The document-level copy is gone, because it was dead code with a plausible-sounding comment, which is worse than none.
+
+This also means the earlier framing was half right: window listeners are correct for _pointer_ events (they retarget and keep arriving), and useless for _touch_ events (they don't). The two need opposite treatment, which is why one round of fixing only pointer events looked like it worked.
+
+### 2. Every drop that CREATES an event now opens the form
+
+Asked as a question, and the answer that holds is a line between **create** and **move**:
+
+- **An idea dropped on a gap, or on an empty day** — a create. Nothing existed before, and its time, length and kind are all still open, so the drop opens the schedule form, prefilled with the gap's slot when the target had one and with the day's next opening when it didn't. A gap drop used to commit silently on a 60-minute default the user never saw, which is a smaller version of the "hardcoded 17:30 dump" §5 replaced tap-to-schedule to get rid of.
+- **Everything that already exists moves silently**: a skipped event restored into a gap (one patch, one undo), a row moved to another day, a row parked on the shelf, an idea's target day re-aimed. Each has a title and a duration already; a form there is a speed bump.
+
+`SHELF_DROP_ACTION.SCHEDULE` is retired — with creates routed through `CHOOSE_TIME` (which now carries an optional prefill) there is nothing left that schedules an idea straight from a drop.
+
+**Not changed, deliberately:** tapping a gap chip and picking an idea from the gap-fill sheet still commits into that slot. There the gap is the _premise_ — you chose the slot, then the idea — whereas in a drag you chose the idea and the gap is where your finger landed, so the slot is the part worth confirming.

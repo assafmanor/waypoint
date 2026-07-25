@@ -15,14 +15,17 @@ const nothing: ShelfDropTarget = { overShelf: null, overDay: false, overDate: nu
 
 describe('resolveShelfDrop (ADR-0116 session-117)', () => {
   describe('an idea', () => {
-    it('dropped on a gap is scheduled into that slot', () => {
+    // An idea becoming an event is a CREATE: its time, length and kind are all still
+    // open, so the drop opens the form prefilled with the gap's slot rather than
+    // committing a default the user never saw (session-120).
+    it('dropped on a gap opens the form prefilled with that slot', () => {
       const action = resolveShelfDrop(SHELF_DRAG.IDEA, { ...nothing, fill: FILL }, DAY);
-      expect(action).toEqual({ kind: SHELF_DROP_ACTION.SCHEDULE, fill: FILL });
+      expect(action).toEqual({ kind: SHELF_DROP_ACTION.CHOOSE_TIME, fill: FILL });
     });
 
-    // The empty day knows WHICH day but has no slot to offer, so the time is the
-    // user's to pick rather than one the drop invents.
-    it('dropped on the empty day opens the time chooser', () => {
+    // The empty day knows WHICH day but has no slot to offer, so the form opens on the
+    // day's own next opening instead.
+    it('dropped on the empty day opens the form with no slot to prefill', () => {
       const action = resolveShelfDrop(SHELF_DRAG.IDEA, { ...nothing, overDay: true }, DAY);
       expect(action).toEqual({ kind: SHELF_DROP_ACTION.CHOOSE_TIME });
     });
@@ -86,7 +89,7 @@ describe('resolveShelfDrop (ADR-0116 session-117)', () => {
       { fill: FILL, overDay: true, overShelf: SHELF_DROP.POOL },
       DAY,
     );
-    expect(action).toEqual({ kind: SHELF_DROP_ACTION.SCHEDULE, fill: FILL });
+    expect(action).toEqual({ kind: SHELF_DROP_ACTION.CHOOSE_TIME, fill: FILL });
   });
 });
 

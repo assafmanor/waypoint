@@ -369,8 +369,10 @@ export function PlanDay() {
   // The shelf, grouped by the one shared derivation (ADR-0116 §2) — same call the
   // Trip-mode day view makes, so the two shelves cannot drift again.
   const shelf = shelfGroups(maybeItems, events, activeDate);
-  const openSchedule = (m: MaybeItem) => {
-    setGapFill(nextSlot(dayEvents, activeDate, tz));
+  /** Open the schedule form for an idea, prefilled with `fill` when the drop named a
+   *  slot (a gap chip) and with the day's next opening when it didn't. */
+  const openSchedule = (m: MaybeItem, fill?: GapDefaults) => {
+    setGapFill(fill ?? nextSlot(live.current.dayEvents, live.current.activeDate, tz));
     setScheduleMaybe(m);
   };
 
@@ -520,18 +522,6 @@ export function PlanDay() {
       endsAt: zonedIso(fill.date, fill.end, tz),
     });
     switch (action.kind) {
-      case SHELF_DROP_ACTION.SCHEDULE:
-        if (subject.kind !== SHELF_DRAG.IDEA) return false;
-        verbs.schedule(subject.item, {
-          date: action.fill.date,
-          title: subject.item.title,
-          kind: EVENT_KIND.SOFT,
-          icon: subject.item.icon,
-          category: subject.item.category,
-          placeId: subject.item.placeId,
-          ...slot(action.fill),
-        });
-        return true;
       case SHELF_DROP_ACTION.RESTORE_INTO:
         if (subject.kind !== SHELF_DRAG.SKIPPED) return false;
         // Un-skipped and moved in ONE patch, so it is one row in the change feed and
@@ -547,7 +537,7 @@ export function PlanDay() {
         return true;
       case SHELF_DROP_ACTION.CHOOSE_TIME:
         if (subject.kind !== SHELF_DRAG.IDEA) return false;
-        openSchedule(subject.item);
+        openSchedule(subject.item, action.fill);
         return true;
       case SHELF_DROP_ACTION.AIM_DAY:
         if (subject.kind !== SHELF_DRAG.IDEA) return false;
