@@ -146,7 +146,7 @@ export function TimePicker({
               {duration != null ? (
                 <>
                   <span>{hoursPhrase(duration)}</span>
-                  <span className="tp-endhm" dir="ltr">
+                  <span className="tp-endhm" dir="auto">
                     {t.eventForm.endsAtPrefix} {end}
                     {endIsNextDay && (
                       <sup className="tp-nextday" title={t.eventForm.nextDay}>
@@ -199,7 +199,7 @@ export function TimePicker({
                       onClick={() => commitDuration(d)}
                     >
                       <span>{hoursPhrase(d)}</span>
-                      <span className="tp-end" dir="ltr">
+                      <span className="tp-end" dir="auto">
                         {t.eventForm.endsAtPrefix} {toEndWall(startMin + d)}
                         {isNextDay(startMin + d) && (
                           <sup className="tp-nextday" title={t.eventForm.nextDay}>

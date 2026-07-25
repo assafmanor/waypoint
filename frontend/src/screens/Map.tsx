@@ -602,7 +602,7 @@ function PlaceRow({
             <span className="map-tag time">
               {day}
               {day && time && ` ${DOT_SEPARATOR} `}
-              {time && <span dir="ltr">{time}</span>}
+              {time && <span dir="auto">{time}</span>}
             </span>
           )}
           {isNextStop && <span className="map-tag next">{t.map.nextStop}</span>}
@@ -617,7 +617,7 @@ function PlaceRow({
           {meta && <span className="map-tag">{meta}</span>}
           {isPureIdea && <span className="map-tag mbadge">{t.map.shelfTag}</span>}
           {place.rating != null && (
-            <span className="map-tag rate" dir="ltr">
+            <span className="map-tag rate" dir="auto">
               ★ {place.rating.toFixed(1)}
             </span>
           )}
@@ -625,14 +625,10 @@ function PlaceRow({
       </span>
       <span className="map-right">
         {distance && (
-          // A measurement is a number-led island (like the ★ rating); the offline
-          // placeholder is ordinary Hebrew prose and must not be forced LTR.
-          <span
-            className={'map-dist' + (distanceStale ? ' stale' : '')}
-            dir={distanceStale ? undefined : 'ltr'}
-          >
-            {distance}
-          </span>
+          // Both a measurement ("9 ק״מ") and the offline placeholder are Hebrew
+          // text, so neither is forced LTR (ADR-0118) — that is what read "ק״מ 9".
+          // The numeral inside the measurement is isolated by `measure`.
+          <span className={'map-dist' + (distanceStale ? ' stale' : '')}>{distance}</span>
         )}
         {dirUrl ? (
           <a

@@ -81,7 +81,7 @@ export function TimeField({
         onClick={() => setOpen(!open)}
       >
         <span className="tp-cap">{label}</span>
-        <span className="tp-val" dir="ltr">
+        <span className="tp-val" dir="auto">
           {value || <span className="tp-placeholder">{placeholder}</span>}
         </span>
       </button>
@@ -109,7 +109,7 @@ export function TimeField({
                 className={m === min ? 'tp-list-on' : m === suggest ? 'tp-list-suggest' : undefined}
                 onClick={() => pick(m)}
               >
-                <span dir="ltr">{toHHMM(m)}</span>
+                <span dir="auto">{toHHMM(m)}</span>
               </button>
             ))}
           </div>

@@ -96,7 +96,7 @@ describe('ChangeFeed', () => {
     expect(screen.getByText(/הזיז את ראמן/)).toBeTruthy();
     const time = document.querySelector('.cf-time');
     expect(time?.textContent).toBe('20:00');
-    expect(time?.getAttribute('dir')).toBe('ltr');
+    expect(time?.getAttribute('dir')).toBe('auto');
     // Polite live region so a peer change is announced calmly, not loudly.
     expect(document.querySelector('.cf-list')?.getAttribute('aria-live')).toBe('polite');
   });

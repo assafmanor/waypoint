@@ -88,7 +88,9 @@ The pulsing blip is a claim: _something is happening this minute._
 | `Assistant`      | Body                                     |
 | `JetBrains Mono` | Times & codes (the departure-board feel) |
 
-**Full RTL.** Layout, icons, and directionality are Hebrew-first. Latin strings (times, codes, flight numbers) are wrapped `dir="ltr"` inside the RTL flow.
+**Full RTL.** Layout, icons, and directionality are Hebrew-first. A Latin/numeric **run** inside Hebrew text (a time, a code, a flight number, a signed offset) is an LTR island — `ltrIsolate` / `measure` from `frontend/src/lib/bidi.ts`, and `dir="auto"` on its element, never `dir="ltr"` (ADR-0118).
+
+**The island is the run, never the run plus its unit.** `dir="ltr"` sets the base direction of the whole element, so a token that also carries a Hebrew unit lays out left-to-right and the Hebrew reader meets the unit first: `9 ק״מ` reads `ק״מ 9`, `+3 ש׳` reads `ש׳ 3+`. So a number-and-unit token is built with `measure(9, 'ק״מ')` — the numeral isolated, the unit outside the isolate in the RTL flow — and its element carries no forced direction. `dir="ltr"` in JSX is lint-blocked outside `<input>` for exactly this reason; the same care applies to `direction: ltr` in CSS, which lint can't see (its three current uses are Latin-only content: a date input, an IANA zone name).
 
 New screens must pick from these ramps instead of inventing values.
 
@@ -105,7 +107,7 @@ New screens must pick from these ramps instead of inventing values.
 | caption   | 11    | Labels, hints                 |
 | micro     | 10.5  | Tags, badges                  |
 
-JetBrains Mono is reserved for **times, dates, codes, and money** — never prose. And only for **Latin/numeric runs**: the face has no Hebrew glyphs, so Hebrew text must never sit inside a mono element (it silently falls back to a generic monospace and reads foreign). Mixed lines — e.g. the day progress's `07:00 · עכשיו · 23:00` — set the row in Assistant and wrap only the numeric runs in mono + `dir="ltr"`.
+JetBrains Mono is reserved for **times, dates, codes, and money** — never prose. And only for **Latin/numeric runs**: the face has no Hebrew glyphs, so Hebrew text must never sit inside a mono element (it silently falls back to a generic monospace and reads foreign). Mixed lines — e.g. the day progress's `07:00 · עכשיו · 23:00` — set the row in Assistant and wrap only the numeric runs in mono + `dir="auto"` (ADR-0118: `auto` resolves LTR for a numeral exactly as `ltr` did, and stays correct if Hebrew ever lands in that span).
 
 **Radius ramp:** `8` chips/tags · `12` inner elements (badges, inputs) · `16` cards · `22` hero surfaces · `999` pills. (Phone frame `38` is a mockup artifact, not a token.)
 

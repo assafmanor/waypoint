@@ -201,7 +201,7 @@ export function EventCard(props: EventCardProps) {
   const endZone = zones?.endZone ?? tz;
   const timeBlock = startsAt && (
     <span className="wp-event-time">
-      <span dir="ltr">
+      <span dir="auto">
         {formatTime(startsAt, startZone)}
         {endsAt && `–${formatTime(endsAt, endZone)}`}
         {endsAt && crossesMidnightZoned(startsAt, endsAt, startZone, endZone) && (
@@ -401,7 +401,7 @@ export function EventCard(props: EventCardProps) {
         </div>
         {isHard && (
           <div className="wp-event-hard-warn">
-            {ICONS.warn} {t.event.hardWarn} {code && <span dir="ltr">{code}</span>}
+            {ICONS.warn} {t.event.hardWarn} {code && <span dir="auto">{code}</span>}
           </div>
         )}
       </div>

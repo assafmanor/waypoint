@@ -59,7 +59,7 @@ export function TransitionRow({
             <TitleLabel title={event.title} />
           </span>
         </span>
-        <span className="tr-time" dir="ltr">
+        <span className="tr-time" dir="auto">
           {formatTime(new Date(atMs), zone ?? tz)}
           {deltaMinutes != null && <ZoneShiftPill minutes={deltaMinutes} className="tr-tzdelta" />}
         </span>

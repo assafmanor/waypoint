@@ -98,7 +98,7 @@ export function ZonePicker({
       >
         <span className="zp-city">{zoneCity(zone)}</span>
         <span className="zp-zone">{zone}</span>
-        <span className="zp-offset" dir="ltr">
+        <span className="zp-offset" dir="auto">
           {zoneOffset(zone)}
         </span>
       </button>

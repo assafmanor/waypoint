@@ -314,7 +314,7 @@ function Created({ trip, onDone }: { trip: Trip; onDone: () => void }) {
 
         {invite.status === 'ready' && (
           <div className="invite-box" onClick={copyInvite}>
-            <span className="code" dir="ltr">
+            <span className="code" dir="auto">
               {invite.url}
             </span>
             <span className="lbl2">{t.shell.created.inviteLabel}</span>

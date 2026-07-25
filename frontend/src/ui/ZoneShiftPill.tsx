@@ -24,9 +24,11 @@ export interface ZoneShiftPillProps {
 
 export function ZoneShiftPill({ minutes, className }: ZoneShiftPillProps) {
   return (
+    // No `dir` override: the pill carries a Hebrew unit, so it belongs to the RTL
+    // flow and the signed number is the LTR island inside it (ADR-0118). Forcing
+    // `dir="ltr"` here laid the pill out left-to-right, so it read "ש׳ 3+".
     <span
       className={className ? `wp-tzshift ${className}` : 'wp-tzshift'}
-      dir="ltr"
       title={t.event.zoneShift}
     >
       🕐 {formatZoneDelta(minutes)}

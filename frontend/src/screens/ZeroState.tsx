@@ -57,14 +57,14 @@ export function ZeroState({ onOpenAccount }: { onOpenAccount: () => void }) {
               <span className="off-dot" />
               {t.shell.zeroState.offSignal}
             </span>
-            <span className="board-off-clock" dir="ltr">
+            <span className="board-off-clock" dir="auto">
               --:--
             </span>
           </div>
           <div className="flaps" aria-hidden="true">
             {FLAP_ROWS.map((row, i) => (
               <div className="flap-row" key={i}>
-                <span className="flap-time" dir="ltr">
+                <span className="flap-time" dir="auto">
                   --:--
                 </span>
                 {row.map((w, j) => (

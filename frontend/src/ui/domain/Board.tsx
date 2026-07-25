@@ -118,7 +118,7 @@ function AlsoRow({ row }: { row: BoardRow }) {
       )}
       {row.until && (
         <span className="tm">
-          {t.board.until} <span dir="ltr">{row.until}</span>
+          {t.board.until} <span dir="auto">{row.until}</span>
         </span>
       )}
       {row.shift != null && <ZoneShiftPill minutes={row.shift} className="on-dark" />}
@@ -155,7 +155,7 @@ export function Board(props: BoardProps) {
           <span className="blip" />
           {inTransit ? t.board.inTransitLive : t.common.now}
         </div>
-        <div className="wp-board-clock" dir="ltr">
+        <div className="wp-board-clock" dir="auto">
           {clock}
         </div>
       </div>
@@ -171,9 +171,9 @@ export function Board(props: BoardProps) {
             <span className={'tlabel loc' + (transit.arriving ? ' emph' : '')}>
               {transitionLabel(transit.labelKey)}
             </span>
-            {transit.endTime && <span dir="ltr">{transit.endTime}</span>}
+            {transit.endTime && <span dir="auto">{transit.endTime}</span>}
             {transit.code && (
-              <span className="code" dir="ltr">
+              <span className="code" dir="auto">
                 {transit.code}
               </span>
             )}
@@ -191,7 +191,7 @@ export function Board(props: BoardProps) {
               </div>
               <div className="tp-ends">
                 <span className="tp-end">
-                  <span className="mono" dir="ltr">
+                  <span className="mono" dir="auto">
                     {transit.startTime}
                   </span>
                   {transit.fromPlace && <span className="pl">{transit.fromPlace}</span>}
@@ -199,14 +199,14 @@ export function Board(props: BoardProps) {
                 {transit.showCountdown && (
                   <span className="tp-left">
                     {t.board.until}{' '}
-                    <span className="mono" dir="ltr">
+                    <span className="mono" dir="auto">
                       {transit.endTime}
                     </span>
                   </span>
                 )}
                 <span className="tp-end end">
                   {transit.toPlace && <span className="pl">{transit.toPlace}</span>}
-                  <span className="mono" dir="ltr">
+                  <span className="mono" dir="auto">
                     {transit.endTime}
                   </span>
                   {/* The two ends are in their own zones now (ADR-0107), so the
@@ -240,7 +240,7 @@ export function Board(props: BoardProps) {
           </div>
           {nowUntil && (
             <div className="wp-board-now-meta">
-              {t.board.until} <span dir="ltr">{nowUntil}</span>
+              {t.board.until} <span dir="auto">{nowUntil}</span>
               {nowShift != null && <ZoneShiftPill minutes={nowShift} className="on-dark" />}
             </div>
           )}
@@ -298,7 +298,7 @@ export function Board(props: BoardProps) {
                   {next.labelKey && (
                     <span className="tlabel">{transitionLabel(next.labelKey)}</span>
                   )}
-                  {next.time && <span dir="ltr">{next.time}</span>}
+                  {next.time && <span dir="auto">{next.time}</span>}
                   {next.shift != null && <ZoneShiftPill minutes={next.shift} className="on-dark" />}
                   {next.hard && (
                     <span className="lockmini">
@@ -306,7 +306,7 @@ export function Board(props: BoardProps) {
                     </span>
                   )}
                   {next.code && (
-                    <span className="code" dir="ltr">
+                    <span className="code" dir="auto">
                       {next.code}
                     </span>
                   )}
@@ -316,7 +316,7 @@ export function Board(props: BoardProps) {
             {countdown && (
               <div className="wp-board-countdown">
                 {countdown.value && (
-                  <div className="t" dir="ltr">
+                  <div className="t" dir="auto">
                     {countdown.value}
                   </div>
                 )}
@@ -331,9 +331,9 @@ export function Board(props: BoardProps) {
               <div className="knob" style={{ insetInlineStart: `${progress}%` }} />
             </div>
             <div className="ends">
-              <span dir="ltr">{windowStartHour}</span>
+              <span dir="auto">{windowStartHour}</span>
               <span>{t.common.now}</span>
-              <span dir="ltr">{windowEndHour}</span>
+              <span dir="auto">{windowEndHour}</span>
             </div>
           </div>
         </>

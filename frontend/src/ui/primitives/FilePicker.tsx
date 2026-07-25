@@ -147,7 +147,7 @@ export function FilePicker({
         )}
       </span>
       <span className="file-preview-main">
-        <span className="file-preview-name" dir="ltr">
+        <span className="file-preview-name" dir="auto">
           {value.name}
         </span>
         <span className="file-preview-sub">{formatBytes(value.size)}</span>
