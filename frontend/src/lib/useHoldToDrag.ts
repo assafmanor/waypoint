@@ -66,9 +66,11 @@ export function useSelectionGuard(): SelectionGuard {
 }
 
 export interface HoldToDragHandlers {
-  /** The hold completed: the drag is live from here. Receives the held element,
-   *  which is what an edge-autoscroll needs to find its scroller. */
-  onArm: (el: HTMLElement) => void;
+  /** The hold completed: the drag is live from here. Receives the held element (what
+   *  an edge auto-scroll needs to find its scroller) and where the finger is (what a
+   *  drag ghost needs to sit under it rather than jump). The point is the press
+   *  origin, which after a hold is within the slop of where the finger still is. */
+  onArm: (el: HTMLElement, at: { clientX: number; clientY: number }) => void;
   /** A move while armed (never fires before the hold completes). */
   onMove: (point: { clientX: number; clientY: number }) => void;
   /** Released while armed — commit the drop. */
@@ -183,7 +185,7 @@ export function useHoldToDrag(): (handlers: HoldToDragHandlers) => HoldToDragPro
           // The touch-scroll suppression is already live (see `suppressTouchScroll`);
           // arming is what switches it on.
           selection.lock();
-          handlers.onArm(el);
+          handlers.onArm(el, { clientX: e.clientX, clientY: e.clientY });
         };
         // A mouse has no scroll/drag ambiguity to resolve (the wheel scrolls), so
         // a pointer device drags immediately — waiting would just feel broken.

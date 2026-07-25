@@ -124,6 +124,23 @@ export async function bootIntoTrip(
     (u) => u.pathname === '/trips/t1/changes',
     (r) => r.fulfill({ json: [] }),
   );
+  // Event edits are answered, not just reads. Without this the optimistic update
+  // lands, the real PATCH 404s against the dev server, and the app correctly rolls
+  // itself back — so any test asserting what a write PRODUCED would be testing the
+  // rollback. Echoes the seeded event merged with the patch, which is the contract's
+  // shape (`applyUpdateEvent` reconciles against it).
+  const seeded = (opts.events ?? SNAPSHOT.events) as { id: string }[];
+  await page.route(
+    (u) => /^\/trips\/t1\/events\/[^/]+$/.test(u.pathname),
+    async (route, request) => {
+      if (request.method() !== 'PATCH') return route.fallback();
+      const id = new URL(request.url()).pathname.split('/').pop();
+      const before = seeded.find((e) => e.id === id) ?? { id };
+      await route.fulfill({
+        json: { ...before, ...(request.postDataJSON() ?? {}), updatedAt: new Date().toISOString() },
+      });
+    },
+  );
   // Seed the cached identity + active-trip id the app reads on boot, so auth
   // resolves as "authed" and the landing picks our trip without a race.
   await page.addInitScript(

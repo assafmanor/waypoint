@@ -136,3 +136,38 @@ Reported after session 115 shipped: "still unfixed, still the same exact bugs" �
 - `overflow-y: hidden` on `.body` for the drag's duration — it does stop native scrolling, but the container then stops reporting as a scroller and `nearestScroller` finds nothing to scroll, so the edge auto-scroll dies with it. The two guards were cancelling each other.
 
 **Why an e2e, and what it still cannot prove.** Every defect above turns on something jsdom does not have: a compositor, real layout, real hit-testing, `cancelable` touch semantics, a clock driving re-renders. The unit tests were green through all four reported rounds. Chromium is not the engine the reports came from, so the file catches the **class** of bug and keeps it from returning; feel — whether the hold reads as responsive — is still out of reach of any automated test, and ADR-0017's real-device pass still stands. Two of the three causes are also expressible in jsdom once you know what to look for, so they are pinned by unit tests too (a re-render mid-hold, and a retargeted click), each verified to fail against the pre-fix code.
+
+## Amendment (2026-07-25, session 117) — the drag shows where it is, and two targets it never had
+
+Three requests from the owner once the gesture finally worked on a phone, all of them the same complaint from different angles: the drag was correct but uninformative, and it did not accept the cards or the days it obviously should.
+
+### 1. The held card follows the finger
+
+Until now the card stayed in its slot and only changed style, so the drag said "picked up" but never "…and it is over **here**" — the drop stayed guesswork right up to the release.
+
+**A clone moves, not the card**, and the reason is structural rather than conventional: the card lives inside `.shelf`, a horizontally scrolling strip, so translating it in place would clip it at the strip's edge the moment it left, and it would drag its own layout slot around with it. `position: fixed` escapes that clipping. The clone is explicitly **not an overlay in ADR-0090's sense** — it is not a back target and must never enter the back stack, so it does not go through `Modal`/`useOverlay`.
+
+The position is written straight to the node's style (`lib/useDragGhost.ts`), not held in React state: it updates on every pointer move, and routing ~60 state updates a second through this screen would re-render the whole builder for each one. That cost is not hypothetical — a churning render is exactly what broke the hold in session 116. The grab offset is kept too, so the clone appears where the card was instead of snapping its own corner under the finger.
+
+**This reverses session 115's call on the source card**, with the reason it named. That session removed the dragged card's `opacity: 0.55` because a fading source is a convention borrowed from implementations where a ghost follows the finger — and nothing followed it, so dimming made the one thing you were holding the faintest thing on screen. Something follows it now, so the source dims again, as the slot the card came out of. It keeps its space, so the drop targets do not reflow mid-drag.
+
+One RTL trap, recorded because it cost a debugging round: the clone anchors with the **physical** `left: 0`, not the logical `inset-inline-start: 0` this codebase otherwise prefers. In RTL the logical property resolves to `right: 0` and anchors the box to the viewport's right edge, while the transform is computed from `clientX`, which is physical — mixing them put the clone a viewport-width away from the finger.
+
+### 2. A skipped event drags
+
+A skipped soft event renders on the day's shelf group (§4, ADR-0027's union) and was the **only card there you could not drag** — the card that most obviously wants to go back onto the day. It drags now, through the same mechanism: the drag carries a **tagged subject** (an idea or a skipped event) and everything up to the release is identical, so this is not a second drag implementation. Only the write differs.
+
+- **Dropped on a gap it is restored INTO that gap** — `status: planned` plus the new slot in **one patch**, so it is one row in the change feed and one undo rather than "restored" then "moved". A plain restore would put it back at its old time, contradicting the gesture that just placed it somewhere specific.
+- **A shelf group is deliberately not a target for it.** An event has no `targetDate` to re-aim, and converting one into an idea is `park` — a different verb, with its own affordance in the row menu, and not something a stray drop should trigger.
+
+### 3. An empty day accepts a drop, and asks for a time
+
+Gap chips only exist _between_ events, so a day with nothing on it offered **no drop target at all** — on the very day where dragging an idea in is most obviously the point. While a card is in flight the empty state itself becomes the target, the same "chrome that exists only while it is useful" move the empty day _group_ already makes on the shelf (§2 amendment).
+
+It knows **which** day but has no slot to offer, so the kinds diverge and both readings are honest: an **idea** has no time at all, so the release opens the schedule sheet and the time is the user's to pick rather than one the drop invents; a **skipped event** already owns a time, so it simply goes back to it.
+
+### Where the decision lives
+
+All of the above is one table — `lib/shelf-drop.ts`'s `resolveShelfDrop(kind, target, activeDate)` — pure and separate from the screen, with the screen's `onDrop` reduced to turning each outcome into the verb that already performs it. That split exists for a testing reason: these are data writes (one of them restores and moves an event in the same patch), and the drag that produces them **cannot be driven in jsdom** at all. The table is unit-tested exhaustively without a browser; the gesture is covered by the e2e.
+
+The e2e harness grew one capability to make this provable: it now answers `PATCH /trips/:tripId/events/:id` rather than only reads. Without it the optimistic update landed, the real request 404'd against the dev server, and the app correctly rolled itself back — so a test asserting what a drop **produced** was really asserting the rollback.

@@ -1356,6 +1356,21 @@
   font-size: 13px;
   font-weight: 600;
 }
+/* …and while a card is in flight, the empty day IS the drop target: a day with
+   nothing on it has no gap chips, so there would otherwise be nowhere to drop
+   (ADR-0116 session-117). Same two-step as the shelf's own drop zones — armed while
+   a drag is live, filled in once the finger is over it. */
+.builder-empty.droppable {
+  border-color: var(--plan);
+  color: var(--plan);
+  /* Room to aim at, on the one screen that has nothing else to aim at. */
+  padding: 34px 16px;
+}
+.builder-empty.drop-over {
+  background: color-mix(in srgb, var(--plan) 6%, transparent);
+  outline: 1px dashed var(--plan);
+  outline-offset: 3px;
+}
 
 /* builder row */
 /* Plan concurrency (ADR-0041): an overlap is a bound violet group — deliberately

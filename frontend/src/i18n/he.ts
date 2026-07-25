@@ -815,6 +815,10 @@ export const t = {
     addIdea: 'הוסף רעיון למדף',
     addIdeaPlaceholder: 'רעיון חדש למדף…',
     removeIdea: 'הסר רעיון',
+    // An empty day has no gaps to drop onto, so the empty state becomes the target
+    // while a drag is live (ADR-0116 session-117). It has no slot to offer, so it
+    // promises a time chooser rather than a schedule.
+    dayDropHere: 'שחררו כאן לבחירת שעה',
     gap: (label: string) => `פער של ${label} · ＋ שבץ`,
     gapMinutes: (n: number) => `${n} דק׳`,
     gapHour: 'שעה',
