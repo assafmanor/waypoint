@@ -120,7 +120,7 @@ export function useHoldToDrag(): (handlers: HoldToDragHandlers) => HoldToDragPro
   // An armed drag must own the finger outright, and WHEN and WHERE this listener is
   // attached decide whether it can.
   //
-  // WHEN: at MOUNT, before any touch exists. Attaching it on arm — 280 ms after
+  // WHEN: at MOUNT, before any touch exists. Attaching it on arm — DRAG_HOLD_MS after
   // `touchstart` — is too late twice over: the browser has already routed the gesture
   // to the compositor (so `touchmove` arrives `cancelable: false` and
   // `preventDefault()` is a silent no-op), and its scroll recognition fires

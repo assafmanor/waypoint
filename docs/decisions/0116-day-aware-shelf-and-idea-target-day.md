@@ -97,7 +97,7 @@ Three things the shipped build got wrong, reported from the running app on a pho
 
 The first fix was `touch-action: pan-x` — split the gesture by **direction**: sideways scrolls the shelf, vertical drags the card. It restored the strip and broke the page: a vertical swipe starting on a card dragged it instead of scrolling the day underneath, which is worse than the bug it fixed. **Direction cannot arbitrate this, because "swipe up to scroll" and "drag up onto a gap" are the same movement.** See (6).
 
-**6. The gesture is arbitrated by TIME, not direction: press-and-hold to drag** (the owner's suggestion, and the right one). A drag arms only after the finger has been still on the card for `DRAG_HOLD_MS` (280 ms); any movement past an 8 px slop before that cancels the pending drag, so the browser keeps the gesture and the scroll proceeds untouched. Scrolling is therefore the default in **both** axes — no `touch-action` override on the card at all — and dragging is a deliberate act, the same bargain the platform's own reorder gestures make. Four details worth recording, since each is a bug if missed:
+**6. The gesture is arbitrated by TIME, not direction: press-and-hold to drag** (the owner's suggestion, and the right one). A drag arms only after the finger has been still on the card for `DRAG_HOLD_MS` (500 ms, matched to Android's own long-press timeout — see the 2026-07-25 session-124 amendment); any movement past an 8 px slop before that cancels the pending drag, so the browser keeps the gesture and the scroll proceeds untouched. Scrolling is therefore the default in **both** axes — no `touch-action` override on the card at all — and dragging is a deliberate act, the same bargain the platform's own reorder gestures make. Four details worth recording, since each is a bug if missed:
 
 - **The armed drag suppresses scrolling itself.** Setting `touch-action` on arm is too late (the browser decides at touch-start), so while armed a non-passive `touchmove` listener calls `preventDefault()` — React's own `onTouchMove` can't do this reliably.
 - **A mouse arms immediately.** There is no scroll to disambiguate from (the wheel scrolls), so a hold on a pointer device would just feel broken.
@@ -314,3 +314,11 @@ This is one helper (`slotFor`) shared with **`RESTORE_INTO`**, which used to tak
 ### What the copy says
 
 The two new chips read `פנוי לפני` / `פנוי אחרי` rather than `פער של` — a gap "of" two hours implies two sides. The empty day gains a third string: an idea dropped there is asked for a time (`שחררו כאן לבחירת שעה`, session 120's create/move line), an **event** dropped there just moves (`שחררו כאן להעברה ליום הזה`).
+
+## Amendment (2026-07-25, session 124) — the hold matches the platform's own long-press
+
+Reported directly: the press-and-hold felt a beat too quick to read as deliberate. `DRAG_HOLD_MS` was 280 ms, picked in session 113 to be "long enough that a flick never arms it" with no outside reference point; it never claimed to match anything the finger already knows.
+
+Android's own long-press timeout (`ViewConfiguration.getLongPressTimeout()`) defaults to 500 ms, and it is what the platform's long-press haptic fires against — the length of hold a phone's own gestures have already taught the hand to expect. `DRAG_HOLD_MS` now matches it, so the shelf's hold arms right where the gesture already feels confirmed rather than at an arbitrary shorter point.
+
+`DRAG_DAY_DWELL_MS` (the spring-loaded-folder dwell over a day pill, session 119) exists only to stay longer than the hold — a drag crosses several pills on its way anywhere, and every one it merely passes over must not open. It moves from 450 ms to 700 ms to keep that margin; the ratio between the two, not either absolute number, is what the invariant actually needs.
