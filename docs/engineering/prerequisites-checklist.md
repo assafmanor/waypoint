@@ -103,46 +103,50 @@ Same project as everything else — confirm the Console's project picker shows *
 
 **1. Enable the Maps JavaScript API** — the Dynamic Maps SKU, and the only new API this phase needs.
 
-- [ ] ⏸️ 👤 APIs & Services → **Library** (`https://console.cloud.google.com/apis/library`) → search **"Maps JavaScript API"** → open it → **Enable**.
-- [ ] ⏸️ 👤 Verify at **Enabled APIs & services** (`https://console.cloud.google.com/apis/dashboard`) that _Maps JavaScript API_ is listed alongside _Places API (New)_.
+- [x] 👤 APIs & Services → **Library** (`https://console.cloud.google.com/apis/library`) → search **"Maps JavaScript API"** → open it → **Enable**.
+- [x] 👤 Verify at **Enabled APIs & services** (`https://console.cloud.google.com/apis/dashboard`) that _Maps JavaScript API_ is listed alongside _Places API (New)_.
 - Leave **Routes API** disabled (step 7). Enabling costs nothing, but keeping it off keeps the browser key's reachable surface provably one SKU.
 
 **2. Cap the Dynamic Maps daily quota, and re-check the budget alert** (ADR-0108 §6 — a hard gate, not a nicety). Dynamic Maps bills **per map instantiation** (~$7/1,000, 10,000/month free), so the daily cap is what converts "a leaked key" into "a known maximum".
 
-- [ ] ⏸️ 👤 Google Maps Platform → **Quotas** (`https://console.cloud.google.com/google/maps-apis/quotas`) → pick **Maps JavaScript API** in the API selector → the **Requests** tab.
-- [ ] ⏸️ 👤 Find the **`Map loads per day`** metric → edit it (pencil / ⋮ at the row's end) → untick **Unlimited** → enter the ceiling → **Save**. Quotas reset at **midnight Pacific**, and an edit can take a few minutes to apply.
-- [ ] ⏸️ 👤 **Suggested ceiling: 300/day.** The arithmetic, so the number is a decision and not a guess: real use is ~100 loads/day (5 travellers × ~20 tab opens, ADR-0121 §4), and 300/day × 30 days = 9,000/month — still **inside** the 10,000/month free tier even if the cap is pinned every single day. So the worst case a leak can reach is a bill of roughly zero. Raise it only with a reason.
-- [ ] ⏸️ 👤 Leave the per-minute quotas at Google's defaults (30,000/min per project, 300/min per IP). They are not the money lever; the daily cap is.
-- [ ] ⏸️ 👤 Billing → **Budgets & alerts** → open the existing budget and confirm its **scope covers the new SKU**. If it was scoped to specific services (Places API only) rather than the whole project, add **Maps JavaScript API** — a project-wide budget needs no change. This is the "confirm the budget alert covers the new SKU" box, and it is easy to tick without looking.
+- [x] 👤 Google Maps Platform → **Quotas** (`https://console.cloud.google.com/google/maps-apis/quotas`) → pick **Maps JavaScript API** in the API selector → the **Requests** tab.
+- [x] 👤 Find the **`Map loads per day`** metric → edit it (pencil / ⋮ at the row's end) → untick **Unlimited** → enter the ceiling → **Save**. Quotas reset at **midnight Pacific**, and an edit can take a few minutes to apply.
+- [x] 👤 **Suggested ceiling: 300/day.** The arithmetic, so the number is a decision and not a guess: real use is ~100 loads/day (5 travellers × ~20 tab opens, ADR-0121 §4), and 300/day × 30 days = 9,000/month — still **inside** the 10,000/month free tier even if the cap is pinned every single day. So the worst case a leak can reach is a bill of roughly zero. Raise it only with a reason.
+- [x] 👤 Leave the per-minute quotas at Google's defaults (30,000/min per project, 300/min per IP). They are not the money lever; the daily cap is.
+- [x] 👤 Billing → **Budgets & alerts** → open the existing budget and confirm its **scope covers the new SKU**. If it was scoped to specific services (Places API only) rather than the whole project, add **Maps JavaScript API** — a project-wide budget needs no change. This is the "confirm the budget alert covers the new SKU" box, and it is easy to tick without looking.
 
 **3. Create the Map IDs** — `mapId` is **mandatory**, not optional styling: `AdvancedMarkerElement` does not load without one (ADR-0121 §1, reconfirmed 2026-07-26), and `google.maps.Marker` has been deprecated since 2024-02-21.
 
-- [ ] ⏸️ 👤 Google Maps Platform → **Map management** (`https://console.cloud.google.com/google/maps-apis/studio/maps`) → **Create map ID**.
-- [ ] ⏸️ 👤 Name it **`waypoint-day`** → **Map type: JavaScript** → **Vector** → Save. Leave tilt/rotation off (ADR-0121 §14 excludes 3D/tilt; the app sets camera options in code regardless).
-- [ ] ⏸️ 👤 Copy the generated **Map ID** value (a short opaque string, not the name) — it becomes `VITE_GOOGLE_MAPS_MAP_ID`.
-- [ ] ⏸️ 👤 Repeat for **`waypoint-night`** (same settings) → its value becomes `VITE_GOOGLE_MAPS_MAP_ID_DARK`. Inert until dark mode ships (ADR-0121 §11) — minting it now is what makes enabling dark mode a token flip instead of a Maps project task.
+- [x] 👤 Google Maps Platform → **Map management** (`https://console.cloud.google.com/google/maps-apis/studio/maps`) → **Create map ID**.
+- [x] 👤 Name it **`waypoint-day`** → **Map type: JavaScript** → **Vector** → Save. Leave tilt/rotation off (ADR-0121 §14 excludes 3D/tilt; the app sets camera options in code regardless).
+- [x] 👤 Copy the generated **Map ID** value (a short opaque string, not the name) — it becomes `VITE_GOOGLE_MAPS_MAP_ID`.
+- [x] 👤 Repeat for **`waypoint-night`** (same settings) → its value becomes `VITE_GOOGLE_MAPS_MAP_ID_DARK`. Inert until dark mode ships (ADR-0121 §11) — minting it now is what makes enabling dark mode a token flip instead of a Maps project task.
 
-**4. Create the two cloud styles and associate them.** Styling costs nothing. A Map ID with no style attached still renders and still carries advanced markers, so this step is what makes the map ours rather than Google-default.
+**4. Import the two cloud styles and associate them.** Styling costs nothing. A Map ID with no style attached still renders and still carries advanced markers, so this step is what makes the map ours rather than Google-default.
 
-- [ ] ⏸️ 👤 Google Maps Platform → **Map styles** (`https://console.cloud.google.com/google/maps-apis/studio/styles`) → **Create style** → start from Google's base (or import JSON) → in the style editor: desaturate toward a **cool-paper base matching `--screen`**, drop **POI clutter**, no colour flood (ADR-0106 §C — the pins are the figure, the base is quiet).
-- [ ] ⏸️ 👤 Save it as **`waypoint-day`** → **Associate map IDs** → tick the `waypoint-day` Map ID → Save.
-- [ ] ⏸️ 👤 Create the **night** style the same way and associate it with `waypoint-night`. Do not try to see it in the app — dark mode is inert app-wide (ADR-0121 §11).
+**The styles are authored — do not redraw them by hand.** [`docs/design/map-styles/`](../design/map-styles/README.md) holds `waypoint-map-day.json` and `waypoint-map-night.json`, with every colour taken from `tokens.css` (`--screen`, `--card`, `--muted`, `--ink`, `--faint`, `--board`) and its README carrying the token→map-element mapping.
+
+- [ ] ⏸️ 👤 Google Maps Platform → **Map styles** (`https://console.cloud.google.com/google/maps-apis/studio/styles`) → **Create style** → **Import JSON** → paste `waypoint-map-day.json` → save as **`waypoint-day`**.
+- [ ] ⏸️ 👤 **Associate map IDs** → tick the `waypoint-day` Map ID → Save.
+- [ ] ⏸️ 👤 Repeat with `waypoint-map-night.json` → `waypoint-night`. Do not try to see it in the app — dark mode is inert app-wide (ADR-0121 §11).
 - [ ] ⏸️ 👤 Note the propagation lag: a style edit or a new association can take **up to ~6 hours** to appear on a live map. Do not debug an unstyled map for the first few hours; check the association is saved and move on.
+- **Neither JSON has been seen on a rendered map** (the render cannot be exercised in the suite, ADR-0121 §13). Expect one adjustment round on a real device, most likely water contrast and the park fill — the two values reasoned to from the palette rather than lifted from it. Fix them in the JSON files, not only in the Console, or the next import silently reverts the fix.
+- **Per-mode styles are deliberately not built.** Trip/Plan identity lives in chrome and in map _figures_ — the Plan-only dashed connector and the Trip-only amber next-stop cue (ADR-0121 §10/§6) — never in the base canvas: `--plan` violet flooded across the ground is exactly the colour flood ADR-0106 §C forbids, and `mapId` is construction-time, so swapping it per mode would re-instantiate the map and bill a fresh load on every mode toggle (ADR-0121 §4). Day/night is the only axis that needs a second Map ID, because `--screen` itself remaps under `data-theme="dark"`.
 
 **5. Create the browser key (`VITE_GOOGLE_MAPS_BROWSER_KEY`)** — public by necessity (it rides in the script URL and cannot be proxied, ADR-0108 §1), so every restriction below is load-bearing. **Restrict it immediately on creation**, before it is pasted anywhere.
 
-- [ ] ⏸️ 👤 APIs & Services → **Credentials** (`https://console.cloud.google.com/apis/credentials`) → **Create credentials** → **API key** → in the dialog, **Edit API key** (do not just close it — an unrestricted browser key is the whole risk).
-- [ ] ⏸️ 👤 **Name it `waypoint-browser-maps-js`** so it is never confused with `GOOGLE_MAPS_SERVER_KEY` at a glance. Two keys with default names on one project is how the wrong one ends up in the wrong place.
-- [ ] ⏸️ 👤 **Application restrictions → Websites** (HTTP referrers) → **Add** one entry per deployed origin:
+- [x] 👤 APIs & Services → **Credentials** (`https://console.cloud.google.com/apis/credentials`) → **Create credentials** → **API key** → in the dialog, **Edit API key** (do not just close it — an unrestricted browser key is the whole risk).
+- [x] 👤 **Name it `waypoint-browser-maps-js`** so it is never confused with `GOOGLE_MAPS_SERVER_KEY` at a glance. Two keys with default names on one project is how the wrong one ends up in the wrong place.
+- [x] 👤 **Application restrictions → Websites** (HTTP referrers) → **Add** one entry per deployed origin:
   - `https://<production-domain>/*`
   - `https://<staging-domain>/*` — **easy to miss**: single-origin (ADR-0020/0031) means one origin _per environment_, and staging is a separate domain (ADR-0104). Without this the map is blank on staging only.
   - `http://localhost:5173/*` — the Vite dev origin, so local development uses the real style instead of `DEMO_MAP_ID`. Only `http://` and `https://` referrer schemes are supported; the installed PWA still sends its origin, so no extra entry is needed for standalone mode.
-- [ ] ⏸️ 👤 **API restrictions → Restrict key** → tick **Maps JavaScript API** and **nothing else**. Not Places, not Routes — that separation _is_ the split-key model (ADR-0108 §1), and it is what makes a scraped browser key worth ~$7/1,000 capped map loads instead of ~$20/1,000 Place Details.
-- [ ] ⏸️ 👤 **Save**, and allow up to ~5 minutes for restriction changes to take effect before concluding something is broken.
+- [x] 👤 **API restrictions → Restrict key** → tick **Maps JavaScript API** and **nothing else**. Not Places, not Routes — that separation _is_ the split-key model (ADR-0108 §1), and it is what makes a scraped browser key worth ~$7/1,000 capped map loads instead of ~$20/1,000 Place Details.
+- [x] 👤 **Save**, and allow up to ~5 minutes for restriction changes to take effect before concluding something is broken.
 
 **6. Store the three build vars** — all three are **build-time** frontend args baked into the client bundle (`deployment.md`), read via `import.meta.env` the way `lib/api.ts:55` reads `VITE_API_BASE_URL`. They deliberately do **not** go in `.env.example` (that file's own comment states the rule).
 
-- [ ] ⏸️ 👤 **Local:** put them in **`frontend/.env.local`**, not the repo-root `.env`. Vite's config sets no `envDir`, so it reads env files from the **`frontend/`** package — the root `.env` is the backend's and Vite never sees it. `frontend/.env.local` is already gitignored (`.env.*`, CLAUDE.md rule 7):
+- [x] 👤 **Local:** put them in **`frontend/.env.local`**, not the repo-root `.env`. Vite's config sets no `envDir`, so it reads env files from the **`frontend/`** package — the root `.env` is the backend's and Vite never sees it. `frontend/.env.local` is already gitignored (`.env.*`, CLAUDE.md rule 7):
 
   ```
   VITE_GOOGLE_MAPS_BROWSER_KEY=...
@@ -150,8 +154,9 @@ Same project as everything else — confirm the Console's project picker shows *
   VITE_GOOGLE_MAPS_MAP_ID_DARK=...
   ```
 
-- [ ] ⏸️ 👤 **Railway (production _and_ staging):** set all three as service variables so they are present **at build time** — Vite inlines them into the bundle, so a var added after the build does nothing until the next deploy. A rebuild is required, not a restart.
-- [ ] ⏸️ 👤 Record _what exists_ (not the values) in the password manager, as with the server key.
+- [x] 👤 **Railway production:** all three set as service variables.
+- [ ] ⏸️ 👤 **Railway staging:** still unset. The map will be list-only on staging until they are added there too (ADR-0121 §2's graceful absence), which is the quiet failure to expect when a staging test says "the map didn't ship". They are needed **at build time** — Vite inlines them into the bundle, so a var added after the build does nothing until the next deploy. A rebuild is required, not a restart.
+- [x] 👤 Record _what exists_ (not the values) in the password manager, as with the server key.
 - Absent or wrong, the Map tab **degrades to its list-only form** rather than crashing (ADR-0121 §2) — which also means a typo fails quietly. Step 7's verification is how you catch that.
 
 **7. Verify, and know the error strings.** No app code reads these vars yet (the Phase-6 build is unwritten), so the honest check today is a scratch page, not the app.
@@ -168,7 +173,9 @@ Same project as everything else — confirm the Console's project picker shows *
 
 **Done 2026-07-23:** the near-term slice above is complete — Places API (New) enabled on the existing `waypoint` project, a billing budget alert + a per-day request quota cap set, and `GOOGLE_MAPS_SERVER_KEY` minted and stored in local `.env` + Railway. Phases 1–5 shipped on it.
 
-**Open 2026-07-26:** the Phase-6 steps above are the last human gate in the epic — the same four things ADR-0121 names (enable Maps JS, a Map ID + cloud style, the referrer-locked browser key, the Dynamic Maps quota cap), written as a click-path with the storing and verification steps that were previously left implicit. Until they are done the embedded map can be written and unit-tested but not seen; `DEMO_MAP_ID` covers local development only.
+**Done 2026-07-26 — the Phase-6 gate is passed, with two boxes left.** Maps JavaScript API enabled, the Dynamic Maps daily quota capped and the budget alert confirmed against the new SKU, both Map IDs (`waypoint-day` + `waypoint-night`, JavaScript/vector) created, the browser key `waypoint-browser-maps-js` minted with Maps-JS-only API restriction and referrer locks, and the three `VITE_` build vars set locally + on Railway production. **The build is unblocked and the map is viewable.**
+
+Still open, and neither blocks the build: **(a)** the two cloud styles are authored as JSON ([`docs/design/map-styles/`](../design/map-styles/README.md)) but not yet imported and associated — until then the map renders with markers in Google's default look, not ours; **(b)** the three vars are not on Railway **staging**, so the tab is list-only there.
 
 ## Secrets
 
