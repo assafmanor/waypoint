@@ -19,6 +19,22 @@ COPY backend ./backend
 COPY frontend ./frontend
 # prisma.config.ts demands DATABASE_URL even though `generate` never connects.
 ARG BUILD_DB_URL="postgresql://build:build@build:5432/build"
+# The frontend's Maps config is BUILD-time: Vite inlines `import.meta.env.VITE_*`
+# into the bundle, so these must exist during `pnpm build` below — a runtime env
+# var on the service reaches the container but never the JavaScript.
+#
+# A Docker build sees only what the Dockerfile declares as ARG. Railway passes
+# every service variable as a `--build-arg`, so declaring them here is what turns
+# them into env vars for the RUN, and Vite picks up `process.env.VITE_*` at its
+# default `VITE_` prefix. Without these three lines the vars are simply absent
+# from the bundle and the Map tab renders its list-only form (ADR-0121 §2's
+# graceful absence) — which is correct behaviour, and indistinguishable from a
+# misconfigured deploy, so `vite.config.ts` warns in the build log too.
+#
+# Defaulted to empty on purpose: a build with no Maps setup must still succeed.
+ARG VITE_GOOGLE_MAPS_BROWSER_KEY=""
+ARG VITE_GOOGLE_MAPS_MAP_ID=""
+ARG VITE_GOOGLE_MAPS_MAP_ID_DARK=""
 RUN DATABASE_URL=$BUILD_DB_URL pnpm --filter @waypoint/backend prisma:generate && pnpm build
 # pnpm deploy rebuilds node_modules and drops the generated client — regenerate.
 RUN pnpm --filter @waypoint/backend deploy --prod /out && \
