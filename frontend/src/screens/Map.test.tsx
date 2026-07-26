@@ -329,7 +329,7 @@ describe('MapView (Phase 3, ADR-0109/0110)', () => {
       // Ahead first; then what's done, NEWEST first — lunch (12:00) is the stop you
       // just left, so it outranks the morning one.
       expect(names()).toEqual(['ice-cave', 'lunch', 'morning']);
-      expect(screen.getByText(t.map.behindHeader)).toBeTruthy();
+      expect(screen.getByText(t.map.blockHeader.behind)).toBeTruthy();
     });
 
     it('Plan mode splits the same way — a list opening on last Tuesday is wrong there too', () => {
@@ -347,7 +347,7 @@ describe('MapView (Phase 3, ADR-0109/0110)', () => {
       ];
       render(wrap(<MapView />));
       expect(names()).toEqual(['ice-cave', 'morning']);
-      expect(screen.getByText(t.map.behindHeader)).toBeTruthy();
+      expect(screen.getByText(t.map.blockHeader.behind)).toBeTruthy();
     });
 
     it('all-days scope leads with what is ahead, whatever day it falls on', () => {
@@ -383,7 +383,7 @@ describe('MapView (Phase 3, ADR-0109/0110)', () => {
       render(wrap(<MapView />));
       fireEvent.click(screen.getByRole('button', { name: new RegExp(t.map.allDays) }));
       expect(names()).toEqual(['tonight', 'next-week', 'yesterday', 'two-days-ago']);
-      expect(screen.getByText(t.map.behindHeader)).toBeTruthy();
+      expect(screen.getByText(t.map.blockHeader.behind)).toBeTruthy();
     });
 
     it('a flight’s two endpoints read in travel order, not alphabetically', () => {
@@ -784,8 +784,8 @@ describe('MapView (Phase 3, ADR-0109/0110)', () => {
       render(wrap(<MapView />));
       const names = [...document.querySelectorAll('.place .map-name')].map((n) => n.textContent);
       expect(names).toEqual(['soon', 'later']);
-      expect(screen.getByText(t.map.behindHeader)).toBeTruthy();
-      expect(screen.getByText(t.map.aheadHeader)).toBeTruthy();
+      expect(screen.getByText(t.map.blockHeader.behind)).toBeTruthy();
+      expect(screen.getByText(t.map.blockHeader.ahead)).toBeTruthy();
     });
 
     it('outcomes read the same in all-days scope', () => {
@@ -802,8 +802,69 @@ describe('MapView (Phase 3, ADR-0109/0110)', () => {
       tripPlaces = [place('soon', true)];
       tripEvents = [event({ id: 'e1', placeId: 'soon', startsAt: at('18:00') })];
       render(wrap(<MapView />));
-      expect(screen.queryByText(t.map.aheadHeader)).toBeNull();
-      expect(screen.queryByText(t.map.behindHeader)).toBeNull();
+      expect(screen.queryByText(t.map.blockHeader.ahead)).toBeNull();
+      expect(screen.queryByText(t.map.blockHeader.behind)).toBeNull();
+    });
+  });
+
+  // ADR-0109 session-127 — a place with no day is its own block. Reported: undated
+  // maybes read as "in the past", because the behind-you header was the last one
+  // above them and they sorted below everything.
+  describe('the undated block says so (ADR-0109 session-127)', () => {
+    const NOON = Date.parse(`${ACTIVE_DATE}T12:00:00Z`);
+    const at = (hhmm: string) => `${ACTIVE_DATE}T${hhmm}:00Z`;
+    /** The list as rendered, headers included, in order. */
+    const sequence = () =>
+      [...document.querySelectorAll('.map-list > *')].map((node) =>
+        node.classList.contains('map-grouphead')
+          ? `# ${node.textContent}`
+          : (node.querySelector('.map-name')?.textContent ?? '?'),
+      );
+    const seedBlocks = () => {
+      setSimulatedNow(NOON);
+      tripPlaces = [place('this-morning', true), place('tonight', true), place('someday', true)];
+      tripEvents = [
+        event({ id: 'e1', placeId: 'this-morning', startsAt: at('09:00') }),
+        event({ id: 'e2', placeId: 'tonight', startsAt: at('20:00') }),
+      ];
+      tripMaybes = [maybe({ id: 'm', placeId: 'someday' })];
+    };
+
+    it('an undated idea sits between the blocks, under its own header', () => {
+      seedBlocks();
+      render(wrap(<MapView />));
+      fireEvent.click(screen.getByRole('button', { name: new RegExp(t.map.allDays) }));
+      expect(sequence()).toEqual([
+        `# ${t.map.blockHeader.ahead}`,
+        'tonight',
+        `# ${t.map.blockHeader.dayless}`,
+        'someday',
+        `# ${t.map.blockHeader.behind}`,
+        'this-morning',
+      ]);
+    });
+
+    it('the day scope is unaffected — an undated row isn’t on a day at all', () => {
+      seedBlocks();
+      render(wrap(<MapView />));
+      expect(sequence()).toEqual([
+        `# ${t.map.blockHeader.ahead}`,
+        'tonight',
+        `# ${t.map.blockHeader.behind}`,
+        'this-morning',
+      ]);
+    });
+
+    it('an all-undated list carries no header — there is nothing to be beside', () => {
+      setSimulatedNow(NOON);
+      tripPlaces = [place('someday', true), place('whenever', true)];
+      tripMaybes = [
+        maybe({ id: 'm1', placeId: 'someday' }),
+        maybe({ id: 'm2', placeId: 'whenever' }),
+      ];
+      render(wrap(<MapView />));
+      fireEvent.click(screen.getByRole('button', { name: new RegExp(t.map.allDays) }));
+      expect(sequence()).toEqual(['someday', 'whenever']);
     });
   });
 

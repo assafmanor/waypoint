@@ -15,10 +15,10 @@ import {
   buildPlaceUsageIndex,
   comparePlacesBySchedule,
   countPlacesByCategory,
-  isDayUsagePast,
   isOnShelf,
   matchesPlaceCategory,
   matchesPlaceFilter,
+  placeBlock,
   placeDay,
   PLACE_CATEGORY_ALL,
   type PlaceCategoryFilter,
@@ -197,12 +197,10 @@ export function MapView() {
     today,
   };
   const bySchedule = (a: PlaceUsage, b: PlaceUsage) => comparePlacesBySchedule(a, b, orderCtx);
-  // Which rows are in the sunk block — the list labels where it starts rather than
-  // reordering silently as the clock passes each stop.
-  const isBehind = (u: PlaceUsage) => {
-    const day = placeDay(u, scopedDate);
-    return day ? isDayUsagePast(day, nowMs, today) : false;
-  };
+  // Which block each row is in — the list labels where each one starts rather than
+  // reordering silently as the clock passes each stop. Read from the same derivation
+  // that ORDERS them, so a header can't claim a row the comparator put elsewhere.
+  const blockOf = (u: PlaceUsage) => placeBlock(u, orderCtx);
 
   // Near-me order: measured places nearest-first, and a coordless Place-lite sinks
   // to the end with no distance — it can't be measured until the picker enriches it
@@ -324,13 +322,16 @@ export function MapView() {
   };
 
   // The list and its group headers. One shared renderer so the search overlay's list
-  // gets the same treatment. Near-me labels the whole list; schedule order labels the
-  // sunk block where it starts, so "why is this down here" is answered on screen.
+  // gets the same treatment. Near-me labels the whole list; in schedule order each
+  // block is labelled where it starts, so "why is this down here" is answered on
+  // screen — and no block sits under a header that means something else, which is
+  // what made an undated idea read as "behind you" (ADR-0109 session-127).
   const renderList = (usages: PlaceUsage[]) => {
-    const firstBehind = nearActive ? -1 : usages.findIndex(isBehind);
-    // The ahead header only earns its row when there IS a behind block to be ahead
-    // of (ADR-0117 §3) — on an all-ahead list it would be pure chrome.
-    const showAhead = firstBehind > 0;
+    // Near-me re-sorts by distance, so the schedule blocks don't describe the list.
+    const blocks = nearActive ? [] : usages.map(blockOf);
+    // A single-block list needs no header at all: labelling the only thing on screen
+    // is the chrome ADR-0117 §3 refused for the ahead header.
+    const labelled = new Set(blocks).size > 1;
     return (
       <>
         {nearActive && usages.some((u) => !u.coordless) && (
@@ -339,8 +340,9 @@ export function MapView() {
         <div className="map-list">
           {usages.map((usage, i) => (
             <Fragment key={usage.placeId}>
-              {i === 0 && showAhead && <div className="map-grouphead">{t.map.aheadHeader}</div>}
-              {i === firstBehind && <div className="map-grouphead">{t.map.behindHeader}</div>}
+              {labelled && blocks[i] !== blocks[i - 1] && (
+                <div className="map-grouphead">{t.map.blockHeader[blocks[i]!]}</div>
+              )}
               {renderRow(usage)}
             </Fragment>
           ))}
