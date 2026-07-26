@@ -7458,6 +7458,36 @@ body {
         width: 20px;
         height: 20px;
       }
+      /* THE AREA COUNT (amendment E2). ADR-0106 §4 decided pan/zoom IS the area
+         filter and no chip is ever built — but nothing on screen said so, which
+         made the decision invisible. This says it.
+
+         Top-inline-END: opposite the re-centre control, and nowhere near
+         Google's bottom-left attribution (R2). Updated on the map's `idle`
+         event, never per pan frame — a number churning under a moving finger is
+         noise, and per-frame recompute is what §3/R6 forbid. It counts EVERY pin
+         on the canvas, ghosts included: this is a spatial readout, not a facet
+         count, and "how many of our places are around here" is exactly what the
+         ghost tier is for. The wording carries that — `באזור` is about the area. */
+      .map-areacount {
+        position: absolute;
+        top: var(--space-2, 10px);
+        inset-inline-end: var(--space-2, 10px);
+        background: color-mix(in srgb, var(--card) 88%, transparent);
+        border: 1px solid var(--line);
+        border-radius: var(--radius-pill, 999px);
+        padding: 5px 10px;
+        font-size: var(--text-xs, 11.5px);
+        font-weight: 600;
+        color: var(--muted);
+        box-shadow: var(--elevation-1, 0 1px 3px rgba(22, 35, 61, 0.14));
+        white-space: nowrap;
+      }
+      .map-areacount b {
+        color: var(--ink);
+        font-family: 'JetBrains Mono', monospace;
+      }
+
       /* required by Google's ToS (ADR-0106 §B) — designed around, never removed */
       .map-attr {
         position: absolute;
@@ -7597,6 +7627,17 @@ body {
         height: 14px;
         margin-inline-start: auto;
         color: var(--faint);
+      }
+
+      /* `מה נשאר` on → everything SETTLED leaves, on the canvas and in the list
+         alike, ghosts included (a place visited on Tuesday must not sit there
+         while you ask what is left). `.skipped` is the pin/row treatment for the
+         settled tiers; `--ok`/`--miss` tags mark them in the list. */
+      .map-screen[data-left='on'] .map-pin.skipped,
+      .map-screen[data-left='on'] .map-list .place:has(.map-tag.ok),
+      .map-screen[data-left='on'] .map-list .place:has(.map-tag.miss),
+      .map-screen[data-left='on'] .map-grouphead.behind {
+        display: none;
       }
 
       /* Offline: no pane, no toggle, no handle, and no near-me chip — absent,
@@ -7944,6 +7985,22 @@ body {
           <button type="button" class="map-maybes" aria-pressed="false">
             אולי <span class="cnt" aria-hidden="true">2</span>
           </button>
+          <!-- THE OUTCOME FILTER (amendment E1): ONE toggle, not three chips.
+               The list already answers "where have we been" (the מה שמאחורינו
+               block + per-row היינו/דילגנו tags), and a third multi-value facet
+               would multiply the count-coupling ADR-0119 exists to repair. The
+               question on the ground is "what's left". Reuses `.map-maybes`
+               exactly — same idiom for the same shape of control — and appears
+               only when the trip has something settled (the `hasMaybes` gating
+               pattern / ADR-0050's derived-affordance rule).
+
+               Its count is 5 = the LIST ROWS that survive the filter (including
+               the coordless one), NOT the 6 pins on the canvas — a chip counts
+               what the list will render (ADR-0119), while the `באזור` readout
+               counts the canvas. Two different questions, deliberately. -->
+          <button type="button" class="map-maybes" id="leftchip" aria-pressed="false">
+            מה נשאר <span class="cnt" aria-hidden="true">5</span>
+          </button>
           <button type="button" class="map-search-btn" aria-label="חיפוש">
             <!-- `ui/Icon.tsx`'s `search` path verbatim, not a redrawn glass -->
             <svg
@@ -8054,7 +8111,10 @@ body {
             <div class="map-me" style="left: 37%; top: 30%"></div>
             <!-- drawn the way `ui/Icon.tsx` draws every icon: 24×24 viewBox,
                  stroke=currentColor, width 2, round caps -->
-            <button type="button" class="map-recenter" aria-label="מרכז מחדש">
+            <div class="map-areacount" id="areacount" aria-live="polite">
+              <b dir="auto">6</b> באזור
+            </div>
+                        <button type="button" class="map-recenter" aria-label="מרכז מחדש">
               <svg
                 class="icon"
                 viewBox="0 0 24 24"
@@ -8229,7 +8289,7 @@ body {
                 </span>
               </div>
 
-              <div class="map-grouphead">מה שמאחורינו</div>
+              <div class="map-grouphead behind">מה שמאחורינו</div>
 
               <!-- behind you, and each KEEPS its number: the partition changes
                    prominence, never the position -->
@@ -8568,6 +8628,7 @@ body {
         document
           .querySelectorAll('.mk-states button')
           .forEach((b) => b.classList.toggle('on', b.dataset.state === s));
+        if (typeof refreshAreaCount === 'function') refreshAreaCount();
         document.getElementById('vt-map').classList.toggle('on', s === 'map');
         document.getElementById('vt-list').classList.toggle('on', s === 'list');
       }
@@ -8575,6 +8636,32 @@ body {
       document
         .querySelectorAll('.mk-states button')
         .forEach((b) => b.addEventListener('click', () => setState(b.dataset.state)));
+
+      // `מה נשאר` — one toggle over the `settled` field (amendment E1). It hides
+      // the settled pins AND their rows AND the behind-block header, so the
+      // remaining cluster is what is left on the canvas.
+      const leftChip = document.getElementById('leftchip');
+      const areaCount = document.getElementById('areacount');
+      leftChip.addEventListener('click', () => {
+        const on = screenEl.dataset.left !== 'on';
+        screenEl.dataset.left = on ? 'on' : 'off';
+        leftChip.setAttribute('aria-pressed', String(on));
+        leftChip.classList.toggle('on', on);
+        refreshAreaCount();
+      });
+
+      // The count reads the canvas, and in the app it recomputes on the map's
+      // `idle` event — never per pan frame (§3/R6). Ghosts are counted: it is a
+      // spatial readout, not a facet count.
+      function refreshAreaCount() {
+        const n = document.querySelectorAll('.map-pane .map-pin:not([hidden])').length
+          - [...document.querySelectorAll('.map-pane .map-pin')].filter(
+              (el) => getComputedStyle(el).display === 'none',
+            ).length;
+        areaCount.innerHTML = n
+          ? `<b dir="auto">${n}</b> באזור`
+          : 'אין מקומות באזור';
+      }
 
       // ── ROW TAP = FOCUS OUR MAP ────────────────────────────────────────
       // The tap no longer leaves the app. Going to Google is a BUTTON (`נווט`,
@@ -8601,6 +8688,7 @@ body {
         // rule 2 — lift the sheet off the map so the focus is visible
         if (fromRow && hasPin && screenEl.dataset.view === 'full' && !screenEl.hasAttribute('data-offline')) {
           setState('half');
+      refreshAreaCount();
           focusPlace(key);
         }
         if (!fromRow) {

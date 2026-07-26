@@ -6,7 +6,9 @@
 
 Mockup: [`mockups/shelf-day-aware-v1.html`](../../mockups/shelf-day-aware-v1.html) (second frame — the Map list's outcome states)
 
-> **The deferred outcome filter is a Phase-6 ride-along candidate** (flagged by [ADR-0121](0121-embedded-map-phase-6-design.md)'s review pass): it is a chip over data this ADR already derives, and it is worth more on a rendered map than on a list — seeing the _remaining_ cluster is the point, where a list can only tell you a count. Not yet decided; see ADR-0121's open forks.
+> **The deferred outcome filter is now IN Phase 6, as one toggle** (owner call 2026-07-26; [ADR-0121](0121-embedded-map-phase-6-design.md) amendment E1). Not three chips for the three states below: the list **already** answers "where have we been" by labelling the `מה שמאחורינו` block and tagging each row, and a third multi-value facet would multiply the very count-coupling surface [ADR-0119](0119-map-maybes-facet-is-the-shelf.md) exists to repair. The question people ask on the ground is "what's left", so it is a single independent **`מה נשאר`** toggle in the `אולי` chip's idiom, hiding everything `settled` (both `done` and `skipped` — a predicate over the `settled` field this ADR already stores), applying to the map's out-of-scope "ghost" pins as well, and appearing only when the trip has something settled (the derived-affordance rule, exactly as `hasMaybes` already gates the `אולי` chip). On a rendered map this is the payoff a list cannot give: with the settled pins gone the remaining cluster is legible.
+>
+> _(Superseded framing: it was first flagged as a mere ride-along **candidate**.)_ (flagged by [ADR-0121](0121-embedded-map-phase-6-design.md)'s review pass): it is a chip over data this ADR already derives, and it is worth more on a rendered map than on a list — seeing the _remaining_ cluster is the point, where a list can only tell you a count. Not yet decided; see ADR-0121's open forks.
 
 ## Context
 

@@ -183,12 +183,52 @@ Verified so a future session does not go looking: **no CSP to amend** (the backe
 
 ### Open forks, for a product call rather than a design one
 
+> **All four resolved the same day, by the owner** — see amendment E above: forks 2 and 3 (the outcome facet, the places-in-view count) are **in Phase 6**; fork 1 (transit/traffic layers) is **dropped for now**; fork 4 (proximity promoting a ghost) stays **deliberately open**, to be judged on a real rendered map. The analysis below is kept as the record of what was weighed.
+
 1. **Free Google layers we could switch on almost for nothing.** The JS API ships `TransitLayer` and `TrafficLayer`, which add no separate SKU as far as the current SKU list shows (**confirm at build**). For a transit-dense city trip, transit lines are a real answer to "how do I get there" and cost us nothing to draw. The tension is "quiet base, loud pins" (ADR-0106 §C) — either would add exactly the clutter that rule removes. If taken, it is a **toggle, off by default**, and probably transit only.
 2. **The outcome facet, riding along** (deferred by ADR-0117): `מה נשאר` / where we have been. It is a chip over data already derived, and it is _more_ valuable on a map than on a list, where seeing the remaining cluster is the point. Cheap enough to fold into this phase rather than trail it.
 3. **A "places in view" count.** ADR-0106 §4 asserts pan/zoom **is** the area filter, but nothing on screen ever says so. A count off the camera bounds ("12 מקומות באזור") would make the claim legible, needs no new data, and is a few lines.
 4. **Whether proximity promotes a ghost** (left open in amendment B) — **owner-confirmed deferred (2026-07-26).** Near-me sharpens it rather than settling it: a ghost 50 m away is nearer than anything in scope and is invisible to the sort. It stays open by decision, to be judged on a real rendered map rather than on paper.
 
 **On fork 1, recorded so it is not re-asked:** `TransitLayer` draws the **transit network** — major lines in the operators' own colours, plus stations, from Google's Transit Partner Program. It is **context, not directions**: it cannot show a route from A to B. Point-to-point transit is either the free Google Maps deep-link (`travelmode=transit`, which leaves the app — what `ניווט` already does, and ADR-0106 §F says we never rebuild it) or the paid Routes API in `TRANSIT` mode drawing a polyline in-app, whose SKU tier is **unconfirmed** and belongs to the deferred paid-Routes work. So the fork is only ever about drawing the network as a backdrop, never about routing.
+
+## Amendment (2026-07-26, same session) — the two ride-alongs are in scope; transit is not
+
+Owner call on the review's open forks: **take the outcome facet and the places-in-view count into Phase 6; drop the transit layer for now.** Each needed a design call before it could be scope rather than an idea.
+
+### E1. The outcome facet is **one toggle**, `מה נשאר` — not a three-way facet
+
+ADR-0117 gives every place an outcome (`done` / `skipped` / nothing settled) and deferred the filter. Taking it in raises the obvious question — three states, so three chips? No:
+
+- **The list already answers "where have we been."** It labels the `מה שמאחורינו` block and tags each row `היינו`/`דילגנו` (ADR-0117 §3). A chip for it would filter to something you can already read by scrolling.
+- **A third multi-value facet multiplies the surface ADR-0119 just finished repairing.** That ADR's whole job was making two facets' counts reflect each other so no chip promises rows the list will not render. A third axis with three values makes that a 3-way product, for a question nobody asks in that shape.
+- **The question people actually ask on the ground is "what's left."** So: **one independent toggle, `מה נשאר`**, matching the `אולי` chip's idiom exactly (an independent toggle beside the type pills, not a member of the `ChoiceGrid`) — because that is the same shape of control for the same shape of question.
+
+Four specifics:
+
+- **It hides everything settled**, `done` and `skipped` alike — `settled` is already a field on `DayUsage` (ADR-0117), so this is a predicate over data in hand, not new derivation.
+- **It applies to ghosts too.** A place you visited on Tuesday must not sit on the canvas as a ghost while you are asking what is left; the outcome predicate runs before the scope partition.
+- **On the map this is the payoff the list cannot give**: with the settled pins gone, the remaining cluster is legible — "everything left is north of the river" is a spatial answer, where a list can only say "four".
+- **It must join ADR-0119's count coupling, or it re-opens the bug that ADR exists to close.** That ADR made two facets' counts reflect each other so no chip can promise rows the list will not render. A third toggle makes that a three-way: `מה נשאר`'s own count is the number of **surviving list rows** given the currently picked type and `אולי` state, and while it is on the type chips and `אולי` count only unsettled places. Getting this wrong is not cosmetic — it is precisely the class of defect ADR-0119 was written to fix, now with one more axis. (Drawing the mockup caught it: a first pass labelled the chip with the count of scheduled-unsettled places, `4`, while `5` rows actually survive — the coordless row included.)
+- **Its count and the `באזור` readout answer different questions and will differ.** A chip counts what the **list** will render; `באזור` counts what is on the **canvas** (ghosts included, coordless excluded — it has no pin). That is not an inconsistency to reconcile; it is why the two are worded differently.
+- **The chip appears only when the trip has something settled**, reusing the exact pattern the `אולי` chip already uses (`{hasMaybes && …}` in `screens/Map.tsx`) and ADR-0050's derived-affordance rule: no source, no control. That also makes it a no-op in Plan mode on a trip that has not started, without a mode gate.
+
+### E2. The places-in-view count makes ADR-0106 §4's claim visible
+
+ADR-0106 §4 decided there is no "by area" filter because **pan/zoom is** the area filter. That reasoning is sound and nothing on screen has ever said it, so the decision is invisible: you cannot tell the map is answering "what is around here."
+
+**Decision: a quiet count on the canvas, read off the camera** — `12 באזור`, the numeral an LTR island inside the Hebrew (ADR-0118), placed **top-inline-end** so it is opposite the re-centre control and nowhere near Google's bottom-left attribution (R2). Four calls:
+
+- **It updates on the map's `idle` event, not during the pan.** A number churning under a moving finger is noise, and recomputing per frame is the kind of per-render cost §3 and R6 exist to forbid.
+- **Zero says so:** `אין מקומות באזור`. An empty canvas with no explanation reads as broken rather than as panned-away.
+- **It counts every pin on the canvas, ghosts included** — and that is not a contradiction of R8's "ghosts are never counted in a facet." This is not a facet count; it is a **spatial** readout, and "how many of our places are around here" is exactly the question the ghost tier exists to answer. The wording carries the distinction: `באזור` is about the area, not about a filter.
+- **The list does _not_ follow the camera.** That would be the _true_ area filter, and it is rejected: a list that reshuffles under your thumb as you pan is the same defect as a camera that re-centres under your fingers, which §6 already refuses. Pan/zoom filters what you **see**; the sheet stays the scoped list it is.
+
+### E3. Transit (and traffic) layers: dropped for now
+
+`TransitLayer` draws the transit **network** — major lines in the operators' own colours plus stations, from Google's Transit Partner Program — and it **cannot show a route from A to B**; it is context, not directions. Point-to-point transit is either the free Google Maps deep-link (`travelmode=transit`, which leaves the app, and ADR-0106 §F says we never rebuild navigation) or the paid Routes API in `TRANSIT` mode, whose SKU tier is unconfirmed and which belongs to the deferred paid-Routes work.
+
+**Decision: not now.** It is the only one of the three ride-alongs that adds nothing to a question the tab is asking, and it is the one that fights ADR-0106 §C's "quiet base, loud pins" hardest — a network overlay is exactly the clutter that rule strips out. If it returns it is a toggle, off by default, transit only. Recorded here so the "it's free" argument does not reopen it on its own; free to draw is not the same as free to read.
 
 ## Context
 

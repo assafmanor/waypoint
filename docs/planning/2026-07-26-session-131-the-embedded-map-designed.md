@@ -228,3 +228,39 @@ attempt put every reference block inside a **pin**; the recovery then matched
 `class="map-list"` in the **stylesheet** and dropped three more into the view toggle. Fixed
 by walking lines and indentation instead of searching text, with an assertion that every
 block's parent is a `.place` row.
+
+## Scope decision on the review's forks (ADR-0121 amendment E)
+
+Owner call: **take the outcome facet and the places-in-view count into Phase 6; drop transit
+for now.** Each needed a design call before it was scope rather than an idea.
+
+**The outcome filter is one toggle, not three chips.** ADR-0117 has three outcome states, but
+the list already answers "where have we been" — it labels the `מה שמאחורינו` block and tags
+each row — and a third multi-value facet would multiply exactly the count-coupling surface
+ADR-0119 was written to repair. The question on the ground is "what's left", so it is a
+single `מה נשאר` toggle in the `אולי` chip's idiom, over the `settled` field ADR-0117 already
+stores, applying to ghost pins too, and gated on the trip having something settled (the
+`hasMaybes` pattern already in `Map.tsx`). On a map this is the payoff a list cannot give:
+with the settled pins gone the remaining cluster is legible.
+
+**Drawing it caught the trap immediately.** I labelled the chip `4` — the count of scheduled
+unsettled places — when `5` rows actually survive the filter, the coordless row included.
+That is precisely the count-vs-render defect ADR-0119 exists to fix, reproduced within
+minutes of adding a third axis. So the ADR now states the requirement rather than implying
+it: the toggle must **join** ADR-0119's coupling, and its count is surviving list rows given
+the picked type and `אולי` state.
+
+**The `באזור` count and the chip count are different questions.** A chip counts what the
+**list** renders; `באזור` counts what is on the **canvas** — ghosts included, coordless
+excluded, since it has no pin. Six on the canvas beside five in the chip is correct, and the
+wording is what carries the distinction. The readout updates on the map's `idle` event, never
+per pan frame, and says `אין מקומות באזור` at zero rather than leaving an empty canvas
+unexplained. The **list deliberately does not follow the camera**: that would be the true
+area filter, and a list reshuffling under your thumb is the same defect as a camera
+re-centring under your fingers, which §6 already refuses.
+
+**Transit dropped, with the reason recorded so "it's free" cannot reopen it.**
+`TransitLayer` draws the transit **network**, not directions — it cannot show A to B at all.
+Point-to-point transit is the free Maps deep-link (which leaves the app) or the paid Routes
+API. It is the only ride-along answering no question the tab asks, and the one that fights
+"quiet base, loud pins" hardest. Free to draw is not free to read.
