@@ -1,6 +1,6 @@
 # 0121 — Phase-6 embedded map: the reconfirmed API surface, `@vis.gl/react-google-maps`, the map↔list shell, and one map load per visit
 
-**Status:** Accepted — **built 2026-07-26 (session 133)**; see the [Build log](#build-log-2026-07-26-session-133) for the four places the build refined this design and the one it read against the letter
+**Status:** Accepted — **built 2026-07-26 (session 133)**; see the [Build log](#build-log-2026-07-26-session-133) for where the build refined this design, the one place it read against the letter, and the deploy-time gap §2 left open
 **Date:** 2026-07-26
 **Implements** [0106](0106-maps-and-places-epic-scope-and-phasing.md) **Phase 6** and the design [ADR-0109](0109-map-tab-design.md) deferred to this session ("the _fully-rendered_ Phase 6 map — to its own build session … re-confirming current Maps/Places API + pricing first").
 **Refines:** [0109](0109-map-tab-design.md) (§3's pin grammar gets its map form; §10's shell becomes concrete; §6's amber ring lands on a pin; §1's row tap changes destination), [0108](0108-maps-and-places-backend-architecture-key-model-and-cost.md) (§4's cost envelope re-costed; its Routes tier table corrected), [0106](0106-maps-and-places-epic-scope-and-phasing.md) §4/§B/§D/§E, [0117](0117-map-place-outcome-states.md) (its deferred outcome filter is scoped here), [0119](0119-map-maybes-facet-is-the-shelf.md) (the ghost tier is its deliberate inverse), [0120](0120-filter-reveal-is-shared-infrastructure.md) (the map's answer to "every list change moves"), [0078](0078-feedback-state-family.md) (the layout layer gains a full-bleed body modifier), [0090](0090-back-is-computed-from-nav-state.md)/[0103](0103-back-navigation-typed-layer-model.md) (why the sheet is _not_ a back layer), [0028](0028-plan-violet-color-budget-dark-ready.md) (the colour budget on a rendered canvas), [0096](0096-per-domain-claude-md-guides.md) (reuse before adding)
@@ -315,6 +315,19 @@ because none of it changes a decision this one made.
     covers the pure functions with no Google present, the pin markup with the binding
     stubbed, and the shell with the pane stubbed — 1,199 tests green. Nothing about how
     the canvas **looks** has been seen; that is the human pass on the backlog line.
+
+11. **§2 named the build vars and never said how they reach the build — which cost a
+    deploy.** The vars were on Railway production from session 132 and the map still did
+    not render: the frontend is built inside a **Docker stage**, and a Docker build sees
+    only what the `Dockerfile` declares as `ARG`, so Vite inlined nothing and the tab
+    took §2's graceful-absence path. Exactly right behaviour, indistinguishable from a
+    misconfiguration. Fixed by three `ARG` lines (defaulted to empty, so a Maps-less
+    build still succeeds) and a **build-log warning** in `vite.config.ts` naming any
+    missing var — because a degradation this quiet needs to be loud on the one surface
+    that can act on it. `architecture/deployment.md` now states the coupling: **a fourth
+    `VITE_` var later means editing the `Dockerfile` too.** Worth generalising past this
+    ADR: "it is a build var" is only half the design — where the build gets it is the
+    other half.
 
 ## Revision log (2026-07-26, within the design session)
 

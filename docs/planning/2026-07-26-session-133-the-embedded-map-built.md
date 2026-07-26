@@ -178,3 +178,48 @@ an area chip, clustering (with its stated revisit trigger), offline tiles, membe
 sharing, 3D/tilt, and a dark map anyone can see. The pre-commit hook's Prettier-version
 hole that the handoff described is also still unfixed — a small, separate change, and
 deliberately not bundled into a feature commit.
+
+## Addendum — the deploy that showed no map
+
+The first production deploy of this work rendered the tab **list-only**, and the
+screenshot proved the new code was live: the `מה נשאר 16` chip was there, and a
+selected row was showing its `רעיון · על המדף · ללא יום` way-in entry. Near-me was
+also still on screen, which rules out the offline branch. So `mapsConfig()` had
+returned `null` — the build vars never reached the bundle.
+
+**The cause is a coupling ADR-0121 §2 never wrote down.** §2 says the three vars are
+"build args baked into the client bundle" and documents them in `deployment.md`. Both
+true, and both insufficient: the frontend is built inside a **Docker stage**
+(`Dockerfile`'s `RUN … pnpm build`), and a Docker build sees only what the Dockerfile
+declares as `ARG`. Railway passes every service variable as a `--build-arg`, but an
+undeclared build arg is silently dropped. Session 132 set all three on production and
+they were correct; nothing carried them across the build boundary.
+
+The degradation then did exactly what §2 designed it to do, which is what made it hard
+to see: **the correct behaviour for "no Maps setup" and the symptom of "misconfigured
+deploy" are the same screen.**
+
+**The fix, three parts:**
+
+1. Three `ARG` lines in the build stage ahead of `pnpm build`, each defaulted to `""`
+   so a checkout with no Maps setup still builds. (That empty default also gets
+   handled for free: `readMapsConfig` trims and treats blank as absent, which is why
+   an empty inlined string degrades rather than reaching the API loader.)
+2. A **build-log warning** in `vite.config.ts` naming any missing Maps var, gated to
+   `command === 'build'` so it never noises up dev or the test run. A degradation this
+   quiet in the UI should be loud on the one surface that can act on it.
+3. `deployment.md` states the coupling, with the generalisation that outlives this
+   feature: **adding a fourth `VITE_` var later means editing the `Dockerfile` too** —
+   the service variable alone will look set and do nothing.
+
+**What was and was not verified.** That Vite picks these up from `process.env` at its
+default `VITE_` prefix was the genuinely unknown half, and it is verified: a real
+`pnpm build` with sentinel values inlines them into `dist/assets/*.js`, and the
+warning correctly falls silent once both are set. The Docker half is standard `ARG`
+semantics that this same Dockerfile already relies on one line above
+(`ARG BUILD_DB_URL`), but it is **not** verified locally — the sandbox has a docker
+CLI and no daemon. The confirmation is the next Railway build log: the Maps warning
+should be absent, and the tab should show the pane.
+
+**The lesson worth keeping past this ADR:** "it is a build var" is only half a design.
+Where the build gets it is the other half, and on this repo that means the Dockerfile.
