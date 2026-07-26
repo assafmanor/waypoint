@@ -4,8 +4,10 @@ import {
   boundsOfPoints,
   cameraTargetFor,
   countPointsInBounds,
+  fitPaddingFor,
   pointInBounds,
 } from './map-camera';
+import { MAP_FIT_PADDING } from '../constants';
 
 const TOKYO = { lat: 35.68, lng: 139.76 };
 const KYOTO = { lat: 35.01, lng: 135.77 };
@@ -94,5 +96,46 @@ describe('cameraTargetFor — it moves only when it owes you something (§7)', (
   it('leaves near-coincident pins to the fit + the shared zoom cap', () => {
     const nudged = { lat: TOKYO.lat + 0.0002, lng: TOKYO.lng + 0.0002 };
     expect(cameraTargetFor([TOKYO, nudged], null).kind).toBe('fit');
+  });
+});
+
+// Session 134 — the two halves of "the map always opens zoomed out and centred".
+// Both are here because both are pure, and together they say why the opening framing
+// is a third case rather than a re-frame.
+describe('why the opening camera has to ignore containment', () => {
+  it('a wide view contains everything, so containment says "do not move" forever', () => {
+    const world = { north: 85, south: -85, east: 180, west: -180 };
+    const day = [
+      { lat: 35.68, lng: 139.76 },
+      { lat: 35.71, lng: 139.78 },
+    ];
+    // This is correct for a RE-frame ("the chip's results are all on screen already")
+    // and catastrophic for the FIRST one: a map opened on the world would never fit
+    // its pins, and no later control change could rescue it either, since the view
+    // still contains them. Hence the caller passes `null` for the opening framing.
+    expect(cameraTargetFor(day, world)).toEqual({ kind: 'none' });
+    expect(cameraTargetFor(day, null).kind).toBe('fit');
+  });
+});
+
+describe('fitPaddingFor — the other half of the zoom-out', () => {
+  const PHONE = { width: 390, height: 320 };
+
+  it('passes the padding through when the viewport can hold it', () => {
+    expect(fitPaddingFor(PHONE, MAP_FIT_PADDING)).toEqual(MAP_FIT_PADDING);
+  });
+
+  // `fitBounds` with padding eating most of the div resolves to a degenerate
+  // viewport and zooms far OUT — losing a pin's tag beats losing the framing.
+  it('drops the padding when it would claim half an axis', () => {
+    expect(fitPaddingFor({ width: 390, height: 120 }, MAP_FIT_PADDING)).toBeUndefined();
+    expect(fitPaddingFor({ width: 100, height: 320 }, MAP_FIT_PADDING)).toBeUndefined();
+  });
+
+  // `null` is distinct from "no padding": an unsized div is measured BEFORE layout
+  // settles, and there is no honest fit into nothing — the caller waits instead.
+  it('refuses outright on an unsized div', () => {
+    expect(fitPaddingFor({ width: 0, height: 0 }, MAP_FIT_PADDING)).toBeNull();
+    expect(fitPaddingFor({ width: 390, height: 0 }, MAP_FIT_PADDING)).toBeNull();
   });
 });

@@ -494,19 +494,43 @@ describe('MapView (Phase 3, ADR-0109/0110)', () => {
         return chip ? withoutBidiControls(chip.textContent ?? '') : undefined;
       });
 
-    it('asks for nothing on open — the tab renders fully with zero location', () => {
+    // Opening the tab now OFFERS to locate you (ADR-0109 session-134) — but the
+    // invariant §6 was protecting still holds exactly: the device is untouched until
+    // the user allows it, and the list has already rendered in full without it. jsdom
+    // has no Permissions API, so this is the `unsupported` branch: we cannot tell
+    // whether a dialog would appear, so we show OUR card rather than risk a cold one.
+    it('offers on open, and asks the device nothing until allowed', () => {
       seedNear();
       render(wrap(<MapView />));
+      // Asserted on the body, not the title: the title renders behind a 📍 in the same
+      // text node, so a full-string match on it can never fail and never had teeth.
+      expect(screen.getByText(t.map.near.prompt.body)).toBeTruthy();
       expect(getCurrentPosition).not.toHaveBeenCalled();
-      expect(screen.queryByText(t.map.near.prompt.title)).toBeNull();
       expect(screen.queryByText(t.map.near.groupHeader)).toBeNull();
       expect(rowNames()).toEqual(['far', 'lite', 'near']); // default day/name order
+    });
+
+    it('“לא עכשיו” on the offer means not-this-session, not not-this-visit', () => {
+      seedNear();
+      const view = render(wrap(<MapView />));
+      fireEvent.click(screen.getByRole('button', { name: t.map.near.prompt.notNow }));
+      expect(screen.queryByText(t.map.near.prompt.body)).toBeNull();
+      // The tab remounts on every tab change while the lifted MapScopeProvider above
+      // it survives — so swap the screen out and back through the SAME provider,
+      // which is what a tab change really does. (A fresh `render(wrap(…))` would
+      // build a new provider and prove nothing.)
+      view.rerender(wrap(<div />));
+      view.rerender(wrap(<MapView />));
+      expect(screen.queryByText(t.map.near.prompt.body)).toBeNull();
+      expect(getCurrentPosition).not.toHaveBeenCalled();
     });
 
     it('the chip states the reason first, and only then asks the device', () => {
       seedNear();
       geoFix = HERE;
       render(wrap(<MapView />));
+      // Clear the on-open offer so what is under test is the CHIP's own path.
+      fireEvent.click(screen.getByRole('button', { name: t.map.near.prompt.notNow }));
       fireEvent.click(nearChip());
       // The pre-prompt is up and NOTHING has been requested yet (ADR-0109 §6).
       expect(screen.getByText(t.map.near.prompt.body)).toBeTruthy();
@@ -520,6 +544,7 @@ describe('MapView (Phase 3, ADR-0109/0110)', () => {
     it('"לא עכשיו" closes the pre-prompt without asking — nothing is dead-ended', () => {
       seedNear();
       render(wrap(<MapView />));
+      fireEvent.click(screen.getByRole('button', { name: t.map.near.prompt.notNow }));
       fireEvent.click(nearChip());
       fireEvent.click(screen.getByRole('button', { name: t.map.near.prompt.notNow }));
       expect(getCurrentPosition).not.toHaveBeenCalled();

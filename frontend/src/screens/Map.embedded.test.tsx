@@ -89,8 +89,27 @@ vi.mock('../state/trip-state', () => ({
 vi.mock('../state/mode-state', () => ({ useMode: () => ({ mode: currentMode }) }));
 vi.mock('../state/verbs', () => ({ useVerbs: () => ({ addMaybe: vi.fn() }) }));
 vi.mock('../lib/outbox', () => ({ useIsOffline: () => isOffline }));
+
+// The device's location, driven per test. `permissionState` is what the Permissions
+// API reports BEFORE anything is asked — which is what decides whether opening the
+// tab may fetch a fix silently or has to show the reason-first card first
+// (ADR-0109 session-134). `null` stands for "no Permissions API at all" (Safari).
+let permissionState: PermissionState | null = 'prompt';
+let geoFix: { lat: number; lng: number } | null = null;
+const getCurrentPosition = vi.fn(
+  (onSuccess: (p: { coords: { latitude: number; longitude: number } }) => void) => {
+    if (geoFix) onSuccess({ coords: { latitude: geoFix.lat, longitude: geoFix.lng } });
+  },
+);
 Object.defineProperty(navigator, 'geolocation', {
-  value: { getCurrentPosition: vi.fn() },
+  value: { getCurrentPosition },
+  configurable: true,
+});
+Object.defineProperty(navigator, 'permissions', {
+  get: () =>
+    permissionState === null
+      ? undefined
+      : { query: () => Promise.resolve({ state: permissionState, addEventListener() {} }) },
   configurable: true,
 });
 
@@ -159,7 +178,12 @@ const listButton = (label: string) => screen.getByRole('button', { name: new Reg
 const toggle = (label: string) => screen.getByRole('button', { name: label });
 
 describe('the embedded map’s shell (ADR-0121)', () => {
-  beforeEach(() => setSimulatedNow(NOON));
+  beforeEach(() => {
+    setSimulatedNow(NOON);
+    // Most tests here are about the map, not about location: a standing refusal is
+    // the branch that offers nothing, so the on-open offer stays out of their way.
+    permissionState = 'denied';
+  });
   afterEach(() => {
     cleanup();
     setSimulatedNow(null);
@@ -170,6 +194,9 @@ describe('the embedded map’s shell (ADR-0121)', () => {
     currentMode = 'trip';
     isOffline = false;
     paneProps.current = {};
+    permissionState = 'prompt';
+    geoFix = null;
+    getCurrentPosition.mockClear();
   });
 
   const seed = () => {
@@ -648,6 +675,63 @@ describe('the embedded map’s shell (ADR-0121)', () => {
 
       fireEvent.click(listButton(t.map.allDays));
       expect(paneProps.current.setSignal).not.toBe(first);
+    });
+  });
+
+  // ADR-0109 session-134: opening the tab offers to locate you, rather than waiting
+  // for a chip tap. What §6 was protecting is what these assert — a cold OS dialog
+  // never appears, and a refusal is never nagged.
+  describe('opening the tab offers to locate you (ADR-0109 session-134)', () => {
+    const card = () => screen.queryByText(t.map.near.prompt.body);
+
+    it('standing permission: fetches a fix with NO card and no dialog at all', async () => {
+      seed();
+      permissionState = 'granted';
+      geoFix = { lat: 35.6, lng: 139.6 };
+      render(wrap(<MapView />));
+      // The Permissions API answers a microtask later, so let it.
+      await vi.waitFor(() => expect(getCurrentPosition).toHaveBeenCalledTimes(1));
+      // No card: the browser already has consent, so asking again would be theatre.
+      expect(card()).toBeNull();
+      await vi.waitFor(() => expect(screen.queryByText(t.map.near.groupHeader)).toBeTruthy());
+      // …and the me dot arrives with the fix.
+      expect(paneProps.current.me).toEqual({ lat: 35.6, lng: 139.6 });
+    });
+
+    it('a prompt would appear: shows OUR card and touches nothing', async () => {
+      seed();
+      permissionState = 'prompt';
+      render(wrap(<MapView />));
+      await vi.waitFor(() => expect(card()).toBeTruthy());
+      expect(getCurrentPosition).not.toHaveBeenCalled();
+      expect(paneProps.current.me).toBeUndefined();
+    });
+
+    it('no Permissions API (Safari): shows the card rather than risk a cold dialog', async () => {
+      seed();
+      permissionState = null;
+      render(wrap(<MapView />));
+      await vi.waitFor(() => expect(card()).toBeTruthy());
+      expect(getCurrentPosition).not.toHaveBeenCalled();
+    });
+
+    it('already refused: offers nothing — a refusal is an answer, not an invitation', async () => {
+      seed();
+      permissionState = 'denied';
+      render(wrap(<MapView />));
+      await vi.waitFor(() => expect(getCurrentPosition).not.toHaveBeenCalled());
+      expect(card()).toBeNull();
+      // The chip is still there to opt in with.
+      expect(screen.getByRole('button', { name: new RegExp(t.map.near.chip) })).toBeTruthy();
+    });
+
+    it('offline: nothing is offered, since you cannot be located anyway', async () => {
+      seed();
+      permissionState = 'prompt';
+      isOffline = true;
+      render(wrap(<MapView />));
+      await vi.waitFor(() => expect(getCurrentPosition).not.toHaveBeenCalled());
+      expect(card()).toBeNull();
     });
   });
 

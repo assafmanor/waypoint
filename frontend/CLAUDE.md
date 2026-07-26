@@ -156,6 +156,13 @@ saying so is the point — don't imply a canvas was seen. Note the pairing:
 `Map.test.tsx` runs with **no** build config, which is the graceful-absence
 (list-only) path and must stay tested as such, so the split has its own file.
 
+**"It talks to a third-party object" is not the same as "it can't be tested",** and
+reading it that way shipped a camera that opened on the whole world (ADR-0121's
+session-134 build-log entry). `useMapCamera` touches eight `google.maps.Map`
+methods, so a ~60-line fake map covers it completely — see
+`lib/useMapCamera.test.tsx`. Before declaring imperative glue untestable, count
+the methods it actually calls; usually a fake is cheaper than the bug.
+
 Two rules that exist because their absence hid real bugs for three review
 rounds (the Map tab's ordering, ADR-0109 session-110):
 

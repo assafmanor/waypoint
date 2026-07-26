@@ -94,6 +94,30 @@ export function boundsContain(outer: MapBounds, inner: MapBounds): boolean {
 export type CameraTarget =
   { kind: 'none' } | { kind: 'centre'; at: LatLng } | { kind: 'fit'; bounds: MapBounds };
 
+/** Padding for a fit, dropped when the viewport cannot hold it.
+ *
+ *  `fitBounds` with padding that eats most of the map div produces a degenerate
+ *  viewport and zooms far **out** — the "why is the whole world on screen" failure,
+ *  and it is worst exactly when it is hardest to see: a div measured before layout
+ *  settles is 0×0, where any padding at all is too much. Returning `undefined` (no
+ *  padding) costs the topmost pin's tag a few pixels; the alternative costs the
+ *  whole framing.
+ *
+ *  `null` means "don't fit at all yet" — an unsized div has no honest answer, so the
+ *  caller waits rather than fitting into nothing. */
+export function fitPaddingFor(
+  viewport: { width: number; height: number },
+  padding: { top: number; right: number; bottom: number; left: number },
+): typeof padding | undefined | null {
+  if (viewport.width <= 0 || viewport.height <= 0) return null;
+  const fits =
+    padding.left + padding.right < viewport.width * MAX_PADDING_SHARE &&
+    padding.top + padding.bottom < viewport.height * MAX_PADDING_SHARE;
+  return fits ? padding : undefined;
+}
+/** Padding may claim at most this share of either axis before it is dropped. */
+const MAX_PADDING_SHARE = 0.5;
+
 export function cameraTargetFor(points: readonly LatLng[], view: MapBounds | null): CameraTarget {
   const bounds = boundsOfPoints(points);
   if (!bounds) return { kind: 'none' };

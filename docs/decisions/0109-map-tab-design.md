@@ -7,6 +7,38 @@
 
 Mockup: [`mockups/map-tab-v1.html`](../../mockups/map-tab-v1.html) — the list-first tab in both modes, all four location states (normal / near-me granted / denied / offline), the pin-anatomy legend, a Phase-6 rendered-map preview, and the ADR-0107 zone chip.
 
+## Amendment (2026-07-27, session 134) — the Map tab offers to locate you on open
+
+§6 says geolocation is asked **on intent** and never on tab open, and "Alternatives
+considered" rejects asking on open outright. That rejection is narrowed here, at the
+product owner's call: **opening the Map tab now offers to locate you.** On a map,
+"what's near me now" is the question you arrived with, so requiring a separate chip
+tap to express an intent the tab itself expresses is friction, not consent.
+
+What the original rejection was actually protecting is kept in full — its objection
+was to "a cold permission prompt with no stated reason", not to the timing:
+
+- **Standing permission → no prompt of any kind.** We ask the device straight away,
+  which shows nothing (the browser already holds consent) and simply lights the "me"
+  dot up. This was always allowed: §6's own "a fix we already hold needs no second
+  prompt". `useGeolocation` gained a `permission` reading off the Permissions API to
+  make it decidable **before** asking, which is the whole mechanism.
+- **A prompt would appear, or we cannot tell** (Safari has no Permissions API) → our
+  **own reason-first card** comes up by itself, stating the on-device promise
+  (ADR-0006) before anything touches the device. The OS dialog still only ever
+  follows an explicit "אפשר מיקום". So the dark pattern the ADR named — a cold OS
+  prompt — remains impossible.
+- **Already refused → nothing at all.** A refusal is an answer, not an invitation;
+  the chip stays as the way back in, with the retry/instruct rule the session-105
+  amendment settled.
+- **Once per session.** "לא עכשיו" means not-this-session, not not-this-visit: the
+  tab remounts on every tab change, and a card that returns each time is exactly the
+  nag §6 exists to prevent. The flag lives on the lifted `MapScopeProvider`, which
+  outlives the screen; a reload asks again.
+
+Reads still never depend on it (§6's other half): the list renders in full with no
+location, and offline nothing is offered at all, since you cannot be located anyway.
+
 ## Amendment (2026-07-26, session 127) — a place with no day is its own block, and every block says its own name
 
 Reported off the running app: "maybes that aren't in any day still show up as 'in the past' on the place list."
@@ -312,7 +344,7 @@ So a future chat should treat the P5-results and full-P6-map mockups as **not-ye
 - **Teal Waypoint pin + category-as-glyph + amber commitment core** (this ADR's own first draft, and ADR-0106 Decision C's "teal on the pins"). Rejected on review: it contradicted the earlier, still-standing agreement that pin colour is **category**-driven (ADR-0038 §2 + ADR-0028's decorative palette, which sanctions category pin colours "never amber or teal"), and putting teal on every pin dilutes teal-as-signal. Category colour is the loud figure; teal/amber keep their affordance/time roles off the fill. The Waypoint marker stays the brand + shape heritage, not the pin's colour.
 - **Let the icon keep deciding an event's category** (status quo, ADR-0038 §4). Rejected (§11): now that colour = category, the category must be an explicit, deliberate field like a booking's type — not a side effect of icon choice.
 - **A teardrop map-pin as the list-row badge** (one shape everywhere). Rejected: a tilted teardrop reads as a misplaced map pin in a list and its tip points sideways; a rounded category badge is the right list idiom, the teardrop is the map idiom (both share the category colour).
-- **Ask for geolocation on tab open** (so distances are ready immediately). Rejected: a cold permission prompt with no stated reason is the classic dark-pattern and reads as the app grabbing location; ADR-0006's own-device posture and basic UX both call for just-in-time, reason-first prompting. Reads never depend on it.
+- **Ask for geolocation on tab open** (so distances are ready immediately). Rejected here, and **narrowed by the session-134 amendment**: the objection was to a _cold permission prompt with no stated reason_ — the classic dark pattern — not to the timing. The tab now offers on open, but only ever as our own reason-first card (or, with standing permission, as no prompt at all); ADR-0006's own-device posture is intact and reads still never depend on it.
 - **Surface a multi-day place on edge days only** (drop it from middle days entirely). Rejected: you always want to be able to find your hotel on the map mid-stay; the ambient treatment shows it as context without pretending it's a day-anchored commitment — matching how the day view already handles the same span (ADR-0054/0064).
 - **Surface a multi-day place identically on every span day** (a loud pin every day). Rejected: it mis-reads the day filter (a mid-stay hotel is not a thing anchored to _that_ day) and re-introduces exactly the "counted like a block" error ADR-0054 fixed for the glance.
 - **A spatial "me" dot mini-map for near-me in Phase 4** (bring a slice of Phase 6 forward). Rejected: it would pull the most expensive, least-offline-friendly piece (rendered tiles) into the phase specifically scoped to avoid it; the list re-sort + distance chips answer "what's near me" completely without a render, and the sort survives unchanged into Phase 6.

@@ -1,8 +1,11 @@
 // Own-device geolocation for "near me now" (ADR-0006: own-device IN, sharing with
-// the group OUT; ADR-0109 §6: just-in-time, never on tab open, never blocking a
-// read). The position is held in React state for the life of the screen and is
-// never persisted, never sent to the backend, and never put on the wire — the
-// whole feature is a client-side re-sort.
+// the group OUT; ADR-0109 §6: asked on intent, behind a reason-first card, never
+// blocking a read — and since the ADR-0109 session-134 amendment the Map tab makes
+// that intent implicit on open, which is what `permission` below exists for).
+//
+// The position is held in React state for the life of the screen and is never
+// persisted, never sent to the backend, and never put on the wire — the whole
+// feature is a client-side re-sort.
 //
 // One shot per request, not a `watchPosition` subscription: "near me now" answers
 // a question the user just asked, so a fix plus a re-tap to refresh costs far less
@@ -22,6 +25,14 @@ export type GeoStatus =
   /** No geolocation API, or the device couldn't get a fix. */
   | 'unavailable';
 
+/** What the browser will do if we ask, as far as the Permissions API will say.
+ *  The two non-Permissions-API values are distinct on purpose, because a caller
+ *  deciding whether to show a prompt has to tell them apart: `unknown` means the
+ *  query is still in flight (wait for it), while `unsupported` means there is no
+ *  Permissions API at all (Safari) and no better answer is coming. Neither is a
+ *  refusal. */
+export type GeoPermission = 'granted' | 'denied' | 'prompt' | 'unknown' | 'unsupported';
+
 export interface Geolocation {
   status: GeoStatus;
   /** The last fix, kept while the screen lives. Absent unless `status` is granted. */
@@ -29,16 +40,26 @@ export interface Geolocation {
   /** The permission is *hard*-denied, so a retry cannot re-prompt — the UI must
    *  say "allow it in your browser settings" rather than offer a dead button. */
   blocked: boolean;
+  /** Standing permission, before we ask anything. This is what lets a surface ask
+   *  for a fix with **no dialog of any kind** when consent already exists, and show
+   *  its reason-first card only when a prompt would actually appear. */
+  permission: GeoPermission;
   /** Ask for a fix. Safe to call repeatedly; a second call refreshes the position. */
   request: () => void;
 }
 
 const supported = () => typeof navigator !== 'undefined' && !!navigator.geolocation;
+const queryable = () => typeof navigator !== 'undefined' && !!navigator.permissions?.query;
 
 export function useGeolocation(): Geolocation {
   const [status, setStatus] = useState<GeoStatus>('idle');
   const [coords, setCoords] = useState<LatLng | undefined>();
   const [blocked, setBlocked] = useState(false);
+  // Seeded synchronously, so a caller never mistakes "no API here" for "still
+  // loading" — the two lead to different decisions.
+  const [permission, setPermission] = useState<GeoPermission>(() =>
+    queryable() ? 'unknown' : 'unsupported',
+  );
   // A fix can land after the screen is gone (the OS prompt has no time limit).
   // Re-armed on mount, not just cleared on unmount: a remount reuses the ref, so
   // without this a re-mounted hook (StrictMode's double-invoke in dev, or any
@@ -53,20 +74,27 @@ export function useGeolocation(): Geolocation {
   // which is what separates "tap to retry" from "change it in settings". It is
   // advisory only — where it is missing we simply learn from the request itself.
   useEffect(() => {
-    if (!supported() || !navigator.permissions?.query) return;
+    if (!supported()) {
+      setPermission('unsupported');
+      return;
+    }
+    if (!queryable()) return;
     let cancelled = false;
     navigator.permissions
       .query({ name: 'geolocation' as PermissionName })
-      .then((permission) => {
+      .then((status) => {
         const read = () => {
           if (cancelled || !alive.current) return;
-          setBlocked(permission.state === 'denied');
+          setBlocked(status.state === 'denied');
+          setPermission(status.state as GeoPermission);
         };
         read();
-        permission.addEventListener('change', read);
+        status.addEventListener('change', read);
       })
       .catch(() => {
-        /* not queryable here — the request result is the source of truth */
+        // Present but refusing to answer for geolocation — same practical position
+        // as having no API: nothing better is coming, so stop waiting on it.
+        if (!cancelled && alive.current) setPermission('unsupported');
       });
     return () => {
       cancelled = true;
@@ -84,17 +112,19 @@ export function useGeolocation(): Geolocation {
         if (!alive.current) return;
         setCoords({ lat: position.coords.latitude, lng: position.coords.longitude });
         setBlocked(false);
+        setPermission('granted');
         setStatus('granted');
       },
       (error) => {
         if (!alive.current) return;
         const refused = error.code === error.PERMISSION_DENIED;
         setBlocked(refused);
+        if (refused) setPermission('denied');
         setStatus(refused ? 'denied' : 'unavailable');
       },
       GEOLOCATION_OPTIONS,
     );
   }, []);
 
-  return { status, coords, blocked, request };
+  return { status, coords, blocked, permission, request };
 }

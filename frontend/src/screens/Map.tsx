@@ -134,7 +134,8 @@ export function MapView() {
   // lives in a lifted context so the header DayStrip can drop its selection while
   // it's on. Trip defaults to today, Plan to all; it re-defaults on a mode switch,
   // and a strip day-tap (which changes activeDate) narrows back out of it.
-  const { allDays, setAllDays, focusPlaceId, clearFocus } = useMapScope();
+  const { allDays, setAllDays, focusPlaceId, clearFocus, locationOffered, markLocationOffered } =
+    useMapScope();
   useEffect(() => setAllDays(mode === 'plan'), [mode, setAllDays]);
   const prevDate = useRef(activeDate);
   useEffect(() => {
@@ -191,6 +192,38 @@ export function MapView() {
   const staleDistances = nearMe && offline;
   const locationRefused = geo.status === 'denied' || geo.status === 'unavailable';
   const showNotice = nearMe && !offline && locationRefused && !noticeDismissed;
+
+  // Opening the tab offers to locate you (ADR-0109 session-134, amending §6's "asked
+  // only on a chip tap"): on a map, "what's near me now" is the question you came
+  // with, so making the intent implicit is what the tab is for. What §6 was actually
+  // protecting is kept — **a cold OS dialog never appears**:
+  //   • standing permission → ask the device straight away, which shows NO dialog at
+  //     all (the browser already has consent) and simply lights the me dot up;
+  //   • a prompt would appear, or we cannot tell (Safari has no Permissions API) →
+  //     our own reason-first card comes up, which states the on-device promise
+  //     (ADR-0006) before anything touches the device;
+  //   • already refused → nothing. A refusal is an answer, not an invitation.
+  // Once per session (`locationOffered`), so "לא עכשיו" means not-this-session rather
+  // than a card on every visit to the tab — the nag §6 exists to prevent.
+  useEffect(() => {
+    if (locationOffered || offline || nearMe) return;
+    // `unknown` means the Permissions API query is still in flight — wait for it,
+    // rather than showing a card we may not need. `unsupported` is the settled
+    // "nothing better is coming" answer, handled below.
+    if (geo.permission === 'unknown') return;
+    if (geo.permission === 'denied') {
+      markLocationOffered();
+      return;
+    }
+    if (geo.permission === 'granted') {
+      markLocationOffered();
+      setNearMe(true);
+      geo.request();
+      return;
+    }
+    markLocationOffered();
+    setPromptOpen(true);
+  }, [locationOffered, offline, nearMe, geo.permission, markLocationOffered, geo.request]);
 
   const askForLocation = () => {
     setPromptOpen(false);
