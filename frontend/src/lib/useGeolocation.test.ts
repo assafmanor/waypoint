@@ -1,6 +1,7 @@
 // @vitest-environment jsdom
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { act, renderHook, waitFor } from '@testing-library/react';
+import { StrictMode } from 'react';
 import { useGeolocation } from './useGeolocation';
 
 type SuccessFn = (position: { coords: { latitude: number; longitude: number } }) => void;
@@ -54,6 +55,17 @@ describe('useGeolocation (ADR-0006 own-device / ADR-0109 §6 just-in-time)', () 
     const { result } = renderHook(() => useGeolocation());
     act(() => result.current.request());
     expect(result.current.status).toBe('locating');
+    act(() => grant(35.68, 139.76));
+    expect(result.current.status).toBe('granted');
+    expect(result.current.coords).toEqual({ lat: 35.68, lng: 139.76 });
+  });
+
+  it('still takes the fix after a remount — the liveness ref is re-armed', () => {
+    // StrictMode double-invokes effects in dev, so the cleanup that marks the
+    // hook dead runs while it is very much alive. Left unarmed, every fix was
+    // dropped and the near-me chip sat on "locating" forever.
+    const { result } = renderHook(() => useGeolocation(), { wrapper: StrictMode });
+    act(() => result.current.request());
     act(() => grant(35.68, 139.76));
     expect(result.current.status).toBe('granted');
     expect(result.current.coords).toEqual({ lat: 35.68, lng: 139.76 });

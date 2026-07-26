@@ -27,6 +27,9 @@ describe('RevealList (ADR-0120)', () => {
 
     expect(rowFor('keep').className).not.toContain('hidden');
     expect(rowFor('keep').hasAttribute('inert')).toBe(false);
+    // Only a visible row can be watched moving, so only it carries the move key.
+    expect(rowFor('keep').getAttribute('data-flip-key')).toBe('keep');
+    expect(rowFor('drop').getAttribute('data-flip-key')).toBeNull();
     // The stagger counts visible rows only, so the second match follows the first.
     expect(rowFor('keep2').style.transitionDelay).toBe(`${FILTER_STAGGER_MS}ms`);
   });

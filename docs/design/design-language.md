@@ -231,9 +231,12 @@ The Plan⇄Trip switch is the product's most meaningful moment. Crucially it is 
 
 ### Filtering a list is a reveal (ADR-0120)
 
-Whenever a chip, toggle, or search query narrows a list, the list **reveals** rather than re-renders: a row that stops matching shrinks and fades in place, and rows that start matching come back with a small per-row stagger (`--t-base`, `--ease-standard`, capped so a long list doesn't drag). This is one shared mechanism, not a per-screen choice — `lib/filter-reveal.ts` + `ui/primitives/RevealList` (`.wp-reveal`), adopted by the Index bookings screen and the Map, and inherited by any list built on them.
+**Every** control that changes a list is animated — filter, search, scope, or order alike. There is no category of list control that rearranges rows without motion, and no per-screen choice about it: `lib/filter-reveal.ts` + `ui/primitives/RevealList` (`.wp-reveal`) carry it, and any list built on them inherits it.
 
-The distinction that decides whether motion applies: a **filter** narrows the list you're looking at, so it reveals; a **scope change** swaps in a different set (the Map's `כל הימים`, the Index's upcoming/past split), so it doesn't — animating one row out while an unrelated row takes its place would claim they were the same list.
+Two kinds of change, two mechanisms, both in the same primitive:
+
+- **Rows entering and leaving** — a row that stops matching shrinks and fades in place; one that starts matching comes back with a small per-row stagger (`--t-base`, `--ease-standard`, capped so a long list doesn't drag). This covers filters, search, and scope changes (the Map's `כל הימים` and the day strip's own day), which are predicates over the full set rather than a different list.
+- **Rows moving** — a re-order (the Map's `קרוב עכשיו`) changes only positions, so there is nothing to collapse or expand: each moved row slides from where it was to where it now is (FLIP, same duration and easing).
 
 ## Accessibility: non-color redundancy
 

@@ -43,6 +43,10 @@ The clip box gets a small **bleed** (`--reveal-bleed`, a layout-neutral padding/
 
 ### 4. Which controls animate, and which don't
 
+> **Superseded by the session-130 amendment below**, on the owner's call: **every**
+> control that changes the list animates, re-orders included. The original text is
+> kept because the distinction it drew is the one the amendment overturns.
+
 A filter reveals; a **scope change** doesn't. On the Map the type chips, the `אולי` toggle, and the search query ride the reveal — they narrow the list you're looking at. `כל הימים` does not: it swaps in a different set of places, the way the Index's upcoming/past split does, and animating one row out while another's row appears in its place would say they were the same list. Near-me is a re-sort, untouched here.
 
 ## Consequences
@@ -52,3 +56,31 @@ A filter reveals; a **scope change** doesn't. On the Map the type chips, the `א
 - **`.idx-row` is gone**; the class is `.wp-reveal` everywhere, and `screens.css` keeps only the Index's own row-separator rules on top of it.
 - **The next filterable list is a two-line adoption** — `revealRows` + `RevealList` — which is the standing answer for the documents search (ADR-0101's deferred one), the shelf's deferred filter row (ADR-0116), and an outcome facet (ADR-0117's deferred "what's left"). None of them gets to decide whether filtering animates.
 - **Reduced motion is unchanged**: App.css's global rule disables the transition, and the visible/hidden result is identical.
+
+## Amendment — session-130 (2026-07-26): every list change is animated, re-orders included
+
+**Owner call, straight after this ADR shipped:** "it should be added for the all days and closeby filters/orders — it should be for every list change." §4's distinction is withdrawn. There is no category of list control that changes rows without motion.
+
+Two things follow, one per kind of change:
+
+### A. A scope change is a reveal too
+
+`כל הימים` (and the day strip's own day, which narrows the same way) is now a **predicate over the whole trip's places**, not a different array. A place that leaves the day scope collapses in place; one that arrives reveals with the same stagger — and the row nodes are reused across the toggle rather than the list being rebuilt. The chip **counts** still read the scoped set, so nothing a chip claims changed.
+
+The §4 argument — that a scope swap isn't the same list, so animating it lies — was theory. In the running app it reads as the opposite: the day scope is the map's most-used control, and it was the one that jumped.
+
+### B. A re-order is a move, which needs its own mechanism
+
+The reveal can only animate rows entering and leaving. `קרוב עכשיו` changes **nothing but positions**, so there was nothing for it to animate — the rows teleported.
+
+`lib/useFlipRows.ts` adds the missing half: FLIP (measure each row's previous position, let React lay out the new order, play each moved row from its old offset to zero). It lives inside `RevealList`, so a list gets it by being a list — no call site opts in, and near-me, a re-sorting scope change, and any future ordering control are covered by construction.
+
+Three details that keep it quiet:
+
+- **Web Animations API, not a CSS transition.** The rows already transition `transform` (the reveal's shrink) and carry an inline `transition-delay` (the stagger); an inline transform for FLIP would fight both and leave styles behind for React to diff. A WAAPI animation composites over the CSS and cleans itself up.
+- **It measures only when the list changed.** The Map re-renders every clock tick; the effect is keyed on the row order + visibility, so a tick costs no layout read.
+- **Only visible rows are tracked**, and a row with no previous position isn't moved — an arriving row is the reveal's job, not a slide from nowhere. `prefers-reduced-motion` skips the play but keeps measuring, so the next change is still correct.
+
+### Found on the way: near-me never resolved in dev
+
+Verifying B surfaced a real bug in `lib/useGeolocation.ts`: the `alive` ref was cleared on unmount and never re-armed, so a remount (StrictMode's double-invoke in dev, or any real one) discarded every fix the browser handed back and `קרוב עכשיו` sat on `מאתר…` forever. One line, plus a regression test that fails without it. Not part of the motion work, but the motion work is what proved the control never ran.

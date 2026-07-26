@@ -40,8 +40,14 @@ export function useGeolocation(): Geolocation {
   const [coords, setCoords] = useState<LatLng | undefined>();
   const [blocked, setBlocked] = useState(false);
   // A fix can land after the screen is gone (the OS prompt has no time limit).
+  // Re-armed on mount, not just cleared on unmount: a remount reuses the ref, so
+  // without this a re-mounted hook (StrictMode's double-invoke in dev, or any
+  // real remount) discards every fix it is handed and the chip stays "מאתר…".
   const alive = useRef(true);
-  useEffect(() => () => void (alive.current = false), []);
+  useEffect(() => {
+    alive.current = true;
+    return () => void (alive.current = false);
+  }, []);
 
   // The Permissions API tells us up front whether asking would even show a prompt,
   // which is what separates "tap to retry" from "change it in settings". It is

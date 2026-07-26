@@ -152,11 +152,11 @@ export function MapView() {
   const allUsages = useMemo(() => [...usageIndex.values()], [usageIndex]);
 
   // Day scope: all places (all-days) or only those anchored to the active day.
-  const dayScoped = useMemo(
-    () =>
-      allDays ? allUsages : allUsages.filter((u) => u.days.some((d) => d.date === activeDate)),
-    [allUsages, allDays, activeDate],
-  );
+  // The predicate is named because the list no longer filters on it — it reveals
+  // on it, like every other control (ADR-0120 session-130) — while the chip
+  // counts below still read the scoped set.
+  const inDayScope = (u: PlaceUsage) => allDays || u.days.some((d) => d.date === activeDate);
+  const dayScoped = useMemo(() => allUsages.filter(inDayScope), [allUsages, allDays, activeDate]);
 
   // Each facet counts what the OTHER one leaves visible, so no chip ever claims
   // rows the list won't show: with `אולי` on, the type chips count only shelf
@@ -218,12 +218,15 @@ export function MapView() {
   };
   const listOrder = nearActive ? byDistance : bySchedule;
 
-  // The chip/toggle filters ride the app's shared reveal (ADR-0120): a row that
-  // stops matching stays in place and collapses, so the list answers a chip tap
-  // with motion rather than a jump. Only the type/`אולי` facets work this way —
-  // the day scope is a different set of places, not a filter over this one.
-  const listRows = revealRows([...dayScoped].sort(listOrder), (u) =>
-    matchesPlaceFilter(u, { category: activeCategory, maybesOnly }),
+  // Every control that changes this list is animated (ADR-0120 session-130), so
+  // the row set is the whole trip and each control is a predicate over it: the
+  // type chips, the `אולי` toggle, AND the day scope (`כל הימים`, and the strip's
+  // day itself) — a row leaving the scope collapses in place instead of blinking
+  // out, and one arriving reveals with the same stagger. Re-orders (near-me) are
+  // the other half, animated by `RevealList`'s move pass rather than here.
+  const listRows = revealRows(
+    [...allUsages].sort(listOrder),
+    (u) => inDayScope(u) && matchesPlaceFilter(u, { category: activeCategory, maybesOnly }),
   ).rows;
   const listCount = countVisible(listRows);
 
