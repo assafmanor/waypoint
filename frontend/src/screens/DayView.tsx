@@ -7,7 +7,7 @@
 // recede once passed; a passed-but-unmarked soft event offers an inline settle
 // ("we did this / skip"); the ±30 nudge only offers moves that are possible; and
 // a past day reads as a read-only archive (ADR-0029), editing gated to Plan.
-import { Fragment, useEffect, useRef, useState } from 'react';
+import { Fragment, useEffect, useMemo, useRef, useState } from 'react';
 import {
   EVENT_KIND,
   EVENT_STATUS,
@@ -20,6 +20,7 @@ import {
 import { useTrip, byStart } from '../state/trip-state';
 import { prefersReducedMotion } from '../lib/motion';
 import {
+  authoringZone,
   eventDirectionsUrl,
   eventDurationLabel,
   eventEdgeZone,
@@ -31,7 +32,9 @@ import {
   isDayOver,
   liveToday,
   liveZone,
+  placeTimezone,
   type ZoneContext,
+  type ZoneEvidence,
 } from '../lib/places';
 import { useVerbs } from '../state/verbs';
 import { useClock } from '../lib/useClock';
@@ -424,7 +427,13 @@ export function DayView() {
       {scheduleItem && (
         <ScheduleSheet
           item={scheduleItem}
-          defaults={nextSlot(dayEvents, activeDate, trip.timezone)}
+          // The free slot is read on the same clock the sheet types on, so the
+          // prefilled time means what the day means by it (ADR-0107 session 128).
+          defaults={nextSlot(
+            dayEvents,
+            activeDate,
+            authoringZone({ placeId: scheduleItem.placeId }, { date: activeDate }, zoneEvidence),
+          )}
           // The day is now part of the sheet (ADR-0116 §5), defaulting to the idea's
           // own pencilled-in day: putting something on Thursday stops requiring a
           // trip to Thursday first. Day-scope still gates the range — scheduling is
@@ -432,13 +441,17 @@ export function DayView() {
           date={scheduleItem.targetDate ?? activeDate}
           minDate={today > trip.startDate ? today : trip.startDate}
           maxDate={trip.endDate}
-          onConfirm={(date, start, end) => {
+          evidence={zoneEvidence}
+          onConfirm={({ date, start, end, zone, override }) => {
             verbs.schedule(scheduleItem, {
               date,
               title: scheduleItem.title,
               kind: EVENT_KIND.SOFT,
-              startsAt: start ? zonedIso(date, start, trip.timezone) : undefined,
-              endsAt: end && start ? resolveEndIso(date, start, end, trip.timezone) : undefined,
+              // Typed in the day's own zone, not the trip primary — the zone the
+              // chip states and the day view will read the event back in.
+              startsAt: start ? zonedIso(date, start, zone) : undefined,
+              endsAt: end && start ? resolveEndIso(date, start, end, zone) : undefined,
+              displayTimezone: override ?? undefined,
             });
             setScheduleItem(null);
           }}
@@ -619,14 +632,20 @@ function ItemNode({ item, depth, ctx }: { item: TimeItem; depth: number; ctx: Da
 // Trip-mode quick-schedule: tap a shelf idea, adjust the prefilled day + time, done
 // (ADR-0025 Tier-1). The day joined the sheet in ADR-0116 §5, which also retires the
 // last bespoke time-only control here in favour of the app's one date/time primitive
-// (`WhenField`, ADR-0083) — so this sheet gains the zone chip's grammar for free.
-// Kind/location stay Plan-mode building.
+// (`WhenField`, ADR-0083). Kind/location stay Plan-mode building.
+//
+// It types in the zone the day view will read the event back in, stated on the
+// `WhenField`'s zone chip (ADR-0107 §6, session-128 amendment): a time slotted here
+// used to be interpreted in the trip primary while the row rendered in the day's
+// own zone, so on a multi-zone trip an idea dropped at 19:00 reappeared shifted.
+// Editable only when no place answers the zone — the same rule as every other form.
 function ScheduleSheet({
   item,
   defaults,
   date,
   minDate,
   maxDate,
+  evidence,
   onConfirm,
   onClose,
 }: {
@@ -635,10 +654,31 @@ function ScheduleSheet({
   date: string;
   minDate: string;
   maxDate: string;
-  onConfirm: (date: string, start: string, end: string) => void;
+  evidence: ZoneEvidence;
+  onConfirm: (picked: {
+    date: string;
+    start: string;
+    end: string;
+    zone: string;
+    override: string | null;
+  }) => void;
   onClose: () => void;
 }) {
   const [when, setWhen] = useState({ date, start: defaults.start, end: defaults.end });
+  const [override, setOverride] = useState<string | null>(null);
+
+  // The day and the time both move the answer (a later day can sit past a
+  // crossing), so it re-resolves with the fields rather than once on open.
+  const zone =
+    override ??
+    authoringZone({ placeId: item.placeId }, { date: when.date, time: when.start }, evidence);
+  const placeAnswers = placeTimezone(evidence.places, item.placeId) != null;
+  const suggestedZones = useMemo(() => {
+    const zones = [zone, evidence.primaryZone];
+    for (const p of evidence.places) if (p.timezone) zones.push(p.timezone);
+    return [...new Set(zones)];
+  }, [zone, evidence.primaryZone, evidence.places]);
+
   return (
     <Sheet title={t.day.scheduleTitle(item.title)} onClose={onClose}>
       <WhenField
@@ -649,11 +689,17 @@ function ScheduleSheet({
         minDate={minDate}
         maxDate={maxDate}
         onChange={setWhen}
+        zone={{
+          value: zone,
+          onChange: placeAnswers ? undefined : setOverride,
+          pinned: override != null,
+          suggested: suggestedZones,
+        }}
       />
       <button
         type="button"
         className="sched-confirm"
-        onClick={() => onConfirm(when.date, when.start, when.end)}
+        onClick={() => onConfirm({ ...when, zone, override })}
       >
         {ICONS.schedule} {t.actions.scheduleToDay}
       </button>

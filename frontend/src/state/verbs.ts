@@ -39,6 +39,7 @@ import {
   type OutboxOp,
 } from '../lib/outbox';
 import { getNow } from '../lib/useClock';
+import { eventDisplayZones } from '../lib/places';
 import { coerceClearedFields } from '../lib/cache';
 import { isoToTimeInput, zonedIso } from '../lib/time';
 import { planReorder } from '../lib/reorder';
@@ -672,7 +673,7 @@ export async function applyUndo(deps: VerbDeps): Promise<void> {
 }
 
 export function useVerbs() {
-  const { dispatch, trip, events, ripple, activeDate } = useTrip();
+  const { dispatch, trip, events, ripple, activeDate, zoneEvidence } = useTrip();
   const { me } = useAuth();
   const toast = useToast();
   const confirmHardEdit = useConfirmHardEdit();
@@ -728,7 +729,11 @@ export function useVerbs() {
       const now = new Date(getNow()).toISOString();
       const event = buildScheduleEvent(trip, activeDate, m, now, authorId, fields);
       void applySchedule(deps, event, m.id);
-      const timeLabel = event.startsAt ? isoToTimeInput(event.startsAt, trip.timezone) : null;
+      // The toast says the time back in the event's OWN zone (ADR-0107) — on a
+      // multi-zone trip the trip primary would confirm an hour nobody typed.
+      const timeLabel = event.startsAt
+        ? isoToTimeInput(event.startsAt, eventDisplayZones(event, zoneEvidence).start)
+        : null;
       toast(
         ICONS.schedule,
         timeLabel ? t.toast.scheduled(event.title, timeLabel) : t.toast.scheduledDay(event.title),

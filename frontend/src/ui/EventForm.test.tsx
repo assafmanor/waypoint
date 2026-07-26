@@ -21,8 +21,15 @@ const tripState = {
   },
   activeDate: '2026-07-20',
   events: [] as unknown[],
-  bookings: [] as unknown[],
-  zoneCrossings: [] as unknown[],
+  // The one zone evidence trip-state memoizes — every zone question resolves
+  // against it, so a test adds a crossing here rather than to a per-screen copy.
+  zoneEvidence: {
+    events: [] as unknown[],
+    bookings: [] as unknown[],
+    places: [] as unknown[],
+    crossings: [] as unknown[],
+    primaryZone: 'Asia/Tokyo',
+  },
   // The place field (PlacePicker) reads the snapshot + the place verbs.
   places: [] as unknown[],
   indexVerbs: { createPlace: vi.fn(), resolvePlace: vi.fn() },
@@ -110,9 +117,11 @@ describe('EventForm (folded into Modal, U-01)', () => {
 
     afterEach(() => {
       tripState.events = [];
-      tripState.bookings = [];
       tripState.places = [];
-      tripState.zoneCrossings = [];
+      tripState.zoneEvidence.events = [];
+      tripState.zoneEvidence.bookings = [];
+      tripState.zoneEvidence.places = [];
+      tripState.zoneEvidence.crossings = [];
       verbs.create.mockClear();
       verbs.update.mockClear();
     });
@@ -134,7 +143,7 @@ describe('EventForm (folded into Modal, U-01)', () => {
     it('states the ITINERARY SEGMENT zone for a time before the outbound crossing', () => {
       // The outbound flight departs 20:00Z on the 20th, so a 15:00-local event that
       // day sits in the origin segment — Jerusalem, not the destination.
-      tripState.zoneCrossings = [
+      tripState.zoneEvidence.crossings = [
         { at: Date.parse(flight.startsAt), fromZone: TLV, toZone: 'Asia/Tokyo' },
       ];
       render(

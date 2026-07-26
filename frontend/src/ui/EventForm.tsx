@@ -16,7 +16,7 @@ import {
   type TripEvent,
 } from '@waypoint/shared';
 import { useTrip } from '../state/trip-state';
-import { eventDisplayZones, placeTimezone, type ZoneContext } from '../lib/places';
+import { authoringZone, eventDisplayZones, placeTimezone } from '../lib/places';
 import { useAuth } from '../state/auth-state';
 import { useVerbs } from '../state/verbs';
 import { getNow } from '../lib/useClock';
@@ -51,7 +51,7 @@ export function EventForm({
   maybeItem?: MaybeItem | null;
   onClose: () => void;
 }) {
-  const { trip, activeDate, events, bookings, places, zoneCrossings } = useTrip();
+  const { trip, activeDate, events, places, zoneEvidence } = useTrip();
   const { me } = useAuth();
   const verbs = useVerbs();
 
@@ -66,35 +66,20 @@ export function EventForm({
   // day view resolves the event's display zone: the manual override if pinned,
   // else the picked place, else the itinerary segment, else the trip primary. An
   // existing event is read back in that same zone, so the form and the view agree
-  // (the slice-4a rule, now for events too).
-  const zoneCtx: Omit<ZoneContext, 'ambientZone'> = {
-    bookings,
-    places,
-    crossings: zoneCrossings,
-    primaryZone: trip.timezone,
-  };
+  // (the slice-4a rule, now for events too) — via the one shared `authoringZone`,
+  // which the shelf's schedule sheet reads too (session-128 amendment).
   const initialOverride = event?.displayTimezone ?? null;
   const [override, setOverride] = useState<string | null>(initialOverride);
 
-  // The zone an event with these fields would display in. Placeless times resolve
-  // through their itinerary segment, which needs an instant — and the instant needs
-  // a zone, so this reads the segment twice: once interpreting the typed time in the
-  // trip primary, then again in the zone that produced. Two passes reach the fixed
-  // point wherever the two agree, which is everywhere but a time sitting within a
-  // few hours of a crossing.
-  const derivedZone = (atDate: string, atTime: string, forPlaceId?: string): string => {
-    const resolve = (interpretIn: string): string =>
-      eventDisplayZones(
-        {
-          ...(event ?? {}),
-          displayTimezone: undefined,
-          placeId: showPlace ? forPlaceId : event?.placeId,
-          startsAt: atTime ? zonedIso(atDate, atTime, interpretIn) : undefined,
-        } as TripEvent,
-        zoneCtx,
-      ).start;
-    return resolve(resolve(trip.timezone));
-  };
+  const derivedZone = (atDate: string, atTime: string, forPlaceId?: string): string =>
+    authoringZone(
+      {
+        ...(event ?? {}),
+        placeId: showPlace ? forPlaceId : event?.placeId,
+      },
+      { date: atDate, time: atTime },
+      zoneEvidence,
+    );
 
   // Initial values captured up front so the unsaved-changes guard can diff
   // against them (props are stable while the form is open).
@@ -103,7 +88,7 @@ export function EventForm({
   const initialZone =
     initialOverride ??
     (event
-      ? eventDisplayZones(event, zoneCtx).start
+      ? eventDisplayZones(event, zoneEvidence).start
       : derivedZone(initialDate, defaults?.start ?? '', maybeItem?.placeId));
   const initialStart = event?.startsAt
     ? isoToTimeInput(event.startsAt, initialZone)

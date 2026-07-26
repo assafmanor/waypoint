@@ -22,6 +22,7 @@ import {
   bookingEndZones,
   currentZone,
   dayAmbientZone,
+  authoringZone,
   dayZoneContext,
   isDayOver,
   liveToday,
@@ -37,7 +38,7 @@ import {
   type ZoneCrossing,
   type ZoneEvidence,
 } from './places';
-import { todayInTz, zoneOffsetMinutes } from './time';
+import { isoToTimeInput, todayInTz, zonedIso, zoneOffsetMinutes } from './time';
 import type { MaybeItem } from '@waypoint/shared';
 
 const place = (id: string, name: string, coords?: Partial<Place>): Place => ({
@@ -971,6 +972,80 @@ describe('zone contexts — one builder, so surfaces cannot diverge (session 102
     expect(ctx.bookings).toBe(evidence.bookings);
     expect(ctx.places).toBe(evidence.places);
     expect(ctx.primaryZone).toBe(evidence.primaryZone);
+  });
+});
+
+describe('authoringZone — a form types in the zone the view reads back (session 128)', () => {
+  const JLM = 'Asia/Jerusalem';
+  const TYO = 'Asia/Tokyo';
+  // ADR-0107's worked example: a Tokyo trip (primary = destination) whose outbound
+  // TLV→NRT flight departs 20:00Z on the 7th. Before it you are on Jerusalem's clock.
+  const flightBk = booking({
+    id: 'bk-fl',
+    type: BOOKING_TYPE.FLIGHT,
+    fromPlaceId: 'pl-tlv',
+    toPlaceId: 'pl-nrt',
+  });
+  const flightEv = event({
+    id: 'ev-fl',
+    bookingId: 'bk-fl',
+    startsAt: '2026-07-07T20:00:00Z',
+    endsAt: '2026-07-08T09:00:00Z',
+  });
+  const places = [
+    place('pl-tlv', 'נתב״ג', { timezone: JLM }),
+    place('pl-nrt', 'נריטה', { timezone: TYO }),
+    place('pl-lite', 'שם בלבד'),
+  ];
+  const evidence: ZoneEvidence = {
+    events: [flightEv],
+    bookings: [flightBk],
+    places,
+    crossings: tripZoneCrossings([flightEv], [flightBk], places),
+    primaryZone: TYO,
+  };
+
+  it('types a pre-departure time on the origin clock, not the trip primary', () => {
+    expect(authoringZone({}, { date: '2026-07-07', time: '15:00' }, evidence)).toBe(JLM);
+  });
+
+  it('types a post-arrival time on the destination clock', () => {
+    expect(authoringZone({}, { date: '2026-07-08', time: '19:00' }, evidence)).toBe(TYO);
+  });
+
+  it('lets a picked place answer over the segment', () => {
+    // Standing in Israel on flight day, but the place is in Tokyo.
+    expect(
+      authoringZone({ placeId: 'pl-nrt' }, { date: '2026-07-07', time: '15:00' }, evidence),
+    ).toBe(TYO);
+    // A coordless Place-lite answers nothing, so the segment still does.
+    expect(
+      authoringZone({ placeId: 'pl-lite' }, { date: '2026-07-07', time: '15:00' }, evidence),
+    ).toBe(JLM);
+  });
+
+  it("stands in the day's noon when no time is typed yet", () => {
+    // A fresh draft on a day starts in THAT day's zone rather than the primary —
+    // otherwise the chip states one zone and the first typed digit changes it.
+    expect(authoringZone({}, { date: '2026-07-07' }, evidence)).toBe(JLM);
+    expect(authoringZone({}, { date: '2026-07-08' }, evidence)).toBe(TYO);
+  });
+
+  it('round-trips: the instant it builds reads back as the time that was typed', () => {
+    // The bug this closes — the shelf slotted 15:00 in the trip primary (Tokyo)
+    // while the day view rendered the row in the day's own zone (Jerusalem), so a
+    // pre-departure idea reappeared at 09:00.
+    const zone = authoringZone({}, { date: '2026-07-07', time: '15:00' }, evidence);
+    const scheduled = event({
+      id: 'ev-new',
+      date: '2026-07-07',
+      startsAt: zonedIso('2026-07-07', '15:00', zone),
+    });
+    const shown = eventDisplayZones(scheduled, evidence).start;
+    expect(isoToTimeInput(scheduled.startsAt!, shown)).toBe('15:00');
+    // Authored in the trip primary instead (the old behaviour), it shifts.
+    const wrong = zonedIso('2026-07-07', '15:00', evidence.primaryZone);
+    expect(isoToTimeInput(wrong, shown)).toBe('09:00');
   });
 });
 

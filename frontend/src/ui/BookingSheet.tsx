@@ -624,7 +624,7 @@ export function BookingSheet({
  *  zone-crossing route reads "זמן מקומי בכל עיר · ביעד שעה אחורה", a single-place
  *  booking (in a zone differing from the trip's) "זמן מקומי · המקום שעה קדימה".
  *  Shown only when there's a real shift — a zero difference is no ambiguity.
- *  Read-only here; the editable zone chip is a later slice. */
+ *  A statement, not a control: the editable chip sits on the time fields above. */
 function ZoneNote({
   startZone,
   endZone,
