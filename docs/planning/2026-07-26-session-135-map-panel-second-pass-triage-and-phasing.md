@@ -1,15 +1,15 @@
-# Session 135 — the map panel's second pass: 14 field reports, triaged and phased
+# Session 135 — the map panel's second pass: 15 field reports, triaged and phased
 
 **Date:** 2026-07-26
 **Branch:** `claude/new-map-categorize-plan-2jt468`
 **Paper only** — no feature code. Reads against ADR-0106, 0109, 0110, 0111, 0112, 0115, 0117, 0119, 0120, 0121; ADR-0054/0063 for the span question.
 
 Phase 6 shipped in session 133 and got three production fixes in 134. This is the first
-**field report from using the finished tab**: fourteen items from the owner, in the order they
+**field report from using the finished tab**: fifteen items from the owner, in the order they
 were reported. The session's job was to understand each one against the code, sort them, and
 lay out an order to take them in — not to fix anything.
 
-**The headline finding: only four of the fourteen are defects.** Three are decisions the owner
+**The headline finding: only four of the fifteen are defects.** Three are decisions the owner
 is reversing (all documented, all deliberate), two are new product surfaces with money
 attached, and the rest are ergonomics on a shell that was designed on a mockup and is now being
 used on a phone. That ratio is why the phasing below front-loads the cheap half — five items
@@ -33,6 +33,7 @@ can be closed in one session without a single new design decision.
 | 12  | סימון מקום ידני על המפה                          | A new `Place` origin: coords, **no** `googlePlaceId`, user-typed name. Touches the dedup unique, `geo-tz` (unaffected — lat/lng based), and ADR-0112                                                                                              | New ADR                       |
 | 13  | מקומות ממוספרים על המפה צריכים מספור גם ברשימה   | `orderIndex` is already computed (`buildPinOrderIndex`) and handed to every pin as `order`; `PlaceRow` simply never receives it                                                                                                                   | **Bug** (cheapest of the set) |
 | 14  | מלון (וכל אירוע/הזמנה מתמשכים) בסקופ של כל יום   | `spanDays` **does** emit a middle-day `DayUsage` (`prominence: 'ambient'`) and it **is** pinned (`PIN_TIER.ambient`, `saturate(.45) opacity(.8)`). So either the treatment is too quiet to register, or the stay carries no `endDate` span at all | **Triage first**              |
+| 15  | כשיש מיקום אחד, הזום קרוב מדי                    | A lone point takes the `centre` branch and lands at `MAP_ZOOM.SINGLE_PIN` = **15**; a tight _cluster_ takes the `fit` branch and clamps at `MAP_ZOOM.MAX_FIT` = **16**, closer still. Both are street-level with no surrounding context           | Tuning (two constants)        |
 
 ### The three reversals, stated plainly
 
@@ -151,7 +152,7 @@ the move.
 that. And the pane must not be re-created by any of this (ADR-0121 §4 — a re-instantiation is
 billed). **Docs:** new ADR amending 0121 §5.
 
-### Phase 3 — the camera answers the tap (#11, #5)
+### Phase 3 — the camera answers the tap (#11, #5, #15)
 
 Both reverse a documented camera decision, so they belong in one ADR and one PR.
 
@@ -160,6 +161,17 @@ Both reverse a documented camera decision, so they belong in one ADR and one PR.
 - **#5** — `recentre` centres **and** zooms; with no permission it opens the same reason-first
   card the near-me chip uses rather than silently reframing the pin set. Decide in the ADR
   whether the button keeps its "reframe the filtered set" job as a second tap or loses it.
+
+- **#15** — a single pin lands too close. `cameraTargetFor` sends a lone point (or several
+  coincident ones) down the `centre` branch → `setZoom(MAP_ZOOM.SINGLE_PIN)` = **15**, while a
+  tight cluster takes the `fit` branch and gets clamped at `MAP_ZOOM.MAX_FIT` = **16** — so the
+  cluster case is the tighter of the two and both need lowering. Each zoom step halves the span,
+  so this is a one- or two-step change, not a rewrite. Tune both against a real phone.
+
+**Do these three together, because they share one ladder.** #11's zoom-to-at-least threshold,
+#15's single-pin zoom, and #5's locate zoom are the same question asked three ways — "how close
+is close enough to read a place in context". Pick the value once and let all three name the same
+constant, or the tab will answer it differently depending on how you got there.
 
 **Read first:** ADR-0121 §7 and §12, ADR-0109 §6, ADR-0006 (location stays on the device).
 **Files:** `lib/useMapCamera.ts`, `lib/map-camera.ts`, `ui/domain/MapPane.tsx`, `constants.ts`
