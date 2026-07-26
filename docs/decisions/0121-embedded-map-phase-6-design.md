@@ -101,6 +101,86 @@ A `Place` holds a name, an address, coordinates, a timezone and a rating. **Ever
 
 **Open, deliberately:** whether a **pin** tap should reveal the same entries on the canvas (an info window) or only via its row in the sheet. The sheet answer needs no new surface and is what §C already does; an info window is the map idiom but a second way of stating a place. Left until the rendered map exists to judge on — the same reasoning as the ghost-promotion question in §B.
 
+## Amendment (2026-07-26, same session) — review pass across product / design / FE / BE
+
+A deliberate review of the whole phase before any code, checked against the tree rather than recalled. It found one structural gap that would have stopped the build on day one, a ToS violation, two missing pieces of configuration, and a numbering trap. Recorded with decisions; the genuine product forks are left open at the end.
+
+### R1 — BLOCKING: the Map tab has no layout to hang a split on
+
+`.map-screen` (`screens/map.css:6`) sets **only** `--idx-accent`/`--idx-accent-text`. Every screen renders inside `AppShell`'s `<main className="body">`, and `.body` (`App.css:46`) is `flex: 1; overflow-y: auto; padding: 16px 16px 92px`. So the Map tab is a **normally-scrolling page inside the shell's scroll container** — there is no fixed-height flex column, and §4's `.map-split { flex: 1; min-height: 0 }` plus an absolutely-positioned sheet assume one.
+
+Worth naming how this slipped: **the mockup supplied the missing context itself** (`.mk-phone .map-screen { flex: 1; display: flex; flex-direction: column }`), so the design looked correct precisely because the mockup papered over the app's real structure. A mockup that reads the app's CSS still does not inherit the app's _layout tree_.
+
+**Decision: the Map tab opts out of the scrolling body, via the shell rather than a hack.** `AppShell` gains a body modifier (a `fullBleed`/`bodyClassName` prop feeding `.body.is-fullbleed { overflow: hidden; padding: 0 }`) — the layout layer is where this belongs (ADR-0078), it is one contained addition, and any future full-bleed surface reuses it. Consequences the build must handle:
+
+- The filter row + sort strip become the split's **fixed header**, not scrolling content; only the sheet's list scrolls.
+- The sheet's bottom must clear the tab bar and the safe area (`.nav` + `--safe-bottom`, both already tokens) — the 92px of body padding that used to do that is gone.
+- `<main>` is keyed by tab (`bodyKey`), so **the Map screen unmounts on every tab change.** That independently confirms §3: one map instance per tab visit is not a choice we are making, it is what the shell does, and hoisting a singleton would mean fighting it.
+
+### R2 — ToS: a peeking sheet over a full-bleed map hides Google's attribution
+
+The Maps JS API renders the Google logo and attribution at the **bottom-left of the map div**, and Google's terms require they not be obscured (ADR-0106 §B already committed us to keeping them). §4's map pane is `inset: 0` — full-bleed behind a sheet that always covers the bottom. So the shipped design would have hidden the one element we are contractually obliged to show.
+
+**Decision: the map div is sized to the _visible_ area, not full-bleed behind the sheet.** Two things fall out, both improvements:
+
+- **Attribution sits just above the sheet**, visible at every snap height.
+- **Fit-to-bounds becomes honest.** §6 says the camera fits the filtered set; fitting it to a div half-hidden behind the sheet centres pins under the list. The mockup's own comment hand-waved this ("a real camera fits the filtered bounds to the _visible_ map area — which is the same constraint expressed properly"); sizing the div _is_ the proper expression.
+- **Cost:** resizing the div triggers a map relayout, so it resizes **on snap, not per drag frame** — the drag animates the sheet, and the map takes one resize when the height settles.
+
+### R3 — the mandatory `mapId` has no configured home
+
+§1 made a `mapId` mandatory and added the human step to create one, but **no env var was ever named for it.** ADR-0108 §1/§Consequences name only `VITE_GOOGLE_MAPS_BROWSER_KEY`. A Map ID is a second build-time value (and §9's night style is a third).
+
+**Decision:** `VITE_GOOGLE_MAPS_MAP_ID` (+ `VITE_GOOGLE_MAPS_MAP_ID_DARK`, unused until dark mode ships), read the way the frontend already reads build vars (`import.meta.env`, as `lib/api.ts:55` does for `VITE_API_BASE_URL`); `.env.example` gains commented placeholders beside the existing server-key note; `deployment.md` gains them as build vars. **And a missing key or map id degrades to list-only** — the same "absent, not disabled" rule as offline (§8), so a checkout without Google setup renders the tab it renders today instead of crashing. `DEMO_MAP_ID` covers local development.
+
+### R4 — the sheet transition and the camera ignore `prefers-reduced-motion`
+
+Every motion pass in this repo respects it (ADR-0098 §4, ADR-0120). §4's `transition: height` and §6's animated camera fit are both new motion and neither was gated. **Decision:** both honour `prefers-reduced-motion` — the sheet snaps, and the camera jumps to the new bounds rather than easing. The camera still _moves_ (that is §6's whole point); only the easing is dropped.
+
+### R5 — numbering must come from the schedule, not from the visible list
+
+Amendment A's number is "the index in `comparePlacesBySchedule`'s day sequence". Two traps the implementation must avoid, because either would make the pin lie:
+
+- **A filter must not renumber.** If the number were the index in the _visible_ set, filtering to `אוכל` would relabel dinner as `1`. The number claims a position in the **day**, so it is computed over the day's whole scheduled set. The existing architecture already makes this the easy path: `listRows` sorts **all** usages and applies visibility as a _predicate_ (session 130's reveal model), so the full ordering is already in hand. **Gaps are correct and informative** — seeing `1, 3, 4` says something is filtered out.
+- **Near-me must not renumber.** `listOrder` becomes a distance sort when near-me is on; the number must derive from `comparePlacesBySchedule` specifically, never from whatever `listOrder` currently is.
+
+### R6 — markers must survive the per-second re-render
+
+Verified: `Map.tsx` memoizes properly (`usageIndex`, `allUsages`, `dayScoped`, `categoryCounts`…), but the **ordering** depends on `nowMs` (the ahead/behind partition), so the sorted array's identity changes every second even when nothing moved. The list already handles this (`useFlipRows` measures only when order or visibility actually changed). **Decision for the map:** markers are keyed by `placeId` and take only primitive props (hue, number, tier, selected), so a clock tick reconciles to a no-op diff and no marker is destroyed or recreated. This is the marker-level restatement of §3's "inert to the clock tick".
+
+### R7 — coincident pins are not a density problem, and "no clustering" does not cover them
+
+§5 declined clustering on the grounds that a trip holds tens of places. Correct, and beside the point: **two places at the same address** are a certainty, not a scale issue — a station that is one leg's origin and another's destination, a hotel and its restaurant, a booking's `fromPlace` and an event at the same building. Coincident pins hide each other, and which one wins is currently undefined.
+
+**Decision: a deterministic z-order, stated rather than emergent** — the next stop on top, then ahead-of-you by day order, then ideas, then ambient, then behind-you, then ghosts. The one that matters most is the one you can see and tap. A spreading/spiderfy gesture is **not** adopted (it needs an interaction vocabulary the tab does not have); if coincidence proves common in real trips, that is when it earns a decision.
+
+### R8 — the ghost tier renders pins the chips do not count
+
+ADR-0119 exists to stop a chip promising rows the list will not render. Ghosts create the **inverse**: the canvas shows places that no chip counts, because the chips count the _scoped_ set and a ghost is by definition out of scope.
+
+**Decision: that asymmetry is correct and stays, and it is why the ghost is drawn the way it is.** A ghost is hollow, glyph-less, unnumbered and smaller precisely so it never reads as part of the answer the chips are describing. Two guards: ghosts are never counted in any facet, and they never participate in near-me's sort or distance chips (amendment B rule 4). What ADR-0119 forbids is a **count that overstates** — a subordinate pin that no count claims is the opposite failure mode, and the fix for it is prominence, which amendment B already spends.
+
+### R9 — an archived trip was never considered
+
+ADR-0040/0044 make a finished trip read-only, and the Map tab is a read surface, so it stays. But **the live cues are meaningless there and it still bills a map load.** **Decision:** in the archive the map renders (positions are exactly what you want from a finished trip), and the Trip-mode live layer drops — no amber next-stop, no near-me chip — which is the same rule those cues already follow when mode is not live. The billed load is accepted on §3's arithmetic; nobody opens a finished trip's map twenty times a day.
+
+### R10 — the backend has nothing to do, and that is worth stating
+
+Verified so a future session does not go looking: **no CSP to amend** (the backend runs no `helmet`/CSP and `index.html` sets no `http-equiv`, so the Maps script and tile hosts need no allowance — if a CSP is ever added it must allow `maps.googleapis.com`/`maps.gstatic.com`), **no Workbox change** (no `runtimeCaching` rules exist and Google's script is cross-origin and outside the build graph, so it is neither precached nor intercepted; `navigateFallbackDenylist` covers navigations only), **no schema change, no proxy route, no server env.** Phase 6 is a frontend-only phase. The only backend-adjacent work in the epic is the deferred Routes proxy, already scoped in ADR-0108 §4.
+
+### R11 — decomposition, and how any of this gets tested
+
+`screens/Map.tsx` is **701 lines** today. A pane, a sheet, markers and a camera will roughly double it, and nothing in the ADR said where they go. **Decision:** the canvas + markers become `ui/domain/MapPane` (the `ui/domain/` layer exists for exactly this), the sheet is a primitive, and the camera is a hook — mirroring how `DayStrip`/`GlanceCard`/`EventCard` were extracted.
+
+**And testing, which the ADR had not addressed at all:** a rendered Google map cannot be exercised in the suite. So the phase's logic must live in **pure functions in `lib/`** — the bounds of a set of usages, the day's order index, the tier a usage belongs to, whether a place is focusable — each unit-tested with no Google present, exactly as `place-usage.ts`/`distance.ts` already are. The shell (snap heights, the toggle, row↔pin selection, the full→half lift) is testable with the pane stubbed. What genuinely cannot be tested is the render itself, and that is the honest limit to state rather than paper over — the same posture as the builder-drag's "real-device pass" backlog item.
+
+### Open forks, for a product call rather than a design one
+
+1. **Free Google layers we could switch on almost for nothing.** The JS API ships `TransitLayer` and `TrafficLayer`, which add no separate SKU as far as the current SKU list shows (**confirm at build**). For a transit-dense city trip, transit lines are a real answer to "how do I get there" and cost us nothing to draw. The tension is "quiet base, loud pins" (ADR-0106 §C) — either would add exactly the clutter that rule removes. If taken, it is a **toggle, off by default**, and probably transit only.
+2. **The outcome facet, riding along** (deferred by ADR-0117): `מה נשאר` / where we have been. It is a chip over data already derived, and it is _more_ valuable on a map than on a list, where seeing the remaining cluster is the point. Cheap enough to fold into this phase rather than trail it.
+3. **A "places in view" count.** ADR-0106 §4 asserts pan/zoom **is** the area filter, but nothing on screen ever says so. A count off the camera bounds ("12 מקומות באזור") would make the claim legible, needs no new data, and is a few lines.
+4. **Whether proximity promotes a ghost** (left open in amendment B). Near-me sharpens it rather than settling it: a ghost 50 m away is nearer than anything in scope and is invisible to the sort. Still better judged on a real map.
+
 ## Context
 
 Phases 0–5 of the Maps & Places epic have shipped. The Map tab is a real surface: `lib/place-usage.ts` derives every place's days/categories/outcome/commitment from the trip snapshot, `screens/Map.tsx` renders it as a filtered, scoped, ordered list with near-me, navigate-to-next, outcome states and Plan-mode Google research. Phase 6 — the **rendered** map — is the last phase, and the only one still unbuilt.
