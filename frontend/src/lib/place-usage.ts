@@ -391,13 +391,16 @@ export function matchesPlaceFilter(usage: PlaceUsage, filter: PlaceFilter): bool
  *    `sortOrder`, untimed after the clocked ones exactly as `DayView` renders them),
  *    so the map and the timeline can never disagree about a day. A strictly-middle
  *    **ambient** stay night trails both, being backdrop rather than schedule (ADR-0054).
- * 2. **Behind you** — newest first: the stop you just left is the one you might still
+ * 2. **No day at all** — an unlinked booking or a "someday" idea (a Booking carries no
+ *    time, and a dateless idea was never aimed at a day). It sits BETWEEN the two:
+ *    nothing about it has passed, so it is not behind you, and it makes no claim on
+ *    the near future either. Alphabetical among themselves.
+ * 3. **Behind you** — newest first: the stop you just left is the one you might still
  *    want, and the trip's opening day is the least interesting row on screen. No
  *    within-day hierarchy applies here; everything in this block is equally done.
  *
- * A reference with **no day at all** (an unlinked booking or a shelf idea — a Booking
- * carries no time) has no position in either block and comes last. Place name is the
- * final tiebreak, so the order is total and stable.
+ * Place name is the final tiebreak, so the order is total and stable. Without a clock
+ * nothing is behind you, so the undated group is simply last, as it was before.
  *
  * `onDate` scopes the comparison to one day when the list is day-scoped; without it
  * each place is ranked by its earliest day (the all-days view). Omitting `nowMs`
@@ -440,6 +443,29 @@ export function placeDay(usage: PlaceUsage, onDate?: string): DayUsage | undefin
   return onDate ? usage.days.find((d) => d.date === onDate) : usage.days[0];
 }
 
+/** The list's three blocks, in reading order (ADR-0109 session-110 + its session-127
+ *  amendment). Named because the list both **orders** by them and **labels** them:
+ *  the group a row lands in is the one the header above it claims. */
+export const PLACE_BLOCK = { ahead: 'ahead', dayless: 'dayless', behind: 'behind' } as const;
+export type PlaceBlock = (typeof PLACE_BLOCK)[keyof typeof PLACE_BLOCK];
+
+/** Which block a place belongs to. A place with **no day** is its own block: nothing
+ *  about it has passed, so calling it "behind you" is the one thing it is not — and it
+ *  makes no claim on the near future either, so it can't lead. Without a clock nothing
+ *  is behind you, which leaves it last exactly as before. */
+export function placeBlock(
+  usage: PlaceUsage,
+  ctx: Pick<PlaceOrderContext, 'onDate' | 'nowMs' | 'today'>,
+): PlaceBlock {
+  const day = placeDay(usage, ctx.onDate);
+  if (!day) return PLACE_BLOCK.dayless;
+  return ctx.nowMs != null && isDayUsagePast(day, ctx.nowMs, ctx.today)
+    ? PLACE_BLOCK.behind
+    : PLACE_BLOCK.ahead;
+}
+
+const BLOCK_RANK: Record<PlaceBlock, number> = { ahead: 0, dayless: 1, behind: 2 };
+
 export function comparePlacesBySchedule(
   a: PlaceUsage,
   b: PlaceUsage,
@@ -448,17 +474,16 @@ export function comparePlacesBySchedule(
   const { nameOf, onDate, nowMs, today } = ctx;
   const da = placeDay(a, onDate);
   const db = placeDay(b, onDate);
-  // A place with no day at all comes last, whatever else is true of it.
-  if (!da || !db) {
-    if (da === db) return nameOf(a).localeCompare(nameOf(b));
-    return da ? -1 : 1;
-  }
+  // The block comes first, BEFORE the date is even considered. Ordering by date first
+  // was the bug: across several days it put last Tuesday above the stop you're heading
+  // to this evening, because the sink only ever applied within a day. An undated row
+  // has its own block between the two, so it never sinks under what's behind you.
+  const blockOf = (u: PlaceUsage) => BLOCK_RANK[placeBlock(u, ctx)];
+  if (blockOf(a) !== blockOf(b)) return blockOf(a) - blockOf(b);
+  // Same block, and only the undated one has no day to compare on.
+  if (!da || !db) return nameOf(a).localeCompare(nameOf(b));
 
-  // Ahead of you beats behind you BEFORE the date is even considered. Ordering by
-  // date first was the bug: across several days it put last Tuesday above the stop
-  // you're heading to this evening, because the sink only ever applied within a day.
   const behind = (d: DayUsage) => nowMs != null && isDayUsagePast(d, nowMs, today);
-  if (behind(da) !== behind(db)) return behind(da) ? 1 : -1;
 
   // What's done reads newest-first: the thing you just left is the one you might
   // still want, and the trip's opening day is the least interesting row on screen.

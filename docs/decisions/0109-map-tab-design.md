@@ -7,6 +7,26 @@
 
 Mockup: [`mockups/map-tab-v1.html`](../../mockups/map-tab-v1.html) — the list-first tab in both modes, all four location states (normal / near-me granted / denied / offline), the pin-anatomy legend, a Phase-6 rendered-map preview, and the ADR-0107 zone chip.
 
+## Amendment (2026-07-26, session 127) — a place with no day is its own block, and every block says its own name
+
+Reported off the running app: "maybes that aren't in any day still show up as 'in the past' on the place list."
+
+The list never claimed that in words, and that is exactly the mechanism. The session-110 amendment below decided a reference with **no day at all** "still comes last, in neither block" — but the rendering only marks **where a block starts**, so the `מה שמאחורינו` header was the last thing above those rows. A header that marks a boundary and a group that has no header of its own make one block on screen: an undated "someday" idea, and any unscheduled booking, read as things already behind you. Which is the one thing an undated row certainly is not — nothing about it has passed.
+
+**Decision: three blocks, in reading order, and each labels itself.**
+
+1. **`מה שלפנינו`** — ahead of you, unchanged (session 110).
+2. **`ללא יום`** — no day at all: a dateless idea, an unlinked booking. It sits **between** the two, which is the honest position: nothing about it has passed (so it is not behind you) and it makes no claim on the near future either (so it cannot lead). Alphabetical among themselves, as before.
+3. **`מה שמאחורינו`** — behind you, newest-first, unchanged.
+
+This **revises session 110's "comes last, in neither block"** — the ordering half. That call was made to stop dateless rows floating to the **top** of an all-days list (the session-106 bug); "last" was the cheap way to get them out of the way, and it was never examined against a list that _labels_ its blocks. Between the two groups keeps the session-106 fix intact — an undated row still never outranks today's schedule.
+
+**A one-block list renders no header at all**, which generalizes ADR-0117 §3's rule (the ahead header only earned its row when a behind block existed) instead of adding a second special case beside it: a header exists to mark a boundary, so with nothing to be beside it is pure chrome. The list's blocks are now one named vocabulary (`PLACE_BLOCK` / `placeBlock` in `lib/place-usage.ts`) that both the comparator and the header row read, so a header can no longer claim a row the ordering put somewhere else — the class of bug this amendment is fixing.
+
+**Unchanged:** near-me still labels the whole list `לפי קרבה אליך` and shows no schedule blocks (it is a distance sort; the schedule groups would be describing a different list), and the copy of the two existing headers.
+
+**Rejected: relabel only, leaving the rows at the bottom.** It answers the report literally — the rows would stop sitting under "what's behind us" — while leaving a live "someday" candidate below every stop of a finished week. The position was half the claim.
+
 ## Amendment (2026-07-24) — place location on detail/card surfaces: navigate + view, and the interim view target
 
 Implementing Phase 2 (places on existing surfaces) surfaced a scope boundary in §1's row anatomy. That "**one labelled `נווט`, viewing = the row tap**, no second view control" rule is specifically the **Map-tab list row**, where tapping the row _is_ the view affordance (it opens the place detail / Google Maps place). Two other surfaces have **no tap-to-view** — the **day-timeline `EventCard`** (tapping toggles expand) and the **`BookingDetail` sheet** (you are already inside the detail) — so they must expose viewing explicitly. On those surfaces:

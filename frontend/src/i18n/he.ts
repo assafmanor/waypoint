@@ -103,13 +103,19 @@ export const t = {
     // navigate-to-next on the list (ADR-0106 §6): the one time-anchor cue the map
     // budget allows (ADR-0109 §6, the amber ring's list form), on a single row.
     nextStop: 'היעד הבא',
-    // The list is two blocks (ADR-0109 session-110). The behind-block header is
-    // deliberately NEUTRAL (ADR-0117 §3): it holds three outcomes — visited, skipped,
-    // and passed-with-nobody-saying — and only the first is a visit, so the per-row
-    // tags carry the claim and the header only marks the boundary. The ahead header
-    // appears only when there IS a behind block, so an all-ahead list stays bare.
-    aheadHeader: 'מה שלפנינו',
-    behindHeader: 'מה שמאחורינו',
+    // The list is three blocks (ADR-0109 session-110 + session-127), keyed by
+    // `PlaceBlock` so the header and the order read one vocabulary. The behind header
+    // is deliberately NEUTRAL (ADR-0117 §3): it holds three outcomes — visited,
+    // skipped, and passed-with-nobody-saying — and only the first is a visit, so the
+    // per-row tags carry the claim and the header only marks the boundary. `dayless`
+    // is a place with no day at all (a "someday" idea, an unscheduled booking): it
+    // says so rather than being swept under "what's behind us". A one-block list
+    // renders no header, so an all-ahead list stays bare.
+    blockHeader: {
+      ahead: 'מה שלפנינו',
+      dayless: 'ללא יום',
+      behind: 'מה שמאחורינו',
+    },
     // "Near me now" (Phase 4a, ADR-0109 §6-7): a list re-sort + teal distance
     // chips, never a spatial dot (there's no rendered map until Phase 6). The
     // permission is asked only on intent, behind the reason-first pre-prompt —

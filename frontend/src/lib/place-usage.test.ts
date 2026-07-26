@@ -17,7 +17,9 @@ import {
   isDayUsagePast,
   isOnShelf,
   matchesPlaceFilter,
+  PLACE_BLOCK,
   PLACE_CATEGORY_ALL,
+  placeBlock,
   type PlaceUsage,
 } from './place-usage';
 
@@ -552,6 +554,27 @@ describe('comparePlacesBySchedule (the list reads in trip order)', () => {
         'yesterday',
         'last-week',
       ]);
+    });
+
+    it('an undated place is NOT behind you — it sits between the two blocks', () => {
+      // The reported bug: a "someday" idea sorted below everything, so the list's
+      // behind-you header swept it up and it read as a place already in the past.
+      const idx = buildPlaceUsageIndex(
+        [
+          event({ id: 'e1', placeId: 'this-morning', date: DAY, startsAt: at('09:00') }),
+          event({ id: 'e2', placeId: 'tonight', date: DAY, startsAt: at('20:00') }),
+        ],
+        [],
+        [maybe({ id: 'm', placeId: 'someday' })],
+        [place('this-morning'), place('tonight'), place('someday')],
+      );
+      expect(order(idx, undefined, NOW, DAY)).toEqual(['tonight', 'someday', 'this-morning']);
+      const ctx = { nowMs: NOW, today: DAY };
+      expect(placeBlock(idx.get('someday')!, ctx)).toBe(PLACE_BLOCK.dayless);
+      expect(placeBlock(idx.get('tonight')!, ctx)).toBe(PLACE_BLOCK.ahead);
+      expect(placeBlock(idx.get('this-morning')!, ctx)).toBe(PLACE_BLOCK.behind);
+      // With no clock nothing is behind you, so the undated row is simply last.
+      expect(order(idx, undefined, undefined, DAY)).toEqual(['this-morning', 'tonight', 'someday']);
     });
 
     it('an untimed event on a passed day sinks with it, despite having no clock', () => {
