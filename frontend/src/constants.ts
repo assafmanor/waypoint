@@ -215,6 +215,13 @@ export const CATEGORY_PIN_HUE = {
 export const FILTER_STAGGER_MS = 24;
 export const FILTER_STAGGER_MAX_MS = 220;
 
+/** How a row slides to its new place when the list re-orders (`lib/useFlipRows.ts`,
+ *  ADR-0120 session-130). Mirrors the CSS `--t-base`/`--ease-standard` the reveal
+ *  itself uses, so a move and a collapse in the same change read as one motion —
+ *  the Web Animations API needs them as values, not as CSS vars. */
+export const LIST_MOVE_MS = 240;
+export const LIST_MOVE_EASING = 'cubic-bezier(0.2, 0, 0, 1)';
+
 /** Placeholder row icon on the all-trips list (ADR-0033) — `destination` is
  *  free text, no structured country to derive a real flag from. */
 export const DEFAULT_TRIP_ICON = '🧳';

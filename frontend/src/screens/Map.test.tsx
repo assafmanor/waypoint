@@ -159,8 +159,10 @@ describe('MapView (Phase 3, ADR-0109/0110)', () => {
     render(wrap(<MapView />));
     expect(screen.getByText('food')).toBeTruthy();
     expect(screen.getByText('lite')).toBeTruthy(); // coordless, still listed on its day
-    expect(screen.queryByText('see')).toBeNull(); // another day
-    expect(screen.queryByText('idea')).toBeNull(); // a maybe has no day facet
+    // Out of the day scope: mounted but collapsed, so tapping כל הימים reveals
+    // them rather than rebuilding the list (ADR-0120 session-130).
+    expect(filteredOut('see')).toBe(true); // another day
+    expect(filteredOut('idea')).toBe(true); // a maybe has no day facet
   });
 
   it('a coord place gets a Google directions link; a coordless one gets ＋ מיקום to enrich', () => {
@@ -216,6 +218,27 @@ describe('MapView (Phase 3, ADR-0109/0110)', () => {
     );
   });
 
+  it('a scope change reveals rows in place, it does not rebuild the list (session-130)', () => {
+    seed();
+    render(wrap(<MapView />));
+    const row = screen.getByText('see').closest('.wp-reveal');
+    expect(row?.classList.contains('hidden')).toBe(true); // another day
+    fireEvent.click(screen.getByRole('button', { name: new RegExp(t.map.allDays) }));
+    // The SAME node un-hides: כל הימים is a reveal like every other control, so
+    // the row animates in rather than the list being thrown away and re-made.
+    expect(screen.getByText('see').closest('.wp-reveal')).toBe(row);
+    expect(row?.classList.contains('hidden')).toBe(false);
+  });
+
+  it('visible rows carry a move key, so a re-order slides them (session-130)', () => {
+    seed();
+    render(wrap(<MapView />));
+    const key = (name: string) =>
+      screen.getByText(name).closest('.wp-reveal')?.getAttribute('data-flip-key');
+    expect(key('food')).toBeTruthy();
+    expect(key('see')).toBeNull(); // hidden: nothing to watch move
+  });
+
   it('Plan mode defaults to all days', () => {
     seed();
     currentMode = 'plan';
@@ -254,8 +277,8 @@ describe('MapView (Phase 3, ADR-0109/0110)', () => {
       ];
       render(wrap(<MapView />));
       // The reported bug: "maybe today" showed nowhere in the scope Trip mode opens on.
-      expect(screen.getByText('today-idea')).toBeTruthy();
-      expect(screen.queryByText('someday-idea')).toBeNull(); // dateless: all-days only
+      expect(filteredOut('today-idea')).toBe(false);
+      expect(filteredOut('someday-idea')).toBe(true); // dateless: all-days only
       fireEvent.click(maybesChip());
       expect(screen.getByText('today-idea')).toBeTruthy();
       expect(maybesCount()).toBe('1');
@@ -840,13 +863,16 @@ describe('MapView (Phase 3, ADR-0109/0110)', () => {
   describe('the undated block says so (ADR-0109 session-127)', () => {
     const NOON = Date.parse(`${ACTIVE_DATE}T12:00:00Z`);
     const at = (hhmm: string) => `${ACTIVE_DATE}T${hhmm}:00Z`;
-    /** The list as rendered, headers included, in order. */
+    /** The list as rendered, headers included, in order. Out-of-scope rows stay
+     *  mounted and collapsed (ADR-0120), so what's on screen skips them. */
     const sequence = () =>
-      [...document.querySelectorAll('.map-list > *')].map((node) =>
-        node.classList.contains('map-grouphead')
-          ? `# ${node.textContent}`
-          : (node.querySelector('.map-name')?.textContent ?? '?'),
-      );
+      [...document.querySelectorAll('.map-list > *')]
+        .filter((node) => !node.classList.contains('hidden'))
+        .map((node) =>
+          node.classList.contains('map-grouphead')
+            ? `# ${node.textContent}`
+            : (node.querySelector('.map-name')?.textContent ?? '?'),
+        );
     const seedBlocks = () => {
       setSimulatedNow(NOON);
       tripPlaces = [place('this-morning', true), place('tonight', true), place('someday', true)];
