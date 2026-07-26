@@ -42,6 +42,12 @@
   --cat-leisure: #9cc9a0;
   --cat-services: #d9c08a;
 
+  /* "You are here" on the rendered map (ADR-0121 §7 / ADR-0109 §3): the OS-map
+     convention blue, deliberately OUTSIDE the amber/teal/violet budget — it is a
+     platform idiom nobody reads as one of our accents, which is exactly why it
+     may be a sixth colour. One consumer only: the map's `me` dot. */
+  --me: #2e6be6;
+
   /* Motion — duration ramp + easings (design-language "Motion & designed
      transitions"). New motion picks from this ramp, the same discipline the
      type ramp and color budget enforce. Budget rule: exactly one --t-cinematic
@@ -258,6 +264,8 @@ body {
   --cat-transit: #9cc2f0;
   --cat-leisure: #a9d4ad;
   --cat-services: #e4cd9a;
+  /* The "me" dot, lifted to clear the night map style (same readiness caveat). */
+  --me: #5b8ef0;
 
   /* Non-color tokens (spacing/type/radius/leading/breakpoints/safe-area) are
      theme-independent and inherit unchanged. Only elevation re-maps: shadows

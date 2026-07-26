@@ -16,10 +16,12 @@ import {
   countPlacesByCategory,
   isDayUsagePast,
   isOnShelf,
+  isPlaceSettled,
   matchesPlaceFilter,
   PLACE_BLOCK,
   PLACE_CATEGORY_ALL,
   placeBlock,
+  type PlaceFilter,
   type PlaceUsage,
 } from './place-usage';
 
@@ -652,6 +654,79 @@ describe('outcome + settled (ADR-0117)', () => {
     ]);
     expect(u.days[0]?.outcome).toBe('done');
     expect(u.days[0]?.settled).toBe(false);
+  });
+
+  // `מה נשאר` (ADR-0121 §9): ONE toggle over the field above, not three chips.
+  describe('isPlaceSettled — what "what\u2019s left" hides', () => {
+    it('a settled day is settled; an unsettled one is not', () => {
+      const done = usageFor([
+        event({ id: 'e1', placeId: 'p', startsAt: at('09:00'), status: EVENT_STATUS.DONE }),
+      ]);
+      const planned = usageFor([event({ id: 'e1', placeId: 'p', startsAt: at('09:00') })]);
+      expect(isPlaceSettled(done, '2026-07-07')).toBe(true);
+      expect(isPlaceSettled(planned, '2026-07-07')).toBe(false);
+    });
+
+    it('it hides a SKIP as well as a visit — both are handled', () => {
+      const skipped = usageFor([
+        event({ id: 'e1', placeId: 'p', startsAt: at('09:00'), status: EVENT_STATUS.SKIPPED }),
+      ]);
+      expect(isPlaceSettled(skipped, '2026-07-07')).toBe(true);
+    });
+
+    // A place with no day at all is never settled: an unconsumed idea and an
+    // unscheduled booking are precisely what is left.
+    it('a place with no day is never settled', () => {
+      const idea = buildPlaceUsageIndex(
+        [],
+        [],
+        [maybe({ id: 'm', placeId: 'p' })],
+        [place('p')],
+      ).get('p')!;
+      expect(isPlaceSettled(idea)).toBe(false);
+      expect(isPlaceSettled(idea, '2026-07-07')).toBe(false);
+    });
+
+    // Across the trip it takes ALL its days, not any: a caf\u00e9 visited on Tuesday
+    // and pencilled again for Thursday is not handled.
+    it('across the trip every day must be settled', () => {
+      const u = usageFor([
+        event({ id: 'e1', placeId: 'p', startsAt: at('09:00'), status: EVENT_STATUS.DONE }),
+        event({ id: 'e2', placeId: 'p', date: '2026-07-09', startsAt: '2026-07-09T09:00:00Z' }),
+      ]);
+      expect(isPlaceSettled(u)).toBe(false);
+      // …but that first day, on its own, is done with.
+      expect(isPlaceSettled(u, '2026-07-07')).toBe(true);
+    });
+
+    // What makes the toggle apply to the map's ghost tier: a ghost has no day in the
+    // scope being asked about, so a bare day filter would read it as unsettled and
+    // leave Tuesday's visited caf\u00e9 on the canvas (ADR-0121 §9).
+    it('a place with nothing on the scoped day falls back to all its days', () => {
+      const u = usageFor([
+        event({
+          id: 'e1',
+          placeId: 'p',
+          date: '2026-07-09',
+          startsAt: '2026-07-09T09:00:00Z',
+          status: EVENT_STATUS.DONE,
+        }),
+      ]);
+      expect(isPlaceSettled(u, '2026-07-07')).toBe(true);
+    });
+
+    it('the filter drops a settled place only when the toggle is on', () => {
+      const done = usageFor([
+        event({ id: 'e1', placeId: 'p', startsAt: at('09:00'), status: EVENT_STATUS.DONE }),
+      ]);
+      const filter: PlaceFilter = {
+        category: PLACE_CATEGORY_ALL,
+        maybesOnly: false,
+        onDate: '2026-07-07',
+      };
+      expect(matchesPlaceFilter(done, filter)).toBe(true);
+      expect(matchesPlaceFilter(done, { ...filter, unsettledOnly: true })).toBe(false);
+    });
   });
 
   describe('isDayUsagePast: a human outranks the clock', () => {

@@ -16,6 +16,7 @@ type IconName =
   | 'settings'
   | 'search'
   | 'close'
+  | 'locate'
   | 'cloud-check'
   | 'cloud-up'
   | 'cloud-bang';
@@ -39,6 +40,11 @@ const PATHS: Record<IconName, string> = {
   // real UI control, per "emoji are content, icons are UI" (design-language.md).
   search: 'm21 21-5.197-5.197m0 0A7.5 7.5 0 1 0 5.196 5.196a7.5 7.5 0 0 0 10.607 10.607Z',
   close: 'M6 18 18 6M6 6l12 12',
+  // The conventional crosshair every map app puts on its canvas — the rendered
+  // map's one added control (ADR-0121 §12). A real SVG, never a raw ⌖ glyph:
+  // "emoji are content, icons are UI" (design-language.md).
+  locate:
+    'M12 2v3 M12 19v3 M2 12h3 M19 12h3 M19 12a7 7 0 1 1-14 0 7 7 0 0 1 14 0 M13.5 12a1.5 1.5 0 1 1-3 0 1.5 1.5 0 0 1 3 0',
   // Per-entity sync glyphs — a cloud + a distinct inner mark per state (ADR-0091).
   'cloud-check': CLOUD + ' M9.3 13.6l1.9 1.9 3.6-3.8',
   'cloud-up': CLOUD + ' M11.8 16.6v-4.6 M9.6 14l2.2-2.2 2.2 2.2',

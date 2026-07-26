@@ -52,6 +52,15 @@
   padding: 16px 16px 92px;
   animation: fade 0.32s ease;
 }
+/* A surface that owns its own layout instead of scrolling inside the body
+   (ADR-0078's layout layer, ADR-0121 §5). The rendered map's split needs a
+   fixed-height flex column to hang on, and the 92px of tail padding would push it
+   under the nav. The screen then supplies its own edge padding for whatever it puts
+   above the split, and the ONE scroll region becomes the sheet's list. */
+.body.is-fullbleed {
+  overflow: hidden;
+  padding: 0;
+}
 @keyframes fade {
   from {
     opacity: 0;

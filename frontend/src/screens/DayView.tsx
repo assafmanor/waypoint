@@ -18,6 +18,7 @@ import {
   type TripEvent,
 } from '@waypoint/shared';
 import { useTrip, byStart } from '../state/trip-state';
+import { useShowPlaceOnMap } from '../state/map-scope-state';
 import { prefersReducedMotion } from '../lib/motion';
 import {
   authoringZone,
@@ -25,7 +26,7 @@ import {
   eventDurationLabel,
   eventEdgeZone,
   eventPlaceName,
-  eventPlaceUrl,
+  eventMapPlace,
   eventRoute,
   eventZones,
   dayZoneContext,
@@ -90,14 +91,18 @@ function navigateHandler(
   return url ? () => openMaps(url) : undefined;
 }
 
-// The view-on-map peer of navigateHandler: opens the place (not directions), or
-// `undefined` when there's no mappable place so the מפה button drops too.
+// The view-on-map peer of navigateHandler — and as of Phase 6 it no longer leaves
+// the app: `מפה` routes to the Map tab focused on that place (ADR-0121 §8), where
+// the row and its pin become one selection. Going to Google is `ניווט`, the one
+// Google action a surface keeps. Still `undefined` when there is nothing to focus (no
+// place, or a coordless Place-lite), so the button drops exactly as before.
 function showOnMapHandler(
   event: TripEvent,
   ctx: Pick<DayCtx, 'bookings' | 'places'>,
+  showPlaceOnMap: ((placeId: string) => void) | null,
 ): (() => void) | undefined {
-  const url = eventPlaceUrl(event, ctx.bookings, ctx.places);
-  return url ? () => openMaps(url) : undefined;
+  const place = eventMapPlace(event, ctx.bookings, ctx.places);
+  return place && showPlaceOnMap ? () => showPlaceOnMap(place.id) : undefined;
 }
 
 /** The zone display props for a transition entry's edge (ADR-0107): the edge's
@@ -136,6 +141,9 @@ export function DayView() {
   } = useTrip();
   const verbs = useVerbs();
   const now = useClock();
+  // `מפה` is an in-app destination now (ADR-0121 §8): it hands the Map tab a focus
+  // and lands there, instead of deep-linking out to Google's place view.
+  const showPlaceOnMap = useShowPlaceOnMap();
   const [openId, setOpenId] = useState<string | null>(null);
   const [formTarget, setFormTarget] = useState<'new' | TripEvent | null>(null);
   // Editing a booking-linked event opens the merged BookingSheet, not EventForm
@@ -209,6 +217,7 @@ export function DayView() {
       else setFormTarget(e);
     },
     onOpenDetail: setDetailTarget,
+    showPlaceOnMap,
   };
 
   // Multi-day bracketed bookings (a hotel, a red-eye flight) are ambient — off
@@ -496,6 +505,9 @@ interface DayCtx {
   verbs: ReturnType<typeof useVerbs>;
   onEdit: (event: TripEvent) => void;
   onOpenDetail: (booking: Booking) => void;
+  /** `מפה` — show this place on OUR map (ADR-0121 §8), not Google's. */
+  /** Absent outside the trip shell, where there is no Map tab to route to. */
+  showPlaceOnMap: ((placeId: string) => void) | null;
 }
 
 /** Total events nested anywhere inside an item — the "כולל N" count. */
@@ -605,7 +617,7 @@ function ItemNode({ item, depth, ctx }: { item: TimeItem; depth: number; ctx: Da
       }
       nestedCount={hasKids ? countDescendants(item) : undefined}
       onNavigate={navigateHandler(e, ctx)}
-      onShowOnMap={showOnMapHandler(e, ctx)}
+      onShowOnMap={showOnMapHandler(e, ctx, ctx.showPlaceOnMap)}
       onDone={() => ctx.verbs.done(e)}
       onSkip={() => ctx.verbs.skip(e)}
       onDelay={() => ctx.verbs.delay(e)}

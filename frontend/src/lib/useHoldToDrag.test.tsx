@@ -7,19 +7,10 @@ import { DRAG_HOLD_MS } from '../constants';
 // The gesture arbitration (ADR-0116 §5, session-114): a scroll and a drag are the
 // same movement, so only TIME can tell them apart. These assert the arbitration —
 // that a flick never arms a drag, and that a hold does.
-// jsdom implements neither PointerEvent nor pointer capture, so without this the
+// jsdom implements neither PointerEvent nor pointer capture, so without the shim the
 // events arrive with no coordinates and no `pointerType` — and the arbitration
-// under test is entirely about those two things.
-class TestPointerEvent extends MouseEvent {
-  readonly pointerType: string;
-  readonly pointerId: number;
-  constructor(type: string, props: MouseEventInit & { pointerType?: string; pointerId?: number }) {
-    super(type, props);
-    this.pointerType = props.pointerType ?? 'touch';
-    this.pointerId = props.pointerId ?? 1;
-  }
-}
-window.PointerEvent = TestPointerEvent as unknown as typeof window.PointerEvent;
+// under test is entirely about those two things. Shared with the sheet's snap drag.
+import '../test/pointer-events';
 
 const handlers = {
   onArm: vi.fn(),

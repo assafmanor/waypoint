@@ -360,6 +360,14 @@ export interface PlaceFilter {
   category: PlaceCategoryFilter;
   /** The independent maybes toggle (ADR-0110 §2) — narrows to what's on the shelf. */
   maybesOnly: boolean;
+  /** `מה נשאר` (ADR-0121 §9 / ADR-0117's deferred outcome filter, scoped to ONE
+   *  toggle rather than three chips): hide everything settled, `done` and
+   *  `skipped` alike. */
+  unsettledOnly?: boolean;
+  /** The day the settled check is scoped to; omit for all-days. The outcome lives
+   *  per day, so "is this handled" is a different question on Tuesday than across
+   *  the trip — see {@link isPlaceSettled}. */
+  onDate?: string;
 }
 
 /** On the shelf: ADR-0027 §2's union, which is what the shelf actually renders —
@@ -373,10 +381,35 @@ export const isOnShelf = (usage: PlaceUsage): boolean => usage.isMaybe || usage.
 export const matchesPlaceCategory = (usage: PlaceUsage, category: PlaceCategoryFilter): boolean =>
   category === PLACE_CATEGORY_ALL || usage.categories.includes(category);
 
+/** Nothing left to do here (ADR-0121 §9, over the `settled` field ADR-0117 §2
+ *  already stores): **every** day this place is anchored to is settled — done or
+ *  skipped. Three consequences worth stating:
+ *
+ *  - A place with **no day at all** is never settled. An unconsumed idea and an
+ *    unscheduled booking are precisely what is left, so "what's left" must keep
+ *    them.
+ *  - Across the trip it takes ALL its days, not any: a café visited on Tuesday and
+ *    pencilled again for Thursday is not handled. Day-scoped it is just that day's
+ *    answer, which is the question you ask while standing in it.
+ *  - **A place with nothing on `onDate` falls back to all its days**, rather than
+ *    reading as unsettled for want of a day in scope. That is what makes the filter
+ *    apply to the map's ghost tier (ADR-0121 §9): a place visited on Tuesday must
+ *    not sit on the canvas while you ask what is left, and a ghost by definition has
+ *    no day in the scope being asked about. In the list this branch is unreachable —
+ *    an out-of-scope row is already hidden by the day predicate. */
+export function isPlaceSettled(usage: PlaceUsage, onDate?: string): boolean {
+  const scoped = onDate ? usage.days.filter((d) => d.date === onDate) : [];
+  const days = scoped.length > 0 ? scoped : usage.days;
+  return days.length > 0 && days.every((d) => d.settled === true);
+}
+
 /** Filter match: the maybes toggle (if on) requires the place to be on the shelf;
- *  the type chip passes "all" or any place whose category union includes it. */
+ *  `מה נשאר` (if on) drops everything settled; the type chip passes "all" or any
+ *  place whose category union includes it. Independent facets, so each count can
+ *  narrow by the others without re-stating this (ADR-0119's coupling rule). */
 export function matchesPlaceFilter(usage: PlaceUsage, filter: PlaceFilter): boolean {
   if (filter.maybesOnly && !isOnShelf(usage)) return false;
+  if (filter.unsettledOnly && isPlaceSettled(usage, filter.onDate)) return false;
   return matchesPlaceCategory(usage, filter.category);
 }
 

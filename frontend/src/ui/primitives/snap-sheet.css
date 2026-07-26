@@ -1,0 +1,79 @@
+/* SnapSheet (ADR-0121 §5) — a sheet inside a pane, on a snap-height axis. The
+   heights themselves are the caller's (`--snap-h` per stop), because only the
+   caller knows what a peek should show. */
+.wp-snapsheet {
+  position: absolute;
+  inset-inline: 0;
+  bottom: 0;
+  height: var(--snap-h, 56%);
+  display: flex;
+  flex-direction: column;
+  background: var(--screen);
+  border-radius: var(--radius-lg, 16px) var(--radius-lg, 16px) 0 0;
+  box-shadow: 0 -8px 24px color-mix(in srgb, var(--ink) 18%, transparent);
+  transition: height var(--t-base, 280ms) var(--ease-standard, cubic-bezier(0.2, 0.7, 0.2, 1));
+}
+/* Under the finger there is nothing to ease — the height IS the gesture, and an
+   easing curve fighting it reads as lag. */
+.wp-snapsheet.dragging {
+  transition: none;
+}
+/* At full height the sheet IS the screen, so the card edges that said "there is
+   something behind me" would be lying. */
+.wp-snapsheet[data-view='full'] {
+  border-radius: 0;
+  box-shadow: none;
+}
+/* Reduced motion: the sheet SNAPS. It still moves — only the easing is dropped
+   (ADR-0098 §4 / ADR-0121 §13). */
+@media (prefers-reduced-motion: reduce) {
+  .wp-snapsheet {
+    transition: none;
+  }
+}
+
+.wp-snapsheet-top {
+  flex: none;
+  padding: 7px var(--space-3, 14px) var(--space-1, 8px);
+  display: grid;
+  gap: var(--space-1, 8px);
+  justify-items: center;
+}
+
+/* The handle owns the vertical gesture, so the browser must not claim the pan
+   first — `touch-action: none` is what makes the drag possible at all. A real
+   button, so it is focusable and named; the visible grab line is the 4px pill. */
+.wp-snapsheet-grab {
+  touch-action: none;
+  border: 0;
+  background: none;
+  padding: 6px 18px;
+  margin: -6px 0 -2px;
+  display: grid;
+  place-items: center;
+  cursor: grab;
+}
+.wp-snapsheet-grab:active {
+  cursor: grabbing;
+}
+.wp-snapsheet-grabline {
+  display: block;
+  width: 40px;
+  height: 4px;
+  border-radius: var(--radius-pill, 999px);
+  background: var(--soft-line);
+}
+.wp-snapsheet-grab:focus-visible {
+  outline: 2.5px solid var(--teal);
+  outline-offset: 2px;
+  border-radius: var(--radius-pill, 999px);
+}
+
+/* The one scroll region: the sheet's body, never the page (the tab is full-bleed,
+   ADR-0121 §5). */
+.wp-snapsheet-body {
+  flex: 1;
+  min-height: 0;
+  overflow-y: auto;
+  overscroll-behavior-y: contain;
+}

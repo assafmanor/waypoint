@@ -9,14 +9,26 @@ one.
 
 - **`ui/primitives/`** — generic UI mechanics with no trip-domain shape:
   `Modal` (+ its `Sheet`/`ConfirmDialog`/`RowManageSheet` wrappers), `Field`,
-  `FormActions`, `FilePicker`, `WhenField`/`TimeField`, `ChoiceGrid`. **Every**
+  `FormActions`, `FilePicker`, `WhenField`/`TimeField`, `ChoiceGrid`,
+  `SnapSheet`. **Every**
   overlay (sheet/dialog/picker/popover) renders through `Modal`, which
   registers into the back stack via `useOverlay` — never hand-roll a floating
   overlay (`createPortal` / `position:fixed`); it's lint-blocked
   (`eslint.config.mjs`'s `createPortal` guard) precisely because a bespoke
   overlay breaks the one-back-action invariant (ADR-0090). If a bespoke portal
   is truly unavoidable, call `useOverlay()` yourself and add the file to the
-  lint allowlist — don't route around it silently.
+  lint allowlist — don't route around it silently. **The exception that proves
+  the rule:** `SnapSheet` (the Map's list sheet, ADR-0121 §5) is a pane _of_ a
+  screen, not a layer _over_ it — it renders inline, whatever is behind it stays
+  interactive, and nothing dismisses it — so it deliberately registers nothing
+  with the back stack and back leaves the tab at any height. A new sheet is an
+  overlay unless it is genuinely inline like that; if it opens and closes, it is
+  a `Modal`.
+- **A full-bleed surface that owns its own layout** — `AppShell`'s
+  `bodyClassName={BODY_FULLBLEED}` (`overflow: hidden; padding: 0`), not a
+  screen-local hack to escape the scrolling body. The layout layer is where this
+  belongs (ADR-0078); the Map tab's split is the first consumer, the screen then
+  supplying its own edge padding and owning its one scroll region.
 - **`ui/domain/`** — presentational, trip-domain-shaped components that take
   **all** data via props (no `state`/screen imports): `Board`, `EventCard`,
   `GlanceCard`, `DayStrip`, `MaybeCard`, `StatTile`, `ListRow`/
@@ -88,6 +100,14 @@ it": a new structural back case is a rule added to `resolveBack`
 - A chip/search/scope control `.filter()`ing rows out of the array instead of the
   shared reveal (ADR-0120) — the Map jumped for two releases because the Index's
   motion was a one-off.
+- Handing a `memo`ized component a **fresh object or function each render** on a
+  screen that re-renders on the clock. `screens/Map.tsx` ticks every second, and
+  `MapPane` holds a live `google.maps.Map` where a needless re-diff of every
+  marker is the cheap failure and a re-instantiation is a **billed** one
+  (ADR-0121 §4/§6): so its array prop is memoized on a **content key** (the
+  `RevealList` trick), its handlers are `useCallback(…, [])` over a latest-ref,
+  and even `defaultCentre` is a `useMemo`. One inline `{ lat, lng }` in the JSX
+  undoes all of it silently.
 - Three divergent confirm-dialog implementations instead of one variant-driven
   `ConfirmDialog` (ADR-0079) — if you're about to write a second confirm
   prompt, its variant belongs on the existing one.
@@ -124,6 +144,17 @@ Vitest + React Testing Library. Component tests for the interaction verbs; a
 new `ui/domain/` or `ui/primitives/` component ships with its own test file
 alongside it (the existing `*.test.tsx` co-location is the pattern, not the
 exception).
+
+**A surface Google renders can't be tested, but almost all of it can.** The Map
+tab is the worked example (ADR-0121 §13): every decision about what a pin looks
+like lives in pure `lib/` functions tested with no Google in the process
+(`map-pins.ts`, `map-camera.ts`, `place-refs.ts`, `snap-sheet.ts`,
+`map-config.ts`); `MapPane`'s own test stubs `@vis.gl/react-google-maps` to plain
+DOM and asserts the markup that is **ours**; and the shell's test
+(`Map.embedded.test.tsx`) stubs the pane. The render itself is a human pass, and
+saying so is the point — don't imply a canvas was seen. Note the pairing:
+`Map.test.tsx` runs with **no** build config, which is the graceful-absence
+(list-only) path and must stay tested as such, so the split has its own file.
 
 Two rules that exist because their absence hid real bugs for three review
 rounds (the Map tab's ordering, ADR-0109 session-110):

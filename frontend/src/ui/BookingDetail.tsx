@@ -7,7 +7,8 @@ import { BOOKING_TYPE, type Booking, type BookingType } from '@waypoint/shared';
 import { useTrip } from '../state/trip-state';
 import { Sheet } from './Sheet';
 import { RouteLabel } from './RouteLabel';
-import { bookingPlaceId, mapsDirectionsUrl, mapsPlaceUrl, placeName } from '../lib/places';
+import { bookingMapPlace, bookingPlaceId, mapsDirectionsUrl, placeName } from '../lib/places';
+import { useShowPlaceOnMap } from '../state/map-scope-state';
 import { routeTitle } from '../lib/route-title';
 import { formatTime } from '../lib/time';
 import { bookingDurationUnit, formatBookingDuration, timingLabels } from '../lib/booking-timing';
@@ -44,6 +45,7 @@ export function BookingDetail({
   onEdit: (booking: Booking) => void;
 }) {
   const { trip, events, places } = useTrip();
+  const showPlaceOnMap = useShowPlaceOnMap();
   const linkedEvent = events.find((e) => e.bookingId === booking.id);
 
   const tz = trip.timezone;
@@ -71,7 +73,10 @@ export function BookingDetail({
   // the whole row is skipped when there's neither a map link nor an address to add.
   const navPlace = places.find((p) => p.id === bookingPlaceId(booking));
   const dirUrl = mapsDirectionsUrl(navPlace);
-  const viewUrl = mapsPlaceUrl(navPlace);
+  // `מפה` shows the place on OUR map now (ADR-0121 §8) — the Map tab, focused on it
+  // — rather than deep-linking to Google's place view, which existed only because
+  // there was no map of ours to focus. `ניווט` stays the Google action.
+  const mapPlace = bookingMapPlace(booking, places);
   const locationText = navPlace?.address ?? navPlace?.name;
   const showLocation = !!(locationText && (dirUrl || navPlace?.address));
 
@@ -106,7 +111,22 @@ export function BookingDetail({
           <div className="bs-hard-note">🔒 {t.index.detail.hardNote}</div>
         )}
         <div className="bk-facts">
-          {showLocation && <LocationFact text={locationText!} dirUrl={dirUrl} viewUrl={viewUrl} />}
+          {showLocation && (
+            <LocationFact
+              text={locationText!}
+              dirUrl={dirUrl}
+              onShowOnMap={
+                mapPlace && showPlaceOnMap
+                  ? () => {
+                      // The detail is a Modal sheet, so it closes before the tab
+                      // changes underneath it.
+                      onClose();
+                      showPlaceOnMap(mapPlace.id);
+                    }
+                  : undefined
+              }
+            />
+          )}
           {!linkedEvent ? (
             <Fact k={t.index.detail.timing} v={t.index.detail.unscheduled} />
           ) : endsAt ? (
@@ -146,28 +166,31 @@ export function BookingDetail({
 function LocationFact({
   text,
   dirUrl,
-  viewUrl,
+  onShowOnMap,
 }: {
   text: string;
   dirUrl: string | null;
-  viewUrl: string | null;
+  /** Show it on our map — absent when the place has no coordinates to focus. */
+  onShowOnMap?: () => void;
 }) {
   return (
     <div className="bk-fact">
       <span className="bk-fact-k">{t.index.detail.location}</span>
       <span className="bk-fact-v bk-loc">
         <span>{text}</span>
-        {(dirUrl || viewUrl) && (
+        {(dirUrl || onShowOnMap) && (
           <span className="bk-loc-links">
             {dirUrl && (
               <a className="bk-loc-link" href={dirUrl} target="_blank" rel="noopener noreferrer">
                 {t.actions.navigate}
               </a>
             )}
-            {viewUrl && (
-              <a className="bk-loc-link" href={viewUrl} target="_blank" rel="noopener noreferrer">
+            {/* A button, not a link: the destination is a tab and a selection now,
+                not a URL (ADR-0121 §8). */}
+            {onShowOnMap && (
+              <button type="button" className="bk-loc-link" onClick={onShowOnMap}>
                 {t.actions.showOnMap}
-              </a>
+              </button>
             )}
           </span>
         )}
