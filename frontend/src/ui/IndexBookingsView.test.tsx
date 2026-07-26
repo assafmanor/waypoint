@@ -174,8 +174,8 @@ describe('IndexBookingsView (ADR-0098/ADR-0101)', () => {
     fireEvent.click(screen.getByRole('radio', { name: t.index.bookingType.hotel }));
     const hotelRow = screen.getByRole('button', { name: 'Shinjuku Granbell' });
     const flightRow = screen.getByRole('button', { name: 'טוקיו' });
-    expect(hotelRow.closest('.idx-row')?.className).not.toContain('hidden');
-    expect(flightRow.closest('.idx-row')?.className).toContain('hidden');
+    expect(hotelRow.closest('.wp-reveal')?.className).not.toContain('hidden');
+    expect(flightRow.closest('.wp-reveal')?.className).toContain('hidden');
   });
 
   it('omits category chips for booking types the trip has none of', () => {
@@ -198,8 +198,8 @@ describe('IndexBookingsView (ADR-0098/ADR-0101)', () => {
     });
     const flightRow = screen.getByRole('button', { name: 'טוקיו' });
     const hotelRow = screen.getByRole('button', { name: 'Shinjuku Granbell' });
-    expect(flightRow.closest('.idx-row')?.className).not.toContain('hidden');
-    expect(hotelRow.closest('.idx-row')?.className).toContain('hidden');
+    expect(flightRow.closest('.wp-reveal')?.className).not.toContain('hidden');
+    expect(hotelRow.closest('.wp-reveal')?.className).toContain('hidden');
   });
 
   it('search mode ignores whatever category was selected before opening it (ADR-0102)', () => {
@@ -211,7 +211,7 @@ describe('IndexBookingsView (ADR-0098/ADR-0101)', () => {
     // been selected before entering it.
     for (const title of ['טוקיו', 'Shinjuku Granbell', 'Ichiran Ramen']) {
       expect(
-        screen.getByRole('button', { name: title }).closest('.idx-row')?.className,
+        screen.getByRole('button', { name: title }).closest('.wp-reveal')?.className,
       ).not.toContain('hidden');
     }
   });
@@ -222,7 +222,7 @@ describe('IndexBookingsView (ADR-0098/ADR-0101)', () => {
     fireEvent.click(screen.getByRole('button', { name: t.index.search.button }));
     const input = screen.getByPlaceholderText(t.index.search.placeholder);
     const rowClass = (title: string) =>
-      screen.getByRole('button', { name: title }).closest('.idx-row')?.className;
+      screen.getByRole('button', { name: title }).closest('.wp-reveal')?.className;
 
     fireEvent.change(input, { target: { value: t.index.bookingTypePlural.restaurant } });
     expect(rowClass('Ichiran Ramen')).not.toContain('hidden');

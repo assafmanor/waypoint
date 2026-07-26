@@ -5,7 +5,7 @@
 // the chip counts and each row's category badge/commitment. No rendered map yet
 // (that's Phase 6): rows deep-link out to Google Maps (ADR-0106 "deep-link, don't
 // rebuild nav") — the row tap views the place, the trailing נווט gives directions.
-import { Fragment, useEffect, useMemo, useRef, useState } from 'react';
+import { useEffect, useMemo, useRef, useState } from 'react';
 import { iconForCategory, matchesAnyTerm, type EventCategory, type Place } from '@waypoint/shared';
 import { useTrip } from '../state/trip-state';
 import { useMode } from '../state/mode-state';
@@ -32,6 +32,7 @@ import {
   mapsPlaceUrl,
   nextDestination,
 } from '../lib/places';
+import { countVisible, revealRows, visibleItems, type Revealed } from '../lib/filter-reveal';
 import { formatTime, relativeDayLabel } from '../lib/time';
 import { eventEdgeTransition } from '../lib/transitions';
 import { shortTitleText } from '../lib/route-title';
@@ -42,6 +43,7 @@ import { EVENT_CATEGORY_OPTIONS } from '../lib/category-options';
 import { CATEGORY_PIN_HUE, DOT_SEPARATOR, ICONS } from '../constants';
 import { ChoiceGrid, type Choice } from '../ui/primitives/ChoiceGrid';
 import { PlacePickerSheet } from '../ui/primitives/PlacePicker';
+import { RevealList } from '../ui/primitives/RevealList';
 import { PlaceResearch } from './PlaceResearch';
 import { SearchOverlay } from '../ui/primitives/SearchOverlay';
 import { EmptyState, StatusBanner } from '../ui/feedback';
@@ -216,21 +218,28 @@ export function MapView() {
   };
   const listOrder = nearActive ? byDistance : bySchedule;
 
-  const visible = dayScoped
-    .filter((u) => matchesPlaceFilter(u, { category: activeCategory, maybesOnly }))
-    .sort(listOrder);
+  // The chip/toggle filters ride the app's shared reveal (ADR-0120): a row that
+  // stops matching stays in place and collapses, so the list answers a chip tap
+  // with motion rather than a jump. Only the type/`אולי` facets work this way —
+  // the day scope is a different set of places, not a filter over this one.
+  const listRows = revealRows([...dayScoped].sort(listOrder), (u) =>
+    matchesPlaceFilter(u, { category: activeCategory, maybesOnly }),
+  ).rows;
+  const listCount = countVisible(listRows);
 
   // Search spans every place in the trip (name + address), ignoring day scope and
-  // filters — the same "search is global" rule as the Index.
-  const searchResults = useMemo(() => {
-    if (!query.trim()) return allUsages.slice().sort(listOrder);
-    return allUsages
-      .filter((u) => {
+  // filters — the same "search is global" rule as the Index. It reveals through
+  // the same primitive, so typing here animates exactly like the Index's search.
+  const searchRows = useMemo(
+    () =>
+      revealRows([...allUsages].sort(listOrder), (u) => {
+        if (!query.trim()) return true;
         const p = placeById.get(u.placeId);
-        return p && matchesAnyTerm(query, [p.name, p.address]);
-      })
-      .sort(listOrder);
-  }, [query, allUsages, placeById, nearActive, distances]);
+        return !!p && matchesAnyTerm(query, [p.name, p.address]);
+      }).rows,
+    [query, allUsages, placeById, nearActive, distances],
+  );
+  const searchCount = countVisible(searchRows);
 
   // navigate-to-next (ADR-0106 §6) on the list: not a re-sort or a second control,
   // just the one time-anchor cue the map's colour budget allows (ADR-0109 §6 — the
@@ -326,27 +335,37 @@ export function MapView() {
   // block is labelled where it starts, so "why is this down here" is answered on
   // screen — and no block sits under a header that means something else, which is
   // what made an undated idea read as "behind you" (ADR-0109 session-127).
-  const renderList = (usages: PlaceUsage[]) => {
+  // Headers describe what's ON SCREEN, so they're derived from the visible rows
+  // only and attach to the first visible row of each block — a filtered-out row
+  // must never carry (or strand) a header while it collapses.
+  const renderList = (rows: Revealed<PlaceUsage>[]) => {
+    const shown = visibleItems(rows);
     // Near-me re-sorts by distance, so the schedule blocks don't describe the list.
-    const blocks = nearActive ? [] : usages.map(blockOf);
+    const blocks = nearActive ? [] : shown.map(blockOf);
     // A single-block list needs no header at all: labelling the only thing on screen
     // is the chrome ADR-0117 §3 refused for the ahead header.
     const labelled = new Set(blocks).size > 1;
+    const headerFor = new Map<string, (typeof blocks)[number]>();
+    if (labelled) {
+      shown.forEach((usage, i) => {
+        if (blocks[i] !== blocks[i - 1]) headerFor.set(usage.placeId, blocks[i]);
+      });
+    }
     return (
       <>
-        {nearActive && usages.some((u) => !u.coordless) && (
+        {nearActive && shown.some((u) => !u.coordless) && (
           <div className="map-grouphead">{t.map.near.groupHeader}</div>
         )}
-        <div className="map-list">
-          {usages.map((usage, i) => (
-            <Fragment key={usage.placeId}>
-              {labelled && blocks[i] !== blocks[i - 1] && (
-                <div className="map-grouphead">{t.map.blockHeader[blocks[i]!]}</div>
-              )}
-              {renderRow(usage)}
-            </Fragment>
-          ))}
-        </div>
+        <RevealList
+          className="map-list"
+          rows={rows}
+          getKey={(usage) => usage.placeId}
+          renderBefore={(usage) => {
+            const block = headerFor.get(usage.placeId);
+            return block && <div className="map-grouphead">{t.map.blockHeader[block]}</div>;
+          }}
+          renderRow={renderRow}
+        />
       </>
     );
   };
@@ -449,10 +468,10 @@ export function MapView() {
 
       {allUsages.length === 0 ? (
         <EmptyState icon="🗺️" title={t.map.empty.title} body={t.map.empty.body} />
-      ) : visible.length === 0 ? (
+      ) : listCount === 0 ? (
         <EmptyState icon={ICONS.search} title={t.map.filter.noResultsTitle} />
       ) : (
-        renderList(visible)
+        renderList(listRows)
       )}
 
       {searchMode && (
@@ -479,16 +498,16 @@ export function MapView() {
             {research ? (
               <>
                 {!query.trim() && <p className="map-res-hint">{t.map.search.hint}</p>}
-                {searchResults.length > 0 && (
+                {searchCount > 0 && (
                   <>
                     <div className="map-grouphead">{t.map.research.tripGroup}</div>
-                    {renderList(searchResults)}
+                    {renderList(searchRows)}
                   </>
                 )}
                 <PlaceResearch query={query} usageIndex={usageIndex} offline={offline} />
               </>
-            ) : searchResults.length > 0 ? (
-              renderList(searchResults)
+            ) : searchCount > 0 ? (
+              renderList(searchRows)
             ) : (
               <EmptyState icon={ICONS.search} title={t.map.search.noResultsTitle} />
             )}

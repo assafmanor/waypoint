@@ -25,6 +25,14 @@ one.
   row + kebab-menu shape already reused across bookings, documents, and
   members; a fourth managed list extends it rather than growing a new
   bespoke row component.
+- **Filtering/searching a list** — `lib/filter-reveal.ts` (`revealRows` + the
+  predicate you supply) rendered through `ui/primitives/RevealList`/`RevealRow`
+  (ADR-0120). A filtered-out row is **hidden and collapsed in place**, never
+  dropped from the array — so the reveal motion, the per-row stagger, and the
+  `inert` treatment of a hidden row come with the list. Never re-derive a
+  visible/hidden class, an inline `transitionDelay`, or a `.filter()`-and-jump
+  list at a call site; and count `countVisible(rows)`, not `rows.length`, when a
+  count drives an empty state or a group header.
 - **`ui/feedback/`** — the empty/loading/error/status shell family (ADR-0078):
   `EmptyState`, `ErrorState`, `LoadingState`+`Skeleton`, `StatusBanner`,
   `SyncBadge`. A screen needing "no data yet" / "failed to load" / "offline"
@@ -80,6 +88,10 @@ it": a new structural back case is a rule added to `resolveBack`
   surface (ADR-0090); lint-blocked for a reason.
 - A bespoke empty/loading/error `<div>` per screen instead of the
   `ui/feedback/` family (ADR-0078).
+- A screen `.filter()`ing its rows out of the array for a chip/search, so they
+  blink out of existence — instead of the shared reveal (ADR-0120). The Index
+  animated and the Map jumped for two releases, with the same filter grammar on
+  both, because the motion was a one-off on one screen.
 - Three divergent confirm-dialog implementations instead of one variant-driven
   `ConfirmDialog` (ADR-0079) — if you're about to write a second confirm
   prompt, its variant belongs on the existing one.

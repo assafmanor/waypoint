@@ -19,6 +19,7 @@ import {
   type BookingRow,
   type CategoryFilter,
 } from '../lib/index-bookings';
+import { countVisible } from '../lib/filter-reveal';
 import { bookingDurationUnit, formatBookingDuration } from '../lib/booking-timing';
 import { badgeClassForBookingType } from '../lib/transitions';
 import { EntitySyncBadge, useUnsynced } from './EntitySyncBadge';
@@ -32,6 +33,7 @@ import { Icon } from './Icon';
 import { ListRow, type BadgeTone } from './domain';
 import { ChoiceGrid, type Choice } from './primitives/ChoiceGrid';
 import { Collapsible, CollapseToggle } from './primitives/Collapsible';
+import { RevealList } from './primitives/RevealList';
 import { SearchOverlay } from './primitives/SearchOverlay';
 import { EmptyState } from './feedback';
 import { t } from '../i18n/he';
@@ -103,8 +105,8 @@ export function IndexBookingsView({
 
   const upcomingVisible = visibleRows(upcoming, activeCategory, query);
   const pastVisible = visibleRows(past, activeCategory, query, upcomingVisible.nextIndex);
-  const upcomingMatchCount = upcomingVisible.rows.filter((r) => r.visible).length;
-  const pastMatchCount = pastVisible.rows.filter((r) => r.visible).length;
+  const upcomingMatchCount = countVisible(upcomingVisible.rows);
+  const pastMatchCount = countVisible(pastVisible.rows);
   // "No active bookings right now" rather than "no matches" (ADR-0101) — fires
   // whenever there's nothing upcoming to show, whether from a filter/search or
   // simply because everything's already past; a `pastMatchHint` nudges toward
@@ -124,7 +126,7 @@ export function IndexBookingsView({
   // the current filter, not a continuation of it.
   const searchRows = [...upcoming, ...past];
   const searchVisible = visibleRows(searchRows, CATEGORY_ALL, query);
-  const searchMatchCount = searchVisible.rows.filter((r) => r.visible).length;
+  const searchMatchCount = countVisible(searchVisible.rows);
 
   // Zero-count booking types don't get a chip at all (ADR-0101) — "הכל" always
   // does. `countByCategory` still initializes every type to 0 so this filter
@@ -142,6 +144,20 @@ export function IndexBookingsView({
   ];
 
   const createSeed = activeCategory !== CATEGORY_ALL ? { type: activeCategory } : undefined;
+
+  // One row renderer for all three lists (upcoming, past, search) — they differ
+  // only in which rows they hand the shared reveal (ADR-0120).
+  const renderBooking = (row: BookingRow) => (
+    <BookingLi
+      row={row}
+      places={places}
+      trip={trip}
+      now={now}
+      onOpen={openDetail}
+      onManage={setManage}
+    />
+  );
+  const bookingKey = (row: BookingRow) => row.booking.id;
 
   return (
     <div className="idx-screen">
@@ -194,24 +210,12 @@ export function IndexBookingsView({
             </button>
 
             {upcomingMatchCount > 0 ? (
-              <div className="listcard">
-                {upcomingVisible.rows.map(({ row, visible, delayMs }) => (
-                  <div
-                    key={row.booking.id}
-                    className={'idx-row' + (visible ? '' : ' hidden')}
-                    style={{ transitionDelay: `${delayMs}ms` }}
-                  >
-                    <BookingLi
-                      row={row}
-                      places={places}
-                      trip={trip}
-                      now={now}
-                      onOpen={openDetail}
-                      onManage={setManage}
-                    />
-                  </div>
-                ))}
-              </div>
+              <RevealList
+                className="listcard"
+                rows={upcomingVisible.rows}
+                getKey={bookingKey}
+                renderRow={renderBooking}
+              />
             ) : (
               noResults && (
                 <EmptyState
@@ -238,24 +242,12 @@ export function IndexBookingsView({
                   </span>
                 </div>
                 <Collapsible expanded={pastExpanded}>
-                  <div className="listcard past">
-                    {pastVisible.rows.map(({ row, visible, delayMs }) => (
-                      <div
-                        key={row.booking.id}
-                        className={'idx-row' + (visible ? '' : ' hidden')}
-                        style={{ transitionDelay: `${delayMs}ms` }}
-                      >
-                        <BookingLi
-                          row={row}
-                          places={places}
-                          trip={trip}
-                          now={now}
-                          onOpen={openDetail}
-                          onManage={setManage}
-                        />
-                      </div>
-                    ))}
-                  </div>
+                  <RevealList
+                    className="listcard past"
+                    rows={pastVisible.rows}
+                    getKey={bookingKey}
+                    renderRow={renderBooking}
+                  />
                 </Collapsible>
               </>
             )}
@@ -280,24 +272,12 @@ export function IndexBookingsView({
               outside the real `.index` DOM subtree. */}
           <div className="index">
             {searchMatchCount > 0 ? (
-              <div className="listcard">
-                {searchVisible.rows.map(({ row, visible, delayMs }) => (
-                  <div
-                    key={row.booking.id}
-                    className={'idx-row' + (visible ? '' : ' hidden')}
-                    style={{ transitionDelay: `${delayMs}ms` }}
-                  >
-                    <BookingLi
-                      row={row}
-                      places={places}
-                      trip={trip}
-                      now={now}
-                      onOpen={openDetail}
-                      onManage={setManage}
-                    />
-                  </div>
-                ))}
-              </div>
+              <RevealList
+                className="listcard"
+                rows={searchVisible.rows}
+                getKey={bookingKey}
+                renderRow={renderBooking}
+              />
             ) : (
               <EmptyState icon={ICONS.search} title={t.index.filter.noResultsTitle} />
             )}

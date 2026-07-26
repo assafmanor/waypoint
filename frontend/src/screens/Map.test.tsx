@@ -108,6 +108,7 @@ import { MapScopeProvider } from '../state/map-scope-state';
 import { setSimulatedNow } from '../lib/useClock';
 import { MapView } from './Map';
 import { withoutBidiControls } from '../lib/bidi';
+import { FILTER_STAGGER_MS } from '../constants';
 import { t } from '../i18n/he';
 
 function wrap(node: ReactNode) {
@@ -121,6 +122,12 @@ function wrap(node: ReactNode) {
     </MemoryRouter>
   );
 }
+
+/** A row a chip/search filters out stays mounted and collapses in place (the
+ *  shared reveal, ADR-0120), so "not in the list" is its hidden state — never
+ *  absence from the DOM. */
+const filteredOut = (name: string) =>
+  screen.getByText(name).closest('.wp-reveal')?.classList.contains('hidden');
 
 function seed() {
   tripPlaces = [place('food', true), place('see', true), place('idea', true), place('lite', false)];
@@ -184,9 +191,29 @@ describe('MapView (Phase 3, ADR-0109/0110)', () => {
     render(wrap(<MapView />));
     fireEvent.click(screen.getByRole('button', { name: new RegExp(t.map.allDays) })); // see everything
     fireEvent.click(screen.getByRole('button', { name: new RegExp(t.map.filter.maybes) }));
-    expect(screen.getByText('idea')).toBeTruthy();
-    expect(screen.queryByText('food')).toBeNull();
-    expect(screen.queryByText('see')).toBeNull();
+    expect(filteredOut('idea')).toBe(false);
+    expect(filteredOut('food')).toBe(true);
+    expect(filteredOut('see')).toBe(true);
+  });
+
+  it('a filtered-out row collapses in place, and matches reveal with a stagger (ADR-0120)', () => {
+    seed();
+    render(wrap(<MapView />));
+    fireEvent.click(screen.getByRole('button', { name: new RegExp(t.map.allDays) }));
+    fireEvent.click(screen.getByRole('radio', { name: new RegExp(t.iconPicker.categories.food) }));
+    const reveal = (name: string) => screen.getByText(name).closest('.wp-reveal') as HTMLElement;
+    // The non-matching rows are still mounted (that's what lets them animate out)
+    // and inert, so they're out of reach of pointer, keyboard, and screen reader.
+    expect(reveal('see').classList.contains('hidden')).toBe(true);
+    expect(reveal('see').hasAttribute('inert')).toBe(true);
+    expect(reveal('see').style.transitionDelay).toBe('0ms');
+    expect(reveal('food').hasAttribute('inert')).toBe(false);
+    // Only the visible rows carry the stagger, and they carry it in list order —
+    // a hidden row between two matches never leaves a gap in the sequence.
+    const shown = [...document.querySelectorAll<HTMLElement>('.wp-reveal:not(.hidden)')];
+    expect(shown.map((r) => r.style.transitionDelay)).toEqual(
+      shown.map((_, i) => `${i * FILTER_STAGGER_MS}ms`),
+    );
   });
 
   it('Plan mode defaults to all days', () => {
@@ -256,12 +283,12 @@ describe('MapView (Phase 3, ADR-0109/0110)', () => {
       render(wrap(<MapView />));
       fireEvent.click(maybesChip());
       // It appeared under its category chip but never under `אולי` — the reported bug.
-      expect(screen.getByText('bailed')).toBeTruthy();
-      expect(screen.queryByText('planned')).toBeNull();
+      expect(filteredOut('bailed')).toBe(false);
+      expect(filteredOut('planned')).toBe(true);
       // …and the same in all-days scope.
       fireEvent.click(allDaysChip());
-      expect(screen.getByText('bailed')).toBeTruthy();
-      expect(screen.queryByText('planned')).toBeNull();
+      expect(filteredOut('bailed')).toBe(false);
+      expect(filteredOut('planned')).toBe(true);
     });
 
     it('the maybes count follows the picked category, and the chips follow the toggle', () => {
@@ -916,6 +943,23 @@ describe('MapView (Phase 3, ADR-0109/0110)', () => {
       // Twice: the list behind the overlay, and the overlay's own filtered copy.
       expect(screen.getAllByText('food')).toHaveLength(2);
       expect(armPresent()).toBe(false);
+    });
+
+    it('search reveals matches instead of dropping the rest (ADR-0120)', () => {
+      setSimulatedNow(NOON);
+      seed();
+      render(wrap(<MapView />));
+      openSearch(t.map.search.button);
+      fireEvent.change(screen.getByPlaceholderText(t.map.search.placeholder), {
+        target: { value: 'food' },
+      });
+      const results = document.querySelector('.search-overlay-results')!;
+      const row = (name: string) =>
+        [...results.querySelectorAll('.wp-reveal')].find(
+          (r) => r.querySelector('.map-name')?.textContent === name,
+        );
+      expect(row('food')?.classList.contains('hidden')).toBe(false);
+      expect(row('see')?.classList.contains('hidden')).toBe(true);
     });
   });
 });
