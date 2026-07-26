@@ -11,7 +11,7 @@
 // list-only tab it is.
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { type ReactNode } from 'react';
-import { cleanup, fireEvent, render, screen } from '@testing-library/react';
+import { act, cleanup, fireEvent, render, screen } from '@testing-library/react';
 import { MemoryRouter } from 'react-router-dom';
 import {
   EVENT_KIND,
@@ -660,6 +660,69 @@ describe('the embedded map’s shell (ADR-0121)', () => {
       ]);
       const link = screen.getByRole('link', { name: new RegExp(t.map.dayRoute) });
       expect(link.getAttribute('href')).toContain('/maps/dir/?api=1&origin=35.6%2C139.6');
+    });
+  });
+
+  // Session 134, second report — reproduced from the screenshot: day scope, two
+  // stops nearby, and the trip's other days scattered across continents as ghosts.
+  // The fit was working; it was fitting the ghosts too.
+  describe('the camera frames the day, not the ghosts around it', () => {
+    const seedFarFlungTrip = () => {
+      tripPlaces = [
+        place('breakfast', true, { lat: 32.08, lng: 34.78 }), // today, Tel Aviv
+        place('lunch', true, { lat: 32.09, lng: 34.79 }), // today, Tel Aviv
+        place('rome', true, { lat: 41.9, lng: 12.5 }), // another day
+        place('tokyo', true, { lat: 35.68, lng: 139.76 }), // another day
+      ];
+      tripEvents = [
+        event({ id: 'e1', placeId: 'breakfast', startsAt: `${ACTIVE_DATE}T08:00:00Z` }),
+        event({ id: 'e2', placeId: 'lunch', startsAt: `${ACTIVE_DATE}T13:00:00Z` }),
+        event({ id: 'e3', placeId: 'rome', date: NEXT_DAY }),
+        event({ id: 'e4', placeId: 'tokyo', date: '2026-07-22' }),
+      ];
+    };
+
+    it('hands the camera the day’s own pins only', () => {
+      seedFarFlungTrip();
+      render(wrap(<MapView />));
+      // All four are DRAWN — a ghost is context you can see and tap…
+      expect(pinIds()).toHaveLength(4);
+      expect(pin('tokyo')?.dataset.tier).toBe('ghost');
+      // …but the camera is given the two the day actually contains, so it frames a
+      // neighbourhood rather than three continents.
+      expect(paneProps.current.pins).toBeDefined();
+      const framed = (paneProps.current.pins as { placeId: string; tier: string }[]).filter(
+        (p) => p.tier !== 'ghost',
+      );
+      expect(framed.map((p) => p.placeId).sort()).toEqual(['breakfast', 'lunch']);
+    });
+
+    it('anchors the opening camera on a day pin, never on a ghost', () => {
+      seedFarFlungTrip();
+      render(wrap(<MapView />));
+      // Tel Aviv, not Rome or Tokyo — even the frame before the first fit lands
+      // somewhere the day contains.
+      expect(paneProps.current.defaultCentre).toEqual({ lat: 32.08, lng: 34.78 });
+    });
+
+    it('all-days scope has no ghosts, so every pin is framed', () => {
+      seedFarFlungTrip();
+      render(wrap(<MapView />));
+      fireEvent.click(listButton(t.map.allDays));
+      const tiers = (paneProps.current.pins as { tier: string }[]).map((p) => p.tier);
+      expect(tiers).not.toContain('ghost');
+    });
+
+    // The `באזור` readout deliberately keeps counting ghosts: it is a SPATIAL
+    // question about the area, not the facet count the camera answers (§9).
+    it('still counts ghosts in the area readout — a different question', () => {
+      seedFarFlungTrip();
+      render(wrap(<MapView />));
+      const onViewChange = paneProps.current.onViewChange as (b: unknown) => void;
+      // The real caller is the map's `idle` event; here it is invoked directly, so it
+      // needs its own `act` to flush the state it sets.
+      act(() => onViewChange({ north: 60, south: 20, east: 150, west: 0 })); // a wide pan
+      expect(paneProps.current.areaCount).toBe(4);
     });
   });
 

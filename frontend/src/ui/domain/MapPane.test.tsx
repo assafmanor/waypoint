@@ -192,6 +192,17 @@ describe('MapPane — our markup, not PinElement (ADR-0121 §6)', () => {
     expect(z(2)).toBeGreaterThan(z(0));
   });
 
+  // Ghosts are drawn — they are context you can see and tap — while being excluded
+  // from what the camera frames (session 134). Both halves matter: dropping them
+  // would hide the café you are standing next to.
+  it('draws ghosts alongside the day’s own pins', () => {
+    paint({
+      pins: [pin({ placeId: 'today' }), pin({ placeId: 'other-day', tier: PIN_TIER.ghost })],
+    });
+    expect(markers()).toHaveLength(2);
+    expect(document.querySelector('[aria-label="other-day"]')?.className).toContain('ghost');
+  });
+
   it('a pin tap selects that place', () => {
     const onSelectPin = vi.fn();
     paint({ pins: [pin({ placeId: 'shrine' })], onSelectPin });

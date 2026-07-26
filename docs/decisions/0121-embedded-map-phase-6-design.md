@@ -1,6 +1,6 @@
 # 0121 — Phase-6 embedded map: the reconfirmed API surface, `@vis.gl/react-google-maps`, the map↔list shell, and one map load per visit
 
-**Status:** Accepted — **built 2026-07-26 (session 133)**, with two production fixes in session 134; see the [Build log](#build-log-2026-07-26-session-133) for where the build refined this design, the one place it read against the letter, the deploy-time gap §2 left open, and the §7 guard that swallowed the opening framing
+**Status:** Accepted — **built 2026-07-26 (session 133)**, with three production fixes in session 134; see the [Build log](#build-log-2026-07-26-session-133) for where the build refined this design, the one place it read against the letter, and the three gaps the deploy found — §2's build vars never reaching the build, §7's containment guard swallowing the opening framing, and §6's prominence ladder never saying that the camera ignores ghosts
 **Date:** 2026-07-26
 **Implements** [0106](0106-maps-and-places-epic-scope-and-phasing.md) **Phase 6** and the design [ADR-0109](0109-map-tab-design.md) deferred to this session ("the _fully-rendered_ Phase 6 map — to its own build session … re-confirming current Maps/Places API + pricing first").
 **Refines:** [0109](0109-map-tab-design.md) (§3's pin grammar gets its map form; §10's shell becomes concrete; §6's amber ring lands on a pin; §1's row tap changes destination), [0108](0108-maps-and-places-backend-architecture-key-model-and-cost.md) (§4's cost envelope re-costed; its Routes tier table corrected), [0106](0106-maps-and-places-epic-scope-and-phasing.md) §4/§B/§D/§E, [0117](0117-map-place-outcome-states.md) (its deferred outcome filter is scoped here), [0119](0119-map-maybes-facet-is-the-shelf.md) (the ghost tier is its deliberate inverse), [0120](0120-filter-reveal-is-shared-infrastructure.md) (the map's answer to "every list change moves"), [0078](0078-feedback-state-family.md) (the layout layer gains a full-bleed body modifier), [0090](0090-back-is-computed-from-nav-state.md)/[0103](0103-back-navigation-typed-layer-model.md) (why the sheet is _not_ a back layer), [0028](0028-plan-violet-color-budget-dark-ready.md) (the colour budget on a rendered canvas), [0096](0096-per-domain-claude-md-guides.md) (reuse before adding)
@@ -356,6 +356,33 @@ because none of it changes a decision this one made.
     fake map covers it completely. `lib/useMapCamera.test.tsx` now pins the three-way
     distinction above, and would have caught this. Read §13 as "the **render** cannot
     be tested", never as "anything that touches a map cannot be".
+
+13. **The camera framed the ghost tier, so a two-stop day framed three continents**
+    (reported from production right after entry 12 was fixed). §7 says "fit the bounds
+    of the **filtered set**" — and the ghost tier is precisely what the filter left
+    out. §6 already subordinates ghosts everywhere it matters (no chip counts them,
+    they never enter near-me's sort or its distance chips, they are hollow and
+    unnumbered "so prominence keeps them from reading as part of the answer the chips
+    describe"), but nothing said the camera. Day scope on a trip whose other days sit
+    in Rome and Tokyo therefore fitted Europe-to-Asia around two stops in Tel Aviv.
+
+    `isFramedByCamera` (one predicate, in `lib/map-pins.ts`) now states it: the camera
+    answers every tier **except** ghost, and the opening centre prefers a day pin over
+    a ghost too. Two consequences worth keeping straight, because they look
+    contradictory and are not:
+    - **Ghosts still draw.** They are why the tier exists — the café you are standing
+      next to must be visible even when it is pencilled for Thursday.
+    - **The `באזור` readout still counts them** (§9's explicit rule): it is a
+      **spatial** question about the area, not the facet question the camera answers.
+      One canvas, two honest readings.
+
+    When the day has no pins of its own, the camera falls back to **you** if there is
+    a fix, which resolves through the existing single-point path (centre at
+    neighbourhood zoom) and needs no new branch; with neither, it is left alone.
+
+    Generalisation for the next tier that gets added: **§6's prominence ladder is not
+    only a paint rule.** Anything subordinate on the canvas is probably subordinate to
+    the camera, the counts and the sort as well — say which, when the tier is added.
 
 ## Revision log (2026-07-26, within the design session)
 
