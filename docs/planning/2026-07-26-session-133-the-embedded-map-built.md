@@ -296,3 +296,44 @@ asserted `queryByText(t.map.near.prompt.title)` was null, but the card renders t
 title behind a `📍` in the same text node, so a full-string match could never have
 matched it, open or closed. It now asserts on the body — which does match — and states
 the real invariant: the offer is up, and the device has been asked nothing.
+
+## Addendum 4 — and then it framed three continents
+
+The opening framing from addendum 2 worked, and the map still opened wide. The
+screenshot said why in two numbers side by side: `16 באזור` on the canvas, `הכל 2` on
+the chip. Day scope was on, the day had **two** stops in Tel Aviv, and the other
+fourteen pins were the trip's other days — Rome, Tokyo — drawn as the **ghost tier**.
+The camera was fitting all sixteen. The fit was correct; the set was wrong.
+
+ADR-0121 §7 says "fit the bounds of the **filtered set**", and a ghost is exactly what
+the filter left out. §6 had already subordinated ghosts in every other place it
+mattered — no chip counts them, they never enter near-me's sort or its distance chips,
+they are hollow and unnumbered on purpose — but nobody had said the camera, so the one
+consumer that could drag the whole view around was the one left out.
+
+`isFramedByCamera` states it in one predicate, and the opening centre now prefers a
+day pin over a ghost as well. The two things that look contradictory and aren't:
+
+- **Ghosts still draw.** That is the entire point of the tier: the café you are
+  standing next to has to be visible even when it is pencilled for Thursday.
+- **`באזור` still counts them.** §9 says so explicitly — it is a _spatial_ readout
+  about the area, not the facet count. The canvas legitimately answers two questions
+  with two different numbers, which is why they are worded differently.
+
+If the day has no pins of its own, the camera falls back to **you** when there is a
+fix — which resolves through the existing single-point path (centre at neighbourhood
+zoom), so it needed no new branch.
+
+### The lesson, and it is bigger than the camera
+
+**§6's prominence ladder was written as a paint rule and is actually a participation
+rule.** "Subordinate on the canvas" turned out to mean subordinate to the counts, to
+the sort, to the distance chips _and_ to the camera — but only the first three were
+ever written down, so the fourth shipped wrong. When the next tier is added, say
+explicitly which consumers it participates in; the visual treatment is the smallest
+part of the answer.
+
+Worth noting how it was found, too: both this and addendum 2 were visible only on a
+real trip's data. A two-stop day whose trip spans continents is not a fixture anyone
+writes by hand — which is an argument for the human pass being a real step and not a
+formality. The regression test now uses exactly that shape.

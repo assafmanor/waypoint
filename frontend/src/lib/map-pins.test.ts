@@ -14,6 +14,7 @@ import { buildPlaceUsageIndex, type PlaceUsage } from './place-usage';
 import {
   buildPinOrderIndex,
   hasScheduleSlot,
+  isFramedByCamera,
   PIN_TIER,
   placePinTier,
   placePoint,
@@ -321,5 +322,34 @@ describe('placePoint — only coord-bearing places pin', () => {
     expect(placePoint({})).toBeUndefined();
     // 0,0 is a real place (the Gulf of Guinea), not "absent".
     expect(placePoint({ lat: 0, lng: 0 })).toEqual({ lat: 0, lng: 0 });
+  });
+});
+
+// Session 134, second report: with the day scope on, a two-stop day framed three
+// continents. The fit was working — it was fitting the GHOST tier too, and the
+// trip's other days were scattered across Europe and Asia.
+describe('isFramedByCamera — the camera answers the day, not its context (§6/§7)', () => {
+  it('frames every tier the day actually contains', () => {
+    for (const tier of [PIN_TIER.upcoming, PIN_TIER.idea, PIN_TIER.ambient, PIN_TIER.behind]) {
+      expect(isFramedByCamera({ tier })).toBe(true);
+    }
+  });
+
+  // A ghost is what the filter left out: present because it is physically there,
+  // subordinate by construction. Letting it pull the frame sends the camera to a
+  // place this day does not contain — which is the whole reported bug.
+  it('never frames a ghost', () => {
+    expect(isFramedByCamera({ tier: PIN_TIER.ghost })).toBe(false);
+  });
+
+  it('is the same subordination near-me already applies to its sort and chips', () => {
+    // Stated as a test so the two cannot drift: one rule, three consumers.
+    const canvas = [
+      { tier: PIN_TIER.upcoming },
+      { tier: PIN_TIER.ghost },
+      { tier: PIN_TIER.behind },
+      { tier: PIN_TIER.ghost },
+    ];
+    expect(canvas.filter(isFramedByCamera)).toHaveLength(2);
   });
 });

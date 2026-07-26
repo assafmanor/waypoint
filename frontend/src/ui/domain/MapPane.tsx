@@ -13,7 +13,7 @@
 // `memo` below is load-bearing rather than an optimisation.
 import { memo, useCallback, useEffect, useMemo, useRef } from 'react';
 import { APIProvider, AdvancedMarker, Map, Polyline, useMap } from '@vis.gl/react-google-maps';
-import { PIN_TIER, pinZIndex, type PinTier } from '../../lib/map-pins';
+import { isFramedByCamera, PIN_TIER, pinZIndex, type PinTier } from '../../lib/map-pins';
 import { readMapBounds, useMapCamera } from '../../lib/useMapCamera';
 import type { LatLng, MapBounds } from '../../lib/map-camera';
 import type { MapsConfig } from '../../lib/map-config';
@@ -247,7 +247,19 @@ function MapCameraControls({
   areaCount: number | null;
 }) {
   const map = useMap(MAP_ID);
-  const points = useMemo(() => pins.map(({ lat, lng }) => ({ lat, lng })), [pins]);
+  // The camera answers to the day's OWN pins, never to the ghost tier: a ghost is a
+  // place this day does not contain, so framing it makes the camera chase somewhere
+  // you are not going (§6/§7). With the trip's other days scattered across a
+  // continent, that is the difference between framing two stops and framing Europe.
+  //
+  // When the day has no pins of its own, "you" is the only honest frame there is —
+  // and passing a single point resolves to a centre at neighbourhood zoom, so this
+  // needs no separate branch. With neither, the camera is left alone.
+  const points = useMemo(() => {
+    const own = pins.filter(isFramedByCamera).map(({ lat, lng }) => ({ lat, lng }));
+    if (own.length > 0) return own;
+    return me ? [me] : [];
+  }, [pins, me]);
   const { focus, reframe } = useMapCamera(map, { points, setSignal });
 
   // Focus pans, it does not zoom (§7). Keyed on the selected place, so a re-render

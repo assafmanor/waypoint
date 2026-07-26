@@ -140,6 +140,23 @@ export function pinZIndex(pin: { tier: PinTier; nextStop?: boolean; order?: numb
   return TIER_Z[pin.tier] + nudge;
 }
 
+/**
+ * Does the camera answer to this pin? Every tier except `ghost`.
+ *
+ * A ghost is a place that is **not in the day being shown** — context that happens
+ * to be inside the viewport, subordinate by construction (§6: "prominence is what
+ * keeps it from reading as part of the answer the chips describe"). §7 says the
+ * camera fits **the filtered set**, and a ghost is precisely what the filter left
+ * out, so it must not pull the frame: letting ghosts in is how a two-stop day framed
+ * three continents, because the trip's other days were scattered across them.
+ *
+ * The same subordination §6 already applies to near-me's sort and its distance
+ * chips — a ghost enters neither — now stated for the camera too.
+ */
+export function isFramedByCamera(pin: { tier: PinTier }): boolean {
+  return pin.tier !== PIN_TIER.ghost;
+}
+
 /** Where a place is, or `undefined` for a coordless Place-lite. The one check
  *  behind "only coord-bearing places pin" and behind whether a row's tap has a
  *  camera to move — selection happens either way (ADR-0121 §8). */

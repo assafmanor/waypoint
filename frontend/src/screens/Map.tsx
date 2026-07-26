@@ -57,6 +57,7 @@ import {
 import { PLACE_REF_KIND, placeRefs } from '../lib/place-refs';
 import {
   buildPinOrderIndex,
+  isFramedByCamera,
   PIN_TIER,
   placePinTier,
   placePoint,
@@ -479,13 +480,15 @@ export function MapView() {
     [pins, viewBounds],
   );
 
-  // A map must be constructed with SOME camera; the first fit replaces it. Memoized
-  // for the same reason every other prop below is: a fresh object each render would
-  // break `MapPane`'s memo and undo the whole no-op-diff-per-tick arrangement.
-  const defaultCentre = useMemo(
-    () => (pins.length ? { lat: pins[0].lat, lng: pins[0].lng } : undefined),
-    [pins],
-  );
+  // A map must be constructed with SOME camera; the first fit replaces it. It prefers
+  // one of the DAY's own pins over a ghost, so even the frame before the fit lands
+  // somewhere the day contains rather than on another week's city. Memoized for the
+  // same reason every other prop below is: a fresh object each render would break
+  // `MapPane`'s memo and undo the whole no-op-diff-per-tick arrangement.
+  const defaultCentre = useMemo(() => {
+    const anchor = pins.find(isFramedByCamera) ?? pins[0];
+    return anchor ? { lat: anchor.lat, lng: anchor.lng } : undefined;
+  }, [pins]);
   const me = nearActive && geo.coords ? geo.coords : undefined;
 
   // ── Selection (ADR-0121 §8) ───────────────────────────────────────────────
