@@ -378,6 +378,39 @@ export function eventDisplayZones(
   return { start: zone, end: zone };
 }
 
+/** The zone a **form** interprets a typed wall-clock in (ADR-0107 §2) — the same
+ *  answer `eventDisplayZones` will give the day view once the draft is saved, so a
+ *  time typed as 19:00 renders as 19:00. Any surface that turns a typed time into
+ *  an instant resolves its zone here; a surface that builds its own loses that
+ *  agreement (the session-102 lesson, now for authoring).
+ *
+ *  `base` is the draft's zone-bearing shape — an existing event being edited, or
+ *  just `{ placeId }` for a new one. A pinned override is the caller's own state
+ *  (it wins before this is consulted), so it is deliberately stripped here.
+ *
+ *  Two passes: a placeless time resolves through its itinerary segment, which needs
+ *  an instant — and the instant needs a zone. Two passes reach the fixed point
+ *  wherever the two agree, which is everywhere but a time within a few hours of a
+ *  crossing. With no time typed yet the day's **noon** stands in, so a fresh draft
+ *  on a post-crossing day starts in that day's segment rather than the primary. */
+export function authoringZone(
+  base: Partial<TripEvent>,
+  at: { date: string; time?: string },
+  evidence: ZoneEvidence,
+): string {
+  const wallClock = at.time || DAY_NOON;
+  const resolve = (interpretIn: string): string =>
+    eventDisplayZones(
+      {
+        ...base,
+        displayTimezone: undefined,
+        startsAt: zonedIso(at.date, wallClock, interpretIn),
+      } as TripEvent,
+      evidence,
+    ).start;
+  return resolve(resolve(evidence.primaryZone));
+}
+
 /** Context an event's display zones resolve against — the trip's crossings, the
  *  fallback trip-primary zone, and the day's **ambient** zone (the segment zone
  *  spanning the day being viewed) that the non-trivial-suppression rule

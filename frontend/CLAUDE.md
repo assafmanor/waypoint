@@ -93,6 +93,11 @@ it": a new structural back case is a rule added to `resolveBack`
   ambient zone) instead of `dayZoneContext`/`liveZoneContext` over trip-state's
   `zoneEvidence` — shared resolver + per-screen input is not shared behaviour, and
   the two day surfaces diverged for a release (ADR-0107 session-102).
+- Turning a typed wall-clock into an instant with `trip.timezone` (or any zone the
+  call site happened to have) instead of `authoringZone(…, zoneEvidence)` — the
+  event then renders at a different time than it was typed at. A `WhenField`
+  without a `zone`/`zones` prop is exactly that surface: the chip is opt-in per
+  call site, so a form doesn't get it "for free" (ADR-0107 session-128).
 - `navigate(-1)` or any read of `window.history.length` for a back action —
   back is computed from nav state (ADR-0090), never traversed.
 - **`dir="ltr"` on anything but an `<input>`** (lint-blocked, ADR-0118). It sets
