@@ -15,6 +15,7 @@ import {
   comparePlacesBySchedule,
   countPlacesByCategory,
   isDayUsagePast,
+  isOnShelf,
   matchesPlaceFilter,
   PLACE_CATEGORY_ALL,
   type PlaceUsage,
@@ -161,6 +162,67 @@ describe('buildPlaceUsageIndex', () => {
     expect(u.pin).toEqual({ category: 'food', commitment: 'hard' }); // hard event wins
   });
 
+  it('an idea pencilled in for a day gets that day — with no clock (ADR-0116 §1)', () => {
+    const idx = buildPlaceUsageIndex(
+      [],
+      [],
+      [
+        maybe({ id: 'm1', placeId: 'pl-today', category: 'food', targetDate: '2026-07-07' }),
+        maybe({ id: 'm2', placeId: 'pl-someday', category: 'food' }),
+      ],
+      [place('pl-today'), place('pl-someday')],
+    );
+    const pencilled = idx.get('pl-today')!;
+    expect(dayShape(pencilled)).toEqual([{ date: '2026-07-07', prominence: 'edge' }]);
+    // Named, not scheduled: no moment, no end, no event to say what happens there.
+    expect(pencilled.days[0]?.at).toBeUndefined();
+    expect(pencilled.days[0]?.until).toBeUndefined();
+    expect(pencilled.days[0]?.eventId).toBeUndefined();
+    // "Someday" is still dayless, so it stays an all-days-only row.
+    expect(idx.get('pl-someday')?.days).toEqual([]);
+  });
+
+  it('a pencilled day never takes over a day an event already owns', () => {
+    const withEvent = (startsAt?: string) =>
+      buildPlaceUsageIndex(
+        [event({ id: 'e', placeId: 'pl', date: '2026-07-07', startsAt })],
+        [],
+        [maybe({ id: 'm', placeId: 'pl', targetDate: '2026-07-07' })],
+        [place('pl')],
+      ).get('pl')!.days[0]!;
+    expect(withEvent('2026-07-07T09:00:00Z')).toMatchObject({
+      at: Date.parse('2026-07-07T09:00:00Z'),
+      eventId: 'e',
+    });
+    // Neither reference has a clock, so the event still wins the pointer — otherwise
+    // the row would lose its "what happens here" line to a pencil mark.
+    expect(withEvent()).toMatchObject({ eventId: 'e' });
+  });
+
+  it('a skipped SOFT event is parked on the shelf; a skipped hard one is not', () => {
+    const idx = buildPlaceUsageIndex(
+      [
+        event({ id: 'e1', placeId: 'pl-skipped', status: EVENT_STATUS.SKIPPED }),
+        event({
+          id: 'e2',
+          placeId: 'pl-hard',
+          kind: EVENT_KIND.HARD,
+          status: EVENT_STATUS.SKIPPED,
+        }),
+        event({ id: 'e3', placeId: 'pl-planned' }),
+      ],
+      [],
+      [],
+      [place('pl-skipped'), place('pl-hard'), place('pl-planned')],
+    );
+    expect(idx.get('pl-skipped')?.isParked).toBe(true);
+    expect(isOnShelf(idx.get('pl-skipped')!)).toBe(true);
+    expect(idx.get('pl-hard')?.isParked).toBe(false);
+    expect(idx.get('pl-planned')?.isParked).toBe(false);
+    // …and it is not an idea: the event still owns its date and slot.
+    expect(idx.get('pl-skipped')?.isMaybe).toBe(false);
+  });
+
   it('flags a coordless Place-lite (listed-only, not pinnable)', () => {
     const idx = buildPlaceUsageIndex(
       [event({ id: 'e', placeId: 'pl' })],
@@ -200,6 +262,26 @@ describe('matchesPlaceFilter / countPlacesByCategory', () => {
     expect(
       all.filter((u) => matchesPlaceFilter(u, { category: 'sightseeing', maybesOnly: true })),
     ).toHaveLength(0);
+  });
+
+  it('the maybes toggle also finds a skipped soft event — the other half of the shelf', () => {
+    const shelf = [
+      ...buildPlaceUsageIndex(
+        [
+          event({
+            id: 'e1',
+            placeId: 'pl-skipped',
+            category: 'food',
+            status: EVENT_STATUS.SKIPPED,
+          }),
+          event({ id: 'e2', placeId: 'pl-planned', category: 'food' }),
+        ],
+        [],
+        [],
+        [place('pl-skipped'), place('pl-planned')],
+      ).values(),
+    ].filter((u) => matchesPlaceFilter(u, { category: 'food', maybesOnly: true }));
+    expect(shelf.map((u) => u.placeId)).toEqual(['pl-skipped']);
   });
 
   it('counts every category (0 for unused), one per referencing place', () => {

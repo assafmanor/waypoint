@@ -76,6 +76,10 @@ export interface PlaceUsage {
   /** Every referencing category (union), for the type facet + counts. */
   categories: EventCategory[];
   isMaybe: boolean; // referenced by an unconsumed MaybeItem
+  /** Referenced by a **skipped soft event** — parked on the shelf and restorable
+   *  in place (ADR-0027 §2), which is the other half of what the shelf renders.
+   *  Distinct from `isMaybe`: the event still owns its date and slot. */
+  isParked: boolean;
   isScheduled: boolean; // referenced by a scheduled event
   coordless: boolean; // lat/lng absent → not pinnable/measurable (listed-only)
   /** The most-committed reference: drives the pin/badge hue + hard/soft grammar.
@@ -159,9 +163,29 @@ interface Accum {
   days: Map<string, DayUsage>;
   categories: Set<EventCategory>;
   isMaybe: boolean;
+  isParked: boolean;
   isScheduled: boolean;
   best: { category: EventCategory | null; commitment: PinCommitment } | null;
 }
+
+/** An idea's pencilled-in day (ADR-0116 §1): a day facet with **no** clock — no
+ *  moment, no end, no `sortOrder`, no event to point at. That is what keeps a
+ *  target day a pencil mark rather than a schedule: it puts the place on the day's
+ *  map without claiming anything happens at a time. */
+const pencilledDays = (targetDate: string | null | undefined): DayUsage[] =>
+  targetDate ? [{ date: targetDate, prominence: 'edge' }] : [];
+
+/** Which of two references on one date owns the day's moment (and therefore the
+ *  `eventId` the row reads its wording from): the earliest that HAS a clock. A
+ *  clockless reference never displaces a clocked one, and between two clockless
+ *  ones a real event outranks a pencil mark — otherwise an idea aimed at the same
+ *  day as an untimed event would take over the row's meta line. */
+const primaryRef = (a: DayUsage, b: DayUsage): DayUsage => {
+  if (a.at != null && b.at != null) return a.at <= b.at ? a : b;
+  if (a.at != null) return a;
+  if (b.at != null) return b;
+  return a.eventId ? a : b;
+};
 
 /** Build the `placeId → PlaceUsage` index. Reference gathering runs through the
  *  existing resolver: a transport event contributes BOTH endpoints (origin +
@@ -182,6 +206,7 @@ export function buildPlaceUsageIndex(
         days: new Map(),
         categories: new Set(),
         isMaybe: false,
+        isParked: false,
         isScheduled: false,
         best: null,
       };
@@ -197,6 +222,7 @@ export function buildPlaceUsageIndex(
       days: DayUsage[];
       isEvent: boolean;
       isMaybe: boolean;
+      isParked?: boolean;
     },
   ) => {
     if (!placeId) return;
@@ -204,6 +230,7 @@ export function buildPlaceUsageIndex(
     if (ref.category) a.categories.add(ref.category);
     if (ref.isEvent) a.isScheduled = true;
     if (ref.isMaybe) a.isMaybe = true;
+    if (ref.isParked) a.isParked = true;
     for (const d of ref.days) {
       const seen = a.days.get(d.date);
       if (!seen) {
@@ -214,7 +241,7 @@ export function buildPlaceUsageIndex(
       // EARLIEST moment — the place is due when the first thing there is due — and
       // the pointer follows whichever reference won that moment, so what the row
       // says about the day matches the time it shows.
-      const earliest = seen.at == null ? d : d.at == null ? seen : d.at < seen.at ? d : seen;
+      const earliest = primaryRef(seen, d);
       a.days.set(d.date, {
         date: d.date,
         prominence: seen.prominence === 'edge' || d.prominence === 'edge' ? 'edge' : 'ambient',
@@ -250,6 +277,9 @@ export function buildPlaceUsageIndex(
     const booking = event.bookingId ? bookings.find((b) => b.id === event.bookingId) : undefined;
     const category = event.category ?? (booking ? categoryForBookingType(booking.type) : null);
     const commitment: PinCommitment = event.kind === EVENT_KIND.HARD ? 'hard' : 'soft';
+    // A skipped SOFT event is what the shelf parks and offers to restore (ADR-0027
+    // §2 / ADR-0116 §3) — a hard one isn't restorable there, so it isn't shelved.
+    const isParked = event.kind === EVENT_KIND.SOFT && event.status === EVENT_STATUS.SKIPPED;
     // Transport contributes both endpoints, each at its OWN moment — the origin
     // when you depart, the destination when you land — so the two ends of a flight
     // never tie and list in travel order. Everything else: its resolved place.
@@ -267,6 +297,7 @@ export function buildPlaceUsageIndex(
         days: spanDays(event, edge),
         isEvent: true,
         isMaybe: false,
+        isParked,
       });
     }
   }
@@ -290,7 +321,11 @@ export function buildPlaceUsageIndex(
     addRef(m.placeId, {
       category: m.category ?? null,
       commitment: 'idea',
-      days: [],
+      // An idea pencilled in for a day IS on that day's map (ADR-0116's consequence,
+      // unbuilt until now): a dateless "someday" idea still has no day facet, so it
+      // stays all-days-only, but "we were thinking of this for today" showed nowhere
+      // in the day scope Trip mode opens on.
+      days: pencilledDays(m.targetDate),
       isEvent: false,
       isMaybe: true,
     });
@@ -305,6 +340,7 @@ export function buildPlaceUsageIndex(
       days: [...a.days.values()].sort((x, y) => x.date.localeCompare(y.date)),
       categories: [...a.categories],
       isMaybe: a.isMaybe,
+      isParked: a.isParked,
       isScheduled: a.isScheduled,
       coordless: place?.lat == null || place?.lng == null,
       pin: a.best ?? { category: null, commitment: 'idea' },
@@ -322,15 +358,26 @@ export type PlaceCategoryFilter = EventCategory | typeof PLACE_CATEGORY_ALL;
 
 export interface PlaceFilter {
   category: PlaceCategoryFilter;
-  /** The independent maybes toggle (ADR-0110 §2) — narrows to shelf ideas. */
+  /** The independent maybes toggle (ADR-0110 §2) — narrows to what's on the shelf. */
   maybesOnly: boolean;
 }
 
-/** Filter match: the maybes toggle (if on) requires `isMaybe`; the type chip
- *  passes "all" or any place whose category union includes the picked one. */
+/** On the shelf: ADR-0027 §2's union, which is what the shelf actually renders —
+ *  an unconsumed idea **or** a skipped soft event parked for restoring. The `אולי`
+ *  facet reads this rather than `isMaybe` alone, so an idea that was scheduled and
+ *  then skipped stops falling out of the one filter that should still find it. */
+export const isOnShelf = (usage: PlaceUsage): boolean => usage.isMaybe || usage.isParked;
+
+/** Type-chip match on its own: "all" passes, otherwise the category union. Split
+ *  out so a count can narrow by one facet without re-stating the other. */
+export const matchesPlaceCategory = (usage: PlaceUsage, category: PlaceCategoryFilter): boolean =>
+  category === PLACE_CATEGORY_ALL || usage.categories.includes(category);
+
+/** Filter match: the maybes toggle (if on) requires the place to be on the shelf;
+ *  the type chip passes "all" or any place whose category union includes it. */
 export function matchesPlaceFilter(usage: PlaceUsage, filter: PlaceFilter): boolean {
-  if (filter.maybesOnly && !usage.isMaybe) return false;
-  return filter.category === PLACE_CATEGORY_ALL || usage.categories.includes(filter.category);
+  if (filter.maybesOnly && !isOnShelf(usage)) return false;
+  return matchesPlaceCategory(usage, filter.category);
 }
 
 // ── List order (ADR-0109 §1 amendment) ───────────────────────────────────────
