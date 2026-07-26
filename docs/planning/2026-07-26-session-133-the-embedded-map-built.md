@@ -223,3 +223,76 @@ should be absent, and the tab should show the pane.
 
 **The lesson worth keeping past this ADR:** "it is a build var" is only half a design.
 Where the build gets it is the other half, and on this repo that means the Dockerfile.
+
+## Addendum 2 — the map opened on the whole world (session 134)
+
+With the build vars finally reaching the bundle, the map rendered and the pins were
+right — but the camera opened **zoomed all the way out and centred on nothing**,
+never on the day's stops. Two hazards compounded, and only the second one is visible
+from ADR-0121 §7:
+
+1. **`fitBounds` into a map that has not laid out.** The framing ran from a mount
+   effect, so it could hit a div with no size yet. `MAP_FIT_PADDING` totals 92px
+   vertically; against a 0-height viewport Google resolves a degenerate box and zooms
+   far **out**. The fit produced the opposite of a fit.
+2. **§7's containment guard then made it permanent.** "Re-fit only when the new set
+   does not already fit the current view" is right for a control change — it is what
+   removes "tap `אוכל`, the map lurches across the city" — but a wide view contains
+   every pin, so every later framing was correctly declined. Forever. No chip, no
+   scope change, nothing could rescue it.
+
+**The opening framing is a third case**, and not recognising that is the actual
+mistake. It is neither a re-frame (it has no view worth preserving) nor a re-render
+(it must happen). So it now ignores containment, and waits for the map's own `idle` —
+the first moment the map is genuinely rendered and sized — retrying there until a
+framing succeeds rather than getting one attempt. `fitPaddingFor` (pure, tested) drops
+padding that would claim half an axis and refuses outright on an unsized div, so the
+degenerate fit is unreachable. The `maxZoom` cap became a clamp after the fit instead
+of an option set-and-restored around it, so nothing lingers if the fit does not settle.
+
+### The testing note in §13 was too broad, and that is why this shipped
+
+§13 says "a rendered Google map cannot be exercised in the suite", and session 133
+took that to cover the camera. It does not. `useMapCamera` touches eight
+`google.maps.Map` methods — `getBounds`, `getDiv`, `fitBounds`, `getZoom`, `setZoom`,
+`setCenter`, `panTo`, `addListener` — so a ~60-line fake covers it completely.
+`lib/useMapCamera.test.tsx` now pins the three-way distinction, including the exact
+failure (a fit whose opening view already contains every pin) and the unsized-div
+retry. It would have caught this before the deploy.
+
+**Read §13 as "the _render_ cannot be tested", never as "anything that touches a map
+cannot be".** The canvas is genuinely out of reach; imperative glue around it is not,
+and the honest limit is narrower than the sentence suggested.
+
+## Addendum 3 — the Map tab now offers to locate you on open
+
+Requested by the product owner, and it narrows ADR-0109 §6, which had geolocation
+"asked on intent, never on tab open" and listed asking on open under rejected
+alternatives. Recorded as an [ADR-0109 amendment](../decisions/0109-map-tab-design.md)
+rather than buried here, because it changes a decision.
+
+The reasoning that survives: §6's objection was to **a cold OS prompt with no stated
+reason**, not to the timing. On a map, "what's near me now" is the question you
+arrived with, so a separate chip tap to express it is friction rather than consent —
+and none of the three branches shows a cold dialog:
+
+| Standing permission | What happens on open                                            |
+| ------------------- | --------------------------------------------------------------- |
+| `granted`           | Ask the device immediately — **no dialog at all**, me dot on    |
+| `prompt`            | Our own reason-first card, stating ADR-0006's on-device promise |
+| `unsupported`       | Same card (Safari has no Permissions API — never guess)         |
+| `denied`            | **Nothing.** A refusal is an answer, not an invitation          |
+
+Two mechanisms this needed. `useGeolocation` gained a `permission` reading off the
+Permissions API, with `unknown` (query in flight — wait) deliberately distinct from
+`unsupported` (no API — decide now); conflating them either pops a card that was not
+needed or shows nothing on Safari. And "לא עכשיו" had to mean **not this session**,
+which is why the flag lives on the lifted `MapScopeProvider`: the screen unmounts on
+every tab change, so screen-local state would re-offer on every visit — the nag §6
+exists to prevent.
+
+One test in the existing suite was **passing vacuously** and hid the change: it
+asserted `queryByText(t.map.near.prompt.title)` was null, but the card renders the
+title behind a `📍` in the same text node, so a full-string match could never have
+matched it, open or closed. It now asserts on the body — which does match — and states
+the real invariant: the offer is up, and the device has been asked nothing.

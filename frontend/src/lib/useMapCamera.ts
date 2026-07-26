@@ -11,10 +11,23 @@
 //   • **Focusing** answers a selection. It PANS at the current zoom and never
 //     changes it — zooming on selection throws away the context you were reading.
 //
+// **The opening framing is a third case, and getting it wrong opened the map on the
+// whole world (session 134).** Two hazards compound:
+//
+//   1. `fitBounds` fired before the pane has laid out fits into a 0×0 div, and with
+//      padding larger than the viewport Google resolves that to a wild zoom-OUT.
+//   2. §7's containment guard then makes it permanent: a zoomed-out view contains
+//      every pin, so "the set already fits, don't move" is true forever.
+//
+// So the first framing **waits for the map's own `idle`** (which only fires once the
+// map has rendered, i.e. is really sized) and **ignores containment** — there is no
+// view worth preserving before the map has ever been framed. Only later framings are
+// containment-guarded, which is what that guard was always for.
+//
 // Reduced motion: the camera still MOVES, only the easing is dropped — a pan
 // becomes a jump (ADR-0098 §4).
 import { useCallback, useEffect, useRef } from 'react';
-import { cameraTargetFor, type LatLng, type MapBounds } from './map-camera';
+import { cameraTargetFor, fitPaddingFor, type LatLng, type MapBounds } from './map-camera';
 import { prefersReducedMotion } from './motion';
 import { MAP_FIT_PADDING, MAP_ZOOM } from '../constants';
 
@@ -51,39 +64,78 @@ export function useMapCamera(
   // happened to change the signal.
   const pointsRef = useRef(points);
   pointsRef.current = points;
+  /** Has this map instance ever been framed? Until it has, there is no view worth
+   *  preserving — so the opening framing is unconditional. */
+  const framed = useRef(false);
 
+  /** Move the camera to suit `candidates`, and report whether it actually did.
+   *  `false` also covers "the map is not ready to be fitted", which is what lets the
+   *  caller retry rather than record a framing that never happened. */
   const apply = useCallback(
-    (candidates: readonly LatLng[], view: MapBounds | null) => {
-      if (!map) return;
+    (candidates: readonly LatLng[], view: MapBounds | null): boolean => {
+      if (!map) return false;
       const target = cameraTargetFor(candidates, view);
-      if (target.kind === 'none') return;
+      if (target.kind === 'none') return false;
       if (target.kind === 'centre') {
         // Never `fitBounds` a zero-area extent — it snaps to building level.
         map.setCenter(target.at);
         map.setZoom(MAP_ZOOM.SINGLE_PIN);
-        return;
+        return true;
       }
-      // One shared cap covers the single pin above and a cluster of
-      // near-coincident ones here, rather than a second special case. It is set
-      // around the fit only: capping the map's own `maxZoom` would also stop the
-      // user pinching in, which is not what the guard is for.
-      map.setOptions({ maxZoom: MAP_ZOOM.MAX_FIT });
+      const box = map.getDiv().getBoundingClientRect();
+      const padding = fitPaddingFor(box, MAP_FIT_PADDING);
+      // An unsized div has no honest fit — wait for one rather than zoom to nothing.
+      if (padding === null) return false;
       // Padded by a pin's own height at the top: the teardrop's TIP is the anchor,
       // so its body and any tag extend ABOVE the coordinate.
-      map.fitBounds(target.bounds, { ...MAP_FIT_PADDING });
-      map.setOptions({ maxZoom: null });
+      map.fitBounds(target.bounds, padding);
+      // One shared cap covers the single pin above and a cluster of near-coincident
+      // ones here, rather than a second special case. Clamped AFTER the fit rather
+      // than set as the map's own `maxZoom`, which would also stop the user pinching
+      // in — and leaves nothing to restore afterwards.
+      const zoom = map.getZoom();
+      if (zoom != null && zoom > MAP_ZOOM.MAX_FIT) map.setZoom(MAP_ZOOM.MAX_FIT);
+      return true;
     },
     [map],
   );
 
-  // The set changed → re-frame, but only if it does not already fit the view.
+  // One effect, three jobs: frame this map instance the first time it can be framed
+  // (on `idle`, unconditionally), re-frame when a control changes the set, and cover
+  // the case where the pins only arrive after the map does.
+  const hasPoints = points.length > 0;
   useEffect(() => {
-    apply(pointsRef.current, readMapBounds(map));
-    // `setSignal` is the whole dependency on purpose (hence the ref above):
-    // re-running on `points` identity would re-frame on every clock tick.
-  }, [setSignal, apply]);
+    if (!map) return;
+    const openingFrame = !framed.current;
+    const run = () => {
+      const moved = apply(pointsRef.current, openingFrame ? null : readMapBounds(map));
+      if (moved) framed.current = true;
+      return moved;
+    };
+    // A map with no bounds has not rendered yet, so there is nothing honest to fit
+    // into — and the opening framing is the one that must not guess. (A LATER framing
+    // always runs: by then the map has been framed once, so it is live.)
+    const rendered = !openingFrame || readMapBounds(map) != null;
+    if ((rendered && run()) || !openingFrame || !hasPoints) return;
+    // The opening framing did not happen, and the reason is always the same shape:
+    // the map is not ready — no bounds yet, or a div measured before layout settled.
+    // `idle` is the first moment it is genuinely rendered AND sized, so retry there.
+    // The listener stays until a framing actually succeeds: a single attempt is what
+    // let an unsized first measurement strand the camera at its opening zoom.
+    const listener = map.addListener('idle', () => {
+      if (run()) listener.remove();
+    });
+    return () => listener.remove();
+    // `setSignal` is the control dependency; re-running on `points` identity would
+    // re-frame on every clock tick. `hasPoints` covers pins arriving after the map.
+  }, [map, apply, setSignal, hasPoints]);
 
-  const reframe = useCallback((candidates: readonly LatLng[]) => apply(candidates, null), [apply]);
+  const reframe = useCallback(
+    (candidates: readonly LatLng[]) => {
+      if (apply(candidates, null)) framed.current = true;
+    },
+    [apply],
+  );
 
   const focus = useCallback(
     (point: LatLng) => {

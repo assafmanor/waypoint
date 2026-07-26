@@ -10,9 +10,15 @@
 //     `BookingDetail` now routes to the Map tab focused on that place instead of
 //     deep-linking to Google. The place id is handed over here and consumed once by
 //     the Map, so a later visit to the tab doesn't re-focus a stale selection.
+//  3. **Whether we have already offered to locate you** (ADR-0109 session-134). The
+//     Map now asks on open rather than only on a chip tap, and "not now" has to mean
+//     not-this-session — a card that reappears on every visit to the tab is the nag
+//     the reason-first rule exists to avoid. Session-scoped, so a reload asks again;
+//     it lives here rather than in the screen because the screen unmounts on every
+//     tab change.
 //
-// Neither is a back layer: the sheet height and the scope chip are view state like
-// each other, and back leaves the tab (ADR-0103's typed-layer model).
+// None of it is a back layer: the sheet height and the scope chip are view state
+// like each other, and back leaves the tab (ADR-0103's typed-layer model).
 import { createContext, useContext, useMemo, useState, type ReactNode } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { tabTarget } from './nav-state';
@@ -27,6 +33,9 @@ interface MapScope {
   requestFocus: (placeId: string) => void;
   /** Consumed by the Map once applied, so it fires exactly once. */
   clearFocus: () => void;
+  /** Have we already offered to locate the user this session? */
+  locationOffered: boolean;
+  markLocationOffered: () => void;
 }
 
 const MapScopeContext = createContext<MapScope | null>(null);
@@ -34,6 +43,7 @@ const MapScopeContext = createContext<MapScope | null>(null);
 export function MapScopeProvider({ children }: { children: ReactNode }) {
   const [allDays, setAllDays] = useState(false);
   const [focusPlaceId, setFocusPlaceId] = useState<string | null>(null);
+  const [locationOffered, setLocationOffered] = useState(false);
   const value = useMemo<MapScope>(
     () => ({
       allDays,
@@ -41,8 +51,10 @@ export function MapScopeProvider({ children }: { children: ReactNode }) {
       focusPlaceId,
       requestFocus: setFocusPlaceId,
       clearFocus: () => setFocusPlaceId(null),
+      locationOffered,
+      markLocationOffered: () => setLocationOffered(true),
     }),
-    [allDays, focusPlaceId],
+    [allDays, focusPlaceId, locationOffered],
   );
   return <MapScopeContext.Provider value={value}>{children}</MapScopeContext.Provider>;
 }

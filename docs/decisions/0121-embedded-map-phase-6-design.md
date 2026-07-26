@@ -1,6 +1,6 @@
 # 0121 — Phase-6 embedded map: the reconfirmed API surface, `@vis.gl/react-google-maps`, the map↔list shell, and one map load per visit
 
-**Status:** Accepted — **built 2026-07-26 (session 133)**; see the [Build log](#build-log-2026-07-26-session-133) for where the build refined this design, the one place it read against the letter, and the deploy-time gap §2 left open
+**Status:** Accepted — **built 2026-07-26 (session 133)**, with two production fixes in session 134; see the [Build log](#build-log-2026-07-26-session-133) for where the build refined this design, the one place it read against the letter, the deploy-time gap §2 left open, and the §7 guard that swallowed the opening framing
 **Date:** 2026-07-26
 **Implements** [0106](0106-maps-and-places-epic-scope-and-phasing.md) **Phase 6** and the design [ADR-0109](0109-map-tab-design.md) deferred to this session ("the _fully-rendered_ Phase 6 map — to its own build session … re-confirming current Maps/Places API + pricing first").
 **Refines:** [0109](0109-map-tab-design.md) (§3's pin grammar gets its map form; §10's shell becomes concrete; §6's amber ring lands on a pin; §1's row tap changes destination), [0108](0108-maps-and-places-backend-architecture-key-model-and-cost.md) (§4's cost envelope re-costed; its Routes tier table corrected), [0106](0106-maps-and-places-epic-scope-and-phasing.md) §4/§B/§D/§E, [0117](0117-map-place-outcome-states.md) (its deferred outcome filter is scoped here), [0119](0119-map-maybes-facet-is-the-shelf.md) (the ghost tier is its deliberate inverse), [0120](0120-filter-reveal-is-shared-infrastructure.md) (the map's answer to "every list change moves"), [0078](0078-feedback-state-family.md) (the layout layer gains a full-bleed body modifier), [0090](0090-back-is-computed-from-nav-state.md)/[0103](0103-back-navigation-typed-layer-model.md) (why the sheet is _not_ a back layer), [0028](0028-plan-violet-color-budget-dark-ready.md) (the colour budget on a rendered canvas), [0096](0096-per-domain-claude-md-guides.md) (reuse before adding)
@@ -328,6 +328,34 @@ because none of it changes a decision this one made.
     `VITE_` var later means editing the `Dockerfile` too.** Worth generalising past this
     ADR: "it is a build var" is only half the design — where the build gets it is the
     other half.
+
+12. **§7's containment guard swallowed the OPENING framing, and the map opened on the
+    whole world** (reported from production, session 134). Two hazards compounded, and
+    neither is visible from the ADR alone:
+    - `fitBounds` fired from a mount effect can hit a div that has not laid out yet.
+      With padding larger than that viewport, Google resolves a degenerate box and
+      zooms far **out** — the opposite of a fit.
+    - §7's "re-fit only when the new set does not already fit the current view" then
+      makes it **permanent**: a wide view contains every pin, so every later framing
+      is correctly declined, forever. The guard was written for control changes ("tap
+      `אוכל`, the map lurches across the city") and silently also governed the first
+      framing, which has no view worth preserving.
+
+    So the opening framing is now a **third case**, distinct from both a re-frame and
+    a re-render: it ignores containment, and it waits for the map's own `idle` — the
+    first moment the map is genuinely rendered and sized — retrying there until a
+    framing actually succeeds. `fitPaddingFor` (pure, tested) drops padding that would
+    claim half an axis and refuses outright on an unsized div, so the degenerate fit
+    cannot happen at all. The `maxZoom` cap became a clamp applied after the fit
+    rather than a map option set and restored around it, which leaves nothing to
+    restore if the fit does not settle.
+
+    **The testing note in §13 was too broad, and that is why this shipped.** "A
+    rendered Google map cannot be exercised in the suite" is true of the canvas and
+    false of the camera: `useMapCamera` touches eight `google.maps.Map` methods, so a
+    fake map covers it completely. `lib/useMapCamera.test.tsx` now pins the three-way
+    distinction above, and would have caught this. Read §13 as "the **render** cannot
+    be tested", never as "anything that touches a map cannot be".
 
 ## Revision log (2026-07-26, within the design session)
 
