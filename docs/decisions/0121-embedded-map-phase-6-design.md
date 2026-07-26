@@ -7,6 +7,10 @@
 
 Mockup: [`mockups/map-embedded-v1.html`](../../mockups/map-embedded-v1.html) — the split shell at three sheet heights, the `רשימה / מפה` toggle, the pin grammar on a faked quiet base, the dashed day connector, the amber next-stop ring, and the offline (map-absent) state.
 
+**It renders through the app's real CSS.** The file `<link>`s the shipped stylesheets in the app's own import order (`styles/tokens.css` → `App.css` → `screens.css` → `ui/domain/day-strip.css` → the two primitive sheets → `screens/map.css`) and builds the tab from the real class names and the real markup — `.header.mode-chrome`, `.wp-daystrip`/`.wp-daypill`, `.map-screen`, `.map-filter-row` with `.choice-grid.pills`, `.map-sortstrip`/`.map-scopechip`/`.map-nearchip`, `.map-grouphead`, `screens/Map.tsx`'s `PlaceRow` verbatim, `.fb-banner`. So the type/space/radius/colour is the token layer (ADR-0082), not a copy of it, and the only new CSS in the file is the Phase-6 delta this ADR proposes, written in the app's own `map-*` naming so it reads as the diff that lands in `screens/map.css`. This follows `loading-states-v1.html` (ADR-0105), which rendered its skeletons through the real classes rather than a parallel copy (ADR-0096 / rule 8).
+
+Working against the real sheets caught two things a hand-drawn copy had hidden, both now corrected in the delta: **the shipped `.map-tag.next` is `--amber-deep` bold text, not a filled amber pill**, and `.place.nextstop`'s ring is a 34%-alpha amber edge over a 22% glow — so the pin's tag and ring reuse those exact values instead of inventing a second amber (§5's "one cue, two form factors" is only true if it is literally the same cue). Amber therefore stays ink on the canvas, never a ground (ADR-0028/0105).
+
 ## Context
 
 Phases 0–5 of the Maps & Places epic have shipped. The Map tab is a real surface: `lib/place-usage.ts` derives every place's days/categories/outcome/commitment from the trip snapshot, `screens/Map.tsx` renders it as a filtered, scoped, ordered list with near-me, navigate-to-next, outcome states and Plan-mode Google research. Phase 6 — the **rendered** map — is the last phase, and the only one still unbuilt.

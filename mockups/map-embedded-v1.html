@@ -2,16 +2,44 @@
 <!-- THE EMBEDDED MAP — v1 (2026-07-26, Phase 6 of ADR-0106's Maps & Places
      epic). Promoting ADR: 0121.
 
-     ADR-0109 deferred this design on purpose ("the _fully-rendered_ Phase 6
-     map — to its own build session … re-confirming current Maps/Places API +
-     pricing first"), because Phase 6 is the pricing/API-sensitive phase.
-     That reconfirmation happened in the ADR-0121 session; this file is the
-     design half.
+     ═══════════════════════════════════════════════════════════════════════
+     THIS MOCKUP RENDERS THROUGH THE APP'S REAL CSS.
+     ═══════════════════════════════════════════════════════════════════════
+     It <link>s the shipped stylesheets in the app's own import order —
+     styles/tokens.css → App.css → screens.css → screens/map.css, plus the two
+     primitive sheets it uses — and builds the tab out of the REAL class names
+     and the REAL markup (`.header.mode-chrome`, `.wp-daystrip`/`.wp-daypill`,
+     `.map-screen`, `.map-filter-row` with `.choice-grid.pills`,
+     `.map-sortstrip`, `.map-scopechip`, `.map-nearchip`, `.map-grouphead`,
+     `.place` + `.map-badge.cat-*`/`.map-t`/`.map-m`/`.map-tag`/`.map-right`,
+     `.fb-banner`). So every colour, radius, space and type ramp here is the
+     token layer (ADR-0082), not a copy of it, and the row grammar is the one
+     `screens/Map.tsx` actually renders — it cannot drift from the app.
+
+     Following mockups/loading-states-v1.html (ADR-0105), which rendered its
+     skeletons through the real `.wp-board-*`/`.quick`/`.glance-day` classes
+     rather than a parallel copy (ADR-0096 / CLAUDE.md rule 8).
+
+     THREE THINGS ARE NOT THE APP'S CSS, each fenced and labelled below:
+       1. `mk-*`  — mockup chrome only (page background, phone frame, the state
+                    toggle, the design-notes panels). Never ships.
+       2. PHASE-6 DELTA — the genuinely new CSS this ADR proposes, written in
+                    the app's own `map-*` naming so it reads as the diff that
+                    lands in `screens/map.css`: `.map-split`, `.map-pane`,
+                    `.map-sheet`, `.map-grab`, `.map-viewtoggle`, `.map-pin`,
+                    `.map-conn`, `.map-me`, `.map-recenter`, `.map-attr`.
+       3. The map BASE CANVAS is faked in CSS — a real map needs the browser
+                    key the human Phase-0 step still gates. It is a look
+                    reference for the cloud-styled quiet base (desaturated
+                    cool paper, POI clutter dropped, no colour flood), not a
+                    rendering.
 
      WHAT THIS MOCKS
-     The last phase of the epic: the rendered Google map joining the shipped
-     list-first tab. ADR-0109 §10 fixed the vision (the list stays, the map
-     is pulled INTO it) — here it becomes a concrete shell:
+     ADR-0109 deferred this design on purpose ("the _fully-rendered_ Phase 6
+     map — to its own build session … re-confirming current Maps/Places API +
+     pricing first"). That reconfirmation happened in the ADR-0121 session;
+     this file is the design half. §10 fixed the vision (the list stays, the
+     map is pulled INTO it) — here it becomes a concrete shell:
 
      1. A MAP PANE OVER A DRAGGABLE LIST SHEET, three snap heights (peek /
         half / full) with a "רשימה · מפה" segmented toggle as the shortcut to
@@ -27,38 +55,34 @@
 
      3. THE PINS ARE THE LIST'S OWN DERIVATION, RENDERED SPATIALLY. Same
         place-usage index, same filters, same category palette — the map adds
-        a canvas, a camera, the "me" dot and a connector. The teardrop and
-        the list badge share the --cat-* tokens by construction, so they
-        cannot drift. Only coord-bearing places pin; a coordless Place-lite
-        stays a list row with its ＋ מיקום action.
+        a canvas, a camera, the "me" dot and a connector. The teardrop reads
+        the SAME --cat-* tokens as `.map-badge`, so they cannot drift. Only
+        coord-bearing places pin; a coordless Place-lite stays a `.place`
+        `.nocoord` row with its `.map-addbtn`.
 
      4. THE AMBER NEXT-STOP RING FINALLY LANDS ON A PIN. ADR-0109's
-        session-104 amendment shipped the list form (a tag + a soft ring on
-        one row) and promised "the ring moves onto the pin as §6 always
-        intended". Exactly one pin ever carries it. Trip mode only.
+        session-104 amendment shipped the list form (`.place.nextstop` + a
+        `.map-tag.next`) and promised "the ring moves onto the pin as §6
+        always intended". Exactly one pin ever carries it. Trip mode only.
 
      5. THE DAY CONNECTOR IS DASHED, NEUTRAL, AND DAY-SCOPE ONLY. A straight
         line between two stops is NOT the route you will walk — drawing it
         solid would claim it is. Dashed says "this is the order". Restricting
         it to one day removes the need for a per-day palette entirely and
-        makes the tab's existing scope chip the "day toggle" ADR-0106 §E
+        makes the tab's existing `.map-scopechip` the "day toggle" ADR-0106 §E
         asked for. Solid + amber stays unspent for a real paid Routes
         polyline + ETA later.
 
      6. OFFLINE THE MAP IS ABSENT, NOT DISABLED — no pane, no toggle, no
-        billed map load. The same rule the near-me chip (ADR-0109 §7) and the
-        Google half of research (ADR-0115) already follow. A greyed
-        watermarked map frame would be a third grammar for one fact.
+        billed map load, and the `.map-nearchip` goes too (already the shipped
+        rule: you cannot re-locate offline, ADR-0109 §7). The same grammar the
+        Google half of research follows (ADR-0115). A greyed watermarked map
+        frame would be a third grammar for one fact.
 
      COST, WHICH SHAPES THE BUILD: Dynamic Maps bills PER MAP INSTANTIATION.
      One instance per tab visit is fine (~100 loads/day for a 5-person trip
      against 10,000/month free) — what is forbidden is re-instantiating on
      the toggle, a filter, a sheet drag, or the tab's per-second clock tick.
-
-     The base canvas here is FAKED in CSS (a real map needs the browser key
-     the human Phase-0 step still gates). It is a look reference for the
-     cloud-styled base — desaturated cool paper, dropped POI clutter, no
-     colour flood — not a rendering.
 
      STATE toggle: חצי (default) · מפה (full map, peeking sheet) · רשימה
      (full list) · יום (day scope + connector) · אופליין. -->
@@ -73,97 +97,400 @@
       href="https://fonts.googleapis.com/css2?family=Assistant:wght@400;500;600;700&family=Secular+One&family=JetBrains+Mono:wght@500;700&display=swap"
       rel="stylesheet"
     />
+
+    <!-- ══ THE APP'S REAL STYLESHEETS, in the app's own import order ══
+         main.tsx → styles/tokens.css; App.tsx → App.css, screens.css;
+         screens/Map.tsx → map.css; ChoiceGrid/StatusBanner bring their own. -->
+    <link rel="stylesheet" href="../frontend/src/styles/tokens.css" />
+    <link rel="stylesheet" href="../frontend/src/App.css" />
+    <link rel="stylesheet" href="../frontend/src/screens.css" />
+    <link rel="stylesheet" href="../frontend/src/ui/domain/day-strip.css" />
+    <link rel="stylesheet" href="../frontend/src/ui/primitives/choice-grid.css" />
+    <link rel="stylesheet" href="../frontend/src/ui/feedback/feedback.css" />
+    <link rel="stylesheet" href="../frontend/src/screens/map.css" />
+
     <style>
-      :root {
-        --ink: #16233d;
-        --indigo: #1b2a4a;
-        --board: #0e1729;
-        --screen: #e7eaef;
-        --card: #ffffff;
-        --amber: #e9a63c;
-        --amber-deep: #c9822a;
-        --amber-ink: #7a5a1e;
-        --teal: #2c9c90;
-        --teal-deep: #227e74;
-        --teal-tint: rgba(44, 156, 144, 0.12);
-        --plan: #6e59d6;
-        --ok: #3c9a6b;
-        --miss: #c2584e;
-        --muted: #6c7488;
-        --faint: #98a0b0;
-        --line: rgba(22, 35, 61, 0.1);
-        --soft-line: rgba(22, 35, 61, 0.28);
-        --idx-accent: var(--ink);
-        --idx-accent-text: #fff;
-        /* "me" blue — an OS-map convention, deliberately outside the
-           amber/teal/violet budget (design-language "Map" entry). */
-        --me: #2e6be6;
-        /* CATEGORY PIN PALETTE (ADR-0038 §2) — the badge in the list and the
-           teardrop on the map read the SAME tokens. That is the whole point:
-           one colour system, two form factors (ADR-0109 §3). */
-        --cat-food: #e8998a;
-        --cat-lodging: #9c8ce8;
-        --cat-transit: #8cb6e8;
-        --cat-leisure: #9cc9a0;
-        --cat-services: #d9c08a;
+      /* ═══════════════════════════════════════════════════════════════════
+         PHASE-6 DELTA — the only genuinely NEW css this design proposes.
+         Written in the app's `map-*` naming and reading only tokens, so this
+         block is the diff that lands in `frontend/src/screens/map.css`.
+         ═══════════════════════════════════════════════════════════════════ */
+
+      /* The split: a map pane with the list sheet over it. Both live inside
+         `.map-screen`, so the filter row / sort strip above are untouched. */
+      .map-split {
+        position: relative;
+        flex: 1;
+        min-height: 0;
+        overflow: hidden;
       }
-      * {
-        box-sizing: border-box;
-        margin: 0;
-        padding: 0;
+
+      /* THE MAP PANE. One live google.maps.Map: the view toggle resizes it,
+         nothing here is ever destroyed and re-created, because that is a
+         billed load (ADR-0121 §3). Inert to the tab's per-second clock tick. */
+      .map-pane {
+        position: absolute;
+        inset: 0;
+        overflow: hidden;
+        /* MOCKUP-ONLY: the faked quiet base. In the app this is the cloud map
+           style on our `mapId` — desaturated cool paper off `--screen`, POI
+           clutter dropped, never a colour flood (ADR-0106 §C). */
+        background:
+          repeating-linear-gradient(0deg, var(--line) 0 1px, transparent 1px 34px),
+          repeating-linear-gradient(90deg, var(--line) 0 1px, transparent 1px 34px),
+          linear-gradient(180deg, color-mix(in srgb, var(--screen) 55%, #fff), var(--screen));
       }
-      body {
+      /* MOCKUP-ONLY: faint base features, so the canvas reads as a map without
+         carrying colour. */
+      .map-pane .mk-road,
+      .map-pane .mk-water {
+        position: absolute;
+        background: color-mix(in srgb, var(--ink) 9%, transparent);
+      }
+      .map-pane .mk-water {
+        border-radius: 40% 60% 55% 45%;
+      }
+
+      /* THE DAY CONNECTOR — dashed, neutral, day scope only. A straight
+         segment is the day's ORDER, not its route; dashed says so, and it
+         leaves solid + amber free for a real Routes polyline + ETA later.
+         Neutral because the connector belongs to the quiet base, not the
+         loud figure (ADR-0106 §C). */
+      .map-conn {
+        position: absolute;
+        height: 0;
+        border-top: 2.5px dashed var(--soft-line);
+        transform-origin: left center;
+        display: none;
+      }
+      .map-screen[data-scope='day'] .map-conn {
+        display: block;
+      }
+
+      /* PINS — `AdvancedMarker` content built from OUR markup (ADR-0121 §5),
+         reading the very same `--cat-*` tokens as `.map-badge` so the list
+         badge and the map teardrop are one colour system by construction.
+         Google's `PinElement` cannot express the dashed/desaturated states
+         below, which is why the content is ours. */
+      .map-pin {
+        position: absolute;
+        width: 28px;
+        height: 34px;
+        transform: translate(-50%, -100%);
+      }
+      .map-pin .pin-b {
+        position: relative;
+        width: 25px;
+        height: 25px;
+        margin: 0 auto;
+        /* sharp corner bottom-right, so rotate(45deg) swings the tip straight
+           DOWN onto the location (the map idiom; the list keeps the rounded
+           `.map-badge` — ADR-0109 §3 "two form factors, one colour system") */
+        border-radius: 50% 50% var(--radius-xs, 2px) 50%;
+        transform: rotate(45deg);
+        display: grid;
+        place-items: center;
+        background: var(--cat-leisure);
+        border: 2px solid var(--card);
+        box-shadow: var(--elevation-1, 0 2px 5px rgba(22, 35, 61, 0.34));
+      }
+      .map-pin .pin-g {
+        transform: rotate(-45deg);
+        font-size: var(--text-xs, 13px);
+        line-height: 1;
+      }
+      /* the same five hues, same names as `.map-badge.cat-*` */
+      .map-pin.cat-food .pin-b {
+        background: var(--cat-food);
+      }
+      .map-pin.cat-lodging .pin-b {
+        background: var(--cat-lodging);
+      }
+      .map-pin.cat-transit .pin-b {
+        background: var(--cat-transit);
+      }
+      .map-pin.cat-leisure .pin-b {
+        background: var(--cat-leisure);
+      }
+      .map-pin.cat-services .pin-b {
+        background: var(--cat-services);
+      }
+      /* Commitment is the hard/soft GRAMMAR, never a colour (ADR-0011/0028) —
+         and these three are exactly what `PinElement` cannot draw. Each mirrors
+         its `.place` counterpart: `.soft`, `.ambient`, `.skipped`. */
+      .map-pin.soft .pin-b {
+        border-style: dashed;
+        border-color: var(--soft-line);
+        background: color-mix(in srgb, var(--cat-leisure) 55%, var(--card));
+      }
+      .map-pin.ambient .pin-b {
+        filter: saturate(0.45);
+        opacity: 0.8;
+      }
+      .map-pin.skipped .pin-b {
+        filter: saturate(0.3);
+        opacity: 0.62;
+      }
+      .map-pin .pin-lock {
+        position: absolute;
+        top: -4px;
+        left: -5px;
+        font-size: 9px;
+        background: var(--card);
+        border-radius: var(--radius-pill, 999px);
+        padding: 1px 2px;
+        box-shadow: var(--elevation-1, 0 1px 3px rgba(22, 35, 61, 0.3));
+      }
+      /* THE ONE AMBER TIME-ANCHOR the map's budget allows (ADR-0109 §6): the
+         next committed stop, and nothing else on the canvas is amber. This is
+         `.place.nextstop`'s ring moved onto the pin as §6 always intended — so
+         it reuses that rule's own two amber alphas (a 34% edge over a 22%
+         glow) rather than inventing a second amber. Row cue and pin cue are
+         literally the same cue. */
+      .map-pin.nextstop::before {
+        content: '';
+        position: absolute;
+        inset: -7px -7px 4px -7px;
+        border: 2px solid rgba(233, 166, 60, 0.9);
+        border-radius: var(--radius-pill, 999px);
+        box-shadow: 0 0 0 3px rgba(233, 166, 60, 0.22);
+      }
+      /* The shipped `.map-tag.next` is NOT a filled amber pill — it is
+         `--amber-deep` bold text on the row's own surface. The pin's tag keeps
+         that exactly and only adds the card ground it needs to stay legible
+         over the canvas, so amber is still ink here, never a fill (ADR-0028 /
+         ADR-0105 "amber is an accent, not a ground"). */
+      .map-pin .pin-tag {
+        position: absolute;
+        top: -21px;
+        right: 50%;
+        transform: translateX(50%);
+        background: var(--card);
+        color: var(--amber-deep);
+        border: 1px solid rgba(233, 166, 60, 0.34);
+        font-size: 9.5px;
+        font-weight: 700;
+        padding: 2px 7px;
+        border-radius: var(--radius-pill, 999px);
+        white-space: nowrap;
+        box-shadow: var(--elevation-1, 0 1px 3px rgba(22, 35, 61, 0.2));
+      }
+      /* The "me" dot — arrives free with the near-me sort in Phase 6
+         (ADR-0109 §7). OS-map convention blue, deliberately outside the
+         amber/teal/violet budget (design-language "Map" entry). */
+      .map-me {
+        position: absolute;
+        width: 14px;
+        height: 14px;
+        border-radius: var(--radius-pill, 999px);
+        background: var(--me, #2e6be6);
+        border: 2.5px solid var(--card);
+        box-shadow: 0 0 0 7px color-mix(in srgb, var(--me, #2e6be6) 16%, transparent);
+        transform: translate(-50%, -50%);
+        display: none;
+      }
+      .map-screen[data-near='on'] .map-me {
+        display: block;
+      }
+
+      /* OUR control, not Google's — `disableDefaultUI`, because Google's
+         controls are un-styleable, unlabelled and RTL-unaware (ADR-0121 §10).
+         Also the escape hatch from "a manual pan wins until the next scope
+         change" (§6). Reuses the shipped `.map-scopechip` idiom. */
+      .map-recenter {
+        position: absolute;
+        top: var(--space-2, 10px);
+        inset-inline-start: var(--space-2, 10px);
+        background: var(--card);
+        border: 1px solid var(--line);
+        border-radius: var(--radius-sm, 10px);
+        font: inherit;
+        font-size: var(--text-xs, 11.5px);
+        font-weight: 600;
+        color: var(--ink);
+        padding: 6px 9px;
+        cursor: pointer;
+        box-shadow: var(--elevation-1, 0 2px 6px rgba(22, 35, 61, 0.16));
+      }
+      /* required by Google's ToS (ADR-0106 §B) — designed around, never removed */
+      .map-attr {
+        position: absolute;
+        bottom: 6px;
+        inset-inline-start: var(--space-1, 8px);
+        font-size: 9.5px;
+        color: var(--faint);
+        font-family: 'JetBrains Mono', monospace;
+        letter-spacing: 0.3px;
+      }
+
+      /* THE LIST SHEET — a pane, not an overlay: it renders inline, the map
+         behind it stays live, nothing dismisses it. So it goes through neither
+         `Modal` nor `useOverlay`, and registers nothing with the back stack
+         (ADR-0121 §4). Three snap heights on one axis. */
+      .map-sheet {
+        position: absolute;
+        inset-inline: 0;
+        bottom: 0;
+        background: var(--screen);
+        border-radius: var(--radius-lg, 16px) var(--radius-lg, 16px) 0 0;
+        box-shadow: 0 -8px 24px color-mix(in srgb, var(--ink) 18%, transparent);
+        display: flex;
+        flex-direction: column;
+        transition: height 0.28s cubic-bezier(0.2, 0.7, 0.2, 1);
+        height: 56%;
+      }
+      .map-screen[data-view='peek'] .map-sheet {
+        height: 108px;
+      }
+      .map-screen[data-view='full'] .map-sheet {
+        height: 100%;
+        border-radius: 0;
+        box-shadow: none;
+      }
+      /* full list → the map is behind it and still ONE live instance, hidden
+         rather than destroyed (ADR-0121 §3) */
+      .map-screen[data-view='full'] .map-pane {
+        visibility: hidden;
+      }
+      .map-sheet-top {
+        flex: none;
+        padding: 7px var(--space-3, 14px) var(--space-1, 8px);
+        display: grid;
+        gap: var(--space-1, 8px);
+        justify-items: center;
+      }
+      /* the handle owns the vertical gesture; the map pane keeps its own */
+      .map-grab {
+        width: 40px;
+        height: 4px;
+        border-radius: var(--radius-pill, 999px);
+        background: var(--soft-line);
+        cursor: grab;
+      }
+      /* רשימה · מפה — a shortcut to the two extremes of the SAME height axis
+         the handle drags, so the two controls cannot disagree. At the half
+         height neither extreme is active, which is the honest rendering. */
+      .map-viewtoggle {
+        display: flex;
+        background: color-mix(in srgb, var(--ink) 6%, transparent);
+        border: 1px solid var(--line);
+        border-radius: var(--radius-pill, 999px);
+        padding: 2px;
+        gap: 2px;
+      }
+      .map-viewtoggle button {
+        font: inherit;
+        font-size: var(--text-sm, 12px);
+        font-weight: 600;
+        border: 0;
+        background: transparent;
+        color: var(--muted);
+        border-radius: var(--radius-pill, 999px);
+        padding: 4px 15px;
+        cursor: pointer;
+      }
+      .map-viewtoggle button.on {
+        background: var(--card);
+        color: var(--ink);
+        box-shadow: var(--elevation-1, 0 1px 3px rgba(22, 35, 61, 0.14));
+      }
+      /* the sheet's own scroll region — the shipped `.map-list` unchanged */
+      .map-sheet .map-list {
+        flex: 1;
+        min-height: 0;
+        overflow-y: auto;
+        padding-bottom: var(--space-3, 14px);
+      }
+
+      /* Offline: no pane, no toggle, no handle, and no near-me chip — absent,
+         not disabled (ADR-0121 §8). The chip's removal is already the shipped
+         rule (ADR-0109 §7): you cannot re-locate offline. */
+      .map-screen[data-offline] .map-pane,
+      .map-screen[data-offline] .map-viewtoggle,
+      .map-screen[data-offline] .map-grab,
+      .map-screen[data-offline] .map-nearchip {
+        display: none;
+      }
+      .map-screen[data-offline] .map-sheet {
+        height: 100%;
+        border-radius: 0;
+        box-shadow: none;
+      }
+
+      /* ═══════════════════════════════════════════════════════════════════
+         MOCKUP CHROME ONLY (`mk-*`) — page background, phone frame, the state
+         toggle, the design-notes panels. None of this ships; it exists so the
+         real CSS above can be looked at inside a phone.
+         ═══════════════════════════════════════════════════════════════════ */
+      /* tokens.css sets `html, body, #root { height: 100% }` for the app shell
+         (which scrolls inside `.body`, not the document). This page IS a
+         document, so it must grow instead — otherwise the flex column shrinks
+         the phone frame to zero height. */
+      html:has(body.mk),
+      body.mk {
+        height: auto;
+        min-height: 100%;
+      }
+      body.mk {
         font-family: 'Assistant', system-ui, sans-serif;
-        background: #101828;
+        background: var(--board);
         color: #e8ecf4;
+        margin: 0;
         padding: 26px 16px 60px;
         display: flex;
         flex-direction: column;
         align-items: center;
         gap: 20px;
       }
-      .caption {
-        max-width: 760px;
+      .mk-caption {
+        max-width: 780px;
         text-align: center;
       }
-      .caption h1 {
+      .mk-caption h1 {
         font-family: 'Secular One', sans-serif;
         font-size: 25px;
-        letter-spacing: 0.2px;
+        margin: 0;
       }
-      .caption p {
+      .mk-caption p {
         color: #a9b4ca;
         font-size: 14px;
         line-height: 1.6;
-        margin-top: 8px;
+        margin: 8px 0 0;
       }
-      .states {
+      .mk-states {
         display: flex;
         gap: 7px;
         flex-wrap: wrap;
         justify-content: center;
       }
-      .states button {
+      .mk-states button {
         font: inherit;
         font-size: 13px;
         font-weight: 600;
         padding: 7px 14px;
         border-radius: 999px;
         border: 1px solid #2c3d63;
-        background: #17233c;
+        background: var(--board-2);
         color: #b9c4da;
         cursor: pointer;
       }
-      .states button.on {
+      .mk-states button.on {
         background: var(--amber);
         border-color: var(--amber);
-        color: #2a1e08;
+        color: var(--amber-ink);
+      }
+      /* The app conditionally RENDERS its StatusBanner; this file keeps one
+         node and toggles it, so `[hidden]` has to beat `.fb-banner`'s own
+         `display: flex`. Mockup mechanics only. */
+      .fb-banner[hidden] {
+        display: none;
       }
 
-      /* ───────────────────────── phone ───────────────────────── */
-      .phone {
+      /* the phone: a viewport for the real CSS, nothing more */
+      .mk-phone {
         width: 390px;
         height: 780px;
+        flex: none;
         background: var(--screen);
         border-radius: 30px;
         overflow: hidden;
@@ -171,9 +498,9 @@
         color: var(--ink);
         display: flex;
         flex-direction: column;
-        position: relative;
+        text-align: start;
       }
-      .statusbar {
+      .mk-statusbar {
         background: var(--indigo);
         color: #dce3f2;
         display: flex;
@@ -184,610 +511,124 @@
         font-family: 'JetBrains Mono', monospace;
         flex: none;
       }
-      .header {
-        background: var(--indigo);
-        color: #fff;
-        padding: 4px 16px 12px;
+      /* the real `.header.mode-chrome` is a page header; inside the frame it
+         only needs to stop growing */
+      .mk-phone .header {
         flex: none;
       }
-      .header h1 {
-        font-family: 'Secular One', sans-serif;
-        font-size: 19px;
-      }
-      .header .sub {
-        font-size: 12px;
-        color: #a8b6d4;
-        margin-top: 2px;
-      }
-      /* the shared header day strip (ui/domain/DayStrip) — reused verbatim, no
-         map-only strip (ADR-0109 §1). In all-days scope it keeps the today
-         anchor and drops the filled selection (session 81). */
-      .daystrip {
-        display: flex;
-        gap: 5px;
-        margin-top: 10px;
-        overflow: hidden;
-      }
-      .daycell {
-        font: inherit;
-        border: 0;
-        background: transparent;
-        color: #b9c6e2;
-        display: grid;
-        justify-items: center;
-        gap: 1px;
-        font-size: 10.5px;
-        padding: 4px 7px 5px;
-        border-radius: 9px;
-        cursor: pointer;
-      }
-      .daycell .n {
-        font-family: 'JetBrains Mono', monospace;
-        font-size: 13.5px;
-        font-weight: 700;
-      }
-      .daycell.today {
-        color: var(--amber);
-      }
-      .daycell.sel {
-        background: #fff;
-        color: var(--ink);
-      }
-      .phone[data-scope='day'] .daycell.sel {
-        background: #fff;
-        color: var(--ink);
-      }
-
-      /* filter + scope rows — the Index chip grammar, extended not forked
-         (ADR-0109 §2 / ADR-0098/0100). Shown compressed here; the shipped row
-         is the real thing. */
-      .filterrow,
-      .sortstrip {
-        display: flex;
-        align-items: center;
-        gap: 6px;
-        padding: 8px 14px;
-        background: var(--screen);
-        flex: none;
-      }
-      .sortstrip {
-        padding-top: 0;
-      }
-      .pill {
-        font: inherit;
-        font-size: 12px;
-        font-weight: 600;
-        border: 1px solid var(--line);
-        background: var(--card);
-        color: var(--muted);
-        border-radius: 999px;
-        padding: 5px 10px;
-        cursor: pointer;
-        white-space: nowrap;
-      }
-      .pill.on {
-        background: var(--idx-accent);
-        border-color: var(--idx-accent);
-        color: var(--idx-accent-text);
-      }
-      .pill.dashed {
-        border-style: dashed;
-        border-color: var(--soft-line);
-      }
-      .pill .cnt {
-        font-family: 'JetBrains Mono', monospace;
-        opacity: 0.7;
-        margin-inline-start: 4px;
-      }
-      .pill.near {
-        border-color: var(--teal);
-        color: var(--teal-deep);
-        background: var(--teal-tint);
-      }
-      .scopehint {
-        font-size: 11px;
-        color: var(--faint);
-        margin-inline-start: auto;
-      }
-
-      /* ─────────────── the split: map pane + list sheet ─────────────── */
-      .split {
-        position: relative;
+      .mk-phone .map-screen {
         flex: 1;
         min-height: 0;
-        overflow: hidden;
-      }
-
-      /* THE MAP PANE. One live instance — resized by the toggle, never
-         destroyed and rebuilt (ADR-0121 §3: Dynamic Maps bills per
-         instantiation). The base is the cloud-styled QUIET canvas: desaturated
-         cool paper, POI clutter dropped, no colour flood (ADR-0106 §C). */
-      .mappane {
-        position: absolute;
-        inset: 0;
-        background:
-          repeating-linear-gradient(0deg, #dfe3ea 0 1px, transparent 1px 34px),
-          repeating-linear-gradient(90deg, #dfe3ea 0 1px, transparent 1px 34px),
-          linear-gradient(180deg, #eef1f5, #e5e9f0);
-        overflow: hidden;
-      }
-      /* a couple of faint "roads" + a water body, to show the base reads as a
-         map without carrying colour */
-      .mappane .road {
-        position: absolute;
-        background: #d3d9e3;
-        border-radius: 3px;
-      }
-      .mappane .water {
-        position: absolute;
-        background: #dbe4ec;
-        border-radius: 40% 60% 55% 45%;
-      }
-
-      /* THE DAY CONNECTOR: dashed, neutral, day scope only (ADR-0121 §7). A
-         straight segment is the ORDER, not the route — dashed says so, and it
-         leaves solid+amber free for a real Routes polyline later. */
-      .conn {
-        position: absolute;
-        height: 0;
-        border-top: 2.5px dashed rgba(22, 35, 61, 0.34);
-        transform-origin: left center;
-        display: none;
-      }
-      .phone[data-scope='day'] .conn {
-        display: block;
-      }
-
-      /* PINS — AdvancedMarker content is OUR markup (ADR-0121 §5), so the
-         teardrop shares the list badge's tokens and grammar. Fill = category;
-         commitment is the hard/soft grammar, never a colour. */
-      .mpin {
-        position: absolute;
-        width: 28px;
-        height: 34px;
-        transform: translate(-50%, -100%);
-      }
-      .mpin .b {
-        position: relative;
-        width: 25px;
-        height: 25px;
-        margin: 0 auto;
-        /* sharp corner bottom-right so rotate(45deg) swings the tip straight
-           DOWN onto the location */
-        border-radius: 50% 50% 2px 50%;
-        transform: rotate(45deg);
-        display: grid;
-        place-items: center;
-        background: var(--cat-leisure);
-        border: 2px solid rgba(255, 255, 255, 0.92);
-        box-shadow: 0 2px 5px rgba(22, 35, 61, 0.34);
-      }
-      .mpin .g {
-        transform: rotate(-45deg);
-        font-size: 13px;
-        line-height: 1;
-      }
-      .mpin.food .b {
-        background: var(--cat-food);
-      }
-      .mpin.lodging .b {
-        background: var(--cat-lodging);
-      }
-      .mpin.transit .b {
-        background: var(--cat-transit);
-      }
-      .mpin.services .b {
-        background: var(--cat-services);
-      }
-      /* soft / idea → dashed (the shelf grammar). PinElement cannot express
-         this, which is why marker content is our DOM (ADR-0121 §5). */
-      .mpin.idea .b {
-        border-style: dashed;
-        border-color: rgba(22, 35, 61, 0.45);
-        background: color-mix(in srgb, var(--cat-leisure) 55%, #fff);
-      }
-      /* ambient mid-stay base → desaturated, no time claim (ADR-0109 §5) */
-      .mpin.ambient .b {
-        filter: saturate(0.45);
-        opacity: 0.8;
-      }
-      /* behind you → quiet, matching the list's outcome states (ADR-0117) */
-      .mpin.behind .b {
-        filter: saturate(0.3);
-        opacity: 0.62;
-      }
-      .mpin .lockdot {
-        position: absolute;
-        top: -4px;
-        left: -5px;
-        font-size: 9px;
-        background: #fff;
-        border-radius: 999px;
-        padding: 1px 2px;
-        box-shadow: 0 1px 3px rgba(22, 35, 61, 0.3);
-      }
-      /* THE ONE AMBER TIME-ANCHOR (ADR-0109 §6 / session-104): exactly one pin
-         ever carries the next-stop ring. Trip mode only. */
-      .mpin.next::before {
-        content: '';
-        position: absolute;
-        inset: -7px -7px 4px -7px;
-        border: 2.5px solid var(--amber);
-        border-radius: 999px;
-        opacity: 0.9;
-      }
-      .mpin.next .tag {
-        position: absolute;
-        top: -21px;
-        right: 50%;
-        transform: translateX(50%);
-        background: var(--amber);
-        color: #2a1e08;
-        font-size: 9.5px;
-        font-weight: 700;
-        padding: 2px 6px;
-        border-radius: 999px;
-        white-space: nowrap;
-      }
-      /* the "me" dot — arrives free with near-me in Phase 6 (ADR-0109 §7) */
-      .me {
-        position: absolute;
-        width: 14px;
-        height: 14px;
-        border-radius: 999px;
-        background: var(--me);
-        border: 2.5px solid #fff;
-        box-shadow: 0 0 0 7px rgba(46, 107, 230, 0.16);
-        transform: translate(-50%, -50%);
-        display: none;
-      }
-      .phone[data-near='on'] .me {
-        display: block;
-      }
-
-      /* OUR control, not Google's — default UI is disabled (ADR-0121 §10):
-         Google's controls are un-styleable, unlabelled and RTL-unaware. This is
-         also the escape hatch from "a manual pan wins" (§6). */
-      .recenter {
-        position: absolute;
-        top: 10px;
-        inset-inline-start: 10px;
-        background: var(--card);
-        border: 1px solid var(--line);
-        border-radius: 10px;
-        font: inherit;
-        font-size: 11.5px;
-        font-weight: 600;
-        color: var(--ink);
-        padding: 6px 9px;
-        cursor: pointer;
-        box-shadow: 0 2px 6px rgba(22, 35, 61, 0.16);
-      }
-      /* required by Google's ToS — designed around, never removed */
-      .attr {
-        position: absolute;
-        bottom: 6px;
-        inset-inline-start: 8px;
-        font-size: 9.5px;
-        color: #7c8698;
-        font-family: 'JetBrains Mono', monospace;
-        letter-spacing: 0.3px;
-      }
-
-      /* THE LIST SHEET — a pane, not an overlay: it renders inline, the map
-         behind it stays live, nothing dismisses it. So no Modal/useOverlay and
-         no back registration (ADR-0121 §4). */
-      .sheet {
-        position: absolute;
-        inset-inline: 0;
-        bottom: 0;
-        background: var(--screen);
-        border-radius: 16px 16px 0 0;
-        box-shadow: 0 -8px 24px rgba(22, 35, 61, 0.18);
         display: flex;
         flex-direction: column;
-        transition: height 0.28s cubic-bezier(0.2, 0.7, 0.2, 1);
-        height: 56%;
       }
-      .phone[data-view='peek'] .sheet {
-        height: 108px;
-      }
-      .phone[data-view='full'] .sheet {
-        height: 100%;
-        border-radius: 0;
-        box-shadow: none;
-      }
-      .phone[data-view='full'] .mappane {
-        /* the map is behind the full sheet — still ONE live instance, not
-           destroyed (ADR-0121 §3) */
-        visibility: hidden;
-      }
-      .sheettop {
-        flex: none;
-        padding: 7px 14px 8px;
-        display: grid;
-        gap: 8px;
-        justify-items: center;
-      }
-      /* the drag handle owns the vertical gesture; the map pane keeps its own
-         (ADR-0121 §4/§10) */
-      .grab {
-        width: 40px;
-        height: 4px;
-        border-radius: 999px;
-        background: var(--soft-line);
-        cursor: grab;
-      }
-      /* רשימה · מפה — a shortcut to the two extremes of the SAME height axis
-         the handle drags, so the two controls cannot disagree (ADR-0121 §4) */
-      .seg {
-        display: flex;
-        background: rgba(22, 35, 61, 0.06);
-        border: 1px solid var(--line);
-        border-radius: 999px;
-        padding: 2px;
-        gap: 2px;
-      }
-      .seg button {
-        font: inherit;
-        font-size: 12px;
-        font-weight: 600;
-        border: 0;
-        background: transparent;
-        color: var(--muted);
-        border-radius: 999px;
-        padding: 4px 15px;
-        cursor: pointer;
-      }
-      .seg button.on {
-        background: var(--card);
-        color: var(--ink);
-        box-shadow: 0 1px 3px rgba(22, 35, 61, 0.14);
-      }
-      .sheetlist {
-        flex: 1;
-        min-height: 0;
-        overflow-y: auto;
-        padding: 0 12px 14px;
-      }
-      .grouphead {
-        font-size: 11.5px;
-        font-weight: 700;
-        color: var(--muted);
-        padding: 9px 4px 5px;
-      }
-
-      /* the shipped .place row grammar (ADR-0109 §1) — badge · name · meta ·
-         one labelled נווט. Reused, not redrawn. */
-      .place {
-        display: flex;
-        gap: 10px;
-        align-items: center;
-        background: var(--card);
-        border: 1px solid var(--line);
-        border-radius: 12px;
-        padding: 9px 10px;
-        margin-bottom: 7px;
-      }
-      .place.sel {
-        border-color: var(--ink);
-        box-shadow: 0 0 0 2px rgba(22, 35, 61, 0.1);
-      }
-      .place.soft {
-        border-style: dashed;
-        border-color: var(--soft-line);
-      }
-      .place.quiet {
-        opacity: 0.66;
-      }
-      .badge {
-        width: 32px;
-        height: 32px;
-        border-radius: 10px;
-        display: grid;
-        place-items: center;
-        font-size: 15px;
-        background: var(--cat-leisure);
-        flex: none;
-      }
-      .badge.food {
-        background: var(--cat-food);
-      }
-      .badge.lodging {
-        background: var(--cat-lodging);
-      }
-      .badge.transit {
-        background: var(--cat-transit);
-      }
-      .badge.services {
-        background: var(--cat-services);
-      }
-      .badge.dashed {
-        background: color-mix(in srgb, var(--cat-leisure) 55%, #fff);
-        border: 1.5px dashed var(--soft-line);
-      }
-      .main {
-        flex: 1;
-        min-width: 0;
-      }
-      .main .t {
-        font-size: 14px;
-        font-weight: 700;
-        display: flex;
-        align-items: center;
-        gap: 5px;
-      }
-      .main .m {
-        display: flex;
-        flex-wrap: wrap;
-        align-items: center;
-        gap: 5px;
-        margin-top: 3px;
-        font-size: 11.5px;
-        color: var(--muted);
-      }
-      .tag {
-        border-radius: 999px;
-        padding: 1px 7px;
-        font-size: 10.5px;
-        font-weight: 700;
-      }
-      .tag.time {
-        background: rgba(233, 166, 60, 0.2);
-        color: var(--amber-ink);
-      }
-      .tag.next {
-        background: var(--amber);
-        color: #2a1e08;
-      }
-      .tag.shelf {
-        background: rgba(22, 35, 61, 0.07);
-        color: var(--muted);
-      }
-      .tag.ok {
-        background: rgba(60, 154, 107, 0.16);
-        color: var(--ok);
-      }
-      .tag.dist {
-        background: var(--teal-tint);
-        color: var(--teal-deep);
-        font-family: 'JetBrains Mono', monospace;
-      }
-      .navbtn {
-        font-size: 11.5px;
-        font-weight: 700;
-        color: var(--teal-deep);
-        background: var(--teal-tint);
-        border: 1px solid rgba(44, 156, 144, 0.3);
-        border-radius: 9px;
-        padding: 5px 9px;
-        white-space: nowrap;
-      }
-      .navbtn.lite {
-        color: var(--muted);
-        background: rgba(22, 35, 61, 0.05);
-        border-color: var(--line);
-      }
-      .banner {
-        display: flex;
-        gap: 7px;
-        align-items: center;
-        background: #dfe4ec;
-        border: 1px solid var(--line);
-        border-radius: 10px;
-        padding: 7px 10px;
-        font-size: 11.5px;
-        color: var(--muted);
-        margin: 0 12px 8px;
-      }
-
-      /* offline: NO map pane, NO toggle, no billed load — absent, not disabled
-         (ADR-0121 §8). The near-me chip goes too, which is not a new rule: it is
-         already removed offline in the shipped tab, because you cannot re-locate
-         (ADR-0109 §7 / session 105). Same grammar, one more control. */
-      .phone[data-state='offline'] .mappane,
-      .phone[data-state='offline'] .seg,
-      .phone[data-state='offline'] .grab,
-      .phone[data-state='offline'] .pill.near {
-        display: none;
-      }
-      .phone[data-state='offline'] .sheet {
-        height: 100%;
-        border-radius: 0;
-        box-shadow: none;
-      }
-      .phone[data-state='offline'] .place {
-        filter: saturate(0.5);
-      }
-      .offbar {
-        display: none;
-      }
-      .phone[data-state='offline'] .offbar {
-        display: flex;
-      }
-
-      /* ───────────────────────── notes panels ───────────────────────── */
-      .panels {
+      .mk-panels {
         display: grid;
         gap: 14px;
-        max-width: 820px;
+        max-width: 840px;
         width: 100%;
       }
-      .panel {
-        background: #17233c;
+      .mk-panel {
+        background: var(--board-2);
         border: 1px solid #26355a;
         border-radius: 14px;
         padding: 15px 17px;
       }
-      .panel h3 {
+      .mk-panel h3 {
         font-family: 'Secular One', sans-serif;
         font-size: 15.5px;
         color: #f0c987;
-        margin-bottom: 7px;
+        margin: 0 0 7px;
       }
-      .panel p,
-      .panel li {
+      .mk-panel p,
+      .mk-panel li {
         font-size: 13px;
         line-height: 1.65;
         color: #b9c4da;
       }
-      .panel ul {
+      .mk-panel p {
+        margin: 0 0 6px;
+      }
+      .mk-panel ul {
+        margin: 0;
         padding-inline-start: 18px;
         display: grid;
         gap: 5px;
       }
-      .panel b {
+      .mk-panel b {
         color: #fff;
       }
-      .panel code {
+      .mk-panel code {
         font-family: 'JetBrains Mono', monospace;
         font-size: 11.5px;
-        background: #101a2e;
+        background: var(--board);
         padding: 1px 5px;
         border-radius: 5px;
         color: #cfe0ff;
       }
-      table.sku {
+      .mk-panel table {
         width: 100%;
         border-collapse: collapse;
         margin-top: 9px;
         font-size: 12.5px;
       }
-      table.sku th,
-      table.sku td {
+      .mk-panel th,
+      .mk-panel td {
         text-align: start;
         padding: 6px 8px;
         border-bottom: 1px solid #26355a;
         color: #b9c4da;
       }
-      table.sku th {
+      .mk-panel th {
         color: #8fa2c4;
-        font-weight: 700;
         font-size: 11.5px;
       }
-      table.sku td b {
+      .mk-panel td b {
         color: #fff;
       }
-      .warnbox {
+      .mk-panel.mk-warn {
         border-color: #6b4a2a;
         background: #23190e;
       }
-      .warnbox h3 {
+      .mk-panel.mk-warn h3 {
         color: var(--amber);
+      }
+      .mk-legend {
+        display: flex;
+        flex-wrap: wrap;
+        gap: 18px;
+        margin-top: 12px;
+        background: var(--screen);
+        border-radius: 12px;
+        padding: 26px 18px 14px;
+        position: relative;
+      }
+      .mk-legend .mk-lg {
+        position: relative;
+        width: 46px;
+        text-align: center;
+        font-size: 10.5px;
+        color: var(--muted);
+        font-family: 'Assistant', sans-serif;
+      }
+      .mk-legend .map-pin {
+        position: relative;
+        transform: none;
+        margin: 0 auto 4px;
       }
     </style>
   </head>
-  <body>
-    <div class="caption">
+  <body class="mk">
+    <div class="mk-caption">
       <h1>המפה המוטמעת · שלב 6</h1>
       <p>
         השלב האחרון באפיק המפה: מפת גוגל מרונדרת נכנסת <b>לתוך</b> הרשימה שנבנתה בשלב 3, לא במקומה.
         חלונית מפה מעל מגירת רשימה נגררת, אותם פינים ואותם מסננים, וקו יום מקווקו שאומר סדר ולא
-        מסלול.
+        מסלול. המוקאפ רץ על ה־CSS האמיתי של האפליקציה, ולא על העתק שלו.
       </p>
     </div>
 
-    <div class="states">
+    <div class="mk-states">
       <button data-state="half" class="on">חצי (ברירת מחדל)</button>
       <button data-state="map">מפה מלאה</button>
       <button data-state="list">רשימה מלאה</button>
@@ -795,181 +636,315 @@
       <button data-state="offline">אופליין</button>
     </div>
 
-    <div
-      class="phone"
-      id="phone"
-      data-view="half"
-      data-scope="all"
-      data-near="on"
-      data-state="half"
-    >
-      <div class="statusbar"><span>9:41</span><span>מפה 🗺️</span></div>
+    <div class="mk-phone">
+      <div class="mk-statusbar"><span>9:41</span><span>🗺️</span></div>
 
-      <div class="header">
-        <h1>🗺️ מפה</h1>
-        <div class="sub" id="headsub">טוקיו · כל הימים</div>
-        <div class="daystrip">
-          <button class="daycell"><span>ב׳</span><span class="n" dir="ltr">23</span></button>
-          <button class="daycell"><span>ג׳</span><span class="n" dir="ltr">24</span></button>
-          <button class="daycell today" id="dc-today">
-            <span>ד׳</span><span class="n" dir="ltr">25</span>
+      <!-- the REAL in-trip header chrome (App.tsx's `<header className="header
+           mode-chrome" data-mode>`) with the REAL shared day strip
+           (ui/domain/DayStrip → `.wp-daystrip`/`.wp-daypill`). Not a map-only
+           strip: the Map is simply a second day-scoped surface (ADR-0109 §1),
+           and in all-days scope the strip keeps its today-anchor and drops the
+           filled selection (`allScope`, session 81). -->
+      <header class="header mode-chrome" data-mode="trip">
+        <div class="trip-row">
+          <div class="trip-name-wrap">
+            <button class="trip-name-btn">
+              <span class="trip-icon" aria-hidden="true">🗾</span>
+              <span class="trip-name">יפן באוקטובר</span>
+            </button>
+            <div class="trip-sub">טוקיו<span class="dot">·</span>יום 3 מתוך 9</div>
+          </div>
+        </div>
+        <div class="wp-daystrip" data-mode="trip" id="daystrip">
+          <div class="wp-daypill-wrap">
+            <span class="wp-month-label">יולי</span>
+            <button class="wp-daypill past" data-day="23">
+              ב׳<span class="n" dir="auto">23</span>
+            </button>
+          </div>
+          <div class="wp-daypill-wrap">
+            <button class="wp-daypill past" data-day="24">
+              ג׳<span class="n" dir="auto">24</span>
+            </button>
+          </div>
+          <div class="wp-daypill-wrap">
+            <button class="wp-daypill today-anchor" data-day="25" id="pill-today">
+              ד׳<span class="n" dir="auto">25</span>
+            </button>
+          </div>
+          <div class="wp-daypill-wrap">
+            <button class="wp-daypill future" data-day="26">
+              ה׳<span class="n" dir="auto">26</span>
+            </button>
+          </div>
+          <div class="wp-daypill-wrap">
+            <button class="wp-daypill future" data-day="27">
+              ו׳<span class="n" dir="auto">27</span>
+            </button>
+          </div>
+          <div class="wp-daypill-wrap">
+            <button class="wp-daypill future" data-day="28">
+              ש׳<span class="n" dir="auto">28</span>
+            </button>
+          </div>
+          <div class="wp-daypill-wrap">
+            <button class="wp-daypill future" data-day="29">
+              א׳<span class="n" dir="auto">29</span>
+            </button>
+          </div>
+        </div>
+      </header>
+
+      <!-- the REAL `.map-screen`, carrying two NEW data attributes this design
+           adds beside its existing data-mode/data-offline: data-view (the sheet
+           height) and data-scope (day vs all — what turns the connector on) -->
+      <div class="map-screen" data-mode="trip" data-view="half" data-scope="all" data-near="on">
+        <!-- REAL filter row: ChoiceGrid pills + the maybes toggle + search -->
+        <div class="map-filter-row">
+          <div class="choice-grid pills" role="radiogroup" aria-label="סוג">
+            <button type="button" role="radio" aria-checked="true" class="choice-pill on">
+              <span>הכל</span><span class="choice-pill-count" aria-hidden="true">8</span>
+            </button>
+            <button type="button" role="radio" aria-checked="false" class="choice-pill">
+              <span>אוכל</span><span aria-hidden="true">🍜</span
+              ><span class="choice-pill-count" aria-hidden="true">3</span>
+            </button>
+            <button type="button" role="radio" aria-checked="false" class="choice-pill">
+              <span>שהות</span><span aria-hidden="true">🏨</span
+              ><span class="choice-pill-count" aria-hidden="true">1</span>
+            </button>
+            <button type="button" role="radio" aria-checked="false" class="choice-pill">
+              <span>תחבורה</span><span aria-hidden="true">🚄</span
+              ><span class="choice-pill-count" aria-hidden="true">2</span>
+            </button>
+          </div>
+          <button type="button" class="map-maybes" aria-pressed="false">
+            אולי <span class="cnt" aria-hidden="true">2</span>
           </button>
-          <button class="daycell"><span>ה׳</span><span class="n" dir="ltr">26</span></button>
-          <button class="daycell"><span>ו׳</span><span class="n" dir="ltr">27</span></button>
-          <button class="daycell"><span>ש׳</span><span class="n" dir="ltr">28</span></button>
-        </div>
-      </div>
-
-      <!-- the Index chip grammar, extended (ADR-0109 §2) — unchanged by Phase 6 -->
-      <div class="filterrow">
-        <button class="pill on">הכל <span class="cnt" dir="ltr">8</span></button>
-        <button class="pill">🍜 אוכל <span class="cnt" dir="ltr">3</span></button>
-        <button class="pill">🏨 שהות <span class="cnt" dir="ltr">1</span></button>
-        <button class="pill dashed">אולי <span class="cnt" dir="ltr">2</span></button>
-        <button class="pill" aria-label="חיפוש">🔍</button>
-      </div>
-      <div class="sortstrip">
-        <button class="pill" id="scopechip">🗓️ כל הימים</button>
-        <button class="pill near">📍 קרוב עכשיו</button>
-        <span class="scopehint" id="scopehint">כל הטיול</span>
-      </div>
-
-      <div class="split">
-        <!-- ── THE MAP PANE ─────────────────────────────────────────────
-             One live google.maps.Map. The toggle resizes it; nothing here is
-             ever destroyed and re-created, because that is a billed load
-             (ADR-0121 §3). Inert to the tab's per-second clock re-render. -->
-        <div class="mappane">
-          <div class="water" style="left: -8%; top: 58%; width: 46%; height: 34%"></div>
-          <div class="road" style="left: 0; top: 41%; width: 100%; height: 5px"></div>
-          <div class="road" style="left: 58%; top: 0; width: 5px; height: 100%"></div>
-          <div class="road" style="left: 0; top: 72%; width: 78%; height: 4px"></div>
-
-          <!-- the day connector: dashed = order, not route. Day scope only. -->
-          <!-- Pins sit in the top ~40% of the pane on purpose: that is the band
-               still visible at the DEFAULT half height, so the grammar reads
-               without dragging the sheet down. (A real camera fits the filtered
-               bounds to the visible map area — ADR-0121 §6 — which is the same
-               constraint expressed properly.) -->
-          <div class="conn" style="left: 23%; top: 21%; width: 38%; transform: rotate(15deg)"></div>
-          <div class="conn" style="left: 60%; top: 31%; width: 25%; transform: rotate(23deg)"></div>
-
-          <!-- exactly ONE amber ring: the next committed stop (ADR-0109 §6) -->
-          <div class="mpin transit next" style="left: 23%; top: 22%">
-            <span class="tag">היעד הבא</span>
-            <div class="b"><span class="g">🚉</span></div>
-            <span class="lockdot">🔒</span>
-          </div>
-          <div class="mpin food" style="left: 60%; top: 32%">
-            <div class="b"><span class="g">🍜</span></div>
-          </div>
-          <div class="mpin lodging" style="left: 85%; top: 42%">
-            <div class="b"><span class="g">🏨</span></div>
-            <span class="lockdot">🔒</span>
-          </div>
-          <!-- a shelf idea: dashed, the soft grammar — PinElement can't do this -->
-          <div class="mpin idea" style="left: 43%; top: 41%">
-            <div class="b"><span class="g">💡</span></div>
-          </div>
-          <!-- mid-stay ambient base: present, but making no claim on the day -->
-          <div class="mpin lodging ambient" style="left: 14%; top: 38%">
-            <div class="b"><span class="g">🏨</span></div>
-          </div>
-          <!-- behind you: quiet, matching the list's outcome states (ADR-0117) -->
-          <div class="mpin leisure behind" style="left: 73%; top: 14%">
-            <div class="b"><span class="g">⛩️</span></div>
-          </div>
-
-          <div class="me" style="left: 37%; top: 30%"></div>
-          <button class="recenter">⌖ מרכז מחדש</button>
-          <div class="attr">Google</div>
+          <button type="button" class="map-search-btn" aria-label="חיפוש">
+            <svg viewBox="0 0 24 24" width="18" height="18" aria-hidden="true">
+              <circle
+                cx="10.5"
+                cy="10.5"
+                r="6.5"
+                fill="none"
+                stroke="currentColor"
+                stroke-width="2"
+              />
+              <line
+                x1="15.5"
+                y1="15.5"
+                x2="21"
+                y2="21"
+                stroke="currentColor"
+                stroke-width="2"
+                stroke-linecap="round"
+              />
+            </svg>
+          </button>
         </div>
 
-        <!-- ── THE LIST SHEET ───────────────────────────────────────────
-             A pane of the tab, not an overlay over it. It always peeks, so the
-             map is never the only view — a coordless place and every offline
-             read live here (ADR-0121 §4/§5/§8). -->
-        <div class="sheet">
-          <div class="sheettop">
-            <div class="grab" title="גרירה אנכית: הצצה · חצי · מלא"></div>
-            <div class="seg" role="tablist">
-              <button id="seg-list" onclick="setState('list')">רשימה</button>
-              <button id="seg-map" onclick="setState('map')">מפה</button>
+        <!-- REAL sort strip: the map-local scope chip + near-me + the hint -->
+        <div class="map-sortstrip">
+          <button type="button" class="map-scopechip" aria-pressed="true" id="scopechip">
+            🗓️ כל הימים
+          </button>
+          <button type="button" class="map-nearchip on" aria-pressed="true">📍 קרוב עכשיו</button>
+          <span class="map-scopehint" id="scopehint">כל הטיול</span>
+        </div>
+
+        <!-- ══ THE SPLIT (new) ══ -->
+        <div class="map-split">
+          <!-- ONE live map instance. The toggle resizes it; nothing here is
+               destroyed and rebuilt, because that is a billed load (§3). -->
+          <div class="map-pane">
+            <div class="mk-water" style="left: -8%; top: 62%; width: 46%; height: 34%"></div>
+            <div class="mk-road" style="left: 0; top: 47%; width: 100%; height: 5px"></div>
+            <div class="mk-road" style="left: 58%; top: 0; width: 5px; height: 100%"></div>
+
+            <!-- Pins sit in the top ~40% on purpose: that is the band still
+                 visible at the DEFAULT half height, so the grammar reads
+                 without dragging the sheet down. (A real camera fits the
+                 filtered bounds to the *visible* map area — §6 — which is the
+                 same constraint expressed properly.) -->
+            <div
+              class="map-conn"
+              style="left: 23%; top: 21%; width: 38%; transform: rotate(15deg)"
+            ></div>
+            <div
+              class="map-conn"
+              style="left: 60%; top: 31%; width: 25%; transform: rotate(23deg)"
+            ></div>
+
+            <!-- exactly ONE amber ring: the next committed stop (ADR-0109 §6) -->
+            <div class="map-pin cat-transit nextstop" style="left: 23%; top: 22%">
+              <span class="pin-tag">היעד הבא</span>
+              <div class="pin-b"><span class="pin-g">🚉</span></div>
+              <span class="pin-lock" aria-hidden="true">🔒</span>
             </div>
+            <div class="map-pin cat-food" style="left: 60%; top: 32%">
+              <div class="pin-b"><span class="pin-g">🍜</span></div>
+            </div>
+            <div class="map-pin cat-lodging" style="left: 85%; top: 42%">
+              <div class="pin-b"><span class="pin-g">🏨</span></div>
+              <span class="pin-lock" aria-hidden="true">🔒</span>
+            </div>
+            <!-- a shelf idea → dashed, mirroring `.place.soft` -->
+            <div class="map-pin cat-leisure soft" style="left: 43%; top: 41%">
+              <div class="pin-b"><span class="pin-g">💡</span></div>
+            </div>
+            <!-- mid-stay ambient base → present, claiming nothing of the day -->
+            <div class="map-pin cat-lodging ambient" style="left: 14%; top: 38%">
+              <div class="pin-b"><span class="pin-g">🏨</span></div>
+            </div>
+            <!-- behind you → quiet, mirroring `.place.skipped` (ADR-0117) -->
+            <div class="map-pin cat-leisure skipped" style="left: 73%; top: 14%">
+              <div class="pin-b"><span class="pin-g">⛩️</span></div>
+            </div>
+
+            <div class="map-me" style="left: 37%; top: 30%"></div>
+            <button type="button" class="map-recenter">⌖ מרכז מחדש</button>
+            <div class="map-attr">Google</div>
           </div>
 
-          <div class="banner offbar">
-            <span>📡</span><span>אין חיבור · מוצגים המקומות השמורים, המפה תחזור עם החיבור</span>
-          </div>
-
-          <div class="sheetlist">
-            <div class="grouphead">מה שלפנינו</div>
-
-            <!-- the selected row ↔ the focused pin are the same selection: a row
-                 tap focuses its pin, a pin tap highlights its row (ADR-0121 §6).
-                 This is also where the Phase-2 `מפה` interim ends — view now
-                 means OUR map, not a Google deep-link. -->
-            <div class="place sel">
-              <div class="badge transit">🚉</div>
-              <div class="main">
-                <div class="t"><span>תחנת שינג׳וקו</span><span>🔒</span></div>
-                <div class="m">
-                  <span class="tag next">היעד הבא</span><span class="tag time">היום · 17:00</span
-                  ><span class="tag dist" dir="ltr">1.2 ק״מ</span>
-                </div>
+          <!-- The list sheet: a pane of the tab, not an overlay over it. It
+               always peeks, so the map is never the only view — a coordless
+               place and every offline read live here (§4/§5/§8). -->
+          <div class="map-sheet">
+            <div class="map-sheet-top">
+              <div class="map-grab" title="גרירה אנכית: הצצה · חצי · מלא"></div>
+              <div class="map-viewtoggle" role="tablist">
+                <button type="button" id="vt-list">רשימה</button>
+                <button type="button" id="vt-map">מפה</button>
               </div>
-              <div class="navbtn">🧭 נווט</div>
             </div>
 
-            <div class="place">
-              <div class="badge food">🍜</div>
-              <div class="main">
-                <div class="t"><span>Afuri Ramen</span></div>
-                <div class="m">
-                  <span class="tag time">היום · 19:30</span><span>ארוחת ערב</span
-                  ><span class="tag dist" dir="ltr">450 מ׳</span>
-                </div>
-              </div>
-              <div class="navbtn">🧭 נווט</div>
+            <!-- the REAL StatusBanner (ui/feedback), offline tone -->
+            <div class="fb-banner fb-banner-offline" role="status" id="offbanner" hidden>
+              <span class="fb-banner-text">מוצגים המקומות השמורים · המפה תחזור עם החיבור</span>
             </div>
 
-            <div class="place">
-              <div class="badge lodging">🏨</div>
-              <div class="main">
-                <div class="t"><span>Park Hotel</span><span>🔒</span></div>
-                <div class="m"><span class="tag time">מחר · 11:00</span><span>צ׳ק־אאוט</span></div>
-              </div>
-              <div class="navbtn">🧭 נווט</div>
-            </div>
+            <!-- every row below is `screens/Map.tsx`'s PlaceRow markup verbatim -->
+            <div class="map-list">
+              <div class="map-grouphead">מה שלפנינו</div>
 
-            <div class="place soft">
-              <div class="badge dashed">💡</div>
-              <div class="main">
-                <div class="t"><span>% Arabica</span></div>
-                <div class="m"><span class="tag shelf">על המדף</span><span>בית קפה</span></div>
+              <!-- the selected row ↔ the focused pin are ONE selection: a row
+                   tap focuses its pin, a pin tap highlights its row (§6). This
+                   is also where Phase 2's interim `מפה` deep-link ends — view
+                   now means OUR map. -->
+              <div class="place nextstop" role="button" tabindex="0">
+                <span class="map-badge cat-transit" aria-hidden="true">🚉</span>
+                <span class="map-main">
+                  <span class="map-t">
+                    <span class="map-name">תחנת שינג׳וקו</span>
+                    <span class="map-lock" aria-hidden="true">🔒</span>
+                  </span>
+                  <span class="map-m">
+                    <span class="map-tag time">היום · <span dir="auto">17:00</span></span>
+                    <span class="map-tag next">היעד הבא</span>
+                    <span class="map-tag">רכבת לקיוטו</span>
+                  </span>
+                </span>
+                <span class="map-right">
+                  <span class="map-dist">1.2 ק״מ</span>
+                  <a class="map-navbtn" href="#">🧭 נווט</a>
+                </span>
               </div>
-              <div class="navbtn">🧭 נווט</div>
-            </div>
 
-            <!-- a coordless Place-lite: NOT on the map (nothing to pin), so the
-                 sheet must always peek — the list is its only home (§5) -->
-            <div class="place">
-              <div class="badge">📍</div>
-              <div class="main">
-                <div class="t"><span>המקום של יוקי</span></div>
-                <div class="m"><span>ללא מיקום מדויק</span></div>
+              <div class="place" role="button" tabindex="0">
+                <span class="map-badge cat-food" aria-hidden="true">🍜</span>
+                <span class="map-main">
+                  <span class="map-t"><span class="map-name">Afuri Ramen</span></span>
+                  <span class="map-m">
+                    <span class="map-tag time">היום · <span dir="auto">19:30</span></span>
+                    <span class="map-tag">ארוחת ערב</span>
+                    <span class="map-tag rate" dir="auto">★ 4.6</span>
+                  </span>
+                </span>
+                <span class="map-right">
+                  <span class="map-dist">450 מ׳</span>
+                  <a class="map-navbtn" href="#">🧭 נווט</a>
+                </span>
               </div>
-              <div class="navbtn lite">＋ מיקום</div>
-            </div>
 
-            <div class="grouphead">מה שמאחורינו</div>
-            <div class="place quiet">
-              <div class="badge leisure">⛩️</div>
-              <div class="main">
-                <div class="t"><span>מייג׳י ג׳ינגו</span></div>
-                <div class="m"><span class="tag ok">היינו</span><span>אתמול · 10:00</span></div>
+              <div class="place" role="button" tabindex="0">
+                <span class="map-badge cat-lodging" aria-hidden="true">🏨</span>
+                <span class="map-main">
+                  <span class="map-t">
+                    <span class="map-name">Park Hotel</span>
+                    <span class="map-lock" aria-hidden="true">🔒</span>
+                  </span>
+                  <span class="map-m">
+                    <span class="map-tag time">מחר · <span dir="auto">11:00</span></span>
+                    <span class="map-tag">צ׳ק־אאוט</span>
+                  </span>
+                </span>
+                <span class="map-right"><a class="map-navbtn" href="#">🧭 נווט</a></span>
               </div>
-              <div class="navbtn">🧭 נווט</div>
+
+              <div class="place ambient" role="button" tabindex="0">
+                <span class="map-badge cat-lodging" aria-hidden="true">🏨</span>
+                <span class="map-main">
+                  <span class="map-t"><span class="map-name">Park Hotel</span></span>
+                  <span class="map-m">
+                    <span class="map-tag">Shiodome, Minato City, Tokyo</span>
+                  </span>
+                </span>
+                <span class="map-right"><a class="map-navbtn" href="#">🧭 נווט</a></span>
+              </div>
+
+              <div class="place soft" role="button" tabindex="0">
+                <span class="map-badge cat-food" aria-hidden="true">☕</span>
+                <span class="map-main">
+                  <span class="map-t"><span class="map-name">% Arabica</span></span>
+                  <span class="map-m">
+                    <span class="map-tag">בית קפה</span>
+                    <span class="map-tag mbadge">על המדף</span>
+                  </span>
+                </span>
+                <span class="map-right"><a class="map-navbtn" href="#">🧭 נווט</a></span>
+              </div>
+
+              <!-- a coordless Place-lite: NOT on the map (nothing to pin), which
+                   is why the sheet must always peek — the list is its only home -->
+              <div class="place nocoord">
+                <span class="map-badge cat-leisure nocoord" aria-hidden="true">📍</span>
+                <span class="map-main">
+                  <span class="map-t"><span class="map-name">המקום של יוקי</span></span>
+                  <span class="map-m"><span class="map-tag">ללא מיקום מדויק</span></span>
+                </span>
+                <span class="map-right">
+                  <button type="button" class="map-addbtn">
+                    <span aria-hidden="true">＋</span> מיקום
+                  </button>
+                </span>
+              </div>
+
+              <div class="map-grouphead">מה שמאחורינו</div>
+
+              <div class="place" role="button" tabindex="0">
+                <span class="map-badge cat-leisure" aria-hidden="true">⛩️</span>
+                <span class="map-main">
+                  <span class="map-t"><span class="map-name">מייג׳י ג׳ינגו</span></span>
+                  <span class="map-m">
+                    <span class="map-tag time">אתמול · <span dir="auto">10:00</span></span>
+                    <span class="map-tag ok">היינו</span>
+                  </span>
+                </span>
+                <span class="map-right"><a class="map-navbtn" href="#">🧭 נווט</a></span>
+              </div>
+
+              <div class="place skipped" role="button" tabindex="0">
+                <span class="map-badge cat-leisure" aria-hidden="true">🎢</span>
+                <span class="map-main">
+                  <span class="map-t"><span class="map-name">טוקיו סקייטרי</span></span>
+                  <span class="map-m">
+                    <span class="map-tag time">אתמול · <span dir="auto">15:00</span></span>
+                    <span class="map-tag miss">דילגנו</span>
+                  </span>
+                </span>
+                <span class="map-right"><a class="map-navbtn" href="#">🧭 נווט</a></span>
+              </div>
             </div>
           </div>
         </div>
@@ -977,17 +952,64 @@
     </div>
 
     <!-- ───────────────────────── design notes ───────────────────────── -->
-    <div class="panels">
-      <div class="panel">
+    <div class="mk-panels">
+      <div class="mk-panel">
+        <h3>הפין: אותם טוקנים כמו הבאדג׳ ברשימה, צורה אחרת</h3>
+        <p>
+          <code>.map-pin</code> קורא בדיוק את אותם <code>--cat-*</code> ש־<code>.map-badge</code>
+          קורא, ומחזיר את דקדוק הקשיח/רך של <code>.place</code>: <code>.soft</code> מקווקו,
+          <code>.ambient</code> ו־<code>.skipped</code> מעומעמים.
+          <b>זו הסיבה שתוכן הסמן הוא ה־DOM שלנו</b> ולא <code>PinElement</code> — גוגל נותן
+          רקע/מסגרת/גליף, ולא את שלושת אלה.
+        </p>
+        <div class="mk-legend">
+          <div class="mk-lg">
+            <div class="map-pin cat-transit nextstop">
+              <div class="pin-b"><span class="pin-g">🚉</span></div>
+              <span class="pin-lock">🔒</span>
+            </div>
+            היעד הבא
+          </div>
+          <div class="mk-lg">
+            <div class="map-pin cat-food">
+              <div class="pin-b"><span class="pin-g">🍜</span></div>
+            </div>
+            מתוכנן
+          </div>
+          <div class="mk-lg">
+            <div class="map-pin cat-leisure soft">
+              <div class="pin-b"><span class="pin-g">💡</span></div>
+            </div>
+            רעיון
+          </div>
+          <div class="mk-lg">
+            <div class="map-pin cat-lodging ambient">
+              <div class="pin-b"><span class="pin-g">🏨</span></div>
+            </div>
+            בסיס
+          </div>
+          <div class="mk-lg">
+            <div class="map-pin cat-leisure skipped">
+              <div class="pin-b"><span class="pin-g">⛩️</span></div>
+            </div>
+            מאחורינו
+          </div>
+        </div>
+      </div>
+
+      <div class="mk-panel">
         <h3>הקונכייה: שלושה גבהים, פקד אחד — ולא שכבת חזרה</h3>
         <ul>
           <li>
-            <b>הצצה · חצי · מלא</b> — הידית גוררת רצף, וה<code>רשימה / מפה</code> הוא קיצור לשני
-            הקצוות. מצב אחד, שני פקדים, כך שהם לא יכולים לסתור זה את זה.
+            <b>הצצה · חצי · מלא</b> — <code>.map-grab</code> גורר רצף, ו־<code
+              >.map-viewtoggle</code
+            >
+            הוא קיצור לשני הקצוות של אותו ציר. מצב אחד, שני פקדים, כך שהם לא יכולים לסתור זה את זה.
+            בגובה החצי אף קצה אינו פעיל, וזו הצגה כנה.
           </li>
           <li>
             <b>המגירה תמיד מציצה.</b> הרשימה היא התצוגה היחידה שעובדת אופליין והיחידה שיכולה להציג
-            מקום בלי קואורדינטות — אז אין מסך שהיא נעלמת ממנו לגמרי.
+            מקום בלי קואורדינטות (<code>.place.nocoord</code>), אז אין מסך שהיא נעלמת ממנו לגמרי.
           </li>
           <li>
             <b>זו לא שכבה.</b> המגירה היא חלונית של הטאב ולא שכבה מעליו: היא לא נפתחת, לא נסגרת ולא
@@ -999,32 +1021,7 @@
         </ul>
       </div>
 
-      <div class="panel">
-        <h3>הפינים הם הגזירה של הרשימה, מרונדרת במרחב</h3>
-        <ul>
-          <li>
-            <b>מקור אמת אחד.</b> אותו <code>place-usage.ts</code>, אותם מסננים, אותו סדר. צ׳יפ שמשנה
-            את הרשימה משנה את הפינים באותו מעבר — שני חצאי המסך לא יכולים לסתור.
-          </li>
-          <li>
-            <b>תוכן הסמן הוא ה־DOM שלנו</b> ולא <code>PinElement</code>: הוא נותן רקע/מסגרת/גליף,
-            אבל לא <b>מקווקו</b> לרעיון ולא <b>מעומעם</b> לבסיס אמביינטי — והדקדוק הזה הוא מחצית
-            השפה (ADR-0109 §3). כך הבאדג׳ והטיפה קוראים את אותם <code>--cat-*</code> מעצם הבנייה.
-          </li>
-          <li>
-            <b>רק מקום עם קואורדינטות נעוץ.</b> "Place-lite" נשאר שורה עם <code>＋ מיקום</code>.
-            מכאן שהטבעת המקווקווית החלולה שתוארה ל"מקום ללא קואורדינטות" איננה ברת־בנייה ולא נחוצה:
-            אין לו מקום על הבד.
-          </li>
-          <li>
-            <b>טבעת ענבר אחת בלבד</b> — היעד הבא, כפי שתמיד נועד. הטאג נשאר על השורה, הטבעת עוברת
-            לפין. מצב טיול בלבד.
-          </li>
-          <li><b>ללא איגוד פינים (clustering).</b> טיול מחזיק עשרות מקומות, לא אלפים.</li>
-        </ul>
-      </div>
-
-      <div class="panel">
+      <div class="mk-panel">
         <h3>המצלמה עונה לפקדים — כמו שהרשימה עונה</h3>
         <p>
           הכלל של ADR-0120 הוא ש<b>כל שינוי ברשימה זז</b>. הגרסה של המפה: כל פקד שמשנה את קבוצת
@@ -1033,12 +1030,12 @@
         </p>
         <p>
           <b>גרירה או זום ידניים מנצחים</b> עד הפקד הבא: מי שמסתכל על המפה לקח את המצלמה, ולמרכז
-          אותה מתחת לאצבע שלו בטיק השעון הבא זה כמו רשימה שממוינת מחדש בזמן קריאה. הכפתור "מרכז
-          מחדש" הוא פתח היציאה.
+          אותה מתחת לאצבע שלו בטיק השעון הבא זה כמו רשימה שממוינת מחדש בזמן קריאה.
+          <code>.map-recenter</code> הוא פתח היציאה.
         </p>
       </div>
 
-      <div class="panel">
+      <div class="mk-panel">
         <h3>הקו המחבר: מקווקו, ניטרלי, ובהיקף יום בלבד</h3>
         <ul>
           <li>
@@ -1047,13 +1044,13 @@
           </li>
           <li>
             <b>יום בלבד.</b> חיבור כל הימים יחד הוא ספגטי שלא עונה כלום — וההגבלה ליום אחד מייתרת
-            לגמרי פלטת צבע לכל יום, והופכת את צ׳יפ ההיקף הקיים ל"מתג היום" שנדרש (ADR-0106 §E
-            מעודן).
+            לגמרי פלטת צבע לכל יום, והופכת את <code>.map-scopechip</code> הקיים ל"מתג היום" שנדרש
+            (ADR-0106 §E מעודן).
           </li>
           <li>
-            <b>ניטרלי, כי הקו שייך לרקע ולא לדמות</b> ("בסיס שקט, פינים רועשים"). כך
-            <b>מלא + ענבר</b> נשאר לא־מנוצל עבור פוליליין אמיתי של Routes ו־ETA בהמשך — שיקרא כשונה
-            בסוג, לא כמשופר בצבע.
+            <b>ניטרלי</b> (<code>--soft-line</code>), כי הקו שייך לרקע ולא לדמות ("בסיס שקט, פינים
+            רועשים"). כך <b>מלא + ענבר</b> נשאר לא־מנוצל עבור פוליליין אמיתי של Routes ו־ETA בהמשך —
+            שיקרא כשונה בסוג, לא כמשופר בצבע.
           </li>
           <li>
             <b>קישור עמוק לכל היום</b> (חינמי) נשלח עם אותו חיתוך: כתובת הוראות־נסיעה של גוגל עם
@@ -1062,17 +1059,19 @@
         </ul>
       </div>
 
-      <div class="panel">
+      <div class="mk-panel">
         <h3>אופליין: המפה נעדרת, לא מושבתת</h3>
         <p>
-          אין חלונית, אין מתג, אין טעינת מפה שנחייבנו עליה — הטאב הוא הרשימה שהוא היום, מתחת לבאנר
-          "שמור לאחרונה". זה בדיוק הכלל שהטאב מפעיל פעמיים: צ׳יפ קרוב־עכשיו <b>מוסר</b> אופליין (אי
-          אפשר לאתר), והחצי הגוגלי של המחקר <b>נעדר</b> ולא מושבת. מסגרת מפה אפורה עם סימן מים הייתה
-          דקדוק שלישי לאותה עובדה.
+          אין חלונית, אין מתג, אין טעינת מפה שנחייבנו עליה — הטאב הוא הרשימה שהוא היום, מתחת ל־<code
+            >.fb-banner</code
+          >
+          הקיים. גם <code>.map-nearchip</code> מוסר, וזה לא כלל חדש אלא הכלל שכבר רץ (ADR-0109 §7):
+          אי אפשר לאתר אופליין. אותו דקדוק שהחצי הגוגלי של המחקר מפעיל (ADR-0115). מסגרת מפה אפורה
+          עם סימן מים הייתה דקדוק שלישי לאותה עובדה.
         </p>
       </div>
 
-      <div class="panel warnbox">
+      <div class="mk-panel mk-warn">
         <h3>עלות: החיוב הוא לפי יצירת מפה, לא לפי אריחים</h3>
         <p>
           כל <code>new google.maps.Map()</code> הוא טעינה מחויבת. החשבון: 10,000 טעינות חינם בחודש
@@ -1082,13 +1081,13 @@
         <p>
           <b>לכן: מופע אחד לכל ביקור בטאב, ולא מתאמצים מעבר לזה</b> — בלי סינגלטון גלובלי מעל
           הראוטר. מה ש<b>אסור</b> הוא יצירה מחדש על המתג, על מסנן, על גרירת המגירה, או על טיק השעון
-          של הטאב; וכשהמשתמש בחצי הרשימה — מפה לא נוצרת בכלל.
+          של הטאב (<code>Map.tsx</code> מתרנדר כל שנייה); וכשהמשתמש בחצי הרשימה — מפה לא נוצרת בכלל.
         </p>
       </div>
 
-      <div class="panel">
+      <div class="mk-panel">
         <h3>מה אישרנו מול גוגל (2026-07-26) — והשניים שזזו</h3>
-        <table class="sku">
+        <table>
           <tr>
             <th>עובדה</th>
             <th>מצב</th>
@@ -1129,12 +1128,13 @@
         </p>
       </div>
 
-      <div class="panel">
+      <div class="mk-panel">
         <h3>הפקדים שלנו, לא של גוגל</h3>
         <ul>
           <li>
             <code>disableDefaultUI</code> ואז מחזירים רק את מה שצריך: פקדי גוגל אינם ניתנים לעיצוב,
-            ללא תוויות, ולא מודעים לעמוד RTL. זום הוא הצביטה; הפקד היחיד שנוסף הוא <b>מרכז מחדש</b>.
+            ללא תוויות, ולא מודעים לעמוד RTL. זום הוא הצביטה; הפקד היחיד שנוסף הוא
+            <code>.map-recenter</code>.
           </li>
           <li>
             <code>gestureHandling: 'greedy'</code> — ברירת המחדל דורשת שתי אצבעות בתוך עמוד נגלל
@@ -1144,56 +1144,66 @@
         </ul>
       </div>
 
-      <div class="panel">
+      <div class="mk-panel">
         <h3>מה שלב 6 איננו</h3>
         <p>
           נתיבים בתשלום / ETA חי (רצף, לא כיוון) · מסנן "לפי אזור" כצ׳יפ (הזזה וזום <b>הם</b> מסנן
           האזור) · איגוד פינים · אריחים אופליין · שיתוף GPS בין חברים (ADR-0006, נשאר בחוץ) ·
-          תלת־ממד/הטיה · ומפה כהה שמישהו יכול לראות: מצב כהה עדיין רדום בכל האפליקציה, אז הסגנון
-          הלילי נטבע ונקרא מ־<code>data-theme</code> — ולא מוכרז כנבדק.
+          תלת־ממד/הטיה · ומפה כהה שמישהו יכול לראות: מצב כהה עדיין רדום בכל האפליקציה (<code
+            >tokens.css</code
+          >
+          מרמז זאת במפורש), אז הסגנון הלילי נטבע ונקרא מ־<code>data-theme</code> — ולא מוכרז כנבדק.
         </p>
       </div>
     </div>
 
     <script>
-      const phone = document.getElementById('phone');
-      const headsub = document.getElementById('headsub');
+      const screenEl = document.querySelector('.map-screen');
       const scopechip = document.getElementById('scopechip');
       const scopehint = document.getElementById('scopehint');
-      const today = document.getElementById('dc-today');
+      const todayPill = document.getElementById('pill-today');
+      const offbanner = document.getElementById('offbanner');
 
       function setState(s) {
-        phone.dataset.state = s;
-        // view = the sheet height axis; the segmented toggle and the handle drive
-        // the same one (ADR-0121 §4)
-        phone.dataset.view =
+        // view = the sheet-height axis; the toggle and the handle drive the same
+        // one (ADR-0121 §4)
+        screenEl.dataset.view =
           s === 'map' ? 'peek' : s === 'list' || s === 'offline' ? 'full' : 'half';
-        // day scope is what turns the connector on (ADR-0121 §7)
+
+        // day scope is what turns the connector on (§7)
         const day = s === 'day';
-        phone.dataset.scope = day ? 'day' : 'all';
-        today.classList.toggle('sel', day);
+        screenEl.dataset.scope = day ? 'day' : 'all';
+        // the shared strip's real state classes (DayStrip's pillClass): the
+        // today cell is `on` when it IS the selection, `today-anchor` when
+        // all-days scope withholds the filled selection (session 81)
+        todayPill.className = 'wp-daypill ' + (day ? 'on' : 'today-anchor');
         scopechip.textContent = day ? '🗓️ יום אחד' : '🗓️ כל הימים';
-        scopechip.classList.toggle('on', day);
+        scopechip.setAttribute('aria-pressed', String(!day));
+        scopechip.classList.toggle('on', !day);
         scopehint.textContent = day ? 'רביעי · 25 ביולי' : 'כל הטיול';
-        headsub.textContent = day ? 'טוקיו · המקומות של היום' : 'טוקיו · כל הימים';
+
+        // offline is a data attribute on the real `.map-screen`, as shipped
+        if (s === 'offline') screenEl.setAttribute('data-offline', '');
+        else screenEl.removeAttribute('data-offline');
+        offbanner.hidden = s !== 'offline';
 
         document
-          .querySelectorAll('.states button')
+          .querySelectorAll('.mk-states button')
           .forEach((b) => b.classList.toggle('on', b.dataset.state === s));
-        document.getElementById('seg-map').classList.toggle('on', s === 'map');
-        document.getElementById('seg-list').classList.toggle('on', s === 'list');
+        document.getElementById('vt-map').classList.toggle('on', s === 'map');
+        document.getElementById('vt-list').classList.toggle('on', s === 'list');
       }
 
       document
-        .querySelectorAll('.states button')
+        .querySelectorAll('.mk-states button')
         .forEach((b) => b.addEventListener('click', () => setState(b.dataset.state)));
 
-      // the row ↔ pin selection is one selection (ADR-0121 §6)
-      const rows = [...document.querySelectorAll('.sheetlist .place')];
+      // the row ↔ pin selection is ONE selection (§6)
+      const rows = [...document.querySelectorAll('.map-list .place')];
       rows.forEach((r) =>
         r.addEventListener('click', () => {
-          rows.forEach((x) => x.classList.remove('sel'));
-          r.classList.add('sel');
+          rows.forEach((x) => x.classList.remove('nextstop'));
+          r.classList.add('nextstop');
         }),
       );
 
