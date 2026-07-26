@@ -202,6 +202,90 @@ describe('MapView (Phase 3, ADR-0109/0110)', () => {
     expect(screen.getByText(t.map.empty.title)).toBeTruthy();
   });
 
+  // ADR-0119 — three reported ways the `אולי` facet lied. Asserted in BOTH day
+  // scopes, since the day-scoped and all-days paths are different renders.
+  describe('the maybes facet is the shelf, in the day scope (ADR-0119)', () => {
+    const maybesChip = () => screen.getByRole('button', { name: new RegExp(t.map.filter.maybes) });
+    const maybesCount = () => maybesChip().querySelector('.cnt')?.textContent;
+    const allDaysChip = () => screen.getByRole('button', { name: new RegExp(t.map.allDays) });
+    const pill = (label: string) => screen.getByRole('radio', { name: new RegExp(label) });
+    const countOn = (label: string) => pill(label).querySelector('.choice-pill-count')?.textContent;
+    // Fixtures carry fixed dates, so the clock is pinned (frontend CLAUDE.md): noon
+    // on the active day, which also makes '2026-07-21' read as מחר.
+    const NOON = Date.parse(`${ACTIVE_DATE}T12:00:00Z`);
+    const rowFor = (name: string) =>
+      [...document.querySelectorAll('.place')].find(
+        (r) => r.querySelector('.map-name')?.textContent === name,
+      );
+
+    it('an idea pencilled in for today is on today’s map, and in the maybes filter', () => {
+      setSimulatedNow(NOON);
+      tripPlaces = [place('today-idea', true), place('someday-idea', true)];
+      tripMaybes = [
+        maybe({ id: 'm1', placeId: 'today-idea', category: 'food', targetDate: ACTIVE_DATE }),
+        maybe({ id: 'm2', placeId: 'someday-idea', category: 'food' }),
+      ];
+      render(wrap(<MapView />));
+      // The reported bug: "maybe today" showed nowhere in the scope Trip mode opens on.
+      expect(screen.getByText('today-idea')).toBeTruthy();
+      expect(screen.queryByText('someday-idea')).toBeNull(); // dateless: all-days only
+      fireEvent.click(maybesChip());
+      expect(screen.getByText('today-idea')).toBeTruthy();
+      expect(maybesCount()).toBe('1');
+    });
+
+    it('a pencilled day is named in a neutral tag, never as an amber commitment', () => {
+      setSimulatedNow(NOON);
+      tripPlaces = [place('tomorrow-idea', true)];
+      tripMaybes = [maybe({ id: 'm', placeId: 'tomorrow-idea', targetDate: '2026-07-21' })];
+      render(wrap(<MapView />));
+      fireEvent.click(allDaysChip());
+      const row = rowFor('tomorrow-idea')!;
+      expect(row.textContent).toContain(t.map.shelfTag);
+      expect(row.querySelector('.map-tag.time')).toBeNull();
+      expect(row.querySelector('.map-tag')?.textContent).toBe('מחר');
+    });
+
+    it('a skipped soft event is on the shelf, so the maybes filter finds it', () => {
+      setSimulatedNow(NOON);
+      tripPlaces = [place('bailed', true), place('planned', true)];
+      tripEvents = [
+        event({ id: 'e1', placeId: 'bailed', category: 'food', status: EVENT_STATUS.SKIPPED }),
+        event({ id: 'e2', placeId: 'planned', category: 'food' }),
+      ];
+      render(wrap(<MapView />));
+      fireEvent.click(maybesChip());
+      // It appeared under its category chip but never under `אולי` — the reported bug.
+      expect(screen.getByText('bailed')).toBeTruthy();
+      expect(screen.queryByText('planned')).toBeNull();
+      // …and the same in all-days scope.
+      fireEvent.click(allDaysChip());
+      expect(screen.getByText('bailed')).toBeTruthy();
+      expect(screen.queryByText('planned')).toBeNull();
+    });
+
+    it('the maybes count follows the picked category, and the chips follow the toggle', () => {
+      setSimulatedNow(NOON);
+      tripPlaces = [place('idea-food', true), place('idea-see', true), place('booked-food', true)];
+      tripEvents = [event({ id: 'e', placeId: 'booked-food', category: 'food' })];
+      tripMaybes = [
+        maybe({ id: 'm1', placeId: 'idea-food', category: 'food', targetDate: ACTIVE_DATE }),
+        maybe({ id: 'm2', placeId: 'idea-see', category: 'sightseeing', targetDate: ACTIVE_DATE }),
+      ];
+      render(wrap(<MapView />));
+      expect(maybesCount()).toBe('2');
+      expect(countOn(t.iconPicker.categories.food)).toBe('2'); // the idea + the scheduled one
+
+      fireEvent.click(pill(t.iconPicker.categories.food));
+      expect(maybesCount()).toBe('1'); // one maybe restaurant, not two
+
+      fireEvent.click(maybesChip());
+      expect(countOn(t.iconPicker.categories.food)).toBe('1'); // the scheduled one is filtered out
+      expect(countOn(t.map.filter.all)).toBe('2'); // the two ideas, both types
+      expect(countOn(t.iconPicker.categories.sightseeing)).toBe('1');
+    });
+  });
+
   describe('list order is trip order (ADR-0109 §1 amendment)', () => {
     const names = () =>
       [...document.querySelectorAll('.place .map-name')].map((n) => n.textContent);

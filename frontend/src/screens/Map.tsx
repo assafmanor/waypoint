@@ -16,6 +16,8 @@ import {
   comparePlacesBySchedule,
   countPlacesByCategory,
   isDayUsagePast,
+  isOnShelf,
+  matchesPlaceCategory,
   matchesPlaceFilter,
   placeDay,
   PLACE_CATEGORY_ALL,
@@ -154,18 +156,25 @@ export function MapView() {
     [allUsages, allDays, activeDate],
   );
 
-  const categoryCounts = useMemo(() => countPlacesByCategory(dayScoped), [dayScoped]);
-  const maybesInScope = dayScoped.filter((u) => u.isMaybe).length;
-  const hasMaybes = allUsages.some((u) => u.isMaybe);
+  // Each facet counts what the OTHER one leaves visible, so no chip ever claims
+  // rows the list won't show: with `אולי` on, the type chips count only shelf
+  // places; the `אולי` count is always for the picked type ("how many maybe
+  // restaurants", not "how many maybes"). Same rule in both directions, which is
+  // also what keeps the empty-chip fallback below honest.
+  const shelfScoped = useMemo(() => dayScoped.filter(isOnShelf), [dayScoped]);
+  const countScope = maybesOnly ? shelfScoped : dayScoped;
+  const categoryCounts = useMemo(() => countPlacesByCategory(countScope), [countScope]);
+  const hasMaybes = allUsages.some(isOnShelf);
   // Fall back to "all" if the picked type emptied out for the current day scope
   // (matches the Index), without mutating the stored selection.
   const activeCategory =
     category !== PLACE_CATEGORY_ALL && (categoryCounts[category as EventCategory] ?? 0) === 0
       ? PLACE_CATEGORY_ALL
       : category;
+  const maybesInScope = shelfScoped.filter((u) => matchesPlaceCategory(u, activeCategory)).length;
 
   const typeOptions: Choice<PlaceCategoryFilter>[] = [
-    { value: PLACE_CATEGORY_ALL, icon: '', label: t.map.filter.all, count: dayScoped.length },
+    { value: PLACE_CATEGORY_ALL, icon: '', label: t.map.filter.all, count: countScope.length },
     ...EVENT_CATEGORY_OPTIONS.filter((o) => categoryCounts[o.value] > 0).map((o) => ({
       value: o.value,
       icon: o.icon,
@@ -244,7 +253,9 @@ export function MapView() {
   const zoneCtx = useMemo(() => liveZoneContext(nowMs, zoneEvidence), [nowMs, zoneEvidence]);
   const eventById = useMemo(() => new Map(events.map((e) => [e.id, e])), [events]);
 
-  const dayMeta = (usage: PlaceUsage): { day?: string; time?: string; what?: string } => {
+  const dayMeta = (
+    usage: PlaceUsage,
+  ): { day?: string; time?: string; what?: string; pencilled?: boolean } => {
     const usageDay = placeDay(usage, scopedDate);
     // A strictly-middle stay night has no moment and nothing happens there — saying
     // the hotel's own name back on the hotel's row would be pure repetition.
@@ -253,7 +264,10 @@ export function MapView() {
     // the scope hint already name it, so `היום ·` on every row would be pure noise.
     const day = allDays ? relativeDayLabel(usageDay.date, today) : undefined;
     const event = usageDay.eventId ? eventById.get(usageDay.eventId) : undefined;
-    if (!event) return { day };
+    // No event owns this day, so the day came from an idea's pencilled-in target
+    // (ADR-0116 §1). It's named, not claimed: amber is time & commitment (ADR-0028)
+    // and a pencil mark is neither, so the row states the day in a neutral tag.
+    if (!event) return { day, pencilled: day != null };
     const zones = eventZones(event, zoneCtx);
     const zone = usageDay.edge === 'end' ? zones.endZone : zones.startZone;
     return {
@@ -284,7 +298,7 @@ export function MapView() {
     const prominence = allDays
       ? undefined
       : usage.days.find((d) => d.date === activeDate)?.prominence;
-    const { day, time, what } = dayMeta(usage);
+    const { day, time, what, pencilled } = dayMeta(usage);
     // What a human said happened here (ADR-0117 §1) — read off the same day the
     // meta line describes. A strictly-middle stay night reports nothing: nothing
     // happens there to have an outcome about.
@@ -301,6 +315,7 @@ export function MapView() {
         day={day}
         time={time}
         what={what}
+        pencilled={pencilled}
         distance={distanceLabel(usage)}
         distanceStale={staleDistances}
         onEnrich={() => setEnrichTarget(place)}
@@ -505,6 +520,7 @@ function PlaceRow({
   day,
   time,
   what,
+  pencilled,
   distance,
   distanceStale,
   onEnrich,
@@ -524,6 +540,9 @@ function PlaceRow({
   time?: string;
   /** What happens here — a transition word for a booking end, else the title. */
   what?: string;
+  /** The day is an idea's pencilled-in target, not a schedule (ADR-0116 §1), so the
+   *  tag stays neutral — amber is reserved for time & commitment (ADR-0028). */
+  pencilled?: boolean;
   /** Near-me: how far away, or the offline "can't measure" label. */
   distance?: string;
   /** The distance shown is the offline placeholder, not a measurement. */
@@ -599,7 +618,7 @@ function PlaceRow({
               multi-day list gains width but not another chip. The clock stays an
               LTR island inside the Hebrew day word, never the whole tag. */}
           {(day || time) && (
-            <span className="map-tag time">
+            <span className={'map-tag' + (pencilled ? '' : ' time')}>
               {day}
               {day && time && ` ${DOT_SEPARATOR} `}
               {time && <span dir="auto">{time}</span>}
