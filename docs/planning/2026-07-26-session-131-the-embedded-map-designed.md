@@ -264,3 +264,41 @@ re-centring under your fingers, which §6 already refuses.
 Point-to-point transit is the free Maps deep-link (which leaves the app) or the paid Routes
 API. It is the only ride-along answering no question the tab asks, and the one that fights
 "quiet base, loud pins" hardest. Free to draw is not free to read.
+
+## The camera, questioned and made concrete (ADR-0121 amendment F)
+
+Three owner questions — does the map know how much to zoom for the number of pins, do we
+cluster dense pins, does a filter reframe — and two of them found holes.
+
+**Zoom follows extent, not count**, which is why "how many pins" is the wrong question:
+three pins on one block and three across a country want completely different zoom.
+`fitBounds` is the right primitive, but it has three degenerate shapes the plan had left
+implied, each with a concrete wrong behaviour. A **single pin** is the sharp one — zero-area
+bounds make `fitBounds` snap to building level, so a single pin is _centred_ at a fixed
+neighbourhood zoom and never fitted. One `maxZoom` cap covers near-coincident sets as the
+same case rather than a second special case. And the fit must inset by the visible area
+**plus a pin's own height**, because the teardrop's tip is the anchor and its body sits above
+the coordinate — without that the topmost pin of a fitted set draws half off-canvas, which is
+the exact failure the fit exists to prevent.
+
+**The clustering answer needed its reason replaced.** §5 declined it because "a trip holds
+tens of places, not thousands" — which conflates total count with on-screen **density**, the
+same mistake R7 caught for coincident pins and only half-fixed. Eight places in one district
+are unreadable at city zoom whatever the total is. What actually saves us is the **default
+scope**: Trip mode opens on today, three to six stops. Density bites in Plan/all-days.
+
+So: a **zoom-tiered pin** — below a legibility threshold it degrades to a dot, hue kept,
+number and glyph dropped, since a 9px numeral is noise rather than information. Nothing
+hidden, nothing invented, no dependency. Clustering stays out on a better reason than the old
+one: a cluster bubble **cannot carry the pin grammar** — it spans categories so it can take no
+hue, spans tiers so it can be neither solid nor dashed, and has no position in the day so it
+can take no number. It would be the only object on the canvas outside the system. The
+tap-to-zoom interaction is genuinely good; the bubble is the cost. Recorded with a revisit
+trigger rather than as a permanent no.
+
+**A filter does reframe — but only when it owes you something.** Re-fit only when the new set
+does not already fit the current view: the promise is that a chip never leaves results
+off-canvas, and if they are all on screen, moving is gratuitous. And **focus pans without
+zooming**, which amendment C had left vague as "moves the camera" — zooming on selection
+throws away the context you were reading. Same instinct as §6's "a manual pan wins": the
+camera moves when it owes you something, not whenever state changed.

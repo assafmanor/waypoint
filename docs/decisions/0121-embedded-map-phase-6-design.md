@@ -230,6 +230,44 @@ ADR-0106 §4 decided there is no "by area" filter because **pan/zoom is** the ar
 
 **Decision: not now.** It is the only one of the three ride-alongs that adds nothing to a question the tab is asking, and it is the one that fights ADR-0106 §C's "quiet base, loud pins" hardest — a network overlay is exactly the clutter that rule strips out. If it returns it is a toggle, off by default, transit only. Recorded here so the "it's free" argument does not reopen it on its own; free to draw is not the same as free to read.
 
+## Amendment (2026-07-26, same session) — the camera, made concrete
+
+Three questions on the plan, and two of them found holes. §6 said "fit to the bounds of the filtered set" and left the arithmetic implied; §5's "no clustering" rested on a reason that does not hold.
+
+### F1. Zoom follows the set's **extent**, not its count — and the degenerate cases need stating
+
+`fitBounds` derives zoom from a bounding box, which is the right primitive and the reason "how many pins" is the wrong question: three pins on one block and three pins across a country want completely different zoom. But a bounding box has three degenerate shapes the plan never addressed, and each has a concrete wrong behaviour if left to Google:
+
+| Set                               | What `fitBounds` does unguarded                                   | Decision                                                                                                        |
+| --------------------------------- | ----------------------------------------------------------------- | --------------------------------------------------------------------------------------------------------------- |
+| **One pin**                       | Zero-area bounds → snaps to **maximum** zoom (building level)     | Centre on it at a fixed neighbourhood zoom instead. Never `fitBounds` a single point.                           |
+| **Several pins, near-coincident** | Same failure, one step milder                                     | The same **`maxZoom` cap** covers it, so the two cases share one guard rather than each getting a special case. |
+| **A multi-city trip, all-days**   | Zooms out to country level; every pin becomes an overlapping blob | Honest and allowed — that _is_ the extent. Legibility at that zoom is F2's problem, not the camera's.           |
+| **No pins at all**                | Undefined bounds                                                  | Leave the camera untouched and let the empty state speak (the tab already has one).                             |
+
+Plus the padding the shell now demands: `fitBounds` insets by the **visible** map area (R2) and by enough to clear a pin's own height — the teardrop's tip is the anchor, so its body and any `היעד הבא` tag extend _above_ the coordinate. Without that, the topmost pin in a fitted set is drawn half off-canvas, which is the exact failure the fit exists to prevent.
+
+### F2. "No clustering" rested on a bad reason — density is not count
+
+§5 declined clustering because "a trip holds tens of places, not thousands." That conflates **total count** with **on-screen density**, which is the same mistake R7 caught for coincident pins and only half-fixed. Eight places in one district are unreadable at city zoom no matter that the trip holds twenty.
+
+What genuinely mitigates it is **the default scope, not the pin budget**: Trip mode opens on _today_ — typically three to six stops — where density is a non-problem. It bites in Plan/all-days on a dense city trip.
+
+**Decision: a zoom-tiered pin now; clustering named as the escalation with a trigger, not as a maybe.**
+
+- **Below a legibility threshold the pin degrades to a dot** — category hue kept, number and glyph dropped, since a 9px numeral is noise rather than information. Nothing is hidden and nothing is invented: the grammar survives at the zooms where it can be read, and thins where it cannot. No dependency, and it composes with R7's z-order.
+- **Clustering is deliberately not adopted**, for a reason worth recording rather than the one §5 gave: a cluster bubble **cannot carry the pin grammar**. It spans categories so it cannot take a category hue, it spans tiers so it cannot be solid-or-dashed, and it has no position in the day so it cannot take a number. It would be the one object on the canvas outside the system, plus a marker-clusterer dependency. The tap-to-zoom interaction is genuinely good; the bubble is the cost.
+- **The trigger for revisiting**, so this is not a permanent no: a real trip where all-days scope is routinely unreadable at the fitted zoom. Then it earns its own decision, and the first question is whether a cluster bubble can be designed inside ADR-0028's budget at all.
+
+### F3. Yes, a filter reframes — but only when it has to
+
+§6's rule stands: every control that changes the pin set moves the camera, `מה נשאר` (amendment E1) included. Two refinements, because "always re-fit" is louder than the guarantee needs:
+
+- **Re-fit only when the new set does not already fit the current view.** The promise is that a chip never leaves its results off-canvas; if they are all on screen already, moving is gratuitous motion. A bounds-containment check is cheap and it removes the "tap `אוכל`, map lurches across the city" case while keeping the guarantee intact.
+- **Focus pans, it does not zoom.** Amendment C's row tap says "moves the camera to that pin", which was vague. It **centres** at the current zoom rather than zooming in, because zooming on selection throws away the context you were just reading. If the pin is off-screen it pans; if it is already visible it may not move at all. Only an explicit control (re-centre, a scope change) changes zoom.
+
+Both refinements are the same instinct as §6's "a manual pan wins": the camera should move when it owes you something, not whenever state changed.
+
 ## Context
 
 Phases 0–5 of the Maps & Places epic have shipped. The Map tab is a real surface: `lib/place-usage.ts` derives every place's days/categories/outcome/commitment from the trip snapshot, `screens/Map.tsx` renders it as a filtered, scoped, ordered list with near-me, navigate-to-next, outcome states and Plan-mode Google research. Phase 6 — the **rendered** map — is the last phase, and the only one still unbuilt.
@@ -311,7 +349,7 @@ ADR-0109 §10 fixed the vision (map pane on top, list as a draggable bottom shee
 - **Marker content is our DOM, not `PinElement`.** Google's `PinElement` gives background/border/glyph — enough for a solid category teardrop, and **not** enough for the commitment grammar ADR-0109 §3 specifies: dashed for a maybe-only idea, desaturated for an ambient mid-stay base. Those need our CSS. So the marker's `content` is an element carrying the same `--cat-*` tokens and the same class grammar as the list badge, so badge and teardrop are one visual system by construction rather than by discipline. The pin markup is **static per place** (a category, a commitment, a lock, maybe a ring) — no React state inside a marker, which is why §2's portal is a convenience and not the reason for the dependency.
 - **The amber next-stop ring lands on the pin, as promised.** ADR-0109's session-104 amendment shipped the list form of §6's single amber time-anchor (an `היעד הבא` tag + a soft ring on one row) and said "Phase 6 needs no rework: the ring moves onto the pin as §6 always intended and the row keeps its tag." That is now built: exactly one pin ever carries it, and it stays Trip-mode only.
   - **It is an outline _on_ the pin, not a ring _around_ it.** Worth stating because the first pass got it wrong in a way that only shows on screen: a pill-shaped box drawn around the teardrop read as "a circle someone drew near a pin" — two shapes, where the intent was one highlighted shape. A `box-shadow` spread follows `border-radius`, so it traces the teardrop's own silhouette, tip included, and the pin simply looks outlined. Selection stays a separate `outline` so the two compose (a pin can be both the next stop and the one you just tapped) rather than one replacing the other.
-- **No clustering.** A trip holds tens of places, not thousands; the ceiling is named rather than engineered around. If a trip ever renders enough pins to collide meaningfully, the fix is the marker-clustering library, and it earns its own decision then.
+- **No clustering.** _(Reasoning corrected by amendment F2: "a trip holds tens of places, not thousands" conflated total count with on-screen **density**, which is not the same thing — eight places in one district are unreadable at city zoom whatever the trip's total. What actually mitigates it is the default day scope. The decision stands, on the better reason that a cluster bubble cannot carry the pin grammar: it spans categories, tiers and days, so it can take neither hue, nor shape, nor number. A **zoom-tiered pin** covers density instead.)_
 
 ### 6. The camera answers the controls, the same way the list does
 
