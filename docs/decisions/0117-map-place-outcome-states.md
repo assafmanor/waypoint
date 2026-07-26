@@ -6,6 +6,8 @@
 
 Mockup: [`mockups/shelf-day-aware-v1.html`](../../mockups/shelf-day-aware-v1.html) (second frame — the Map list's outcome states)
 
+> **The deferred outcome filter is now IN Phase 6, as one toggle** (owner call 2026-07-26; [ADR-0121](0121-embedded-map-phase-6-design.md) §9). Not three chips for the three states below: the list **already** answers "where have we been" by labelling the `מה שמאחורינו` block and tagging each row, and a third multi-value facet would multiply the very count-coupling surface [ADR-0119](0119-map-maybes-facet-is-the-shelf.md) exists to repair. The question people ask on the ground is "what's left", so it is a single independent **`מה נשאר`** toggle in the `אולי` chip's idiom, hiding everything `settled` (both `done` and `skipped` — a predicate over the `settled` field this ADR already stores), applying to the map's out-of-scope "ghost" pins as well, and appearing only when the trip has something settled (the derived-affordance rule, exactly as `hasMaybes` already gates the `אולי` chip). On a rendered map this is the payoff a list cannot give: with the settled pins gone the remaining cluster is legible.
+
 ## Context
 
 The Map's list already partitions into **ahead of you** and **behind you**, under a `כבר היינו` header (ADR-0109 session-107/110). That partition is computed **entirely from the clock** — `isDayUsagePast` compares `now` against a day's latest referencing instant, or the calendar date against today. Verified this session: neither `lib/place-usage.ts` nor `screens/Map.tsx` reads `event.status` at all; the string `EVENT_STATUS` does not appear in either file.

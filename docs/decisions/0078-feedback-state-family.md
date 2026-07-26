@@ -4,6 +4,8 @@
 **Date:** 2026-07-19
 **Relates:** [0082](0082-adopt-non-color-design-tokens.md) (the Wave-0 spacing/type/radius/elevation + status/sync tokens this family is built on), [0052](0052-document-lifecycle-view-manage-and-feedback.md) (the shared `Spinner` the loading state reuses), [0028](0028-plan-violet-color-budget-dark-ready.md) (the color budget: feedback semantics use the status tokens, never amber/teal/plan). Implements finding **U-10** of the UI/UX review (`../reviews/ui-ux-review.md`).
 
+> **The layout layer gains one modifier in Phase 6** ([ADR-0121](0121-embedded-map-phase-6-design.md) §5): `AppShell`'s `<main className="body">` scrolls and carries `padding: 16px 16px 92px`, which suits every screen except a full-bleed map. It gains a body modifier (`fullBleed`/`bodyClassName` → `.body.is-fullbleed { overflow: hidden; padding: 0 }`) so the Map tab can own a fixed-height split with its own internal scroll. One contained addition in the layer that owns shell structure, reusable by any future full-bleed surface — rather than a per-screen override fighting the shell.
+
 ## Context
 
 Empty / loading / error / offline feedback is solved once per screen, so it drifts. The review (U-10, §9, §11) found:

@@ -6,3 +6,8 @@ pnpm-lock.yaml
 **/*.min.*
 .obsidian/**
 .claude/**
+# Mockups that inline the app's real stylesheets (mockups/tools/inline-app-css.mjs).
+# Most of the file is generated css copied verbatim from frontend/src, so
+# formatting it would reflow the generated block and fight the generator on
+# every run. The tool's output is the canonical form.
+mockups/map-embedded-v1.html

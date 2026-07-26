@@ -1,0 +1,268 @@
+# 0121 — Phase-6 embedded map: the reconfirmed API surface, `@vis.gl/react-google-maps`, the map↔list shell, and one map load per visit
+
+**Status:** Accepted (design + the FE/BE shape for Phase 6; no feature code — this is the frame the build fills in)
+**Date:** 2026-07-26
+**Implements** [0106](0106-maps-and-places-epic-scope-and-phasing.md) **Phase 6** and the design [ADR-0109](0109-map-tab-design.md) deferred to this session ("the _fully-rendered_ Phase 6 map — to its own build session … re-confirming current Maps/Places API + pricing first").
+**Refines:** [0109](0109-map-tab-design.md) (§3's pin grammar gets its map form; §10's shell becomes concrete; §6's amber ring lands on a pin; §1's row tap changes destination), [0108](0108-maps-and-places-backend-architecture-key-model-and-cost.md) (§4's cost envelope re-costed; its Routes tier table corrected), [0106](0106-maps-and-places-epic-scope-and-phasing.md) §4/§B/§D/§E, [0117](0117-map-place-outcome-states.md) (its deferred outcome filter is scoped here), [0119](0119-map-maybes-facet-is-the-shelf.md) (the ghost tier is its deliberate inverse), [0120](0120-filter-reveal-is-shared-infrastructure.md) (the map's answer to "every list change moves"), [0078](0078-feedback-state-family.md) (the layout layer gains a full-bleed body modifier), [0090](0090-back-is-computed-from-nav-state.md)/[0103](0103-back-navigation-typed-layer-model.md) (why the sheet is _not_ a back layer), [0028](0028-plan-violet-color-budget-dark-ready.md) (the colour budget on a rendered canvas), [0096](0096-per-domain-claude-md-guides.md) (reuse before adding)
+
+Mockup: [`mockups/map-embedded-v1.html`](../../mockups/map-embedded-v1.html) — six states, rendering through the app's **real** stylesheets (inlined by `mockups/tools/inline-app-css.mjs` from an `APP-CSS:` manifest, so it is portable and cannot drift; the file is in `.prettierignore` because formatting the generated block fights the generator). Its entry in [`design/mockups.md`](../design/mockups.md) carries the detail.
+
+> Written as one decision rather than a stack of same-day amendments. The **Revision log** at the end records what changed during the session and why, so a rejected idea is not re-proposed — but §1–§14 are the design, readable start to finish.
+
+## Context
+
+Phases 0–5 of the epic have shipped: `lib/place-usage.ts` derives every place's days/categories/outcome/commitment from the trip snapshot, and `screens/Map.tsx` renders it as a filtered, scoped, ordered list with near-me, navigate-to-next, outcome states and Plan-mode Google research. Phase 6 — the **rendered** map — is the last phase, and ADR-0109 deferred its design on the explicit condition that current Maps API + pricing be reconfirmed first.
+
+Three facts from the tree frame everything below (verified, not recalled):
+
+- **The frontend has four runtime dependencies** (`react`, `react-dom`, `react-router-dom`, `dexie`). Nothing Google-related is installed; no code references a browser key or `maps.googleapis`. This is the first Google **client** code in the app.
+- **`screens/Map.tsx` re-renders every second** (`useClock()`), and its ordering depends on `nowMs`. Anything that rebuilds on render does it 60×/minute.
+- **The Map tab has no layout of its own.** `.map-screen` (`screens/map.css:6`) sets only `--idx-accent`/`--idx-accent-text`; every screen renders inside `AppShell`'s `<main className="body">`, which is `flex:1; overflow-y:auto; padding:16px 16px 92px`. There is no fixed-height flex column to hang a split on — see §5.
+
+## Decision
+
+### 1. The API reconfirmation: the architecture holds, two details move
+
+Confirmed against Google's current documentation and pricing on **2026-07-26**. ADR-0106 §A–F and ADR-0108 §1/§4 stand — the JS-API path, the split-key model, cloud styling, `AdvancedMarkerElement`, and free-connectors-before-paid-routes.
+
+**Held:** Dynamic Maps at ~$7/1,000 with 10,000/month free; per-SKU free tiers (10,000 Essentials / 5,000 Pro / 1,000 Enterprise); the browser key is unavoidable and unproxyable (it lives in the script URL — ADR-0108 §1's deciding fact); cloud styling via a `mapId` is the styling path (legacy cloud styles auto-migrated by 2025-03-18, an experimental JSON-import path added 2025-08-21); `AdvancedMarkerElement` renders arbitrary HTML/CSS.
+
+**Moved:**
+
+1. **A `mapId` is mandatory, not merely enabling.** Advanced markers do not load without one, and `google.maps.Marker` has been deprecated since 2024-02-21. ADR-0106 §B treated the `mapId` as what _unlocks_ vector maps and custom markers; it is now the price of admission. Consequence: **creating a Map ID + cloud style is a new human Phase-0 step** (added to `prerequisites-checklist.md`). Map type **JavaScript**, **vector**.
+2. **Routes tiers are Essentials / Pro / Enterprise, and Essentials caps at 10 intermediate waypoints.** ADR-0108 §4 recorded the older Essentials/Advanced/Preferred names; ADR-0106 §D assumed a ~25-waypoint cap. Current: **Compute Routes Essentials ~$5/1,000** (max 10 intermediate waypoints), **Pro ~$10/1,000** (traffic-aware). So a day of more than 12 stops does not fit the cheap tier. Nothing in this phase is affected — free connectors have no waypoint cap — but the paid-Routes follow-up inherits a lower ceiling and must chunk or degrade rather than silently escalate tier.
+
+Google also sells **subscription plans** (Starter $100/mo for 50,000 combined calls, up). Noted and **not taken**: we sit inside the free per-SKU allowances, so a subscription is a pure loss.
+
+_Accuracy note:_ these figures were confirmed on the date above and Google moves them. Nothing in §2–§14 changes if a number moves; the numbers only justify §4's "don't contort the design for map-load cost".
+
+### 2. Configuration: three build vars, one name each, and graceful absence
+
+- **`VITE_GOOGLE_MAPS_BROWSER_KEY`** — the public browser key, API-restricted to Maps JavaScript and referrer-locked (ADR-0108 §1). **This settles a naming conflict:** ADR-0108 and `.env.example` said `…BROWSER_KEY`; `architecture/deployment.md:52` said `VITE_GOOGLE_MAPS_API_KEY`. Whoever wired it would have set one and read the other. ADR-0108's name wins — it says what the key _is_ — and `deployment.md` is corrected.
+- **`VITE_GOOGLE_MAPS_MAP_ID`** (+ **`VITE_GOOGLE_MAPS_MAP_ID_DARK`**, unused until dark mode ships, §11). §1 made the `mapId` mandatory but no var had ever been named for it.
+- **All three are documented in `architecture/deployment.md`, not `.env.example`** — that file's own comment states the rule ("a frontend build var (deployment.md), not here"). They are build args baked into the client bundle, read via `import.meta.env` as `lib/api.ts:55` already reads `VITE_API_BASE_URL`.
+- **A missing key or map id degrades to list-only** — the same "absent, not disabled" rule as offline (§11), so a checkout without Google setup renders today's tab instead of crashing. `DEMO_MAP_ID` covers local development and is not a substitute for the real style.
+
+### 3. The binding is `@vis.gl/react-google-maps`, not a hand-rolled loader
+
+Adopt **`@vis.gl/react-google-maps`** (1.9.0, MIT; peer React ≥16.8 incl. 19 — we are on 19.2.7; pulls `@googlemaps/js-api-loader`, `@types/google.maps`, `fast-equals`). It is the React binding Google introduced for the Maps JS API. A real dependency in a four-dep frontend, so the reasoning is recorded:
+
+- **The loader is a singleton problem.** The modern API loads via `google.maps.importLibrary()`; two callers each bootstrapping is a documented source of conflicts and duplicate loads.
+- **React 19 StrictMode double-invoke is the bug class session 130 just paid for** (a liveness ref that survived a mount). Same shape here, with a **billed** side effect instead of a silently dead hook.
+- **The per-second re-render makes lifecycle correctness load-bearing.** `<Map>`/`<AdvancedMarker>` hold the imperative instances outside the render path and diff props; the failure mode of a hand-roll is a map that flickers or re-bills once a second.
+- **It resolves the `createPortal` tension rather than fighting it.** React content in a marker needs a portal, and `createPortal` is lint-blocked here because a bespoke portal escapes the back stack (ADR-0090). vis.gl does that portal internally, so we neither hand-roll an overlay nor add a file to an allowlist for something that is not an overlay. (§6 keeps the pin markup ours regardless.)
+
+### 4. One map instance per tab visit; never re-instantiate on a toggle, a filter, or the clock
+
+**Dynamic Maps bills per map instantiation** — every `new google.maps.Map()` is a billable load. So the cost question is not "how many tiles" but "how many times do we construct a map".
+
+The arithmetic, so the design is not contorted around a non-problem: 10,000 free loads/month is ~333/day across the whole app; five people (ADR-0065) each opening the tab 20×/day is ~100. We are an order of magnitude inside the free tier, and the per-SKU daily quota (ADR-0108 §6) bounds abuse regardless.
+
+**One instantiation per tab visit is accepted and not optimised further.** It is also not really a choice: `AppShell` keys `<main>` by tab, so the Map screen unmounts on every tab change. What is **forbidden** is re-instantiating for anything that is not a fresh visit — not on the `רשימה / מפה` toggle (which resizes one live map), not on a filter/scope/near-me/sheet drag, not on the clock tick, and **not created at all while the user is on the list half** (or offline, or without config).
+
+### 5. The shell: a full-bleed tab, a map pane, and a three-height list sheet that is view state
+
+ADR-0109 §10 fixed the vision (map pane over a draggable list sheet, a `רשימה / מפה` toggle). Made concrete:
+
+**The tab opts out of the scrolling body.** Per Context, `.map-screen` has no layout and `.body` scrolls with padding. `AppShell` gains a body modifier (`fullBleed`/`bodyClassName` → `.body.is-fullbleed { overflow: hidden; padding: 0 }`) — the layout layer is where this belongs (ADR-0078), and any future full-bleed surface reuses it. Knock-ons: the filter row + sort strip become the split's **fixed header** (only the sheet's list scrolls), and the sheet must clear the tab bar and safe area (`.nav` + `--safe-bottom`), since the 92px of body padding that used to do that is gone.
+
+**The map div is sized to the _visible_ area, not full-bleed behind the sheet.** The Maps JS API renders Google's logo and attribution at the bottom-left **of the map div**, and Google's terms require they not be obscured (ADR-0106 §B) — a peeking sheet over an `inset:0` pane would hide the one element we are contractually obliged to show. Sizing to the visible area also makes §7's fit-to-bounds honest, since fitting bounds to a div half-hidden behind the list centres pins under it. Cost: a resize triggers relayout, so the pane resizes **on snap, not per drag frame**.
+
+**Three snap heights, one axis:** **peek** (handle + a row or two over a full-height map), **half** (the default in both modes), **full** (today's list, map hidden behind it but still one live instance). The `רשימה / מפה` toggle is a shortcut to the two extremes of the same axis the handle drags — one state, two controls, so they cannot disagree. At half neither extreme is active, which is the honest rendering.
+
+**The sheet always peeks**, which is not decoration: the list is the only view that works offline and the only one that can hold a **coordless** place. (That also retires ADR-0109 §3's "hollow dashed ring" coordless pin as unbuildable — a place with no coordinates has no position to pin.)
+
+**It is not an overlay, so it does not register with the back stack.** It renders inline, the map behind it stays interactive, nothing dismisses it — so neither `Modal` nor `useOverlay`, the same reading ADR-0109's session-105 amendment applied to the geolocation pre-prompt. **Back leaves the tab** at any height, and the height is view state like the `allDays` chip beside it; registering it would make back mean "shrink the list" on exactly one tab (ADR-0103's typed-layer model exists to keep back predictable). The height **persists for the session per tab visit**, not to storage.
+
+**The drag handle owns the vertical gesture.** It is a snap gesture, not a drop-target one, so it is not the shelf's mechanism with a new payload (ADR-0116 sessions 116–125). At build time, check whether the shelf's pointer-capture helper extracts cleanly into a shared hook and generalize if the extraction is small; if it would mean a substantial refactor of the shelf's drag, **ask first** rather than silently taking it on (CLAUDE.md rule 8's escape hatch), and otherwise write the small dedicated hook.
+
+### 6. The pins: our markup, four populations, order as numbers
+
+**One source of truth.** The map renders the **same filtered, scoped set** the list does — `buildPlaceUsageIndex` + `matchesPlaceFilter` + the block/comparator vocabulary, untouched. A chip that changes the list changes the pins in the same pass, so the two halves cannot disagree; this is the property the whole list-first investment was for (ADR-0110 §2).
+
+**Only coord-bearing places pin.** A coordless Place-lite stays a list row with its `＋ מיקום` action.
+
+**Marker content is our DOM, not `PinElement`.** Google's pin gives background/border/glyph — enough for a solid category teardrop, not enough for the commitment grammar ADR-0109 §3 specifies. So the marker's `content` carries the same `--cat-*` tokens and class grammar as the list badge, making badge and teardrop one visual system by construction rather than by discipline. The markup is static per place — no React state inside a marker.
+
+**Four populations, one prominence ladder, no new colour.** The list separates past/upcoming/idea by _partitioning into blocks_ with headers; a map puts every pin on one plane, so the distinction lives on the pin. And a map surfaces a population the list never had to: **a place that fails the day filter but sits inside the viewport** — hiding the café you are standing next to because it is pencilled for Thursday is the inverse of what this tab is for.
+
+| Population                            | Pin                                                                               |
+| ------------------------------------- | --------------------------------------------------------------------------------- |
+| **The next stop** (Trip, exactly one) | Full category pin + the single amber cue + number                                 |
+| **Upcoming**                          | Full category pin, solid, **numbered**                                            |
+| **Idea / maybe**                      | Dashed, lightened, **unnumbered**                                                 |
+| **Behind you** (done / skipped)       | Desaturated + reduced opacity, **keeps its number**                               |
+| **Not in this day, but in view**      | A hollow **ghost**: category-hued outline, no fill, no glyph, smaller, unnumbered |
+
+Category keeps the hue (ADR-0038 §2), amber keeps time, teal keeps location affordances — ADR-0028's budget is untouched.
+
+**The ghost tier**, four properties: it exists **only in day scope** (the only scope that excludes anything — the same condition the connector carries, §10); it covers "another day" **and** "no day at all" (the `ללא יום` block); it is **tappable, not optionally** — its row is not in the sheet, so the tap is how you learn what it is, surfacing that single row labelled with its day via `relativeDayLabel` (ADR-0085), reusing the row rather than inventing an info window; and it never enters near-me's sort or distance chips.
+
+**Ghosts render pins no chip counts, and that asymmetry is deliberate.** ADR-0119 forbids a chip **promising rows the list will not render**; ghosts are the inverse, since chips count the _scoped_ set. That is precisely why a ghost is hollow, glyph-less, unnumbered and smaller — prominence is what keeps it from reading as part of the answer the chips describe. A count that overstates is a bug; a subordinate pin no count claims is paid for in prominence.
+
+**The order is on the pins, as numbers.** A line between two stops is symmetric and cannot show order (§10). The number is the **index in `comparePlacesBySchedule`'s day sequence** — start instant, then `sortOrder`, untimed after the clocked ones, exactly as `DayView` renders it (ADR-0109's session-106 amendment) — so the map is a third rendering of one derivation. Consequences:
+
+- **A pin with no position in the schedule gets no number** (an unconsumed idea; a strictly-middle ambient stay night, ADR-0054). So **numbered-vs-unnumbered is itself the plan/idea distinction**.
+- **The number is chronological, not the list's row order.** A visited stop keeps its `1` though the ahead/behind partition sinks it: the partition changes prominence, never the number.
+- **A filter must not renumber**, or the number stops meaning a position in the day. It is computed over the day's whole scheduled set — which the existing architecture already makes the easy path, since `listRows` sorts **all** usages and applies visibility as a _predicate_ (session 130's reveal model). **Gaps are correct and informative**: `1, 3, 4` says something is filtered out.
+- **Near-me must not renumber either.** `listOrder` becomes a distance sort when near-me is on; the number derives from `comparePlacesBySchedule` specifically.
+- **The 🔒 comes off the pin.** ADR-0109 §3 gave a hard commitment a lock _and_ a solid fill; the number needs that corner and solid-vs-dashed already says committed-vs-idea. The row keeps its lock.
+
+**The amber next-stop cue is an outline _on_ the pin, not a ring _around_ it.** Exactly one pin ever carries it, Trip mode only (ADR-0109 §6 / its session-104 promise that "the ring moves onto the pin"). A `box-shadow` spread follows `border-radius`, so it traces the teardrop's own silhouette, tip included, and the pin looks outlined rather than circled. It reuses `.place.nextstop`'s **22% glow verbatim**; its **edge is solid** where the row's is 34%, because a 34% amber hairline holds up on a white card and disappears over a map base. Selection stays a separate `outline` so the two compose — a pin can be both the next stop and the one you just tapped.
+
+**Density, not count, is the legibility problem.** Below a legibility threshold **a pin degrades to a dot** — hue kept, number and glyph dropped, since a 9px numeral is noise. Nothing hidden, nothing invented, no dependency. **Coincident pins** (a station that is one leg's origin and another's destination; a hotel and its restaurant) get a **stated z-order**: next stop, then ahead by day order, then ideas, then ambient, then behind, then ghosts — the one that matters most is the one you can see and tap.
+
+**Clustering is not adopted**, and the reason matters because the first one was wrong: it is _not_ that "a trip holds tens of places, not thousands" (that conflates total count with on-screen density — eight places in one district are unreadable at city zoom whatever the total). What actually mitigates density is the **default day scope**, three to six stops. Clustering stays out because **a cluster bubble cannot carry the pin grammar**: it spans categories so it can take no hue, spans tiers so it is neither solid nor dashed, and has no position in the day so it can take no number. It would be the only object on the canvas outside the system, plus a dependency. **Revisit trigger:** a real trip where all-days scope is routinely unreadable at the fitted zoom.
+
+**Markers survive the per-second re-render.** `Map.tsx` memoizes its derivations, but the _ordering_ depends on `nowMs`, so the sorted array's identity changes every second. Markers are keyed by `placeId` and take only primitive props (hue, number, tier, selected), so a clock tick reconciles to a no-op diff — the marker-level restatement of §4.
+
+### 7. The camera: zoom follows extent, and it moves only when it owes you something
+
+**Fit the bounds of the filtered set, animated**, whenever that set changes (day ↔ all-days, a type chip, `אולי`, `מה נשאר`, near-me). This is the map's version of ADR-0120's "every list change moves": a chip that silently leaves half its results off-canvas is the jump session 130 removed from the list.
+
+**Zoom follows the set's _extent_, not its count** — three pins on one block and three across a country want completely different zoom, which is why "how many pins" is the wrong question. `fitBounds` is the right primitive; its degenerate shapes are not:
+
+| Set                              | Unguarded behaviour                                           | Decision                                                                |
+| -------------------------------- | ------------------------------------------------------------- | ----------------------------------------------------------------------- |
+| **One pin**                      | Zero-area bounds → snaps to **maximum** zoom (building level) | Centre at a fixed neighbourhood zoom. Never `fitBounds` a single point. |
+| **Several near-coincident pins** | The same failure, milder                                      | One shared **`maxZoom` cap** covers both, not a second special case.    |
+| **A multi-city trip, all-days**  | Zooms to country level                                        | Allowed — that _is_ the extent. Legibility there is §6's dot tier.      |
+| **No pins**                      | Undefined bounds                                              | Leave the camera alone; the empty state speaks.                         |
+
+**The fit insets by the visible area (§5) plus a pin's own height** — the teardrop's tip is the anchor, so its body and any tag extend _above_ the coordinate; without that the topmost pin of a fitted set draws half off-canvas, the exact failure the fit prevents.
+
+**Re-fit only when the new set does not already fit the current view.** The promise is that a chip never leaves results off-canvas; if they are all on screen, moving is gratuitous. A bounds-containment check keeps the guarantee and removes the "tap `אוכל`, map lurches across the city" case.
+
+**A manual pan or zoom wins until the next scope change.** Someone exploring has taken over the camera; re-fitting under their fingers on the next clock tick is a list that re-sorts while you read it.
+
+**Focus pans, it does not zoom.** Selecting a place centres at the current zoom — zooming on selection throws away the context you were reading. Only an explicit control (re-centre, a scope change) changes zoom.
+
+**The "me" dot** appears when near-me is granted — an OS-map convention outside the colour budget (ADR-0109 §3). Near-me's existing behaviour is unchanged; the dot is the spatial addition ADR-0109 §7 always said Phase 6 would add for free.
+
+### 8. Tapping a place: it selects, and selection never leaves the app
+
+**The verb is _select_; focusing is what selection does when the place has coordinates.** That distinction is load-bearing (see the coordless case below).
+
+- **Row tap = select + focus.** It selects the row and its pin — one selection — and centres the camera. No new window, no hand-off.
+- **`נווט` stays the row's one Google button** (directions, a deep-link forever per ADR-0106 §F). It already _is_ a button, which is what "going to Google needs a button" asks for; `stopPropagation` keeps it from also selecting.
+- **"View on Google Maps" is retired from the Map-tab row, not relocated.** ADR-0109's 2026-07-24 amendment said the row tap deep-linked out "**because we have no map surface yet**"; Phase 6 ends that. With our own map on screen a second Google destination competes with the thing it was standing in for. It survives only in **ADR-0115's research results**, where a prediction has no coordinates and there is nothing of ours to focus — so `mapsPlaceUrl` keeps a narrowed job and drops its `TODO(phase-3)`. _(This revises ADR-0109 §1's "viewing the place is the row tap (opens … Google Maps place)": the tap survives, its destination becomes ours.)_
+- **The same swap elsewhere.** `EventCard` and `BookingDetail` keep their labelled `ניווט · מפה` pair (they have no tap-to-view), but `מפה` now routes to the Map tab focused on that place.
+- **A row tap while the sheet is at full height drops it to half** — focusing a map you cannot see is useless, and this is the interaction the three-height axis exists for.
+- **A coordless row still selects.** It is still _referenced_, so it still needs the way in below; only the camera half is missing. Under "tap = focus" it would have had to be untappable, stranding the row whose place data is weakest from the event that explains it.
+- **Offline the tap does nothing** and the row keeps `נווט`; the map is absent and nothing pretends otherwise (§11).
+
+**Selection reveals the way through to the entity.** A `Place` holds name/address/coords/timezone/rating; the confirmation code, notes, documents and real times live on the **reference**, which is also the only reason the place is in the trip (ADR-0112). **The pointer already exists** — `DayUsage.eventId` + `edge`, added in session 108 so the row could say _what happens here_.
+
+- Revealed by selection rather than sitting on every row (the row is already badge · name · meta · distance · `נווט`, and only one row is selected at a time).
+- **Labelled in the reference's own words** — `הזמנה · רכבת לקיוטו · יציאה`, reusing `eventEdgeTransition`/`shortTitleText`. A control that names its destination is worth more than a generic "details", and that is what earns it a row.
+- **One entry per in-scope reference**, the moment's owner leading. Union semantics (ADR-0109 §4) already made multiple references normal; this is the first surface that lets you act on it.
+- **Full-width, ≥40px** — a real touch target (ADR-0017), which is why the meta line's own 11.5px text is _not_ the link.
+- **Targets:** a booking → `BookingDetail` (ADR-0053, a `Modal` sheet so back closes it); an event → the Day view for its date, focused; an idea → the shelf.
+
+_Open, deliberately:_ whether a **pin** tap should reveal the same entries on the canvas (an info window) or only via its row. The sheet answer needs no new surface; an info window is the map idiom but a second way of stating a place. Judge it on a real map.
+
+### 9. Two filter additions: `מה נשאר`, and a `באזור` count
+
+**The outcome filter (ADR-0117's deferred item) is one toggle, not three chips.** The list already answers "where have we been" (the `מה שמאחורינו` block + per-row `היינו`/`דילגנו`), and a third multi-value facet would multiply the count-coupling surface ADR-0119 exists to repair. The question on the ground is "what's left":
+
+- **One independent `מה נשאר` toggle** in the `אולי` chip's idiom — same shape of control for the same shape of question.
+- **It hides everything `settled`**, `done` and `skipped` alike — a predicate over a field ADR-0117 already stores.
+- **It applies to ghosts too**: a place visited on Tuesday must not sit on the canvas while you ask what is left.
+- **It must join ADR-0119's count coupling.** Its own count is the number of **surviving list rows** given the picked type and `אולי` state, and while it is on the type chips and `אולי` count only unsettled places. Getting this wrong is not cosmetic — it is the exact defect ADR-0119 was written to fix, now with one more axis. (Drawing the mockup caught it: a first pass labelled the chip `4`, the scheduled-unsettled count, where `5` rows survive — the coordless row included.)
+- **The chip appears only when the trip has something settled**, reusing the `{hasMaybes && …}` pattern already in `screens/Map.tsx` and ADR-0050's derived-affordance rule. That also makes it a no-op on a trip that has not started, without a mode gate.
+- On a map this is the payoff a list cannot give: with the settled pins gone, the remaining cluster is legible.
+
+**A `12 באזור` count makes ADR-0106 §4's claim visible.** That ADR decided there is no "by area" filter because pan/zoom **is** it — sound, and never said on screen, so the decision was invisible. A quiet count read off the camera fixes that, and **no area chip is ever built**:
+
+- **Updated on the map's `idle` event, not during the pan** — a number churning under a moving finger is noise, and per-frame recompute is what §4/§6 forbid.
+- **Placed top-inline-end**, opposite the re-centre control and clear of Google's bottom-left attribution (§5).
+- **Zero says so:** `אין מקומות באזור`. An empty canvas with no explanation reads as broken rather than panned-away.
+- **It counts every pin on the canvas, ghosts included** — not a contradiction of the "ghosts are never counted" rule, because this is a **spatial** readout, not a facet count, and "how many of our places are around here" is exactly what the ghost tier is for. The wording carries it: `באזור` is about the area. Its number and the chip's will legitimately differ (canvas vs. list; the coordless place has no pin) — that is why they are worded differently.
+- **The list does _not_ follow the camera.** That would be the true area filter, and it is rejected: a list reshuffling under your thumb as you pan is the same defect as a camera re-centring under your fingers. Pan/zoom filters what you **see**.
+
+### 10. Day connectors are dashed, neutral, and Plan mode only
+
+- **Dashed, because a straight segment is not the route you will walk.** Drawing it solid would claim it is; dashed says "this is the order". It also stays off the colour budget — the connector belongs to the quiet base, not the loud figure (ADR-0106 §C) — which leaves **solid + amber** unspent so a real Routes polyline later reads as different in kind, not better in colour.
+- **Day scope only.** Connecting every day's stops is spaghetti that answers nothing; one day means no per-day palette, and the tab's existing scope chip **is** ADR-0106 §E's "day toggle".
+- **Plan mode only.** With the order on the pins (§6), the line's one remaining job is revealing the day's **shape** — the zigzag that says "you cross town twice, reorder this" — which is a planning question. In Trip mode you are living the day and need "where is next", so its canvas stays quieter. _(This revises ADR-0106 §E's per-day-colour half and §D's reading of connectors as the order cue.)_
+- **It carries no arrowheads:** the numbers are the order, and at phone size an arrowhead on a 2.5px dashed line is mush.
+- **The free whole-day deep-link ships with it** — a Google directions URL carrying the day's ordered stops as waypoints, costing nothing.
+- **Paid Routes (live ETAs) is not in this phase** (§14).
+
+### 11. Offline, archive, and theme
+
+**Offline the map is absent — not broken, not disabled.** The rendered map is the one part of this tab that was never offline (ADR-0106 §7). So: no map pane, no toggle, no map instance, no billed load — the tab is the list it is today under the existing "last saved" banner. The `מה נשאר` chip stays (pure derivation); the **near-me chip is removed**, already the shipped rule (ADR-0109 §7 — you cannot re-locate). The map half is **absent rather than present-and-dead**, the third application of a rule this tab already runs (near-me offline; ADR-0115's Google research half). A greyed watermarked frame would be a third grammar for one fact.
+
+**In an archived trip the map renders and the live layer drops.** ADR-0040/0044 make a finished trip read-only and the map is a read surface — positions are exactly what you want from a finished trip — but the amber next-stop cue and near-me are meaningless there, the same rule those cues already follow when mode is not live. The billed load is accepted on §4's arithmetic.
+
+**Two cloud styles on the existing theme signal, and the night one is inert readiness.** ADR-0106 §B calls for day/night styles swapped on `data-theme`; dark mode is **not shipped** (`tokens.css:226` states the remap is inert). So mint both Map IDs, read `data-theme`, ship the day style live. The night style exists so enabling dark mode is a token-and-style flip rather than a Maps project task — the posture ADR-0105 took for `BootScreen`. We do **not** build a swap nobody can see and call it tested. The style itself is ADR-0106 §C's brief: desaturated cool-paper base matching `--screen`, POI clutter dropped, no colour flood. Cloud styling costs nothing.
+
+### 12. Our controls, not Google's; greedy gestures; attribution stays
+
+- **`disableDefaultUI`, then add back only what we need.** Google's controls are Google-chromed, unlabelled and unaware of an RTL page. Zoom is the pinch; the one control we add is **re-centre**, which is also the escape hatch from §7's "a manual pan wins".
+- **Re-centre is the conventional round, icon-only crosshair** every map app puts on the canvas. It is a **real SVG** — a new `locate` entry in `ui/Icon.tsx`'s `PATHS`, a one-line addition to the existing registry, the same shape `search`/`settings` took when they replaced raw 🔍/⚙ — never a raw `⌖` glyph ("emoji are content, icons are UI"). **Unlabelled is deliberate and is not the pair ADR-0109 §1 rejected** (two _confusable_ glyphs competing on one row); it carries an `aria-label`. **It re-frames, it never locates:** with a fix in hand it centres on you, without one it fits the filtered set, and it never requests the permission — that stays the near-me chip's reason-first pre-prompt (ADR-0109 §6), the only place allowed to ask.
+- **`gestureHandling: 'greedy'`.** The default demands two fingers inside a scrollable page and shows Google's un-styleable "use two fingers" overlay — a phone-first regression (ADR-0017). The pane is fixed, not inline content, so one-finger pan is unambiguous; the sheet handle owns vertical dragging.
+- **The Google logo and attribution stay** — required by ToS, designed around rather than fought (see §5 for the layout consequence).
+
+### 13. Structure, motion, and how any of this is tested
+
+- **Decomposition.** `screens/Map.tsx` is 701 lines; a pane, sheet, markers and camera would roughly double it. The canvas + markers become `ui/domain/MapPane`, the sheet a primitive, the camera a hook — mirroring how `DayStrip`/`GlanceCard`/`EventCard` were extracted.
+- **Motion respects `prefers-reduced-motion`**, as every motion pass here does (ADR-0098 §4, ADR-0120): the sheet snaps and the camera jumps to the new bounds rather than easing. The camera still **moves** — only the easing is dropped.
+- **Testing.** A rendered Google map cannot be exercised in the suite, so the phase's logic lives in **pure functions in `lib/`** — the bounds of a set, the day's order index, a usage's tier, whether a place is focusable — unit-tested with no Google present, exactly as `place-usage.ts`/`distance.ts` are. The shell (snap heights, the toggle, row↔pin selection, the full→half lift) is testable with the pane stubbed. **The render itself cannot be tested**, and that is the honest limit to state rather than paper over — the posture the builder-drag's "real-device pass" backlog item already takes.
+- **The backend has nothing to do**, verified so nobody goes looking: no CSP to amend (no `helmet`/CSP exists and `index.html` sets no `http-equiv`; if one is ever added it must allow `maps.googleapis.com`/`maps.gstatic.com`), no Workbox change (no `runtimeCaching` rules exist and Google's script is cross-origin and outside the build graph, so it is neither precached nor intercepted), no schema change, no proxy route, no server env. Phase 6 is frontend-only; the epic's only backend-adjacent work is the deferred Routes proxy (ADR-0108 §4).
+
+### 14. What Phase 6 is not
+
+**Paid Routes / live ETAs** — a second cost envelope, a second proxy route, and now a 10-waypoint ceiling (§1); bundling them would make this phase's approval a cost decision instead of a rendering one. **Transit / traffic layers** — `TransitLayer` draws the transit **network**, not directions; it cannot show A→B at all, so it answers no question this tab asks while fighting "quiet base, loud pins" hardest. Point-to-point transit is the free Maps deep-link or paid Routes. Recorded so "but it's free" does not reopen it on its own: free to draw is not free to read. If it returns, a toggle, off by default, transit only. **An area chip** — pan/zoom _is_ the area filter (§9). **Clustering** (§6). **Offline tiles** (§11). **Member GPS sharing** (ADR-0006). **3D / tilt / altitude.** **A dark map anyone can see** (§11).
+
+## The remaining human gate
+
+Phase 6 cannot be _seen_ without the Google Cloud steps ADR-0106 Phase 0 deferred. `prerequisites-checklist.md` carries the click-path; the four boxes are: enable **Maps JavaScript API**; **create a Map ID** (JavaScript, vector) with a **cloud style** attached (plus a second for night, §11) — _newly mandatory, §1_; mint the **referrer-locked browser key**; set the **Dynamic Maps daily quota cap** and confirm the budget alert covers the new SKU (ADR-0108 §6, a hard gate).
+
+Until the key exists the build can be written and unit-tested but not viewed. `DEMO_MAP_ID` covers local development.
+
+## Consequences
+
+- **Phase 6 has a decided shape and no open pricing question.** Two figures moved (§1); nothing in ADR-0106 §A–F or ADR-0108 §1 needed reopening.
+- **The frontend gains its first UI dependency in a long while**, justified in §3 against hand-rolling a billed lifecycle. It lands in the already-lazy `Map` chunk (`App.tsx:58`), so it costs nothing to a session that never opens the tab.
+- **The Phase-3 investment carries forward whole** — one derivation, one filter layer, one pin palette, one ordering vocabulary. The list remains the only view offline and the only view of a coordless place.
+- **Two long-standing TODOs close:** `mapsPlaceUrl`'s `TODO(phase-3)` gets its in-app target (§8), and ADR-0109 §6's amber next-stop cue reaches the pin it was designed for (§6).
+- **Six ADRs are annotated as refined by this one:** ADR-0106 (§4 area readout, §B mapId + attribution-as-layout-constraint, §D waypoint ceiling, §E connector scope), ADR-0108 §4 (Routes tiers + per-instantiation billing), ADR-0109 (§1 row-tap destination, §3 coordless pin retired, §10 shell + the two structural findings), ADR-0117 (its outcome filter scoped as one toggle), ADR-0119 (the ghost tier as its deliberate inverse), ADR-0078 (the full-bleed body modifier).
+- **Back navigation is untouched** — the sheet and toggle are view state, deliberately outside ADR-0103's layer model.
+- **One new shell capability** (`.body.is-fullbleed`) and **three new build vars** (§2) are the total surface area added outside the Map tab.
+
+## Alternatives considered
+
+- **Replace the list with the map.** Rejected — ADR-0106 Decision 3 built the list to accommodate the map, and the list is the only view that works offline or shows a coordless place.
+- **The map as a full-screen overlay pushed from the list** (a back-poppable layer). Rejected: it makes the map a place you visit rather than the tab's default face, and puts pane state in the back stack for no gain.
+- **A global map singleton above the router** (~one load per session). Rejected on §4's arithmetic — a detached map holding listeners and stale camera state across a trip switch is a real bug bought with an imaginary saving.
+- **`PinElement` for markers.** Rejected: it cannot express the dashed-idea / desaturated-ambient grammar, so map pins would diverge from list badges. Half a pin system is not a pin system.
+- **Hand-roll the loader and map lifecycle, no dependency.** Considered seriously (the pin content is static DOM, so the portal is avoidable). Rejected because the remaining part is where a mistake is _billed_ (§3).
+- **`@googlemaps/js-api-loader` directly.** Rejected: it solves loading only, leaving the React lifecycle — if we take a dependency, take the one covering the hard part.
+- **The Embed-API iframe** (ADR-0106 §A) and **`google-map-react` / older `react-google-maps`.** Rejected: uncustomisable, and unmaintained against the current API.
+- **Clustering.** Rejected in §6 — a cluster bubble cannot carry the pin grammar. With a revisit trigger.
+- **Arrowheads, time labels, colour/size ramps, or animated "marching ants" for order.** Rejected in favour of numbers: arrowheads are mush at phone size; a time is amber and §6 allows one amber anchor; colour is spent on category and a size ramp is unreadable at 25px; animated dashes are decorative motion that fights reduced-motion.
+- **Nothing spatial — let the list own order.** Considered (the Day view _is_ the order surface). Rejected because the sheet is often at peek height, where the list is not readable.
+- **Per-day coloured connectors across all days at once** (ADR-0106 §E as written). Rejected: unreadable at trip scale, needs a palette the budget lacks, and day scope already partitions the trip.
+- **Solid connectors.** Rejected: a straight line drawn solid claims to be the route.
+- **Three outcome chips** instead of one `מה נשאר` toggle. Rejected in §9: the list already answers "where have we been", and a third multi-value facet multiplies ADR-0119's coupling surface.
+- **The list following the camera** (a true area filter). Rejected in §9 — it reshuffles under your thumb.
+- **A greyed, watermarked map frame when offline.** Rejected: a third grammar for a fact this tab already states two ways.
+- **Build the dark map style now and swap it live.** Rejected: dark mode is inert app-wide; a swap nobody can see is untestable.
+- **Ship paid Routes ETAs in this phase.** Rejected as sequencing, not direction (§14).
+
+## Revision log (2026-07-26, within the design session)
+
+Recorded so a rejected or reversed call is not re-proposed; each is already folded into §1–§14 above.
+
+1. **The connector was going to ship in both modes and carry the order.** It cannot show order at all (a segment is symmetric), so order moved to numbered pins and the connector became Plan-only (§6, §10).
+2. **The next-stop cue was a pill-shaped box around the teardrop.** It read as a circle drawn near a pin — two shapes. Now an outline tracing the pin's silhouette (§6).
+3. **The row tap opened Google's place view.** Retired, not relocated; the tap focuses our map and `נווט` is the Google button (§8).
+4. **"Tap = focus" was wrong for a coordless place** — still referenced, so it must still select. The verb is _select_ (§8).
+5. **`.map-screen` has no layout**, and the mockup had silently supplied one, so the split looked correct against the app's real CSS while being unbuildable. A mockup that reads the app's CSS still does not inherit its layout tree (§5).
+6. **A full-bleed pane hid Google's attribution** (ToS). The pane is sized to the visible area, which also made fit-to-bounds honest (§5, §7).
+7. **The browser key had two names across docs**, and the mandatory `mapId` had none (§2).
+8. **"No clustering" rested on count, not density** — a bad reason for a right decision. Replaced, and density answered by a dot tier (§6).
+9. **The `מה נשאר` chip's count was mislabelled** in the mockup (`4` where `5` rows survive), reproducing ADR-0119's bug within minutes of adding a third axis — which is why §9 states the coupling requirement rather than implying it.
+10. **Transit layers were considered and dropped** (§14), with the reason recorded so "it's free" does not reopen it.
+11. **Still open by decision:** whether proximity promotes a ghost to a full pin (§6), and whether a pin tap opens an info window (§8). Both are judged better on a real rendered map than on paper.
