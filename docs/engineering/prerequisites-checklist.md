@@ -93,18 +93,21 @@ The key model is **decided** — [ADR-0108](../decisions/0108-maps-and-places-ba
 
 Setting `GOOGLE_MAPS_SERVER_KEY` today does nothing until the Phase-1 proxy code reads it — so `.env.example` gets a commented placeholder (below), but you can safely mint + store the key now so Phase 1 is unblocked the moment it starts.
 
-#### Deferred — Phase 6 (embedded map + live Routes), do NOT do now
+#### Phase 6 (embedded map) — the remaining gate
 
-Listed so it isn't forgotten; none of this is needed for Phases 1–5, and per ADR-0108 there is **no browser-side Google key at all until Phase 6**.
+Phases 1–5 have shipped and need none of this; per ADR-0108 there is **no browser-side Google key at all until Phase 6**. The Phase-6 design is now done ([ADR-0121](../decisions/0121-embedded-map-phase-6-design.md)), so these four boxes are the only thing between the build and a map anyone can see. Items 1–4 are needed for the map; **Routes is a later, paid enhancement** and can be left off entirely until it is picked up.
 
-- [ ] ⏸️ 👤 **Enable Maps JavaScript API** (Dynamic Maps SKU) and **Routes API**.
-- [ ] ⏸️ 👤 **Add Routes API** to the existing `GOOGLE_MAPS_SERVER_KEY`'s API restrictions (Routes is proxied through the same server key).
-- [ ] ⏸️ 👤 **Create the browser key (`VITE_GOOGLE_MAPS_BROWSER_KEY`)** — _API restrictions_ → **Maps JavaScript API only**; _Application restrictions_ → **HTTP referrers**, locked to the production origin (single-origin, ADR-0020/0031). A frontend **build-time** var (deployment.md); its blast radius on leak is map loads only.
-- [ ] ⏸️ 👤 **Add per-SKU daily quota caps** for **Dynamic Maps** and **Routes** (the same hard-gate as the near-term Place Details cap).
+- [ ] ⏸️ 👤 **1. Enable Maps JavaScript API** (the Dynamic Maps SKU). _(Enable **Routes API** only when paid live-ETA routes are picked up — ADR-0121 §7 keeps it out of this phase.)_
+- [ ] ⏸️ 👤 **2. Create a Map ID + attach a cloud map style.** Google Maps Platform → **Map management** → create a Map ID with **Map type: JavaScript** and **Vector**; then Map Styles → create the **day** style (desaturated cool-paper base matching `--screen`, POI clutter dropped, no colour flood — ADR-0106 §C) and associate it with that Map ID. Mint a **second** Map ID + night style for dark mode (inert until `data-theme="dark"` ships — ADR-0121 §9). **New step, and mandatory:** as of the 2026-07-26 reconfirmation a `mapId` is required for `AdvancedMarkerElement` — advanced markers do not load without one, so this is not optional styling. `DEMO_MAP_ID` works for local development and is not a substitute for the real style. Styling itself costs nothing.
+- [ ] ⏸️ 👤 **3. Create the browser key (`VITE_GOOGLE_MAPS_BROWSER_KEY`)** — _API restrictions_ → **Maps JavaScript API only**; _Application restrictions_ → **HTTP referrers**, locked to the production origin (single-origin, ADR-0020/0031). A frontend **build-time** var (deployment.md); its blast radius on leak is map loads only.
+- [ ] ⏸️ 👤 **4. Add the per-SKU daily quota cap** for **Dynamic Maps** (the same hard gate as the near-term Place Details cap) and confirm the existing budget alert covers the new SKU. Dynamic Maps bills **per map instantiation** (~$7/1,000, 10,000/month free), which is what the cap bounds. _(Add a **Routes** cap alongside it if and when Routes is enabled.)_
+- [ ] ⏸️ 👤 **Add Routes API** to the existing `GOOGLE_MAPS_SERVER_KEY`'s API restrictions — **only** with the paid-Routes work (Routes is proxied through the same server key; ADR-0108 §4).
 
-**Status after the near-term slice:** Places API enabled + billing/budget/quota set + `GOOGLE_MAPS_SERVER_KEY` minted and stored = Phase 1 (the picker) is fully unblocked. The Phase-6 browser key and map/Routes APIs wait until that phase by design.
+**Status after the near-term slice:** Places API enabled + billing/budget/quota set + `GOOGLE_MAPS_SERVER_KEY` minted and stored = Phase 1 (the picker) is fully unblocked. The Phase-6 browser key and map APIs wait until that phase by design.
 
-**Done 2026-07-23:** the near-term slice above is complete — Places API (New) enabled on the existing `waypoint` project, a billing budget alert + a per-day request quota cap set, and `GOOGLE_MAPS_SERVER_KEY` minted and stored in local `.env` + Railway. Phase 1 (the picker) is unblocked; the Phase-6 boxes remain for that phase.
+**Done 2026-07-23:** the near-term slice above is complete — Places API (New) enabled on the existing `waypoint` project, a billing budget alert + a per-day request quota cap set, and `GOOGLE_MAPS_SERVER_KEY` minted and stored in local `.env` + Railway. Phases 1–5 shipped on it.
+
+**Open 2026-07-26:** the four Phase-6 boxes above are the last human gate in the epic. Until item 3 the embedded map can be written and unit-tested but not seen; `DEMO_MAP_ID` covers local development only.
 
 ## Secrets
 
