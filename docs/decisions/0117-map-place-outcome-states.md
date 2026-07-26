@@ -6,6 +6,8 @@
 
 Mockup: [`mockups/shelf-day-aware-v1.html`](../../mockups/shelf-day-aware-v1.html) (second frame — the Map list's outcome states)
 
+> **The deferred outcome filter is a Phase-6 ride-along candidate** (flagged by [ADR-0121](0121-embedded-map-phase-6-design.md)'s review pass): it is a chip over data this ADR already derives, and it is worth more on a rendered map than on a list — seeing the _remaining_ cluster is the point, where a list can only tell you a count. Not yet decided; see ADR-0121's open forks.
+
 ## Context
 
 The Map's list already partitions into **ahead of you** and **behind you**, under a `כבר היינו` header (ADR-0109 session-107/110). That partition is computed **entirely from the clock** — `isDayUsagePast` compares `now` against a day's latest referencing instant, or the calendar date against today. Verified this session: neither `lib/place-usage.ts` nor `screens/Map.tsx` reads `event.status` at all; the string `EVENT_STATUS` does not appear in either file.

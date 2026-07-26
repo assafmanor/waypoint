@@ -30,7 +30,7 @@ Direction **B (Board Pin)** is kept on record in the mockup as the alternate dar
 
 ## Consequences
 
-- **Frontend/assets only.** No backend, shared, or data-model change. `theme_color` (`#1B2A4A`), the manifest name/short_name, and the icon _wiring_ (paths, sizes, maskable purpose) are all unchanged — only the pixels behind the same paths.
+- **Frontend/assets only.** No backend, shared, or data-model change. `theme_color` (`#1B2A4A`), the manifest name/short*name, and the icon \_wiring* (paths, sizes, maskable purpose) are all unchanged — only the pixels behind the same paths.
 - **The mark carries its own ground, so dark mode needs nothing.** It survives the `data-theme` remap unchanged (design-language "Dark mode readiness"); it is not built from `var(--token)` because a brand asset should be identical in both themes.
 - **RTL-safe.** The marker is radially symmetric — it never needs mirroring in the Hebrew-first layout.
 - **Legible to 16px.** One silhouette, one accent; the favicon holds at tab size.

@@ -15,7 +15,7 @@ Two constraints shape the solution:
 
 The tension is only in the **primary timezone**: a city or single-zone country has one obvious zone; a multi-zone country (US, Australia, Russia, Canada, Brazil) has none. `geo-tz` maps a _point_ to one zone — right for a city, arbitrary for a country centroid.
 
-And however the zone is set, it must be **manually adjustable from a real list**. Today trip settings picks the zone from a hardcoded 5-item `<select>` (`TZ_OPTIONS` = Tokyo/Jerusalem/London/New_York/UTC) even though `timezoneSchema` already accepts _any_ valid IANA zone — the UI is the only thing that's narrow. The zone chip ADR-0110 §3 planned (`ZonePicker`) is the same "let me pick a zone" control, still unbuilt. So this ADR also owns **how you choose a zone**, once, for every surface.
+And however the zone is set, it must be **manually adjustable from a real list**. Today trip settings picks the zone from a hardcoded 5-item `<select>` (`TZ_OPTIONS` = Tokyo/Jerusalem/London/New*York/UTC) even though `timezoneSchema` already accepts \_any* valid IANA zone — the UI is the only thing that's narrow. The zone chip ADR-0110 §3 planned (`ZonePicker`) is the same "let me pick a zone" control, still unbuilt. So this ADR also owns **how you choose a zone**, once, for every surface.
 
 ## Decision
 

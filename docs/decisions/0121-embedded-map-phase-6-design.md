@@ -131,7 +131,14 @@ The Maps JS API renders the Google logo and attribution at the **bottom-left of 
 
 §1 made a `mapId` mandatory and added the human step to create one, but **no env var was ever named for it.** ADR-0108 §1/§Consequences name only `VITE_GOOGLE_MAPS_BROWSER_KEY`. A Map ID is a second build-time value (and §9's night style is a third).
 
-**Decision:** `VITE_GOOGLE_MAPS_MAP_ID` (+ `VITE_GOOGLE_MAPS_MAP_ID_DARK`, unused until dark mode ships), read the way the frontend already reads build vars (`import.meta.env`, as `lib/api.ts:55` does for `VITE_API_BASE_URL`); `.env.example` gains commented placeholders beside the existing server-key note; `deployment.md` gains them as build vars. **And a missing key or map id degrades to list-only** — the same "absent, not disabled" rule as offline (§8), so a checkout without Google setup renders the tab it renders today instead of crashing. `DEMO_MAP_ID` covers local development.
+Chasing it down turned up a second defect: **the browser key is named two different things.** ADR-0108 §1 and `.env.example:24` call it `VITE_GOOGLE_MAPS_BROWSER_KEY`; `architecture/deployment.md:52` calls it `VITE_GOOGLE_MAPS_API_KEY`. Whoever wired it would have set one and read the other.
+
+**Decision:**
+
+- **One name: `VITE_GOOGLE_MAPS_BROWSER_KEY`** — ADR-0108's, because it is the decision of record and because the name says what the key _is_ (browser-held, Maps-JS-only) rather than the generic "api". `deployment.md` is corrected in this change.
+- **`VITE_GOOGLE_MAPS_MAP_ID`** (+ `VITE_GOOGLE_MAPS_MAP_ID_DARK`, unused until dark mode ships), read the way the frontend already reads build vars (`import.meta.env`, as `lib/api.ts:55` does for `VITE_API_BASE_URL`).
+- **They are documented in `architecture/deployment.md`, not `.env.example`** — that file's own comment states the rule ("a frontend build var (deployment.md), not here"), so adding `VITE_` entries there would break the convention it spells out. Corrected from this amendment's first draft, which said the opposite.
+- **A missing key or map id degrades to list-only** — the same "absent, not disabled" rule as offline (§8), so a checkout without Google setup renders the tab it renders today instead of crashing. `DEMO_MAP_ID` covers local development.
 
 ### R4 — the sheet transition and the camera ignore `prefers-reduced-motion`
 
@@ -179,7 +186,9 @@ Verified so a future session does not go looking: **no CSP to amend** (the backe
 1. **Free Google layers we could switch on almost for nothing.** The JS API ships `TransitLayer` and `TrafficLayer`, which add no separate SKU as far as the current SKU list shows (**confirm at build**). For a transit-dense city trip, transit lines are a real answer to "how do I get there" and cost us nothing to draw. The tension is "quiet base, loud pins" (ADR-0106 §C) — either would add exactly the clutter that rule removes. If taken, it is a **toggle, off by default**, and probably transit only.
 2. **The outcome facet, riding along** (deferred by ADR-0117): `מה נשאר` / where we have been. It is a chip over data already derived, and it is _more_ valuable on a map than on a list, where seeing the remaining cluster is the point. Cheap enough to fold into this phase rather than trail it.
 3. **A "places in view" count.** ADR-0106 §4 asserts pan/zoom **is** the area filter, but nothing on screen ever says so. A count off the camera bounds ("12 מקומות באזור") would make the claim legible, needs no new data, and is a few lines.
-4. **Whether proximity promotes a ghost** (left open in amendment B). Near-me sharpens it rather than settling it: a ghost 50 m away is nearer than anything in scope and is invisible to the sort. Still better judged on a real map.
+4. **Whether proximity promotes a ghost** (left open in amendment B) — **owner-confirmed deferred (2026-07-26).** Near-me sharpens it rather than settling it: a ghost 50 m away is nearer than anything in scope and is invisible to the sort. It stays open by decision, to be judged on a real rendered map rather than on paper.
+
+**On fork 1, recorded so it is not re-asked:** `TransitLayer` draws the **transit network** — major lines in the operators' own colours, plus stations, from Google's Transit Partner Program. It is **context, not directions**: it cannot show a route from A to B. Point-to-point transit is either the free Google Maps deep-link (`travelmode=transit`, which leaves the app — what `ניווט` already does, and ADR-0106 §F says we never rebuild it) or the paid Routes API in `TRANSIT` mode drawing a polyline in-app, whose SKU tier is **unconfirmed** and belongs to the deferred paid-Routes work. So the fork is only ever about drawing the network as a backdrop, never about routing.
 
 ## Context
 
