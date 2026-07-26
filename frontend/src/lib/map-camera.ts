@@ -92,7 +92,9 @@ export function boundsContain(outer: MapBounds, inner: MapBounds): boolean {
  * second special case here.
  */
 export type CameraTarget =
-  { kind: 'none' } | { kind: 'centre'; at: LatLng } | { kind: 'fit'; bounds: MapBounds };
+  | { kind: 'none' }
+  | { kind: 'centre'; at: LatLng }
+  | { kind: 'fit'; bounds: MapBounds };
 
 /** Padding for a fit, dropped when the viewport cannot hold it.
  *
