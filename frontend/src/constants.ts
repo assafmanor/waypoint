@@ -207,10 +207,11 @@ export const CATEGORY_PIN_HUE = {
   other: 'leisure',
 } as const satisfies Record<EventCategory, PinHue>;
 
-/** Per-row reveal stagger for the Index bookings filter (ADR-0098 §4 motion): a
- *  chip/search change reveals newly-matching rows with an incrementing
- *  transition-delay instead of an all-at-once flip, capped so a long list
- *  doesn't drag the reveal out. */
+/** Per-row reveal stagger for **every** filtered/searched list (ADR-0120,
+ *  generalizing ADR-0098 §4 motion): a chip/search change reveals newly-matching
+ *  rows with an incrementing transition-delay instead of an all-at-once flip,
+ *  capped so a long list doesn't drag the reveal out. Read only by
+ *  `lib/filter-reveal.ts` — call sites take the delay from there. */
 export const FILTER_STAGGER_MS = 24;
 export const FILTER_STAGGER_MAX_MS = 220;
 

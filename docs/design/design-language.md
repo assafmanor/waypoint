@@ -229,6 +229,12 @@ The Plan⇄Trip switch is the product's most meaningful moment. Crucially it is 
 - The transition is **armed only during a switch** (`data-switching` on `.app`, set by the Shell for the animation's duration) so steady-state hovers keep their own timing, and is **fully disabled under `prefers-reduced-motion`** (mode identity still flips, instantly). The board power-on mirrors the zero-state's dormant board — one surface, off → on.
 - The **automatic** date-driven switch (ADR-0016) should use a gentler, non-staged version — a flip the user didn't ask for shouldn't perform. _(Currently the same transition serves both; a softened auto variant is a follow-up.)_
 
+### Filtering a list is a reveal (ADR-0120)
+
+Whenever a chip, toggle, or search query narrows a list, the list **reveals** rather than re-renders: a row that stops matching shrinks and fades in place, and rows that start matching come back with a small per-row stagger (`--t-base`, `--ease-standard`, capped so a long list doesn't drag). This is one shared mechanism, not a per-screen choice — `lib/filter-reveal.ts` + `ui/primitives/RevealList` (`.wp-reveal`), adopted by the Index bookings screen and the Map, and inherited by any list built on them.
+
+The distinction that decides whether motion applies: a **filter** narrows the list you're looking at, so it reveals; a **scope change** swaps in a different set (the Map's `כל הימים`, the Index's upcoming/past split), so it doesn't — animating one row out while an unrelated row takes its place would claim they were the same list.
+
 ## Accessibility: non-color redundancy
 
 - Hard/soft is triple-coded (border style + badge + color) — preserve this pattern everywhere a color carries meaning, including mode identity.

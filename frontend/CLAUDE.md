@@ -25,6 +25,10 @@ one.
   row + kebab-menu shape already reused across bookings, documents, and
   members; a fourth managed list extends it rather than growing a new
   bespoke row component.
+- **Filtering/searching a list** — `lib/filter-reveal.ts` (`revealRows` + your
+  predicate) through `ui/primitives/RevealList` (ADR-0120): a filtered-out row
+  is hidden and collapsed in place, never dropped from the array. Count
+  `countVisible(rows)`, not `rows.length`.
 - **`ui/feedback/`** — the empty/loading/error/status shell family (ADR-0078):
   `EmptyState`, `ErrorState`, `LoadingState`+`Skeleton`, `StatusBanner`,
   `SyncBadge`. A screen needing "no data yet" / "failed to load" / "offline"
@@ -80,6 +84,9 @@ it": a new structural back case is a rule added to `resolveBack`
   surface (ADR-0090); lint-blocked for a reason.
 - A bespoke empty/loading/error `<div>` per screen instead of the
   `ui/feedback/` family (ADR-0078).
+- A chip/search `.filter()`ing rows out of the array instead of the shared
+  reveal (ADR-0120) — the Map jumped for two releases because the Index's
+  motion was a one-off.
 - Three divergent confirm-dialog implementations instead of one variant-driven
   `ConfirmDialog` (ADR-0079) — if you're about to write a second confirm
   prompt, its variant belongs on the existing one.

@@ -1,0 +1,44 @@
+/* Filter/search reveal motion (ADR-0120, generalizing ADR-0098 §4). One rule
+   for every filtered list in the app: a row that stops matching shrinks + fades
+   in place instead of vanishing, and a row that starts matching rides the
+   per-row `transition-delay` `lib/filter-reveal.ts` hands it, so a chip tap or a
+   keystroke reveals matches with a gentle stagger. Unscoped on purpose — it is
+   the app's reveal, not the Index's. prefers-reduced-motion disables the
+   transition globally (App.css).
+
+   The collapse is a `0fr`/`1fr` grid track rather than a `max-height` guess, so
+   no surface declares how tall its tallest row might be — the Index's 140px cap
+   would have clipped a wrapped row, and every new call site would have needed a
+   number of its own. */
+.wp-reveal {
+  display: grid;
+  grid-template-rows: 1fr;
+  overflow: clip;
+  overflow-clip-margin: var(--reveal-bleed, 8px);
+  opacity: 1;
+  transition:
+    opacity var(--t-base) var(--ease-standard),
+    transform var(--t-base) var(--ease-standard),
+    grid-template-rows var(--t-base) var(--ease-standard);
+}
+/* The inner wrapper is what makes the collapse true: a `0fr` track resolves to
+   the row's own minimum contribution, so the row has to be able to contribute
+   nothing — `overflow: hidden` + `min-height: 0`, on an element carrying no
+   padding of its own (with the padded row inside it, a filtered-out row would
+   keep its padding's worth of height). The bleed is a layout-neutral
+   padding/negative-margin pair: it widens the clip box so a row's shadow, focus
+   ring, or next-stop ring isn't sheared off, without moving the row a pixel. */
+.wp-reveal-inner {
+  min-height: 0;
+  overflow: hidden;
+  margin: calc(var(--reveal-bleed, 8px) * -1);
+  padding: var(--reveal-bleed, 8px);
+}
+.wp-reveal.hidden {
+  grid-template-rows: 0fr;
+  opacity: 0;
+  transform: translateY(-4px) scale(0.97);
+  /* Fully closed: no bleed, and untappable even where `inert` isn't honoured. */
+  overflow: hidden;
+  pointer-events: none;
+}

@@ -2903,30 +2903,14 @@
   margin-top: 18px;
 }
 
-/* Per-row reveal motion (ADR-0098 §4): a filtered-out row shrinks + fades
-   instead of vanishing; a newly-shown row carries a small per-row
-   transition-delay (`lib/index-bookings.ts` `visibleRows`) so a chip/search
-   change reveals matches with a gentle stagger, not an all-at-once flip.
-   prefers-reduced-motion disables the transition globally (App.css). */
-.index .idx-row {
-  overflow: hidden;
-  max-height: 140px;
-  opacity: 1;
-  transition:
-    opacity 0.22s ease,
-    transform 0.22s ease,
-    max-height 0.22s ease;
-}
-.index .idx-row.hidden {
-  opacity: 0;
-  transform: translateY(-4px) scale(0.97);
-  max-height: 0;
-  pointer-events: none;
-}
-.index .idx-row.hidden .wp-listrow {
+/* The per-row reveal motion itself is the shared `.wp-reveal` primitive
+   (`ui/primitives/reveal-list.css`, ADR-0120) — what's left here is only how the
+   Index's own row separators behave underneath it: a collapsing row drops its
+   separator, and the card's last row never draws one. */
+.index .wp-reveal.hidden .wp-listrow {
   border-bottom-color: transparent;
 }
-.index .listcard .idx-row:last-child .wp-listrow {
+.index .listcard .wp-reveal:last-child .wp-listrow {
   border-bottom: none;
 }
 

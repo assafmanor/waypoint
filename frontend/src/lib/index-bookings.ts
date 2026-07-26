@@ -12,7 +12,7 @@ import {
 } from '@waypoint/shared';
 import { formatTime, isEventPast, relativeDayLabel, todayInTz } from './time';
 import { plainTimingLabel, timingLabels } from './booking-timing';
-import { FILTER_STAGGER_MAX_MS, FILTER_STAGGER_MS } from '../constants';
+import { revealRows, type Revealed } from './filter-reveal';
 import { t } from '../i18n/he';
 
 /** The bookings-screen category filter (ADR-0098 §2): every `BookingType` plus
@@ -79,31 +79,22 @@ function byWhen(a: BookingRow, b: BookingRow): number {
   return a.event.date.localeCompare(b.event.date) || ms(a.event.startsAt) - ms(b.event.startsAt);
 }
 
-export interface VisibleRow {
-  row: BookingRow;
-  visible: boolean;
-  /** Reveal transition-delay (ms) for a visible row — 0 for a hidden one. */
-  delayMs: number;
-}
-
-/** Per-row visibility against the current category/search filter, plus a
- *  staggered reveal delay (ADR-0098 §4 motion). `startIndex` lets a caller
- *  chain upcoming → past into one continuous stagger across both lists; the
- *  returned `nextIndex` is that chained call's `startIndex`. */
+/** Per-row visibility against the current category/search filter, plus the
+ *  staggered reveal delay — the bookings predicate over the app's shared reveal
+ *  derivation (`lib/filter-reveal.ts`, ADR-0120), not a stagger of its own.
+ *  `startIndex` chains upcoming → past into one continuous stagger across both
+ *  lists; the returned `nextIndex` is that chained call's `startIndex`. */
 export function visibleRows(
   rows: BookingRow[],
   category: CategoryFilter,
   query: string,
   startIndex = 0,
-): { rows: VisibleRow[]; nextIndex: number } {
-  let i = startIndex;
-  const out = rows.map((row) => {
-    const visible = matchesCategory(row.booking, category) && matchesQuery(row.booking, query);
-    const delayMs = visible ? Math.min(i * FILTER_STAGGER_MS, FILTER_STAGGER_MAX_MS) : 0;
-    if (visible) i++;
-    return { row, visible, delayMs };
-  });
-  return { rows: out, nextIndex: i };
+): { rows: Revealed<BookingRow>[]; nextIndex: number } {
+  return revealRows(
+    rows,
+    ({ booking }) => matchesCategory(booking, category) && matchesQuery(booking, query),
+    startIndex,
+  );
 }
 
 export function splitBookings(
