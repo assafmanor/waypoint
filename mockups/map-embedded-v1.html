@@ -7198,12 +7198,27 @@ body {
          loud figure (ADR-0106 §C). */
       .map-conn {
         position: absolute;
-        height: 0;
-        border-top: 2.5px dashed var(--soft-line);
-        transform-origin: left center;
+        inset: 0;
+        width: 100%;
+        height: 100%;
         display: none;
+        overflow: visible;
       }
-      .map-screen[data-scope='day'] .map-conn {
+      /* `non-scaling-stroke` on the polyline keeps the dash even, since the
+         viewBox is stretched non-uniformly to the pane. */
+      .map-conn polyline {
+        fill: none;
+        stroke: var(--soft-line);
+        stroke-width: 2.5;
+        stroke-dasharray: 7 6;
+        stroke-linecap: round;
+      }
+      /* PLAN MODE ONLY (session amendment A). With the order on the pins, the
+         line's remaining job is revealing the day's SHAPE — the zigzag that
+         says "you cross town twice, reorder this" — which is a planning
+         question, not a live one. Trip mode is living the day and needs "where
+         is next", so its canvas stays quieter. */
+      .map-screen[data-scope='day'][data-mode='plan'] .map-conn {
         display: block;
       }
 
@@ -7271,15 +7286,79 @@ body {
         filter: saturate(0.3);
         opacity: 0.62;
       }
-      .map-pin .pin-lock {
+      /* THE ORDER (amendment A): a line between two stops is symmetric, so it
+         never said which end you reach first. The number does — and it is free:
+         it is the index in `comparePlacesBySchedule`'s day sequence, the same
+         start-instant-then-`sortOrder` order `DayView` renders, so the map and
+         the list cannot disagree about what comes first.
+
+         It takes the corner ADR-0109 §3 gave the 🔒, which comes off the pin:
+         solid-vs-dashed already says committed-vs-idea, so the lock was
+         belt-and-braces inherited from the row (which keeps it — a row has
+         width for both). Numerals in mono, like every other number in the app. */
+      .map-pin .pin-n {
         position: absolute;
-        top: -4px;
-        left: -5px;
+        top: -5px;
+        inset-inline-start: -6px;
+        min-width: 15px;
+        height: 15px;
+        padding: 0 3px;
+        display: grid;
+        place-items: center;
+        background: var(--ink);
+        color: var(--card);
+        font-family: 'JetBrains Mono', monospace;
         font-size: 9px;
-        background: var(--card);
+        font-weight: 700;
         border-radius: var(--radius-pill, 999px);
-        padding: 1px 2px;
-        box-shadow: var(--elevation-1, 0 1px 3px rgba(22, 35, 61, 0.3));
+        box-shadow: 0 0 0 1.5px var(--card);
+      }
+      /* Behind you keeps its number — the partition changes prominence, never
+         the position; #1 is still true after you have been there. */
+      .map-pin.skipped .pin-n,
+      .map-pin.ambient .pin-n {
+        background: var(--muted);
+      }
+
+      /* THE FOURTH POPULATION (amendment B): in view, but not in this day — a
+         place pencilled for Thursday, or one with no day at all. The list can
+         drop what it filters; a map cannot, because the café you are standing
+         next to is physically there, which is the whole "what's near me now"
+         question. So it is present but plainly subordinate: a hollow outline in
+         its category hue, no fill, no glyph, no number, smaller. No new colour
+         is spent — the ladder is prominence, not palette (ADR-0028). */
+      .map-pin.ghost {
+        width: 20px;
+        height: 25px;
+      }
+      .map-pin.ghost .pin-b {
+        width: 16px;
+        height: 16px;
+        background: transparent;
+        border-width: 2px;
+        border-color: color-mix(in srgb, var(--cat-leisure) 78%, var(--ink));
+        box-shadow: 0 1px 3px color-mix(in srgb, var(--ink) 18%, transparent);
+        opacity: 0.9;
+      }
+      .map-pin.ghost.cat-food .pin-b {
+        border-color: color-mix(in srgb, var(--cat-food) 78%, var(--ink));
+      }
+      .map-pin.ghost.cat-lodging .pin-b {
+        border-color: color-mix(in srgb, var(--cat-lodging) 78%, var(--ink));
+      }
+      .map-pin.ghost.cat-transit .pin-b {
+        border-color: color-mix(in srgb, var(--cat-transit) 78%, var(--ink));
+      }
+      .map-pin.ghost .pin-g {
+        display: none;
+      }
+      /* Ghosts exist only in day scope — the only scope that excludes anything,
+         the same condition the connector carries. */
+      .map-pin.ghost {
+        display: none;
+      }
+      .map-screen[data-scope='day'] .map-pin.ghost {
+        display: block;
       }
       /* THE ONE AMBER TIME-ANCHOR the map's budget allows (ADR-0109 §6): the
          next committed stop, and nothing else on the canvas is amber. This is
@@ -7300,7 +7379,14 @@ body {
          that exactly and only adds the card ground it needs to stay legible
          over the canvas, so amber is still ink here, never a fill (ADR-0028 /
          ADR-0105 "amber is an accent, not a ground"). */
+      /* The tag belongs to the next-stop cue, so it is hidden by default and
+         appears only with the class. Merely un-scoping its styles is not
+         enough: the span still renders its text inline. */
       .map-pin .pin-tag {
+        display: none;
+      }
+      .map-pin.nextstop .pin-tag {
+        display: block;
         position: absolute;
         top: -21px;
         right: 50%;
@@ -7455,6 +7541,57 @@ body {
         padding-bottom: var(--space-3, 14px);
       }
 
+      /* ── THE WAY IN TO THE ENTITY (amendment D) ──────────────────────────
+         A place is only in the trip because something REFERENCES it (ADR-0112),
+         and the details a traveller wants — confirmation code, notes, documents,
+         the time it was booked for — live on that event/booking, never on the
+         `Place`. So a place needs a way through to it.
+
+         It is revealed by SELECTION rather than sitting on every row: the row is
+         already dense (badge · name · meta · distance · נווט), and only one row
+         is selected at a time. The label is the reference's own words, not a
+         generic "details", so the control says where it goes — which is also why
+         it earns its place (ADR-0109 §1). Full-width, so it is a real touch
+         target (ADR-0017) rather than a tappable 11px tag. */
+      .place {
+        flex-wrap: wrap;
+      }
+      .map-refs {
+        display: none;
+        flex-basis: 100%;
+        flex-direction: column;
+        gap: 4px;
+        margin-top: 8px;
+        padding-top: 8px;
+        border-top: 1px solid var(--line);
+      }
+      .place.mk-sel .map-refs {
+        display: flex;
+      }
+      .map-ref {
+        display: flex;
+        align-items: center;
+        gap: 6px;
+        padding: 7px 8px;
+        min-height: 40px;
+        border-radius: var(--radius-sm, 10px);
+        background: color-mix(in srgb, var(--ink) 4%, transparent);
+        color: var(--ink);
+        font-size: var(--text-sm, 12.5px);
+        font-weight: 600;
+        text-decoration: none;
+      }
+      .map-ref .map-ref-kind {
+        color: var(--muted);
+        font-weight: 500;
+      }
+      .map-ref .icon {
+        width: 14px;
+        height: 14px;
+        margin-inline-start: auto;
+        color: var(--faint);
+      }
+
       /* Offline: no pane, no toggle, no handle, and no near-me chip — absent,
          not disabled (ADR-0121 §8). The chip's removal is already the shipped
          rule (ADR-0109 §7): you cannot re-locate offline. */
@@ -7537,6 +7674,25 @@ body {
          `display: flex`. Mockup mechanics only. */
       .fb-banner[hidden] {
         display: none;
+      }
+
+      /* MOCKUP-ONLY: navigate-to-next is Trip-only (ADR-0109 session-104) — the
+         app never renders these in Plan mode, but one DOM tree serves both
+         states here, so the mode hides them. */
+      .map-screen[data-mode='plan'] .map-tag.next {
+        display: none;
+      }
+
+      /* MOCKUP-ONLY: the row↔pin selection ring (§6). Distinct from
+         `.place.nextstop`'s amber, because selecting a row is not a claim about
+         what is next. */
+      .map-pin.mk-sel .pin-b {
+        outline: 2px solid var(--ink);
+        outline-offset: 2px;
+      }
+      .place.mk-sel {
+        border-color: var(--ink);
+        box-shadow: 0 0 0 2px color-mix(in srgb, var(--ink) 12%, transparent);
       }
 
       /* the phone: a viewport for the real CSS, nothing more */
@@ -7685,7 +7841,8 @@ body {
       <button data-state="half" class="on">חצי (ברירת מחדל)</button>
       <button data-state="map">מפה מלאה</button>
       <button data-state="list">רשימה מלאה</button>
-      <button data-state="day">יום · קו מחבר</button>
+      <button data-state="day">יום (טיול)</button>
+      <button data-state="plan">יום (תכנון) · קו מחבר</button>
       <button data-state="offline">אופליין</button>
     </div>
 
@@ -7812,43 +7969,73 @@ body {
             <div class="mk-road" style="left: 58%; top: 0; width: 5px; height: 100%"></div>
 
             <!-- Pins sit in the top ~40% on purpose: that is the band still
-                 visible at the DEFAULT half height, so the grammar reads
-                 without dragging the sheet down. (A real camera fits the
-                 filtered bounds to the *visible* map area — §6 — which is the
-                 same constraint expressed properly.) -->
-            <div
-              class="map-conn"
-              style="left: 23%; top: 21%; width: 38%; transform: rotate(15deg)"
-            ></div>
-            <div
-              class="map-conn"
-              style="left: 60%; top: 31%; width: 25%; transform: rotate(23deg)"
-            ></div>
+                 visible at the DEFAULT half height, so the grammar reads without
+                 dragging the sheet down. (A real camera fits the filtered bounds
+                 to the *visible* map area — §6 — which is the same constraint
+                 expressed properly.)
 
-            <!-- exactly ONE amber ring: the next committed stop (ADR-0109 §6) -->
-            <div class="map-pin cat-transit nextstop" style="left: 23%; top: 22%">
+                 The connector is a real polyline through the day's stops IN
+                 ORDER (1→2→3→4), which is what the JS API draws — rotated divs
+                 cannot follow a sequence. It carries no arrowheads: the pins'
+                 numbers are the order (amendment A), and at this size an
+                 arrowhead on a 2.5px dashed line is mush. -->
+            <svg
+              class="map-conn"
+              viewBox="0 0 100 100"
+              preserveAspectRatio="none"
+              aria-hidden="true"
+            >
+              <polyline points="73,14 52,20 23,24 62,33" vector-effect="non-scaling-stroke" />
+            </svg>
+
+            <!-- BEHIND YOU (#1, visited) — quiet, mirroring `.place`'s treatment
+                 (ADR-0117), and it keeps its number: it really was the day's
+                 first stop. -->
+            <div class="map-pin cat-leisure skipped" style="left: 73%; top: 14%" data-place="meiji">
+              <div class="pin-b"><span class="pin-g">⛩️</span></div>
+              <span class="pin-n" dir="auto">1</span>
+            </div>
+            <!-- BEHIND YOU (#2, skipped) -->
+            <div class="map-pin cat-leisure skipped" style="left: 52%; top: 20%" data-place="skytree">
+              <div class="pin-b"><span class="pin-g">🎢</span></div>
+              <span class="pin-n" dir="auto">2</span>
+            </div>
+            <!-- THE NEXT STOP (#3): the one amber ring the canvas allows (§6) -->
+            <div
+              class="map-pin cat-transit nextstop"
+              style="left: 23%; top: 24%"
+              data-place="shinjuku"
+            >
               <span class="pin-tag">היעד הבא</span>
               <div class="pin-b"><span class="pin-g">🚉</span></div>
-              <span class="pin-lock" aria-hidden="true">🔒</span>
+              <span class="pin-n" dir="auto">3</span>
             </div>
-            <div class="map-pin cat-food" style="left: 60%; top: 32%">
+            <!-- UPCOMING (#4) -->
+            <div class="map-pin cat-food" style="left: 62%; top: 33%" data-place="afuri">
               <div class="pin-b"><span class="pin-g">🍜</span></div>
+              <span class="pin-n" dir="auto">4</span>
             </div>
-            <div class="map-pin cat-lodging" style="left: 85%; top: 42%">
-              <div class="pin-b"><span class="pin-g">🏨</span></div>
-              <span class="pin-lock" aria-hidden="true">🔒</span>
-            </div>
-            <!-- a shelf idea → dashed, mirroring `.place.soft` -->
-            <div class="map-pin cat-leisure soft" style="left: 43%; top: 41%">
-              <div class="pin-b"><span class="pin-g">💡</span></div>
-            </div>
-            <!-- mid-stay ambient base → present, claiming nothing of the day -->
-            <div class="map-pin cat-lodging ambient" style="left: 14%; top: 38%">
+            <!-- AMBIENT base — off the day schedule (ADR-0054), so unnumbered:
+                 context, not a stop you go to. -->
+            <div class="map-pin cat-lodging ambient" style="left: 14%; top: 40%" data-place="park">
               <div class="pin-b"><span class="pin-g">🏨</span></div>
             </div>
-            <!-- behind you → quiet, mirroring `.place.skipped` (ADR-0117) -->
-            <div class="map-pin cat-leisure skipped" style="left: 73%; top: 14%">
-              <div class="pin-b"><span class="pin-g">⛩️</span></div>
+            <!-- IDEA → dashed AND unnumbered: nothing scheduled it, so it has no
+                 position in the sequence. Numbered-vs-not is itself the plan/idea
+                 distinction (amendment A). -->
+            <div class="map-pin cat-food soft" style="left: 40%; top: 42%" data-place="arabica">
+              <div class="pin-b"><span class="pin-g">☕</span></div>
+            </div>
+            <!-- NOT IN THIS DAY, BUT IN VIEW → the ghost tier (amendment B): one
+                 pencilled for another day, one with no day at all. Hollow, no
+                 glyph, no number, smaller. Day scope only — the only scope that
+                 excludes anything. Tappable, because its row is NOT in the sheet:
+                 the tap is how you learn what it is and which day it belongs to. -->
+            <div class="map-pin cat-leisure ghost" style="left: 33%; top: 30%" data-ghost="1">
+              <div class="pin-b"></div>
+            </div>
+            <div class="map-pin cat-food ghost" style="left: 70%; top: 44%" data-ghost="1">
+              <div class="pin-b"></div>
             </div>
 
             <div class="map-me" style="left: 37%; top: 30%"></div>
@@ -7885,6 +8072,11 @@ body {
               </div>
             </div>
 
+            <!-- MOCKUP STUB for amendment B rule 3: tapping a ghost surfaces
+                 that one place, named with the day it belongs to. The real one
+                 renders a `.place` row, not a banner. -->
+            <div class="fb-banner fb-banner-neutral" role="status" id="ghostnote" hidden></div>
+
             <!-- the REAL StatusBanner (ui/feedback), offline tone -->
             <div class="fb-banner fb-banner-offline" role="status" id="offbanner" hidden>
               <span class="fb-banner-text">מוצגים המקומות השמורים · המפה תחזור עם החיבור</span>
@@ -7894,11 +8086,12 @@ body {
             <div class="map-list">
               <div class="map-grouphead">מה שלפנינו</div>
 
-              <!-- the selected row ↔ the focused pin are ONE selection: a row
-                   tap focuses its pin, a pin tap highlights its row (§6). This
-                   is also where Phase 2's interim `מפה` deep-link ends — view
-                   now means OUR map. -->
-              <div class="place nextstop" role="button" tabindex="0">
+              <!-- ROW TAP = FOCUS OUR MAP. It never leaves the app any more: the
+                   Phase-2 interim that opened Google's place view existed only
+                   because there was no map to focus (ADR-0109 2026-07-24). Going
+                   to Google is now a BUTTON — `נווט`, the one Google action the
+                   row keeps (directions, ADR-0106 §F). -->
+              <div class="place nextstop" role="button" tabindex="0" data-place="shinjuku">
                 <span class="map-badge cat-transit" aria-hidden="true">🚉</span>
                 <span class="map-main">
                   <span class="map-t">
@@ -7913,11 +8106,23 @@ body {
                 </span>
                 <span class="map-right">
                   <span class="map-dist">1.2 ק״מ</span>
-                  <a class="map-navbtn" href="#">🧭 נווט</a>
+                  <a class="map-navbtn" href="#" onclick="return false">🧭 נווט</a>
+                </span>
+                <span class="map-refs">
+                  <a class="map-ref" href="#" onclick="return false">
+                    <span class="map-ref-kind">הזמנה</span>
+                    <span>רכבת לקיוטו · יציאה</span>
+                    <svg class="icon" viewBox="0 0 24 24" fill="currentColor" aria-hidden="true"><path d="M5 9l7 7 7-7z" transform="rotate(90 12 12)" /></svg>
+                  </a>
+                  <a class="map-ref" href="#" onclick="return false">
+                    <span class="map-ref-kind">אירוע</span>
+                    <span>הליכה לתחנה</span>
+                    <svg class="icon" viewBox="0 0 24 24" fill="currentColor" aria-hidden="true"><path d="M5 9l7 7 7-7z" transform="rotate(90 12 12)" /></svg>
+                  </a>
                 </span>
               </div>
 
-              <div class="place" role="button" tabindex="0">
+              <div class="place" role="button" tabindex="0" data-place="afuri">
                 <span class="map-badge cat-food" aria-hidden="true">🍜</span>
                 <span class="map-main">
                   <span class="map-t"><span class="map-name">Afuri Ramen</span></span>
@@ -7929,26 +8134,20 @@ body {
                 </span>
                 <span class="map-right">
                   <span class="map-dist">450 מ׳</span>
-                  <a class="map-navbtn" href="#">🧭 נווט</a>
+                  <a class="map-navbtn" href="#" onclick="return false">🧭 נווט</a>
+                </span>
+                <span class="map-refs">
+                  <a class="map-ref" href="#" onclick="return false">
+                    <span class="map-ref-kind">אירוע</span>
+                    <span>ארוחת ערב</span>
+                    <svg class="icon" viewBox="0 0 24 24" fill="currentColor" aria-hidden="true"><path d="M5 9l7 7 7-7z" transform="rotate(90 12 12)" /></svg>
+                  </a>
                 </span>
               </div>
 
-              <div class="place" role="button" tabindex="0">
-                <span class="map-badge cat-lodging" aria-hidden="true">🏨</span>
-                <span class="map-main">
-                  <span class="map-t">
-                    <span class="map-name">Park Hotel</span>
-                    <span class="map-lock" aria-hidden="true">🔒</span>
-                  </span>
-                  <span class="map-m">
-                    <span class="map-tag time">מחר · <span dir="auto">11:00</span></span>
-                    <span class="map-tag">צ׳ק־אאוט</span>
-                  </span>
-                </span>
-                <span class="map-right"><a class="map-navbtn" href="#">🧭 נווט</a></span>
-              </div>
-
-              <div class="place ambient" role="button" tabindex="0">
+              <!-- the ambient base: mid-stay, off the day schedule (ADR-0054), so
+                   its pin carries no number -->
+              <div class="place ambient" role="button" tabindex="0" data-place="park">
                 <span class="map-badge cat-lodging" aria-hidden="true">🏨</span>
                 <span class="map-main">
                   <span class="map-t"><span class="map-name">Park Hotel</span></span>
@@ -7956,10 +8155,21 @@ body {
                     <span class="map-tag">Shiodome, Minato City, Tokyo</span>
                   </span>
                 </span>
-                <span class="map-right"><a class="map-navbtn" href="#">🧭 נווט</a></span>
+                <span class="map-right">
+                  <a class="map-navbtn" href="#" onclick="return false">🧭 נווט</a>
+                </span>
+                <span class="map-refs">
+                  <a class="map-ref" href="#" onclick="return false">
+                    <span class="map-ref-kind">הזמנה</span>
+                    <span>Park Hotel · 4 לילות</span>
+                    <svg class="icon" viewBox="0 0 24 24" fill="currentColor" aria-hidden="true"><path d="M5 9l7 7 7-7z" transform="rotate(90 12 12)" /></svg>
+                  </a>
+                </span>
               </div>
 
-              <div class="place soft" role="button" tabindex="0">
+              <!-- an idea: nothing scheduled it, so its pin is dashed AND
+                   unnumbered -->
+              <div class="place soft" role="button" tabindex="0" data-place="arabica">
                 <span class="map-badge cat-food" aria-hidden="true">☕</span>
                 <span class="map-main">
                   <span class="map-t"><span class="map-name">% Arabica</span></span>
@@ -7968,12 +8178,25 @@ body {
                     <span class="map-tag mbadge">על המדף</span>
                   </span>
                 </span>
-                <span class="map-right"><a class="map-navbtn" href="#">🧭 נווט</a></span>
+                <span class="map-right">
+                  <a class="map-navbtn" href="#" onclick="return false">🧭 נווט</a>
+                </span>
+                <span class="map-refs">
+                  <a class="map-ref" href="#" onclick="return false">
+                    <span class="map-ref-kind">רעיון</span>
+                    <span>על המדף · ללא יום</span>
+                    <svg class="icon" viewBox="0 0 24 24" fill="currentColor" aria-hidden="true"><path d="M5 9l7 7 7-7z" transform="rotate(90 12 12)" /></svg>
+                  </a>
+                </span>
               </div>
 
-              <!-- a coordless Place-lite: NOT on the map (nothing to pin), which
-                   is why the sheet must always peek — the list is its only home -->
-              <div class="place nocoord">
+              <!-- A coordless Place-lite: no pin, so selecting it moves no
+                   camera — but it is still REFERENCED by an event, so it still
+                   offers the way in (amendment D). That is why the tap SELECTS
+                   rather than "focuses": focusing is what selection does when
+                   there are coordinates. Its action is to give it some. And it is
+                   why the sheet always peeks — the list is this place's only home. -->
+              <div class="place nocoord" role="button" tabindex="0" data-place="yuki">
                 <span class="map-badge cat-leisure nocoord" aria-hidden="true">📍</span>
                 <span class="map-main">
                   <span class="map-t"><span class="map-name">המקום של יוקי</span></span>
@@ -7984,32 +8207,59 @@ body {
                     <span aria-hidden="true">＋</span> מיקום
                   </button>
                 </span>
+                <span class="map-refs">
+                  <a class="map-ref" href="#" onclick="return false">
+                    <span class="map-ref-kind">אירוע</span>
+                    <span>ארוחה אצל יוקי</span>
+                    <svg class="icon" viewBox="0 0 24 24" fill="currentColor" aria-hidden="true"><path d="M5 9l7 7 7-7z" transform="rotate(90 12 12)" /></svg>
+                  </a>
+                </span>
               </div>
 
               <div class="map-grouphead">מה שמאחורינו</div>
 
-              <div class="place" role="button" tabindex="0">
+              <!-- behind you, and each KEEPS its number: the partition changes
+                   prominence, never the position -->
+              <div class="place" role="button" tabindex="0" data-place="meiji">
                 <span class="map-badge cat-leisure" aria-hidden="true">⛩️</span>
                 <span class="map-main">
                   <span class="map-t"><span class="map-name">מייג׳י ג׳ינגו</span></span>
                   <span class="map-m">
-                    <span class="map-tag time">אתמול · <span dir="auto">10:00</span></span>
+                    <span class="map-tag time">היום · <span dir="auto">10:00</span></span>
                     <span class="map-tag ok">היינו</span>
                   </span>
                 </span>
-                <span class="map-right"><a class="map-navbtn" href="#">🧭 נווט</a></span>
+                <span class="map-right">
+                  <a class="map-navbtn" href="#" onclick="return false">🧭 נווט</a>
+                </span>
+                <span class="map-refs">
+                  <a class="map-ref" href="#" onclick="return false">
+                    <span class="map-ref-kind">אירוע</span>
+                    <span>מייג׳י ג׳ינגו</span>
+                    <svg class="icon" viewBox="0 0 24 24" fill="currentColor" aria-hidden="true"><path d="M5 9l7 7 7-7z" transform="rotate(90 12 12)" /></svg>
+                  </a>
+                </span>
               </div>
 
-              <div class="place skipped" role="button" tabindex="0">
+              <div class="place skipped" role="button" tabindex="0" data-place="skytree">
                 <span class="map-badge cat-leisure" aria-hidden="true">🎢</span>
                 <span class="map-main">
                   <span class="map-t"><span class="map-name">טוקיו סקייטרי</span></span>
                   <span class="map-m">
-                    <span class="map-tag time">אתמול · <span dir="auto">15:00</span></span>
+                    <span class="map-tag time">היום · <span dir="auto">13:00</span></span>
                     <span class="map-tag miss">דילגנו</span>
                   </span>
                 </span>
-                <span class="map-right"><a class="map-navbtn" href="#">🧭 נווט</a></span>
+                <span class="map-right">
+                  <a class="map-navbtn" href="#" onclick="return false">🧭 נווט</a>
+                </span>
+                <span class="map-refs">
+                  <a class="map-ref" href="#" onclick="return false">
+                    <span class="map-ref-kind">אירוע</span>
+                    <span>טוקיו סקייטרי</span>
+                    <svg class="icon" viewBox="0 0 24 24" fill="currentColor" aria-hidden="true"><path d="M5 9l7 7 7-7z" transform="rotate(90 12 12)" /></svg>
+                  </a>
+                </span>
               </div>
             </div>
           </div>
@@ -8020,7 +8270,7 @@ body {
     <!-- ───────────────────────── design notes ───────────────────────── -->
     <div class="mk-panels">
       <div class="mk-panel">
-        <h3>הפין: אותם טוקנים כמו הבאדג׳ ברשימה, צורה אחרת</h3>
+        <h3>הפין: סולם בלטות אחד לארבע אוכלוסיות, בלי צבע חדש</h3>
         <p>
           <code>.map-pin</code> קורא בדיוק את אותם <code>--cat-*</code> ש־<code>.map-badge</code>
           קורא, ומחזיר את דקדוק הקשיח/רך של <code>.place</code>: <code>.soft</code> מקווקו,
@@ -8028,17 +8278,31 @@ body {
           <b>זו הסיבה שתוכן הסמן הוא ה־DOM שלנו</b> ולא <code>PinElement</code> — גוגל נותן
           רקע/מסגרת/גליף, ולא את שלושת אלה.
         </p>
+        <p>
+          הרשימה מבדילה בין עבר, עתיד ורעיון על ידי <b>חלוקה לגושים</b> עם כותרת לכל אחד. למפה אין
+          גושים: כל הפינים על מישור אחד, אז ההבדל חייב לגור <b>על הפין</b>. וזו גם האוכלוסייה
+          <b>הרביעית</b> שהרשימה מעולם לא נדרשה לה: מקום ש<b>נופל מהמסנן אבל נמצא בתוך המסגרת</b>.
+          ברשימה "מסונן" פשוט נעלם וזה בסדר; במפה זו אבידה אמיתית — להסתיר את בית הקפה שאתם עומדים
+          לידו כי הוא מתוכנן ליום חמישי זו בדיוק השאלה שהטאב קיים כדי לענות עליה.
+        </p>
+        <p>
+          הסולם הוא <b>בלטות ומילוי, לא פלטה</b>: הקטגוריה שומרת על הגוון, הענבר על הזמן, הטורקיז על
+          אָפֶקטים של מיקום — תקציב הצבע נשאר שלם (ADR-0028). <b>הרפאים קיימים רק בהיקף יום</b>, כי
+          זה ההיקף היחיד שמסנן משהו; והוא <b>נגיע</b>, כי השורה שלו איננה במגירה — הנגיעה היא הדרך
+          לדעת מה זה, ומאיזה יום.
+        </p>
         <div class="mk-legend">
           <div class="mk-lg">
             <div class="map-pin cat-transit nextstop">
               <div class="pin-b"><span class="pin-g">🚉</span></div>
-              <span class="pin-lock">🔒</span>
+              <span class="pin-n" dir="auto">2</span>
             </div>
             היעד הבא
           </div>
           <div class="mk-lg">
             <div class="map-pin cat-food">
               <div class="pin-b"><span class="pin-g">🍜</span></div>
+              <span class="pin-n" dir="auto">3</span>
             </div>
             מתוכנן
           </div>
@@ -8057,8 +8321,15 @@ body {
           <div class="mk-lg">
             <div class="map-pin cat-leisure skipped">
               <div class="pin-b"><span class="pin-g">⛩️</span></div>
+              <span class="pin-n" dir="auto">1</span>
             </div>
             מאחורינו
+          </div>
+          <div class="mk-lg">
+            <div class="map-pin cat-food ghost" style="display: block">
+              <div class="pin-b"><span class="pin-g">☕</span></div>
+            </div>
+            לא ביום הזה
           </div>
         </div>
       </div>
@@ -8102,7 +8373,7 @@ body {
       </div>
 
       <div class="mk-panel">
-        <h3>הקו המחבר: מקווקו, ניטרלי, ובהיקף יום בלבד</h3>
+        <h3>הקו המחבר: מקווקו, ניטרלי, ורק בתכנון — והסדר עבר לפינים</h3>
         <ul>
           <li>
             <b>מקווקו כי קו ישר בין שתי עצירות הוא לא המסלול שתלכו.</b> קו מלא היה טוען שכן. מקווקו
@@ -8112,6 +8383,18 @@ body {
             <b>יום בלבד.</b> חיבור כל הימים יחד הוא ספגטי שלא עונה כלום — וההגבלה ליום אחד מייתרת
             לגמרי פלטת צבע לכל יום, והופכת את <code>.map-scopechip</code> הקיים ל"מתג היום" שנדרש
             (ADR-0106 §E מעודן).
+          </li>
+          <li>
+            <b>הקו לא מראה סדר — המספר מראה.</b> קטע בין שתי עצירות הוא סימטרי, אז שום דבר על הבד לא
+            אמר לאיזה קצה מגיעים קודם. המספר על הפין הוא <b>האינדקס ברצף היום</b> של
+            <code>comparePlacesBySchedule</code> — אותו סדר שה־Day view מרנדר, כך שהמפה והרשימה לא
+            יכולות לחלוק על מה בא ראשון. <b>פין בלי מקום ברצף לא מקבל מספר</b> (רעיון, ובסיס
+            אמביינטי), כך שמספר־או־לא <b>הוא עצמו</b> ההבדל בין תוכנית לרעיון.
+          </li>
+          <li>
+            <b>ולכן הקו נשאר רק בתכנון.</b> אחרי שהסדר עבר לפינים, התפקיד היחיד שנשאר לו הוא לחשוף
+            את <b>צורת</b> היום — הזיגזג שאומר "אתם חוצים את העיר פעמיים, סדרו מחדש". זו שאלת תכנון,
+            לא שאלה חיה: במצב טיול אתם <b>חיים</b> את היום וצריכים "מה הבא", לא ביקורת על הניתוב.
           </li>
           <li>
             <b>ניטרלי</b> (<code>--soft-line</code>), כי הקו שייך לרקע ולא לדמות ("בסיס שקט, פינים
@@ -8230,19 +8513,35 @@ body {
       const todayPill = document.getElementById('pill-today');
       const offbanner = document.getElementById('offbanner');
 
+      const headerEl = document.querySelector('.header');
+      // Captured once: these nodes lose the class in Plan mode, so querying by
+      // `.nextstop` at toggle time would never find them again.
+      const NEXT_STOP = [...document.querySelectorAll('.map-pin.nextstop, .place.nextstop')];
+
       function setState(s) {
         // view = the sheet-height axis; the toggle and the handle drive the same
         // one (ADR-0121 §4)
         screenEl.dataset.view =
           s === 'map' ? 'peek' : s === 'list' || s === 'offline' ? 'full' : 'half';
 
-        // day scope is what turns the connector on (§7)
-        const day = s === 'day';
+        // Mode is chrome + accent, exactly as every other tab (ADR-0016/0028) —
+        // and after amendment A it also decides whether the connector exists at
+        // all: the day's SHAPE is a planning question.
+        const plan = s === 'plan';
+        headerEl.dataset.mode = plan ? 'plan' : 'trip';
+        screenEl.dataset.mode = plan ? 'plan' : 'trip';
+        document.querySelector('.wp-daystrip').dataset.mode = plan ? 'plan' : 'trip';
+
+        // day scope is what turns the ghosts on, and (in Plan) the connector
+        const day = s === 'day' || plan;
         screenEl.dataset.scope = day ? 'day' : 'all';
         // the shared strip's real state classes (DayStrip's pillClass): the
         // today cell is `on` when it IS the selection, `today-anchor` when
         // all-days scope withholds the filled selection (session 81)
         todayPill.className = 'wp-daypill ' + (day ? 'on' : 'today-anchor');
+        // Trip mode's next-stop ring and its amber tag are live cues; planning a
+        // day says nothing about "next" (ADR-0109 session-104), so they go.
+        NEXT_STOP.forEach((el) => el.classList.toggle('nextstop', !plan));
         scopechip.textContent = day ? '🗓️ יום אחד' : '🗓️ כל הימים';
         scopechip.setAttribute('aria-pressed', String(!day));
         scopechip.classList.toggle('on', !day);
@@ -8264,12 +8563,51 @@ body {
         .querySelectorAll('.mk-states button')
         .forEach((b) => b.addEventListener('click', () => setState(b.dataset.state)));
 
-      // the row ↔ pin selection is ONE selection (§6)
-      const rows = [...document.querySelectorAll('.map-list .place')];
-      rows.forEach((r) =>
-        r.addEventListener('click', () => {
-          rows.forEach((x) => x.classList.remove('nextstop'));
-          r.classList.add('nextstop');
+      // ── ROW TAP = FOCUS OUR MAP ────────────────────────────────────────
+      // The tap no longer leaves the app. Going to Google is a BUTTON (`נווט`,
+      // directions — the one Google action the row keeps). Three rules:
+      //   1. row ↔ pin are ONE selection, under their own class — NOT
+      //      `.nextstop`, whose amber means "the stop you are heading to";
+      //      selecting a row must not claim that.
+      //   2. focusing a map you cannot see is useless, so if the list is at FULL
+      //      height the sheet drops to half. This is the interaction rule the
+      //      three-height axis exists for.
+      //   3. a coordless row has no pin to focus, so it is not focusable at all
+      //      (no `data-place`), and offline there is no map — the tap does
+      //      nothing and `נווט` remains.
+      const rows = [...document.querySelectorAll('.map-list .place[data-place]')];
+      const pins = [...document.querySelectorAll('.map-pane .map-pin[data-place]')];
+
+      function focusPlace(key, { fromRow } = {}) {
+        if (!key) return;
+        [...rows, ...pins].forEach((el) => el.classList.toggle('mk-sel', el.dataset.place === key));
+        // The tap SELECTS; focusing is what selection does when the place has a
+        // pin. A coordless Place-lite is still referenced, so it still selects
+        // (revealing its way in) — there is simply no camera to move.
+        const hasPin = pins.some((pin) => pin.dataset.place === key);
+        // rule 2 — lift the sheet off the map so the focus is visible
+        if (fromRow && hasPin && screenEl.dataset.view === 'full' && !screenEl.hasAttribute('data-offline')) {
+          setState('half');
+          focusPlace(key);
+        }
+        if (!fromRow) {
+          const row = rows.find((r) => r.dataset.place === key);
+          row?.scrollIntoView({ block: 'nearest' });
+        }
+      }
+
+      rows.forEach((r) => r.addEventListener('click', () => focusPlace(r.dataset.place, { fromRow: true })));
+      pins.forEach((pin) => pin.addEventListener('click', () => focusPlace(pin.dataset.place)));
+
+      // A ghost's row is NOT in the sheet (the sheet is scoped), so its tap is
+      // the only way to learn what it is — it surfaces that one row, named with
+      // the day it belongs to via `relativeDayLabel` (ADR-0085). Stubbed here as
+      // the statement it makes; the real one renders a `.place` row.
+      document.querySelectorAll('.map-pin.ghost').forEach((g, i) =>
+        g.addEventListener('click', () => {
+          const ghost = document.getElementById('ghostnote');
+          ghost.textContent = i === 0 ? 'טיוטת קיוטו · יום חמישי' : 'מוזיאון טדאו אנדו · ללא יום';
+          ghost.hidden = false;
         }),
       );
 

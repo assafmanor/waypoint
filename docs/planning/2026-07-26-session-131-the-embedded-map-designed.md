@@ -124,3 +124,107 @@ gate: enable Maps JS, create a Map ID + cloud style (the new step), mint
 `VITE_GOOGLE_MAPS_BROWSER_KEY`, set the Dynamic Maps quota cap. `DEMO_MAP_ID` covers local
 development and is not a substitute. Everything before that — the shell, the derivation
 wiring, the pin markup, the camera rules — is writable and unit-testable today.
+
+## Two gaps found reviewing the mockup (same session, ADR-0121 amendment)
+
+**A line cannot show order.** §7 sold the connector as showing "the day's shape and
+order"; it shows the first and not the second, because a dashed segment between two stops
+is symmetric. Arrowheads are mush at phone size, a clock on every pin blows §6's
+one-amber-anchor rule, and a colour or size ramp is already spoken for by category. The
+answer is **numbered pins**, and the number is free: it is the index in
+`comparePlacesBySchedule`'s day sequence — the same start-then-`sortOrder` order `DayView`
+renders — so the map becomes a third rendering of one derivation rather than a second
+opinion. Two things fall out of "the number is a position in the schedule": an idea and an
+ambient stay night get **no** number (nothing scheduled them), so numbered-vs-unnumbered
+is itself the plan/idea line; and the 🔒 comes off the pin, because solid-vs-dashed already
+carries commitment and the number needs that corner.
+
+That leaves the line with one job — the zigzag that says "you cross town twice" — which is
+a **planning** question, so the connector is now Plan mode only. Trip mode's canvas gets
+quieter, which is right on the surface whose question is "what now".
+
+**A map has no blocks.** The list separates past/upcoming/idea by partitioning into
+`מה שלפנינו` / `ללא יום` / `מה שמאחורינו` with outcome tags; a map puts every pin on one
+plane, so the distinction has to live on the pin. And a map surfaces a population the list
+never had to: **a place that fails the day filter but is inside the viewport.** Filtered-out
+is fine in a list; on a map, hiding the café you are standing next to because it is
+pencilled for Thursday is exactly the question the tab exists for. So it renders as a
+hollow, glyph-less, unnumbered **ghost** — present because it is physically there,
+subordinate because it is not today's plan — in day scope only, which is the only scope
+that excludes anything. It has to be tappable, because its row is not in the sheet.
+
+The whole four-tier ladder is **prominence and fill, with no new colour**: category keeps
+the hue, amber keeps time, teal keeps location affordances, so ADR-0028's budget is
+untouched.
+
+**Verified** on the isolated copy across all six states: numbers only where there is a
+position, ghosts only in day scope, the connector only in Plan, the amber ring and its tag
+only in Trip, no lock left on any pin. Two bugs of my own on the way — a class toggle that
+queried by the class it was removing (so it could never restore it), and a next-stop tag
+that survived un-scoping because losing its rule only cost it styling, not its text.
+
+## And the row tap stops leaving the app (ADR-0121 amendment C)
+
+Owner call, straight after: "clicking on a place doesn't automatically open maps (for that we
+need a button), instead it opens and focuses on the in-app map."
+
+This is the Phase-2 interim ending exactly where ADR-0109's 2026-07-24 amendment said it
+would — that tap opened Google's place view "**because we have no map surface yet**", and
+Phase 6 is when that stops being true. So the tap focuses our pin, and leaving is a button:
+`נווט` (directions), which already is one and stays Google forever (ADR-0106 §F).
+
+**"View on Google Maps" is retired from the row rather than relocated.** With our own map
+on screen, a second Google destination competes with the thing it was standing in for. It
+survives only in ADR-0115's research results, where a prediction carries no coordinates and
+there is genuinely nothing of ours to focus — so `mapsPlaceUrl` keeps a narrowed job and
+loses its `TODO(phase-3)`.
+
+Three rules make the focus usable, and all three fall out of the three-height sheet, which
+is the first real payoff of having made the toggle and the handle one state:
+
+1. **A row tap while the list is at full height drops the sheet to half** — focusing a map
+   you cannot see is useless.
+2. **A coordless row is not focusable**: no pin, nothing to focus. Same reasoning as "the
+   sheet always peeks".
+3. **Offline the tap does nothing** and the row keeps `נווט`. The map is absent and nothing
+   pretends otherwise.
+
+The mockup demonstrates all of it, and fixing the fixture to make the numbers believable
+forced the day to become internally coherent: one day, `1` visited → `2` skipped → `3` the
+next stop → `4` dinner, with the hotel as the unnumbered ambient base and the café as the
+unnumbered idea. The connector also became a **real polyline** through those stops in order
+rather than two rotated divs — rotated divs cannot follow a sequence, and a polyline is what
+the JS API actually draws. It needs no arrowheads, because the numbers are the order.
+
+## A place has to lead somewhere (ADR-0121 amendment D)
+
+Owner call: "clicking on a place should have a way to link and go to the related event or
+booking to get more info."
+
+Right, and the map would otherwise dead-end on the least informative record in the chain: a
+`Place` holds name, address, coordinates, timezone, rating — while the confirmation code,
+the notes, the documents and the real times all live on the **reference**, which is also the
+only reason the place is in the trip at all (ADR-0112). **The pointer already existed:**
+`DayUsage.eventId` + `edge`, added in session 108 so the row could say _what happens here_.
+The link target is that same pointer.
+
+The affordance is revealed by **selection** rather than added to every row — the row is
+already badge · name · meta · distance · `נווט`, and only one row is selected at a time, so
+it costs nothing until wanted. Its label is the reference's own words
+(`הזמנה · רכבת לקיוטו · יציאה`) rather than a generic "details", which is what earns it a
+row; full-width and ≥40px, which is exactly why the meta line's own text is _not_ the link.
+One entry per in-scope reference, because union semantics already made multiple references
+normal and a station really can be one leg's origin and another's destination.
+
+**It also fixed a hole in amendment C.** "Tap = focus" would have forced the coordless
+Place-lite to be untappable — stranding the one row whose place data is weakest from the
+event that explains it. So the verb is **select**, and focusing is what selection does when
+there are coordinates: a coordless row selects, shows its reference, moves no camera, keeps
+`＋ מיקום`.
+
+Bugs of my own worth naming, both from patching markup with string search: the rows and the
+pins share `data-place`, and the pins come first in the document, so the first insertion
+attempt put every reference block inside a **pin**; the recovery then matched
+`class="map-list"` in the **stylesheet** and dropped three more into the view toggle. Fixed
+by walking lines and indentation instead of searching text, with an assertion that every
+block's parent is a `.place` row.

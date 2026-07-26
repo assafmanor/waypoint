@@ -11,6 +11,96 @@ Mockup: [`mockups/map-embedded-v1.html`](../../mockups/map-embedded-v1.html) —
 
 Working against the real sheets caught two things a hand-drawn copy had hidden, both now corrected in the delta: **the shipped `.map-tag.next` is `--amber-deep` bold text, not a filled amber pill**, and `.place.nextstop`'s ring is a 34%-alpha amber edge over a 22% glow — so the pin's tag and ring reuse those exact values instead of inventing a second amber (§5's "one cue, two form factors" is only true if it is literally the same cue). Amber therefore stays ink on the canvas, never a ground (ADR-0028/0105).
 
+## Amendment (2026-07-26, same session) — the order is on the pins, and a pin says which population it belongs to
+
+Two gaps found on review of the mockup, both real.
+
+### A. A line does not show order — so the number does, and the line loses most of its job
+
+§7 justified the connector as showing "the day's shape and **order**". It shows the first and not the second: a dashed segment between two stops is symmetric, so nothing on the canvas said which end you reach first. The options were weighed rather than patched:
+
+| Option                                | Verdict                                                                                                                                                                                        |
+| ------------------------------------- | ---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| **Numbered pins**                     | **Chosen.** The itinerary-map convention (Wanderlog, Google saved lists), and the number is _free_ — see below.                                                                                |
+| Arrowheads / chevrons on the line     | Rejected: at phone size on a 2.5px dashed line they are mush, and they only work where segments are long enough to carry one.                                                                  |
+| Time labels on the pins               | Rejected on the colour budget: a time is amber (ADR-0028), and §6 allows **one** amber time-anchor on the canvas. A clock on every pin blows it.                                               |
+| Colour or size graded along the day   | Rejected: colour is spent on category (ADR-0038 §2), and a size ramp is unreadable at 25px.                                                                                                    |
+| Animated "marching ants"              | Rejected: decorative motion, and it fights `prefers-reduced-motion`.                                                                                                                           |
+| Nothing spatial — the list owns order | Considered seriously (the Day view _is_ the order surface, and the map's unique contribution is position). Rejected because the sheet is often at peek height, where the list is not readable. |
+
+**The number is free, and that is what makes it the right answer.** `comparePlacesBySchedule` already computes a day's chronological sequence — start instant, then `sortOrder`, untimed after the clocked ones, exactly as `DayView` renders it (ADR-0109 session-106). The pin's number is the **index in that sequence**, so the map and the list cannot disagree about what comes first any more than the list and the timeline can. One derivation, a third rendering of it.
+
+Three specifics fall out of "the number is a position in the day's schedule":
+
+- **A pin with no position gets no number** — an unconsumed idea (nothing scheduled it), and a strictly-middle ambient stay night (ADR-0054 puts ambient spans off the day schedule). So **numbered vs. unnumbered is itself the plan/idea distinction**, doing work the dashed border was carrying alone.
+- **The number is chronological, not the list's row order.** A visited stop keeps its `1` even though the ahead/behind partition (§B) sinks it — the partition changes prominence, never the number.
+- **The 🔒 comes off the pin.** ADR-0109 §3 gave a hard commitment a lock micro-cue _and_ a solid fill; the number needs that corner, and solid-vs-dashed already says committed-vs-idea. The lock was belt-and-braces inherited from the row, which keeps it (a row has width for both).
+
+**What is left for the line, and where it stays.** With order on the pins, the connector's only remaining job is revealing a day's **shape** — the zigzag that says "you cross town twice, reorder this". That is a _planning_ question, not a live one: in Trip mode you are living the day and need "where is next", not a critique of your routing. So **the connector is Plan mode only**, still day-scoped, still dashed and neutral for the reason §7 gives (a straight segment is not the path you will walk). Trip mode's canvas loses it and gets quieter, which is the right trade on the surface whose job is "what now".
+
+_This revises §7's "ships in both modes" and ADR-0106 §D's reading of connectors as the order cue; §7's dashed-and-neutral rule and the reservation of solid+amber for a real Routes polyline are unchanged._
+
+### C. The row tap focuses our map — going to Google is a button
+
+The Phase-3 row tap opens **Google's place view** (`mapsPlaceUrl`, `screens/Map.tsx`'s `onClick={view}`). That was always the stopgap ADR-0109's 2026-07-24 amendment said it was: "it deep-links to the Google Maps place view **because we have no map surface yet**." Phase 6 is when that stops being true, so the interim ends.
+
+**Decision: tapping a place never leaves the app. Leaving is an explicit button.**
+
+- **Row tap = focus.** It selects the row and its pin — one selection, §6 — and moves the camera to that pin. No new window, no hand-off.
+- **`נווט` stays the row's one Google button** (directions — the on-the-ground verb, a deep-link forever per ADR-0106 §F). It already _is_ a button, which is what the rule asks for; `stopPropagation` keeps it from also focusing.
+- **"View on Google Maps" is retired from the Map-tab row, not relocated.** With our own map on screen, a second Google destination is a control competing with the thing it was standing in for. It survives only where there is genuinely nothing of ours to focus: **ADR-0115's research results**, where a prediction has no coordinates and the free `place_id` link is how you vet a place before we pay to resolve it. `mapsPlaceUrl` therefore stays in `lib/places.ts` with a narrowed job, and its `TODO(phase-3)` tag comes off.
+- **The same swap on the other surfaces.** `EventCard` and `BookingDetail` keep their labelled `ניווט · מפה` pair (they have no tap-to-view — ADR-0109 2026-07-24), but `מפה` now routes to the Map tab focused on that place instead of opening Google. Two buttons, one of which finally points inward.
+
+Three rules the focus needs to be usable, all of which fall out of the three-height sheet (§4):
+
+1. **Focusing a map you cannot see is useless**, so a row tap while the sheet is at **full** height drops it to **half**. This is the interaction the height axis exists for, and it is why the toggle and the handle had to be one state.
+2. **A coordless row is not focusable at all** — there is no pin, so there is nothing to focus. It keeps `＋ מיקום` and no tap affordance, which is the same reasoning that makes the sheet always peek (§5).
+3. **Offline there is no map**, so the tap does nothing and the row keeps `נווט` (the OS handles the deep-link). Consistent with §8: the map is absent, and nothing pretends otherwise.
+
+_This revises ADR-0109 §1's "viewing the place is the row tap (opens the place detail / Google Maps place)" — the tap survives, its destination becomes ours._
+
+### B. Four populations, one prominence ladder — including the one the list never had to name
+
+The list answers "past vs. upcoming vs. idea" by **partitioning into blocks** (`מה שלפנינו` / `ללא יום` / `מה שמאחורינו`) with outcome tags on the row (ADR-0117/0109 session-127). A map has no blocks: every pin sits in one plane, so the distinction has to live on the pin itself.
+
+And a map surfaces a population the list never had to: **a place that fails the day filter but is inside the viewport.** On a list, filtered-out is simply gone, which is fine. On a map it is a real loss — hiding the café you are standing next to because it is pencilled for Thursday is exactly the "what's near me right now" question the tab exists to answer (vision pillar 3). So there are four, and they need one legible ladder.
+
+**The ladder is prominence and fill, with no new colour** — category keeps the hue (ADR-0038 §2), amber keeps time, teal keeps location affordances, so ADR-0028's budget is untouched:
+
+| Population                                | Pin                                                                                 | Why that treatment                                                                 |
+| ----------------------------------------- | ----------------------------------------------------------------------------------- | ---------------------------------------------------------------------------------- |
+| **The next stop** (Trip, exactly one)     | Full category pin + the single amber ring + number                                  | §6's one time-anchor, unchanged                                                    |
+| **Upcoming today**                        | Full category pin, solid, **numbered**                                              | The plan: it has a place in the sequence                                           |
+| **Idea / maybe**                          | Dashed, lightened, **unnumbered**                                                   | The soft grammar (ADR-0011), and nothing scheduled it                              |
+| **Behind you** (visited / done / skipped) | Desaturated + reduced opacity, **keeps its number**                                 | Mirrors `.place`'s quiet treatment (ADR-0117); the number is still true            |
+| **Not in this day, but in view**          | **A hollow "ghost": category-hued outline, no fill, no glyph, smaller, unnumbered** | Present because it is physically there; subordinate because it is not today's plan |
+
+Four properties of the ghost tier worth pinning down:
+
+1. **Ghosts exist only in day scope**, which is the only scope that excludes anything — the same condition the connector already carries. In all-days scope nothing is out of scope, so there are no ghosts, and the canvas has one less tier to read.
+2. **It covers "another day" _and_ "no day at all"** — the `ללא יום` block's dateless ideas and unlinked bookings are out of scope under a day filter exactly as Thursday's café is.
+3. **A ghost is tappable, and that is not optional**, because its row is _not_ in the sheet (the sheet is scoped). Tapping one surfaces that single row in the sheet, labelled with the day it belongs to via `relativeDayLabel` (ADR-0085) — the same composition the all-days list already uses for exactly this "when is this, then?" question (ADR-0109 session-109). Reusing the row rather than designing a Google-style info window keeps one way of stating a place.
+4. **It never competes with near-me.** Distances and the sort stay the near-me chip's job; a ghost is a position, not a recommendation.
+
+_Open, deliberately: whether a ghost should also appear when it is **near you** but outside the viewport's obvious reading — i.e. whether proximity ever promotes a ghost to a full pin. Left alone until the rendered map exists to judge it on, because it is a relevance question, not a rendering one._
+
+### D. A place needs a way through to the thing that put it there
+
+A `Place` holds a name, an address, coordinates, a timezone and a rating. **Everything a traveller actually wants is on the reference** — the confirmation code, the notes, the linked documents, the hotel WiFi, the real times. And a place is only in the trip _because_ something references it ([ADR-0112](0112-place-in-trip-is-referenced-not-cached.md)). So the map has to offer a way through to that event/booking/idea, or it dead-ends on the least informative record in the chain.
+
+**The pointer already exists.** `DayUsage` gained `eventId` + `edge` in session 108 precisely so the row could say _what happens here_ — "the derivation only **points** at the reference owning the day's moment (following whichever won `at` on a merge)". That pointer is the link target; no new derivation.
+
+**Decision: the tap _selects_; selection reveals the way in.** Not a control on every row — the row is already badge · name · meta · distance · `נווט`, and ADR-0109 §1's test is that every element earns its place. Since only one row is ever selected, the affordance costs nothing until it is wanted:
+
+- **The label is the reference's own words, not "details"** — `הזמנה · רכבת לקיוטו · יציאה`, reusing the meta line's existing vocabulary (`eventEdgeTransition`, `shortTitleText`). A control that names its destination is worth more than a generic one, and it is why this earns a row of its own.
+- **One entry per in-scope reference.** Usually that is one. A station that is both one leg's origin and another's destination genuinely has two, and a hotel's edge day has its booking; the moment's owner leads. Union semantics (ADR-0109 §4) already made "a place has several references" the normal case — this is the first surface that lets you act on it.
+- **Full-width, ≥40px** — a real touch target (ADR-0017), which is exactly why the meta line's own text is _not_ the link: an 11.5px tag is not a phone affordance.
+- **Targets:** a **booking** → `BookingDetail` (the app's booking detail, ADR-0053, a `Modal` sheet so back closes it); an **event** → the Day view for its date, focused on that event; an **idea** → the shelf. Three destinations, one verb.
+
+**Which clarifies §C: the verb is _select_, and focusing is what selection does when there are coordinates.** That is not a quibble — it fixes a real hole. A **coordless Place-lite is still referenced**, so it still needs its way in; only the camera half is missing. Under "tap = focus" it would have had to be untappable, stranding the one row whose place-data is _weakest_ from the event that explains it. So a coordless row selects, reveals its reference, moves no camera, and keeps `＋ מיקום`.
+
+**Open, deliberately:** whether a **pin** tap should reveal the same entries on the canvas (an info window) or only via its row in the sheet. The sheet answer needs no new surface and is what §C already does; an info window is the map idiom but a second way of stating a place. Left until the rendered map exists to judge on — the same reasoning as the ghost-promotion question in §B.
+
 ## Context
 
 Phases 0–5 of the Maps & Places epic have shipped. The Map tab is a real surface: `lib/place-usage.ts` derives every place's days/categories/outcome/commitment from the trip snapshot, `screens/Map.tsx` renders it as a filtered, scoped, ordered list with near-me, navigate-to-next, outcome states and Plan-mode Google research. Phase 6 — the **rendered** map — is the last phase, and the only one still unbuilt.
@@ -99,10 +189,12 @@ ADR-0120's rule is that every control which changes the list is animated — a r
 
 - **Fit to the bounds of the filtered set**, animated, whenever that set changes (day ↔ all-days, a type chip, the `אולי` toggle, near-me). A chip tap that silently leaves half its results off-canvas is the map's exact analogue of the jump session 130 removed from the list.
 - **A manual pan or zoom wins, until the next scope change.** Someone exploring the map has taken over the camera; re-fitting under their fingers on the next clock tick or re-render would be the map version of a list that re-sorts while you read it. The next explicit control re-fits.
-- **Tapping a list row focuses its pin** (and tapping a pin highlights its row). This is where the interim ends: ADR-0109's 2026-07-24 amendment made `מפה` (view) deep-link out to Google's place view "because we have no map surface yet," tagged `TODO(phase-3)` on `mapsPlaceUrl` in `lib/places.ts`. With a map in the app, **`מפה` focuses our own map** — on the Map tab it is the row tap; from an `EventCard` or `BookingDetail` it routes to the Map tab focused on that place. **`ניווט` (directions) stays a Google deep-link permanently** (ADR-0106 §F — we never rebuild turn-by-turn), and `mapsPlaceUrl` survives only where no in-app map can be reached.
+- **Tapping a list row focuses its pin** (and tapping a pin highlights its row) — the concrete rules, including the sheet lifting off the map and what happens to a coordless or offline row, are in **amendment C** above. This is where the interim ends: ADR-0109's 2026-07-24 amendment made `מפה` (view) deep-link out to Google's place view "because we have no map surface yet," tagged `TODO(phase-3)` on `mapsPlaceUrl` in `lib/places.ts`. With a map in the app, **`מפה` focuses our own map** — on the Map tab it is the row tap; from an `EventCard` or `BookingDetail` it routes to the Map tab focused on that place. **`ניווט` (directions) stays a Google deep-link permanently** (ADR-0106 §F — we never rebuild turn-by-turn), and `mapsPlaceUrl` survives only where no in-app map can be reached.
 - **The "me" dot** appears when near-me is granted, an OS-map convention outside the colour budget (ADR-0109 §3). Near-me's existing behaviour — the sort, the distance chips, the reason-first pre-prompt, the honest denied/offline degradation — is unchanged; the dot is the spatial addition §7 always said Phase 6 would add for free.
 
 ### 7. Day connectors are dashed, neutral, and only exist in day scope
+
+> **Revised by amendment A above (same session):** a line cannot show order, so **the order moved onto the pins as numbers** and the connector is now **Plan mode only** — its one remaining job, revealing the day's shape, is a planning question. The dashed-and-neutral rule and the reservation of solid+amber for a real Routes polyline are unchanged.
 
 ADR-0106 §D/§E chose free straight `Polyline` connectors for the first Phase-6 cut, per day, "colour per day, a day toggle". Two refinements:
 
