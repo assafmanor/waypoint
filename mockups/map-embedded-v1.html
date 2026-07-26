@@ -7361,18 +7361,25 @@ body {
         display: block;
       }
       /* THE ONE AMBER TIME-ANCHOR the map's budget allows (ADR-0109 §6): the
-         next committed stop, and nothing else on the canvas is amber. This is
-         `.place.nextstop`'s ring moved onto the pin as §6 always intended — so
-         it reuses that rule's own two amber alphas (a 34% edge over a 22%
-         glow) rather than inventing a second amber. Row cue and pin cue are
-         literally the same cue. */
-      .map-pin.nextstop::before {
-        content: '';
-        position: absolute;
-        inset: -7px -7px 4px -7px;
-        border: 2px solid rgba(233, 166, 60, 0.9);
-        border-radius: var(--radius-pill, 999px);
-        box-shadow: 0 0 0 3px rgba(233, 166, 60, 0.22);
+         next committed stop, and nothing else on the canvas is amber. It is
+         `.place.nextstop`'s ring moved onto the pin as §6 always intended.
+
+         It is an OUTLINE ON THE PIN, not a ring around it. The first pass drew
+         a pill-shaped `::before` box around the teardrop, which read as a
+         circle someone had drawn near a pin — two shapes instead of one
+         highlighted shape. A `box-shadow` spread follows `border-radius`, so it
+         traces the teardrop's own silhouette (tip included) and the pin simply
+         looks outlined.
+
+         The 22% glow alpha is `.place.nextstop`'s verbatim, so row cue and pin
+         cue really are one cue. The edge is solid rather than that rule's 34%,
+         because a 34% amber hairline holds up on the row's white card and
+         disappears over a map base. */
+      .map-pin.nextstop .pin-b {
+        box-shadow:
+          0 0 0 2.5px var(--amber),
+          0 0 0 5.5px rgba(233, 166, 60, 0.22),
+          var(--elevation-1, 0 2px 5px rgba(22, 35, 61, 0.34));
       }
       /* The shipped `.map-tag.next` is NOT a filled amber pill — it is
          `--amber-deep` bold text on the row's own surface. The pin's tag keeps
@@ -7388,7 +7395,7 @@ body {
       .map-pin.nextstop .pin-tag {
         display: block;
         position: absolute;
-        top: -21px;
+        top: -19px;
         right: 50%;
         transform: translateX(50%);
         background: var(--card);
@@ -7686,9 +7693,15 @@ body {
       /* MOCKUP-ONLY: the row↔pin selection ring (§6). Distinct from
          `.place.nextstop`'s amber, because selecting a row is not a claim about
          what is next. */
+      /* Selection stays an `outline` so it composes with the amber `box-shadow`
+         above rather than replacing it — a pin can be both the next stop and the
+         one you just tapped. The offset clears the amber ring in that case. */
       .map-pin.mk-sel .pin-b {
         outline: 2px solid var(--ink);
         outline-offset: 2px;
+      }
+      .map-pin.nextstop.mk-sel .pin-b {
+        outline-offset: 6px;
       }
       .place.mk-sel {
         border-color: var(--ink);
