@@ -11,6 +11,92 @@
   --idx-accent: var(--plan);
 }
 
+/* ── The split (Phase 6, ADR-0121 §5) ───────────────────────────────────────────
+   The tab opts out of the scrolling body (`.body.is-fullbleed`, App.css) and owns
+   its own layout: the filter row + sort strip become a FIXED header, and the one
+   scroll region is the sheet's list. Scoped to `.is-split`, because the same
+   `.map-screen` class also wraps the search overlay's filtered copy of the list,
+   which is ordinary scrolling content and must not become a flex column. */
+.map-screen.is-split {
+  display: flex;
+  flex-direction: column;
+  height: 100%;
+  min-height: 0;
+}
+/* The padding `.body` no longer supplies, restored only where it is wanted: above
+   the split. The sheet supplies its own. */
+.map-screen.is-split > .map-filter-row {
+  padding: 14px 16px 0;
+}
+.map-screen.is-split > .map-sortstrip {
+  padding: 0 16px;
+  margin-bottom: 10px;
+  flex-wrap: wrap;
+}
+.map-split {
+  position: relative;
+  flex: 1;
+  min-height: 0;
+  overflow: hidden;
+}
+/* The sheet's own scroll padding — the list needs edges, and a tail so the last
+   card clears the rounded bottom of the phone. */
+.map-sheet-scroll {
+  padding: 0 16px 16px;
+}
+
+/* רשימה · מפה — a shortcut to the two extremes of the SAME height axis the handle
+   drags, so the two controls cannot disagree. At the half height neither extreme is
+   active, which is the honest rendering. */
+.map-viewtoggle {
+  display: flex;
+  background: color-mix(in srgb, var(--ink) 6%, transparent);
+  border: 1px solid var(--line);
+  border-radius: 999px;
+  padding: 2px;
+  gap: 2px;
+}
+.map-viewtoggle button {
+  font: inherit;
+  font-size: 12px;
+  font-weight: 600;
+  border: 0;
+  background: transparent;
+  color: var(--muted);
+  border-radius: 999px;
+  padding: 4px 15px;
+  cursor: pointer;
+}
+.map-viewtoggle button.on {
+  background: var(--card);
+  color: var(--ink);
+  box-shadow: 0 1px 3px rgba(22, 35, 61, 0.14);
+}
+
+/* The whole day as one free Google directions link (§10) — teal, because it is a
+   location affordance like `נווט`, and it ships with the connector so it appears in
+   the same Plan-mode day scope. */
+.map-dayroute {
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+  border: 1px solid var(--teal);
+  color: var(--teal);
+  background: var(--card);
+  border-radius: 999px;
+  padding: 6px 12px;
+  font-size: 12px;
+  font-weight: 700;
+  text-decoration: none;
+  white-space: nowrap;
+}
+
+/* A tapped ghost, surfaced as the one row it is (§6) — its row is not in the
+   scoped list, so the tap is how you learn what it is and which day it belongs to. */
+.map-ghostrow {
+  margin-bottom: 4px;
+}
+
 /* ── filter chip row (reuses the Index grammar) ─────────────────────────── */
 .map-filter-row {
   display: flex;
@@ -238,6 +324,9 @@
 .place {
   display: flex;
   align-items: center;
+  /* The way-in block (`.map-refs`) is a full-width third line that appears on
+     selection, so the row wraps rather than squeezing it into the trailing column. */
+  flex-wrap: wrap;
   gap: 11px;
   background: var(--card);
   border: 1px solid var(--line);
@@ -250,6 +339,13 @@
 .place[role='button']:focus-visible {
   outline: 2.5px solid var(--teal);
   outline-offset: 2px;
+}
+/* The row half of the row ↔ pin selection (ADR-0121 §8). Neutral ink, deliberately
+   NOT amber: selecting a row is not a claim about what is next, and the two compose
+   on the same row when it happens to be both. */
+.place.selected {
+  border-color: var(--ink);
+  box-shadow: 0 0 0 2px color-mix(in srgb, var(--ink) 12%, transparent);
 }
 /* a pure shelf idea reads provisional — dashed + diagonal hatch (ADR-0011 soft). */
 .place.soft {
@@ -436,6 +532,61 @@
 }
 .map-addbtn:hover {
   border-color: var(--muted);
+}
+
+/* ── The way in to the entity (ADR-0121 §8) ────────────────────────────────────
+   A place is only in the trip because something REFERENCES it (ADR-0112), and the
+   details a traveller wants — the confirmation code, the notes, the documents, the
+   time it was booked for — live on that event/booking, never on the `Place`. So a
+   place needs a way through to it.
+
+   Revealed by SELECTION rather than sitting on every row: the row is already dense
+   (badge · name · meta · distance · נווט), and only one row is selected at a time.
+   Each entry is labelled in the reference's own words, not a generic "details", so
+   the control says where it goes — which is also what earns it a row. Full-width and
+   ≥40px, so it is a real touch target (ADR-0017) rather than a tappable 11px tag. */
+.map-refs {
+  flex-basis: 100%;
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  margin-top: 8px;
+  padding-top: 8px;
+  border-top: 1px solid var(--line);
+}
+.map-ref {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  width: 100%;
+  padding: 7px 8px;
+  min-height: 40px;
+  border: 0;
+  border-radius: 10px;
+  background: color-mix(in srgb, var(--ink) 4%, transparent);
+  color: var(--ink);
+  font: inherit;
+  font-size: 12.5px;
+  font-weight: 600;
+  text-align: start;
+  cursor: pointer;
+}
+.map-ref .map-ref-kind {
+  color: var(--muted);
+  font-weight: 500;
+  flex: 0 0 auto;
+}
+.map-ref .map-ref-label {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.map-ref .icon {
+  width: 14px;
+  height: 14px;
+  margin-inline-start: auto;
+  flex: 0 0 auto;
+  color: var(--faint);
 }
 
 /* ── Plan-mode place research (Phase 5, ADR-0115) ────────────────────────────

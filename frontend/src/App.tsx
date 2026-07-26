@@ -36,7 +36,8 @@ import { resolveLanding } from './lib/active-trip';
 import { consumeIntent, hasIntent, saveIntent } from './lib/intent';
 import { ToastProvider } from './ui/Toast';
 import { ConfirmProvider } from './ui/ConfirmDialog';
-import { AppShell } from './ui/layout';
+import { AppShell, BODY_FULLBLEED } from './ui/layout';
+import { mapPaneAvailable } from './lib/map-config';
 import { BootScreen, HomeSkeleton, LoadingState } from './ui/feedback';
 import { Sheet } from './ui/Sheet';
 import { SyncReviewSheet } from './ui/SyncReviewSheet';
@@ -379,10 +380,13 @@ function Shell() {
   // launch straight into the trip can't let a system-back slip out of the app.
   useTripBackGuard();
   const { mode } = useMode();
-  const { trip, setActiveDate, tripDeleted } = useTrip();
+  const { trip, setActiveDate, tripDeleted, usingCachedSnapshot } = useTrip();
   const { logout } = useAuth();
   const navigate = useNavigate();
   const closeAllOverlays = useCloseAllOverlays();
+  // Same two signals the tabs themselves read (T-013/T-058): `navigator.onLine`
+  // misses a failed boot fetch, so OR it with the cached-snapshot flag.
+  const offlineNow = useIsOffline() || usingCachedSnapshot;
   // A remote admin deleting the trip while we're inside it (ADR-0039): leave to
   // the all-trips list rather than sitting on a trip that no longer exists.
   useEffect(() => {
@@ -448,11 +452,19 @@ function Shell() {
   // render without unmounting header or nav (U-10). Mode/switching pass through
   // to `data-mode`/`data-switching`, so every existing `.app[...]` CSS selector
   // still applies; `bodyKey={tab}` keeps the per-tab remount + fade.
+  // The rendered Map tab owns its own layout instead of scrolling inside the body
+  // (ADR-0121 §5): its split needs a fixed-height flex column, and the body's tail
+  // padding would push the sheet under the nav. Only when a map is actually there —
+  // offline (or without the build config) the tab is the ordinary scrolling list it
+  // has always been, so it keeps the ordinary body.
+  const fullBleed = tab === 'map' && mapPaneAvailable({ offline: offlineNow });
+
   return (
     <AppShell
       mode={mode}
       switching={switching ?? undefined}
       bodyKey={tab}
+      bodyClassName={fullBleed ? BODY_FULLBLEED : undefined}
       header={
         <Header
           onSelectDay={onSelectDay}

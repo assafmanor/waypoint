@@ -1,0 +1,292 @@
+/* The rendered map pane + its pins (ADR-0121 §5/§6/§12). Ported from
+   mockups/map-embedded-v1.html's PHASE-6 DELTA block, which was written against
+   these very tokens.
+
+   The pane is sized to the area the SHEET LEAVES VISIBLE, not full-bleed behind it:
+   the Maps JS API draws Google's logo and attribution at the bottom-left OF THE MAP
+   DIV, and Google's terms require they not be obscured (ADR-0106 §B) — a peeking
+   sheet over an `inset: 0` pane would hide the one element we are contractually
+   obliged to show. It also makes the fit-to-bounds honest, since fitting bounds to
+   a div half-hidden behind the list centres pins under it (§5/§7).
+
+   `--sheet-h` is written by the screen from the SNAPPED sheet height, so a drag
+   costs no relayout — the pane resizes on snap, not per drag frame (§5). */
+.map-pane {
+  position: absolute;
+  inset-inline: 0;
+  top: 0;
+  bottom: var(--sheet-h, 0px);
+  overflow: hidden;
+}
+.map-canvas {
+  width: 100%;
+  height: 100%;
+}
+/* The full-list height: the map is behind the sheet and still ONE live instance —
+   hidden rather than destroyed, because destroying it is a billed load (§4). Its
+   box stays full-size so nothing relayouts to zero height. */
+.map-screen[data-view='full'] .map-pane {
+  bottom: 0;
+  visibility: hidden;
+}
+
+/* ── PINS ──────────────────────────────────────────────────────────────────────
+   `AdvancedMarker` content built from OUR markup (§6), reading the very same
+   `--cat-*` tokens as `.map-badge`, so the list badge and the map teardrop are one
+   colour system by construction rather than by discipline. Google's `PinElement`
+   gives background/border/glyph and cannot express the three commitment states
+   below, which is why the content is ours.
+
+   No `translate(-50%, -100%)` here (the mockup needed it for absolute positioning):
+   the marker's own anchor puts the tip on the coordinate. */
+.map-pin {
+  position: relative;
+  width: 28px;
+  height: 34px;
+  cursor: pointer;
+}
+.map-pin .pin-b {
+  position: relative;
+  width: 25px;
+  height: 25px;
+  margin: 0 auto;
+  /* Sharp corner bottom-right, so rotate(45deg) swings the tip straight DOWN onto
+     the location — the map idiom. The list keeps the rounded `.map-badge`: two form
+     factors, one colour system (ADR-0109 §3). */
+  border-radius: 50% 50% 2px 50%;
+  transform: rotate(45deg);
+  display: grid;
+  place-items: center;
+  background: var(--cat-leisure);
+  border: 2px solid var(--card);
+  box-shadow: 0 2px 5px rgba(22, 35, 61, 0.34);
+}
+.map-pin .pin-g {
+  transform: rotate(-45deg);
+  font-size: 13px;
+  line-height: 1;
+}
+/* The same five hues, same names as `.map-badge.cat-*`. */
+.map-pin.cat-food .pin-b {
+  background: var(--cat-food);
+}
+.map-pin.cat-lodging .pin-b {
+  background: var(--cat-lodging);
+}
+.map-pin.cat-transit .pin-b {
+  background: var(--cat-transit);
+}
+.map-pin.cat-leisure .pin-b {
+  background: var(--cat-leisure);
+}
+.map-pin.cat-services .pin-b {
+  background: var(--cat-services);
+}
+/* Commitment is the hard/soft GRAMMAR, never a colour (ADR-0011/0028) — and these
+   three are exactly what `PinElement` cannot draw. Each mirrors its `.place`
+   counterpart: `.soft`, `.ambient`, `.skipped`. */
+.map-pin.soft .pin-b {
+  border-style: dashed;
+  border-color: var(--soft-line);
+  background: color-mix(in srgb, var(--cat-leisure) 55%, var(--card));
+}
+.map-pin.soft.cat-food .pin-b {
+  background: color-mix(in srgb, var(--cat-food) 55%, var(--card));
+}
+.map-pin.soft.cat-lodging .pin-b {
+  background: color-mix(in srgb, var(--cat-lodging) 55%, var(--card));
+}
+.map-pin.soft.cat-transit .pin-b {
+  background: color-mix(in srgb, var(--cat-transit) 55%, var(--card));
+}
+.map-pin.soft.cat-services .pin-b {
+  background: color-mix(in srgb, var(--cat-services) 55%, var(--card));
+}
+.map-pin.ambient .pin-b {
+  filter: saturate(0.45);
+  opacity: 0.8;
+}
+.map-pin.skipped .pin-b {
+  filter: saturate(0.3);
+  opacity: 0.62;
+}
+
+/* THE ORDER, as a number (§6). A line between two stops is symmetric, so it never
+   said which end you reach first; the number does, and it is free — it is the index
+   in `comparePlacesBySchedule`'s day sequence, the same order the Day view renders.
+
+   It takes the corner ADR-0109 §3 gave the 🔒, which comes OFF the pin: solid-vs-
+   dashed already says committed-vs-idea, so the lock was belt-and-braces inherited
+   from the row (which keeps it — a row has width for both). */
+.map-pin .pin-n {
+  position: absolute;
+  top: -5px;
+  inset-inline-start: -6px;
+  min-width: 15px;
+  height: 15px;
+  padding: 0 3px;
+  display: grid;
+  place-items: center;
+  background: var(--ink);
+  color: var(--card);
+  font-family: var(--font-mono);
+  font-size: 9px;
+  font-weight: 700;
+  border-radius: 999px;
+  box-shadow: 0 0 0 1.5px var(--card);
+}
+/* Behind you KEEPS its number — the partition changes prominence, never the
+   position; #1 is still true after you have been there. */
+.map-pin.skipped .pin-n,
+.map-pin.ambient .pin-n {
+  background: var(--muted);
+}
+
+/* THE FOURTH POPULATION: in view, but not in this day — pencilled for Thursday, or
+   with no day at all. The list can drop what it filters; a map cannot, because the
+   café you are standing next to is physically there, which is the whole "what's near
+   me now" question. So it is present but plainly subordinate: a hollow outline in
+   its category hue, no fill, no glyph, no number, smaller. No new colour is spent —
+   the ladder is prominence, not palette (ADR-0028). */
+.map-pin.ghost {
+  width: 20px;
+  height: 25px;
+}
+.map-pin.ghost .pin-b {
+  width: 16px;
+  height: 16px;
+  background: transparent;
+  border-width: 2px;
+  border-style: solid;
+  border-color: color-mix(in srgb, var(--cat-leisure) 78%, var(--ink));
+  box-shadow: 0 1px 3px color-mix(in srgb, var(--ink) 18%, transparent);
+  opacity: 0.9;
+}
+.map-pin.ghost.cat-food .pin-b {
+  border-color: color-mix(in srgb, var(--cat-food) 78%, var(--ink));
+}
+.map-pin.ghost.cat-lodging .pin-b {
+  border-color: color-mix(in srgb, var(--cat-lodging) 78%, var(--ink));
+}
+.map-pin.ghost.cat-transit .pin-b {
+  border-color: color-mix(in srgb, var(--cat-transit) 78%, var(--ink));
+}
+.map-pin.ghost.cat-services .pin-b {
+  border-color: color-mix(in srgb, var(--cat-services) 78%, var(--ink));
+}
+
+/* THE ONE AMBER TIME-ANCHOR the map's budget allows (ADR-0109 §6): the next
+   committed stop, and nothing else on the canvas is amber. It is `.place.nextstop`'s
+   ring moved onto the pin as §6 always intended.
+
+   An OUTLINE ON the pin, not a ring around it: a `box-shadow` spread follows
+   `border-radius`, so it traces the teardrop's own silhouette (tip included) and the
+   pin simply looks outlined. The first pass drew a pill-shaped box around it, which
+   read as a circle someone had drawn near a pin — two shapes instead of one
+   highlighted shape.
+
+   The 22% glow alpha is `.place.nextstop`'s verbatim, so row cue and pin cue really
+   are one cue. The edge is SOLID rather than that rule's 34%, because a 34% amber
+   hairline holds up on the row's white card and disappears over a map base. */
+.map-pin.nextstop .pin-b {
+  box-shadow:
+    0 0 0 2.5px var(--amber),
+    0 0 0 5.5px rgba(233, 166, 60, 0.22),
+    0 2px 5px rgba(22, 35, 61, 0.34);
+}
+/* The shipped `.map-tag.next` is not a filled amber pill — it is `--amber-deep` bold
+   text on the row's own surface. The pin's tag keeps that exactly and only adds the
+   card ground it needs to stay legible over the canvas, so amber is still ink here,
+   never a fill (ADR-0028 / ADR-0105 "amber is an accent, not a ground"). */
+.map-pin .pin-tag {
+  position: absolute;
+  top: -19px;
+  inset-inline-start: 50%;
+  transform: translateX(50%);
+  background: var(--card);
+  color: var(--amber-deep);
+  border: 1px solid rgba(233, 166, 60, 0.34);
+  font-size: 9.5px;
+  font-weight: 700;
+  padding: 2px 7px;
+  border-radius: 999px;
+  white-space: nowrap;
+  box-shadow: 0 1px 3px rgba(22, 35, 61, 0.2);
+}
+
+/* Selection stays an `outline` so it COMPOSES with the amber `box-shadow` above
+   rather than replacing it — a pin can be both the next stop and the one you just
+   tapped. Distinct from amber on purpose: selecting a row is not a claim about what
+   is next. The offset clears the amber ring in that case. */
+.map-pin.selected .pin-b {
+  outline: 2px solid var(--ink);
+  outline-offset: 2px;
+}
+.map-pin.nextstop.selected .pin-b {
+  outline-offset: 6px;
+}
+
+/* "You are here" — the OS-map convention blue, deliberately outside the
+   amber/teal/violet budget (design-language's Map entry, ADR-0109 §3). */
+.map-me {
+  display: block;
+  width: 14px;
+  height: 14px;
+  border-radius: 999px;
+  background: var(--me);
+  border: 2.5px solid var(--card);
+  box-shadow: 0 0 0 7px color-mix(in srgb, var(--me) 16%, transparent);
+}
+
+/* ── OUR CONTROLS, NOT GOOGLE'S (§12) ──────────────────────────────────────────
+   `disableDefaultUI`, then add back only what we need: Google's controls are
+   un-styleable, unlabelled and RTL-unaware. Zoom is the pinch; this is the one
+   control we add, and it is also the escape hatch from "a manual pan wins until the
+   next scope change" (§7). Unlabelled is deliberate — a single universally
+   recognised map control, not the pair of confusable glyphs ADR-0109 §1 rejected —
+   and it carries an `aria-label`. */
+.map-recenter {
+  position: absolute;
+  top: 8px;
+  inset-inline-start: 8px;
+  width: 38px;
+  height: 38px;
+  display: grid;
+  place-items: center;
+  background: var(--card);
+  border: 1px solid var(--line);
+  border-radius: 999px;
+  color: var(--ink);
+  padding: 0;
+  cursor: pointer;
+  box-shadow: 0 2px 6px rgba(22, 35, 61, 0.16);
+}
+.map-recenter .icon {
+  width: 20px;
+  height: 20px;
+}
+
+/* THE AREA COUNT (§9). ADR-0106 §4 decided pan/zoom IS the area filter and no chip
+   is ever built — but nothing on screen said so, which made the decision invisible.
+   This says it. Top-inline-END: opposite the re-centre control, and nowhere near
+   Google's bottom-left attribution. Updated on the map's `idle` event, never per pan
+   frame. It counts every pin on the canvas, ghosts included: a SPATIAL readout, not
+   a facet count — and the wording carries that, `באזור` being about the area. */
+.map-areacount {
+  position: absolute;
+  top: 8px;
+  inset-inline-end: 8px;
+  background: color-mix(in srgb, var(--card) 88%, transparent);
+  border: 1px solid var(--line);
+  border-radius: 999px;
+  padding: 5px 10px;
+  font-size: 11.5px;
+  font-weight: 600;
+  color: var(--muted);
+  box-shadow: 0 1px 3px rgba(22, 35, 61, 0.14);
+  white-space: nowrap;
+}
+.map-areacount b {
+  color: var(--ink);
+  font-family: var(--font-mono);
+}

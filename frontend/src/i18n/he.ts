@@ -54,6 +54,12 @@ export const t = {
     filter: {
       all: 'הכל',
       maybes: 'אולי',
+      // The outcome filter ADR-0117 deferred, scoped by ADR-0121 §9 to ONE
+      // toggle in the `אולי` chip's idiom: the question on the ground is not
+      // "where have we been" (the list already answers that, by block and by
+      // per-row tag) but "what's left". It hides everything settled, visited and
+      // skipped alike, on the canvas and in the list.
+      left: 'מה נשאר',
       categoryLabel: 'סינון לפי קטגוריה',
       noResultsTitle: 'אין מקומות שמתאימים לסינון',
     },
@@ -143,11 +149,50 @@ export const t = {
       retry: 'נסו שוב',
       blockedHint: 'אפשרו מיקום בהגדרות הדפדפן',
       unavailableBanner: 'לא הצלחנו לאתר את המיקום · הרשימה ממוינת לפי לו״ז',
+      // The spatial "me" dot the near-me sort gains for free once a map is
+      // rendered (ADR-0109 §7 / ADR-0121 §7).
+      youAreHere: 'אתם כאן',
     },
     empty: {
       title: 'אין עדיין מקומות',
       body: 'מקומות שתוסיפו לאירועים, להזמנות ולמדף האולי יופיעו כאן.',
     },
+    // ── The embedded map (Phase 6, ADR-0121) ─────────────────────────────────
+    // The height axis: the handle drags a continuum, the toggle is a shortcut to
+    // its two extremes. One state, two controls, so they cannot disagree.
+    view: {
+      list: 'רשימה',
+      map: 'מפה',
+      toggleLabel: 'תצוגה',
+      grab: 'גרירה: הצצה, חצי, מלא',
+    },
+    // Pan/zoom IS the area filter (ADR-0106 §4) and no chip is ever built — this
+    // quiet readout is what finally says so on screen. Worded about the AREA,
+    // because unlike a facet count it reads the canvas: it counts every pin in
+    // view, including the ones no chip counts.
+    area: {
+      suffix: 'באזור',
+      none: 'אין מקומות באזור',
+    },
+    // The one control we add back after `disableDefaultUI` (ADR-0121 §12). It
+    // re-frames; it never asks for the location permission.
+    recentre: 'מרכז מחדש',
+    // A pin that is in view but not in this day (ADR-0121 §6). Its row is not in
+    // the sheet, so tapping it is the only way to learn what it is: the tap
+    // surfaces that one row, named with the day it belongs to.
+    notThisDay: 'לא ביום הזה',
+    noDay: 'ללא יום',
+    // The way through from a place to the entity that put it in the trip
+    // (ADR-0121 §8). Labelled in the reference's own words, so the control says
+    // where it goes rather than a generic "details".
+    refs: {
+      booking: 'הזמנה',
+      event: 'אירוע',
+      idea: 'רעיון',
+    },
+    // The day's stops as one free Google directions link (ADR-0121 §10) — it
+    // ships with the connector, so Plan mode's day scope, and costs nothing.
+    dayRoute: 'מסלול היום בגוגל',
   },
   header: {
     dayOf: (day: number, total: number) => `יום ${day} מתוך ${total}`,

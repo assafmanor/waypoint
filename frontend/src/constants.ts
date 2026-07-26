@@ -1,6 +1,7 @@
 // App-wide tunables and non-copy literals. UI copy lives in i18n/; domain enum
 // values live in @waypoint/shared. Keep magic numbers/strings out of logic.
 import type { BookingType, DocumentType, EventCategory } from '@waypoint/shared';
+import type { SnapStop } from './lib/snap-sheet';
 
 export const MS_PER_DAY = 86_400_000;
 
@@ -206,6 +207,52 @@ export const CATEGORY_PIN_HUE = {
   services: 'services',
   other: 'leisure',
 } as const satisfies Record<EventCategory, PinHue>;
+
+/** The list sheet's three snap heights (ADR-0121 §5) — one axis, dragged by the
+ *  handle and shortcut by the `רשימה / מפה` toggle, so the two controls cannot
+ *  disagree. `peek` is a fixed height (a handle and a row or two should be the
+ *  same size on every phone); `half` is a fraction (it should not). */
+export const MAP_SHEET_VIEW = { peek: 'peek', half: 'half', full: 'full' } as const;
+export type MapSheetView = (typeof MAP_SHEET_VIEW)[keyof typeof MAP_SHEET_VIEW];
+/** Ordered low → high, which is also the toggle's two extremes plus the default. */
+export const MAP_SHEET_ORDER = [
+  MAP_SHEET_VIEW.peek,
+  MAP_SHEET_VIEW.half,
+  MAP_SHEET_VIEW.full,
+] as const;
+export const MAP_SHEET_STOPS = {
+  peek: { px: 116 },
+  half: { fraction: 0.56 },
+  full: { fraction: 1 },
+} as const satisfies Record<MapSheetView, SnapStop>;
+
+/** Camera zoom bounds (ADR-0121 §7). `SINGLE_PIN` is the neighbourhood zoom a
+ *  lone pin centres at — `fitBounds` on a zero-area extent snaps to building
+ *  level. `MAX_FIT` caps a fitted set, which covers near-coincident pins with the
+ *  same rule rather than a second special case. `WORLD` is only the pre-fit
+ *  default: a map must be constructed with some camera, and the first fit
+ *  replaces it. */
+export const MAP_ZOOM = { SINGLE_PIN: 15, MAX_FIT: 16, WORLD: 2 } as const;
+/** Inset for a fit, in px. Bigger at the top because the teardrop's TIP is the
+ *  anchor — its body and any tag extend *above* the coordinate, so without this
+ *  the topmost pin of a fitted set draws half off-canvas (ADR-0121 §7). */
+export const MAP_FIT_PADDING = { top: 64, right: 28, bottom: 28, left: 28 } as const;
+
+/** The day connector (ADR-0121 §10): dashed, so it says "this is the order" rather
+ *  than claiming to be the route, and NEUTRAL, because it belongs to the quiet base
+ *  and not the loud figure (ADR-0106 §C) — which leaves solid + amber unspent for a
+ *  real Routes polyline later.
+ *
+ *  `COLOR` duplicates `--soft-line`'s light-theme value, the same concession
+ *  `LIST_MOVE_EASING` makes for the Web Animations API: the Maps JS API takes a
+ *  colour value, not a CSS variable. Keep the two in step. The Maps API has no
+ *  dash array either, so a dash is a repeating symbol along a transparent stroke. */
+export const MAP_CONNECTOR = {
+  COLOR: 'rgba(22, 35, 61, 0.28)',
+  WEIGHT: 2.5,
+  DASH_SCALE: 3,
+  DASH_REPEAT: '13px',
+} as const;
 
 /** Per-row reveal stagger for **every** filtered/searched list (ADR-0120,
  *  generalizing ADR-0098 §4 motion): a chip/search change reveals newly-matching

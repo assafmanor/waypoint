@@ -1,6 +1,6 @@
 # 0121 — Phase-6 embedded map: the reconfirmed API surface, `@vis.gl/react-google-maps`, the map↔list shell, and one map load per visit
 
-**Status:** Accepted (design + the FE/BE shape for Phase 6; no feature code — this is the frame the build fills in)
+**Status:** Accepted — **built 2026-07-26 (session 133)**; see the [Build log](#build-log-2026-07-26-session-133) for the four places the build refined this design and the one it read against the letter
 **Date:** 2026-07-26
 **Implements** [0106](0106-maps-and-places-epic-scope-and-phasing.md) **Phase 6** and the design [ADR-0109](0109-map-tab-design.md) deferred to this session ("the _fully-rendered_ Phase 6 map — to its own build session … re-confirming current Maps/Places API + pricing first").
 **Refines:** [0109](0109-map-tab-design.md) (§3's pin grammar gets its map form; §10's shell becomes concrete; §6's amber ring lands on a pin; §1's row tap changes destination), [0108](0108-maps-and-places-backend-architecture-key-model-and-cost.md) (§4's cost envelope re-costed; its Routes tier table corrected), [0106](0106-maps-and-places-epic-scope-and-phasing.md) §4/§B/§D/§E, [0117](0117-map-place-outcome-states.md) (its deferred outcome filter is scoped here), [0119](0119-map-maybes-facet-is-the-shelf.md) (the ghost tier is its deliberate inverse), [0120](0120-filter-reveal-is-shared-infrastructure.md) (the map's answer to "every list change moves"), [0078](0078-feedback-state-family.md) (the layout layer gains a full-bleed body modifier), [0090](0090-back-is-computed-from-nav-state.md)/[0103](0103-back-navigation-typed-layer-model.md) (why the sheet is _not_ a back layer), [0028](0028-plan-violet-color-budget-dark-ready.md) (the colour budget on a rendered canvas), [0096](0096-per-domain-claude-md-guides.md) (reuse before adding)
@@ -250,6 +250,71 @@ Until the key exists the build can be written and unit-tested but not viewed. `D
 - **A greyed, watermarked map frame when offline.** Rejected: a third grammar for a fact this tab already states two ways.
 - **Build the dark map style now and swap it live.** Rejected: dark mode is inert app-wide; a swap nobody can see is untestable.
 - **Ship paid Routes ETAs in this phase.** Rejected as sequencing, not direction (§14).
+
+## Build log (2026-07-26, session 133)
+
+The design above is what shipped; §1–§14 needed no reversal. What the build had to
+decide, refine or read against the letter, recorded here rather than in a new ADR
+because none of it changes a decision this one made.
+
+1. **The settled check needed a fallback, or `מה נשאר` could not reach a ghost.**
+   §9 requires the toggle to apply to ghosts — "a place visited on Tuesday must not
+   sit on the canvas while you ask what is left" — but a ghost by definition has **no
+   day in the scope being asked about**, so a strictly day-scoped `settled` read
+   returned "unsettled" and left it pinned. `isPlaceSettled(usage, onDate)` therefore
+   falls back to **all** the place's days when it has none on `onDate`. In the list
+   that branch is unreachable (the day predicate already hid the row), so this is
+   precisely the ghost case and nothing else. Caught by writing the test §9 asks for.
+2. **`ghost` wins over the next-stop cue**, not the other way round. Both can be true
+   at once: in day scope, once today's stops are settled, `nextDestination` resolves
+   to tomorrow's place — which is out of scope. Giving it the single amber outline
+   would have it claim a prominence its (absent) row cannot back up, so the tier
+   ladder is evaluated ghost-first and the cue is suppressed there.
+3. **The next stop and selection are cues, not tiers.** §6's table lists "the next
+   stop" as a population, but its row reads "full category pin **+** the amber cue +
+   number" — i.e. `upcoming` plus a cue. Modelled that way (`tier` + two independent
+   booleans), which is also what makes §6's "selection stays a separate `outline` so
+   the two compose" expressible at all.
+4. **"View on Google Maps" is retired all the way.** §8 says `mapsPlaceUrl` "keeps a
+   narrowed job and drops its `TODO(phase-3)`". Once every surface focuses our own
+   map, that narrowed job turns out to be **zero call sites** — the surviving research
+   case goes through `mapsPredictionUrl`, which builds its URL from the shared
+   `mapsSearchUrl` and never touched `mapsPlaceUrl`. Keeping it (and
+   `eventPlaceUrl`/`bookingPlaceUrl`) would be three dead exports, so all three were
+   removed with their call sites. `EventCard`/`BookingDetail` now resolve
+   `eventMapPlace`/`bookingMapPlace`, which return a **`Place`** rather than a URL —
+   the honest shape, since the destination is a tab and a selection.
+5. **The shelf's drag does not extract, and §5 predicted why.** `useHoldToDrag`
+   deliberately avoids pointer capture and listens on the **window**, because its
+   dragged element can unmount mid-gesture (dwelling on the day strip switches the
+   day); and it is **hold-gated**, because a shelf card is simultaneously a tap target
+   and a piece of a scrolling strip. A drag handle wants none of that — nothing to
+   arbitrate, nothing to scroll, and it stays mounted — so `lib/useSnapDrag.ts` is the
+   small dedicated hook §5's escape hatch allows, and pointer capture is right there.
+   One thing **did** generalize: the jsdom `PointerEvent` shim that test had the only
+   copy of now lives in `src/test/pointer-events.ts` and serves both (rule 8).
+6. **A leaf must not throw for want of a tab-navigation context.** `useShowPlaceOnMap`
+   returns `null` outside the trip shell rather than throwing, so `BookingDetail`
+   (rendered from the Index, and from any test harness) drops the `מפה` affordance
+   instead of crashing — the same "absent, not broken" rule the map half itself runs.
+7. **The map is absent, so the tab is not full-bleed either.** §11 says offline the tab
+   "is the list it is today"; the build takes that literally — with no config or no
+   connectivity there is no split, no sheet and no `.body.is-fullbleed`, just the
+   shipped scrolling list. One shared `mapPaneAvailable()` answers the question for
+   both the screen and the shell, so they cannot disagree.
+8. **Two token/constant duplications were accepted, each with precedent.**
+   `MAP_CONNECTOR.COLOR` restates `--soft-line`'s value because the Maps JS API takes
+   a colour, not a CSS variable — the same concession `LIST_MOVE_EASING` already makes
+   for the Web Animations API. And `--me` was added to `tokens.css` (light + dark) as
+   the OS-map convention blue §7 places outside the colour budget.
+9. **"Animated" fit is Google's, and Google has none.** §7 asks for an animated fit.
+   `Map.fitBounds` changes zoom and centre without easing and the API offers no
+   animated equivalent, so a **fit is a jump** and a **focus pans** (`panTo`, or
+   `setCenter` under `prefers-reduced-motion`). Stated rather than papered over.
+10. **The render is still unverified**, exactly as §13 said it would be. The suite
+    covers the pure functions with no Google present, the pin markup with the binding
+    stubbed, and the shell with the pane stubbed — 1,199 tests green. Nothing about how
+    the canvas **looks** has been seen; that is the human pass on the backlog line.
 
 ## Revision log (2026-07-26, within the design session)
 

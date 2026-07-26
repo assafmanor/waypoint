@@ -3307,6 +3307,9 @@
   border-radius: 999px;
   padding: 3px 11px;
   text-decoration: none;
+  /* `מפה` is a <button> since Phase 6 (its destination is our own tab, not a URL),
+     while `ניווט` stays an <a> out to Google — one appearance, two elements. */
+  cursor: pointer;
 }
 .bk-loc-link:hover {
   background: color-mix(in srgb, var(--teal) 10%, transparent);

@@ -11,12 +11,12 @@ import {
 } from '@waypoint/shared';
 import {
   bookingDirectionsUrl,
-  bookingPlaceUrl,
+  bookingMapPlace,
   eventDirectionsUrl,
   eventDisplayZones,
   eventDurationLabel,
   eventEdgeZone,
-  eventPlaceUrl,
+  eventMapPlace,
   eventRoute,
   eventZones,
   bookingEndZones,
@@ -29,7 +29,7 @@ import {
   liveZone,
   liveZoneContext,
   mapsDirectionsUrl,
-  mapsPlaceUrl,
+  mapsDayRouteUrl,
   nextDestination,
   referencedPlaceIds,
   segmentZoneAt,
@@ -154,10 +154,28 @@ describe('Google Maps deep-links (Phase 2: no coordinates → no link)', () => {
     );
   });
 
-  it('mapsPlaceUrl builds a search link with the place id when coords exist', () => {
-    expect(mapsPlaceUrl(withCoords)).toBe(
-      'https://www.google.com/maps/search/?api=1&query=35.6764%2C139.65&query_place_id=g-x',
-    );
+  // The whole day as one free directions deep-link, which ships with the day
+  // connector that draws the same order (ADR-0121 §10). Origin → waypoints →
+  // destination, in exactly that sequence, so a paid-Routes follow-up can reuse it.
+  it('mapsDayRouteUrl carries the day’s stops as origin, waypoints and destination', () => {
+    expect(
+      mapsDayRouteUrl([
+        { lat: 1, lng: 2 },
+        { lat: 3, lng: 4 },
+        { lat: 5, lng: 6 },
+      ]),
+    ).toBe('https://www.google.com/maps/dir/?api=1&origin=1%2C2&destination=5%2C6&waypoints=3%2C4');
+  });
+
+  it('mapsDayRouteUrl omits waypoints for two stops, and is null under two', () => {
+    expect(
+      mapsDayRouteUrl([
+        { lat: 1, lng: 2 },
+        { lat: 3, lng: 4 },
+      ]),
+    ).toBe('https://www.google.com/maps/dir/?api=1&origin=1%2C2&destination=3%2C4');
+    expect(mapsDayRouteUrl([{ lat: 1, lng: 2 }])).toBeNull();
+    expect(mapsDayRouteUrl([])).toBeNull();
   });
 
   it('omits the place-id param when googlePlaceId is absent', () => {
@@ -169,7 +187,6 @@ describe('Google Maps deep-links (Phase 2: no coordinates → no link)', () => {
 
   it('returns null for a coordless place or undefined (no location, no button)', () => {
     expect(mapsDirectionsUrl(coordless)).toBeNull();
-    expect(mapsPlaceUrl(coordless)).toBeNull();
     expect(mapsDirectionsUrl(undefined)).toBeNull();
   });
 
@@ -198,17 +215,17 @@ describe('Google Maps deep-links (Phase 2: no coordinates → no link)', () => {
     expect(bookingDirectionsUrl(bk, [withCoords])).toBeNull();
   });
 
-  it('eventPlaceUrl / bookingPlaceUrl build the view (search) link, null when coordless', () => {
+  // `מפה` resolves to a PLACE, not a URL: since Phase 6 its destination is our own
+  // map focused on that place, never Google's place view (ADR-0121 §8). Same
+  // authority rule and the same no-coords → no-affordance rule as directions.
+  it('eventMapPlace / bookingMapPlace resolve the place to focus, undefined when coordless', () => {
     const bk = booking({ id: 'bk', type: BOOKING_TYPE.HOTEL, placeId: 'pl-x' });
-    expect(eventPlaceUrl(event({ placeId: 'pl-x' }), [], [withCoords])).toContain(
-      '/search/?api=1&query=35.6764%2C139.65',
-    );
-    expect(bookingPlaceUrl(bk, [withCoords])).toContain('/search/?api=1&query=35.6764%2C139.65');
-    // The view peer follows the same no-coords → null rule as directions.
-    expect(eventPlaceUrl(event({ placeId: 'pl-y' }), [], [coordless])).toBeNull();
+    expect(eventMapPlace(event({ placeId: 'pl-x' }), [], [withCoords])?.id).toBe('pl-x');
+    expect(bookingMapPlace(bk, [withCoords])?.id).toBe('pl-x');
+    expect(eventMapPlace(event({ placeId: 'pl-y' }), [], [coordless])).toBeUndefined();
     expect(
-      bookingPlaceUrl(booking({ id: 'b', type: BOOKING_TYPE.HOTEL }), [withCoords]),
-    ).toBeNull();
+      bookingMapPlace(booking({ id: 'b', type: BOOKING_TYPE.HOTEL }), [withCoords]),
+    ).toBeUndefined();
   });
 });
 

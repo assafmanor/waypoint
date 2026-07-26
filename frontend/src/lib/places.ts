@@ -584,13 +584,18 @@ export function eventDurationLabel(
 // "Place-lite" (coordless) has no usable location, so these return null and the
 // caller drops the affordance — "no location, no ניווט button".
 //
-// Two long-term fates (ADR-0109 amendment):
-//   • DIRECTIONS (`mapsDirectionsUrl`) stays a Google Maps deep-link forever —
-//     we never rebuild turn-by-turn navigation (ADR-0106 §F).
-//   • VIEW (`mapsPlaceUrl`) is INTERIM. Once the Map tab (Phase 3) / embedded
-//     map (Phase 6) ships, "מפה"/view should focus OUR in-app map on the place
-//     instead of leaving to Google. TODO(phase-3): route the view action to the
-//     Map tab; this Google deep-link is the stopgap until that surface exists.
+// **DIRECTIONS stays Google's forever** (ADR-0106 §F — we never rebuild
+// turn-by-turn navigation), and with the rendered map shipped it is the ONE Google
+// action a row keeps: `נווט`, a real button, so going to Google is always an
+// explicit act.
+//
+// **VIEW went the other way.** Phase 2's `mapsPlaceUrl` deep-linked out only
+// "because we have no map surface yet" (ADR-0109's 2026-07-24 amendment); Phase 6
+// ended that, so viewing a place is now selecting it on OUR map and the Google
+// place view is retired rather than relocated (ADR-0121 §8). Its last user was a
+// *prediction*, which has no coordinates and nothing of ours to focus — that is
+// `mapsPredictionUrl` below, on the shared search builder. This is where the
+// long-standing `TODO(phase-3)` closed.
 const GOOGLE_MAPS = 'https://www.google.com/maps';
 
 function hasCoords(place: Place | undefined): place is Place & { lat: number; lng: number } {
@@ -616,11 +621,23 @@ function mapsSearchUrl(query: string, googlePlaceId?: string): string {
   return `${GOOGLE_MAPS}/search/?api=1&query=${encodeURIComponent(query)}${refine}`;
 }
 
-/** "View this place" deep-link (open in Maps), or null when it has no coordinates.
- *  INTERIM (TODO phase-3): becomes an in-app Map-tab focus once that surface exists. */
-export function mapsPlaceUrl(place: Place | undefined): string | null {
-  if (!hasCoords(place)) return null;
-  return mapsSearchUrl(`${place.lat},${place.lng}`, place.googlePlaceId);
+/** The day's stops as one free Google directions link (ADR-0121 §10) — it ships
+ *  with the connector that draws the same order, and costs nothing: a universal
+ *  Maps URL, no API call and no key. Null under two stops, where there is no route
+ *  to hand over. Google's cheap Routes tier caps at 10 intermediate waypoints
+ *  (ADR-0121 §1); this is the free deep-link, so no cap applies to it, but the
+ *  URL is built origin → waypoints → destination in exactly that order so a paid
+ *  Routes follow-up can reuse the same sequence. */
+export function mapsDayRouteUrl(stops: readonly { lat: number; lng: number }[]): string | null {
+  if (stops.length < 2) return null;
+  const at = (stop: { lat: number; lng: number }) => `${stop.lat},${stop.lng}`;
+  const origin = encodeURIComponent(at(stops[0]));
+  const destination = encodeURIComponent(at(stops[stops.length - 1]));
+  const middle = stops.slice(1, -1);
+  const waypoints = middle.length
+    ? `&waypoints=${encodeURIComponent(middle.map(at).join('|'))}`
+    : '';
+  return `${GOOGLE_MAPS}/dir/?api=1&origin=${origin}&destination=${destination}${waypoints}`;
 }
 
 /** "View this candidate" for a Google search result, which carries a name and a
@@ -647,21 +664,27 @@ export function bookingDirectionsUrl(booking: Booking, places: Place[]): string 
   return mapsDirectionsUrl(places.find((p) => p.id === bookingPlaceId(booking)));
 }
 
-/** "View on map" link for an event's resolved place, or null when it has no place
- *  or a coordless one. The peer of {@link eventDirectionsUrl}: navigate vs. view. */
-export function eventPlaceUrl(
+/** The place an event's `מפה` action shows on OUR map, or null when there is
+ *  nothing to focus — no place, or a coordless Place-lite with no position. The
+ *  peer of {@link eventDirectionsUrl}: view here vs. navigate there. It returns
+ *  the PLACE rather than a URL, because the destination is now a tab and a
+ *  selection, not a link (ADR-0121 §8) — which is what retired the old
+ *  `eventPlaceUrl`/`bookingPlaceUrl` pair along with `mapsPlaceUrl` itself. */
+export function eventMapPlace(
   event: TripEvent,
   bookings: Booking[],
   places: Place[],
-): string | null {
+): Place | undefined {
   const booking = event.bookingId ? bookings.find((b) => b.id === event.bookingId) : undefined;
-  return mapsPlaceUrl(places.find((p) => p.id === eventPlaceId(event, booking)));
+  const place = places.find((p) => p.id === eventPlaceId(event, booking));
+  return hasCoords(place) ? place : undefined;
 }
 
-/** "View on map" link for a booking's resolved place, or null when it has no place
- *  or a coordless one. The peer of {@link bookingDirectionsUrl}. */
-export function bookingPlaceUrl(booking: Booking, places: Place[]): string | null {
-  return mapsPlaceUrl(places.find((p) => p.id === bookingPlaceId(booking)));
+/** The place a booking's `מפה` action shows on our map, or undefined when it has
+ *  none (or a coordless one). The peer of {@link bookingDirectionsUrl}. */
+export function bookingMapPlace(booking: Booking, places: Place[]): Place | undefined {
+  const place = places.find((p) => p.id === bookingPlaceId(booking));
+  return hasCoords(place) ? place : undefined;
 }
 
 /** Where you have to get to next, and the event that puts you there. */

@@ -2,7 +2,7 @@
 // Importing the co-located CSS here loads it exactly once for every consumer.
 import './layout.css';
 
-export { AppShell, type AppShellProps } from './AppShell';
+export { AppShell, BODY_FULLBLEED, type AppShellProps } from './AppShell';
 export { Screen, type ScreenProps } from './Screen';
 export { Section, type SectionProps } from './Section';
 export { Stack, Inline } from './Stack';
