@@ -95,19 +95,80 @@ Setting `GOOGLE_MAPS_SERVER_KEY` today does nothing until the Phase-1 proxy code
 
 #### Phase 6 (embedded map) — the remaining gate
 
-Phases 1–5 have shipped and need none of this; per ADR-0108 there is **no browser-side Google key at all until Phase 6**. The Phase-6 design is now done ([ADR-0121](../decisions/0121-embedded-map-phase-6-design.md)), so these four boxes are the only thing between the build and a map anyone can see. Items 1–4 are needed for the map; **Routes is a later, paid enhancement** and can be left off entirely until it is picked up.
+Phases 1–5 have shipped and need none of this; per ADR-0108 there is **no browser-side Google key at all until Phase 6**. The Phase-6 design is now done ([ADR-0121](../decisions/0121-embedded-map-phase-6-design.md)), so this section is the only thing between the build and a map anyone can see. **Routes is a later, paid enhancement** and stays off entirely until it is picked up (step 7).
 
-- [ ] ⏸️ 👤 **1. Enable Maps JavaScript API** (the Dynamic Maps SKU). _(Enable **Routes API** only when paid live-ETA routes are picked up — ADR-0121 §7 keeps it out of this phase.)_
-- [ ] ⏸️ 👤 **2. Create a Map ID + attach a cloud map style.** Google Maps Platform → **Map management** → create a Map ID with **Map type: JavaScript** and **Vector**; then Map Styles → create the **day** style (desaturated cool-paper base matching `--screen`, POI clutter dropped, no colour flood — ADR-0106 §C) and associate it with that Map ID. Mint a **second** Map ID + night style for dark mode (inert until `data-theme="dark"` ships — ADR-0121 §9). **New step, and mandatory:** as of the 2026-07-26 reconfirmation a `mapId` is required for `AdvancedMarkerElement` — advanced markers do not load without one, so this is not optional styling. `DEMO_MAP_ID` works for local development and is not a substitute for the real style. Styling itself costs nothing.
-- [ ] ⏸️ 👤 **3. Create the browser key (`VITE_GOOGLE_MAPS_BROWSER_KEY`)** — _API restrictions_ → **Maps JavaScript API only**; _Application restrictions_ → **HTTP referrers**, locked to the production origin (single-origin, ADR-0020/0031). A frontend **build-time** var (deployment.md); its blast radius on leak is map loads only.
-- [ ] ⏸️ 👤 **4. Add the per-SKU daily quota cap** for **Dynamic Maps** (the same hard gate as the near-term Place Details cap) and confirm the existing budget alert covers the new SKU. Dynamic Maps bills **per map instantiation** (~$7/1,000, 10,000/month free), which is what the cap bounds. _(Add a **Routes** cap alongside it if and when Routes is enabled.)_
-- [ ] ⏸️ 👤 **Add Routes API** to the existing `GOOGLE_MAPS_SERVER_KEY`'s API restrictions — **only** with the paid-Routes work (Routes is proxied through the same server key; ADR-0108 §4).
+Same project as everything else — confirm the Console's project picker shows **waypoint** on every page below before clicking anything. Owner/Editor needed (Map IDs and styles require it). Budget ~20 minutes.
+
+**Do the steps in this order.** The quota cap (step 2) comes _before_ the key (step 5) on purpose: a public browser key that exists before its SKU is capped is an uncapped public key, and the cap is the thing that bounds a forged-referrer abuse (ADR-0108 §6).
+
+**1. Enable the Maps JavaScript API** — the Dynamic Maps SKU, and the only new API this phase needs.
+
+- [ ] ⏸️ 👤 APIs & Services → **Library** (`https://console.cloud.google.com/apis/library`) → search **"Maps JavaScript API"** → open it → **Enable**.
+- [ ] ⏸️ 👤 Verify at **Enabled APIs & services** (`https://console.cloud.google.com/apis/dashboard`) that _Maps JavaScript API_ is listed alongside _Places API (New)_.
+- Leave **Routes API** disabled (step 7). Enabling costs nothing, but keeping it off keeps the browser key's reachable surface provably one SKU.
+
+**2. Cap the Dynamic Maps daily quota, and re-check the budget alert** (ADR-0108 §6 — a hard gate, not a nicety). Dynamic Maps bills **per map instantiation** (~$7/1,000, 10,000/month free), so the daily cap is what converts "a leaked key" into "a known maximum".
+
+- [ ] ⏸️ 👤 Google Maps Platform → **Quotas** (`https://console.cloud.google.com/google/maps-apis/quotas`) → pick **Maps JavaScript API** in the API selector → the **Requests** tab.
+- [ ] ⏸️ 👤 Find the **`Map loads per day`** metric → edit it (pencil / ⋮ at the row's end) → untick **Unlimited** → enter the ceiling → **Save**. Quotas reset at **midnight Pacific**, and an edit can take a few minutes to apply.
+- [ ] ⏸️ 👤 **Suggested ceiling: 300/day.** The arithmetic, so the number is a decision and not a guess: real use is ~100 loads/day (5 travellers × ~20 tab opens, ADR-0121 §4), and 300/day × 30 days = 9,000/month — still **inside** the 10,000/month free tier even if the cap is pinned every single day. So the worst case a leak can reach is a bill of roughly zero. Raise it only with a reason.
+- [ ] ⏸️ 👤 Leave the per-minute quotas at Google's defaults (30,000/min per project, 300/min per IP). They are not the money lever; the daily cap is.
+- [ ] ⏸️ 👤 Billing → **Budgets & alerts** → open the existing budget and confirm its **scope covers the new SKU**. If it was scoped to specific services (Places API only) rather than the whole project, add **Maps JavaScript API** — a project-wide budget needs no change. This is the "confirm the budget alert covers the new SKU" box, and it is easy to tick without looking.
+
+**3. Create the Map IDs** — `mapId` is **mandatory**, not optional styling: `AdvancedMarkerElement` does not load without one (ADR-0121 §1, reconfirmed 2026-07-26), and `google.maps.Marker` has been deprecated since 2024-02-21.
+
+- [ ] ⏸️ 👤 Google Maps Platform → **Map management** (`https://console.cloud.google.com/google/maps-apis/studio/maps`) → **Create map ID**.
+- [ ] ⏸️ 👤 Name it **`waypoint-day`** → **Map type: JavaScript** → **Vector** → Save. Leave tilt/rotation off (ADR-0121 §14 excludes 3D/tilt; the app sets camera options in code regardless).
+- [ ] ⏸️ 👤 Copy the generated **Map ID** value (a short opaque string, not the name) — it becomes `VITE_GOOGLE_MAPS_MAP_ID`.
+- [ ] ⏸️ 👤 Repeat for **`waypoint-night`** (same settings) → its value becomes `VITE_GOOGLE_MAPS_MAP_ID_DARK`. Inert until dark mode ships (ADR-0121 §11) — minting it now is what makes enabling dark mode a token flip instead of a Maps project task.
+
+**4. Create the two cloud styles and associate them.** Styling costs nothing. A Map ID with no style attached still renders and still carries advanced markers, so this step is what makes the map ours rather than Google-default.
+
+- [ ] ⏸️ 👤 Google Maps Platform → **Map styles** (`https://console.cloud.google.com/google/maps-apis/studio/styles`) → **Create style** → start from Google's base (or import JSON) → in the style editor: desaturate toward a **cool-paper base matching `--screen`**, drop **POI clutter**, no colour flood (ADR-0106 §C — the pins are the figure, the base is quiet).
+- [ ] ⏸️ 👤 Save it as **`waypoint-day`** → **Associate map IDs** → tick the `waypoint-day` Map ID → Save.
+- [ ] ⏸️ 👤 Create the **night** style the same way and associate it with `waypoint-night`. Do not try to see it in the app — dark mode is inert app-wide (ADR-0121 §11).
+- [ ] ⏸️ 👤 Note the propagation lag: a style edit or a new association can take **up to ~6 hours** to appear on a live map. Do not debug an unstyled map for the first few hours; check the association is saved and move on.
+
+**5. Create the browser key (`VITE_GOOGLE_MAPS_BROWSER_KEY`)** — public by necessity (it rides in the script URL and cannot be proxied, ADR-0108 §1), so every restriction below is load-bearing. **Restrict it immediately on creation**, before it is pasted anywhere.
+
+- [ ] ⏸️ 👤 APIs & Services → **Credentials** (`https://console.cloud.google.com/apis/credentials`) → **Create credentials** → **API key** → in the dialog, **Edit API key** (do not just close it — an unrestricted browser key is the whole risk).
+- [ ] ⏸️ 👤 **Name it `waypoint-browser-maps-js`** so it is never confused with `GOOGLE_MAPS_SERVER_KEY` at a glance. Two keys with default names on one project is how the wrong one ends up in the wrong place.
+- [ ] ⏸️ 👤 **Application restrictions → Websites** (HTTP referrers) → **Add** one entry per deployed origin:
+  - `https://<production-domain>/*`
+  - `https://<staging-domain>/*` — **easy to miss**: single-origin (ADR-0020/0031) means one origin _per environment_, and staging is a separate domain (ADR-0104). Without this the map is blank on staging only.
+  - `http://localhost:5173/*` — the Vite dev origin, so local development uses the real style instead of `DEMO_MAP_ID`. Only `http://` and `https://` referrer schemes are supported; the installed PWA still sends its origin, so no extra entry is needed for standalone mode.
+- [ ] ⏸️ 👤 **API restrictions → Restrict key** → tick **Maps JavaScript API** and **nothing else**. Not Places, not Routes — that separation _is_ the split-key model (ADR-0108 §1), and it is what makes a scraped browser key worth ~$7/1,000 capped map loads instead of ~$20/1,000 Place Details.
+- [ ] ⏸️ 👤 **Save**, and allow up to ~5 minutes for restriction changes to take effect before concluding something is broken.
+
+**6. Store the three build vars** — all three are **build-time** frontend args baked into the client bundle (`deployment.md`), read via `import.meta.env` the way `lib/api.ts:55` reads `VITE_API_BASE_URL`. They deliberately do **not** go in `.env.example` (that file's own comment states the rule).
+
+- [ ] ⏸️ 👤 **Local:** put them in **`frontend/.env.local`**, not the repo-root `.env`. Vite's config sets no `envDir`, so it reads env files from the **`frontend/`** package — the root `.env` is the backend's and Vite never sees it. `frontend/.env.local` is already gitignored (`.env.*`, CLAUDE.md rule 7):
+
+  ```
+  VITE_GOOGLE_MAPS_BROWSER_KEY=...
+  VITE_GOOGLE_MAPS_MAP_ID=...
+  VITE_GOOGLE_MAPS_MAP_ID_DARK=...
+  ```
+
+- [ ] ⏸️ 👤 **Railway (production _and_ staging):** set all three as service variables so they are present **at build time** — Vite inlines them into the bundle, so a var added after the build does nothing until the next deploy. A rebuild is required, not a restart.
+- [ ] ⏸️ 👤 Record _what exists_ (not the values) in the password manager, as with the server key.
+- Absent or wrong, the Map tab **degrades to its list-only form** rather than crashing (ADR-0121 §2) — which also means a typo fails quietly. Step 7's verification is how you catch that.
+
+**7. Verify, and know the error strings.** No app code reads these vars yet (the Phase-6 build is unwritten), so the honest check today is a scratch page, not the app.
+
+- [ ] ⏸️ 👤 Confirm the key's own **Metrics** page shows traffic once the build ships: Google Maps Platform → **Metrics**, filtered to the browser key — Dynamic Maps loads appearing there is the end-to-end proof.
+- [ ] ⏸️ 👤 Optional pre-build smoke test: a throwaway local HTML file loading the JS API with the key + `VITE_GOOGLE_MAPS_MAP_ID` and one `AdvancedMarkerElement`, served over `http://localhost:5173` so the referrer entry applies. It **bills one map load** (~$0.007, inside the free tier). Keep it out of the repo — the scratchpad, not the working tree.
+- What the failures look like, so nobody debugs the wrong step: **`ApiNotActivatedMapError`** → step 1; **`RefererNotAllowedMapError`** → step 5's referrer list (check the exact scheme/port); **`InvalidKeyMapError`** → wrong or truncated key; **markers silently absent while the map renders** → a missing or invalid `mapId` (step 3), the failure mode `mapId`-is-mandatory produces; **a greyed "development purposes only" watermark** → billing not linked to the project; **an unstyled but working map** → step 4's association, or its ~6-hour propagation.
+
+**Later — Routes stays off until the paid work starts.**
+
+- [ ] ⏸️ 👤 Enable **Routes API**, add it to the existing `GOOGLE_MAPS_SERVER_KEY`'s API restrictions, and give it its own daily quota cap — **only** when the paid live-ETA work is picked up (Routes is proxied through the server key; ADR-0108 §4, ADR-0121 §14). Its Essentials tier caps at **10 intermediate waypoints** (ADR-0121 §1), which that work inherits.
 
 **Status after the near-term slice:** Places API enabled + billing/budget/quota set + `GOOGLE_MAPS_SERVER_KEY` minted and stored = Phase 1 (the picker) is fully unblocked. The Phase-6 browser key and map APIs wait until that phase by design.
 
 **Done 2026-07-23:** the near-term slice above is complete — Places API (New) enabled on the existing `waypoint` project, a billing budget alert + a per-day request quota cap set, and `GOOGLE_MAPS_SERVER_KEY` minted and stored in local `.env` + Railway. Phases 1–5 shipped on it.
 
-**Open 2026-07-26:** the four Phase-6 boxes above are the last human gate in the epic. Until item 3 the embedded map can be written and unit-tested but not seen; `DEMO_MAP_ID` covers local development only.
+**Open 2026-07-26:** the Phase-6 steps above are the last human gate in the epic — the same four things ADR-0121 names (enable Maps JS, a Map ID + cloud style, the referrer-locked browser key, the Dynamic Maps quota cap), written as a click-path with the storing and verification steps that were previously left implicit. Until they are done the embedded map can be written and unit-tested but not seen; `DEMO_MAP_ID` covers local development only.
 
 ## Secrets
 
