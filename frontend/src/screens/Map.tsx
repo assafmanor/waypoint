@@ -37,11 +37,11 @@ import {
   comparePlacesBySchedule,
   countPlacesByCategory,
   isOnShelf,
-  isPlaceSettled,
+  isPlaceLeft,
   matchesPlaceCategory,
   matchesPlaceFilter,
   placeBlock,
-  placeDay,
+  placeMetaDay,
   PLACE_CATEGORY_ALL,
   type PlaceCategoryFilter,
   type PlaceUsage,
@@ -324,6 +324,13 @@ export function MapView() {
   const inDayScope = (u: PlaceUsage) => allDays || u.days.some((d) => d.date === activeDate);
   const dayScoped = useMemo(() => allUsages.filter(inDayScope), [allUsages, allDays, activeDate]);
   const scopedDate = allDays ? undefined : activeDate;
+  // The scope + the clock, together: every question the tab asks of a place ("which
+  // day is this", "is it behind us", "what does its row say") is answered against the
+  // same three values, so they travel as one context rather than being re-assembled
+  // per call site. `today` is the trip-local date, which is what lets a whole passed
+  // day count as behind you even where nothing carries a clock.
+  const today = liveToday(nowMs, zoneEvidence);
+  const dayCtx = { onDate: scopedDate, nowMs, today };
 
   // ADR-0119's coupling rule, now on THREE axes: each facet's count is what the
   // OTHER facets leave visible, so no chip ever claims rows the list won't show.
@@ -331,17 +338,32 @@ export function MapView() {
   // written to fix, and drawing the mockup reproduced it within minutes of adding
   // the third axis. Each line below reads "narrowed by everything but me".
   const shelfOk = (u: PlaceUsage) => !maybesOnly || isOnShelf(u);
-  const leftOk = (u: PlaceUsage) => !leftOnly || !isPlaceSettled(u, scopedDate);
+  const leftOk = (u: PlaceUsage) => !leftOnly || isPlaceLeft(u, dayCtx);
   const countScope = useMemo(
     () => dayScoped.filter((u) => shelfOk(u) && leftOk(u)),
-    [dayScoped, maybesOnly, leftOnly, scopedDate],
+    [dayScoped, maybesOnly, leftOnly, scopedDate, nowMs, today],
   );
   const categoryCounts = useMemo(() => countPlacesByCategory(countScope), [countScope]);
   const hasMaybes = allUsages.some(isOnShelf);
-  // The chip appears only when the trip has something settled — the same derived-
-  // affordance rule the `אולי` chip follows (ADR-0050), which also makes it a no-op
-  // on a trip that hasn't started without needing a mode gate.
-  const hasSettled = allUsages.some((u) => u.days.some((d) => d.settled));
+  // The chip appears only when the trip has something BEHIND it — the same derived-
+  // affordance rule the `אולי` chip follows (ADR-0050), which also makes it a no-op on
+  // a trip that hasn't started without needing a mode gate. It used to gate on
+  // `settled`, which was the old predicate's own blind spot: on a trip where nobody
+  // taps היינו the chip never appeared, though there was a day of stops behind you it
+  // would have cleared (ADR-0124).
+  const hasBehind = allUsages.some((u) => !isPlaceLeft(u, dayCtx));
+  // A derived affordance can go away WHILE ITS FILTER IS ON — another member consumes
+  // the last idea, or un-settles the last event, and the snapshot arrives over the
+  // socket. The chip unmounts, the toggle stays true, and the strip then holds no
+  // control that can turn it off: an empty list with the summary still saying `אולי`
+  // and no way back. The type chip already has this guard (`activeCategory` falls back
+  // when its count empties); these are the same rule for the two toggles.
+  useEffect(() => {
+    if (!hasMaybes) setMaybesOnly(false);
+  }, [hasMaybes]);
+  useEffect(() => {
+    if (!hasBehind) setLeftOnly(false);
+  }, [hasBehind]);
   // Fall back to "all" if the picked type emptied out for the current day scope
   // (matches the Index), without mutating the stored selection.
   const activeCategory =
@@ -354,7 +376,7 @@ export function MapView() {
   // `אולי` state — including a coordless row, which has no pin. That is why it and
   // the canvas's `באזור` readout are worded differently: two different questions.
   const leftInScope = dayScoped.filter(
-    (u) => typeOk(u) && shelfOk(u) && !isPlaceSettled(u, scopedDate),
+    (u) => typeOk(u) && shelfOk(u) && isPlaceLeft(u, dayCtx),
   ).length;
 
   const typeOptions: Choice<PlaceCategoryFilter>[] = [
@@ -372,9 +394,8 @@ export function MapView() {
   // you, newest first. Within each, the day view's own start-then-sortOrder vocabulary,
   // so the two surfaces can't disagree about a day. In BOTH modes: a list that opens
   // on last Tuesday is wrong while you're planning too.
-  const today = liveToday(nowMs, zoneEvidence);
   const nameOf = (u: PlaceUsage) => placeById.get(u.placeId)?.name ?? '';
-  const orderCtx = { nameOf, onDate: scopedDate, nowMs, today };
+  const orderCtx = { nameOf, ...dayCtx };
   const bySchedule = (a: PlaceUsage, b: PlaceUsage) => comparePlacesBySchedule(a, b, orderCtx);
   // Which block each row is in — the list labels where each one starts rather than
   // reordering silently as the clock passes each stop. Read from the same derivation
@@ -395,11 +416,16 @@ export function MapView() {
   };
   const listOrder = distanceOrder ? byDistance : bySchedule;
 
-  const placeFilter = {
-    category: activeCategory,
-    maybesOnly,
-    unsettledOnly: leftOnly,
-    onDate: scopedDate,
+  const placeFilter = { category: activeCategory, maybesOnly, leftOnly, ...dayCtx };
+
+  // Whether any FACET is narrowing the list — the day scope is not one of them, and
+  // keeping them apart is the whole point of the empty state below: an empty day and
+  // an over-narrow filter are two different situations with two different ways out.
+  const facetsActive = activeCategory !== PLACE_CATEGORY_ALL || maybesOnly || leftOnly;
+  const clearFacets = () => {
+    setCategory(PLACE_CATEGORY_ALL);
+    setMaybesOnly(false);
+    setLeftOnly(false);
   };
 
   // Every control that changes this list is animated (ADR-0120 session-130), so
@@ -638,13 +664,27 @@ export function MapView() {
   const zoneCtx = useMemo(() => liveZoneContext(nowMs, zoneEvidence), [nowMs, zoneEvidence]);
   const eventById = useMemo(() => new Map(events.map((e) => [e.id, e])), [events]);
 
+  // A row rendered OUT of the day scope — a surfaced ghost, the canvas place card —
+  // reads in all-days grammar, so it drops the scope everywhere that scope is asked
+  // for: its day, its outcome, AND its references. Threading it into two of the three
+  // was the bug: a ghost's references are by definition on another day, so
+  // `refEntriesFor` filtered every one of them out and the way-in block §8 promised
+  // came back empty on exactly the rows that have no other way in.
+  const metaCtx = (opts: { forceDay?: boolean }) => ({
+    onDate: opts.forceDay ? undefined : scopedDate,
+    nowMs,
+    today,
+  });
+
   const dayMeta = (
     usage: PlaceUsage,
     opts: { forceDay?: boolean } = {},
   ): { day?: string; time?: string; what?: string; pencilled?: boolean } => {
-    const usageDay = placeDay(usage, opts.forceDay ? undefined : scopedDate);
-    // A strictly-middle stay night has no moment and nothing happens there — saying
-    // the hotel's own name back on the hotel's row would be pure repetition.
+    const usageDay = placeMetaDay(usage, metaCtx(opts));
+    // Day-scoped, a strictly-middle stay night has no moment and nothing happens there —
+    // saying the hotel's own name back on the hotel's row would be pure repetition.
+    // All-days, `placeMetaDay` has already moved to the stay's next edge, so this only
+    // fires for the scoped night it is meant to silence.
     if (!usageDay || usageDay.prominence === 'ambient') return {};
     // Which day only matters when the list spans several: day-scoped, the strip and
     // the scope hint already name it, so `היום ·` on every row would be pure noise.
@@ -684,59 +724,61 @@ export function MapView() {
   // one row is selected at a time. Each entry is labelled in the reference's own
   // words — a control that names its destination is worth more than a generic
   // "details", and that is what earns it a row.
-  const refEntriesFor = (usage: PlaceUsage): RefEntry[] =>
-    placeRefs(usage.placeId, { events, bookings, maybeItems }, { onDate: scopedDate }).flatMap(
-      (ref): RefEntry[] => {
-        const event = ref.eventId ? eventById.get(ref.eventId) : undefined;
-        const booking = ref.bookingId ? bookings.find((b) => b.id === ref.bookingId) : undefined;
-        const goToDay = (date: string) => {
-          const target = daySelectTarget(date, today, 'days');
-          navigate(target.to, { replace: target.replace });
-        };
-        if (ref.kind === PLACE_REF_KIND.idea) {
-          // The shelf, which both day surfaces render (Trip's day view and Plan's
-          // builder), so this needs no mode switch.
-          return [
-            {
-              key: ref.key,
-              kind: t.map.refs.idea,
-              label: [t.map.shelfTag, ref.date ? relativeDayLabel(ref.date, today) : t.map.noDay]
-                .filter(Boolean)
-                .join(` ${DOT_SEPARATOR} `),
-              onOpen: () => goToDay(ref.date ?? today),
-            },
-          ];
-        }
-        const title = event ? shortTitleText(event.title) : (booking?.title ?? '');
-        const edgeWord = event && ref.edge ? eventEdgeTransition(event, ref.edge) : undefined;
-        const label = [title, edgeWord].filter(Boolean).join(` ${DOT_SEPARATOR} `);
-        // A booking-linked reference is TWO destinations, not one: the booking holds
-        // the code, the notes and the documents; the event holds when it happens and
-        // what surrounds it. Returning early on the booking made the event branch
-        // unreachable for exactly the references most worth reaching — §8 promised
-        // one entry per in-scope reference, and a linked pair is two ways in, not a
-        // choice the screen gets to make. The booking leads: it is what a traveller
-        // standing at the place wants first.
-        const entries: RefEntry[] = [];
-        if (booking) {
-          entries.push({
-            key: `${ref.key}:${PLACE_REF_KIND.booking}`,
-            kind: t.map.refs.booking,
-            label,
-            onOpen: () => setDetailBooking(booking),
-          });
-        }
-        if (event) {
-          entries.push({
-            key: `${ref.key}:${PLACE_REF_KIND.event}`,
-            kind: t.map.refs.event,
-            label,
-            onOpen: () => goToDay(ref.date ?? event.date),
-          });
-        }
-        return entries;
-      },
-    );
+  const refEntriesFor = (usage: PlaceUsage, opts: { forceDay?: boolean } = {}): RefEntry[] =>
+    placeRefs(
+      usage.placeId,
+      { events, bookings, maybeItems },
+      { onDate: metaCtx(opts).onDate },
+    ).flatMap((ref): RefEntry[] => {
+      const event = ref.eventId ? eventById.get(ref.eventId) : undefined;
+      const booking = ref.bookingId ? bookings.find((b) => b.id === ref.bookingId) : undefined;
+      const goToDay = (date: string) => {
+        const target = daySelectTarget(date, today, 'days');
+        navigate(target.to, { replace: target.replace });
+      };
+      if (ref.kind === PLACE_REF_KIND.idea) {
+        // The shelf, which both day surfaces render (Trip's day view and Plan's
+        // builder), so this needs no mode switch.
+        return [
+          {
+            key: ref.key,
+            kind: t.map.refs.idea,
+            label: [t.map.shelfTag, ref.date ? relativeDayLabel(ref.date, today) : t.map.noDay]
+              .filter(Boolean)
+              .join(` ${DOT_SEPARATOR} `),
+            onOpen: () => goToDay(ref.date ?? today),
+          },
+        ];
+      }
+      const title = event ? shortTitleText(event.title) : (booking?.title ?? '');
+      const edgeWord = event && ref.edge ? eventEdgeTransition(event, ref.edge) : undefined;
+      const label = [title, edgeWord].filter(Boolean).join(` ${DOT_SEPARATOR} `);
+      // A booking-linked reference is TWO destinations, not one: the booking holds
+      // the code, the notes and the documents; the event holds when it happens and
+      // what surrounds it. Returning early on the booking made the event branch
+      // unreachable for exactly the references most worth reaching — §8 promised
+      // one entry per in-scope reference, and a linked pair is two ways in, not a
+      // choice the screen gets to make. The booking leads: it is what a traveller
+      // standing at the place wants first.
+      const entries: RefEntry[] = [];
+      if (booking) {
+        entries.push({
+          key: `${ref.key}:${PLACE_REF_KIND.booking}`,
+          kind: t.map.refs.booking,
+          label,
+          onOpen: () => setDetailBooking(booking),
+        });
+      }
+      if (event) {
+        entries.push({
+          key: `${ref.key}:${PLACE_REF_KIND.event}`,
+          kind: t.map.refs.event,
+          label,
+          onOpen: () => goToDay(ref.date ?? event.date),
+        });
+      }
+      return entries;
+    });
 
   const renderRow =
     (opts: { onSelect?: (placeId: string) => void; forceDay?: boolean }) => (usage: PlaceUsage) => {
@@ -749,7 +791,7 @@ export function MapView() {
       // What a human said happened here (ADR-0117 §1) — read off the same day the
       // meta line describes. A strictly-middle stay night reports nothing: nothing
       // happens there to have an outcome about.
-      const usageDay = placeDay(usage, opts.forceDay ? undefined : scopedDate);
+      const usageDay = placeMetaDay(usage, metaCtx(opts));
       const outcome = usageDay?.prominence === 'ambient' ? undefined : usageDay?.outcome;
       const selected = selectedId === usage.placeId;
       return (
@@ -770,7 +812,7 @@ export function MapView() {
           distanceStale={staleDistances}
           selected={selected}
           onSelect={opts.onSelect && (() => opts.onSelect!(usage.placeId))}
-          refs={selected ? refEntriesFor(usage) : undefined}
+          refs={selected ? refEntriesFor(usage, opts) : undefined}
           onEnrich={() => setEnrichTarget(place)}
         />
       );
@@ -892,7 +934,7 @@ export function MapView() {
             )}
             {/* The same idiom for the same shape of question — an independent toggle
                 beside `אולי`, not a third multi-value facet (ADR-0121 §9). */}
-            {hasSettled && (
+            {hasBehind && (
               <button
                 type="button"
                 className={'map-maybes' + (leftOnly ? ' on' : '')}
@@ -1032,11 +1074,33 @@ export function MapView() {
     </div>
   );
 
+  // An empty list has three causes and the tab used to name one of them. The common
+  // path is neither a filter nor an empty trip: the facets PERSIST across a day change
+  // (rightly — it is the same question asked of each day), so scrolling the strip with
+  // one on lands you here, and `אין מקומות שמתאימים לסינון` then blames the control you
+  // did not touch. Each case now says which one it is and hands back the step out of
+  // it, which is what `EmptyState`'s `action` is for (ADR-0078's "the app never
+  // dead-ends") — and the filtered case names the facets it is holding, since the strip
+  // may well be closed over them.
   const listBody =
     allUsages.length === 0 ? (
       <EmptyState icon="🗺️" title={t.map.empty.title} body={t.map.empty.body} />
     ) : listCount === 0 ? (
-      <EmptyState icon={ICONS.search} title={t.map.filter.noResultsTitle} />
+      facetsActive ? (
+        <EmptyState
+          icon={ICONS.search}
+          title={t.map.filter.noResultsTitle}
+          body={t.map.filter.noResultsBody(facetWords)}
+          action={{ label: t.map.filter.clear, onClick: clearFacets }}
+        />
+      ) : (
+        <EmptyState
+          icon="🗓️"
+          title={t.map.emptyDay.title}
+          body={t.map.emptyDay.body}
+          action={{ label: t.map.emptyDay.action, onClick: () => setAllDays(true) }}
+        />
+      )
     ) : (
       renderList(listRows, (id) => select(id, { fromRow: true }))
     );

@@ -171,6 +171,8 @@ _Open, deliberately:_ whether a **pin** tap should reveal the same entries on th
 
 ### 9. Two filter additions: `מה נשאר`, and a `באזור` count
 
+> **Amended 2026-07-27 ([ADR-0124](0124-map-filters-scope-facets-and-what-is-left.md) §2): `מה נשאר` is "somewhere you can still go", not "not settled".** The shape below is right — one independent toggle, in the `אולי` idiom, applying to ghosts, joining the count coupling — and every one of those points stands. The **predicate** was wrong: it hid only what a human had settled, and settling is a manual tap that ADR-0027 §1 and ADR-0018 both refuse to automate, so on a real trip almost nothing is settled, the filter hid almost nothing, and the payoff this section promises ("with the settled pins gone the remaining cluster is legible") never arrived. Two things close a place, not one — a human closing it **or the clock** — which is `isDayUsagePast`, already both and already checking `settled` first. So the rule is now: **it hides exactly what the list files under `מה שמאחורינו`**. Consequently the chip's gate is `hasBehind`, not "the trip has something settled" — the old gate never appeared on a trip where nobody taps `היינו`, though there was a morning behind you it would have cleared. Read ADR-0124 for the full model, including how the facets compose.
+
 **The outcome filter (ADR-0117's deferred item) is one toggle, not three chips.** The list already answers "where have we been" (the `מה שמאחורינו` block + per-row `היינו`/`דילגנו`), and a third multi-value facet would multiply the count-coupling surface ADR-0119 exists to repair. The question on the ground is "what's left":
 
 - **One independent `מה נשאר` toggle** in the `אולי` chip's idiom — same shape of control for the same shape of question.

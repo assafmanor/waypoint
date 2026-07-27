@@ -903,6 +903,96 @@ describe('the embedded map’s shell (ADR-0121)', () => {
       fireEvent.click(pin('museum')!);
       expect(screen.queryByText(t.map.notThisDay)).toBeNull();
     });
+
+    // A surfaced ghost row is SELECTED, so §8's way-in block should be on it — and it
+    // was the one row that never had one. `forceDay` reached the row's day and its
+    // outcome but not `refEntriesFor`, which stayed scoped to the strip's day; a
+    // ghost's references are by definition on another day, so every one of them was
+    // filtered out. The tap is the only way to learn what a ghost is, and it was
+    // answering "nothing".
+    it('a surfaced ghost carries its way in, on the day it actually belongs to', () => {
+      seed();
+      render(wrap(<MapView />));
+      fireEvent.click(pin('tomorrow')!);
+      const refs = row('tomorrow')!.querySelector('.map-refs');
+      expect(refs).toBeTruthy();
+      expect(refs!.querySelectorAll('.map-ref')).toHaveLength(1);
+      expect(refs!.textContent).toContain('e4 plan');
+    });
+  });
+
+  // The stay is the case that made this visible, but the rule is about ALL-DAYS scope:
+  // a place was read off `days[0]`, so one past day classified it however alive the
+  // trip still was with it. Session 137 took the fade off the ambient tier in day
+  // scope; all-days never reached that tier at all, so a mid-stay hotel kept it —
+  // `PIN_TIER.behind` renders through the `skipped` class (`saturate(.3)`), which is
+  // the same claim, harder.
+  describe('all-days reads a place by the day it is live on', () => {
+    const seedStay = () => {
+      tripPlaces = [place('hotel'), place('museum')];
+      tripEvents = [
+        event({
+          id: 'stay',
+          placeId: 'hotel',
+          category: 'lodging',
+          date: '2026-07-19',
+          endDate: '2026-07-22',
+          startsAt: '2026-07-19T15:00:00Z',
+          endsAt: '2026-07-22T10:00:00Z',
+        }),
+        event({
+          id: 'e1',
+          placeId: 'museum',
+          category: 'sightseeing',
+          startsAt: `${ACTIVE_DATE}T09:00:00Z`,
+        }),
+      ];
+    };
+
+    it('the stay you sleep in tonight is ambient, not behind you — in BOTH scopes', () => {
+      seedStay();
+      render(wrap(<MapView />));
+      expect(pin('hotel')?.dataset.tier).toBe('ambient');
+      fireEvent.click(listButton(t.map.allDays));
+      expect(pin('hotel')?.dataset.tier).toBe('ambient');
+    });
+
+    it('and all-days it names the check-out ahead, not the check-in behind', () => {
+      seedStay();
+      render(wrap(<MapView />));
+      fireEvent.click(listButton(t.map.allDays));
+      // Day-scoped an ambient night says nothing, and that is still the whole ambient
+      // distinction. All-days the row describes the place across the trip, so the
+      // useful fact is the edge it is heading for.
+      const meta = row('hotel')!.querySelector('.map-m')?.textContent ?? '';
+      expect(meta).toContain(t.glance.transition.checkOut);
+      expect(meta).not.toContain(t.glance.transition.checkIn);
+    });
+
+    it('a place visited earlier and booked again later is not filed as behind you', () => {
+      tripPlaces = [place('cafe')];
+      tripEvents = [
+        event({
+          id: 'was',
+          placeId: 'cafe',
+          date: '2026-07-19',
+          startsAt: '2026-07-19T10:00:00Z',
+          status: EVENT_STATUS.DONE,
+        }),
+        event({
+          id: 'will',
+          placeId: 'cafe',
+          date: NEXT_DAY,
+          startsAt: `${NEXT_DAY}T10:00:00Z`,
+        }),
+      ];
+      render(wrap(<MapView />));
+      fireEvent.click(listButton(t.map.allDays));
+      expect(pin('cafe')?.dataset.tier).toBe('upcoming');
+      // `מה נשאר` always answered this way (it asks about ALL a place's days); the
+      // row now agrees with it instead of tagging the café as visited.
+      expect(row('cafe')!.textContent).not.toContain(t.event.didThis);
+    });
   });
 
   describe('`מה נשאר`: one toggle, and ADR-0119 count coupling on three axes (§9)', () => {
@@ -965,15 +1055,69 @@ describe('the embedded map’s shell (ADR-0121)', () => {
       ];
     };
 
-    it('the chip appears only when the trip has something settled', () => {
-      seed();
+    // The gate moved with the predicate (ADR-0124). It used to ask "has anything been
+    // settled", which was the old rule's own blind spot: on a trip where nobody taps
+    // היינו the chip never appeared, though a whole morning was behind you that it
+    // would have cleared.
+    it('the chip appears once anything is behind you, settled or merely passed', () => {
+      // A day that has not started yet: nothing is behind you, so there is nothing to
+      // hide and no chip — the same derived-affordance rule `אולי` follows (ADR-0050).
+      tripPlaces = [place('dinner')];
+      tripEvents = [event({ id: 'e', placeId: 'dinner', startsAt: `${ACTIVE_DATE}T20:00:00Z` })];
       const view = render(wrap(<MapView />));
       openFacets();
       expect(screen.queryByRole('button', { name: new RegExp(t.map.filter.left) })).toBeNull();
       view.unmount();
-      seedSettled();
+
+      // Nobody settled anything here either — the clock alone earns the chip now.
+      // A second PLACE, not a second event on the same one: two references on one date
+      // merge to one day whose `until` is the latest of them, so the morning stop would
+      // have been kept alive by the evening one.
+      tripPlaces = [...tripPlaces, place('breakfast')];
+      tripEvents = [
+        ...tripEvents,
+        event({ id: 'e2', placeId: 'breakfast', startsAt: `${ACTIVE_DATE}T09:00:00Z` }),
+      ];
       render(wrap(<MapView />));
       expect(leftChip()).toBeTruthy();
+    });
+
+    // The correction, end to end on the screen: a stop the clock has passed and nobody
+    // closed used to survive `מה נשאר` — and since settling is a manual tap most stops
+    // never get, that was most of the trip.
+    it('hides a passed stop nobody settled, and keeps tonight’s', () => {
+      tripPlaces = [place('breakfast'), place('dinner')];
+      tripEvents = [
+        event({ id: 'e1', placeId: 'breakfast', startsAt: `${ACTIVE_DATE}T08:00:00Z` }),
+        event({ id: 'e2', placeId: 'dinner', startsAt: `${ACTIVE_DATE}T20:00:00Z` }),
+      ];
+      render(wrap(<MapView />));
+      fireEvent.click(leftChip());
+      const hidden = (name: string) =>
+        row(name)?.closest('.wp-reveal')?.classList.contains('hidden');
+      expect(hidden('breakfast')).toBe(true);
+      expect(hidden('dinner')).toBe(false);
+      expect(pinIds()).toEqual(['dinner']);
+    });
+
+    // The other half, which the owner asked for explicitly: ahead of you on the clock,
+    // but a human closed it. `settled` outranks the clock (ADR-0117 §2), so it goes now
+    // rather than at 20:00.
+    it('hides a stop still AHEAD of you that was marked היינו', () => {
+      tripPlaces = [place('dinner'), place('drinks')];
+      tripEvents = [
+        event({
+          id: 'e1',
+          placeId: 'dinner',
+          startsAt: `${ACTIVE_DATE}T20:00:00Z`,
+          status: EVENT_STATUS.DONE,
+        }),
+        event({ id: 'e2', placeId: 'drinks', startsAt: `${ACTIVE_DATE}T22:00:00Z` }),
+      ];
+      render(wrap(<MapView />));
+      fireEvent.click(leftChip());
+      expect(row('dinner')!.closest('.wp-reveal')!.classList.contains('hidden')).toBe(true);
+      expect(pinIds()).toEqual(['drinks']);
     });
 
     // A count that overstates is the exact defect ADR-0119 was written to fix.
@@ -1046,6 +1190,83 @@ describe('the embedded map’s shell (ADR-0121)', () => {
       expect(pin('other-day')?.dataset.tier).toBe('ghost');
       fireEvent.click(leftChip());
       expect(pin('other-day')).toBeNull();
+    });
+
+    // Both toggles are DERIVED affordances, so the snapshot can take the chip away
+    // while the filter it drives is still on — another member consumes the last idea
+    // or un-settles the last event, and the socket delivers it. The strip then holds
+    // no control that can turn the filter off: an empty list, the summary still
+    // naming the facet, and no way back. The type chip has always had this guard
+    // (`activeCategory` falls back when its count empties); the toggles now do too.
+    it('a toggle whose chip goes away turns itself off rather than filtering invisibly', () => {
+      tripPlaces = [place('been'), place('dinner')];
+      tripEvents = [
+        event({
+          id: 'e1',
+          placeId: 'been',
+          startsAt: `${ACTIVE_DATE}T20:00:00Z`,
+          status: EVENT_STATUS.DONE,
+        }),
+        event({ id: 'e2', placeId: 'dinner', startsAt: `${ACTIVE_DATE}T21:00:00Z` }),
+      ];
+      const view = render(wrap(<MapView />));
+      fireEvent.click(leftChip());
+      expect(row('been')!.closest('.wp-reveal')!.classList.contains('hidden')).toBe(true);
+      // The only thing behind you gets un-settled from another surface, and the
+      // snapshot arrives: nothing is behind you now, so the chip is gone.
+      tripEvents = tripEvents.map((e) => ({ ...e, status: EVENT_STATUS.PLANNED }));
+      view.rerender(wrap(<MapView />));
+      openFacets();
+      expect(screen.queryByRole('button', { name: new RegExp(t.map.filter.left) })).toBeNull();
+      // …and every row is back, rather than a filter running with no control over it.
+      expect(row('been')!.closest('.wp-reveal')!.classList.contains('hidden')).toBe(false);
+    });
+  });
+
+  // An empty list has three causes and the tab named one. The common path is neither
+  // an empty trip nor an over-narrow filter: the facets persist across a day change
+  // (rightly — it is the same question asked of each day), so moving the strip with
+  // one on lands here, and `אין מקומות שמתאימים לסינון` then blames a control you did
+  // not touch. Each case says which it is and hands back the step out (ADR-0078).
+  describe('an empty list says which of its three causes it is', () => {
+    it('a day with no places blames the SCOPE, and offers all-days', () => {
+      tripPlaces = [place('tomorrow')];
+      tripEvents = [event({ id: 'e', placeId: 'tomorrow', date: NEXT_DAY })];
+      render(wrap(<MapView />));
+      expect(screen.getByText(t.map.emptyDay.title)).toBeTruthy();
+      fireEvent.click(listButton(t.map.emptyDay.action));
+      expect(screen.queryByText(t.map.emptyDay.title)).toBeNull();
+      expect(row('tomorrow')!.closest('.wp-reveal')!.classList.contains('hidden')).toBe(false);
+    });
+
+    // Which facet gets you here matters: the TYPE chip cannot, because an emptied type
+    // falls back to `הכל` (ADR-0119 §3, so "picked a type, got an empty list" is
+    // unreachable by tapping). The two toggles have no such fallback — they are
+    // tappable at zero — and the day scope has none either, which is the common path:
+    // the facets persist across a day change.
+    it('an over-narrow filter names the facets it is holding, and clears them', () => {
+      // A day you have finished: nothing is left, so the toggle empties the list.
+      tripPlaces = [place('breakfast'), place('museum')];
+      tripEvents = [
+        event({ id: 'e1', placeId: 'breakfast', startsAt: `${ACTIVE_DATE}T08:00:00Z` }),
+        event({ id: 'e2', placeId: 'museum', startsAt: `${ACTIVE_DATE}T09:00:00Z` }),
+      ];
+      render(wrap(<MapView />));
+      openFacets();
+      expect(listButton(t.map.filter.left).querySelector('.cnt')?.textContent).toBe('0');
+      fireEvent.click(listButton(t.map.filter.left));
+      expect(screen.getByText(t.map.filter.noResultsTitle)).toBeTruthy();
+      expect(document.querySelector('.fb-empty-body')!.textContent).toContain(t.map.filter.left);
+      fireEvent.click(listButton(t.map.filter.clear));
+      expect(screen.queryByText(t.map.filter.noResultsTitle)).toBeNull();
+      expect(row('museum')!.closest('.wp-reveal')!.classList.contains('hidden')).toBe(false);
+    });
+
+    it('a trip with no places at all still says THAT, not either of the other two', () => {
+      render(wrap(<MapView />));
+      expect(screen.getByText(t.map.empty.title)).toBeTruthy();
+      expect(screen.queryByText(t.map.emptyDay.title)).toBeNull();
+      expect(screen.queryByText(t.map.filter.noResultsTitle)).toBeNull();
     });
   });
 

@@ -175,6 +175,57 @@ describe('placePinTier — four populations plus the ghost (ADR-0121 §6)', () =
     // A real commitment with no time is not an idea — it just has no position.
     expect(placePinTier(index.get('unscheduled')!, { nowMs: NOON })).toBe(PIN_TIER.upcoming);
   });
+
+  // All-days scope resolved a place against `days[0]`, so one past day desaturated a
+  // pin the trip is not done with — the canvas half of the same defect the list's
+  // `מה שמאחורינו` block showed.
+  describe('all-days scope tiers a place by the day it is LIVE on', () => {
+    it('a place visited earlier and booked again later is a solid upcoming pin', () => {
+      const index = usages({
+        places: [place('cafe')],
+        events: [
+          event({
+            id: 'e1',
+            placeId: 'cafe',
+            date: '2026-07-18',
+            startsAt: '2026-07-18T10:00:00Z',
+            status: EVENT_STATUS.DONE,
+          }),
+          event({ id: 'e2', placeId: 'cafe', date: NEXT_DAY, startsAt: `${NEXT_DAY}T10:00:00Z` }),
+        ],
+      });
+      expect(placePinTier(index.get('cafe')!, { nowMs: NOON, today: DAY })).toBe(PIN_TIER.upcoming);
+    });
+
+    it('the stay you sleep in tonight keeps its ambient backdrop, not a behind pin', () => {
+      const index = usages({
+        places: [place('hotel')],
+        events: [
+          event({
+            id: 'h',
+            placeId: 'hotel',
+            category: 'lodging',
+            date: '2026-07-18',
+            endDate: '2026-07-22',
+            startsAt: '2026-07-18T15:00:00Z',
+            endsAt: '2026-07-22T10:00:00Z',
+          }),
+        ],
+      });
+      expect(placePinTier(index.get('hotel')!, { nowMs: NOON, today: DAY })).toBe(PIN_TIER.ambient);
+    });
+
+    it('a place whose EVERY day has passed is still behind you', () => {
+      const index = usages({
+        places: [place('twice')],
+        events: [
+          event({ id: 'e1', placeId: 'twice', date: '2026-07-17' }),
+          event({ id: 'e2', placeId: 'twice', date: '2026-07-18' }),
+        ],
+      });
+      expect(placePinTier(index.get('twice')!, { nowMs: NOON, today: DAY })).toBe(PIN_TIER.behind);
+    });
+  });
 });
 
 describe('the pin number is the day sequence, and nothing renumbers it (§6)', () => {
