@@ -81,11 +81,21 @@ const sheet = () => document.querySelector('.wp-snapsheet') as HTMLElement;
 const region = () => document.querySelector('.wp-snapsheet-top') as HTMLElement;
 const grab = () => screen.getByRole('separator');
 /** Two moves fired back to back, the second CONTINUING the direction of the first — the
- *  release samples the last two, which is what a flick is. jsdom timestamps them ~0ms
- *  apart and the hook floors `dt` at 1ms, so this is unambiguously above the threshold
- *  however slow the machine is. */
+ *  release samples the last two, which is what a flick is.
+ *
+ *  **The second leg carries real distance, and that is load-bearing.** It used to be
+ *  **1px**, on the reasoning that jsdom stamps the two events ~0ms apart and the hook
+ *  floors `dt` at 1ms. The floor is a lower bound on `dt`; nothing bounds it from above,
+ *  and `1px / dt >= SNAP_FLICK_PX_PER_MS` needs the two `fireEvent`s within **2ms** of
+ *  each other — true on an idle machine, false on a loaded CI runner, where this snapped
+ *  back to `half` and failed (reproduced locally: 1 run in 6 under load). Half the
+ *  gesture gives `dt` a ~40ms budget instead, which is the same claim with 20x the
+ *  margin: a real flick covers real distance per frame. The gesture's TOTAL travel is
+ *  unchanged, so "nowhere near the stop by distance" still holds — and it now shares its
+ *  waypoints with `slowMoveTo`'s test below, so the only difference between the two is
+ *  the timing, which is the thing being tested. */
 const flickTo = (from: number, to: number) => {
-  fireEvent.pointerMove(region(), { clientY: to + (to > from ? -1 : 1) });
+  fireEvent.pointerMove(region(), { clientY: Math.round((from + to) / 2) });
   fireEvent.pointerMove(region(), { clientY: to });
 };
 /** A move with real time in front of it. The velocity can only come out LOWER on a
