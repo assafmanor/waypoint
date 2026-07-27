@@ -54,6 +54,17 @@
         already the category's whole vocabulary (ADR-0038; the row badge and the
         pin carry that same glyph, so the word beside it says it twice).
 
+     3b. A TAPPED PIN SURFACES ITS PLACE AS A CARD ON THE CANVAS, and nothing
+        moves for it: the pane's box is unchanged, so the camera does not shift and
+        the map keeps every pixel. It is the SAME `.place` row in a second host —
+        one grammar, two hosts, the way the pin is the badge in a second form
+        factor — and it generalises the shipped ghost row, which already surfaces
+        "a tapped pin whose row is not in the sheet" as a single row. It exists
+        exactly where the list cannot show the row, so it never doubles it, and it
+        clears Google's attribution by the attribution's own height (ToS, ADR-0106
+        §B). This closes ADR-0121 §8's open info-window question — with a yes, but
+        for the row rather than for a new object.
+
      3. NEAR-ME MOVES TO THE LIST, BECAUSE THAT IS WHAT IT CHANGES. It is not a
         filter and not a scope: it re-orders the list and adds distance chips
         (session 138 split `located` from `sortByDistance` precisely to say so).
@@ -86,8 +97,8 @@
         the two extremes" instead of as "neither button is on".
 
      8. THE GEOLOCATION PRE-PROMPT MOVES ONTO THE CANVAS. It asks a question
-        about the map and renders inside the LIST's scroll region, which at peek
-        is a ~40px viewport. It becomes canvas furniture, absolutely positioned,
+        about the map and renders inside the LIST's scroll region, which at the map
+        extreme is not on screen at all. It becomes canvas furniture, absolutely positioned,
         so it costs the split no height, neither half shrinks, the pane's box
         never changes and the camera does not move for it. It stays INLINE in
         ADR-0109 session-105's sense: no `Modal`, no `useOverlay`, no back
@@ -8020,7 +8031,45 @@ body {
         display: none;
       }
 
-      /* ── 3. THE WHOLE SHEET TOP IS THE DRAG TARGET ─────────────────────
+      /* ── 3. THE PLACE CARD — the tapped pin's own row, hosted on the canvas
+         Retiring the list-sliver peek leaves the map extreme with no list at all,
+         which is the point: 517px of map instead of 420. So a tapped pin surfaces
+         the place HERE, exactly when the sheet cannot show it — which is the rule
+         the shipped ghost row already runs (`.map-ghostrow`: "its row is not in the
+         sheet, so the tap is how you learn what it is"), generalised from the ghost
+         case to every pin.
+
+         It is the SAME `.place` row, in a second host — one grammar, two hosts, the
+         way the pin is the badge in a second form factor (ADR-0109 §3). Not a new
+         object with its own vocabulary.
+
+         The bottom gutter is contractual, not taste: Google draws its logo and
+         attribution at the bottom-inline-start OF THE MAP DIV and the ToS forbids
+         obscuring it (ADR-0106 §B), so the card clears it by the attribution's own
+         height. */
+      .map-placecard {
+        position: absolute;
+        inset-inline: 8px;
+        /* Measured against the PANE's bottom, not the split's: the card's containing
+           block is `.map-split`, whose bottom is the screen's, so the sheet's own
+           height has to be in the sum or the card sits behind the sheet — and over
+           the attribution it was meant to clear. */
+        bottom: calc(var(--sheet-h, 0px) + var(--map-attr-h, 22px) + 8px);
+        z-index: 2;
+      }
+      .map-placecard .place {
+        margin-bottom: 0;
+        box-shadow: 0 12px 28px -12px color-mix(in srgb, var(--ink) 45%, transparent);
+      }
+
+      /* The sheet's minimum is its own top row, and nothing of the list. The strip
+         height is reserved from the same constant the `map` stop is built from, so a
+         taller top can never clip. */
+      .wp-snapsheet-top {
+        min-height: var(--map-strip-h, 52px);
+      }
+
+      /* ── 4. THE WHOLE SHEET TOP IS THE DRAG TARGET ─────────────────────
          76×16px is under ADR-0017's touch floor. The region owns the gesture,
          so `touch-action: none` moves here from the grab button; the grab line
          stays as the visible affordance and the keyboard's way in. Its header
@@ -8051,7 +8100,7 @@ body {
         gap: 8px;
       }
 
-      /* ── 4. TWO STATES, THREE STOPS, ONE AXIS ──────────────────────────
+      /* ── 5. TWO STATES, THREE STOPS, ONE AXIS ──────────────────────────
          The toggle's fill becomes a THUMB whose position is the stop, so the
          control and the handle are visibly the same axis — which ADR-0121 §5
          already claimed in code ("one state, two controls") and never drew. At
@@ -8082,7 +8131,7 @@ body {
       .map-screen[data-view='full'] .map-viewtoggle::before {
         inset-inline-start: 2px;
       }
-      .map-screen[data-view='peek'] .map-viewtoggle::before {
+      .map-screen[data-view='map'] .map-viewtoggle::before {
         inset-inline-start: 50%;
       }
       /* The thumb draws the fill now, so the segment stops carrying it — only
@@ -8213,6 +8262,7 @@ body {
       .map-search-btn[hidden],
       .map-nearchip[hidden],
       .map-refs[hidden],
+      .map-placecard[hidden],
       .map-dayroute[hidden] {
         display: none;
       }
@@ -8379,7 +8429,7 @@ body {
     <div class="mk-controls">
       <div class="mk-states">
         <span class="mk-label">עצירה</span>
-        <button data-stop="peek">הצצה</button>
+        <button data-stop="map">מפה (מקסימום)</button>
         <button data-stop="half" class="on">חצי (ברירת מחדל)</button>
         <button data-stop="full">רשימה מלאה</button>
       </div>
@@ -8515,7 +8565,7 @@ body {
             data-mode="trip"
             data-view="half"
             data-scope="day"
-            style="--sheet-h: 56%; --map-controls-h: 46px"
+            style="--sheet-h: 56%; --map-controls-h: 46px; --map-strip-h: 52px; --map-attr-h: 22px"
           >
             <!-- ══ AS SHIPPED: two fixed rows INSIDE the layout, above the split.
                  Kept in the file so the budget panel can measure the before and
@@ -8630,6 +8680,39 @@ body {
                     <line x1="19.5" y1="12" x2="22.5" y2="12" />
                   </svg>
                 </button>
+              </div>
+
+              <!-- THE PLACE CARD (§3 of the delta above): the tapped pin's own row,
+                   hosted on the canvas because at the map extreme the sheet shows no
+                   list to hold it. Rendered only where the list cannot show the row —
+                   so it never doubles the selected row, and the shipped ghost row's
+                   special case becomes this general one. In the app it is
+                   `renderRow(...)` output, not a second component. -->
+              <div class="map-placecard" id="placecard" hidden>
+                <div class="place selected">
+                  <div class="map-badge cat-leisure" data-order="3">⛩️</div>
+                  <div class="map-main">
+                    <div class="map-t"><span class="map-name">מקדש סנסו־ג׳י</span></div>
+                    <div class="map-m">
+                      <span class="map-tag time" dir="auto">17:20</span>
+                      <span class="map-tag">ביקור</span>
+                      <span class="map-tag rate">★ 4.5</span>
+                    </div>
+                  </div>
+                  <div class="map-right">
+                    <span class="map-dist" dir="auto">3.4 ק״מ</span>
+                    <a class="map-navbtn">🧭 נווט</a>
+                  </div>
+                  <span class="map-refs">
+                    <button type="button" class="map-ref">
+                      <span class="map-ref-kind">אירוע</span>
+                      <span class="map-ref-label">מקדש סנסו־ג׳י · רביעי</span>
+                      <svg class="icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+                        <polyline points="15 6 9 12 15 18" />
+                      </svg>
+                    </button>
+                  </span>
+                </div>
               </div>
 
               <!-- THE PRE-PROMPT, IN ITS NEW HOME. Same `.map-geoprompt` card,
@@ -8818,9 +8901,8 @@ body {
                           <a class="map-navbtn">🧭 נווט</a>
                         </div>
                         <!-- The way in to the entity, revealed BY SELECTION (ADR-0121 §8).
-                             At `peek` a selected row is taller than the viewport, so its
-                             entries are a short scroll away — the sheet's height, and
-                             therefore the map's, never changes for them. -->
+                             The card on the canvas carries the same block, so acting on
+                             a reference never needs the sheet to move. -->
                         <span class="map-refs" hidden>
                           <button type="button" class="map-ref">
                             <span class="map-ref-kind">אירוע</span>
@@ -8845,9 +8927,8 @@ body {
                           <a class="map-navbtn">🧭 נווט</a>
                         </div>
                         <!-- The way in to the entity, revealed BY SELECTION (ADR-0121 §8).
-                             At `peek` a selected row is taller than the viewport, so its
-                             entries are a short scroll away — the sheet's height, and
-                             therefore the map's, never changes for them. -->
+                             The card on the canvas carries the same block, so acting on
+                             a reference never needs the sheet to move. -->
                         <span class="map-refs" hidden>
                           <button type="button" class="map-ref">
                             <span class="map-ref-kind">הזמנה</span>
@@ -8873,9 +8954,8 @@ body {
                           <a class="map-navbtn">🧭 נווט</a>
                         </div>
                         <!-- The way in to the entity, revealed BY SELECTION (ADR-0121 §8).
-                             At `peek` a selected row is taller than the viewport, so its
-                             entries are a short scroll away — the sheet's height, and
-                             therefore the map's, never changes for them. -->
+                             The card on the canvas carries the same block, so acting on
+                             a reference never needs the sheet to move. -->
                         <span class="map-refs" hidden>
                           <button type="button" class="map-ref">
                             <span class="map-ref-kind">אירוע</span>
@@ -8900,9 +8980,8 @@ body {
                           <a class="map-navbtn">🧭 נווט</a>
                         </div>
                         <!-- The way in to the entity, revealed BY SELECTION (ADR-0121 §8).
-                             At `peek` a selected row is taller than the viewport, so its
-                             entries are a short scroll away — the sheet's height, and
-                             therefore the map's, never changes for them. -->
+                             The card on the canvas carries the same block, so acting on
+                             a reference never needs the sheet to move. -->
                         <span class="map-refs" hidden>
                           <button type="button" class="map-ref">
                             <span class="map-ref-kind">רעיון</span>
@@ -8925,9 +9004,8 @@ body {
                           <button type="button" class="map-addbtn">＋ מיקום</button>
                         </div>
                         <!-- The way in to the entity, revealed BY SELECTION (ADR-0121 §8).
-                             At `peek` a selected row is taller than the viewport, so its
-                             entries are a short scroll away — the sheet's height, and
-                             therefore the map's, never changes for them. -->
+                             The card on the canvas carries the same block, so acting on
+                             a reference never needs the sheet to move. -->
                         <span class="map-refs" hidden>
                           <button type="button" class="map-ref">
                             <span class="map-ref-kind">אירוע</span>
@@ -8952,9 +9030,8 @@ body {
                           <a class="map-navbtn">🧭 נווט</a>
                         </div>
                         <!-- The way in to the entity, revealed BY SELECTION (ADR-0121 §8).
-                             At `peek` a selected row is taller than the viewport, so its
-                             entries are a short scroll away — the sheet's height, and
-                             therefore the map's, never changes for them. -->
+                             The card on the canvas carries the same block, so acting on
+                             a reference never needs the sheet to move. -->
                         <span class="map-refs" hidden>
                           <button type="button" class="map-ref">
                             <span class="map-ref-kind">הזמנה</span>
@@ -9091,6 +9168,11 @@ body {
             שמקומה הוא העצירה, ובחצי היא יושבת על הגבול.
           </li>
           <li>
+            <b>אין יותר הצצה של הרשימה.</b> העצירה התחתונה היא שורת הראש של המגירה בלבד, והמקום
+            הנבחר עולה ככרטיס על הקנבס. כך המפה מקבלת 516px במקום 420, ואף פיקסל לא מושקע בשורה
+            שלא ביקשתם.
+          </li>
+          <li>
             <b>מקלדת:</b> הידית הופכת ל־<code>role="separator"</code> אמיתי (תבנית ה־ARIA למפריד נגרר)
             עם חצים ו־Home/End, כי היום היא כפתור שאפשר להתמקד בו ושלא עושה כלום, ו־
             <code>half</code> אינו נגיש בלי מצביע.
@@ -9102,8 +9184,8 @@ body {
         <h3>בקשת המיקום עוברת אל הקנבס</h3>
         <ul>
           <li>
-            השאלה היא על <b>המפה</b>, והכרטיס רונדר בתוך אזור הגלילה של <b>הרשימה</b> — בהצצה זה חלון
-            של כ־40px.
+            השאלה היא על <b>המפה</b>, והכרטיס רונדר בתוך אזור הגלילה של <b>הרשימה</b>, שבעצירת המפה
+            כלל לא על המסך.
           </li>
           <li>
             הוא הופך לרהיט של הקנבס: <b>מיקום אבסולוטי בתוך <code>.map-split</code></b>, אח של
@@ -9141,7 +9223,8 @@ body {
             <b>בדיקה שהבנייה חייבת לעשות:</b> <code>fitPaddingFor</code> (סשן 134) זורק ריפוד שתובע
             חצי מציר. ריפוד עליון של כ־<span class="mk-num">118px</span> על חלונית של 250px הוא כמעט
             חצי, ובטלפון קטן הוא יותר — כלומר בעצירת <code>half</code> הריפוד יישמט ופין <i>כן</i>
-            יכול ליפול מתחת לשורה. זה עוד נימוק לציר: בהצצה החלונית 420px והריפוד זול.
+            יכול ליפול מתחת לשורה. זה עוד נימוק לציר: בעצירת המפה החלונית 516px והריפוד זול. אותו חשבון חל על
+            הריפוד <b>התחתון</b> כשכרטיס המקום פתוח.
           </li>
           <li>
             העצירות נשארות קבועים ב־<code>constants.ts</code> ולא נמדדות בזמן ריצה: המסך מתרנדר כל
@@ -9162,32 +9245,30 @@ body {
     </div>
 
     <script>
-      // ── The stops. `peek` is px (a peek should be the same size on every
-      //    screen); `half` is a fraction (it should not); `full` becomes a third
-      //    kind — the container MINUS the controls row — because the sheet must
-      //    stop below the row rather than cover the controls of the list it is
-      //    showing. That is one new variant on `SnapStop`, not a new mechanism.
+      // ── The stops. THE LIST-SLIVER PEEK IS RETIRED (ADR-0122 §3/§7): at 116px it
+      //    showed 0.8 of a row, and at the 148px it would have needed to show one, it
+      //    cost the map 97px to display a row nobody asked for. The map extreme is now
+      //    the sheet's OWN TOP ROW and nothing of the list — 517px of map at 390×844 —
+      //    and a tapped pin surfaces its place as a card on the canvas instead.
+      //
+      //    `map` is px (the sheet's top is fixed-height chrome, and the same constant
+      //    reserves it in CSS via `--map-strip-h`, so a taller top cannot clip);
+      //    `half` is a fraction (it should scale); `full` is the container minus the
+      //    controls row, so the sheet never covers the controls of the list it shows.
       const CONTROLS_H = 46;
-      const STOPS_SHIPPED = { peek: { px: 116 }, half: { fraction: 0.56 }, full: { fraction: 1 } };
-      const STOPS_PROPOSED = {
-        peek: { px: 148 },
-        half: { fraction: 0.56 },
-        full: { inset: CONTROLS_H },
-      };
-      const ORDER = ['peek', 'half', 'full'];
-      const STOP_LABEL = { peek: 'הצצה', half: 'חצי', full: 'מלא' };
+      const STRIP_H = 52;
+      const STOPS = { map: { px: STRIP_H }, half: { fraction: 0.56 }, full: { inset: CONTROLS_H } };
+      const ORDER = ['map', 'half', 'full'];
+      const STOP_LABEL = { map: 'מפה', half: 'חצי', full: 'מלא' };
       // `stopHeightCss` / `stopHeightPx`, with the third variant added.
-      const stopCss = (s) =>
-        'px' in s
-          ? `${s.px}px`
-          : 'inset' in s
-            ? `calc(100% - ${s.inset}px)`
-            : `${Number((s.fraction * 100).toFixed(4))}%`;
-      const stopPx = (s, c) =>
-        'px' in s ? Math.min(s.px, c) : 'inset' in s ? Math.max(c - s.inset, 0) : s.fraction * c;
-      // A flick this fast commits in its direction of travel instead of snapping
-      // to whatever stop is nearest (px per ms), and a gesture that moves less
-      // than the slop is a tap that the controls underneath must still receive.
+      const stopCss = (t) =>
+        'px' in t
+          ? `${t.px}px`
+          : 'inset' in t
+            ? `calc(100% - ${t.inset}px)`
+            : `${Number((t.fraction * 100).toFixed(4))}%`;
+      const stopPx = (t, c) =>
+        'px' in t ? Math.min(t.px, c) : 'inset' in t ? Math.max(c - t.inset, 0) : t.fraction * c;
       const FLICK_PX_PER_MS = 0.5;
       const SLOP_PX = 4;
 
@@ -9207,8 +9288,7 @@ body {
       let head = 'new';
       let selectedKey = null;
       let planMode = false;
-      const STOPS = () => (head === 'old' ? STOPS_SHIPPED : STOPS_PROPOSED);
-      const allDays = () => scopechip.classList.contains('on');
+            const allDays = () => scopechip.classList.contains('on');
 
       function setStop(next) {
         stop = next;
@@ -9216,8 +9296,8 @@ body {
         sheetEl.dataset.view = next;
         // ONE source of truth for the height, at the snapped stop: the pane reads
         // `--sheet-h`, the sheet reads `--snap-h`, both from the stop.
-        screenEl.style.setProperty('--sheet-h', stopCss(STOPS()[next]));
-        sheetEl.style.setProperty('--snap-h', stopCss(STOPS()[next]));
+        screenEl.style.setProperty('--sheet-h', stopCss(STOPS[next]));
+        sheetEl.style.setProperty('--snap-h', stopCss(STOPS[next]));
         sheetEl.style.height = '';
         grab.setAttribute('aria-valuenow', String(ORDER.indexOf(next)));
         grab.setAttribute('aria-valuetext', STOP_LABEL[next]);
@@ -9225,11 +9305,12 @@ body {
         // where on the axis we actually are, including "between".
         for (const [id, active] of [
           ['vt-list', next === 'full'],
-          ['vt-map', next === 'peek'],
+          ['vt-map', next === 'map'],
         ]) {
           document.getElementById(id).setAttribute('aria-pressed', String(active));
           document.getElementById(id).classList.toggle('on', active);
         }
+        if (typeof syncCard === 'function') syncCard();
         sync();
       }
 
@@ -9329,7 +9410,7 @@ body {
       document.getElementById('nearchip').addEventListener('click', () => setGeo(true));
       document.getElementById('geodismiss').addEventListener('click', () => setGeo(false));
       document.getElementById('vt-list').addEventListener('click', () => setStop('full'));
-      document.getElementById('vt-map').addEventListener('click', () => setStop('peek'));
+      document.getElementById('vt-map').addEventListener('click', () => setStop('map'));
       scopechip.addEventListener('click', () => {
         const on = !allDays();
         scopechip.classList.toggle('on', on);
@@ -9389,7 +9470,7 @@ body {
         const container = splitEl.clientHeight;
         const startY = e.clientY;
         const startH = sheetEl.getBoundingClientRect().height;
-        const heights = ORDER.map((id) => stopPx(STOPS()[id], container));
+        const heights = ORDER.map((id) => stopPx(STOPS[id], container));
         const lo = Math.min(...heights);
         const hi = Math.max(...heights);
         let dragging = false;
@@ -9440,7 +9521,7 @@ body {
       // The proposed `nearestStop(px, container, stops, order, velocity)`:
       // distance decides a slow release, direction of travel decides a flick.
       function landOn(px, container, velocity) {
-        const ranked = ORDER.map((id) => ({ id, h: stopPx(STOPS()[id], container) })).sort(
+        const ranked = ORDER.map((id) => ({ id, h: stopPx(STOPS[id], container) })).sort(
           (a, b) => a.h - b.h,
         );
         if (Math.abs(velocity) >= FLICK_PX_PER_MS) {
@@ -9469,8 +9550,8 @@ body {
       // ── SELECTION: ONE selection, two renderings, and the sheet does NOT move
       //    for a pin tap (ADR-0122 §7, revising the raise session 136 shipped).
       //    Tapping a pin while the map is the surface you are using must not take
-      //    that surface away — so the tapped place surfaces in the peek row, which
-      //    is exactly what the peek row is FOR. The row→pin direction still drops a
+      //    that surface away — so the tapped place surfaces in a card on the canvas.
+      //    The row→pin direction still drops a
       //    `full` sheet to `half`, because there the map is the invisible surface.
       //    One rule: the sheet moves only when what you just asked about is not on
       //    screen.
@@ -9479,25 +9560,48 @@ body {
 
       function select(key, { fromRow } = {}) {
         selectedKey = key;
-        for (const el of [...rowEls, ...pinEls]) el.classList.toggle('selected', el.dataset.place === key);
+        for (const el of [...rowEls, ...pinEls])
+          el.classList.toggle('selected', el.dataset.place === key);
         for (const el of rowEls) {
           const refs = el.querySelector('.map-refs');
           if (refs) refs.hidden = el.dataset.place !== key;
         }
-        // ONE RULE, BOTH DIRECTIONS: the sheet moves only when what you just
-        // asked about is not on screen. A pin tap never moves it (the pin IS on
-        // screen, and taking the map away is the interruption). A ROW tap
-        // normalises to `half` — from `full` because the map it focuses is
-        // invisible there (ADR-0121 §8), and from `peek` because the row's own
-        // way-in does not fit a one-row viewport. So the first tap on a pin
-        // identifies, and one tap on the row it surfaced opens the door.
+        // ONE RULE: a tap never takes away the surface it was made on. A pin tap
+        // therefore moves NOTHING — at the map extreme the place surfaces as a card
+        // on the canvas (the pane's box does not change, so the camera does not move
+        // either), and at `half` the list is already showing, so its row is simply
+        // scrolled into view. A ROW tap normalises the sheet to `half`: from `full`
+        // because the map it focuses is invisible there (ADR-0121 §8), and from the
+        // map extreme because a row you tapped in a card belongs in its list.
         if (fromRow && stop !== 'half') setStop('half');
         const row = rowEls.find((r) => r.dataset.place === key);
-        // From a pin: bring the row to the TOP of the sheet's viewport, since at
-        // `peek` that viewport is one row tall. From a row: it is already visible.
-        if (!fromRow) row?.scrollIntoView({ block: 'start' });
+        if (!fromRow) row?.scrollIntoView({ block: 'center' });
+        syncCard();
         measure();
       }
+
+      // The card exists exactly where the list cannot show the row — which is the
+      // shipped ghost row's rule, generalised. So it never doubles the selected row.
+      function syncCard() {
+        const card = document.getElementById('placecard');
+        card.hidden = !(selectedKey === 'temple' && stop === 'map');
+        // (This file only carries the temple's card; in the app it is `renderRow` on
+        // whatever is selected.)
+      }
+
+      // Tapping the canvas clears the selection — the map idiom, and the card's own
+      // dismissal. No back-stack involvement: it is not an overlay (ADR-0121 §5).
+      document.querySelector('.map-canvas').addEventListener('click', (e) => {
+        if (e.target.closest('.map-pin')) return;
+        selectedKey = null;
+        for (const el of [...rowEls, ...pinEls]) el.classList.remove('selected');
+        for (const el of rowEls) {
+          const refs = el.querySelector('.map-refs');
+          if (refs) refs.hidden = true;
+        }
+        syncCard();
+        measure();
+      });
 
       rowEls.forEach((r) => r.addEventListener('click', () => select(r.dataset.place, { fromRow: true })));
       pinEls.forEach((pin) => pin.addEventListener('click', () => select(pin.dataset.place)));
@@ -9534,9 +9638,8 @@ body {
           .querySelector('.mk-phone .wp-snapsheet-body')
           .getBoundingClientRect().height;
         const row = outer(document.querySelectorAll('.mk-phone .place')[1]);
-        const selRow = selectedKey
-          ? outer(document.querySelector('.mk-phone .place.selected'))
-          : 0;
+        const card = document.getElementById('placecard');
+        const selRow = card.hidden ? 0 : card.getBoundingClientRect().height;
         const grabBox = grab.getBoundingClientRect();
         const targetBox = sheetTop.getBoundingClientRect();
         const controls = head === 'new' ? CONTROLS_H : 0;
@@ -9549,7 +9652,8 @@ body {
           <tr><td><code>.map-split</code> · מה שנשאר לחלק</td><td class="${head === 'old' ? '' : 'mk-good'}"><b>${px(split)}</b></td><td>המפה + הרשימה</td></tr>
           <tr><td><code>.map-pane</code> בעצירה ${STOP_LABEL[stop]}</td><td><b>${px(pane)}</b></td><td>המפה${controls ? ` · השורה צפה על ${px(controls)} העליונים` : ''}</td></tr>
           <tr><td>חלון הרשימה בעצירה ${STOP_LABEL[stop]}</td><td><b>${px(listView)}</b> · ${(listView / row).toFixed(1)} שורות</td><td>הרשימה</td></tr>
-          ${selRow ? `<tr><td>השורה הנבחרת, עם הדרך אל הישות</td><td><b>${px(selRow)}</b></td><td>גבוהה מחלון ההצצה · הכניסות במרחק גלילה קטנה, בלי לשנות את גובה המפה</td></tr>` : ''}
+          ${selRow ? `<tr><td>כרטיס המקום, עם הדרך אל הישות</td><td><b>${px(selRow)}</b></td><td>צף על הקנבס · לא גובה גובה, לא מזיז את המצלמה</td></tr>` : ''}
+          <tr><td>שורת הראש של המגירה · העצירה התחתונה</td><td><b>${px(STRIP_H)}</b></td><td>הידית, קרוב עכשיו והמחוון · אין שורות רשימה</td></tr>
           <tr><td>יעד הגרירה</td><td class="mk-good"><b>${Math.round(targetBox.width)}×${Math.round(targetBox.height)}</b></td><td>היום: <span class="mk-num">${Math.round(grabBox.width)}×${Math.round(grabBox.height)}</span> בלבד</td></tr>
         `;
         const chrome = app - split;

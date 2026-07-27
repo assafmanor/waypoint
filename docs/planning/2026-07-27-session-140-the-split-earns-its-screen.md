@@ -27,7 +27,7 @@ Two things came in while the merge-only draft was being written:
 1. the whole filter apparatus (categories, `אולי`, `מה נשאר`, search, `כל הימים`, `קרוב עכשיו`) **is cluttered and takes too much space**;
 2. the controls **can render over the map**, as long as they do not cover pins, because that gives more of the map.
 
-Both were adopted, and together they turn a 6% change into a real one. Floating the controls makes the split the whole body — the pane goes 208 → 250 at `half` and 358 → 420 at `peek`, the list 2.6 → 3.3 rows, **and every stop gains** rather than one. The decluttering is where the design work went: three controls at rest instead of seven, with the facets one tap away in ADR-0100's cover-the-row-in-place idiom, and the category chips reduced to **glyph + count** — which is not a compression trick but a duplication removed, since the glyph is already the category's whole vocabulary (ADR-0038) and the row badge and the pin both carry it. Measured payoff: all six categories now fit one 390px row, where the shipped worded pills fit two and a half.
+Both were adopted, and together they turn a 6% change into a real one. Floating the controls makes the split the whole body — the pane goes 208 → 250 at `half` and 358 → 420 at `peek`, the list 2.6 → 3.2 rows, **and every stop gains** rather than one. The decluttering is where the design work went: three controls at rest instead of seven, with the facets one tap away in ADR-0100's cover-the-row-in-place idiom, and the category chips reduced to **glyph + count** — which is not a compression trick but a duplication removed, since the glyph is already the category's whole vocabulary (ADR-0038) and the row badge and the pin both carry it. Measured payoff: all six categories now fit one 390px row, where the shipped worded pills fit two and a half.
 
 "Does not cover pins" turned out to have an existing mechanism waiting for it: ADR-0121 §7's fit already insets by a pin's own height because the teardrop's tip is the anchor. The row joins that inset, derived from the same constant that writes `--map-controls-h` so they cannot drift. Two limits are stated rather than glossed — a manual pan can still put a pin under the row (nothing can prevent that), and `fitPaddingFor` drops padding that claims half an axis, so at `half` on a small phone the inset _will_ sometimes be dropped.
 
@@ -40,17 +40,22 @@ The drag is the part of this phase that cannot be judged from a static picture, 
 
 Both were found by driving the mockup with Playwright and asserting on the outcome: a short fast flick landed on the next stop in its direction, and a tap on the toggle still moved the sheet. That is the whole argument for a mockup that runs rather than one that renders.
 
-## The second steer: what is the sliver of list even for?
+## The second steer, in two rounds: what is the sliver of list even for?
 
 Asked of the design once the controls were floating: **when the map is maxed, what does the small part of the list add?** And: **tapping a pin should surface the place, but not by raising the list — it must not interrupt the interactive map.**
 
-The two questions answer each other, and the answer needed the `peek` change to exist first:
+**Round one answered it with the peek row itself:** a pin tap surfaces the tapped place in the one-row viewport and moves nothing, so the row's job is to be where a pin speaks. That is a real answer, and it survived about an hour — until the owner pushed on the premise rather than the mechanism: _maybe we shouldn't allow peek at all, and have a different interface for getting the info on a place._ Which is right, and the reason is in the arithmetic the first answer skipped: the peek row earns its 97px **only while something is selected.** The rest of the time it is map spent on a row nobody asked for.
 
-- **The peek row is where a tapped pin speaks.** A pin tap selects, scrolls that row to the top of the one-row viewport, and **moves nothing** — the map keeps every pixel and the camera stays put. Without the row, a pin tap would need either an info window (a new surface, over the pins it describes) or a raise (the interruption). So the sliver's value is not "a teaser for the list"; it is the place's own statement, on demand.
-- **This revises the raise session 136 shipped** for report #4. That fix was right that both directions must show what you selected, and at `peek: 116` — a 65px viewport — raising was the only mechanism that could show anything. Once a row fits, the raise becomes the interruption being reported. Its scroll survives; the raise does not.
-- **One rule replaces the symmetry:** the sheet moves only when what you just asked about is not on screen. A pin is on screen, so nothing moves; a **row** tap normalises to `half` — from `full` because the map it focuses is invisible there, and from `peek` because the row's own way-in block does not fit one row. First tap identifies, one tap on the surfaced row opens the door.
-- **It closes ADR-0121 §8's open question, away from the thing that question feared.** §8 left "info window vs. only via its row" to be judged on a real map. Judged: no info window — the peek row is one, without a second way of stating a place. Two routes, one destination: §8 worried about the surface, the owner worried about the interruption, and both land on the same design.
-- **`peek` was NOT re-sized to fit the way-in entries.** Measured, a selected row with one entry is 141px against a 97px viewport; fitting it needs ~198px and costs the map 50px at the stop whose entire point is the map. The entries sit one short scroll (which never resizes the map) or one row tap away, and the ADR states that trade instead of hiding it.
+**Round two, which is what shipped in the ADR:**
+
+- **`peek` is retired.** The map extreme is the sheet's **own top row and nothing of the list** — the handle, `קרוב עכשיו` and the toggle, 52px — which gives the map **517px** of the 568 split, against 358 shipped and 420 with a one-row peek.
+- **A tapped pin surfaces its place as a card over the canvas, and nothing moves.** The pane's box does not change, so the camera does not shift and the map keeps every pixel. That is the "don't interrupt" requirement met more completely than the peek row met it.
+- **The card is the row, not a new object** — same `.place` markup, same way-in block, so acting on a reference no longer needs the sheet to move at all. One grammar, two hosts, exactly as the pin is the list badge in a second form factor.
+- **It generalises something already shipped.** `.map-ghostrow` surfaces a tapped ghost as "the one row it is — reusing `.place` rather than inventing an info window", because its row is not in the sheet. The card is that rule with the special case removed, so the tab ends up with one mechanism fewer. It also renders **only** where the sheet cannot show the row, so it never doubles the selected row.
+- **It closes ADR-0121 §8's open info-window question — the other way from round one, and with the thing that question was protecting.** §8 worried an info window would be "a second way of stating a place". It is not one, because it is the row.
+- **Two constraints it had to satisfy, both measured rather than assumed:** Google's attribution stays visible (the card clears it by the attribution's own height — 13px of daylight in the mockup), and the card's `bottom` has to include `--sheet-h`, because its containing block is the split, whose bottom is the screen's, not the pane's. The first version of that rule put the card 22px _below_ the pane and straight over the attribution.
+
+What did not change between the rounds: **a tap never takes away the surface it was made on.** A pin tap moves nothing; a row tap normalises the sheet to `half`. Session 136's raise is still revised, and its scroll still survives for the stops where the list is showing.
 
 ## Decisions worth restating, because they are reversals or new rules
 
@@ -58,11 +63,14 @@ The two questions answer each other, and the answer needed the `peek` change to 
 - **Scope belongs to the tab, filters belong to the split, sort belongs to the list.** That is what moves `קרוב עכשיו` out of the canvas row and into the sheet's own top row: it re-orders the list and adds distance chips, which is the distinction session 138 already made in state when it split `located` from `sortByDistance`.
 - **`full` becomes a third `SnapStop` variant** (container minus the controls row), so the sheet cannot cover the controls of the list it is showing. One variant on an existing type, read through the two helpers that already exist.
 - **The pre-prompt moves; the refusal notice does not.** One is about the map, the other explains the list's order, and the split is exactly what each is about. The mover becomes canvas furniture — absolutely positioned, so it costs the split no height and the camera does not move for it; a sibling of `.map-pane` and never a wrapper, because wrapping `<MapPane>` remounts it and a remount is billed.
+- **The bottom stop is renamed `map`, after the word the toggle already uses for it** — a stop called `peek` that no longer peeks is the kind of name that costs someone an hour later. It is a small sweep: the constants, the `[data-view='peek']` CSS selectors, and the tests that name the stop.
 - **`half` keeps 0.56, on purpose.** Picking a new fraction here would be picking a number that looks right in a desktop viewport, which is how 0.56 came to be blamed for a problem it did not cause.
 
-## The elephant, named and left standing
+## The elephant, named and handed on
 
-The app chrome is **276px of a 390×844 phone** (207 header + 69 nav) — 33% before this tab's own controls, 43% on a 360×640 one. It is the largest single consumer of the split's budget and it is not the Map tab's to change: the header day strip is _why_ the Map is a day-scoped surface (ADR-0109 §1), and the mode bar is mode identity. Fixing it quietly inside a Map-tab ADR would be exactly the drift the ADRs exist to prevent, so it is a new backlog line and its own design session.
+The app chrome is **276px of a 390×844 phone** (207 header + 69 nav) — 33% before this tab's own controls, 43% on a 360×640 one. It is the largest single consumer of the split's budget and it is not the Map tab's to change: the header day strip is _why_ the Map is a day-scoped surface (ADR-0109 §1), and the mode bar is mode identity. Fixing it quietly inside a Map-tab ADR would be exactly the drift the ADRs exist to prevent.
+
+**Agreed with the owner: it gets its own design session.** The backlog line now carries what that session has to decide (which parts of the chrome a full-bleed surface may drop or condense, and whether the answer is per-surface or global), what it must not break (the Map's day-scoped identity via the shared strip, the strip's `allScope` behaviour, `AppShell`'s one-frame invariant), and how to measure it — the same three viewports, and `mockups/map-split-v2.html`'s budget panel already prints the numbers.
 
 ## Not done here, deliberately
 
