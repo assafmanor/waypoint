@@ -81,8 +81,11 @@ import {
   CATEGORY_PIN_HUE,
   DOT_SEPARATOR,
   ICONS,
+  MAP_ATTRIBUTION_H,
+  MAP_CONTROLS_H,
   MAP_SHEET_ORDER,
   MAP_SHEET_STOPS,
+  MAP_SHEET_STRIP_H,
   MAP_SHEET_VIEW,
   type MapSheetView,
 } from '../constants';
@@ -153,6 +156,11 @@ export function MapView() {
     }
   }, [activeDate, setAllDays]);
 
+  // The facets open IN PLACE, covering the controls row, on one tap (ADR-0122 §2):
+  // their results are the pins and the rows already on screen, so the change has to be
+  // visible while you make it — which is what a full-screen overlay cannot do, and why
+  // ADR-0100 §3's shape is right here even though ADR-0101 superseded it for search.
+  const [facetsOpen, setFacetsOpen] = useState(false);
   const [searchMode, setSearchMode] = useState(false);
   const [query, setQuery] = useState('');
   // Plan mode's search also researches Google (Phase 5, ADR-0115 §1/§6); Trip mode's
@@ -223,6 +231,14 @@ export function MapView() {
   //   • already refused → nothing. A refusal is an answer, not an invitation.
   // Once per session (`locationOffered`), so "לא עכשיו" means not-this-session rather
   // than a card on every visit to the tab — the nag §6 exists to prevent.
+  //
+  // The card is canvas furniture now (ADR-0122 §6), which is why raising it can lower
+  // the sheet: a question about a map you cannot see lowers the sheet enough to see it,
+  // the identical rule and reason as a row tap at full (ADR-0121 §8).
+  const openPrompt = useCallback(() => {
+    setPromptOpen(true);
+    setSheetView((view) => (view === MAP_SHEET_VIEW.full ? MAP_SHEET_VIEW.half : view));
+  }, []);
   useEffect(() => {
     if (locationOffered || offline || nearMe) return;
     // `unknown` means the Permissions API query is still in flight — wait for it,
@@ -240,8 +256,16 @@ export function MapView() {
       return;
     }
     markLocationOffered();
-    setPromptOpen(true);
-  }, [locationOffered, offline, nearMe, geo.permission, markLocationOffered, geo.request]);
+    openPrompt();
+  }, [
+    locationOffered,
+    offline,
+    nearMe,
+    geo.permission,
+    markLocationOffered,
+    geo.request,
+    openPrompt,
+  ]);
 
   const askForLocation = () => {
     setPromptOpen(false);
@@ -270,7 +294,7 @@ export function MapView() {
       setNoticeDismissed(false);
       return;
     }
-    setPromptOpen(true);
+    openPrompt();
   };
 
   const distances = useMemo(() => {
@@ -542,28 +566,43 @@ export function MapView() {
   // coordinates. That distinction is load-bearing: a coordless row is still
   // REFERENCED, so it must still select — under "tap = focus" it would have had to
   // be untappable, stranding the row whose place data is weakest.
+  // ONE RULE covers both directions: **a tap never takes away the surface it was made
+  // on** (ADR-0122 §7, which revises the pin-tap raise session 136 shipped).
   const select = (placeId: string, opts: { fromRow?: boolean } = {}) => {
     setSelectedId(placeId);
     if (opts.fromRow) {
-      // Focusing a map you cannot see is useless, so a row tap at FULL height drops
-      // the sheet to half. This is the interaction the three-height axis exists for.
+      // A row tap normalises the sheet to `half`: from `full` because the map it
+      // focuses is invisible there (ADR-0121 §8), and from the map extreme because a
+      // row you tapped in a list belongs in its list. A coordless row has no map to
+      // reveal, so it shrinks nothing.
       const focusable = hasMap && placePoint(placeById.get(placeId) ?? {}) != null;
-      if (focusable && sheetView === MAP_SHEET_VIEW.full) setSheetView(MAP_SHEET_VIEW.half);
+      if (focusable && sheetView !== MAP_SHEET_VIEW.half) setSheetView(MAP_SHEET_VIEW.half);
       return;
     }
-    // From a pin: the MIRROR of the drop above, and the half the axis was missing.
-    // At `peek` the sheet is a ~116px lip, so the row a pin tap just selected is
-    // behind it — scrolling a viewport nobody can see is not "the list focuses on
-    // what's marked". So the tap raises the sheet the same way a row tap lowers it,
-    // and only then centres the row: with room to show it, `nearest` would leave a
-    // row that is already barely on screen exactly where it was.
-    if (sheetView === MAP_SHEET_VIEW.peek) setSheetView(MAP_SHEET_VIEW.half);
+    // From a pin: NOTHING MOVES. The pane's box does not change, so the camera does not
+    // shift, no re-fit fires and the map keeps every pixel — which is the "do not
+    // interrupt the interactive map" requirement, met more completely than the peek row
+    // met it. At the map extreme the tapped place surfaces as a card ON THE CANVAS
+    // (`placeCard` below); the raise is retired with the 116px viewport that was its
+    // only justification. What survives is the scroll: where the list IS on screen, the
+    // selected row is centred, since `nearest` would leave a row that is already barely
+    // visible exactly where it was.
+    if (sheetView === MAP_SHEET_VIEW.map) return;
     requestAnimationFrame(() => {
       sheetRef.current
         ?.querySelector(`[data-place="${placeId}"]`)
         ?.scrollIntoView({ block: 'center' });
     });
   };
+
+  // Tapping the canvas background clears the selection — the map idiom, and the place
+  // card's own dismissal. Nothing registers with the back stack: it is not an overlay,
+  // for the same reasons the sheet is not (ADR-0121 §5, ADR-0103). Stable identity,
+  // like every other `MapPane` handler (§4).
+  const clearSelection = useCallback(() => {
+    setSelectedId(null);
+    setGhostId(null);
+  }, []);
 
   // A pin tap, behind a stable identity. `MapPane` is memoized, so a handler
   // re-created every render would break the memo and re-diff every marker once a
@@ -698,7 +737,7 @@ export function MapView() {
     );
 
   const renderRow =
-    (opts: { onSelect: (placeId: string) => void; forceDay?: boolean }) => (usage: PlaceUsage) => {
+    (opts: { onSelect?: (placeId: string) => void; forceDay?: boolean }) => (usage: PlaceUsage) => {
       const place = placeById.get(usage.placeId);
       if (!place) return null;
       const prominence = allDays
@@ -728,7 +767,7 @@ export function MapView() {
           distance={distanceLabel(usage)}
           distanceStale={staleDistances}
           selected={selected}
-          onSelect={() => opts.onSelect(usage.placeId)}
+          onSelect={opts.onSelect && (() => opts.onSelect!(usage.placeId))}
           refs={selected ? refEntriesFor(usage) : undefined}
           onEnrich={() => setEnrichTarget(place)}
         />
@@ -775,94 +814,159 @@ export function MapView() {
     );
   };
 
-  const filterRow = (
-    <div className="map-filter-row">
-      <ChoiceGrid
-        options={typeOptions}
-        value={activeCategory}
-        onChange={setCategory}
-        layout="pills"
-        ariaLabel={t.map.filter.categoryLabel}
-      />
-      {hasMaybes && (
-        <button
-          type="button"
-          className={'map-maybes' + (maybesOnly ? ' on' : '')}
-          aria-pressed={maybesOnly}
-          onClick={() => setMaybesOnly((v) => !v)}
-        >
-          {t.map.filter.maybes}
-          <span className="cnt" aria-hidden="true">
-            {maybesInScope}
-          </span>
-        </button>
-      )}
-      {/* The same idiom for the same shape of question — an independent toggle
-          beside `אולי`, not a third multi-value facet (ADR-0121 §9). */}
-      {hasSettled && (
-        <button
-          type="button"
-          className={'map-maybes' + (leftOnly ? ' on' : '')}
-          aria-pressed={leftOnly}
-          onClick={() => setLeftOnly((v) => !v)}
-        >
-          {t.map.filter.left}
-          <span className="cnt" aria-hidden="true">
-            {leftInScope}
-          </span>
-        </button>
-      )}
-      <button
-        type="button"
-        className="map-search-btn"
-        aria-label={research ? t.map.search.planButton : t.map.search.button}
-        onClick={() => setSearchMode(true)}
-      >
-        <Icon name="search" />
-      </button>
-    </div>
+  // `קרוב עכשיו` re-orders the LIST and annotates its rows with distances — it is
+  // neither a filter nor a scope, which is what session 138's `located`/`sortByDistance`
+  // split said in code. So: scope belongs to the tab, filters belong to the split, sort
+  // belongs to the list (ADR-0122 §2), and this chip lives in the sheet's own top row.
+  // On the list-only path there is no sheet, so it rides in the flow row instead (§8).
+  //
+  // Offline it is UNMOUNTED, not faded: you cannot re-locate, so it cannot exist at all
+  // (ADR-0109 §7 / ADR-0121 §11's "absent, not disabled"). At the map extreme it stays
+  // mounted and CSS hides it — two different facts, two different mechanisms, and
+  // neither borrows the other's (§5).
+  const nearChip = !offline && (
+    <button
+      type="button"
+      className={
+        'map-nearchip' +
+        (distanceOrder ? ' on' : '') +
+        (nearMe && locationRefused ? ' refused' : '')
+      }
+      aria-pressed={distanceOrder}
+      onClick={toggleNearMe}
+    >
+      {ICONS.nearMe} {geo.status === 'locating' ? t.map.near.locating : t.map.near.chip}
+    </button>
   );
 
-  const sortStrip = (
-    <div className="map-sortstrip">
-      <button
-        type="button"
-        className={'map-scopechip' + (allDays ? ' on' : '')}
-        aria-pressed={allDays}
-        onClick={() => setAllDays(!allDays)}
-      >
-        🗓️ {t.map.allDays}
-      </button>
-      {/* Offline the chip is gone, not disabled: you cannot re-locate, so there is
-          nothing to offer (ADR-0109 §7). */}
-      {!offline && (
-        <button
-          type="button"
-          className={
-            'map-nearchip' +
-            (distanceOrder ? ' on' : '') +
-            (nearMe && locationRefused ? ' refused' : '')
-          }
-          aria-pressed={distanceOrder}
-          onClick={toggleNearMe}
-        >
-          {ICONS.nearMe} {geo.status === 'locating' ? t.map.near.locating : t.map.near.chip}
-        </button>
+  // What the collapsed control says about itself: WHICH facets are on, and no number.
+  // A filter that hides the fact that it is filtering is the defect ADR-0119 exists to
+  // prevent; a count here would be a fourth number to keep coupled, and the open strip
+  // already answers "how many" (ADR-0122 §2). The glyph carries the category (ADR-0038)
+  // and the accessible name carries its word — an emoji is not a name.
+  const activeTypeOption = typeOptions.find((o) => o.value === activeCategory);
+  const facetSummary = (categoryPart?: string) =>
+    [categoryPart, maybesOnly && t.map.filter.maybes, leftOnly && t.map.filter.left]
+      .filter(Boolean)
+      .join(` ${DOT_SEPARATOR} `);
+  const facetGlyphs = facetSummary(
+    activeCategory === PLACE_CATEGORY_ALL ? undefined : activeTypeOption?.icon,
+  );
+  const facetWords = facetSummary(
+    activeCategory === PLACE_CATEGORY_ALL ? undefined : activeTypeOption?.label,
+  );
+
+  // ONE ROW, over the canvas (ADR-0122 §1) — the shipped `.map-filter-row` +
+  // `.map-sortstrip` pair, decluttered to three controls at rest and lifted out of the
+  // layout, so the split becomes the whole body and the map runs UNDERNEATH the chips.
+  // Pins are kept out from under it by the camera (`MAP_FIT_PADDING.top`), never by
+  // layout. The same component renders `position: static` above the list where there is
+  // no split: one component, two positionings, never two components (§8).
+  const controlsRow = (
+    <div className={'map-controls' + (hasMap ? '' : ' in-flow')}>
+      {facetsOpen ? (
+        <>
+          <div className="map-facetstrip">
+            <ChoiceGrid
+              options={typeOptions}
+              value={activeCategory}
+              onChange={setCategory}
+              layout="pills"
+              compact
+              ariaLabel={t.map.filter.categoryLabel}
+            />
+            {hasMaybes && (
+              <button
+                type="button"
+                className={'map-maybes' + (maybesOnly ? ' on' : '')}
+                aria-pressed={maybesOnly}
+                onClick={() => setMaybesOnly((v) => !v)}
+              >
+                {t.map.filter.maybes}
+                <span className="cnt" aria-hidden="true">
+                  {maybesInScope}
+                </span>
+              </button>
+            )}
+            {/* The same idiom for the same shape of question — an independent toggle
+                beside `אולי`, not a third multi-value facet (ADR-0121 §9). */}
+            {hasSettled && (
+              <button
+                type="button"
+                className={'map-maybes' + (leftOnly ? ' on' : '')}
+                aria-pressed={leftOnly}
+                onClick={() => setLeftOnly((v) => !v)}
+              >
+                {t.map.filter.left}
+                <span className="cnt" aria-hidden="true">
+                  {leftInScope}
+                </span>
+              </button>
+            )}
+          </div>
+          {/* Pinned OUTSIDE the scroller, where the search button sits at rest: a close
+              control you have to scroll to reach is not a close control. */}
+          <button
+            type="button"
+            className="map-facets-close"
+            aria-label={t.map.filter.close}
+            onClick={() => setFacetsOpen(false)}
+          >
+            <Icon name="close" />
+          </button>
+        </>
+      ) : (
+        <>
+          <button
+            type="button"
+            className={'map-scopechip' + (allDays ? ' on' : '')}
+            aria-pressed={allDays}
+            onClick={() => setAllDays(!allDays)}
+          >
+            🗓️ {t.map.allDays}
+          </button>
+          <button
+            type="button"
+            className={'map-facets' + (facetGlyphs ? ' on' : '')}
+            aria-label={facetWords ? t.map.filter.activeAria(facetWords) : undefined}
+            onClick={() => setFacetsOpen(true)}
+          >
+            {facetGlyphs || t.map.filter.open}
+          </button>
+          {/* The whole day as one free Google directions link — it ships with the
+              connector that draws the same order, and costs nothing (§10). It is about
+              the shape on the canvas, so it lives on the canvas. */}
+          {dayRouteUrl && (
+            <a
+              className="map-dayroute"
+              href={dayRouteUrl}
+              target="_blank"
+              rel="noopener noreferrer"
+            >
+              {ICONS.navigate} {t.map.dayRoute}
+            </a>
+          )}
+          {/* The one place the sort chip cannot live in the sheet: there is no sheet. */}
+          {!hasMap && nearChip}
+          <button
+            type="button"
+            className="map-search-btn"
+            aria-label={research ? t.map.search.planButton : t.map.search.button}
+            onClick={() => setSearchMode(true)}
+          >
+            <Icon name="search" />
+          </button>
+        </>
       )}
-      {/* The whole day as one free Google directions link — it ships with the
-          connector that draws the same order, and costs nothing (§10). */}
-      {dayRouteUrl && (
-        <a className="map-dayroute" href={dayRouteUrl} target="_blank" rel="noopener noreferrer">
-          {ICONS.navigate} {t.map.dayRoute}
-        </a>
-      )}
-      <span className="map-scopehint">{allDays ? t.map.scopeAll : t.map.scopeDay}</span>
     </div>
   );
 
   // The reason-first pre-prompt (ADR-0109 §6): stated before the OS dialog, and it
   // says the location stays on the device (ADR-0006). An inline card, not an
-  // overlay — it explains rather than interrupts, and the list stays usable.
+  // overlay — it explains rather than interrupts, and both halves stay usable. In the
+  // split it is CANVAS FURNITURE (ADR-0122 §6): it asks a question about the map, and it
+  // used to render in the LIST's scroll region, which at the map extreme is not on
+  // screen at all.
   const geoPrompt = promptOpen && (
     <div className="map-geoprompt" role="group" aria-label={t.map.near.prompt.title}>
       <div className="gt">📍 {t.map.near.prompt.title}</div>
@@ -894,7 +998,10 @@ export function MapView() {
   );
 
   // A tapped ghost, surfaced as the one row it is — reusing `.place` rather than
-  // inventing an info window, and named with the day it belongs to (§6).
+  // inventing an info window, and named with the day it belongs to (§6). The place card
+  // below is this rule with the special case removed: **the row surfaces wherever the
+  // sheet cannot show it**, and a ghost is simply the case where it is not in the list
+  // either (ADR-0122 §7).
   const ghostUsage = ghostId ? usageIndex.get(ghostId) : undefined;
   const ghostRow =
     ghostUsage && !inDayScope(ghostUsage) ? (
@@ -903,6 +1010,25 @@ export function MapView() {
         {renderRow({ onSelect: (id) => select(id, { fromRow: true }), forceDay: true })(ghostUsage)}
       </div>
     ) : null;
+
+  // THE TAPPED PLACE, HOSTED ON THE CANVAS (ADR-0122 §7) — the same `.place` row in a
+  // second host, carrying its badge, name, meta, distance, `נווט` and the way-in block
+  // selection reveals, so acting on a reference no longer needs the sheet to move at
+  // all. One grammar, two hosts, exactly as the pin is the list badge in a second form
+  // factor (ADR-0109 §3).
+  //
+  // It exists EXACTLY where the list cannot show the row, so it never doubles it: at the
+  // map extreme the sheet shows no rows, so the card carries the selection; at `half`
+  // and `full` the row is in the list and gets scrolled into view instead. Its body is
+  // inert (no `onSelect`) — there is nowhere for a tap on it to go, and raising the
+  // sheet from it would take away the map it is sitting on.
+  const cardUsage =
+    sheetView === MAP_SHEET_VIEW.map && selectedId ? usageIndex.get(selectedId) : undefined;
+  const placeCard = cardUsage && (
+    <div className="map-placecard">
+      {renderRow({ forceDay: !inDayScope(cardUsage) })(cardUsage)}
+    </div>
+  );
 
   const listBody =
     allUsages.length === 0 ? (
@@ -997,8 +1123,7 @@ export function MapView() {
     return (
       <div className="map-screen" data-mode={mode} data-offline={offline || undefined}>
         {offline && <StatusBanner tone="offline">{t.header.offlineNow}</StatusBanner>}
-        {filterRow}
-        {sortStrip}
+        {controlsRow}
         {geoPrompt}
         {geoNotice}
         {listBody}
@@ -1013,15 +1138,26 @@ export function MapView() {
       data-mode={mode}
       data-view={sheetView}
       data-scope={allDays ? 'all' : 'day'}
-      // The pane is sized to the area the SNAPPED sheet leaves visible, so Google's
-      // attribution stays visible and a drag costs no relayout (§5).
-      style={{ '--sheet-h': stopHeightCss(MAP_SHEET_STOPS[sheetView]) } as CSSProperties}
+      style={
+        {
+          // The pane is sized to the area the SNAPPED sheet leaves visible, so Google's
+          // attribution stays visible and a drag costs no relayout (ADR-0121 §5).
+          '--sheet-h': stopHeightCss(MAP_SHEET_STOPS[sheetView]),
+          // Written from the TS constants, never measured: this screen re-renders every
+          // second, so a layout read here is the anti-pattern `frontend/CLAUDE.md`
+          // names. `--map-controls-h` is the same number `MAP_FIT_PADDING.top` is
+          // derived from, so the row's layout and the band the camera keeps clear of
+          // pins cannot drift apart (ADR-0122 §1).
+          '--map-controls-h': `${MAP_CONTROLS_H}px`,
+          '--snap-top-h': `${MAP_SHEET_STRIP_H}px`,
+          '--map-attr-h': `${MAP_ATTRIBUTION_H}px`,
+        } as CSSProperties
+      }
     >
-      {/* The filter row + sort strip are the split's fixed header: the body no
-          longer scrolls, so only the sheet's list does (§5). */}
-      {filterRow}
-      {sortStrip}
-
+      {/* Everything below is a SIBLING inside the split — the controls row, the place
+          card and the pre-prompt are absolutely positioned over the canvas, never
+          wrappers around `<MapPane>`: wrapping it remounts it, and a remount is a billed
+          map load (ADR-0121 §4). */}
       <div className="map-split">
         <MapPane
           config={config}
@@ -1031,9 +1167,13 @@ export function MapView() {
           setSignal={cameraSignal}
           defaultCentre={defaultCentre}
           onSelectPin={selectPin}
+          onCanvasTap={clearSelection}
           onViewChange={setViewBounds}
           areaCount={areaCount}
         />
+        {placeCard}
+        {geoPrompt}
+        {controlsRow}
         {/* View state, not a back layer: it renders inline, the map behind it stays
             live, nothing dismisses it — so no `Modal`, no `useOverlay`, and back
             leaves the tab at any height (ADR-0103). */}
@@ -1043,29 +1183,40 @@ export function MapView() {
           view={sheetView}
           onViewChange={setSheetView}
           grabLabel={t.map.view.grab}
+          stopLabels={t.map.view.stop}
           header={
-            <div className="map-viewtoggle" role="group" aria-label={t.map.view.toggleLabel}>
-              <button
-                type="button"
-                className={sheetView === MAP_SHEET_VIEW.full ? 'on' : ''}
-                aria-pressed={sheetView === MAP_SHEET_VIEW.full}
-                onClick={() => setSheetView(MAP_SHEET_VIEW.full)}
-              >
-                {t.map.view.list}
-              </button>
-              <button
-                type="button"
-                className={sheetView === MAP_SHEET_VIEW.peek ? 'on' : ''}
-                aria-pressed={sheetView === MAP_SHEET_VIEW.peek}
-                onClick={() => setSheetView(MAP_SHEET_VIEW.peek)}
-              >
-                {t.map.view.map}
-              </button>
-            </div>
+            <>
+              {nearChip}
+              {/* The toggle is anchored at the row's trailing end and does not move when
+                  the sort chip leaves at the map extreme: a control that changes position
+                  between stops is the same defect §1 refuses above the split. Its fill is
+                  a thumb whose position IS the stop (§5), so `half` reads as "between the
+                  two extremes" rather than as a broken segmented control. */}
+              <div className="map-viewtoggle" role="group" aria-label={t.map.view.toggleLabel}>
+                <button
+                  type="button"
+                  className={sheetView === MAP_SHEET_VIEW.full ? 'on' : ''}
+                  aria-pressed={sheetView === MAP_SHEET_VIEW.full}
+                  onClick={() => setSheetView(MAP_SHEET_VIEW.full)}
+                >
+                  {t.map.view.list}
+                </button>
+                <button
+                  type="button"
+                  className={sheetView === MAP_SHEET_VIEW.map ? 'on' : ''}
+                  aria-pressed={sheetView === MAP_SHEET_VIEW.map}
+                  onClick={() => setSheetView(MAP_SHEET_VIEW.map)}
+                >
+                  {t.map.view.map}
+                </button>
+              </div>
+            </>
           }
         >
           <div className="map-sheet-scroll" ref={sheetRef}>
-            {geoPrompt}
+            {/* The refusal notice does NOT move: it explains why the LIST is in schedule
+                order, so it belongs to the list's scroll region (ADR-0122 §6). One card
+                moves and one does not, and the split is exactly what each is about. */}
             {geoNotice}
             {ghostRow}
             {listBody}
@@ -1137,8 +1288,12 @@ function PlaceRow({
   selected?: boolean;
   /** The way in to each reference, present only while selected. */
   refs?: RefEntry[];
-  /** Select this place (and focus its pin, when it has one). */
-  onSelect: () => void;
+  /** Select this place (and focus its pin, when it has one). **Absent on the canvas
+   *  place card, whose body is inert** (ADR-0122 §7): there is nowhere for a tap on it
+   *  to go — it already shows everything the row shows, way-in included — and raising
+   *  the sheet from it would take away the map the card is sitting on. Without it the
+   *  row renders as plain content rather than a `button` that does nothing. */
+  onSelect?: () => void;
   /** Open the picker to give a coordless Place-lite real coordinates. */
   onEnrich: () => void;
 }) {
@@ -1174,16 +1329,20 @@ function PlaceRow({
     <div
       className={rowClass}
       data-place={usage.placeId}
-      role="button"
-      tabIndex={0}
-      aria-pressed={selected}
-      onClick={onSelect}
-      onKeyDown={(e) => {
-        if (e.key === 'Enter' || e.key === ' ') {
-          e.preventDefault();
-          onSelect();
-        }
-      }}
+      {...(onSelect
+        ? {
+            role: 'button',
+            tabIndex: 0,
+            'aria-pressed': selected,
+            onClick: onSelect,
+            onKeyDown: (e: React.KeyboardEvent) => {
+              if (e.key === 'Enter' || e.key === ' ') {
+                e.preventDefault();
+                onSelect();
+              }
+            },
+          }
+        : null)}
     >
       {/* The category badge doubles as the number's host (ADR-0121 §6): a numbered
           pin whose row says nothing about the order makes the two halves read as two

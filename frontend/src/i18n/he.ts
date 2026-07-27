@@ -62,6 +62,15 @@ export const t = {
       left: 'מה נשאר',
       categoryLabel: 'סינון לפי קטגוריה',
       noResultsTitle: 'אין מקומות שמתאימים לסינון',
+      // The ONE filter control over the canvas (ADR-0122 §2): at rest it says what it
+      // is, and with a facet on it says WHICH — a filter that hides the fact that it
+      // is filtering is the defect ADR-0119 exists to prevent. It carries no count:
+      // the open strip already answers "how many".
+      open: 'סינון',
+      close: 'סגירת סינון',
+      // The summary's accessible name spells out in words what the chip draws with the
+      // category's glyph — a control named by an emoji is not named.
+      activeAria: (facets: string) => `סינון: ${facets}`,
     },
     search: {
       button: 'חיפוש מקומות',
@@ -100,9 +109,10 @@ export const t = {
     },
     // Map-local day scope (ADR-0110 §4): the strip focuses one day; this chip
     // shows every day's places at once.
+    // (`scopeAll` / `scopeDay` retired with `.map-scopehint` in ADR-0122 §2: the chip's
+    // own on/off state says which scope is on, and the header day strip already drops
+    // its filled selection while all-days is live.)
     allDays: 'כל הימים',
-    scopeAll: 'כל המקומות בטיול',
-    scopeDay: 'המקומות של היום',
     // A coordless Place-lite: no coordinates yet — offer to enrich it in place.
     addLocation: 'מיקום',
     shelfTag: 'על המדף',
@@ -168,7 +178,11 @@ export const t = {
       list: 'רשימה',
       map: 'מפה',
       toggleLabel: 'תצוגה',
-      grab: 'גרירה: הצצה, חצי, מלא',
+      // The handle is a real ARIA splitter now (ADR-0122 §4), so it is named for the
+      // value it moves and each stop is read out by `aria-valuetext` — arrows move one
+      // stop, Home/End go to the extremes.
+      grab: 'גובה הרשימה',
+      stop: { map: 'מפה', half: 'חצי', full: 'מלא' },
     },
     // Pan/zoom IS the area filter (ADR-0106 §4) and no chip is ever built — this
     // quiet readout is what finally says so on screen. Worded about the AREA,

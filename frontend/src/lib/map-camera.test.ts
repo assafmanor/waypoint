@@ -7,7 +7,7 @@ import {
   fitPaddingFor,
   pointInBounds,
 } from './map-camera';
-import { MAP_FIT_PADDING } from '../constants';
+import { MAP_CONTROLS_H, MAP_FIT_PADDING } from '../constants';
 
 const TOKYO = { lat: 35.68, lng: 139.76 };
 const KYOTO = { lat: 35.01, lng: 135.77 };
@@ -190,5 +190,32 @@ describe('fitPaddingFor — the other half of the zoom-out', () => {
   it('refuses outright on an unsized div', () => {
     expect(fitPaddingFor({ width: 0, height: 0 }, MAP_FIT_PADDING)).toBeNull();
     expect(fitPaddingFor({ width: 390, height: 0 }, MAP_FIT_PADDING)).toBeNull();
+  });
+});
+
+// The controls row floats OVER the canvas (ADR-0122 §1), and nothing about the layout
+// keeps pins out from under it — the camera does, by insetting the fit. So the two are
+// one number by construction rather than by discipline: `--map-controls-h` and this
+// padding are derived from the same constant, and a test that reads both is what makes
+// "they cannot drift apart" true rather than aspirational.
+describe('the fit clears the floating controls row (ADR-0122 §1)', () => {
+  it('insets the top by the row PLUS a pin’s own clearance, never just the pin', () => {
+    // The teardrop's tip is the anchor, so its body extends above the coordinate; the row
+    // is on top of that. A `top` that only covered the pin would put a fitted pin under
+    // the chips, where it is drawn but not tappable.
+    expect(MAP_FIT_PADDING.top).toBeGreaterThan(MAP_CONTROLS_H);
+    expect(MAP_FIT_PADDING.top - MAP_CONTROLS_H).toBeGreaterThanOrEqual(MAP_FIT_PADDING.bottom);
+  });
+
+  // ADR-0122 §1's second honest limit, asserted rather than promised: at `half` the pane
+  // is ~250px on the baseline phone, and this inset claims more than half of that axis —
+  // so `fitPaddingFor` drops it and a fitted pin CAN land under the row there. At the map
+  // extreme the pane is ~517px and the inset is cheap, which is one more argument for the
+  // height axis.
+  it('is affordable at the map extreme and dropped at half — the axis pays for it', () => {
+    const AT_MAP = { width: 390, height: 517 };
+    const AT_HALF = { width: 390, height: 250 };
+    expect(fitPaddingFor(AT_MAP, MAP_FIT_PADDING)).toEqual(MAP_FIT_PADDING);
+    expect(fitPaddingFor(AT_HALF, MAP_FIT_PADDING)).toBeUndefined();
   });
 });

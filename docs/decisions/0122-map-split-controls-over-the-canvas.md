@@ -1,6 +1,6 @@
 # 0122 — The map split earns its screen: the controls leave the layout, the height axis becomes usable, and the location prompt moves onto the canvas
 
-**Status:** Accepted (design) — **paper only**; the build is the Phase-2 build session, which needs a phone in hand (see [The device pass](#the-device-pass-and-what-it-owns))
+**Status:** Accepted — **built 2026-07-27 (session 141)**; §1–§9 needed no reversal. See the [Build log](#build-log-2026-07-27-session-141) for what the build refined, the one place it read against the letter (§7's bottom camera inset, deferred to Phase 3 rather than bought with a prop that flips on a tap), and the one file the Consequences list missed. The **numbers** still want a phone — see [The device pass](#the-device-pass-and-what-it-owns), which is unchanged and unspent.
 **Date:** 2026-07-27
 **Amends** [0121](0121-embedded-map-phase-6-design.md) **§5** (the shell it designed: the filter row + sort strip stop being the split's fixed header, the stops change shape, and the drag gets a real target), and touches **§7** (the fit's top inset grows by the controls row), **§8** (its full→half rule is reused verbatim for the location prompt), **§12** (the pane's floating furniture moves below the row).
 **Refines:** [0109](0109-map-tab-design.md) §1 (its "filter chip row → scope/sort strip" pair dissolves: scope goes over the canvas, the sort goes to the sheet, the scope-hint sentence retires) and §6 (the pre-prompt's home, not its rule — it stays inline, as the session-105 amendment settled), [0100](0100-index-bookings-header-search-redesign.md) §3 (its cover-the-row-in-place shape returns here, for facets rather than for search — [0101](0101-index-search-mode-and-header-titles.md) superseded it on the Index for a reason that does not apply to a facet strip; see §2), [0017](0017-mobile-first-device-targets.md) (the drag target finally clears the touch floor), [0038](0038-icons-and-canonical-category.md) (the category glyph is the whole vocabulary, so the chip drops the word), [0119](0119-map-maybes-facet-is-the-shelf.md) (the collapsed filter control carries no count, deliberately), [0096](0096-per-domain-claude-md-guides.md) (extend `ChoiceGrid` / `SnapStop`, don't fork them)
@@ -209,3 +209,71 @@ Offline, or with no build config, there is no split and no sheet — the tab is 
 - **Let the sheet vanish completely at the map extreme** (no 52px strip), with the toggle as the only way back. Rejected: the toggle and `קרוב עכשיו` would have to move onto the canvas, re-cluttering exactly what §2 decluttered, and the drag would lose its start edge — a flick down would make the sheet disappear and the way back would be a different control.
 - **Grow the sheet to hold the tapped place** (a selection-driven stop, ~200px, instead of a card). Considered seriously: it needs no new host, and "the sheet moves because you asked" is defensible. Rejected because it still shortens the pane — the map physically shrinks and the camera's aspect changes — where the card leaves the pane's box alone; and because it gives the minimum stop two heights, which the drag then has to reason about.
 - **Pick new numbers for `half` now.** Rejected: see the device pass. A fraction chosen in a desktop viewport is a number that looks right, which is how the shipped 0.56 came to be blamed for a problem it did not cause.
+
+## Build log (2026-07-27, session 141)
+
+The design above is what shipped, and §1–§9 needed no reversal. What the build had to
+decide, refine or read against the letter is here rather than in a new ADR, because none
+of it changes a decision this one made. The rendered canvas is unchanged from ADR-0121
+§13: it was **not** seen in this session — no phone, no browser key — and none of what
+follows claims otherwise.
+
+1. **§7's bottom camera inset is deliberately NOT built, and Phase 3 owns it.** §7 asks
+   that while a card is shown the fit's bottom inset carry it, "derived from the same
+   constant, exactly as the top inset carries the controls row". The top inset is derived
+   and shipped (`MAP_FIT_PADDING.top` = `MAP_CONTROLS_H` + the floating gap + the pin
+   clearance the fit already reserved = **118px**, the number §1 printed). The bottom one
+   cannot be done the same way: the controls row is _always_ there, so its inset is a
+   constant, while the card comes and goes on a **tap** — so carrying it means a
+   `MapPane` prop that changes when a pin is tapped, which is the one thing §9 lists as
+   a constraint that must survive and §6 already avoided for the same reason by
+   suppressing `באזור`/re-centre in CSS. Against that: the card exists only at the `map`
+   stop, a fit is never what put it there, and §7 itself records that focus is unaffected
+   because it centres the pin. What is genuinely left open is narrow — a chip tapped
+   **while** a card is open re-fits with 118px reserved at the top and 28 at the bottom,
+   so a fitted pin can land under the card at that one stop. Phase 3 is the camera's
+   phase and already revises `recentre`; this belongs in it, not in a prop that costs the
+   map's memo. Noted on the backlog with the phase.
+2. **The Consequences file list missed `ui/domain/MapPane.tsx`.** §7's "a canvas tap
+   clears the selection" needs the map instance's own `click` event, which only the pane
+   has, so it gained one prop — `onCanvasTap`, a `useCallback(…, [])` over `setState`, so
+   it is identity-stable and the memo is untouched (ADR-0121 §4). It also carries a guard
+   the ADR does not mention: an `AdvancedMarker` is a DOM overlay, so a pin tap should
+   never reach the map's click at all, but "select a pin, then instantly clear it" is the
+   one ordering that would fail silently, and the guard is one `closest('.map-pin')`.
+3. **The `map` stop's strip height reaches CSS under the PRIMITIVE's name, not the map's.**
+   §3 asks one constant to write both the stop and the CSS `min-height`. That
+   `min-height` lives in `snap-sheet.css`, which is generic — a primitive reading a
+   `--map-*` variable would invert the layering — so the screen writes **`--snap-top-h`**
+   from `MAP_SHEET_STRIP_H`. Same single source of truth, correct direction of knowledge:
+   the caller tells the primitive how much top it must reserve.
+4. **§5's two hiding mechanisms are in two different languages, and the tests are what
+   keep them apart.** Stop-driven hiding is CSS on a chip that stays **mounted**
+   (`visibility`, so both directions animate and the control is untabbable while
+   invisible); capability-driven absence is an **unmounted** chip. jsdom applies no CSS,
+   so the suite asserts the mechanism rather than the pixels: the chip is present at the
+   `map` stop and absent offline. That pairing is the decision; the fade itself is a human
+   pass.
+5. **`nearestStop`'s velocity term is a separate branch, so zero velocity is byte-for-byte
+   the shipped behaviour.** The flick path ranks stops by height (it needs "the next one
+   beyond, in the direction of travel"); the distance path still iterates `order`, which
+   is what keeps ties going to the earlier entry. That is why the shipped release table
+   could stay verbatim as the regression net while the new table was added beside it. One
+   detail the ADR could not have known to state: a flick released **exactly on** a stop
+   needs a 1px epsilon, or "the first stop strictly beyond" is the stop you are already
+   on and a fast gesture that lands on a boundary is a no-op.
+6. **The drag's click-swallow is armed on `pointerup` only.** §4 says a real drag
+   suppresses the click that follows. A **cancelled** gesture dispatches no click, so a
+   `{ once: true }` listener armed after `pointercancel` sits there and swallows the next
+   genuine tap in the region — the same class of bug as capturing early, found by asking
+   what happens to the listener nobody consumes.
+7. **The facet disclosure cost the tests more than the code.** Every existing test that
+   touched a category chip, `אולי` or `מה נשאר` now has to open the strip first, and the
+   scope chip is only reachable with it closed — because the strip covers the row in
+   place, which is §2's whole point. Two idempotent helpers per suite (`openFacets` /
+   `closeFacets`) rather than twenty rewritten call sites; `Map.test.tsx` keeps running
+   with no build config, so §8's in-flow row is tested as the list-only path it is.
+8. **`t.map.scopeAll` / `t.map.scopeDay` are deleted, not orphaned.** §2 retires
+   `.map-scopehint`'s sentence, and the two strings had no other call site. Where the
+   suites read that sentence to learn the day scope they now read the chip's own
+   `aria-pressed`, which is what the ADR says says it.

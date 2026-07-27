@@ -27,6 +27,7 @@ export function ChoiceGrid<T extends string>({
   disabled = false,
   ariaLabel,
   layout = 'grid',
+  compact = false,
 }: {
   options: Choice<T>[];
   /** The selected value, or `undefined` for no selection yet (a single-select
@@ -43,47 +44,62 @@ export function ChoiceGrid<T extends string>({
    *  category filter, ADR-0098 §reuse: too many options for a fixed grid on a
    *  narrow phone). Same controlled single-select radiogroup either way. */
   layout?: 'grid' | 'pills';
+  /** `pills` only — GLYPH + COUNT chips, with the label kept as each pill's
+   *  accessible name (ADR-0122 §2). For a dense row over a map the glyph is already
+   *  the category's whole vocabulary (ADR-0038) and the row badge and the pin carry
+   *  the same one, so the word beside it states the same thing twice — which is most
+   *  of why the worded row was as wide as it was. It is a flag on the primitive rather
+   *  than a CSS trick precisely so the accessible name survives: hiding the label
+   *  visually would leave a pill named by its count alone. An option with no glyph
+   *  (`הכל`) keeps its word — there is nothing to stand in for it. */
+  compact?: boolean;
 }) {
   const pills = layout === 'pills';
   return (
     <div
-      className={'choice-grid' + (pills ? ' pills' : '')}
+      className={'choice-grid' + (pills ? ' pills' : '') + (pills && compact ? ' compact' : '')}
       role="radiogroup"
       aria-label={ariaLabel}
       style={pills ? undefined : ({ '--choice-cols': columns } as CSSProperties)}
     >
-      {options.map((o) => (
-        <button
-          key={o.value}
-          type="button"
-          role="radio"
-          aria-checked={o.value === value}
-          className={(pills ? 'choice-pill' : 'choice-card') + (o.value === value ? ' on' : '')}
-          onClick={() => onChange(o.value)}
-          disabled={disabled}
-        >
-          {pills ? (
-            <>
-              <span>{o.label}</span>
-              {o.icon !== '' && <span aria-hidden="true">{o.icon}</span>}
-              {o.count !== undefined && (
-                <span className="choice-pill-count" aria-hidden="true">
-                  {o.count}
-                </span>
-              )}
-            </>
-          ) : (
-            <>
-              {o.icon !== '' && (
-                <span className="choice-card-ic" aria-hidden="true">
-                  {o.icon}
-                </span>
-              )}
-              <span className="choice-card-lbl">{o.label}</span>
-            </>
-          )}
-        </button>
-      ))}
+      {options.map((o) => {
+        // Compact drops the word only where a glyph can carry it, and pays for that by
+        // naming the button.
+        const glyphOnly = pills && compact && o.icon !== '';
+        return (
+          <button
+            key={o.value}
+            type="button"
+            role="radio"
+            aria-checked={o.value === value}
+            aria-label={glyphOnly ? o.label : undefined}
+            className={(pills ? 'choice-pill' : 'choice-card') + (o.value === value ? ' on' : '')}
+            onClick={() => onChange(o.value)}
+            disabled={disabled}
+          >
+            {pills ? (
+              <>
+                {!glyphOnly && <span>{o.label}</span>}
+                {o.icon !== '' && <span aria-hidden="true">{o.icon}</span>}
+                {o.count !== undefined && (
+                  <span className="choice-pill-count" aria-hidden="true">
+                    {o.count}
+                  </span>
+                )}
+              </>
+            ) : (
+              <>
+                {o.icon !== '' && (
+                  <span className="choice-card-ic" aria-hidden="true">
+                    {o.icon}
+                  </span>
+                )}
+                <span className="choice-card-lbl">{o.label}</span>
+              </>
+            )}
+          </button>
+        );
+      })}
     </div>
   );
 }

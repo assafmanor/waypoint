@@ -105,9 +105,16 @@ vi.mock('../lib/outbox', () => ({ useIsOffline: () => isOffline }));
 // (ADR-0109 session-134). `null` stands for "no Permissions API at all" (Safari).
 let permissionState: PermissionState | null = 'prompt';
 let geoFix: { lat: number; lng: number } | null = null;
+/** Makes a request FAIL (1 = PERMISSION_DENIED), which is the only way to reach the
+ *  refusal notice — the same seam `Map.test.tsx` uses. */
+let geoErrorCode: number | null = null;
 const getCurrentPosition = vi.fn(
-  (onSuccess: (p: { coords: { latitude: number; longitude: number } }) => void) => {
-    if (geoFix) onSuccess({ coords: { latitude: geoFix.lat, longitude: geoFix.lng } });
+  (
+    onSuccess: (p: { coords: { latitude: number; longitude: number } }) => void,
+    onError: (e: { code: number; PERMISSION_DENIED: number }) => void,
+  ) => {
+    if (geoErrorCode != null) onError({ code: geoErrorCode, PERMISSION_DENIED: 1 });
+    else if (geoFix) onSuccess({ coords: { latitude: geoFix.lat, longitude: geoFix.lng } });
   },
 );
 Object.defineProperty(navigator, 'geolocation', {
@@ -138,6 +145,11 @@ vi.mock('../ui/domain/MapPane', () => ({
     const pins = props.pins as { placeId: string; tier: string; order?: number }[];
     return (
       <div data-pane>
+        {/* The canvas background: tapping it clears the selection (ADR-0122 §7). The real
+            one is the map div's own click, guarded against pin taps inside `MapPane`. */}
+        <button data-canvas onClick={() => (props.onCanvasTap as () => void)()}>
+          canvas
+        </button>
         {pins.map((pin) => (
           <button
             key={pin.placeId}
@@ -159,8 +171,9 @@ import { NavProvider } from '../state/nav-state';
 import { MapScopeProvider } from '../state/map-scope-state';
 import { setSimulatedNow } from '../lib/useClock';
 import { MapView } from './Map';
-import { MAP_SHEET_VIEW } from '../constants';
+import { MAP_CONTROLS_H, MAP_SHEET_VIEW } from '../constants';
 import { PIN_TIER } from '../lib/map-pins';
+import { iconForCategory } from '@waypoint/shared';
 import { t } from '../i18n/he';
 
 function wrap(node: ReactNode) {
@@ -186,6 +199,17 @@ const row = (name: string) =>
   ) as HTMLElement | undefined;
 const listButton = (label: string) => screen.getByRole('button', { name: new RegExp(label) });
 const toggle = (label: string) => screen.getByRole('button', { name: label });
+const placeCard = () => document.querySelector('.map-placecard') as HTMLElement | null;
+const tapCanvas = () => fireEvent.click(document.querySelector('[data-canvas]')!);
+
+/** The facets live behind ONE `סינון` control that opens them in place (ADR-0122 §2), so
+ *  anything touching a facet opens the strip first, and anything reaching for the scope
+ *  chip closes it. Both idempotent — the control that is not rendered is skipped. The
+ *  `^` matters: with a facet on, the control's name is `סינון: אוכל · אולי`. */
+const openFacets = () => {
+  const control = screen.queryByRole('button', { name: new RegExp(`^${t.map.filter.open}`) });
+  if (control) fireEvent.click(control);
+};
 
 describe('the embedded map’s shell (ADR-0121)', () => {
   beforeEach(() => {
@@ -206,6 +230,7 @@ describe('the embedded map’s shell (ADR-0121)', () => {
     paneProps.current = {};
     permissionState = 'prompt';
     geoFix = null;
+    geoErrorCode = null;
     getCurrentPosition.mockClear();
     scrollIntoView.mockClear();
   });
@@ -225,7 +250,7 @@ describe('the embedded map’s shell (ADR-0121)', () => {
     ];
   };
 
-  it('renders the split: a fixed header, a live pane, and a sheet at half', () => {
+  it('renders the split: a live pane, a floating controls row, and a sheet at half', () => {
     seed();
     render(wrap(<MapView />));
     expect(screenEl().className).toContain('is-split');
@@ -235,6 +260,217 @@ describe('the embedded map’s shell (ADR-0121)', () => {
     // attribution stays visible and a drag costs no relayout.
     expect(screenEl().style.getPropertyValue('--sheet-h')).toBe('56%');
     expect(sheet().dataset.view).toBe('half');
+  });
+
+  // ADR-0122 §1: the two fixed rows above the split were 370 of 844 phone pixels spent
+  // before either half got one. What the suite can hold of that is the STRUCTURE — the
+  // row is inside the split rather than above it, and it is a sibling of the pane rather
+  // than a wrapper around it, because wrapping remounts the map and a remount is billed
+  // (ADR-0121 §4). Whether it reads as light over real tiles is the device pass's.
+  describe('the controls leave the layout (ADR-0122 §1)', () => {
+    it('is one row inside the split, over the canvas, beside the pane', () => {
+      seed();
+      render(wrap(<MapView />));
+      const row = document.querySelector('.map-controls')!;
+      expect(row.parentElement!.className).toBe('map-split');
+      // Not a wrapper around the pane, and not inside it.
+      expect(row.querySelector('[data-pane]')).toBeNull();
+      expect(document.querySelector('[data-pane] .map-controls')).toBeNull();
+      // The shipped pair is gone, not relocated.
+      expect(document.querySelector('.map-filter-row')).toBeNull();
+      expect(document.querySelector('.map-sortstrip')).toBeNull();
+      // …and so is the scope hint: the chip's own state says which scope is on (§2).
+      expect(document.querySelector('.map-scopehint')).toBeNull();
+    });
+
+    it('writes the row’s height from the same constant the camera’s inset derives from', () => {
+      seed();
+      render(wrap(<MapView />));
+      // One source of truth, so the layout and the band the camera keeps clear of pins
+      // cannot drift apart — and never a runtime measurement on a screen that re-renders
+      // every second.
+      expect(screenEl().style.getPropertyValue('--map-controls-h')).toBe(`${MAP_CONTROLS_H}px`);
+    });
+
+    it('the full stop stops BELOW the row, so the list you are reading can still be filtered', () => {
+      seed();
+      render(wrap(<MapView />));
+      fireEvent.click(toggle(t.map.view.list));
+      expect(screenEl().style.getPropertyValue('--sheet-h')).toBe(
+        `calc(100% - ${MAP_CONTROLS_H}px)`,
+      );
+      expect(document.querySelector('.map-controls')).toBeTruthy();
+    });
+
+    it('the map stop is the sheet’s own top row and nothing of the list', () => {
+      seed();
+      render(wrap(<MapView />));
+      fireEvent.click(toggle(t.map.view.map));
+      expect(screenEl().style.getPropertyValue('--sheet-h')).toBe('52px');
+      // The strip's height is reserved from the same constant, so a taller top can never
+      // clip its own contents.
+      expect(screenEl().style.getPropertyValue('--snap-top-h')).toBe('52px');
+    });
+  });
+
+  // Three controls at rest, not seven (ADR-0122 §2). Asserted in BOTH day scopes, since
+  // the day-scoped and all-days paths are different renders.
+  describe('the facets open in place, behind one control (ADR-0122 §2)', () => {
+    const rest = () =>
+      [...document.querySelectorAll('.map-controls > *')].map((el) => el.className);
+
+    it('at rest the row carries the scope, one filter control, and search', () => {
+      seed();
+      render(wrap(<MapView />));
+      expect(rest()).toEqual(['map-scopechip', 'map-facets', 'map-search-btn']);
+      expect(screen.getByRole('button', { name: t.map.filter.open })).toBeTruthy();
+      // The facets are not on screen until asked for.
+      expect(screen.queryByRole('radio', { name: new RegExp(t.map.filter.all) })).toBeNull();
+    });
+
+    it('one tap replaces the row with the facet strip and a pinned close', () => {
+      seed();
+      render(wrap(<MapView />));
+      openFacets();
+      expect(document.querySelector('.map-facetstrip')).toBeTruthy();
+      expect(screen.getByRole('radio', { name: new RegExp(t.map.filter.all) })).toBeTruthy();
+      // The resting controls step aside — the strip covers the row in place.
+      expect(screen.queryByRole('button', { name: t.map.filter.open })).toBeNull();
+      expect(screen.queryByRole('button', { name: new RegExp(t.map.allDays) })).toBeNull();
+
+      fireEvent.click(screen.getByRole('button', { name: t.map.filter.close }));
+      expect(document.querySelector('.map-facetstrip')).toBeNull();
+      expect(screen.getByRole('button', { name: new RegExp(t.map.allDays) })).toBeTruthy();
+    });
+
+    // The category chips are glyph + count, with the WORD as the accessible name: the
+    // glyph is the category's whole vocabulary here (ADR-0038), and the row badge and the
+    // pin already carry the same one. `הכל` keeps its word — it has no glyph.
+    it('the category chips are glyph + count, still named by their word', () => {
+      seed();
+      render(wrap(<MapView />));
+      openFacets();
+      const food = screen.getByRole('radio', { name: t.iconPicker.categories.food });
+      expect(food.textContent).not.toContain(t.iconPicker.categories.food);
+      expect(food.querySelector('.choice-pill-count')?.textContent).toBe('2');
+      const all = screen.getByRole('radio', { name: new RegExp(t.map.filter.all) });
+      expect(all.textContent).toContain(t.map.filter.all);
+    });
+
+    // A filter that hides the fact that it is filtering is the defect ADR-0119 exists to
+    // prevent — and a fourth count would be a fourth thing to keep coupled.
+    it('the collapsed control states WHICH facets are on, in words for a reader, and no count', () => {
+      seed();
+      tripMaybes = [
+        maybe({ id: 'm', placeId: 'lunch', category: 'food', targetDate: ACTIVE_DATE }),
+      ];
+      render(wrap(<MapView />));
+      const control = () => document.querySelector('.map-facets') as HTMLElement;
+      expect(control().textContent).toBe(t.map.filter.open);
+      expect(control().className).not.toContain('on');
+
+      openFacets();
+      fireEvent.click(screen.getByRole('radio', { name: t.iconPicker.categories.food }));
+      fireEvent.click(screen.getByRole('button', { name: new RegExp(t.map.filter.maybes) }));
+      fireEvent.click(screen.getByRole('button', { name: t.map.filter.close }));
+
+      // The glyph is what it draws; the word is what it is called.
+      expect(control().textContent).toContain(iconForCategory('food'));
+      expect(control().textContent).toContain(t.map.filter.maybes);
+      expect(control().getAttribute('aria-label')).toBe(
+        t.map.filter.activeAria(`${t.iconPicker.categories.food} · ${t.map.filter.maybes}`),
+      );
+      expect(control().className).toContain('on');
+      expect(control().querySelector('.cnt')).toBeNull();
+    });
+
+    it('says the same thing in all-days scope', () => {
+      seed();
+      render(wrap(<MapView />));
+      fireEvent.click(listButton(t.map.allDays));
+      openFacets();
+      fireEvent.click(screen.getByRole('radio', { name: t.iconPicker.categories.food }));
+      fireEvent.click(screen.getByRole('button', { name: t.map.filter.close }));
+      const control = document.querySelector('.map-facets') as HTMLElement;
+      expect(control.getAttribute('aria-label')).toBe(
+        t.map.filter.activeAria(t.iconPicker.categories.food),
+      );
+    });
+  });
+
+  // Scope belongs to the tab, filters belong to the split, sort belongs to the list
+  // (ADR-0122 §2).
+  describe('the sort control moves to the sheet’s own top row', () => {
+    const nearChip = () => document.querySelector('.map-nearchip') as HTMLElement | null;
+
+    it('sits in the sheet’s top region, not in the controls row', () => {
+      seed();
+      render(wrap(<MapView />));
+      expect(nearChip()!.closest('.wp-snapsheet-headrow')).toBeTruthy();
+      expect(document.querySelector('.map-controls .map-nearchip')).toBeNull();
+    });
+
+    // Stop-driven hiding ANIMATES, so the chip stays mounted and CSS hides it;
+    // capability-driven absence does not, so offline it is unmounted (§5). Two different
+    // facts, two different mechanisms — and jsdom applies no CSS, so what the suite owns
+    // is which mechanism each one uses.
+    it('stays mounted at the map extreme, where CSS hides it', () => {
+      seed();
+      render(wrap(<MapView />));
+      fireEvent.click(toggle(t.map.view.map));
+      expect(screenEl().dataset.view).toBe(MAP_SHEET_VIEW.map);
+      expect(nearChip()).toBeTruthy();
+    });
+
+    it('is unmounted offline, because there it cannot exist at all', () => {
+      seed();
+      isOffline = true;
+      render(wrap(<MapView />));
+      expect(nearChip()).toBeNull();
+    });
+  });
+
+  // ADR-0122 §6: it asks a question about the MAP and used to render inside the list's
+  // scroll region, which at the map extreme is not on screen at all.
+  describe('the pre-prompt is canvas furniture; the refusal notice is not', () => {
+    it('renders over the canvas, as a sibling of the pane — not in the list', async () => {
+      seed();
+      permissionState = 'prompt';
+      render(wrap(<MapView />));
+      await vi.waitFor(() => expect(screen.queryByText(t.map.near.prompt.body)).toBeTruthy());
+      const prompt = document.querySelector('.map-geoprompt')!;
+      expect(prompt.parentElement!.className).toBe('map-split');
+      expect(document.querySelector('.map-sheet-scroll .map-geoprompt')).toBeNull();
+      // It costs the split no height, so the sheet's own stop is untouched by it.
+      expect(screenEl().style.getPropertyValue('--sheet-h')).toBe('56%');
+    });
+
+    // The identical rule and reason as a row tap at full: a question about a map you
+    // cannot see lowers the sheet enough to see it.
+    it('raising it at full drops the sheet to half', () => {
+      seed();
+      permissionState = 'denied';
+      render(wrap(<MapView />));
+      fireEvent.click(toggle(t.map.view.list));
+      expect(screenEl().dataset.view).toBe('full');
+      fireEvent.click(listButton(t.map.near.chip));
+      expect(screen.queryByText(t.map.near.prompt.body)).toBeTruthy();
+      expect(screenEl().dataset.view).toBe('half');
+    });
+
+    it('the refusal notice stays in the list, because it explains the LIST’s order', async () => {
+      seed();
+      permissionState = 'prompt';
+      geoErrorCode = 1;
+      render(wrap(<MapView />));
+      await vi.waitFor(() => expect(screen.queryByText(t.map.near.prompt.body)).toBeTruthy());
+      fireEvent.click(screen.getByRole('button', { name: t.map.near.prompt.allow }));
+      // One card moves and one does not, and the split is exactly what each is about.
+      await vi.waitFor(() =>
+        expect(document.querySelector('.map-sheet-scroll .fb-banner')).toBeTruthy(),
+      );
+      expect(document.querySelector('.map-split > .fb-banner')).toBeNull();
+    });
   });
 
   it('only coord-bearing places pin; a coordless one stays a list row', () => {
@@ -340,7 +576,7 @@ describe('the embedded map’s shell (ADR-0121)', () => {
     expect(toggle(t.map.view.list).getAttribute('aria-pressed')).toBe('true');
 
     fireEvent.click(toggle(t.map.view.map));
-    expect(screenEl().dataset.view).toBe('peek');
+    expect(screenEl().dataset.view).toBe(MAP_SHEET_VIEW.map);
     expect(toggle(t.map.view.list).getAttribute('aria-pressed')).toBe('false');
   });
 
@@ -384,7 +620,9 @@ describe('the embedded map’s shell (ADR-0121)', () => {
     });
 
     // Focusing a map you cannot see is useless — this is the interaction the
-    // three-height axis exists for.
+    // three-height axis exists for. A ROW tap normalises the sheet to `half` from either
+    // extreme (ADR-0122 §7): from `full` because the map it focuses is invisible there,
+    // and from the map extreme because a row you tapped belongs in its list.
     it('a row tap at FULL height drops the sheet to half', () => {
       seed();
       render(wrap(<MapView />));
@@ -394,30 +632,111 @@ describe('the embedded map’s shell (ADR-0121)', () => {
       expect(screenEl().dataset.view).toBe('half');
     });
 
-    // The mirror of the drop above, and the half the axis was missing. At `peek` the
-    // sheet is a lip: the row a pin tap just selected is behind it, so "the list
-    // focuses on what's marked" was true of a viewport nobody could see.
-    it('a pin tap at PEEK raises the sheet to half, then centres the row it selected', async () => {
+    it('a row tap from the map extreme normalises the sheet to half as well', () => {
       seed();
       render(wrap(<MapView />));
       fireEvent.click(toggle(t.map.view.map));
-      expect(screenEl().dataset.view).toBe('peek');
-
-      fireEvent.click(pin('lunch')!);
+      // The sheet shows no rows there, so this is how a row is tapped at that stop: the
+      // search overlay's own selection, which takes the same path.
+      fireEvent.click(row('museum')!);
       expect(screenEl().dataset.view).toBe('half');
-      expect(row('lunch')!.className).toContain('selected');
-      // Centred, not `nearest`: with room to show the row, `nearest` leaves one that
-      // is already barely on screen exactly where it was.
-      await nextFrame();
-      expect(scrollIntoView).toHaveBeenCalledWith({ block: 'center' });
     });
 
-    it('a pin tap in all-days scope raises it the same way — the scope is not the trigger', async () => {
+    // ADR-0122 §7, revising the raise session 136 shipped: **a tap never takes away the
+    // surface it was made on.** The raise was the only way to show a row at `peek: 116`,
+    // and stops being right once the map extreme shows no list at all — there the tapped
+    // place surfaces as a card ON THE CANVAS, and the pane's box never changes, so the
+    // camera does not move either.
+    it('a pin tap at the map extreme moves NOTHING, and surfaces the place as a card', async () => {
       seed();
       render(wrap(<MapView />));
-      fireEvent.click(listButton(t.map.allDays));
       fireEvent.click(toggle(t.map.view.map));
+      expect(screenEl().dataset.view).toBe(MAP_SHEET_VIEW.map);
 
+      fireEvent.click(pin('lunch')!);
+      expect(screenEl().dataset.view).toBe(MAP_SHEET_VIEW.map);
+      expect(placeCard()).toBeTruthy();
+      expect(placeCard()!.querySelector('.map-name')?.textContent).toBe('lunch');
+      // The card IS the row — same markup, same way-in block — not a second object with
+      // its own vocabulary.
+      expect(placeCard()!.querySelector('.place')).toBeTruthy();
+      expect(placeCard()!.querySelector('.map-refs')).toBeTruthy();
+      // And nothing is scrolled: there is no list on screen to scroll.
+      await nextFrame();
+      expect(scrollIntoView).not.toHaveBeenCalled();
+    });
+
+    it('the card carries a tapped GHOST too, named with the day it belongs to', () => {
+      seed();
+      render(wrap(<MapView />));
+      fireEvent.click(toggle(t.map.view.map));
+      fireEvent.click(pin('tomorrow')!);
+      // The shipped ghost row's rule, generalised: the row surfaces wherever the sheet
+      // cannot show it, and a ghost is the case where it is not in the list either.
+      expect(placeCard()!.querySelector('.map-name')?.textContent).toBe('tomorrow');
+      expect(placeCard()!.textContent).toContain('מחר');
+    });
+
+    it('the card is inert: it is not a button, and it does not lift the sheet', () => {
+      seed();
+      render(wrap(<MapView />));
+      fireEvent.click(toggle(t.map.view.map));
+      fireEvent.click(pin('lunch')!);
+      const inner = placeCard()!.querySelector('.place') as HTMLElement;
+      // There is nowhere for a tap on it to go — it already shows everything the row
+      // shows — and raising the sheet from it would take away the map it sits on.
+      expect(inner.getAttribute('role')).toBeNull();
+      expect(inner.getAttribute('tabindex')).toBeNull();
+      fireEvent.click(inner);
+      expect(screenEl().dataset.view).toBe(MAP_SHEET_VIEW.map);
+    });
+
+    // It exists exactly where the list cannot show the row, so it never doubles it.
+    it('there is no card where the list can show the row', () => {
+      seed();
+      render(wrap(<MapView />));
+      fireEvent.click(pin('lunch')!);
+      expect(screenEl().dataset.view).toBe('half');
+      expect(placeCard()).toBeNull();
+      fireEvent.click(toggle(t.map.view.list));
+      expect(placeCard()).toBeNull();
+    });
+
+    it('raising the sheet hands the selection back to the list', () => {
+      seed();
+      render(wrap(<MapView />));
+      fireEvent.click(toggle(t.map.view.map));
+      fireEvent.click(pin('lunch')!);
+      expect(placeCard()).toBeTruthy();
+      // One selection, two renderings — the card is only ever the one the sheet cannot show.
+      fireEvent.click(toggle(t.map.view.list));
+      expect(placeCard()).toBeNull();
+      expect(row('lunch')!.className).toContain('selected');
+    });
+
+    // The map idiom, and the card's own dismissal. Nothing registers with the back stack.
+    it('a tap on the canvas background clears the selection', () => {
+      seed();
+      render(wrap(<MapView />));
+      fireEvent.click(toggle(t.map.view.map));
+      fireEvent.click(pin('lunch')!);
+      expect(placeCard()).toBeTruthy();
+      tapCanvas();
+      expect(placeCard()).toBeNull();
+      expect(document.querySelectorAll('.place.selected')).toHaveLength(0);
+      const pins = paneProps.current.pins as { placeId: string; selected?: boolean }[];
+      expect(pins.every((p) => !p.selected)).toBe(true);
+    });
+
+    it('a pin tap where the list IS showing still centres its row, in both day scopes', async () => {
+      seed();
+      render(wrap(<MapView />));
+      fireEvent.click(pin('lunch')!);
+      await nextFrame();
+      expect(scrollIntoView).toHaveBeenCalledWith({ block: 'center' });
+
+      scrollIntoView.mockClear();
+      fireEvent.click(listButton(t.map.allDays));
       fireEvent.click(pin('tomorrow')!);
       expect(screenEl().dataset.view).toBe('half');
       expect(row('tomorrow')!.className).toContain('selected');
@@ -587,11 +906,17 @@ describe('the embedded map’s shell (ADR-0121)', () => {
   });
 
   describe('`מה נשאר`: one toggle, and ADR-0119 count coupling on three axes (§9)', () => {
-    const leftChip = () => listButton(t.map.filter.left);
+    const leftChip = () => {
+      openFacets();
+      return listButton(t.map.filter.left);
+    };
     const count = (el: HTMLElement) => el.querySelector('.cnt')?.textContent;
-    const pillCount = (label: string) =>
-      screen.getByRole('radio', { name: new RegExp(label) }).querySelector('.choice-pill-count')
-        ?.textContent;
+    const pillCount = (label: string) => {
+      openFacets();
+      return screen
+        .getByRole('radio', { name: new RegExp(label) })
+        .querySelector('.choice-pill-count')?.textContent;
+    };
 
     const seedSettled = () => {
       // Two settled (one visited, one skipped), two still open, plus a coordless row
@@ -643,6 +968,7 @@ describe('the embedded map’s shell (ADR-0121)', () => {
     it('the chip appears only when the trip has something settled', () => {
       seed();
       const view = render(wrap(<MapView />));
+      openFacets();
       expect(screen.queryByRole('button', { name: new RegExp(t.map.filter.left) })).toBeNull();
       view.unmount();
       seedSettled();
@@ -681,6 +1007,7 @@ describe('the embedded map’s shell (ADR-0121)', () => {
       fireEvent.click(leftChip());
       expect(pillCount(t.map.filter.all)).toBe('3');
       // Both settled places were sightseeing, so that chip drops out entirely.
+      openFacets();
       expect(
         screen.queryByRole('radio', { name: new RegExp(t.iconPicker.categories.sightseeing) }),
       ).toBeNull();
@@ -689,6 +1016,7 @@ describe('the embedded map’s shell (ADR-0121)', () => {
     it('its own count follows the picked type, the other way round', () => {
       seedSettled();
       render(wrap(<MapView />));
+      openFacets();
       fireEvent.click(
         screen.getByRole('radio', { name: new RegExp(t.iconPicker.categories.food) }),
       );
@@ -768,6 +1096,7 @@ describe('the embedded map’s shell (ADR-0121)', () => {
     it('a type chip leaves gaps rather than renumbering', () => {
       seedOrdered();
       render(wrap(<MapView />));
+      openFacets();
       fireEvent.click(
         screen.getByRole('radio', { name: new RegExp(t.iconPicker.categories.food) }),
       );

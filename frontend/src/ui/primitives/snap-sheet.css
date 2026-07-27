@@ -32,19 +32,43 @@
   }
 }
 
+/* THE WHOLE TOP REGION IS THE DRAG TARGET (ADR-0122 §4). The grab line is 76×16px,
+   which is under ADR-0017's touch floor; this is the full width by ~51px. So the
+   region owns the vertical gesture and the browser must not claim the pan first —
+   `touch-action: none` is what makes the drag possible at all, and it lives here now
+   rather than on the button inside.
+
+   `--snap-top-h` is the caller's: the lowest stop can be exactly this region (the
+   Map's `map` stop), and reserving it from the same constant that builds that stop
+   means a taller top can never clip its own contents. */
 .wp-snapsheet-top {
   flex: none;
+  min-height: var(--snap-top-h, 0px);
+  box-sizing: border-box;
   padding: 7px var(--space-3, 14px) var(--space-1, 8px);
   display: grid;
   gap: var(--space-1, 8px);
-  justify-items: center;
+  justify-items: stretch;
+  touch-action: none;
+  cursor: grab;
+}
+.wp-snapsheet.dragging .wp-snapsheet-top {
+  cursor: grabbing;
 }
 
-/* The handle owns the vertical gesture, so the browser must not claim the pan
-   first — `touch-action: none` is what makes the drag possible at all. A real
-   button, so it is focusable and named; the visible grab line is the 4px pill. */
+/* The region is a real row now (a view toggle, a sort control), so its children
+   stretch and only the grab line stays centred. */
+.wp-snapsheet-headrow {
+  display: flex;
+  align-items: center;
+  justify-content: flex-end;
+  gap: var(--space-1, 8px);
+}
+
+/* The visible affordance and the keyboard's way in: a real ARIA splitter, focusable
+   and named, drawing the 4px pill. */
 .wp-snapsheet-grab {
-  touch-action: none;
+  justify-self: center;
   border: 0;
   background: none;
   padding: 6px 18px;

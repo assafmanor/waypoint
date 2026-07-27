@@ -11,33 +11,29 @@
   --idx-accent: var(--plan);
 }
 
-/* ── The split (Phase 6, ADR-0121 §5) ───────────────────────────────────────────
-   The tab opts out of the scrolling body (`.body.is-fullbleed`, App.css) and owns
-   its own layout: the filter row + sort strip become a FIXED header, and the one
-   scroll region is the sheet's list. Scoped to `.is-split`, because the same
-   `.map-screen` class also wraps the search overlay's filtered copy of the list,
-   which is ordinary scrolling content and must not become a flex column. */
+/* ── The split (Phase 6, ADR-0121 §5; the controls leave the layout in ADR-0122 §1) ──
+   The tab opts out of the scrolling body (`.body.is-fullbleed`, App.css) and owns its
+   own layout, and the split is now the WHOLE body: the two fixed rows above it were
+   370-of-844 phone pixels spent before either half got one, so they became one row
+   floating over the canvas. The one scroll region is still the sheet's list. Scoped to
+   `.is-split`, because the same `.map-screen` class also wraps the search overlay's
+   filtered copy of the list, which is ordinary scrolling content and must not become a
+   flex column. */
 .map-screen.is-split {
   display: flex;
   flex-direction: column;
   height: 100%;
   min-height: 0;
 }
-/* The padding `.body` no longer supplies, restored only where it is wanted: above
-   the split. The sheet supplies its own. */
-.map-screen.is-split > .map-filter-row {
-  padding: 14px 16px 0;
-}
-.map-screen.is-split > .map-sortstrip {
-  padding: 0 16px;
-  margin-bottom: 10px;
-  flex-wrap: wrap;
-}
 .map-split {
   position: relative;
   flex: 1;
   min-height: 0;
   overflow: hidden;
+  /* At `full` the sheet stops BELOW the controls row, and what is behind the row there
+     is this backdrop — which is the sheet's own background, so the same row reads as the
+     list's ordinary header. One treatment, no second grammar, and no scrim (§1). */
+  background: var(--screen);
 }
 /* The sheet's own scroll padding — the list needs edges, and a tail so the last
    card clears the rounded bottom of the phone. */
@@ -45,10 +41,179 @@
   padding: 0 16px 16px;
 }
 
+/* ── ONE ROW, OVER THE CANVAS (ADR-0122 §1) ──────────────────────────────────────
+   Absolutely positioned at the top of `.map-split`, so it costs the split NO height:
+   the pane runs underneath it and the sheet's stops are measured against the whole
+   body. `--map-controls-h` is written by the screen from the same TS constant the
+   camera's top inset is derived from, so the layout and the band the camera keeps
+   clear of pins cannot drift apart.
+
+   No background: the map shows BETWEEN the chips, which is the whole point of moving
+   them here. The row is the same row at every stop and never collapses — every control
+   in it changes both halves (ADR-0121 §6), and a height above the split that changed
+   with the stop would relayout the canvas on the one gesture ADR-0121 §5 deliberately
+   made relayout-free. */
+.map-controls {
+  position: absolute;
+  top: 0;
+  inset-inline: 0;
+  z-index: 2;
+  box-sizing: border-box;
+  height: var(--map-controls-h, 46px);
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 0 16px;
+}
+/* The list-only tab (offline, or no build config) has no split and no sheet, so the
+   same row renders in ordinary flow above the list: one component, two positionings,
+   never two components (ADR-0122 §8). */
+.map-controls.in-flow {
+  position: static;
+  height: auto;
+  flex-wrap: wrap;
+  padding: 14px 16px 10px;
+}
+.map-controls > * {
+  flex: 0 0 auto;
+}
+/* Search sits at the row's fixed end — and it is where the facet strip's `✕` then
+   appears, because a close control you have to scroll to reach is not a close control. */
+.map-controls > .map-search-btn,
+.map-controls > .map-facets-close {
+  margin-inline-start: auto;
+}
+
+/* THE ONE FILTER CONTROL. At rest it says `סינון`; with a facet on it states WHICH
+   facets are on and takes the mode accent, because a filter that hides the fact that it
+   is filtering is the defect ADR-0119 exists to prevent. It carries NO count: the open
+   strip already answers "how many", and a fourth number would be a fourth thing to keep
+   coupled (§2). */
+.map-facets {
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+  border: 1px solid var(--line);
+  background: var(--card);
+  color: var(--ink);
+  border-radius: 999px;
+  padding: 6px 12px;
+  font: inherit;
+  font-size: 12px;
+  font-weight: 700;
+  cursor: pointer;
+  white-space: nowrap;
+}
+.map-facets.on {
+  background: var(--idx-accent);
+  border-color: var(--idx-accent);
+  color: var(--idx-accent-text);
+}
+/* EXPANDED: the strip covers the row IN PLACE (ADR-0100 §3's shape, which ADR-0101
+   superseded for search because a keyboard plus a result list left no room for either —
+   a facet strip has neither, and its results are the pins and rows already on screen, so
+   the change has to stay visible while you make it). It scrolls with the same edge fade,
+   so a half-cut chip reads as "more this way" rather than as a broken cutoff. */
+.map-controls > .map-facetstrip {
+  flex: 1 1 auto;
+  min-width: 0;
+}
+.map-facetstrip {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  overflow-x: auto;
+  scrollbar-width: none;
+  scroll-snap-type: x mandatory;
+  /* Physical `to right` on purpose: RTL reorders flex children, not `mask-image`'s own
+     coordinate space (ADR-0100 §6). */
+  -webkit-mask-image: linear-gradient(
+    to right,
+    transparent 0,
+    black 14px,
+    black calc(100% - 14px),
+    transparent 100%
+  );
+  mask-image: linear-gradient(
+    to right,
+    transparent 0,
+    black 14px,
+    black calc(100% - 14px),
+    transparent 100%
+  );
+}
+.map-facetstrip::-webkit-scrollbar {
+  display: none;
+}
+.map-facetstrip > * {
+  flex: 0 0 auto;
+  scroll-snap-align: start;
+}
+/* The outer strip owns the scroll and the fade now, so the pills group inside it is a
+   plain flex group: two nested scrollers fight, and two nested masks fade a chip twice. */
+.map-facetstrip .choice-grid.pills {
+  flex: 0 0 auto;
+  overflow: visible;
+  scroll-snap-type: none;
+  -webkit-mask-image: none;
+  mask-image: none;
+  padding-block-end: 0;
+}
+.map-facets-close {
+  display: grid;
+  place-items: center;
+  width: 30px;
+  height: 30px;
+  border-radius: 999px;
+  border: 1px solid var(--line);
+  background: var(--card);
+  color: var(--muted);
+  padding: 0;
+  cursor: pointer;
+}
+.map-facets-close .icon {
+  width: 15px;
+  height: 15px;
+}
+
+/* ── THE SORT CONTROL LIVES WITH THE LIST (§2) ───────────────────────────────────
+   `קרוב עכשיו` re-orders the rows and annotates them with distances, so it sits in the
+   sheet's own top row — fixed, visible at every stop, and costing no height. The toggle
+   is anchored at the trailing end and does not move when the chip leaves. */
+.wp-snapsheet-headrow .map-nearchip {
+  margin-inline-end: auto;
+  transition:
+    opacity var(--t-quick) var(--ease-standard),
+    transform var(--t-quick) var(--ease-standard),
+    visibility 0s;
+}
+/* At the map extreme no rows are on screen, so the chip would re-order and annotate
+   nothing you can see — the "button that looks like it does something and does nothing"
+   ADR-0109's session-105 amendment refused. What carries the FACT there is the canvas's
+   own "me" dot, which comes from `located`, not from the sort intent.
+
+   `visibility`, not `display`: it keeps the chip MOUNTED so both directions animate,
+   while taking it out of the tab order and the accessibility tree and making it
+   unhittable — a control you cannot see must not be tappable. The 0s-delayed switch is
+   what holds it until the fade ends. Offline the chip is UNMOUNTED instead, because
+   there it cannot exist at all: two different facts, two different mechanisms (§5). */
+.map-screen[data-view='map'] .wp-snapsheet-headrow .map-nearchip {
+  opacity: 0;
+  transform: translateY(4px) scale(0.96);
+  visibility: hidden;
+  transition:
+    opacity var(--t-quick) var(--ease-exit),
+    transform var(--t-quick) var(--ease-exit),
+    visibility 0s linear var(--t-quick);
+}
+
 /* רשימה · מפה — a shortcut to the two extremes of the SAME height axis the handle
-   drags, so the two controls cannot disagree. At the half height neither extreme is
-   active, which is the honest rendering. */
+   drags, so the two controls cannot disagree. Its fill is a THUMB whose position IS the
+   stop (§5): ADR-0121 §5 claimed "one state, two controls" in code and then rendered
+   `half` as neither button on, which reads as a broken segmented control. At `half` the
+   thumb narrows and centres, so it sits visibly BETWEEN the two labels. */
 .map-viewtoggle {
+  position: relative;
   display: flex;
   background: color-mix(in srgb, var(--ink) 6%, transparent);
   border: 1px solid var(--line);
@@ -67,10 +232,43 @@
   padding: 4px 15px;
   cursor: pointer;
 }
+/* The thumb draws the fill now, so the segment stops carrying it — only the ink weight
+   still says which extreme is live. */
+.map-viewtoggle button {
+  position: relative;
+  z-index: 1;
+}
 .map-viewtoggle button.on {
-  background: var(--card);
   color: var(--ink);
+}
+.map-viewtoggle::before {
+  content: '';
+  position: absolute;
+  top: 2px;
+  bottom: 2px;
+  width: calc(50% - 2px);
+  border-radius: 999px;
+  background: var(--card);
   box-shadow: 0 1px 3px rgba(22, 35, 61, 0.14);
+  inset-inline-start: calc(25% + 1px);
+  transition: inset-inline-start var(--t-base) var(--ease-standard);
+}
+.map-screen[data-view='half'] .map-viewtoggle::before {
+  width: 32%;
+  inset-inline-start: 34%;
+}
+.map-screen[data-view='full'] .map-viewtoggle::before {
+  inset-inline-start: 2px;
+}
+.map-screen[data-view='map'] .map-viewtoggle::before {
+  inset-inline-start: 50%;
+}
+/* Reduced motion: the thumb JUMPS. It still moves — only the easing is dropped, and the
+   resting position carries the whole meaning either way (ADR-0098 §4). */
+@media (prefers-reduced-motion: reduce) {
+  .map-viewtoggle::before {
+    transition: none;
+  }
 }
 
 /* The whole day as one free Google directions link (§10) — teal, because it is a
@@ -97,17 +295,7 @@
   margin-bottom: 4px;
 }
 
-/* ── filter chip row (reuses the Index grammar) ─────────────────────────── */
-.map-filter-row {
-  display: flex;
-  align-items: center;
-  gap: 8px;
-  margin-bottom: 8px;
-}
-.map-filter-row .choice-grid.pills {
-  flex: 1;
-  min-width: 0;
-}
+/* ── the facets themselves (they reuse the Index grammar) ────────────────── */
 /* the "אולי" facet is an independent toggle (ADR-0110 §2), dashed/provisional
    when off, filled with the mode accent when on. */
 .map-maybes {
@@ -154,13 +342,10 @@
   color: var(--muted);
 }
 
-/* ── day-scope strip: the map-local "all days" chip (ADR-0110 §4) ───────── */
-.map-sortstrip {
-  display: flex;
-  align-items: center;
-  gap: 8px;
-  margin-bottom: 12px;
-}
+/* ── the day scope: the map-local "all days" chip (ADR-0110 §4) ───────────
+   `.map-scopehint`'s sentence retired with the two fixed rows (ADR-0122 §2): the chip's
+   own on/off state says which scope is on, and the header day strip already drops its
+   filled selection while all-days is live (session 81's `allScope`). */
 .map-scopechip {
   display: inline-flex;
   align-items: center;
@@ -179,12 +364,6 @@
   border-color: var(--idx-accent);
   color: var(--idx-accent-text);
 }
-.map-scopehint {
-  font-size: 11px;
-  color: var(--faint);
-  font-weight: 600;
-}
-
 /* ── "near me now" (ADR-0109 §6-7) ──────────────────────────────────────────
    Teal throughout: near-me, the distance chips and נווט are LOCATION affordances,
    which is exactly what teal is for in the budget (ADR-0028). No amber here — the
@@ -225,6 +404,71 @@
   padding: 13px 14px;
   margin-bottom: 12px;
   box-shadow: 0 6px 16px -8px color-mix(in srgb, var(--teal) 45%, transparent);
+}
+
+/* ── CANVAS FURNITURE THAT COMES AND GOES (ADR-0122 §5/§6/§7) ────────────────────
+   The pre-prompt asks a question about the MAP and used to render inside the list's
+   scroll region, which at the map extreme is not on screen at all. Over the canvas it
+   costs the split no height: neither half shrinks, the pane's box does not change, and
+   therefore the camera does not move for it — which is the deciding argument over a card
+   between the controls and the split, which would shorten the pane while open and re-fit
+   the camera under the reader. A SIBLING of `.map-pane`, never inside it (Google owns the
+   canvas div's children) and never a wrapper around it (that remounts it, and a remount
+   is a billed map load — ADR-0121 §4). Not the pane's BOTTOM: Google's attribution is
+   bottom-inline-start and the ToS forbids obscuring it (ADR-0106 §B). */
+.map-split > .map-geoprompt {
+  position: absolute;
+  top: calc(var(--map-controls-h, 46px) + 8px);
+  inset-inline: 8px;
+  z-index: 2;
+  margin-bottom: 0;
+}
+/* ONE floating object over the canvas at a time: a 250px pane cannot hold a card AND two
+   floating controls and still read as a map, and the card is transient (once per session,
+   both buttons dismiss it). `:has()` rather than a prop, deliberately — `MapPane`'s props
+   stay identity-stable on a screen that re-renders every second (frontend/CLAUDE.md). */
+.map-split:has(> .map-geoprompt) .map-areacount,
+.map-split:has(> .map-geoprompt) .map-recenter {
+  display: none;
+}
+
+/* THE PLACE CARD — the tapped pin's own row, hosted on the canvas (§7), rendered only
+   where the sheet cannot show that row. The bottom gutter is contractual, not taste:
+   Google draws its logo and terms link at the bottom-inline-start of the map div and the
+   ToS forbids obscuring them (ADR-0106 §B), so the card clears them by the attribution's
+   own height. */
+.map-placecard {
+  position: absolute;
+  inset-inline: 8px;
+  /* Measured against the PANE's bottom, not the split's: the card's containing block is
+     `.map-split`, whose bottom is the screen's, so the sheet's own height has to be in
+     the sum or the card sits behind the sheet — and over the attribution it was meant to
+     clear. */
+  bottom: calc(var(--sheet-h, 0px) + var(--map-attr-h, 22px) + 8px);
+  z-index: 2;
+}
+.map-placecard .place {
+  margin-bottom: 0;
+  box-shadow: 0 12px 28px -12px color-mix(in srgb, var(--ink) 45%, transparent);
+}
+
+/* Three objects on this surface come and go — the sort chip leaving at the map extreme,
+   the card arriving on a pin tap, the pre-prompt arriving on intent — so they share ONE
+   rule rather than growing three motion vocabularies on one canvas: a small rise and a
+   fade, at `--t-quick` (the token whose stated job is toggles).
+
+   App.css kills every transition and animation under `prefers-reduced-motion` with
+   `!important`, so the RESTING states carry the whole meaning. They do: present or absent
+   is the entire state, and nothing here is information only the motion conveys. */
+@keyframes map-furniture-in {
+  from {
+    opacity: 0;
+    transform: translateY(6px);
+  }
+}
+.map-placecard,
+.map-split > .map-geoprompt {
+  animation: map-furniture-in var(--t-quick) var(--ease-standard);
 }
 .map-geoprompt .gt {
   font-size: 13.5px;

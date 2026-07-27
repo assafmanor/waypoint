@@ -145,8 +145,27 @@ const row = (name: string) =>
 const orderOf = (name: string) =>
   row(name)?.querySelector('.map-badge')?.getAttribute('data-order') ?? null;
 
-/** Which day scope the tab is in, read the way a user reads it. */
-const scopeHint = () => document.querySelector('.map-scopehint')?.textContent;
+/** Which day scope the tab is in, read the way a user reads it: the chip's own state.
+ *  `.map-scopehint`'s sentence retired with the two fixed rows (ADR-0122 §2) — the chip
+ *  says it, and the header day strip drops its filled selection while all-days is on. */
+const allDaysOn = () =>
+  screen.getByRole('button', { name: new RegExp(t.map.allDays) }).getAttribute('aria-pressed') ===
+  'true';
+
+/** The facets now live behind ONE `סינון` control that opens them in place (ADR-0122
+ *  §2), so anything that touches a facet opens the strip first. Idempotent: while the
+ *  strip is open the control is not rendered, so this is a no-op. The `^` matters —
+ *  with a facet on, the control's accessible name is `סינון: אוכל · אולי`. */
+const openFacets = () => {
+  const control = screen.queryByRole('button', { name: new RegExp(`^${t.map.filter.open}`) });
+  if (control) fireEvent.click(control);
+};
+/** …and the scope chip is only in the row at REST, since the strip covers it in place.
+ *  Also idempotent, so reaching for the scope is written the same way everywhere. */
+const closeFacets = () => {
+  const close = screen.queryByRole('button', { name: t.map.filter.close });
+  if (close) fireEvent.click(close);
+};
 
 /** Stands in for the header's `DayStrip`, wired to the REAL production handler —
  *  the strip itself lives in `App`'s header, but the intent it signals is what the
@@ -160,8 +179,10 @@ function DayPill({ date }: { date: string }) {
   );
 }
 const tapDayPill = () => fireEvent.click(screen.getByRole('button', { name: 'day-pill' }));
-const tapAllDays = () =>
+const tapAllDays = () => {
+  closeFacets();
   fireEvent.click(screen.getByRole('button', { name: new RegExp(t.map.allDays) }));
+};
 
 function seed() {
   tripPlaces = [place('food', true), place('see', true), place('idea', true), place('lite', false)];
@@ -200,6 +221,47 @@ describe('MapView (Phase 3, ADR-0109/0110)', () => {
     expect(filteredOut('idea')).toBe(true); // a maybe has no day facet
   });
 
+  // ADR-0122 §8 — this whole suite runs with NO build config, which is the graceful-
+  // absence path: no split and no sheet, so the same controls row renders in ordinary
+  // flow above the list. One component, two positionings, never two components.
+  describe('the list-only path keeps the same controls row, in flow (ADR-0122 §8)', () => {
+    it('renders the row statically above the list, with no split around it', () => {
+      seed();
+      render(wrap(<MapView />));
+      const row = document.querySelector('.map-controls')!;
+      expect(row.className).toContain('in-flow');
+      expect(document.querySelector('.map-split')).toBeNull();
+      expect(document.querySelector('.wp-snapsheet')).toBeNull();
+      // The shipped pair is gone here too — this path did not get its own copy.
+      expect(document.querySelector('.map-filter-row')).toBeNull();
+      expect(document.querySelector('.map-sortstrip')).toBeNull();
+    });
+
+    // The one place the sort chip cannot live in the sheet, because there is no sheet.
+    it('is where `קרוב עכשיו` lives on this path', () => {
+      seed();
+      render(wrap(<MapView />));
+      expect(document.querySelector('.map-controls .map-nearchip')).toBeTruthy();
+    });
+
+    it('offline the chip is absent from it, unchanged — you cannot re-locate', () => {
+      seed();
+      isOffline = true;
+      render(wrap(<MapView />));
+      expect(document.querySelector('.map-controls')).toBeTruthy();
+      expect(document.querySelector('.map-nearchip')).toBeNull();
+    });
+
+    it('the facets still open in place here — one disclosure, both positionings', () => {
+      seed();
+      render(wrap(<MapView />));
+      expect(screen.queryByRole('radio', { name: new RegExp(t.map.filter.all) })).toBeNull();
+      openFacets();
+      expect(document.querySelector('.map-controls .map-facetstrip')).toBeTruthy();
+      expect(screen.getByRole('radio', { name: new RegExp(t.map.filter.all) })).toBeTruthy();
+    });
+  });
+
   it('a coord place gets a Google directions link; a coordless one gets ＋ מיקום to enrich', () => {
     seed();
     render(wrap(<MapView />));
@@ -230,10 +292,10 @@ describe('MapView (Phase 3, ADR-0109/0110)', () => {
     currentMode = 'plan';
     seed();
     render(wrap(<MapView />));
-    expect(scopeHint()).toBe(t.map.scopeDay);
+    expect(allDaysOn()).toBe(false);
     expect(filteredOut('see')).toBe(true); // another day
     tapAllDays();
-    expect(scopeHint()).toBe(t.map.scopeAll);
+    expect(allDaysOn()).toBe(true);
     expect(filteredOut('see')).toBe(false);
   });
 
@@ -252,13 +314,13 @@ describe('MapView (Phase 3, ADR-0109/0110)', () => {
       ),
     );
     tapAllDays();
-    expect(scopeHint()).toBe(t.map.scopeAll);
+    expect(allDaysOn()).toBe(true);
     expect(filteredOut('see')).toBe(false);
 
     tapDayPill();
     // The strip still writes the one source of truth — with the same value it held.
     expect(setActiveDate).toHaveBeenCalledWith(ACTIVE_DATE);
-    expect(scopeHint()).toBe(t.map.scopeDay);
+    expect(allDaysOn()).toBe(false);
     expect(filteredOut('see')).toBe(true);
   });
 
@@ -274,13 +336,14 @@ describe('MapView (Phase 3, ADR-0109/0110)', () => {
     );
     tapDayPill();
     tapDayPill();
-    expect(scopeHint()).toBe(t.map.scopeDay);
+    expect(allDaysOn()).toBe(false);
   });
 
   it('the maybes toggle narrows to shelf ideas', () => {
     seed();
     render(wrap(<MapView />));
     fireEvent.click(screen.getByRole('button', { name: new RegExp(t.map.allDays) })); // see everything
+    openFacets();
     fireEvent.click(screen.getByRole('button', { name: new RegExp(t.map.filter.maybes) }));
     expect(filteredOut('idea')).toBe(false);
     expect(filteredOut('food')).toBe(true);
@@ -291,6 +354,7 @@ describe('MapView (Phase 3, ADR-0109/0110)', () => {
     seed();
     render(wrap(<MapView />));
     fireEvent.click(screen.getByRole('button', { name: new RegExp(t.map.allDays) }));
+    openFacets();
     fireEvent.click(screen.getByRole('radio', { name: new RegExp(t.iconPicker.categories.food) }));
     const reveal = (name: string) => screen.getByText(name).closest('.wp-reveal') as HTMLElement;
     // The non-matching rows are still mounted (that's what lets them animate out)
@@ -344,10 +408,21 @@ describe('MapView (Phase 3, ADR-0109/0110)', () => {
   // ADR-0119 — three reported ways the `אולי` facet lied. Asserted in BOTH day
   // scopes, since the day-scoped and all-days paths are different renders.
   describe('the maybes facet is the shelf, in the day scope (ADR-0119)', () => {
-    const maybesChip = () => screen.getByRole('button', { name: new RegExp(t.map.filter.maybes) });
+    // Both facet getters open the strip first (see `openFacets`), so these read exactly
+    // as they did when the chips sat in a permanently visible row.
+    const maybesChip = () => {
+      openFacets();
+      return screen.getByRole('button', { name: new RegExp(t.map.filter.maybes) });
+    };
     const maybesCount = () => maybesChip().querySelector('.cnt')?.textContent;
-    const allDaysChip = () => screen.getByRole('button', { name: new RegExp(t.map.allDays) });
-    const pill = (label: string) => screen.getByRole('radio', { name: new RegExp(label) });
+    const allDaysChip = () => {
+      closeFacets();
+      return screen.getByRole('button', { name: new RegExp(t.map.allDays) });
+    };
+    const pill = (label: string) => {
+      openFacets();
+      return screen.getByRole('radio', { name: new RegExp(label) });
+    };
     const countOn = (label: string) => pill(label).querySelector('.choice-pill-count')?.textContent;
     // Fixtures carry fixed dates, so the clock is pinned (frontend CLAUDE.md): noon
     // on the active day, which also makes '2026-07-21' read as מחר.
@@ -1118,6 +1193,7 @@ describe('MapView (Phase 3, ADR-0109/0110)', () => {
     it('a filter never renumbers, in either scope — the gaps are the point', () => {
       seedDay();
       render(wrap(<MapView />));
+      openFacets();
       fireEvent.click(
         screen.getByRole('radio', { name: new RegExp(t.iconPicker.categories.food) }),
       );

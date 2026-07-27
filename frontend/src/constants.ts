@@ -208,23 +208,66 @@ export const CATEGORY_PIN_HUE = {
   other: 'leisure',
 } as const satisfies Record<EventCategory, PinHue>;
 
-/** The list sheet's three snap heights (ADR-0121 §5) — one axis, dragged by the
- *  handle and shortcut by the `רשימה / מפה` toggle, so the two controls cannot
- *  disagree. `peek` is a fixed height (a handle and a row or two should be the
- *  same size on every phone); `half` is a fraction (it should not). */
-export const MAP_SHEET_VIEW = { peek: 'peek', half: 'half', full: 'full' } as const;
+/** The floating controls row over the canvas (ADR-0122 §1), in px. It is written
+ *  into CSS as `--map-controls-h` by the screen AND read by `MAP_FIT_PADDING` below,
+ *  which is the point of naming it: the row's layout and the band the camera keeps
+ *  clear of pins cannot drift apart if they are the same number. */
+export const MAP_CONTROLS_H = 46;
+/** The sheet's own top region — the handle, `קרוב עכשיו`, the view toggle — reserved
+ *  from one constant that also writes the CSS `min-height` (ADR-0122 §3), so a taller
+ *  top can never clip. It is also the `map` stop's whole height. */
+export const MAP_SHEET_STRIP_H = 52;
+/** Google draws its logo and terms link at the bottom-inline-start of the map div and
+ *  the ToS forbids obscuring them (ADR-0106 §B), so anything floating at the pane's
+ *  bottom clears them by their own height — a named clearance, not a hand-tuned
+ *  offset (ADR-0122 §7). */
+export const MAP_ATTRIBUTION_H = 22;
+/** The gap the pane's floating furniture leaves below the controls row. Paired with
+ *  the `8px` in `map.css` / `map-pane.css`, which is the same offset the re-centre
+ *  control has always used. */
+const MAP_FLOAT_GAP = 8;
+
+/** The list sheet's three snap heights (ADR-0121 §5, reshaped by ADR-0122 §3) — one
+ *  axis, dragged by the sheet's whole top region and shortcut by the `רשימה / מפה`
+ *  toggle, so the two controls cannot disagree.
+ *
+ *  `map` replaces the list-sliver `peek`: the sheet's own top row and NOTHING of the
+ *  list. `peek` spent 116px to show 65px of viewport — 0.8 of a row, at the stop
+ *  whose entire point is the canvas — so it showed neither the handle-plus-a-row it
+ *  promised nor the map it was in the way of (ADR-0122 §7). Fixed px, because fixed
+ *  chrome is the same size on every screen; `half` a fraction, because a proportion
+ *  should not be; and `full` an **inset**, because the sheet must stop below the
+ *  floating controls row or the list you are reading cannot be filtered (§1).
+ *
+ *  Constants, never measured at runtime: `screens/Map.tsx` re-renders every second,
+ *  and `--sheet-h` must not depend on a layout read (ADR-0121 §5). */
+export const MAP_SHEET_VIEW = { map: 'map', half: 'half', full: 'full' } as const;
 export type MapSheetView = (typeof MAP_SHEET_VIEW)[keyof typeof MAP_SHEET_VIEW];
 /** Ordered low → high, which is also the toggle's two extremes plus the default. */
 export const MAP_SHEET_ORDER = [
-  MAP_SHEET_VIEW.peek,
+  MAP_SHEET_VIEW.map,
   MAP_SHEET_VIEW.half,
   MAP_SHEET_VIEW.full,
 ] as const;
 export const MAP_SHEET_STOPS = {
-  peek: { px: 116 },
+  map: { px: MAP_SHEET_STRIP_H },
   half: { fraction: 0.56 },
-  full: { fraction: 1 },
+  full: { inset: MAP_CONTROLS_H },
 } as const satisfies Record<MapSheetView, SnapStop>;
+
+/** How far a finger must travel before the sheet's top region reads a press as a
+ *  DRAG rather than as a tap (ADR-0122 §4). Load-bearing, not polish: the region is
+ *  390×51 and contains real controls, and a finger emits `pointermove` on a tap — so
+ *  without a floor the region swallows every tap inside it. */
+export const SNAP_DRAG_SLOP_PX = 4;
+/** Released at or above this speed (px/ms, sampled from the last two moves) the sheet
+ *  commits to the next stop in the direction of travel instead of snapping to the
+ *  nearest one (ADR-0122 §4) — which is most of what "the drag is unpleasant" meant:
+ *  a real flick that travels little used to spring back to where it started.
+ *
+ *  A threshold in px/ms is roughly device-independent on paper and a finger is not a
+ *  mouse, so it belongs to Phase 3's device pass along with `MAP_ZOOM`. */
+export const SNAP_FLICK_PX_PER_MS = 0.5;
 
 /** Camera zoom bounds (ADR-0121 §7). `SINGLE_PIN` is the neighbourhood zoom a
  *  lone pin centres at — `fitBounds` on a zero-area extent snaps to building
@@ -233,10 +276,28 @@ export const MAP_SHEET_STOPS = {
  *  default: a map must be constructed with some camera, and the first fit
  *  replaces it. */
 export const MAP_ZOOM = { SINGLE_PIN: 15, MAX_FIT: 16, WORLD: 2 } as const;
-/** Inset for a fit, in px. Bigger at the top because the teardrop's TIP is the
- *  anchor — its body and any tag extend *above* the coordinate, so without this
- *  the topmost pin of a fitted set draws half off-canvas (ADR-0121 §7). */
-export const MAP_FIT_PADDING = { top: 64, right: 28, bottom: 28, left: 28 } as const;
+/** What a fit reserved at the top before the controls row moved over the canvas: the
+ *  teardrop's TIP is the anchor, so its body and any tag extend *above* the
+ *  coordinate, and without this the topmost pin of a fitted set draws half
+ *  off-canvas (ADR-0121 §7). */
+const MAP_PIN_FIT_CLEARANCE = 64;
+/** Inset for a fit, in px. The top carries the pin's own height AND the floating
+ *  controls row, **derived from the constant that writes `--map-controls-h`** so
+ *  layout and camera cannot drift apart (ADR-0122 §1): that is what keeps a fitted
+ *  pin out from under the chips, since nothing about the layout does.
+ *
+ *  Two limits the ADR states rather than papers over: it governs a **fit** (a manual
+ *  pan can still put a pin under the row, and no map larger than its frame can
+ *  promise otherwise), and `fitPaddingFor` drops padding that would claim half an
+ *  axis — so at `half`, where the pane is ~250px, this inset is sometimes dropped and
+ *  a fitted pin can land under the row. At the `map` stop, where the pane is ~517px,
+ *  it is cheap, which is one more argument for the height axis. */
+export const MAP_FIT_PADDING = {
+  top: MAP_CONTROLS_H + MAP_FLOAT_GAP + MAP_PIN_FIT_CLEARANCE,
+  right: 28,
+  bottom: 28,
+  left: 28,
+} as const;
 /** How much of the current view a **contained** pin set must fill before the camera
  *  leaves it alone (ADR-0121 §7, amended 2026-07-27). Below this share on BOTH axes
  *  the set is *dwarfed* — visible, but not framed — and the camera re-fits instead of
