@@ -676,7 +676,10 @@ describe('MapView (Phase 3, ADR-0109/0110)', () => {
       expect(chip.textContent).toBe('\u206610\u2069 מ׳');
     });
 
-    it('toggling off restores the default order and drops the distances', () => {
+    // The chip owns the ORDER and nothing else now. Toggling it off puts the day
+    // back in its own sequence — but the distances stay, because we still know
+    // where you are, and forgetting a fix we hold to undo a sort would be a lie.
+    it('toggling off restores the default order and KEEPS the distances', () => {
       seedNear();
       geoFix = HERE;
       render(wrap(<MapView />));
@@ -684,8 +687,28 @@ describe('MapView (Phase 3, ADR-0109/0110)', () => {
       fireEvent.click(screen.getByRole('button', { name: t.map.near.prompt.allow }));
       fireEvent.click(nearChip());
       expect(rowNames()).toEqual(['far', 'lite', 'near']);
-      expect(document.querySelector('.map-dist')).toBeNull();
       expect(screen.queryByText(t.map.near.groupHeader)).toBeNull();
+      expect(document.querySelector('.map-dist')).toBeTruthy();
+    });
+
+    // The regression the session-134 on-open offer introduced: locating you is not
+    // the same as asking to be sorted by distance, and it used to be one flag.
+    it('a fix obtained on OPEN shows distances but never re-orders the day', () => {
+      seedNear();
+      geoFix = HERE;
+      render(wrap(<MapView />));
+      // The on-open offer's own path — allow it, without ever touching the chip.
+      fireEvent.click(screen.getByRole('button', { name: t.map.near.prompt.allow }));
+      expect(document.querySelector('.map-dist')).toBeTruthy();
+      // Schedule order, and the schedule's own headers — not the near-me grouping.
+      expect(rowNames()).toEqual(['far', 'lite', 'near']);
+      expect(screen.queryByText(t.map.near.groupHeader)).toBeNull();
+      expect(nearChip().getAttribute('aria-pressed')).toBe('false');
+
+      // …and the chip still does its one job when it IS tapped.
+      fireEvent.click(nearChip());
+      expect(rowNames()).toEqual(['near', 'far', 'lite']);
+      expect(nearChip().getAttribute('aria-pressed')).toBe('true');
     });
 
     it('denied: the list keeps its own order and says why, with no retry offered', () => {
@@ -1131,6 +1154,109 @@ describe('MapView (Phase 3, ADR-0109/0110)', () => {
       // The active date is the strictly-middle night of a 19→21 stay.
       expect(orderOf('hotel')).toBeNull();
       expect(orderOf('lunch')).toBe('1');
+    });
+  });
+
+  // Reported off the running app: Home's board said `עכשיו · עד 14:00` about a
+  // 13:00-14:00 lunch at 13:54 while the Map filed the same row under `מה שלפנינו`.
+  // The Map had derived its own two-state ahead/behind partition with no middle, so
+  // an event in progress was simply "not past". It now reads `deriveNow` — the
+  // board's own resolver — so the two surfaces cannot disagree.
+  describe('the tab says what is happening NOW (ADR-0109 amendment)', () => {
+    const IN_PROGRESS = Date.parse(`${ACTIVE_DATE}T13:54:00Z`);
+    const tagsOn = (name: string) =>
+      [...(row(name)?.querySelectorAll('.map-tag') ?? [])].map((el) => el.textContent);
+    const seedLunch = () => {
+      setSimulatedNow(IN_PROGRESS);
+      tripPlaces = [place('lunch', true), place('museum', true)];
+      tripEvents = [
+        event({
+          id: 'l',
+          placeId: 'lunch',
+          category: 'food',
+          startsAt: `${ACTIVE_DATE}T13:00:00Z`,
+          endsAt: `${ACTIVE_DATE}T14:00:00Z`,
+        }),
+        event({
+          id: 'm',
+          placeId: 'museum',
+          category: 'sightseeing',
+          startsAt: `${ACTIVE_DATE}T16:00:00Z`,
+        }),
+      ];
+    };
+
+    it('an event in progress is tagged עכשיו, and the later one is the next stop', () => {
+      seedLunch();
+      render(wrap(<MapView />));
+      expect(tagsOn('lunch')).toContain(t.map.happeningNow);
+      expect(row('lunch')!.className).toContain('nowstop');
+      // The two cues never land on one row: `eventPhase` is `now` OR `upcoming`.
+      expect(tagsOn('lunch')).not.toContain(t.map.nextStop);
+      expect(tagsOn('museum')).toContain(t.map.nextStop);
+      expect(tagsOn('museum')).not.toContain(t.map.happeningNow);
+    });
+
+    it('all-days scope says it too — being in progress is not a property of the scope', () => {
+      seedLunch();
+      render(wrap(<MapView />));
+      tapAllDays();
+      expect(tagsOn('lunch')).toContain(t.map.happeningNow);
+      expect(row('lunch')!.className).toContain('nowstop');
+    });
+
+    it('before it starts it is not now — it is what is next instead', () => {
+      seedLunch();
+      setSimulatedNow(Date.parse(`${ACTIVE_DATE}T12:30:00Z`));
+      render(wrap(<MapView />));
+      expect(row('lunch')).toBeTruthy(); // or the negative below proves nothing
+      expect(tagsOn('lunch')).not.toContain(t.map.happeningNow);
+      expect(tagsOn('lunch')).toContain(t.map.nextStop);
+    });
+
+    it('after it ends it is not now either, and it sinks behind you', () => {
+      seedLunch();
+      setSimulatedNow(Date.parse(`${ACTIVE_DATE}T14:30:00Z`));
+      render(wrap(<MapView />));
+      expect(row('lunch')).toBeTruthy();
+      expect(tagsOn('lunch')).not.toContain(t.map.happeningNow);
+      expect(row('lunch')!.className).not.toContain('nowstop');
+    });
+
+    // A stay's span runs to check-out, so an unfiltered "now" window would mark the
+    // hotel continuously for three days and drown the thing you are actually doing.
+    it('a stay never says עכשיו, on any of its days', () => {
+      setSimulatedNow(IN_PROGRESS);
+      tripPlaces = [place('hotel', true), place('lunch', true)];
+      tripEvents = [
+        event({
+          id: 'stay',
+          placeId: 'hotel',
+          category: 'lodging',
+          date: '2026-07-19',
+          endDate: '2026-07-22',
+          startsAt: '2026-07-19T15:00:00Z',
+          endsAt: '2026-07-22T10:00:00Z',
+        }),
+        event({
+          id: 'l',
+          placeId: 'lunch',
+          category: 'food',
+          startsAt: `${ACTIVE_DATE}T13:00:00Z`,
+          endsAt: `${ACTIVE_DATE}T14:00:00Z`,
+        }),
+      ];
+      render(wrap(<MapView />));
+      expect(tagsOn('hotel')).not.toContain(t.map.happeningNow);
+      // …and the thing that IS happening still gets the cue.
+      expect(tagsOn('lunch')).toContain(t.map.happeningNow);
+    });
+
+    it('Plan mode says nothing: a live "now" means nothing while you are planning', () => {
+      currentMode = 'plan';
+      seedLunch();
+      render(wrap(<MapView />));
+      expect(tagsOn('lunch')).not.toContain(t.map.happeningNow);
     });
   });
 

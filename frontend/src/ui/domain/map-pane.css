@@ -197,6 +197,49 @@
     0 0 0 5.5px rgba(233, 166, 60, 0.22),
     0 2px 5px rgba(22, 35, 61, 0.34);
 }
+
+/* WHERE YOU ARE, RIGHT NOW — the canvas's second amber cue (ADR-0109's 2026-07-27
+   amendment). Both cues are amber because both are time (ADR-0028); what separates
+   them is MOTION, which is also the meaning: the live one moves, the pending one
+   waits. They never co-occur on one pin — `eventPhase` reads `now` or `upcoming`.
+
+   This is Home's board blip moved onto a pin, not a new invention: `wp-board-pulse`
+   (`board.css`) is the app's existing "live right now" idiom — the amber dot beside
+   `עכשיו` on the board — and its ring alpha and 2s period are reused verbatim so the
+   two surfaces beat together.
+
+   THE RESTING STATE CARRIES THE CUE, and the animation only layers on top. That is
+   not stylistic: `App.css`'s global `prefers-reduced-motion` rule kills every
+   animation with `!important`, so a pulse-only treatment would leave "now" with no
+   pin cue at all for exactly the people least able to spot a subtle one. Motion off
+   means still marked, just still. */
+.map-pin.nowstop .pin-b {
+  box-shadow:
+    0 0 0 2.5px var(--amber),
+    0 0 0 7px rgba(233, 166, 60, 0.28),
+    0 2px 5px rgba(22, 35, 61, 0.34);
+  animation: map-pin-now 2s infinite;
+}
+@keyframes map-pin-now {
+  0% {
+    box-shadow:
+      0 0 0 2.5px var(--amber),
+      0 0 0 0 rgba(233, 166, 60, 0.55),
+      0 2px 5px rgba(22, 35, 61, 0.34);
+  }
+  70% {
+    box-shadow:
+      0 0 0 2.5px var(--amber),
+      0 0 0 11px rgba(233, 166, 60, 0),
+      0 2px 5px rgba(22, 35, 61, 0.34);
+  }
+  100% {
+    box-shadow:
+      0 0 0 2.5px var(--amber),
+      0 0 0 0 rgba(233, 166, 60, 0),
+      0 2px 5px rgba(22, 35, 61, 0.34);
+  }
+}
 /* The shipped `.map-tag.next` is not a filled amber pill — it is `--amber-deep` bold
    text on the row's own surface. The pin's tag keeps that exactly and only adds the
    card ground it needs to stay legible over the canvas, so amber is still ink here,
@@ -225,7 +268,10 @@
   outline: 2px solid var(--ink);
   outline-offset: 2px;
 }
-.map-pin.nextstop.selected .pin-b {
+/* Both amber cues widen the pin's silhouette, so selection's outline steps out to
+   clear them rather than cutting through the ring. */
+.map-pin.nextstop.selected .pin-b,
+.map-pin.nowstop.selected .pin-b {
   outline-offset: 6px;
 }
 

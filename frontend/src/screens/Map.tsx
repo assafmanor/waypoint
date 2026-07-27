@@ -47,6 +47,7 @@ import {
   type PlaceUsage,
 } from '../lib/place-usage';
 import {
+  currentDestination,
   eventZones,
   liveToday,
   liveZoneContext,
@@ -188,12 +189,22 @@ export function MapView() {
   // ── "Near me now" (Phase 4a, ADR-0109 §6-7) ───────────────────────────────
   // Strictly additive: the tab has already rendered everything above without any
   // location, and nothing below turns a refusal into a dead end. `nearMe` is the
-  // user's intent; `nearActive` is whether we can actually honour it right now.
+  // user's intent; `located` is whether we can actually honour it right now.
   const geo = useGeolocation();
   const [nearMe, setNearMe] = useState(false);
   const [promptOpen, setPromptOpen] = useState(false);
   const [noticeDismissed, setNoticeDismissed] = useState(false);
-  const nearActive = nearMe && !offline && geo.status === 'granted' && !!geo.coords;
+  // `located` is a FACT — we hold a usable fix, so distances and the me-dot follow.
+  // `sortByDistance` is an INTENT, and only the chip states it. Splitting them is
+  // the fix for a regression the session-134 on-open offer introduced: near-me used
+  // to be reachable only by tapping the chip, where re-ordering the list was the
+  // whole point of tapping, so one flag could honestly mean both. Once the tab
+  // started asking for a fix by itself, that same flag silently re-sorted the day
+  // out of schedule order the moment coordinates landed — an order changed by a
+  // permission state rather than by anything anyone asked for (ADR-0109 amendment).
+  const located = nearMe && !offline && geo.status === 'granted' && !!geo.coords;
+  const [sortByDistance, setSortByDistance] = useState(false);
+  const distanceOrder = sortByDistance && located;
   // Offline you cannot re-locate, so a distance would be a stale claim: the chip
   // goes away and the rows that were showing numbers say so instead.
   const staleDistances = nearMe && offline;
@@ -238,17 +249,22 @@ export function MapView() {
     setNoticeDismissed(false);
     geo.request();
   };
+  // The chip's job is now exactly one thing: **order the list by distance**. Showing
+  // distances and the me-dot no longer needs it — those follow from holding a fix,
+  // which the tab may have obtained on open by itself. So this states the intent the
+  // fix cannot: nearest-first instead of the day's own sequence.
   const toggleNearMe = () => {
-    if (nearMe) {
-      setNearMe(false);
+    if (sortByDistance) {
+      setSortByDistance(false);
       return;
     }
-    // A fix we already hold needs no second prompt; otherwise state the reason
-    // first (ADR-0109 §6 — never a cold permission dialog).
-    if (geo.status === 'granted' && geo.coords) {
-      setNearMe(true);
-      return;
-    }
+    setSortByDistance(true);
+    // Already located: the order can change immediately, no second prompt (ADR-0109
+    // §6 — "a fix we already hold needs no second prompt").
+    if (geo.status === 'granted' && geo.coords) return;
+    // Otherwise we still need one, and the intent stays armed so the order applies
+    // the moment it lands. A refusal leaves it armed but inert, which the banner
+    // explains rather than the list silently staying in schedule order.
     if (geo.blocked) {
       setNearMe(true);
       setNoticeDismissed(false);
@@ -351,7 +367,7 @@ export function MapView() {
     if (db == null) return -1;
     return da - db || bySchedule(a, b);
   };
-  const listOrder = nearActive ? byDistance : bySchedule;
+  const listOrder = distanceOrder ? byDistance : bySchedule;
 
   const placeFilter = {
     category: activeCategory,
@@ -382,7 +398,7 @@ export function MapView() {
         const p = placeById.get(u.placeId);
         return !!p && matchesAnyTerm(query, [p.name, p.address]);
       }).rows,
-    [query, allUsages, placeById, nearActive, distances],
+    [query, allUsages, placeById, distanceOrder, distances],
   );
   const searchCount = countVisible(searchRows);
 
@@ -393,6 +409,17 @@ export function MapView() {
   const nextStopId = useMemo(() => {
     if (mode !== 'trip') return undefined;
     return nextDestination(events, bookings, places, nowMs)?.place.id;
+  }, [mode, events, bookings, places, nowMs]);
+
+  // Where you ARE — the second time-anchor, and the one the tab was missing. Read
+  // off `currentDestination`, which asks `deriveNow`: the board's own resolver, so
+  // the two surfaces cannot call the same lunch `עכשיו` and `מה שלפנינו` at once.
+  // Trip mode only, for the same reason `nextStopId` is: a live "now" says nothing
+  // while you're planning. The two are mutually exclusive per place — `eventPhase`
+  // is `now` or `upcoming`, never both — so no row and no pin ever carries both cues.
+  const nowStopId = useMemo(() => {
+    if (mode !== 'trip') return undefined;
+    return currentDestination(events, bookings, places, nowMs)?.place.id;
   }, [mode, events, bookings, places, nowMs]);
 
   // ── The pins (ADR-0121 §6) ────────────────────────────────────────────────
@@ -438,6 +465,7 @@ export function MapView() {
         tier,
         order: orderIndex.get(usage.placeId),
         nextStop: nextStopId === usage.placeId && tier !== PIN_TIER.ghost,
+        nowStop: nowStopId === usage.placeId && tier !== PIN_TIER.ghost,
         selected: selectedId === usage.placeId,
         label: place.name,
       });
@@ -445,7 +473,18 @@ export function MapView() {
   }
   const pinsKey = pinsNow
     .map((p) =>
-      [p.placeId, p.lat, p.lng, p.hue, p.glyph, p.tier, p.order, p.nextStop, p.selected].join('|'),
+      [
+        p.placeId,
+        p.lat,
+        p.lng,
+        p.hue,
+        p.glyph,
+        p.tier,
+        p.order,
+        p.nextStop,
+        p.nowStop,
+        p.selected,
+      ].join('|'),
     )
     .join(';');
   // The content key IS the dependency: keying on `pinsNow` itself would hand the
@@ -462,7 +501,8 @@ export function MapView() {
     activeCategory,
     maybesOnly,
     leftOnly,
-    nearActive,
+    located,
+    sortByDistance,
   ].join('|');
 
   // The day's stops in order — what the connector draws and what the free
@@ -495,7 +535,7 @@ export function MapView() {
     const anchor = pins.find(isFramedByCamera) ?? pins[0];
     return anchor ? { lat: anchor.lat, lng: anchor.lng } : undefined;
   }, [pins]);
-  const me = nearActive && geo.coords ? geo.coords : undefined;
+  const me = located && geo.coords ? geo.coords : undefined;
 
   // ── Selection (ADR-0121 §8) ───────────────────────────────────────────────
   // The verb is SELECT; focusing is what selection does when the place has
@@ -593,7 +633,7 @@ export function MapView() {
   const distanceLabel = (usage: PlaceUsage): string | undefined => {
     if (usage.coordless) return undefined;
     if (staleDistances) return t.map.near.unavailable;
-    if (!nearActive) return undefined;
+    if (!located) return undefined;
     const meters = distances.get(usage.placeId);
     return meters == null ? undefined : formatDistance(meters);
   };
@@ -680,6 +720,7 @@ export function MapView() {
           ambient={prominence === 'ambient'}
           outcome={outcome}
           isNextStop={nextStopId === usage.placeId}
+          isNow={nowStopId === usage.placeId}
           day={day}
           time={time}
           what={what}
@@ -705,7 +746,7 @@ export function MapView() {
   const renderList = (rows: Revealed<PlaceUsage>[], onSelect: (placeId: string) => void) => {
     const shown = visibleItems(rows);
     // Near-me re-sorts by distance, so the schedule blocks don't describe the list.
-    const blocks = nearActive ? [] : shown.map(blockOf);
+    const blocks = distanceOrder ? [] : shown.map(blockOf);
     // A single-block list needs no header at all: labelling the only thing on screen
     // is the chrome ADR-0117 §3 refused for the ahead header.
     const labelled = new Set(blocks).size > 1;
@@ -717,7 +758,7 @@ export function MapView() {
     }
     return (
       <>
-        {nearActive && shown.some((u) => !u.coordless) && (
+        {distanceOrder && shown.some((u) => !u.coordless) && (
           <div className="map-grouphead">{t.map.near.groupHeader}</div>
         )}
         <RevealList
@@ -799,10 +840,10 @@ export function MapView() {
           type="button"
           className={
             'map-nearchip' +
-            (nearActive ? ' on' : '') +
+            (distanceOrder ? ' on' : '') +
             (nearMe && locationRefused ? ' refused' : '')
           }
-          aria-pressed={nearActive}
+          aria-pressed={distanceOrder}
           onClick={toggleNearMe}
         >
           {ICONS.nearMe} {geo.status === 'locating' ? t.map.near.locating : t.map.near.chip}
@@ -1049,6 +1090,7 @@ function PlaceRow({
   ambient,
   outcome,
   isNextStop,
+  isNow,
   day,
   time,
   what,
@@ -1073,6 +1115,10 @@ function PlaceRow({
   outcome?: 'done' | 'skipped';
   /** The single navigate-to-next row (ADR-0106 §6): amber ring + tag. */
   isNextStop?: boolean;
+  /** You are HERE, right now (`deriveNow`, the board's own resolver). Amber like
+   *  `isNextStop` — both are time (ADR-0028) — and never both on one row, since
+   *  `eventPhase` reads `now` or `upcoming`, never both. */
+  isNow?: boolean;
   /** Which day, relative (מחר / אתמול / עוד 3 ימים) — only when the list spans
    *  several, since a day-scoped list already names its day (ADR-0085). */
   day?: string;
@@ -1118,6 +1164,7 @@ function PlaceRow({
     outcome === 'skipped' && 'skipped',
     usage.coordless && 'nocoord',
     isNextStop && 'nextstop',
+    isNow && 'nowstop',
     selected && 'selected',
   ]
     .filter(Boolean)
@@ -1171,6 +1218,7 @@ function PlaceRow({
               {time && <span dir="auto">{time}</span>}
             </span>
           )}
+          {isNow && <span className="map-tag now">{t.map.happeningNow}</span>}
           {isNextStop && <span className="map-tag next">{t.map.nextStop}</span>}
           {/* The outcome, in the app's existing words for it (the day view's own
               tags) and in the status hues --ok/--miss reserve for exactly this

@@ -5,13 +5,14 @@
 import {
   categoryForBookingType,
   eventDurationUnit,
+  isAmbient,
   type Booking,
   type MaybeItem,
   type Place,
   type PlacePrediction,
   type TripEvent,
 } from '@waypoint/shared';
-import { eventPhase, todayInTz, zoneOffsetMinutes, zonedIso } from './time';
+import { deriveNow, eventPhase, todayInTz, zoneOffsetMinutes, zonedIso } from './time';
 import { DAY_NOON, LIVE_ZONE_WINDOW_MS } from '../constants';
 import { formatDuration } from './duration';
 
@@ -685,6 +686,43 @@ export function eventMapPlace(
 export function bookingMapPlace(booking: Booking, places: Place[]): Place | undefined {
   const place = places.find((p) => p.id === bookingPlaceId(booking));
   return hasCoords(place) ? place : undefined;
+}
+
+/**
+ * Where you are RIGHT NOW — the in-progress event's place, or `undefined`.
+ *
+ * It does not decide what "now" means; it **asks `deriveNow`**, the same resolver
+ * Home's board reads, and then resolves that event's place through the same
+ * authority rule everything else here uses. So the Map and the board cannot
+ * disagree about which event is happening, which is the whole point: the Map filed
+ * a 13:00-14:00 lunch under `מה שלפנינו` at 13:54 while the board called it
+ * `עכשיו`, because the list had derived its own two-state ahead/behind partition
+ * with no middle (ADR-0107 session-102's precedent — a screen deriving its own
+ * answer instead of reading the shared one).
+ *
+ * **An ambient stay is filtered out before the question is asked**, exactly as
+ * Home filters it: a stay's span runs to check-out, so it would read "now" for
+ * three days straight and drown whatever you are actually doing. The hotel stays
+ * the day's backdrop (ADR-0054).
+ *
+ * Unlike `nextDestination` this needs **no directions URL**: a coordless place can
+ * still be where you are standing — it simply has no pin to mark, which is
+ * ADR-0121 §8's select-vs-focus distinction stated once more.
+ */
+export function currentDestination(
+  events: TripEvent[],
+  bookings: Booking[],
+  places: Place[],
+  nowMs: number,
+): { event: TripEvent; place: Place } | undefined {
+  const { now } = deriveNow(
+    events.filter((e) => !isAmbient(e)),
+    new Date(nowMs),
+  );
+  if (!now) return undefined;
+  const booking = now.bookingId ? bookings.find((b) => b.id === now.bookingId) : undefined;
+  const place = places.find((p) => p.id === eventPlaceId(now, booking));
+  return place ? { event: now, place } : undefined;
 }
 
 /** Where you have to get to next, and the event that puts you there. */

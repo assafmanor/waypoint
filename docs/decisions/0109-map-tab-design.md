@@ -7,6 +7,78 @@
 
 Mockup: [`mockups/map-tab-v1.html`](../../mockups/map-tab-v1.html) — the list-first tab in both modes, all four location states (normal / near-me granted / denied / offline), the pin-anatomy legend, a Phase-6 rendered-map preview, and the ADR-0107 zone chip.
 
+## Amendment (2026-07-27, session 138) — the tab says what is happening now, and locating you is not sorting you
+
+Two reports from the running app, one root each.
+
+### 1. The Map had no "now", so an event in progress read as still ahead
+
+At 13:54 the board said `עכשיו · עד 14:00` about a 13:00-14:00 lunch; the Map filed the
+same place under `מה שלפנינו`. Both were reporting the same event, and they disagreed.
+
+The cause is a second opinion about the clock. `lib/time.ts` owns the app's phase
+resolver — `eventPhase` → `upcoming | now | passed`, whose own docstring says it
+"mirrors `deriveNow`'s start ≤ at < end window, **so the now-line and the board agree
+on 'now'**" — and Home and the Day view both read it. The Map instead derived
+`placeBlock`, a **two-state** ahead/behind partition over `isDayUsagePast`. It even
+borrowed that function's boundary from `eventPhase` and then dropped the middle state,
+so "in progress" collapsed into "ahead". This is ADR-0107 session-102's precedent
+exactly: a screen deriving its own answer rather than reading the shared one.
+
+**The Map now reads the shared resolver.** `currentDestination` (`lib/places.ts`,
+sibling of `nextDestination`) asks **`deriveNow`** — the board's own function — and
+resolves that event's place through the same authority rule. The two surfaces cannot
+diverge again without the resolver itself being wrong.
+
+**How it shows, on both halves:**
+
+- **The row** carries an amber `עכשיו` tag — the board's word for the same fact — plus
+  the ring the next-stop row already wears. Ordering needed nothing: an in-progress
+  13:00 event already sorts first within `ahead`.
+- **The pin** carries an amber ring that **pulses**. This is the canvas's **second**
+  amber cue, which revises ADR-0121 §6's "exactly one pin ever carries it" to
+  **exactly one of each**. Safe, because they are mutually exclusive per pin:
+  `eventPhase` reads `now` or `upcoming`, never both, so no pin draws both.
+- **Amber for both is inside the budget** (ADR-0028): now and next are both _time_.
+  What separates them is **motion, not hue** — and that is the meaning, not a
+  decoration: the live one moves, the pending one waits.
+- **It is Home's blip, not a new invention.** `wp-board-pulse` (`board.css`) is the
+  amber dot beside `עכשיו` on the board; its alpha and 2s period are reused verbatim
+  on both the pin and the row's tag dot, so the three surfaces beat together.
+- **The resting state carries the cue and the animation only layers on top.**
+  `App.css`'s global `prefers-reduced-motion` rule kills every animation with
+  `!important`, so a pulse-only treatment would leave "now" with **no** cue at all for
+  the people least able to catch a subtle one. Motion off means still marked, just
+  still.
+- **A stay never says `עכשיו`.** Its span runs to check-out, so an unfiltered window
+  would mark the hotel for three days and drown whatever you are actually doing;
+  ambient events are filtered before the question is asked, exactly as Home filters
+  them. The stay remains the day's backdrop (ADR-0054).
+- **Trip mode only**, for the same reason `nextStop` is: a live "now" says nothing
+  while you are planning.
+
+### 2. Locating you is not asking to be sorted by distance
+
+The session-134 amendment made the tab offer to locate you on open. That was right, but
+it landed on a flag that meant two things at once: `nearActive` drove the distance
+chips, the me-dot **and** the list's order. While near-me was reachable only by tapping
+the chip that was honest — re-ordering was the point of tapping. Once the tab started
+asking for a fix by itself, **the day silently left schedule order the moment
+coordinates arrived** — an order changed by a permission state rather than by anything
+anyone asked for.
+
+**Split in two, along the line between a fact and an intent:**
+
+- **`located`** — we hold a usable fix. Distance chips and the me-dot follow from this,
+  and from nothing else.
+- **`sortByDistance`** — an intent, and **only the chip states it**. The chip's job is
+  now exactly one thing: order the list nearest-first. Tapping it off restores the
+  day's own sequence and **keeps** the distances, because we still know where you are
+  and forgetting a fix to undo a sort would be a lie.
+
+This is the same correction as the 2026-07-27 `useSelectDay` amendment one layer down:
+an intent has to be stated, not inferred from a value that happens to correlate with it.
+
 ## Amendment (2026-07-27, session 137) — a night you are staying is not a night you are past
 
 §5 gave a multi-day stay two prominences: **loud on its edge days**, and on the strictly-middle

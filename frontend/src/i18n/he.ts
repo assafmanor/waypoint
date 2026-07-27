@@ -109,6 +109,10 @@ export const t = {
     // navigate-to-next on the list (ADR-0106 §6): the one time-anchor cue the map
     // budget allows (ADR-0109 §6, the amber ring's list form), on a single row.
     nextStop: 'היעד הבא',
+    // Where you are right now. The board's word for the same fact, deliberately —
+    // the two surfaces read one resolver (`deriveNow`), so they must also say one
+    // thing. Amber like `nextStop`: both are time (ADR-0028).
+    happeningNow: 'עכשיו',
     // The list is three blocks (ADR-0109 session-110 + session-127), keyed by
     // `PlaceBlock` so the header and the order read one vocabulary. The behind header
     // is deliberately NEUTRAL (ADR-0117 §3): it holds three outcomes — visited,

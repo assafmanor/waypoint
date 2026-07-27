@@ -52,6 +52,11 @@ export interface MapPin {
   order?: number;
   /** The single amber time-anchor the canvas allows — Trip mode, exactly one pin. */
   nextStop?: boolean;
+  /** You are here, right now. The canvas's second amber cue, and the only animated
+   *  thing on it: `nextStop` waits still, this one pulses (ADR-0109's 2026-07-27
+   *  amendment). Mutually exclusive with `nextStop` — an event is `now` or
+   *  `upcoming`, never both — so no pin ever draws the two together. */
+  nowStop?: boolean;
   selected?: boolean;
   /** Accessible name: the pin is a real button, so it needs one. */
   label: string;
@@ -148,6 +153,7 @@ const PinMarker = memo(function PinMarker({
     `cat-${pin.hue}`,
     PIN_TIER_CLASS[pin.tier],
     pin.nextStop && 'nextstop',
+    pin.nowStop && 'nowstop',
     pin.selected && 'selected',
   ]
     .filter(Boolean)
@@ -161,7 +167,9 @@ const PinMarker = memo(function PinMarker({
     >
       <div className={cls} role="button" aria-label={pin.label}>
         {/* The tag belongs to the amber cue, so it is rendered only with it —
-            un-scoping its styles would still leave the text in the DOM. */}
+            un-scoping its styles would still leave the text in the DOM. The two
+            cues cannot co-occur on one pin, so this is one slot, not two. */}
+        {pin.nowStop && <span className="pin-tag">{t.map.happeningNow}</span>}
         {pin.nextStop && <span className="pin-tag">{t.map.nextStop}</span>}
         <span className="pin-b">
           {pin.glyph && (

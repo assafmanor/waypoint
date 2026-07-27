@@ -245,6 +245,41 @@ describe('the embedded map’s shell (ADR-0121)', () => {
     expect(row('lite')).toBeTruthy();
   });
 
+  // The canvas half of the `עכשיו` cue. The pulse itself is CSS and a human pass;
+  // what the suite owns is which pin is told to carry it — and that the next-stop
+  // cue is still on a different pin, since motion-vs-stillness is the only thing
+  // telling the two amber cues apart.
+  it('the in-progress pin is marked now, and the next stop is a different pin', () => {
+    setSimulatedNow(Date.parse(`${ACTIVE_DATE}T13:54:00Z`));
+    tripPlaces = [place('lunch'), place('museum', true, { lat: 35.7, lng: 139.7 })];
+    tripEvents = [
+      event({
+        id: 'l',
+        placeId: 'lunch',
+        category: 'food',
+        startsAt: `${ACTIVE_DATE}T13:00:00Z`,
+        endsAt: `${ACTIVE_DATE}T14:00:00Z`,
+      }),
+      event({
+        id: 'm',
+        placeId: 'museum',
+        category: 'sightseeing',
+        startsAt: `${ACTIVE_DATE}T16:00:00Z`,
+      }),
+    ];
+    render(wrap(<MapView />));
+    const pins = paneProps.current.pins as {
+      placeId: string;
+      nowStop?: boolean;
+      nextStop?: boolean;
+    }[];
+    const byId = (id: string) => pins.find((p) => p.placeId === id)!;
+    expect(byId('lunch').nowStop).toBe(true);
+    expect(byId('lunch').nextStop).toBeFalsy();
+    expect(byId('museum').nextStop).toBe(true);
+    expect(byId('museum').nowStop).toBeFalsy();
+  });
+
   // A mid-stay night is pinned at full strength now (ADR-0109's 2026-07-27
   // amendment) — the paint is CSS and a human pass, but the tier it paints from and
   // the number it must not have are both ours.
@@ -872,9 +907,13 @@ describe('the embedded map’s shell (ADR-0121)', () => {
       await vi.waitFor(() => expect(getCurrentPosition).toHaveBeenCalledTimes(1));
       // No card: the browser already has consent, so asking again would be theatre.
       expect(card()).toBeNull();
-      await vi.waitFor(() => expect(screen.queryByText(t.map.near.groupHeader)).toBeTruthy());
-      // …and the me dot arrives with the fix.
-      expect(paneProps.current.me).toEqual({ lat: 35.6, lng: 139.6 });
+      // The me dot arrives with the fix…
+      await vi.waitFor(() => expect(paneProps.current.me).toEqual({ lat: 35.6, lng: 139.6 }));
+      // …and the LIST IS LEFT ALONE. Locating you is not asking to be sorted by
+      // distance; that intent belongs to the chip, and one flag used to mean both,
+      // so a fix landing on open silently re-ordered the day out of schedule order.
+      expect(screen.queryByText(t.map.near.groupHeader)).toBeNull();
+      expect(screen.queryByText(t.map.blockHeader.ahead)).toBeTruthy();
     });
 
     it('a prompt would appear: shows OUR card and touches nothing', async () => {
