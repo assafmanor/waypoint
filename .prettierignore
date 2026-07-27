@@ -11,3 +11,4 @@ pnpm-lock.yaml
 # formatting it would reflow the generated block and fight the generator on
 # every run. The tool's output is the canonical form.
 mockups/map-embedded-v1.html
+mockups/map-split-v2.html
