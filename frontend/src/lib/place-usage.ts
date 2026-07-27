@@ -470,10 +470,33 @@ export function isDayUsagePast(day: DayUsage, nowMs: number, today?: string): bo
   return ends != null && nowMs >= ends;
 }
 
-/** The `DayUsage` a place is ranked by in this context: the scoped day, else its
- *  earliest. `undefined` when the place has no day at all. */
-export function placeDay(usage: PlaceUsage, onDate?: string): DayUsage | undefined {
-  return onDate ? usage.days.find((d) => d.date === onDate) : usage.days[0];
+/** What resolving a place's day needs: the scope, plus the clock where the caller
+ *  already holds one. Omitting the clock is a real choice, not a shortcut — see
+ *  {@link placeDay}. */
+export type PlaceDayContext = Pick<PlaceOrderContext, 'onDate' | 'nowMs' | 'today'>;
+
+/** The `DayUsage` a place is read as in this context. `undefined` when it has no day
+ *  at all — day-scoped, that is a place not in this day (the map's ghost tier).
+ *
+ *  All-days it is the day the place is **live** on: the earliest that isn't behind
+ *  you, and its LATEST once they all are (what's behind you reads newest-first, so
+ *  the day that sinks it is the last one, not the first). Its earliest day was the
+ *  bug: a place is not behind you because it *has* a past. Ranked by `days[0]`, the
+ *  hotel you sleep in tonight sat under `מה שמאחורינו` with a desaturated pin from
+ *  its second night on, and a café visited Tuesday and booked again Thursday read as
+ *  done — while `מה נשאר`, which asks about **all** a place's days, correctly kept
+ *  both. Two answers to one question on one screen.
+ *
+ *  **Without a clock nothing is behind you**, so this is `days[0]` exactly as before.
+ *  That is what keeps the pin's NUMBER clock-free (ADR-0121 §6): `buildPinOrderIndex`
+ *  passes no `nowMs`, and so a tick can never renumber a pin. */
+export function placeDay(usage: PlaceUsage, ctx: PlaceDayContext = {}): DayUsage | undefined {
+  const { onDate, nowMs, today } = ctx;
+  if (onDate) return usage.days.find((d) => d.date === onDate);
+  if (nowMs == null) return usage.days[0];
+  return (
+    usage.days.find((d) => !isDayUsagePast(d, nowMs, today)) ?? usage.days[usage.days.length - 1]
+  );
 }
 
 /** The list's three blocks, in reading order (ADR-0109 session-110 + its session-127
@@ -485,12 +508,13 @@ export type PlaceBlock = (typeof PLACE_BLOCK)[keyof typeof PLACE_BLOCK];
 /** Which block a place belongs to. A place with **no day** is its own block: nothing
  *  about it has passed, so calling it "behind you" is the one thing it is not — and it
  *  makes no claim on the near future either, so it can't lead. Without a clock nothing
- *  is behind you, which leaves it last exactly as before. */
-export function placeBlock(
-  usage: PlaceUsage,
-  ctx: Pick<PlaceOrderContext, 'onDate' | 'nowMs' | 'today'>,
-): PlaceBlock {
-  const day = placeDay(usage, ctx.onDate);
+ *  is behind you, which leaves it last exactly as before.
+ *
+ *  All-days, `behind` therefore means **every** one of its days is behind you — the
+ *  same "all its days" rule `isPlaceSettled` asks, so a place's block and `מה נשאר`
+ *  can no longer disagree about it ({@link placeDay}). */
+export function placeBlock(usage: PlaceUsage, ctx: PlaceDayContext): PlaceBlock {
+  const day = placeDay(usage, ctx);
   if (!day) return PLACE_BLOCK.dayless;
   return ctx.nowMs != null && isDayUsagePast(day, ctx.nowMs, ctx.today)
     ? PLACE_BLOCK.behind
@@ -504,9 +528,9 @@ export function comparePlacesBySchedule(
   b: PlaceUsage,
   ctx: PlaceOrderContext,
 ): number {
-  const { nameOf, onDate, nowMs, today } = ctx;
-  const da = placeDay(a, onDate);
-  const db = placeDay(b, onDate);
+  const { nameOf, nowMs, today } = ctx;
+  const da = placeDay(a, ctx);
+  const db = placeDay(b, ctx);
   // The block comes first, BEFORE the date is even considered. Ordering by date first
   // was the bug: across several days it put last Tuesday above the stop you're heading
   // to this evening, because the sink only ever applied within a day. An undated row

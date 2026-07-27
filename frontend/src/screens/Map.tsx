@@ -642,7 +642,11 @@ export function MapView() {
     usage: PlaceUsage,
     opts: { forceDay?: boolean } = {},
   ): { day?: string; time?: string; what?: string; pencilled?: boolean } => {
-    const usageDay = placeDay(usage, opts.forceDay ? undefined : scopedDate);
+    const usageDay = placeDay(usage, {
+      onDate: opts.forceDay ? undefined : scopedDate,
+      nowMs,
+      today,
+    });
     // A strictly-middle stay night has no moment and nothing happens there — saying
     // the hotel's own name back on the hotel's row would be pure repetition.
     if (!usageDay || usageDay.prominence === 'ambient') return {};
@@ -749,7 +753,11 @@ export function MapView() {
       // What a human said happened here (ADR-0117 §1) — read off the same day the
       // meta line describes. A strictly-middle stay night reports nothing: nothing
       // happens there to have an outcome about.
-      const usageDay = placeDay(usage, opts.forceDay ? undefined : scopedDate);
+      const usageDay = placeDay(usage, {
+        onDate: opts.forceDay ? undefined : scopedDate,
+        nowMs,
+        today,
+      });
       const outcome = usageDay?.prominence === 'ambient' ? undefined : usageDay?.outcome;
       const selected = selectedId === usage.placeId;
       return (

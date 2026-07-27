@@ -21,6 +21,7 @@ import {
   PLACE_BLOCK,
   PLACE_CATEGORY_ALL,
   placeBlock,
+  placeDay,
   type PlaceFilter,
   type PlaceUsage,
 } from './place-usage';
@@ -577,6 +578,141 @@ describe('comparePlacesBySchedule (the list reads in trip order)', () => {
       expect(placeBlock(idx.get('this-morning')!, ctx)).toBe(PLACE_BLOCK.behind);
       // With no clock nothing is behind you, so the undated row is simply last.
       expect(order(idx, undefined, undefined, DAY)).toEqual(['this-morning', 'tonight', 'someday']);
+    });
+
+    // All-days scope used to read a place off `days[0]`, so ANY past day classified
+    // it — a place is not behind you because it *has* a past. Both cases below were
+    // simultaneously kept by `מה נשאר` (which asks about ALL a place's days) and
+    // filed under `מה שמאחורינו`: two answers to one question on one screen.
+    describe('all-days scope reads a place by the day it is LIVE on', () => {
+      it('a place visited on a passed day and booked again later is ahead of you', () => {
+        const idx = buildPlaceUsageIndex(
+          [
+            event({
+              id: 'e1',
+              placeId: 'cafe',
+              date: '2026-07-05',
+              startsAt: '2026-07-05T10:00:00Z',
+              status: EVENT_STATUS.DONE,
+            }),
+            event({
+              id: 'e2',
+              placeId: 'cafe',
+              date: '2026-07-09',
+              startsAt: '2026-07-09T10:00:00Z',
+            }),
+            event({ id: 'e3', placeId: 'this-morning', date: DAY, startsAt: at('09:00') }),
+          ],
+          [],
+          [],
+          [place('cafe'), place('this-morning')],
+        );
+        const ctx = { nowMs: NOW, today: DAY };
+        const cafe = idx.get('cafe')!;
+        expect(placeBlock(cafe, ctx)).toBe(PLACE_BLOCK.ahead);
+        // `מה נשאר` already answered this way — now the block agrees with it.
+        expect(isPlaceSettled(cafe)).toBe(false);
+        // …and it is read as its Thursday, not its Sunday.
+        expect(placeDay(cafe, ctx)?.date).toBe('2026-07-09');
+        expect(order(idx, undefined, NOW, DAY)).toEqual(['cafe', 'this-morning']);
+      });
+
+      it('the stay you sleep in tonight is not behind you from its second night on', () => {
+        const idx = buildPlaceUsageIndex(
+          [
+            event({
+              id: 'stay',
+              placeId: 'hotel',
+              date: '2026-07-05',
+              endDate: '2026-07-10',
+              startsAt: '2026-07-05T15:00:00Z',
+              endsAt: '2026-07-10T10:00:00Z',
+              category: 'lodging',
+            }),
+          ],
+          [],
+          [],
+          [place('hotel')],
+        );
+        const hotel = idx.get('hotel')!;
+        expect(placeBlock(hotel, { nowMs: NOW, today: DAY })).toBe(PLACE_BLOCK.ahead);
+        // Today's night, so the row reads as the ambient backdrop it is (ADR-0054) —
+        // not as a check-in two days ago.
+        expect(placeDay(hotel, { nowMs: NOW, today: DAY })?.date).toBe(DAY);
+      });
+
+      it('behind you means EVERY day is, and it is read by its most recent one', () => {
+        const idx = buildPlaceUsageIndex(
+          [
+            event({
+              id: 'e1',
+              placeId: 'twice',
+              date: '2026-07-03',
+              startsAt: '2026-07-03T10:00:00Z',
+            }),
+            event({
+              id: 'e2',
+              placeId: 'twice',
+              date: '2026-07-05',
+              startsAt: '2026-07-05T10:00:00Z',
+            }),
+          ],
+          [],
+          [],
+          [place('twice')],
+        );
+        const twice = idx.get('twice')!;
+        const ctx = { nowMs: NOW, today: DAY };
+        expect(placeBlock(twice, ctx)).toBe(PLACE_BLOCK.behind);
+        // Newest-first is what the behind block wants, so the day that sinks it is
+        // the LAST one — "the stop you just left".
+        expect(placeDay(twice, ctx)?.date).toBe('2026-07-05');
+      });
+
+      it('day-scoped is unchanged: the scoped day, or nothing (a ghost)', () => {
+        const idx = buildPlaceUsageIndex(
+          [
+            event({
+              id: 'e1',
+              placeId: 'cafe',
+              date: '2026-07-09',
+              startsAt: '2026-07-09T10:00:00Z',
+            }),
+          ],
+          [],
+          [],
+          [place('cafe')],
+        );
+        const cafe = idx.get('cafe')!;
+        expect(placeDay(cafe, { onDate: '2026-07-09', nowMs: NOW, today: DAY })?.date).toBe(
+          '2026-07-09',
+        );
+        expect(placeDay(cafe, { onDate: DAY, nowMs: NOW, today: DAY })).toBeUndefined();
+      });
+
+      it('with no clock it is still `days[0]` — which is what keeps a pin’s number stable', () => {
+        const idx = buildPlaceUsageIndex(
+          [
+            event({
+              id: 'e1',
+              placeId: 'cafe',
+              date: '2026-07-05',
+              startsAt: '2026-07-05T10:00:00Z',
+              status: EVENT_STATUS.DONE,
+            }),
+            event({
+              id: 'e2',
+              placeId: 'cafe',
+              date: '2026-07-09',
+              startsAt: '2026-07-09T10:00:00Z',
+            }),
+          ],
+          [],
+          [],
+          [place('cafe')],
+        );
+        expect(placeDay(idx.get('cafe')!)?.date).toBe('2026-07-05');
+      });
     });
 
     it('an untimed event on a passed day sinks with it, despite having no clock', () => {

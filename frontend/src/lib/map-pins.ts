@@ -76,7 +76,7 @@ export function hasScheduleSlot(day: DayUsage | undefined): boolean {
  * 4. **Ambient** backdrop, then **idea** (no schedule slot), else **upcoming**.
  */
 export function placePinTier(usage: PlaceUsage, ctx: PinContext): PinTier {
-  const day = placeDay(usage, ctx.onDate);
+  const day = placeDay(usage, ctx);
   if (!day) return ctx.onDate ? PIN_TIER.ghost : ideaOrUpcoming(usage);
   if (ctx.nowMs != null && isDayUsagePast(day, ctx.nowMs, ctx.today)) return PIN_TIER.behind;
   if (day.prominence === 'ambient') return PIN_TIER.ambient;
@@ -110,7 +110,10 @@ export function buildPinOrderIndex(
   ctx: { nameOf: PlaceOrderContext['nameOf']; onDate?: string },
 ): Map<string, number> {
   const { nameOf, onDate } = ctx;
-  const numbered = usages.filter((u) => hasScheduleSlot(placeDay(u, onDate)));
+  // No `nowMs` here, and that is the invariant: `placeDay` resolves the all-days
+  // case against the clock when it is given one, so passing it would let a tick
+  // change which day a place is numbered by.
+  const numbered = usages.filter((u) => hasScheduleSlot(placeDay(u, { onDate })));
   numbered.sort((a, b) => comparePlacesBySchedule(a, b, { nameOf, onDate }));
   return new Map(numbered.map((usage, i) => [usage.placeId, i + 1]));
 }
