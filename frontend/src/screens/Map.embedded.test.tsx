@@ -160,6 +160,7 @@ import { MapScopeProvider } from '../state/map-scope-state';
 import { setSimulatedNow } from '../lib/useClock';
 import { MapView } from './Map';
 import { MAP_SHEET_VIEW } from '../constants';
+import { PIN_TIER } from '../lib/map-pins';
 import { t } from '../i18n/he';
 
 function wrap(node: ReactNode) {
@@ -242,6 +243,31 @@ describe('the embedded map’s shell (ADR-0121)', () => {
     expect(pinIds()).toContain('museum');
     expect(pin('lite')).toBeNull();
     expect(row('lite')).toBeTruthy();
+  });
+
+  // A mid-stay night is pinned at full strength now (ADR-0109's 2026-07-27
+  // amendment) — the paint is CSS and a human pass, but the tier it paints from and
+  // the number it must not have are both ours.
+  it('a stay’s middle night pins as ambient, and carries no number', () => {
+    tripPlaces = [place('hotel'), place('lunch', true, { lat: 35.7, lng: 139.7 })];
+    tripEvents = [
+      event({
+        id: 'stay',
+        placeId: 'hotel',
+        category: 'lodging',
+        date: '2026-07-19',
+        endDate: NEXT_DAY,
+        startsAt: '2026-07-19T15:00:00Z',
+        endsAt: `${NEXT_DAY}T10:00:00Z`,
+      }),
+      event({ id: 'l', placeId: 'lunch', category: 'food', startsAt: `${ACTIVE_DATE}T13:00:00Z` }),
+    ];
+    render(wrap(<MapView />));
+    // 07-20 is the strictly-middle night of a 19→21 stay.
+    expect(pin('hotel')!.getAttribute('data-tier')).toBe(PIN_TIER.ambient);
+    expect(pin('hotel')!.getAttribute('data-order')).toBe('');
+    // And it does not take a position from the day's real stops.
+    expect(pin('lunch')!.getAttribute('data-order')).toBe('1');
   });
 
   // The whole reason the row grew a number (§6): with the split on screen, the two

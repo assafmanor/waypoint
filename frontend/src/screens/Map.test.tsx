@@ -1108,9 +1108,10 @@ describe('MapView (Phase 3, ADR-0109/0110)', () => {
       expect(orderOf('tomorrow')).toBe('4');
     });
 
-    // Phase 4 (#14) will make an ambient stay night read as more present; this is the
-    // thing it must not break. A middle night is neither an arrival nor a departure,
-    // so it holds no position — giving it one would renumber every real stop.
+    // Phase 4 made an ambient stay night read as present rather than faded; this is the
+    // thing that must not break with it. A middle night is neither an arrival nor a
+    // departure, so it holds no position — giving it one would renumber every real
+    // stop, and it is now the ONLY thing marking the night as ambient at all.
     it('a stay’s middle night has no position in the day, so it takes no number', () => {
       setSimulatedNow(NOON);
       tripPlaces = [place('hotel', true), place('lunch', true)];
@@ -1130,6 +1131,96 @@ describe('MapView (Phase 3, ADR-0109/0110)', () => {
       // The active date is the strictly-middle night of a 19→21 stay.
       expect(orderOf('hotel')).toBeNull();
       expect(orderOf('lunch')).toBe('1');
+    });
+  });
+
+  // A mid-stay night used to share one quiet treatment with a skipped place, on the
+  // reasoning that both are "present but not a live commitment". Half of that was
+  // wrong — a skipped place is behind you, a night you are sleeping somewhere is the
+  // most current fact on the day — so the two no longer travel together (ADR-0109's
+  // 2026-07-27 amendment). The paint itself is CSS and a human pass; what the suite
+  // can hold down is that the derivation still tells the two apart.
+  describe('an ambient stay night is present, not past', () => {
+    const NOON = Date.parse(`${ACTIVE_DATE}T12:00:00Z`);
+    const stay = () =>
+      event({
+        id: 'stay',
+        placeId: 'hotel',
+        category: 'lodging',
+        date: '2026-07-19',
+        endDate: '2026-07-21',
+        startsAt: '2026-07-19T15:00:00Z',
+        endsAt: '2026-07-21T10:00:00Z',
+      });
+
+    it('the middle night is marked ambient and NOT skipped', () => {
+      setSimulatedNow(NOON);
+      tripPlaces = [place('hotel', true)];
+      tripEvents = [stay()];
+      render(wrap(<MapView />));
+      // The active date is the strictly-middle night of a 19→21 stay.
+      expect(row('hotel')!.className).toContain('ambient');
+      // The class the fade used to be shared with. Keeping them apart in the markup is
+      // what lets them be told apart in the paint.
+      expect(row('hotel')!.className).not.toContain('skipped');
+    });
+
+    // The other scope, and it is a genuinely different render: `renderRow` reads
+    // prominence off the ACTIVE day, so in all-days there is no single day to be
+    // mid-stay on and the stay is simply one ordinary row. Worth stating, because it
+    // means `ambient` is a day-scope-only class and a test asserting its absence in
+    // all-days would pass for the wrong reason.
+    it('all-days has no mid-stay night to mark, so the stay is one ordinary row', () => {
+      setSimulatedNow(NOON);
+      tripPlaces = [place('hotel', true)];
+      tripEvents = [stay()];
+      render(wrap(<MapView />));
+      expect(row('hotel')!.className).toContain('ambient');
+      tapAllDays();
+      expect(row('hotel')!.className).not.toContain('ambient');
+      expect(document.querySelectorAll('.place')).toHaveLength(1);
+    });
+
+    it('a skipped place keeps the quiet treatment the stay gave up', () => {
+      setSimulatedNow(NOON);
+      tripPlaces = [place('museum', true)];
+      tripEvents = [
+        event({
+          id: 'm',
+          placeId: 'museum',
+          category: 'sightseeing',
+          status: EVENT_STATUS.SKIPPED,
+          startsAt: `${ACTIVE_DATE}T09:00:00Z`,
+        }),
+      ];
+      render(wrap(<MapView />));
+      expect(row('museum')!.className).toContain('skipped');
+      expect(row('museum')!.className).not.toContain('ambient');
+    });
+
+    // The edge day is what an ambient night now looks like, minus the one thing that
+    // still separates them — so the check-in day must still be numbered, or the
+    // distinction the amendment rests on is gone.
+    it('a check-in day is an ordinary NUMBERED row, which is what ambient is not', () => {
+      setSimulatedNow(NOON);
+      tripPlaces = [place('hotel', true)];
+      // Check in ON the active date, so 07-20 is this stay's start edge, not a middle.
+      tripEvents = [
+        event({
+          id: 'stay',
+          placeId: 'hotel',
+          category: 'lodging',
+          date: ACTIVE_DATE,
+          endDate: '2026-07-22',
+          startsAt: `${ACTIVE_DATE}T15:00:00Z`,
+          endsAt: '2026-07-22T10:00:00Z',
+        }),
+      ];
+      render(wrap(<MapView />));
+      const hotel = row('hotel')!;
+      expect(hotel.className).not.toContain('ambient');
+      expect(hotel.className).not.toContain('skipped');
+      expect(orderOf('hotel')).toBe('1');
     });
   });
 

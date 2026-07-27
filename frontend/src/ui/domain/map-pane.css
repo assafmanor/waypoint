@@ -83,8 +83,14 @@
   background: var(--cat-services);
 }
 /* Commitment is the hard/soft GRAMMAR, never a colour (ADR-0011/0028) — and these
-   three are exactly what `PinElement` cannot draw. Each mirrors its `.place`
-   counterpart: `.soft`, `.ambient`, `.skipped`. */
+   are exactly what `PinElement` cannot draw. Each mirrors its `.place`
+   counterpart: `.soft`, `.skipped`.
+
+   `.ambient` is deliberately absent: a strictly-middle stay night draws as an
+   ORDINARY pin (ADR-0109's 2026-07-27 amendment). It used to be desaturated, but on
+   this canvas desaturation already means BEHIND YOU — and the night you are sleeping
+   somewhere is the opposite of that. What marks it ambient is that it carries no
+   number, which is §6's own rule and now the whole distinction. */
 .map-pin.soft .pin-b {
   border-style: dashed;
   border-color: var(--soft-line);
@@ -101,10 +107,6 @@
 }
 .map-pin.soft.cat-services .pin-b {
   background: color-mix(in srgb, var(--cat-services) 55%, var(--card));
-}
-.map-pin.ambient .pin-b {
-  filter: saturate(0.45);
-  opacity: 0.8;
 }
 .map-pin.skipped .pin-b {
   filter: saturate(0.3);
@@ -136,9 +138,10 @@
   box-shadow: 0 0 0 1.5px var(--card);
 }
 /* Behind you KEEPS its number — the partition changes prominence, never the
-   position; #1 is still true after you have been there. */
-.map-pin.skipped .pin-n,
-.map-pin.ambient .pin-n {
+   position; #1 is still true after you have been there. (`.ambient` was listed here
+   too, which could never fire: an ambient night has no schedule slot, so it has no
+   number to mute.) */
+.map-pin.skipped .pin-n {
   background: var(--muted);
 }
 
