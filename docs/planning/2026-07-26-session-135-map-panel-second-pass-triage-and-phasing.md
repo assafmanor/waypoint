@@ -89,12 +89,66 @@ answer decide which phase the fix lands in.
 4. **The model of what belongs to a day** — #14.
 5. **Place authoring, and reaching the map from elsewhere** — #6, #7, #12.
 
+## Session types, and which phase needs which
+
+**A phase is not a session.** This repo separates designing from building — session 131 designed
+the embedded map (paper only: ADR-0121 + `mockups/map-embedded-v1.html`), session 133 built it;
+ADR-0105 shipped as design + mockup with the build left in the backlog. The first draft of this
+plan collapsed the two, which would have had a build session inventing a layout at the keyboard.
+It doesn't. Four session types recur in this epic's history, and each phase below names the ones
+it needs:
+
+- **Design** (paper only) — a mockup in `mockups/` + an ADR. For anything with a new visual or
+  interaction shape. Ends with no feature code, and updates `docs/design/mockups.md` in the same
+  change (it's a living index, ADR-0097).
+- **Cost / reconfirmation** (paper only) — an ADR pricing the options before a design exists.
+  ADR-0108 and ADR-0111 are both this, and ADR-0121 required an API/pricing reconfirmation before
+  it could be written at all. Only Phase 6 needs one, and it is a **go/no-go**.
+- **Build** — the code, its tests, and the backlog prune.
+- **Device pass** — a human looking at a real phone. Not optional on this tab: the rendered map
+  is unverifiable by the suite by design (ADR-0121 §13), and both remaining tuning jobs (sheet
+  stops, zoom ladder) are meaningless in a desktop viewport.
+
+**The mockup hazard, which Phase 2 walks straight into.** Session 131's note recorded that the
+Phase-6 mockup _silently supplied a flex column the app didn't have_, so the design read as
+correct against the real tokens while being unbuildable — "a mockup that reads the app's CSS
+still does not inherit its layout tree." Phase 2 **is** a layout-tree change. Its design session
+must check every proposed height against `AppShell` + `BODY_FULLBLEED` + `.map-split` as they
+actually nest, not against a standalone HTML file that happens to use the same variables.
+
+### The sessions, in order
+
+| #   | Session      | Type               | Output                                                        |
+| --- | ------------ | ------------------ | ------------------------------------------------------------- |
+| 1   | Phase 1      | build              | Code, the ADR-0109 §2 amendment, and the #14 triage answer    |
+| 2   | Phase 2      | **design**         | Mockup + ADR amending 0121 §5; no code                        |
+| 3   | Phases 2 + 3 | build + **device** | Both builds with a phone in hand; Phase 3's ADR written first |
+| 4   | Phase 4      | depends on triage  | Branch (a): build. Branch (b): **design**, then build         |
+| 5   | Phase 5      | build              | Code + an ADR-0121 §8 amendment                               |
+| 6   | Phase 6a     | **cost**           | The go/no-go ADR. Nothing downstream starts until it lands    |
+| 7   | Phase 6a     | **design**         | Mockup + ADR                                                  |
+| 8   | Phase 6a     | build              | Code, plus backend if the field mask moves                    |
+| 9   | Phase 6b     | **design**         | Mockup + ADR                                                  |
+| 10  | Phase 6b     | build              | Code, plus a BE-arch pass if the schema moves                 |
+
+So: **~10 sessions, not 6.** Five of them are paper. Two notes on the shape:
+
+- **Phase 3 gets an ADR but no mockup.** A mockup cannot express a zoom level — the only honest
+  surface for "how close is close enough" is the real map on a real phone. Its decision is small
+  enough to write at the head of its build session, which is why it rides along with Phase 2's
+  build rather than getting a design session of its own.
+- **Phase 6's cost session is a gate, not a stage.** If the answer is "a Details call per preview
+  is too expensive", the design session that follows is a _different_ design (keep the free
+  `place_id` deep-link), and 6b's surface changes with it. Don't design ahead of it.
+
 ## The phases
 
 Six phases, each **one branch, one PR**. The order front-loads certainty: everything in Phase 1
 is already decided, everything in Phase 6 needs a cost decision first.
 
 ### Phase 1 — the tab tells the truth (#10, #9, #4, #13, #8) + triage #14
+
+**One build session.** Nothing here has a new shape to design.
 
 The whole cheap half. No new surface, no new mechanism, and four of the five are defects
 against ADRs that already say what should happen.
@@ -122,6 +176,8 @@ clock and **assert across both day scopes**. **Docs:** amend ADR-0109 §2; the r
 fixes, so the session note carries them.
 
 ### Phase 2 — the split earns its screen (#1, #2, #3)
+
+**A design session, then a build session** (the latter shared with Phase 3, phone in hand). Read the mockup hazard above before starting the design: this phase is a layout-tree change, which is the exact thing a standalone mockup gets wrong.
 
 One coherent redesign of the shell ADR-0121 §5 built. Needs an ADR because the stops, the
 header, and the pre-prompt's home are all documented decisions.
@@ -154,6 +210,8 @@ billed). **Docs:** new ADR amending 0121 §5.
 
 ### Phase 3 — the camera answers the tap (#11, #5, #15)
 
+**One build session, its ADR written at the head of it**, sharing the device pass with Phase 2's build. No mockup: a zoom level only means something on a real map.
+
 Both reverse a documented camera decision, so they belong in one ADR and one PR.
 
 - **#11** — zoom-to-at-least on selection, as above. Implement in `useMapCamera.focus`, keeping
@@ -181,6 +239,8 @@ be tested". **Docs:** new ADR amending 0121 §7/§12.
 
 ### Phase 4 — a continuing stay is on every day it covers (#14)
 
+**One or two sessions, decided by the Phase-1 triage:** branch (a) is a build; branch (b) changes what an ambient pin and row look like, so it needs a design session first.
+
 Shape decided by the Phase-1 triage. If **(a)**, it is an authoring fix (spans get `endDate`)
 plus a migration question for stays already authored as two events, and it generalizes to every
 prolonged booking. If **(b)**, it is a prominence revision: what an ambient middle day looks like
@@ -196,6 +256,8 @@ give it a position in the day's sequence — that would renumber every real stop
 
 ### Phase 5 — every place-bearing surface reaches the map (#6)
 
+**One build session.** The affordance already exists and is already designed — this phase only decides where it appears, which is an ADR amendment, not a mockup.
+
 `useShowPlaceOnMap` is built, correct, and under-used. This phase is an **audit, not a
 mechanism**: list every surface that renders a place-bearing entity, and give each the same one
 affordance. Known gaps: the Index bookings rows, Home's board and quick-access tiles, PlanDay,
@@ -209,6 +271,8 @@ on `EventCard` today), and does a row with **no** coordinates show it at all?
 rule to the Map row), ADR-0106 §F (`נווט` stays a Google deep-link permanently).
 
 ### Phase 6 — authoring a place on a map (#7, then #12)
+
+**Five sessions: cost → design → build for 6a, then design → build for 6b.** The cost session gates everything after it.
 
 The only phase that spends money and touches the backend. Two ADRs, sequenced — #7 first,
 because whatever surface it builds is the one #12 drops a pin on.
