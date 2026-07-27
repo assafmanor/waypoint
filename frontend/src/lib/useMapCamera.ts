@@ -27,9 +27,15 @@
 // Reduced motion: the camera still MOVES, only the easing is dropped — a pan
 // becomes a jump (ADR-0098 §4).
 import { useCallback, useEffect, useRef } from 'react';
-import { cameraTargetFor, fitPaddingFor, type LatLng, type MapBounds } from './map-camera';
+import {
+  cameraTargetFor,
+  fitPaddingFor,
+  mapFitPadding,
+  type LatLng,
+  type MapBounds,
+} from './map-camera';
 import { prefersReducedMotion } from './motion';
-import { MAP_FIT_PADDING, MAP_ZOOM } from '../constants';
+import { MAP_ZOOM } from '../constants';
 
 /** The live viewport as our own bounds shape, or `null` before the first idle. */
 export function readMapBounds(map: google.maps.Map | null): MapBounds | null {
@@ -83,7 +89,10 @@ export function useMapCamera(
         return true;
       }
       const box = map.getDiv().getBoundingClientRect();
-      const padding = fitPaddingFor(box, MAP_FIT_PADDING);
+      // The div's height is both what the padding is affordable AGAINST and what sizes
+      // the pins it has to clear (ADR-0123) — one measurement, read where the fit
+      // happens rather than kept in state on a screen that re-renders every second.
+      const padding = fitPaddingFor(box, mapFitPadding(box.height));
       // An unsized div has no honest fit — wait for one rather than zoom to nothing.
       if (padding === null) return false;
       // Padded by a pin's own height at the top: the teardrop's TIP is the anchor,

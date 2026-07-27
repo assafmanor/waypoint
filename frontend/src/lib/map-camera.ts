@@ -13,7 +13,8 @@
 // Longitudes are compared plainly, so a set straddling the antimeridian fits the
 // long way round. Deliberate: it takes a trip spanning ±180° to notice, and the
 // guard would cost every other case a special case (ADR-0121 §14's spirit).
-import { MAP_REFIT_FILL_SHARE } from '../constants';
+import { MAP_CONTROLS_H, MAP_FIT_INSET, MAP_FLOAT_GAP, MAP_REFIT_FILL_SHARE } from '../constants';
+import { pinClearanceFor } from './map-pins';
 
 export interface LatLng {
   lat: number;
@@ -134,6 +135,36 @@ export function boundsFillView(outer: MapBounds, inner: MapBounds): boolean {
  */
 export type CameraTarget =
   { kind: 'none' } | { kind: 'centre'; at: LatLng } | { kind: 'fit'; bounds: MapBounds };
+
+/**
+ * Inset for a fit, in px, **against the canvas being fitted into**. The top carries
+ * the floating controls row — derived from the constant that writes
+ * `--map-controls-h`, so layout and camera cannot drift apart (ADR-0122 §1) — plus a
+ * pin's own clearance, derived from the size a pin will actually be on a canvas that
+ * tall (ADR-0123). Nothing about the layout keeps a pin out from under the chips; this
+ * is the only thing that does.
+ *
+ * It became a function of the canvas when the pin's size did. The two honest limits
+ * ADR-0122 §1 states rather than papers over are unchanged: it governs a **fit** (a
+ * manual pan can still put a pin under the row, and no map larger than its frame can
+ * promise otherwise), and `fitPaddingFor` drops padding that would claim half an axis —
+ * so at `half`, where the pane is ~260px, the inset is still dropped and a fitted pin
+ * can land under the row. Deriving it makes that case cheaper, not solved: the pin is
+ * at its floor there, so the inset asks for less than the flat 64px clearance did.
+ */
+export function mapFitPadding(canvasHeightPx: number): {
+  top: number;
+  right: number;
+  bottom: number;
+  left: number;
+} {
+  return {
+    top: MAP_CONTROLS_H + MAP_FLOAT_GAP + pinClearanceFor(canvasHeightPx),
+    right: MAP_FIT_INSET,
+    bottom: MAP_FIT_INSET,
+    left: MAP_FIT_INSET,
+  };
+}
 
 /** Padding for a fit, dropped when the viewport cannot hold it.
  *

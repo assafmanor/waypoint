@@ -8,6 +8,7 @@
 // `PlaceUsage` the list rows read, the same `comparePlacesBySchedule` order the
 // Day view renders. That is the property the list-first investment was for — a
 // chip that changes the list changes the pins in the same pass (ADR-0110 §2).
+import { MAP_PIN } from '../constants';
 import {
   comparePlacesBySchedule,
   isDayUsagePast,
@@ -155,6 +156,55 @@ export function pinZIndex(pin: { tier: PinTier; nextStop?: boolean; order?: numb
  */
 export function isFramedByCamera(pin: { tier: PinTier }): boolean {
   return pin.tier !== PIN_TIER.ghost;
+}
+
+/**
+ * ── HOW BIG IS A PIN (ADR-0123) ──────────────────────────────────────────────────
+ *
+ * **The canvas sizes the pin.** A teardrop is a legibility unit and a touch target on
+ * a map whose visible height the sheet's stop changes by a factor of two, so one fixed
+ * size cannot serve both: 34px reads as a speck on a 545px canvas and would swallow a
+ * 260px one. The rule is therefore a share of the canvas's height, floored at the
+ * shipped size and capped where a marker stops reading as a point — `MAP_PIN`.
+ *
+ * `canvasHeightPx` is the **pane's** height, which is exactly what the snapped stop
+ * leaves visible (`--sheet-h`, ADR-0121 §5) — not the viewport's, and not the
+ * screen's. That is the parameter, and it is the only one: the deliberate rejections
+ * are recorded in the ADR (zoom and pin density both resize pins **under a moving
+ * finger**, which is the churn ADR-0121 §9 keeps out of the `באזור` readout).
+ */
+export function pinHeightFor(canvasHeightPx: number): number {
+  const share = canvasHeightPx * MAP_PIN.CANVAS_SHARE;
+  return Math.min(Math.max(share, MAP_PIN.MIN_H), MAP_PIN.MAX_H);
+}
+
+/**
+ * The same rule as a CSS length, resolved by the browser against the pane's own box
+ * (`container-type: size` on `.map-pane`, `map-pane.css`).
+ *
+ * Declarative on purpose, and the same trade `stopHeightCss` makes: `screens/Map.tsx`
+ * re-renders every second, so the alternative — measure the pane, put the number in
+ * state — is a layout read on the clock, and passing it to `MapPane` would be a prop
+ * that changes on a gesture, re-diffing every marker for a value CSS already knows
+ * (ADR-0121 §4 / ADR-0122 §9). The browser re-resolves `cqh` when the pane resizes,
+ * which is on snap, never per drag frame.
+ */
+export function pinSizeCss(): string {
+  return `clamp(${MAP_PIN.MIN_H}px, ${MAP_PIN.CANVAS_SHARE} * 100cqh, ${MAP_PIN.MAX_H}px)`;
+}
+
+/**
+ * How much room a pin needs **above its coordinate** on a canvas that tall — the
+ * teardrop's tip is the anchor, so its whole body and any amber tag extend upwards,
+ * and a fit that reserves nothing draws the topmost pin half off-canvas (ADR-0121 §7).
+ *
+ * Derived from the size the pin will actually be, not from a worst case: at the map
+ * extreme it reserves more than the hand-tuned 64px it replaces, and at `half` — where
+ * the pin is at its floor and the inset competes with `fitPaddingFor`'s half-an-axis
+ * limit — it reserves less. A hand-tuned constant could be right for one stop only.
+ */
+export function pinClearanceFor(canvasHeightPx: number): number {
+  return Math.ceil(pinHeightFor(canvasHeightPx) * (1 + MAP_PIN.TAG_RISE));
 }
 
 /** Where a place is, or `undefined` for a coordless Place-lite. The one check

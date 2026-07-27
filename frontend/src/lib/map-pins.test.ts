@@ -16,10 +16,14 @@ import {
   hasScheduleSlot,
   isFramedByCamera,
   PIN_TIER,
+  pinClearanceFor,
+  pinHeightFor,
+  pinSizeCss,
   placePinTier,
   placePoint,
   pinZIndex,
 } from './map-pins';
+import { MAP_PIN } from '../constants';
 
 const DAY = '2026-07-20';
 const NEXT_DAY = '2026-07-21';
@@ -351,5 +355,99 @@ describe('isFramedByCamera — the camera answers the day, not its context (§6/
       { tier: PIN_TIER.ghost },
     ];
     expect(canvas.filter(isFramedByCamera)).toHaveLength(2);
+  });
+});
+
+// The reported defect: on a full-height pane the pins were "much smaller than they
+// could've been given the size of the pane" — a 34px teardrop is ~6% of a 545px canvas.
+// The rule is one clamp on one parameter (ADR-0123), and these are the two regimes plus
+// the coupling that keeps the CSS and the camera reading the same numbers.
+//
+// Baselines are the measured 390×844 phone from ADR-0122's budget: ~545px of canvas at
+// the `map` stop, ~260px at `half`.
+const AT_MAP_STOP = 545;
+const AT_HALF = 260;
+
+describe('pinHeightFor — the canvas sizes the pin (ADR-0123)', () => {
+  it('grows the pin on a canvas that has room for it', () => {
+    expect(pinHeightFor(AT_MAP_STOP)).toBeGreaterThan(MAP_PIN.MIN_H);
+    expect(pinHeightFor(AT_MAP_STOP)).toBeCloseTo(AT_MAP_STOP * MAP_PIN.CANVAS_SHARE, 5);
+  });
+
+  // The other half of the report — "when the map is sharing the screen with the list
+  // perhaps it's a different story". It is: the shipped size is the floor, so the half
+  // stop is byte-for-byte what was reviewed and nothing about it changes.
+  it('leaves the shared-screen canvas at the shipped size', () => {
+    expect(pinHeightFor(AT_HALF)).toBe(MAP_PIN.MIN_H);
+  });
+
+  it('caps, so a very tall canvas gets a marker and not a billboard', () => {
+    expect(pinHeightFor(4000)).toBe(MAP_PIN.MAX_H);
+  });
+
+  // A pane measured before layout settles is 0×0 (the case that opened the map on the
+  // whole world, ADR-0121's session-134 log). It must resolve to the floor, never to 0.
+  it('floors a degenerate or unsized canvas rather than vanishing', () => {
+    expect(pinHeightFor(0)).toBe(MAP_PIN.MIN_H);
+    expect(pinHeightFor(-100)).toBe(MAP_PIN.MIN_H);
+  });
+
+  it('never leaves the two bounds, at any canvas size', () => {
+    for (const height of [0, 120, 260, 425, 545, 900, 2000]) {
+      expect(pinHeightFor(height)).toBeGreaterThanOrEqual(MAP_PIN.MIN_H);
+      expect(pinHeightFor(height)).toBeLessThanOrEqual(MAP_PIN.MAX_H);
+    }
+  });
+
+  it('is monotonic — a bigger canvas never gets a smaller pin', () => {
+    const heights = [0, 120, 260, 425, 545, 900].map(pinHeightFor);
+    expect([...heights].sort((a, b) => a - b)).toEqual(heights);
+  });
+});
+
+// The CSS and the TS are two evaluations of ONE rule, and this is what makes "they
+// cannot drift apart" true rather than aspirational — the same thing `map-camera.test`
+// asserts for `--map-controls-h`. A rendered canvas is not testable (ADR-0121 §13); the
+// arithmetic behind it is, and the string is where the two meet.
+describe('pinSizeCss — the same rule, for the browser to resolve', () => {
+  it('clamps between the same two bounds the TS side uses', () => {
+    expect(pinSizeCss()).toBe(
+      `clamp(${MAP_PIN.MIN_H}px, ${MAP_PIN.CANVAS_SHARE} * 100cqh, ${MAP_PIN.MAX_H}px)`,
+    );
+  });
+
+  // `cqh` is the whole point: it resolves against the PANE, which is the canvas the
+  // snapped stop leaves — not the viewport, and not a number React had to measure.
+  it('reads the container’s height, not the viewport’s', () => {
+    expect(pinSizeCss()).toContain('cqh');
+    expect(pinSizeCss()).not.toContain('vh');
+  });
+
+  // A share written as a fraction times 100cqh, rather than a pre-multiplied percentage,
+  // because `0.08 * 100` is `8.000000000000002` in binary floating point — the same trap
+  // `stopHeightCss` rounds around.
+  it('carries the share without floating-point noise', () => {
+    expect(pinSizeCss()).not.toMatch(/\d\.\d{6}/);
+  });
+});
+
+describe('pinClearanceFor — what the camera has to keep clear', () => {
+  it('is the pin plus the tag that rises above it, rounded up to whole pixels', () => {
+    const expected = Math.ceil(pinHeightFor(AT_MAP_STOP) * (1 + MAP_PIN.TAG_RISE));
+    expect(pinClearanceFor(AT_MAP_STOP)).toBe(expected);
+    expect(Number.isInteger(pinClearanceFor(AT_MAP_STOP))).toBe(true);
+  });
+
+  // The tip is the anchor, so everything the pin draws is above the coordinate: a
+  // clearance that only covered the pin's body would cut the amber tag off at the top of
+  // a fitted view, which is the failure ADR-0121 §7's inset exists to prevent.
+  it('always exceeds the pin’s own height', () => {
+    for (const canvas of [0, 260, 545, 2000]) {
+      expect(pinClearanceFor(canvas)).toBeGreaterThan(pinHeightFor(canvas));
+    }
+  });
+
+  it('tracks the pin, so it is smaller where the pin is at its floor', () => {
+    expect(pinClearanceFor(AT_HALF)).toBeLessThan(pinClearanceFor(AT_MAP_STOP));
   });
 });
