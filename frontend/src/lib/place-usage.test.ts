@@ -16,7 +16,7 @@ import {
   countPlacesByCategory,
   isDayUsagePast,
   isOnShelf,
-  isPlaceSettled,
+  isPlaceLeft,
   matchesPlaceFilter,
   PLACE_BLOCK,
   PLACE_CATEGORY_ALL,
@@ -611,7 +611,7 @@ describe('comparePlacesBySchedule (the list reads in trip order)', () => {
         const cafe = idx.get('cafe')!;
         expect(placeBlock(cafe, ctx)).toBe(PLACE_BLOCK.ahead);
         // `מה נשאר` already answered this way — now the block agrees with it.
-        expect(isPlaceSettled(cafe)).toBe(false);
+        expect(isPlaceLeft(cafe, ctx)).toBe(true);
         // …and it is read as its Thursday, not its Sunday.
         expect(placeDay(cafe, ctx)?.date).toBe('2026-07-09');
         expect(order(idx, undefined, NOW, DAY)).toEqual(['cafe', 'this-morning']);
@@ -792,54 +792,41 @@ describe('outcome + settled (ADR-0117)', () => {
     expect(u.days[0]?.settled).toBe(false);
   });
 
-  // `מה נשאר` (ADR-0121 §9): ONE toggle over the field above, not three chips.
-  describe('isPlaceSettled — what "what\u2019s left" hides', () => {
-    it('a settled day is settled; an unsettled one is not', () => {
-      const done = usageFor([
-        event({ id: 'e1', placeId: 'p', startsAt: at('09:00'), status: EVENT_STATUS.DONE }),
+  // `מה נשאר` = somewhere you can still go (ADR-0124, correcting ADR-0121 §9's
+  // settled-only rule). One sentence: it hides exactly what the list files under
+  // `מה שמאחורינו`.
+  describe('isPlaceLeft — what "what’s left" keeps', () => {
+    const DAY = '2026-07-07';
+    // Noon, so the day has both a past and a future in it.
+    const NOON = Date.parse(at('12:00'));
+    const ctx = (onDate?: string) => ({ onDate, nowMs: NOON, today: DAY });
+
+    it('a stop still ahead of you today is left; one the clock has passed is not', () => {
+      const ahead = usageFor([event({ id: 'e1', placeId: 'p', startsAt: at('20:00') })]);
+      const passed = usageFor([event({ id: 'e1', placeId: 'p', startsAt: at('09:00') })]);
+      expect(isPlaceLeft(ahead, ctx(DAY))).toBe(true);
+      // THE CORRECTION. Nobody tapped anything on this one, so the settled-only rule
+      // called it "left" for the rest of the trip — which is what made the filter
+      // useless: settling is a manual tap most stops never get (ADR-0027 §1).
+      expect(isPlaceLeft(passed, ctx(DAY))).toBe(false);
+    });
+
+    // The other half of the same rule, and the reason it is a `behind` question rather
+    // than a clock question: a human closing something outranks the clock, so this is
+    // hidden AT NOON, not at 20:00.
+    it('a stop AHEAD of you that a human settled is not left either', () => {
+      const doneTonight = usageFor([
+        event({ id: 'e1', placeId: 'p', startsAt: at('20:00'), status: EVENT_STATUS.DONE }),
       ]);
-      const planned = usageFor([event({ id: 'e1', placeId: 'p', startsAt: at('09:00') })]);
-      expect(isPlaceSettled(done, '2026-07-07')).toBe(true);
-      expect(isPlaceSettled(planned, '2026-07-07')).toBe(false);
-    });
-
-    it('it hides a SKIP as well as a visit — both are handled', () => {
-      const skipped = usageFor([
-        event({ id: 'e1', placeId: 'p', startsAt: at('09:00'), status: EVENT_STATUS.SKIPPED }),
+      const skippedTonight = usageFor([
+        event({ id: 'e1', placeId: 'p', startsAt: at('20:00'), status: EVENT_STATUS.SKIPPED }),
       ]);
-      expect(isPlaceSettled(skipped, '2026-07-07')).toBe(true);
+      expect(isPlaceLeft(doneTonight, ctx(DAY))).toBe(false);
+      expect(isPlaceLeft(skippedTonight, ctx(DAY))).toBe(false);
     });
 
-    // A place with no day at all is never settled: an unconsumed idea and an
-    // unscheduled booking are precisely what is left.
-    it('a place with no day is never settled', () => {
-      const idea = buildPlaceUsageIndex(
-        [],
-        [],
-        [maybe({ id: 'm', placeId: 'p' })],
-        [place('p')],
-      ).get('p')!;
-      expect(isPlaceSettled(idea)).toBe(false);
-      expect(isPlaceSettled(idea, '2026-07-07')).toBe(false);
-    });
-
-    // Across the trip it takes ALL its days, not any: a caf\u00e9 visited on Tuesday
-    // and pencilled again for Thursday is not handled.
-    it('across the trip every day must be settled', () => {
-      const u = usageFor([
-        event({ id: 'e1', placeId: 'p', startsAt: at('09:00'), status: EVENT_STATUS.DONE }),
-        event({ id: 'e2', placeId: 'p', date: '2026-07-09', startsAt: '2026-07-09T09:00:00Z' }),
-      ]);
-      expect(isPlaceSettled(u)).toBe(false);
-      // …but that first day, on its own, is done with.
-      expect(isPlaceSettled(u, '2026-07-07')).toBe(true);
-    });
-
-    // What makes the toggle apply to the map's ghost tier: a ghost has no day in the
-    // scope being asked about, so a bare day filter would read it as unsettled and
-    // leave Tuesday's visited caf\u00e9 on the canvas (ADR-0121 §9).
-    it('a place with nothing on the scoped day falls back to all its days', () => {
-      const u = usageFor([
+    it('and on a future DAY, settled is settled — the clock never gets a say', () => {
+      const doneThursday = usageFor([
         event({
           id: 'e1',
           placeId: 'p',
@@ -848,20 +835,66 @@ describe('outcome + settled (ADR-0117)', () => {
           status: EVENT_STATUS.DONE,
         }),
       ]);
-      expect(isPlaceSettled(u, '2026-07-07')).toBe(true);
+      expect(isPlaceLeft(doneThursday, ctx())).toBe(false);
+      expect(isPlaceLeft(doneThursday, ctx('2026-07-09'))).toBe(false);
     });
 
-    it('the filter drops a settled place only when the toggle is on', () => {
-      const done = usageFor([
+    it('a place with no day at all is always left — that is ללא יום, not behind', () => {
+      const idea = buildPlaceUsageIndex(
+        [],
+        [],
+        [maybe({ id: 'm', placeId: 'p' })],
+        [place('p')],
+      ).get('p')!;
+      expect(isPlaceLeft(idea, ctx())).toBe(true);
+      expect(isPlaceLeft(idea, ctx(DAY))).toBe(true);
+    });
+
+    it('across the trip every day must be behind you, not just one', () => {
+      const u = usageFor([
         event({ id: 'e1', placeId: 'p', startsAt: at('09:00'), status: EVENT_STATUS.DONE }),
+        event({ id: 'e2', placeId: 'p', date: '2026-07-09', startsAt: '2026-07-09T09:00:00Z' }),
       ]);
+      expect(isPlaceLeft(u, ctx())).toBe(true);
+      // …but that first day, standing in it, is done with.
+      expect(isPlaceLeft(u, ctx(DAY))).toBe(false);
+    });
+
+    // What applies the toggle to the map's ghost tier: a ghost has no day in the scope
+    // being asked about, so a bare day filter would read it as still-to-come and leave
+    // Tuesday's cafe on the canvas.
+    it('a place with nothing on the scoped day falls back to all its days', () => {
+      const visited = usageFor([
+        event({ id: 'e1', placeId: 'p', date: '2026-07-05', startsAt: '2026-07-05T09:00:00Z' }),
+      ]);
+      const coming = usageFor([
+        event({ id: 'e1', placeId: 'p', date: '2026-07-09', startsAt: '2026-07-09T09:00:00Z' }),
+      ]);
+      expect(isPlaceLeft(visited, ctx(DAY))).toBe(false);
+      expect(isPlaceLeft(coming, ctx(DAY))).toBe(true);
+    });
+
+    // The property that makes the tab explainable in one sentence, and the reason this
+    // reads `placeBlock` rather than restating it.
+    it('it hides exactly the `behind` block, and nothing else', () => {
+      const u = usageFor([
+        event({ id: 'e1', placeId: 'p', startsAt: at('09:00') }),
+        event({ id: 'e2', placeId: 'p', date: '2026-07-09', startsAt: '2026-07-09T09:00:00Z' }),
+      ]);
+      for (const onDate of [undefined, DAY, '2026-07-09']) {
+        expect(isPlaceLeft(u, ctx(onDate))).toBe(placeBlock(u, ctx(onDate)) !== PLACE_BLOCK.behind);
+      }
+    });
+
+    it('the filter drops a passed place only when the toggle is on', () => {
+      const passed = usageFor([event({ id: 'e1', placeId: 'p', startsAt: at('09:00') })]);
       const filter: PlaceFilter = {
         category: PLACE_CATEGORY_ALL,
         maybesOnly: false,
-        onDate: '2026-07-07',
+        ...ctx(DAY),
       };
-      expect(matchesPlaceFilter(done, filter)).toBe(true);
-      expect(matchesPlaceFilter(done, { ...filter, unsettledOnly: true })).toBe(false);
+      expect(matchesPlaceFilter(passed, filter)).toBe(true);
+      expect(matchesPlaceFilter(passed, { ...filter, leftOnly: true })).toBe(false);
     });
   });
 

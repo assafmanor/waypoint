@@ -62,6 +62,11 @@ export const t = {
       left: 'מה נשאר',
       categoryLabel: 'סינון לפי קטגוריה',
       noResultsTitle: 'אין מקומות שמתאימים לסינון',
+      // The facets persist across a day change and the strip may be closed over them,
+      // so the empty state names what is actually holding the list down, and hands
+      // back the one step out of it.
+      noResultsBody: (facets: string) => `הסינון הפעיל: ${facets}`,
+      clear: 'ניקוי הסינון',
       // The ONE filter control over the canvas (ADR-0122 §2): at rest it says what it
       // is, and with a facet on it says WHICH — a filter that hides the fact that it
       // is filtering is the defect ADR-0119 exists to prevent. It carries no count:
@@ -170,6 +175,18 @@ export const t = {
     empty: {
       title: 'אין עדיין מקומות',
       body: 'מקומות שתוסיפו לאירועים, להזמנות ולמדף האולי יופיעו כאן.',
+    },
+    // The trip HAS places, this day has none, and no facet is narrowing anything —
+    // so the way out is the scope chip, not the filter. Told apart from the filtered
+    // case because blaming a control you never touched is how an empty list reads as
+    // broken.
+    // Worded as an imperative, not as the scope chip's own label: two buttons reading
+    // `כל הימים` on one screen name the same state twice, and the chip is a toggle
+    // where this is a step out.
+    emptyDay: {
+      title: 'אין מקומות ביום הזה',
+      body: 'שאר מקומות הטיול עדיין כאן.',
+      action: 'הצגת כל מקומות הטיול',
     },
     // ── The embedded map (Phase 6, ADR-0121) ─────────────────────────────────
     // The height axis: the handle drags a continuum, the toggle is a shortcut to

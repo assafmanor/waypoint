@@ -356,18 +356,15 @@ export function buildPlaceUsageIndex(
 export const PLACE_CATEGORY_ALL = 'all';
 export type PlaceCategoryFilter = EventCategory | typeof PLACE_CATEGORY_ALL;
 
-export interface PlaceFilter {
+/** The three facets, plus the scope + clock `מה נשאר` is answered against. It carries
+ *  a clock because "what's left" is a question about **now**, which is the correction
+ *  ADR-0124 makes to ADR-0121 §9 — see {@link isPlaceLeft}. */
+export interface PlaceFilter extends PlaceDayContext {
   category: PlaceCategoryFilter;
   /** The independent maybes toggle (ADR-0110 §2) — narrows to what's on the shelf. */
   maybesOnly: boolean;
-  /** `מה נשאר` (ADR-0121 §9 / ADR-0117's deferred outcome filter, scoped to ONE
-   *  toggle rather than three chips): hide everything settled, `done` and
-   *  `skipped` alike. */
-  unsettledOnly?: boolean;
-  /** The day the settled check is scoped to; omit for all-days. The outcome lives
-   *  per day, so "is this handled" is a different question on Tuesday than across
-   *  the trip — see {@link isPlaceSettled}. */
-  onDate?: string;
+  /** `מה נשאר`: keep only what you can still go to. */
+  leftOnly?: boolean;
 }
 
 /** On the shelf: ADR-0027 §2's union, which is what the shelf actually renders —
@@ -381,35 +378,50 @@ export const isOnShelf = (usage: PlaceUsage): boolean => usage.isMaybe || usage.
 export const matchesPlaceCategory = (usage: PlaceUsage, category: PlaceCategoryFilter): boolean =>
   category === PLACE_CATEGORY_ALL || usage.categories.includes(category);
 
-/** Nothing left to do here (ADR-0121 §9, over the `settled` field ADR-0117 §2
- *  already stores): **every** day this place is anchored to is settled — done or
- *  skipped. Three consequences worth stating:
+/** `מה נשאר` — **somewhere you can still go** (ADR-0124, correcting ADR-0121 §9).
  *
- *  - A place with **no day at all** is never settled. An unconsumed idea and an
- *    unscheduled booking are precisely what is left, so "what's left" must keep
- *    them.
- *  - Across the trip it takes ALL its days, not any: a café visited on Tuesday and
- *    pencilled again for Thursday is not handled. Day-scoped it is just that day's
- *    answer, which is the question you ask while standing in it.
- *  - **A place with nothing on `onDate` falls back to all its days**, rather than
- *    reading as unsettled for want of a day in scope. That is what makes the filter
- *    apply to the map's ghost tier (ADR-0121 §9): a place visited on Tuesday must
- *    not sit on the canvas while you ask what is left, and a ghost by definition has
- *    no day in the scope being asked about. In the list this branch is unreachable —
- *    an out-of-scope row is already hidden by the day predicate. */
-export function isPlaceSettled(usage: PlaceUsage, onDate?: string): boolean {
-  const scoped = onDate ? usage.days.filter((d) => d.date === onDate) : [];
-  const days = scoped.length > 0 ? scoped : usage.days;
-  return days.length > 0 && days.every((d) => d.settled === true);
+ *  Stated once, so the tab can be explained in a sentence: **it hides exactly what the
+ *  list files under `מה שמאחורינו`.** Same derivation, so a filter and a block header
+ *  can never disagree about the same place.
+ *
+ *  ADR-0121 §9 defined it as "hide everything `settled`", and on a real trip that
+ *  filtered almost nothing. Settling is a manual tap (ADR-0027 §1 — status is only
+ *  ever human-written, and nothing auto-settles), so most of a trip is never settled
+ *  at all, and "what's left" kept returning three days of stops nobody could go to
+ *  any more. Two things close a place, not one: a human closing it **or the clock**.
+ *  `isDayUsagePast` is already both — `settled` outranks the clock inside it, so
+ *  marking tonight's dinner done at 11:00 still removes it early.
+ *
+ *  What that leaves in, deliberately:
+ *
+ *  - **No day at all → always left.** An unconsumed "someday" idea and an unscheduled
+ *    booking are precisely what remains. They sit in the `ללא יום` block, which is not
+ *    the behind block — that is the same rule, not an exception to it.
+ *  - **All its days, not any.** A café visited Tuesday and booked again Thursday is
+ *    still ahead of you. Day-scoped it is that one day's answer, which is the question
+ *    you ask standing in it.
+ *  - **A place with nothing in scope falls back to all its days**, which is what
+ *    applies the filter to the canvas's ghost tier: Tuesday's café must not sit there
+ *    while you ask what is left, and a ghost by definition has no day in the scope
+ *    being asked about. In the list this branch is unreachable — an out-of-scope row
+ *    is already hidden by the day predicate.
+ *
+ *  Passed-but-unsettled stops (ADR-0117 §1's third state) are not lost: they are on the
+ *  tab with the toggle off, still tagged, still under `מה שמאחורינו`. Resolving them is
+ *  the settle strip's job (ADR-0043), not a map filter's. */
+export function isPlaceLeft(usage: PlaceUsage, ctx: PlaceDayContext): boolean {
+  const inScope = !ctx.onDate || usage.days.some((d) => d.date === ctx.onDate);
+  const scope = inScope ? ctx : { nowMs: ctx.nowMs, today: ctx.today };
+  return placeBlock(usage, scope) !== PLACE_BLOCK.behind;
 }
 
 /** Filter match: the maybes toggle (if on) requires the place to be on the shelf;
- *  `מה נשאר` (if on) drops everything settled; the type chip passes "all" or any
+ *  `מה נשאר` (if on) drops what is behind you; the type chip passes "all" or any
  *  place whose category union includes it. Independent facets, so each count can
  *  narrow by the others without re-stating this (ADR-0119's coupling rule). */
 export function matchesPlaceFilter(usage: PlaceUsage, filter: PlaceFilter): boolean {
   if (filter.maybesOnly && !isOnShelf(usage)) return false;
-  if (filter.unsettledOnly && isPlaceSettled(usage, filter.onDate)) return false;
+  if (filter.leftOnly && !isPlaceLeft(usage, filter)) return false;
   return matchesPlaceCategory(usage, filter.category);
 }
 
@@ -497,6 +509,25 @@ export function placeDay(usage: PlaceUsage, ctx: PlaceDayContext = {}): DayUsage
   return (
     usage.days.find((d) => !isDayUsagePast(d, nowMs, today)) ?? usage.days[usage.days.length - 1]
   );
+}
+
+/** The day a row's `<time> · <what happens here>` line and its outcome describe.
+ *  {@link placeDay} answers "which day is this place", this answers "which day has
+ *  something to say about it" — the same day in every case but one.
+ *
+ *  **Day-scoped, an ambient stay night still says nothing**, and that is now the whole
+ *  ambient distinction: it carries no number and no clock, which is what session 137
+ *  left marking it once the desaturation came off (ADR-0109's 2026-07-27 amendment).
+ *
+ *  **All-days, the row describes the place across the trip**, not one night of it, so a
+ *  stay in progress names its next **edge** — the check-out you are heading for. Its
+ *  two wrong answers: naming the check-in it already passed (which read as a stay that
+ *  had finished, and was the same defect as ranking by `days[0]`), then saying nothing
+ *  at all once the live day was resolved correctly. */
+export function placeMetaDay(usage: PlaceUsage, ctx: PlaceDayContext): DayUsage | undefined {
+  const day = placeDay(usage, ctx);
+  if (!day || ctx.onDate || day.prominence !== 'ambient') return day;
+  return usage.days.find((d) => d.date >= day.date && d.prominence === 'edge') ?? day;
 }
 
 /** The list's three blocks, in reading order (ADR-0109 session-110 + its session-127
