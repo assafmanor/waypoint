@@ -7,6 +7,54 @@
 
 Mockup: [`mockups/map-tab-v1.html`](../../mockups/map-tab-v1.html) — the list-first tab in both modes, all four location states (normal / near-me granted / denied / offline), the pin-anatomy legend, a Phase-6 rendered-map preview, and the ADR-0107 zone chip.
 
+## Amendment (2026-07-27, session 137) — a night you are staying is not a night you are past
+
+§5 gave a multi-day stay two prominences: **loud on its edge days**, and on the strictly-middle
+days "**only a quiet ambient 'your base' row** (desaturated pin, no amber core, hatched-paper
+row), never a loud time-anchored pin". The build spent that as a literal fade —
+`saturate(.45) opacity(.8)` on the pin, a `--paper` background and `--muted` name on the row.
+
+**Reversed for the map, at the product owner's call: an ambient night renders at full
+strength.** Reported off a real two-night stay — "on ambient days the booking appears faded,
+which it shouldn't need to be because it's still active."
+
+The objection is exact, and it is about what the fade _says_. On this tab a desaturated pin
+already means something: **behind you** — done, skipped, or simply passed (§6's ladder, and
+`.place.skipped` shares the row rule verbatim). A stay you are in the middle of is the
+opposite of behind you; it is the most current fact on the day. Spending the same visual on
+both made the one place you are guaranteed to return to that night read as finished.
+
+**What still marks a night as ambient is what it lacks, not how loud it is:**
+
+- **No number.** `hasScheduleSlot` requires `prominence === 'edge'`, so a middle night has no
+  position in the day's sequence — §6's "a pin with no position in the schedule gets no
+  number" is untouched, and it is the whole distinction now. This is also the invariant the
+  change must not break: numbering a middle night would renumber every real stop after it.
+- **No clock, and no "what happens here".** `dayMeta` returns nothing for an ambient day —
+  nothing happens there, and saying the hotel's own name back on the hotel's row is
+  repetition. Unchanged.
+
+So the ladder loses a rung it should never have had: `behind` is desaturated, `ghost` is
+hollow, `idea` is dashed — and `ambient` is now an ordinary pin that simply has no number.
+Prominence stays the ladder; it stops doubling as a claim about time.
+
+**Deliberately unchanged:**
+
+- **ADR-0054 is not overturned.** Its §4 already scopes "ambient" to how a span appears **on
+  the day timeline/glance** — backdrop rather than a counted block — and is explicit that
+  the axis is orthogonal to commitment. The Day view's ambient band is a teal-tinted card
+  (`.day-ambient`), never a faded one, and Home carries no band at all (ADR-0064 §A). The
+  fade was a Map-side over-reading of 0054, not something 0054 asked for. Nothing outside
+  `screens/map.css` and `ui/domain/map-pane.css` changes.
+- **`.place.skipped` keeps the quiet treatment.** It shared one rule with `.place.ambient`
+  on the reasoning that both mean "present but not a live commitment". Half of that was
+  wrong: a skipped place is handled and not happening (ADR-0117 §4), a mid-stay night is
+  happening. The rule splits; skipped is unchanged.
+- **The z-order.** `TIER_Z` still ranks ambient below ideas (§6's coincident-pin order).
+  A middle night has no position in the day, so it should not outrank something that does —
+  and z-order only decides which of two _coincident_ pins you tap. Left as it is; revisit if
+  a real trip puts an idea on top of the hotel.
+
 ## Amendment (2026-07-27, session 136) — both modes open on the day you're on
 
 §1 makes the day filter **the** mode pivot: "Trip mode pre-selects _today_; Plan mode
