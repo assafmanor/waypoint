@@ -8093,11 +8093,30 @@ body {
       .wp-snapsheet-grab[role='separator'] {
         touch-action: auto;
       }
+      /* THE SORT CONTROL IS ONLY WHERE THE LIST IS. At the map extreme no rows are
+         on screen, so `קרוב עכשיו` would re-order and chip-annotate nothing you can
+         see — a control whose effect is invisible is the "button that looks like it
+         does something and does nothing" ADR-0109's session-105 amendment refused.
+         What carries the FACT at that stop is the canvas: the "me" dot, which comes
+         from `located`, not from the sort intent (session 138 split the two exactly
+         so this could be said). No state is lost — the chip and the
+         `לפי קרבה אליך` header are both there again at `half`.
+         (CSS here; in the app the chip is simply not rendered at that stop.) */
+      .map-screen[data-view='map'] .wp-snapsheet-headrow .map-nearchip {
+        display: none;
+      }
+      /* The toggle is anchored at the row's trailing end and does NOT move when the
+         sort chip leaves at the map extreme: a control that changes position between
+         stops is the same defect this ADR refuses above the split. The chip takes the
+         leading end via `auto` margin, so its absence moves nothing. */
       .wp-snapsheet-headrow {
         display: flex;
         align-items: center;
-        justify-content: space-between;
+        justify-content: flex-end;
         gap: 8px;
+      }
+      .wp-snapsheet-headrow .map-nearchip {
+        margin-inline-end: auto;
       }
 
       /* ── 5. TWO STATES, THREE STOPS, ONE AXIS ──────────────────────────
