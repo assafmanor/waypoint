@@ -237,6 +237,17 @@ export const MAP_ZOOM = { SINGLE_PIN: 15, MAX_FIT: 16, WORLD: 2 } as const;
  *  anchor — its body and any tag extend *above* the coordinate, so without this
  *  the topmost pin of a fitted set draws half off-canvas (ADR-0121 §7). */
 export const MAP_FIT_PADDING = { top: 64, right: 28, bottom: 28, left: 28 } as const;
+/** How much of the current view a **contained** pin set must fill before the camera
+ *  leaves it alone (ADR-0121 §7, amended 2026-07-27). Below this share on BOTH axes
+ *  the set is *dwarfed* — visible, but not framed — and the camera re-fits instead of
+ *  declining to move. It is `||` across the axes on purpose: a row of stops down one
+ *  street fills the width and not the height, and that is framed, not dwarfed.
+ *
+ *  Lives here beside `MAP_ZOOM` rather than in `map-camera.ts` because it is the same
+ *  kind of judgement as the zoom ladder, and Phase 3's device pass will want to tune
+ *  the cluster in one place. It **needs** that pass: "too small to read" is a
+ *  legibility call, and a desktop viewport is the wrong place to make it. */
+export const MAP_REFIT_FILL_SHARE = 0.4;
 
 /** The day connector (ADR-0121 §10): dashed, so it says "this is the order" rather
  *  than claiming to be the route, and NEUTRAL, because it belongs to the quiet base

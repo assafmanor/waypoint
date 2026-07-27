@@ -180,6 +180,43 @@ describe('later framings answer controls, and only when they owe you something',
     expect(map.center).toEqual(KYOTO);
   });
 
+  // Reported off the running app: zoom out for a day whose places are hours apart,
+  // then narrow — a category chip, `אולי`, `מה נשאר`, or simply another day — and the
+  // camera stayed out, because the wide view still CONTAINED the smaller set. Three
+  // pins in one corner of a country, with no control able to tighten it.
+  it('a control change re-fits when the new set is DWARFED by the current view', () => {
+    const map = new FakeMap();
+    map.bounds = WORLD;
+    const view = mount(map, DAY);
+    const framed = map.fits.length;
+
+    // A far-flung day has left a wide view…
+    map.bounds = { north: 40, south: 30, east: 145, west: 130 };
+    // …and a chip narrows to two places in one neighbourhood.
+    const neighbourhood = [TOKYO, { lat: 35.69, lng: 139.77 }];
+    view.rerender({ map, pts: neighbourhood, signal: 'day|food' });
+
+    expect(map.fits).toHaveLength(framed + 1);
+    expect(map.fits.at(-1)!.bounds).toEqual({
+      north: 35.69,
+      south: 35.68,
+      east: 139.77,
+      west: 139.76,
+    });
+  });
+
+  it('narrowing all the way to ONE pin re-centres instead of sitting zoomed out', () => {
+    const map = new FakeMap();
+    map.bounds = WORLD;
+    const view = mount(map, DAY);
+
+    map.bounds = { north: 40, south: 30, east: 145, west: 130 };
+    view.rerender({ map, pts: [TOKYO], signal: 'day|food' });
+    // A zero-area extent fills nothing, so it can never read as "already framed".
+    expect(map.center).toEqual(TOKYO);
+    expect(map.zoom).toBe(MAP_ZOOM.SINGLE_PIN);
+  });
+
   it('a control change does NOT move when the results are already on screen', () => {
     const map = new FakeMap();
     map.bounds = WORLD;
