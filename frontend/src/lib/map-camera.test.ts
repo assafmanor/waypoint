@@ -9,7 +9,7 @@ import {
   pointInBounds,
 } from './map-camera';
 import { pinHeightFor } from './map-pins';
-import { MAP_CONTROLS_H, MAP_PIN } from '../constants';
+import { MAP_CONTROLS_H, MAP_FIT_INSET, MAP_PIN } from '../constants';
 
 const TOKYO = { lat: 35.68, lng: 139.76 };
 const KYOTO = { lat: 35.01, lng: 135.77 };
@@ -245,5 +245,33 @@ describe('the fit clears the floating controls row (ADR-0122 §1)', () => {
     const reserved = mapFitPadding(AT_MAP.height).top - MAP_CONTROLS_H;
     expect(reserved).toBeGreaterThanOrEqual(height * (1 + MAP_PIN.TAG_RISE));
     expect(reserved).toBeLessThan(height * (1 + MAP_PIN.TAG_RISE) + MAP_CONTROLS_H);
+  });
+
+  // Session 144: only `top` was derived, so raising the pin size walked pins into the
+  // left and right edges. The point of asserting it as an inequality against the pin's
+  // measured reach is that a future size change cannot reintroduce it.
+  it('clears the pin sideways at every canvas size, not just the tuned one', () => {
+    for (const canvas of [0, 120, 243, 400, 501, 545, 900, 4000]) {
+      const { left, right } = mapFitPadding(canvas);
+      const reach = pinHeightFor(canvas) * MAP_PIN.SIDE_REACH;
+      expect(left).toBeGreaterThan(reach);
+      expect(right).toBe(left);
+    }
+  });
+
+  // Nothing of the pin sits below its tip — the tip IS the anchor — so the bottom stays
+  // breathing room. Reserving a pin's height there would be padding for no ink.
+  it('does not reserve pin room below the anchor', () => {
+    expect(mapFitPadding(AT_MAP.height).bottom).toBe(MAP_FIT_INSET);
+  });
+
+  // The whole horizontal inset has to stay affordable, or `fitPaddingFor` drops it and
+  // the fit loses its framing — which is why the amber tag's 1.10x reach is deliberately
+  // NOT reserved (see `MAP_PIN.SIDE_REACH`). 360px is the narrowest device target.
+  it('stays affordable on the narrowest phone, so it is never dropped for width', () => {
+    for (const width of [360, 390]) {
+      const padding = mapFitPadding(545);
+      expect(fitPaddingFor({ width, height: 545 }, padding)).toEqual(padding);
+    }
   });
 });

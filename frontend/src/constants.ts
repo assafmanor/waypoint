@@ -332,6 +332,17 @@ export const MAP_PIN = {
   CANVAS_SHARE: 0.11,
   TAG_RISE: 0.56,
   GHOST_SCALE: 0.72,
+  /** How far the pin's ink reaches SIDEWAYS from its anchor, as a fraction of its height —
+   *  the camera's left/right inset (session 144). Measured in Chromium, not derived on
+   *  paper: 0.59 to the outer edge of the number badge (half the 0.82 box plus the badge's
+   *  0.18 overhang) plus its 0.045 ring, which no bounding box reports.
+   *
+   *  The amber tag is deliberately NOT in here. Measured at the same size, `התחנה הבאה`
+   *  reaches 1.10x the pin height per side; reserving that would put the horizontal inset
+   *  at 46% of a 390px viewport, where `fitPaddingFor` drops the padding wholesale and the
+   *  fit loses its framing — the trade ADR-0121 §7 already made explicitly ("losing a pin's
+   *  tag beats losing the framing"). One pin ever carries a tag; every pin has a badge. */
+  SIDE_REACH: 0.64,
 } as const;
 
 /** The three sides of a fit's inset that carry nothing but breathing room. The top is
