@@ -13,6 +13,7 @@
 // Longitudes are compared plainly, so a set straddling the antimeridian fits the
 // long way round. Deliberate: it takes a trip spanning ±180° to notice, and the
 // guard would cost every other case a special case (ADR-0121 §14's spirit).
+import { MAP_REFIT_FILL_SHARE } from '../constants';
 
 export interface LatLng {
   lat: number;
@@ -76,16 +77,56 @@ export function boundsContain(outer: MapBounds, inner: MapBounds): boolean {
 }
 
 /**
+ * Does `inner` fill enough of `outer` to count as **framed**, rather than merely
+ * **visible**? Containment alone conflated the two, and that is a real defect rather
+ * than a nicety: once the view is wide — a day whose places are hours apart, or the
+ * opening frame before session 134's fix — every later, tighter set is contained by
+ * it, so "already fits, don't move" is true forever and no chip, no `אולי`, no day
+ * change can ever tighten the frame again. You end up on a country-wide view with
+ * three pins in one corner.
+ *
+ * `||` across the axes, not `&&`: a set is dwarfed only when it is small in **both**
+ * directions. A row of stops down one street fills the width and almost none of the
+ * height, and that is framed — re-fitting it would be the gratuitous lurch the
+ * containment guard exists to prevent.
+ *
+ * A degenerate view (zero span) is not something to judge against, so it counts as
+ * framed and the containment guard alone decides — the caller already refuses to fit
+ * into an unsized div (`fitPaddingFor`), and this must not become a second, quieter
+ * place that reasons about one.
+ *
+ * Note the property this gives for free: **the tighter you have zoomed in by hand,
+ * the less likely a re-fit**, because a small view makes every ratio larger. So "a
+ * manual zoom wins until the next scope change" survives, and it survives most
+ * strongly exactly where someone has deliberately gone in close.
+ */
+export function boundsFillView(outer: MapBounds, inner: MapBounds): boolean {
+  const outerLat = outer.north - outer.south;
+  const outerLng = outer.east - outer.west;
+  if (outerLat <= 0 || outerLng <= 0) return true;
+  return (
+    (inner.north - inner.south) / outerLat >= MAP_REFIT_FILL_SHARE ||
+    (inner.east - inner.west) / outerLng >= MAP_REFIT_FILL_SHARE
+  );
+}
+
+/**
  * What the camera should do about a pin set (ADR-0121 §7's table):
  *
  * | Set                          | Decision                                            |
  * | ---------------------------- | --------------------------------------------------- |
  * | No pins                      | `none` — the empty state speaks                     |
- * | Already inside the view      | `none` — moving would be gratuitous                 |
+ * | Inside the view AND filling  | `none` — moving would be gratuitous                 |
+ * | it (`boundsFillView`)        |                                                     |
+ * | Inside it but DWARFED by it  | falls through and re-fits — visible is not framed   |
  * | One pin, or all coincident   | `centre` — never `fitBounds` a zero-area extent, or |
  * |                              | it snaps to building-level zoom                     |
  * | Anything else                | `fit` — including a multi-city trip: that IS the    |
  * |                              | extent, and legibility there is §6's dot tier       |
+ *
+ * The dwarfed row is why the containment guard is now two tests. A zero-area extent
+ * fills nothing, so filtering down to a **single** pin also re-frames rather than
+ * sitting wherever the wide view left it — the same defect, one pin narrower.
  *
  * Near-coincident (but not identical) pins are left to `fit` — the caller's
  * shared `maxZoom` cap covers them and the single-point case both, rather than a
@@ -121,7 +162,11 @@ const MAX_PADDING_SHARE = 0.5;
 export function cameraTargetFor(points: readonly LatLng[], view: MapBounds | null): CameraTarget {
   const bounds = boundsOfPoints(points);
   if (!bounds) return { kind: 'none' };
-  if (view && boundsContain(view, bounds)) return { kind: 'none' };
+  // Contained AND filling it: nothing owed. Contained but dwarfed by it falls
+  // through to the fit below — "already on screen" was never the same as "framed".
+  if (view && boundsContain(view, bounds) && boundsFillView(view, bounds)) {
+    return { kind: 'none' };
+  }
   if (bounds.north === bounds.south && bounds.east === bounds.west) {
     return { kind: 'centre', at: { lat: bounds.north, lng: bounds.east } };
   }

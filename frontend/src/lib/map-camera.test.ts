@@ -70,6 +70,52 @@ describe('cameraTargetFor — it moves only when it owes you something (§7)', (
     expect(cameraTargetFor([TOKYO, KYOTO], view)).toEqual({ kind: 'none' });
   });
 
+  // The reported defect: zoom out for a day whose places are hours apart, then narrow
+  // — by category, by `אולי`, by `מה נשאר`, by picking another day — and the new set
+  // is wholly inside that wide view, so the camera declined to move. Three pins in
+  // one corner of a country.
+  it('re-fits a set the view CONTAINS but dwarfs — visible is not framed', () => {
+    const wide = { north: 40, south: 30, east: 145, west: 130 };
+    const oneNeighbourhood = [TOKYO, { lat: TOKYO.lat + 0.01, lng: TOKYO.lng + 0.01 }];
+    expect(cameraTargetFor(oneNeighbourhood, wide).kind).toBe('fit');
+  });
+
+  it('narrowing to a single pin re-centres too — a zero-area extent fills nothing', () => {
+    const wide = { north: 40, south: 30, east: 145, west: 130 };
+    // The containment test used to run BEFORE the coincident branch, so filtering all
+    // the way down to one place was the same defect, one pin narrower.
+    expect(cameraTargetFor([TOKYO], wide)).toEqual({ kind: 'centre', at: TOKYO });
+  });
+
+  // The other half of the guard, and the reason it is `||` across the axes rather
+  // than `&&`: dwarfed means small in BOTH directions.
+  it('a set filling one axis is framed, not dwarfed — no lurch for a street of stops', () => {
+    const view = { north: 36, south: 34, east: 141, west: 134 };
+    const alongOneStreet = [
+      { lat: 35, lng: 135 },
+      { lat: 35.02, lng: 140 },
+    ];
+    expect(cameraTargetFor(alongOneStreet, view)).toEqual({ kind: 'none' });
+  });
+
+  // Falls out of the arithmetic, and it is the property that keeps §7's "a manual
+  // zoom wins until the next scope change" alive: a tight view makes every ratio
+  // bigger, so deliberate close-in inspection is the hardest thing to disturb.
+  it('the tighter the view, the less likely a re-fit', () => {
+    // Pins spanning 0.01° each way.
+    const pins = [TOKYO, { lat: TOKYO.lat + 0.01, lng: TOKYO.lng + 0.01 }];
+    const wide = { north: 40, south: 30, east: 145, west: 130 };
+    // 0.02° each way, so the pins fill half of it — comfortably framed.
+    const tight = {
+      north: TOKYO.lat + 0.015,
+      south: TOKYO.lat - 0.005,
+      east: TOKYO.lng + 0.015,
+      west: TOKYO.lng - 0.005,
+    };
+    expect(cameraTargetFor(pins, wide).kind).toBe('fit');
+    expect(cameraTargetFor(pins, tight)).toEqual({ kind: 'none' });
+  });
+
   it('centres a single pin rather than fitting it — a zero-area fit maxes the zoom', () => {
     expect(cameraTargetFor([TOKYO], null)).toEqual({ kind: 'centre', at: TOKYO });
   });
@@ -99,21 +145,28 @@ describe('cameraTargetFor — it moves only when it owes you something (§7)', (
   });
 });
 
-// Session 134 — the two halves of "the map always opens zoomed out and centred".
-// Both are here because both are pure, and together they say why the opening framing
-// is a third case rather than a re-frame.
-describe('why the opening camera has to ignore containment', () => {
-  it('a wide view contains everything, so containment says "do not move" forever', () => {
-    const world = { north: 85, south: -85, east: 180, west: -180 };
-    const day = [
-      { lat: 35.68, lng: 139.76 },
-      { lat: 35.71, lng: 139.78 },
-    ];
-    // This is correct for a RE-frame ("the chip's results are all on screen already")
-    // and catastrophic for the FIRST one: a map opened on the world would never fit
-    // its pins, and no later control change could rescue it either, since the view
-    // still contains them. Hence the caller passes `null` for the opening framing.
-    expect(cameraTargetFor(day, world)).toEqual({ kind: 'none' });
+// Session 134 diagnosed two compounding hazards behind "the map opens on the whole
+// world and stays there", and fixed the second one WHERE IT SHOWED — the opening
+// framing ignores containment. Session 139 fixed it at the root: containment alone no
+// longer means "don't move", so a wide view is not a trap for any framing.
+describe('a wide view is no longer a trap (the root of session 134’s hazard 2)', () => {
+  const world = { north: 85, south: -85, east: 180, west: -180 };
+  const day = [
+    { lat: 35.68, lng: 139.76 },
+    { lat: 35.71, lng: 139.78 },
+  ];
+
+  it('a set dwarfed by the view re-fits, even though the view contains it', () => {
+    // This used to answer `none`, which is what made a wide view permanent: the pins
+    // are on screen, so nothing was ever owed, so no chip / `אולי` / day change could
+    // tighten it again. Being visible is not being framed.
+    expect(cameraTargetFor(day, world).kind).toBe('fit');
+  });
+
+  it('the opening framing still passes `null`, and is no longer the only guard', () => {
+    // Still correct — before the first framing there is no view worth preserving —
+    // but it is now belt-and-braces rather than the one thing standing between a bad
+    // first fit and a camera stuck at it forever.
     expect(cameraTargetFor(day, null).kind).toBe('fit');
   });
 });
