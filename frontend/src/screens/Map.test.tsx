@@ -25,7 +25,9 @@ const place = (id: string, coords: boolean, at?: { lat: number; lng: number }): 
   ...(coords ? (at ?? { lat: 35.6, lng: 139.6 }) : {}),
 });
 
-const event = (p: Partial<TripEvent> & Pick<TripEvent, 'id' | 'placeId'>): TripEvent => ({
+// `placeId` is not required: a booking-linked event carries none — its place comes
+// from the booking (ADR-0048).
+const event = (p: Partial<TripEvent> & Pick<TripEvent, 'id'>): TripEvent => ({
   tripId: 't1',
   date: ACTIVE_DATE,
   // Distinct from the place name on purpose: the row's meta line renders the title,
@@ -52,9 +54,13 @@ let tripPlaces: Place[] = [];
 let tripBookings: Booking[] = [];
 let currentMode = 'trip';
 let isOffline = false;
+// The strip's write. It is a spy rather than a setter on purpose: the bug #10 fixes
+// is the case where the chosen day IS the active one, so `activeDate` must NOT move.
+const setActiveDate = vi.fn();
 
 vi.mock('../state/trip-state', () => ({
   useTrip: () => ({
+    setActiveDate,
     trip: {
       id: 't1',
       name: 'טיול',
@@ -104,7 +110,7 @@ Object.defineProperty(navigator, 'geolocation', {
 
 import { ToastProvider } from '../ui/Toast';
 import { NavProvider } from '../state/nav-state';
-import { MapScopeProvider } from '../state/map-scope-state';
+import { MapScopeProvider, useSelectDay } from '../state/map-scope-state';
 import { setSimulatedNow } from '../lib/useClock';
 import { MapView } from './Map';
 import { withoutBidiControls } from '../lib/bidi';
@@ -129,6 +135,34 @@ function wrap(node: ReactNode) {
 const filteredOut = (name: string) =>
   screen.getByText(name).closest('.wp-reveal')?.classList.contains('hidden');
 
+const row = (name: string) =>
+  [...document.querySelectorAll('.place')].find(
+    (r) => r.querySelector('.map-name')?.textContent === name,
+  ) as HTMLElement | undefined;
+
+/** The number the row's badge carries, or `null` for a row with no position in the
+ *  day's sequence. */
+const orderOf = (name: string) =>
+  row(name)?.querySelector('.map-badge')?.getAttribute('data-order') ?? null;
+
+/** Which day scope the tab is in, read the way a user reads it. */
+const scopeHint = () => document.querySelector('.map-scopehint')?.textContent;
+
+/** Stands in for the header's `DayStrip`, wired to the REAL production handler —
+ *  the strip itself lives in `App`'s header, but the intent it signals is what the
+ *  Map answers to, and that is what this exercises. */
+function DayPill({ date }: { date: string }) {
+  const selectDay = useSelectDay();
+  return (
+    <button type="button" onClick={() => selectDay(date)}>
+      day-pill
+    </button>
+  );
+}
+const tapDayPill = () => fireEvent.click(screen.getByRole('button', { name: 'day-pill' }));
+const tapAllDays = () =>
+  fireEvent.click(screen.getByRole('button', { name: new RegExp(t.map.allDays) }));
+
 function seed() {
   tripPlaces = [place('food', true), place('see', true), place('idea', true), place('lite', false)];
   tripEvents = [
@@ -152,6 +186,7 @@ describe('MapView (Phase 3, ADR-0109/0110)', () => {
     geoFix = null;
     geoErrorCode = null;
     getCurrentPosition.mockClear();
+    setActiveDate.mockClear();
   });
 
   it('Trip mode defaults to today: shows today’s places, hides other-day and dayless ones', () => {
@@ -186,6 +221,60 @@ describe('MapView (Phase 3, ADR-0109/0110)', () => {
     fireEvent.click(screen.getByRole('button', { name: new RegExp(t.map.allDays) }));
     expect(screen.getByText('see')).toBeTruthy();
     expect(screen.getByText('idea')).toBeTruthy();
+  });
+
+  // Both modes open on the day you are on (ADR-0109's 2026-07-27 amendment,
+  // reversing §1's Plan pivot). Before the trip starts `activeDate` is today clamped
+  // into the trip range — day 1 — so Plan opens there with `כל הימים` one tap away.
+  it('Plan mode opens day-scoped too, not on all days', () => {
+    currentMode = 'plan';
+    seed();
+    render(wrap(<MapView />));
+    expect(scopeHint()).toBe(t.map.scopeDay);
+    expect(filteredOut('see')).toBe(true); // another day
+    tapAllDays();
+    expect(scopeHint()).toBe(t.map.scopeAll);
+    expect(filteredOut('see')).toBe(false);
+  });
+
+  // The reported bug: `onSelectDay` was `setActiveDate`, so the Map could only learn
+  // a day had been chosen by watching the date CHANGE. Tapping the day you are
+  // already on writes the same value, nothing changes, and the strip's most obvious
+  // way out of `כל הימים` did nothing at all.
+  it('choosing the day you are already on leaves all-days — the date never moves', () => {
+    seed();
+    render(
+      wrap(
+        <>
+          <DayPill date={ACTIVE_DATE} />
+          <MapView />
+        </>,
+      ),
+    );
+    tapAllDays();
+    expect(scopeHint()).toBe(t.map.scopeAll);
+    expect(filteredOut('see')).toBe(false);
+
+    tapDayPill();
+    // The strip still writes the one source of truth — with the same value it held.
+    expect(setActiveDate).toHaveBeenCalledWith(ACTIVE_DATE);
+    expect(scopeHint()).toBe(t.map.scopeDay);
+    expect(filteredOut('see')).toBe(true);
+  });
+
+  it('choosing a day is an intent, not a toggle: tapping it again keeps the day scope', () => {
+    seed();
+    render(
+      wrap(
+        <>
+          <DayPill date={ACTIVE_DATE} />
+          <MapView />
+        </>,
+      ),
+    );
+    tapDayPill();
+    tapDayPill();
+    expect(scopeHint()).toBe(t.map.scopeDay);
   });
 
   it('the maybes toggle narrows to shelf ideas', () => {
@@ -946,6 +1035,162 @@ describe('MapView (Phase 3, ADR-0109/0110)', () => {
     });
   });
 
+  // The number was already computed and already on every pin; the row simply never
+  // received it, so a numbered canvas sat above an unnumbered list (ADR-0121 §6).
+  describe('the row carries the pin’s number (§6)', () => {
+    const NOON = Date.parse(`${ACTIVE_DATE}T12:00:00Z`);
+    const at = (hhmm: string) => `${ACTIVE_DATE}T${hhmm}:00Z`;
+    const seedDay = () => {
+      setSimulatedNow(NOON);
+      tripPlaces = [
+        place('breakfast', true),
+        place('museum', true),
+        place('dinner', true),
+        place('tomorrow', true),
+        place('someday', true),
+      ];
+      tripEvents = [
+        event({ id: 'e1', placeId: 'breakfast', category: 'food', startsAt: at('08:00') }),
+        event({ id: 'e2', placeId: 'museum', category: 'sightseeing', startsAt: at('11:00') }),
+        event({ id: 'e3', placeId: 'dinner', category: 'food', startsAt: at('20:00') }),
+        event({
+          id: 'e4',
+          placeId: 'tomorrow',
+          category: 'food',
+          date: '2026-07-21',
+          startsAt: '2026-07-21T09:00:00Z',
+        }),
+      ];
+      tripMaybes = [maybe({ id: 'm', placeId: 'someday', category: 'food' })];
+    };
+
+    it('day scope: the day’s stops are numbered in the order they happen', () => {
+      seedDay();
+      render(wrap(<MapView />));
+      expect(orderOf('breakfast')).toBe('1');
+      expect(orderOf('museum')).toBe('2');
+      expect(orderOf('dinner')).toBe('3');
+      // Nothing outside the day has a position in it, so neither gets a number —
+      // the same rule that leaves a ghost pin unnumbered.
+      expect(orderOf('tomorrow')).toBeNull();
+      expect(orderOf('someday')).toBeNull();
+    });
+
+    it('all-days: the numbering follows the trip’s sequence, and an idea still has none', () => {
+      seedDay();
+      render(wrap(<MapView />));
+      tapAllDays();
+      expect(orderOf('breakfast')).toBe('1');
+      expect(orderOf('museum')).toBe('2');
+      expect(orderOf('dinner')).toBe('3');
+      expect(orderOf('tomorrow')).toBe('4');
+      // An idea was never put in a sequence — nothing scheduled it.
+      expect(orderOf('someday')).toBeNull();
+    });
+
+    // The invariant the number exists under: it is the index in the SCOPED set,
+    // computed before any chip. So a gap (1, 3) is correct and says something is
+    // filtered out — the alternative, renumbering, would make the list disagree with
+    // the canvas the moment a chip is tapped.
+    it('a filter never renumbers, in either scope — the gaps are the point', () => {
+      seedDay();
+      render(wrap(<MapView />));
+      fireEvent.click(
+        screen.getByRole('radio', { name: new RegExp(t.iconPicker.categories.food) }),
+      );
+      expect(filteredOut('museum')).toBe(true);
+      expect(orderOf('breakfast')).toBe('1');
+      expect(orderOf('dinner')).toBe('3');
+
+      tapAllDays();
+      expect(orderOf('breakfast')).toBe('1');
+      expect(orderOf('dinner')).toBe('3');
+      expect(orderOf('tomorrow')).toBe('4');
+    });
+
+    // Phase 4 (#14) will make an ambient stay night read as more present; this is the
+    // thing it must not break. A middle night is neither an arrival nor a departure,
+    // so it holds no position — giving it one would renumber every real stop.
+    it('a stay’s middle night has no position in the day, so it takes no number', () => {
+      setSimulatedNow(NOON);
+      tripPlaces = [place('hotel', true), place('lunch', true)];
+      tripEvents = [
+        event({
+          id: 'stay',
+          placeId: 'hotel',
+          category: 'lodging',
+          date: '2026-07-19',
+          endDate: '2026-07-21',
+          startsAt: '2026-07-19T15:00:00Z',
+          endsAt: '2026-07-21T10:00:00Z',
+        }),
+        event({ id: 'l', placeId: 'lunch', category: 'food', startsAt: at('13:00') }),
+      ];
+      render(wrap(<MapView />));
+      // The active date is the strictly-middle night of a 19→21 stay.
+      expect(orderOf('hotel')).toBeNull();
+      expect(orderOf('lunch')).toBe('1');
+    });
+  });
+
+  // §8 promised one entry per in-scope reference. A booking-linked event is two
+  // destinations, and returning early on the booking made the event unreachable for
+  // exactly the references most worth reaching.
+  describe('the way in: a linked booking is two ways in, not one (§8)', () => {
+    const seedLinked = () => {
+      setSimulatedNow(Date.parse(`${ACTIVE_DATE}T12:00:00Z`));
+      tripPlaces = [place('granbell', true)];
+      tripBookings = [
+        {
+          id: 'bk',
+          tripId: 't1',
+          type: 'hotel',
+          title: 'Shinjuku Granbell',
+          source: 'manual',
+          placeId: 'granbell',
+          createdAt: '',
+          updatedAt: '',
+          updatedBy: 'u1',
+        } as Booking,
+      ];
+      tripEvents = [
+        event({
+          id: 'ci',
+          bookingId: 'bk',
+          category: 'lodging',
+          title: 'Shinjuku Granbell',
+          startsAt: `${ACTIVE_DATE}T15:00:00Z`,
+        }),
+      ];
+    };
+    const refKinds = () =>
+      [...(row('granbell')?.querySelectorAll('.map-ref-kind') ?? [])].map((k) => k.textContent);
+
+    it('day scope: the booking leads, the event follows', () => {
+      seedLinked();
+      render(wrap(<MapView />));
+      fireEvent.click(row('granbell')!);
+      expect(refKinds()).toEqual([t.map.refs.booking, t.map.refs.event]);
+    });
+
+    it('all-days: the same pair — the scope changes which refs are in, not how they resolve', () => {
+      seedLinked();
+      render(wrap(<MapView />));
+      tapAllDays();
+      fireEvent.click(row('granbell')!);
+      expect(refKinds()).toEqual([t.map.refs.booking, t.map.refs.event]);
+    });
+
+    it('an unlinked booking still resolves to exactly one entry', () => {
+      seedLinked();
+      tripEvents = [];
+      render(wrap(<MapView />));
+      tapAllDays(); // an unlinked booking carries no day
+      fireEvent.click(row('granbell')!);
+      expect(refKinds()).toEqual([t.map.refs.booking]);
+    });
+  });
+
   // Phase 5 (ADR-0115): the same control, two halves. Only the wiring is asserted
   // here — the research surface's own behaviour lives in PlaceResearch.test.tsx.
   describe('Plan-mode research on the search control (ADR-0115 §1)', () => {
@@ -973,8 +1218,8 @@ describe('MapView (Phase 3, ADR-0109/0110)', () => {
       currentMode = 'plan';
       seed();
       render(wrap(<MapView />));
-      // Plan defaults to all-days; narrow to the active day and check again, since
-      // the two scopes are separate render paths on this screen.
+      // Plan opens day-scoped like Trip does now; widen to all-days and check again,
+      // since the two scopes are separate render paths on this screen.
       fireEvent.click(screen.getByRole('button', { name: new RegExp(t.map.allDays) }));
       openSearch(t.map.search.planButton);
       fireEvent.change(screen.getByPlaceholderText(t.map.search.planPlaceholder), {

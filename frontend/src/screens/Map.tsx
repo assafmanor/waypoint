@@ -133,11 +133,17 @@ export function MapView() {
   const [leftOnly, setLeftOnly] = useState(false);
   // "All days" is map-local scope (ADR-0110 §4), not the global day param, and it
   // lives in a lifted context so the header DayStrip can drop its selection while
-  // it's on. Trip defaults to today, Plan to all; it re-defaults on a mode switch,
-  // and a strip day-tap (which changes activeDate) narrows back out of it.
+  // it's on. BOTH modes now open on the day you're on — Plan's all-days pivot is
+  // reversed (ADR-0109's 2026-07-27 amendment), so before the trip starts Plan opens
+  // on day 1 with `כל הימים` one tap away. Still keyed on `mode`: a mode switch is a
+  // context reset, so whatever scope you left Trip in, Plan opens day-scoped too.
   const { allDays, setAllDays, focusPlaceId, clearFocus, locationOffered, markLocationOffered } =
     useMapScope();
-  useEffect(() => setAllDays(mode === 'plan'), [mode, setAllDays]);
+  useEffect(() => setAllDays(false), [mode, setAllDays]);
+  // The other way out of all-days: arriving on a different day (a `daySelectTarget`
+  // from another surface, a deep link). Choosing a day on the strip is the INTENT
+  // path and clears the scope itself (`useSelectDay`), which is what makes tapping
+  // the already-active day work — here, `activeDate` never changes.
   const prevDate = useRef(activeDate);
   useEffect(() => {
     if (activeDate !== prevDate.current) {
@@ -505,12 +511,17 @@ export function MapView() {
       if (focusable && sheetView === MAP_SHEET_VIEW.full) setSheetView(MAP_SHEET_VIEW.half);
       return;
     }
-    // From a pin: bring its row into view rather than leaving the selection
-    // invisible behind the sheet.
+    // From a pin: the MIRROR of the drop above, and the half the axis was missing.
+    // At `peek` the sheet is a ~116px lip, so the row a pin tap just selected is
+    // behind it — scrolling a viewport nobody can see is not "the list focuses on
+    // what's marked". So the tap raises the sheet the same way a row tap lowers it,
+    // and only then centres the row: with room to show it, `nearest` would leave a
+    // row that is already barely on screen exactly where it was.
+    if (sheetView === MAP_SHEET_VIEW.peek) setSheetView(MAP_SHEET_VIEW.half);
     requestAnimationFrame(() => {
       sheetRef.current
         ?.querySelector(`[data-place="${placeId}"]`)
-        ?.scrollIntoView({ block: 'nearest' });
+        ?.scrollIntoView({ block: 'center' });
     });
   };
 
@@ -593,8 +604,8 @@ export function MapView() {
   // words — a control that names its destination is worth more than a generic
   // "details", and that is what earns it a row.
   const refEntriesFor = (usage: PlaceUsage): RefEntry[] =>
-    placeRefs(usage.placeId, { events, bookings, maybeItems }, { onDate: scopedDate }).map(
-      (ref) => {
+    placeRefs(usage.placeId, { events, bookings, maybeItems }, { onDate: scopedDate }).flatMap(
+      (ref): RefEntry[] => {
         const event = ref.eventId ? eventById.get(ref.eventId) : undefined;
         const booking = ref.bookingId ? bookings.find((b) => b.id === ref.bookingId) : undefined;
         const goToDay = (date: string) => {
@@ -604,32 +615,45 @@ export function MapView() {
         if (ref.kind === PLACE_REF_KIND.idea) {
           // The shelf, which both day surfaces render (Trip's day view and Plan's
           // builder), so this needs no mode switch.
-          return {
-            key: ref.key,
-            kind: t.map.refs.idea,
-            label: [t.map.shelfTag, ref.date ? relativeDayLabel(ref.date, today) : t.map.noDay]
-              .filter(Boolean)
-              .join(` ${DOT_SEPARATOR} `),
-            onOpen: () => goToDay(ref.date ?? today),
-          };
+          return [
+            {
+              key: ref.key,
+              kind: t.map.refs.idea,
+              label: [t.map.shelfTag, ref.date ? relativeDayLabel(ref.date, today) : t.map.noDay]
+                .filter(Boolean)
+                .join(` ${DOT_SEPARATOR} `),
+              onOpen: () => goToDay(ref.date ?? today),
+            },
+          ];
         }
         const title = event ? shortTitleText(event.title) : (booking?.title ?? '');
         const edgeWord = event && ref.edge ? eventEdgeTransition(event, ref.edge) : undefined;
         const label = [title, edgeWord].filter(Boolean).join(` ${DOT_SEPARATOR} `);
+        // A booking-linked reference is TWO destinations, not one: the booking holds
+        // the code, the notes and the documents; the event holds when it happens and
+        // what surrounds it. Returning early on the booking made the event branch
+        // unreachable for exactly the references most worth reaching — §8 promised
+        // one entry per in-scope reference, and a linked pair is two ways in, not a
+        // choice the screen gets to make. The booking leads: it is what a traveller
+        // standing at the place wants first.
+        const entries: RefEntry[] = [];
         if (booking) {
-          return {
-            key: ref.key,
+          entries.push({
+            key: `${ref.key}:${PLACE_REF_KIND.booking}`,
             kind: t.map.refs.booking,
             label,
             onOpen: () => setDetailBooking(booking),
-          };
+          });
         }
-        return {
-          key: ref.key,
-          kind: t.map.refs.event,
-          label,
-          onOpen: () => goToDay(ref.date ?? event?.date ?? today),
-        };
+        if (event) {
+          entries.push({
+            key: `${ref.key}:${PLACE_REF_KIND.event}`,
+            kind: t.map.refs.event,
+            label,
+            onOpen: () => goToDay(ref.date ?? event.date),
+          });
+        }
+        return entries;
       },
     );
 
@@ -652,6 +676,7 @@ export function MapView() {
           key={usage.placeId}
           usage={usage}
           place={place}
+          order={orderIndex.get(usage.placeId)}
           ambient={prominence === 'ambient'}
           outcome={outcome}
           isNextStop={nextStopId === usage.placeId}
@@ -1020,6 +1045,7 @@ export function MapView() {
 function PlaceRow({
   usage,
   place,
+  order,
   ambient,
   outcome,
   isNextStop,
@@ -1036,6 +1062,11 @@ function PlaceRow({
 }: {
   usage: PlaceUsage;
   place: Place;
+  /** This place's position in the day's sequence — the SAME number its pin carries
+   *  (`buildPinOrderIndex`), so the canvas and the list can't disagree about which
+   *  stop is second. Absent for anything with no position in the schedule: a ghost,
+   *  an idea, an ambient stay night (ADR-0121 §6). */
+  order?: number;
   ambient: boolean;
   /** What a human said happened here (ADR-0117 §1): visited, skipped, or — absent —
    *  nobody settled it, where the row's position is the only claim. */
@@ -1107,8 +1138,13 @@ function PlaceRow({
         }
       }}
     >
+      {/* The category badge doubles as the number's host (ADR-0121 §6): a numbered
+          pin whose row says nothing about the order makes the two halves read as two
+          different lists. Same corner, same stamp as `.pin-n` — one number, shown
+          twice, never a second treatment. */}
       <span
         className={`map-badge cat-${hue}` + (usage.coordless ? ' nocoord' : '')}
+        data-order={order}
         aria-hidden="true"
       >
         {glyph}

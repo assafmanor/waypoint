@@ -23,6 +23,15 @@ import {
   type TripEvent,
 } from '@waypoint/shared';
 
+// jsdom has no layout engine, so it doesn't implement scrollIntoView — the sheet's
+// "bring the selected row into view" is a real call worth asserting the shape of.
+const scrollIntoView = vi.fn();
+Element.prototype.scrollIntoView = scrollIntoView;
+/** The screen defers the scroll one frame, so the sheet's new height is committed
+ *  before the row is centred against it. */
+const nextFrame = () =>
+  act(() => new Promise<void>((resolve) => requestAnimationFrame(() => resolve())));
+
 const ACTIVE_DATE = '2026-07-20';
 const NEXT_DAY = '2026-07-21';
 const NOON = Date.parse(`${ACTIVE_DATE}T12:00:00Z`);
@@ -197,6 +206,7 @@ describe('the embedded map’s shell (ADR-0121)', () => {
     permissionState = 'prompt';
     geoFix = null;
     getCurrentPosition.mockClear();
+    scrollIntoView.mockClear();
   });
 
   const seed = () => {
@@ -232,6 +242,28 @@ describe('the embedded map’s shell (ADR-0121)', () => {
     expect(pinIds()).toContain('museum');
     expect(pin('lite')).toBeNull();
     expect(row('lite')).toBeTruthy();
+  });
+
+  // The whole reason the row grew a number (§6): with the split on screen, the two
+  // halves must be describing the same list, and a number on only one of them reads
+  // as a second, unrelated ordering.
+  it('the row and its pin carry the SAME number, in both day scopes', () => {
+    seed();
+    render(wrap(<MapView />));
+    const pinOrder = (id: string) => pin(id)?.getAttribute('data-order');
+    const rowOrder = (name: string) =>
+      row(name)?.querySelector('.map-badge')?.getAttribute('data-order');
+    expect(rowOrder('museum')).toBe('1');
+    expect(pinOrder('museum')).toBe('1');
+    expect(rowOrder('lunch')).toBe('2');
+    expect(pinOrder('lunch')).toBe('2');
+    // A coordless row has no pin to agree with, and it still holds its place in the
+    // sequence — which is what explains the gap the canvas shows where it would be.
+    expect(rowOrder('lite')).toBe('3');
+
+    fireEvent.click(listButton(t.map.allDays));
+    expect(rowOrder('museum')).toBe(pinOrder('museum'));
+    expect(rowOrder('tomorrow')).toBe(pinOrder('tomorrow'));
   });
 
   // One state, two controls, so they cannot disagree. At half neither extreme is
@@ -299,6 +331,55 @@ describe('the embedded map’s shell (ADR-0121)', () => {
       expect(screenEl().dataset.view).toBe('full');
       fireEvent.click(row('museum')!);
       expect(screenEl().dataset.view).toBe('half');
+    });
+
+    // The mirror of the drop above, and the half the axis was missing. At `peek` the
+    // sheet is a lip: the row a pin tap just selected is behind it, so "the list
+    // focuses on what's marked" was true of a viewport nobody could see.
+    it('a pin tap at PEEK raises the sheet to half, then centres the row it selected', async () => {
+      seed();
+      render(wrap(<MapView />));
+      fireEvent.click(toggle(t.map.view.map));
+      expect(screenEl().dataset.view).toBe('peek');
+
+      fireEvent.click(pin('lunch')!);
+      expect(screenEl().dataset.view).toBe('half');
+      expect(row('lunch')!.className).toContain('selected');
+      // Centred, not `nearest`: with room to show the row, `nearest` leaves one that
+      // is already barely on screen exactly where it was.
+      await nextFrame();
+      expect(scrollIntoView).toHaveBeenCalledWith({ block: 'center' });
+    });
+
+    it('a pin tap in all-days scope raises it the same way — the scope is not the trigger', async () => {
+      seed();
+      render(wrap(<MapView />));
+      fireEvent.click(listButton(t.map.allDays));
+      fireEvent.click(toggle(t.map.view.map));
+
+      fireEvent.click(pin('tomorrow')!);
+      expect(screenEl().dataset.view).toBe('half');
+      expect(row('tomorrow')!.className).toContain('selected');
+      await nextFrame();
+      expect(scrollIntoView).toHaveBeenCalledWith({ block: 'center' });
+    });
+
+    it('a pin tap at half leaves the height alone — the list is already showing', () => {
+      seed();
+      render(wrap(<MapView />));
+      expect(screenEl().dataset.view).toBe('half');
+      fireEvent.click(pin('lunch')!);
+      expect(screenEl().dataset.view).toBe('half');
+    });
+
+    // The two directions do not cancel each other out: a row tap shrinks the list to
+    // reveal the map, a pin tap grows it to reveal the row.
+    it('a pin tap at FULL leaves the list at full — nothing is hidden there', () => {
+      seed();
+      render(wrap(<MapView />));
+      fireEvent.click(toggle(t.map.view.list));
+      fireEvent.click(pin('lunch')!);
+      expect(screenEl().dataset.view).toBe('full');
     });
 
     // A coordless place is still REFERENCED, so it must still select: the verb is
@@ -374,8 +455,14 @@ describe('the embedded map’s shell (ADR-0121)', () => {
       render(wrap(<MapView />));
       fireEvent.click(row('dest')!);
       const refs = row('dest')!.querySelector('.map-refs')!;
-      expect(refs.textContent).toContain(t.map.refs.booking);
-      // The destination end says LANDING, not take-off.
+      // Two ways in, not a choice the screen makes for you: the booking holds the
+      // code and the documents, the event holds when it happens and what surrounds
+      // it. The booking leads — it is what a traveller standing there wants first.
+      expect([...refs.querySelectorAll('.map-ref-kind')].map((k) => k.textContent)).toEqual([
+        t.map.refs.booking,
+        t.map.refs.event,
+      ]);
+      // The destination end says LANDING, not take-off — on both.
       expect(refs.textContent).toContain(t.glance.transition.flightArrival);
     });
 
@@ -650,16 +737,19 @@ describe('the embedded map’s shell (ADR-0121)', () => {
       seedDay();
       currentMode = 'plan';
       render(wrap(<MapView />));
-      // Plan defaults to all-days, where connecting every day would be spaghetti.
-      expect(paneProps.current.connector).toBeUndefined();
-
-      fireEvent.click(listButton(t.map.allDays));
+      // Plan now OPENS day-scoped (ADR-0109's 2026-07-27 amendment), so the day's
+      // shape is on screen without a chip tap.
       expect(paneProps.current.connector).toEqual([
         { lat: 35.6, lng: 139.6 },
         { lat: 35.7, lng: 139.7 },
       ]);
       const link = screen.getByRole('link', { name: new RegExp(t.map.dayRoute) });
       expect(link.getAttribute('href')).toContain('/maps/dir/?api=1&origin=35.6%2C139.6');
+
+      // Widening to all days drops it: connecting every day would be spaghetti.
+      fireEvent.click(listButton(t.map.allDays));
+      expect(paneProps.current.connector).toBeUndefined();
+      expect(screen.queryByRole('link', { name: new RegExp(t.map.dayRoute) })).toBeNull();
     });
   });
 

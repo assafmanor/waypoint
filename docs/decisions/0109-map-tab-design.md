@@ -7,6 +7,46 @@
 
 Mockup: [`mockups/map-tab-v1.html`](../../mockups/map-tab-v1.html) — the list-first tab in both modes, all four location states (normal / near-me granted / denied / offline), the pin-anatomy legend, a Phase-6 rendered-map preview, and the ADR-0107 zone chip.
 
+## Amendment (2026-07-27, session 136) — both modes open on the day you're on
+
+§1 makes the day filter **the** mode pivot: "Trip mode pre-selects _today_; Plan mode
+pre-selects _all days_", restated in its "All days" bullet and again in
+[ADR-0110 §4](0110-maps-and-places-frontend-architecture.md)'s "defaulting by mode
+(Trip → today, Plan → all)". The reasoning was that research is a whole-trip activity.
+**Reversed, at the product owner's call: both modes open day-scoped.** Reported off the
+running app as "it opens filtered to all the days" — on a tab whose header is a day
+strip, opening on no particular day reads as the strip having lost its selection.
+
+The pivot itself is not deleted, only flattened: `כל הימים` is still one tap away, it
+is still Map-local view state (never the global `?day=`), and Plan still keeps every
+other part of its identity. What goes is the mode-dependent **default**.
+
+**The consequence, stated rather than discovered.** Before the trip starts,
+`activeDate` is today clamped into the trip range — i.e. **day 1**. So Plan opens on
+day 1, which is the right place to start building a trip, but it does mean the tab
+never opens on a whole-trip view again. Anyone doing whole-trip research taps the chip
+once per visit.
+
+**§1's other consumers are unaffected.** The strip still shows only the today-anchor
+with no filled selection while all-days is on, and tapping a strip day still narrows —
+now as a stated intent rather than as a side effect of the date changing (see the
+ADR-0110 §4 amendment below).
+
+## Amendment (2026-07-27, session 136) — a day is chosen, not merely set
+
+ADR-0110 §4's "tapping any strip day exits all-days" was implemented by watching
+`activeDate` **change**. That is not the same rule, and the gap is the case that matters
+most: tapping the day you are already on writes the same date, nothing changes, and
+all-days stayed on — while the `allScope` suppression had made that very pill look
+unselected, so it is the pill you would tap. The strip's most obvious way out of
+`כל הימים` did nothing.
+
+So the tap states the intent at the point it happens (`useSelectDay`, composed in
+`state/map-scope-state.tsx` beside `useShowPlaceOnMap`): **choosing a day clears
+all-days, then sets the date.** The `activeDate`-changed effect stays, because arriving
+on a different day from somewhere else (a `daySelectTarget`, a deep link) must still
+narrow — but it is now the secondary path, not the mechanism.
+
 ## Amendment (2026-07-27, session 134) — the Map tab offers to locate you on open
 
 §6 says geolocation is asked **on intent** and never on tab open, and "Alternatives
