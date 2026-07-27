@@ -225,7 +225,7 @@ export const MAP_ATTRIBUTION_H = 22;
 /** The gap the pane's floating furniture leaves below the controls row. Paired with
  *  the `8px` in `map.css` / `map-pane.css`, which is the same offset the re-centre
  *  control has always used. */
-const MAP_FLOAT_GAP = 8;
+export const MAP_FLOAT_GAP = 8;
 
 /** The list sheet's three snap heights (ADR-0121 §5, reshaped by ADR-0122 §3) — one
  *  axis, dragged by the sheet's whole top region and shortcut by the `רשימה / מפה`
@@ -276,28 +276,49 @@ export const SNAP_FLICK_PX_PER_MS = 0.5;
  *  default: a map must be constructed with some camera, and the first fit
  *  replaces it. */
 export const MAP_ZOOM = { SINGLE_PIN: 15, MAX_FIT: 16, WORLD: 2 } as const;
-/** What a fit reserved at the top before the controls row moved over the canvas: the
- *  teardrop's TIP is the anchor, so its body and any tag extend *above* the
- *  coordinate, and without this the topmost pin of a fitted set draws half
- *  off-canvas (ADR-0121 §7). */
-const MAP_PIN_FIT_CLEARANCE = 64;
-/** Inset for a fit, in px. The top carries the pin's own height AND the floating
- *  controls row, **derived from the constant that writes `--map-controls-h`** so
- *  layout and camera cannot drift apart (ADR-0122 §1): that is what keeps a fitted
- *  pin out from under the chips, since nothing about the layout does.
+
+/**
+ * **The pin's size is a rule, not a number** (ADR-0123): a pin is a share of the
+ * **canvas it sits on**, floored and capped. The canvas is what the sheet's stop
+ * actually changes — 545px of map at the `map` stop against ~260px at `half` on the
+ * baseline phone — so a single fixed size is either tiny on one or overbearing on the
+ * other, which is what a 34px teardrop on a full-height pane looked like.
  *
- *  Two limits the ADR states rather than papers over: it governs a **fit** (a manual
- *  pan can still put a pin under the row, and no map larger than its frame can
- *  promise otherwise), and `fitPaddingFor` drops padding that would claim half an
- *  axis — so at `half`, where the pane is ~250px, this inset is sometimes dropped and
- *  a fitted pin can land under the row. At the `map` stop, where the pane is ~517px,
- *  it is cheap, which is one more argument for the height axis. */
-export const MAP_FIT_PADDING = {
-  top: MAP_CONTROLS_H + MAP_FLOAT_GAP + MAP_PIN_FIT_CLEARANCE,
-  right: 28,
-  bottom: 28,
-  left: 28,
+ * `lib/map-pins.ts` evaluates this twice from the same numbers — once as a CSS
+ * `clamp()` the browser resolves against the pane's own height (`pinSizeCss`), once in
+ * TS for the band the camera keeps clear of pins (`pinClearanceFor`) — so the pin that
+ * is drawn and the room reserved for it cannot disagree. Same arrangement, same
+ * reason, as `MAP_CONTROLS_H` (ADR-0122 §1).
+ *
+ * - `MIN_H` — the shipped teardrop. The floor because it is the size the design pass
+ *   approved, and because a 13px category glyph and a finger both stop working below it.
+ * - `MAX_H` — where a marker stops reading as a *point* and starts reading as a label,
+ *   and where coincident pins start colliding for no gain.
+ * - `CANVAS_SHARE` — the share of the canvas's **height** a pin takes between the two.
+ *   Height, because that is the axis the stop moves.
+ * - `TAG_RISE` — how far the amber `עכשיו` / `התחנה הבאה` tag climbs above the pin's own
+ *   box, as a fraction of the pin's height. Named because it is exactly the difference
+ *   between "a pin is this tall" and "the camera must keep this much clear".
+ * - `GHOST_SCALE` — the subordinate tier stays subordinate **by ratio**, so a ghost is
+ *   the same teardrop at 72% on every canvas rather than a fixed 25px that goes on
+ *   getting relatively smaller as the rest grow (ADR-0121 §6's ladder, held).
+ *
+ * All five want Phase 3's device pass: "big enough to read, small enough to point at"
+ * is the same legibility judgement as `MAP_ZOOM` and `MAP_REFIT_FILL_SHARE`, and a
+ * desktop viewport is the wrong place to settle it.
+ */
+export const MAP_PIN = {
+  MIN_H: 34,
+  MAX_H: 46,
+  CANVAS_SHARE: 0.08,
+  TAG_RISE: 0.56,
+  GHOST_SCALE: 0.72,
 } as const;
+
+/** The three sides of a fit's inset that carry nothing but breathing room. The top is
+ *  derived instead, because it carries the controls row and a pin — see
+ *  `mapFitPadding` in `lib/map-camera.ts`. */
+export const MAP_FIT_INSET = 28;
 /** How much of the current view a **contained** pin set must fill before the camera
  *  leaves it alone (ADR-0121 §7, amended 2026-07-27). Below this share on BOTH axes
  *  the set is *dwarfed* — visible, but not framed — and the camera re-fits instead of

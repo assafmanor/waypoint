@@ -60,6 +60,7 @@ import {
   buildPinOrderIndex,
   isFramedByCamera,
   PIN_TIER,
+  pinSizeCss,
   placePinTier,
   placePoint,
   type PinTier,
@@ -83,6 +84,7 @@ import {
   ICONS,
   MAP_ATTRIBUTION_H,
   MAP_CONTROLS_H,
+  MAP_PIN,
   MAP_SHEET_ORDER,
   MAP_SHEET_STOPS,
   MAP_SHEET_STRIP_H,
@@ -859,7 +861,7 @@ export function MapView() {
   // ONE ROW, over the canvas (ADR-0122 §1) — the shipped `.map-filter-row` +
   // `.map-sortstrip` pair, decluttered to three controls at rest and lifted out of the
   // layout, so the split becomes the whole body and the map runs UNDERNEATH the chips.
-  // Pins are kept out from under it by the camera (`MAP_FIT_PADDING.top`), never by
+  // Pins are kept out from under it by the camera (`mapFitPadding`'s top), never by
   // layout. The same component renders `position: static` above the list where there is
   // no split: one component, two positionings, never two components (§8).
   const controlsRow = (
@@ -1145,12 +1147,21 @@ export function MapView() {
           '--sheet-h': stopHeightCss(MAP_SHEET_STOPS[sheetView]),
           // Written from the TS constants, never measured: this screen re-renders every
           // second, so a layout read here is the anti-pattern `frontend/CLAUDE.md`
-          // names. `--map-controls-h` is the same number `MAP_FIT_PADDING.top` is
+          // names. `--map-controls-h` is the same number `mapFitPadding`'s top is
           // derived from, so the row's layout and the band the camera keeps clear of
           // pins cannot drift apart (ADR-0122 §1).
           '--map-controls-h': `${MAP_CONTROLS_H}px`,
           '--snap-top-h': `${MAP_SHEET_STRIP_H}px`,
           '--map-attr-h': `${MAP_ATTRIBUTION_H}px`,
+          // The pin's size, as the RULE rather than a number (ADR-0123): a `clamp()` the
+          // browser resolves against the pane's own height (`container-type: size` in
+          // `map-pane.css`), so the pins answer the canvas the sheet's stop leaves — and
+          // they answer it in CSS, without a `MapPane` prop that changes on a gesture.
+          // Same constants the camera's clearance is derived from, same reason as
+          // `--map-controls-h` above.
+          '--pin-base': pinSizeCss(),
+          '--pin-tag-rise': MAP_PIN.TAG_RISE,
+          '--pin-ghost-scale': MAP_PIN.GHOST_SCALE,
         } as CSSProperties
       }
     >

@@ -17,6 +17,17 @@
   top: 0;
   bottom: var(--sheet-h, 0px);
   overflow: hidden;
+  /* THE PIN'S SIZE IS READ OFF THIS BOX (ADR-0123). The pane is exactly the canvas the
+     snapped stop leaves visible, so making it a size container is what lets a pin be a
+     share of the map it sits on — in CSS, with no layout read on a screen that
+     re-renders every second and no `MapPane` prop that changes on a gesture (ADR-0121
+     §4 / ADR-0122 §9). An `AdvancedMarker`'s content is a real DOM descendant of the
+     canvas div, so `cqh` inside a pin resolves against this box.
+
+     Safe to contain: the box is sized by its own insets (`top`/`bottom` above), never
+     by what Google draws inside it, which is the one precondition `container-type:
+     size` has. */
+  container-type: size;
 }
 .map-canvas {
   width: 100%;
@@ -40,32 +51,70 @@
    below, which is why the content is ours.
 
    No `translate(-50%, -100%)` here (the mockup needed it for absolute positioning):
-   the marker's own anchor puts the tip on the coordinate. */
+   the marker's own anchor puts the tip on the coordinate.
+
+   ── ONE UNIT, ONE RULE (ADR-0123) ──
+   `--pin-u` is the teardrop's full height, and EVERY dimension below is a fraction of
+   it — badge, glyph, number, tag, rings and borders — so the pin grows and shrinks as
+   one object instead of a badge that outgrows its own number. The fractions are the
+   shipped 34px geometry expressed as ratios, so at the floor this draws the pin that
+   shipped, to within a pixel.
+
+   `--pin-base` is written by the screen from `MAP_PIN` via `pinSizeCss()` — the same
+   constants the camera's clearance is derived from, the `--map-controls-h` arrangement
+   for the same reason (ADR-0122 §1). Its fallback is the floor, which is what the
+   search overlay's copy of `.map-screen` gets: it reuses the class and pins nothing. */
+
+/* REGISTERED, so the unit is a real `<length>` the browser can INTERPOLATE — which is
+   what makes one line below animate the whole pin (ADR-0123). Every dimension is a
+   `calc()` over this one property, so transitioning it eases the badge, the glyph, the
+   number, the tag and the rings together; transitioning them one by one would be a
+   dozen declarations that can fall out of step, and `box-shadow` interpolation for the
+   amber rings besides.
+   `inherits: true` because the pin's parts are its children and read the same unit.
+   Measured in Chromium: a `cqh`-derived value survives registration, and the stop change
+   samples as a real curve rather than a step. Where `@property` is unsupported the unit
+   is an ordinary custom property: pins still size correctly, they just snap. */
+@property --pin-u {
+  syntax: '<length>';
+  inherits: true;
+  initial-value: 34px;
+}
+
 .map-pin {
+  --pin-u: var(--pin-base, 34px);
+  /* The pane's box changes on SNAP, never per drag frame (ADR-0121 §5), so this fires
+     once per stop change — and it borrows the sheet's own duration and curve, so the
+     pins finish growing exactly as the sheet finishes sliding instead of jumping the
+     instant it starts. Reduced motion drops it with everything else (App.css's global
+     `!important`), which is the same "it still moves, only the easing goes" the sheet
+     and the camera already follow (ADR-0098 §4). */
+  transition: --pin-u var(--t-base) var(--ease-standard);
   position: relative;
-  width: 28px;
-  height: 34px;
+  width: calc(var(--pin-u) * 0.82);
+  height: var(--pin-u);
   cursor: pointer;
 }
 .map-pin .pin-b {
   position: relative;
-  width: 25px;
-  height: 25px;
+  width: calc(var(--pin-u) * 0.74);
+  height: calc(var(--pin-u) * 0.74);
   margin: 0 auto;
   /* Sharp corner bottom-right, so rotate(45deg) swings the tip straight DOWN onto
      the location — the map idiom. The list keeps the rounded `.map-badge`: two form
-     factors, one colour system (ADR-0109 §3). */
+     factors, one colour system (ADR-0109 §3). The 2px stays 2px at every size: it is
+     the *sharp* corner, and a corner that scales stops being one. */
   border-radius: 50% 50% 2px 50%;
   transform: rotate(45deg);
   display: grid;
   place-items: center;
   background: var(--cat-leisure);
-  border: 2px solid var(--card);
+  border: calc(var(--pin-u) * 0.06) solid var(--card);
   box-shadow: 0 2px 5px rgba(22, 35, 61, 0.34);
 }
 .map-pin .pin-g {
   transform: rotate(-45deg);
-  font-size: 13px;
+  font-size: calc(var(--pin-u) * 0.38);
   line-height: 1;
 }
 /* The same five hues, same names as `.map-badge.cat-*`. */
@@ -124,20 +173,20 @@
    from the row (which keeps it — a row has width for both). */
 .map-pin .pin-n {
   position: absolute;
-  top: -5px;
-  inset-inline-start: -6px;
-  min-width: 15px;
-  height: 15px;
-  padding: 0 3px;
+  top: calc(var(--pin-u) * -0.15);
+  inset-inline-start: calc(var(--pin-u) * -0.18);
+  min-width: calc(var(--pin-u) * 0.44);
+  height: calc(var(--pin-u) * 0.44);
+  padding: 0 calc(var(--pin-u) * 0.09);
   display: grid;
   place-items: center;
   background: var(--ink);
   color: var(--card);
   font-family: var(--font-mono);
-  font-size: 9px;
+  font-size: calc(var(--pin-u) * 0.26);
   font-weight: 700;
   border-radius: 999px;
-  box-shadow: 0 0 0 1.5px var(--card);
+  box-shadow: 0 0 0 calc(var(--pin-u) * 0.045) var(--card);
 }
 /* Behind you KEEPS its number — the partition changes prominence, never the
    position; #1 is still true after you have been there. (`.ambient` was listed here
@@ -152,16 +201,19 @@
    café you are standing next to is physically there, which is the whole "what's near
    me now" question. So it is present but plainly subordinate: a hollow outline in
    its category hue, no fill, no glyph, no number, smaller. No new colour is spent —
-   the ladder is prominence, not palette (ADR-0028). */
+   the ladder is prominence, not palette (ADR-0028).
+
+   Smaller BY RATIO (ADR-0123), which is the whole reason this is one unit: the shipped
+   25px box would have gone on getting relatively smaller as the canvas grew the others,
+   until the ladder's bottom rung read as dirt on the screen rather than as a place. */
 .map-pin.ghost {
-  width: 20px;
-  height: 25px;
+  --pin-u: calc(var(--pin-base, 34px) * var(--pin-ghost-scale, 0.72));
 }
 .map-pin.ghost .pin-b {
-  width: 16px;
-  height: 16px;
   background: transparent;
-  border-width: 2px;
+  /* A ghost IS its outline — there is no fill behind it — so it takes a heavier ratio
+     than the filled pin's border, which only has to separate a colour from the map. */
+  border-width: calc(var(--pin-u) * 0.08);
   border-style: solid;
   border-color: color-mix(in srgb, var(--cat-leisure) 78%, var(--ink));
   box-shadow: 0 1px 3px color-mix(in srgb, var(--ink) 18%, transparent);
@@ -192,11 +244,16 @@
 
    The 22% glow alpha is `.place.nextstop`'s verbatim, so row cue and pin cue really
    are one cue. The edge is SOLID rather than that rule's 34%, because a 34% amber
-   hairline holds up on the row's white card and disappears over a map base. */
+   hairline holds up on the row's white card and disappears over a map base.
+
+   The ring widths are fractions of the pin like everything else (ADR-0123): a 2.5px
+   outline that stayed 2.5px on a 46px pin would read as a hairline someone forgot to
+   scale, and the outline IS the cue. The drop shadow underneath is not part of the
+   silhouette, so it stays put. */
 .map-pin.nextstop .pin-b {
   box-shadow:
-    0 0 0 2.5px var(--amber),
-    0 0 0 5.5px rgba(233, 166, 60, 0.22),
+    0 0 0 calc(var(--pin-u) * 0.074) var(--amber),
+    0 0 0 calc(var(--pin-u) * 0.162) rgba(233, 166, 60, 0.22),
     0 2px 5px rgba(22, 35, 61, 0.34);
 }
 
@@ -217,27 +274,29 @@
    means still marked, just still. */
 .map-pin.nowstop .pin-b {
   box-shadow:
-    0 0 0 2.5px var(--amber),
-    0 0 0 7px rgba(233, 166, 60, 0.28),
+    0 0 0 calc(var(--pin-u) * 0.074) var(--amber),
+    0 0 0 calc(var(--pin-u) * 0.206) rgba(233, 166, 60, 0.28),
     0 2px 5px rgba(22, 35, 61, 0.34);
   animation: map-pin-now 2s infinite;
 }
+/* Custom properties resolve on the animated element, so the pulse scales with the pin
+   the same way its resting ring does. */
 @keyframes map-pin-now {
   0% {
     box-shadow:
-      0 0 0 2.5px var(--amber),
+      0 0 0 calc(var(--pin-u) * 0.074) var(--amber),
       0 0 0 0 rgba(233, 166, 60, 0.55),
       0 2px 5px rgba(22, 35, 61, 0.34);
   }
   70% {
     box-shadow:
-      0 0 0 2.5px var(--amber),
-      0 0 0 11px rgba(233, 166, 60, 0),
+      0 0 0 calc(var(--pin-u) * 0.074) var(--amber),
+      0 0 0 calc(var(--pin-u) * 0.324) rgba(233, 166, 60, 0),
       0 2px 5px rgba(22, 35, 61, 0.34);
   }
   100% {
     box-shadow:
-      0 0 0 2.5px var(--amber),
+      0 0 0 calc(var(--pin-u) * 0.074) var(--amber),
       0 0 0 0 rgba(233, 166, 60, 0),
       0 2px 5px rgba(22, 35, 61, 0.34);
   }
@@ -245,18 +304,22 @@
 /* The shipped `.map-tag.next` is not a filled amber pill — it is `--amber-deep` bold
    text on the row's own surface. The pin's tag keeps that exactly and only adds the
    card ground it needs to stay legible over the canvas, so amber is still ink here,
-   never a fill (ADR-0028 / ADR-0105 "amber is an accent, not a ground"). */
+   never a fill (ADR-0028 / ADR-0105 "amber is an accent, not a ground").
+
+   `--pin-tag-rise` is the same fraction the camera's clearance adds on top of the pin's
+   own height (ADR-0123): the tag is the topmost ink above the coordinate, so the number
+   that positions it and the number that reserves room for it are one number. */
 .map-pin .pin-tag {
   position: absolute;
-  top: -19px;
+  top: calc(var(--pin-u) * var(--pin-tag-rise, 0.56) * -1);
   inset-inline-start: 50%;
   transform: translateX(50%);
   background: var(--card);
   color: var(--amber-deep);
   border: 1px solid rgba(233, 166, 60, 0.34);
-  font-size: 9.5px;
+  font-size: calc(var(--pin-u) * 0.28);
   font-weight: 700;
-  padding: 2px 7px;
+  padding: calc(var(--pin-u) * 0.06) calc(var(--pin-u) * 0.21);
   border-radius: 999px;
   white-space: nowrap;
   box-shadow: 0 1px 3px rgba(22, 35, 61, 0.2);
@@ -267,26 +330,34 @@
    tapped. Distinct from amber on purpose: selecting a row is not a claim about what
    is next. The offset clears the amber ring in that case. */
 .map-pin.selected .pin-b {
-  outline: 2px solid var(--ink);
-  outline-offset: 2px;
+  outline: calc(var(--pin-u) * 0.06) solid var(--ink);
+  outline-offset: calc(var(--pin-u) * 0.06);
 }
 /* Both amber cues widen the pin's silhouette, so selection's outline steps out to
-   clear them rather than cutting through the ring. */
+   clear them rather than cutting through the ring — by the ring's own fraction, so it
+   keeps clearing it at every pin size (ADR-0123). */
 .map-pin.nextstop.selected .pin-b,
 .map-pin.nowstop.selected .pin-b {
-  outline-offset: 6px;
+  outline-offset: calc(var(--pin-u) * 0.18);
 }
 
 /* "You are here" — the OS-map convention blue, deliberately outside the
-   amber/teal/violet budget (design-language's Map entry, ADR-0109 §3). */
+   amber/teal/violet budget (design-language's Map entry, ADR-0109 §3).
+
+   It scales with the pins (ADR-0123) even though it is not one: it is a marker on the
+   same canvas, answering the same "how big is a point on a map this size" question, and
+   a dot that stayed 14px while the pins grew would read as the least important thing on
+   screen — which is the opposite of what it is when you are standing somewhere. It has
+   no `--pin-u` of its own, so it reads the base directly. */
 .map-me {
   display: block;
-  width: 14px;
-  height: 14px;
+  width: calc(var(--pin-base, 34px) * 0.41);
+  height: calc(var(--pin-base, 34px) * 0.41);
   border-radius: 999px;
   background: var(--me);
-  border: 2.5px solid var(--card);
-  box-shadow: 0 0 0 7px color-mix(in srgb, var(--me) 16%, transparent);
+  border: calc(var(--pin-base, 34px) * 0.074) solid var(--card);
+  box-shadow: 0 0 0 calc(var(--pin-base, 34px) * 0.21)
+    color-mix(in srgb, var(--me) 16%, transparent);
 }
 
 /* ── OUR CONTROLS, NOT GOOGLE'S (§12) ──────────────────────────────────────────

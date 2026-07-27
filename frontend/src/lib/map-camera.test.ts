@@ -5,9 +5,11 @@ import {
   cameraTargetFor,
   countPointsInBounds,
   fitPaddingFor,
+  mapFitPadding,
   pointInBounds,
 } from './map-camera';
-import { MAP_CONTROLS_H, MAP_FIT_PADDING } from '../constants';
+import { pinHeightFor } from './map-pins';
+import { MAP_CONTROLS_H, MAP_PIN } from '../constants';
 
 const TOKYO = { lat: 35.68, lng: 139.76 };
 const KYOTO = { lat: 35.01, lng: 135.77 };
@@ -173,23 +175,24 @@ describe('a wide view is no longer a trap (the root of session 134’s hazard 2)
 
 describe('fitPaddingFor — the other half of the zoom-out', () => {
   const PHONE = { width: 390, height: 320 };
+  const forPhone = mapFitPadding(PHONE.height);
 
   it('passes the padding through when the viewport can hold it', () => {
-    expect(fitPaddingFor(PHONE, MAP_FIT_PADDING)).toEqual(MAP_FIT_PADDING);
+    expect(fitPaddingFor(PHONE, forPhone)).toEqual(forPhone);
   });
 
   // `fitBounds` with padding eating most of the div resolves to a degenerate
   // viewport and zooms far OUT — losing a pin's tag beats losing the framing.
   it('drops the padding when it would claim half an axis', () => {
-    expect(fitPaddingFor({ width: 390, height: 120 }, MAP_FIT_PADDING)).toBeUndefined();
-    expect(fitPaddingFor({ width: 100, height: 320 }, MAP_FIT_PADDING)).toBeUndefined();
+    expect(fitPaddingFor({ width: 390, height: 120 }, mapFitPadding(120))).toBeUndefined();
+    expect(fitPaddingFor({ width: 100, height: 320 }, forPhone)).toBeUndefined();
   });
 
   // `null` is distinct from "no padding": an unsized div is measured BEFORE layout
   // settles, and there is no honest fit into nothing — the caller waits instead.
   it('refuses outright on an unsized div', () => {
-    expect(fitPaddingFor({ width: 0, height: 0 }, MAP_FIT_PADDING)).toBeNull();
-    expect(fitPaddingFor({ width: 390, height: 0 }, MAP_FIT_PADDING)).toBeNull();
+    expect(fitPaddingFor({ width: 0, height: 0 }, mapFitPadding(0))).toBeNull();
+    expect(fitPaddingFor({ width: 390, height: 0 }, mapFitPadding(0))).toBeNull();
   });
 });
 
@@ -199,23 +202,48 @@ describe('fitPaddingFor — the other half of the zoom-out', () => {
 // padding are derived from the same constant, and a test that reads both is what makes
 // "they cannot drift apart" true rather than aspirational.
 describe('the fit clears the floating controls row (ADR-0122 §1)', () => {
+  const AT_MAP = { width: 390, height: 517 };
+  const AT_HALF = { width: 390, height: 250 };
+
   it('insets the top by the row PLUS a pin’s own clearance, never just the pin', () => {
     // The teardrop's tip is the anchor, so its body extends above the coordinate; the row
     // is on top of that. A `top` that only covered the pin would put a fitted pin under
     // the chips, where it is drawn but not tappable.
-    expect(MAP_FIT_PADDING.top).toBeGreaterThan(MAP_CONTROLS_H);
-    expect(MAP_FIT_PADDING.top - MAP_CONTROLS_H).toBeGreaterThanOrEqual(MAP_FIT_PADDING.bottom);
+    const padding = mapFitPadding(AT_MAP.height);
+    expect(padding.top).toBeGreaterThan(MAP_CONTROLS_H);
+    expect(padding.top - MAP_CONTROLS_H).toBeGreaterThanOrEqual(padding.bottom);
+  });
+
+  // ADR-0123's coupling, asserted rather than promised: the clearance is derived from the
+  // size the pin will ACTUALLY be on that canvas, so a bigger canvas both grows the pin
+  // and reserves more room for it. A flat constant could be right for one stop only.
+  it('reserves more where the canvas grows the pin, and less where it does not', () => {
+    const atMap = mapFitPadding(AT_MAP.height).top;
+    const atHalf = mapFitPadding(AT_HALF.height).top;
+    expect(pinHeightFor(AT_MAP.height)).toBeGreaterThan(pinHeightFor(AT_HALF.height));
+    expect(atMap).toBeGreaterThan(atHalf);
+    // And it always clears the pin itself plus its tag, never merely the pin.
+    expect(atMap - MAP_CONTROLS_H).toBeGreaterThan(pinHeightFor(AT_MAP.height));
   });
 
   // ADR-0122 §1's second honest limit, asserted rather than promised: at `half` the pane
   // is ~250px on the baseline phone, and this inset claims more than half of that axis —
   // so `fitPaddingFor` drops it and a fitted pin CAN land under the row there. At the map
   // extreme the pane is ~517px and the inset is cheap, which is one more argument for the
-  // height axis.
+  // height axis. Deriving the clearance (ADR-0123) makes `half` cheaper, not solved.
   it('is affordable at the map extreme and dropped at half — the axis pays for it', () => {
-    const AT_MAP = { width: 390, height: 517 };
-    const AT_HALF = { width: 390, height: 250 };
-    expect(fitPaddingFor(AT_MAP, MAP_FIT_PADDING)).toEqual(MAP_FIT_PADDING);
-    expect(fitPaddingFor(AT_HALF, MAP_FIT_PADDING)).toBeUndefined();
+    const atMap = mapFitPadding(AT_MAP.height);
+    const atHalf = mapFitPadding(AT_HALF.height);
+    expect(fitPaddingFor(AT_MAP, atMap)).toEqual(atMap);
+    expect(fitPaddingFor(AT_HALF, atHalf)).toBeUndefined();
+  });
+
+  // The clearance is stated in terms of the tag, so the two cannot drift: the tag's rise
+  // is a fraction of the pin, and the band above the coordinate is the pin plus that.
+  it('reserves the pin plus the amber tag’s rise, and nothing invented', () => {
+    const height = pinHeightFor(AT_MAP.height);
+    const reserved = mapFitPadding(AT_MAP.height).top - MAP_CONTROLS_H;
+    expect(reserved).toBeGreaterThanOrEqual(height * (1 + MAP_PIN.TAG_RISE));
+    expect(reserved).toBeLessThan(height * (1 + MAP_PIN.TAG_RISE) + MAP_CONTROLS_H);
   });
 });
