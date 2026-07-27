@@ -8,13 +8,11 @@ import { DestinationsService } from './destinations.service';
 function make(geo?: Partial<GeocodedPlace>) {
   const google = {
     autocomplete: vi.fn(async () => []),
-    geocode: vi.fn(
-      async (): Promise<GeocodedPlace> => ({
-        googlePlaceId: 'g-x',
-        name: 'X',
-        ...geo,
-      }),
-    ),
+    geocode: vi.fn(async (): Promise<GeocodedPlace> => ({
+      googlePlaceId: 'g-x',
+      name: 'X',
+      ...geo,
+    })),
   } as unknown as GooglePlacesClient;
   return { google, service: new DestinationsService(google) };
 }

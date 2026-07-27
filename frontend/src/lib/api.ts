@@ -305,8 +305,7 @@ export const isInviteExpiredError = (err: unknown): boolean =>
 
 async function throwApiError(res: Response): Promise<never> {
   const body = (await res.json().catch(() => undefined)) as
-    | { error?: { code?: string; details?: unknown } }
-    | undefined;
+    { error?: { code?: string; details?: unknown } } | undefined;
   throw new ApiError(res.status, body?.error?.code, body?.error?.details);
 }
 

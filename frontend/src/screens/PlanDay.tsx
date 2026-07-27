@@ -164,8 +164,7 @@ const gapAt = (el: Element | null): { key: string; fill: GapDefaults } | null =>
 /** Which shelf group the pointer is over: the day's, or the pool's. */
 const shelfAt = (el: Element | null) =>
   ((el?.closest('[data-shelf-drop]') as HTMLElement | null)?.dataset.shelfDrop as
-    | ShelfDrop
-    | undefined) ?? null;
+    ShelfDrop | undefined) ?? null;
 /** The empty day's drop zone, which exists only while a drag is in flight. */
 const dayDropAt = (el: Element | null) => el?.closest('[data-day-drop]') != null;
 
