@@ -373,6 +373,7 @@
 }
 
 .map-badge {
+  position: relative;
   flex: 0 0 auto;
   width: 40px;
   height: 40px;
@@ -381,6 +382,32 @@
   place-items: center;
   font-size: 19px;
   line-height: 1;
+}
+/* THE ORDER, on the row (ADR-0121 §6). The number is the place's index in the day's
+   sequence, and it was already on the pin — a list that omits it makes the two halves
+   of the split read as two different lists, which is what the number exists to
+   prevent. So it is the SAME stamp `.pin-n` draws, in the same corner, hung off the
+   badge the row already has rather than a second element beside it. Out of flow, so
+   the glyph stays centred; the `-5px` corner sits inside `.place`'s own padding, so
+   nothing clips. Absent (no attribute) for anything with no position in the schedule:
+   a ghost, an idea, an ambient stay night. */
+.map-badge[data-order]::before {
+  content: attr(data-order);
+  position: absolute;
+  top: -5px;
+  inset-inline-start: -5px;
+  min-width: 15px;
+  height: 15px;
+  padding: 0 3px;
+  display: grid;
+  place-items: center;
+  background: var(--ink);
+  color: var(--card);
+  font-family: var(--font-mono);
+  font-size: 9px;
+  font-weight: 700;
+  border-radius: 999px;
+  box-shadow: 0 0 0 1.5px var(--card);
 }
 .map-badge.cat-food {
   background: var(--cat-food);

@@ -5,7 +5,7 @@
 //  1. **Map-local "all days" scope** (ADR-0110 §4). The app tracks exactly ONE
 //     active date (the `?day=` param); "all days" is view state the Map owns. The
 //     header `DayStrip` is the second consumer — it suppresses its filled selection
-//     while all-days is on.
+//     while all-days is on, and its tap leaves the scope through `useSelectDay`.
 //  2. **A pending focus** (ADR-0121 §8). `מפה` on an `EventCard` or a
 //     `BookingDetail` now routes to the Map tab focused on that place instead of
 //     deep-linking to Google. The place id is handed over here and consumed once by
@@ -19,9 +19,10 @@
 //
 // None of it is a back layer: the sheet height and the scope chip are view state
 // like each other, and back leaves the tab (ADR-0103's typed-layer model).
-import { createContext, useContext, useMemo, useState, type ReactNode } from 'react';
+import { createContext, useCallback, useContext, useMemo, useState, type ReactNode } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { tabTarget } from './nav-state';
+import { useTrip } from './trip-state';
 
 interface MapScope {
   allDays: boolean;
@@ -63,6 +64,29 @@ export function useMapScope(): MapScope {
   const ctx = useContext(MapScopeContext);
   if (!ctx) throw new Error('useMapScope must be used within a MapScopeProvider');
   return ctx;
+}
+
+/** "A day was chosen" — the header `DayStrip`'s tap, as an intent rather than a
+ *  side effect of the date changing (ADR-0110 §4).
+ *
+ *  All-days is the alternative to picking a day, so picking one leaves it. The Map
+ *  cannot infer that from `activeDate` alone: tapping the day you are already on
+ *  writes the same date, the value never changes, and the scope stayed on — the
+ *  strip's most obvious way out of `כל הימים` did nothing. So the choice is stated
+ *  here, at the one place the strip's tap lands, rather than guessed at downstream.
+ *
+ *  Composed in this file for the same reason `useShowPlaceOnMap` is: it is one
+ *  surface telling the Map tab something, and the Map's scope lives here. */
+export function useSelectDay(): (date: string) => void {
+  const { setAllDays } = useMapScope();
+  const { setActiveDate } = useTrip();
+  return useCallback(
+    (date: string) => {
+      setAllDays(false);
+      setActiveDate(date);
+    },
+    [setAllDays, setActiveDate],
+  );
 }
 
 /** "Show this place on the map" — the in-app destination that replaced the Google

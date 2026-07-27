@@ -11,7 +11,7 @@ import {
 import type { Trip } from '@waypoint/shared';
 import { TripProvider, useTrip } from './state/trip-state';
 import { ModeProvider, useMode } from './state/mode-state';
-import { MapScopeProvider, useMapScope } from './state/map-scope-state';
+import { MapScopeProvider, useMapScope, useSelectDay } from './state/map-scope-state';
 import { DragProvider, useDragState } from './state/drag-state';
 import { AuthProvider, useAuth } from './state/auth-state';
 import { ActiveTripIdProvider, useActiveTripId } from './state/active-trip-id';
@@ -380,7 +380,7 @@ function Shell() {
   // launch straight into the trip can't let a system-back slip out of the app.
   useTripBackGuard();
   const { mode } = useMode();
-  const { trip, setActiveDate, tripDeleted, usingCachedSnapshot } = useTrip();
+  const { trip, tripDeleted, usingCachedSnapshot } = useTrip();
   const { logout } = useAuth();
   const navigate = useNavigate();
   const closeAllOverlays = useCloseAllOverlays();
@@ -396,7 +396,10 @@ function Shell() {
   // choke point (state/trip-state): it writes the one source of truth (`?day=`)
   // and lands on the `days` tab in one navigation, so Home — reached without a
   // `?day=` — always derives to today with no reset effect (ADR-0035 §4).
-  const onSelectDay = setActiveDate;
+  // `useSelectDay` wraps it so the tap also states the INTENT the date alone can't
+  // carry — a day was chosen, so the Map leaves `כל הימים` even when that day is
+  // already the active one (ADR-0110 §4).
+  const onSelectDay = useSelectDay();
 
   // Reopen-after-idle (ADR-0060): when the app returns to the foreground after a
   // long idle stretch (≥ RESET_TO_HOME_AFTER_HIDDEN_MS) in Trip mode, reset to a
