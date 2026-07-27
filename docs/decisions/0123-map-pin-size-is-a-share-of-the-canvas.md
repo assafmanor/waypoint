@@ -1,6 +1,6 @@
 # 0123 — A map pin is a share of the canvas it sits on
 
-**Status:** Accepted — built 2026-07-27 (session 142). The **numbers** want a phone: they join `MAP_ZOOM` / `MAP_REFIT_FILL_SHARE` / `half`'s fraction in Phase 3's tuning cluster. See [The device pass owns three numbers](#the-device-pass-owns-three-numbers).
+**Status:** Accepted — built 2026-07-27 (session 142), **recalibrated on a real phone the same day (session 143)**: the shape held, `CANVAS_SHARE` went 0.08 → 0.11 and `MAX_H` 46 → 56, because the original baseline was a canvas size no device actually has. See [the amendment](#amended-2026-07-27-session-143--the-pass-happened-and-the-shape-survived-while-both-numbers-moved). `MIN_H` is unchanged and `half` is untouched. What is still open is a **dense all-days day**, not a number.
 **Date:** 2026-07-27
 **Amends** [0121](0121-embedded-map-phase-6-design.md) **§6** (the pin's geometry becomes a rule rather than a fixed size; the ghost tier's "smaller" becomes a ratio) and **§7** (the fit's pin clearance is derived from the size the pin will actually be, not a flat constant). Relates [0122](0122-map-split-controls-over-the-canvas.md) §1/§9, [0017](0017-mobile-first-device-targets.md), [0028](0028-plan-violet-color-budget-dark-ready.md), [0098](0098-motion-and-transitions.md).
 
@@ -105,6 +105,22 @@ So `MAP_FIT_PADDING` becomes **`mapFitPadding(canvasHeightPx)`** (`lib/map-camer
 Specifically: is **46px** a confident marker or an overbearing one over real cloud-styled tiles? Does **8%** hold on a 360×640 phone, where the map extreme is ~400px and the pin lands at the floor anyway? These belong with `MAP_ZOOM`, `MAP_REFIT_FILL_SHARE` and `half`'s fraction — Phase 3's cluster — because they are all the same question: **how close is close enough to read a place in context.**
 
 A 1:1 preview of every rung, with the stop toggle live, was produced for the human pass rather than described: it renders the branch's own CSS at true scale in both themes.
+
+### Amended 2026-07-27 (session 143) — the pass happened, and the shape survived while both numbers moved
+
+The owner looked at it on the phone and reported it **still too small**. The shape needed no reversal; the calibration did, and the reason is worth more than the numbers.
+
+**The baseline was a size no device has.** `CANVAS_SHARE = 0.08` and `MAX_H = 46` were set against ADR-0122's measured 390×844 budget, where the map-stop canvas is 545px. The owner's phone has a shorter usable viewport — the canvas measures **~501px** — so the pin came out at ~40px rather than 43.6, a **+18% change where the arithmetic advertised +28%**, and the cap (which needs a 575px canvas) was never in reach. So the tab landed mid-ramp on the one device anybody had looked at it on.
+
+**Measured, not eyeballed**, from the two reported screenshots of the same device: the lodging pin's badge went **67 → 79 device px** (1,543 → 2,148 pixels), a ratio of **1.18**. Running that back through the rule gives the ~40px pin and the ~501px canvas — which is how a screenshot became a calibration input rather than an impression.
+
+**The new numbers: `CANVAS_SHARE = 0.11`, `MAX_H = 56`**, floor unchanged at 34. ~55px on that phone, 1.6× the original teardrop.
+
+**The consequence, stated here rather than left to be rediscovered:** the growth band is `MIN_H/SHARE` → `MAX_H/SHARE` = **309px → 509px** of canvas, so a phone at the map extreme now sits **at the cap**, and `MAX_H` is what sets the size there — the share's remaining job on a phone is to hold `half` at the floor. Two things follow. **`MAX_H` is the knob** if the map extreme wants re-tuning again, not the share. And `half` is protected with room to spare: its canvas is 44% of the body (~243px on that device) against a floor that holds under 309px, so even 0.14 would leave the shared-screen stop byte-for-byte as it shipped — which is what makes raising the share safe for the stop the owner said already reads correctly.
+
+**What is still unsettled**, and named so a third pass starts ahead: past roughly 56px a teardrop's tip gets vaguer about which building it marks, and coincident pins overlap sooner. The case that would show it is a **dense day in all-days scope**, not another single-day screenshot — so that, not a number, is the next thing to look at before `MAX_H` moves again.
+
+**Two baselines are now kept in the tests** (`AT_MAP_STOP` = 545, `ON_DEVICE` = 501), because calibrating against the mockup budget alone is precisely what produced the undershoot.
 
 ## Consequences
 

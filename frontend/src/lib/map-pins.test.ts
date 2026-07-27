@@ -363,15 +363,40 @@ describe('isFramedByCamera — the camera answers the day, not its context (§6/
 // The rule is one clamp on one parameter (ADR-0123), and these are the two regimes plus
 // the coupling that keeps the CSS and the camera reading the same numbers.
 //
-// Baselines are the measured 390×844 phone from ADR-0122's budget: ~545px of canvas at
-// the `map` stop, ~260px at `half`.
+// Two baselines, and keeping BOTH is the point (session 143): `AT_MAP_STOP` is the
+// 390×844 figure from ADR-0122's budget, and `ON_DEVICE` is the owner's real phone,
+// measured off the reported screenshots. Calibrating against the first one alone is
+// exactly how the first pass undershot — it promised +28% and delivered +18%, because no
+// device actually has a 545px canvas at that stop.
 const AT_MAP_STOP = 545;
+const ON_DEVICE = 501;
 const AT_HALF = 260;
+/** The band where the share, rather than the floor or the cap, sets the size. */
+const GROWTH_FROM = MAP_PIN.MIN_H / MAP_PIN.CANVAS_SHARE;
+const GROWTH_TO = MAP_PIN.MAX_H / MAP_PIN.CANVAS_SHARE;
 
 describe('pinHeightFor — the canvas sizes the pin (ADR-0123)', () => {
   it('grows the pin on a canvas that has room for it', () => {
-    expect(pinHeightFor(AT_MAP_STOP)).toBeGreaterThan(MAP_PIN.MIN_H);
-    expect(pinHeightFor(AT_MAP_STOP)).toBeCloseTo(AT_MAP_STOP * MAP_PIN.CANVAS_SHARE, 5);
+    const inBand = (GROWTH_FROM + GROWTH_TO) / 2;
+    expect(pinHeightFor(inBand)).toBeGreaterThan(MAP_PIN.MIN_H);
+    expect(pinHeightFor(inBand)).toBeLessThan(MAP_PIN.MAX_H);
+    expect(pinHeightFor(inBand)).toBeCloseTo(inBand * MAP_PIN.CANVAS_SHARE, 5);
+  });
+
+  // The recalibration, pinned to the device it was made on: the owner's canvas has to
+  // land somewhere the pin is comfortably bigger than the floor. Asserted as a ratio
+  // rather than a literal, so re-tuning the constants cannot quietly undo the finding
+  // that made them move.
+  it('is well clear of the floor on the device it was calibrated on', () => {
+    expect(pinHeightFor(ON_DEVICE) / MAP_PIN.MIN_H).toBeGreaterThan(1.5);
+  });
+
+  // With the session-143 numbers the band ends at 509px, so a phone at the map extreme is
+  // at the cap and `MAX_H` is what sets the size there — the consequence `constants.ts`
+  // states, asserted so it is a decision rather than a surprise.
+  it('has a phone’s map extreme at or near the cap, share only protecting half', () => {
+    expect(pinHeightFor(AT_MAP_STOP)).toBe(MAP_PIN.MAX_H);
+    expect(GROWTH_FROM).toBeGreaterThan(AT_HALF);
   });
 
   // The other half of the report — "when the map is sharing the screen with the list
