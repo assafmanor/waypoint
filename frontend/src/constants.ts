@@ -303,14 +303,33 @@ export const MAP_ZOOM = { SINGLE_PIN: 15, MAX_FIT: 16, WORLD: 2 } as const;
  *   the same teardrop at 72% on every canvas rather than a fixed 25px that goes on
  *   getting relatively smaller as the rest grow (ADR-0121 §6's ladder, held).
  *
- * All five want Phase 3's device pass: "big enough to read, small enough to point at"
- * is the same legibility judgement as `MAP_ZOOM` and `MAP_REFIT_FILL_SHARE`, and a
- * desktop viewport is the wrong place to settle it.
+ * **Calibrated on a phone (2026-07-27, session 143), and that is why these numbers are
+ * what they are.** The first pass set `CANVAS_SHARE` to 0.08 and `MAX_H` to 46 against
+ * ADR-0122's measured 390×844 baseline. On the owner's actual device the usable viewport
+ * is shorter — the map-stop canvas measures **~501px**, not 545 — so the pins grew by
+ * 18% where the arithmetic promised 28%, sat mid-ramp, and never came near the cap
+ * (46px needs a 575px canvas). Measured from the reported screenshots: the lodging pin's
+ * badge went 67 → 79 device px, a ratio of 1.18. Owner's call: 0.11 and 56.
+ *
+ * **One consequence, stated rather than discovered later:** the growth band is now
+ * `MIN_H/SHARE` to `MAX_H/SHARE` = **309px to 509px** of canvas, so a phone at the map
+ * extreme is at or near the **cap**, and `MAX_H` — not the share — is what sets the size
+ * there. That is intended (the share's job on a phone is to keep `half` at the floor and
+ * get the map extreme to the cap) but it means **`MAX_H` is the number to move** if the
+ * map extreme ever wants re-tuning again, and the share is the number that protects
+ * `half`. `half` has real margin: a 44%-of-body canvas is ~243px on that phone, and the
+ * floor holds anywhere under 309px, so even 0.14 would leave the shared-screen stop
+ * exactly as it shipped.
+ *
+ * Still unsettled, and named because a second recalibration should not have to
+ * rediscover it: past roughly 56px a teardrop's tip gets vaguer about which building it
+ * marks, and coincident pins overlap sooner — so a **dense all-days day** is the case to
+ * look at before raising `MAX_H` further, not another single-day screenshot.
  */
 export const MAP_PIN = {
   MIN_H: 34,
-  MAX_H: 46,
-  CANVAS_SHARE: 0.08,
+  MAX_H: 56,
+  CANVAS_SHARE: 0.11,
   TAG_RISE: 0.56,
   GHOST_SCALE: 0.72,
 } as const;
