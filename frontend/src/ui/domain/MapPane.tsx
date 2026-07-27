@@ -77,6 +77,10 @@ export interface MapPaneProps {
    *  some centre, and the first fit replaces it. */
   defaultCentre?: LatLng;
   onSelectPin: (placeId: string) => void;
+  /** The canvas background was tapped: the selection clears, which is the map idiom and
+   *  the place card's own dismissal (ADR-0122 §7). Nothing registers with the back
+   *  stack — the card is not an overlay, for the same reasons the sheet is not. */
+  onCanvasTap: () => void;
   /** The viewport settled: the `באזור` readout recomputes here and never during a
    *  pan (§9 — a number churning under a moving finger is noise). */
   onViewChange: (bounds: MapBounds | null) => void;
@@ -93,6 +97,7 @@ function MapPaneInner({
   setSignal,
   defaultCentre,
   onSelectPin,
+  onCanvasTap,
   onViewChange,
   areaCount,
 }: MapPaneProps) {
@@ -118,6 +123,15 @@ function MapPaneInner({
           // one-finger pan is unambiguous; the sheet handle owns vertical drags.
           gestureHandling="greedy"
           onIdle={(event) => onViewChange(readMapBounds(event.map))}
+          // A tap on the BACKGROUND clears the selection. An `AdvancedMarker` is a DOM
+          // overlay, so a tap on a pin should not reach here at all — the guard is cheap
+          // insurance against the one ordering that would matter, selecting a pin and
+          // then immediately clearing it.
+          onClick={(event) => {
+            const target = event.domEvent?.target as HTMLElement | null;
+            if (target?.closest?.('.map-pin')) return;
+            onCanvasTap();
+          }}
         >
           {pins.map((pin) => (
             <PinMarker key={pin.placeId} pin={pin} onSelect={onSelectPin} />

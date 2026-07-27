@@ -24,7 +24,9 @@
 }
 /* The full-list height: the map is behind the sheet and still ONE live instance —
    hidden rather than destroyed, because destroying it is a billed load (§4). Its
-   box stays full-size so nothing relayouts to zero height. */
+   box stays full-size so nothing relayouts to zero height. (At that stop the sheet stops
+   below the controls row rather than covering it — ADR-0122 §1 — so what shows above the
+   sheet is the split's own backdrop, not a sliver of canvas.) */
 .map-screen[data-view='full'] .map-pane {
   bottom: 0;
   visibility: hidden;
@@ -296,7 +298,10 @@
    and it carries an `aria-label`. */
 .map-recenter {
   position: absolute;
-  top: 8px;
+  /* The pane's floating furniture yields to the controls row above it (ADR-0122 §1): the
+     row spans the pane's full width, so this sits BELOW it rather than beside it. Absent
+     the row (there is no split), the var is undefined and this is the 8px it always was. */
+  top: calc(var(--map-controls-h, 0px) + 8px);
   inset-inline-start: 8px;
   width: 38px;
   height: 38px;
@@ -323,7 +328,8 @@
    a facet count — and the wording carries that, `באזור` being about the area. */
 .map-areacount {
   position: absolute;
-  top: 8px;
+  /* Below the controls row, like the re-centre control opposite it (ADR-0122 §1). */
+  top: calc(var(--map-controls-h, 0px) + 8px);
   inset-inline-end: 8px;
   background: color-mix(in srgb, var(--card) 88%, transparent);
   border: 1px solid var(--line);

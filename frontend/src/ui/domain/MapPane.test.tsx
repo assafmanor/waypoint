@@ -23,6 +23,14 @@ vi.mock('@vis.gl/react-google-maps', () => ({
       data-mapid={String(props.mapId)}
       data-gestures={String(props.gestureHandling)}
       data-nodefaultui={String(props.disableDefaultUI)}
+      // The Maps API hands its click handler a wrapped event carrying the DOM one; the
+      // pane reads that to tell a tap on the canvas from a tap on a pin, so the stub
+      // has to pass it through in the same shape.
+      onClick={(event) =>
+        (props.onClick as ((e: { domEvent: unknown }) => void) | undefined)?.({
+          domEvent: event.nativeEvent,
+        })
+      }
     >
       {children}
     </div>
@@ -81,6 +89,7 @@ function paint(props: Partial<Parameters<typeof MapPane>[0]> = {}) {
       pins={props.pins ?? [pin({ placeId: 'a' })]}
       setSignal={props.setSignal ?? 'day'}
       onSelectPin={props.onSelectPin ?? vi.fn()}
+      onCanvasTap={props.onCanvasTap ?? vi.fn()}
       onViewChange={props.onViewChange ?? vi.fn()}
       areaCount={props.areaCount ?? 1}
       me={props.me}
@@ -254,6 +263,29 @@ describe('MapPane — our markup, not PinElement (ADR-0121 §6)', () => {
     expect(document.querySelector('.map-areacount')?.textContent).toBe(t.map.area.none);
   });
 
+  // Tapping the canvas background clears the selection — the map idiom, and the place
+  // card's own dismissal (ADR-0122 §7).
+  describe('the canvas background clears the selection (ADR-0122 §7)', () => {
+    it('a tap on the canvas reports it', () => {
+      const onCanvasTap = vi.fn();
+      paint({ onCanvasTap });
+      fireEvent.click(document.querySelector('[data-map]')!);
+      expect(onCanvasTap).toHaveBeenCalledTimes(1);
+    });
+
+    // An `AdvancedMarker` is a DOM overlay, so a pin tap should not reach the map's own
+    // click at all — but if it ever does, selecting a pin and instantly clearing it is
+    // the one ordering that would be silently broken.
+    it('a tap on a PIN is not a tap on the canvas', () => {
+      const onCanvasTap = vi.fn();
+      const onSelectPin = vi.fn();
+      paint({ onCanvasTap, onSelectPin });
+      fireEvent.click(pins()[0]);
+      expect(onSelectPin).toHaveBeenCalledWith('a');
+      expect(onCanvasTap).not.toHaveBeenCalled();
+    });
+  });
+
   it('re-centre is a named icon control, not a raw glyph', () => {
     paint();
     const button = screen.getByRole('button', { name: t.map.recentre });
@@ -273,6 +305,7 @@ describe('MapPane — our markup, not PinElement (ADR-0121 §6)', () => {
         pins={same}
         setSignal="day"
         onSelectPin={vi.fn()}
+        onCanvasTap={vi.fn()}
         onViewChange={vi.fn()}
         areaCount={1}
       />,
