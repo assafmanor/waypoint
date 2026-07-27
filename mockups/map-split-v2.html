@@ -48,9 +48,12 @@
      2. FEWER CONTROLS AT REST. Six chips and a search button over a 200px map
         is chrome, not a map. At rest the row carries three things: the day
         scope, ONE filter control that states which facets are on, and search.
-        Tapping the filter control expands the facet strip in place — the same
-        cover-the-row-in-place idiom ADR-0100 §3 already blessed on the Index —
-        where the categories are GLYPH + COUNT chips, because the glyph is
+        Tapping the filter control expands the facet strip in place — ADR-0100
+        §3's cover-the-row-in-place shape, which ADR-0101 **superseded for
+        search** because a keyboard plus a result list left no room for either.
+        Neither exists here: a facet strip needs no keyboard, and its results are
+        the pins and rows already on screen, which is exactly why it must stay in
+        place. The categories become GLYPH + COUNT chips, because the glyph is
         already the category's whole vocabulary (ADR-0038; the row badge and the
         pin carry that same glyph, so the word beside it says it twice).
 
@@ -8093,6 +8096,35 @@ body {
       .wp-snapsheet-grab[role='separator'] {
         touch-action: auto;
       }
+      /* ── MAP FURNITURE THAT COMES AND GOES: ONE MOTION IDIOM ──────────────
+         Three objects appear and disappear on this surface — the sort chip leaving
+         at the map extreme, the place card arriving on a pin tap, the pre-prompt
+         arriving on intent — so they share one rule rather than growing three
+         motion vocabularies on one canvas: a small rise and a fade, at
+         `--t-quick` (the token for toggles), `--ease-standard` in and
+         `--ease-exit` out.
+
+         App.css's global reduced-motion rule kills transitions and animations with
+         `!important`, so the resting states have to carry the meaning on their own.
+         They do: present or absent is the whole state, and nothing here is
+         information that only the motion conveys. */
+      .wp-snapsheet-headrow .map-nearchip {
+        transition:
+          opacity var(--t-quick) var(--ease-standard),
+          transform var(--t-quick) var(--ease-standard),
+          visibility 0s;
+      }
+      @keyframes map-furniture-in {
+        from {
+          opacity: 0;
+          transform: translateY(6px);
+        }
+      }
+      .map-placecard,
+      .map-split > .map-geoprompt {
+        animation: map-furniture-in var(--t-quick) var(--ease-standard);
+      }
+
       /* THE SORT CONTROL IS ONLY WHERE THE LIST IS. At the map extreme no rows are
          on screen, so `קרוב עכשיו` would re-order and chip-annotate nothing you can
          see — a control whose effect is invisible is the "button that looks like it
@@ -8103,7 +8135,17 @@ body {
          `לפי קרבה אליך` header are both there again at `half`.
          (CSS here; in the app the chip is simply not rendered at that stop.) */
       .map-screen[data-view='map'] .wp-snapsheet-headrow .map-nearchip {
-        display: none;
+        opacity: 0;
+        transform: translateY(4px) scale(0.96);
+        /* `visibility`, not `display`: it keeps the chip MOUNTED so both directions
+           can animate, while taking it out of the tab order and the accessibility
+           tree and making it unhittable — a control you cannot see must not be
+           tappable. The 0s-delayed switch is what holds it until the fade ends. */
+        visibility: hidden;
+        transition:
+          opacity var(--t-quick) var(--ease-exit),
+          transform var(--t-quick) var(--ease-exit),
+          visibility 0s linear var(--t-quick);
       }
       /* The toggle is anchored at the row's trailing end and does NOT move when the
          sort chip leaves at the map extreme: a control that changes position between
@@ -8267,8 +8309,10 @@ body {
         height: 100%;
         max-width: none;
       }
-      /* The app conditionally RENDERS these; this file keeps one node of each
-         and toggles it, so `[hidden]` has to beat their own `display`. */
+      /* The app conditionally RENDERS these; this file keeps one node of each and
+         toggles it, so `[hidden]` has to beat their own `display`. Useful side
+         effect, and the reason the entrance animation above needs no re-trigger
+         trick: leaving `display: none` re-runs an element's CSS animations. */
       .fb-banner[hidden],
       .map-geoprompt[hidden],
       .map-filter-row[hidden],
@@ -9139,7 +9183,9 @@ body {
         <ul>
           <li>
             <b>סקופ · סינון · חיפוש.</b> שאר הפאסטות נפתחות בהקשה אחת, מכסות את השורה במקומה, ונסגרות
-            חזרה. זה בדיוק המנגנון שהאינדקס אישר ב־ADR-0100 §3 לחיפוש, בכיוון ההפוך.
+            חזרה. זו הצורה של ADR-0100 §3, שנפסלה ב־ADR-0101 <i>לחיפוש</i> כי למקלדת ולרשימת תוצאות לא
+            היה שם מקום. לרצועת פאסטות אין מקלדת, והתוצאות שלה הן הפינים והשורות שכבר על המסך, ולכן
+            דווקא כאן היא צריכה להישאר במקום.
           </li>
           <li>
             <b>הקטגוריות הן גליף וספירה, בלי מילה.</b> הגליף הוא כל אוצר המילים של הקטגוריה
@@ -9185,6 +9231,14 @@ body {
           <li>
             <b>שני מצבים, שלוש עצירות, ציר אחד</b> — והמחוון סוף סוף מראה את זה: המילוי הופך לבוהן
             שמקומה הוא העצירה, ובחצי היא יושבת על הגבול.
+          </li>
+          <li>
+            <b>הופעה והיעלמות עם אנימציה אחת.</b> שלושה דברים באים והולכים כאן — צ׳יפ המיון שיוצא
+            בעצירת המפה, כרטיס המקום שנכנס בהקשה על פין, וכרטיס בקשת המיקום — ולכולם רולה אחת: עלייה
+            קטנה ודהייה ב־<code>--t-quick</code>. הצ׳יפ נשאר <b>ממוען</b> ומוסתר ב־
+            <code>visibility</code> ולא ב־<code>display</code>, כדי ששני הכיוונים יונפשו והוא בכל זאת
+            ייצא מסדר הטאבים ומעץ הנגישות. תחת <code>prefers-reduced-motion</code> הכל נכבה, ולכן מצבי
+            המנוחה נושאים את כל המשמעות בעצמם.
           </li>
           <li>
             <b>אין יותר הצצה של הרשימה.</b> העצירה התחתונה היא שורת הראש של המגירה בלבד, והמקום
