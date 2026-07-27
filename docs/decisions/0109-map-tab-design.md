@@ -243,6 +243,8 @@ The time renders in the **event's own** display zone (ADR-0107), like every othe
 
 ## Amendment (2026-07-25, session 110) — two blocks: ahead of you, then behind you newest-first
 
+> **Further amended 2026-07-27 ([ADR-0124](0124-map-filters-scope-facets-and-what-is-left.md) §4): in all-days scope a place is read by the day it is _live_ on, not by its earliest.** The two blocks below are right and unchanged; what was wrong is which of a place's days decided its block. `placeDay` returned `days[0]`, so a single past day classified a place however alive the trip still was with it — the hotel you sleep in **tonight** sat under `מה שמאחורינו` with a desaturated pin from its second night on, and a café visited Tuesday and booked again Thursday read as done. It now resolves the earliest day that is **not** behind you, and its **latest** once they all are (this block reads newest-first, so the day that sinks a place is its last one, not its first) — which makes `behind` mean **every** one of its days is. Day-scoped is unchanged, and **without a clock it is still `days[0]`**: `buildPinOrderIndex` passes none, so ADR-0121 §6's "a tick cannot renumber a pin" is intact.
+
 Session 107 sank what's behind you **to the bottom of its day**. Reported as still wrong, and it was, in two ways:
 
 1. **A bug.** The comparison ordered by **date before** the ahead/behind rank, so the sink only ever operated _within_ one day. In all-days scope the list still opened on the trip's earliest day — last Tuesday above the stop you're heading to this evening. Day-scoped it looked right, which is why it survived three sessions.
