@@ -362,6 +362,14 @@
   border-color: rgba(233, 166, 60, 0.34);
   box-shadow: 0 0 0 3px rgba(233, 166, 60, 0.22);
 }
+/* The row half of the `עכשיו` cue, the same ring the next-stop row wears — where
+   you ARE is at least as much a time anchor as where you're going, and the two are
+   never on the same row (`eventPhase` is `now` or `upcoming`). The tag beside the
+   name is what tells them apart in words; the pulsing dot does it at a glance. */
+.place.nowstop {
+  border-color: rgba(233, 166, 60, 0.34);
+  box-shadow: 0 0 0 3px rgba(233, 166, 60, 0.22);
+}
 /* A skipped place is handled and not happening (ADR-0117 §4): present, but not a live
    commitment.
 
@@ -500,6 +508,38 @@
 .map-tag.next {
   color: var(--amber-deep);
   font-weight: 700;
+}
+/* WHERE YOU ARE, RIGHT NOW. Amber like `next`, because both are time (ADR-0028),
+   and told apart by the same thing that tells the pins apart: motion. The dot is
+   Home's board blip (`.wp-board-live .blip`) at the row's scale, so the board, the
+   canvas and the list all beat together — one idiom, three surfaces.
+
+   The dot is a pseudo-element (no second span) and is a SOLID amber dot at rest,
+   with the ring layered on by the animation. `App.css`'s global reduced-motion rule
+   kills animations with `!important`, so the resting state has to carry the cue on
+   its own or the tag silently loses half its meaning. */
+.map-tag.now {
+  color: var(--amber-deep);
+  font-weight: 700;
+}
+.map-tag.now::before {
+  content: '';
+  width: 6px;
+  height: 6px;
+  border-radius: 50%;
+  background: var(--amber);
+  animation: map-row-now 2s infinite;
+}
+@keyframes map-row-now {
+  0% {
+    box-shadow: 0 0 0 0 rgba(233, 166, 60, 0.55);
+  }
+  70% {
+    box-shadow: 0 0 0 6px rgba(233, 166, 60, 0);
+  }
+  100% {
+    box-shadow: 0 0 0 0 rgba(233, 166, 60, 0);
+  }
 }
 /* the outcome tags (ADR-0117 §1): statuses, so the status tokens — --ok for a
    visit, --miss for a skip. Amber stays on time, teal on location. */
