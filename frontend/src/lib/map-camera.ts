@@ -13,8 +13,14 @@
 // Longitudes are compared plainly, so a set straddling the antimeridian fits the
 // long way round. Deliberate: it takes a trip spanning ±180° to notice, and the
 // guard would cost every other case a special case (ADR-0121 §14's spirit).
-import { MAP_CONTROLS_H, MAP_FIT_INSET, MAP_FLOAT_GAP, MAP_REFIT_FILL_SHARE } from '../constants';
-import { pinClearanceFor } from './map-pins';
+import {
+  MAP_CONTROLS_H,
+  MAP_FIT_INSET,
+  MAP_FLOAT_GAP,
+  MAP_PIN,
+  MAP_REFIT_FILL_SHARE,
+} from '../constants';
+import { pinClearanceFor, pinHeightFor } from './map-pins';
 
 export interface LatLng {
   lat: number;
@@ -158,11 +164,16 @@ export function mapFitPadding(canvasHeightPx: number): {
   bottom: number;
   left: number;
 } {
+  // Every side the pin actually reaches into is derived from the pin (session 144). Only
+  // `top` was, so raising the size pushed pins against the left and right edges.
+  // Measured from the ANCHOR, which is the tip: up is the body plus the tag, sideways is
+  // half the box plus the number badge's overhang, and down is nothing at all.
+  const reach = Math.ceil(pinHeightFor(canvasHeightPx) * MAP_PIN.SIDE_REACH);
   return {
     top: MAP_CONTROLS_H + MAP_FLOAT_GAP + pinClearanceFor(canvasHeightPx),
-    right: MAP_FIT_INSET,
+    right: MAP_FIT_INSET + reach,
     bottom: MAP_FIT_INSET,
-    left: MAP_FIT_INSET,
+    left: MAP_FIT_INSET + reach,
   };
 }
 

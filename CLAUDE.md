@@ -10,6 +10,8 @@ Guidance for Claude (and any coding agent) working in this repo. Read this first
 
 Code and documentation live together. **Any consequential decision gets an ADR** (`docs/decisions/`); **any working session gets a dated note** (`docs/planning/`); docs describe the current state and are kept in sync with the code. If you change a documented behavior or decision, update the doc/ADR in the same change.
 
+**Write only what a future reader would otherwise get wrong (owner's call, 2026-07-27).** The rule above is for **decisions**, not for **adjustments**. Re-tuning a number, extending a rule that already exists, or doing the obvious thing to code that already explains itself needs no ADR, no session note and no backlog line — that ceremony delays delivery and buries the entries that do matter. Earn a doc or a comment by naming something a reader can't recover from the code: a rejected alternative, a non-obvious _why_, a constraint that will bite later, a number nobody should "clean up". When an adjustment touches something already documented, **amend that doc in place** instead of adding another one. Same test for code comments — and prefer one sharp sentence to a paragraph.
+
 **Bracket every task with a backlog check.** Before starting, scan `docs/backlog.md` for a matching item — it may already scope the work, or mark it deferred/blocked. If none matches, add one, so the work is tracked before it's built. When the task ships, prune the line(s) it completes in the same change; when work is decided but deferred, add or update a line. The backlog stays current alongside the ADRs and planning notes (ADR-0046).
 
 ## Where things are
