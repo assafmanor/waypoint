@@ -525,9 +525,14 @@ export function BookingSheet({
           )}
 
           {/* Single-place types carry a location; transport's places are its
-              route endpoints above (ADR-0048). */}
+              route endpoints above (ADR-0048). Transport needs no note of its own:
+              `routeTitle` → `routeRequired` already refuses to save without both
+              endpoints, so it is the one type that cannot be placeless. */}
           {!isTransport && (
-            <Field label={t.index.sheet.locationLabel}>
+            <Field
+              label={t.index.sheet.locationLabel}
+              hint={placeId ? undefined : t.placePicker.noLocationHint}
+            >
               <PlacePicker value={placeId} onChange={setPlaceId} />
             </Field>
           )}

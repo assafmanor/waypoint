@@ -3,11 +3,67 @@
 **Status:** Accepted — **built 2026-07-26 (session 133)**, with three production fixes in session 134; see the [Build log](#build-log-2026-07-26-session-133) for where the build refined this design, the one place it read against the letter, and the three gaps the deploy found — §2's build vars never reaching the build, §7's containment guard swallowing the opening framing, and §6's prominence ladder never saying that the camera ignores ghosts
 **Date:** 2026-07-26
 **Implements** [0106](0106-maps-and-places-epic-scope-and-phasing.md) **Phase 6** and the design [ADR-0109](0109-map-tab-design.md) deferred to this session ("the _fully-rendered_ Phase 6 map — to its own build session … re-confirming current Maps/Places API + pricing first").
+**Amended:** 2026-07-28 (session 148) — §8 gains **where** `מפה` appears (the row's category badge, on every event and booking in both modes) and **what a placeless row says**; see the amendment above.
 **Refines:** [0109](0109-map-tab-design.md) (§3's pin grammar gets its map form; §10's shell becomes concrete; §6's amber ring lands on a pin; §1's row tap changes destination), [0108](0108-maps-and-places-backend-architecture-key-model-and-cost.md) (§4's cost envelope re-costed; its Routes tier table corrected), [0106](0106-maps-and-places-epic-scope-and-phasing.md) §4/§B/§D/§E, [0117](0117-map-place-outcome-states.md) (its deferred outcome filter is scoped here), [0119](0119-map-maybes-facet-is-the-shelf.md) (the ghost tier is its deliberate inverse), [0120](0120-filter-reveal-is-shared-infrastructure.md) (the map's answer to "every list change moves"), [0078](0078-feedback-state-family.md) (the layout layer gains a full-bleed body modifier), [0090](0090-back-is-computed-from-nav-state.md)/[0103](0103-back-navigation-typed-layer-model.md) (why the sheet is _not_ a back layer), [0028](0028-plan-violet-color-budget-dark-ready.md) (the colour budget on a rendered canvas), [0096](0096-per-domain-claude-md-guides.md) (reuse before adding)
 
 Mockup: [`mockups/map-embedded-v1.html`](../../mockups/map-embedded-v1.html) — six states, rendering through the app's **real** stylesheets (inlined by `mockups/tools/inline-app-css.mjs` from an `APP-CSS:` manifest, so it is portable and cannot drift; the file is in `.prettierignore` because formatting the generated block fights the generator). Its entry in [`design/mockups.md`](../design/mockups.md) carries the detail.
 
 > Written as one decision rather than a stack of same-day amendments. The **Revision log** at the end records what changed during the session and why, so a rejected idea is not re-proposed — but §1–§14 are the design, readable start to finish.
+
+## Amendment (2026-07-28, session 148) — the badge is the way to the pin, and a placeless row says so
+
+Phase 5 of the map epic ("every place-bearing surface reaches the map") plus its sibling item ("a booking with NO place"), built together. Mockup: [`mockups/map-reach-v1.html`](../../mockups/map-reach-v1.html). This amends **§8**, which had settled what `מפה` _does_ (an in-app destination, never a Google hand-off) but not **where it appears** — and had nothing to say about a row with no place at all.
+
+### 1. The rule: every event and every booking, in both modes
+
+`useShowPlaceOnMap()` was built and correct with **two** call sites (`EventCard`, `BookingDetail`). The session opened by auditing the rest and reached a **wrong answer worth recording**, because it is the tempting one: it argued that a row whose own tap reaches a surface already carrying `מפה` (the Index's booking rows and `TransitionRow` both open `BookingDetail`) needs no second way in, citing §8's own retirement of "View on Google Maps" and the four ADRs that exist to undo parallel copies. On that reading three of the four surfaces the backlog named were not gaps.
+
+**The owner overruled it: every event and booking gets an _easy_ way to its pin, in both modes.** Two taps through a sheet that then closes and switches tabs is a path, not an affordance. And the audit had missed the fact that made the owner's report exact: on `EventCard` the labelled action row lives inside `.wp-event-actions`, which is `max-height: 0` until the card is expanded — so **an unexpanded day event offered no way to the map at all**, and the settle variant (a passed, unmarked soft event) returns _before_ that row exists, so it had **none in any state**. The affordance was in the code and absent from the screen.
+
+_Not_ in scope, and the reason matters: a shelf **idea** is neither an event nor a booking, and it is already a first-class map population with its own pin and row (§6) which the `על המדף` tag names — so the shelf is no dead end, and `MaybeCard`'s only corner is spent on `✕`.
+
+### 2. The placement is the BADGE, and that is a measured decision
+
+A separate control in each row's trailing slot was built first, then measured against the real stylesheets in the mockup. It fails:
+
+|                                                       | 390px                                | 360px           |
+| ----------------------------------------------------- | ------------------------------------ | --------------- |
+| `Ichiran Ramen` on the day card                       | 1 line → **2**                       | —               |
+| a long Hebrew builder title (`.bld-ttl`, no ellipsis) | 1 → 2 lines                          | 2 → **5 lines** |
+| `Shinjuku Granbell` on a transition row               | silently truncated **184px → 126px** | —               |
+
+A dense phone row has no horizontal width to give (ADR-0017), and `.bld-ttl` has no ellipsis, so it wraps rather than truncating. **So the way in is the row's category badge** (`ui/domain/PlaceBadge.tsx`), which costs nothing because it is already there, at the same leading position, on every host.
+
+It is also the **right** object rather than merely the free one: §6 and ADR-0109 §3 make the map pin and the list badge **one thing in two form factors**, sharing the `--cat-*` tokens by construction. Tapping the badge to see the badge's other form is this ADR's own idea, followed.
+
+- **It wears a teal ring and a corner PIN, not a bare dot.** A tappable thing has to look tappable, and a dot says only "something is here" while the pin names what the tap does — in the silhouette of what you land on (ADR-0087's marker; `Icon`'s new `pin`). Teal because it is a location affordance and teal is location only (ADR-0028); the badge's own category tint is untouched underneath.
+- **A real SVG, never 🗺️.** Emoji are content, icons are UI (design-language.md), and a row's one emoji slot is already the category glyph (ADR-0038) — a second emoji there would muddy the one thing the badge is for.
+- **With no place it is exactly the inert badge it always was** — no ring, no marker, no `role`, nothing for a screen reader to find. "Absent, not broken", on the same two conditions as before: no mappable place, or no Map tab to route to.
+- **Hosts:** `EventCard` (both variants), `BuilderRow` (PlanDay), `TransitionRow` (**both** edges — where you check _out_ of is a place on the map as much as where you check in), and the Index's booking rows via the shared `ListRow`, which gains one `onShowOnMap` prop so any future managed list is a one-line addition.
+
+### 3. `מפה` and `ניווט` are not one atomic pair
+
+The open question §8 left was whether they always sit together. **They do not.** `ניווט` stays a labelled text action in `EventCard`'s action row and on `TransitionRow`'s start edge, because directions are a **live, on-the-ground** verb — which is why the day view already gates its own on `!readOnly` and `TransitionRow` takes none at all in Plan mode. `מפה` asks "where is this in the trip", which is mode-neutral and belongs in both. So the builder's row carries the way to the map and no `ניווט`, and that is the design rather than an omission.
+
+### 4. NOT on Home's board (owner, 2026-07-28)
+
+It was wired to the hero's now/next slots first, on the rule in §1 taken literally, and **read too loud**: the board is the app's one dark, glowing surface, rationed to one per screen, and a teal ring plus a marker on its icon competes with the thing the board exists to say. It is backed out. The hero's way in is deferred to **its own redesign** — the backlog's "Hero 2.0", where tapping the board expands it and actions become possible in place, which is the shape this affordance actually wants there. Home already answers "where is the next stop" with the navigate-to-next quick tile (ADR-0106 §6), and that tile stays one tile, one job: at four columns it is ~75px wide, under the 44×44 floor for any second control.
+
+### 5. A placeless row says so, and the save is never gated
+
+Every non-transport booking type saved happily with **no** location (`BookingSheet` validates title + dates only), and then `BookingDetail`'s `LocationFact` was gated behind "is there anything to show" and **simply did not render** — so no surface anywhere said the booking was placeless. It cost a false bug report: a two-night hotel "missing from the map" was a hotel with no place. Transport was already effectively gated (`routeTitle` → `routeRequired` needs both endpoints), so this is single-place types only.
+
+- **The `מיקום` fact now ALWAYS renders for a single-place booking**, including when there is nothing to show: the value reads `לא הוגדר מיקום` in the muted voice a missing value earns. Words, not a dash — a dash reads as "unknown", and this is a thing you can fix from right here.
+- **`＋ הוספת מקום` beside it**, on both no-place states: no place at all, and a coordless Place-lite the picker can enrich in place. It opens `PlacePickerSheet` — the shared picker, reused rather than reinvented (ADR-0110 §1's enrich flow, which the Map row's coordless affordance already drove).
+- **A quiet inline note under an empty location field in BOTH authoring forms**, naming what is lost: the map pin and row, `ניווט`, distance/near-me, the cached rating, and the event falling back to the segment/trip zone instead of the place's own (ADR-0107). One shared key, because an event with no place loses exactly the same five things — the two forms must not disagree about whether that is worth saying. `Field` gains a `hint` slot for it: the error slot's quiet peer, which never blocks and never announces itself as an alert.
+- **The save is NOT gated, and there is no confirm.** A `ConfirmDialog` on absence, on a non-destructive action, on a legitimate mid-planning path would be clicked through — ADR-0109 §6's anti-nag reasoning, applied one surface over.
+- **The coords check is not re-litigated.** Both resolvers still end in `hasCoords(place) ? place : undefined`, so a coordless place still yields no `מפה`: there is genuinely no camera to move. What was wrong was the **silence** around it, not the check.
+
+### 6. Reuse, and one thing deferred on purpose
+
+- `showOnMapHandler` was a private helper in `DayView`; it is now `eventShowOnMap`/`bookingShowOnMap` in `lib/places.ts`, beside the resolvers they already call. A call site is one expression and **cannot forget either** reason to have no button.
+- The Map row's one-off `.map-addbtn` became the shared `AddLocationButton` the moment a second surface needed it, and it borrows the in-form picker's own empty label so one action reads one way everywhere. It had to: its label was `מיקום`, which is also what the location fact calls itself, so a placeless row read `מיקום · לא הוגדר מיקום · ＋ מיקום`.
+- **`＋ הוספת מקום` should eventually open the Map tab's own search overlay and return here (owner, 2026-07-28).** Adding a place is a spatial act and deserves the map, not a list sheet. That overlay is **Phase 10** and unbuilt, so shipping the shared picker now is the honest interim — it works, offline included, and it is the same flow the Map row already uses. Recorded on the backlog under Phase 10 rather than invented twice.
 
 ## Context
 

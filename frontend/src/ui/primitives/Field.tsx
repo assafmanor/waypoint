@@ -16,6 +16,7 @@ import './field.css';
 export function Field({
   label,
   error,
+  hint,
   htmlFor,
   children,
 }: {
@@ -23,6 +24,13 @@ export function Field({
   label?: ReactNode;
   /** When present, the message is shown in the error slot and announced. */
   error?: string | null;
+  /** A quiet note under the control — what this value is for, or what leaving it
+   *  empty costs. The error slot's peer, and deliberately not a variant of it: a
+   *  hint never blocks a save and never announces itself as an alert. It exists so
+   *  a form that has something to say about an empty field says it inline, instead
+   *  of a confirm dialog on a legitimate mid-planning path (ADR-0109 §6's anti-nag
+   *  rule). Both slots can show at once; the error reads last. */
+  hint?: ReactNode;
   /** Ties the label to a control by id (explicit association). */
   htmlFor?: string;
   children: ReactNode;
@@ -51,6 +59,7 @@ export function Field({
           <span className="field-label">{label}</span>
         ))}
       {body}
+      {hint != null && <p className="field-hint">{hint}</p>}
       {showError && (
         <p className="field-error" id={errorId} role="alert">
           {error}

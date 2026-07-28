@@ -93,7 +93,7 @@ import {
   type MapSheetView,
 } from '../constants';
 import { ChoiceGrid, type Choice } from '../ui/primitives/ChoiceGrid';
-import { PlacePickerSheet } from '../ui/primitives/PlacePicker';
+import { AddLocationButton, PlacePickerSheet } from '../ui/primitives/PlacePicker';
 import { RevealList } from '../ui/primitives/RevealList';
 import { SnapSheet } from '../ui/primitives/SnapSheet';
 import { MapPane, type MapPin } from '../ui/domain/MapPane';
@@ -1504,16 +1504,12 @@ function PlaceRow({
             {ICONS.navigate} {t.actions.navigate}
           </a>
         ) : (
-          <button
-            type="button"
-            className="map-addbtn"
+          <AddLocationButton
             onClick={(e) => {
               e.stopPropagation();
               onEnrich();
             }}
-          >
-            <span aria-hidden="true">＋</span> {t.map.addLocation}
-          </button>
+          />
         )}
       </span>
       {/* Full-width and ≥40px, so it is a real touch target (ADR-0017) — which is

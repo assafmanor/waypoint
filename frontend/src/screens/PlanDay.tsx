@@ -33,17 +33,20 @@ import { useTrip, byStart } from '../state/trip-state';
 import { useDragState } from '../state/drag-state';
 import { useSpringLoadedDay } from '../lib/useSpringLoadedDay';
 import { useVerbs } from '../state/verbs';
+import { useShowPlaceOnMap } from '../state/map-scope-state';
 import { useClock } from '../lib/useClock';
 import {
   eventDurationLabel,
   eventEdgeZone,
   eventPlaceName,
   eventRoute,
+  eventShowOnMap,
   eventZones,
   dayZoneContext,
   liveToday,
   liveZone,
   type EventZones,
+  type ShowPlaceOnMap,
   type ZoneContext,
 } from '../lib/places';
 import { tripPhase } from '../lib/mode';
@@ -101,6 +104,7 @@ import { ZoneShiftPill } from '../ui/ZoneShiftPill';
 import { Sheet } from '../ui/Sheet';
 import { TitleLabel } from '../ui/TitleLabel';
 import { MaybeCard } from '../ui/domain/MaybeCard';
+import { PlaceBadge } from '../ui/domain/PlaceBadge';
 
 const daysBetween = (from: string, to: string) =>
   Math.round((Date.parse(to) - Date.parse(from)) / MS_PER_DAY);
@@ -183,6 +187,10 @@ export function PlanDay() {
     useTrip();
   const verbs = useVerbs();
   const now = useClock();
+  // The builder's way to the map (ADR-0121 §8), on every row whose event resolves a
+  // coord-bearing place. It is the only surface here that needs it: the row's own tap
+  // opens the edit form, which carries no location view of its own.
+  const showPlaceOnMap = useShowPlaceOnMap();
   const tz = trip.timezone;
   // A finished trip is a read-only archive (ADR-0040): the builder becomes a
   // frozen, browsable history — no create/edit/delete/move, no shelf.
@@ -674,6 +682,7 @@ export function PlanDay() {
     nowZone,
     bookings,
     places,
+    showPlaceOnMap,
     verbs,
     dayEvents,
     softEvents,
@@ -1112,6 +1121,9 @@ interface BuilderCtx {
   nowZone: string;
   bookings: Booking[];
   places: Place[];
+  /** `useShowPlaceOnMap()` — `null` outside the trip shell, which drops the row's
+   *  `מפה` action rather than breaking it (ADR-0121 §8). */
+  showPlaceOnMap: ShowPlaceOnMap;
   verbs: ReturnType<typeof useVerbs>;
   dayEvents: TripEvent[];
   softEvents: TripEvent[];
@@ -1355,6 +1367,7 @@ function BuilderNode({
         booking={booking}
         onEdit={() => ctx.onEdit(e)}
         onDelete={() => ctx.verbs.remove(e)}
+        onShowOnMap={eventShowOnMap(e, ctx.bookings, ctx.places, ctx.showPlaceOnMap)}
         onPark={soft ? () => ctx.verbs.park(e) : undefined}
         dragProps={soft && !ctx.readOnly ? ctx.rowDragProps(e.id) : undefined}
         dragging={ctx.drag?.id === e.id}
@@ -1398,6 +1411,7 @@ function BuilderRow({
   placeName,
   onEdit,
   onDelete,
+  onShowOnMap,
   onPark,
   dragProps,
   dragging,
@@ -1426,6 +1440,15 @@ function BuilderRow({
   placeName?: string;
   onEdit: () => void;
   onDelete: () => void;
+  /** Show the event's place on our map (ADR-0121 §8). Absent when there is nothing
+   *  to focus — no place, a coordless Place-lite, or no Map tab to route to.
+   *
+   *  The builder's row has no `נווט` peer, and that is the decision, not an
+   *  omission: directions are a Trip-mode, on-the-ground action (which is why the
+   *  Trip-mode day view gates its own on `!readOnly` and `TransitionRow` takes none
+   *  in Plan mode), while `מפה` answers the planning question — where is this in
+   *  the trip. The two are not one atomic pair. */
+  onShowOnMap?: () => void;
   // Present only for soft rows — move the event to the shelf as an idea.
   onPark?: () => void;
   /** Press-and-hold to drag, from anywhere on the row (session-119). Present only
@@ -1533,9 +1556,12 @@ function BuilderRow({
           {ICONS.lock}
         </span>
       )}
-      <span className="bld-bd" aria-hidden="true">
+      {/* The badge is the way to the map, and it survives `readOnly` — a finished
+          trip is a browsable archive (ADR-0040) and looking at a place changes
+          nothing. */}
+      <PlaceBadge className="bld-bd" onShowOnMap={onShowOnMap}>
         {event.icon}
-      </span>
+      </PlaceBadge>
       {readOnly ? (
         <div className="bld-main">{mainContent}</div>
       ) : (

@@ -12,12 +12,14 @@ import {
 import {
   bookingDirectionsUrl,
   bookingMapPlace,
+  bookingShowOnMap,
   eventDirectionsUrl,
   eventDisplayZones,
   eventDurationLabel,
   eventEdgeZone,
   eventMapPlace,
   eventRoute,
+  eventShowOnMap,
   eventZones,
   bookingEndZones,
   currentZone,
@@ -1190,5 +1192,63 @@ describe('isDayOver — a day ends when its LAST clock says so (ADR-0029 session
     };
     expect(isDayOver(DAY, bare, Date.parse('2026-07-07T20:00:00Z'))).toBe(false);
     expect(isDayOver(DAY, bare, Date.parse('2026-07-07T21:15:00Z'))).toBe(true);
+  });
+});
+
+// The two handler builders every `מפה` call site goes through (ADR-0121 §8
+// amendment). They exist so a call site is one expression and cannot forget EITHER
+// reason to have no button — no mappable place, or no Map tab to route to — which is
+// what "absent, not broken" means in practice.
+describe('eventShowOnMap / bookingShowOnMap', () => {
+  const withCoords = place('pl-c', 'מלון', { lat: 35.68, lng: 139.76 });
+  const coordless = place('pl-lite', 'שם בלבד');
+  const PL = [withCoords, coordless];
+  const show = (calls: string[]) => (placeId: string) => calls.push(placeId);
+
+  it('returns a handler that focuses the resolved place', () => {
+    const calls: string[] = [];
+    const handler = eventShowOnMap(event({ placeId: 'pl-c' }), [], PL, show(calls));
+    expect(handler).toBeTypeOf('function');
+    handler!();
+    expect(calls).toEqual(['pl-c']);
+  });
+
+  it('follows the booking link, resolving transport to its ORIGIN', () => {
+    const calls: string[] = [];
+    const flight = booking({
+      id: 'bk',
+      type: BOOKING_TYPE.FLIGHT,
+      fromPlaceId: 'pl-c',
+      toPlaceId: 'pl-lite',
+    });
+    eventShowOnMap(event({ bookingId: 'bk' }), [flight], PL, show(calls))!();
+    expect(calls).toEqual(['pl-c']);
+  });
+
+  // Both no-button cases, on both builders. A coordless Place-lite is still
+  // referenced and still real — it simply has no position for the camera to move to.
+  it('is undefined with no place, and with a coordless one', () => {
+    const nop = () => {};
+    expect(eventShowOnMap(event({}), [], PL, nop)).toBeUndefined();
+    expect(eventShowOnMap(event({ placeId: 'pl-lite' }), [], PL, nop)).toBeUndefined();
+    const stay = booking({ id: 'b1', type: BOOKING_TYPE.HOTEL });
+    expect(bookingShowOnMap(stay, PL, nop)).toBeUndefined();
+    const lite = booking({ id: 'b2', type: BOOKING_TYPE.HOTEL, placeId: 'pl-lite' });
+    expect(bookingShowOnMap(lite, PL, nop)).toBeUndefined();
+  });
+
+  // `useShowPlaceOnMap()` is null outside the trip shell. A leaf must DROP the
+  // affordance there, never throw for want of a context it doesn't own.
+  it('is undefined when there is no Map tab to route to, even with a good place', () => {
+    expect(eventShowOnMap(event({ placeId: 'pl-c' }), [], PL, null)).toBeUndefined();
+    const stay = booking({ id: 'b3', type: BOOKING_TYPE.HOTEL, placeId: 'pl-c' });
+    expect(bookingShowOnMap(stay, PL, null)).toBeUndefined();
+  });
+
+  it('resolves a booking to its single place', () => {
+    const calls: string[] = [];
+    const stay = booking({ id: 'b4', type: BOOKING_TYPE.HOTEL, placeId: 'pl-c' });
+    bookingShowOnMap(stay, PL, show(calls))!();
+    expect(calls).toEqual(['pl-c']);
   });
 });

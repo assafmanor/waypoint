@@ -7,6 +7,8 @@
 import { useEffect, useState } from 'react';
 import { BOOKING_TYPE, type Booking, type Place, type Trip } from '@waypoint/shared';
 import { useTrip } from '../state/trip-state';
+import { useShowPlaceOnMap } from '../state/map-scope-state';
+import { bookingShowOnMap, type ShowPlaceOnMap } from '../lib/places';
 import { useMode } from '../state/mode-state';
 import { useBackLayer, type BackResult } from '../state/nav-state';
 import { useClock } from '../lib/useClock';
@@ -49,6 +51,9 @@ export function IndexBookingsView({
 }) {
   const { trip, bookings, places, events } = useTrip();
   const { mode } = useMode();
+  // This screen is the Index's topmost overlay (ADR-0098 §5), so it closes before
+  // the tab changes — the same ordering `BookingDetail` needs, one level out.
+  const showPlaceOnMap = useShowPlaceOnMap();
   const now = useClock();
   const { upcoming, past } = splitBookings(bookings, events, trip.timezone, now.getTime());
 
@@ -155,6 +160,8 @@ export function IndexBookingsView({
       now={now}
       onOpen={openDetail}
       onManage={setManage}
+      showPlaceOnMap={showPlaceOnMap}
+      onLeaveForMap={onClose}
     />
   );
   const bookingKey = (row: BookingRow) => row.booking.id;
@@ -309,6 +316,8 @@ function BookingLi({
   now,
   onOpen,
   onManage,
+  showPlaceOnMap,
+  onLeaveForMap,
 }: {
   row: BookingRow;
   places: Place[];
@@ -316,6 +325,9 @@ function BookingLi({
   now: Date;
   onOpen: (booking: Booking) => void;
   onManage: (booking: Booking) => void;
+  showPlaceOnMap: ShowPlaceOnMap;
+  /** Close this screen before the tab changes underneath it. */
+  onLeaveForMap: () => void;
 }) {
   const { booking, event } = row;
   const icon = event?.icon ?? BOOKING_TYPE_ICON[booking.type];
@@ -372,6 +384,15 @@ function BookingLi({
       }
       sync={<EntitySyncBadge id={booking.id} />}
       unsynced={unsynced}
+      onShowOnMap={bookingShowOnMap(
+        booking,
+        places,
+        showPlaceOnMap &&
+          ((placeId) => {
+            onLeaveForMap();
+            showPlaceOnMap(placeId);
+          }),
+      )}
       onManage={() => onManage(booking)}
       manageLabel={t.index.detail.actions}
     />

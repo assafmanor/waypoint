@@ -12,6 +12,7 @@
 // screen's `.listcard` container, which owns the card frame + row dividers.
 import { type ReactNode } from 'react';
 import { Sheet } from '../Sheet';
+import { PlaceBadge } from './PlaceBadge';
 import './list-row.css';
 
 /** Category tint on the leading badge (ADR-0059 §3): teal for a stay, amber for
@@ -43,6 +44,12 @@ export interface ListRowProps {
    *  the connected screen passes `useUnsynced(id)`. Pending only — a failed row
    *  stays full-opacity so its `cloud-bang` keeps drawing attention. */
   unsynced?: boolean;
+  /** Show this row's place on our map (ADR-0121 §8). Set only where the row's
+   *  entity resolves a coord-bearing place — a documents row never does, and a
+   *  booking with no place (or a coordless one) has nothing to focus, so the
+   *  control is simply absent. It rides the row's BADGE (`PlaceBadge`) rather than
+   *  adding a trailing control, which measured badly: the row has no width to give. */
+  onShowOnMap?: () => void;
   /** When set, renders the `⋯` kebab wired to open a RowManageSheet. */
   onManage?: () => void;
   /** Accessible name for the kebab (required when `onManage` is set). */
@@ -62,6 +69,7 @@ export function ListRow({
   right,
   sync,
   unsynced,
+  onShowOnMap,
   onManage,
   manageLabel,
   className,
@@ -79,7 +87,12 @@ export function ListRow({
         disabled={disabled}
         aria-label={openLabel}
       >
-        <span className={'wp-listrow-badge' + (badgeTone ? ` ${badgeTone}` : '')}>{icon}</span>
+        <PlaceBadge
+          className={'wp-listrow-badge' + (badgeTone ? ` ${badgeTone}` : '')}
+          onShowOnMap={onShowOnMap}
+        >
+          {icon}
+        </PlaceBadge>
         <span className="wp-listrow-main">
           <span className="wp-listrow-title">{title}</span>
           {meta != null && <span className="wp-listrow-meta">{meta}</span>}

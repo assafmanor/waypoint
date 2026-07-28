@@ -3293,8 +3293,14 @@
   align-items: flex-end;
   gap: 6px;
 }
+/* No place at all: the value says so in the muted voice a missing value deserves,
+   while the `＋ מיקום` beside it stays the one thing to act on. */
+.bk-loc-none {
+  color: var(--muted);
+}
 .bk-loc-links {
   display: flex;
+  align-items: center;
   gap: 8px;
 }
 .bk-loc-link {

@@ -689,6 +689,42 @@ export function bookingMapPlace(booking: Booking, places: Place[]): Place | unde
 }
 
 /**
+ * The `מפה` handler for an entity, or `undefined` when the surface owes no button.
+ *
+ * `show` is `useShowPlaceOnMap()`'s return value — `null` outside the trip shell,
+ * where there is no Map tab to route to. Both reasons to have no button collapse
+ * here, which is the point: a call site is `onShowOnMap={eventShowOnMap(…)}` and
+ * never has to remember either the coords check or the null-hook check. Dropping
+ * the affordance is the contract on both counts ("absent, not broken", ADR-0121
+ * §8) — a leaf must not throw for want of a context it doesn't own.
+ *
+ * A caller that hosts the action inside an overlay passes a `show` that closes the
+ * overlay first (`BookingDetail`), because the tab must not change underneath a
+ * sheet still on the back stack (ADR-0090).
+ */
+export type ShowPlaceOnMap = ((placeId: string) => void) | null;
+
+export function eventShowOnMap(
+  event: TripEvent,
+  bookings: Booking[],
+  places: Place[],
+  show: ShowPlaceOnMap,
+): (() => void) | undefined {
+  const place = eventMapPlace(event, bookings, places);
+  return place && show ? () => show(place.id) : undefined;
+}
+
+/** The booking peer of {@link eventShowOnMap}. */
+export function bookingShowOnMap(
+  booking: Booking,
+  places: Place[],
+  show: ShowPlaceOnMap,
+): (() => void) | undefined {
+  const place = bookingMapPlace(booking, places);
+  return place && show ? () => show(place.id) : undefined;
+}
+
+/**
  * Where you are RIGHT NOW — the in-progress event's place, or `undefined`.
  *
  * It does not decide what "now" means; it **asks `deriveNow`**, the same resolver

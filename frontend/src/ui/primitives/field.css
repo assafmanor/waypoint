@@ -47,3 +47,12 @@
   font-weight: 700;
   color: var(--miss);
 }
+
+/* The hint slot — the error slot's quiet peer. Muted and regular-weight, so a note
+   about an empty field cannot be mistaken for something blocking the save. */
+.field-hint {
+  margin: 0;
+  font-size: var(--text-caption);
+  line-height: 1.45;
+  color: var(--muted);
+}
