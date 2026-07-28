@@ -7,7 +7,7 @@
 import { useEffect, useState } from 'react';
 import { BOOKING_TYPE, type Booking, type Place, type Trip } from '@waypoint/shared';
 import { useTrip } from '../state/trip-state';
-import { useShowPlaceOnMap } from '../state/map-scope-state';
+import { useReturnedPlaceErrand, useShowPlaceOnMap } from '../state/map-scope-state';
 import { bookingShowOnMap, type ShowPlaceOnMap } from '../lib/places';
 import { useMode } from '../state/mode-state';
 import { useBackLayer, type BackResult } from '../state/nav-state';
@@ -26,7 +26,7 @@ import { bookingDurationUnit, formatBookingDuration } from '../lib/booking-timin
 import { badgeClassForBookingType } from '../lib/transitions';
 import { EntitySyncBadge, useUnsynced } from './EntitySyncBadge';
 import { BOOKING_TYPE_ICON, CODE_PREFIX, ICONS } from '../constants';
-import { BookingSheet } from './BookingSheet';
+import { BookingSheet, type BookingSheetDraft } from './BookingSheet';
 import { BookingDetail } from './BookingDetail';
 import { BookingManageSheet } from './BookingManageSheet';
 import { BookingTitle } from './BookingTitle';
@@ -63,6 +63,20 @@ export function IndexBookingsView({
   const [showPast, setShowPast] = useState(false);
   // null = closed; 'create' = new booking; a Booking = editing that one.
   const [sheet, setSheet] = useState<Booking | 'create' | null>(null);
+  // RE-OPENING AFTER A PLACE ERRAND (ADR-0134 §2), through the same shared hook every other
+  // form host uses: without it the sheet returns closed and the rest of what was typed is
+  // gone, which is the whole reason the errand carries a draft.
+  const [bookingDraft, setBookingDraft] = useState<BookingSheetDraft | null>(null);
+  const returnedBooking = useReturnedPlaceErrand<BookingSheetDraft>('booking');
+  useEffect(() => {
+    if (!returnedBooking?.draft) return;
+    setSheet(bookings.find((b) => b.id === returnedBooking.target.id) ?? 'create');
+    setBookingDraft({
+      ...returnedBooking.draft,
+      [returnedBooking.target.field]: returnedBooking.placeId,
+    });
+  }, [returnedBooking, bookings]);
+
   const [detail, setDetail] = useState<Booking | null>(null);
   const [manage, setManage] = useState<Booking | null>(null);
 
@@ -302,7 +316,11 @@ export function IndexBookingsView({
         <BookingSheet
           booking={sheet === 'create' ? null : sheet}
           seed={sheet === 'create' ? createSeed : undefined}
-          onClose={() => setSheet(null)}
+          draft={bookingDraft}
+          onClose={() => {
+            setSheet(null);
+            setBookingDraft(null);
+          }}
         />
       )}
     </div>

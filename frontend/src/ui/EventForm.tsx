@@ -19,6 +19,7 @@ import { useTrip } from '../state/trip-state';
 import { authoringZone, eventDisplayZones, placeTimezone } from '../lib/places';
 import { useAuth } from '../state/auth-state';
 import { useVerbs } from '../state/verbs';
+import { useStartPlaceErrand } from '../state/map-scope-state';
 import { getNow } from '../lib/useClock';
 import { zonedIso, isoToTimeInput, hardConflicts, formatTime, resolveEndIso } from '../lib/time';
 import { useUnsavedGuard } from '../lib/useUnsavedGuard';
@@ -35,10 +36,33 @@ import { PlacePicker } from './primitives/PlacePicker';
 import { WhenField } from './primitives/WhenField';
 import { ConfirmDialog } from './primitives/ConfirmDialog';
 
+/** **The form's own state, as one blob** (ADR-0134 §2). A form is a `Modal` with local
+ *  state that no URL addresses, so sending its place field off to the Map tab means the
+ *  half-typed event has to travel with it — losing one would be far worse than an extra
+ *  tap. The errand channel treats this as opaque on purpose: only this file knows what an
+ *  event form contains, and that is what keeps the channel from changing every time the
+ *  form does.
+ *
+ *  `error` is deliberately absent: it is a statement about the last save attempt, not
+ *  something the user typed. */
+export interface EventFormDraft {
+  title: string;
+  date: string;
+  start: string;
+  end: string;
+  kind: TripEvent['kind'];
+  icon: string;
+  iconTouched: boolean;
+  category?: EventCategory;
+  placeId?: string;
+  override: string | null;
+}
+
 export function EventForm({
   event,
   defaults,
   maybeItem,
+  draft,
   onClose,
 }: {
   event?: TripEvent | null;
@@ -49,11 +73,15 @@ export function EventForm({
   // it creates the event AND consumes the idea (verbs.schedule) instead of a
   // plain create. Prefilled from the idea's title/kind.
   maybeItem?: MaybeItem | null;
+  /** Re-opening after a place errand: every field comes from here rather than from the
+   *  entity, so nothing typed before the trip to the Map is lost (ADR-0134 §2). */
+  draft?: EventFormDraft | null;
   onClose: () => void;
 }) {
   const { trip, activeDate, events, places, zoneEvidence } = useTrip();
   const { me } = useAuth();
   const verbs = useVerbs();
+  const startErrand = useStartPlaceErrand();
 
   // A booking-linked event's place + category live on the booking (ADR-0051 /
   // ADR-0109 §11), edited there — so the form only authors them for a standalone
@@ -69,7 +97,7 @@ export function EventForm({
   // (the slice-4a rule, now for events too) — via the one shared `authoringZone`,
   // which the shelf's schedule sheet reads too (session-128 amendment).
   const initialOverride = event?.displayTimezone ?? null;
-  const [override, setOverride] = useState<string | null>(initialOverride);
+  const [override, setOverride] = useState<string | null>(draft?.override ?? initialOverride);
 
   const derivedZone = (atDate: string, atTime: string, forPlaceId?: string): string =>
     authoringZone(
@@ -101,19 +129,27 @@ export function EventForm({
   const initialCategory = event?.category ?? maybeItem?.category;
   const initialPlaceId = event?.placeId ?? maybeItem?.placeId;
 
-  const [title, setTitle] = useState(initialTitle);
-  const [date, setDate] = useState(initialDate);
-  const [start, setStart] = useState(initialStart);
-  const [end, setEnd] = useState(initialEnd);
-  const [kind, setKind] = useState<TripEvent['kind']>(initialKind);
-  const [icon, setIcon] = useState(initialIcon);
+  // A returning draft wins over every derived initial value (ADR-0134 §2) — including
+  // the ones derived from the trip, since the user may well have changed the day since.
+  const [title, setTitle] = useState(draft?.title ?? initialTitle);
+  const [date, setDate] = useState(draft?.date ?? initialDate);
+  const [start, setStart] = useState(draft?.start ?? initialStart);
+  const [end, setEnd] = useState(draft?.end ?? initialEnd);
+  const [kind, setKind] = useState<TripEvent['kind']>(draft?.kind ?? initialKind);
+  const [icon, setIcon] = useState(draft?.icon ?? initialIcon);
   // The icon is now a pure badge (ADR-0109 §11): picking a category defaults the
   // glyph via `iconForCategory`, unless the user has deliberately chosen one.
   // Editing an event that already carries a glyph counts as chosen, so a later
   // category change doesn't clobber it; a fresh event starts untouched.
-  const [iconTouched, setIconTouched] = useState(Boolean(event?.icon ?? maybeItem?.icon));
-  const [category, setCategory] = useState<EventCategory | undefined>(initialCategory);
-  const [placeId, setPlaceId] = useState<string | undefined>(initialPlaceId);
+  const [iconTouched, setIconTouched] = useState(
+    draft?.iconTouched ?? Boolean(event?.icon ?? maybeItem?.icon),
+  );
+  const [category, setCategory] = useState<EventCategory | undefined>(
+    draft ? draft.category : initialCategory,
+  );
+  const [placeId, setPlaceId] = useState<string | undefined>(
+    draft ? draft.placeId : initialPlaceId,
+  );
   const [error, setError] = useState<string | null>(null);
 
   const pickCategory = (next: EventCategory) => {
@@ -334,10 +370,37 @@ export function EventForm({
               label={t.eventForm.locationLabel}
               hint={placeId ? undefined : t.placePicker.noLocationHint}
             >
+              {/* THE MAP IS WHERE A PLACE COMES FROM (ADR-0134 §1): the field launches an
+                  errand instead of opening a picker sheet here, because a place is
+                  disambiguated BY PLACE and the map's own search answers both corpora —
+                  the trip's own places from the first character, free and offline, before
+                  Google is touched. The form writes the DRAFT, since only it knows what
+                  else is half-typed. Outside the trip shell `startErrand` is null and the
+                  field keeps its own sheet. */}
               <PlacePicker
                 value={placeId}
                 onChange={setPlaceId}
                 placeholder={t.eventForm.locationPlaceholder}
+                onFind={
+                  startErrand &&
+                  (() =>
+                    startErrand({
+                      target: { kind: 'event', id: event?.id, field: 'placeId' },
+                      label: title.trim() || t.map.errand.untitledEvent,
+                      draft: {
+                        title,
+                        date,
+                        start,
+                        end,
+                        kind,
+                        icon,
+                        iconTouched,
+                        category,
+                        placeId,
+                        override,
+                      } satisfies EventFormDraft,
+                    }))
+                }
               />
             </Field>
           )}

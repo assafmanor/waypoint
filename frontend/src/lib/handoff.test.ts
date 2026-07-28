@@ -65,3 +65,48 @@ describe('useHandoff', () => {
     expect(result.current.take()).toBe(errand);
   });
 });
+
+// The round trip the errand actually runs (ADR-0134 §2), in one place, because it spans two
+// channels and the property that matters is a property of the PAIR: a form's draft goes out
+// with the errand and comes back with a place, unchanged in every other field.
+describe('the errand round trip', () => {
+  interface Draft {
+    title: string;
+    date: string;
+    placeId?: string;
+  }
+  it('carries a draft out and returns it with the chosen place, changing nothing else', () => {
+    const { result } = renderHook(() => ({
+      out: useHandoff<{ target: { field: keyof Draft }; draft: Draft }>(),
+      back: useHandoff<{ draft: Draft; placeId: string }>(),
+    }));
+    const draft: Draft = { title: 'ארוחת ערב', date: '2026-07-22' };
+
+    // The form hands its state over…
+    act(() => result.current.out.hand({ target: { field: 'placeId' }, draft }));
+    // …the Map takes it once, assigns, and hands the answer back…
+    let taken: { target: { field: keyof Draft }; draft: Draft } | null = null;
+    act(() => {
+      taken = result.current.out.take();
+      result.current.back.hand({ draft: taken!.draft, placeId: 'pl-9' });
+    });
+    expect(result.current.out.pending).toBeNull();
+
+    // …and the host re-opens from it.
+    const returned = result.current.back.take()!;
+    const rehydrated = { ...returned.draft, [taken!.target.field]: returned.placeId };
+    expect(rehydrated).toEqual({ title: 'ארוחת ערב', date: '2026-07-22', placeId: 'pl-9' });
+  });
+
+  it('a cancel returns the draft with no place assigned', () => {
+    const { result } = renderHook(() => useHandoff<{ draft: { title: string } }>());
+    act(() => result.current.hand({ draft: { title: 'ארוחת ערב' } }));
+    // `ביטול` and back both just take-and-return: nothing reaches the other channel.
+    let taken: { draft: { title: string } } | null = null;
+    act(() => {
+      taken = result.current.take();
+    });
+    expect(taken).toEqual({ draft: { title: 'ארוחת ערב' } });
+    expect(result.current.pending).toBeNull();
+  });
+});

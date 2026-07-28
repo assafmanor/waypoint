@@ -46,7 +46,8 @@ import { withChangeGroup } from '../lib/outbox';
 import { isoToTimeInput, zoneOffsetMinutes, zonedIso } from '../lib/time';
 import { hoursPhrase } from '../lib/duration';
 import { bookingDurationUnit, timingLabels } from '../lib/booking-timing';
-import { BOOKING_TYPE_ICON } from '../constants';
+import { BOOKING_TYPE_ICON, DOT_SEPARATOR } from '../constants';
+import { useStartPlaceErrand, type PlaceErrandTarget } from '../state/map-scope-state';
 import { t } from '../i18n/he';
 
 interface Wifi {
@@ -80,16 +81,48 @@ export interface BookingSeed {
   dest?: string;
 }
 
+/** **The sheet's own state, as one blob** (ADR-0134 §2) — the booking counterpart of
+ *  `EventFormDraft`, and longer because this sheet authors more. `error`/`saving`/`deleting`
+ *  are deliberately absent: they describe the last save attempt, not anything typed. */
+export interface BookingSheetDraft {
+  type: BookingType;
+  iconTouched: boolean;
+  icon: string;
+  title: string;
+  code: string;
+  fromPlaceId: string | undefined;
+  toPlaceId: string | undefined;
+  placeId: string | undefined;
+  startOverride: string | null;
+  endOverride: string | null;
+  room: string;
+  notes: string;
+  wifiNetwork: string;
+  wifiPassword: string;
+  date: string;
+  start: string;
+  end: string;
+  spanStart: string;
+  spanEnd: string;
+  kind: 'hard' | 'soft';
+  kindTouched: boolean;
+}
+
 export function BookingSheet({
   booking,
   seed,
+  draft,
   onClose,
 }: {
   booking?: Booking | null;
   seed?: BookingSeed;
+  /** Re-opening after a place errand (ADR-0134 §2): every field comes from here, so a
+   *  half-filled booking survives the trip to the Map tab. */
+  draft?: BookingSheetDraft | null;
   onClose: () => void;
 }) {
   const { trip, events, places, indexVerbs } = useTrip();
+  const startErrand = useStartPlaceErrand();
   const isCreate = !booking;
   const linkedEvent = booking ? events.find((e) => e.bookingId === booking.id) : undefined;
   const initialType = booking?.type ?? seed?.type ?? BOOKING_TYPE.FLIGHT;
@@ -146,33 +179,82 @@ export function BookingSheet({
     : '';
   const initialKind: 'hard' | 'soft' = linkedEvent?.kind ?? defaultKind(initialType);
 
-  const [type, setType] = useState<BookingType>(initialType);
-  const [iconTouched, setIconTouched] = useState(false);
-  const [icon, setIcon] = useState(initialIcon);
-  const [title, setTitle] = useState(initialTitle);
-  const [code, setCode] = useState(initialCode);
-  const [fromPlaceId, setFromPlaceId] = useState<string | undefined>(initialFromPlaceId);
-  const [toPlaceId, setToPlaceId] = useState<string | undefined>(initialToPlaceId);
-  const [placeId, setPlaceId] = useState<string | undefined>(initialPlaceId);
-  const [startOverride, setStartOverride] = useState<string | null>(initStartOverride);
-  const [endOverride, setEndOverride] = useState<string | null>(initEndOverride);
-  const [room, setRoom] = useState(initialRoom);
-  const [notes, setNotes] = useState(initialNotes);
-  const [wifiNetwork, setWifiNetwork] = useState(initialWifiNetwork);
-  const [wifiPassword, setWifiPassword] = useState(initialWifiPassword);
+  const [type, setType] = useState<BookingType>(draft ? draft.type : initialType);
+  const [iconTouched, setIconTouched] = useState(draft ? draft.iconTouched : false);
+  const [icon, setIcon] = useState(draft ? draft.icon : initialIcon);
+  const [title, setTitle] = useState(draft ? draft.title : initialTitle);
+  const [code, setCode] = useState(draft ? draft.code : initialCode);
+  const [fromPlaceId, setFromPlaceId] = useState<string | undefined>(
+    draft ? draft.fromPlaceId : initialFromPlaceId,
+  );
+  const [toPlaceId, setToPlaceId] = useState<string | undefined>(
+    draft ? draft.toPlaceId : initialToPlaceId,
+  );
+  const [placeId, setPlaceId] = useState<string | undefined>(
+    draft ? draft.placeId : initialPlaceId,
+  );
+  const [startOverride, setStartOverride] = useState<string | null>(
+    draft ? draft.startOverride : initStartOverride,
+  );
+  const [endOverride, setEndOverride] = useState<string | null>(
+    draft ? draft.endOverride : initEndOverride,
+  );
+  const [room, setRoom] = useState(draft ? draft.room : initialRoom);
+  const [notes, setNotes] = useState(draft ? draft.notes : initialNotes);
+  const [wifiNetwork, setWifiNetwork] = useState(draft ? draft.wifiNetwork : initialWifiNetwork);
+  const [wifiPassword, setWifiPassword] = useState(
+    draft ? draft.wifiPassword : initialWifiPassword,
+  );
   // Non-transport scheduling: a single day + optional same-day time span.
-  const [date, setDate] = useState(initialDate);
-  const [start, setStart] = useState(initialStart);
-  const [end, setEnd] = useState(initialEnd);
+  const [date, setDate] = useState(draft ? draft.date : initialDate);
+  const [start, setStart] = useState(draft ? draft.start : initialStart);
+  const [end, setEnd] = useState(draft ? draft.end : initialEnd);
   // Span scheduling (transport departure/arrival, hotel check-in/check-out): two
   // explicit datetimes that may fall on different days.
-  const [spanStart, setSpanStart] = useState(initialSpanStart);
-  const [spanEnd, setSpanEnd] = useState(initialSpanEnd);
-  const [kind, setKind] = useState<'hard' | 'soft'>(initialKind);
-  const [kindTouched, setKindTouched] = useState(false);
+  const [spanStart, setSpanStart] = useState(draft ? draft.spanStart : initialSpanStart);
+  const [spanEnd, setSpanEnd] = useState(draft ? draft.spanEnd : initialSpanEnd);
+  const [kind, setKind] = useState<'hard' | 'soft'>(draft ? draft.kind : initialKind);
+  const [kindTouched, setKindTouched] = useState(draft ? draft.kindTouched : false);
   const [error, setError] = useState<string | null>(null);
   const [saving, setSaving] = useState(false);
   const [deleting, setDeleting] = useState(false);
+
+  // ONE ERRAND BUILDER FOR THE THREE PLACE FIELDS (ADR-0134 §1/§2). Each call names its own
+  // field, and the label says which end of the journey it is — a banner reading only
+  // "רכבת לקיוטו" would leave you guessing which side you were choosing. `null` outside the
+  // trip shell, where the field keeps its own sheet.
+  const findPlace = (field: PlaceErrandTarget['field'], side?: string) =>
+    startErrand &&
+    (() =>
+      startErrand({
+        target: { kind: 'booking', id: booking?.id, field },
+        label: [title.trim() || t.map.errand.untitledBooking, side]
+          .filter(Boolean)
+          .join(` ${DOT_SEPARATOR} `),
+        draft: {
+          type,
+          iconTouched,
+          icon,
+          title,
+          code,
+          fromPlaceId,
+          toPlaceId,
+          placeId,
+          startOverride,
+          endOverride,
+          room,
+          notes,
+          wifiNetwork,
+          wifiPassword,
+          date,
+          start,
+          end,
+          spanStart,
+          spanEnd,
+          kind,
+          kindTouched,
+        } satisfies BookingSheetDraft,
+      }));
 
   const suggestedZones = useMemo(
     () =>
@@ -436,17 +518,22 @@ export function BookingSheet({
           {isTransport && (
             <Field label={t.index.form.routeLabel}>
               <div className="bs-route-pickers">
+                {/* TWO FIELDS, TWO ERRANDS — this is why `target.field` is not optional
+                    (ADR-0134 §2): without it a successful return could assign the right
+                    place to the wrong end of the journey. */}
                 <PlacePicker
                   value={fromPlaceId}
                   onChange={setFromPlaceId}
                   ariaLabel={t.index.form.originLabel}
                   placeholder={t.index.form.originShort}
+                  onFind={findPlace('fromPlaceId', t.index.form.originLabel)}
                 />
                 <PlacePicker
                   value={toPlaceId}
                   onChange={setToPlaceId}
                   ariaLabel={t.index.form.destLabel}
                   placeholder={t.index.form.destShort}
+                  onFind={findPlace('toPlaceId', t.index.form.destLabel)}
                 />
               </div>
               <div className="bs-route-hint">📍 {t.index.form.routeHint}</div>
@@ -533,7 +620,7 @@ export function BookingSheet({
               label={t.index.sheet.locationLabel}
               hint={placeId ? undefined : t.placePicker.noLocationHint}
             >
-              <PlacePicker value={placeId} onChange={setPlaceId} />
+              <PlacePicker value={placeId} onChange={setPlaceId} onFind={findPlace('placeId')} />
             </Field>
           )}
 
