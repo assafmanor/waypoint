@@ -12,7 +12,6 @@ import type { Place, PlaceResult } from '@waypoint/shared';
 
 import { PlaceResearch } from './PlaceResearch';
 import type { UsePlaceSearch } from '../lib/usePlaceSearch';
-import type { PlaceUsage } from '../lib/place-usage';
 import { t } from '../i18n/he';
 
 const result = (id: string, primary: string, secondary?: string): PlaceResult => ({
@@ -24,9 +23,6 @@ const result = (id: string, primary: string, secondary?: string): PlaceResult =>
 const place = (id: string): Place =>
   ({ id, tripId: 't1', name: id, googlePlaceId: `g-${id}` }) as Place;
 
-const usage = (entries: [string, boolean][]): Map<string, PlaceUsage> =>
-  new Map(entries.map(([id, isMaybe]) => [id, { placeId: id, isMaybe } as PlaceUsage]));
-
 const onAdd = vi.fn();
 const onShow = vi.fn();
 
@@ -37,7 +33,6 @@ function view(opts: {
   rateLimited?: boolean;
   active?: boolean;
   offline?: boolean;
-  usageIndex?: Map<string, PlaceUsage>;
   selectedId?: string | null;
   chooseMode?: boolean;
   addingId?: string | null;
@@ -59,7 +54,6 @@ function view(opts: {
     <PlaceResearch
       search={search}
       offline={opts.offline ?? false}
-      usageIndex={opts.usageIndex ?? new Map()}
       selectedId={opts.selectedId ?? null}
       chooseMode={opts.chooseMode ?? false}
       addingId={opts.addingId ?? null}
@@ -153,23 +147,20 @@ describe('PlaceResearch (Phase 5, ADR-0115; presentational since ADR-0132)', () 
     expect(document.querySelector('[data-result="g-2"]')!.className).toContain('selected');
   });
 
-  it('a result already on the shelf is stated, not re-addable', () => {
+  // ONE PLACE, ONE ROW, AND IT IS OURS (owner, session 168). This half used to render a
+  // result the trip owns as a row saying `כבר בטיול` — which was, when the trip half had not
+  // matched the text Google matched, the ONLY row for a place you already have: Google's
+  // version of your own place. The trip's own row now covers it (`ownedResults` in
+  // `Map.tsx`), carrying its day, its time and its references, so this half drops it.
+  it('a result the trip already owns is not rendered here at all', () => {
     view({
-      predictions: [result('g-p1', 'teamLab Planets')],
+      predictions: [result('g-p1', 'teamLab Planets'), result('g-2', 'Afuri Ramen')],
       referenced: { 'g-p1': place('p1') },
-      usageIndex: usage([['p1', true]]),
     });
-    expect(screen.getByText(t.map.research.onShelf)).toBeTruthy();
-    expect(screen.queryByRole('button', { name: /אולי/ })).toBeNull();
-  });
-
-  it('a result referenced by something else says it is already in the trip', () => {
-    view({
-      predictions: [result('g-p2', 'Afuri Ramen')],
-      referenced: { 'g-p2': place('p2') },
-      usageIndex: usage([['p2', false]]),
-    });
-    expect(screen.getByText(t.map.research.inTrip)).toBeTruthy();
+    expect(document.querySelector('[data-result="g-p1"]')).toBeNull();
+    // …and the rest of the results are untouched, which is what makes this a filter rather
+    // than an empty state.
+    expect(document.querySelector('[data-result="g-2"]')).toBeTruthy();
   });
 
   it('offline the Google half is absent, not disabled', () => {

@@ -187,6 +187,7 @@ vi.mock('../ui/domain/MapPane', () => ({
       nextStop?: boolean;
       nowStop?: boolean;
       selected?: boolean;
+      match?: boolean;
     }[];
     return (
       <div data-pane>
@@ -243,6 +244,7 @@ vi.mock('../ui/domain/MapPane', () => ({
             data-aside={String(pin.aside ?? false)}
             data-amber={pin.nowStop ? 'now' : pin.nextStop ? 'next' : ''}
             data-selected={String(pin.selected ?? false)}
+            data-match={String(pin.match ?? false)}
             onClick={() => (props.onSelectPin as (id: string) => void)(pin.placeId)}
           >
             {pin.placeId}
@@ -300,7 +302,7 @@ function ChromeProbe() {
           in the state it actually arrives in rather than through a prop nothing sets. */}
       <button
         data-testid="errand-probe"
-        data-answer={errandResult.pending?.placeId ?? ''}
+        data-answer={errandResult.pending ? (errandResult.pending.placeId ?? 'cancelled') : ''}
         onClick={() =>
           errand.hand({
             target: { kind: 'event', field: 'placeId' },
@@ -316,6 +318,9 @@ function ChromeProbe() {
 const probe = () => screen.getByTestId('chrome-probe');
 const startErrand = () => fireEvent.click(screen.getByTestId('errand-probe'));
 const errandAnswer = () => screen.getByTestId('errand-probe').dataset.answer;
+/** What came back through the OTHER channel: a place id, `cancelled`, or '' if nothing was
+ *  handed over at all — which is what a cancel used to do. */
+const errandReturn = () => screen.getByTestId('errand-probe').dataset.answer;
 const chromeReclaimed = () => probe().dataset.queryOpen === 'true';
 const pressBack = () => {
   fireEvent.click(probe());
@@ -1156,6 +1161,49 @@ describe('the embedded map’s shell (ADR-0121)', () => {
         expect(screenEl().dataset.choosing).toBeUndefined();
       });
 
+      // …EXCEPT A SEARCH RESULT, and per pin rather than by switching the demotion off
+      // (owner, session 168: _"not every trip pin, just search results that are already
+      // saved"_). A place your search surfaced is an answer, not the backdrop you are
+      // choosing against — so the exemption rides on the pin, as `aside` does (ADR-0131 §4).
+      it('exempts a pin the search surfaced, and only that pin', () => {
+        seed();
+        render(wrap(<MapView />));
+        startErrand();
+        expect(pin('museum')!.dataset.match).toBe('false');
+        fireEvent.change(screen.getByPlaceholderText(t.map.search.placeholder), {
+          target: { value: 'museum' },
+        });
+        expect(pin('museum')!.dataset.match).toBe('true');
+        // The demotion itself is still on: it is the PIN that is exempt, not the canvas.
+        expect(screenEl().dataset.choosing).toBe('place');
+      });
+
+      // ARRIVING ON AN ERRAND OPENS THE FIELD (owner, session 168: _"opening map search for
+      // event/booking doesn't start on keyboard open"_). The field's `autoFocus` is what
+      // brings the keyboard; opening it is what this screen owes.
+      it('opens the query field on arrival, and does not reopen one you closed', () => {
+        seed();
+        render(wrap(<MapView />));
+        expect(screen.queryByPlaceholderText(t.map.search.placeholder)).toBeNull();
+        startErrand();
+        expect(screen.getByPlaceholderText(t.map.search.placeholder)).toBeTruthy();
+        // Closing it is a decision, and re-opening under the user is the nag this tab
+        // refuses elsewhere (ADR-0109 §6).
+        fireEvent.click(screen.getByRole('button', { name: t.map.search.close }));
+        expect(screen.queryByPlaceholderText(t.map.search.placeholder)).toBeNull();
+      });
+
+      // `ביטול` HAS TO GIVE THE FORM BACK (owner, session 168). It shipped navigating away
+      // and handing nothing over, so the host had nothing to re-open from and a half-typed
+      // event died on the way out — the loss the draft exists to prevent, via the other exit.
+      it('cancelling hands the draft back with no place assigned', () => {
+        seed();
+        render(wrap(<MapView />));
+        startErrand();
+        fireEvent.click(screen.getByRole('button', { name: t.map.errand.cancel }));
+        expect(errandReturn()).toBe('cancelled');
+      });
+
       // A card is the only way to reach one of OUR places at the map extreme, so it has to
       // carry the verb too — otherwise a trip place is pickable from the list and not from
       // the canvas, on the tab that exists to show you where things are.
@@ -1365,9 +1413,30 @@ describe('the embedded map’s shell (ADR-0121)', () => {
         expect(rings()).toEqual([]);
       });
 
-      // The row and the pin are two views of ONE place here, so they select together — the
+      // …AND ITS ROW IS OURS TOO (owner, session 168 — the same report a second time, since
+      // the canvas half of this shipped and the list half did not: _"still don't see existing
+      // places on search"_). The trip's own row now shows for it, carrying its day, its time
+      // and its references; Google's half drops the result rather than repeating it worse.
+      // ONE PLACE, ONE ROW, and it is ours — the rule the ring already followed.
+      it('…and its row is OUR row, not repeated as a Google result', () => {
+        seed();
+        searchStub.predictions = [
+          { googlePlaceId: 'g-1', primaryText: 'Moon Sushi Bar Pinsker', lat: 35.69, lng: 139.7 },
+          { googlePlaceId: 'g-2', primaryText: 'Arabica', lat: 35.68, lng: 139.71 },
+        ];
+        searchStub.referenced = { 'g-1': { id: 'museum' } };
+        render(wrap(<MapView />));
+        openSearch();
+        type('מון');
+        expect(row('museum')).toBeTruthy();
+        expect(document.querySelector('[data-result="g-1"]')).toBeNull();
+        // The results we do NOT own are untouched: this is a filter, not an empty half.
+        expect(document.querySelector('[data-result="g-2"]')).toBeTruthy();
+      });
+
+      // The row and the pin are two views of ONE place, so they select together — the
       // pin↔row rule, not the two-selections case the cards guard against.
-      it('tapping its row selects the pin too, and its card at the map extreme is ours', () => {
+      it('tapping its row selects its pin, and its card at the map extreme is ours', () => {
         seed();
         searchStub.predictions = [
           { googlePlaceId: 'g-1', primaryText: 'Moon Sushi Bar Pinsker', lat: 35.69, lng: 139.7 },
@@ -1376,9 +1445,8 @@ describe('the embedded map’s shell (ADR-0121)', () => {
         render(wrap(<MapView />));
         openSearch();
         type('מון');
-        fireEvent.click(document.querySelector('.map-res-open') as HTMLElement);
+        fireEvent.click(row('museum')!);
         expect(pin('museum')!.dataset.selected).toBe('true');
-        expect(document.querySelector('[data-result="g-1"]')!.className).toContain('selected');
         // At the map extreme exactly one card comes up, and it is the PLACE card — the
         // richer of the two, and the honest answer to "what is this": ours.
         fireEvent.click(toggle(t.map.view.map));

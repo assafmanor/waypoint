@@ -46,7 +46,8 @@ describe('usePlaceErrandReturn', () => {
     const { result, rerender } = renderHook(hostHook('event', applied), { wrapper });
 
     act(() => result.current.errandResult.hand(errandFor('event', { title: 'ארוחת ערב' })));
-    expect(applied).toEqual([{ title: 'ארוחת ערב' }]);
+    // The place is already in the draft: the hook assigns it (see the field test below).
+    expect(applied).toEqual([{ title: 'ארוחת ערב', placeId: 'pl-9' }]);
 
     // THE BUG THIS EXISTS FOR (owner, session 166). The payload used to be reported as
     // STATE, so it stayed readable for the rest of the host's life while the effect that
@@ -82,6 +83,36 @@ describe('usePlaceErrandReturn', () => {
     expect(calls).toBe(1);
   });
 
+  // A CANCEL RETURNS THE FORM TOO (owner, session 168: _"canceling a place pin doesn't
+  // return to the event form"_). It shipped navigating back and handing nothing over, so the
+  // host had nothing to re-open from and a half-typed event died on the way out — the exact
+  // loss the draft exists to prevent, through the other exit. The draft comes back with
+  // nothing assigned.
+  it('returns the draft untouched when the errand was cancelled', () => {
+    const applied: (Draft | null)[] = [];
+    const { result } = renderHook(
+      () => {
+        const scope = useMapScope();
+        usePlaceErrandReturn<Draft>('event', (r) => applied.push(r.draft));
+        return scope;
+      },
+      { wrapper },
+    );
+    act(() =>
+      result.current.errandResult.hand({
+        errand: {
+          target: { kind: 'event', field: 'placeId' },
+          returnTo: '/',
+          label: 'ארוחת ערב',
+          draft: { title: 'ארוחת ערב' },
+        },
+        placeId: null,
+      }),
+    );
+    // No `placeId` key at all — not a `placeId: null` the form would have to strip.
+    expect(applied).toEqual([{ title: 'ארוחת ערב' }]);
+  });
+
   // Two hosts can watch the channel at once without stealing each other's errand — the
   // event form and the booking sheet are both mounted on `PlanDay`.
   it('ignores a return for another entity kind, and leaves it for its own host', () => {
@@ -102,18 +133,20 @@ describe('usePlaceErrandReturn', () => {
     );
     act(() => result.current.errandResult.hand(errandFor('booking', { title: 'רכבת' })));
     expect(events).toEqual([]);
-    expect(bookings).toEqual([{ title: 'רכבת' }]);
+    expect(bookings).toEqual([{ title: 'רכבת', placeId: 'pl-9' }]);
   });
 
   // The whole point of the draft: the chosen place lands in the NAMED field, so a transport
-  // booking cannot assign the right place to the wrong side of the journey.
-  it('reports the field the errand named, with the chosen place', () => {
-    let seen: { field: string; placeId: string } | null = null;
+  // booking cannot assign the right place to the wrong side of the journey. The assignment
+  // happens in the HOOK now (session 168) rather than at each of five hosts — the same
+  // expression written five times is one host away from writing it differently.
+  it('assigns the chosen place to the field the errand named', () => {
+    let seen: { field: string; placeId: string | null; draft: Draft | null } | null = null;
     const { result } = renderHook(
       () => {
         const scope = useMapScope();
         usePlaceErrandReturn<Draft>('booking', (r) => {
-          seen = { field: r.target.field, placeId: r.placeId };
+          seen = { field: r.target.field, placeId: r.placeId, draft: r.draft };
         });
         return scope;
       },
@@ -130,6 +163,10 @@ describe('usePlaceErrandReturn', () => {
         placeId: 'pl-3',
       }),
     );
-    expect(seen).toEqual({ field: 'toPlaceId', placeId: 'pl-3' });
+    expect(seen).toEqual({
+      field: 'toPlaceId',
+      placeId: 'pl-3',
+      draft: { title: 'רכבת', toPlaceId: 'pl-3' },
+    });
   });
 });

@@ -1138,22 +1138,6 @@
   opacity: 0.55;
   cursor: default;
 }
-/* already ours: a statement, not a control */
-.map-instate {
-  font-size: 11.5px;
-  font-weight: 700;
-  color: var(--muted);
-  background: rgba(22, 35, 61, 0.06);
-  border-radius: 999px;
-  padding: 5px 10px;
-  white-space: nowrap;
-}
-/* The shelf variant's violet is DELETED rather than re-coloured, and that is a
-   subtraction the words already cover: these two chips say `כבר בטיול` and `על המדף`,
-   so the distinction is the sentence and the colour was restating it. Same rule-4 reason
-   as `.map-addmaybe` above — this chip only ever rendered in Plan mode until ADR-0131 §8
-   put Google's half in both — and one rule fewer beats one rule recoloured. */
-
 .map-res-skel {
   border-radius: 16px;
   margin-bottom: 9px;

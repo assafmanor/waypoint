@@ -109,6 +109,12 @@ What falls out for free: it is not on the prominence ladder at all, so it cannot
 >
 > Two consequences, both of them the pin↔row rule (ADR-0121 §8) rather than new behaviour: the result row and the pin **select together**, since with the trip half not matching, that row _is_ this place's row on this screen; and at the map extreme the **place** card wins over the result card, being the richer of the two and the honest answer to "what is this".
 
+> **EXTENDED 2026-07-28 (session 168, the same report a second time: _"still don't see existing places on search"_).** Session 167 fixed the **canvas** half and left the **list** half untouched, so the pin appeared and the row still did not: the only row for a place you already own was **Google's**, saying `כבר בטיול`. Half a fix reads as no fix, and rightly.
+>
+> So the rule is now stated once and applied to both halves: **a place the trip owns is shown as ours — pin not ring, row not result.** The list's predicate gains the same `ownedResults` clause the pin filter has, and Google's half **drops** a result the trip owns instead of rendering it. That retires the `כבר בטיול` / `על המדף` row state entirely (its copy and CSS are deleted, not orphaned), because the trip's own row says all of it better: the day, the time, what happens there, `על המדף` for a pure idea, and the way in to every reference.
+>
+> It also removes a duplication that shipped and was never noticed: a place we own whose name **did** match our own text was listed **twice**, once as ours and once as Google's.
+
 Two candidates are drawn in the mockup and rejected there so the choice is seen rather than asserted: a **dashed teardrop** (which reuses `.map-badge.result`'s "listed, not yet ours" grammar and reads as _a pin that has not finished loading_ — and collides with the ghost rung, which is also a hollow teardrop), and a **dark inversion** (distinct, but it reads as **more** important than the trip's own pins, which inverts the whole point).
 
 ### 7. Text Search: what it buys, and what it actually costs

@@ -31,7 +31,7 @@ import {
 } from '@waypoint/shared';
 import { useTrip } from '../state/trip-state';
 import { useMode } from '../state/mode-state';
-import { useMapScope, usePlaceErrandReturn } from '../state/map-scope-state';
+import { useMapScope, usePlaceErrandReturn, type PlaceErrand } from '../state/map-scope-state';
 import { useIsOffline } from '../lib/outbox';
 import {
   buildPlaceUsageIndex,
@@ -238,15 +238,42 @@ export function MapView() {
     [errand, errandResult, navigate, indexVerbs],
   );
   // `ביטול` and back both run the same return, so there is exactly one way out (§2).
-  // Cancelling assigns nothing.
+  // Cancelling assigns nothing — but it still has to GIVE THE FORM BACK (owner, session 168:
+  // _"canceling a place pin doesn't return to the event form"_). It shipped navigating to
+  // `returnTo` and handing nothing over, so the host had nothing to re-open from and a
+  // half-typed event died on the way out. That is the exact loss the draft exists to prevent;
+  // ADR-0134 §2 only ever spelled it out for the success path.
+  //
+  // Handed only when there IS a draft: a saved booking's errand patches in place and has no
+  // form to restore, so handing an empty result would leave something pending for a host
+  // that will never want it.
   const cancelErrand = useCallback(() => {
     const taken = errand.take();
-    if (taken) navigate(taken.returnTo, { replace: true });
-  }, [errand, navigate]);
+    if (!taken) return;
+    if (taken.draft) errandResult.hand({ errand: taken, placeId: null });
+    navigate(taken.returnTo, { replace: true });
+  }, [errand, errandResult, navigate]);
   useBackLayer(() => {
     cancelErrand();
     return { remainsActive: false };
   }, pendingErrand != null);
+  // ARRIVING ON AN ERRAND OPENS THE FIELD (owner, session 168: _"opening map search for
+  // event/booking doesn't start on keyboard open"_). You were sent here to FIND a place, so
+  // the tab opens on the one control that does that, and the field's own `autoFocus` brings
+  // the keyboard with it. It spends nothing — the min-chars floor is what stands between a
+  // keystroke and a paid call (ADR-0131 §8b) — and it lands on the free half first, which is
+  // the fact ADR-0134 §1 reconciled the whole reversal on: the trip's own places filter from
+  // the first character.
+  //
+  // Once per errand, keyed on the errand OBJECT rather than a boolean: closing the field is
+  // a decision, and re-opening it under the user would be the nag this tab already refuses
+  // elsewhere (ADR-0109 §6's `locationOffered`).
+  const fieldOpenedFor = useRef<PlaceErrand | null>(null);
+  useEffect(() => {
+    if (!pendingErrand || fieldOpenedFor.current === pendingErrand) return;
+    fieldOpenedFor.current = pendingErrand;
+    setDisclosure(MAP_ROW_DISCLOSURE.query);
+  }, [pendingErrand]);
   // A tapped ring. Its own state rather than `selectedId`, because a result has no
   // `placeId` — there is no row for it yet, which is the whole point of it.
   const [selectedResultId, setSelectedResultId] = useState<string | null>(null);
@@ -326,7 +353,7 @@ export function MapView() {
   usePlaceErrandReturn<BookingSheetDraft>('booking', (returned) => {
     if (!returned.draft) return;
     setEditBooking(bookings.find((b) => b.id === returned.target.id) ?? null);
-    setBookingDraft({ ...returned.draft, [returned.target.field]: returned.placeId });
+    setBookingDraft(returned.draft);
   });
 
   // ── The rendered map (Phase 6, ADR-0121) ──────────────────────────────────
@@ -715,7 +742,13 @@ export function MapView() {
   // itself) and now the query. Re-orders (near-me, the area sort) are the other half,
   // animated by `RevealList`'s move pass.
   const listRows = revealRows([...allUsages].sort(listOrder), (u) =>
-    searching ? matchesQuery(u) : inDayScope(u) && matchesPlaceFilter(u, placeFilter),
+    searching
+      ? // …or Google matched it for us, exactly as the pins read it (session 167). The
+        // canvas half of this shipped and the LIST half did not, which is the owner's
+        // second report on one defect: the pin appeared and the row still did not, so the
+        // only row for a place you already own was GOOGLE's, saying `כבר בטיול`.
+        matchesQuery(u) || ownedResults.has(u.placeId)
+      : inDayScope(u) && matchesPlaceFilter(u, placeFilter),
   ).rows;
   const listCount = countVisible(listRows);
 
@@ -777,14 +810,13 @@ export function MapView() {
       // six tiers, two amber `box-shadow` cues, selection's `outline` shaped to compose
       // with them, and a zoom-keyed dot degradation. And it is facet-blind here for the
       // same reason it is in the list: one derivation, one filter layer (ADR-0121 §6).
-      // …or Google matched it for us (`ownedResults` above): a place the trip owns is on the
-      // canvas whichever half of the search found it, and it is a pin rather than a ring.
-      if (
-        !(searching
-          ? matchesQuery(usage) || ownedResults.has(usage.placeId)
-          : matchesPlaceFilter(usage, placeFilter))
-      )
-        continue;
+      //
+      // A MATCH is either half of the search finding it: our own text match, or Google
+      // returning it as a result the trip already owns (`ownedResults`). Derived here, from
+      // the very predicate that admits the pin, so the flag and the filter cannot drift —
+      // the errand demotion reads it to exempt an answer from being treated as backdrop.
+      const isMatch = searching && (matchesQuery(usage) || ownedResults.has(usage.placeId));
+      if (!(searching ? isMatch : matchesPlaceFilter(usage, placeFilter))) continue;
       const tier = pinTier(usage);
       pinsNow.push({
         placeId: usage.placeId,
@@ -806,6 +838,10 @@ export function MapView() {
         // which is exactly what you need to know when your search found Friday's.
         // Every pin here is a match while `searching` (non-matches were skipped above).
         aside: isAsidePin(tier) && !searching,
+        // …and the SECOND reader of the same idea (session 168): a pin your search surfaced
+        // is exempt from the errand's context demotion, because it is an answer rather than
+        // the backdrop you are choosing against.
+        match: isMatch,
         order: orderIndex.get(usage.placeId),
         // AND THE AMBER GUARD DELIBERATELY DOES NOT FOLLOW IT. `עכשיו`/`היעד הבא` are
         // claims about TIME, not about the search: a pin from a day you are not looking
@@ -833,6 +869,7 @@ export function MapView() {
         // keep the old ratio. The pin SET usually changes with the query too, so the bug
         // would have been intermittent rather than absent — the worse kind.
         p.aside,
+        p.match,
         p.order,
         p.nextStop,
         p.nowStop,
@@ -1684,13 +1721,10 @@ export function MapView() {
     sheetView === MAP_SHEET_VIEW.map && selectedResultId && !cardUsage
       ? research.predictions.find((r) => r.googlePlaceId === selectedResultId)
       : undefined;
-  const cardResultInTrip = cardResult ? research.alreadyInTrip(cardResult) : undefined;
   const resultCard = cardResult && (
     <div className="map-placecard">
       <ResultRow
         result={cardResult}
-        inTrip={cardResultInTrip != null}
-        onShelf={cardResultInTrip ? (usageIndex.get(cardResultInTrip.id)?.isMaybe ?? false) : false}
         selected
         chooseMode={pendingErrand != null}
         busy={addingResultId === cardResult.googlePlaceId}
@@ -1773,7 +1807,6 @@ export function MapView() {
   const googleHalf = searching && (
     <PlaceResearch
       search={research}
-      usageIndex={usageIndex}
       offline={offline}
       selectedId={selectedResultId}
       chooseMode={pendingErrand != null}
@@ -1878,6 +1911,16 @@ export function MapView() {
       // demotion is CSS, so no marker re-renders and nothing is re-diffed on a live map
       // (ADR-0121 §4). The pins' own `tier`/`aside` are untouched on purpose — those are
       // what the camera reads, and where the trip is IS where you want to start looking.
+      //
+      // A SEARCH RESULT IS EXEMPT, and it is exempt PER PIN rather than by switching this
+      // attribute off (owner, session 168: _"not every trip pin, just search results that
+      // are already saved"_). The demotion asks "is this what you are choosing", and a place
+      // your search surfaced is an answer to that question, not the backdrop to it — so the
+      // exemption belongs on the pin that earned it (`MapPin.match`, read by `:not(.match)`
+      // in the CSS), exactly as ADR-0131 §4 put the `aside` withdrawal on the pin rather than
+      // on the screen. Left as a screen-wide switch it would also promote anything the
+      // canvas happens to carry for another reason, which is precisely the drift the §4
+      // split exists to prevent.
       data-choosing={pendingErrand ? 'place' : undefined}
       style={
         {

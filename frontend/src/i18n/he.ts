@@ -112,8 +112,6 @@ export const t = {
       googleGroup: 'מגוגל',
       add: 'אולי',
       addAria: (name: string) => `הוספת ${name} למדף האולי`,
-      onShelf: 'על המדף',
-      inTrip: 'כבר בטיול',
       // The row's tap frames the place HERE (ADR-0134 §6), so the way out to Google is its
       // own control — and it needs a name, because it is an icon.
       openInGoogle: 'פתיחה בגוגל מפות',
