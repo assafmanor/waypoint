@@ -15,8 +15,8 @@ import {
   mapsDirectionsUrl,
   placeName,
 } from '../lib/places';
-import { AddLocationButton, PlacePickerSheet } from './primitives/PlacePicker';
-import { useShowPlaceOnMap } from '../state/map-scope-state';
+import { AddLocationButton } from './primitives/PlacePicker';
+import { useShowPlaceOnMap, useStartPlaceErrand } from '../state/map-scope-state';
 import { routeTitle } from '../lib/route-title';
 import { formatTime } from '../lib/time';
 import { bookingDurationUnit, formatBookingDuration, timingLabels } from '../lib/booking-timing';
@@ -95,12 +95,22 @@ export function BookingDetail({
   // `＋ מיקום` is the same affordance the Map row gives a coordless Place-lite, on
   // the surface where you notice the absence — so the fix is one tap from here
   // (ADR-0110 §1's enrich flow, reused rather than reinvented).
-  const [picking, setPicking] = useState(false);
-  const attachPlace = (pickedId: string) => {
-    setPicking(false);
-    if (pickedId === booking.placeId) return; // an enrich-in-place returns the same row
-    void indexVerbs.updateBooking(booking.id, { placeId: pickedId }).catch(() => {});
-  };
+  // ＋ מיקום IS AN ERRAND TO THE MAP NOW (ADR-0134 §1), not a picker sheet over this one.
+  // A place is disambiguated BY PLACE — two cafés with the same name in the same district
+  // are one list row apart and a kilometre apart on the canvas — and the map's own search
+  // answers both corpora, filtering the trip's places from the first character, free and
+  // offline. This booking already exists, so there is no draft to carry: the Map patches it
+  // directly and the return is purely navigational (§2's cheap path).
+  //
+  // `null` outside the trip shell, where there is no Map tab to route to — the affordance
+  // is then simply absent, which is the same "absent, not broken" rule `onShowOnMap`
+  // follows two lines below.
+  const startErrand = useStartPlaceErrand();
+  // The banner names the target the way the rest of the app names it (ADR-0121 §8's
+  // vocabulary): the booking's own title, or the route for a transport leg.
+  const errandLabel = isTransport(booking.type)
+    ? routeTitle(from ?? '-', to ?? '-')
+    : booking.title;
 
   const isRoute = isTransport(booking.type) && !!(from || to);
   // Accessible name only — the visible heading is the RouteLabel below, whose arrow
@@ -149,7 +159,15 @@ export function BookingDetail({
               onShowOnMap={bookingShowOnMap(booking, places, show)}
               // Offered whenever there is no place to focus: none at all, or a
               // coordless Place-lite the picker can enrich in place.
-              onAddLocation={mapPlace ? undefined : () => setPicking(true)}
+              onAddLocation={
+                mapPlace || !startErrand
+                  ? undefined
+                  : () =>
+                      startErrand({
+                        target: { kind: 'booking', id: booking.id, field: 'placeId' },
+                        label: errandLabel,
+                      })
+              }
             />
           )}
           {!linkedEvent ? (
@@ -181,13 +199,6 @@ export function BookingDetail({
           {notes && <Fact k={t.index.detail.notes} v={notes} />}
         </div>
       </div>
-      {picking && (
-        <PlacePickerSheet
-          current={navPlace}
-          onPick={attachPlace}
-          onClose={() => setPicking(false)}
-        />
-      )}
     </Sheet>
   );
 }

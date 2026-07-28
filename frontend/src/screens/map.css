@@ -1021,6 +1021,14 @@
 /* a result row: the whole name block is a real link out to the Google place, so
    a candidate can be vetted before we pay to resolve it (ADR-0115 §2). */
 .map-res-open {
+  /* A `<button>` now, not an `<a>` (ADR-0134 §5): the tap frames the place rather than
+     leaving the app, so it needs the reset a bare link never did. */
+  appearance: none;
+  border: 0;
+  background: none;
+  text-align: start;
+  font: inherit;
+  cursor: pointer;
   display: flex;
   align-items: center;
   gap: 11px;
@@ -1045,6 +1053,45 @@
    `tokens.css` forbids in as many words ("amber/teal/plan are semantic, never CTAs") and
    root CLAUDE.md rule 4 states directly. Found by drawing the surface against the shipped
    stylesheets, not by reading the diff. */
+/* ── A RESULT ROW'S THREE JOBS (ADR-0134 §5) ─────────────────────────────────────
+   The row's body is a `<button>` now — the tap frames the place here — so the way out
+   to Google is its own control, and it goes BESIDE the verb rather than under it.
+
+   That is measured, not preferred. `.map-right` above is a `flex-direction: column`, so
+   a second control buys no WIDTH; it makes every result row taller. Stacked, a result row
+   is 106px and the sheet at `half` shows 3 rows at 390×844 / 2 at 360×640; side by side it
+   is 68px and shows 6 / 4. Height is the axis this surface declared scarce in ADR-0126
+   ("canvas furniture grows sideways"), and stacking halves the results you can see.
+
+   Scoped to `.place.result` deliberately: a trip row's `נווט` + distance genuinely want
+   the column, and this is not a reason to restack them. */
+.place.result .map-right {
+  flex-direction: row;
+  align-items: center;
+}
+/* The way out, as an ICON. The row already carries one labelled verb and two labelled
+   buttons compete for "which is the action" — the width measurement cleared a label
+   rather than forcing this, and ADR-0134 §5 says so. 44×44 met by GEOMETRY, never by a
+   hit area painted smaller than it is (ADR-0017, ADR-0126 §3), and `.map-navbtn`'s
+   trailing-action grammar rather than a new one. */
+.map-res-out {
+  flex: none;
+  display: grid;
+  place-items: center;
+  min-width: 44px;
+  min-height: 44px;
+  border: 1px solid var(--line);
+  border-radius: 12px;
+  background: var(--card);
+  color: var(--muted);
+  font-size: 16px;
+  text-decoration: none;
+  cursor: pointer;
+}
+.map-res-out:hover {
+  border-color: var(--muted);
+}
+
 .map-addmaybe {
   display: inline-flex;
   align-items: center;

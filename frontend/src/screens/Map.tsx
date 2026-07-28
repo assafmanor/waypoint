@@ -124,8 +124,16 @@ interface RefEntry {
 }
 
 export function MapView() {
-  const { events, bookings, maybeItems, places, activeDate, zoneEvidence, usingCachedSnapshot } =
-    useTrip();
+  const {
+    events,
+    bookings,
+    maybeItems,
+    places,
+    activeDate,
+    zoneEvidence,
+    usingCachedSnapshot,
+    indexVerbs,
+  } = useTrip();
   const { mode } = useMode();
   const offline = useIsOffline() || usingCachedSnapshot;
   const nowMs = useClock().getTime();
@@ -151,6 +159,8 @@ export function MapView() {
     locationOffered,
     markLocationOffered,
     setQueryOpen,
+    errand,
+    errandResult,
   } = useMapScope();
   useEffect(() => setAllDays(false), [mode, setAllDays]);
   // The other way out of all-days: arriving on a different day (a `daySelectTarget`
@@ -193,6 +203,50 @@ export function MapView() {
   const biasRef = useRef<MapBounds | null>(null);
   const research = usePlaceSearch({ corpus: PLACE_CORPUS.text, biasRef });
   const verbs = useVerbs();
+  // ── THE PLACE ERRAND (ADR-0134 §1-§4) ─────────────────────────────────────────
+  // A form sent us here to pick ONE place. While it is live the tab is in errand mode:
+  // every row gains `בחירה`, `נווט` goes away, and `＋ אולי` is replaced rather than
+  // joined — "only choosing one place and not adding more and more places".
+  const pendingErrand = errand.pending;
+  // Assign and return, in one act. The place is handed back through the OTHER channel and
+  // the form's host re-opens itself from the draft (§2) — this screen deliberately knows
+  // nothing about what an event form contains.
+  //
+  // TWO ASSIGNMENT PATHS, and the difference is whether the thing being assigned to
+  // EXISTS yet (ADR-0134 §2):
+  //
+  //  • **A saved BOOKING** — an ordinary patch through `indexVerbs.updateBooking`, which
+  //    this screen can do, so the return is purely navigational: no draft, no host
+  //    involvement, and the write goes where every write goes. This is `BookingDetail`'s
+  //    `＋ מיקום`, whose whole flow has no unsaved state to lose.
+  //  • **Anything else** — a form that has not saved yet (and an event, whose place edit
+  //    belongs to its own guarded form rather than to a patch from here, ADR-0011). The
+  //    place is handed BACK and the form's host re-opens it from the draft. That is the
+  //    expensive path, and it is paid only where it is needed.
+  const finishErrand = useCallback(
+    (placeId: string) => {
+      const taken = errand.take();
+      if (!taken) return;
+      const { target } = taken;
+      if (target.kind === 'booking' && target.id) {
+        void indexVerbs.updateBooking(target.id, { [target.field]: placeId }).catch(() => {});
+      } else {
+        errandResult.hand({ errand: taken, placeId });
+      }
+      navigate(taken.returnTo, { replace: true });
+    },
+    [errand, errandResult, navigate, indexVerbs],
+  );
+  // `ביטול` and back both run the same return, so there is exactly one way out (§2).
+  // Cancelling assigns nothing.
+  const cancelErrand = useCallback(() => {
+    const taken = errand.take();
+    if (taken) navigate(taken.returnTo, { replace: true });
+  }, [errand, navigate]);
+  useBackLayer(() => {
+    cancelErrand();
+    return { remainsActive: false };
+  }, pendingErrand != null);
   // A tapped ring. Its own state rather than `selectedId`, because a result has no
   // `placeId` — there is no row for it yet, which is the whole point of it.
   const [selectedResultId, setSelectedResultId] = useState<string | null>(null);
@@ -854,8 +908,16 @@ export function MapView() {
       // focuses is invisible there (ADR-0121 §8), and from the map extreme because a
       // row you tapped in a list belongs in its list. A coordless row has no map to
       // reveal, so it shrinks nothing.
-      const focusable = hasMap && placePoint(placeById.get(placeId) ?? {}) != null;
-      if (focusable && sheetView !== MAP_SHEET_VIEW.half) setSheetView(MAP_SHEET_VIEW.half);
+      const point = hasMap ? placePoint(placeById.get(placeId) ?? {}) : null;
+      if (point && sheetView !== MAP_SHEET_VIEW.half) setSheetView(MAP_SHEET_VIEW.half);
+      // …AND IT FRAMES, where a pin tap only pans (ADR-0134 §6). ADR-0129 §1 decided
+      // both taps pan, on the report that being zoomed for a pin you can already see is
+      // a nuisance — which is right for a pin and wrong for a row: a row in a list is
+      // the one case where you cannot see the place, and at `full` there is no canvas at
+      // all. So the tap's SOURCE decides, and the sheet moves first (above) so the
+      // framing does not happen behind the list. A fresh object every time, because
+      // `framePlace` is spent once and the same row may be tapped twice.
+      if (point) setFramePlace({ ...point });
       return;
     }
     // From a pin: NOTHING MOVES. The pane's box does not change, so the camera does not
@@ -906,6 +968,9 @@ export function MapView() {
     setSelectedId(null);
     setGhostId(null);
     setSelectedResultId(googlePlaceId);
+    // A ring is ON the canvas, so tapping it PANS (ADR-0129 §1, unchanged) — the framing
+    // below belongs to the result's ROW, which is the tap you make without being able to
+    // see the place. `selectResultRow` is that one.
     requestAnimationFrame(() => {
       sheetRef.current
         ?.querySelector(`[data-result="${googlePlaceId}"]`)
@@ -916,6 +981,22 @@ export function MapView() {
     (googlePlaceId: string) => onResultTap.current(googlePlaceId),
     [],
   );
+
+  // A RESULT'S ROW was tapped (ADR-0134 §6): the same "commit" a trip row's tap is, so it
+  // does the same three things — selects, normalises the sheet so the canvas is on screen,
+  // and FRAMES. The span reads the other rings as context, which `MapPane` supplies from
+  // the results it is already drawing (§7), so nothing extra is threaded through here.
+  //
+  // A result with no coordinates selects and does not frame: there is nothing to frame,
+  // exactly as for a coordless place of our own.
+  const selectResultRow = useCallback((result: PlaceResult) => {
+    setSelectedId(null);
+    setGhostId(null);
+    setSelectedResultId(result.googlePlaceId);
+    if (result.lat == null || result.lng == null) return;
+    setSheetView((view) => (view === MAP_SHEET_VIEW.half ? view : MAP_SHEET_VIEW.half));
+    setFramePlace({ lat: result.lat, lng: result.lng });
+  }, []);
 
   // ADDING A RESULT — one path, whether it was tapped as a row or as a ring. Two steps,
   // both already built: resolve the place (which, for a Text Search result, spends
@@ -932,14 +1013,19 @@ export function MapView() {
       setAddResultFailed(false);
       try {
         const place = await research.pick(result);
-        verbs.addMaybe(result.primaryText, { placeId: place.id });
+        // THREE SOURCES, ONE DESTINATION, AND THE INVOCATION DECIDES IT (ADR-0131 §11,
+        // ADR-0134 §3). With an errand live the place is ASSIGNED and the tab returns —
+        // no `MaybeItem`, because "only choosing one place and not adding more and more
+        // places" is the constraint. With no errand it goes to the shelf, unchanged.
+        if (pendingErrand) finishErrand(place.id);
+        else verbs.addMaybe(result.primaryText, { placeId: place.id });
       } catch {
         setAddResultFailed(true);
       } finally {
         setAddingResultId(null);
       }
     },
-    [research.pick, verbs],
+    [research.pick, verbs, pendingErrand, finishErrand],
   );
 
   // A pin tap, behind a stable identity. `MapPane` is memoized, so a handler
@@ -1134,7 +1220,12 @@ export function MapView() {
     });
 
   const renderRow =
-    (opts: { onSelect?: (placeId: string) => void; forceDay?: boolean; onFrame?: () => void }) =>
+    (opts: {
+      onSelect?: (placeId: string) => void;
+      forceDay?: boolean;
+      onFrame?: () => void;
+      onChoose?: (placeId: string) => void;
+    }) =>
     (usage: PlaceUsage) => {
       const place = placeById.get(usage.placeId);
       if (!place) return null;
@@ -1170,6 +1261,7 @@ export function MapView() {
           refs={selected ? refEntriesFor(usage, opts) : undefined}
           onEnrich={() => setEnrichTarget(place)}
           onFrame={opts.onFrame}
+          onChoose={opts.onChoose && (() => opts.onChoose!(usage.placeId))}
         />
       );
     };
@@ -1182,7 +1274,11 @@ export function MapView() {
   // Headers describe what's ON SCREEN, so they're derived from the visible rows
   // only and attach to the first visible row of each block — a filtered-out row
   // must never carry (or strand) a header while it collapses.
-  const renderList = (rows: Revealed<PlaceUsage>[], onSelect: (placeId: string) => void) => {
+  const renderList = (
+    rows: Revealed<PlaceUsage>[],
+    onSelect: (placeId: string) => void,
+    opts: { onChoose?: (placeId: string) => void } = {},
+  ) => {
     const shown = visibleItems(rows);
     // EITHER sort intent replaces the schedule blocks, because they no longer describe
     // the list (ADR-0126 §5 — the area sort is a sibling of near-me, so it takes the
@@ -1220,7 +1316,7 @@ export function MapView() {
             const header = headerFor.get(usage.placeId);
             return header && <div className="map-grouphead">{header}</div>;
           }}
-          renderRow={renderRow({ onSelect })}
+          renderRow={renderRow({ onSelect, onChoose: opts.onChoose })}
         />
       </>
     );
@@ -1522,11 +1618,31 @@ export function MapView() {
   // not blame the facets (a query ignores them, §1) and it must not offer all-days (a
   // query already spans the trip), so it gets neither action — and in a moment the paid
   // half below may answer where the trip could not, which is the real way out.
+  // Has the paid half SETTLED with nothing? Not the same as "has no results": below the
+  // min-chars floor it is inert, and while a request is in flight the skeletons are the
+  // answer. Only when it is active, done and empty does the merged list get to say so.
+  const researchEmpty =
+    offline || !research.active || (!research.loading && research.predictions.length === 0);
+
   const listBody =
     allUsages.length === 0 ? (
       <EmptyState icon="🗺️" title={t.map.empty.title} body={t.map.empty.body} />
-    ) : searching && listCount === 0 ? (
-      <EmptyState icon={ICONS.search} title={t.map.search.noResultsTitle} />
+    ) : searching ? (
+      // ONE LIST, ONE EMPTINESS (owner, session 164). The two halves used to be two
+      // sections with two headers and two empty states, and the result was the screenshot
+      // that got this changed: `לא נמצאו מקומות` in bold, with three Google results
+      // underneath it. A list cannot say "nothing" and then show something.
+      //
+      // So the trip's half no longer answers for itself. Emptiness is now a fact about the
+      // MERGED list, and it is only stated once Google has settled — while a paid search is
+      // in flight the honest answer is "still looking", which the skeletons already say.
+      listCount === 0 && researchEmpty ? (
+        <p className="map-res-hint">{t.map.search.noResultsTitle}</p>
+      ) : (
+        renderList(listRows, (id) => select(id, { fromRow: true }), {
+          onChoose: pendingErrand ? finishErrand : undefined,
+        })
+      )
     ) : listCount === 0 ? (
       facetsActive ? (
         <EmptyState
@@ -1544,7 +1660,9 @@ export function MapView() {
         />
       )
     ) : (
-      renderList(listRows, (id) => select(id, { fromRow: true }))
+      renderList(listRows, (id) => select(id, { fromRow: true }), {
+        onChoose: pendingErrand ? finishErrand : undefined,
+      })
     );
 
   // GOOGLE'S HALF, IN THE SHEET (ADR-0131 §8) — re-parented out of the retired overlay,
@@ -1563,6 +1681,8 @@ export function MapView() {
       usageIndex={usageIndex}
       offline={offline}
       selectedId={selectedResultId}
+      chooseMode={pendingErrand != null}
+      onShow={selectResultRow}
       addingId={addingResultId}
       addFailed={addResultFailed}
       onAdd={addResult}
@@ -1573,11 +1693,27 @@ export function MapView() {
   // Google's under its own header. Grouped rather than interleaved, because "is this
   // already ours" is the most important fact about a result and a header answers it once
   // instead of per row. One fragment, so the list-only path (§8) cannot drift from it.
+  // The errand says what the tab is doing and names its target in the reference's own
+  // words (ADR-0134 §2) — `StatusBanner`, never a bespoke div (ADR-0078). `ביטול` sits in
+  // it because the way out belongs with the statement of what you are in.
+  const errandBanner = pendingErrand && (
+    <StatusBanner tone="neutral">
+      {t.map.errand.title(pendingErrand.label)}
+      <button type="button" className="map-gbtn" onClick={cancelErrand}>
+        {t.map.errand.cancel}
+      </button>
+    </StatusBanner>
+  );
+
   const sheetList = (
     <>
-      {searching && listCount > 0 && (
-        <div className="map-grouphead">{t.map.research.tripGroup}</div>
-      )}
+      {errandBanner}
+      {/* NO GROUP HEADERS (owner, session 164). ADR-0131 §8 grouped the two corpora under
+          `בטיול` / `מגוגל` on the argument that "is this already ours" is the most
+          important fact about a result and a header answers it once instead of per row.
+          The owner disagrees, and the per-row signal it was standing in for already
+          exists: a result wears the dashed "not ours yet" badge, and one that IS ours says
+          `כבר בטיול` in its own slot. The header was restating a fact the rows carry. */}
       {listBody}
       {googleHalf}
     </>
@@ -1781,6 +1917,7 @@ function PlaceRow({
   onSelect,
   onEnrich,
   onFrame,
+  onChoose,
 }: {
   usage: PlaceUsage;
   place: Place;
@@ -1831,6 +1968,9 @@ function PlaceRow({
   /** Only the place card passes this: it makes the badge the way in to its own pin
    *  (ADR-0129 §1). Absent everywhere else, so the list's badges stay inert. */
   onFrame?: () => void;
+  /** Present only while a place errand is live: choose THIS place for the form that sent
+   *  it, and return (ADR-0134 §3). */
+  onChoose?: () => void;
   /** Open the picker to give a coordless Place-lite real coordinates. */
   onEnrich: () => void;
 }) {
@@ -1953,7 +2093,27 @@ function PlaceRow({
           // The numeral inside the measurement is isolated by `measure`.
           <span className={'map-dist' + (distanceStale ? ' stale' : '')}>{distance}</span>
         )}
-        {dirUrl ? (
+        {/* WHILE AN ERRAND IS LIVE, `בחירה` REPLACES `נווט` (ADR-0134 §3/§4). Navigating
+            somewhere is not the task when you are picking a place for a form, and "a
+            control only where it has something to do" is the derived-affordance rule this
+            tab already runs for `קרוב עכשיו`, `אולי`, `מה נשאר`, `באזור` at zero and
+            `frame` with nothing to frame. It also pays for itself: `.map-right` is a
+            column, so a verb ADDED beside `נווט` would cost height and the row would grow
+            — measured, it stays at 73px because the verb takes the slot instead.
+            And the row's TAP still only frames (§3): choosing is this explicit control, so
+            you can look before you commit. */}
+        {onChoose ? (
+          <button
+            type="button"
+            className="map-addmaybe"
+            onClick={(e) => {
+              e.stopPropagation();
+              onChoose();
+            }}
+          >
+            {t.map.errand.choose}
+          </button>
+        ) : dirUrl ? (
           <a
             className="map-navbtn"
             href={dirUrl}

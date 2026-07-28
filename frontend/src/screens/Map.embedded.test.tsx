@@ -206,6 +206,15 @@ vi.mock('../ui/domain/MapPane', () => ({
         <button data-locate onClick={() => (props.onLocate as () => void)()}>
           locate
         </button>
+        {/* What the camera was asked to FRAME (ADR-0134 §6). A row tap sets it; a pin or
+            ring tap must not — that is the whole split, so the suite has to see it. */}
+        <span
+          data-frame={
+            props.framePlace
+              ? `${(props.framePlace as { lat: number }).lat},${(props.framePlace as { lng: number }).lng}`
+              : ''
+          }
+        />
         {/* `data-aside` and `data-amber` exist because ADR-0131 §4 split the subordinate
             RATIO from the paint, so the suite has to see them apart: a query withdraws
             `aside` and leaves the tier alone, and the amber cues deliberately do NOT
@@ -1261,6 +1270,88 @@ describe('the embedded map’s shell (ADR-0121)', () => {
         expect(searchStub.pick).toHaveBeenCalledWith(result);
         // Uncategorised on purpose: category is captured when the idea is scheduled.
         expect(addMaybe).toHaveBeenCalledWith('Blue Bottle', { placeId: 'p-new' });
+      });
+    });
+
+    // ─── A ROW TAP FRAMES; A CANVAS TAP PANS (ADR-0134 §6) ─────────────────────────
+    // ADR-0129 §1 decided both taps pan, on the owner's report that being zoomed for a pin
+    // you can already see is a nuisance. That is right for a PIN and wrong for a ROW: a row
+    // in a list is the one case where you cannot see the place, and at `full` there is no
+    // canvas at all. So the tap's SOURCE decides, and these tests are the split.
+    describe('a row tap frames, a canvas tap pans', () => {
+      const framed = () => (document.querySelector('[data-frame]') as HTMLElement).dataset.frame;
+
+      it('a trip row tap frames the place', () => {
+        seed();
+        render(wrap(<MapView />));
+        expect(framed()).toBe('');
+        fireEvent.click(row('museum')!);
+        expect(framed()).toBe('35.6,139.6');
+      });
+
+      it('a PIN tap does not frame — it only pans, which is ADR-0129 §1 unchanged', () => {
+        seed();
+        render(wrap(<MapView />));
+        fireEvent.click(pin('museum')!);
+        expect(row('museum')!.className).toContain('selected');
+        expect(framed()).toBe('');
+      });
+
+      // A coordless row still SELECTS — it is referenced, so it must be tappable
+      // (ADR-0121 §8) — and there is simply nothing to frame.
+      it('a coordless row selects and frames nothing', () => {
+        seed();
+        render(wrap(<MapView />));
+        fireEvent.click(row('lite')!);
+        expect(row('lite')!.className).toContain('selected');
+        expect(framed()).toBe('');
+      });
+
+      it('from `full` the sheet drops to `half` first, so the framing is not behind the list', () => {
+        seed();
+        render(wrap(<MapView />));
+        fireEvent.click(toggle(t.map.view.list));
+        expect(screenEl().dataset.view).toBe(MAP_SHEET_VIEW.full);
+        fireEvent.click(row('museum')!);
+        expect(screenEl().dataset.view).toBe(MAP_SHEET_VIEW.half);
+        expect(framed()).toBe('35.6,139.6');
+      });
+
+      // The same tap, on the other corpus. A result row is the case the owner asked for by
+      // name: "clicking on a result pans you to the location, instead of opening Google maps".
+      it("a result's ROW frames it; its RING only pans", () => {
+        seed();
+        searchStub.predictions = [
+          { googlePlaceId: 'g-1', primaryText: 'Blue Bottle', lat: 35.69, lng: 139.7 },
+        ];
+        render(wrap(<MapView />));
+        fireEvent.click(listButton(t.map.search.button));
+        fireEvent.change(screen.getByPlaceholderText(t.map.search.placeholder), {
+          target: { value: 'coffee' },
+        });
+        fireEvent.click(document.querySelector('[data-ring="g-1"]') as HTMLElement);
+        expect(framed()).toBe('');
+        fireEvent.click(document.querySelector('[data-result="g-1"] .map-res-open') as HTMLElement);
+        expect(framed()).toBe('35.69,139.7');
+      });
+
+      // The pane derives it from the rings it is already drawing, so the SPAN can read the
+      // other candidates while the camera's own fit stays free of them (ADR-0134 §7).
+      it('the rings reach the camera as focus CONTEXT, never as points it fits', () => {
+        seed();
+        searchStub.predictions = [
+          { googlePlaceId: 'g-1', primaryText: 'Blue Bottle', lat: 35.69, lng: 139.7 },
+          { googlePlaceId: 'g-2', primaryText: 'Arabica', lat: 35.68, lng: 139.71 },
+        ];
+        render(wrap(<MapView />));
+        fireEvent.click(listButton(t.map.search.button));
+        fireEvent.change(screen.getByPlaceholderText(t.map.search.placeholder), {
+          target: { value: 'coffee' },
+        });
+        // `pins` is the camera's fit set and it must not contain a ring.
+        const pinIds = (paneProps.current.pins as { placeId: string }[]).map((p) => p.placeId);
+        expect(pinIds).not.toContain('g-1');
+        expect((paneProps.current.results as unknown[]).length).toBe(2);
       });
     });
 

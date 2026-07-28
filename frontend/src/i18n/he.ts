@@ -94,6 +94,16 @@ export const t = {
     // and available in BOTH modes). Its `arm`/`armBody`/`armAria` are deleted, not
     // orphaned: ADR-0131 §8a withdrew the gate, because the arm separated two intents on
     // one field and the user has one. `PLACE_SEARCH_MIN_CHARS` is the cost control now.
+    // A place ERRAND: a form sent you here to pick one location (ADR-0134 §1). The verb
+    // changes while it is live — you are choosing, not shelving — and the banner names
+    // the target in the reference's own words, which only the form knows.
+    errand: {
+      choose: 'בחירה',
+      chooseAria: (name: string) => `בחירת ${name}`,
+      // `label` is the target, supplied by whoever started the errand.
+      title: (label: string) => `בחירת מיקום ל${label}`,
+      cancel: 'ביטול',
+    },
     research: {
       tripGroup: 'בטיול',
       googleGroup: 'מגוגל',
@@ -101,6 +111,9 @@ export const t = {
       addAria: (name: string) => `הוספת ${name} למדף האולי`,
       onShelf: 'על המדף',
       inTrip: 'כבר בטיול',
+      // The row's tap frames the place HERE (ADR-0134 §6), so the way out to Google is its
+      // own control — and it needs a name, because it is an icon.
+      openInGoogle: 'פתיחה בגוגל מפות',
       searching: 'מחפש בגוגל…',
       noResults: 'לא נמצאו מקומות בגוגל',
       // Offline the arm is gone rather than disabled (the near-me rule, ADR-0109 §7).

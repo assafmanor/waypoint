@@ -19,6 +19,7 @@ type IconName =
   | 'locate'
   | 'frame'
   | 'pin'
+  | 'external'
   | 'cloud-check'
   | 'cloud-up'
   | 'cloud-bang';
@@ -60,6 +61,11 @@ const PATHS: Record<IconName, string> = {
   // 🗺️ emoji: emoji are content, icons are UI (design-language.md), and a row's one
   // emoji slot is already spent on the category badge (ADR-0038).
   pin: 'M12 21.5s6.5-5.9 6.5-10.5a6.5 6.5 0 1 0-13 0C5.5 15.6 12 21.5 12 21.5Z M14.2 10.8a2.2 2.2 0 1 1-4.4 0 2.2 2.2 0 0 1 4.4 0',
+  // Opens OUTSIDE the app — a result row's way out to Google Maps (ADR-0134 §5). The
+  // arrow-out-of-a-box every platform uses for "this leaves here", deliberately NOT a map
+  // glyph: `pin` above already means "our map", and two map-shaped marks on one row would
+  // compete. What this control says is where you END UP, which is the honest distinction.
+  external: 'M14 4h6v6 M20 4 11 13 M18 14v4a2 2 0 0 1-2 2H6a2 2 0 0 1-2-2V8a2 2 0 0 1 2-2h4',
   // Per-entity sync glyphs — a cloud + a distinct inner mark per state (ADR-0091).
   'cloud-check': CLOUD + ' M9.3 13.6l1.9 1.9 3.6-3.8',
   'cloud-up': CLOUD + ' M11.8 16.6v-4.6 M9.6 14l2.2-2.2 2.2 2.2',
