@@ -57,11 +57,11 @@ cache tier. The `DOC_LOCAL_STORAGE_DIR` env var and its default path **stayed**:
 keyspace of UUIDs, and renaming them would strand every blob an existing dev install has
 written to buy a tidier word.
 
-## Three defects the render found, and one the repo's own guard did
+## Three defects the render found, and two CI did
 
 Consistent with every phase of this epic: putting it on screen found what tests could
 not. That is now four sessions in a row, and it is worth saying rather than implying the
-tests were sufficient.
+tests were sufficient. Two more came from CI, and both were mine.
 
 1. **Both `<input type="file">` elements were visible** — two "Choose File" controls at
    the bottom of the picture page. `.file-picker-input`'s off-screen rule lived in
@@ -85,6 +85,17 @@ tests were sufficient.
    network passthrough, so without it the PWA would have answered every avatar request
    with the cached app shell and every uploaded face would have failed to decode in
    production. A contract test earning its keep.
+5. **`e2e` went red because `constants.ts` is not only loaded by Vite.** Moving
+   `API_BASE_URL` here — so `Avatar` could resolve an upload's path without dragging the
+   api module and Dexie into a presentational primitive — put a bare
+   `import.meta.env.VITE_API_BASE_URL` in a module the **Playwright harness** imports
+   (`e2e/shelf-drag.spec.ts` takes two drag constants from it). Under plain Node
+   `import.meta.env` is undefined, so the whole suite died at collection: _0 tests in 0
+   files_. `lib/api.ts` had never been in that import graph, which is exactly why the move
+   was invisible until CI ran it. Optional-chained, with the reason in the file so the next
+   `import.meta.env` read here does not repeat it — and verified both ways: Playwright now
+   collects 34 tests, and a `vite build` with the var set still **inlines** the literal
+   through the `?.`, so the production path is unchanged.
 
 ## Verified against a real server, not only in tests
 

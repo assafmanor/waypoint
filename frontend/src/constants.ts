@@ -11,8 +11,16 @@ export const MS_PER_DAY = 86_400_000;
  *  It lives here rather than in `lib/api.ts` (which re-exports it) because
  *  `ui/primitives/Avatar` needs it to resolve an uploaded avatar's path, and a
  *  presentational primitive must not drag the api module — and through it Dexie — into
- *  its import graph just to read one config string. */
-export const API_BASE_URL = import.meta.env.VITE_API_BASE_URL ?? '';
+ *  its import graph just to read one config string.
+ *
+ *  `import.meta.env` is optional-chained because this module is **not only loaded by
+ *  Vite**: `e2e/shelf-drag.spec.ts` imports two drag constants from here, so Playwright
+ *  loads the file in plain Node, where `import.meta.env` does not exist and a bare
+ *  `.VITE_API_BASE_URL` is a TypeError that fails the whole suite at collection. That
+ *  cost a red `e2e` on the PR that moved this constant in — `lib/api.ts` had never been
+ *  in the harness's import graph. Any `import.meta.env` read in `constants.ts` needs the
+ *  same guard. */
+export const API_BASE_URL = import.meta.env?.VITE_API_BASE_URL ?? '';
 
 /** Filename on the avatar multipart part. A re-encoded canvas `Blob` has no name, and
  *  multer needs one to treat the part as a file at all — the server never reads it
