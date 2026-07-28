@@ -19,12 +19,19 @@ export function PlacePicker({
   onChange,
   ariaLabel,
   placeholder,
+  onFind,
 }: {
   /** Current placeId (a trip Place, possibly a coordless name-only Place-lite). */
   value?: string;
   onChange: (placeId: string | undefined) => void;
   ariaLabel?: string;
   placeholder?: string;
+  /** **Send an errand to the Map instead of opening the sheet here** (ADR-0134 §1).
+   *  The form supplies it, because only the form can write the DRAFT the errand has to
+   *  carry — this field has no idea what else is half-typed above it. Absent (or `null`
+   *  outside the trip shell, where there is no Map tab to route to) the sheet opens as it
+   *  always did, which is what keeps the field usable on any surface. */
+  onFind?: (() => void) | null;
 }) {
   const { places } = useTrip();
   const [open, setOpen] = useState(false);
@@ -35,7 +42,7 @@ export function PlacePicker({
       <button
         type="button"
         className={'pp-trigger' + (current ? ' filled' : '')}
-        onClick={() => setOpen(true)}
+        onClick={() => (onFind ? onFind() : setOpen(true))}
         aria-label={ariaLabel ?? t.placePicker.open}
       >
         <span className="pp-trigger-icon" aria-hidden>

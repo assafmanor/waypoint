@@ -103,6 +103,9 @@ export const t = {
       // `label` is the target, supplied by whoever started the errand.
       title: (label: string) => `בחירת מיקום ל${label}`,
       cancel: 'ביטול',
+      // A form that has not been named yet still has to be named in the banner.
+      untitledEvent: 'האירוע החדש',
+      untitledBooking: 'ההזמנה החדשה',
     },
     research: {
       tripGroup: 'בטיול',

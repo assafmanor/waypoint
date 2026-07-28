@@ -13,6 +13,7 @@
 // The list stays time-ordered and hard events are pinned anchors (ADR-0011).
 import {
   Fragment,
+  useEffect,
   useRef,
   useState,
   type FormEvent,
@@ -33,7 +34,7 @@ import { useTrip, byStart } from '../state/trip-state';
 import { useDragState } from '../state/drag-state';
 import { useSpringLoadedDay } from '../lib/useSpringLoadedDay';
 import { useVerbs } from '../state/verbs';
-import { useShowPlaceOnMap } from '../state/map-scope-state';
+import { useReturnedPlaceErrand, useShowPlaceOnMap } from '../state/map-scope-state';
 import { useClock } from '../lib/useClock';
 import {
   eventDurationLabel,
@@ -92,8 +93,8 @@ import {
 import { dayTransitions, mergeDayEntries, type DayEntry } from '../lib/day-entries';
 import type { BookingTransition } from '../lib/glance';
 import { t } from '../i18n/he';
-import { EventForm } from '../ui/EventForm';
-import { BookingSheet } from '../ui/BookingSheet';
+import { EventForm, type EventFormDraft } from '../ui/EventForm';
+import { BookingSheet, type BookingSheetDraft } from '../ui/BookingSheet';
 import { BookingDetail } from '../ui/BookingDetail';
 import { TransitionRow } from '../ui/TransitionRow';
 import { routeDisplay } from '../ui/route-display';
@@ -668,11 +669,36 @@ export function PlanDay() {
   // (session 100). One builder, one input, no room to diverge.
   const zoneCtx = dayZoneContext(activeDate, zoneEvidence);
 
+  // RE-OPENING AFTER A PLACE ERRAND (ADR-0134 §2) — the same shape as `DayView`'s, through
+  // the same shared hook: the form went to the Map tab to have a location picked, which
+  // unmounted it, so it returns from its own draft with the chosen place already in place.
+  const [formDraft, setFormDraft] = useState<EventFormDraft | null>(null);
   const closeForm = () => {
     setFormTarget(null);
     setGapFill(null);
     setScheduleMaybe(null);
+    setFormDraft(null);
   };
+  const returned = useReturnedPlaceErrand<EventFormDraft>('event');
+  useEffect(() => {
+    if (!returned?.draft) return;
+    setFormTarget(events.find((e) => e.id === returned.target.id) ?? 'new');
+    setFormDraft({ ...returned.draft, [returned.target.field]: returned.placeId });
+  }, [returned, events]);
+
+  // RE-OPENING AFTER A PLACE ERRAND (ADR-0134 §2), through the same shared hook every other
+  // form host uses: without it the sheet returns closed and the rest of what was typed is
+  // gone, which is the whole reason the errand carries a draft.
+  const [bookingDraft, setBookingDraft] = useState<BookingSheetDraft | null>(null);
+  const returnedBooking = useReturnedPlaceErrand<BookingSheetDraft>('booking');
+  useEffect(() => {
+    if (!returnedBooking?.draft) return;
+    setBookingTarget(bookings.find((b) => b.id === returnedBooking.target.id) ?? null);
+    setBookingDraft({
+      ...returnedBooking.draft,
+      [returnedBooking.target.field]: returnedBooking.placeId,
+    });
+  }, [returnedBooking, bookings]);
 
   const builderCtx: BuilderCtx = {
     tz,
@@ -928,12 +954,20 @@ export function PlanDay() {
           event={formTarget && formTarget !== 'new' ? formTarget : null}
           maybeItem={scheduleMaybe}
           defaults={gapFill ?? undefined}
+          draft={formDraft}
           onClose={closeForm}
         />
       )}
 
-      {bookingTarget && (
-        <BookingSheet booking={bookingTarget} onClose={() => setBookingTarget(null)} />
+      {(bookingTarget || bookingDraft) && (
+        <BookingSheet
+          booking={bookingTarget}
+          draft={bookingDraft}
+          onClose={() => {
+            setBookingTarget(null);
+            setBookingDraft(null);
+          }}
+        />
       )}
 
       {detailTarget && (
