@@ -77,29 +77,30 @@ export const t = {
       // category's glyph — a control named by an emoji is not named.
       activeAria: (facets: string) => `סינון: ${facets}`,
     },
+    // The query is a CONTROL in the canvas's own row now, not a full-screen overlay
+    // (ADR-0131 §1) — so the overlay's own copy is gone with it: `modeTitle`,
+    // `planModeTitle`, `backAria`, `clear`, `planPlaceholder`, `hint` and `planButton`
+    // are DELETED rather than orphaned, and there is no mode split left to name because
+    // both halves are in both modes (§8). The Index keeps its own `t.index.search.*`.
     search: {
       button: 'חיפוש מקומות',
-      modeTitle: 'חיפוש מקומות',
       placeholder: 'שם או כתובת',
-      clear: 'ניקוי',
-      backAria: 'סגירת חיפוש',
+      // One close control for whichever occupant of the row is open (§1). It clears the
+      // query as it closes, so no filter can be on without being visible.
+      close: 'סגירת חיפוש',
+      // The count's action, as an accessible DESCRIPTION: at the map stop the count is
+      // the way into the list, and the visible number has to stay the accessible NAME or
+      // a voice-control user cannot say what they can see (WCAG 2.5.3, ADR-0126 §4).
+      showList: 'הצגת הרשימה',
       noResultsTitle: 'לא נמצאו מקומות',
-      // Plan mode: the same control also researches new places (ADR-0115 §1), so
-      // it says so before you type.
-      planButton: 'חיפוש ומחקר מקומות',
-      planModeTitle: 'חיפוש ומחקר מקומות',
-      planPlaceholder: 'שם, כתובת, או מקום חדש בגוגל',
-      hint: 'חפשו כדי לסנן את מקומות הטיול, או להוסיף מקום חדש מגוגל למדף האולי.',
     },
-    // Plan-mode place research (Phase 5, ADR-0115). The Google half is armed by
-    // intent: it is the first thing in the app that costs money per keystroke, so
-    // the copy says that out loud instead of hiding it.
+    // Google's half of the search (ADR-0115, re-parented into the sheet by ADR-0131 §8
+    // and available in BOTH modes). Its `arm`/`armBody`/`armAria` are deleted, not
+    // orphaned: ADR-0131 §8a withdrew the gate, because the arm separated two intents on
+    // one field and the user has one. `PLACE_SEARCH_MIN_CHARS` is the cost control now.
     research: {
       tripGroup: 'בטיול',
       googleGroup: 'מגוגל',
-      arm: 'חיפוש בגוגל',
-      armBody: 'מקומות שעוד לא בטיול. החיפוש עולה לנו כסף, אז הוא נדלק כשאתם מבקשים.',
-      armAria: 'הדלקת חיפוש בגוגל',
       add: 'אולי',
       addAria: (name: string) => `הוספת ${name} למדף האולי`,
       onShelf: 'על המדף',

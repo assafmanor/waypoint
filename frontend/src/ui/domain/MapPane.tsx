@@ -13,7 +13,13 @@
 // `memo` below is load-bearing rather than an optimisation.
 import { memo, useCallback, useEffect, useMemo, useRef, type RefObject } from 'react';
 import { APIProvider, AdvancedMarker, Map, Polyline, useMap } from '@vis.gl/react-google-maps';
-import { isFramedByCamera, PIN_TIER, pinZIndex, type PinTier } from '../../lib/map-pins';
+import {
+  isAsidePin,
+  isFramedByCamera,
+  PIN_TIER,
+  pinZIndex,
+  type PinTier,
+} from '../../lib/map-pins';
 import { readMapBounds, useMapCamera } from '../../lib/useMapCamera';
 import type { LatLng, MapBounds } from '../../lib/map-camera';
 import type { MapsConfig } from '../../lib/map-config';
@@ -41,14 +47,22 @@ const MAP_ID = 'waypoint-map';
  *  One name to read carefully: this `skipped` is the CLOCK's tier, and its row
  *  counterpart is `.place.behind`. A row's own `.place.skipped` is the narrower
  *  claim — a human said this did not happen (ADR-0117 §4) — which the canvas does
- *  not draw, since every behind-you pin looks the same whatever closed it. */
-const PIN_TIER_CLASS: Record<PinTier, string> = {
+ *  not draw, since every behind-you pin looks the same whatever closed it.
+ *
+ *  **The PAINT lives here and the RATIO does not** (ADR-0131 §4). `aside` used to ride
+ *  along in these strings, which was right while the only reason to be subordinate was
+ *  the day scope. A live query is a second reason to be IN it: search is scope-blind by
+ *  rule, so a match from another day is what you asked for. The paint still says _what
+ *  it is_ (hollow = another day, which is the answer to "which day?"); the ratio says
+ *  _how much it is claiming_, and that is the caller's call. So the pin carries `aside`
+ *  as its own flag and this map is paint only. */
+const PIN_TIER_PAINT: Record<PinTier, string> = {
   [PIN_TIER.upcoming]: '',
   [PIN_TIER.idea]: 'soft',
   [PIN_TIER.ambient]: 'ambient',
   [PIN_TIER.behind]: 'skipped',
-  [PIN_TIER.shelf]: 'soft aside',
-  [PIN_TIER.ghost]: 'ghost aside',
+  [PIN_TIER.shelf]: 'soft',
+  [PIN_TIER.ghost]: 'ghost',
 };
 
 /** One pin, entirely in primitives. No `PlaceUsage`, no `Place`, no state — which
@@ -61,6 +75,14 @@ export interface MapPin {
   /** The category glyph. A ghost drops it (no fill to sit on), so it may be ''. */
   glyph: string;
   tier: PinTier;
+  /** The subordinate SIZE both out-of-scope populations take (ADR-0130 §3's ratio).
+   *  Normally `isAsidePin(tier)`, but a live query withdraws it (ADR-0131 §4): search
+   *  is scope-blind, so the day scope is not what chose the set and a match must not be
+   *  drawn as the thing you are not looking at. The paint is unaffected — a promoted
+   *  ghost is still hollow, because it is still another day's. The camera reads THIS,
+   *  not the tier, so the `frame` control frames the matches for free; the amber cues
+   *  and the day connector deliberately keep reading the tier. */
+  aside?: boolean;
   /** Position in the day's sequence, or absent when it has none (§6). */
   order?: number;
   /** The single amber time-anchor the canvas allows — Trip mode, exactly one pin. */
@@ -252,7 +274,12 @@ const PinMarker = memo(function PinMarker({
   const cls = [
     'map-pin',
     `cat-${pin.hue}`,
-    PIN_TIER_CLASS[pin.tier],
+    PIN_TIER_PAINT[pin.tier],
+    // The ratio, separately from the paint — see `MapPin.aside`. Absent means "derive it
+    // from the tier", which is what the two agree on in every state but a live query, so
+    // the flag reads as a WITHDRAWAL rather than as a field every caller must remember.
+    // Same `??` shape as `isFramedByCamera`, for the same reason.
+    (pin.aside ?? isAsidePin(pin.tier)) && 'aside',
     pin.nextStop && 'nextstop',
     pin.nowStop && 'nowstop',
     pin.selected && 'selected',

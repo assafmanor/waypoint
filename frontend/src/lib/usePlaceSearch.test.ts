@@ -2,7 +2,7 @@
 import { afterEach, beforeEach, describe, expect, it, vi, type Mock } from 'vitest';
 import { act, renderHook } from '@testing-library/react';
 import type { Place } from '@waypoint/shared';
-import { PLACE_SEARCH_DEBOUNCE_MS } from '../constants';
+import { PLACE_SEARCH_DEBOUNCE_MS, PLACE_SEARCH_MIN_CHARS } from '../constants';
 
 // Real ApiError/isRateLimitedError; only the network call is stubbed.
 vi.mock('./api', async (importOriginal) => {
@@ -33,6 +33,14 @@ import { usePlaceSearch } from './usePlaceSearch';
 const searchMock = searchPlaces as unknown as Mock;
 const PREDICTION = { googlePlaceId: 'g-shibuya', primaryText: 'Shibuya', secondaryText: 'Tokyo' };
 
+// Derived from the floor, never hardcoded against it. ADR-0131 §8b raised
+// `PLACE_SEARCH_MIN_CHARS` 2 → 3 and three cases here were fixtured on a literal
+// 2-char query, which does not FAIL at the higher floor — it goes inert and keeps
+// passing while testing nothing. Deriving both sides means the next change to the
+// floor cannot silently disable a test.
+const BELOW_FLOOR = 'x'.repeat(PLACE_SEARCH_MIN_CHARS - 1);
+const PAST_FLOOR = 'shibuya'.slice(0, Math.max(PLACE_SEARCH_MIN_CHARS, 1));
+
 describe('usePlaceSearch', () => {
   beforeEach(() => {
     vi.useFakeTimers();
@@ -48,7 +56,7 @@ describe('usePlaceSearch', () => {
 
   it('does not fire a search below the min-chars floor', async () => {
     const { result } = renderHook(() => usePlaceSearch());
-    act(() => result.current.setQuery('s'));
+    act(() => result.current.setQuery(BELOW_FLOOR));
     await act(async () => {
       await vi.advanceTimersByTimeAsync(PLACE_SEARCH_DEBOUNCE_MS + 50);
     });
@@ -58,7 +66,7 @@ describe('usePlaceSearch', () => {
 
   it('fires one debounced search once past the floor and surfaces predictions', async () => {
     const { result } = renderHook(() => usePlaceSearch());
-    act(() => result.current.setQuery('sh'));
+    act(() => result.current.setQuery(PAST_FLOOR));
     // Before the debounce window elapses, nothing has fired yet.
     expect(searchMock).not.toHaveBeenCalled();
     await act(async () => {
@@ -100,7 +108,7 @@ describe('usePlaceSearch', () => {
     resolvePlace.mockResolvedValue({ id: 'pl-resolved', googlePlaceId: 'g-shibuya' } as Place);
     const { result } = renderHook(() => usePlaceSearch('pl-lite'));
     // Mint the session token by starting a search first.
-    act(() => result.current.setQuery('sh'));
+    act(() => result.current.setQuery(PAST_FLOOR));
     await act(async () => {
       await vi.advanceTimersByTimeAsync(PLACE_SEARCH_DEBOUNCE_MS + 50);
     });
@@ -118,7 +126,7 @@ describe('usePlaceSearch', () => {
   it('surfaces a soft rateLimited state instead of throwing', async () => {
     searchMock.mockRejectedValue(new ApiError(429, 'RATE_LIMITED'));
     const { result } = renderHook(() => usePlaceSearch());
-    act(() => result.current.setQuery('sh'));
+    act(() => result.current.setQuery(PAST_FLOOR));
     await act(async () => {
       await vi.advanceTimersByTimeAsync(PLACE_SEARCH_DEBOUNCE_MS + 50);
     });

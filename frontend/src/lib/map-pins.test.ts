@@ -485,6 +485,25 @@ describe('isFramedByCamera — the camera answers the day, not its context (§6/
     expect(isAsidePin(PIN_TIER.behind)).toBe(false);
   });
 
+  // ADR-0131 §4: a live query withdraws the RATIO, and the camera reads the ratio rather
+  // than the tier — which is what makes the `frame` control frame the matches with no
+  // change to the control. The two are equal in every other state, so reading the tier
+  // here instead would have been the silent version of this bug.
+  it('frames an aside pin whose ratio a query withdrew, and the tier is untouched', () => {
+    expect(isFramedByCamera({ tier: PIN_TIER.ghost, aside: false })).toBe(true);
+    expect(isFramedByCamera({ tier: PIN_TIER.shelf, aside: false })).toBe(true);
+    // The TIER still says what it said — the paint is not what moved.
+    expect(isAsidePin(PIN_TIER.ghost)).toBe(true);
+    expect(isAsidePin(PIN_TIER.shelf)).toBe(true);
+  });
+
+  it('an explicit flag wins over the tier in both directions', () => {
+    // Absent means "derive from the tier", which is the shipped behaviour and what keeps
+    // the flag a withdrawal rather than a field every caller must remember.
+    expect(isFramedByCamera({ tier: PIN_TIER.ghost })).toBe(false);
+    expect(isFramedByCamera({ tier: PIN_TIER.upcoming, aside: true })).toBe(false);
+  });
+
   it('is the same subordination near-me already applies to its sort and chips', () => {
     // Stated as a test so the two cannot drift: one rule, three consumers.
     const canvas = [

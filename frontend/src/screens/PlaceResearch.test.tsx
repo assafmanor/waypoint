@@ -60,8 +60,6 @@ const view = (props: { query: string; offline?: boolean; usageIndex?: Map<string
     />,
   );
 
-const arm = () => fireEvent.click(screen.getByRole('button', { name: t.map.research.armAria }));
-
 describe('PlaceResearch (Phase 5, ADR-0115)', () => {
   beforeEach(() => {
     predictions = [];
@@ -78,30 +76,23 @@ describe('PlaceResearch (Phase 5, ADR-0115)', () => {
     addMaybe.mockClear();
   });
 
-  it('nothing typed → nothing offered, and nothing reaches the paid core', () => {
+  it('nothing typed → nothing rendered, and nothing reaches the paid core', () => {
     view({ query: '  ' });
-    expect(screen.queryByRole('button', { name: t.map.research.armAria })).toBeNull();
+    expect(screen.queryByText(t.map.research.googleGroup)).toBeNull();
     expect(setQuery).not.toHaveBeenCalledWith('  ');
   });
 
-  it('a typed query offers the arm but spends nothing until it is tapped', () => {
+  // ADR-0131 §8a: the arm is gone, so a typed query goes straight to the shared core and
+  // the MIN-CHARS FLOOR is what stands between a keystroke and a paid call. The floor is
+  // the hook's, which is why this asserts the hand-off rather than the request.
+  it('a typed query reaches the shared core with no gate in front of it', () => {
     view({ query: 'teamLab' });
-    expect(screen.getByRole('button', { name: t.map.research.armAria })).toBeTruthy();
-    // The core is never handed the query before the user asks for Google — this is
-    // the whole point of arming (money, not polish).
-    expect(setQuery).not.toHaveBeenCalledWith('teamLab');
-  });
-
-  it('arming feeds the same query to the shared core, and only then', () => {
-    view({ query: 'teamLab' });
-    arm();
     expect(setQuery).toHaveBeenCalledWith('teamLab');
   });
 
   it('a result says its name and address, and nothing it does not have', () => {
     predictions = [prediction('g-1', 'teamLab Borderless', 'Azabudai Hills, Tokyo')];
     view({ query: 'teamLab' });
-    arm();
     expect(screen.getByText('teamLab Borderless')).toBeTruthy();
     expect(screen.getByText('Azabudai Hills, Tokyo')).toBeTruthy();
     // No ★ (an Enterprise field we don't fetch, ADR-0111) and no distance (a
@@ -117,7 +108,6 @@ describe('PlaceResearch (Phase 5, ADR-0115)', () => {
     predictions = [prediction('g-1', 'teamLab Borderless')];
     pick.mockResolvedValue(place('p1'));
     view({ query: 'teamLab' });
-    arm();
     fireEvent.click(
       screen.getByRole('button', { name: t.map.research.addAria('teamLab Borderless') }),
     );
@@ -132,7 +122,6 @@ describe('PlaceResearch (Phase 5, ADR-0115)', () => {
     predictions = [prediction('g-p1', 'teamLab Planets')];
     referenced = { 'g-p1': place('p1') };
     view({ query: 'teamLab', usageIndex: usage([['p1', true]]) });
-    arm();
     expect(screen.getByText(t.map.research.onShelf)).toBeTruthy();
     expect(screen.queryByRole('button', { name: /אולי/ })).toBeNull();
   });
@@ -141,13 +130,12 @@ describe('PlaceResearch (Phase 5, ADR-0115)', () => {
     predictions = [prediction('g-p2', 'Afuri Ramen')];
     referenced = { 'g-p2': place('p2') };
     view({ query: 'afuri', usageIndex: usage([['p2', false]]) });
-    arm();
     expect(screen.getByText(t.map.research.inTrip)).toBeTruthy();
   });
 
   it('offline the Google half is absent, not disabled', () => {
     view({ query: 'teamLab', offline: true });
-    expect(screen.queryByRole('button', { name: t.map.research.armAria })).toBeNull();
+    expect(screen.queryByText(t.map.research.googleGroup)).toBeNull();
     expect(screen.getByText(t.map.research.offline)).toBeTruthy();
   });
 
@@ -155,28 +143,24 @@ describe('PlaceResearch (Phase 5, ADR-0115)', () => {
     rateLimited = true;
     predictions = [prediction('g-1', 'teamLab Borderless')];
     view({ query: 'teamLab' });
-    arm();
     expect(screen.getByText(t.placePicker.rateLimited)).toBeTruthy();
     expect(screen.getByText('teamLab Borderless')).toBeTruthy();
   });
 
-  it('armed but under the min-chars floor says so instead of showing a bare header', () => {
+  it('under the min-chars floor it says so instead of showing a bare header', () => {
     active = false;
     view({ query: 't' });
-    arm();
     expect(screen.getByText(t.map.research.typeMore)).toBeTruthy();
     expect(screen.queryByText(t.map.research.noResults)).toBeNull();
   });
 
   it('no Google match says so', () => {
     view({ query: 'zzzz' });
-    arm();
     expect(screen.getByText(t.map.research.noResults)).toBeTruthy();
   });
 
   it('closing the surface retires the session token', () => {
     const { unmount } = view({ query: 'teamLab' });
-    arm();
     unmount();
     expect(reset).toHaveBeenCalled();
   });

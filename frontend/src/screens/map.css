@@ -80,7 +80,82 @@
 /* Search sits at the row's fixed end — and it is where the facet strip's `✕` then
    appears, because a close control you have to scroll to reach is not a close control. */
 .map-controls > .map-search-btn,
-.map-controls > .map-facets-close {
+.map-controls > /* ── THE QUERY, AS THE ROW'S SECOND OCCUPANT (ADR-0131 §1) ───────────────────────
+   `סינון` already covers this row in place behind a pinned `✕`; the query is the second
+   occupant of that same slot, not a second mechanism. It grows to fill the row because a
+   query field that is 90px wide is a query field nobody types in.
+
+   44 inside a 46px row (`calc(--map-controls-h - 2px)`): design-language's touch floor
+   met BY GEOMETRY rather than by a hit area painted larger than the ink — the point
+   ADR-0126 §3 had to make about the furniture band — and the split pays NOTHING, because
+   the row already exists and already floats over the canvas. `MAP_CONTROLS_H` stays 46,
+   so `mapFitPadding`'s top stays derived from it and the camera reads the same number.
+
+   It is the one member of this row that carries a fill, and ADR-0122's "no scrim, no card
+   background" still stands: the row AT REST is unchanged and still shows the map between
+   its chips. A text field with no ground is not a text field, and this one is transient.
+   The fill is the Index's own field treatment, so search reads the same wherever it
+   happens. */
+.map-controls > .map-querystrip {
+  flex: 1 1 auto;
+  min-width: 0;
+}
+.map-querystrip {
+  box-sizing: border-box;
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  height: calc(var(--map-controls-h, 46px) - 2px);
+  background: var(--card);
+  border: 1px solid var(--line);
+  border-radius: 999px;
+  padding: 0 12px;
+  color: var(--muted);
+}
+.map-querystrip .icon {
+  width: 15px;
+  height: 15px;
+  flex: 0 0 auto;
+}
+.map-querystrip input {
+  flex: 1;
+  min-width: 0;
+  border: 0;
+  outline: 0;
+  font: inherit;
+  font-size: var(--text-body);
+  background: none;
+  color: var(--ink);
+}
+/* The match count. At the `map` stop it is the way INTO the list, so it is a real
+   control there and a plain readout everywhere else (§6) — a derived affordance, like
+   every other control on this tab. The live region is the WRAPPER, because one node
+   cannot hold `status` and `button` and `status` would win (ADR-0126 §4). */
+.map-querystrip .cnt {
+  flex: 0 0 auto;
+  display: flex;
+  align-items: center;
+}
+.map-querystrip .cnt > * {
+  font: inherit;
+  font-family: var(--font-mono);
+  font-size: 11px;
+  font-weight: 700;
+  color: var(--muted);
+  background: none;
+  border: 0;
+  padding: 0;
+}
+.map-querystrip .cnt > button {
+  min-height: 30px;
+  padding: 0 8px;
+  border-radius: 999px;
+  background: color-mix(in srgb, var(--ink) 6%, transparent);
+  color: var(--ink);
+  cursor: pointer;
+}
+
+.map-facets-close {
   margin-inline-start: auto;
 }
 
@@ -159,6 +234,81 @@
   mask-image: none;
   padding-block-end: 0;
 }
+/* ── THE QUERY, AS THE ROW'S SECOND OCCUPANT (ADR-0131 §1) ───────────────────────
+   `סינון` already covers this row in place behind a pinned `✕`; the query is the second
+   occupant of that same slot, not a second mechanism. It grows to fill the row because a
+   query field that is 90px wide is a query field nobody types in.
+
+   44 inside a 46px row (`calc(--map-controls-h - 2px)`): design-language's touch floor
+   met BY GEOMETRY rather than by a hit area painted larger than the ink — the point
+   ADR-0126 §3 had to make about the furniture band — and the split pays NOTHING, because
+   the row already exists and already floats over the canvas. `MAP_CONTROLS_H` stays 46,
+   so `mapFitPadding`'s top stays derived from it and the camera reads the same number.
+
+   It is the one member of this row that carries a fill, and ADR-0122's "no scrim, no card
+   background" still stands: the row AT REST is unchanged and still shows the map between
+   its chips. A text field with no ground is not a text field, and this one is transient.
+   The fill is the Index's own field treatment, so search reads the same wherever it
+   happens. */
+.map-controls > .map-querystrip {
+  flex: 1 1 auto;
+  min-width: 0;
+}
+.map-querystrip {
+  box-sizing: border-box;
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  height: calc(var(--map-controls-h, 46px) - 2px);
+  background: var(--card);
+  border: 1px solid var(--line);
+  border-radius: 999px;
+  padding: 0 12px;
+  color: var(--muted);
+}
+.map-querystrip .icon {
+  width: 15px;
+  height: 15px;
+  flex: 0 0 auto;
+}
+.map-querystrip input {
+  flex: 1;
+  min-width: 0;
+  border: 0;
+  outline: 0;
+  font: inherit;
+  font-size: var(--text-body);
+  background: none;
+  color: var(--ink);
+}
+/* The match count. At the `map` stop it is the way INTO the list, so it is a real
+   control there and a plain readout everywhere else (§6) — a derived affordance, like
+   every other control on this tab. The live region is the WRAPPER, because one node
+   cannot hold `status` and `button` and `status` would win (ADR-0126 §4). */
+.map-querystrip .cnt {
+  flex: 0 0 auto;
+  display: flex;
+  align-items: center;
+}
+.map-querystrip .cnt > * {
+  font: inherit;
+  font-family: var(--font-mono);
+  font-size: 11px;
+  font-weight: 700;
+  color: var(--muted);
+  background: none;
+  border: 0;
+  padding: 0;
+}
+.map-querystrip .cnt > button {
+  min-height: 30px;
+  padding: 0 8px;
+  border-radius: 999px;
+  background: color-mix(in srgb, var(--ink) 6%, transparent);
+  color: var(--ink);
+  cursor: pointer;
+}
+
 .map-facets-close {
   display: grid;
   place-items: center;
@@ -924,45 +1074,6 @@
   margin: 2px 4px 10px;
 }
 
-/* the only door to a paid call — dashed because nothing has been spent yet */
-.map-arm {
-  display: flex;
-  align-items: center;
-  gap: 11px;
-  width: 100%;
-  text-align: start;
-  background: var(--card);
-  border: 1px dashed var(--plan);
-  border-radius: 16px;
-  padding: 13px 14px;
-  margin: 10px 0 4px;
-  font: inherit;
-  cursor: pointer;
-}
-.map-arm:hover {
-  background: color-mix(in srgb, var(--plan) 8%, transparent);
-}
-.map-arm-g {
-  flex: 0 0 auto;
-  width: 26px;
-  height: 26px;
-  border-radius: 50%;
-  background: conic-gradient(#4285f4 0 25%, #ea4335 0 50%, #fbbc05 0 75%, #34a853 0);
-}
-.map-arm-txt .at {
-  display: block;
-  font-size: 13.5px;
-  font-weight: 700;
-  color: var(--ink);
-}
-.map-arm-txt .am {
-  display: block;
-  font-size: 11.5px;
-  color: var(--muted);
-  margin-top: 2px;
-  line-height: 1.45;
-}
-
 /* a result row: the whole name block is a real link out to the Google place, so
    a candidate can be vetted before we pay to resolve it (ADR-0115 §2). */
 .map-res-open {
@@ -984,13 +1095,19 @@
   color: var(--muted);
   font-size: 16px;
 }
+/* `--cta`, NOT `--plan`, and that is a rule fix rather than a restyle (ADR-0131 §8).
+   Plan violet was legitimate here while ADR-0115 §6 kept research Plan-only; the moment
+   §8 renders this control in TRIP mode it is mode identity used as a button colour, which
+   `tokens.css` forbids in as many words ("amber/teal/plan are semantic, never CTAs") and
+   root CLAUDE.md rule 4 states directly. Found by drawing the surface against the shipped
+   stylesheets, not by reading the diff. */
 .map-addmaybe {
   display: inline-flex;
   align-items: center;
   gap: 5px;
-  border: 1px solid var(--plan);
-  color: var(--plan);
-  background: color-mix(in srgb, var(--plan) 10%, transparent);
+  border: 1px solid var(--cta);
+  color: var(--cta);
+  background: color-mix(in srgb, var(--cta) 10%, transparent);
   border-radius: 999px;
   padding: 6px 12px;
   font: inherit;
@@ -1000,7 +1117,7 @@
   white-space: nowrap;
 }
 .map-addmaybe:hover:not(:disabled) {
-  background: var(--plan);
+  background: var(--cta);
   color: var(--cta-text);
 }
 .map-addmaybe:disabled {
@@ -1017,10 +1134,11 @@
   padding: 5px 10px;
   white-space: nowrap;
 }
-.map-instate.shelf {
-  color: var(--plan);
-  background: color-mix(in srgb, var(--plan) 10%, transparent);
-}
+/* The shelf variant's violet is DELETED rather than re-coloured, and that is a
+   subtraction the words already cover: these two chips say `כבר בטיול` and `על המדף`,
+   so the distinction is the sentence and the colour was restating it. Same rule-4 reason
+   as `.map-addmaybe` above — this chip only ever rendered in Plan mode until ADR-0131 §8
+   put Google's half in both — and one rule fewer beats one rule recoloured. */
 
 .map-res-skel {
   border-radius: 16px;

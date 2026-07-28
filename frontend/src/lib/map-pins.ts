@@ -208,9 +208,16 @@ export const isAsidePin = (tier: PinTier): boolean =>
  *
  * The same subordination §6 already applies to near-me's sort and its distance
  * chips — a ghost enters neither — now stated for the camera too.
+ *
+ * **It reads the pin's `aside` flag, not its tier** (ADR-0131 §4). Normally the two
+ * agree. They part under a live query: search is scope-blind by rule, so a match from
+ * another day is what was asked for, and the screen withdraws the flag while keeping
+ * the tier. Reading the flag is therefore what makes the `frame` control frame the
+ * matches with no change to the control — and reading the TIER here instead would have
+ * been the silent version of that bug, since the two are equal in every other state.
  */
-export function isFramedByCamera(pin: { tier: PinTier }): boolean {
-  return !isAsidePin(pin.tier);
+export function isFramedByCamera(pin: { tier: PinTier; aside?: boolean }): boolean {
+  return !(pin.aside ?? isAsidePin(pin.tier));
 }
 
 /**

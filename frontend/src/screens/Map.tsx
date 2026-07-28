@@ -1,6 +1,6 @@
 // The Map tab (ADR-0109/0110 for the list, ADR-0121 for the rendered map) — the
 // pinned-place surface, re-emphasized by mode: Trip defaults to today's places,
-// Plan to all. It reuses the Index filter grammar (ChoiceGrid pills + SearchOverlay
+// Plan to all. It reuses the Index filter grammar (ChoiceGrid pills + the shared
 // + the mode-tinted --idx-accent) and reads the one shared derivation
 // (lib/place-usage.ts) for the chip counts, each row's badge, AND every pin.
 //
@@ -87,10 +87,12 @@ import {
   MAP_ATTRIBUTION_H,
   MAP_CONTROLS_H,
   MAP_PIN,
+  MAP_ROW_DISCLOSURE,
   MAP_SHEET_ORDER,
   MAP_SHEET_STOPS,
   MAP_SHEET_STRIP_H,
   MAP_SHEET_VIEW,
+  type MapRowDisclosure,
   type MapSheetView,
 } from '../constants';
 import { ChoiceGrid, type Choice } from '../ui/primitives/ChoiceGrid';
@@ -99,7 +101,6 @@ import { RevealList } from '../ui/primitives/RevealList';
 import { SnapSheet } from '../ui/primitives/SnapSheet';
 import { MapPane, type MapPin } from '../ui/domain/MapPane';
 import { PlaceResearch } from './PlaceResearch';
-import { SearchOverlay } from '../ui/primitives/SearchOverlay';
 import { BookingDetail } from '../ui/BookingDetail';
 import { BookingSheet } from '../ui/BookingSheet';
 import { PlaceBadge } from '../ui/domain/PlaceBadge';
@@ -119,16 +120,8 @@ interface RefEntry {
 }
 
 export function MapView() {
-  const {
-    trip,
-    events,
-    bookings,
-    maybeItems,
-    places,
-    activeDate,
-    zoneEvidence,
-    usingCachedSnapshot,
-  } = useTrip();
+  const { events, bookings, maybeItems, places, activeDate, zoneEvidence, usingCachedSnapshot } =
+    useTrip();
   const { mode } = useMode();
   const offline = useIsOffline() || usingCachedSnapshot;
   const nowMs = useClock().getTime();
@@ -165,13 +158,35 @@ export function MapView() {
   // their results are the pins and the rows already on screen, so the change has to be
   // visible while you make it — which is what a full-screen overlay cannot do, and why
   // ADR-0100 §3's shape is right here even though ADR-0101 superseded it for search.
-  const [facetsOpen, setFacetsOpen] = useState(false);
-  const [searchMode, setSearchMode] = useState(false);
+  // ONE disclosure with two occupants (ADR-0131 §1): the facet strip, and the query
+  // field that replaced ADR-0101's full-screen overlay on this tab — which covered the
+  // canvas completely, on the one tab whose question is "where is this?". Both take the
+  // row in place behind the same pinned `✕`. One three-valued state rather than two
+  // booleans, because two booleans have a fourth state (both open) that must not exist.
+  const [disclosure, setDisclosure] = useState<MapRowDisclosure | null>(null);
+  const facetsOpen = disclosure === MAP_ROW_DISCLOSURE.facets;
   const [query, setQuery] = useState('');
-  // Plan mode's search also researches Google (Phase 5, ADR-0115 §1/§6); Trip mode's
-  // stays a pure filter — discovery on the ground is a different query and a
-  // different SKU, and this is the one surface people use while walking around.
-  const research = mode === 'plan';
+  // A query is LIVE, as opposed to the field merely being open. Everything downstream
+  // keys on this: the list's predicate, the pin filter, the aside promotion (§4), and
+  // the two readers that ask "is this pin's row absent from the list?".
+  const searching = disclosure === MAP_ROW_DISCLOSURE.query && query.trim() !== '';
+  // Google's half is available in BOTH modes (§8, withdrawing ADR-0115 §6). The split
+  // between the two searches is not a mode — it is whether the thing has coordinates
+  // yet: a trip place already carries them (that is what pinned it), a prediction
+  // carries none until the pick, so the free half goes on the canvas and the paid half
+  // is rows in this sheet. There is no arm either (§8a); the floor is the cost control.
+  const openDisclosure = (next: MapRowDisclosure | null) => {
+    setDisclosure(next);
+    if (next !== MAP_ROW_DISCLOSURE.query) setQuery('');
+    // §6: only `full` moves. There the pane is `visibility: hidden`, so a search showing
+    // no canvas IS the report. At `map` the canvas is what answers and nothing moves —
+    // 517px of map, pins filtering live, and the count is the way into the list. Fired
+    // on the OPEN tap, never per keystroke: a sheet that moved while you typed would
+    // relayout the canvas under a typing finger (ADR-0121 §5).
+    if (next === MAP_ROW_DISCLOSURE.query && sheetView === MAP_SHEET_VIEW.full) {
+      setSheetView(MAP_SHEET_VIEW.half);
+    }
+  };
   // A coordless Place-lite the user chose to enrich from the map (＋ מיקום).
   const [enrichTarget, setEnrichTarget] = useState<Place | null>(null);
   // A booking reached through a selected row's way-in (§8) — `BookingDetail` is a
@@ -520,25 +535,30 @@ export function MapView() {
   // the strip's day itself) — a row leaving the scope collapses in place instead of
   // blinking out, and one arriving reveals with the same stagger. Re-orders
   // (near-me) are the other half, animated by `RevealList`'s move pass.
-  const listRows = revealRows(
-    [...allUsages].sort(listOrder),
-    (u) => inDayScope(u) && matchesPlaceFilter(u, placeFilter),
+  // Search spans every place in the trip (name + address), ignoring day scope AND the
+  // facets — the same "search is global" rule as the Index (ADR-0102). Which is also why
+  // the scope chip is not in the row while the field is open: it is precisely the control
+  // with nothing to say (§1).
+  const matchesQuery = (u: PlaceUsage) => {
+    const p = placeById.get(u.placeId);
+    return !!p && matchesAnyTerm(query, [p.name, p.address]);
+  };
+
+  // ONE list, whose PREDICATE switches (ADR-0131 §1/§7). It used to be two arrays — the
+  // day's list, and a second one the overlay rendered — which is what let the query live
+  // on a surface that hid the canvas. With the query as a control on this row it is the
+  // same list narrowing, so a row that stops matching collapses in place through the
+  // shared reveal exactly as a chip's would (ADR-0120), and there is one empty state,
+  // one count and one renderer instead of two.
+  //
+  // Every control that changes this list is animated (ADR-0120 session-130): the type
+  // chips, the `אולי` toggle, `מה נשאר`, the day scope (`כל הימים`, and the strip's day
+  // itself) and now the query. Re-orders (near-me, the area sort) are the other half,
+  // animated by `RevealList`'s move pass.
+  const listRows = revealRows([...allUsages].sort(listOrder), (u) =>
+    searching ? matchesQuery(u) : inDayScope(u) && matchesPlaceFilter(u, placeFilter),
   ).rows;
   const listCount = countVisible(listRows);
-
-  // Search spans every place in the trip (name + address), ignoring day scope and
-  // filters — the same "search is global" rule as the Index. It reveals through
-  // the same primitive, so typing here animates exactly like the Index's search.
-  const searchRows = useMemo(
-    () =>
-      revealRows([...allUsages].sort(listOrder), (u) => {
-        if (!query.trim()) return true;
-        const p = placeById.get(u.placeId);
-        return !!p && matchesAnyTerm(query, [p.name, p.address]);
-      }).rows,
-    [query, allUsages, placeById, distanceOrder, distances],
-  );
-  const searchCount = countVisible(searchRows);
 
   // navigate-to-next (ADR-0106 §6): not a re-sort or a second control, just the one
   // time-anchor cue the map's colour budget allows (ADR-0109 §6) — an amber tag on
@@ -592,7 +612,13 @@ export function MapView() {
       // The filter applies to ghosts too, so the canvas answers the question that
       // was actually asked: `מה נשאר` must not leave Tuesday's visited café sitting
       // there (§9), and a type chip means the same thing on both halves.
-      if (!matchesPlaceFilter(usage, placeFilter)) continue;
+      //
+      // A QUERY IS A FILTER LIKE ANY OTHER (ADR-0131 §3), which is why the matches need
+      // no cue: they are the pins that REMAIN. The ladder has no free axis left anyway —
+      // six tiers, two amber `box-shadow` cues, selection's `outline` shaped to compose
+      // with them, and a zoom-keyed dot degradation. And it is facet-blind here for the
+      // same reason it is in the list: one derivation, one filter layer (ADR-0121 §6).
+      if (!(searching ? matchesQuery(usage) : matchesPlaceFilter(usage, placeFilter))) continue;
       const tier = pinTier(usage);
       pinsNow.push({
         placeId: usage.placeId,
@@ -607,7 +633,19 @@ export function MapView() {
               ? iconForCategory(usage.pin.category)
               : '📍',
         tier,
+        // THE PROMOTION (ADR-0131 §4). `aside` is the subordinate SIZE; the tier class
+        // beside it is the paint. Under a query the day scope is not what chose this
+        // set, so a match must not wear the ratio that means "not what you are looking
+        // at" — while the paint stays, because a hollow ghost still answers _which day_,
+        // which is exactly what you need to know when your search found Friday's.
+        // Every pin here is a match while `searching` (non-matches were skipped above).
+        aside: isAsidePin(tier) && !searching,
         order: orderIndex.get(usage.placeId),
+        // AND THE AMBER GUARD DELIBERATELY DOES NOT FOLLOW IT. `עכשיו`/`היעד הבא` are
+        // claims about TIME, not about the search: a pin from a day you are not looking
+        // at must not make one. Reading `tier` here rather than the flag above is the
+        // whole distinction, and writing it as one query-aware predicate would have
+        // changed five behaviours silently, two of them wrongly.
         nextStop: nextStopId === usage.placeId && !isAsidePin(tier),
         nowStop: nowStopId === usage.placeId && !isAsidePin(tier),
         selected: selectedId === usage.placeId,
@@ -624,6 +662,11 @@ export function MapView() {
         p.hue,
         p.glyph,
         p.tier,
+        // In the key because it is a rendered class: a promotion that changed the paint
+        // but not this string would hand the memo an "equal" array and the markers would
+        // keep the old ratio. The pin SET usually changes with the query too, so the bug
+        // would have been intermittent rather than absent — the worse kind.
+        p.aside,
         p.order,
         p.nextStop,
         p.nowStop,
@@ -640,6 +683,18 @@ export function MapView() {
   // The camera answers CONTROLS, not content (§7): re-framing on every snapshot
   // change would move the map under someone who is reading it, and a manual pan
   // must win until the next scope change.
+  // `query` is DELIBERATELY ABSENT (ADR-0131 §5), and not for `areaSorted`'s reason —
+  // that one is a sort, while a query really is a filter, so it would otherwise belong
+  // here. Two reasons of its own. Since ADR-0129 every camera move is a hand-rolled
+  // per-frame ease, so re-fitting per keystroke is an animation restarting per keystroke.
+  // And a chip is ONE DISCRETE ACT where a query is a STREAM — `ר`, `רמ`, `רמן`, each a
+  // legitimate set — so a camera answering it is not "the camera answers a control"
+  // (ADR-0121 §7), it is the camera answering a keystroke.
+  //
+  // Typing never moves the camera; COMMITTING to a place always does. The two ways to a
+  // match already exist and neither is new: `frame` frames what the filters left (which
+  // now includes the promoted matches, §4), and the card's badge frames one place with
+  // its surroundings (ADR-0129 §1).
   const cameraSignal = [
     allDays ? 'all' : activeDate,
     activeCategory,
@@ -735,7 +790,14 @@ export function MapView() {
     // Keyed on the REASON rather than on one tier: what makes the row missing is that the
     // day scope did not choose the place, which is true of a dayless maybe exactly as it
     // is of another day's ghost (ADR-0130 §3).
-    setGhostId(usage && isAsidePin(pinTier(usage)) ? placeId : null);
+    //
+    // Under a live query the list is trip-wide, so NOTHING is out of its scope and every
+    // pin's row is already in it — the ghost row would double a row instead of supplying
+    // a missing one. This reader is not the promotion (§4): it asks "is this pin's row
+    // absent from the list?", and under a query the answer is uniformly no. ADR-0131's
+    // table enumerated three of five tier readers; this is one of the two it missed, and
+    // it needs the query for a different reason than the ratio does.
+    setGhostId(!searching && usage && isAsidePin(pinTier(usage)) ? placeId : null);
     select(placeId);
   };
   const selectPin = useCallback((placeId: string) => onPinTap.current(placeId), []);
@@ -1049,6 +1111,23 @@ export function MapView() {
   // Pins are kept out from under it by the camera (`mapFitPadding`'s top), never by
   // layout. The same component renders `position: static` above the list where there is
   // no split: one component, two positionings, never two components (§8).
+  // ONE close control for both occupants, pinned OUTSIDE the scroller where the search
+  // button sits at rest: a close control you have to scroll to reach is not a close
+  // control. Its label names whichever is open. For the query it CLEARS AND CLOSES in one
+  // act, so there is never an active filter you cannot see — the defect ADR-0119 exists
+  // to prevent — and while the field is open its own text is what states the filter,
+  // which is why it needs no collapsed summary the way `סינון` does.
+  const closeControl = (
+    <button
+      type="button"
+      className="map-facets-close"
+      aria-label={facetsOpen ? t.map.filter.close : t.map.search.close}
+      onClick={() => openDisclosure(null)}
+    >
+      <Icon name="close" />
+    </button>
+  );
+
   const controlsRow = (
     <div className={'map-controls' + (hasMap ? '' : ' in-flow')}>
       {facetsOpen ? (
@@ -1091,16 +1170,50 @@ export function MapView() {
               </button>
             )}
           </div>
-          {/* Pinned OUTSIDE the scroller, where the search button sits at rest: a close
-              control you have to scroll to reach is not a close control. */}
-          <button
-            type="button"
-            className="map-facets-close"
-            aria-label={t.map.filter.close}
-            onClick={() => setFacetsOpen(false)}
-          >
-            <Icon name="close" />
-          </button>
+          {closeControl}
+        </>
+      ) : disclosure === MAP_ROW_DISCLOSURE.query ? (
+        <>
+          {/* THE QUERY, IN THE ROW (ADR-0131 §1). 44px inside a 46px row, so the touch
+              floor is met by geometry and the split pays not one pixel — `MAP_CONTROLS_H`
+              stays 46 and the camera's top inset stays derived from it.
+              `autoFocus` for ADR-0101 §3's reason, minus its machinery: the whole point
+              of tapping search is to type. It is not a dialog, so there is no
+              `useDialogFocus` contract to opt into here. */}
+          <div className="map-querystrip">
+            <Icon name="search" />
+            <input
+              autoFocus
+              type="text"
+              value={query}
+              placeholder={t.map.search.placeholder}
+              aria-label={t.map.search.button}
+              onChange={(e) => setQuery(e.target.value)}
+            />
+            {searching && (
+              // A live region wrapping a control — ADR-0126 §4's shape, one more caller,
+              // because one node cannot hold `status` and `button` and `status` would win.
+              // At the `map` stop this is the way INTO the list, since a match with no
+              // coordinates has no pin at all; everywhere else the list is already on
+              // screen, so it is a plain readout. Derived affordance, like every other
+              // control on this tab.
+              <span className="cnt" role="status" aria-live="polite">
+                {sheetView === MAP_SHEET_VIEW.map ? (
+                  <button
+                    type="button"
+                    title={t.map.search.showList}
+                    onClick={() => setSheetView(MAP_SHEET_VIEW.half)}
+                    dir="auto"
+                  >
+                    {listCount}
+                  </button>
+                ) : (
+                  <span dir="auto">{listCount}</span>
+                )}
+              </span>
+            )}
+          </div>
+          {closeControl}
         </>
       ) : (
         <>
@@ -1116,7 +1229,7 @@ export function MapView() {
             type="button"
             className={'map-facets' + (facetGlyphs ? ' on' : '')}
             aria-label={facetWords ? t.map.filter.activeAria(facetWords) : undefined}
-            onClick={() => setFacetsOpen(true)}
+            onClick={() => openDisclosure(MAP_ROW_DISCLOSURE.facets)}
           >
             {facetGlyphs || t.map.filter.open}
           </button>
@@ -1138,8 +1251,8 @@ export function MapView() {
           <button
             type="button"
             className="map-search-btn"
-            aria-label={research ? t.map.search.planButton : t.map.search.button}
-            onClick={() => setSearchMode(true)}
+            aria-label={t.map.search.button}
+            onClick={() => openDisclosure(MAP_ROW_DISCLOSURE.query)}
           >
             <Icon name="search" />
           </button>
@@ -1183,12 +1296,16 @@ export function MapView() {
   // readout saying four, which is the same two-halves-disagreeing defect pointing the
   // other way. Read off `pins`, the very array the count is taken from, so the two
   // numbers cannot drift.
+  // The second reader ADR-0131's table missed, and the same clause answers it: the
+  // shortfall this counts is "in the area, but not in this day", and under a live query
+  // the list is trip-wide, so there is no shortfall to state. Asking it anyway would put
+  // `N מקומות באזור אינם ביום הזה` over a list that is already showing them.
   const ghostsInArea = useMemo(
     () =>
-      areaBounds
+      areaBounds && !searching
         ? pins.filter((pin) => isAsidePin(pin.tier) && pointInBounds(areaBounds, pin)).length
         : 0,
-    [pins, areaBounds],
+    [pins, areaBounds, searching],
   );
 
   // Session 144's grammar, reused rather than re-invented: say how many are outside
@@ -1258,9 +1375,17 @@ export function MapView() {
   // it, which is what `EmptyState`'s `action` is for (ADR-0078's "the app never
   // dead-ends") — and the filtered case names the facets it is holding, since the strip
   // may well be closed over them.
+  //
+  // A live query is a FOURTH cause, and it is named before the others because it is the
+  // only one where nothing is "wrong": the trip simply has no place by that name. It must
+  // not blame the facets (a query ignores them, §1) and it must not offer all-days (a
+  // query already spans the trip), so it gets neither action — and in a moment the paid
+  // half below may answer where the trip could not, which is the real way out.
   const listBody =
     allUsages.length === 0 ? (
       <EmptyState icon="🗺️" title={t.map.empty.title} body={t.map.empty.body} />
+    ) : searching && listCount === 0 ? (
+      <EmptyState icon={ICONS.search} title={t.map.search.noResultsTitle} />
     ) : listCount === 0 ? (
       facetsActive ? (
         <EmptyState
@@ -1281,57 +1406,36 @@ export function MapView() {
       renderList(listRows, (id) => select(id, { fromRow: true }))
     );
 
-  // Finding a place in search and tapping it should leave you looking at it, so the
-  // overlay closes on the selection rather than sitting over the map it just moved.
-  const selectFromSearch = (placeId: string) => {
-    setSearchMode(false);
-    setQuery('');
-    select(placeId, { fromRow: true });
-  };
+  // GOOGLE'S HALF, IN THE SHEET (ADR-0131 §8) — re-parented out of the retired overlay,
+  // not rewritten: `PlaceResearch` already took only these three props and rendered
+  // `.map-research`, which is ADR-0115 §7's reuse audit paying off.
+  //
+  // It belongs HERE and not on the canvas for a fact rather than a preference: an
+  // Autocomplete prediction carries NO COORDINATES until the pick (ADR-0115 §2), so
+  // there is nothing to draw. The free half goes on the canvas because its places already
+  // carry them; the paid half is rows because it cannot. And it is in BOTH modes now —
+  // ADR-0115 §6's "Plan mode only" is withdrawn, and its own §1 arm with it (§8a), so
+  // `PLACE_SEARCH_MIN_CHARS` is what stands between a keystroke and a paid call.
+  const googleHalf = searching && (
+    <PlaceResearch query={query} usageIndex={usageIndex} offline={offline} />
+  );
+
+  // The sheet's scroll content under a query: the trip's own matches under `בטיול`, then
+  // Google's under its own header. Grouped rather than interleaved, because "is this
+  // already ours" is the most important fact about a result and a header answers it once
+  // instead of per row. One fragment, so the list-only path (§8) cannot drift from it.
+  const sheetList = (
+    <>
+      {searching && listCount > 0 && (
+        <div className="map-grouphead">{t.map.research.tripGroup}</div>
+      )}
+      {listBody}
+      {googleHalf}
+    </>
+  );
 
   const overlays = (
     <>
-      {searchMode && (
-        <SearchOverlay
-          title={research ? t.map.search.planModeTitle : t.map.search.modeTitle}
-          contextLabel={trip.name}
-          mode={mode}
-          query={query}
-          onQueryChange={setQuery}
-          placeholder={research ? t.map.search.planPlaceholder : t.map.search.placeholder}
-          clearLabel={t.map.search.clear}
-          backAria={t.map.search.backAria}
-          onClose={() => {
-            setSearchMode(false);
-            setQuery('');
-          }}
-        >
-          <div className="map-screen" data-mode={mode} data-offline={offline || undefined}>
-            {/* Plan mode: the same control also researches new places (ADR-0115 §1).
-                The trip's own places stay above, under their own header, and never
-                lose their filter to the paid half; an empty local result is simply
-                absent here rather than a full empty state, because the research
-                block below IS the answer to "it isn't in the trip". */}
-            {research ? (
-              <>
-                {!query.trim() && <p className="map-res-hint">{t.map.search.hint}</p>}
-                {searchCount > 0 && (
-                  <>
-                    <div className="map-grouphead">{t.map.research.tripGroup}</div>
-                    {renderList(searchRows, selectFromSearch)}
-                  </>
-                )}
-                <PlaceResearch query={query} usageIndex={usageIndex} offline={offline} />
-              </>
-            ) : searchCount > 0 ? (
-              renderList(searchRows, selectFromSearch)
-            ) : (
-              <EmptyState icon={ICONS.search} title={t.map.search.noResultsTitle} />
-            )}
-          </div>
-        </SearchOverlay>
-      )}
-
       {/* Enrich a coordless Place-lite from the map (＋ מיקום): the shared picker
           sheet, opened on the row's place, updates that row in place on a pick. */}
       {enrichTarget && (
@@ -1368,7 +1472,7 @@ export function MapView() {
         {controlsRow}
         {geoPrompt}
         {geoNotice}
-        {listBody}
+        {sheetList}
         {overlays}
       </div>
     );
@@ -1482,7 +1586,7 @@ export function MapView() {
                 list-only tab it can never be on (ADR-0122 §8). */}
             {areaNotice}
             {ghostRow}
-            {listBody}
+            {sheetList}
           </div>
         </SnapSheet>
       </div>
