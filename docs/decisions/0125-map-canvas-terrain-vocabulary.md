@@ -1,6 +1,6 @@
 # 0125 — The map canvas earns a terrain vocabulary
 
-**Status:** Accepted — authored 2026-07-28 (session 144). Values are reasoned from the tokens and **schema-validated**; the first two rounds were judged on a real device, the terrain layer has not been seen yet.
+**Status:** Accepted — authored 2026-07-28 (session 147). Values are reasoned from the tokens and **schema-validated**; the first two rounds were judged on a real device, the terrain and sights layers have not been seen yet.
 **Date:** 2026-07-28
 **Amends** [0121](0121-embedded-map-phase-6-design.md) **§11** (the style brief: "desaturated cool-paper base matching `--screen`" becomes a **warm** base against cool water, and "POI clutter dropped" keeps its root suppression but gains a curated **sights** set) and [0106](0106-maps-and-places-epic-scope-and-phasing.md) **§C** (the "quiet base, loud pins" brief holds — what changes is that _quiet_ stops meaning _grey_). Relates [0028](0028-plan-violet-color-budget-dark-ready.md) (the colour budget on a rendered canvas), [0038](0038-icons-and-canonical-category.md) §2 (the pin hues the ground must not fight), [0109](0109-map-tab-design.md) §3, [0123](0123-map-pin-size-is-a-share-of-the-canvas.md) (the other "seen on a real device, one scalar was wrong" pass).
 
