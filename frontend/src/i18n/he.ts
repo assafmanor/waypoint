@@ -88,10 +88,6 @@ export const t = {
       // One close control for whichever occupant of the row is open (§1). It clears the
       // query as it closes, so no filter can be on without being visible.
       close: 'סגירת חיפוש',
-      // The count's action, as an accessible DESCRIPTION: at the map stop the count is
-      // the way into the list, and the visible number has to stay the accessible NAME or
-      // a voice-control user cannot say what they can see (WCAG 2.5.3, ADR-0126 §4).
-      showList: 'הצגת הרשימה',
       noResultsTitle: 'לא נמצאו מקומות',
     },
     // Google's half of the search (ADR-0115, re-parented into the sheet by ADR-0131 §8
@@ -1146,6 +1142,10 @@ export const t = {
   // Places picker (ADR-0110 / ADR-0109 §12). The search is a paid Google relay
   // behind our proxy; the footer carries Google's required attribution.
   placePicker: {
+    // Two corpora, one field (ADR-0131 §10) — the same two words the Map tab's sheet
+    // uses, deliberately, because it is the same distinction in a second host.
+    tripGroup: 'בטיול',
+    googleGroup: 'מגוגל',
     open: 'בחירת מקום',
     empty: 'הוספת מקום',
     clear: 'הסרת המקום',
