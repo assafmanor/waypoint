@@ -66,8 +66,10 @@ vi.mock('../state/trip-state', () => ({
 // The hook is `null` outside the trip shell; each test states which world it is in,
 // because "absent, not broken" is the contract on both sides.
 let showPlaceOnMap: ((placeId: string) => void) | null = null;
+let startErrand: ((errand: unknown) => void) | null = null;
 vi.mock('../state/map-scope-state', () => ({
   useShowPlaceOnMap: () => showPlaceOnMap,
+  useStartPlaceErrand: () => startErrand,
 }));
 
 import { BookingDetail } from './BookingDetail';
@@ -94,6 +96,7 @@ describe('BookingDetail — the location fact (ADR-0121 §8 amendment)', () => {
     tripPlaces = [placed, lite];
     tripEvents = [];
     showPlaceOnMap = null;
+    startErrand = () => {};
     updateBooking.mockClear();
   });
   afterEach(() => {
@@ -160,11 +163,30 @@ describe('BookingDetail — the location fact (ADR-0121 §8 amendment)', () => {
     expect(screen.queryByText(t.placePicker.empty)).toBeNull();
   });
 
-  it('attaches the picked place to the booking', () => {
-    open(bk({ id: 'b7', type: BOOKING_TYPE.HOTEL }));
+  // ＋ מיקום IS AN ERRAND TO THE MAP NOW (ADR-0134 §1), not a picker sheet over this one:
+  // a place is disambiguated BY PLACE, and the map's own search answers both corpora. This
+  // booking exists, so the errand carries no draft — the Map patches it and returns.
+  it('＋ מיקום sends an errand naming this booking and its field', () => {
+    const calls: unknown[] = [];
+    startErrand = (errand) => calls.push(errand);
+    open(bk({ id: 'b7', type: BOOKING_TYPE.HOTEL, title: 'Shinjuku Granbell' }));
     fireEvent.click(screen.getByText(t.placePicker.empty));
-    // The shared picker sheet opens on the same surface (ADR-0110 §1's enrich flow).
-    expect(screen.getByLabelText(t.placePicker.searchPlaceholder)).toBeTruthy();
+    expect(calls).toEqual([
+      {
+        target: { kind: 'booking', id: 'b7', field: 'placeId' },
+        label: 'Shinjuku Granbell',
+      },
+    ]);
+    // …and no picker sheet opens over this one any more.
+    expect(screen.queryByLabelText(t.placePicker.searchPlaceholder)).toBeNull();
+  });
+
+  // Outside the trip shell there is no Map tab to route to, so the affordance is simply
+  // absent — the same "absent, not broken" rule `מפה` follows on this row.
+  it('drops ＋ מיקום when there is no Map tab to send it to', () => {
+    startErrand = null;
+    open(bk({ id: 'b8', type: BOOKING_TYPE.HOTEL }));
+    expect(screen.queryByText(t.placePicker.empty)).toBeNull();
   });
 });
 

@@ -1,6 +1,6 @@
 # 0134 — The map is where a form's place comes from, and a row tap **commits**
 
-**Status:** Accepted — **design only** (2026-07-28, session 163). Nothing here is built. Three owner requests, designed together because they are one idea.
+**Status:** Accepted — designed 2026-07-28 (session 163); **§5–§8 built session 163, and the errand's mechanism + `BookingDetail`'s caller built session 164** (see the [Build log](#build-log-2026-07-28-session-164--the-errands-mechanism-and-three-owner-corrections)). **The forms' draft path (§2's expensive half) and §9's retirement are NOT built.** Three owner corrections from a device pass are recorded in that log, one of which reverses ADR-0131 §8's grouping. Three owner requests, designed together because they are one idea.
 **Date:** 2026-07-28
 
 **Amends** [0131](0131-map-search-is-a-control-not-a-screen.md) **§10** — its conclusion is **reversed by the owner**: the errand becomes the **route** for a form's place, where §10 (after four corrections) made the picker answer in place and the canvas the exception. §10's contract survives; what changes is who takes it and what it has to carry (§1/§2).
@@ -143,3 +143,62 @@ Otherwise the framing happens behind the list. This is ADR-0121 §8's rule verba
 - **Whether `בחירה` on a row that is already in the trip reads correctly** beside its own `כבר בטיול` state on the result side.
 - **Whether the derived span is right for a result you have never seen.** Its neighbours are other candidates, not the trip's plan, so the frame means something slightly different there.
 - **Whether returning to the form lands where you left it** — the same scroll position, the same field focused. The draft covers the values; it does not automatically cover the view.
+
+## Build log (2026-07-28, session 164) — the errand's mechanism, and three owner corrections
+
+Built: the hand-over channel, errand mode on the Map tab, and the first caller
+(`BookingDetail`'s `＋ מיקום`). **The forms' draft path is NOT built** — see the end.
+
+### The channel is one mechanism now, not a third copy
+
+`lib/handoff.ts` (`useHandoff<T>`) is the generalisation the backlog asked for: set by a
+producer, **taken once** by a consumer, out of the URL, held above the shell. `take()`
+reads through a ref so two takes in one tick cannot both succeed — the property a copy of
+this pattern would most easily lose, and the reason it has its own spec.
+
+### Two assignment paths, and the split is whether the target exists
+
+§2 treated the draft as the only path. It is not, and the cheaper one covers the first
+caller entirely:
+
+- **A saved booking** → an ordinary `indexVerbs.updateBooking` patch from the Map, so the
+  return is purely navigational. `BookingDetail` has no unsaved state to lose, so it needs
+  no draft at all.
+- **Anything else** (a form mid-draft; an event, whose place edit belongs to its own
+  guarded form rather than to a patch from here, ADR-0011) → the place is handed back and
+  the host re-opens from the draft.
+
+That ordering matters: it means the errand is **useful before the expensive half exists**,
+which is the opposite of what §2 assumed.
+
+### Three owner corrections from a phone, and one of them is a rule I broke
+
+**1. `🗺️` as a UI control.** I used an emoji for §5's way-out to Google. `ui/Icon.tsx`'s own
+header says _"A real SVG, never the 🗺️ emoji: emoji are content, icons are UI"_, and the
+backlog already carried "emoji used as UI controls, swept out". Fixed with a real SVG — and
+deliberately **not** a map glyph: `pin` already means "our map", so two map-shaped marks on
+one row would compete. The new `external` icon says what the control actually does, which
+is **leave**.
+
+**2. The two corpora are not two sections.** ADR-0131 §8 grouped them under `בטיול` /
+`מגוגל`, arguing a header answers "is this already ours" once instead of per row. The owner
+disagrees, and the header was restating something the rows already carry: a result wears
+the dashed "not ours yet" badge, and one that is ours says `כבר בטיול` in its own slot. **One
+list, no headers.**
+
+**3. And that fixes a real defect the grouping was hiding.** The screenshot: **`לא נמצאו
+מקומות` in bold, with three Google results underneath it.** Each half answered for itself,
+so the free half could report emptiness while the paid half was about to show something. A
+list cannot say "nothing" and then show something. Emptiness is now a fact about the
+**merged** list, stated once, as one quiet line rather than an illustrated `EmptyState` —
+and only once the paid half has **settled**, because while a request is in flight the
+skeletons are the honest answer.
+
+### What is left, and it is the headline
+
+**The forms.** `EventForm` and `BookingSheet` still open `PlacePickerSheet`, so §1's
+"searching for places on bookings refers to the map" is true of `BookingDetail` and not yet
+of the forms. What remains is exactly §2's expensive half: a draft the form serialises and
+rehydrates from, and a host that re-opens it on return. The channel, the errand mode, the
+verbs and the return are all in place and tested; nothing about them changes when the forms
+arrive. `PlacePickerSheet` therefore does **not** retire yet (§9).

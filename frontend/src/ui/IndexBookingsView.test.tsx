@@ -97,6 +97,9 @@ const hotelPlace = {
 let showPlaceOnMap: ((placeId: string) => void) | null = null;
 vi.mock('../state/map-scope-state', () => ({
   useShowPlaceOnMap: () => showPlaceOnMap,
+  // `BookingDetail` renders inside this view, and its `＋ מיקום` is an errand now
+  // (ADR-0134 §1). Nothing here asserts the errand; it just has to exist.
+  useStartPlaceErrand: () => () => {},
 }));
 
 vi.mock('../state/trip-state', () => ({

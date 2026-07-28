@@ -90,6 +90,30 @@ vi.mock('../state/mode-state', () => ({ useMode: () => ({ mode: currentMode }) }
 vi.mock('../state/verbs', () => ({ useVerbs: () => ({ addMaybe: vi.fn() }) }));
 vi.mock('../lib/outbox', () => ({ useIsOffline: () => isOffline }));
 
+/** The shared search core, stubbed so this suite can say what the PAID half has done —
+ *  which is what decides whether the merged list is allowed to call itself empty. Its own
+ *  behaviour (floor, debounce, dedup, 429) is tested in `lib/usePlaceSearch.test.ts`. */
+const searchStub = {
+  predictions: [] as { googlePlaceId: string; primaryText: string }[],
+  loading: false,
+  active: true,
+};
+vi.mock('../lib/usePlaceSearch', () => ({
+  usePlaceSearch: () => ({
+    query: '',
+    setQuery: vi.fn(),
+    predictions: searchStub.predictions,
+    loading: searchStub.loading,
+    rateLimited: false,
+    failed: false,
+    active: searchStub.active,
+    alreadyInTrip: () => undefined,
+    pick: vi.fn(),
+    saveNameOnly: vi.fn(),
+    reset: vi.fn(),
+  }),
+}));
+
 // The device's geolocation, driven per test: `fix` is what a granted request
 // returns, `errorCode` makes it fail (1 = PERMISSION_DENIED).
 let geoFix: { lat: number; lng: number } | null = null;
@@ -1676,16 +1700,24 @@ describe('MapView (Phase 3, ADR-0109/0110)', () => {
         render(wrap(<MapView />));
         openSearch();
         type('food');
-        // The regression net for §8 (no mode gate) and §8a (no arm) together: the group
-        // header is there and there is nothing to tap to get it.
-        expect(screen.getByText(t.map.research.tripGroup)).toBeTruthy();
+        // The regression net for §8 (no mode gate) and §8a (no arm): the paid half renders
+        // with nothing to tap to get it. ONE LIST since session 164, so what proves the
+        // half is there is its own footer rather than a group header — the two corpus
+        // headers are gone by owner's call, and their absence is asserted below.
+        expect(screen.getByText(t.placePicker.costFooter)).toBeTruthy();
         expect(document.querySelector('.map-arm')).toBeNull();
+        expect(screen.queryByText(t.map.research.tripGroup)).toBeNull();
+        expect(screen.queryByText(t.map.research.googleGroup)).toBeNull();
         cleanup();
       }
       currentMode = 'trip';
     });
 
-    it('a query the trip cannot answer says so, and blames neither the facets nor the day', () => {
+    // EMPTINESS IS A FACT ABOUT THE MERGED LIST (owner, session 164). The two halves used
+    // to answer for themselves, and the result was a screenshot with `לא נמצאו מקומות` in
+    // bold above three Google results. A list cannot say "nothing" and then show
+    // something.
+    it('a query neither half can answer says so, once, and blames nothing', () => {
       setSimulatedNow(NOON);
       seed();
       render(wrap(<MapView />));
@@ -1696,6 +1728,31 @@ describe('MapView (Phase 3, ADR-0109/0110)', () => {
       // (a query already spans the trip), so neither action is offered.
       expect(screen.queryByText(t.map.filter.clear)).toBeNull();
       expect(screen.queryByText(t.map.emptyDay.action)).toBeNull();
+    });
+
+    it('says nothing while the paid half is still working', () => {
+      setSimulatedNow(NOON);
+      searchStub.loading = true;
+      seed();
+      render(wrap(<MapView />));
+      openSearch();
+      type('nothing matches this');
+      // The skeletons are the answer; "no results" would be a claim we cannot make yet.
+      expect(screen.queryByText(t.map.search.noResultsTitle)).toBeNull();
+      expect(document.querySelector('.map-res-skel')).toBeTruthy();
+      searchStub.loading = false;
+    });
+
+    it('never says "no results" while Google has some — the defect that merged the list', () => {
+      setSimulatedNow(NOON);
+      searchStub.predictions = [{ googlePlaceId: 'g-1', primaryText: 'Blue Bottle' }];
+      seed();
+      render(wrap(<MapView />));
+      openSearch();
+      type('nothing the trip has');
+      expect(screen.queryByText(t.map.search.noResultsTitle)).toBeNull();
+      expect(screen.getByText('Blue Bottle')).toBeTruthy();
+      searchStub.predictions = [];
     });
   });
 });
