@@ -39,6 +39,7 @@ function view(opts: {
   offline?: boolean;
   usageIndex?: Map<string, PlaceUsage>;
   selectedId?: string | null;
+  chooseMode?: boolean;
   addingId?: string | null;
 }) {
   const search = {
@@ -60,6 +61,7 @@ function view(opts: {
       offline={opts.offline ?? false}
       usageIndex={opts.usageIndex ?? new Map()}
       selectedId={opts.selectedId ?? null}
+      chooseMode={opts.chooseMode ?? false}
       addingId={opts.addingId ?? null}
       addFailed={false}
       onShow={onShow}
@@ -122,6 +124,20 @@ describe('PlaceResearch (Phase 5, ADR-0115; presentational since ADR-0132)', () 
     expect(onAdd).toHaveBeenCalledWith(r);
   });
 
+  // With an errand live the verb CHANGES rather than being joined (ADR-0134 §3): one
+  // place, assigned to the form that asked, and no shelf item.
+  it('under an errand the verb is choose, not shelve', () => {
+    const r = result('g-1', 'Blue Bottle');
+    view({ predictions: [r], chooseMode: true });
+    expect(
+      screen.queryByRole('button', { name: t.map.research.addAria('Blue Bottle') }),
+    ).toBeNull();
+    const choose = screen.getByRole('button', { name: t.map.errand.chooseAria('Blue Bottle') });
+    expect(choose.textContent).toBe(t.map.errand.choose);
+    fireEvent.click(choose);
+    expect(onAdd).toHaveBeenCalledWith(r);
+  });
+
   it('a result mid-add is disabled, so a double tap cannot buy it twice', () => {
     view({ predictions: [result('g-1', 'teamLab Borderless')], addingId: 'g-1' });
     expect(
@@ -168,14 +184,21 @@ describe('PlaceResearch (Phase 5, ADR-0115; presentational since ADR-0132)', () 
     expect(screen.getByText('teamLab Borderless')).toBeTruthy();
   });
 
-  it('under the min-chars floor it says so instead of showing a bare header', () => {
+  // ONE LIST, ONE EMPTINESS (owner, session 164). This component no longer answers for
+  // itself: it had its own group header, its own empty state and its own below-the-floor
+  // hint, and the result was `לא נמצאו מקומות` in bold above three Google results. The
+  // screen now owns emptiness over the MERGED list, so what is asserted here is that this
+  // half stays quiet.
+  it('says nothing of its own about emptiness — no header, no empty state, no hint', () => {
     view({ active: false });
-    expect(screen.getByText(t.map.research.typeMore)).toBeTruthy();
+    expect(screen.queryByText(t.map.research.googleGroup)).toBeNull();
     expect(screen.queryByText(t.map.research.noResults)).toBeNull();
+    expect(document.querySelector('.map-res-hint')).toBeNull();
   });
 
-  it('no Google match says so', () => {
+  it('with nothing to show it renders only its cost footer', () => {
     view({});
-    expect(screen.getByText(t.map.research.noResults)).toBeTruthy();
+    expect(screen.queryByText(t.map.research.noResults)).toBeNull();
+    expect(screen.getByText(t.placePicker.costFooter)).toBeTruthy();
   });
 });

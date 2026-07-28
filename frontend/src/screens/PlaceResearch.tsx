@@ -24,8 +24,8 @@ import type { PlaceResult } from '@waypoint/shared';
 import type { UsePlaceSearch } from '../lib/usePlaceSearch';
 import { mapsPredictionUrl } from '../lib/places';
 import type { PlaceUsage } from '../lib/place-usage';
-import { EmptyState, Skeleton, StatusBanner } from '../ui/feedback';
-import { ICONS } from '../constants';
+import { Skeleton, StatusBanner } from '../ui/feedback';
+import { Icon } from '../ui/Icon';
 import { t } from '../i18n/he';
 
 export function PlaceResearch({
@@ -39,6 +39,9 @@ export function PlaceResearch({
   /** The result currently selected on the canvas — a ring tap selects its row, which is
    *  the pin↔row rule this tab already runs in the other direction (ADR-0132 §8). */
   selectedId,
+  /** An errand is live, so the verb is CHOOSE rather than shelve (ADR-0134 §3): one place,
+   *  assigned to the form that asked, and no `MaybeItem`. */
+  chooseMode,
   /** The row was tapped: show me where this is (ADR-0134 §6). The row's body used to be
    *  a link to Google Maps; the tap now means "frame it here" and Google is its own
    *  control, because a link wrapping the whole row cannot coexist with that. */
@@ -53,6 +56,7 @@ export function PlaceResearch({
   usageIndex: Map<string, PlaceUsage>;
   offline: boolean;
   selectedId: string | null;
+  chooseMode: boolean;
   addingId: string | null;
   addFailed: boolean;
   onShow: (result: PlaceResult) => void;
@@ -66,8 +70,6 @@ export function PlaceResearch({
 
   return (
     <div className="map-research">
-      <div className="map-grouphead">{t.map.research.googleGroup}</div>
-
       {search.rateLimited && <StatusBanner tone="warn">{t.placePicker.rateLimited}</StatusBanner>}
       {(search.failed || addFailed) && (
         <StatusBanner tone="warn">{t.placePicker.failed}</StatusBanner>
@@ -81,14 +83,6 @@ export function PlaceResearch({
         </div>
       )}
 
-      {/* Still under the min-chars floor: say why nothing is happening, rather than
-          leaving a bare header over an empty section. */}
-      {!search.active && <p className="map-res-hint">{t.map.research.typeMore}</p>}
-
-      {!search.loading && search.active && search.predictions.length === 0 && !search.failed && (
-        <EmptyState icon={ICONS.search} title={t.map.research.noResults} />
-      )}
-
       <div className="map-list">
         {search.predictions.map((result) => {
           const inTrip = search.alreadyInTrip(result);
@@ -100,6 +94,7 @@ export function PlaceResearch({
               inTrip={inTrip != null}
               onShelf={onShelf}
               selected={selectedId === result.googlePlaceId}
+              chooseMode={chooseMode}
               busy={addingId === result.googlePlaceId}
               onShow={() => onShow(result)}
               onAdd={() => onAdd(result)}
@@ -131,6 +126,7 @@ function ResultRow({
   inTrip,
   onShelf,
   selected,
+  chooseMode,
   busy,
   onShow,
   onAdd,
@@ -141,6 +137,8 @@ function ResultRow({
   /** …and it's an unconsumed idea, so it's already exactly where ＋ אולי would put it. */
   onShelf: boolean;
   selected: boolean;
+  /** The verb is `בחירה`, not `＋ אולי` (ADR-0134 §3). */
+  chooseMode: boolean;
   busy: boolean;
   onShow: () => void;
   onAdd: () => void;
@@ -177,7 +175,7 @@ function ResultRow({
           aria-label={t.map.research.openInGoogle}
           title={t.map.research.openInGoogle}
         >
-          <span aria-hidden="true">{ICONS.mapOut}</span>
+          <Icon name="external" />
         </a>
         {inTrip ? (
           <span className={'map-instate' + (onShelf ? ' shelf' : '')}>
@@ -188,10 +186,20 @@ function ResultRow({
             type="button"
             className="map-addmaybe"
             disabled={busy}
-            aria-label={t.map.research.addAria(result.primaryText)}
+            aria-label={
+              chooseMode
+                ? t.map.errand.chooseAria(result.primaryText)
+                : t.map.research.addAria(result.primaryText)
+            }
             onClick={onAdd}
           >
-            <span aria-hidden="true">＋</span> {t.map.research.add}
+            {chooseMode ? (
+              t.map.errand.choose
+            ) : (
+              <>
+                <span aria-hidden="true">＋</span> {t.map.research.add}
+              </>
+            )}
           </button>
         )}
       </span>

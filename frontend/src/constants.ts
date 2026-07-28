@@ -572,10 +572,6 @@ export const ICONS = {
   nearMe: '📍',
   ticket: '🎫',
   search: '🔍',
-  /** The way OUT to Google Maps — a result row's secondary control (ADR-0134 §5).
-   *  Deliberately not `navigate`'s compass: that one means directions, this one means
-   *  "look at this in the other app". */
-  mapOut: '🗺️',
   atm: '🏧',
   wifi: '📶',
   documents: '🛂',
