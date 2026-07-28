@@ -28,6 +28,7 @@ const usage = (entries: [string, boolean][]): Map<string, PlaceUsage> =>
   new Map(entries.map(([id, isMaybe]) => [id, { placeId: id, isMaybe } as PlaceUsage]));
 
 const onAdd = vi.fn();
+const onShow = vi.fn();
 
 function view(opts: {
   predictions?: PlaceResult[];
@@ -61,6 +62,7 @@ function view(opts: {
       selectedId={opts.selectedId ?? null}
       addingId={opts.addingId ?? null}
       addFailed={false}
+      onShow={onShow}
       onAdd={onAdd}
     />,
   );
@@ -70,6 +72,31 @@ describe('PlaceResearch (Phase 5, ADR-0115; presentational since ADR-0132)', () 
   afterEach(() => {
     cleanup();
     onAdd.mockClear();
+    onShow.mockClear();
+  });
+
+  // ── THE ROW'S THREE JOBS (ADR-0134 §5/§6) ────────────────────────────────────
+  // The tap used to leave the app. It now means "show me where this is", so the way out
+  // to Google is a control of its own — and both have to be reachable independently.
+  it('the row body is a button that asks to be shown, not a link out', () => {
+    const r = result('g-1', 'Blue Bottle', 'Shinjuku');
+    view({ predictions: [r] });
+    const body = document.querySelector('.map-res-open') as HTMLElement;
+    expect(body.tagName).toBe('BUTTON');
+    fireEvent.click(body);
+    expect(onShow).toHaveBeenCalledWith(r);
+  });
+
+  it('Google is its own control, and it still vets the candidate for free', () => {
+    view({ predictions: [result('g-1', 'Blue Bottle')] });
+    const out = screen.getByRole('link', { name: t.map.research.openInGoogle });
+    // ADR-0115 §2's "vet it before we spend on resolving it" survives as this control.
+    expect(out.getAttribute('href')).toContain('query_place_id=g-1');
+    expect(out.getAttribute('target')).toBe('_blank');
+    // It is inside the actions, not wrapping the row — otherwise the tap could not mean
+    // anything else.
+    expect(out.closest('.map-right')).toBeTruthy();
+    expect(out.querySelector('.map-name')).toBeNull();
   });
 
   it('a result says its name and address, and nothing it does not have', () => {
@@ -80,8 +107,10 @@ describe('PlaceResearch (Phase 5, ADR-0115; presentational since ADR-0132)', () 
     // ADR-0115 §2, unchanged by the SKU switch.
     expect(document.body.textContent).not.toContain('★');
     expect(document.querySelector('.map-dist')).toBeNull();
-    // The name links out to the Google place so a candidate can be vetted for free.
-    expect(screen.getByRole('link').getAttribute('href')).toContain('query_place_id=g-1');
+    // The name is no longer the link — that moved to its own control (see above), so the
+    // only `<a>` in the row is the way out and it is not the name.
+    expect(screen.getAllByRole('link')).toHaveLength(1);
+    expect(screen.getByRole('link').textContent).not.toContain('teamLab');
   });
 
   it('＋ אולי hands the whole result up, because the screen owns the add now', () => {

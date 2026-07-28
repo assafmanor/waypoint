@@ -279,6 +279,7 @@ function MapPaneInner({
         <PinDensity paneRef={paneRef} />
         <MapCameraControls
           pins={pins}
+          results={results}
           me={me}
           setSignal={setSignal}
           areaCount={areaCount}
@@ -443,6 +444,7 @@ const DayConnector = memo(function DayConnector({ path }: { path?: readonly LatL
  *  screen already said which pin is selected. */
 function MapCameraControls({
   pins,
+  results,
   me,
   setSignal,
   areaCount,
@@ -453,6 +455,7 @@ function MapCameraControls({
   cardOpen,
 }: {
   pins: readonly MapPin[];
+  results: readonly MapResultPin[];
   me?: LatLng;
   setSignal: string;
   areaCount: number | null;
@@ -476,6 +479,10 @@ function MapCameraControls({
     if (own.length > 0) return own;
     return me ? [me] : [];
   }, [pins, me]);
+  // What is AROUND a framed place, without being anything the camera fits (ADR-0134 §7).
+  // Derived here rather than taken as a prop: the pane already has the rings, and one prop
+  // that must change in step with another is the fragility §4's memo rules exist to avoid.
+  const resultPoints = useMemo(() => results.map(({ lat, lng }) => ({ lat, lng })), [results]);
   const {
     focus,
     reframe,
@@ -484,6 +491,7 @@ function MapCameraControls({
     points,
     setSignal,
     framePlace,
+    focusContext: resultPoints,
     // The card's band, so a fit does not put a pin under it (ADR-0128 §2). The hook
     // reads it through a ref, so this changing on a tap re-pads the NEXT fit without
     // re-running the framing effect — i.e. without moving the camera on a pin tap.
