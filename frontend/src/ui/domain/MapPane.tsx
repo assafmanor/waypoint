@@ -31,6 +31,13 @@ const MAP_ID = 'waypoint-map';
  *  provisional, `ambient` the quiet backdrop, `skipped` the desaturated behind-you
  *  treatment. `upcoming` needs no modifier — it is the plain category pin.
  *
+ *  Two tiers, two classes each, because two things are being said (ADR-0130 §3):
+ *  `aside` is the subordinate RATIO both out-of-scope populations take, and the
+ *  second class is the paint — a `ghost` is hollow because it is another day's, a
+ *  `shelf` maybe wears the same `soft` grammar as any other maybe because that is
+ *  what it is. Keeping the ratio in its own class is also what lets the dot tier name
+ *  the pair in one selector instead of two.
+ *
  *  One name to read carefully: this `skipped` is the CLOCK's tier, and its row
  *  counterpart is `.place.behind`. A row's own `.place.skipped` is the narrower
  *  claim — a human said this did not happen (ADR-0117 §4) — which the canvas does
@@ -40,7 +47,8 @@ const PIN_TIER_CLASS: Record<PinTier, string> = {
   [PIN_TIER.idea]: 'soft',
   [PIN_TIER.ambient]: 'ambient',
   [PIN_TIER.behind]: 'skipped',
-  [PIN_TIER.ghost]: 'ghost',
+  [PIN_TIER.shelf]: 'soft aside',
+  [PIN_TIER.ghost]: 'ghost aside',
 };
 
 /** One pin, entirely in primitives. No `PlaceUsage`, no `Place`, no state — which

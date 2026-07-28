@@ -62,7 +62,7 @@ Outputs, on the measured baseline:
 
 That is not tidiness. Scaling the badge while the number stayed 9px would have produced a pin that reads as a badge with a sticker on it, and a 2.5px amber ring on a 46px pin reads as a hairline someone forgot to scale — the ring **is** the cue (§6).
 
-**The ghost tier's "smaller" becomes a ratio** (`GHOST_SCALE 0.72`) rather than a fixed 25px box. This is the sharpest argument for one unit: a fixed ghost would have gone on getting relatively smaller as the canvas grew the others, until the ladder's bottom rung read as dirt on the screen rather than as a place you are standing next to. Subordinate is a _ratio_, not a size.
+**The ghost tier's "smaller" becomes a ratio** (`GHOST_SCALE 0.72` — renamed `ASIDE_SCALE` by [ADR-0130](0130-a-maybe-is-not-a-past-place.md) §3, which gave the rung a second wearer) rather than a fixed 25px box. This is the sharpest argument for one unit: a fixed ghost would have gone on getting relatively smaller as the canvas grew the others, until the ladder's bottom rung read as dirt on the screen rather than as a place you are standing next to. Subordinate is a _ratio_, not a size.
 
 **The "you are here" dot scales too** (0.41 of the base), though it is not a pin. It is a marker on the same canvas answering the same "how big is a point on a map this size" question, and a dot that stayed 14px while the pins grew would read as the least important thing on screen — the opposite of what it is when you are standing somewhere.
 

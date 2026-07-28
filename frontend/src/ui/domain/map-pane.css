@@ -83,6 +83,9 @@
 
 .map-pin {
   --pin-u: var(--pin-base, 34px);
+  /* One stripe of the maybe's hatch, derived here so it re-derives with every override
+     of `--pin-u` below (the aside ratio, the dot tier) rather than in three places. */
+  --pin-hatch: calc(var(--pin-u) * 0.08);
   /* The pane's box changes on SNAP, never per drag frame (ADR-0121 §5), so this fires
      once per stop change — and it borrows the sheet's own duration and curve, so the
      pins finish growing exactly as the sheet finishes sliding instead of jumping the
@@ -143,23 +146,43 @@
    ORDINARY pin (ADR-0109's 2026-07-27 amendment). It used to be desaturated, but on
    this canvas desaturation already means BEHIND YOU — and the night you are sleeping
    somewhere is the opposite of that. What marks it ambient is that it carries no
-   number, which is §6's own rule and now the whole distinction. */
+   number, which is §6's own rule and now the whole distinction.
+
+   ── A MAYBE IS TEXTURED, NOT FADED (ADR-0130 §3) ──
+   Reported: "I want to be able to visually distinguish between somewhere I've already
+   been to and somewhere I'm considering." Both of the two rules below used to answer on
+   the SAME axis — a maybe was the hue at 55%, a passed stop is the hue desaturated —
+   so the two most different things on the canvas both read as *washed out*.
+
+   The design language already had the answer and the pin was the surface that dropped
+   it: "**Soft** — dashed border, **diagonal-hatch background**, lighter type"
+   (design-language.md's hard/soft grammar; `.place.soft` hatches, `.map-badge` under it
+   hatches, the teardrop substituted a tint). So the hatch comes back and the tint goes,
+   which splits the two onto axes that cannot be confused:
+
+     • **a maybe keeps its colour and loses its solidity** — full category hue, striped,
+       dashed edge, no number: vivid but unresolved;
+     • **a passed stop keeps its solidity and loses its colour** — grey, still filled,
+       and it still carries its number.
+
+   **The primary read is colour vs. grey**, and the hatch is the confirmation — worth
+   stating because it means the device pass can thin or drop the stripes at 25px without
+   giving back the distinction this exists for.
+
+   The stripe is a fraction of `--pin-u` like every other dimension (ADR-0123), so it
+   holds at every canvas size instead of turning into a smear on a big pin or a smudge on
+   a small one; 0.12 puts about three periods across the body, which is `.place.soft`'s
+   own 6px-on-40px density. The angle is stated in the pin's OWN frame: `.pin-b` is
+   rotated 45°, so `90deg` here — vertical stripes locally — lands as the design
+   language's `-45deg` hatch on screen. */
 .map-pin.soft .pin-b {
   border-style: dashed;
   border-color: var(--soft-line);
-  background: color-mix(in srgb, var(--cat-leisure) 55%, var(--card));
-}
-.map-pin.soft.cat-food .pin-b {
-  background: color-mix(in srgb, var(--cat-food) 55%, var(--card));
-}
-.map-pin.soft.cat-lodging .pin-b {
-  background: color-mix(in srgb, var(--cat-lodging) 55%, var(--card));
-}
-.map-pin.soft.cat-transit .pin-b {
-  background: color-mix(in srgb, var(--cat-transit) 55%, var(--card));
-}
-.map-pin.soft.cat-services .pin-b {
-  background: color-mix(in srgb, var(--cat-services) 55%, var(--card));
+  background-image: repeating-linear-gradient(
+    90deg,
+    transparent 0 var(--pin-hatch),
+    color-mix(in srgb, var(--card) 45%, transparent) var(--pin-hatch) calc(var(--pin-hatch) * 2)
+  );
 }
 .map-pin.skipped .pin-b {
   filter: saturate(0.3);
@@ -198,18 +221,32 @@
   background: var(--muted);
 }
 
-/* THE FOURTH POPULATION: in view, but not in this day — pencilled for Thursday, or
-   with no day at all. The list can drop what it filters; a map cannot, because the
-   café you are standing next to is physically there, which is the whole "what's near
-   me now" question. So it is present but plainly subordinate: a hollow outline in
-   its category hue, no fill, no glyph, no number, smaller. No new colour is spent —
-   the ladder is prominence, not palette (ADR-0028).
+/* THE FOURTH POPULATION: in view, but not in this day. The list can drop what it
+   filters; a map cannot, because the café you are standing next to is physically there,
+   which is the whole "what's near me now" question. So it is present but plainly
+   subordinate. No new colour is spent — the ladder is prominence, not palette
+   (ADR-0028).
 
-   Smaller BY RATIO (ADR-0123), which is the whole reason this is one unit: the shipped
-   25px box would have gone on getting relatively smaller as the canvas grew the others,
-   until the ladder's bottom rung read as dirt on the screen rather than as a place. */
-.map-pin.ghost {
-  --pin-u: calc(var(--pin-base, 34px) * var(--pin-ghost-scale, 0.72));
+   `.aside` is the RATIO, and it is its own class because TWO tiers are subordinate for
+   two different reasons (ADR-0130 §3). Smaller BY RATIO (ADR-0123), which is the whole
+   reason this is one unit: the shipped 25px box would have gone on getting relatively
+   smaller as the canvas grew the others, until the ladder's bottom rung read as dirt on
+   the screen rather than as a place.
+
+     • `.ghost` — pencilled for ANOTHER day: a hollow outline in its category hue, no
+       fill, no glyph, no number. Hollow is the point: there is nothing of this day in it.
+     • `.soft.aside` — a shelf maybe on NO day, which is not the same claim and used to be
+       drawn as if it were. It keeps the maybe's own paint (dashed, hatched, filled, its
+       glyph) and takes only the ratio: available today, but you did not put it in this
+       day. So the paint says WHAT it is and the size says how much it is claiming. */
+.map-pin.aside {
+  --pin-u: calc(var(--pin-base, 34px) * var(--pin-aside-scale, 0.72));
+}
+/* The rung's own slight quieting, shared by both tiers on it — the ghost's shipped 0.9,
+   not a second number. Mild by design: a real fade is the BEHIND-you claim (0.62 plus
+   desaturation), and an aside pin has not been anywhere. */
+.map-pin.aside .pin-b {
+  opacity: 0.9;
 }
 .map-pin.ghost .pin-b {
   background: transparent;
@@ -219,7 +256,6 @@
   border-style: solid;
   border-color: color-mix(in srgb, var(--cat-leisure) 78%, var(--ink));
   box-shadow: 0 1px 3px color-mix(in srgb, var(--ink) 18%, transparent);
-  opacity: 0.9;
 }
 .map-pin.ghost.cat-food .pin-b {
   border-color: color-mix(in srgb, var(--cat-food) 78%, var(--ink));
@@ -267,13 +303,14 @@
    **TWO RULES, because there are genuinely two situations** — one selector covering both
    was tried and kept leaving something behind:
 
-     • **Day scope — only GHOSTS degrade.** A ghost is by definition not this day
-       (ADR-0121 §6), so it is the one population that is not what you are looking at.
-       Everything else stays a full pin: the numbered stops, and also today's ambient stay
-       night and today's ideas, which carry no number BY DESIGN (ADR-0109's amendment:
-       "what marks a night as ambient is that it has no number and no clock") and would
-       have been collateral damage of any rule keyed on the number. A day holds three to
-       six stops, so there is no density problem here worth paying for.
+     • **Day scope — only the ASIDE pins degrade.** They are by definition not this day
+       (ADR-0121 §6, and ADR-0130 §3 for the second of the two), so they are the one
+       population that is not what you are looking at. Everything else stays a full pin:
+       the numbered stops, and also today's ambient stay night and today's ideas, which
+       carry no number BY DESIGN (ADR-0109's amendment: "what marks a night as ambient is
+       that it has no number and no clock") and would have been collateral damage of any
+       rule keyed on the number. A day holds three to six stops, so there is no density
+       problem here worth paying for.
 
      • **All-days — everything degrades except the time anchors.** Nothing is numbered in
        all-days at all (`buildPinOrderIndex` returns an empty map with no scoped day), so
@@ -284,28 +321,33 @@
 
    Both are `data-scope` on the screen, which the pane already sits inside — so the tier
    costs no prop and no marker re-render, exactly as ADR-0128 §1 built it. */
-.map-screen[data-scope='day'] .map-pane[data-pins='dot'] .map-pin.ghost,
+.map-screen[data-scope='day'] .map-pane[data-pins='dot'] .map-pin.aside,
 .map-screen[data-scope='all'] .map-pane[data-pins='dot'] .map-pin:not(.nowstop, .nextstop) {
   --pin-u: calc(var(--pin-base, 34px) * var(--pin-dot-scale, 0.4));
 }
-/* A ghost is the subordinate rung wherever it appears, so at dot size it compounds both
-   ratios — the ladder does not collapse just because the rungs got smaller. */
-.map-screen[data-scope='all'] .map-pane[data-pins='dot'] .map-pin.ghost,
-.map-screen[data-scope='day'] .map-pane[data-pins='dot'] .map-pin.ghost {
-  --pin-u: calc(var(--pin-base, 34px) * var(--pin-dot-scale, 0.4) * var(--pin-ghost-scale, 0.72));
+/* An aside pin is the subordinate rung wherever it appears, so at dot size it compounds
+   both ratios — the ladder does not collapse just because the rungs got smaller. */
+.map-screen[data-scope='all'] .map-pane[data-pins='dot'] .map-pin.aside,
+.map-screen[data-scope='day'] .map-pane[data-pins='dot'] .map-pin.aside {
+  --pin-u: calc(var(--pin-base, 34px) * var(--pin-dot-scale, 0.4) * var(--pin-aside-scale, 0.72));
 }
-.map-screen[data-scope='day'] .map-pane[data-pins='dot'] .map-pin.ghost .pin-b,
+.map-screen[data-scope='day'] .map-pane[data-pins='dot'] .map-pin.aside .pin-b,
 .map-screen[data-scope='all'] .map-pane[data-pins='dot'] .map-pin:not(.nowstop, .nextstop) .pin-b {
   /* No rotation and a full radius: a dot, not a small teardrop. The tip is what claims a
      building, and at this zoom it cannot honestly claim one, so it is dropped rather than
      shrunk. */
   border-radius: 50%;
   transform: none;
+  /* A maybe's dashed edge goes with the glyph and the number, for their reason: at dot
+     size the border is under a pixel, so the dash stops reading as provisional and starts
+     reading as a ragged rim. Rendered and looked at (ADR-0130 §3). The HATCH stays — it
+     is what still tells a maybe from a passed stop at 20px, which is the whole point. */
+  border-style: solid;
   box-shadow: 0 1px 2px color-mix(in srgb, var(--ink) 22%, transparent);
 }
 /* The glyph and the amber tag are text-scale claims a dot cannot carry. The NUMBER is not
    listed: nothing that carries one is ever degraded now, so there is nothing to hide. */
-.map-screen[data-scope='day'] .map-pane[data-pins='dot'] .map-pin.ghost .pin-g,
+.map-screen[data-scope='day'] .map-pane[data-pins='dot'] .map-pin.aside .pin-g,
 .map-screen[data-scope='all'] .map-pane[data-pins='dot'] .map-pin:not(.nowstop, .nextstop) .pin-g,
 .map-screen[data-scope='all']
   .map-pane[data-pins='dot']

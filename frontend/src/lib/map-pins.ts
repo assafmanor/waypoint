@@ -40,16 +40,30 @@ export const PIN_TIER = {
   idea: 'idea',
   /** A strictly-middle night of an ambient stay (ADR-0054): backdrop, not a stop. */
   ambient: 'ambient',
-  /** Done, skipped, or simply passed — desaturated, and it KEEPS its number. */
+  /** Done, skipped, or simply passed — desaturated, and it KEEPS its number.
+   *  **Trip mode only** (ADR-0130 §2): in Plan mode the day is a shape to arrange,
+   *  and nothing on it is behind you. */
   behind: 'behind',
-  /** In view, but not in this day (or on no day at all). Day scope only. */
+  /** On the shelf and on **no day at all**, seen from a day scope (ADR-0130 §3).
+   *  It is a maybe, not a ghost — nothing pencilled it elsewhere, which is exactly
+   *  what leaves it available today — so it wears the maybe's paint at the
+   *  subordinate ratio: you did not put it in this day. */
+  shelf: 'shelf',
+  /** In view, but pencilled for ANOTHER day. Day scope only. */
   ghost: 'ghost',
 } as const;
 export type PinTier = (typeof PIN_TIER)[keyof typeof PIN_TIER];
 
 /** What the tier + number are resolved against. A subset of `PlaceOrderContext`,
- *  because the tier needs the clock (ahead/behind) but the NUMBER must not. */
-export type PinContext = Pick<PlaceOrderContext, 'onDate' | 'nowMs' | 'today'>;
+ *  because the tier needs the clock (ahead/behind) but the NUMBER must not — plus the
+ *  one thing the clock alone cannot decide: whether being past MEANS anything here. */
+export type PinContext = Pick<PlaceOrderContext, 'onDate' | 'nowMs' | 'today'> & {
+  /** Plan mode. The clock still resolves which day a place is read as, but nothing is
+   *  demoted for having passed (ADR-0130 §2): you are arranging a day's shape, and a
+   *  faded stop is one you are least able to see while doing it. The screen decides
+   *  this, exactly as it decides the amber cues — the lib takes the answer. */
+  planning?: boolean;
+};
 
 /**
  * Does this day give the place a position in the schedule? Only a real event's
@@ -65,20 +79,30 @@ export function hasScheduleSlot(day: DayUsage | undefined): boolean {
 /**
  * Which tier a place's pin is in. Precedence, and each step is load-bearing:
  *
- * 1. **Out of the day scope → `ghost`**, before anything else. A place not in
- *    this day is subordinate no matter what else is true of it — including being
- *    the trip's next stop, whose amber cue would otherwise claim a prominence
- *    its (absent) row cannot back up.
+ * 1. **Out of the day scope**, before anything else — a place not in this day is
+ *    subordinate no matter what else is true of it, including being the trip's next
+ *    stop, whose amber cue would otherwise claim a prominence its (absent) row cannot
+ *    back up. But there are **two ways to be out of it**, and they are not the same
+ *    claim (ADR-0130 §3): a place pencilled for ANOTHER day is elsewhere (`ghost`),
+ *    while a shelf maybe on **no** day is nowhere — which is precisely what leaves it
+ *    available today, so it stays a maybe (`shelf`) rather than being drawn as
+ *    another day's business.
  * 2. **No day at all** (an unlinked booking, a "someday" idea) — an idea if it is
  *    on the shelf, else an ordinary upcoming pin. Neither is numbered: nothing
  *    put it in a sequence. Reachable only in all-days scope, where step 1 is off.
- * 3. **Behind you** — the day is past, or a human settled it (ADR-0117 §2).
+ * 3. **Behind you** — the day is past, or a human settled it (ADR-0117 §2). Trip mode
+ *    only: `planning` withdraws the whole question (§2 of the same ADR).
  * 4. **Ambient** backdrop, then **idea** (no schedule slot), else **upcoming**.
  */
 export function placePinTier(usage: PlaceUsage, ctx: PinContext): PinTier {
   const day = placeDay(usage, ctx);
-  if (!day) return ctx.onDate ? PIN_TIER.ghost : ideaOrUpcoming(usage);
-  if (ctx.nowMs != null && isDayUsagePast(day, ctx.nowMs, ctx.today)) return PIN_TIER.behind;
+  if (!day) {
+    if (!ctx.onDate) return ideaOrUpcoming(usage);
+    return usage.days.length === 0 && isOnShelf(usage) ? PIN_TIER.shelf : PIN_TIER.ghost;
+  }
+  if (!ctx.planning && ctx.nowMs != null && isDayUsagePast(day, ctx.nowMs, ctx.today)) {
+    return PIN_TIER.behind;
+  }
   if (day.prominence === 'ambient') return PIN_TIER.ambient;
   return hasScheduleSlot(day) ? PIN_TIER.upcoming : ideaOrUpcoming(usage);
 }
@@ -132,7 +156,10 @@ export function buildPinOrderIndex(
 /**
  * Coincident pins get a stated z-order (ADR-0121 §6), so the one that matters
  * most is the one you can see and tap: the next stop, then what is ahead in day
- * order, then ideas, then ambient, then what is behind you, then ghosts.
+ * order, then ideas, then ambient, then a shelf maybe, then what is behind you, then
+ * ghosts. A shelf maybe sits **below ambient** because a night you are sleeping
+ * somewhere is a commitment and an idea is not, and **above behind** because a place
+ * you are still considering outranks one you have already passed.
  *
  * Within `upcoming` an earlier number sits higher — on the ground the stop you
  * reach first is the one you are looking for. `ORDER_SPREAD` bounds that nudge
@@ -143,6 +170,7 @@ const TIER_Z: Record<PinTier, number> = {
   [PIN_TIER.upcoming]: 400,
   [PIN_TIER.idea]: 300,
   [PIN_TIER.ambient]: 200,
+  [PIN_TIER.shelf]: 150,
   [PIN_TIER.behind]: 100,
   [PIN_TIER.ghost]: 0,
 };
@@ -157,20 +185,32 @@ export function pinZIndex(pin: { tier: PinTier; nextStop?: boolean; order?: numb
 }
 
 /**
- * Does the camera answer to this pin? Every tier except `ghost`.
+ * **Context rather than answer:** the two tiers a day scope draws because the place is
+ * physically in view, not because the day's filter chose it — the other day's `ghost`
+ * and the dayless `shelf` maybe (ADR-0130 §3). Neither has a row in the sheet, so both
+ * behave the same everywhere that matters: no amber cue (whose prominence an absent row
+ * cannot back up), no pull on the camera, and a tap surfaces its one row.
  *
- * A ghost is a place that is **not in the day being shown** — context that happens
- * to be inside the viewport, subordinate by construction (§6: "prominence is what
- * keeps it from reading as part of the answer the chips describe"). §7 says the
- * camera fits **the filtered set**, and a ghost is precisely what the filter left
- * out, so it must not pull the frame: letting ghosts in is how a two-stop day framed
- * three continents, because the trip's other days were scattered across them.
+ * One predicate rather than a growing `!== ghost` in five places — the split of `ghost`
+ * into two tiers had to change every one of them, which is what named it.
+ */
+export const isAsidePin = (tier: PinTier): boolean =>
+  tier === PIN_TIER.ghost || tier === PIN_TIER.shelf;
+
+/**
+ * Does the camera answer to this pin? Every tier except the two aside ones.
+ *
+ * §7 says the camera fits **the filtered set**, and an aside pin is precisely what the
+ * filter left out, so it must not pull the frame: letting ghosts in is how a two-stop
+ * day framed three continents, because the trip's other days were scattered across
+ * them. A dayless maybe is the same hazard with a different cause — a shelf idea on the
+ * far side of the city would reframe a day it was never part of.
  *
  * The same subordination §6 already applies to near-me's sort and its distance
  * chips — a ghost enters neither — now stated for the camera too.
  */
 export function isFramedByCamera(pin: { tier: PinTier }): boolean {
-  return pin.tier !== PIN_TIER.ghost;
+  return !isAsidePin(pin.tier);
 }
 
 /**

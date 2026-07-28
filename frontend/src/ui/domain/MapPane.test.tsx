@@ -212,6 +212,7 @@ describe('MapPane — our markup, not PinElement (ADR-0121 §6)', () => {
         pin({ placeId: 'amb', tier: PIN_TIER.ambient }),
         pin({ placeId: 'past', tier: PIN_TIER.behind }),
         pin({ placeId: 'ghost', tier: PIN_TIER.ghost, glyph: '' }),
+        pin({ placeId: 'shelf', tier: PIN_TIER.shelf }),
       ],
     });
     const cls = (id: string) =>
@@ -223,6 +224,16 @@ describe('MapPane — our markup, not PinElement (ADR-0121 §6)', () => {
     expect(cls('ghost')).toContain('ghost');
     // A ghost is hollow, so it has no glyph to sit on a fill.
     expect(document.querySelector('[aria-label="ghost"] .pin-g')).toBeNull();
+    // Two classes each on the two subordinate tiers, because two things are being said
+    // (ADR-0130 §3): `aside` is the shared ratio, the other is the paint. A shelf maybe
+    // is painted as the maybe it is — dashed, hatched, filled, glyph and all — and only
+    // the SIZE says you did not put it in this day.
+    expect(cls('shelf').split(' ')).toEqual(
+      expect.arrayContaining(['map-pin', 'cat-leisure', 'soft', 'aside']),
+    );
+    expect(cls('ghost')).toContain('aside');
+    expect(cls('shelf')).not.toContain('ghost');
+    expect(document.querySelector('[aria-label="shelf"] .pin-g')).toBeTruthy();
   });
 
   it('the number is on the pin, and a pin with no position in the day carries none', () => {

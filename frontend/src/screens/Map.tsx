@@ -59,6 +59,7 @@ import {
 import { PLACE_REF_KIND, placeRefs } from '../lib/place-refs';
 import {
   buildPinOrderIndex,
+  isAsidePin,
   isFramedByCamera,
   PIN_TIER,
   pinSizeCss,
@@ -570,8 +571,12 @@ export function MapView() {
     [dayScoped, scopedDate, placeById],
   );
 
+  // `planning` withdraws the behind-you tier in Plan mode (ADR-0130 §2): the clock still
+  // resolves which day a place is read as, but a day you are arranging has no past — and
+  // the pins you can least afford to fade are the ones you came to rearrange. It sits
+  // beside `nextStopId`/`nowStopId`, which are Trip-only for the mirror-image reason.
   const pinTier = (usage: PlaceUsage): PinTier =>
-    placePinTier(usage, { onDate: scopedDate, nowMs, today });
+    placePinTier(usage, { onDate: scopedDate, nowMs, today, planning: mode === 'plan' });
 
   // Built every render (it is cheap), then memoized on its own CONTENT below: the
   // screen re-renders every second and a fresh array identity would re-diff every
@@ -603,8 +608,8 @@ export function MapView() {
               : '📍',
         tier,
         order: orderIndex.get(usage.placeId),
-        nextStop: nextStopId === usage.placeId && tier !== PIN_TIER.ghost,
-        nowStop: nowStopId === usage.placeId && tier !== PIN_TIER.ghost,
+        nextStop: nextStopId === usage.placeId && !isAsidePin(tier),
+        nowStop: nowStopId === usage.placeId && !isAsidePin(tier),
         selected: selectedId === usage.placeId,
         label: place.name,
       });
@@ -653,7 +658,7 @@ export function MapView() {
   const orderedStops = useMemo(
     () =>
       pins
-        .filter((pin) => pin.order != null && pin.tier !== PIN_TIER.ghost)
+        .filter((pin) => pin.order != null && !isAsidePin(pin.tier))
         .sort((a, b) => a.order! - b.order!)
         .map(({ lat, lng }) => ({ lat, lng })),
     [pins],
@@ -726,8 +731,11 @@ export function MapView() {
   const onPinTap = useRef<(placeId: string) => void>(() => {});
   onPinTap.current = (placeId: string) => {
     const usage = usageIndex.get(placeId);
-    // A ghost's row is not in the sheet, so the tap surfaces that one row instead.
-    setGhostId(usage && pinTier(usage) === PIN_TIER.ghost ? placeId : null);
+    // An aside pin's row is not in the sheet, so the tap surfaces that one row instead.
+    // Keyed on the REASON rather than on one tier: what makes the row missing is that the
+    // day scope did not choose the place, which is true of a dayless maybe exactly as it
+    // is of another day's ghost (ADR-0130 §3).
+    setGhostId(usage && isAsidePin(pinTier(usage)) ? placeId : null);
     select(placeId);
   };
   const selectPin = useCallback((placeId: string) => onPinTap.current(placeId), []);
@@ -1163,9 +1171,10 @@ export function MapView() {
 
   // Refused or unavailable: say what the list is sorted by instead, and offer a
   // retry only when asking again can actually re-prompt.
-  // THE PREREQUISITE, ANSWERED (ADR-0126 §5). `areaCount` reads the CANVAS, so it
-  // counts ghosts — places in view but outside the scoped day — and the sheet contains
-  // none of them: `orderedStops` excludes ghosts explicitly, twelve lines below where
+  // THE PREREQUISITE, ANSWERED (ADR-0126 §5). `areaCount` reads the CANVAS, so it counts
+  // the aside pins — places in view that the day scope did not choose, whether they are
+  // another day's or on no day at all — and the sheet contains none of them:
+  // `orderedStops` excludes them explicitly, twelve lines below where
   // the count is taken. So the readout names a set the list is structurally unable to
   // produce, and the button cannot honestly promise "these N rows".
   //
@@ -1177,7 +1186,7 @@ export function MapView() {
   const ghostsInArea = useMemo(
     () =>
       areaBounds
-        ? pins.filter((pin) => pin.tier === PIN_TIER.ghost && pointInBounds(areaBounds, pin)).length
+        ? pins.filter((pin) => isAsidePin(pin.tier) && pointInBounds(areaBounds, pin)).length
         : 0,
     [pins, areaBounds],
   );
@@ -1392,7 +1401,7 @@ export function MapView() {
           // `--map-controls-h` above.
           '--pin-base': pinSizeCss(),
           '--pin-tag-rise': MAP_PIN.TAG_RISE,
-          '--pin-ghost-scale': MAP_PIN.GHOST_SCALE,
+          '--pin-aside-scale': MAP_PIN.ASIDE_SCALE,
           // The dot tier's ratio (ADR-0128 §1). Written here with the others, and read
           // by CSS off the pane's own `data-pins` — so the tier flips under a pinch with
           // no marker re-render and no prop that changes on a gesture.
