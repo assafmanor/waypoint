@@ -109,6 +109,7 @@ interface CameraProps {
   signal: string;
   framePlace: LatLng | null;
   bottomReserve?: number;
+  focusContext?: readonly LatLng[];
 }
 
 function mount(
@@ -118,12 +119,13 @@ function mount(
   arrival: LatLng | null = null,
 ) {
   return renderHook<MapCamera, CameraProps>(
-    ({ map, pts, signal, framePlace, bottomReserve }) =>
+    ({ map, pts, signal, framePlace, bottomReserve, focusContext }) =>
       useMapCamera(map ? asMap(map) : null, {
         points: pts,
         setSignal: signal,
         framePlace,
         bottomReserve,
+        focusContext,
       }),
     {
       initialProps: {
@@ -391,6 +393,51 @@ describe('focus and re-centre', () => {
       expect(isPlaceFrame(fitted)).toBe(true);
       expect(centreOf(fitted).lat).toBeCloseTo(TOKYO.lat, 6);
       expect(centreOf(fitted).lng).toBeCloseTo(TOKYO.lng, 6);
+    });
+
+    // ADR-0134 §7: an unsaved Google result is framed among the OTHER CANDIDATES, not
+    // among the trip's plan — so the span reads a context set. Two questions about the
+    // same neighbours, and the second one is why a ring can inform a frame without ever
+    // pulling a fit (which would be a query moving the camera, ADR-0131 §5).
+    it('the frame SPAN reads the focus context; the fit it performs does not', () => {
+      // No trip pins on purpose. `focusBoundsFor` takes the FURTHEST of the nearest three,
+      // so a day with a pin in Kyoto is already clamped at `MAX_SPAN_DEG` and no nearby
+      // candidate could tighten it — which is the rule working, and would have made this
+      // test pass for the wrong reason. The question here is whether the context is read
+      // at all, so it is the only neighbour there is.
+      const bareMap = new FakeMap();
+      bareMap.bounds = WORLD;
+      mount(bareMap, [], 'day', TOKYO);
+      const withoutContext = bareMap.fits.at(-1)!.bounds;
+
+      const ctxMap = new FakeMap();
+      ctxMap.bounds = WORLD;
+      renderHook<MapCamera, CameraProps>(
+        ({ map: m, pts, signal, framePlace, focusContext }) =>
+          useMapCamera(m ? asMap(m) : null, {
+            points: pts,
+            setSignal: signal,
+            framePlace,
+            focusContext,
+          }),
+        {
+          initialProps: {
+            map: ctxMap,
+            pts: [],
+            signal: 'day',
+            framePlace: TOKYO,
+            focusContext: [{ lat: TOKYO.lat + 0.004, lng: TOKYO.lng }],
+          },
+        },
+      );
+      const withContext = ctxMap.fits.at(-1)!.bounds;
+      // A candidate 0.004° away TIGHTENS the frame; with no neighbours at all the span
+      // falls back to `MAP_FOCUS.DEFAULT_SPAN_DEG`.
+      expect(withContext.north - withContext.south).toBeLessThan(
+        withoutContext.north - withoutContext.south,
+      );
+      // …and it is not a point the camera fitted: the frame stays centred on the place.
+      expect(centreOf(withContext).lat).toBeCloseTo(TOKYO.lat, 6);
     });
 
     // The real arrival order: the map mounts unsized, the screen's own effect then

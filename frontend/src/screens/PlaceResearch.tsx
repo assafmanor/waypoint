@@ -39,6 +39,10 @@ export function PlaceResearch({
   /** The result currently selected on the canvas — a ring tap selects its row, which is
    *  the pin↔row rule this tab already runs in the other direction (ADR-0132 §8). */
   selectedId,
+  /** The row was tapped: show me where this is (ADR-0134 §6). The row's body used to be
+   *  a link to Google Maps; the tap now means "frame it here" and Google is its own
+   *  control, because a link wrapping the whole row cannot coexist with that. */
+  onShow,
   /** Which result is mid-add, and whether the last add failed. Both live with the add
    *  itself, in the screen. */
   addingId,
@@ -51,6 +55,7 @@ export function PlaceResearch({
   selectedId: string | null;
   addingId: string | null;
   addFailed: boolean;
+  onShow: (result: PlaceResult) => void;
   onAdd: (result: PlaceResult) => void;
 }) {
   if (offline) {
@@ -96,6 +101,7 @@ export function PlaceResearch({
               onShelf={onShelf}
               selected={selectedId === result.googlePlaceId}
               busy={addingId === result.googlePlaceId}
+              onShow={() => onShow(result)}
               onAdd={() => onAdd(result)}
             />
           );
@@ -110,8 +116,13 @@ export function PlaceResearch({
 // A Google result, in the list's own row grammar (ADR-0115 §7) — but it says only
 // what the relay returns: name + secondary address, a neutral "not ours yet"
 // badge, and no ★ / distance / category (ADR-0115 §2, none of which this field mask
-// buys). The name links out to the Google Maps place so a candidate can be vetted for
-// free before we spend on resolving it.
+// buys).
+//
+// THREE JOBS WHERE THERE WAS ONE (ADR-0134 §5). The body was an `<a>` to Google Maps and
+// the only control was `＋ אולי`. The tap now means **show me where this is**, so the body
+// is a `<button>` and the way out to Google is its own control — a link wrapping the whole
+// row cannot coexist with a tap that means something else. ADR-0115 §2's "vet a candidate
+// for free before we spend on it" survives as that control rather than as the row.
 //
 // `data-result` is how a ring tap finds this row to scroll it into view — the exact
 // counterpart of `data-place` on a trip row (ADR-0132 §8).
@@ -121,6 +132,7 @@ function ResultRow({
   onShelf,
   selected,
   busy,
+  onShow,
   onAdd,
 }: {
   result: PlaceResult;
@@ -130,6 +142,7 @@ function ResultRow({
   onShelf: boolean;
   selected: boolean;
   busy: boolean;
+  onShow: () => void;
   onAdd: () => void;
 }) {
   return (
@@ -137,12 +150,7 @@ function ResultRow({
       className={'place result' + (selected ? ' selected' : '')}
       data-result={result.googlePlaceId}
     >
-      <a
-        className="map-res-open"
-        href={mapsPredictionUrl(result)}
-        target="_blank"
-        rel="noopener noreferrer"
-      >
+      <button type="button" className="map-res-open" onClick={onShow}>
         <span className="map-badge result" aria-hidden="true">
           📍
         </span>
@@ -156,8 +164,21 @@ function ResultRow({
             </span>
           )}
         </span>
-      </a>
+      </button>
       <span className="map-right">
+        {/* An ICON, not a label: the row already carries one labelled verb, and two
+            labelled buttons side by side compete for "which is the action" (ADR-0134 §5 —
+            which also records that the width measurement did NOT force this). */}
+        <a
+          className="map-res-out"
+          href={mapsPredictionUrl(result)}
+          target="_blank"
+          rel="noopener noreferrer"
+          aria-label={t.map.research.openInGoogle}
+          title={t.map.research.openInGoogle}
+        >
+          <span aria-hidden="true">{ICONS.mapOut}</span>
+        </a>
         {inTrip ? (
           <span className={'map-instate' + (onShelf ? ' shelf' : '')}>
             {onShelf ? t.map.research.onShelf : t.map.research.inTrip}

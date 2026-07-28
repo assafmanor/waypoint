@@ -854,8 +854,16 @@ export function MapView() {
       // focuses is invisible there (ADR-0121 §8), and from the map extreme because a
       // row you tapped in a list belongs in its list. A coordless row has no map to
       // reveal, so it shrinks nothing.
-      const focusable = hasMap && placePoint(placeById.get(placeId) ?? {}) != null;
-      if (focusable && sheetView !== MAP_SHEET_VIEW.half) setSheetView(MAP_SHEET_VIEW.half);
+      const point = hasMap ? placePoint(placeById.get(placeId) ?? {}) : null;
+      if (point && sheetView !== MAP_SHEET_VIEW.half) setSheetView(MAP_SHEET_VIEW.half);
+      // …AND IT FRAMES, where a pin tap only pans (ADR-0134 §6). ADR-0129 §1 decided
+      // both taps pan, on the report that being zoomed for a pin you can already see is
+      // a nuisance — which is right for a pin and wrong for a row: a row in a list is
+      // the one case where you cannot see the place, and at `full` there is no canvas at
+      // all. So the tap's SOURCE decides, and the sheet moves first (above) so the
+      // framing does not happen behind the list. A fresh object every time, because
+      // `framePlace` is spent once and the same row may be tapped twice.
+      if (point) setFramePlace({ ...point });
       return;
     }
     // From a pin: NOTHING MOVES. The pane's box does not change, so the camera does not
@@ -906,6 +914,9 @@ export function MapView() {
     setSelectedId(null);
     setGhostId(null);
     setSelectedResultId(googlePlaceId);
+    // A ring is ON the canvas, so tapping it PANS (ADR-0129 §1, unchanged) — the framing
+    // below belongs to the result's ROW, which is the tap you make without being able to
+    // see the place. `selectResultRow` is that one.
     requestAnimationFrame(() => {
       sheetRef.current
         ?.querySelector(`[data-result="${googlePlaceId}"]`)
@@ -916,6 +927,22 @@ export function MapView() {
     (googlePlaceId: string) => onResultTap.current(googlePlaceId),
     [],
   );
+
+  // A RESULT'S ROW was tapped (ADR-0134 §6): the same "commit" a trip row's tap is, so it
+  // does the same three things — selects, normalises the sheet so the canvas is on screen,
+  // and FRAMES. The span reads the other rings as context, which `MapPane` supplies from
+  // the results it is already drawing (§7), so nothing extra is threaded through here.
+  //
+  // A result with no coordinates selects and does not frame: there is nothing to frame,
+  // exactly as for a coordless place of our own.
+  const selectResultRow = useCallback((result: PlaceResult) => {
+    setSelectedId(null);
+    setGhostId(null);
+    setSelectedResultId(result.googlePlaceId);
+    if (result.lat == null || result.lng == null) return;
+    setSheetView((view) => (view === MAP_SHEET_VIEW.half ? view : MAP_SHEET_VIEW.half));
+    setFramePlace({ lat: result.lat, lng: result.lng });
+  }, []);
 
   // ADDING A RESULT — one path, whether it was tapped as a row or as a ring. Two steps,
   // both already built: resolve the place (which, for a Text Search result, spends
@@ -1563,6 +1590,7 @@ export function MapView() {
       usageIndex={usageIndex}
       offline={offline}
       selectedId={selectedResultId}
+      onShow={selectResultRow}
       addingId={addingResultId}
       addFailed={addResultFailed}
       onAdd={addResult}

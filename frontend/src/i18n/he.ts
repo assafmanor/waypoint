@@ -101,6 +101,9 @@ export const t = {
       addAria: (name: string) => `הוספת ${name} למדף האולי`,
       onShelf: 'על המדף',
       inTrip: 'כבר בטיול',
+      // The row's tap frames the place HERE (ADR-0134 §6), so the way out to Google is its
+      // own control — and it needs a name, because it is an icon.
+      openInGoogle: 'פתיחה בגוגל מפות',
       searching: 'מחפש בגוגל…',
       noResults: 'לא נמצאו מקומות בגוגל',
       // Offline the arm is gone rather than disabled (the near-me rule, ADR-0109 §7).

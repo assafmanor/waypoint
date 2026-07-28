@@ -86,6 +86,13 @@ export function useMapCamera(
      *  framing** — a rule about which intent wins rather than a guard bolted onto the
      *  fit (ADR-0127 §3) — and it is spent once. */
     framePlace?: LatLng | null;
+    /** Extra points that count as "what is around here" for a `framePlace`, without
+     *  being points the camera FITS (ADR-0134 §7). The unsaved Google results are the
+     *  only caller: choosing between five cafés, the useful context is the other
+     *  candidates — but a ring must never pull a fit, because a query moving the camera
+     *  is what ADR-0131 §5 forbids. Read through a ref, like `bottomReserve`, and for
+     *  the same reason: it changes when the QUERY changes. */
+    focusContext?: readonly LatLng[];
     /** What the place card occupies at the canvas's bottom, so a fit does not put a pin
      *  under it (ADR-0122 §7, built in ADR-0128 §2). Read through a ref below, never as a
      *  dependency: it changes on a **tap**, and re-running the framing effect for it
@@ -93,7 +100,7 @@ export function useMapCamera(
     bottomReserve?: number;
   },
 ): MapCamera {
-  const { points, setSignal, framePlace, bottomReserve = 0 } = opts;
+  const { points, setSignal, framePlace, focusContext, bottomReserve = 0 } = opts;
   // Latest-ref: the effect below is keyed on the signal alone, so it must read
   // the current points rather than close over the ones from the render that
   // happened to change the signal.
@@ -107,6 +114,8 @@ export function useMapCamera(
   // re-run when a card opens, so a pin tap still moves nothing (ADR-0122 §7's rule).
   const bottomReserveRef = useRef(bottomReserve);
   bottomReserveRef.current = bottomReserve;
+  const focusContextRef = useRef(focusContext);
+  focusContextRef.current = focusContext;
   /** The arrival focus this camera still owes, and the identity it was claimed from. */
   const owedFrame = useRef<LatLng | null>(null);
   const lastFramePlace = useRef<LatLng | null | undefined>(undefined);
@@ -335,8 +344,13 @@ export function useMapCamera(
    *  one: an arrival from `מפה`, or the place card's own way in to its pin. It frames the
    *  place together with its neighbours through the ordinary fit path. */
   const frameOn = useCallback(
-    (point: LatLng) =>
-      apply([point, ...pointsRef.current], null, focusBoundsFor(point, pointsRef.current)),
+    (point: LatLng) => {
+      // Two different questions about the same neighbours (ADR-0134 §7): the SPAN reads
+      // the context too, so a ring is framed among the other candidates — while the fit's
+      // own point list does not, so a ring still pulls nothing.
+      const around = [...pointsRef.current, ...(focusContextRef.current ?? [])];
+      return apply([point, ...pointsRef.current], null, focusBoundsFor(point, around));
+    },
     [apply],
   );
   // The framing effect calls this, and must not re-run when it changes identity.
