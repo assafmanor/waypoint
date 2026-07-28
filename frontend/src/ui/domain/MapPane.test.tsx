@@ -546,6 +546,10 @@ describe('the dot tier degrades a pin below a zoom threshold (ADR-0128 §1)', ()
   // jsdom applies no CSS, so what is asserted is the MECHANISM the rule is written in:
   // the degradation is scoped by `:not(.nowstop, .nextstop)`, so those two classes are
   // what carries the exemption and they must reach the markup.
+  // The tier is now scoped by `data-scope` on the SCREEN (ADR-0128 §1's session-155
+  // amendment), which the pane sits inside — so the pane's own test can only assert that
+  // the classes and the flag the rules key on are present. Which pins actually shrink is
+  // a CSS question, and jsdom applies no CSS.
   it('the time anchors keep the classes that exempt them from the dot tier', () => {
     const map = new FakeZoomMap();
     map.zoom = MAP_ZOOM.DOT_BELOW - 2;

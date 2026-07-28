@@ -28,19 +28,22 @@ The third thing the old Phase 3 line carried — `MAP_PIN`'s dials — turned ou
 
 **Ratios, not sizes.** `MAP_PIN.DOT_SCALE` (0.4) is a fraction of the pin, exactly as `GHOST_SCALE` is, so the rung stays a rung as the canvas grows the others — and a ghost at dot zoom compounds both, staying subordinate within the smaller ladder.
 
-> **Amended 2026-07-28 (session 154) — the tier applies to precision, not to priority, and the time anchors are exempt.**
+> **Amended twice on 2026-07-28 — the tier applies to what you are NOT looking at, and the number never goes.**
 >
-> As first built, the degradation was blanket: every pin became a dot, the amber `עכשיו` / `התחנה הבאה` **tags** dropped as text, and only the ring and pulse survived — at 0.4 of their size. The owner asked whether today's pins should demote at all, and said the now/next pins certainly should not. The second half is right, and the paragraph above was already reasoning toward it ("that cue is prominence, not text") while the CSS applied it too weakly.
+> As first built the degradation was blanket: every pin became a dot and the amber tags dropped. Two rounds of owner feedback, both from using it:
 >
-> **The rule, and it is the reusable part: demote what claims PRECISION, keep what claims PRIORITY.** The glyph, the order number and the tip answer _which one_ and _where exactly_ — claims a 30km-wide view cannot support. Hue answers _what kind_; the amber cue answers _what matters right now_. Neither of those is invalidated by zoom, so neither is degraded. **`nowStop` and `nextStop` are therefore not degraded at all** — full size, glyph, number, tag, ring and pulse.
+> **Session 154 — the time anchors are exempt.** The rule worth naming is **demote what claims precision, keep what claims priority.** The glyph, the order number and the tip answer _which one_ and _where exactly_ — claims a 30km view cannot support. Hue answers _what kind_; the amber cue answers _what matters right now_. Neither is invalidated by zoom, so `nowStop` / `nextStop` are not degraded at all. It costs nothing in density terms (there is exactly one of each) and it makes the degradation a **promotion by contrast**: a wide view becomes dots plus one or two real teardrops, the most direct answer to "where am I / where next".
 >
-> Two reasons that is a rule rather than an exception grudgingly carved out. It costs **nothing** in density terms: there is exactly one of each (ADR-0121 §6), and the crowding this tier exists for is the other N. And it makes the degradation a **promotion by contrast** — at a wide zoom the canvas becomes dots plus one or two real teardrops, which is the most direct possible answer to "where am I / where next", the question a wide view is otherwise worst at.
+> **Session 155 — the tier is scoped to all-days, and day scope keeps its pins.** The owner's case: _you open the app in the morning and look at the map to see what today holds and in what order._ Numberless dots make that unanswerable without zooming in and hunting. §6 itself made the number the order cue — "the number is free" — so the tier was trading away the canvas's one contribution over the list, in the view where that contribution is the point. **A travel day is the sharpest form:** Tokyo→Kyoto fits well below the threshold, so the day whose order you most need is the day that lost it.
 >
-> **Today's other pins DO demote**, which was the owner's open question. Exempting them would make the tier a near no-op in day scope, where almost every pin _is_ today's — the only thing left to shrink would be ghosts, already the bottom rung at `GHOST_SCALE`. And in the case the tier exists for (all-days, multi-city) "today" is not even a tier: there are no ghosts in all-days scope, so every pin would be exempt and the tier would do nothing at all.
+> **So there are TWO rules, because there are two situations.** One selector covering both was tried twice and kept leaving something behind — first the time anchors, then, when keyed on the number, today's **ambient stay night** and today's **ideas**, which carry no number _by design_ (ADR-0109's amendment: "what marks a night as ambient is that it has no number and no clock") and are exactly the collateral damage of a clever rule.
 >
-> Written as `:not(.nowstop, .nextstop)` on the degradation rather than as an override that undoes it, so there is one statement of what a dot is and no second rule racing the first.
-
-**Clustering still is not adopted**, and this is why the trigger §6 named has not fired: what made all-days unreadable was a full teardrop per place at country zoom, and a dot spans no categories (so it keeps its hue), carries no glyph or number to lose meaning, and is the same object — so nothing leaves the pin grammar, which is the exact objection §6 raised against a cluster bubble.
+> - **Day scope — only GHOSTS degrade.** A ghost is by definition not this day (§6), the one population that is not what you are looking at. A day holds three to six stops, so there is no density problem here worth paying for.
+> - **All-days — everything degrades except the time anchors.** Nothing is numbered without a scoped day (`buildPinOrderIndex` returns an empty map), so there is no order to lose, and this is the multi-city density §6 invented the tier for.
+>
+> Both key on `data-scope`, which the pane already sits inside, so the tier still costs no prop and no marker re-render. **`MAP_PIN.DOT_SCALE` is unchanged; what changed is who it reaches.**
+>
+> **Two consequences to state rather than discover.** In **Plan mode** the default scope is all-days, so its default wide view is dots — legible the moment a day is picked, which is what Plan's day strip is for, and there are no numbers in all-days to lose either way. And a dot is roughly 14–22px, which is **under ADR-0017's 44×44 touch floor** for a tappable pin; that is open, recorded on the backlog, and belongs with the device pass rather than being guessed at here.
 
 ### 2. The card's camera reserve is best-effort, and the top inset is not
 

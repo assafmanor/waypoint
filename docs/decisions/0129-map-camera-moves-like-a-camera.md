@@ -60,6 +60,16 @@ Three things fell out of building it, all recorded because none was obvious on p
 - **The FIRST framing of a map lands; every later one eases.** A map is constructed with `defaultCenter`, so it always has a camera to interpolate _from_ — but that camera is one nobody chose, and easing out of it would animate a long sweep from a placeholder on every single tab open. Easing a fact is not movement. (My first attempt guarded on "is there a centre to ease from", which would never have been false.)
 - **Longitude is interpolated the short way round.** `boundsOfPoints` deliberately does not care about the antimeridian — ADR-0121 §14's spirit, a case that takes a ±180° trip to notice. A _visible sweep the long way across the world_ is a different matter, and it is the one thing this function exists to avoid.
 
+### 4. The ease makes the camera a moving target, and two decisions read it
+
+Found by walking scenarios after the fact rather than by testing the happy path, and both are §3 breaking something older:
+
+- **The step-in ladder read an interpolated zoom.** ADR-0127 §2 made locate's repeat tap stateless on the grounds that "reading the map's current zoom means there is nothing to desynchronise, because there is no second copy of the truth". An eased move makes that untrue for 480ms: a second tap inside the window steps in from wherever the animation happens to be. So the ladder reads **where the ease is going** when one is in flight, and the map only when none is. The truth is still single — it just moved from the map to the move.
+
+- **The ease fought the user's finger.** ADR-0121 §7's "a manual pan or zoom wins" held because nothing else moved the camera; a per-frame `moveCamera` loop breaks it for the length of the animation, overwriting a pan or a pinch mid-gesture. The loop now **compares the camera against the last frame it wrote**, and stands down if they differ: Google's own gesture handling writes the camera too, so a mismatch means a finger did it. That is one check rather than a list of gesture events to subscribe to, and it catches pinch — which has no clean "the user zoomed" event — for free.
+
+Both are the same shape, and worth naming as such: **introducing an animation turns every read of "where is the camera now" into a question about time.** Anything else that starts reading the live camera has to decide which answer it wants.
+
 ## Alternatives considered
 
 - **Keep zoom-on-selection and tune the amount.** Rejected: the report is not that the zoom was wrong, it is that being moved at all was unwanted. No amount is right for an unasked-for move.
@@ -79,5 +89,6 @@ Three things fell out of building it, all recorded because none was obvious on p
 - **`PlaceBadge` gains two optional props** (`label`, `order`) rather than the Map growing a second badge control — the extend-the-primitive rule (ADR-0096).
 - **The two new decisions are pure functions** (`focusBoundsFor`, `cameraFrame`) tested with no Google present, and the animated path is tested against the fake map: it steps, it lands, a new move cancels the one in flight, and the opening frame does not ease.
 - **The suite's camera assertions moved to the reduced-motion path** for questions about _where_ the camera ends up. That is a real shipped path rather than a test shortcut, and it keeps those tests about the decision instead of about frame timing.
+- **The ease's own interactions were the finding, not the ease** (§4). Two decisions older than it read the live camera, and both needed an answer once the camera stopped being still.
 - **`MAP_FOCUS`'s five numbers and `MAP_CAMERA_EASE.DURATION_MS` join the device-pass cluster**, which is now thirteen numbers. Its argument is getting stronger, not weaker: this ADR exists because one of them was wrong in a way only a phone could show.
 - **What this cannot verify is the thing it is about.** Whether the ease _feels_ right — duration, curve, whether a long reframe should take longer than a short one — needs the device more than any number in the cluster does. It is derived, and it is stated as derived.
