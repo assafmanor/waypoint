@@ -1,4 +1,4 @@
-# Session 158 — the user settings page and what a member is: scope + phasing
+# Session 159 — the user settings page and what a member is: scope + phasing
 
 **Date:** 2026-07-28
 **Branch:** `claude/user-settings-page-design-r3ndi4`
