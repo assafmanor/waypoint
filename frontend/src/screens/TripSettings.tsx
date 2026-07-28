@@ -21,7 +21,6 @@ import { ZonePicker, zoneLabel } from '../ui/primitives/ZonePicker';
 import { DestinationPicker, type PickedDestination } from '../ui/DestinationPicker';
 import { Icon } from '../ui/Icon';
 import { IconPicker } from '../ui/IconPicker';
-import { Sheet } from '../ui/Sheet';
 import { useToast } from '../ui/Toast';
 import { useIsOffline, useOutboxCount } from '../lib/outbox';
 import { formatTripDates } from '../lib/time';

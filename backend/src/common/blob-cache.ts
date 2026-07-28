@@ -17,7 +17,7 @@ import {
   DOC_CACHE_DIR,
   DOC_CACHE_DISABLED,
   DOC_CACHE_MAX_BYTES,
-} from '../common/env';
+} from './env';
 
 // In-memory LRU bounded by total bytes. A Map keeps insertion order, so the first key is
 // the least-recently-used; a read re-inserts its key to mark it most-recently-used.

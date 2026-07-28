@@ -191,6 +191,42 @@ export function isAllowedDocumentMimeType(mimeType: string): boolean {
   return (ALLOWED_DOCUMENT_MIME_TYPES as readonly string[]).includes(mimeType);
 }
 
+/** The square edge an uploaded avatar is normalized to before it leaves the phone
+ *  (ADR-0133 §12). An avatar renders at 96px at its largest (`lg`), so 512 covers 3×
+ *  density with room to spare, and re-encoding at this size is what makes the byte
+ *  ceiling below a non-event rather than a rejection users hit. */
+export const AVATAR_IMAGE_EDGE_PX = 512;
+
+/** What the client re-encodes an avatar to, and therefore the only type the happy
+ *  path ever sends. JPEG because every canvas can emit it, every browser renders it
+ *  inline, and a face is a photograph — PNG would be several times the bytes for no
+ *  visible gain. */
+export const AVATAR_IMAGE_MIME_TYPE = 'image/jpeg';
+
+/** JPEG quality for that re-encode. 0.85 is the usual "no visible artefacts at
+ *  photographic content" point; at 512px it lands a face around 40–80 KB. */
+export const AVATAR_IMAGE_QUALITY = 0.85;
+
+/** Server ceiling on the bytes actually received. Deliberately ~20× smaller than
+ *  `MAX_DOCUMENT_SIZE_BYTES`: the client already re-encodes to a 512px JPEG, so this
+ *  is a bound on a hostile or broken client rather than a limit real uploads meet —
+ *  and it bounds per-request memory, since the whole buffer is held to sniff it. */
+export const MAX_AVATAR_SIZE_BYTES = 512 * 1024;
+
+/** Server-enforced avatar allow-list. Narrower than the document list for one reason
+ *  that matters: an avatar is served back **inline** to be drawn in an `<img>`, where
+ *  a document is always `Content-Disposition: attachment`. So this set is exactly the
+ *  raster types a browser renders as an image and nothing else — no `image/svg+xml`
+ *  (a script document wearing an image type), no HEIC (which browsers can't draw and
+ *  the client re-encodes away), and no GIF (an animated face is not a thing we want).
+ *  The type is additionally **sniffed from the bytes** server-side rather than trusted
+ *  from the declared header — see `sniffImageMimeType`. */
+export const ALLOWED_AVATAR_MIME_TYPES = ['image/jpeg', 'image/png', 'image/webp'] as const;
+
+export function isAllowedAvatarMimeType(mimeType: string): boolean {
+  return (ALLOWED_AVATAR_MIME_TYPES as readonly string[]).includes(mimeType);
+}
+
 /** Non-image document types the viewer may still open inline in a new tab: only
  *  PDF, which browsers render in their built-in viewer (no origin script). Every
  *  other non-image type is download-only (backend-review B-03; refines ADR-0052's

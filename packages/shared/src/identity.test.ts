@@ -1,5 +1,11 @@
 import { describe, expect, it } from 'vitest';
-import { IDENTITY_HUES, deriveAvatarHue, identityHueSchema, resolveAvatarHue } from './identity';
+import {
+  IDENTITY_HUES,
+  avatarContentPath,
+  deriveAvatarHue,
+  identityHueSchema,
+  resolveAvatarHue,
+} from './identity';
 
 describe('deriveAvatarHue', () => {
   it('is stable for the same id', () => {
@@ -56,5 +62,19 @@ describe('resolveAvatarHue', () => {
     // and it must never reach a render as a hue name.
     expect(resolveAvatarHue('u-abc', '#E9A63C')).toBe(deriveAvatarHue('u-abc'));
     expect(resolveAvatarHue('u-abc', 'amber')).toBe(deriveAvatarHue('u-abc'));
+  });
+});
+
+describe('avatarContentPath', () => {
+  it('puts the blob key in the path, so the URL is immutable per blob', () => {
+    expect(avatarContentPath('u-abc', 'k-123')).toBe('/users/u-abc/avatar/k-123');
+  });
+
+  it('changes when the key changes — which is what retires the cached face on replace', () => {
+    expect(avatarContentPath('u-abc', 'k-1')).not.toBe(avatarContentPath('u-abc', 'k-2'));
+  });
+
+  it('is root-relative, since the server has no reliable view of its own public origin', () => {
+    expect(avatarContentPath('u', 'k').startsWith('/')).toBe(true);
   });
 });

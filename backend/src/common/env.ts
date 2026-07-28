@@ -31,7 +31,7 @@ export const DEFAULT_PLACES_RESOLVE_LIMIT_PER_MIN = 30;
 export const DEFAULT_PLACES_RESOLVE_LIMIT_PER_DAY = 500;
 
 // Railway Storage Bucket (S3-compatible, ADR-0031). S3_BUCKET unset → documents
-// fall back to local disk (backend/src/documents/storage.ts).
+// fall back to local disk (backend/src/common/storage.ts).
 // DOC_LOCAL_STORAGE_DIR overrides where that dev-only fallback writes blobs; unset →
 // `<cwd>/storage/documents`. Set it in tests so parallel spec files don't share one dir.
 export const DOC_LOCAL_STORAGE_DIR = 'DOC_LOCAL_STORAGE_DIR';
@@ -43,7 +43,7 @@ export const S3_REGION = 'S3_REGION';
 
 // Document blob read cache (ADR-0055). The cache holds ciphertext only and is never a
 // source of truth, so an unset FS dir (memory-only) or a lost dir on redeploy is fine —
-// a miss falls through to S3 (backend/src/documents/blob-cache.ts).
+// a miss falls through to S3 (backend/src/common/blob-cache.ts).
 export const DOC_CACHE_DIR = 'DOC_CACHE_DIR'; // local-FS tier path; unset → memory-only
 export const DOC_CACHE_MAX_BYTES = 'DOC_CACHE_MAX_BYTES'; // in-memory LRU bound (bytes)
 export const DOC_CACHE_DISABLED = 'DOC_CACHE_DISABLED'; // kill switch (any truthy value)

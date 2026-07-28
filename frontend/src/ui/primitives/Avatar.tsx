@@ -8,7 +8,7 @@
 // pairing, and the ring the account avatar wears. No call site does any of that
 // again — a call site picks a size and passes a person.
 import type { AvatarChoice, IdentityHue, User } from '@waypoint/shared';
-import { AVATAR_INITIAL_LENGTH } from '../../constants';
+import { API_BASE_URL, AVATAR_INITIAL_LENGTH } from '../../constants';
 import './avatar.css';
 
 /** Named sizes rather than a number, so the set stays small and every surface reads
@@ -27,6 +27,9 @@ export type AvatarPerson = Pick<User, 'displayName' | 'avatarHue'> & {
    *  is the honest render for them rather than a borrowed photo. */
   avatarChoice?: AvatarChoice;
   googleAvatarUrl?: string | null;
+  /** Server-built path to an uploaded avatar's bytes, or null when there is no
+   *  upload (ADR-0133 §12). Relative to the API origin, so it is prefixed here. */
+  uploadedAvatarUrl?: string | null;
 };
 
 /** Which source to actually render. Honours the stored choice, then falls back to
@@ -37,8 +40,11 @@ export type AvatarPerson = Pick<User, 'displayName' | 'avatarHue'> & {
  *  Exported because it is the interesting decision and deserves its own test. */
 export function avatarPictureUrl(person: AvatarPerson): string | null {
   if (person.avatarChoice === 'google') return person.googleAvatarUrl ?? null;
-  // `upload` resolves once ADR-0133's Phase 4 gives it somewhere to resolve from;
-  // until then it degrades to initials rather than pretending to have a picture.
+  if (person.avatarChoice === 'upload') {
+    // A prefix, not a base for `new URL()`: same-origin production leaves
+    // API_BASE_URL empty, and the server's path is already root-relative.
+    return person.uploadedAvatarUrl ? `${API_BASE_URL}${person.uploadedAvatarUrl}` : null;
+  }
   return null;
 }
 

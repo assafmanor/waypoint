@@ -3,12 +3,14 @@ import { createContext, useContext, useEffect, useState, type ReactNode } from '
 import { meSchema, type Me, type UpdateMeInput } from '@waypoint/shared';
 import {
   API_BASE_URL,
+  deleteAvatar,
   fetchMe,
   refreshAccessToken,
   requestLogout,
   setAccessToken,
   setOnSessionExpired,
   updateMe,
+  uploadAvatar,
 } from '../lib/api';
 import { isNetworkError, isOffline } from '../lib/outbox';
 import { wipeLocalData } from '../lib/cache';
@@ -50,6 +52,10 @@ interface AuthContextValue {
   logout: () => void;
   /** Edit your own identity. Throws on failure so the caller can surface it. */
   patchMe: (input: UpdateMeInput) => Promise<void>;
+  /** Upload an already-normalized avatar (see `lib/avatar-image.ts`). Throws. */
+  setAvatar: (blob: Blob) => Promise<void>;
+  /** Delete the uploaded avatar; the server picks the fallback source. Throws. */
+  removeAvatar: () => Promise<void>;
 }
 
 const AuthContext = createContext<AuthContextValue | null>(null);
@@ -130,8 +136,22 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     cacheMe(next);
   };
 
+  /** Same contract as `patchMe`, for the two writes that carry bytes rather than
+   *  fields (ADR-0133 §12) — the response is the new `Me`, so a removal that lands on
+   *  the Google photo and one that lands on initials need no client-side guess. */
+  const setAvatar = async (blob: Blob) => {
+    const next = await uploadAvatar(blob);
+    setMe(next);
+    cacheMe(next);
+  };
+  const removeAvatar = async () => {
+    const next = await deleteAvatar();
+    setMe(next);
+    cacheMe(next);
+  };
+
   return (
-    <AuthContext.Provider value={{ status, me, login, logout, patchMe }}>
+    <AuthContext.Provider value={{ status, me, login, logout, patchMe, setAvatar, removeAvatar }}>
       {children}
     </AuthContext.Provider>
   );

@@ -14,15 +14,23 @@ import {
   S3_ENDPOINT,
   S3_REGION,
   S3_SECRET_ACCESS_KEY,
-} from '../common/env';
+} from './env';
 import { evictCachedBlob, getCachedBlob, putCachedBlob } from './blob-cache';
 
-// Swappable byte sink for encrypted document blobs, keyed by `Document.fileRef`.
+// Swappable byte sink, keyed by an opaque blob id. Two callers today: document blobs
+// (`Document.fileRef`, encrypted by the service) and uploaded avatars
+// (`User.uploadedAvatarKey`, stored as-is — see ADR-0133 §12 for why the trust classes
+// differ). It knows nothing about either domain, which is why it lives in `common/`
+// rather than inside `documents/` where it started.
+//
 // Mirrors this codebase's existing swap idiom (DEV_AUTH branch in jwt-auth.guard.ts /
 // sync.gateway.ts): the real path (S3_BUCKET set) is checked first, local disk is the
 // dev-only fallback — no DI interface, add one only if a second real caller needs it.
 // Resolved per call (not a module const) so a test can point it at an isolated dir via
-// DOC_LOCAL_STORAGE_DIR; unset → `<cwd>/storage/documents` as before.
+// DOC_LOCAL_STORAGE_DIR; unset → `<cwd>/storage/documents`. The env name and that
+// default path kept their `DOC_` spelling deliberately: it is one flat keyspace of
+// UUIDs, and renaming them would strand every blob an existing dev install has written
+// to buy nothing but a tidier word.
 function localDir(): string {
   return process.env[DOC_LOCAL_STORAGE_DIR] || join(process.cwd(), 'storage', 'documents');
 }

@@ -19,13 +19,15 @@ import type {
   TripEvent,
   User as SharedUser,
 } from '@waypoint/shared';
-import { resolveAvatarHue } from '@waypoint/shared';
+import { avatarContentPath, resolveAvatarHue } from '@waypoint/shared';
 
 const toDateOnly = (d: Date): string => d.toISOString().slice(0, 10);
 
 /** The one place a `User` row becomes a wire DTO. It RESOLVES the identity hue
  *  (stored pick, else derived from the id), so a nullable column can never reach a
- *  render and no client has to own that fallback — ADR-0133 §5. */
+ *  render and no client has to own that fallback — ADR-0133 §5. It likewise turns the
+ *  stored blob key into a URL (§12), so the route shape lives on the server and a
+ *  client only ever sees "here is where the face is, or there isn't one". */
 export const toUserDto = (u: User): SharedUser => ({
   id: u.id,
   email: u.email,
@@ -33,6 +35,7 @@ export const toUserDto = (u: User): SharedUser => ({
   avatarHue: resolveAvatarHue(u.id, u.avatarHue),
   avatarChoice: u.avatarChoice,
   googleAvatarUrl: u.googleAvatarUrl,
+  uploadedAvatarUrl: u.uploadedAvatarKey ? avatarContentPath(u.id, u.uploadedAvatarKey) : null,
   createdAt: u.createdAt.toISOString(),
 });
 

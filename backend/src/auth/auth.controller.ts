@@ -1,19 +1,28 @@
 import {
+  BadRequestException,
   Body,
   Controller,
+  Delete,
   Get,
   HttpCode,
+  NotFoundException,
+  Param,
   Patch,
   Post,
   Query,
   Req,
   Res,
   UnauthorizedException,
+  UploadedFile,
+  UseInterceptors,
 } from '@nestjs/common';
-import { ApiBearerAuth, ApiOkResponse, ApiTags } from '@nestjs/swagger';
+import { FileInterceptor } from '@nestjs/platform-express';
+import { ApiBearerAuth, ApiConsumes, ApiOkResponse, ApiTags } from '@nestjs/swagger';
 import { Throttle } from '@nestjs/throttler';
 import {
   accessTokenResponseSchema,
+  ERROR_CODE,
+  MAX_AVATAR_SIZE_BYTES,
   meSchema,
   updateMeSchema,
   type AccessTokenResponse,
@@ -23,6 +32,7 @@ import {
 import { createZodDto, ZodSerializerDto } from 'nestjs-zod';
 import { ZodValidationPipe } from '../common/zod-validation.pipe';
 import { DEFAULT_FRONTEND_URL, FRONTEND_URL as FRONTEND_URL_ENV } from '../common/env';
+import { sniffImageMimeType } from '../common/image-sniff';
 import { AuthService } from './auth.service';
 import { parseCookieHeader } from './cookies.util';
 import { CurrentUser } from './current-user.decorator';
@@ -43,6 +53,14 @@ interface CookieResponse {
   clearCookie(name: string, options?: Record<string, unknown>): void;
   redirect(url: string): void;
 }
+interface AvatarResponse {
+  setHeader(name: string, value: string): void;
+  send(body: Buffer): void;
+}
+
+/** A year. The URL carries the blob's own id, so it can never serve different bytes —
+ *  the only reason not to cache it forever is that "forever" isn't a real value. */
+const AVATAR_CACHE_TTL_SECONDS = 60 * 60 * 24 * 365;
 
 const OAUTH_COOKIE = 'wp_oauth';
 const REFRESH_COOKIE = 'wp_refresh';
@@ -182,5 +200,83 @@ export class MeController {
     @Body(new ZodValidationPipe(updateMeSchema)) body: UpdateMeDto,
   ): Promise<Me> {
     return this.auth.updateMe(user.userId, body as UpdateMeInput);
+  }
+
+  /** Upload (or replace) your avatar — ADR-0133 §12. Multipart, one `file` part, and
+   *  the interceptor's `fileSize` limit is the real byte ceiling: it aborts the stream
+   *  rather than letting the service buffer an oversized body first. */
+  @Post('me/avatar')
+  @ApiConsumes('multipart/form-data')
+  @ApiOkResponse({ type: MeDto })
+  @ZodSerializerDto(MeDto)
+  @UseInterceptors(FileInterceptor('file', { limits: { fileSize: MAX_AVATAR_SIZE_BYTES } }))
+  setAvatar(
+    @CurrentUser() user: Principal,
+    @UploadedFile() file: Express.Multer.File | undefined,
+  ): Promise<Me> {
+    if (!file) {
+      throw new BadRequestException({
+        error: { code: ERROR_CODE.VALIDATION_ERROR, message: 'file is required' },
+      });
+    }
+    return this.auth.setAvatar(user.userId, file.buffer);
+  }
+
+  @Delete('me/avatar')
+  @ApiOkResponse({ type: MeDto })
+  @ZodSerializerDto(MeDto)
+  removeAvatar(@CurrentUser() user: Principal): Promise<Me> {
+    return this.auth.removeAvatar(user.userId);
+  }
+}
+
+/** An uploaded avatar's bytes — the route `avatarContentPath` names (ADR-0133 §12).
+ *
+ *  **`@Public` on purpose, and this is the trust-class call Phase 4 owed.** An `<img>`
+ *  cannot send a bearer token, so an authenticated route would force every avatar
+ *  through a fetch-to-object-URL dance in a presentational primitive — for a
+ *  decoration that is, by design, shown to co-members. The key is an opaque
+ *  `randomUUID` handed out only in a `User` DTO, so the URL is an unguessable
+ *  capability; that is *exactly* the trust class of the `googleAvatarUrl` this app
+ *  already hotlinks, which Google itself serves unauthenticated to anyone holding it.
+ *  Guarding ours harder than the Google photo it substitutes for would be theatre.
+ *
+ *  Documents are the opposite class and stay that way: trip-scoped, encrypted at rest,
+ *  auth-guarded, and never inline. Nothing here is encrypted at rest — see the ADR for
+ *  why encrypting a picture we publish to the group buys nothing and costs the hard
+ *  caching an `<img>` wants. */
+@ApiTags('auth')
+@Controller()
+export class AvatarController {
+  constructor(private readonly auth: AuthService) {}
+
+  @Get('users/:userId/avatar/:key')
+  @Public()
+  async getAvatar(
+    @Param('userId') userId: string,
+    @Param('key') key: string,
+    @Res() res: AvatarResponse,
+  ): Promise<void> {
+    const buffer = await this.auth.getAvatarContent(userId, key);
+    // A retired key, a user with no upload, or bytes that have gone missing: all the
+    // same 404, and all of them must degrade to initials rather than a broken image.
+    if (!buffer) throw new NotFoundException('Avatar not found');
+
+    const mimeType = sniffImageMimeType(buffer);
+    if (!mimeType) throw new NotFoundException('Avatar not found');
+
+    // The type is re-derived from the bytes, never echoed from what was uploaded, and
+    // `nosniff` pins the browser to it — together that is what makes serving this
+    // INLINE safe where a document never is (backend-review B-03's reasoning, applied
+    // to the opposite disposition). The CSP is belt-and-braces for a direct navigation
+    // to this URL: nothing this response can reference is allowed to load.
+    res.setHeader('Content-Type', mimeType);
+    res.setHeader('X-Content-Type-Options', 'nosniff');
+    res.setHeader('Content-Security-Policy', "default-src 'none'; sandbox");
+    res.setHeader('Content-Disposition', 'inline');
+    // Immutable is honest here, not optimistic: the key IS the blob's id, so these
+    // bytes can never change at this URL — a replace mints a new key and a new URL.
+    res.setHeader('Cache-Control', `public, max-age=${AVATAR_CACHE_TTL_SECONDS}, immutable`);
+    res.send(buffer);
   }
 }
