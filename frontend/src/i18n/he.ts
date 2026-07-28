@@ -227,6 +227,10 @@ export const t = {
     // fix; framing the filtered set is its own control. Named for what each does,
     // because `מרכז מחדש` was true of both jobs the one button used to do.
     locate: 'מרכוז על המיקום שלכם',
+    // The place card's badge is the way in to its own pin (ADR-0129 §1). The same verb
+    // the badge already carries everywhere else — one step further in, since here you
+    // are already looking at the map.
+    frameOnPlace: 'התמקדות במקום הזה',
     frameAll: 'התאמת התצוגה לכל המקומות',
     // A pin that is in view but not in this day (ADR-0121 §6). Its row is not in
     // the sheet, so tapping it is the only way to learn what it is: the tap

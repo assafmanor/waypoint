@@ -1,5 +1,7 @@
 import { describe, expect, it } from 'vitest';
 import {
+  cameraFrame,
+  focusBoundsFor,
   boundsContain,
   boundsOfPoints,
   cameraTargetFor,
@@ -8,10 +10,16 @@ import {
   mapFitPadding,
   pointInBounds,
   zoomStepIn,
-  zoomToAtLeast,
 } from './map-camera';
 import { pinHeightFor } from './map-pins';
-import { MAP_CARD_RESERVE_H, MAP_CONTROLS_H, MAP_FIT_INSET, MAP_PIN, MAP_ZOOM } from '../constants';
+import {
+  MAP_CARD_RESERVE_H,
+  MAP_CONTROLS_H,
+  MAP_FIT_INSET,
+  MAP_FOCUS,
+  MAP_PIN,
+  MAP_ZOOM,
+} from '../constants';
 
 const TOKYO = { lat: 35.68, lng: 139.76 };
 const KYOTO = { lat: 35.01, lng: 135.77 };
@@ -278,28 +286,9 @@ describe('the fit clears the floating controls row (ADR-0122 §1)', () => {
   });
 });
 
-// ADR-0127 §1/§2. "How close is close enough to read a place in context" is asked by
-// three paths, and these two functions are how they answer it with one number.
-describe('the zoom ladder (ADR-0127)', () => {
-  describe('zoomToAtLeast', () => {
-    it('zooms in when the view is further out than a place can be read at', () => {
-      expect(zoomToAtLeast(9, MAP_ZOOM.PLACE)).toBe(MAP_ZOOM.PLACE);
-    });
-
-    // The half of ADR-0121 §7 that stands: the context you were reading is protected
-    // against being pulled BACK, which is the only direction that ever threatened it.
-    it('never zooms out, and leaves a close-enough view alone', () => {
-      expect(zoomToAtLeast(MAP_ZOOM.PLACE, MAP_ZOOM.PLACE)).toBeNull();
-      expect(zoomToAtLeast(19, MAP_ZOOM.PLACE)).toBeNull();
-    });
-
-    // A map that has not reported a zoom yet has no context to protect.
-    it('treats an unknown zoom as "not close enough"', () => {
-      expect(zoomToAtLeast(null, MAP_ZOOM.PLACE)).toBe(MAP_ZOOM.PLACE);
-      expect(zoomToAtLeast(undefined, MAP_ZOOM.PLACE)).toBe(MAP_ZOOM.PLACE);
-    });
-  });
-
+// ADR-0127 §2's step-in ladder, which ADR-0129 left standing. (Its sibling
+// `zoomToAtLeast` is gone with the zoom-on-selection it existed for.)
+describe('the zoom ladder (ADR-0127 §2)', () => {
   describe('zoomStepIn', () => {
     const step = (z: number | null) => zoomStepIn(z, MAP_ZOOM.PLACE, MAP_ZOOM.STEP_IN_MAX);
 
@@ -369,5 +358,109 @@ describe('the place card’s bottom reserve (ADR-0128 §2)', () => {
   it('stays affordable on the narrowest phone too, so it is never dropped', () => {
     const padding = mapFitPadding(312, MAP_CARD_RESERVE_H);
     expect(fitPaddingFor({ width: 360, height: 312 }, padding)).toEqual(padding);
+  });
+});
+
+// ADR-0129 §2. A fixed zoom cannot tell a dense district from an empty valley, and the
+// report was exactly that: how close to go should depend on what is around the place.
+describe('the focus frame is derived from what is nearby (ADR-0129 §2)', () => {
+  const AT = { lat: 35.68, lng: 139.76 };
+  const span = (b: ReturnType<typeof focusBoundsFor>) => b.north - b.south;
+  const near = { lat: 35.683, lng: 139.763 };
+  const far = { lat: 35.9, lng: 140.0 };
+
+  it('frames tighter when the neighbours are close, wider when they are far', () => {
+    const tight = span(focusBoundsFor(AT, [near]));
+    const loose = span(focusBoundsFor(AT, [far]));
+    expect(tight).toBeLessThan(loose);
+  });
+
+  it('is centred on the place, whatever the neighbours do', () => {
+    const b = focusBoundsFor(AT, [near, far]);
+    expect((b.north + b.south) / 2).toBeCloseTo(AT.lat, 9);
+    expect((b.east + b.west) / 2).toBeCloseTo(AT.lng, 9);
+  });
+
+  // Both clamps earn their place. Without the ceiling one distant neighbour frames a
+  // region and the place is a speck; without the floor coincident pins fit a zero-area
+  // box and snap to building level (ADR-0121 §7's degenerate row).
+  it('clamps both ways', () => {
+    expect(span(focusBoundsFor(AT, [{ lat: 60, lng: 100 }]))).toBeCloseTo(
+      MAP_FOCUS.MAX_SPAN_DEG * 2,
+      9,
+    );
+    // A neighbour a few metres away: the floor is what stops this fitting a near-zero box
+    // and snapping to building level.
+    expect(span(focusBoundsFor(AT, [{ lat: AT.lat + 0.00002, lng: AT.lng }]))).toBeCloseTo(
+      MAP_FOCUS.MIN_SPAN_DEG * 2,
+      9,
+    );
+  });
+
+  // A pin at the SAME coordinates is not a neighbour: it says nothing about what is
+  // around the place, so it falls through to the standalone default rather than
+  // collapsing the frame onto itself.
+  it('treats a coincident pin as no neighbour at all', () => {
+    expect(span(focusBoundsFor(AT, [{ ...AT }]))).toBeCloseTo(span(focusBoundsFor(AT, [])), 9);
+  });
+
+  it('falls back to the default span when the place stands alone', () => {
+    expect(span(focusBoundsFor(AT, []))).toBeCloseTo(
+      Math.min(MAP_FOCUS.DEFAULT_SPAN_DEG * MAP_FOCUS.NEIGHBOUR_HEADROOM, MAP_FOCUS.MAX_SPAN_DEG) *
+        2,
+      9,
+    );
+  });
+
+  // A cluster is framed as a cluster: the furthest of the NEAR ones sets the reach, so
+  // three pins down one street all land inside the frame rather than just the closest.
+  it('frames the whole near cluster, not just its closest member', () => {
+    const cluster = [
+      { lat: 35.681, lng: 139.761 },
+      { lat: 35.684, lng: 139.764 },
+      { lat: 35.688, lng: 139.768 },
+    ];
+    const b = focusBoundsFor(AT, cluster);
+    for (const p of cluster) {
+      expect(p.lat).toBeLessThanOrEqual(b.north);
+      expect(p.lat).toBeGreaterThanOrEqual(b.south);
+    }
+  });
+
+  // Longitude degrees shrink toward the poles, so the same ground needs a wider box.
+  it('widens the longitude span with latitude, so the frame covers equal ground', () => {
+    const equator = focusBoundsFor({ lat: 0, lng: 0 }, []);
+    const north = focusBoundsFor({ lat: 60, lng: 0 }, []);
+    expect(north.east - north.west).toBeGreaterThan(equator.east - equator.west);
+  });
+});
+
+// The interpolation, as a pure function of progress (ADR-0129 §3).
+describe('one frame of a camera move (ADR-0129 §3)', () => {
+  const A = { center: { lat: 0, lng: 0 }, zoom: 4 };
+  const B = { center: { lat: 10, lng: 20 }, zoom: 14 };
+
+  it('starts at the start and ends exactly on the target', () => {
+    expect(cameraFrame(A, B, 0)).toEqual(A);
+    expect(cameraFrame(A, B, 1)).toEqual(B);
+    expect(cameraFrame(A, B, 2)).toEqual(B);
+  });
+
+  it('moves monotonically, and is past nothing at the halfway point', () => {
+    const half = cameraFrame(A, B, 0.5);
+    expect(half.zoom).toBeGreaterThan(A.zoom);
+    expect(half.zoom).toBeLessThan(B.zoom);
+    expect(cameraFrame(A, B, 0.25).zoom).toBeLessThan(half.zoom);
+    expect(cameraFrame(A, B, 0.75).zoom).toBeGreaterThan(half.zoom);
+  });
+
+  // The one place this cares about the antimeridian where `boundsOfPoints` deliberately
+  // does not: a fit nobody notices until a trip spans ±180°, but a VISIBLE sweep the
+  // long way round the world is exactly what this function exists to avoid.
+  it('crosses the antimeridian the short way, not across the whole world', () => {
+    const from = { center: { lat: 0, lng: 170 }, zoom: 6 };
+    const to = { center: { lat: 0, lng: -170 }, zoom: 6 };
+    const mid = cameraFrame(from, to, 0.5);
+    expect(Math.abs(mid.center.lng)).toBeGreaterThan(175);
   });
 });

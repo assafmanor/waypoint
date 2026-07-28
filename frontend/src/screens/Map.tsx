@@ -101,6 +101,7 @@ import { PlaceResearch } from './PlaceResearch';
 import { SearchOverlay } from '../ui/primitives/SearchOverlay';
 import { BookingDetail } from '../ui/BookingDetail';
 import { BookingSheet } from '../ui/BookingSheet';
+import { PlaceBadge } from '../ui/domain/PlaceBadge';
 import { EmptyState, StatusBanner } from '../ui/feedback';
 import { Icon } from '../ui/Icon';
 import { t } from '../i18n/he';
@@ -755,17 +756,23 @@ export function MapView() {
   // `מפה` on an EventCard / BookingDetail routes here focused on a place (§8).
   // Consumed once, and it widens to all-days when the place is not in the day it
   // landed on — otherwise the action would point at something the scope hides.
-  // The camera's opening frame is THAT PLACE, not the day's set (ADR-0127 §3). Held in
-  // state rather than read from `focusPlaceId`, which is consumed in this same pass:
-  // the camera may not be sized for several more, and dropping the focus in between is
-  // exactly what made an arrival land on the day's frame. The camera spends it once.
-  const [arrivalFocus, setArrivalFocus] = useState<LatLng | null>(null);
+  // A place the camera has been asked to FRAME — the two intents that mean "take me to
+  // this one" (ADR-0129 §1): an arrival from `מפה`, and the place card's badge. Held in
+  // state rather than read from `focusPlaceId`, which is consumed in this same pass: the
+  // camera may not be sized for several more, and dropping the focus in between is
+  // exactly what made an arrival land on the day's frame. The camera spends it once, and
+  // a fresh object each time is what lets the same place be re-framed on a second tap.
+  const [framePlace, setFramePlace] = useState<LatLng | null>(null);
+  const frameSelected = useCallback(() => {
+    const point = selectedId ? placePoint(placeById.get(selectedId) ?? {}) : null;
+    if (point) setFramePlace({ ...point });
+  }, [selectedId, placeById]);
   useEffect(() => {
     if (!focusPlaceId) return;
     const usage = usageIndex.get(focusPlaceId);
     if (usage && !usage.days.some((d) => d.date === activeDate)) setAllDays(true);
     setSelectedId(focusPlaceId);
-    setArrivalFocus(placePoint(placeById.get(focusPlaceId) ?? {}) ?? null);
+    setFramePlace(placePoint(placeById.get(focusPlaceId) ?? {}) ?? null);
     clearFocus();
   }, [focusPlaceId, usageIndex, placeById, activeDate, setAllDays, clearFocus]);
 
@@ -894,7 +901,8 @@ export function MapView() {
     });
 
   const renderRow =
-    (opts: { onSelect?: (placeId: string) => void; forceDay?: boolean }) => (usage: PlaceUsage) => {
+    (opts: { onSelect?: (placeId: string) => void; forceDay?: boolean; onFrame?: () => void }) =>
+    (usage: PlaceUsage) => {
       const place = placeById.get(usage.placeId);
       if (!place) return null;
       const prominence = allDays
@@ -928,6 +936,7 @@ export function MapView() {
           onSelect={opts.onSelect && (() => opts.onSelect!(usage.placeId))}
           refs={selected ? refEntriesFor(usage, opts) : undefined}
           onEnrich={() => setEnrichTarget(place)}
+          onFrame={opts.onFrame}
         />
       );
     };
@@ -1228,7 +1237,7 @@ export function MapView() {
     sheetView === MAP_SHEET_VIEW.map && selectedId ? usageIndex.get(selectedId) : undefined;
   const placeCard = cardUsage && (
     <div className="map-placecard">
-      {renderRow({ forceDay: !inDayScope(cardUsage) })(cardUsage)}
+      {renderRow({ forceDay: !inDayScope(cardUsage), onFrame: frameSelected })(cardUsage)}
     </div>
   );
 
@@ -1410,7 +1419,7 @@ export function MapView() {
           areaSorted={areaSorted}
           onAreaSort={toggleAreaSort}
           onLocate={locateFromCanvas}
-          arrivalFocus={arrivalFocus}
+          framePlace={framePlace}
           cardOpen={cardUsage != null}
         />
         {placeCard}
@@ -1498,6 +1507,7 @@ function PlaceRow({
   refs,
   onSelect,
   onEnrich,
+  onFrame,
 }: {
   usage: PlaceUsage;
   place: Place;
@@ -1545,6 +1555,9 @@ function PlaceRow({
    *  the sheet from it would take away the map the card is sitting on. Without it the
    *  row renders as plain content rather than a `button` that does nothing. */
   onSelect?: () => void;
+  /** Only the place card passes this: it makes the badge the way in to its own pin
+   *  (ADR-0129 §1). Absent everywhere else, so the list's badges stay inert. */
+  onFrame?: () => void;
   /** Open the picker to give a coordless Place-lite real coordinates. */
   onEnrich: () => void;
 }) {
@@ -1603,14 +1616,22 @@ function PlaceRow({
       {/* The category badge doubles as the number's host (ADR-0121 §6): a numbered
           pin whose row says nothing about the order makes the two halves read as two
           different lists. Same corner, same stamp as `.pin-n` — one number, shown
-          twice, never a second treatment. */}
-      <span
+          twice, never a second treatment.
+          ON THE PLACE CARD it is also the way in to the pin (ADR-0129 §1): tapping it
+          frames the place with what is around it. That is the verb the badge already
+          carries on every other surface (ADR-0121's session-148 amendment made the badge
+          "the way to the pin" on day cards, builder rows and booking details) — one step
+          further in, since here you are already on the map. Reusing it costs no row slot
+          and no new icon, which is exactly why session 148 measured and rejected a
+          trailing-slot control. */}
+      <PlaceBadge
         className={`map-badge cat-${hue}` + (usage.coordless ? ' nocoord' : '')}
-        data-order={order}
-        aria-hidden="true"
+        order={order}
+        onShowOnMap={onFrame}
+        label={t.map.frameOnPlace}
       >
         {glyph}
-      </span>
+      </PlaceBadge>
       <span className="map-main">
         <span className="map-t">
           <span className="map-name">{place.name}</span>

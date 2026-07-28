@@ -15,6 +15,7 @@
 // guard would cost every other case a special case (ADR-0121 §14's spirit).
 import {
   MAP_CONTROLS_H,
+  MAP_FOCUS,
   MAP_FIT_INSET,
   MAP_FLOAT_GAP,
   MAP_PIN,
@@ -225,21 +226,6 @@ export function fitPaddingFor(
 }
 
 /**
- * **Zoom-to-at-least** (ADR-0127 §1): the zoom a "look at this place" intent should
- * end at, or `null` when the current one is already close enough to leave alone.
- *
- * It never zooms **out**, which is what keeps ADR-0121 §7's argument intact rather
- * than reversing it. §7 said "focus pans, it does not zoom" to protect the context
- * you were reading — and that protection is entirely about not pulling *back*. Being
- * dropped on a country-level view and told a place is somewhere in it protects
- * nothing; it is the same "silently did something else" the tab was reported for.
- */
-export function zoomToAtLeast(current: number | null | undefined, floor: number): number | null {
-  if (current == null) return floor;
-  return current < floor ? floor : null;
-}
-
-/**
  * **Locate's ladder, statelessly** (#20, ADR-0127 §2). The first tap gets you to a
  * readable zoom; a repeat tap steps one level in **from wherever the map actually
  * is** — never from a remembered tap count, so a pinch between taps cannot
@@ -255,6 +241,56 @@ export function zoomStepIn(
   return Math.min(current + 1, ceiling);
 }
 
+/**
+ * **How much ground to show around a place you were sent to look at** (ADR-0129 §2).
+ *
+ * A fixed zoom cannot know whether it is dropping you in a dense district or an empty
+ * valley, and the owner's report is exactly that: "how much to zoom on a pin should be
+ * dynamic and depend on several stuff such as if there are lots of close pins". So the
+ * span is derived from **how far the nearest other pins are**: a place with neighbours
+ * 200m away shows a few hundred metres, an isolated one shows the default.
+ *
+ * Returned as BOUNDS centred on the place, not as a zoom, so it feeds the fit path that
+ * already exists — inheriting the controls-row padding, the card reserve and the
+ * `MAX_FIT` cap rather than needing its own copies of all three.
+ *
+ * Clamped both ways, and both clamps earn their place: without a **ceiling** one distant
+ * neighbour drags the frame out to a region and the place you came to see is a speck;
+ * without a **floor** two coincident pins fit a zero-area box and snap to building level,
+ * which is the degenerate case ADR-0121 §7's table exists for.
+ */
+export function focusBoundsFor(at: LatLng, others: readonly LatLng[]): MapBounds {
+  // Only the nearest few matter. The question is "what is around this place", and the
+  // tenth-nearest pin says nothing about that while dragging the frame out.
+  const near = others
+    .filter((p) => p.lat !== at.lat || p.lng !== at.lng)
+    .map((p) => Math.max(Math.abs(p.lat - at.lat), Math.abs(p.lng - at.lng) * lngScale(at.lat)))
+    .sort((a, b) => a - b)
+    .slice(0, MAP_FOCUS.NEIGHBOURS);
+  // The furthest of the near ones, so a cluster is framed as a cluster rather than
+  // around its closest member only. No neighbours at all → the default span.
+  const reach = near.length > 0 ? near[near.length - 1] : MAP_FOCUS.DEFAULT_SPAN_DEG;
+  const half = Math.min(
+    Math.max(reach * MAP_FOCUS.NEIGHBOUR_HEADROOM, MAP_FOCUS.MIN_SPAN_DEG),
+    MAP_FOCUS.MAX_SPAN_DEG,
+  );
+  // Latitude degrees are constant; longitude degrees shrink toward the poles, so the
+  // box has to be wider in longitude to cover the same ground (ADR-0129 §2).
+  const halfLng = half / lngScale(at.lat);
+  return {
+    north: at.lat + half,
+    south: at.lat - half,
+    east: at.lng + halfLng,
+    west: at.lng - halfLng,
+  };
+}
+
+/** How much ground a degree of longitude covers here, relative to a degree of latitude.
+ *  Floored, so a near-polar trip cannot divide the span to infinity. */
+function lngScale(lat: number): number {
+  return Math.max(Math.cos((lat * Math.PI) / 180), 0.1);
+}
+
 export function cameraTargetFor(points: readonly LatLng[], view: MapBounds | null): CameraTarget {
   const bounds = boundsOfPoints(points);
   if (!bounds) return { kind: 'none' };
@@ -267,4 +303,39 @@ export function cameraTargetFor(points: readonly LatLng[], view: MapBounds | nul
     return { kind: 'centre', at: { lat: bounds.north, lng: bounds.east } };
   }
   return { kind: 'fit', bounds };
+}
+
+/** A camera position, which is all `moveCamera` needs. */
+export interface CameraAt {
+  center: LatLng;
+  zoom: number;
+}
+
+/**
+ * **One frame of a camera move** (ADR-0129 §3), as a pure function of progress.
+ *
+ * `ease` is the standard ease-in-out cubic — the same shape as the app's
+ * `--ease-standard`, expressed here because a rAF loop cannot borrow a CSS curve.
+ *
+ * Longitude is interpolated the SHORT way round, which matters exactly where
+ * `boundsOfPoints` deliberately does not care: a straight lerp from +170 to −170 sweeps
+ * the long way across the whole world, and unlike a fit — which nobody notices until a
+ * trip spans ±180° — a *visible sweep* is the one thing this function exists to avoid.
+ */
+export function cameraFrame(from: CameraAt, to: CameraAt, progress: number): CameraAt {
+  const t = progress <= 0 ? 0 : progress >= 1 ? 1 : ease(progress);
+  let dLng = to.center.lng - from.center.lng;
+  if (dLng > 180) dLng -= 360;
+  if (dLng < -180) dLng += 360;
+  return {
+    center: {
+      lat: from.center.lat + (to.center.lat - from.center.lat) * t,
+      lng: from.center.lng + dLng * t,
+    },
+    zoom: from.zoom + (to.zoom - from.zoom) * t,
+  };
+}
+
+function ease(t: number): number {
+  return t < 0.5 ? 4 * t * t * t : 1 - Math.pow(-2 * t + 2, 3) / 2;
 }

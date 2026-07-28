@@ -34,6 +34,8 @@ export function PlaceBadge({
   className,
   children,
   onShowOnMap,
+  label,
+  order,
 }: {
   /** The host's own badge class (`wp-event-badge`, `bld-bd`, `tr-badge`, …), so the
    *  badge keeps its surface's size, tint and radius and this adds only the way in. */
@@ -42,10 +44,18 @@ export function PlaceBadge({
   children: ReactNode;
   /** Focus this row's place on our map. Absent → a plain, inert badge. */
   onShowOnMap?: () => void;
+  /** What the tap does, when it is not "show this on the map" — the Map tab's own place
+   *  card reuses this badge to frame its pin, where you are already looking at the map
+   *  (ADR-0129 §1). Same verb one step further in, so the same control, a different
+   *  name. */
+  label?: string;
+  /** The place's position in its day, stamped in the badge's corner (ADR-0121 §6). Only
+   *  the Map's own badge carries one; the other hosts pass nothing. */
+  order?: number;
 }) {
   if (!onShowOnMap) {
     return (
-      <span className={className} aria-hidden="true">
+      <span className={className} data-order={order} aria-hidden="true">
         {children}
       </span>
     );
@@ -62,10 +72,11 @@ export function PlaceBadge({
   return (
     <span
       className={`${className} wp-placebadge`}
+      data-order={order}
       role="button"
       tabIndex={0}
-      aria-label={t.actions.showOnMap}
-      title={t.actions.showOnMap}
+      aria-label={label ?? t.actions.showOnMap}
+      title={label ?? t.actions.showOnMap}
       onClick={fire}
       onKeyDown={(e) => {
         if (e.key === 'Enter' || e.key === ' ') fire(e);

@@ -1032,3 +1032,14 @@
   color: var(--faint);
   margin-top: 12px;
 }
+
+/* THE CARD'S BADGE IS THE WAY IN TO ITS OWN PIN (ADR-0129 §1), reusing session 148's
+   `.wp-placebadge` rather than growing a second affordance: same teal ring, same focus
+   treatment, same verb one step further in — you are already looking at the map, so it
+   frames the place instead of taking you to it.
+   Its corner MARK stands down, because on this badge that corner is already the order
+   number's (ADR-0121 §6) and two stamps in one corner is neither. The ring is what
+   carries "this one is a control" against the inert badges in the list behind it. */
+.map-badge[data-order] .wp-placebadge-mark {
+  display: none;
+}
