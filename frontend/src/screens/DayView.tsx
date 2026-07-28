@@ -18,7 +18,7 @@ import {
   type TripEvent,
 } from '@waypoint/shared';
 import { useTrip, byStart } from '../state/trip-state';
-import { useReturnedPlaceErrand, useShowPlaceOnMap } from '../state/map-scope-state';
+import { usePlaceErrandReturn, useShowPlaceOnMap } from '../state/map-scope-state';
 import { prefersReducedMotion } from '../lib/motion';
 import {
   authoringZone,
@@ -141,25 +141,20 @@ export function DayView() {
     setFormTarget(null);
     setFormDraft(null);
   };
-  const returned = useReturnedPlaceErrand<EventFormDraft>('event');
-  useEffect(() => {
-    if (!returned?.draft) return;
+  usePlaceErrandReturn<EventFormDraft>('event', (returned) => {
+    if (!returned.draft) return;
     setFormTarget(events.find((e) => e.id === returned.target.id) ?? 'new');
     setFormDraft({ ...returned.draft, [returned.target.field]: returned.placeId });
-  }, [returned, events]);
+  });
   // RE-OPENING AFTER A PLACE ERRAND (ADR-0134 §2), through the same shared hook every other
   // form host uses. Without this the sheet would come back closed and the rest of what was
   // typed would be gone — the whole reason the errand carries a draft.
   const [bookingDraft, setBookingDraft] = useState<BookingSheetDraft | null>(null);
-  const returnedBooking = useReturnedPlaceErrand<BookingSheetDraft>('booking');
-  useEffect(() => {
-    if (!returnedBooking?.draft) return;
-    setBookingTarget(bookings.find((b) => b.id === returnedBooking.target.id) ?? null);
-    setBookingDraft({
-      ...returnedBooking.draft,
-      [returnedBooking.target.field]: returnedBooking.placeId,
-    });
-  }, [returnedBooking, bookings]);
+  usePlaceErrandReturn<BookingSheetDraft>('booking', (returned) => {
+    if (!returned.draft) return;
+    setBookingTarget(bookings.find((b) => b.id === returned.target.id) ?? null);
+    setBookingDraft({ ...returned.draft, [returned.target.field]: returned.placeId });
+  });
   // Editing a booking-linked event opens the merged BookingSheet, not EventForm
   // (ADR-0053 §2) — the same surface as editing from the Index.
   const [bookingTarget, setBookingTarget] = useState<Booking | null>(null);

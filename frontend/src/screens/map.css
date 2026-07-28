@@ -1047,6 +1047,29 @@
   color: var(--muted);
   font-size: 16px;
 }
+/* ── THE CHOSEN CANDIDATE (owner, session 166) ───────────────────────────────────
+   `.place.selected` above is calibrated for a trip row: one row of many like it, all of
+   them yours, so an ink hairline plus a 12% halo is enough to say "this one". A result row
+   is not that case. It sits under a list of near-identical Google answers, its resting
+   badge is a DASHED neutral outline (the quietest badge on the surface), and the selection
+   is the answer to the only question being asked — which of these is the place.
+
+   So the row states it three ways at once, all of them the same idea the canvas ring now
+   states by filling: a heavier halo, a tinted surface, and the badge going SOLID. The badge
+   is the important one — it is the row's picture of the ring, so filling both is one cue in
+   two form factors, exactly as the pin is the badge on the canvas (ADR-0109 §3). Still
+   `--ink`: selection has never been a semantic colour here (ADR-0028). */
+.place.result.selected {
+  border-color: var(--ink);
+  box-shadow: 0 0 0 3px color-mix(in srgb, var(--ink) 20%, transparent);
+  background: color-mix(in srgb, var(--ink) 5%, var(--card));
+}
+.place.result.selected .map-badge.result {
+  border-style: solid;
+  border-color: var(--ink);
+  background: var(--ink);
+  color: var(--card);
+}
 /* `--cta`, NOT `--plan`, and that is a rule fix rather than a restyle (ADR-0131 §8).
    Plan violet was legitimate here while ADR-0115 §6 kept research Plan-only; the moment
    §8 renders this control in TRIP mode it is mode identity used as a button colour, which

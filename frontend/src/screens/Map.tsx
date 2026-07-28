@@ -31,7 +31,7 @@ import {
 } from '@waypoint/shared';
 import { useTrip } from '../state/trip-state';
 import { useMode } from '../state/mode-state';
-import { useMapScope, useReturnedPlaceErrand } from '../state/map-scope-state';
+import { useMapScope, usePlaceErrandReturn } from '../state/map-scope-state';
 import { useIsOffline } from '../lib/outbox';
 import {
   buildPlaceUsageIndex,
@@ -104,7 +104,7 @@ import { AddLocationButton, PlacePickerSheet } from '../ui/primitives/PlacePicke
 import { RevealList } from '../ui/primitives/RevealList';
 import { SnapSheet } from '../ui/primitives/SnapSheet';
 import { MapPane, type MapPin, type MapResultPin } from '../ui/domain/MapPane';
-import { PlaceResearch } from './PlaceResearch';
+import { PlaceResearch, ResultRow } from './PlaceResearch';
 import { BookingDetail } from '../ui/BookingDetail';
 import { BookingSheet, type BookingSheetDraft } from '../ui/BookingSheet';
 import { PlaceBadge } from '../ui/domain/PlaceBadge';
@@ -259,15 +259,6 @@ export function MapView() {
   // keys on this: the list's predicate, the pin filter, the aside promotion (§4), and
   // the two readers that ask "is this pin's row absent from the list?".
   const searching = disclosure === MAP_ROW_DISCLOSURE.query && query.trim() !== '';
-  // The sheet's axis loses its bottom stop while a query is live: at `map` the sheet shows
-  // no rows, so a coordless match has no pin AND no row, and every Google result is a row
-  // with no pin. That is structural, so no amount of canvas fixes it — which is why the
-  // count-as-button that ADR-0131 §6 reached for was the wrong shape and a phone said so.
-  // One narrowed array closes the toggle, the drag and the arrow keys together.
-  const sheetOrder = useMemo(
-    () => (searching ? MAP_SHEET_ORDER.filter((v) => v !== MAP_SHEET_VIEW.map) : MAP_SHEET_ORDER),
-    [searching],
-  );
   // Google's half is available in BOTH modes (§8, withdrawing ADR-0115 §6). The split
   // between the two searches is not a mode — it is whether the thing has coordinates
   // yet: a trip place already carries them (that is what pinned it), a prediction
@@ -276,16 +267,20 @@ export function MapView() {
   const openDisclosure = (next: MapRowDisclosure | null) => {
     setDisclosure(next);
     if (next !== MAP_ROW_DISCLOSURE.query) setQuery('');
-    // THE MAP EXTREME IS NOT AVAILABLE WHILE SEARCHING, and this reverses ADR-0131 §6's
-    // second form back to its first — the owner used it on a phone and there is no way to
-    // see results there. §6's count-as-button was a patch for a structural fact, not a
-    // spatial one: at that stop the sheet shows NO ROWS, so a coordless match has no pin
-    // AND no row, and every Google result is a row with no pin. More canvas does not help.
+    // ONE extreme normalises on open, not two (owner, session 166 — _"from the map search
+    // view you can't maximize the map"_): `full`, because the pane is hidden there and a
+    // search whose results are pins has nothing to show you.
     //
-    // So both extremes normalise on open: `full` because the pane is hidden there, `map`
-    // because the list is. Fired on the OPEN tap, never per keystroke — a sheet that moved
-    // while you typed would relayout the canvas under a typing finger (ADR-0121 §5).
-    if (next === MAP_ROW_DISCLOSURE.query && sheetView !== MAP_SHEET_VIEW.half) {
+    // `map` used to normalise as well, and closing that stop was right at the time for a
+    // structural reason: the sheet shows no rows there, so a coordless match had no pin AND
+    // no row, and every Google result was a row with no pin. **The second half of that died
+    // when results became rings** (ADR-0132 §6) — a result IS on the canvas now — and this
+    // is the decision §8 left owed, taken. A coordless result is still invisible at that
+    // stop; the ring tap's card (`resultCard`) is what makes the stop honest for the rest.
+    //
+    // Fired on the OPEN tap, never per keystroke — a sheet that moved while you typed would
+    // relayout the canvas under a typing finger (ADR-0121 §5).
+    if (next === MAP_ROW_DISCLOSURE.query && sheetView === MAP_SHEET_VIEW.full) {
       setSheetView(MAP_SHEET_VIEW.half);
     }
   };
@@ -328,15 +323,11 @@ export function MapView() {
   // form host uses: without it the sheet returns closed and the rest of what was typed is
   // gone, which is the whole reason the errand carries a draft.
   const [bookingDraft, setBookingDraft] = useState<BookingSheetDraft | null>(null);
-  const returnedBooking = useReturnedPlaceErrand<BookingSheetDraft>('booking');
-  useEffect(() => {
-    if (!returnedBooking?.draft) return;
-    setEditBooking(bookings.find((b) => b.id === returnedBooking.target.id) ?? null);
-    setBookingDraft({
-      ...returnedBooking.draft,
-      [returnedBooking.target.field]: returnedBooking.placeId,
-    });
-  }, [returnedBooking, bookings]);
+  usePlaceErrandReturn<BookingSheetDraft>('booking', (returned) => {
+    if (!returned.draft) return;
+    setEditBooking(bookings.find((b) => b.id === returned.target.id) ?? null);
+    setBookingDraft({ ...returned.draft, [returned.target.field]: returned.placeId });
+  });
 
   // ── The rendered map (Phase 6, ADR-0121) ──────────────────────────────────
   // Config is read ONCE: it is a build var, so it cannot change while mounted, and
@@ -916,6 +907,11 @@ export function MapView() {
   // on** (ADR-0122 §7, which revises the pin-tap raise session 136 shipped).
   const select = (placeId: string, opts: { fromRow?: boolean } = {}) => {
     setSelectedId(placeId);
+    // ONE selection on the canvas. A ring and a pin can both be selected only if nothing
+    // clears the other, and at the map extreme that would raise two cards on top of each
+    // other — the exact defect `MapPane`'s "do NOT skip on `event.detail.placeId`" comment
+    // records for Google's own card.
+    setSelectedResultId(null);
     if (opts.fromRow) {
       // A row tap normalises the sheet to `half`: from `full` because the map it
       // focuses is invisible there (ADR-0121 §8), and from the map extreme because a
@@ -968,12 +964,11 @@ export function MapView() {
     setSelectedResultId(null);
   }, []);
 
-  // A RING TAP selects its ROW, and that is deliberately all it does (ADR-0132 §8). The
-  // card exists exactly where the list cannot show the row (ADR-0122 §7) — and while a
-  // query is live the map extreme is unavailable (ADR-0131's session-159 reversal), so
-  // the Google row is always on screen and the card branch is unreachable. Reopening that
-  // stop is the decision ADR-0132 §8 leaves owed; until it is taken, a third card
-  // occupant would be dead code written for a state that cannot happen.
+  // A RING TAP selects its ROW — and, at the map extreme where there is no row, raises the
+  // result's own CARD (`resultCard` below). That is the third occupant ADR-0132 §8 made the
+  // stop's return conditional on, built now that the owner has asked for the stop back: the
+  // rule is ADR-0122 §7's unchanged, **the row surfaces wherever the sheet cannot show it**,
+  // and a Google result at the map stop is simply the third case of it.
   //
   // Same latest-ref shape as `onPinTap`, so `MapPane`'s memo survives the clock tick.
   const onResultTap = useRef<(googlePlaceId: string) => void>(() => {});
@@ -1613,7 +1608,38 @@ export function MapView() {
     sheetView === MAP_SHEET_VIEW.map && selectedId ? usageIndex.get(selectedId) : undefined;
   const placeCard = cardUsage && (
     <div className="map-placecard">
-      {renderRow({ forceDay: !inDayScope(cardUsage), onFrame: frameSelected })(cardUsage)}
+      {renderRow({
+        forceDay: !inDayScope(cardUsage),
+        onFrame: frameSelected,
+        // A card is the only way to reach one of OUR places at this stop, so under an
+        // errand it has to be able to choose it — otherwise a trip place is pickable from
+        // the list and not from the canvas, on the tab that exists to show you where things
+        // are (ADR-0134 §3).
+        onChoose: pendingErrand ? finishErrand : undefined,
+      })(cardUsage)}
+    </div>
+  );
+
+  // THE TAPPED RING, ON THE SAME CANVAS HOST (ADR-0132 §8, built session 166). Same rule as
+  // the place card and the ghost row above — the row surfaces wherever the sheet cannot show
+  // it — so it is `ResultRow` in `.map-placecard`, not a second grammar for a Google result.
+  // The two cards are mutually exclusive by construction: each selection clears the other.
+  const cardResult =
+    sheetView === MAP_SHEET_VIEW.map && selectedResultId
+      ? research.predictions.find((r) => r.googlePlaceId === selectedResultId)
+      : undefined;
+  const cardResultInTrip = cardResult ? research.alreadyInTrip(cardResult) : undefined;
+  const resultCard = cardResult && (
+    <div className="map-placecard">
+      <ResultRow
+        result={cardResult}
+        inTrip={cardResultInTrip != null}
+        onShelf={cardResultInTrip ? (usageIndex.get(cardResultInTrip.id)?.isMaybe ?? false) : false}
+        selected
+        chooseMode={pendingErrand != null}
+        busy={addingResultId === cardResult.googlePlaceId}
+        onAdd={() => addResult(cardResult)}
+      />
     </div>
   );
 
@@ -1791,6 +1817,12 @@ export function MapView() {
       data-mode={mode}
       data-view={sheetView}
       data-scope={allDays ? 'all' : 'day'}
+      // EVERY TRIP PIN IS CONTEXT WHILE AN ERRAND IS LIVE (owner, session 166). One
+      // attribute on the screen, exactly as `data-scope` drives the dot tier: the whole
+      // demotion is CSS, so no marker re-renders and nothing is re-diffed on a live map
+      // (ADR-0121 §4). The pins' own `tier`/`aside` are untouched on purpose — those are
+      // what the camera reads, and where the trip is IS where you want to start looking.
+      data-choosing={pendingErrand ? 'place' : undefined}
       style={
         {
           // The pane is sized to the area the SNAPPED sheet leaves visible, so Google's
@@ -1842,9 +1874,10 @@ export function MapView() {
           onAreaSort={toggleAreaSort}
           onLocate={locateFromCanvas}
           framePlace={framePlace}
-          cardOpen={cardUsage != null}
+          cardOpen={cardUsage != null || cardResult != null}
         />
         {placeCard}
+        {resultCard}
         {geoPrompt}
         {controlsRow}
         {/* View state, not a back layer: it renders inline, the map behind it stays
@@ -1852,10 +1885,7 @@ export function MapView() {
             leaves the tab at any height (ADR-0103). */}
         <SnapSheet
           stops={MAP_SHEET_STOPS}
-          // Narrowed while a query is live, so the DRAG and the arrow keys clamp at `half`
-          // too — not just the toggle. `SnapSheet` already takes the axis as a prop, so the
-          // stop becomes unreachable by every route at once rather than by three guards.
-          order={sheetOrder}
+          order={MAP_SHEET_ORDER}
           view={sheetView}
           onViewChange={setSheetView}
           grabLabel={t.map.view.grab}
@@ -1877,20 +1907,18 @@ export function MapView() {
                 >
                   {t.map.view.list}
                 </button>
-                {/* Absent while searching, not disabled — the rule this tab runs for
-                    `קרוב עכשיו` at the map extreme, for `אולי`/`מה נשאר` with nothing to
-                    count, and for `באזור` at zero: a control whose effect you could not
-                    see is not offered (ADR-0109's session-105 amendment). */}
-                {!searching && (
-                  <button
-                    type="button"
-                    className={sheetView === MAP_SHEET_VIEW.map ? 'on' : ''}
-                    aria-pressed={sheetView === MAP_SHEET_VIEW.map}
-                    onClick={() => setSheetView(MAP_SHEET_VIEW.map)}
-                  >
-                    {t.map.view.map}
-                  </button>
-                )}
+                {/* Present while searching too, since session 166: the derived-affordance
+                    rule that removed it ("a control whose effect you could not see is not
+                    offered") no longer applies to this one — the results ARE visible there,
+                    as rings. */}
+                <button
+                  type="button"
+                  className={sheetView === MAP_SHEET_VIEW.map ? 'on' : ''}
+                  aria-pressed={sheetView === MAP_SHEET_VIEW.map}
+                  onClick={() => setSheetView(MAP_SHEET_VIEW.map)}
+                >
+                  {t.map.view.map}
+                </button>
               </div>
             </>
           }

@@ -71,7 +71,7 @@ vi.mock('../state/map-scope-state', () => ({
   useShowPlaceOnMap: () => showPlaceOnMap,
   // Every form host takes the errand's answer on return (ADR-0134 §2); nothing here
   // asserts it, so the hook just has to exist and report nothing pending.
-  useReturnedPlaceErrand: () => null,
+  usePlaceErrandReturn: () => null,
   useStartPlaceErrand: () => startErrand,
 }));
 

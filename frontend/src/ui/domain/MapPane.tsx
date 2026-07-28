@@ -16,6 +16,7 @@ import { APIProvider, AdvancedMarker, Map, Polyline, useMap } from '@vis.gl/reac
 import {
   isAsidePin,
   isFramedByCamera,
+  MAP_RESULT_SELECTED_Z,
   MAP_RESULT_Z,
   PIN_TIER,
   pinZIndex,
@@ -319,7 +320,7 @@ const ResultMarker = memo(function ResultMarker({
   return (
     <AdvancedMarker
       position={{ lat: result.lat, lng: result.lng }}
-      zIndex={MAP_RESULT_Z}
+      zIndex={result.selected ? MAP_RESULT_SELECTED_Z : MAP_RESULT_Z}
       title={result.label}
       onClick={() => onSelect(result.googlePlaceId)}
     >

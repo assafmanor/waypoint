@@ -11,7 +11,7 @@
 // list-only tab it is.
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { type ReactNode } from 'react';
-import { act, cleanup, fireEvent, render, screen } from '@testing-library/react';
+import { act, cleanup, fireEvent, render, screen, within } from '@testing-library/react';
 import { MemoryRouter } from 'react-router-dom';
 import {
   EVENT_KIND,
@@ -142,6 +142,7 @@ const searchStub = {
   predictions: [] as {
     googlePlaceId: string;
     primaryText: string;
+    secondaryText?: string;
     lat?: number;
     lng?: number;
   }[],
@@ -281,19 +282,38 @@ function wrap(node: ReactNode) {
  *  header button or the system-back interceptor does. */
 let lastBack = '';
 function ChromeProbe() {
-  const { queryOpen } = useMapScope();
+  const { queryOpen, errand, errandResult } = useMapScope();
   const back = useAppBack();
   return (
-    <button
-      data-testid="chrome-probe"
-      data-query-open={String(queryOpen)}
-      onClick={() => {
-        lastBack = back().kind;
-      }}
-    />
+    <>
+      <button
+        data-testid="chrome-probe"
+        data-query-open={String(queryOpen)}
+        onClick={() => {
+          lastBack = back().kind;
+        }}
+      />
+      {/* The other end of the errand (ADR-0134 §1): a form sends one and lands on this
+          tab. It is the same provider a real host writes through, so the tab is exercised
+          in the state it actually arrives in rather than through a prop nothing sets. */}
+      <button
+        data-testid="errand-probe"
+        data-answer={errandResult.pending?.placeId ?? ''}
+        onClick={() =>
+          errand.hand({
+            target: { kind: 'event', field: 'placeId' },
+            returnTo: '/trip/t1?tab=days',
+            label: 'ארוחת ערב',
+            draft: { title: 'ארוחת ערב' },
+          })
+        }
+      />
+    </>
   );
 }
 const probe = () => screen.getByTestId('chrome-probe');
+const startErrand = () => fireEvent.click(screen.getByTestId('errand-probe'));
+const errandAnswer = () => screen.getByTestId('errand-probe').dataset.answer;
 const chromeReclaimed = () => probe().dataset.queryOpen === 'true';
 const pressBack = () => {
   fireEvent.click(probe());
@@ -1098,55 +1118,146 @@ describe('the embedded map’s shell (ADR-0121)', () => {
       });
     });
 
-    // ─── THE MAP EXTREME IS NOT AVAILABLE WHILE SEARCHING ──────────────────────────
-    // ADR-0131 §6 shipped with the map extreme reachable and a count-as-button as the way
-    // into the list. The owner used it on a phone: there is no way to see results there.
-    // The count was a patch for a STRUCTURAL fact rather than a spatial one — at that stop
-    // the sheet shows no rows, so a coordless match has no pin AND no row, and every
-    // Google result is a row with no pin. More canvas cannot fix that, so the stop goes.
-    describe('the map extreme is unavailable while a query is live', () => {
+    // ─── CHOOSING A PLACE FOR A FORM (ADR-0134 §1-§4) ──────────────────────────────
+    // The tab in errand mode: a form sent us here for ONE place. What is asserted is what
+    // the canvas and the rows say about that, since the channel itself is covered in
+    // `state/map-scope-state.test.tsx`.
+    describe('the tab under a place errand', () => {
+      it('says what it is doing, and every row offers the choose verb instead of נווט', () => {
+        seed();
+        render(wrap(<MapView />));
+        expect(screen.queryByText(t.map.errand.title('ארוחת ערב'))).toBeNull();
+        startErrand();
+        expect(screen.getByText(t.map.errand.title('ארוחת ערב'))).toBeTruthy();
+        const choose = within(row('museum')!).getByRole('button', { name: t.map.errand.choose });
+        expect(within(row('museum')!).queryByText(new RegExp(t.actions.navigate))).toBeNull();
+        // …and choosing hands the place back through the other channel, for the form's host
+        // to re-open from (§2). This screen never touches an event.
+        fireEvent.click(choose);
+        expect(errandAnswer()).toBe('museum');
+      });
+
+      // THE OWNER'S REPORT (session 166): _"opening the map from events still had the
+      // existing events very prominent, they should probably be low tier on this case"_.
+      // The demotion is CSS off one attribute — no marker re-render, nothing re-diffed on a
+      // live map — so the attribute is what there is to assert.
+      it('demotes every trip pin to context, and restores them when the errand ends', () => {
+        seed();
+        render(wrap(<MapView />));
+        expect(screenEl().dataset.choosing).toBeUndefined();
+        startErrand();
+        expect(screenEl().dataset.choosing).toBe('place');
+        // The pins are still THERE and still framed by the camera — where the trip is, is
+        // where you want to start looking. Only their prominence changed.
+        expect(pinIds()).toContain('museum');
+        fireEvent.click(screen.getByRole('button', { name: t.map.errand.cancel }));
+        expect(screenEl().dataset.choosing).toBeUndefined();
+      });
+
+      // A card is the only way to reach one of OUR places at the map extreme, so it has to
+      // carry the verb too — otherwise a trip place is pickable from the list and not from
+      // the canvas, on the tab that exists to show you where things are.
+      it('the place card can choose, at the map extreme', () => {
+        seed();
+        render(wrap(<MapView />));
+        startErrand();
+        fireEvent.click(toggle(t.map.view.map));
+        fireEvent.click(pin('museum')!);
+        fireEvent.click(within(placeCard()!).getByRole('button', { name: t.map.errand.choose }));
+        expect(errandAnswer()).toBe('museum');
+      });
+    });
+
+    // ─── THE MAP EXTREME IS AVAILABLE WHILE SEARCHING (owner, session 166) ─────────
+    // It was closed in session 159 on a report from a phone, for a structural reason: the
+    // sheet shows no rows at that stop, so a coordless match had no pin AND no row, and
+    // every Google result was a row with no pin. **The second half of that died when
+    // results became rings** (ADR-0132 §6) — a result is on the canvas now — and the owner
+    // has asked for the stop back. This is ADR-0132 §8's owed decision, taken, with the
+    // condition it named built: a ring tap at that stop raises the result's own card.
+    describe('the map extreme is available while a query is live', () => {
       const openSearch = () => fireEvent.click(listButton(t.map.search.button));
       const type = (value: string) =>
         fireEvent.change(screen.getByPlaceholderText(t.map.search.placeholder), {
           target: { value },
         });
 
-      it('opening search normalises to `half` from BOTH extremes', () => {
-        for (const from of [MAP_SHEET_VIEW.map, MAP_SHEET_VIEW.full] as const) {
-          seed();
-          render(wrap(<MapView />));
-          fireEvent.click(toggle(from === MAP_SHEET_VIEW.map ? t.map.view.map : t.map.view.list));
-          expect(screenEl().dataset.view).toBe(from);
-          openSearch();
-          expect(screenEl().dataset.view).toBe(MAP_SHEET_VIEW.half);
-          cleanup();
-        }
-      });
-
-      it('the toggle drops its map option — absent, not disabled', () => {
+      // `full` still normalises — the pane is hidden there, so a search whose answers are
+      // pins has nothing to show you. `map` no longer does.
+      it('opening search normalises from `full` only, and leaves the map extreme alone', () => {
         seed();
         render(wrap(<MapView />));
-        expect(screen.queryByRole('button', { name: t.map.view.map })).toBeTruthy();
+        fireEvent.click(toggle(t.map.view.list));
+        expect(screenEl().dataset.view).toBe(MAP_SHEET_VIEW.full);
         openSearch();
-        type('museum');
-        expect(screen.queryByRole('button', { name: t.map.view.map })).toBeNull();
-        // And it comes back the moment the query does not exist any more.
-        fireEvent.click(screen.getByRole('button', { name: t.map.search.close }));
-        expect(screen.queryByRole('button', { name: t.map.view.map })).toBeTruthy();
-      });
-
-      // One narrowed axis closes the toggle, the drag AND the arrow keys together, which
-      // is why it is `SnapSheet`'s `order` prop rather than three separate guards.
-      it('the drag and the keyboard clamp at `half` too, not just the toggle', () => {
-        seed();
-        render(wrap(<MapView />));
-        openSearch();
-        type('museum');
-        const grab = document.querySelector('.wp-snapsheet-grab') as HTMLElement;
-        // Two stops, not three — the axis itself is shorter while searching.
-        expect(grab.getAttribute('aria-valuemax')).toBe('1');
-        fireEvent.keyDown(grab, { key: 'ArrowDown' });
         expect(screenEl().dataset.view).toBe(MAP_SHEET_VIEW.half);
+        cleanup();
+
+        seed();
+        render(wrap(<MapView />));
+        fireEvent.click(toggle(t.map.view.map));
+        openSearch();
+        expect(screenEl().dataset.view).toBe(MAP_SHEET_VIEW.map);
+      });
+
+      it('the toggle keeps its map option, and the axis keeps all three stops', () => {
+        seed();
+        render(wrap(<MapView />));
+        openSearch();
+        type('museum');
+        expect(screen.queryByRole('button', { name: t.map.view.map })).toBeTruthy();
+        // The drag and the arrow keys read the same axis as the toggle — one `order` prop,
+        // so they cannot disagree about which stops exist.
+        const grab = document.querySelector('.wp-snapsheet-grab') as HTMLElement;
+        expect(grab.getAttribute('aria-valuemax')).toBe('2');
+      });
+
+      // The condition ADR-0132 §8 attached to reopening the stop. Same rule as the trip
+      // row's card and the ghost row (ADR-0122 §7): the row surfaces wherever the sheet
+      // cannot show it — this is simply its third case.
+      it('a ring tap at the map extreme raises the result card, with the add action', () => {
+        seed();
+        searchStub.predictions = [
+          {
+            googlePlaceId: 'g-1',
+            primaryText: 'Blue Bottle',
+            secondaryText: 'Shinjuku',
+            lat: 35.69,
+            lng: 139.7,
+          },
+        ];
+        render(wrap(<MapView />));
+        openSearch();
+        type('coffee');
+        fireEvent.click(toggle(t.map.view.map));
+        expect(document.querySelector('.map-placecard')).toBeNull();
+        fireEvent.click(document.querySelector('[data-ring="g-1"]') as HTMLElement);
+        const card = document.querySelector('.map-placecard') as HTMLElement;
+        expect(card.textContent).toContain('Blue Bottle');
+        expect(card.querySelector('[data-result="g-1"]')!.className).toContain('selected');
+        expect(
+          within(card).getByRole('button', { name: t.map.research.addAria('Blue Bottle') }),
+        ).toBeTruthy();
+        // Its body is INERT, like the trip card's: there is nothing to frame about the place
+        // you are already looking at.
+        expect(card.querySelector('.map-res-open')!.tagName).toBe('SPAN');
+      });
+
+      // Two cards on one canvas is the defect, so each selection clears the other.
+      it('a pin tap at the map extreme replaces the result card with the place card', () => {
+        seed();
+        searchStub.predictions = [
+          { googlePlaceId: 'g-1', primaryText: 'Blue Bottle', lat: 35.69, lng: 139.7 },
+        ];
+        render(wrap(<MapView />));
+        openSearch();
+        type('museum');
+        fireEvent.click(toggle(t.map.view.map));
+        fireEvent.click(document.querySelector('[data-ring="g-1"]') as HTMLElement);
+        fireEvent.click(pin('museum')!);
+        const cards = document.querySelectorAll('.map-placecard');
+        expect(cards).toHaveLength(1);
+        expect(cards[0].querySelector('[data-result="g-1"]')).toBeNull();
       });
     });
 
