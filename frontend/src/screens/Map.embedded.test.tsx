@@ -185,7 +185,7 @@ import { MapScopeProvider } from '../state/map-scope-state';
 import { setSimulatedNow } from '../lib/useClock';
 import { MapView } from './Map';
 import { MAP_CONTROLS_H, MAP_SHEET_VIEW } from '../constants';
-import { PIN_TIER } from '../lib/map-pins';
+import { isFramedByCamera, PIN_TIER, type PinTier } from '../lib/map-pins';
 import { iconForCategory } from '@waypoint/shared';
 import { t } from '../i18n/he';
 
@@ -948,6 +948,80 @@ describe('the embedded map’s shell (ADR-0121)', () => {
       expect(refs).toBeTruthy();
       expect(refs!.querySelectorAll('.map-ref')).toHaveLength(1);
       expect(refs!.textContent).toContain('e4 plan');
+    });
+  });
+
+  // ADR-0130, from two reports on the same day: "past places shouldn't be faded on plan
+  // mode", and "maybes should be represented differently than how past events are… I want
+  // to be able to visually distinguish between somewhere I've already been to and
+  // somewhere I'm considering". The paint is CSS and a human pass; what the suite owns is
+  // the tier each pin is painted FROM, which is where both defects actually lived.
+  describe('a maybe is not a past place, and Plan mode has no past (ADR-0130)', () => {
+    it('Plan mode does not demote a passed stop — the same day, two modes', () => {
+      seed();
+      setSimulatedNow(Date.parse(`${ACTIVE_DATE}T23:59:00Z`));
+      const { unmount } = render(wrap(<MapView />));
+      // Trip mode: the day is over, so its stops are behind you.
+      expect(pin('museum')!.dataset.tier).toBe(PIN_TIER.behind);
+      unmount();
+
+      currentMode = 'plan';
+      render(wrap(<MapView />));
+      // Plan mode: the same stop, at the same instant, is a stop again. You cannot
+      // rearrange a day whose pins are the hardest ones on the canvas to read.
+      expect(pin('museum')!.dataset.tier).toBe(PIN_TIER.upcoming);
+      expect(pin('museum')!.dataset.order).toBe('1');
+    });
+
+    it('a dayless maybe is a shelf pin, not another day’s ghost — and stays one in Plan', () => {
+      seed();
+      // Deliberately far from the day (Rome, against the fixtures' Tokyo): the split's
+      // one real hazard is a dayless idea pulling the camera off the day.
+      tripPlaces = [...tripPlaces, place('someday', true, { lat: 41.9, lng: 12.5 })];
+      tripMaybes = [maybe({ id: 'm', placeId: 'someday' })];
+      const { unmount } = render(wrap(<MapView />));
+      // Nothing pencilled it anywhere, which is exactly what leaves it available today.
+      expect(pin('someday')!.dataset.tier).toBe(PIN_TIER.shelf);
+      // …while a place pencilled for tomorrow is genuinely elsewhere.
+      expect(pin('tomorrow')!.dataset.tier).toBe(PIN_TIER.ghost);
+      // The split must not quietly re-open the frame ADR-0121 §7 closed: a dayless idea
+      // in Rome would reframe a day that happens in Tokyo.
+      const framed = (paneProps.current.pins as { placeId: string; tier: PinTier }[]).filter(
+        isFramedByCamera,
+      );
+      expect(framed.map((p) => p.placeId)).not.toContain('someday');
+      expect(paneProps.current.defaultCentre).toEqual({ lat: 35.6, lng: 139.6 });
+      unmount();
+
+      currentMode = 'plan';
+      render(wrap(<MapView />));
+      expect(pin('someday')!.dataset.tier).toBe(PIN_TIER.shelf);
+    });
+
+    it('tapping a dayless maybe surfaces its row, exactly as a ghost tap does', () => {
+      seed();
+      // Deliberately far from the day (Rome, against the fixtures' Tokyo): the split's
+      // one real hazard is a dayless idea pulling the camera off the day.
+      tripPlaces = [...tripPlaces, place('someday', true, { lat: 41.9, lng: 12.5 })];
+      tripMaybes = [maybe({ id: 'm', placeId: 'someday' })];
+      render(wrap(<MapView />));
+      // Its row is not in the scoped sheet either, so the tap has the same job — which is
+      // why the surfacing is keyed on the REASON rather than on the ghost tier.
+      expect(row('someday')!.closest('.wp-reveal')!.classList.contains('hidden')).toBe(true);
+      fireEvent.click(pin('someday')!);
+      expect(screen.getByText(t.map.notThisDay)).toBeTruthy();
+      expect(row('someday')!.className).toContain('selected');
+    });
+
+    it('all-days has no shelf tier: with no day to be out of, a maybe is just an idea', () => {
+      seed();
+      // Deliberately far from the day (Rome, against the fixtures' Tokyo): the split's
+      // one real hazard is a dayless idea pulling the camera off the day.
+      tripPlaces = [...tripPlaces, place('someday', true, { lat: 41.9, lng: 12.5 })];
+      tripMaybes = [maybe({ id: 'm', placeId: 'someday' })];
+      render(wrap(<MapView />));
+      fireEvent.click(listButton(t.map.allDays));
+      expect(pin('someday')!.dataset.tier).toBe(PIN_TIER.idea);
     });
   });
 

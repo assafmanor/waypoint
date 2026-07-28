@@ -14,6 +14,7 @@ import { buildPlaceUsageIndex, type PlaceUsage } from './place-usage';
 import {
   buildPinOrderIndex,
   hasScheduleSlot,
+  isAsidePin,
   isFramedByCamera,
   PIN_TIER,
   pinClearanceFor,
@@ -118,6 +119,43 @@ describe('placePinTier — four populations plus the ghost (ADR-0121 §6)', () =
     expect(placePinTier(index.get('later')!, ctx)).toBe(PIN_TIER.behind);
   });
 
+  // ADR-0130 §2, reported: "past places shouldn't be faded on plan mode". A day you are
+  // arranging has no past — and the stops you can least afford to see dimmed are the ones
+  // you came to rearrange. The clock is still passed (it resolves WHICH day a place is
+  // read as in all-days); what `planning` withdraws is the demotion.
+  it('in Plan mode nothing is behind you — the clock still resolves, it just stops demoting', () => {
+    const index = usages({
+      places: [place('morning'), place('settled')],
+      events: [
+        event({ id: 'e1', placeId: 'morning', startsAt: `${DAY}T09:00:00Z` }),
+        event({
+          id: 'e2',
+          placeId: 'settled',
+          startsAt: `${DAY}T20:00:00Z`,
+          status: EVENT_STATUS.DONE,
+        }),
+      ],
+    });
+    const ctx = { onDate: DAY, nowMs: NOON, planning: true };
+    expect(placePinTier(index.get('morning')!, ctx)).toBe(PIN_TIER.upcoming);
+    expect(placePinTier(index.get('settled')!, ctx)).toBe(PIN_TIER.upcoming);
+    // And it holds in all-days, where Plan mode's default scope actually is.
+    expect(placePinTier(index.get('morning')!, { nowMs: NOON, today: DAY, planning: true })).toBe(
+      PIN_TIER.upcoming,
+    );
+  });
+
+  // The flag withdraws exactly one verdict and nothing else: a day that is past is still
+  // read as the day it is, so an ambient night stays ambient and an idea stays an idea.
+  it('Plan mode does not promote anything else — an idea on a past day is still an idea', () => {
+    const index = usages({
+      places: [place('cafe')],
+      maybeItems: [maybe({ id: 'm', placeId: 'cafe', targetDate: DAY })],
+    });
+    const ctx = { onDate: DAY, nowMs: at(NEXT_DAY, '10:00'), today: NEXT_DAY, planning: true };
+    expect(placePinTier(index.get('cafe')!, ctx)).toBe(PIN_TIER.idea);
+  });
+
   it('a strictly-middle stay night is ambient backdrop, not a stop', () => {
     const index = usages({
       places: [place('hotel')],
@@ -157,12 +195,37 @@ describe('placePinTier — four populations plus the ghost (ADR-0121 §6)', () =
     expect(placePinTier(usage, { nowMs: NOON })).not.toBe(PIN_TIER.ghost);
   });
 
-  it('a place with NO day at all is a ghost in day scope too (the ללא יום block)', () => {
+  // ADR-0130 §3: it used to be a ghost, which said "another day's business" about a
+  // place whose whole point is that no day has claimed it. A ghost is ELSEWHERE; this is
+  // NOWHERE, which is exactly what leaves it available today.
+  it('a dayless shelf maybe is a shelf pin in day scope, not another day’s ghost', () => {
     const index = usages({
       places: [place('someday')],
       maybeItems: [maybe({ id: 'm', placeId: 'someday' })],
     });
-    expect(placePinTier(index.get('someday')!, { onDate: DAY, nowMs: NOON })).toBe(PIN_TIER.ghost);
+    expect(placePinTier(index.get('someday')!, { onDate: DAY, nowMs: NOON })).toBe(PIN_TIER.shelf);
+  });
+
+  // The other half of the split, and the reason it is keyed on `days` rather than on
+  // "did `placeDay` fail": a maybe pencilled for Thursday IS somewhere else.
+  it('a maybe pencilled for another day stays a ghost', () => {
+    const index = usages({
+      places: [place('thursday')],
+      maybeItems: [maybe({ id: 'm', placeId: 'thursday', targetDate: NEXT_DAY })],
+    });
+    expect(placePinTier(index.get('thursday')!, { onDate: DAY, nowMs: NOON })).toBe(PIN_TIER.ghost);
+  });
+
+  // A dayless place that is NOT on the shelf makes no claim to be available — an
+  // unlinked booking is a commitment with no position, and "maybe" would be a lie.
+  it('a dayless place that is not on the shelf is still a ghost in day scope', () => {
+    const index = usages({
+      places: [place('unscheduled')],
+      bookings: [booking({ id: 'bk', type: BOOKING_TYPE.HOTEL, placeId: 'unscheduled' })],
+    });
+    expect(placePinTier(index.get('unscheduled')!, { onDate: DAY, nowMs: NOON })).toBe(
+      PIN_TIER.ghost,
+    );
   });
 
   it('in all-days scope a dayless idea is an idea, and a dayless booking is not', () => {
@@ -365,11 +428,16 @@ describe('pinZIndex — coincident pins have a stated order (§6)', () => {
     );
   });
 
-  it('ranks ahead > ideas > ambient > behind > ghosts', () => {
+  it('ranks ahead > ideas > ambient > shelf maybes > behind > ghosts', () => {
     const z = (tier: (typeof PIN_TIER)[keyof typeof PIN_TIER]) => pinZIndex({ tier });
     expect(z(PIN_TIER.upcoming)).toBeGreaterThan(z(PIN_TIER.idea));
-    expect(z(PIN_TIER.idea)).toBeGreaterThan(z(PIN_TIER.ambient));
-    expect(z(PIN_TIER.ambient)).toBeGreaterThan(z(PIN_TIER.behind));
+    // A maybe you pencilled onto THIS day outranks one you pencilled nowhere — the whole
+    // point of the split (ADR-0130 §3): tens of shelf maybes, a handful of today's.
+    expect(z(PIN_TIER.idea)).toBeGreaterThan(z(PIN_TIER.shelf));
+    // Below ambient, because a night you are sleeping somewhere is a commitment and an
+    // idea is not; above behind, because considering outranks having passed.
+    expect(z(PIN_TIER.ambient)).toBeGreaterThan(z(PIN_TIER.shelf));
+    expect(z(PIN_TIER.shelf)).toBeGreaterThan(z(PIN_TIER.behind));
     expect(z(PIN_TIER.behind)).toBeGreaterThan(z(PIN_TIER.ghost));
   });
 
@@ -404,11 +472,17 @@ describe('isFramedByCamera — the camera answers the day, not its context (§6/
     }
   });
 
-  // A ghost is what the filter left out: present because it is physically there,
+  // An aside pin is what the filter left out: present because it is physically there,
   // subordinate by construction. Letting it pull the frame sends the camera to a
-  // place this day does not contain — which is the whole reported bug.
-  it('never frames a ghost', () => {
+  // place this day does not contain — which is the whole reported bug. Both tiers on that
+  // rung, so splitting `ghost` in two (ADR-0130 §3) cannot quietly re-open it: a shelf
+  // idea on the far side of the city would reframe a day it was never part of.
+  it('never frames an aside pin, whether it is another day’s or on no day', () => {
     expect(isFramedByCamera({ tier: PIN_TIER.ghost })).toBe(false);
+    expect(isFramedByCamera({ tier: PIN_TIER.shelf })).toBe(false);
+    expect(isAsidePin(PIN_TIER.ghost)).toBe(true);
+    expect(isAsidePin(PIN_TIER.shelf)).toBe(true);
+    expect(isAsidePin(PIN_TIER.behind)).toBe(false);
   });
 
   it('is the same subordination near-me already applies to its sort and chips', () => {

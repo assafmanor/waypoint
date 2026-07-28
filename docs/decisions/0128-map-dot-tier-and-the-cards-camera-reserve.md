@@ -26,7 +26,7 @@ The third thing the old Phase 3 line carried — `MAP_PIN`'s dials — turned ou
 
 **Keyed on `zoom_changed`, not `idle`**, so the tier flips _during_ a pinch, which is the only time it is answering anything. A dataset write per zoom event costs nothing.
 
-**Ratios, not sizes.** `MAP_PIN.DOT_SCALE` (0.4) is a fraction of the pin, exactly as `GHOST_SCALE` is, so the rung stays a rung as the canvas grows the others — and a ghost at dot zoom compounds both, staying subordinate within the smaller ladder.
+**Ratios, not sizes.** `MAP_PIN.DOT_SCALE` (0.4) is a fraction of the pin, exactly as `GHOST_SCALE` is (renamed `ASIDE_SCALE` by [ADR-0130](0130-a-maybe-is-not-a-past-place.md) §3), so the rung stays a rung as the canvas grows the others — and a ghost at dot zoom compounds both, staying subordinate within the smaller ladder.
 
 > **Amended twice on 2026-07-28 — the tier applies to what you are NOT looking at, and the number never goes.**
 >
@@ -42,6 +42,8 @@ The third thing the old Phase 3 line carried — `MAP_PIN`'s dials — turned ou
 > - **All-days — everything degrades except the time anchors.** Nothing is numbered without a scoped day (`buildPinOrderIndex` returns an empty map), so there is no order to lose, and this is the multi-city density §6 invented the tier for.
 >
 > Both key on `data-scope`, which the pane already sits inside, so the tier still costs no prop and no marker re-render. **`MAP_PIN.DOT_SCALE` is unchanged; what changed is who it reaches.**
+>
+> **Extended 2026-07-28 ([ADR-0130](0130-a-maybe-is-not-a-past-place.md) §3): "only ghosts" in day scope becomes "only the ASIDE pins",** because the ghost tier split in two and the dayless shelf maybe is on the same rung. That is what the day-scope rule was always reaching for — _what you are not looking at_ — and it is now the population with the numbers behind it: a trip carries tens of general maybes against a handful earmarked for today, so at wide zoom the tens degrade and the handful stay full pins. One selector, not two, because the shared ratio has its own class.
 >
 > **Two consequences to state rather than discover.** In **Plan mode** the default scope is all-days, so its default wide view is dots — legible the moment a day is picked, which is what Plan's day strip is for, and there are no numbers in all-days to lose either way. And a dot is roughly 14–22px, which is **under ADR-0017's 44×44 touch floor** for a tappable pin; that is open, recorded on the backlog, and belongs with the device pass rather than being guessed at here.
 

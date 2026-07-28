@@ -382,11 +382,13 @@ export const MAP_CARD_RESERVE_H = MAP_ATTRIBUTION_H + MAP_FLOAT_GAP + MAP_CARD_B
  *   box, as a fraction of the pin's height. Named because it is exactly the difference
  *   between "a pin is this tall" and "the camera must keep this much clear".
  * - `DOT_SCALE` — what the dot tier keeps of the pin (ADR-0128 §1). A ratio for the same
- *   reason `GHOST_SCALE` is one: the rung has to stay a rung as the canvas grows the
+ *   reason `ASIDE_SCALE` is one: the rung has to stay a rung as the canvas grows the
  *   others, and the dot is the bottom of the same ladder rather than a second object.
- * - `GHOST_SCALE` — the subordinate tier stays subordinate **by ratio**, so a ghost is
- *   the same teardrop at 72% on every canvas rather than a fixed 25px that goes on
- *   getting relatively smaller as the rest grow (ADR-0121 §6's ladder, held).
+ * - `ASIDE_SCALE` — a subordinate tier stays subordinate **by ratio**, so it is the same
+ *   teardrop at 72% on every canvas rather than a fixed 25px that goes on getting
+ *   relatively smaller as the rest grow (ADR-0121 §6's ladder, held). Was `GHOST_SCALE`
+ *   until ADR-0130 §3 gave it a second wearer — the dayless shelf maybe — so the name
+ *   describes the rung rather than the one tier that used to occupy it.
  *
  * **Calibrated on a phone (2026-07-27, session 143), and that is why these numbers are
  * what they are.** The first pass set `CANVAS_SHARE` to 0.08 and `MAX_H` to 46 against
@@ -417,7 +419,7 @@ export const MAP_PIN = {
   CANVAS_SHARE: 0.11,
   TAG_RISE: 0.56,
   DOT_SCALE: 0.4,
-  GHOST_SCALE: 0.72,
+  ASIDE_SCALE: 0.72,
   /** How far the pin's ink reaches SIDEWAYS from its anchor, as a fraction of its height —
    *  the camera's left/right inset (session 144). Measured in Chromium, not derived on
    *  paper: 0.59 to the outer edge of the number badge (half the 0.82 box plus the badge's
