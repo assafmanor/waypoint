@@ -126,6 +126,14 @@ So the stop can come back, under a condition: a tap on a result ring must raise 
 
 **This is therefore a decision that is still owed, not a consequence of this ADR.** It is named so the next session does not either re-derive it or silently undo session 159's fix.
 
+> **TAKEN, 2026-07-28 (session 166, owner: _"from the map search view you can't maximize the map"_).** The stop is **back**, with the condition above built: a ring tap at the map extreme raises `ResultRow` inside `.map-placecard` — the same row the sheet would show, in the second host ADR-0122 §7 created — carrying `＋ אולי` (or `בחירה` under an errand) and the way out to Google. Its body is **inert**, exactly as the trip card's is: there is nothing to frame about the place you are already looking at.
+>
+> Three consequences of taking it, all of them small and all of them things the code now states:
+>
+> - **Only `full` normalises on opening search.** `map` no longer does, which is what "maximize" means here. The `SnapSheet` axis goes back to all three stops, so the drag and the arrow keys recover the stop with the toggle rather than through a separate guard.
+> - **Each selection clears the other.** A ring and a pin could otherwise both be selected, which at this stop is two cards stacked — the same defect `MapPane`'s "do NOT skip on `event.detail.placeId`" comment records for Google's own card.
+> - **The gap §8 named is unchanged and still real:** a **coordless** match has no ring, so at this stop it has neither pin nor row. Text Search returns a location for practically everything, so it is rarer than it was under Autocomplete — but it is the same hole, not a closed one.
+
 ### 9. What this phase does not do
 
 - It does not touch `SearchOverlay`, which keeps the Index (ADR-0131 §7 stands).
@@ -201,6 +209,10 @@ card branch cannot be reached** — a ring tap instead selects its ROW and scrol
 view, which is ADR-0122 §7's rule read correctly ("the card exists exactly where the list
 cannot show the row"). Building the card occupant now would have been dead code written
 for a state that cannot happen. When the stop reopens, it is the work that reopens it.
+
+**And that is what happened, two sessions later** (session 166): the owner asked for the
+stop back, so the card occupant was built in the same change that reopened it — which is
+the sequencing this entry was arguing for rather than a reversal of it. See §8's amendment.
 
 ### One search core with a corpus parameter, not a second hook
 

@@ -3,7 +3,6 @@
 // guard for a hard commitment (ADR-0011); editing is a deliberate tap. Edit
 // opens the merged BookingSheet. Delete lives on the row's "⋯" (BookingManageSheet),
 // not here — the detail carries edit only (ADR-0053 revision, 2026-07-17).
-import { useState } from 'react';
 import { BOOKING_TYPE, type Booking, type BookingType } from '@waypoint/shared';
 import { useTrip } from '../state/trip-state';
 import { Sheet } from './Sheet';
@@ -52,7 +51,7 @@ export function BookingDetail({
   onClose: () => void;
   onEdit: (booking: Booking) => void;
 }) {
-  const { trip, events, places, indexVerbs } = useTrip();
+  const { trip, events, places } = useTrip();
   const showPlaceOnMap = useShowPlaceOnMap();
   const linkedEvent = events.find((e) => e.bookingId === booking.id);
 

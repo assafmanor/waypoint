@@ -234,3 +234,81 @@ error message on return.
 still opens `PlacePickerSheet`, so the sheet has exactly one caller left. Retiring it needs
 the errand to grow a fourth target — a coordless `Place` being enriched in place, which is
 not an entity field but a row — and that is a small decision rather than a mechanical one.
+
+## Build log addendum (2026-07-28, session 166) — the owner's four reports
+
+Three of the four are about the tab in errand mode. All four are recorded here, since none
+of them changes a decision above; the first changes a **claim** this ADR made.
+
+### The re-open fired more than once, which is the errand's one real failure mode
+
+> _"Moving from event/booking to maps and back again created multiple forms or something so
+> that the form got duplicated over and over, so saving the event had the form below so it
+> never cleared, and the event was duplicated many times."_
+
+Session 165's log says `useReturnedPlaceErrand` reports the payload **"once, so re-opening
+is an event and not a state a host can get stuck in"**. The channel really is once-only —
+`take()` cleared it correctly, and `lib/handoff.test.ts` proves that. **The bug was one
+layer downstream, and the shape of the hook is what put it there.** Reporting the payload
+as a return value made it STATE, so it stayed readable for the rest of the host's life,
+while every host applied it from an effect that also depended on `events`/`bookings` — it
+must, to look the entity up by id. So: re-open the form, save, the entity list changes, the
+effect re-fires on the same payload, the form re-opens on top of itself, and the next save
+writes another copy. Four of the five hosts had it; `PlanHome` escaped only because it is a
+seed host with nothing to look up.
+
+**A once-only channel does not give you a once-only effect** — the "once" has to live where
+the effect does. So the hook is a **callback** now, `usePlaceErrandReturn(kind, apply)`,
+with `apply` read through a latest-ref: the effect depends on nothing but the channel, and a
+host may close over whatever it likes. One copy of "once", in the place that owns it.
+
+### While you are choosing a place, the trip's own pins are context
+
+> _"Opening the map from events still had the existing events very prominent, they should
+> probably be low tier on this case (little circles)."_
+
+Right, and it is the same argument §4 makes about `נווט`: under an errand the tab has one
+job, so what does not serve it steps back. The canvas shipped with the full ladder —
+numbered teardrops, an amber next stop — so the loudest object on screen was the thing you
+were **not** there to choose.
+
+It is the **dot tier** (ADR-0128 §1), not a seventh rung: same ratio, same round silhouette,
+same dropped glyph/number/tag, off the same one-attribute-on-the-screen mechanism, so no
+marker re-renders and nothing is re-diffed on a live map. What differs is only the trigger —
+the zoom tier asks _is this legible at this zoom_, this asks _is this what you are choosing_.
+Two deliberate differences follow from that: the amber cues are **not** spared here (they
+claim priority among things you are looking at, and under an errand none of them is), and
+there is no `data-scope` split (nothing turns on which day chose the pin).
+
+**The pins' `tier` and `aside` are deliberately untouched**, and that is the load-bearing
+part: those are what the camera reads (`isFramedByCamera`), so the opening fit still frames
+the trip's places. Where you are is exactly where you want to start looking; it is just not
+the answer.
+
+### The chosen candidate has to look chosen, on both halves
+
+> _"The selected Google search result is not prominent enough to distinguish from other
+> results."_
+
+`.place.selected` is calibrated for a trip row — one of many like it, all of them yours — so
+an ink hairline and a 12% halo carry it. A result row is not that case: it sits under a list
+of near-identical Google answers, its resting badge is the **quietest** on the surface (a
+dashed neutral outline), and the selection is the answer to the only question being asked.
+So the selection now **fills** rather than outlines, in both form factors and as one idea:
+the row's badge goes solid, and the ring on the canvas inverts to solid `--ink` at full
+`--pin-base` — the row's badge is the ring's picture, so filling both is one cue twice, the
+same relationship ADR-0109 §3 set up between a pin and a badge. Still `--ink`: selection has
+never been a semantic colour here (ADR-0028).
+
+It also **rises above the pins**: `MAP_RESULT_SELECTED_Z` beside `MAP_RESULT_Z`. The rule
+that rings sit under every trip pin is about a **population**; a selection is about one
+member of it, and a chosen candidate hidden behind a teardrop is the one case where "what
+you already have outranks what you might add" gives the wrong answer.
+
+### And the map extreme came back
+
+Answered in ADR-0132 §8, which is where the decision was owed and where the amendment lives.
+The one thing that belongs here: at that stop the **place card** gained `בחירה` under an
+errand, because a card is the only way to reach one of our own places there — without it a
+trip place would be pickable from the list and not from the canvas, on the tab that exists
+to show you where things are.

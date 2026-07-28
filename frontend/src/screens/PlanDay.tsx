@@ -13,7 +13,6 @@
 // The list stays time-ordered and hard events are pinned anchors (ADR-0011).
 import {
   Fragment,
-  useEffect,
   useRef,
   useState,
   type FormEvent,
@@ -34,7 +33,7 @@ import { useTrip, byStart } from '../state/trip-state';
 import { useDragState } from '../state/drag-state';
 import { useSpringLoadedDay } from '../lib/useSpringLoadedDay';
 import { useVerbs } from '../state/verbs';
-import { useReturnedPlaceErrand, useShowPlaceOnMap } from '../state/map-scope-state';
+import { usePlaceErrandReturn, useShowPlaceOnMap } from '../state/map-scope-state';
 import { useClock } from '../lib/useClock';
 import {
   eventDurationLabel,
@@ -679,26 +678,21 @@ export function PlanDay() {
     setScheduleMaybe(null);
     setFormDraft(null);
   };
-  const returned = useReturnedPlaceErrand<EventFormDraft>('event');
-  useEffect(() => {
-    if (!returned?.draft) return;
+  usePlaceErrandReturn<EventFormDraft>('event', (returned) => {
+    if (!returned.draft) return;
     setFormTarget(events.find((e) => e.id === returned.target.id) ?? 'new');
     setFormDraft({ ...returned.draft, [returned.target.field]: returned.placeId });
-  }, [returned, events]);
+  });
 
   // RE-OPENING AFTER A PLACE ERRAND (ADR-0134 §2), through the same shared hook every other
   // form host uses: without it the sheet returns closed and the rest of what was typed is
   // gone, which is the whole reason the errand carries a draft.
   const [bookingDraft, setBookingDraft] = useState<BookingSheetDraft | null>(null);
-  const returnedBooking = useReturnedPlaceErrand<BookingSheetDraft>('booking');
-  useEffect(() => {
-    if (!returnedBooking?.draft) return;
-    setBookingTarget(bookings.find((b) => b.id === returnedBooking.target.id) ?? null);
-    setBookingDraft({
-      ...returnedBooking.draft,
-      [returnedBooking.target.field]: returnedBooking.placeId,
-    });
-  }, [returnedBooking, bookings]);
+  usePlaceErrandReturn<BookingSheetDraft>('booking', (returned) => {
+    if (!returned.draft) return;
+    setBookingTarget(bookings.find((b) => b.id === returned.target.id) ?? null);
+    setBookingDraft({ ...returned.draft, [returned.target.field]: returned.placeId });
+  });
 
   const builderCtx: BuilderCtx = {
     tz,

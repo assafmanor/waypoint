@@ -272,10 +272,28 @@
   cursor: pointer;
 }
 /* Selection reuses the ladder's own outline grammar rather than inventing a second
-   one — the ring is off the PROMINENCE ladder, not out of the design system. */
+   one — the ring is off the PROMINENCE ladder, not out of the design system.
+
+   IT ALSO FILLS (owner, session 166 — _"the selected Google search result is not prominent
+   enough"_). A 2px outline on a hollow ring, over map tiles, at the ring's 82% of an
+   already-small pin, is the least visible selection on the canvas — and it marks the one
+   thing on screen the user is deciding about. So the ring INVERTS: an outline says "this
+   one" among things of one kind, a fill says "this is the one I am looking at", which is
+   what the badge on its row does in the same breath (`map.css`).
+
+   `--ink` rather than an accent, for the reason the resting ring has no hue: the mask does
+   not buy place types (ADR-0115 §2), so there is nothing honest to colour it by, and amber
+   / teal / plan are spent elsewhere (ADR-0028). It also goes to full `--pin-base`, i.e. the
+   ring drops the 0.82 subordination while it is the subject. */
 .map-result.selected {
-  outline: 2px solid var(--ink);
+  width: var(--pin-base, 34px);
+  height: var(--pin-base, 34px);
+  outline: 2px solid var(--card);
   outline-offset: 2px;
+  background: var(--ink);
+  border-color: var(--card);
+  color: var(--card);
+  box-shadow: 0 3px 10px color-mix(in srgb, var(--ink) 45%, transparent);
 }
 
 .map-pin.aside {
@@ -392,6 +410,46 @@
   .map-pane[data-pins='dot']
   .map-pin:not(.nowstop, .nextstop)
   .pin-tag {
+  display: none;
+}
+
+/* ── CHOOSING A PLACE: EVERY TRIP PIN IS CONTEXT (owner, session 166) ────────────
+   You arrived from a form to pick ONE place, so the trip's own pins are what you are
+   choosing AGAINST and the answer is a ring that is not yours yet. It shipped with the
+   full ladder — numbered teardrops, an amber next stop — and the owner's report is the
+   honest reading of that canvas: the loudest thing on it was the thing you were not here
+   to choose.
+
+   **It is the dot tier, not a seventh rung** (ADR-0128 §1): the same ratio, the same round
+   silhouette, the same dropped glyph and number, off the same one-attribute-on-the-screen
+   mechanism. What differs is only the TRIGGER — the zoom tier asks "is this legible at this
+   zoom", this asks "is this what you are choosing" — which is why it is a second selector
+   on the same rules rather than new paint.
+
+   Two deliberate differences from the zoom tier, both consequences of that trigger:
+   the amber cues are NOT spared (`עכשיו` claims priority among the things you are looking
+   at, and under an errand none of them is what you are looking at), and no `data-scope`
+   split (nothing here turns on which day chose the pin). */
+.map-screen[data-choosing] .map-pane .map-pin {
+  --pin-u: calc(var(--pin-base, 34px) * var(--pin-dot-scale, 0.4));
+}
+.map-screen[data-choosing] .map-pane .map-pin.aside {
+  --pin-u: calc(var(--pin-base, 34px) * var(--pin-dot-scale, 0.4) * var(--pin-aside-scale, 0.72));
+}
+.map-screen[data-choosing] .map-pane .map-pin .pin-b {
+  border-radius: 50%;
+  transform: none;
+  border-style: solid;
+  /* Outranks both amber rules below on specificity, which is how the cues are withdrawn
+     rather than by editing them. `animation: none` is not redundant: an animation beats a
+     normal declaration whatever the specificity, so `nowstop` would keep pulsing amber
+     through this `box-shadow`. */
+  box-shadow: 0 1px 2px color-mix(in srgb, var(--ink) 22%, transparent);
+  animation: none;
+}
+.map-screen[data-choosing] .map-pane .map-pin .pin-g,
+.map-screen[data-choosing] .map-pane .map-pin .pin-n,
+.map-screen[data-choosing] .map-pane .map-pin .pin-tag {
   display: none;
 }
 

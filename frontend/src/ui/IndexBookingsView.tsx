@@ -7,7 +7,7 @@
 import { useEffect, useState } from 'react';
 import { BOOKING_TYPE, type Booking, type Place, type Trip } from '@waypoint/shared';
 import { useTrip } from '../state/trip-state';
-import { useReturnedPlaceErrand, useShowPlaceOnMap } from '../state/map-scope-state';
+import { usePlaceErrandReturn, useShowPlaceOnMap } from '../state/map-scope-state';
 import { bookingShowOnMap, type ShowPlaceOnMap } from '../lib/places';
 import { useMode } from '../state/mode-state';
 import { useBackLayer, type BackResult } from '../state/nav-state';
@@ -67,15 +67,11 @@ export function IndexBookingsView({
   // form host uses: without it the sheet returns closed and the rest of what was typed is
   // gone, which is the whole reason the errand carries a draft.
   const [bookingDraft, setBookingDraft] = useState<BookingSheetDraft | null>(null);
-  const returnedBooking = useReturnedPlaceErrand<BookingSheetDraft>('booking');
-  useEffect(() => {
-    if (!returnedBooking?.draft) return;
-    setSheet(bookings.find((b) => b.id === returnedBooking.target.id) ?? 'create');
-    setBookingDraft({
-      ...returnedBooking.draft,
-      [returnedBooking.target.field]: returnedBooking.placeId,
-    });
-  }, [returnedBooking, bookings]);
+  usePlaceErrandReturn<BookingSheetDraft>('booking', (returned) => {
+    if (!returned.draft) return;
+    setSheet(bookings.find((b) => b.id === returned.target.id) ?? 'create');
+    setBookingDraft({ ...returned.draft, [returned.target.field]: returned.placeId });
+  });
 
   const [detail, setDetail] = useState<Booking | null>(null);
   const [manage, setManage] = useState<Booking | null>(null);
