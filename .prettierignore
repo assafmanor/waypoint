@@ -15,6 +15,7 @@ mockups/map-reach-v1.html
 mockups/map-split-v2.html
 mockups/map-chrome-v1.html
 mockups/map-search-v1.html
+mockups/map-google-pins-v1.html
 mockups/user-settings-v1.html
 # Google's published CBMS stylesheet schema, committed verbatim so the map styles can be
 # validated offline (developers.google.com is unreachable from sandboxed sessions).

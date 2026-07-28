@@ -61,7 +61,7 @@ Color carries meaning so the eye can parse a screen **without reading**. Each se
 
 A small **decorative palette** (avatar identity colors, **map pin categories**) exists alongside these — always pastel/muted, never amber or teal, so it reads as gentle variety rather than a second meaning system. See the Map pins entry below (the 5 category hues; ADR-0038/0109).
 
-**The two decorative ramps, named** (ADR-0132 — before it, only the pin hues had values, and the eight call sites drawing an avatar invented their own; two of them landed byte-identical to `--cat-transit`/`--cat-lodging`, and the `avatarColor` column default was `--amber` itself):
+**The two decorative ramps, named** (ADR-0133 — before it, only the pin hues had values, and the eight call sites drawing an avatar invented their own; two of them landed byte-identical to `--cat-transit`/`--cat-lodging`, and the `avatarColor` column default was `--amber` itself):
 
 - **Map pin categories** — `--cat-food` / `--cat-lodging` / `--cat-transit` / `--cat-leisure` / `--cat-services` (ADR-0038 §2 / ADR-0109).
 - **Avatar identity** — `--id-plum` `#B98AC9` · `--id-rose` `#D98CA8` · `--id-moss` `#9DB585` · `--id-denim` `#8496B5` · `--id-cocoa` `#B99483`. A user's default is **derived from `user.id`**, never a column default — one shared default is what made every real user the same colour. Repeats within a group are accepted: this is variety, not identification (the letter and the name identify).

@@ -83,7 +83,7 @@ of which will already have grown a picture branch.
 
 ## Phasing — one design session, then three slices, one PR each
 
-**Phase 0 — design session → ADR-0132 + `mockups/user-settings-v1.html`.** One ADR for both surfaces:
+**Phase 0 — design session → ADR-0133 + `mockups/user-settings-v1.html`.** One ADR for both surfaces:
 they share the identity vocabulary, and splitting it guarantees they diverge. What it must settle:
 the **identity colour ramp** (non-semantic, and the amend to design-language.md + the removal of the
 amber default); how the three picture sources present as **one** control, including which wins when a

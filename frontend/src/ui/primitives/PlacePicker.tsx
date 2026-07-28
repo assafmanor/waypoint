@@ -4,8 +4,9 @@
 // ADR-0090). The picker owns presentation only — session token, debounce, dedup,
 // offline fallback, and soft-429 all live in the hook.
 import { useRef, useState, type MouseEvent } from 'react';
-import type { Place, PlacePrediction } from '@waypoint/shared';
+import { matchesAnyTerm, type Place, type PlacePrediction } from '@waypoint/shared';
 import { usePlaceSearch } from '../../lib/usePlaceSearch';
+import { placePoint } from '../../lib/map-pins';
 import { useTrip } from '../../state/trip-state';
 import { ICONS } from '../../constants';
 import { t } from '../../i18n/he';
@@ -107,7 +108,20 @@ export function AddLocationButton({
  *  above (ADR-0110 §1): opened on a coordless Place-lite, a pick enriches that
  *  row in place; opened with no `current` it mints a place for a row that had
  *  none. Exported so a caller can drive it with its own trigger instead of the
- *  in-form `PlacePicker` trigger. */
+ *  in-form `PlacePicker` trigger.
+ *
+ *  **Two corpora, one field (ADR-0131 §10), and the trip's own places come first.**
+ *  The owner's rule is that adding a place must not send you anywhere when the place
+ *  already exists — and it very often does: the hotel, the station, the restaurant
+ *  someone shelved. Until now this sheet only knew how to ask Google, so the most
+ *  common add bought a paid Autocomplete session to find something the trip was already
+ *  holding. Now `בטיול` sits above `מגוגל`, a pick there is **free, instant and
+ *  offline-capable**, and the corpus decides the surface exactly as it does on the Map
+ *  tab: what has coordinates already can be answered locally.
+ *
+ *  It is the same one-query-two-halves shape as the Map tab's row, in a second host —
+ *  and the same visual differentiation: a group header, and Google's rows wearing the
+ *  dashed neutral mark that already means "listed, not yet ours". */
 export function PlacePickerSheet({
   current,
   onPick,
@@ -121,6 +135,7 @@ export function PlacePickerSheet({
   // (adopts googlePlaceId/coords/timezone) rather than minting a duplicate (ADR-0110 §1).
   const enrichPlaceId = current && current.googlePlaceId == null ? current.id : undefined;
   const search = usePlaceSearch(enrichPlaceId);
+  const { places } = useTrip();
   const [busy, setBusy] = useState(false);
   const [pickFailed, setPickFailed] = useState(false);
   const searchRef = useRef<HTMLInputElement>(null);
@@ -146,6 +161,26 @@ export function PlacePickerSheet({
 
   const name = search.query.trim();
 
+  // THE FREE HALF. Only places that can actually supply a location: this sheet exists to
+  // give a row one, so offering a coordless Place-lite would offer the problem back. The
+  // `current` place is excluded for the same reason — it is what you are replacing.
+  //
+  // Below the min-chars floor this is still free to run, unlike the Google half, so it
+  // answers from the first character. That asymmetry is the point of having two corpora
+  // rather than one: the floor is a COST control, and there is no cost here.
+  const tripMatches = places.filter(
+    (p) =>
+      p.id !== current?.id &&
+      placePoint(p) != null &&
+      name.length > 0 &&
+      matchesAnyTerm(name, [p.name, p.address]),
+  );
+
+  // Picking one is a THIRD verb beside enrich and mint: point this reference at a place
+  // that already exists. No Google call, nothing minted, nothing enriched — the caller
+  // just writes a different `placeId`. An abandoned coordless Place-lite is then simply
+  // unreferenced, which ADR-0112 already makes harmless (it becomes cache-only and stops
+  // listing), so this needs no cleanup and no confirm.
   return (
     <Modal variant="sheet" title={t.placePicker.title} onClose={close} initialFocusRef={searchRef}>
       <div className="pp-sheet">
@@ -163,6 +198,29 @@ export function PlacePickerSheet({
           <StatusBanner tone="warn">{t.placePicker.failed}</StatusBanner>
         )}
 
+        {tripMatches.length > 0 && (
+          <>
+            <div className="pp-group">{t.placePicker.tripGroup}</div>
+            <ul className="pp-results">
+              {tripMatches.map((place) => (
+                <li key={place.id}>
+                  <button
+                    type="button"
+                    className="pp-result"
+                    disabled={busy}
+                    onClick={() => onPick(place.id)}
+                  >
+                    <span className="pp-primary">{place.name}</span>
+                    {place.address && <span className="pp-secondary">{place.address}</span>}
+                  </button>
+                </li>
+              ))}
+            </ul>
+            {/* Only once there is something above it to be below — a lone header over the
+                Google half is chrome naming the only thing on screen. */}
+            <div className="pp-group">{t.placePicker.googleGroup}</div>
+          </>
+        )}
         <ul className="pp-results">
           {search.predictions.map((prediction: PlacePrediction) => {
             const existing = search.alreadyInTrip(prediction);

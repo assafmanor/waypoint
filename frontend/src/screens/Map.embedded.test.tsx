@@ -1012,76 +1012,55 @@ describe('the embedded map’s shell (ADR-0121)', () => {
       });
     });
 
-    // ─── ADR-0131 §6: THE SHEET MOVES ONLY WHERE THE ANSWER IS OUT OF SIGHT ────────
-    // The design's own first answer normalised from BOTH extremes, which at the maximized
-    // map means search shrinks 517px of canvas to 250 — a milder form of the very defect
-    // this phase removes. The rule that replaced it: a control moves the sheet only when
-    // its answer is somewhere you cannot see it.
-    describe('opening search moves the sheet only from `full` (ADR-0131 §6)', () => {
+    // ─── THE MAP EXTREME IS NOT AVAILABLE WHILE SEARCHING ──────────────────────────
+    // ADR-0131 §6 shipped with the map extreme reachable and a count-as-button as the way
+    // into the list. The owner used it on a phone: there is no way to see results there.
+    // The count was a patch for a STRUCTURAL fact rather than a spatial one — at that stop
+    // the sheet shows no rows, so a coordless match has no pin AND no row, and every
+    // Google result is a row with no pin. More canvas cannot fix that, so the stop goes.
+    describe('the map extreme is unavailable while a query is live', () => {
       const openSearch = () => fireEvent.click(listButton(t.map.search.button));
-      const countBtn = () =>
-        document.querySelector('.map-querystrip .cnt button') as HTMLElement | null;
+      const type = (value: string) =>
+        fireEvent.change(screen.getByPlaceholderText(t.map.search.placeholder), {
+          target: { value },
+        });
 
-      it('at the map extreme NOTHING moves — the canvas is what answers', () => {
-        seed();
-        render(wrap(<MapView />));
-        fireEvent.click(toggle(t.map.view.map));
-        expect(screenEl().dataset.view).toBe(MAP_SHEET_VIEW.map);
-        openSearch();
-        expect(screenEl().dataset.view).toBe(MAP_SHEET_VIEW.map);
+      it('opening search normalises to `half` from BOTH extremes', () => {
+        for (const from of [MAP_SHEET_VIEW.map, MAP_SHEET_VIEW.full] as const) {
+          seed();
+          render(wrap(<MapView />));
+          fireEvent.click(toggle(from === MAP_SHEET_VIEW.map ? t.map.view.map : t.map.view.list));
+          expect(screenEl().dataset.view).toBe(from);
+          openSearch();
+          expect(screenEl().dataset.view).toBe(MAP_SHEET_VIEW.half);
+          cleanup();
+        }
       });
 
-      it('at `full` it drops to `half`, because there is no canvas there at all', () => {
+      it('the toggle drops its map option — absent, not disabled', () => {
         seed();
         render(wrap(<MapView />));
-        fireEvent.click(toggle(t.map.view.list));
-        expect(screenEl().dataset.view).toBe(MAP_SHEET_VIEW.full);
+        expect(screen.queryByRole('button', { name: t.map.view.map })).toBeTruthy();
         openSearch();
+        type('museum');
+        expect(screen.queryByRole('button', { name: t.map.view.map })).toBeNull();
+        // And it comes back the moment the query does not exist any more.
+        fireEvent.click(screen.getByRole('button', { name: t.map.search.close }));
+        expect(screen.queryByRole('button', { name: t.map.view.map })).toBeTruthy();
+      });
+
+      // One narrowed axis closes the toggle, the drag AND the arrow keys together, which
+      // is why it is `SnapSheet`'s `order` prop rather than three separate guards.
+      it('the drag and the keyboard clamp at `half` too, not just the toggle', () => {
+        seed();
+        render(wrap(<MapView />));
+        openSearch();
+        type('museum');
+        const grab = document.querySelector('.wp-snapsheet-grab') as HTMLElement;
+        // Two stops, not three — the axis itself is shorter while searching.
+        expect(grab.getAttribute('aria-valuemax')).toBe('1');
+        fireEvent.keyDown(grab, { key: 'ArrowDown' });
         expect(screenEl().dataset.view).toBe(MAP_SHEET_VIEW.half);
-      });
-
-      it('and a drag afterwards is left alone — it fires on the OPEN tap, not per keystroke', () => {
-        seed();
-        render(wrap(<MapView />));
-        openSearch();
-        fireEvent.change(screen.getByPlaceholderText(t.map.search.placeholder), {
-          target: { value: 'museum' },
-        });
-        fireEvent.click(toggle(t.map.view.map));
-        expect(screenEl().dataset.view).toBe(MAP_SHEET_VIEW.map);
-        // A sheet that moved while you typed would relayout the canvas under a typing
-        // finger, which is what ADR-0121 §5 shaped the stops to avoid.
-        fireEvent.change(screen.getByPlaceholderText(t.map.search.placeholder), {
-          target: { value: 'museu' },
-        });
-        expect(screenEl().dataset.view).toBe(MAP_SHEET_VIEW.map);
-      });
-
-      // The count is what makes staying at `map` honest: a match with no coordinates has
-      // no pin, so the number legitimately exceeds what the canvas shows. It is a CONTROL
-      // only where it has something to do — the derived-affordance rule this tab runs
-      // everywhere (ADR-0126 §4's live-region-wrapping-a-button, one more caller).
-      it('the count is a button at `map` and a plain readout elsewhere', () => {
-        seed();
-        render(wrap(<MapView />));
-        openSearch();
-        fireEvent.change(screen.getByPlaceholderText(t.map.search.placeholder), {
-          target: { value: 'museum' },
-        });
-        expect(countBtn()).toBeNull();
-
-        fireEvent.click(toggle(t.map.view.map));
-        expect(countBtn()).toBeTruthy();
-        fireEvent.click(countBtn()!);
-        expect(screenEl().dataset.view).toBe(MAP_SHEET_VIEW.half);
-      });
-
-      it('no query, no count — it states a filter, so it exists only while one is on', () => {
-        seed();
-        render(wrap(<MapView />));
-        fireEvent.click(toggle(t.map.view.map));
-        openSearch();
-        expect(document.querySelector('.map-querystrip .cnt')).toBeNull();
       });
     });
 

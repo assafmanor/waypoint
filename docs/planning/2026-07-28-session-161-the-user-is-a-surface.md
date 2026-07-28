@@ -1,8 +1,8 @@
-# Session 160 — the user is a surface: the design session, and what rendering it changed
+# Session 161 — the user is a surface: the design session, and what rendering it changed
 
 **Date:** 2026-07-28
 **Branch:** `claude/user-settings-page-design-r3ndi4`
-**Paper + a mockup** — no feature code. Delivers [ADR-0132](../decisions/0132-the-user-is-a-surface-identity-ramp-and-a-reachable-roster.md) and `mockups/user-settings-v1.html`, which is Phase 0 of the epic scoped in [session 159](2026-07-28-session-159-user-settings-and-member-info-scope-and-phasing.md).
+**Paper + a mockup** — no feature code. Delivers [ADR-0133](../decisions/0133-the-user-is-a-surface-identity-ramp-and-a-reachable-roster.md) and `mockups/user-settings-v1.html`, which is Phase 0 of the epic scoped in [session 159](2026-07-28-session-159-user-settings-and-member-info-scope-and-phasing.md).
 
 Session 159 cut three requests into a design session plus four build slices and listed what Phase 0
 had to settle. This is that session. The ADR carries the decisions; this note carries **what the
@@ -57,7 +57,7 @@ order of how much they mattered:
    because §9 decided the roster shares that row — leaving it would spend amber on identity across a
    second surface.
 
-Both defects are now ADR-0132 §10 and are Phase 3's to fix. Neither was invented scope: they are the
+Both defects are now ADR-0133 §10 and are Phase 3's to fix. Neither was invented scope: they are the
 price of the "share the row rendering" decision, paid once.
 
 ## The finding that reframed the ADR, and it came from the code

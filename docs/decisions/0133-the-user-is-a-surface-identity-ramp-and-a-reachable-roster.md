@@ -1,4 +1,4 @@
-# 0132 — The user is a surface: one settings route, one `Avatar` primitive, an identity ramp, and a roster you can reach
+# 0133 — The user is a surface: one settings route, one `Avatar` primitive, an identity ramp, and a roster you can reach
 
 **Status:** Accepted (design; build in the phases of §11)
 **Date:** 2026-07-28
