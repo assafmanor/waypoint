@@ -1587,71 +1587,115 @@ describe('MapView (Phase 3, ADR-0109/0110)', () => {
     });
   });
 
-  // Phase 5 (ADR-0115): the same control, two halves. Only the wiring is asserted
-  // here — the research surface's own behaviour lives in PlaceResearch.test.tsx.
-  describe('Plan-mode research on the search control (ADR-0115 §1)', () => {
+  // ADR-0131: the query is a CONTROL in the canvas's own row, not a full-screen overlay.
+  // Only the wiring is asserted here — the research surface's own behaviour lives in
+  // PlaceResearch.test.tsx, and the canvas half is `Map.embedded.test.tsx`'s.
+  //
+  // NOTE ON THIS FILE: it runs with NO build config, which is the list-only path
+  // (ADR-0122 §8) — the row renders `position: static` above the list, `full`/`map` do not
+  // exist, and the count's button has no stop to raise. That is deliberate coverage, so
+  // the split's own behaviour is asserted in the embedded suite instead.
+  describe('the query takes the controls row (ADR-0131 §1/§7/§8)', () => {
     const NOON = Date.parse(`${ACTIVE_DATE}T12:00:00Z`);
-    const openSearch = (label: string) => {
-      fireEvent.click(screen.getByRole('button', { name: new RegExp(label) }));
+    const openSearch = () => {
+      fireEvent.click(screen.getByRole('button', { name: new RegExp(t.map.search.button) }));
     };
-    const armPresent = () => screen.queryByRole('button', { name: t.map.research.armAria }) != null;
-
-    it('Plan mode: typing offers the trip’s own places AND a Google search', () => {
-      setSimulatedNow(NOON);
-      currentMode = 'plan';
-      seed();
-      render(wrap(<MapView />));
-      openSearch(t.map.search.planButton);
-      fireEvent.change(screen.getByPlaceholderText(t.map.search.planPlaceholder), {
-        target: { value: 'food' },
-      });
-      expect(screen.getByText(t.map.research.tripGroup)).toBeTruthy();
-      expect(armPresent()).toBe(true);
-    });
-
-    it('Plan mode: research is offered in both day scopes, not just all-days', () => {
-      setSimulatedNow(NOON);
-      currentMode = 'plan';
-      seed();
-      render(wrap(<MapView />));
-      // Plan opens day-scoped like Trip does now; widen to all-days and check again,
-      // since the two scopes are separate render paths on this screen.
-      fireEvent.click(screen.getByRole('button', { name: new RegExp(t.map.allDays) }));
-      openSearch(t.map.search.planButton);
-      fireEvent.change(screen.getByPlaceholderText(t.map.search.planPlaceholder), {
-        target: { value: 'food' },
-      });
-      expect(armPresent()).toBe(true);
-    });
-
-    it('Trip mode: the same control stays a pure filter, no paid affordance', () => {
-      setSimulatedNow(NOON);
-      seed();
-      render(wrap(<MapView />));
-      openSearch(t.map.search.button);
+    const type = (value: string) => {
       fireEvent.change(screen.getByPlaceholderText(t.map.search.placeholder), {
-        target: { value: 'food' },
+        target: { value },
       });
-      // Twice: the list behind the overlay, and the overlay's own filtered copy.
-      expect(screen.getAllByText('food')).toHaveLength(2);
-      expect(armPresent()).toBe(false);
-    });
+    };
 
-    it('search reveals matches instead of dropping the rest (ADR-0120)', () => {
+    it('there is no full-screen overlay any more — the field is in the row', () => {
       setSimulatedNow(NOON);
       seed();
       render(wrap(<MapView />));
-      openSearch(t.map.search.button);
-      fireEvent.change(screen.getByPlaceholderText(t.map.search.placeholder), {
-        target: { value: 'food' },
-      });
-      const results = document.querySelector('.search-overlay-results')!;
+      openSearch();
+      // The primitive is unchanged and keeps the Index; this tab simply stopped using it.
+      expect(document.querySelector('.search-overlay')).toBeNull();
+      expect(document.querySelector('.map-controls .map-querystrip')).toBeTruthy();
+    });
+
+    it('ONE slot: each occupant covers the row, so the other way in is not even there', () => {
+      setSimulatedNow(NOON);
+      seed();
+      render(wrap(<MapView />));
+      // Facets open: the strip covers the row IN PLACE (ADR-0122 §2), so the search
+      // button is not merely inert — it is absent, which is what makes "both open at
+      // once" unreachable by construction rather than by a guard.
+      fireEvent.click(screen.getByRole('button', { name: new RegExp(t.map.filter.open) }));
+      expect(document.querySelector('.map-facetstrip')).toBeTruthy();
+      expect(screen.queryByRole('button', { name: new RegExp(t.map.search.button) })).toBeNull();
+      // And the same in the other direction, through the one shared close control.
+      fireEvent.click(screen.getByRole('button', { name: t.map.filter.close }));
+      openSearch();
+      expect(document.querySelector('.map-querystrip')).toBeTruthy();
+      expect(document.querySelector('.map-facetstrip')).toBeNull();
+      expect(screen.queryByRole('button', { name: new RegExp(t.map.filter.open) })).toBeNull();
+    });
+
+    it('ONE list narrows in place: matches reveal, the rest collapse (ADR-0120)', () => {
+      setSimulatedNow(NOON);
+      seed();
+      render(wrap(<MapView />));
+      openSearch();
+      type('food');
+      // One list, not a second copy in an overlay — which is what the old two-array
+      // shape produced and why the query could live on a surface that hid the canvas.
+      expect(screen.getAllByText('food')).toHaveLength(1);
       const row = (name: string) =>
-        [...results.querySelectorAll('.wp-reveal')].find(
+        [...document.querySelectorAll('.map-list .wp-reveal')].find(
           (r) => r.querySelector('.map-name')?.textContent === name,
         );
       expect(row('food')?.classList.contains('hidden')).toBe(false);
       expect(row('see')?.classList.contains('hidden')).toBe(true);
+    });
+
+    it('closing CLEARS the query, so no filter can be on without being visible', () => {
+      setSimulatedNow(NOON);
+      seed();
+      render(wrap(<MapView />));
+      openSearch();
+      // A query that matches something ELSE, so `food` is hidden by the query alone —
+      // which is what makes the assertion after the close mean something. It has to
+      // match something: at zero matches `listBody` swaps the whole list for an empty
+      // state, so the rows unmount and there is nothing left to be hidden in place.
+      type('see');
+      expect(filteredOut('food')).toBe(true);
+      fireEvent.click(screen.getByRole('button', { name: t.map.search.close }));
+      expect(document.querySelector('.map-querystrip')).toBeNull();
+      // ADR-0119's rule: the row is back at rest and nothing is still filtering.
+      expect(filteredOut('food')).toBe(false);
+    });
+
+    it('the paid half is in the sheet and needs no arm — in BOTH modes (§8/§8a)', () => {
+      for (const mode of ['trip', 'plan'] as const) {
+        setSimulatedNow(NOON);
+        currentMode = mode;
+        seed();
+        render(wrap(<MapView />));
+        openSearch();
+        type('food');
+        // The regression net for §8 (no mode gate) and §8a (no arm) together: the group
+        // header is there and there is nothing to tap to get it.
+        expect(screen.getByText(t.map.research.tripGroup)).toBeTruthy();
+        expect(document.querySelector('.map-arm')).toBeNull();
+        cleanup();
+      }
+      currentMode = 'trip';
+    });
+
+    it('a query the trip cannot answer says so, and blames neither the facets nor the day', () => {
+      setSimulatedNow(NOON);
+      seed();
+      render(wrap(<MapView />));
+      openSearch();
+      type('nothing matches this');
+      expect(screen.getByText(t.map.search.noResultsTitle)).toBeTruthy();
+      // Not the facet empty state (a query ignores them) and not the empty-day one
+      // (a query already spans the trip), so neither action is offered.
+      expect(screen.queryByText(t.map.filter.clear)).toBeNull();
+      expect(screen.queryByText(t.map.emptyDay.action)).toBeNull();
     });
   });
 });
