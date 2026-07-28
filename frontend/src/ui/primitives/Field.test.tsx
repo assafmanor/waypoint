@@ -27,6 +27,40 @@ describe('Field', () => {
     expect(input.getAttribute('aria-describedby')).toBe(alert.id);
   });
 
+  // The hint is the error slot's quiet peer: it never blocks a save, so it must not
+  // announce itself as an alert or claim the control's `aria-describedby`.
+  it('renders a hint without making it an alert', () => {
+    render(
+      <Field label="מיקום" hint="בלי מיקום אין סימון במפה">
+        <input />
+      </Field>,
+    );
+    expect(screen.getByText('בלי מיקום אין סימון במפה')).toBeTruthy();
+    expect(screen.queryByRole('alert')).toBeNull();
+    expect(screen.getByRole('textbox').getAttribute('aria-describedby')).toBeNull();
+  });
+
+  it('shows a hint and an error together, the error last', () => {
+    const { container } = render(
+      <Field label="מיקום" hint="הערה" error="שגיאה">
+        <input />
+      </Field>,
+    );
+    const texts = [...container.querySelectorAll('.field-hint, .field-error')].map(
+      (el) => el.textContent,
+    );
+    expect(texts).toEqual(['הערה', 'שגיאה']);
+  });
+
+  it('omits the hint slot when no hint is given', () => {
+    const { container } = render(
+      <Field label="מיקום">
+        <input />
+      </Field>,
+    );
+    expect(container.querySelector('.field-hint')).toBeNull();
+  });
+
   it('omits the error slot and describedby wiring when there is no error', () => {
     render(
       <Field label="קוד">

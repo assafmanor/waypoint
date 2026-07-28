@@ -308,3 +308,59 @@ describe('EventCard', () => {
     expect(container.querySelector('.wp-event-dur')?.textContent).toBe('6:45 שע׳');
   });
 });
+
+// `מפה` moved off the expanded action row onto the badge (ADR-0121 §8 amendment),
+// because the action row is `max-height: 0` until the card is opened — an unexpanded
+// event had no way to its pin at all, and the settle variant returns before that row
+// exists so it had none in any state.
+describe('EventCard — the way to the map (ADR-0121 §8 amendment)', () => {
+  afterEach(() => cleanup());
+
+  it('offers מפה on the badge without expanding the card', () => {
+    const onShowOnMap = vi.fn();
+    render(wrap(<EventCard {...base} isOpen={false} onShowOnMap={onShowOnMap} />));
+    fireEvent.click(screen.getByRole('button', { name: t.actions.showOnMap }));
+    expect(onShowOnMap).toHaveBeenCalledTimes(1);
+  });
+
+  it('offers it on the passed-unmarked settle variant, which has no action row', () => {
+    const onShowOnMap = vi.fn();
+    render(
+      wrap(
+        <EventCard
+          {...base}
+          kind="soft"
+          phase="passed"
+          onShowOnMap={onShowOnMap}
+          onDone={() => {}}
+          onSkip={() => {}}
+        />,
+      ),
+    );
+    // The settle strip is what identifies this variant.
+    expect(screen.getByText(t.day.settleAsk)).toBeTruthy();
+    fireEvent.click(screen.getByRole('button', { name: t.actions.showOnMap }));
+    expect(onShowOnMap).toHaveBeenCalledTimes(1);
+  });
+
+  it('drops it entirely when there is no place to focus', () => {
+    render(wrap(<EventCard {...base} onShowOnMap={undefined} />));
+    expect(screen.queryByRole('button', { name: t.actions.showOnMap })).toBeNull();
+  });
+
+  // The badge sits inside the face button, so its tap must not also expand the card.
+  it('does not toggle the card when the badge is tapped', () => {
+    const onToggle = vi.fn();
+    render(wrap(<EventCard {...base} onToggle={onToggle} onShowOnMap={() => {}} />));
+    fireEvent.click(screen.getByRole('button', { name: t.actions.showOnMap }));
+    expect(onToggle).not.toHaveBeenCalled();
+  });
+
+  // `ניווט` stayed in the action row: directions are a live on-the-ground verb,
+  // while orientation is mode-neutral. So the two are no longer a fixed pair.
+  it('keeps ניווט in the action row, separate from the badge', () => {
+    render(wrap(<EventCard {...base} isOpen onNavigate={() => {}} onShowOnMap={() => {}} />));
+    expect(screen.getByRole('button', { name: t.actions.navigate })).toBeTruthy();
+    expect(screen.getByRole('button', { name: t.actions.showOnMap })).toBeTruthy();
+  });
+});

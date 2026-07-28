@@ -14,7 +14,6 @@ import { useState, type ReactNode } from 'react';
 import { Icon } from '../Icon';
 import { TitleLabel } from '../TitleLabel';
 import { ZoneShiftPill } from '../ZoneShiftPill';
-import { PlaceBadge } from './PlaceBadge';
 import { transitionLabel } from '../../lib/transitions';
 import { ICONS } from '../../constants';
 import { t } from '../../i18n/he';
@@ -73,9 +72,6 @@ export interface BoardNext {
   code?: string;
   /** That zone vs where you are now → the pill beside the time. */
   shift?: ZoneShift;
-  /** Focus this event's place on our map (ADR-0121 §8 amendment). Absent when it
-   *  has no coord-bearing place. */
-  onShowOnMap?: () => void;
 }
 
 export interface BoardProps {
@@ -85,11 +81,6 @@ export interface BoardProps {
 
   // NOW slot (variant 'now' / 'in-transit').
   nowIcon?: ReactNode;
-  /** Focus the NOW event's place on our map (ADR-0121 §8 amendment). The board is a
-   *  readout and gains no other per-entity action; this one is here on the owner's
-   *  rule that every event has an easy way to its pin, and it rides the icon that is
-   *  already in the slot rather than adding a control to the hero. */
-  onShowNowOnMap?: () => void;
   nowTitle?: ReactNode;
   /** Drives the hard-lock vs soft now-label (variant 'now'). */
   nowKind?: 'hard' | 'soft';
@@ -140,7 +131,6 @@ export function Board(props: BoardProps) {
     variant,
     clock,
     nowIcon,
-    onShowNowOnMap,
     nowTitle,
     nowKind,
     nowUntil,
@@ -174,11 +164,7 @@ export function Board(props: BoardProps) {
         <>
           <div className="wp-board-now-label loc">{t.board.inTransitLabel}</div>
           <div className="wp-board-now-title">
-            {nowIcon && (
-              <PlaceBadge className="wp-board-ic" onShowOnMap={onShowNowOnMap}>
-                {nowIcon}
-              </PlaceBadge>
-            )}
+            {nowIcon && <span className="wp-board-ic">{nowIcon}</span>}
             {nowTitle}
           </div>
           <div className="wp-board-now-meta">
@@ -249,11 +235,7 @@ export function Board(props: BoardProps) {
             {nowKind === 'hard' ? `${ICONS.lock} ${t.event.hard}` : t.event.soft}
           </div>
           <div className="wp-board-now-title">
-            {nowIcon && (
-              <PlaceBadge className="wp-board-ic" onShowOnMap={onShowNowOnMap}>
-                {nowIcon}
-              </PlaceBadge>
-            )}
+            {nowIcon && <span className="wp-board-ic">{nowIcon}</span>}
             {nowTitle}
           </div>
           {nowUntil && (
@@ -308,11 +290,7 @@ export function Board(props: BoardProps) {
             <div>
               <div className="wp-board-next-label">{t.board.nextLabel}</div>
               <div className="wp-board-next-title">
-                {next?.icon && (
-                  <PlaceBadge className="wp-board-ic" onShowOnMap={next.onShowOnMap}>
-                    {next.icon}
-                  </PlaceBadge>
-                )}
+                {next?.icon && <span className="wp-board-ic">{next.icon}</span>}
                 {next?.title ?? t.board.endOfDay}
               </div>
               {next && (

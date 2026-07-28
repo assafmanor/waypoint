@@ -33,6 +33,7 @@ const hotel: Booking = {
   id: 'b2',
   tripId: 't1',
   type: BOOKING_TYPE.HOTEL,
+  placeId: 'pl-hotel',
   title: 'Shinjuku Granbell',
   source: BOOKING_SOURCE.MANUAL,
   createdAt: '2026-07-19T00:00:00Z',
@@ -81,6 +82,23 @@ const pastFlightEvent: TripEvent = {
 let tripBookings = [flight, hotel];
 let tripEvents: TripEvent[] = [];
 
+// A coord-bearing place for the hotel, so its row can reach the map; the flight has
+// none, so its row must not offer the affordance at all.
+const hotelPlace = {
+  id: 'pl-hotel',
+  tripId: 't1',
+  name: 'Shinjuku Granbell',
+  lat: 35.69,
+  lng: 139.7,
+  createdAt: '2026-07-19T00:00:00Z',
+  updatedAt: '2026-07-19T00:00:00Z',
+  updatedBy: 'u1',
+};
+let showPlaceOnMap: ((placeId: string) => void) | null = null;
+vi.mock('../state/map-scope-state', () => ({
+  useShowPlaceOnMap: () => showPlaceOnMap,
+}));
+
 vi.mock('../state/trip-state', () => ({
   useTrip: () => ({
     trip: {
@@ -92,7 +110,7 @@ vi.mock('../state/trip-state', () => ({
       updatedBy: 'u1',
     },
     bookings: tripBookings,
-    places: [],
+    places: [hotelPlace],
     events: tripEvents,
     documents: [],
   }),
@@ -131,6 +149,7 @@ describe('IndexBookingsView (ADR-0098/ADR-0101)', () => {
     cleanup();
     tripBookings = [flight, hotel];
     tripEvents = [];
+    showPlaceOnMap = null;
   });
 
   it('renders both booking rows on the shared ListRow, with per-row sync + manage kebab', () => {
@@ -263,7 +282,10 @@ describe('IndexBookingsView (ADR-0098/ADR-0101)', () => {
   it("opens that booking's detail on mount when given an initialBookingId (ADR-0050 deep link)", () => {
     render(wrap(<IndexBookingsView onClose={() => {}} initialBookingId="b2" />));
     const dialog = screen.getByRole('dialog');
-    expect(within(dialog).getByText('Shinjuku Granbell')).toBeTruthy();
+    // Scoped to the heading: the hotel now resolves a coordless-address place, so its
+    // `מיקום` fact renders the same name as its value (ADR-0121 §8 amendment — the
+    // fact always renders for a single-place type, and says what it knows).
+    expect(within(dialog).getByText('Shinjuku Granbell', { selector: '.bk-title' })).toBeTruthy();
   });
 
   it('seeds the create form with the active category filter', () => {
@@ -287,5 +309,37 @@ describe('IndexBookingsView (ADR-0098/ADR-0101)', () => {
 
     fireEvent.click(screen.getByRole('radio', { name: t.index.bookingType.flight }));
     expect(screen.getByText(t.index.pastToggle.show(1))).toBeTruthy();
+  });
+});
+
+// Every event and booking gets an easy way to its pin (ADR-0121 §8 amendment). On a
+// managed list that rides the shared `ListRow`'s badge, so the row spends no width.
+describe('IndexBookingsView — the way to the map', () => {
+  afterEach(() => {
+    cleanup();
+    showPlaceOnMap = null;
+  });
+
+  it('offers מפה on the row of a booking with a coord-bearing place, and only that row', () => {
+    showPlaceOnMap = vi.fn();
+    render(wrap(<IndexBookingsView onClose={() => {}} />));
+    // The hotel resolves a place; the flight has neither endpoint, so it has none.
+    expect(screen.getAllByRole('button', { name: t.actions.showOnMap })).toHaveLength(1);
+  });
+
+  it('closes this screen before the tab changes underneath it', () => {
+    const order: string[] = [];
+    showPlaceOnMap = () => order.push('navigate');
+    render(wrap(<IndexBookingsView onClose={() => order.push('close')} />));
+    fireEvent.click(screen.getByRole('button', { name: t.actions.showOnMap }));
+    expect(order).toEqual(['close', 'navigate']);
+  });
+
+  it('drops the affordance outside the trip shell', () => {
+    showPlaceOnMap = null;
+    render(wrap(<IndexBookingsView onClose={() => {}} />));
+    expect(screen.queryByRole('button', { name: t.actions.showOnMap })).toBeNull();
+    // The rows themselves are unaffected — absent, not broken.
+    expect(screen.getByRole('button', { name: 'Shinjuku Granbell' })).toBeTruthy();
   });
 });

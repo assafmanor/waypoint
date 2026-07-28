@@ -6891,27 +6891,13 @@ body {
   stroke-width: 2.4;
 }
 
-/* On the departure board the surround is the app's one DARK surface, so the marker's
-   `--card` ring would draw a light halo around it. It rings against the board's own
-   gradient base instead, and the badge's ring brightens — teal at `--card` weight
-   disappears against `--board` (ADR-0028's hue, at the contrast the dark hero needs).
-   The board is also the one host whose icon slot is inline text rather than a tile,
-   so the marker tucks tighter to avoid colliding with the title beside it. */
-.wp-board .wp-placebadge {
-  box-shadow: 0 0 0 2px color-mix(in srgb, var(--teal) 70%, transparent);
-  /* The board's icon slot is bare inline text with no box of its own, so the ring
-     would draw a tight rectangle around the glyph. It supplies its own. */
-  border-radius: 8px;
-  padding: 1px 3px;
-}
-.wp-board .wp-placebadge-mark {
-  inset-block-end: -4px;
-  inset-inline-end: -4px;
-  width: 15px;
-  height: 15px;
-  font-size: 10px;
-  box-shadow: 0 0 0 2px var(--board);
-}
+/* NOT on the departure board, deliberately (owner, 2026-07-28). It was wired there
+   first, on the rule that every event has a way to its pin, and read too loud: the
+   hero is the app's one dark, glowing surface, so a teal ring plus a marker on its
+   icon competes with the thing the board exists to say. The hero's way in is
+   deferred to its own redesign — see the backlog's "Hero 2.0", where tapping the
+   board expands it and actions become possible in place, which is the shape this
+   affordance actually wants there. */
 
 /* ═══ ui/primitives/modal.css — generated, do not edit here ═══ */
 /* The single overlay primitive (ADR-0079). Three variants share one scrim +
@@ -7682,11 +7668,12 @@ body {
     <!-- ══ PANEL 0b — the board (owner's call), and 360px. ══ -->
     <div class="mk-col">
       <div class="mk-cap">
-        ‏0b · הלוח, ו־360px
+        ‏0b · הלוח: נוסה ונפסל · ו־360px
         <span>
-          הלוח הוא המשטח הכהה היחיד, ולכן הטבעת מתחזקת והסיכה מוקפת בבסיס של הלוח ולא ב־<code
-            >--card</code
-          >. הוא גם המשטח היחיד שהאייקון בו הוא טקסט בשורה ולא אריח, ולכן הסיכה נצמדת פנימה.
+          <b>לא נשלח.</b> זה מה שקרה כשהכלל יושם על הלוח כפשוטו, והוא קורא רועש מדי: הלוח הוא המשטח
+          הכהה, הזוהר, היחיד־במסך, וטבעת עם סיכה על האייקון שלו מתחרה בדבר שהלוח קיים כדי לומר. הוצא,
+          והדרך למפה מהלוח נדחתה לעיצוב מחדש שלו (‏Hero 2.0 בבקלוג). מצויר כאן כי החלופה שנפסלה שווה
+          תיעוד.
         </span>
       </div>
       <div class="mk-frame">
@@ -7878,7 +7865,7 @@ body {
                 <span class="bk-fact-v bk-loc">
                   <span>Ichiran Ramen</span>
                   <span class="bk-loc-links">
-                    <button class="pp-addbtn"><span>＋</span> מיקום</button>
+                    <button class="pp-addbtn"><span>＋</span> הוספת מקום</button>
                   </span>
                 </span>
               </div>
@@ -7905,7 +7892,7 @@ body {
                 <span class="bk-fact-v bk-loc">
                   <span class="bk-loc-none">לא הוגדר מיקום</span>
                   <span class="bk-loc-links">
-                    <button class="pp-addbtn"><span>＋</span> מיקום</button>
+                    <button class="pp-addbtn"><span>＋</span> הוספת מקום</button>
                   </span>
                 </span>
               </div>

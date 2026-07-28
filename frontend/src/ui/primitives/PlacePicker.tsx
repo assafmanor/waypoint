@@ -78,6 +78,11 @@ export function PlacePicker({
  * placeless booking's `מיקום` fact. It was the Map's one-off `.map-addbtn` until
  * the second surface needed it (rule 8) — a third is now a one-line import, not a
  * third copy of the same dashed pill.
+ *
+ * It borrows the in-form picker's own empty label rather than carrying its own, so
+ * one action reads one way on every surface. It also had to: the label was `מיקום`,
+ * which is ALSO what the booking detail's location fact calls itself, so a placeless
+ * row read `מיקום · לא הוגדר מיקום · ＋ מיקום`.
  */
 export function AddLocationButton({
   onClick,
@@ -93,7 +98,7 @@ export function AddLocationButton({
       className={'pp-addbtn' + (className ? ` ${className}` : '')}
       onClick={onClick}
     >
-      <span aria-hidden="true">{ICONS.add}</span> {t.placePicker.addLocation}
+      <span aria-hidden="true">{ICONS.add}</span> {t.placePicker.empty}
     </button>
   );
 }

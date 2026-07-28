@@ -267,13 +267,13 @@ describe('MapView (Phase 3, ADR-0109/0110)', () => {
     render(wrap(<MapView />));
     const nav = screen.getAllByRole('link', { name: new RegExp(t.actions.navigate) });
     expect(nav[0].getAttribute('href')).toContain('/maps/dir/?api=1&destination=');
-    expect(screen.getByRole('button', { name: t.placePicker.addLocation })).toBeTruthy();
+    expect(screen.getByRole('button', { name: t.placePicker.empty })).toBeTruthy();
   });
 
   it('＋ מיקום opens the shared picker sheet to enrich the coordless place', () => {
     seed();
     render(wrap(<MapView />));
-    fireEvent.click(screen.getByRole('button', { name: t.placePicker.addLocation }));
+    fireEvent.click(screen.getByRole('button', { name: t.placePicker.empty }));
     expect(screen.getByText(t.placePicker.title)).toBeTruthy();
   });
 

@@ -1127,9 +1127,6 @@ export const t = {
     empty: 'הוספת מקום',
     clear: 'הסרת המקום',
     title: 'מקום',
-    // The `AddLocationButton` label — canonical here rather than under `map`, now
-    // that the Map row and a placeless booking's מיקום fact share the affordance.
-    addLocation: 'מיקום',
     // Under an empty location field, in BOTH authoring forms — one key, because an
     // event and a booking lose exactly the same five things. Entities saved happily
     // with no location and then nothing anywhere said so; it cost a false bug report
