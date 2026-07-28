@@ -12,3 +12,7 @@ pnpm-lock.yaml
 # every run. The tool's output is the canonical form.
 mockups/map-embedded-v1.html
 mockups/map-split-v2.html
+# Google's published CBMS stylesheet schema, committed verbatim so the map styles can be
+# validated offline (developers.google.com is unreachable from sandboxed sessions).
+# Reformatting a vendored file would hide any drift from Google's own copy.
+docs/design/map-styles/cbms-json-schema.json
