@@ -1,7 +1,16 @@
 // @vitest-environment jsdom
 import { afterEach, describe, it, expect } from 'vitest';
 import { cleanup, fireEvent, render, screen } from '@testing-library/react';
-import { AppShell, Inline, ResponsiveGrid, Screen, Section, Stack, StickyActionBar } from './index';
+import {
+  AppShell,
+  CHROME_RECLAIMED,
+  Inline,
+  ResponsiveGrid,
+  Screen,
+  Section,
+  Stack,
+  StickyActionBar,
+} from './index';
 
 afterEach(() => cleanup());
 
@@ -31,6 +40,30 @@ describe('AppShell', () => {
       </AppShell>,
     );
     expect(container.querySelector('.app')!.getAttribute('data-switching')).toBe('to-trip');
+  });
+
+  // The layout layer's second surface-driven modifier (ADR-0132 §2), after
+  // `BODY_FULLBLEED`. Both chrome slots stay MOUNTED — the CSS hides them, so the day
+  // strip keeps its scroll position and nothing re-mounts when the field closes.
+  it('applies chrome as data-chrome, omits it when unset, and keeps both slots mounted', () => {
+    const { container, rerender } = render(
+      <AppShell header={<header>the header</header>} nav={<nav aria-label="tabs">the nav</nav>}>
+        body
+      </AppShell>,
+    );
+    expect(container.querySelector('.app')!.hasAttribute('data-chrome')).toBe(false);
+    rerender(
+      <AppShell
+        header={<header>the header</header>}
+        nav={<nav aria-label="tabs">the nav</nav>}
+        chrome={CHROME_RECLAIMED}
+      >
+        body
+      </AppShell>,
+    );
+    expect(container.querySelector('.app')!.getAttribute('data-chrome')).toBe('reclaimed');
+    expect(screen.getByRole('banner')).toBeTruthy();
+    expect(screen.getByRole('navigation', { name: 'tabs' })).toBeTruthy();
   });
 
   it('renders overlay content as a frame sibling (outside main)', () => {

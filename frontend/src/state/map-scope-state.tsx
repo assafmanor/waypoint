@@ -10,7 +10,13 @@
 //     `BookingDetail` now routes to the Map tab focused on that place instead of
 //     deep-linking to Google. The place id is handed over here and consumed once by
 //     the Map, so a later visit to the tab doesn't re-focus a stale selection.
-//  3. **Whether we have already offered to locate you** (ADR-0109 session-134). The
+//  3. **Whether the query field is open** (ADR-0132 §1). The shell takes the header
+//     and the tab bar off screen while it is, because on a resizing layout viewport
+//     the split absorbs the entire keyboard — so this is the same shape as (1): one
+//     fact the Map states about itself, with the shell as the second consumer. It is
+//     the field being OPEN rather than a query being live, since the keyboard appears
+//     on focus; `searching` stays the screen's own, for the list and the pins.
+//  4. **Whether we have already offered to locate you** (ADR-0109 session-134). The
 //     Map now asks on open rather than only on a chip tap, and "not now" has to mean
 //     not-this-session — a card that reappears on every visit to the tab is the nag
 //     the reason-first rule exists to avoid. Session-scoped, so a reload asks again;
@@ -37,6 +43,11 @@ interface MapScope {
   /** Have we already offered to locate the user this session? */
   locationOffered: boolean;
   markLocationOffered: () => void;
+  /** Is the Map's query field open? (ADR-0132 §1 — the field being OPEN, not a query
+   *  being live: the keyboard appears on focus, before a character exists.) The shell
+   *  is the second consumer, exactly as `allDays` has the `DayStrip`. */
+  queryOpen: boolean;
+  setQueryOpen: (value: boolean) => void;
 }
 
 const MapScopeContext = createContext<MapScope | null>(null);
@@ -45,6 +56,7 @@ export function MapScopeProvider({ children }: { children: ReactNode }) {
   const [allDays, setAllDays] = useState(false);
   const [focusPlaceId, setFocusPlaceId] = useState<string | null>(null);
   const [locationOffered, setLocationOffered] = useState(false);
+  const [queryOpen, setQueryOpen] = useState(false);
   const value = useMemo<MapScope>(
     () => ({
       allDays,
@@ -54,8 +66,10 @@ export function MapScopeProvider({ children }: { children: ReactNode }) {
       clearFocus: () => setFocusPlaceId(null),
       locationOffered,
       markLocationOffered: () => setLocationOffered(true),
+      queryOpen,
+      setQueryOpen,
     }),
-    [allDays, focusPlaceId, locationOffered],
+    [allDays, focusPlaceId, locationOffered, queryOpen],
   );
   return <MapScopeContext.Provider value={value}>{children}</MapScopeContext.Provider>;
 }

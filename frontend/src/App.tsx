@@ -36,7 +36,7 @@ import { resolveLanding } from './lib/active-trip';
 import { consumeIntent, hasIntent, saveIntent } from './lib/intent';
 import { ToastProvider } from './ui/Toast';
 import { ConfirmProvider } from './ui/ConfirmDialog';
-import { AppShell, BODY_FULLBLEED } from './ui/layout';
+import { AppShell, BODY_FULLBLEED, CHROME_RECLAIMED } from './ui/layout';
 import { mapPaneAvailable } from './lib/map-config';
 import { BootScreen, HomeSkeleton, LoadingState } from './ui/feedback';
 import { Sheet } from './ui/Sheet';
@@ -373,7 +373,7 @@ function Screen({ tab, onNavigate }: { tab: TabId; onNavigate: (tab: TabId) => v
 function Shell() {
   // Tab lives in the URL (?tab=), Home-anchored, so back peels it (ADR-0035).
   const { tab, goToTab } = useTripTab();
-  const { allDays } = useMapScope();
+  const { allDays, queryOpen } = useMapScope();
   const [accountOpen, setAccountOpen] = useState(false);
   useMarkInsideTrip();
   // Give Android's OS back an in-app entry to traverse into (ADR-0090) so a cold
@@ -461,6 +461,13 @@ function Shell() {
   // offline (or without the build config) the tab is the ordinary scrolling list it
   // has always been, so it keeps the ordinary body.
   const fullBleed = tab === 'map' && mapPaneAvailable({ offline: offlineNow });
+  // THE CHROME RECLAIM (ADR-0132 §2). While the Map's query field is open the header
+  // and the tab bar come off screen: on a layout viewport that RESIZES for the keyboard
+  // (Android) the split is the only flexible region, so it absorbs the whole loss — 43px
+  // of canvas at 390×844, and at 360×640 a pane too short to lay out Google's attribution
+  // at all (ADR-0106 §B). Gated on the tab for the same reason `fullBleed` is: the state
+  // lives above the shell so the header can read it, and only this tab spends it.
+  const chromeReclaimed = tab === 'map' && queryOpen;
 
   return (
     <AppShell
@@ -468,6 +475,7 @@ function Shell() {
       switching={switching ?? undefined}
       bodyKey={tab}
       bodyClassName={fullBleed ? BODY_FULLBLEED : undefined}
+      chrome={chromeReclaimed ? CHROME_RECLAIMED : undefined}
       header={
         <Header
           onSelectDay={onSelectDay}

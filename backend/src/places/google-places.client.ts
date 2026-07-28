@@ -4,10 +4,11 @@ import {
   Logger,
   ServiceUnavailableException,
 } from '@nestjs/common';
-import type { PlacePrediction } from '@waypoint/shared';
+import type { PlacePrediction, PlaceResult } from '@waypoint/shared';
 import { GOOGLE_MAPS_SERVER_KEY, requireEnv } from '../common/env';
 
 const AUTOCOMPLETE_URL = 'https://places.googleapis.com/v1/places:autocomplete';
+const TEXT_SEARCH_URL = 'https://places.googleapis.com/v1/places:searchText';
 const PLACE_DETAILS_BASE = 'https://places.googleapis.com/v1/places';
 
 // The app is Hebrew-first (ADR-0009), so ask Google for Hebrew place names +
@@ -33,6 +34,35 @@ const MAX_ERROR_BODY_LOG = 500;
  * change here — the `Place.rating`/`userRatingsTotal` columns already exist.
  */
 const PLACE_DETAILS_FIELD_MASK = ['id', 'displayName', 'formattedAddress', 'location'].join(',');
+
+/**
+ * The **Text Search** field mask (ADR-0132 §7). Same four fields as the Details mask
+ * above, prefixed with `places.` as that endpoint requires — so it asks for exactly
+ * what a result needs to be both a row and a ring, and nothing more.
+ *
+ * The SKU is Text Search's own, NOT Place Details', and its tier is set by this mask
+ * the same way. **Per-1000 prices are deliberately not written down here**: ADR-0108
+ * §3's rule is that the field→tier mapping is verified against Google's live list at
+ * implementation rather than coded from a remembered mapping, and a stale number in a
+ * comment is exactly how that rule gets quietly broken. What IS fixed, and is the
+ * reason this endpoint exists: one call returns N results **with** coordinates, where
+ * Autocomplete + Details-per-result is one call plus N.
+ *
+ * `rating`/`userRatingCount` stay out for the same reason as in the Details mask
+ * (ADR-0111): they are a higher tier for a star nothing renders yet.
+ */
+const TEXT_SEARCH_FIELD_MASK = [
+  'places.id',
+  'places.displayName',
+  'places.formattedAddress',
+  'places.location',
+].join(',');
+
+/** Cap on results asked for per Text Search call. N results cost ONE call, so this is
+ *  not a cost lever — it is a legibility one: these land on the canvas as rings among
+ *  the trip's own pins, and a screenful of them reads as noise rather than as an
+ *  answer. Google's own default is 20. */
+const TEXT_SEARCH_MAX_RESULTS = 8;
 
 /** Geocode field mask for the destination resolve (ADR-0113): swaps
  *  `formattedAddress` for `addressComponents` (both Essentials tier, so this stays
@@ -78,6 +108,14 @@ interface AutocompleteResponse {
     };
   }[];
 }
+interface TextSearchResponse {
+  places?: {
+    id?: string;
+    displayName?: { text?: string };
+    formattedAddress?: string;
+    location?: { latitude?: number; longitude?: number };
+  }[];
+}
 interface PlaceDetailsResponse {
   id?: string;
   displayName?: { text?: string };
@@ -88,7 +126,7 @@ interface PlaceDetailsResponse {
 
 /**
  * The thin outbound HTTP wrapper for Places API (New) — the only place the server
- * key is held (ADR-0108 §1). All Autocomplete/Place Details spend goes through here
+ * key is held (ADR-0108 §1). All Autocomplete/Text Search/Place Details spend goes through here
  * behind the trip-scoped, membership-guarded, rate-limited proxy routes. Dedup and
  * persistence live in `PlacesService`; this client just talks to Google.
  */
@@ -126,6 +164,47 @@ export class GooglePlacesClient {
         googlePlaceId: p.placeId as string,
         primaryText: p.structuredFormat?.mainText?.text ?? p.text?.text ?? '',
         secondaryText: p.structuredFormat?.secondaryText?.text,
+      }));
+  }
+
+  /** Text Search relay (ADR-0132 §7) — the half that can be drawn. Unlike
+   *  `autocomplete` there is **no session token**: this SKU has no session, so each
+   *  call is billed on its own, and what it buys is N results that already carry
+   *  coordinates. `bias` is the caller's current viewport, which changes ranking and
+   *  not price. */
+  async textSearch(
+    input: string,
+    bias?: { south: number; west: number; north: number; east: number },
+  ): Promise<PlaceResult[]> {
+    const body = await this.post<TextSearchResponse>(TEXT_SEARCH_URL, {
+      headers: {
+        'X-Goog-Api-Key': this.key(),
+        'Content-Type': 'application/json',
+        'X-Goog-FieldMask': TEXT_SEARCH_FIELD_MASK,
+      },
+      body: JSON.stringify({
+        textQuery: input,
+        languageCode: PLACES_LANGUAGE_CODE,
+        regionCode: PLACES_REGION_CODE,
+        maxResultCount: TEXT_SEARCH_MAX_RESULTS,
+        ...(bias && {
+          locationBias: {
+            rectangle: {
+              low: { latitude: bias.south, longitude: bias.west },
+              high: { latitude: bias.north, longitude: bias.east },
+            },
+          },
+        }),
+      }),
+    });
+    return (body.places ?? [])
+      .filter((p): p is NonNullable<typeof p> => Boolean(p?.id))
+      .map((p) => ({
+        googlePlaceId: p.id as string,
+        primaryText: p.displayName?.text ?? '',
+        secondaryText: p.formattedAddress,
+        lat: p.location?.latitude,
+        lng: p.location?.longitude,
       }));
   }
 

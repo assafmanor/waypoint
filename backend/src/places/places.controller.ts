@@ -4,12 +4,15 @@ import { ApiBearerAuth, ApiCreatedResponse, ApiOkResponse, ApiTags } from '@nest
 import {
   createPlaceSchema,
   placePredictionSchema,
+  placeResultSchema,
   placeSchema,
   resolvePlaceSchema,
   searchPlacesSchema,
+  searchPlacesTextSchema,
   updatePlaceSchema,
   type Place,
   type PlacePrediction,
+  type PlaceResult,
 } from '@waypoint/shared';
 import { createZodDto, ZodSerializerDto } from 'nestjs-zod';
 import { CurrentUser } from '../auth/current-user.decorator';
@@ -32,6 +35,8 @@ class PlaceDto extends createZodDto(placeSchema) {}
 class SearchPlacesDto extends createZodDto(searchPlacesSchema) {}
 class ResolvePlaceDto extends createZodDto(resolvePlaceSchema) {}
 class PlacePredictionDto extends createZodDto(placePredictionSchema) {}
+class SearchPlacesTextDto extends createZodDto(searchPlacesTextSchema) {}
+class PlaceResultDto extends createZodDto(placeResultSchema) {}
 
 // Per-member·trip rate-limit windows for the paid proxy routes (ADR-0108 §5), read
 // once from env with the named defaults so they're tunable without a deploy.
@@ -93,6 +98,26 @@ export class PlacesController {
     @Body(new ZodValidationPipe(searchPlacesSchema)) body: SearchPlacesDto,
   ): Promise<PlacePrediction[]> {
     return this.places.searchPlaces(body);
+  }
+
+  /** Text Search relay (ADR-0132 §7) — the half whose results can be drawn, because
+   *  they arrive with coordinates. Same guard and the same per-member·trip window as
+   *  the Autocomplete relay: this SKU has NO session token, so every call is billed on
+   *  its own and the throttle is the server's only brake.
+   *
+   *  Deliberately its own route rather than a flag on `search`: two SKUs, two request
+   *  shapes (no token here, a viewport bias instead) and two response shapes. A mode
+   *  parameter would hide the cost model behind a boolean. */
+  @Post('search-text')
+  @UseGuards(PlacesThrottlerGuard)
+  @Throttle(SEARCH_THROTTLE)
+  @ApiOkResponse({ type: [PlaceResultDto] })
+  @ZodSerializerDto([PlaceResultDto])
+  searchText(
+    @Param('tripId') _tripId: string,
+    @Body(new ZodValidationPipe(searchPlacesTextSchema)) body: SearchPlacesTextDto,
+  ): Promise<PlaceResult[]> {
+    return this.places.searchPlacesText(body);
   }
 
   /** Enrich-on-pick / create-or-link (ADR-0108 §3). Dedup-before-spend on

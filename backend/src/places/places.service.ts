@@ -8,8 +8,10 @@ import {
   type CreatePlaceInput,
   type Place,
   type PlacePrediction,
+  type PlaceResult,
   type ResolvePlaceInput,
   type SearchPlacesInput,
+  type SearchPlacesTextInput,
   type UpdatePlaceInput,
 } from '@waypoint/shared';
 import { PrismaService } from '../prisma/prisma.service';
@@ -113,6 +115,15 @@ export class PlacesService {
     return this.google.autocomplete(input.input, input.sessionToken);
   }
 
+  /** Text Search relay (ADR-0132 §7). Also a pure passthrough — the point of the SKU is
+   *  that results arrive WITH coordinates, so they can be pins and not only rows. There
+   *  is no session to close and therefore no $0 tail: every call is billed, which is why
+   *  the client's min-chars floor and pause debounce carry more weight here than on the
+   *  Autocomplete half. `bias` is the caller's viewport (free relevance). */
+  searchPlacesText(input: SearchPlacesTextInput): Promise<PlaceResult[]> {
+    return this.google.textSearch(input.input, input.bias);
+  }
+
   /**
    * Enrich-on-pick (create-or-link), the cost floor (ADR-0108 §3). Dedup-before-spend:
    * a place already enriched in this trip returns its cached row with **zero** Google
@@ -139,7 +150,13 @@ export class PlacesService {
       ? await this.requirePlace(tripId, input.enrichPlaceId)
       : null;
 
-    const details = await this.google.placeDetails(input.googlePlaceId, input.sessionToken);
+    // The Text Search half already HAS the name, address and point (ADR-0132 §7), so a
+    // Details call here would buy the same place twice. Absent, this is the Autocomplete
+    // path and the paid call stands. The zone is still resolved server-side from the
+    // coordinates either way — that is ours, not Google's.
+    const details = input.details
+      ? { googlePlaceId: input.googlePlaceId, ...input.details }
+      : await this.google.placeDetails(input.googlePlaceId, input.sessionToken);
     const timezone = this.resolveTimezone(details.lat, details.lng);
 
     return target

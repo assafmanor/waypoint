@@ -106,7 +106,7 @@ describe('usePlaceSearch', () => {
 
   it('picking a new prediction resolves through the proxy with the session token + enrichPlaceId', async () => {
     resolvePlace.mockResolvedValue({ id: 'pl-resolved', googlePlaceId: 'g-shibuya' } as Place);
-    const { result } = renderHook(() => usePlaceSearch('pl-lite'));
+    const { result } = renderHook(() => usePlaceSearch({ enrichPlaceId: 'pl-lite' }));
     // Mint the session token by starting a search first.
     act(() => result.current.setQuery(PAST_FLOOR));
     await act(async () => {

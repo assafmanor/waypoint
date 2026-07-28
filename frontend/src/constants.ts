@@ -75,6 +75,13 @@ export const PLACE_SEARCH_DEBOUNCE_MS = 350;
  *  and deliberately no per-surface fork. */
 export const PLACE_SEARCH_MIN_CHARS = 3;
 
+/** Which corpus (and therefore which Google SKU) a search shell spends on — the one
+ *  parameter that differs between the two halves of `usePlaceSearch` (ADR-0132 §7).
+ *  `autocomplete` predictions carry no coordinates and are rows only; `text` results
+ *  carry them and can be pins, at the price of having no session to bill against. */
+export const PLACE_CORPUS = { autocomplete: 'autocomplete', text: 'text' } as const;
+export type PlaceCorpus = (typeof PLACE_CORPUS)[keyof typeof PLACE_CORPUS];
+
 /** The waking window the day-progress bar spans, in trip-local hours. */
 export const DAY_WINDOW = { START_HOUR: 7, END_HOUR: 23 } as const;
 
