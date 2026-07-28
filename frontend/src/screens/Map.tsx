@@ -678,6 +678,31 @@ export function MapView() {
     return !!p && matchesAnyTerm(query, [p.name, p.address]);
   };
 
+  // ── WHICH OF OUR OWN PLACES GOOGLE'S RESULTS POINT AT ─────────────────────────
+  // `placeId` → the Google id of the result that resolved to it. Owner report, session 167:
+  // _"you can't see results that are already on the trip on the map"_.
+  //
+  // **THE TWO HALVES OF THIS SEARCH DO NOT MATCH THE SAME WAY, and that is the whole
+  // reason this map exists.** Ours is a normalised substring over name + address
+  // (`matchesAnyTerm`, deliberately dumb and free); Google's handles transliteration,
+  // aliases and misspellings. So `מון` finds `Moon Sushi Bar Pinsker` in Google's half and
+  // cannot find it in ours — and the place we ALREADY OWN was filtered off the canvas by
+  // our own predicate, while its result row sat in the sheet saying `כבר בטיול` and
+  // pointing at nothing. The canvas even said `אין מקומות באזור` over the exact spot.
+  //
+  // ADR-0132 §6 withholds the ring from a result we own "because it already has a pin".
+  // That premise holds only while both halves agree about what matches, which they never
+  // did. So: **a result we own counts as a match**, and it is drawn as OUR pin rather than
+  // as a ring — the ring's silhouette means "not yours yet", and this one is yours. One
+  // object per place either way, which is what §6 was actually protecting.
+  const ownedResults = new Map<string, string>();
+  if (searching) {
+    for (const result of research.predictions) {
+      const owned = research.alreadyInTrip(result);
+      if (owned) ownedResults.set(owned.id, result.googlePlaceId);
+    }
+  }
+
   // ONE list, whose PREDICATE switches (ADR-0131 §1/§7). It used to be two arrays — the
   // day's list, and a second one the overlay rendered — which is what let the query live
   // on a surface that hid the canvas. With the query as a control on this row it is the
@@ -752,7 +777,14 @@ export function MapView() {
       // six tiers, two amber `box-shadow` cues, selection's `outline` shaped to compose
       // with them, and a zoom-keyed dot degradation. And it is facet-blind here for the
       // same reason it is in the list: one derivation, one filter layer (ADR-0121 §6).
-      if (!(searching ? matchesQuery(usage) : matchesPlaceFilter(usage, placeFilter))) continue;
+      // …or Google matched it for us (`ownedResults` above): a place the trip owns is on the
+      // canvas whichever half of the search found it, and it is a pin rather than a ring.
+      if (
+        !(searching
+          ? matchesQuery(usage) || ownedResults.has(usage.placeId)
+          : matchesPlaceFilter(usage, placeFilter))
+      )
+        continue;
       const tier = pinTier(usage);
       pinsNow.push({
         placeId: usage.placeId,
@@ -911,7 +943,12 @@ export function MapView() {
     // clears the other, and at the map extreme that would raise two cards on top of each
     // other — the exact defect `MapPane`'s "do NOT skip on `event.detail.placeId`" comment
     // records for Google's own card.
-    setSelectedResultId(null);
+    //
+    // …UNLESS THEY ARE THE SAME PLACE. When Google's half is what put this pin on the
+    // canvas, the result row IS this place's row (the trip half never matched it), so both
+    // ids naming it is one selection shown on both halves — the pin↔row rule, not two
+    // selections (ADR-0121 §8).
+    setSelectedResultId(ownedResults.get(placeId) ?? null);
     if (opts.fromRow) {
       // A row tap normalises the sheet to `half`: from `full` because the map it
       // focuses is invisible there (ADR-0121 §8), and from the map extreme because a
@@ -938,10 +975,17 @@ export function MapView() {
     // selected row is centred, since `nearest` would leave a row that is already barely
     // visible exactly where it was.
     if (sheetView === MAP_SHEET_VIEW.map) return;
+    // The place's row, WHEREVER it is. Normally that is its trip row; when Google's half is
+    // what matched it, the trip list has no row for it and its row is the result row. Two
+    // selectors rather than one because the row genuinely moves between two hosts — the same
+    // fact the card and the ghost row are both about (ADR-0122 §7).
+    const resultId = ownedResults.get(placeId);
     requestAnimationFrame(() => {
-      sheetRef.current
-        ?.querySelector(`[data-place="${placeId}"]`)
-        ?.scrollIntoView({ block: 'center' });
+      const scope = sheetRef.current;
+      const row =
+        scope?.querySelector(`[data-place="${placeId}"]`) ??
+        (resultId ? scope?.querySelector(`[data-result="${resultId}"]`) : null);
+      row?.scrollIntoView({ block: 'center' });
     });
   };
 
@@ -997,14 +1041,22 @@ export function MapView() {
   //
   // A result with no coordinates selects and does not frame: there is nothing to frame,
   // exactly as for a coordless place of our own.
-  const selectResultRow = useCallback((result: PlaceResult) => {
-    setSelectedId(null);
+  //
+  // A latest-ref like the two taps above, not a `useCallback([])`: it has to read whether
+  // the trip already owns this result, and a stale closure would light the row without its
+  // pin.
+  const onResultRowTap = useRef<(result: PlaceResult) => void>(() => {});
+  onResultRowTap.current = (result: PlaceResult) => {
     setGhostId(null);
+    // If the trip owns it, this row is OUR place's row, so the selection names the place
+    // too and its pin lights up with the row (see `select`'s note on the same pairing).
+    setSelectedId(research.alreadyInTrip(result)?.id ?? null);
     setSelectedResultId(result.googlePlaceId);
     if (result.lat == null || result.lng == null) return;
     setSheetView((view) => (view === MAP_SHEET_VIEW.half ? view : MAP_SHEET_VIEW.half));
     setFramePlace({ lat: result.lat, lng: result.lng });
-  }, []);
+  };
+  const selectResultRow = useCallback((result: PlaceResult) => onResultRowTap.current(result), []);
 
   // ADDING A RESULT — one path, whether it was tapped as a row or as a ring. Two steps,
   // both already built: resolve the place (which, for a Text Search result, spends
@@ -1623,9 +1675,13 @@ export function MapView() {
   // THE TAPPED RING, ON THE SAME CANVAS HOST (ADR-0132 §8, built session 166). Same rule as
   // the place card and the ghost row above — the row surfaces wherever the sheet cannot show
   // it — so it is `ResultRow` in `.map-placecard`, not a second grammar for a Google result.
-  // The two cards are mutually exclusive by construction: each selection clears the other.
+  //
+  // `!cardUsage` is the one case where both selections name something: a result the trip
+  // ALREADY OWNS sets both ids deliberately (session 167), and the place card is the richer
+  // of the two — it carries the day, the distance and the way in to every reference. So the
+  // place we own wins, which is also the honest answer to "what is this": ours.
   const cardResult =
-    sheetView === MAP_SHEET_VIEW.map && selectedResultId
+    sheetView === MAP_SHEET_VIEW.map && selectedResultId && !cardUsage
       ? research.predictions.find((r) => r.googlePlaceId === selectedResultId)
       : undefined;
   const cardResultInTrip = cardResult ? research.alreadyInTrip(cardResult) : undefined;

@@ -101,6 +101,14 @@ The prominence ladder is full: six tiers, two amber cues as `box-shadow`, select
 
 What falls out for free: it is not on the prominence ladder at all, so it cannot collide with the amber cues, the selection outline or the dot tier, and there is nothing to compose.
 
+**A result the trip already owns gets no ring**: it already has a pin, and a ring over it would draw one place twice while saying the opposite thing about it. Its row states `כבר בטיול` instead.
+
+> **AMENDED 2026-07-28 (session 167, owner: _"you can't see results that are already on the trip on the map"_).** The rule stands; **its premise had to be made true.** "It already has a pin" holds only while both halves of the search agree about what matches, and they never did — ours is a normalised substring over name + address (`matchesAnyTerm`, deliberately dumb and free), Google's handles transliteration, aliases and misspellings. So `מון` finds `Moon Sushi Bar Pinsker` in Google's half and **cannot** find it in ours: the place we own was filtered off the canvas by our own predicate, while its row sat in the sheet saying `כבר בטיול` and pointing at nothing. The canvas read `אין מקומות באזור` over the exact spot.
+>
+> **A result the trip owns now counts as a match**, so its pin is drawn — as **our pin, not a ring**, because the ring's silhouette means "not yours yet" and this one is yours. One object per place either way, which is what this rule was protecting.
+>
+> Two consequences, both of them the pin↔row rule (ADR-0121 §8) rather than new behaviour: the result row and the pin **select together**, since with the trip half not matching, that row _is_ this place's row on this screen; and at the map extreme the **place** card wins over the result card, being the richer of the two and the honest answer to "what is this".
+
 Two candidates are drawn in the mockup and rejected there so the choice is seen rather than asserted: a **dashed teardrop** (which reuses `.map-badge.result`'s "listed, not yet ours" grammar and reads as _a pin that has not finished loading_ — and collides with the ghost rung, which is also a hollow teardrop), and a **dark inversion** (distinct, but it reads as **more** important than the trip's own pins, which inverts the whole point).
 
 ### 7. Text Search: what it buys, and what it actually costs

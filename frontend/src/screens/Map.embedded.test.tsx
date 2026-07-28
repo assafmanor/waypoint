@@ -186,6 +186,7 @@ vi.mock('../ui/domain/MapPane', () => ({
       aside?: boolean;
       nextStop?: boolean;
       nowStop?: boolean;
+      selected?: boolean;
     }[];
     return (
       <div data-pane>
@@ -241,6 +242,7 @@ vi.mock('../ui/domain/MapPane', () => ({
             data-order={pin.order ?? ''}
             data-aside={String(pin.aside ?? false)}
             data-amber={pin.nowStop ? 'now' : pin.nextStop ? 'next' : ''}
+            data-selected={String(pin.selected ?? false)}
             onClick={() => (props.onSelectPin as (id: string) => void)(pin.placeId)}
           >
             {pin.placeId}
@@ -1338,6 +1340,51 @@ describe('the embedded map’s shell (ADR-0121)', () => {
         openSearch();
         type('coffee');
         expect(rings()).toEqual([]);
+      });
+
+      // …AND THE PREMISE OF THAT RULE HAS TO BE MADE TRUE (owner, session 167 — _"you can't
+      // see results that are already on the trip on the map"_). "It already has a pin" holds
+      // only while both halves of the search match the same way, and they never did: ours is
+      // a normalised substring (`matchesAnyTerm`), Google's handles transliteration and
+      // aliases. So `מון` finds `Moon Sushi Bar Pinsker` in Google's half and cannot find it
+      // in ours — the place we OWN was filtered off the canvas, its row said `כבר בטיול`,
+      // and the canvas said `אין מקומות באזור` over the very spot.
+      it('a result the trip owns is OUR pin, even when our own text match missed it', () => {
+        seed();
+        searchStub.predictions = [
+          { googlePlaceId: 'g-1', primaryText: 'Moon Sushi Bar Pinsker', lat: 35.69, lng: 139.7 },
+        ];
+        searchStub.referenced = { 'g-1': { id: 'museum' } };
+        render(wrap(<MapView />));
+        openSearch();
+        // Matches no place of ours — `museum`, `lunch`, `lite`, `tomorrow`.
+        type('מון');
+        expect(pinIds()).toEqual(['museum']);
+        // Still no ring: it is ours, and a ring means "not yours yet". One object per place,
+        // which is what the rule above was actually protecting.
+        expect(rings()).toEqual([]);
+      });
+
+      // The row and the pin are two views of ONE place here, so they select together — the
+      // pin↔row rule, not the two-selections case the cards guard against.
+      it('tapping its row selects the pin too, and its card at the map extreme is ours', () => {
+        seed();
+        searchStub.predictions = [
+          { googlePlaceId: 'g-1', primaryText: 'Moon Sushi Bar Pinsker', lat: 35.69, lng: 139.7 },
+        ];
+        searchStub.referenced = { 'g-1': { id: 'museum' } };
+        render(wrap(<MapView />));
+        openSearch();
+        type('מון');
+        fireEvent.click(document.querySelector('.map-res-open') as HTMLElement);
+        expect(pin('museum')!.dataset.selected).toBe('true');
+        expect(document.querySelector('[data-result="g-1"]')!.className).toContain('selected');
+        // At the map extreme exactly one card comes up, and it is the PLACE card — the
+        // richer of the two, and the honest answer to "what is this": ours.
+        fireEvent.click(toggle(t.map.view.map));
+        const cards = document.querySelectorAll('.map-placecard');
+        expect(cards).toHaveLength(1);
+        expect(cards[0].querySelector('[data-place="museum"]')).toBeTruthy();
       });
 
       // The pin↔row rule, in the direction the rings need it (ADR-0132 §8): the card
