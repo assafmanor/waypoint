@@ -1,9 +1,9 @@
 import { Injectable, UnauthorizedException } from '@nestjs/common';
-import type { Me } from '@waypoint/shared';
+import type { Me, UpdateMeInput } from '@waypoint/shared';
 import { decryptAtRest, encryptAtRest } from '../common/crypto.util';
 import { requireEnv, TOKEN_ENCRYPTION_KEY } from '../common/env';
 import { PrismaService } from '../prisma/prisma.service';
-import { toMembershipDto } from '../trips/trips.mapper';
+import { toMembershipDto, toUserDto } from '../trips/trips.mapper';
 import {
   buildGoogleAuthUrl,
   exchangeGoogleCode,
@@ -73,10 +73,19 @@ export class AuthService {
     // Provision User + AuthIdentity atomically (B-12): the identity upsert failing
     // after the user upsert used to leave a user with no linked identity.
     const user = await this.prisma.$transaction(async (tx) => {
+      // `googleAvatarUrl` is a fact from the provider, so it is refreshed on EVERY
+      // sign-in, not just at create. `avatarChoice` is only defaulted at create —
+      // a returning user who chose initials must not be flipped back to the photo
+      // (ADR-0133 §4/§6).
       const user = await tx.user.upsert({
         where: { email: info.email },
-        create: { email: info.email, displayName: info.name ?? info.email },
-        update: {},
+        create: {
+          email: info.email,
+          displayName: info.name ?? info.email,
+          googleAvatarUrl: info.picture ?? null,
+          avatarChoice: info.picture ? 'google' : 'initials',
+        },
+        update: { googleAvatarUrl: info.picture ?? null },
       });
       await tx.authIdentity.upsert({
         where: { provider_providerAccountId: { provider: 'google', providerAccountId: info.sub } },
@@ -150,9 +159,31 @@ export class AuthService {
     const user = await this.prisma.user.findUniqueOrThrow({ where: { id: userId } });
     const memberships = await this.prisma.membership.findMany({ where: { userId } });
     return {
-      user: { ...user, createdAt: user.createdAt.toISOString() },
+      // Through `toUserDto`, not a local spread: it is what resolves the identity
+      // hue, and a second user-shaping path here would silently skip that.
+      user: toUserDto(user),
       memberships: memberships.map(toMembershipDto),
     };
+  }
+
+  /** The only write path onto your own `User` (ADR-0133 §11 Phase 1). A partial,
+   *  LWW patch. `avatarHue: null` is meaningful — it clears the pick and hands the
+   *  hue back to the derivation, the same way ADR-0107's zone chip clears an
+   *  override. Deliberately NOT routed through `ChangeService`: a `Change` is
+   *  per-trip while a user spans many, so broadcasting a rename would fan out one
+   *  change per trip they belong to — refused for v1 and stated in ADR-0133 §8, so
+   *  co-members see a new name at their next snapshot.
+   */
+  async updateMe(userId: string, patch: UpdateMeInput): Promise<Me> {
+    await this.prisma.user.update({
+      where: { id: userId },
+      data: {
+        ...(patch.displayName !== undefined && { displayName: patch.displayName }),
+        ...(patch.avatarChoice !== undefined && { avatarChoice: patch.avatarChoice }),
+        ...(patch.avatarHue !== undefined && { avatarHue: patch.avatarHue }),
+      },
+    });
+    return this.getMe(userId);
   }
 
   private async issueSession(userId: string, email: string): Promise<CallbackResult> {

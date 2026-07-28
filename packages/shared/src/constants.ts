@@ -159,6 +159,12 @@ export const CHANGES_PAGE_LIMIT = 500;
  *  client-side (the create form's input `maxLength`). */
 export const MAX_TRIP_NAME_LENGTH = 18;
 
+/** Display-name length cap. Roomier than the trip name because it is a person's
+ *  name rather than a pill that must stay on one line, but bounded because it
+ *  renders on every co-member's roster row (ADR-0133 §7). Validated server-side
+ *  (updateMeSchema) and enforced client-side as the input's `maxLength`. */
+export const MAX_DISPLAY_NAME_LENGTH = 40;
+
 /** Document upload cap (T-046) — passport/insurance/visa scans are single-page
  *  PDFs or phone photos, never large media; the whole file is buffered in memory
  *  for encryption, so this also bounds worst-case per-request memory use. */

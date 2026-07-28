@@ -25,7 +25,11 @@ There is **no `Day` table** — a day is a calendar date within the trip range (
 
 The person (no provider fields — those live on `AuthIdentity`).
 
-- `id`, `email @unique`, `displayName`, `avatarColor`, `createdAt`
+- `id`, `email @unique`, `displayName`, `createdAt`
+- **Identity (ADR-0133):** `avatarHue String?` · `avatarChoice AvatarChoice @default(initials)` · `googleAvatarUrl String?` · `uploadedAvatarKey String?`
+  - `avatarHue` stores a **ramp key** (`plum|rose|moss|denim|cocoa`), never a hex, so the dark token remap reaches it — and it is **nullable on purpose**: null means "never chosen" and the server resolves it per-user via `resolveAvatarHue(id, stored)`. It replaces `avatarColor String @default("#E9A63C")`, whose single column default meant every real user rendered the same colour (and that colour was `--amber`, which the decorative palette forbids for avatars).
+  - `googleAvatarUrl` is the provider's `picture`, refreshed at **every** sign-in; `avatarChoice` is defaulted only at **create**, so a returning user who chose initials is never flipped back to the photo.
+  - The wire DTO always carries a **resolved** `avatarHue`, so no client owns that fallback.
 
 ### AuthIdentity (ADR-0020)
 

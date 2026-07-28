@@ -14,14 +14,18 @@ const NOAM: User = {
   id: 'u-noam',
   email: 'noam@example.com',
   displayName: 'נועם',
-  avatarColor: '#abc',
+  avatarHue: 'moss',
+  avatarChoice: 'initials',
+  googleAvatarUrl: null,
   createdAt: '2026-07-01T00:00:00.000Z',
 };
 const ME: User = {
   id: 'u-me',
   email: 'me@example.com',
   displayName: 'אני',
-  avatarColor: '#def',
+  avatarHue: 'denim',
+  avatarChoice: 'initials',
+  googleAvatarUrl: null,
   createdAt: '2026-07-01T00:00:00.000Z',
 };
 const USERS = [NOAM, ME];

@@ -50,6 +50,7 @@ import {
   type UpdateBookingInput,
   type UpdateEventInput,
   type UpdatePlaceInput,
+  type UpdateMeInput,
   type UpdateTripInput,
 } from '@waypoint/shared';
 import type { MapBounds } from './map-camera';
@@ -139,6 +140,20 @@ export async function requestLogout(): Promise<void> {
 
 export async function fetchMe(): Promise<Me> {
   const res = await apiFetch(`${API_BASE_URL}/me`);
+  if (!res.ok) return throwApiError(res);
+  return meSchema.parse(await res.json());
+}
+
+/** Edit your own identity (ADR-0133 §11). Online-only and deliberately NOT
+ *  outboxed: a `User` is not a syncable entity type (§8), so there is no cache
+ *  channel or WS echo to reconcile against — the response IS the truth, and the
+ *  caller replaces its `Me` with it. */
+export async function updateMe(input: UpdateMeInput): Promise<Me> {
+  const res = await apiFetch(`${API_BASE_URL}/me`, {
+    method: HTTP_METHOD.PATCH,
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify(input),
+  });
   if (!res.ok) return throwApiError(res);
   return meSchema.parse(await res.json());
 }

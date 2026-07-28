@@ -1,6 +1,6 @@
 // ADR-0020/0024. The access JWT itself lives in lib/api.ts, not here.
 import { createContext, useContext, useEffect, useState, type ReactNode } from 'react';
-import { meSchema, type Me } from '@waypoint/shared';
+import { meSchema, type Me, type UpdateMeInput } from '@waypoint/shared';
 import {
   API_BASE_URL,
   fetchMe,
@@ -8,6 +8,7 @@ import {
   requestLogout,
   setAccessToken,
   setOnSessionExpired,
+  updateMe,
 } from '../lib/api';
 import { isNetworkError, isOffline } from '../lib/outbox';
 import { wipeLocalData } from '../lib/cache';
@@ -47,6 +48,8 @@ interface AuthContextValue {
   me: Me | null;
   login: () => void;
   logout: () => void;
+  /** Edit your own identity. Throws on failure so the caller can surface it. */
+  patchMe: (input: UpdateMeInput) => Promise<void>;
 }
 
 const AuthContext = createContext<AuthContextValue | null>(null);
@@ -117,8 +120,20 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     clearCachedMe();
   };
 
+  /** Apply an identity patch (ADR-0133). The response is authoritative — a `User`
+   *  is not a syncable entity (§8), so there is nothing to reconcile — and it lands
+   *  in the cached copy too, so the offline cold-load path renders the new name
+   *  rather than the pre-edit one. */
+  const patchMe = async (input: UpdateMeInput) => {
+    const next = await updateMe(input);
+    setMe(next);
+    cacheMe(next);
+  };
+
   return (
-    <AuthContext.Provider value={{ status, me, login, logout }}>{children}</AuthContext.Provider>
+    <AuthContext.Provider value={{ status, me, login, logout, patchMe }}>
+      {children}
+    </AuthContext.Provider>
   );
 }
 

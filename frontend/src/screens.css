@@ -684,17 +684,10 @@
   opacity: 0.5;
   margin: 6px auto 18px;
 }
-.acct-av {
-  width: 64px;
-  height: 64px;
-  border-radius: 50%;
-  display: grid;
-  place-items: center;
+/* the account sheet's avatar is `Avatar size="lg"` (ADR-0133 §3); it needs only
+   centring here, since the circle itself is the primitive's. */
+.acct-sheet-av {
   margin: 0 auto;
-  color: #12203a; /* fixed: ink on a colored avatar (bg set inline) */
-  font-weight: 700;
-  font-size: 26px;
-  font-family: var(--font-head);
 }
 .acct-name {
   font-family: var(--font-head);
@@ -2194,7 +2187,13 @@
   border-bottom: 0;
 }
 .set-member .av {
+  /* `.av` is CHROME styling — 31px, a negative overlap margin and an indigo border
+     that reads as a seam between avatars stacked on the dark header. On a white card
+     none of that applies: the overlap is wrong and the border reads as a heavy dark
+     ring around every face. Both come off here, which the roster made obvious by
+     putting five of them in a column (ADR-0133 §9). */
   margin-inline-start: 0;
+  border: 0;
   flex: 0 0 auto;
 }
 .set-member .mn {
@@ -2215,9 +2214,15 @@
   padding: 3px 8px;
   flex: 0 0 auto;
 }
+/* ADR-0133 §10 — this was `--amber` at 16% on `--amber-deep` text. Amber is time &
+   commitment only (ADR-0028 / rule 4) and a role is neither, so admin is now neutral
+   ink-on-paper distinguished from `peer` by WEIGHT and a border rather than a
+   reserved hue. Wrong since trip settings shipped; fixed here because the roster
+   reuses this exact badge and would have spent amber on a second surface. */
 .role.owner {
-  background: rgba(233, 166, 60, 0.16);
-  color: var(--amber-deep);
+  background: rgba(22, 35, 61, 0.06);
+  color: var(--ink);
+  box-shadow: inset 0 0 0 1px var(--line);
 }
 .role.mem {
   background: rgba(22, 35, 61, 0.06);
@@ -3675,4 +3680,262 @@
 }
 .gap.drop-over .gap-line {
   background: var(--plan);
+}
+
+/* ===== The user's own settings + picture pages (ADR-0133 §1/§6/§7) =====
+   Mode-neutral shell chrome — these reuse `.new-head`/`.back`/`.set-*` from the
+   trip-settings screen rather than growing a parallel set. */
+
+.id-hero {
+  padding: 22px 16px 18px;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 11px;
+  border-bottom: 1px solid var(--line);
+}
+.id-hero-cap {
+  font-size: 11.5px;
+  color: var(--muted);
+}
+.id-change {
+  font: inherit;
+  font-size: 12.5px;
+  font-weight: 700;
+  color: var(--ink);
+  background: var(--screen);
+  border: 1px solid var(--line);
+  border-radius: 999px;
+  padding: 9px 17px;
+  cursor: pointer;
+  min-height: 40px;
+}
+.id-row {
+  padding: 12px 14px;
+  display: flex;
+  align-items: center;
+  gap: 12px;
+}
+.id-row + .id-row {
+  border-top: 1px solid var(--line);
+}
+.id-row .lab {
+  font-size: 12px;
+  color: var(--muted);
+  font-weight: 600;
+  min-width: 58px;
+}
+.id-row .val {
+  flex: 1;
+  font-size: 14.5px;
+  font-weight: 600;
+}
+.id-row .val.dim {
+  color: var(--muted);
+  font-weight: 500;
+}
+.id-input {
+  flex: 1;
+  min-width: 0;
+  font: inherit;
+  font-size: 14.5px;
+  font-weight: 600;
+  color: var(--ink);
+  background: var(--screen);
+  border: 1px solid var(--line);
+  border-radius: 12px;
+  padding: 9px 12px;
+}
+.id-input:focus-visible {
+  outline: 2.5px solid var(--teal);
+  outline-offset: 1px;
+}
+.id-google {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 11px 14px;
+  font-size: 12px;
+  color: var(--muted);
+  font-weight: 600;
+  border-top: 1px solid var(--line);
+}
+.id-google .dot {
+  width: 7px;
+  height: 7px;
+  border-radius: 50%;
+  background: var(--ok);
+  flex: none;
+}
+
+/* One primary action, one subordinate link — stacked, never side by side, so the
+   pair cannot read as a segmented "pick a source" toggle (ADR-0133 §6). */
+.pk-actions {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 2px;
+  padding: 4px 16px 12px;
+}
+.pk-link {
+  font: inherit;
+  font-size: 12px;
+  font-weight: 600;
+  color: var(--muted);
+  background: none;
+  border: 0;
+  padding: 11px 8px;
+  cursor: pointer;
+  text-decoration: underline;
+  text-underline-offset: 3px;
+  min-height: 40px;
+}
+.pk-link.danger {
+  color: var(--miss);
+}
+.pk-hue-label {
+  font-size: 11px;
+  font-weight: 700;
+  color: var(--muted);
+  padding: 13px 16px 0;
+}
+.pk-swatches {
+  display: grid;
+  grid-template-columns: repeat(5, 1fr);
+  gap: 11px;
+  padding: 10px 16px 14px;
+}
+.pk-sw {
+  aspect-ratio: 1;
+  border-radius: 50%;
+  border: 0;
+  cursor: pointer;
+  display: grid;
+  place-items: center;
+  font-family: var(--font-head);
+  font-size: 16px;
+  color: #12203a; /* fixed: dark ink on the pastel identity ramp, both themes */
+  position: relative;
+}
+.pk-sw[aria-pressed='true']::after {
+  content: '';
+  position: absolute;
+  inset: -4px;
+  border-radius: 50%;
+  border: 2.5px solid var(--ink);
+}
+.pk-sw:focus-visible {
+  outline: 2.5px solid var(--teal);
+  outline-offset: 4px;
+}
+
+/* ===== The roster + the shared member row/surface (ADR-0133 §9) ===== */
+
+/* The header cluster is a control now, not a `title`. The button is bare — the
+   avatars inside it carry the whole look — but it must meet the touch floor
+   (ADR-0017), which the old `<div>` never did. */
+.avatars-btn {
+  background: none;
+  border: 0;
+  padding: 4px 2px;
+  margin: 0;
+  cursor: pointer;
+  display: flex;
+  align-items: center;
+  min-height: 44px;
+}
+.avatars-btn:focus-visible {
+  outline: 2.5px solid var(--amber);
+  outline-offset: 2px;
+  border-radius: 999px;
+}
+
+/* A member row that opens the member. Same `.set-member` grammar as the settings
+   list — it IS that rule — plus the affordances a control needs. */
+.set-member-tap {
+  font: inherit;
+  text-align: start;
+  width: 100%;
+  background: none;
+  border-inline: 0;
+  border-top: 0;
+  cursor: pointer;
+  min-height: 44px;
+}
+.set-member-tap:hover {
+  background: rgba(22, 35, 61, 0.03);
+}
+.set-member-tap:focus-visible {
+  outline: 2.5px solid var(--teal);
+  outline-offset: -2px;
+}
+.member-chev {
+  width: 15px;
+  height: 15px;
+  color: var(--faint);
+  flex: 0 0 auto;
+}
+
+.roster-title {
+  font-family: var(--font-head);
+  font-size: 16px;
+  padding: 2px 4px 8px;
+  display: flex;
+  align-items: baseline;
+  gap: 8px;
+}
+.roster-count {
+  font-family: var(--font-body);
+  font-size: 11.5px;
+  color: var(--faint);
+  font-weight: 700;
+}
+.roster-list {
+  border-top: 1px solid var(--line);
+}
+.roster-foot {
+  font-size: 11px;
+  color: var(--faint);
+  line-height: 1.6;
+  padding: 12px 4px 0;
+  border-top: 1px solid var(--line);
+  margin-top: 6px;
+}
+
+/* The member surface's identity block is now a centred hero + detail rows, since it
+   answers "who is this" rather than only hosting two verbs. */
+.ms-who {
+  flex-direction: column;
+  gap: 9px;
+  padding: 4px 4px 14px;
+}
+.ms-name {
+  font-family: var(--font-head);
+  font-size: 18px;
+}
+.ms-facts {
+  border-bottom: 1px solid var(--line);
+  margin-bottom: 8px;
+}
+.ms-fact {
+  display: flex;
+  align-items: baseline;
+  gap: 10px;
+  padding: 9px 4px;
+  font-size: 13.5px;
+}
+.ms-fact + .ms-fact {
+  border-top: 1px solid var(--line);
+}
+.ms-fact .k {
+  color: var(--muted);
+  font-size: 12px;
+  font-weight: 600;
+  min-width: 66px;
+}
+.ms-fact .v {
+  font-weight: 600;
+}
+.ms-fact .v.mono {
+  font-family: var(--font-mono);
 }

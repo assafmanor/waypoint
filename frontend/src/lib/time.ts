@@ -114,6 +114,16 @@ export function formatTripDates(
   return withYear ? `${range} ${DOT_SEPARATOR} ${end.getUTCFullYear()}` : range;
 }
 
+/** A day+month date in the SAME numeric format trip dates use (`14.03`) — zero-padded
+ *  and dot-separated, off the one `he-IL` formatter, so a second surface can't invent
+ *  its own shape. The member surface's joined date is the second caller (ADR-0133 §9).
+ *
+ *  Formatted in UTC like every other date here: these are calendar dates, not
+ *  instants to localise. */
+export function formatDayMonth(iso: string): string {
+  return tripDateNumeric.format(new Date(iso));
+}
+
 /** Wall-clock parts for an instant, rendered in a specific IANA timezone. */
 export function tzParts(at: Date, timeZone: string) {
   const parts = new Intl.DateTimeFormat('en-US', {

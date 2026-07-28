@@ -6,6 +6,7 @@
 // This is also what backend response validation and OpenAPI generation read from.
 
 import { z } from 'zod';
+import { avatarChoiceSchema, identityHueSchema } from './identity';
 
 export const idSchema = z.string();
 export type ID = string;
@@ -81,7 +82,16 @@ export const userSchema = z.object({
   id: idSchema,
   email: z.string(),
   displayName: z.string(),
-  avatarColor: z.string(),
+  // Identity, per ADR-0133. `avatarHue` is a ramp KEY (never a hex, so the dark
+  // remap reaches it) and is always present on the wire — the column is nullable
+  // for "never chosen" and the server resolves it via `resolveAvatarHue`, so no
+  // client ever has to answer that question or fall back.
+  avatarHue: identityHueSchema,
+  avatarChoice: avatarChoiceSchema,
+  // The `picture` Google returns — a fact from the provider, refreshed at each
+  // sign-in, never user-edited. Kept even when the user is on `initials`, which is
+  // what makes "use my Google photo" a real way back rather than a dead end.
+  googleAvatarUrl: z.string().nullable(),
   createdAt: z.string(),
 });
 export type User = z.infer<typeof userSchema>;
@@ -277,7 +287,7 @@ export type MaybeItem = z.infer<typeof maybeItemSchema>;
 export const tripSnapshotSchema = z.object({
   trip: tripSchema,
   members: z.array(membershipSchema),
-  // Display info for each member (displayName/avatarColor) — Membership only
+  // Display info for each member (displayName/avatarHue/picture) — Membership only
   // carries userId/role, so the Header's avatar row needs this alongside it.
   users: z.array(userSchema),
   events: z.array(tripEventSchema),

@@ -11,7 +11,8 @@ import {
   eventStatusSchema,
   membershipRoleSchema,
 } from './entities';
-import { MAX_TRIP_NAME_LENGTH } from './constants';
+import { avatarChoiceSchema, identityHueSchema } from './identity';
+import { MAX_DISPLAY_NAME_LENGTH, MAX_TRIP_NAME_LENGTH } from './constants';
 
 /** Client-generated id (cuid/uuid). Server validates format only. ADR-0018. */
 // ponytail: charset+length guard, tighten to exact cuid2/uuid grammar if it ever matters.
@@ -393,7 +394,7 @@ export type InvitePreview = z.infer<typeof invitePreviewSchema>;
 export const removedMemberSchema = z.object({
   userId: z.string(),
   displayName: z.string(),
-  avatarColor: z.string(),
+  avatarHue: identityHueSchema,
   blockedAt: z.string(),
 });
 export type RemovedMember = z.infer<typeof removedMemberSchema>;
@@ -409,3 +410,20 @@ export type UpdateMembershipPrefsInput = z.infer<typeof updateMembershipPrefsSch
 /** `POST /trips/join/:token` body — same field, optional (defaults to the Prisma column default). */
 export const joinTripSchema = updateMembershipPrefsSchema.partial();
 export type JoinTripInput = z.infer<typeof joinTripSchema>;
+
+/** `PATCH /me` — the only write path onto your own `User` (ADR-0133 §1/§11).
+ *
+ *  Every field is optional and a partial patch, LWW like the trip patch (ADR-0012).
+ *  `avatarHue` is a ramp KEY, so an unknown colour is a 400 rather than an
+ *  un-rendered hex; `.nullable()` on it means "hand this back to the derivation"
+ *  exactly the way ADR-0107's zone chip clears a manual override to null.
+ *  `displayName` is trimmed and length-capped because it renders on every
+ *  co-member's roster — it is shared state, not a private label. */
+export const updateMeSchema = z
+  .object({
+    displayName: z.string().trim().min(1).max(MAX_DISPLAY_NAME_LENGTH).optional(),
+    avatarChoice: avatarChoiceSchema.optional(),
+    avatarHue: identityHueSchema.nullable().optional(),
+  })
+  .refine((v) => Object.keys(v).length > 0, { message: 'patch must change at least one field' });
+export type UpdateMeInput = z.infer<typeof updateMeSchema>;

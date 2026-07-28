@@ -36,6 +36,19 @@
      (the 9 EventCategory values fold onto these 5, see CATEGORY_PIN_HUE). Values
      ported verbatim from mockups/map-tab-v1.html. Commitment (hard/soft) is the
      shape grammar, not the fill. */
+  /* Avatar identity ramp (ADR-0133 §5) — the decorative palette's other half,
+     beside the pin hues below. Outside the semantic trio, and deliberately LOWER
+     CHROMA than `--cat-*`: an avatar in the chrome and a category pin on the Map
+     canvas are on screen together, and chroma is the channel that keeps them
+     apart even where hue angles are close. All pastel so ONE dark ink clears
+     contrast on every hue in both themes — that is what keeps the Avatar
+     primitive from needing a per-hue ink table. */
+  --id-plum: #b98ac9;
+  --id-rose: #d98ca8;
+  --id-moss: #9db585;
+  --id-denim: #8496b5;
+  --id-cocoa: #b99483;
+
   --cat-food: #e8998a;
   --cat-lodging: #9c8ce8;
   --cat-transit: #8cb6e8;
@@ -259,6 +272,15 @@ body {
   --miss: #e07a6e;
   /* Category pins, nudged brighter so the pastels clear the dark board (dark is
      readiness-only today, ADR-0028/0105 — inert until data-theme=dark is set). */
+  /* Identity ramp, lifted like the pin hues so a pastel ground still carries the
+     same dark ink on a deep surface (ADR-0133 §5). Owes a real dark-mode look
+     before the theme toggle ships — see the backlog line. */
+  --id-plum: #c79cd4;
+  --id-rose: #e39db6;
+  --id-moss: #adc396;
+  --id-denim: #96a6c4;
+  --id-cocoa: #c7a695;
+
   --cat-food: #f0a99a;
   --cat-lodging: #ab9cf0;
   --cat-transit: #9cc2f0;

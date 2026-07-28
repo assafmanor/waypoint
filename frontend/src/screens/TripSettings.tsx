@@ -27,7 +27,6 @@ import { useIsOffline, useOutboxCount } from '../lib/outbox';
 import { formatTripDates } from '../lib/time';
 import { allowMemberBack, createInvite, fetchRemovedMembers, rotateInvite } from '../lib/api';
 import {
-  AVATAR_INITIAL_LENGTH,
   DEFAULT_TRIP_ICON,
   DEVICE_LOCALE,
   DEVICE_TIMEZONE,
@@ -36,6 +35,9 @@ import {
 } from '../constants';
 import { NavArrow } from '../ui/NavArrow';
 import { t } from '../i18n/he';
+import { Avatar } from '../ui/primitives/Avatar';
+import { MemberRow } from '../ui/domain/MemberRow';
+import { MemberSheet } from '../ui/domain/MemberSheet';
 
 // Currency stays a small stable select; timezone is now the shared ZonePicker
 // over the full IANA set (ADR-0113 §6), replacing the old 5-item TZ_OPTIONS. The
@@ -277,33 +279,19 @@ export function TripSettings() {
           {members.map((m) => {
             const u = userFor(m.userId);
             const isMe = m.userId === myId;
+            if (!u) return null;
             return (
-              <div className="set-member" key={m.id}>
-                <div className="av" style={{ background: u?.avatarColor }}>
-                  {u?.displayName.slice(0, AVATAR_INITIAL_LENGTH)}
-                </div>
-                <div className="mn">
-                  {u?.displayName}
-                  {isMe && (
-                    <span className="mr">
-                      {' '}
-                      {DOT_SEPARATOR} {t.settings.you}
-                    </span>
-                  )}
-                </div>
-                <span className={`role ${m.role === 'admin' ? 'owner' : 'mem'}`}>
-                  {m.role === 'admin' ? t.settings.roleAdmin : t.settings.rolePeer}
-                </span>
+              <MemberRow key={m.id} person={u} role={m.role} isMe={isMe}>
                 {isAdmin && !isMe && (
                   <button
                     className="kebab"
                     onClick={() => setSheetFor(m)}
-                    aria-label={t.settings.memberActions(u?.displayName ?? '')}
+                    aria-label={t.settings.memberActions(u.displayName)}
                   >
                     {ICONS.more}
                   </button>
                 )}
-              </div>
+              </MemberRow>
             );
           })}
         </div>
@@ -315,9 +303,7 @@ export function TripSettings() {
             <div className="set-card">
               {removed.map((r) => (
                 <div className="set-member" key={r.userId}>
-                  <div className="av" style={{ background: r.avatarColor }}>
-                    {r.displayName.slice(0, AVATAR_INITIAL_LENGTH)}
-                  </div>
+                  <Avatar person={r} size="inherit" className="av" />
                   <div className="mn">{r.displayName}</div>
                   <button className="set-edit" onClick={() => allowBack(r.userId, r.displayName)}>
                     {t.settings.allowBack}
@@ -384,8 +370,8 @@ export function TripSettings() {
       {sheetFor && (
         <MemberSheet
           member={sheetFor}
-          name={userFor(sheetFor.userId)?.displayName ?? ''}
-          color={userFor(sheetFor.userId)?.avatarColor}
+          person={userFor(sheetFor.userId) ?? { displayName: '', avatarHue: 'denim' }}
+          isMe={sheetFor.userId === myId}
           onClose={() => setSheetFor(null)}
           onPromote={() => {
             promote(sheetFor);
@@ -634,43 +620,5 @@ function DetailsEditor({
         </button>
       </div>
     </form>
-  );
-}
-
-function MemberSheet({
-  member,
-  name,
-  color,
-  onClose,
-  onPromote,
-  onRemove,
-}: {
-  member: Membership;
-  name: string;
-  color?: string;
-  onClose: () => void;
-  onPromote: () => void;
-  onRemove: () => void;
-}) {
-  return (
-    <Sheet ariaLabel={t.settings.memberActions(name)} onClose={onClose}>
-      <div className="ms-who">
-        <div className="av" style={{ background: color }}>
-          {name.slice(0, AVATAR_INITIAL_LENGTH)}
-        </div>
-        <div className="mn">{name}</div>
-      </div>
-      {member.role !== 'admin' && (
-        <button className="ms-act" onClick={onPromote}>
-          <span className="ic">👑</span> {t.settings.promote}
-        </button>
-      )}
-      <button className="ms-act danger-item" onClick={onRemove}>
-        <span className="ic">🚪</span> {t.settings.removeMember}
-      </button>
-      <button className="ms-cancel" onClick={onClose}>
-        {t.settings.cancel}
-      </button>
-    </Sheet>
   );
 }
