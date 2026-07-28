@@ -476,15 +476,23 @@ function useNav() {
  *  next back peels here again; `{ remainsActive: false }` hands off (the owner
  *  closes/unmounts). The stack peels non-destructively off this result (ADR-0103).
  *  Latest-ref so a re-created handler is honored without re-registering (no
- *  duplicate stack entry across renders / Strict Mode). */
-export function useBackLayer(handle: () => BackResult) {
+ *  duplicate stack entry across renders / Strict Mode).
+ *
+ *  `active` is for a layer whose OWNER outlives it — a state a mounted screen
+ *  enters and leaves, rather than a component that appears and unmounts. The Map's
+ *  open query field is the first (ADR-0132 §5): the screen is always mounted, so it
+ *  cannot express "there is something to peel" by existing. Registering
+ *  unconditionally would make `hasOverlay` permanently true and back would never
+ *  leave the tab, so the flag gates the registration rather than the handler. */
+export function useBackLayer(handle: () => BackResult, active = true) {
   const { registerOverlay, unregisterOverlay } = useNav();
   const handleRef = useRef(handle);
   handleRef.current = handle;
   useEffect(() => {
+    if (!active) return;
     const id = registerOverlay(() => handleRef.current());
     return () => unregisterOverlay(id);
-  }, [registerOverlay, unregisterOverlay]);
+  }, [active, registerOverlay, unregisterOverlay]);
 }
 
 /** A dismissible overlay: one back closes it (its owner then unmounts). A thin

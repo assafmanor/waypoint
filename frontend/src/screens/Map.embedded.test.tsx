@@ -193,8 +193,8 @@ vi.mock('../ui/domain/MapPane', () => ({
 }));
 
 import { ToastProvider } from '../ui/Toast';
-import { NavProvider } from '../state/nav-state';
-import { MapScopeProvider } from '../state/map-scope-state';
+import { NavProvider, useAppBack } from '../state/nav-state';
+import { MapScopeProvider, useMapScope } from '../state/map-scope-state';
 import { setSimulatedNow } from '../lib/useClock';
 import { MapView } from './Map';
 import { MAP_CONTROLS_H, MAP_SHEET_VIEW } from '../constants';
@@ -207,12 +207,40 @@ function wrap(node: ReactNode) {
     <MemoryRouter>
       <ToastProvider>
         <NavProvider>
-          <MapScopeProvider>{node}</MapScopeProvider>
+          <MapScopeProvider>
+            {node}
+            <ChromeProbe />
+          </MapScopeProvider>
         </NavProvider>
       </ToastProvider>
     </MemoryRouter>
   );
 }
+
+/** The shell's half of the chrome reclaim (ADR-0132), which this suite cannot mount:
+ *  `AppShell` lives above these providers. So the probe stands in for it — it reads the
+ *  same lifted flag `App.tsx` reads, and drives a back through the same `useAppBack` a
+ *  header button or the system-back interceptor does. */
+let lastBack = '';
+function ChromeProbe() {
+  const { queryOpen } = useMapScope();
+  const back = useAppBack();
+  return (
+    <button
+      data-testid="chrome-probe"
+      data-query-open={String(queryOpen)}
+      onClick={() => {
+        lastBack = back().kind;
+      }}
+    />
+  );
+}
+const probe = () => screen.getByTestId('chrome-probe');
+const chromeReclaimed = () => probe().dataset.queryOpen === 'true';
+const pressBack = () => {
+  fireEvent.click(probe());
+  return lastBack;
+};
 
 const screenEl = () => document.querySelector('.map-screen') as HTMLElement;
 const sheet = () => document.querySelector('.wp-snapsheet') as HTMLElement;
@@ -1061,6 +1089,61 @@ describe('the embedded map’s shell (ADR-0121)', () => {
         expect(grab.getAttribute('aria-valuemax')).toBe('1');
         fireEvent.keyDown(grab, { key: 'ArrowDown' });
         expect(screenEl().dataset.view).toBe(MAP_SHEET_VIEW.half);
+      });
+    });
+
+    // ─── THE CHROME RECLAIM (ADR-0132) ─────────────────────────────────────────────
+    // The keyboard opens on FOCUS, so the state the surface has to survive begins before
+    // a character exists — which is why the chrome keys off the FIELD BEING OPEN and not
+    // off `searching`. On a resizing layout viewport the split absorbs the whole keyboard
+    // (43px of canvas at 390×844), and at 360×640 the pane cannot lay out Google's
+    // attribution at all, which is ADR-0106 §B rather than a density complaint.
+    describe('the query field takes the app chrome with it', () => {
+      const openSearch = () => fireEvent.click(listButton(t.map.search.button));
+
+      it('reclaims the chrome on the OPEN tap, before anything is typed', () => {
+        seed();
+        render(wrap(<MapView />));
+        expect(chromeReclaimed()).toBe(false);
+        openSearch();
+        // No `type(...)` here on purpose: this is the assertion that separates ADR-0132's
+        // trigger from ADR-0131's `searching`.
+        expect(chromeReclaimed()).toBe(true);
+      });
+
+      it('gives it back when the field closes', () => {
+        seed();
+        render(wrap(<MapView />));
+        openSearch();
+        fireEvent.click(screen.getByRole('button', { name: t.map.search.close }));
+        expect(chromeReclaimed()).toBe(false);
+      });
+
+      // A surface that hid the header AND the tab bar changed "where am I", so back has
+      // to undo that before it leaves the tab. It is a back LAYER rather than a rule in
+      // `resolveBack` — the mechanism `resolveBack` already consults first.
+      it('back closes the field instead of leaving the tab, and only while it is open', () => {
+        seed();
+        render(wrap(<MapView />));
+        // Nothing open: back is not ours to handle.
+        expect(pressBack()).not.toBe('close-overlay');
+        openSearch();
+        expect(pressBack()).toBe('close-overlay');
+        expect(chromeReclaimed()).toBe(false);
+        expect(screen.queryByPlaceholderText(t.map.search.placeholder)).toBeNull();
+        // …and it HANDS OFF rather than repeating: the next back is structural again.
+        expect(pressBack()).not.toBe('close-overlay');
+      });
+
+      // The flag outlives this screen (it is lifted so the header can read it), so an
+      // unmount that left it set would strand the whole app with no chrome.
+      it('unmounting the tab with the field open gives the chrome back', () => {
+        seed();
+        const view = render(wrap(<MapView />));
+        openSearch();
+        expect(chromeReclaimed()).toBe(true);
+        view.rerender(wrap(<div />));
+        expect(chromeReclaimed()).toBe(false);
       });
     });
 

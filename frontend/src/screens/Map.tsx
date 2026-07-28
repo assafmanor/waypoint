@@ -71,7 +71,7 @@ import { countPointsInBounds, pointInBounds, type LatLng, type MapBounds } from 
 import { mapPaneAvailable, mapsConfig } from '../lib/map-config';
 import { stopHeightCss } from '../lib/snap-sheet';
 import { countVisible, revealRows, visibleItems, type Revealed } from '../lib/filter-reveal';
-import { daySelectTarget } from '../state/nav-state';
+import { daySelectTarget, useBackLayer } from '../state/nav-state';
 import { useNavigate } from 'react-router-dom';
 import { formatTime, relativeDayLabel } from '../lib/time';
 import { eventEdgeTransition } from '../lib/transitions';
@@ -139,8 +139,15 @@ export function MapView() {
   // reversed (ADR-0109's 2026-07-27 amendment), so before the trip starts Plan opens
   // on day 1 with `כל הימים` one tap away. Still keyed on `mode`: a mode switch is a
   // context reset, so whatever scope you left Trip in, Plan opens day-scoped too.
-  const { allDays, setAllDays, focusPlaceId, clearFocus, locationOffered, markLocationOffered } =
-    useMapScope();
+  const {
+    allDays,
+    setAllDays,
+    focusPlaceId,
+    clearFocus,
+    locationOffered,
+    markLocationOffered,
+    setQueryOpen,
+  } = useMapScope();
   useEffect(() => setAllDays(false), [mode, setAllDays]);
   // The other way out of all-days: arriving on a different day (a `daySelectTarget`
   // from another surface, a deep link). Choosing a day on the strip is the INTENT
@@ -166,6 +173,17 @@ export function MapView() {
   const [disclosure, setDisclosure] = useState<MapRowDisclosure | null>(null);
   const facetsOpen = disclosure === MAP_ROW_DISCLOSURE.facets;
   const [query, setQuery] = useState('');
+  // The field is OPEN, which is a weaker fact than a query being live and the one the
+  // app CHROME keys off (ADR-0132 §1): the keyboard opens on focus, before a character
+  // exists, so the state the surface has to survive starts here. Published through the
+  // Map's lifted view state, where `allDays` already talks to the header — the shell is
+  // told what layout this surface wants, never what it is doing.
+  const queryFieldOpen = disclosure === MAP_ROW_DISCLOSURE.query;
+  useEffect(() => {
+    setQueryOpen(queryFieldOpen);
+    // Leaving the tab must give the chrome back, since the state outlives this screen.
+    return () => setQueryOpen(false);
+  }, [queryFieldOpen, setQueryOpen]);
   // A query is LIVE, as opposed to the field merely being open. Everything downstream
   // keys on this: the list's predicate, the pin filter, the aside promotion (§4), and
   // the two readers that ask "is this pin's row absent from the list?".
@@ -200,6 +218,17 @@ export function MapView() {
       setSheetView(MAP_SHEET_VIEW.half);
     }
   };
+  // …and a surface that has hidden the header AND the tab bar changed "where am I", so
+  // back has to undo that before it leaves the tab (ADR-0132 §5). The design said "one
+  // rule in `resolveBack`"; the mechanism for exactly this already existed — a back
+  // LAYER, which is what `resolveBack` consults first — so nothing there is edited and
+  // nav-state learns nothing about this screen. Registered only while the field is open
+  // (the screen itself never unmounts), and it hands off rather than repeating: one back
+  // closes the field, the next leaves the tab.
+  useBackLayer(() => {
+    openDisclosure(null);
+    return { remainsActive: false };
+  }, queryFieldOpen);
   // A coordless Place-lite the user chose to enrich from the map (＋ מיקום).
   const [enrichTarget, setEnrichTarget] = useState<Place | null>(null);
   // A booking reached through a selected row's way-in (§8) — `BookingDetail` is a
