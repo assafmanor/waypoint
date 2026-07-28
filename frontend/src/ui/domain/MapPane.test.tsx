@@ -108,6 +108,15 @@ class FakeZoomMap {
   setCenter() {}
   setZoom() {}
   panTo() {}
+  centre = { lat: 0, lng: 0 };
+  getCenter() {
+    const c = this.centre;
+    return { lat: () => c.lat, lng: () => c.lng };
+  }
+  moveCamera(at: { center?: { lat: number; lng: number }; zoom?: number }) {
+    if (at.center) this.centre = at.center;
+    if (at.zoom != null) this.zoom = at.zoom;
+  }
   readonly fits: { padding?: { bottom: number } }[] = [];
   fitBounds(_bounds: unknown, padding?: { bottom: number }) {
     this.fits.push({ padding });

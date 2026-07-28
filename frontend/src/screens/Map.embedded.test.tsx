@@ -1485,6 +1485,59 @@ describe('the embedded map’s shell (ADR-0121)', () => {
   // ADR-0109 session-134: opening the tab offers to locate you, rather than waiting
   // for a chip tap. What §6 was protecting is what these assert — a cold OS dialog
   // never appears, and a refusal is never nagged.
+  // ADR-0129 §1. Reported off a real map: being zoomed for tapping a pin you can already
+  // SEE is inconvenient, so selection pans and the ZOOM becomes an explicit intent —
+  // carried by the card's own badge, which is the verb that badge already has on every
+  // other surface (ADR-0121's session-148 amendment).
+  describe('zooming to a place is an intent, not a side effect (ADR-0129 §1)', () => {
+    const openCard = () => {
+      seed();
+      render(wrap(<MapView />));
+      fireEvent.click(toggle(t.map.view.map));
+      fireEvent.click(pin('museum')!);
+      return placeCard()!;
+    };
+
+    it('the card’s badge is a control, and the list’s badges are not', () => {
+      const card = openCard();
+      const badge = card.querySelector('.map-badge')!;
+      expect(badge.getAttribute('role')).toBe('button');
+      expect(badge.getAttribute('aria-label')).toBe(t.map.frameOnPlace);
+      // Reuses session 148's affordance rather than growing a second one.
+      expect(badge.className).toContain('wp-placebadge');
+    });
+
+    it('the list’s own badges stay inert', () => {
+      seed();
+      render(wrap(<MapView />));
+      const badge = row('museum')!.querySelector('.map-badge')!;
+      expect(badge.getAttribute('role')).toBeNull();
+      expect(badge.className).not.toContain('wp-placebadge');
+    });
+
+    // What the tap does: hands the camera a place to FRAME. The pane's own test covers
+    // what the camera then does with it; what belongs here is that the intent is sent,
+    // and that it is a fresh object so the same place can be re-framed on a second tap.
+    it('tapping it asks the camera to frame that place, and again on a second tap', () => {
+      const card = openCard();
+      const badge = card.querySelector('.map-badge')!;
+      fireEvent.click(badge);
+      const first = paneProps.current.framePlace;
+      expect(first).toEqual({ lat: 35.6, lng: 139.6 });
+      fireEvent.click(badge);
+      expect(paneProps.current.framePlace).toEqual(first);
+      expect(paneProps.current.framePlace).not.toBe(first);
+    });
+
+    // And the selection itself sends nothing: a pin tap is a pan, decided in the camera.
+    it('selecting a pin does NOT ask for a frame', () => {
+      seed();
+      render(wrap(<MapView />));
+      fireEvent.click(pin('museum')!);
+      expect(paneProps.current.framePlace).toBeNull();
+    });
+  });
+
   // ── Phase 8: the canvas's own chrome (ADR-0126) ───────────────────────────
   // The pane's own markup is `MapPane`'s test; what belongs here is the half the
   // SCREEN owns — the order, the two headers, the shortfall the list has to state, and

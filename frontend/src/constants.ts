@@ -310,6 +310,43 @@ export const MAP_ZOOM = {
   WORLD: 2,
 } as const;
 
+/** **How much ground to show around a place you were sent to look at** (ADR-0129 §2).
+ *  A fixed zoom cannot tell a dense district from an empty valley, so the span is
+ *  derived from the distance to the nearest other pins and clamped both ways. In degrees
+ *  of latitude, which is the unit the bounds are built in; ~0.01° is roughly 1.1km.
+ *
+ *  - `NEIGHBOURS` — how many of the nearest pins count as "what is around here". The
+ *    tenth-nearest says nothing about that and only drags the frame out.
+ *  - `NEIGHBOUR_HEADROOM` — how much further than the neighbours to show, so they sit
+ *    inside the frame with air around them rather than on its edge.
+ *  - `MIN_SPAN_DEG` — the floor. Coincident pins would otherwise fit a zero-area box and
+ *    snap to building level, which is ADR-0121 §7's degenerate case.
+ *  - `MAX_SPAN_DEG` — the ceiling. Without it one distant neighbour frames a region and
+ *    the place you came to see is a speck.
+ *  - `DEFAULT_SPAN_DEG` — a place with no neighbours at all. The old fixed behaviour,
+ *    now only the fallback rather than the rule.
+ *
+ *  All five are derived defaults in the device-pass cluster: "close enough to read a
+ *  place in context" is a legibility judgement (ADR-0127 §1's posture, unchanged). */
+export const MAP_FOCUS = {
+  NEIGHBOURS: 3,
+  NEIGHBOUR_HEADROOM: 1.6,
+  MIN_SPAN_DEG: 0.0025,
+  MAX_SPAN_DEG: 0.03,
+  DEFAULT_SPAN_DEG: 0.01,
+} as const;
+
+/** **The camera's own animation** (ADR-0129 §3). Google animates `fitBounds` "depending
+ *  on an internal heuristic" and `panTo` only when the move is shorter than the
+ *  viewport, so smooth movement is not something the API can be asked for — it is
+ *  something we drive, with `moveCamera` (documented as instant) once per frame.
+ *
+ *  `DURATION_MS` is one duration for every camera move, so a day change, a chip and an
+ *  arrival all read as the same object moving. Under `prefers-reduced-motion` the whole
+ *  thing collapses to a single `moveCamera`, which is the "it still moves, only the
+ *  easing goes" rule the sheet and the pins already follow (ADR-0098 §4). */
+export const MAP_CAMERA_EASE = { DURATION_MS: 480 } as const;
+
 /** What the place card reserves at the bottom of the canvas while it is up (ADR-0122
  *  §7, deferred there and built in ADR-0128 §2) — the attribution it must clear, the
  *  float gap, and the card's own body.

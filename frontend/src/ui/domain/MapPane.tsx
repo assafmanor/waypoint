@@ -99,11 +99,13 @@ export interface MapPaneProps {
   /** The readout was tapped: order the in-view places first. The intent lives in the
    *  SCREEN, like `sortByDistance` — nothing about it reaches the map instance. */
   onAreaSort: () => void;
-  /** An arrival that already knows what you came to look at (`מפה` on an event or a
-   *  booking). It OWNS the next framing rather than being panned on top of one, which
-   *  is what stops the opening fit overwriting it (ADR-0127 §3). Memoized by the
-   *  screen, like every other object prop here. */
-  arrivalFocus?: LatLng | null;
+  /** A place the camera has been asked to **frame** — either of the two intents that
+   *  mean "take me to this one" (ADR-0129 §1): an arrival via `מפה` on an event or a
+   *  booking, and the place card's own badge. It OWNS the next framing rather than being
+   *  panned on top of one, which is what stops the opening fit overwriting it (ADR-0127
+   *  §3), and it is spent once. A selection on its own does NOT come through here — that
+   *  pans and never zooms. */
+  framePlace?: LatLng | null;
   /** The place card is up, so a fit reserves the band it occupies (ADR-0128 §2). A
    *  boolean rather than a height: the number belongs in `constants.ts` with the rest of
    *  the card's geometry, not in the screen. */
@@ -156,7 +158,7 @@ function MapPaneInner({
   areaSorted,
   onAreaSort,
   onLocate,
-  arrivalFocus,
+  framePlace,
   cardOpen,
 }: MapPaneProps) {
   const paneRef = useRef<HTMLDivElement>(null);
@@ -216,7 +218,7 @@ function MapPaneInner({
           areaSorted={areaSorted}
           onAreaSort={onAreaSort}
           onLocate={onLocate}
-          arrivalFocus={arrivalFocus}
+          framePlace={framePlace}
           cardOpen={cardOpen}
         />
       </APIProvider>
@@ -343,7 +345,7 @@ function MapCameraControls({
   areaSorted,
   onAreaSort,
   onLocate,
-  arrivalFocus,
+  framePlace,
   cardOpen,
 }: {
   pins: readonly MapPin[];
@@ -353,7 +355,7 @@ function MapCameraControls({
   areaSorted: boolean;
   onAreaSort: () => void;
   onLocate: () => void;
-  arrivalFocus?: LatLng | null;
+  framePlace?: LatLng | null;
   cardOpen?: boolean;
 }) {
   const map = useMap(MAP_ID);
@@ -377,7 +379,7 @@ function MapCameraControls({
   } = useMapCamera(map, {
     points,
     setSignal,
-    arrivalFocus,
+    framePlace,
     // The card's band, so a fit does not put a pin under it (ADR-0128 §2). The hook
     // reads it through a ref, so this changing on a tap re-pads the NEXT fit without
     // re-running the framing effect — i.e. without moving the camera on a pin tap.
