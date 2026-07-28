@@ -88,6 +88,7 @@ import './screens.css';
 import { Avatar } from './ui/primitives/Avatar';
 import { RosterSheet } from './ui/RosterSheet';
 import { ltrIsolate } from './lib/bidi';
+import { memberCluster } from './lib/member-cluster';
 const UserSettings = lazy(() => import('./screens/UserSettings'));
 const UserPicture = lazy(() => import('./screens/UserPicture'));
 
@@ -185,9 +186,12 @@ function Header({
   // The account avatar (ringed, opens the account sheet) already shows "me" —
   // the member cluster is everyone else, capped with a "+N" overflow bubble
   // (app-shell.md §6, PR #57).
-  const others = users.filter((u) => u.id !== me?.user.id);
-  const visibleMembers = others.slice(0, MEMBER_AVATAR_CAP);
-  const overflowMembers = others.slice(MEMBER_AVATAR_CAP);
+  const {
+    others,
+    visible: visibleMembers,
+    overflow: overflowMembers,
+    show: showCluster,
+  } = memberCluster(users, me?.user.id);
   // `navigator.onLine` (T-013) misses cases like a hard reload where the boot
   // fetch itself fails but the browser's online flag never flips (some
   // environments' 'offline' event is unreliable) — usingCachedSnapshot (T-058)
@@ -272,23 +276,32 @@ function Header({
           {/* A real control, not a `title` (ADR-0133 §9): hover is a desktop luxury
               (root rule 6 / ADR-0017), and the cap left an inert `+N` hiding most of
               the group. One tap now lists everyone, which is what makes the cap a
-              rendering detail again rather than a truncation. */}
-          <button
-            className="avatars-btn"
-            onClick={onOpenRoster}
-            aria-label={t.settings.rosterOpen(users.length)}
-          >
-            <span className="avatars">
-              {overflowMembers.length > 0 && (
-                /* `ltrIsolate` so the sign stays in front of the digits — bare
-                   `+{n}` rendered as `n+` in the RTL chrome (ADR-0118 / §10). */
-                <span className="av more">{ltrIsolate(`+${overflowMembers.length}`)}</span>
-              )}
-              {visibleMembers.map((u) => (
-                <Avatar key={u.id} person={u} size="inherit" className="av" />
-              ))}
-            </span>
-          </button>
+              rendering detail again rather than a truncation.
+
+              ABSENT when you are the only member, not empty. The cluster renders
+              `others`, so on a solo trip it drew nothing — leaving an invisible ~8×44
+              tap target that opened a roster listing only you, which the account
+              avatar beside it already shows. Same rule as every other derived control
+              here: no source, no control (ADR-0045 / ADR-0109 §6). The party still
+              lives in trip settings, which is also where the invite is. */}
+          {showCluster && (
+            <button
+              className="avatars-btn"
+              onClick={onOpenRoster}
+              aria-label={t.settings.rosterOpen(users.length)}
+            >
+              <span className="avatars">
+                {overflowMembers.length > 0 && (
+                  /* `ltrIsolate` so the sign stays in front of the digits — bare
+                     `+{n}` rendered as `n+` in the RTL chrome (ADR-0118 / §10). */
+                  <span className="av more">{ltrIsolate(`+${overflowMembers.length}`)}</span>
+                )}
+                {visibleMembers.map((u) => (
+                  <Avatar key={u.id} person={u} size="inherit" className="av" />
+                ))}
+              </span>
+            </button>
+          )}
           {me && (
             <Avatar
               person={me.user}
