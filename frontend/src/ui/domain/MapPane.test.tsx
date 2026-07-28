@@ -293,15 +293,16 @@ describe('MapPane — our markup, not PinElement (ADR-0121 §6)', () => {
       expect(onCanvasTap).not.toHaveBeenCalled();
     });
 
-    // Google's own landmark/attraction icons are visible again (ADR-0125 §6) and they open
-    // Google's place card. That tap arrives as a map click carrying a `placeId`, so reading
-    // it as background would clear our selection behind the card that just opened.
-    it("a tap on one of GOOGLE's landmark icons is not a tap on the canvas either", () => {
+    // Google's own sight icons are visible again (ADR-0125 §6) and a tap on one arrives here
+    // as a map click carrying a `placeId`. It clears like any other, and that is the point:
+    // Google answers the tap with its own place card, ours renders on the same canvas at the
+    // `map` stop, and exempting the POI tap would stack the two.
+    it("a tap on one of GOOGLE's sight icons clears the selection, so two cards never stack", () => {
       const onCanvasTap = vi.fn();
       paint({ onCanvasTap });
       nextTap.placeId = 'ChIJLU7jZClu5kcR4PcOOO6p3I0';
       fireEvent.click(document.querySelector('[data-map]')!);
-      expect(onCanvasTap).not.toHaveBeenCalled();
+      expect(onCanvasTap).toHaveBeenCalledTimes(1);
     });
   });
 

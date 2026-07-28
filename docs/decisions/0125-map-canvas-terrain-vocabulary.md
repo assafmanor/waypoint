@@ -97,7 +97,11 @@ Everything commercial stays off: `restaurant`, `cafe`, `bar`, `winery`, `shoppin
 
 So the canvas reads at a glance as _grey pin = a thing that exists, coloured pin = a thing on your trip_. Nothing is added to the colour budget, and the reference layer cannot be mistaken for the itinerary. `peak` goes further and colours its pin into the ground (`pinFillColor` = the land), since a mountain wants a name more than a marker.
 
-**One code knock-on, handled.** Google's icons are clickable (`clickableIcons` was never disabled, so it defaults on — no change needed to get the tap). But that tap arrives as a **map click carrying a `placeId`**, and `MapPane`'s handler treated anything that wasn't one of our `.map-pin` overlays as background — meaning it cleared the user's selection behind the place card Google had just opened. The guard now returns early on `event.detail.placeId`, with a test for it.
+**One code knock-on, and the shipped behaviour turns out to be the right one.** Google's icons are clickable (`clickableIcons` was never disabled, so it defaults on — no change was needed to get the tap). That tap arrives as a **map click carrying a `placeId`**, so `MapPane`'s handler — which clears the selection for anything that isn't one of our `.map-pin` overlays — clears on it.
+
+A draft of this ADR **exempted** the POI tap, on the reasoning that it "clears the selection behind the card Google just opened". The owner rejected it: _"they might go one over another and become a mess"_ — and that is exactly right. ADR-0122 §7 renders our selected place as a **card on the canvas** at the `map` stop, which is the same surface Google puts its place card on, so exempting the tap **stacks two cards**. Clearing is also the platform idiom: tapping a new thing replaces the selection in every map app.
+
+So the handler is unchanged, with the reasoning now recorded in the code and pinned by a test — because "skip when `event.detail.placeId` is set" reads like an obvious fix and is the bug.
 
 ### 7. Trails and pedestrian malls are trip-relevant infrastructure, not roads
 
