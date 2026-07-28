@@ -14,22 +14,55 @@ free work that was wrongly parked behind a cost gate.** The other five are new, 
 into "the two halves of the split disagree" (cheap, decided) and three surfaces that need a design
 session before anyone builds them.
 
+> **Read the `#18` correction below before trusting this headline.** The "free work wrongly parked" is
+> only the day-scoped-grammar defect; #18 itself, which this note billed with it, is a design job about
+> the search **surface** — so the count is **four** design surfaces, not three.
+
 They continue the second pass's numbering — **#16–#23** — because they are reports against the same
 shipped tab, and a second `#1` in the same epic would be unreadable. The new phases continue it too
 (**7–11**, not a fresh 1–5) for the same reason.
 
 ## The reports, traced
 
-| #   | Report                                         | Traced to                                                                                                                                                                                                                                                                                                         | Verdict                                |
-| --- | ---------------------------------------------- | ----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- | -------------------------------------- |
-| 16  | Numbering makes sense per day, not in all-days | `buildPinOrderIndex(dayScoped, { onDate: scopedDate })` and `scopedDate` is **`undefined`** in all-days (`Map.tsx:326`, `:481`), so `comparePlacesBySchedule` sequences the **whole trip**: a pin reads `27`. ADR-0121 §6 defined the number as the index in **the day's** sequence — in all-days there is no day | **Defect** against §6's own definition |
-| 17  | One-finger zoom (tap, then press and drag)     | `gestureHandling="greedy"` (`MapPane.tsx:124`) buys one-finger **pan**; zoom stays the pinch. Google's web gesture set is two-finger pinch / double-tap-in / two-finger-tap-out — **one-finger double-tap-drag is an Android/iOS SDK gesture**, same shape as session 135's my-location finding                   | Build + reconfirm; not a flag          |
-| 18  | Search should show results on the map          | `query` reaches **only** `searchRows` (`Map.tsx:446`). `pinsNow` filters on `matchesPlaceFilter` and never sees it (`:494`), and `cameraSignal` omits it (`:551`) — so typing changes the list and the canvas does not move or mark anything                                                                      | **Gap, and it is free** (see below)    |
-| 19  | Split "focus the filtered set" from "focus me" | One button, one `if`: `if (me) focus(me); else reframe(points)` (`MapPane.tsx:297`). This **answers session 135's open question for #5** — the owner's call is a separate control                                                                                                                                 | Decision: answered → design            |
-| 20  | Tapping locate again should zoom to me         | `focus` pans and never zooms (ADR-0121 §7), so a second tap on an already-centred map does nothing visible                                                                                                                                                                                                        | Phase 3's zoom ladder                  |
-| 21  | Past places should fade in the list too        | The row fades on a **human's** `skipped` only (`Map.tsx:1394`); the pin fades on the **clock** (`PIN_TIER.behind` → `PIN_TIER_CLASS` → the `skipped` class → `saturate(.3)`). Canvas and list disagree about "behind you" — session 144's finding, from the other side                                            | **Defect** (asymmetry)                 |
-| 22  | Booking phases labelled on the map             | The mechanism is built and has **two users**: `.pin-tag` renders `עכשיו` / `היעד הבא` (`MapPane.tsx:186`), and ADR-0063's `transitionLabel`/`eventTransitionKeys` already own the words (`צ׳ק-אין`, `המראה`). What is missing is the pre/during **vocabulary**, not a mechanism                                   | New surface: design                    |
-| 23  | The `X באזור` label could be a button          | `role="status" aria-live="polite"`, 11.5px, `padding: 5px 10px` ≈ **24px tall** (`map-pane.css:400`) — under design-language's 44×44 floor, and a live region is the wrong role for a control. Also: ADR-0106 §4 said pan/zoom **is** the area filter and no chip would ever be built                             | Decision + design                      |
+| #   | Report                                         | Traced to                                                                                                                                                                                                                                                                                                                                    | Verdict                                |
+| --- | ---------------------------------------------- | -------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- | -------------------------------------- |
+| 16  | Numbering makes sense per day, not in all-days | `buildPinOrderIndex(dayScoped, { onDate: scopedDate })` and `scopedDate` is **`undefined`** in all-days (`Map.tsx:326`, `:481`), so `comparePlacesBySchedule` sequences the **whole trip**: a pin reads `27`. ADR-0121 §6 defined the number as the index in **the day's** sequence — in all-days there is no day                            | **Defect** against §6's own definition |
+| 17  | One-finger zoom (tap, then press and drag)     | `gestureHandling="greedy"` (`MapPane.tsx:124`) buys one-finger **pan**; zoom stays the pinch. Google's web gesture set is two-finger pinch / double-tap-in / two-finger-tap-out — **one-finger double-tap-drag is an Android/iOS SDK gesture**, same shape as session 135's my-location finding                                              | Build + reconfirm; not a flag          |
+| 18  | Search should show results on the map          | **See the correction below** — the real trace is that search **is** `SearchOverlay` (ADR-0101, shared with the Index), which covers the canvas, so the answer renders as a list with the map hidden. (The original entry read: `query` reaches only `searchRows`, `pinsNow` never sees it, `cameraSignal` omits it — true, and unobservable) | **Gap; a design job, not a cheap one** |
+| 19  | Split "focus the filtered set" from "focus me" | One button, one `if`: `if (me) focus(me); else reframe(points)` (`MapPane.tsx:297`). This **answers session 135's open question for #5** — the owner's call is a separate control                                                                                                                                                            | Decision: answered → design            |
+| 20  | Tapping locate again should zoom to me         | `focus` pans and never zooms (ADR-0121 §7), so a second tap on an already-centred map does nothing visible                                                                                                                                                                                                                                   | Phase 3's zoom ladder                  |
+| 21  | Past places should fade in the list too        | The row fades on a **human's** `skipped` only (`Map.tsx:1394`); the pin fades on the **clock** (`PIN_TIER.behind` → `PIN_TIER_CLASS` → the `skipped` class → `saturate(.3)`). Canvas and list disagree about "behind you" — session 144's finding, from the other side                                                                       | **Defect** (asymmetry)                 |
+| 22  | Booking phases labelled on the map             | The mechanism is built and has **two users**: `.pin-tag` renders `עכשיו` / `היעד הבא` (`MapPane.tsx:186`), and ADR-0063's `transitionLabel`/`eventTransitionKeys` already own the words (`צ׳ק-אין`, `המראה`). What is missing is the pre/during **vocabulary**, not a mechanism                                                              | New surface: design                    |
+| 23  | The `X באזור` label could be a button          | `role="status" aria-live="polite"`, 11.5px, `padding: 5px 10px` ≈ **24px tall** (`map-pane.css:400`) — under design-language's 44×44 floor, and a live region is the wrong role for a control. Also: ADR-0106 §4 said pan/zoom **is** the area filter and no chip would ever be built                                                        | Decision + design                      |
+
+### CORRECTION (2026-07-28, owner-caught): #18 is about the search **surface**, not pin syncing
+
+**The trace below is true and describes the wrong problem.** The Map tab's search is `SearchOverlay` —
+ADR-0101's full-screen `Modal` `'full'` variant, shared with the Index — which **covers the canvas
+completely**. So "typing changes the list and the canvas does not move" describes a symptom **nobody can
+observe**: the map is not on screen while you are searching. The report ("search as an overlay of maps so
+that you instantly see them on the map") is about the surface — search should overlay the map rather than
+replace it — and pin syncing is a consequence of that, not the job.
+
+Two conclusions in this note are wrong as a result, and `backlog.md`'s Phase 10 line carries the corrected
+version:
+
+- **"No new shape, cheap"** — wrong. It is a layout change on the canvas whose control budget ADR-0122
+  just spent a design session setting, so Phase 10 is a **design session with a mockup**, then a build.
+  The `docs/planning/…-145` handoff written from this trace claimed "this changes no layout"; it changes
+  the layout entirely.
+- **"Not cost-gated"** (below) — half right, and the half it drops is a scoping call. The trip-places
+  half really is free. But both halves share **one overlay**, so reshaping it is where Phase 6a's #7
+  ("search needs a map") lives: the design either covers both, inheriting 6a's gate for the **research**
+  half only, or scopes itself to Trip mode and leaves Plan mode's overlay alone.
+
+What survives unchanged: the **day-scoped-grammar defect** really is free and really was parked behind the
+wrong gate. It is now standalone rather than folded into Phase 10 — it is a wrong context object with no
+design content, and pinning it to a design session was the over-correction.
+
+**The lesson worth keeping:** this trace followed the data flow (`query` → `searchRows` → not `pinsNow`)
+and never asked what is on screen while the flow runs. A trace that reads the plumbing but not the surface
+can be correct in every clause and still phase the work wrongly.
 
 ### #18 is not gated by Phase 6a, and that unparks a defect
 
@@ -132,16 +165,16 @@ the list below.
 
 ## Where each one lands
 
-| #   | Report                       | Phase                                                   |
-| --- | ---------------------------- | ------------------------------------------------------- |
-| 16  | all-days numbering           | **Phase 7** (new) — build                               |
-| 21  | past rows fade               | **Phase 7** (new) — build                               |
-| 19  | two controls, not one        | **Phase 8** (new) — design; behaviour lands in Phase 3  |
-| 23  | `באזור` becomes a button     | **Phase 8** (new) — design                              |
-| 20  | locate zooms on a repeat tap | **Phase 3** (existing) — joins the zoom ladder          |
-| 17  | one-finger zoom              | **Phase 9** (new) — reconfirm, design, build            |
-| 18  | search on the canvas         | **Phase 10** (new) — design + build, **not** cost-gated |
-| 22  | booking phase labels         | **Phase 11** (new) — design + build                     |
+| #   | Report                       | Phase                                                  |
+| --- | ---------------------------- | ------------------------------------------------------ |
+| 16  | all-days numbering           | **Phase 7** (new) — build                              |
+| 21  | past rows fade               | **Phase 7** (new) — build                              |
+| 19  | two controls, not one        | **Phase 8** (new) — design; behaviour lands in Phase 3 |
+| 23  | `באזור` becomes a button     | **Phase 8** (new) — design                             |
+| 20  | locate zooms on a repeat tap | **Phase 3** (existing) — joins the zoom ladder         |
+| 17  | one-finger zoom              | **Phase 9** (new) — reconfirm, design, build           |
+| 18  | search overlays the map      | **Phase 10** (new) — design (mockup) + build           |
+| 22  | booking phase labels         | **Phase 11** (new) — design + build                    |
 
 ### The sequencing, and the one dependency that matters
 
@@ -155,8 +188,11 @@ budgeting. Phase 3 was always going to have an ADR written at its head with no m
 means something on a real map); Phase 8 is the mockup half that has to precede it. They then share one
 device pass, along with everything else in Phase 3's tuning cluster.
 
-Phases 9, 10 and 11 are independent of all of the above and of each other. **Phase 10 is the cheapest of
-the three** and it retires a parked defect, so it is the natural filler between the device-gated ones.
+Phases 9, 10 and 11 are independent of all of the above and of each other. This note originally called
+**Phase 10 the cheapest of the three** and the natural filler between the device-gated ones; the correction
+above retires that claim — it is a design session about a surface, not a cheap build. What is left as the
+natural filler is the **day-scoped-grammar defect**, now standalone, which really is small and really does
+wait on nothing.
 
 ## Open questions for the owner
 
