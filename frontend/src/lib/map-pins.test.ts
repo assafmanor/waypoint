@@ -307,27 +307,41 @@ describe('the pin number is the day sequence, and nothing renumbers it (§6)', (
   });
 
   // Asserted in BOTH day scopes, since they are genuinely different derivations
-  // (frontend CLAUDE.md) — all-days numbers the whole trip's sequence.
-  it('all-days scope numbers the trip sequence, earliest day first', () => {
-    const index = buildPinOrderIndex(
-      [
-        ...usages({
-          places: [place('today-stop'), place('tomorrow-stop')],
-          events: [
-            event({ id: 'e1', placeId: 'today-stop', startsAt: at2('18:00') }),
-            event({
-              id: 'e2',
-              placeId: 'tomorrow-stop',
-              date: NEXT_DAY,
-              startsAt: `${NEXT_DAY}T09:00:00Z`,
-            }),
-          ],
-        }).values(),
+  // (frontend CLAUDE.md) — and this is the one the number does not survive. §6 defined
+  // it as the index in THE DAY's sequence, so with no day it sequenced the whole trip
+  // and a pin read `27`. Renumbering per day is the worse answer: two pins both
+  // reading `1` on one canvas, neither saying which day it is. The row states its day
+  // in words instead, which is where the number was ambiguous.
+  const trip = () =>
+    usages({
+      places: [place('today-stop'), place('tomorrow-stop')],
+      events: [
+        event({ id: 'e1', placeId: 'today-stop', startsAt: at2('18:00') }),
+        event({
+          id: 'e2',
+          placeId: 'tomorrow-stop',
+          date: NEXT_DAY,
+          startsAt: `${NEXT_DAY}T09:00:00Z`,
+        }),
       ],
-      { nameOf },
-    );
-    expect(index.get('today-stop')).toBe(1);
-    expect(index.get('tomorrow-stop')).toBe(2);
+    });
+
+  it('all-days scope numbers nothing — there is no day to be an index in', () => {
+    const all = [...trip().values()];
+    expect(buildPinOrderIndex(all, { nameOf })).toEqual(new Map());
+    // Day-scoped, the same fixture still numbers: the number is not gone, its scope is.
+    expect(buildPinOrderIndex(all, { nameOf, onDate: DAY }).get('today-stop')).toBe(1);
+  });
+
+  // The consequence worth pinning rather than rediscovering: with no numbers the
+  // `ORDER_SPREAD` nudge goes inert, so two upcoming pins tie and the tier z-order
+  // carries the whole ranking — which is all it was ever bounded to do.
+  it('all-days: the z-order nudge goes inert, and the tiers still rank', () => {
+    const index = buildPinOrderIndex([...trip().values()], { nameOf });
+    const z = (placeId: string) =>
+      pinZIndex({ tier: PIN_TIER.upcoming, order: index.get(placeId) });
+    expect(z('today-stop')).toBe(z('tomorrow-stop'));
+    expect(z('today-stop')).toBeGreaterThan(pinZIndex({ tier: PIN_TIER.behind }));
   });
 });
 

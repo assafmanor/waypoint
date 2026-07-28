@@ -28,8 +28,13 @@ const MAP_ID = 'waypoint-map';
 
 /** Tier → the class that draws it, mirroring `.place`'s own vocabulary so a badge
  *  and a teardrop are one visual system by construction: `soft` is the dashed
- *  provisional, `ambient` the quiet backdrop, `skipped` the handled-and-past
- *  treatment. `upcoming` needs no modifier — it is the plain category pin. */
+ *  provisional, `ambient` the quiet backdrop, `skipped` the desaturated behind-you
+ *  treatment. `upcoming` needs no modifier — it is the plain category pin.
+ *
+ *  One name to read carefully: this `skipped` is the CLOCK's tier, and its row
+ *  counterpart is `.place.behind`. A row's own `.place.skipped` is the narrower
+ *  claim — a human said this did not happen (ADR-0117 §4) — which the canvas does
+ *  not draw, since every behind-you pin looks the same whatever closed it. */
 const PIN_TIER_CLASS: Record<PinTier, string> = {
   [PIN_TIER.upcoming]: '',
   [PIN_TIER.idea]: 'soft',

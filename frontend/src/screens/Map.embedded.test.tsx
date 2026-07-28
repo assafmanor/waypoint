@@ -558,9 +558,15 @@ describe('the embedded map’s shell (ADR-0121)', () => {
     // sequence — which is what explains the gap the canvas shows where it would be.
     expect(rowOrder('lite')).toBe('3');
 
+    // All-days there is no day for the number to be an index in, so it goes — and it
+    // goes from BOTH halves at once, which is the agreement this test is really about
+    // (#16): they read one `buildPinOrderIndex`. The pin stub writes `''` where the
+    // row simply carries no attribute; what matters is that neither shows a number.
     fireEvent.click(listButton(t.map.allDays));
-    expect(rowOrder('museum')).toBe(pinOrder('museum'));
-    expect(rowOrder('tomorrow')).toBe(pinOrder('tomorrow'));
+    for (const name of ['museum', 'lunch', 'tomorrow']) {
+      expect(rowOrder(name)).toBeNull();
+      expect(pinOrder(name)).toBe('');
+    }
   });
 
   // One state, two controls, so they cannot disagree. At half neither extreme is
@@ -1322,6 +1328,16 @@ describe('the embedded map’s shell (ADR-0121)', () => {
         screen.getByRole('radio', { name: new RegExp(t.iconPicker.categories.food) }),
       );
       expect(numbers()).toEqual({ first: '1', third: '3' });
+    });
+
+    // The other scope, and the one where the number never meant anything: with no day
+    // it sequenced the whole trip, so a pin read `27`. The canvas keeps every pin and
+    // drops every numeral — the day is on the row, in words.
+    it('all-days numbers nothing at all', () => {
+      seedOrdered();
+      render(wrap(<MapView />));
+      fireEvent.click(listButton(t.map.allDays));
+      expect(numbers()).toEqual({ first: '', second: '', third: '' });
     });
   });
 

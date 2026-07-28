@@ -42,6 +42,7 @@ import {
   matchesPlaceFilter,
   placeBlock,
   placeMetaDay,
+  PLACE_BLOCK,
   PLACE_CATEGORY_ALL,
   type PlaceCategoryFilter,
   type PlaceUsage,
@@ -477,7 +478,9 @@ export function MapView() {
   // ── The pins (ADR-0121 §6) ────────────────────────────────────────────────
   // The number is the index in the scoped day sequence, computed over the whole
   // scoped set with NO clock — so neither a filter, nor near-me, nor the ticking
-  // clock can renumber a pin, and this memo is stable across a tick.
+  // clock can renumber a pin, and this memo is stable across a tick. All-days
+  // there is no day to be an index in, so nothing is numbered at all: the row
+  // says which day it is in words instead (`relativeDayLabel`, `dayMeta`).
   const orderIndex = useMemo(
     () => buildPinOrderIndex(dayScoped, { nameOf, onDate: scopedDate }),
     [dayScoped, scopedDate, placeById],
@@ -801,6 +804,7 @@ export function MapView() {
           place={place}
           order={orderIndex.get(usage.placeId)}
           ambient={prominence === 'ambient'}
+          behind={blockOf(usage) === PLACE_BLOCK.behind}
           outcome={outcome}
           isNextStop={nextStopId === usage.placeId}
           isNow={nowStopId === usage.placeId}
@@ -1314,6 +1318,7 @@ function PlaceRow({
   place,
   order,
   ambient,
+  behind,
   outcome,
   isNextStop,
   isNow,
@@ -1336,6 +1341,11 @@ function PlaceRow({
    *  an idea, an ambient stay night (ADR-0121 §6). */
   order?: number;
   ambient: boolean;
+  /** This place is behind you — the same `מה שמאחורינו` block the header names and
+   *  `מה נשאר` hides, so the row, the pin, the header and the filter close a place at
+   *  the same instant (ADR-0124). Distinct from `outcome`: this is where the clock (or
+   *  a human's settle) put the place, not a claim about what happened at it. */
+  behind: boolean;
   /** What a human said happened here (ADR-0117 §1): visited, skipped, or — absent —
    *  nobody settled it, where the row's position is the only claim. */
   outcome?: 'done' | 'skipped';
@@ -1389,6 +1399,11 @@ function PlaceRow({
     'place',
     isPureIdea && 'soft',
     ambient && 'ambient',
+    // Behind you, on the same derivation the block header reads — the row's half of
+    // the pin's desaturation, which until now faded on the clock while the row faded
+    // only on a human's `skipped`. Its own class, never `skipped`: the clock passing a
+    // place and a human saying it did not happen are different claims.
+    behind && 'behind',
     // A skipped place is quiet: still listed (it may hold a booking, and it can be
     // restored) but no longer competing with what is actually happening (ADR-0117 §4).
     outcome === 'skipped' && 'skipped',
