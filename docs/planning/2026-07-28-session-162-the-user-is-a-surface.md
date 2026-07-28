@@ -1,4 +1,4 @@
-# Session 161 — the user is a surface: the design session, and what rendering it changed
+# Session 162 — the user is a surface: the design session, and what rendering it changed
 
 **Date:** 2026-07-28
 **Branch:** `claude/user-settings-page-design-r3ndi4`

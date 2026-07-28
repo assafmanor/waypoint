@@ -27,6 +27,7 @@ import {
   type Booking,
   type EventCategory,
   type Place,
+  type PlaceResult,
 } from '@waypoint/shared';
 import { useTrip } from '../state/trip-state';
 import { useMode } from '../state/mode-state';
@@ -69,9 +70,11 @@ import {
 } from '../lib/map-pins';
 import { countPointsInBounds, pointInBounds, type LatLng, type MapBounds } from '../lib/map-camera';
 import { mapPaneAvailable, mapsConfig } from '../lib/map-config';
+import { usePlaceSearch } from '../lib/usePlaceSearch';
+import { useVerbs } from '../state/verbs';
 import { stopHeightCss } from '../lib/snap-sheet';
 import { countVisible, revealRows, visibleItems, type Revealed } from '../lib/filter-reveal';
-import { daySelectTarget } from '../state/nav-state';
+import { daySelectTarget, useBackLayer } from '../state/nav-state';
 import { useNavigate } from 'react-router-dom';
 import { formatTime, relativeDayLabel } from '../lib/time';
 import { eventEdgeTransition } from '../lib/transitions';
@@ -92,6 +95,7 @@ import {
   MAP_SHEET_STOPS,
   MAP_SHEET_STRIP_H,
   MAP_SHEET_VIEW,
+  PLACE_CORPUS,
   type MapRowDisclosure,
   type MapSheetView,
 } from '../constants';
@@ -99,7 +103,7 @@ import { ChoiceGrid, type Choice } from '../ui/primitives/ChoiceGrid';
 import { AddLocationButton, PlacePickerSheet } from '../ui/primitives/PlacePicker';
 import { RevealList } from '../ui/primitives/RevealList';
 import { SnapSheet } from '../ui/primitives/SnapSheet';
-import { MapPane, type MapPin } from '../ui/domain/MapPane';
+import { MapPane, type MapPin, type MapResultPin } from '../ui/domain/MapPane';
 import { PlaceResearch } from './PlaceResearch';
 import { BookingDetail } from '../ui/BookingDetail';
 import { BookingSheet } from '../ui/BookingSheet';
@@ -139,8 +143,15 @@ export function MapView() {
   // reversed (ADR-0109's 2026-07-27 amendment), so before the trip starts Plan opens
   // on day 1 with `כל הימים` one tap away. Still keyed on `mode`: a mode switch is a
   // context reset, so whatever scope you left Trip in, Plan opens day-scoped too.
-  const { allDays, setAllDays, focusPlaceId, clearFocus, locationOffered, markLocationOffered } =
-    useMapScope();
+  const {
+    allDays,
+    setAllDays,
+    focusPlaceId,
+    clearFocus,
+    locationOffered,
+    markLocationOffered,
+    setQueryOpen,
+  } = useMapScope();
   useEffect(() => setAllDays(false), [mode, setAllDays]);
   // The other way out of all-days: arriving on a different day (a `daySelectTarget`
   // from another surface, a deep link). Choosing a day on the strip is the INTENT
@@ -166,6 +177,30 @@ export function MapView() {
   const [disclosure, setDisclosure] = useState<MapRowDisclosure | null>(null);
   const facetsOpen = disclosure === MAP_ROW_DISCLOSURE.facets;
   const [query, setQuery] = useState('');
+  // The field is OPEN, which is a weaker fact than a query being live and the one the
+  // app CHROME keys off (ADR-0132 §1): the keyboard opens on focus, before a character
+  // exists, so the state the surface has to survive starts here. Published through the
+  // Map's lifted view state, where `allDays` already talks to the header — the shell is
+  // told what layout this surface wants, never what it is doing.
+  const queryFieldOpen = disclosure === MAP_ROW_DISCLOSURE.query;
+  // GOOGLE'S HALF LIVES HERE NOW, not inside `PlaceResearch` (ADR-0132 §7). It moved up
+  // one level for a reason the SKU forced: Text Search returns results WITH coordinates,
+  // so they are pins as well as rows — and a component rendered inside the sheet cannot
+  // hand anything to the canvas. `PlaceResearch` keeps the rows and becomes presentational.
+  //
+  // The bias is a latest-ref rather than a value, so a camera idle can never re-run a
+  // BILLED search: the hook reads it when a request actually fires (ADR-0132 §7).
+  const biasRef = useRef<MapBounds | null>(null);
+  const research = usePlaceSearch({ corpus: PLACE_CORPUS.text, biasRef });
+  const verbs = useVerbs();
+  // A tapped ring. Its own state rather than `selectedId`, because a result has no
+  // `placeId` — there is no row for it yet, which is the whole point of it.
+  const [selectedResultId, setSelectedResultId] = useState<string | null>(null);
+  useEffect(() => {
+    setQueryOpen(queryFieldOpen);
+    // Leaving the tab must give the chrome back, since the state outlives this screen.
+    return () => setQueryOpen(false);
+  }, [queryFieldOpen, setQueryOpen]);
   // A query is LIVE, as opposed to the field merely being open. Everything downstream
   // keys on this: the list's predicate, the pin filter, the aside promotion (§4), and
   // the two readers that ask "is this pin's row absent from the list?".
@@ -200,6 +235,34 @@ export function MapView() {
       setSheetView(MAP_SHEET_VIEW.half);
     }
   };
+  // …and a surface that has hidden the header AND the tab bar changed "where am I", so
+  // back has to undo that before it leaves the tab (ADR-0132 §5). The design said "one
+  // rule in `resolveBack`"; the mechanism for exactly this already existed — a back
+  // LAYER, which is what `resolveBack` consults first — so nothing there is edited and
+  // nav-state learns nothing about this screen. Registered only while the field is open
+  // (the screen itself never unmounts), and it hands off rather than repeating: one back
+  // closes the field, the next leaves the tab.
+  useBackLayer(() => {
+    openDisclosure(null);
+    return { remainsActive: false };
+  }, queryFieldOpen);
+
+  // The paid half only ever sees a LIVE query — the field being open is not an intent to
+  // spend (ADR-0131 §8b's floor is the other half of that). Handing it '' when the query
+  // is blank keeps "nothing typed → nothing reaches the paid core" a property of this
+  // screen rather than of the hook's internals.
+  const researchQuery = searching ? query : '';
+  useEffect(() => {
+    research.setQuery(researchQuery);
+  }, [researchQuery, research.setQuery]);
+  // Closing the field retires the search: state cleared, and (for the Autocomplete half's
+  // sake, since the corpus is a parameter) any session token dropped. The ring selection
+  // goes with it — it points at something that is no longer on the canvas.
+  useEffect(() => {
+    if (queryFieldOpen) return;
+    research.reset();
+    setSelectedResultId(null);
+  }, [queryFieldOpen, research.reset]);
   // A coordless Place-lite the user chose to enrich from the map (＋ מיקום).
   const [enrichTarget, setEnrichTarget] = useState<Place | null>(null);
   // A booking reached through a selected row's way-in (§8) — `BookingDetail` is a
@@ -693,6 +756,34 @@ export function MapView() {
   // sound — the same trick `RevealList` uses to decide "the list changed".
   const pins = useMemo(() => pinsNow, [pinsKey]);
 
+  // ── THE RINGS (ADR-0132 §6) ───────────────────────────────────────────────────
+  // Unsaved Google results, drawn because Text Search returns them WITH coordinates —
+  // which is the whole reason ADR-0131 §8 could not do this and this phase changes SKU.
+  //
+  // A result already in the trip gets NO ring: it already has a pin, and a ring over it
+  // would draw the same place twice while saying the opposite thing about it. Its row
+  // states `כבר בטיול` instead, which is the same rule the picker has always run.
+  const resultsNow: MapResultPin[] = [];
+  if (hasMap && searching) {
+    for (const result of research.predictions) {
+      if (result.lat == null || result.lng == null) continue;
+      if (research.alreadyInTrip(result)) continue;
+      resultsNow.push({
+        googlePlaceId: result.googlePlaceId,
+        lat: result.lat,
+        lng: result.lng,
+        label: result.primaryText,
+        selected: selectedResultId === result.googlePlaceId,
+      });
+    }
+  }
+  // Memoized on its own content, for the same reason `pins` is: this screen re-renders
+  // every second, and a fresh array would re-diff every marker on the tick (§4/§6).
+  const resultsKey = resultsNow
+    .map((r) => [r.googlePlaceId, r.lat, r.lng, r.selected].join('|'))
+    .join(';');
+  const results = useMemo(() => resultsNow, [resultsKey]);
+
   // The camera answers CONTROLS, not content (§7): re-framing on every snapshot
   // change would move the map under someone who is reading it, and a manual pan
   // must win until the next scope change.
@@ -787,10 +878,69 @@ export function MapView() {
   // card's own dismissal. Nothing registers with the back stack: it is not an overlay,
   // for the same reasons the sheet is not (ADR-0121 §5, ADR-0103). Stable identity,
   // like every other `MapPane` handler (§4).
+  // The viewport settled. Two readers, and the split matters: `viewBounds` is STATE
+  // because `X באזור` re-renders off it, while the search bias is a REF because a paid
+  // query must not re-fire when the camera moves (ADR-0132 §7). Same stable identity as
+  // every other `MapPane` handler (§4).
+  const onViewSettled = useCallback((bounds: MapBounds | null) => {
+    setViewBounds(bounds);
+    biasRef.current = bounds;
+  }, []);
+
   const clearSelection = useCallback(() => {
     setSelectedId(null);
     setGhostId(null);
+    setSelectedResultId(null);
   }, []);
+
+  // A RING TAP selects its ROW, and that is deliberately all it does (ADR-0132 §8). The
+  // card exists exactly where the list cannot show the row (ADR-0122 §7) — and while a
+  // query is live the map extreme is unavailable (ADR-0131's session-159 reversal), so
+  // the Google row is always on screen and the card branch is unreachable. Reopening that
+  // stop is the decision ADR-0132 §8 leaves owed; until it is taken, a third card
+  // occupant would be dead code written for a state that cannot happen.
+  //
+  // Same latest-ref shape as `onPinTap`, so `MapPane`'s memo survives the clock tick.
+  const onResultTap = useRef<(googlePlaceId: string) => void>(() => {});
+  onResultTap.current = (googlePlaceId: string) => {
+    setSelectedId(null);
+    setGhostId(null);
+    setSelectedResultId(googlePlaceId);
+    requestAnimationFrame(() => {
+      sheetRef.current
+        ?.querySelector(`[data-result="${googlePlaceId}"]`)
+        ?.scrollIntoView({ block: 'center' });
+    });
+  };
+  const selectResult = useCallback(
+    (googlePlaceId: string) => onResultTap.current(googlePlaceId),
+    [],
+  );
+
+  // ADDING A RESULT — one path, whether it was tapped as a row or as a ring. Two steps,
+  // both already built: resolve the place (which, for a Text Search result, spends
+  // NOTHING — the search already returned the name, the address and the point, so the
+  // server skips Place Details, ADR-0132 §7), then reference it from an uncategorised
+  // idea, because a reference is what makes a place "in the trip" (ADR-0112). The row
+  // then flips to `כבר בטיול` and the ring disappears on its own: both read the same
+  // derivation, so neither needs telling.
+  const [addingResultId, setAddingResultId] = useState<string | null>(null);
+  const [addResultFailed, setAddResultFailed] = useState(false);
+  const addResult = useCallback(
+    async (result: PlaceResult) => {
+      setAddingResultId(result.googlePlaceId);
+      setAddResultFailed(false);
+      try {
+        const place = await research.pick(result);
+        verbs.addMaybe(result.primaryText, { placeId: place.id });
+      } catch {
+        setAddResultFailed(true);
+      } finally {
+        setAddingResultId(null);
+      }
+    },
+    [research.pick, verbs],
+  );
 
   // A pin tap, behind a stable identity. `MapPane` is memoized, so a handler
   // re-created every render would break the memo and re-diff every marker once a
@@ -1408,7 +1558,15 @@ export function MapView() {
   // ADR-0115 §6's "Plan mode only" is withdrawn, and its own §1 arm with it (§8a), so
   // `PLACE_SEARCH_MIN_CHARS` is what stands between a keystroke and a paid call.
   const googleHalf = searching && (
-    <PlaceResearch query={query} usageIndex={usageIndex} offline={offline} />
+    <PlaceResearch
+      search={research}
+      usageIndex={usageIndex}
+      offline={offline}
+      selectedId={selectedResultId}
+      addingId={addingResultId}
+      addFailed={addResultFailed}
+      onAdd={addResult}
+    />
   );
 
   // The sheet's scroll content under a query: the trip's own matches under `בטיול`, then
@@ -1512,13 +1670,15 @@ export function MapView() {
         <MapPane
           config={config}
           pins={pins}
+          results={results}
+          onSelectResult={selectResult}
           me={me}
           connector={dayShapeVisible ? orderedStops : undefined}
           setSignal={cameraSignal}
           defaultCentre={defaultCentre}
           onSelectPin={selectPin}
           onCanvasTap={clearSelection}
-          onViewChange={setViewBounds}
+          onViewChange={onViewSettled}
           areaCount={areaCount}
           areaSorted={areaSorted}
           onAreaSort={toggleAreaSort}

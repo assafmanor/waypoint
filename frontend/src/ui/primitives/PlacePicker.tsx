@@ -134,7 +134,7 @@ export function PlacePickerSheet({
   // A coordless Place-lite in the current field is enriched in place on a pick
   // (adopts googlePlaceId/coords/timezone) rather than minting a duplicate (ADR-0110 §1).
   const enrichPlaceId = current && current.googlePlaceId == null ? current.id : undefined;
-  const search = usePlaceSearch(enrichPlaceId);
+  const search = usePlaceSearch({ enrichPlaceId });
   const { places } = useTrip();
   const [busy, setBusy] = useState(false);
   const [pickFailed, setPickFailed] = useState(false);

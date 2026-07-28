@@ -53,7 +53,7 @@ edits is you and it must be reachable with no trip at all. `/trip/:id/settings` 
 untouched: **gear = this trip, avatar = you** (app-shell.md §6), and ADR-0039's admin gating stays
 where it is.
 
-The three existing mounts (`App.tsx:496` in-trip, `ZeroStateWithAccount:554`, `AllTripsWithAccount:567`)
+The three existing mounts (`App.tsx:504` in-trip, `ZeroStateWithAccount:562`, `AllTripsWithAccount:575`)
 become navigations. The entry points do not change — they already reach every shell, which is why "from
 the trip and outside" needed no new affordance.
 

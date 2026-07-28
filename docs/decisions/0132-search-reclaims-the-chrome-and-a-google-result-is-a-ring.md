@@ -1,6 +1,6 @@
 # 0132 — Search reclaims the app chrome, and an unsaved Google result is a **ring, not a pin**
 
-**Status:** Accepted — **design only** (2026-07-28, session 160). Nothing here is built. Two reports from ADR-0131's device pass (session 159), designed together because the second changes the surface the first is laying out.
+**Status:** Accepted — designed 2026-07-28 (session 160) and **built the same day (session 161)**; see the [Build log](#build-log-2026-07-28-session-161). Two reports from ADR-0131's device pass (session 159), designed together because the second changes the surface the first is laying out. **§8's map extreme is still a decision owed, not built.** The rendered canvas has not been seen on a phone (ADR-0121 §13) and nothing below claims otherwise.
 **Date:** 2026-07-28
 
 **Amends** [0131](0131-map-search-is-a-control-not-a-screen.md) **§2** — its keyboard measurement was taken against an iOS model and does not describe Android, which is the platform the owner is on. §2's conclusion is scoped to iOS and its consequence is replaced by §1–§4 below.
@@ -172,3 +172,78 @@ This ADR exists because a device corrected a measurement, so its own numbers are
 - **The real safe-area insets** on the owner's device, since §3's arithmetic is modelled at 24/24.
 
 Everything above joins the existing tuning cluster on the backlog rather than being tuned separately, which is how these numbers drifted apart before.
+
+## Build log (2026-07-28, session 161)
+
+Built in two tiers, because tier 1 clears the ToS failure on its own and spends nothing:
+**tier 1** is §1–§5 (frontend only), **tier 2** is §6–§7 (a new SKU, a new relay route,
+rings on the canvas). Six things the build settled or changed from the design.
+
+### The back rule already existed, and it is better than the one §5 specified
+
+§5 said "one rule in `resolveBack`". There is no new rule: `useBackLayer` is the
+mechanism, and `resolveBack` **consults it first** (`hasOverlay` → `close-overlay`). So
+`resolveBack` is untouched and `nav-state` learns nothing about the Map tab — which is
+strictly better than threading a `queryOpen` field into `NavSnapshot`, the coupling the
+overlay stack exists to avoid.
+
+One extension was needed and it is one line: `useBackLayer(handle, active)`. Every
+existing caller is a component that expresses "there is something to peel" **by being
+mounted**; the query field is a STATE of a screen that is always mounted, so registering
+unconditionally would make `hasOverlay` permanently true and back would never leave the
+tab. The flag gates the registration, not the handler.
+
+### The place card's third occupant was NOT built, and that is §8 being honest
+
+§8 said reopening the map extreme is conditional on a result tap raising the card. The
+stop is still closed while a query is live (ADR-0131's session-159 reversal), so **the
+card branch cannot be reached** — a ring tap instead selects its ROW and scrolls it into
+view, which is ADR-0122 §7's rule read correctly ("the card exists exactly where the list
+cannot show the row"). Building the card occupant now would have been dead code written
+for a state that cannot happen. When the stop reopens, it is the work that reopens it.
+
+### One search core with a corpus parameter, not a second hook
+
+`usePlaceSearch` gained `{ enrichPlaceId, corpus, biasRef }`. The floor, the pause
+debounce, the abort-on-keystroke, the `alreadyInTrip` dedup and the soft 429 are identical
+across the two SKUs; what differs is the fetcher and whether a session token exists. A
+second hook would have been the parallel copy ADR-0096 is about, and `PlaceResult` is a
+`PlacePrediction` plus coordinates, so one result type serves both.
+
+**The bias is a ref, deliberately.** As a value it would be an effect dependency, and a
+camera idle would then **re-bill the query**. It is read when a request actually fires.
+
+### `PlaceResearch` had to become presentational, and the SKU is what forced it
+
+It owned the search. It cannot: the same results are now rings, and a component rendered
+inside the sheet has no way to hand anything to the canvas. So the screen owns the search
+and the add, and the file renders rows — which is what `ui/domain`'s own no-state rule
+would have asked for anyway. Its test file split with it: the rows are asserted against a
+stub `search`, and the moved behaviour (feeding the query, retiring it, the add) is
+asserted in `Map.embedded.test.tsx`, where it now lives.
+
+### The add got CHEAPER, which the design did not notice
+
+§7 costed the search and stopped there. The **add** was still going through
+`resolvePlace`, which spends a Place Details call to fetch the name, the address and the
+point — all three of which the Text Search response already carried. `resolvePlaceSchema`
+gained an optional `details`, and the service skips Google entirely when it is present:
+one call for the search, **none** for the add. Dedup-before-spend, the trip scoping and
+the server-side zone resolution are all unchanged. It is client-supplied data, at exactly
+the trust level `createPlace` has always had for `lat`/`lng`.
+
+### Two orderings worth naming
+
+A result **already in the trip gets no ring** — it already has a pin, and a ring over it
+would draw one place twice while saying the opposite thing about it. Its row says
+`כבר בטיול`, which is the rule the picker has always run.
+
+And the ring sits **below every trip pin**, ghosts included (`MAP_RESULT_Z`, named beside
+`TIER_Z` because it is the same ordering question): what you already have outranks what
+you might add.
+
+### The test seam that keeps the design honest
+
+`MapPane`'s stub keeps rings in **their own list**, not in `pins`. A test that found a
+ring in `pins` would be asserting the thing §6 refuses — that "not ours yet" is a rung on
+the prominence ladder.

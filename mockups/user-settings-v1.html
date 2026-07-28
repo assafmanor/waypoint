@@ -364,6 +364,34 @@ body {
   overflow: hidden;
   padding: 0;
 }
+/* THE CHROME RECLAIM (ADR-0132 §2) — the layout layer's second surface-driven
+   modifier, after `is-fullbleed` above. While the Map tab's query field is open the
+   header and the tab bar go away, because on a resizing layout viewport (Android)
+   the split is the only flexible region and absorbs the whole keyboard: 43px of
+   canvas at 390×844, and at 360×640 a 28px pane that cannot lay out Google's
+   attribution at all — an ADR-0106 §B violation, not a density complaint.
+
+   `display: none`, not `visibility: hidden` (contrast ADR-0122 §5, where keeping the
+   space was the point): here the space IS the point, and this also takes the chrome
+   out of the tab order, which is correct — while you are typing, the mode bar and the
+   tab bar are not part of this surface. The nodes stay MOUNTED (ADR-0078's one-frame
+   invariant), so the day strip keeps its scroll position and nothing re-mounts when
+   the field closes. No transition: animating it would relayout the split mid-flight,
+   the one thing ADR-0121 §5 shaped the stops to avoid. */
+.app[data-chrome='reclaimed'] > .header,
+.app[data-chrome='reclaimed'] > .nav {
+  display: none;
+}
+/* …and the safe area has to move with them, because the insets are NOT on the shell:
+   `.header` pays `--safe-top` below and `.nav` pays `--safe-bottom`. Hide both and the
+   query field sits under the notch while the sheet's last row sits under the home
+   indicator — on a device with insets only, which is why nothing on a desktop would
+   ever show it. So the body pays them instead, which is what ADR-0101's own overlay
+   does for itself (`search-overlay.css`). The reclaim is therefore worth
+   `276 − (top + bottom)`, not 276. */
+.app[data-chrome='reclaimed'] > .body {
+  padding-block: var(--safe-top) var(--safe-bottom);
+}
 @keyframes fade {
   from {
     opacity: 0;

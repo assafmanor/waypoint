@@ -1,27 +1,27 @@
-// Google's half of the Map tab's search (Phase 5, ADR-0115) — the second shell over
-// the shared search core ADR-0110 §1 pre-shaped. The free half above it filters the
-// trip's own places; this half finds places that aren't in the trip yet and puts them
-// on the maybe shelf.
+// Google's half of the Map tab's search (Phase 5, ADR-0115) — the rows. The free half
+// above it filters the trip's own places; this half finds places that aren't in the trip
+// yet and puts them on the maybe shelf.
 //
 // RE-PARENTED, NOT REWRITTEN (ADR-0131 §8): it used to render inside the Map tab's
 // full-screen search overlay, which covered the canvas. It now renders in the SHEET's
-// scroll region, in BOTH modes, and needed no change to move — it only ever took
-// `query`/`usageIndex`/`offline`. It belongs in the sheet rather than on the canvas for a
-// fact rather than a preference: an Autocomplete prediction carries NO coordinates until
-// the pick (ADR-0115 §2), so there is nothing to draw.
+// scroll region, in BOTH modes.
+//
+// AND NOW PRESENTATIONAL (ADR-0132 §7). It used to own the search hook. It cannot any
+// more, and the reason is the SKU rather than a preference: Text Search returns results
+// **with coordinates**, so the same results are also **rings on the canvas** — and a
+// component rendered inside the sheet has no way to hand anything to the canvas. So the
+// screen owns the search and the add, and this file renders rows, which is what
+// `ui/domain`'s no-state rule would have asked for anyway.
 //
 // THE ARM IS GONE (ADR-0131 §8a, owner's call). ADR-0115 §1 gated the first paid call
-// behind an explicit tap, reasoning that filtering your own list and buying an
-// Autocomplete session must not be the same gesture. That was right while the field's
-// default meaning was "filter" — but the field now means one thing, "find a place", so an
-// arm asked for a distinction the user does not have. (The in-form picker has never had
-// one, for exactly that reason.) The cost controls that remain are all the hook's: the
-// min-chars floor — raised 2 → 3 by §8b, and now the thing standing between a keystroke
-// and a paid call — the pause-gated debounce, one session token, and dedup-before-spend.
-import { useEffect, useState } from 'react';
-import type { PlacePrediction } from '@waypoint/shared';
-import { useVerbs } from '../state/verbs';
-import { usePlaceSearch } from '../lib/usePlaceSearch';
+// behind an explicit tap, reasoning that filtering your own list and buying a search
+// must not be the same gesture. That was right while the field's default meaning was
+// "filter" — but the field now means one thing, "find a place", so an arm asked for a
+// distinction the user does not have. The cost controls that remain are the min-chars
+// floor (3, ADR-0131 §8b) and the pause-gated debounce — and they carry MORE weight
+// since the switch to Text Search, which has no session to bill against (ADR-0132 §7).
+import type { PlaceResult } from '@waypoint/shared';
+import type { UsePlaceSearch } from '../lib/usePlaceSearch';
 import { mapsPredictionUrl } from '../lib/places';
 import type { PlaceUsage } from '../lib/place-usage';
 import { EmptyState, Skeleton, StatusBanner } from '../ui/feedback';
@@ -29,65 +29,35 @@ import { ICONS } from '../constants';
 import { t } from '../i18n/he';
 
 export function PlaceResearch({
-  /** The row's query — one control, two halves (ADR-0115 §1), which is true of a surface
-   *  with a map on it for the first time (ADR-0131 §8). */
-  query,
+  /** The screen's live search — one control, two halves (ADR-0115 §1), owned one level
+   *  up now that its results are also pins (ADR-0132 §7). */
+  search,
   /** The place-usage index the tab already derives, so "already in the trip" and
    *  "already on the shelf" cost nothing and read the same rule as the list. */
   usageIndex,
   offline,
+  /** The result currently selected on the canvas — a ring tap selects its row, which is
+   *  the pin↔row rule this tab already runs in the other direction (ADR-0132 §8). */
+  selectedId,
+  /** Which result is mid-add, and whether the last add failed. Both live with the add
+   *  itself, in the screen. */
+  addingId,
+  addFailed,
+  onAdd,
 }: {
-  query: string;
+  search: UsePlaceSearch;
   usageIndex: Map<string, PlaceUsage>;
   offline: boolean;
+  selectedId: string | null;
+  addingId: string | null;
+  addFailed: boolean;
+  onAdd: (result: PlaceResult) => void;
 }) {
-  const verbs = useVerbs();
-  const search = usePlaceSearch();
-  const [busyId, setBusyId] = useState<string | null>(null);
-  const [addFailed, setAddFailed] = useState(false);
-
-  // The query goes straight to the hook, which is inert below the min-chars floor — so
-  // the floor, not an arm, is what stops a one- or two-character query from firing.
-  //
-  // It is handed on only once it is non-blank, which keeps "nothing typed → nothing
-  // reaches the paid core" a property of THIS component rather than of whoever renders
-  // it. The hook would ignore whitespace anyway (it trims before the floor), so this is
-  // about not asserting an intent we do not have: the screen only mounts this while a
-  // query is live, and a component that quietly hands its collaborator input it has
-  // itself decided to ignore is the kind of thing that stops being harmless later.
-  const trimmed = query.trim();
-  useEffect(() => {
-    search.setQuery(trimmed ? query : '');
-  }, [query, trimmed, search.setQuery]);
-  // Unmounting retires the session token (the hook mints a fresh one next time) — the
-  // abandonment half of the session lifecycle, ADR-0110 §1. This renders only while a
-  // query is live, so closing the row's field is what unmounts it: the session is per
-  // SEARCH SESSION exactly as it was per overlay.
-  useEffect(() => () => search.reset(), [search.reset]);
-
-  if (!trimmed) return null;
-
   if (offline) {
     // No Google, so no affordance — the same rule the near-me chip follows
     // (ADR-0109 §7): when there is nothing to offer, don't offer it.
     return <StatusBanner tone="offline">{t.map.research.offline}</StatusBanner>;
   }
-
-  const add = async (prediction: PlacePrediction) => {
-    setBusyId(prediction.googlePlaceId);
-    setAddFailed(false);
-    try {
-      // One pick: enrich-or-link the Place (dedup-before-spend server-side), then
-      // reference it from an uncategorised idea — the reference is what makes the
-      // place "in the trip" (ADR-0112), so the row below flips state on its own.
-      const place = await search.pick(prediction);
-      verbs.addMaybe(prediction.primaryText, { placeId: place.id });
-    } catch {
-      setAddFailed(true);
-    } finally {
-      setBusyId(null);
-    }
-  };
 
   return (
     <div className="map-research">
@@ -106,8 +76,8 @@ export function PlaceResearch({
         </div>
       )}
 
-      {/* Armed but still under the min-chars floor: say why nothing is happening,
-          rather than leaving a bare header over an empty section. */}
+      {/* Still under the min-chars floor: say why nothing is happening, rather than
+          leaving a bare header over an empty section. */}
       {!search.active && <p className="map-res-hint">{t.map.research.typeMore}</p>}
 
       {!search.loading && search.active && search.predictions.length === 0 && !search.failed && (
@@ -115,17 +85,18 @@ export function PlaceResearch({
       )}
 
       <div className="map-list">
-        {search.predictions.map((prediction) => {
-          const inTrip = search.alreadyInTrip(prediction);
+        {search.predictions.map((result) => {
+          const inTrip = search.alreadyInTrip(result);
           const onShelf = inTrip ? (usageIndex.get(inTrip.id)?.isMaybe ?? false) : false;
           return (
             <ResultRow
-              key={prediction.googlePlaceId}
-              prediction={prediction}
+              key={result.googlePlaceId}
+              result={result}
               inTrip={inTrip != null}
               onShelf={onShelf}
-              busy={busyId === prediction.googlePlaceId}
-              onAdd={() => void add(prediction)}
+              selected={selectedId === result.googlePlaceId}
+              busy={addingId === result.googlePlaceId}
+              onAdd={() => onAdd(result)}
             />
           );
         })}
@@ -138,29 +109,37 @@ export function PlaceResearch({
 
 // A Google result, in the list's own row grammar (ADR-0115 §7) — but it says only
 // what the relay returns: name + secondary address, a neutral "not ours yet"
-// badge, and no ★ / distance / category (ADR-0115 §2, none of which a prediction
-// carries). The name links out to the Google Maps place so a candidate can be
-// vetted for free before we spend on resolving it.
+// badge, and no ★ / distance / category (ADR-0115 §2, none of which this field mask
+// buys). The name links out to the Google Maps place so a candidate can be vetted for
+// free before we spend on resolving it.
+//
+// `data-result` is how a ring tap finds this row to scroll it into view — the exact
+// counterpart of `data-place` on a trip row (ADR-0132 §8).
 function ResultRow({
-  prediction,
+  result,
   inTrip,
   onShelf,
+  selected,
   busy,
   onAdd,
 }: {
-  prediction: PlacePrediction;
+  result: PlaceResult;
   /** Something in the trip already references this place: state it, don't re-add. */
   inTrip: boolean;
   /** …and it's an unconsumed idea, so it's already exactly where ＋ אולי would put it. */
   onShelf: boolean;
+  selected: boolean;
   busy: boolean;
   onAdd: () => void;
 }) {
   return (
-    <div className="place result">
+    <div
+      className={'place result' + (selected ? ' selected' : '')}
+      data-result={result.googlePlaceId}
+    >
       <a
         className="map-res-open"
-        href={mapsPredictionUrl(prediction)}
+        href={mapsPredictionUrl(result)}
         target="_blank"
         rel="noopener noreferrer"
       >
@@ -169,11 +148,11 @@ function ResultRow({
         </span>
         <span className="map-main">
           <span className="map-t">
-            <span className="map-name">{prediction.primaryText}</span>
+            <span className="map-name">{result.primaryText}</span>
           </span>
-          {prediction.secondaryText && (
+          {result.secondaryText && (
             <span className="map-m">
-              <span className="map-tag">{prediction.secondaryText}</span>
+              <span className="map-tag">{result.secondaryText}</span>
             </span>
           )}
         </span>
@@ -188,7 +167,7 @@ function ResultRow({
             type="button"
             className="map-addmaybe"
             disabled={busy}
-            aria-label={t.map.research.addAria(prediction.primaryText)}
+            aria-label={t.map.research.addAria(result.primaryText)}
             onClick={onAdd}
           >
             <span aria-hidden="true">＋</span> {t.map.research.add}

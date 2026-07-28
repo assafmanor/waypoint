@@ -10,6 +10,7 @@ import {
   meSchema,
   membershipSchema,
   placePredictionSchema,
+  placeResultSchema,
   placeSchema,
   removedMemberSchema,
   tripDocumentSchema,
@@ -39,6 +40,7 @@ import {
   type MoveEventInput,
   type MembershipRole,
   type Place,
+  type PlaceResult,
   type PlacePrediction,
   type ResolvePlaceInput,
   type RemovedMember,
@@ -50,6 +52,7 @@ import {
   type UpdatePlaceInput,
   type UpdateTripInput,
 } from '@waypoint/shared';
+import type { MapBounds } from './map-camera';
 import { evictCachedDocument, readCachedBlob, writeCachedBlob } from './doc-cache';
 
 export const API_BASE_URL = import.meta.env.VITE_API_BASE_URL ?? '';
@@ -532,6 +535,24 @@ export async function searchPlaces(
   });
   if (!res.ok) return throwApiError(res);
   return placePredictionSchema.array().parse(await res.json());
+}
+
+/** The Text Search relay (ADR-0132 §7) — the half whose results can be drawn, because
+ *  they arrive WITH coordinates. No session token: this SKU has none, so every call is
+ *  billed on its own and the client-side floor + debounce are what stand in front of it.
+ *  `bias` is the canvas's current bounds — free relevance, not a cost lever. */
+export async function searchPlacesText(
+  tripId: string,
+  { input, bias, signal }: { input: string; bias?: MapBounds; signal?: AbortSignal },
+): Promise<PlaceResult[]> {
+  const res = await apiFetch(`${placesUrl(tripId)}/search-text`, {
+    method: HTTP_METHOD.POST,
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ input, bias }),
+    signal,
+  });
+  if (!res.ok) return throwApiError(res);
+  return placeResultSchema.array().parse(await res.json());
 }
 
 /** The terminating enrich-on-pick (create-or-link) call (ADR-0108 §3 / ADR-0110 §1).

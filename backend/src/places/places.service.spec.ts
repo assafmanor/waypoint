@@ -128,6 +128,31 @@ describe('PlacesService', () => {
     expect(await prisma.place.count({ where: { tripId } })).toBe(1);
   });
 
+  // ── THE TEXT SEARCH ADD PATH (ADR-0132 §7) ───────────────────────────────────
+  // That SKU already returned the name, the address and the point, so paying Place
+  // Details to fetch them again would buy the same place twice. The zone is still ours
+  // to resolve from the coordinates, and dedup is unchanged.
+  it('resolvePlace with client-supplied details makes NO Place Details call', async () => {
+    const tripId = await newTrip();
+
+    const place = await service.resolvePlace(tripId, DEV_USER, {
+      googlePlaceId: 'g-text-search',
+      details: {
+        name: 'קפה בלו בוטל',
+        address: 'שינג׳וקו, טוקיו',
+        lat: SHIBUYA_DETAILS.lat,
+        lng: SHIBUYA_DETAILS.lng,
+      },
+    });
+
+    expect(detailsSpy).not.toHaveBeenCalled();
+    expect(place.name).toBe('קפה בלו בוטל');
+    expect(place.googlePlaceId).toBe('g-text-search');
+    expect(place.lat).toBeCloseTo(SHIBUYA_DETAILS.lat as number, 4);
+    // The zone is resolved server-side from the coordinates either way (ADR-0107).
+    expect(place.timezone).toBe('Asia/Tokyo');
+  });
+
   it('resolvePlace with enrichPlaceId adopts Google fields onto an existing Place-lite', async () => {
     const tripId = await newTrip();
     const lite = await service.create(tripId, DEV_USER, { name: 'somewhere in Shibuya' });

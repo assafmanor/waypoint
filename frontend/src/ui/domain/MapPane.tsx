@@ -16,6 +16,7 @@ import { APIProvider, AdvancedMarker, Map, Polyline, useMap } from '@vis.gl/reac
 import {
   isAsidePin,
   isFramedByCamera,
+  MAP_RESULT_Z,
   PIN_TIER,
   pinZIndex,
   type PinTier,
@@ -31,6 +32,9 @@ import './map-pane.css';
 /** The one `<Map>` id, so sibling controls can reach the instance via `useMap`
  *  without being rendered inside the canvas div. */
 const MAP_ID = 'waypoint-map';
+
+/** A stable empty default for `results`, for the same reason `noop` below is stable. */
+const EMPTY_RESULTS: readonly MapResultPin[] = [];
 
 /** Tier → the class that draws it, mirroring `.place`'s own vocabulary so a badge
  *  and a teardrop are one visual system by construction: `soft` is the dashed
@@ -97,9 +101,28 @@ export interface MapPin {
   label: string;
 }
 
+/** An unsaved Google result on our canvas (ADR-0132 §6) — a RING, and deliberately not
+ *  a `MapPin`. The prominence ladder expresses DEGREE (six tiers, two amber cues,
+ *  selection, a zoom-keyed dot) and "not ours yet" is a difference of KIND, so it takes
+ *  the one axis nothing else uses: silhouette. Being off the ladder is also why it needs
+ *  none of the fields above — no tier, no hue, no order, no amber. */
+export interface MapResultPin {
+  /** Google's own id. Never a `placeId`: there is no row for this yet. */
+  googlePlaceId: string;
+  lat: number;
+  lng: number;
+  label: string;
+  selected?: boolean;
+}
+
 export interface MapPaneProps {
   config: MapsConfig;
   pins: readonly MapPin[];
+  /** Unsaved Text Search results, drawn as rings (ADR-0132 §6). Memoized on a content
+   *  key by the caller, exactly like `pins` — same per-second-tick rule. */
+  results?: readonly MapResultPin[];
+  /** A ring was tapped: the screen raises its card with the add action. */
+  onSelectResult?: (googlePlaceId: string) => void;
   /** Where the device is, when near-me is granted. */
   me?: LatLng;
   /** The day's stops in order — a dashed neutral connector, Plan mode + day scope
@@ -174,9 +197,16 @@ function PinDensity({ paneRef }: { paneRef: RefObject<HTMLDivElement | null> }) 
   return null;
 }
 
+/** No-op default for the ring callback, hoisted so it is a stable identity — an inline
+ *  arrow here would be a fresh prop every render on a screen that ticks every second,
+ *  which is the exact hazard §4 exists for. */
+const noop = () => {};
+
 function MapPaneInner({
   config,
   pins,
+  results = EMPTY_RESULTS,
+  onSelectResult,
   me,
   connector,
   setSignal,
@@ -234,6 +264,13 @@ function MapPaneInner({
           {pins.map((pin) => (
             <PinMarker key={pin.placeId} pin={pin} onSelect={onSelectPin} />
           ))}
+          {results.map((result) => (
+            <ResultMarker
+              key={result.googlePlaceId}
+              result={result}
+              onSelect={onSelectResult ?? noop}
+            />
+          ))}
           {me && <MeMarker at={me} />}
           <DayConnector path={connector} />
         </Map>
@@ -264,6 +301,38 @@ export const MapPane = memo(MapPaneInner);
  *  enough for a solid teardrop, not enough for the dashed-idea / desaturated-past
  *  grammar `.place` already speaks, which is why the content is ours. Static per
  *  place: no React state lives inside a marker. */
+/** The ring (ADR-0132 §6). No tip — a tip is a claim about WHICH BUILDING and a result
+ *  is a candidate; no hue — we do not buy place types (ADR-0115 §2), so there is nothing
+ *  honest to colour it by; a `＋` — the only verb available on it. It sits ON the
+ *  coordinate instead of pointing at it, which is the truthful geometry for something
+ *  that is not in the trip yet.
+ *
+ *  Under every trip pin in z-order: what you already have outranks what you might add. */
+const ResultMarker = memo(function ResultMarker({
+  result,
+  onSelect,
+}: {
+  result: MapResultPin;
+  onSelect: (googlePlaceId: string) => void;
+}) {
+  return (
+    <AdvancedMarker
+      position={{ lat: result.lat, lng: result.lng }}
+      zIndex={MAP_RESULT_Z}
+      title={result.label}
+      onClick={() => onSelect(result.googlePlaceId)}
+    >
+      <div
+        className={'map-result' + (result.selected ? ' selected' : '')}
+        role="button"
+        aria-label={result.label}
+      >
+        <span aria-hidden="true">＋</span>
+      </div>
+    </AdvancedMarker>
+  );
+});
+
 const PinMarker = memo(function PinMarker({
   pin,
   onSelect,
