@@ -172,16 +172,6 @@ export function ResultRow({
     <div
       className={'place result' + (selected ? ' selected' : '')}
       data-result={result.googlePlaceId}
-      // A DOUBLE TAP IS THE VERB (owner, session 170): look, then commit, without going
-      // to the button. Only under an errand — there the tab has one job, so a second tap
-      // can only mean "this one"; outside it the verb shelves a `MaybeItem`, and a stray
-      // double tap that silently adds something is not a shortcut anyone asked for.
-      //
-      // No gesture machinery: `touch-action: manipulation` is app-wide (ADR-0062), so
-      // double-tap zoom is already off and two taps dispatch a prompt `dblclick`. The two
-      // single taps still fire first, which is exactly the sequence the owner described —
-      // select (frame it), then choose.
-      onDoubleClick={chooseMode ? onAdd : undefined}
     >
       {onShow ? (
         <button type="button" className="map-res-open" onClick={onShow}>

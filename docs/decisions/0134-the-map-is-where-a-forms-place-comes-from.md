@@ -431,3 +431,44 @@ recorded rather than fixed. The two worth naming here: **a non-Home tab backs to
 even when you arrived from elsewhere** (ADR-0090 §2 working as designed — changing it is that
 ADR's amendment, not a bug fix), and **an errand now costs two backs** because session 168's
 auto-opened query field registers a second layer over it.
+
+## Build log addendum (2026-07-28, session 171) — both of session 170's fixes were wrong
+
+Two corrections, and both are cases of building the right idea on the wrong surface.
+
+### The gesture is on the CANVAS, and it is not a double tap
+
+> _"I meant on the map `＋` or existing, and not really double tap, more like tapping the pin
+> when already selected."_
+
+Session 170 put an `onDoubleClick` on the ROWS. The rows already have `בחירה` sitting on
+them; the surface with no verb in reach is the **canvas**. And the gesture is not a double
+tap at all — it is **tapping what is already selected**, which needs no timing window, no
+gesture machinery, and reads as a sentence: the first tap says _this one_, the second says
+_yes, that one_.
+
+It composes with §3 rather than reversing it: the **first** tap still only selects, so you
+still look before you commit. Both populations answer it the same way — a trip pin and a
+Google ring are the owner's `＋ or existing` — and both are errand-scoped, because outside an
+errand there is nothing to commit to.
+
+### `returnTo` was fixed for the three hosts that stay mounted, and not for the one that does not
+
+> _"It now goes back to the index main screen (where you choose between documents and
+> bookings), not on the form itself."_
+
+Session 170 had hosts re-open the booking's detail on return. That works for `DayView`,
+`PlanDay` and the Map — all mounted when the return lands. **The Index's bookings screen is
+not**: it is view state inside `Index.tsx` (ADR-0098), so returning to `?tab=index` renders
+the LANDING and the host that would have re-opened the detail no longer exists to hear about
+it. The fix helped three hosts and left the reported one exactly as broken.
+
+The answer was already in the app: **ADR-0050's `?booking=<id>` deep link** opens the
+bookings screen with that detail on top, then clears the param. So the return uses it —
+`withBookingDetail`, applied only when the destination IS the Index tab, since anywhere else
+the host is mounted and the param would be litter nothing clears. The param gets a name
+(`BOOKING_PARAM`) now that it has a second writer.
+
+**The pattern worth keeping:** _"the host re-opens itself"_ is not a rule, it is a rule with
+a precondition — the host has to still be there. Where it is not, the destination has to be
+a URL, and this app already has one for every such case it has met so far.

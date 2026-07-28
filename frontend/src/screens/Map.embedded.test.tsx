@@ -1221,17 +1221,29 @@ describe('the embedded map’s shell (ADR-0121)', () => {
         expect(errandReturn()).toBe('cancelled');
       });
 
-      // The same double-tap shortcut the result rows carry (owner, session 170), on the
-      // trip's own rows: one list, one gesture. Errand-scoped, because `בחירה` is the verb
-      // it stands in for — a trip row outside an errand has `נווט` and nothing to commit.
-      it('a double tap on a trip row chooses it, and does nothing without an errand', () => {
+      // TAPPING WHAT IS ALREADY SELECTED COMMITS IT (owner, session 171 — the correction to
+      // 170's row double-tap, which was the wrong surface). The first tap still only selects,
+      // so ADR-0134 §3's look-before-you-commit split is intact; the second one on the SAME
+      // pin is `בחירה` without travelling to the row.
+      it('a second tap on the selected pin chooses it; the first only selects', () => {
         seed();
         render(wrap(<MapView />));
-        fireEvent.doubleClick(row('museum')!);
-        expect(errandAnswer()).toBe('');
         startErrand();
-        fireEvent.doubleClick(row('museum')!);
+        fireEvent.click(pin('museum')!);
+        expect(errandAnswer()).toBe('');
+        fireEvent.click(pin('museum')!);
         expect(errandAnswer()).toBe('museum');
+      });
+
+      // …and it is errand-scoped: with nothing asking for a place, a second tap on a pin
+      // has nothing to commit to.
+      it('a second tap does nothing without an errand', () => {
+        seed();
+        render(wrap(<MapView />));
+        fireEvent.click(pin('museum')!);
+        fireEvent.click(pin('museum')!);
+        expect(errandAnswer()).toBe('');
+        expect(pin('museum')!.dataset.selected).toBe('true');
       });
 
       // A card is the only way to reach one of OUR places at the map extreme, so it has to

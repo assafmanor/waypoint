@@ -17,6 +17,7 @@ import {
   tabTarget,
   type BackAction,
   type NavSnapshot,
+  withBookingDetail,
 } from './nav-state';
 
 describe('resolveBack — the one layer-peeling decision (ADR-0090, behavior of ADR-0035 §2)', () => {
@@ -275,5 +276,27 @@ describe('shouldResetToHomeOnResume — reopen-after-idle reset (ADR-0060)', () 
   it('is distinct from (and longer than) the 30s data-resync threshold', () => {
     const RESYNC_AFTER_HIDDEN_MS = 30_000;
     expect(RESET_TO_HOME_AFTER_HIDDEN_MS).toBeGreaterThan(RESYNC_AFTER_HIDDEN_MS);
+  });
+});
+
+// The Index's bookings screen is view state, not a route (ADR-0098), and the detail on top
+// of it is a `Modal` — so a return to the Index tab's URL renders the LANDING. The deep link
+// ADR-0050 already built for quick access is what re-opens it (session 171).
+describe('withBookingDetail', () => {
+  it('adds the detail deep link when the return lands on the Index tab', () => {
+    expect(withBookingDetail('/?tab=index', 'b1')).toBe('/?tab=index&booking=b1');
+  });
+
+  it('leaves every other destination alone — its host is still mounted', () => {
+    // A param nothing on these tabs reads, and nothing on them clears, is litter.
+    expect(withBookingDetail('/?tab=days', 'b1')).toBe('/?tab=days');
+    expect(withBookingDetail('/?tab=map&day=2026-07-22', 'b1')).toBe('/?tab=map&day=2026-07-22');
+    expect(withBookingDetail('/', 'b1')).toBe('/');
+  });
+
+  it('keeps the params already on the way back', () => {
+    const out = new URLSearchParams(withBookingDetail('/?tab=index&day=2026-07-22', 'b1').slice(2));
+    expect(out.get('day')).toBe('2026-07-22');
+    expect(out.get('booking')).toBe('b1');
   });
 });
