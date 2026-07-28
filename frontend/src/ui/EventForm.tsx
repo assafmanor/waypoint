@@ -326,8 +326,14 @@ export function EventForm({
             </p>
           )}
 
+          {/* The same note the booking form carries under an empty location, from the
+              same key: an event with no place loses the same five things, and the two
+              authoring forms must not disagree about whether that is worth saying. */}
           {showPlace && (
-            <Field label={t.eventForm.locationLabel}>
+            <Field
+              label={t.eventForm.locationLabel}
+              hint={placeId ? undefined : t.placePicker.noLocationHint}
+            >
               <PlacePicker
                 value={placeId}
                 onChange={setPlaceId}

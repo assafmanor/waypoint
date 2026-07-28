@@ -1,0 +1,66 @@
+/* PlaceBadge — the category badge as the way to the place on our map. It adds NO
+   box to the row: the badge already exists on every host, at the same leading
+   position, which is what makes this the one placement a dense row can afford
+   (measured: a separate trailing control wrapped or truncated titles on all four
+   surfaces). Teal because it is a location affordance and teal is location only
+   (ADR-0028) — the badge's own category tint is untouched underneath. */
+
+.wp-placebadge {
+  position: relative;
+  cursor: pointer;
+  /* The category tint stays; the ring is the only thing added, and it reads as
+     "this one is a control" against the identical inert badges around it. */
+  box-shadow: 0 0 0 2px color-mix(in srgb, var(--teal) 40%, transparent);
+}
+.wp-placebadge:hover {
+  box-shadow: 0 0 0 2px var(--teal);
+}
+.wp-placebadge:focus-visible {
+  outline: 2.5px solid var(--teal);
+  outline-offset: 2px;
+}
+
+/* The corner marker: a real pin, not a dot. A dot says "there is something here";
+   the pin says what the tap does, in the silhouette of what you land on (ADR-0087's
+   marker). The `--card` ring lifts it off the badge so it reads as an overlay rather
+   than part of the glyph. */
+.wp-placebadge-mark {
+  position: absolute;
+  inset-block-end: -5px;
+  inset-inline-end: -5px;
+  width: 17px;
+  height: 17px;
+  border-radius: 50%;
+  background: var(--teal);
+  color: #fff;
+  display: grid;
+  place-items: center;
+  font-size: 11px;
+  box-shadow: 0 0 0 2px var(--card);
+}
+/* The pin's stroke needs to survive at 11px, where the shared 2px looks spindly. */
+.wp-placebadge-mark .icon {
+  stroke-width: 2.4;
+}
+
+/* On the departure board the surround is the app's one DARK surface, so the marker's
+   `--card` ring would draw a light halo around it. It rings against the board's own
+   gradient base instead, and the badge's ring brightens — teal at `--card` weight
+   disappears against `--board` (ADR-0028's hue, at the contrast the dark hero needs).
+   The board is also the one host whose icon slot is inline text rather than a tile,
+   so the marker tucks tighter to avoid colliding with the title beside it. */
+.wp-board .wp-placebadge {
+  box-shadow: 0 0 0 2px color-mix(in srgb, var(--teal) 70%, transparent);
+  /* The board's icon slot is bare inline text with no box of its own, so the ring
+     would draw a tight rectangle around the glyph. It supplies its own. */
+  border-radius: 8px;
+  padding: 1px 3px;
+}
+.wp-board .wp-placebadge-mark {
+  inset-block-end: -4px;
+  inset-inline-end: -4px;
+  width: 15px;
+  height: 15px;
+  font-size: 10px;
+  box-shadow: 0 0 0 2px var(--board);
+}

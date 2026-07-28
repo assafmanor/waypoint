@@ -34,6 +34,7 @@ import {
   liveToday,
   liveZone,
   placeTimezone,
+  type ShowPlaceOnMap,
   type ZoneContext,
   type ZoneEvidence,
 } from '../lib/places';
@@ -314,6 +315,14 @@ export function DayView() {
                 bookings={dayCtx.bookings}
                 onOpen={dayCtx.onOpenDetail}
                 onNavigate={dayCtx.readOnly ? undefined : navigateHandler(entry.event, dayCtx)}
+                // Not gated on `readOnly`: a past day is a browsable archive
+                // (ADR-0029), and looking at where you were changes nothing.
+                onShowOnMap={eventShowOnMap(
+                  entry.event,
+                  dayCtx.bookings,
+                  dayCtx.places,
+                  dayCtx.showPlaceOnMap,
+                )}
               />
             )}
           </Fragment>
@@ -493,7 +502,7 @@ interface DayCtx {
   onOpenDetail: (booking: Booking) => void;
   /** `מפה` — show this place on OUR map (ADR-0121 §8), not Google's. */
   /** Absent outside the trip shell, where there is no Map tab to route to. */
-  showPlaceOnMap: ((placeId: string) => void) | null;
+  showPlaceOnMap: ShowPlaceOnMap;
 }
 
 /** Total events nested anywhere inside an item — the "כולל N" count. */

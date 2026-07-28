@@ -531,7 +531,7 @@ export function BookingSheet({
           {!isTransport && (
             <Field
               label={t.index.sheet.locationLabel}
-              hint={placeId ? undefined : t.index.sheet.noLocationHint}
+              hint={placeId ? undefined : t.placePicker.noLocationHint}
             >
               <PlacePicker value={placeId} onChange={setPlaceId} />
             </Field>

@@ -32,11 +32,13 @@ import {
   liveZone,
   liveZoneContext,
   eventRoute,
+  eventShowOnMap,
   eventZones,
   nextDestination,
 } from '../lib/places';
 import { shortPlaceLabel } from '../lib/place-label';
 import { TAB_PARAM } from '../state/nav-state';
+import { useShowPlaceOnMap } from '../state/map-scope-state';
 import {
   countdownParts,
   dayProgress,
@@ -85,6 +87,10 @@ export function Home({ onNavigate }: { onNavigate?: (tab: TabId) => void }) {
   const toast = useToast();
   const navigate = useNavigate();
   const now = useClock();
+  // The board is a readout and gains no other per-entity action, but the owner's rule
+  // is that every event has an easy way to its pin — so the hero's own icon becomes
+  // the way in (`PlaceBadge`), which adds no control to the one loud element.
+  const showPlaceOnMap = useShowPlaceOnMap();
   const nowMs = now.getTime();
   // The board is Trip mode's live surface, so its framing — "today", the day
   // window, the progress bar, the now/next clock — reads in the zone of the
@@ -327,6 +333,7 @@ export function Home({ onNavigate }: { onNavigate?: (tab: TabId) => void }) {
         // (destination minus origin), the same number its day-timeline row shows;
         // for anything else it's that event's zone vs where you are.
         shift: nextZones?.deltaMinutes,
+        onShowOnMap: eventShowOnMap(shownNext, bookings, places, showPlaceOnMap),
       }
     : null;
 
@@ -372,6 +379,11 @@ export function Home({ onNavigate }: { onNavigate?: (tab: TabId) => void }) {
           nowEvent?.endsAt ? formatTime(nowEvent.endsAt, nowZones?.endZone ?? tz) : undefined
         }
         nowShift={nowZones?.deltaMinutes}
+        onShowNowOnMap={
+          boardNowEvent
+            ? eventShowOnMap(boardNowEvent, bookings, places, showPlaceOnMap)
+            : undefined
+        }
         conflict={
           conflicts.length > 0
             ? { title: conflicts[0].title, atLabel: formatTime(conflicts[0].startsAt!, tz) }

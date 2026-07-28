@@ -12,6 +12,8 @@ export type { BoardProps, BoardVariant, BoardRow, BoardTransit, BoardNext } from
 export { EventCard } from './EventCard';
 export type { EventCardProps, EventKind, EventPhaseName } from './EventCard';
 
+export { PlaceBadge } from './PlaceBadge';
+
 export { MaybeCard } from './MaybeCard';
 export type { MaybeCardProps } from './MaybeCard';
 

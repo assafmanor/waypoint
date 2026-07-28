@@ -12,6 +12,7 @@ import { CATEGORY_DEFAULT_ICON, type Booking } from '@waypoint/shared';
 import { formatTime } from '../lib/time';
 import { ZoneShiftPill } from './ZoneShiftPill';
 import { TitleLabel } from './TitleLabel';
+import { PlaceBadge } from './domain/PlaceBadge';
 import { transitionLabel } from '../lib/transitions';
 import { t } from '../i18n/he';
 import type { TransitionEntry } from '../lib/day-entries';
@@ -24,6 +25,7 @@ export function TransitionRow({
   bookings,
   onOpen,
   onNavigate,
+  onShowOnMap,
 }: {
   entry: TransitionEntry;
   tz: string;
@@ -37,6 +39,11 @@ export function TransitionRow({
   bookings: Booking[];
   onOpen: (booking: Booking) => void;
   onNavigate?: () => void;
+  /** Show the edge's place on our map (ADR-0121 §8). Unlike `onNavigate` this is
+   *  offered on BOTH edges and in both modes: where you check OUT of is as much a
+   *  place on the map as where you check in, and orientation is not a live-only
+   *  question the way directions are. */
+  onShowOnMap?: () => void;
 }) {
   const { event, edge, atMs, labelKey } = entry;
   const booking = event.bookingId ? bookings.find((b) => b.id === event.bookingId) : undefined;
@@ -50,9 +57,9 @@ export function TransitionRow({
         onClick={() => booking && onOpen(booking)}
         disabled={!booking}
       >
-        <span className="tr-badge" aria-hidden="true">
+        <PlaceBadge className="tr-badge" onShowOnMap={onShowOnMap}>
           {icon}
-        </span>
+        </PlaceBadge>
         <span className="tr-main">
           <span className="tr-label">{transitionLabel(labelKey)}</span>
           <span className="tr-title">

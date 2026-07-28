@@ -104,6 +104,7 @@ import { ZoneShiftPill } from '../ui/ZoneShiftPill';
 import { Sheet } from '../ui/Sheet';
 import { TitleLabel } from '../ui/TitleLabel';
 import { MaybeCard } from '../ui/domain/MaybeCard';
+import { PlaceBadge } from '../ui/domain/PlaceBadge';
 
 const daysBetween = (from: string, to: string) =>
   Math.round((Date.parse(to) - Date.parse(from)) / MS_PER_DAY);
@@ -1555,9 +1556,12 @@ function BuilderRow({
           {ICONS.lock}
         </span>
       )}
-      <span className="bld-bd" aria-hidden="true">
+      {/* The badge is the way to the map, and it survives `readOnly` — a finished
+          trip is a browsable archive (ADR-0040) and looking at a place changes
+          nothing. */}
+      <PlaceBadge className="bld-bd" onShowOnMap={onShowOnMap}>
         {event.icon}
-      </span>
+      </PlaceBadge>
       {readOnly ? (
         <div className="bld-main">{mainContent}</div>
       ) : (
@@ -1657,19 +1661,6 @@ function BuilderRow({
               </span>
               {t.actions.edit}
             </button>
-            {/* `מפה` rides the ⋯ rather than becoming a second inline button: at
-                phone width this row has room for a title, a time and one affordance,
-                which is why every other row action already lives here. `runAction`
-                closes the Sheet before the handler navigates, so the tab cannot
-                change underneath an overlay still on the back stack (ADR-0090). */}
-            {onShowOnMap && (
-              <button className="row-action" onClick={() => runAction(onShowOnMap)}>
-                <span className="row-action-ic" aria-hidden="true">
-                  {ICONS.map}
-                </span>
-                {t.actions.showOnMap}
-              </button>
-            )}
             {/* Reorder lives here now that the row's ▲/▼ buttons are retired
                 (session-119). Dragging is the primary way, but it is a pointer
                 gesture: this is the keyboard- and screen-reader-reachable path, and

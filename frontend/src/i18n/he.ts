@@ -411,14 +411,6 @@ export const t = {
       titlePlaceholder: 'שם ההזמנה',
       codeLabel: 'קוד אישור',
       locationLabel: 'מיקום',
-      // A single-place booking saves happily with no location, and then nothing
-      // anywhere said so — a two-night hotel "missing from the map" was a hotel
-      // with no place. The note is inline and the save is NOT gated: a confirm on
-      // absence, on a non-destructive action, on a legitimate mid-planning path
-      // would be clicked through (ADR-0109 §6's anti-nag reasoning). So it names
-      // what is lost and gets out of the way.
-      noLocationHint:
-        'בלי מיקום אין סימון במפה ואין שורה ברשימה, אין ניווט, אין מרחק ואין דירוג, והשעות ייקראו באזור הזמן של הקטע בטיול ולא של המקום עצמו.',
       roomLabel: 'חדר',
       notesLabel: 'הערות',
       wifiTitle: 'WiFi',
@@ -1138,6 +1130,15 @@ export const t = {
     // The `AddLocationButton` label — canonical here rather than under `map`, now
     // that the Map row and a placeless booking's מיקום fact share the affordance.
     addLocation: 'מיקום',
+    // Under an empty location field, in BOTH authoring forms — one key, because an
+    // event and a booking lose exactly the same five things. Entities saved happily
+    // with no location and then nothing anywhere said so; it cost a false bug report
+    // (a two-night hotel "missing from the map" was a hotel with no place). The save
+    // is NOT gated: a confirm on absence, on a non-destructive action, on a
+    // legitimate mid-planning path would be clicked through (ADR-0109 §6's anti-nag
+    // reasoning). So the note names what is lost and gets out of the way.
+    noLocationHint:
+      'בלי מיקום אין סימון במפה ואין שורה ברשימה, אין ניווט, אין מרחק ואין דירוג, והשעות ייקראו באזור הזמן של הקטע בטיול ולא של המקום עצמו.',
     searchPlaceholder: 'חיפוש מקום…',
     alreadyInTrip: 'כבר בטיול',
     saveNameOnly: (name: string) => `שמירת "${name}" כשם בלבד`,

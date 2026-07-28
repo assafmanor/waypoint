@@ -21,6 +21,7 @@ import { ICONS } from '../../constants';
 import { Icon } from '../Icon';
 import { TitleLabel } from '../TitleLabel';
 import { RowManageSheet, type RowAction } from './ListRow';
+import { PlaceBadge } from './PlaceBadge';
 import { t } from '../../i18n/he';
 import './event-card.css';
 
@@ -224,7 +225,9 @@ export function EventCard(props: EventCardProps) {
     return (
       <div className={cls}>
         <div className="wp-event-face static">
-          <span className="wp-event-badge">{icon}</span>
+          <PlaceBadge className="wp-event-badge" onShowOnMap={onShowOnMap}>
+            {icon}
+          </PlaceBadge>
           {titleBlock}
           {timeBlock}
         </div>
@@ -272,28 +275,22 @@ export function EventCard(props: EventCardProps) {
     });
   }
 
-  // The two location actions, shared across every phase's action row: navigate
-  // (directions) + show on map (view). Each renders only when its handler is
-  // supplied — i.e. the event has a mappable place (ADR-0109 amendment).
-  const mapActs = (
-    <>
-      {onNavigate && (
-        <button type="button" className="wp-event-act go" onClick={onNavigate}>
-          {t.actions.navigate}
-        </button>
-      )}
-      {onShowOnMap && (
-        <button type="button" className="wp-event-act go" onClick={onShowOnMap}>
-          {t.actions.showOnMap}
-        </button>
-      )}
-    </>
+  // `ניווט` stays in the action row: it is a live, on-the-ground verb, so it belongs
+  // with the verbs, and it renders only when the event has a mappable place
+  // (ADR-0109 amendment). `מפה` left this row for the badge (`PlaceBadge`), so it is
+  // reachable without expanding the card.
+  const navAct = onNavigate && (
+    <button type="button" className="wp-event-act go" onClick={onNavigate}>
+      {t.actions.navigate}
+    </button>
   );
 
   return (
     <div className={cls}>
       <button type="button" className="wp-event-face" onClick={onToggle} aria-expanded={isOpen}>
-        <span className="wp-event-badge">{icon}</span>
+        <PlaceBadge className="wp-event-badge" onShowOnMap={onShowOnMap}>
+          {icon}
+        </PlaceBadge>
         {titleBlock}
         {/* The done ✓ doubles as one-tap undo (ADR-0043): a role=button inside
             the face that stops propagation so it restores without toggling. */}
@@ -336,11 +333,11 @@ export function EventCard(props: EventCardProps) {
               <button type="button" className="wp-event-act" onClick={onRestore}>
                 {t.actions.restore}
               </button>
-              {mapActs}
+              {navAct}
             </>
           ) : isHard ? (
             <>
-              {mapActs}
+              {navAct}
               {!readOnly && (
                 <>
                   <button type="button" className="wp-event-act" onClick={onOnWay}>
@@ -383,7 +380,7 @@ export function EventCard(props: EventCardProps) {
                   +
                 </button>
               </div>
-              {mapActs}
+              {navAct}
             </>
           )}
           {!readOnly && menuActions.length > 0 && (
