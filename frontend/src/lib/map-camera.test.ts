@@ -11,7 +11,7 @@ import {
   zoomToAtLeast,
 } from './map-camera';
 import { pinHeightFor } from './map-pins';
-import { MAP_CONTROLS_H, MAP_FIT_INSET, MAP_PIN, MAP_ZOOM } from '../constants';
+import { MAP_CARD_RESERVE_H, MAP_CONTROLS_H, MAP_FIT_INSET, MAP_PIN, MAP_ZOOM } from '../constants';
 
 const TOKYO = { lat: 35.68, lng: 139.76 };
 const KYOTO = { lat: 35.01, lng: 135.77 };
@@ -320,5 +320,54 @@ describe('the zoom ladder (ADR-0127)', () => {
       expect(step(MAP_ZOOM.PLACE)).toBe(step(MAP_ZOOM.PLACE));
       expect(step(null)).toBe(MAP_ZOOM.PLACE);
     });
+  });
+});
+
+// ADR-0122 §7 asked for this and deferred it; ADR-0128 §2 builds it. The reserve is
+// only ever asked for at the `map` stop, because that is the only stop the card exists
+// at — which is what makes it affordable and is worth asserting rather than assuming.
+describe('the place card’s bottom reserve (ADR-0128 §2)', () => {
+  const AT_MAP = 517;
+
+  it('reserves at the bottom and touches no other side', () => {
+    const plain = mapFitPadding(AT_MAP);
+    const withCard = mapFitPadding(AT_MAP, MAP_CARD_RESERVE_H);
+    expect(withCard.bottom).toBeGreaterThan(plain.bottom);
+    expect(withCard.top).toBe(plain.top);
+    expect(withCard.left).toBe(plain.left);
+    expect(withCard.right).toBe(plain.right);
+  });
+
+  // The finding that changed this from what ADR-0122 §7 specified: the card's full band
+  // does not fit on ANY phone at ANY stop, and an unclamped reserve would make
+  // `fitPaddingFor` drop the whole padding — trading a pin under the card for a pin
+  // under the controls row, which is worse and silent.
+  it('is CLAMPED so it can never cost the top inset', () => {
+    for (const h of [312, 517, 545]) {
+      const padding = mapFitPadding(h, MAP_CARD_RESERVE_H);
+      expect(padding.top).toBe(mapFitPadding(h).top);
+      expect(padding.bottom - mapFitPadding(h).bottom).toBeLessThan(MAP_CARD_RESERVE_H);
+      expect(fitPaddingFor({ width: 390, height: h }, padding)).toEqual(padding);
+    }
+  });
+
+  // Degrading rather than switching off: a taller canvas carries more of the card.
+  it('a taller canvas carries more of the card than a short one', () => {
+    const short = mapFitPadding(312, MAP_CARD_RESERVE_H).bottom - mapFitPadding(312).bottom;
+    const tall = mapFitPadding(517, MAP_CARD_RESERVE_H).bottom - mapFitPadding(517).bottom;
+    expect(tall).toBeGreaterThan(short);
+    expect(short).toBeGreaterThan(0);
+  });
+
+  it('defaults to reserving nothing, so no card means the shipped padding exactly', () => {
+    expect(mapFitPadding(AT_MAP, 0)).toEqual(mapFitPadding(AT_MAP));
+  });
+
+  // The affordability question ADR-0122 §1 raised about the TOP inset, asked of both at
+  // once: a fit that reserves the row and the card must still leave half the axis, or
+  // `fitPaddingFor` drops the whole thing and the framing is worse than before.
+  it('stays affordable on the narrowest phone too, so it is never dropped', () => {
+    const padding = mapFitPadding(312, MAP_CARD_RESERVE_H);
+    expect(fitPaddingFor({ width: 360, height: 312 }, padding)).toEqual(padding);
   });
 });

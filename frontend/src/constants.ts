@@ -296,7 +296,31 @@ export const SNAP_FLICK_PX_PER_MS = 0.5;
  *  16 both landed too close — so both moved one step out and the relationship between
  *  them was preserved rather than re-invented. They join `MAP_PIN` and
  *  `MAP_REFIT_FILL_SHARE` in the same cluster. */
-export const MAP_ZOOM = { PLACE: 14, MAX_FIT: 15, STEP_IN_MAX: 17, WORLD: 2 } as const;
+export const MAP_ZOOM = {
+  PLACE: 14,
+  MAX_FIT: 15,
+  STEP_IN_MAX: 17,
+  /** Below this zoom every pin degrades to a **dot** (ADR-0121 §6, built in ADR-0128).
+   *  Keyed on ZOOM, never on the canvas, and that distinction is the whole reason
+   *  ADR-0123 left it alone: a pin's SIZE must not change under a pinch, but its TIER
+   *  legitimately can. A ~30km span on a phone is the last view where a teardrop with
+   *  a glyph and a numeral is claiming precision it has; wider than that it covers a
+   *  town and the numeral is noise. Derived, and in the device-pass cluster. */
+  DOT_BELOW: 11,
+  WORLD: 2,
+} as const;
+
+/** What the place card reserves at the bottom of the canvas while it is up (ADR-0122
+ *  §7, deferred there and built in ADR-0128 §2) — the attribution it must clear, the
+ *  float gap, and the card's own body.
+ *
+ *  `CARD_BODY_H` is the one new number: a selected `.place` row plus the way-in block
+ *  selection reveals. It is a constant rather than a measurement because this screen
+ *  re-renders every second and `--sheet-h` must never depend on a layout read (ADR-0121
+ *  §5) — so it is stated, sized generously enough to cover a two-reference row, and left
+ *  to the device pass like the rest of the cluster. */
+export const MAP_CARD_BODY_H = 130;
+export const MAP_CARD_RESERVE_H = MAP_ATTRIBUTION_H + MAP_FLOAT_GAP + MAP_CARD_BODY_H;
 
 /**
  * **The pin's size is a rule, not a number** (ADR-0123): a pin is a share of the
@@ -320,6 +344,9 @@ export const MAP_ZOOM = { PLACE: 14, MAX_FIT: 15, STEP_IN_MAX: 17, WORLD: 2 } as
  * - `TAG_RISE` — how far the amber `עכשיו` / `התחנה הבאה` tag climbs above the pin's own
  *   box, as a fraction of the pin's height. Named because it is exactly the difference
  *   between "a pin is this tall" and "the camera must keep this much clear".
+ * - `DOT_SCALE` — what the dot tier keeps of the pin (ADR-0128 §1). A ratio for the same
+ *   reason `GHOST_SCALE` is one: the rung has to stay a rung as the canvas grows the
+ *   others, and the dot is the bottom of the same ladder rather than a second object.
  * - `GHOST_SCALE` — the subordinate tier stays subordinate **by ratio**, so a ghost is
  *   the same teardrop at 72% on every canvas rather than a fixed 25px that goes on
  *   getting relatively smaller as the rest grow (ADR-0121 §6's ladder, held).
@@ -352,6 +379,7 @@ export const MAP_PIN = {
   MAX_H: 56,
   CANVAS_SHARE: 0.11,
   TAG_RISE: 0.56,
+  DOT_SCALE: 0.4,
   GHOST_SCALE: 0.72,
   /** How far the pin's ink reaches SIDEWAYS from its anchor, as a fraction of its height —
    *  the camera's left/right inset (session 144). Measured in Chromium, not derived on

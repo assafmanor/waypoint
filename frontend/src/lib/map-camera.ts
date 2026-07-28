@@ -142,6 +142,9 @@ export function boundsFillView(outer: MapBounds, inner: MapBounds): boolean {
 export type CameraTarget =
   { kind: 'none' } | { kind: 'centre'; at: LatLng } | { kind: 'fit'; bounds: MapBounds };
 
+/** Padding may claim at most this share of either axis before it is dropped. */
+const MAX_PADDING_SHARE = 0.5;
+
 /**
  * Inset for a fit, in px, **against the canvas being fitted into**. The top carries
  * the floating controls row — derived from the constant that writes
@@ -158,7 +161,17 @@ export type CameraTarget =
  * can land under the row. Deriving it makes that case cheaper, not solved: the pin is
  * at its floor there, so the inset asks for less than the flat 64px clearance did.
  */
-export function mapFitPadding(canvasHeightPx: number): {
+export function mapFitPadding(
+  canvasHeightPx: number,
+  /** What the place card is occupying at the canvas's bottom right now, or 0 when none
+   *  is up (ADR-0122 §7, deferred there and built in ADR-0128 §2). It is a live number
+   *  rather than a constant because the card comes and goes on a tap — which is exactly
+   *  why the caller reads it through a **ref** and not a dependency: recomputing the
+   *  padding must not re-run the framing effect, or tapping a pin would move the camera,
+   *  and "a tap never takes away the surface it was made on" is the rule that killed
+   *  this inset the first time round. */
+  bottomReservePx = 0,
+): {
   top: number;
   right: number;
   bottom: number;
@@ -169,10 +182,22 @@ export function mapFitPadding(canvasHeightPx: number): {
   // Measured from the ANCHOR, which is the tip: up is the body plus the tag, sideways is
   // half the box plus the number badge's overhang, and down is nothing at all.
   const reach = Math.ceil(pinHeightFor(canvasHeightPx) * MAP_PIN.SIDE_REACH);
+  const top = MAP_CONTROLS_H + MAP_FLOAT_GAP + pinClearanceFor(canvasHeightPx);
+  // THE CARD'S RESERVE IS BEST-EFFORT; THE TOP INSET IS NOT (ADR-0128 §2). Asking for
+  // the card's full band blows the block axis past `fitPaddingFor`'s affordability
+  // ceiling — measured, a 130px card does it on every phone, at every stop — and that
+  // function drops the WHOLE padding, top included. So an unclamped reserve would trade
+  // "a pin can hide under the card" for "a pin can hide under the controls row", which
+  // is a worse bug and a silent one.
+  //
+  // Clamped, it degrades instead: the reserve takes whatever the axis has left after the
+  // top inset, so a taller canvas carries more of the card and a short one carries a
+  // little. Strictly better than the 0 that shipped, and it can never cost the top.
+  const affordable = Math.max(0, canvasHeightPx * MAX_PADDING_SHARE - top - MAP_FIT_INSET - 1);
   return {
-    top: MAP_CONTROLS_H + MAP_FLOAT_GAP + pinClearanceFor(canvasHeightPx),
+    top,
     right: MAP_FIT_INSET + reach,
-    bottom: MAP_FIT_INSET,
+    bottom: MAP_FIT_INSET + Math.floor(Math.min(bottomReservePx, affordable)),
     left: MAP_FIT_INSET + reach,
   };
 }
@@ -198,8 +223,6 @@ export function fitPaddingFor(
     padding.top + padding.bottom < viewport.height * MAX_PADDING_SHARE;
   return fits ? padding : undefined;
 }
-/** Padding may claim at most this share of either axis before it is dropped. */
-const MAX_PADDING_SHARE = 0.5;
 
 /**
  * **Zoom-to-at-least** (ADR-0127 §1): the zoom a "look at this place" intent should

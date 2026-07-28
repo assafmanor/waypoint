@@ -1384,6 +1384,10 @@ export function MapView() {
           '--pin-base': pinSizeCss(),
           '--pin-tag-rise': MAP_PIN.TAG_RISE,
           '--pin-ghost-scale': MAP_PIN.GHOST_SCALE,
+          // The dot tier's ratio (ADR-0128 §1). Written here with the others, and read
+          // by CSS off the pane's own `data-pins` — so the tier flips under a pinch with
+          // no marker re-render and no prop that changes on a gesture.
+          '--pin-dot-scale': MAP_PIN.DOT_SCALE,
         } as CSSProperties
       }
     >
@@ -1407,6 +1411,7 @@ export function MapView() {
           onAreaSort={toggleAreaSort}
           onLocate={locateFromCanvas}
           arrivalFocus={arrivalFocus}
+          cardOpen={cardUsage != null}
         />
         {placeCard}
         {geoPrompt}

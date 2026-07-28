@@ -234,6 +234,46 @@
   border-color: color-mix(in srgb, var(--cat-services) 78%, var(--ink));
 }
 
+/* ── THE DOT TIER (ADR-0121 §6, decided there and built in ADR-0128 §1) ────────
+   "Below a legibility threshold a pin degrades to a DOT — hue kept, number and glyph
+   dropped, since a 9px numeral is noise." The threshold is on **zoom**, not on the
+   canvas, and that distinction is why ADR-0123 deliberately left this alone: a pin's
+   SIZE must not change under a pinch, but its TIER legitimately can.
+
+   It is also the honest answer to "a pin does not shrink when you zoom out, so at
+   country zoom it covers a city" — the trigger ADR-0121 §6 named for revisiting
+   clustering, answered without adopting clustering: a dot spans no categories, so it
+   keeps its hue; it has no glyph or number to lose meaning; and it is the same object,
+   so nothing on the canvas leaves the pin grammar.
+
+   Entirely in CSS, off one data attribute the pane writes: no marker re-renders, no
+   prop, nothing that could re-diff a live map's overlays (§4). The teardrop becomes a
+   round dot — the tip is what claims a building, and at this zoom it cannot honestly
+   claim one, so it is dropped rather than shrunk. */
+.map-pane[data-pins='dot'] .map-pin {
+  --pin-u: calc(var(--pin-base, 34px) * var(--pin-dot-scale, 0.4));
+}
+.map-pane[data-pins='dot'] .map-pin .pin-b {
+  /* No rotation and a full radius: a dot, not a small teardrop. */
+  border-radius: 50%;
+  transform: none;
+  box-shadow: 0 1px 2px color-mix(in srgb, var(--ink) 22%, transparent);
+}
+/* The glyph, the order number and the amber tags all go: each of them is a claim about
+   a place you cannot resolve at this zoom. The amber CUE is not lost — `nextstop` and
+   `nowstop` keep their ring and their pulse below, which is prominence rather than
+   text, and is what the tier is for. */
+.map-pane[data-pins='dot'] .map-pin .pin-g,
+.map-pane[data-pins='dot'] .map-pin .pin-n,
+.map-pane[data-pins='dot'] .map-pin .pin-tag {
+  display: none;
+}
+/* A ghost at this zoom is still the subordinate rung, by the same ratio as everywhere
+   else — the ladder does not collapse just because the rungs got smaller. */
+.map-pane[data-pins='dot'] .map-pin.ghost {
+  --pin-u: calc(var(--pin-base, 34px) * var(--pin-dot-scale, 0.4) * var(--pin-ghost-scale, 0.72));
+}
+
 /* THE ONE AMBER TIME-ANCHOR the map's budget allows (ADR-0109 §6): the next
    committed stop, and nothing else on the canvas is amber. It is `.place.nextstop`'s
    ring moved onto the pin as §6 always intended.
