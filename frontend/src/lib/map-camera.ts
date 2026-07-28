@@ -267,9 +267,21 @@ export function focusBoundsFor(at: LatLng, others: readonly LatLng[]): MapBounds
     .map((p) => Math.max(Math.abs(p.lat - at.lat), Math.abs(p.lng - at.lng) * lngScale(at.lat)))
     .sort((a, b) => a - b)
     .slice(0, MAP_FOCUS.NEIGHBOURS);
-  // The furthest of the near ones, so a cluster is framed as a cluster rather than
-  // around its closest member only. No neighbours at all → the default span.
-  const reach = near.length > 0 ? near[near.length - 1] : MAP_FOCUS.DEFAULT_SPAN_DEG;
+  // The furthest of the near ones, so a cluster is framed as a cluster rather than around
+  // its closest member only — **but only among neighbours that are actually together**
+  // (owner, session 169: _"zoom more when the selected is very close to other results"_).
+  // A neighbour many times further than the nearest one is not part of its cluster, and
+  // letting it set the reach meant a place with something right next door framed as if it
+  // had nothing: the close neighbour you wanted to see sat in the middle of a frame sized
+  // for the far one.
+  const nearest = near[0];
+  const cluster =
+    nearest == null ? near : near.filter((d) => d <= nearest * MAP_FOCUS.CLUSTER_FACTOR);
+  // No neighbours at all → the default span. **Nothing CLOSE is not the same as nothing**
+  // (owner, same session): when every neighbour is far, they still set the reach and the
+  // ceiling still clamps it, so an isolated place keeps the wider frame it always had
+  // rather than zooming in on empty ground.
+  const reach = cluster.length > 0 ? cluster[cluster.length - 1] : MAP_FOCUS.DEFAULT_SPAN_DEG;
   const half = Math.min(
     Math.max(reach * MAP_FOCUS.NEIGHBOUR_HEADROOM, MAP_FOCUS.MIN_SPAN_DEG),
     MAP_FOCUS.MAX_SPAN_DEG,

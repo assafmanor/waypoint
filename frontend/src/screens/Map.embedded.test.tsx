@@ -1178,6 +1178,23 @@ describe('the embedded map’s shell (ADR-0121)', () => {
         expect(screenEl().dataset.choosing).toBe('place');
       });
 
+      // The SECOND exemption (owner, session 169: _"selected should be promoted to pin"_).
+      // Reported on a device: the selected place drew as a dot with the selection ring
+      // around it — a ring drawn around nothing. Selection is the strongest answer the tab
+      // has to "what are you choosing", so it outranks a rule about the backdrop.
+      //
+      // The demotion is CSS (`:not(.match, .selected)`), so what a unit test owns is the
+      // pair of flags it keys on: the pin has to be MARKED selected while an errand is live.
+      it('marks the tapped pin selected under an errand, which is what exempts it', () => {
+        seed();
+        render(wrap(<MapView />));
+        startErrand();
+        expect(pin('museum')!.dataset.selected).toBe('false');
+        fireEvent.click(pin('museum')!);
+        expect(pin('museum')!.dataset.selected).toBe('true');
+        expect(screenEl().dataset.choosing).toBe('place');
+      });
+
       // ARRIVING ON AN ERRAND OPENS THE FIELD (owner, session 168: _"opening map search for
       // event/booking doesn't start on keyboard open"_). The field's `autoFocus` is what
       // brings the keyboard; opening it is what this screen owes.

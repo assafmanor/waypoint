@@ -429,14 +429,26 @@
    Two deliberate differences from the zoom tier, both consequences of that trigger:
    the amber cues are NOT spared (`עכשיו` claims priority among the things you are looking
    at, and under an errand none of them is what you are looking at), and no `data-scope`
-   split (nothing here turns on which day chose the pin). */
-.map-screen[data-choosing] .map-pane .map-pin:not(.match) {
+   split (nothing here turns on which day chose the pin).
+
+   **TWO EXEMPTIONS, and both are the same idea** — the demotion asks "is this what you are
+   choosing", so anything that answers YES keeps its full pin:
+
+     • `.match` — your search surfaced it (session 168).
+     • `.selected` — you tapped it (session 169). Reported on a device: the selected place
+       drew as a dot with a selection ring around it, which is a ring drawn around nothing.
+       Selection is the strongest answer to "what are you choosing" the tab has, so it
+       outranks a rule about the backdrop by definition.
+
+   Both are classes on the PIN, never a switch on the screen: the exemption belongs to the
+   pin that earned it (ADR-0131 §4's split). */
+.map-screen[data-choosing] .map-pane .map-pin:not(.match, .selected) {
   --pin-u: calc(var(--pin-base, 34px) * var(--pin-dot-scale, 0.4));
 }
-.map-screen[data-choosing] .map-pane .map-pin.aside:not(.match) {
+.map-screen[data-choosing] .map-pane .map-pin.aside:not(.match, .selected) {
   --pin-u: calc(var(--pin-base, 34px) * var(--pin-dot-scale, 0.4) * var(--pin-aside-scale, 0.72));
 }
-.map-screen[data-choosing] .map-pane .map-pin:not(.match) .pin-b {
+.map-screen[data-choosing] .map-pane .map-pin:not(.match, .selected) .pin-b {
   border-radius: 50%;
   transform: none;
   border-style: solid;
@@ -447,9 +459,9 @@
   box-shadow: 0 1px 2px color-mix(in srgb, var(--ink) 22%, transparent);
   animation: none;
 }
-.map-screen[data-choosing] .map-pane .map-pin:not(.match) .pin-g,
-.map-screen[data-choosing] .map-pane .map-pin:not(.match) .pin-n,
-.map-screen[data-choosing] .map-pane .map-pin:not(.match) .pin-tag {
+.map-screen[data-choosing] .map-pane .map-pin:not(.match, .selected) .pin-g,
+.map-screen[data-choosing] .map-pane .map-pin:not(.match, .selected) .pin-n,
+.map-screen[data-choosing] .map-pane .map-pin:not(.match, .selected) .pin-tag {
   display: none;
 }
 

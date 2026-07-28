@@ -38,6 +38,12 @@ A fixed zoom cannot tell a dense district from an empty valley, which is the own
 
 `MAP_FOCUS` names five numbers, and two of them are clamps that each prevent a real failure: without the **ceiling**, one distant neighbour frames a region and the place you came to see is a speck; without the **floor**, near-coincident pins fit a near-zero box and snap to building level, which is ADR-0121 §7's degenerate row. The reach is the furthest of the _near_ ones, so a cluster is framed as a cluster rather than around its closest member. A pin at the _same_ coordinates is not a neighbour at all — it says nothing about surroundings — so it falls through to the standalone default.
 
+> **AMENDED 2026-07-28 (session 169, owner: _"dynamic zoom should zoom more when the selected is very close to other results"_, with a screenshot).** The reach was **the furthest of the nearest three, unconditionally** — so one distant pin set the span even when another was right next door, and the close neighbour you actually wanted to see sat in the middle of a frame sized for the far one. A place with something across the street framed as if it had nothing.
+>
+> **So the near ones have to be near each other, not just near you:** `CLUSTER_FACTOR` bounds a neighbour's distance to a multiple of the **nearest** one's, and the reach is the furthest inside that. Three pins down one street still frame as one cluster; a fourth two kilometres away no longer drags the frame out to meet it.
+>
+> **What is deliberately unchanged is the far case** (owner, immediately after: _"if there aren't any close pins, do the previous logic so that it doesn't zoom too much"_). When every neighbour is far they are all in the same far cluster, so the reach and the **ceiling** behave exactly as before and an isolated place keeps its wider frame. **Nothing close is not the same as nothing** — zooming in on empty ground would trade one bad frame for another, and this is the sharper statement of what the ceiling is for.
+
 **`MAP_ZOOM.PLACE` survives as the fallback**, which is the honest reading of what it always was: the answer when there is nothing around to measure.
 
 ### 3. Nothing portals, because the smoothness is ours
