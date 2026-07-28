@@ -1,6 +1,6 @@
 # 0128 — The dot tier, and the place card's camera reserve
 
-**Status:** Accepted — authored and built 2026-07-28 (session 152). Closes Phase 3. The rendered canvas has still not been seen (ADR-0121 §13) and nothing below claims otherwise.
+**Status:** Accepted — authored and built 2026-07-28 (session 152), **§1 amended the same day (session 154)** after the owner questioned who the tier should apply to. Closes Phase 3. The rendered canvas has still not been seen (ADR-0121 §13) and nothing below claims otherwise.
 **Date:** 2026-07-28
 **Amends** [0121](0121-embedded-map-phase-6-design.md) **§6** — the `dot` tier it decided and never built is built here (§1) — and [0122](0122-map-split-controls-over-the-canvas.md) **§7**, whose bottom camera inset was deferred with the phase and lands here **in a different shape than §7 specified** (§2).
 Relates [0123](0123-map-pin-size-is-a-share-of-the-canvas.md) (why this tier is keyed on zoom and the pin's _size_ is not), [0127](0127-map-camera-answers-the-tap.md) (the rest of Phase 3), [0122](0122-map-split-controls-over-the-canvas.md) §9 and [0126](0126-map-canvas-chrome-two-camera-controls-and-an-area-sort.md)'s build log (where the no-prop-on-a-tap line actually sits).
@@ -26,7 +26,19 @@ The third thing the old Phase 3 line carried — `MAP_PIN`'s dials — turned ou
 
 **Keyed on `zoom_changed`, not `idle`**, so the tier flips _during_ a pinch, which is the only time it is answering anything. A dataset write per zoom event costs nothing.
 
-**Ratios, not sizes.** `MAP_PIN.DOT_SCALE` (0.4) is a fraction of the pin, exactly as `GHOST_SCALE` is, so the rung stays a rung as the canvas grows the others — and a ghost at dot zoom compounds both, staying subordinate within the smaller ladder. The amber `עכשיו` / `התחנה הבאה` **tags** drop (they are text), but the amber **ring and pulse** stay: that cue is prominence, not text, and keeping it is what the tier is for.
+**Ratios, not sizes.** `MAP_PIN.DOT_SCALE` (0.4) is a fraction of the pin, exactly as `GHOST_SCALE` is, so the rung stays a rung as the canvas grows the others — and a ghost at dot zoom compounds both, staying subordinate within the smaller ladder.
+
+> **Amended 2026-07-28 (session 154) — the tier applies to precision, not to priority, and the time anchors are exempt.**
+>
+> As first built, the degradation was blanket: every pin became a dot, the amber `עכשיו` / `התחנה הבאה` **tags** dropped as text, and only the ring and pulse survived — at 0.4 of their size. The owner asked whether today's pins should demote at all, and said the now/next pins certainly should not. The second half is right, and the paragraph above was already reasoning toward it ("that cue is prominence, not text") while the CSS applied it too weakly.
+>
+> **The rule, and it is the reusable part: demote what claims PRECISION, keep what claims PRIORITY.** The glyph, the order number and the tip answer _which one_ and _where exactly_ — claims a 30km-wide view cannot support. Hue answers _what kind_; the amber cue answers _what matters right now_. Neither of those is invalidated by zoom, so neither is degraded. **`nowStop` and `nextStop` are therefore not degraded at all** — full size, glyph, number, tag, ring and pulse.
+>
+> Two reasons that is a rule rather than an exception grudgingly carved out. It costs **nothing** in density terms: there is exactly one of each (ADR-0121 §6), and the crowding this tier exists for is the other N. And it makes the degradation a **promotion by contrast** — at a wide zoom the canvas becomes dots plus one or two real teardrops, which is the most direct possible answer to "where am I / where next", the question a wide view is otherwise worst at.
+>
+> **Today's other pins DO demote**, which was the owner's open question. Exempting them would make the tier a near no-op in day scope, where almost every pin _is_ today's — the only thing left to shrink would be ghosts, already the bottom rung at `GHOST_SCALE`. And in the case the tier exists for (all-days, multi-city) "today" is not even a tier: there are no ghosts in all-days scope, so every pin would be exempt and the tier would do nothing at all.
+>
+> Written as `:not(.nowstop, .nextstop)` on the degradation rather than as an override that undoes it, so there is one statement of what a dot is and no second rule racing the first.
 
 **Clustering still is not adopted**, and this is why the trigger §6 named has not fired: what made all-days unreadable was a full teardrop per place at country zoom, and a dot spans no categories (so it keeps its hue), carries no glyph or number to lose meaning, and is the same object — so nothing leaves the pin grammar, which is the exact objection §6 raised against a cluster bubble.
 
