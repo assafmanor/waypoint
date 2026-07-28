@@ -33,8 +33,31 @@ describe('avatarPictureUrl', () => {
     ).toBeNull();
   });
 
-  it('degrades `upload` to initials until Phase 4 gives it a source', () => {
+  it('renders an uploaded avatar from the server-built path', () => {
+    expect(
+      avatarPictureUrl(
+        person({ avatarChoice: 'upload', uploadedAvatarUrl: '/users/u-1/avatar/k-9' }),
+      ),
+      // API_BASE_URL is empty under test (same-origin), so the path passes through —
+      // the point is that it is PREFIXED rather than parsed as an absolute URL.
+    ).toBe('/users/u-1/avatar/k-9');
+  });
+
+  it('degrades `upload` with no stored blob to initials', () => {
+    // The row says "upload" but the blob is gone, or the DTO predates one. Still no
+    // broken image (ADR-0133 §4).
     expect(avatarPictureUrl(person({ avatarChoice: 'upload' }))).toBeNull();
+    expect(
+      avatarPictureUrl(person({ avatarChoice: 'upload', uploadedAvatarUrl: null })),
+    ).toBeNull();
+  });
+
+  it('ignores an upload the user has switched away from', () => {
+    expect(
+      avatarPictureUrl(
+        person({ avatarChoice: 'google', googleAvatarUrl: null, uploadedAvatarUrl: '/u/a/k' }),
+      ),
+    ).toBeNull();
   });
 });
 

@@ -734,8 +734,23 @@ export const t = {
         remove: 'הסרת התמונה',
         useGoogle: 'שימוש בתמונה מגוגל',
         hueLabel: 'צבע הרקע',
+        // Upload (ADR-0133 §12). The badge on the hero has no label — that is the
+        // convention it relies on — so it needs an accessible name instead, and the
+        // primary action below it says which of the two acts it is.
+        upload: 'העלאת תמונה',
+        replace: 'החלפת תמונה',
+        badgeLabel: 'בחירת תמונה חדשה',
+        uploaded: 'התמונה שהעליתם',
+        chooseFile: 'בחירה מהמכשיר',
+        takePhoto: 'צילום תמונה',
+        uploading: 'מעלה...',
+        // A rejected pick is almost always "that file isn't a picture" — the size cap
+        // is nearly unreachable once the phone re-encodes to a 512px square.
+        uploadFailed: 'העלאת התמונה נכשלה. אפשר לנסות תמונה אחרת.',
+        notAnImage: 'הקובץ שנבחר אינו תמונה.',
         removeHint: 'הסרה כאן היא ״לא להשתמש בה״, ולא מחיקה אצל גוגל, ולכן תמיד יש דרך חזרה.',
         noPhotoHint: 'אין תמונה בחשבון גוגל שאיתו נכנסתם, ולכן מוצגות האותיות הראשונות.',
+        uploadHint: 'התמונה נחתכת לריבוע ומוקטנת במכשיר לפני ההעלאה.',
         hueName: {
           plum: 'שזיף',
           rose: 'ורד',

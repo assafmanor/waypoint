@@ -20,6 +20,7 @@ type IconName =
   | 'frame'
   | 'pin'
   | 'external'
+  | 'camera'
   | 'cloud-check'
   | 'cloud-up'
   | 'cloud-bang';
@@ -66,6 +67,14 @@ const PATHS: Record<IconName, string> = {
   // glyph: `pin` above already means "our map", and two map-shaped marks on one row would
   // compete. What this control says is where you END UP, which is the honest distinction.
   external: 'M14 4h6v6 M20 4 11 13 M18 14v4a2 2 0 0 1-2 2H6a2 2 0 0 1-2-2V8a2 2 0 0 1 2-2h4',
+  // The badge on the avatar hero that changes your picture (ADR-0133 §6/§12): a body
+  // with the raised shutter hump, plus the lens. The one affordance on a profile
+  // surface that needs no label — and a real SVG, because `FilePicker` still draws 📷
+  // and design-language's "emoji are content, icons are UI" forbids that on a control.
+  // Adding the shape here is also the first step of the emoji sweep the backlog carries,
+  // so the retrofit has something to point at.
+  camera:
+    'M4 8h2.5l1.4-2.2a1 1 0 0 1 .84-.46h6.52a1 1 0 0 1 .84.46L17.5 8H20a1 1 0 0 1 1 1v8a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V9a1 1 0 0 1 1-1Z M15 13.2a3 3 0 1 1-6 0 3 3 0 0 1 6 0',
   // Per-entity sync glyphs — a cloud + a distinct inner mark per state (ADR-0091).
   'cloud-check': CLOUD + ' M9.3 13.6l1.9 1.9 3.6-3.8',
   'cloud-up': CLOUD + ' M11.8 16.6v-4.6 M9.6 14l2.2-2.2 2.2 2.2',

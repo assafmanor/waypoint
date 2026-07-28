@@ -10,6 +10,11 @@ export const SERVER_ROUTE_PREFIXES = [
   'invites',
   'me',
   'trips',
+  // Uploaded avatar bytes (ADR-0133 §12). It has to be here for the SERVICE WORKER
+  // half, not just the contract test: an avatar is loaded by a plain `<img src>`, so
+  // without this prefix the PWA would answer that request with the cached app shell
+  // and every uploaded face would fail to decode in production.
+  'users',
 ] as const;
 
 export const SERVER_ROUTE_PATTERN = new RegExp(`^/(${SERVER_ROUTE_PREFIXES.join('|')})(/|$)`);

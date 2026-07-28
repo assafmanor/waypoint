@@ -40,13 +40,29 @@ describe('FilePicker', () => {
 
   it('offers a second capture tile when capture is requested on a coarse-pointer device', () => {
     stubPointer(true);
-    render(<FilePicker value={null} onPick={() => {}} onClear={() => {}} accept="*" capture />);
+    render(
+      <FilePicker
+        value={null}
+        onPick={() => {}}
+        onClear={() => {}}
+        accept="*"
+        capture="environment"
+      />,
+    );
     expect(screen.getAllByRole('button')).toHaveLength(2);
   });
 
   it('hides the capture tile on a fine-pointer (desktop) device', () => {
     stubPointer(false);
-    render(<FilePicker value={null} onPick={() => {}} onClear={() => {}} accept="*" capture />);
+    render(
+      <FilePicker
+        value={null}
+        onPick={() => {}}
+        onClear={() => {}}
+        accept="*"
+        capture="environment"
+      />,
+    );
     expect(screen.getAllByRole('button')).toHaveLength(1);
   });
 

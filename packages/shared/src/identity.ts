@@ -73,3 +73,15 @@ export function resolveAvatarHue(userId: string, stored: string | null | undefin
   const parsed = identityHueSchema.safeParse(stored);
   return parsed.success ? parsed.data : deriveAvatarHue(userId);
 }
+
+/** Where an uploaded avatar's bytes are served from (ADR-0133 §12). Defined here so
+ *  the route the server registers and the URL it puts on the wire are one string, and
+ *  neither layer builds it by hand.
+ *
+ *  The key is in the path rather than a query param on purpose: it is the blob's
+ *  opaque id, so the URL is immutable — a replace mints a new key and therefore a new
+ *  URL, which is what lets the response be cached hard with no stale-face problem and
+ *  no cache-busting param to remember. */
+export function avatarContentPath(userId: string, uploadedAvatarKey: string): string {
+  return `/users/${userId}/avatar/${uploadedAvatarKey}`;
+}

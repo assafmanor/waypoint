@@ -30,6 +30,19 @@
 | POST   | `/auth/logout`          | Invalidate session                                                                                                                                                                                                                                                                                                                                                                                      |
 | GET    | `/me`                   | Current user + memberships                                                                                                                                                                                                                                                                                                                                                                              |
 | PATCH  | `/me`                   | `updateMeSchema` (`{ displayName?, avatarChoice?, avatarHue? }`) → `Me`. Your own row only, so authorization is implicit and total (ADR-0133). Partial + LWW; `avatarHue: null` **clears** the pick and hands the hue back to the derivation. Deliberately **not** on the data plane: a `Change` is per-trip while a user spans many, so co-members see a new name at their next snapshot (ADR-0133 §8) |
+| POST   | `/me/avatar`            | `multipart/form-data`, one `file` part → `Me`. Stores the bytes and sets `avatarChoice: 'upload'`. The type is **sniffed from the bytes** (JPEG/PNG/WebP only) rather than trusted from the part header, and `MAX_AVATAR_SIZE_BYTES` is enforced by the interceptor's stream limit → 413 (ADR-0133 §12)                                                                                                 |
+| DELETE | `/me/avatar`            | → `Me`. Deletes the blob and lands on the Google photo if there still is one, else `initials` — so the caller never guesses which happened (ADR-0133 §6)                                                                                                                                                                                                                                                |
+
+### Avatar bytes
+
+| Method | Path                         | Response                                                                                                                                                                                                                                                                                                                                                                          |
+| ------ | ---------------------------- | --------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| GET    | `/users/:userId/avatar/:key` | The image bytes, served **inline** for a plain `<img src>`. **Unauthenticated by design** — `:key` is an opaque `randomUUID` handed out only inside a `User` DTO, i.e. the same unguessable-capability trust class as the `googleAvatarUrl` this app already hotlinks (ADR-0133 §12). A retired key 404s. `Cache-Control: immutable` for a year, since the key _is_ the blob's id |
+
+The URL is built by `avatarContentPath` in `@waypoint/shared` and reaches clients as
+`User.uploadedAvatarUrl` (root-relative — the server has no reliable view of its own
+public origin). `users` is in `SERVER_ROUTE_PREFIXES`, which the **service worker** reads
+too: without it the PWA would answer an avatar request with the cached app shell.
 
 ## Trips
 

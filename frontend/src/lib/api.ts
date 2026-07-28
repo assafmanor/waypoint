@@ -53,10 +53,13 @@ import {
   type UpdateMeInput,
   type UpdateTripInput,
 } from '@waypoint/shared';
+import { API_BASE_URL, AVATAR_UPLOAD_FILENAME } from '../constants';
 import type { MapBounds } from './map-camera';
 import { evictCachedDocument, readCachedBlob, writeCachedBlob } from './doc-cache';
 
-export const API_BASE_URL = import.meta.env.VITE_API_BASE_URL ?? '';
+// Defined in `constants.ts` (a primitive needs it without importing this module) and
+// re-exported here, where every caller already looks for it.
+export { API_BASE_URL };
 
 /** HTTP methods the request helpers use. Named because `RequestInit.method` is
  *  typed `string`, so a bare `'POST'` typo (`'PSOT'`) fails silently at runtime
@@ -154,6 +157,30 @@ export async function updateMe(input: UpdateMeInput): Promise<Me> {
     headers: { 'Content-Type': 'application/json' },
     body: JSON.stringify(input),
   });
+  if (!res.ok) return throwApiError(res);
+  return meSchema.parse(await res.json());
+}
+
+/** Upload an avatar (ADR-0133 §12). Multipart, one `file` part — no `Content-Type`
+ *  header set by hand, because the browser has to add the multipart boundary itself.
+ *  Online-only for the same reason as `updateMe`: a `User` is not a syncable entity,
+ *  and bytes are not something the outbox replays. */
+export async function uploadAvatar(blob: Blob): Promise<Me> {
+  const form = new FormData();
+  form.set('file', blob, AVATAR_UPLOAD_FILENAME);
+  const res = await apiFetch(`${API_BASE_URL}/me/avatar`, {
+    method: HTTP_METHOD.POST,
+    body: form,
+  });
+  if (!res.ok) return throwApiError(res);
+  return meSchema.parse(await res.json());
+}
+
+/** Delete the uploaded avatar; the server lands you on the Google photo if there
+ *  still is one, else initials. Returns the new `Me` rather than 204, so the caller
+ *  never has to guess which of those two happened. */
+export async function deleteAvatar(): Promise<Me> {
+  const res = await apiFetch(`${API_BASE_URL}/me/avatar`, { method: HTTP_METHOD.DELETE });
   if (!res.ok) return throwApiError(res);
   return meSchema.parse(await res.json());
 }

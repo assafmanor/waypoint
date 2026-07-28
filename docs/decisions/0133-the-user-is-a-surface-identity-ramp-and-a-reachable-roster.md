@@ -347,6 +347,72 @@ row rendering" decision in §9, paid once.
 | 3     | The roster: the cluster becomes a control, the sheet, the shared row, **plus the two §10 fixes**.                                         |
 | 4     | Upload — a byte ceiling, a crop/resize step, and the trust-class call against `storage.ts`.                                               |
 
+### 12. Phase 4's trust-class call: an avatar is published, so it is not a document
+
+**Added 2026-07-28 with the Phase 4 build.** §6 said what the control is; this is the
+half it deferred, and the answer is a deliberate _divergence_ from the documents path
+rather than a reuse of it.
+
+**Documents are trip-scoped secrets. An avatar is a face we publish to the group.** That
+one difference decides everything below, and getting it backwards in either direction
+would be wrong — encrypting the avatar would be theatre, and serving a document the way
+we serve an avatar would be a vulnerability.
+
+|                   | Document (ADR-0015/0034)      | Uploaded avatar                         |
+| ----------------- | ----------------------------- | --------------------------------------- |
+| Encrypted at rest | **Yes**, `DOC_ENCRYPTION_KEY` | **No**                                  |
+| Auth on read      | Bearer token                  | **None** — unguessable-capability URL   |
+| Disposition       | `attachment`, always          | **`inline`**, so an `<img>` can draw it |
+| Declared type     | Trusted from the upload       | **Sniffed from the bytes**              |
+| Cacheable         | No                            | A year, `immutable`                     |
+
+- **Not encrypted, because there is nothing to protect it from.** Encryption at rest
+  guards a passport scan against blob-store compromise. This picture is shown to every
+  co-member by design; encrypting it would buy no confidentiality and cost the hard
+  caching an `<img>` wants, since every render would need a decrypt.
+- **Unauthenticated, because an `<img>` cannot send a bearer token.** The alternative is
+  what the document viewer does — fetch to a Blob, make an object URL — and putting that
+  in `Avatar` would make a presentational primitive async, on every roster row, for a
+  decoration. The key is a `randomUUID` handed out only in a `User` DTO, which is
+  _precisely_ the trust class of the `googleAvatarUrl` this app already hotlinks: Google
+  serves that photo unauthenticated to anyone holding the URL. Guarding ours harder than
+  the photo it substitutes for would be theatre.
+- **Inline is safe here because the type is proved, not believed.** A document can trust a
+  declared `mimetype` only because it never renders what it stored. An avatar does render,
+  so `sniffImageMimeType` reads the container signature, the response pins
+  `Content-Type` to _that_ (never the client's claim) with `nosniff`, and the allow-list
+  is the three raster types a browser draws — no SVG (a script document wearing an image
+  type; it has no binary signature, so "unrecognised" already rejects it), no HEIC, no
+  animated GIF. A JPEG/HTML polyglot is still only ever parsed as what we declare.
+- **The key is in the path, which is what makes `immutable` honest.** The URL contains the
+  blob's own id, so those bytes can never change at that URL; a replace mints a new key
+  and therefore a new URL, and the retired one 404s. That is also what makes "remove the
+  photo" actually stop serving the photo — the key is _matched_ against the user's
+  current one, not merely looked up.
+- **The ceiling is enforced twice, and neither is the interesting one.** The client
+  centre-crops to a square and re-encodes to a ≤512px JPEG before anything leaves the
+  phone, so a 4 MB camera photo arrives around 60 KB and the 512 KB server cap is a bound
+  on a hostile client rather than a limit real users meet. The crop is also the only way
+  to get a _square_ honestly — CSS cropping a rectangle into a circle just hopes the face
+  is centred.
+- **`storage.ts` moved to `common/`.** It was never document-specific — an opaque-keyed
+  byte sink with a dev-disk fallback — and the second caller made its address a lie.
+  `blob-cache.ts` moved with it, being purely its cache tier. The `DOC_`-prefixed env var
+  and its default path stayed: it is one flat keyspace of UUIDs, and renaming them would
+  strand every blob an existing dev install has written to buy a tidier word.
+- **`usePickFile`, not a `FilePicker` variant.** §6 asked for the mechanism as a variant
+  of the primitive. Building it showed the honest shape is a _hook_: the plumbing
+  (off-screen inputs, `accept`, `capture`, coarse-pointer detect, reset-after-pick) is
+  genuinely shared, while the two presentations — dashed tiles for a document that has no
+  on-screen representation, a badge on the face for an avatar that does — share nothing.
+  A `variant` prop switching between two unrelated trees would have been one component
+  pretending to be one thing. Camera **facing** became a parameter in the process: a
+  document wants the rear camera, a self-portrait the front one, and the original
+  hardcoded `environment` would have pointed the camera away from the subject.
+- **The label override §6 asked for turned out unnecessary.** With the hook holding no
+  copy, the picture page names its own actions and `FilePicker` keeps its generic ones —
+  so there is no override to add.
+
 ## Consequences
 
 - One primitive owns the avatar, so the picture model has exactly one reader and Phase 4 changes one

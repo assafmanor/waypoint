@@ -1,0 +1,19 @@
+/* Styles for the markup `usePickFile` itself renders, so the hook is self-contained.
+   This lived in file-picker.css, which was fine while FilePicker was the only consumer
+   — and stopped being fine the moment the picture page rendered the same inputs without
+   that stylesheet: two "Choose File" controls appeared at the bottom of the page. A hook
+   that emits DOM has to own that DOM's styling. */
+
+/* Visually hidden but still a real, focusable-by-script <input type="file">, so the OS
+   dialog and the camera intent are the platform's rather than an emulation.
+   `display: none` would break the click-to-open in some browsers, hence the clip. */
+.file-picker-input {
+  position: absolute;
+  width: 1px;
+  height: 1px;
+  padding: 0;
+  overflow: hidden;
+  clip: rect(0 0 0 0);
+  white-space: nowrap;
+  border: 0;
+}

@@ -3770,12 +3770,66 @@
 
 /* One primary action, one subordinate link — stacked, never side by side, so the
    pair cannot read as a segmented "pick a source" toggle (ADR-0133 §6). */
+/* The hero avatar carries its own trigger, so it needs a positioning context (ADR-0133
+   §6/§12). Inline-flex, not block, so the wrap is exactly the circle's size and the
+   badge anchors to the face rather than to the card. */
+.pk-hero-wrap {
+  position: relative;
+  display: inline-flex;
+}
+/* The camera badge: a small filled disc on the lower edge of the face. `inset-inline-end`
+   rather than `right`, so it mirrors to the correct side in RTL for free. It overhangs
+   the circle slightly, which is what reads as "attached to" instead of "inside". */
+.pk-badge {
+  position: absolute;
+  inset-inline-end: -2px;
+  bottom: -2px;
+  width: 32px;
+  height: 32px;
+  border-radius: 50%;
+  border: 2.5px solid var(--paper);
+  background: var(--cta);
+  color: var(--cta-text);
+  display: grid;
+  place-items: center;
+  font-size: 15px;
+  cursor: pointer;
+  padding: 0;
+  appearance: none;
+}
+.pk-badge:disabled {
+  opacity: 0.55;
+  cursor: default;
+}
+.pk-badge:focus-visible {
+  outline: 2.5px solid var(--teal);
+  outline-offset: 2px;
+}
 .pk-actions {
   display: flex;
   flex-direction: column;
   align-items: center;
   gap: 2px;
   padding: 4px 16px 12px;
+}
+/* The one filled action on the page — the neutral `--cta`, since changing a picture is
+   a generic act and neither time (amber) nor place (teal). */
+.pk-primary {
+  font: inherit;
+  font-size: 13px;
+  font-weight: 700;
+  color: var(--cta-text);
+  background: var(--cta);
+  border: 0;
+  border-radius: 999px;
+  padding: 11px 22px;
+  cursor: pointer;
+  min-height: 44px;
+  margin-bottom: 2px;
+}
+.pk-primary:disabled {
+  opacity: 0.55;
+  cursor: default;
 }
 .pk-link {
   font: inherit;

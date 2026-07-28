@@ -19,7 +19,7 @@ import { decryptAtRest, encryptAtRest } from '../common/crypto.util';
 import { DOC_ENCRYPTION_KEY, requireEnv } from '../common/env';
 import { PrismaService } from '../prisma/prisma.service';
 import { ChangeService } from '../sync/change.service';
-import { deleteObject, getObject, putObject } from './storage';
+import { deleteObject, getObject, putObject } from '../common/storage';
 
 const toDocumentSummaryDto = (d: PrismaDocument): DocumentSummary => ({
   id: d.id,

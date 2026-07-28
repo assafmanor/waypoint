@@ -73,7 +73,6 @@ import {
   DEFAULT_TRIP_ICON,
   DOT_SEPARATOR,
   ICONS,
-  MEMBER_AVATAR_CAP,
   MS_PER_DAY,
   OUTBOX_RETRY_MS,
   TABS,
@@ -187,7 +186,6 @@ function Header({
   // the member cluster is everyone else, capped with a "+N" overflow bubble
   // (app-shell.md §6, PR #57).
   const {
-    others,
     visible: visibleMembers,
     overflow: overflowMembers,
     show: showCluster,

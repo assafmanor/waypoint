@@ -13,6 +13,7 @@ const user = (id: string, name: string, over: Partial<User> = {}): User => ({
   avatarHue: 'denim',
   avatarChoice: 'initials',
   googleAvatarUrl: null,
+  uploadedAvatarUrl: null,
   createdAt: '2026-07-01T00:00:00.000Z',
   ...over,
 });

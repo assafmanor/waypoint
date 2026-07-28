@@ -1,7 +1,10 @@
-import { Injectable, UnauthorizedException } from '@nestjs/common';
-import type { Me, UpdateMeInput } from '@waypoint/shared';
+import { randomUUID } from 'node:crypto';
+import { Injectable, UnauthorizedException, UnsupportedMediaTypeException } from '@nestjs/common';
+import { ERROR_CODE, isAllowedAvatarMimeType, type Me, type UpdateMeInput } from '@waypoint/shared';
 import { decryptAtRest, encryptAtRest } from '../common/crypto.util';
 import { requireEnv, TOKEN_ENCRYPTION_KEY } from '../common/env';
+import { sniffImageMimeType } from '../common/image-sniff';
+import { deleteObject, getObject, putObject } from '../common/storage';
 import { PrismaService } from '../prisma/prisma.service';
 import { toMembershipDto, toUserDto } from '../trips/trips.mapper';
 import {
@@ -184,6 +187,82 @@ export class AuthService {
       },
     });
     return this.getMe(userId);
+  }
+
+  /** Store an uploaded avatar and switch to it (ADR-0133 §12).
+   *
+   *  Order matters and mirrors the documents path: the blob goes in **first**, the row
+   *  second, and the previous blob is deleted only after the row commits — so a
+   *  mid-flight failure leaves an orphan blob (invisible, collectable) rather than a
+   *  user whose row points at bytes that are gone. */
+  async setAvatar(userId: string, buffer: Buffer): Promise<Me> {
+    const mimeType = sniffImageMimeType(buffer);
+    if (!mimeType || !isAllowedAvatarMimeType(mimeType)) {
+      throw new UnsupportedMediaTypeException({
+        error: {
+          code: ERROR_CODE.UNSUPPORTED_MEDIA_TYPE,
+          message: 'Avatar must be a JPEG, PNG or WebP image',
+        },
+      });
+    }
+
+    const previous = await this.prisma.user.findUniqueOrThrow({
+      where: { id: userId },
+      select: { uploadedAvatarKey: true },
+    });
+
+    const uploadedAvatarKey = randomUUID();
+    await putObject(uploadedAvatarKey, buffer);
+    await this.prisma.user.update({
+      where: { id: userId },
+      data: { uploadedAvatarKey, avatarChoice: 'upload' },
+    });
+    if (previous.uploadedAvatarKey) {
+      await deleteObject(previous.uploadedAvatarKey).catch(() => undefined);
+    }
+    return this.getMe(userId);
+  }
+
+  /** Drop the upload and land on the least surprising remaining source: the Google
+   *  photo if the provider still gives us one, else initials (ADR-0133 §6). Unlike
+   *  removing the Google photo — which only means "don't use it" — this really does
+   *  delete bytes, because they are ours and nothing else references them. */
+  async removeAvatar(userId: string): Promise<Me> {
+    const user = await this.prisma.user.findUniqueOrThrow({
+      where: { id: userId },
+      select: { uploadedAvatarKey: true, googleAvatarUrl: true },
+    });
+    await this.prisma.user.update({
+      where: { id: userId },
+      data: {
+        uploadedAvatarKey: null,
+        avatarChoice: user.googleAvatarUrl ? 'google' : 'initials',
+      },
+    });
+    if (user.uploadedAvatarKey) {
+      await deleteObject(user.uploadedAvatarKey).catch(() => undefined);
+    }
+    return this.getMe(userId);
+  }
+
+  /** The bytes behind `avatarContentPath`, or `null` when this user has no upload or
+   *  the key is not their current one. A retired key returning nothing is the point:
+   *  it is what makes "remove the photo" actually stop serving the photo, and it is
+   *  why the key is matched here rather than merely looked up. */
+  async getAvatarContent(userId: string, uploadedAvatarKey: string): Promise<Buffer | null> {
+    const user = await this.prisma.user.findUnique({
+      where: { id: userId },
+      select: { uploadedAvatarKey: true },
+    });
+    if (!user?.uploadedAvatarKey || user.uploadedAvatarKey !== uploadedAvatarKey) return null;
+    try {
+      return await getObject(uploadedAvatarKey);
+    } catch {
+      // The row points at bytes that aren't there (storage misconfigured, or a blob
+      // lost to an ephemeral filesystem). A missing face must degrade to initials, so
+      // this is a 404 the `<img>` can fail quietly on, never a 500.
+      return null;
+    }
   }
 
   private async issueSession(userId: string, email: string): Promise<CallbackResult> {

@@ -113,7 +113,7 @@ export function DocumentUploadSheet({ tripId, onClose }: { tripId: string; onClo
             onPick={pick}
             onClear={clear}
             accept="image/*,application/pdf"
-            capture
+            capture="environment"
             hint={t.docs.upload.pickHint(MAX_MB)}
           />
         </Field>

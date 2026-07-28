@@ -35,6 +35,7 @@ export const USERS: User[] = [
     avatarHue: 'denim',
     avatarChoice: 'initials',
     googleAvatarUrl: null,
+    uploadedAvatarUrl: null,
     createdAt: NOW_ISO,
   },
   {
@@ -44,6 +45,7 @@ export const USERS: User[] = [
     avatarHue: 'rose',
     avatarChoice: 'initials',
     googleAvatarUrl: null,
+    uploadedAvatarUrl: null,
     createdAt: NOW_ISO,
   },
   {
@@ -53,6 +55,7 @@ export const USERS: User[] = [
     avatarHue: 'moss',
     avatarChoice: 'initials',
     googleAvatarUrl: null,
+    uploadedAvatarUrl: null,
     createdAt: NOW_ISO,
   },
   {
@@ -62,6 +65,7 @@ export const USERS: User[] = [
     avatarHue: 'plum',
     avatarChoice: 'initials',
     googleAvatarUrl: null,
+    uploadedAvatarUrl: null,
     createdAt: NOW_ISO,
   },
   {
@@ -71,6 +75,7 @@ export const USERS: User[] = [
     avatarHue: 'cocoa',
     avatarChoice: 'initials',
     googleAvatarUrl: null,
+    uploadedAvatarUrl: null,
     createdAt: NOW_ISO,
   },
 ];

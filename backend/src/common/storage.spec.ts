@@ -4,7 +4,7 @@ import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { S3Client } from '@aws-sdk/client-s3';
-import { DOC_LOCAL_STORAGE_DIR } from '../common/env';
+import { DOC_LOCAL_STORAGE_DIR } from './env';
 import { deleteObject, getObject, putObject } from './storage';
 import { resetBlobCacheForTests } from './blob-cache';
 
