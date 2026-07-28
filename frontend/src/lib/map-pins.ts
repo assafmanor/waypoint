@@ -184,6 +184,14 @@ const ORDER_SPREAD = 99;
  *  question — it just happens to be about a population that is not on the ladder. */
 export const MAP_RESULT_Z = -100;
 
+/** …**except the one you tapped** (owner, session 166 — _"the selected Google search result
+ *  is not prominent enough to distinguish from other results"_). The rule above is about a
+ *  population; a selection is about one member of it, and a chosen candidate sitting behind
+ *  a trip pin is the one case where "what you already have outranks what you might add"
+ *  gives the wrong answer — you are looking AT it. Above the ladder's top rung and the next
+ *  stop, below only the me-dot, which is not a place. */
+export const MAP_RESULT_SELECTED_Z = 900;
+
 export function pinZIndex(pin: { tier: PinTier; nextStop?: boolean; order?: number }): number {
   if (pin.nextStop) return NEXT_STOP_Z;
   const nudge =

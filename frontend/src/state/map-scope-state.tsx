@@ -37,6 +37,7 @@ import {
   useContext,
   useEffect,
   useMemo,
+  useRef,
   useState,
   type ReactNode,
 } from 'react';
@@ -226,38 +227,50 @@ export function useTakePlaceErrandResult(
   }, [result, kind]);
 }
 
-/** **A form host, on the way back** (ADR-0134 §2). Takes the returning result for this
- *  entity kind, once, and reports it so the host can re-open its form from the draft with
- *  the chosen place already in the named field.
+/** What a host gets back: the form's own draft (typed here, opaque in the channel — the
+ *  host is the only end that knows the shape, which is the whole reason the channel does
+ *  not), plus the place that was chosen and the field it belongs in. */
+export interface ReturnedPlaceErrand<D> {
+  draft: D | null;
+  placeId: string;
+  target: PlaceErrandTarget;
+}
+
+/** **A form host, on the way back** (ADR-0134 §2). Calls `apply` **exactly once**, with
+ *  the returning result for this entity kind, so the host can re-open its form from the
+ *  draft with the chosen place already in the named field.
  *
  *  One hook rather than a copy per host: `DayView` and `PlanDay` both host the event form,
  *  `IndexBookingsView` and two others host the booking sheet, and five copies of
- *  "take it and re-open" is exactly the parallel copy rule 8 exists to prevent. `take()`
- *  is once-only, so even if two hosts were mounted at once only one could win — the
- *  return navigates to `returnTo`, so in practice one is.
+ *  "take it and re-open" is exactly the parallel copy rule 8 exists to prevent.
  *
- *  `null` until something comes back, and `null` again for the rest of the host's life:
- *  the payload is reported ONCE, so re-opening is an event and not a state the host can
- *  get stuck in. */
-export function useReturnedPlaceErrand<D>(
+ *  **A CALLBACK, NOT A RETURN VALUE, AND THAT IS THE WHOLE FIX** (owner, session 166 —
+ *  _"the form got duplicated over and over so saving the event had the form below, and the
+ *  event was duplicated many times"_). It shipped reporting the payload as STATE, which
+ *  every host then applied from an effect that also depended on `events`/`bookings` — it
+ *  has to, since it looks the entity up by id. So the payload stayed readable for the rest
+ *  of the host's life while its own dependency changed on every write: re-open the form,
+ *  save, the entity list changes, the effect fires again on the SAME payload, the form
+ *  re-opens on top of itself, and each save writes another copy.
+ *
+ *  A once-only channel is not enough on its own to make a once-only EFFECT — `take()`
+ *  cleared the handoff correctly and the bug was downstream of it. So the "once" lives
+ *  here, where there is one copy of it: `apply` is read through a latest-ref, so the effect
+ *  depends on nothing but the channel and a host may close over whatever it likes. */
+export function usePlaceErrandReturn<D>(
   kind: PlaceErrandTarget['kind'],
-): { draft: D | null; placeId: string; target: PlaceErrandTarget } | null {
+  apply: (returned: ReturnedPlaceErrand<D>) => void,
+): void {
   const take = useTakePlaceErrandResult(kind);
-  const [returned, setReturned] = useState<{
-    draft: D | null;
-    placeId: string;
-    target: PlaceErrandTarget;
-  } | null>(null);
+  const applyRef = useRef(apply);
+  applyRef.current = apply;
   useEffect(() => {
     const result = take?.();
     if (!result) return;
-    setReturned({
-      // Opaque in the channel, typed here — the host is the only end that knows the shape,
-      // which is the whole reason the channel does not.
+    applyRef.current({
       draft: (result.errand.draft as D | undefined) ?? null,
       placeId: result.placeId,
       target: result.errand.target,
     });
   }, [take]);
-  return returned;
 }

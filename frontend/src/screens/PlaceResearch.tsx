@@ -121,7 +121,13 @@ export function PlaceResearch({
 //
 // `data-result` is how a ring tap finds this row to scroll it into view — the exact
 // counterpart of `data-place` on a trip row (ADR-0132 §8).
-function ResultRow({
+//
+// EXPORTED for the canvas place card (session 166), which is the same reuse `PlaceRow` gets
+// in its two hosts: at the map extreme the sheet shows no rows, so a tapped ring surfaces as
+// this row over the canvas (ADR-0122 §7). Its body is inert there — `onShow` is absent —
+// because framing the place you are already looking at does nothing, which is exactly why
+// the trip row's card drops `onSelect` too.
+export function ResultRow({
   result,
   inTrip,
   onShelf,
@@ -140,29 +146,41 @@ function ResultRow({
   /** The verb is `בחירה`, not `＋ אולי` (ADR-0134 §3). */
   chooseMode: boolean;
   busy: boolean;
-  onShow: () => void;
+  /** Frame this result on the canvas. **Absent on the canvas card**, where the body is
+   *  inert: there is nowhere for the tap to go, so it renders as content rather than as a
+   *  `button` that does nothing. */
+  onShow?: () => void;
   onAdd: () => void;
 }) {
+  const body = (
+    <>
+      <span className="map-badge result" aria-hidden="true">
+        📍
+      </span>
+      <span className="map-main">
+        <span className="map-t">
+          <span className="map-name">{result.primaryText}</span>
+        </span>
+        {result.secondaryText && (
+          <span className="map-m">
+            <span className="map-tag">{result.secondaryText}</span>
+          </span>
+        )}
+      </span>
+    </>
+  );
   return (
     <div
       className={'place result' + (selected ? ' selected' : '')}
       data-result={result.googlePlaceId}
     >
-      <button type="button" className="map-res-open" onClick={onShow}>
-        <span className="map-badge result" aria-hidden="true">
-          📍
-        </span>
-        <span className="map-main">
-          <span className="map-t">
-            <span className="map-name">{result.primaryText}</span>
-          </span>
-          {result.secondaryText && (
-            <span className="map-m">
-              <span className="map-tag">{result.secondaryText}</span>
-            </span>
-          )}
-        </span>
-      </button>
+      {onShow ? (
+        <button type="button" className="map-res-open" onClick={onShow}>
+          {body}
+        </button>
+      ) : (
+        <span className="map-res-open">{body}</span>
+      )}
       <span className="map-right">
         {/* An ICON, not a label: the row already carries one labelled verb, and two
             labelled buttons side by side compete for "which is the action" (ADR-0134 §5 —

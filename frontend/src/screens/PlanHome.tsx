@@ -8,7 +8,7 @@
 // lodging), seeds the day builder, or the settings invite — not a bare tab
 // switch. Completed checks collapse into a summary. Only rows we can honestly
 // derive appear; Gmail / Google-connection / WhatsApp stay out (ADR-0045/0004).
-import { useEffect, useState } from 'react';
+import { useState } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { BOOKING_TYPE } from '@waypoint/shared';
 import { useTrip } from '../state/trip-state';
@@ -18,7 +18,7 @@ import { dayPhrase } from '../lib/hebrew';
 import { countdownParts, formatTripDates } from '../lib/time';
 import { computeReadiness, type CheckId, type ReadinessCheck } from '../lib/readiness';
 import { BookingSheet, type BookingSeed, type BookingSheetDraft } from '../ui/BookingSheet';
-import { useReturnedPlaceErrand } from '../state/map-scope-state';
+import { usePlaceErrandReturn } from '../state/map-scope-state';
 import { DocumentUploadSheet } from '../ui/DocumentUploadSheet';
 import { StatTile } from '../ui/domain';
 import { CollapseToggle, Collapsible } from '../ui/primitives/Collapsible';
@@ -60,15 +60,11 @@ export function PlanHome({ onNavigate }: { onNavigate: (tab: TabId) => void }) {
   // form host uses: without it the sheet returns closed and the rest of what was typed is
   // gone, which is the whole reason the errand carries a draft.
   const [bookingDraft, setBookingDraft] = useState<BookingSheetDraft | null>(null);
-  const returnedBooking = useReturnedPlaceErrand<BookingSheetDraft>('booking');
-  useEffect(() => {
-    if (!returnedBooking?.draft) return;
+  usePlaceErrandReturn<BookingSheetDraft>('booking', (returned) => {
+    if (!returned.draft) return;
     // A seed host: nothing exists to look up, so the draft alone re-opens the sheet.
-    setBookingDraft({
-      ...returnedBooking.draft,
-      [returnedBooking.target.field]: returnedBooking.placeId,
-    });
-  }, [returnedBooking]);
+    setBookingDraft({ ...returned.draft, [returned.target.field]: returned.placeId });
+  });
 
   const [uploadingDoc, setUploadingDoc] = useState(false);
   const [showCompleted, setShowCompleted] = useState(false);
