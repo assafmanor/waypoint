@@ -7,9 +7,11 @@ import {
   fitPaddingFor,
   mapFitPadding,
   pointInBounds,
+  zoomStepIn,
+  zoomToAtLeast,
 } from './map-camera';
 import { pinHeightFor } from './map-pins';
-import { MAP_CONTROLS_H, MAP_FIT_INSET, MAP_PIN } from '../constants';
+import { MAP_CONTROLS_H, MAP_FIT_INSET, MAP_PIN, MAP_ZOOM } from '../constants';
 
 const TOKYO = { lat: 35.68, lng: 139.76 };
 const KYOTO = { lat: 35.01, lng: 135.77 };
@@ -273,5 +275,50 @@ describe('the fit clears the floating controls row (ADR-0122 §1)', () => {
       const padding = mapFitPadding(545);
       expect(fitPaddingFor({ width, height: 545 }, padding)).toEqual(padding);
     }
+  });
+});
+
+// ADR-0127 §1/§2. "How close is close enough to read a place in context" is asked by
+// three paths, and these two functions are how they answer it with one number.
+describe('the zoom ladder (ADR-0127)', () => {
+  describe('zoomToAtLeast', () => {
+    it('zooms in when the view is further out than a place can be read at', () => {
+      expect(zoomToAtLeast(9, MAP_ZOOM.PLACE)).toBe(MAP_ZOOM.PLACE);
+    });
+
+    // The half of ADR-0121 §7 that stands: the context you were reading is protected
+    // against being pulled BACK, which is the only direction that ever threatened it.
+    it('never zooms out, and leaves a close-enough view alone', () => {
+      expect(zoomToAtLeast(MAP_ZOOM.PLACE, MAP_ZOOM.PLACE)).toBeNull();
+      expect(zoomToAtLeast(19, MAP_ZOOM.PLACE)).toBeNull();
+    });
+
+    // A map that has not reported a zoom yet has no context to protect.
+    it('treats an unknown zoom as "not close enough"', () => {
+      expect(zoomToAtLeast(null, MAP_ZOOM.PLACE)).toBe(MAP_ZOOM.PLACE);
+      expect(zoomToAtLeast(undefined, MAP_ZOOM.PLACE)).toBe(MAP_ZOOM.PLACE);
+    });
+  });
+
+  describe('zoomStepIn', () => {
+    const step = (z: number | null) => zoomStepIn(z, MAP_ZOOM.PLACE, MAP_ZOOM.STEP_IN_MAX);
+
+    it('lifts a far-out view straight to the readable zoom, not one step', () => {
+      expect(step(6)).toBe(MAP_ZOOM.PLACE);
+    });
+
+    it('steps one level in from there, and stops at the ceiling', () => {
+      expect(step(MAP_ZOOM.PLACE)).toBe(MAP_ZOOM.PLACE + 1);
+      expect(step(MAP_ZOOM.STEP_IN_MAX - 1)).toBe(MAP_ZOOM.STEP_IN_MAX);
+      expect(step(MAP_ZOOM.STEP_IN_MAX)).toBe(MAP_ZOOM.STEP_IN_MAX);
+      expect(step(MAP_ZOOM.STEP_IN_MAX + 3)).toBe(MAP_ZOOM.STEP_IN_MAX);
+    });
+
+    // The property that makes it stateless: the answer depends only on where the map
+    // IS, so nothing can drift out of sync with it — there is no counter to drift.
+    it('is a pure function of the current zoom, so no tap count can desynchronise', () => {
+      expect(step(MAP_ZOOM.PLACE)).toBe(step(MAP_ZOOM.PLACE));
+      expect(step(null)).toBe(MAP_ZOOM.PLACE);
+    });
   });
 });

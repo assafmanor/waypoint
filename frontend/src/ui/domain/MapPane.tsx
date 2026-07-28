@@ -99,6 +99,11 @@ export interface MapPaneProps {
   /** The readout was tapped: order the in-view places first. The intent lives in the
    *  SCREEN, like `sortByDistance` — nothing about it reaches the map instance. */
   onAreaSort: () => void;
+  /** An arrival that already knows what you came to look at (`מפה` on an event or a
+   *  booking). It OWNS the next framing rather than being panned on top of one, which
+   *  is what stops the opening fit overwriting it (ADR-0127 §3). Memoized by the
+   *  screen, like every other object prop here. */
+  arrivalFocus?: LatLng | null;
   /** Locate was tapped with no fix to centre on. The camera half stays here (it needs
    *  the map instance); the permission ladder is the screen's, because that is where
    *  `useGeolocation` and the pre-prompt live (ADR-0126 §6). */
@@ -119,6 +124,7 @@ function MapPaneInner({
   areaSorted,
   onAreaSort,
   onLocate,
+  arrivalFocus,
 }: MapPaneProps) {
   return (
     <div className="map-pane">
@@ -131,7 +137,7 @@ function MapPaneInner({
           // per-mode map styles).
           mapId={config.mapId}
           defaultCenter={defaultCentre ?? { lat: 0, lng: 0 }}
-          defaultZoom={defaultCentre ? MAP_ZOOM.SINGLE_PIN : MAP_ZOOM.WORLD}
+          defaultZoom={defaultCentre ? MAP_ZOOM.PLACE : MAP_ZOOM.WORLD}
           // Google's controls are Google-chromed, unlabelled and unaware of an RTL
           // page, so: none of them, then add back only what we need (§12). Zoom is
           // the pinch; the one control we add is re-centre, below.
@@ -175,6 +181,7 @@ function MapPaneInner({
           areaSorted={areaSorted}
           onAreaSort={onAreaSort}
           onLocate={onLocate}
+          arrivalFocus={arrivalFocus}
         />
       </APIProvider>
     </div>
@@ -300,6 +307,7 @@ function MapCameraControls({
   areaSorted,
   onAreaSort,
   onLocate,
+  arrivalFocus,
 }: {
   pins: readonly MapPin[];
   me?: LatLng;
@@ -308,6 +316,7 @@ function MapCameraControls({
   areaSorted: boolean;
   onAreaSort: () => void;
   onLocate: () => void;
+  arrivalFocus?: LatLng | null;
 }) {
   const map = useMap(MAP_ID);
   // The camera answers to the day's OWN pins, never to the ghost tier: a ghost is a
@@ -323,10 +332,20 @@ function MapCameraControls({
     if (own.length > 0) return own;
     return me ? [me] : [];
   }, [pins, me]);
-  const { focus, reframe } = useMapCamera(map, { points, setSignal });
+  const {
+    focus,
+    reframe,
+    locate: locateCamera,
+  } = useMapCamera(map, {
+    points,
+    setSignal,
+    arrivalFocus,
+  });
 
-  // Focus pans, it does not zoom (§7). Keyed on the selected place, so a re-render
-  // — a clock tick, a sheet drag — never re-pans; only a new selection does.
+  // Focus pans AND zooms in when the view is too far out to read the place (ADR-0127
+  // §1, reversing §7's "focus never zooms" in the one direction that was protecting
+  // nothing). Keyed on the selected place, so a re-render — a clock tick, a sheet
+  // drag — never re-moves the camera; only a new selection does.
   const selected = pins.find((pin) => pin.selected);
   const selectedId = selected?.placeId;
   const focusRef = useRef<{ lat: number; lng: number } | undefined>(undefined);
@@ -341,9 +360,11 @@ function MapCameraControls({
   // nothing here touches `getCurrentPosition`. Only the screen's ladder can ask, and
   // only through the pre-prompt, which stays the single place allowed to (§12).
   const locate = useCallback(() => {
-    if (me) focus(me);
+    // A repeat tap steps one level in from wherever the map IS (#20) — statelessly, so
+    // a pinch between taps cannot desynchronise it and no tap count lives anywhere.
+    if (me) locateCamera(me);
     else onLocate();
-  }, [me, focus, onLocate]);
+  }, [me, locateCamera, onLocate]);
 
   // The job the second tap used to do invisibly, now a control that says it: frame
   // exactly what `reframe` already frames. ABSENT when the day has no pins of its

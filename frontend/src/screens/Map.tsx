@@ -66,7 +66,7 @@ import {
   placePoint,
   type PinTier,
 } from '../lib/map-pins';
-import { countPointsInBounds, pointInBounds, type MapBounds } from '../lib/map-camera';
+import { countPointsInBounds, pointInBounds, type LatLng, type MapBounds } from '../lib/map-camera';
 import { mapPaneAvailable, mapsConfig } from '../lib/map-config';
 import { stopHeightCss } from '../lib/snap-sheet';
 import { countVisible, revealRows, visibleItems, type Revealed } from '../lib/filter-reveal';
@@ -755,13 +755,19 @@ export function MapView() {
   // `מפה` on an EventCard / BookingDetail routes here focused on a place (§8).
   // Consumed once, and it widens to all-days when the place is not in the day it
   // landed on — otherwise the action would point at something the scope hides.
+  // The camera's opening frame is THAT PLACE, not the day's set (ADR-0127 §3). Held in
+  // state rather than read from `focusPlaceId`, which is consumed in this same pass:
+  // the camera may not be sized for several more, and dropping the focus in between is
+  // exactly what made an arrival land on the day's frame. The camera spends it once.
+  const [arrivalFocus, setArrivalFocus] = useState<LatLng | null>(null);
   useEffect(() => {
     if (!focusPlaceId) return;
     const usage = usageIndex.get(focusPlaceId);
     if (usage && !usage.days.some((d) => d.date === activeDate)) setAllDays(true);
     setSelectedId(focusPlaceId);
+    setArrivalFocus(placePoint(placeById.get(focusPlaceId) ?? {}) ?? null);
     clearFocus();
-  }, [focusPlaceId, usageIndex, activeDate, setAllDays, clearFocus]);
+  }, [focusPlaceId, usageIndex, placeById, activeDate, setAllDays, clearFocus]);
 
   // ── The row's meta line: `<time> · <what happens here>` (ADR-0109 §1) ──────
   // It replaces the address, which said nothing about why the place is on the list
@@ -1400,6 +1406,7 @@ export function MapView() {
           areaSorted={areaSorted}
           onAreaSort={toggleAreaSort}
           onLocate={locateFromCanvas}
+          arrivalFocus={arrivalFocus}
         />
         {placeCard}
         {geoPrompt}

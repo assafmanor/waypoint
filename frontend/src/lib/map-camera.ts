@@ -201,6 +201,37 @@ export function fitPaddingFor(
 /** Padding may claim at most this share of either axis before it is dropped. */
 const MAX_PADDING_SHARE = 0.5;
 
+/**
+ * **Zoom-to-at-least** (ADR-0127 §1): the zoom a "look at this place" intent should
+ * end at, or `null` when the current one is already close enough to leave alone.
+ *
+ * It never zooms **out**, which is what keeps ADR-0121 §7's argument intact rather
+ * than reversing it. §7 said "focus pans, it does not zoom" to protect the context
+ * you were reading — and that protection is entirely about not pulling *back*. Being
+ * dropped on a country-level view and told a place is somewhere in it protects
+ * nothing; it is the same "silently did something else" the tab was reported for.
+ */
+export function zoomToAtLeast(current: number | null | undefined, floor: number): number | null {
+  if (current == null) return floor;
+  return current < floor ? floor : null;
+}
+
+/**
+ * **Locate's ladder, statelessly** (#20, ADR-0127 §2). The first tap gets you to a
+ * readable zoom; a repeat tap steps one level in **from wherever the map actually
+ * is** — never from a remembered tap count, so a pinch between taps cannot
+ * desynchronise it and nothing about it has to live in state (which is also what
+ * keeps it clear of ADR-0122 §9's no-prop-that-flips-on-a-tap rule).
+ */
+export function zoomStepIn(
+  current: number | null | undefined,
+  floor: number,
+  ceiling: number,
+): number {
+  if (current == null || current < floor) return floor;
+  return Math.min(current + 1, ceiling);
+}
+
 export function cameraTargetFor(points: readonly LatLng[], view: MapBounds | null): CameraTarget {
   const bounds = boundsOfPoints(points);
   if (!bounds) return { kind: 'none' };
