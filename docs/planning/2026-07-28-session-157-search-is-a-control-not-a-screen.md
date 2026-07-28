@@ -8,9 +8,9 @@
 
 **As briefed:** the Map tab's search is `SearchOverlay` — ADR-0101's opaque full-screen `Modal` — so on the one tab whose question is _"where is this?"_ the answer renders as a list with the canvas hidden. Move the query onto the canvas.
 
-**As it ended:** the Map tab becomes the place where a place is **found or made**, from three sources — the trip, Google, and the canvas itself — with one destination rule. That is roughly twice the phase the brief described, and the widening came from the owner mid-session (below).
+**As it ended:** the Map tab becomes the place where a place is **found or made**, from three sources — the trip, Google, and the canvas itself — with one destination rule; and adding a place to a booking stops going through the tab at all unless the place is new. That is roughly twice the phase the brief described, and the widening came from **seven owner corrections in two rounds** (below).
 
-## Three things I got right by measuring, and one I got wrong by reasoning
+## Three things I got right by measuring, and four I got wrong by reasoning
 
 ### The phasing note's leading candidate died on a measurement
 
@@ -45,31 +45,50 @@ The trap the brief named is real. `searchRows` spans `allUsages`, so in day scop
 
 **And it must not reach two others**, which is the part that would have shipped as a silent bug: the amber cues (`עכשיו`/`היעד הבא` are claims about **time** — a pin from a day you are not looking at must not make one) and the day connector (a Friday match is not on Wednesday's route). ADR-0130 said naming the reason is what kept a five-call-site split from being five silent behaviour changes; this phase reaches three of them and the ADR says which.
 
-### What I got wrong: I answered a scoping question the owner had not asked
+### What I got wrong, in two rounds, and the same sentence fixes both
 
-My first draft moved the query onto the canvas, kept `SearchOverlay` for Plan mode, and called the Trip/Plan split the scoping decision the backlog asked for. The owner rejected it in three sentences:
+**Round one.** My first draft moved the query onto the canvas, kept `SearchOverlay` for Plan mode, and called the Trip/Plan split the scoping decision the backlog asked for. The owner rejected it in three sentences:
 
 1. _"There are actually two modes of searching: places on the map and places from Google Maps."_
 2. _"How does adding places from events/bookings work with this?"_
 3. _"Adding a place by long clicking on the map."_
 
-**All three are about _adding_ a place, and together they say the draft had the wrong subject.** I asked _which mode gets which search surface_. The real question is _where does a place come from_ — a property of the tab, not of a mode.
+**All three are about _adding_ a place, and together they say the draft had the wrong subject.** I asked _which mode gets which search surface_. The real question is _where does a place come from_ — a property of the tab, not of a mode. The draft was also wrong about the app as shipped: `＋ הוספת מקום` on a placeless booking is reachable **in Trip mode** and opens a paid Autocomplete picker there today, so "adding a place is Plan mode's business" was never true.
 
-The draft was also wrong about the app as shipped: `＋ הוספת מקום` on a placeless booking is reachable **in Trip mode** and opens a paid Autocomplete picker there today. "Adding a place is Plan mode's business" was never true.
+**Round two**, on the redesign:
 
-## The three answers
+4. _"We don't have to gate search with a `חיפוש בגוגל` button. We'll live with the expenses."_
+5. _"I still don't understand how searching for places works when the map is maximized."_
+6. _"Searching for new places from Google should be easy and seamless, almost the same as searching for saved places, but differentiated visually somehow."_
+7. _"Adding places to events/bookings should be really easy and not refer you to the map if you want a place that already exists — it only refers you to the map when you want to add a place that doesn't."_
 
-**§8 — two corpora, one control, two surfaces.** The split between the two searches is not a mode, it is **whether the thing has coordinates yet**. A trip place already carries `lat`/`lng` (that is what pinned it), so it can be a pin. A Google prediction carries **none** until the pick (ADR-0115 §2), so there is nothing to draw. **So the free half goes on the canvas and the paid half goes in the sheet**, and ADR-0115 §1's _"one control, two halves"_ becomes true for the first time on a surface that has a map. `PlaceResearch` is **re-parented, not rewritten** — it already took only `query`/`usageIndex`/`offline`, which is ADR-0115 §7's reuse audit paying off years-of-effort cheap.
+**(5) and (7) are both me getting a surface decision backwards, and one sentence fixes both: the corpus decides the surface.** I had search shrink a maximized map to `half`, and I had every add-a-place route through the Map tab. Both put a list surface in front of an answer that did not need one.
 
-ADR-0115 §6's "Plan mode only" is withdrawn, and this is the ADR §6 asked for. Its worry — a paid call on the surface people use while walking around — is answered by the **arm**, which is the control that already exists: walking and typing cost nothing, and the first paid call is a deliberate tap. Its other worry, the nearby/open-now SKU, is **not added here**. What genuinely widens is the number of surfaces from which a member can arm a session, one to two; the bounds are per-member·trip and do not move. **The lever back is one boolean and the ADR names it.**
+**And (4) + (6) are one decision** — the arm goes — which turned out to have a better argument than "accept the cost": the arm separated **two intents on one field**, and the user has **one** ("find a place"). The in-form picker has never had an arm for exactly that reason. So this is the picker's posture arriving where the ambiguity that justified the exception has gone.
+
+## The answers
+
+**§6 — at the maximized map, search leaves the map alone.** One rule per stop: `map` moves nothing, `half` moves nothing, `full` drops to `half` (there the pane is `visibility: hidden`, and a search that shows no canvas _is_ the report). Which sharpens the tab's rule to **a control moves the sheet only when its answer is somewhere you cannot see it.** At `map` you have 516px of map and a query filtering the pins live — if one pin remains and it is in view, **that is a complete answer and the list was never needed**, which my first answer threw away. What makes it honest is the count: at `map` it legitimately exceeds the visible pins (a coordless match has no pin, and every Google result has none), so **the count becomes the button that raises the sheet** — ADR-0126 §4's live-region-wrapping-a-button, one more caller, and a button only where it has a job.
+
+**§8 — two corpora, one control, two surfaces.** The split is not a mode, it is **whether the thing has coordinates yet**. A trip place already carries `lat`/`lng` (that is what pinned it), so it can be a pin. A Google prediction carries **none** until the pick (ADR-0115 §2), so there is nothing to draw. **So the free half goes on the canvas and the paid half goes in the sheet**, and ADR-0115 §1's _"one control, two halves"_ becomes true for the first time on a surface that has a map. `PlaceResearch` is **re-parented, not rewritten** — it already took only `query`/`usageIndex`/`offline`, which is ADR-0115 §7's reuse audit paying off. The visual differentiation the owner asked for needs no new vocabulary: the two shipped group headers, plus `.map-badge.result`'s dashed neutral pin, which is already the app's "listed, not yet ours" reading.
+
+**§8a — the arm is withdrawn.** ADR-0115 §6's "Plan mode only" and §1's arm are both overruled. What remains is most of the machinery: the min-chars floor, the pause-gated debounce, one session token, dedup-before-spend, `PlacesThrottlerGuard`, and the daily quota cap. What goes is the **intent gate** — so past the floor, every search on this tab spends, in both modes. **The cap is the backstop, not the gate, and the ADR says so plainly so the decision is findable later.** One mitigation recommended and not assumed: `PLACE_SEARCH_MIN_CHARS` is **2**, which in Hebrew matches a large fraction of a city — a paid call that cannot return a useful answer, harmless behind an arm and not now.
 
 **§9 — a place can be made.** A press-and-hold on the canvas background drops a nameless pin: no Autocomplete session, no Details call, and deliberately **no reverse geocode** (paid, for a name you are standing next to). It is the only add-a-place route that spends **nothing**. The naming step is `.map-placecard`, the host ADR-0122 §7 already built for "the row, wherever the sheet cannot show it" — and a pin that does not exist yet is the sharpest case of that. The gesture is distinguished by **hold**, so ADR-0122 §7's canvas tap keeps clearing the selection and Google's own POI tap (ADR-0125 §6) stays a different act. Phase 6b keeps its data-model questions.
 
-**§10 — `＋ הוספת מקום` is an errand, and I had overstated the constraint.** My draft said a navigation would need a remembered return target that ADR-0090 forbids. It does not: ADR-0090 bans **reading** history, and its own Alternatives names this exact extension point (_"explicit app state feeding the snapshot — a localized, additive change to the provider + one rule in `resolveBack`"_).
+**§10 — `＋ הוספת מקום` answers in place; the canvas is the exception path.** I got this wrong twice: the first draft reached for a reason not to build the map route, the second sent **every** add through the Map tab. The fix is §8's rule one level up — **the corpus decides the surface**. So `PlacePickerSheet` (the "honest interim" ADR-0121 §5 shipped) gains the half it was missing: **`בטיול` above `מגוגל`**, the same two-corpus list in a second host. Picking a place the trip already has assigns it and closes the sheet — **no navigation at all**, and **free**, where today the picker can only ask Google and so the most common add costs money. That is a cost _reduction_ that partly offsets §8a.
 
-And the mechanism already exists one field narrower: `MapScopeProvider` sits above the trip Shell precisely so surfaces can talk to the tab, and `useShowPlaceOnMap` already hands over a `focusPlaceId`, lands through `tabTarget('map')` with `replace`, and is consumed once. An errand is that **with a return address**. The map comes to the tab rather than the tab's map to the picker because a second live `google.maps.Map` is a **billed** load (ADR-0121 §4) and a canvas inside a sheet is the small-map-small-list failure ADR-0122 spent a session undoing.
+The canvas keeps the two things a list cannot do — **see where a candidate is** before committing (Phase 6a's preview, still gated and still 6a's) and **make a place Google does not have** (§9) — and only those start the errand.
 
-**§11 — the rule that stops three sources becoming three flows:** the **errand** decides the destination, not the source. No errand → the shelf, as an uncategorised `MaybeItem` (ADR-0115 §3, unchanged). Errand live → assigned to the target, and the tab returns.
+On the errand itself I had overstated a constraint: ADR-0090 does **not** forbid a remembered return target. It bans _reading_ history, and its own Alternatives names this exact extension point (_"explicit app state feeding the snapshot — a localized, additive change to the provider + one rule in `resolveBack`"_). The mechanism exists one field narrower — `MapScopeProvider` sits above the trip Shell precisely so surfaces can talk to the tab, and `useShowPlaceOnMap` already hands over a `focusPlaceId`, lands through `tabTarget('map')` with `replace`, and is consumed once. The map comes to the tab rather than a canvas into the picker because a second live `google.maps.Map` is a **billed** load and a canvas inside a sheet is the small-map-small-list failure ADR-0122 spent a session undoing.
+
+**And this reordered the build**, which is the useful part: the picker's trip-places half is free, offline, needs no nav change, and answers the common case — so it ships first, and the errand's return-path machinery is paid for a narrow exception rather than for every add.
+
+**§11 — the rule that stops three sources and two hosts becoming five flows:** the **invocation** decides the destination, not the source. Picked in the Map tab with no errand → the shelf, as an uncategorised `MaybeItem` (ADR-0115 §3, unchanged). Picked in the picker, or in the tab with an errand live → assigned to the target.
+
+## The process note worth keeping
+
+**Four of the seven corrections were me answering a question next to the one asked.** The pattern is consistent enough to name: each time, I turned a _design_ question into a _scoping_ question — which mode, which phase, which surface owns it — and the owner's answer each time was that the material decides. The corpus decides the surface (§8, §10). The gesture decides the act (§9). Whether the answer is visible decides whether the sheet moves (§6). None of those are scope calls, and treating them as scope calls is how the first draft ended up smaller than the problem.
 
 ## What rendering it caught that the prose did not
 
@@ -89,9 +108,13 @@ It ships on its own branch. The backlog says in as many words not to let it beco
 
 ## For the build
 
-The estimate should say out loud that this is no longer small. §1–§7 are a day on one screen. §8 is a re-parent plus removing a mode flag. **§10 is the expensive one** — an errand channel above the Shell whose return has to re-open a `Modal` the URL does not address, which makes it a third consumer of a hand-over-and-consume-once pattern the app already runs twice. Generalising the pair into one named errand channel is the right build (rule 8), not a third copy.
+**Three tiers, and §10's correction is what made them separable.**
 
-Two things the build must not take for granted, both rule 8's escape hatch: whether the shelf's `useHoldToDrag` extracts cleanly for a canvas long press (ADR-0121 §5 already set the policy — **ask first** if it means a substantial refactor), and that `isAsidePin` must **not** simply become query-aware, because two of its five readers would change wrongly and silently.
+1. **§1–§7**, a day on one screen.
+2. **§8 + §8a + §10's picker half** — a re-parent, a deleted arm, a removed mode flag, and the trip's own places above the predictions. The picker half is the cheap win: free, offline, no nav change, and it answers the common add.
+3. **§10's errand** — an errand channel above the Shell whose return has to re-open a `Modal` the URL does not address, making it a third consumer of a hand-over-and-consume-once pattern the app already runs twice. Generalise the pair into one named channel (rule 8), don't write a third copy. It is now a narrow exception path, so it can follow.
+
+Three things the build must not take for granted, all rule 8's escape hatch or a data question I deliberately left open: whether the shelf's `useHoldToDrag` extracts cleanly for a canvas long press (ADR-0121 §5 already set the policy — **ask first** if it means a substantial refactor); that `isAsidePin` must **not** simply become query-aware, because two of its five readers would change wrongly and silently; and what happens to a coordless Place-lite that gets pointed at a place which already exists, which is a third verb beside the picker's enrich and mint.
 
 ## Device pass
 
