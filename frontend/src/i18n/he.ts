@@ -1251,6 +1251,18 @@ export const t = {
     roleAdmin: 'מנהל',
     rolePeer: 'משתתף',
     memberActions: (name: string) => `פעולות על ${name}`,
+    // The member surface's detail rows (ADR-0133 §9) — the joined date moved here
+    // off the row, which only names who is present.
+    member: {
+      roleLabel: 'תפקיד',
+      joinedLabel: 'הצטרף',
+    },
+    roster: 'חבורה',
+    rosterOpen: (n: number) => `החבורה, ${n} נוסעים`,
+    rosterFoot: 'הזמנה של אנשים חדשים והלינק לטיול נמצאים בהגדרות הטיול.',
+    // The member surface closes rather than cancels: it is a detail card that may
+    // carry actions, not a prompt you back out of.
+    closeMember: 'סגירה',
     promote: 'הפוך למנהל',
     removeMember: 'הסר מהטיול',
     invite: 'הזמנת חברים',

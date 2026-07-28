@@ -86,6 +86,8 @@ import { t } from './i18n/he';
 import './App.css';
 import './screens.css';
 import { Avatar } from './ui/primitives/Avatar';
+import { RosterSheet } from './ui/RosterSheet';
+import { ltrIsolate } from './lib/bidi';
 const UserSettings = lazy(() => import('./screens/UserSettings'));
 const UserPicture = lazy(() => import('./screens/UserPicture'));
 
@@ -152,12 +154,14 @@ function Header({
   onSelectDay,
   onOpenSwitcher,
   onOpenAccount,
+  onOpenRoster,
   onOpenSettings,
   allScope,
 }: {
   onSelectDay: (date: string) => void;
   onOpenSwitcher: () => void;
   onOpenAccount: () => void;
+  onOpenRoster: () => void;
   onOpenSettings: () => void;
   /** Map all-days scope is active (ADR-0110 §4): the strip drops its filled
    *  selection while still anchoring today. */
@@ -265,12 +269,26 @@ function Header({
           </div>
         </div>
         <div className="header-actions">
-          <div className="avatars" title={others.map((u) => u.displayName).join(DOT_SEPARATOR)}>
-            {overflowMembers.length > 0 && <div className="av more">+{overflowMembers.length}</div>}
-            {visibleMembers.map((u) => (
-              <Avatar key={u.id} person={u} size="inherit" className="av" />
-            ))}
-          </div>
+          {/* A real control, not a `title` (ADR-0133 §9): hover is a desktop luxury
+              (root rule 6 / ADR-0017), and the cap left an inert `+N` hiding most of
+              the group. One tap now lists everyone, which is what makes the cap a
+              rendering detail again rather than a truncation. */}
+          <button
+            className="avatars-btn"
+            onClick={onOpenRoster}
+            aria-label={t.settings.rosterOpen(users.length)}
+          >
+            <span className="avatars">
+              {overflowMembers.length > 0 && (
+                /* `ltrIsolate` so the sign stays in front of the digits — bare
+                   `+{n}` rendered as `n+` in the RTL chrome (ADR-0118 / §10). */
+                <span className="av more">{ltrIsolate(`+${overflowMembers.length}`)}</span>
+              )}
+              {visibleMembers.map((u) => (
+                <Avatar key={u.id} person={u} size="inherit" className="av" />
+              ))}
+            </span>
+          </button>
           {me && (
             <Avatar
               person={me.user}
@@ -368,6 +386,11 @@ function Shell() {
   // Tab lives in the URL (?tab=), Home-anchored, so back peels it (ADR-0035).
   const { tab, goToTab } = useTripTab();
   const { allDays, queryOpen } = useMapScope();
+  const [rosterOpen, setRosterOpen] = useState(false);
+  // The roster's own data. The header already renders the cluster from `users`; the
+  // sheet needs the memberships too, for each person's role and joined date.
+  const { members, users } = useTrip();
+  const { me } = useAuth();
   useMarkInsideTrip();
   // Give Android's OS back an in-app entry to traverse into (ADR-0090) so a cold
   // launch straight into the trip can't let a system-back slip out of the app.
@@ -473,9 +496,20 @@ function Shell() {
           onSelectDay={onSelectDay}
           onOpenSwitcher={() => navigate('/trips')}
           onOpenAccount={() => navigate(settingsPath(SETTINGS_FROM.HOME))}
+          onOpenRoster={() => setRosterOpen(true)}
           onOpenSettings={() => navigate(`/trip/${trip.id}/settings`)}
           allScope={tab === 'map' && allDays}
         />
+      }
+      overlay={
+        rosterOpen && (
+          <RosterSheet
+            members={members}
+            users={users}
+            myUserId={me?.user.id}
+            onClose={() => setRosterOpen(false)}
+          />
+        )
       }
       nav={
         <nav className="nav">

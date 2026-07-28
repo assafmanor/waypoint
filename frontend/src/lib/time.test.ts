@@ -10,6 +10,7 @@ import {
   eventPhase,
   formatCountdown,
   formatTime,
+  formatDayMonth,
   formatTripDates,
   relativeDay,
   hardConflicts,
@@ -31,6 +32,18 @@ import { DEMO_NOW, EVENTS, TRIP } from '../fixtures';
 
 const tz = TRIP.timezone;
 const startsOf = (id: string) => EVENTS.find((e) => e.id === id)!.startsAt!;
+
+describe('formatDayMonth', () => {
+  it('uses the same zero-padded numeric shape as a trip-date range', () => {
+    // The point of sharing the formatter: `14.03`, not a hand-rolled `14.3`.
+    expect(formatDayMonth('2026-03-14T00:00:00.000Z')).toBe('14.03');
+    expect(formatTripDates('2026-03-14', '2026-03-14').startsWith('14.03')).toBe(true);
+  });
+
+  it('formats an instant by its UTC calendar date, like every other date here', () => {
+    expect(formatDayMonth('2026-04-02T23:30:00.000Z')).toBe('02.04');
+  });
+});
 
 describe('formatTripDates', () => {
   it('numeric: compact DD.MM–DD.MM, no year by default', () => {

@@ -35,7 +35,9 @@ import {
 } from '../constants';
 import { NavArrow } from '../ui/NavArrow';
 import { t } from '../i18n/he';
-import { Avatar, type AvatarPerson } from '../ui/primitives/Avatar';
+import { Avatar } from '../ui/primitives/Avatar';
+import { MemberRow } from '../ui/domain/MemberRow';
+import { MemberSheet } from '../ui/domain/MemberSheet';
 
 // Currency stays a small stable select; timezone is now the shared ZonePicker
 // over the full IANA set (ADR-0113 §6), replacing the old 5-item TZ_OPTIONS. The
@@ -277,31 +279,19 @@ export function TripSettings() {
           {members.map((m) => {
             const u = userFor(m.userId);
             const isMe = m.userId === myId;
+            if (!u) return null;
             return (
-              <div className="set-member" key={m.id}>
-                {u && <Avatar person={u} size="inherit" className="av" />}
-                <div className="mn">
-                  {u?.displayName}
-                  {isMe && (
-                    <span className="mr">
-                      {' '}
-                      {DOT_SEPARATOR} {t.settings.you}
-                    </span>
-                  )}
-                </div>
-                <span className={`role ${m.role === 'admin' ? 'owner' : 'mem'}`}>
-                  {m.role === 'admin' ? t.settings.roleAdmin : t.settings.rolePeer}
-                </span>
+              <MemberRow key={m.id} person={u} role={m.role} isMe={isMe}>
                 {isAdmin && !isMe && (
                   <button
                     className="kebab"
                     onClick={() => setSheetFor(m)}
-                    aria-label={t.settings.memberActions(u?.displayName ?? '')}
+                    aria-label={t.settings.memberActions(u.displayName)}
                   >
                     {ICONS.more}
                   </button>
                 )}
-              </div>
+              </MemberRow>
             );
           })}
         </div>
@@ -381,6 +371,7 @@ export function TripSettings() {
         <MemberSheet
           member={sheetFor}
           person={userFor(sheetFor.userId) ?? { displayName: '', avatarHue: 'denim' }}
+          isMe={sheetFor.userId === myId}
           onClose={() => setSheetFor(null)}
           onPromote={() => {
             promote(sheetFor);
@@ -629,41 +620,5 @@ function DetailsEditor({
         </button>
       </div>
     </form>
-  );
-}
-
-function MemberSheet({
-  member,
-  person,
-  onClose,
-  onPromote,
-  onRemove,
-}: {
-  member: Membership;
-  /** The person, not a name plus a hex — the primitive owns how they render. */
-  person: AvatarPerson;
-  onClose: () => void;
-  onPromote: () => void;
-  onRemove: () => void;
-}) {
-  const name = person.displayName;
-  return (
-    <Sheet ariaLabel={t.settings.memberActions(name)} onClose={onClose}>
-      <div className="ms-who">
-        <Avatar person={person} size="inherit" className="av" />
-        <div className="mn">{name}</div>
-      </div>
-      {member.role !== 'admin' && (
-        <button className="ms-act" onClick={onPromote}>
-          <span className="ic">👑</span> {t.settings.promote}
-        </button>
-      )}
-      <button className="ms-act danger-item" onClick={onRemove}>
-        <span className="ic">🚪</span> {t.settings.removeMember}
-      </button>
-      <button className="ms-cancel" onClick={onClose}>
-        {t.settings.cancel}
-      </button>
-    </Sheet>
   );
 }

@@ -2187,7 +2187,13 @@
   border-bottom: 0;
 }
 .set-member .av {
+  /* `.av` is CHROME styling — 31px, a negative overlap margin and an indigo border
+     that reads as a seam between avatars stacked on the dark header. On a white card
+     none of that applies: the overlap is wrong and the border reads as a heavy dark
+     ring around every face. Both come off here, which the roster made obvious by
+     putting five of them in a column (ADR-0133 §9). */
   margin-inline-start: 0;
+  border: 0;
   flex: 0 0 auto;
 }
 .set-member .mn {
@@ -2208,9 +2214,15 @@
   padding: 3px 8px;
   flex: 0 0 auto;
 }
+/* ADR-0133 §10 — this was `--amber` at 16% on `--amber-deep` text. Amber is time &
+   commitment only (ADR-0028 / rule 4) and a role is neither, so admin is now neutral
+   ink-on-paper distinguished from `peer` by WEIGHT and a border rather than a
+   reserved hue. Wrong since trip settings shipped; fixed here because the roster
+   reuses this exact badge and would have spent amber on a second surface. */
 .role.owner {
-  background: rgba(233, 166, 60, 0.16);
-  color: var(--amber-deep);
+  background: rgba(22, 35, 61, 0.06);
+  color: var(--ink);
+  box-shadow: inset 0 0 0 1px var(--line);
 }
 .role.mem {
   background: rgba(22, 35, 61, 0.06);
@@ -3815,4 +3827,115 @@
 .pk-sw:focus-visible {
   outline: 2.5px solid var(--teal);
   outline-offset: 4px;
+}
+
+/* ===== The roster + the shared member row/surface (ADR-0133 §9) ===== */
+
+/* The header cluster is a control now, not a `title`. The button is bare — the
+   avatars inside it carry the whole look — but it must meet the touch floor
+   (ADR-0017), which the old `<div>` never did. */
+.avatars-btn {
+  background: none;
+  border: 0;
+  padding: 4px 2px;
+  margin: 0;
+  cursor: pointer;
+  display: flex;
+  align-items: center;
+  min-height: 44px;
+}
+.avatars-btn:focus-visible {
+  outline: 2.5px solid var(--amber);
+  outline-offset: 2px;
+  border-radius: 999px;
+}
+
+/* A member row that opens the member. Same `.set-member` grammar as the settings
+   list — it IS that rule — plus the affordances a control needs. */
+.set-member-tap {
+  font: inherit;
+  text-align: start;
+  width: 100%;
+  background: none;
+  border-inline: 0;
+  border-top: 0;
+  cursor: pointer;
+  min-height: 44px;
+}
+.set-member-tap:hover {
+  background: rgba(22, 35, 61, 0.03);
+}
+.set-member-tap:focus-visible {
+  outline: 2.5px solid var(--teal);
+  outline-offset: -2px;
+}
+.member-chev {
+  width: 15px;
+  height: 15px;
+  color: var(--faint);
+  flex: 0 0 auto;
+}
+
+.roster-title {
+  font-family: var(--font-head);
+  font-size: 16px;
+  padding: 2px 4px 8px;
+  display: flex;
+  align-items: baseline;
+  gap: 8px;
+}
+.roster-count {
+  font-family: var(--font-body);
+  font-size: 11.5px;
+  color: var(--faint);
+  font-weight: 700;
+}
+.roster-list {
+  border-top: 1px solid var(--line);
+}
+.roster-foot {
+  font-size: 11px;
+  color: var(--faint);
+  line-height: 1.6;
+  padding: 12px 4px 0;
+  border-top: 1px solid var(--line);
+  margin-top: 6px;
+}
+
+/* The member surface's identity block is now a centred hero + detail rows, since it
+   answers "who is this" rather than only hosting two verbs. */
+.ms-who {
+  flex-direction: column;
+  gap: 9px;
+  padding: 4px 4px 14px;
+}
+.ms-name {
+  font-family: var(--font-head);
+  font-size: 18px;
+}
+.ms-facts {
+  border-bottom: 1px solid var(--line);
+  margin-bottom: 8px;
+}
+.ms-fact {
+  display: flex;
+  align-items: baseline;
+  gap: 10px;
+  padding: 9px 4px;
+  font-size: 13.5px;
+}
+.ms-fact + .ms-fact {
+  border-top: 1px solid var(--line);
+}
+.ms-fact .k {
+  color: var(--muted);
+  font-size: 12px;
+  font-weight: 600;
+  min-width: 66px;
+}
+.ms-fact .v {
+  font-weight: 600;
+}
+.ms-fact .v.mono {
+  font-family: var(--font-mono);
 }
