@@ -1,6 +1,6 @@
 # 0131 — The Map tab's search is a control, not a screen: the query takes the row, and the tab becomes where a place is found **or made**
 
-**Status:** Accepted — designed 2026-07-28 (session 157), and **§1–§8b built the same day (session 158; see the [Build log](#build-log-2026-07-28-session-158))**. **§9 (the long press) and §10 (the picker's half + the errand) are NOT built** and are named in the build log with why. The rendered canvas has still not been seen (ADR-0121 §13) and nothing below claims otherwise; the closing sections name what was measured against a renderer and what was not.
+**Status:** Accepted — designed 2026-07-28 (session 157), **§1–§8b built the same day (session 158)**, and **§6 REVERSED plus §10's picker half built from a device pass (session 159)** — see the [Build log](#build-log-2026-07-28-session-158) and the [Device pass](#the-device-pass-2026-07-28-session-159-and-what-it-overturned). **§9 (the long press) and §10's errand are NOT built.** Two further device reports — the app chrome during search, and unsaved Google results as pins — are their own design session and are named at the end. The rendered canvas has still not been seen (ADR-0121 §13) and nothing below claims otherwise; the closing sections name what was measured against a renderer and what was not.
 **Date:** 2026-07-28
 
 **Amends** [0101](0101-index-search-mode-and-header-titles.md) — the Map tab stops using `SearchOverlay` **in both modes** (§1, §8). The primitive is unchanged, gains no variant, and keeps the Index.
@@ -427,3 +427,39 @@ Following ADR-0130 §4's precedent, and with the same narrowness. `mockups/map-s
 - **`Map.test.tsx` stays the no-build-config path** (ADR-0122 §8), so the split's own behaviour — `full` dropping to `half`, `map` moving nothing, the count as a button — is asserted in `Map.embedded.test.tsx` instead, across **both** day scopes since the promotion only exists in the day-scoped one. The pane stub gained `data-aside` and `data-amber` precisely so the suite can see the ratio and the cues **apart**, which is the decision §4 makes.
 
 **One assertion that was wrong on paper and is right now:** the day connector under a query does not "stay the same" — it **empties**, because it follows the filtered set exactly as it does for a category chip. The invariant worth testing is the narrower one: a promoted ghost never **joins** the route.
+
+## The device pass (2026-07-28, session 159), and what it overturned
+
+The owner used the shipped surface on an Android phone and filed four things. Two are fixed here; two are a design session. **This is the second time in this epic that a real device reversed a carefully derived decision** (ADR-0129 was the first), and both times the derivation was about something that could only be measured on the thing itself.
+
+### §6 is reversed: the map extreme is unavailable while a query is live
+
+**The report: "when the map is maximized there's no way to see results, so maybe we shouldn't allow this."** That is §6's second form failing, and §6's **first** form — normalise from both extremes — was right. The owner overturned it mid-design; the phone overturned the overturning.
+
+**And the count-as-button was the wrong shape, not merely insufficient.** §6 reasoned that the gap between the count and the visible pins was the signal, so a button on the count was the way in. But the problem at that stop is **structural, not spatial**: the sheet shows _no rows_, so a coordless match has no pin **and** no row, and after §8 every Google result is a row with no pin. No amount of canvas fixes that, which is why a control that buys canvas-plus-a-way-out was answering the wrong question.
+
+- **The axis itself loses its bottom stop while searching.** `SnapSheet` already takes `order` as a prop, so one narrowed array closes the toggle, the drag **and** the arrow keys together — rather than three guards that can disagree.
+- **The toggle's `מפה` option is absent, not disabled** — the derived-affordance rule this tab already runs for `קרוב עכשיו` at the map extreme, for `אולי`/`מה נשאר` with nothing to count, and for `באזור` at zero.
+- **The count is deleted with the mechanism it existed for.** With the stop unreachable it was redundant with the list it was pointing at, and `t.map.search.showList` goes with it — deleted, not orphaned.
+
+### §10's picker half is built, and it removes a cost rather than adding one
+
+`PlacePickerSheet` gains `בטיול` above `מגוגל`. A pick from the trip's own places assigns and closes with **no navigation and no Google call** — where before, the most common add (the hotel, the station, the shelved restaurant) bought a paid Autocomplete session to find something the trip was already holding.
+
+Three things the build settled that the design had left open:
+
+- **The third verb needs no cleanup.** Pointing a reference at a place that already exists is neither enrich nor mint — the caller just writes a different `placeId`. An abandoned coordless Place-lite is then simply unreferenced, which ADR-0112 already makes harmless (cache-only, stops listing), so there is no confirm and no sweep.
+- **Only places that can supply a location are offered**, and the `current` place never is. A coordless Place-lite in the list would offer the problem back on a surface whose whole job is to fix it.
+- **The free half answers below the min-chars floor.** The floor is a **cost** control (§8b) and there is no cost on this side, so `בטיול` matches from the first character where `מגוגל` cannot. That asymmetry is the clearest statement of why two corpora is the right model rather than one.
+
+### Two reports that are a design session, not a fix
+
+**1. The app chrome must go while you are typing, and my §2 reasoning was backwards.** §2 argued the keyboard "eats the sheet and the pins survive", measured against an iOS model where the layout viewport does **not** shrink. On Android it **does**: the whole shell compresses into what is left above the keyboard, the ~490px header and ~130px nav keep their sizes because they are fixed content, and **the split — the only flexible region — absorbs the entire loss**. The screenshot shows a canvas squeezed to roughly 170px between a full-height header and the tab bar. So §2's conclusion was right about which half survives on iOS and simply does not describe the platform the owner is on.
+
+The fix is the one thing ADR-0101's Alternatives explicitly rejected — "thread a search-mode flag up through `AppShell`/`Shell` to conditionally hide `Header`/nav… it would touch the app-wide shell for a single screen's need" — and ADR-0101 chose the `Modal` variant precisely to get chrome-hiding **for free** via z-index. That trade is now visible in full: the overlay's one virtue was reclaiming the chrome, and ADR-0131 threw it away along with its defect. What is needed is the virtue without the defect: **reclaim the chrome without covering the canvas.** The backlog's own "app chrome's height on a full-bleed surface" line already owns this question and now has a concrete, urgent instance of it.
+
+**2. Unsaved Google results should be pins on our canvas, with their own pin design.** This contradicts §8's central fact — a prediction carries no coordinates, so there is nothing to draw — and therefore **cannot** be built on the Autocomplete relay. Costed with the owner, three shapes: Details-per-tap (one call per candidate, cheap, one pin at a time), Details-per-result (N calls per pause, the "opposite of dedup-before-spend" ADR-0115 §2 named), or **switching this half to Text Search**, which returns coordinates _with_ the results so every pin costs one call instead of N.
+
+**The owner chose Text Search**, which is the technically right tool for "results on a map" and the biggest of the three: a new SKU, a new relay endpoint, and its own cost line — exactly what ADR-0115 §6 said it would need. And the pin is to be **designed fresh** rather than inheriting the dashed "listed, not yet ours" mark, on the grounds that a seventh population on this ladder deserves more than a reused one.
+
+Both are backlogged together, because the second changes the surface the first is laying out — and it may reopen the map extreme this session just closed, since results that are pins **are** visible there.

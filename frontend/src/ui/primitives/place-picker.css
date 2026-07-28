@@ -66,6 +66,16 @@
   font: inherit;
 }
 
+/* The two corpora's boundary (ADR-0131 §10). `.map-grouphead` is the Map tab's and is
+   scoped to it, so this is the picker's own one-line equivalent rather than a class
+   borrowed across surfaces — same job, same voice, no shared selector to keep in sync. */
+.pp-group {
+  font-size: 11.5px;
+  font-weight: 700;
+  color: var(--muted);
+  margin: 10px 2px 4px;
+}
+
 .pp-results {
   list-style: none;
   margin: 0;

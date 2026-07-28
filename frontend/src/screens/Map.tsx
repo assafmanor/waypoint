@@ -170,6 +170,15 @@ export function MapView() {
   // keys on this: the list's predicate, the pin filter, the aside promotion (§4), and
   // the two readers that ask "is this pin's row absent from the list?".
   const searching = disclosure === MAP_ROW_DISCLOSURE.query && query.trim() !== '';
+  // The sheet's axis loses its bottom stop while a query is live: at `map` the sheet shows
+  // no rows, so a coordless match has no pin AND no row, and every Google result is a row
+  // with no pin. That is structural, so no amount of canvas fixes it — which is why the
+  // count-as-button that ADR-0131 §6 reached for was the wrong shape and a phone said so.
+  // One narrowed array closes the toggle, the drag and the arrow keys together.
+  const sheetOrder = useMemo(
+    () => (searching ? MAP_SHEET_ORDER.filter((v) => v !== MAP_SHEET_VIEW.map) : MAP_SHEET_ORDER),
+    [searching],
+  );
   // Google's half is available in BOTH modes (§8, withdrawing ADR-0115 §6). The split
   // between the two searches is not a mode — it is whether the thing has coordinates
   // yet: a trip place already carries them (that is what pinned it), a prediction
@@ -178,12 +187,16 @@ export function MapView() {
   const openDisclosure = (next: MapRowDisclosure | null) => {
     setDisclosure(next);
     if (next !== MAP_ROW_DISCLOSURE.query) setQuery('');
-    // §6: only `full` moves. There the pane is `visibility: hidden`, so a search showing
-    // no canvas IS the report. At `map` the canvas is what answers and nothing moves —
-    // 517px of map, pins filtering live, and the count is the way into the list. Fired
-    // on the OPEN tap, never per keystroke: a sheet that moved while you typed would
-    // relayout the canvas under a typing finger (ADR-0121 §5).
-    if (next === MAP_ROW_DISCLOSURE.query && sheetView === MAP_SHEET_VIEW.full) {
+    // THE MAP EXTREME IS NOT AVAILABLE WHILE SEARCHING, and this reverses ADR-0131 §6's
+    // second form back to its first — the owner used it on a phone and there is no way to
+    // see results there. §6's count-as-button was a patch for a structural fact, not a
+    // spatial one: at that stop the sheet shows NO ROWS, so a coordless match has no pin
+    // AND no row, and every Google result is a row with no pin. More canvas does not help.
+    //
+    // So both extremes normalise on open: `full` because the pane is hidden there, `map`
+    // because the list is. Fired on the OPEN tap, never per keystroke — a sheet that moved
+    // while you typed would relayout the canvas under a typing finger (ADR-0121 §5).
+    if (next === MAP_ROW_DISCLOSURE.query && sheetView !== MAP_SHEET_VIEW.half) {
       setSheetView(MAP_SHEET_VIEW.half);
     }
   };
@@ -1190,28 +1203,6 @@ export function MapView() {
               aria-label={t.map.search.button}
               onChange={(e) => setQuery(e.target.value)}
             />
-            {searching && (
-              // A live region wrapping a control — ADR-0126 §4's shape, one more caller,
-              // because one node cannot hold `status` and `button` and `status` would win.
-              // At the `map` stop this is the way INTO the list, since a match with no
-              // coordinates has no pin at all; everywhere else the list is already on
-              // screen, so it is a plain readout. Derived affordance, like every other
-              // control on this tab.
-              <span className="cnt" role="status" aria-live="polite">
-                {sheetView === MAP_SHEET_VIEW.map ? (
-                  <button
-                    type="button"
-                    title={t.map.search.showList}
-                    onClick={() => setSheetView(MAP_SHEET_VIEW.half)}
-                    dir="auto"
-                  >
-                    {listCount}
-                  </button>
-                ) : (
-                  <span dir="auto">{listCount}</span>
-                )}
-              </span>
-            )}
           </div>
           {closeControl}
         </>
@@ -1543,7 +1534,10 @@ export function MapView() {
             leaves the tab at any height (ADR-0103). */}
         <SnapSheet
           stops={MAP_SHEET_STOPS}
-          order={MAP_SHEET_ORDER}
+          // Narrowed while a query is live, so the DRAG and the arrow keys clamp at `half`
+          // too — not just the toggle. `SnapSheet` already takes the axis as a prop, so the
+          // stop becomes unreachable by every route at once rather than by three guards.
+          order={sheetOrder}
           view={sheetView}
           onViewChange={setSheetView}
           grabLabel={t.map.view.grab}
@@ -1565,14 +1559,20 @@ export function MapView() {
                 >
                   {t.map.view.list}
                 </button>
-                <button
-                  type="button"
-                  className={sheetView === MAP_SHEET_VIEW.map ? 'on' : ''}
-                  aria-pressed={sheetView === MAP_SHEET_VIEW.map}
-                  onClick={() => setSheetView(MAP_SHEET_VIEW.map)}
-                >
-                  {t.map.view.map}
-                </button>
+                {/* Absent while searching, not disabled — the rule this tab runs for
+                    `קרוב עכשיו` at the map extreme, for `אולי`/`מה נשאר` with nothing to
+                    count, and for `באזור` at zero: a control whose effect you could not
+                    see is not offered (ADR-0109's session-105 amendment). */}
+                {!searching && (
+                  <button
+                    type="button"
+                    className={sheetView === MAP_SHEET_VIEW.map ? 'on' : ''}
+                    aria-pressed={sheetView === MAP_SHEET_VIEW.map}
+                    onClick={() => setSheetView(MAP_SHEET_VIEW.map)}
+                  >
+                    {t.map.view.map}
+                  </button>
+                )}
               </div>
             </>
           }

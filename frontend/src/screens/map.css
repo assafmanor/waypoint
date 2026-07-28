@@ -127,34 +127,6 @@
   background: none;
   color: var(--ink);
 }
-/* The match count. At the `map` stop it is the way INTO the list, so it is a real
-   control there and a plain readout everywhere else (§6) — a derived affordance, like
-   every other control on this tab. The live region is the WRAPPER, because one node
-   cannot hold `status` and `button` and `status` would win (ADR-0126 §4). */
-.map-querystrip .cnt {
-  flex: 0 0 auto;
-  display: flex;
-  align-items: center;
-}
-.map-querystrip .cnt > * {
-  font: inherit;
-  font-family: var(--font-mono);
-  font-size: 11px;
-  font-weight: 700;
-  color: var(--muted);
-  background: none;
-  border: 0;
-  padding: 0;
-}
-.map-querystrip .cnt > button {
-  min-height: 30px;
-  padding: 0 8px;
-  border-radius: 999px;
-  background: color-mix(in srgb, var(--ink) 6%, transparent);
-  color: var(--ink);
-  cursor: pointer;
-}
-
 .map-facets-close {
   margin-inline-start: auto;
 }
@@ -281,34 +253,6 @@
   background: none;
   color: var(--ink);
 }
-/* The match count. At the `map` stop it is the way INTO the list, so it is a real
-   control there and a plain readout everywhere else (§6) — a derived affordance, like
-   every other control on this tab. The live region is the WRAPPER, because one node
-   cannot hold `status` and `button` and `status` would win (ADR-0126 §4). */
-.map-querystrip .cnt {
-  flex: 0 0 auto;
-  display: flex;
-  align-items: center;
-}
-.map-querystrip .cnt > * {
-  font: inherit;
-  font-family: var(--font-mono);
-  font-size: 11px;
-  font-weight: 700;
-  color: var(--muted);
-  background: none;
-  border: 0;
-  padding: 0;
-}
-.map-querystrip .cnt > button {
-  min-height: 30px;
-  padding: 0 8px;
-  border-radius: 999px;
-  background: color-mix(in srgb, var(--ink) 6%, transparent);
-  color: var(--ink);
-  cursor: pointer;
-}
-
 .map-facets-close {
   display: grid;
   place-items: center;
