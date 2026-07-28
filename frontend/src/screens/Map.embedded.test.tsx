@@ -96,7 +96,8 @@ vi.mock('../state/trip-state', () => ({
   }),
 }));
 vi.mock('../state/mode-state', () => ({ useMode: () => ({ mode: currentMode }) }));
-vi.mock('../state/verbs', () => ({ useVerbs: () => ({ addMaybe: vi.fn() }) }));
+const addMaybe = vi.fn();
+vi.mock('../state/verbs', () => ({ useVerbs: () => ({ addMaybe }) }));
 vi.mock('../lib/outbox', () => ({ useIsOffline: () => isOffline }));
 
 // The device's location, driven per test. `permissionState` is what the Permissions
@@ -131,6 +132,41 @@ Object.defineProperty(navigator, 'permissions', {
 
 // The build config is PRESENT here, which is what puts the split on screen. It is a
 // build var in real life, so mocking the reader is the honest seam.
+/** The shared search core, stubbed: its own behaviour (floor, pause debounce, session
+ *  token, dedup, 429) is tested in `lib/usePlaceSearch.test.ts`, and what this suite owns
+ *  is what the SCREEN does with results — feeds the query, draws the rings, adds. */
+const searchStub = {
+  setQuery: vi.fn(),
+  pick: vi.fn(),
+  reset: vi.fn(),
+  predictions: [] as {
+    googlePlaceId: string;
+    primaryText: string;
+    lat?: number;
+    lng?: number;
+  }[],
+  referenced: {} as Record<string, { id: string }>,
+  corpus: '' as string,
+};
+vi.mock('../lib/usePlaceSearch', () => ({
+  usePlaceSearch: (opts: { corpus?: string } = {}) => {
+    searchStub.corpus = opts.corpus ?? '';
+    return {
+      query: '',
+      setQuery: searchStub.setQuery,
+      predictions: searchStub.predictions,
+      loading: false,
+      rateLimited: false,
+      failed: false,
+      active: true,
+      alreadyInTrip: (p: { googlePlaceId: string }) => searchStub.referenced[p.googlePlaceId],
+      pick: searchStub.pick,
+      saveNameOnly: vi.fn(),
+      reset: searchStub.reset,
+    };
+  },
+}));
+
 vi.mock('../lib/map-config', () => ({
   mapsConfig: () => ({ apiKey: 'k', mapId: 'waypoint-day' }),
   mapPaneAvailable: ({ offline }: { offline: boolean }) => !offline,
@@ -174,6 +210,19 @@ vi.mock('../ui/domain/MapPane', () => ({
             RATIO from the paint, so the suite has to see them apart: a query withdraws
             `aside` and leaves the tier alone, and the amber cues deliberately do NOT
             follow the withdrawal. */}
+        {/* The RINGS (ADR-0132 §6): a population that is deliberately NOT on the pin
+            ladder, so the stub keeps it in its own list — a test that found a ring in
+            `pins` would be asserting the thing the design refuses. */}
+        {(props.results as { googlePlaceId: string; selected?: boolean }[]).map((r) => (
+          <button
+            key={r.googlePlaceId}
+            data-ring={r.googlePlaceId}
+            data-selected={String(r.selected ?? false)}
+            onClick={() => (props.onSelectResult as (id: string) => void)(r.googlePlaceId)}
+          >
+            {r.googlePlaceId}
+          </button>
+        ))}
         {pins.map((pin) => (
           <button
             key={pin.placeId}
@@ -197,7 +246,7 @@ import { NavProvider, useAppBack } from '../state/nav-state';
 import { MapScopeProvider, useMapScope } from '../state/map-scope-state';
 import { setSimulatedNow } from '../lib/useClock';
 import { MapView } from './Map';
-import { MAP_CONTROLS_H, MAP_SHEET_VIEW } from '../constants';
+import { MAP_CONTROLS_H, MAP_SHEET_VIEW, PLACE_CORPUS } from '../constants';
 import { isFramedByCamera, PIN_TIER, type PinTier } from '../lib/map-pins';
 import { iconForCategory } from '@waypoint/shared';
 import { t } from '../i18n/he';
@@ -1089,6 +1138,129 @@ describe('the embedded map’s shell (ADR-0121)', () => {
         expect(grab.getAttribute('aria-valuemax')).toBe('1');
         fireEvent.keyDown(grab, { key: 'ArrowDown' });
         expect(screenEl().dataset.view).toBe(MAP_SHEET_VIEW.half);
+      });
+    });
+
+    // ─── UNSAVED GOOGLE RESULTS, AS RINGS (ADR-0132 §6/§7) ─────────────────────────
+    // The SKU switch is what makes this possible at all: Text Search returns results WITH
+    // coordinates, where an Autocomplete prediction has none until the pick (ADR-0115 §2)
+    // and could therefore only ever be a row.
+    describe("Google's results are rings on our canvas", () => {
+      const openSearch = () => fireEvent.click(listButton(t.map.search.button));
+      const type = (value: string) =>
+        fireEvent.change(screen.getByPlaceholderText(t.map.search.placeholder), {
+          target: { value },
+        });
+      const ring = (id: string) => document.querySelector(`[data-ring="${id}"]`) as HTMLElement;
+      const rings = () =>
+        [...document.querySelectorAll('[data-ring]')].map((el) => el.getAttribute('data-ring'));
+
+      beforeEach(() => {
+        searchStub.predictions = [];
+        searchStub.referenced = {};
+        searchStub.setQuery.mockClear();
+        searchStub.pick.mockReset();
+        addMaybe.mockClear();
+      });
+
+      it('spends the Text Search SKU, not Autocomplete', () => {
+        seed();
+        render(wrap(<MapView />));
+        // Not a cosmetic assertion: the two SKUs differ in whether a session token folds
+        // the run of keystrokes into one charge, and only one of them returns coordinates.
+        expect(searchStub.corpus).toBe(PLACE_CORPUS.text);
+      });
+
+      it('feeds the paid core only a LIVE query — an open field is not an intent to spend', () => {
+        seed();
+        render(wrap(<MapView />));
+        openSearch();
+        expect(searchStub.setQuery).toHaveBeenLastCalledWith('');
+        type('coffee');
+        expect(searchStub.setQuery).toHaveBeenLastCalledWith('coffee');
+      });
+
+      it('draws a ring per placeable result, and none once the field closes', () => {
+        seed();
+        searchStub.predictions = [
+          { googlePlaceId: 'g-1', primaryText: 'Blue Bottle', lat: 35.69, lng: 139.7 },
+          { googlePlaceId: 'g-2', primaryText: 'Arabica', lat: 35.68, lng: 139.71 },
+        ];
+        render(wrap(<MapView />));
+        expect(rings()).toEqual([]);
+        openSearch();
+        type('coffee');
+        expect(rings()).toEqual(['g-1', 'g-2']);
+        fireEvent.click(screen.getByRole('button', { name: t.map.search.close }));
+        expect(rings()).toEqual([]);
+      });
+
+      // A result with no coordinates is a row and nothing else — the same treatment a
+      // coordless Place-lite of our own gets, for the same reason.
+      it('a result without coordinates gets no ring', () => {
+        seed();
+        searchStub.predictions = [{ googlePlaceId: 'g-3', primaryText: 'Somewhere' }];
+        render(wrap(<MapView />));
+        openSearch();
+        type('coffee');
+        expect(rings()).toEqual([]);
+      });
+
+      // It already HAS a pin. A ring over it would draw one place twice while saying the
+      // opposite thing about it.
+      it('a result already in the trip gets no ring', () => {
+        seed();
+        searchStub.predictions = [
+          { googlePlaceId: 'g-1', primaryText: 'Blue Bottle', lat: 35.69, lng: 139.7 },
+        ];
+        searchStub.referenced = { 'g-1': { id: 'museum' } };
+        render(wrap(<MapView />));
+        openSearch();
+        type('coffee');
+        expect(rings()).toEqual([]);
+      });
+
+      // The pin↔row rule, in the direction the rings need it (ADR-0132 §8): the card
+      // exists only where the list cannot show the row, and while a query is live the map
+      // extreme is unavailable — so the row is always there to select.
+      it('a ring tap selects its ROW and drops any place selection', () => {
+        seed();
+        searchStub.predictions = [
+          { googlePlaceId: 'g-1', primaryText: 'Blue Bottle', lat: 35.69, lng: 139.7 },
+        ];
+        render(wrap(<MapView />));
+        openSearch();
+        type('museum');
+        fireEvent.click(pin('museum')!);
+        expect(row('museum')!.className).toContain('selected');
+        fireEvent.click(ring('g-1'));
+        expect(ring('g-1').dataset.selected).toBe('true');
+        expect(row('museum')!.className).not.toContain('selected');
+        // …and the canvas clears both again.
+        fireEvent.click(document.querySelector('[data-canvas]') as HTMLElement);
+        expect(ring('g-1').dataset.selected).toBe('false');
+      });
+
+      it('adding a result resolves it once, then references it from an idea', async () => {
+        seed();
+        const result = {
+          googlePlaceId: 'g-1',
+          primaryText: 'Blue Bottle',
+          lat: 35.69,
+          lng: 139.7,
+        };
+        searchStub.predictions = [result];
+        searchStub.pick.mockResolvedValue({ id: 'p-new' });
+        render(wrap(<MapView />));
+        openSearch();
+        type('coffee');
+        fireEvent.click(
+          screen.getByRole('button', { name: t.map.research.addAria('Blue Bottle') }),
+        );
+        await vi.waitFor(() => expect(addMaybe).toHaveBeenCalled());
+        expect(searchStub.pick).toHaveBeenCalledWith(result);
+        // Uncategorised on purpose: category is captured when the idea is scheduled.
+        expect(addMaybe).toHaveBeenCalledWith('Blue Bottle', { placeId: 'p-new' });
       });
     });
 

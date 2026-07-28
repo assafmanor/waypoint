@@ -174,14 +174,66 @@ export const searchPlacesSchema = z.object({
 });
 export type SearchPlacesInput = z.infer<typeof searchPlacesSchema>;
 
+/** One **Text Search** result crossing the proxy boundary (ADR-0132 §7). Same row
+ *  grammar as a prediction, plus the thing a prediction structurally cannot carry:
+ *  **coordinates**. That is the whole reason this SKU exists — an Autocomplete
+ *  prediction has no location until the pick (ADR-0115 §2), so it can be a row but
+ *  never a pin, while one Text Search call returns N results already placeable.
+ *
+ *  `lat`/`lng` are optional because Google's response is not a contract we control;
+ *  a result without them is a row and no ring, which the client already handles for
+ *  every coordless place it holds. */
+export const placeResultSchema = placePredictionSchema.extend({
+  lat: z.number().optional(),
+  lng: z.number().optional(),
+});
+export type PlaceResult = z.infer<typeof placeResultSchema>;
+
+/** `POST /trips/:tripId/places/search-text` body — the Text Search relay (ADR-0132
+ *  §7). **No session token**, and that is the cost story rather than an omission:
+ *  Text Search has no concept of a session, so every query is billed on its own,
+ *  where Autocomplete's token folds a run of keystrokes into the pick's single
+ *  charge. The controls that remain are the min-chars floor and the pause-gated
+ *  debounce, both client-side, plus the same per-member·trip throttle.
+ *
+ *  `bias` is the canvas's current bounds: free relevance (it changes ranking, not
+ *  price), so a query typed while the map is on Shinjuku means Shinjuku. */
+export const searchPlacesTextSchema = z.object({
+  input: z.string().min(1).max(200),
+  bias: z
+    .object({
+      south: z.number(),
+      west: z.number(),
+      north: z.number(),
+      east: z.number(),
+    })
+    .optional(),
+});
+export type SearchPlacesTextInput = z.infer<typeof searchPlacesTextSchema>;
+
 /** `POST /trips/:tripId/places/resolve` body — the terminating enrich-on-pick
  *  (create-or-link) call (ADR-0108 §3 / ADR-0110 §1). `enrichPlaceId` names an
  *  existing coordless Place-lite to enrich in place instead of minting a new row
- *  (ADR-0110 §1). Server dedup on `(tripId, googlePlaceId)` governs the rest. */
+ *  (ADR-0110 §1). Server dedup on `(tripId, googlePlaceId)` governs the rest.
+ *
+ *  `details` is the Text Search half's add path (ADR-0132 §7): that call already
+ *  returned the name, the address and the point, so a Place Details call to fetch
+ *  them again would be spending twice for one place. Supplied here, the resolve
+ *  persists without touching Google at all. It is a client-supplied value, which is
+ *  the same trust level `createPlace` has always had for `lat`/`lng` — and the
+ *  dedup, the trip scoping and the zone resolution are unchanged either way. */
 export const resolvePlaceSchema = z.object({
   googlePlaceId: z.string().min(1),
   sessionToken: sessionTokenSchema.optional(),
   enrichPlaceId: entityIdSchema.optional(),
+  details: z
+    .object({
+      name: z.string().min(1).max(200),
+      address: z.string().max(500).optional(),
+      lat: z.number().optional(),
+      lng: z.number().optional(),
+    })
+    .optional(),
 });
 export type ResolvePlaceInput = z.infer<typeof resolvePlaceSchema>;
 

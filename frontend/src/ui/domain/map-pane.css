@@ -239,6 +239,45 @@
        drawn as if it were. It keeps the maybe's own paint (dashed, hatched, filled, its
        glyph) and takes only the ratio: available today, but you did not put it in this
        day. So the paint says WHAT it is and the size says how much it is claiming. */
+/* ── AN UNSAVED GOOGLE RESULT (ADR-0132 §6) ──────────────────────────────────────
+   A RING, not a teardrop, and that is the whole design: the prominence ladder above
+   expresses DEGREE and has no free axis left (hue = category, fill = commitment, grey
+   = behind you, hollow = another day, ratio = subordinate, two amber box-shadows,
+   selection's outline, a zoom-keyed dot). "Not ours yet" is a difference of KIND, so it
+   takes the one axis nothing else uses — silhouette.
+
+   No tip, because a tip is a claim about WHICH BUILDING and a result is a candidate; no
+   hue, because the mask does not buy place types (ADR-0115 §2) so there is nothing
+   honest to colour it by; a `＋`, because the only verb available on it is add.
+
+   Sized off the same `--pin-base` as every pin, so it tracks the canvas the way
+   ADR-0123 made everything else track it — and NOT through `--pin-u`, because it is not
+   on the ladder and must not inherit the aside ratio or the dot tier. It sits ON the
+   coordinate (`translate(-50%, -50%)` is the marker's own default anchoring, so no
+   transform of ours), which is the truthful geometry for a place that is not in the
+   trip yet. */
+.map-result {
+  width: calc(var(--pin-base, 34px) * 0.82);
+  height: calc(var(--pin-base, 34px) * 0.82);
+  border-radius: 50%;
+  display: grid;
+  place-items: center;
+  background: var(--card);
+  border: calc(var(--pin-base, 34px) * 0.06) solid var(--ink);
+  box-shadow: 0 2px 6px rgba(22, 35, 61, 0.24);
+  color: var(--ink);
+  font-size: calc(var(--pin-base, 34px) * 0.44);
+  font-weight: 700;
+  line-height: 1;
+  cursor: pointer;
+}
+/* Selection reuses the ladder's own outline grammar rather than inventing a second
+   one — the ring is off the PROMINENCE ladder, not out of the design system. */
+.map-result.selected {
+  outline: 2px solid var(--ink);
+  outline-offset: 2px;
+}
+
 .map-pin.aside {
   --pin-u: calc(var(--pin-base, 34px) * var(--pin-aside-scale, 0.72));
 }

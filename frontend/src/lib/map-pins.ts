@@ -177,6 +177,13 @@ const TIER_Z: Record<PinTier, number> = {
 const NEXT_STOP_Z = 500;
 const ORDER_SPREAD = 99;
 
+/** An unsaved Google result's ring (ADR-0132 §6) sits **below every trip pin**, ghosts
+ *  included: what you already have outranks what you might add, and a ring is legible
+ *  under a teardrop anyway (it is a different silhouette, not a competing one). Named
+ *  here beside `TIER_Z` rather than in the pane, because this is the same one ordering
+ *  question — it just happens to be about a population that is not on the ladder. */
+export const MAP_RESULT_Z = -100;
+
 export function pinZIndex(pin: { tier: PinTier; nextStop?: boolean; order?: number }): number {
   if (pin.nextStop) return NEXT_STOP_Z;
   const nudge =
