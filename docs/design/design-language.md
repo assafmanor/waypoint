@@ -61,6 +61,16 @@ Color carries meaning so the eye can parse a screen **without reading**. Each se
 
 A small **decorative palette** (avatar identity colors, **map pin categories**) exists alongside these — always pastel/muted, never amber or teal, so it reads as gentle variety rather than a second meaning system. See the Map pins entry below (the 5 category hues; ADR-0038/0109).
 
+**The two decorative ramps, named** (ADR-0132 — before it, only the pin hues had values, and the eight call sites drawing an avatar invented their own; two of them landed byte-identical to `--cat-transit`/`--cat-lodging`, and the `avatarColor` column default was `--amber` itself):
+
+- **Map pin categories** — `--cat-food` / `--cat-lodging` / `--cat-transit` / `--cat-leisure` / `--cat-services` (ADR-0038 §2 / ADR-0109).
+- **Avatar identity** — `--id-plum` `#B98AC9` · `--id-rose` `#D98CA8` · `--id-moss` `#9DB585` · `--id-denim` `#8496B5` · `--id-cocoa` `#B99483`. A user's default is **derived from `user.id`**, never a column default — one shared default is what made every real user the same colour. Repeats within a group are accepted: this is variety, not identification (the letter and the name identify).
+
+Two rules govern the identity ramp, and they are why it is a ramp rather than a taste:
+
+- **Chroma, not hue angle, is what separates it from the pin hues.** The palette is crowded — `--cat-services` sits on amber's angle, `--cat-lodging` on `--plan`'s — and a member avatar in the chrome co-occurs with a category pin on the canvas on the Map tab. So an identity colour **may** share an angle with a category hue and still never read as one, because the pin is chromatic and the avatar is muted. Adding a hue means checking chroma, not just hue.
+- **One dark ink must clear contrast on every hue, in both themes.** That is why all of them are pastel, and it is what keeps the `Avatar` primitive from carrying a per-hue ink table. A candidate that needs its own ink does not belong in the ramp. A near-zero-chroma sixth hue was cut for a different reason worth remembering: rendered beside the others it read as a **disabled control** rather than a chosen colour.
+
 ## The board is rationed
 
 The dark departure-board surface means **"the trip is speaking."** It keeps its power only if it is scarce:
