@@ -230,9 +230,17 @@ export function MapView() {
       const { target } = taken;
       if (target.kind === 'booking' && target.id) {
         void indexVerbs.updateBooking(target.id, { [target.field]: placeId }).catch(() => {});
-      } else {
-        errandResult.hand({ errand: taken, placeId });
       }
+      // …AND THE ANSWER GOES BACK EITHER WAY (owner, session 170: _"return to booking isn't
+      // working"_). The saved-booking path used to patch and navigate, handing nothing over
+      // — and `returnTo` is a URL, while the thing you were looking at is a `Modal` that no
+      // URL addresses. So you landed on the bare screen behind it, with the place correctly
+      // assigned to a booking you could no longer see.
+      //
+      // The host re-opens it, through the channel it already listens on: a result with a
+      // DRAFT re-opens the form, one with only a saved `target.id` re-opens that booking's
+      // detail. No second mechanism, and no route for a sheet that deliberately has none.
+      errandResult.hand({ errand: taken, placeId });
       navigate(taken.returnTo, { replace: true });
     },
     [errand, errandResult, navigate, indexVerbs],
@@ -244,13 +252,14 @@ export function MapView() {
   // half-typed event died on the way out. That is the exact loss the draft exists to prevent;
   // ADR-0134 §2 only ever spelled it out for the success path.
   //
-  // Handed only when there IS a draft: a saved booking's errand patches in place and has no
-  // form to restore, so handing an empty result would leave something pending for a host
-  // that will never want it.
+  // Handed only when there is something to RESTORE — a form's draft, or a saved booking
+  // whose detail sheet was open. Both exits owe the same return (session 170): cancelling
+  // out of a `＋ מיקום` used to land on the bare screen behind the booking too, which is the
+  // success path's bug with nothing even assigned to show for it.
   const cancelErrand = useCallback(() => {
     const taken = errand.take();
     if (!taken) return;
-    if (taken.draft) errandResult.hand({ errand: taken, placeId: null });
+    if (taken.draft || taken.target.id) errandResult.hand({ errand: taken, placeId: null });
     navigate(taken.returnTo, { replace: true });
   }, [errand, errandResult, navigate]);
   useBackLayer(() => {
@@ -351,7 +360,14 @@ export function MapView() {
   // gone, which is the whole reason the errand carries a draft.
   const [bookingDraft, setBookingDraft] = useState<BookingSheetDraft | null>(null);
   usePlaceErrandReturn<BookingSheetDraft>('booking', (returned) => {
-    if (!returned.draft) return;
+    // NO DRAFT means the errand came from the booking's DETAIL sheet, which has no form
+    // state to restore — what it has is a sheet that was open and that no URL addresses,
+    // so the return has to re-open it (session 170).
+    if (!returned.draft) {
+      const booking = bookings.find((b) => b.id === returned.target.id);
+      if (booking) setDetailBooking(booking);
+      return;
+    }
     setEditBooking(bookings.find((b) => b.id === returned.target.id) ?? null);
     setBookingDraft(returned.draft);
   });
@@ -2160,6 +2176,10 @@ function PlaceRow({
     <div
       className={rowClass}
       data-place={usage.placeId}
+      // The same double-tap shortcut the result rows carry (owner, session 170), and the
+      // same scope: only while `בחירה` is the row's verb. One list, one gesture — a trip
+      // row and a Google row are answers to the same question under an errand.
+      onDoubleClick={onChoose}
       {...(onSelect
         ? {
             role: 'button',
