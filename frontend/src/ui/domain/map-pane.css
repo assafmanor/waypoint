@@ -250,28 +250,68 @@
    prop, nothing that could re-diff a live map's overlays (§4). The teardrop becomes a
    round dot — the tip is what claims a building, and at this zoom it cannot honestly
    claim one, so it is dropped rather than shrunk. */
-.map-pane[data-pins='dot'] .map-pin {
+/* ── THE DOT TIER APPLIES TO WHAT YOU ARE NOT LOOKING AT ────────────────────────
+   (ADR-0121 §6, built in ADR-0128 §1 and amended twice on 2026-07-28: session 154
+   spared the time anchors, session 155 scoped the whole tier to the day scope.)
+
+   **The owner's case, and it is the one that matters most:** you open the app in the
+   morning and look at the map to see what today holds and in what order. If the pins are
+   numberless dots you cannot know without zooming in and hunting — the opposite of what
+   the canvas is for. ADR-0121 §6 made the number the order cue ("a line between two stops
+   is symmetric and never said which end you reach first, and the number is free"), so a
+   tier that drops it trades away the canvas's one contribution over the list, in exactly
+   the view where that contribution is the point. **A travel day makes it sharpest:**
+   Tokyo→Kyoto fits at a zoom well below the threshold, so the day whose order you most
+   need to read is the day that lost it.
+
+   **TWO RULES, because there are genuinely two situations** — one selector covering both
+   was tried and kept leaving something behind:
+
+     • **Day scope — only GHOSTS degrade.** A ghost is by definition not this day
+       (ADR-0121 §6), so it is the one population that is not what you are looking at.
+       Everything else stays a full pin: the numbered stops, and also today's ambient stay
+       night and today's ideas, which carry no number BY DESIGN (ADR-0109's amendment:
+       "what marks a night as ambient is that it has no number and no clock") and would
+       have been collateral damage of any rule keyed on the number. A day holds three to
+       six stops, so there is no density problem here worth paying for.
+
+     • **All-days — everything degrades except the time anchors.** Nothing is numbered in
+       all-days at all (`buildPinOrderIndex` returns an empty map with no scoped day), so
+       there is no order to lose; and this is the multi-city case §6 invented the tier for,
+       where the density is real. The amber cue keeps its exemption because it answers
+       "what matters right now", which no zoom invalidates (session 154's rule: demote what
+       claims precision, keep what claims priority).
+
+   Both are `data-scope` on the screen, which the pane already sits inside — so the tier
+   costs no prop and no marker re-render, exactly as ADR-0128 §1 built it. */
+.map-screen[data-scope='day'] .map-pane[data-pins='dot'] .map-pin.ghost,
+.map-screen[data-scope='all'] .map-pane[data-pins='dot'] .map-pin:not(.nowstop, .nextstop) {
   --pin-u: calc(var(--pin-base, 34px) * var(--pin-dot-scale, 0.4));
 }
-.map-pane[data-pins='dot'] .map-pin .pin-b {
-  /* No rotation and a full radius: a dot, not a small teardrop. */
+/* A ghost is the subordinate rung wherever it appears, so at dot size it compounds both
+   ratios — the ladder does not collapse just because the rungs got smaller. */
+.map-screen[data-scope='all'] .map-pane[data-pins='dot'] .map-pin.ghost,
+.map-screen[data-scope='day'] .map-pane[data-pins='dot'] .map-pin.ghost {
+  --pin-u: calc(var(--pin-base, 34px) * var(--pin-dot-scale, 0.4) * var(--pin-ghost-scale, 0.72));
+}
+.map-screen[data-scope='day'] .map-pane[data-pins='dot'] .map-pin.ghost .pin-b,
+.map-screen[data-scope='all'] .map-pane[data-pins='dot'] .map-pin:not(.nowstop, .nextstop) .pin-b {
+  /* No rotation and a full radius: a dot, not a small teardrop. The tip is what claims a
+     building, and at this zoom it cannot honestly claim one, so it is dropped rather than
+     shrunk. */
   border-radius: 50%;
   transform: none;
   box-shadow: 0 1px 2px color-mix(in srgb, var(--ink) 22%, transparent);
 }
-/* The glyph, the order number and the amber tags all go: each of them is a claim about
-   a place you cannot resolve at this zoom. The amber CUE is not lost — `nextstop` and
-   `nowstop` keep their ring and their pulse below, which is prominence rather than
-   text, and is what the tier is for. */
-.map-pane[data-pins='dot'] .map-pin .pin-g,
-.map-pane[data-pins='dot'] .map-pin .pin-n,
-.map-pane[data-pins='dot'] .map-pin .pin-tag {
+/* The glyph and the amber tag are text-scale claims a dot cannot carry. The NUMBER is not
+   listed: nothing that carries one is ever degraded now, so there is nothing to hide. */
+.map-screen[data-scope='day'] .map-pane[data-pins='dot'] .map-pin.ghost .pin-g,
+.map-screen[data-scope='all'] .map-pane[data-pins='dot'] .map-pin:not(.nowstop, .nextstop) .pin-g,
+.map-screen[data-scope='all']
+  .map-pane[data-pins='dot']
+  .map-pin:not(.nowstop, .nextstop)
+  .pin-tag {
   display: none;
-}
-/* A ghost at this zoom is still the subordinate rung, by the same ratio as everywhere
-   else — the ladder does not collapse just because the rungs got smaller. */
-.map-pane[data-pins='dot'] .map-pin.ghost {
-  --pin-u: calc(var(--pin-base, 34px) * var(--pin-dot-scale, 0.4) * var(--pin-ghost-scale, 0.72));
 }
 
 /* THE ONE AMBER TIME-ANCHOR the map's budget allows (ADR-0109 §6): the next

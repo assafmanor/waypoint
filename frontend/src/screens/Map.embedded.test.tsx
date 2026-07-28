@@ -1485,6 +1485,31 @@ describe('the embedded map’s shell (ADR-0121)', () => {
   // ADR-0109 session-134: opening the tab offers to locate you, rather than waiting
   // for a chip tap. What §6 was protecting is what these assert — a cold OS dialog
   // never appears, and a refusal is never nagged.
+  // ADR-0128 §1's session-155 amendment scopes the dot tier by DAY-vs-ALL-DAYS, because
+  // the two are genuinely different situations: a day holds three to six stops and its
+  // order is the whole point, while all-days holds the multi-city density the tier was
+  // invented for and has no order to lose (nothing is numbered without a scoped day).
+  // The rules key on `data-scope`, so what the shell has to guarantee is that the
+  // attribute tracks the scope chip — CSS does the rest.
+  describe('the dot tier can see the scope it is keyed on (ADR-0128 §1)', () => {
+    it('the screen states the scope the tier reads, and follows the chip', () => {
+      seed();
+      render(wrap(<MapView />));
+      expect(screenEl().dataset.scope).toBe('day');
+      fireEvent.click(toggle(`🗓️ ${t.map.allDays}`));
+      expect(screenEl().dataset.scope).toBe('all');
+    });
+
+    // The population the day-scope rule degrades is the ghost, and it has to be
+    // distinguishable in the markup for the rule to reach it.
+    it('a ghost is the one pin marked as not-this-day in day scope', () => {
+      seed();
+      render(wrap(<MapView />));
+      expect(pin('tomorrow')!.dataset.tier).toBe(PIN_TIER.ghost);
+      expect(pin('museum')!.dataset.tier).not.toBe(PIN_TIER.ghost);
+    });
+  });
+
   // ADR-0129 §1. Reported off a real map: being zoomed for tapping a pin you can already
   // SEE is inconvenient, so selection pans and the ZOOM becomes an explicit intent —
   // carried by the card's own badge, which is the verb that badge already has on every

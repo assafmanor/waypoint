@@ -538,6 +538,49 @@ describe('the dot tier degrades a pin below a zoom threshold (ADR-0128 §1)', ()
     expect(withCard.fits.at(-1)!.padding!.bottom).toBeGreaterThan(plain);
   });
 
+  // ADR-0128 §1's session-154 amendment: **demote what claims precision, keep what claims
+  // priority.** The glyph, the number and the tip answer "which one" and "where exactly",
+  // which a 30km view cannot support. The amber cue answers "what matters right now",
+  // which no zoom invalidates — so the two time anchors are not degraded at all.
+  //
+  // jsdom applies no CSS, so what is asserted is the MECHANISM the rule is written in:
+  // the degradation is scoped by `:not(.nowstop, .nextstop)`, so those two classes are
+  // what carries the exemption and they must reach the markup.
+  // The tier is now scoped by `data-scope` on the SCREEN (ADR-0128 §1's session-155
+  // amendment), which the pane sits inside — so the pane's own test can only assert that
+  // the classes and the flag the rules key on are present. Which pins actually shrink is
+  // a CSS question, and jsdom applies no CSS.
+  it('the time anchors keep the classes that exempt them from the dot tier', () => {
+    const map = new FakeZoomMap();
+    map.zoom = MAP_ZOOM.DOT_BELOW - 2;
+    mapStub.current = map;
+    paint({
+      pins: [
+        pin({ placeId: 'now', nowStop: true, order: 2 }),
+        pin({ placeId: 'next', nextStop: true, order: 3 }),
+        pin({ placeId: 'plain', order: 4 }),
+      ],
+    });
+    expect(pane().dataset.pins).toBe('dot');
+    const cls = (id: string) =>
+      (document.querySelector(`[aria-label="${id}"]`) as HTMLElement).className;
+    expect(cls('now')).toContain('nowstop');
+    expect(cls('next')).toContain('nextstop');
+    expect(cls('plain')).not.toMatch(/nowstop|nextstop/);
+  });
+
+  // And they keep the PARTS the rule keeps — the number and the tag are still rendered at
+  // dot zoom, because it is CSS that decides who shows them, not the markup.
+  it('an exempt pin still renders its number and its tag at dot zoom', () => {
+    const map = new FakeZoomMap();
+    map.zoom = MAP_ZOOM.DOT_BELOW - 2;
+    mapStub.current = map;
+    paint({ pins: [pin({ placeId: 'now', nowStop: true, order: 2 })] });
+    const el = document.querySelector('[aria-label="now"]')!;
+    expect(el.querySelector('.pin-n')?.textContent).toBe('2');
+    expect(el.querySelector('.pin-tag')?.textContent).toBe(t.map.happeningNow);
+  });
+
   // The reason it is a data attribute and not a prop or state: the markers are content
   // inside a live `google.maps.Map`, where a needless re-diff is the cheap failure and a
   // re-instantiation is a billed one (ADR-0121 §4).

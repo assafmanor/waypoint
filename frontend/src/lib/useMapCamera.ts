@@ -114,6 +114,18 @@ export function useMapCamera(
   /** The frame handle of the move in flight, so a new move cancels the old one rather
    *  than fighting it. */
   const raf = useRef(0);
+  /** Where the move in flight is going, and the last frame it wrote. Both exist because
+   *  an eased move makes the map's own camera a MOVING TARGET for 480ms, and two
+   *  decisions read that camera (ADR-0129 §4):
+   *
+   *   • the step-in ladder asks "where are we now" — during an ease the honest answer is
+   *     where we are GOING, or a second tap lands on an interpolated value and #20's
+   *     "nothing can desynchronise it" stops being true;
+   *   • "a manual pan or zoom wins" (ADR-0121 §7) has to survive the window. If the
+   *     camera is not where we last put it, something else moved it — a finger — so we
+   *     stand down rather than overwrite the gesture frame by frame. */
+  const going = useRef<CameraAt | null>(null);
+  const wrote = useRef<CameraAt | null>(null);
 
   /**
    * **EVERY camera move goes through here** (ADR-0129 §3), and it is ours rather than
@@ -131,12 +143,15 @@ export function useMapCamera(
     (to: CameraAt) => {
       if (!map) return;
       cancelAnimationFrame(raf.current);
+      going.current = null;
       const fromCenter = map.getCenter();
       const fromZoom = map.getZoom();
       // No camera to interpolate FROM (a map that has not rendered) is not a failure —
       // there is simply nothing to ease across, so land on the target.
       if (!fromCenter || fromZoom == null || prefersReducedMotion()) {
         map.moveCamera({ center: to.center, zoom: to.zoom });
+        going.current = null;
+        wrote.current = null;
         return;
       }
       const from: CameraAt = {
@@ -144,11 +159,23 @@ export function useMapCamera(
         zoom: fromZoom,
       };
       const started = performance.now();
+      going.current = to;
       const step = () => {
+        // THE USER WINS. If the camera is not where this loop last put it, a finger moved
+        // it — Google's own pan/pinch handling writes the camera too — and continuing
+        // would overwrite that gesture once a frame until the ease ran out (ADR-0121 §7).
+        if (wrote.current && !sameCamera(readCamera(map), wrote.current)) {
+          going.current = null;
+          return;
+        }
         const progress = (performance.now() - started) / MAP_CAMERA_EASE.DURATION_MS;
-        map.moveCamera(cameraFrame(from, to, progress));
+        const at = cameraFrame(from, to, progress);
+        map.moveCamera(at);
+        wrote.current = at;
         if (progress < 1) raf.current = requestAnimationFrame(step);
+        else going.current = null;
       };
+      wrote.current = null;
       step();
     },
     [map],
@@ -160,7 +187,7 @@ export function useMapCamera(
    *  one, which is what makes a pin tap a pure pan (ADR-0129 §1). */
   const moveTo = useCallback(
     (point: LatLng, zoom: number | null) => {
-      const current = map?.getZoom();
+      const current = going.current?.zoom ?? map?.getZoom();
       if (current == null) return;
       easeTo({ center: point, zoom: zoom ?? current });
     },
@@ -318,9 +345,35 @@ export function useMapCamera(
 
   const locate = useCallback(
     (point: LatLng) =>
-      moveTo(point, zoomStepIn(map?.getZoom(), MAP_ZOOM.PLACE, MAP_ZOOM.STEP_IN_MAX)),
+      // The zoom the ease is HEADING for, when one is in flight — see `going`. A second
+      // tap during the first one's 480ms would otherwise step in from an interpolated
+      // value, which is exactly the desynchronisation #20 was made stateless to avoid.
+      moveTo(
+        point,
+        zoomStepIn(going.current?.zoom ?? map?.getZoom(), MAP_ZOOM.PLACE, MAP_ZOOM.STEP_IN_MAX),
+      ),
     [map, moveTo],
   );
 
   return { reframe, focus, frameOn, locate };
+}
+
+/** The map's camera as our own shape, or `null` before it has one. */
+function readCamera(map: google.maps.Map): CameraAt | null {
+  const centre = map.getCenter();
+  const zoom = map.getZoom();
+  if (!centre || zoom == null) return null;
+  return { center: { lat: centre.lat(), lng: centre.lng() }, zoom };
+}
+
+/** Is the camera still where we put it? Compared with a tolerance, because a round trip
+ *  through Google's own projection does not return bit-identical coordinates — the
+ *  question is "did something MOVE this", not "is this the same float". */
+function sameCamera(a: CameraAt | null, b: CameraAt): boolean {
+  if (!a) return false;
+  return (
+    Math.abs(a.zoom - b.zoom) < 0.001 &&
+    Math.abs(a.center.lat - b.center.lat) < 1e-6 &&
+    Math.abs(a.center.lng - b.center.lng) < 1e-6
+  );
 }

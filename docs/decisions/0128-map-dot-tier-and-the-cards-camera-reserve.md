@@ -1,6 +1,6 @@
 # 0128 — The dot tier, and the place card's camera reserve
 
-**Status:** Accepted — authored and built 2026-07-28 (session 152). Closes Phase 3. The rendered canvas has still not been seen (ADR-0121 §13) and nothing below claims otherwise.
+**Status:** Accepted — authored and built 2026-07-28 (session 152), **§1 amended the same day (session 154)** after the owner questioned who the tier should apply to. Closes Phase 3. The rendered canvas has still not been seen (ADR-0121 §13) and nothing below claims otherwise.
 **Date:** 2026-07-28
 **Amends** [0121](0121-embedded-map-phase-6-design.md) **§6** — the `dot` tier it decided and never built is built here (§1) — and [0122](0122-map-split-controls-over-the-canvas.md) **§7**, whose bottom camera inset was deferred with the phase and lands here **in a different shape than §7 specified** (§2).
 Relates [0123](0123-map-pin-size-is-a-share-of-the-canvas.md) (why this tier is keyed on zoom and the pin's _size_ is not), [0127](0127-map-camera-answers-the-tap.md) (the rest of Phase 3), [0122](0122-map-split-controls-over-the-canvas.md) §9 and [0126](0126-map-canvas-chrome-two-camera-controls-and-an-area-sort.md)'s build log (where the no-prop-on-a-tap line actually sits).
@@ -26,9 +26,24 @@ The third thing the old Phase 3 line carried — `MAP_PIN`'s dials — turned ou
 
 **Keyed on `zoom_changed`, not `idle`**, so the tier flips _during_ a pinch, which is the only time it is answering anything. A dataset write per zoom event costs nothing.
 
-**Ratios, not sizes.** `MAP_PIN.DOT_SCALE` (0.4) is a fraction of the pin, exactly as `GHOST_SCALE` is, so the rung stays a rung as the canvas grows the others — and a ghost at dot zoom compounds both, staying subordinate within the smaller ladder. The amber `עכשיו` / `התחנה הבאה` **tags** drop (they are text), but the amber **ring and pulse** stay: that cue is prominence, not text, and keeping it is what the tier is for.
+**Ratios, not sizes.** `MAP_PIN.DOT_SCALE` (0.4) is a fraction of the pin, exactly as `GHOST_SCALE` is, so the rung stays a rung as the canvas grows the others — and a ghost at dot zoom compounds both, staying subordinate within the smaller ladder.
 
-**Clustering still is not adopted**, and this is why the trigger §6 named has not fired: what made all-days unreadable was a full teardrop per place at country zoom, and a dot spans no categories (so it keeps its hue), carries no glyph or number to lose meaning, and is the same object — so nothing leaves the pin grammar, which is the exact objection §6 raised against a cluster bubble.
+> **Amended twice on 2026-07-28 — the tier applies to what you are NOT looking at, and the number never goes.**
+>
+> As first built the degradation was blanket: every pin became a dot and the amber tags dropped. Two rounds of owner feedback, both from using it:
+>
+> **Session 154 — the time anchors are exempt.** The rule worth naming is **demote what claims precision, keep what claims priority.** The glyph, the order number and the tip answer _which one_ and _where exactly_ — claims a 30km view cannot support. Hue answers _what kind_; the amber cue answers _what matters right now_. Neither is invalidated by zoom, so `nowStop` / `nextStop` are not degraded at all. It costs nothing in density terms (there is exactly one of each) and it makes the degradation a **promotion by contrast**: a wide view becomes dots plus one or two real teardrops, the most direct answer to "where am I / where next".
+>
+> **Session 155 — the tier is scoped to all-days, and day scope keeps its pins.** The owner's case: _you open the app in the morning and look at the map to see what today holds and in what order._ Numberless dots make that unanswerable without zooming in and hunting. §6 itself made the number the order cue — "the number is free" — so the tier was trading away the canvas's one contribution over the list, in the view where that contribution is the point. **A travel day is the sharpest form:** Tokyo→Kyoto fits well below the threshold, so the day whose order you most need is the day that lost it.
+>
+> **So there are TWO rules, because there are two situations.** One selector covering both was tried twice and kept leaving something behind — first the time anchors, then, when keyed on the number, today's **ambient stay night** and today's **ideas**, which carry no number _by design_ (ADR-0109's amendment: "what marks a night as ambient is that it has no number and no clock") and are exactly the collateral damage of a clever rule.
+>
+> - **Day scope — only GHOSTS degrade.** A ghost is by definition not this day (§6), the one population that is not what you are looking at. A day holds three to six stops, so there is no density problem here worth paying for.
+> - **All-days — everything degrades except the time anchors.** Nothing is numbered without a scoped day (`buildPinOrderIndex` returns an empty map), so there is no order to lose, and this is the multi-city density §6 invented the tier for.
+>
+> Both key on `data-scope`, which the pane already sits inside, so the tier still costs no prop and no marker re-render. **`MAP_PIN.DOT_SCALE` is unchanged; what changed is who it reaches.**
+>
+> **Two consequences to state rather than discover.** In **Plan mode** the default scope is all-days, so its default wide view is dots — legible the moment a day is picked, which is what Plan's day strip is for, and there are no numbers in all-days to lose either way. And a dot is roughly 14–22px, which is **under ADR-0017's 44×44 touch floor** for a tappable pin; that is open, recorded on the backlog, and belongs with the device pass rather than being guessed at here.
 
 ### 2. The card's camera reserve is best-effort, and the top inset is not
 
