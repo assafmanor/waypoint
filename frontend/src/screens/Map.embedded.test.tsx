@@ -150,6 +150,19 @@ vi.mock('../ui/domain/MapPane', () => ({
         <button data-canvas onClick={() => (props.onCanvasTap as () => void)()}>
           canvas
         </button>
+        {/* The furniture band's two taps the screen has to answer (ADR-0126): the
+            `באזור` readout, and locate with no fix. The real controls live in the pane
+            and are tested there; what these expose is the SCREEN's half. */}
+        <button
+          data-areasort
+          data-on={String(props.areaSorted)}
+          onClick={() => (props.onAreaSort as () => void)()}
+        >
+          area
+        </button>
+        <button data-locate onClick={() => (props.onLocate as () => void)()}>
+          locate
+        </button>
         {pins.map((pin) => (
           <button
             key={pin.placeId}
@@ -201,6 +214,17 @@ const listButton = (label: string) => screen.getByRole('button', { name: new Reg
 const toggle = (label: string) => screen.getByRole('button', { name: label });
 const placeCard = () => document.querySelector('.map-placecard') as HTMLElement | null;
 const tapCanvas = () => fireEvent.click(document.querySelector('[data-canvas]')!);
+const tapAreaSort = () => fireEvent.click(document.querySelector('[data-areasort]')!);
+const tapLocate = () => fireEvent.click(document.querySelector('[data-locate]')!);
+const areaSortOn = () => document.querySelector('[data-areasort]')!.getAttribute('data-on');
+/** The list's VISIBLE rows in the order they are rendered — what a sort is about. A
+ *  row filtered out of scope stays in the DOM collapsed (ADR-0120), so it has to be
+ *  excluded here or a ghost would read as part of the order. */
+const rowNames = () =>
+  [...document.querySelectorAll('.map-list .place')]
+    .filter((r) => !r.closest('.wp-reveal')?.classList.contains('hidden'))
+    .map((r) => r.querySelector('.map-name')?.textContent);
+const groupHeads = () => [...document.querySelectorAll('.map-grouphead')].map((h) => h.textContent);
 
 /** The facets live behind ONE `סינון` control that opens them in place (ADR-0122 §2), so
  *  anything touching a facet opens the strip first, and anything reaching for the scope
@@ -1461,6 +1485,197 @@ describe('the embedded map’s shell (ADR-0121)', () => {
   // ADR-0109 session-134: opening the tab offers to locate you, rather than waiting
   // for a chip tap. What §6 was protecting is what these assert — a cold OS dialog
   // never appears, and a refusal is never nagged.
+  // ── Phase 8: the canvas's own chrome (ADR-0126) ───────────────────────────
+  // The pane's own markup is `MapPane`'s test; what belongs here is the half the
+  // SCREEN owns — the order, the two headers, the shortfall the list has to state, and
+  // the ladder locate routes into.
+  describe('the area is a SORT, not a filter (ADR-0126 §5)', () => {
+    // Bounds that hold `museum`, `lunch` and the ghost `tomorrow`, and exclude `far`.
+    // `far` sits mid-schedule, so an area order is a visible re-order rather than the
+    // order it started in — which is the trap the design mockup fell into first.
+    const VIEW = { north: 35.7, south: 35.5, east: 139.7, west: 139.5 };
+    const OUTSIDE = { lat: 35.9, lng: 139.9 };
+
+    const seedArea = () => {
+      tripPlaces = [
+        place('museum', true, { lat: 35.6, lng: 139.6 }),
+        place('far', true, OUTSIDE),
+        place('lunch', true, { lat: 35.61, lng: 139.61 }),
+        place('tomorrow', true, { lat: 35.62, lng: 139.62 }),
+      ];
+      tripEvents = [
+        event({ id: 'e1', placeId: 'museum', startsAt: `${ACTIVE_DATE}T13:00:00Z` }),
+        event({ id: 'e2', placeId: 'far', startsAt: `${ACTIVE_DATE}T14:00:00Z` }),
+        event({ id: 'e3', placeId: 'lunch', startsAt: `${ACTIVE_DATE}T15:00:00Z` }),
+        event({ id: 'e4', placeId: 'tomorrow', date: NEXT_DAY }),
+      ];
+    };
+    /** The map settled: the only way `viewBounds` is ever written (§9's idle rule). */
+    const settle = (bounds: typeof VIEW | null = VIEW) =>
+      act(() => (paneProps.current.onViewChange as (b: unknown) => void)(bounds));
+
+    const openArea = () => {
+      seedArea();
+      render(wrap(<MapView />));
+      settle();
+      tapAreaSort();
+    };
+
+    it('orders the in-view places first and HIDES NOTHING', () => {
+      seedArea();
+      render(wrap(<MapView />));
+      settle();
+      expect(rowNames()).toEqual(['museum', 'far', 'lunch']);
+      tapAreaSort();
+      expect(rowNames()).toEqual(['museum', 'lunch', 'far']);
+    });
+
+    // Two headers where near-me needs one: a distance is legible on every row, "in
+    // view" is not, so the boundary the first group ends at has to be drawn.
+    it('draws both group headers, and drops the day blocks like any sort intent', () => {
+      openArea();
+      expect(groupHeads()).toEqual([t.map.area.groupHeader, t.map.area.elsewhere]);
+      expect(groupHeads()).not.toContain(t.map.blockHeader.ahead);
+    });
+
+    // THE PREREQUISITE. `areaCount` reads the canvas and counts ghosts; the list
+    // cannot produce them. So the count stays spatial and the LIST says what it could
+    // not bring, in session 144's grammar.
+    it('states how many of the counted places this day cannot show', () => {
+      openArea();
+      // THREE pins in view — `museum`, `lunch` and the ghost `tomorrow` — against a
+      // list that can offer two of them. `far` is a day stop the camera is not looking
+      // at, which is the ordinary case and not the gap.
+      expect(paneProps.current.areaCount).toBe(3);
+      expect(rowNames()).toEqual(['museum', 'lunch', 'far']);
+      expect(document.body.textContent).toContain(t.map.area.otherDays(1));
+    });
+
+    // And the way out genuinely resolves it, rather than explaining it away.
+    it('all-days removes the ghost, so the count and the list converge', () => {
+      openArea();
+      fireEvent.click(screen.getByRole('button', { name: t.map.emptyDay.action }));
+      settle();
+      expect(rowNames()).toContain('tomorrow');
+      expect(document.body.textContent).not.toContain(t.map.area.otherDays(1));
+    });
+
+    // The bounds are snapshotted at the TAP: the tap raises the sheet, which resizes
+    // the pane and fires a fresh idle, so an order keyed on live bounds would
+    // re-shuffle the instant it was created.
+    it('a later camera idle does not re-order the list', () => {
+      openArea();
+      const ordered = rowNames();
+      settle({ north: 36.5, south: 35.8, east: 140.5, west: 139.8 });
+      expect(rowNames()).toEqual(ordered);
+    });
+
+    it('a second tap clears it and the schedule order returns', () => {
+      openArea();
+      expect(areaSortOn()).toBe('true');
+      tapAreaSort();
+      expect(areaSortOn()).toBe('false');
+      expect(rowNames()).toEqual(['museum', 'far', 'lunch']);
+    });
+
+    // One list, one order.
+    it('near-me and the area sort are mutually exclusive', () => {
+      openArea();
+      geoFix = { lat: 35.6, lng: 139.6 };
+      permissionState = 'granted';
+      fireEvent.click(screen.getByRole('button', { name: new RegExp(t.map.near.chip) }));
+      expect(areaSortOn()).toBe('false');
+    });
+
+    it('a day-scope change clears it: a new day is a new list', () => {
+      openArea();
+      expect(areaSortOn()).toBe('true');
+      fireEvent.click(toggle(`🗓️ ${t.map.allDays}`));
+      expect(areaSortOn()).toBe('false');
+    });
+
+    // ADR-0122 §7's rule, now with a third caller: the order it just produced is
+    // invisible at the `map` stop, so the sheet comes up to show it.
+    it('tapping it at the map extreme lifts the sheet to half', () => {
+      seedArea();
+      render(wrap(<MapView />));
+      settle();
+      fireEvent.click(toggle(t.map.view.map));
+      expect(screenEl().dataset.view).toBe(MAP_SHEET_VIEW.map);
+      tapAreaSort();
+      expect(screenEl().dataset.view).toBe(MAP_SHEET_VIEW.half);
+    });
+  });
+
+  // #19: the same tap used to centre you or re-frame the filtered set depending on a
+  // permission you could not see. Locate is locate-only now, and it is what finally
+  // gives the canvas a way to ASK (ADR-0122 §2's handed-forward gap).
+  describe('locate is locate-only, and routes to the card (ADR-0126 §6)', () => {
+    it('with no permission it opens the SAME reason-first card the chip opens', async () => {
+      seed();
+      permissionState = 'prompt';
+      render(wrap(<MapView />));
+      // Dismiss the on-open offer so what is on screen next is the locate tap's doing.
+      await vi.waitFor(() =>
+        expect(screen.getByRole('button', { name: t.map.near.prompt.notNow })).toBeTruthy(),
+      );
+      fireEvent.click(screen.getByRole('button', { name: t.map.near.prompt.notNow }));
+      expect(document.querySelector('.map-geoprompt')).toBeNull();
+      tapLocate();
+      expect(document.querySelector('.map-geoprompt')).toBeTruthy();
+      // It ROUTES to the card; it never asks the device itself (ADR-0121 §12).
+      expect(getCurrentPosition).not.toHaveBeenCalled();
+    });
+
+    // Session 138's split is what makes this safe: locate sets the FACT, never the
+    // sort intent, so granting through it must not re-order the day.
+    it('granting through locate lights the dot and leaves the list in schedule order', async () => {
+      seed();
+      permissionState = 'granted';
+      geoFix = { lat: 35.6, lng: 139.6 };
+      render(wrap(<MapView />));
+      await act(async () => {});
+      const before = rowNames();
+      tapLocate();
+      expect(paneProps.current.me).toEqual(geoFix);
+      expect(rowNames()).toEqual(before);
+      const chip = screen.getByRole('button', { name: new RegExp(t.map.near.chip) });
+      expect(chip.getAttribute('aria-pressed')).toBe('false');
+    });
+
+    // §7's rule keys on the OUTCOME, not the tap: with location services off the
+    // browser still reports `granted` and the request fails anyway, so this is only
+    // knowable once it has settled. The notice lives in the list, hence the lift.
+    it('an UNOBTAINABLE fix lifts the sheet, so the notice it wrote is on screen', async () => {
+      seed();
+      permissionState = 'granted';
+      geoErrorCode = 2; // POSITION_UNAVAILABLE — not a refusal, and not visible up front
+      render(wrap(<MapView />));
+      await act(async () => {});
+      fireEvent.click(toggle(t.map.view.map));
+      expect(screenEl().dataset.view).toBe(MAP_SHEET_VIEW.map);
+      tapLocate();
+      await act(async () => {});
+      expect(screenEl().dataset.view).toBe(MAP_SHEET_VIEW.half);
+      expect(document.body.textContent).toContain(t.map.near.unavailableBanner);
+    });
+
+    // A hard refusal is knowable before asking, so it takes the same lift immediately
+    // rather than through a request that cannot re-prompt.
+    it('a standing refusal lifts the sheet without asking again', async () => {
+      seed();
+      permissionState = 'denied';
+      render(wrap(<MapView />));
+      // `blocked` is what the Permissions API answers, a microtask later.
+      await vi.waitFor(() => expect(document.querySelector('[data-locate]')).toBeTruthy());
+      await act(async () => {});
+      fireEvent.click(toggle(t.map.view.map));
+      tapLocate();
+      expect(screenEl().dataset.view).toBe(MAP_SHEET_VIEW.half);
+      expect(getCurrentPosition).not.toHaveBeenCalled();
+    });
+  });
+
   describe('opening the tab offers to locate you (ADR-0109 session-134)', () => {
     const card = () => screen.queryByText(t.map.near.prompt.body);
 

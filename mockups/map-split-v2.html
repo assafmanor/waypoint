@@ -5550,8 +5550,14 @@ body {
   align-items: flex-end;
   gap: 6px;
 }
+/* No place at all: the value says so in the muted voice a missing value deserves,
+   while the `＋ מיקום` beside it stays the one thing to act on. */
+.bk-loc-none {
+  color: var(--muted);
+}
 .bk-loc-links {
   display: flex;
+  align-items: center;
   gap: 8px;
 }
 .bk-loc-link {
@@ -6172,6 +6178,12 @@ body {
     border-color 0.15s ease,
     transform 0.12s ease;
 }
+/* compact pills — glyph + count, no word (ADR-0122 §2). The chip loses the padding
+   the word needed; its accessible name comes from the button's `aria-label`, not from
+   what is drawn. */
+.choice-grid.pills.compact .choice-pill {
+  padding: 6px 10px;
+}
 /* The event/idea category selector (ADR-0109 §11) wants a slightly larger tap
    target than the compact Index filter chips that share `.choice-pill`; scoped
    to the `.category-pills` wrapper so the Index chips stay as designed (ADR-0100). */
@@ -6647,33 +6659,29 @@ body {
   --idx-accent: var(--plan);
 }
 
-/* ── The split (Phase 6, ADR-0121 §5) ───────────────────────────────────────────
-   The tab opts out of the scrolling body (`.body.is-fullbleed`, App.css) and owns
-   its own layout: the filter row + sort strip become a FIXED header, and the one
-   scroll region is the sheet's list. Scoped to `.is-split`, because the same
-   `.map-screen` class also wraps the search overlay's filtered copy of the list,
-   which is ordinary scrolling content and must not become a flex column. */
+/* ── The split (Phase 6, ADR-0121 §5; the controls leave the layout in ADR-0122 §1) ──
+   The tab opts out of the scrolling body (`.body.is-fullbleed`, App.css) and owns its
+   own layout, and the split is now the WHOLE body: the two fixed rows above it were
+   370-of-844 phone pixels spent before either half got one, so they became one row
+   floating over the canvas. The one scroll region is still the sheet's list. Scoped to
+   `.is-split`, because the same `.map-screen` class also wraps the search overlay's
+   filtered copy of the list, which is ordinary scrolling content and must not become a
+   flex column. */
 .map-screen.is-split {
   display: flex;
   flex-direction: column;
   height: 100%;
   min-height: 0;
 }
-/* The padding `.body` no longer supplies, restored only where it is wanted: above
-   the split. The sheet supplies its own. */
-.map-screen.is-split > .map-filter-row {
-  padding: 14px 16px 0;
-}
-.map-screen.is-split > .map-sortstrip {
-  padding: 0 16px;
-  margin-bottom: 10px;
-  flex-wrap: wrap;
-}
 .map-split {
   position: relative;
   flex: 1;
   min-height: 0;
   overflow: hidden;
+  /* At `full` the sheet stops BELOW the controls row, and what is behind the row there
+     is this backdrop — which is the sheet's own background, so the same row reads as the
+     list's ordinary header. One treatment, no second grammar, and no scrim (§1). */
+  background: var(--screen);
 }
 /* The sheet's own scroll padding — the list needs edges, and a tail so the last
    card clears the rounded bottom of the phone. */
@@ -6681,10 +6689,179 @@ body {
   padding: 0 16px 16px;
 }
 
+/* ── ONE ROW, OVER THE CANVAS (ADR-0122 §1) ──────────────────────────────────────
+   Absolutely positioned at the top of `.map-split`, so it costs the split NO height:
+   the pane runs underneath it and the sheet's stops are measured against the whole
+   body. `--map-controls-h` is written by the screen from the same TS constant the
+   camera's top inset is derived from, so the layout and the band the camera keeps
+   clear of pins cannot drift apart.
+
+   No background: the map shows BETWEEN the chips, which is the whole point of moving
+   them here. The row is the same row at every stop and never collapses — every control
+   in it changes both halves (ADR-0121 §6), and a height above the split that changed
+   with the stop would relayout the canvas on the one gesture ADR-0121 §5 deliberately
+   made relayout-free. */
+.map-controls {
+  position: absolute;
+  top: 0;
+  inset-inline: 0;
+  z-index: 2;
+  box-sizing: border-box;
+  height: var(--map-controls-h, 46px);
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 0 16px;
+}
+/* The list-only tab (offline, or no build config) has no split and no sheet, so the
+   same row renders in ordinary flow above the list: one component, two positionings,
+   never two components (ADR-0122 §8). */
+.map-controls.in-flow {
+  position: static;
+  height: auto;
+  flex-wrap: wrap;
+  padding: 14px 16px 10px;
+}
+.map-controls > * {
+  flex: 0 0 auto;
+}
+/* Search sits at the row's fixed end — and it is where the facet strip's `✕` then
+   appears, because a close control you have to scroll to reach is not a close control. */
+.map-controls > .map-search-btn,
+.map-controls > .map-facets-close {
+  margin-inline-start: auto;
+}
+
+/* THE ONE FILTER CONTROL. At rest it says `סינון`; with a facet on it states WHICH
+   facets are on and takes the mode accent, because a filter that hides the fact that it
+   is filtering is the defect ADR-0119 exists to prevent. It carries NO count: the open
+   strip already answers "how many", and a fourth number would be a fourth thing to keep
+   coupled (§2). */
+.map-facets {
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+  border: 1px solid var(--line);
+  background: var(--card);
+  color: var(--ink);
+  border-radius: 999px;
+  padding: 6px 12px;
+  font: inherit;
+  font-size: 12px;
+  font-weight: 700;
+  cursor: pointer;
+  white-space: nowrap;
+}
+.map-facets.on {
+  background: var(--idx-accent);
+  border-color: var(--idx-accent);
+  color: var(--idx-accent-text);
+}
+/* EXPANDED: the strip covers the row IN PLACE (ADR-0100 §3's shape, which ADR-0101
+   superseded for search because a keyboard plus a result list left no room for either —
+   a facet strip has neither, and its results are the pins and rows already on screen, so
+   the change has to stay visible while you make it). It scrolls with the same edge fade,
+   so a half-cut chip reads as "more this way" rather than as a broken cutoff. */
+.map-controls > .map-facetstrip {
+  flex: 1 1 auto;
+  min-width: 0;
+}
+.map-facetstrip {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  overflow-x: auto;
+  scrollbar-width: none;
+  scroll-snap-type: x mandatory;
+  /* Physical `to right` on purpose: RTL reorders flex children, not `mask-image`'s own
+     coordinate space (ADR-0100 §6). */
+  -webkit-mask-image: linear-gradient(
+    to right,
+    transparent 0,
+    black 14px,
+    black calc(100% - 14px),
+    transparent 100%
+  );
+  mask-image: linear-gradient(
+    to right,
+    transparent 0,
+    black 14px,
+    black calc(100% - 14px),
+    transparent 100%
+  );
+}
+.map-facetstrip::-webkit-scrollbar {
+  display: none;
+}
+.map-facetstrip > * {
+  flex: 0 0 auto;
+  scroll-snap-align: start;
+}
+/* The outer strip owns the scroll and the fade now, so the pills group inside it is a
+   plain flex group: two nested scrollers fight, and two nested masks fade a chip twice. */
+.map-facetstrip .choice-grid.pills {
+  flex: 0 0 auto;
+  overflow: visible;
+  scroll-snap-type: none;
+  -webkit-mask-image: none;
+  mask-image: none;
+  padding-block-end: 0;
+}
+.map-facets-close {
+  display: grid;
+  place-items: center;
+  width: 30px;
+  height: 30px;
+  border-radius: 999px;
+  border: 1px solid var(--line);
+  background: var(--card);
+  color: var(--muted);
+  padding: 0;
+  cursor: pointer;
+}
+.map-facets-close .icon {
+  width: 15px;
+  height: 15px;
+}
+
+/* ── THE SORT CONTROL LIVES WITH THE LIST (§2) ───────────────────────────────────
+   `קרוב עכשיו` re-orders the rows and annotates them with distances, so it sits in the
+   sheet's own top row — fixed, visible at every stop, and costing no height. The toggle
+   is anchored at the trailing end and does not move when the chip leaves. */
+.wp-snapsheet-headrow .map-nearchip {
+  margin-inline-end: auto;
+  transition:
+    opacity var(--t-quick) var(--ease-standard),
+    transform var(--t-quick) var(--ease-standard),
+    visibility 0s;
+}
+/* At the map extreme no rows are on screen, so the chip would re-order and annotate
+   nothing you can see — the "button that looks like it does something and does nothing"
+   ADR-0109's session-105 amendment refused. What carries the FACT there is the canvas's
+   own "me" dot, which comes from `located`, not from the sort intent.
+
+   `visibility`, not `display`: it keeps the chip MOUNTED so both directions animate,
+   while taking it out of the tab order and the accessibility tree and making it
+   unhittable — a control you cannot see must not be tappable. The 0s-delayed switch is
+   what holds it until the fade ends. Offline the chip is UNMOUNTED instead, because
+   there it cannot exist at all: two different facts, two different mechanisms (§5). */
+.map-screen[data-view='map'] .wp-snapsheet-headrow .map-nearchip {
+  opacity: 0;
+  transform: translateY(4px) scale(0.96);
+  visibility: hidden;
+  transition:
+    opacity var(--t-quick) var(--ease-exit),
+    transform var(--t-quick) var(--ease-exit),
+    visibility 0s linear var(--t-quick);
+}
+
 /* רשימה · מפה — a shortcut to the two extremes of the SAME height axis the handle
-   drags, so the two controls cannot disagree. At the half height neither extreme is
-   active, which is the honest rendering. */
+   drags, so the two controls cannot disagree. Its fill is a THUMB whose position IS the
+   stop (§5): ADR-0121 §5 claimed "one state, two controls" in code and then rendered
+   `half` as neither button on, which reads as a broken segmented control. At `half` the
+   thumb narrows and centres, so it sits visibly BETWEEN the two labels. */
 .map-viewtoggle {
+  position: relative;
   display: flex;
   background: color-mix(in srgb, var(--ink) 6%, transparent);
   border: 1px solid var(--line);
@@ -6703,10 +6880,43 @@ body {
   padding: 4px 15px;
   cursor: pointer;
 }
+/* The thumb draws the fill now, so the segment stops carrying it — only the ink weight
+   still says which extreme is live. */
+.map-viewtoggle button {
+  position: relative;
+  z-index: 1;
+}
 .map-viewtoggle button.on {
-  background: var(--card);
   color: var(--ink);
+}
+.map-viewtoggle::before {
+  content: '';
+  position: absolute;
+  top: 2px;
+  bottom: 2px;
+  width: calc(50% - 2px);
+  border-radius: 999px;
+  background: var(--card);
   box-shadow: 0 1px 3px rgba(22, 35, 61, 0.14);
+  inset-inline-start: calc(25% + 1px);
+  transition: inset-inline-start var(--t-base) var(--ease-standard);
+}
+.map-screen[data-view='half'] .map-viewtoggle::before {
+  width: 32%;
+  inset-inline-start: 34%;
+}
+.map-screen[data-view='full'] .map-viewtoggle::before {
+  inset-inline-start: 2px;
+}
+.map-screen[data-view='map'] .map-viewtoggle::before {
+  inset-inline-start: 50%;
+}
+/* Reduced motion: the thumb JUMPS. It still moves — only the easing is dropped, and the
+   resting position carries the whole meaning either way (ADR-0098 §4). */
+@media (prefers-reduced-motion: reduce) {
+  .map-viewtoggle::before {
+    transition: none;
+  }
 }
 
 /* The whole day as one free Google directions link (§10) — teal, because it is a
@@ -6733,17 +6943,7 @@ body {
   margin-bottom: 4px;
 }
 
-/* ── filter chip row (reuses the Index grammar) ─────────────────────────── */
-.map-filter-row {
-  display: flex;
-  align-items: center;
-  gap: 8px;
-  margin-bottom: 8px;
-}
-.map-filter-row .choice-grid.pills {
-  flex: 1;
-  min-width: 0;
-}
+/* ── the facets themselves (they reuse the Index grammar) ────────────────── */
 /* the "אולי" facet is an independent toggle (ADR-0110 §2), dashed/provisional
    when off, filled with the mode accent when on. */
 .map-maybes {
@@ -6790,13 +6990,10 @@ body {
   color: var(--muted);
 }
 
-/* ── day-scope strip: the map-local "all days" chip (ADR-0110 §4) ───────── */
-.map-sortstrip {
-  display: flex;
-  align-items: center;
-  gap: 8px;
-  margin-bottom: 12px;
-}
+/* ── the day scope: the map-local "all days" chip (ADR-0110 §4) ───────────
+   `.map-scopehint`'s sentence retired with the two fixed rows (ADR-0122 §2): the chip's
+   own on/off state says which scope is on, and the header day strip already drops its
+   filled selection while all-days is live (session 81's `allScope`). */
 .map-scopechip {
   display: inline-flex;
   align-items: center;
@@ -6815,12 +7012,6 @@ body {
   border-color: var(--idx-accent);
   color: var(--idx-accent-text);
 }
-.map-scopehint {
-  font-size: 11px;
-  color: var(--faint);
-  font-weight: 600;
-}
-
 /* ── "near me now" (ADR-0109 §6-7) ──────────────────────────────────────────
    Teal throughout: near-me, the distance chips and נווט are LOCATION affordances,
    which is exactly what teal is for in the budget (ADR-0028). No amber here — the
@@ -6861,6 +7052,74 @@ body {
   padding: 13px 14px;
   margin-bottom: 12px;
   box-shadow: 0 6px 16px -8px color-mix(in srgb, var(--teal) 45%, transparent);
+}
+
+/* ── CANVAS FURNITURE THAT COMES AND GOES (ADR-0122 §5/§6/§7) ────────────────────
+   The pre-prompt asks a question about the MAP and used to render inside the list's
+   scroll region, which at the map extreme is not on screen at all. Over the canvas it
+   costs the split no height: neither half shrinks, the pane's box does not change, and
+   therefore the camera does not move for it — which is the deciding argument over a card
+   between the controls and the split, which would shorten the pane while open and re-fit
+   the camera under the reader. A SIBLING of `.map-pane`, never inside it (Google owns the
+   canvas div's children) and never a wrapper around it (that remounts it, and a remount
+   is a billed map load — ADR-0121 §4). Not the pane's BOTTOM: Google's attribution is
+   bottom-inline-start and the ToS forbids obscuring it (ADR-0106 §B). */
+.map-split > .map-geoprompt {
+  position: absolute;
+  top: calc(var(--map-controls-h, 46px) + 8px);
+  inset-inline: 8px;
+  z-index: 2;
+  margin-bottom: 0;
+}
+/* ONE floating object over the canvas at a time: a 250px pane cannot hold a card AND two
+   floating controls and still read as a map, and the card is transient (once per session,
+   both buttons dismiss it). `:has()` rather than a prop, deliberately — `MapPane`'s props
+   stay identity-stable on a screen that re-renders every second (frontend/CLAUDE.md).
+   (ADR-0126 §2: the rule survives the second camera control by naming the CLUSTER
+   rather than growing a third selector — which is most of why the two buttons are
+   one `.map-camctl` element.) */
+.map-split:has(> .map-geoprompt) .map-areacount,
+.map-split:has(> .map-geoprompt) .map-camctl {
+  display: none;
+}
+
+/* THE PLACE CARD — the tapped pin's own row, hosted on the canvas (§7), rendered only
+   where the sheet cannot show that row. The bottom gutter is contractual, not taste:
+   Google draws its logo and terms link at the bottom-inline-start of the map div and the
+   ToS forbids obscuring them (ADR-0106 §B), so the card clears them by the attribution's
+   own height. */
+.map-placecard {
+  position: absolute;
+  inset-inline: 8px;
+  /* Measured against the PANE's bottom, not the split's: the card's containing block is
+     `.map-split`, whose bottom is the screen's, so the sheet's own height has to be in
+     the sum or the card sits behind the sheet — and over the attribution it was meant to
+     clear. */
+  bottom: calc(var(--sheet-h, 0px) + var(--map-attr-h, 22px) + 8px);
+  z-index: 2;
+}
+.map-placecard .place {
+  margin-bottom: 0;
+  box-shadow: 0 12px 28px -12px color-mix(in srgb, var(--ink) 45%, transparent);
+}
+
+/* Three objects on this surface come and go — the sort chip leaving at the map extreme,
+   the card arriving on a pin tap, the pre-prompt arriving on intent — so they share ONE
+   rule rather than growing three motion vocabularies on one canvas: a small rise and a
+   fade, at `--t-quick` (the token whose stated job is toggles).
+
+   App.css kills every transition and animation under `prefers-reduced-motion` with
+   `!important`, so the RESTING states carry the whole meaning. They do: present or absent
+   is the entire state, and nothing here is information only the motion conveys. */
+@keyframes map-furniture-in {
+  from {
+    opacity: 0;
+    transform: translateY(6px);
+  }
+}
+.map-placecard,
+.map-split > .map-geoprompt {
+  animation: map-furniture-in var(--t-quick) var(--ease-standard);
 }
 .map-geoprompt .gt {
   font-size: 13.5px;
@@ -7006,6 +7265,24 @@ body {
   border-color: rgba(233, 166, 60, 0.34);
   box-shadow: 0 0 0 3px rgba(233, 166, 60, 0.22);
 }
+/* Behind you, on the CLOCK — the row's half of the pin's `saturate(.3)`. The two
+   halves of the split used to disagree about exactly this: the pin faded once a place
+   was behind you, the row only once a human had SKIPPED it. Keyed on the block
+   (`isDayUsagePast`, ADR-0124's single answer to "is this closed"), so the fade, the
+   `מה שמאחורינו` header and `מה נשאר` cannot make different claims about one place.
+
+   Light on purpose: the header already says it in words, so this reinforces the
+   message rather than carrying it. And NOT `.place.skipped`, which would be wrong
+   twice — that treatment is what session 137 took off the ambient tier (ADR-0109's
+   2026-07-27 amendment: the hotel you sleep in tonight read as finished), and it
+   means *a human said this did not happen*, which is a different claim from *the
+   clock passed it*. The `:not()` is what keeps a skipped-and-past row from wearing
+   both: this filter would otherwise compound with the badge's own below. */
+.place.behind:not(.skipped) {
+  filter: saturate(0.55);
+  opacity: 0.9;
+}
+
 /* A skipped place is handled and not happening (ADR-0117 §4): present, but not a live
    commitment.
 
@@ -7222,26 +7499,9 @@ body {
 .map-navbtn:hover {
   background: color-mix(in srgb, var(--teal) 10%, transparent);
 }
-/* coordless enrich affordance: a dashed, muted "＋ מיקום" — provisional, not the
-   teal navigate action (there's nowhere to navigate yet). */
-.map-addbtn {
-  display: inline-flex;
-  align-items: center;
-  gap: 5px;
-  border: 1px dashed var(--soft-line);
-  color: var(--muted);
-  background: transparent;
-  border-radius: 999px;
-  padding: 6px 12px;
-  font: inherit;
-  font-size: 12px;
-  font-weight: 700;
-  cursor: pointer;
-  white-space: nowrap;
-}
-.map-addbtn:hover {
-  border-color: var(--muted);
-}
+/* The coordless `＋ מיקום` affordance is the shared `AddLocationButton`
+   (ui/primitives/place-picker.css) — a placeless booking's מיקום fact needed the
+   same pill, so it stopped being this row's one-off. */
 
 /* ── The way in to the entity (ADR-0121 §8) ────────────────────────────────────
    A place is only in the trip because something REFERENCES it (ADR-0112), and the
@@ -7441,6 +7701,17 @@ body {
   top: 0;
   bottom: var(--sheet-h, 0px);
   overflow: hidden;
+  /* THE PIN'S SIZE IS READ OFF THIS BOX (ADR-0123). The pane is exactly the canvas the
+     snapped stop leaves visible, so making it a size container is what lets a pin be a
+     share of the map it sits on — in CSS, with no layout read on a screen that
+     re-renders every second and no `MapPane` prop that changes on a gesture (ADR-0121
+     §4 / ADR-0122 §9). An `AdvancedMarker`'s content is a real DOM descendant of the
+     canvas div, so `cqh` inside a pin resolves against this box.
+
+     Safe to contain: the box is sized by its own insets (`top`/`bottom` above), never
+     by what Google draws inside it, which is the one precondition `container-type:
+     size` has. */
+  container-type: size;
 }
 .map-canvas {
   width: 100%;
@@ -7448,7 +7719,9 @@ body {
 }
 /* The full-list height: the map is behind the sheet and still ONE live instance —
    hidden rather than destroyed, because destroying it is a billed load (§4). Its
-   box stays full-size so nothing relayouts to zero height. */
+   box stays full-size so nothing relayouts to zero height. (At that stop the sheet stops
+   below the controls row rather than covering it — ADR-0122 §1 — so what shows above the
+   sheet is the split's own backdrop, not a sliver of canvas.) */
 .map-screen[data-view='full'] .map-pane {
   bottom: 0;
   visibility: hidden;
@@ -7462,32 +7735,70 @@ body {
    below, which is why the content is ours.
 
    No `translate(-50%, -100%)` here (the mockup needed it for absolute positioning):
-   the marker's own anchor puts the tip on the coordinate. */
+   the marker's own anchor puts the tip on the coordinate.
+
+   ── ONE UNIT, ONE RULE (ADR-0123) ──
+   `--pin-u` is the teardrop's full height, and EVERY dimension below is a fraction of
+   it — badge, glyph, number, tag, rings and borders — so the pin grows and shrinks as
+   one object instead of a badge that outgrows its own number. The fractions are the
+   shipped 34px geometry expressed as ratios, so at the floor this draws the pin that
+   shipped, to within a pixel.
+
+   `--pin-base` is written by the screen from `MAP_PIN` via `pinSizeCss()` — the same
+   constants the camera's clearance is derived from, the `--map-controls-h` arrangement
+   for the same reason (ADR-0122 §1). Its fallback is the floor, which is what the
+   search overlay's copy of `.map-screen` gets: it reuses the class and pins nothing. */
+
+/* REGISTERED, so the unit is a real `<length>` the browser can INTERPOLATE — which is
+   what makes one line below animate the whole pin (ADR-0123). Every dimension is a
+   `calc()` over this one property, so transitioning it eases the badge, the glyph, the
+   number, the tag and the rings together; transitioning them one by one would be a
+   dozen declarations that can fall out of step, and `box-shadow` interpolation for the
+   amber rings besides.
+   `inherits: true` because the pin's parts are its children and read the same unit.
+   Measured in Chromium: a `cqh`-derived value survives registration, and the stop change
+   samples as a real curve rather than a step. Where `@property` is unsupported the unit
+   is an ordinary custom property: pins still size correctly, they just snap. */
+@property --pin-u {
+  syntax: '<length>';
+  inherits: true;
+  initial-value: 34px;
+}
+
 .map-pin {
+  --pin-u: var(--pin-base, 34px);
+  /* The pane's box changes on SNAP, never per drag frame (ADR-0121 §5), so this fires
+     once per stop change — and it borrows the sheet's own duration and curve, so the
+     pins finish growing exactly as the sheet finishes sliding instead of jumping the
+     instant it starts. Reduced motion drops it with everything else (App.css's global
+     `!important`), which is the same "it still moves, only the easing goes" the sheet
+     and the camera already follow (ADR-0098 §4). */
+  transition: --pin-u var(--t-base) var(--ease-standard);
   position: relative;
-  width: 28px;
-  height: 34px;
+  width: calc(var(--pin-u) * 0.82);
+  height: var(--pin-u);
   cursor: pointer;
 }
 .map-pin .pin-b {
   position: relative;
-  width: 25px;
-  height: 25px;
+  width: calc(var(--pin-u) * 0.74);
+  height: calc(var(--pin-u) * 0.74);
   margin: 0 auto;
   /* Sharp corner bottom-right, so rotate(45deg) swings the tip straight DOWN onto
      the location — the map idiom. The list keeps the rounded `.map-badge`: two form
-     factors, one colour system (ADR-0109 §3). */
+     factors, one colour system (ADR-0109 §3). The 2px stays 2px at every size: it is
+     the *sharp* corner, and a corner that scales stops being one. */
   border-radius: 50% 50% 2px 50%;
   transform: rotate(45deg);
   display: grid;
   place-items: center;
   background: var(--cat-leisure);
-  border: 2px solid var(--card);
+  border: calc(var(--pin-u) * 0.06) solid var(--card);
   box-shadow: 0 2px 5px rgba(22, 35, 61, 0.34);
 }
 .map-pin .pin-g {
   transform: rotate(-45deg);
-  font-size: 13px;
+  font-size: calc(var(--pin-u) * 0.38);
   line-height: 1;
 }
 /* The same five hues, same names as `.map-badge.cat-*`. */
@@ -7508,7 +7819,9 @@ body {
 }
 /* Commitment is the hard/soft GRAMMAR, never a colour (ADR-0011/0028) — and these
    are exactly what `PinElement` cannot draw. Each mirrors its `.place`
-   counterpart: `.soft`, `.skipped`.
+   counterpart: `.soft`, and `.skipped` — which on a PIN is the behind-you tier, so
+   the row it mirrors is `.place.behind` (the row's own `.skipped` is the narrower
+   human outcome the canvas does not draw).
 
    `.ambient` is deliberately absent: a strictly-middle stay night draws as an
    ORDINARY pin (ADR-0109's 2026-07-27 amendment). It used to be desaturated, but on
@@ -7546,20 +7859,20 @@ body {
    from the row (which keeps it — a row has width for both). */
 .map-pin .pin-n {
   position: absolute;
-  top: -5px;
-  inset-inline-start: -6px;
-  min-width: 15px;
-  height: 15px;
-  padding: 0 3px;
+  top: calc(var(--pin-u) * -0.15);
+  inset-inline-start: calc(var(--pin-u) * -0.18);
+  min-width: calc(var(--pin-u) * 0.44);
+  height: calc(var(--pin-u) * 0.44);
+  padding: 0 calc(var(--pin-u) * 0.09);
   display: grid;
   place-items: center;
   background: var(--ink);
   color: var(--card);
   font-family: var(--font-mono);
-  font-size: 9px;
+  font-size: calc(var(--pin-u) * 0.26);
   font-weight: 700;
   border-radius: 999px;
-  box-shadow: 0 0 0 1.5px var(--card);
+  box-shadow: 0 0 0 calc(var(--pin-u) * 0.045) var(--card);
 }
 /* Behind you KEEPS its number — the partition changes prominence, never the
    position; #1 is still true after you have been there. (`.ambient` was listed here
@@ -7574,16 +7887,19 @@ body {
    café you are standing next to is physically there, which is the whole "what's near
    me now" question. So it is present but plainly subordinate: a hollow outline in
    its category hue, no fill, no glyph, no number, smaller. No new colour is spent —
-   the ladder is prominence, not palette (ADR-0028). */
+   the ladder is prominence, not palette (ADR-0028).
+
+   Smaller BY RATIO (ADR-0123), which is the whole reason this is one unit: the shipped
+   25px box would have gone on getting relatively smaller as the canvas grew the others,
+   until the ladder's bottom rung read as dirt on the screen rather than as a place. */
 .map-pin.ghost {
-  width: 20px;
-  height: 25px;
+  --pin-u: calc(var(--pin-base, 34px) * var(--pin-ghost-scale, 0.72));
 }
 .map-pin.ghost .pin-b {
-  width: 16px;
-  height: 16px;
   background: transparent;
-  border-width: 2px;
+  /* A ghost IS its outline — there is no fill behind it — so it takes a heavier ratio
+     than the filled pin's border, which only has to separate a colour from the map. */
+  border-width: calc(var(--pin-u) * 0.08);
   border-style: solid;
   border-color: color-mix(in srgb, var(--cat-leisure) 78%, var(--ink));
   box-shadow: 0 1px 3px color-mix(in srgb, var(--ink) 18%, transparent);
@@ -7614,11 +7930,16 @@ body {
 
    The 22% glow alpha is `.place.nextstop`'s verbatim, so row cue and pin cue really
    are one cue. The edge is SOLID rather than that rule's 34%, because a 34% amber
-   hairline holds up on the row's white card and disappears over a map base. */
+   hairline holds up on the row's white card and disappears over a map base.
+
+   The ring widths are fractions of the pin like everything else (ADR-0123): a 2.5px
+   outline that stayed 2.5px on a 46px pin would read as a hairline someone forgot to
+   scale, and the outline IS the cue. The drop shadow underneath is not part of the
+   silhouette, so it stays put. */
 .map-pin.nextstop .pin-b {
   box-shadow:
-    0 0 0 2.5px var(--amber),
-    0 0 0 5.5px rgba(233, 166, 60, 0.22),
+    0 0 0 calc(var(--pin-u) * 0.074) var(--amber),
+    0 0 0 calc(var(--pin-u) * 0.162) rgba(233, 166, 60, 0.22),
     0 2px 5px rgba(22, 35, 61, 0.34);
 }
 
@@ -7639,27 +7960,29 @@ body {
    means still marked, just still. */
 .map-pin.nowstop .pin-b {
   box-shadow:
-    0 0 0 2.5px var(--amber),
-    0 0 0 7px rgba(233, 166, 60, 0.28),
+    0 0 0 calc(var(--pin-u) * 0.074) var(--amber),
+    0 0 0 calc(var(--pin-u) * 0.206) rgba(233, 166, 60, 0.28),
     0 2px 5px rgba(22, 35, 61, 0.34);
   animation: map-pin-now 2s infinite;
 }
+/* Custom properties resolve on the animated element, so the pulse scales with the pin
+   the same way its resting ring does. */
 @keyframes map-pin-now {
   0% {
     box-shadow:
-      0 0 0 2.5px var(--amber),
+      0 0 0 calc(var(--pin-u) * 0.074) var(--amber),
       0 0 0 0 rgba(233, 166, 60, 0.55),
       0 2px 5px rgba(22, 35, 61, 0.34);
   }
   70% {
     box-shadow:
-      0 0 0 2.5px var(--amber),
-      0 0 0 11px rgba(233, 166, 60, 0),
+      0 0 0 calc(var(--pin-u) * 0.074) var(--amber),
+      0 0 0 calc(var(--pin-u) * 0.324) rgba(233, 166, 60, 0),
       0 2px 5px rgba(22, 35, 61, 0.34);
   }
   100% {
     box-shadow:
-      0 0 0 2.5px var(--amber),
+      0 0 0 calc(var(--pin-u) * 0.074) var(--amber),
       0 0 0 0 rgba(233, 166, 60, 0),
       0 2px 5px rgba(22, 35, 61, 0.34);
   }
@@ -7667,18 +7990,22 @@ body {
 /* The shipped `.map-tag.next` is not a filled amber pill — it is `--amber-deep` bold
    text on the row's own surface. The pin's tag keeps that exactly and only adds the
    card ground it needs to stay legible over the canvas, so amber is still ink here,
-   never a fill (ADR-0028 / ADR-0105 "amber is an accent, not a ground"). */
+   never a fill (ADR-0028 / ADR-0105 "amber is an accent, not a ground").
+
+   `--pin-tag-rise` is the same fraction the camera's clearance adds on top of the pin's
+   own height (ADR-0123): the tag is the topmost ink above the coordinate, so the number
+   that positions it and the number that reserves room for it are one number. */
 .map-pin .pin-tag {
   position: absolute;
-  top: -19px;
+  top: calc(var(--pin-u) * var(--pin-tag-rise, 0.56) * -1);
   inset-inline-start: 50%;
   transform: translateX(50%);
   background: var(--card);
   color: var(--amber-deep);
   border: 1px solid rgba(233, 166, 60, 0.34);
-  font-size: 9.5px;
+  font-size: calc(var(--pin-u) * 0.28);
   font-weight: 700;
-  padding: 2px 7px;
+  padding: calc(var(--pin-u) * 0.06) calc(var(--pin-u) * 0.21);
   border-radius: 999px;
   white-space: nowrap;
   box-shadow: 0 1px 3px rgba(22, 35, 61, 0.2);
@@ -7689,41 +8016,74 @@ body {
    tapped. Distinct from amber on purpose: selecting a row is not a claim about what
    is next. The offset clears the amber ring in that case. */
 .map-pin.selected .pin-b {
-  outline: 2px solid var(--ink);
-  outline-offset: 2px;
+  outline: calc(var(--pin-u) * 0.06) solid var(--ink);
+  outline-offset: calc(var(--pin-u) * 0.06);
 }
 /* Both amber cues widen the pin's silhouette, so selection's outline steps out to
-   clear them rather than cutting through the ring. */
+   clear them rather than cutting through the ring — by the ring's own fraction, so it
+   keeps clearing it at every pin size (ADR-0123). */
 .map-pin.nextstop.selected .pin-b,
 .map-pin.nowstop.selected .pin-b {
-  outline-offset: 6px;
+  outline-offset: calc(var(--pin-u) * 0.18);
 }
 
 /* "You are here" — the OS-map convention blue, deliberately outside the
-   amber/teal/violet budget (design-language's Map entry, ADR-0109 §3). */
+   amber/teal/violet budget (design-language's Map entry, ADR-0109 §3).
+
+   It scales with the pins (ADR-0123) even though it is not one: it is a marker on the
+   same canvas, answering the same "how big is a point on a map this size" question, and
+   a dot that stayed 14px while the pins grew would read as the least important thing on
+   screen — which is the opposite of what it is when you are standing somewhere. It has
+   no `--pin-u` of its own, so it reads the base directly. */
 .map-me {
   display: block;
-  width: 14px;
-  height: 14px;
+  width: calc(var(--pin-base, 34px) * 0.41);
+  height: calc(var(--pin-base, 34px) * 0.41);
   border-radius: 999px;
   background: var(--me);
-  border: 2.5px solid var(--card);
-  box-shadow: 0 0 0 7px color-mix(in srgb, var(--me) 16%, transparent);
+  border: calc(var(--pin-base, 34px) * 0.074) solid var(--card);
+  box-shadow: 0 0 0 calc(var(--pin-base, 34px) * 0.21)
+    color-mix(in srgb, var(--me) 16%, transparent);
 }
 
-/* ── OUR CONTROLS, NOT GOOGLE'S (§12) ──────────────────────────────────────────
+/* ── OUR CONTROLS, NOT GOOGLE'S (§12, restated by ADR-0126) ────────────────────
    `disableDefaultUI`, then add back only what we need: Google's controls are
-   un-styleable, unlabelled and RTL-unaware. Zoom is the pinch; this is the one
-   control we add, and it is also the escape hatch from "a manual pan wins until the
-   next scope change" (§7). Unlabelled is deliberate — a single universally
-   recognised map control, not the pair of confusable glyphs ADR-0109 §1 rejected —
-   and it carries an `aria-label`. */
-.map-recenter {
+   un-styleable, unlabelled and RTL-unaware. Zoom is the pinch; these are the two we
+   add — locate, and framing the filtered set, which used to be the same button
+   branching on a permission you could not see.
+
+   ONE BAND, AND IT RUNS ALONG THE INLINE AXIS. Measured against the real tree, a
+   vertical stack leaves −3px of clear canvas at 360×640 `half` — it overlaps
+   Google's attribution, which the ToS forbids (ADR-0106 §B) — where the same pair
+   side by side leaves 49px and costs 164px of an axis with 172 spare. The rule that
+   generalises: height is the scarce axis on this surface (the whole of ADR-0122), so
+   canvas furniture grows sideways, and a third piece joins this band rather than
+   opening a second one.
+
+   Unlabelled is still deliberate, and two glyphs is still not the pair ADR-0109 §1
+   rejected: that objection is about CONFUSABLE silhouettes, and a round crosshair
+   against four rectangular corner brackets share none. Both carry an `aria-label`. */
+.map-pane {
+  --map-furniture-h: 44px;
+}
+.map-camctl {
   position: absolute;
-  top: 8px;
+  /* The pane's floating furniture yields to the controls row above it (ADR-0122 §1): the
+     row spans the pane's full width, so this sits BELOW it rather than beside it. Absent
+     the row (there is no split), the var is undefined and this is the 8px it always was. */
+  top: calc(var(--map-controls-h, 0px) + 8px);
   inset-inline-start: 8px;
-  width: 38px;
-  height: 38px;
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+.map-recenter,
+.map-frame {
+  /* 44, not the 38 that shipped: design-language's floor is 44×44 and the old single
+     control was already under it. Met by geometry — never by a hit area painted
+     smaller than the box it claims. */
+  width: var(--map-furniture-h, 44px);
+  height: var(--map-furniture-h, 44px);
   display: grid;
   place-items: center;
   background: var(--card);
@@ -7734,7 +8094,8 @@ body {
   cursor: pointer;
   box-shadow: 0 2px 6px rgba(22, 35, 61, 0.16);
 }
-.map-recenter .icon {
+.map-recenter .icon,
+.map-frame .icon {
   width: 20px;
   height: 20px;
 }
@@ -7744,24 +8105,59 @@ body {
    This says it. Top-inline-END: opposite the re-centre control, and nowhere near
    Google's bottom-left attribution. Updated on the map's `idle` event, never per pan
    frame. It counts every pin on the canvas, ghosts included: a SPATIAL readout, not
-   a facet count — and the wording carries that, `באזור` being about the area. */
+   a facet count — and the wording carries that, `באזור` being about the area.
+
+   ADR-0126 §4 makes it TAPPABLE without making it a control: the live region stays
+   exactly where it is and WRAPS a `<button>`, because one node cannot hold
+   `role="status"` and `role="button"` at once. So the pill is painted on the CHILD,
+   not on the region — a border-box 44 plus the region's own hairline is 46 outer,
+   and the box that has to clear the touch floor is the tappable one. */
 .map-areacount {
   position: absolute;
-  top: 8px;
+  /* Below the controls row, like the camera controls opposite it (ADR-0122 §1). */
+  top: calc(var(--map-controls-h, 0px) + 8px);
   inset-inline-end: 8px;
+  display: flex;
+  align-items: center;
+}
+/* The pill itself: a `<button>` when there is an area to sort by, a `<span>` when
+   there is not (zero, or before the first idle). One rule, so the two states are the
+   same object and the band never changes height under a changing count. */
+.map-areacount > * {
+  box-sizing: border-box;
+  min-height: var(--map-furniture-h, 44px);
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  padding: 0 12px;
   background: color-mix(in srgb, var(--card) 88%, transparent);
   border: 1px solid var(--line);
   border-radius: 999px;
-  padding: 5px 10px;
+  font: inherit;
   font-size: 11.5px;
   font-weight: 600;
   color: var(--muted);
   box-shadow: 0 1px 3px rgba(22, 35, 61, 0.14);
   white-space: nowrap;
 }
+.map-areacount > button {
+  appearance: none;
+  cursor: pointer;
+}
 .map-areacount b {
   color: var(--ink);
   font-family: var(--font-mono);
+}
+/* On while the list is ordered by it — the same `.on` grammar and the same mode
+   accent as every other stateful chip on this tab, because a control that hides the
+   fact that it is on is the defect ADR-0119 exists to prevent. */
+.map-areacount.on > * {
+  background: var(--idx-accent);
+  border-color: var(--idx-accent);
+  color: var(--idx-accent-text);
+}
+.map-areacount.on b {
+  color: inherit;
 }
 
 /* ═══ ui/primitives/snap-sheet.css — generated, do not edit here ═══ */
@@ -7799,19 +8195,43 @@ body {
   }
 }
 
+/* THE WHOLE TOP REGION IS THE DRAG TARGET (ADR-0122 §4). The grab line is 76×16px,
+   which is under ADR-0017's touch floor; this is the full width by ~51px. So the
+   region owns the vertical gesture and the browser must not claim the pan first —
+   `touch-action: none` is what makes the drag possible at all, and it lives here now
+   rather than on the button inside.
+
+   `--snap-top-h` is the caller's: the lowest stop can be exactly this region (the
+   Map's `map` stop), and reserving it from the same constant that builds that stop
+   means a taller top can never clip its own contents. */
 .wp-snapsheet-top {
   flex: none;
+  min-height: var(--snap-top-h, 0px);
+  box-sizing: border-box;
   padding: 7px var(--space-3, 14px) var(--space-1, 8px);
   display: grid;
   gap: var(--space-1, 8px);
-  justify-items: center;
+  justify-items: stretch;
+  touch-action: none;
+  cursor: grab;
+}
+.wp-snapsheet.dragging .wp-snapsheet-top {
+  cursor: grabbing;
 }
 
-/* The handle owns the vertical gesture, so the browser must not claim the pan
-   first — `touch-action: none` is what makes the drag possible at all. A real
-   button, so it is focusable and named; the visible grab line is the 4px pill. */
+/* The region is a real row now (a view toggle, a sort control), so its children
+   stretch and only the grab line stays centred. */
+.wp-snapsheet-headrow {
+  display: flex;
+  align-items: center;
+  justify-content: flex-end;
+  gap: var(--space-1, 8px);
+}
+
+/* The visible affordance and the keyboard's way in: a real ARIA splitter, focusable
+   and named, drawing the 4px pill. */
 .wp-snapsheet-grab {
-  touch-action: none;
+  justify-self: center;
   border: 0;
   background: none;
   padding: 6px 18px;

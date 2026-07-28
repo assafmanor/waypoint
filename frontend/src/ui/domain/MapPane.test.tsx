@@ -89,6 +89,8 @@ const pin = (partial: Partial<MapPin> & Pick<MapPin, 'placeId'>): MapPin => ({
   ...partial,
 });
 
+// `areaCount` defaults with an explicit `undefined` check rather than `??`: `null` is
+// a real state here ("no idle yet"), distinct from zero, and the two render differently.
 function paint(props: Partial<Parameters<typeof MapPane>[0]> = {}) {
   return render(
     <MapPane
@@ -98,7 +100,10 @@ function paint(props: Partial<Parameters<typeof MapPane>[0]> = {}) {
       onSelectPin={props.onSelectPin ?? vi.fn()}
       onCanvasTap={props.onCanvasTap ?? vi.fn()}
       onViewChange={props.onViewChange ?? vi.fn()}
-      areaCount={props.areaCount ?? 1}
+      areaCount={props.areaCount === undefined ? 1 : props.areaCount}
+      areaSorted={props.areaSorted ?? false}
+      onAreaSort={props.onAreaSort ?? vi.fn()}
+      onLocate={props.onLocate ?? vi.fn()}
       me={props.me}
       connector={props.connector}
       defaultCentre={props.defaultCentre}
@@ -306,11 +311,101 @@ describe('MapPane — our markup, not PinElement (ADR-0121 §6)', () => {
     });
   });
 
-  it('re-centre is a named icon control, not a raw glyph', () => {
+  // ADR-0126 §6 splits the one control that branched on a permission you could not
+  // see. Both are named icon controls, and the pair is not ADR-0109 §1's rejected one:
+  // that objection is about confusable silhouettes, which a crosshair and four corner
+  // brackets are not.
+  it('the two camera controls are named icon controls, not raw glyphs', () => {
     paint();
-    const button = screen.getByRole('button', { name: t.map.recentre });
-    expect(button.querySelector('svg.icon')).toBeTruthy();
-    expect(button.textContent).toBe('');
+    for (const name of [t.map.locate, t.map.frameAll]) {
+      const button = screen.getByRole('button', { name });
+      expect(button.querySelector('svg.icon')).toBeTruthy();
+      expect(button.textContent).toBe('');
+    }
+  });
+
+  // Both live in ONE cluster, which is what lets ADR-0122 §6's one-floating-object
+  // rule keep working with a single extra selector instead of a third one.
+  it('the camera controls are one band, not two independently placed objects', () => {
+    paint();
+    expect(document.querySelectorAll('.map-camctl')).toHaveLength(1);
+    expect(document.querySelectorAll('.map-camctl > button')).toHaveLength(2);
+  });
+
+  // `points` falls back to `[me]` when the day has no pins of its own, so a frame
+  // control there would be a second locate button wearing a different glyph.
+  it('framing is ABSENT when the day has no pins of its own to frame', () => {
+    paint({ pins: [pin({ placeId: 'g', tier: PIN_TIER.ghost })] });
+    expect(screen.queryByRole('button', { name: t.map.frameAll })).toBeNull();
+    expect(screen.getByRole('button', { name: t.map.locate })).toBeTruthy();
+  });
+
+  // #19's whole point: locate stops branching on whether there is a fix. With none it
+  // reports up so the screen can route to the pre-prompt — which stays the only thing
+  // allowed to ask (ADR-0121 §12, amended by ADR-0126 §6).
+  it('locate with no fix asks the screen instead of silently re-framing', () => {
+    const onLocate = vi.fn();
+    paint({ onLocate });
+    fireEvent.click(screen.getByRole('button', { name: t.map.locate }));
+    expect(onLocate).toHaveBeenCalledTimes(1);
+  });
+
+  it('locate with a fix centres and does NOT ask', () => {
+    const onLocate = vi.fn();
+    paint({ onLocate, me: { lat: 35.6, lng: 139.7 } });
+    fireEvent.click(screen.getByRole('button', { name: t.map.locate }));
+    expect(onLocate).not.toHaveBeenCalled();
+  });
+
+  // ADR-0126 §4: the live region WRAPS the control rather than becoming it. One node
+  // cannot hold `role="status"` and `role="button"`, and `role="status"` would win.
+  describe('`באזור` is a control and a live region, in two nodes (ADR-0126 §4)', () => {
+    it('the region keeps its role and the button sits inside it', () => {
+      paint({ areaCount: 7 });
+      const region = document.querySelector('.map-areacount')!;
+      expect(region.getAttribute('role')).toBe('status');
+      expect(region.getAttribute('aria-live')).toBe('polite');
+      const button = region.querySelector('button')!;
+      expect(button.getAttribute('role')).toBeNull();
+      // The count text exists ONCE, so what the region announces is the button's own
+      // words rather than a second copy of them.
+      expect(region.textContent).toBe(button.textContent);
+    });
+
+    // The visible text stays the accessible NAME — a voice-control user has to be able
+    // to say what they can see — so the action is the DESCRIPTION.
+    it('the action is the title, never an aria-label over the count', () => {
+      paint({ areaCount: 7 });
+      const button = document.querySelector('.map-areabtn')!;
+      expect(button.getAttribute('aria-label')).toBeNull();
+      expect(button.getAttribute('title')).toBe(t.map.area.action);
+      expect(screen.getByRole('button', { name: `7 ${t.map.area.suffix}` })).toBe(button);
+    });
+
+    it('tapping it asks the screen to sort, and states that it is on', () => {
+      const onAreaSort = vi.fn();
+      const { unmount } = paint({ areaCount: 7, onAreaSort });
+      const button = document.querySelector('.map-areabtn')!;
+      expect(button.getAttribute('aria-pressed')).toBe('false');
+      fireEvent.click(button);
+      expect(onAreaSort).toHaveBeenCalledTimes(1);
+      unmount();
+      paint({ areaCount: 7, areaSorted: true });
+      expect(document.querySelector('.map-areabtn')!.getAttribute('aria-pressed')).toBe('true');
+      expect(document.querySelector('.map-areacount')!.className).toContain('on');
+    });
+
+    // Sorting by an empty area is a control that does nothing, which ADR-0109's
+    // session-105 amendment refused. Before the first idle there are no bounds to
+    // snapshot either, so neither state renders a button.
+    it('neither an empty area nor a pre-idle count renders a button', () => {
+      const { unmount } = paint({ areaCount: 0 });
+      expect(document.querySelector('.map-areabtn')).toBeNull();
+      expect(document.querySelector('.map-areacount')?.textContent).toBe(t.map.area.none);
+      unmount();
+      paint({ areaCount: null });
+      expect(document.querySelector('.map-areabtn')).toBeNull();
+    });
   });
 
   // The marker-level restatement of "one map per visit": the screen re-renders every
@@ -328,6 +423,9 @@ describe('MapPane — our markup, not PinElement (ADR-0121 §6)', () => {
         onCanvasTap={vi.fn()}
         onViewChange={vi.fn()}
         areaCount={1}
+        areaSorted={false}
+        onAreaSort={vi.fn()}
+        onLocate={vi.fn()}
       />,
     );
     expect(markers()[0]).toBe(before);

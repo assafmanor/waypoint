@@ -7020,9 +7020,12 @@ body {
 /* ONE floating object over the canvas at a time: a 250px pane cannot hold a card AND two
    floating controls and still read as a map, and the card is transient (once per session,
    both buttons dismiss it). `:has()` rather than a prop, deliberately — `MapPane`'s props
-   stay identity-stable on a screen that re-renders every second (frontend/CLAUDE.md). */
+   stay identity-stable on a screen that re-renders every second (frontend/CLAUDE.md).
+   (ADR-0126 §2: the rule survives the second camera control by naming the CLUSTER
+   rather than growing a third selector — which is most of why the two buttons are
+   one `.map-camctl` element.) */
 .map-split:has(> .map-geoprompt) .map-areacount,
-.map-split:has(> .map-geoprompt) .map-recenter {
+.map-split:has(> .map-geoprompt) .map-camctl {
   display: none;
 }
 
@@ -7989,22 +7992,44 @@ body {
     color-mix(in srgb, var(--me) 16%, transparent);
 }
 
-/* ── OUR CONTROLS, NOT GOOGLE'S (§12) ──────────────────────────────────────────
+/* ── OUR CONTROLS, NOT GOOGLE'S (§12, restated by ADR-0126) ────────────────────
    `disableDefaultUI`, then add back only what we need: Google's controls are
-   un-styleable, unlabelled and RTL-unaware. Zoom is the pinch; this is the one
-   control we add, and it is also the escape hatch from "a manual pan wins until the
-   next scope change" (§7). Unlabelled is deliberate — a single universally
-   recognised map control, not the pair of confusable glyphs ADR-0109 §1 rejected —
-   and it carries an `aria-label`. */
-.map-recenter {
+   un-styleable, unlabelled and RTL-unaware. Zoom is the pinch; these are the two we
+   add — locate, and framing the filtered set, which used to be the same button
+   branching on a permission you could not see.
+
+   ONE BAND, AND IT RUNS ALONG THE INLINE AXIS. Measured against the real tree, a
+   vertical stack leaves −3px of clear canvas at 360×640 `half` — it overlaps
+   Google's attribution, which the ToS forbids (ADR-0106 §B) — where the same pair
+   side by side leaves 49px and costs 164px of an axis with 172 spare. The rule that
+   generalises: height is the scarce axis on this surface (the whole of ADR-0122), so
+   canvas furniture grows sideways, and a third piece joins this band rather than
+   opening a second one.
+
+   Unlabelled is still deliberate, and two glyphs is still not the pair ADR-0109 §1
+   rejected: that objection is about CONFUSABLE silhouettes, and a round crosshair
+   against four rectangular corner brackets share none. Both carry an `aria-label`. */
+.map-pane {
+  --map-furniture-h: 44px;
+}
+.map-camctl {
   position: absolute;
   /* The pane's floating furniture yields to the controls row above it (ADR-0122 §1): the
      row spans the pane's full width, so this sits BELOW it rather than beside it. Absent
      the row (there is no split), the var is undefined and this is the 8px it always was. */
   top: calc(var(--map-controls-h, 0px) + 8px);
   inset-inline-start: 8px;
-  width: 38px;
-  height: 38px;
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+.map-recenter,
+.map-frame {
+  /* 44, not the 38 that shipped: design-language's floor is 44×44 and the old single
+     control was already under it. Met by geometry — never by a hit area painted
+     smaller than the box it claims. */
+  width: var(--map-furniture-h, 44px);
+  height: var(--map-furniture-h, 44px);
   display: grid;
   place-items: center;
   background: var(--card);
@@ -8015,7 +8040,8 @@ body {
   cursor: pointer;
   box-shadow: 0 2px 6px rgba(22, 35, 61, 0.16);
 }
-.map-recenter .icon {
+.map-recenter .icon,
+.map-frame .icon {
   width: 20px;
   height: 20px;
 }
@@ -8025,25 +8051,59 @@ body {
    This says it. Top-inline-END: opposite the re-centre control, and nowhere near
    Google's bottom-left attribution. Updated on the map's `idle` event, never per pan
    frame. It counts every pin on the canvas, ghosts included: a SPATIAL readout, not
-   a facet count — and the wording carries that, `באזור` being about the area. */
+   a facet count — and the wording carries that, `באזור` being about the area.
+
+   ADR-0126 §4 makes it TAPPABLE without making it a control: the live region stays
+   exactly where it is and WRAPS a `<button>`, because one node cannot hold
+   `role="status"` and `role="button"` at once. So the pill is painted on the CHILD,
+   not on the region — a border-box 44 plus the region's own hairline is 46 outer,
+   and the box that has to clear the touch floor is the tappable one. */
 .map-areacount {
   position: absolute;
-  /* Below the controls row, like the re-centre control opposite it (ADR-0122 §1). */
+  /* Below the controls row, like the camera controls opposite it (ADR-0122 §1). */
   top: calc(var(--map-controls-h, 0px) + 8px);
   inset-inline-end: 8px;
+  display: flex;
+  align-items: center;
+}
+/* The pill itself: a `<button>` when there is an area to sort by, a `<span>` when
+   there is not (zero, or before the first idle). One rule, so the two states are the
+   same object and the band never changes height under a changing count. */
+.map-areacount > * {
+  box-sizing: border-box;
+  min-height: var(--map-furniture-h, 44px);
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  padding: 0 12px;
   background: color-mix(in srgb, var(--card) 88%, transparent);
   border: 1px solid var(--line);
   border-radius: 999px;
-  padding: 5px 10px;
+  font: inherit;
   font-size: 11.5px;
   font-weight: 600;
   color: var(--muted);
   box-shadow: 0 1px 3px rgba(22, 35, 61, 0.14);
   white-space: nowrap;
 }
+.map-areacount > button {
+  appearance: none;
+  cursor: pointer;
+}
 .map-areacount b {
   color: var(--ink);
   font-family: var(--font-mono);
+}
+/* On while the list is ordered by it — the same `.on` grammar and the same mode
+   accent as every other stateful chip on this tab, because a control that hides the
+   fact that it is on is the defect ADR-0119 exists to prevent. */
+.map-areacount.on > * {
+  background: var(--idx-accent);
+  border-color: var(--idx-accent);
+  color: var(--idx-accent-text);
+}
+.map-areacount.on b {
+  color: inherit;
 }
 
 /* ═══ ui/primitives/snap-sheet.css — generated, do not edit here ═══ */

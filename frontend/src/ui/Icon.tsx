@@ -17,6 +17,7 @@ type IconName =
   | 'search'
   | 'close'
   | 'locate'
+  | 'frame'
   | 'pin'
   | 'cloud-check'
   | 'cloud-up'
@@ -46,6 +47,13 @@ const PATHS: Record<IconName, string> = {
   // "emoji are content, icons are UI" (design-language.md).
   locate:
     'M12 2v3 M12 19v3 M2 12h3 M19 12h3 M19 12a7 7 0 1 1-14 0 7 7 0 0 1 14 0 M13.5 12a1.5 1.5 0 1 1-3 0 1.5 1.5 0 0 1 3 0',
+  // Frame the filtered set (ADR-0126 §6) — the second camera control, beside
+  // `locate`. Four corner brackets: every map app's fit-to-content mark, and
+  // rectangular where the crosshair is round, which is what keeps the two apart at
+  // a glance (the objection ADR-0109 §1 raises against a pair of glyphs is about
+  // CONFUSABLE silhouettes, and these two share none).
+  frame:
+    'M4 9V6a2 2 0 0 1 2-2h3 M15 4h3a2 2 0 0 1 2 2v3 M20 15v3a2 2 0 0 1-2 2h-3 M9 20H6a2 2 0 0 1-2-2v-3',
   // `מפה` — show a place on OUR map (ADR-0121 §8). Deliberately the Waypoint
   // marker's own silhouette (ADR-0087: a teardrop, tip down, with a centre dot), so
   // the control wears the shape of the thing it takes you to. A real SVG, never the

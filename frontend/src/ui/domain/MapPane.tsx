@@ -92,6 +92,17 @@ export interface MapPaneProps {
   /** How many of our places are on the canvas right now, `null` before the first
    *  idle. Zero says so out loud rather than leaving an empty canvas unexplained. */
   areaCount: number | null;
+  /** The list is currently ordered by the area (ADR-0126 §5). A primitive, so the
+   *  memo still holds — and the ONLY thing it drives is the readout's own pressed
+   *  state, which `aria-pressed` cannot express in CSS the way `data-view` can. */
+  areaSorted: boolean;
+  /** The readout was tapped: order the in-view places first. The intent lives in the
+   *  SCREEN, like `sortByDistance` — nothing about it reaches the map instance. */
+  onAreaSort: () => void;
+  /** Locate was tapped with no fix to centre on. The camera half stays here (it needs
+   *  the map instance); the permission ladder is the screen's, because that is where
+   *  `useGeolocation` and the pre-prompt live (ADR-0126 §6). */
+  onLocate: () => void;
 }
 
 function MapPaneInner({
@@ -105,6 +116,9 @@ function MapPaneInner({
   onCanvasTap,
   onViewChange,
   areaCount,
+  areaSorted,
+  onAreaSort,
+  onLocate,
 }: MapPaneProps) {
   return (
     <div className="map-pane">
@@ -153,7 +167,15 @@ function MapPaneInner({
         </Map>
         {/* Outside `<Map>` so our chrome is never inside the canvas Google manages,
             but inside `<APIProvider>` so it can still reach the instance by id. */}
-        <MapCameraControls pins={pins} me={me} setSignal={setSignal} areaCount={areaCount} />
+        <MapCameraControls
+          pins={pins}
+          me={me}
+          setSignal={setSignal}
+          areaCount={areaCount}
+          areaSorted={areaSorted}
+          onAreaSort={onAreaSort}
+          onLocate={onLocate}
+        />
       </APIProvider>
     </div>
   );
@@ -265,20 +287,27 @@ const DayConnector = memo(function DayConnector({ path }: { path?: readonly LatL
   );
 });
 
-/** The canvas chrome: the re-centre control and the `באזור` readout — plus the
- *  camera itself, which lives here because it needs a live map instance. Selection
- *  is what drives a focus, so it is read off the pin set rather than plumbed as a
- *  second prop: the screen already said which pin is selected. */
+/** The canvas chrome: ONE furniture band — the two camera controls at the inline
+ *  start, the `באזור` readout at the inline end — plus the camera itself, which
+ *  lives here because it needs a live map instance. Selection is what drives a
+ *  focus, so it is read off the pin set rather than plumbed as a second prop: the
+ *  screen already said which pin is selected. */
 function MapCameraControls({
   pins,
   me,
   setSignal,
   areaCount,
+  areaSorted,
+  onAreaSort,
+  onLocate,
 }: {
   pins: readonly MapPin[];
   me?: LatLng;
   setSignal: string;
   areaCount: number | null;
+  areaSorted: boolean;
+  onAreaSort: () => void;
+  onLocate: () => void;
 }) {
   const map = useMap(MAP_ID);
   // The camera answers to the day's OWN pins, never to the ghost tier: a ghost is a
@@ -306,33 +335,83 @@ function MapCameraControls({
     if (selectedId && focusRef.current) focus(focusRef.current);
   }, [selectedId, focus]);
 
-  const recentre = useCallback(() => {
-    // With a fix, centre on you; without one, re-frame the filtered set. It never
-    // asks for the permission (§12) — that stays the near-me chip's pre-prompt.
+  // LOCATE-ONLY (ADR-0126 §6). Both branches do the same job — take me to me — where
+  // the one this replaces did two unrelated ones depending on a permission you could
+  // not see. Note what it cannot do: `focus` is a camera call and never prompts, and
+  // nothing here touches `getCurrentPosition`. Only the screen's ladder can ask, and
+  // only through the pre-prompt, which stays the single place allowed to (§12).
+  const locate = useCallback(() => {
     if (me) focus(me);
-    else reframe(points);
-  }, [me, focus, reframe, points]);
+    else onLocate();
+  }, [me, focus, onLocate]);
+
+  // The job the second tap used to do invisibly, now a control that says it: frame
+  // exactly what `reframe` already frames. ABSENT when the day has no pins of its
+  // own — `points` falls back to `[me]`, which would make this a second locate
+  // button wearing a different glyph (derived affordance, ADR-0050).
+  const framable = pins.some(isFramedByCamera);
+  const frame = useCallback(() => reframe(points), [reframe, points]);
+
+  // Tappable only when there is an area to sort BY. Zero keeps saying so and stays a
+  // readout; `null` is "no idle yet", so there are no bounds to snapshot either.
+  const areaTappable = areaCount != null && areaCount > 0;
 
   return (
     <>
-      <div className="map-areacount" role="status" aria-live="polite">
-        {areaCount === 0 ? (
-          t.map.area.none
-        ) : (
-          <>
-            <b dir="auto">{areaCount ?? '-'}</b> {t.map.area.suffix}
-          </>
+      {/* One cluster, so the band's geometry is written once and the
+          one-floating-object rule (ADR-0122 §6) needs one selector, not three. */}
+      <div className="map-camctl">
+        <button
+          type="button"
+          className="map-recenter"
+          aria-label={t.map.locate}
+          title={t.map.locate}
+          onClick={locate}
+        >
+          <Icon name="locate" />
+        </button>
+        {framable && (
+          <button
+            type="button"
+            className="map-frame"
+            aria-label={t.map.frameAll}
+            title={t.map.frameAll}
+            onClick={frame}
+          >
+            <Icon name="frame" />
+          </button>
         )}
       </div>
-      <button
-        type="button"
-        className="map-recenter"
-        aria-label={t.map.recentre}
-        title={t.map.recentre}
-        onClick={recentre}
-      >
-        <Icon name="locate" />
-      </button>
+      {/* The live region WRAPS the control rather than becoming it (ADR-0126 §4):
+          one node cannot hold both roles, and `role="status"` would win over
+          `role="button"`. This is `StatusBanner`'s own shape — a polite region with a
+          control inside it — so the count text exists once in the DOM and what the
+          region announces is the button's own words, not a second copy of them. */}
+      <div className={'map-areacount' + (areaSorted ? ' on' : '')} role="status" aria-live="polite">
+        {areaTappable ? (
+          <button
+            type="button"
+            className="map-areabtn"
+            aria-pressed={areaSorted}
+            // The ACTION as a description. An `aria-label` would override the visible
+            // text, and the visible text has to stay the accessible NAME (§4).
+            title={t.map.area.action}
+            onClick={onAreaSort}
+          >
+            <b dir="auto">{areaCount}</b> {t.map.area.suffix}
+          </button>
+        ) : (
+          <span>
+            {areaCount === 0 ? (
+              t.map.area.none
+            ) : (
+              <>
+                <b dir="auto">-</b> {t.map.area.suffix}
+              </>
+            )}
+          </span>
+        )}
+      </div>
     </>
   );
 }
