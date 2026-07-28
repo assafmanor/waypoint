@@ -21,6 +21,19 @@ describe('deriveAvatarHue', () => {
     expect(seen.size).toBe(IDENTITY_HUES.length);
   });
 
+  it('does not cluster on short ids that share a prefix', () => {
+    // The regression: plain djb2 (no avalanche finalizer) barely mixes its low bits,
+    // so `u-`-prefixed human-readable ids collapsed onto one or two hues — three of
+    // the seed's five users came out the same colour. Collisions are fine and
+    // expected; a hash that ignores most of its input is not.
+    const ids = ['u-assaf', 'u-noam', 'u-dana', 'u-maor', 'u-ron', 'u-gal', 'u-tal', 'u-omer'];
+    expect(new Set(ids.map(deriveAvatarHue)).size).toBeGreaterThanOrEqual(3);
+
+    // And over a larger prefixed set every hue must appear.
+    const many = Array.from({ length: 60 }, (_, i) => `u-member${i}`);
+    expect(new Set(many.map(deriveAvatarHue)).size).toBe(IDENTITY_HUES.length);
+  });
+
   it('handles an empty id without throwing', () => {
     expect(identityHueSchema.safeParse(deriveAvatarHue('')).success).toBe(true);
   });

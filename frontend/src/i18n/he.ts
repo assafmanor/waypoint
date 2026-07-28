@@ -700,6 +700,36 @@ export const t = {
       title: 'החשבון שלי',
       provider: 'מחובר עם Google',
       signOut: 'התנתקות',
+      // The user settings page (ADR-0133). It replaces the account sheet, so it
+      // inherits its title — the surface changed, the thing it is called did not.
+      back: 'חזרה',
+      identity: 'הזהות שלי',
+      nameLabel: 'שם',
+      sharedHint: 'השם והתמונה נראים לכל מי שנוסע איתכם.',
+      accountSection: 'החשבון',
+      emailLabel: 'אימייל',
+      emailHint: 'האימייל מגיע מהחשבון שאיתו נכנסתם ואינו נערך כאן, כי הוא מזהה את החשבון.',
+      saveFailed: 'השינוי לא נשמר. בדקו את החיבור ונסו שוב.',
+      // The picture page — two states, so the ramp shows only when the colour is
+      // what actually gets drawn (ADR-0133 §6).
+      picture: {
+        title: 'התמונה שלי',
+        change: 'שינוי תמונה',
+        fromGoogle: 'התמונה מגוגל',
+        initials: 'אותיות ראשונות',
+        remove: 'הסרת התמונה',
+        useGoogle: 'שימוש בתמונה מגוגל',
+        hueLabel: 'צבע הרקע',
+        removeHint: 'הסרה כאן היא ״לא להשתמש בה״, ולא מחיקה אצל גוגל, ולכן תמיד יש דרך חזרה.',
+        noPhotoHint: 'אין תמונה בחשבון גוגל שאיתו נכנסתם, ולכן מוצגות האותיות הראשונות.',
+        hueName: {
+          plum: 'שזיף',
+          rose: 'ורד',
+          moss: 'טחב',
+          denim: 'דנים',
+          cocoa: 'קקאו',
+        },
+      },
     },
   },
   board: {

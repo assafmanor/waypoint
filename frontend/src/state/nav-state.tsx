@@ -35,6 +35,27 @@ import { t } from '../i18n/he';
  *  `replace` (never `push`) — history depth is not what resolves back, current
  *  state is (ADR-0090), so in-trip history stays flat. */
 export const TAB_PARAM = 'tab';
+
+/** Where `/settings` was entered from (ADR-0133 §2). It is the first shell route with
+ *  more than one legitimate parent — from inside a trip back must land in the trip,
+ *  from the all-trips home it must land there — and a single static parent would eject
+ *  a member from their trip to edit their own name.
+ *
+ *  A CLOSED ENUM, never a path. An arbitrary `?return=<path>` would be an
+ *  open-redirect shape and could strand back on a surface that no longer exists. In
+ *  the URL rather than in memory, so it survives a reload exactly as `?tab=`/`?day=`
+ *  do and back stays a pure function of nav state. */
+export const SETTINGS_FROM_PARAM = 'from';
+export const SETTINGS_FROM = { HOME: 'home', TRIPS: 'trips' } as const;
+export type SettingsFrom = (typeof SETTINGS_FROM)[keyof typeof SETTINGS_FROM];
+
+export const SETTINGS_PATH = '/settings';
+export const SETTINGS_PICTURE_PATH = '/settings/picture';
+
+/** The link to open your own settings, carrying its return target. */
+export function settingsPath(from: SettingsFrom): string {
+  return `${SETTINGS_PATH}?${SETTINGS_FROM_PARAM}=${from}`;
+}
 /** The selected day — the SINGLE source of truth for it (ADR-0035 §4, retained by
  *  ADR-0090); `activeDate` derives from this, there is no second copy in React
  *  state. Deep-linkable + reload-surviving via `?day=YYYY-MM-DD`. Home carries no
@@ -74,6 +95,10 @@ export interface NavSnapshot {
   tab: string | null;
   /** The current pathname (for the shell-route parent + root guard). */
   pathname: string;
+  /** The current query string — `/settings` resolves its parent from `?from=`
+   *  (ADR-0133 §2), which is why the parent is a function of the whole location
+   *  rather than the path alone. */
+  search: string;
   /** Is the leave-trip confirm currently armed (a first back happened recently)? */
   armed: boolean;
 }
@@ -106,7 +131,7 @@ export function resolveBack(s: NavSnapshot): BackAction {
     return s.armed ? { kind: 'exit-trip' } : { kind: 'arm-exit' };
   }
   if (ROOT_PATHS.includes(s.pathname)) return { kind: 'none' };
-  return { kind: 'to', path: parentRoute(s.pathname) };
+  return { kind: 'to', path: parentRoute(s.pathname, s.search) };
 }
 
 /** The explicit parent a shell route backs out to (ADR-0090 §4 — deterministic,
@@ -114,7 +139,17 @@ export function resolveBack(s: NavSnapshot): BackAction {
  *  it). Trip-settings (`/trip/:id/settings`) is opened from inside the trip, so
  *  its parent is the trip Home (`/`, which RootSurface resolves to the active
  *  trip); create/join back out to the all-trips home. */
-function parentRoute(pathname: string): string {
+function parentRoute(pathname: string, search = ''): string {
+  // The picture page is a child of the settings page, and it hands the return
+  // target back up so one more back still lands where you came from.
+  if (pathname === SETTINGS_PICTURE_PATH) return `${SETTINGS_PATH}${search}`;
+  if (pathname === SETTINGS_PATH) {
+    const from = new URLSearchParams(search).get(SETTINGS_FROM_PARAM);
+    // Anything unrecognised — a hand-typed link, a stale bookmark, a missing param
+    // — falls to the all-trips home, the safe parent for a deep link nobody
+    // navigated to.
+    return from === SETTINGS_FROM.HOME ? '/' : EXIT_TRIP_TO;
+  }
   if (pathname.startsWith('/trip/')) return '/';
   return EXIT_TRIP_TO;
 }
@@ -291,6 +326,7 @@ export function NavProvider({ children }: { children: ReactNode }) {
       insideTrip: insideTripRef.current,
       tab: new URLSearchParams(window.location.search).get(TAB_PARAM),
       pathname: window.location.pathname,
+      search: window.location.search,
       armed: getNow() - exitPendingRef.current < EXIT_CONFIRM_MS,
     }),
     [],

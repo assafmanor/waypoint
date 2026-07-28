@@ -31,11 +31,11 @@ const CREATED_AT = `${DAY}T09:00:00Z`;
 const at = (time) => `${DAY}T${time}:00${TZ}`;
 
 const USERS = [
-  { id: 'u-assaf', email: 'assaf@example.com', displayName: 'אסף', avatarColor: '#E9A63C' },
-  { id: 'u-noam', email: 'noam@example.com', displayName: 'נועם', avatarColor: '#5EC5B6' },
-  { id: 'u-dana', email: 'dana@example.com', displayName: 'דנה', avatarColor: '#E88C8C' },
-  { id: 'u-maor', email: 'maor@example.com', displayName: 'מאור', avatarColor: '#9C8CE8' },
-  { id: 'u-ron', email: 'ron@example.com', displayName: 'רון', avatarColor: '#8CB6E8' },
+  { id: 'u-assaf', email: 'assaf@example.com', displayName: 'אסף' },
+  { id: 'u-noam', email: 'noam@example.com', displayName: 'נועם' },
+  { id: 'u-dana', email: 'dana@example.com', displayName: 'דנה' },
+  { id: 'u-maor', email: 'maor@example.com', displayName: 'מאור' },
+  { id: 'u-ron', email: 'ron@example.com', displayName: 'רון' },
 ];
 
 const TRIP = {

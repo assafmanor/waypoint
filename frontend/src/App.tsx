@@ -17,6 +17,8 @@ import { AuthProvider, useAuth } from './state/auth-state';
 import { ActiveTripIdProvider, useActiveTripId } from './state/active-trip-id';
 import {
   NavProvider,
+  SETTINGS_FROM,
+  settingsPath,
   shouldResetToHomeOnResume,
   useCloseAllOverlays,
   useMarkInsideTrip,
@@ -39,7 +41,6 @@ import { ConfirmProvider } from './ui/ConfirmDialog';
 import { AppShell, BODY_FULLBLEED, CHROME_RECLAIMED } from './ui/layout';
 import { mapPaneAvailable } from './lib/map-config';
 import { BootScreen, HomeSkeleton, LoadingState } from './ui/feedback';
-import { Sheet } from './ui/Sheet';
 import { SyncReviewSheet } from './ui/SyncReviewSheet';
 import { Icon } from './ui/Icon';
 import { NavArrow } from './ui/NavArrow';
@@ -85,6 +86,8 @@ import { t } from './i18n/he';
 import './App.css';
 import './screens.css';
 import { Avatar } from './ui/primitives/Avatar';
+const UserSettings = lazy(() => import('./screens/UserSettings'));
+const UserPicture = lazy(() => import('./screens/UserPicture'));
 
 // Small tail added past the transition's own duration before disarming the
 // mode-switch class, so we never clear it a frame early (which would snap the
@@ -365,14 +368,12 @@ function Shell() {
   // Tab lives in the URL (?tab=), Home-anchored, so back peels it (ADR-0035).
   const { tab, goToTab } = useTripTab();
   const { allDays, queryOpen } = useMapScope();
-  const [accountOpen, setAccountOpen] = useState(false);
   useMarkInsideTrip();
   // Give Android's OS back an in-app entry to traverse into (ADR-0090) so a cold
   // launch straight into the trip can't let a system-back slip out of the app.
   useTripBackGuard();
   const { mode } = useMode();
   const { trip, tripDeleted, usingCachedSnapshot } = useTrip();
-  const { logout } = useAuth();
   const navigate = useNavigate();
   const closeAllOverlays = useCloseAllOverlays();
   // Same two signals the tabs themselves read (T-013/T-058): `navigator.onLine`
@@ -471,7 +472,7 @@ function Shell() {
         <Header
           onSelectDay={onSelectDay}
           onOpenSwitcher={() => navigate('/trips')}
-          onOpenAccount={() => setAccountOpen(true)}
+          onOpenAccount={() => navigate(settingsPath(SETTINGS_FROM.HOME))}
           onOpenSettings={() => navigate(`/trip/${trip.id}/settings`)}
           allScope={tab === 'map' && allDays}
         />
@@ -490,9 +491,6 @@ function Shell() {
             </button>
           ))}
         </nav>
-      }
-      overlay={
-        accountOpen && <AccountSheet onClose={() => setAccountOpen(false)} onSignOut={logout} />
       }
     >
       {/* Own Suspense boundary, not the outer AppRoutes one (ADR-0105): the
@@ -517,57 +515,17 @@ function Shell() {
   );
 }
 
-// Identity + sign-out, kept minimal (app-shell.md §6, PR #57) — a grip handle
-// and a centered avatar/name/email, no title bar. Google is stated once here,
-// quietly (no logo) — it's the auth mechanism, not a badge shown per-avatar.
-function AccountSheet({ onClose, onSignOut }: { onClose: () => void; onSignOut: () => void }) {
-  const { me } = useAuth();
-  return (
-    <Sheet ariaLabel={t.shell.account.title} onClose={onClose}>
-      <div className="acct-grip" />
-      {me && <Avatar person={me.user} size="lg" className="acct-sheet-av" />}
-      <div className="acct-name">{me?.user.displayName}</div>
-      <div className="acct-mail" dir="auto">
-        {me?.user.email}
-      </div>
-      <div className="acct-provider">{t.shell.account.provider}</div>
-      <button
-        className="acct-signout"
-        onClick={() => {
-          onSignOut();
-          onClose();
-        }}
-      >
-        {t.shell.account.signOut}
-      </button>
-    </Sheet>
-  );
+// The two shell surfaces whose avatar opens your settings. Each is its own tiny
+// component only because `useNavigate` is a hook — they replace the account-sheet
+// wrappers that used to hold sheet state (ADR-0133 §1).
+function ZeroStateRoute() {
+  const navigate = useNavigate();
+  return <ZeroState onOpenAccount={() => navigate(settingsPath(SETTINGS_FROM.HOME))} />;
 }
 
-// With zero trips there's no Shell/Header, so ZeroState's own avatar is the
-// only other place sign-out is reachable.
-function ZeroStateWithAccount() {
-  const [showAccount, setShowAccount] = useState(false);
-  const { logout } = useAuth();
-  return (
-    <>
-      <ZeroState onOpenAccount={() => setShowAccount(true)} />
-      {showAccount && <AccountSheet onClose={() => setShowAccount(false)} onSignOut={logout} />}
-    </>
-  );
-}
-
-// Same reasoning as ZeroStateWithAccount: /trips is a full-page route outside
-// Shell, so it needs its own account-sheet plumbing.
-function AllTripsWithAccount() {
-  const [showAccount, setShowAccount] = useState(false);
-  const { logout } = useAuth();
-  return (
-    <>
-      <AllTrips onOpenAccount={() => setShowAccount(true)} />
-      {showAccount && <AccountSheet onClose={() => setShowAccount(false)} onSignOut={logout} />}
-    </>
-  );
+function AllTripsRoute() {
+  const navigate = useNavigate();
+  return <AllTrips onOpenAccount={() => navigate(settingsPath(SETTINGS_FROM.TRIPS))} />;
 }
 
 // Settings is a full-page route outside the mode Shell (ADR-0039: mode-neutral),
@@ -606,7 +564,7 @@ function RootSurface() {
   const now = useClock();
 
   if (trips === null) return <BootScreen />;
-  if (trips.length === 0) return <ZeroStateWithAccount />;
+  if (trips.length === 0) return <ZeroStateRoute />;
 
   const landing = resolveLanding(trips, storedTripId, pickedThisSession, now);
   if ('redirect' in landing) return <Navigate to={landing.redirect} replace />;
@@ -689,10 +647,15 @@ function AppRoutes() {
       <Routes>
         <Route element={<AuthGate />}>
           <Route path="login" element={<Login />} />
-          <Route path="trips" element={<AllTripsWithAccount />} />
+          <Route path="trips" element={<AllTripsRoute />} />
           <Route path="new" element={<CreateTrip />} />
           <Route path="join/:token" element={<JoinTrip />} />
           <Route path="trip/:id/settings" element={<TripSettingsRoute />} />
+          {/* Your own settings + its picture page (ADR-0133). User-scoped, so
+              deliberately NOT nested under a trip — the thing they edit is you, and
+              they must be reachable with no trip at all. */}
+          <Route path="settings" element={<UserSettings />} />
+          <Route path="settings/picture" element={<UserPicture />} />
           <Route path="*" element={<RootSurface />} />
         </Route>
       </Routes>

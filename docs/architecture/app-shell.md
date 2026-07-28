@@ -7,7 +7,7 @@ The **shell** is everything _outside_ a single trip: the auth gate, the no-trips
 
 ## Routing map
 
-Client-side routing, single-origin PWA (ADR-0020). Login, all-trips, create, join, and settings are full-page routes; the account menu is a header-invoked sheet.
+Client-side routing, single-origin PWA (ADR-0020). Login, all-trips, create, join, trip-settings, **and your own `/settings` (+ `/settings/picture`)** are full-page routes. The account **sheet is retired** (ADR-0133) — the avatar navigates.
 
 ```
 app load
@@ -89,13 +89,19 @@ Because the app is a `display: standalone` PWA (ADR-0007) with **no system back 
 - **States:** landing (no `עכשיו` section) · from-trip (the live trip is the indigo hero under `עכשיו`) · offline (switching among cached trips works; create disabled).
 - **Design reference:** `mockups/all-trips-v2.html` (supersedes v1).
 
-### 6. Account — header sheet (not a route)
+### 6. Your own settings — `/settings` (a route; the sheet is retired)
 
-- **Purpose:** identity + sign-out, kept minimal.
-- **Entry:** the account avatar in the in-trip header — a **ringed** avatar sitting after the member cluster, next to the **⚙ trip-settings** gear (two distinct controls: account = you, gear = this trip's settings).
-- **Contents:** large avatar, display name, email, a quiet "מחובר עם Google" line (no Google logo), and **Sign out** (deletes the refresh session server-side, ADR-0020). Profile editing is **deferred**.
-- **Google chrome is minimal:** Google is the auth mechanism, not a badge — member avatars carry **no** per-face Google dot; the connection is stated once, quietly, in the account sheet.
-- **Design reference:** `mockups/trip-dashboard-v2.html` (header account avatar + ⚙ gear; the account sheet).
+**Rewritten 2026-07-28 by [ADR-0133](../decisions/0133-the-user-is-a-surface-identity-ramp-and-a-reachable-roster.md), which ends this section's "Profile editing is **deferred**".**
+
+- **Purpose:** your identity + your account facts. Nothing invented — a theme toggle, a language picker, units, a user home zone, a calendar-sync toggle and account deletion were each rejected with a reason (ADR-0133 §7), because each is either fiction today or belongs to a surface that already owns it.
+- **Why a route, not the sheet it replaces:** a surface hosting a name field and a picture picker is the shape ADR-0090 warns about, and the sheet's three facts sit fine on a page. The sheet was **retired rather than kept as a step on the way** — every fact on it is already on the page, so keeping it would leave one surface whose only job is linking to another.
+- **Entry:** unchanged, and this is why "from the trip and outside" needed no new affordance — the account avatar already appears in the in-trip header (**ringed**, after the member cluster, next to the **⚙ trip-settings** gear: account = you, gear = this trip), on `/trips`, and on the zero state. Tapping it now **navigates** from all three.
+- **Back is entry-dependent — the first shell route with more than one legitimate parent.** From inside a trip back must land in the trip; from `/trips` it must land there. So the entry writes `?from=` as a **closed enum** (`home`/`trips`, never a path — an arbitrary `?return=<path>` is an open-redirect shape) and `parentRoute` reads it, keeping back a pure function of nav state and surviving a reload exactly as `?tab=`/`?day=` do. Anything unrecognised falls to `/trips`, the safe parent for a deep link nobody navigated to.
+- **Contents:** the avatar (tap → the picture page), the editable `displayName` (saved on blur; LWW, capped at `MAX_DISPLAY_NAME_LENGTH`), email (read-only — it is the account-linking key), the quiet `מחובר עם Google` line, and **Sign out** (deletes the refresh session server-side, ADR-0020). Sign-out is deliberately **not** the danger grammar: it is routine, and danger is reserved for the irreversible.
+- **`/settings/picture` — two states, not three peer sources (ADR-0133 §6):** a photo in use → the photo and `הסרת התמונה`, **no colour ramp**, because the hue would render nothing; no photo → the initials, **the ramp** under `צבע הרקע`, and `שימוש בתמונה מגוגל` when there is one. So the ramp is _revealed_ exactly when the colour is what gets drawn, and declining a photo is its own act before the hue is a choice. One primary action and one subordinate link, **stacked** — two side by side read as a segmented "pick a source" toggle. Upload + camera are designed and land in **Phase 4** with somewhere to put the bytes; until then they are **absent, not greyed**.
+- **A member's name/picture is not broadcast (ADR-0133 §8):** a `Change` is per-trip while a user spans many, so co-members see a rename at their next snapshot. Stated, not a bug.
+- **Google chrome is minimal:** Google is the auth mechanism, not a badge — member avatars carry **no** per-face Google dot; the connection is stated once, quietly, on this page.
+- **Design reference:** `mockups/user-settings-v1.html`.
 
 ### 7. Trip settings & members — `/trip/:id/settings` (in-trip)
 

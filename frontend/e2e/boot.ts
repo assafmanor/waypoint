@@ -8,7 +8,9 @@ const USER = {
   id: 'u1',
   email: 'assaf@example.com',
   displayName: 'Assaf',
-  avatarColor: '#3b5bdb',
+  avatarHue: 'denim',
+  avatarChoice: 'initials',
+  googleAvatarUrl: null,
   createdAt: '2024-01-01T00:00:00.000Z',
 };
 const MEMBERSHIP = {

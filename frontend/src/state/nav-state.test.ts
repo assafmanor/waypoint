@@ -25,6 +25,7 @@ describe('resolveBack — the one layer-peeling decision (ADR-0090, behavior of 
     insideTrip: false,
     tab: null,
     pathname: '/',
+    search: '',
     armed: false,
   };
 
@@ -70,6 +71,40 @@ describe('resolveBack — the one layer-peeling decision (ADR-0090, behavior of 
     expect(resolveBack({ ...base, pathname: '/trip/t1/settings' })).toEqual({
       kind: 'to',
       path: '/',
+    });
+  });
+
+  it('resolves /settings from `?from=`, the one shell route with two legitimate parents', () => {
+    // ADR-0133 §2. Entered from inside a trip, back must land IN the trip — a static
+    // parent would eject a member from their trip to edit their own name.
+    expect(resolveBack({ ...base, pathname: '/settings', search: '?from=home' })).toEqual({
+      kind: 'to',
+      path: '/',
+    });
+    // Entered from the all-trips home, back returns there.
+    expect(resolveBack({ ...base, pathname: '/settings', search: '?from=trips' })).toEqual({
+      kind: 'to',
+      path: '/trips',
+    });
+  });
+
+  it('falls /settings back to the all-trips home for anything unrecognised', () => {
+    // A cold deep link, a stale bookmark, a hand-typed value: the safe parent, never
+    // a guess. The param is a closed enum precisely so this branch is total.
+    for (const search of ['', '?from=', '?from=nonsense', '?from=%2Fetc%2Fpasswd', '?other=home']) {
+      expect(resolveBack({ ...base, pathname: '/settings', search })).toEqual({
+        kind: 'to',
+        path: '/trips',
+      });
+    }
+  });
+
+  it('hands the return target back up from the picture page', () => {
+    // The picture page is a child of the settings page, so one back reaches settings
+    // WITH `?from=` intact and the next one still lands where you came from.
+    expect(resolveBack({ ...base, pathname: '/settings/picture', search: '?from=home' })).toEqual({
+      kind: 'to',
+      path: '/settings?from=home',
     });
   });
 

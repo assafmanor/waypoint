@@ -24,13 +24,33 @@ export type IdentityHue = z.infer<typeof identityHueSchema>;
 export const avatarChoiceSchema = z.enum(['google', 'upload', 'initials']);
 export type AvatarChoice = z.infer<typeof avatarChoiceSchema>;
 
-/** djb2, the classic string hash — small, stable, and dependency-free. Stability is
- *  the whole requirement: the same id must pick the same hue on every runtime and
- *  every deploy, since this is what a user sees as "their" colour. */
+/** djb2 plus an avalanche finalizer (murmur3's `fmix32`). Stability is the whole
+ *  requirement — the same id must pick the same hue on every runtime and every
+ *  deploy, since this is what a user sees as "their" colour — so both halves are
+ *  plain integer arithmetic with no dependency and no randomness.
+ *
+ *  The finalizer is not decoration. Plain djb2 barely mixes its low bits, so short
+ *  ids sharing a prefix collapse onto the same `% 5`: the seed's own five users
+ *  (`u-assaf`, `u-noam`, `u-dana`, `u-maor`, `u-ron`) came out **plum, plum, rose,
+ *  cocoa, plum** — three of five identical, on exactly the ~5-person trip this
+ *  product is built for. Real ids are high-entropy cuids and would have hidden the
+ *  clustering; the seed's human-readable ids exposed it.
+ *
+ *  To be clear about what this does and does not buy: it fixes the CLUSTERING, not
+ *  collisions. Five hues over five people are all-distinct only ~4% of the time, so
+ *  a repeat inside a group is normal and expected — ADR-0133 §5 accepts it, because
+ *  the letter and the name identify and the hue only helps the eye. What is not
+ *  acceptable is a hash whose output barely depends on its input. */
 function hashString(s: string): number {
   let h = 5381;
   for (let i = 0; i < s.length; i++) h = (h * 33 + s.charCodeAt(i)) >>> 0;
-  return h;
+  // murmur3 fmix32 — spreads the low bits so a small modulus sees the whole hash.
+  h ^= h >>> 16;
+  h = Math.imul(h, 0x85ebca6b) >>> 0;
+  h ^= h >>> 13;
+  h = Math.imul(h, 0xc2b2ae35) >>> 0;
+  h ^= h >>> 16;
+  return h >>> 0;
 }
 
 /** The hue a user gets before they ever open the picture page.
