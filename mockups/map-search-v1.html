@@ -8976,6 +8976,18 @@ body {
       .map-arm[hidden] {
         display: none !important;
       }
+      /* MOCKUP-ONLY: the §8b sentinel, drawn so the mechanism can be SEEN. In the
+         app it is a zero-height element an `IntersectionObserver` watches; here it
+         is tinted while it is in view so "the trip's matches did not fill the list"
+         is visible rather than asserted. */
+      .mk-sentinel {
+        height: 2px;
+        margin: 0 4px;
+        background: var(--line);
+      }
+      .mk-sentinel.mk-seen {
+        background: var(--ok);
+      }
       /* MOCKUP-ONLY: where the long press landed, so the gesture has somewhere to
          point. In the app the pin is an `AdvancedMarker` at the tapped LatLng. */
       .mk-droppin {
@@ -9288,6 +9300,11 @@ body {
         <button data-stop="map">מפה (מקסימום)</button>
         <button data-stop="half" class="on">חצי (ברירת מחדל)</button>
         <button data-stop="full">רשימה מלאה</button>
+      </div>
+      <div class="mk-states">
+        <span class="mk-label">החצי המשולם · §8b</span>
+        <button data-fetch="lazy" class="on">לפי דרישה (האפיון)</button>
+        <button data-fetch="always">בכל הקשה</button>
       </div>
       <div class="mk-states">
         <span class="mk-label">מקום חדש</span>
@@ -10055,6 +10072,17 @@ body {
                         </span>
                       </div>
                     </div>
+                    <!-- ══ §8b: THE SENTINEL ══
+                         The fold is not a number — measured, a count threshold would
+                         have to be 1, 2, 3, 4, 5 or 6 depending on the stop and the
+                         screen, and the screen cannot measure its own viewport in a
+                         render path that runs every second (ADR-0121 §5). So the
+                         threshold IS the fold, read by the browser: one
+                         `IntersectionObserver` on this element. Visible on arrival →
+                         the trip's matches did not fill the list → fetch. Scrolled
+                         into view → fetch. Never visible → the trip answered, and
+                         nothing is spent. -->
+                    <div class="mk-sentinel" id="sentinel" aria-hidden="true"></div>
                     <!-- ══ §8: THE GOOGLE HALF, IN THE SHEET ══
                          `PlaceResearch` is re-parented, not rewritten: it already takes
                          only query/usageIndex/offline and renders `.map-research`, so
@@ -10072,6 +10100,10 @@ body {
                            one field; under §8 the user has one. What differentiates the
                            two corpora is the group header and the dashed `.map-badge.result`
                            — the app's own "listed, not yet ours" reading — not a gate. -->
+                      <div class="map-list" id="resskel" hidden>
+                        <div class="wp-skel wp-skel-block map-res-skel" style="height: 64px"></div>
+                        <div class="wp-skel wp-skel-block map-res-skel" style="height: 64px"></div>
+                      </div>
                       <div class="map-list" id="reslist">
                         <div class="place result">
                           <span class="map-res-open">
@@ -10759,6 +10791,8 @@ body {
       const shipped = document.getElementById('shippedoverlay');
       const research = document.getElementById('research');
       const reslist = document.getElementById('reslist');
+      const resskel = document.getElementById('resskel');
+      const sentinel = document.getElementById('sentinel');
       const queryCountBtn = document.getElementById('querycountbtn');
       const errand = document.getElementById('errand');
       const dropcard = document.getElementById('dropcard');
@@ -10773,6 +10807,11 @@ body {
       let query = '';
       let planMode = false;
       let promote = true;
+      // §8b. `lazy` is the design: the Google half is fetched on DEMAND, where demand
+      // is "the sentinel at the end of the trip's matches is on screen". `always` is
+      // what §8a alone would have done, kept so the two can be compared.
+      let fetchMode = 'lazy';
+      let fetched = false;
       const allDays = () => scopechip.classList.contains('on');
 
       // The fixture, authored: name + address, exactly the two fields
@@ -10850,8 +10889,14 @@ body {
         }
         // §8. The paid half needs a query to have anything to search, and it lives
         // in the SHEET, so it is only there while the row surface is the search.
-        // NO ARM (§8a): past the floor it is simply there.
-        research.hidden = !(searching && searchSurface === 'row' && query.trim().length >= 2);
+        // NO ARM (§8a): past the floor it is simply there — but FETCHED ON DEMAND
+        // (§8b), so "there" means "once the trip's matches failed to fill the list".
+        const pastFloor = searching && searchSurface === 'row' && query.trim().length >= 2;
+        if (!pastFloor) fetched = false;
+        research.hidden = !(pastFloor && (fetchMode === 'always' || fetched));
+        // While a deferred fetch is in flight the skeletons stand in for the rows;
+        // `pumpDemand` owns that window, so a re-render during it must not clear it.
+        if (resskel.hidden) reslist.hidden = research.hidden;
         const googleRows = research.hidden ? 0 : reslist.children.length;
         // §6. The count spans BOTH corpora, which is what makes the gap between it
         // and the pins on the canvas mean something at the `map` stop.
@@ -10996,6 +11041,7 @@ body {
         mark('[data-search]', (b) => b.dataset.search === searchSurface);
         mark('[data-q]', (b) => b.dataset.q === query);
         mark('[data-promote]', (b) => (b.dataset.promote === 'on') === promote);
+        mark('[data-fetch]', (b) => b.dataset.fetch === fetchMode);
 
         mark('[data-errand]', () => !errand.hidden);
         mark('[data-drop]', () => !dropcard.hidden);
@@ -11010,6 +11056,7 @@ body {
           );
         });
         measure();
+        requestAnimationFrame(pumpDemand);
       }
 
       document
@@ -11039,6 +11086,60 @@ body {
         .addEventListener('click', () => setDisclosure(disclosure === 'facets' ? null : 'facets'));
       document.querySelector('[data-kb]').addEventListener('click', () => setKb(kb.hidden));
       document.querySelector('[data-mode]').addEventListener('click', () => setMode(!planMode));
+
+      // §8b. THE DEMAND SIGNAL. In the app this is an `IntersectionObserver` on the
+      // sentinel; here the same question is asked directly of the DOM, on the same
+      // event that would answer it, so the mechanism is the mockup's too rather than
+      // a description of one. Visible → the trip's matches did not fill the list.
+      function sentinelInView() {
+        // `.wp-snapsheet-body` is THE one scroll region (snap-sheet.css); the
+        // `.map-sheet-scroll` inside it only carries the padding. Reading the wrong
+        // one is why a first pass here never saw the sentinel at all.
+        const scroller = document.querySelector('#sheet .wp-snapsheet-body');
+        const a = sentinel.getBoundingClientRect();
+        const box = scroller.getBoundingClientRect();
+        return a.top < box.bottom && a.bottom > box.top && box.height > 8;
+      }
+      function pumpDemand() {
+        const seen = sentinelInView();
+        sentinel.classList.toggle('mk-seen', seen);
+        if (fetchMode !== 'lazy' || fetched || !seen) return;
+        if (!(query.trim().length >= 2 && searchSurface === 'row')) return;
+        // The wait §8b states rather than hides: a debounce plus a round trip, with
+        // the skeletons `PlaceResearch` already renders standing in for it.
+        resskel.hidden = false;
+        research.hidden = false;
+        reslist.hidden = true;
+        setTimeout(() => {
+          fetched = true;
+          resskel.hidden = true;
+          applyQuery();
+          sync();
+        }, 550);
+      }
+      document
+        .querySelector('#sheet .wp-snapsheet-body')
+        .addEventListener('scroll', () => pumpDemand());
+      // THE REVEAL ANIMATES (ADR-0120's `0fr`/`1fr` track), so "did the trip's matches
+      // fill the list" cannot be answered on the frame the query changed: the rows
+      // that stopped matching still occupy their old height. A real
+      // `IntersectionObserver` is async and re-fires as layout settles, so it gets
+      // this right by construction — this file has to wait for the transition, which
+      // is one more argument for the observer over a hand-rolled measurement.
+      document
+        .getElementById('maplist')
+        .addEventListener('transitionend', (e) => {
+          if (e.propertyName === 'grid-template-rows') pumpDemand();
+        });
+      document.querySelectorAll('[data-fetch]').forEach((b) =>
+        b.addEventListener('click', () => {
+          fetchMode = b.dataset.fetch;
+          fetched = false;
+          applyQuery();
+          sync();
+          pumpDemand();
+        }),
+      );
 
       // §6. The count raises the sheet, and only where it has something to do.
       queryCountBtn.addEventListener('click', () => {
