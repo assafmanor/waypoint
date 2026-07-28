@@ -144,7 +144,7 @@ export function DayView() {
   usePlaceErrandReturn<EventFormDraft>('event', (returned) => {
     if (!returned.draft) return;
     setFormTarget(events.find((e) => e.id === returned.target.id) ?? 'new');
-    setFormDraft({ ...returned.draft, [returned.target.field]: returned.placeId });
+    setFormDraft(returned.draft);
   });
   // RE-OPENING AFTER A PLACE ERRAND (ADR-0134 §2), through the same shared hook every other
   // form host uses. Without this the sheet would come back closed and the rest of what was
@@ -153,7 +153,7 @@ export function DayView() {
   usePlaceErrandReturn<BookingSheetDraft>('booking', (returned) => {
     if (!returned.draft) return;
     setBookingTarget(bookings.find((b) => b.id === returned.target.id) ?? null);
-    setBookingDraft({ ...returned.draft, [returned.target.field]: returned.placeId });
+    setBookingDraft(returned.draft);
   });
   // Editing a booking-linked event opens the merged BookingSheet, not EventForm
   // (ADR-0053 §2) — the same surface as editing from the Index.

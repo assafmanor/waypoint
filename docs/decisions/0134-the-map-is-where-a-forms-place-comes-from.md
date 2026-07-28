@@ -312,3 +312,57 @@ The one thing that belongs here: at that stop the **place card** gained `בחי�
 errand, because a card is the only way to reach one of our own places there — without it a
 trip place would be pickable from the list and not from the canvas, on the tab that exists
 to show you where things are.
+
+## Build log addendum (2026-07-28, session 168) — three more from the same pass
+
+### `ביטול` has to give the form back, and §2 only ever said so for the success path
+
+> _"Canceling a place pin doesn't return to the event form."_
+
+§2 says the errand carries a draft because "leaving a form for a tab would otherwise lose a
+half-typed event". The build honoured that on the way **in** and on a successful pick, and
+`cancelErrand` navigated to `returnTo` handing **nothing** over — so the host had nothing to
+re-open from and the half-typed event died anyway, through the other exit. The draft is not
+insurance against choosing wrong; it is insurance against leaving, and both exits leave.
+
+So a cancel hands the draft back with `placeId: null`, and `PlaceErrandResult.placeId` is
+nullable to say exactly that. Handed **only when there is a draft**: a saved booking's errand
+patches in place and has no form to restore, so an empty result would be left pending for a
+host that never wants it.
+
+**And the assignment moved into the hook** while this was being fixed. All five hosts wrote
+`{ ...draft, [target.field]: placeId }` — the one expression whose whole point is that
+`field` is not optional (§2), copied five times, one host away from being written slightly
+differently. `usePlaceErrandReturn` now returns the draft **already merged**, which is also
+what makes the cancel path free: no place, no merge, draft unchanged.
+
+### Arriving on an errand opens the query field
+
+> _"Opening map search for event/booking doesn't start on keyboard open."_
+
+You were sent here to **find** a place, so the tab opens on the control that does that; the
+field's own `autoFocus` brings the keyboard. It spends nothing — the min-chars floor is what
+stands between a keystroke and a paid call — and it lands on the **free** half first, which
+is the fact §1 reconciled this whole reversal on: the trip's own places filter from the first
+character, at no cost, offline.
+
+Once per errand, keyed on the errand object rather than a boolean: closing the field is a
+decision, and re-opening it under the user is the nag `locationOffered` already exists to
+prevent (ADR-0109 §6).
+
+### The context demotion exempts a search result — per pin, not per screen
+
+> _"I don't see them on the canvas either, on search for event/booking."_ …and then, on the
+> first fix: _"not every trip pin — just search results that are already saved."_
+
+Session 166's demotion asks **"is this what you are choosing"**, and a place your search
+surfaced is an answer to that question, not the backdrop to it. Shipped, it shrank the one
+place you were looking for to a ~14px dot among full-size rings.
+
+The first fix turned the demotion off whenever a query was live, which is right by accident
+today (under a query every pin on the canvas is a match) and wrong in principle — it would
+promote anything the canvas carried for any other reason. The owner's correction is the
+better rule and the one the file already had a shape for: the exemption rides on the **pin**
+(`MapPin.match`, read by `:not(.match)`), exactly as ADR-0131 §4 put the `aside` withdrawal
+on the pin rather than on the screen. `match` is derived from the very predicate that admits
+the pin, so the flag and the filter cannot drift.

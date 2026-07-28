@@ -88,6 +88,13 @@ export interface MapPin {
    *  not the tier, so the `frame` control frames the matches for free; the amber cues
    *  and the day connector deliberately keep reading the tier. */
   aside?: boolean;
+  /** **This pin is a result of the live query** — either half of the search found it
+   *  (session 168). Its one reader is the errand's context demotion, which asks "is this
+   *  what you are choosing" and must not answer "no" about a place your search just
+   *  surfaced. On the PIN rather than on the screen for the same reason `aside` is: a
+   *  screen-wide switch would promote whatever else the canvas carries, and separating the
+   *  two is what ADR-0131 §4 was for. */
+  match?: boolean;
   /** Position in the day's sequence, or absent when it has none (§6). */
   order?: number;
   /** The single amber time-anchor the canvas allows — Trip mode, exactly one pin. */
@@ -351,6 +358,7 @@ const PinMarker = memo(function PinMarker({
     // the flag reads as a WITHDRAWAL rather than as a field every caller must remember.
     // Same `??` shape as `isFramedByCamera`, for the same reason.
     (pin.aside ?? isAsidePin(pin.tier)) && 'aside',
+    pin.match && 'match',
     pin.nextStop && 'nextstop',
     pin.nowStop && 'nowstop',
     pin.selected && 'selected',

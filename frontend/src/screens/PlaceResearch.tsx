@@ -23,7 +23,6 @@
 import type { PlaceResult } from '@waypoint/shared';
 import type { UsePlaceSearch } from '../lib/usePlaceSearch';
 import { mapsPredictionUrl } from '../lib/places';
-import type { PlaceUsage } from '../lib/place-usage';
 import { Skeleton, StatusBanner } from '../ui/feedback';
 import { Icon } from '../ui/Icon';
 import { t } from '../i18n/he';
@@ -32,9 +31,6 @@ export function PlaceResearch({
   /** The screen's live search — one control, two halves (ADR-0115 §1), owned one level
    *  up now that its results are also pins (ADR-0132 §7). */
   search,
-  /** The place-usage index the tab already derives, so "already in the trip" and
-   *  "already on the shelf" cost nothing and read the same rule as the list. */
-  usageIndex,
   offline,
   /** The result currently selected on the canvas — a ring tap selects its row, which is
    *  the pin↔row rule this tab already runs in the other direction (ADR-0132 §8). */
@@ -53,7 +49,6 @@ export function PlaceResearch({
   onAdd,
 }: {
   search: UsePlaceSearch;
-  usageIndex: Map<string, PlaceUsage>;
   offline: boolean;
   selectedId: string | null;
   chooseMode: boolean;
@@ -84,23 +79,29 @@ export function PlaceResearch({
       )}
 
       <div className="map-list">
-        {search.predictions.map((result) => {
-          const inTrip = search.alreadyInTrip(result);
-          const onShelf = inTrip ? (usageIndex.get(inTrip.id)?.isMaybe ?? false) : false;
-          return (
+        {/* A RESULT THE TRIP ALREADY OWNS IS NOT SHOWN HERE AT ALL (session 168). It used to
+            render as a row saying `כבר בטיול`, which was the only row for it — the trip half
+            had not matched the text Google matched — and the owner's report is what that
+            costs: you search for a place you own and the app shows you Google's version of
+            it. The trip's own row is now in the list above (`ownedResults` in `Map.tsx`),
+            carrying its day, its time, what happens there and the way in to every reference.
+            So this half drops it rather than repeating it worse: **one place, one row, and
+            it is ours** — the same rule the ring already follows on the canvas (ADR-0132 §6).
+            It also removes a duplicate that shipped: a place we own whose name DID match our
+            text was listed twice, once as ours and once as Google's. */}
+        {search.predictions
+          .filter((result) => !search.alreadyInTrip(result))
+          .map((result) => (
             <ResultRow
               key={result.googlePlaceId}
               result={result}
-              inTrip={inTrip != null}
-              onShelf={onShelf}
               selected={selectedId === result.googlePlaceId}
               chooseMode={chooseMode}
               busy={addingId === result.googlePlaceId}
               onShow={() => onShow(result)}
               onAdd={() => onAdd(result)}
             />
-          );
-        })}
+          ))}
       </div>
 
       <p className="map-res-foot">{t.placePicker.costFooter}</p>
@@ -127,10 +128,12 @@ export function PlaceResearch({
 // this row over the canvas (ADR-0122 §7). Its body is inert there — `onShow` is absent —
 // because framing the place you are already looking at does nothing, which is exactly why
 // the trip row's card drops `onSelect` too.
+//
+// It has no "already in the trip" state any more (session 168) — a result we own is not
+// rendered here at all, because the trip's own row is, so there is nothing left for this row
+// to say about ownership.
 export function ResultRow({
   result,
-  inTrip,
-  onShelf,
   selected,
   chooseMode,
   busy,
@@ -138,10 +141,6 @@ export function ResultRow({
   onAdd,
 }: {
   result: PlaceResult;
-  /** Something in the trip already references this place: state it, don't re-add. */
-  inTrip: boolean;
-  /** …and it's an unconsumed idea, so it's already exactly where ＋ אולי would put it. */
-  onShelf: boolean;
   selected: boolean;
   /** The verb is `בחירה`, not `＋ אולי` (ADR-0134 §3). */
   chooseMode: boolean;
@@ -195,31 +194,25 @@ export function ResultRow({
         >
           <Icon name="external" />
         </a>
-        {inTrip ? (
-          <span className={'map-instate' + (onShelf ? ' shelf' : '')}>
-            {onShelf ? t.map.research.onShelf : t.map.research.inTrip}
-          </span>
-        ) : (
-          <button
-            type="button"
-            className="map-addmaybe"
-            disabled={busy}
-            aria-label={
-              chooseMode
-                ? t.map.errand.chooseAria(result.primaryText)
-                : t.map.research.addAria(result.primaryText)
-            }
-            onClick={onAdd}
-          >
-            {chooseMode ? (
-              t.map.errand.choose
-            ) : (
-              <>
-                <span aria-hidden="true">＋</span> {t.map.research.add}
-              </>
-            )}
-          </button>
-        )}
+        <button
+          type="button"
+          className="map-addmaybe"
+          disabled={busy}
+          aria-label={
+            chooseMode
+              ? t.map.errand.chooseAria(result.primaryText)
+              : t.map.research.addAria(result.primaryText)
+          }
+          onClick={onAdd}
+        >
+          {chooseMode ? (
+            t.map.errand.choose
+          ) : (
+            <>
+              <span aria-hidden="true">＋</span> {t.map.research.add}
+            </>
+          )}
+        </button>
       </span>
     </div>
   );

@@ -63,7 +63,7 @@ export function PlanHome({ onNavigate }: { onNavigate: (tab: TabId) => void }) {
   usePlaceErrandReturn<BookingSheetDraft>('booking', (returned) => {
     if (!returned.draft) return;
     // A seed host: nothing exists to look up, so the draft alone re-opens the sheet.
-    setBookingDraft({ ...returned.draft, [returned.target.field]: returned.placeId });
+    setBookingDraft(returned.draft);
   });
 
   const [uploadingDoc, setUploadingDoc] = useState(false);

@@ -73,10 +73,17 @@ export interface PlaceErrand {
 }
 
 /** What comes back: the errand, plus the place that was chosen. The form host takes it
- *  and re-opens itself from the draft with the place assigned. */
+ *  and re-opens itself from the draft with the place assigned.
+ *
+ *  **`placeId` is `null` on a cancel**, and that is not a degenerate case — it is the other
+ *  half of §2 (owner, session 168: _"canceling a place pin doesn't return to the event
+ *  form"_). A form that went to the map with a half-typed event has to come back whichever
+ *  way the errand ends; `ביטול` losing what you typed is the same loss the draft exists to
+ *  prevent, just through the other exit. So the form re-opens either way, with the place
+ *  assigned or with nothing touched. */
 export interface PlaceErrandResult {
   errand: PlaceErrand;
-  placeId: string;
+  placeId: string | null;
 }
 
 interface MapScope {
@@ -231,8 +238,14 @@ export function useTakePlaceErrandResult(
  *  host is the only end that knows the shape, which is the whole reason the channel does
  *  not), plus the place that was chosen and the field it belongs in. */
 export interface ReturnedPlaceErrand<D> {
+  /** The form's own state, **with the chosen place already in the named field** — or exactly
+   *  as it left on a cancel. The merge lives here rather than at each host because all five
+   *  wrote the same expression, and one of them writing it slightly differently is how a
+   *  transport booking gets the right place on the wrong side of the journey. */
   draft: D | null;
-  placeId: string;
+  /** The place that was chosen, or `null` if the errand was cancelled. Already applied to
+   *  `draft`; exposed because a host may want to know which way it ended. */
+  placeId: string | null;
   target: PlaceErrandTarget;
 }
 
@@ -267,8 +280,15 @@ export function usePlaceErrandReturn<D>(
   useEffect(() => {
     const result = take?.();
     if (!result) return;
+    const draft = (result.errand.draft as D | undefined) ?? null;
     applyRef.current({
-      draft: (result.errand.draft as D | undefined) ?? null,
+      // Assigned here, once, rather than at five call sites (see `ReturnedPlaceErrand`).
+      // A cancel carries no place, so the draft comes back untouched — which is what makes
+      // `ביטול` re-open the form instead of losing it.
+      draft:
+        draft && result.placeId
+          ? { ...draft, [result.errand.target.field]: result.placeId }
+          : draft,
       placeId: result.placeId,
       target: result.errand.target,
     });

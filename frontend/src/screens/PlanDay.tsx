@@ -681,7 +681,7 @@ export function PlanDay() {
   usePlaceErrandReturn<EventFormDraft>('event', (returned) => {
     if (!returned.draft) return;
     setFormTarget(events.find((e) => e.id === returned.target.id) ?? 'new');
-    setFormDraft({ ...returned.draft, [returned.target.field]: returned.placeId });
+    setFormDraft(returned.draft);
   });
 
   // RE-OPENING AFTER A PLACE ERRAND (ADR-0134 §2), through the same shared hook every other
@@ -691,7 +691,7 @@ export function PlanDay() {
   usePlaceErrandReturn<BookingSheetDraft>('booking', (returned) => {
     if (!returned.draft) return;
     setBookingTarget(bookings.find((b) => b.id === returned.target.id) ?? null);
-    setBookingDraft({ ...returned.draft, [returned.target.field]: returned.placeId });
+    setBookingDraft(returned.draft);
   });
 
   const builderCtx: BuilderCtx = {

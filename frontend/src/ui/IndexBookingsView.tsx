@@ -70,7 +70,7 @@ export function IndexBookingsView({
   usePlaceErrandReturn<BookingSheetDraft>('booking', (returned) => {
     if (!returned.draft) return;
     setSheet(bookings.find((b) => b.id === returned.target.id) ?? 'create');
-    setBookingDraft({ ...returned.draft, [returned.target.field]: returned.placeId });
+    setBookingDraft(returned.draft);
   });
 
   const [detail, setDetail] = useState<Booking | null>(null);
