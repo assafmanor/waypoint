@@ -33,7 +33,15 @@ Two defects in the file itself, both worth recording because the second is a moc
 
 ## One rule that fell out, covering three cases
 
-**A canvas control whose answer lives in the list normalises the sheet to `half`.** A row tap already does it. The area sort does it, because its order is invisible at the `map` stop. And a **refused locate** does it — which is what lets #19's refusal case need no new card and no second copy of the refusal sentence, since ADR-0122 §6 deliberately left that notice in the list's scroll region.
+**A canvas control whose answer lives in the list normalises the sheet to `half`.** A row tap already does it. The area sort does it, because its order is invisible at the `map` stop. And a **locate that cannot deliver** does it — which is what lets #19's refusal case need no new card and no second copy of the refusal sentence, since ADR-0122 §6 deliberately left that notice in the list's scroll region.
+
+### The correction that rule needed, found in review
+
+The rule was first written as "a **refused** locate normalises the sheet", and §6's table branched on the permission state **at the tap**. Asked whether `focus(me)` prompts when GPS is off, the answer exposed the hole: it never prompts (it is a camera call, and only runs with a fix in hand), but **"location is off" is three states and the Permissions API only sees two of them.** Device location services off, or airplane mode, sits at `permission: 'granted'` and still fails — `POSITION_UNAVAILABLE`/`TIMEOUT`, `refused` false, `status: 'unavailable'` — and that is knowable only **after** the request settles.
+
+`showNotice` already covers `unavailable`, so the copy was right; the sheet rule was not. A locate tap at the `map` stop with the radio off would have spun, failed, and filed its explanation into a list that is not on screen — which is the silent-nothing #19 is a report about, reintroduced one branch over. So **the rule keys on the settled outcome (`denied` _or_ `unavailable`), not on the pre-tap state.** ADR-0126 §6 and §7 amended before the PR merged.
+
+Worth keeping as a shape, not just a fix: a permission query answers "may we ask", never "can the device deliver", and a design that branches only on the former has an invisible fourth branch.
 
 ## Why session 138's split is what made #19 cheap
 

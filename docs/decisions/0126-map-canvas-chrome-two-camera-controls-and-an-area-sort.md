@@ -78,14 +78,18 @@ What changes is the **button's promise**, not the number. It does not promise "t
 
 ### 6. Locate with no permission routes to the card that is already allowed to ask
 
-Locate becomes locate-only and stops branching on whether there is a fix:
+Locate becomes locate-only and stops branching on whether there is a fix. Two things it never does: `focus(me)` is a camera call and cannot prompt — it only runs with a fix already in hand — and the control itself never calls `getCurrentPosition`. Only `geo.request()`, behind the card, can raise a dialog.
 
-| State                            | What locate does                                                                                 |
+| State at the tap                 | What locate does                                                                                 |
 | -------------------------------- | ------------------------------------------------------------------------------------------------ |
 | Fix in hand                      | Centres on you. (Phase 3 adds the zoom, and #20's repeat-tap step-in.)                           |
-| `granted`, no coordinates yet    | Requests; the button reads its locating state.                                                   |
+| `granted`, no coordinates yet    | Requests; the button reads its locating state. **The outcome is not knowable here** — see below. |
 | `prompt` / unknown / unsupported | Opens the **existing reason-first pre-prompt** — the same card the chip opens.                   |
 | `denied` / `blocked`             | Sets the intent and normalises the sheet to `half`, so the existing refusal banner is on screen. |
+
+**The table branches on the state at the tap, and one state is only knowable afterwards.** "Location is off" is three different things and the Permissions API answers about only two of them: it reports whether _permission_ exists, never whether the device can actually produce a fix. So a device with location services off, or in airplane mode, can sit at `permission: 'granted'` and still fail — `getCurrentPosition` calls back with `POSITION_UNAVAILABLE`/`TIMEOUT`, `refused` is false, and `useGeolocation` lands on **`status: 'unavailable'`** with `blocked` false. No dialog of ours appears; some platforms raise their own "turn on Location Services" alert, which is the OS's and is neither detectable nor controllable from a web page.
+
+`showNotice` already covers that state (`locationRefused` is `denied || unavailable`), and the notice is the right answer — but it lives in the **list's** scroll region, so **the rule in §7 has to key on the request's outcome, not only on the pre-tap state.** When a locate-initiated request settles to `denied` **or** `unavailable`, the sheet normalises to `half`. Without that clause a locate tap at the `map` stop with the radio off spins, fails, and files its explanation somewhere that is not on screen — the silent-nothing that #19 is a report about, reintroduced one branch over.
 
 **ADR-0121 §12's invariant survives intact: the pre-prompt is still the only thing allowed to ask.** What is amended is the claim that re-centre "never requests the permission" — a second control may now _route to_ the card. That is exactly the piece ADR-0122 §2 handed forward: at the `map` stop the near-me chip is absent, so nothing on the canvas could ask at all, and the stopgap ("one tap on the view toggle") retires.
 
@@ -95,7 +99,9 @@ Locate becomes locate-only and stops branching on whether there is a fix:
 
 ### 7. One rule covers three cases: a canvas control whose answer lives in the list normalises the sheet to `half`
 
-A row tap already does this (ADR-0121 §8 / ADR-0122 §7). The area sort does it, because the order it produces is invisible at the `map` stop. And a refused locate does it, because ADR-0122 §6 deliberately left the refusal notice in the list's scroll region — it explains the _list's_ order — and at the `map` stop that region is not on screen. Stating it as one rule is what keeps the refusal from growing a second card with a second copy of the same sentence.
+A row tap already does this (ADR-0121 §8 / ADR-0122 §7). The area sort does it, because the order it produces is invisible at the `map` stop. And a locate that **cannot deliver** does it, because ADR-0122 §6 deliberately left that notice in the list's scroll region — it explains the _list's_ order — and at the `map` stop that region is not on screen. Stating it as one rule is what keeps the refusal from growing a second card with a second copy of the same sentence.
+
+**The trigger is the outcome, not the tap.** A hard refusal is known before the request (`blocked`), but an unobtainable fix is only known when the request fails (§6), so the rule fires on the settled state: `denied` or `unavailable`, whichever way it was reached. Writing it as "a refused locate normalises the sheet" was this ADR's own first draft and it silently missed the radio-off case — the one shape of "location is off" that a permission query cannot see coming.
 
 ### 8. What this does not touch
 
