@@ -8,7 +8,7 @@
 // lodging), seeds the day builder, or the settings invite — not a bare tab
 // switch. Completed checks collapse into a summary. Only rows we can honestly
 // derive appear; Gmail / Google-connection / WhatsApp stay out (ADR-0045/0004).
-import { useState } from 'react';
+import { useEffect, useState } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { BOOKING_TYPE } from '@waypoint/shared';
 import { useTrip } from '../state/trip-state';
@@ -17,7 +17,8 @@ import { daysUntilStart, tripPhase } from '../lib/mode';
 import { dayPhrase } from '../lib/hebrew';
 import { countdownParts, formatTripDates } from '../lib/time';
 import { computeReadiness, type CheckId, type ReadinessCheck } from '../lib/readiness';
-import { BookingSheet, type BookingSeed } from '../ui/BookingSheet';
+import { BookingSheet, type BookingSeed, type BookingSheetDraft } from '../ui/BookingSheet';
+import { useReturnedPlaceErrand } from '../state/map-scope-state';
 import { DocumentUploadSheet } from '../ui/DocumentUploadSheet';
 import { StatTile } from '../ui/domain';
 import { CollapseToggle, Collapsible } from '../ui/primitives/Collapsible';
@@ -55,6 +56,20 @@ export function PlanHome({ onNavigate }: { onNavigate: (tab: TabId) => void }) {
   // A create-form open seeded by a checklist CTA (null = closed). The row that
   // opened it decides the booking type (and, for a flight, the missing leg).
   const [sheetSeed, setSheetSeed] = useState<BookingSeed | null>(null);
+  // RE-OPENING AFTER A PLACE ERRAND (ADR-0134 §2), through the same shared hook every other
+  // form host uses: without it the sheet returns closed and the rest of what was typed is
+  // gone, which is the whole reason the errand carries a draft.
+  const [bookingDraft, setBookingDraft] = useState<BookingSheetDraft | null>(null);
+  const returnedBooking = useReturnedPlaceErrand<BookingSheetDraft>('booking');
+  useEffect(() => {
+    if (!returnedBooking?.draft) return;
+    // A seed host: nothing exists to look up, so the draft alone re-opens the sheet.
+    setBookingDraft({
+      ...returnedBooking.draft,
+      [returnedBooking.target.field]: returnedBooking.placeId,
+    });
+  }, [returnedBooking]);
+
   const [uploadingDoc, setUploadingDoc] = useState(false);
   const [showCompleted, setShowCompleted] = useState(false);
 
@@ -311,8 +326,16 @@ export function PlanHome({ onNavigate }: { onNavigate: (tab: TabId) => void }) {
         />
       </div>
 
-      {sheetSeed && (
-        <BookingSheet booking={null} seed={sheetSeed} onClose={() => setSheetSeed(null)} />
+      {(sheetSeed || bookingDraft) && (
+        <BookingSheet
+          booking={null}
+          seed={sheetSeed ?? undefined}
+          draft={bookingDraft}
+          onClose={() => {
+            setSheetSeed(null);
+            setBookingDraft(null);
+          }}
+        />
       )}
       {uploadingDoc && (
         <DocumentUploadSheet tripId={trip.id} onClose={() => setUploadingDoc(false)} />

@@ -18,7 +18,7 @@ import {
   type TripEvent,
 } from '@waypoint/shared';
 import { useTrip, byStart } from '../state/trip-state';
-import { useShowPlaceOnMap } from '../state/map-scope-state';
+import { useReturnedPlaceErrand, useShowPlaceOnMap } from '../state/map-scope-state';
 import { prefersReducedMotion } from '../lib/motion';
 import {
   authoringZone,
@@ -61,8 +61,8 @@ import {
 } from '../lib/day-entries';
 import { CODE_PREFIX, DAY_NOON, ICONS, MS_PER_DAY } from '../constants';
 import { t } from '../i18n/he';
-import { EventForm } from '../ui/EventForm';
-import { BookingSheet } from '../ui/BookingSheet';
+import { EventForm, type EventFormDraft } from '../ui/EventForm';
+import { BookingSheet, type BookingSheetDraft } from '../ui/BookingSheet';
 import { BookingDetail } from '../ui/BookingDetail';
 import { TransitionRow } from '../ui/TransitionRow';
 import { TitleLabel } from '../ui/TitleLabel';
@@ -133,9 +133,37 @@ export function DayView() {
   const showPlaceOnMap = useShowPlaceOnMap();
   const [openId, setOpenId] = useState<string | null>(null);
   const [formTarget, setFormTarget] = useState<'new' | TripEvent | null>(null);
+  // RE-OPENING AFTER A PLACE ERRAND (ADR-0134 §2). The form went to the Map tab to have a
+  // location picked, which unmounted it — so it comes back from its own draft with the
+  // chosen place already in the named field, rather than from whatever the entity holds.
+  const [formDraft, setFormDraft] = useState<EventFormDraft | null>(null);
+  const closeForm = () => {
+    setFormTarget(null);
+    setFormDraft(null);
+  };
+  const returned = useReturnedPlaceErrand<EventFormDraft>('event');
+  useEffect(() => {
+    if (!returned?.draft) return;
+    setFormTarget(events.find((e) => e.id === returned.target.id) ?? 'new');
+    setFormDraft({ ...returned.draft, [returned.target.field]: returned.placeId });
+  }, [returned, events]);
+  // RE-OPENING AFTER A PLACE ERRAND (ADR-0134 §2), through the same shared hook every other
+  // form host uses. Without this the sheet would come back closed and the rest of what was
+  // typed would be gone — the whole reason the errand carries a draft.
+  const [bookingDraft, setBookingDraft] = useState<BookingSheetDraft | null>(null);
+  const returnedBooking = useReturnedPlaceErrand<BookingSheetDraft>('booking');
+  useEffect(() => {
+    if (!returnedBooking?.draft) return;
+    setBookingTarget(bookings.find((b) => b.id === returnedBooking.target.id) ?? null);
+    setBookingDraft({
+      ...returnedBooking.draft,
+      [returnedBooking.target.field]: returnedBooking.placeId,
+    });
+  }, [returnedBooking, bookings]);
   // Editing a booking-linked event opens the merged BookingSheet, not EventForm
   // (ADR-0053 §2) — the same surface as editing from the Index.
   const [bookingTarget, setBookingTarget] = useState<Booking | null>(null);
+
   // Tapping a transition row opens the read-only booking detail (ADR-0053/0064),
   // the same pattern as the Index; editing from there opens the BookingSheet.
   const [detailTarget, setDetailTarget] = useState<Booking | null>(null);
@@ -341,12 +369,20 @@ export function DayView() {
           defaults={
             formTarget === 'new' ? nextSlot(dayEvents, activeDate, trip.timezone) : undefined
           }
-          onClose={() => setFormTarget(null)}
+          draft={formDraft}
+          onClose={closeForm}
         />
       )}
 
-      {bookingTarget && (
-        <BookingSheet booking={bookingTarget} onClose={() => setBookingTarget(null)} />
+      {(bookingTarget || bookingDraft) && (
+        <BookingSheet
+          booking={bookingTarget}
+          draft={bookingDraft}
+          onClose={() => {
+            setBookingTarget(null);
+            setBookingDraft(null);
+          }}
+        />
       )}
 
       {detailTarget && (

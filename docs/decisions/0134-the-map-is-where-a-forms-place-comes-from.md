@@ -1,6 +1,6 @@
 # 0134 — The map is where a form's place comes from, and a row tap **commits**
 
-**Status:** Accepted — designed 2026-07-28 (session 163); **§5–§8 built session 163, and the errand's mechanism + `BookingDetail`'s caller built session 164** (see the [Build log](#build-log-2026-07-28-session-164--the-errands-mechanism-and-three-owner-corrections)). **The forms' draft path (§2's expensive half) and §9's retirement are NOT built.** Three owner corrections from a device pass are recorded in that log, one of which reverses ADR-0131 §8's grouping. Three owner requests, designed together because they are one idea.
+**Status:** Accepted — designed 2026-07-28 (session 163); **§5–§8 built session 163, and the errand's mechanism + `BookingDetail`'s caller built session 164** (see the [Build log](#build-log-2026-07-28-session-164--the-errands-mechanism-and-three-owner-corrections)). **§2's draft path is built (session 165); §9's retirement is not — `PlacePickerSheet` has one caller left, the Map's own enrich.** Three owner corrections from a device pass are recorded in that log, one of which reverses ADR-0131 §8's grouping. Three owner requests, designed together because they are one idea.
 **Date:** 2026-07-28
 
 **Amends** [0131](0131-map-search-is-a-control-not-a-screen.md) **§10** — its conclusion is **reversed by the owner**: the errand becomes the **route** for a form's place, where §10 (after four corrections) made the picker answer in place and the canvas the exception. §10's contract survives; what changes is who takes it and what it has to carry (§1/§2).
@@ -202,3 +202,35 @@ of the forms. What remains is exactly §2's expensive half: a draft the form ser
 rehydrates from, and a host that re-opens it on return. The channel, the errand mode, the
 verbs and the return are all in place and tested; nothing about them changes when the forms
 arrive. `PlacePickerSheet` therefore does **not** retire yet (§9).
+
+## Build log addendum (2026-07-28, session 165) — the draft path, and what it cost
+
+§2's expensive half is built. `EventForm` and `BookingSheet` each own a **draft type**
+(`EventFormDraft`, `BookingSheetDraft`) that they write when the field launches an errand
+and rehydrate from when they re-open. `PlacePicker` gained one prop, `onFind`: given it, the
+field launches the errand; without it (or outside the trip shell, where there is no Map tab)
+it keeps its own sheet, which is what keeps the field usable anywhere.
+
+**The form writes the draft, not the field.** The field has no idea what else is half-typed
+above it, and that is the whole reason `onFind` is a callback rather than a flag.
+
+**Five hosts, one hook.** `BookingSheet` is hosted by `DayView`, `PlanDay`, `PlanHome`,
+`IndexBookingsView` and the Map tab itself; `EventForm` by two. Seven copies of
+"take the answer and re-open" is exactly the parallel copy rule 8 exists to prevent, so
+`useReturnedPlaceErrand<D>(kind)` is the one mechanism, reporting the payload **once** so
+re-opening is an event and not a state a host can get stuck in.
+
+**And wiring all five was not optional, which is worth stating.** The tempting shortcut was
+to wire only the host whose main job is booking editing. But an errand started from a sheet
+opened anywhere else would then return to a **closed** sheet with the rest of the edits
+gone — the exact failure the draft exists to prevent, reintroduced in four places. A host
+that renders a form owes it a way back.
+
+**What each draft deliberately omits:** `error`, `saving`, `deleting`. Those describe the
+last save attempt, not anything the user typed, and carrying them would restore a stale
+error message on return.
+
+**Not built, and now the only thing left of §9:** the Map tab's own `＋ מיקום` enrich path
+still opens `PlacePickerSheet`, so the sheet has exactly one caller left. Retiring it needs
+the errand to grow a fourth target — a coordless `Place` being enriched in place, which is
+not an entity field but a row — and that is a small decision rather than a mechanical one.

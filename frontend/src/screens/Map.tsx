@@ -31,7 +31,7 @@ import {
 } from '@waypoint/shared';
 import { useTrip } from '../state/trip-state';
 import { useMode } from '../state/mode-state';
-import { useMapScope } from '../state/map-scope-state';
+import { useMapScope, useReturnedPlaceErrand } from '../state/map-scope-state';
 import { useIsOffline } from '../lib/outbox';
 import {
   buildPlaceUsageIndex,
@@ -106,7 +106,7 @@ import { SnapSheet } from '../ui/primitives/SnapSheet';
 import { MapPane, type MapPin, type MapResultPin } from '../ui/domain/MapPane';
 import { PlaceResearch } from './PlaceResearch';
 import { BookingDetail } from '../ui/BookingDetail';
-import { BookingSheet } from '../ui/BookingSheet';
+import { BookingSheet, type BookingSheetDraft } from '../ui/BookingSheet';
 import { PlaceBadge } from '../ui/domain/PlaceBadge';
 import { EmptyState, StatusBanner } from '../ui/feedback';
 import { Icon } from '../ui/Icon';
@@ -324,6 +324,19 @@ export function MapView() {
   // merged `BookingSheet` the Index uses.
   const [detailBooking, setDetailBooking] = useState<Booking | null>(null);
   const [editBooking, setEditBooking] = useState<Booking | null>(null);
+  // RE-OPENING AFTER A PLACE ERRAND (ADR-0134 §2), through the same shared hook every other
+  // form host uses: without it the sheet returns closed and the rest of what was typed is
+  // gone, which is the whole reason the errand carries a draft.
+  const [bookingDraft, setBookingDraft] = useState<BookingSheetDraft | null>(null);
+  const returnedBooking = useReturnedPlaceErrand<BookingSheetDraft>('booking');
+  useEffect(() => {
+    if (!returnedBooking?.draft) return;
+    setEditBooking(bookings.find((b) => b.id === returnedBooking.target.id) ?? null);
+    setBookingDraft({
+      ...returnedBooking.draft,
+      [returnedBooking.target.field]: returnedBooking.placeId,
+    });
+  }, [returnedBooking, bookings]);
 
   // ── The rendered map (Phase 6, ADR-0121) ──────────────────────────────────
   // Config is read ONCE: it is a build var, so it cannot change while mounted, and
@@ -1742,7 +1755,16 @@ export function MapView() {
           }}
         />
       )}
-      {editBooking && <BookingSheet booking={editBooking} onClose={() => setEditBooking(null)} />}
+      {(editBooking || bookingDraft) && (
+        <BookingSheet
+          booking={editBooking}
+          draft={bookingDraft}
+          onClose={() => {
+            setEditBooking(null);
+            setBookingDraft(null);
+          }}
+        />
+      )}
     </>
   );
 

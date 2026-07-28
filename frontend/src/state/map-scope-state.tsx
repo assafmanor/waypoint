@@ -31,7 +31,15 @@
 //
 // None of it is a back layer: the sheet height and the scope chip are view state
 // like each other, and back leaves the tab (ADR-0103's typed-layer model).
-import { createContext, useCallback, useContext, useMemo, useState, type ReactNode } from 'react';
+import {
+  createContext,
+  useCallback,
+  useContext,
+  useEffect,
+  useMemo,
+  useState,
+  type ReactNode,
+} from 'react';
 import { useNavigate } from 'react-router-dom';
 import { useHandoff, type Handoff } from '../lib/handoff';
 import { tabTarget } from './nav-state';
@@ -216,4 +224,40 @@ export function useTakePlaceErrandResult(
     if (!result) return null;
     return () => (result.pending?.errand.target.kind === kind ? result.take() : null);
   }, [result, kind]);
+}
+
+/** **A form host, on the way back** (ADR-0134 §2). Takes the returning result for this
+ *  entity kind, once, and reports it so the host can re-open its form from the draft with
+ *  the chosen place already in the named field.
+ *
+ *  One hook rather than a copy per host: `DayView` and `PlanDay` both host the event form,
+ *  `IndexBookingsView` and two others host the booking sheet, and five copies of
+ *  "take it and re-open" is exactly the parallel copy rule 8 exists to prevent. `take()`
+ *  is once-only, so even if two hosts were mounted at once only one could win — the
+ *  return navigates to `returnTo`, so in practice one is.
+ *
+ *  `null` until something comes back, and `null` again for the rest of the host's life:
+ *  the payload is reported ONCE, so re-opening is an event and not a state the host can
+ *  get stuck in. */
+export function useReturnedPlaceErrand<D>(
+  kind: PlaceErrandTarget['kind'],
+): { draft: D | null; placeId: string; target: PlaceErrandTarget } | null {
+  const take = useTakePlaceErrandResult(kind);
+  const [returned, setReturned] = useState<{
+    draft: D | null;
+    placeId: string;
+    target: PlaceErrandTarget;
+  } | null>(null);
+  useEffect(() => {
+    const result = take?.();
+    if (!result) return;
+    setReturned({
+      // Opaque in the channel, typed here — the host is the only end that knows the shape,
+      // which is the whole reason the channel does not.
+      draft: (result.errand.draft as D | undefined) ?? null,
+      placeId: result.placeId,
+      target: result.errand.target,
+    });
+  }, [take]);
+  return returned;
 }
