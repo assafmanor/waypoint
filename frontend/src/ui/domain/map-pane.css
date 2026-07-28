@@ -135,7 +135,9 @@
 }
 /* Commitment is the hard/soft GRAMMAR, never a colour (ADR-0011/0028) — and these
    are exactly what `PinElement` cannot draw. Each mirrors its `.place`
-   counterpart: `.soft`, `.skipped`.
+   counterpart: `.soft`, and `.skipped` — which on a PIN is the behind-you tier, so
+   the row it mirrors is `.place.behind` (the row's own `.skipped` is the narrower
+   human outcome the canvas does not draw).
 
    `.ambient` is deliberately absent: a strictly-middle stay night draws as an
    ORDINARY pin (ADR-0109's 2026-07-27 amendment). It used to be desaturated, but on

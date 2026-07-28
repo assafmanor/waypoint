@@ -715,6 +715,40 @@ describe('comparePlacesBySchedule (the list reads in trip order)', () => {
       });
     });
 
+    // The row's fade now reads this block rather than a human's `skipped` (#21), so
+    // the predicate has to tell "the clock passed it" from "you are sleeping there
+    // tonight" — the distinction ADR-0109's 2026-07-27 amendment rests on. Asserted in
+    // BOTH scopes: they resolve a stay's day differently (the middle night day-scoped,
+    // the live day all-days), so one of them passing says nothing about the other.
+    it('a stay’s middle night is not behind you, in either scope', () => {
+      const idx = buildPlaceUsageIndex(
+        [
+          event({
+            id: 'stay',
+            placeId: 'hotel',
+            date: '2026-07-05',
+            endDate: '2026-07-10',
+            startsAt: '2026-07-05T15:00:00Z',
+            endsAt: '2026-07-10T10:00:00Z',
+            category: 'lodging',
+          }),
+          event({ id: 'e', placeId: 'morning', date: DAY, startsAt: at('09:00') }),
+        ],
+        [],
+        [],
+        [place('hotel'), place('morning')],
+      );
+      const hotel = idx.get('hotel')!;
+      const morning = idx.get('morning')!;
+      for (const onDate of [undefined, DAY]) {
+        const ctx = { onDate, nowMs: NOW, today: DAY };
+        expect(placeBlock(hotel, ctx)).toBe(PLACE_BLOCK.ahead);
+        // …while a stop the clock HAS passed is behind you in both, which is the
+        // asymmetry the canvas already drew and the list did not.
+        expect(placeBlock(morning, ctx)).toBe(PLACE_BLOCK.behind);
+      }
+    });
+
     it('an untimed event on a passed day sinks with it, despite having no clock', () => {
       const idx = buildPlaceUsageIndex(
         [

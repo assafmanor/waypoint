@@ -1174,16 +1174,19 @@ describe('MapView (Phase 3, ADR-0109/0110)', () => {
       expect(orderOf('someday')).toBeNull();
     });
 
-    it('all-days: the numbering follows the trip’s sequence, and an idea still has none', () => {
+    // §6 defined the number as the index in THE DAY's sequence, so all-days it had
+    // nothing to index: it sequenced the whole trip and a pin read `27`. Renumbering
+    // per day would put two pins both reading `1` on one canvas with nothing saying
+    // which day either is — so the number goes, on the row and the pin together
+    // (they read one map), and the day is stated in words where it was ambiguous.
+    it('all-days: nobody is numbered, and the row names its day instead', () => {
       seedDay();
       render(wrap(<MapView />));
       tapAllDays();
-      expect(orderOf('breakfast')).toBe('1');
-      expect(orderOf('museum')).toBe('2');
-      expect(orderOf('dinner')).toBe('3');
-      expect(orderOf('tomorrow')).toBe('4');
-      // An idea was never put in a sequence — nothing scheduled it.
-      expect(orderOf('someday')).toBeNull();
+      for (const name of ['breakfast', 'museum', 'dinner', 'tomorrow', 'someday']) {
+        expect(orderOf(name)).toBeNull();
+      }
+      expect(row('tomorrow')?.querySelector('.map-tag.time')?.textContent).toContain('מחר');
     });
 
     // The invariant the number exists under: it is the index in the SCOPED set,
@@ -1201,10 +1204,12 @@ describe('MapView (Phase 3, ADR-0109/0110)', () => {
       expect(orderOf('breakfast')).toBe('1');
       expect(orderOf('dinner')).toBe('3');
 
+      // The other scope, where the invariant holds for a different reason: there is
+      // no number to renumber, and the facet is still doing its job.
       tapAllDays();
-      expect(orderOf('breakfast')).toBe('1');
-      expect(orderOf('dinner')).toBe('3');
-      expect(orderOf('tomorrow')).toBe('4');
+      expect(orderOf('breakfast')).toBeNull();
+      expect(orderOf('dinner')).toBeNull();
+      expect(filteredOut('museum')).toBe(true);
     });
 
     // Phase 4 made an ambient stay night read as present rather than faded; this is the
@@ -1423,6 +1428,104 @@ describe('MapView (Phase 3, ADR-0109/0110)', () => {
       expect(hotel.className).not.toContain('ambient');
       expect(hotel.className).not.toContain('skipped');
       expect(orderOf('hotel')).toBe('1');
+    });
+  });
+
+  // Reported from the field (#21): the canvas faded a place once the clock had passed
+  // it, the list only once a HUMAN had skipped it — so the two halves of the split made
+  // different claims about the same place. The row now reads the block, which is the
+  // same `isDayUsagePast` the header and `מה נשאר` read (ADR-0124). The paint is CSS
+  // and a human pass; what the suite holds down is which rows carry the class.
+  describe('a place behind you fades in the list too (#21)', () => {
+    const NOON = Date.parse(`${ACTIVE_DATE}T12:00:00Z`);
+    const at = (hhmm: string) => `${ACTIVE_DATE}T${hhmm}:00Z`;
+    // Two PLACES, not two events on one: references on the same date merge into one
+    // day, so a behind/ahead fixture needs two places to have two answers.
+    const seedPassed = () => {
+      setSimulatedNow(NOON);
+      tripPlaces = [place('morning', true), place('evening', true)];
+      tripEvents = [
+        event({ id: 'e1', placeId: 'morning', category: 'food', startsAt: at('09:00') }),
+        event({ id: 'e2', placeId: 'evening', category: 'food', startsAt: at('20:00') }),
+      ];
+    };
+
+    // Both scopes: they resolve a place's day differently (this day, or the day it is
+    // live on), so one of them passing says nothing about the other.
+    it('the passed stop carries it and the one still ahead does not, in either scope', () => {
+      seedPassed();
+      render(wrap(<MapView />));
+      expect(row('morning')!.className).toContain('behind');
+      expect(row('evening')!.className).not.toContain('behind');
+
+      tapAllDays();
+      expect(row('morning')!.className).toContain('behind');
+      expect(row('evening')!.className).not.toContain('behind');
+    });
+
+    // The trap this class exists to avoid (ADR-0109's 2026-07-27 amendment): the fade
+    // session 137 took OFF the ambient tier, because the hotel you are sleeping in
+    // tonight read as finished. Keyed on the clock, it must not come back.
+    it('the night you are sleeping in is not behind you, in either scope', () => {
+      setSimulatedNow(NOON);
+      tripPlaces = [place('hotel', true)];
+      tripEvents = [
+        event({
+          id: 'stay',
+          placeId: 'hotel',
+          category: 'lodging',
+          date: '2026-07-19',
+          endDate: '2026-07-21',
+          startsAt: '2026-07-19T15:00:00Z',
+          endsAt: '2026-07-21T10:00:00Z',
+        }),
+      ];
+      render(wrap(<MapView />));
+      expect(row('hotel')!.className).toContain('ambient');
+      expect(row('hotel')!.className).not.toContain('behind');
+      tapAllDays();
+      expect(row('hotel')!.className).not.toContain('behind');
+    });
+
+    // A human outranks the clock (ADR-0117 §2), so tonight's dinner marked היינו at
+    // noon is behind you now — and the row said nothing about that before, since the
+    // old fade only ever fired on `skipped`.
+    it('a place marked היינו before its time fades, without claiming it was skipped', () => {
+      setSimulatedNow(NOON);
+      tripPlaces = [place('dinner', true)];
+      tripEvents = [
+        event({
+          id: 'd',
+          placeId: 'dinner',
+          category: 'food',
+          status: EVENT_STATUS.DONE,
+          startsAt: at('20:00'),
+        }),
+      ];
+      render(wrap(<MapView />));
+      expect(row('dinner')!.className).toContain('behind');
+      expect(row('dinner')!.className).not.toContain('skipped');
+      expect(row('dinner')!.textContent).toContain(t.event.didThis);
+    });
+
+    // The two claims coincide here and are still not the same claim: the clock passed
+    // it AND a human said it did not happen. Both classes land, and the CSS gives such
+    // a row the skipped treatment alone rather than a second fade on top of it.
+    it('a skipped place carries both, since a skip is also behind you', () => {
+      setSimulatedNow(NOON);
+      tripPlaces = [place('bailed', true)];
+      tripEvents = [
+        event({
+          id: 'b',
+          placeId: 'bailed',
+          category: 'food',
+          status: EVENT_STATUS.SKIPPED,
+          startsAt: at('10:00'),
+        }),
+      ];
+      render(wrap(<MapView />));
+      expect(row('bailed')!.className).toContain('behind');
+      expect(row('bailed')!.className).toContain('skipped');
     });
   });
 

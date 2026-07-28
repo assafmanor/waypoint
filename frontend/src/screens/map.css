@@ -614,6 +614,24 @@
   border-color: rgba(233, 166, 60, 0.34);
   box-shadow: 0 0 0 3px rgba(233, 166, 60, 0.22);
 }
+/* Behind you, on the CLOCK — the row's half of the pin's `saturate(.3)`. The two
+   halves of the split used to disagree about exactly this: the pin faded once a place
+   was behind you, the row only once a human had SKIPPED it. Keyed on the block
+   (`isDayUsagePast`, ADR-0124's single answer to "is this closed"), so the fade, the
+   `מה שמאחורינו` header and `מה נשאר` cannot make different claims about one place.
+
+   Light on purpose: the header already says it in words, so this reinforces the
+   message rather than carrying it. And NOT `.place.skipped`, which would be wrong
+   twice — that treatment is what session 137 took off the ambient tier (ADR-0109's
+   2026-07-27 amendment: the hotel you sleep in tonight read as finished), and it
+   means *a human said this did not happen*, which is a different claim from *the
+   clock passed it*. The `:not()` is what keeps a skipped-and-past row from wearing
+   both: this filter would otherwise compound with the badge's own below. */
+.place.behind:not(.skipped) {
+  filter: saturate(0.55);
+  opacity: 0.9;
+}
+
 /* A skipped place is handled and not happening (ADR-0117 §4): present, but not a live
    commitment.
 

@@ -88,9 +88,15 @@ const ideaOrUpcoming = (usage: PlaceUsage): PinTier =>
 
 /**
  * `placeId → the pin's number`: the index in `comparePlacesBySchedule`'s
- * sequence for this scope, 1-based (ADR-0121 §6). Three properties the callers
+ * sequence for **a day**, 1-based (ADR-0121 §6). Four properties the callers
  * depend on, all of them consequences of how this is computed:
  *
+ * - **Only a day scope numbers anything.** §6 defined the number as the index in
+ *   THE DAY's sequence, so all-days has nothing for it to be an index of: the
+ *   comparator would sequence the whole trip and a pin would read `27`, which
+ *   answers a question nobody asked. Both halves lose it together because they
+ *   read this one map, and it is not a loss — an all-days row states its day in
+ *   words (`relativeDayLabel`) exactly where the number was ambiguous.
  * - **A filter never renumbers.** `usages` is the whole SCOPED set, before any
  *   chip is applied — the same shape `listRows` takes, where visibility is a
  *   predicate over a fixed array (ADR-0120 session-130). Gaps (`1, 3, 4`) are
@@ -110,9 +116,14 @@ export function buildPinOrderIndex(
   ctx: { nameOf: PlaceOrderContext['nameOf']; onDate?: string },
 ): Map<string, number> {
   const { nameOf, onDate } = ctx;
-  // No `nowMs` here, and that is the invariant: `placeDay` resolves the all-days
-  // case against the clock when it is given one, so passing it would let a tick
-  // change which day a place is numbered by.
+  // No day, no sequence to be an index in — and renumbering per day is worse than
+  // nothing: two pins both reading `1` on one canvas, with nothing on either saying
+  // which day it belongs to.
+  if (!onDate) return new Map();
+  // Still no `nowMs`, and the omission stays deliberate now that the guard above
+  // makes it unreachable: it is the signature that states a number cannot depend on
+  // the clock. `placeDay` resolves the ALL-DAYS case against a clock when given one,
+  // so a `PlaceOrderContext` here would be a tick away from renumbering a pin.
   const numbered = usages.filter((u) => hasScheduleSlot(placeDay(u, { onDate })));
   numbered.sort((a, b) => comparePlacesBySchedule(a, b, { nameOf, onDate }));
   return new Map(numbered.map((usage, i) => [usage.placeId, i + 1]));
@@ -125,7 +136,8 @@ export function buildPinOrderIndex(
  *
  * Within `upcoming` an earlier number sits higher — on the ground the stop you
  * reach first is the one you are looking for. `ORDER_SPREAD` bounds that nudge
- * so a big number can never outrank a lower tier.
+ * so a big number can never outrank a lower tier. All-days nothing is numbered,
+ * so the nudge is simply inert there and the tier order carries the whole thing.
  */
 const TIER_Z: Record<PinTier, number> = {
   [PIN_TIER.upcoming]: 400,
