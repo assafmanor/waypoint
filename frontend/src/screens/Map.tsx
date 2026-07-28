@@ -74,7 +74,7 @@ import { usePlaceSearch } from '../lib/usePlaceSearch';
 import { useVerbs } from '../state/verbs';
 import { stopHeightCss } from '../lib/snap-sheet';
 import { countVisible, revealRows, visibleItems, type Revealed } from '../lib/filter-reveal';
-import { daySelectTarget, useBackLayer } from '../state/nav-state';
+import { daySelectTarget, useBackLayer, withBookingDetail } from '../state/nav-state';
 import { useNavigate } from 'react-router-dom';
 import { formatTime, relativeDayLabel } from '../lib/time';
 import { eventEdgeTransition } from '../lib/transitions';
@@ -223,6 +223,18 @@ export function MapView() {
   //    belongs to its own guarded form rather than to a patch from here, ADR-0011). The
   //    place is handed BACK and the form's host re-opens it from the draft. That is the
   //    expensive path, and it is paid only where it is needed.
+  // WHERE THE RETURN ACTUALLY LANDS. `returnTo` is a URL, and the Index's bookings screen
+  // is view state rather than a route (ADR-0098) — so for a saved booking it needs the
+  // deep link that re-opens the detail, which the Index already reads. Everywhere else the
+  // host is still mounted and re-opens itself from the channel, and `withBookingDetail`
+  // leaves those paths alone (session 171: the first fix re-opened it in three hosts and
+  // dropped the user on the Index landing in the fourth).
+  const returnPath = useCallback(
+    (taken: PlaceErrand) =>
+      taken.target.id ? withBookingDetail(taken.returnTo, taken.target.id) : taken.returnTo,
+    [],
+  );
+
   const finishErrand = useCallback(
     (placeId: string) => {
       const taken = errand.take();
@@ -241,7 +253,7 @@ export function MapView() {
       // DRAFT re-opens the form, one with only a saved `target.id` re-opens that booking's
       // detail. No second mechanism, and no route for a sheet that deliberately has none.
       errandResult.hand({ errand: taken, placeId });
-      navigate(taken.returnTo, { replace: true });
+      navigate(returnPath(taken), { replace: true });
     },
     [errand, errandResult, navigate, indexVerbs],
   );
@@ -260,7 +272,7 @@ export function MapView() {
     const taken = errand.take();
     if (!taken) return;
     if (taken.draft || taken.target.id) errandResult.hand({ errand: taken, placeId: null });
-    navigate(taken.returnTo, { replace: true });
+    navigate(returnPath(taken), { replace: true });
   }, [errand, errandResult, navigate]);
   useBackLayer(() => {
     cancelErrand();
@@ -1070,6 +1082,15 @@ export function MapView() {
   // Same latest-ref shape as `onPinTap`, so `MapPane`'s memo survives the clock tick.
   const onResultTap = useRef<(googlePlaceId: string) => void>(() => {});
   onResultTap.current = (googlePlaceId: string) => {
+    // **TAPPING WHAT IS ALREADY SELECTED COMMITS IT** (owner, session 171). Not a double
+    // tap and not a gesture: the first tap already means "this one", so the second one on
+    // the SAME ring can only mean "yes, that one" — which is `בחירה` without travelling to
+    // the row. Errand-scoped, because outside an errand there is nothing to commit to.
+    if (pendingErrand && selectedResultId === googlePlaceId) {
+      const result = research.predictions.find((r) => r.googlePlaceId === googlePlaceId);
+      if (result) void addResult(result);
+      return;
+    }
     setSelectedId(null);
     setGhostId(null);
     setSelectedResultId(googlePlaceId);
@@ -1147,6 +1168,14 @@ export function MapView() {
   // stable while its body still sees this render's state.
   const onPinTap = useRef<(placeId: string) => void>(() => {});
   onPinTap.current = (placeId: string) => {
+    // The same "tap what is already selected to commit it" the rings take (session 171) —
+    // the owner's `＋ or existing`, so both populations answer a second tap the same way.
+    // It composes with ADR-0134 §3 rather than reversing it: the FIRST tap still only
+    // selects, so you still look before you commit.
+    if (pendingErrand && selectedId === placeId) {
+      finishErrand(placeId);
+      return;
+    }
     const usage = usageIndex.get(placeId);
     // An aside pin's row is not in the sheet, so the tap surfaces that one row instead.
     // Keyed on the REASON rather than on one tier: what makes the row missing is that the
@@ -2176,10 +2205,6 @@ function PlaceRow({
     <div
       className={rowClass}
       data-place={usage.placeId}
-      // The same double-tap shortcut the result rows carry (owner, session 170), and the
-      // same scope: only while `בחירה` is the row's verb. One list, one gesture — a trip
-      // row and a Google row are answers to the same question under an errand.
-      onDoubleClick={onChoose}
       {...(onSelect
         ? {
             role: 'button',

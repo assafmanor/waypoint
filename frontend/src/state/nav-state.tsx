@@ -61,6 +61,27 @@ export function settingsPath(from: SettingsFrom): string {
  *  state. Deep-linkable + reload-surviving via `?day=YYYY-MM-DD`. Home carries no
  *  `?day=`, so it always derives to today. Written with `replace`. */
 export const DAY_PARAM = 'day';
+/** Open the Index's bookings screen with one booking's DETAIL on top (ADR-0050's quick
+ *  access). Named here beside the other params now that it has a second writer. */
+export const BOOKING_PARAM = 'booking';
+
+/** **Re-open a booking's detail on the way back** (session 171). The Index's bookings
+ *  screen is view state inside `Index.tsx`, not a route (ADR-0098), and the detail on top
+ *  of it is a `Modal` — so returning to the Index tab's URL renders the LANDING, with the
+ *  booking you were looking at nowhere in sight. Every other host of that detail stays
+ *  mounted and re-opens itself; this one cannot, because it is gone.
+ *
+ *  So the return uses the deep link that already exists for exactly this shape of problem,
+ *  rather than inventing a route for a sheet that deliberately has none. Applied only when
+ *  the destination IS the Index tab: anywhere else the host is still mounted and the param
+ *  would be litter nothing clears. */
+export function withBookingDetail(path: string, bookingId: string): string {
+  const [base, query = ''] = path.split('?');
+  const params = new URLSearchParams(query);
+  if (params.get(TAB_PARAM) !== 'index') return path;
+  params.set(BOOKING_PARAM, bookingId);
+  return `${base}?${params.toString()}`;
+}
 /** The anchor tab: back from any other tab returns here, then exits to /trips. */
 export const HOME_TAB: TabId = 'home';
 /** Where leaving a trip lands (ADR-0033 all-trips home). */

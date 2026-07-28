@@ -17,6 +17,7 @@ import { IndexDocumentsView } from '../ui/IndexDocumentsView';
 import { IndexTile } from '../ui/domain';
 import { Icon } from '../ui/Icon';
 import { ICONS } from '../constants';
+import { BOOKING_PARAM } from '../state/nav-state';
 import { t } from '../i18n/he';
 
 type IndexView = 'landing' | 'bookings' | 'documents';
@@ -37,7 +38,7 @@ export function Index() {
   // The params are cleared after so back/reload don't re-trigger.
   const [params, setParams] = useSearchParams();
   useEffect(() => {
-    const id = params.get('booking');
+    const id = params.get(BOOKING_PARAM);
     const focus = params.get('focus');
     if (!id && !focus) return;
     if (id) {
@@ -48,7 +49,7 @@ export function Index() {
       setView('documents');
     }
     const next = new URLSearchParams(params);
-    next.delete('booking');
+    next.delete(BOOKING_PARAM);
     next.delete('focus');
     setParams(next, { replace: true });
   }, [params, setParams]);
