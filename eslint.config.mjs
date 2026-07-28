@@ -77,7 +77,16 @@ export default tseslint.config(
   {
     rules: {
       // ponytail: no-any left off — conventions.md requires a comment, not a lint block
-      '@typescript-eslint/no-unused-vars': ['warn', { argsIgnorePattern: '^_' }],
+      // A leading `_` marks a binding that exists precisely so it can be LEFT OUT: an
+      // omitted argument, or a key destructured only to keep it out of a `...rest` spread
+      // (`mergeBookingDetails`, `outboxOpToCacheChanges`, `readMapsConfig`'s test). The
+      // convention was already declared for arguments and the omit-by-destructuring case
+      // is the same statement about variables, so it says both rather than carrying six
+      // disable comments — or, worse, six rewrites of correct code.
+      '@typescript-eslint/no-unused-vars': [
+        'warn',
+        { argsIgnorePattern: '^_', varsIgnorePattern: '^_' },
+      ],
     },
   },
   {
