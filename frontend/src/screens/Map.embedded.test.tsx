@@ -1221,6 +1221,19 @@ describe('the embedded map’s shell (ADR-0121)', () => {
         expect(errandReturn()).toBe('cancelled');
       });
 
+      // The same double-tap shortcut the result rows carry (owner, session 170), on the
+      // trip's own rows: one list, one gesture. Errand-scoped, because `בחירה` is the verb
+      // it stands in for — a trip row outside an errand has `נווט` and nothing to commit.
+      it('a double tap on a trip row chooses it, and does nothing without an errand', () => {
+        seed();
+        render(wrap(<MapView />));
+        fireEvent.doubleClick(row('museum')!);
+        expect(errandAnswer()).toBe('');
+        startErrand();
+        fireEvent.doubleClick(row('museum')!);
+        expect(errandAnswer()).toBe('museum');
+      });
+
       // A card is the only way to reach one of OUR places at the map extreme, so it has to
       // carry the verb too — otherwise a trip place is pickable from the list and not from
       // the canvas, on the tab that exists to show you where things are.

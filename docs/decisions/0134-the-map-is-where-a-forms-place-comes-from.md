@@ -385,3 +385,49 @@ correction the owner already made once.
 **The camera half of the same screenshot is in [ADR-0129](0129-map-camera-moves-like-a-camera.md) §2's amendment** — the focus
 reach took the furthest of the nearest three unconditionally, so a close neighbour could not
 tighten the frame.
+
+## Build log addendum (2026-07-28, session 170) — the return owed to a booking, and a double tap
+
+### `returnTo` is a URL, and half the things you can be looking at have none
+
+> _"Return to booking isn't working."_
+
+§2 gives the errand a draft because a form is a `Modal` with local state that no URL
+addresses. **The saved-booking path has the same problem and no draft**, and the build missed
+it: `finishErrand` patched the booking, navigated to `returnTo`, and handed nothing over — so
+the return rendered the screen with every sheet closed. The place was correctly assigned to a
+booking you could no longer see. `ביטול` was worse: the same landing, nothing assigned.
+
+The draft was never really about the typing. It is about the fact that **the URL does not
+describe what was on screen** — and a `BookingDetail` (a `Modal`) inside `IndexBookingsView`
+(view state, not a route, ADR-0098) is two layers of exactly that.
+
+So the result is handed back on **both** exits, and the host re-opens what it owns: a result
+with a **draft** re-opens the form, one with only a saved `target.id` re-opens that booking's
+**detail**. All four `BookingDetail` hosts already ran `usePlaceErrandReturn`, so this is one
+branch each — the channel §2 built, reaching the one case it had not covered.
+
+### A double tap is the verb
+
+> _"Double clicking on a map result should select it (same as selecting then clicking on
+> `בחירה`)."_
+
+§3 split looking from committing — the tap frames, `בחירה` assigns — and that split stands;
+this is a **shortcut through it**, not a reversal. The two single taps still fire first, so
+the sequence is literally the one the report describes.
+
+**Errand-scoped, on both row kinds**, because §3's verb is what it stands in for: a trip row
+and a Google row are answers to the same question while an errand is live. Outside one the
+verb shelves a `MaybeItem`, and a stray double tap that silently adds something is a
+different feature nobody asked for. No gesture machinery — `touch-action: manipulation` is
+app-wide (ADR-0062), so a `dblclick` already arrives promptly.
+
+### And an audit that is mostly not fixed
+
+The rest of the report (_"some backs aren't working intuitively… and more edge cases that I
+want you to identify"_) is five findings in
+[`planning/2026-07-28-session-170-back-audit-and-the-double-tap.md`](../planning/2026-07-28-session-170-back-audit-and-the-double-tap.md),
+recorded rather than fixed. The two worth naming here: **a non-Home tab backs to trip Home
+even when you arrived from elsewhere** (ADR-0090 §2 working as designed — changing it is that
+ADR's amendment, not a bug fix), and **an errand now costs two backs** because session 168's
+auto-opened query field registers a second layer over it.

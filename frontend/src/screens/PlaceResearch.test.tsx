@@ -132,6 +132,22 @@ describe('PlaceResearch (Phase 5, ADR-0115; presentational since ADR-0132)', () 
     expect(onAdd).toHaveBeenCalledWith(r);
   });
 
+  // A DOUBLE TAP IS THE VERB (owner, session 170) — look, then commit, without travelling
+  // to the button. Errand mode only: outside it the verb shelves a `MaybeItem`, and a stray
+  // double tap that silently adds something is not a shortcut anyone asked for.
+  it('a double tap chooses the result, but only under an errand', () => {
+    const r = result('g-1', 'Blue Bottle');
+    view({ predictions: [r], chooseMode: true });
+    fireEvent.doubleClick(document.querySelector('[data-result="g-1"]') as HTMLElement);
+    expect(onAdd).toHaveBeenCalledWith(r);
+    cleanup();
+    onAdd.mockClear();
+
+    view({ predictions: [r] });
+    fireEvent.doubleClick(document.querySelector('[data-result="g-1"]') as HTMLElement);
+    expect(onAdd).not.toHaveBeenCalled();
+  });
+
   it('a result mid-add is disabled, so a double tap cannot buy it twice', () => {
     view({ predictions: [result('g-1', 'teamLab Borderless')], addingId: 'g-1' });
     expect(
