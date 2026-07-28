@@ -9287,6 +9287,7 @@ body {
       <div class="mk-states">
         <span class="mk-label">השאילתה</span>
         <button data-q="" class="on">ריקה</button>
+        <button data-q="שי">שי · מתחת לרצפה</button>
         <button data-q="שינ">שינ · 4 התאמות</button>
         <button data-q="זזז">זזז · אין התאמות</button>
       </div>
@@ -9303,8 +9304,8 @@ body {
       </div>
       <div class="mk-states">
         <span class="mk-label">החצי המשולם · §8b</span>
-        <button data-fetch="lazy" class="on">לפי דרישה (האפיון)</button>
-        <button data-fetch="always">בכל הקשה</button>
+        <button data-fetch="always" class="on">בכל הפסקה (האפיון)</button>
+        <button data-fetch="lazy">לפי דרישה (נפסל · הידית)</button>
       </div>
       <div class="mk-states">
         <span class="mk-label">מקום חדש</span>
@@ -10072,7 +10073,7 @@ body {
                         </span>
                       </div>
                     </div>
-                    <!-- ══ §8b: THE SENTINEL ══
+                    <!-- ══ §8b's REJECTED LEVER: THE SENTINEL ══
                          The fold is not a number — measured, a count threshold would
                          have to be 1, 2, 3, 4, 5 or 6 depending on the stop and the
                          screen, and the screen cannot measure its own viewport in a
@@ -10081,7 +10082,13 @@ body {
                          `IntersectionObserver` on this element. Visible on arrival →
                          the trip's matches did not fill the list → fetch. Scrolled
                          into view → fetch. Never visible → the trip answered, and
-                         nothing is spent. -->
+                         nothing is spent.
+
+                         NOT SHIPPED. The design fetches on every pause past the floor,
+                         because the count of trip matches is not evidence about
+                         relevance and withholding breaks the near-miss case. This is
+                         kept drawn and working so the lever can be felt if ADR-0108
+                         §6's budget alert ever argues for it. -->
                     <div class="mk-sentinel" id="sentinel" aria-hidden="true"></div>
                     <!-- ══ §8: THE GOOGLE HALF, IN THE SHEET ══
                          `PlaceResearch` is re-parented, not rewritten: it already takes
@@ -10512,11 +10519,19 @@ body {
             <b>כל חיפוש בלשונית עולה כסף</b>, בשני המצבים. התקרה היא רשת, לא שער.
           </li>
           <li>
-            <b>הקלה אחת זולה, מומלצת ולא מונחת:</b> <code>PLACE_SEARCH_MIN_CHARS</code> הוא
-            <b>2</b>. שני תווים בעברית מתאימים לחלק גדול מעיר, ולכן שאילתה של 2 תווים היא קריאה
-            משולמת שלא יכולה להחזיר תשובה שימושית — היא הייתה בלתי מזיקה כל זמן שחמישה עמדה
-            לפניה. העלאת הרצפה לא נגרעת ממשתמש והיא מסירה קודם את הקריאות הכי פחות שימושיות.
-            הושאר <b>כהמלצה</b>, כי "כמה תווים הם שאילתה אמיתית" זו שאלה על שמות מקומות בעברית.
+            <b>וההוצאה נלקחת בחזרה דרך הרצפה, לא דרך פקד:</b>
+            <code>PLACE_SEARCH_MIN_CHARS</code> עולה מ־<b>2</b> ל־<b>3</b>. שני תווים בעברית
+            מתאימים לחלק גדול מעיר, ולכן שאילתה של שני תווים היא קריאה משולמת ש<b>לא יכולה</b>
+            להחזיר תשובה שימושית — והיא נורית בדרך לכל שאילתה שבאה אחריה. לחצו ⟨שי⟩ כדי לראות
+            את הרצפה: אין קבוצת <code>מגוגל</code> בכלל.
+          </li>
+          <li>
+            <b>ולמה לא לגדר לפי מספר ההתאמות בטיול</b> (הצעת הבעלים, ונפסלה): <b>מספר ההתאמות
+            אינו עדות לרלוונטיות</b>. התאמה בטיול היא לא בהכרח <i>ה</i>התאמה, והמקרה שמכריע הוא
+            <b>הפספוס הקרוב</b> — מחפשים <code dir="auto">בלו בוטל</code>, בטיול שמור
+            <i>קיוסומי</i>, ורוצים את זה שבשיבויה. עם גידור, האפליקציה שותקת והמסקנה הסבירה היא
+            "אין עוד" — <b>מסקנה שגויה שנוצרה מההסתרה</b>. הידית קיימת ומצוירת ב־⟨לפי דרישה⟩,
+            אבל היא לא האפיון.
           </li>
           <li>
             <b>מה שהקובץ הזה תפס, ולא הייתי מנחש:</b> <code>.map-arm</code> ו־<code>.map-addmaybe</code>
@@ -10770,6 +10785,11 @@ body {
       // Approximations, and the panel says so: an iOS QuickType keyboard on a
       // 390-wide phone, and a small-Android one. The real number is a device pass.
       const KB_H = { 390: 336, 360: 300 };
+      // §8b, owner's number: `PLACE_SEARCH_MIN_CHARS` 2 → 3. Two characters of Hebrew
+      // match a large fraction of a city, so a 2-char query is a paid request that
+      // cannot return a useful answer — and it fires on the way to every query after
+      // it. Shared by `usePlaceSearch` and `useDestinationSearch`, so one number.
+      const MIN_CHARS = 3;
 
       const screenEl = document.getElementById('screen');
       const sheetEl = document.getElementById('sheet');
@@ -10807,10 +10827,12 @@ body {
       let query = '';
       let planMode = false;
       let promote = true;
-      // §8b. `lazy` is the design: the Google half is fetched on DEMAND, where demand
-      // is "the sentinel at the end of the trip's matches is on screen". `always` is
-      // what §8a alone would have done, kept so the two can be compared.
-      let fetchMode = 'lazy';
+      // §8b. `always` IS the design: the Google half fetches on every pause past the
+      // floor, because the count of trip matches is not evidence about relevance and
+      // withholding breaks the near-miss case. `lazy` is the REJECTED alternative,
+      // kept drawn and working — the way map-chrome-v1 keeps its vertical column — so
+      // the lever can be felt if ADR-0108 §6's budget alert ever argues for it.
+      let fetchMode = 'always';
       let fetched = false;
       const allDays = () => scopechip.classList.contains('on');
 
@@ -10891,7 +10913,7 @@ body {
         // in the SHEET, so it is only there while the row surface is the search.
         // NO ARM (§8a): past the floor it is simply there — but FETCHED ON DEMAND
         // (§8b), so "there" means "once the trip's matches failed to fill the list".
-        const pastFloor = searching && searchSurface === 'row' && query.trim().length >= 2;
+        const pastFloor = searching && searchSurface === 'row' && query.trim().length >= MIN_CHARS;
         if (!pastFloor) fetched = false;
         research.hidden = !(pastFloor && (fetchMode === 'always' || fetched));
         // While a deferred fetch is in flight the skeletons stand in for the rows;
@@ -11104,7 +11126,7 @@ body {
         const seen = sentinelInView();
         sentinel.classList.toggle('mk-seen', seen);
         if (fetchMode !== 'lazy' || fetched || !seen) return;
-        if (!(query.trim().length >= 2 && searchSurface === 'row')) return;
+        if (!(query.trim().length >= MIN_CHARS && searchSurface === 'row')) return;
         // The wait §8b states rather than hides: a debounce plus a round trip, with
         // the skeletons `PlaceResearch` already renders standing in for it.
         resskel.hidden = false;

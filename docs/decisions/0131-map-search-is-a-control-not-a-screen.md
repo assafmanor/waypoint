@@ -198,9 +198,9 @@ The owner's first correction. There genuinely are **two searches** on this tab, 
 
 **What it costs, stated plainly so the decision is findable later:** with no gate, a search on the Map tab spends in both modes, on the surface people use while walking around — which is precisely the exposure ADR-0115 §1 and §6 were each built to prevent, and both are overruled here. The daily cap is the backstop, not the gate.
 
-**Most of that exposure is then taken back without a control, in §8b.** The distinction that makes the two compatible: **a gate asks the user, a deferral asks the situation.** §8b never puts a control on screen and never shows an absence the user cannot resolve with the gesture they were already making — so the arm stays withdrawn and the spend still lands only where a result would actually be looked at.
+**Most of that exposure comes back in §8b, and through the floor rather than through a control** — which is the one lever that costs the user nothing at all.
 
-**One cheap mitigation, recommended and not assumed.** `PLACE_SEARCH_MIN_CHARS` is **2**. Two characters of Hebrew match a large fraction of a city, so a 2-char query is a paid call that cannot return a useful answer — it was harmless while an arm stood in front of it and is not now. Raising the floor costs nothing a user would notice and removes the least useful calls first. It is a shared constant (the picker reads it too, where it has always been un-armed), so it is one number and not a per-surface fork. **Left as a recommendation rather than picked here**, because "how many characters is a real query" is a judgement about Hebrew place names, and the owner should set it.
+**And the exposure is taken back by the floor rather than by a control — `PLACE_SEARCH_MIN_CHARS` goes from 2 to 3** (owner's number). §8b is the whole argument, including why gating on the trip's match count is the wrong trade.
 
 **Two things drawing this in Trip mode produced, neither of which was in the reasoning:**
 
@@ -215,11 +215,35 @@ The owner's first correction. There genuinely are **two searches** on this tab, 
 
 **What genuinely widens, stated plainly for the owner rather than buried:** the number of surfaces from which a member can arm a paid session goes from one to two. The bounds do not change — `PlacesThrottlerGuard` per member·trip, the Phase-0 budget alert and the daily quota cap (ADR-0108 §5/§6) are all per-member and per-trip, not per-surface. **If this is not wanted, the lever is one boolean** (`research = mode === 'plan'` as it reads today), and everything else in this ADR is unaffected.
 
-### 8b. The Google half is fetched **on demand**, and that is a deferral rather than a gate
+### 8b. The exposure comes back through the **floor**, not by withholding results
 
-The owner asked whether the exposure §8a creates can be worked back without re-introducing a control: **(A)** call Google only when the trip has no matches, or **(B)** only when it has "not enough", so that the absence is invisible. **B is right, and A is its zero case** — but "enough" cannot be a count, and the reason is measured.
+The owner asked whether "every search costs" can be worked back without putting a control back on screen: **(A)** call Google only when the trip has no matches, or **(B)** only when it has "not enough", so the absence is invisible.
 
-**How many trip matches it takes to push the `מגוגל` header below the fold**, read off the real tree:
+**Both are rejected, and the reason is upstream of the mechanism: the count of trip matches is not evidence about relevance.** A trip match is not necessarily _the_ match, and the app cannot tell the difference. The case that decides it — call it the **near miss**: you search `בלו בוטל`, the trip has _Blue Bottle Kiyosumi_ saved, and you want the Shibuya one. Under A and under B the app stays quiet, and you reasonably conclude there is nothing else. That is **a wrong conclusion caused by the withholding**, on a surface whose entire job is to find a place. **A is the worse of the two** for the same reason sharpened: it withholds precisely when the trip has one weak match, which is the most confusable case there is.
+
+So the answer to the owner's question — _would it be better that the user got Google results even when searching for something already saved?_ — is **yes**, and it settles the design: **the Google half fetches on every pause past the floor, in both modes, with nothing hidden.**
+
+**The saving is taken from the floor instead, and it is a strictly better lever.** `PLACE_SEARCH_MIN_CHARS` goes from **2 to 3** (owner's number). Two characters of Hebrew match a large fraction of a city, so a 2-char query is a paid request that **cannot** return a useful answer — and it fires on the way to every single query that follows it. Against a count gate it is:
+
+|                                         | Raise the floor  | Gate on the trip's match count              |
+| --------------------------------------- | ---------------- | ------------------------------------------- |
+| Order of saving                         | comparable       | comparable                                  |
+| UX cost                                 | **none**         | the near miss (above)                       |
+| Risk of an absence read as "no results" | **none**         | real                                        |
+| New mechanism                           | **none**         | an `IntersectionObserver` (the app's first) |
+| Surface area                            | **one constant** | a sentinel, an observer, a fetch state      |
+
+The saving was never in "did we ask Google when the trip already answered". It is in **how many requests a session makes**, and the floor removes the ones that were structurally useless.
+
+**Blast radius, because the constant is shared and that is deliberate.** Three hooks read it — `usePlaceSearch` (the Map tab's search and the in-form picker) and `useDestinationSearch` (the trip's destination, ADR-0113). All three are the same Autocomplete relay, so the floor is a win on all three and needs **no per-surface fork**. One build note: **`lib/usePlaceSearch.test.ts` fixtures three cases on `setQuery('sh')`**, a 2-char query that activates today and would go inert at 3 — those need a 3-char fixture, and the change is a silent test failure rather than an obvious one.
+
+**What is deliberately NOT bought with this:** the arm does not come back (§8a), nothing is hidden, and no result is withheld from a user who is looking at the list.
+
+#### The deferral, kept as the named lever rather than shipped
+
+If the bill argues otherwise, the mechanism is designed, drawn and verified rather than left to be re-derived. **The trigger for pulling it is ADR-0108 §6's budget alert** — real spend data, which exists — not a guess.
+
+**And "not enough" would have to be the fold, not a count.** Measured against the real tree, the number of trip matches it takes to push the `מגוגל` header below the fold:
 
 | Screen · stop    | List viewport | Rows that fit (82px each) | A threshold would be |
 | ---------------- | ------------: | ------------------------: | -------------------: |
@@ -231,36 +255,14 @@ The owner asked whether the exposure §8a creates can be worked back without re-
 | 360×640 · `half` |         152px |                       1.9 |                **2** |
 | 360×640 · `full` |         267px |                       3.3 |                **4** |
 
-**There is no single N** — it is 1 through 6 across the stops and screens this tab already supports, and it moves again with a wrapped two-line row. And the screen **cannot measure its own viewport** to derive it: `screens/Map.tsx` re-renders every second, which is why ADR-0121 §5 forbids `--sheet-h` depending on a layout read and ADR-0122 §3 refused to derive the stops at runtime for exactly this reason.
+**There is no single N** — 1 through 6 across the stops and screens this tab already supports, and it moves again with a wrapped two-line row. The screen also cannot measure its own viewport to derive it: `screens/Map.tsx` re-renders every second, which is why ADR-0121 §5 forbids `--sheet-h` depending on a layout read and ADR-0122 §3 refused to derive the stops at runtime.
 
-**So the threshold is the fold itself, read by the browser rather than guessed at by a constant.** A sentinel at the end of the trip's matches, and one `IntersectionObserver`:
+**So the shape, if it is ever needed:** a sentinel at the end of the trip's matches and one `IntersectionObserver` — visible on arrival means the matches did not fill the list, so fetch; scrolled into view, fetch; never visible, the trip answered and nothing is spent. That is **demand**-gated rather than count-gated, which matters: the signal is the user's own behaviour, and **the gesture that would reveal the gap is the gesture that fills it**. It is also a _deferral_ rather than a _gate_ — it asks the situation, not the user, and puts no control on screen. It still carries the near-miss cost, which is why it is a lever and not the design.
 
-- **the sentinel is visible on arrival** → the trip's matches did not fill the list → **fetch**;
-- **the user scrolls it into view** → **fetch**;
-- **it never becomes visible** → the trip answered, and nothing is spent.
+**Two build notes from wiring it, which only matter if it ships, and are recorded because both cost a debugging round to find:**
 
-One rule, no number, correct at every stop and every screen by construction — including the wrapped-row case a constant would have got wrong.
-
-**And this is what makes the invisibility _true_ rather than approximate, which is the part worth being careful about.** A count threshold is invisible only until you scroll: past the last trip match you would find **nothing** — no `מגוגל` header, no results — which is indistinguishable from "Google had no matches" when in fact nobody asked. That is a lie by omission, and it is worse than the spend it saves. The demand form has no such state: **the gesture that would reveal the gap is the gesture that fills it.**
-
-**It is a deferral, not a gate, so §8a stands unchanged.** A gate asks the **user** to decide and puts a control on screen for them to decide with. This asks the **situation**: no control, no choice, and no absence the user cannot resolve with the gesture they were already making. The arm stays gone.
-
-**What it saves, and why the saving lands in the right place.** Exactly the sessions where the trip already answered and the user never scrolled — the common shape on a mature trip, where `שינ` returns your hotel and your station and you are done. It saves nothing on a thin trip, which is precisely where Google is the point. So the calls it removes are the ones that were least likely to be useful.
-
-**At the `map` stop there is no list to scroll** — measured above at 2–4px, i.e. none — so no sentinel is ever visible and nothing is fetched. That is correct rather than a gap: nothing would be shown either way. **Raising the sheet is the demand signal**, and the count's own button (§6) is what raises it. Which forces one clarification on §6, worth stating rather than discovering: **the count counts what has been _found_, not what exists.** At `map` it is trip-only, and it grows when the Google half arrives — that reads as arrival, not as a correction, and it is the honest meaning for a number attached to a live region.
-
-**Three things it costs, none of them hidden:**
-
-- **A visible wait where today there is none.** Scrolling to the end then costs the pause-gated debounce plus a round trip. `PlaceResearch` already renders skeletons for exactly this, so the mechanism exists — but whether that reads as _loading_ or as _broken_ is a device-pass read, not a paper claim.
-- **One extra gesture in one case.** A query whose intent was a new place but which matches many trip places (eight places with `טוקיו` in the address) needs a scroll to reach Google. The count makes it visible; accepted.
-- **A new primitive.** The app has **no `IntersectionObserver` today**, so this is a mechanism rather than a reuse (rule 8, stated rather than slipped in). It is the right one: the alternative is a scroll listener plus arithmetic inside a component that re-renders every second, which is the anti-pattern `frontend/CLAUDE.md` names. Confined to the sheet's scroll region and worth shaping as one small hook so the next lazy list is a one-line adoption.
-
-**What it does not change:** the min-chars floor still gates the first fetch, the debounce still bounds the rate, the session token is still per search session (the hook is inert below the floor, so a deferred first request mints it no differently), dedup-before-spend is untouched, and offline the half is still absent rather than disabled.
-
-**Two things wiring it in the mockup produced, and both are build notes rather than design changes:**
-
-- **"Did the trip's matches fill the list" cannot be answered on the frame the query changed** — the reveal **animates** (ADR-0120's `0fr`/`1fr` grid track), so the rows that just stopped matching still occupy their old height for the length of the transition. A hand-rolled measurement snapshots the wrong layout and decides not to fetch; an `IntersectionObserver` is asynchronous and re-fires as layout settles, so it gets this right **by construction**. That is a second, independent argument for the observer over the scroll-listener-plus-arithmetic alternative, and it was found by building it rather than by reasoning about it.
-- **The one scroll region is `.wp-snapsheet-body`, not `.map-sheet-scroll`** (`snap-sheet.css`: "the sheet's body, never the page"). The `.map-sheet-scroll` inside it only carries the padding, so an observer given the wrong root sees the sentinel never intersect and the deferral silently never fires. Cheap to get wrong and invisible when you do.
+- **"Did the trip's matches fill the list" cannot be answered on the frame the query changed** — the reveal **animates** (ADR-0120's `0fr`/`1fr` grid track), so rows that just stopped matching still hold their old height. An `IntersectionObserver` is asynchronous and re-fires as layout settles, so it is right **by construction**; a hand-rolled snapshot reads the wrong layout and decides not to fetch. That is a second, independent argument for the observer over a scroll listener plus arithmetic.
+- **The one scroll region is `.wp-snapsheet-body`, not `.map-sheet-scroll`** (`snap-sheet.css`: "the sheet's body, never the page"). The inner element only carries padding, so an observer given the wrong root sees the sentinel never intersect and the deferral silently never fires.
 
 ### 9. A place can be **made**, not only found: a long press on the canvas drops one
 
@@ -360,9 +362,9 @@ That single rule is what keeps three sources and two hosts from growing five flo
 - **A floating results dropdown under the field**, the way a desktop map app does it. Rejected: it is a second list surface on a tab that has one, it grows along the block axis ADR-0126 §1 just ruled out for canvas furniture, and at the `map` stop it would cover the pins it is describing. The sheet is the list, and the count is the way to it.
 - **Interleave Google results with trip matches** in one flat list. Rejected in §8: "is this already ours" is the most important fact about a result, and a group header answers it once instead of per row.
 - **Delay the Google call until the sheet is up** — this design's own first answer to the spend, and **it was the wrong version of the right idea**. A _stop_-gated delay makes raising the sheet feel slow and leaves the count unable to advertise what it had not fetched, which is why it was rejected. The owner's proposal is _demand_-gated, and it answers both objections: the wait attaches to a scroll rather than to a raise, and the count objection dissolves once the count means "what has been found" (§8b).
-- **A count threshold — call Google only when the trip returns fewer than N matches.** Rejected **on measurement** (§8b): N would have to be 1, 2, 3, 4, 5 or 6 depending on the stop and the screen, and it moves again with a wrapped row. The fold is not a number, and the screen cannot measure its own viewport in a render path that runs every second.
+- **A count threshold — call Google only when the trip returns fewer than N matches.** Rejected twice over (§8b): on **UX**, because the count is not evidence about relevance and the near miss then reads as "there is nothing else"; and on **measurement**, because N would have to be 1, 2, 3, 4, 5 or 6 depending on the stop and the screen, and it moves again with a wrapped row.
 - **Call Google only when the trip returns nothing at all** (the owner's option A). Rejected as the special case rather than the rule: it is §8b with the threshold pinned at 1, so it under-fetches in exactly the case that most wants Google — one weak trip match sitting where a new place was the intent.
-- **Keep firing on every keystroke past the floor** (this design's own §8a as first written). Superseded by §8b: it spends on results nobody looks at, and the deferral costs no control and no visible absence.
+- **Defer the Google fetch until the trip's matches fail to fill the list** (the demand-gated form of the owner's option B; designed, drawn and verified in the mockup). **Not shipped**, and kept as §8b's named lever: it still carries the near-miss cost, it needs the app's first `IntersectionObserver`, and it introduces a visible wait where there is none — while raising the floor saves a comparable order at none of those. ADR-0108 §6's budget alert is what would justify pulling it.
 - **Have a row tap or a selection close the query.** Rejected: the query is the tab's view state, and a filter that cleared itself when you acted on a result would make the second result unreachable.
 
 ## Consequences
@@ -375,7 +377,7 @@ That single rule is what keeps three sources and two hosts from growing five flo
 - **`MapPane`'s memo survives.** The query never reaches the pane as a prop — it reaches `pinsNow`, already memoized on a content key (`pinsKey`), so a query that does not change the set produces **no marker diff**. The long press adds one `useCallback(…, [])` over a latest-ref, the discipline ADR-0126's build log fixed in place. A re-instantiation is billed (ADR-0121 §4).
 - **`MAP_CONTROLS_H` stays 46 and `MAP_FIT_PADDING.top` stays 118.** The field is 44 _inside_ 46, so no camera constant moves and no test in `lib/map-camera.test.ts` changes.
 - **The cost surface widens twice, and this is the ADR that says so.** By one **screen** (§8 — Trip mode gets the Google half; same SKU, same relay, same per-member·trip guard and daily cap, and the one-boolean lever back to Plan-only is named), and by removing the **gate** (§8a — past the min-chars floor every search spends). Neither is a mechanism change; both are exposure changes, and §8a lists exactly what protection is left.
-- **The spend is deferred, not gated, and that needs one new primitive** (§8b): a sentinel at the end of the trip's matches plus one `IntersectionObserver` — the app's first — best shaped as one small hook so the next lazy list adopts it in a line. It replaces a magic threshold with the browser's own answer, and it is what lets §8a's exposure be taken back without putting a control back on screen.
+- **The spend is bounded by one constant, and needs no new mechanism** (§8b). `PLACE_SEARCH_MIN_CHARS` 2 → **3**, read by `usePlaceSearch` (the Map tab and the in-form picker) and `useDestinationSearch` (ADR-0113) — the same Autocomplete relay in all three, so one number and no per-surface fork. **`lib/usePlaceSearch.test.ts` fixtures three cases on `setQuery('sh')`**, which activates at 2 and goes inert at 3; they need a 3-char fixture, and it fails silently rather than loudly. The deferral stays designed and unshipped as the named lever.
 - **One shipped control gets re-coloured, and it is a rule fix rather than a restyle** (§8): `.map-addmaybe` moves from `--plan` to `--cta`, because plan violet on a Trip-mode surface is mode identity used as a button colour (root `CLAUDE.md` rule 4, and `tokens.css`'s own comment). Plan mode is affected too, and correctly so. (`.map-arm` had the same problem and is deleted by §8a.)
 - **Most of this is testable with no Google in the process** (`frontend/CLAUDE.md`): the query's effect on the pin set, the aside promotion and the three predicates that read it, and — the property that matters — that the amber guard and the connector are **byte-for-byte unchanged** under a query. Assert across **both day scopes**, since the promotion only exists in the day-scoped one. At the screen level: opening from each extreme normalises to `half` and a drag afterwards does not; the errand's banner names its target and its cancel assigns nothing; and `PlaceResearch` renders in the sheet in **both** modes, which is the mode gate's regression net.
 - **`Map.test.tsx` runs with no build config on purpose**, which is the list-only path (ADR-0122 §8). The row renders `position: static` there, the query field renders in flow above the list, the normalisation is a no-op, and the long press does not exist — one component, two positionings, still never two components.
@@ -392,7 +394,6 @@ These rest on how the surface **reads**, not on how it computes, and they are st
 - **Whether a 44px field reads as a field over real cloud-styled tiles**, or as chrome that landed on the map. It is the row's one filled member and the row at rest is transparent.
 - **Whether a promoted ghost reads as "this is what you searched for, and it is another day's"** or as a contradiction. ADR-0130 §4 showed that looking at pin geometry in a renderer changed three numbers that were wrong on paper; this is the same kind of question, and the mockup answers only that the two states are visibly distinct at the 0.72 ratio.
 - **Whether a camera that does not move reads as quiet or as broken** when every match is off-screen. The lever is named in §5.
-- **Whether the deferred fetch reads as _loading_ or as _broken_** (§8b). Scrolling to the end of the trip's matches then costs a debounce plus a round trip where today there is nothing. `PlaceResearch`'s skeletons are the mechanism; whether the pause reads as work in progress is exactly the kind of thing this epic has already been corrected on once from a real device (ADR-0129).
 - **Whether the count reads as tappable at the `map` stop** (§6). It is the one thing standing between "the canvas answered you" and "there are five more in the list", and ADR-0126's device pass already carries the same question about `באזור` — a pill among round controls. If it does not read, the lever is the sheet moving after all, which is the draft's answer and is still available.
 - **Whether the `מגוגל` group is discoverable below several trip matches** (§8). The ordering is defended on paper for the case that matters — no trip matches means the Google group is at the top — but "did anyone scroll to it" is a question a phone answers and a mockup cannot.
 
