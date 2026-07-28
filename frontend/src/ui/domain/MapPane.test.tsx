@@ -8,7 +8,7 @@
 // on a machine with the browser key.
 import { afterEach, describe, expect, it, vi } from 'vitest';
 import type { ReactNode } from 'react';
-import { cleanup, fireEvent, render, screen } from '@testing-library/react';
+import { act, cleanup, fireEvent, render, screen } from '@testing-library/react';
 
 /** The four vis.gl pieces the pane uses, as plain DOM. `Map` renders its children
  *  (that is how markers reach the canvas), `AdvancedMarker` renders its content with
@@ -69,12 +69,64 @@ vi.mock('@vis.gl/react-google-maps', () => ({
       data-color={props.strokeColor}
     />
   ),
-  useMap: () => null,
+  // `null` by default — the honest stub, since there is no map — but settable, because
+  // the dot tier (ADR-0128 §1) is decided from the map's own zoom. The fake below is
+  // deliberately inert for the CAMERA (no bounds, a 0x0 div) so setting it cannot make
+  // the other tests start fitting.
+  useMap: () => mapStub.current,
 }));
+
+const mapStub: { current: FakeZoomMap | null } = { current: null };
+
+class FakeZoomMap {
+  zoom = 14;
+  /** Keyed by event type on purpose: the camera registers an `idle` retry on this same
+   *  object, and a shared handler set would make a pinch fire the framing too. */
+  private handlers = new Map<string, Set<() => void>>();
+  getZoom() {
+    return this.zoom;
+  }
+  /** `undefined` by default — a map that has not rendered — which is half of what keeps
+   *  this stub inert. A padding test has to make it real, or the camera defers to `idle`
+   *  and never fits at all. */
+  viewport: { north: number; south: number; east: number; west: number } | null = null;
+  getBounds() {
+    const b = this.viewport;
+    if (!b) return undefined;
+    return {
+      getNorthEast: () => ({ lat: () => b.north, lng: () => b.east }),
+      getSouthWest: () => ({ lat: () => b.south, lng: () => b.west }),
+    };
+  }
+  /** 0×0 by default, which is what keeps this stub inert for the camera: an unsized
+   *  div has no honest fit, so `apply` bails. A test that wants to see the PADDING
+   *  gives it a real box. */
+  box = { width: 0, height: 0 };
+  getDiv() {
+    return { getBoundingClientRect: () => this.box } as unknown as HTMLElement;
+  }
+  setCenter() {}
+  setZoom() {}
+  panTo() {}
+  readonly fits: { padding?: { bottom: number } }[] = [];
+  fitBounds(_bounds: unknown, padding?: { bottom: number }) {
+    this.fits.push({ padding });
+  }
+  addListener(type: string, fn: () => void) {
+    const set = this.handlers.get(type) ?? new Set();
+    set.add(fn);
+    this.handlers.set(type, set);
+    return { remove: () => set.delete(fn) };
+  }
+  pinchTo(zoom: number) {
+    this.zoom = zoom;
+    this.handlers.get('zoom_changed')?.forEach((fn) => fn());
+  }
+}
 
 import { MapPane, type MapPin } from './MapPane';
 import { PIN_TIER } from '../../lib/map-pins';
-import { MAP_CONNECTOR } from '../../constants';
+import { MAP_CONNECTOR, MAP_ZOOM } from '../../constants';
 import { t } from '../../i18n/he';
 
 const CONFIG = { apiKey: 'k', mapId: 'waypoint-day' };
@@ -104,6 +156,7 @@ function paint(props: Partial<Parameters<typeof MapPane>[0]> = {}) {
       areaSorted={props.areaSorted ?? false}
       onAreaSort={props.onAreaSort ?? vi.fn()}
       onLocate={props.onLocate ?? vi.fn()}
+      cardOpen={props.cardOpen}
       me={props.me}
       connector={props.connector}
       defaultCentre={props.defaultCentre}
@@ -116,6 +169,7 @@ const markers = () => [...document.querySelectorAll<HTMLElement>('[data-marker]'
 
 afterEach(() => {
   cleanup();
+  mapStub.current = null;
   idleHandlers.length = 0;
   nextTap.placeId = null;
 });
@@ -430,5 +484,61 @@ describe('MapPane — our markup, not PinElement (ADR-0121 §6)', () => {
     );
     expect(markers()[0]).toBe(before);
     expect(document.querySelectorAll('[data-map]')).toHaveLength(1);
+  });
+});
+
+// ADR-0121 §6 decided this and never built it; ADR-0128 §1 does. Keyed on ZOOM, never
+// on the canvas — a pin's size must not change under a pinch, but its tier may — and
+// applied entirely in CSS off one data attribute, so NO marker re-renders for it.
+describe('the dot tier degrades a pin below a zoom threshold (ADR-0128 §1)', () => {
+  const pane = () => document.querySelector('.map-pane') as HTMLElement;
+
+  it('marks the pane when the zoom is below the threshold, and clears it above', () => {
+    const map = new FakeZoomMap();
+    map.zoom = MAP_ZOOM.DOT_BELOW - 1;
+    mapStub.current = map;
+    paint();
+    expect(pane().dataset.pins).toBe('dot');
+
+    // Pinching in past the threshold restores the full teardrop, during the gesture.
+    act(() => map.pinchTo(MAP_ZOOM.DOT_BELOW));
+    expect(pane().dataset.pins).toBeUndefined();
+    act(() => map.pinchTo(MAP_ZOOM.DOT_BELOW - 3));
+    expect(pane().dataset.pins).toBe('dot');
+  });
+
+  // The card's reserve reaches the camera through the PANE, and that wiring is one line
+  // — which is exactly how it silently failed to exist the first time. The hook's own
+  // test cannot see this path, so it is asserted here.
+  it('the place card’s reserve reaches the camera’s padding (ADR-0128 §2)', () => {
+    const WIDE = { north: 60, south: 10, east: 160, west: 110 };
+    const map = new FakeZoomMap();
+    map.box = { width: 390, height: 517 };
+    map.viewport = WIDE;
+    mapStub.current = map;
+    const two = [pin({ placeId: 'a' }), pin({ placeId: 'b', lat: 35.9, lng: 139.9 })];
+    const { unmount } = paint({ pins: two });
+    const plain = map.fits.at(-1)!.padding!.bottom;
+    unmount();
+
+    const withCard = new FakeZoomMap();
+    withCard.box = { width: 390, height: 517 };
+    withCard.viewport = WIDE;
+    mapStub.current = withCard;
+    paint({ pins: two, cardOpen: true });
+    expect(withCard.fits.at(-1)!.padding!.bottom).toBeGreaterThan(plain);
+  });
+
+  // The reason it is a data attribute and not a prop or state: the markers are content
+  // inside a live `google.maps.Map`, where a needless re-diff is the cheap failure and a
+  // re-instantiation is a billed one (ADR-0121 §4).
+  it('does not touch a single marker node when the tier flips', () => {
+    const map = new FakeZoomMap();
+    mapStub.current = map;
+    paint({ pins: [pin({ placeId: 'a' }), pin({ placeId: 'b' })] });
+    const before = markers();
+    act(() => map.pinchTo(MAP_ZOOM.DOT_BELOW - 4));
+    expect(pane().dataset.pins).toBe('dot');
+    expect(markers()).toEqual(before);
   });
 });

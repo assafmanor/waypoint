@@ -79,9 +79,14 @@ export function useMapCamera(
      *  a booking (ADR-0121 §8). It **owns the next framing**, and that is a rule about
      *  which intent wins rather than a guard bolted onto the fit (ADR-0127 §3). */
     arrivalFocus?: LatLng | null;
+    /** What the place card occupies at the canvas's bottom, so a fit does not put a pin
+     *  under it (ADR-0122 §7, built in ADR-0128 §2). Read through a ref below, never as a
+     *  dependency: it changes on a **tap**, and re-running the framing effect for it
+     *  would move the camera when a pin is tapped. */
+    bottomReserve?: number;
   },
 ): MapCamera {
-  const { points, setSignal, arrivalFocus } = opts;
+  const { points, setSignal, arrivalFocus, bottomReserve = 0 } = opts;
   // Latest-ref: the effect below is keyed on the signal alone, so it must read
   // the current points rather than close over the ones from the render that
   // happened to change the signal.
@@ -90,6 +95,11 @@ export function useMapCamera(
   /** Has this map instance ever been framed? Until it has, there is no view worth
    *  preserving — so the opening framing is unconditional. */
   const framed = useRef(false);
+  // The card's reserve, as a latest-ref. This is the whole reason the inset is
+  // affordable at all: `apply` keeps its `[map]` identity, so the effect below does not
+  // re-run when a card opens, so a pin tap still moves nothing (ADR-0122 §7's rule).
+  const bottomReserveRef = useRef(bottomReserve);
+  bottomReserveRef.current = bottomReserve;
   /** The arrival focus this camera still owes, and the identity it was claimed from. */
   const owedFocus = useRef<LatLng | null>(null);
   const lastArrival = useRef<LatLng | null | undefined>(undefined);
@@ -130,7 +140,7 @@ export function useMapCamera(
       // The div's height is both what the padding is affordable AGAINST and what sizes
       // the pins it has to clear (ADR-0123) — one measurement, read where the fit
       // happens rather than kept in state on a screen that re-renders every second.
-      const padding = fitPaddingFor(box, mapFitPadding(box.height));
+      const padding = fitPaddingFor(box, mapFitPadding(box.height, bottomReserveRef.current));
       // An unsized div has no honest fit — wait for one rather than zoom to nothing.
       if (padding === null) return false;
       // Padded by a pin's own height at the top: the teardrop's TIP is the anchor,

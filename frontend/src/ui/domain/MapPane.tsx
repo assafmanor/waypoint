@@ -11,13 +11,13 @@
 // PRIMITIVES, keyed by `placeId`, so the screen's per-second clock tick reconciles
 // to a no-op diff. That is the marker-level restatement of §4, and the reason
 // `memo` below is load-bearing rather than an optimisation.
-import { memo, useCallback, useEffect, useMemo, useRef } from 'react';
+import { memo, useCallback, useEffect, useMemo, useRef, type RefObject } from 'react';
 import { APIProvider, AdvancedMarker, Map, Polyline, useMap } from '@vis.gl/react-google-maps';
 import { isFramedByCamera, PIN_TIER, pinZIndex, type PinTier } from '../../lib/map-pins';
 import { readMapBounds, useMapCamera } from '../../lib/useMapCamera';
 import type { LatLng, MapBounds } from '../../lib/map-camera';
 import type { MapsConfig } from '../../lib/map-config';
-import { MAP_CONNECTOR, MAP_ZOOM, type PinHue } from '../../constants';
+import { MAP_CARD_RESERVE_H, MAP_CONNECTOR, MAP_ZOOM, type PinHue } from '../../constants';
 import { Icon } from '../Icon';
 import { t } from '../../i18n/he';
 import './map-pane.css';
@@ -104,10 +104,42 @@ export interface MapPaneProps {
    *  is what stops the opening fit overwriting it (ADR-0127 §3). Memoized by the
    *  screen, like every other object prop here. */
   arrivalFocus?: LatLng | null;
+  /** The place card is up, so a fit reserves the band it occupies (ADR-0128 §2). A
+   *  boolean rather than a height: the number belongs in `constants.ts` with the rest of
+   *  the card's geometry, not in the screen. */
+  cardOpen?: boolean;
   /** Locate was tapped with no fix to centre on. The camera half stays here (it needs
    *  the map instance); the permission ladder is the screen's, because that is where
    *  `useGeolocation` and the pre-prompt live (ADR-0126 §6). */
   onLocate: () => void;
+}
+
+/** Below `MAP_ZOOM.DOT_BELOW` every pin degrades to a dot (ADR-0121 §6, finally built).
+ *  It is written as a **data attribute on the pane**, imperatively, rather than as
+ *  React state or a prop — because CSS can then do the whole degradation and NO marker
+ *  re-renders at all. That is the same arrangement ADR-0123 chose for the pin's size (a
+ *  `clamp()` the browser resolves against the pane) and for the same reason: the markers
+ *  live in a live `google.maps.Map` where a needless re-diff is the cheap failure and a
+ *  re-instantiation is a billed one (§4).
+ *
+ *  Keyed on `zoom_changed` rather than `idle` so the tier flips DURING a pinch, which is
+ *  when it is the answer to anything. A dataset write per zoom event is nothing. */
+function PinDensity({ paneRef }: { paneRef: RefObject<HTMLDivElement | null> }) {
+  const map = useMap(MAP_ID);
+  useEffect(() => {
+    if (!map) return;
+    const sync = () => {
+      const pane = paneRef.current;
+      if (!pane) return;
+      const zoom = map.getZoom();
+      if (zoom != null && zoom < MAP_ZOOM.DOT_BELOW) pane.dataset.pins = 'dot';
+      else delete pane.dataset.pins;
+    };
+    sync();
+    const listener = map.addListener('zoom_changed', sync);
+    return () => listener.remove();
+  }, [map, paneRef]);
+  return null;
 }
 
 function MapPaneInner({
@@ -125,9 +157,11 @@ function MapPaneInner({
   onAreaSort,
   onLocate,
   arrivalFocus,
+  cardOpen,
 }: MapPaneProps) {
+  const paneRef = useRef<HTMLDivElement>(null);
   return (
-    <div className="map-pane">
+    <div className="map-pane" ref={paneRef}>
       <APIProvider apiKey={config.apiKey}>
         <Map
           id={MAP_ID}
@@ -173,6 +207,7 @@ function MapPaneInner({
         </Map>
         {/* Outside `<Map>` so our chrome is never inside the canvas Google manages,
             but inside `<APIProvider>` so it can still reach the instance by id. */}
+        <PinDensity paneRef={paneRef} />
         <MapCameraControls
           pins={pins}
           me={me}
@@ -182,6 +217,7 @@ function MapPaneInner({
           onAreaSort={onAreaSort}
           onLocate={onLocate}
           arrivalFocus={arrivalFocus}
+          cardOpen={cardOpen}
         />
       </APIProvider>
     </div>
@@ -308,6 +344,7 @@ function MapCameraControls({
   onAreaSort,
   onLocate,
   arrivalFocus,
+  cardOpen,
 }: {
   pins: readonly MapPin[];
   me?: LatLng;
@@ -317,6 +354,7 @@ function MapCameraControls({
   onAreaSort: () => void;
   onLocate: () => void;
   arrivalFocus?: LatLng | null;
+  cardOpen?: boolean;
 }) {
   const map = useMap(MAP_ID);
   // The camera answers to the day's OWN pins, never to the ghost tier: a ghost is a
@@ -340,6 +378,10 @@ function MapCameraControls({
     points,
     setSignal,
     arrivalFocus,
+    // The card's band, so a fit does not put a pin under it (ADR-0128 §2). The hook
+    // reads it through a ref, so this changing on a tap re-pads the NEXT fit without
+    // re-running the framing effect — i.e. without moving the camera on a pin tap.
+    bottomReserve: cardOpen ? MAP_CARD_RESERVE_H : 0,
   });
 
   // Focus pans AND zooms in when the view is too far out to read the place (ADR-0127

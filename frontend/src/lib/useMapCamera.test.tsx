@@ -11,8 +11,8 @@
 // is containment-guarded, and a re-render is neither.
 import { afterEach, describe, expect, it, vi } from 'vitest';
 import { renderHook } from '@testing-library/react';
-import { useMapCamera } from './useMapCamera';
-import type { LatLng, MapBounds } from './map-camera';
+import { useMapCamera, type MapCamera } from './useMapCamera';
+import { mapFitPadding, type LatLng, type MapBounds } from './map-camera';
 import { MAP_ZOOM } from '../constants';
 
 const TOKYO = { lat: 35.68, lng: 139.76 };
@@ -82,25 +82,38 @@ class FakeMap {
 
 const asMap = (fake: FakeMap) => fake as unknown as google.maps.Map;
 
+/** Named, so `bottomReserve` stays OPTIONAL: inferring the shape from `initialProps`
+ *  would make every existing rerender have to pass it. */
+interface CameraProps {
+  map: FakeMap | null;
+  pts: readonly LatLng[];
+  signal: string;
+  arrivalFocus: LatLng | null;
+  bottomReserve?: number;
+}
+
 function mount(
   fake: FakeMap | null,
   points: readonly LatLng[],
   setSignal = 'day',
   arrival: LatLng | null = null,
 ) {
-  return renderHook(
-    ({
-      map,
-      pts,
-      signal,
-      arrivalFocus,
-    }: {
-      map: FakeMap | null;
-      pts: readonly LatLng[];
-      signal: string;
-      arrivalFocus: LatLng | null;
-    }) => useMapCamera(map ? asMap(map) : null, { points: pts, setSignal: signal, arrivalFocus }),
-    { initialProps: { map: fake, pts: points, signal: setSignal, arrivalFocus: arrival } },
+  return renderHook<MapCamera, CameraProps>(
+    ({ map, pts, signal, arrivalFocus, bottomReserve }) =>
+      useMapCamera(map ? asMap(map) : null, {
+        points: pts,
+        setSignal: signal,
+        arrivalFocus,
+        bottomReserve,
+      }),
+    {
+      initialProps: {
+        map: fake,
+        pts: points,
+        signal: setSignal,
+        arrivalFocus: arrival,
+      },
+    },
   );
 }
 
@@ -403,6 +416,30 @@ describe('focus and re-centre', () => {
     view.result.current.focus(TOKYO);
     expect(map.pans).toHaveLength(0);
     expect(map.center).toEqual(TOKYO);
+  });
+
+  // ADR-0128 §2. The reserve changes on a TAP, and the reason it was deferred for a
+  // whole phase is that carrying it must not move the camera — "a tap never takes away
+  // the surface it was made on" (ADR-0122 §7). It is read through a ref for exactly
+  // this, and this is the test that says so.
+  it('opening the place card re-pads the fit but does NOT move the camera', () => {
+    const map = new FakeMap();
+    map.bounds = WORLD;
+    const view = mount(map, DAY);
+    const framed = map.fits.length;
+    const where = { ...map.center };
+
+    // A pin tap: the card opens, so the reserve appears — with no signal change.
+    view.rerender({ map, pts: DAY, signal: 'day', arrivalFocus: null, bottomReserve: 160 });
+    expect(map.fits).toHaveLength(framed);
+    expect(map.center).toEqual(where);
+
+    // And the NEXT genuine re-frame does carry it.
+    map.bounds = WORLD;
+    view.result.current.reframe(DAY);
+    const padding = map.fits.at(-1)!.padding as { bottom: number };
+    expect(padding.bottom).toBe(mapFitPadding(map.box.height, 160).bottom);
+    expect(padding.bottom).toBeGreaterThan(mapFitPadding(map.box.height).bottom);
   });
 
   it('re-centre re-frames regardless of the current view — the escape hatch', () => {
