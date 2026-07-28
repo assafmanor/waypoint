@@ -8,8 +8,15 @@
 //     changes, which is also what gives "a manual pan or zoom wins until the next
 //     scope change" for free: nothing else re-frames, so the per-second clock tick
 //     and every unrelated re-render leave the camera exactly where the user put it.
-//   • **Focusing** answers a selection. It PANS at the current zoom and never
-//     changes it — zooming on selection throws away the context you were reading.
+//   • **Focusing** answers a selection. It pans, and zooms **in** to a readable zoom
+//     when the view is further out than one — never out (ADR-0127 §1). §7's original
+//     "focus never zooms" protected the context you were reading, and that protection
+//     is entirely about not pulling BACK; being dropped on a country-level view and
+//     told the place is somewhere in it protects nothing. `locate` is the same move
+//     with a repeat tap stepping one level in from wherever the map is (#20).
+//   • **An arrival focus** — `מפה` on an event or a booking — is a fourth case, and it
+//     OWNS the next framing (ADR-0127 §3). It is not a pan layered on top of an
+//     opening fit: the fit does not run, so the two cannot race.
 //
 // **The opening framing is a third case, and getting it wrong opened the map on the
 // whole world (session 134).** Two hazards compound:
@@ -31,6 +38,8 @@ import {
   cameraTargetFor,
   fitPaddingFor,
   mapFitPadding,
+  zoomStepIn,
+  zoomToAtLeast,
   type LatLng,
   type MapBounds,
 } from './map-camera';
@@ -47,11 +56,15 @@ export function readMapBounds(map: google.maps.Map | null): MapBounds | null {
 }
 
 export interface MapCamera {
-  /** Re-frame the given points now, whatever the current view (the re-centre
-   *  control's escape hatch from "a manual pan wins"). */
+  /** Re-frame the given points now, whatever the current view (the frame control's
+   *  escape hatch from "a manual pan wins"). */
   reframe: (points: readonly LatLng[]) => void;
-  /** Centre on a point at the current zoom. */
+  /** Centre on a point, zooming **in** to a readable zoom when the view is further
+   *  out than one — and never out (ADR-0127 §1). */
   focus: (point: LatLng) => void;
+  /** Locate's own move: like `focus`, except a repeat tap steps one level in from
+   *  wherever the map is (#20 / ADR-0127 §2). */
+  locate: (point: LatLng) => void;
 }
 
 export function useMapCamera(
@@ -62,9 +75,13 @@ export function useMapCamera(
     /** Changes exactly when a control changed the SET on purpose. A string, so a
      *  new array identity from a clock tick is not mistaken for a new set. */
     setSignal: string;
+    /** An arrival that already knows what you came to look at — `מפה` on an event or
+     *  a booking (ADR-0121 §8). It **owns the next framing**, and that is a rule about
+     *  which intent wins rather than a guard bolted onto the fit (ADR-0127 §3). */
+    arrivalFocus?: LatLng | null;
   },
 ): MapCamera {
-  const { points, setSignal } = opts;
+  const { points, setSignal, arrivalFocus } = opts;
   // Latest-ref: the effect below is keyed on the signal alone, so it must read
   // the current points rather than close over the ones from the render that
   // happened to change the signal.
@@ -73,6 +90,27 @@ export function useMapCamera(
   /** Has this map instance ever been framed? Until it has, there is no view worth
    *  preserving — so the opening framing is unconditional. */
   const framed = useRef(false);
+  /** The arrival focus this camera still owes, and the identity it was claimed from. */
+  const owedFocus = useRef<LatLng | null>(null);
+  const lastArrival = useRef<LatLng | null | undefined>(undefined);
+
+  /** The one move both "look at this place" verbs make, differing only in the zoom
+   *  they ask for. A zoom change means the view was too far out to read the place at
+   *  all, so the journey across it is not worth animating — jump, and let the pan
+   *  keep its animation for the case where it is actually legible. */
+  const moveTo = useCallback(
+    (point: LatLng, zoom: number | null) => {
+      if (!map) return;
+      if (zoom != null) {
+        map.setZoom(zoom);
+        map.setCenter(point);
+        return;
+      }
+      if (prefersReducedMotion()) map.setCenter(point);
+      else map.panTo(point);
+    },
+    [map],
+  );
 
   /** Move the camera to suit `candidates`, and report whether it actually did.
    *  `false` also covers "the map is not ready to be fitted", which is what lets the
@@ -85,7 +123,7 @@ export function useMapCamera(
       if (target.kind === 'centre') {
         // Never `fitBounds` a zero-area extent — it snaps to building level.
         map.setCenter(target.at);
-        map.setZoom(MAP_ZOOM.SINGLE_PIN);
+        map.setZoom(MAP_ZOOM.PLACE);
         return true;
       }
       const box = map.getDiv().getBoundingClientRect();
@@ -115,8 +153,30 @@ export function useMapCamera(
   const hasPoints = points.length > 0;
   useEffect(() => {
     if (!map) return;
+    // An arrival focus is CLAIMED on the render that brings it and held until a
+    // framing spends it. Held, because the screen consumes `focusPlaceId` in a single
+    // pass while the map may not be sized for several — so reading the live prop
+    // would drop it on exactly the slow arrivals this exists to fix. Claimed on an
+    // identity change rather than on truthiness, or every later framing would re-read
+    // the same arrival and centre on it forever.
+    if (arrivalFocus !== lastArrival.current) {
+      lastArrival.current = arrivalFocus;
+      if (arrivalFocus) owedFocus.current = arrivalFocus;
+    }
     const openingFrame = !framed.current;
     const run = () => {
+      // **An arrival focus IS the frame, not a pan layered on top of one.** The fit
+      // does not run for it, so the two no longer race and there is nothing to
+      // out-time — which is the third instance of one family (the fit winning when
+      // something else should have: ADR-0121's session-134 entry, session 139's refit
+      // guard), and the reason this is a rule about which intent owns the frame.
+      const owed = owedFocus.current;
+      if (owed) {
+        owedFocus.current = null;
+        moveTo(owed, MAP_ZOOM.PLACE);
+        framed.current = true;
+        return true;
+      }
       const moved = apply(pointsRef.current, openingFrame ? null : readMapBounds(map));
       if (moved) framed.current = true;
       return moved;
@@ -136,8 +196,10 @@ export function useMapCamera(
     });
     return () => listener.remove();
     // `setSignal` is the control dependency; re-running on `points` identity would
-    // re-frame on every clock tick. `hasPoints` covers pins arriving after the map.
-  }, [map, apply, setSignal, hasPoints]);
+    // re-frame on every clock tick. `hasPoints` covers pins arriving after the map,
+    // and `arrivalFocus` is what lets an arrival claim the frame whenever it lands —
+    // before the map is sized, or after the fit already took it.
+  }, [map, apply, moveTo, setSignal, hasPoints, arrivalFocus]);
 
   const reframe = useCallback(
     (candidates: readonly LatLng[]) => {
@@ -147,13 +209,15 @@ export function useMapCamera(
   );
 
   const focus = useCallback(
-    (point: LatLng) => {
-      if (!map) return;
-      if (prefersReducedMotion()) map.setCenter(point);
-      else map.panTo(point);
-    },
-    [map],
+    (point: LatLng) => moveTo(point, zoomToAtLeast(map?.getZoom(), MAP_ZOOM.PLACE)),
+    [map, moveTo],
   );
 
-  return { reframe, focus };
+  const locate = useCallback(
+    (point: LatLng) =>
+      moveTo(point, zoomStepIn(map?.getZoom(), MAP_ZOOM.PLACE, MAP_ZOOM.STEP_IN_MAX)),
+    [map, moveTo],
+  );
+
+  return { reframe, focus, locate };
 }

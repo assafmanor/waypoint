@@ -82,11 +82,25 @@ class FakeMap {
 
 const asMap = (fake: FakeMap) => fake as unknown as google.maps.Map;
 
-function mount(fake: FakeMap | null, points: readonly LatLng[], setSignal = 'day') {
+function mount(
+  fake: FakeMap | null,
+  points: readonly LatLng[],
+  setSignal = 'day',
+  arrival: LatLng | null = null,
+) {
   return renderHook(
-    ({ map, pts, signal }: { map: FakeMap | null; pts: readonly LatLng[]; signal: string }) =>
-      useMapCamera(map ? asMap(map) : null, { points: pts, setSignal: signal }),
-    { initialProps: { map: fake, pts: points, signal: setSignal } },
+    ({
+      map,
+      pts,
+      signal,
+      arrivalFocus,
+    }: {
+      map: FakeMap | null;
+      pts: readonly LatLng[];
+      signal: string;
+      arrivalFocus: LatLng | null;
+    }) => useMapCamera(map ? asMap(map) : null, { points: pts, setSignal: signal, arrivalFocus }),
+    { initialProps: { map: fake, pts: points, signal: setSignal, arrivalFocus: arrival } },
   );
 }
 
@@ -142,7 +156,7 @@ describe('the opening framing (session 134 — the map opened on the whole world
     const view = mount(map, []);
     expect(map.fits).toHaveLength(0);
 
-    view.rerender({ map, pts: DAY, signal: 'day' });
+    view.rerender({ map, pts: DAY, signal: 'day', arrivalFocus: null });
     expect(map.fits).toHaveLength(1);
   });
 
@@ -152,7 +166,7 @@ describe('the opening framing (session 134 — the map opened on the whole world
     mount(map, [TOKYO]);
     expect(map.fits).toHaveLength(0);
     expect(map.center).toEqual(TOKYO);
-    expect(map.zoom).toBe(MAP_ZOOM.SINGLE_PIN);
+    expect(map.zoom).toBe(MAP_ZOOM.PLACE);
   });
 
   it('caps the fitted zoom, without leaving the user unable to pinch in', () => {
@@ -176,7 +190,7 @@ describe('later framings answer controls, and only when they owe you something',
 
     // Now framed on the day; a chip narrows to somewhere outside that view.
     map.bounds = { north: 36, south: 35, east: 140, west: 139 };
-    view.rerender({ map, pts: [KYOTO], signal: 'day|food' });
+    view.rerender({ map, pts: [KYOTO], signal: 'day|food', arrivalFocus: null });
     expect(map.center).toEqual(KYOTO);
   });
 
@@ -194,7 +208,7 @@ describe('later framings answer controls, and only when they owe you something',
     map.bounds = { north: 40, south: 30, east: 145, west: 130 };
     // …and a chip narrows to two places in one neighbourhood.
     const neighbourhood = [TOKYO, { lat: 35.69, lng: 139.77 }];
-    view.rerender({ map, pts: neighbourhood, signal: 'day|food' });
+    view.rerender({ map, pts: neighbourhood, signal: 'day|food', arrivalFocus: null });
 
     expect(map.fits).toHaveLength(framed + 1);
     expect(map.fits.at(-1)!.bounds).toEqual({
@@ -211,10 +225,10 @@ describe('later framings answer controls, and only when they owe you something',
     const view = mount(map, DAY);
 
     map.bounds = { north: 40, south: 30, east: 145, west: 130 };
-    view.rerender({ map, pts: [TOKYO], signal: 'day|food' });
+    view.rerender({ map, pts: [TOKYO], signal: 'day|food', arrivalFocus: null });
     // A zero-area extent fills nothing, so it can never read as "already framed".
     expect(map.center).toEqual(TOKYO);
-    expect(map.zoom).toBe(MAP_ZOOM.SINGLE_PIN);
+    expect(map.zoom).toBe(MAP_ZOOM.PLACE);
   });
 
   it('a control change does NOT move when the results are already on screen', () => {
@@ -224,7 +238,7 @@ describe('later framings answer controls, and only when they owe you something',
     const framed = map.fits.length;
 
     map.bounds = { north: 36, south: 34, east: 141, west: 134 }; // holds both pins
-    view.rerender({ map, pts: DAY, signal: 'day|food' });
+    view.rerender({ map, pts: DAY, signal: 'day|food', arrivalFocus: null });
     // This is what removes "tap אוכל, the map lurches across the city".
     expect(map.fits).toHaveLength(framed);
   });
@@ -238,8 +252,8 @@ describe('later framings answer controls, and only when they owe you something',
     const framed = map.fits.length;
     const where = { ...map.center };
 
-    view.rerender({ map, pts: [...DAY], signal: 'day' }); // new array, same signal
-    view.rerender({ map, pts: [...DAY], signal: 'day' });
+    view.rerender({ map, pts: [...DAY], signal: 'day', arrivalFocus: null }); // new array, same signal
+    view.rerender({ map, pts: [...DAY], signal: 'day', arrivalFocus: null });
     expect(map.fits).toHaveLength(framed);
     expect(map.center).toEqual(where);
   });
@@ -248,20 +262,136 @@ describe('later framings answer controls, and only when they owe you something',
     const map = new FakeMap();
     map.bounds = WORLD;
     const view = mount(null, DAY);
-    view.rerender({ map, pts: DAY, signal: 'day' });
+    view.rerender({ map, pts: DAY, signal: 'day', arrivalFocus: null });
     expect(map.fits).toHaveLength(1);
   });
 });
 
 describe('focus and re-centre', () => {
-  it('focus pans at the current zoom — it never zooms', () => {
+  // ADR-0127 §1 reverses ADR-0121 §7's "focus never zooms" in ONE direction. The
+  // protection §7 wanted — don't throw away the context I was reading — is entirely
+  // about not pulling BACK, and that half is kept.
+  it('focus zooms IN when the view is too far out to read the place', () => {
     const map = new FakeMap();
     map.bounds = WORLD;
     const view = mount(map, DAY);
-    const zoom = map.zoom;
+    map.zoom = 9;
+    view.result.current.focus(TOKYO);
+    expect(map.zoom).toBe(MAP_ZOOM.PLACE);
+    expect(map.center).toEqual(TOKYO);
+    // A zoom change means the place was unreadable from here, so the journey is not
+    // worth animating: it jumps rather than panning across a country.
+    expect(map.pans).toHaveLength(0);
+  });
+
+  it('focus PANS and leaves the zoom alone when it is already close enough', () => {
+    const map = new FakeMap();
+    map.bounds = WORLD;
+    const view = mount(map, DAY);
+    map.zoom = MAP_ZOOM.PLACE + 2;
     view.result.current.focus(TOKYO);
     expect(map.pans).toEqual([TOKYO]);
-    expect(map.zoom).toBe(zoom);
+    expect(map.zoom).toBe(MAP_ZOOM.PLACE + 2);
+  });
+
+  it('focus NEVER zooms out — that is the half of §7 that stands', () => {
+    const map = new FakeMap();
+    map.bounds = WORLD;
+    const view = mount(map, DAY);
+    map.zoom = 19;
+    view.result.current.focus(TOKYO);
+    expect(map.zoom).toBe(19);
+  });
+
+  // #20, and the reason it is stateless: the step is read off the map's CURRENT zoom,
+  // so a pinch between taps cannot desynchronise it and no tap count exists to drift.
+  describe('locate steps in on a repeat tap (#20)', () => {
+    it('the first tap from far out lands at the readable zoom', () => {
+      const map = new FakeMap();
+      map.bounds = WORLD;
+      const view = mount(map, DAY);
+      map.zoom = 6;
+      view.result.current.locate(TOKYO);
+      expect(map.zoom).toBe(MAP_ZOOM.PLACE);
+      expect(map.center).toEqual(TOKYO);
+    });
+
+    it('a repeat tap steps one level in, and stops at the ceiling', () => {
+      const map = new FakeMap();
+      map.bounds = WORLD;
+      const view = mount(map, DAY);
+      map.zoom = MAP_ZOOM.PLACE;
+      view.result.current.locate(TOKYO);
+      expect(map.zoom).toBe(MAP_ZOOM.PLACE + 1);
+      view.result.current.locate(TOKYO);
+      expect(map.zoom).toBe(MAP_ZOOM.PLACE + 2);
+      map.zoom = MAP_ZOOM.STEP_IN_MAX;
+      view.result.current.locate(TOKYO);
+      expect(map.zoom).toBe(MAP_ZOOM.STEP_IN_MAX);
+    });
+
+    it('a pinch between taps cannot desynchronise it: the step reads the MAP', () => {
+      const map = new FakeMap();
+      map.bounds = WORLD;
+      const view = mount(map, DAY);
+      map.zoom = MAP_ZOOM.PLACE;
+      view.result.current.locate(TOKYO);
+      // The user pinches back out between taps. A tap counter would now be wrong.
+      map.zoom = MAP_ZOOM.PLACE;
+      view.result.current.locate(TOKYO);
+      expect(map.zoom).toBe(MAP_ZOOM.PLACE + 1);
+    });
+  });
+
+  // ADR-0127 §3. The defect was not that the pan was too slow — it was that a pan and
+  // a fit both ran, so the fit overwrote it. The fix removes the second runner.
+  describe('an arrival focus owns the framing (ADR-0127 §3)', () => {
+    it('an arrival centres on the place, and the opening fit never runs', () => {
+      const map = new FakeMap();
+      map.bounds = WORLD;
+      mount(map, DAY, 'day', TOKYO);
+      expect(map.center).toEqual(TOKYO);
+      expect(map.zoom).toBe(MAP_ZOOM.PLACE);
+      expect(map.fits).toHaveLength(0);
+    });
+
+    // The real arrival order: the map mounts unsized, the screen's own effect then
+    // supplies the focus, and only later does the map become real. Keying on the live
+    // prop would have dropped it in between — which is the slow arrival this is for.
+    it('an arrival that lands BEFORE the map is sized still wins', () => {
+      const map = new FakeMap();
+      map.bounds = null; // not rendered yet: no fit is possible
+      const view = mount(map, DAY);
+      expect(map.fits).toHaveLength(0);
+      view.rerender({ map, pts: DAY, signal: 'day', arrivalFocus: TOKYO });
+      map.settle();
+      expect(map.center).toEqual(TOKYO);
+      expect(map.fits).toHaveLength(0);
+    });
+
+    // And the other order: the fit already claimed the opening frame, then the arrival
+    // widens the scope, which changes the signal. The arrival still wins.
+    it('an arrival that lands AFTER a fit still wins the next framing', () => {
+      const map = new FakeMap();
+      map.bounds = WORLD;
+      const view = mount(map, DAY);
+      expect(map.fits).toHaveLength(1);
+      view.rerender({ map, pts: DAY, signal: 'all', arrivalFocus: KYOTO });
+      expect(map.center).toEqual(KYOTO);
+      expect(map.fits).toHaveLength(1);
+    });
+
+    // Spent once: a later control change is an ordinary re-frame, not a second
+    // centring on an arrival nobody made again.
+    it('it is spent once — a later control change re-frames normally', () => {
+      const map = new FakeMap();
+      map.bounds = WORLD;
+      const view = mount(map, DAY, 'day', TOKYO);
+      expect(map.fits).toHaveLength(0);
+      map.bounds = { north: 36, south: 35.5, east: 140, west: 139.5 };
+      view.rerender({ map, pts: DAY, signal: 'all', arrivalFocus: TOKYO });
+      expect(map.fits).toHaveLength(1);
+    });
   });
 
   it('under reduced motion the camera still MOVES — it jumps instead of easing', () => {

@@ -269,13 +269,34 @@ export const SNAP_DRAG_SLOP_PX = 4;
  *  mouse, so it belongs to Phase 3's device pass along with `MAP_ZOOM`. */
 export const SNAP_FLICK_PX_PER_MS = 0.5;
 
-/** Camera zoom bounds (ADR-0121 §7). `SINGLE_PIN` is the neighbourhood zoom a
- *  lone pin centres at — `fitBounds` on a zero-area extent snaps to building
- *  level. `MAX_FIT` caps a fitted set, which covers near-coincident pins with the
- *  same rule rather than a second special case. `WORLD` is only the pre-fit
- *  default: a map must be constructed with some camera, and the first fit
- *  replaces it. */
-export const MAP_ZOOM = { SINGLE_PIN: 15, MAX_FIT: 16, WORLD: 2 } as const;
+/** Camera zoom bounds (ADR-0121 §7, re-tuned and reorganised by ADR-0127).
+ *
+ *  **`PLACE` is one number answering one question — "how close is close enough to
+ *  read a place in context" — and that is the point of it.** Three paths ask it: a
+ *  lone pin centring (`fitBounds` on a zero-area extent snaps to building level, so
+ *  it never runs), a selection zooming in, and locate. They used to answer it
+ *  separately or not at all, so the tab landed at a different zoom depending on how
+ *  you got there. It replaces `SINGLE_PIN`, which named only the first path.
+ *
+ *  `MAX_FIT` stays a **separate** number, one step tighter, and is not folded in: it
+ *  caps a *fit*, which has real extent behind it, where `PLACE` is the zoom to use
+ *  when there is no extent to read. A tight cluster earning one step closer than a
+ *  guess is the distinction, not an inconsistency.
+ *
+ *  `STEP_IN_MAX` is where locate's repeat-tap ladder stops (#20). The step itself is
+ *  stateless — one level in from wherever the map actually is — so a pinch between
+ *  taps cannot desynchronise it and no tap count lives anywhere (ADR-0122 §9).
+ *
+ *  `WORLD` is only the pre-fit default: a map must be constructed with some camera,
+ *  and the first fit replaces it.
+ *
+ *  **The three numbers are derived defaults and the device pass owns them**, exactly
+ *  as ADR-0122 handed the snap stops over: each zoom step halves the span, "close
+ *  enough to read" is a legibility judgement, and the reported defect was that 15 and
+ *  16 both landed too close — so both moved one step out and the relationship between
+ *  them was preserved rather than re-invented. They join `MAP_PIN` and
+ *  `MAP_REFIT_FILL_SHARE` in the same cluster. */
+export const MAP_ZOOM = { PLACE: 14, MAX_FIT: 15, STEP_IN_MAX: 17, WORLD: 2 } as const;
 
 /**
  * **The pin's size is a rule, not a number** (ADR-0123): a pin is a share of the
