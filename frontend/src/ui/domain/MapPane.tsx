@@ -132,6 +132,13 @@ function MapPaneInner({
           // overlay, so a tap on a pin should not reach here at all — the guard is cheap
           // insurance against the one ordering that would matter, selecting a pin and
           // then immediately clearing it.
+          //
+          // A tap on one of GOOGLE's sight icons (ADR-0125 §6) does land here, carrying a
+          // `placeId`, and it deliberately clears too: Google answers that tap with its own
+          // place card, and ours renders on the same canvas at the `map` stop, so keeping
+          // the selection would stack two cards. Replacing a selection when you tap
+          // something else is also what every map app does. So do NOT skip on
+          // `event.detail.placeId` — that reads like a fix and is the bug.
           onClick={(event) => {
             const target = event.domEvent?.target as HTMLElement | null;
             if (target?.closest?.('.map-pin')) return;

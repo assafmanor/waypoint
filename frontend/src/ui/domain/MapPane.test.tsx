@@ -15,6 +15,9 @@ import { cleanup, fireEvent, render, screen } from '@testing-library/react';
  *  the props we set on it, and `useMap` reports no instance — which is the honest
  *  stub, since there is no map. */
 const idleHandlers: ((bounds: unknown) => void)[] = [];
+/* The `placeId` the next canvas click carries — Google sets it when the tap landed on one
+   of ITS icons (a landmark, an attraction) rather than on empty canvas. */
+const nextTap: { placeId: string | null } = { placeId: null };
 vi.mock('@vis.gl/react-google-maps', () => ({
   APIProvider: ({ children }: { children?: ReactNode }) => <div data-api>{children}</div>,
   Map: ({ children, ...props }: Record<string, unknown> & { children?: ReactNode }) => (
@@ -27,8 +30,12 @@ vi.mock('@vis.gl/react-google-maps', () => ({
       // pane reads that to tell a tap on the canvas from a tap on a pin, so the stub
       // has to pass it through in the same shape.
       onClick={(event) =>
-        (props.onClick as ((e: { domEvent: unknown }) => void) | undefined)?.({
+        (
+          props.onClick as
+            ((e: { domEvent: unknown; detail: { placeId: string | null } }) => void) | undefined
+        )?.({
           domEvent: event.nativeEvent,
+          detail: { placeId: nextTap.placeId },
         })
       }
     >
@@ -105,6 +112,7 @@ const markers = () => [...document.querySelectorAll<HTMLElement>('[data-marker]'
 afterEach(() => {
   cleanup();
   idleHandlers.length = 0;
+  nextTap.placeId = null;
 });
 
 describe('MapPane — our markup, not PinElement (ADR-0121 §6)', () => {
@@ -283,6 +291,18 @@ describe('MapPane — our markup, not PinElement (ADR-0121 §6)', () => {
       fireEvent.click(pins()[0]);
       expect(onSelectPin).toHaveBeenCalledWith('a');
       expect(onCanvasTap).not.toHaveBeenCalled();
+    });
+
+    // Google's own sight icons are visible again (ADR-0125 §6) and a tap on one arrives here
+    // as a map click carrying a `placeId`. It clears like any other, and that is the point:
+    // Google answers the tap with its own place card, ours renders on the same canvas at the
+    // `map` stop, and exempting the POI tap would stack the two.
+    it("a tap on one of GOOGLE's sight icons clears the selection, so two cards never stack", () => {
+      const onCanvasTap = vi.fn();
+      paint({ onCanvasTap });
+      nextTap.placeId = 'ChIJLU7jZClu5kcR4PcOOO6p3I0';
+      fireEvent.click(document.querySelector('[data-map]')!);
+      expect(onCanvasTap).toHaveBeenCalledTimes(1);
     });
   });
 
