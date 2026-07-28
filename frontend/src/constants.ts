@@ -369,16 +369,24 @@ export const MAP_ZOOM = {
  *  - `MIN_SPAN_DEG` — the floor. Coincident pins would otherwise fit a zero-area box and
  *    snap to building level, which is ADR-0121 §7's degenerate case.
  *  - `MAX_SPAN_DEG` — the ceiling. Without it one distant neighbour frames a region and
- *    the place you came to see is a speck.
+ *    the place you came to see is a speck. It still binds when EVERY neighbour is far:
+ *    nothing close is not the same as nothing, and an isolated place keeps the wider frame
+ *    rather than zooming in on empty ground (owner, session 169).
+ *  - `CLUSTER_FACTOR` — how much further than the NEAREST neighbour another may be and
+ *    still count as part of its cluster. Without it the third-nearest sets the span even
+ *    when the nearest is right next door, so a place with something close framed as if it
+ *    had nothing (owner, session 169: _"zoom more when the selected is very close to other
+ *    results"_).
  *  - `DEFAULT_SPAN_DEG` — a place with no neighbours at all. The old fixed behaviour,
  *    now only the fallback rather than the rule.
  *
- *  All five are derived defaults in the device-pass cluster: "close enough to read a
+ *  All of them are derived defaults in the device-pass cluster: "close enough to read a
  *  place in context" is a legibility judgement (ADR-0127 §1's posture, unchanged). */
 export const MAP_FOCUS = {
   NEIGHBOURS: 3,
   NEIGHBOUR_HEADROOM: 1.6,
   MIN_SPAN_DEG: 0.0025,
+  CLUSTER_FACTOR: 3,
   MAX_SPAN_DEG: 0.03,
   DEFAULT_SPAN_DEG: 0.01,
 } as const;

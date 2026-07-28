@@ -366,3 +366,22 @@ better rule and the one the file already had a shape for: the exemption rides on
 (`MapPin.match`, read by `:not(.match)`), exactly as ADR-0131 §4 put the `aside` withdrawal
 on the pin rather than on the screen. `match` is derived from the very predicate that admits
 the pin, so the flag and the filter cannot drift.
+
+## Build log addendum (2026-07-28, session 169) — the second exemption
+
+> _"Selected should be promoted to pin."_
+
+Session 168 exempted a **search result** from the errand's context demotion. The same
+argument covers **selection**, and the device pass found the gap: with no query live, the
+place you had tapped drew as a dot with the selection ring around it — a ring drawn around
+nothing.
+
+The demotion asks _"is this what you are choosing"_. A tap is the strongest answer the tab
+has to that question, so it outranks a rule about the backdrop by definition. Both
+exemptions are classes on the pin (`:not(.match, .selected)`), never a switch on the screen:
+the exemption belongs to the pin that earned it, which is ADR-0131 §4's split and the
+correction the owner already made once.
+
+**The camera half of the same screenshot is in [ADR-0129](0129-map-camera-moves-like-a-camera.md) §2's amendment** — the focus
+reach took the furthest of the nearest three unconditionally, so a close neighbour could not
+tighten the frame.

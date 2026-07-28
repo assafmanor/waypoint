@@ -397,6 +397,19 @@ describe('the focus frame is derived from what is nearby (ADR-0129 §2)', () => 
     );
   });
 
+  // NOTHING CLOSE IS NOT THE SAME AS NOTHING (owner, session 169). The cluster guard below
+  // must not turn "every neighbour is far" into a tight frame on empty ground: when they
+  // are all far they are all in the same (far) cluster, so the reach and the ceiling behave
+  // exactly as they always did.
+  it('keeps the wide frame when every neighbour is far, cluster guard or not', () => {
+    const far = [
+      { lat: AT.lat + 0.2, lng: AT.lng },
+      { lat: AT.lat + 0.25, lng: AT.lng },
+      { lat: AT.lat + 0.3, lng: AT.lng },
+    ];
+    expect(span(focusBoundsFor(AT, far))).toBeCloseTo(MAP_FOCUS.MAX_SPAN_DEG * 2, 9);
+  });
+
   // A pin at the SAME coordinates is not a neighbour: it says nothing about what is
   // around the place, so it falls through to the standalone default rather than
   // collapsing the frame onto itself.
@@ -412,19 +425,38 @@ describe('the focus frame is derived from what is nearby (ADR-0129 §2)', () => 
     );
   });
 
-  // A cluster is framed as a cluster: the furthest of the NEAR ones sets the reach, so
-  // three pins down one street all land inside the frame rather than just the closest.
+  // A cluster is framed as a cluster: the furthest of the near ones sets the reach, so
+  // pins down one street all land inside the frame rather than just the closest — **as long
+  // as they really are one cluster.** The qualifier is session 169's: neighbours within
+  // `CLUSTER_FACTOR` of the nearest are together, and one much further away is not.
   it('frames the whole near cluster, not just its closest member', () => {
     const cluster = [
-      { lat: 35.681, lng: 139.761 },
-      { lat: 35.684, lng: 139.764 },
-      { lat: 35.688, lng: 139.768 },
+      { lat: AT.lat + 0.003, lng: AT.lng },
+      { lat: AT.lat + 0.005, lng: AT.lng },
+      { lat: AT.lat + 0.008, lng: AT.lng },
     ];
     const b = focusBoundsFor(AT, cluster);
     for (const p of cluster) {
       expect(p.lat).toBeLessThanOrEqual(b.north);
       expect(p.lat).toBeGreaterThanOrEqual(b.south);
     }
+  });
+
+  // _"Zoom more when the selected is very close to other results"_ (owner, session 169).
+  // The furthest of the nearest three used to set the reach unconditionally, so one distant
+  // pin dragged the frame out even when another was right next door — and the close one you
+  // wanted to see sat in the middle of a frame sized for the far one.
+  it('a distant outlier does not widen a frame that has a close neighbour', () => {
+    const close = { lat: AT.lat + 0.002, lng: AT.lng };
+    const outlier = { lat: AT.lat + 0.02, lng: AT.lng };
+    expect(span(focusBoundsFor(AT, [close, outlier]))).toBeCloseTo(
+      span(focusBoundsFor(AT, [close])),
+      9,
+    );
+    // …and it is genuinely tighter than the old behaviour, which framed for the outlier.
+    expect(span(focusBoundsFor(AT, [close, outlier]))).toBeLessThan(
+      span(focusBoundsFor(AT, [outlier])),
+    );
   });
 
   // Longitude degrees shrink toward the poles, so the same ground needs a wider box.
