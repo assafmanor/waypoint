@@ -3,10 +3,11 @@
 // `usePlaceSearch` core. Every overlay is a `Modal` (never a hand-rolled portal,
 // ADR-0090). The picker owns presentation only — session token, debounce, dedup,
 // offline fallback, and soft-429 all live in the hook.
-import { useRef, useState } from 'react';
+import { useRef, useState, type MouseEvent } from 'react';
 import type { Place, PlacePrediction } from '@waypoint/shared';
 import { usePlaceSearch } from '../../lib/usePlaceSearch';
 import { useTrip } from '../../state/trip-state';
+import { ICONS } from '../../constants';
 import { t } from '../../i18n/he';
 import { StatusBanner } from '../feedback/StatusBanner';
 import { Modal } from './Modal';
@@ -67,10 +68,41 @@ export function PlacePicker({
   );
 }
 
-/** The search sheet, also used standalone by the Map's coordless "＋ מיקום"
- *  enrich affordance (ADR-0110 §1): opened on a coordless Place-lite, a pick
- *  enriches that row in place. Exported so a caller can drive it with its own
- *  trigger instead of the in-form `PlacePicker` trigger. */
+/**
+ * The `＋ מיקום` trigger for a row that has no usable place — dashed and muted,
+ * deliberately NOT the teal `נווט` action, because there is nowhere to navigate
+ * yet: it is a provisional invitation, not a location.
+ *
+ * Lives beside the sheet it opens, and is shared by every surface that notices a
+ * place is missing: the Map's coordless Place-lite row (ADR-0121 §8) and a
+ * placeless booking's `מיקום` fact. It was the Map's one-off `.map-addbtn` until
+ * the second surface needed it (rule 8) — a third is now a one-line import, not a
+ * third copy of the same dashed pill.
+ */
+export function AddLocationButton({
+  onClick,
+  className,
+}: {
+  onClick: (e: MouseEvent<HTMLButtonElement>) => void;
+  /** Extra modifier class for a host that needs its own spacing. */
+  className?: string;
+}) {
+  return (
+    <button
+      type="button"
+      className={'pp-addbtn' + (className ? ` ${className}` : '')}
+      onClick={onClick}
+    >
+      <span aria-hidden="true">{ICONS.add}</span> {t.placePicker.addLocation}
+    </button>
+  );
+}
+
+/** The search sheet, also used standalone by the `＋ מיקום` enrich affordance
+ *  above (ADR-0110 §1): opened on a coordless Place-lite, a pick enriches that
+ *  row in place; opened with no `current` it mints a place for a row that had
+ *  none. Exported so a caller can drive it with its own trigger instead of the
+ *  in-form `PlacePicker` trigger. */
 export function PlacePickerSheet({
   current,
   onPick,

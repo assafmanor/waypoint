@@ -26,8 +26,8 @@ import {
   eventDurationLabel,
   eventEdgeZone,
   eventPlaceName,
-  eventMapPlace,
   eventRoute,
+  eventShowOnMap,
   eventZones,
   dayZoneContext,
   isDayOver,
@@ -89,20 +89,6 @@ function navigateHandler(
 ): (() => void) | undefined {
   const url = eventDirectionsUrl(event, ctx.bookings, ctx.places);
   return url ? () => openMaps(url) : undefined;
-}
-
-// The view-on-map peer of navigateHandler — and as of Phase 6 it no longer leaves
-// the app: `מפה` routes to the Map tab focused on that place (ADR-0121 §8), where
-// the row and its pin become one selection. Going to Google is `ניווט`, the one
-// Google action a surface keeps. Still `undefined` when there is nothing to focus (no
-// place, or a coordless Place-lite), so the button drops exactly as before.
-function showOnMapHandler(
-  event: TripEvent,
-  ctx: Pick<DayCtx, 'bookings' | 'places'>,
-  showPlaceOnMap: ((placeId: string) => void) | null,
-): (() => void) | undefined {
-  const place = eventMapPlace(event, ctx.bookings, ctx.places);
-  return place && showPlaceOnMap ? () => showPlaceOnMap(place.id) : undefined;
 }
 
 /** The zone display props for a transition entry's edge (ADR-0107): the edge's
@@ -617,7 +603,7 @@ function ItemNode({ item, depth, ctx }: { item: TimeItem; depth: number; ctx: Da
       }
       nestedCount={hasKids ? countDescendants(item) : undefined}
       onNavigate={navigateHandler(e, ctx)}
-      onShowOnMap={showOnMapHandler(e, ctx, ctx.showPlaceOnMap)}
+      onShowOnMap={eventShowOnMap(e, ctx.bookings, ctx.places, ctx.showPlaceOnMap)}
       onDone={() => ctx.verbs.done(e)}
       onSkip={() => ctx.verbs.skip(e)}
       onDelay={() => ctx.verbs.delay(e)}

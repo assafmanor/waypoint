@@ -848,26 +848,9 @@
 .map-navbtn:hover {
   background: color-mix(in srgb, var(--teal) 10%, transparent);
 }
-/* coordless enrich affordance: a dashed, muted "＋ מיקום" — provisional, not the
-   teal navigate action (there's nowhere to navigate yet). */
-.map-addbtn {
-  display: inline-flex;
-  align-items: center;
-  gap: 5px;
-  border: 1px dashed var(--soft-line);
-  color: var(--muted);
-  background: transparent;
-  border-radius: 999px;
-  padding: 6px 12px;
-  font: inherit;
-  font-size: 12px;
-  font-weight: 700;
-  cursor: pointer;
-  white-space: nowrap;
-}
-.map-addbtn:hover {
-  border-color: var(--muted);
-}
+/* The coordless `＋ מיקום` affordance is the shared `AddLocationButton`
+   (ui/primitives/place-picker.css) — a placeless booking's מיקום fact needed the
+   same pill, so it stopped being this row's one-off. */
 
 /* ── The way in to the entity (ADR-0121 §8) ────────────────────────────────────
    A place is only in the trip because something REFERENCES it (ADR-0112), and the

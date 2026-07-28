@@ -457,6 +457,9 @@ export const ICONS = {
   navigate: '🧭',
   /** "Near me now" — the device's own position, distinct from navigate's compass. */
   nearMe: '📍',
+  /** `מפה` — show a place on OUR map (ADR-0121 §8). Only surfaces whose actions are
+   *  glyph-led need it; the labelled `ניווט · מפה` pair on a card stays text-only. */
+  map: '🗺️',
   ticket: '🎫',
   search: '🔍',
   atm: '🏧',

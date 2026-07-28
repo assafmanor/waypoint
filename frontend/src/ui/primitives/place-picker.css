@@ -144,3 +144,26 @@
   font-size: 0.75rem;
   text-align: center;
 }
+
+/* The `＋ מיקום` trigger (`AddLocationButton`): a dashed, muted pill — provisional,
+   NOT the teal navigate action, since there is nowhere to navigate yet. Ported from
+   the Map row's one-off `.map-addbtn` when a placeless booking's `מיקום` fact needed
+   the same affordance (rule 8). */
+.pp-addbtn {
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+  border: 1px dashed var(--soft-line);
+  color: var(--muted);
+  background: transparent;
+  border-radius: 999px;
+  padding: 6px 12px;
+  font: inherit;
+  font-size: 12px;
+  font-weight: 700;
+  cursor: pointer;
+  white-space: nowrap;
+}
+.pp-addbtn:hover {
+  border-color: var(--muted);
+}

@@ -33,17 +33,20 @@ import { useTrip, byStart } from '../state/trip-state';
 import { useDragState } from '../state/drag-state';
 import { useSpringLoadedDay } from '../lib/useSpringLoadedDay';
 import { useVerbs } from '../state/verbs';
+import { useShowPlaceOnMap } from '../state/map-scope-state';
 import { useClock } from '../lib/useClock';
 import {
   eventDurationLabel,
   eventEdgeZone,
   eventPlaceName,
   eventRoute,
+  eventShowOnMap,
   eventZones,
   dayZoneContext,
   liveToday,
   liveZone,
   type EventZones,
+  type ShowPlaceOnMap,
   type ZoneContext,
 } from '../lib/places';
 import { tripPhase } from '../lib/mode';
@@ -183,6 +186,10 @@ export function PlanDay() {
     useTrip();
   const verbs = useVerbs();
   const now = useClock();
+  // The builder's way to the map (ADR-0121 §8), on every row whose event resolves a
+  // coord-bearing place. It is the only surface here that needs it: the row's own tap
+  // opens the edit form, which carries no location view of its own.
+  const showPlaceOnMap = useShowPlaceOnMap();
   const tz = trip.timezone;
   // A finished trip is a read-only archive (ADR-0040): the builder becomes a
   // frozen, browsable history — no create/edit/delete/move, no shelf.
@@ -674,6 +681,7 @@ export function PlanDay() {
     nowZone,
     bookings,
     places,
+    showPlaceOnMap,
     verbs,
     dayEvents,
     softEvents,
@@ -1112,6 +1120,9 @@ interface BuilderCtx {
   nowZone: string;
   bookings: Booking[];
   places: Place[];
+  /** `useShowPlaceOnMap()` — `null` outside the trip shell, which drops the row's
+   *  `מפה` action rather than breaking it (ADR-0121 §8). */
+  showPlaceOnMap: ShowPlaceOnMap;
   verbs: ReturnType<typeof useVerbs>;
   dayEvents: TripEvent[];
   softEvents: TripEvent[];
@@ -1355,6 +1366,7 @@ function BuilderNode({
         booking={booking}
         onEdit={() => ctx.onEdit(e)}
         onDelete={() => ctx.verbs.remove(e)}
+        onShowOnMap={eventShowOnMap(e, ctx.bookings, ctx.places, ctx.showPlaceOnMap)}
         onPark={soft ? () => ctx.verbs.park(e) : undefined}
         dragProps={soft && !ctx.readOnly ? ctx.rowDragProps(e.id) : undefined}
         dragging={ctx.drag?.id === e.id}
@@ -1398,6 +1410,7 @@ function BuilderRow({
   placeName,
   onEdit,
   onDelete,
+  onShowOnMap,
   onPark,
   dragProps,
   dragging,
@@ -1426,6 +1439,15 @@ function BuilderRow({
   placeName?: string;
   onEdit: () => void;
   onDelete: () => void;
+  /** Show the event's place on our map (ADR-0121 §8). Absent when there is nothing
+   *  to focus — no place, a coordless Place-lite, or no Map tab to route to.
+   *
+   *  The builder's row has no `נווט` peer, and that is the decision, not an
+   *  omission: directions are a Trip-mode, on-the-ground action (which is why the
+   *  Trip-mode day view gates its own on `!readOnly` and `TransitionRow` takes none
+   *  in Plan mode), while `מפה` answers the planning question — where is this in
+   *  the trip. The two are not one atomic pair. */
+  onShowOnMap?: () => void;
   // Present only for soft rows — move the event to the shelf as an idea.
   onPark?: () => void;
   /** Press-and-hold to drag, from anywhere on the row (session-119). Present only
@@ -1635,6 +1657,19 @@ function BuilderRow({
               </span>
               {t.actions.edit}
             </button>
+            {/* `מפה` rides the ⋯ rather than becoming a second inline button: at
+                phone width this row has room for a title, a time and one affordance,
+                which is why every other row action already lives here. `runAction`
+                closes the Sheet before the handler navigates, so the tab cannot
+                change underneath an overlay still on the back stack (ADR-0090). */}
+            {onShowOnMap && (
+              <button className="row-action" onClick={() => runAction(onShowOnMap)}>
+                <span className="row-action-ic" aria-hidden="true">
+                  {ICONS.map}
+                </span>
+                {t.actions.showOnMap}
+              </button>
+            )}
             {/* Reorder lives here now that the row's ▲/▼ buttons are retired
                 (session-119). Dragging is the primary way, but it is a pointer
                 gesture: this is the keyboard- and screen-reader-reachable path, and

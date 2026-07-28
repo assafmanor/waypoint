@@ -118,8 +118,6 @@ export const t = {
     // own on/off state says which scope is on, and the header day strip already drops
     // its filled selection while all-days is live.)
     allDays: 'כל הימים',
-    // A coordless Place-lite: no coordinates yet — offer to enrich it in place.
-    addLocation: 'מיקום',
     shelfTag: 'על המדף',
     // navigate-to-next on the list (ADR-0106 §6): the one time-anchor cue the map
     // budget allows (ADR-0109 §6, the amber ring's list form), on a single row.
@@ -396,6 +394,10 @@ export const t = {
       timing: 'מתי',
       duration: 'משך',
       location: 'מיקום',
+      // The fact states the absence instead of disappearing (ADR-0121 §8
+      // amendment). Words, not a dash: a dash reads as "unknown", and this is a
+      // thing you can fix from right here.
+      noLocation: 'לא הוגדר מיקום',
       unscheduled: 'לא משובצת במסלול',
       code: 'קוד אישור',
       provider: 'ספק',
@@ -409,6 +411,14 @@ export const t = {
       titlePlaceholder: 'שם ההזמנה',
       codeLabel: 'קוד אישור',
       locationLabel: 'מיקום',
+      // A single-place booking saves happily with no location, and then nothing
+      // anywhere said so — a two-night hotel "missing from the map" was a hotel
+      // with no place. The note is inline and the save is NOT gated: a confirm on
+      // absence, on a non-destructive action, on a legitimate mid-planning path
+      // would be clicked through (ADR-0109 §6's anti-nag reasoning). So it names
+      // what is lost and gets out of the way.
+      noLocationHint:
+        'בלי מיקום אין סימון במפה ואין שורה ברשימה, אין ניווט, אין מרחק ואין דירוג, והשעות ייקראו באזור הזמן של הקטע בטיול ולא של המקום עצמו.',
       roomLabel: 'חדר',
       notesLabel: 'הערות',
       wifiTitle: 'WiFi',
@@ -1125,6 +1135,9 @@ export const t = {
     empty: 'הוספת מקום',
     clear: 'הסרת המקום',
     title: 'מקום',
+    // The `AddLocationButton` label — canonical here rather than under `map`, now
+    // that the Map row and a placeless booking's מיקום fact share the affordance.
+    addLocation: 'מיקום',
     searchPlaceholder: 'חיפוש מקום…',
     alreadyInTrip: 'כבר בטיול',
     saveNameOnly: (name: string) => `שמירת "${name}" כשם בלבד`,

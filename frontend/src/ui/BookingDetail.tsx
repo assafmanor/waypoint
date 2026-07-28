@@ -3,11 +3,19 @@
 // guard for a hard commitment (ADR-0011); editing is a deliberate tap. Edit
 // opens the merged BookingSheet. Delete lives on the row's "⋯" (BookingManageSheet),
 // not here — the detail carries edit only (ADR-0053 revision, 2026-07-17).
+import { useState } from 'react';
 import { BOOKING_TYPE, type Booking, type BookingType } from '@waypoint/shared';
 import { useTrip } from '../state/trip-state';
 import { Sheet } from './Sheet';
 import { RouteLabel } from './RouteLabel';
-import { bookingMapPlace, bookingPlaceId, mapsDirectionsUrl, placeName } from '../lib/places';
+import {
+  bookingMapPlace,
+  bookingPlaceId,
+  bookingShowOnMap,
+  mapsDirectionsUrl,
+  placeName,
+} from '../lib/places';
+import { AddLocationButton, PlacePickerSheet } from './primitives/PlacePicker';
 import { useShowPlaceOnMap } from '../state/map-scope-state';
 import { routeTitle } from '../lib/route-title';
 import { formatTime } from '../lib/time';
@@ -44,7 +52,7 @@ export function BookingDetail({
   onClose: () => void;
   onEdit: (booking: Booking) => void;
 }) {
-  const { trip, events, places } = useTrip();
+  const { trip, events, places, indexVerbs } = useTrip();
   const showPlaceOnMap = useShowPlaceOnMap();
   const linkedEvent = events.find((e) => e.bookingId === booking.id);
 
@@ -69,8 +77,7 @@ export function BookingDetail({
 
   // Location detail (ADR-0109 amendment): the booking's resolved place (transport
   // → origin, else the single place) shown as a fact like the rest, with navigate
-  // (directions) + מפה (view) links. Links are absent for a coordless Place-lite;
-  // the whole row is skipped when there's neither a map link nor an address to add.
+  // (directions) + מפה (view) links. Links are absent for a coordless Place-lite.
   const navPlace = places.find((p) => p.id === bookingPlaceId(booking));
   const dirUrl = mapsDirectionsUrl(navPlace);
   // `מפה` shows the place on OUR map now (ADR-0121 §8) — the Map tab, focused on it
@@ -78,7 +85,22 @@ export function BookingDetail({
   // there was no map of ours to focus. `ניווט` stays the Google action.
   const mapPlace = bookingMapPlace(booking, places);
   const locationText = navPlace?.address ?? navPlace?.name;
-  const showLocation = !!(locationText && (dirUrl || navPlace?.address));
+  // A single-place booking ALWAYS states its location, including when it has none.
+  // This row used to be gated on having something to show and so it simply did not
+  // render, which meant no surface anywhere said a booking was placeless — it cost
+  // a false bug report (a two-night hotel "missing from the map" was a hotel with no
+  // place). Transport keeps the old gate: its places are the route endpoints, which
+  // `routeRequired` already refuses to save without.
+  const showLocation = isTransport(booking.type) ? !!locationText : true;
+  // `＋ מיקום` is the same affordance the Map row gives a coordless Place-lite, on
+  // the surface where you notice the absence — so the fix is one tap from here
+  // (ADR-0110 §1's enrich flow, reused rather than reinvented).
+  const [picking, setPicking] = useState(false);
+  const attachPlace = (pickedId: string) => {
+    setPicking(false);
+    if (pickedId === booking.placeId) return; // an enrich-in-place returns the same row
+    void indexVerbs.updateBooking(booking.id, { placeId: pickedId }).catch(() => {});
+  };
 
   const isRoute = isTransport(booking.type) && !!(from || to);
   // Accessible name only — the visible heading is the RouteLabel below, whose arrow
@@ -89,6 +111,15 @@ export function BookingDetail({
   const edit = () => {
     onEdit(booking);
   };
+
+  // The detail is a Modal sheet, so it closes BEFORE the tab changes underneath it
+  // — otherwise the Map arrives behind a sheet still on the back stack (ADR-0090).
+  const show =
+    showPlaceOnMap &&
+    ((placeId: string) => {
+      onClose();
+      showPlaceOnMap(placeId);
+    });
 
   return (
     <Sheet ariaLabel={heading} onClose={onClose}>
@@ -113,18 +144,12 @@ export function BookingDetail({
         <div className="bk-facts">
           {showLocation && (
             <LocationFact
-              text={locationText!}
+              text={locationText}
               dirUrl={dirUrl}
-              onShowOnMap={
-                mapPlace && showPlaceOnMap
-                  ? () => {
-                      // The detail is a Modal sheet, so it closes before the tab
-                      // changes underneath it.
-                      onClose();
-                      showPlaceOnMap(mapPlace.id);
-                    }
-                  : undefined
-              }
+              onShowOnMap={bookingShowOnMap(booking, places, show)}
+              // Offered whenever there is no place to focus: none at all, or a
+              // coordless Place-lite the picker can enrich in place.
+              onAddLocation={mapPlace ? undefined : () => setPicking(true)}
             />
           )}
           {!linkedEvent ? (
@@ -156,29 +181,46 @@ export function BookingDetail({
           {notes && <Fact k={t.index.detail.notes} v={notes} />}
         </div>
       </div>
+      {picking && (
+        <PlacePickerSheet
+          current={navPlace}
+          onPick={attachPlace}
+          onClose={() => setPicking(false)}
+        />
+      )}
     </Sheet>
   );
 }
 
 // The location fact: the place name/address as the value, plus the two teal
-// location links (navigate = directions, מפה = view). A link renders only when
-// its URL exists — a coordless Place-lite shows the text with no links.
+// location links (navigate = directions, מפה = view). A link renders only when its
+// URL exists — a coordless Place-lite shows the text with no links.
+//
+// With no place at all the value says so in words rather than the row disappearing,
+// and `＋ מיקום` is the way out. Both no-place states therefore read the same way:
+// the fact is present, it states what it knows, and it offers the fix.
 function LocationFact({
   text,
   dirUrl,
   onShowOnMap,
+  onAddLocation,
 }: {
-  text: string;
+  /** The place's address or name; absent when the booking has no place. */
+  text?: string;
   dirUrl: string | null;
   /** Show it on our map — absent when the place has no coordinates to focus. */
   onShowOnMap?: () => void;
+  /** Pick a place for this booking — present exactly when `מפה` is not. */
+  onAddLocation?: () => void;
 }) {
   return (
     <div className="bk-fact">
       <span className="bk-fact-k">{t.index.detail.location}</span>
       <span className="bk-fact-v bk-loc">
-        <span>{text}</span>
-        {(dirUrl || onShowOnMap) && (
+        <span className={text ? undefined : 'bk-loc-none'}>
+          {text ?? t.index.detail.noLocation}
+        </span>
+        {(dirUrl || onShowOnMap || onAddLocation) && (
           <span className="bk-loc-links">
             {dirUrl && (
               <a className="bk-loc-link" href={dirUrl} target="_blank" rel="noopener noreferrer">
@@ -192,6 +234,7 @@ function LocationFact({
                 {t.actions.showOnMap}
               </button>
             )}
+            {onAddLocation && <AddLocationButton onClick={onAddLocation} />}
           </span>
         )}
       </span>
