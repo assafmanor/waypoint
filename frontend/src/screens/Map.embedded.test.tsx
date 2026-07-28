@@ -142,7 +142,14 @@ const paneProps: { current: Record<string, unknown> } = { current: {} };
 vi.mock('../ui/domain/MapPane', () => ({
   MapPane: (props: Record<string, unknown>) => {
     paneProps.current = props;
-    const pins = props.pins as { placeId: string; tier: string; order?: number }[];
+    const pins = props.pins as {
+      placeId: string;
+      tier: string;
+      order?: number;
+      aside?: boolean;
+      nextStop?: boolean;
+      nowStop?: boolean;
+    }[];
     return (
       <div data-pane>
         {/* The canvas background: tapping it clears the selection (ADR-0122 §7). The real
@@ -163,12 +170,18 @@ vi.mock('../ui/domain/MapPane', () => ({
         <button data-locate onClick={() => (props.onLocate as () => void)()}>
           locate
         </button>
+        {/* `data-aside` and `data-amber` exist because ADR-0131 §4 split the subordinate
+            RATIO from the paint, so the suite has to see them apart: a query withdraws
+            `aside` and leaves the tier alone, and the amber cues deliberately do NOT
+            follow the withdrawal. */}
         {pins.map((pin) => (
           <button
             key={pin.placeId}
             data-pin={pin.placeId}
             data-tier={pin.tier}
             data-order={pin.order ?? ''}
+            data-aside={String(pin.aside ?? false)}
+            data-amber={pin.nowStop ? 'now' : pin.nextStop ? 'next' : ''}
             onClick={() => (props.onSelectPin as (id: string) => void)(pin.placeId)}
           >
             {pin.placeId}
@@ -911,6 +924,165 @@ describe('the embedded map’s shell (ADR-0121)', () => {
       fireEvent.click(listButton(t.map.allDays));
       expect(pin('tomorrow')?.dataset.tier).not.toBe('ghost');
       expect(row('tomorrow')!.closest('.wp-reveal')!.classList.contains('hidden')).toBe(false);
+    });
+
+    // ─── ADR-0131 §4: A QUERY WITHDRAWS THE RATIO, AND NOT MUCH ELSE ───────────────
+    // Search is scope-blind by rule, so a match from another day is what was asked for —
+    // arriving wearing the paint that means "not what you are looking at" was the defect.
+    // The paint STAYS (a hollow ghost still answers *which day*, which is what you need
+    // to know when your search found Friday's); the subordinate SIZE comes off.
+    describe('a query withdraws the aside ratio, and the paint stays (ADR-0131 §4)', () => {
+      const search = (value: string) => {
+        fireEvent.click(listButton(t.map.search.button));
+        fireEvent.change(screen.getByPlaceholderText(t.map.search.placeholder), {
+          target: { value },
+        });
+      };
+
+      // Both scopes, because they are genuinely different renders and the promotion only
+      // EXISTS in the day-scoped one — in all-days there is nothing for a ghost to be.
+      it('day scope: the match keeps its ghost paint and loses the ratio', () => {
+        seed();
+        render(wrap(<MapView />));
+        expect(pin('tomorrow')?.dataset.tier).toBe('ghost');
+        expect(pin('tomorrow')?.dataset.aside).toBe('true');
+
+        search('tomorrow');
+        expect(pin('tomorrow')?.dataset.tier).toBe('ghost');
+        expect(pin('tomorrow')?.dataset.aside).toBe('false');
+      });
+
+      it('all-days: nothing to promote, because nothing is out of scope', () => {
+        seed();
+        render(wrap(<MapView />));
+        fireEvent.click(listButton(t.map.allDays));
+        expect(pin('tomorrow')?.dataset.aside).toBe('false');
+        search('tomorrow');
+        expect(pin('tomorrow')?.dataset.aside).toBe('false');
+      });
+
+      // The query is a filter like any other, so the matches are what REMAIN — which is
+      // why they need no cue and the ladder needs no new axis (§3).
+      it('the pins are the matches, ghosts included, and facets do not narrow them', () => {
+        seed();
+        render(wrap(<MapView />));
+        search('tomorrow');
+        expect(pinIds()).toEqual(['tomorrow']);
+      });
+
+      // The half of §4 that would have broken silently: `isAsidePin` has five readers and
+      // only three follow the query. These two do not, and both would be WRONG if they did.
+      it('the day connector does not gain the match — a Friday hit is not on today’s route', () => {
+        currentMode = 'plan';
+        seed();
+        render(wrap(<MapView />));
+        expect(paneProps.current.connector).toHaveLength(2);
+
+        // The connector follows the FILTERED set, exactly as it does for a category chip,
+        // so a query that leaves one ghost leaves no route — and the point is that the
+        // promoted ghost did not JOIN one. `orderedStops` keeps reading the tier, not the
+        // withdrawn ratio, which is the half of §4 that would have broken silently.
+        search('tomorrow');
+        expect(pin('tomorrow')?.dataset.aside).toBe('false');
+        expect(paneProps.current.connector).toEqual([]);
+      });
+
+      it('a matching ghost never claims an amber cue — those are claims about TIME', () => {
+        seed();
+        // Late enough that the trip's next destination is TOMORROW's place, so the pin the
+        // guard has to refuse is exactly the one the query promotes.
+        setSimulatedNow(Date.parse(`${ACTIVE_DATE}T23:30:00Z`));
+        render(wrap(<MapView />));
+        search('tomorrow');
+        expect(pin('tomorrow')?.dataset.aside).toBe('false');
+        expect(pin('tomorrow')?.dataset.amber).toBe('');
+      });
+
+      // The two readers ADR-0131's own table did not enumerate. Both ask "is this pin's
+      // row ABSENT from the list?", and under a query the list is trip-wide, so it is not.
+      it('tapping a match surfaces no ghost row — its row is already in the list', () => {
+        seed();
+        render(wrap(<MapView />));
+        fireEvent.click(pin('tomorrow')!);
+        expect(screen.getByText(t.map.notThisDay)).toBeTruthy();
+
+        search('tomorrow');
+        fireEvent.click(pin('tomorrow')!);
+        expect(screen.queryByText(t.map.notThisDay)).toBeNull();
+      });
+    });
+
+    // ─── ADR-0131 §6: THE SHEET MOVES ONLY WHERE THE ANSWER IS OUT OF SIGHT ────────
+    // The design's own first answer normalised from BOTH extremes, which at the maximized
+    // map means search shrinks 517px of canvas to 250 — a milder form of the very defect
+    // this phase removes. The rule that replaced it: a control moves the sheet only when
+    // its answer is somewhere you cannot see it.
+    describe('opening search moves the sheet only from `full` (ADR-0131 §6)', () => {
+      const openSearch = () => fireEvent.click(listButton(t.map.search.button));
+      const countBtn = () =>
+        document.querySelector('.map-querystrip .cnt button') as HTMLElement | null;
+
+      it('at the map extreme NOTHING moves — the canvas is what answers', () => {
+        seed();
+        render(wrap(<MapView />));
+        fireEvent.click(toggle(t.map.view.map));
+        expect(screenEl().dataset.view).toBe(MAP_SHEET_VIEW.map);
+        openSearch();
+        expect(screenEl().dataset.view).toBe(MAP_SHEET_VIEW.map);
+      });
+
+      it('at `full` it drops to `half`, because there is no canvas there at all', () => {
+        seed();
+        render(wrap(<MapView />));
+        fireEvent.click(toggle(t.map.view.list));
+        expect(screenEl().dataset.view).toBe(MAP_SHEET_VIEW.full);
+        openSearch();
+        expect(screenEl().dataset.view).toBe(MAP_SHEET_VIEW.half);
+      });
+
+      it('and a drag afterwards is left alone — it fires on the OPEN tap, not per keystroke', () => {
+        seed();
+        render(wrap(<MapView />));
+        openSearch();
+        fireEvent.change(screen.getByPlaceholderText(t.map.search.placeholder), {
+          target: { value: 'museum' },
+        });
+        fireEvent.click(toggle(t.map.view.map));
+        expect(screenEl().dataset.view).toBe(MAP_SHEET_VIEW.map);
+        // A sheet that moved while you typed would relayout the canvas under a typing
+        // finger, which is what ADR-0121 §5 shaped the stops to avoid.
+        fireEvent.change(screen.getByPlaceholderText(t.map.search.placeholder), {
+          target: { value: 'museu' },
+        });
+        expect(screenEl().dataset.view).toBe(MAP_SHEET_VIEW.map);
+      });
+
+      // The count is what makes staying at `map` honest: a match with no coordinates has
+      // no pin, so the number legitimately exceeds what the canvas shows. It is a CONTROL
+      // only where it has something to do — the derived-affordance rule this tab runs
+      // everywhere (ADR-0126 §4's live-region-wrapping-a-button, one more caller).
+      it('the count is a button at `map` and a plain readout elsewhere', () => {
+        seed();
+        render(wrap(<MapView />));
+        openSearch();
+        fireEvent.change(screen.getByPlaceholderText(t.map.search.placeholder), {
+          target: { value: 'museum' },
+        });
+        expect(countBtn()).toBeNull();
+
+        fireEvent.click(toggle(t.map.view.map));
+        expect(countBtn()).toBeTruthy();
+        fireEvent.click(countBtn()!);
+        expect(screenEl().dataset.view).toBe(MAP_SHEET_VIEW.half);
+      });
+
+      it('no query, no count — it states a filter, so it exists only while one is on', () => {
+        seed();
+        render(wrap(<MapView />));
+        fireEvent.click(toggle(t.map.view.map));
+        openSearch();
+        expect(document.querySelector('.map-querystrip .cnt')).toBeNull();
+      });
     });
 
     it('tapping a ghost surfaces that one row, named with the day it belongs to', () => {

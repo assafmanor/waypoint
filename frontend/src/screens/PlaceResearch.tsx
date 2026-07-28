@@ -1,14 +1,23 @@
-// Plan-mode place research (Phase 5, ADR-0115) — the second shell over the shared
-// search core ADR-0110 §1 pre-shaped. It lives inside the Map tab's existing
-// search overlay: the free half above it filters the trip's own places, this half
-// finds places that aren't in the trip yet and puts them on the maybe shelf.
+// Google's half of the Map tab's search (Phase 5, ADR-0115) — the second shell over
+// the shared search core ADR-0110 §1 pre-shaped. The free half above it filters the
+// trip's own places; this half finds places that aren't in the trip yet and puts them
+// on the maybe shelf.
 //
-// This is the first surface in the app that spends money per keystroke, so the
-// Google half is ARMED BY INTENT (ADR-0115 §1): the overlay opens free, and only
-// an explicit tap starts feeding the query to `usePlaceSearch`. Once armed the
-// behaviour is the picker's, unchanged — min-chars floor, pause-gated debounce,
-// one session token, dedup-before-spend — because the hook owns all of it and
-// this shell adds no second search path.
+// RE-PARENTED, NOT REWRITTEN (ADR-0131 §8): it used to render inside the Map tab's
+// full-screen search overlay, which covered the canvas. It now renders in the SHEET's
+// scroll region, in BOTH modes, and needed no change to move — it only ever took
+// `query`/`usageIndex`/`offline`. It belongs in the sheet rather than on the canvas for a
+// fact rather than a preference: an Autocomplete prediction carries NO coordinates until
+// the pick (ADR-0115 §2), so there is nothing to draw.
+//
+// THE ARM IS GONE (ADR-0131 §8a, owner's call). ADR-0115 §1 gated the first paid call
+// behind an explicit tap, reasoning that filtering your own list and buying an
+// Autocomplete session must not be the same gesture. That was right while the field's
+// default meaning was "filter" — but the field now means one thing, "find a place", so an
+// arm asked for a distinction the user does not have. (The in-form picker has never had
+// one, for exactly that reason.) The cost controls that remain are all the hook's: the
+// min-chars floor — raised 2 → 3 by §8b, and now the thing standing between a keystroke
+// and a paid call — the pause-gated debounce, one session token, and dedup-before-spend.
 import { useEffect, useState } from 'react';
 import type { PlacePrediction } from '@waypoint/shared';
 import { useVerbs } from '../state/verbs';
@@ -20,7 +29,8 @@ import { ICONS } from '../constants';
 import { t } from '../i18n/he';
 
 export function PlaceResearch({
-  /** The overlay's query — one control, two halves (ADR-0115 §1). */
+  /** The row's query — one control, two halves (ADR-0115 §1), which is true of a surface
+   *  with a map on it for the first time (ADR-0131 §8). */
   query,
   /** The place-usage index the tab already derives, so "already in the trip" and
    *  "already on the shelf" cost nothing and read the same rule as the list. */
@@ -33,43 +43,34 @@ export function PlaceResearch({
 }) {
   const verbs = useVerbs();
   const search = usePlaceSearch();
-  const [armed, setArmed] = useState(false);
   const [busyId, setBusyId] = useState<string | null>(null);
   const [addFailed, setAddFailed] = useState(false);
 
-  // Arming is expressed by feeding the hook a query — below the min-chars floor
-  // it stays inert, so nothing fires until there is something worth searching.
+  // The query goes straight to the hook, which is inert below the min-chars floor — so
+  // the floor, not an arm, is what stops a one- or two-character query from firing.
+  //
+  // It is handed on only once it is non-blank, which keeps "nothing typed → nothing
+  // reaches the paid core" a property of THIS component rather than of whoever renders
+  // it. The hook would ignore whitespace anyway (it trims before the floor), so this is
+  // about not asserting an intent we do not have: the screen only mounts this while a
+  // query is live, and a component that quietly hands its collaborator input it has
+  // itself decided to ignore is the kind of thing that stops being harmless later.
+  const trimmed = query.trim();
   useEffect(() => {
-    if (armed) search.setQuery(query);
-  }, [armed, query, search.setQuery]);
-  // Closing the overlay retires the session token (the hook mints a fresh one on
-  // the next open) — the abandonment half of the session lifecycle, ADR-0110 §1.
+    search.setQuery(trimmed ? query : '');
+  }, [query, trimmed, search.setQuery]);
+  // Unmounting retires the session token (the hook mints a fresh one next time) — the
+  // abandonment half of the session lifecycle, ADR-0110 §1. This renders only while a
+  // query is live, so closing the row's field is what unmounts it: the session is per
+  // SEARCH SESSION exactly as it was per overlay.
   useEffect(() => () => search.reset(), [search.reset]);
 
-  const trimmed = query.trim();
   if (!trimmed) return null;
 
   if (offline) {
     // No Google, so no affordance — the same rule the near-me chip follows
     // (ADR-0109 §7): when there is nothing to offer, don't offer it.
     return <StatusBanner tone="offline">{t.map.research.offline}</StatusBanner>;
-  }
-
-  if (!armed) {
-    return (
-      <button
-        type="button"
-        className="map-arm"
-        aria-label={t.map.research.armAria}
-        onClick={() => setArmed(true)}
-      >
-        <span className="map-arm-g" aria-hidden="true" />
-        <span className="map-arm-txt">
-          <span className="at">{t.map.research.arm}</span>
-          <span className="am">{t.map.research.armBody}</span>
-        </span>
-      </button>
-    );
   }
 
   const add = async (prediction: PlacePrediction) => {

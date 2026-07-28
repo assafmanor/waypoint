@@ -66,7 +66,14 @@ export const OUTBOX_RETRY_MS = 15_000;
  *  into ~one or two billable calls; the min-chars floor stops a one-letter query
  *  from firing at all. */
 export const PLACE_SEARCH_DEBOUNCE_MS = 350;
-export const PLACE_SEARCH_MIN_CHARS = 2;
+/** Raised 2 → 3 by ADR-0131 §8b, and it is a **cost** decision rather than a tweak.
+ *  The Map tab's Google half lost its arm (§8a), so past this floor a search spends —
+ *  and two characters of Hebrew match a large fraction of a city, which makes a 2-char
+ *  query a paid request that *cannot* return a useful answer while firing on the way to
+ *  every query after it. Shared by `usePlaceSearch` (the Map tab + the in-form picker)
+ *  and `useDestinationSearch`: the same Autocomplete relay in all three, so one number
+ *  and deliberately no per-surface fork. */
+export const PLACE_SEARCH_MIN_CHARS = 3;
 
 /** The waking window the day-progress bar spans, in trip-local hours. */
 export const DAY_WINDOW = { START_HOUR: 7, END_HOUR: 23 } as const;
@@ -243,6 +250,17 @@ export const MAP_FLOAT_GAP = 8;
  *  and `--sheet-h` must not depend on a layout read (ADR-0121 §5). */
 export const MAP_SHEET_VIEW = { map: 'map', half: 'half', full: 'full' } as const;
 export type MapSheetView = (typeof MAP_SHEET_VIEW)[keyof typeof MAP_SHEET_VIEW];
+
+/** The controls row has ONE disclosure with two occupants (ADR-0131 §1): the facet
+ *  strip, and the query field that replaced the full-screen search overlay on this tab.
+ *  Both cover the row in place behind the same pinned `✕` (ADR-0122 §2's shape).
+ *
+ *  One three-valued state rather than two booleans, because two booleans have a fourth
+ *  state — both open — that must not exist, and a bare string discriminant is the typo
+ *  that becomes a silent no-op (ADR-0095). `null` is "nothing open", so the type is
+ *  `MapRowDisclosure | null` at the call site. */
+export const MAP_ROW_DISCLOSURE = { facets: 'facets', query: 'query' } as const;
+export type MapRowDisclosure = (typeof MAP_ROW_DISCLOSURE)[keyof typeof MAP_ROW_DISCLOSURE];
 /** Ordered low → high, which is also the toggle's two extremes plus the default. */
 export const MAP_SHEET_ORDER = [
   MAP_SHEET_VIEW.map,
