@@ -1,4 +1,4 @@
-# Session 163 — the identity foundation, built (ADR-0133 Phase 1)
+# Session 164 — the identity foundation, built (ADR-0133 Phase 1)
 
 **Date:** 2026-07-28
 **Branch:** `claude/user-settings-page-design-r3ndi4`

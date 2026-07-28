@@ -1,12 +1,12 @@
-# Session 164 — the settings page, built (ADR-0133 Phase 2)
+# Session 165 — the settings page, built (ADR-0133 Phase 2)
 
 **Date:** 2026-07-28
 **Branch:** `claude/user-settings-page-design-r3ndi4`
 **Code** — Phase 2 of [ADR-0133](../decisions/0133-the-user-is-a-surface-identity-ramp-and-a-reachable-roster.md): `/settings` + `/settings/picture`, the `?from=` back rule, name editing, and the deletion of `AccountSheet`. First user-visible slice of the epic.
 
-The ADR carries the design and session 163 built the substrate. This note carries what
+The ADR carries the design and session 164 built the substrate. This note carries what
 Phase 2 learned, and the headline is that **running the app found things the tests could
-not** — including a defect in session 163's own work.
+not** — including a defect in session 164's own work.
 
 ## Running it was the point, and it earned its keep three times
 
@@ -14,7 +14,7 @@ The frontend suite passed 1524 tests before I opened a browser. Then I brought u
 backend + Postgres with `DEV_AUTH=1` and looked:
 
 1. **The account avatar wore a heavy black ring.** `Avatar` renders a `<button>` when
-   interactive (session 163's own addition), and `avatar.css` never reset the UA button
+   interactive (session 164's own addition), and `avatar.css` never reset the UA button
    border. Every unit test asserted classes and structure; none could see a border the
    browser draws by default. `.wp-av` now resets `border`/`padding`/`appearance` and adds
    a real focus ring.
@@ -32,7 +32,7 @@ backend + Postgres with `DEV_AUTH=1` and looked:
    the part that was wrong.
 3. **The seed and the e2e boot fixture still wrote `avatarColor`.** Both are outside
    TypeScript's reach (`.mjs`, and a fixture the compiler does check but which I had not
-   touched), so session 163's green typecheck said nothing about them — `prisma:seed`
+   touched), so session 164's green typecheck said nothing about them — `prisma:seed`
    would have failed outright on the dropped column. The seed now writes **no** hue at
    all, which is both correct and the honest demo: it lets the derivation do its job, and
    its old hexes were amber, teal and two `--cat-*` collisions, all of which ADR-0133
