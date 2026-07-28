@@ -426,9 +426,12 @@
 /* ONE floating object over the canvas at a time: a 250px pane cannot hold a card AND two
    floating controls and still read as a map, and the card is transient (once per session,
    both buttons dismiss it). `:has()` rather than a prop, deliberately — `MapPane`'s props
-   stay identity-stable on a screen that re-renders every second (frontend/CLAUDE.md). */
+   stay identity-stable on a screen that re-renders every second (frontend/CLAUDE.md).
+   (ADR-0126 §2: the rule survives the second camera control by naming the CLUSTER
+   rather than growing a third selector — which is most of why the two buttons are
+   one `.map-camctl` element.) */
 .map-split:has(> .map-geoprompt) .map-areacount,
-.map-split:has(> .map-geoprompt) .map-recenter {
+.map-split:has(> .map-geoprompt) .map-camctl {
   display: none;
 }
 

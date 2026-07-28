@@ -1,6 +1,6 @@
 # 0126 — The canvas's own chrome, restated: two camera controls, and `באזור` becomes a sort
 
-**Status:** Accepted — design only, authored 2026-07-28 (session 149). Not built; Phase 3 implements the camera side. The rendered canvas has still not been seen (ADR-0121 §13) and nothing below claims otherwise.
+**Status:** Accepted — designed 2026-07-28 (session 149), **built the same day (session 150; see the build log)**. Phase 3 still owns the camera's zoom behaviour on top of it. The rendered canvas has still not been seen (ADR-0121 §13) and nothing below claims otherwise.
 **Date:** 2026-07-28
 **Amends** [0121](0121-embedded-map-phase-6-design.md) **§12** (re-centre's "it re-frames, it never locates, and it never requests the permission" — it becomes two controls, and locate routes to the pre-prompt) and [0122](0122-map-split-controls-over-the-canvas.md) **§1/§2** (the canvas's control budget: the furniture band, and the gap at the `map` stop that §2 handed forward). **Leaves [0106](0106-maps-and-places-epic-scope-and-phasing.md) §4 and [0121](0121-embedded-map-phase-6-design.md) §9's ghost-counting rule unamended** — see §4 and §5, which is the point of both.
 Relates [0017](0017-mobile-first-device-targets.md) (the 44×44 floor), [0109](0109-map-tab-design.md) §6-7 (the reason-first pre-prompt, the near-me chip), [0119](0119-map-maybes-facet-is-the-shelf.md) §3 (count coupling), [0122](0122-map-split-controls-over-the-canvas.md) §9 (no `MapPane` prop that changes on a tap).
@@ -136,3 +136,56 @@ A row tap already does this (ADR-0121 §8 / ADR-0122 §7). The area sort does it
 - **Whether a crosshair and a corner-bracket frame read as distinct at a glance over real cloud-styled tiles.** ADR-0121 §12 argued the single control was "not the pair ADR-0109 §1 rejected"; two icon-only controls side by side is a fair place to re-ask. The argument on paper is silhouette — round versus rectangular — and both marks are conventional. A fake base cannot settle it.
 - **Whether a 44px band reads as right or as heavy at `half` on a 360×640 phone**, where it leaves 49px of clear canvas. If it is heavy, the lever is `half`'s fraction, which is already in Phase 3's tuning cluster — not a control that comes and goes by stop.
 - **Whether the readout reads as tappable.** It is a pill among two circles; on a canvas that may be enough, or it may need the affordance stating. This is the one thing the mockup cannot answer at all, because the question is "does a reader try it".
+
+## Build log (2026-07-28, session 150)
+
+The design above is what shipped and §1–§8 needed no reversal. What the build had to
+decide, refine or read against the letter is here rather than in a new ADR, because
+none of it changes a decision this one made. The rendered canvas is still unchanged
+from ADR-0121 §13: it was **not** seen in this session, and none of what follows
+claims otherwise. What was re-rendered is `mockups/map-chrome-v1.html` against the
+**shipped** stylesheets — it measures the band at 44×44 / 68×44 and the same clear
+canvas per stop as it did against the design's own delta, which is the cross-check
+that the built CSS is the designed CSS and not merely a plausible neighbour.
+
+1. **`areaSorted` IS a `MapPane` prop that changes on a tap, and §8 has to be read
+   precisely for that to be allowed.** ADR-0122 §9's words are "no new prop that flips
+   on a tap", but its subject is re-instantiating the map: the rejected case was §7's
+   bottom camera inset, which would have changed what the CAMERA does. This one is a
+   boolean the pane hands to `aria-pressed` and a class, it never reaches the map
+   instance, and `pins`/handlers keep their identities — so the markers do not re-diff
+   and nothing is billed. It is also not avoidable in CSS the way `:has()` avoided the
+   last one: a `data-` attribute on `.map-screen` can paint the pressed state but
+   cannot express `aria-pressed`, and a control that looks pressed without saying so is
+   the half-fix. The one thing kept from that rule is the identity discipline —
+   `onAreaSort` and `onLocate` are `useCallback(…, [])` over latest-refs, like every
+   other pane handler.
+2. **`placesInArea` is derived from PLACE COORDINATES and `ghostsInArea` from `pins`,
+   and the split is deliberate rather than incidental.** `pins` is declared eighty
+   lines below `listOrder`, so the sort's predicate could not read it without moving
+   things — and it should not: the sort orders list ROWS, and whether a row's place is
+   inside the snapshot is a fact about its coordinates. The shortfall count is the
+   opposite case: it has to be the same number the readout is taken from, or the banner
+   and the pill drift, so it filters the very `pins` array `areaCount` counts.
+3. **The block-header map is now keyed by the header STRING, not by `PlaceBlock`.**
+   `headerFor` used to hold a block and the renderer looked up `t.map.blockHeader[…]`.
+   The area sort's two headers are not blocks, and widening the value to a union would
+   have made every consumer branch on which kind it got. Resolving the string at the
+   point that knows which partition it is keeps one renderer and one `.map-grouphead`.
+4. **The area notice reuses `.map-georetry` inside a `StatusBanner`.** Not a new
+   affordance: the refusal notice already puts a button in that banner, so the
+   "explanation plus one way out" shape existed and only needed a second caller. Its
+   words are `t.map.emptyDay.action` verbatim — session 144's, as §5 asks.
+5. **A test-harness bug worth naming, because it hid a real state.** `MapPane.test.tsx`
+   defaulted `areaCount` with `??`, which swallows an explicit `null` — and `null`
+   ("no idle yet") is a distinct state from `0` ("nothing in view") that renders
+   differently. The assertion that neither renders a button was passing against `1`.
+   `=== undefined` is the fix; `??` is wrong in any harness whose prop is nullable.
+6. **Both new screen-level behaviours are asserted across the seam that hid the last
+   ordering bug.** The suite drives `onViewChange` directly, because that is the only
+   way `viewBounds` is ever written, and it asserts the ORDER of the rendered rows
+   rather than the state behind them — including that a later idle does not re-order
+   (the snapshot) and that nothing is hidden (the sort). The `unavailable` path is
+   tested with `POSITION_UNAVAILABLE` specifically, since that is the state §6's own
+   correction exists for and a `PERMISSION_DENIED` fixture would pass without covering
+   it.

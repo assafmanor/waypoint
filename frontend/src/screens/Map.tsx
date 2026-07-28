@@ -66,7 +66,7 @@ import {
   placePoint,
   type PinTier,
 } from '../lib/map-pins';
-import { countPointsInBounds, type MapBounds } from '../lib/map-camera';
+import { countPointsInBounds, pointInBounds, type MapBounds } from '../lib/map-camera';
 import { mapPaneAvailable, mapsConfig } from '../lib/map-config';
 import { stopHeightCss } from '../lib/snap-sheet';
 import { countVisible, revealRows, visibleItems, type Revealed } from '../lib/filter-reveal';
@@ -270,12 +270,59 @@ export function MapView() {
     openPrompt,
   ]);
 
+  // ONE RULE, three callers (ADR-0126 §7): a canvas control whose answer lives in the
+  // list normalises the sheet to `half`. A row tap already did it; the area sort and a
+  // locate that cannot deliver now do too. Only from the `map` stop — at `full` the
+  // list is entirely on screen, so there is nothing to lift.
+  const liftToList = useCallback(() => {
+    setSheetView((view) => (view === MAP_SHEET_VIEW.map ? MAP_SHEET_VIEW.half : view));
+  }, []);
+
   const askForLocation = () => {
     setPromptOpen(false);
     setNearMe(true);
     setNoticeDismissed(false);
     geo.request();
   };
+
+  // #19: the canvas can finally ask for the location permission. `MapPane` owns the
+  // camera half (it holds the map instance); this is the permission half, and it is a
+  // ROUTE to the pre-prompt rather than a second place that asks — ADR-0121 §12's
+  // invariant, kept by ADR-0126 §6.
+  //
+  // It sets `nearMe` (the FACT, and your dot) and never `sortByDistance` (the intent),
+  // which is session 138's split paying off: granting through this button lights the
+  // me-dot and the distance chips and leaves the list in schedule order. One flag for
+  // both is exactly the regression that split was written to fix.
+  const [locatePending, setLocatePending] = useState(false);
+  const requestLocate = useCallback(() => {
+    setNearMe(true);
+    setNoticeDismissed(false);
+    if (geo.status === 'granted' && geo.coords) return; // the pane already centred
+    if (geo.blocked) {
+      // Known before we ask, and asking again cannot re-prompt — so route straight to
+      // the notice that says so, which lives in the list.
+      liftToList();
+      return;
+    }
+    setLocatePending(true);
+    // Standing permission shows NO dialog, so a card in front of it would be a page we
+    // make you dismiss for nothing (ADR-0109 §6's own rule, as the on-open offer above).
+    if (geo.permission === 'granted') geo.request();
+    else openPrompt();
+  }, [geo.status, geo.coords, geo.blocked, geo.permission, geo.request, liftToList, openPrompt]);
+
+  // §7's rule keys on the OUTCOME, not the tap. "Location is off" is three states and
+  // the Permissions API sees only two of them: with location services off the browser
+  // still reports `granted` and the request fails anyway (`POSITION_UNAVAILABLE`), so
+  // whether locate can deliver is knowable only once it has settled. Without this, a
+  // locate at the `map` stop with the radio off spins, fails, and files its explanation
+  // into a list that is not on screen — the silent nothing #19 is a report about.
+  useEffect(() => {
+    if (!locatePending || geo.status === 'idle' || geo.status === 'locating') return;
+    if (locationRefused) liftToList();
+    setLocatePending(false);
+  }, [locatePending, geo.status, locationRefused, liftToList]);
   // The chip's job is now exactly one thing: **order the list by distance**. Showing
   // distances and the me-dot no longer needs it — those follow from holding a fix,
   // which the tab may have obtained on open by itself. So this states the intent the
@@ -286,6 +333,8 @@ export function MapView() {
       return;
     }
     setSortByDistance(true);
+    // One list, one order (ADR-0126 §5): the two sort intents are exclusive.
+    setAreaBounds(null);
     // Already located: the order can change immediately, no second prompt (ADR-0109
     // §6 — "a fix we already hold needs no second prompt").
     if (geo.status === 'granted' && geo.coords) return;
@@ -415,7 +464,41 @@ export function MapView() {
     if (db == null) return -1;
     return da - db || bySchedule(a, b);
   };
-  const listOrder = distanceOrder ? byDistance : bySchedule;
+  // ── The area sort (#23, ADR-0126 §5) ──────────────────────────────────────
+  // A sibling of `sortByDistance`, not a new mechanism: an INTENT that re-orders,
+  // and the bounds it orders by are SNAPSHOTTED at the tap and never re-read. That
+  // is not an optimisation — the tap raises the sheet, which resizes the pane and
+  // fires a fresh `idle`, so an order keyed on live bounds would re-shuffle the
+  // instant it was created. These are the bounds of the canvas you were looking at
+  // when you tapped, which is what you meant by "what's around here".
+  const [areaBounds, setAreaBounds] = useState<MapBounds | null>(null);
+  const areaSorted = areaBounds != null;
+  const placesInArea = useMemo(() => {
+    const ids = new Set<string>();
+    if (!areaBounds) return ids;
+    for (const place of places) {
+      const point = placePoint(place);
+      if (point && pointInBounds(areaBounds, point)) ids.add(place.id);
+    }
+    return ids;
+  }, [places, areaBounds]);
+
+  // A new day is a new list, so an area order does not carry across the scope change
+  // that produced it (ADR-0126 §5). The other two exits are a second tap and the
+  // near-me chip.
+  useEffect(() => setAreaBounds(null), [allDays, activeDate]);
+
+  // The area order: in-view first, each group in the day's own schedule order. It
+  // ORDERS and never hides, which is the whole of ADR-0126 §5 — an area FILTER is the
+  // one facet whose predicate moves without the user touching the list, so it would
+  // either churn under a panning finger or freeze out of sync with the canvas.
+  // ADR-0106 §4 stands: the viewport is still the only area filter.
+  const byArea = (a: PlaceUsage, b: PlaceUsage) =>
+    Number(placesInArea.has(b.placeId)) - Number(placesInArea.has(a.placeId)) || bySchedule(a, b);
+  // One list, one order, so the two sort INTENTS are exclusive; near-me wins because
+  // turning either on clears the other and this is only the tie-break for a state
+  // neither reducer can produce.
+  const listOrder = distanceOrder ? byDistance : areaSorted ? byArea : bySchedule;
 
   const placeFilter = { category: activeCategory, maybesOnly, leftOnly, ...dayCtx };
 
@@ -648,6 +731,27 @@ export function MapView() {
   };
   const selectPin = useCallback((placeId: string) => onPinTap.current(placeId), []);
 
+  // The `באזור` tap, behind the same stable identity for the same reason. It snapshots
+  // the CURRENT bounds before anything moves, clears the other sort intent (one list,
+  // one order), and lifts the sheet so the order it just produced is on screen.
+  const onAreaTap = useRef<() => void>(() => {});
+  onAreaTap.current = () => {
+    if (areaSorted) {
+      setAreaBounds(null);
+      return;
+    }
+    setSortByDistance(false);
+    setAreaBounds(viewBounds);
+    liftToList();
+  };
+  const toggleAreaSort = useCallback(() => onAreaTap.current(), []);
+
+  // Same stable-identity contract for locate: the pane calls it, so a fresh function
+  // each render would re-diff every marker once a second (ADR-0121 §4/§6).
+  const onLocateTap = useRef<() => void>(() => {});
+  onLocateTap.current = requestLocate;
+  const locateFromCanvas = useCallback(() => onLocateTap.current(), []);
+
   // `מפה` on an EventCard / BookingDetail routes here focused on a place (§8).
   // Consumed once, and it widens to all-days when the place is not in the day it
   // landed on — otherwise the action would point at something the scope hides.
@@ -832,16 +936,28 @@ export function MapView() {
   // must never carry (or strand) a header while it collapses.
   const renderList = (rows: Revealed<PlaceUsage>[], onSelect: (placeId: string) => void) => {
     const shown = visibleItems(rows);
-    // Near-me re-sorts by distance, so the schedule blocks don't describe the list.
-    const blocks = distanceOrder ? [] : shown.map(blockOf);
+    // EITHER sort intent replaces the schedule blocks, because they no longer describe
+    // the list (ADR-0126 §5 — the area sort is a sibling of near-me, so it takes the
+    // same path rather than a parallel one).
+    const blocks = distanceOrder || areaSorted ? [] : shown.map(blockOf);
     // A single-block list needs no header at all: labelling the only thing on screen
     // is the chrome ADR-0117 §3 refused for the ahead header.
     const labelled = new Set(blocks).size > 1;
-    const headerFor = new Map<string, (typeof blocks)[number]>();
+    const headerFor = new Map<string, string>();
     if (labelled) {
       shown.forEach((usage, i) => {
-        if (blocks[i] !== blocks[i - 1]) headerFor.set(usage.placeId, blocks[i]);
+        if (blocks[i] !== blocks[i - 1]) headerFor.set(usage.placeId, t.map.blockHeader[blocks[i]]);
       });
+    }
+    // The area sort needs TWO headers where near-me needs one: a distance is legible on
+    // every row (each carries its own chip), but "in view" is not, so the boundary the
+    // first group ends at has to be drawn. Same `.map-grouphead`, same mechanism — the
+    // partition is just a different one.
+    if (areaSorted) {
+      const firstIn = shown.find((u) => placesInArea.has(u.placeId));
+      const firstOut = shown.find((u) => !placesInArea.has(u.placeId));
+      if (firstIn) headerFor.set(firstIn.placeId, t.map.area.groupHeader);
+      if (firstOut) headerFor.set(firstOut.placeId, t.map.area.elsewhere);
     }
     return (
       <>
@@ -853,8 +969,8 @@ export function MapView() {
           rows={rows}
           getKey={(usage) => usage.placeId}
           renderBefore={(usage) => {
-            const block = headerFor.get(usage.placeId);
-            return block && <div className="map-grouphead">{t.map.blockHeader[block]}</div>;
+            const header = headerFor.get(usage.placeId);
+            return header && <div className="map-grouphead">{header}</div>;
           }}
           renderRow={renderRow({ onSelect })}
         />
@@ -1032,6 +1148,38 @@ export function MapView() {
 
   // Refused or unavailable: say what the list is sorted by instead, and offer a
   // retry only when asking again can actually re-prompt.
+  // THE PREREQUISITE, ANSWERED (ADR-0126 §5). `areaCount` reads the CANVAS, so it
+  // counts ghosts — places in view but outside the scoped day — and the sheet contains
+  // none of them: `orderedStops` excludes ghosts explicitly, twelve lines below where
+  // the count is taken. So the readout names a set the list is structurally unable to
+  // produce, and the button cannot honestly promise "these N rows".
+  //
+  // The count stays SPATIAL and the list says what it could not bring. Decoupling it
+  // instead — counting only what the list can render — would show seven pins over a
+  // readout saying four, which is the same two-halves-disagreeing defect pointing the
+  // other way. Read off `pins`, the very array the count is taken from, so the two
+  // numbers cannot drift.
+  const ghostsInArea = useMemo(
+    () =>
+      areaBounds
+        ? pins.filter((pin) => pin.tier === PIN_TIER.ghost && pointInBounds(areaBounds, pin)).length
+        : 0,
+    [pins, areaBounds],
+  );
+
+  // Session 144's grammar, reused rather than re-invented: say how many are outside
+  // this day, and offer the same way out with the same words. And it genuinely
+  // resolves — with all-days on there are no ghosts, the two numbers converge, and
+  // this removes itself.
+  const areaNotice = areaSorted && ghostsInArea > 0 && (
+    <StatusBanner tone="neutral">
+      {t.map.area.otherDays(ghostsInArea)}
+      <button type="button" className="map-georetry" onClick={() => setAllDays(true)}>
+        {t.map.emptyDay.action}
+      </button>
+    </StatusBanner>
+  );
+
   const geoNotice = showNotice && (
     <StatusBanner tone="neutral" onDismiss={() => setNoticeDismissed(true)}>
       {geo.status === 'denied' ? t.map.near.deniedBanner : t.map.near.unavailableBanner}
@@ -1249,6 +1397,9 @@ export function MapView() {
           onCanvasTap={clearSelection}
           onViewChange={setViewBounds}
           areaCount={areaCount}
+          areaSorted={areaSorted}
+          onAreaSort={toggleAreaSort}
+          onLocate={locateFromCanvas}
         />
         {placeCard}
         {geoPrompt}
@@ -1297,6 +1448,9 @@ export function MapView() {
                 order, so it belongs to the list's scroll region (ADR-0122 §6). One card
                 moves and one does not, and the split is exactly what each is about. */}
             {geoNotice}
+            {/* Only on this path: an area sort needs a canvas to read, so on the
+                list-only tab it can never be on (ADR-0122 §8). */}
+            {areaNotice}
             {ghostRow}
             {listBody}
           </div>

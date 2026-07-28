@@ -206,10 +206,28 @@ export const t = {
     area: {
       suffix: 'באזור',
       none: 'אין מקומות באזור',
+      // The ACTION, carried as the button's `title` — i.e. its accessible
+      // DESCRIPTION, never its name. The visible `7 באזור` has to stay the name or a
+      // voice-control user cannot say what they can see, and a name that rewrites
+      // itself on every camera idle is its own kind of churn (ADR-0126 §4).
+      action: 'מיון הרשימה לפי האזור שבמסך',
+      // Two headers, not one: unlike distance — which every row states for itself in
+      // its own chip — "in view" is invisible per row, so the boundary the first
+      // group ends at has to be drawn (ADR-0126 §5).
+      groupHeader: 'באזור שבמסך',
+      elsewhere: 'שאר המקומות',
+      // The count reads the CANVAS and includes ghosts, which the list structurally
+      // cannot render. So the list says what it could not bring, in the same grammar
+      // session 144's empty state already uses — and offers the same way out, which
+      // genuinely resolves it: with all-days on there are no ghosts at all.
+      otherDays: (n: number) => `${n} מקומות באזור אינם ביום הזה.`,
     },
-    // The one control we add back after `disableDefaultUI` (ADR-0121 §12). It
-    // re-frames; it never asks for the location permission.
-    recentre: 'מרכז מחדש',
+    // The two camera controls (ADR-0126 §6, amending ADR-0121 §12's single
+    // re-centre). Locate is LOCATE-ONLY and stops branching on whether there is a
+    // fix; framing the filtered set is its own control. Named for what each does,
+    // because `מרכז מחדש` was true of both jobs the one button used to do.
+    locate: 'מרכוז על המיקום שלכם',
+    frameAll: 'התאמת התצוגה לכל המקומות',
     // A pin that is in view but not in this day (ADR-0121 §6). Its row is not in
     // the sheet, so tapping it is the only way to learn what it is: the tap
     // surfaces that one row, named with the day it belongs to.
