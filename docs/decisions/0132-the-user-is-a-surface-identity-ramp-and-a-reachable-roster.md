@@ -151,16 +151,42 @@ Anyone can change theirs on this page.
 **The amber default is deleted.** Not remapped — removed, because a column default is what made every
 user identical.
 
-### 6. The picker is one control, and tapping is the choice
+### 6. The picture page has two states, and the ramp appears only when it is in effect
 
-A large current avatar, then the sources in one list: the **Google photo** (rendered, when there is
-one), **upload** (Phase 4), and the **ramp** as swatches each previewing your own initial. There is no
-separate source radio — `avatarChoice` is implied by what you tap, so the model never shows through as
-a second control.
+**Revised 2026-07-28 (owner), replacing a flat three-peer list.** The first draft showed Google-photo,
+upload and the colour ramp as three peers and made the tap imply `avatarChoice`. That was too clever in
+one direction and dishonest in another: it offered a colour choice that had **no visible effect** while a
+photo was in use, and one tap silently did two things (switch source _and_ pick a hue).
 
-**Upload is absent until Phase 4, not disabled.** This follows the near-me rule the Map tab already
-set (ADR-0109 §6 / the research half of ADR-0115): a control that cannot work is not shown, because a
-greyed row invites a tap and explains nothing.
+The page now presents **the avatar you have, and what you can do to it** — one state at a time:
+
+| State                                        | The page shows                                                                                                        |
+| -------------------------------------------- | --------------------------------------------------------------------------------------------------------------------- |
+| **A photo is in use** (`google` or `upload`) | the photo large · **upload / replace** (Phase 4) · **remove the photo**. **No colour ramp.**                          |
+| **No photo is in use** (`initials`)          | the initials large on the current hue · **the ramp** · **use my Google photo** (when there is one) · upload (Phase 4) |
+
+So the ramp is **revealed, not hidden** — it appears exactly when the colour is the thing being rendered.
+And **choosing not to use a photo is its own act**, distinct from picking a hue: you remove the photo,
+which lands you on initials, and _then_ the hue is a real choice.
+
+**The defaults are unchanged and are what make this cheap:** Google gave a photo → `google`; it did not →
+`initials`. Most members never open this page and still get a real face.
+
+**Removal semantics, because "remove" means different things per source:**
+
+- **Removing the Google photo** means "don't use it". Nothing is deleted at Google, and `googleAvatarUrl`
+  is **kept** — which is what makes `שימוש בתמונה מגוגל` a real way back rather than a dead end. It is
+  re-fetched at each sign-in regardless.
+- **Removing an upload** deletes the blob and falls back to **the Google photo if there is one**, else
+  initials — the least surprising landing, since the provider's photo is still true.
+
+**Upload is absent until Phase 4, not disabled**, following the near-me rule the Map tab already set
+(ADR-0109 §6 / the research half of ADR-0115): a control that cannot work is not shown, because a greyed
+row invites a tap and explains nothing. So in Phase 2 the photo state carries **remove** only, and the
+initials state carries the ramp plus the way back.
+
+`avatarChoice` survives this change unaltered — `initials` is precisely "chose not to use the photo". What
+changed is that the page stopped exposing the enum as three peers and started showing its **effect**.
 
 ### 7. The page holds identity and account facts, and nothing invented
 
@@ -187,26 +213,48 @@ and ADR-0065's grow-later mindset covers it. **Recorded as a stated limitation w
 not left for someone to discover as a bug — the revisit trigger is a member changing their identity and
 someone else being confused by it.
 
-### 9. The roster is a statement, and management stays where it is
+### 9. The roster names who is here; a tap opens the one member surface
 
-The header cluster becomes a real `<button>` opening a **roster sheet** listing **every** member —
-avatar, name, `admin`/`peer` role, joined date, and a `you` marker on yourself. It is
-**read-only**: promote, remove, re-invite and the invite link all stay in trip settings, where
-ADR-0039's server-enforced admin gating already lives. Two surfaces would mean two gates.
+**Revised 2026-07-28 (owner) on two points:** the roster row **drops the joined date** ("a little too
+much" on a row whose job is _who is here_), and a row is **tappable** — you open a member to see their
+details. The date is not deleted, it moves to where detail belongs.
 
-Three things follow, and one of them removes a mechanism:
+So the two surfaces divide by question:
+
+- **The roster** answers _who is on this trip_ — avatar, name, `admin`/`peer` role, and a `you` marker.
+  Nothing else. Every member, no cap.
+- **The member surface** answers _who is this_ — the avatar large, name, role, **joined date**, and, for
+  an admin looking at someone else, the existing promote/remove verbs.
+
+**That member surface is `MemberSheet` generalized, not a second one.** Trip settings already has it
+(`TripSettings.tsx:640`) — a `Sheet` with a `.ms-who` identity header plus promote/remove, gated at the
+call site by the `isAdmin && !isMe` condition already written there. It gains the detail rows and both
+entry points open it. Rule 8: generalize the one-off rather than stand a near-identical sheet beside it,
+and it is a small extraction (~35 lines), not the substantial refactor that rule says to ask about first.
+
+**This corrects the first draft, which said "two surfaces would mean two gates".** That was wrong: the
+gate is **one** and it is server-side (ADR-0039 enforces it in the service), so two entry points to one
+component are not two gates. The real constraint is that there must be one member **component**, and the
+admin verbs are gated by role — not by which surface you arrived from.
+
+Three things follow, and one removes a mechanism:
 
 - **`MEMBER_AVATAR_CAP` stops being a truncation and becomes a rendering detail.** Once one tap lists
   everyone, `+2` is no longer a dead end hiding half the group — the overflow problem is deleted rather
-  than raised.
+  than redesigned.
 - **The cluster keeps showing _others_,** and the account avatar keeps its ring beside the gear. That
   split is app-shell.md §6's and it survives: avatar = you, cluster = them, gear = this trip.
-- **The roster and trip settings share the row rendering,** not two member-row components.
+- **The roster row and trip settings' `.set-member` share one rendering,** not two member-row components.
 
-What the roster deliberately does not say: **presence** (already broadcast at
-`sync.gateway.ts:165-173` and dropped by the client — the cheapest live signal in the codebase, and
-still out of scope, see Alternatives), **recent activity**, and **location** (ADR-0006, deferred, and
-out of bounds until that ADR is revisited).
+**Email is deliberately not on the member surface.** Joining is by link (ADR-0030/0067), so co-members
+may never have exchanged addresses, and nothing in a trip needs one; showing it would publish an
+account-identifying fact the app never promised to share. Reversible if a real need appears — it is a row,
+not an architecture.
+
+What the member surface still does not say, all three by decision: **presence** (already broadcast at
+`sync.gateway.ts:165-173` and dropped by the client), **recent activity**, and **location** (ADR-0006).
+Those are the natural growth slots, and the honest read is that a peer looking at a peer sees a thin
+card today — identity, role, joined. That is what we actually know about a member.
 
 ### 10. Two shipped defects the render exposed, both on surfaces Phase 3 touches
 

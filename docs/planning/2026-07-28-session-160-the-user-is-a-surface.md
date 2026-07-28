@@ -95,3 +95,32 @@ seen on a device, at `xs` size in the chrome (where `plum` and `rose` sit closes
 remap values are unwritten and `tokens.css` needs the five tokens in **both** theme blocks. Backlogged as
 its own line rather than folded into Phase 1, because it is a judgement call on a real screen, not a
 build step.
+
+## Owner revisions, same session (2026-07-28)
+
+Three corrections after reviewing the mockup, all now in the ADR:
+
+1. **The roster row drops the joined date** ("a little too much"). It is not deleted — it moves to where
+   detail belongs.
+2. **A row is tappable: you open a member to see their details.** Which forced the better structural
+   answer — the member surface is **`MemberSheet` generalized** (`TripSettings.tsx:640`), not a second
+   member sheet beside it. That also corrected a line in my own first draft: I had written that two
+   surfaces "would mean two gates", and that was wrong — the gate is one and it is server-side
+   (ADR-0039 enforces it in the service), so two entry points to one component are not two gates. The
+   real constraint is one member **component**, with the admin verbs gated by role rather than by which
+   surface you came from. Email stays off it: joining is by link, so co-members may never have exchanged
+   addresses, and nothing in a trip needs one.
+3. **The picture page becomes two states rather than three peers.** My draft listed Google-photo, upload
+   and the ramp side by side and made the tap imply the source. That offered a colour choice with **no
+   visible effect** while a photo was in use, and made one tap do two things. Now: a photo in use → the
+   photo plus remove, **no ramp**; no photo → initials, the ramp, and the way back. The ramp is
+   **revealed exactly when the colour is what gets drawn**, and "I don't want a photo" is its own act
+   before the hue is a choice. `avatarChoice` is unchanged — the page stopped exposing the enum and
+   started showing its effect.
+
+**Rendering the revision caught three more things**, which is the pattern of this whole session:
+the trip chrome behind the member sheet was **collapsed to 172px** (the app's `.app { margin-inline: auto }`
+suppresses flex stretch, so the frame needed its width stated — a mockup-frame bug, not an app one); the
+roster footer still claimed removal lived only in trip settings, **contradicting** the member sheet that
+now carries it; and I had left design rationale sitting **on the screen** as a note inside the sheet,
+which belongs in the notes panel.

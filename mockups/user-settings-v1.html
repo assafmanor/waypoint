@@ -5901,6 +5901,10 @@ body {
         min-height: 0;
         height: auto;
         max-width: none;
+        /* the app centres itself with `margin-inline: auto`, and an auto cross-axis
+           margin suppresses flex stretch — so the frame needs the width stated */
+        width: 100%;
+        margin-inline: 0;
         display: flex;
         flex-direction: column;
         overflow: hidden;
@@ -6092,6 +6096,35 @@ body {
         border-color: var(--ink);
         color: #fff;
       }
+      .pk-act {
+        display: flex;
+        align-items: center;
+        gap: 12px;
+        padding: 13px 14px;
+        cursor: pointer;
+        background: none;
+        border: 0;
+        border-top: 1px solid var(--line);
+        width: 100%;
+        font: inherit;
+        text-align: start;
+        min-height: 44px;
+      }
+      .pk-act .pk-t {
+        flex: 1;
+      }
+      .pk-act .pk-n {
+        display: block;
+        font-size: 14px;
+        font-weight: 700;
+      }
+      .pk-act .pk-s {
+        display: block;
+        font-size: 11.5px;
+        color: var(--muted);
+        margin-top: 1px;
+        line-height: 1.45;
+      }
       .pk-swatches {
         display: grid;
         grid-template-columns: repeat(5, 1fr);
@@ -6127,6 +6160,68 @@ body {
         align-items: center;
         gap: 11px;
         padding: 11px 2px;
+        /* a row is a control now: tap a member to open them (ADR-0132 §9) */
+        width: 100%;
+        background: none;
+        border: 0;
+        font: inherit;
+        text-align: start;
+        cursor: pointer;
+        min-height: 44px;
+      }
+      .rst-chev {
+        width: 15px;
+        height: 15px;
+        color: var(--faint);
+        flex: none;
+      }
+      /* the member surface: MemberSheet generalized (§9) */
+      .msd-who {
+        display: flex;
+        flex-direction: column;
+        align-items: center;
+        gap: 9px;
+        padding: 6px 0 16px;
+      }
+      .msd-name {
+        font-family: 'Secular One', sans-serif;
+        font-size: 19px;
+      }
+      .msd-facts {
+        border-top: 1px solid var(--line);
+      }
+      .msd-fact {
+        display: flex;
+        align-items: baseline;
+        gap: 10px;
+        padding: 10px 2px;
+        font-size: 13.5px;
+      }
+      .msd-fact + .msd-fact {
+        border-top: 1px solid var(--line);
+      }
+      .msd-fact .k {
+        color: var(--muted);
+        font-size: 12px;
+        font-weight: 600;
+        min-width: 72px;
+      }
+      .msd-fact .v {
+        font-weight: 600;
+      }
+      .msd-fact .v .d {
+        font-family: 'JetBrains Mono', monospace;
+      }
+      .msd-admin {
+        border-top: 1px solid var(--line);
+        margin-top: 6px;
+        padding-top: 10px;
+      }
+      .msd-note {
+        font-size: 11px;
+        color: var(--faint);
+        line-height: 1.6;
+        padding-top: 10px;
       }
       .rst-row + .rst-row {
         border-top: 1px solid var(--line);
@@ -6273,7 +6368,8 @@ body {
         <button class="sw on" onclick="show(0)">החשבון שלי</button>
         <button class="sw" onclick="show(1)">בחירת תמונה</button>
         <button class="sw" onclick="show(2)">החבורה</button>
-        <button class="sw" onclick="show(3)">פלטת הזהות</button>
+        <button class="sw" onclick="show(3)">חבר בחבורה</button>
+        <button class="sw" onclick="show(4)">פלטת הזהות</button>
       </div>
 
       <div class="phone">
@@ -6358,79 +6454,59 @@ body {
             </div>
           </header>
           <div class="set-body">
-            <div class="set-card">
+            <!-- STATE A · a photo is in use. No colour ramp here: the hue would
+                 render nothing (ADR-0132 §6). -->
+            <div class="set-card" id="pk-photo">
               <div class="id-hero">
-                <span class="wp-av wp-av-lg" id="preview" style="background: var(--id-denim)"
-                  >א</span
-                >
+                <span class="wp-av wp-av-lg"
+                  ><img
+                    alt=""
+                    src="data:image/svg+xml;utf8,%3Csvg xmlns='http://www.w3.org/2000/svg' width='96' height='96'%3E%3Crect width='96' height='96' fill='%23c9d4e6'/%3E%3Ccircle cx='48' cy='37' r='16' fill='%238496b5'/%3E%3Cellipse cx='48' cy='84' rx='27' ry='21' fill='%238496b5'/%3E%3C/svg%3E"
+                /></span>
+                <div style="font-size: 11.5px; color: var(--muted)">התמונה מגוגל</div>
+              </div>
+              <button class="pk-act" onclick="setState('initials')">
+                <span class="pk-t">
+                  <span class="pk-n">הסרת התמונה</span>
+                  <span class="pk-s">נחזור לאותיות הראשונות, ואז אפשר לבחור צבע</span>
+                </span>
+              </button>
+            </div>
+
+            <!-- STATE B · no photo in use. The ramp appears exactly now, because
+                 now the colour is the thing being rendered. -->
+            <div class="set-card" id="pk-initials" hidden>
+              <div class="id-hero">
+                <span class="wp-av wp-av-lg" id="preview" style="background: var(--id-denim)">א</span>
                 <div style="font-size: 11.5px; color: var(--muted)" id="preview-lab">
                   אותיות ראשונות · דנים
                 </div>
               </div>
-              <button class="pk-src" aria-pressed="false" onclick="pickSrc('google', this)">
-                <span class="wp-av wp-av-md"
-                  ><img
-                    alt=""
-                    src="data:image/svg+xml;utf8,%3Csvg xmlns='http://www.w3.org/2000/svg' width='88' height='88'%3E%3Crect width='88' height='88' fill='%23c9d4e6'/%3E%3Ccircle cx='44' cy='34' r='15' fill='%238496b5'/%3E%3Cellipse cx='44' cy='77' rx='25' ry='19' fill='%238496b5'/%3E%3C/svg%3E"
-                /></span>
-                <span class="pk-t">
-                  <span class="pk-n">התמונה מגוגל</span>
-                  <span class="pk-s">מגיעה מהחשבון שאיתו נכנסתם, ומתעדכנת בכל כניסה</span>
-                </span>
-                <span class="pk-tick">✓</span>
-              </button>
-              <button class="pk-src" aria-pressed="true" onclick="pickSrc('initials', this)">
-                <span class="wp-av wp-av-md" id="init-chip" style="background: var(--id-denim)"
-                  >א</span
-                >
-                <span class="pk-t">
-                  <span class="pk-n">אותיות ראשונות</span>
-                  <span class="pk-s">בחרו צבע מתוך חמש האפשרויות</span>
-                </span>
-                <span class="pk-tick">✓</span>
-              </button>
               <div class="pk-swatches">
-                <button
-                  class="pk-sw"
-                  style="background: var(--id-plum)"
-                  onclick="pickColor(this, 'שזיף')"
-                >
-                  א
-                </button>
-                <button
-                  class="pk-sw"
-                  style="background: var(--id-rose)"
-                  onclick="pickColor(this, 'ורד')"
-                >
-                  א
-                </button>
-                <button
-                  class="pk-sw"
-                  style="background: var(--id-moss)"
-                  onclick="pickColor(this, 'טחב')"
-                >
-                  א
-                </button>
-                <button
-                  class="pk-sw"
-                  aria-pressed="true"
-                  style="background: var(--id-denim)"
-                  onclick="pickColor(this, 'דנים')"
-                >
-                  א
-                </button>
-                <button
-                  class="pk-sw"
-                  style="background: var(--id-cocoa)"
-                  onclick="pickColor(this, 'קקאו')"
-                >
-                  א
-                </button>
+                <button class="pk-sw" style="background: var(--id-plum)" onclick="pickColor(this,'שזיף')">א</button>
+                <button class="pk-sw" style="background: var(--id-rose)" onclick="pickColor(this,'ורד')">א</button>
+                <button class="pk-sw" style="background: var(--id-moss)" onclick="pickColor(this,'טחב')">א</button>
+                <button class="pk-sw" aria-pressed="true" style="background: var(--id-denim)" onclick="pickColor(this,'דנים')">א</button>
+                <button class="pk-sw" style="background: var(--id-cocoa)" onclick="pickColor(this,'קקאו')">א</button>
               </div>
+              <button class="pk-act" onclick="setState('google')">
+                <span class="pk-t">
+                  <span class="pk-n">שימוש בתמונה מגוגל</span>
+                  <span class="pk-s">התמונה נשמרת אצל גוגל, ולכן תמיד יש דרך חזרה</span>
+                </span>
+              </button>
             </div>
+            <!-- one hint, after both cards, saying the thing that is true of the
+                 state you are actually in -->
             <div class="set-hint-block">
-              העלאת תמונה משלכם עוד לא כאן. עד שתגיע היא לא מוצגת כלל, ולא מוצגת כשורה חסומה, כדי
-              שלא תזמין נגיעה שלא עושה כלום.
+              <span id="pk-hint-photo"
+                >העלאת תמונה משלכם עוד לא כאן. עד שתגיע היא לא מוצגת כלל, ולא מוצגת כשורה חסומה, כדי
+                שלא תזמין נגיעה שלא עושה כלום.</span
+              >
+              <span id="pk-hint-initials" hidden
+                >הסרה של תמונת גוגל היא ״לא להשתמש בה״, ולא מחיקה אצלה, ולכן תמיד יש דרך חזרה. העלאת
+                תמונה משלכם עוד לא כאן.</span
+              >
             </div>
           </div>
         </div>
@@ -6501,60 +6577,102 @@ body {
             <div class="sheet-card">
               <div class="sheet-title">חבורה<span class="dot">·</span>5 נוסעים</div>
               <div class="sheet-body">
-                <div class="rst-row">
+                <button class="rst-row" onclick="show(3)">
                   <span class="wp-av wp-av-sm" style="background: var(--id-denim)">א</span>
                   <span class="rst-txt">
                     <span class="rst-n">אסף <span class="you">· אתה</span></span>
-                    <span class="rst-meta">הצטרף <span class="d">12.3</span></span>
                   </span>
                   <span class="role owner">מנהל</span>
-                </div>
-                <div class="rst-row">
+                  <svg class="nav-arrow nav-arrow-forward rst-chev" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M20 12H4m6-6l-6 6 6 6" /></svg>
+                </button>
+                <button class="rst-row" onclick="show(3)">
                   <span class="wp-av wp-av-sm" style="background: var(--id-rose)">ד</span>
                   <span class="rst-txt">
                     <span class="rst-n">דנה</span>
-                    <span class="rst-meta">הצטרפה <span class="d">14.3</span></span>
                   </span>
                   <span class="role owner">מנהל</span>
-                </div>
-                <div class="rst-row">
+                  <svg class="nav-arrow nav-arrow-forward rst-chev" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M20 12H4m6-6l-6 6 6 6" /></svg>
+                </button>
+                <button class="rst-row" onclick="show(3)">
                   <span class="wp-av wp-av-sm" style="background: var(--id-moss)">נ</span>
                   <span class="rst-txt">
                     <span class="rst-n">נועם</span>
-                    <span class="rst-meta">הצטרף <span class="d">14.3</span></span>
                   </span>
                   <span class="role mem">משתתף</span>
-                </div>
-                <div class="rst-row">
-                  <span class="wp-av wp-av-sm"
-                    ><img
-                      alt=""
-                      src="data:image/svg+xml;utf8,%3Csvg xmlns='http://www.w3.org/2000/svg' width='72' height='72'%3E%3Crect width='72' height='72' fill='%23dcc9c1'/%3E%3Ccircle cx='36' cy='27' r='12' fill='%23b99483'/%3E%3Cellipse cx='36' cy='63' rx='20' ry='16' fill='%23b99483'/%3E%3C/svg%3E"
-                  /></span>
+                  <svg class="nav-arrow nav-arrow-forward rst-chev" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M20 12H4m6-6l-6 6 6 6" /></svg>
+                </button>
+                <button class="rst-row" onclick="show(3)">
+                  <span class="wp-av wp-av-sm"><img alt="" src="data:image/svg+xml;utf8,%3Csvg xmlns='http://www.w3.org/2000/svg' width='72' height='72'%3E%3Crect width='72' height='72' fill='%23dcc9c1'/%3E%3Ccircle cx='36' cy='27' r='12' fill='%23b99483'/%3E%3Cellipse cx='36' cy='63' rx='20' ry='16' fill='%23b99483'/%3E%3C/svg%3E" /></span>
                   <span class="rst-txt">
                     <span class="rst-n">מאור</span>
-                    <span class="rst-meta">הצטרף <span class="d">21.3</span></span>
                   </span>
                   <span class="role mem">משתתף</span>
-                </div>
-                <div class="rst-row">
+                  <svg class="nav-arrow nav-arrow-forward rst-chev" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M20 12H4m6-6l-6 6 6 6" /></svg>
+                </button>
+                <button class="rst-row" onclick="show(3)">
                   <span class="wp-av wp-av-sm" style="background: var(--id-plum)">ר</span>
                   <span class="rst-txt">
                     <span class="rst-n">רון</span>
-                    <span class="rst-meta">הצטרף <span class="d">2.4</span></span>
                   </span>
                   <span class="role mem">משתתף</span>
-                </div>
+                  <svg class="nav-arrow nav-arrow-forward rst-chev" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M20 12H4m6-6l-6 6 6 6" /></svg>
+                </button>
                 <div class="rst-foot">
-                  ניהול החבורה, הזמנות והסרה נמצאים בהגדרות הטיול, אצל המנהל.
+                  הזמנה של אנשים חדשים והלינק לטיול נמצאים בהגדרות הטיול.
                 </div>
               </div>
             </div>
           </div>
         </div>
 
-        <!-- ══════════ 3 · THE RAMP (documentation view) ══════════ -->
-        <div class="app" id="v3" hidden>
+
+        <!-- ══════════ 3 · THE MEMBER SURFACE ══════════
+             `MemberSheet` generalized (ADR-0132 §9), not a second sheet: the
+             `.ms-who` header it already has, plus the detail rows, plus the
+             promote/remove verbs it already carries — shown here in the admin
+             case. The joined date lives HERE, not on the roster row. -->
+        <div class="app" id="v3" hidden data-mode="trip">
+          <header class="header mode-chrome" data-mode="trip">
+            <div class="mode-toggle-wrap"><span class="mode-pill">🧭 טיול</span></div>
+            <div class="trip-row">
+              <div class="trip-name-wrap">
+                <button class="trip-name-btn">
+                  <span class="trip-icon" aria-hidden="true">🇯🇵</span>
+                  <span class="trip-name">יפן ׳26</span>
+                </button>
+                <div class="trip-sub">טוקיו<span class="dot">·</span>יום 3 מתוך 9</div>
+              </div>
+            </div>
+          </header>
+          <div class="set-body">
+            <div class="set-card" style="height: 78px; opacity: 0.4"></div>
+            <div class="set-card" style="height: 78px; opacity: 0.4"></div>
+          </div>
+          <div class="sheet-overlay" style="display: flex" onclick="if(event.target===this)show(2)">
+            <div class="sheet-card">
+              <div class="msd-who">
+                <span class="wp-av wp-av-lg" style="background: var(--id-moss)">נ</span>
+                <span class="msd-name">נועם</span>
+              </div>
+              <div class="msd-facts">
+                <div class="msd-fact">
+                  <span class="k">תפקיד</span><span class="v">משתתף</span>
+                </div>
+                <div class="msd-fact">
+                  <span class="k">הצטרף</span><span class="v"><span class="d">14.3</span></span>
+                </div>
+              </div>
+              <div class="msd-admin">
+                <button class="ms-act"><span class="ic">👑</span> הפוך למנהל</button>
+                <button class="ms-act danger-item"><span class="ic">🚪</span> הסרה מהטיול</button>
+              </div>
+              <button class="ms-cancel" onclick="show(2)">סגירה</button>
+            </div>
+          </div>
+        </div>
+
+        <!-- ══════════ 4 · THE RAMP (documentation view) ══════════ -->
+        <div class="app" id="v4" hidden>
           <header class="new-head">
             <div class="new-head-row"><div class="new-title">פלטת הזהות</div></div>
           </header>
@@ -6714,6 +6832,35 @@ body {
           </div>
         </div>
 
+        <div class="note">
+          <div class="nt">שורה עונה ״מי כאן״, נגיעה עונה ״מי זה״</div>
+          <div class="nb">
+            תאריך ההצטרפות ירד מהשורה והועבר לכרטיס החבר: על שורה שתפקידה למנות מי נמצא הוא יותר מדי,
+            ובמקום שבו יש פרטים הוא במקומו. הכרטיס עצמו הוא
+            <code>MemberSheet</code> הקיים שהוכלל, לא גיליון שני לידו, ופעולות המנהל בו מוגנות באותו
+            תנאי שכבר כתוב באתר הקריאה. האכיפה היא בצד השרת (ADR-0039), ולכן שתי דרכי כניסה לאותו רכיב
+            אינן שתי בדיקות. תיקון למה שהטיוטה הראשונה אמרה.
+          </div>
+        </div>
+
+        <div class="note">
+          <div class="nt">שני מצבים, לא שלוש אפשרויות</div>
+          <div class="nb">
+            הטיוטה הראשונה הציגה גוגל / העלאה / צבע כשלושה שווים, והציעה בחירת צבע ש<b>לא הייתה לה
+            שום השפעה נראית</b> כל עוד תמונה בשימוש, ונגיעה אחת עשתה שני דברים. עכשיו: יש תמונה →
+            התמונה והסרתה; אין תמונה → אותיות, הפלטה, ודרך חזרה. הפלטה <b>נחשפת</b> בדיוק כשהצבע הוא
+            מה שמצויר. הסרה של תמונת גוגל היא ״לא להשתמש בה״ ולא מחיקה, ולכן תמיד יש חזרה.
+          </div>
+        </div>
+
+        <div class="note">
+          <div class="nt">אימייל לא מוצג על חבר</div>
+          <div class="nb">
+            הצטרפות היא דרך לינק, ולכן שני חברים באותו טיול לא בהכרח החליפו כתובות, ושום דבר בטיול לא
+            צריך אחת. הצגה שלה הייתה מפרסמת פרט מזהה שהאפליקציה לא הבטיחה לשתף. הפיך אם יתברר צורך.
+          </div>
+        </div>
+
         <div class="note warn">
           <div class="nt">שינוי שם לא משודר ב-v1</div>
           <div class="nb">
@@ -6726,7 +6873,7 @@ body {
     </div>
 
     <script>
-      const N = 4;
+      const N = 5;
       function show(i) {
         for (let k = 0; k < N; k++) document.getElementById('v' + k).hidden = k !== i;
         document.querySelectorAll('.sw').forEach((b, k) => b.classList.toggle('on', k === i));
@@ -6735,22 +6882,13 @@ body {
       function roster(open) {
         document.getElementById('rst').style.display = open ? 'flex' : 'none';
       }
-      function pickSrc(kind, btn) {
-        document
-          .querySelectorAll('.pk-src')
-          .forEach((b) => b.setAttribute('aria-pressed', String(b === btn)));
-        const prev = document.getElementById('preview');
-        const lab = document.getElementById('preview-lab');
-        if (kind === 'google') {
-          prev.innerHTML = btn.querySelector('img').outerHTML;
-          prev.style.background = 'transparent';
-          lab.textContent = 'התמונה מגוגל';
-        } else {
-          const on = document.querySelector('.pk-sw[aria-pressed="true"]');
-          prev.innerHTML = 'א';
-          prev.style.background = on ? on.style.background : 'var(--id-denim)';
-          lab.textContent = 'אותיות ראשונות';
-        }
+      // The page is two states, not three peers (ADR-0132 §6).
+      function setState(kind) {
+        const photo = kind !== 'initials';
+        document.getElementById('pk-photo').hidden = !photo;
+        document.getElementById('pk-initials').hidden = photo;
+        document.getElementById('pk-hint-photo').hidden = !photo;
+        document.getElementById('pk-hint-initials').hidden = photo;
       }
       function pickColor(btn, name) {
         document
@@ -6766,7 +6904,7 @@ body {
         document.getElementById('init-chip').style.background = btn.style.background;
       }
       roster(false);
-      const H = { picker: 1, roster: 2, ramp: 3 }[location.hash.slice(1)];
+      const H = { picker: 1, roster: 2, member: 3, ramp: 4 }[location.hash.slice(1)];
       if (H) show(H);
     </script>
   </body>
