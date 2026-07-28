@@ -1,6 +1,6 @@
 # 0101 — Full-screen search mode (`Modal` `'full'` variant + `SearchOverlay`), and dedicated-screen headers name what's open
 
-**Status:** Accepted
+**Status:** Accepted — **§2 amended 2026-07-28 by [ADR-0131](0131-map-search-is-a-control-not-a-screen.md)**: the Map tab's **Trip-mode** search stops using `SearchOverlay`, because on a tab whose question is "where is this?" an opaque full-screen overlay covers the answer. The primitive is **unchanged and gains no variant** — it keeps the Index and it keeps the Map's Plan-mode research half, whose Google predictions carry no coordinates to draw (ADR-0115 §2). See [The Map-tab withdrawal](#the-map-tab-withdrawal-2026-07-28-adr-0131) below; the reasoning in §1–§8 is otherwise untouched, and §1's keyboard argument is what ADR-0131 §2 turns around rather than contradicts.
 **Date:** 2026-07-21
 **Supersedes:** [0100](0100-index-bookings-header-search-redesign.md) §3 (the covering-search-in-place mechanism on the bookings screen's chip row) — §1, §2, §4, §5, §6 (the merged header row, dense chip+search row layout, real-SVG search icon, mode-tinted accent, edge-fade) are unaffected.
 **Touches:** [0079](0079-single-modal-primitive.md) (a third `Modal` variant, same overlay/focus machinery), [0090](0090-back-is-computed-from-nav-state.md) (no change — a `'full'` overlay still registers via the same `useOverlay`), [0098](0098-index-landing-and-dedicated-screens.md) §1 (`IndexBackRow`'s title)
@@ -170,6 +170,18 @@ index-bookings.ts`) still initializes every type to 0 — only the call site
   values, not duplicated) — any future surface needing "this is app chrome,
   tinted by mode" identity (Trip blue / Plan drafting-table) reuses these
   three rather than a fourth copy.
+
+## The Map-tab withdrawal (2026-07-28, ADR-0131)
+
+**§1's diagnosis is right and it is exactly why one caller has to leave.** "Once the on-screen keyboard opens it covers most of the remaining screen, hiding almost every result" was true because on the Index the results sit **below** the field. A full-screen mode fixed that by giving the results the whole screen.
+
+On the **Map tab** the results are not only a list — they are pins on a canvas, and an opaque `'full'` overlay covers the canvas completely. So the same mechanism that solved the Index's problem **is** the Map's problem, and ADR-0131 moves the query into the Map's own floating controls row as a second in-place disclosure beside the facet strip. There the field is at the top and the canvas is directly under it, so the keyboard eats the list sheet and the pins survive — the inversion of the failure this ADR recorded, measured in `mockups/map-search-v1.html`.
+
+Three things to keep straight, because a future reader will otherwise read this as a reversal:
+
+- **`SearchOverlay` is not narrowed and not forked.** It keeps the Index and the Map's Plan-mode research (ADR-0115 §1's paid half). §2's reusability claim stands: what changed is which callers want a full screen, not whether the shell is reusable.
+- **Which callers those are is decided by the data, not by taste.** A trip place already carries `lat`/`lng` — that is what pinned it — so it can render on a canvas. A Google Autocomplete prediction carries none at all (ADR-0115 §2), so the research half has nothing to draw and stays here.
+- **The Index is untouched**, and so is ADR-0100 §3's supersession. Nothing about the bookings screen changes.
 
 ## Alternatives considered
 
