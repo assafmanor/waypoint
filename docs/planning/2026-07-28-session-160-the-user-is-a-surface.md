@@ -124,3 +124,43 @@ suppresses flex stretch, so the frame needed its width stated — a mockup-frame
 roster footer still claimed removal lived only in trip settings, **contradicting** the member sheet that
 now carries it; and I had left design rationale sitting **on the screen** as a note inside the sheet,
 which belongs in the notes panel.
+
+## A second owner round, and the design mistake worth recording
+
+Two more corrections, and the first one was a reuse error rather than an omission.
+
+**"You added no option to upload a picture (or camera)."** True — the page showed no upload affordance at
+all, because I had read "upload builds in Phase 4" as "upload is invisible in the design", conflating the
+**shipped Phase 2 app** with the **design reference**. A mockup is the finished page; the phasing note is
+where "not yet" belongs. Camera was new information and it turned out to be free: `capture` is already a
+`FilePicker` prop.
+
+**Then the first fix was worse than the omission**, and the reason is the interesting part. I reached for
+`FilePicker` (ADR-0086) and dropped in its **two dashed drop-zone tiles** — which the owner rejected
+immediately: _"this looks very very ugly. This is what document upload looks like but it's really not what
+it should look like here."_ Exactly right. I had reused the **presentation** when only the **mechanism**
+transfers:
+
+- A **document** has no on-screen representation yet, so there is nothing to point at — the tiles must
+  _be_ the target. That is why ADR-0086 is shaped the way it is, and it is correct there.
+- An **avatar** is the opposite: the thing you are changing is already on screen, large and round. So the
+  affordance is a **camera badge on the hero**, which is the convention that needs no label, plus one
+  primary action and one subordinate link.
+
+Rule 8 says reuse before building — it does not say a shared component's layout is right on every surface.
+The honest resolution is a **variant** on the primitive (an avatar-shaped trigger over the same
+off-screen inputs, `accept`, `capture` and coarse-pointer detect), so there is still one control and no
+fork.
+
+**And rendering the fix caught one more, which is the same lesson a third time:** two pills side by side
+read as a **segmented toggle** — the filled one looked _selected_ — so the row reintroduced the "pick a
+source" confusion the two-state page exists to remove. They are now **stacked**: one primary action, one
+clearly subordinate link. The ramp also gained a `צבע הרקע` label so it reads as the ground behind the
+initials rather than a free-floating swatch row.
+
+One thing this round did **not** change: the entry point. The owner's screenshot of the live account sheet
+asked whether user settings should be reached from it. It should not be reached _from_ it — that sheet is
+precisely what §1 retires. Every fact on it (name, email, the Google line, sign out) already lives on the
+page, so keeping it would leave one surface whose only job is to link to another. The avatar navigates
+straight to `/settings`. The screenshot also confirmed the amber-default finding **in production**: that
+account avatar is `#E9A63C`.

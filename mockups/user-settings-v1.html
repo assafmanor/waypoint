@@ -5966,6 +5966,83 @@ body {
         font-size: 38px;
       }
 
+      /* ── §6 the avatar IS the control. A document has no obvious target, which
+         is why ADR-0086 gives it two drop-zone-like tiles; an avatar has one —
+         itself — so the affordance is a camera badge on the hero plus a quiet
+         row of text actions. Same mechanism (off-screen inputs, accept, capture),
+         different presentation. ── */
+      .av-edit {
+        position: relative;
+        display: inline-grid;
+        place-items: center;
+        border: 0;
+        background: none;
+        padding: 0;
+        cursor: pointer;
+      }
+      .av-badge {
+        position: absolute;
+        inset-block-end: -1px;
+        inset-inline-end: -1px;
+        width: 30px;
+        height: 30px;
+        border-radius: 50%;
+        background: var(--ink);
+        color: #fff; /* fixed: white glyph on the ink badge */
+        display: grid;
+        place-items: center;
+        box-shadow: 0 0 0 3px var(--card);
+      }
+      .av-badge svg {
+        width: 15px;
+        height: 15px;
+      }
+      /* One primary action, one subordinate link — stacked, never side by side.
+         Two pills in a row read as a segmented toggle, i.e. as a source CHOICE,
+         which is the confusion this page exists to remove. */
+      .pk-actions {
+        display: flex;
+        flex-direction: column;
+        align-items: center;
+        gap: 2px;
+        padding: 2px 16px 12px;
+      }
+      .pk-pill {
+        font: inherit;
+        font-size: 13px;
+        font-weight: 700;
+        color: var(--ink);
+        background: var(--screen);
+        border: 1px solid var(--line);
+        border-radius: 999px;
+        padding: 10px 20px;
+        cursor: pointer;
+        min-height: 42px;
+      }
+      .pk-link {
+        font: inherit;
+        font-size: 12px;
+        font-weight: 600;
+        color: var(--muted);
+        background: none;
+        border: 0;
+        padding: 11px 8px;
+        cursor: pointer;
+        text-decoration: underline;
+        text-underline-offset: 3px;
+        min-height: 40px;
+      }
+      .pk-link.danger {
+        color: var(--miss);
+      }
+      .pk-ramp-lab {
+        font-size: 11px;
+        font-weight: 700;
+        color: var(--muted);
+        padding: 14px 16px 0;
+        border-top: 1px solid var(--line);
+      }
+
       /* ── §1 the identity hero on the page ── */
       .id-hero {
         padding: 22px 16px 18px;
@@ -6129,8 +6206,7 @@ body {
         display: grid;
         grid-template-columns: repeat(5, 1fr);
         gap: 11px;
-        padding: 14px 16px 17px;
-        border-top: 1px solid var(--line);
+        padding: 10px 16px 18px;
       }
       .pk-sw {
         aspect-ratio: 1;
@@ -6458,30 +6534,39 @@ body {
                  render nothing (ADR-0132 §6). -->
             <div class="set-card" id="pk-photo">
               <div class="id-hero">
-                <span class="wp-av wp-av-lg"
-                  ><img
-                    alt=""
-                    src="data:image/svg+xml;utf8,%3Csvg xmlns='http://www.w3.org/2000/svg' width='96' height='96'%3E%3Crect width='96' height='96' fill='%23c9d4e6'/%3E%3Ccircle cx='48' cy='37' r='16' fill='%238496b5'/%3E%3Cellipse cx='48' cy='84' rx='27' ry='21' fill='%238496b5'/%3E%3C/svg%3E"
-                /></span>
+                <button class="av-edit" aria-label="שינוי התמונה">
+                  <span class="wp-av wp-av-lg"
+                    ><img
+                      alt=""
+                      src="data:image/svg+xml;utf8,%3Csvg xmlns='http://www.w3.org/2000/svg' width='96' height='96'%3E%3Crect width='96' height='96' fill='%23c9d4e6'/%3E%3Ccircle cx='48' cy='37' r='16' fill='%238496b5'/%3E%3Cellipse cx='48' cy='84' rx='27' ry='21' fill='%238496b5'/%3E%3C/svg%3E"
+                  /></span>
+                  <span class="av-badge" aria-hidden="true"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M3 8.8A2.5 2.5 0 0 1 5.5 6.3h1.2a2 2 0 0 0 1.7-.95l.45-.75A2 2 0 0 1 10.6 3.6h2.8a2 2 0 0 1 1.75.98l.45.75a2 2 0 0 0 1.7.95h1.2A2.5 2.5 0 0 1 21 8.8v8.7a2.5 2.5 0 0 1-2.5 2.5h-13A2.5 2.5 0 0 1 3 17.5z"/><path d="M15 13.2a3 3 0 1 1-6 0 3 3 0 0 1 6 0"/></svg></span>
+                </button>
                 <div style="font-size: 11.5px; color: var(--muted)">התמונה מגוגל</div>
               </div>
-              <button class="pk-act" onclick="setState('initials')">
-                <span class="pk-t">
-                  <span class="pk-n">הסרת התמונה</span>
-                  <span class="pk-s">נחזור לאותיות הראשונות, ואז אפשר לבחור צבע</span>
-                </span>
-              </button>
+              <div class="pk-actions">
+                <button class="pk-pill">החלפת תמונה</button>
+                <button class="pk-link danger" onclick="setState('initials')">הסרת התמונה</button>
+              </div>
             </div>
 
             <!-- STATE B · no photo in use. The ramp appears exactly now, because
                  now the colour is the thing being rendered. -->
             <div class="set-card" id="pk-initials" hidden>
               <div class="id-hero">
-                <span class="wp-av wp-av-lg" id="preview" style="background: var(--id-denim)">א</span>
+                <button class="av-edit" aria-label="הוספת תמונה">
+                  <span class="wp-av wp-av-lg" id="preview" style="background: var(--id-denim)">א</span>
+                  <span class="av-badge" aria-hidden="true"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M3 8.8A2.5 2.5 0 0 1 5.5 6.3h1.2a2 2 0 0 0 1.7-.95l.45-.75A2 2 0 0 1 10.6 3.6h2.8a2 2 0 0 1 1.75.98l.45.75a2 2 0 0 0 1.7.95h1.2A2.5 2.5 0 0 1 21 8.8v8.7a2.5 2.5 0 0 1-2.5 2.5h-13A2.5 2.5 0 0 1 3 17.5z"/><path d="M15 13.2a3 3 0 1 1-6 0 3 3 0 0 1 6 0"/></svg></span>
+                </button>
                 <div style="font-size: 11.5px; color: var(--muted)" id="preview-lab">
                   אותיות ראשונות · דנים
                 </div>
               </div>
+              <div class="pk-actions">
+                <button class="pk-pill">העלאת תמונה</button>
+                <button class="pk-link" onclick="setState('google')">שימוש בתמונה מגוגל</button>
+              </div>
+              <div class="pk-ramp-lab">צבע הרקע</div>
               <div class="pk-swatches">
                 <button class="pk-sw" style="background: var(--id-plum)" onclick="pickColor(this,'שזיף')">א</button>
                 <button class="pk-sw" style="background: var(--id-rose)" onclick="pickColor(this,'ורד')">א</button>
@@ -6489,23 +6574,16 @@ body {
                 <button class="pk-sw" aria-pressed="true" style="background: var(--id-denim)" onclick="pickColor(this,'דנים')">א</button>
                 <button class="pk-sw" style="background: var(--id-cocoa)" onclick="pickColor(this,'קקאו')">א</button>
               </div>
-              <button class="pk-act" onclick="setState('google')">
-                <span class="pk-t">
-                  <span class="pk-n">שימוש בתמונה מגוגל</span>
-                  <span class="pk-s">התמונה נשמרת אצל גוגל, ולכן תמיד יש דרך חזרה</span>
-                </span>
-              </button>
             </div>
             <!-- one hint, after both cards, saying the thing that is true of the
                  state you are actually in -->
             <div class="set-hint-block">
               <span id="pk-hint-photo"
-                >העלאת תמונה משלכם עוד לא כאן. עד שתגיע היא לא מוצגת כלל, ולא מוצגת כשורה חסומה, כדי
-                שלא תזמין נגיעה שלא עושה כלום.</span
+                >העלאה או צילום יחליפו את התמונה שמוצגת. כפתור המצלמה מופיע רק במכשיר שיש לו
+                אחת.</span
               >
               <span id="pk-hint-initials" hidden
-                >הסרה של תמונת גוגל היא ״לא להשתמש בה״, ולא מחיקה אצלה, ולכן תמיד יש דרך חזרה. העלאת
-                תמונה משלכם עוד לא כאן.</span
+                >הסרה של תמונת גוגל היא ״לא להשתמש בה״, ולא מחיקה אצלה, ולכן תמיד יש דרך חזרה.</span
               >
             </div>
           </div>

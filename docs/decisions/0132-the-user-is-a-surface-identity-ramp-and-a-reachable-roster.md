@@ -2,7 +2,7 @@
 
 **Status:** Accepted (design; build in the phases of §11)
 **Date:** 2026-07-28
-**Builds on:** [0020](0020-auth-session-architecture.md) (the two-token session, `GET /me`), [0028](0028-plan-violet-color-budget-dark-ready.md) (the semantic colour budget), [0039](0039-trip-settings-admin-governed-data-plane.md) (trip settings is the admin-governed plane), [0090](0090-back-is-computed-from-nav-state.md) (back is computed, `parentRoute`), [0017](0017-mobile-first-device-targets.md) (touch-first, no hover-only affordances)
+**Builds on:** [0086](0086-document-upload-pick-control-redesign.md) (the one file-pick control — upload + camera), [0020](0020-auth-session-architecture.md) (the two-token session, `GET /me`), [0028](0028-plan-violet-color-budget-dark-ready.md) (the semantic colour budget), [0039](0039-trip-settings-admin-governed-data-plane.md) (trip settings is the admin-governed plane), [0090](0090-back-is-computed-from-nav-state.md) (back is computed, `parentRoute`), [0017](0017-mobile-first-device-targets.md) (touch-first, no hover-only affordances)
 **Scoped by:** `planning/2026-07-28-session-159-user-settings-and-member-info-scope-and-phasing.md` (the four scope calls and the rejected candidates)
 **Design reference:** `mockups/user-settings-v1.html`
 
@@ -56,6 +56,14 @@ where it is.
 The three existing mounts (`App.tsx:496` in-trip, `ZeroStateWithAccount:554`, `AllTripsWithAccount:567`)
 become navigations. The entry points do not change — they already reach every shell, which is why "from
 the trip and outside" needed no new affordance.
+
+**Concretely: tapping your avatar is the way in, and the sheet it opens today is the thing being
+replaced.** That sheet (name · email · `מחובר עם Google` · `התנתקות`) is not a step on the way to
+settings and does not gain a "settings" row — every fact on it is already on the page, so keeping it
+would mean one surface whose only job is to link to another. The avatar navigates straight to
+`/settings` from all three shells, which also makes the gesture uniform: in a trip the avatar sits beside
+the gear (**avatar = you, gear = this trip**), and on `/trips` and the zero state it is the only control
+there.
 
 ### 2. Back: the entry writes its return into the URL, as a closed enum
 
@@ -180,10 +188,45 @@ which lands you on initials, and _then_ the hue is a real choice.
 - **Removing an upload** deletes the blob and falls back to **the Google photo if there is one**, else
   initials — the least surprising landing, since the provider's photo is still true.
 
-**Upload is absent until Phase 4, not disabled**, following the near-me rule the Map tab already set
-(ADR-0109 §6 / the research half of ADR-0115): a control that cannot work is not shown, because a greyed
-row invites a tap and explains nothing. So in Phase 2 the photo state carries **remove** only, and the
-initials state carries the ramp plus the way back.
+**The avatar is the control — a badge on it, not a drop-zone beside it.** `ui/primitives/FilePicker`
+(ADR-0086) is the right **mechanism** and the wrong **presentation** here, and the difference is worth
+stating because the first draft of this section got it backwards. FilePicker gives a document two
+equal-weight, dashed, drop-zone-like tiles, and that is correct **for a document**: a document has no
+on-screen representation yet, so there is nothing to point at and the tiles have to be the target. An
+avatar is the opposite case — the thing you are changing is **already on screen, large, and round**. So:
+
+- **The hero avatar is the primary affordance**, carrying a small filled **camera badge** on its lower
+  edge (mirrored to the RTL side). This is the one convention that needs no label, and it is what every
+  profile surface people already use does.
+- **One primary action** beneath it (`העלאת תמונה` / `החלפת תמונה`) and **one subordinate link**
+  (`שימוש בתמונה מגוגל`, or the `הסרת התמונה` link in `--miss`). **Stacked, never side by side** — a
+  first pass put two pills in a row and they immediately read as a **segmented toggle**, i.e. as a
+  source _choice_, which is the exact confusion this section exists to remove.
+- **The ramp gets a label** (`צבע הרקע`) so it reads as "the colour behind your initials" rather than a
+  free-floating swatch row.
+
+**What is reused is FilePicker's mechanism, not its layout:** the off-screen `<input>`s, `accept="image/*"`,
+`capture`, the coarse-pointer feature-detect that hides capture where there is no camera, and the
+picked-file preview/clear handling. That belongs in the primitive as a **variant** (an avatar-shaped
+trigger), not a second component and not a fork — one control, two presentations, which is what rule 8
+asks for when a shared mechanism meets a genuinely different surface. **And "or camera" costs nothing**:
+`capture` is already a FilePicker prop, and photographing yourself is the phone-first act ADR-0017 wants.
+
+Two small additions it needs: the **label override** (`t.filePicker.upload` is the generic `העלאת קובץ`;
+a photo wants `העלאת תמונה`), and **`camera` on `ui/Icon`** — FilePicker currently draws its tiles with
+the `⬆️`/`📷` emoji, which design-language's "emoji are content, icons are UI" forbids on a control. The
+badge uses a real SVG, so this ADR does not propagate the emoji; retrofitting the document tiles is a
+separate, optional cleanup.
+
+**What Phase 4 defers is the storage half, not the control.** The first draft said "upload is absent until
+Phase 4" as though the UI were the work. It is not: the trigger is a badge and a pill, and what is
+actually missing is somewhere to put the bytes — a size ceiling, a crop/resize step, and the trust-class
+call against `storage.ts` (ADR-0015/0034). Phase 2 therefore ships the page **without** the upload
+affordances, for the near-me reason (ADR-0109 §6 / ADR-0115's research half): a control that picks a file
+nothing can persist is worse than no control, and it is **absent rather than greyed**, because a disabled
+button invites a tap and explains nothing. In Phase 2 the photo state carries the remove link and the
+initials state carries the ramp plus the way back. **The mockup shows the finished page**, since it is the
+design reference and not a screenshot of the Phase 2 build.
 
 `avatarChoice` survives this change unaltered — `initials` is precisely "chose not to use the photo". What
 changed is that the page stopped exposing the enum as three peers and started showing its **effect**.
