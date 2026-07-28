@@ -159,6 +159,23 @@ Anyone can change theirs on this page.
 **The amber default is deleted.** Not remapped — removed, because a column default is what made every
 user identical.
 
+**Build note (Phase 1, 2026-07-28) — two refinements this ADR's first draft got slightly wrong:**
+
+1. **A hue is stored as its KEY, not as a hex.** The draft called the field `avatarColor` and treated it
+   as a colour. But this section also requires the ramp to "join the dark remap table like every other
+   token", and a stored `#8496B5` cannot follow a remap — it is a literal. So the column is `avatarHue`
+   and it holds `plum|rose|moss|denim|cocoa`; the values live once, in `tokens.css`, under both theme
+   blocks. The `Avatar` primitive paints `var(--id-<hue>)`, so dark mode reaches a stored pick for free.
+   A key is also **validated**: an unknown hue is a 400 at the schema, where an unknown hex was simply an
+   un-renderable string.
+2. **"Always present" moved from the column to the wire.** The draft said the field is always present
+   because initials need a ground. The column is in fact **nullable** — null is precisely "never chosen",
+   which is what makes the default _derived_ rather than stored, and a stored default is the whole defect
+   this ADR opened on. What is always present is the **DTO**: `toUserDto` resolves it
+   (`resolveAvatarHue(id, stored)`), so a null column can never reach a render and no client owns the
+   fallback. `resolveAvatarHue` also derives for a value **outside** the ramp, which is what makes the
+   pre-ADR `#E9A63C` rows land on a real hue rather than a broken one.
+
 ### 6. The picture page has two states, and the ramp appears only when it is in effect
 
 **Revised 2026-07-28 (owner), replacing a flat three-peer list.** The first draft showed Google-photo,

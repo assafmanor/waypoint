@@ -10,6 +10,14 @@ datasource db {
   // Prisma 7: connection URL lives in prisma.config.ts, not here.
 }
 
+// Which picture source the user chose (ADR-0133 §4/§6). `initials` is precisely
+// "chose not to use a photo" — the state that makes the hue a real choice.
+enum AvatarChoice {
+  google
+  upload
+  initials
+}
+
 enum AuthProvider {
   google
 }
@@ -81,11 +89,22 @@ enum ChangeAction {
 }
 
 model User {
-  id          String   @id @default(cuid())
-  email       String   @unique
+  id          String @id @default(cuid())
+  email       String @unique
   displayName String
-  avatarColor String   @default("#E9A63C")
-  createdAt   DateTime @default(now())
+  // Identity (ADR-0133). `avatarHue` stores a ramp KEY, not a hex, so the dark
+  // token remap reaches it — and it is NULLABLE on purpose: null means "never
+  // chosen", which the server resolves per-user via `deriveAvatarHue(id)`. It
+  // replaces `avatarColor String @default("#E9A63C")`, whose single column
+  // default is exactly what made every real user the same colour.
+  avatarHue         String?
+  avatarChoice      AvatarChoice @default(initials)
+  // The provider's `picture`, refreshed at each sign-in. Kept even while the user
+  // is on `initials`, so "use my Google photo" has somewhere to come back from.
+  googleAvatarUrl   String?
+  uploadedAvatarKey String? // set by ADR-0133's Phase 4 only
+
+  createdAt DateTime @default(now())
 
   authIdentities     AuthIdentity[]
   sessions           Session[]

@@ -29,6 +29,10 @@ export interface GoogleUserinfo {
   email: string;
   email_verified: boolean;
   name?: string;
+  /** The profile photo URL. Already covered by the `openid email profile` scope we
+   *  request at sign-in (auth-and-google.md) — declaring it costs no new consent,
+   *  no new scope and no re-auth; it was simply never read (ADR-0133 Context). */
+  picture?: string;
 }
 
 export function generatePkceVerifier(): string {

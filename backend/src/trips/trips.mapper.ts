@@ -19,14 +19,20 @@ import type {
   TripEvent,
   User as SharedUser,
 } from '@waypoint/shared';
+import { resolveAvatarHue } from '@waypoint/shared';
 
 const toDateOnly = (d: Date): string => d.toISOString().slice(0, 10);
 
+/** The one place a `User` row becomes a wire DTO. It RESOLVES the identity hue
+ *  (stored pick, else derived from the id), so a nullable column can never reach a
+ *  render and no client has to own that fallback — ADR-0133 §5. */
 export const toUserDto = (u: User): SharedUser => ({
   id: u.id,
   email: u.email,
   displayName: u.displayName,
-  avatarColor: u.avatarColor,
+  avatarHue: resolveAvatarHue(u.id, u.avatarHue),
+  avatarChoice: u.avatarChoice,
+  googleAvatarUrl: u.googleAvatarUrl,
   createdAt: u.createdAt.toISOString(),
 });
 

@@ -684,17 +684,10 @@
   opacity: 0.5;
   margin: 6px auto 18px;
 }
-.acct-av {
-  width: 64px;
-  height: 64px;
-  border-radius: 50%;
-  display: grid;
-  place-items: center;
+/* the account sheet's avatar is `Avatar size="lg"` (ADR-0133 §3); it needs only
+   centring here, since the circle itself is the primitive's. */
+.acct-sheet-av {
   margin: 0 auto;
-  color: #12203a; /* fixed: ink on a colored avatar (bg set inline) */
-  font-weight: 700;
-  font-size: 26px;
-  font-family: var(--font-head);
 }
 .acct-name {
   font-family: var(--font-head);

@@ -1,7 +1,9 @@
 import {
+  Body,
   Controller,
   Get,
   HttpCode,
+  Patch,
   Post,
   Query,
   Req,
@@ -13,10 +15,13 @@ import { Throttle } from '@nestjs/throttler';
 import {
   accessTokenResponseSchema,
   meSchema,
+  updateMeSchema,
   type AccessTokenResponse,
   type Me,
+  type UpdateMeInput,
 } from '@waypoint/shared';
 import { createZodDto, ZodSerializerDto } from 'nestjs-zod';
+import { ZodValidationPipe } from '../common/zod-validation.pipe';
 import { DEFAULT_FRONTEND_URL, FRONTEND_URL as FRONTEND_URL_ENV } from '../common/env';
 import { AuthService } from './auth.service';
 import { parseCookieHeader } from './cookies.util';
@@ -25,6 +30,7 @@ import type { Principal } from './principal';
 import { Public } from './public.decorator';
 
 class MeDto extends createZodDto(meSchema) {}
+class UpdateMeDto extends createZodDto(updateMeSchema) {}
 class AccessTokenDto extends createZodDto(accessTokenResponseSchema) {}
 
 // Neither typed against 'express' (not an installed devDependency here) — these
@@ -163,5 +169,18 @@ export class MeController {
   @ZodSerializerDto(MeDto)
   me(@CurrentUser() user: Principal): Promise<Me> {
     return this.auth.getMe(user.userId);
+  }
+
+  /** Edit your own identity — display name, picture source, identity hue.
+   *  Authorization is implicit and total: the patch only ever reaches the
+   *  principal's own row, so there is nothing to gate (ADR-0133 §11). */
+  @Patch('me')
+  @ApiOkResponse({ type: MeDto })
+  @ZodSerializerDto(MeDto)
+  updateMe(
+    @CurrentUser() user: Principal,
+    @Body(new ZodValidationPipe(updateMeSchema)) body: UpdateMeDto,
+  ): Promise<Me> {
+    return this.auth.updateMe(user.userId, body as UpdateMeInput);
   }
 }

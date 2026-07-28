@@ -19,9 +19,10 @@ import { tripChip, type TripChip } from '../lib/active-trip';
 import { daysUntilStart } from '../lib/mode';
 import { formatTripDates } from '../lib/time';
 import { useClock } from '../lib/useClock';
-import { AVATAR_INITIAL_LENGTH, DEFAULT_TRIP_ICON, ICONS } from '../constants';
+import { DEFAULT_TRIP_ICON, ICONS } from '../constants';
 import { NavArrow } from '../ui/NavArrow';
 import { t } from '../i18n/he';
+import { Avatar } from '../ui/primitives/Avatar';
 
 const NBSP = ' ';
 
@@ -152,14 +153,13 @@ export function AllTrips({ onOpenAccount }: { onOpenAccount: () => void }) {
             )}
           </div>
           {me && (
-            <button
+            <Avatar
+              person={me.user}
+              size="inherit"
               className="av account-btn"
-              style={{ background: me.user.avatarColor }}
               onClick={onOpenAccount}
-              title={me.user.displayName}
-            >
-              {me.user.displayName.slice(0, AVATAR_INITIAL_LENGTH)}
-            </button>
+              label={t.shell.account.title}
+            />
           )}
         </div>
         {offline && (

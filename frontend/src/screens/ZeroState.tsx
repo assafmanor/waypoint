@@ -5,8 +5,9 @@
 import { useAuth } from '../state/auth-state';
 import { useIsOffline } from '../lib/outbox';
 import { CreateJoinActions } from '../ui/CreateJoinActions';
-import { AVATAR_INITIAL_LENGTH, ICONS } from '../constants';
+import { ICONS } from '../constants';
 import { t } from '../i18n/he';
+import { Avatar } from '../ui/primitives/Avatar';
 
 const FLAP_ROWS = [
   ['w3', 'grow', 'w1'],
@@ -33,14 +34,13 @@ export function ZeroState({ onOpenAccount }: { onOpenAccount: () => void }) {
             </div>
           )}
           {me && (
-            <button
+            <Avatar
+              person={me.user}
+              size="inherit"
               className="av account-btn"
-              style={{ background: me.user.avatarColor }}
               onClick={onOpenAccount}
-              title={me.user.displayName}
-            >
-              {me.user.displayName.slice(0, AVATAR_INITIAL_LENGTH)}
-            </button>
+              label={t.shell.account.title}
+            />
           )}
         </div>
         {offline && (

@@ -22,13 +22,14 @@
 
 ## Auth (detail in auth-and-google.md)
 
-| Method | Path                    | Purpose                            |
-| ------ | ----------------------- | ---------------------------------- |
-| GET    | `/auth/google`          | Begin Google OAuth                 |
-| GET    | `/auth/google/callback` | OAuth callback → issue session JWT |
-| POST   | `/auth/refresh`         | Refresh session                    |
-| POST   | `/auth/logout`          | Invalidate session                 |
-| GET    | `/me`                   | Current user + memberships         |
+| Method | Path                    | Purpose                                                                                                                                                                                                                                                                                                                                                                                                 |
+| ------ | ----------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| GET    | `/auth/google`          | Begin Google OAuth                                                                                                                                                                                                                                                                                                                                                                                      |
+| GET    | `/auth/google/callback` | OAuth callback → issue session JWT                                                                                                                                                                                                                                                                                                                                                                      |
+| POST   | `/auth/refresh`         | Refresh session                                                                                                                                                                                                                                                                                                                                                                                         |
+| POST   | `/auth/logout`          | Invalidate session                                                                                                                                                                                                                                                                                                                                                                                      |
+| GET    | `/me`                   | Current user + memberships                                                                                                                                                                                                                                                                                                                                                                              |
+| PATCH  | `/me`                   | `updateMeSchema` (`{ displayName?, avatarChoice?, avatarHue? }`) → `Me`. Your own row only, so authorization is implicit and total (ADR-0133). Partial + LWW; `avatarHue: null` **clears** the pick and hands the hue back to the derivation. Deliberately **not** on the data plane: a `Change` is per-trip while a user spans many, so co-members see a new name at their next snapshot (ADR-0133 §8) |
 
 ## Trips
 

@@ -69,7 +69,6 @@ import { DevTimeTravel } from './dev/DevTimeTravel';
 import { getNow, useClock } from './lib/useClock';
 import { useShrinkToFit } from './lib/useShrinkToFit';
 import {
-  AVATAR_INITIAL_LENGTH,
   DEFAULT_TRIP_ICON,
   DOT_SEPARATOR,
   ICONS,
@@ -85,6 +84,7 @@ import { liveToday } from './lib/places';
 import { t } from './i18n/he';
 import './App.css';
 import './screens.css';
+import { Avatar } from './ui/primitives/Avatar';
 
 // Small tail added past the transition's own duration before disarming the
 // mode-switch class, so we never clear it a frame early (which would snap the
@@ -265,26 +265,17 @@ function Header({
           <div className="avatars" title={others.map((u) => u.displayName).join(DOT_SEPARATOR)}>
             {overflowMembers.length > 0 && <div className="av more">+{overflowMembers.length}</div>}
             {visibleMembers.map((u) => (
-              <div
-                key={u.id}
-                className="av"
-                style={{ background: u.avatarColor }}
-                title={u.displayName}
-              >
-                {u.displayName.slice(0, AVATAR_INITIAL_LENGTH)}
-              </div>
+              <Avatar key={u.id} person={u} size="inherit" className="av" />
             ))}
           </div>
           {me && (
-            <button
+            <Avatar
+              person={me.user}
+              size="inherit"
               className="av account-btn"
-              style={{ background: me.user.avatarColor }}
               onClick={onOpenAccount}
-              aria-label={t.shell.account.title}
-              title={me.user.displayName}
-            >
-              {me.user.displayName.slice(0, AVATAR_INITIAL_LENGTH)}
-            </button>
+              label={t.shell.account.title}
+            />
           )}
           <button className="gear-btn" onClick={onOpenSettings} aria-label={t.shell.stub.settings}>
             <Icon name="settings" />
@@ -534,11 +525,7 @@ function AccountSheet({ onClose, onSignOut }: { onClose: () => void; onSignOut: 
   return (
     <Sheet ariaLabel={t.shell.account.title} onClose={onClose}>
       <div className="acct-grip" />
-      {me && (
-        <div className="acct-av" style={{ background: me.user.avatarColor }}>
-          {me.user.displayName.slice(0, AVATAR_INITIAL_LENGTH)}
-        </div>
-      )}
+      {me && <Avatar person={me.user} size="lg" className="acct-sheet-av" />}
       <div className="acct-name">{me?.user.displayName}</div>
       <div className="acct-mail" dir="auto">
         {me?.user.email}

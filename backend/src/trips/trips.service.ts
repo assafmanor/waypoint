@@ -21,6 +21,7 @@ import type {
   UpdateMembershipRoleInput,
   UpdateTripInput,
 } from '@waypoint/shared';
+import { resolveAvatarHue } from '@waypoint/shared';
 import { ENTITY_TYPE, ERROR_CODE } from '@waypoint/shared';
 import { PrismaService } from '../prisma/prisma.service';
 import { ChangeService, type ChangeOp } from '../sync/change.service';
@@ -349,7 +350,7 @@ export class TripsService {
     return blocks.map((b) => ({
       userId: b.userId,
       displayName: b.user.displayName,
-      avatarColor: b.user.avatarColor,
+      avatarHue: resolveAvatarHue(b.userId, b.user.avatarHue),
       blockedAt: b.blockedAt.toISOString(),
     }));
   }
