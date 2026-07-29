@@ -99,7 +99,20 @@ vi.mock('../state/trip-state', () => ({
 vi.mock('../state/mode-state', () => ({ useMode: () => ({ mode: currentMode }) }));
 const addMaybe = vi.fn();
 // The Map hosts `EventForm` since ADR-0135 §3, so the stub covers the verbs that form calls.
-const verbs = { addMaybe, create: vi.fn(), update: vi.fn(), schedule: vi.fn(), book: vi.fn() };
+// `done`/`skip`/`restore` are the SHIPPED verbs the settle cluster calls (ADR-0139). This
+// file stubs the verb layer rather than the reducer, so the assertable seam is "the right
+// verb was called with the right event" — the write's own behaviour (optimistic dispatch,
+// outbox queueing, the undo toast) is `verbs`' to test, and is already tested there.
+const verbs = {
+  addMaybe,
+  create: vi.fn(),
+  update: vi.fn(),
+  schedule: vi.fn(),
+  book: vi.fn(),
+  done: vi.fn(),
+  skip: vi.fn(),
+  restore: vi.fn(),
+};
 vi.mock('../state/verbs', () => ({ useVerbs: () => verbs }));
 vi.mock('../state/auth-state', () => ({ useAuth: () => ({ me: { user: { id: 'u1' } } }) }));
 vi.mock('../lib/outbox', () => ({ useIsOffline: () => isOffline }));
@@ -389,6 +402,9 @@ describe('the embedded map’s shell (ADR-0121)', () => {
     geoErrorCode = null;
     getCurrentPosition.mockClear();
     scrollIntoView.mockClear();
+    verbs.done.mockClear();
+    verbs.skip.mockClear();
+    verbs.restore.mockClear();
     for (const fn of Object.values(verbs)) fn.mockClear();
   });
 
@@ -1177,6 +1193,163 @@ describe('the embedded map’s shell (ADR-0121)', () => {
       // it a full-width row.
       expect(refs.textContent).toContain(t.map.refs.event);
       expect(refs.textContent).toContain('מוזיאון הארכיאולוגי');
+    });
+
+    // ── SETTLING FROM HERE (ADR-0139) ────────────────────────────────────────────
+    // The verb hangs on the reference row because that row already names its target: a
+    // place can carry several events on one day and ADR-0117 §5 forbids collapsing them,
+    // so "mark this place done" is not well-formed while "mark THIS event done" is.
+    describe('settling an event from the way-in block', () => {
+      const settleRow = (name: string, label: string) =>
+        [...row(name)!.querySelectorAll('.map-ref')].find((r) =>
+          r.querySelector('.map-ref-label')?.textContent?.includes(label),
+        ) as HTMLElement;
+
+      it('offers the pair on an event, and nothing on a booking', () => {
+        tripPlaces = [place('dest', true, { lat: 35.7, lng: 139.7 })];
+        // Same inline shape the file's other booking fixtures use — no helper exists here.
+        tripBookings = [
+          {
+            id: 'bk',
+            tripId: 't1',
+            type: 'train',
+            title: 'שינקנסן',
+            source: 'manual',
+            toPlaceId: 'dest',
+            createdAt: '',
+            updatedAt: '',
+            updatedBy: 'u1',
+          } as Booking,
+        ];
+        tripEvents = [
+          event({
+            id: 'e1',
+            placeId: 'dest',
+            bookingId: 'bk',
+            startsAt: `${ACTIVE_DATE}T08:00:00Z`,
+          }),
+        ];
+        render(wrap(<MapView />));
+        fireEvent.click(row('dest')!);
+        const refs = [...row('dest')!.querySelectorAll('.map-ref')];
+        // A linked pair is two ways in (the booking leads), and only the EVENT half can be
+        // settled — a Booking carries no `EVENT_STATUS`, so the absence needs no rule.
+        const kinds = refs.map((r) => r.querySelector('.map-ref-kind')?.textContent);
+        expect(kinds).toEqual([t.map.refs.booking, t.map.refs.event]);
+        expect(refs[0].querySelector('.map-settle')).toBeNull();
+        expect(refs[1].querySelector('.map-settle')).toBeTruthy();
+      });
+
+      it('marks done through the shipped verb, with the event it names', () => {
+        tripPlaces = [place('cafe', true, { lat: 35.7, lng: 139.7 })];
+        tripEvents = [
+          event({ id: 'e1', placeId: 'cafe', title: 'קפה', startsAt: `${ACTIVE_DATE}T09:00:00Z` }),
+        ];
+        render(wrap(<MapView />));
+        fireEvent.click(row('cafe')!);
+        fireEvent.click(settleRow('cafe', 'קפה').querySelector('.map-sbtn.done')!);
+        expect(verbs.done).toHaveBeenCalledTimes(1);
+        expect(verbs.done.mock.calls[0][0]).toMatchObject({ id: 'e1' });
+        expect(verbs.skip).not.toHaveBeenCalled();
+      });
+
+      it('marks skipped through the shipped verb', () => {
+        tripPlaces = [place('shrine', true, { lat: 35.7, lng: 139.7 })];
+        tripEvents = [
+          event({
+            id: 'e1',
+            placeId: 'shrine',
+            title: 'מקדש',
+            startsAt: `${ACTIVE_DATE}T09:00:00Z`,
+          }),
+        ];
+        render(wrap(<MapView />));
+        fireEvent.click(row('shrine')!);
+        fireEvent.click(settleRow('shrine', 'מקדש').querySelector('.map-sbtn.skip')!);
+        expect(verbs.skip).toHaveBeenCalledTimes(1);
+        expect(verbs.skip.mock.calls[0][0]).toMatchObject({ id: 'e1' });
+      });
+
+      // An ALREADY-settled event shows what a human said plus the one verb left. Which is
+      // also why every event is settleable rather than only the passed ones: gating the
+      // controls on "passed and unanswered" would delete this undo the instant it was earned.
+      it('a settled event states its outcome and offers the undo instead of the pair', () => {
+        tripPlaces = [place('cafe', true, { lat: 35.7, lng: 139.7 })];
+        tripEvents = [
+          event({
+            id: 'e1',
+            placeId: 'cafe',
+            title: 'קפה',
+            startsAt: `${ACTIVE_DATE}T09:00:00Z`,
+            status: EVENT_STATUS.DONE,
+          }),
+        ];
+        render(wrap(<MapView />));
+        fireEvent.click(row('cafe')!);
+        const settled = settleRow('cafe', 'קפה');
+        expect(settled.querySelector('.map-sbtn.done')).toBeNull();
+        expect(settled.querySelector('.map-sbtn.skip')).toBeNull();
+        // In the row's OWN tag vocabulary, not a third one.
+        expect(settled.querySelector('.map-settle .map-tag.ok')?.textContent).toContain(
+          t.event.didThis,
+        );
+        fireEvent.click(settled.querySelector('.map-settle .map-sbtn')!);
+        expect(verbs.restore).toHaveBeenCalledTimes(1);
+        expect(verbs.restore.mock.calls[0][0]).toMatchObject({ id: 'e1' });
+      });
+
+      // The emphasis is the CLOCK's question, and only the clock's: it marks a day that has
+      // passed with nothing said about it (ADR-0117 §1's third state). An event still ahead
+      // is settleable and NOT emphasised — nothing has passed to be an open question.
+      it('emphasises only the passed-and-unanswered row', () => {
+        tripPlaces = [
+          place('past', true, { lat: 35.7, lng: 139.7 }),
+          place('ahead', true, { lat: 35.71, lng: 139.71 }),
+        ];
+        tripEvents = [
+          event({ id: 'e1', placeId: 'past', title: 'בוקר', startsAt: `${ACTIVE_DATE}T09:00:00Z` }),
+          event({ id: 'e2', placeId: 'ahead', title: 'ערב', startsAt: `${ACTIVE_DATE}T20:00:00Z` }),
+        ];
+        render(wrap(<MapView />));
+        fireEvent.click(row('past')!);
+        expect(settleRow('past', 'בוקר').className).toContain('asking');
+        fireEvent.click(row('ahead')!);
+        const aheadRow = settleRow('ahead', 'ערב');
+        expect(aheadRow.className).not.toContain('asking');
+        // Available, though — a human may close tonight's dinner at 11:00 (ADR-0117 §2).
+        expect(aheadRow.querySelector('.map-sbtn.done')).toBeTruthy();
+      });
+
+      // `refs` is passed when a row is SELECTED and `renderRow` serves both hosts, so this is
+      // not a card feature — it appears wherever the selected row is. Both day scopes too,
+      // since they are genuinely different renders (frontend CLAUDE.md).
+      it('works in all-days scope as well as the day', () => {
+        tripPlaces = [place('cafe', true, { lat: 35.7, lng: 139.7 })];
+        tripEvents = [
+          event({ id: 'e1', placeId: 'cafe', title: 'קפה', startsAt: `${ACTIVE_DATE}T09:00:00Z` }),
+        ];
+        render(wrap(<MapView />));
+        fireEvent.click(listButton(t.map.allDays));
+        fireEvent.click(row('cafe')!);
+        fireEvent.click(settleRow('cafe', 'קפה').querySelector('.map-sbtn.done')!);
+        expect(verbs.done).toHaveBeenCalledTimes(1);
+      });
+
+      // A settle must not also navigate: the row around it opens the day, and the row around
+      // THAT selects the place.
+      it('does not open the day when the pair is tapped', () => {
+        tripPlaces = [place('cafe', true, { lat: 35.7, lng: 139.7 })];
+        tripEvents = [
+          event({ id: 'e1', placeId: 'cafe', title: 'קפה', startsAt: `${ACTIVE_DATE}T09:00:00Z` }),
+        ];
+        render(wrap(<MapView />));
+        fireEvent.click(row('cafe')!);
+        fireEvent.click(settleRow('cafe', 'קפה').querySelector('.map-sbtn.done')!);
+        // Still on the Map, with the block still open on the same place — the settle did not
+        // also fire the row's own `onOpen`, which navigates to the day.
+        expect(row('cafe')!.querySelector('.map-refs')).toBeTruthy();
+        expect(verbs.done).toHaveBeenCalledTimes(1);
+      });
     });
 
     it('a booking-linked event reads as a booking, in the per-end transition wording', () => {
