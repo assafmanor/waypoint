@@ -1,0 +1,4294 @@
+<!doctype html>
+<!-- SETTLE FROM THE CANVAS — v1 (2026-07-31). Small by design: one block, four states.
+
+     THE GAP, which ADR-0137 created and backlogged in the same session: the Map now
+     READS an outcome — a pin says היינו / דילגנו / nothing — and still cannot WRITE
+     one. Settling lives in the day view's settle strip (ADR-0043) and the event card's
+     `היינו שם?`, so a passed pin can sit on the canvas showing `עבר · לא סומן` and the
+     only way to answer it is to leave the tab.
+
+     ═══════════════════════════════════════════════════════════════════════
+     "WHICH EVENT?" IS ALREADY ANSWERED — that is the whole design
+     ═══════════════════════════════════════════════════════════════════════
+     The hard part of this looked like disambiguation: a place can carry several events
+     on one day, and ADR-0117 §5 is explicit that an outcome is a property of ALL of a
+     day's references rather than of the one that won the row's clock. So "mark this
+     place done" is not a well-formed instruction.
+
+     But the way-in block (ADR-0121 §8) ALREADY enumerates the references, one row per
+     entity, each labelled in its own words. So the design does not need to invent a
+     disambiguator — it needs to hang the verb on the row that already names its
+     target. One event per row, one outcome per event, no ambiguity to resolve.
+
+     That is also why this is a small change rather than a new surface: no picker, no
+     sheet, no second grammar. The row that says `אירוע · ארוחת בוקר` gains the two
+     verbs that apply to it.
+
+     ═══════════════════════════════════════════════════════════════════════
+     WHAT §A DRAWS (the recommendation)
+     ═══════════════════════════════════════════════════════════════════════
+     An event reference row gains a trailing cluster:
+
+       • UNSETTLED → `✓` and `✕`, the shipped `check`/`skip` icons ADR-0137 added.
+       • SETTLED   → its outcome tag (היינו/דילגנו in `--ok`/`--miss`, the same tag the
+                     row's meta line already draws) plus an `undo` to put it back to
+                     planned. Un-settling is `verbs.restore`, which exists.
+       • An IDEA or a BOOKING reference gets NO cluster: neither carries an
+         `EVENT_STATUS`, so there is nothing to settle. Silence by construction again.
+
+     ONE STRUCTURAL CHANGE IT FORCES, and it is the reason this needs a mockup rather
+     than a patch: `.map-ref` is today a `<button>` wrapping the whole row, and buttons
+     do not nest. So the row becomes a container with the open affordance as its own
+     button and the cluster as a SIBLING — which is exactly the shape `ListRow` already
+     uses (`.wp-listrow-right` is a sibling of the open button, not a child). Reuse of a
+     pattern, not invention of one.
+
+     ═══════════════════════════════════════════════════════════════════════
+     §B — THE ALTERNATIVE, drawn so it can be rejected on sight
+     ═══════════════════════════════════════════════════════════════════════
+     One `היינו שם?` strip on the card, mirroring the day view's settle strip. It reads
+     beautifully with ONE event and is a lie with two: it has to settle every reference
+     at once, which is the ambiguity §A dissolves rather than resolves. Drawn on a place
+     with two events so the failure is visible rather than argued.
+
+     ═══════════════════════════════════════════════════════════════════════
+     THE QUESTION THIS FILE IS FOR (§C)
+     ═══════════════════════════════════════════════════════════════════════
+     WHICH events may be settled here? Three candidates, drawn:
+       1. any event, whenever — matches the ⋯ row menu, and ADR-0117 §2 already handles
+          marking tonight's dinner done at 11:00 (a human outranks the clock);
+       2. passed-and-unsettled only — answers exactly the reported gap and nothing more;
+       3. any event, with the passed-unsettled one EMPHASISED — the open question reads
+          as a question, and the rest stay available.
+
+     Everything the write path needs already exists and none of it is touched:
+     `verbs.done` / `verbs.skip` / `verbs.restore` take a `TripEvent`, go through
+     `applySetStatus`, are offline-capable through the outbox, and toast with undo. This
+     is a new CALLER, not a new mechanism (CLAUDE.md rule 8) — and ADR-0027 §1 holds by
+     construction: a human tap only, nothing auto-settles.
+
+     Renders through the app's real CSS. Only the cluster itself is mockup-local (every
+     class prefixed `mk-`), because it is what is being decided. -->
+<html lang="he" dir="rtl">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>סימון מהקנבס · מוקאפ v1</title>
+    <link rel="preconnect" href="https://fonts.googleapis.com" />
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+    <link
+      href="https://fonts.googleapis.com/css2?family=Assistant:wght@400;500;600;700&family=Secular+One&family=JetBrains+Mono:wght@500;700&display=swap"
+      rel="stylesheet"
+    />
+
+    <!-- ══ THE APP'S REAL STYLESHEETS ══ GENERATED — never hand-edit. Re-run:
+             node mockups/tools/inline-app-css.mjs mockups/map-settle-from-canvas-v1.html -->
+    <!-- APP-CSS: styles/tokens.css, App.css, screens/map.css, ui/domain/place-badge.css, ui/domain/list-row.css -->
+    <style data-app-css>
+/* GENERATED by mockups/tools/inline-app-css.mjs from the manifest above.
+   Do not edit below this line — change the app css, then re-run the tool. */
+/* ═══ styles/tokens.css — generated, do not edit here ═══ */
+/* Waypoint design tokens — ported from mockups/trip-dashboard-v2.html.
+   See docs/design/design-language.md (rules) + ADR-0028 (why).
+   Amber = time & commitment only; Teal = location only; Plan violet = plan mode only. */
+:root {
+  --ink: #16233d;
+  --indigo: #1b2a4a;
+  --board: #0e1729;
+  --board-2: #152137;
+  --screen: #e7eaef;
+  --card: #ffffff;
+  --paper: #f3efe6;
+  --amber: #e9a63c;
+  --amber-deep: #c9822a;
+  --amber-ink: #7a5a1e; /* dark-amber text on a light amber TINT (e.g. the ripple bar);
+                           the tint darkens on dark, so this lightens (see dark block) */
+  --teal: #2c9c90;
+  --muted: #6c7488;
+  --faint: #98a0b0; /* faint hint/placeholder/secondary text — one step lighter than --muted */
+  --line: rgba(22, 35, 61, 0.1);
+  --soft-line: rgba(22, 35, 61, 0.28);
+  --shadow: 0 18px 40px -18px rgba(14, 23, 41, 0.45);
+
+  /* Mode & action tokens (design-language: mode identity + color budget) */
+  --plan: #6e59d6; /* plan-mode accent — plan/builder actions only */
+  --plan-deep: #5747b4;
+  --plan-tint: rgba(110, 89, 214, 0.1);
+  --indigo-tint: rgba(27, 42, 74, 0.1); /* chrome-accent wash — active nav pill in Trip mode */
+  --cta: var(--ink); /* neutral primary button; amber/teal/plan are semantic, never CTAs */
+  --cta-text: #ffffff;
+  /* Status mini-palette (distinct from the semantic trio) */
+  --ok: #3c9a6b;
+  --miss: #c2584e;
+
+  /* Category pin palette (ADR-0038 §2 / ADR-0028 decorative palette) — 5 pastel
+     hues, "never amber or teal": colour = category on the Map list badge + pin
+     (the 9 EventCategory values fold onto these 5, see CATEGORY_PIN_HUE). Values
+     ported verbatim from mockups/map-tab-v1.html. Commitment (hard/soft) is the
+     shape grammar, not the fill. */
+  /* Avatar identity ramp (ADR-0133 §5) — the decorative palette's other half,
+     beside the pin hues below. Outside the semantic trio, and deliberately LOWER
+     CHROMA than `--cat-*`: an avatar in the chrome and a category pin on the Map
+     canvas are on screen together, and chroma is the channel that keeps them
+     apart even where hue angles are close. All pastel so ONE dark ink clears
+     contrast on every hue in both themes — that is what keeps the Avatar
+     primitive from needing a per-hue ink table. */
+  --id-plum: #b98ac9;
+  --id-rose: #d98ca8;
+  --id-moss: #9db585;
+  --id-denim: #8496b5;
+  --id-cocoa: #b99483;
+
+  --cat-food: #e8998a;
+  --cat-lodging: #9c8ce8;
+  --cat-transit: #8cb6e8;
+  --cat-leisure: #9cc9a0;
+  --cat-services: #d9c08a;
+
+  /* "You are here" on the rendered map (ADR-0121 §7 / ADR-0109 §3): the OS-map
+     convention blue, deliberately OUTSIDE the amber/teal/violet budget — it is a
+     platform idiom nobody reads as one of our accents, which is exactly why it
+     may be a sixth colour. One consumer only: the map's `me` dot. */
+  --me: #2e6be6;
+
+  /* Motion — duration ramp + easings (design-language "Motion & designed
+     transitions"). New motion picks from this ramp, the same discipline the
+     type ramp and color budget enforce. Budget rule: exactly one --t-cinematic
+     moment exists — the Plan→Trip switch. Everything under prefers-reduced-motion
+     collapses to instant (App.css). */
+  --t-quick: 140ms; /* nav settle, toggles, hovers, focus */
+  --t-base: 240ms; /* tab cross-fade, toast, ripple bar, sheets */
+  --t-deliberate: 400ms; /* return-gesture slide; Trip→Plan stand-down */
+  --t-cinematic: 600ms; /* Plan→Trip going-live — the only cinematic moment */
+  --ease-standard: cubic-bezier(0.2, 0, 0, 1); /* default / entrances / hue melts */
+  --ease-exit: cubic-bezier(0.4, 0, 1, 1); /* exits — toast out, glow extinguishing */
+  --ease-emphasized: cubic-bezier(0.16, 1, 0.3, 1); /* the glow ignite */
+
+  --font-head: 'Secular One', sans-serif;
+  --font-body: 'Assistant', sans-serif;
+  --font-mono: 'JetBrains Mono', monospace;
+
+  /* ── Non-color foundation tokens (U-08, ADR-0082) ──────────────────────────
+     design-language.md documents the spacing/type/radius/elevation ramps in
+     prose; before this they lived nowhere in CSS, so 6.5k lines hard-coded them
+     and drifted. These make the ramps enforceable: pick from the token, never
+     invent a value. Theme-independent (a 16px gap is 16px on dark too), so the
+     dark block below re-maps only what actually changes with theme (elevation).
+     Migration is opportunistic — primitives are born on these; screens convert
+     as they're touched. */
+
+  /* Spacing — 4px base grid; component padding from {8,12,16,20,24}. */
+  --space-1: 4px;
+  --space-2: 8px;
+  --space-3: 12px;
+  --space-4: 16px;
+  --space-5: 20px;
+  --space-6: 24px;
+
+  /* Type ramp (design-language "Type ramp"). Assistant unless the call site
+     sets --font-head (Secular One for display/h1/h2/h3). Values are the
+     documented steps; off-ramp sizes in legacy CSS converge onto these. */
+  --text-display: 34px; /* landing hero */
+  --text-h1: 26px; /* screen titles */
+  --text-h2: 21px; /* board now-title */
+  --text-h3: 17px; /* card titles (17–18) */
+  --text-body: 14.5px; /* default text */
+  --text-secondary: 13px; /* meta, descriptions (12–13) */
+  --text-caption: 11px; /* labels, hints */
+  --text-micro: 10.5px; /* tags, badges */
+
+  /* Line-height ramp (unitless). Headings ride tight; body reads at normal. */
+  --leading-tight: 1.1; /* display/board titles */
+  --leading-snug: 1.25; /* h1–h3 */
+  --leading-normal: 1.45; /* body */
+  --leading-relaxed: 1.6; /* long descriptions */
+
+  /* Radius ramp: 8 chips/tags · 12 inner (badges/inputs) · 16 cards ·
+     22 hero surfaces · 999 pills. */
+  --radius-8: 8px;
+  --radius-12: 12px;
+  --radius-16: 16px;
+  --radius-22: 22px;
+  --radius-999: 999px;
+
+  /* Elevation — three levels only. flat = border, no shadow; raised = soft
+     (interactive cards); floating = strong (board, toasts, sheets = --shadow). */
+  --elevation-flat: none;
+  --elevation-raised: 0 8px 20px -14px rgba(14, 23, 41, 0.35);
+  --elevation-floating: var(--shadow);
+
+  /* Breakpoints (design-language "Responsive"). CSS @media cannot read custom
+     properties, so these document the values for JS/container-query use and
+     keep one source of truth; media queries mirror them as literals. */
+  --bp-tablet: 768px;
+  --bp-desktop: 1024px;
+
+  /* Safe-area insets (phone PWA). The app-shell + sticky primitives pad by
+     these so content clears the notch / home indicator. Zero on non-notched. */
+  --safe-top: env(safe-area-inset-top, 0px);
+  --safe-bottom: env(safe-area-inset-bottom, 0px);
+  --safe-left: env(safe-area-inset-left, 0px);
+  --safe-right: env(safe-area-inset-right, 0px);
+
+  /* Sync/status mapping (U-04 SyncBadge, U-10 StatusBanner). Reuses the status
+     mini-palette + a neutral for "pending", so failed/synced inherit the dark
+     remap of --ok/--miss for free. */
+  --sync-synced: var(--ok);
+  --sync-pending: var(--muted);
+  --sync-failed: var(--miss);
+}
+
+* {
+  box-sizing: border-box;
+  margin: 0;
+  padding: 0;
+  /* Kill the mobile browser's blue tap-flash app-wide (inherited). Every
+     tappable surface has its own :active / hover / focus-visible feedback,
+     so this only removes the crude default overlay, not the affordance. */
+  -webkit-tap-highlight-color: transparent;
+}
+
+/* An armed drag (lib/useHoldToDrag.ts) turns selection off page-wide: the finger
+   travels over rows, headers and gaps, and any of them would otherwise start
+   selecting text under it mid-drag. `!important` because it has to beat whatever
+   the elements under the finger set for themselves, and it lasts only until the
+   drop. The card's own `user-select: none` handles the press itself. */
+body.wp-dragging,
+body.wp-dragging * {
+  user-select: none !important;
+  -webkit-user-select: none !important;
+}
+/* Ownership of the finger is enforced in JS, not here (lib/useHoldToDrag.ts's
+   mount-time non-passive `touchmove` guard). Two CSS routes were tried first and
+   both are dead ends, so they are documented rather than reintroduced:
+     • `touch-action: none` on a live drag — `touch-action` is read when the touch
+       STARTS, so setting it mid-gesture changes nothing;
+     • `overflow-y: hidden` on `.body` for the drag's duration — it does stop native
+       scrolling, but it also makes the container stop reporting as a scroller, and
+       `nearestScroller` (lib/edge-autoscroll.ts) then finds nothing to scroll: the
+       edge auto-scroll dies with it. Proven by e2e/shelf-drag.spec.ts. */
+/* The held card stops answering hit-tests, so the drop target is always what is
+   UNDER the finger rather than the thing being dragged. */
+body.wp-dragging .wp-maybecard.dragging {
+  pointer-events: none;
+}
+
+/* The floating clone that follows the finger (lib/useDragGhost.ts). Lives here rather
+   than beside either draggable's styles, because ONE of these serves both of the
+   builder's drags — a shelf card and a builder row — by cloning whichever DOM the
+   finger picked up.
+
+   `position: fixed` is what escapes `.shelf`'s horizontal overflow (no ancestor
+   establishes a containing block for it). It is deliberately not an ADR-0090 overlay:
+   not a back target, never in the back stack, so no `Modal`/`useOverlay`. Above the
+   day list and the nav, and it needn't beat the Modal layer — no overlay can be open
+   during a drag. */
+.wp-dragghost {
+  position: fixed;
+  top: 0;
+  /* Physical `left`, deliberately NOT the logical `inset-inline-start` this codebase
+     otherwise prefers: the app is RTL, where the logical property resolves to
+     `right: 0` and anchors the box to the viewport's RIGHT edge — while the transform
+     is computed from `clientX`, which is physical. Mixing the two put the clone a
+     viewport-width away from the finger. */
+  left: 0;
+  z-index: 15;
+  /* Transparent to hit-testing: the drop target is whatever is UNDER the finger, and
+     `elementFromPoint` would otherwise only ever find the clone. */
+  pointer-events: none;
+  /* Size and position are written from JS (the source's box, then the finger), so
+     nothing here may declare a width, height or transform of its own. */
+  will-change: transform;
+}
+/* The clone reads as picked up. A spread `box-shadow` follows whatever radius the
+   cloned element already has — a card's 15px, a row's own — which is why the ring
+   isn't drawn on the wrapper (session 113: an outline at the wrong radius is exactly
+   what read as a "choppy" stroke). */
+.wp-dragghost > * {
+  box-shadow:
+    0 0 0 2px color-mix(in srgb, var(--plan) 55%, transparent),
+    0 14px 28px -10px rgba(14, 23, 41, 0.45);
+  transform: scale(1.04);
+}
+
+html,
+body,
+#root {
+  height: 100%;
+  /* App-shell scrolls inside .body, not the document. Stop overscroll from
+     chaining to the page so the browser's native pull-to-refresh never fires
+     (PWA feel). Scrolling inside .body is unaffected. */
+  overscroll-behavior-y: contain;
+  /* ADR-0062: suppress double-tap zoom app-wide (pinch is handled in index.html;
+     the image preview opts back in via its own touch-action). manipulation still
+     allows panning + the day-strip pan-x scroll. */
+  touch-action: manipulation;
+}
+
+body {
+  font-family: var(--font-body);
+  background: var(--screen);
+  color: var(--ink);
+  -webkit-font-smoothing: antialiased;
+}
+
+/* Dark mode remap — INERT until <html data-theme="dark"> is set.
+   Same token names, re-mapped; component CSS stays untouched.
+   See design-language "Dark mode readiness" for principles + remaining work. */
+:root[data-theme='dark'] {
+  --ink: #e7eaf2;
+  --indigo: #131f38;
+  --board: #0a1120; /* darkest surface — the board stays the loudest */
+  --board-2: #101b30;
+  --screen: #0f1726;
+  --card: #1a2740;
+  --paper: #2e2a20; /* keeps its warmth, dark */
+  --amber: #f0b254;
+  --amber-deep: #d89440;
+  --amber-ink: #f0b254; /* amber text now: the tint sits on a dark screen, so ink→light amber */
+  --teal: #3fb3a5;
+  --muted: #93a0b8;
+  --faint: #8592ab; /* dim light — quieter than --muted, still clears AA on --card */
+  --line: rgba(231, 234, 242, 0.1);
+  --soft-line: rgba(231, 234, 242, 0.3);
+  --shadow: 0 18px 40px -18px rgba(0, 0, 0, 0.6);
+  --plan: #8b79e8;
+  --plan-deep: #a99af2; /* used as text — lighter on dark */
+  --plan-tint: rgba(139, 121, 232, 0.14);
+  --indigo-tint: rgba(141, 168, 232, 0.16); /* brightened for the dark nav bar */
+  --cta: #e7eaf2;
+  --cta-text: #12203a;
+  --ok: #4cbf85;
+  --miss: #e07a6e;
+  /* Category pins, nudged brighter so the pastels clear the dark board (dark is
+     readiness-only today, ADR-0028/0105 — inert until data-theme=dark is set). */
+  /* Identity ramp, lifted like the pin hues so a pastel ground still carries the
+     same dark ink on a deep surface (ADR-0133 §5). Owes a real dark-mode look
+     before the theme toggle ships — see the backlog line. */
+  --id-plum: #c79cd4;
+  --id-rose: #e39db6;
+  --id-moss: #adc396;
+  --id-denim: #96a6c4;
+  --id-cocoa: #c7a695;
+
+  --cat-food: #f0a99a;
+  --cat-lodging: #ab9cf0;
+  --cat-transit: #9cc2f0;
+  --cat-leisure: #a9d4ad;
+  --cat-services: #e4cd9a;
+  /* The "me" dot, lifted to clear the night map style (same readiness caveat). */
+  --me: #5b8ef0;
+
+  /* Non-color tokens (spacing/type/radius/leading/breakpoints/safe-area) are
+     theme-independent and inherit unchanged. Only elevation re-maps: shadows
+     read deeper on dark surfaces. --elevation-floating tracks --shadow (above);
+     --raised needs its own darker value. Sync tokens track --ok/--miss/--muted,
+     all already re-mapped, so they need no restatement here. */
+  --elevation-raised: 0 8px 20px -14px rgba(0, 0, 0, 0.5);
+}
+
+/* ═══ App.css — generated, do not edit here ═══ */
+/* App shell + header. Phone-first (~390px); a breakpoint-aware centered column
+   on larger screens (ADR-0017 / design-language "Responsive"). Ported from
+   mockups/trip-dashboard-v2.html. Owned by AppShell (ui/layout). */
+
+/* Dark-mode note (U-08, ADR-0082 / ADR-0028): themeable colors read tokens
+   (tokens.css), so they re-map under [data-theme='dark']. The literal hexes that
+   remain are INTENTIONALLY theme-fixed and carry a "fixed:" (or "brand") marker:
+   - light text/decor painted onto the ALWAYS-dark trip-mode chrome (the indigo
+     header, the dormant board, the join/land departure boards, the boarding-pass
+     ticket, the trip-hero) — these surfaces stay dark in both themes, so their
+     light ink stays put;
+   - ink that rides a semantic FILL (dark ink on an amber pill, white on a plan /
+     miss / cta fill) — the fill re-maps, the on-fill ink must not;
+   - Google brand colors.
+   Everything on a paper/card surface was swept onto tokens. */
+.app {
+  max-width: 430px;
+  margin-inline: auto;
+  height: 100vh;
+  height: 100dvh;
+  display: flex;
+  flex-direction: column;
+  background: var(--screen);
+  position: relative;
+  /* Clear side notches (landscape) with logical padding only — never
+     left/right. The app is RTL, so inline-start maps to the physical right
+     edge and inline-end to the physical left; both fall back to 0px. */
+  padding-inline-start: var(--safe-right);
+  padding-inline-end: var(--safe-left);
+}
+/* Breakpoint-aware column — the @media literals mirror --bp-tablet /
+   --bp-desktop (CSS can't read custom props in a media condition). Phone is
+   byte-identical to the old blanket 430px; tablet/desktop scale up gracefully
+   instead of a stretched phone strip. */
+@media (min-width: 768px) {
+  .app {
+    max-width: 560px;
+  }
+}
+@media (min-width: 1024px) {
+  .app {
+    max-width: 640px;
+  }
+}
+
+.body {
+  flex: 1;
+  overflow-y: auto;
+  /* Contain overscroll so hitting the top/bottom of the scroll area doesn't
+     trigger the browser's pull-to-refresh (see tokens.css). */
+  overscroll-behavior-y: contain;
+  padding: 16px 16px 92px;
+  animation: fade 0.32s ease;
+}
+/* A surface that owns its own layout instead of scrolling inside the body
+   (ADR-0078's layout layer, ADR-0121 §5). The rendered map's split needs a
+   fixed-height flex column to hang on, and the 92px of tail padding would push it
+   under the nav. The screen then supplies its own edge padding for whatever it puts
+   above the split, and the ONE scroll region becomes the sheet's list. */
+.body.is-fullbleed {
+  overflow: hidden;
+  padding: 0;
+}
+/* THE CHROME RECLAIM (ADR-0132 §2) — the layout layer's second surface-driven
+   modifier, after `is-fullbleed` above. While the Map tab's query field is open the
+   header and the tab bar go away, because on a resizing layout viewport (Android)
+   the split is the only flexible region and absorbs the whole keyboard: 43px of
+   canvas at 390×844, and at 360×640 a 28px pane that cannot lay out Google's
+   attribution at all — an ADR-0106 §B violation, not a density complaint.
+
+   `display: none`, not `visibility: hidden` (contrast ADR-0122 §5, where keeping the
+   space was the point): here the space IS the point, and this also takes the chrome
+   out of the tab order, which is correct — while you are typing, the mode bar and the
+   tab bar are not part of this surface. The nodes stay MOUNTED (ADR-0078's one-frame
+   invariant), so the day strip keeps its scroll position and nothing re-mounts when
+   the field closes. No transition: animating it would relayout the split mid-flight,
+   the one thing ADR-0121 §5 shaped the stops to avoid. */
+.app[data-chrome='reclaimed'] > .header,
+.app[data-chrome='reclaimed'] > .nav {
+  display: none;
+}
+/* …and the safe area has to move with them, because the insets are NOT on the shell:
+   `.header` pays `--safe-top` below and `.nav` pays `--safe-bottom`. Hide both and the
+   query field sits under the notch while the sheet's last row sits under the home
+   indicator — on a device with insets only, which is why nothing on a desktop would
+   ever show it. So the body pays them instead, which is what ADR-0101's own overlay
+   does for itself (`search-overlay.css`). The reclaim is therefore worth
+   `276 − (top + bottom)`, not 276. */
+.app[data-chrome='reclaimed'] > .body {
+  padding-block: var(--safe-top) var(--safe-bottom);
+}
+@keyframes fade {
+  from {
+    opacity: 0;
+    transform: translateY(6px);
+  }
+  to {
+    opacity: 1;
+    transform: none;
+  }
+}
+
+/* header */
+.header {
+  /* Top padding clears the notch via --safe-top (0px on non-notched devices,
+     so phone is unchanged). Block axis only — not an inline direction. */
+  padding: calc(14px + var(--safe-top)) 20px 16px;
+  z-index: 0;
+}
+/* Mode-tinted chrome surface (ADR-0028 identity + ADR-0101 reuse): the trip
+   header's blue Trip-mode base / light Plan-mode "drafting table" re-skin,
+   extracted into a shared class so another surface carrying the same "this
+   is app chrome" identity (the full-screen search mode's compact top bar,
+   ui/primitives/search-overlay.css) can reuse it verbatim instead of
+   duplicating these rules. Self-scoped on the surface's OWN `data-mode`
+   attribute (not `.app[data-mode]`) so it still works on a `Modal` that
+   portals to `document.body`, outside the `.app` DOM subtree — `.header`
+   carries `data-mode` itself for exactly this reason (App.tsx), even though
+   `.app[data-mode]` alone would already cover it in place. */
+.header,
+.mode-chrome {
+  background: var(--indigo);
+  color: #fff;
+  position: relative;
+}
+/* The drafting grid is a plan-mode texture cue (design-language: mode identity).
+   It lives on a dedicated layer, not the header's background-image, so the
+   mode-switch transition can DISSOLVE it (background-image can't be animated).
+   Off in Trip mode, faded in for Plan; duration follows --switch-dur (unset =
+   0s = instant when not mid-switch). */
+.header::before,
+.mode-chrome::before {
+  content: '';
+  position: absolute;
+  inset: 0;
+  z-index: 0;
+  pointer-events: none;
+  opacity: 0;
+  background-image:
+    repeating-linear-gradient(0deg, rgba(110, 89, 214, 0.05) 0 1px, transparent 1px 22px),
+    repeating-linear-gradient(90deg, rgba(110, 89, 214, 0.05) 0 1px, transparent 1px 22px);
+  transition: opacity var(--switch-dur, 0s) var(--ease-standard);
+}
+.app[data-mode='plan'] .header::before,
+.mode-chrome[data-mode='plan']::before {
+  opacity: 1;
+}
+/* Keep header content above the grid layer. */
+.header > *,
+.mode-chrome > * {
+  position: relative;
+  z-index: 1;
+}
+.trip-row {
+  display: flex;
+  justify-content: space-between;
+  align-items: flex-start;
+  gap: 10px;
+}
+/* min-width: 0 lets this side shrink below its content size — the default
+   flex-item min-width is auto (= content size), which is exactly what let a
+   long trip name blow out the pill into a wrapped two-line block instead of
+   truncating. */
+.trip-name-wrap {
+  min-width: 0;
+  flex: 1 1 auto;
+}
+.trip-name {
+  font-family: var(--font-head);
+  font-size: 26px;
+  line-height: 1.05;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  min-width: 0;
+}
+/* the trip's chosen glyph, leading the switcher pill (ADR-0038 §5); falls
+   back to DEFAULT_TRIP_ICON when unset. Fixed-size so it never gets caught
+   by the .trip-name ellipsis shrink-to-fit. */
+.trip-icon {
+  flex: 0 0 auto;
+  font-size: 22px;
+  line-height: 1;
+}
+.trip-sub {
+  color: #9daac8;
+  font-size: 13px;
+  margin-top: 5px;
+  font-weight: 500;
+}
+.trip-sub .dot {
+  opacity: 0.5;
+  margin: 0 6px;
+}
+/* the switcher pill (ADR-0033) — a clear "there's more than one trip"
+   affordance, distinct from the ⚙ settings button, navigating to /trips.
+   Always shown, even with one trip (app-shell.md §5). max-width + the
+   .trip-name ellipsis above keep a long trip name to one line instead of
+   wrapping and blowing out the pill shape. */
+.trip-name-btn {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  max-width: 100%;
+  background: rgba(255, 255, 255, 0.09);
+  border: 1px solid rgba(255, 255, 255, 0.16);
+  border-radius: 999px;
+  padding: 5px 8px 5px 12px;
+  font: inherit;
+  color: inherit;
+  cursor: pointer;
+  transition: 0.14s;
+}
+.trip-name-btn:hover {
+  background: rgba(255, 255, 255, 0.15);
+}
+.trip-name-btn:focus-visible {
+  outline: 2.5px solid var(--teal);
+  outline-offset: 2px;
+}
+.trip-name-btn .chev {
+  width: 22px;
+  height: 22px;
+  border-radius: 50%;
+  background: rgba(255, 255, 255, 0.14);
+  display: grid;
+  place-items: center;
+  font-size: 11px;
+  flex: 0 0 auto;
+}
+.header-actions {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+/* Settings is a UI control, not an identity chip (ADR-0043 / design-language
+   "emoji are content, icons are UI"): a borderless ghost icon beside the round
+   identity avatars, so it reads as a control and drops one competing circle.
+   `.chrome-ghost-btn` generalizes this exact treatment (ADR-0101) for any
+   other icon control living directly on `.mode-chrome` — e.g. the search-mode
+   top bar's back button — rather than a second copy of the same rules. */
+.gear-btn,
+.chrome-ghost-btn {
+  width: 32px;
+  height: 32px;
+  border-radius: 9px;
+  display: grid;
+  place-items: center;
+  background: none;
+  border: 0;
+  color: #9daac8;
+  font-size: 18px;
+  cursor: pointer;
+}
+.gear-btn:hover,
+.chrome-ghost-btn:hover {
+  color: #fff;
+}
+.gear-btn:focus-visible,
+.chrome-ghost-btn:focus-visible {
+  outline: 2.5px solid var(--amber);
+  outline-offset: 2px;
+}
+/* header account avatar — clearly ringed, distinct from the plain member cluster
+   (app-shell.md §6). ADR-0043: the shipped border was too faint to read as "you",
+   so this is a proper outer ring (a gap + a bright ring), not just a border.
+   Google is stated once, quietly, in the account sheet — no per-avatar badge. */
+.account-btn {
+  cursor: pointer;
+  margin-inline-start: 3px;
+  border-color: var(--indigo);
+  box-shadow:
+    0 0 0 2px var(--indigo),
+    0 0 0 3.5px rgba(255, 255, 255, 0.6);
+  font: inherit;
+}
+.avatars {
+  display: flex;
+  flex-direction: row-reverse;
+  margin-inline-end: 4px;
+}
+.av {
+  width: 31px;
+  height: 31px;
+  border-radius: 50%;
+  display: grid;
+  place-items: center;
+  color: #12203a;
+  font-weight: 700;
+  font-size: 12.5px;
+  border: 2px solid var(--indigo);
+  margin-inline-start: -9px;
+}
+/* overflow bubble when the trip has more members than the visible cap */
+.av.more {
+  background: rgba(255, 255, 255, 0.14);
+  color: #dce3f2;
+  font-size: 11px;
+}
+/* Offline/pending-sync badges (T-013) — muted like the offline map state in
+   mockups/trip-dashboard-v2.html (.map-offline-banner), not amber/teal: this
+   is a background/system signal, not a "now" or "location" one (ADR rule #4).
+   `.chrome-chip` generalizes the translucent-pill-on-`.mode-chrome` treatment
+   (ADR-0101) for any other small annotation living directly on that surface —
+   e.g. the search-mode top bar's trip-name context label — reusing the same
+   readable-on-both-mode-tints styling rather than a second copy. */
+.offline-badge,
+.chrome-chip {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  padding: 4px 10px;
+  border-radius: 20px;
+  background: rgba(255, 255, 255, 0.08);
+  border: 1px solid rgba(255, 255, 255, 0.16);
+  color: #8fa0c4;
+  font-size: 11.5px;
+  font-weight: 600;
+}
+.offline-badge {
+  margin-top: 8px;
+}
+/* mode toggle (design-language.md's Plan-mode components, mockups/plan-mode-v1.html) */
+.modebar {
+  display: flex;
+  justify-content: center;
+  padding-bottom: 10px;
+}
+.toggle {
+  display: inline-flex;
+  align-items: center;
+  background: rgba(255, 255, 255, 0.08);
+  border-radius: 11px;
+  padding: 3px;
+  gap: 2px;
+}
+.toggle button {
+  font: inherit;
+  font-size: 12px;
+  font-weight: 700;
+  border: 0;
+  background: none;
+  color: #93a2c4;
+  padding: 6px 14px;
+  border-radius: 9px;
+  cursor: pointer;
+  white-space: nowrap;
+}
+.toggle button.on {
+  background: var(--amber);
+  color: #3a2405; /* fixed: dark ink on the amber fill (fill re-maps, ink must not) */
+}
+/* Plan mode never uses amber (design-language: mode identity): the selected
+   mode pill and selected day go plan violet. Solid --plan reads as the pressed
+   state against the light "drafting table" chrome (see the [data-mode='plan']
+   chrome block below). */
+.app[data-mode='plan'] .toggle button.on {
+  background: var(--plan);
+  color: #fff; /* fixed: white on the plan-violet fill */
+}
+.toggle .auto {
+  color: #7e8fb4;
+  font-size: 10px;
+  font-weight: 600;
+  padding-inline-start: 8px;
+  white-space: nowrap;
+}
+
+/* The day-strip itself (`.day-strip` / `.day-pill*` / `.month-label`) now lives
+   in the DayStrip domain component (ui/domain/day-strip.css, review U-03). Only
+   the day-scope context ribbon below stays here — it is header chrome, not a pill. */
+
+/* Day-scope context ribbon under the strip when viewing a non-today day in Trip
+   mode (ADR-0043 / ADR-0029) — names the state and taps back to today. */
+.day-context {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  width: 100%;
+  margin-top: 11px;
+  padding: 7px 11px;
+  border-radius: 10px;
+  font: inherit;
+  font-size: 12px;
+  font-weight: 600;
+  cursor: pointer;
+  text-align: start;
+  border: 1px solid transparent;
+}
+.day-context.past {
+  background: rgba(255, 255, 255, 0.06);
+  color: #c3cee6;
+  border-color: rgba(255, 255, 255, 0.09);
+}
+.day-context.future {
+  background: rgba(110, 89, 214, 0.16);
+  color: #cabff4;
+  border-color: rgba(110, 89, 214, 0.3);
+}
+.day-context .dc-back {
+  margin-inline-start: auto;
+  font-weight: 700;
+  color: #fff;
+  white-space: nowrap;
+}
+.day-context.future .dc-back {
+  color: #d9d0fb;
+}
+.day-context:focus-visible {
+  outline: 2.5px solid var(--amber);
+  outline-offset: 2px;
+}
+
+/* Zero-state home (T-040 / ADR-0024 §2) — the dormant departure board.
+   Design: mockups/zero-state-v1.html. The board renders where it will live
+   once a trip exists, but stays unpowered: no amber/teal/pulse (ADR-0028). */
+.zero-head {
+  background: var(--indigo);
+  color: #fff;
+  padding: 14px 20px 18px;
+}
+.zero-head-row {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+}
+/* A single, non-overlapping avatar reads better with a defined ring than the
+   indigo-on-indigo blend .av uses for Header's overlapping multi-avatar row. */
+.zero-head .av {
+  border-color: #fff;
+}
+.zero-hello {
+  font-family: var(--font-head);
+  font-size: 23px;
+}
+.zero-hello-sub {
+  color: #9daac8;
+  font-size: 12.5px;
+  margin-top: 3px;
+  display: flex;
+  align-items: center;
+  gap: 6px;
+}
+.g-dot {
+  width: 12px;
+  height: 12px;
+  border-radius: 50%;
+  flex: 0 0 auto;
+  /* brand: Google — the four-color mark, identical in both themes */
+  background: conic-gradient(#4285f4 0 25%, #ea4335 0 50%, #fbbc05 0 75%, #34a853 0);
+}
+.zero-body {
+  flex: 1;
+  overflow-y: auto;
+  padding: 22px 20px 28px;
+  display: flex;
+  flex-direction: column;
+}
+
+.board-off {
+  background: linear-gradient(180deg, var(--board-2), var(--board));
+  border-radius: 22px;
+  padding: 17px 18px 15px;
+  color: #eaf0ff;
+  box-shadow: 0 20px 34px -20px rgba(8, 14, 28, 0.75);
+}
+.board-off-top {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+}
+.off-label {
+  font-size: 11px;
+  font-weight: 600;
+  letter-spacing: 0.14em;
+  color: #5b6a8a;
+  display: flex;
+  align-items: center;
+  gap: 7px;
+}
+.off-dot {
+  width: 7px;
+  height: 7px;
+  border-radius: 50%;
+  background: #3a4a6e; /* a blip that isn't pulsing — nothing is live */
+}
+.board-off-clock {
+  font-family: var(--font-mono);
+  font-size: 15px;
+  font-weight: 700;
+  color: #4d5d80;
+}
+
+/* split-flap rows, blank */
+.flaps {
+  margin-top: 16px;
+  display: flex;
+  flex-direction: column;
+  gap: 9px;
+}
+.flap-row {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+.flap-row:nth-child(2) {
+  opacity: 0.72;
+}
+.flap-row:nth-child(3) {
+  opacity: 0.48;
+}
+.flap-row:nth-child(4) {
+  opacity: 0.26;
+}
+.flap-time {
+  font-family: var(--font-mono);
+  font-size: 13px;
+  font-weight: 700;
+  color: #44547a;
+  min-width: 52px;
+  text-align: center;
+  flex: 0 0 auto;
+}
+.cell {
+  height: 26px;
+  border-radius: 5px;
+  background: linear-gradient(180deg, #1c2946 0 50%, #17233c 50% 100%);
+  box-shadow: inset 0 0 0 1px rgba(255, 255, 255, 0.045);
+  position: relative;
+  flex: 0 0 auto;
+}
+.cell::after {
+  content: '';
+  position: absolute;
+  left: 0;
+  right: 0;
+  top: 50%;
+  height: 1px;
+  background: rgba(10, 17, 32, 0.9);
+}
+.cell.w1 {
+  width: 26px;
+}
+.cell.w2 {
+  width: 44px;
+}
+.cell.w3 {
+  width: 74px;
+}
+.cell.grow {
+  flex: 1;
+}
+/* one cell occasionally flutters, like a board testing a flap */
+@keyframes flutter {
+  0%,
+  92% {
+    transform: none;
+  }
+  94% {
+    transform: scaleY(0.1);
+  }
+  96% {
+    transform: scaleY(1);
+  }
+  97% {
+    transform: scaleY(0.4);
+  }
+  100% {
+    transform: none;
+  }
+}
+.cell.flutter {
+  animation: flutter 7s ease-in-out infinite;
+  transform-origin: center;
+}
+
+.zero-copy {
+  text-align: center;
+  margin-top: 26px;
+  padding: 0 6px;
+}
+.zero-copy h1 {
+  font-family: var(--font-head);
+  font-size: 26px;
+  color: var(--indigo);
+}
+.zero-copy p {
+  color: var(--muted);
+  font-size: 14.5px;
+  line-height: 1.55;
+  margin-top: 8px;
+  max-width: 32ch;
+  margin-inline: auto;
+}
+
+/* two EQUAL actions (ADR-0024 §3: most friends join, one creates) */
+.zero-actions {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 10px;
+  margin-top: 22px;
+}
+.zero-act {
+  font: inherit;
+  font-weight: 700;
+  font-size: 14px;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 7px;
+  padding: 16px 10px 14px;
+  border-radius: 16px;
+  background: var(--cta);
+  color: var(--cta-text);
+  border: 1px solid var(--cta);
+  cursor: pointer;
+}
+.zero-act .ic {
+  font-size: 21px;
+  line-height: 1;
+}
+.zero-act .sub {
+  font-size: 11px;
+  font-weight: 500;
+  color: rgba(255, 255, 255, 0.62);
+}
+.zero-act:focus-visible {
+  outline: 2.5px solid var(--teal);
+  outline-offset: 2px;
+}
+.zero-act:disabled {
+  opacity: 0.45;
+  pointer-events: none;
+}
+
+.zero-offline-note {
+  margin-top: 12px;
+  text-align: center;
+  color: var(--muted);
+  font-size: 12px;
+  line-height: 1.5;
+}
+
+.zero-teach {
+  margin-top: auto;
+  padding-top: 24px;
+  text-align: center;
+  color: var(--faint);
+  font-size: 12px;
+  line-height: 1.6;
+}
+
+/* Trip creation /new (T-041 / ADR-0032) — shell surface (indigo/neutral),
+   the draft preview card is soft grammar (see .item.soft in screens.css).
+   Design: mockups/create-trip-v1.html. */
+.new-head {
+  background: var(--indigo);
+  color: #fff;
+  padding: 14px 20px 18px;
+}
+.new-head-row {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+}
+.back {
+  font: inherit;
+  background: rgba(255, 255, 255, 0.08);
+  border: 1px solid rgba(255, 255, 255, 0.14);
+  color: #dce3f2;
+  width: 34px;
+  height: 34px;
+  border-radius: 11px;
+  cursor: pointer;
+  font-size: 15px;
+  display: grid;
+  place-items: center;
+}
+.new-title {
+  font-family: var(--font-head);
+  font-size: 19px;
+}
+.new-body {
+  flex: 1;
+  overflow-y: auto;
+  padding: 20px 20px 24px;
+  display: flex;
+  flex-direction: column;
+}
+.new-lede {
+  color: var(--muted);
+  font-size: 13.5px;
+  line-height: 1.55;
+}
+.field {
+  margin-top: 18px;
+}
+.field label {
+  display: block;
+  font-size: 12.5px;
+  font-weight: 700;
+  color: var(--muted);
+  margin-bottom: 6px;
+}
+.field input {
+  width: 100%;
+  font: inherit;
+  font-size: 15px;
+  font-weight: 600;
+  color: var(--ink);
+  background: var(--card);
+  border: 1.5px solid var(--line);
+  border-radius: 13px;
+  padding: 12px 14px;
+}
+.field input::placeholder {
+  color: var(--faint);
+  font-weight: 500;
+}
+.field input:focus-visible {
+  outline: 2.5px solid var(--teal);
+  outline-offset: 1px;
+  border-color: transparent;
+}
+.field .hint {
+  font-size: 11.5px;
+  color: var(--faint);
+  margin-top: 5px;
+}
+/* Destination picker trigger (ADR-0113) — an input-shaped button opening the
+   destination search sheet; caret at the end, ghost text until picked. */
+.dest-trigger {
+  width: 100%;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+  font: inherit;
+  font-size: 15px;
+  font-weight: 600;
+  color: var(--ink);
+  background: var(--card);
+  border: 1.5px solid var(--line);
+  border-radius: 13px;
+  padding: 12px 14px;
+  text-align: start;
+  cursor: pointer;
+}
+.dest-trigger .ghost {
+  color: var(--faint);
+  font-weight: 500;
+}
+.dest-trigger .icon {
+  width: 18px;
+  height: 18px;
+  color: var(--muted);
+  flex: none;
+}
+/* The derived primary-zone line under the destination — a quiet chip + an
+   optional multi-zone note. Editable, never a required step (ADR-0113 §2/§5). */
+.dest-tz {
+  margin-top: 8px;
+}
+.dest-tz-chip {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  font: inherit;
+  font-size: 13px;
+  font-weight: 600;
+  color: var(--ink);
+  background: var(--card);
+  border: 1px solid var(--line);
+  border-radius: 999px;
+  padding: 6px 11px;
+  cursor: pointer;
+}
+.dest-tz-chip .icon {
+  width: 15px;
+  height: 15px;
+  color: var(--muted);
+  flex: none;
+}
+.dest-tz-note {
+  font-size: 11.5px;
+  color: var(--faint);
+  margin-top: 6px;
+}
+.date-row {
+  display: grid;
+  /* minmax(0, 1fr), not 1fr: an unconstrained fr track won't shrink below the
+     native date control's intrinsic width, blowing out the row on narrow phones. */
+  grid-template-columns: minmax(0, 1fr) minmax(0, 1fr);
+  gap: 10px;
+}
+.field input[type='date'] {
+  font-family: var(--font-mono);
+  font-size: 13.5px;
+  direction: ltr;
+  text-align: center;
+}
+.field input.invalid {
+  border-color: var(--miss);
+}
+.field-error {
+  color: var(--miss);
+  font-size: 12px;
+  font-weight: 600;
+  margin-top: 5px;
+}
+
+/* the draft preview — soft grammar: provisional until created */
+.draft {
+  margin-top: 24px;
+  border: 1.5px dashed var(--soft-line);
+  background: repeating-linear-gradient(-45deg, var(--card) 0 9px, var(--screen) 9px 18px);
+  border-radius: 16px;
+  padding: 14px 15px;
+  display: flex;
+  align-items: center;
+  gap: 12px;
+}
+.draft .ic {
+  width: 42px;
+  height: 42px;
+  border-radius: 12px;
+  background: var(--paper);
+  display: grid;
+  place-items: center;
+  font-size: 20px;
+  flex: 0 0 auto;
+}
+.draft .t {
+  font-family: var(--font-head);
+  font-size: 16px;
+  color: var(--ink);
+}
+.draft .t .ghost {
+  color: var(--faint);
+}
+.draft .m {
+  font-size: 12px;
+  color: var(--muted);
+  margin-top: 2px;
+}
+.draft .tag {
+  margin-inline-start: auto;
+  flex: 0 0 auto;
+  font-size: 10px;
+  font-weight: 700;
+  color: var(--muted);
+  background: rgba(22, 35, 61, 0.06);
+  border-radius: 6px;
+  padding: 2px 7px;
+}
+
+.new-cta {
+  margin-top: auto;
+  padding-top: 22px;
+}
+.create-btn {
+  width: 100%;
+  font: inherit;
+  font-size: 14.5px;
+  font-weight: 700;
+  background: var(--cta);
+  color: var(--cta-text);
+  border: 1px solid var(--cta);
+  border-radius: 14px;
+  padding: 14px;
+  cursor: pointer;
+}
+.create-btn:focus-visible {
+  outline: 2.5px solid var(--teal);
+  outline-offset: 2px;
+}
+.create-btn:disabled {
+  opacity: 0.45;
+  cursor: default;
+}
+.new-note {
+  text-align: center;
+  color: var(--faint);
+  font-size: 11.5px;
+  margin-top: 10px;
+  line-height: 1.5;
+}
+.offline-note {
+  text-align: center;
+  color: var(--muted);
+  font-size: 12px;
+  margin-top: 10px;
+}
+
+/* Post-create invite screen (T-065) — mockups/create-trip-v1.html #s-born.
+   Plan-violet chrome: unlike .new-head above, this screen is already inside
+   the freshly created trip, not part of the shell-chrome creation form. */
+.born-head {
+  background: var(--plan-tint);
+  color: var(--ink);
+  padding: 14px 20px 16px;
+  border-bottom: 1px solid rgba(110, 89, 214, 0.18);
+  display: flex;
+  align-items: center;
+  gap: 12px;
+}
+.born-title {
+  font-family: var(--font-head);
+  font-size: 19px;
+}
+.mode-pill {
+  margin-inline-start: auto;
+  font-size: 10.5px;
+  font-weight: 700;
+  letter-spacing: 0.1em;
+  background: var(--plan-tint);
+  border: 1px solid rgba(110, 89, 214, 0.35);
+  border-radius: 99px;
+  padding: 4px 11px;
+  color: var(--plan-deep);
+}
+.born-body {
+  flex: 1;
+  padding: 22px 20px 24px;
+  display: flex;
+  flex-direction: column;
+  text-align: center;
+}
+.born-emoji {
+  font-size: 42px;
+  line-height: 1;
+}
+.born-h1 {
+  font-family: var(--font-head);
+  font-size: 26px;
+  color: var(--ink);
+  margin-top: 10px;
+}
+.born-sub {
+  color: var(--muted);
+  font-size: 14px;
+  margin-top: 6px;
+  line-height: 1.55;
+}
+.born-card {
+  margin-top: 20px;
+  border: 1px solid var(--line);
+  background: var(--card);
+  border-radius: 16px;
+  padding: 14px 15px;
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  text-align: start;
+}
+.born-card .ic {
+  width: 42px;
+  height: 42px;
+  border-radius: 12px;
+  background: var(--paper);
+  display: grid;
+  place-items: center;
+  font-size: 20px;
+  flex: 0 0 auto;
+}
+.born-card .t {
+  font-family: var(--font-head);
+  font-size: 16px;
+}
+.born-card .m {
+  font-size: 12px;
+  color: var(--muted);
+  margin-top: 2px;
+}
+.invite-box {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 4px 10px;
+  background: var(--plan-tint);
+  border: 1px dashed rgba(110, 89, 214, 0.5);
+  border-radius: 13px;
+  padding: 12px 14px;
+  margin-top: 18px;
+  cursor: pointer;
+  text-align: start;
+}
+/* Real invite tokens run much longer than the mockup's placeholder code —
+   break-all + full-width so the link wraps instead of overflowing. */
+.invite-box .code {
+  flex: 1 1 100%;
+  font-family: var(--font-mono);
+  font-weight: 700;
+  font-size: 12px;
+  line-height: 1.4;
+  color: var(--plan-deep);
+  word-break: break-all;
+}
+.invite-box .lbl2 {
+  font-size: 11px;
+  color: var(--muted);
+  flex: 1;
+}
+.born-teach {
+  color: var(--faint);
+  font-size: 12px;
+  margin-top: 10px;
+  line-height: 1.55;
+}
+.born-cta {
+  margin-top: auto;
+  padding-top: 22px;
+}
+.plan-btn {
+  width: 100%;
+  font: inherit;
+  font-size: 14.5px;
+  font-weight: 700;
+  background: var(--cta);
+  color: var(--cta-text);
+  border: 1px solid var(--cta);
+  border-radius: 14px;
+  padding: 14px;
+  cursor: pointer;
+}
+.plan-btn:focus-visible {
+  outline: 2.5px solid var(--teal);
+  outline-offset: 2px;
+}
+.later-btn {
+  display: block;
+  margin: 8px auto 0;
+  font: inherit;
+  font-size: 12px;
+  font-weight: 600;
+  color: var(--muted);
+  background: none;
+  border: 0;
+  cursor: pointer;
+}
+
+/* /join/:token (T-042) — public invite preview. Dark departure-board chrome
+   with the amber anticipation glow + boarding-pass "ticket" card, matching
+   mockups/screens-v1.html #s-linkjoin. Amber here is time/commitment-semantic
+   (countdown to departure), not decorative (ADR rule #4). One tap to join, no
+   settings step: calendarSyncEnabled stays the Prisma default (off) until
+   changed later in trip settings (T-044) — Assaf: joining is 1-2 taps, no
+   reading required. */
+.join-land {
+  background: linear-gradient(180deg, var(--board-2) 0%, var(--board) 100%);
+  color: #eaf0ff;
+  padding: 20px 22px 28px;
+  position: relative;
+  overflow: hidden;
+}
+.join-land::before {
+  content: '';
+  position: absolute;
+  inset: 0;
+  background: radial-gradient(80% 45% at 85% 0%, rgba(233, 166, 60, 0.14), transparent 60%);
+  pointer-events: none;
+}
+.join-top {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  position: relative;
+}
+.join-logo {
+  font-family: var(--font-head);
+  font-size: 17px;
+  color: #fff;
+}
+.join-icon {
+  width: 20px;
+  height: 20px;
+  border-radius: 50%;
+  flex: 0 0 auto;
+}
+.join-hero {
+  margin-top: 30px;
+  position: relative;
+}
+.join-hero h1 {
+  font-family: var(--font-head);
+  font-size: 27px;
+  line-height: 1.2;
+  color: #fff;
+}
+.join-hero .hero-em {
+  color: var(--amber);
+}
+.join-hero p {
+  color: #93a2c4;
+  font-size: 14px;
+  line-height: 1.5;
+  margin-top: 8px;
+}
+.join-status {
+  margin-top: 44px;
+  color: #93a2c4;
+  font-size: 14px;
+  line-height: 1.6;
+  text-align: center;
+  position: relative;
+}
+
+/* boarding-pass ticket */
+.join-ticket-wrap {
+  margin-top: 22px;
+  position: relative;
+}
+.join-ticket {
+  background: linear-gradient(180deg, var(--board-2), var(--board));
+  border: 1px solid rgba(255, 255, 255, 0.08);
+  border-radius: 20px;
+  overflow: hidden;
+  position: relative;
+}
+.join-ticket::before {
+  content: '';
+  position: absolute;
+  inset: 0;
+  background: radial-gradient(90% 60% at 85% 0%, rgba(233, 166, 60, 0.14), transparent 60%);
+  pointer-events: none;
+}
+.ticket-top {
+  padding: 18px 18px 16px;
+  position: relative;
+}
+.ticket-head {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+}
+.ticket-badge {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  font-size: 10.5px;
+  font-weight: 700;
+  letter-spacing: 0.08em;
+  color: var(--amber);
+  background: rgba(233, 166, 60, 0.13);
+  border: 1px solid rgba(233, 166, 60, 0.3);
+  border-radius: 99px;
+  padding: 4px 10px;
+}
+/* Hebrew stays in the body face; only the numeric run goes mono + dir=ltr
+   (design-language.md §Typography — mono has no Hebrew glyphs). */
+.ticket-countdown {
+  font-size: 12px;
+  font-weight: 700;
+  color: var(--amber);
+}
+.ticket-name {
+  font-family: var(--font-head);
+  font-size: 24px;
+  line-height: 1.2;
+  color: #fff;
+  margin-top: 16px;
+}
+.ticket-meta {
+  color: #93a2c4;
+  font-size: 12.5px;
+  line-height: 1.5;
+  margin-top: 9px;
+}
+.ticket-meta .dot {
+  opacity: 0.5;
+  margin: 0 6px;
+}
+.ticket-countdown .num,
+.ticket-meta .num {
+  font-family: var(--font-mono);
+}
+/* perforation: dashed tear line with round notches cut from each edge */
+.ticket-perf {
+  position: relative;
+  height: 1px;
+  border-top: 2px dashed rgba(255, 255, 255, 0.14);
+}
+.ticket-perf .notch {
+  position: absolute;
+  top: -9px;
+  width: 18px;
+  height: 18px;
+  border-radius: 50%;
+  background: var(--board);
+}
+.ticket-perf .notch.start {
+  inset-inline-start: -9px;
+}
+.ticket-perf .notch.end {
+  inset-inline-end: -9px;
+}
+.ticket-bottom {
+  padding: 14px 18px 16px;
+  position: relative;
+  display: flex;
+  align-items: center;
+  gap: 11px;
+}
+.ticket-avatars {
+  display: flex;
+  flex-direction: row-reverse;
+}
+.ticket-av {
+  width: 31px;
+  height: 31px;
+  border-radius: 50%;
+  display: grid;
+  place-items: center;
+  font-size: 15px;
+  border: 2px solid var(--board);
+  margin-inline-start: -9px;
+}
+.ticket-people {
+  flex: 1;
+}
+.ticket-members {
+  font-size: 13px;
+  font-weight: 700;
+  color: #eaf0ff;
+}
+.ticket-sub {
+  font-size: 11px;
+  color: #93a2c4;
+  margin-top: 2px;
+}
+
+.join-cta {
+  margin-top: auto;
+  padding-top: 26px;
+  position: relative;
+}
+.join-cta-btn {
+  font: inherit;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 10px;
+  width: 100%;
+  background: #fff; /* fixed: white sign-in button on the always-dark join board */
+  color: #1a1a1a;
+  border: 0;
+  border-radius: 14px;
+  padding: 14px;
+  font-size: 14.5px;
+  font-weight: 700;
+  cursor: pointer;
+}
+.join-cta-btn:disabled {
+  opacity: 0.55;
+  cursor: default;
+}
+.join-cta-btn .gd {
+  width: 18px;
+  height: 18px;
+  border-radius: 50%;
+  /* brand: Google */
+  background: conic-gradient(#4285f4 0 25%, #ea4335 0 50%, #fbbc05 0 75%, #34a853 0);
+}
+.join-note {
+  text-align: center;
+  color: #7e8fb4;
+  font-size: 11.5px;
+  margin-top: 12px;
+  line-height: 1.5;
+}
+.join-error {
+  text-align: center;
+  color: var(--miss);
+  font-size: 12.5px;
+  margin-top: 10px;
+}
+
+/* /login — pre-login landing (app-shell.md, mockups/screens-v1.html
+   #s-landing). Same dark departure-board chrome as /join, plus a static
+   demo teaser card and feature strip; reuses .join-cta-btn/.gd/.join-note
+   for the CTA rather than duplicating that button. */
+.land {
+  background: linear-gradient(180deg, var(--board-2) 0%, var(--board) 100%);
+  color: #eaf0ff;
+  padding: 20px 24px 28px;
+  position: relative;
+  overflow: hidden;
+}
+.land::before {
+  content: '';
+  position: absolute;
+  inset: 0;
+  background: radial-gradient(80% 45% at 85% 0%, rgba(233, 166, 60, 0.14), transparent 60%);
+  pointer-events: none;
+}
+.land-top {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  position: relative;
+}
+.land-logo {
+  font-family: var(--font-head);
+  font-size: 20px;
+  color: #fff;
+}
+.land-icon {
+  width: 34px;
+  height: 34px;
+  border-radius: 50%;
+  flex: 0 0 auto;
+  object-fit: cover;
+  box-shadow: 0 0 0 1px rgba(255, 255, 255, 0.15);
+}
+.land-hero {
+  margin-top: 52px;
+  position: relative;
+}
+.land-hero h1 {
+  font-family: var(--font-head);
+  font-size: 34px;
+  line-height: 1.18;
+  color: #fff;
+}
+.land-hero .hero-em {
+  color: var(--amber);
+}
+.land-hero p {
+  color: #93a2c4;
+  font-size: 14.5px;
+  line-height: 1.55;
+  margin-top: 14px;
+  max-width: 30ch;
+}
+.teaser {
+  margin-top: 30px;
+  background: rgba(255, 255, 255, 0.045);
+  border: 1px solid rgba(255, 255, 255, 0.1);
+  border-radius: 18px;
+  padding: 15px 16px;
+  position: relative;
+}
+.teaser .row {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+}
+.teaser .lbl {
+  font-size: 10.5px;
+  font-weight: 700;
+  letter-spacing: 0.12em;
+  color: var(--amber);
+}
+.teaser .clk {
+  font-family: var(--font-mono);
+  font-size: 12.5px;
+  font-weight: 700;
+  color: #8fa0c4;
+}
+.teaser .ttl {
+  font-family: var(--font-head);
+  font-size: 17px;
+  color: #fff;
+  margin-top: 6px;
+}
+.teaser .mt {
+  color: #93a2c4;
+  font-size: 12px;
+  margin-top: 3px;
+}
+.teaser .cd {
+  position: absolute;
+  inset-inline-end: 14px;
+  bottom: 13px;
+  text-align: center;
+  background: rgba(233, 166, 60, 0.13);
+  border: 1px solid rgba(233, 166, 60, 0.3);
+  border-radius: 11px;
+  padding: 6px 11px;
+}
+.teaser .cd b {
+  font-family: var(--font-mono);
+  font-size: 16px;
+  color: var(--amber);
+  display: block;
+  line-height: 1;
+}
+.teaser .cd i {
+  font-style: normal;
+  font-size: 9px;
+  color: #b9985c;
+  letter-spacing: 0.08em;
+}
+.land-feats {
+  display: flex;
+  gap: 8px;
+  margin-top: 22px;
+  position: relative;
+}
+.feat {
+  flex: 1;
+  background: rgba(255, 255, 255, 0.045);
+  border: 1px solid rgba(255, 255, 255, 0.09);
+  border-radius: 13px;
+  padding: 11px 8px;
+  text-align: center;
+}
+.feat .fi {
+  font-size: 17px;
+}
+.feat .ft {
+  font-size: 10.5px;
+  font-weight: 600;
+  color: #aeb9d4;
+  margin-top: 5px;
+  line-height: 1.25;
+}
+.land-cta {
+  margin-top: auto;
+  padding-top: 26px;
+  position: relative;
+}
+
+/* placeholders (Map/Index — designed in T-002) */
+.placeholder h1 {
+  font-family: var(--font-head);
+  font-size: 26px;
+  color: var(--indigo);
+  margin-bottom: 8px;
+}
+.placeholder p {
+  color: var(--muted);
+  margin-top: 6px;
+}
+.placeholder-emphasis {
+  font-weight: 700;
+  color: var(--indigo);
+}
+
+/* bottom nav */
+.nav {
+  position: sticky;
+  bottom: 0;
+  background: rgba(255, 255, 255, 0.92);
+  backdrop-filter: blur(12px);
+  border-top: 1px solid var(--line);
+  display: flex;
+  /* Bottom padding clears the home-indicator via --safe-bottom (0px otherwise,
+     so phone is unchanged). */
+  padding: 9px 8px calc(9px + var(--safe-bottom));
+  /* The active tab's "you are here" pill follows mode identity: the neutral
+     chrome indigo in Trip mode, --plan violet in Plan mode (below). It never
+     borrows amber (time) or teal (location) — see design-language.md. */
+  --nav-accent: var(--indigo);
+  --nav-tint: var(--indigo-tint);
+}
+.nav button {
+  flex: 1;
+  background: none;
+  border: 0;
+  font: inherit;
+  cursor: pointer;
+  color: var(--muted);
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 3px;
+  padding: 5px 0;
+  font-size: 10.5px;
+  font-weight: 600;
+  /* Selecting a tab settles its icon + label down a little (mockups/
+     nav-active-states-v1.html) — a transform (not layout) so there's no
+     reflow; the deselected tab rides back up. */
+  transition:
+    color 0.15s,
+    transform 0.2s ease;
+}
+/* Every icon carries the pill box (radius + padding) so filling only the
+   active one adds no layout shift; the tint fades in on selection. */
+.nav button .ic {
+  font-size: 19px;
+  line-height: 1;
+  padding: 3px 16px;
+  border-radius: 999px;
+  transition: background-color 0.16s;
+  /* The pill is the active indicator and it is sized off this box, so the SVG
+     has to occupy the height the emoji did — a bare 1em glyph sits shorter than
+     an emoji's own box and the pill collapsed around it (ADR-0138 §4). */
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  block-size: 25px;
+}
+.nav button .ic .icon {
+  width: 21px;
+  height: 21px;
+  stroke-width: 1.8;
+}
+/* The active tab's mark thickens rather than only changing hue — shape carries
+   state alongside colour, the same accessibility rule the sync cloud follows. */
+.nav button.on .ic .icon {
+  stroke-width: 2.2;
+}
+.nav button.on {
+  color: var(--nav-accent);
+  font-weight: 700;
+  transform: translateY(3px);
+}
+.nav button.on .ic {
+  background: var(--nav-tint);
+}
+.app[data-mode='plan'] .nav {
+  --nav-accent: var(--plan);
+  --nav-tint: var(--plan-tint);
+}
+.nav button:focus-visible {
+  outline: 2.5px solid var(--teal);
+  outline-offset: 2px;
+  border-radius: 8px;
+}
+
+/* All-trips home (T-027 / ADR-0033) — navigation list, not a dashboard.
+   Header reuses .zero-head/.zero-hello/.g-dot (T-040); .back is the /new
+   header's back-arrow button (T-041), shown only in the from-trip state
+   (a live trip exists — see AllTrips.tsx). Design: mockups/all-trips-v2.html. */
+.head-left {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+}
+.trips-body {
+  flex: 1;
+  overflow-y: auto;
+  padding: 18px 16px 20px;
+  display: flex;
+  flex-direction: column;
+}
+/* section label — groups the list (עכשיו / בקרוב / הסתיים) so the hierarchy
+   reads at a glance rather than as a flat stack. Neutral (shell chrome). */
+.trips-body .sec {
+  font-size: 12px;
+  font-weight: 700;
+  color: var(--muted);
+  letter-spacing: 0.04em;
+  margin: 2px 4px 9px;
+}
+.trip-card + .sec,
+.trip-hero + .sec {
+  margin-top: 16px;
+}
+
+/* shared paper row (בקרוב / הסתיים) */
+.trip-card {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  width: 100%;
+  text-align: start;
+  font: inherit;
+  background: var(--card);
+  border: 1px solid var(--line);
+  border-radius: 16px;
+  padding: 13px 14px;
+  margin-bottom: 10px;
+  cursor: pointer;
+  transition:
+    transform var(--t-quick) var(--ease-standard),
+    box-shadow var(--t-quick) var(--ease-standard);
+}
+.trip-card:hover {
+  transform: translateY(-2px);
+  box-shadow: 0 10px 24px -16px rgba(22, 35, 61, 0.5);
+}
+.trip-card:focus-visible,
+.trip-hero:focus-visible {
+  outline: 2.5px solid var(--teal);
+  outline-offset: 2px;
+}
+.trip-card .flag {
+  width: 46px;
+  height: 46px;
+  border-radius: 13px;
+  background: var(--paper);
+  display: grid;
+  place-items: center;
+  font-size: 23px;
+  flex: 0 0 auto;
+}
+.trip-card .main,
+.trip-hero .main {
+  flex: 1;
+  min-width: 0;
+}
+.trip-card .t {
+  font-family: var(--font-head);
+  font-size: 16px;
+  line-height: 1.15;
+  color: var(--ink);
+}
+/* meta line — spaced middots + mono dir=ltr numeric runs (design-language:
+   mono = dates). The dir=ltr isolation also fixes RTL date-range reversal. */
+.trip-card .m,
+.trip-hero .m {
+  display: flex;
+  align-items: center;
+  flex-wrap: wrap;
+  font-size: 12.5px;
+  color: var(--muted);
+  margin-top: 6px;
+  line-height: 1.3;
+}
+.trip-card .m .sep,
+.trip-hero .m .sep {
+  margin: 0 7px;
+  opacity: 0.45;
+}
+.trip-card .m .sep::before,
+.trip-hero .m .sep::before {
+  content: '·';
+}
+.trip-card .m .num,
+.trip-card .m .ppl,
+.trip-hero .m .num,
+.trip-hero .m .ppl {
+  font-family: var(--font-mono);
+  font-weight: 500;
+  font-size: 12px;
+}
+
+/* finished trips read one notch quieter */
+.trip-card.is-past {
+  background: var(--card);
+}
+.trip-card.is-past .flag {
+  filter: saturate(0.7);
+  opacity: 0.9;
+}
+.trip-card.is-past .t {
+  color: var(--muted);
+}
+
+/* Active-trip hero (ADR-0033) — the single loud element on a paper page. Uses
+   the chrome-base indigo (NOT the darker --board), with no glow, no pulse and
+   no now/next hero, so it reads as a prominent nav card, not the rationed
+   departure board (ADR-0028). */
+.trip-hero {
+  display: flex;
+  align-items: center;
+  gap: 13px;
+  width: 100%;
+  text-align: start;
+  font: inherit;
+  background: radial-gradient(140% 120% at 88% -20%, #294066 0%, transparent 60%), var(--indigo);
+  color: #eef2fb;
+  border: 1px solid rgba(255, 255, 255, 0.08);
+  border-radius: 18px;
+  padding: 16px;
+  margin-bottom: 12px;
+  cursor: pointer;
+  box-shadow: 0 20px 40px -20px rgba(14, 23, 41, 0.7);
+  transition:
+    transform var(--t-quick) var(--ease-standard),
+    box-shadow var(--t-quick) var(--ease-standard);
+}
+.trip-hero:hover {
+  transform: translateY(-2px);
+}
+.trip-hero .flag {
+  width: 52px;
+  height: 52px;
+  border-radius: 14px;
+  background: rgba(35, 56, 97, 0.5);
+  border: 1px solid rgba(255, 255, 255, 0.1);
+  display: grid;
+  place-items: center;
+  font-size: 26px;
+  flex: 0 0 auto;
+}
+.trip-hero .t {
+  font-family: var(--font-head);
+  font-size: 19px;
+  line-height: 1.1;
+  color: #fff;
+}
+.trip-hero .m {
+  color: #9fb0d2;
+}
+.trip-hero .m .sep {
+  opacity: 0.5;
+}
+/* Shared directional nav arrow (ui/NavArrow.tsx) — an SVG icon that centers
+   cleanly in a button box (glyph fallbacks drift off-baseline) and mirrors by
+   reading direction. Size rides on the parent's font-size, colour on currentColor. */
+.nav-arrow,
+.icon {
+  display: inline-block;
+  vertical-align: -0.125em;
+  width: 1em;
+  height: 1em;
+  flex: 0 0 auto;
+}
+.nav-arrow-back {
+  transform: scaleX(-1);
+}
+[dir='ltr'] .nav-arrow-forward {
+  transform: scaleX(-1);
+}
+[dir='ltr'] .nav-arrow-back {
+  transform: none;
+}
+
+.trip-hero .go {
+  flex: 0 0 auto;
+  align-self: center;
+  width: 34px;
+  height: 34px;
+  border-radius: 11px;
+  display: grid;
+  place-items: center;
+  background: rgba(255, 255, 255, 0.1);
+  border: 1px solid rgba(255, 255, 255, 0.14);
+  color: #dfe6f5;
+  font-size: 18px;
+}
+
+/* soon / past chips — date-derived, neutral family (shell chrome, ADR-0028) */
+.chip {
+  flex: 0 0 auto;
+  align-self: flex-start;
+  margin-top: 2px;
+  font-size: 11px;
+  font-weight: 700;
+  border-radius: 8px;
+  padding: 4px 9px;
+  white-space: nowrap;
+}
+.chip.soon {
+  color: var(--ink);
+  background: var(--card);
+  border: 1px solid var(--soft-line);
+}
+.chip.past {
+  color: var(--faint);
+  background: transparent;
+  border: 1px solid var(--line);
+}
+.trips-body .spacer {
+  flex: 1;
+  min-height: 12px;
+}
+
+/* ============================================================
+   Mode-switch transition — "Go live / Stand down" (design-language: Motion &
+   designed transitions). Mode identity rides on DURABLE channels, never
+   luminance: the chrome's temperature (violet ⇄ indigo+amber), the drafting
+   grid, and the board's glow+pulse. So this animates hue/grid/glow — a theme
+   flip (light/dark, future) leaves it untouched.
+
+   Armed ONLY during an actual switch via [data-switching] on .app (set by the
+   Shell for the switch's duration), so steady-state hovers keep their own
+   timing. Direction sets the duration: Plan→Trip (going live) is the one
+   cinematic beat; Trip→Plan (stand-down) is the quieter, faster return. The
+   board's amber glow igniting (screens.css board-power) is the Plan→Trip
+   climax; the whole thing is disabled by the reduced-motion rule below.
+
+   The rule below is a UNIVERSAL selector on purpose: any element that recolors
+   by mode transitions along automatically, so adding chrome later needs no
+   upkeep here (no per-element list to forget). It's confined to the color
+   family and only while [data-switching] is set, so it never touches transforms
+   (nav settle) or body content, and reverts to per-element timing between
+   switches. The drafting grid on .header::before has its own rule —
+   pseudo-elements aren't matched by `*`.
+   ============================================================ */
+.app[data-switching='to-trip'] {
+  --switch-dur: var(--t-cinematic);
+}
+.app[data-switching='to-plan'] {
+  --switch-dur: var(--t-deliberate);
+}
+.app[data-switching] * {
+  transition:
+    background-color var(--switch-dur, var(--t-base)) var(--ease-standard),
+    color var(--switch-dur, var(--t-base)) var(--ease-standard),
+    border-color var(--switch-dur, var(--t-base)) var(--ease-standard),
+    box-shadow var(--switch-dur, var(--t-base)) var(--ease-standard),
+    opacity var(--switch-dur, var(--t-base)) var(--ease-standard);
+}
+
+@media (prefers-reduced-motion: reduce) {
+  * {
+    animation: none !important;
+    transition: none !important;
+  }
+}
+
+/* ============================================================
+   Plan-mode chrome — the light "drafting table" (design-language: mode identity,
+   ADR-0028). Trip mode keeps the dark indigo board chrome; Plan mode re-skins
+   the same header/toggle/day-strip as light paper with violet accents and a
+   faint drafting grid, so the mode is readable from the chrome alone before any
+   content. Scoped entirely under [data-mode='plan'] — Trip mode is untouched.
+   ============================================================ */
+.app[data-mode='plan'] .header,
+.mode-chrome[data-mode='plan'] {
+  color: var(--ink);
+  background-color: var(--card);
+  /* drafting grid lives on .header::before (transitionable) — see the base rule */
+  border-bottom: 1px solid var(--line);
+}
+.app[data-mode='plan'] .trip-sub {
+  color: var(--muted);
+}
+.app[data-mode='plan'] .trip-name-btn {
+  background: var(--plan-tint);
+  border-color: rgba(110, 89, 214, 0.28);
+}
+.app[data-mode='plan'] .trip-name-btn:hover {
+  background: rgba(110, 89, 214, 0.16);
+}
+.app[data-mode='plan'] .trip-name-btn .chev {
+  background: rgba(110, 89, 214, 0.16);
+}
+.app[data-mode='plan'] .trip-name-btn:focus-visible {
+  outline-color: var(--plan);
+}
+.app[data-mode='plan'] .gear-btn,
+.mode-chrome[data-mode='plan'] .chrome-ghost-btn {
+  color: var(--plan-deep);
+}
+.app[data-mode='plan'] .gear-btn:hover,
+.mode-chrome[data-mode='plan'] .chrome-ghost-btn:hover {
+  color: var(--plan);
+}
+.app[data-mode='plan'] .gear-btn:focus-visible,
+.mode-chrome[data-mode='plan'] .chrome-ghost-btn:focus-visible {
+  outline-color: var(--plan);
+}
+/* Avatar overlap rings match the (now light) header surface; the ringed
+   account avatar gets a violet ring instead of the dark-chrome white one. */
+.app[data-mode='plan'] .av {
+  border-color: var(--card);
+}
+.app[data-mode='plan'] .av.more {
+  background: var(--plan-tint);
+  color: var(--plan-deep);
+}
+.app[data-mode='plan'] .account-btn {
+  border-color: var(--card);
+  box-shadow:
+    0 0 0 2px var(--card),
+    0 0 0 3.5px rgba(110, 89, 214, 0.5);
+}
+.app[data-mode='plan'] .offline-badge,
+.mode-chrome[data-mode='plan'] .chrome-chip {
+  background: rgba(22, 35, 61, 0.05);
+  border-color: var(--line);
+  color: var(--muted);
+}
+.app[data-mode='plan'] .toggle {
+  background: var(--plan-tint);
+}
+.app[data-mode='plan'] .toggle button {
+  color: var(--muted);
+}
+.app[data-mode='plan'] .toggle .auto {
+  color: var(--muted);
+}
+/* The Plan-mode day-strip re-skin (light pills, violet selection, dashed
+   empty-day markers) moved into the DayStrip component, keyed off its own
+   `[data-mode='plan']` (ui/domain/day-strip.css). */
+
+/* ═══ screens/map.css — generated, do not edit here ═══ */
+/* Map tab (Phase 3, ADR-0109/0110) — the list-first pinned-place surface.
+   Ported from mockups/map-tab-v1.html, adapted to the real tokens (--teal +
+   color-mix instead of the mockup's --teal-deep/--teal-tint). Reuses the Index's
+   --idx-accent for the selected chips; set here so it works inside the search
+   overlay portal too (no .app ancestor there). */
+.map-screen {
+  --idx-accent: var(--ink);
+  --idx-accent-text: #fff;
+}
+.map-screen[data-mode='plan'] {
+  --idx-accent: var(--plan);
+}
+
+/* ── The split (Phase 6, ADR-0121 §5; the controls leave the layout in ADR-0122 §1) ──
+   The tab opts out of the scrolling body (`.body.is-fullbleed`, App.css) and owns its
+   own layout, and the split is now the WHOLE body: the two fixed rows above it were
+   370-of-844 phone pixels spent before either half got one, so they became one row
+   floating over the canvas. The one scroll region is still the sheet's list. Scoped to
+   `.is-split`, because the same `.map-screen` class also wraps the search overlay's
+   filtered copy of the list, which is ordinary scrolling content and must not become a
+   flex column. */
+.map-screen.is-split {
+  display: flex;
+  flex-direction: column;
+  height: 100%;
+  min-height: 0;
+}
+.map-split {
+  position: relative;
+  flex: 1;
+  min-height: 0;
+  overflow: hidden;
+  /* At `full` the sheet stops BELOW the controls row, and what is behind the row there
+     is this backdrop — which is the sheet's own background, so the same row reads as the
+     list's ordinary header. One treatment, no second grammar, and no scrim (§1). */
+  background: var(--screen);
+}
+/* The sheet's own scroll padding — the list needs edges, and a tail so the last
+   card clears the rounded bottom of the phone. */
+.map-sheet-scroll {
+  padding: 0 16px 16px;
+}
+
+/* ── ONE ROW, OVER THE CANVAS (ADR-0122 §1) ──────────────────────────────────────
+   Absolutely positioned at the top of `.map-split`, so it costs the split NO height:
+   the pane runs underneath it and the sheet's stops are measured against the whole
+   body. `--map-controls-h` is written by the screen from the same TS constant the
+   camera's top inset is derived from, so the layout and the band the camera keeps
+   clear of pins cannot drift apart.
+
+   No background: the map shows BETWEEN the chips, which is the whole point of moving
+   them here. The row is the same row at every stop and never collapses — every control
+   in it changes both halves (ADR-0121 §6), and a height above the split that changed
+   with the stop would relayout the canvas on the one gesture ADR-0121 §5 deliberately
+   made relayout-free. */
+.map-controls {
+  position: absolute;
+  top: 0;
+  inset-inline: 0;
+  z-index: 2;
+  box-sizing: border-box;
+  height: var(--map-controls-h, 46px);
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 0 16px;
+}
+/* The list-only tab (offline, or no build config) has no split and no sheet, so the
+   same row renders in ordinary flow above the list: one component, two positionings,
+   never two components (ADR-0122 §8). */
+.map-controls.in-flow {
+  position: static;
+  height: auto;
+  flex-wrap: wrap;
+  padding: 14px 16px 10px;
+}
+.map-controls > * {
+  flex: 0 0 auto;
+}
+/* Search sits at the row's fixed end — and it is where the facet strip's `✕` then
+   appears, because a close control you have to scroll to reach is not a close control. */
+.map-controls > .map-search-btn,
+.map-controls > /* ── THE QUERY, AS THE ROW'S SECOND OCCUPANT (ADR-0131 §1) ───────────────────────
+   `סינון` already covers this row in place behind a pinned `✕`; the query is the second
+   occupant of that same slot, not a second mechanism. It grows to fill the row because a
+   query field that is 90px wide is a query field nobody types in.
+
+   44 inside a 46px row (`calc(--map-controls-h - 2px)`): design-language's touch floor
+   met BY GEOMETRY rather than by a hit area painted larger than the ink — the point
+   ADR-0126 §3 had to make about the furniture band — and the split pays NOTHING, because
+   the row already exists and already floats over the canvas. `MAP_CONTROLS_H` stays 46,
+   so `mapFitPadding`'s top stays derived from it and the camera reads the same number.
+
+   It is the one member of this row that carries a fill, and ADR-0122's "no scrim, no card
+   background" still stands: the row AT REST is unchanged and still shows the map between
+   its chips. A text field with no ground is not a text field, and this one is transient.
+   The fill is the Index's own field treatment, so search reads the same wherever it
+   happens. */
+.map-controls > .map-querystrip {
+  flex: 1 1 auto;
+  min-width: 0;
+}
+.map-querystrip {
+  box-sizing: border-box;
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  height: calc(var(--map-controls-h, 46px) - 2px);
+  background: var(--card);
+  border: 1px solid var(--line);
+  border-radius: 999px;
+  padding: 0 12px;
+  color: var(--muted);
+}
+.map-querystrip .icon {
+  width: 15px;
+  height: 15px;
+  flex: 0 0 auto;
+}
+.map-querystrip input {
+  flex: 1;
+  min-width: 0;
+  border: 0;
+  outline: 0;
+  font: inherit;
+  font-size: var(--text-body);
+  background: none;
+  color: var(--ink);
+}
+.map-facets-close {
+  margin-inline-start: auto;
+}
+
+/* THE ONE FILTER CONTROL. At rest it says `סינון`; with a facet on it states WHICH
+   facets are on and takes the mode accent, because a filter that hides the fact that it
+   is filtering is the defect ADR-0119 exists to prevent. It carries NO count: the open
+   strip already answers "how many", and a fourth number would be a fourth thing to keep
+   coupled (§2).
+
+   Its appearance is `ui/primitives/ToggleChip` since session 185 — as an `indicator`
+   rather than a `toggle`, because its on-state is a fact about the FILTER, not a pressed
+   state of its own: the tap opens the strip. `.map-facets` survives as this row's layout
+   and test hook only. */
+/* EXPANDED: the strip covers the row IN PLACE (ADR-0100 §3's shape, which ADR-0101
+   superseded for search because a keyboard plus a result list left no room for either —
+   a facet strip has neither, and its results are the pins and rows already on screen, so
+   the change has to stay visible while you make it). It scrolls with the same edge fade,
+   so a half-cut chip reads as "more this way" rather than as a broken cutoff. */
+.map-controls > .map-facetstrip {
+  flex: 1 1 auto;
+  min-width: 0;
+}
+.map-facetstrip {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  overflow-x: auto;
+  scrollbar-width: none;
+  scroll-snap-type: x mandatory;
+  /* Physical `to right` on purpose: RTL reorders flex children, not `mask-image`'s own
+     coordinate space (ADR-0100 §6). */
+  -webkit-mask-image: linear-gradient(
+    to right,
+    transparent 0,
+    black 14px,
+    black calc(100% - 14px),
+    transparent 100%
+  );
+  mask-image: linear-gradient(
+    to right,
+    transparent 0,
+    black 14px,
+    black calc(100% - 14px),
+    transparent 100%
+  );
+}
+.map-facetstrip::-webkit-scrollbar {
+  display: none;
+}
+.map-facetstrip > * {
+  flex: 0 0 auto;
+  scroll-snap-align: start;
+}
+/* The outer strip owns the scroll and the fade now, so the pills group inside it is a
+   plain flex group: two nested scrollers fight, and two nested masks fade a chip twice. */
+.map-facetstrip .choice-grid.pills {
+  flex: 0 0 auto;
+  overflow: visible;
+  scroll-snap-type: none;
+  -webkit-mask-image: none;
+  mask-image: none;
+  padding-block-end: 0;
+}
+/* ── THE QUERY, AS THE ROW'S SECOND OCCUPANT (ADR-0131 §1) ───────────────────────
+   `סינון` already covers this row in place behind a pinned `✕`; the query is the second
+   occupant of that same slot, not a second mechanism. It grows to fill the row because a
+   query field that is 90px wide is a query field nobody types in.
+
+   44 inside a 46px row (`calc(--map-controls-h - 2px)`): design-language's touch floor
+   met BY GEOMETRY rather than by a hit area painted larger than the ink — the point
+   ADR-0126 §3 had to make about the furniture band — and the split pays NOTHING, because
+   the row already exists and already floats over the canvas. `MAP_CONTROLS_H` stays 46,
+   so `mapFitPadding`'s top stays derived from it and the camera reads the same number.
+
+   It is the one member of this row that carries a fill, and ADR-0122's "no scrim, no card
+   background" still stands: the row AT REST is unchanged and still shows the map between
+   its chips. A text field with no ground is not a text field, and this one is transient.
+   The fill is the Index's own field treatment, so search reads the same wherever it
+   happens. */
+.map-controls > .map-querystrip {
+  flex: 1 1 auto;
+  min-width: 0;
+}
+.map-querystrip {
+  box-sizing: border-box;
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  height: calc(var(--map-controls-h, 46px) - 2px);
+  background: var(--card);
+  border: 1px solid var(--line);
+  border-radius: 999px;
+  padding: 0 12px;
+  color: var(--muted);
+}
+.map-querystrip .icon {
+  width: 15px;
+  height: 15px;
+  flex: 0 0 auto;
+}
+.map-querystrip input {
+  flex: 1;
+  min-width: 0;
+  border: 0;
+  outline: 0;
+  font: inherit;
+  font-size: var(--text-body);
+  background: none;
+  color: var(--ink);
+}
+.map-facets-close {
+  display: grid;
+  place-items: center;
+  width: 30px;
+  height: 30px;
+  border-radius: 999px;
+  border: 1px solid var(--line);
+  background: var(--card);
+  color: var(--muted);
+  padding: 0;
+  cursor: pointer;
+}
+.map-facets-close .icon {
+  width: 15px;
+  height: 15px;
+}
+
+/* ── THE SORT CONTROL LIVES WITH THE LIST (§2) ───────────────────────────────────
+   `קרוב עכשיו` re-orders the rows and annotates them with distances, so it sits in the
+   sheet's own top row — fixed, visible at every stop, and costing no height. The toggle
+   is anchored at the trailing end and does not move when the chip leaves. */
+.wp-snapsheet-headrow .map-nearchip {
+  margin-inline-end: auto;
+  transition:
+    opacity var(--t-quick) var(--ease-standard),
+    transform var(--t-quick) var(--ease-standard),
+    visibility 0s;
+}
+/* At the map extreme no rows are on screen, so the chip would re-order and annotate
+   nothing you can see — the "button that looks like it does something and does nothing"
+   ADR-0109's session-105 amendment refused. What carries the FACT there is the canvas's
+   own "me" dot, which comes from `located`, not from the sort intent.
+
+   `visibility`, not `display`: it keeps the chip MOUNTED so both directions animate,
+   while taking it out of the tab order and the accessibility tree and making it
+   unhittable — a control you cannot see must not be tappable. The 0s-delayed switch is
+   what holds it until the fade ends. Offline the chip is UNMOUNTED instead, because
+   there it cannot exist at all: two different facts, two different mechanisms (§5). */
+.map-screen[data-view='map'] .wp-snapsheet-headrow .map-nearchip {
+  opacity: 0;
+  transform: translateY(4px) scale(0.96);
+  visibility: hidden;
+  transition:
+    opacity var(--t-quick) var(--ease-exit),
+    transform var(--t-quick) var(--ease-exit),
+    visibility 0s linear var(--t-quick);
+}
+
+/* רשימה · מפה — a shortcut to the two extremes of the SAME height axis the handle
+   drags, so the two controls cannot disagree. Its fill is a THUMB whose position IS the
+   stop (§5): ADR-0121 §5 claimed "one state, two controls" in code and then rendered
+   `half` as neither button on, which reads as a broken segmented control. At `half` the
+   thumb narrows and centres, so it sits visibly BETWEEN the two labels. */
+.map-viewtoggle {
+  position: relative;
+  display: flex;
+  background: color-mix(in srgb, var(--ink) 6%, transparent);
+  border: 1px solid var(--line);
+  border-radius: 999px;
+  padding: 2px;
+  gap: 2px;
+}
+.map-viewtoggle button {
+  font: inherit;
+  font-size: 12px;
+  font-weight: 600;
+  border: 0;
+  background: transparent;
+  color: var(--muted);
+  border-radius: 999px;
+  padding: 4px 15px;
+  cursor: pointer;
+}
+/* The thumb draws the fill now, so the segment stops carrying it — only the ink weight
+   still says which extreme is live. */
+.map-viewtoggle button {
+  position: relative;
+  z-index: 1;
+}
+.map-viewtoggle button.on {
+  color: var(--ink);
+}
+.map-viewtoggle::before {
+  content: '';
+  position: absolute;
+  top: 2px;
+  bottom: 2px;
+  width: calc(50% - 2px);
+  border-radius: 999px;
+  background: var(--card);
+  box-shadow: 0 1px 3px rgba(22, 35, 61, 0.14);
+  inset-inline-start: calc(25% + 1px);
+  transition: inset-inline-start var(--t-base) var(--ease-standard);
+}
+.map-screen[data-view='half'] .map-viewtoggle::before {
+  width: 32%;
+  inset-inline-start: 34%;
+}
+.map-screen[data-view='full'] .map-viewtoggle::before {
+  inset-inline-start: 2px;
+}
+.map-screen[data-view='map'] .map-viewtoggle::before {
+  inset-inline-start: 50%;
+}
+/* Reduced motion: the thumb JUMPS. It still moves — only the easing is dropped, and the
+   resting position carries the whole meaning either way (ADR-0098 §4). */
+@media (prefers-reduced-motion: reduce) {
+  .map-viewtoggle::before {
+    transition: none;
+  }
+}
+
+/* The whole day as one free Google directions link (§10) — teal, because it is a
+   location affordance like `נווט`, and it ships with the connector so it appears in
+   the same Plan-mode day scope. */
+.map-dayroute {
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+  border: 1px solid var(--teal);
+  color: var(--teal);
+  background: var(--card);
+  border-radius: 999px;
+  padding: 6px 12px;
+  font-size: 12px;
+  font-weight: 700;
+  text-decoration: none;
+  white-space: nowrap;
+}
+
+/* A tapped ghost, surfaced as the one row it is (§6) — its row is not in the
+   scoped list, so the tap is how you learn what it is and which day it belongs to. */
+.map-ghostrow {
+  margin-bottom: 4px;
+}
+
+/* ── the facets themselves (they reuse the Index grammar) ────────────────── */
+/* The "אולי"/"מה נשאר" facets are independent toggles (ADR-0110 §2), dashed/provisional
+   when off, filled with the mode accent when on — now `ToggleChip provisional` and its
+   `count` slot rather than a local copy of both (session 185). Their old 7px/12.5px/600
+   went with the copy: it was drift from the `.choice-pill` grammar beside them in the
+   strip, undocumented and unmeasured, so the primitive's 6px/12px/700 is the correction. */
+.map-search-btn {
+  flex: 0 0 auto;
+  width: 34px;
+  height: 34px;
+  border-radius: 10px;
+  border: 1px solid var(--line);
+  background: var(--card);
+  display: grid;
+  place-items: center;
+  cursor: pointer;
+  color: var(--muted);
+}
+
+/* ── the day scope: the map-local "all days" chip (ADR-0110 §4) ───────────
+   `.map-scopehint`'s sentence retired with the two fixed rows (ADR-0122 §2): the chip's
+   own on/off state says which scope is on, and the header day strip already drops its
+   filled selection while all-days is live (session 81's `allScope`). Appearance is
+   `ToggleChip` since session 185; `.map-scopechip` survives as a test hook. */
+/* ── "near me now" (ADR-0109 §6-7) ──────────────────────────────────────────
+   Teal throughout: near-me, the distance chips and נווט are LOCATION affordances,
+   which is exactly what teal is for in the budget (ADR-0028). No amber here — the
+   only time anchor on this surface is navigate-to-next's tag. That teal is a SEMANTIC,
+   so it survived the session-185 extraction as `ToggleChip tone="teal"` rather than
+   being flattened into the neutral chip; `refused` is its `tone="muted"`.
+   `.map-nearchip` keeps only what is about WHERE the chip sits — the two rules below. */
+
+/* the reason-first pre-prompt — an inline card, teal-edged (it is about location) */
+.map-geoprompt {
+  background: var(--card);
+  border: 1px solid var(--teal);
+  border-radius: 14px;
+  padding: 13px 14px;
+  margin-bottom: 12px;
+  box-shadow: 0 6px 16px -8px color-mix(in srgb, var(--teal) 45%, transparent);
+}
+
+/* ── CANVAS FURNITURE THAT COMES AND GOES (ADR-0122 §5/§6/§7) ────────────────────
+   The pre-prompt asks a question about the MAP and used to render inside the list's
+   scroll region, which at the map extreme is not on screen at all. Over the canvas it
+   costs the split no height: neither half shrinks, the pane's box does not change, and
+   therefore the camera does not move for it — which is the deciding argument over a card
+   between the controls and the split, which would shorten the pane while open and re-fit
+   the camera under the reader. A SIBLING of `.map-pane`, never inside it (Google owns the
+   canvas div's children) and never a wrapper around it (that remounts it, and a remount
+   is a billed map load — ADR-0121 §4). Not the pane's BOTTOM: Google's attribution is
+   bottom-inline-start and the ToS forbids obscuring it (ADR-0106 §B). */
+.map-split > .map-geoprompt {
+  position: absolute;
+  top: calc(var(--map-controls-h, 46px) + 8px);
+  inset-inline: 8px;
+  z-index: 2;
+  margin-bottom: 0;
+}
+/* ONE floating object over the canvas at a time: a 250px pane cannot hold a card AND two
+   floating controls and still read as a map, and the card is transient (once per session,
+   both buttons dismiss it). `:has()` rather than a prop, deliberately — `MapPane`'s props
+   stay identity-stable on a screen that re-renders every second (frontend/CLAUDE.md).
+   (ADR-0126 §2: the rule survives the second camera control by naming the CLUSTER
+   rather than growing a third selector — which is most of why the two buttons are
+   one `.map-camctl` element.) */
+.map-split:has(> .map-geoprompt) .map-areacount,
+.map-split:has(> .map-geoprompt) .map-camctl {
+  display: none;
+}
+
+/* THE PLACE CARD — the tapped pin's own row, hosted on the canvas (§7), rendered only
+   where the sheet cannot show that row. The bottom gutter is contractual, not taste:
+   Google draws its logo and terms link at the bottom-inline-start of the map div and the
+   ToS forbids obscuring them (ADR-0106 §B), so the card clears them by the attribution's
+   own height. */
+.map-placecard {
+  position: absolute;
+  inset-inline: 8px;
+  /* Measured against the PANE's bottom, not the split's: the card's containing block is
+     `.map-split`, whose bottom is the screen's, so the sheet's own height has to be in
+     the sum or the card sits behind the sheet — and over the attribution it was meant to
+     clear. */
+  bottom: calc(var(--sheet-h, 0px) + var(--map-attr-h, 22px) + 8px);
+  z-index: 2;
+}
+.map-placecard .place {
+  margin-bottom: 0;
+  box-shadow: 0 12px 28px -12px color-mix(in srgb, var(--ink) 45%, transparent);
+}
+
+/* Three objects on this surface come and go — the sort chip leaving at the map extreme,
+   the card arriving on a pin tap, the pre-prompt arriving on intent — so they share ONE
+   rule rather than growing three motion vocabularies on one canvas: a small rise and a
+   fade, at `--t-quick` (the token whose stated job is toggles).
+
+   App.css kills every transition and animation under `prefers-reduced-motion` with
+   `!important`, so the RESTING states carry the whole meaning. They do: present or absent
+   is the entire state, and nothing here is information only the motion conveys. */
+@keyframes map-furniture-in {
+  from {
+    opacity: 0;
+    transform: translateY(6px);
+  }
+}
+.map-placecard,
+.map-split > .map-geoprompt {
+  animation: map-furniture-in var(--t-quick) var(--ease-standard);
+}
+.map-geoprompt .gt {
+  font-size: 13.5px;
+  font-weight: 700;
+  margin-bottom: 4px;
+}
+.map-geoprompt .gm {
+  font-size: 12px;
+  color: var(--muted);
+  line-height: 1.5;
+  margin-bottom: 11px;
+}
+.map-geoprompt .gbtns {
+  display: flex;
+  gap: 8px;
+}
+.map-gbtn {
+  font: inherit;
+  font-size: 12.5px;
+  font-weight: 700;
+  border-radius: 10px;
+  padding: 9px 14px;
+  border: 1px solid var(--line);
+  background: var(--card);
+  color: var(--muted);
+  cursor: pointer;
+}
+.map-gbtn.primary {
+  background: var(--teal);
+  border-color: var(--teal);
+  color: var(--cta-text);
+}
+
+/* the banner's trailing affordance: a retry, or the settings hint when the browser
+   has hard-denied us and a retry could not re-prompt. */
+.map-georetry,
+.map-geohint {
+  margin-inline-start: 8px;
+  font: inherit;
+  font-size: inherit;
+  font-weight: 700;
+  white-space: nowrap;
+}
+.map-georetry {
+  border: 0;
+  background: none;
+  padding: 0;
+  color: var(--teal);
+  cursor: pointer;
+  text-decoration: underline;
+}
+.map-geohint {
+  color: var(--faint);
+  font-weight: 600;
+}
+
+/* the group header near-me sorts under */
+.map-grouphead {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  font-size: 11px;
+  font-weight: 700;
+  color: var(--muted);
+  margin: 2px 4px 8px;
+}
+.map-grouphead::after {
+  content: '';
+  flex: 1;
+  height: 1px;
+  background: var(--line);
+}
+
+/* per-row distance, above the נווט action in the trailing column */
+.map-dist {
+  font-size: 11.5px;
+  font-weight: 700;
+  color: var(--teal);
+  white-space: nowrap;
+}
+.map-dist.stale {
+  color: var(--faint);
+  font-weight: 600;
+}
+
+/* Offline the map desaturates and says "last saved" (design-language's offline
+   grammar): the rows are real, cached data — just not refreshable. */
+.map-screen[data-offline] .place {
+  filter: grayscale(35%);
+}
+
+/* ── the pinned-place list ──────────────────────────────────────────────── */
+.map-list {
+  display: flex;
+  flex-direction: column;
+}
+.place {
+  display: flex;
+  align-items: center;
+  /* The way-in block (`.map-refs`) is a full-width third line that appears on
+     selection, so the row wraps rather than squeezing it into the trailing column. */
+  flex-wrap: wrap;
+  gap: 11px;
+  background: var(--card);
+  border: 1px solid var(--line);
+  border-radius: 16px;
+  padding: 11px 12px;
+  margin-bottom: 9px;
+  box-shadow: 0 1px 2px rgba(14, 23, 41, 0.04);
+  cursor: pointer;
+}
+.place[role='button']:focus-visible {
+  outline: 2.5px solid var(--teal);
+  outline-offset: 2px;
+}
+/* The row half of the row ↔ pin selection (ADR-0121 §8). Neutral ink, deliberately
+   NOT amber: selecting a row is not a claim about what is next, and the two compose
+   on the same row when it happens to be both. */
+.place.selected {
+  border-color: var(--ink);
+  box-shadow: 0 0 0 2px color-mix(in srgb, var(--ink) 12%, transparent);
+}
+/* a pure shelf idea reads provisional — dashed + diagonal hatch (ADR-0011 soft). */
+.place.soft {
+  border-style: dashed;
+  border-color: var(--soft-line);
+  background:
+    repeating-linear-gradient(-45deg, rgba(22, 35, 61, 0.02) 0 6px, transparent 6px 12px),
+    var(--card);
+}
+/* navigate-to-next: the single time-anchor cue on the list (ADR-0106 §6 / ADR-0109
+   §6). Amber = time, spent on exactly one row — the list's form of the rendered
+   map's one amber ring, never a second accent on every pin. */
+.place.nextstop {
+  border-color: rgba(233, 166, 60, 0.34);
+  box-shadow: 0 0 0 3px rgba(233, 166, 60, 0.22);
+}
+/* The row half of the `עכשיו` cue, the same ring the next-stop row wears — where
+   you ARE is at least as much a time anchor as where you're going, and the two are
+   never on the same row (`eventPhase` is `now` or `upcoming`). The tag beside the
+   name is what tells them apart in words; the pulsing dot does it at a glance. */
+.place.nowstop {
+  border-color: rgba(233, 166, 60, 0.34);
+  box-shadow: 0 0 0 3px rgba(233, 166, 60, 0.22);
+}
+/* Behind you, on the CLOCK — the row's half of the pin's `saturate(.3)`. The two
+   halves of the split used to disagree about exactly this: the pin faded once a place
+   was behind you, the row only once a human had SKIPPED it. Keyed on the block
+   (`isDayUsagePast`, ADR-0124's single answer to "is this closed"), so the fade, the
+   `מה שמאחורינו` header and `מה נשאר` cannot make different claims about one place.
+
+   Light on purpose: the header already says it in words, so this reinforces the
+   message rather than carrying it. And NOT `.place.skipped`, which would be wrong
+   twice — that treatment is what session 137 took off the ambient tier (ADR-0109's
+   2026-07-27 amendment: the hotel you sleep in tonight read as finished), and it
+   means *a human said this did not happen*, which is a different claim from *the
+   clock passed it*. The `:not()` is what keeps a skipped-and-past row from wearing
+   both: this filter would otherwise compound with the badge's own below. */
+.place.behind:not(.skipped) {
+  filter: saturate(0.55);
+  opacity: 0.9;
+}
+
+/* A skipped place is handled and not happening (ADR-0117 §4): present, but not a live
+   commitment.
+
+   `.place.ambient` USED TO SHARE THIS RULE, on the reasoning that a mid-stay night is
+   also "present but not a live commitment". Half of that was wrong, and the split is
+   the point (ADR-0109's 2026-07-27 amendment): a skipped place is behind you, a night
+   you are sleeping somewhere is the most current fact on the day. Sharing one quiet
+   treatment made the one place you are guaranteed to come back to read as finished.
+   An ambient night now draws as an ordinary row; what marks it is the absence of a
+   number and a clock, not a fade. */
+.place.skipped {
+  background: var(--paper);
+  opacity: 0.85;
+  box-shadow: none;
+}
+
+.map-badge {
+  position: relative;
+  flex: 0 0 auto;
+  width: 40px;
+  height: 40px;
+  border-radius: 12px;
+  display: grid;
+  place-items: center;
+  font-size: 19px;
+  line-height: 1;
+}
+/* THE ORDER, on the row (ADR-0121 §6). The number is the place's index in the day's
+   sequence, and it was already on the pin — a list that omits it makes the two halves
+   of the split read as two different lists, which is what the number exists to
+   prevent. So it is the SAME stamp `.pin-n` draws, in the same corner, hung off the
+   badge the row already has rather than a second element beside it. Out of flow, so
+   the glyph stays centred; the `-5px` corner sits inside `.place`'s own padding, so
+   nothing clips. Absent (no attribute) for anything with no position in the schedule:
+   a ghost, an idea, an ambient stay night. */
+.map-badge[data-order]::before {
+  content: attr(data-order);
+  position: absolute;
+  top: -5px;
+  inset-inline-start: -5px;
+  min-width: 15px;
+  height: 15px;
+  padding: 0 3px;
+  display: grid;
+  place-items: center;
+  background: var(--ink);
+  color: var(--card);
+  font-family: var(--font-mono);
+  font-size: 9px;
+  font-weight: 700;
+  border-radius: 999px;
+  box-shadow: 0 0 0 1.5px var(--card);
+}
+.map-badge.cat-food {
+  background: var(--cat-food);
+}
+.map-badge.cat-lodging {
+  background: var(--cat-lodging);
+}
+.map-badge.cat-transit {
+  background: var(--cat-transit);
+}
+.map-badge.cat-leisure {
+  background: var(--cat-leisure);
+}
+.map-badge.cat-services {
+  background: var(--cat-services);
+}
+.place.soft .map-badge {
+  opacity: 0.72;
+  box-shadow: inset 0 0 0 1.5px var(--soft-line);
+}
+.place.skipped .map-badge {
+  filter: saturate(0.5);
+  opacity: 0.7;
+}
+/* coordless Place-lite: a listed-only row, dashed empty badge (ADR-0109 §3). */
+.map-badge.nocoord {
+  background: transparent;
+  border: 1.5px dashed var(--faint);
+  opacity: 0.7;
+}
+
+.map-main {
+  flex: 1;
+  min-width: 0;
+}
+.map-t {
+  font-size: 14.5px;
+  font-weight: 700;
+  color: var(--ink);
+  display: flex;
+  align-items: center;
+  gap: 6px;
+}
+/* A coordless Place-lite is genuinely incomplete data, so its name stays muted. An
+   ambient stay night is not — its name is the answer to "where am I sleeping". */
+.place.nocoord .map-t {
+  color: var(--muted);
+}
+.map-name {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.map-lock {
+  font-size: 10px;
+  flex: 0 0 auto;
+}
+.map-m {
+  font-size: 12px;
+  color: var(--muted);
+  margin-top: 2px;
+  display: flex;
+  flex-wrap: wrap;
+  gap: 4px 8px;
+}
+.map-tag {
+  display: inline-flex;
+  align-items: center;
+  gap: 3px;
+}
+.map-tag.mbadge {
+  color: var(--plan-deep);
+  font-weight: 700;
+}
+/* When this place is due — the row's time anchor, so amber, and mono like every
+   other clock reading in the app (ADR-0028 / design-language). */
+.map-tag.time {
+  font-family: var(--font-mono);
+  font-size: 11.5px;
+  font-weight: 700;
+  color: var(--amber-deep);
+}
+/* navigate-to-next: says WHICH row is next; the time beside it says when. */
+.map-tag.next {
+  color: var(--amber-deep);
+  font-weight: 700;
+}
+/* WHERE YOU ARE, RIGHT NOW. Amber like `next`, because both are time (ADR-0028),
+   and told apart by the same thing that tells the pins apart: motion. The dot is
+   Home's board blip (`.wp-board-live .blip`) at the row's scale, so the board, the
+   canvas and the list all beat together — one idiom, three surfaces.
+
+   The dot is a pseudo-element (no second span) and is a SOLID amber dot at rest,
+   with the ring layered on by the animation. `App.css`'s global reduced-motion rule
+   kills animations with `!important`, so the resting state has to carry the cue on
+   its own or the tag silently loses half its meaning. */
+.map-tag.now {
+  color: var(--amber-deep);
+  font-weight: 700;
+}
+.map-tag.now::before {
+  content: '';
+  width: 6px;
+  height: 6px;
+  border-radius: 50%;
+  background: var(--amber);
+  animation: map-row-now 2s infinite;
+}
+@keyframes map-row-now {
+  0% {
+    box-shadow: 0 0 0 0 rgba(233, 166, 60, 0.55);
+  }
+  70% {
+    box-shadow: 0 0 0 6px rgba(233, 166, 60, 0);
+  }
+  100% {
+    box-shadow: 0 0 0 0 rgba(233, 166, 60, 0);
+  }
+}
+/* the outcome tags (ADR-0117 §1): statuses, so the status tokens — --ok for a
+   visit, --miss for a skip. Amber stays on time, teal on location. */
+.map-tag.ok {
+  color: var(--ok);
+  font-weight: 700;
+}
+.map-tag.miss {
+  color: var(--miss);
+  font-weight: 700;
+}
+/* rating = cached Google value (ADR-0109 §9); the star glyph carries it, a
+   neutral amber-ink, not a semantic hue. */
+.map-tag.rate {
+  color: var(--amber-deep);
+  font-weight: 700;
+}
+
+.map-right {
+  flex: 0 0 auto;
+  display: flex;
+  flex-direction: column;
+  align-items: flex-end;
+  gap: 7px;
+}
+/* the one labelled trailing action: directions (teal = location). Viewing the
+   place is the row tap (ADR-0109 §1). */
+.map-navbtn {
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+  border: 1px solid var(--teal);
+  color: var(--teal);
+  background: var(--card);
+  border-radius: 999px;
+  padding: 6px 12px;
+  font: inherit;
+  font-size: 12px;
+  font-weight: 700;
+  cursor: pointer;
+  white-space: nowrap;
+  text-decoration: none;
+}
+.map-navbtn:hover {
+  background: color-mix(in srgb, var(--teal) 10%, transparent);
+}
+/* The coordless `＋ מיקום` affordance is the shared `AddLocationButton`
+   (ui/primitives/place-picker.css) — a placeless booking's מיקום fact needed the
+   same pill, so it stopped being this row's one-off. */
+
+/* ── The way in to the entity (ADR-0121 §8) ────────────────────────────────────
+   A place is only in the trip because something REFERENCES it (ADR-0112), and the
+   details a traveller wants — the confirmation code, the notes, the documents, the
+   time it was booked for — live on that event/booking, never on the `Place`. So a
+   place needs a way through to it.
+
+   Revealed by SELECTION rather than sitting on every row: the row is already dense
+   (badge · name · meta · distance · נווט), and only one row is selected at a time.
+   Each entry is labelled in the reference's own words, not a generic "details", so
+   the control says where it goes — which is also what earns it a row. Full-width and
+   ≥40px, so it is a real touch target (ADR-0017) rather than a tappable 11px tag. */
+.map-refs {
+  flex-basis: 100%;
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  margin-top: 8px;
+  padding-top: 8px;
+  border-top: 1px solid var(--line);
+}
+.map-ref {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  width: 100%;
+  padding: 7px 8px;
+  min-height: 40px;
+  border: 0;
+  border-radius: 10px;
+  background: color-mix(in srgb, var(--ink) 4%, transparent);
+  color: var(--ink);
+  font: inherit;
+  font-size: 12.5px;
+  font-weight: 600;
+  text-align: start;
+  cursor: pointer;
+}
+.map-ref .map-ref-kind {
+  color: var(--muted);
+  font-weight: 500;
+  flex: 0 0 auto;
+}
+.map-ref .map-ref-label {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.map-ref .icon {
+  width: 14px;
+  height: 14px;
+  margin-inline-start: auto;
+  flex: 0 0 auto;
+  color: var(--faint);
+}
+
+/* ── Plan-mode place research (Phase 5, ADR-0115) ────────────────────────────
+   The Google half of the search overlay. It reuses the list's own row grammar
+   above (.place / .map-badge / .map-main / .map-right) — these are only the
+   pieces that don't exist yet: the arm card, the ＋ אולי action, the "already
+   ours" statement, and the neutral result badge. ＋ אולי is plan violet: adding
+   an idea is a Plan-mode building action, not a location affordance (teal) or a
+   time anchor (amber) — the budget stays where ADR-0028 put it. */
+.map-res-hint {
+  font-size: 12px;
+  color: var(--faint);
+  line-height: 1.5;
+  margin: 2px 4px 10px;
+}
+
+/* a result row: the whole name block is a real link out to the Google place, so
+   a candidate can be vetted before we pay to resolve it (ADR-0115 §2). */
+.map-res-open {
+  /* A `<button>` now, not an `<a>` (ADR-0134 §5): the tap frames the place rather than
+     leaving the app, so it needs the reset a bare link never did. */
+  appearance: none;
+  border: 0;
+  background: none;
+  text-align: start;
+  font: inherit;
+  cursor: pointer;
+  display: flex;
+  align-items: center;
+  gap: 11px;
+  flex: 1;
+  min-width: 0;
+  text-decoration: none;
+  color: inherit;
+}
+.place.result {
+  cursor: default;
+}
+/* not ours yet: the same dashed neutral pin a coordless Place-lite wears */
+.map-badge.result {
+  background: transparent;
+  border: 1.5px dashed var(--faint);
+  color: var(--muted);
+  font-size: 16px;
+}
+/* ── THE CHOSEN CANDIDATE (owner, session 166) ───────────────────────────────────
+   `.place.selected` above is calibrated for a trip row: one row of many like it, all of
+   them yours, so an ink hairline plus a 12% halo is enough to say "this one". A result row
+   is not that case. It sits under a list of near-identical Google answers, its resting
+   badge is a DASHED neutral outline (the quietest badge on the surface), and the selection
+   is the answer to the only question being asked — which of these is the place.
+
+   So the row states it three ways at once, all of them the same idea the canvas ring now
+   states by filling: a heavier halo, a tinted surface, and the badge going SOLID. The badge
+   is the important one — it is the row's picture of the ring, so filling both is one cue in
+   two form factors, exactly as the pin is the badge on the canvas (ADR-0109 §3). Still
+   `--ink`: selection has never been a semantic colour here (ADR-0028). */
+.place.result.selected {
+  border-color: var(--ink);
+  box-shadow: 0 0 0 3px color-mix(in srgb, var(--ink) 20%, transparent);
+  background: color-mix(in srgb, var(--ink) 5%, var(--card));
+}
+.place.result.selected .map-badge.result {
+  border-style: solid;
+  border-color: var(--ink);
+  background: var(--ink);
+  color: var(--card);
+}
+/* `--cta`, NOT `--plan`, and that is a rule fix rather than a restyle (ADR-0131 §8).
+   Plan violet was legitimate here while ADR-0115 §6 kept research Plan-only; the moment
+   §8 renders this control in TRIP mode it is mode identity used as a button colour, which
+   `tokens.css` forbids in as many words ("amber/teal/plan are semantic, never CTAs") and
+   root CLAUDE.md rule 4 states directly. Found by drawing the surface against the shipped
+   stylesheets, not by reading the diff. */
+/* ── A RESULT ROW'S THREE JOBS (ADR-0134 §5) ─────────────────────────────────────
+   The row's body is a `<button>` now — the tap frames the place here — so the way out
+   to Google is its own control, and it goes BESIDE the verb rather than under it.
+
+   That is measured, not preferred. `.map-right` above is a `flex-direction: column`, so
+   a second control buys no WIDTH; it makes every result row taller. Stacked, a result row
+   is 106px and the sheet at `half` shows 3 rows at 390×844 / 2 at 360×640; side by side it
+   is 68px and shows 6 / 4. Height is the axis this surface declared scarce in ADR-0126
+   ("canvas furniture grows sideways"), and stacking halves the results you can see.
+
+   Scoped to `.place.result` deliberately: a trip row's `נווט` + distance genuinely want
+   the column, and this is not a reason to restack them. */
+.place.result .map-right {
+  flex-direction: row;
+  align-items: center;
+}
+/* The way out, as an ICON. The row already carries one labelled verb and two labelled
+   buttons compete for "which is the action" — the width measurement cleared a label
+   rather than forcing this, and ADR-0134 §5 says so. 44×44 met by GEOMETRY, never by a
+   hit area painted smaller than it is (ADR-0017, ADR-0126 §3), and `.map-navbtn`'s
+   trailing-action grammar rather than a new one. */
+.map-res-out {
+  flex: none;
+  display: grid;
+  place-items: center;
+  min-width: 44px;
+  min-height: 44px;
+  border: 1px solid var(--line);
+  border-radius: 12px;
+  background: var(--card);
+  color: var(--muted);
+  font-size: 16px;
+  text-decoration: none;
+  cursor: pointer;
+}
+.map-res-out:hover {
+  border-color: var(--muted);
+}
+
+/* ── ONE ACTION, IN A CONTROL THIS TAB ALREADY OWNS (ADR-0135 §1) ────────────────
+   The rejected first pass hung two `.map-ref`-shaped entries under the references, which
+   reads as a command menu because it IS one: same box, same fill, four grey rectangles deep.
+   A `.map-ref` says "this place is already there" and ends in a chevron because it GOES
+   somewhere; a create goes nowhere and is not the references' peer.
+
+   So the footer holds `.map-addmaybe` — the pill this tab already uses for "make something
+   out of this place" (`＋ אולי` on a Google result). Same job, same neutral `--cta`: amber is
+   time and commitment, plan violet is Plan mode, and a create is neither (ADR-0028, root
+   rule 4). What separates it from a reference row is SHAPE and WEIGHT, not a new colour. */
+.map-refs-foot {
+  display: flex;
+  justify-content: center;
+  margin-top: 8px;
+}
+/* The one size change, and it is a floor rather than a taste: on a result row this pill is a
+   trailing chip in a dense 68px row (~29px). Here it is the selected row's primary action, so
+   it meets 44×44 (ADR-0017). Scoped to the block, so the result row is untouched. */
+.map-refs-foot .map-addmaybe {
+  min-height: 44px;
+  padding-inline: 18px;
+  font-size: 13px;
+}
+
+.map-addmaybe {
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+  border: 1px solid var(--cta);
+  color: var(--cta);
+  background: color-mix(in srgb, var(--cta) 10%, transparent);
+  border-radius: 999px;
+  padding: 6px 12px;
+  font: inherit;
+  font-size: 12px;
+  font-weight: 700;
+  cursor: pointer;
+  white-space: nowrap;
+}
+.map-addmaybe:hover:not(:disabled) {
+  background: var(--cta);
+  color: var(--cta-text);
+}
+.map-addmaybe:disabled {
+  opacity: 0.55;
+  cursor: default;
+}
+.map-res-skel {
+  border-radius: 16px;
+  margin-bottom: 9px;
+}
+.map-res-foot {
+  text-align: center;
+  font-size: 10.5px;
+  color: var(--faint);
+  margin-top: 12px;
+}
+
+/* THE CARD'S BADGE IS THE WAY IN TO ITS OWN PIN (ADR-0129 §1), reusing session 148's
+   `.wp-placebadge` rather than growing a second affordance: same teal ring, same focus
+   treatment, same verb one step further in — you are already looking at the map, so it
+   frames the place instead of taking you to it.
+   Its corner MARK stands down, because on this badge that corner is already the order
+   number's (ADR-0121 §6) and two stamps in one corner is neither. The ring is what
+   carries "this one is a control" against the inert badges in the list behind it. */
+.map-badge[data-order] .wp-placebadge-mark {
+  display: none;
+}
+
+/* ═══ ui/domain/place-badge.css — generated, do not edit here ═══ */
+/* PlaceBadge — the category badge as the way to the place on our map. It adds NO
+   box to the row: the badge already exists on every host, at the same leading
+   position, which is what makes this the one placement a dense row can afford
+   (measured: a separate trailing control wrapped or truncated titles on all four
+   surfaces). Teal because it is a location affordance and teal is location only
+   (ADR-0028) — the badge's own category tint is untouched underneath. */
+
+.wp-placebadge {
+  position: relative;
+  cursor: pointer;
+  /* The category tint stays; the ring is the only thing added, and it reads as
+     "this one is a control" against the identical inert badges around it. */
+  box-shadow: 0 0 0 2px color-mix(in srgb, var(--teal) 40%, transparent);
+}
+.wp-placebadge:hover {
+  box-shadow: 0 0 0 2px var(--teal);
+}
+.wp-placebadge:focus-visible {
+  outline: 2.5px solid var(--teal);
+  outline-offset: 2px;
+}
+
+/* The corner marker: a real pin, not a dot. A dot says "there is something here";
+   the pin says what the tap does, in the silhouette of what you land on (ADR-0087's
+   marker). The `--card` ring lifts it off the badge so it reads as an overlay rather
+   than part of the glyph. */
+.wp-placebadge-mark {
+  position: absolute;
+  inset-block-end: -5px;
+  inset-inline-end: -5px;
+  width: 17px;
+  height: 17px;
+  border-radius: 50%;
+  background: var(--teal);
+  color: #fff;
+  display: grid;
+  place-items: center;
+  font-size: 11px;
+  box-shadow: 0 0 0 2px var(--card);
+}
+/* The pin's stroke needs to survive at 11px, where the shared 2px looks spindly. */
+.wp-placebadge-mark .icon {
+  stroke-width: 2.4;
+}
+
+/* NOT on the departure board, deliberately (owner, 2026-07-28). It was wired there
+   first, on the rule that every event has a way to its pin, and read too loud: the
+   hero is the app's one dark, glowing surface, so a teal ring plus a marker on its
+   icon competes with the thing the board exists to say. The hero's way in is
+   deferred to its own redesign — see the backlog's "Hero 2.0", where tapping the
+   board expands it and actions become possible in place, which is the shape this
+   affordance actually wants there. */
+
+/* ═══ ui/domain/list-row.css — generated, do not edit here ═══ */
+/* ListRow + RowManageSheet (domain, review U-03). Ported faithfully from the
+   Index booking row (`.index .li.bk`) and the Documents row (`.index .li.doc`)
+   + the shared `.row-action` menu in screens.css, under new `wp-` classes so
+   nothing overlaps the legacy rules until the screens migrate and delete them.
+   Amber = time/commitment, teal = location (design-language color budget);
+   spacing/radius/type from the Wave-0 tokens where they map to the ramp. */
+
+.wp-listrow {
+  display: flex;
+  align-items: center;
+  border-bottom: 1px solid var(--line);
+}
+.wp-listrow:last-child {
+  border-bottom: none;
+}
+/* An in-transit (pending) write reads as provisional (ADR-0092): the whole row
+   fades until the server confirms it. Pending only — a failed row stays crisp so
+   its cloud-bang keeps drawing attention. The 19px cloud-up marker stays legible
+   at this opacity, so it still reads as "saving". */
+.wp-listrow.is-unsynced {
+  opacity: 0.6;
+}
+
+.wp-listrow-open {
+  display: flex;
+  align-items: center;
+  gap: 11px;
+  flex: 1;
+  min-width: 0;
+  background: transparent;
+  border: none;
+  font: inherit;
+  color: inherit;
+  text-align: start;
+  cursor: pointer;
+  padding: var(--space-3) 14px;
+}
+.wp-listrow-open:hover {
+  background: color-mix(in srgb, var(--ink) 4%, transparent);
+}
+.wp-listrow-open:focus-visible {
+  outline: 2px solid var(--teal);
+  outline-offset: -2px;
+}
+.wp-listrow-open:disabled {
+  cursor: default;
+}
+
+.wp-listrow-badge {
+  width: 36px;
+  height: 36px;
+  border-radius: 11px;
+  background: var(--paper);
+  display: grid;
+  place-items: center;
+  font-size: var(--text-h3);
+  flex: 0 0 auto;
+}
+/* Category tint (ADR-0059 §3): teal = a stay, amber = transport. */
+.wp-listrow-badge.stay {
+  background: color-mix(in srgb, var(--teal) 12%, transparent);
+}
+.wp-listrow-badge.trans {
+  background: rgba(233, 166, 60, 0.12);
+}
+
+.wp-listrow-main {
+  flex: 1;
+  min-width: 0;
+}
+.wp-listrow-title {
+  font-size: 13.5px;
+  font-weight: 700;
+  display: flex;
+  align-items: center;
+  gap: var(--space-1) 6px;
+  flex-wrap: wrap;
+}
+.wp-listrow-meta {
+  font-size: 11.5px;
+  color: var(--muted);
+  margin-top: 3px;
+  display: block;
+}
+
+.wp-listrow-right {
+  display: flex;
+  align-items: center;
+  gap: var(--space-2);
+  padding-inline-end: var(--space-3);
+  flex: 0 0 auto;
+  text-align: end;
+}
+/* Fixed sync column (ADR-0091): reserves its width even when the badge is silent
+   (synced → EntitySyncBadge renders null), so the marker sits in the same place
+   on every row and neighbours stay aligned. */
+.wp-listrow-sync {
+  inline-size: 19px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  flex: 0 0 auto;
+}
+/* 44×44 is the touch floor the rest of the app meets (ADR-0017); this shipped at
+   30 and is the control that OPENS the menu, so it came along with the redesign.
+   The visible ink stays 30px — the extra is hit area, negative-margined so the
+   row's height and the trailing group's spacing are unchanged. */
+.wp-listrow-kebab {
+  width: 44px;
+  height: 44px;
+  margin: -7px;
+  border-radius: 12px;
+  display: grid;
+  place-items: center;
+  background: none;
+  border: 0;
+  color: var(--muted);
+  font-size: var(--text-h3);
+  line-height: 1;
+  cursor: pointer;
+}
+.wp-listrow-kebab .icon {
+  width: 1.15em;
+  height: 1.15em;
+}
+.wp-listrow-kebab:hover {
+  background: color-mix(in srgb, var(--ink) 6%, transparent);
+  color: var(--ink);
+}
+
+/* RowManageSheet action list — the `⋯` menu items (ported from `.row-action`).
+   Violet hover: managing a row is a neutral action; the plan-tint hover matches
+   the shipped sheet. Danger action reads in the miss color. */
+.wp-row-actions {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  margin: var(--space-1) 0;
+}
+.wp-row-action {
+  display: flex;
+  align-items: center;
+  gap: 11px;
+  width: 100%;
+  text-align: start;
+  font: inherit;
+  font-size: var(--text-body);
+  font-weight: 600;
+  color: var(--ink);
+  background: var(--card);
+  border: 1px solid var(--line);
+  border-radius: var(--radius-12);
+  padding: 13px 14px;
+  cursor: pointer;
+}
+.wp-row-action:hover {
+  border-color: var(--plan);
+  background: var(--plan-tint);
+}
+.wp-row-action:focus-visible {
+  outline: 2.5px solid var(--plan);
+  outline-offset: 2px;
+}
+.wp-row-action.danger {
+  color: var(--miss);
+}
+.wp-row-action.danger:hover {
+  border-color: var(--miss);
+  background: rgba(198, 40, 40, 0.06);
+}
+.wp-row-action-ic {
+  font-size: var(--text-h3);
+  flex: 0 0 auto;
+  /* Aligns with the label rather than the line box: an SVG sized in `em` sits on
+     its own baseline, and a 1.25em box beside 15px text drifts a hair low. */
+  display: inline-flex;
+}
+/* The mark is an SVG now (ADR-0138), so `danger` tints it WITH its label — the
+   emoji it replaced kept its own colours inside a red row, which is the tell
+   that it was never part of the state. Slightly over 1em because a 2px stroke
+   needs the extra to carry beside 15px of Hebrew. */
+.wp-row-action-ic .icon {
+  width: 1.25em;
+  height: 1.25em;
+  stroke-width: 1.9;
+}
+
+/* ── The sheet names its subject (ADR-0138 §3) ──────────────────────────────
+   A quiet fact line under `.modal-title`: type · time · state, in the app's `·`
+   grammar. It exists so the destructive verb is never anonymous — the booking
+   and document menus used to render two unlabelled rows over a scrim with the
+   thing being deleted hidden behind them. */
+.wp-row-subject {
+  display: block;
+  margin-block-start: 3px;
+  font-size: var(--text-meta);
+  font-weight: 500;
+  color: var(--muted);
+  line-height: 1.45;
+}
+
+/* ── The destructive verb partitions, it does not just recolour (§5) ────────
+   `מחק` and `ערוך` shipped as identical cards differing by text hue alone. A
+   hairline and a gap — 13px total — is the whole fix, and it costs the sheet
+   nothing it was using. */
+.wp-row-actions-danger {
+  margin-block-start: 10px;
+  padding-block-start: 10px;
+  border-block-start: 1px solid var(--line);
+}
+</style>
+
+    <style>
+      /* ══ MOCKUP-LOCAL: page furniture, plus the cluster being decided. ══ */
+      body {
+        margin: 0;
+        background: var(--screen);
+        color: var(--ink);
+        font-family: 'Assistant', system-ui, sans-serif;
+        padding: 0 0 64px;
+      }
+      .mk-wrap {
+        max-width: 900px;
+        margin: 0 auto;
+        padding: 0 16px;
+      }
+      .mk-hero {
+        background: var(--ink);
+        color: #fff;
+        padding: 24px 0 20px;
+        margin-bottom: 10px;
+      }
+      .mk-hero h1 {
+        font-family: 'Secular One', sans-serif;
+        font-size: 24px;
+        margin: 0 0 8px;
+        font-weight: 400;
+      }
+      .mk-hero p {
+        margin: 0;
+        font-size: 14px;
+        line-height: 1.65;
+        color: rgba(255, 255, 255, 0.76);
+        max-width: 64ch;
+      }
+      .mk-hero b {
+        color: var(--amber);
+        font-weight: 600;
+      }
+      h2 {
+        font-family: 'Secular One', sans-serif;
+        font-size: 17px;
+        font-weight: 400;
+        margin: 28px 0 4px;
+      }
+      .mk-k {
+        font-family: 'JetBrains Mono', monospace;
+        font-size: 12px;
+        color: var(--muted);
+      }
+      h2 .mk-k {
+        margin-inline-start: 8px;
+      }
+      .mk-lede {
+        font-size: 13.5px;
+        line-height: 1.65;
+        color: var(--muted);
+        margin: 0 0 14px;
+        max-width: 76ch;
+      }
+      .mk-note {
+        font-size: 12.5px;
+        line-height: 1.62;
+        color: var(--muted);
+        margin: 12px 2px 0;
+      }
+      .mk-note b {
+        color: var(--ink);
+      }
+      /* A phone frame, so every state is judged at the width it ships at. */
+      .mk-phones {
+        display: flex;
+        flex-wrap: wrap;
+        gap: 18px;
+      }
+      .mk-phone {
+        width: var(--w, 390px);
+        flex: 0 0 auto;
+      }
+      .mk-phone > figcaption {
+        font-size: 12px;
+        font-weight: 700;
+        margin: 0 0 6px;
+      }
+      .mk-phone > figcaption span {
+        font-weight: 400;
+        color: var(--muted);
+      }
+      /* MOCKUP-ONLY, and labelled because it overrides shipped css: `.map-placecard` is
+         `position: absolute` against `.map-split`, measured off the sheet height and the
+         attribution band. In a page with neither it escapes its frame entirely and stacks
+         at the document's foot — which is exactly what the first render of this file did,
+         and why every card above looked like an empty strip. Confined to the frame here;
+         its own paint (the shadow, the inline insets) is untouched. */
+      .mk-canvas .map-placecard {
+        position: static;
+        inset: auto;
+        /* …and its ENTRANCE animation is cut, for the reason `map-place-becomes-v1` records
+           about the sheet: a number read mid-transition is the same class of lie as a
+           selector that matches nothing. `map-furniture-in` starts at `opacity: 0` with no
+           fill-mode, so a static capture of this page samples frame 0 and the card is
+           invisible — which is exactly what the second render of this file showed. The
+           resting state is what this mockup is about; the motion is shipped and unchanged. */
+        animation: none;
+      }
+      /* The canvas the card sits on, at the `map` stop where the card is the selection
+         (ADR-0122 §7) — a flat wash standing in for tiles. */
+      .mk-canvas {
+        background: linear-gradient(146deg, #eae6de 0 46%, #dfe7dd 46% 66%, #cfe0e6 66%);
+        padding: 14px 10px;
+        border-radius: 12px;
+      }
+      .mk-ctl {
+        display: flex;
+        flex-wrap: wrap;
+        gap: 10px;
+        align-items: center;
+        margin: 0 0 14px;
+        font-size: 13px;
+      }
+      .mk-lbl {
+        font-weight: 700;
+      }
+      .mk-btn {
+        font: inherit;
+        font-size: 12.5px;
+        font-weight: 600;
+        padding: 6px 12px;
+        border-radius: 999px;
+        border: 1px solid var(--line);
+        background: var(--card);
+        color: var(--ink);
+        cursor: pointer;
+      }
+      .mk-btn[aria-pressed='true'] {
+        background: var(--ink);
+        color: #fff;
+        border-color: var(--ink);
+      }
+      .mk-verdict {
+        display: flex;
+        gap: 8px;
+        align-items: baseline;
+        font-size: 12.5px;
+        line-height: 1.55;
+        margin-top: 11px;
+        padding-top: 11px;
+        border-top: 1px dashed var(--line);
+      }
+      .mk-verdict > span:first-child {
+        font-weight: 700;
+        white-space: nowrap;
+        min-width: 11ch;
+      }
+      .mk-no > span:first-child {
+        color: var(--miss);
+      }
+      .mk-yes > span:first-child {
+        color: var(--ok);
+      }
+      .mk-measure {
+        width: 100%;
+        border-collapse: collapse;
+        font-size: 12px;
+        margin-top: 10px;
+      }
+      .mk-measure th,
+      .mk-measure td {
+        text-align: start;
+        padding: 5px 8px;
+        border-bottom: 1px solid var(--line);
+      }
+      .mk-measure th {
+        font-size: 11px;
+        color: var(--muted);
+        font-weight: 700;
+      }
+      .mk-measure td b {
+        font-family: 'JetBrains Mono', monospace;
+      }
+      .mk-tight {
+        color: var(--miss);
+        font-weight: 700;
+      }
+
+      /* ── THE CLUSTER BEING DECIDED ────────────────────────────────────────────
+         A SIBLING of the open button, never a child — buttons do not nest, and this
+         is the shape `ListRow` already uses. `.map-ref` keeps its own paint; what
+         changes is that it stops being the button and becomes the container. */
+      .mk-ref {
+        display: flex;
+        align-items: center;
+        gap: 6px;
+        width: 100%;
+        padding: 7px 8px;
+        min-height: 40px;
+        border-radius: 10px;
+        background: color-mix(in srgb, var(--ink) 4%, transparent);
+        color: var(--ink);
+        font-size: 12.5px;
+        font-weight: 600;
+      }
+      /* The open affordance: everything the row used to be, now its own button, so it
+         keeps the whole remaining width as its target. */
+      .mk-open {
+        flex: 1;
+        min-width: 0;
+        display: flex;
+        align-items: center;
+        gap: 6px;
+        padding: 0;
+        border: 0;
+        background: transparent;
+        color: inherit;
+        font: inherit;
+        text-align: start;
+        cursor: pointer;
+      }
+      .mk-settle {
+        flex: 0 0 auto;
+        display: flex;
+        align-items: center;
+        gap: 4px;
+      }
+      /* 32×32 inside a 40px row: below the 44px touch floor on its own, which is why
+         the two sit at the END of a row whose own target is the rest of it — the same
+         trade `ListRow`'s kebab makes. Worth a device check. */
+      .mk-sbtn {
+        width: 32px;
+        height: 32px;
+        display: grid;
+        place-items: center;
+        border: 1px solid var(--line);
+        border-radius: 9px;
+        background: var(--card);
+        color: var(--muted);
+        cursor: pointer;
+        padding: 0;
+      }
+      .mk-sbtn .icon {
+        width: 17px;
+        height: 17px;
+      }
+      .mk-sbtn.done:hover,
+      .mk-sbtn.done:focus-visible {
+        color: var(--ok);
+        border-color: color-mix(in srgb, var(--ok) 45%, transparent);
+      }
+      .mk-sbtn.skip:hover,
+      .mk-sbtn.skip:focus-visible {
+        color: var(--miss);
+        border-color: color-mix(in srgb, var(--miss) 45%, transparent);
+      }
+      /* SETTLED: the outcome states itself and the only verb left is to undo it. */
+      .mk-outcome {
+        display: inline-flex;
+        align-items: center;
+        gap: 4px;
+        font-size: 10px;
+        font-weight: 700;
+        padding: 3px 7px;
+        border-radius: 6px;
+      }
+      .mk-outcome .icon {
+        width: 12px;
+        height: 12px;
+      }
+      .mk-outcome.done {
+        color: var(--ok);
+        background: color-mix(in srgb, var(--ok) 13%, transparent);
+      }
+      .mk-outcome.skip {
+        color: var(--miss);
+        background: color-mix(in srgb, var(--miss) 13%, transparent);
+      }
+      /* The emphasis candidate (§C3): the row that is an open question says so. */
+      .mk-ref.ask {
+        background: color-mix(in srgb, var(--amber) 9%, transparent);
+        box-shadow: inset 0 0 0 1px color-mix(in srgb, var(--amber) 26%, transparent);
+      }
+      .mk-ask-q {
+        font-size: 10.5px;
+        font-weight: 700;
+        color: var(--amber-ink);
+        flex: 0 0 auto;
+      }
+      /* §B's rejected strip, built off the day view's own settle-strip geometry. */
+      .mk-strip {
+        flex-basis: 100%;
+        display: flex;
+        align-items: center;
+        gap: 8px;
+        margin-top: 8px;
+        padding-top: 8px;
+        border-top: 1px solid var(--line);
+        font-size: 12.5px;
+      }
+      .mk-strip-q {
+        font-weight: 700;
+        flex: 1;
+      }
+      .mk-strip button {
+        font: inherit;
+        font-size: 12.5px;
+        font-weight: 700;
+        padding: 7px 12px;
+        min-height: 36px;
+        border-radius: 9px;
+        border: 1px solid var(--line);
+        background: var(--card);
+        cursor: pointer;
+      }
+    </style>
+  </head>
+
+  <body>
+    <div class="mk-hero">
+      <div class="mk-wrap">
+        <h1>סימון מהקנבס</h1>
+        <p>
+          המפה כבר <b>קוראת</b> מה קרה במקום (ADR-0137) ועדיין לא יכולה <b>לכתוב</b> את זה. הפער:
+          פין שעבר מראה ״עבר · לא סומן״, והדרך היחידה לענות היא לצאת מהטאב.
+        </p>
+        <p style="margin-top: 6px">
+          ״איזה אירוע?״ נראה כמו השאלה הקשה - והוא כבר פתור: <b>בלוק דרכי הכניסה מונה את
+          ההפניות, שורה לכל אחת</b>. הפועל נתלה על השורה שכבר מנקבת את היעד שלה.
+        </p>
+      </div>
+    </div>
+
+    <div class="mk-wrap">
+      <!-- ══ §A — THE RECOMMENDATION ═══════════════════════════════════════════ -->
+      <h2>א · הפועל על שורת ההפניה<span class="mk-k">the recommendation</span></h2>
+      <p class="mk-lede">
+        כל הפניה מסוג <b>אירוע</b> מקבלת צמד בקצה: ✓ ו-✕ כשלא סומן, או התג של התוצאה + ביטול
+        כשסומן. הפניה מסוג <b>רעיון</b> או <b>הזמנה</b> לא מקבלת כלום - אין להן
+        <span class="mk-k">EVENT_STATUS</span> לסמן, כך שהשקט נובע ולא נקבע.
+      </p>
+      <div class="mk-ctl">
+        <span class="mk-lbl">אילו אירועים ניתנים לסימון</span>
+        <button class="mk-btn" type="button" data-mode="any" aria-pressed="false">1 · כל אירוע</button>
+        <button class="mk-btn" type="button" data-mode="passed" aria-pressed="false">
+          2 · רק מה שעבר ולא סומן
+        </button>
+        <button class="mk-btn" type="button" data-mode="emph" aria-pressed="true">
+          3 · הכול, עם הדגשה
+        </button>
+        <span class="mk-k" style="margin-inline-start: 4px">§C</span>
+      </div>
+      <div class="mk-phones" id="stageA"></div>
+      <p class="mk-note" id="noteA"></p>
+
+      <!-- ══ §B — THE ALTERNATIVE ══════════════════════════════════════════════ -->
+      <h2>ב · רצועת סגירה אחת על הכרטיס<span class="mk-k">drawn to be rejected</span></h2>
+      <p class="mk-lede">
+        מראה את עצמה כשיש אירוע אחד, ומשקרת כשיש שניים: היא חייבת לסמן את כל ההפניות יחד, וזה
+        בדיוק העמימות ש-§א מפרקת. לכן היא מצוירת על מקום עם <b>שני</b> אירועים.
+      </p>
+      <div class="mk-phones" id="stageB"></div>
+      <div style="max-width: 640px">
+        <div class="mk-verdict mk-yes">
+          <span>א · על השורה</span>
+          <span
+            >שורה אחת = אירוע אחד = תוצאה אחת. אין מה לפרק, אין בורר, ואין דקדוק שני - השורה
+            שכבר אומרת ״אירוע · ארוחת בוקר״ מקבלת את שני הפעלים שחלים עליה.</span
+          >
+        </div>
+        <div class="mk-verdict mk-no">
+          <span>ב · רצועה אחת</span>
+          <span
+            >על שני אירועים היא חייבת להחליט במקום המשתמש: לסמן את שניהם, או לבחור אחד לפי
+            שעה - וזה בדיוק מה ש-ADR-0117 §5 אוסר לקרוא ככה (״תוצאה היא תכונה של <b>כל</b>
+            ההפניות של היום, לא של זו שניצחה את השעון״). היא גם מוסיפה דקדוק שלישי לכרטיס
+            שכבר יש לו שורה ובלוק.</span
+          >
+        </div>
+      </div>
+
+      <!-- ══ §C — MEASUREMENT ══════════════════════════════════════════════════ -->
+      <h2>ג · האם זה נכנס ב-360<span class="mk-k">the row is 40px and already full</span></h2>
+      <p class="mk-lede">
+        שורת הפניה היא <span class="mk-k">min-height: 40px</span> ומכילה סוג · תווית · חץ, והתווית
+        מקצרת בשלוש נקודות. השאלה היא אם היא <b>נחתכת</b> אחרי שהצמד לוקח את שלו - נמדד על תווית
+        ארוכה באמת, כי הפיקסטורות הקצרות של §א לא בסיכון ולכן לא ראיה.
+      </p>
+      <p class="mk-lede">
+        <b>והתשובה היא כן, בשני המסכים.</b> תווית של 199px מקבלת 146 ב-390 ו-116 ב-360. זה
+        המחיר האמיתי היחיד של §א, וההקלה הזולה ביותר מדודה כאן גם היא: הוצאת המילים
+        ״היינו שם?״ מהצמד מורידה אותו מ-119px ל-68px ומחזירה לתווית 197/167 - עדיין נחתך על
+        התווית הארוכה הזאת, אבל על רובן לא. הרקע הענברי כבר אומר שהשורה היא שאלה.
+      </p>
+      <div class="mk-phones">
+        <figure class="mk-phone" style="--w: 360px">
+          <figcaption>360×640 <span>· המסך הצר</span></figcaption>
+          <div class="mk-canvas" id="stageC"></div>
+        </figure>
+      </div>
+      <table class="mk-measure" id="measure">
+        <thead>
+          <tr>
+            <th>מה נמדד</th>
+            <th>390</th>
+            <th>360</th>
+          </tr>
+        </thead>
+        <tbody></tbody>
+      </table>
+      <p class="mk-note">
+        <b>מה שהמדידה לא מכריעה:</b> אם 32×32 נקרא כיעד נגיעה. הוא מתחת לרצפת ה-44px של
+        ADR-0017, בשורה שהיעד שלה הוא כל השאר - אותו סחר־חליפין שה-⋯ של
+        <span class="mk-k">ListRow</span> כבר עושה. זה למעבר על מכשיר, לא לטבלה.
+      </p>
+
+      <p class="mk-note" style="margin-top: 24px">
+        <b>מה שלא נבנה מחדש:</b> <span class="mk-k">verbs.done</span> /
+        <span class="mk-k">skip</span> / <span class="mk-k">restore</span> כבר מקבלים
+        <span class="mk-k">TripEvent</span>, עוברים דרך <span class="mk-k">applySetStatus</span>,
+        עובדים אופליין דרך ה-outbox ומוציאים טוסט עם ביטול. זה <b>קורא חדש, לא מכניזם חדש</b>
+        (CLAUDE.md כלל 8), ו-ADR-0027 §1 נשמר מעצם המבנה: רק הקשה של אדם, שום דבר לא מסמן את
+        עצמו.
+      </p>
+    </div>
+
+    <script>
+      const svg = (d) =>
+        `<svg class="icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="${d}"/></svg>`;
+      // The shipped paths (ADR-0137 for check/skip, ADR-0138's sweep for undo/caret).
+      const P = {
+        check: 'M5 12.6l4.7 4.7L19 7.4',
+        skip: 'M7.5 7.5l9 9 M16.5 7.5l-9 9',
+        undo: 'M9 14L4 9l5-5M20 20v-7a4 4 0 0 0-4-4H4',
+        caret: 'M5 9l7 7 7-7z',
+      };
+      const caret = `<svg class="icon" viewBox="0 0 24 24" fill="currentColor" stroke="none" style="transform:rotate(90deg)" aria-hidden="true"><path d="${P.caret}"/></svg>`;
+
+      let MODE = 'emph';
+
+      /** One reference row. `kind` decides whether a cluster is even possible: an idea and a
+       *  booking carry no `EVENT_STATUS`, so there is nothing to settle and the silence is a
+       *  consequence rather than a rule. */
+      function ref({ kind, label, outcome, passed, settleable = true }) {
+        const isEvent = kind === 'אירוע';
+        const canSettle = isEvent && settleable && (MODE !== 'passed' || passed);
+        const ask = MODE === 'emph' && passed && !outcome;
+        let cluster = '';
+        if (isEvent && outcome) {
+          cluster = `<span class="mk-settle">
+            <span class="mk-outcome ${outcome === 'done' ? 'done' : 'skip'}">
+              ${svg(outcome === 'done' ? P.check : P.skip)}${outcome === 'done' ? 'היינו' : 'דילגנו'}
+            </span>
+            <button class="mk-sbtn" type="button" title="ביטול הסימון" aria-label="ביטול הסימון">${svg(P.undo)}</button>
+          </span>`;
+        } else if (canSettle) {
+          cluster = `<span class="mk-settle">
+            ${ask ? '<span class="mk-ask-q">היינו שם?</span>' : ''}
+            <button class="mk-sbtn done" type="button" title="היינו" aria-label="היינו">${svg(P.check)}</button>
+            <button class="mk-sbtn skip" type="button" title="דילגנו" aria-label="דילגנו">${svg(P.skip)}</button>
+          </span>`;
+        }
+        return `<span class="mk-ref${ask ? ' ask' : ''}">
+          <button class="mk-open" type="button">
+            <span class="map-ref-kind">${kind}</span>
+            <span class="map-ref-label">${label}</span>
+            ${caret}
+          </button>
+          ${cluster}
+        </span>`;
+      }
+
+      /** The place card at the `map` stop: the shipped `.place` row plus its way-in block. */
+      function card({ name, glyph, hue, tags, refs, strip }) {
+        return `<div class="map-placecard">
+          <div class="place behind">
+            <span class="map-badge cat-${hue}">${glyph}</span>
+            <span class="map-main">
+              <span class="map-t">${name}</span>
+              <span class="map-m">${tags.map((x) => `<span class="map-tag ${x.cls || ''}">${x.text}</span>`).join('')}</span>
+            </span>
+            <span class="map-right"><span class="map-dist">1.2 ק״מ</span></span>
+            <span class="map-refs">${refs.join('')}${strip || ''}</span>
+          </div>
+        </div>`;
+      }
+
+      const phone = (w, cap, sub, html) =>
+        `<figure class="mk-phone" style="--w:${w}px"><figcaption>${cap} <span>· ${sub}</span></figcaption>
+         <div class="mk-canvas">${html}</div></figure>`;
+
+      const STRIP = `<span class="mk-strip"><span class="mk-strip-q">היינו שם?</span>
+        <button type="button">היינו</button><button type="button">דילגנו</button></span>`;
+
+      const NOTES = {
+        any: '<b>1 · כל אירוע.</b> תואם את תפריט ה-⋯ שכבר מציע היינו/דלג על כל אירוע, ו-ADR-0117 §2 כבר מטפל בסימון מוקדם (״סימנו את ארוחת הערב של 20:00 ב-11:00״ - אדם מנצח את השעון). המחיר: צמד על כל שורת אירוע, כולל כאלה שעוד לא קרו, ששם השאלה ״היינו שם?״ עוד לא נשאלה.',
+        passed:
+          '<b>2 · רק מה שעבר ולא סומן.</b> עונה בדיוק על הפער שדווח ולא יותר, והכי מעט UI. המחיר: אי אפשר לסמן מהמפה אירוע שעוד לא הגיע - וגם לא לבטל סימון, כי שורה שסומנה כבר לא ״עברה ולא סומנה״.',
+        emph: '<b>3 · הכול, עם הדגשה.</b> הצמד זמין על כל אירוע, והשורה שהיא שאלה פתוחה נראית כמו שאלה - ענבר, כי זו טענה על <b>זמן</b> (ADR-0028), ורק על שורה אחת בכל פעם. זו ברירת המחדל המצוירת כאן.',
+      };
+
+      function render() {
+        document.querySelectorAll('[data-mode]').forEach((b) => {
+          b.setAttribute('aria-pressed', String(b.dataset.mode === MODE));
+        });
+
+        const passedUnsettled = card({
+          name: 'קיסאבורו רמן',
+          glyph: '🍜',
+          hue: 'food',
+          tags: [{ text: 'אתמול · 13:00', cls: 'time' }, { text: 'עבר · לא סומן' }],
+          refs: [ref({ kind: 'אירוע', label: 'ארוחת צהריים', passed: true })],
+        });
+        const settled = card({
+          name: 'מקדש סנסו-ג׳י',
+          glyph: '🏛️',
+          hue: 'services',
+          tags: [{ text: 'אתמול · 09:30', cls: 'time' }, { text: 'היינו', cls: 'ok' }],
+          refs: [ref({ kind: 'אירוע', label: 'ביקור בוקר', passed: true, outcome: 'done' })],
+        });
+        const threeRefs = card({
+          name: 'תחנת שינג׳וקו',
+          glyph: '🚄',
+          hue: 'transit',
+          tags: [{ text: 'אתמול · 08:10', cls: 'time' }, { text: 'עבר · לא סומן' }],
+          refs: [
+            ref({ kind: 'אירוע', label: 'יציאה · שינקנסן', passed: true }),
+            ref({ kind: 'הזמנה', label: 'שינקנסן לקיוטו', passed: true }),
+            ref({ kind: 'אירוע', label: 'חזרה · שינקנסן', passed: true, outcome: 'skipped' }),
+          ],
+        });
+        const ideaOnly = card({
+          name: 'בלו בוטל קופי',
+          glyph: '🍜',
+          hue: 'food',
+          tags: [{ text: 'ללא יום' }, { text: 'על המדף', cls: 'mbadge' }],
+          refs: [ref({ kind: 'רעיון', label: 'על המדף · ללא יום' })],
+        });
+        document.getElementById('stageA').innerHTML =
+          phone(390, '390×844', 'עבר · לא סומן — הפער עצמו', passedUnsettled) +
+          phone(390, '390×844', 'סומן — התג + ביטול', settled) +
+          phone(390, '390×844', 'שלוש הפניות — האירועים בלבד מקבלים צמד', threeRefs) +
+          phone(390, '390×844', 'רעיון — אין מה לסמן', ideaOnly);
+        document.getElementById('noteA').innerHTML = NOTES[MODE];
+
+        document.getElementById('stageB').innerHTML =
+          phone(
+            390,
+            '390×844',
+            'אירוע אחד — נראית נכונה',
+            card({
+              name: 'מקדש סנסו-ג׳י',
+              glyph: '🏛️',
+              hue: 'services',
+              tags: [{ text: 'אתמול · 09:30', cls: 'time' }, { text: 'עבר · לא סומן' }],
+              refs: [ref({ kind: 'אירוע', label: 'ביקור בוקר', settleable: false })],
+              strip: STRIP,
+            }),
+          ) +
+          phone(
+            390,
+            '390×844',
+            'שני אירועים — על מה היא חלה?',
+            card({
+              name: 'תחנת שינג׳וקו',
+              glyph: '🚄',
+              hue: 'transit',
+              tags: [{ text: 'אתמול · 08:10', cls: 'time' }, { text: 'עבר · לא סומן' }],
+              refs: [
+                ref({ kind: 'אירוע', label: 'יציאה · שינקנסן', settleable: false }),
+                ref({ kind: 'אירוע', label: 'חזרה · שינקנסן', settleable: false }),
+              ],
+              strip: STRIP,
+            }),
+          );
+
+        document.getElementById('stageC').innerHTML = threeRefs;
+        requestAnimationFrame(measure);
+      }
+
+      /** Read the real boxes rather than asserting them — and measure the thing that can
+       *  actually FAIL. A first pass reported the label's own width, which is content-sized
+       *  and therefore identical at 390 and 360: a number that cannot move is not a
+       *  measurement. `.map-ref-label` ellipsises, so the question is whether it TRUNCATES
+       *  once the cluster takes its width — which needs a label long enough to be at risk,
+       *  not the short fixtures §A reads nicely with. */
+      const LONG_LABEL = 'יציאה · שינקנסן לקיוטו · רציף 14';
+      function measure() {
+        const probe = (w) => {
+          const host = document.createElement('div');
+          host.style.cssText = `position:absolute;left:-9999px;top:0;width:${w}px`;
+          host.dir = 'rtl';
+          // `mk-canvas` carries the override that keeps the card IN FLOW. Without it the probe
+          // measures a card that ignored the width it was given — which is how an earlier
+          // pass printed identical numbers for 390 and 360 and looked like a finding.
+          host.className = 'mk-canvas';
+          host.innerHTML = card({
+            name: 'תחנת שינג׳וקו',
+            glyph: '🚄',
+            hue: 'transit',
+            tags: [{ text: 'אתמול · 08:10', cls: 'time' }],
+            refs: [ref({ kind: 'אירוע', label: LONG_LABEL, passed: true })],
+          });
+          document.body.appendChild(host);
+          const row = host.querySelector('.mk-ref');
+          const label = host.querySelector('.map-ref-label');
+          const cluster = host.querySelector('.mk-settle');
+          const out = {
+            row: Math.round(row.getBoundingClientRect().width),
+            cluster: Math.round(cluster ? cluster.getBoundingClientRect().width : 0),
+            label: Math.round(label.getBoundingClientRect().width),
+            need: 0,
+            cut: false,
+          };
+          // `scrollWidth` LIES on a shrunk flex item that ellipsises — it reported "fits"
+          // for a 30-character label inside 116px, which is what made the whole verdict
+          // untrustworthy. So the natural width is measured on an UNCONSTRAINED clone in
+          // the same font, and truncation is the comparison between the two.
+          const ghost = label.cloneNode(true);
+          ghost.style.cssText =
+            'position:absolute;visibility:hidden;white-space:nowrap;width:auto;max-width:none;overflow:visible';
+          label.parentNode.appendChild(ghost);
+          out.need = Math.ceil(ghost.getBoundingClientRect().width);
+          ghost.remove();
+          out.cut = out.need > out.label + 1;
+          host.remove();
+          return out;
+        };
+        const a = probe(390);
+        const b = probe(360);
+        // The same rows with the `היינו שם?` text out of the cluster, because that phrase is
+        // the cheapest thing to give up if the truncation above is judged too dear — the
+        // amber row tint already says the row is a question.
+        const keep = MODE;
+        MODE = 'any';
+        const a2 = probe(390);
+        const b2 = probe(360);
+        MODE = keep;
+        const cell = (v, bad) => `<b class="${bad ? 'mk-tight' : ''}">${v}</b>`;
+        const rows = [
+          ['רוחב שורת ההפניה', cell(a.row + ' px'), cell(b.row + ' px')],
+          ['רוחב הצמד (״היינו שם?״ + ✓ ✕)', cell(a.cluster + ' px'), cell(b.cluster + ' px')],
+          ['רוחב שהתווית קיבלה', cell(a.label + ' px'), cell(b.label + ' px')],
+          ['רוחב שהתווית ביקשה', cell(a.need + ' px'), cell(b.need + ' px')],
+          ['נחתכה?', cell(a.cut ? 'כן' : 'לא', a.cut), cell(b.cut ? 'כן' : 'לא', b.cut)],
+          ['— בלי ״היינו שם?״: רוחב הצמד', cell(a2.cluster + ' px'), cell(b2.cluster + ' px')],
+          ['— בלי ״היינו שם?״: התווית קיבלה', cell(a2.label + ' px'), cell(b2.label + ' px')],
+          [
+            '— בלי ״היינו שם?״: נחתכה?',
+            cell(a2.cut ? 'כן' : 'לא', a2.cut),
+            cell(b2.cut ? 'כן' : 'לא', b2.cut),
+          ],
+        ];
+        document.querySelector('#measure tbody').innerHTML = rows
+          .map(([what, x, y]) => `<tr><td>${what}</td><td>${x}</td><td>${y}</td></tr>`)
+          .join('');
+      }
+
+      document.querySelectorAll('[data-mode]').forEach((b) =>
+        b.addEventListener('click', () => {
+          MODE = b.dataset.mode;
+          render();
+        }),
+      );
+      render();
+    </script>
+  </body>
+</html>
