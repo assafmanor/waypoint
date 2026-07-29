@@ -1834,10 +1834,11 @@ export function MapView() {
   // not rewritten: `PlaceResearch` already took only these three props and rendered
   // `.map-research`, which is ADR-0115 §7's reuse audit paying off.
   //
-  // It belongs HERE and not on the canvas for a fact rather than a preference: an
-  // Autocomplete prediction carries NO COORDINATES until the pick (ADR-0115 §2), so
-  // there is nothing to draw. The free half goes on the canvas because its places already
-  // carry them; the paid half is rows because it cannot. And it is in BOTH modes now —
+  // It is the paid half's ROWS. Its places are on the canvas too, as rings — ADR-0132 §7
+  // switched this half's SKU to Text Search, which returns each result WITH its location,
+  // retiring ADR-0115 §2's "a prediction carries no coordinates, so there is nothing to
+  // draw" on this surface. A coordless match is the exception, and it is the gap §8 names:
+  // a row here and nothing on the canvas. And it is in BOTH modes now —
   // ADR-0115 §6's "Plan mode only" is withdrawn, and its own §1 arm with it (§8a), so
   // `PLACE_SEARCH_MIN_CHARS` is what stands between a keystroke and a paid call.
   const googleHalf = searching && (
