@@ -20,13 +20,14 @@ import {
   MAP_RESULT_Z,
   PIN_TIER,
   pinZIndex,
+  type PinOutcome,
   type PinTier,
 } from '../../lib/map-pins';
 import { readMapBounds, useMapCamera } from '../../lib/useMapCamera';
 import type { LatLng, MapBounds } from '../../lib/map-camera';
 import type { MapsConfig } from '../../lib/map-config';
 import { MAP_CARD_RESERVE_H, MAP_CONNECTOR, MAP_ZOOM, type PinHue } from '../../constants';
-import { Icon } from '../Icon';
+import { Icon, type IconName } from '../Icon';
 import { t } from '../../i18n/he';
 import './map-pane.css';
 
@@ -50,9 +51,10 @@ const EMPTY_RESULTS: readonly MapResultPin[] = [];
  *  the pair in one selector instead of two.
  *
  *  One name to read carefully: this `skipped` is the CLOCK's tier, and its row
- *  counterpart is `.place.behind`. A row's own `.place.skipped` is the narrower
- *  claim — a human said this did not happen (ADR-0117 §4) — which the canvas does
- *  not draw, since every behind-you pin looks the same whatever closed it.
+ *  counterpart is `.place.behind`. A row's own `.place.skipped` is the narrower claim —
+ *  a human said this did not happen (ADR-0117 §4) — and the canvas draws THAT as a mark
+ *  in the pin's body rather than as a second paint (`PIN_OUTCOME_ICON` below), so the
+ *  tier stays one treatment and the outcome stays one axis.
  *
  *  **The PAINT lives here and the RATIO does not** (ADR-0131 §4). `aside` used to ride
  *  along in these strings, which was right while the only reason to be subordinate was
@@ -70,6 +72,34 @@ const PIN_TIER_PAINT: Record<PinTier, string> = {
   [PIN_TIER.ghost]: 'ghost',
 };
 
+/** ── WHAT HAPPENED HERE (ADR-0117 §1, on the canvas) ────────────────────────────────
+ *  The behind-you tier drew all three of ADR-0117's outcomes identically, so the canvas
+ *  could say *the clock passed this* and not *we were there* / *we skipped it*. The mark
+ *  goes in the pin's own content slot — the one the category glyph occupies — because it
+ *  is the only free axis left on a ladder that already spends hue, fill, hatch, grey,
+ *  hollow, ratio, two amber rings, an outline and a dot tier.
+ *
+ *  **Which means a settled pin trades its category glyph for its outcome**, deliberately:
+ *  standing in front of a place you have finished with, *what happened* outranks *what
+ *  kind of place it is*, and the category is still on the pin in its hue and still in
+ *  words on the row. Nothing else on the ladder loses anything — an unsettled passed pin
+ *  keeps its glyph, and its grey is the whole claim (§1's third state shows no tag on the
+ *  row for the same reason).
+ *
+ *  **Shape, not colour.** `--ok`/`--miss` tint the row's tags, where there is room for a
+ *  word beside them; here they could not work if we tried — the tier is defined by
+ *  `saturate(.3)`, which a mark inside it inherits. So the mark reads in the pin's own
+ *  ink, exactly as `Icon`'s cloud family carries sync state in its inner marks. */
+const PIN_OUTCOME_ICON: Record<PinOutcome, IconName> = { done: 'check', skipped: 'skip' };
+
+/** …and the same fact in words, for the pin's accessible name. A mark is invisible to a
+ *  screen reader, so the one surface that answers in shapes has to answer in the app's own
+ *  words too — the day view's `היינו`/`דילגנו`, which is what the row shows. */
+const PIN_OUTCOME_LABEL: Record<PinOutcome, string> = {
+  done: t.event.didThis,
+  skipped: t.event.skipped,
+};
+
 /** One pin, entirely in primitives. No `PlaceUsage`, no `Place`, no state — which
  *  is what lets a clock tick diff to nothing (§6). */
 export interface MapPin {
@@ -80,6 +110,11 @@ export interface MapPin {
   /** The category glyph. A ghost drops it (no fill to sit on), so it may be ''. */
   glyph: string;
   tier: PinTier;
+  /** What a human said happened here, when the pin is behind you and one of them did
+   *  (`pinOutcome`). It REPLACES the glyph rather than joining it — see
+   *  `PIN_OUTCOME_ICON`. Absent is ADR-0117 §1's third state, and the commonest one:
+   *  passed, and nobody settled it. */
+  outcome?: PinOutcome;
   /** The subordinate SIZE both out-of-scope populations take (ADR-0130 §3's ratio).
    *  Normally `isAsidePin(tier)`, but a live query withdraws it (ADR-0131 §4): search
    *  is scope-blind, so the day scope is not what chose the set and a match must not be
@@ -365,24 +400,38 @@ const PinMarker = memo(function PinMarker({
   ]
     .filter(Boolean)
     .join(' ');
+  // The mark is silent, so the outcome joins the NAME — `שם · היינו`, the app's own
+  // separator. Built here rather than folded into the screen's `label` so the words and
+  // the shape they stand in for are written in one place.
+  const name = pin.outcome ? `${pin.label} · ${PIN_OUTCOME_LABEL[pin.outcome]}` : pin.label;
   return (
     <AdvancedMarker
       position={{ lat: pin.lat, lng: pin.lng }}
       zIndex={pinZIndex(pin)}
-      title={pin.label}
+      title={name}
       onClick={() => onSelect(pin.placeId)}
     >
-      <div className={cls} role="button" aria-label={pin.label}>
+      <div className={cls} role="button" aria-label={name}>
         {/* The tag belongs to the amber cue, so it is rendered only with it —
             un-scoping its styles would still leave the text in the DOM. The two
             cues cannot co-occur on one pin, so this is one slot, not two. */}
         {pin.nowStop && <span className="pin-tag">{t.map.happeningNow}</span>}
         {pin.nextStop && <span className="pin-tag">{t.map.nextStop}</span>}
+        {/* One content slot, two things that can fill it. It stays `.pin-g` in both
+            cases so the glyph's whole existing treatment — the counter-rotation, the
+            size-off-`--pin-u`, and being dropped at the dot tier and under the errand's
+            demotion — applies to the mark with nothing re-stated. */}
         <span className="pin-b">
-          {pin.glyph && (
-            <span className="pin-g" aria-hidden="true">
-              {pin.glyph}
+          {pin.outcome ? (
+            <span className="pin-g outcome" aria-hidden="true">
+              <Icon name={PIN_OUTCOME_ICON[pin.outcome]} />
             </span>
+          ) : (
+            pin.glyph && (
+              <span className="pin-g" aria-hidden="true">
+                {pin.glyph}
+              </span>
+            )
           )}
         </span>
         {/* The order, as a number — a line between two stops is symmetric and

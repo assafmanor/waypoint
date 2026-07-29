@@ -63,9 +63,11 @@ import {
   isAsidePin,
   isFramedByCamera,
   PIN_TIER,
+  pinOutcome,
   pinSizeCss,
   placePinTier,
   placePoint,
+  type PinContext,
   type PinTier,
 } from '../lib/map-pins';
 import { countPointsInBounds, pointInBounds, type LatLng, type MapBounds } from '../lib/map-camera';
@@ -840,8 +842,16 @@ export function MapView() {
   // resolves which day a place is read as, but a day you are arranging has no past — and
   // the pins you can least afford to fade are the ones you came to rearrange. It sits
   // beside `nextStopId`/`nowStopId`, which are Trip-only for the mirror-image reason.
-  const pinTier = (usage: PlaceUsage): PinTier =>
-    placePinTier(usage, { onDate: scopedDate, nowMs, today, planning: mode === 'plan' });
+  // One context for both derivations, because they have to agree: the tier says which day
+  // the pin is read as, and the mark reports on THAT day (`pinOutcome`'s rule 2). Built in
+  // the render body, not memoized — `nowMs` ticks every second, so a memo would rebuild it
+  // anyway, and it is only ever read here.
+  const pinCtx: PinContext = { onDate: scopedDate, nowMs, today, planning: mode === 'plan' };
+  // `planning` withdraws the behind-you tier in Plan mode (ADR-0130 §2): the clock still
+  // resolves which day a place is read as, but a day you are arranging has no past — and
+  // the pins you can least afford to fade are the ones you came to rearrange. It sits
+  // beside `nextStopId`/`nowStopId`, which are Trip-only for the mirror-image reason.
+  const pinTier = (usage: PlaceUsage): PinTier => placePinTier(usage, pinCtx);
 
   // Built every render (it is cheap), then memoized on its own CONTENT below: the
   // screen re-renders every second and a fresh array identity would re-diff every
@@ -884,6 +894,11 @@ export function MapView() {
               ? iconForCategory(usage.pin.category)
               : '📍',
         tier,
+        // WHICH KIND of behind-you it is (ADR-0117 §1 on the canvas). Derived from the
+        // SAME context the tier is, so the grey and the mark can never describe two
+        // different days — and undefined on every other tier, which is what keeps a ✓ off
+        // another day's ghost and out of Plan mode entirely.
+        outcome: pinOutcome(usage, pinCtx),
         // THE PROMOTION (ADR-0131 §4). `aside` is the subordinate SIZE; the tier class
         // beside it is the paint. Under a query the day scope is not what chose this
         // set, so a match must not wear the ratio that means "not what you are looking
@@ -917,6 +932,9 @@ export function MapView() {
         p.hue,
         p.glyph,
         p.tier,
+        // In the key for the same reason `aside` is: it is a rendered mark, and a place
+        // settled while the tab is open changes nothing else about its pin.
+        p.outcome,
         // In the key because it is a rendered class: a promotion that changed the paint
         // but not this string would hand the memo an "equal" array and the markers would
         // keep the old ratio. The pin SET usually changes with the query too, so the bug

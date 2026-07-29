@@ -40,7 +40,9 @@ export const PIN_TIER = {
   idea: 'idea',
   /** A strictly-middle night of an ambient stay (ADR-0054): backdrop, not a stop. */
   ambient: 'ambient',
-  /** Done, skipped, or simply passed — desaturated, and it KEEPS its number.
+  /** Done, skipped, or simply passed — desaturated, and it KEEPS its number. Which of
+   *  the three it is rides on the pin as a mark, not as a tier ({@link pinOutcome}):
+   *  the grey says *behind you*, a ✓/✕ says *what happened*.
    *  **Trip mode only** (ADR-0130 §2): in Plan mode the day is a shape to arrange,
    *  and nothing on it is behind you. */
   behind: 'behind',
@@ -109,6 +111,44 @@ export function placePinTier(usage: PlaceUsage, ctx: PinContext): PinTier {
 
 const ideaOrUpcoming = (usage: PlaceUsage): PinTier =>
   isOnShelf(usage) ? PIN_TIER.idea : PIN_TIER.upcoming;
+
+/** What a human said happened at a place, as the canvas draws it. The stored vocabulary
+ *  (`DayUsage['outcome']`, ADR-0117 §1), never a second one — the row and the pin have to
+ *  be answering with the same word. */
+export type PinOutcome = NonNullable<DayUsage['outcome']>;
+
+/**
+ * The outcome mark a pin carries, or `undefined` for none (ADR-0117 §1 on the canvas —
+ * the "Phase 6 inherits it" its Consequences promised).
+ *
+ * The `behind` tier used to draw all three of ADR-0117's states identically, so the
+ * canvas said *the clock passed this* and could not say which of *we were there* /
+ * *we skipped it* / *nobody said* it was. The list has always said it in words; a pin
+ * has no room for words, so it says it in a mark.
+ *
+ * Three precedence rules, each one load-bearing:
+ *
+ * 1. **Only the `behind` tier is marked.** An outcome is a claim about a place you have
+ *    finished with, and every other tier contradicts it: an upcoming stop marked done is
+ *    not upcoming (ADR-0117 §2 already sank it here), and the two aside tiers are drawn
+ *    subordinate precisely because this day did not choose them — a ✓ on another day's
+ *    hollow ghost would report on a day you are not looking at. It also falls out that
+ *    **Plan mode draws no marks at all**, `planning` having withdrawn the tier
+ *    (ADR-0130 §2): a day you are arranging has no past to report on.
+ * 2. **The day the TIER read, not the day the row reads.** `placeDay`, the same call and
+ *    the same context `placePinTier` resolves against — never `placeMetaDay`, whose
+ *    all-days walk to the next edge is right for a row's wording and would let a pin be
+ *    greyed by one day and marked by another.
+ * 3. **A strictly-middle stay night reports nothing.** `spanDays` gives every day of a
+ *    span the event's outcome, so marking a hotel done would stamp a ✓ on each of its
+ *    nights — a claim nobody made about any of them. Same suppression the row already
+ *    applies for the same reason (`Map.tsx`'s `dayMeta`).
+ */
+export function pinOutcome(usage: PlaceUsage, ctx: PinContext): PinOutcome | undefined {
+  if (placePinTier(usage, ctx) !== PIN_TIER.behind) return undefined;
+  const day = placeDay(usage, ctx);
+  return day?.prominence === 'ambient' ? undefined : day?.outcome;
+}
 
 /**
  * `placeId → the pin's number`: the index in `comparePlacesBySchedule`'s

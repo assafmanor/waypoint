@@ -189,6 +189,38 @@
   opacity: 0.62;
 }
 
+/* ── AND WHICH KIND OF BEHIND-YOU IT IS (ADR-0117 §1, on the canvas) ──────────────
+   The tier above is the CLOCK's claim and it is one treatment for all three of ADR-0117's
+   outcomes, which left the canvas unable to say whether a grey pin was somewhere we went,
+   somewhere we skipped, or somewhere nobody ever settled. The mark says it, in the pin's
+   one content slot — see `PIN_OUTCOME_ICON` for why that slot and not a second corner
+   stamp (the number already owns the only free corner, and a third floating object on a
+   34px teardrop is mush).
+
+   It is `.pin-g` plus a modifier rather than an element of its own, so the counter-
+   rotation, the size-off-`--pin-u` and both of the places that DROP the glyph (the dot
+   tier, the errand's context demotion) already cover it. Two overrides are all it needs:
+
+   • **`--card`, not `--ok`/`--miss`.** The status hues live on the row's tags, where a
+     word sits beside them; here they cannot work at all — the parent's `saturate(.3)`
+     desaturates any child, so a green check would arrive as the same olive an X would.
+     Shape carries the state, which is `Icon`'s own rule for the sync family. White is
+     then the one value with contrast against every desaturated category hue, and it is
+     what `.pin-n` already stamps on `--ink`.
+   • **Bigger and heavier than an emoji.** A category emoji at 0.38 fills its box; a
+     two-stroke SVG at the same size reads as a scratch. 0.46 with a 2.75 stroke lands a
+     ~15px mark at the pin's floor — the sync badge's own weight, and the number that
+     wants re-checking on a device first (the visual pass the backlog carries). */
+.map-pin .pin-g.outcome {
+  display: grid;
+  place-items: center;
+  color: var(--ink);
+  font-size: calc(var(--pin-u) * 0.46);
+}
+.map-pin .pin-g.outcome .icon {
+  stroke-width: 2.75;
+}
+
 /* THE ORDER, as a number (§6). A line between two stops is symmetric, so it never
    said which end you reach first; the number does, and it is free — it is the index
    in `comparePlacesBySchedule`'s day sequence, the same order the Day view renders.
