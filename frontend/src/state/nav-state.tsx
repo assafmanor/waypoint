@@ -24,7 +24,7 @@ import {
   useRef,
   type ReactNode,
 } from 'react';
-import { useNavigate, useSearchParams, type NavigateFunction } from 'react-router-dom';
+import { useLocation, useNavigate, useSearchParams, type NavigateFunction } from 'react-router-dom';
 import { ICONS, type TabId } from '../constants';
 import type { Mode } from '../lib/mode';
 import { getNow } from '../lib/useClock';
@@ -446,6 +446,32 @@ export function NavProvider({ children }: { children: ReactNode }) {
     // double-mount and any rapid re-render).
     while (markerDepthRef.current < stackRef.current.length) pushMarker();
   }, [pushMarker, forgetMarkersFromElsewhere]);
+
+  // **AND MARKERS FOLLOW THE URL, not just the layer stack** (owner, session 177: _"back
+  // (goes back to event form) → back (closes app instead of closing the modal)"_).
+  //
+  // Reconciling only on register/unregister assumed a layer's URL never moves under it. Every
+  // errand return breaks that: the form re-opens and THEN the destination rewrites its own URL
+  // with `replace` — the Index stripping `?focus=bookings` once it has acted, `cancelErrand`
+  // navigating to `returnTo`. The layer stays registered across it, so nothing reconciled, and
+  // its marker was left describing a URL the app had already left. `ridable` then reads false
+  // with a layer plainly open.
+  //
+  // A cancelable press hides this completely — the fallback cancels and peels — which is why
+  // it survived a browser harness where every traversal is cancelable. The device does not
+  // grant that: consecutive presses arrive UNCANCELABLE (the activation gate this whole
+  // scheme exists for), and then there is nothing to ride and nothing to cancel, so the
+  // traversal commits and takes the screen with it. From the trip's first form that is the
+  // app closing.
+  //
+  // Re-running the same reconcile on every location change fixes it at the source: the
+  // per-URL depth resets and each still-open layer gets a marker HERE. It cannot loop —
+  // `pushMarker` navigates to the same URL, so the next pass finds depth already matching
+  // the stack and pushes nothing.
+  const location = useLocation();
+  useEffect(() => {
+    reconcileMarkers();
+  }, [location.key, reconcileMarkers]);
 
   // Route the platform system-back (Android hardware/edge back, desktop button)
   // through the SAME resolveBack as every other trigger (ADR-0090). Two paths:

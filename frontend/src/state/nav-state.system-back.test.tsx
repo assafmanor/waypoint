@@ -18,7 +18,7 @@
 import { afterEach, beforeEach, describe, expect, it } from 'vitest';
 import { useState, type ReactNode } from 'react';
 import { cleanup, fireEvent, render, screen, waitFor } from '@testing-library/react';
-import { BrowserRouter, useLocation } from 'react-router-dom';
+import { BrowserRouter, useLocation, useNavigate } from 'react-router-dom';
 import { ToastProvider } from '../ui/Toast';
 import { NavProvider, useBackLayer, useMarkInsideTrip } from './nav-state';
 
@@ -130,6 +130,31 @@ function ScreenWithToggleLayer({ label = 'field' }: { label?: string }) {
 }
 const isOpen = (label = 'field') => screen.getByTestId(`state-${label}`).textContent === 'open';
 
+/** A layer that OUTLIVES a `replace` of its own URL — the shape every errand return has. The
+ *  Index strips `?focus=bookings` the moment it has acted on it, and `cancelErrand` navigates
+ *  to `returnTo`, both with `replace`, both while the re-opened form's layer is registered.
+ *  Nothing re-reconciles on a plain navigation, so the layer's marker is left describing a URL
+ *  the app is no longer on. */
+function ScreenThatReplacesItsUrl() {
+  const [open, setOpen] = useState(false);
+  const navigate = useNavigate();
+  useBackLayer(() => {
+    setOpen(false);
+    return { remainsActive: false };
+  }, open);
+  return (
+    <>
+      <button data-testid="open-form" onClick={() => setOpen(true)}>
+        open
+      </button>
+      <button data-testid="strip-param" onClick={() => navigate('/?tab=index', { replace: true })}>
+        strip
+      </button>
+      <span data-testid="state-form">{open ? 'open' : 'closed'}</span>
+    </>
+  );
+}
+
 /** Marks the tree as being inside the trip shell, which is what makes `resolveBack` treat a
  *  `?tab=` as a tab rather than a shell route. */
 function InsideTrip() {
@@ -187,6 +212,36 @@ describe('the system back, against a fake Navigation API', () => {
   it('leaves the tab for Home once nothing is open', async () => {
     render(wrap(<ScreenWithToggleLayer />));
     await pressBack('/');
+  });
+
+  // **A LAYER THAT SURVIVED A `replace` OF ITS OWN URL** (owner, session 177: _"back (goes
+  // back to event form) -> back (closes app instead of closing the modal)"_).
+  //
+  // Every errand return has this shape: the form re-opens, and then the destination rewrites
+  // its own URL with `replace` — the Index stripping `?focus=bookings`, `cancelErrand`
+  // navigating to `returnTo`. The layer stays registered across that, but marker bookkeeping
+  // only reconciles on register/unregister, so the marker is left describing the OLD url and
+  // `ridable` goes false while a layer is plainly open.
+  //
+  // With a cancelable press the fallback cancels and peels, so this is invisible. The device
+  // does not grant that: consecutive presses arrive UNCANCELABLE, and then there is nothing
+  // to ride and nothing to cancel — the traversal commits and takes the screen with it.
+  it('peels the layer after its url was replaced, on a cancelable press', async () => {
+    render(wrap(<ScreenThatReplacesItsUrl />));
+    fireEvent.click(screen.getByTestId('open-form'));
+    fireEvent.click(screen.getByTestId('strip-param'));
+
+    await pressBack('/?tab=index');
+    expect(isOpen('form')).toBe(false);
+  });
+
+  it('peels it on a NON-cancelable press too, instead of travelling', async () => {
+    render(wrap(<ScreenThatReplacesItsUrl />, false));
+    fireEvent.click(screen.getByTestId('open-form'));
+    fireEvent.click(screen.getByTestId('strip-param'));
+
+    await pressBack('/?tab=index');
+    expect(isOpen('form')).toBe(false);
   });
 
   // A SECOND PRESS IS NOT CANCELABLE (the activation gate — WHATWG nav-history: a
