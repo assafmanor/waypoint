@@ -1,6 +1,7 @@
 // @vitest-environment jsdom
 import { afterEach, describe, it, expect, vi } from 'vitest';
 import { cleanup, fireEvent, render, screen, within } from '@testing-library/react';
+import { wrapNav } from '../../test/nav-harness';
 import { WhenField } from './WhenField';
 
 const spanProps = {
@@ -17,15 +18,17 @@ describe('WhenField — day variant', () => {
   it('round-trips the date and preserves the time range', () => {
     const onChange = vi.fn();
     const { container } = render(
-      <WhenField
-        variant="day"
-        date="2026-07-20"
-        start="09:00"
-        end="10:00"
-        onChange={onChange}
-        minDate="2026-07-01"
-        maxDate="2026-07-31"
-      />,
+      wrapNav(
+        <WhenField
+          variant="day"
+          date="2026-07-20"
+          start="09:00"
+          end="10:00"
+          onChange={onChange}
+          minDate="2026-07-01"
+          maxDate="2026-07-31"
+        />,
+      ),
     );
     const date = container.querySelector('input[type="date"]') as HTMLInputElement;
     expect(date.value).toBe('2026-07-20');
@@ -39,20 +42,24 @@ describe('WhenField — span variant', () => {
 
   it('day variant: shows the zone chip only when a zone is passed (ADR-0107 §6)', () => {
     const bare = render(
-      <WhenField variant="day" date="2026-07-20" start="09:00" end="10:00" onChange={() => {}} />,
+      wrapNav(
+        <WhenField variant="day" date="2026-07-20" start="09:00" end="10:00" onChange={() => {}} />,
+      ),
     );
     expect(bare.container.querySelector('.zchip')).toBeNull();
     cleanup();
 
     const zoned = render(
-      <WhenField
-        variant="day"
-        date="2026-07-20"
-        start="09:00"
-        end="10:00"
-        onChange={() => {}}
-        zone={{ value: 'Asia/Tokyo' }}
-      />,
+      wrapNav(
+        <WhenField
+          variant="day"
+          date="2026-07-20"
+          start="09:00"
+          end="10:00"
+          onChange={() => {}}
+          zone={{ value: 'Asia/Tokyo' }}
+        />,
+      ),
     );
     expect(zoned.container.querySelector('.zchip-zone')!.textContent).toContain('Tokyo');
     // No onChange → a statement, not a control (the zone follows a picked place).
@@ -60,7 +67,9 @@ describe('WhenField — span variant', () => {
   });
 
   it('bounds the end date to [start, tripEnd] so it can never precede the start', () => {
-    render(<WhenField {...spanProps} start="2026-07-26T08:00" end="" onChange={vi.fn()} />);
+    render(
+      wrapNav(<WhenField {...spanProps} start="2026-07-26T08:00" end="" onChange={vi.fn()} />),
+    );
     const dates = document.querySelectorAll('input[type="date"]');
     // Start leg: full trip range. End leg: earliest is the start's day.
     expect((dates[0] as HTMLInputElement).min).toBe('2026-07-01');
@@ -71,12 +80,14 @@ describe('WhenField — span variant', () => {
 
   it('seeds both endpoints and marks a crossed day with a +N badge', () => {
     render(
-      <WhenField
-        {...spanProps}
-        start="2026-07-26T23:20"
-        end="2026-07-27T17:05"
-        onChange={vi.fn()}
-      />,
+      wrapNav(
+        <WhenField
+          {...spanProps}
+          start="2026-07-26T23:20"
+          end="2026-07-27T17:05"
+          onChange={vi.fn()}
+        />,
+      ),
     );
     const dates = document.querySelectorAll('input[type="date"]');
     expect((dates[0] as HTMLInputElement).value).toBe('2026-07-26');
@@ -88,14 +99,16 @@ describe('WhenField — span variant', () => {
 
   it('reads a lodging span in nights from the two calendar days (no crosses-a-day note)', () => {
     render(
-      <WhenField
-        {...spanProps}
-        labels={{ start: 'צ׳ק-אין 🏨', end: 'צ׳ק-אאוט 🧳' }}
-        durationUnit="nights"
-        start="2026-07-15T15:00"
-        end="2026-07-17T10:00"
-        onChange={vi.fn()}
-      />,
+      wrapNav(
+        <WhenField
+          {...spanProps}
+          labels={{ start: 'צ׳ק-אין 🏨', end: 'צ׳ק-אאוט 🧳' }}
+          durationUnit="nights"
+          start="2026-07-15T15:00"
+          end="2026-07-17T10:00"
+          onChange={vi.fn()}
+        />,
+      ),
     );
     // Two calendar days apart → "2 לילות", not the elapsed-time "יום".
     expect(screen.getByText(/משך:/).textContent).toContain('2 לילות');
@@ -104,7 +117,7 @@ describe('WhenField — span variant', () => {
 
   it('opens a time panel and AUTO-CLOSES it when a time is picked', () => {
     const onChange = vi.fn();
-    render(<WhenField {...spanProps} start="2026-07-26" end="" onChange={onChange} />);
+    render(wrapNav(<WhenField {...spanProps} start="2026-07-26" end="" onChange={onChange} />));
     // Open the departure time panel (the first leg).
     fireEvent.click(screen.getAllByText('הוסף שעה')[0]);
     expect(document.querySelector('.tp-panel')).toBeTruthy();
@@ -118,7 +131,9 @@ describe('WhenField — span variant', () => {
   it('a time picked before a date borrows the defaultDate', () => {
     const onChange = vi.fn();
     render(
-      <WhenField {...spanProps} start="" end="" defaultDate="2026-07-26" onChange={onChange} />,
+      wrapNav(
+        <WhenField {...spanProps} start="" end="" defaultDate="2026-07-26" onChange={onChange} />,
+      ),
     );
     fireEvent.click(screen.getAllByText('הוסף שעה')[0]);
     const list = document.querySelector('.tp-list') as HTMLElement;

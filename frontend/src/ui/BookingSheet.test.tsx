@@ -1,8 +1,7 @@
 // @vitest-environment jsdom
 import { afterEach, describe, it, expect, vi } from 'vitest';
-import { type ReactNode } from 'react';
 import { cleanup, fireEvent, render, screen } from '@testing-library/react';
-import { MemoryRouter } from 'react-router-dom';
+import { wrapNav } from '../test/nav-harness';
 import { BOOKING_SOURCE, BOOKING_TYPE, type Booking, type Place } from '@waypoint/shared';
 
 Element.prototype.scrollIntoView = vi.fn();
@@ -59,20 +58,8 @@ vi.mock('../state/trip-state', () => ({
   }),
 }));
 
-import { ToastProvider } from './Toast';
-import { NavProvider } from '../state/nav-state';
 import { BookingSheet } from './BookingSheet';
 import { t } from '../i18n/he';
-
-function wrap(node: ReactNode) {
-  return (
-    <MemoryRouter>
-      <ToastProvider>
-        <NavProvider>{node}</NavProvider>
-      </ToastProvider>
-    </MemoryRouter>
-  );
-}
 
 const flight: Booking = {
   id: 'bk',
@@ -91,7 +78,7 @@ describe('BookingSheet — transport route as picked places (ADR-0113 follow-up)
   afterEach(() => cleanup());
 
   it('a transport booking shows its endpoints as place pickers + a route preview', () => {
-    render(wrap(<BookingSheet booking={flight} onClose={() => {}} />));
+    render(wrapNav(<BookingSheet booking={flight} onClose={() => {}} />));
     // Both endpoint names render (the title-row RouteLabel preview + each picker
     // trigger), and there's no longer a free-text route input.
     expect(screen.getAllByText('תל אביב').length).toBeGreaterThanOrEqual(1);
@@ -104,7 +91,9 @@ describe('BookingSheet — transport route as picked places (ADR-0113 follow-up)
 
   it('a fresh transport booking shows the route-preview ghost until endpoints are picked', () => {
     render(
-      wrap(<BookingSheet booking={null} seed={{ type: BOOKING_TYPE.FLIGHT }} onClose={() => {}} />),
+      wrapNav(
+        <BookingSheet booking={null} seed={{ type: BOOKING_TYPE.FLIGHT }} onClose={() => {}} />,
+      ),
     );
     expect(screen.getByText(t.index.form.routePreviewGhost)).toBeTruthy();
   });
@@ -112,7 +101,7 @@ describe('BookingSheet — transport route as picked places (ADR-0113 follow-up)
   it('shows a zone note so each leg reads in its own zone (ADR-0107 form authoring)', () => {
     // The sheet renders through a Modal portal, so query the document, not the
     // render container.
-    render(wrap(<BookingSheet booking={flight} onClose={() => {}} />));
+    render(wrapNav(<BookingSheet booking={flight} onClose={() => {}} />));
     // The flight crosses zones (Jerusalem → Tokyo, Tokyo 6h ahead): the note says
     // each end is local time + the destination is ahead — no English city names.
     const note = document.querySelector('.bs-zone-note');
@@ -137,7 +126,7 @@ describe('BookingSheet — per-end zone overrides (ADR-0107 §6 session-99 amend
   const chips = () => Array.from(document.querySelectorAll('.zchip'));
 
   it('states each leg zone, and only the unknowable end is correctable', () => {
-    render(wrap(<BookingSheet booking={halfKnown} onClose={() => {}} />));
+    render(wrapNav(<BookingSheet booking={halfKnown} onClose={() => {}} />));
     const [start, end] = chips();
     // Origin: a real place answers the zone → a statement, no control (§3 — the
     // honest edit is the place itself).
@@ -149,7 +138,7 @@ describe('BookingSheet — per-end zone overrides (ADR-0107 §6 session-99 amend
 
   it('both legs are correctable when neither endpoint resolves a zone', () => {
     render(
-      wrap(
+      wrapNav(
         <BookingSheet
           booking={{ ...flight, fromPlaceId: 'pl-lite', toPlaceId: 'pl-lite' }}
           onClose={() => {}}
@@ -160,7 +149,7 @@ describe('BookingSheet — per-end zone overrides (ADR-0107 §6 session-99 amend
   });
 
   it('pins ONE end only — a crossing needs two overrides, not one for both', () => {
-    render(wrap(<BookingSheet booking={halfKnown} onClose={() => {}} />));
+    render(wrapNav(<BookingSheet booking={halfKnown} onClose={() => {}} />));
     fireEvent.click(chips()[1].querySelector<HTMLElement>('.zchip-btn')!);
     fireEvent.change(screen.getByPlaceholderText(t.zonePicker.searchPlaceholder), {
       target: { value: 'reykjavik' },
@@ -176,7 +165,7 @@ describe('BookingSheet — per-end zone overrides (ADR-0107 §6 session-99 amend
 
   it('reads a stored override back as pinned, and the reset clears it with null', () => {
     render(
-      wrap(
+      wrapNav(
         <BookingSheet
           booking={{ ...halfKnown, endDisplayTimezone: 'Atlantic/Reykjavik' }}
           onClose={() => {}}
@@ -194,7 +183,7 @@ describe('BookingSheet — per-end zone overrides (ADR-0107 §6 session-99 amend
 
   it('a single-place booking has one chip, and saving clears the unused end', () => {
     render(
-      wrap(
+      wrapNav(
         <BookingSheet
           booking={{
             ...flight,
@@ -223,7 +212,7 @@ describe('BookingSheet — per-end zone overrides (ADR-0107 §6 session-99 amend
   });
 
   it('an untouched form sends no zone keys at all', () => {
-    render(wrap(<BookingSheet booking={halfKnown} onClose={() => {}} />));
+    render(wrapNav(<BookingSheet booking={halfKnown} onClose={() => {}} />));
     fireEvent.click(screen.getByText(t.common.save));
     const patch = indexVerbs.updateBooking.mock.calls[0][1];
     expect('startDisplayTimezone' in patch).toBe(false);

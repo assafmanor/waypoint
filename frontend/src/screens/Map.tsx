@@ -1046,6 +1046,23 @@ export function MapView() {
     setGhostId(null);
     setSelectedResultId(null);
   }, []);
+  // **A SELECTION IS A BACK LAYER, because the canvas already dismisses it** (owner, session
+  // 176: _"when there's an implicit way to go back (closing a modal by tapping outside it for
+  // example) we should also treat system back as the same"_). Selecting raises the place card
+  // and a tap on blank canvas clears it (`onCanvasTap` below is this same function) — so back
+  // owed that and was leaving the tab instead, throwing away the screen where the canvas
+  // would only have thrown away the selection.
+  //
+  // Registered on there BEING a selection, which also keeps the ordering honest against this
+  // screen's other two layers: a layer joins the stack when it becomes active, so whichever
+  // of {selection, query row, errand} you opened last is the one back peels first.
+  useBackLayer(
+    () => {
+      clearSelection();
+      return { remainsActive: false };
+    },
+    selectedId != null || ghostId != null || selectedResultId != null,
+  );
 
   // A RING TAP selects its ROW — and, at the map extreme where there is no row, raises the
   // result's own CARD (`resultCard` below). That is the third occupant ADR-0132 §8 made the

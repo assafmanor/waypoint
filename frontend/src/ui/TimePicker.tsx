@@ -12,6 +12,7 @@
 // (Multi-DAY spans are the booking span's job — same TimeField, plus a date per
 // endpoint; see WhenField.)
 import { useMemo, useState } from 'react';
+import { useBackLayer } from '../state/nav-state';
 import { OVERNIGHT } from '../constants';
 import { t } from '../i18n/he';
 import { hoursPhrase } from '../lib/duration';
@@ -86,6 +87,15 @@ export function TimePicker({
     setOpen(null);
     setNote(null);
   };
+
+  // **THE PANEL IS A BACK LAYER** (owner, session 176). Its `.tp-backdrop` exists purely so a
+  // tap outside closes it — an implicit way out — so a system back owes the same one. Without
+  // this, back fell through to the host form's layer and discarded the whole form. Registered
+  // on the open state, so the layer lands above the form's and peels first.
+  useBackLayer(() => {
+    close();
+    return { remainsActive: false };
+  }, open !== null);
 
   // Pick a start; preserve the existing duration, clamped to the latest end the
   // new start allows. The TimeField owns closing its own panel.

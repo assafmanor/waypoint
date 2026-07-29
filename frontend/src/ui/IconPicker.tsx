@@ -16,6 +16,7 @@ import {
   searchVibeIcons,
   type Destination,
 } from '@waypoint/shared';
+import { useBackLayer } from '../state/nav-state';
 import { t } from '../i18n/he';
 
 const ALL = 'all';
@@ -44,6 +45,20 @@ export function IconPicker({
   const wrapRef = useRef<HTMLDivElement>(null);
   const panelId = useId();
   const tripMode = destinations != null;
+
+  // **THE PANEL IS A BACK LAYER** (owner, session 176: _"when there's an implicit way to go
+  // back (closing a modal by tapping outside it for example) we should also treat system back
+  // as the same"_). It closes on a tap outside and on Escape but renders its own panel rather
+  // than going through `Modal`, so it was never in the back stack — a system back fell
+  // straight through to the FORM's layer and threw away what you were typing, while a tap two
+  // pixels to the left only closed the panel.
+  //
+  // Registered on `open`, which is what makes the ordering right: the panel opens after its
+  // host form mounted, so its layer lands ABOVE the form's and peels first.
+  useBackLayer(() => {
+    setOpen(false);
+    return { remainsActive: false };
+  }, open);
 
   useEffect(() => {
     if (!open) return;

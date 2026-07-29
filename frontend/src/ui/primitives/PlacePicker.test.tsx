@@ -1,8 +1,7 @@
 // @vitest-environment jsdom
 import { afterEach, beforeEach, describe, expect, it, vi, type Mock } from 'vitest';
-import { type ReactNode } from 'react';
 import { cleanup, fireEvent, render, screen, waitFor } from '@testing-library/react';
-import { MemoryRouter } from 'react-router-dom';
+import { wrapNav } from '../../test/nav-harness';
 import type { Place } from '@waypoint/shared';
 
 vi.mock('../../lib/api', async (importOriginal) => {
@@ -25,21 +24,11 @@ vi.mock('../../state/trip-state', () => ({
 }));
 
 import { searchPlaces } from '../../lib/api';
-import { NavProvider } from '../../state/nav-state';
-import { ToastProvider } from '../Toast';
 import { PlacePicker } from './PlacePicker';
 import { t } from '../../i18n/he';
 
 const searchMock = searchPlaces as unknown as Mock;
 const PREDICTION = { googlePlaceId: 'g-shibuya', primaryText: 'Shibuya', secondaryText: 'Tokyo' };
-
-const wrap = (node: ReactNode) => (
-  <MemoryRouter>
-    <ToastProvider>
-      <NavProvider>{node}</NavProvider>
-    </ToastProvider>
-  </MemoryRouter>
-);
 
 describe('PlacePicker', () => {
   beforeEach(() => {
@@ -52,15 +41,15 @@ describe('PlacePicker', () => {
 
   it('shows the placeholder when empty and the place name when filled', () => {
     places = [{ id: 'pl1', name: 'Shibuya Crossing' } as Place];
-    const { rerender } = render(wrap(<PlacePicker onChange={() => {}} placeholder="pick" />));
+    const { rerender } = render(wrapNav(<PlacePicker onChange={() => {}} placeholder="pick" />));
     expect(screen.getByText('pick')).toBeTruthy();
-    rerender(wrap(<PlacePicker value="pl1" onChange={() => {}} placeholder="pick" />));
+    rerender(wrapNav(<PlacePicker value="pl1" onChange={() => {}} placeholder="pick" />));
     expect(screen.getByText('Shibuya Crossing')).toBeTruthy();
   });
 
   it('opens the search sheet, debounces a search, and resolves the pick', async () => {
     const onChange = vi.fn();
-    render(wrap(<PlacePicker onChange={onChange} />));
+    render(wrapNav(<PlacePicker onChange={onChange} />));
     fireEvent.click(screen.getByRole('button', { name: t.placePicker.open }));
 
     const input = await screen.findByPlaceholderText(t.placePicker.searchPlaceholder);
@@ -88,7 +77,7 @@ describe('PlacePicker', () => {
         { id: 'pl-far', name: 'Somewhere else', lat: 35.1, lng: 139.1 },
       ] as Place[];
       const onChange = vi.fn();
-      render(wrap(<PlacePicker onChange={onChange} />));
+      render(wrapNav(<PlacePicker onChange={onChange} />));
       fireEvent.change(await open(), { target: { value: 'shinjuku' } });
 
       expect(screen.getByText(t.placePicker.tripGroup)).toBeTruthy();
@@ -104,7 +93,7 @@ describe('PlacePicker', () => {
         { id: 'pl-lite', name: 'Shinjuku by name only' },
         { id: 'pl-real', name: 'Shinjuku Station', lat: 35.69, lng: 139.7 },
       ] as Place[];
-      render(wrap(<PlacePicker onChange={() => {}} />));
+      render(wrapNav(<PlacePicker onChange={() => {}} />));
       fireEvent.change(await open(), { target: { value: 'shinjuku' } });
 
       // A coordless Place-lite would offer the problem back — this sheet exists to give a
@@ -115,7 +104,7 @@ describe('PlacePicker', () => {
 
     it('never offers the place you are replacing', async () => {
       places = [{ id: 'pl-cur', name: 'Shinjuku Grand', lat: 35.6, lng: 139.7 }] as Place[];
-      render(wrap(<PlacePicker value="pl-cur" onChange={() => {}} />));
+      render(wrapNav(<PlacePicker value="pl-cur" onChange={() => {}} />));
       fireEvent.click(screen.getByRole('button', { name: t.placePicker.open }));
       fireEvent.change(await screen.findByPlaceholderText(t.placePicker.searchPlaceholder), {
         target: { value: 'shinjuku' },
@@ -125,7 +114,7 @@ describe('PlacePicker', () => {
 
     it('answers below the min-chars floor, where the paid half cannot', async () => {
       places = [{ id: 'pl-hotel', name: 'Ao', lat: 35.6, lng: 139.7 }] as Place[];
-      render(wrap(<PlacePicker onChange={() => {}} />));
+      render(wrapNav(<PlacePicker onChange={() => {}} />));
       fireEvent.change(await open(), { target: { value: 'Ao' } });
       // Two characters: the floor (ADR-0131 §8b) is a COST control, and there is no cost
       // on this side, so the free half answers from the first character.
@@ -137,7 +126,7 @@ describe('PlacePicker', () => {
   it('offers a name-only fallback that queues a Place-lite without hitting the proxy', async () => {
     const onChange = vi.fn();
     searchMock.mockResolvedValue([]); // no predictions
-    render(wrap(<PlacePicker onChange={onChange} />));
+    render(wrapNav(<PlacePicker onChange={onChange} />));
     fireEvent.click(screen.getByRole('button', { name: t.placePicker.open }));
 
     const input = await screen.findByPlaceholderText(t.placePicker.searchPlaceholder);

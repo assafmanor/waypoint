@@ -1,32 +1,17 @@
 // @vitest-environment jsdom
 import { afterEach, describe, it, expect, vi } from 'vitest';
-import { useRef, type ReactNode } from 'react';
+import { useRef } from 'react';
 import { cleanup, fireEvent, render, screen } from '@testing-library/react';
-import { MemoryRouter } from 'react-router-dom';
-import { ToastProvider } from '../Toast';
-import { NavProvider } from '../../state/nav-state';
+import { wrapNav } from '../../test/nav-harness';
 import { Modal } from './Modal';
 import { Sheet } from '../Sheet';
-
-// Modal calls useOverlay (NavProvider → useNavigate + useToast), so the tree
-// needs a router + toast + nav context around it. This is the same provider
-// nesting App.tsx uses.
-function wrap(node: ReactNode) {
-  return (
-    <MemoryRouter>
-      <ToastProvider>
-        <NavProvider>{node}</NavProvider>
-      </ToastProvider>
-    </MemoryRouter>
-  );
-}
 
 describe('Modal', () => {
   afterEach(() => cleanup());
 
   it('renders via a body portal with role="dialog"', () => {
     render(
-      wrap(
+      wrapNav(
         <Modal variant="sheet" ariaLabel="m" onClose={() => {}}>
           <button>inner</button>
         </Modal>,
@@ -40,7 +25,7 @@ describe('Modal', () => {
 
   it('moves focus into the card on open', () => {
     render(
-      wrap(
+      wrapNav(
         <Modal variant="sheet" ariaLabel="m" onClose={() => {}}>
           <button>inner</button>
         </Modal>,
@@ -52,7 +37,7 @@ describe('Modal', () => {
   it('closes on Escape', () => {
     const onClose = vi.fn();
     render(
-      wrap(
+      wrapNav(
         <Modal variant="dialog" ariaLabel="m" onClose={onClose}>
           <button>inner</button>
         </Modal>,
@@ -65,7 +50,7 @@ describe('Modal', () => {
   it('closes on backdrop click but not on inner click', () => {
     const onClose = vi.fn();
     render(
-      wrap(
+      wrapNav(
         <Modal variant="sheet" ariaLabel="m" onClose={onClose}>
           <button>inner</button>
         </Modal>,
@@ -82,7 +67,7 @@ describe('Modal', () => {
     document.body.appendChild(opener);
     opener.focus();
     const { unmount } = render(
-      wrap(
+      wrapNav(
         <Modal variant="sheet" ariaLabel="m" onClose={() => {}}>
           <button>inner</button>
         </Modal>,
@@ -96,7 +81,7 @@ describe('Modal', () => {
 
   it('labels the dialog by its title when one is given', () => {
     render(
-      wrap(
+      wrapNav(
         <Modal variant="sheet" title="שלום" onClose={() => {}}>
           <button>inner</button>
         </Modal>,
@@ -111,7 +96,7 @@ describe('Modal', () => {
 
   it('variant="dialog" traps Tab', () => {
     render(
-      wrap(
+      wrapNav(
         <Modal variant="dialog" ariaLabel="m" onClose={() => {}}>
           <button>first</button>
           <button>last</button>
@@ -126,7 +111,7 @@ describe('Modal', () => {
 
   it('variant="sheet" does not trap Tab', () => {
     render(
-      wrap(
+      wrapNav(
         <Modal variant="sheet" ariaLabel="m" onClose={() => {}}>
           <button>first</button>
           <button>last</button>
@@ -143,7 +128,7 @@ describe('Modal', () => {
   it('variant="full" does not close on backdrop click (ADR-0101)', () => {
     const onClose = vi.fn();
     render(
-      wrap(
+      wrapNav(
         <Modal variant="full" ariaLabel="m" onClose={onClose}>
           <button>inner</button>
         </Modal>,
@@ -162,7 +147,7 @@ describe('Modal', () => {
         </Modal>
       );
     }
-    render(wrap(<FullWithInput onClose={() => {}} />));
+    render(wrapNav(<FullWithInput onClose={() => {}} />));
     expect(document.activeElement).toBe(screen.getByPlaceholderText('search'));
   });
 });
@@ -173,7 +158,7 @@ describe('Sheet (thin wrapper over Modal, unchanged behavior)', () => {
   it('renders a body-portalled dialog, focuses the card, and does not trap Tab', () => {
     const onClose = vi.fn();
     render(
-      wrap(
+      wrapNav(
         <Sheet title="חשבון" onClose={onClose}>
           <button>first</button>
           <button>last</button>

@@ -90,12 +90,18 @@ only because it's the sharpest example of "the mechanism already exists, use
 it": a new structural back case is a rule added to `resolveBack`
 (`state/nav-state.tsx`), not a one-off handler at the call site.
 
-**If a surface shows a way back, that way back is in the back stack** (ADR-0103's
-2026-07-29 amendment; owner: _"system backs shouldn't do anything different when
-there's a back button (or cancel, exit)"_). A back / cancel / close / exit
-control and the Android gesture must run the **same function** — bind both to one
-handler rather than writing the second one beside it. `Modal` already does this
-for you (`useOverlay(onClose)`), which covers every sheet, dialog, picker and
+**If a surface can be dismissed at all, that dismissal is in the back stack**
+(ADR-0103's two 2026-07-29 amendments; owner: _"system backs shouldn't do
+anything different when there's a back button (or cancel, exit)"_ and _"when
+there's an implicit way to go back (closing a modal by tapping outside it for
+example) we should also treat system back as the same"_). A back / cancel /
+close / exit control, a **backdrop or outside tap**, Escape, and the Android
+gesture must all run the **same function** — bind them to one handler rather
+than writing a second one beside it. What obliges back is that the surface can
+be left, not that leaving it has a label.
+
+`Modal` already does this for you (`useOverlay(onClose)` is the same `onClose`
+its backdrop and Escape call), which covers every sheet, dialog, picker and
 confirm. Two shapes need a deliberate `useBackLayer` and are exactly where the
 app had diverged:
 
@@ -108,9 +114,25 @@ app had diverged:
   component that renders the `Modal`, i.e. its parent: child effects run first, so
   the Modal's close layer lands underneath and back peels the step first. Return
   `{ remainsActive: true }` — a step back leaves the overlay open.
+- **A hand-rolled panel with a backdrop or an outside-tap handler** —
+  `IconPicker`, `TimeField`/`TimePicker`. These don't go through `Modal`, so
+  nothing registered them and back fell through to the host form's layer,
+  discarding what was typed. Gate the layer on the panel's own open state.
+
+**Always gate on the open/selected state, never register unconditionally.** That
+gate is what orders the stack correctly with no reasoning about component trees:
+a layer joins when it becomes _active_, so a popover opened inside a form lands
+above the form's layer, and whichever thing you opened last is what back peels
+first.
 
 Not this: a `✕` that clears a value or dismisses a notice (`FilePicker`'s remove,
 `StatusBanner`'s dismiss, a picker's clear). Back navigates; it does not edit.
+The test is whether the gesture dismisses something you are _in_, not whether it
+removes something from the screen.
+
+Consequence for tests: anything registering a layer needs `NavProvider` (plus a
+router and the toast), so it can't be rendered bare. Use `wrapNav` from
+`src/test/nav-harness.tsx` — don't open-code the provider stack again.
 
 ## Anti-patterns already found and fixed once (don't reintroduce)
 

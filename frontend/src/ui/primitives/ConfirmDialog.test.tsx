@@ -1,29 +1,15 @@
 // @vitest-environment jsdom
 import { afterEach, describe, it, expect, vi } from 'vitest';
-import { type ReactNode } from 'react';
 import { cleanup, fireEvent, render, screen } from '@testing-library/react';
-import { MemoryRouter } from 'react-router-dom';
-import { ToastProvider } from '../Toast';
-import { NavProvider } from '../../state/nav-state';
+import { wrapNav } from '../../test/nav-harness';
 import { ConfirmDialog } from './ConfirmDialog';
-
-// ConfirmDialog renders on Modal → useOverlay (NavProvider + router + toast).
-function wrap(node: ReactNode) {
-  return (
-    <MemoryRouter>
-      <ToastProvider>
-        <NavProvider>{node}</NavProvider>
-      </ToastProvider>
-    </MemoryRouter>
-  );
-}
 
 describe('ConfirmDialog', () => {
   afterEach(() => cleanup());
 
   it('renders title, body, and the confirm/cancel labels; moves focus in', () => {
     render(
-      wrap(
+      wrapNav(
         <ConfirmDialog
           tone="danger"
           title="למחוק?"
@@ -48,7 +34,7 @@ describe('ConfirmDialog', () => {
     const onConfirm = vi.fn();
     const onCancel = vi.fn();
     render(
-      wrap(
+      wrapNav(
         <ConfirmDialog
           tone="neutral"
           title="t"
@@ -68,7 +54,7 @@ describe('ConfirmDialog', () => {
   it('closes on Escape via the overlay/focus contract', () => {
     const onCancel = vi.fn();
     render(
-      wrap(
+      wrapNav(
         <ConfirmDialog
           tone="hard"
           title="t"
@@ -84,7 +70,7 @@ describe('ConfirmDialog', () => {
 
   it('applies the tone as a data attribute (styling hook)', () => {
     render(
-      wrap(
+      wrapNav(
         <ConfirmDialog tone="hard" title="t" onCancel={() => {}}>
           {null}
         </ConfirmDialog>,

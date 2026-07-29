@@ -13,6 +13,7 @@
 // wraps to a full-width line BELOW all the row's triggers — never nested in a
 // flex trigger, never an absolute popover the overflow-y:auto sheet would clip.
 import { useState } from 'react';
+import { useBackLayer } from '../../state/nav-state';
 import { MINUTES_PER_DAY } from '../../constants';
 import { t } from '../../i18n/he';
 
@@ -70,6 +71,15 @@ export function TimeField({
     onChange(toHHMM(m));
     setOpen(false);
   };
+
+  // **THE PANEL IS A BACK LAYER** (owner, session 176). Its `.tp-backdrop` exists purely so a
+  // tap outside closes it — an implicit way out — so a system back owes the same one. Without
+  // this, back fell through to the host form's layer and discarded the whole form. Registered
+  // on the open state, so the layer lands above the form's and peels first.
+  useBackLayer(() => {
+    setOpen(false);
+    return { remainsActive: false };
+  }, open);
 
   return (
     <>

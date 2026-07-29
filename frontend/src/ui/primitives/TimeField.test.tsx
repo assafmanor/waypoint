@@ -1,6 +1,7 @@
 // @vitest-environment jsdom
 import { afterEach, describe, it, expect, vi } from 'vitest';
 import { cleanup, fireEvent, render, screen, within } from '@testing-library/react';
+import { wrapNav } from '../../test/nav-harness';
 import { TimeField, toMin, toHHMM, nearestRoundSlot } from './TimeField';
 
 describe('TimeField helpers', () => {
@@ -19,7 +20,7 @@ describe('TimeField (shared atom)', () => {
 
   it('opens on tap and AUTO-CLOSES when a time is picked', () => {
     const onChange = vi.fn();
-    render(<TimeField value="" onChange={onChange} label="שעה" placeholder="הוסף שעה" />);
+    render(wrapNav(<TimeField value="" onChange={onChange} label="שעה" placeholder="הוסף שעה" />));
     fireEvent.click(screen.getByText('הוסף שעה'));
     expect(document.querySelector('.tp-panel')).toBeTruthy();
     const list = document.querySelector('.tp-list') as HTMLElement;
@@ -30,13 +31,15 @@ describe('TimeField (shared atom)', () => {
 
   it('offers no clear footer for an empty value', () => {
     render(
-      <TimeField
-        value=""
-        onChange={vi.fn()}
-        onClear={vi.fn()}
-        label="שעה"
-        placeholder="הוסף שעה"
-      />,
+      wrapNav(
+        <TimeField
+          value=""
+          onChange={vi.fn()}
+          onClear={vi.fn()}
+          label="שעה"
+          placeholder="הוסף שעה"
+        />,
+      ),
     );
     fireEvent.click(screen.getByText('הוסף שעה'));
     expect(document.querySelector('.tp-panel-clear')).toBeNull();
@@ -45,13 +48,15 @@ describe('TimeField (shared atom)', () => {
   it('clears (and closes) via the footer when a value is set', () => {
     const onClear = vi.fn();
     render(
-      <TimeField
-        value="09:00"
-        onChange={vi.fn()}
-        onClear={onClear}
-        label="שעה"
-        placeholder="הוסף שעה"
-      />,
+      wrapNav(
+        <TimeField
+          value="09:00"
+          onChange={vi.fn()}
+          onClear={onClear}
+          label="שעה"
+          placeholder="הוסף שעה"
+        />,
+      ),
     );
     fireEvent.click(screen.getByText('09:00'));
     const clear = document.querySelector('.tp-panel-clear') as HTMLElement;
