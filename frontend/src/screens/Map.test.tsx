@@ -1,7 +1,7 @@
 // @vitest-environment jsdom
 import { afterEach, describe, it, expect, vi } from 'vitest';
 import { type ReactNode } from 'react';
-import { cleanup, fireEvent, render, screen } from '@testing-library/react';
+import { cleanup, fireEvent, render, screen, waitFor } from '@testing-library/react';
 import { MemoryRouter } from 'react-router-dom';
 import {
   EVENT_KIND,
@@ -97,21 +97,29 @@ const searchStub = {
   predictions: [] as { googlePlaceId: string; primaryText: string }[],
   loading: false,
   active: true,
+  /** How the core was CONSTRUCTED, which is where the enrich lives (ADR-0134 §9): under a
+   *  row errand the pick must adopt the found place onto the row you started from rather
+   *  than mint a second one, and `enrichPlaceId` is the whole of that instruction. */
+  options: undefined as { enrichPlaceId?: string } | undefined,
+  pick: vi.fn(),
 };
 vi.mock('../lib/usePlaceSearch', () => ({
-  usePlaceSearch: () => ({
-    query: '',
-    setQuery: vi.fn(),
-    predictions: searchStub.predictions,
-    loading: searchStub.loading,
-    rateLimited: false,
-    failed: false,
-    active: searchStub.active,
-    alreadyInTrip: () => undefined,
-    pick: vi.fn(),
-    saveNameOnly: vi.fn(),
-    reset: vi.fn(),
-  }),
+  usePlaceSearch: (options?: { enrichPlaceId?: string }) => (
+    (searchStub.options = options),
+    {
+      query: '',
+      setQuery: vi.fn(),
+      predictions: searchStub.predictions,
+      loading: searchStub.loading,
+      rateLimited: false,
+      failed: false,
+      active: searchStub.active,
+      alreadyInTrip: () => undefined,
+      pick: searchStub.pick,
+      saveNameOnly: vi.fn(),
+      reset: vi.fn(),
+    }
+  ),
 }));
 
 // The device's geolocation, driven per test: `fix` is what a granted request
@@ -138,6 +146,7 @@ import { MapScopeProvider, useSelectDay } from '../state/map-scope-state';
 import { setSimulatedNow } from '../lib/useClock';
 import { MapView } from './Map';
 import { withoutBidiControls } from '../lib/bidi';
+import { relativeDayLabel } from '../lib/time';
 import { FILTER_STAGGER_MS } from '../constants';
 import { t } from '../i18n/he';
 
@@ -294,11 +303,68 @@ describe('MapView (Phase 3, ADR-0109/0110)', () => {
     expect(screen.getByRole('button', { name: t.placePicker.empty })).toBeTruthy();
   });
 
-  it('＋ מיקום opens the shared picker sheet to enrich the coordless place', () => {
-    seed();
-    render(wrap(<MapView />));
-    fireEvent.click(screen.getByRole('button', { name: t.placePicker.empty }));
-    expect(screen.getByText(t.placePicker.title)).toBeTruthy();
+  // ADR-0134 §9: `＋ מיקום` used to open `PlacePickerSheet` — a second search surface over
+  // the map, on the tab that already is one. It is an errand now, started in place because
+  // the tab is already the destination.
+  describe('＋ מיקום is an errand on this tab (ADR-0134 §9)', () => {
+    const startEnrich = () =>
+      fireEvent.click(screen.getByRole('button', { name: t.placePicker.empty }));
+
+    it('starts errand mode named after the row, and opens the query field', () => {
+      seed();
+      render(wrap(<MapView />));
+      startEnrich();
+      // No sheet — the retirement is the assertion, not a detail of it.
+      expect(screen.queryByText(t.placePicker.title)).toBeNull();
+      expect(screen.getByText(t.map.errand.title('lite'))).toBeTruthy();
+      expect(document.querySelector('.map-querystrip')).toBeTruthy();
+    });
+
+    it('only GOOGLE can answer it: our own rows keep their ordinary grammar', () => {
+      seed();
+      render(wrap(<MapView />));
+      startEnrich();
+      // A form errand puts `בחירה` on every trip row — a bare-text button, where a Google
+      // result's is aria-labelled `בחירת <name>`, so this query is our rows only. This
+      // errand must not: the coordless row is already in this list, and a second row of
+      // ours cannot say where it is.
+      expect(screen.queryByRole('button', { name: t.map.errand.choose })).toBeNull();
+    });
+
+    it('a pick ENRICHES the row it started from, rather than minting a second place', async () => {
+      seed();
+      searchStub.predictions = [{ googlePlaceId: 'g-1', primaryText: 'Kissa' }];
+      searchStub.pick.mockResolvedValue({ id: 'lite' });
+      render(wrap(<MapView />));
+      expect(searchStub.options?.enrichPlaceId).toBeUndefined();
+      startEnrich();
+      // The instruction is carried by the CORE, not by the add: `usePlaceSearch` resolves
+      // with `enrichPlaceId`, so the found place lands on the row your booking already
+      // references instead of beside it (ADR-0110 §1).
+      expect(searchStub.options?.enrichPlaceId).toBe('lite');
+      // Google's half only renders under a live query, and under an errand its verb is
+      // `בחירה` rather than `＋ אולי` — the choice replaces the shelving (ADR-0134 §3).
+      fireEvent.change(screen.getByPlaceholderText(t.map.search.placeholder), {
+        target: { value: 'kissa' },
+      });
+      fireEvent.click(screen.getByRole('button', { name: t.map.errand.chooseAria('Kissa') }));
+      await waitFor(() => expect(searchStub.pick).toHaveBeenCalled());
+      // And the errand ends here — no navigation, and the banner is gone because the row
+      // it named has its answer.
+      await waitFor(() => expect(screen.queryByText(t.map.errand.title('lite'))).toBeNull());
+      searchStub.predictions = [];
+    });
+
+    it('ביטול puts the tab back, and does not navigate off it', () => {
+      seed();
+      render(wrap(<MapView />));
+      startEnrich();
+      fireEvent.click(screen.getByRole('button', { name: t.map.errand.cancel }));
+      expect(screen.queryByText(t.map.errand.title('lite'))).toBeNull();
+      // The row is still there to try again on — a local errand has nothing to return to,
+      // so cancelling is not a return.
+      expect(screen.getByRole('button', { name: t.placePicker.empty })).toBeTruthy();
+    });
   });
 
   it('the all-days chip reveals every place (other days + dayless maybes/bookings)', () => {
@@ -1673,6 +1739,66 @@ describe('MapView (Phase 3, ADR-0109/0110)', () => {
         );
       expect(row('food')?.classList.contains('hidden')).toBe(false);
       expect(row('see')?.classList.contains('hidden')).toBe(true);
+    });
+
+    // The defect session 144 found and left, fixed 2026-07-29. It is written as the
+    // reproduction rather than as the fix, because the owner checked it on a device and
+    // read it as already fixed: the place CARD names an out-of-scope day (`forceDay`) and
+    // always did. These assertions are the LIST, which is the half that was wrong.
+    describe('a query widens the list, so a row states its own day (ADR-0109 §1)', () => {
+      // `see` is an event on the 21st while the strip is on the 20th; `idea` is a maybe
+      // with no day at all. Under a query the first must not be filed with the second.
+      const shownRows = () =>
+        [...document.querySelectorAll('.map-list .wp-reveal')]
+          .filter((w) => !w.classList.contains('hidden'))
+          .map((w) => ({
+            name: w.querySelector('.map-name')?.textContent,
+            meta: w.querySelector('.map-m')?.textContent ?? null,
+          }));
+
+      it('a hit from another day says WHICH day, instead of saying nothing', () => {
+        setSimulatedNow(NOON);
+        seed();
+        render(wrap(<MapView />));
+        openSearch();
+        type('see');
+        // Day-scoped this row would resolve no day at all: no day, no time, no meta.
+        const meta = row('see')?.querySelector('.map-m')?.textContent ?? '';
+        expect(withoutBidiControls(meta)).toContain(relativeDayLabel('2026-07-21', ACTIVE_DATE));
+      });
+
+      it('…and is not filed under ללא יום beside a genuinely dateless idea', () => {
+        setSimulatedNow(NOON);
+        seed();
+        render(wrap(<MapView />));
+        openSearch();
+        // Matches `see` (tomorrow), `idea` (no day) and `lite` (today), so the list has
+        // to tell two blocks apart — which is the whole assertion.
+        type('e');
+        const shown = shownRows();
+        expect(shown.map((r) => r.name)).toContain('see');
+        // The header a row lands under is the one the comparator put it in, so asserting
+        // the ORDER is asserting the block: `ללא יום` sorts between ahead and behind, and
+        // a mis-scoped `see` used to sit inside it rather than ahead of it.
+        expect(shown.findIndex((r) => r.name === 'see')).toBeLessThan(
+          shown.findIndex((r) => r.name === 'idea'),
+        );
+        expect(screen.getByText(t.map.blockHeader.dayless)).toBeTruthy();
+      });
+
+      it('closing the query hands the day scope back', () => {
+        setSimulatedNow(NOON);
+        seed();
+        render(wrap(<MapView />));
+        openSearch();
+        type('e');
+        fireEvent.click(screen.getByRole('button', { name: t.map.search.close }));
+        // `lite` is today's, so day-scoped it says its time and NOT its day — the strip
+        // above it already names the day, and `היום ·` on every row is the noise the
+        // all-days rule exists to avoid.
+        const meta = row('lite')?.querySelector('.map-m')?.textContent ?? '';
+        expect(withoutBidiControls(meta)).not.toContain(relativeDayLabel(ACTIVE_DATE, ACTIVE_DATE));
+      });
     });
 
     it('closing CLEARS the query, so no filter can be on without being visible', () => {
