@@ -123,7 +123,7 @@ export function ListRow({
 export interface RowAction {
   label: string;
   /** Leading mark. An `IconName`, never a glyph: a menu item is a control, and
-   *  "emoji are content, icons are UI" (design-language, ADR-0137). Typing it
+   *  "emoji are content, icons are UI" (design-language, ADR-0138). Typing it
    *  this way is what makes the rule un-bypassable here — the four call sites
    *  that passed `'✏️'` as a literal no longer compile. Omit it only for a verb
    *  whose shape is genuinely undecided. */
@@ -137,7 +137,7 @@ export interface RowAction {
  *  primitive, so it carries the overlay-stack + focus contract) listing action
  *  items.
  *
- *  **It always names its subject** (ADR-0137 §3). `title` is required — the
+ *  **It always names its subject** (ADR-0138 §3). `title` is required — the
  *  booking and document menus used to pass only an `ariaLabel`, which left two
  *  anonymous rows floating over a scrim with the thing you were deleting hidden
  *  behind it. `subject` is the quiet fact line under the title (a type, a time,
@@ -180,7 +180,7 @@ export function RowManageSheet({
 /** The action list on its own, for a sheet that owns a different header or a
  *  second step: `MemberSheet` (an identity header above its verbs) and the Plan
  *  builder's menu (a `הזז` step below them). Same markup, same partition — the
- *  point is that there is exactly one of it (ADR-0137 §1; before this, the same
+ *  point is that there is exactly one of it (ADR-0138 §1; before this, the same
  *  rows existed as `.wp-row-action`, `screens.css`'s `.row-action`, and
  *  `.ms-act`). */
 export function RowActionList({ actions }: { actions: RowAction[] }) {

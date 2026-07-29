@@ -1515,7 +1515,7 @@ export function BuilderRow({
   dragProps?: HoldToDragProps;
   dragging?: boolean;
   over?: boolean;
-  /** Reorder without a pointer — the ⋯ sheet's `הזז` step (ADR-0137 §8).
+  /** Reorder without a pointer — the ⋯ sheet's `הזז` step (ADR-0138 §8).
    *
    *  This replaced `הקדם`/`אחר`, which were a BLIND one-slot swap: you tapped and
    *  hoped, and because each was dropped at its end of the list the menu changed
@@ -1561,7 +1561,7 @@ export function BuilderRow({
   // Row actions live behind one ⋯ button (a bottom sheet), not a strip of inline
   // icons — a phone row only has width for a title, a time and one affordance
   // (mockups/plan-mode-v1.html). Edit is also reachable by tapping the row body.
-  // `menu` = the verb list; `move` = the `הזז` position step (ADR-0137 §8), which
+  // `menu` = the verb list; `move` = the `הזז` position step (ADR-0138 §8), which
   // is a step INSIDE the sheet rather than a second sheet.
   const [menuStep, setMenuStep] = useState<'closed' | 'menu' | 'move'>('closed');
   const menuOpen = menuStep !== 'closed';
@@ -1733,7 +1733,7 @@ export function BuilderRow({
           </span>
         ))}
       {!readOnly && menuOpen && (
-        // Through the SHARED sheet now (ADR-0137 §1) — this was the app's fifth
+        // Through the SHARED sheet now (ADR-0138 §1) — this was the app's fifth
         // copy of one row shape, with its own `.row-actions` rules in screens.css.
         // Visible header: a flight names its route here like the row does.
         <Sheet

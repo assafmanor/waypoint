@@ -72,7 +72,7 @@ export function MemberSheet({
         </div>
       </div>
 
-      {/* The verbs render through the SHARED action list (ADR-0137 §1), not the
+      {/* The verbs render through the SHARED action list (ADR-0138 §1), not the
           `.ms-act` pair this sheet used to own — that was the fifth
           implementation of one row shape. The identity header above stays: it is
           this sheet's genuine content, and it is also where the "name your

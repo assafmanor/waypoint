@@ -8249,6 +8249,43 @@ input.wf-date-val:focus-visible {
       .ef-derived b {
         color: var(--ink);
       }
+      /* ── THE ONE QUESTION THE CATEGORY CANNOT ANSWER (owner's call, session 185) ──────
+         `EventCategory` has a SINGLE `transport` value, while `BookingType` has both
+         `flight` and `train` — and `BOOKING_TYPE_TO_CATEGORY` maps BOTH back to
+         `transport`. So the forward guess has to collapse them, and §2 collapsed to
+         `flight`: every train booked from this form arrived as a flight, for someone to
+         fix later on the booking's own screen.
+
+         So it is ASKED — but only here. One category, and only once the row is on. This is
+         not the schema question §2 retires ("event or booking?", asked of everyone before
+         they can type); it is the single genuine ambiguity in the derivation, asked of the
+         one person who has it, at the moment they have it. Everywhere else the derivation
+         still just states itself, because everywhere else the category IS the answer.
+
+         THREE pills, in the form's OWN `.choice-pill` grammar — the category selector above
+         is the same control — so it costs no new idiom and no colour. `אחר` is there because
+         the transport icon group is mostly bus, car, ferry and cable car, none of which is a
+         flight or a train (owner, session 185). Its glyph is `🚌`, not
+         `BOOKING_TYPE_ICON.other`'s `📄` (owner's call): all three pills answer "which
+         transport", so a document among two vehicles reads as a different kind of answer —
+         and the Index never shows that glyph here anyway, since a linked booking's row
+         borrows the EVENT's icon and only falls back to the type's. Note that `other` is not
+         a span type, so it is SOFT by `bookingDefaultKind` while flight and train are hard —
+         not special-cased, because commitment has one source (§4).
+
+         And no `field-label`, for §1's reason: the pills say what they are, and the statement
+         directly below names the result, so a label would be the third place one screen says
+         "transport". */
+      .ef-btype {
+        display: flex;
+        gap: 6px;
+        margin-top: 10px;
+      }
+      /* The touch floor (ADR-0017). The category strip above scrolls, so its pills can be
+         chip-sized; these two are the whole row and are what a correction is TAPPED on. */
+      .ef-btype .choice-pill {
+        min-height: 44px;
+      }
       /* An event that is ALREADY linked gets a STATEMENT with a way in, not a control:
          its code, room and notes live on the booking now — the rule the form already
          runs for place and category, one field wider. */
@@ -8285,6 +8322,7 @@ input.wf-date-val:focus-visible {
       .modal-overlay[hidden],
       .ef-booked[hidden],
       .ef-linked[hidden],
+      .ef-btype[hidden],
       .ef-derived[hidden],
       .ef-code-field[hidden],
       .mk-outcome[hidden],
@@ -8819,7 +8857,16 @@ input.wf-date-val:focus-visible {
                 <svg class="icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><polyline points="15 6 9 12 15 18" /></svg>
               </button>
               <div class="wp-collapsible" id="codebody">
-                <input class="ef-code-input" id="codeinput" placeholder="מספר אישור · לא חובה" value="" />
+                <!-- Asked before the code, because it is the more consequential of the two
+                     and because the statement at the foot of the block summarises BOTH.
+                     Present only for `transport`: the one category whose booking type the
+                     category itself cannot decide. -->
+                <div class="ef-btype" id="btype">
+                  <button type="button" class="choice-pill" data-btype="flight"><span class="choice-card-ic" aria-hidden="true">✈️</span><span class="choice-card-lbl">טיסה</span></button>
+                  <button type="button" class="choice-pill" data-btype="train"><span class="choice-card-ic" aria-hidden="true">🚄</span><span class="choice-card-lbl">רכבת</span></button>
+                  <button type="button" class="choice-pill" data-btype="other"><span class="choice-card-ic" aria-hidden="true">🚌</span><span class="choice-card-lbl">אחר</span></button>
+                </div>
+                <input class="ef-code-input" id="codeinput" placeholder="קוד אישור · לא חובה" value="" />
                 <div class="ef-derived" id="derived">
                   <span aria-hidden="true" id="derived-ic">🍽️</span>
                   <span><span id="derived-lead">האירוע יירשם גם כ</span><b id="derived-txt">הזמנה · מסעדה</b><span id="derived-tail">, ואפשר להשלים אותה אחר כך</span></span>
@@ -9081,6 +9128,11 @@ input.wf-date-val:focus-visible {
       const state = {
         form: 'open', mode: 'create', cat: 'food', out: 'day',
         size: '390x844', bookedTouched: false,
+        // `null` = "derive from the category". An explicit pick fills it; changing the
+        // category clears it, so the override never outlives the question it answered.
+        // Modelled as a nullable slot rather than a fourth `*Touched` guard, which is the
+        // idiom `EventForm`'s zone `override` already uses.
+        btype: null,
       };
 
       // `booked` is the DEFAULT a category implies, not a rule: lodging and transport are
@@ -9113,18 +9165,32 @@ input.wf-date-val:focus-visible {
         $('#codebody').classList.toggle('on', booked && !linked);
         // DELIBERATELY EMPTY: the code is a detail OF a booking, never what creates one.
         $('#codeinput').value = '';
+        // Asked only for transport, and only with the row on (see `.ef-btype`).
+        const askType = booked && !linked && state.cat === 'transport';
+        $('#btype').hidden = !askType;
+        const btype = state.cat === 'transport' ? (state.btype ?? 'flight') : null;
+        $$('[data-btype]').forEach((p) => p.classList.toggle('on', p.dataset.btype === btype));
+        // The statement names whatever the pills settled on, so the choice and the sentence
+        // can never disagree — there is still exactly ONE place the type is stated.
+        const TYPE = { flight: ['טיסה', '✈️'], train: ['רכבת', '🚄'], other: ['אחר', '🚌'] };
+        const [typeWord, typeIcon] = btype ? TYPE[btype] : [d.type, d.ic];
+
         $('#derived').hidden = !(booked && !linked);
         $('#derived-lead').textContent = converting ? 'האירוע הזה יירשם גם כ' : 'האירוע יירשם גם כ';
         $('#derived-tail').textContent = converting
           ? ', והמיקום והקטגוריה יעברו אליה'
           : ', ואפשר להשלים אותה אחר כך';
-        $('#derived-txt').textContent = 'הזמנה · ' + d.type;
-        $('#derived-ic').textContent = d.ic;
+        $('#derived-txt').textContent = 'הזמנה · ' + typeWord;
+        $('#derived-ic').textContent = typeIcon;
         $('#iconchip').textContent = d.ic;
         $$('[data-catpill]').forEach((p) => p.classList.toggle('on', p.dataset.catpill === state.cat));
 
-        // The kind follows the BOOKING TYPE, and only on a create.
-        const hard = booked && d.hard && !converting;
+        // The kind follows the BOOKING TYPE, and only on a create. Note `אחר`: it is NOT a
+        // span type, so `bookingDefaultKind` makes it SOFT while flight and train are hard.
+        // Deliberately not special-cased — commitment has ONE source (ADR-0136 §4), and this
+        // row must never become a second opinion about it. The toggle below is one tap.
+        const typeHard = btype ? btype !== 'other' : d.hard;
+        const hard = booked && typeHard && !converting;
         $('#k-soft').classList.toggle('on', !hard);
         $('#k-hard').classList.toggle('on', hard);
 
@@ -9203,6 +9269,8 @@ input.wf-date-val:focus-visible {
         b.addEventListener('click', () => {
           const key = Object.keys(b.dataset)[0];
           state[key] = b.dataset[key];
+          // A new category is a new question, so the type override does not survive it.
+          if (key === 'cat') state.btype = null;
           if (key === 'cat' && !state.bookedTouched && state.form !== 'none' && state.form !== 'ship') {
             // THE DEFAULT MOVES WITH THE CATEGORY, until a human touches it.
             state.form = DERIVED[state.cat].booked ? 'booked' : 'open';
@@ -9226,6 +9294,14 @@ input.wf-date-val:focus-visible {
         syncButtons('form');
         render();
       });
+      // The transport-only type choice. It does NOT touch `bookedTouched`: saying which
+      // transport this is says nothing about whether the row's default was right.
+      $$('[data-btype]').forEach((b) =>
+        b.addEventListener('click', () => {
+          state.btype = b.dataset.btype;
+          render();
+        }),
+      );
       $$('[data-close]').forEach((b) =>
         b.addEventListener('click', () => {
           state.form = 'none';

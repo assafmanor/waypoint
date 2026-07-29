@@ -114,7 +114,7 @@ describe('RowManageSheet', () => {
     expect(onDelete).toHaveBeenCalledTimes(1);
   });
 
-  // ── ADR-0137. Three properties the redesign added, each of which the shipped
+  // ── ADR-0138. Three properties the redesign added, each of which the shipped
   // sheet got wrong in a way a screenshot showed and a prop list did not.
 
   it('names its subject, so the destructive verb is never anonymous', () => {

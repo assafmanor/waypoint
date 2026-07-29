@@ -178,6 +178,49 @@ export const BOOKING_TYPE_ICON = {
   other: '📄',
 } as const satisfies Record<BookingType, string>;
 
+/** **Does `EventForm`'s `יש הזמנה` row open on?** (ADR-0136 §2.) A hotel or a flight you
+ *  are putting on a day is near-certainly booked; everything else is genuinely either, so it
+ *  opens off. This is inference doing the one thing it can do honestly — offering a starting
+ *  position, never deciding the fact — and it stops moving the instant a human touches the
+ *  row (`bookedTouched`).
+ *
+ *  A per-enum `Record` rather than a `cat === 'lodging' || cat === 'transport'` at the call
+ *  site: the compiler then flags a new `EventCategory` here instead of silently defaulting it
+ *  off. It stays frontend-side because it is a **form default**, not cross-layer vocabulary —
+ *  the server never asks this question (`packages/shared/CLAUDE.md`: promote only once a
+ *  second layer needs the same values). Its sibling `CATEGORY_TO_BOOKING_TYPE` maps between
+ *  two shared enums, which is why that one does live in `@waypoint/shared`. */
+export const CATEGORY_DEFAULT_BOOKED = {
+  lodging: true,
+  transport: true,
+  food: false,
+  sightseeing: false,
+  nature: false,
+  activity: false,
+  shopping: false,
+  services: false,
+  other: false,
+} as const satisfies Record<EventCategory, boolean>;
+
+/** **The one question the category cannot answer** (ADR-0136 §2, owner's call session 185).
+ *  `EventCategory` has a single `transport`, while `BookingType` has `flight`, `train` and
+ *  `other` — and `BOOKING_TYPE_TO_CATEGORY` maps both transport types back to that one
+ *  category, so the forward guess has to collapse them. It collapsed to `flight`, which meant
+ *  every train booked from `EventForm` arrived as a flight for someone to fix later.
+ *
+ *  So `transport` — and only `transport` — asks. Ordered as shown, flight first, because it
+ *  is also the derived default. `other` covers the bus/car/ferry/cable-car half of the
+ *  transport icon group; its glyph is `🚌` rather than `BOOKING_TYPE_ICON.other`'s `📄`,
+ *  because all three pills answer "which transport" and a document among two vehicles reads
+ *  as a different kind of answer. Note `other` is not a span type, so `bookingDefaultKind`
+ *  makes it **soft** while flight and train are hard — deliberately not special-cased, since
+ *  commitment has one source (ADR-0136 §4). */
+export const TRANSPORT_BOOKING_TYPES = [
+  { value: 'flight', icon: '✈️' },
+  { value: 'train', icon: '🚄' },
+  { value: 'other', icon: '🚌' },
+] as const satisfies readonly { value: BookingType; icon: string }[];
+
 /** Glyph per document type, for the Index documents section badges. */
 export const DOCUMENT_TYPE_ICON = {
   passport: '📕',
@@ -585,7 +628,7 @@ export const JOIN_INTENT_STORAGE_KEY = 'wp_join_intent';
  *  Per-device, not synced (ADR-0021). */
 export const STAY_STRIP_DISMISS_STORAGE_KEY = 'wp_stay_strip_dismissed';
 
-/** The bottom nav. Its glyphs crossed from emoji to `Icon` in ADR-0137 §4 on the
+/** The bottom nav. Its glyphs crossed from emoji to `Icon` in ADR-0138 §4 on the
  *  owner's call — navigation is the case design-language names first when it says
  *  controls are icons, and the tab bar is the app's most-seen surface, so the one
  *  place a platform's emoji font showed through loudest was here. */
@@ -598,7 +641,7 @@ export const TABS = [
 
 export type TabId = (typeof TABS)[number]['id'];
 
-/* ── Iconography, split in two (ADR-0137 §2) ──────────────────────────────────
+/* ── Iconography, split in two (ADR-0138 §2) ──────────────────────────────────
    These used to be ONE `ICONS` object holding both kinds, which is why
    design-language's "emoji are content, icons are UI" drifted for so long: a
    call site importing `ICONS.edit` and a call site importing `ICONS.weather`

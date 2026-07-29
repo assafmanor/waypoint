@@ -1,4 +1,4 @@
-# ADR-0137 — The `⋯` row menu is ONE surface, and a control's mark is an icon
+# ADR-0138 — The `⋯` row menu is ONE surface, and a control's mark is an icon
 
 **Status:** Accepted (design approved 2026-07-29; built the same session)
 **Design reference:** [`mockups/row-menu-v1.html`](../../mockups/row-menu-v1.html)

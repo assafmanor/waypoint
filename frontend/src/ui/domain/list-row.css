@@ -175,7 +175,7 @@
      its own baseline, and a 1.25em box beside 15px text drifts a hair low. */
   display: inline-flex;
 }
-/* The mark is an SVG now (ADR-0137), so `danger` tints it WITH its label — the
+/* The mark is an SVG now (ADR-0138), so `danger` tints it WITH its label — the
    emoji it replaced kept its own colours inside a red row, which is the tell
    that it was never part of the state. Slightly over 1em because a 2px stroke
    needs the extra to carry beside 15px of Hebrew. */
@@ -185,7 +185,7 @@
   stroke-width: 1.9;
 }
 
-/* ── The sheet names its subject (ADR-0137 §3) ──────────────────────────────
+/* ── The sheet names its subject (ADR-0138 §3) ──────────────────────────────
    A quiet fact line under `.modal-title`: type · time · state, in the app's `·`
    grammar. It exists so the destructive verb is never anonymous — the booking
    and document menus used to render two unlabelled rows over a scrim with the

@@ -5,7 +5,7 @@ import { TOAST_DURATION_MS } from '../constants';
 import { Icon, type IconName } from './Icon';
 import { t } from '../i18n/he';
 
-/** The mark is an `IconName`, not a string (ADR-0137 §4). A toast is the app
+/** The mark is an `IconName`, not a string (ADR-0138 §4). A toast is the app
  *  confirming an action, so its mark is the action's own icon — passing an
  *  arbitrary string is what let 🔄 stand for both "swapped" and "syncing". */
 type ShowToast = (icon: IconName, text: string, onUndo?: () => void) => void;

@@ -8,7 +8,7 @@ import type { ReactNode } from 'react';
 export interface FeedbackAction {
   /** `ReactNode`, not `string`, because a CTA usually leads with an `<Icon>` —
    *  these labels used to be interpolated into a template string beside the copy,
-   *  which is only expressible while the mark is an emoji (ADR-0137). */
+   *  which is only expressible while the mark is an emoji (ADR-0138). */
   label: ReactNode;
   onClick: () => void;
 }

@@ -22,6 +22,7 @@ import { useActiveTripId } from '../state/active-trip-id';
 import { useAppBack } from '../state/nav-state';
 import { createInvite, createTrip } from '../lib/api';
 import { suggestTripName } from '../lib/trip-name';
+import { useDerivedField } from '../lib/useDerivedField';
 import { useToast } from '../ui/Toast';
 import { IconPicker } from '../ui/IconPicker';
 import { DestinationPicker, type PickedDestination } from '../ui/DestinationPicker';
@@ -52,17 +53,18 @@ export function CreateTrip() {
   const [tzPickerOpen, setTzPickerOpen] = useState(false);
   const [startDate, setStartDate] = useState('');
   const [endDate, setEndDate] = useState('');
-  const [name, setName] = useState('');
-  const [nameTouched, setNameTouched] = useState(false);
-  const [icon, setIcon] = useState(DEFAULT_TRIP_ICON);
-  const [iconTouched, setIconTouched] = useState(false);
+  // Both auto-suggest from the destination until the user overrides them (ADR-0038: flag
+  // auto-fill, overridable) — the same derived-until-touched mechanism the two authoring forms
+  // run, so they use the same hook rather than a sixth and seventh copy of the flag.
+  const name = useDerivedField('');
+  const icon = useDerivedField(DEFAULT_TRIP_ICON);
   const [submitting, setSubmitting] = useState(false);
 
   // Auto-suggest the trip name and — from a recognized destination — the flag,
   // until the user overrides either (ADR-0038: flag auto-fill, overridable).
   const suggest = (dest: string, start: string) => {
-    if (!nameTouched) setName(suggestTripName(dest, start));
-    if (!iconTouched) setIcon(suggestFlagFromDestination(dest) ?? DEFAULT_TRIP_ICON);
+    name.redrive(suggestTripName(dest, start));
+    icon.redrive(suggestFlagFromDestination(dest) ?? DEFAULT_TRIP_ICON);
   };
 
   // A picked destination sets the display name, the structured fields, and the
@@ -86,7 +88,7 @@ export function CreateTrip() {
   const endInPast = Boolean(endDate && endDate < today);
   const datesInvalid =
     Boolean(startDate && endDate && endDate < startDate) || startInPast || endInPast;
-  const canCreate = Boolean(destination && startDate && endDate && name && !datesInvalid);
+  const canCreate = Boolean(destination && startDate && endDate && name.value && !datesInvalid);
 
   let draftMeta: string = t.shell.newTrip.draftPending;
   if (destination && startDate && endDate && !datesInvalid) {
@@ -98,7 +100,7 @@ export function CreateTrip() {
 
   const submit = async () => {
     const parsed = createTripSchema.safeParse({
-      name,
+      name: name.value,
       destination,
       destinationGooglePlaceId: destPlace.googlePlaceId,
       destinationLat: destPlace.lat,
@@ -107,7 +109,7 @@ export function CreateTrip() {
       startDate,
       endDate,
       timezone,
-      icon,
+      icon: icon.value,
     });
     if (!parsed.success) return;
     setSubmitting(true);
@@ -206,34 +208,28 @@ export function CreateTrip() {
           <label htmlFor="tripName">{t.shell.newTrip.nameLabel}</label>
           <div className="title-row">
             <IconPicker
-              icon={icon}
-              onChange={(next) => {
-                setIcon(next);
-                setIconTouched(true);
-              }}
+              icon={icon.value}
+              onChange={icon.set}
               flatClusters={TRIP_ICON_CLUSTERS}
               destinations={DESTINATIONS}
             />
             <input
               id="tripName"
               className="title-input"
-              value={name}
+              value={name.value}
               placeholder={t.shell.newTrip.namePlaceholder}
               maxLength={MAX_TRIP_NAME_LENGTH}
-              onChange={(e) => {
-                setNameTouched(true);
-                setName(e.target.value.slice(0, MAX_TRIP_NAME_LENGTH));
-              }}
+              onChange={(e) => name.set(e.target.value.slice(0, MAX_TRIP_NAME_LENGTH))}
             />
           </div>
           <div className="hint">{t.shell.newTrip.nameHint}</div>
         </div>
 
         <div className="draft" aria-hidden="true">
-          <div className="ic">{icon}</div>
+          <div className="ic">{icon.value}</div>
           <div>
             <div className="t">
-              {name || <span className="ghost">{t.shell.newTrip.draftGhost}</span>}
+              {name.value || <span className="ghost">{t.shell.newTrip.draftGhost}</span>}
             </div>
             <div className="m">{draftMeta}</div>
           </div>

@@ -58,6 +58,7 @@ import { hoursPhrase } from '../lib/duration';
 import { bookingDurationUnit, timingLabels } from '../lib/booking-timing';
 import { BOOKING_TYPE_ICON, DOT_SEPARATOR } from '../constants';
 import { useStartPlaceErrand, type PlaceErrandField } from '../state/map-scope-state';
+import { useDerivedField } from '../lib/useDerivedField';
 import { t } from '../i18n/he';
 
 const BOOKING_TYPE_OPTIONS = Object.values(BOOKING_TYPE).map((ty) => ({
@@ -86,7 +87,7 @@ export function BookingSheet({
    *  half-filled booking survives the trip to the Map tab. */
   draft?: BookingSheetDraft | null;
   /** Open ON a field rather than at the top. `'when'` is what makes the row menu's
-   *  `שבץ במסלול` a real shortcut rather than a second name for `ערוך` (ADR-0137 §7)
+   *  `שבץ במסלול` a real shortcut rather than a second name for `ערוך` (ADR-0138 §7)
    *  — scheduling has always lived inside this form, and nothing said so. */
   focus?: 'when';
   onClose: () => void;
@@ -95,7 +96,7 @@ export function BookingSheet({
   const startErrand = useStartPlaceErrand();
   const isCreate = !booking;
 
-  // `שבץ במסלול` opened this sheet FOR the schedule (ADR-0137 §7), so land there
+  // `שבץ במסלול` opened this sheet FOR the schedule (ADR-0138 §7), so land there
   // rather than at the title. Runs once on open; `Modal` has already taken focus
   // to the card by then, which is why this re-takes it rather than racing it.
   const whenRef = useRef<HTMLDivElement>(null);
@@ -116,8 +117,12 @@ export function BookingSheet({
   );
 
   const [type, setType] = useState<BookingType>(draft ? draft.type : initial.type);
-  const [iconTouched, setIconTouched] = useState(draft ? draft.iconTouched : false);
-  const [icon, setIcon] = useState(draft ? draft.icon : initial.icon);
+  // The badge glyph follows the booking TYPE while untouched, and the ✨ caption below offers a
+  // revert once a human has picked one (`reset` hands it back to the derivation).
+  const icon = useDerivedField(
+    draft ? draft.icon : initial.icon,
+    draft ? draft.iconTouched : false,
+  );
   const [title, setTitle] = useState(draft ? draft.title : initial.title);
   const [code, setCode] = useState(draft ? draft.code : initial.code);
   const [fromPlaceId, setFromPlaceId] = useState<string | undefined>(
@@ -149,8 +154,10 @@ export function BookingSheet({
   // explicit datetimes that may fall on different days.
   const [spanStart, setSpanStart] = useState(draft ? draft.spanStart : initial.spanStart);
   const [spanEnd, setSpanEnd] = useState(draft ? draft.spanEnd : initial.spanEnd);
-  const [kind, setKind] = useState<'hard' | 'soft'>(draft ? draft.kind : initial.kind);
-  const [kindTouched, setKindTouched] = useState(draft ? draft.kindTouched : false);
+  const kind = useDerivedField<'hard' | 'soft'>(
+    draft ? draft.kind : initial.kind,
+    draft ? draft.kindTouched : false,
+  );
   const [error, setError] = useState<string | null>(null);
   const [saving, setSaving] = useState(false);
   const [deleting, setDeleting] = useState(false);
@@ -167,8 +174,8 @@ export function BookingSheet({
         .join(` ${DOT_SEPARATOR} `),
       draft: {
         type,
-        iconTouched,
-        icon,
+        iconTouched: icon.touched,
+        icon: icon.value,
         title,
         code,
         fromPlaceId,
@@ -185,8 +192,8 @@ export function BookingSheet({
         end,
         spanStart,
         spanEnd,
-        kind,
-        kindTouched,
+        kind: kind.value,
+        kindTouched: kind.touched,
       } satisfies BookingSheetDraft,
     });
 
@@ -241,7 +248,7 @@ export function BookingSheet({
   // they are not part of dirtiness.
   const dirty =
     type !== initial.type ||
-    icon !== initial.icon ||
+    icon.value !== initial.icon ||
     title !== initial.title ||
     code !== initial.code ||
     fromPlaceId !== initial.fromPlaceId ||
@@ -258,19 +265,16 @@ export function BookingSheet({
     spanEnd !== initial.spanEnd ||
     startOverride !== initial.startOverride ||
     endOverride !== initial.endOverride ||
-    kind !== initial.kind;
+    kind.value !== initial.kind;
   const { guardedClose, prompting, confirmDiscard, cancelDiscard } = useUnsavedGuard(dirty);
   const requestClose = () => guardedClose(onClose);
 
   const changeType = (next: BookingType) => {
     setType(next);
-    if (!iconTouched) setIcon(BOOKING_TYPE_ICON[next]);
-    if (!kindTouched) setKind(bookingDefaultKind(next));
+    icon.redrive(BOOKING_TYPE_ICON[next]);
+    kind.redrive(bookingDefaultKind(next));
   };
-  const pickKind = (k: 'hard' | 'soft') => {
-    setKind(k);
-    setKindTouched(true);
-  };
+  const pickKind = (k: 'hard' | 'soft') => kind.set(k);
 
   const save = async () => {
     // Transport is identified by its route, not a name (ADR-0059 §3): derive the
@@ -320,11 +324,14 @@ export function BookingSheet({
         });
         const seed = isSpan
           ? buildSpanSeed(
-              { startAt: spanStart, endAt: spanEnd, kind, icon, category },
+              { startAt: spanStart, endAt: spanEnd, kind: kind.value, icon: icon.value, category },
               startZone,
               endZone,
             )
-          : buildEventSeed({ date, start, end, kind, icon, category }, startZone);
+          : buildEventSeed(
+              { date, start, end, kind: kind.value, icon: icon.value, category },
+              startZone,
+            );
         // Give the seed a stable event id (ADR-0093): the existing linked event's
         // on edit, a fresh one otherwise. The server upserts under it, so the
         // optimistic linked event the verb mirrors reconciles in place on flush.
@@ -400,13 +407,10 @@ export function BookingSheet({
 
           <div className="titlerow">
             <IconPicker
-              icon={icon}
+              icon={icon.value}
               // Booking icon is a badge only — the category comes from the type
               // (ADR-0038), so the picker's category suggestion is ignored here.
-              onChange={(next) => {
-                setIcon(next);
-                setIconTouched(true);
-              }}
+              onChange={icon.set}
             />
             {isTransport ? (
               // A flight's identity is its route, not a name (ADR-0059 §3). The
@@ -440,14 +444,11 @@ export function BookingSheet({
               ✨ {t.index.form.autoCaption}{' '}
               <span className="cat-readout">{t.index.bookingType[type]}</span>
             </span>
-            {iconTouched && (
+            {icon.touched && (
               <button
                 type="button"
                 className="bs-revert"
-                onClick={() => {
-                  setIcon(BOOKING_TYPE_ICON[type]);
-                  setIconTouched(false);
-                }}
+                onClick={() => icon.reset(BOOKING_TYPE_ICON[type])}
               >
                 <Icon name="reset" /> {t.index.form.reset}
               </button>
@@ -485,7 +486,7 @@ export function BookingSheet({
               WhenField standard — a span for two-endpoint bookings, a single day
               otherwise. Never a cramped native datetime box (U-05).
 
-              The wrapper exists for `focus="when"` (ADR-0137 §7): the ref goes on
+              The wrapper exists for `focus="when"` (ADR-0138 §7): the ref goes on
               the BLOCK rather than on a `WhenField` autofocus prop, because the two
               variants have different first controls and the sheet is the one place
               that knows which is rendered. */}
@@ -528,7 +529,7 @@ export function BookingSheet({
                   tripZone={trip.timezone}
                   refMs={zoneRefMs}
                 />
-                {spanStart && <KindToggle kind={kind} onPick={pickKind} />}
+                {spanStart && <KindToggle kind={kind.value} onPick={pickKind} />}
               </>
             ) : (
               <>
@@ -554,7 +555,7 @@ export function BookingSheet({
                   tripZone={trip.timezone}
                   refMs={zoneRefMs}
                 />
-                {date && <KindToggle kind={kind} onPick={pickKind} />}
+                {date && <KindToggle kind={kind.value} onPick={pickKind} />}
               </>
             )}
           </div>

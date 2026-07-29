@@ -26,6 +26,7 @@ import {
   matchesAnyTerm,
   type Booking,
   type EventCategory,
+  type MaybeItem,
   type Place,
   type PlaceResult,
 } from '@waypoint/shared';
@@ -57,15 +58,17 @@ import {
   mapsDirectionsUrl,
   nextDestination,
 } from '../lib/places';
-import { PLACE_REF_KIND, placeRefs } from '../lib/place-refs';
+import { PLACE_REF_KIND, placeRefs, soleIdeaFor } from '../lib/place-refs';
 import {
   buildPinOrderIndex,
   isAsidePin,
   isFramedByCamera,
   PIN_TIER,
+  pinOutcome,
   pinSizeCss,
   placePinTier,
   placePoint,
+  type PinContext,
   type PinTier,
 } from '../lib/map-pins';
 import { countPointsInBounds, pointInBounds, type LatLng, type MapBounds } from '../lib/map-camera';
@@ -102,10 +105,12 @@ import { ChoiceGrid, type Choice } from '../ui/primitives/ChoiceGrid';
 import { AddLocationButton } from '../ui/primitives/PlacePicker';
 import { RevealList } from '../ui/primitives/RevealList';
 import { SnapSheet } from '../ui/primitives/SnapSheet';
+import { ToggleChip } from '../ui/primitives/ToggleChip';
 import { MapPane, type MapPin, type MapResultPin } from '../ui/domain/MapPane';
 import { PlaceResearch, ResultRow } from './PlaceResearch';
 import { BookingDetail } from '../ui/BookingDetail';
 import { BookingSheet, type BookingSheetDraft } from '../ui/BookingSheet';
+import { EventForm, type EventFormDraft } from '../ui/EventForm';
 import { PlaceBadge } from '../ui/domain/PlaceBadge';
 import { EmptyState, StatusBanner } from '../ui/feedback';
 import { Icon } from '../ui/Icon';
@@ -385,6 +390,42 @@ export function MapView() {
     setEditBooking(bookings.find((b) => b.id === returned.target.id) ?? null);
     setBookingDraft(returned.draft);
   });
+
+  // ── PUT A PLACE ON A DAY (ADR-0135) ───────────────────────────────────────
+  // The tab now hosts `EventForm` too, over the map, on its own tab — which is why this is
+  // NOT the place errand run backwards (§3). The errand exists because of LOSS: a form is a
+  // `Modal` whose local state no URL addresses, so leaving it loses what was typed, and all
+  // of ADR-0134's machinery is for surviving a round trip between two screens. Here there is
+  // no round trip. `Modal`'s own `useOverlay` is the whole back story — back closes the form
+  // and lands on the map with the row still selected.
+  const [scheduleForm, setScheduleForm] = useState<{
+    placeId: string;
+    /** The originating idea, when there is exactly one (§5) — `EventForm maybeItem` then makes
+     *  the save `verbs.schedule`, creating the event AND consuming it in one action. With two
+     *  or more this is null and nothing is consumed: two ideas on one place are two
+     *  intentions, and scheduling one must not eat the other. */
+    maybeItem: MaybeItem | null;
+  } | null>(null);
+  const [eventDraft, setEventDraft] = useState<EventFormDraft | null>(null);
+  // Session 165's rule: A HOST THAT RENDERS A FORM OWES IT A WAY BACK. The place field keeps
+  // its own `onFind`, so an errand can start from inside this form — and without this hook it
+  // would return to a CLOSED form with everything typed gone. One line in a mechanism already
+  // generalised for exactly this; the `hostTab` filter already handles a `returnTo` at the Map.
+  usePlaceErrandReturn<EventFormDraft>('event', 'map', (returned) => {
+    if (!returned.draft) return;
+    setEventDraft(returned.draft);
+    // Re-open on the place the draft carries, so the reopened form is the one that left.
+    setScheduleForm({ placeId: returned.draft.placeId ?? '', maybeItem: null });
+  });
+
+  const openScheduleForm = (placeId: string) => {
+    setScheduleForm({ placeId, maybeItem: soleIdeaFor(placeId, maybeItems) });
+    setEventDraft(null);
+  };
+  const closeScheduleForm = useCallback(() => {
+    setScheduleForm(null);
+    setEventDraft(null);
+  }, []);
 
   // ── The rendered map (Phase 6, ADR-0121) ──────────────────────────────────
   // Config is read ONCE: it is a build var, so it cannot change while mounted, and
@@ -839,8 +880,16 @@ export function MapView() {
   // resolves which day a place is read as, but a day you are arranging has no past — and
   // the pins you can least afford to fade are the ones you came to rearrange. It sits
   // beside `nextStopId`/`nowStopId`, which are Trip-only for the mirror-image reason.
-  const pinTier = (usage: PlaceUsage): PinTier =>
-    placePinTier(usage, { onDate: scopedDate, nowMs, today, planning: mode === 'plan' });
+  // One context for both derivations, because they have to agree: the tier says which day
+  // the pin is read as, and the mark reports on THAT day (`pinOutcome`'s rule 2). Built in
+  // the render body, not memoized — `nowMs` ticks every second, so a memo would rebuild it
+  // anyway, and it is only ever read here.
+  const pinCtx: PinContext = { onDate: scopedDate, nowMs, today, planning: mode === 'plan' };
+  // `planning` withdraws the behind-you tier in Plan mode (ADR-0130 §2): the clock still
+  // resolves which day a place is read as, but a day you are arranging has no past — and
+  // the pins you can least afford to fade are the ones you came to rearrange. It sits
+  // beside `nextStopId`/`nowStopId`, which are Trip-only for the mirror-image reason.
+  const pinTier = (usage: PlaceUsage): PinTier => placePinTier(usage, pinCtx);
 
   // Built every render (it is cheap), then memoized on its own CONTENT below: the
   // screen re-renders every second and a fresh array identity would re-diff every
@@ -883,6 +932,11 @@ export function MapView() {
               ? iconForCategory(usage.pin.category)
               : '📍',
         tier,
+        // WHICH KIND of behind-you it is (ADR-0117 §1 on the canvas). Derived from the
+        // SAME context the tier is, so the grey and the mark can never describe two
+        // different days — and undefined on every other tier, which is what keeps a ✓ off
+        // another day's ghost and out of Plan mode entirely.
+        outcome: pinOutcome(usage, pinCtx),
         // THE PROMOTION (ADR-0131 §4). `aside` is the subordinate SIZE; the tier class
         // beside it is the paint. Under a query the day scope is not what chose this
         // set, so a match must not wear the ratio that means "not what you are looking
@@ -916,6 +970,9 @@ export function MapView() {
         p.hue,
         p.glyph,
         p.tier,
+        // In the key for the same reason `aside` is: it is a rendered mark, and a place
+        // settled while the tab is open changes nothing else about its pin.
+        p.outcome,
         // In the key because it is a rendered class: a promotion that changed the paint
         // but not this string would hand the memo an "equal" array and the markers would
         // keep the old ratio. The pin SET usually changes with the query too, so the bug
@@ -1053,6 +1110,23 @@ export function MapView() {
       // framing does not happen behind the list. A fresh object every time, because
       // `framePlace` is spent once and the same row may be tapped twice.
       if (point) setFramePlace({ ...point });
+      // AND THE BLOCK IT JUST OPENED IS SCROLLED INTO VIEW (ADR-0135 §8). Selection reveals
+      // a way-in block plus its footer under the row, and the block already overflows the
+      // `half` sheet on a 360 with two references — 186px against a 153px scroller, as
+      // shipped. Without this the footer can open entirely below the fold on the screen
+      // ADR-0017 names as the small target, and the action would be the half you cannot see.
+      //
+      // `nearest`, not `center`: the row is on screen (you just tapped it), so the only job
+      // is to bring what GREW below it into view, and `center` would shove a row you are
+      // looking at. The pin-tap path above uses `center` for the opposite reason — there the
+      // row may be anywhere.
+      //
+      // Deferred a frame so the block has rendered and the scroller measures its real height.
+      requestAnimationFrame(() => {
+        sheetRef.current
+          ?.querySelector(`[data-place="${placeId}"]`)
+          ?.scrollIntoView({ block: 'nearest' });
+      });
       return;
     }
     // From a pin: NOTHING MOVES. The pane's box does not change, so the camera does not
@@ -1458,6 +1532,12 @@ export function MapView() {
           selected={selected}
           onSelect={opts.onSelect && (() => opts.onSelect!(usage.placeId))}
           refs={selected ? refEntriesFor(usage, opts) : undefined}
+          onSchedule={
+            // Absent under a place errand (ADR-0134 §3 / ADR-0135 §7): the tab is answering
+            // one question, so the verb changes rather than accumulating — exactly as `נווט`
+            // gives its slot to `בחירה` on the same row.
+            selected && !pendingErrand ? () => openScheduleForm(usage.placeId) : undefined
+          }
           onEnrich={() =>
             setRowErrand({
               target: { kind: 'place', id: place.id },
@@ -1539,18 +1619,17 @@ export function MapView() {
   // mounted and CSS hides it — two different facts, two different mechanisms, and
   // neither borrows the other's (§5).
   const nearChip = !offline && (
-    <button
-      type="button"
-      className={
-        'map-nearchip' +
-        (distanceOrder ? ' on' : '') +
-        (nearMe && locationRefused ? ' refused' : '')
-      }
-      aria-pressed={distanceOrder}
+    <ToggleChip
+      on={distanceOrder}
+      // Teal is what this control is ABOUT (location), so it holds in both states; a
+      // refusal drops it to `muted`, which is the chip saying it can no longer act rather
+      // than disappearing (ADR-0109 §7). `.map-nearchip` is the layout/animation hook.
+      tone={nearMe && locationRefused ? 'muted' : 'teal'}
+      className="map-nearchip"
       onClick={toggleNearMe}
     >
       <Icon name="pin" /> {geo.status === 'locating' ? t.map.near.locating : t.map.near.chip}
-    </button>
+    </ToggleChip>
   );
 
   // What the collapsed control says about itself: WHICH facets are on, and no number.
@@ -1607,32 +1686,29 @@ export function MapView() {
               ariaLabel={t.map.filter.categoryLabel}
             />
             {hasMaybes && (
-              <button
-                type="button"
-                className={'map-maybes' + (maybesOnly ? ' on' : '')}
-                aria-pressed={maybesOnly}
+              <ToggleChip
+                on={maybesOnly}
+                provisional
+                count={maybesInScope}
+                className="map-maybes"
                 onClick={() => setMaybesOnly((v) => !v)}
               >
                 {t.map.filter.maybes}
-                <span className="cnt" aria-hidden="true">
-                  {maybesInScope}
-                </span>
-              </button>
+              </ToggleChip>
             )}
             {/* The same idiom for the same shape of question — an independent toggle
-                beside `אולי`, not a third multi-value facet (ADR-0121 §9). */}
+                beside `אולי`, not a third multi-value facet (ADR-0121 §9). Which is now
+                literally the same component, not the same class name copied. */}
             {hasBehind && (
-              <button
-                type="button"
-                className={'map-maybes' + (leftOnly ? ' on' : '')}
-                aria-pressed={leftOnly}
+              <ToggleChip
+                on={leftOnly}
+                provisional
+                count={leftInScope}
+                className="map-maybes"
                 onClick={() => setLeftOnly((v) => !v)}
               >
                 {t.map.filter.left}
-                <span className="cnt" aria-hidden="true">
-                  {leftInScope}
-                </span>
-              </button>
+              </ToggleChip>
             )}
           </div>
           {closeControl}
@@ -1660,22 +1736,21 @@ export function MapView() {
         </>
       ) : (
         <>
-          <button
-            type="button"
-            className={'map-scopechip' + (allDays ? ' on' : '')}
-            aria-pressed={allDays}
-            onClick={() => setAllDays(!allDays)}
-          >
+          <ToggleChip on={allDays} className="map-scopechip" onClick={() => setAllDays(!allDays)}>
             🗓️ {t.map.allDays}
-          </button>
-          <button
-            type="button"
-            className={'map-facets' + (facetGlyphs ? ' on' : '')}
-            aria-label={facetWords ? t.map.filter.activeAria(facetWords) : undefined}
+          </ToggleChip>
+          {/* An `indicator`, not a `toggle`: the on-state says WHICH facets are live, and
+              the tap opens the strip rather than pressing anything — so it carries no
+              `aria-pressed` and names the fact in its own label instead. */}
+          <ToggleChip
+            on={Boolean(facetGlyphs)}
+            semantics="indicator"
+            className="map-facets"
+            ariaLabel={facetWords ? t.map.filter.activeAria(facetWords) : undefined}
             onClick={() => openDisclosure(MAP_ROW_DISCLOSURE.facets)}
           >
             {facetGlyphs || t.map.filter.open}
-          </button>
+          </ToggleChip>
           {/* The whole day as one free Google directions link — it ships with the
               connector that draws the same order, and costs nothing (§10). It is about
               the shape on the canvas, so it lives on the canvas. */}
@@ -1980,6 +2055,18 @@ export function MapView() {
           }}
         />
       )}
+      {/* The way-in block's footer opens this, pre-filled with the place (ADR-0135 §1-2).
+          What the form then DOES with it — a `יש הזמנה` row that also creates a Booking —
+          is ADR-0136's, which is why this passes a place and nothing else. */}
+      {scheduleForm && (
+        <EventForm
+          defaults={{ placeId: scheduleForm.placeId }}
+          maybeItem={scheduleForm.maybeItem}
+          draft={eventDraft}
+          onOpenBooking={setDetailBooking}
+          onClose={closeScheduleForm}
+        />
+      )}
     </>
   );
 
@@ -2163,6 +2250,7 @@ function PlaceRow({
   distanceStale,
   selected,
   refs,
+  onSchedule,
   onSelect,
   onEnrich,
   onFrame,
@@ -2208,6 +2296,12 @@ function PlaceRow({
   selected?: boolean;
   /** The way in to each reference, present only while selected. */
   refs?: RefEntry[];
+  /** **Put this place on a day** (ADR-0135 §1) — the block's one primary action, in its own
+   *  footer under the reference list. Absent while a place errand is live, because the tab is
+   *  then answering one question and ADR-0134 §3 has the verb CHANGE rather than accumulate:
+   *  a control only where it has something to do, the same derived-affordance rule this tab
+   *  runs for `נווט`, `קרוב עכשיו` and `באזור`. */
+  onSchedule?: () => void;
   /** Select this place (and focus its pin, when it has one). **Absent on the canvas
    *  place card, whose body is inert** (ADR-0122 §7): there is nowhere for a tap on it
    *  to go — it already shows everything the row shows, way-in included — and raising
@@ -2400,6 +2494,21 @@ function PlaceRow({
               <Icon name="caret" dir="left" />
             </button>
           ))}
+          {/* The block's own footer, so the create is visibly not a fourth reference. */}
+          {onSchedule && (
+            <span className="map-refs-foot">
+              <button
+                type="button"
+                className="map-addmaybe"
+                onClick={(e) => {
+                  e.stopPropagation();
+                  onSchedule();
+                }}
+              >
+                {t.map.scheduleToDay}
+              </button>
+            </span>
+          )}
         </span>
       )}
     </div>

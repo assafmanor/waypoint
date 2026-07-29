@@ -1485,7 +1485,7 @@
   transition: background-color 0.16s;
   /* The pill is the active indicator and it is sized off this box, so the SVG
      has to occupy the height the emoji did — a bare 1em glyph sits shorter than
-     an emoji's own box and the pill collapsed around it (ADR-0137 §4). */
+     an emoji's own box and the pill collapsed around it (ADR-0138 §4). */
   display: flex;
   align-items: center;
   justify-content: center;

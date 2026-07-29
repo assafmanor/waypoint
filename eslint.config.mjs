@@ -49,7 +49,7 @@ const COPY_GLYPH_SELECTORS = [
     'No arrow/caret glyph in UI copy — split the sentence and render <NavArrow>/<Icon> at the call site (design-language.md).',
 }));
 
-// ADR-0137: the same rule, now enforced for CONTROL emoji and not only arrows.
+// ADR-0138: the same rule, now enforced for CONTROL emoji and not only arrows.
 // Until this, "emoji are content, icons are UI" was true of arrows/carets and
 // aspirational everywhere else, which is how ✏️ 🗑️ 📥 🔄 👑 🚪 ⬆️ 📷 🔗 ended up
 // drawing verbs — and how two call sites came to pass an emoji as an inline
@@ -76,7 +76,7 @@ const COPY_GLYPH_SELECTORS = [
 // as controls on first run. Each alternative below is a whole code point.
 const CONTROL_EMOJI = '(✏|🗑|📥|🔄|↩|👑|🚪|⬆|📷|🔗|📋|💬|📡|🧭|🔒|⚠|⏱|🔍|✕|⋯)';
 const CONTROL_EMOJI_MESSAGE =
-  'Use <Icon name="…"> (ui/Icon) — this glyph is drawing a CONTROL, and emoji are content while icons are UI (design-language.md, ADR-0137). Content glyphs belong in constants.ts\'s GLYPH.';
+  'Use <Icon name="…"> (ui/Icon) — this glyph is drawing a CONTROL, and emoji are content while icons are UI (design-language.md, ADR-0138). Content glyphs belong in constants.ts\'s GLYPH.';
 
 const CONTROL_EMOJI_SELECTORS = [
   `JSXText[value=/${CONTROL_EMOJI}/]`,

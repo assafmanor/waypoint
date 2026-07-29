@@ -1,7 +1,7 @@
 // @vitest-environment jsdom
 //
 // The Plan builder row's ⋯ sheet — specifically the `הזז` step that replaced the
-// `הקדם`/`אחר` pair (ADR-0137 §8). Three things are worth pinning here and none of
+// `הקדם`/`אחר` pair (ADR-0138 §8). Three things are worth pinning here and none of
 // them are reachable from `lib/reorder.ts`'s own tests, which cover the slot
 // arithmetic but know nothing about the surface that calls it:
 //
@@ -68,7 +68,7 @@ function BackButton() {
   return <button data-testid="back" onClick={() => back()} />;
 }
 
-describe('BuilderRow ⋯ sheet — the הזז step (ADR-0137 §8)', () => {
+describe('BuilderRow ⋯ sheet — the הזז step (ADR-0138 §8)', () => {
   afterEach(() => cleanup());
 
   it('offers one הזז item and neither of the retired הקדם/אחר', () => {

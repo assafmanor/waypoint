@@ -2,6 +2,7 @@
 // stays language-agnostic (conventions.md). Interpolated copy is a function;
 // runs that must render left-to-right (times, codes) stay as JSX in the caller.
 import { countdownText } from '../lib/time';
+import { type OutboxVerb } from '../lib/outbox';
 import { measure } from '../lib/bidi';
 
 export const t = {
@@ -243,6 +244,10 @@ export const t = {
     // are already looking at the map.
     frameOnPlace: 'התמקדות במקום הזה',
     frameAll: 'התאמת התצוגה לכל המקומות',
+    // The way-in block's one primary action (ADR-0135 §1): a place in the trip could only
+    // ever be an idea, and nothing said "put this on Tuesday at 14:00". Names the verb, not
+    // the schema — "event or booking?" is the app's question, not the traveller's.
+    scheduleToDay: '＋ שיבוץ ליום',
     // A pin that is in view but not in this day (ADR-0121 §6). Its row is not in
     // the sheet, so tapping it is the only way to learn what it is: the tap
     // surfaces that one row, named with the day it belongs to.
@@ -293,6 +298,7 @@ export const t = {
       move: 'הזזת אירוע',
       delete: 'מחיקת אירוע',
       consumeMaybeItem: 'קידום רעיון',
+      restoreMaybeItem: 'החזרת רעיון למדף',
       createMaybeItem: 'הוספת רעיון',
       deleteMaybeItem: 'מחיקת רעיון',
       updateMaybeItem: 'עדכון רעיון',
@@ -306,7 +312,11 @@ export const t = {
       createPlace: 'הוספת מקום',
       updatePlace: 'עדכון מקום',
       uploadDocument: 'העלאת מסמך',
-    } as Record<string, string>,
+      // `satisfies Record<OutboxVerb, string>`, not `as Record<string, string>`: this map is
+      // read as `t.sync.verb[f.verb]`, so a verb missing from it renders a queued failure with
+      // NO name — and the loose cast made that silent. Typed, a new outbox verb is a compile
+      // error here, which is how every other per-enum lookup in this app behaves.
+    } satisfies Record<OutboxVerb, string>,
     review: {
       title: 'שינויים שלא נשמרו',
       intro: 'השינויים האלה נדחו בסנכרון. אפשר לנסות שוב או להשליך.',
@@ -421,7 +431,7 @@ export const t = {
     // Read-only booking detail view (ADR-0053): tap a booking → facts + a visible
     // edit button + a "⋯" menu (edit / delete).
     detail: {
-      // Imperatives, matching the event menus (ADR-0137 §6). These were the
+      // Imperatives, matching the event menus (ADR-0138 §6). These were the
       // nouns עריכה/מחיקה while the very same actions on an event read ערוך/מחק —
       // a menu item is something you tell the app to do, so the verb wins.
       edit: 'ערוך',
@@ -570,7 +580,7 @@ export const t = {
     // Per-row manage menu + optimistic-action toasts (ADR-0052).
     manage: {
       actions: 'פעולות',
-      // Imperatives, matching every other row menu (ADR-0137 §6).
+      // Imperatives, matching every other row menu (ADR-0138 §6).
       edit: 'ערוך',
       delete: 'מחק',
       nameField: 'שם',
@@ -980,7 +990,7 @@ export const t = {
     settleTitle: (title: string) => `הסדרת «${title}»`,
     settleUnresolved: 'הסדר: היינו או דלג',
     addToDay: 'הוסף אירוע',
-    // Reorder from the ⋯ sheet (ADR-0137 §8). One item, always present, opening a
+    // Reorder from the ⋯ sheet (ADR-0138 §8). One item, always present, opening a
     // step that shows WHERE the event lands — replacing the הקדם/אחר pair, which
     // was a blind one-slot swap that also came and went with the row's position.
     move: 'הזז',
@@ -1104,6 +1114,9 @@ export const t = {
     moveCrossesDay: 'העברה ליום אחר נעשית במצב תכנון',
     eventCreated: 'האירוע נוסף',
     eventUpdated: 'האירוע עודכן',
+    // A booked save is ONE action however many writes it took (ADR-0136 §3), so it gets one
+    // toast — and its undo reverses the booking, the link and the consume together.
+    eventBooked: 'האירוע נוסף, וגם ההזמנה',
     eventDeleted: 'האירוע נמחק',
     reordered: 'הסדר עודכן',
     scheduledDay: (title: string) => `${title} נוסף ליום`,
@@ -1178,6 +1191,32 @@ export const t = {
     kindLabel: 'סוג',
     kindHard: '🔒 קשיח',
     kindSoft: 'גמיש',
+    // ── The `יש הזמנה` row (ADR-0136) ──────────────────────────────────────
+    // You are always creating an event; this says it is ALSO booked. One tap, no
+    // typing — which is what makes it work for a table booked by phone and for people
+    // who never record a number. It carries no `field-label`: the button says the word,
+    // and a label above it saying `הזמנה` is the same word twice for 20px.
+    bookedLabel: 'יש הזמנה',
+    // The code is a detail OF a booking, never what creates one — so it is optional and
+    // says so. `קוד אישור` is the app's existing name for it (`index.form.codeLabel`),
+    // not the mockup's ad-hoc `מספר אישור`.
+    bookedCodePlaceholder: 'קוד אישור · לא חובה',
+    // The one question the category cannot answer (§2): `EventCategory` has a single
+    // `transport` while `BookingType` has flight, train and other. An accessible name for
+    // the pill group only — the pills carry no visible label, since they say what they are
+    // and the statement below names the result.
+    bookedTypeLabel: 'סוג ההזמנה',
+    // THE DERIVATION, STATED (§2) — never a second type picker; it moves with the
+    // category pill, so the app is visibly understanding rather than quietly deciding.
+    // Two tails because the two operations differ: a create can be completed later, a
+    // conversion moves two fields off the event being edited (§3).
+    bookedDerived: (type: string) => `האירוע יירשם גם כהזמנה · ${type}, ואפשר להשלים אותה אחר כך`,
+    bookedDerivedConvert: (type: string) =>
+      `האירוע הזה יירשם גם כהזמנה · ${type}, והמיקום והקטגוריה יעברו אליה`,
+    // Already linked: no control at all, a statement with a way in (§3) — the code, room
+    // and notes live on the booking now, which is also what makes the path one-way.
+    bookedLinkedLabel: 'הזמנה',
+    bookedLinkedOpen: 'פתיחת ההזמנה',
     save: 'שמירה',
     cancel: 'ביטול',
     titleRequired: 'חסרה כותרת',

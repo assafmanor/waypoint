@@ -135,27 +135,12 @@
    facets are on and takes the mode accent, because a filter that hides the fact that it
    is filtering is the defect ADR-0119 exists to prevent. It carries NO count: the open
    strip already answers "how many", and a fourth number would be a fourth thing to keep
-   coupled (§2). */
-.map-facets {
-  display: inline-flex;
-  align-items: center;
-  gap: 5px;
-  border: 1px solid var(--line);
-  background: var(--card);
-  color: var(--ink);
-  border-radius: 999px;
-  padding: 6px 12px;
-  font: inherit;
-  font-size: 12px;
-  font-weight: 700;
-  cursor: pointer;
-  white-space: nowrap;
-}
-.map-facets.on {
-  background: var(--idx-accent);
-  border-color: var(--idx-accent);
-  color: var(--idx-accent-text);
-}
+   coupled (§2).
+
+   Its appearance is `ui/primitives/ToggleChip` since session 185 — as an `indicator`
+   rather than a `toggle`, because its on-state is a fact about the FILTER, not a pressed
+   state of its own: the tap opens the strip. `.map-facets` survives as this row's layout
+   and test hook only. */
 /* EXPANDED: the strip covers the row IN PLACE (ADR-0100 §3's shape, which ADR-0101
    superseded for search because a keyboard plus a result list left no room for either —
    a facet strip has neither, and its results are the pins and rows already on screen, so
@@ -390,39 +375,11 @@
 }
 
 /* ── the facets themselves (they reuse the Index grammar) ────────────────── */
-/* the "אולי" facet is an independent toggle (ADR-0110 §2), dashed/provisional
-   when off, filled with the mode accent when on. */
-.map-maybes {
-  flex: 0 0 auto;
-  display: inline-flex;
-  align-items: center;
-  gap: 5px;
-  border: 1px dashed var(--soft-line);
-  background: var(--card);
-  color: var(--ink);
-  border-radius: 999px;
-  padding: 7px 12px;
-  font: inherit;
-  font-size: 12.5px;
-  font-weight: 600;
-  cursor: pointer;
-  white-space: nowrap;
-}
-.map-maybes .cnt {
-  font-family: var(--font-mono);
-  font-size: 11px;
-  font-weight: 700;
-  color: var(--muted);
-}
-.map-maybes.on {
-  background: var(--idx-accent);
-  border-color: var(--idx-accent);
-  border-style: solid;
-  color: var(--idx-accent-text);
-}
-.map-maybes.on .cnt {
-  color: rgba(255, 255, 255, 0.8);
-}
+/* The "אולי"/"מה נשאר" facets are independent toggles (ADR-0110 §2), dashed/provisional
+   when off, filled with the mode accent when on — now `ToggleChip provisional` and its
+   `count` slot rather than a local copy of both (session 185). Their old 7px/12.5px/600
+   went with the copy: it was drift from the `.choice-pill` grammar beside them in the
+   strip, undocumented and unmeasured, so the primitive's 6px/12px/700 is the correction. */
 .map-search-btn {
   flex: 0 0 auto;
   width: 34px;
@@ -439,56 +396,15 @@
 /* ── the day scope: the map-local "all days" chip (ADR-0110 §4) ───────────
    `.map-scopehint`'s sentence retired with the two fixed rows (ADR-0122 §2): the chip's
    own on/off state says which scope is on, and the header day strip already drops its
-   filled selection while all-days is live (session 81's `allScope`). */
-.map-scopechip {
-  display: inline-flex;
-  align-items: center;
-  gap: 5px;
-  border: 1px solid var(--line);
-  background: var(--card);
-  color: var(--ink);
-  border-radius: 999px;
-  padding: 6px 12px;
-  font-size: 12px;
-  font-weight: 700;
-  cursor: pointer;
-}
-.map-scopechip.on {
-  background: var(--idx-accent);
-  border-color: var(--idx-accent);
-  color: var(--idx-accent-text);
-}
+   filled selection while all-days is live (session 81's `allScope`). Appearance is
+   `ToggleChip` since session 185; `.map-scopechip` survives as a test hook. */
 /* ── "near me now" (ADR-0109 §6-7) ──────────────────────────────────────────
    Teal throughout: near-me, the distance chips and נווט are LOCATION affordances,
    which is exactly what teal is for in the budget (ADR-0028). No amber here — the
-   only time anchor on this surface is navigate-to-next's tag. */
-.map-nearchip {
-  display: inline-flex;
-  align-items: center;
-  gap: 5px;
-  border: 1px solid var(--teal);
-  color: var(--teal);
-  background: color-mix(in srgb, var(--teal) 10%, transparent);
-  border-radius: 999px;
-  padding: 6px 12px;
-  font: inherit;
-  font-size: 12px;
-  font-weight: 700;
-  cursor: pointer;
-  white-space: nowrap;
-}
-.map-nearchip.on {
-  background: var(--teal);
-  color: var(--cta-text);
-}
-/* refused: the chip stays present but stops claiming it can do anything — the
-   banner beside it carries the explanation and the retry. */
-.map-nearchip.refused {
-  border-style: dashed;
-  border-color: var(--soft-line);
-  color: var(--muted);
-  background: transparent;
-}
+   only time anchor on this surface is navigate-to-next's tag. That teal is a SEMANTIC,
+   so it survived the session-185 extraction as `ToggleChip tone="teal"` rather than
+   being flattened into the neutral chip; `refused` is its `tone="muted"`.
+   `.map-nearchip` keeps only what is about WHERE the chip sits — the two rules below. */
 
 /* the reason-first pre-prompt — an inline card, teal-edged (it is about location) */
 .map-geoprompt {
@@ -1113,6 +1029,30 @@
 }
 .map-res-out:hover {
   border-color: var(--muted);
+}
+
+/* ── ONE ACTION, IN A CONTROL THIS TAB ALREADY OWNS (ADR-0135 §1) ────────────────
+   The rejected first pass hung two `.map-ref`-shaped entries under the references, which
+   reads as a command menu because it IS one: same box, same fill, four grey rectangles deep.
+   A `.map-ref` says "this place is already there" and ends in a chevron because it GOES
+   somewhere; a create goes nowhere and is not the references' peer.
+
+   So the footer holds `.map-addmaybe` — the pill this tab already uses for "make something
+   out of this place" (`＋ אולי` on a Google result). Same job, same neutral `--cta`: amber is
+   time and commitment, plan violet is Plan mode, and a create is neither (ADR-0028, root
+   rule 4). What separates it from a reference row is SHAPE and WEIGHT, not a new colour. */
+.map-refs-foot {
+  display: flex;
+  justify-content: center;
+  margin-top: 8px;
+}
+/* The one size change, and it is a floor rather than a taste: on a result row this pill is a
+   trailing chip in a dense 68px row (~29px). Here it is the selected row's primary action, so
+   it meets 44×44 (ADR-0017). Scoped to the block, so the result row is untouched. */
+.map-refs-foot .map-addmaybe {
+  min-height: 44px;
+  padding-inline: 18px;
+  font-size: 13px;
 }
 
 .map-addmaybe {

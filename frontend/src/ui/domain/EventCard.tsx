@@ -275,7 +275,7 @@ export function EventCard(props: EventCardProps) {
     });
   }
 
-  // The menu's subject line (ADR-0137 §3): kind, then the slot it holds. Both are
+  // The menu's subject line (ADR-0138 §3): kind, then the slot it holds. Both are
   // what decide whether the verb you are about to pick is even possible — a hard
   // event cannot be parked or swapped — so they belong above the list, not only
   // on the card behind the scrim. The time is a numeric run inside RTL copy and

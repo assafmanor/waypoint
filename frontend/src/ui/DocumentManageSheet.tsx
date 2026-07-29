@@ -70,7 +70,7 @@ export function DocumentManageSheet({
         title={doc.title}
         // Naming the type matters most here: deleting an encrypted document is
         // irreversible, and the sheet used to say nothing at all about what it
-        // was about to destroy (ADR-0137 §3).
+        // was about to destroy (ADR-0138 §3).
         subject={t.docs.type[doc.type]}
         onClose={onClose}
         actions={[

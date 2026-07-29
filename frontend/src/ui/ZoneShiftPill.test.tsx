@@ -11,7 +11,7 @@ describe('ZoneShiftPill', () => {
     const { container } = render(<ZoneShiftPill minutes={360} />);
     const pill = container.querySelector('.wp-tzshift')!;
     expect(pill.textContent).toContain('+6');
-    // The mark is an SVG since ADR-0137 — the pill is chrome, and chrome is icons.
+    // The mark is an SVG since ADR-0138 — the pill is chrome, and chrome is icons.
     expect(pill.querySelector('svg')).not.toBeNull();
     expect(pill.getAttribute('title')).toBe(t.event.zoneShift);
   });

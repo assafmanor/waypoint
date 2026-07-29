@@ -86,7 +86,7 @@ export function IndexBookingsView({
 
   const openDetail = (booking: Booking) => setDetail(booking);
   // `focus` rides along so the manage sheet's `שבץ במסלול` opens the form ON the
-  // when-field (ADR-0137 §7); `ערוך` passes nothing and opens at the top.
+  // when-field (ADR-0138 §7); `ערוך` passes nothing and opens at the top.
   const [sheetFocus, setSheetFocus] = useState<'when' | undefined>(undefined);
   const editFrom = (booking: Booking, focus?: 'when') => {
     setDetail(null);

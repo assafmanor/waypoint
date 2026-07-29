@@ -3,7 +3,7 @@
 // delete/unlink prompt (ADR-0047 §3). Kept off the read-only detail view, which
 // carries only the edit button (ADR-0053 revision, 2026-07-17).
 //
-// Redesigned in ADR-0137. Two changes beyond the icons: the sheet NAMES its
+// Redesigned in ADR-0138. Two changes beyond the icons: the sheet NAMES its
 // subject (it used to render two anonymous rows over a scrim, with the booking
 // you were deleting hidden behind it), and it offers `שבץ במסלול` — the verb the
 // row's own `לא משובצת במסלול` was asking for and could not reach, since
