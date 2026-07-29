@@ -1165,6 +1165,27 @@ export const t = {
     kindLabel: 'סוג',
     kindHard: '🔒 קשיח',
     kindSoft: 'גמיש',
+    // ── The `יש הזמנה` row (ADR-0136) ──────────────────────────────────────
+    // You are always creating an event; this says it is ALSO booked. One tap, no
+    // typing — which is what makes it work for a table booked by phone and for people
+    // who never record a number. It carries no `field-label`: the button says the word,
+    // and a label above it saying `הזמנה` is the same word twice for 20px.
+    bookedLabel: 'יש הזמנה',
+    // The code is a detail OF a booking, never what creates one — so it is optional and
+    // says so. `קוד אישור` is the app's existing name for it (`index.form.codeLabel`),
+    // not the mockup's ad-hoc `מספר אישור`.
+    bookedCodePlaceholder: 'קוד אישור · לא חובה',
+    // THE DERIVATION, STATED (§2) — never a second type picker; it moves with the
+    // category pill, so the app is visibly understanding rather than quietly deciding.
+    // Two tails because the two operations differ: a create can be completed later, a
+    // conversion moves two fields off the event being edited (§3).
+    bookedDerived: (type: string) => `האירוע יירשם גם כהזמנה · ${type}, ואפשר להשלים אותה אחר כך`,
+    bookedDerivedConvert: (type: string) =>
+      `האירוע הזה יירשם גם כהזמנה · ${type}, והמיקום והקטגוריה יעברו אליה`,
+    // Already linked: no control at all, a statement with a way in (§3) — the code, room
+    // and notes live on the booking now, which is also what makes the path one-way.
+    bookedLinkedLabel: 'הזמנה',
+    bookedLinkedOpen: 'פתיחת ההזמנה',
     save: 'שמירה',
     cancel: 'ביטול',
     titleRequired: 'חסרה כותרת',

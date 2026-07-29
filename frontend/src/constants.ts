@@ -177,6 +177,30 @@ export const BOOKING_TYPE_ICON = {
   other: '📄',
 } as const satisfies Record<BookingType, string>;
 
+/** **Does `EventForm`'s `יש הזמנה` row open on?** (ADR-0136 §2.) A hotel or a flight you
+ *  are putting on a day is near-certainly booked; everything else is genuinely either, so it
+ *  opens off. This is inference doing the one thing it can do honestly — offering a starting
+ *  position, never deciding the fact — and it stops moving the instant a human touches the
+ *  row (`bookedTouched`).
+ *
+ *  A per-enum `Record` rather than a `cat === 'lodging' || cat === 'transport'` at the call
+ *  site: the compiler then flags a new `EventCategory` here instead of silently defaulting it
+ *  off. It stays frontend-side because it is a **form default**, not cross-layer vocabulary —
+ *  the server never asks this question (`packages/shared/CLAUDE.md`: promote only once a
+ *  second layer needs the same values). Its sibling `CATEGORY_TO_BOOKING_TYPE` maps between
+ *  two shared enums, which is why that one does live in `@waypoint/shared`. */
+export const CATEGORY_DEFAULT_BOOKED = {
+  lodging: true,
+  transport: true,
+  food: false,
+  sightseeing: false,
+  nature: false,
+  activity: false,
+  shopping: false,
+  services: false,
+  other: false,
+} as const satisfies Record<EventCategory, boolean>;
+
 /** Glyph per document type, for the Index documents section badges. */
 export const DOCUMENT_TYPE_ICON = {
   passport: '📕',

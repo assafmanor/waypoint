@@ -118,6 +118,7 @@ export const TRIP_ACTION = {
   SET_STATUS: 'SET_STATUS',
   DELAY: 'DELAY',
   SCHEDULE: 'SCHEDULE',
+  CONSUME_MAYBE_ITEM: 'CONSUME_MAYBE_ITEM',
   RIPPLE_APPLY: 'RIPPLE_APPLY',
   RIPPLE_DISMISS: 'RIPPLE_DISMISS',
   UNDO: 'UNDO',
@@ -141,6 +142,11 @@ export type Action =
   | { type: typeof TRIP_ACTION.SET_STATUS; id: string; status: TripEvent['status'] }
   | { type: typeof TRIP_ACTION.DELAY; id: string; minutes: number }
   | { type: typeof TRIP_ACTION.SCHEDULE; event: TripEvent; maybeId: string }
+  // Consume an idea WITHOUT an event of our own (ADR-0135 §5). A booking creates its
+  // linked event server-side, so it puts something on the day exactly as scheduling does
+  // and produces the same duplication — but there is no event here to carry the flip, so
+  // `SCHEDULE` cannot serve. Its own snapshot, so the undo covers it like any other verb.
+  | { type: typeof TRIP_ACTION.CONSUME_MAYBE_ITEM; maybeId: string }
   | { type: typeof TRIP_ACTION.RIPPLE_APPLY }
   | { type: typeof TRIP_ACTION.RIPPLE_DISMISS }
   | { type: typeof TRIP_ACTION.UNDO }
@@ -211,6 +217,12 @@ export function reducer(state: State, action: Action): State {
         m.id === action.maybeId ? { ...m, consumed: true } : m,
       );
       return { ...state, events, maybeItems, ripple: null, undo: snapshotOf(state) };
+    }
+    case TRIP_ACTION.CONSUME_MAYBE_ITEM: {
+      const maybeItems = state.maybeItems.map((m) =>
+        m.id === action.maybeId ? { ...m, consumed: true } : m,
+      );
+      return { ...state, maybeItems, ripple: null, undo: snapshotOf(state) };
     }
     case TRIP_ACTION.RIPPLE_APPLY: {
       if (!state.ripple) return state;
