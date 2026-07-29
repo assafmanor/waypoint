@@ -26,6 +26,7 @@ import {
   matchesAnyTerm,
   type Booking,
   type EventCategory,
+  type MaybeItem,
   type Place,
   type PlaceResult,
 } from '@waypoint/shared';
@@ -57,7 +58,7 @@ import {
   mapsDirectionsUrl,
   nextDestination,
 } from '../lib/places';
-import { PLACE_REF_KIND, placeRefs } from '../lib/place-refs';
+import { PLACE_REF_KIND, placeRefs, soleIdeaFor } from '../lib/place-refs';
 import {
   buildPinOrderIndex,
   isAsidePin,
@@ -108,6 +109,7 @@ import { MapPane, type MapPin, type MapResultPin } from '../ui/domain/MapPane';
 import { PlaceResearch, ResultRow } from './PlaceResearch';
 import { BookingDetail } from '../ui/BookingDetail';
 import { BookingSheet, type BookingSheetDraft } from '../ui/BookingSheet';
+import { EventForm, type EventFormDraft } from '../ui/EventForm';
 import { PlaceBadge } from '../ui/domain/PlaceBadge';
 import { EmptyState, StatusBanner } from '../ui/feedback';
 import { Icon } from '../ui/Icon';
@@ -387,6 +389,42 @@ export function MapView() {
     setEditBooking(bookings.find((b) => b.id === returned.target.id) ?? null);
     setBookingDraft(returned.draft);
   });
+
+  // ── PUT A PLACE ON A DAY (ADR-0135) ───────────────────────────────────────
+  // The tab now hosts `EventForm` too, over the map, on its own tab — which is why this is
+  // NOT the place errand run backwards (§3). The errand exists because of LOSS: a form is a
+  // `Modal` whose local state no URL addresses, so leaving it loses what was typed, and all
+  // of ADR-0134's machinery is for surviving a round trip between two screens. Here there is
+  // no round trip. `Modal`'s own `useOverlay` is the whole back story — back closes the form
+  // and lands on the map with the row still selected.
+  const [scheduleForm, setScheduleForm] = useState<{
+    placeId: string;
+    /** The originating idea, when there is exactly one (§5) — `EventForm maybeItem` then makes
+     *  the save `verbs.schedule`, creating the event AND consuming it in one action. With two
+     *  or more this is null and nothing is consumed: two ideas on one place are two
+     *  intentions, and scheduling one must not eat the other. */
+    maybeItem: MaybeItem | null;
+  } | null>(null);
+  const [eventDraft, setEventDraft] = useState<EventFormDraft | null>(null);
+  // Session 165's rule: A HOST THAT RENDERS A FORM OWES IT A WAY BACK. The place field keeps
+  // its own `onFind`, so an errand can start from inside this form — and without this hook it
+  // would return to a CLOSED form with everything typed gone. One line in a mechanism already
+  // generalised for exactly this; the `hostTab` filter already handles a `returnTo` at the Map.
+  usePlaceErrandReturn<EventFormDraft>('event', 'map', (returned) => {
+    if (!returned.draft) return;
+    setEventDraft(returned.draft);
+    // Re-open on the place the draft carries, so the reopened form is the one that left.
+    setScheduleForm({ placeId: returned.draft.placeId ?? '', maybeItem: null });
+  });
+
+  const openScheduleForm = (placeId: string) => {
+    setScheduleForm({ placeId, maybeItem: soleIdeaFor(placeId, maybeItems) });
+    setEventDraft(null);
+  };
+  const closeScheduleForm = useCallback(() => {
+    setScheduleForm(null);
+    setEventDraft(null);
+  }, []);
 
   // ── The rendered map (Phase 6, ADR-0121) ──────────────────────────────────
   // Config is read ONCE: it is a build var, so it cannot change while mounted, and
@@ -1055,6 +1093,23 @@ export function MapView() {
       // framing does not happen behind the list. A fresh object every time, because
       // `framePlace` is spent once and the same row may be tapped twice.
       if (point) setFramePlace({ ...point });
+      // AND THE BLOCK IT JUST OPENED IS SCROLLED INTO VIEW (ADR-0135 §8). Selection reveals
+      // a way-in block plus its footer under the row, and the block already overflows the
+      // `half` sheet on a 360 with two references — 186px against a 153px scroller, as
+      // shipped. Without this the footer can open entirely below the fold on the screen
+      // ADR-0017 names as the small target, and the action would be the half you cannot see.
+      //
+      // `nearest`, not `center`: the row is on screen (you just tapped it), so the only job
+      // is to bring what GREW below it into view, and `center` would shove a row you are
+      // looking at. The pin-tap path above uses `center` for the opposite reason — there the
+      // row may be anywhere.
+      //
+      // Deferred a frame so the block has rendered and the scroller measures its real height.
+      requestAnimationFrame(() => {
+        sheetRef.current
+          ?.querySelector(`[data-place="${placeId}"]`)
+          ?.scrollIntoView({ block: 'nearest' });
+      });
       return;
     }
     // From a pin: NOTHING MOVES. The pane's box does not change, so the camera does not
@@ -1460,6 +1515,12 @@ export function MapView() {
           selected={selected}
           onSelect={opts.onSelect && (() => opts.onSelect!(usage.placeId))}
           refs={selected ? refEntriesFor(usage, opts) : undefined}
+          onSchedule={
+            // Absent under a place errand (ADR-0134 §3 / ADR-0135 §7): the tab is answering
+            // one question, so the verb changes rather than accumulating — exactly as `נווט`
+            // gives its slot to `בחירה` on the same row.
+            selected && !pendingErrand ? () => openScheduleForm(usage.placeId) : undefined
+          }
           onEnrich={() =>
             setRowErrand({
               target: { kind: 'place', id: place.id },
@@ -1977,6 +2038,18 @@ export function MapView() {
           }}
         />
       )}
+      {/* The way-in block's footer opens this, pre-filled with the place (ADR-0135 §1-2).
+          What the form then DOES with it — a `יש הזמנה` row that also creates a Booking —
+          is ADR-0136's, which is why this passes a place and nothing else. */}
+      {scheduleForm && (
+        <EventForm
+          defaults={{ placeId: scheduleForm.placeId }}
+          maybeItem={scheduleForm.maybeItem}
+          draft={eventDraft}
+          onOpenBooking={setDetailBooking}
+          onClose={closeScheduleForm}
+        />
+      )}
     </>
   );
 
@@ -2160,6 +2233,7 @@ function PlaceRow({
   distanceStale,
   selected,
   refs,
+  onSchedule,
   onSelect,
   onEnrich,
   onFrame,
@@ -2205,6 +2279,12 @@ function PlaceRow({
   selected?: boolean;
   /** The way in to each reference, present only while selected. */
   refs?: RefEntry[];
+  /** **Put this place on a day** (ADR-0135 §1) — the block's one primary action, in its own
+   *  footer under the reference list. Absent while a place errand is live, because the tab is
+   *  then answering one question and ADR-0134 §3 has the verb CHANGE rather than accumulate:
+   *  a control only where it has something to do, the same derived-affordance rule this tab
+   *  runs for `נווט`, `קרוב עכשיו` and `באזור`. */
+  onSchedule?: () => void;
   /** Select this place (and focus its pin, when it has one). **Absent on the canvas
    *  place card, whose body is inert** (ADR-0122 §7): there is nowhere for a tap on it
    *  to go — it already shows everything the row shows, way-in included — and raising
@@ -2397,6 +2477,21 @@ function PlaceRow({
               <Icon name="caret" dir="left" />
             </button>
           ))}
+          {/* The block's own footer, so the create is visibly not a fourth reference. */}
+          {onSchedule && (
+            <span className="map-refs-foot">
+              <button
+                type="button"
+                className="map-addmaybe"
+                onClick={(e) => {
+                  e.stopPropagation();
+                  onSchedule();
+                }}
+              >
+                {t.map.scheduleToDay}
+              </button>
+            </span>
+          )}
         </span>
       )}
     </div>

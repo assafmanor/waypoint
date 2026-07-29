@@ -243,6 +243,10 @@ export const t = {
     // are already looking at the map.
     frameOnPlace: 'התמקדות במקום הזה',
     frameAll: 'התאמת התצוגה לכל המקומות',
+    // The way-in block's one primary action (ADR-0135 §1): a place in the trip could only
+    // ever be an idea, and nothing said "put this on Tuesday at 14:00". Names the verb, not
+    // the schema — "event or booking?" is the app's question, not the traveller's.
+    scheduleToDay: '＋ שיבוץ ליום',
     // A pin that is in view but not in this day (ADR-0121 §6). Its row is not in
     // the sheet, so tapping it is the only way to learn what it is: the tap
     // surfaces that one row, named with the day it belongs to.

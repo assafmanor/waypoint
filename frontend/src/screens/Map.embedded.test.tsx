@@ -11,7 +11,7 @@
 // list-only tab it is.
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { type ReactNode } from 'react';
-import { act, cleanup, fireEvent, render, screen, within } from '@testing-library/react';
+import { act, cleanup, fireEvent, render, screen, waitFor, within } from '@testing-library/react';
 import { MemoryRouter } from 'react-router-dom';
 import {
   EVENT_KIND,
@@ -97,7 +97,10 @@ vi.mock('../state/trip-state', () => ({
 }));
 vi.mock('../state/mode-state', () => ({ useMode: () => ({ mode: currentMode }) }));
 const addMaybe = vi.fn();
-vi.mock('../state/verbs', () => ({ useVerbs: () => ({ addMaybe }) }));
+// The Map hosts `EventForm` since ADR-0135 §3, so the stub covers the verbs that form calls.
+const verbs = { addMaybe, create: vi.fn(), update: vi.fn(), schedule: vi.fn(), book: vi.fn() };
+vi.mock('../state/verbs', () => ({ useVerbs: () => verbs }));
+vi.mock('../state/auth-state', () => ({ useAuth: () => ({ me: { user: { id: 'u1' } } }) }));
 vi.mock('../lib/outbox', () => ({ useIsOffline: () => isOffline }));
 
 // The device's location, driven per test. `permissionState` is what the Permissions
@@ -383,6 +386,7 @@ describe('the embedded map’s shell (ADR-0121)', () => {
     geoErrorCode = null;
     getCurrentPosition.mockClear();
     scrollIntoView.mockClear();
+    for (const fn of Object.values(verbs)) fn.mockClear();
   });
 
   const seed = () => {
@@ -399,6 +403,64 @@ describe('the embedded map’s shell (ADR-0121)', () => {
       event({ id: 'e4', placeId: 'tomorrow', category: 'food', date: NEXT_DAY }),
     ];
   };
+
+  // ── A PLACE BECOMES AN EVENT OR A BOOKING — THE SPLIT (ADR-0135) ─────────────
+  // `Map.test.tsx` covers the same block on the no-build-config, list-only path. Here it has
+  // the sheet to overflow, which is what §8's scroll-into-view exists for.
+  describe('the way-in block gains one action (ADR-0135)', () => {
+    const scheduleBtn = () =>
+      screen.queryByRole('button', { name: t.map.scheduleToDay }) as HTMLElement | null;
+
+    for (const allDays of [false, true]) {
+      const label = allDays ? 'all-days' : 'day';
+
+      it(`selecting a row reveals the footer and opens the form over the map, in ${label} scope`, () => {
+        seed();
+        render(wrap(<MapView />));
+        if (allDays) fireEvent.click(listButton(t.map.allDays));
+        expect(document.querySelector('.map-refs-foot')).toBeNull();
+
+        fireEvent.click(row('lunch')!);
+        expect(scheduleBtn()).toBeTruthy();
+
+        fireEvent.click(scheduleBtn()!);
+        // A Modal over the map, on the map's own tab — nothing navigated (§3), so the tab is
+        // still the map underneath.
+        expect(screen.getByRole('dialog')).toBeTruthy();
+        expect(document.querySelector('.map-screen')).toBeTruthy();
+        expect(document.querySelector('.pp-trigger.filled')?.textContent).toContain('lunch');
+      });
+    }
+
+    // §8: the block already overflows the `half` sheet on a 360 with two references, BEFORE
+    // this phase adds a footer — so selecting a row now scrolls what grew into view.
+    // `nearest`, because the row itself is already on screen: you just tapped it.
+    it('scrolls the newly-revealed block into view with `nearest`, not `center`', async () => {
+      seed();
+      render(wrap(<MapView />));
+      scrollIntoView.mockClear();
+
+      fireEvent.click(row('lunch')!);
+      await waitFor(() => expect(scrollIntoView).toHaveBeenCalledWith({ block: 'nearest' }));
+    });
+
+    // §7 / ADR-0134 §3: under an errand the tab is answering ONE question, so the verb
+    // CHANGES rather than accumulating — exactly as `נווט` gives its slot to `בחירה`.
+    it('is ABSENT while a place errand is live, and returns when the errand ends', () => {
+      seed();
+      render(wrap(<MapView />));
+      fireEvent.click(row('lunch')!);
+      expect(scheduleBtn()).toBeTruthy();
+
+      startErrand();
+      expect(scheduleBtn()).toBeNull();
+      // The row still offers the errand's own verb in its place.
+      expect(within(row('lunch')!).getByRole('button', { name: t.map.errand.choose })).toBeTruthy();
+
+      fireEvent.click(screen.getByRole('button', { name: t.map.errand.cancel }));
+      expect(scheduleBtn()).toBeTruthy();
+    });
+  });
 
   it('renders the split: a live pane, a floating controls row, and a sheet at half', () => {
     seed();

@@ -1031,6 +1031,30 @@
   border-color: var(--muted);
 }
 
+/* ── ONE ACTION, IN A CONTROL THIS TAB ALREADY OWNS (ADR-0135 §1) ────────────────
+   The rejected first pass hung two `.map-ref`-shaped entries under the references, which
+   reads as a command menu because it IS one: same box, same fill, four grey rectangles deep.
+   A `.map-ref` says "this place is already there" and ends in a chevron because it GOES
+   somewhere; a create goes nowhere and is not the references' peer.
+
+   So the footer holds `.map-addmaybe` — the pill this tab already uses for "make something
+   out of this place" (`＋ אולי` on a Google result). Same job, same neutral `--cta`: amber is
+   time and commitment, plan violet is Plan mode, and a create is neither (ADR-0028, root
+   rule 4). What separates it from a reference row is SHAPE and WEIGHT, not a new colour. */
+.map-refs-foot {
+  display: flex;
+  justify-content: center;
+  margin-top: 8px;
+}
+/* The one size change, and it is a floor rather than a taste: on a result row this pill is a
+   trailing chip in a dense 68px row (~29px). Here it is the selected row's primary action, so
+   it meets 44×44 (ADR-0017). Scoped to the block, so the result row is untouched. */
+.map-refs-foot .map-addmaybe {
+  min-height: 44px;
+  padding-inline: 18px;
+  font-size: 13px;
+}
+
 .map-addmaybe {
   display: inline-flex;
   align-items: center;

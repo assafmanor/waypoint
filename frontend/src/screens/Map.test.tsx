@@ -87,7 +87,17 @@ vi.mock('../state/trip-state', () => ({
 vi.mock('../state/mode-state', () => ({ useMode: () => ({ mode: currentMode }) }));
 // Plan-mode research writes through the shelf verb; the write itself is covered in
 // PlaceResearch.test.tsx, so the screen only needs the hook to exist.
-vi.mock('../state/verbs', () => ({ useVerbs: () => ({ addMaybe: vi.fn() }) }));
+// The Map now hosts `EventForm` too (ADR-0135 §3), which reaches for the write verbs and the
+// signed-in author — so the stub covers what that form calls, not only the shelf verb.
+const verbs = {
+  addMaybe: vi.fn(),
+  create: vi.fn(),
+  update: vi.fn(),
+  schedule: vi.fn(),
+  book: vi.fn(),
+};
+vi.mock('../state/verbs', () => ({ useVerbs: () => verbs }));
+vi.mock('../state/auth-state', () => ({ useAuth: () => ({ me: { user: { id: 'u1' } } }) }));
 vi.mock('../lib/outbox', () => ({ useIsOffline: () => isOffline }));
 
 /** The shared search core, stubbed so this suite can say what the PAID half has done —
@@ -241,6 +251,96 @@ describe('MapView (Phase 3, ADR-0109/0110)', () => {
     geoErrorCode = null;
     getCurrentPosition.mockClear();
     setActiveDate.mockClear();
+    for (const fn of Object.values(verbs)) fn.mockClear();
+  });
+
+  // ── A PLACE BECOMES AN EVENT OR A BOOKING (ADR-0135) ─────────────────────────
+  // This file is the NO-BUILD-CONFIG path (graceful absence, list-only), so the block and its
+  // footer must work with no split and no sheet at all. `Map.embedded.test.tsx` covers the
+  // split. Both day scopes on purpose: they are genuinely different renders, and an ordering
+  // bug that only showed in all-days once survived three sessions.
+  describe('the way-in block gains one action (ADR-0135 §1)', () => {
+    const foot = () => document.querySelector('.map-refs-foot');
+    const scheduleBtn = () =>
+      screen.queryByRole('button', { name: t.map.scheduleToDay }) as HTMLElement | null;
+    const dialog = () => screen.queryByRole('dialog');
+
+    for (const allDays of [false, true]) {
+      const label = allDays ? 'all-days' : 'day';
+
+      it(`appears only on the SELECTED row, in ${label} scope`, () => {
+        seed();
+        render(wrap(<MapView />));
+        if (allDays) allDaysOn();
+        // Nothing selected: no block, so no footer.
+        expect(foot()).toBeNull();
+
+        fireEvent.click(row('food')!);
+        expect(foot()).toBeTruthy();
+        expect(scheduleBtn()).toBeTruthy();
+      });
+
+      it(`opens the form pre-filled with the place, in ${label} scope`, () => {
+        seed();
+        render(wrap(<MapView />));
+        if (allDays) allDaysOn();
+        fireEvent.click(row('food')!);
+        fireEvent.click(scheduleBtn()!);
+
+        // The form is a Modal over the map, on the map's own tab (§3) — no navigation.
+        expect(dialog()).toBeTruthy();
+        // Pre-filled: the place field shows the place you were standing on.
+        expect(document.querySelector('.pp-trigger.filled')?.textContent).toContain('food');
+      });
+    }
+
+    // §5 — THE REPRODUCTION. Exactly one idea is consumed through the path that already
+    // consumes it; two or more and nothing is, because two ideas on one place are two
+    // intentions. This must fail if the consume is relaxed to "any idea".
+    describe('the originating idea (§5)', () => {
+      const openOn = (name: string) => {
+        render(wrap(<MapView />));
+        allDaysOn();
+        fireEvent.click(row(name)!);
+        fireEvent.click(scheduleBtn()!);
+      };
+      const saveForm = () => {
+        fireEvent.change(screen.getByPlaceholderText(t.eventForm.titlePlaceholder), {
+          target: { value: 'ארוחה' },
+        });
+        fireEvent.click(screen.getByText(t.eventForm.save));
+      };
+
+      it('with exactly ONE idea, the save consumes it', () => {
+        seed();
+        openOn('idea');
+        saveForm();
+        expect(verbs.schedule).toHaveBeenCalledTimes(1);
+        expect(verbs.schedule.mock.calls[0][0]).toMatchObject({ id: 'idea' });
+        expect(verbs.create).not.toHaveBeenCalled();
+      });
+
+      it('with TWO ideas, it creates fresh and consumes NOTHING', () => {
+        seed();
+        tripMaybes = [
+          maybe({ id: 'idea', placeId: 'idea', category: 'food' }),
+          // A second intention on the same place ("drinks there" beside "a meal there").
+          maybe({ id: 'idea2', placeId: 'idea', category: 'food' }),
+        ];
+        openOn('idea');
+        saveForm();
+        expect(verbs.schedule).not.toHaveBeenCalled();
+        expect(verbs.create).toHaveBeenCalledTimes(1);
+      });
+
+      it('with no idea at all, it creates fresh', () => {
+        seed();
+        openOn('food');
+        saveForm();
+        expect(verbs.schedule).not.toHaveBeenCalled();
+        expect(verbs.create).toHaveBeenCalledTimes(1);
+      });
+    });
   });
 
   it('Trip mode defaults to today: shows today’s places, hides other-day and dayless ones', () => {

@@ -98,7 +98,7 @@ export function EventForm({
   event?: TripEvent | null;
   // Prefill for a *new* event (e.g. the builder's gap-fill: date + start of the
   // gap). Ignored when editing an existing event.
-  defaults?: { date?: string; start?: string; end?: string };
+  defaults?: { date?: string; start?: string; end?: string; placeId?: string };
   /** The way in from an already-linked event's statement (ADR-0136 §3). Absent on a host with
    *  nowhere to send it, which makes the statement a plain read-out rather than a dead
    *  control — the derived-affordance rule this app runs everywhere else. */
@@ -168,7 +168,10 @@ export function EventForm({
   const initialKind: TripEvent['kind'] = event?.kind ?? EVENT_KIND.SOFT;
   const initialIcon = event?.icon ?? maybeItem?.icon ?? DEFAULT_EVENT_ICON;
   const initialCategory = event?.category ?? maybeItem?.category;
-  const initialPlaceId = event?.placeId ?? maybeItem?.placeId;
+  // `defaults.placeId` is the Map's way in (ADR-0135 §1): you are standing on the place, so it
+  // arrives pre-filled. Lowest priority of the three — an existing event's own place wins, and
+  // so does the idea's, since either is a statement about THIS thing rather than a prefill.
+  const initialPlaceId = event?.placeId ?? maybeItem?.placeId ?? defaults?.placeId;
 
   // A returning draft wins over every derived initial value (ADR-0134 §2) — including
   // the ones derived from the trip, since the user may well have changed the day since.
