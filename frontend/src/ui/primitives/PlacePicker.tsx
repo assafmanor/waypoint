@@ -1,17 +1,15 @@
-// The single-select in-form Places picker shell (ADR-0110 §1 / ADR-0109 §12): a
-// trigger showing the current place, opening a search sheet over the shared
-// `usePlaceSearch` core. Every overlay is a `Modal` (never a hand-rolled portal,
-// ADR-0090). The picker owns presentation only — session token, debounce, dedup,
-// offline fallback, and soft-429 all live in the hook.
-import { useRef, useState, type MouseEvent } from 'react';
-import { matchesAnyTerm, type Place, type PlacePrediction } from '@waypoint/shared';
-import { usePlaceSearch } from '../../lib/usePlaceSearch';
-import { placePoint } from '../../lib/map-pins';
+// The single-select in-form Places picker FIELD (ADR-0110 §1 / ADR-0109 §12): a trigger
+// showing the current place, which sends an errand to the Map tab to change it.
+//
+// **It used to own a search sheet as well, and that sheet is gone** (ADR-0134 §9). Choosing
+// a place is choosing it on a map — the tab answers both halves of the query, the trip's own
+// places free and offline from the first character and Google's for everything else — so a
+// second search surface here was the parallel copy rule 8 exists to prevent. What is left is
+// the display and the launcher, which is all a form ever needed from it.
+import { type MouseEvent } from 'react';
 import { useTrip } from '../../state/trip-state';
 import { ICONS } from '../../constants';
 import { t } from '../../i18n/he';
-import { StatusBanner } from '../feedback/StatusBanner';
-import { Modal } from './Modal';
 import './place-picker.css';
 
 export function PlacePicker({
@@ -26,15 +24,19 @@ export function PlacePicker({
   onChange: (placeId: string | undefined) => void;
   ariaLabel?: string;
   placeholder?: string;
-  /** **Send an errand to the Map instead of opening the sheet here** (ADR-0134 §1).
-   *  The form supplies it, because only the form can write the DRAFT the errand has to
-   *  carry — this field has no idea what else is half-typed above it. Absent (or `null`
-   *  outside the trip shell, where there is no Map tab to route to) the sheet opens as it
-   *  always did, which is what keeps the field usable on any surface. */
-  onFind?: (() => void) | null;
+  /** **Send an errand to the Map to choose one** (ADR-0134 §1). Required, and supplied by
+   *  the FORM rather than by this field, because only the form can write the draft the
+   *  errand has to carry — this field has no idea what else is half-typed above it.
+   *
+   *  Its callers hold a `useStartPlaceErrand()` that is `null` outside the trip shell, and
+   *  pass a function that then does nothing. That is not a degraded mode, it is an
+   *  unreachable one: every surface that authors a place — both forms, on all five hosts —
+   *  renders under `MapScopeProvider`, and a place field with no trip to pick in has no
+   *  meaning anyway. Naming the invariant here is what the retired fallback was standing
+   *  in for. */
+  onFind: () => void;
 }) {
   const { places } = useTrip();
-  const [open, setOpen] = useState(false);
   const current = value ? places.find((p) => p.id === value) : undefined;
 
   return (
@@ -42,7 +44,7 @@ export function PlacePicker({
       <button
         type="button"
         className={'pp-trigger' + (current ? ' filled' : '')}
-        onClick={() => (onFind ? onFind() : setOpen(true))}
+        onClick={onFind}
         aria-label={ariaLabel ?? t.placePicker.open}
       >
         <span className="pp-trigger-icon" aria-hidden>
@@ -61,16 +63,6 @@ export function PlacePicker({
         >
           ✕
         </button>
-      )}
-      {open && (
-        <PlacePickerSheet
-          current={current}
-          onPick={(placeId) => {
-            onChange(placeId);
-            setOpen(false);
-          }}
-          onClose={() => setOpen(false)}
-        />
       )}
     </div>
   );
@@ -108,161 +100,5 @@ export function AddLocationButton({
     >
       <span aria-hidden="true">{ICONS.add}</span> {t.placePicker.empty}
     </button>
-  );
-}
-
-/** The search sheet, also used standalone by the `＋ מיקום` enrich affordance
- *  above (ADR-0110 §1): opened on a coordless Place-lite, a pick enriches that
- *  row in place; opened with no `current` it mints a place for a row that had
- *  none. Exported so a caller can drive it with its own trigger instead of the
- *  in-form `PlacePicker` trigger.
- *
- *  **Two corpora, one field (ADR-0131 §10), and the trip's own places come first.**
- *  The owner's rule is that adding a place must not send you anywhere when the place
- *  already exists — and it very often does: the hotel, the station, the restaurant
- *  someone shelved. Until now this sheet only knew how to ask Google, so the most
- *  common add bought a paid Autocomplete session to find something the trip was already
- *  holding. Now `בטיול` sits above `מגוגל`, a pick there is **free, instant and
- *  offline-capable**, and the corpus decides the surface exactly as it does on the Map
- *  tab: what has coordinates already can be answered locally.
- *
- *  It is the same one-query-two-halves shape as the Map tab's row, in a second host —
- *  and the same visual differentiation: a group header, and Google's rows wearing the
- *  dashed neutral mark that already means "listed, not yet ours". */
-export function PlacePickerSheet({
-  current,
-  onPick,
-  onClose,
-}: {
-  current: Place | undefined;
-  onPick: (placeId: string) => void;
-  onClose: () => void;
-}) {
-  // A coordless Place-lite in the current field is enriched in place on a pick
-  // (adopts googlePlaceId/coords/timezone) rather than minting a duplicate (ADR-0110 §1).
-  const enrichPlaceId = current && current.googlePlaceId == null ? current.id : undefined;
-  const search = usePlaceSearch({ enrichPlaceId });
-  const { places } = useTrip();
-  const [busy, setBusy] = useState(false);
-  const [pickFailed, setPickFailed] = useState(false);
-  const searchRef = useRef<HTMLInputElement>(null);
-
-  const close = () => {
-    search.reset();
-    onClose();
-  };
-
-  const pick = async (run: () => Promise<string>) => {
-    setBusy(true);
-    setPickFailed(false);
-    try {
-      onPick(await run());
-    } catch {
-      // Offline, a 429, or an upstream fault — keep the sheet open; the name-only
-      // fallback stays available so the user is never blocked (ADR-0110 §1).
-      setPickFailed(true);
-    } finally {
-      setBusy(false);
-    }
-  };
-
-  const name = search.query.trim();
-
-  // THE FREE HALF. Only places that can actually supply a location: this sheet exists to
-  // give a row one, so offering a coordless Place-lite would offer the problem back. The
-  // `current` place is excluded for the same reason — it is what you are replacing.
-  //
-  // Below the min-chars floor this is still free to run, unlike the Google half, so it
-  // answers from the first character. That asymmetry is the point of having two corpora
-  // rather than one: the floor is a COST control, and there is no cost here.
-  const tripMatches = places.filter(
-    (p) =>
-      p.id !== current?.id &&
-      placePoint(p) != null &&
-      name.length > 0 &&
-      matchesAnyTerm(name, [p.name, p.address]),
-  );
-
-  // Picking one is a THIRD verb beside enrich and mint: point this reference at a place
-  // that already exists. No Google call, nothing minted, nothing enriched — the caller
-  // just writes a different `placeId`. An abandoned coordless Place-lite is then simply
-  // unreferenced, which ADR-0112 already makes harmless (it becomes cache-only and stops
-  // listing), so this needs no cleanup and no confirm.
-  return (
-    <Modal variant="sheet" title={t.placePicker.title} onClose={close} initialFocusRef={searchRef}>
-      <div className="pp-sheet">
-        <input
-          ref={searchRef}
-          className="pp-search"
-          value={search.query}
-          onChange={(e) => search.setQuery(e.target.value)}
-          placeholder={t.placePicker.searchPlaceholder}
-          aria-label={t.placePicker.searchPlaceholder}
-        />
-
-        {search.rateLimited && <StatusBanner tone="warn">{t.placePicker.rateLimited}</StatusBanner>}
-        {(search.failed || pickFailed) && (
-          <StatusBanner tone="warn">{t.placePicker.failed}</StatusBanner>
-        )}
-
-        {tripMatches.length > 0 && (
-          <>
-            <div className="pp-group">{t.placePicker.tripGroup}</div>
-            <ul className="pp-results">
-              {tripMatches.map((place) => (
-                <li key={place.id}>
-                  <button
-                    type="button"
-                    className="pp-result"
-                    disabled={busy}
-                    onClick={() => onPick(place.id)}
-                  >
-                    <span className="pp-primary">{place.name}</span>
-                    {place.address && <span className="pp-secondary">{place.address}</span>}
-                  </button>
-                </li>
-              ))}
-            </ul>
-            {/* Only once there is something above it to be below — a lone header over the
-                Google half is chrome naming the only thing on screen. */}
-            <div className="pp-group">{t.placePicker.googleGroup}</div>
-          </>
-        )}
-        <ul className="pp-results">
-          {search.predictions.map((prediction: PlacePrediction) => {
-            const existing = search.alreadyInTrip(prediction);
-            return (
-              <li key={prediction.googlePlaceId}>
-                <button
-                  type="button"
-                  className="pp-result"
-                  disabled={busy}
-                  onClick={() => pick(() => search.pick(prediction).then((p) => p.id))}
-                >
-                  <span className="pp-primary">{prediction.primaryText}</span>
-                  {prediction.secondaryText && (
-                    <span className="pp-secondary">{prediction.secondaryText}</span>
-                  )}
-                  {existing && <span className="pp-chip">{t.placePicker.alreadyInTrip}</span>}
-                </button>
-              </li>
-            );
-          })}
-        </ul>
-
-        {name.length > 0 && (
-          <button
-            type="button"
-            className="pp-name-only"
-            disabled={busy}
-            onClick={() => pick(() => search.saveNameOnly(name))}
-          >
-            {t.placePicker.saveNameOnly(name)}
-          </button>
-        )}
-
-        <p className="pp-cost-footer">{t.placePicker.costFooter}</p>
-      </div>
-    </Modal>
   );
 }

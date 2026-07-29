@@ -1,6 +1,6 @@
 # 0134 — The map is where a form's place comes from, and a row tap **commits**
 
-**Status:** Accepted — designed 2026-07-28 (session 163); **§5–§8 built session 163, and the errand's mechanism + `BookingDetail`'s caller built session 164** (see the [Build log](#build-log-2026-07-28-session-164--the-errands-mechanism-and-three-owner-corrections)). **§2's draft path is built (session 165); §9's retirement is not — `PlacePickerSheet` has one caller left, the Map's own enrich.** Three owner corrections from a device pass are recorded in that log, one of which reverses ADR-0131 §8's grouping. Three owner requests, designed together because they are one idea.
+**Status:** Accepted — designed 2026-07-28 (session 163); **§5–§8 built session 163, and the errand's mechanism + `BookingDetail`'s caller built session 164** (see the [Build log](#build-log-2026-07-28-session-164--the-errands-mechanism-and-three-owner-corrections)). **§2's draft path is built (session 165); §9 is built (session 179) — `PlacePickerSheet` is retired, and the Map's own enrich is the fourth errand target.** Three owner corrections from a device pass are recorded in that log, one of which reverses ADR-0131 §8's grouping. Three owner requests, designed together because they are one idea.
 **Date:** 2026-07-28
 
 **Amends** [0131](0131-map-search-is-a-control-not-a-screen.md) **§10** — its conclusion is **reversed by the owner**: the errand becomes the **route** for a form's place, where §10 (after four corrections) made the picker answer in place and the canvas the exception. §10's contract survives; what changes is who takes it and what it has to carry (§1/§2).
@@ -607,3 +607,64 @@ place in it, nothing saved), and it reproduced on the first run.
 catch — but it was written **after** the browser found it, and would not have been written
 otherwise. When a fix for a hand-over ships and the report comes back unchanged, the next step
 is a real browser, not a fifth reading of the code.
+
+## Build log addendum (2026-07-29, session 179) — §9 is built, and the sheet is gone
+
+The last piece. `PlacePickerSheet` had one caller left — the Map tab's own `＋ מיקום`, the
+coordless row's way to get a location — so the tab that **is** a search over a map was
+opening a second search surface over itself.
+
+### The fourth target is a ROW, and it never travels
+
+`PlaceErrandTarget` becomes a union: the three form targets keep their `field` (§2's whole
+point — a transport booking has two place fields), and the new one is
+`{ kind: 'place', id }`. It carries **no `field`**, because there is no form and nothing to
+assign: the row _is_ the thing being answered, and the answer is written by the pick itself
+(`usePlaceSearch`'s `enrichPlaceId`, adopting the found place onto the row so a booking's
+reference still points at it).
+
+It is a `PlaceErrand` rather than a mechanism of its own so the tab's errand **mode** stays
+one thing: the banner, `בחירה` replacing `＋ אולי`, `נווט` withdrawn, the dot tier, the back
+layer and the field opening on arrival are all written once against `pendingErrand`.
+
+**`returnTo` becomes optional, and that single field is what both exits branch on.** A row
+errand starts on its own destination, so it has nowhere to return to — no hand-over, no
+navigation, and `useTakePlaceErrandResult` answers "not for this host" one branch earlier
+than the tab check. No exit asks what kind of errand it is holding.
+
+### Only Google can answer it, and that removed a control that did nothing
+
+A form errand takes either half — the trip's own places answer it free and offline, which is
+the fact §1 reconciled the whole reversal on. A **row** errand cannot: the coordless row is
+already in that list, and a second row of ours cannot tell it where it is. So the trip's rows
+keep their ordinary grammar while one is live (`errandTakesOurPlaces`), which also covers the
+second-tap commit on a pin.
+
+That is not a restriction added here so much as a dead control removed: the retired sheet
+offered the trip's own places for the enrich too, and the Map **discarded the id it handed
+back** (`onPick={() => setEnrichTarget(null)}`). Picking one did nothing, silently, and had
+since the enrich shipped.
+
+### What retiring the sheet actually cost, said plainly
+
+`PlacePicker`'s `onFind` is now **required**, and the sheet fallback behind it is gone. That
+fallback was written for a `PlacePicker` rendered outside `MapScopeProvider`, where
+`useStartPlaceErrand()` is null — and no such surface exists: both forms, on all five hosts,
+render under the provider. The invariant is now named on the prop instead of stood in for by
+90 lines of second search UI.
+
+The file's tests went with it — the debounce, the resolve, the `בטיול` half, the min-chars
+floor, the name-only fallback were all asserted **through the field**, and each is asserted
+where it now lives (`Map.test.tsx`, `lib/usePlaceSearch.test.ts`). §9 already answered the
+objection this raises: that half was the proof that "the trip answers first, free and
+offline" is the right model, and the map's free half is the same idea on a surface that can
+also show you where the answer is.
+
+### Coverage
+
+Three new cases on the errand (it starts named after the row and opens the field; only
+Google's rows can answer it; `ביטול` puts the tab back without navigating), plus one that
+asserts the **construction** rather than the click — `usePlaceSearch` receiving
+`enrichPlaceId`, which is the whole of "enrich in place rather than mint a duplicate" and the
+one thing a click-level test would miss. Each was checked against the wrong behaviour first:
+the grammar case fails if `errandTakesOurPlaces` is relaxed to `pendingErrand != null`.

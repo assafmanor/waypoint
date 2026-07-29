@@ -375,31 +375,29 @@ export function EventForm({
                   disambiguated BY PLACE and the map's own search answers both corpora —
                   the trip's own places from the first character, free and offline, before
                   Google is touched. The form writes the DRAFT, since only it knows what
-                  else is half-typed. Outside the trip shell `startErrand` is null and the
-                  field keeps its own sheet. */}
+                  else is half-typed. `startErrand` is null only where there is no Map tab
+                  to route to, which no host of this form is (ADR-0134 §9). */}
               <PlacePicker
                 value={placeId}
                 onChange={setPlaceId}
                 placeholder={t.eventForm.locationPlaceholder}
-                onFind={
-                  startErrand &&
-                  (() =>
-                    startErrand({
-                      target: { kind: 'event', id: event?.id, field: 'placeId' },
-                      label: title.trim() || t.map.errand.untitledEvent,
-                      draft: {
-                        title,
-                        date,
-                        start,
-                        end,
-                        kind,
-                        icon,
-                        iconTouched,
-                        category,
-                        placeId,
-                        override,
-                      } satisfies EventFormDraft,
-                    }))
+                onFind={() =>
+                  startErrand?.({
+                    target: { kind: 'event', id: event?.id, field: 'placeId' },
+                    label: title.trim() || t.map.errand.untitledEvent,
+                    draft: {
+                      title,
+                      date,
+                      start,
+                      end,
+                      kind,
+                      icon,
+                      iconTouched,
+                      category,
+                      placeId,
+                      override,
+                    } satisfies EventFormDraft,
+                  })
                 }
               />
             </Field>

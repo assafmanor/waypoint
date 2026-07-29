@@ -9,7 +9,7 @@ import {
   MapScopeProvider,
   useMapScope,
   usePlaceErrandReturn,
-  type PlaceErrandTarget,
+  type PlaceErrandFormTarget,
 } from './map-scope-state';
 import { HOME_TAB } from './nav-state';
 
@@ -17,7 +17,7 @@ interface Draft {
   title: string;
 }
 
-const errandFor = (kind: PlaceErrandTarget['kind'], draft: Draft) => ({
+const errandFor = (kind: PlaceErrandFormTarget['kind'], draft: Draft) => ({
   errand: {
     target: { kind, id: 'e1', field: 'placeId' as const },
     returnTo: '/trip/t1?tab=days',
@@ -29,7 +29,7 @@ const errandFor = (kind: PlaceErrandTarget['kind'], draft: Draft) => ({
 
 /** A form host: it takes the return and records each application, and — like every real
  *  host — it re-renders on data of its own and passes a FRESH callback every render. */
-function hostHook(kind: PlaceErrandTarget['kind'], applied: Draft[]) {
+function hostHook(kind: PlaceErrandFormTarget['kind'], applied: Draft[]) {
   return () => {
     const scope = useMapScope();
     usePlaceErrandReturn<Draft>(kind, 'days', (returned) => {
