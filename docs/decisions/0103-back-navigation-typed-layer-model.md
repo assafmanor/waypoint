@@ -343,3 +343,53 @@ already open-coded **identically in fourteen** `*.test.tsx` files; it is now
 `src/test/nav-harness.tsx`'s `wrapNav`, and all fourteen use it (rule 8 — the alternative was a
 fifteenth copy). The seven wrappers that genuinely differ (extra providers, a `BrowserRouter`,
 in-tree probes) keep their own.
+
+## Amendment (2026-07-29, session 177) — markers follow the URL, not just the layer stack
+
+> _"Home → events → + add event → add location → back (closes keyboard) → back (goes back to
+> event form) → back (closes app instead of closing the modal)."_
+
+Reconciling markers only on register/unregister assumed **a layer's URL never moves under it**.
+Every errand return breaks that assumption: the form re-opens, and _then_ the destination
+rewrites its own URL with `replace` — the Index stripping `?focus=bookings` once it has acted
+on it, `cancelErrand` navigating to `returnTo`. The layer stays registered across that, so
+nothing reconciled, and its marker was left describing a URL the app had already left. The
+session-175 `ridable` check (marker URL === current URL, which is what stops a ride escaping to
+another screen) then reads **false while a layer is plainly open**.
+
+A **cancelable** press hides this completely: the fallback added in 175 cancels the traversal
+and peels the layer, so the outcome is right. The device does not grant that. Consecutive
+presses arrive **uncancelable** — the activation gate this entire scheme exists for — and then
+there is nothing to ride and nothing to cancel. The traversal commits and takes the screen with
+it; from the trip's first form, that is the app closing.
+
+The fix is one effect: run the same `reconcileMarkers` on every location change. The per-URL
+depth resets and each still-open layer gets a marker at the URL it is actually on. It cannot
+loop — `pushMarker` navigates to the same URL, so the next pass finds the depth already
+matching the stack and pushes nothing.
+
+### Why a browser harness could not find this
+
+`e2e/back-map.spec.ts` drives the owner's exact sequence and **passes**, before and after. Every
+traversal Playwright can fire arrives `cancelable: true`, so the interceptor always gets to
+cancel and the missing marker never matters. The one axis that reproduces it is the one a real
+Android varies and a headless browser does not.
+
+So this regression lives in `state/nav-state.system-back.test.tsx`, whose fake Navigation API
+takes `cancelable` as a **test input** precisely for this. Two cases, same flow: a layer whose
+URL was replaced under it peels on a cancelable press (already true) and on a non-cancelable
+one (the fix). **Read that as the general rule: an e2e is the right tool for "does the app do
+the right thing", and the wrong tool for anything gated on user activation.**
+
+### Known and NOT fixed here: the errand leaks history
+
+Each place-errand round trip permanently adds **two** history entries and strands a `?tab=map`
+entry behind the user — measured, three round trips leave you at index 7 of 9. ADR-0090 says
+in-trip history stays flat; with an errand in the flow it does not.
+
+It is left alone deliberately. Markers are push-only by design here, and the "spent marker"
+tradeoff was accepted on the explicit grounds that programmatic `history.back()` reconciliation
+races Strict Mode and rapid re-renders. Unwinding them is that rejected design, re-opened —
+a decision, not a patch. Nothing observable misbehaves today: structural backs always
+`replace`, so the stranded entries are never traversed into; the cost is an unbounded forward
+stack and a longer history than the model claims.
