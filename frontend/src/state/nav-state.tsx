@@ -62,26 +62,35 @@ export function settingsPath(from: SettingsFrom): string {
  *  `?day=`, so it always derives to today. Written with `replace`. */
 export const DAY_PARAM = 'day';
 /** Open the Index's bookings screen with one booking's DETAIL on top (ADR-0050's quick
- *  access). Named here beside the other params now that it has a second writer. */
+ *  access). Named here beside the other params now that it has more than one reader. */
 export const BOOKING_PARAM = 'booking';
+/** Which of the Index's sub-screens to open on arrival. `docs` is ADR-0050's; `bookings`
+ *  joins it for the errand return below, and needs no id — the point is only to MOUNT the
+ *  screen, not to open anything on top of it. */
+export const FOCUS_PARAM = 'focus';
+export const INDEX_FOCUS = { DOCS: 'docs', BOOKINGS: 'bookings' } as const;
 
-/** **Re-open a booking's detail on the way back** (session 171). The Index's bookings
- *  screen is view state inside `Index.tsx`, not a route (ADR-0098), and the detail on top
- *  of it is a `Modal` — so returning to the Index tab's URL renders the LANDING, with the
- *  booking you were looking at nowhere in sight. Every other host of that detail stays
- *  mounted and re-opens itself; this one cannot, because it is gone.
+/** **Where a booking errand has to come back to** (session 172). The Index's bookings
+ *  screen is view state inside `Index.tsx`, not a route (ADR-0098), so returning to the
+ *  Index tab's URL renders the LANDING — and the host that would re-open the form is not
+ *  mounted to hear the answer at all. That is the whole bug, and it is the same for a saved
+ *  booking and an unsaved one: nothing is wrong with the errand's return channel, the
+ *  listener simply is not there.
  *
- *  So the return uses the deep link that already exists for exactly this shape of problem,
- *  rather than inventing a route for a sheet that deliberately has none. Applied only when
- *  the destination IS the Index tab: anywhere else the host is still mounted and the param
- *  would be litter nothing clears. */
-export function withBookingDetail(path: string, bookingId: string): string {
+ *  So the return asks the Index to mount that screen. It carries **no booking id** on
+ *  purpose — the pending result is what says which booking and what was typed, and it is
+ *  taken the moment the host mounts. An id here would be a second, weaker copy of that.
+ *
+ *  Applied only when the destination IS the Index tab: everywhere else the host stays
+ *  mounted and the param would be litter nothing clears. */
+export function withBookingFormReturn(path: string): string {
   const [base, query = ''] = path.split('?');
   const params = new URLSearchParams(query);
   if (params.get(TAB_PARAM) !== 'index') return path;
-  params.set(BOOKING_PARAM, bookingId);
+  params.set(FOCUS_PARAM, INDEX_FOCUS.BOOKINGS);
   return `${base}?${params.toString()}`;
 }
+
 /** The anchor tab: back from any other tab returns here, then exits to /trips. */
 export const HOME_TAB: TabId = 'home';
 /** Where leaving a trip lands (ADR-0033 all-trips home). */

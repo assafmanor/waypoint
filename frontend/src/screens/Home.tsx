@@ -36,7 +36,7 @@ import {
   nextDestination,
 } from '../lib/places';
 import { shortPlaceLabel } from '../lib/place-label';
-import { TAB_PARAM } from '../state/nav-state';
+import { TAB_PARAM, FOCUS_PARAM, INDEX_FOCUS } from '../state/nav-state';
 import {
   countdownParts,
   dayProgress,
@@ -439,7 +439,10 @@ export function Home({ onNavigate }: { onNavigate?: (tab: TabId) => void }) {
         )}
         {/* Managed tile: always present. Deep-links to the Index documents
             section (ADR-0050). */}
-        <button className="qa empty" onClick={() => navigate(`/?${TAB_PARAM}=index&focus=docs`)}>
+        <button
+          className="qa empty"
+          onClick={() => navigate(`/?${TAB_PARAM}=index&${FOCUS_PARAM}=${INDEX_FOCUS.DOCS}`)}
+        >
           <span className="ic">{ICONS.documents}</span>
           <span className="lb">
             <span className="plus">{ICONS.add}</span> {t.quick.documents}
