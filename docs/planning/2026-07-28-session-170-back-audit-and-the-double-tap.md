@@ -83,3 +83,48 @@ describes — select, then choose.
 question while an errand is live, so both take it. Outside an errand the verb shelves a
 `MaybeItem`, and a stray double tap that silently adds something is not a shortcut anyone
 asked for.
+
+---
+
+## Session 173 follow-up — the harness exists, and two of the five findings are dead
+
+The owner approved a back session; it started with the harness, which is the reusable half
+(`state/nav-state.system-back.test.tsx`). **Before it found anything about back, it found two
+ways this file could have lied:**
+
+- **The interceptor snapshots `window.location`, not the router.** It runs inside a DOM
+  event, outside React — so a `MemoryRouter` test leaves it reading `/` forever and every
+  assertion passes for the wrong reason. The suite uses `BrowserRouter` over the real jsdom
+  history.
+- **`waitFor` nested inside `act` deadlocks the polling.** A press that CHANGES the location
+  never settles, while one that stays put passes on the first check. That asymmetry would
+  have made exactly the "it stayed on the map" assertions green and the "it left" ones
+  impossible — the worst possible failure mode for this particular file. Found by
+  instrumenting, not by reading.
+
+The history shape is modelled explicitly for the same reason: the shell pushes one same-URL
+**guard** entry and tab changes REPLACE, so a user on a tab sits on `[/, /?tab=<tab>]`. **The
+entry behind the tab is trip Home** — which is why a back that rides one entry too far reads
+as "it went home", and is the mechanism behind the owner's report.
+
+### What the harness settled
+
+**Finding #3 is dead.** The spent-marker drift I named — open, close by tap, reopen, back —
+does **not** escape the tab. Nor does a plain open-then-back, nor two stacked layers peeled
+one press at a time, nor a non-cancelable structural back. Eight cases, all correct.
+
+So the generic layer mechanism is right, and the bug is **not** where the audit guessed. That
+is worth as much as a fix: it removes the plausible-but-wrong explanation that a later
+session would otherwise have "fixed".
+
+### What is still open
+
+**The report is not reproduced.** The next step is the obvious one and now cheap: drive the
+**real Map screen** through this harness rather than a stand-in layer, which means giving
+`Map.embedded.test.tsx` the fake navigation and a `BrowserRouter` (it currently uses
+`MemoryRouter`, which per the first finding above cannot exercise the interceptor at all).
+If the Map reproduces it and the stand-in does not, the difference is on the Map — the chrome
+reclaim, the lifted `queryOpen`, or the errand layer — and that is a much smaller haystack
+than "the back stack".
+
+Findings #1 and #2 remain the owner's decisions; #4 and #5 remain unverified.

@@ -17,7 +17,7 @@
 // `currentEntry.index`. So here is the fake, and it is the reusable half of this file.
 import { afterEach, beforeEach, describe, expect, it } from 'vitest';
 import { useState, type ReactNode } from 'react';
-import { act, cleanup, fireEvent, render, screen, waitFor } from '@testing-library/react';
+import { cleanup, fireEvent, render, screen, waitFor } from '@testing-library/react';
 import { BrowserRouter, useLocation } from 'react-router-dom';
 import { ToastProvider } from '../ui/Toast';
 import { NavProvider, useBackLayer, useMarkInsideTrip } from './nav-state';
@@ -95,9 +95,11 @@ function SystemBack({ cancelable }: { cancelable: boolean }) {
  *  difference between asserting the destination and asserting the origin. */
 async function pressBack(expected: string) {
   fireEvent.click(screen.getByTestId('system-back'));
-  await act(async () => {
-    await waitFor(() => expect(where()).toBe(expected));
-  });
+  // `waitFor` already wraps its polling in `act`; nesting it inside another `act` deadlocks
+  // the queue, so a press that CHANGES the location never settles while one that stays put
+  // passes on the first check. That asymmetry is the exact "green for the wrong reason" trap
+  // this file exists to avoid — found by instrumenting rather than by reading.
+  await waitFor(() => expect(where()).toBe(expected));
 }
 
 function Where() {
@@ -184,6 +186,28 @@ describe('the system back, against a fake Navigation API', () => {
   // the tab": the tab is still supposed to be leavable.
   it('leaves the tab for Home once nothing is open', async () => {
     render(wrap(<ScreenWithToggleLayer />));
+    await pressBack('/');
+  });
+
+  // A SECOND PRESS IS NOT CANCELABLE (the activation gate — WHATWG nav-history: a
+  // user-initiated backward traverse is only cancelable while a consumable user activation
+  // exists). ADR-0103 accounts for it in the OVERLAY path by riding rather than cancelling;
+  // this asserts what the STRUCTURAL path does with it, which is the half nothing covered.
+  it('a non-cancelable structural back still lands somewhere inside the app', async () => {
+    render(wrap(<ScreenWithToggleLayer />, false));
+    await pressBack('/');
+  });
+
+  // The reported shape, spelled out: open the field, back once. One press, one effect —
+  // the field closes and the tab does NOT change.
+  it('one press closes the field without also leaving the tab', async () => {
+    render(wrap(<ScreenWithToggleLayer />));
+    fireEvent.click(screen.getByTestId('open-field'));
+    await pressBack('/?tab=map');
+    expect(isOpen()).toBe(false);
+
+    // …and the NEXT press is the structural one. Two presses, two distinct outcomes: this is
+    // what "back should return you to the map, not home" is asking for.
     await pressBack('/');
   });
 
