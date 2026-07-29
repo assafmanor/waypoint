@@ -35,6 +35,7 @@ import { FormActions } from './primitives/FormActions';
 import { PlacePicker } from './primitives/PlacePicker';
 import { WhenField } from './primitives/WhenField';
 import { ConfirmDialog } from './primitives/ConfirmDialog';
+import { Icon } from './Icon';
 
 /** **The form's own state, as one blob** (ADR-0134 §2). A form is a `Modal` with local
  *  state that no URL addresses, so sending its place field off to the Map tab means the
@@ -356,7 +357,7 @@ export function EventForm({
 
           {conflicts.length > 0 && (
             <p className="form-conflict">
-              ⚠︎ {t.event.conflictWarn.before}
+              <Icon name="warn" /> {t.event.conflictWarn.before}
               <TitleLabel title={conflicts[0].title} />{' '}
               {t.event.conflictWarn.after(formatTime(conflicts[0].startsAt!, tz))}
             </p>

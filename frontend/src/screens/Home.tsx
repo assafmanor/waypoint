@@ -54,7 +54,8 @@ import { deriveHeroBooking } from '../lib/hero-booking';
 import {
   CODE_PREFIX,
   DAY_WINDOW,
-  ICONS,
+  CONTROL_ICON,
+  GLYPH,
   MINUTES_PER_DAY,
   MS_PER_DAY,
   QUICK_TILE_MAX_COLS,
@@ -62,6 +63,7 @@ import {
   type TabId,
 } from '../constants';
 import { t } from '../i18n/he';
+import { Icon } from '../ui/Icon';
 
 /** The start transition label key for a bracketed upcoming event (ADR-0063),
  *  by mode — a flight's take-off, a train's departure (via eventTransitionKeys). */
@@ -265,7 +267,7 @@ export function Home({ onNavigate }: { onNavigate?: (tab: TabId) => void }) {
         /* clipboard blocked — still confirm to the user */
       }
     }
-    toast(ICONS.wifi, t.quick.wifiCopied);
+    toast(CONTROL_ICON.clipboard, t.quick.wifiCopied);
   };
 
   // ── Board props (U-03): the screen picks the variant + feeds every slot; the
@@ -353,7 +355,7 @@ export function Home({ onNavigate }: { onNavigate?: (tab: TabId) => void }) {
             onClick={dismissStay}
             aria-label={t.glance.dismissStay}
           >
-            ✕
+            <Icon name="close" />
           </button>
         </div>
       )}
@@ -407,7 +409,7 @@ export function Home({ onNavigate }: { onNavigate?: (tab: TabId) => void }) {
             className="qa"
             onClick={() => navigate(`/?${TAB_PARAM}=index&booking=${nextCoded.booking.id}`)}
           >
-            <span className="ic">{ICONS.ticket}</span>
+            <span className="ic">{GLYPH.ticket}</span>
             <span className="lb">{t.quick.nextTicket}</span>
             <span className="code" dir="auto">
               {CODE_PREFIX}
@@ -417,7 +419,7 @@ export function Home({ onNavigate }: { onNavigate?: (tab: TabId) => void }) {
         )}
         {wifi && (
           <button className="qa" onClick={copyWifi}>
-            <span className="ic">{ICONS.wifi}</span>
+            <span className="ic">{GLYPH.wifi}</span>
             <span className="lb">{t.quick.wifiCode}</span>
             {wifi.network && (
               <span className="sub" dir="auto">
@@ -432,7 +434,9 @@ export function Home({ onNavigate }: { onNavigate?: (tab: TabId) => void }) {
             names the stop, shortened like every other glanceable surface. */}
         {nextDest && (
           <a className="qa" href={nextDest.url} target="_blank" rel="noopener noreferrer">
-            <span className="ic">{ICONS.navigate}</span>
+            <span className="ic">
+              <Icon name="navigate" />
+            </span>
             <span className="lb">{t.quick.navigateNext}</span>
             <span className="sub name">{shortPlaceLabel(nextDest.place.name)}</span>
           </a>
@@ -443,9 +447,12 @@ export function Home({ onNavigate }: { onNavigate?: (tab: TabId) => void }) {
           className="qa empty"
           onClick={() => navigate(`/?${TAB_PARAM}=index&${FOCUS_PARAM}=${INDEX_FOCUS.DOCS}`)}
         >
-          <span className="ic">{ICONS.documents}</span>
+          <span className="ic">{GLYPH.documents}</span>
           <span className="lb">
-            <span className="plus">{ICONS.add}</span> {t.quick.documents}
+            <span className="plus">
+              <Icon name="plus" />
+            </span>{' '}
+            {t.quick.documents}
           </span>
           <span className="sub">{t.quick.docsInvite}</span>
         </button>

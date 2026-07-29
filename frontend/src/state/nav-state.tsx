@@ -25,7 +25,7 @@ import {
   type ReactNode,
 } from 'react';
 import { useLocation, useNavigate, useSearchParams, type NavigateFunction } from 'react-router-dom';
-import { ICONS, type TabId } from '../constants';
+import { CONTROL_ICON, type TabId } from '../constants';
 import type { Mode } from '../lib/mode';
 import { getNow } from '../lib/useClock';
 import { useToast } from '../ui/Toast';
@@ -417,7 +417,7 @@ export function NavProvider({ children }: { children: ReactNode }) {
         }
         case 'arm-exit':
           exitPendingRef.current = getNow();
-          showToast(ICONS.navigate, t.shell.leaveTripHint);
+          showToast(CONTROL_ICON.navigate, t.shell.leaveTripHint);
           break;
         case 'exit-trip':
           exitPendingRef.current = 0;

@@ -1,0 +1,172 @@
+# ADR-0137 — The `⋯` row menu is ONE surface, and a control's mark is an icon
+
+**Status:** Accepted (design approved 2026-07-29; built the same session)
+**Design reference:** [`mockups/row-menu-v1.html`](../../mockups/row-menu-v1.html)
+**Amends:** [`design-language.md`](../design/design-language.md)'s "Emoji are content, icons are UI" (from stated to enforced) and its **Bottom nav** entry.
+**Closes:** the backlog's "Emoji used as UI controls, swept out".
+
+## Context
+
+Two owner reports, 2026-07-29, both aimed at the sheet a row's `⋯` opens:
+
+> _"it breaks the design language rule of emoji = content, svg = ui so we need to change this"_
+> _"some of the options are useless or need to be elsewhere for example the הזז buttons are useless"_
+
+Reading the surface to design the fix turned up three more problems on the same
+sheet, and one of them is why the first two survived so long.
+
+**The menu existed five times.** `RowManageSheet` served the booking row, the
+document row and `EventCard`. The Plan builder had a hand-rolled copy with its own
+`.row-actions` rules in `screens.css`. `MemberSheet` had a third with `.ms-act`.
+Three CSS rulesets for one row shape, and they had already drifted — `14px` vs
+`var(--text-body)` for the label, `17px` vs `var(--text-h3)` for the mark. This is
+the rule-8 pattern that ADRs 0078, 0079, 0094 and 0095 exist to undo.
+
+**The emoji problem was worse than the rule says.** The `no-restricted-syntax`
+guard added in session 101 covers arrow/caret glyphs only, so ✏️ 🗑️ 📥 🔄 👑 🚪 ⬆️
+📷 🔗 all sat outside it. Two of the five menus passed theirs as an **inline
+literal** (`icon: '✏️'`), not through `ICONS` — so the sweep the backlog had
+planned, which was scoped to `ICONS.*` call sites, would not have reached them.
+
+**The root cause of the drift is that `ICONS` mixed both kinds in one object.** A
+call site importing `ICONS.edit` and one importing `ICONS.weather` looked
+identical. Nothing told you that one of them was breaking the rule.
+
+Three things the mockup measured that a prop list could not:
+
+1. **The destructive verb differed from its neighbours by text hue alone** — same
+   fill, border, height, gap. And the emoji beside the red label kept its own
+   colours, which is the tell that it was never part of the state.
+2. **The builder's menu changed length per row.** `הקדם` was omitted at the top of
+   the soft list and `אחר` at the bottom, so `מחק` sat at a different position
+   depending on which row you opened — a destructive verb moving under the thumb.
+3. **The booking and document menus named nothing.** Two anonymous rows over a
+   scrim, with the thing you were about to delete hidden behind it. `EventCard`
+   had a title; `MemberSheet` had a whole identity header. Three answers to one
+   question, and the worst answer was on the menus holding the irreversible verb.
+
+## Decision
+
+### §1 · One component, one ruleset
+
+Everything renders through `RowManageSheet`, or through `RowActionList` where a
+sheet owns a different header. The builder's hand-rolled copy and `MemberSheet`'s
+`.ms-act` are deleted along with their CSS; `MemberSheet` keeps its identity header
+(real content — and the origin of §3) and renders its verbs through the shared list.
+
+### §2 · `ICONS` splits into `GLYPH` and `CONTROL_ICON`
+
+The split is the fix, because the type now tells you which rule applies.
+`CONTROL_ICON` values **are** `IconName`s and can only be rendered by `<Icon>`;
+`GLYPH` values are strings and are content. The test for a new entry: **does the
+user aim at it?**
+
+`RowAction.icon` is typed `IconName`. The four call sites that passed an emoji
+literal no longer compile — which is a stronger guarantee than any lint rule, and
+is why the lint guard deliberately does **not** carry an `icon=`-prop selector.
+
+One emoji was doing two jobs and is now two shapes: 🔄 meant both "two events
+exchanged slots" (`swap`) and "a write is in flight" (`sync`).
+
+### §3 · Every menu names its subject
+
+`title` is required. `subject` is a quiet fact line beneath it — type, time, state
+— in the app's `·` grammar, so the sheet reads as the row it came from. A numeric
+run inside it takes `ltrIsolate` (ADR-0118); the mockup drew `09:00–08:00` on its
+first pass, which is exactly the bug that rule exists for.
+
+### §4 · The bottom nav and the toast marks cross too
+
+Both were open questions the backlog said to decide rather than assume, because
+`design-language.md` names them as emoji itself. **Owner's call: both convert.**
+Navigation is the case the rule names first, and the tab bar is the most-seen
+surface in the app — the one place a platform's emoji font showed through loudest.
+`ShowToast` now takes an `IconName` rather than a string, so a toast's mark is the
+icon of the action it confirms and cannot be an arbitrary glyph.
+
+The active tab thickens its stroke rather than only changing hue, so shape carries
+state alongside colour — the same accessibility rule the sync cloud follows.
+
+### §5 · A destructive action partitions; it does not just recolour
+
+`danger` items collect into a trailing group below a hairline. 13px, and it makes
+the one item you must not hit by accident stop looking like the ones you should.
+
+### §6 · Menu copy is imperative
+
+`עריכה`/`מחיקה` → `ערוך`/`מחק`. A menu item is something you tell the app to do,
+and the same two actions on an event already read as verbs.
+
+### §7 · The booking menu gains `שבץ במסלול`
+
+The row says `לא משובצת במסלול` and its menu offered no way to fix that. The verb
+opens the existing `BookingSheet` **on** the when-field (`focus="when"`), which is
+what keeps it a shortcut rather than a second name for `ערוך` — scheduling has
+always lived inside that form and nothing said so. Reads `שנה שיבוץ` once a slot
+exists, so it never promises something the booking already has.
+
+### §8 · `הקדם`/`אחר` become one `הזז` opening a position step
+
+They go, but reorder does **not**. `lib/reorder.ts` permutes which soft event holds
+which **slot**; doing that through `ערוך` means two edits through a collision, so
+it is a real capability and not a shortcut. Dragging is the primary gesture and it
+is pointer-only — session 119 removed the grip, so the row drags from anywhere and
+there is nothing to hang a keyboard affordance on.
+
+One item, always present, opens a **step inside the same sheet** listing the day's
+soft rows with the one you came from marked and disabled. It fixes both complaints
+at once: the menu stops changing shape per row, and you pick a destination you can
+**see** instead of tapping `הקדם` twice and checking afterwards. The step registers
+its own back layer with `remainsActive: true`, per the resolve-sheet pattern.
+
+### §9 · The rule becomes enforceable
+
+The lint guard extends from arrows to control emoji in rendered JSX. Scoped three
+ways — to the glyphs this app reached for as controls (never "any emoji"), to JSX
+(so `GLYPH` and `i18n/` stay expressible), and to non-test source (a fixture's
+`icon="📄"` stands in for content).
+
+**One trap, recorded because it silently inverted the rule:** these selector
+regexes compile without the `u` flag, so a character class of astral emoji is a
+class of **surrogate halves**. `[📥📋…]` all share the lead unit `\uD83D` and the
+class therefore matched every emoji in the plane — it flagged 📍 and 🗺️ as controls
+on the first run. The guard uses an **alternation**, where each branch is a whole
+code point.
+
+## What stays emoji, deliberately
+
+Category and booking/document type badges, trip identity, the shelf's 💡, event
+icon defaults, the empty states' illustrations, and the warmth in copy (🎉 👋 🙂).
+These are content: a thing being described, not a control being offered. They live
+in `GLYPH` or in `i18n/`, and `design-language.md`'s "icons that are part of a
+sentence stay in the copy" is unchanged.
+
+## Consequences
+
+- `RowManageSheet` gains a required `title` and an optional `subject`; `ariaLabel`
+  is gone, because a menu with no visible subject was the defect.
+- `FeedbackAction.label` widens to `ReactNode` — the CTA labels were built as
+  `` `${ICONS.add} ${copy}` `` template strings, which is only expressible while
+  the mark is an emoji.
+- `TripSettings`'s `ReadRow` takes a `ReactNode` icon for the same reason.
+- `BuilderRow` is exported for its own test: the `הזז` step and its back layer are
+  real behaviour, and mounting the whole of PlanDay to reach one sheet would test
+  the harness instead of the row.
+- `.wp-listrow-kebab` grew from 30×30 to the 44×44 touch floor (visible ink
+  unchanged; the extra is negative-margined hit area). It is the control that opens
+  the menu, so it came along.
+
+## Known gap, not fixed here
+
+**Escape does not go through the back stack.** `useDialogFocus` calls the modal's
+`onClose` directly, so on any overlay with an internal step — this sheet's `הזז`,
+and Plan mode's resolve sheet before it — Escape dismisses the whole sheet while
+the system back and the visible control peel one step. That contradicts
+`frontend/CLAUDE.md`'s rule that back, cancel, close, backdrop and Escape all run
+one handler (ADR-0103's 2026-07-29 amendments).
+
+It is **pre-existing and app-wide**, not introduced here; it surfaced because this
+ADR's test asserted the invariant. Fixing it means routing `Modal`'s Escape through
+the nav stack, which touches every overlay in the app, so it is on the backlog
+rather than smuggled into a menu redesign. Desktop-only in practice — the platform
+back gesture is the phone's path and it is correct.

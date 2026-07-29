@@ -3,6 +3,8 @@
 // overlay's populated form (T-027) — implemented once here.
 import { useNavigate } from 'react-router-dom';
 import { useToast } from './Toast';
+import { Icon } from './Icon';
+import { CONTROL_ICON } from '../constants';
 import { t } from '../i18n/he';
 
 export function CreateJoinActions({ offline }: { offline: boolean }) {
@@ -17,14 +19,18 @@ export function CreateJoinActions({ offline }: { offline: boolean }) {
         <button
           className="zero-act"
           disabled={offline}
-          onClick={() => showToast('🔗', t.shell.zeroState.joinToast)}
+          onClick={() => showToast(CONTROL_ICON.link, t.shell.zeroState.joinToast)}
         >
-          <span className="ic">🔗</span>
+          <span className="ic">
+            <Icon name="link" />
+          </span>
           {t.shell.zeroState.join}
           <span className="sub">{t.shell.zeroState.joinSub}</span>
         </button>
         <button className="zero-act" disabled={offline} onClick={() => navigate('/new')}>
-          <span className="ic">＋</span>
+          <span className="ic">
+            <Icon name="plus" />
+          </span>
           {t.shell.zeroState.create}
           <span className="sub">{t.shell.zeroState.createSub}</span>
         </button>

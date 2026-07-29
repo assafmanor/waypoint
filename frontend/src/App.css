@@ -1483,6 +1483,23 @@
   padding: 3px 16px;
   border-radius: 999px;
   transition: background-color 0.16s;
+  /* The pill is the active indicator and it is sized off this box, so the SVG
+     has to occupy the height the emoji did — a bare 1em glyph sits shorter than
+     an emoji's own box and the pill collapsed around it (ADR-0137 §4). */
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  block-size: 25px;
+}
+.nav button .ic .icon {
+  width: 21px;
+  height: 21px;
+  stroke-width: 1.8;
+}
+/* The active tab's mark thickens rather than only changing hue — shape carries
+   state alongside colour, the same accessibility rule the sync cloud follows. */
+.nav button.on .ic .icon {
+  stroke-width: 2.2;
 }
 .nav button.on {
   color: var(--nav-accent);

@@ -2,6 +2,7 @@
 // values live in @waypoint/shared. Keep magic numbers/strings out of logic.
 import type { BookingType, DocumentType, EventCategory } from '@waypoint/shared';
 import type { SnapStop } from './lib/snap-sheet';
+import type { IconName } from './ui/Icon';
 
 export const MS_PER_DAY = 86_400_000;
 
@@ -584,45 +585,74 @@ export const JOIN_INTENT_STORAGE_KEY = 'wp_join_intent';
  *  Per-device, not synced (ADR-0021). */
 export const STAY_STRIP_DISMISS_STORAGE_KEY = 'wp_stay_strip_dismissed';
 
+/** The bottom nav. Its glyphs crossed from emoji to `Icon` in ADR-0137 §4 on the
+ *  owner's call — navigation is the case design-language names first when it says
+ *  controls are icons, and the tab bar is the app's most-seen surface, so the one
+ *  place a platform's emoji font showed through loudest was here. */
 export const TABS = [
-  { id: 'home', icon: '🏠' },
-  { id: 'map', icon: '🗺️' },
-  { id: 'index', icon: '📇' },
-  { id: 'days', icon: '📅' },
-] as const;
+  { id: 'home', icon: 'home' },
+  { id: 'map', icon: 'map' },
+  { id: 'index', icon: 'cards' },
+  { id: 'days', icon: 'calendar' },
+] as const satisfies readonly { id: string; icon: IconName }[];
 
 export type TabId = (typeof TABS)[number]['id'];
 
-/** UI iconography (emoji). Icons that are part of a sentence stay in the copy.
- *  Arrows and carets are deliberately absent: they render as SVGs (`ui/Icon`,
- *  `ui/NavArrow`) because the body font has no glyphs for them (design-language). */
-export const ICONS = {
-  navigate: '🧭',
-  /** "Near me now" — the device's own position, distinct from navigate's compass. */
-  nearMe: '📍',
+/* ── Iconography, split in two (ADR-0137 §2) ──────────────────────────────────
+   These used to be ONE `ICONS` object holding both kinds, which is why
+   design-language's "emoji are content, icons are UI" drifted for so long: a
+   call site importing `ICONS.edit` and a call site importing `ICONS.weather`
+   looked identical, so nothing told you that one of them was breaking the rule.
+   The split is the fix — the type now tells you. `CONTROL_ICON` values are
+   `IconName`s and can only be rendered through `<Icon>`; `GLYPH` values are
+   strings and are content. If you are adding an entry and cannot say which
+   object it belongs in, the question to ask is whether the user AIMS at it. */
+
+/** Content glyphs — a thing being described, not a control being offered. These
+ *  stay emoji deliberately (design-language): they carry the app's warmth, and a
+ *  category badge is data, not chrome. */
+export const GLYPH = {
+  /** Index/quick-action category markers — a kind of thing, like a badge. */
   ticket: '🎫',
-  search: '🔍',
-  atm: '🏧',
-  wifi: '📶',
   documents: '🛂',
+  wifi: '📶',
+  atm: '🏧',
   weather: '🌤️',
   fx: '💱',
   budget: '💰',
-  lock: '🔒',
-  warn: '⚠️',
-  done: '✓',
-  edit: '✏️',
-  trash: '🗑️',
-  restore: '↩️',
-  swap: '🔄',
-  delay: '⏱️',
-  share: '💬',
-  clipboard: '📋',
-  schedule: '📅',
-  toShelf: '📥',
-  more: '⋯',
-  add: '＋',
-  sync: '🔄',
-  offline: '📡',
   members: '👥',
+  /** A place, as a fact on a card — not the map control (`Icon` 'pin'). */
+  place: '📍',
 } as const;
+
+/** Control icons — every one of these is drawn by `<Icon name={…} />`. The value
+ *  IS the `IconName`, so a call site cannot accidentally render it as text. */
+export const CONTROL_ICON = {
+  navigate: 'navigate',
+  nearMe: 'pin',
+  search: 'search',
+  lock: 'lock',
+  warn: 'warn',
+  done: 'check',
+  edit: 'edit',
+  trash: 'trash',
+  restore: 'undo',
+  /** Two events exchanging slots. Distinct from `sync` although both shipped as
+   *  🔄 — one emoji for two meanings is the drift this split ends. */
+  swap: 'swap',
+  delay: 'clock',
+  share: 'share',
+  link: 'link',
+  clipboard: 'clipboard',
+  schedule: 'calendar',
+  toShelf: 'shelf',
+  more: 'more',
+  add: 'plus',
+  sync: 'sync',
+  offline: 'offline',
+  upload: 'upload',
+  promote: 'crown',
+  leave: 'exit',
+  close: 'close',
+  clock: 'clock',
+} as const satisfies Record<string, IconName>;

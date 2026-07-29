@@ -43,7 +43,12 @@ import { eventDisplayZones } from '../lib/places';
 import { coerceClearedFields } from '../lib/cache';
 import { isoToTimeInput, zonedIso } from '../lib/time';
 import { planReorder } from '../lib/reorder';
-import { DEFAULT_MAYBE_ICON, DELAY_STEP_MINUTES, DEFAULT_SCHEDULE_SLOT, ICONS } from '../constants';
+import {
+  DEFAULT_MAYBE_ICON,
+  DELAY_STEP_MINUTES,
+  DEFAULT_SCHEDULE_SLOT,
+  CONTROL_ICON,
+} from '../constants';
 import { t } from '../i18n/he';
 import { useAuth } from './auth-state';
 
@@ -109,7 +114,7 @@ function writeErrorToast(toast: ShowToast, err: unknown): void {
       : isMoveCrossesDayError(err)
         ? t.toast.moveCrossesDay
         : t.toast.writeFailed;
-  toast(ICONS.warn, message);
+  toast(CONTROL_ICON.warn, message);
 }
 
 function toCreateEventInput(event: TripEvent): CreateEventInput {
@@ -688,30 +693,30 @@ export function useVerbs() {
   return {
     done: (e: TripEvent) => {
       void applySetStatus(deps, e, EVENT_STATUS.DONE);
-      toast(ICONS.done, t.toast.markedDone, undo);
+      toast(CONTROL_ICON.done, t.toast.markedDone, undo);
     },
     skip: (e: TripEvent) => {
       void applySetStatus(deps, e, EVENT_STATUS.SKIPPED);
-      toast(ICONS.trash, t.toast.removed, undo);
+      toast(CONTROL_ICON.trash, t.toast.removed, undo);
     },
     restore: (e: TripEvent) => {
       void applySetStatus(deps, e, EVENT_STATUS.PLANNED);
-      toast(ICONS.restore, t.toast.restored, undo);
+      toast(CONTROL_ICON.restore, t.toast.restored, undo);
     },
     swap: (e: TripEvent) => {
       void applySetStatus(deps, e, EVENT_STATUS.SKIPPED);
-      toast(ICONS.swap, t.toast.swapPrompt, undo);
+      toast(CONTROL_ICON.swap, t.toast.swapPrompt, undo);
     },
     delay: (e: TripEvent) => {
       void applyGuardedDelay(deps, e, DELAY_STEP_MINUTES).then((applied) => {
         if (!applied) return;
-        if (e.kind === EVENT_KIND.HARD) toast(ICONS.warn, t.toast.hardDelayed, undo);
-        else toast(ICONS.delay, t.toast.softDelayed(DELAY_STEP_MINUTES), undo);
+        if (e.kind === EVENT_KIND.HARD) toast(CONTROL_ICON.warn, t.toast.hardDelayed, undo);
+        else toast(CONTROL_ICON.delay, t.toast.softDelayed(DELAY_STEP_MINUTES), undo);
       });
     },
     earlier: (e: TripEvent) => {
       void applyDelay(deps, e, -DELAY_STEP_MINUTES);
-      toast(ICONS.delay, t.toast.softEarlier(DELAY_STEP_MINUTES), undo);
+      toast(CONTROL_ICON.delay, t.toast.softEarlier(DELAY_STEP_MINUTES), undo);
     },
     // Move a soft event by an arbitrary delta — the "הזז" overlap-resolve
     // (ADR-0041), a manual ripple: shift to a clean slot, duration preserved, and
@@ -719,9 +724,9 @@ export function useVerbs() {
     moveBy: (e: TripEvent, minutes: number) => {
       if (minutes === 0) return;
       void applyDelay(deps, e, minutes);
-      toast(ICONS.delay, t.toast.eventMoved, undo);
+      toast(CONTROL_ICON.delay, t.toast.eventMoved, undo);
     },
-    onWay: (_e: TripEvent) => toast(ICONS.share, t.toast.onWayShared),
+    onWay: (_e: TripEvent) => toast(CONTROL_ICON.share, t.toast.onWayShared),
     // Place a shelf idea onto a day. With `fields` (from the builder's
     // EventForm picker) the user chose the day/time/kind; without them it's the
     // Trip-mode one-tap quick-schedule onto today at a default slot (Tier-1).
@@ -735,7 +740,7 @@ export function useVerbs() {
         ? isoToTimeInput(event.startsAt, eventDisplayZones(event, zoneEvidence).start)
         : null;
       toast(
-        ICONS.schedule,
+        CONTROL_ICON.schedule,
         timeLabel ? t.toast.scheduled(event.title, timeLabel) : t.toast.scheduledDay(event.title),
         undo,
       );
@@ -762,18 +767,22 @@ export function useVerbs() {
         updatedBy: authorId,
       };
       void applyAddMaybe(deps, item);
-      toast(ICONS.add, t.toast.maybeAdded, undo);
+      toast(CONTROL_ICON.add, t.toast.maybeAdded, undo);
     },
     removeMaybe: (m: MaybeItem) => {
       void applyRemoveMaybe(deps, m);
-      toast(ICONS.trash, t.toast.maybeRemoved, undo);
+      toast(CONTROL_ICON.trash, t.toast.maybeRemoved, undo);
     },
     // Drag an idea between the shelf's two groups (ADR-0116 §2): onto this day
     // pencils it in, back to the pool clears it. Not a schedule — no time, no slot.
     setMaybeDay: (m: MaybeItem, targetDate: string | null) => {
       if ((m.targetDate ?? null) === targetDate) return;
       void applySetMaybeDay(deps, m, targetDate);
-      toast(ICONS.schedule, targetDate ? t.toast.maybeAimedAtDay : t.toast.maybeBackToPool, undo);
+      toast(
+        CONTROL_ICON.schedule,
+        targetDate ? t.toast.maybeAimedAtDay : t.toast.maybeBackToPool,
+        undo,
+      );
     },
     // Move an event onto the shelf as a maybe idea (any event, not just ones
     // that started there). Soft events only — hard events are commitments.
@@ -800,20 +809,20 @@ export function useVerbs() {
         updatedBy: authorId,
       };
       void applyPark(deps, event, item);
-      toast(ICONS.toShelf, t.toast.movedToShelf, undo);
+      toast(CONTROL_ICON.toShelf, t.toast.movedToShelf, undo);
     },
     create: (event: TripEvent) => {
       void applyCreateEvent(deps, event);
-      toast(ICONS.done, t.toast.eventCreated, undo);
+      toast(CONTROL_ICON.done, t.toast.eventCreated, undo);
     },
     update: (event: TripEvent, patch: UpdateEventInput) => {
       void applyGuardedUpdate(deps, event, patch).then((applied) => {
-        if (applied) toast(ICONS.done, t.toast.eventUpdated, undo);
+        if (applied) toast(CONTROL_ICON.done, t.toast.eventUpdated, undo);
       });
     },
     remove: (event: TripEvent) => {
       void applyGuardedDelete(deps, event).then((applied) => {
-        if (applied) toast(ICONS.trash, t.toast.eventDeleted, undo);
+        if (applied) toast(CONTROL_ICON.trash, t.toast.eventDeleted, undo);
       });
     },
     // Plan-mode builder: move soft event `movedId` to occupy `targetId`'s slot
@@ -822,12 +831,12 @@ export function useVerbs() {
       const patches = planReorder(dayEvents, movedId, targetId);
       if (patches.length === 0) return;
       void applyReorder(deps, patches, dayEvents);
-      toast(ICONS.swap, t.toast.reordered, undo);
+      toast(CONTROL_ICON.swap, t.toast.reordered, undo);
     },
     rippleApply: () => {
       if (!ripple) return;
       void applyRippleApply(deps, ripple, events);
-      toast(ICONS.done, t.toast.rippleApplied, undo);
+      toast(CONTROL_ICON.done, t.toast.rippleApplied, undo);
     },
     rippleDismiss: () => dispatch({ type: TRIP_ACTION.RIPPLE_DISMISS }),
   };

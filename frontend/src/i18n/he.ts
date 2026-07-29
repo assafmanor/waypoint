@@ -421,9 +421,17 @@ export const t = {
     // Read-only booking detail view (ADR-0053): tap a booking → facts + a visible
     // edit button + a "⋯" menu (edit / delete).
     detail: {
-      edit: 'עריכה',
+      // Imperatives, matching the event menus (ADR-0137 §6). These were the
+      // nouns עריכה/מחיקה while the very same actions on an event read ערוך/מחק —
+      // a menu item is something you tell the app to do, so the verb wins.
+      edit: 'ערוך',
       actions: 'פעולות',
-      delete: 'מחיקה',
+      delete: 'מחק',
+      /** The verb the row's own `לא משובצת במסלול` was asking for (§7). */
+      schedule: 'שבץ במסלול',
+      reschedule: 'שנה שיבוץ',
+      /** The manage sheet's subject line, where the row says the long form. */
+      isScheduled: 'משובצת במסלול',
       timing: 'מתי',
       duration: 'משך',
       location: 'מיקום',
@@ -562,8 +570,9 @@ export const t = {
     // Per-row manage menu + optimistic-action toasts (ADR-0052).
     manage: {
       actions: 'פעולות',
-      edit: 'עריכה',
-      delete: 'מחיקה',
+      // Imperatives, matching every other row menu (ADR-0137 §6).
+      edit: 'ערוך',
+      delete: 'מחק',
       nameField: 'שם',
       save: 'שמירה',
       saved: 'המסמך עודכן',
@@ -971,8 +980,12 @@ export const t = {
     settleTitle: (title: string) => `הסדרת «${title}»`,
     settleUnresolved: 'הסדר: היינו או דלג',
     addToDay: 'הוסף אירוע',
-    moveEarlier: 'הקדם',
-    moveLater: 'אחר',
+    // Reorder from the ⋯ sheet (ADR-0137 §8). One item, always present, opening a
+    // step that shows WHERE the event lands — replacing the הקדם/אחר pair, which
+    // was a blind one-slot swap that also came and went with the row's position.
+    move: 'הזז',
+    moveChoose: 'לאיזה מקום להזיז?',
+    moveHere: 'כאן עכשיו',
     pinned: 'אירוע קשיח · מעוגן בזמן',
     rowActions: 'פעולות',
     gapFillTitle: (start: string, end: string) => `מילוי הפער · ${start}–${end}`,

@@ -23,6 +23,7 @@ import { bookingDurationUnit, formatBookingDuration, timingLabels } from '../lib
 import { badgeClassForBookingType } from '../lib/transitions';
 import { BOOKING_TYPE_ICON, CODE_PREFIX } from '../constants';
 import { t } from '../i18n/he';
+import { Icon } from './Icon';
 
 interface Wifi {
   network?: string;
@@ -142,7 +143,7 @@ export function BookingDetail({
       <div className="bk-detail">
         <div className="bk-actions">
           <button type="button" className="bk-edit" onClick={edit}>
-            <span aria-hidden="true">✏️</span> {t.index.detail.edit}
+            <Icon name="edit" /> {t.index.detail.edit}
           </button>
         </div>
 
@@ -155,7 +156,9 @@ export function BookingDetail({
         </div>
 
         {linkedEvent?.kind === 'hard' && (
-          <div className="bs-hard-note">🔒 {t.index.detail.hardNote}</div>
+          <div className="bs-hard-note">
+            <Icon name="lock" /> {t.index.detail.hardNote}
+          </div>
         )}
         <div className="bk-facts">
           {showLocation && (

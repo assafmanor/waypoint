@@ -336,7 +336,7 @@ const ResultMarker = memo(function ResultMarker({
         role="button"
         aria-label={result.label}
       >
-        <span aria-hidden="true">＋</span>
+        <Icon name="plus" />
       </div>
     </AdvancedMarker>
   );

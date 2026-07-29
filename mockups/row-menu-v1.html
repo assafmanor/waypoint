@@ -1862,6 +1862,23 @@ body {
   padding: 3px 16px;
   border-radius: 999px;
   transition: background-color 0.16s;
+  /* The pill is the active indicator and it is sized off this box, so the SVG
+     has to occupy the height the emoji did — a bare 1em glyph sits shorter than
+     an emoji's own box and the pill collapsed around it (ADR-0137 §4). */
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  block-size: 25px;
+}
+.nav button .ic .icon {
+  width: 21px;
+  height: 21px;
+  stroke-width: 1.8;
+}
+/* The active tab's mark thickens rather than only changing hue — shape carries
+   state alongside colour, the same accessibility rule the sync cloud follows. */
+.nav button.on .ic .icon {
+  stroke-width: 2.2;
 }
 .nav button.on {
   color: var(--nav-accent);
@@ -4256,49 +4273,72 @@ body {
   outline-offset: 2px;
 }
 
-/* Builder-row action sheet (the ⋯ menu): full-width, thumb-sized rows so a
-   phone isn't fighting a strip of 32px icons — one affordance on the row,
-   the rest here. */
-.row-actions {
-  display: flex;
-  flex-direction: column;
-  gap: 6px;
-  margin: 4px 0 4px;
+/* The `.row-action*` family that lived here is GONE (ADR-0137 §1). It was the
+   builder's private copy of `.wp-row-action` in ui/domain/list-row.css — the same
+   rows, duplicated, and the two had already drifted (14px vs var(--text-body),
+   17px vs var(--text-h3)). The builder's sheet renders through the shared
+   `RowActionList` now, so there is one ruleset again. `MemberSheet`'s `.ms-act`
+   went the same way; see .ms-cancel below, which is all that survives of it. */
+
+/* The `הזז` step (ADR-0137 §8) — step 2 of the builder's ⋯ sheet. Deliberately
+   NOT `.wp-row-action`: these are not verbs, they are POSITIONS, and reading them
+   as a time-ordered list is the whole point of replacing the blind הקדם/אחר pair.
+   Shaped after `.resolve-mover` above, which is the app's other pick-a-row step. */
+.bld-move-sub {
+  font-size: 12.5px;
+  font-weight: 600;
+  color: var(--muted);
+  margin: 2px 0 9px;
 }
-.row-action {
+.bld-move-slot {
   display: flex;
   align-items: center;
-  gap: 11px;
+  gap: 10px;
   width: 100%;
-  text-align: start;
-  font: inherit;
-  font-size: 14px;
-  font-weight: 600;
-  color: var(--ink);
   background: var(--card);
   border: 1px solid var(--line);
-  border-radius: 12px;
-  padding: 13px 14px;
+  border-radius: var(--radius-12);
+  padding: 11px 12px;
+  margin-bottom: 6px;
+  font: inherit;
+  text-align: start;
   cursor: pointer;
 }
-.row-action:hover {
+.bld-move-slot:hover:not(:disabled) {
   border-color: var(--plan);
   background: var(--plan-tint);
 }
-.row-action:focus-visible {
+.bld-move-slot:focus-visible {
   outline: 2.5px solid var(--plan);
   outline-offset: 2px;
 }
-.row-action.danger {
-  color: var(--miss);
+.bld-move-slot .tm {
+  font-family: var(--font-mono);
+  font-size: 11.5px;
+  color: var(--muted);
+  flex: none;
 }
-.row-action.danger:hover {
-  border-color: var(--miss);
-  background: rgba(198, 40, 40, 0.06);
+.bld-move-slot .nm {
+  flex: 1;
+  min-width: 0;
+  font-weight: 700;
+  font-size: 13.5px;
 }
-.row-action-ic {
-  font-size: 17px;
-  flex: 0 0 auto;
+/* Where you are now: shown, not hidden, because the list is a map of the day and
+   a gap in it would be harder to read than a marked row. Not a target. */
+.bld-move-slot.is-self {
+  border-style: dashed;
+  background: transparent;
+  cursor: default;
+}
+.bld-move-slot.is-self .nm {
+  color: var(--muted);
+}
+.bld-move-slot .here {
+  font-size: 11px;
+  font-weight: 700;
+  color: var(--plan);
+  flex: none;
 }
 
 /* A skipped soft event parked on the shelf (ADR-0027) reuses the MaybeCard, but
@@ -4671,34 +4711,9 @@ body {
   font-weight: 700;
   font-size: 14.5px;
 }
-.ms-act {
-  font: inherit;
-  width: 100%;
-  display: flex;
-  align-items: center;
-  gap: 11px;
-  padding: 13px 8px;
-  border: 0;
-  background: none;
-  border-radius: 11px;
-  font-size: 14.5px;
-  font-weight: 600;
-  color: var(--ink);
-  cursor: pointer;
-  text-align: start;
-}
-.ms-act:hover {
-  background: rgba(22, 35, 61, 0.04);
-}
-.ms-act.danger-item {
-  color: var(--miss);
-}
-.ms-act .ic {
-  font-size: 17px;
-  width: 22px;
-  text-align: center;
-  flex: 0 0 auto;
-}
+/* `.ms-act` deleted with ADR-0137 §1 — the third copy of the same action row.
+   MemberSheet keeps its identity header (real content, and the origin of the
+   "name your subject" rule) and renders its verbs through `RowActionList`. */
 .ms-cancel {
   font: inherit;
   width: 100%;
@@ -6428,10 +6443,15 @@ body {
   justify-content: center;
   flex: 0 0 auto;
 }
+/* 44×44 is the touch floor the rest of the app meets (ADR-0017); this shipped at
+   30 and is the control that OPENS the menu, so it came along with the redesign.
+   The visible ink stays 30px — the extra is hit area, negative-margined so the
+   row's height and the trailing group's spacing are unchanged. */
 .wp-listrow-kebab {
-  width: 30px;
-  height: 30px;
-  border-radius: 9px;
+  width: 44px;
+  height: 44px;
+  margin: -7px;
+  border-radius: 12px;
   display: grid;
   place-items: center;
   background: none;
@@ -6440,6 +6460,10 @@ body {
   font-size: var(--text-h3);
   line-height: 1;
   cursor: pointer;
+}
+.wp-listrow-kebab .icon {
+  width: 1.15em;
+  height: 1.15em;
 }
 .wp-listrow-kebab:hover {
   background: color-mix(in srgb, var(--ink) 6%, transparent);
@@ -6489,6 +6513,42 @@ body {
 .wp-row-action-ic {
   font-size: var(--text-h3);
   flex: 0 0 auto;
+  /* Aligns with the label rather than the line box: an SVG sized in `em` sits on
+     its own baseline, and a 1.25em box beside 15px text drifts a hair low. */
+  display: inline-flex;
+}
+/* The mark is an SVG now (ADR-0137), so `danger` tints it WITH its label — the
+   emoji it replaced kept its own colours inside a red row, which is the tell
+   that it was never part of the state. Slightly over 1em because a 2px stroke
+   needs the extra to carry beside 15px of Hebrew. */
+.wp-row-action-ic .icon {
+  width: 1.25em;
+  height: 1.25em;
+  stroke-width: 1.9;
+}
+
+/* ── The sheet names its subject (ADR-0137 §3) ──────────────────────────────
+   A quiet fact line under `.modal-title`: type · time · state, in the app's `·`
+   grammar. It exists so the destructive verb is never anonymous — the booking
+   and document menus used to render two unlabelled rows over a scrim with the
+   thing being deleted hidden behind them. */
+.wp-row-subject {
+  display: block;
+  margin-block-start: 3px;
+  font-size: var(--text-meta);
+  font-weight: 500;
+  color: var(--muted);
+  line-height: 1.45;
+}
+
+/* ── The destructive verb partitions, it does not just recolour (§5) ────────
+   `מחק` and `ערוך` shipped as identical cards differing by text hue alone. A
+   hairline and a gap — 13px total — is the whole fix, and it costs the sheet
+   nothing it was using. */
+.wp-row-actions-danger {
+  margin-block-start: 10px;
+  padding-block-start: 10px;
+  border-block-start: 1px solid var(--line);
 }
 
 /* ═══ ui/domain/place-badge.css — generated, do not edit here ═══ */
@@ -6879,14 +6939,30 @@ body {
         // one (`WhenField variant="day"`, ADR-0083/0116).
         calendar:
           'M8 2.6v3.4 M16 2.6v3.4 M3.4 10.2h17.2 M5.4 4.3h13.2a2 2 0 0 1 2 2v13.1a2 2 0 0 1-2 2H5.4a2 2 0 0 1-2-2V6.3a2 2 0 0 1 2-2Z',
+        // `MemberSheet`'s two admin verbs. Replaces 👑 and 🚪.
+        crown: 'M3.4 7.2 6.8 12l5.2-6.8L17.2 12l3.4-4.8v10a1.4 1.4 0 0 1-1.4 1.4H4.8a1.4 1.4 0 0 1-1.4-1.4Z',
+        // The arrow leads AWAY from the door (drawn the other way round it is the
+        // sign-IN mark), and the shape is authored MIRRORED from the LTR
+        // convention: leaving moves leftward in an RTL layout.
+        exit: 'M14.6 20.4H18.4a2 2 0 0 0 2-2V5.6a2 2 0 0 0-2-2h-3.8 M8 16.6 3.4 12 8 7.4 M3.4 12h11.2',
       };
-      const WAS = { edit: '✏️', trash: '🗑️', shelf: '📥', swap: '🔄', calendar: '—' };
+      const WAS = {
+        edit: '✏️',
+        trash: '🗑️',
+        shelf: '📥',
+        swap: '🔄',
+        calendar: '—',
+        crown: '👑',
+        exit: '🚪',
+      };
       const VERB = {
         edit: 'ערוך',
         trash: 'מחק',
         shelf: 'העבר למדף',
         swap: 'החלף',
         calendar: 'שבץ במסלול',
+        crown: 'הפוך למנהל',
+        exit: 'הסר מהטיול',
       };
 
       const icon = (name) =>
@@ -6919,12 +6995,9 @@ body {
       const after = ({ title, subject, actions }) => {
         const safe = actions.filter((a) => !a.danger);
         const danger = actions.filter((a) => a.danger);
-        // `hideIcon` is the honest option for a verb whose shape is not decided
-        // yet (`MemberSheet`'s promote): the item simply has no icon, rather
-        // than borrowing one that means something else.
         const item = (a) => `<button class="wp-row-action${a.danger ? ' danger' : ''}"
              data-act="${a.label}">
-            ${a.hideIcon ? '' : `<span class="wp-row-action-ic">${icon(a.icon)}</span>`}${a.label}
+            <span class="wp-row-action-ic">${icon(a.icon)}</span>${a.label}
           </button>`;
         return `
         <div class="phone proposal">
@@ -6944,6 +7017,38 @@ body {
           </div>
         </div>`;
       };
+
+      /* Step 2 of the builder's sheet: WHERE it goes (§8). The day's soft rows
+         with the one you came from marked — a destination you can see, instead of
+         tapping `הקדם` twice and checking afterwards. Uses the app's shipped
+         `.bld-move-*` rules through the APP-CSS manifest. */
+      const MOVE_ROWS = [
+        ['07:00', 'מתחם meex שרונים', false],
+        ['08:00', 'כפר סבא הירוקה', true],
+        ['09:00', 'מסעדת מון', false],
+        ['11:30', 'שוק הפשפשים', false],
+      ];
+      const moveStep = () => `
+        <div class="phone proposal">
+          <div class="behind">${BEHIND}</div><div class="scrim"></div>
+          <div class="modal-card" role="dialog">
+            <div class="modal-title">כפר סבא הירוקה
+              <span class="wp-row-subject">גמיש · <span dir="auto">08:00–09:00</span></span>
+            </div>
+            <div class="bld-move">
+              <div class="bld-move-sub">לאיזה מקום להזיז?</div>
+              ${MOVE_ROWS.map(
+                ([time, name, self]) => `
+                <button class="bld-move-slot${self ? ' is-self' : ''}" ${self ? 'disabled' : ''}
+                        data-act="הזז → ${name}">
+                  <span class="tm" dir="auto">${time}</span>
+                  <span class="nm">${name}</span>
+                  ${self ? '<span class="here">כאן עכשיו</span>' : ''}
+                </button>`,
+              ).join('')}
+            </div>
+          </div>
+        </div>`;
 
       /* The dimmed content behind the scrim — the row the menu came from, so
          the "the sheet names nothing" finding is visible rather than argued. */
@@ -7037,7 +7142,7 @@ body {
         {
           id: 'builder',
           h: 'שורת בנאי · <code>PlanDay</code> (מצב תכנון)',
-          note: 'התפריט היחיד שלא עובר דרך <code>RowManageSheet</code> — הוא העתק ידני עם <code>.row-actions</code> משלו ב-<code>screens.css</code>. וזה גם התפריט עם «הקדם»/«אחר»: הם נעלמים בקצוות הרשימה, ולכן «מחק» מחליף מקום בין שורה לשורה. החליפו את «מיקום השורה בבנאי» למעלה וראו את זה קורה.',
+          note: 'התפריט היחיד שלא עבר דרך <code>RowManageSheet</code> — הוא היה העתק ידני עם <code>.row-actions</code> משלו ב-<code>screens.css</code>. וזה גם התפריט עם «הקדם»/«אחר»: הם נעלמו בקצוות הרשימה, ולכן «מחק» החליף מקום בין שורה לשורה (החליפו את «מיקום השורה בבנאי» למעלה וראו את זה קורה בעמודה הימנית). במקומם יש פריט אחד — «הזז» — שפותח שלב שני באותה מגירה, עם רשימת השעות של היום. גרירה עדיין הדרך הראשית; זו הדרך שאפשר להגיע אליה בלי מצביע, והיא מראה לאן האירוע נוחת במקום לבקש ניחוש.',
           before: {
             title: 'כפר סבא הירוקה',
             actions: [
@@ -7053,15 +7158,18 @@ body {
             subject: 'גמיש · <span dir="auto">08:00–09:00</span>',
             actions: [
               { label: 'ערוך', icon: 'edit' },
+              { label: 'הזז', icon: 'swap' },
               { label: 'העבר למדף', icon: 'shelf' },
               { label: 'מחק', icon: 'trash', danger: true },
             ],
           },
+          // Step 2 of the same sheet — what `הזז` opens.
+          step: true,
         },
         {
           id: 'member',
           h: 'שורת משתתף · <code>MemberSheet</code>',
-          note: 'החמישי, ועם <code>.ms-act</code> משלו. הכותרת שלו היא דווקא הנכונה — אווטאר, שם, תפקיד, תאריך הצטרפות — ולכן ההצעה שומרת אותה ומחליפה רק את הפעולות עצמן ל-<code>RowManageSheet</code>. 👑 ו-🚪 הם פקדים ולכן יוצאים; «הפוך למנהל» מקבל צורה משלו בסבב הבא של הטאטוא, וכאן הוא מצויר בלי אייקון כדי לא להמציא שם שלא הוחלט עליו.',
+          note: 'החמישי, ועם <code>.ms-act</code> משלו. הכותרת שלו היא דווקא הנכונה — אווטאר, שם, תפקיד, תאריך הצטרפות — ולכן ההצעה שומרת אותה ומחליפה רק את הפעולות עצמן ל-<code>RowActionList</code> המשותף. 👑 ו-🚪 הם פקדים ולכן יוצאים, וכל אחד מהם קיבל צורה משלו: <code>crown</code> ו-<code>exit</code>. הדלת מצביעה החוצה ולא פנימה — מצוירת הפוך היא הסימן של כניסה.',
           before: {
             title: 'דנה',
             actions: [
@@ -7073,8 +7181,8 @@ body {
             title: 'דנה',
             subject: 'משתתפת · הצטרפה <span dir="auto">12.7</span>',
             actions: [
-              { label: 'הפוך למנהל', icon: 'calendar', hideIcon: true },
-              { label: 'הסר מהטיול', icon: 'trash', danger: true },
+              { label: 'הפוך למנהל', icon: 'crown' },
+              { label: 'הסר מהטיול', icon: 'exit', danger: true },
             ],
           },
         },
@@ -7098,6 +7206,7 @@ body {
                     : ''
                 }
                 <div class="col"><span class="tag after">הצעה</span>${after(c.after)}</div>
+                ${c.step ? `<div class="col"><span class="tag after">הצעה · שלב 2</span>${moveStep()}</div>` : ''}
               </div>
             </section>`,
           )

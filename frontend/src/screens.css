@@ -2022,49 +2022,72 @@
   outline-offset: 2px;
 }
 
-/* Builder-row action sheet (the ⋯ menu): full-width, thumb-sized rows so a
-   phone isn't fighting a strip of 32px icons — one affordance on the row,
-   the rest here. */
-.row-actions {
-  display: flex;
-  flex-direction: column;
-  gap: 6px;
-  margin: 4px 0 4px;
+/* The `.row-action*` family that lived here is GONE (ADR-0137 §1). It was the
+   builder's private copy of `.wp-row-action` in ui/domain/list-row.css — the same
+   rows, duplicated, and the two had already drifted (14px vs var(--text-body),
+   17px vs var(--text-h3)). The builder's sheet renders through the shared
+   `RowActionList` now, so there is one ruleset again. `MemberSheet`'s `.ms-act`
+   went the same way; see .ms-cancel below, which is all that survives of it. */
+
+/* The `הזז` step (ADR-0137 §8) — step 2 of the builder's ⋯ sheet. Deliberately
+   NOT `.wp-row-action`: these are not verbs, they are POSITIONS, and reading them
+   as a time-ordered list is the whole point of replacing the blind הקדם/אחר pair.
+   Shaped after `.resolve-mover` above, which is the app's other pick-a-row step. */
+.bld-move-sub {
+  font-size: 12.5px;
+  font-weight: 600;
+  color: var(--muted);
+  margin: 2px 0 9px;
 }
-.row-action {
+.bld-move-slot {
   display: flex;
   align-items: center;
-  gap: 11px;
+  gap: 10px;
   width: 100%;
-  text-align: start;
-  font: inherit;
-  font-size: 14px;
-  font-weight: 600;
-  color: var(--ink);
   background: var(--card);
   border: 1px solid var(--line);
-  border-radius: 12px;
-  padding: 13px 14px;
+  border-radius: var(--radius-12);
+  padding: 11px 12px;
+  margin-bottom: 6px;
+  font: inherit;
+  text-align: start;
   cursor: pointer;
 }
-.row-action:hover {
+.bld-move-slot:hover:not(:disabled) {
   border-color: var(--plan);
   background: var(--plan-tint);
 }
-.row-action:focus-visible {
+.bld-move-slot:focus-visible {
   outline: 2.5px solid var(--plan);
   outline-offset: 2px;
 }
-.row-action.danger {
-  color: var(--miss);
+.bld-move-slot .tm {
+  font-family: var(--font-mono);
+  font-size: 11.5px;
+  color: var(--muted);
+  flex: none;
 }
-.row-action.danger:hover {
-  border-color: var(--miss);
-  background: rgba(198, 40, 40, 0.06);
+.bld-move-slot .nm {
+  flex: 1;
+  min-width: 0;
+  font-weight: 700;
+  font-size: 13.5px;
 }
-.row-action-ic {
-  font-size: 17px;
-  flex: 0 0 auto;
+/* Where you are now: shown, not hidden, because the list is a map of the day and
+   a gap in it would be harder to read than a marked row. Not a target. */
+.bld-move-slot.is-self {
+  border-style: dashed;
+  background: transparent;
+  cursor: default;
+}
+.bld-move-slot.is-self .nm {
+  color: var(--muted);
+}
+.bld-move-slot .here {
+  font-size: 11px;
+  font-weight: 700;
+  color: var(--plan);
+  flex: none;
 }
 
 /* A skipped soft event parked on the shelf (ADR-0027) reuses the MaybeCard, but
@@ -2437,34 +2460,9 @@
   font-weight: 700;
   font-size: 14.5px;
 }
-.ms-act {
-  font: inherit;
-  width: 100%;
-  display: flex;
-  align-items: center;
-  gap: 11px;
-  padding: 13px 8px;
-  border: 0;
-  background: none;
-  border-radius: 11px;
-  font-size: 14.5px;
-  font-weight: 600;
-  color: var(--ink);
-  cursor: pointer;
-  text-align: start;
-}
-.ms-act:hover {
-  background: rgba(22, 35, 61, 0.04);
-}
-.ms-act.danger-item {
-  color: var(--miss);
-}
-.ms-act .ic {
-  font-size: 17px;
-  width: 22px;
-  text-align: center;
-  flex: 0 0 auto;
-}
+/* `.ms-act` deleted with ADR-0137 §1 — the third copy of the same action row.
+   MemberSheet keeps its identity header (real content, and the origin of the
+   "name your subject" rule) and renders its verbs through `RowActionList`. */
 .ms-cancel {
   font: inherit;
   width: 100%;

@@ -13,7 +13,7 @@ import { FormActions } from './primitives/FormActions';
 import { ChoiceGrid } from './primitives/ChoiceGrid';
 import { deleteDocument, updateDocument } from '../lib/api';
 import { useToast } from './Toast';
-import { DOCUMENT_TYPE_ICON, ICONS } from '../constants';
+import { CONTROL_ICON, DOCUMENT_TYPE_ICON } from '../constants';
 import { t } from '../i18n/he';
 
 const TYPE_OPTIONS = Object.values(DOCUMENT_TYPE).map((ty) => ({
@@ -46,34 +46,38 @@ export function DocumentManageSheet({
       await fn();
     } catch {
       setBusy(false);
-      toast(ICONS.warn, t.docs.manage.failed);
+      toast(CONTROL_ICON.warn, t.docs.manage.failed);
     }
   };
 
   const save = () =>
     run(async () => {
       await updateDocument(tripId, doc.id, { title: title.trim() || doc.title, type });
-      toast(ICONS.done, t.docs.manage.saved);
+      toast(CONTROL_ICON.done, t.docs.manage.saved);
       onClose();
     });
 
   const remove = () =>
     run(async () => {
       await deleteDocument(tripId, doc.id);
-      toast(ICONS.done, t.docs.manage.deleted);
+      toast(CONTROL_ICON.done, t.docs.manage.deleted);
       onClose();
     });
 
   if (mode === 'menu') {
     return (
       <RowManageSheet
-        ariaLabel={t.docs.manage.actions}
+        title={doc.title}
+        // Naming the type matters most here: deleting an encrypted document is
+        // irreversible, and the sheet used to say nothing at all about what it
+        // was about to destroy (ADR-0137 §3).
+        subject={t.docs.type[doc.type]}
         onClose={onClose}
         actions={[
-          { label: t.docs.manage.edit, icon: '✏️', onSelect: () => setMode('edit') },
+          { label: t.docs.manage.edit, icon: CONTROL_ICON.edit, onSelect: () => setMode('edit') },
           {
             label: t.docs.manage.delete,
-            icon: '🗑️',
+            icon: CONTROL_ICON.trash,
             danger: true,
             onSelect: () => setMode('delete'),
           },

@@ -12,6 +12,7 @@
 // screen's `.listcard` container, which owns the card frame + row dividers.
 import { type ReactNode } from 'react';
 import { Sheet } from '../Sheet';
+import { Icon, type IconName } from '../Icon';
 import { PlaceBadge } from './PlaceBadge';
 import './list-row.css';
 
@@ -109,9 +110,7 @@ export function ListRow({
               onClick={onManage}
               aria-label={manageLabel}
             >
-              {/* Not a nav arrow/caret — the lint-guarded glyph rule (design-language)
-                  covers those, not the horizontal-ellipsis kebab. */}
-              ⋯
+              <Icon name="more" />
             </button>
           )}
         </div>
@@ -123,49 +122,92 @@ export function ListRow({
 /** One action in a RowManageSheet (edit / delete / …). */
 export interface RowAction {
   label: string;
-  /** Leading glyph (emoji content — ✏️ / 🗑️). */
-  icon?: ReactNode;
+  /** Leading mark. An `IconName`, never a glyph: a menu item is a control, and
+   *  "emoji are content, icons are UI" (design-language, ADR-0137). Typing it
+   *  this way is what makes the rule un-bypassable here — the four call sites
+   *  that passed `'✏️'` as a literal no longer compile. Omit it only for a verb
+   *  whose shape is genuinely undecided. */
+  icon?: IconName;
   onSelect: () => void;
-  /** Renders in the destructive (miss) color. */
+  /** Groups the action into the sheet's trailing destructive partition. */
   danger?: boolean;
 }
 
 /** The `⋯` menu a ListRow (or EventCard) opens: a bottom Sheet (the Modal
  *  primitive, so it carries the overlay-stack + focus contract) listing action
- *  items. Pass `title` for a visible header (the event menu shows the event
- *  title) or `ariaLabel` for a titleless menu (the Index/Documents row menus);
- *  one of the two is required. Multi-step flows (a delete/unlink prompt) keep
- *  their own sub-state and pass only the top-level menu here. */
+ *  items.
+ *
+ *  **It always names its subject** (ADR-0137 §3). `title` is required — the
+ *  booking and document menus used to pass only an `ariaLabel`, which left two
+ *  anonymous rows floating over a scrim with the thing you were deleting hidden
+ *  behind it. `subject` is the quiet fact line under the title (a type, a time,
+ *  a state), written in the app's `·` grammar so the sheet reads as the row it
+ *  came from. A numeric run inside it needs `ltrIsolate` (ADR-0118).
+ *
+ *  **Destructive actions partition rather than recolour.** `danger` items are
+ *  collected into a second group below a hairline instead of sitting flush in
+ *  the stack tinted red — the one item in a thumb-reach list you must not hit by
+ *  accident had been distinguished by text hue alone.
+ *
+ *  Multi-step flows (a delete/unlink prompt, the `הזז` position step) keep their
+ *  own sub-state and pass only the top-level menu here. */
 export function RowManageSheet({
   title,
-  ariaLabel,
+  subject,
   actions,
   onClose,
 }: {
-  title?: ReactNode;
-  ariaLabel?: string;
+  title: ReactNode;
+  subject?: ReactNode;
   actions: RowAction[];
   onClose: () => void;
 }) {
   return (
-    <Sheet title={title} ariaLabel={ariaLabel} onClose={onClose}>
-      <div className="wp-row-actions">
-        {actions.map((a, i) => (
-          <button
-            key={i}
-            type="button"
-            className={'wp-row-action' + (a.danger ? ' danger' : '')}
-            onClick={a.onSelect}
-          >
-            {a.icon != null && (
-              <span className="wp-row-action-ic" aria-hidden="true">
-                {a.icon}
-              </span>
-            )}
-            {a.label}
-          </button>
-        ))}
-      </div>
+    <Sheet
+      title={
+        <>
+          {title}
+          {subject != null && <span className="wp-row-subject">{subject}</span>}
+        </>
+      }
+      onClose={onClose}
+    >
+      <RowActionList actions={actions} />
     </Sheet>
+  );
+}
+
+/** The action list on its own, for a sheet that owns a different header or a
+ *  second step: `MemberSheet` (an identity header above its verbs) and the Plan
+ *  builder's menu (a `הזז` step below them). Same markup, same partition — the
+ *  point is that there is exactly one of it (ADR-0137 §1; before this, the same
+ *  rows existed as `.wp-row-action`, `screens.css`'s `.row-action`, and
+ *  `.ms-act`). */
+export function RowActionList({ actions }: { actions: RowAction[] }) {
+  const item = (a: RowAction, i: number) => (
+    <button
+      key={i}
+      type="button"
+      className={'wp-row-action' + (a.danger ? ' danger' : '')}
+      onClick={a.onSelect}
+    >
+      {a.icon && (
+        <span className="wp-row-action-ic" aria-hidden="true">
+          <Icon name={a.icon} />
+        </span>
+      )}
+      {a.label}
+    </button>
+  );
+  const safe = actions.filter((a) => !a.danger);
+  const danger = actions.filter((a) => a.danger);
+
+  return (
+    <>
+      <div className="wp-row-actions">{safe.map(item)}</div>
+      {danger.length > 0 && (
+        <div className="wp-row-actions wp-row-actions-danger">{danger.map(item)}</div>
+      )}
+    </>
   );
 }

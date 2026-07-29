@@ -14,6 +14,7 @@
 import { formatZoneDelta } from '../lib/time';
 import { t } from '../i18n/he';
 import './zone-shift-pill.css';
+import { Icon } from './Icon';
 
 export interface ZoneShiftPillProps {
   /** Signed shift in minutes (from `EventZones.deltaMinutes`). */
@@ -31,7 +32,7 @@ export function ZoneShiftPill({ minutes, className }: ZoneShiftPillProps) {
       className={className ? `wp-tzshift ${className}` : 'wp-tzshift'}
       title={t.event.zoneShift}
     >
-      🕐 {formatZoneDelta(minutes)}
+      <Icon name="clock" /> {formatZoneDelta(minutes)}
     </span>
   );
 }

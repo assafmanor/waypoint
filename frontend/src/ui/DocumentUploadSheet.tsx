@@ -14,7 +14,7 @@ import { ChoiceGrid } from './primitives/ChoiceGrid';
 import { FilePicker } from './primitives/FilePicker';
 import { queueDocumentUpload } from '../lib/outbox';
 import { useToast } from './Toast';
-import { DOCUMENT_TYPE_ICON, ICONS } from '../constants';
+import { DOCUMENT_TYPE_ICON, CONTROL_ICON } from '../constants';
 import { t } from '../i18n/he';
 
 const MAX_MB = Math.round(MAX_DOCUMENT_SIZE_BYTES / (1024 * 1024));
@@ -66,7 +66,7 @@ export function DocumentUploadSheet({ tripId, onClose }: { tripId: string; onClo
       { id: crypto.randomUUID(), type, title: title.trim() || t.docs.type[type] },
       file,
     );
-    toast(ICONS.done, t.docs.upload.saved);
+    toast(CONTROL_ICON.done, t.docs.upload.saved);
     onClose();
   };
 

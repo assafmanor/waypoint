@@ -29,7 +29,7 @@ export type { StatTileProps } from './StatTile';
 export { IndexTile } from './IndexTile';
 export type { IndexTileProps } from './IndexTile';
 
-export { ListRow, RowManageSheet } from './ListRow';
+export { ListRow, RowManageSheet, RowActionList } from './ListRow';
 export type { ListRowProps, RowAction, BadgeTone } from './ListRow';
 
 export { ChangeFeed } from './ChangeFeed';

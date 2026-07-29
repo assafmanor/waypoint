@@ -7,10 +7,12 @@ import { t } from '../i18n/he';
 describe('ZoneShiftPill', () => {
   afterEach(() => cleanup());
 
-  it('renders a signed shift with the clock glyph and the shift title', () => {
+  it('renders a signed shift with the clock mark and the shift title', () => {
     const { container } = render(<ZoneShiftPill minutes={360} />);
     const pill = container.querySelector('.wp-tzshift')!;
     expect(pill.textContent).toContain('+6');
+    // The mark is an SVG since ADR-0137 — the pill is chrome, and chrome is icons.
+    expect(pill.querySelector('svg')).not.toBeNull();
     expect(pill.getAttribute('title')).toBe(t.event.zoneShift);
   });
 
@@ -18,9 +20,10 @@ describe('ZoneShiftPill', () => {
     const { container } = render(<ZoneShiftPill minutes={-180} />);
     const pill = container.querySelector('.wp-tzshift')!;
     // dir="ltr" here laid the pill out left-to-right, so it read "ש׳ 3−". The pill
-    // stays in the RTL flow; only the signed number is an LTR island.
+    // stays in the RTL flow; only the signed number is an LTR island. Asserted on
+    // the TEXT alone — the leading mark is an SVG and contributes none.
     expect(pill.getAttribute('dir')).toBeNull();
-    expect(pill.textContent).toBe('🕐 \u2066−3\u2069 ש׳');
+    expect(pill.textContent).toBe(' \u2066−3\u2069 ש׳');
   });
 
   it('a negative shift uses a real minus sign, never a hyphen', () => {

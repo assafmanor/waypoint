@@ -84,12 +84,14 @@ import { useHoldToDrag, type HoldToDragProps } from '../lib/useHoldToDrag';
 import { useDragGhost } from '../lib/useDragGhost';
 import {
   CODE_PREFIX,
+  CONTROL_ICON,
   DAY_NOON,
   DEFAULT_MAYBE_ICON,
-  ICONS,
+  DOT_SEPARATOR,
   MS_PER_DAY,
   MINUTES_PER_HOUR,
 } from '../constants';
+import { ltrIsolate } from '../lib/bidi';
 import { dayTransitions, mergeDayEntries, type DayEntry } from '../lib/day-entries';
 import type { BookingTransition } from '../lib/glance';
 import { t } from '../i18n/he';
@@ -104,6 +106,7 @@ import { NavArrow } from '../ui/NavArrow';
 import { ZoneShiftPill } from '../ui/ZoneShiftPill';
 import { Sheet } from '../ui/Sheet';
 import { TitleLabel } from '../ui/TitleLabel';
+import { RowActionList, type RowAction } from '../ui/domain';
 import { MaybeCard } from '../ui/domain/MaybeCard';
 import { PlaceBadge } from '../ui/domain/PlaceBadge';
 
@@ -564,7 +567,7 @@ export function PlanDay() {
           icon={e.icon}
           title={e.title}
           meta={t.day.skippedTag}
-          action={`${ICONS.restore} ${t.actions.restore}`}
+          action={`$<Icon name="undo" /> ${t.actions.restore}`}
           onSchedule={() => verbs.restore(e)}
           dragProps={skippedDragProps(e)}
           dragging={dragging}
@@ -584,7 +587,7 @@ export function PlanDay() {
             ? relativeDayLabel(m.targetDate, activeDate)
             : undefined
         }
-        action={`${ICONS.add} ${t.actions.scheduleToDay}`}
+        action={`$<Icon name="plus" /> ${t.actions.scheduleToDay}`}
         onSchedule={() => openSchedule(m)}
         onRemove={() => verbs.removeMaybe(m)}
         removeLabel={t.planDay.removeIdea}
@@ -739,7 +742,7 @@ export function PlanDay() {
               <span className="hint">{t.planDay.pastNote}</span>
             ) : (
               <button className="new-event-btn" onClick={() => setFormTarget('new')}>
-                {ICONS.add} {t.actions.newEvent}
+                <Icon name="plus" /> {t.actions.newEvent}
               </button>
             )}
           </span>
@@ -839,7 +842,7 @@ export function PlanDay() {
               setFormTarget('new');
             }}
           >
-            {ICONS.add} {t.planDay.addToDay}
+            <Icon name="plus" /> {t.planDay.addToDay}
           </button>
         )}
       </div>
@@ -1063,7 +1066,7 @@ function ResolveSheet({
             </span>
             <span className="nm">{e.title}</span>
             <span className="anchor-note">
-              {ICONS.lock} {t.planDay.resolveAnchor}
+              <Icon name="lock" /> {t.planDay.resolveAnchor}
             </span>
           </div>
         ))}
@@ -1141,13 +1144,15 @@ function GapFillSheet({
             <span className="gapfill-main">
               <span className="gapfill-t">{m.title}</span>
             </span>
-            <span className="gapfill-add">{ICONS.add}</span>
+            <span className="gapfill-add">
+              <Icon name="plus" />
+            </span>
           </button>
         ))}
         {ideas.length === 0 && <div className="gapfill-empty">{t.planDay.gapFillEmpty}</div>}
       </div>
       <button className="btn-primary gapfill-new" onClick={onNewEvent}>
-        {ICONS.add} {t.actions.newEvent}
+        <Icon name="plus" /> {t.actions.newEvent}
       </button>
     </Sheet>
   );
@@ -1394,8 +1399,6 @@ function BuilderNode({
   const e = item.event;
   const si = ctx.softIndex.get(e.id);
   const soft = si !== undefined;
-  const earlierId = soft && si > 0 ? ctx.softEvents[si - 1].id : undefined;
-  const laterId = soft && si < ctx.softEvents.length - 1 ? ctx.softEvents[si + 1].id : undefined;
   const hasKids = item.children.length > 0;
   const booking = e.bookingId ? ctx.bookings.find((b) => b.id === e.bookingId) : undefined;
   const zones = eventZones(e, ctx.zoneCtx);
@@ -1419,10 +1422,16 @@ function BuilderNode({
         dragProps={soft && !ctx.readOnly ? ctx.rowDragProps(e.id) : undefined}
         dragging={ctx.drag?.id === e.id}
         over={ctx.drag?.overId === e.id}
-        onMoveEarlier={
-          earlierId ? () => ctx.verbs.reorder(ctx.dayEvents, e.id, earlierId) : undefined
+        // Soft rows only: `reorder` permutes the SOFT slot set, and a hard event
+        // is a pinned anchor that is never in it (ADR-0011, lib/reorder.ts).
+        reorder={
+          soft
+            ? {
+                peers: ctx.softEvents,
+                onMoveTo: (targetId) => ctx.verbs.reorder(ctx.dayEvents, e.id, targetId),
+              }
+            : undefined
         }
-        onMoveLater={laterId ? () => ctx.verbs.reorder(ctx.dayEvents, e.id, laterId) : undefined}
         nestedCount={hasKids ? countDescendants(item) : undefined}
         overlapNote={overlapNote}
         // Finished-trip archive: soft rows settle in place (ADR-0044). Hard
@@ -1447,7 +1456,11 @@ function BuilderNode({
   );
 }
 
-function BuilderRow({
+/** Exported for its own test (`PlanDay.builder-row.test.tsx`): the `הזז` step and
+ *  its back layer are real behaviour, and the screen around this row has no test
+ *  harness — mounting the whole of PlanDay to reach one sheet would test the
+ *  harness rather than the row. */
+export function BuilderRow({
   event,
   tz,
   title,
@@ -1463,8 +1476,7 @@ function BuilderRow({
   dragProps,
   dragging,
   over,
-  onMoveEarlier,
-  onMoveLater,
+  reorder,
   nestedCount,
   overlapNote,
   settle,
@@ -1503,11 +1515,19 @@ function BuilderRow({
   dragProps?: HoldToDragProps;
   dragging?: boolean;
   over?: boolean;
-  /** Reorder by one slot, from the ⋯ sheet — the keyboard-reachable path now that
-   *  the row's ▲/▼ buttons are retired (session-119). undefined at the ends of the
-   *  soft list, where there is nothing to swap with. */
-  onMoveEarlier?: () => void;
-  onMoveLater?: () => void;
+  /** Reorder without a pointer — the ⋯ sheet's `הזז` step (ADR-0137 §8).
+   *
+   *  This replaced `הקדם`/`אחר`, which were a BLIND one-slot swap: you tapped and
+   *  hoped, and because each was dropped at its end of the list the menu changed
+   *  length per row, moving `מחק` under your thumb. Dragging is still the primary
+   *  gesture, but it is a pointer gesture, and reorder is not reachable through
+   *  `ערוך` — `lib/reorder.ts` permutes which soft event holds which SLOT, so
+   *  doing it by hand means two edits through a collision.
+   *
+   *  `peers` is the day's soft events in render order (including this one, so the
+   *  step can mark where you are). Absent, or fewer than two peers, and the action
+   *  is omitted — there is nothing to reorder against. */
+  reorder?: { peers: TripEvent[]; onMoveTo: (targetId: string) => void };
   // Set on an envelope row that nests others: the "כולל N" contents count.
   nestedCount?: number;
   // Set on a cluster member that overlaps an earlier one: the seam tag text.
@@ -1541,11 +1561,25 @@ function BuilderRow({
   // Row actions live behind one ⋯ button (a bottom sheet), not a strip of inline
   // icons — a phone row only has width for a title, a time and one affordance
   // (mockups/plan-mode-v1.html). Edit is also reachable by tapping the row body.
-  const [menuOpen, setMenuOpen] = useState(false);
+  // `menu` = the verb list; `move` = the `הזז` position step (ADR-0137 §8), which
+  // is a step INSIDE the sheet rather than a second sheet.
+  const [menuStep, setMenuStep] = useState<'closed' | 'menu' | 'move'>('closed');
+  const menuOpen = menuStep !== 'closed';
   const runAction = (fn: () => void) => {
-    setMenuOpen(false);
+    setMenuStep('closed');
     fn();
   };
+  const movePeers = reorder?.peers ?? [];
+  const canReorder = movePeers.length > 1;
+
+  // The step back is its own back layer, registered HERE because this component is
+  // the Modal's parent — child effects run first, so the Modal's close layer lands
+  // underneath and back peels the step first. `remainsActive` keeps the sheet open,
+  // exactly like the resolve sheet's two steps (frontend/CLAUDE.md).
+  useBackLayer(() => {
+    setMenuStep('menu');
+    return { remainsActive: true };
+  }, menuStep === 'move');
   // The archive settle control replaces the (hidden) ⋯ slot; an unresolved row
   // opens this chooser to record "we were there / skip" (ADR-0044).
   const [settleOpen, setSettleOpen] = useState(false);
@@ -1561,7 +1595,7 @@ function BuilderRow({
   const softTag = settle ? (
     settle.status === EVENT_STATUS.DONE ? (
       <span className="tag-done">
-        {ICONS.done} {t.event.didThis}
+        <Icon name="check" /> {t.event.didThis}
       </span>
     ) : settle.status === EVENT_STATUS.SKIPPED ? (
       <span className="tag-skip">{t.event.skipped}</span>
@@ -1578,7 +1612,7 @@ function BuilderRow({
         <span className="bld-ttl">{title ?? <TitleLabel title={event.title} />}</span>
         {isHard ? (
           <span className="tag-hard">
-            {ICONS.lock} {t.event.hard}
+            <Icon name="lock" /> {t.event.hard}
           </span>
         ) : (
           softTag
@@ -1600,7 +1634,7 @@ function BuilderRow({
     <div className={cls} data-bld-id={event.id} {...dragProps}>
       {isHard && (
         <span className="bld-anchor" aria-label={t.planDay.pinned} title={t.planDay.pinned}>
-          {ICONS.lock}
+          <Icon name="lock" />
         </span>
       )}
       {/* The badge is the way to the map, and it survives `readOnly` — a finished
@@ -1646,10 +1680,10 @@ function BuilderRow({
       {!readOnly && (
         <button
           className="bld-icon"
-          onClick={() => setMenuOpen(true)}
+          onClick={() => setMenuStep('menu')}
           aria-label={t.planDay.rowActions}
         >
-          {ICONS.more}
+          <Icon name="more" />
         </button>
       )}
       {/* Archive settle control (ADR-0044) — takes the ⋯ slot the read-only row
@@ -1667,7 +1701,7 @@ function BuilderRow({
             onKeyDown={onSettleKey(settle.onRestore)}
           >
             <span className="mark" aria-hidden="true">
-              {ICONS.done}
+              <Icon name="check" />
             </span>
             <span className="undo" aria-hidden="true">
               <Icon name="undo" />
@@ -1699,51 +1733,90 @@ function BuilderRow({
           </span>
         ))}
       {!readOnly && menuOpen && (
+        // Through the SHARED sheet now (ADR-0137 §1) — this was the app's fifth
+        // copy of one row shape, with its own `.row-actions` rules in screens.css.
         // Visible header: a flight names its route here like the row does.
-        <Sheet title={<TitleLabel title={event.title} />} onClose={() => setMenuOpen(false)}>
-          <div className="row-actions">
-            <button className="row-action" onClick={() => runAction(onEdit)}>
-              <span className="row-action-ic" aria-hidden="true">
-                {ICONS.edit}
+        <Sheet
+          title={
+            <>
+              <TitleLabel title={event.title} />
+              <span className="wp-row-subject">
+                {[
+                  isHard ? t.event.hard : t.event.soft,
+                  event.startsAt &&
+                    ltrIsolate(
+                      formatTime(event.startsAt, tz) +
+                        (event.endsAt ? `–${formatTime(event.endsAt, tz)}` : ''),
+                    ),
+                ]
+                  .filter(Boolean)
+                  .join(` ${DOT_SEPARATOR} `)}
               </span>
-              {t.actions.edit}
-            </button>
-            {/* Reorder lives here now that the row's ▲/▼ buttons are retired
-                (session-119). Dragging is the primary way, but it is a pointer
-                gesture: this is the keyboard- and screen-reader-reachable path, and
-                the sheet is where row actions belong anyway. Omitted at the ends of
-                the soft list, where there is nothing to swap with. */}
-            {onMoveEarlier && (
-              <button className="row-action" onClick={() => runAction(onMoveEarlier)}>
-                <span className="row-action-ic" aria-hidden="true">
-                  <Icon name="caret" dir="up" />
-                </span>
-                {t.planDay.moveEarlier}
-              </button>
-            )}
-            {onMoveLater && (
-              <button className="row-action" onClick={() => runAction(onMoveLater)}>
-                <span className="row-action-ic" aria-hidden="true">
-                  <Icon name="caret" dir="down" />
-                </span>
-                {t.planDay.moveLater}
-              </button>
-            )}
-            {onPark && (
-              <button className="row-action" onClick={() => runAction(onPark)}>
-                <span className="row-action-ic" aria-hidden="true">
-                  {ICONS.toShelf}
-                </span>
-                {t.actions.toShelf}
-              </button>
-            )}
-            <button className="row-action danger" onClick={() => runAction(onDelete)}>
-              <span className="row-action-ic" aria-hidden="true">
-                {ICONS.trash}
-              </span>
-              {t.actions.delete}
-            </button>
-          </div>
+            </>
+          }
+          onClose={() => setMenuStep('closed')}
+        >
+          {menuStep === 'menu' ? (
+            <RowActionList
+              actions={[
+                {
+                  label: t.actions.edit,
+                  icon: CONTROL_ICON.edit,
+                  onSelect: () => runAction(onEdit),
+                },
+                ...(canReorder
+                  ? [
+                      {
+                        label: t.planDay.move,
+                        icon: CONTROL_ICON.swap,
+                        onSelect: () => setMenuStep('move'),
+                      } as RowAction,
+                    ]
+                  : []),
+                ...(onPark
+                  ? [
+                      {
+                        label: t.actions.toShelf,
+                        icon: CONTROL_ICON.toShelf,
+                        onSelect: () => runAction(onPark),
+                      } as RowAction,
+                    ]
+                  : []),
+                {
+                  label: t.actions.delete,
+                  icon: CONTROL_ICON.trash,
+                  danger: true,
+                  onSelect: () => runAction(onDelete),
+                },
+              ]}
+            />
+          ) : (
+            // Step 2: WHERE it goes. The whole soft list, with the row you came
+            // from marked — so you pick a destination you can see, instead of
+            // tapping `הקדם` twice and checking afterwards.
+            <div className="bld-move">
+              <div className="bld-move-sub">{t.planDay.moveChoose}</div>
+              {movePeers.map((peer) => {
+                const isSelf = peer.id === event.id;
+                return (
+                  <button
+                    key={peer.id}
+                    className={'bld-move-slot' + (isSelf ? ' is-self' : '')}
+                    disabled={isSelf}
+                    onClick={() => runAction(() => reorder?.onMoveTo(peer.id))}
+                  >
+                    <span className="tm" dir="auto">
+                      {peer.startsAt ? formatTime(peer.startsAt, tz) : ''}
+                    </span>
+                    <span className="nm">
+                      <TitleLabel title={peer.title} />
+                    </span>
+                    {isSelf && <span className="here">{t.planDay.moveHere}</span>}
+                  </button>
+                );
+              })}
+            </div>
+          )}
         </Sheet>
       )}
       {settle && settleOpen && (
@@ -1756,7 +1829,7 @@ function BuilderRow({
                 settle.onDone();
               }}
             >
-              {ICONS.done} {t.actions.wasThere}
+              <Icon name="check" /> {t.actions.wasThere}
             </button>
             <button
               className="settle-skip"
@@ -1805,7 +1878,7 @@ function AddIdea({
         aria-label={t.planDay.addIdea}
       />
       <button type="submit" className="add-idea-btn" disabled={!title.trim()}>
-        {ICONS.add}
+        <Icon name="plus" />
       </button>
     </form>
   );

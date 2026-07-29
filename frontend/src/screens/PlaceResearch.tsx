@@ -209,7 +209,7 @@ export function ResultRow({
             t.map.errand.choose
           ) : (
             <>
-              <span aria-hidden="true">＋</span> {t.map.research.add}
+              <Icon name="plus" /> {t.map.research.add}
             </>
           )}
         </button>

@@ -7,10 +7,10 @@
 // primitive now. This file keeps only the provider/context public API intact.
 import { createContext, useCallback, useContext, useRef, useState, type ReactNode } from 'react';
 import type { TripEvent } from '@waypoint/shared';
-import { ICONS } from '../constants';
 import { ConfirmDialog } from './primitives/ConfirmDialog';
 import { TitleLabel } from './TitleLabel';
 import { t } from '../i18n/he';
+import { Icon } from './Icon';
 
 export type ConfirmHardEditAction = 'edit' | 'delete';
 type ConfirmHardEdit = (event: TripEvent, action?: ConfirmHardEditAction) => Promise<boolean>;
@@ -55,7 +55,7 @@ export function ConfirmProvider({ children }: { children: ReactNode }) {
       {pending && (
         <ConfirmDialog
           tone="hard"
-          icon={ICONS.lock}
+          icon={<Icon name="lock" />}
           title={title}
           body={body}
           confirmLabel={t.common.yes}

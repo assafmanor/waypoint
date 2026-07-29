@@ -4,7 +4,7 @@
 // broadcast + offline outbox) via the trip-state settings verbs. Mode-neutral
 // paper chrome (reached from both modes, outside the mode Shell). Design
 // reference: mockups/trip-settings-v1.html.
-import { useCallback, useEffect, useState } from 'react';
+import { useCallback, useEffect, useState, type ReactNode } from 'react';
 import { useNavigate } from 'react-router-dom';
 import {
   DESTINATIONS,
@@ -30,7 +30,8 @@ import {
   DEVICE_LOCALE,
   DEVICE_TIMEZONE,
   DOT_SEPARATOR,
-  ICONS,
+  CONTROL_ICON,
+  GLYPH,
 } from '../constants';
 import { NavArrow } from '../ui/NavArrow';
 import { t } from '../i18n/he';
@@ -96,7 +97,7 @@ export function TripSettings() {
       onConfirm: () => {
         void settings.removeMember(myId!).then(
           () => {
-            toast(ICONS.done, t.settings.toast.left);
+            toast(CONTROL_ICON.done, t.settings.toast.left);
             navigate('/trips', { replace: true });
           },
           () => {}, // the verb toasts its own failure and rolls back
@@ -112,7 +113,7 @@ export function TripSettings() {
       confirmLabel: t.settings.deleteAction,
       onConfirm: () => {
         void settings.deleteTrip().then(
-          () => toast(ICONS.done, t.settings.toast.deleted),
+          () => toast(CONTROL_ICON.done, t.settings.toast.deleted),
           () => {},
         );
       },
@@ -128,7 +129,7 @@ export function TripSettings() {
       onConfirm: () => {
         void settings.removeMember(m.userId).then(
           () => {
-            toast(ICONS.done, t.settings.toast.removed);
+            toast(CONTROL_ICON.done, t.settings.toast.removed);
             reloadRemoved(); // the kick just added a block — surface it in "Removed"
           },
           () => {},
@@ -144,9 +145,9 @@ export function TripSettings() {
   const allowBack = (userId: string, name: string) => {
     setRemoved((cur) => cur?.filter((r) => r.userId !== userId) ?? null); // optimistic
     allowMemberBack(trip.id, userId).then(
-      () => toast(ICONS.done, t.settings.allowedBack(name)),
+      () => toast(CONTROL_ICON.done, t.settings.allowedBack(name)),
       () => {
-        toast(ICONS.warn, t.toast.writeFailed);
+        toast(CONTROL_ICON.warn, t.toast.writeFailed);
         reloadRemoved(); // roll the optimistic drop back
       },
     );
@@ -160,7 +161,7 @@ export function TripSettings() {
       (res) => setInvite({ url: inviteUrlFrom(res.inviteUrl) }),
       () => {
         setInvite(null);
-        toast(ICONS.warn, t.toast.writeFailed);
+        toast(CONTROL_ICON.warn, t.toast.writeFailed);
       },
     );
   };
@@ -177,11 +178,11 @@ export function TripSettings() {
         rotateInvite(trip.id).then(
           (res) => {
             setInvite({ url: inviteUrlFrom(res.inviteUrl) });
-            toast(ICONS.done, t.settings.inviteReset_done);
+            toast(CONTROL_ICON.done, t.settings.inviteReset_done);
           },
           () => {
             setInvite(null);
-            toast(ICONS.warn, t.toast.writeFailed);
+            toast(CONTROL_ICON.warn, t.toast.writeFailed);
           },
         );
       },
@@ -190,7 +191,7 @@ export function TripSettings() {
   const copyInvite = () => {
     if (invite === 'loading' || !invite) return;
     void navigator.clipboard?.writeText(invite.url);
-    toast(ICONS.clipboard, t.settings.inviteCopied);
+    toast(CONTROL_ICON.clipboard, t.settings.inviteCopied);
   };
 
   return (
@@ -209,12 +210,12 @@ export function TripSettings() {
         </div>
         {offline && (
           <div className="offline-badge">
-            {ICONS.offline} {t.header.offlineNow}
+            <Icon name="offline" /> {t.header.offlineNow}
           </div>
         )}
         {pendingCount > 0 && (
           <div className="offline-badge">
-            {ICONS.sync} {t.header.pendingSync(pendingCount)}
+            <Icon name="sync" /> {t.header.pendingSync(pendingCount)}
           </div>
         )}
       </header>
@@ -240,19 +241,28 @@ export function TripSettings() {
           />
         ) : (
           <div className="set-card">
-            <ReadRow icon={ICONS.edit} label={t.settings.nameLabel} value={trip.name} />
-            <ReadRow icon="📍" label={t.settings.destinationLabel} value={trip.destination} />
+            <ReadRow icon={<Icon name="edit" />} label={t.settings.nameLabel} value={trip.name} />
             <ReadRow
-              icon="🗓️"
+              icon={<Icon name="pin" />}
+              label={t.settings.destinationLabel}
+              value={trip.destination}
+            />
+            <ReadRow
+              icon={<Icon name="calendar" />}
               label={t.settings.datesLabel}
               value={formatTripDates(trip.startDate, trip.endDate, {
                 style: 'prose',
                 withYear: true,
               })}
             />
-            <ReadRow icon="🕓" label={t.settings.timezoneLabel} value={trip.timezone} mono />
             <ReadRow
-              icon={ICONS.budget}
+              icon={<Icon name="clock" />}
+              label={t.settings.timezoneLabel}
+              value={trip.timezone}
+              mono
+            />
+            <ReadRow
+              icon={GLYPH.budget}
               label={t.settings.budgetLabel}
               value={
                 trip.dailyBudgetMinor != null
@@ -263,7 +273,7 @@ export function TripSettings() {
             />
             {!isAdmin && (
               <div className="set-note">
-                {ICONS.lock} {t.settings.peerManaged}
+                <Icon name="lock" /> {t.settings.peerManaged}
               </div>
             )}
           </div>
@@ -287,7 +297,7 @@ export function TripSettings() {
                     onClick={() => setSheetFor(m)}
                     aria-label={t.settings.memberActions(u.displayName)}
                   >
-                    {ICONS.more}
+                    <Icon name="more" />
                   </button>
                 )}
               </MemberRow>
@@ -328,7 +338,9 @@ export function TripSettings() {
             <span className="code" dir="auto">
               {invite.url}
             </span>
-            <span className="cp">{ICONS.clipboard}</span>
+            <span className="cp">
+              <Icon name="clipboard" />
+            </span>
           </div>
         ) : (
           <button
@@ -336,7 +348,7 @@ export function TripSettings() {
             onClick={generateInvite}
             disabled={invite === 'loading'}
           >
-            {ICONS.share} {t.settings.inviteGenerate}
+            <Icon name="share" /> {t.settings.inviteGenerate}
           </button>
         )}
         <div className="set-hint-block">{t.settings.inviteHint}</div>
@@ -345,7 +357,9 @@ export function TripSettings() {
         <div className="set-sec-title set-danger-title">{t.settings.dangerZone}</div>
         <div className="set-card set-danger">
           <div className="set-danger-row">
-            <span className="fi">🚪</span>
+            <span className="fi">
+              <Icon name="exit" />
+            </span>
             <div className="fv">{t.settings.leave}</div>
             <button className="set-danger-btn" onClick={leaveTrip}>
               {t.settings.leaveAction}
@@ -353,7 +367,9 @@ export function TripSettings() {
           </div>
           {isAdmin && (
             <div className="set-danger-row">
-              <span className="fi">{ICONS.trash}</span>
+              <span className="fi">
+                <Icon name="trash" />
+              </span>
               <div className="fv">{t.settings.delete}</div>
               <button className="set-danger-btn" onClick={deleteTrip}>
                 {t.settings.deleteAction}
@@ -408,7 +424,7 @@ function ReadRow({
   value,
   mono,
 }: {
-  icon: string;
+  icon: ReactNode;
   label: string;
   value: string;
   mono?: boolean;

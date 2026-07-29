@@ -20,7 +20,7 @@ export function ErrorState({
   return (
     <div className="fb-error">
       <div className="fb-error-icon" aria-hidden="true">
-        ⚠️
+        <Icon name="warn" />
       </div>
       <p className="fb-error-title" role="alert">
         {title}

@@ -15,7 +15,6 @@ import { Icon } from '../Icon';
 import { TitleLabel } from '../TitleLabel';
 import { ZoneShiftPill } from '../ZoneShiftPill';
 import { transitionLabel } from '../../lib/transitions';
-import { ICONS } from '../../constants';
 import { t } from '../../i18n/he';
 import './board.css';
 
@@ -113,7 +112,7 @@ function AlsoRow({ row }: { row: BoardRow }) {
       <span className="nm">{row.title}</span>
       {row.hard && (
         <span className="mini-lock" aria-hidden="true">
-          {ICONS.lock}
+          <Icon name="lock" />
         </span>
       )}
       {row.until && (
@@ -232,7 +231,7 @@ export function Board(props: BoardProps) {
       ) : variant === 'now' ? (
         <>
           <div className="wp-board-now-label">
-            {nowKind === 'hard' ? `${ICONS.lock} ${t.event.hard}` : t.event.soft}
+            {nowKind === 'hard' ? `$<Icon name="lock" /> ${t.event.hard}` : t.event.soft}
           </div>
           <div className="wp-board-now-title">
             {nowIcon && <span className="wp-board-ic">{nowIcon}</span>}
@@ -246,7 +245,7 @@ export function Board(props: BoardProps) {
           )}
           {conflict && (
             <div className="wp-board-now-conflict">
-              {ICONS.warn} {t.event.conflictWarn.before}
+              <Icon name="warn" /> {t.event.conflictWarn.before}
               <TitleLabel title={conflict.title} /> {t.event.conflictWarn.after(conflict.atLabel)}
             </div>
           )}
@@ -302,7 +301,7 @@ export function Board(props: BoardProps) {
                   {next.shift != null && <ZoneShiftPill minutes={next.shift} className="on-dark" />}
                   {next.hard && (
                     <span className="lockmini">
-                      {ICONS.lock} {t.event.hard}
+                      <Icon name="lock" /> {t.event.hard}
                     </span>
                   )}
                   {next.code && (

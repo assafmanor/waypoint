@@ -59,7 +59,7 @@ import {
   type DayEntry,
   type TransitionEntry,
 } from '../lib/day-entries';
-import { CODE_PREFIX, DAY_NOON, ICONS, MS_PER_DAY } from '../constants';
+import { CODE_PREFIX, DAY_NOON, MS_PER_DAY } from '../constants';
 import { t } from '../i18n/he';
 import { EventForm, type EventFormDraft } from '../ui/EventForm';
 import { BookingSheet, type BookingSheetDraft } from '../ui/BookingSheet';
@@ -72,6 +72,7 @@ import { EventCard, type EventPhaseName } from '../ui/domain/EventCard';
 import { routeDisplay } from '../ui/route-display';
 import { MaybeCard } from '../ui/domain/MaybeCard';
 import { EntitySyncBadge, useUnsynced } from '../ui/EntitySyncBadge';
+import { Icon } from '../ui/Icon';
 
 const daysBetween = (from: string, to: string) =>
   Math.round((Date.parse(to) - Date.parse(from)) / MS_PER_DAY);
@@ -296,7 +297,7 @@ export function DayView() {
               Locked on a past day (create gated, ADR-0029). */}
           {!readOnly && (
             <button className="new-event-btn" onClick={() => setFormTarget('new')}>
-              {ICONS.add} {t.actions.newEvent}
+              <Icon name="plus" /> {t.actions.newEvent}
             </button>
           )}
         </span>
@@ -395,7 +396,10 @@ export function DayView() {
           a read-only past day (ADR-0029/0040); a build hint points to Plan. */}
       {readOnly ? (
         <div className="past-build-hint">
-          <span aria-hidden="true">{ICONS.edit}</span> {t.day.pastBuildHint}
+          <span aria-hidden="true">
+            <Icon name="edit" />
+          </span>{' '}
+          {t.day.pastBuildHint}
         </div>
       ) : (
         <>
@@ -416,7 +420,7 @@ export function DayView() {
                     key={m.id}
                     icon={m.icon}
                     title={m.title}
-                    action={`${ICONS.add} ${t.actions.scheduleToDay}`}
+                    action={`$<Icon name="plus" /> ${t.actions.scheduleToDay}`}
                     onSchedule={() => setScheduleItem(m)}
                   />
                 ))}
@@ -428,7 +432,7 @@ export function DayView() {
                     icon={e.icon}
                     title={e.title}
                     meta={t.day.skippedTag}
-                    action={`${ICONS.restore} ${t.actions.restore}`}
+                    action={`$<Icon name="undo" /> ${t.actions.restore}`}
                     onSchedule={() => verbs.restore(e)}
                   />
                 ))}
@@ -449,7 +453,7 @@ export function DayView() {
                     icon={m.icon}
                     title={m.title}
                     meta={m.targetDate ? relativeDayLabel(m.targetDate, today) : undefined}
-                    action={`${ICONS.add} ${t.actions.scheduleToDay}`}
+                    action={`$<Icon name="plus" /> ${t.actions.scheduleToDay}`}
                     onSchedule={() => setScheduleItem(m)}
                   />
                 ))}
@@ -739,7 +743,7 @@ function ScheduleSheet({
         className="sched-confirm"
         onClick={() => onConfirm({ ...when, zone, override })}
       >
-        {ICONS.schedule} {t.actions.scheduleToDay}
+        <Icon name="calendar" /> {t.actions.scheduleToDay}
       </button>
     </Sheet>
   );

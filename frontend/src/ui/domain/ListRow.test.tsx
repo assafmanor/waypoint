@@ -97,11 +97,11 @@ describe('RowManageSheet', () => {
     render(
       wrapNav(
         <RowManageSheet
-          ariaLabel="פעולות"
+          title="טברנה"
           onClose={() => {}}
           actions={[
-            { label: 'ערוך', icon: '✏️', onSelect: onEdit },
-            { label: 'מחק', icon: '🗑️', danger: true, onSelect: onDelete },
+            { label: 'ערוך', icon: 'edit', onSelect: onEdit },
+            { label: 'מחק', icon: 'trash', danger: true, onSelect: onDelete },
           ]}
         />,
       ),
@@ -112,6 +112,72 @@ describe('RowManageSheet', () => {
     expect(onEdit).toHaveBeenCalledTimes(1);
     fireEvent.click(del);
     expect(onDelete).toHaveBeenCalledTimes(1);
+  });
+
+  // ── ADR-0137. Three properties the redesign added, each of which the shipped
+  // sheet got wrong in a way a screenshot showed and a prop list did not.
+
+  it('names its subject, so the destructive verb is never anonymous', () => {
+    render(
+      wrapNav(
+        <RowManageSheet
+          title="טברנה"
+          subject="מסעדה · לא משובצת במסלול"
+          onClose={() => {}}
+          actions={[{ label: 'מחק', icon: 'trash', danger: true, onSelect: vi.fn() }]}
+        />,
+      ),
+    );
+    // The dialog's accessible name comes from the title, so a screen reader
+    // announces WHAT is being managed on open — the booking/document menus used
+    // to pass only a generic "פעולות".
+    expect(screen.getByRole('dialog').getAttribute('aria-label')).toBeNull();
+    expect(screen.getByText('מסעדה · לא משובצת במסלול')).toBeTruthy();
+  });
+
+  it('partitions destructive actions into their own group, not just a red hue', () => {
+    render(
+      wrapNav(
+        <RowManageSheet
+          title="טברנה"
+          onClose={() => {}}
+          actions={[
+            { label: 'ערוך', icon: 'edit', onSelect: vi.fn() },
+            { label: 'העבר למדף', icon: 'shelf', onSelect: vi.fn() },
+            { label: 'מחק', icon: 'trash', danger: true, onSelect: vi.fn() },
+          ]}
+        />,
+      ),
+    );
+    const groups = document.querySelectorAll('.wp-row-actions');
+    expect(groups.length).toBe(2);
+    // Order is preserved within each group, and the danger group is last —
+    // `מחק` cannot drift up under the thumb as the safe list grows or shrinks.
+    expect(groups[0].querySelectorAll('.wp-row-action').length).toBe(2);
+    const danger = groups[1];
+    expect(danger.classList.contains('wp-row-actions-danger')).toBe(true);
+    expect(danger.querySelectorAll('.wp-row-action.danger').length).toBe(1);
+  });
+
+  it('draws every action mark as an SVG, never an emoji (design-language)', () => {
+    render(
+      wrapNav(
+        <RowManageSheet
+          title="טברנה"
+          onClose={() => {}}
+          actions={[
+            { label: 'ערוך', icon: 'edit', onSelect: vi.fn() },
+            { label: 'מחק', icon: 'trash', danger: true, onSelect: vi.fn() },
+          ]}
+        />,
+      ),
+    );
+    const marks = document.querySelectorAll('.wp-row-action-ic');
+    expect(marks.length).toBe(2);
+    for (const mark of marks) {
+      expect(mark.querySelector('svg')).not.toBeNull();
+      expect(mark.textContent).toBe('');
+    }
   });
 
   it('opens from a ListRow kebab (row → manage sheet), listing the actions', () => {
@@ -137,9 +203,9 @@ function RowSheetHarness({ onEdit }: { onEdit: () => void }) {
       />
       {open && (
         <RowManageSheet
-          ariaLabel="פעולות"
+          title="doc"
           onClose={() => setOpen(false)}
-          actions={[{ label: 'ערוך', icon: '✏️', onSelect: onEdit }]}
+          actions={[{ label: 'ערוך', icon: 'edit', onSelect: onEdit }]}
         />
       )}
     </>

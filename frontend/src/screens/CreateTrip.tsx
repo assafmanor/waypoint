@@ -27,7 +27,7 @@ import { IconPicker } from '../ui/IconPicker';
 import { DestinationPicker, type PickedDestination } from '../ui/DestinationPicker';
 import { ZonePicker, zoneLabel } from '../ui/primitives/ZonePicker';
 import { Icon } from '../ui/Icon';
-import { MS_PER_DAY, ICONS, DEFAULT_TRIP_ICON, DEVICE_LOCALE } from '../constants';
+import { MS_PER_DAY, CONTROL_ICON, DEFAULT_TRIP_ICON, DEVICE_LOCALE } from '../constants';
 import { todayInTz } from '../lib/time';
 import { getNow } from '../lib/useClock';
 import { NavArrow } from '../ui/NavArrow';
@@ -133,7 +133,7 @@ export function CreateTrip() {
         </div>
         {offline && (
           <div className="offline-badge">
-            {ICONS.offline} {t.header.offlineNow}
+            <Icon name="offline" /> {t.header.offlineNow}
           </div>
         )}
       </header>
@@ -152,7 +152,7 @@ export function CreateTrip() {
                 onClick={() => setTzPickerOpen(true)}
                 aria-label={t.shell.newTrip.tzLabel}
               >
-                <span aria-hidden="true">🕓</span>
+                <Icon name="clock" />
                 <span>{zoneLabel(timezone)}</span>
                 <Icon name="caret" dir="down" />
               </button>
@@ -289,7 +289,7 @@ function Created({ trip, onDone }: { trip: Trip; onDone: () => void }) {
   const copyInvite = () => {
     if (invite.status !== 'ready') return;
     void navigator.clipboard.writeText(invite.url);
-    showToast(ICONS.clipboard, t.shell.created.inviteCopied);
+    showToast(CONTROL_ICON.clipboard, t.shell.created.inviteCopied);
   };
 
   return (
@@ -318,7 +318,9 @@ function Created({ trip, onDone }: { trip: Trip; onDone: () => void }) {
               {invite.url}
             </span>
             <span className="lbl2">{t.shell.created.inviteLabel}</span>
-            <span className="cp">{ICONS.clipboard}</span>
+            <span className="cp">
+              <Icon name="clipboard" />
+            </span>
           </div>
         )}
         {invite.status === 'pending' && (
@@ -334,7 +336,7 @@ function Created({ trip, onDone }: { trip: Trip; onDone: () => void }) {
           <button
             className="later-btn"
             onClick={() => {
-              showToast(ICONS.done, t.shell.created.laterToast);
+              showToast(CONTROL_ICON.done, t.shell.created.laterToast);
               onDone();
             }}
           >

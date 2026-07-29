@@ -8,9 +8,9 @@
 // the display and the launcher, which is all a form ever needed from it.
 import { type MouseEvent } from 'react';
 import { useTrip } from '../../state/trip-state';
-import { ICONS } from '../../constants';
 import { t } from '../../i18n/he';
 import './place-picker.css';
+import { Icon } from '../Icon';
 
 export function PlacePicker({
   value,
@@ -48,7 +48,7 @@ export function PlacePicker({
         aria-label={ariaLabel ?? t.placePicker.open}
       >
         <span className="pp-trigger-icon" aria-hidden>
-          📍
+          <Icon name="pin" />
         </span>
         <span className="pp-trigger-label">
           {current ? current.name : (placeholder ?? t.placePicker.empty)}
@@ -61,7 +61,7 @@ export function PlacePicker({
           aria-label={t.placePicker.clear}
           onClick={() => onChange(undefined)}
         >
-          ✕
+          <Icon name="close" />
         </button>
       )}
     </div>
@@ -98,7 +98,10 @@ export function AddLocationButton({
       className={'pp-addbtn' + (className ? ` ${className}` : '')}
       onClick={onClick}
     >
-      <span aria-hidden="true">{ICONS.add}</span> {t.placePicker.empty}
+      <span aria-hidden="true">
+        <Icon name="plus" />
+      </span>{' '}
+      {t.placePicker.empty}
     </button>
   );
 }

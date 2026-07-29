@@ -19,6 +19,7 @@ import { useOverlay } from '../state/nav-state';
 import { useDialogFocus } from '../lib/useDialogFocus';
 import { Spinner } from './Spinner';
 import { t } from '../i18n/he';
+import { Icon } from './Icon';
 
 const MIN_ZOOM = 1;
 const MAX_ZOOM = 4;
@@ -273,7 +274,7 @@ export function DocumentViewer({
         <div className="doc-viewer-head">
           <span className="doc-viewer-title">{doc.title}</span>
           <button className="doc-viewer-close" onClick={onClose} aria-label={t.docs.viewer.close}>
-            ✕
+            <Icon name="close" />
           </button>
         </div>
         <div className="doc-viewer-body">

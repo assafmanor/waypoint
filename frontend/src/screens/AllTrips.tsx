@@ -20,10 +20,11 @@ import { tripChip, type TripChip } from '../lib/active-trip';
 import { daysUntilStart } from '../lib/mode';
 import { formatTripDates } from '../lib/time';
 import { useClock } from '../lib/useClock';
-import { DEFAULT_TRIP_ICON, ICONS } from '../constants';
+import { DEFAULT_TRIP_ICON, GLYPH } from '../constants';
 import { NavArrow } from '../ui/NavArrow';
 import { t } from '../i18n/he';
 import { Avatar } from '../ui/primitives/Avatar';
+import { Icon } from '../ui/Icon';
 
 const NBSP = ' ';
 
@@ -57,7 +58,7 @@ function TripMeta({ trip }: { trip: Trip }) {
             {trip.memberCount}
           </span>
           {NBSP}
-          {ICONS.members}
+          {GLYPH.members}
         </>
       )}
     </span>
@@ -179,7 +180,7 @@ export function AllTrips({ onOpenAccount }: { onOpenAccount: () => void }) {
         </div>
         {offline && (
           <div className="offline-badge">
-            {ICONS.offline} {t.header.offlineNow}
+            <Icon name="offline" /> {t.header.offlineNow}
           </div>
         )}
       </header>
@@ -207,7 +208,7 @@ export function AllTrips({ onOpenAccount }: { onOpenAccount: () => void }) {
         <div className="spacer" />
 
         <button className="create-btn" disabled={offline} onClick={() => navigate('/new')}>
-          {ICONS.add} {t.shell.allTrips.create}
+          <Icon name="plus" /> {t.shell.allTrips.create}
         </button>
         {offline && <p className="offline-note">{t.shell.allTrips.offlineNote}</p>}
       </main>
