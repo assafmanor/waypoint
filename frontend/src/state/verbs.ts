@@ -7,13 +7,20 @@ import {
   EVENT_KIND,
   EVENT_SOURCE,
   EVENT_STATUS,
+  type CreateBookingInput,
   type CreateEventInput,
   type EventCategory,
   type MaybeItem,
   type TripEvent,
   type UpdateEventInput,
 } from '@waypoint/shared';
-import { useTrip, TRIP_ACTION, type Action, type RippleSuggestion } from './trip-state';
+import {
+  useTrip,
+  TRIP_ACTION,
+  type Action,
+  type IndexVerbs,
+  type RippleSuggestion,
+} from './trip-state';
 import { useToast } from '../ui/Toast';
 import { useConfirmHardEdit, type ConfirmHardEditAction } from '../ui/ConfirmDialog';
 import {
@@ -70,7 +77,22 @@ type UndoDescriptor =
   | { kind: 'addMaybe'; id: string }
   | { kind: 'removeMaybe'; item: MaybeItem }
   | { kind: 'maybeDay'; item: MaybeItem }
-  | { kind: 'park'; event: TripEvent; maybeId: string };
+  | { kind: 'park'; event: TripEvent; maybeId: string }
+  /** A booked save (ADR-0136), which is ONE action to the user and up to three writes
+   *  underneath — so it gets one descriptor, and undoing it undoes all of them.
+   *
+   *  `event` is `null` when the server derived the linked event from a seed (a create):
+   *  reversing means deleting the booking WITH its events. When it carries the converted
+   *  event's previous place/category, reversing means deleting the booking and keeping the
+   *  event — the server clears its `bookingId` for us — then handing those two fields back,
+   *  which nothing else can restore because ADR-0048 took them off on the way in.
+   *  `maybeId` is the idea the save consumed (ADR-0135 §5), if any. */
+  | {
+      kind: 'book';
+      bookingId: string;
+      event: { id: string; previous: UpdateEventInput } | null;
+      maybeId: string | null;
+    };
 
 export interface VerbDeps {
   tripId: string;
@@ -78,6 +100,11 @@ export interface VerbDeps {
   toast: ShowToast;
   lastAction: { current: UndoDescriptor | null };
   confirmHardEdit: (event: TripEvent, action?: ConfirmHardEditAction) => Promise<boolean>;
+  /** The booking half of a two-entity write (ADR-0136 §3). Bookings live in trip-state's
+   *  own state rather than the reducer, so both the write and its compensating delete go
+   *  through the verbs that already own them — never a second optimistic path beside them
+   *  (root rule 8). Only the booked save and its undo touch this. */
+  bookings: Pick<IndexVerbs, 'createBooking' | 'deleteBooking'>;
 }
 
 // A real HTTP error still rejects normally — only network failure/offline queues.
@@ -271,6 +298,68 @@ export function buildScheduleEvent(
   };
 }
 
+/** Consume an idea with no event of our own to hang it on (ADR-0135 §5). The booked path
+ *  needs this: a booking derives its linked event server-side, so it lands on the day and
+ *  duplicates the shelf entry exactly as scheduling does — but `applySchedule`'s consume is
+ *  the tail of an event create, so it cannot serve. Same outbox verb, same undo coverage. */
+export async function applyConsumeMaybeItem(deps: VerbDeps, maybeId: string): Promise<void> {
+  deps.dispatch({ type: TRIP_ACTION.CONSUME_MAYBE_ITEM, maybeId });
+  await restOrQueue(
+    deps.tripId,
+    { verb: OUTBOX_VERB.CONSUME_MAYBE_ITEM, maybeItemId: maybeId },
+    () => consumeMaybeItem(deps.tripId, maybeId),
+  );
+}
+
+/** **A save that says the event is also booked** (ADR-0136 §1/§3). One action to the user;
+ *  underneath, up to three shipped writes and exactly one undo.
+ *
+ *  • A **new** event → `createBooking` WITH its `event` seed. The server produces the linked
+ *    pair, so this is a single write and the event never exists unbooked.
+ *  • An **existing unlinked** event → `createBooking` WITHOUT a seed (the event is already
+ *    there; a seed would make a second one), then the event's own `bookingId` patch. The
+ *    server nulls its `placeId` itself (ADR-0048), so there is no field-migration code here.
+ *  • Either, from the shelf → plus the idea's consume.
+ *
+ *  If the link fails, the booking is deleted rather than left for nothing to point at — the
+ *  half-applied conversion ADR-0136's Consequences names. Returns false when nothing stuck. */
+export async function applyBookEvent(
+  deps: VerbDeps,
+  input: CreateBookingInput,
+  opts: { event?: TripEvent | null; maybeId?: string | null } = {},
+): Promise<boolean> {
+  const { event = null, maybeId = null } = opts;
+  let booking;
+  try {
+    // `silent`: this is one action, so it gets one toast, and the caller owns it.
+    booking = await deps.bookings.createBooking(input, { silent: true });
+  } catch {
+    return false; // the verb rolled back and toasted already
+  }
+  if (!booking) return false;
+
+  let previous: { id: string; previous: UpdateEventInput } | null = null;
+  if (event) {
+    previous = { id: event.id, previous: { placeId: event.placeId, category: event.category } };
+    const linked = await applyUpdateEvent(deps, event, { bookingId: booking.id });
+    if (!linked) {
+      // The event is already back to what it was; take the orphan with it.
+      await deps.bookings.deleteBooking(booking.id, { deleteEvents: false }).catch(() => {});
+      // And clear the descriptor `applyUpdateEvent` left behind on its way out. Nothing
+      // stuck, so there is nothing to undo — offering to reverse a write that never applied
+      // is worse than offering nothing.
+      deps.lastAction.current = null;
+      return false;
+    }
+  }
+  if (maybeId) await applyConsumeMaybeItem(deps, maybeId);
+
+  // Set LAST, so it survives the descriptors `applyUpdateEvent`/the consume wrote: undoing a
+  // booked save is one action, not the last of three.
+  deps.lastAction.current = { kind: 'book', bookingId: booking.id, event: previous, maybeId };
+  return true;
+}
+
 export async function applySchedule(
   deps: VerbDeps,
   event: TripEvent,
@@ -323,11 +412,14 @@ function previousOf(event: TripEvent, patch: UpdateEventInput): UpdateEventInput
   return previous as UpdateEventInput;
 }
 
+/** Resolves `false` when the write failed and the optimistic patch was rolled back — which
+ *  a composite caller has to know, because its OTHER write is then orphaned (ADR-0136 §3).
+ *  It also stops `verbs.update` toasting success straight after an error toast. */
 export async function applyUpdateEvent(
   deps: VerbDeps,
   event: TripEvent,
   patch: UpdateEventInput,
-): Promise<void> {
+): Promise<boolean> {
   const previous = previousOf(event, patch);
   const isHard = event.kind === EVENT_KIND.HARD;
   // A patch may clear a field with `null` (`displayTimezone`, ADR-0107 §6); local
@@ -345,9 +437,11 @@ export async function applyUpdateEvent(
       () => updateEvent(deps.tripId, event.id, patch, isHard),
     );
     if (canonical) deps.dispatch({ type: TRIP_ACTION.RECONCILE_EVENT, event: canonical });
+    return true;
   } catch (err) {
     deps.dispatch({ type: TRIP_ACTION.UNDO });
     writeErrorToast(deps.toast, err);
+    return false;
   }
 }
 
@@ -362,7 +456,7 @@ export async function applyGuardedUpdate(
     const confirmed = await deps.confirmHardEdit(event, 'edit');
     if (!confirmed) return false;
   }
-  await applyUpdateEvent(deps, event, patch);
+  return applyUpdateEvent(deps, event, patch);
   return true;
 }
 
@@ -559,7 +653,8 @@ export async function applyRippleApply(
   }
 }
 
-async function reverseRest(tripId: string, desc: UndoDescriptor): Promise<void> {
+async function reverseRest(deps: VerbDeps, desc: UndoDescriptor): Promise<void> {
+  const { tripId } = deps;
   switch (desc.kind) {
     case 'status':
       await restOrQueue(
@@ -654,6 +749,42 @@ async function reverseRest(tripId: string, desc: UndoDescriptor): Promise<void> 
       await restOrQueue(tripId, { verb: OUTBOX_VERB.CREATE, input }, () =>
         createEvent(tripId, input),
       );
+      return;
+    }
+    case 'book': {
+      // ONE undo for the whole booked save (ADR-0136 §3). Order matters twice over.
+      //
+      // The booking goes first: deleting it is what clears the event's `bookingId`
+      // server-side (ADR-0047 §3's unlink), and until that is gone a patch restoring the
+      // place would be nulled straight back out by ADR-0048's invariant.
+      //
+      // `deleteEvents` is the difference between the two shapes. On a create the linked
+      // event only ever existed because of the booking, so it goes too. On a conversion the
+      // event predates the booking and must survive — with its place and category handed
+      // back, which nothing else can do: the conversion moved them onto the booking.
+      await deps.bookings.deleteBooking(desc.bookingId, {
+        deleteEvents: desc.event == null,
+        confirm: true,
+      });
+      if (desc.event) {
+        await restOrQueue(
+          tripId,
+          {
+            verb: OUTBOX_VERB.UPDATE,
+            eventId: desc.event.id,
+            input: desc.event.previous,
+            confirm: true,
+          },
+          () => updateEvent(tripId, desc.event!.id, desc.event!.previous, true),
+        );
+      }
+      // NOT reversed here: the idea's `consumed` flag server-side. The reducer's snapshot has
+      // already put it back on the shelf locally, but there is no un-consume endpoint —
+      // `updateMaybeItemSchema` takes `targetDate` and nothing else. That is a SHIPPED gap,
+      // not one this path introduced: `applySchedule`'s undo is a bare `{ kind: 'create' }`
+      // and leaves the flag set too, so a resync re-consumes either way. Matched here on
+      // purpose rather than half-fixed for one of the two callers; the backlog carries it.
+      return;
     }
   }
 }
@@ -664,7 +795,7 @@ export async function applyUndo(deps: VerbDeps): Promise<void> {
   deps.lastAction.current = null;
   if (!desc) return;
   try {
-    await reverseRest(deps.tripId, desc);
+    await reverseRest(deps, desc);
   } catch (err) {
     // ponytail: local state is already reverted; a failed undo-sync just gets a
     // toast rather than a second rollback attempt (edge case at this trip's scale).
@@ -673,12 +804,19 @@ export async function applyUndo(deps: VerbDeps): Promise<void> {
 }
 
 export function useVerbs() {
-  const { dispatch, trip, events, ripple, activeDate, zoneEvidence } = useTrip();
+  const { dispatch, trip, events, ripple, activeDate, zoneEvidence, indexVerbs } = useTrip();
   const { me } = useAuth();
   const toast = useToast();
   const confirmHardEdit = useConfirmHardEdit();
   const lastAction = useRef<UndoDescriptor | null>(null);
-  const deps: VerbDeps = { tripId: trip.id, dispatch, toast, lastAction, confirmHardEdit };
+  const deps: VerbDeps = {
+    tripId: trip.id,
+    dispatch,
+    toast,
+    lastAction,
+    confirmHardEdit,
+    bookings: indexVerbs,
+  };
   // Attribution for our own optimistic writes: the signed-in user, not a fixture.
   // The server stamps the canonical author on reconcile; this is what a
   // non-reconciled entity (a client-id maybe-item, an offline write) shows until then.
@@ -805,6 +943,16 @@ export function useVerbs() {
     create: (event: TripEvent) => {
       void applyCreateEvent(deps, event);
       toast(ICONS.done, t.toast.eventCreated, undo);
+    },
+    /** The event is ALSO booked (ADR-0136). One toast for one action, whichever of the three
+     *  shapes it took — and the undo behind it reverses all of their writes together. */
+    book: (
+      input: CreateBookingInput,
+      opts: { event?: TripEvent | null; maybeId?: string | null } = {},
+    ) => {
+      void applyBookEvent(deps, input, opts).then((applied) => {
+        if (applied) toast(ICONS.done, t.toast.eventBooked, undo);
+      });
     },
     update: (event: TripEvent, patch: UpdateEventInput) => {
       void applyGuardedUpdate(deps, event, patch).then((applied) => {

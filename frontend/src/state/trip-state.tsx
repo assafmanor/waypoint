@@ -118,6 +118,7 @@ export const TRIP_ACTION = {
   SET_STATUS: 'SET_STATUS',
   DELAY: 'DELAY',
   SCHEDULE: 'SCHEDULE',
+  CONSUME_MAYBE_ITEM: 'CONSUME_MAYBE_ITEM',
   RIPPLE_APPLY: 'RIPPLE_APPLY',
   RIPPLE_DISMISS: 'RIPPLE_DISMISS',
   UNDO: 'UNDO',
@@ -141,6 +142,11 @@ export type Action =
   | { type: typeof TRIP_ACTION.SET_STATUS; id: string; status: TripEvent['status'] }
   | { type: typeof TRIP_ACTION.DELAY; id: string; minutes: number }
   | { type: typeof TRIP_ACTION.SCHEDULE; event: TripEvent; maybeId: string }
+  // Consume an idea WITHOUT an event of our own (ADR-0135 §5). A booking creates its
+  // linked event server-side, so it puts something on the day exactly as scheduling does
+  // and produces the same duplication — but there is no event here to carry the flip, so
+  // `SCHEDULE` cannot serve. Its own snapshot, so the undo covers it like any other verb.
+  | { type: typeof TRIP_ACTION.CONSUME_MAYBE_ITEM; maybeId: string }
   | { type: typeof TRIP_ACTION.RIPPLE_APPLY }
   | { type: typeof TRIP_ACTION.RIPPLE_DISMISS }
   | { type: typeof TRIP_ACTION.UNDO }
@@ -211,6 +217,12 @@ export function reducer(state: State, action: Action): State {
         m.id === action.maybeId ? { ...m, consumed: true } : m,
       );
       return { ...state, events, maybeItems, ripple: null, undo: snapshotOf(state) };
+    }
+    case TRIP_ACTION.CONSUME_MAYBE_ITEM: {
+      const maybeItems = state.maybeItems.map((m) =>
+        m.id === action.maybeId ? { ...m, consumed: true } : m,
+      );
+      return { ...state, maybeItems, ripple: null, undo: snapshotOf(state) };
     }
     case TRIP_ACTION.RIPPLE_APPLY: {
       if (!state.ripple) return state;
@@ -374,7 +386,13 @@ export interface SettingsVerbs {
  *  server (which creates the linked event atomically); the optimistic *event*
  *  side is the form's job — for now a seeded event arrives via the WS echo. */
 export interface IndexVerbs {
-  createBooking: (input: CreateBookingInput) => Promise<Booking | undefined>;
+  /** `silent` suppresses the saved/queued toast, for a caller that is doing more than one
+   *  write and owes the user ONE message about the whole thing (ADR-0136 §3's conversion).
+   *  The rollback and its error toast are unaffected — a failure always speaks. */
+  createBooking: (
+    input: CreateBookingInput,
+    opts?: { silent?: boolean },
+  ) => Promise<Booking | undefined>;
   updateBooking: (bookingId: string, input: UpdateBookingInput) => Promise<void>;
   deleteBooking: (
     bookingId: string,
@@ -908,7 +926,7 @@ function TripReady({
   const indexVerbs = useMemo<IndexVerbs>(() => {
     const stamp = () => new Date(getNow()).toISOString();
     return {
-      createBooking: async (input) => {
+      createBooking: async (input, opts = {}) => {
         const id = input.id ?? crypto.randomUUID();
         const withId = { ...input, id };
         const { event: seed, ...fields } = withId;
@@ -944,10 +962,11 @@ function TripReady({
               ),
             );
           }
-          toast(
-            canonical ? ICONS.done : ICONS.sync,
-            canonical ? t.index.toast.saved : t.index.toast.savedQueued,
-          );
+          if (!opts.silent)
+            toast(
+              canonical ? ICONS.done : ICONS.sync,
+              canonical ? t.index.toast.saved : t.index.toast.savedQueued,
+            );
           return canonical ?? optimistic;
         } catch (err) {
           setBookings(previous);

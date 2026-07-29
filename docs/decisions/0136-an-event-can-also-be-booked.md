@@ -1,6 +1,6 @@
 # 0136 — An event can also be **booked**, and it is one tap rather than a schema question
 
-**Status:** Accepted — extracted 2026-07-30 (session 183) from [ADR-0135](0135-a-place-becomes-an-event-or-a-booking.md), which designed it inside a map phase; **its trigger was replaced 2026-07-30 (session 184)** after the owner rejected keying on a confirmation code. **It is not a map decision** — owner's call: _"independently from the maps, events in general."_ **Design only; nothing below is built.** The numbers in §5 are read from the live DOM of the mockup named below, in a headless browser.
+**Status:** Accepted — extracted 2026-07-30 (session 183) from [ADR-0135](0135-a-place-becomes-an-event-or-a-booking.md), which designed it inside a map phase; **its trigger was replaced 2026-07-30 (session 184)** after the owner rejected keying on a confirmation code. **It is not a map decision** — owner's call: _"independently from the maps, events in general."_ **Built 2026-07-31 (session 185)**, with two amendments made in place while building: §1's "no new primitive" was wrong (a `ToggleChip` was extracted), and §2 now **asks** the booking type for `transport`, on the owner's call. The numbers in §5 are read from the live DOM of the mockup named below, in a headless browser.
 **Date:** 2026-07-30
 
 **Leaves** [0011](0011-hard-soft-event-model.md) **entirely alone**, and that is a correction: two earlier passes tried to read its "hard = real commitment (flight, reservation code)" as a rule the app could execute. §4 is why that fails — commitment and booked-ness are different axes, and the app's own `bookingDefaultKind` says so by making a restaurant booking **soft**.
@@ -35,7 +35,15 @@ That reframing is what makes a one-tap control honest rather than a shortcut. "E
 
 **And it is not a confirmation code, which is what the previous pass keyed on.** The schema says why: `confirmationCode` is **nullable**, and every `Booking` field but `type` and `title` is optional. A table booked by phone has no number, and plenty of people never record one even when they have it. **There was no second signal to fall back on either** — the most common booking in the app is a restaurant, which `bookingDefaultKind` also makes **soft**, so "hard ⇒ booked" would have missed exactly the same case. The conclusion is not a compromise: **booked-ness cannot be inferred, so it is stated** — and the inference is demoted to the one honest job it can do, which is §2's default.
 
-**The control already exists in the app's vocabulary.** The boolean idiom here is an `aria-pressed` **button** — the map's scope chip, `.map-maybes`, the Index filter chips are all this — so the row is that, in a form field slot. No new primitive, and none needed. It carries no `field-label`: the button says `יש הזמנה`, and a label above it saying `הזמנה` is the same word twice for 20px.
+**The control already exists in the app's vocabulary.** The boolean idiom here is an `aria-pressed` **button** — the map's scope chip, `.map-maybes`, the Index filter chips are all this — so the row is that, in a form field slot. It carries no `field-label`: the button says `יש הזמנה`, and a label above it saying `הזמנה` is the same word twice for 20px.
+
+> **Amended 2026-07-31 (session 185, at build):** this section said _"No new primitive, and none needed"_, and that was **wrong** — it read "the idiom exists" as "the component exists". The idiom existed **four times**, hand-rolled: `.map-maybes`, `.map-scopechip`, `.map-facets` and `.map-nearchip` in `map.css`, three of whose on-states were the same three declarations written three times. This row would have been the **fifth** copy, in a form, outside `map.css` — the one-off pile root rule 8 exists to stop, and the same warning `frontend/CLAUDE.md` already carries for `ui/feedback/`. So the build **extracted `ui/primitives/ToggleChip`** (+ `toggle-chip.css` + its own test file) and migrated all four Map chips onto it; this row is a call site. Costed and put to the owner before any code was written, per rule 8's ask-first clause — four shipped call sites on the app's most camera-sensitive screen is not a small extraction.
+>
+> Two things the extraction had to **keep**, and they are why the primitive has tones rather than one look: `.map-nearchip`'s teal is a **location** semantic (ADR-0109 §6-7 / ADR-0028), and `.map-maybes`'s dashed off-state is **provisional** (ADR-0110 §2). Neither is drift. What was drift, and is now corrected, is `.map-maybes`'s 7px/12.5px/600 against the `.choice-pill` grammar beside it in the strip.
+>
+> And one finding that changes the count: **`.map-facets` was never an `aria-pressed` toggle.** It has no such attribute — its on-state states that _filtering is live_ and its tap **opens** the strip. Putting it on a pressed primitive would announce a disclosure opener as pressed, which a screen reader has no way to see through. So the primitive carries a `semantics: 'toggle' | 'indicator'` axis, and only a toggle emits `aria-pressed`. Three real toggles, one look-alike.
+>
+> `.map-addmaybe` was deliberately **not** absorbed. It is a create (ADR-0135 §1's footer control), so it has no on-state to carry and owns a hover/disabled grammar a state chip has no use for.
 
 **This is not a second way to author a booking.** `BookingSheet` remains where a booking is _written_: code, room, wifi, notes, documents, spans, and a transport booking's two places. This is the fast path that creates one, and it deliberately requires nothing.
 
@@ -55,7 +63,15 @@ That reframing is what makes a one-tap control honest rather than a shortcut. "E
 | `sightseeing` · `nature` · `activity` | `activity`   |
 | `shopping` · `services` · `other`     | `other`      |
 
-**The form's category, and that is the better half of this section.** The category selector already leads the form (ADR-0109 §11: choosing it defaults the badge glyph) and already defaults from the icon's group (ADR-0038). So the derivation reads a signal a human has already been given a control over — which means **the fix for a wrong guess is a control the form already has**, not a second picker. A train station opens on `transport` and guesses `flight`; a train is one tap on the category the form was showing anyway.
+**The form's category, and that is the better half of this section.** The category selector already leads the form (ADR-0109 §11: choosing it defaults the badge glyph) and already defaults from the icon's group (ADR-0038). So the derivation reads a signal a human has already been given a control over — which means **the fix for a wrong guess is a control the form already has**, not a second picker.
+
+> **Amended 2026-07-31 (session 185, at build, owner's call):** the sentence that used to end this paragraph read _"A train station opens on `transport` and guesses `flight`; a train is one tap on the category the form was showing anyway."_ **That was false, and the owner caught it:** there is no category to tap. `EventCategory` has a **single** `transport` value, while `BookingType` has `flight`, `train` **and** `other` — and `BOOKING_TYPE_TO_CATEGORY` maps both transport types back to that one category. The category cannot distinguish them, so the correction path this section promised did not exist: a train booked from this form arrived as a `flight`, and the only fix was the booking's own type picker on another screen.
+>
+> So `transport` — **and only `transport`** — asks. Three pills in the form's own `.choice-pill` grammar, inside the `Collapsible`, above the code: `✈️ טיסה` · `🚄 רכבת` · `🚌 אחר`. `other` is there because the transport icon group is mostly bus, car, ferry and cable car, none of which is a flight or a train; its glyph is `🚌` rather than `BOOKING_TYPE_ICON.other`'s `📄` (owner's call) — all three answer "which transport", and a document among two vehicles reads as a different kind of answer.
+>
+> **This is not the schema question §1 retires**, and the distinction is the whole justification. That question — "event or booking?" — is asked of **everyone, before they can type**, and it asks a human to know the model. This is the **one genuine ambiguity in the derivation**, asked of the one person who has it, at the moment they have it, with a default already chosen. Nine categories still state their guess and never ask. A picker for **every** category remains rejected.
+>
+> Two consequences worth stating. **The kind follows it**, so `אחר` comes out **soft** while flight and train come out hard — `other` is not a span type, and `bookingDefaultKind` is the one source of that (§4). Deliberately not special-cased: this row must not become a second opinion about commitment, which is the mistake §4 exists to prevent. And **it is modelled as a nullable override**, not a fourth `*Touched` guard — `bookingType: BookingType | null`, where `null` re-derives and a category change clears it, the same idiom this form's zone `override` already uses. That is the generalisation moment the Consequences section warned about, declined once with a reason.
 
 **And the derivation is _stated_, never silent.** With the row on, a quiet line under it names what will happen — `האירוע יירשם גם כהזמנה · מלון` — and it **moves with the category pill** — so the app is visibly understanding rather than quietly deciding. A statement, not a second type picker: a picker is precisely what this ADR removes, and the "sensibly defaulted, trivially fixable, never a forced choice" posture is ADR-0113's and ADR-0116 §1's.
 
@@ -104,11 +120,14 @@ So the row changes what the thing **is**, never how committed it is. The kind to
 
 Measured on the real `.modal-form` — never the `.modal-card`, which is height-capped and scrolls, so reading it returns the same number however much the content grows:
 
-| `EventForm` content          | Height                  |
-| ---------------------------- | ----------------------- |
-| As shipped                   | **482px**               |
-| With the row, **not** booked | **560px** (+78px, ~16%) |
-| With the row, booked         | **642px** (+160px)      |
+| `EventForm` content                       | Height                  |
+| ----------------------------------------- | ----------------------- |
+| As shipped                                | **482px**               |
+| With the row, **not** booked              | **560px** (+78px, ~16%) |
+| With the row, booked                      | **642px** (+160px)      |
+| Booked, **and the category is transport** | **696px** (+214px)      |
+
+_(The last row is session 185's, for §2's amendment. The three transport pills cost **+54px**, and only in the one category that asks — every other booked save is still 642px, and nobody who books nothing pays any of it.)_
 
 **+78px is what someone who books nothing pays**, on every host of the form — the day view, the Plan builder and the Map tab alike — and that is the common case, so it is the number that matters. The booking's own fields cost the rest and only appear when there is a booking, which is the shape the design was aiming for: the person who never books never sees a booking field.
 
@@ -147,7 +166,8 @@ That is the price of one authoring model instead of two, stated rather than buri
 - **An event can now lose fields by being edited.** Converting takes place and category off the event and onto the booking. It is ADR-0048's invariant and the server enforces it, but it is the first time a user action _in the event form_ triggers it.
 - **`CATEGORY_TO_BOOKING_TYPE` is the inverse of a constant that already exists.** The two must be edited together when `BookingType` grows; the `satisfies Record<…>` on both is what makes that a compile error rather than a silent gap.
 - **A guessed booking type reaches the data.** The statement makes it visible and the category makes it correctable, but a transport event will produce a `flight` someone has to fix. Accepted cost of not asking.
-- **Two `*Touched` guards now sit side by side** (`kindTouched`, `bookedTouched`), both meaning "a human said this, stop deriving it". If a third appears, that is the moment to generalise them rather than the moment to add it.
+- **Two `*Touched` guards now sit side by side** (`kindTouched`, `bookedTouched`), both meaning "a human said this, stop deriving it". If a third appears, that is the moment to generalise them rather than the moment to add it. _(Session 185: `EventForm` gained **both** — it had `iconTouched` and no `kindTouched`, because until this row nothing in it derived the kind. So the form now carries three, and the generalisation moment named above has arrived; the backlog carries it.)_
+- **The pressed chip is now a primitive** (`ui/primitives/ToggleChip`), and the four Map chips are call sites of it. See §1's amendment: the ADR was wrong to say none was needed, and the fifth copy is what made that visible.
 - **Every authoring surface grows by 78px.** §5.
 - **The Index gains rows from somewhere new.** A booking can now appear without anyone having opened the bookings screen.
 

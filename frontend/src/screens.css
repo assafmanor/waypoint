@@ -776,6 +776,77 @@
 .form-row .form-field {
   flex: 1;
 }
+/* ── `יש הזמנה` and what it reveals (ADR-0136) ─────────────────────────────────
+   The row itself is `ui/primitives/ToggleChip` (`tone="cta"`, `size="touch"`), so nothing
+   about its appearance lives here — only the block it opens. */
+
+/* THE ONE QUESTION THE CATEGORY CANNOT ANSWER (ADR-0136 §2, owner's call session 185).
+   `EventCategory` has a single `transport`; `BookingType` has both `flight` and `train`, and
+   `BOOKING_TYPE_TO_CATEGORY` maps BOTH back to `transport` — so the forward guess has to
+   collapse them, and every train booked from this form used to arrive as a flight. It is
+   therefore asked, for ONE category and only with the row on. Two pills in the form's own
+   `.choice-pill` grammar (the category selector above is the same control), so no new idiom
+   and no new colour; no `field-label`, because the pills say what they are and the statement
+   below names the result. */
+.ef-btype {
+  display: flex;
+  gap: 6px;
+  margin-top: 10px;
+}
+/* The touch floor (ADR-0017): the category strip above scrolls, so its pills can be
+   chip-sized — these two are the whole row and are what a correction is tapped on. */
+.ef-btype .choice-pill {
+  min-height: 44px;
+}
+
+/* THE DERIVATION, STATED — never a second type picker (§2). It moves with whatever settled
+   the type, so the sentence and the pills can't disagree: one place states it. */
+.ef-derived {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  margin-top: 8px;
+  font-size: 12.5px;
+  color: var(--muted);
+}
+.ef-derived b {
+  color: var(--ink);
+}
+.ef-code-input {
+  width: 100%;
+  margin-top: 10px;
+}
+
+/* An event that is ALREADY linked gets a STATEMENT WITH A WAY IN, not a control (§3): its
+   code, room and notes live on the booking now. That is the rule the form already runs for
+   place and category, one field wider — and it is also what makes the path one-way. */
+.ef-linked {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  width: 100%;
+  min-height: 44px;
+  padding: 7px 10px;
+  border: 1px solid var(--line);
+  border-radius: 12px;
+  background: color-mix(in srgb, var(--ink) 4%, transparent);
+  color: var(--ink);
+  font: inherit;
+  font-size: 12.5px;
+  text-align: start;
+  cursor: pointer;
+}
+.ef-linked .k {
+  color: var(--muted);
+  font-weight: 500;
+}
+.ef-linked .icon {
+  width: 14px;
+  height: 14px;
+  margin-inline-start: auto;
+  color: var(--faint);
+}
+
 .kind-toggle {
   display: flex;
   gap: 8px;

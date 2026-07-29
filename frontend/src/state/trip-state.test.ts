@@ -71,6 +71,19 @@ describe('reducer verbs + undo', () => {
     expect(s2.maybeItems.find((m) => m.id === 'mb-skytree')!.consumed).toBe(false);
   });
 
+  // ADR-0135 §5: a booking creates its linked event server-side, so it puts something on
+  // the day exactly as scheduling does — but there is no event of OUR own to carry the
+  // consume, so `SCHEDULE` cannot serve. Its own action, with its own undo snapshot.
+  it('CONSUME_MAYBE_ITEM consumes the idea without adding an event, and is undoable', () => {
+    const s0 = initialState();
+    const s1 = reducer(s0, { type: TRIP_ACTION.CONSUME_MAYBE_ITEM, maybeId: 'mb-skytree' });
+    expect(s1.maybeItems.find((m) => m.id === 'mb-skytree')!.consumed).toBe(true);
+    // No event of its own — the linked one arrives from the server (ADR-0093).
+    expect(s1.events).toEqual(s0.events);
+    const s2 = reducer(s1, { type: TRIP_ACTION.UNDO });
+    expect(s2.maybeItems.find((m) => m.id === 'mb-skytree')!.consumed).toBe(false);
+  });
+
   it('RECONCILE_EVENT replaces the optimistic entry with the canonical one', () => {
     const canonical = { ...EVENTS[0], title: 'server truth' };
     const s1 = reducer(initialState(), { type: TRIP_ACTION.RECONCILE_EVENT, event: canonical });
