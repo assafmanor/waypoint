@@ -1,12 +1,14 @@
 import 'fake-indexeddb/auto';
-import { afterEach, describe, expect, it, vi } from 'vitest';
-import { EVENT_STATUS } from '@waypoint/shared';
+import { afterEach, describe, expect, it, vi, type Mock } from 'vitest';
+import { EVENT_STATUS, type CreateBookingInput } from '@waypoint/shared';
 import { db } from '../db';
 import { EVENTS, MAYBE_ITEMS } from '../fixtures';
 import { initOutboxCount, OUTBOX_VERB } from '../lib/outbox';
 import { DEFAULT_SCHEDULE_SLOT } from '../constants';
 import { zonedIso } from '../lib/time';
 import {
+  applyBookEvent,
+  applyConsumeMaybeItem,
   applyCreateEvent,
   applyGuardedDelay,
   applyGuardedDelete,
@@ -24,7 +26,10 @@ import {
 } from './verbs';
 import { TRIP_ACTION, type Action } from './trip-state';
 
-function fakeDeps(confirmHardEdit?: VerbDeps['confirmHardEdit']): VerbDeps & { actions: Action[] } {
+function fakeDeps(confirmHardEdit?: VerbDeps['confirmHardEdit']): VerbDeps & {
+  actions: Action[];
+  bookings: { createBooking: Mock; deleteBooking: Mock };
+} {
   const actions: Action[] = [];
   return {
     tripId: 'trip-japan-26',
@@ -32,6 +37,15 @@ function fakeDeps(confirmHardEdit?: VerbDeps['confirmHardEdit']): VerbDeps & { a
     toast: vi.fn(),
     lastAction: { current: null },
     confirmHardEdit: confirmHardEdit ?? vi.fn().mockResolvedValue(true),
+    // The booking half (ADR-0136 §3). Bookings live in trip-state's own state, so the verbs
+    // reach them through the writers that own them — which makes them a mock here.
+    bookings: {
+      createBooking: vi.fn(async (input: CreateBookingInput) => ({
+        ...input,
+        id: input.id ?? 'bk-new',
+      })),
+      deleteBooking: vi.fn(async () => {}),
+    } as unknown as { createBooking: Mock; deleteBooking: Mock },
     actions,
   };
 }
@@ -365,6 +379,209 @@ describe('applySchedule (T-058: persists the maybe-item consumed flag server-sid
     const queued = (await db.outbox.toArray()).map((e) => e.op);
     expect(queued).toEqual([
       { verb: OUTBOX_VERB.CREATE, input: expect.objectContaining({ id: 'ev-new' }) },
+      { verb: OUTBOX_VERB.CONSUME_MAYBE_ITEM, maybeItemId: 'mb-skytree' },
+    ]);
+  });
+});
+
+// ADR-0136 §1/§3: a booked save is ONE action to the user and up to three writes underneath.
+// Every test here is written as the reproduction of a specific way that can go wrong.
+describe('applyBookEvent (an event that is also booked, ADR-0136)', () => {
+  const unlinked = EVENTS.find((e) => e.id === 'ev-goldengai')!;
+  const input = { type: 'restaurant' as const, title: 'רמן נאגי' };
+
+  const okFetch = () => {
+    const calls: { url: string; method?: string }[] = [];
+    vi.stubGlobal(
+      'fetch',
+      vi.fn((url: string, init?: RequestInit) => {
+        calls.push({ url: String(url), method: init?.method });
+        return Promise.resolve(new Response(JSON.stringify(unlinked), { status: 200 }));
+      }),
+    );
+    return calls;
+  };
+
+  // FAILS if a booked create writes an event of its own: the server derives the linked event
+  // from the seed, so a second write would produce two.
+  it('on a NEW event writes only the booking, seed and all', async () => {
+    const calls = okFetch();
+    const deps = fakeDeps();
+
+    const applied = await applyBookEvent(deps, { ...input, event: { date: '2026-07-26' } });
+
+    expect(applied).toBe(true);
+    expect(deps.bookings.createBooking).toHaveBeenCalledTimes(1);
+    expect(deps.bookings.createBooking.mock.calls[0][0]).toMatchObject({
+      event: { date: '2026-07-26' },
+    });
+    // No event POST/PATCH of our own.
+    expect(calls.filter((c) => c.url.includes('/events'))).toEqual([]);
+    expect(deps.lastAction.current).toEqual({
+      kind: 'book',
+      bookingId: 'bk-new',
+      event: null,
+      maybeId: null,
+    });
+  });
+
+  // FAILS if the conversion sends a seed (which would create a second event), or if it tries
+  // to migrate placeId itself instead of letting ADR-0048's server invariant do it.
+  it('on an EXISTING event creates the booking with no seed, then patches bookingId', async () => {
+    const calls = okFetch();
+    const deps = fakeDeps();
+
+    const applied = await applyBookEvent(deps, input, { event: unlinked });
+
+    expect(applied).toBe(true);
+    expect(deps.bookings.createBooking.mock.calls[0][0].event).toBeUndefined();
+    const patch = calls.find((c) => c.url.includes(`/events/${unlinked.id}`));
+    expect(patch?.method).toBe('PATCH');
+    // Nothing here writes placeId: the server nulls it (ADR-0048).
+    const updated = deps.actions.find((a) => a.type === TRIP_ACTION.UPDATE_EVENT);
+    expect(updated).toMatchObject({ patch: { bookingId: 'bk-new' } });
+    expect((updated as { patch: Record<string, unknown> }).patch.placeId).toBeUndefined();
+  });
+
+  // FAILS if the two writes do not undo as one: the descriptor has to be the composite, not
+  // the `update` one `applyUpdateEvent` leaves behind on its way through.
+  it('leaves ONE undo descriptor carrying the fields only it can restore', async () => {
+    okFetch();
+    const deps = fakeDeps();
+
+    await applyBookEvent(deps, input, { event: unlinked });
+
+    expect(deps.lastAction.current).toEqual({
+      kind: 'book',
+      bookingId: 'bk-new',
+      event: {
+        id: unlinked.id,
+        previous: { placeId: unlinked.placeId, category: unlinked.category },
+      },
+      maybeId: null,
+    });
+  });
+
+  // FAILS if a failed link leaves the booking behind — the half-applied conversion ADR-0136's
+  // Consequences names, where a booking exists that nothing points at.
+  it('deletes the booking when the link fails, rather than orphaning it', async () => {
+    vi.stubGlobal('fetch', vi.fn().mockResolvedValue(new Response(null, { status: 500 })));
+    const deps = fakeDeps();
+
+    const applied = await applyBookEvent(deps, input, { event: unlinked });
+
+    expect(applied).toBe(false);
+    expect(deps.bookings.deleteBooking).toHaveBeenCalledWith('bk-new', { deleteEvents: false });
+    expect(deps.actions.some((a) => a.type === TRIP_ACTION.UNDO)).toBe(true);
+    expect(deps.lastAction.current).toBeNull();
+  });
+
+  it('reports failure without touching the event when the booking itself fails', async () => {
+    const deps = fakeDeps();
+    deps.bookings.createBooking.mockRejectedValueOnce(new Error('nope'));
+
+    expect(await applyBookEvent(deps, input)).toBe(false);
+    expect(deps.actions).toEqual([]);
+    expect(deps.lastAction.current).toBeNull();
+  });
+
+  // ADR-0135 §5: the booked path consumes the originating idea too, because a booking puts
+  // something on the day exactly as scheduling does.
+  it('consumes the originating idea, and folds it into the same undo', async () => {
+    const calls = okFetch();
+    const deps = fakeDeps();
+
+    await applyBookEvent(
+      deps,
+      { ...input, event: { date: '2026-07-26' } },
+      {
+        maybeId: 'mb-skytree',
+      },
+    );
+
+    expect(calls.some((c) => c.url.includes('/maybe-items/mb-skytree/consume'))).toBe(true);
+    expect(deps.actions.some((a) => a.type === TRIP_ACTION.CONSUME_MAYBE_ITEM)).toBe(true);
+    expect(deps.lastAction.current).toMatchObject({ kind: 'book', maybeId: 'mb-skytree' });
+  });
+
+  describe('its undo', () => {
+    it('takes the linked event with the booking on a create', async () => {
+      okFetch();
+      const deps = fakeDeps();
+      deps.lastAction.current = {
+        kind: 'book',
+        bookingId: 'bk-new',
+        event: null,
+        maybeId: null,
+      };
+
+      await applyUndo(deps);
+
+      // The event only ever existed because of the booking, so it goes too.
+      expect(deps.bookings.deleteBooking).toHaveBeenCalledWith('bk-new', {
+        deleteEvents: true,
+        confirm: true,
+      });
+    });
+
+    // FAILS if the undo deletes the pre-existing event, or if it restores the place BEFORE
+    // deleting the booking — ADR-0048 would null it straight back out.
+    it('keeps the converted event and hands its place and category back, in that order', async () => {
+      const calls = okFetch();
+      const deps = fakeDeps();
+      let deletedAt = -1;
+      deps.bookings.deleteBooking.mockImplementation(async () => {
+        deletedAt = calls.length;
+      });
+      deps.lastAction.current = {
+        kind: 'book',
+        bookingId: 'bk-new',
+        event: { id: unlinked.id, previous: { placeId: 'pl-ramen', category: 'food' } },
+        maybeId: null,
+      };
+
+      await applyUndo(deps);
+
+      expect(deps.bookings.deleteBooking).toHaveBeenCalledWith('bk-new', {
+        deleteEvents: false,
+        confirm: true,
+      });
+      const patchIndex = calls.findIndex((c) => c.url.includes(`/events/${unlinked.id}`));
+      expect(patchIndex).toBeGreaterThanOrEqual(0);
+      // The booking is gone before the place comes back, or the server re-nulls it.
+      expect(deletedAt).toBeLessThanOrEqual(patchIndex);
+      // A converted event may be hard by now, so the restore has to carry confirm.
+      expect(calls[patchIndex].url).toContain('confirm=true');
+    });
+  });
+});
+
+describe('applyConsumeMaybeItem (a consume with no event of its own, ADR-0135 §5)', () => {
+  it('dispatches the standalone consume and persists it', async () => {
+    const calls: string[] = [];
+    vi.stubGlobal(
+      'fetch',
+      vi.fn((url: string) => {
+        calls.push(String(url));
+        return Promise.resolve(new Response(JSON.stringify(MAYBE_ITEMS[0]), { status: 200 }));
+      }),
+    );
+    const deps = fakeDeps();
+
+    await applyConsumeMaybeItem(deps, 'mb-skytree');
+
+    expect(deps.actions).toEqual([{ type: TRIP_ACTION.CONSUME_MAYBE_ITEM, maybeId: 'mb-skytree' }]);
+    expect(calls[0]).toContain('/maybe-items/mb-skytree/consume');
+  });
+
+  it('queues the consume when offline', async () => {
+    vi.stubGlobal('fetch', vi.fn());
+    vi.stubGlobal('navigator', { onLine: false });
+    const deps = fakeDeps();
+
+    await applyConsumeMaybeItem(deps, 'mb-skytree');
+
+    expect((await db.outbox.toArray()).map((e) => e.op)).toEqual([
       { verb: OUTBOX_VERB.CONSUME_MAYBE_ITEM, maybeItemId: 'mb-skytree' },
     ]);
   });

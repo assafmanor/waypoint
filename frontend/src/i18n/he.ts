@@ -1091,6 +1091,9 @@ export const t = {
     moveCrossesDay: 'העברה ליום אחר נעשית במצב תכנון',
     eventCreated: 'האירוע נוסף',
     eventUpdated: 'האירוע עודכן',
+    // A booked save is ONE action however many writes it took (ADR-0136 §3), so it gets one
+    // toast — and its undo reverses the booking, the link and the consume together.
+    eventBooked: 'האירוע נוסף, וגם ההזמנה',
     eventDeleted: 'האירוע נמחק',
     reordered: 'הסדר עודכן',
     scheduledDay: (title: string) => `${title} נוסף ליום`,
@@ -1175,6 +1178,11 @@ export const t = {
     // says so. `קוד אישור` is the app's existing name for it (`index.form.codeLabel`),
     // not the mockup's ad-hoc `מספר אישור`.
     bookedCodePlaceholder: 'קוד אישור · לא חובה',
+    // The one question the category cannot answer (§2): `EventCategory` has a single
+    // `transport` while `BookingType` has flight, train and other. An accessible name for
+    // the pill group only — the pills carry no visible label, since they say what they are
+    // and the statement below names the result.
+    bookedTypeLabel: 'סוג ההזמנה',
     // THE DERIVATION, STATED (§2) — never a second type picker; it moves with the
     // category pill, so the app is visibly understanding rather than quietly deciding.
     // Two tails because the two operations differ: a create can be completed later, a

@@ -8265,10 +8265,13 @@ input.wf-date-val:focus-visible {
          THREE pills, in the form's OWN `.choice-pill` grammar — the category selector above
          is the same control — so it costs no new idiom and no colour. `אחר` is there because
          the transport icon group is mostly bus, car, ferry and cable car, none of which is a
-         flight or a train (owner, session 185); it takes `BOOKING_TYPE_ICON.other` so the
-         booking looks in the Index exactly like the pill that made it. Note that `other` is
-         not a span type, so it is SOFT by `bookingDefaultKind` while flight and train are
-         hard — not special-cased, because commitment has one source (§4).
+         flight or a train (owner, session 185). Its glyph is `🚌`, not
+         `BOOKING_TYPE_ICON.other`'s `📄` (owner's call): all three pills answer "which
+         transport", so a document among two vehicles reads as a different kind of answer —
+         and the Index never shows that glyph here anyway, since a linked booking's row
+         borrows the EVENT's icon and only falls back to the type's. Note that `other` is not
+         a span type, so it is SOFT by `bookingDefaultKind` while flight and train are hard —
+         not special-cased, because commitment has one source (§4).
 
          And no `field-label`, for §1's reason: the pills say what they are, and the statement
          directly below names the result, so a label would be the third place one screen says
@@ -8861,7 +8864,7 @@ input.wf-date-val:focus-visible {
                 <div class="ef-btype" id="btype">
                   <button type="button" class="choice-pill" data-btype="flight"><span class="choice-card-ic" aria-hidden="true">✈️</span><span class="choice-card-lbl">טיסה</span></button>
                   <button type="button" class="choice-pill" data-btype="train"><span class="choice-card-ic" aria-hidden="true">🚄</span><span class="choice-card-lbl">רכבת</span></button>
-                  <button type="button" class="choice-pill" data-btype="other"><span class="choice-card-ic" aria-hidden="true">📄</span><span class="choice-card-lbl">אחר</span></button>
+                  <button type="button" class="choice-pill" data-btype="other"><span class="choice-card-ic" aria-hidden="true">🚌</span><span class="choice-card-lbl">אחר</span></button>
                 </div>
                 <input class="ef-code-input" id="codeinput" placeholder="קוד אישור · לא חובה" value="" />
                 <div class="ef-derived" id="derived">
@@ -9169,7 +9172,7 @@ input.wf-date-val:focus-visible {
         $$('[data-btype]').forEach((p) => p.classList.toggle('on', p.dataset.btype === btype));
         // The statement names whatever the pills settled on, so the choice and the sentence
         // can never disagree — there is still exactly ONE place the type is stated.
-        const TYPE = { flight: ['טיסה', '✈️'], train: ['רכבת', '🚄'], other: ['אחר', '📄'] };
+        const TYPE = { flight: ['טיסה', '✈️'], train: ['רכבת', '🚄'], other: ['אחר', '🚌'] };
         const [typeWord, typeIcon] = btype ? TYPE[btype] : [d.type, d.ic];
 
         $('#derived').hidden = !(booked && !linked);

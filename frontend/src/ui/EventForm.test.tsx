@@ -1,5 +1,5 @@
 // @vitest-environment jsdom
-import { afterEach, describe, it, expect, vi } from 'vitest';
+import { afterEach, beforeEach, describe, it, expect, vi } from 'vitest';
 import { cleanup, fireEvent, render, screen, within } from '@testing-library/react';
 import { wrapNav } from '../test/nav-harness';
 
@@ -31,18 +31,41 @@ const tripState = {
   },
   // The place field (PlacePicker) reads the snapshot + the place verbs.
   places: [] as unknown[],
+  // An already-linked event's statement reads its booking from here (ADR-0136 §3).
+  bookings: [] as unknown[],
   indexVerbs: { createPlace: vi.fn(), resolvePlace: vi.fn() },
 };
 vi.mock('../state/trip-state', () => ({ useTrip: () => tripState }));
 vi.mock('../state/auth-state', () => ({ useAuth: () => ({ me: { user: { id: 'u1' } } }) }));
-const verbs = { create: vi.fn(), update: vi.fn(), schedule: vi.fn() };
+const verbs = { create: vi.fn(), update: vi.fn(), schedule: vi.fn(), book: vi.fn() };
 vi.mock('../state/verbs', () => ({ useVerbs: () => verbs }));
+// The place field sends an errand to the Map (ADR-0134 §1); the form supplies the draft, so
+// this is where the hand-over blob is asserted.
+const startErrand = vi.fn();
+vi.mock('../state/map-scope-state', () => ({ useStartPlaceErrand: () => startErrand }));
 
 import { EventForm } from './EventForm';
+import { setSimulatedNow } from '../lib/useClock';
 import { t } from '../i18n/he';
 
+// PIN THE CLOCK (frontend/CLAUDE.md). Every fixture here carries a fixed date — the trip's
+// range, `activeDate`, the events — so a test reading the real system clock means something
+// different each day it runs and eventually passes for the wrong reason. Inside the trip's
+// 2026-07-19..25 window, on `activeDate`.
+const NOW = Date.parse('2026-07-20T09:00:00+09:00');
+
 describe('EventForm (folded into Modal, U-01)', () => {
-  afterEach(() => cleanup());
+  beforeEach(() => {
+    setSimulatedNow(NOW);
+    // Per test, not per file: `mock.calls[0]` otherwise reads whatever an earlier test in
+    // this describe happened to save, which is how four assertions here first "passed".
+    for (const fn of Object.values(verbs)) fn.mockClear();
+    startErrand.mockClear();
+  });
+  afterEach(() => {
+    setSimulatedNow(null);
+    cleanup();
+  });
 
   it('renders as a body-portalled dialog and moves focus into the card', () => {
     render(wrapNav(<EventForm onClose={() => {}} />));
@@ -205,6 +228,289 @@ describe('EventForm (folded into Modal, U-01)', () => {
       // Not null and not the derived zone — an untouched form must not freeze
       // today's derivation onto the event.
       expect(verbs.create.mock.calls[0][0].displayTimezone).toBeUndefined();
+    });
+  });
+
+  // ── `יש הזמנה`: an event can also be booked (ADR-0136) ─────────────────────
+  // Each test below is the reproduction of one specific way this can go wrong.
+  describe('the booked row (ADR-0136)', () => {
+    const bookedChip = () =>
+      screen.getByRole('button', { name: new RegExp(t.eventForm.bookedLabel) });
+    const typeGroup = () => screen.queryByRole('radiogroup', { name: t.eventForm.bookedTypeLabel });
+    const named = (title: string) =>
+      fireEvent.change(screen.getByPlaceholderText(t.eventForm.titlePlaceholder), {
+        target: { value: title },
+      });
+    const save = () => fireEvent.click(screen.getByText(t.eventForm.save));
+    const pickCategory = (category: keyof typeof t.iconPicker.categories) =>
+      fireEvent.click(
+        within(screen.getByRole('radiogroup', { name: t.eventForm.categoryLabel })).getByRole(
+          'radio',
+          { name: t.iconPicker.categories[category] },
+        ),
+      );
+
+    it('is off by default and reveals nothing, so someone who books nothing pays no field', () => {
+      render(wrapNav(<EventForm onClose={() => {}} />));
+      expect(bookedChip().getAttribute('aria-pressed')).toBe('false');
+      expect(document.querySelector('.wp-collapsible.on')).toBeNull();
+      expect(typeGroup()).toBeNull();
+    });
+
+    // FAILS if the save always creates an event: the booked branch must write the BOOKING,
+    // with its event seed, and produce the linked pair server-side.
+    it('saves a booking with its event seed instead of a bare event', () => {
+      render(wrapNav(<EventForm onClose={() => {}} />));
+      named('רמן נאגי');
+      fireEvent.click(bookedChip());
+      save();
+
+      expect(verbs.create).not.toHaveBeenCalled();
+      expect(verbs.book).toHaveBeenCalledTimes(1);
+      const [input, opts] = verbs.book.mock.calls[0];
+      expect(input).toMatchObject({ title: 'רמן נאגי', event: { date: '2026-07-20' } });
+      expect(opts).toMatchObject({ event: null });
+    });
+
+    it('sends the code only when one was typed, because the code creates nothing', () => {
+      render(wrapNav(<EventForm onClose={() => {}} />));
+      named('רמן נאגי');
+      fireEvent.click(bookedChip());
+      save();
+      expect(verbs.book.mock.calls[0][0].confirmationCode).toBeUndefined();
+
+      cleanup();
+      verbs.book.mockClear();
+      render(wrapNav(<EventForm onClose={() => {}} />));
+      named('רמן נאגי');
+      fireEvent.click(bookedChip());
+      fireEvent.change(screen.getByPlaceholderText(t.eventForm.bookedCodePlaceholder), {
+        target: { value: 'RN-4820' },
+      });
+      save();
+      expect(verbs.book.mock.calls[0][0].confirmationCode).toBe('RN-4820');
+    });
+
+    // FAILS if `bookedTouched` is ignored: the category's default must move the row only
+    // until a human has said something, and then never again.
+    describe('the category default', () => {
+      it('opens the row ON for lodging and transport, OFF for the rest', () => {
+        render(wrapNav(<EventForm onClose={() => {}} />));
+        pickCategory('lodging');
+        expect(bookedChip().getAttribute('aria-pressed')).toBe('true');
+        pickCategory('food');
+        expect(bookedChip().getAttribute('aria-pressed')).toBe('false');
+        pickCategory('transport');
+        expect(bookedChip().getAttribute('aria-pressed')).toBe('true');
+      });
+
+      it('stops moving once a human has touched the row', () => {
+        render(wrapNav(<EventForm onClose={() => {}} />));
+        // A human says "no, this hotel is not booked".
+        pickCategory('lodging');
+        fireEvent.click(bookedChip());
+        expect(bookedChip().getAttribute('aria-pressed')).toBe('false');
+        // Changing the category must NOT put it back on.
+        pickCategory('transport');
+        expect(bookedChip().getAttribute('aria-pressed')).toBe('false');
+      });
+    });
+
+    // ADR-0136 §2 + the session-185 amendment: `EventCategory` has one `transport` while
+    // `BookingType` has flight, train and other, so this is the one category that asks.
+    describe('the transport type, the one question the category cannot answer', () => {
+      it('is asked only for transport, and only with the row on', () => {
+        render(wrapNav(<EventForm onClose={() => {}} />));
+        pickCategory('food');
+        expect(typeGroup()).toBeNull();
+
+        pickCategory('transport'); // defaults the row ON
+        expect(typeGroup()).toBeTruthy();
+
+        fireEvent.click(bookedChip()); // …and off again
+        expect(bookedChip().getAttribute('aria-pressed')).toBe('false');
+        expect(document.querySelector('.wp-collapsible.on')).toBeNull();
+      });
+
+      it('defaults to flight and writes the picked type instead', () => {
+        render(wrapNav(<EventForm onClose={() => {}} />));
+        named('שינקנסן לקיוטו');
+        pickCategory('transport');
+        const group = typeGroup()!;
+        expect(
+          within(group)
+            .getByRole('radio', { name: t.index.bookingType.flight })
+            .getAttribute('aria-checked'),
+        ).toBe('true');
+
+        fireEvent.click(within(group).getByRole('radio', { name: t.index.bookingType.train }));
+        save();
+        expect(verbs.book.mock.calls[0][0].type).toBe('train');
+      });
+
+      it('states the derived type in words, and the statement follows the pick', () => {
+        render(wrapNav(<EventForm onClose={() => {}} />));
+        pickCategory('transport');
+        const derived = () => document.querySelector('.ef-derived')!.textContent!;
+        expect(derived()).toContain(t.eventForm.bookedDerived(t.index.bookingType.flight));
+
+        fireEvent.click(
+          within(typeGroup()!).getByRole('radio', { name: t.index.bookingType.other }),
+        );
+        expect(derived()).toContain(t.eventForm.bookedDerived(t.index.bookingType.other));
+      });
+
+      it('forgets an explicit type when the category changes, since that is a new question', () => {
+        render(wrapNav(<EventForm onClose={() => {}} />));
+        named('שינקנסן');
+        pickCategory('transport');
+        fireEvent.click(
+          within(typeGroup()!).getByRole('radio', { name: t.index.bookingType.train }),
+        );
+        pickCategory('food');
+        pickCategory('transport');
+        expect(
+          within(typeGroup()!)
+            .getByRole('radio', { name: t.index.bookingType.flight })
+            .getAttribute('aria-checked'),
+        ).toBe('true');
+      });
+
+      // `other` is not a span type, so `bookingDefaultKind` makes it soft while flight and
+      // train are hard. Deliberately not special-cased: commitment has one source (§4).
+      it('lets the kind follow the type, including other → soft', () => {
+        render(wrapNav(<EventForm onClose={() => {}} />));
+        pickCategory('transport');
+        const on = () => document.querySelector('.kind-toggle button.on')!.textContent;
+        expect(on()).toBe(t.eventForm.kindHard);
+
+        fireEvent.click(
+          within(typeGroup()!).getByRole('radio', { name: t.index.bookingType.other }),
+        );
+        expect(on()).toBe(t.eventForm.kindSoft);
+      });
+    });
+
+    // ADR-0136 §4 — the load-bearing one. Re-deriving the kind on a conversion would
+    // silently HARDEN a soft event the instant the row went on, which ADR-0011 forbids.
+    describe('converting an existing event', () => {
+      const soft = {
+        id: 'ev-1',
+        tripId: 't1',
+        date: '2026-07-20',
+        title: 'מקדש בקיוטו',
+        kind: 'soft',
+        category: 'sightseeing',
+        placeId: 'pl-1',
+        status: 'planned',
+        sortOrder: 1,
+        source: 'manual',
+        createdAt: '',
+        updatedAt: '',
+        updatedBy: 'u1',
+      };
+
+      // FAILS if the kind is re-derived from `bookingDefaultKind`: an `activity` booking is
+      // HARD, so this soft sightseeing event would silently harden on a toggle.
+      it('PRESERVES the kind rather than re-deriving it', () => {
+        render(wrapNav(<EventForm event={soft as never} onClose={() => {}} />));
+        expect(document.querySelector('.kind-toggle button.on')!.textContent).toBe(
+          t.eventForm.kindSoft,
+        );
+        fireEvent.click(bookedChip());
+        // Still soft, even though the derived `activity` booking's own default is hard.
+        expect(document.querySelector('.kind-toggle button.on')!.textContent).toBe(
+          t.eventForm.kindSoft,
+        );
+        save();
+        expect(verbs.book).toHaveBeenCalledTimes(1);
+      });
+
+      // FAILS if the conversion sends an `event` seed — that would create a SECOND event
+      // beside the one being converted.
+      it('sends no event seed, and hands the event to the verb for its bookingId patch', () => {
+        render(wrapNav(<EventForm event={soft as never} onClose={() => {}} />));
+        fireEvent.click(bookedChip());
+        save();
+        const [input, opts] = verbs.book.mock.calls[0];
+        expect(input.event).toBeUndefined();
+        expect(opts.event).toMatchObject({ id: 'ev-1' });
+        expect(verbs.update).not.toHaveBeenCalled();
+      });
+
+      it('says the place and category will move, which a create does not', () => {
+        render(wrapNav(<EventForm event={soft as never} onClose={() => {}} />));
+        fireEvent.click(bookedChip());
+        expect(document.querySelector('.ef-derived')!.textContent).toContain(
+          t.eventForm.bookedDerivedConvert(t.index.bookingType.activity),
+        );
+      });
+    });
+
+    // §3: on an already-linked event there is no control at all — a statement with a way in,
+    // which is also what makes the path one-way without needing a rule for it.
+    it('gives an already-linked event a statement instead of a toggle', () => {
+      tripState.bookings = [
+        { id: 'bk-1', title: 'רמן נאגי', type: 'restaurant', confirmationCode: 'RN-4820' },
+      ];
+      const linked = {
+        id: 'ev-2',
+        tripId: 't1',
+        date: '2026-07-20',
+        title: 'ארוחת ערב',
+        kind: 'soft',
+        bookingId: 'bk-1',
+        status: 'planned',
+        sortOrder: 1,
+        source: 'manual',
+        createdAt: '',
+        updatedAt: '',
+        updatedBy: 'u1',
+      };
+      const onOpenBooking = vi.fn();
+      render(
+        wrapNav(
+          <EventForm event={linked as never} onOpenBooking={onOpenBooking} onClose={() => {}} />,
+        ),
+      );
+
+      // No way to un-book from here: un-converting is a booking DELETE and belongs to the
+      // booking's own surface with the confirm it already has.
+      expect(
+        screen.queryByRole('button', { name: new RegExp(t.eventForm.bookedLabel) }),
+      ).toBeNull();
+      const statement = document.querySelector('.ef-linked') as HTMLButtonElement;
+      expect(statement.textContent).toContain('רמן נאגי');
+      expect(statement.textContent).toContain('RN-4820');
+      fireEvent.click(statement);
+      expect(onOpenBooking).toHaveBeenCalledWith(expect.objectContaining({ id: 'bk-1' }));
+      tripState.bookings = [];
+    });
+
+    // ADR-0134 §2: the draft is the errand's hand-over blob, and a field missed there is
+    // silently lost on a place errand — which for these fields means the save quietly does
+    // something different on the way back.
+    it('carries every booked field in the errand draft', () => {
+      render(wrapNav(<EventForm onClose={() => {}} />));
+      named('רמן נאגי');
+      pickCategory('transport');
+      fireEvent.click(within(typeGroup()!).getByRole('radio', { name: t.index.bookingType.train }));
+      fireEvent.change(screen.getByPlaceholderText(t.eventForm.bookedCodePlaceholder), {
+        target: { value: 'RN-4820' },
+      });
+      fireEvent.click(screen.getByRole('button', { name: t.placePicker.open }));
+
+      expect(startErrand).toHaveBeenCalledWith(
+        expect.objectContaining({
+          draft: expect.objectContaining({
+            booked: true,
+            bookedTouched: false,
+            code: 'RN-4820',
+            bookingType: 'train',
+            kindTouched: false,
+          }),
+        }),
+      );
     });
   });
 

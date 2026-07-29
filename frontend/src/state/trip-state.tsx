@@ -386,7 +386,13 @@ export interface SettingsVerbs {
  *  server (which creates the linked event atomically); the optimistic *event*
  *  side is the form's job — for now a seeded event arrives via the WS echo. */
 export interface IndexVerbs {
-  createBooking: (input: CreateBookingInput) => Promise<Booking | undefined>;
+  /** `silent` suppresses the saved/queued toast, for a caller that is doing more than one
+   *  write and owes the user ONE message about the whole thing (ADR-0136 §3's conversion).
+   *  The rollback and its error toast are unaffected — a failure always speaks. */
+  createBooking: (
+    input: CreateBookingInput,
+    opts?: { silent?: boolean },
+  ) => Promise<Booking | undefined>;
   updateBooking: (bookingId: string, input: UpdateBookingInput) => Promise<void>;
   deleteBooking: (
     bookingId: string,
@@ -920,7 +926,7 @@ function TripReady({
   const indexVerbs = useMemo<IndexVerbs>(() => {
     const stamp = () => new Date(getNow()).toISOString();
     return {
-      createBooking: async (input) => {
+      createBooking: async (input, opts = {}) => {
         const id = input.id ?? crypto.randomUUID();
         const withId = { ...input, id };
         const { event: seed, ...fields } = withId;
@@ -956,10 +962,11 @@ function TripReady({
               ),
             );
           }
-          toast(
-            canonical ? ICONS.done : ICONS.sync,
-            canonical ? t.index.toast.saved : t.index.toast.savedQueued,
-          );
+          if (!opts.silent)
+            toast(
+              canonical ? ICONS.done : ICONS.sync,
+              canonical ? t.index.toast.saved : t.index.toast.savedQueued,
+            );
           return canonical ?? optimistic;
         } catch (err) {
           setBookings(previous);
