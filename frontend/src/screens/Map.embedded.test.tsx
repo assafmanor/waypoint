@@ -34,6 +34,7 @@ const nextFrame = () =>
 
 const ACTIVE_DATE = '2026-07-20';
 const NEXT_DAY = '2026-07-21';
+const PREV_DAY = '2026-07-19';
 const NOON = Date.parse(`${ACTIVE_DATE}T12:00:00Z`);
 
 const place = (id: string, coords = true, at?: { lat: number; lng: number }): Place => ({
@@ -191,6 +192,7 @@ vi.mock('../ui/domain/MapPane', () => ({
       nowStop?: boolean;
       selected?: boolean;
       match?: boolean;
+      outcome?: 'done' | 'skipped';
     }[];
     return (
       <div data-pane>
@@ -248,6 +250,7 @@ vi.mock('../ui/domain/MapPane', () => ({
             data-amber={pin.nowStop ? 'now' : pin.nextStop ? 'next' : ''}
             data-selected={String(pin.selected ?? false)}
             data-match={String(pin.match ?? false)}
+            data-outcome={pin.outcome ?? ''}
             onClick={() => (props.onSelectPin as (id: string) => void)(pin.placeId)}
           >
             {pin.placeId}
@@ -809,6 +812,100 @@ describe('the embedded map’s shell (ADR-0121)', () => {
     expect(pin('hotel')!.getAttribute('data-order')).toBe('');
     // And it does not take a position from the day's real stops.
     expect(pin('lunch')!.getAttribute('data-order')).toBe('1');
+  });
+
+  // ── WHAT HAPPENED THERE (ADR-0137) ────────────────────────────────────────────
+  // The screen's job is the DERIVATION reaching the right pins; how each tier draws it is
+  // the pane's (`MapPane.test.tsx`). Both scopes, because they are different renders and
+  // only one of them has a ghost tier at all (frontend CLAUDE.md).
+  describe('the pin says what happened at a place', () => {
+    const settled = (id: string, status: TripEvent['status'], date = ACTIVE_DATE) =>
+      event({ id: `e-${id}`, placeId: id, startsAt: `${date}T09:00:00Z`, date, status });
+
+    beforeEach(() => {
+      tripPlaces = [
+        place('been', true, { lat: 35.6, lng: 139.7 }),
+        place('bailed', true, { lat: 35.61, lng: 139.71 }),
+        place('nobodysaid', true, { lat: 35.62, lng: 139.72 }),
+      ];
+    });
+
+    it('marks what a human settled and leaves the third state unmarked', () => {
+      tripEvents = [
+        settled('been', EVENT_STATUS.DONE),
+        settled('bailed', EVENT_STATUS.SKIPPED),
+        settled('nobodysaid', EVENT_STATUS.PLANNED),
+      ];
+      render(wrap(<MapView />));
+      expect(pin('been')!.getAttribute('data-outcome')).toBe('done');
+      expect(pin('bailed')!.getAttribute('data-outcome')).toBe('skipped');
+      // Passed, and nobody said what happened. The tier is the whole claim.
+      expect(pin('nobodysaid')!.getAttribute('data-outcome')).toBe('');
+      expect(pin('nobodysaid')!.getAttribute('data-tier')).toBe(PIN_TIER.behind);
+    });
+
+    // The population the report was actually about: a place pencilled for ANOTHER day,
+    // which is drawn because it is physically in view. Its mark answers the only question
+    // a ghost raises — do I still need to care about this?
+    it('a ghost carries its own day’s outcome, and an all-days pin has no ghost tier', () => {
+      tripEvents = [
+        event({
+          id: 'y',
+          placeId: 'been',
+          date: PREV_DAY,
+          startsAt: `${PREV_DAY}T13:00:00Z`,
+          status: EVENT_STATUS.DONE,
+        }),
+        event({
+          id: 'ny',
+          placeId: 'bailed',
+          date: PREV_DAY,
+          startsAt: `${PREV_DAY}T15:00:00Z`,
+          status: EVENT_STATUS.SKIPPED,
+        }),
+        // Ahead of us, so nothing has happened there to report.
+        event({
+          id: 'f',
+          placeId: 'nobodysaid',
+          date: NEXT_DAY,
+          startsAt: `${NEXT_DAY}T19:00:00Z`,
+        }),
+      ];
+      render(wrap(<MapView />));
+      expect(pin('been')!.getAttribute('data-tier')).toBe(PIN_TIER.ghost);
+      expect(pin('been')!.getAttribute('data-outcome')).toBe('done');
+      expect(pin('bailed')!.getAttribute('data-outcome')).toBe('skipped');
+      expect(pin('nobodysaid')!.getAttribute('data-outcome')).toBe('');
+
+      // All-days: every pin is in scope, so nothing is a ghost — and the marks survive the
+      // scope change, because the outcome is a stored fact and not a scope-relative one.
+      fireEvent.click(listButton(t.map.allDays));
+      expect(pin('been')!.getAttribute('data-tier')).toBe(PIN_TIER.behind);
+      expect(pin('been')!.getAttribute('data-outcome')).toBe('done');
+      expect(pin('bailed')!.getAttribute('data-outcome')).toBe('skipped');
+      expect(pin('nobodysaid')!.getAttribute('data-outcome')).toBe('');
+    });
+
+    // ADR-0130 §2 withdraws `behind` in Plan mode, and the mark goes with the tier rather
+    // than needing a rule of its own — a day you are arranging has no past to report on.
+    it('Plan mode marks no filled pin', () => {
+      currentMode = 'plan';
+      tripEvents = [settled('been', EVENT_STATUS.DONE)];
+      render(wrap(<MapView />));
+      expect(pin('been')!.getAttribute('data-tier')).not.toBe(PIN_TIER.behind);
+      expect(pin('been')!.getAttribute('data-outcome')).toBe('');
+    });
+
+    // The canvas and the list read ONE derivation (ADR-0110 §2), so they cannot disagree:
+    // whatever the pin marks, the row says in words.
+    it('agrees with the row it shares a derivation with', () => {
+      tripEvents = [settled('been', EVENT_STATUS.DONE), settled('bailed', EVENT_STATUS.SKIPPED)];
+      render(wrap(<MapView />));
+      expect(pin('been')!.getAttribute('data-outcome')).toBe('done');
+      expect(row('been')!.textContent).toContain(t.event.didThis);
+      expect(pin('bailed')!.getAttribute('data-outcome')).toBe('skipped');
+      expect(row('bailed')!.textContent).toContain(t.event.skipped);
+    });
   });
 
   // The whole reason the row grew a number (§6): with the split on screen, the two

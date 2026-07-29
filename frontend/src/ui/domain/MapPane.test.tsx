@@ -236,6 +236,82 @@ describe('MapPane — our markup, not PinElement (ADR-0121 §6)', () => {
     expect(document.querySelector('[aria-label="shelf"] .pin-g')).toBeTruthy();
   });
 
+  // ── WHAT HAPPENED THERE (ADR-0137) ────────────────────────────────────────────
+  // One fact, two homes, because the two tiers that can carry it have different room.
+  // The pane is where that split is visible, so it is where it is asserted.
+  it('a ghost draws the mark in the centre only IT has free', () => {
+    paint({
+      pins: [
+        pin({ placeId: 'been', tier: PIN_TIER.ghost, glyph: '', outcome: 'done' }),
+        pin({ placeId: 'bailed', tier: PIN_TIER.ghost, glyph: '', outcome: 'skipped' }),
+        pin({ placeId: 'nobodysaid', tier: PIN_TIER.ghost, glyph: '' }),
+      ],
+    });
+    const mark = (id: string) => document.querySelector(`[aria-label^="${id}"] .pin-g.outcome`);
+    // It reuses `.pin-g` — the glyph's own slot — so the counter-rotation, the size and
+    // both places that drop the glyph cover it with nothing re-stated.
+    expect(mark('been')?.className).toContain('done');
+    expect(mark('bailed')?.className).toContain('skipped');
+    // ADR-0117 §1's third state: no mark at all, and a hollow pin is the whole claim.
+    expect(mark('nobodysaid')).toBeNull();
+    // A ghost carries no shoulder badge at all — it has no number, and its mark went to
+    // the centre it alone has free.
+    expect(document.querySelector('.pin-n')).toBeNull();
+  });
+
+  it('a filled pin KEEPS its glyph, and the mark REPLACES its number', () => {
+    paint({
+      pins: [
+        pin({ placeId: 'been', tier: PIN_TIER.behind, glyph: '🍜', order: 1, outcome: 'done' }),
+        pin({
+          placeId: 'bailed',
+          tier: PIN_TIER.behind,
+          glyph: '🎟️',
+          order: 2,
+          outcome: 'skipped',
+        }),
+        pin({ placeId: 'nobodysaid', tier: PIN_TIER.behind, glyph: '🏛️', order: 3 }),
+      ],
+    });
+    const badge = (id: string) => document.querySelector(`[aria-label^="${id}"] .pin-n`);
+    // The glyph is what tells one grey pin from another, which is why it stays — trading
+    // it for the mark was the first pass's mistake (ADR-0137's own Alternatives).
+    expect(document.querySelector('[aria-label^="been"] .pin-g')?.textContent).toBe('🍜');
+    // ONE badge slot, and the outcome takes it: a settled stop's position in the day is
+    // spent (ADR-0137 §2). So the number is GONE rather than sitting beside a second badge.
+    expect(badge('been')?.className).toContain('done');
+    expect(badge('been')?.textContent).toBe('');
+    expect(badge('bailed')?.className).toContain('skipped');
+    // …and an unsettled passed pin keeps the number, because nothing has spent it.
+    expect(badge('nobodysaid')?.textContent).toBe('3');
+    expect(badge('nobodysaid')?.className).not.toContain('outcome');
+    // The centre variant is the ghost's alone.
+    expect(document.querySelector('.pin-g.outcome')).toBeNull();
+  });
+
+  // All-days numbers nothing at all (§6), so the badge exists there PURELY for the
+  // outcome — which is what stops the mark riding on the number's presence.
+  it('draws the badge for an outcome even where nothing is numbered', () => {
+    paint({
+      pins: [pin({ placeId: 'been', tier: PIN_TIER.behind, glyph: '🍜', outcome: 'done' })],
+    });
+    expect(document.querySelector('.pin-n.outcome')).toBeTruthy();
+  });
+
+  // A mark is invisible to a screen reader, and colour is invisible to plenty of eyes, so
+  // the fact has to exist in words too. Shape + colour + words, three carriers, one fact.
+  it('the outcome joins the accessible name in the app’s own words', () => {
+    paint({
+      pins: [
+        pin({ placeId: 'been', tier: PIN_TIER.behind, glyph: '🍜', outcome: 'done', label: 'רמן' }),
+        pin({ placeId: 'plain', tier: PIN_TIER.behind, glyph: '🍜', label: 'סושי' }),
+      ],
+    });
+    expect(document.querySelector(`[aria-label="רמן · ${t.event.didThis}"]`)).toBeTruthy();
+    // …and a pin with nothing to report says only its name, with no dangling separator.
+    expect(document.querySelector('[aria-label="סושי"]')).toBeTruthy();
+  });
+
   it('the number is on the pin, and a pin with no position in the day carries none', () => {
     paint({
       pins: [pin({ placeId: 'first', order: 1 }), pin({ placeId: 'idea', tier: PIN_TIER.idea })],

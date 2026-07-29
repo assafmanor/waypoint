@@ -20,13 +20,14 @@ import {
   MAP_RESULT_Z,
   PIN_TIER,
   pinZIndex,
+  type PinOutcome,
   type PinTier,
 } from '../../lib/map-pins';
 import { readMapBounds, useMapCamera } from '../../lib/useMapCamera';
 import type { LatLng, MapBounds } from '../../lib/map-camera';
 import type { MapsConfig } from '../../lib/map-config';
 import { MAP_CARD_RESERVE_H, MAP_CONNECTOR, MAP_ZOOM, type PinHue } from '../../constants';
-import { Icon } from '../Icon';
+import { Icon, type IconName } from '../Icon';
 import { t } from '../../i18n/he';
 import './map-pane.css';
 
@@ -50,9 +51,10 @@ const EMPTY_RESULTS: readonly MapResultPin[] = [];
  *  the pair in one selector instead of two.
  *
  *  One name to read carefully: this `skipped` is the CLOCK's tier, and its row
- *  counterpart is `.place.behind`. A row's own `.place.skipped` is the narrower
- *  claim — a human said this did not happen (ADR-0117 §4) — which the canvas does
- *  not draw, since every behind-you pin looks the same whatever closed it.
+ *  counterpart is `.place.behind`. A row's own `.place.skipped` is the narrower claim —
+ *  a human said this did not happen (ADR-0117 §4) — and the canvas draws THAT as a mark
+ *  in the pin's body rather than as a second paint (`PIN_OUTCOME_ICON` below), so the
+ *  tier stays one treatment and the outcome stays one axis.
  *
  *  **The PAINT lives here and the RATIO does not** (ADR-0131 §4). `aside` used to ride
  *  along in these strings, which was right while the only reason to be subordinate was
@@ -70,6 +72,42 @@ const PIN_TIER_PAINT: Record<PinTier, string> = {
   [PIN_TIER.ghost]: 'ghost',
 };
 
+/** ── WHAT HAPPENED HERE (ADR-0137, keeping ADR-0117 §1's promise on the canvas) ──────
+ *  One fact, drawn in **two places**, because the two tiers that can carry it have
+ *  different room — and giving each the space it has is what stops either one paying for
+ *  the mark:
+ *
+ *  - **A ghost takes it in the CENTRE.** A ghost is hollow by design (no fill, no glyph,
+ *    no number, because nothing of this day is in it), so its middle is empty and the mark
+ *    costs it nothing. It also gets the biggest mark on the ladder, which the smallest pin
+ *    on the ladder needs. Drawn as a coloured STROKE so the ghost stays an outline.
+ *  - **A filled pin takes it on the SHOULDER, in the number's own slot**, and **keeps its
+ *    category glyph** — that glyph is how you tell one grey pin from another, which is
+ *    exactly what the first pass got wrong by trading it away. The number is what gives
+ *    way instead (ADR-0137 §2): a settled stop's position in the day is spent, since you
+ *    are no longer going to it in any order, and one badge reads cleaner than two.
+ *
+ *  **Green and red, and this is on-budget rather than an exception.** An outcome is a
+ *  status, which is what `--ok`/`--miss` are reserved for (ADR-0028 / rule 4), and it is
+ *  what the row's own tags already use — so the two halves of the split now agree on the
+ *  colour as well as the words. The first pass claimed colour was impossible here, but
+ *  that was only true of ITS placement: the `saturate(.3)` that flattens green and red to
+ *  one olive lives on `.pin-b`, and neither of these marks is inside it (a ghost has no
+ *  filter at all, and the shoulder badge is `.pin-b`'s sibling).
+ *
+ *  Colour is **additive, never the carrier**: ✓ and ✕ differ in shape for anyone who
+ *  cannot separate the hues, and `PIN_OUTCOME_LABEL` puts it in words for anyone who
+ *  cannot see the pin. */
+const PIN_OUTCOME_ICON: Record<PinOutcome, IconName> = { done: 'check', skipped: 'skip' };
+
+/** …and the same fact in words, for the pin's accessible name. A mark is invisible to a
+ *  screen reader, so the one surface that answers in shapes has to answer in the app's own
+ *  words too — the day view's `היינו`/`דילגנו`, which is what the row shows. */
+const PIN_OUTCOME_LABEL: Record<PinOutcome, string> = {
+  done: t.event.didThis,
+  skipped: t.event.skipped,
+};
+
 /** One pin, entirely in primitives. No `PlaceUsage`, no `Place`, no state — which
  *  is what lets a clock tick diff to nothing (§6). */
 export interface MapPin {
@@ -80,6 +118,11 @@ export interface MapPin {
   /** The category glyph. A ghost drops it (no fill to sit on), so it may be ''. */
   glyph: string;
   tier: PinTier;
+  /** What a human said happened here, on the two tiers that can have an outcome at all
+   *  (`pinOutcome`). A ghost draws it in the empty centre only it has; a filled pin draws
+   *  it in its shoulder badge, where it replaces the number — see `PIN_OUTCOME_ICON`.
+   *  Absent is ADR-0117 §1's third state, and the commonest one: nobody settled it. */
+  outcome?: PinOutcome;
   /** The subordinate SIZE both out-of-scope populations take (ADR-0130 §3's ratio).
    *  Normally `isAsidePin(tier)`, but a live query withdraws it (ADR-0131 §4): search
    *  is scope-blind, so the day scope is not what chose the set and a match must not be
@@ -365,33 +408,71 @@ const PinMarker = memo(function PinMarker({
   ]
     .filter(Boolean)
     .join(' ');
+  // The mark is silent, so the outcome joins the NAME — `שם · היינו`, the app's own
+  // separator. Built here rather than folded into the screen's `label` so the words and
+  // the shape they stand in for are written in one place.
+  const name = pin.outcome ? `${pin.label} · ${PIN_OUTCOME_LABEL[pin.outcome]}` : pin.label;
+  // WHERE THE ONE MARK GOES, decided once. Two independent conditions is how the first
+  // pass drew a ghost's outcome twice — in its centre AND on a shoulder it does not have a
+  // number for. Splitting the single `outcome` into two named slots makes the exclusivity
+  // a fact of the markup rather than an invariant two JSX guards have to agree on.
+  const hasGlyph = pin.glyph !== '';
+  const centreMark = hasGlyph ? undefined : pin.outcome;
+  const badgeMark = hasGlyph ? pin.outcome : undefined;
   return (
     <AdvancedMarker
       position={{ lat: pin.lat, lng: pin.lng }}
       zIndex={pinZIndex(pin)}
-      title={pin.label}
+      title={name}
       onClick={() => onSelect(pin.placeId)}
     >
-      <div className={cls} role="button" aria-label={pin.label}>
+      <div className={cls} role="button" aria-label={name}>
         {/* The tag belongs to the amber cue, so it is rendered only with it —
             un-scoping its styles would still leave the text in the DOM. The two
             cues cannot co-occur on one pin, so this is one slot, not two. */}
         {pin.nowStop && <span className="pin-tag">{t.map.happeningNow}</span>}
         {pin.nextStop && <span className="pin-tag">{t.map.nextStop}</span>}
+        {/* THE BODY holds whichever of the two the pin has: a glyph if it has one, or the
+            outcome mark in the empty centre only a ghost offers. It stays `.pin-g` in both
+            cases so the glyph's whole existing treatment — the counter-rotation, the
+            size-off-`--pin-u`, and being dropped at the dot tier and under the errand's
+            demotion — covers the mark with nothing re-stated. The two are exclusive by
+            construction rather than by a rule: a ghost carries no glyph. */}
         <span className="pin-b">
-          {pin.glyph && (
+          {hasGlyph && (
             <span className="pin-g" aria-hidden="true">
               {pin.glyph}
             </span>
           )}
+          {centreMark && (
+            <span className={`pin-g outcome ${centreMark}`} aria-hidden="true">
+              <Icon name={PIN_OUTCOME_ICON[centreMark]} />
+            </span>
+          )}
         </span>
-        {/* The order, as a number — a line between two stops is symmetric and
-            cannot say which end you reach first (§6/§10). Mono, like every other
-            numeral in the app; an LTR island, like every other one (ADR-0118). */}
-        {pin.order != null && (
-          <span className="pin-n" dir="auto">
-            {pin.order}
+        {/* ONE SHOULDER BADGE, holding whichever of the two the pin has to say.
+            Normally the order, as a number — a line between two stops is symmetric and
+            cannot say which end you reach first (§6/§10). Mono, like every other numeral
+            in the app; an LTR island, like every other one (ADR-0118).
+
+            **An outcome REPLACES the number** (ADR-0137 §2, owner's call): once a human
+            has settled a stop, its position in the day is spent — you are not going to it
+            in any order — and one badge per shoulder is visibly cleaner than two. So this
+            is a single slot rather than a pair, which is also why the outcome needs no
+            geometry of its own.
+
+            A ghost never reaches here: its mark went in the centre, and it carries no
+            number either. */}
+        {badgeMark ? (
+          <span className={`pin-n outcome ${badgeMark}`} aria-hidden="true">
+            <Icon name={PIN_OUTCOME_ICON[badgeMark]} />
           </span>
+        ) : (
+          pin.order != null && (
+            <span className="pin-n" dir="auto">
+              {pin.order}
+            </span>
+          )
         )}
       </div>
     </AdvancedMarker>

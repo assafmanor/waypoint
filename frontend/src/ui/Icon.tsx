@@ -8,7 +8,7 @@
 // site styles the icon by styling its container — same as the glyph it replaces.
 // `dir` rotates the icon (canonical orientation points down / is upright).
 
-type IconName =
+export type IconName =
   | 'caret'
   | 'undo'
   | 'reset'
@@ -21,6 +21,8 @@ type IconName =
   | 'pin'
   | 'external'
   | 'camera'
+  | 'check'
+  | 'skip'
   | 'cloud-check'
   | 'cloud-up'
   | 'cloud-bang';
@@ -75,6 +77,21 @@ const PATHS: Record<IconName, string> = {
   // so the retrofit has something to point at.
   camera:
     'M4 8h2.5l1.4-2.2a1 1 0 0 1 .84-.46h6.52a1 1 0 0 1 .84.46L17.5 8H20a1 1 0 0 1 1 1v8a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V9a1 1 0 0 1 1-1Z M15 13.2a3 3 0 1 1-6 0 3 3 0 0 1 6 0',
+  // WHAT HAPPENED AT A PLACE, on the map's pins (ADR-0137, drawn on the canvas from
+  // session 187). The pair is deliberately the two most different silhouettes available:
+  // a pin's mark is ~15px on the shipped canvas, and telling היינו from דילגנו at a
+  // glance is the whole feature. Shape carries the state INDEPENDENTLY of colour — the
+  // same rule the cloud family below is built on. Here the marks do also carry `--ok`/
+  // `--miss` (an outcome is a status, ADR-0028), so the shape is the redundant channel
+  // rather than the only one: it is what survives the tier's own quieting, and what a
+  // reader who cannot separate the two hues reads instead.
+  //
+  // `check` is not `cloud-check`'s mark: that one is inset inside the cloud's body, this
+  // one is centred in the whole box. `skip` is not `close` either, and the distinction is
+  // load-bearing — `close` is a control that dismisses something, this is a statement
+  // about a place. Same family of shape, two different jobs, so two names.
+  check: 'M5 12.6l4.7 4.7L19 7.4',
+  skip: 'M7.5 7.5l9 9 M16.5 7.5l-9 9',
   // Per-entity sync glyphs — a cloud + a distinct inner mark per state (ADR-0091).
   'cloud-check': CLOUD + ' M9.3 13.6l1.9 1.9 3.6-3.8',
   'cloud-up': CLOUD + ' M11.8 16.6v-4.6 M9.6 14l2.2-2.2 2.2 2.2',
