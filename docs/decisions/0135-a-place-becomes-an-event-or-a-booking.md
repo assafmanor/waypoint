@@ -1,15 +1,15 @@
-# 0135 — A place becomes an event or a booking, and **the confirmation code decides which**
+# 0135 — A place becomes an event or a booking: one action on the way-in block
 
-**Status:** Accepted — designed 2026-07-29 (session 181), after the owner rejected the session's first design in place. **Design only; nothing below is built.** The mockup renders the shipped stylesheets in a headless browser and every number in §8 is read from its live DOM, but no canvas over real tiles has been seen (ADR-0121 §13) and nothing here claims otherwise.
+**Status:** Accepted — designed 2026-07-29 (session 181), after the owner rejected the session's first design in place; widened 2026-07-30 (session 182); **narrowed 2026-07-30 (session 183)**, when its §2/§4/§4a/§6 were extracted to [ADR-0136](0136-an-event-can-also-be-booked.md) because they are not map decisions (owner: _"independently from the maps, events in general"_). What is left is the map's half. **Design only; nothing below is built.** The mockup renders the shipped stylesheets in a headless browser and every number in §8 is read from its live DOM, but no canvas over real tiles has been seen (ADR-0121 §13) and nothing here claims otherwise.
 **Date:** 2026-07-29
 
 **Extends** [0121](0121-embedded-map-phase-6-design.md) **§8** — the selection-revealed way-in block, which lists one entry per reference a place **already has**, gains a single primary action (§1). §8's own rule (a row tap normalises the sheet to `half`) is untouched.
 **Extends** [0134](0134-the-map-is-where-a-forms-place-comes-from.md) **§9** — its fourth target is the precedent this reads from, and §3 says why the errand's _channel_ is deliberately not reused. §3 of that ADR ("only one place is being chosen") is what makes §7 absent-during-an-errand.
-**Amends** [0011](0011-hard-soft-event-model.md) in **application, not in substance** — its "hard = real commitment (flight, **reservation code**)" stops being a description a human applies by hand and becomes the thing the app reads (§2). The primitive is unchanged.
+**Needs** [0136](0136-an-event-can-also-be-booked.md) — what the form does once it opens with a place. Designed here, extracted there; the two build independently (§2).
 **Applies** [0027](0027-soft-item-lifecycle-shelf-slip.md) **§2** and [0116](0116-day-aware-shelf-and-idea-target-day.md) **§1** unchanged: consume-on-schedule is reached from a new surface, not redefined (§5), with one case named where it deliberately does not fire.
-**Relates** [0112](0112-place-in-trip-is-referenced-not-cached.md) (why a create is what puts a place in the trip), [0115](0115-plan-mode-place-research.md) §3 (`＋ אולי`, the only path today, and the control this reuses), [0047](0047-booking-event-linkage-and-notes.md)/[0093](0093-offline-booking-linked-event-coherence.md) via `bookingEventFields` (the booking→event pair §2 produces), [0098](0098-index-landing-and-dedicated-screens.md) (the `Collapsible` primitive §4 reuses), [0028](0028-plan-violet-color-budget-dark-ready.md) (why the control is neutral), [0113](0113-trip-destination-place-and-primary-timezone.md) (the "sensibly defaulted, trivially fixable" posture §2's derivation takes), [0017](0017-mobile-first-device-targets.md) (the 360×640 screen §8 measures against), [0090](0090-back-is-computed-from-nav-state.md) (which this needs **nothing** from, and that is the finding).
+**Relates** [0112](0112-place-in-trip-is-referenced-not-cached.md) (why a create is what puts a place in the trip), [0115](0115-plan-mode-place-research.md) §3 (`＋ אולי`, the only path today, and the control this reuses), [0028](0028-plan-violet-color-budget-dark-ready.md) (why the control is neutral), [0017](0017-mobile-first-device-targets.md) (the 360×640 screen §8 measures against), [0090](0090-back-is-computed-from-nav-state.md) (which this needs **nothing** from, and that is the finding).
 
-Mockup: [`mockups/map-place-becomes-v1.html`](../../mockups/map-place-becomes-v1.html) — the block in three states (shipped, the rejected menu, the proposal), the form drawn over the map in the shipped `modal`/`field`/`collapsible`/`place-picker` css with the code line open and shut, and a panel measuring all three block states from the live DOM at three screens and two stops. Its entry in [`design/mockups.md`](../design/mockups.md) carries the detail.
+Mockup: [`mockups/map-place-becomes-v1.html`](../../mockups/map-place-becomes-v1.html) — the way-in block in three states (shipped, the rejected menu, the proposal), with a panel measuring all three from the live DOM at three screens and two stops. **It draws the map and nothing else since session 184**: the form and outcome frames left for [`event-also-booked-v1.html`](../../mockups/event-also-booked-v1.html) with the decision they belong to. Its entry in [`design/mockups.md`](../design/mockups.md) carries the detail.
 
 ## Context
 
@@ -42,32 +42,15 @@ It is `.map-addmaybe` — the pill the tab already uses for _make something out 
 
 No group header, and no second control: ADR-0134's session-164 correction ("the two corpora are not two sections") applies to a two-item menu with the same force.
 
-### 2. The code decides the entity, and it is the app's own definition of commitment
+### 2. What the form does with the place is **not this ADR's decision** — see ADR-0136
 
-**`EventForm` gains one collapsed line: `יש קוד הזמנה?`.**
+The action opens `EventForm` pre-filled with the place. What that form then does — a `יש הזמנה` row that **also** creates a `Booking`, the type derived from the form's category, the kind rules, and converting an existing event — was designed here in sessions 181–182 and **extracted to [ADR-0136](0136-an-event-can-also-be-booked.md)** in session 183, on the owner's call: _"independently from the maps, events in general."_ Its trigger was then replaced in session 184: it is not a confirmation code, because `confirmationCode` is nullable and a table booked by phone has no number.
 
-- **Empty** → the save creates a **soft event**, exactly as it does today.
-- **Filled** → the save creates a **`Booking`** (and its linked event, through the shipped `bookingEventFields`) instead of a bare event.
+It is not a map decision and it is **independently buildable**. This ADR needs exactly one thing from it: that opening the form with a place is enough, because the form knows how to become either kind of thing. Read 0136 before touching the form; read this one before touching the map.
 
-The traveller answers a fact about the world — _do I have a confirmation number?_ — and the app picks the entity. That is not a metaphor for ADR-0011, it is ADR-0011's own sentence: _"hard = real commitment (flight, **reservation code**)."_ The definition already existed; only nothing had ever read it.
+**What stays here** is the map's half: where the action lives (§1), why it is not the errand backwards (§3), what happens to the originating idea (§5), when it is absent (§7), and what the block costs (§8).
 
-**The booking's type is derived from the form's own category field** — a new `CATEGORY_TO_BOOKING_TYPE` in `@waypoint/shared`, the inverse of the shipped `BOOKING_TYPE_TO_CATEGORY`, `as const satisfies Record<EventCategory, BookingType>`:
-
-| Category                              | Booking type |
-| ------------------------------------- | ------------ |
-| `lodging`                             | `hotel`      |
-| `food`                                | `restaurant` |
-| `transport`                           | `flight`     |
-| `sightseeing` · `nature` · `activity` | `activity`   |
-| `shopping` · `services` · `other`     | `other`      |
-
-**The form's category, not the place's, and that is the better half of this section.** The category selector is already in the form, already leads it (ADR-0109 §11: choosing it defaults the badge glyph), and already defaults from the picked place through the icon's group (ADR-0038). So the derivation reads the signal a human has already been given a control over — which means **the fix for a wrong guess is a control the form already has**, not a second picker and not a trip to the booking. A train station opens on `transport` and guesses `flight`; a train is one tap on the category the form was showing anyway.
-
-**And the derivation is _stated_, never silent.** With a code filled, a quiet line under it names what will be created — `תיווצר הזמנה · מסעדה, ואפשר להשלים אותה אחר כך` — and it **moves with the category pill**, so the app is visibly understanding rather than quietly deciding. A statement, not a second type picker: a picker is precisely what this section removes, and the "sensibly defaulted, trivially fixable, never a forced choice" posture is ADR-0113's and ADR-0116 §1's.
-
-**A manually chosen category survives into the booking's linked event.** `bookingEventFields` already writes `seed.category ?? BOOKING_TYPE_TO_CATEGORY[booking.type]`, so the category a human corrected is not overwritten by the type's own default on the way through.
-
-**This is not a second way to author a booking.** `BookingSheet` remains where a booking is _written_ (code, room, wifi, notes, documents, spans, and a transport booking's two places). This is a **fast path** that produces a minimal booking, which is then one tap away from the row you were standing on — it appears in that row's own way-in block as a `הזמנה` reference the moment it saves.
+**§4 and §4a left with it, and the numbering keeps the hole on purpose** — this ADR is cited by section from `decisions/README.md`, the router and the mockup catalog, and renumbering to close a gap would rot every one of those references to save a reader one moment of surprise.
 
 ### 3. This is **not** the errand run backwards, and the difference is what the errand is for
 
@@ -81,14 +64,6 @@ The tempting reading is "ADR-0134 hands a place to a form; this hands a form to 
 
 **What the errand _is_ owed: one hook call.** The tab now hosts `EventForm` too, so it must call `usePlaceErrandReturn<EventFormDraft>('event', 'map', …)` — session 165's rule, _a host that renders a form owes it a way back_. Without it, a place errand started from the form's own picker (the field keeps its `onFind`, so the place stays changeable) returns to a closed form with everything typed gone. One line in a mechanism already generalised for exactly this, and the `hostTab` filter already handles a `returnTo` pointing at the Map.
 
-### 4. What the form's new line costs, and where it lands
-
-- **It is a `Collapsible`** (`ui/primitives/Collapsible`, ADR-0098's reuse audit generalised it), closed by default, rendering as a **link-weight line rather than a field**. For most events there is no code, and a labelled empty box implies there should be.
-- **It is app-wide, deliberately** (owner's call this session). `EventForm` is hosted by `DayView` and `PlanDay` as well as the Map, and the gap it closes is the same everywhere: today you must decide "event or booking" _before you start typing_, on every authoring surface. A map-local sheet would have been a third authoring surface beside `EventForm` and `BookingSheet` — the parallel copy root rule 8 and ADRs 0078/0079/0094/0095 exist to prevent.
-- **It appears on CREATE only.** Typing a code into an existing event is a **conversion** — create the booking, link the event, move its fields, decide what happens to the ones a booking does not have — which is a different operation with its own failure modes, not a field. Scoping the line to create keeps this phase's app-wide change to the one thing it claims. Converting later is a decision that has not been taken.
-- **Everything else in the form is untouched, and that includes the two controls this design was first drawn without.** The category `ChoiceGrid` and the `IconPicker` stay exactly where they are, in the shipped order (category leads, then icon + title), and they are chosen exactly as they are today. The mockup draws the form **in full** for that reason: the first pass drew four fields, which made the new line look like a far bigger share of the form than it is.
-- **The place arrives pre-filled** through one new field on `defaults` (`placeId`); `BookingSheet`'s `seed` is untouched by this design, since the fast path no longer opens it. `PlacePicker` renders its shipped `filled` state and keeps `onFind`.
-
 ### 5. The originating idea is consumed — through the path that already consumes it
 
 If the place has **exactly one** idea referencing it, the action opens the sheet the shelf opens (`EventForm maybeItem={idea}`) and the save runs `verbs.schedule`: the event is created and the `MaybeItem` consumed, in one action. Not a new decision — ADR-0027 §2's, reached from a new surface.
@@ -99,14 +74,9 @@ If the place has **exactly one** idea referencing it, the action opens the sheet
 
 **With more than one idea, nothing is consumed, and that is deliberate.** Two ideas on one place are two intentions ("a meal there", "drinks there"), and scheduling one must not eat the other. The block itself cannot tell them apart — a shipped idea entry reads `על המדף · <day>` and nothing else — so the screen does not guess: the create is fresh, and the ideas stay on the shelf where scheduling one names it.
 
-### 6. Hard vs. soft is **derived**, and never asked at creation
+### 6. Hard vs. soft is never asked here
 
-- **No code** → a soft event (`EventForm`'s existing `event?.kind ?? EVENT_KIND.SOFT`, the same default `buildScheduleEvent` uses). A place you saw on a map and are putting on a day is precisely not a commitment.
-- **A code** → the booking's shipped per-type default, `bookingDefaultKind`: `hard` for flight, train, hotel and activity; `soft` for restaurant and other.
-
-**So "the code decides the entity" is not "the code decides the kind",** and that distinction is load-bearing: a dinner reservation stays **soft**, exactly as authoring it in `BookingSheet` produces today. Deriving `hard` from the mere presence of a code would have contradicted a shipped default and made every restaurant ripple-immune.
-
-The kind toggle stays in the form and follows the derivation while untouched, using the same `kindTouched` guard `BookingSheet` already carries — so a human choice is never overwritten by a later derivation.
+Withdrawn to [ADR-0136 §4](0136-an-event-can-also-be-booked.md), which owns the whole rule (derived at create, **preserved** on conversion). What matters on this surface is only the half that was always true: **the map does not ask.** Asking here would create a second place that decides commitment, which root rules 1 and 8 both refuse, and the control is one tap away inside the form either way.
 
 ### 7. Absent while an errand is live
 
@@ -124,15 +94,7 @@ Read from the mockup's live DOM. A plain row is **73px**; the sheet's scroller i
 
 One control instead of two costs **+56px instead of +92px** — under a plain row rather than over it — and at 390 `half` it is the difference between the block fitting with room and the block being the sheet.
 
-**The form's own length is the other half of the cost, and it is the app-wide half.** Measured on the real `.modal-form` (never the `.modal-card`, which is height-capped and scrolls — reading it returned the same number for the closed line and the open one, a measurement that stops moving when the thing it measures grows):
-
-| `EventForm` content                   | Height                  |
-| ------------------------------------- | ----------------------- |
-| As shipped                            | **482px**               |
-| With the line, closed                 | **560px** (+78px, ~16%) |
-| With a code and the derived statement | **617px** (+135px)      |
-
-+78px closed is what **every** host of this form pays, the day view and the Plan builder included, for a line most events will never open. That is the price of the app-wide call, stated rather than buried: it buys one authoring model instead of two, and it is the number a later "can this be tighter" change has to beat.
+**The form's own length is the other half of the cost, and it is not this ADR's** — it is paid on every screen that authors an event, so it is measured in [ADR-0136 §5](0136-an-event-can-also-be-booked.md) (482px → 560px with the line closed).
 
 **And the block already overflows the `half` sheet on a 360 before this phase adds anything:** a place with two references is 186px against a 153px scroller, as shipped. So the create does not introduce the condition; it makes it ordinary. **One thing therefore ships with it that the shipped code never needed: selecting a row scrolls it into view** — `scrollIntoView({ block: 'nearest' })` inside the sheet's own scroller. Without it the footer can open entirely below the fold on the screen ADR-0017 names as the small target, and the action would be the half you cannot see. It is a fix for something already true, arriving with the change that makes it common.
 
@@ -148,13 +110,9 @@ One control instead of two costs **+56px instead of +92px** — under a plain ro
 
 **Two entries, `＋ אירוע` and `＋ הזמנה`, in the block.** This session's first design; rejected by the owner and measured against in §8. It looks like a command menu because it is one, and it asks the schema's question.
 
-**A map-local "create" sheet** carrying day, time and code. Contained blast radius, and a third authoring surface beside `EventForm` and `BookingSheet`. Rejected under root rule 8; the owner chose the app-wide line instead.
+**A map-local "create" sheet** carrying day, time and code (the shape ADR-0136 would have taken if it had stayed here). Contained blast radius, and a third authoring surface beside `EventForm` and `BookingSheet`. Rejected under root rule 8; the owner chose the app-wide line instead.
 
 **Event only; no code line, booking stays out of the map.** The smallest change and the cleanest screen. Rejected because it drops the backlog line's second half ("attach the reservation I just got") and leaves the schema question merely moved rather than retired.
-
-**Derive the entity from the place's category** (a hotel place → a booking, a temple → an event). Right at the edges and useless in the middle: a restaurant is the most common case and is genuinely either. Category survives as the **type** default (§2), where it is a good guess, and is not asked to decide the entity, where it is a bad one.
-
-**A code makes it hard.** Rejected in §6: it contradicts `bookingDefaultKind` and would make every dinner reservation ripple-immune.
 
 **Reuse the errand channel, backwards.** §3: it would navigate away from the map to author something about a place you are standing on, and pay the draft machinery's whole cost to protect a form nobody has typed into yet.
 
@@ -162,21 +120,13 @@ One control instead of two costs **+56px instead of +92px** — under a plain ro
 
 ## Consequences
 
-- **`EventForm` can now produce a `Booking`.** That is a real widening of its contract, on every surface that hosts it, and it is the owner's explicit call. The branch lives at save; the fields above it are unchanged.
 - **The Map tab becomes a host of `EventForm`**, and therefore owes it `usePlaceErrandReturn<EventFormDraft>('event', 'map', …)`. Forgetting it reintroduces session 165's exact failure on a fifth host.
 - **A standalone consume gains a dispatch.** Today `consumed` flips only under `TRIP_ACTION.SCHEDULE`; the code path needs the same flip without an event of its own, with matching undo.
-- **`CATEGORY_TO_BOOKING_TYPE` is a new shared constant**, and it is the inverse of one that already exists. The two must be edited together when `BookingType` grows — the `satisfies Record<…>` on both is what makes that a compile error rather than a silent gap.
-- **A guessed booking type reaches the data.** The statement makes it visible and the booking's own form makes it correctable, but a transport place will produce a `flight` that someone has to fix. That is the accepted cost of not asking.
 - **`scrollIntoView` becomes load-bearing** on the selected row (§8). A future change adding a second footer control has a table to answer.
 - **"Exactly one idea" is a branch in meaning, not just in data** (§5), and it is the kind of rule that gets simplified away by someone reading one half. Its reason is stated so that edit has to argue with it.
 
 ## The device pass, and what it owns
 
-- **Whether `יש קוד הזמנה?` is discoverable enough** for someone who _does_ have a code. It is deliberately quiet, and quiet can mean invisible.
-- **Whether +78px of permanently-visible form is worth it on the day view and the builder**, where the place usually came from a picker rather than from the map and the code is rarer still. If it is not, the line moves behind the create-flow entry point rather than living in the form.
-- **Whether the statement moving under the category pill reads as the app being clever or as the app being unstable.** It is the one piece of live derivation on any authoring surface.
-- **Whether `תיווצר הזמנה · מסעדה` reads as an outcome or as a warning**, and whether not being able to correct the type right there is frustrating rather than calm.
 - **Whether the pill reads as the row's primary action** at 44px, against a reference row above it.
 - **Whether 198px at `half` on a 360 is usable** even with the scroll-into-view — or whether a row tap on a small screen should drop to `full` rather than `half` when the block will overflow.
 - **Whether a booking consuming an idea surprises anyone.** It is the same duplication argument as an event, but a longer inference to make.
-- **Whether the fast path's minimal booking feels finished or abandoned** when you open it later in `BookingSheet` and find only a code.
