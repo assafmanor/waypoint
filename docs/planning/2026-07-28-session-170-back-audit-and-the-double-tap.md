@@ -142,6 +142,15 @@ assertions on a `MemoryRouter`, and moving all of them to chase one bug is a muc
 change than the question deserves. The duplicated mock fixture is deliberate — the two files
 ask different questions of the same screen.
 
+### Session 175 — the audit is closed, and the cause was not on the list
+
+Reproduced in a real browser and fixed: the mechanism defect is **a spent history marker
+counted at another URL** (ADR-0103's marker depth was global), plus three surfaces whose
+visible back control was never registered as a layer. Findings #1–#5 above are resolved,
+superseded or still open — the table is in
+[`2026-07-29-session-175-back-parity-scan.md`](2026-07-29-session-175-back-parity-scan.md),
+which is the note that closes this audit.
+
 **What that leaves.** The mechanism behind _"it sometimes exits to the main screen"_ is
 understood (the entry behind any tab is trip Home, so a back that rides one entry too far
 reads as "it went home"), and every jsdom path into it is now green. The remaining candidates

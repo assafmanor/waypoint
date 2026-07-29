@@ -13,6 +13,7 @@ import { useNavigate } from 'react-router-dom';
 import type { Trip } from '@waypoint/shared';
 import { useAuth } from '../state/auth-state';
 import { useActiveTripId } from '../state/active-trip-id';
+import { useBackLayer } from '../state/nav-state';
 import { useIsOffline } from '../lib/outbox';
 import { loadTripList } from '../lib/cache';
 import { tripChip, type TripChip } from '../lib/active-trip';
@@ -83,6 +84,24 @@ export function AllTrips({ onOpenAccount }: { onOpenAccount: () => void }) {
     };
   }, []);
 
+  // **THE BACK ARROW AND THE SYSTEM BACK ARE ONE FUNCTION** (owner, session 175). This
+  // screen is a declared root (`ROOT_PATHS`), so a structural back here is a no-op and the
+  // OS leaves the app — correct when there is nowhere in-app to go, and wrong the moment
+  // the header renders its arrow back into a live trip. Cold-launched at `/trips` (a PWA
+  // shortcut, a reload) there is no history entry to fall back on either, so the divergence
+  // is real and not just cosmetic: the button returned to the trip and the gesture quit.
+  //
+  // A back LAYER rather than a rule in `resolveBack`, because "is there a live trip" is
+  // data this screen has already loaded and nav state deliberately does not carry
+  // (ADR-0090 keeps the snapshot to navigation facts). Gated on exactly what renders the
+  // arrow, and bound to the same handler, so the two cannot drift apart again.
+  const hasLiveTrip = (trips ?? []).some((trip) => tripChip(trip, now) === 'now');
+  const backToLiveTrip = () => navigate('/');
+  useBackLayer(() => {
+    backToLiveTrip();
+    return { remainsActive: false };
+  }, hasLiveTrip);
+
   if (trips === null) return null;
 
   const buckets: Record<TripChip, Trip[]> = { now: [], soon: [], past: [] };
@@ -134,11 +153,7 @@ export function AllTrips({ onOpenAccount }: { onOpenAccount: () => void }) {
         <div className="zero-head-row">
           <div className="head-left">
             {buckets.now.length > 0 && (
-              <button
-                className="back"
-                onClick={() => navigate('/')}
-                aria-label={t.shell.allTrips.back}
-              >
+              <button className="back" onClick={backToLiveTrip} aria-label={t.shell.allTrips.back}>
                 <NavArrow variant="back" />
               </button>
             )}

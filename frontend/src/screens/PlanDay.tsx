@@ -34,6 +34,7 @@ import { useDragState } from '../state/drag-state';
 import { useSpringLoadedDay } from '../lib/useSpringLoadedDay';
 import { useVerbs } from '../state/verbs';
 import { usePlaceErrandReturn, useShowPlaceOnMap } from '../state/map-scope-state';
+import { useBackLayer } from '../state/nav-state';
 import { useClock } from '../lib/useClock';
 import {
   eventDurationLabel,
@@ -1017,6 +1018,24 @@ function ResolveSheet({
   const softMovers = members.filter((e) => e.kind === EVENT_KIND.SOFT);
   const hardAnchors = members.filter((e) => e.kind === EVENT_KIND.HARD);
   const fmt = (ms: number) => formatTime(new Date(ms), tz);
+
+  // **THE IN-SHEET STEP BACK IS A BACK LAYER** (owner, session 175). This sheet has two
+  // steps — pick which soft event moves, then pick where — and step 2 renders its own
+  // `אירוע אחר` control. `Modal` registers `onClose`, so without this a system back
+  // dismissed the whole sheet while the visible button one line above went back a step.
+  //
+  // Registered here rather than inside `Sheet` because this component is the Modal's
+  // PARENT: child effects run first, so the Modal's own layer registers below this one and
+  // back peels the step before the sheet. `remainsActive: true` — stepping back leaves the
+  // sheet open, so the next press is the one the Modal's layer answers. Gated on exactly
+  // what renders the button, so the two can't drift.
+  useBackLayer(
+    () => {
+      onBack();
+      return { remainsActive: true };
+    },
+    mover != null && softMovers.length > 1,
+  );
 
   if (!mover) {
     return (

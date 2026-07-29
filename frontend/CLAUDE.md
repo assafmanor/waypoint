@@ -90,6 +90,28 @@ only because it's the sharpest example of "the mechanism already exists, use
 it": a new structural back case is a rule added to `resolveBack`
 (`state/nav-state.tsx`), not a one-off handler at the call site.
 
+**If a surface shows a way back, that way back is in the back stack** (ADR-0103's
+2026-07-29 amendment; owner: _"system backs shouldn't do anything different when
+there's a back button (or cancel, exit)"_). A back / cancel / close / exit
+control and the Android gesture must run the **same function** — bind both to one
+handler rather than writing the second one beside it. `Modal` already does this
+for you (`useOverlay(onClose)`), which covers every sheet, dialog, picker and
+confirm. Two shapes need a deliberate `useBackLayer` and are exactly where the
+app had diverged:
+
+- **A state a mounted screen enters and leaves** — the Map's disclosure row. The
+  screen never unmounts, so it cannot express "there is something to peel" by
+  existing; gate the layer on whatever renders the close control (`active`), not
+  on a narrower condition. Gating it on the query while one `✕` served the query
+  _and_ the filter is precisely how a back walked past a visible control.
+- **A step INSIDE an overlay** — Plan mode's resolve sheet. Register in the
+  component that renders the `Modal`, i.e. its parent: child effects run first, so
+  the Modal's close layer lands underneath and back peels the step first. Return
+  `{ remainsActive: true }` — a step back leaves the overlay open.
+
+Not this: a `✕` that clears a value or dismisses a notice (`FilePicker`'s remove,
+`StatusBanner`'s dismiss, a picker's clear). Back navigates; it does not edit.
+
 ## Anti-patterns already found and fixed once (don't reintroduce)
 
 - A hand-rolled floating overlay (`createPortal`/`position:fixed`) instead of
