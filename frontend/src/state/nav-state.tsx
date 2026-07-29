@@ -311,6 +311,15 @@ interface NavContextValue {
 
 const NavContext = createContext<NavContextValue | null>(null);
 
+/** **Every structural back is an explicit navigation — never a traversal.**
+ *
+ *  That is ADR-0090's rule, and session 177 made it load-bearing in a second way: the app
+ *  leaves history entries behind it that are harmless ONLY because nothing walks into them.
+ *  A place errand strands a `?tab=map` entry on every round trip, so the first back that
+ *  traversed instead of navigating would drop the user on a screen they never asked for.
+ *  A lint rule bans the traversal calls themselves (`BACK_TRAVERSAL_SELECTORS`); this switch
+ *  is the other half — exhaustive over `BackAction`, so a new kind cannot slip through as a
+ *  silent no-op and get "fixed" later by reaching for `history.back()`. */
 function runStructural(navigate: NavigateFunction, action: BackAction): void {
   switch (action.kind) {
     case 'to-home':
@@ -319,11 +328,21 @@ function runStructural(navigate: NavigateFunction, action: BackAction): void {
     case 'to':
       navigate(action.path, { replace: true });
       break;
+    // The one deliberate push: leaving a trip is not a lateral move, so it earns an entry
+    // (the asymmetry session 170's audit flagged as #4 and left standing).
     case 'exit-trip':
       navigate(EXIT_TRIP_TO);
       break;
-    default:
+    // Resolved by `runBack` without any navigation at all — peeling a layer, arming the
+    // leave confirm, or a root where back is a no-op.
+    case 'close-overlay':
+    case 'arm-exit':
+    case 'none':
       break;
+    default: {
+      const _exhaustive: never = action;
+      break;
+    }
   }
 }
 

@@ -68,6 +68,51 @@ const BIDI_SELECTORS = [
   },
 ];
 
+// ADR-0090 + ADR-0103: back is COMPUTED from nav state and executed as an explicit
+// navigation. It must never be a blind history traversal — the stack's contents are
+// unknowable (OAuth round-trips, PWA cold launches, react-router idx desync), and the
+// app deliberately leaves entries behind it that are only unreachable BECAUSE nothing
+// traverses: a place errand strands a `?tab=map` entry on every round trip (ADR-0103's
+// 2026-07-29 session-177 amendment). A single `history.back()` in app code would walk
+// into one of those and drop the user on a screen they never asked for — which is the
+// exact class of bug sessions 174-177 were spent on.
+//
+// Documented as an anti-pattern since ADR-0090 and honoured by hand until now. It is a
+// lint rule so the invariant fails loudly instead of relying on the next person having
+// read the ADR.
+//
+// Tests are exempt by pattern: `nav-state.system-back.test.tsx` and `Map.back.test.tsx`
+// call `history.back()` to SIMULATE the platform, which is the one legitimate use.
+const BACK_TRAVERSAL_SELECTORS = [
+  {
+    selector: "CallExpression[callee.name='navigate'] > UnaryExpression[operator='-']",
+    message:
+      'Back is computed, never traversed (ADR-0090): resolve it through resolveBack/runBack and navigate explicitly, instead of navigate(-1).',
+  },
+  {
+    selector:
+      "CallExpression[callee.property.name=/^(back|forward|go)$/][callee.object.name='history']",
+    message:
+      'Back is computed, never traversed (ADR-0090/0103): a traversal can land on an entry the app left behind (an errand strands one per round trip). Navigate explicitly.',
+  },
+  {
+    selector:
+      "CallExpression[callee.property.name=/^(back|forward|go)$/][callee.object.property.name='history']",
+    message:
+      'Back is computed, never traversed (ADR-0090/0103): a traversal can land on an entry the app left behind (an errand strands one per round trip). Navigate explicitly.',
+  },
+  {
+    selector: "MemberExpression[property.name='length'][object.name='history']",
+    message:
+      'History depth does not resolve back (ADR-0090) — `resolveBack` is a pure function of nav state. Never read history.length.',
+  },
+  {
+    selector: "MemberExpression[property.name='length'][object.property.name='history']",
+    message:
+      'History depth does not resolve back (ADR-0090) — `resolveBack` is a pure function of nav state. Never read history.length.',
+  },
+];
+
 export default tseslint.config(
   {
     ignores: ['**/dist/**', '**/node_modules/**', '**/.turbo/**', '_internal/**'],
@@ -114,6 +159,22 @@ export default tseslint.config(
         ...CLOCK_SELECTORS,
         ...RENDERED_GLYPH_SELECTORS,
         ...BIDI_SELECTORS,
+      ],
+    },
+  },
+  {
+    // The back-traversal ban, on app code only — see BACK_TRAVERSAL_SELECTORS. Layered as
+    // its own block so it composes with the frontend selectors above rather than replacing
+    // them (the note at the top of this file), and so the test exemption is one `ignores`.
+    files: ['frontend/src/**/*.{ts,tsx}'],
+    ignores: ['frontend/src/**/*.test.{ts,tsx}', 'frontend/src/lib/useClock.ts'],
+    rules: {
+      'no-restricted-syntax': [
+        'error',
+        ...CLOCK_SELECTORS,
+        ...RENDERED_GLYPH_SELECTORS,
+        ...BIDI_SELECTORS,
+        ...BACK_TRAVERSAL_SELECTORS,
       ],
     },
   },
