@@ -170,8 +170,13 @@ router and the toast), so it can't be rendered bare. Use `wrapNav` from
   event then renders at a different time than it was typed at. A `WhenField`
   without a `zone`/`zones` prop is exactly that surface: the chip is opt-in per
   call site, so a form doesn't get it "for free" (ADR-0107 session-128).
-- `navigate(-1)` or any read of `window.history.length` for a back action —
-  back is computed from nav state (ADR-0090), never traversed.
+- `navigate(-1)`, `history.back()/forward()/go()`, or any read of
+  `history.length` for a back action — back is computed from nav state
+  (ADR-0090), never traversed. **Lint-blocked since session 178**, because the
+  app leaves entries behind it that are harmless only while nothing walks into
+  them (an errand strands one per round trip): a traversal lands on one and drops
+  the user on a screen they never asked for. Tests are exempt — two harnesses
+  call `history.back()` to simulate the platform, which is the legitimate use.
 - **`dir="ltr"` on anything but an `<input>`** (lint-blocked, ADR-0118). It sets
   the base direction of the whole element, so a token carrying a Hebrew unit
   lays out left-to-right and reads unit-first: `9 ק״מ` became `ק״מ 9`, `+3 ש׳`
