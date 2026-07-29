@@ -16,7 +16,6 @@ import { IndexBookingsView } from '../ui/IndexBookingsView';
 import { IndexDocumentsView } from '../ui/IndexDocumentsView';
 import { IndexTile } from '../ui/domain';
 import { Icon } from '../ui/Icon';
-import { GLYPH } from '../constants';
 import { BOOKING_PARAM, FOCUS_PARAM, INDEX_FOCUS } from '../state/nav-state';
 import { t } from '../i18n/he';
 
@@ -115,14 +114,14 @@ export function Index() {
       </div>
 
       <IndexTile
-        icon={GLYPH.ticket}
+        icon={<Icon name="ticket" />}
         title={t.index.bookingsTitle}
         count={bookings.length}
         subtitle={bookingsSubtitle}
         onOpen={openBookings}
       />
       <IndexTile
-        icon={GLYPH.documents}
+        icon={<Icon name="documents" />}
         title={t.docs.title}
         count={documents.length}
         subtitle={documentsSubtitle}

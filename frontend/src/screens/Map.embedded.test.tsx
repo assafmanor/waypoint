@@ -2552,7 +2552,7 @@ describe('the embedded map’s shell (ADR-0121)', () => {
       seed();
       render(wrap(<MapView />));
       expect(screenEl().dataset.scope).toBe('day');
-      fireEvent.click(toggle(`🗓️ ${t.map.allDays}`));
+      fireEvent.click(listButton(t.map.allDays));
       expect(screenEl().dataset.scope).toBe('all');
     });
 
@@ -2724,7 +2724,7 @@ describe('the embedded map’s shell (ADR-0121)', () => {
     it('a day-scope change clears it: a new day is a new list', () => {
       openArea();
       expect(areaSortOn()).toBe('true');
-      fireEvent.click(toggle(`🗓️ ${t.map.allDays}`));
+      fireEvent.click(listButton(t.map.allDays));
       expect(areaSortOn()).toBe('false');
     });
 

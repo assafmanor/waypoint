@@ -688,7 +688,7 @@ function ZoneNote({
   const ahead = delta > 0;
   return (
     <div className="bs-zone-note">
-      🕐{' '}
+      <Icon name="clock" />{' '}
       {crossing
         ? t.index.form.zoneNoteTransport(mag, ahead)
         : t.index.form.zoneNotePlace(mag, ahead)}
@@ -718,7 +718,7 @@ function KindToggle({
           className={'hard' + (kind === EVENT_KIND.HARD ? ' on' : '')}
           onClick={() => onPick(EVENT_KIND.HARD)}
         >
-          {t.index.form.kindHard}
+          <Icon name="lock" /> {t.index.form.kindHard}
         </button>
       </div>
     </Field>

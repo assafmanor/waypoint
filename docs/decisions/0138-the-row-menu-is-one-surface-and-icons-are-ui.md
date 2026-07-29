@@ -170,3 +170,59 @@ ADR's test asserted the invariant. Fixing it means routing `Modal`'s Escape thro
 the nav stack, which touches every overlay in the app, so it is on the backlog
 rather than smuggled into a menu redesign. Desktop-only in practice — the platform
 back gesture is the phone's path and it is correct.
+
+---
+
+## Amendment (2026-08-01) — the sweep was not finished, and the leftovers proved it
+
+Reported by the owner off a screenshot of the Index landing: _"What about these? Do
+we need to replace them? And others that may have been missed?"_ — pointing at the
+🎫 and 🛂 on the two tiles. Yes, and the audit that followed found more.
+
+**A shipped defect first.** The sweep script rewrote `{ICONS.x}` inside **template
+literals** too, so six call sites shipped rendering the literal text
+`$<Icon name="…" />`: `Board`'s now-label and five empty-state `action` props in
+`DayView`/`PlanDay`. Neither `tsc` nor lint can see a bad string, and no test
+asserted on those labels. Fixed as fragments — the props were already `ReactNode`.
+**The lesson is about the method, not the strings:** a regex sweep over JSX will
+also match inside a template, and the one place that produces garbage rather than a
+compile error is exactly where nothing is watching.
+
+**§2's split drew the content/control line in the wrong place, and the code showed
+it.** `GLYPH` filed the Index and Home tile markers as "category badges". They are
+not: each sits on a **tile you tap**. The proof is that the first sweep converted
+`ICONS.navigate` in Home's quick-action row and left its three neighbours — so the
+shipped row was 🎫 📶 [SVG compass] 🛂, four sibling buttons rendering two ways. The
+Index's two tiles had the same problem one level up: the nav tab that leads to them
+is `cards`, an SVG, while the tiles themselves were emoji.
+
+So `ticket`, `wifi` and `documents` join `Icon`, and **`GLYPH` is down to one
+entry** — `members`, the `5 👥` unit on a trip card's meta line, which is a marker
+inside a _sentence_ and is what design-language's "icons that are part of a
+sentence stay in the copy" actually describes. `atm`/`weather`/`fx` went out
+unrendered: they had no call site, so they were a plan rather than content.
+
+**Four more self-contradictions, each the same shape** — the app drawing one concept
+two ways:
+
+- `GLYPH.budget` 💰 was the one emoji among four SVG `ReadRow`s in the **same list**
+  in trip settings. Now `Icon` `budget`.
+- `BookingSheet`'s zone note drew 🕐 while `ZoneChip`, directly beside it, drew
+  `Icon` `clock`.
+- The Map's `כל הימים` scope chip is a **control** and still wore 🗓️.
+- `kindHard: '🔒 קשיח'` baked the lock into the **string**, so the hard chip in
+  `EventForm`/`BookingSheet` disagreed with the lock every other surface draws.
+
+**A mark baked into a copy string can only ever be an emoji** — the call site cannot
+put an SVG inside it. Six strings carried one (`kindHard` ×2, `modePill`, and four
+`＋` CTAs). They are split now and the call site renders the icon, which is the same
+answer the arrow guard's note already prescribed for directional labels.
+
+**What deliberately stays emoji, restated after the audit:** per-entity badges
+(`BOOKING_TYPE_ICON`, `DOCUMENT_TYPE_ICON`, `CATEGORY_DEFAULT_ICON` and the
+`e.icon ?? '🏨'` fallbacks), trip identity and the `IconPicker` set, empty-state
+**illustrations** (the Map's 🗺️/🗓️ — an illustration is not a control), PlanHome's
+checklist section markers, Login's decorative feature list, and the warmth in copy
+(🎉 👋 🙂 ✨). None of those sit beside an SVG doing the same job, which is the test
+this amendment adds: **if a glyph has a sibling control already drawing an icon, it
+is a control.**

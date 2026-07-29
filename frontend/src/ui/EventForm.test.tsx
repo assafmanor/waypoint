@@ -381,7 +381,7 @@ describe('EventForm (folded into Modal, U-01)', () => {
       it('lets the kind follow the type, including other → soft', () => {
         render(wrapNav(<EventForm onClose={() => {}} />));
         pickCategory('transport');
-        const on = () => document.querySelector('.kind-toggle button.on')!.textContent;
+        const on = () => document.querySelector('.kind-toggle button.on')!.textContent!.trim();
         expect(on()).toBe(t.eventForm.kindHard);
 
         fireEvent.click(

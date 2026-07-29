@@ -45,6 +45,10 @@ export type IconName =
   | 'plus'
   | 'more'
   | 'clipboard'
+  | 'budget'
+  | 'ticket'
+  | 'wifi'
+  | 'documents'
   | 'share'
   | 'link'
   | 'upload'
@@ -171,6 +175,28 @@ const PATHS: Record<IconName, string> = {
   // The kebab itself. Three dots, drawn as zero-length capped segments so the
   // round linecap IS the dot. Replaces ⋯.
   more: 'M6 12h.02 M12 12h.02 M18 12h.02',
+  // ── The three section markers the first sweep left behind, because `GLYPH` had
+  // them filed as content. They are not: each sits on a TILE you tap, and the
+  // Home quick-action row proved it by ending up with three emoji beside one SVG
+  // compass. The Index's two tiles are the same case — the nav tab that leads to
+  // them is `cards`, so the tab and its destination disagreed.
+  //
+  // A ticket with its stub perforation. Replaces 🎫.
+  ticket:
+    'M3.4 8.6V6.8a1.6 1.6 0 0 1 1.6-1.6h14a1.6 1.6 0 0 1 1.6 1.6v1.8a2.2 2.2 0 0 0 0 4.4v1.8a1.6 1.6 0 0 1-1.6 1.6H5a1.6 1.6 0 0 1-1.6-1.6v-1.8a2.2 2.2 0 0 0 0-4.4Z M14.4 5.2v1.9 M14.4 10.2v1.9 M14.4 15.1v1.9',
+  // Signal arcs — `offline` above is this shape with a slash through it, which is
+  // the point: the pair reads as one state and its negation.
+  wifi: 'M12 19.6h.02 M8.6 16.2a4.8 4.8 0 0 1 6.8 0 M5.2 12.8a9.6 9.6 0 0 1 13.6 0 M2 9.4a14.4 14.4 0 0 1 20 0',
+  // An ID page — portrait block plus lines. Replaces 🛂, which was passport CONTROL
+  // signage rather than the documents themselves. The per-type badges inside the
+  // section (📕 🛡️ 🎫 📄) stay emoji: those are content, one per document.
+  documents:
+    'M5.4 2.8h13.2a1.6 1.6 0 0 1 1.6 1.6v15.2a1.6 1.6 0 0 1-1.6 1.6H5.4a1.6 1.6 0 0 1-1.6-1.6V4.4a1.6 1.6 0 0 1 1.6-1.6Z M10.6 9.4a1.9 1.9 0 1 1-3.8 0 1.9 1.9 0 0 1 3.8 0 M6.8 15.4c0-1.5 1-2.4 1.9-2.4s1.9.9 1.9 2.4 M13.6 9.2h3.6 M13.6 12.6h3.6 M13.6 16h3.6',
+  // A wallet with its clasp — trip settings' daily-budget row. Replaces 💰, which
+  // was the one emoji left among four SVG `ReadRow`s in the same list (ADR-0138's
+  // follow-up sweep). A budget is money you are carrying, not a pile of it.
+  budget:
+    'M3.4 8.4a2 2 0 0 1 2-2h13.2a2 2 0 0 1 2 2v9.2a2 2 0 0 1-2 2H5.4a2 2 0 0 1-2-2Z M3.4 9.6h13.2a1.6 1.6 0 0 1 1.6 1.6v3.6a1.6 1.6 0 0 1-1.6 1.6H3.4 M14.6 13.4h.02',
   // Board + clip. Replaces 📋 (copy-to-clipboard).
   clipboard:
     'M9 4.4H7.4a2 2 0 0 0-2 2v12.2a2 2 0 0 0 2 2h9.2a2 2 0 0 0 2-2V6.4a2 2 0 0 0-2-2H15 M9.6 2.6h4.8a.9.9 0 0 1 .9.9v1.8a.9.9 0 0 1-.9.9H9.6a.9.9 0 0 1-.9-.9V3.5a.9.9 0 0 1 .9-.9Z',

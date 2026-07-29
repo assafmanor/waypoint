@@ -567,7 +567,11 @@ export function PlanDay() {
           icon={e.icon}
           title={e.title}
           meta={t.day.skippedTag}
-          action={`$<Icon name="undo" /> ${t.actions.restore}`}
+          action={
+            <>
+              <Icon name="undo" /> {t.actions.restore}
+            </>
+          }
           onSchedule={() => verbs.restore(e)}
           dragProps={skippedDragProps(e)}
           dragging={dragging}
@@ -587,7 +591,11 @@ export function PlanDay() {
             ? relativeDayLabel(m.targetDate, activeDate)
             : undefined
         }
-        action={`$<Icon name="plus" /> ${t.actions.scheduleToDay}`}
+        action={
+          <>
+            <Icon name="plus" /> {t.actions.scheduleToDay}
+          </>
+        }
         onSchedule={() => openSchedule(m)}
         onRemove={() => verbs.removeMaybe(m)}
         removeLabel={t.planDay.removeIdea}
@@ -1247,7 +1255,7 @@ function GapChip({
     >
       <span className="gap-line" />
       <button className="gap-add" onClick={() => onFill(gap.fill)}>
-        {label}
+        <Icon name="plus" /> {label}
       </button>
       <span className="gap-line" />
     </div>

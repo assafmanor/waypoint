@@ -292,7 +292,9 @@ function Created({ trip, onDone }: { trip: Trip; onDone: () => void }) {
     <div className="app" data-mode="plan">
       <header className="born-head">
         <div className="born-title">{trip.name}</div>
-        <span className="mode-pill">{t.shell.created.modePill}</span>
+        <span className="mode-pill">
+          <Icon name="edit" /> {t.shell.created.modePill}
+        </span>
       </header>
 
       <main className="born-body">
