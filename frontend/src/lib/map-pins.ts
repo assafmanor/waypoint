@@ -42,7 +42,8 @@ export const PIN_TIER = {
   ambient: 'ambient',
   /** Done, skipped, or simply passed — desaturated, and it KEEPS its number. Which of
    *  the three it is rides on the pin as a mark, not as a tier ({@link pinOutcome}):
-   *  the grey says *behind you*, a ✓/✕ says *what happened*.
+   *  the grey says *behind you*, a ✓/✕ says *what happened*, and the category glyph
+   *  stays put because that is what tells one grey pin from another (ADR-0137).
    *  **Trip mode only** (ADR-0130 §2): in Plan mode the day is a shape to arrange,
    *  and nothing on it is behind you. */
   behind: 'behind',
@@ -51,7 +52,9 @@ export const PIN_TIER = {
    *  what leaves it available today — so it wears the maybe's paint at the
    *  subordinate ratio: you did not put it in this day. */
   shelf: 'shelf',
-  /** In view, but pencilled for ANOTHER day. Day scope only. */
+  /** In view, but pencilled for ANOTHER day. Day scope only. Hollow — which is what
+   *  leaves it the one pin with a free centre, and therefore the one that can say what
+   *  happened at it without giving anything up ({@link pinOutcome}, ADR-0137). */
   ghost: 'ghost',
 } as const;
 export type PinTier = (typeof PIN_TIER)[keyof typeof PIN_TIER];
@@ -118,35 +121,59 @@ const ideaOrUpcoming = (usage: PlaceUsage): PinTier =>
 export type PinOutcome = NonNullable<DayUsage['outcome']>;
 
 /**
- * The outcome mark a pin carries, or `undefined` for none (ADR-0117 §1 on the canvas —
- * the "Phase 6 inherits it" its Consequences promised).
+ * The outcome mark a pin carries, or `undefined` for none (ADR-0137, keeping the promise
+ * ADR-0117's Consequences made: "Phase 6 inherits it — the same outcome drives the
+ * rendered pin's treatment when the map lands").
  *
- * The `behind` tier used to draw all three of ADR-0117's states identically, so the
- * canvas said *the clock passed this* and could not say which of *we were there* /
- * *we skipped it* / *nobody said* it was. The list has always said it in words; a pin
- * has no room for words, so it says it in a mark.
+ * The canvas could say *the clock passed this* and not which of ADR-0117's three states
+ * it was: *we were there* / *we skipped it* / *nobody said*. The list has always said it
+ * in words; a pin has no room for words, so it says it in a mark.
  *
- * Three precedence rules, each one load-bearing:
+ * **Two tiers carry one, for two different reasons**, which is the whole shape of
+ * ADR-0137 and the correction it makes to its own first pass:
  *
- * 1. **Only the `behind` tier is marked.** An outcome is a claim about a place you have
- *    finished with, and every other tier contradicts it: an upcoming stop marked done is
- *    not upcoming (ADR-0117 §2 already sank it here), and the two aside tiers are drawn
- *    subordinate precisely because this day did not choose them — a ✓ on another day's
- *    hollow ghost would report on a day you are not looking at. It also falls out that
- *    **Plan mode draws no marks at all**, `planning` having withdrawn the tier
- *    (ADR-0130 §2): a day you are arranging has no past to report on.
- * 2. **The day the TIER read, not the day the row reads.** `placeDay`, the same call and
- *    the same context `placePinTier` resolves against — never `placeMetaDay`, whose
- *    all-days walk to the next edge is right for a row's wording and would let a pin be
- *    greyed by one day and marked by another.
- * 3. **A strictly-middle stay night reports nothing.** `spanDays` gives every day of a
- *    span the event's outcome, so marking a hotel done would stamp a ✓ on each of its
- *    nights — a claim nobody made about any of them. Same suppression the row already
- *    applies for the same reason (`Map.tsx`'s `dayMeta`).
+ * - **`ghost`** — a place pencilled for ANOTHER day. This is the tier the report was
+ *   about, and the one where the mark is worth most: a ghost is context, and the only
+ *   question context raises is *do I still need to care about this?* It is also the one
+ *   pin with a free centre (no fill, no glyph, no number), so the mark costs it nothing.
+ * - **`behind`** — passed or settled, in this day. Here the mark is the narrower claim
+ *   ADR-0117 §4 named, sitting beside a grey that only ever meant "behind you".
+ *
+ * Every other tier is silent, and not by exclusion — none of them CAN have an outcome.
+ * An `idea` and a `shelf` maybe have no event to carry a status; an `ambient` night is
+ * mid-span, where nothing happens to settle (see below); and a place marked done is
+ * `behind` by ADR-0117 §2, since a human outranks the clock — so `upcoming` is
+ * unreachable rather than excluded. **Plan mode therefore marks no filled pin at all**,
+ * `planning` having withdrawn `behind` (ADR-0130 §2): a day you are arranging has no past
+ * to report on. Its ghosts still speak, because a ghost is about another day either way.
+ *
+ * Two rules about WHICH DAY the mark reports on:
+ *
+ * 1. **A `behind` pin reports the day its tier read** — `placeDay` with the same context
+ *    `placePinTier` resolved against, so the grey and the mark can never describe two
+ *    different days. Never `placeMetaDay`, whose all-days walk to the next edge is right
+ *    for a row's wording and would decouple the two.
+ * 2. **A ghost has no day in the scope** — that is its definition — so it reports the day
+ *    it is LIVE on, which is what `placeDay` answers with the scope dropped: the earliest
+ *    day not behind you, else the last. The same resolution `isPlaceLeft` and the list's
+ *    all-days rows already use, so a chip, a row and a pin cannot disagree about one
+ *    place. A ghost aimed at a day still ahead is therefore unmarked, which is correct:
+ *    nothing has happened there to have an outcome about.
+ *
+ * And one about ambient: `spanDays` gives every day of a span the event's outcome, so a
+ * hotel marked done would stamp a ✓ on each of its nights — a claim nobody made about any
+ * of them. Suppressed here exactly as the row suppresses it (`Map.tsx`'s `dayMeta`).
  */
 export function pinOutcome(usage: PlaceUsage, ctx: PinContext): PinOutcome | undefined {
-  if (placePinTier(usage, ctx) !== PIN_TIER.behind) return undefined;
-  const day = placeDay(usage, ctx);
+  const tier = placePinTier(usage, ctx);
+  if (tier !== PIN_TIER.behind && tier !== PIN_TIER.ghost) return undefined;
+  // A ghost is out of the scope by definition, so asking about `onDate` returns nothing;
+  // dropping it asks the question the ghost is actually answering ("which day is this
+  // place?"), which is the all-days resolution.
+  const day =
+    tier === PIN_TIER.ghost
+      ? placeDay(usage, { nowMs: ctx.nowMs, today: ctx.today })
+      : placeDay(usage, ctx);
   return day?.prominence === 'ambient' ? undefined : day?.outcome;
 }
 

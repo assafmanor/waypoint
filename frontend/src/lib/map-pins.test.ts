@@ -22,12 +22,14 @@ import {
   pinSizeCss,
   placePinTier,
   placePoint,
+  pinOutcome,
   pinZIndex,
 } from './map-pins';
 import { MAP_PIN } from '../constants';
 
 const DAY = '2026-07-20';
 const NEXT_DAY = '2026-07-21';
+const PREV_DAY = '2026-07-19';
 // The fixtures carry fixed dates, so the clock is pinned rather than read (frontend
 // CLAUDE.md): noon on the active day.
 const NOON = Date.parse(`${DAY}T12:00:00Z`);
@@ -288,6 +290,185 @@ describe('placePinTier — four populations plus the ghost (ADR-0121 §6)', () =
       });
       expect(placePinTier(index.get('twice')!, { nowMs: NOON, today: DAY })).toBe(PIN_TIER.behind);
     });
+  });
+});
+
+describe('pinOutcome — what happened there, on the two tiers that can say (ADR-0137)', () => {
+  const ctx = { onDate: DAY, nowMs: NOON };
+  const settled = (id: string, status: TripEvent['status'], extra?: Partial<TripEvent>) =>
+    event({ id: `e-${id}`, placeId: id, startsAt: `${DAY}T09:00:00Z`, status, ...extra });
+
+  it('a passed stop reports the outcome a human wrote, and nothing when nobody did', () => {
+    const index = usages({
+      places: [place('been'), place('bailed'), place('nobodysaid')],
+      events: [
+        settled('been', EVENT_STATUS.DONE),
+        settled('bailed', EVENT_STATUS.SKIPPED),
+        settled('nobodysaid', EVENT_STATUS.PLANNED),
+      ],
+    });
+    expect(pinOutcome(index.get('been')!, ctx)).toBe('done');
+    expect(pinOutcome(index.get('bailed')!, ctx)).toBe('skipped');
+    // ADR-0117 §1's third state, and the commonest: the grey is the whole claim, exactly
+    // as the row shows no tag for it.
+    expect(pinOutcome(index.get('nobodysaid')!, ctx)).toBeUndefined();
+    // The tier is unchanged by any of it — the mark is a second axis, not a fourth tier.
+    for (const id of ['been', 'bailed', 'nobodysaid']) {
+      expect(placePinTier(index.get(id)!, ctx)).toBe(PIN_TIER.behind);
+    }
+  });
+
+  // THE REPORT'S OWN POPULATION (owner, session 185): "a ghost could be unmarked, skipped,
+  // or consumed". A ghost has no day in the scope, so it reports the day it is LIVE on.
+  it('a ghost reports what happened on its OWN day, not on the one you are looking at', () => {
+    const index = usages({
+      places: [place('yesterday'), place('bailedyesterday')],
+      events: [
+        event({
+          id: 'y',
+          placeId: 'yesterday',
+          date: PREV_DAY,
+          startsAt: `${PREV_DAY}T13:00:00Z`,
+          status: EVENT_STATUS.DONE,
+        }),
+        event({
+          id: 'by',
+          placeId: 'bailedyesterday',
+          date: PREV_DAY,
+          startsAt: `${PREV_DAY}T15:00:00Z`,
+          status: EVENT_STATUS.SKIPPED,
+        }),
+      ],
+    });
+    const dayCtx = { onDate: DAY, nowMs: NOON, today: DAY };
+    expect(placePinTier(index.get('yesterday')!, dayCtx)).toBe(PIN_TIER.ghost);
+    expect(pinOutcome(index.get('yesterday')!, dayCtx)).toBe('done');
+    expect(pinOutcome(index.get('bailedyesterday')!, dayCtx)).toBe('skipped');
+  });
+
+  // …and a ghost aimed AHEAD says nothing, which is not a special case: nothing has
+  // happened there yet, so there is no outcome to report.
+  it('a ghost on a day still ahead of you carries no mark', () => {
+    const index = usages({
+      places: [place('friday')],
+      events: [
+        event({ id: 'f', placeId: 'friday', date: NEXT_DAY, startsAt: `${NEXT_DAY}T19:00:00Z` }),
+      ],
+    });
+    const dayCtx = { onDate: DAY, nowMs: NOON, today: DAY };
+    expect(placePinTier(index.get('friday')!, dayCtx)).toBe(PIN_TIER.ghost);
+    expect(pinOutcome(index.get('friday')!, dayCtx)).toBeUndefined();
+  });
+
+  it('no other tier carries one — an idea and a maybe have no event to have settled', () => {
+    const index = usages({
+      places: [place('ahead'), place('idea'), place('shelved')],
+      events: [event({ id: 'a', placeId: 'ahead', startsAt: `${DAY}T20:00:00Z` })],
+      maybeItems: [
+        maybe({ id: 'm1', placeId: 'idea', targetDate: DAY }),
+        maybe({ id: 'm2', placeId: 'shelved' }),
+      ],
+    });
+    expect(placePinTier(index.get('ahead')!, ctx)).toBe(PIN_TIER.upcoming);
+    expect(pinOutcome(index.get('ahead')!, ctx)).toBeUndefined();
+    expect(pinOutcome(index.get('idea')!, ctx)).toBeUndefined();
+    expect(pinOutcome(index.get('shelved')!, ctx)).toBeUndefined();
+  });
+
+  // `spanDays` gives EVERY day of a span the event's status, so without this a hotel
+  // marked done would stamp a ✓ on each of its nights — a claim nobody made about any one
+  // of them. Same suppression the row runs (`Map.tsx`'s `dayMeta`).
+  it('a strictly-middle stay night reports nothing, though its stay is settled', () => {
+    const index = usages({
+      places: [place('hotel')],
+      events: [
+        event({
+          id: 'stay',
+          placeId: 'hotel',
+          category: 'lodging',
+          date: PREV_DAY,
+          endDate: NEXT_DAY,
+          startsAt: `${PREV_DAY}T15:00:00Z`,
+          endsAt: `${NEXT_DAY}T10:00:00Z`,
+          status: EVENT_STATUS.DONE,
+        }),
+      ],
+    });
+    // DAY is the strictly-middle night of PREV_DAY → NEXT_DAY, and the tier here is
+    // `behind` rather than `ambient`: settling the stay settles every day of it
+    // (ADR-0117 §2 outranks the clock), and `behind` is resolved first. Which is exactly
+    // why the ambient guard cannot live on the tier — it has to read the DAY.
+    const midStay = { onDate: DAY, nowMs: NOON };
+    expect(placePinTier(index.get('hotel')!, midStay)).toBe(PIN_TIER.behind);
+    expect(pinOutcome(index.get('hotel')!, midStay)).toBeUndefined();
+    // The stay's own EDGES do report it — that is where a human settled something.
+    expect(pinOutcome(index.get('hotel')!, { onDate: PREV_DAY, nowMs: NOON })).toBe('done');
+    expect(pinOutcome(index.get('hotel')!, { onDate: NEXT_DAY, nowMs: NOON })).toBe('done');
+  });
+
+  // Plan mode withdraws `behind` entirely (ADR-0130 §2), so a filled pin has no past to
+  // report on — the mark goes with the tier rather than needing a rule of its own. A GHOST
+  // keeps speaking, because it is about another day whichever mode you are in.
+  it('Plan mode marks no filled pin, and still marks a ghost', () => {
+    const index = usages({
+      places: [place('been'), place('yesterday')],
+      events: [
+        settled('been', EVENT_STATUS.DONE),
+        event({
+          id: 'y',
+          placeId: 'yesterday',
+          date: PREV_DAY,
+          startsAt: `${PREV_DAY}T13:00:00Z`,
+          status: EVENT_STATUS.DONE,
+        }),
+      ],
+    });
+    const planning = { onDate: DAY, nowMs: NOON, today: DAY, planning: true };
+    expect(pinOutcome(index.get('been')!, planning)).toBeUndefined();
+    expect(pinOutcome(index.get('yesterday')!, planning)).toBe('done');
+  });
+
+  // ADR-0117 §1: `done` beats `skipped` across a day's references — you were there.
+  it('a visit outranks a skip when one day carries both', () => {
+    const index = usages({
+      places: [place('cafe')],
+      events: [
+        event({
+          id: 'skip',
+          placeId: 'cafe',
+          startsAt: `${DAY}T09:00:00Z`,
+          status: EVENT_STATUS.SKIPPED,
+        }),
+        event({
+          id: 'went',
+          placeId: 'cafe',
+          startsAt: `${DAY}T10:00:00Z`,
+          status: EVENT_STATUS.DONE,
+        }),
+      ],
+    });
+    expect(pinOutcome(index.get('cafe')!, ctx)).toBe('done');
+  });
+
+  // The all-days scope is its own render (frontend CLAUDE.md's "assert across both day
+  // scopes"), and there is no ghost tier in it at all — so what has to hold is that a
+  // behind pin still reports, resolved against the day it is LIVE on.
+  it('all-days scope still marks what is behind you', () => {
+    const index = usages({
+      places: [place('been')],
+      events: [
+        event({
+          id: 'b',
+          placeId: 'been',
+          date: PREV_DAY,
+          startsAt: `${PREV_DAY}T13:00:00Z`,
+          status: EVENT_STATUS.DONE,
+        }),
+      ],
+    });
+    const allDays = { nowMs: NOON, today: DAY };
+    expect(placePinTier(index.get('been')!, allDays)).toBe(PIN_TIER.behind);
+    expect(pinOutcome(index.get('been')!, allDays)).toBe('done');
   });
 });
 

@@ -2385,8 +2385,10 @@ body {
 /* Commitment is the hard/soft GRAMMAR, never a colour (ADR-0011/0028) — and these
    are exactly what `PinElement` cannot draw. Each mirrors its `.place`
    counterpart: `.soft`, and `.skipped` — which on a PIN is the behind-you tier, so
-   the row it mirrors is `.place.behind` (the row's own `.skipped` is the narrower
-   human outcome the canvas does not draw).
+   the row it mirrors is `.place.behind`. The row's own `.place.skipped` is the narrower
+   human outcome, and the canvas draws THAT as a mark rather than as a second paint
+   (ADR-0137, further down) — so this tier stays one treatment and the outcome stays one
+   axis, which is what lets a pin say "behind you" and "we skipped it" at once.
 
    `.ambient` is deliberately absent: a strictly-middle stay night draws as an
    ORDINARY pin (ADR-0109's 2026-07-27 amendment). It used to be desaturated, but on
@@ -2435,36 +2437,89 @@ body {
   opacity: 0.62;
 }
 
-/* ── AND WHICH KIND OF BEHIND-YOU IT IS (ADR-0117 §1, on the canvas) ──────────────
-   The tier above is the CLOCK's claim and it is one treatment for all three of ADR-0117's
-   outcomes, which left the canvas unable to say whether a grey pin was somewhere we went,
-   somewhere we skipped, or somewhere nobody ever settled. The mark says it, in the pin's
-   one content slot — see `PIN_OUTCOME_ICON` for why that slot and not a second corner
-   stamp (the number already owns the only free corner, and a third floating object on a
-   34px teardrop is mush).
+/* ── AND WHAT HAPPENED THERE (ADR-0137) ───────────────────────────────────────────
+   The tier above is the CLOCK's claim, one treatment for all three of ADR-0117's outcomes,
+   so the canvas could not say whether a grey pin was somewhere we went, somewhere we
+   skipped, or somewhere nobody settled. Two tiers can carry an outcome and they have
+   different room, so the mark has two homes — see `PIN_OUTCOME_ICON` for the reasoning;
+   what is here is the paint.
 
-   It is `.pin-g` plus a modifier rather than an element of its own, so the counter-
-   rotation, the size-off-`--pin-u` and both of the places that DROP the glyph (the dot
-   tier, the errand's context demotion) already cover it. Two overrides are all it needs:
+   ── 1 · A GHOST'S FREE CENTRE ────────────────────────────────────────────────────
+   A ghost has no fill, no glyph and no number, so its middle is empty and the mark takes
+   it whole. `.pin-g` plus a modifier rather than an element of its own, which is what
+   makes the counter-rotation, the size-off-`--pin-u` and both places that DROP the glyph
+   (the dot tier, the errand's context demotion) cover it with nothing re-stated.
 
-   • **`--card`, not `--ok`/`--miss`.** The status hues live on the row's tags, where a
-     word sits beside them; here they cannot work at all — the parent's `saturate(.3)`
-     desaturates any child, so a green check would arrive as the same olive an X would.
-     Shape carries the state, which is `Icon`'s own rule for the sync family. White is
-     then the one value with contrast against every desaturated category hue, and it is
-     what `.pin-n` already stamps on `--ink`.
-   • **Bigger and heavier than an emoji.** A category emoji at 0.38 fills its box; a
-     two-stroke SVG at the same size reads as a scratch. 0.46 with a 2.75 stroke lands a
-     ~15px mark at the pin's floor — the sync badge's own weight, and the number that
-     wants re-checking on a device first (the visual pass the backlog carries). */
+   A STROKE, not a disc: a ghost IS its outline, and dropping a solid badge in the middle
+   of one takes that away for a legibility problem it does not have — the mark sits at 0.5
+   of a pin with nothing else in it. Bigger and heavier than the emoji it stands in for
+   (0.5 against 0.38, stroke 3), because a two-stroke SVG at an emoji's size reads as a
+   scratch where the emoji fills its box. */
 .map-pin .pin-g.outcome {
   display: grid;
   place-items: center;
-  color: var(--ink);
-  font-size: calc(var(--pin-u) * 0.46);
+  font-size: calc(var(--pin-u) * 0.5);
 }
 .map-pin .pin-g.outcome .icon {
-  stroke-width: 2.75;
+  stroke-width: 3;
+}
+.map-pin .pin-g.outcome.done {
+  color: var(--ok);
+}
+.map-pin .pin-g.outcome.skipped {
+  color: var(--miss);
+}
+
+/* ── 2 · A FILLED PIN'S SHOULDER BADGE, WHERE THE NUMBER WAS ─────────────────────
+   Its centre is its category glyph, which STAYS — that glyph is what tells one grey pin
+   from another, and trading it for the mark was the first pass's mistake. What gives way
+   is the NUMBER (owner's call): a settled stop's position in the day is spent, since you
+   are not going to it in any order any more, and one badge on a shoulder is visibly
+   cleaner than a matched pair of them.
+
+   So this is not a second element — it is the same `.pin-n` slot with different content,
+   which is why it needs no geometry, no second corner, and no rule in the dot tier or the
+   errand demotion that `.pin-n` does not already have. Only the numeral's own affordances
+   come off: the mono face, and the `min-width`/`padding` that let two digits grow the
+   badge sideways.
+
+   The disc carries the hue, the white mark carries the shape — the same division the
+   numeral already ran, and the reason `--ok`/`--miss` work here at full strength where the
+   first pass could not use them at all: the tier's `saturate(.3)` is on `.pin-b`, and this
+   is `.pin-b`'s sibling rather than its child. */
+.map-pin .pin-n.outcome {
+  width: calc(var(--pin-u) * 0.44);
+  min-width: 0;
+  padding: 0;
+  font-size: calc(var(--pin-u) * 0.32);
+  color: var(--card);
+}
+.map-pin .pin-n.outcome .icon {
+  stroke-width: 3.1;
+}
+/* ── AND THE BADGE IS TONED INTO THE TIER IT LIVES ON ────────────────────────────
+   The status hue at FULL strength is what the first build shipped, and rendering a
+   mostly-settled day is what refuted it: six saturated discs became the loudest objects on
+   the canvas, louder than the one amber next-stop cue, and they broke two rules that were
+   already written down.
+
+   • **ADR-0130 §3's axis.** "A passed stop keeps its solidity and LOSES ITS COLOUR" — grey
+     is what behind-you means here. A full-chroma disc makes the quiet tier the brightest
+     thing on screen, which is the inversion that ADR exists to prevent.
+   • **ADR-0109 §6 / `map.css`'s `.place.nextstop`.** "Amber = time, spent on exactly one
+     row … never a second accent on every pin." A settled day put a second accent on nearly
+     every pin, and amber stopped winning the canvas.
+
+   So the badge steps its hue toward `--muted` by the same idea the numeral already steps
+   `--ink` → `--muted` on this tier: the outcome is still unmistakably green or red, and it
+   is unmistakably *behind you*. The mark's SHAPE is unaffected, which is what keeps the
+   distinction legible after the chroma comes down — and the ghost's stroke keeps the full
+   hue, because a hairline is nowhere near a filled disc's visual weight. */
+.map-pin .pin-n.outcome.done {
+  background: color-mix(in srgb, var(--ok) 62%, var(--muted));
+}
+.map-pin .pin-n.outcome.skipped {
+  background: color-mix(in srgb, var(--miss) 62%, var(--muted));
 }
 
 /* THE ORDER, as a number (§6). A line between two stops is symmetric, so it never
@@ -2477,7 +2532,14 @@ body {
 .map-pin .pin-n {
   position: absolute;
   top: calc(var(--pin-u) * -0.15);
-  inset-inline-start: calc(var(--pin-u) * -0.18);
+  /* PHYSICAL `left`, and this replaces an `inset-inline-start` that resolved here only by
+     accident. A logical inset resolves against the element's OWN direction, and this badge
+     carries `dir="auto"` over digits — which `auto` resolves to LTR, so inline-start WAS
+     left, in an RTL app, for as long as the content stayed numeric. It no longer does
+     (ADR-0137 §2 puts an SVG in this slot), and an icon inherits the page's RTL and would
+     have flipped the badge to the other shoulder. Rendered and caught; see the ADR's build
+     log. Same pixels as before, now for a stated reason. */
+  left: calc(var(--pin-u) * -0.18);
   min-width: calc(var(--pin-u) * 0.44);
   height: calc(var(--pin-u) * 0.44);
   padding: 0 calc(var(--pin-u) * 0.09);
@@ -2491,10 +2553,13 @@ body {
   border-radius: 999px;
   box-shadow: 0 0 0 calc(var(--pin-u) * 0.045) var(--card);
 }
-/* Behind you KEEPS its number — the partition changes prominence, never the
-   position; #1 is still true after you have been there. (`.ambient` was listed here
-   too, which could never fire: an ambient night has no schedule slot, so it has no
-   number to mute.) */
+/* Behind you KEEPS its number while nobody has settled it — the CLOCK's partition changes
+   prominence, never position, and #1 is still true after you have been there. What does
+   spend the number is a human: once a stop is marked, its place in the day's order is over
+   and the badge says what happened instead (ADR-0137 §2, below). So this rule is the
+   passed-but-unsettled pin, which is the commonest of the three states.
+   (`.ambient` was listed here too, which could never fire: an ambient night has no
+   schedule slot, so it has no number to mute.) */
 .map-pin.skipped .pin-n {
   background: var(--muted);
 }
@@ -2680,8 +2745,17 @@ body {
   border-style: solid;
   box-shadow: 0 1px 2px color-mix(in srgb, var(--ink) 22%, transparent);
 }
-/* The glyph and the amber tag are text-scale claims a dot cannot carry. The NUMBER is not
-   listed: nothing that carries one is ever degraded now, so there is nothing to hide. */
+/* The glyph and the amber tag are text-scale claims a dot cannot carry, and so is the
+   badge when it holds an OUTCOME — a 5px disc whose whole content is a mark is a smudge.
+   The badge holding a NUMBER is still not listed, and the distinction is exact rather than
+   fussy: nothing that carries a number is ever degraded (all-days numbers nothing at all),
+   so there is nothing to hide, while an all-days behind pin CAN carry an outcome. A
+   ghost's mark needs no entry either — it lives in `.pin-g`, already listed. */
+.map-screen[data-scope='day'] .map-pane[data-pins='dot'] .map-pin.aside .pin-n.outcome,
+.map-screen[data-scope='all']
+  .map-pane[data-pins='dot']
+  .map-pin:not(.nowstop, .nextstop)
+  .pin-n.outcome,
 .map-screen[data-scope='day'] .map-pane[data-pins='dot'] .map-pin.aside .pin-g,
 .map-screen[data-scope='all'] .map-pane[data-pins='dot'] .map-pin:not(.nowstop, .nextstop) .pin-g,
 .map-screen[data-scope='all']
@@ -4395,6 +4469,9 @@ body {
          `.pin-n`'s own geometry, mirrored to the other shoulder and a shade
          smaller: a mark needs less room than a numeral. Dark disc + white mark,
          which is exactly why the number badge is legible at 34px. */
+      /* Kept only to draw §F's REJECTED pair (a second badge beside the number). The
+         shipped badge is `.pin-n.outcome` in `map-pane.css` — the number's own slot — so
+         everything else on this page uses the real classes. */
       .mk-stamp {
         position: absolute;
         top: calc(var(--pin-u) * -0.13);
@@ -4566,11 +4643,25 @@ body {
       <!-- ══ §D — THE FILLED PIN ═════════════════════════════════════════════ -->
       <h2>ד · שלושת מצבי הפין המלא<span class="mk-k">PIN_TIER.behind</span></h2>
       <p class="mk-lede">
-        האייקון נשאר - זו הדרישה, וזה מה שמבדיל בין פין אפור אחד לשני. הסימן הופך לתג שני, על הכתף
-        שהמספר לא תפס. השניים נקראים כזוג: <b>איפה זה ביום</b> מצד אחד, <b>מה קרה שם</b> מצד שני.
+        האייקון נשאר - זו הדרישה, וזה מה שמבדיל בין פין אפור אחד לשני. מה שמתפנה הוא
+        <b>המספר</b>: אחרי שסימנו מקום, המקום שלו בסדר היום נגמר - לא הולכים אליו יותר באף סדר - ותג
+        אחד על הכתף נקי יותר משניים. אז זו אותה משבצת, עם תוכן אחר. פין שעבר ואף אחד לא סימן שומר
+        את המספר, כי שם כלום לא מחליף אותו.
       </p>
       <div class="mk-card">
         <div class="mk-stage" id="behindStage" style="--pin-base: 44px"></div>
+        <p class="mk-note">
+          <b>ובעוצמה מופחתת, לא בגוון מלא.</b> הבנייה הראשונה השתמשה ב-<span class="mk-k">--ok</span>/<span
+            class="mk-k"
+            >--miss</span
+          >
+          נטו, ויום שכולו סומן הפך שישה דיסקים רוויים לדבר הרועש ביותר על הקנבס - רועש יותר מרמז
+          הענבר היחיד. זה שובר שני כללים שכבר כתובים: הציר של ADR-0130 §3 (״מקום שעבר שומר על
+          המלאות שלו ו<b>מאבד את הצבע</b>״ - אפור הוא מה שמאחורינו אומר כאן), ו-ADR-0109 §6 (״ענבר
+          מוצא על שורה אחת בדיוק · לא מבטא שני על כל פין״). הדיסק נוטה עכשיו אל
+          <span class="mk-k">--muted</span>, בדיוק כמו שהספרה על הדרגה הזאת כבר נוטה. הקו על הגוסט
+          שומר את הגוון המלא - קו שערה הוא לא דיסק מלא.
+        </p>
         <p class="mk-note">
           <b>הדיסק הוא מה שאיפשר את הצבע.</b> v1 טען שאי אפשר לצבוע את הסימן, כי הדרגה מוגדרת
           ב-<span class="mk-k">saturate(.3)</span> והוא היה יושב בתוך הגוף. הפילטר הזה חל על
@@ -4579,10 +4670,11 @@ body {
           היינו/דילגנו במילים.
         </p>
         <p class="mk-note">
-          <b>ולמה הדיסק בכתף השמאלית.</b> המספר מציב את עצמו עם
-          <span class="mk-k">inset-inline-start</span> אבל נושא <span class="mk-k">dir="auto"</span>,
-          ותוכן של ספרות בלבד נפתר כ-LTR - כלומר המספר יושב בשמאל גם באפליקציה בעברית. הסימן
-          מוצב פיזית בימין, ולא לוגית, כי לוגית הוא היה נוחת על אותה כתף בדיוק.
+          <b>והמשבצת הזאת יושבת בשמאל בכוונה עכשיו.</b> המספר הציב את עצמו עם
+          <span class="mk-k">inset-inline-start</span> ונושא <span class="mk-k">dir="auto"</span>,
+          ותוכן של ספרות בלבד נפתר כ-LTR - כלומר הוא נחת בשמאל גם באפליקציה בעברית, במקרה. ברגע
+          שנכנס לשם SVG במקום ספרה, המקרה הזה מתהפך: אייקון יורש RTL מהדף ועובר לכתף השנייה. לכן
+          המשבצת מוצבת פיזית.
         </p>
       </div>
 
@@ -4638,6 +4730,15 @@ body {
           >
         </div>
         <div class="mk-verdict mk-no">
+          <span>שני תגים</span>
+          <span
+            >הגרסה הראשונה של v2: הסימן על הכתף הפנויה, לצד המספר. עובד, אבל שני תגים על טיפה אחת
+            הם עומס - והמספר עצמו כבר לא אומר כלום על מקום שסומן. <b>״זה גם נראה נקי יותר״</b>
+            (בעל הבית), וזה גם פחות CSS: אין גיאומטריה שנייה, אין פינה שנייה, ואין שורה נוספת
+            בדרגת הנקודה או בהנמכת השליחות.</span
+          >
+        </div>
+        <div class="mk-verdict mk-no">
           <span>בגוון --ok / --miss</span>
           <span
             >נדחה ב-v1 וזה עומד: הדרגה מוגדרת ב-<span class="mk-k">saturate(.3)</span>, שחל גם על
@@ -4684,8 +4785,11 @@ body {
       let GHOST_MARK = 'stroke';
       const centre = (kind) =>
         `<span class="mk-mid ${GHOST_MARK} ${kind}" aria-hidden="true">${svg(markPath(kind))}</span>`;
+      // THE SHIPPED BADGE: the number's slot, holding the mark instead of the numeral
+      // (owner's call — a settled stop's position in the day is spent, and one badge reads
+      // cleaner than two). `.pin-n.outcome` is real app css, not mockup-local.
       const stamp = (kind) =>
-        `<span class="mk-stamp ${kind}" aria-hidden="true">${svg(markPath(kind))}</span>`;
+        `<span class="pin-n outcome ${kind}" aria-hidden="true">${svg(markPath(kind))}</span>`;
 
       // A pin, from primitives — the same fields `MapPin` carries.
       function pinHtml({ hue = 'leisure', tier = '', glyph = '', order, outcome, place = 'stamp', tag }) {
@@ -4697,11 +4801,14 @@ body {
           : glyph
             ? `<span class="pin-g" aria-hidden="true">${glyph}</span>`
             : '';
+        // ONE badge slot. A mark replaces the number rather than joining it, so these two
+        // are exclusive by construction — which is also what stopped a ghost drawing its
+        // outcome twice, in the centre AND on a shoulder it has no number for.
+        const shoulder = outcome && !(ghost && place === 'centre');
         return `<div class="map-pin cat-${hue} ${tier}">
             ${tag ? `<span class="pin-tag">${tag}</span>` : ''}
             <span class="pin-b">${body}</span>
-            ${order != null ? `<span class="pin-n" dir="auto">${order}</span>` : ''}
-            ${outcome && !(ghost && place === 'centre') ? stamp(outcome) : ''}
+            ${shoulder ? stamp(outcome) : order != null ? `<span class="pin-n" dir="auto">${order}</span>` : ''}
           </div>`;
       }
       const spec = (pin, cap, sub) =>
@@ -4792,6 +4899,11 @@ body {
              <span class="pin-b"><span class="mk-v1" style="color:var(--ok)" aria-hidden="true">${svg(CHECK)}</span></span>
              <span class="pin-n" dir="auto">1</span></div></div>
            <div class="mk-cap">v1 · בגוון --ok</div><div class="mk-sub">rejected</div></div>` +
+          `<div class="mk-spec"><div class="mk-hold"><div class="map-pin cat-food skipped">
+             <span class="pin-b"><span class="pin-g" aria-hidden="true">🍜</span></span>
+             <span class="pin-n" dir="auto">1</span>
+             <span class="mk-stamp done" aria-hidden="true">${svg(CHECK)}</span></div></div>
+           <div class="mk-cap">שני תגים · לצד המספר</div><div class="mk-sub">rejected</div></div>` +
           spec({ hue: 'food', tier: 'skipped', glyph: '🍜', order: 1, outcome: 'done' }, 'v2 · לשם השוואה', 'proposed');
       }
 
