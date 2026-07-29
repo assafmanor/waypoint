@@ -504,7 +504,7 @@ describe('MapView (Phase 3, ADR-0109/0110)', () => {
       openFacets();
       return screen.getByRole('button', { name: new RegExp(t.map.filter.maybes) });
     };
-    const maybesCount = () => maybesChip().querySelector('.cnt')?.textContent;
+    const maybesCount = () => maybesChip().querySelector('.wp-chip-count')?.textContent;
     const allDaysChip = () => {
       closeFacets();
       return screen.getByRole('button', { name: new RegExp(t.map.allDays) });

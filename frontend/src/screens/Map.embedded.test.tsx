@@ -466,8 +466,14 @@ describe('the embedded map’s shell (ADR-0121)', () => {
   // Three controls at rest, not seven (ADR-0122 §2). Asserted in BOTH day scopes, since
   // the day-scoped and all-days paths are different renders.
   describe('the facets open in place, behind one control (ADR-0122 §2)', () => {
+    // Each control by the class that IDENTIFIES it, not by its whole className: since
+    // session 185 the two chips get their appearance from `ToggleChip`, so the full string
+    // also carries `wp-chip accent` — which is about how a chip looks, and this assertion
+    // is about which three controls are in the row.
     const rest = () =>
-      [...document.querySelectorAll('.map-controls > *')].map((el) => el.className);
+      [...document.querySelectorAll('.map-controls > *')].map(
+        (el) => [...el.classList].find((c) => c.startsWith('map-')) ?? el.className,
+      );
 
     it('at rest the row carries the scope, one filter control, and search', () => {
       seed();
@@ -531,7 +537,7 @@ describe('the embedded map’s shell (ADR-0121)', () => {
         t.map.filter.activeAria(`${t.iconPicker.categories.food} · ${t.map.filter.maybes}`),
       );
       expect(control().className).toContain('on');
-      expect(control().querySelector('.cnt')).toBeNull();
+      expect(control().querySelector('.wp-chip-count')).toBeNull();
     });
 
     it('says the same thing in all-days scope', () => {
@@ -545,6 +551,58 @@ describe('the embedded map’s shell (ADR-0121)', () => {
       expect(control.getAttribute('aria-label')).toBe(
         t.map.filter.activeAria(t.iconPicker.categories.food),
       );
+    });
+  });
+
+  // The session-185 extraction: four hand-rolled copies of one chip rule became four call
+  // sites of `ToggleChip`. What is worth a test is not the class but the SEMANTICS split
+  // the migration had to preserve — a pressed toggle and a control whose on-state is a fact
+  // about the filter look identical and must not announce identically.
+  describe('the pressed chips are one primitive (root rule 8)', () => {
+    const chips = () => [...document.querySelectorAll('.wp-chip')] as HTMLElement[];
+
+    for (const allDays of [false, true]) {
+      it(`every chip in the row is the shared primitive, in ${allDays ? 'all-days' : 'day'} scope`, () => {
+        seed();
+        tripMaybes = [
+          maybe({ id: 'm', placeId: 'lunch', category: 'food', targetDate: ACTIVE_DATE }),
+        ];
+        render(wrap(<MapView />));
+        if (allDays) fireEvent.click(listButton(t.map.allDays));
+
+        // The scope chip is a real toggle and says so; the filter control is an indicator
+        // and deliberately does not, because its tap OPENS the strip.
+        const scope = document.querySelector('.map-scopechip') as HTMLElement;
+        expect(scope.classList.contains('wp-chip')).toBe(true);
+        expect(scope.getAttribute('aria-pressed')).toBe(String(allDays));
+        const filter = document.querySelector('.map-facets') as HTMLElement;
+        expect(filter.classList.contains('wp-chip')).toBe(true);
+        expect(filter.hasAttribute('aria-pressed')).toBe(false);
+
+        // The facet toggles: provisional while off (ADR-0110 §2), and pressed toggles.
+        openFacets();
+        const maybes = document.querySelector('.map-maybes') as HTMLElement;
+        expect(maybes.classList.contains('provisional')).toBe(true);
+        expect(maybes.getAttribute('aria-pressed')).toBe('false');
+        fireEvent.click(maybes);
+        expect(
+          (document.querySelector('.map-maybes') as HTMLElement).getAttribute('aria-pressed'),
+        ).toBe('true');
+
+        // Nothing in the row is a hand-rolled chip any more.
+        expect(chips().length).toBeGreaterThan(0);
+      });
+    }
+
+    // Teal is a LOCATION semantic (ADR-0109 §6-7), so it is a tone the primitive keeps
+    // rather than a variant flattened into the neutral chip; a refusal drops it to `muted`,
+    // which is the chip present-but-unable rather than absent.
+    it('near-me keeps its teal tone, and a refusal mutes it instead of removing it', () => {
+      seed();
+      render(wrap(<MapView />));
+      const near = () => document.querySelector('.map-nearchip') as HTMLElement;
+      expect(near().classList.contains('teal')).toBe(true);
+      expect(near().classList.contains('muted')).toBe(false);
     });
   });
 
@@ -1869,7 +1927,7 @@ describe('the embedded map’s shell (ADR-0121)', () => {
       openFacets();
       return listButton(t.map.filter.left);
     };
-    const count = (el: HTMLElement) => el.querySelector('.cnt')?.textContent;
+    const count = (el: HTMLElement) => el.querySelector('.wp-chip-count')?.textContent;
     const pillCount = (label: string) => {
       openFacets();
       return screen
@@ -2122,7 +2180,7 @@ describe('the embedded map’s shell (ADR-0121)', () => {
       ];
       render(wrap(<MapView />));
       openFacets();
-      expect(listButton(t.map.filter.left).querySelector('.cnt')?.textContent).toBe('0');
+      expect(listButton(t.map.filter.left).querySelector('.wp-chip-count')?.textContent).toBe('0');
       fireEvent.click(listButton(t.map.filter.left));
       expect(screen.getByText(t.map.filter.noResultsTitle)).toBeTruthy();
       expect(document.querySelector('.fb-empty-body')!.textContent).toContain(t.map.filter.left);

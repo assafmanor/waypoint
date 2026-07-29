@@ -103,6 +103,7 @@ import { ChoiceGrid, type Choice } from '../ui/primitives/ChoiceGrid';
 import { AddLocationButton } from '../ui/primitives/PlacePicker';
 import { RevealList } from '../ui/primitives/RevealList';
 import { SnapSheet } from '../ui/primitives/SnapSheet';
+import { ToggleChip } from '../ui/primitives/ToggleChip';
 import { MapPane, type MapPin, type MapResultPin } from '../ui/domain/MapPane';
 import { PlaceResearch, ResultRow } from './PlaceResearch';
 import { BookingDetail } from '../ui/BookingDetail';
@@ -1540,18 +1541,17 @@ export function MapView() {
   // mounted and CSS hides it — two different facts, two different mechanisms, and
   // neither borrows the other's (§5).
   const nearChip = !offline && (
-    <button
-      type="button"
-      className={
-        'map-nearchip' +
-        (distanceOrder ? ' on' : '') +
-        (nearMe && locationRefused ? ' refused' : '')
-      }
-      aria-pressed={distanceOrder}
+    <ToggleChip
+      on={distanceOrder}
+      // Teal is what this control is ABOUT (location), so it holds in both states; a
+      // refusal drops it to `muted`, which is the chip saying it can no longer act rather
+      // than disappearing (ADR-0109 §7). `.map-nearchip` is the layout/animation hook.
+      tone={nearMe && locationRefused ? 'muted' : 'teal'}
+      className="map-nearchip"
       onClick={toggleNearMe}
     >
       {ICONS.nearMe} {geo.status === 'locating' ? t.map.near.locating : t.map.near.chip}
-    </button>
+    </ToggleChip>
   );
 
   // What the collapsed control says about itself: WHICH facets are on, and no number.
@@ -1608,32 +1608,29 @@ export function MapView() {
               ariaLabel={t.map.filter.categoryLabel}
             />
             {hasMaybes && (
-              <button
-                type="button"
-                className={'map-maybes' + (maybesOnly ? ' on' : '')}
-                aria-pressed={maybesOnly}
+              <ToggleChip
+                on={maybesOnly}
+                provisional
+                count={maybesInScope}
+                className="map-maybes"
                 onClick={() => setMaybesOnly((v) => !v)}
               >
                 {t.map.filter.maybes}
-                <span className="cnt" aria-hidden="true">
-                  {maybesInScope}
-                </span>
-              </button>
+              </ToggleChip>
             )}
             {/* The same idiom for the same shape of question — an independent toggle
-                beside `אולי`, not a third multi-value facet (ADR-0121 §9). */}
+                beside `אולי`, not a third multi-value facet (ADR-0121 §9). Which is now
+                literally the same component, not the same class name copied. */}
             {hasBehind && (
-              <button
-                type="button"
-                className={'map-maybes' + (leftOnly ? ' on' : '')}
-                aria-pressed={leftOnly}
+              <ToggleChip
+                on={leftOnly}
+                provisional
+                count={leftInScope}
+                className="map-maybes"
                 onClick={() => setLeftOnly((v) => !v)}
               >
                 {t.map.filter.left}
-                <span className="cnt" aria-hidden="true">
-                  {leftInScope}
-                </span>
-              </button>
+              </ToggleChip>
             )}
           </div>
           {closeControl}
@@ -1661,22 +1658,21 @@ export function MapView() {
         </>
       ) : (
         <>
-          <button
-            type="button"
-            className={'map-scopechip' + (allDays ? ' on' : '')}
-            aria-pressed={allDays}
-            onClick={() => setAllDays(!allDays)}
-          >
+          <ToggleChip on={allDays} className="map-scopechip" onClick={() => setAllDays(!allDays)}>
             🗓️ {t.map.allDays}
-          </button>
-          <button
-            type="button"
-            className={'map-facets' + (facetGlyphs ? ' on' : '')}
-            aria-label={facetWords ? t.map.filter.activeAria(facetWords) : undefined}
+          </ToggleChip>
+          {/* An `indicator`, not a `toggle`: the on-state says WHICH facets are live, and
+              the tap opens the strip rather than pressing anything — so it carries no
+              `aria-pressed` and names the fact in its own label instead. */}
+          <ToggleChip
+            on={Boolean(facetGlyphs)}
+            semantics="indicator"
+            className="map-facets"
+            ariaLabel={facetWords ? t.map.filter.activeAria(facetWords) : undefined}
             onClick={() => openDisclosure(MAP_ROW_DISCLOSURE.facets)}
           >
             {facetGlyphs || t.map.filter.open}
-          </button>
+          </ToggleChip>
           {/* The whole day as one free Google directions link — it ships with the
               connector that draws the same order, and costs nothing (§10). It is about
               the shape on the canvas, so it lives on the canvas. */}
