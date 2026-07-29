@@ -106,9 +106,43 @@ export class MaybeItemsService {
     return toMaybeItemDto(entity);
   }
 
+  /** **The inverse of `consume`, and the reason it exists is undo.** Scheduling an idea
+   *  consumes it; undoing that schedule puts the event back on the shelf **locally**, through
+   *  the reducer's snapshot — but until this endpoint there was nothing to tell the server, so
+   *  a resync re-consumed the idea and it vanished again. The client had the whole thing right
+   *  except that its compensating write had nowhere to go.
+   *
+   *  A dedicated action rather than a `consumed` field on `update`, for two reasons. `update`
+   *  is ADR-0116 §1's day-aim — *a pencil mark, not a schedule* — and folding a lifecycle flag
+   *  into it muddles the two. And its `apply` writes `targetDate` unconditionally, so a patch
+   *  carrying only `consumed` would silently clear the idea's day.
+   *
+   *  Idempotent, like `consume`: restoring an unconsumed idea is a no-op rather than a 409,
+   *  because an undo can be replayed by an outbox flush that already succeeded. */
+  async restore(tripId: string, maybeItemId: string, actorUserId: string): Promise<MaybeItem> {
+    const before = await this.requireMaybeItem(tripId, maybeItemId);
+    if (!before.consumed) return toMaybeItemDto(before);
+
+    const { entity } = await this.changes.mutate({
+      tripId,
+      actorUserId,
+      entityType: ENTITY_TYPE.MAYBE_ITEM,
+      entityId: maybeItemId,
+      action: 'update',
+      before: toMaybeItemDto(before),
+      after: { consumed: false },
+      apply: (tx) =>
+        tx.maybeItem.update({
+          where: { id: maybeItemId },
+          data: { consumed: false, updatedBy: actorUserId },
+        }),
+    });
+    return toMaybeItemDto(entity);
+  }
+
   /** Re-aim an idea at a day, or back to "someday" with `null` (ADR-0116 §1). A
    *  pencil mark, not a schedule — nothing about `consumed` changes, so the idea
-   *  stays parked either way. */
+   *  stays parked either way. (`restore` above is what changes it back.) */
   async update(
     tripId: string,
     maybeItemId: string,

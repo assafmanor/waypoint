@@ -34,6 +34,7 @@ import {
   isMoveIntoPastError,
   type MoveEventResult,
   moveEvent,
+  restoreMaybeItem,
   setEventStatus,
   updateEvent,
   updateMaybeItem,
@@ -69,7 +70,10 @@ export interface AddMaybeOptions {
 type UndoDescriptor =
   | { kind: 'status'; id: string; previous: TripEvent['status'] }
   | { kind: 'move'; id: string; previous: { date: string; startsAt?: string }; isHard: boolean }
-  | { kind: 'create'; id: string }
+  /** An event this action created. `maybeId` is the shelf idea it CONSUMED, when the create
+   *  was a schedule (ADR-0027 §2) — reversing has to put that idea back on the shelf
+   *  server-side, not only in the reducer's snapshot, or the next resync re-consumes it. */
+  | { kind: 'create'; id: string; maybeId?: string }
   | { kind: 'rippleApply'; items: { id: string; previous: { date: string; startsAt?: string } }[] }
   | { kind: 'update'; id: string; previous: UpdateEventInput; isHard: boolean }
   | { kind: 'delete'; event: TripEvent }
@@ -366,7 +370,7 @@ export async function applySchedule(
   maybeId: string,
 ): Promise<void> {
   deps.dispatch({ type: TRIP_ACTION.SCHEDULE, event, maybeId });
-  deps.lastAction.current = { kind: 'create', id: event.id };
+  deps.lastAction.current = { kind: 'create', id: event.id, maybeId };
   const input = toCreateEventInput(event);
   try {
     const canonical = await restOrQueue(deps.tripId, { verb: OUTBOX_VERB.CREATE, input }, () =>
@@ -653,6 +657,17 @@ export async function applyRippleApply(
   }
 }
 
+/** Put a consumed idea back on the shelf, server-side — the compensating write BOTH undo paths
+ *  owe (a plain schedule and a booked save that consumed one). Queued when offline like every
+ *  other write, so an undo made on a plane still lands. */
+async function restoreConsumed(deps: VerbDeps, maybeId: string): Promise<void> {
+  await restOrQueue(
+    deps.tripId,
+    { verb: OUTBOX_VERB.RESTORE_MAYBE_ITEM, maybeItemId: maybeId },
+    () => restoreMaybeItem(deps.tripId, maybeId),
+  );
+}
+
 async function reverseRest(deps: VerbDeps, desc: UndoDescriptor): Promise<void> {
   const { tripId } = deps;
   switch (desc.kind) {
@@ -678,6 +693,10 @@ async function reverseRest(deps: VerbDeps, desc: UndoDescriptor): Promise<void> 
         { verb: OUTBOX_VERB.DELETE, eventId: desc.id, confirm: false },
         () => deleteEvent(tripId, desc.id),
       );
+      // A scheduled idea goes back on the shelf. The reducer's snapshot has already done this
+      // locally; before `restore` existed there was nothing to tell the server, so the next
+      // resync re-consumed the idea and it vanished a second time.
+      if (desc.maybeId) await restoreConsumed(deps, desc.maybeId);
       return;
     case 'rippleApply':
       await Promise.all(
@@ -778,12 +797,9 @@ async function reverseRest(deps: VerbDeps, desc: UndoDescriptor): Promise<void> 
           () => updateEvent(tripId, desc.event!.id, desc.event!.previous, true),
         );
       }
-      // NOT reversed here: the idea's `consumed` flag server-side. The reducer's snapshot has
-      // already put it back on the shelf locally, but there is no un-consume endpoint —
-      // `updateMaybeItemSchema` takes `targetDate` and nothing else. That is a SHIPPED gap,
-      // not one this path introduced: `applySchedule`'s undo is a bare `{ kind: 'create' }`
-      // and leaves the flag set too, so a resync re-consumes either way. Matched here on
-      // purpose rather than half-fixed for one of the two callers; the backlog carries it.
+      // And the idea it consumed goes back on the shelf, server-side as well as locally —
+      // through the same helper the schedule undo uses, so the two cannot drift.
+      if (desc.maybeId) await restoreConsumed(deps, desc.maybeId);
       return;
     }
   }
