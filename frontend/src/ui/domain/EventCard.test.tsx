@@ -1,27 +1,13 @@
 // @vitest-environment jsdom
 import { afterEach, describe, it, expect, vi } from 'vitest';
-import { type ReactNode } from 'react';
 import { cleanup, fireEvent, render, screen } from '@testing-library/react';
-import { MemoryRouter } from 'react-router-dom';
-import { ToastProvider } from '../Toast';
-import { NavProvider } from '../../state/nav-state';
+import { wrapNav } from '../../test/nav-harness';
 import { EventCard, type EventCardProps } from './EventCard';
 import { SyncBadge } from '../feedback';
 import { ROUTE_TITLE_ARROW, routeTitle } from '../../lib/route-title';
 import { t } from '../../i18n/he';
 
 const TZ = 'Asia/Tokyo';
-
-// The Tier-2 menu opens a Sheet → Modal (nav + toast context).
-function wrap(node: ReactNode) {
-  return (
-    <MemoryRouter>
-      <ToastProvider>
-        <NavProvider>{node}</NavProvider>
-      </ToastProvider>
-    </MemoryRouter>
-  );
-}
 
 const base: EventCardProps = {
   icon: '🍜',
@@ -40,7 +26,7 @@ describe('EventCard', () => {
 
   it('hard coding (ADR-0011): solid `now` card, the 🔒 קשיח tag, no stepper, hard-edit warning', () => {
     const { container } = render(
-      wrap(
+      wrapNav(
         <EventCard
           {...base}
           kind="hard"
@@ -65,7 +51,7 @@ describe('EventCard', () => {
 
   it('soft coding: dashed hatch card + the soft tag + the free verbs incl. the stepper', () => {
     const { container } = render(
-      wrap(
+      wrapNav(
         <EventCard
           {...base}
           isOpen
@@ -83,27 +69,27 @@ describe('EventCard', () => {
   });
 
   it('renders the sync marker slot on the meta line, nothing when omitted (U-04/ADR-0091)', () => {
-    const withBadge = render(wrap(<EventCard {...base} sync={<SyncBadge state="pending" />} />));
+    const withBadge = render(wrapNav(<EventCard {...base} sync={<SyncBadge state="pending" />} />));
     // The marker lands on the meta line (below the title), never the title row.
     expect(withBadge.container.querySelector('.wp-event-m .sync-badge-pending')).toBeTruthy();
     expect(withBadge.container.querySelector('.wp-event-t .sync-badge')).toBeNull();
     cleanup();
     // Silent-when-synced is EntitySyncBadge's job: given no node, the card shows none.
-    const none = render(wrap(<EventCard {...base} />));
+    const none = render(wrapNav(<EventCard {...base} />));
     expect(none.container.querySelector('.sync-badge')).toBeNull();
   });
 
   it('fades the card while unsynced (provisional), full-opacity otherwise (ADR-0092)', () => {
-    const on = render(wrap(<EventCard {...base} unsynced />));
+    const on = render(wrapNav(<EventCard {...base} unsynced />));
     expect(on.container.querySelector('.wp-event.unsynced')).toBeTruthy();
     cleanup();
-    const off = render(wrap(<EventCard {...base} />));
+    const off = render(wrapNav(<EventCard {...base} />));
     expect(off.container.querySelector('.wp-event.unsynced')).toBeNull();
   });
 
   it('toggles open on the face and reports aria-expanded', () => {
     const onToggle = vi.fn();
-    render(wrap(<EventCard {...base} onToggle={onToggle} />));
+    render(wrapNav(<EventCard {...base} onToggle={onToggle} />));
     const face = screen.getByRole('button', { expanded: false });
     fireEvent.click(face);
     expect(onToggle).toHaveBeenCalledTimes(1);
@@ -113,7 +99,7 @@ describe('EventCard', () => {
     const onDone = vi.fn();
     const onSkip = vi.fn();
     const { container } = render(
-      wrap(<EventCard {...base} phase="passed" onDone={onDone} onSkip={onSkip} />),
+      wrapNav(<EventCard {...base} phase="passed" onDone={onDone} onSkip={onSkip} />),
     );
     expect(container.querySelector('.wp-event-settle')).toBeTruthy();
     // The settle card doesn't expand (no toggle button face).
@@ -124,7 +110,7 @@ describe('EventCard', () => {
 
   it('done event: the ✓ doubles as one-tap undo (keyboard-operable, restores)', () => {
     const onRestore = vi.fn();
-    render(wrap(<EventCard {...base} phase="done" onRestore={onRestore} />));
+    render(wrapNav(<EventCard {...base} phase="done" onRestore={onRestore} />));
     const undo = screen.getByRole('button', { name: t.actions.undoDone });
     fireEvent.keyDown(undo, { key: 'Enter' });
     expect(onRestore).toHaveBeenCalledTimes(1);
@@ -134,7 +120,7 @@ describe('EventCard', () => {
 
   it('renders the conflict flag when a hard conflict is passed', () => {
     const { container } = render(
-      wrap(
+      wrapNav(
         <EventCard
           {...base}
           kind="hard"
@@ -148,7 +134,7 @@ describe('EventCard', () => {
 
   it("a conflicting flight's title reads as its shortened route, with the SVG arrow", () => {
     const { container } = render(
-      wrap(
+      wrapNav(
         <EventCard
           {...base}
           conflict={{
@@ -172,7 +158,7 @@ describe('EventCard', () => {
     const onEdit = vi.fn();
     const onRemove = vi.fn();
     render(
-      wrap(
+      wrapNav(
         <EventCard
           {...base}
           isOpen
@@ -190,7 +176,7 @@ describe('EventCard', () => {
 
   it('read-only past day: forward verbs hidden, no ⋯ menu (settle/navigate still allowed)', () => {
     const { container } = render(
-      wrap(
+      wrapNav(
         <EventCard
           {...base}
           kind="hard"
@@ -211,7 +197,7 @@ describe('EventCard', () => {
     // A place-less event (or a coordless Place-lite) has no mappable location, so
     // the screen passes neither handler and the card drops both buttons.
     const { rerender } = render(
-      wrap(
+      wrapNav(
         <EventCard
           {...base}
           kind="hard"
@@ -226,7 +212,7 @@ describe('EventCard', () => {
     expect(screen.queryByRole('button', { name: t.actions.showOnMap })).toBeNull();
     // With handlers both come back — navigate (directions) + מפה (view).
     rerender(
-      wrap(
+      wrapNav(
         <EventCard
           {...base}
           kind="hard"
@@ -244,7 +230,7 @@ describe('EventCard', () => {
   it('the מפה button fires its view-on-map handler', () => {
     const onShowOnMap = vi.fn();
     render(
-      wrap(<EventCard {...base} phase="done" onRestore={() => {}} onShowOnMap={onShowOnMap} />),
+      wrapNav(<EventCard {...base} phase="done" onRestore={() => {}} onShowOnMap={onShowOnMap} />),
     );
     fireEvent.click(screen.getByRole('button', { name: t.actions.showOnMap }));
     expect(onShowOnMap).toHaveBeenCalledTimes(1);
@@ -254,14 +240,16 @@ describe('EventCard', () => {
   // its own zone + an amber shift pill showing how far the clock jumps.
   it('renders no shift pill without `zones` (single-zone trips stay bare)', () => {
     const { container } = render(
-      wrap(<EventCard {...base} startsAt="2026-07-07T10:00:00Z" endsAt="2026-07-07T11:00:00Z" />),
+      wrapNav(
+        <EventCard {...base} startsAt="2026-07-07T10:00:00Z" endsAt="2026-07-07T11:00:00Z" />,
+      ),
     );
     expect(container.querySelector('.wp-tzshift')).toBeNull();
   });
 
   it('renders each end in its own zone + a shift pill for a zone-crossing event', () => {
     const { container } = render(
-      wrap(
+      wrapNav(
         <EventCard
           {...base}
           startsAt="2026-07-07T20:00:00Z" // 23:00 in Jerusalem
@@ -283,7 +271,7 @@ describe('EventCard', () => {
 
   it('shows no pill when the shift is zero even if zones are named', () => {
     const { container } = render(
-      wrap(
+      wrapNav(
         <EventCard
           {...base}
           startsAt="2026-07-07T10:00:00Z"
@@ -296,7 +284,7 @@ describe('EventCard', () => {
 
   it('renders the duration label when the screen passes one', () => {
     const { container } = render(
-      wrap(
+      wrapNav(
         <EventCard
           {...base}
           startsAt="2026-07-07T20:00:00Z"
@@ -318,7 +306,7 @@ describe('EventCard — the way to the map (ADR-0121 §8 amendment)', () => {
 
   it('offers מפה on the badge without expanding the card', () => {
     const onShowOnMap = vi.fn();
-    render(wrap(<EventCard {...base} isOpen={false} onShowOnMap={onShowOnMap} />));
+    render(wrapNav(<EventCard {...base} isOpen={false} onShowOnMap={onShowOnMap} />));
     fireEvent.click(screen.getByRole('button', { name: t.actions.showOnMap }));
     expect(onShowOnMap).toHaveBeenCalledTimes(1);
   });
@@ -326,7 +314,7 @@ describe('EventCard — the way to the map (ADR-0121 §8 amendment)', () => {
   it('offers it on the passed-unmarked settle variant, which has no action row', () => {
     const onShowOnMap = vi.fn();
     render(
-      wrap(
+      wrapNav(
         <EventCard
           {...base}
           kind="soft"
@@ -344,14 +332,14 @@ describe('EventCard — the way to the map (ADR-0121 §8 amendment)', () => {
   });
 
   it('drops it entirely when there is no place to focus', () => {
-    render(wrap(<EventCard {...base} onShowOnMap={undefined} />));
+    render(wrapNav(<EventCard {...base} onShowOnMap={undefined} />));
     expect(screen.queryByRole('button', { name: t.actions.showOnMap })).toBeNull();
   });
 
   // The badge sits inside the face button, so its tap must not also expand the card.
   it('does not toggle the card when the badge is tapped', () => {
     const onToggle = vi.fn();
-    render(wrap(<EventCard {...base} onToggle={onToggle} onShowOnMap={() => {}} />));
+    render(wrapNav(<EventCard {...base} onToggle={onToggle} onShowOnMap={() => {}} />));
     fireEvent.click(screen.getByRole('button', { name: t.actions.showOnMap }));
     expect(onToggle).not.toHaveBeenCalled();
   });
@@ -359,7 +347,7 @@ describe('EventCard — the way to the map (ADR-0121 §8 amendment)', () => {
   // `ניווט` stayed in the action row: directions are a live on-the-ground verb,
   // while orientation is mode-neutral. So the two are no longer a fixed pair.
   it('keeps ניווט in the action row, separate from the badge', () => {
-    render(wrap(<EventCard {...base} isOpen onNavigate={() => {}} onShowOnMap={() => {}} />));
+    render(wrapNav(<EventCard {...base} isOpen onNavigate={() => {}} onShowOnMap={() => {}} />));
     expect(screen.getByRole('button', { name: t.actions.navigate })).toBeTruthy();
     expect(screen.getByRole('button', { name: t.actions.showOnMap })).toBeTruthy();
   });

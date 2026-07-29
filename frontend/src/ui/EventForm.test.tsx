@@ -1,8 +1,7 @@
 // @vitest-environment jsdom
 import { afterEach, describe, it, expect, vi } from 'vitest';
-import { type ReactNode } from 'react';
 import { cleanup, fireEvent, render, screen, within } from '@testing-library/react';
-import { MemoryRouter } from 'react-router-dom';
+import { wrapNav } from '../test/nav-harness';
 
 // jsdom has no scrollIntoView; the form's focus-reveal and the zone picker both
 // call it (mirrors ZonePicker.test.tsx).
@@ -39,26 +38,14 @@ vi.mock('../state/auth-state', () => ({ useAuth: () => ({ me: { user: { id: 'u1'
 const verbs = { create: vi.fn(), update: vi.fn(), schedule: vi.fn() };
 vi.mock('../state/verbs', () => ({ useVerbs: () => verbs }));
 
-import { ToastProvider } from './Toast';
-import { NavProvider } from '../state/nav-state';
 import { EventForm } from './EventForm';
 import { t } from '../i18n/he';
-
-function wrap(node: ReactNode) {
-  return (
-    <MemoryRouter>
-      <ToastProvider>
-        <NavProvider>{node}</NavProvider>
-      </ToastProvider>
-    </MemoryRouter>
-  );
-}
 
 describe('EventForm (folded into Modal, U-01)', () => {
   afterEach(() => cleanup());
 
   it('renders as a body-portalled dialog and moves focus into the card', () => {
-    render(wrap(<EventForm onClose={() => {}} />));
+    render(wrapNav(<EventForm onClose={() => {}} />));
     const dialog = screen.getByRole('dialog');
     expect(dialog.closest('.modal-overlay')?.parentElement).toBe(document.body);
     expect(document.activeElement).toBe(dialog);
@@ -66,14 +53,14 @@ describe('EventForm (folded into Modal, U-01)', () => {
 
   it('closes on Escape when the form is untouched (overlay/back path)', () => {
     const onClose = vi.fn();
-    render(wrap(<EventForm onClose={onClose} />));
+    render(wrapNav(<EventForm onClose={onClose} />));
     fireEvent.keyDown(document, { key: 'Escape' });
     expect(onClose).toHaveBeenCalledTimes(1);
   });
 
   it('closes on backdrop click when untouched', () => {
     const onClose = vi.fn();
-    render(wrap(<EventForm onClose={onClose} />));
+    render(wrapNav(<EventForm onClose={onClose} />));
     fireEvent.click(document.querySelector('.modal-overlay')!);
     expect(onClose).toHaveBeenCalledTimes(1);
   });
@@ -82,7 +69,7 @@ describe('EventForm (folded into Modal, U-01)', () => {
     const opener = document.createElement('button');
     document.body.appendChild(opener);
     opener.focus();
-    const { unmount } = render(wrap(<EventForm onClose={() => {}} />));
+    const { unmount } = render(wrapNav(<EventForm onClose={() => {}} />));
     expect(document.activeElement).not.toBe(opener);
     unmount();
     expect(document.activeElement).toBe(opener);
@@ -91,7 +78,7 @@ describe('EventForm (folded into Modal, U-01)', () => {
 
   it('guards a dirty close: Escape prompts a discard confirm instead of closing', () => {
     const onClose = vi.fn();
-    render(wrap(<EventForm onClose={onClose} />));
+    render(wrapNav(<EventForm onClose={onClose} />));
     fireEvent.change(screen.getByPlaceholderText(t.eventForm.titlePlaceholder), {
       target: { value: 'ארוחת ערב' },
     });
@@ -135,7 +122,7 @@ describe('EventForm (folded into Modal, U-01)', () => {
     };
 
     it('states the trip primary zone when nothing else anchors the event', () => {
-      render(wrap(<EventForm onClose={() => {}} />));
+      render(wrapNav(<EventForm onClose={() => {}} />));
       expect(document.querySelector('.zchip-zone')!.textContent).toContain('Tokyo');
       expect(document.querySelector('.zchip-btn.pinned')).toBeNull();
     });
@@ -147,13 +134,13 @@ describe('EventForm (folded into Modal, U-01)', () => {
         { at: Date.parse(flight.startsAt), fromZone: TLV, toZone: 'Asia/Tokyo' },
       ];
       render(
-        wrap(<EventForm defaults={{ date: '2026-07-20', start: '15:00' }} onClose={() => {}} />),
+        wrapNav(<EventForm defaults={{ date: '2026-07-20', start: '15:00' }} onClose={() => {}} />),
       );
       expect(document.querySelector('.zchip-zone')!.textContent).toContain('Jerusalem');
     });
 
     it('a pick pins the zone, and saving sends it as the override', () => {
-      render(wrap(<EventForm onClose={() => {}} />));
+      render(wrapNav(<EventForm onClose={() => {}} />));
       fireEvent.change(screen.getByPlaceholderText(t.eventForm.titlePlaceholder), {
         target: { value: 'קפה' },
       });
@@ -165,7 +152,7 @@ describe('EventForm (folded into Modal, U-01)', () => {
 
     it('interprets the typed time in the PICKED zone (the form and the view agree)', () => {
       render(
-        wrap(<EventForm defaults={{ date: '2026-07-20', start: '09:00' }} onClose={() => {}} />),
+        wrapNav(<EventForm defaults={{ date: '2026-07-20', start: '09:00' }} onClose={() => {}} />),
       );
       fireEvent.change(screen.getByPlaceholderText(t.eventForm.titlePlaceholder), {
         target: { value: 'קפה' },
@@ -195,7 +182,7 @@ describe('EventForm (folded into Modal, U-01)', () => {
         updatedAt: '',
         updatedBy: 'u1',
       };
-      render(wrap(<EventForm event={event as never} onClose={() => {}} />));
+      render(wrapNav(<EventForm event={event as never} onClose={() => {}} />));
       // Pinned to Jerusalem, and the stored instant reads back as its 09:00 there.
       expect(document.querySelector('.zchip-btn.pinned')).toBeTruthy();
       expect(document.querySelector('.zchip-zone')!.textContent).toContain('Jerusalem');
@@ -210,7 +197,7 @@ describe('EventForm (folded into Modal, U-01)', () => {
     });
 
     it('leaves the override untouched when the chip is never used', () => {
-      render(wrap(<EventForm onClose={() => {}} />));
+      render(wrapNav(<EventForm onClose={() => {}} />));
       fireEvent.change(screen.getByPlaceholderText(t.eventForm.titlePlaceholder), {
         target: { value: 'קפה' },
       });
@@ -223,7 +210,7 @@ describe('EventForm (folded into Modal, U-01)', () => {
 
   // ADR-0109 §11: category is an explicit ChoiceGrid, not derived from the icon.
   it('offers an explicit category selector for a manual event and marks the pick', () => {
-    render(wrap(<EventForm onClose={() => {}} />));
+    render(wrapNav(<EventForm onClose={() => {}} />));
     const group = screen.getByRole('radiogroup', { name: t.eventForm.categoryLabel });
     const food = within(group).getByRole('radio', { name: t.iconPicker.categories.food });
     expect(food.getAttribute('aria-checked')).toBe('false');

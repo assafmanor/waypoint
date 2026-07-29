@@ -1,24 +1,11 @@
 // @vitest-environment jsdom
 import { afterEach, describe, it, expect, vi } from 'vitest';
-import { type ReactNode } from 'react';
 import { cleanup, fireEvent, render, screen } from '@testing-library/react';
-import { MemoryRouter } from 'react-router-dom';
-import { ToastProvider } from '../Toast';
-import { NavProvider } from '../../state/nav-state';
+import { wrapNav } from '../../test/nav-harness';
 import { ZonePicker, zoneCity, zoneOffset, zoneLabel } from './ZonePicker';
 import { t } from '../../i18n/he';
 
 Element.prototype.scrollIntoView = vi.fn();
-
-function wrap(node: ReactNode) {
-  return (
-    <MemoryRouter>
-      <ToastProvider>
-        <NavProvider>{node}</NavProvider>
-      </ToastProvider>
-    </MemoryRouter>
-  );
-}
 
 describe('zone label helpers', () => {
   it('zoneCity reads the last path segment, underscores → spaces', () => {
@@ -39,7 +26,7 @@ describe('ZonePicker', () => {
 
   it('surfaces suggested zones (+ the current value) first under the suggested group', () => {
     render(
-      wrap(
+      wrapNav(
         <ZonePicker
           value="Asia/Jerusalem"
           suggested={['Europe/London']}
@@ -55,7 +42,7 @@ describe('ZonePicker', () => {
   });
 
   it('searches the full IANA set by city / zone / offset', () => {
-    render(wrap(<ZonePicker onChange={() => {}} onClose={() => {}} />));
+    render(wrapNav(<ZonePicker onChange={() => {}} onClose={() => {}} />));
     fireEvent.change(screen.getByPlaceholderText(t.zonePicker.searchPlaceholder), {
       target: { value: 'tokyo' },
     });
@@ -65,7 +52,7 @@ describe('ZonePicker', () => {
 
   it('fires onChange with the picked zone', () => {
     const onChange = vi.fn();
-    render(wrap(<ZonePicker value="UTC" onChange={onChange} onClose={() => {}} />));
+    render(wrapNav(<ZonePicker value="UTC" onChange={onChange} onClose={() => {}} />));
     fireEvent.change(screen.getByPlaceholderText(t.zonePicker.searchPlaceholder), {
       target: { value: 'jerusalem' },
     });
@@ -74,7 +61,7 @@ describe('ZonePicker', () => {
   });
 
   it('shows the no-results empty state for an unmatched query', () => {
-    render(wrap(<ZonePicker onChange={() => {}} onClose={() => {}} />));
+    render(wrapNav(<ZonePicker onChange={() => {}} onClose={() => {}} />));
     fireEvent.change(screen.getByPlaceholderText(t.zonePicker.searchPlaceholder), {
       target: { value: 'zzzznotazone' },
     });

@@ -299,3 +299,47 @@ mounted screen enters and leaves** (the Map's disclosure row), and a **step insi
 Not in scope, and deliberately: a `✕` that **clears a value or dismisses a notice** — the
 place picker's clear, `FilePicker`'s remove, `StatusBanner`'s dismiss, the shelf card's remove.
 Those are content actions wearing the same glyph. Back navigates; it does not edit.
+
+## Amendment (2026-07-29, session 176) — an implicit way out is still a way out
+
+> _"When there's an implicit way to go back (closing a modal by tapping outside it for
+> example) we should also treat system back as the same."_
+
+The session-175 rule was stated in terms of a **visible** control. That was too narrow: what
+makes a surface owe back an outcome is that the surface can be dismissed at all, not that the
+dismissal has a label. A backdrop tap, a tap outside a popover and Escape are the same promise
+as a `✕`.
+
+`Modal` already honours this — its backdrop `onClick` and its Escape handler are the very
+`onClose` it registers — which is why every sheet, dialog, picker and confirm needed nothing.
+The gaps were all **hand-rolled panels that never went through it**, so they were not in the
+back stack at all and back fell through to whatever was underneath:
+
+- **The icon picker's panel.** Closes on an outside tap and on Escape. A system back inside an
+  event or booking form fell through to the FORM's layer and discarded what you were typing —
+  while a tap two pixels to the left only closed the panel.
+- **`TimeField` / `TimePicker`.** Both render a `.tp-backdrop` whose entire job is "tap here
+  to close me", with the same fall-through consequence.
+- **A selected place on the Map.** Selecting raises the place card and a tap on blank canvas
+  clears it (`onCanvasTap`). Back left the tab instead — throwing away the screen where the
+  canvas would only have thrown away the selection.
+
+All four register through the existing `useBackLayer`, gated on the open/selected state. That
+gate is also what makes the ordering correct without anyone reasoning about component trees: a
+layer joins the stack **when it becomes active**, so a popover opened inside a form lands above
+the form's layer, and on the Map whichever of {selection, query row, errand} you opened last is
+the one back peels first.
+
+**The boundary stays where §175 put it.** A `✕` that clears a value or dismisses a notice —
+`FilePicker`'s remove, `StatusBanner`'s dismiss, a picker's clear, the shelf card's remove — is
+not a way out of a surface, and back must not start editing content. The test is whether the
+gesture _dismisses something you are in_, not whether it removes something from the screen.
+
+### One consequence worth naming
+
+Leaf primitives now participate in the back stack, so they can no longer be rendered bare in a
+test — `useBackLayer` needs `NavProvider`, which needs a router and the toast. That harness was
+already open-coded **identically in fourteen** `*.test.tsx` files; it is now
+`src/test/nav-harness.tsx`'s `wrapNav`, and all fourteen use it (rule 8 — the alternative was a
+fifteenth copy). The seven wrappers that genuinely differ (extra providers, a `BrowserRouter`,
+in-tree probes) keep their own.

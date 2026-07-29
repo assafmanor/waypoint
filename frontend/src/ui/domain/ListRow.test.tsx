@@ -1,23 +1,12 @@
 // @vitest-environment jsdom
 import { afterEach, describe, it, expect, vi } from 'vitest';
-import { useState, type ReactNode } from 'react';
+import { useState } from 'react';
 import { cleanup, fireEvent, render, screen } from '@testing-library/react';
-import { MemoryRouter } from 'react-router-dom';
-import { ToastProvider } from '../Toast';
-import { NavProvider } from '../../state/nav-state';
+import { wrapNav } from '../../test/nav-harness';
 import { SyncBadge } from '../feedback';
 import { ListRow, RowManageSheet } from './ListRow';
 
 // RowManageSheet builds on Sheet → Modal, which calls useOverlay (nav) + useToast.
-function wrap(node: ReactNode) {
-  return (
-    <MemoryRouter>
-      <ToastProvider>
-        <NavProvider>{node}</NavProvider>
-      </ToastProvider>
-    </MemoryRouter>
-  );
-}
 
 describe('ListRow', () => {
   afterEach(() => cleanup());
@@ -106,7 +95,7 @@ describe('RowManageSheet', () => {
     const onEdit = vi.fn();
     const onDelete = vi.fn();
     render(
-      wrap(
+      wrapNav(
         <RowManageSheet
           ariaLabel="פעולות"
           onClose={() => {}}
@@ -126,7 +115,7 @@ describe('RowManageSheet', () => {
   });
 
   it('opens from a ListRow kebab (row → manage sheet), listing the actions', () => {
-    render(wrap(<RowSheetHarness onEdit={vi.fn()} />));
+    render(wrapNav(<RowSheetHarness onEdit={vi.fn()} />));
     fireEvent.click(screen.getByRole('button', { name: 'פעולות' }));
     expect(screen.getByRole('button', { name: 'ערוך' })).toBeTruthy();
   });

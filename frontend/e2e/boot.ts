@@ -266,3 +266,21 @@ export function overlappingSoftEvents() {
     { ...base, id: 'ev-b', title: 'שוק', startsAt: at('11:00'), endsAt: at('13:00'), sortOrder: 1 },
   ];
 }
+
+/** A couple of trip places with coordinates, so the Map tab lists selectable rows without
+ *  Google — the fixture the selection back-parity case needs (`back-implicit-dismiss.spec.ts`).
+ *  Each is referenced by an event so it lands in the day-scoped list. */
+export function tripPlaces() {
+  return [
+    {
+      id: 'pl-museum',
+      tripId: 't1',
+      name: 'Mori Museum',
+      lat: 35.66,
+      lng: 139.73,
+      createdAt: '2024-01-01T00:00:00.000Z',
+      updatedAt: '2024-01-01T00:00:00.000Z',
+      updatedBy: 'u1',
+    },
+  ];
+}

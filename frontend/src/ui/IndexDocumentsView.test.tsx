@@ -1,8 +1,7 @@
 // @vitest-environment jsdom
 import { afterEach, describe, it, expect, vi } from 'vitest';
-import { type ReactNode } from 'react';
 import { cleanup, fireEvent, render, screen } from '@testing-library/react';
-import { MemoryRouter } from 'react-router-dom';
+import { wrapNav } from '../test/nav-harness';
 
 vi.mock('../state/trip-state', () => ({
   useTrip: () => ({
@@ -15,26 +14,14 @@ vi.mock('../lib/outbox', async (importOriginal) => {
   return { ...actual, usePendingUploads: () => [], useIsOffline: () => false };
 });
 
-import { ToastProvider } from './Toast';
-import { NavProvider } from '../state/nav-state';
 import { IndexDocumentsView } from './IndexDocumentsView';
 import { t } from '../i18n/he';
-
-function wrap(node: ReactNode) {
-  return (
-    <MemoryRouter>
-      <ToastProvider>
-        <NavProvider>{node}</NavProvider>
-      </ToastProvider>
-    </MemoryRouter>
-  );
-}
 
 describe('IndexDocumentsView (ADR-0098/ADR-0101)', () => {
   afterEach(() => cleanup());
 
   it('renders the back row titled "מסמכים" (ADR-0101) and the (unchanged) DocumentsSection content', () => {
-    render(wrap(<IndexDocumentsView onClose={() => {}} />));
+    render(wrapNav(<IndexDocumentsView onClose={() => {}} />));
     expect(screen.getByRole('button', { name: t.index.backAria })).toBeTruthy();
     expect(screen.getByText(t.docs.title)).toBeTruthy();
     expect(screen.queryByText(t.index.back)).toBeNull();
@@ -43,7 +30,7 @@ describe('IndexDocumentsView (ADR-0098/ADR-0101)', () => {
 
   it('calls onClose when the back button is tapped', () => {
     const onClose = vi.fn();
-    render(wrap(<IndexDocumentsView onClose={onClose} />));
+    render(wrapNav(<IndexDocumentsView onClose={onClose} />));
     fireEvent.click(screen.getByRole('button', { name: t.index.backAria }));
     expect(onClose).toHaveBeenCalledTimes(1);
   });

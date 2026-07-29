@@ -1,28 +1,15 @@
 // @vitest-environment jsdom
 import { afterEach, describe, it, expect, vi } from 'vitest';
-import { type ReactNode } from 'react';
 import { cleanup, fireEvent, render, screen } from '@testing-library/react';
-import { MemoryRouter } from 'react-router-dom';
-import { ToastProvider } from '../Toast';
-import { NavProvider } from '../../state/nav-state';
+import { wrapNav } from '../../test/nav-harness';
 import { SearchOverlay } from './SearchOverlay';
-
-function wrap(node: ReactNode) {
-  return (
-    <MemoryRouter>
-      <ToastProvider>
-        <NavProvider>{node}</NavProvider>
-      </ToastProvider>
-    </MemoryRouter>
-  );
-}
 
 describe('SearchOverlay (ADR-0101)', () => {
   afterEach(() => cleanup());
 
   it('renders the top bar (back button, title, context label), the field, and children', () => {
     render(
-      wrap(
+      wrapNav(
         <SearchOverlay
           title="חיפוש הזמנות"
           mode="trip"
@@ -46,7 +33,7 @@ describe('SearchOverlay (ADR-0101)', () => {
 
   it('focuses the search field on open, not the dialog container', () => {
     render(
-      wrap(
+      wrapNav(
         <SearchOverlay
           title="t"
           mode="trip"
@@ -68,7 +55,7 @@ describe('SearchOverlay (ADR-0101)', () => {
     const onQueryChange = vi.fn();
     const onClose = vi.fn();
     render(
-      wrap(
+      wrapNav(
         <SearchOverlay
           title="t"
           mode="trip"
@@ -96,7 +83,7 @@ describe('SearchOverlay (ADR-0101)', () => {
   it('registers as an overlay so Escape closes it', () => {
     const onClose = vi.fn();
     render(
-      wrap(
+      wrapNav(
         <SearchOverlay
           title="t"
           mode="trip"
@@ -117,7 +104,7 @@ describe('SearchOverlay (ADR-0101)', () => {
 
   it('does not render a clear button when the query is empty', () => {
     render(
-      wrap(
+      wrapNav(
         <SearchOverlay
           title="t"
           mode="trip"

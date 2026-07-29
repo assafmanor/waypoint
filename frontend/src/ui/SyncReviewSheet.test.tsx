@@ -1,11 +1,8 @@
 // @vitest-environment jsdom
 import 'fake-indexeddb/auto';
 import { afterEach, beforeEach, describe, it, expect, vi } from 'vitest';
-import { type ReactNode } from 'react';
 import { cleanup, fireEvent, render, screen } from '@testing-library/react';
-import { MemoryRouter } from 'react-router-dom';
-import { ToastProvider } from './Toast';
-import { NavProvider } from '../state/nav-state';
+import { wrapNav } from '../test/nav-harness';
 import { db } from '../db';
 import { EVENTS } from '../fixtures';
 import {
@@ -20,18 +17,6 @@ import { SyncReviewSheet } from './SyncReviewSheet';
 import { t } from '../i18n/he';
 
 const TRIP_ID = EVENTS[0].tripId;
-
-// SyncReviewSheet → Sheet → Modal → useOverlay needs the router + toast + nav
-// providers, the same nesting App.tsx uses (see Modal.test.tsx).
-function wrap(node: ReactNode) {
-  return (
-    <MemoryRouter>
-      <ToastProvider>
-        <NavProvider>{node}</NavProvider>
-      </ToastProvider>
-    </MemoryRouter>
-  );
-}
 
 const bookingOp = (id: string): OutboxOp =>
   ({
@@ -69,7 +54,7 @@ afterEach(async () => {
 describe('SyncReviewSheet (U-04 dead-letter)', () => {
   it('lists each failed write with its reason code', async () => {
     await recordFailure('bk-list');
-    render(wrap(<SyncReviewSheet onClose={() => {}} />));
+    render(wrapNav(<SyncReviewSheet onClose={() => {}} />));
     expect(screen.getByText(t.sync.verb.createBooking)).toBeTruthy();
     expect(screen.getByText('BOOKING_INVALID')).toBeTruthy();
   });
@@ -80,7 +65,7 @@ describe('SyncReviewSheet (U-04 dead-letter)', () => {
     // Offline so retry re-queues without an immediate flush draining it.
     vi.stubGlobal('navigator', { onLine: false });
 
-    render(wrap(<SyncReviewSheet onClose={() => {}} />));
+    render(wrapNav(<SyncReviewSheet onClose={() => {}} />));
     fireEvent.click(screen.getByText(t.sync.review.retry));
 
     // The store clears the failure → the sheet re-renders to its empty state.
@@ -92,7 +77,7 @@ describe('SyncReviewSheet (U-04 dead-letter)', () => {
   it('does not auto-clear on a timer', async () => {
     await recordFailure('bk-timer');
     vi.useFakeTimers();
-    render(wrap(<SyncReviewSheet onClose={() => {}} />));
+    render(wrapNav(<SyncReviewSheet onClose={() => {}} />));
     expect(screen.getByText(t.sync.verb.createBooking)).toBeTruthy();
     vi.advanceTimersByTime(30_000);
     expect(screen.getByText(t.sync.verb.createBooking)).toBeTruthy();

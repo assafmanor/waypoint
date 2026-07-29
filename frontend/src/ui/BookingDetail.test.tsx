@@ -1,8 +1,7 @@
 // @vitest-environment jsdom
 import { afterEach, beforeEach, describe, it, expect, vi } from 'vitest';
-import { type ReactNode } from 'react';
 import { cleanup, fireEvent, render, screen } from '@testing-library/react';
-import { MemoryRouter } from 'react-router-dom';
+import { wrapNav } from '../test/nav-harness';
 import {
   BOOKING_SOURCE,
   BOOKING_TYPE,
@@ -76,22 +75,12 @@ vi.mock('../state/map-scope-state', () => ({
 }));
 
 import { BookingDetail } from './BookingDetail';
-import { NavProvider } from '../state/nav-state';
-import { ToastProvider } from './Toast';
 import { t } from '../i18n/he';
 
-// The detail renders through `Modal`, which registers with the back stack — so the
-// harness supplies the real NavProvider rather than stubbing it out. That is also
-// what makes the close-before-navigate ordering test below meaningful.
-const wrap = (node: ReactNode) => (
-  <MemoryRouter>
-    <ToastProvider>
-      <NavProvider>{node}</NavProvider>
-    </ToastProvider>
-  </MemoryRouter>
-);
+// Rendered through the real back stack (`wrapNav`), not a stub — which is what makes
+// the close-before-navigate ordering test below meaningful.
 const open = (booking: Booking, onClose = () => {}) =>
-  render(wrap(<BookingDetail booking={booking} onClose={onClose} onEdit={() => {}} />));
+  render(wrapNav(<BookingDetail booking={booking} onClose={onClose} onEdit={() => {}} />));
 
 describe('BookingDetail — the location fact (ADR-0121 §8 amendment)', () => {
   beforeEach(() => {
