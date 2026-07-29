@@ -10399,6 +10399,14 @@ input.wf-date-val:focus-visible {
         outline-offset: 3px;
         border-radius: 14px;
       }
+      /* A create ADDS a card; a conversion CHANGES the one that was already there. Two
+         different claims, so they must not wear the same mark — the dashed green outline
+         means "this is new", and on a conversion that would be a lie about the day. */
+      .mk-changed {
+        outline: 2px dashed var(--amber);
+        outline-offset: 3px;
+        border-radius: 14px;
+      }
 
 /* ═══════════════════════════════════════════════════════════════════
          MOCKUP CHROME ONLY (`mk-*`) — the page, the phone frame, the
@@ -10692,6 +10700,11 @@ input.wf-date-val:focus-visible {
         <button data-form="ship">כפי שנשלח · בלי השורה</button>
         <button data-form="open">עם השורה, סגורה</button>
         <button data-form="code">עם קוד הזמנה</button>
+      </div>
+      <div class="mk-states">
+        <span class="mk-label">הטופס פועל על</span>
+        <button data-mode="create" class="on">אירוע חדש · יצירה</button>
+        <button data-mode="convert">אירוע קיים · המרה</button>
       </div>
       <div class="mk-states">
         <span class="mk-label">הטופס נפתח מ־</span>
@@ -11048,7 +11061,7 @@ input.wf-date-val:focus-visible {
                 <input class="ef-code-input" id="codeinput" placeholder="מספר אישור" value="" />
                 <div class="ef-derived" id="derived">
                   <span aria-hidden="true" id="derived-ic">🍽️</span>
-                  <span>תיווצר <b id="derived-txt">הזמנה · מסעדה</b>, ואפשר להשלים אותה אחר כך</span>
+                  <span><span id="derived-lead">תיווצר </span><b id="derived-txt">הזמנה · מסעדה</b><span id="derived-tail">, ואפשר להשלים אותה אחר כך</span></span>
                 </div>
               </div>
             </div>
@@ -11140,6 +11153,13 @@ input.wf-date-val:focus-visible {
                         <span class="wp-event-time"><span dir="auto">19:00</span></span>
                       </div>
                     </div>
+
+                    <p class="mk-outcome-note" id="out-conv-note" hidden>
+                      זו <b>אותה כרטיסייה</b>, לא כרטיסייה חדשה: ההמרה לא מוסיפה כלום ליום, היא
+                      משנה את מה שכבר היה בו. האירוע נשאר עם ה<b>סוג</b> שלו (המרה לא מקשיחה אירוע
+                      גמיש), והמיקום והקטגוריה עוברים אל ההזמנה - זה כבר האינווריאנט של ADR-0048,
+                      שהשרת אוכף בעצמו ברגע ש־<code>bookingId</code> נכתב.
+                    </p>
                   </div>
                 </div>
                 <div class="mk-outcome" id="out-index" hidden>
@@ -11335,7 +11355,7 @@ input.wf-date-val:focus-visible {
       const $$ = (s) => Array.from(document.querySelectorAll(s));
 
       const state = {
-        block: 'on', form: 'none', host: 'map', cat: 'food',
+        block: 'on', form: 'none', host: 'map', cat: 'food', mode: 'create',
         place: 'idea1', out: 'day', stop: 'half', size: '390x844',
       };
 
@@ -11383,6 +11403,15 @@ input.wf-date-val:focus-visible {
         $('#derived').hidden = !coded;
 
         const d = DERIVED[state.cat];
+        // THE STATEMENT IS A DIFFERENT SENTENCE FOR A DIFFERENT OPERATION (§4a). On a
+        // create it describes something being made; on an existing event it describes
+        // something CHANGING KIND. Same quiet line, same no-second-picker rule.
+        const converting = state.mode === 'convert';
+        $('#derived-lead').textContent = converting ? 'האירוע יהפוך ל' : 'תיווצר ';
+        $('#derived-tail').textContent = converting
+          ? ', והמיקום והקטגוריה יעברו אליה'
+          : ', ואפשר להשלים אותה אחר כך';
+        $('#form-title').textContent = converting ? 'עריכת אירוע · רמן נאגי' : 'שיבוץ · רמן נאגי';
         $('#derived-txt').textContent = 'הזמנה · ' + d.type;
         $('#derived-ic').textContent = d.ic;
         $$('[data-catpill]').forEach((p) => p.classList.toggle('on', p.dataset.catpill === state.cat));
@@ -11396,7 +11425,17 @@ input.wf-date-val:focus-visible {
         // ── what the save produced ────────────────────────────────────────────
         $('#out-day').hidden = state.out !== 'day';
         $('#out-index').hidden = state.out !== 'index';
-        $('#outcap').textContent = state.out === 'day' ? 'מסך היום' : 'אינדקס · הזמנות';
+        $('#outcap').textContent =
+          (state.out === 'day' ? 'מסך היום' : 'אינדקס · הזמנות') +
+          (converting ? ' · אחרי ההמרה' : '');
+        // A create adds a card to the day; a conversion changes the card that was
+        // already there. Same two nodes, different claim — so the "new" outline is only
+        // honest on a create.
+        $('#out-event').classList.toggle('mk-new', !converting);
+        $('#out-booking').classList.toggle('mk-new', !converting);
+        $('#out-booking').classList.toggle('mk-changed', converting);
+        $('#out-idx').classList.toggle('mk-new', true);
+        $('#out-conv-note').hidden = !(converting && coded);
         $('#nav-day').classList.toggle('on', state.out === 'day');
         $('#nav-idx').classList.toggle('on', state.out === 'index');
         $('#out-event').hidden = coded;

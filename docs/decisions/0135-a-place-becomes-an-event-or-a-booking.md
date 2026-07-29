@@ -1,6 +1,6 @@
 # 0135 — A place becomes an event or a booking, and **the confirmation code decides which**
 
-**Status:** Accepted — designed 2026-07-29 (session 181), after the owner rejected the session's first design in place. **Design only; nothing below is built.** The mockup renders the shipped stylesheets in a headless browser and every number in §8 is read from its live DOM, but no canvas over real tiles has been seen (ADR-0121 §13) and nothing here claims otherwise.
+**Status:** Accepted — designed 2026-07-29 (session 181), after the owner rejected the session's first design in place; **§4a added 2026-07-30 (session 182)**, which withdraws §4's create-only scoping so an existing event converts too. **Design only; nothing below is built.** The mockup renders the shipped stylesheets in a headless browser and every number in §8 is read from its live DOM, but no canvas over real tiles has been seen (ADR-0121 §13) and nothing here claims otherwise.
 **Date:** 2026-07-29
 
 **Extends** [0121](0121-embedded-map-phase-6-design.md) **§8** — the selection-revealed way-in block, which lists one entry per reference a place **already has**, gains a single primary action (§1). §8's own rule (a row tap normalises the sheet to `half`) is untouched.
@@ -85,9 +85,34 @@ The tempting reading is "ADR-0134 hands a place to a form; this hands a form to 
 
 - **It is a `Collapsible`** (`ui/primitives/Collapsible`, ADR-0098's reuse audit generalised it), closed by default, rendering as a **link-weight line rather than a field**. For most events there is no code, and a labelled empty box implies there should be.
 - **It is app-wide, deliberately** (owner's call this session). `EventForm` is hosted by `DayView` and `PlanDay` as well as the Map, and the gap it closes is the same everywhere: today you must decide "event or booking" _before you start typing_, on every authoring surface. A map-local sheet would have been a third authoring surface beside `EventForm` and `BookingSheet` — the parallel copy root rule 8 and ADRs 0078/0079/0094/0095 exist to prevent.
-- **It appears on CREATE only.** Typing a code into an existing event is a **conversion** — create the booking, link the event, move its fields, decide what happens to the ones a booking does not have — which is a different operation with its own failure modes, not a field. Scoping the line to create keeps this phase's app-wide change to the one thing it claims. Converting later is a decision that has not been taken.
+- **It appears on create _and_ on an unlinked existing event** — see §4a, which reverses this section's original create-only scoping at the owner's request (2026-07-30, session 182). It is absent on an event that is **already** booking-linked, for the same reason `showPlace`/`showCategory` are: that field lives on the booking now.
 - **Everything else in the form is untouched, and that includes the two controls this design was first drawn without.** The category `ChoiceGrid` and the `IconPicker` stay exactly where they are, in the shipped order (category leads, then icon + title), and they are chosen exactly as they are today. The mockup draws the form **in full** for that reason: the first pass drew four fields, which made the new line look like a far bigger share of the form than it is.
 - **The place arrives pre-filled** through one new field on `defaults` (`placeId`); `BookingSheet`'s `seed` is untouched by this design, since the fast path no longer opens it. `PlacePicker` renders its shipped `filled` state and keeps `onFind`.
+
+### 4a. An existing event converts, and the model already knows how
+
+**Amended 2026-07-30 (session 182), at the owner's request:** _"I want the event form, from the day view too, to be able to automatically be converted to bookings in the same way."_ §4's create-only scoping is withdrawn. The line appears on an existing, unlinked event, and typing a code into it **converts** the event into a booking.
+
+The reason the original scoping was cautious — "create the booking, link the event, move its fields" — turns out to be answered by the model rather than by this design. Checked in the tree before deciding:
+
+- **The field migration is already an enforced invariant.** `events.service.ts` sets `placeId: null` whenever `bookingId` is set, on both create and update, because "a linked event's place lives on its booking" (ADR-0048). The form has been reading the other half of the same rule since it shipped: `showPlace`/`showCategory` are `!event?.bookingId`. So the conversion does not have to move the place — **it has to put the place on the booking, and the server takes it off the event.**
+- **Both writes are shipped verbs.** `indexVerbs.createBooking` (**without** its optional `event` seed — the event already exists, and passing a seed would create a second one) and an ordinary event patch setting `bookingId`. Two calls, the same shape `applySchedule` already has for create-then-consume.
+
+**What conversion does, exactly:**
+
+|                          |                                                                                                                                                     |
+| ------------------------ | --------------------------------------------------------------------------------------------------------------------------------------------------- |
+| **Booking**              | `type` from the form's category (§2), `title`/`confirmationCode`/`placeId` from the form, the schedule from the event                               |
+| **Event**                | gains `bookingId`; the server nulls its `placeId`; **keeps its own `kind`, `category`, `title` and times**                                          |
+| **The form, afterwards** | place, category and the code line all disappear from it — they live on the booking now, which is the rule the form already had for two of the three |
+
+**The kind is preserved, and is _not_ re-derived.** This is the one place the create path's rule must not be copied: at create, kind comes from `bookingDefaultKind` because nothing has been said yet. On an existing event a human has already said it, and `bookingDefaultKind` would silently **harden** a soft sightseeing event the moment a ticket number is typed (`activity` → `hard`). ADR-0011's hard events are guarded on edit and never auto-moved; auto-hardening through a text field is precisely that, through the back door. So conversion changes what the thing **is**, never how committed it is.
+
+**The statement changes with the operation, because it is a different sentence.** On a create it reads `תיווצר הזמנה · מסעדה`; on an existing event, `האירוע יהפוך להזמנה · מסעדה`. Same quiet line, same no-second-picker rule (§2) — it just stops describing a creation it is not doing.
+
+**It is one-way through this field, and deliberately.** Once converted, the code lives on the booking and the event form no longer shows the line, so a code cannot be cleared back into an event here. Un-converting is **deleting a booking** that may by then carry documents, notes, a room and wifi; that is a destructive act and it belongs to the booking's own surface with the confirm it already has. A field that quietly deletes an entity is not a field.
+
+**No dialog.** The statement is the disclosure, which is the posture §2 already took, and the save's toast carries the app's ordinary undo (ADR-0012) — which here has to cover **both** writes as one action, the same requirement §5's consume already imposes.
 
 ### 5. The originating idea is consumed — through the path that already consumes it
 
@@ -164,6 +189,8 @@ One control instead of two costs **+56px instead of +92px** — under a plain ro
 
 - **`EventForm` can now produce a `Booking`.** That is a real widening of its contract, on every surface that hosts it, and it is the owner's explicit call. The branch lives at save; the fields above it are unchanged.
 - **The Map tab becomes a host of `EventForm`**, and therefore owes it `usePlaceErrandReturn<EventFormDraft>('event', 'map', …)`. Forgetting it reintroduces session 165's exact failure on a fifth host.
+- **Conversion is a two-entity write that must undo as one.** `createBooking` then a `bookingId` patch, with the toast's undo covering both — a half-applied conversion leaves a booking nobody linked to, which is worse than no conversion. Same requirement the consume already imposes, so there is one pattern to get right, not two.
+- **An event can now lose fields by being edited.** Converting takes place and category off the event and onto the booking. It is ADR-0048's invariant rather than a new rule, and the server enforces it, but it is the first time a user action _in the event form_ triggers it.
 - **A standalone consume gains a dispatch.** Today `consumed` flips only under `TRIP_ACTION.SCHEDULE`; the code path needs the same flip without an event of its own, with matching undo.
 - **`CATEGORY_TO_BOOKING_TYPE` is a new shared constant**, and it is the inverse of one that already exists. The two must be edited together when `BookingType` grows — the `satisfies Record<…>` on both is what makes that a compile error rather than a silent gap.
 - **A guessed booking type reaches the data.** The statement makes it visible and the booking's own form makes it correctable, but a transport place will produce a `flight` that someone has to fix. That is the accepted cost of not asking.
@@ -178,5 +205,8 @@ One control instead of two costs **+56px instead of +92px** — under a plain ro
 - **Whether `תיווצר הזמנה · מסעדה` reads as an outcome or as a warning**, and whether not being able to correct the type right there is frustrating rather than calm.
 - **Whether the pill reads as the row's primary action** at 44px, against a reference row above it.
 - **Whether 198px at `half` on a 360 is usable** even with the scroll-into-view — or whether a row tap on a small screen should drop to `full` rather than `half` when the block will overflow.
+- **Whether conversion is legible as a conversion.** `האירוע יהפוך להזמנה · מסעדה` is one quiet line standing in for an operation that creates an entity and moves two fields off the one you are editing.
+- **Whether losing the place and category controls on save reads as correct or as a bug.** They vanish from the form the next time it opens, which is the shipped rule for a linked event — but nobody has met it by arriving from an event they authored themselves.
+- **Whether one-way is accepted.** The first person to type a code by mistake will look for the undo, find the toast's, and then look for a way to reverse it later and not find one outside the booking's delete.
 - **Whether a booking consuming an idea surprises anyone.** It is the same duplication argument as an event, but a longer inference to make.
 - **Whether the fast path's minimal booking feels finished or abandoned** when you open it later in `BookingSheet` and find only a code.
