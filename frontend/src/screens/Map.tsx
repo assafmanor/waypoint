@@ -345,7 +345,7 @@ export function MapView() {
   // form host uses: without it the sheet returns closed and the rest of what was typed is
   // gone, which is the whole reason the errand carries a draft.
   const [bookingDraft, setBookingDraft] = useState<BookingSheetDraft | null>(null);
-  usePlaceErrandReturn<BookingSheetDraft>('booking', (returned) => {
+  usePlaceErrandReturn<BookingSheetDraft>('booking', 'map', (returned) => {
     if (!returned.draft) return;
     setEditBooking(bookings.find((b) => b.id === returned.target.id) ?? null);
     setBookingDraft(returned.draft);

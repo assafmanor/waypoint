@@ -128,3 +128,24 @@ reclaim, the lifted `queryOpen`, or the errand layer — and that is a much smal
 than "the back stack".
 
 Findings #1 and #2 remain the owner's decisions; #4 and #5 remain unverified.
+
+### Session 174 — the real Map screen does not reproduce it either
+
+That next step is taken: `screens/Map.back.test.tsx` renders the **real `MapView`** over a
+`BrowserRouter` and the same fake navigation, and presses back from four states — an empty
+open field, a field with a live query, an open/✕/re-open cycle, and twice in a row. All four
+behave: one press closes the field and stays on `?tab=map`, the next leaves the tab. So the
+chrome reclaim and the lifted `queryOpen` are cleared too.
+
+Its own file rather than a switch of `Map.embedded.test.tsx`: that suite carries 138
+assertions on a `MemoryRouter`, and moving all of them to chase one bug is a much larger
+change than the question deserves. The duplicated mock fixture is deliberate — the two files
+ask different questions of the same screen.
+
+**What that leaves.** The mechanism behind _"it sometimes exits to the main screen"_ is
+understood (the entry behind any tab is trip Home, so a back that rides one entry too far
+reads as "it went home"), and every jsdom path into it is now green. The remaining candidates
+are the two the harness cannot see: a real Android gesture with its own commit timing, and
+finding #1 — which is ADR-0090 §2 working as designed, and the owner's call. **The next probe
+should be an e2e**, for the reason session 174's errand bug proved: the seam that hides these
+is a screen unmounting across a navigation, which is exactly what jsdom fixtures mock away.

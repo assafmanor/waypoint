@@ -19,6 +19,7 @@ import { countdownParts, formatTripDates } from '../lib/time';
 import { computeReadiness, type CheckId, type ReadinessCheck } from '../lib/readiness';
 import { BookingSheet, type BookingSeed, type BookingSheetDraft } from '../ui/BookingSheet';
 import { usePlaceErrandReturn } from '../state/map-scope-state';
+import { HOME_TAB } from '../state/nav-state';
 import { DocumentUploadSheet } from '../ui/DocumentUploadSheet';
 import { StatTile } from '../ui/domain';
 import { CollapseToggle, Collapsible } from '../ui/primitives/Collapsible';
@@ -60,7 +61,7 @@ export function PlanHome({ onNavigate }: { onNavigate: (tab: TabId) => void }) {
   // form host uses: without it the sheet returns closed and the rest of what was typed is
   // gone, which is the whole reason the errand carries a draft.
   const [bookingDraft, setBookingDraft] = useState<BookingSheetDraft | null>(null);
-  usePlaceErrandReturn<BookingSheetDraft>('booking', (returned) => {
+  usePlaceErrandReturn<BookingSheetDraft>('booking', HOME_TAB, (returned) => {
     if (!returned.draft) return;
     // A seed host: nothing exists to look up, so the draft alone re-opens the sheet.
     setBookingDraft(returned.draft);
