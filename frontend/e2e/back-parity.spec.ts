@@ -20,7 +20,7 @@ async function systemBack(page: Page) {
   await page.evaluate(() => window.history.back());
 }
 
-const PLAN_MODE = '✏️ תכנון';
+const PLAN_MODE = 'תכנון';
 const FILTER_OPEN = 'סינון';
 const FILTER_CLOSE = 'סגירת סינון';
 const RESOLVE = 'הזז';
@@ -63,7 +63,7 @@ test.describe('Plan mode’s overlap resolve sheet', () => {
   test.beforeEach(async ({ page }) => {
     await bootIntoTrip(page, { events: overlappingSoftEvents(), dates: shortLiveTripDates() });
     await page.goto('/');
-    await page.getByText(PLAN_MODE).first().click();
+    await page.locator('.modebar button', { hasText: PLAN_MODE }).click();
     await page.locator('nav.nav button', { hasText: 'יום-יום' }).click();
     await expect(page).toHaveURL(/[?&]tab=days/);
   });
