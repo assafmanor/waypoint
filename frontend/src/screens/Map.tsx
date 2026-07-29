@@ -310,13 +310,20 @@ export function MapView() {
   // back has to undo that before it leaves the tab (ADR-0132 §5). The design said "one
   // rule in `resolveBack`"; the mechanism for exactly this already existed — a back
   // LAYER, which is what `resolveBack` consults first — so nothing there is edited and
-  // nav-state learns nothing about this screen. Registered only while the field is open
-  // (the screen itself never unmounts), and it hands off rather than repeating: one back
-  // closes the field, the next leaves the tab.
+  // nav-state learns nothing about this screen. Registered while the row is open (the
+  // screen itself never unmounts), and it hands off rather than repeating: one back closes
+  // the row, the next leaves the tab.
+  //
+  // **EITHER OCCUPANT, not just the field** (owner, session 175: _"a system back should do
+  // the same as if the button was clicked"_). The row has one pinned `✕` serving both the
+  // query and the facets, and it runs exactly this `openDisclosure(null)` — but the layer
+  // was gated on the QUERY, so with the filter panel open a system back walked past a
+  // visible close control and left the tab. The gate is the disclosure, which is what the
+  // ✕ is bound to.
   useBackLayer(() => {
     openDisclosure(null);
     return { remainsActive: false };
-  }, queryFieldOpen);
+  }, disclosure !== null);
 
   // The paid half only ever sees a LIVE query — the field being open is not an intent to
   // spend (ADR-0131 §8b's floor is the other half of that). Handing it '' when the query

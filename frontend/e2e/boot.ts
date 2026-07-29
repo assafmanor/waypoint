@@ -119,9 +119,13 @@ export async function bootIntoTrip(
     (u) => u.pathname === '/me',
     (r) => r.fulfill({ json: ME }),
   );
+  // `/trips` is both an API path AND an app route, so this mock must answer only the
+  // XHR. Left un-guarded it also fulfilled the DOCUMENT navigation, and `goto('/trips')`
+  // rendered raw JSON instead of the all-trips screen — a spec that needs to COLD-LAUNCH
+  // there (the back-parity one) could not.
   await page.route(
     (u) => u.pathname === '/trips',
-    (r) => r.fulfill({ json: [trip] }),
+    (r) => (r.request().resourceType() === 'document' ? r.continue() : r.fulfill({ json: [trip] })),
   );
   await page.route(
     (u) => u.pathname === '/trips/t1/snapshot',
@@ -231,3 +235,34 @@ export const ERRAND_FIXTURE = {
     },
   ],
 };
+
+/** Two overlapping SOFT events on today, which is what makes Plan mode's day render a
+ *  CLUSTER with the `הזז` resolve affordance — and, with two movers to choose between,
+ *  the resolve sheet's two-step shape (pick a mover, then a slot) whose in-sheet back
+ *  button is the parity case (`e2e/back-parity.spec.ts`). Soft on purpose: a hard event
+ *  is an anchor and never a mover (ADR-0011). */
+export function overlappingSoftEvents() {
+  const date = new Date().toISOString().slice(0, 10);
+  const at = (hhmm: string) => `${date}T${hhmm}:00.000Z`;
+  const base = {
+    tripId: 't1',
+    date,
+    kind: 'soft',
+    status: 'planned',
+    source: 'manual',
+    createdAt: '2024-01-01T00:00:00.000Z',
+    updatedAt: '2024-01-01T00:00:00.000Z',
+    updatedBy: 'u1',
+  };
+  return [
+    {
+      ...base,
+      id: 'ev-a',
+      title: 'מוזיאון',
+      startsAt: at('10:00'),
+      endsAt: at('12:00'),
+      sortOrder: 0,
+    },
+    { ...base, id: 'ev-b', title: 'שוק', startsAt: at('11:00'), endsAt: at('13:00'), sortOrder: 1 },
+  ];
+}

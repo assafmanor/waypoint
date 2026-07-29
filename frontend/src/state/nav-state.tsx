@@ -343,7 +343,21 @@ export function NavProvider({ children }: { children: ReactNode }) {
   // programmatic history.back) so it's robust to double-invoked effects (Strict
   // Mode) and needs no async reconciliation: an overlay closed off-back leaves a
   // "spent" marker a later back harmlessly consumes.
+  //
+  // **AND THE COUNT IS PER-URL** (session 175, reproduced in a browser). A marker is
+  // only ridable from the entry it was pushed at — riding one pushed at a DIFFERENT
+  // URL does not close a layer, it navigates you off the screen. So the depth is
+  // scoped to the URL it was counted at: when the app navigates, every marker behind
+  // is spent as far as the new screen is concerned, and the layers that register here
+  // need markers of their own. Without this the count leaked across navigations —
+  // two Index overlays closing as an errand navigated to the Map left depth 2, so the
+  // Map's own two layers were "already markered" and got none, and one back rode
+  // straight off the tab onto a stale `?tab=index` entry. That is the owner's _"it
+  // sometimes exits to the main screen"_, and ADR-0103's accepted tradeoff (at most
+  // one NO-OP back) never included leaving the screen.
   const markerDepthRef = useRef(0);
+  const markerUrlRef = useRef<string | null>(null);
+  const currentUrl = () => window.location.pathname + window.location.search;
   const navigate = useNavigate();
   const showToast = useToast();
 
@@ -409,11 +423,21 @@ export function NavProvider({ children }: { children: ReactNode }) {
   // no system-back to ride (iOS/Safari), overlays keep the plain in-memory model.
   const pushMarker = useCallback(() => {
     markerDepthRef.current += 1;
-    navigate(window.location.pathname + window.location.search);
+    markerUrlRef.current = currentUrl();
+    navigate(currentUrl());
   }, [navigate]);
+
+  /** Markers counted at another URL are behind us now, so none of them is ridable from
+   *  here — the count starts again for this screen. */
+  const forgetMarkersFromElsewhere = useCallback(() => {
+    if (markerUrlRef.current === currentUrl()) return;
+    markerDepthRef.current = 0;
+    markerUrlRef.current = currentUrl();
+  }, []);
 
   const reconcileMarkers = useCallback(() => {
     if (!getNavigation()) return;
+    forgetMarkersFromElsewhere();
     // Push-only: give any un-markered layer its marker. We never programmatically
     // pop — an overlay closed off-back (X / backdrop / Escape / arrow / unmount)
     // leaves a "spent" marker that a later back harmlessly consumes. Tradeoff:
@@ -421,7 +445,7 @@ export function NavProvider({ children }: { children: ReactNode }) {
     // fragile async history.back() reconciliation (which races Strict Mode's
     // double-mount and any rapid re-render).
     while (markerDepthRef.current < stackRef.current.length) pushMarker();
-  }, [pushMarker]);
+  }, [pushMarker, forgetMarkersFromElsewhere]);
 
   // Route the platform system-back (Android hardware/edge back, desktop button)
   // through the SAME resolveBack as every other trigger (ADR-0090). Two paths:
@@ -445,25 +469,51 @@ export function NavProvider({ children }: { children: ReactNode }) {
       // Let a forward traverse (redo) pass.
       if (typeof destIdx === 'number' && typeof curIdx === 'number' && destIdx > curIdx) return;
 
-      // Overlay open → ride the traversal to close the topmost layer.
+      // Overlay open → close the topmost layer, running its OWN handler so a system
+      // back and the layer's visible control (✕ / ביטול / the back arrow) do the same
+      // thing (owner, session 175). Riding a marker is how we avoid needing to cancel;
+      // it is not a different outcome.
       if (stackRef.current.length > 0) {
-        markerDepthRef.current = Math.max(0, markerDepthRef.current - 1);
-        const stack = stackRef.current;
-        const top = stack[stack.length - 1];
-        const res = top?.handle();
-        if (res?.remainsActive) {
-          // A repeatable layer (an Index filter reset, ADR-0103) stays mounted —
-          // re-push its marker once this traversal commits so the next back peels
-          // it again.
-          queueMicrotask(() => reconcileMarkers());
-        } else if (top) {
-          // A dismissible layer is done → drop it NOW so the marker count stays in
-          // step (its own unmount/unregister then no-ops), rather than waiting for
-          // the async unmount and risking a spurious re-push in between.
-          const i = stack.indexOf(top);
-          if (i >= 0) stack.splice(i, 1);
+        // Only a marker pushed AT THIS URL is ridable — see `markerUrlRef`. Riding
+        // anything else navigates off the screen instead of peeling a layer.
+        const ridable = markerUrlRef.current === currentUrl() && markerDepthRef.current > 0;
+        const peel = () => {
+          const stack = stackRef.current;
+          const top = stack[stack.length - 1];
+          const res = top?.handle();
+          if (res?.remainsActive) {
+            // A repeatable layer (an Index filter reset, ADR-0103) stays mounted —
+            // re-push its marker once this traversal commits so the next back peels
+            // it again.
+            queueMicrotask(() => reconcileMarkers());
+          } else if (top) {
+            // A dismissible layer is done → drop it NOW so the marker count stays in
+            // step (its own unmount/unregister then no-ops), rather than waiting for
+            // the async unmount and risking a spurious re-push in between.
+            const i = stack.indexOf(top);
+            if (i >= 0) stack.splice(i, 1);
+          }
+        };
+        if (ridable) {
+          markerDepthRef.current = Math.max(0, markerDepthRef.current - 1);
+          peel();
+          return; // no preventDefault — the marker is popped, the layer is handled.
         }
-        return; // no preventDefault — the marker is popped, the layer is handled.
+        // No marker here to ride. Cancel the traversal instead and peel anyway, which
+        // is ADR-0090's original interception — correct whenever the platform grants a
+        // cancelable traverse, and strictly better than riding an entry that belongs to
+        // another screen. With per-URL markers this is a safety net rather than the
+        // usual path: a registered layer normally has its own marker by now.
+        if (e.cancelable) {
+          e.preventDefault();
+          peel();
+          return;
+        }
+        // Uncancelable AND unmarkered: nothing can stop the traverse, so let it commit
+        // and re-marker whatever layers survive it rather than leaving the count lying
+        // about what is on screen.
+        queueMicrotask(() => reconcileMarkers());
+        return;
       }
 
       // Structural back.

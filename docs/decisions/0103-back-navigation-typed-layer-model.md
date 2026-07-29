@@ -234,3 +234,68 @@ cold-launch guard, and tab/exit structural back.
   registry fix still resolves the primary bug.
 - **Escape scope** — overlays + search only (chosen default) vs. full peel (Escape resets
   filters/exits subviews like system back).
+
+---
+
+## Amendment (2026-07-29, session 175) — a marker is only ridable at the URL it was pushed at, and a visible back control is a layer
+
+> _"When there's a back button on a form or a search or whatever, a system back should do the
+> same as if the button was clicked. I want you to do a full app scan for all of these and
+> create an app wide solution for all of this once and for all. System backs (android swipe
+> gesture) shouldn't do anything different when there's a back button (or cancel, exit)."_
+
+Two changes, one repair and one rule. Both were reproduced in a real browser before being
+fixed (`e2e/back-parity.spec.ts`, `e2e/back-map.spec.ts`) — the whole class hides in the seam
+between a DOM handler and a history traversal, where a jsdom fixture asserts nothing.
+
+### The repair: `markerDepthRef` is scoped to a URL
+
+The marker bookkeeping counted markers **globally**. It is push-only by design, and the
+accepted tradeoff was stated here as _"at most one no-op back after an overlay is closed
+off-back"_. That was true only while the app stayed put.
+
+It does not stay put. When a surface navigates while its overlays unmount — precisely what a
+place errand does (ADR-0134 §1) — the count keeps the markers those overlays pushed **at the
+old URL**. The new screen's layers then look already-markered and get no markers of their own,
+and the next back rides an entry belonging to the screen you left. Observed: two Index
+overlays closing as an errand navigated to the Map left depth 2, the Map's field and errand
+layers got none, and one press rode onto a stale `?tab=index` entry — leaving the tab with the
+errand still live. That is the owner's _"it sometimes exits to the main screen"_, and **leaving
+the screen was never inside the accepted tradeoff.**
+
+So the depth carries the URL it was counted at, and a navigation resets it: every marker behind
+is spent as far as the new screen is concerned. The interceptor checks the same thing before
+riding — and when there is no marker here to ride it now **cancels and peels** (ADR-0090's
+original interception) instead of riding a foreign entry. That fallback is a safety net, not
+the usual path: with per-URL depth a registered layer normally has its own marker already.
+
+### The rule: if a surface shows a way back, that way back is a `useBackLayer`
+
+The scan found three surfaces where the visible control and the system back did different
+things. None was a mechanism failure — each was a control that had never been registered:
+
+- **The Map's filter panel.** The row's one pinned `✕` serves both the query and the facets
+  and runs `openDisclosure(null)`, but the layer was gated on the QUERY. With the filter open
+  a back walked past a visible close control and left the tab. Gated on the disclosure now,
+  which is what the `✕` is bound to.
+- **Plan mode's resolve sheet.** A two-step sheet whose step 2 renders its own `אירוע אחר`
+  step-back. `Modal` registers `onClose`, so a system back dismissed the whole sheet while the
+  button one line above went back a step. It registers a repeatable layer
+  (`remainsActive: true`) in the sheet's own component — the Modal's PARENT, so child-first
+  effect ordering puts the step layer above the close layer and back peels the step first.
+- **The all-trips screen.** A declared root (`ROOT_PATHS`), so a structural back is a no-op and
+  the OS leaves the app — right when there is nowhere in-app to go, wrong the moment the header
+  renders its arrow back into a live trip. Cold-launched at `/trips` there is no history entry
+  to fall back on either, so the gesture quit the app while the button returned to the trip.
+  A layer gated on exactly what renders the arrow, bound to the same handler.
+
+Stated as the rule the owner asked for, and now the first thing to check when adding a
+surface: **a control that means "go back one step" belongs in the back stack.** `Modal` does
+this for free (`useOverlay(onClose)`) and covers most of the app — every sheet, dialog,
+picker and confirm. What needs a deliberate `useBackLayer` is the other two shapes: a **state a
+mounted screen enters and leaves** (the Map's disclosure row), and a **step inside an overlay**
+(the resolve sheet). Both were already supported; neither had been used at the sites above.
+
+Not in scope, and deliberately: a `✕` that **clears a value or dismisses a notice** — the
+place picker's clear, `FilePicker`'s remove, `StatusBanner`'s dismiss, the shelf card's remove.
+Those are content actions wearing the same glyph. Back navigates; it does not edit.
