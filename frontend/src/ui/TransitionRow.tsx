@@ -9,6 +9,7 @@
 // booking has a mappable location). Plan mode has no live "now", so it passes
 // none; a read-only past day, or a location-less booking, passes none too.
 import { CATEGORY_DEFAULT_ICON, type Booking } from '@waypoint/shared';
+import { chosenIcon, DEFAULT_EVENT_ICON } from '../constants';
 import { formatTime } from '../lib/time';
 import { ZoneShiftPill } from './ZoneShiftPill';
 import { TitleLabel } from './TitleLabel';
@@ -48,7 +49,8 @@ export function TransitionRow({
   const { event, edge, atMs, labelKey } = entry;
   const booking = event.bookingId ? bookings.find((b) => b.id === event.bookingId) : undefined;
   const icon =
-    event.icon ?? (event.category != null ? CATEGORY_DEFAULT_ICON[event.category] : '📌');
+    chosenIcon(event.icon) ??
+    (event.category != null ? CATEGORY_DEFAULT_ICON[event.category] : DEFAULT_EVENT_ICON);
   return (
     <div className="transition-row">
       <button

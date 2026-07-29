@@ -226,3 +226,34 @@ checklist section markers, Login's decorative feature list, and the warmth in co
 (🎉 👋 🙂 ✨). None of those sit beside an SVG doing the same job, which is the test
 this amendment adds: **if a glyph has a sibling control already drawing an icon, it
 is a control.**
+
+## Second amendment (2026-08-01) — a default glyph is not a pick
+
+The owner's call after the follow-up: _"default pins shouldn't override."_
+
+`constants.ts` stated the rule as "a linked event's **user-picked** icon always
+wins", and the rule was right — the reading of it was what slipped. `📌` is what
+the form hands out when nobody chooses, so counting it as a pick let a
+placeholder outrank a glyph that genuinely says what a thing is.
+
+**It was reachable, by a path narrower than the shape of the bug suggests.**
+`EventForm` re-derives the glyph from the category only while the icon is
+_untouched_, and **editing an existing event counts as touched** — so an event
+created with no category keeps `📌`, and giving it a category later never clears
+it. From that point the pin shadows the category on every surface that reads it.
+
+**Five sites, not the one reported.** The Index row and `BookingDetail` fall back
+to a booking's type glyph; `TransitionRow` and `lib/glance.ts` fall back to the
+**category's** glyph and are the more reachable pair, since no booking need be
+involved at all. The fifth is `lib/booking-draft.ts`, and it is the one that
+mattered most: it seeds the booking form's icon picker, so the pin was **saved
+onto the booking** on the next edit rather than only drawn.
+
+**One shared `chosenIcon(icon)`** in `constants.ts` returns `undefined` for
+`DEFAULT_EVENT_ICON`/`DEFAULT_MAYBE_ICON`, so the `??` chain behind each call site
+keeps running and no fallback order changes. Deliberately a **value test, not a
+stored flag**: an `iconIsDefault` column would need every writer to maintain it,
+would go stale the moment someone genuinely picked the pin, and would be wrong for
+every row written before today — asking "is this glyph a placeholder" needs no
+migration. The accepted cost is that deliberately choosing `📌`/`💡` now reads as
+choosing nothing, which is the right trade while they are the defaults.

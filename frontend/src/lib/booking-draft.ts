@@ -24,7 +24,7 @@ import {
 import { findPlaceByName, isoToDateTimeLocal } from './booking-edit';
 import { bookingZoneOverrides, placeTimezone } from './places';
 import { isoToTimeInput } from './time';
-import { BOOKING_TYPE_ICON } from '../constants';
+import { BOOKING_TYPE_ICON, chosenIcon } from '../constants';
 
 /** What a checklist CTA can prefill (`PlanHome`'s flight/lodging rows). */
 export interface BookingSeed {
@@ -156,7 +156,7 @@ export function bookingSheetDraft(input: {
   return {
     type,
     iconTouched: false,
-    icon: linkedEvent?.icon ?? BOOKING_TYPE_ICON[type],
+    icon: chosenIcon(linkedEvent?.icon) ?? BOOKING_TYPE_ICON[type],
     title: booking?.title ?? '',
     code: booking?.confirmationCode ?? '',
     fromPlaceId: fromPlaceId || undefined,
