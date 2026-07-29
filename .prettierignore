@@ -21,6 +21,7 @@ mockups/map-errand-v1.html
 mockups/map-place-becomes-v1.html
 mockups/event-also-booked-v1.html
 mockups/map-pin-outcome-v1.html
+mockups/map-pin-outcome-v2.html
 # Google's published CBMS stylesheet schema, committed verbatim so the map styles can be
 # validated offline (developers.google.com is unreachable from sandboxed sessions).
 # Reformatting a vendored file would hide any drift from Google's own copy.
