@@ -1,6 +1,6 @@
 # 0136 — An event can also be **booked**, and it is one tap rather than a schema question
 
-**Status:** Accepted — extracted 2026-07-30 (session 183) from [ADR-0135](0135-a-place-becomes-an-event-or-a-booking.md), which designed it inside a map phase; **its trigger was replaced 2026-07-30 (session 184)** after the owner rejected keying on a confirmation code. **It is not a map decision** — owner's call: _"independently from the maps, events in general."_ **Design only; nothing below is built.** The numbers in §5 are read from the live DOM of the mockup named below, in a headless browser.
+**Status:** Accepted — extracted 2026-07-30 (session 183) from [ADR-0135](0135-a-place-becomes-an-event-or-a-booking.md), which designed it inside a map phase; **its trigger was replaced 2026-07-30 (session 184)** after the owner rejected keying on a confirmation code. **It is not a map decision** — owner's call: _"independently from the maps, events in general."_ **Built 2026-07-31 (session 185)**, with two amendments made in place while building: §1's "no new primitive" was wrong (a `ToggleChip` was extracted), and §2 now **asks** the booking type for `transport`, on the owner's call. The numbers in §5 are read from the live DOM of the mockup named below, in a headless browser.
 **Date:** 2026-07-30
 
 **Leaves** [0011](0011-hard-soft-event-model.md) **entirely alone**, and that is a correction: two earlier passes tried to read its "hard = real commitment (flight, reservation code)" as a rule the app could execute. §4 is why that fails — commitment and booked-ness are different axes, and the app's own `bookingDefaultKind` says so by making a restaurant booking **soft**.
@@ -63,7 +63,15 @@ That reframing is what makes a one-tap control honest rather than a shortcut. "E
 | `sightseeing` · `nature` · `activity` | `activity`   |
 | `shopping` · `services` · `other`     | `other`      |
 
-**The form's category, and that is the better half of this section.** The category selector already leads the form (ADR-0109 §11: choosing it defaults the badge glyph) and already defaults from the icon's group (ADR-0038). So the derivation reads a signal a human has already been given a control over — which means **the fix for a wrong guess is a control the form already has**, not a second picker. A train station opens on `transport` and guesses `flight`; a train is one tap on the category the form was showing anyway.
+**The form's category, and that is the better half of this section.** The category selector already leads the form (ADR-0109 §11: choosing it defaults the badge glyph) and already defaults from the icon's group (ADR-0038). So the derivation reads a signal a human has already been given a control over — which means **the fix for a wrong guess is a control the form already has**, not a second picker.
+
+> **Amended 2026-07-31 (session 185, at build, owner's call):** the sentence that used to end this paragraph read _"A train station opens on `transport` and guesses `flight`; a train is one tap on the category the form was showing anyway."_ **That was false, and the owner caught it:** there is no category to tap. `EventCategory` has a **single** `transport` value, while `BookingType` has `flight`, `train` **and** `other` — and `BOOKING_TYPE_TO_CATEGORY` maps both transport types back to that one category. The category cannot distinguish them, so the correction path this section promised did not exist: a train booked from this form arrived as a `flight`, and the only fix was the booking's own type picker on another screen.
+>
+> So `transport` — **and only `transport`** — asks. Three pills in the form's own `.choice-pill` grammar, inside the `Collapsible`, above the code: `✈️ טיסה` · `🚄 רכבת` · `🚌 אחר`. `other` is there because the transport icon group is mostly bus, car, ferry and cable car, none of which is a flight or a train; its glyph is `🚌` rather than `BOOKING_TYPE_ICON.other`'s `📄` (owner's call) — all three answer "which transport", and a document among two vehicles reads as a different kind of answer.
+>
+> **This is not the schema question §1 retires**, and the distinction is the whole justification. That question — "event or booking?" — is asked of **everyone, before they can type**, and it asks a human to know the model. This is the **one genuine ambiguity in the derivation**, asked of the one person who has it, at the moment they have it, with a default already chosen. Nine categories still state their guess and never ask. A picker for **every** category remains rejected.
+>
+> Two consequences worth stating. **The kind follows it**, so `אחר` comes out **soft** while flight and train come out hard — `other` is not a span type, and `bookingDefaultKind` is the one source of that (§4). Deliberately not special-cased: this row must not become a second opinion about commitment, which is the mistake §4 exists to prevent. And **it is modelled as a nullable override**, not a fourth `*Touched` guard — `bookingType: BookingType | null`, where `null` re-derives and a category change clears it, the same idiom this form's zone `override` already uses. That is the generalisation moment the Consequences section warned about, declined once with a reason.
 
 **And the derivation is _stated_, never silent.** With the row on, a quiet line under it names what will happen — `האירוע יירשם גם כהזמנה · מלון` — and it **moves with the category pill** — so the app is visibly understanding rather than quietly deciding. A statement, not a second type picker: a picker is precisely what this ADR removes, and the "sensibly defaulted, trivially fixable, never a forced choice" posture is ADR-0113's and ADR-0116 §1's.
 
@@ -112,11 +120,14 @@ So the row changes what the thing **is**, never how committed it is. The kind to
 
 Measured on the real `.modal-form` — never the `.modal-card`, which is height-capped and scrolls, so reading it returns the same number however much the content grows:
 
-| `EventForm` content          | Height                  |
-| ---------------------------- | ----------------------- |
-| As shipped                   | **482px**               |
-| With the row, **not** booked | **560px** (+78px, ~16%) |
-| With the row, booked         | **642px** (+160px)      |
+| `EventForm` content                       | Height                  |
+| ----------------------------------------- | ----------------------- |
+| As shipped                                | **482px**               |
+| With the row, **not** booked              | **560px** (+78px, ~16%) |
+| With the row, booked                      | **642px** (+160px)      |
+| Booked, **and the category is transport** | **696px** (+214px)      |
+
+_(The last row is session 185's, for §2's amendment. The three transport pills cost **+54px**, and only in the one category that asks — every other booked save is still 642px, and nobody who books nothing pays any of it.)_
 
 **+78px is what someone who books nothing pays**, on every host of the form — the day view, the Plan builder and the Map tab alike — and that is the common case, so it is the number that matters. The booking's own fields cost the rest and only appear when there is a booking, which is the shape the design was aiming for: the person who never books never sees a booking field.
 
