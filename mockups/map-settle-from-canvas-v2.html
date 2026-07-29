@@ -3135,6 +3135,12 @@ body {
   padding-top: 8px;
   border-top: 1px solid var(--line);
 }
+/* THE ROW IS A CONTAINER (ADR-0139 §3), where it used to BE the button. The settle pair has
+   to be a real control beside the open one and buttons do not nest, so the open affordance
+   became its own child keeping all the remaining width and the cluster is its sibling —
+   `ListRow`'s shape, where `.wp-listrow-right` sits beside the open button rather than
+   inside it. The row keeps its own paint; what moved is `cursor`/`text-align`/`font`, which
+   belong to whatever is now the button. */
 .map-ref {
   display: flex;
   align-items: center;
@@ -3142,15 +3148,97 @@ body {
   width: 100%;
   padding: 7px 8px;
   min-height: 40px;
-  border: 0;
   border-radius: 10px;
   background: color-mix(in srgb, var(--ink) 4%, transparent);
   color: var(--ink);
-  font: inherit;
   font-size: 12.5px;
   font-weight: 600;
+}
+.map-ref-open {
+  flex: 1;
+  min-width: 0;
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  padding: 0;
+  border: 0;
+  background: transparent;
+  color: inherit;
+  font: inherit;
   text-align: start;
   cursor: pointer;
+}
+
+/* ── SETTLING AN EVENT FROM HERE (ADR-0139) ───────────────────────────────────────
+   Present only on an EVENT reference: an idea and a booking carry no `EVENT_STATUS`, so
+   there is nothing to settle and the absence needs no rule.
+
+   ASKING is the emphasis, and it is carried by the ROW rather than by words. The first pass
+   put `היינו שם?` inside the cluster, which cost 51px of a 40px row whose label was already
+   ellipsising; dropping it returns that width (measured in
+   `mockups/map-settle-from-canvas-v2.html` §D). Amber is on-budget rather than an exception:
+   this is a claim about TIME — a day that passed and was never answered — which is exactly
+   what ADR-0028 reserves it for, and it lands on at most one row of one selected place, so
+   it never becomes the "second accent on everything" ADR-0109 §6 forbids.
+
+   16% with a 2px ring, and the number matters: 9% with a hairline was indistinguishable
+   from a row that is deliberately NOT emphasised, which the mockup's §B caught by drawing
+   the two side by side. The words had been doing more work than they looked like. */
+.map-ref.asking {
+  background: color-mix(in srgb, var(--amber) 16%, transparent);
+  box-shadow: inset 0 0 0 2px color-mix(in srgb, var(--amber) 42%, transparent);
+}
+.map-settle {
+  flex: 0 0 auto;
+  display: flex;
+  align-items: center;
+  gap: 4px;
+}
+/* 32×32 inside a 40px row: under ADR-0017's 44px floor on its own, which is why the pair
+   sits at the END of a row whose own target is all the remaining width — the same trade
+   `ListRow`'s kebab already makes. On the device-pass list.
+   The two stay NEUTRAL until touched: amber is time and commitment (rule 4), so it belongs
+   on the row making the time claim and not on two status controls. */
+.map-sbtn {
+  flex: 0 0 auto;
+  width: 32px;
+  height: 32px;
+  display: grid;
+  place-items: center;
+  padding: 0;
+  border: 1px solid var(--line);
+  border-radius: 9px;
+  background: var(--card);
+  color: var(--muted);
+  cursor: pointer;
+}
+.map-sbtn .icon {
+  width: 17px;
+  height: 17px;
+}
+.map-sbtn.done:hover,
+.map-sbtn.done:focus-visible {
+  color: var(--ok);
+  border-color: color-mix(in srgb, var(--ok) 45%, transparent);
+}
+.map-sbtn.skip:hover,
+.map-sbtn.skip:focus-visible {
+  color: var(--miss);
+  border-color: color-mix(in srgb, var(--miss) 45%, transparent);
+}
+/* SETTLED: the outcome states itself in the row's OWN tag vocabulary (`.map-tag.ok`/`.miss`,
+   the same words and hues the meta line and the pin already use), and the only verb left is
+   to undo it. Which is also why every event is settleable rather than only the passed ones:
+   gating the controls on "passed and unanswered" would delete this undo the instant it was
+   earned. */
+.map-settle .map-tag {
+  display: inline-flex;
+  align-items: center;
+  gap: 3px;
+}
+.map-settle .map-tag .icon {
+  width: 12px;
+  height: 12px;
 }
 .map-ref .map-ref-kind {
   color: var(--muted);
@@ -3162,7 +3250,12 @@ body {
   text-overflow: ellipsis;
   white-space: nowrap;
 }
-.map-ref .icon {
+/* THE CARET, and it is scoped to the open button rather than to the row (ADR-0139 §3). It
+   was `.map-ref .icon` while the row WAS the button and nothing else in it had an icon; now
+   the settle cluster does, and that selector would have pushed the ✓/✕ to the far edge with
+   `margin-inline-start: auto` and greyed them to `--faint`. The auto margin is what puts the
+   caret at the end, so it has to travel with the caret. */
+.map-ref-open .icon {
   width: 14px;
   height: 14px;
   margin-inline-start: auto;

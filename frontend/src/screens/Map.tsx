@@ -20,8 +20,17 @@
 //     `comparePlacesBySchedule`'s day sequence (`buildPinOrderIndex`), computed over
 //     the whole scoped set before any chip applies — so gaps like `1, 3, 4` are
 //     correct and say something is filtered out.
-import { useCallback, useEffect, useMemo, useRef, useState, type CSSProperties } from 'react';
 import {
+  useCallback,
+  useEffect,
+  useMemo,
+  useRef,
+  useState,
+  type CSSProperties,
+  type MouseEvent,
+} from 'react';
+import {
+  EVENT_STATUS,
   iconForCategory,
   matchesAnyTerm,
   type Booking,
@@ -38,6 +47,7 @@ import {
   buildPlaceUsageIndex,
   comparePlacesBySchedule,
   countPlacesByCategory,
+  isDayUsagePast,
   isOnShelf,
   isPlaceLeft,
   matchesPlaceCategory,
@@ -69,6 +79,7 @@ import {
   placePinTier,
   placePoint,
   type PinContext,
+  type PinOutcome,
   type PinTier,
 } from '../lib/map-pins';
 import { countPointsInBounds, pointInBounds, type LatLng, type MapBounds } from '../lib/map-camera';
@@ -125,6 +136,28 @@ interface RefEntry {
   kind: string;
   label: string;
   onOpen: () => void;
+  /** SETTLING, on the reference that names its own target (ADR-0139). Present only on an
+   *  EVENT reference: an idea and a booking carry no `EVENT_STATUS`, so there is nothing to
+   *  settle and the absence is a consequence rather than a rule.
+   *
+   *  This is what makes "which event?" a non-question. A place can carry several on one day
+   *  and ADR-0117 §5 is explicit that an outcome belongs to ALL of a day's references rather
+   *  than the one that won the row's clock — so the verb cannot sit on the place. The way-in
+   *  block already enumerates the references one per row, each labelled in its own words, so
+   *  hanging the verb here needs no disambiguator at all. */
+  settle?: {
+    /** What a human already said, if they did. Drives tag-plus-undo instead of the pair. */
+    outcome?: PinOutcome;
+    /** The clock has passed it and nobody answered — ADR-0117 §1's third state, and the one
+     *  the emphasis is for. Not a gate on the controls: **every** event is settleable here
+     *  (ADR-0117 §2 already lets a human close tonight's dinner at 11:00), and gating on the
+     *  clock would take the undo away the instant a row was settled. */
+    asking: boolean;
+    onDone: () => void;
+    onSkip: () => void;
+    /** Back to `planned` — the shipped `verbs.restore`. */
+    onUndo: () => void;
+  };
 }
 
 export function MapView() {
@@ -1482,11 +1515,28 @@ export function MapView() {
         });
       }
       if (event) {
+        // The emphasis is the CLOCK's question, asked only of a day that has passed with
+        // nothing said about it — the same `isDayUsagePast` the tier, the block header and
+        // `מה נשאר` all read, so the four cannot disagree about whether a day is closed.
+        const day = usage.days.find((d) => d.date === (ref.date ?? event.date));
+        const settled =
+          event.status === EVENT_STATUS.DONE
+            ? ('done' as const)
+            : event.status === EVENT_STATUS.SKIPPED
+              ? ('skipped' as const)
+              : undefined;
         entries.push({
           key: `${ref.key}:${PLACE_REF_KIND.event}`,
           kind: t.map.refs.event,
           label,
           onOpen: () => goToDay(ref.date ?? event.date),
+          settle: {
+            outcome: settled,
+            asking: !settled && !!day && isDayUsagePast(day, nowMs, today),
+            onDone: () => verbs.done(event),
+            onSkip: () => verbs.skip(event),
+            onUndo: () => verbs.restore(event),
+          },
         });
       }
       return entries;
@@ -2233,6 +2283,70 @@ export function MapView() {
 // the trailing נווט is the one Google action it keeps (directions). A coordless
 // Place-lite offers "＋ מיקום" to enrich it in place. Commitment (hard) shows a 🔒;
 // a pure shelf idea shows "על המדף".
+/** THE SETTLE PAIR, on the reference that names its target (ADR-0139).
+ *
+ *  Two states, and the second is why every event is settleable rather than only the passed
+ *  ones: **settled** shows what a human said plus the one verb left (undo), and gating the
+ *  controls on "passed and unanswered" would delete that undo the instant it was earned.
+ *
+ *  `stopPropagation` on every button because the row around it opens the day and the row
+ *  around THAT selects the place — a settle must not also navigate.
+ *
+ *  Deliberately NOT extracted into `ui/domain/` yet, and the restraint is the point:
+ *  `EventCard`'s settle strip and `PlanDay`'s own `.settle-choose` are already two hand-rolled
+ *  copies of this idea, so the third is what earns the shared primitive (CLAUDE.md rule 8).
+ *  That extraction touches three surfaces this change does not otherwise go near, so it is its
+ *  own change and its own backlog line — see ADR-0139's Consequences. */
+function SettleCluster({ settle }: { settle: NonNullable<RefEntry['settle']> }) {
+  const tap = (fn: () => void) => (e: MouseEvent) => {
+    e.stopPropagation();
+    fn();
+  };
+  if (settle.outcome) {
+    const done = settle.outcome === 'done';
+    return (
+      <span className="map-settle">
+        {/* The row's OWN tag vocabulary (`.map-tag.ok`/`.miss`), not a third one — the same
+            words and hues ADR-0117 §1 gave the meta line and ADR-0137 gave the pin. */}
+        <span className={'map-tag ' + (done ? 'ok' : 'miss')}>
+          <Icon name={done ? 'check' : 'skip'} /> {done ? t.event.didThis : t.event.skipped}
+        </span>
+        <button
+          type="button"
+          className="map-sbtn"
+          title={t.map.settle.undo}
+          aria-label={t.map.settle.undo}
+          onClick={tap(settle.onUndo)}
+        >
+          <Icon name="undo" />
+        </button>
+      </span>
+    );
+  }
+  return (
+    <span className="map-settle">
+      <button
+        type="button"
+        className="map-sbtn done"
+        title={t.actions.wasThere}
+        aria-label={t.actions.wasThere}
+        onClick={tap(settle.onDone)}
+      >
+        <Icon name="check" />
+      </button>
+      <button
+        type="button"
+        className="map-sbtn skip"
+        title={t.event.skipped}
+        aria-label={t.event.skipped}
+        onClick={tap(settle.onSkip)}
+      >
+        <Icon name="skip" />
+      </button>
+    </span>
+  );
+}
+
 function PlaceRow({
   usage,
   place,
@@ -2480,19 +2594,26 @@ function PlaceRow({
       {refs && refs.length > 0 && (
         <span className="map-refs">
           {refs.map((ref) => (
-            <button
-              key={ref.key}
-              type="button"
-              className="map-ref"
-              onClick={(e) => {
-                e.stopPropagation();
-                ref.onOpen();
-              }}
-            >
-              <span className="map-ref-kind">{ref.kind}</span>
-              <span className="map-ref-label">{ref.label}</span>
-              <Icon name="caret" dir="left" />
-            </button>
+            /* THE ROW IS A CONTAINER, not the button it used to be (ADR-0139 §3). Buttons do
+               not nest, and the settle pair has to be a real control beside the open one — so
+               the open affordance becomes its own button keeping all the remaining width, and
+               the cluster is its SIBLING. Exactly `ListRow`'s shape, where
+               `.wp-listrow-right` is a sibling of the open button rather than a child. */
+            <span key={ref.key} className={'map-ref' + (ref.settle?.asking ? ' asking' : '')}>
+              <button
+                type="button"
+                className="map-ref-open"
+                onClick={(e) => {
+                  e.stopPropagation();
+                  ref.onOpen();
+                }}
+              >
+                <span className="map-ref-kind">{ref.kind}</span>
+                <span className="map-ref-label">{ref.label}</span>
+                <Icon name="caret" dir="left" />
+              </button>
+              {ref.settle && <SettleCluster settle={ref.settle} />}
+            </span>
           ))}
           {/* The block's own footer, so the create is visibly not a fourth reference. */}
           {onSchedule && (

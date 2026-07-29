@@ -256,6 +256,10 @@ export const t = {
     // The way through from a place to the entity that put it in the trip
     // (ADR-0121 §8). Labelled in the reference's own words, so the control says
     // where it goes rather than a generic "details".
+    // Settling an event from the Map (ADR-0139). The two verbs reuse the day view's own
+    // words (`actions.wasThere` / `event.skipped`) so the surfaces cannot drift; only the
+    // undo needs naming, and it says what it undoes rather than "בטל".
+    settle: { undo: 'ביטול הסימון' },
     refs: {
       booking: 'הזמנה',
       event: 'אירוע',
