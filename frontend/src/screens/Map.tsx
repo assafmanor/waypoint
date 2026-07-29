@@ -124,16 +124,8 @@ interface RefEntry {
 }
 
 export function MapView() {
-  const {
-    events,
-    bookings,
-    maybeItems,
-    places,
-    activeDate,
-    zoneEvidence,
-    usingCachedSnapshot,
-    indexVerbs,
-  } = useTrip();
+  const { events, bookings, maybeItems, places, activeDate, zoneEvidence, usingCachedSnapshot } =
+    useTrip();
   const { mode } = useMode();
   const offline = useIsOffline() || usingCachedSnapshot;
   const nowMs = useClock().getTime();
@@ -210,27 +202,20 @@ export function MapView() {
   const pendingErrand = errand.pending;
   // Assign and return, in one act. The place is handed back through the OTHER channel and
   // the form's host re-opens itself from the draft (§2) — this screen deliberately knows
-  // nothing about what an event form contains.
+  // nothing about what a booking form contains.
   //
-  // TWO ASSIGNMENT PATHS, and the difference is whether the thing being assigned to
-  // EXISTS yet (ADR-0134 §2):
-  //
-  //  • **A saved BOOKING** — an ordinary patch through `indexVerbs.updateBooking`, which
-  //    this screen can do, so the return is purely navigational: no draft, no host
-  //    involvement, and the write goes where every write goes. This is `BookingDetail`'s
-  //    `＋ מיקום`, whose whole flow has no unsaved state to lose.
-  //  • **Anything else** — a form that has not saved yet (and an event, whose place edit
-  //    belongs to its own guarded form rather than to a patch from here, ADR-0011). The
-  //    place is handed BACK and the form's host re-opens it from the draft. That is the
-  //    expensive path, and it is paid only where it is needed.
-  // WHERE THE RETURN ACTUALLY LANDS. `returnTo` is a URL, and the Index's bookings screen
-  // is view state rather than a route (ADR-0098) — so a booking errand that started there
-  // returns to a LANDING with no host mounted to hear the answer. `withBookingFormReturn`
-  // asks the Index to mount that screen; everywhere else the host never left and the helper
-  // leaves the path alone.
-  //
-  // Every booking errand, not just a saved one (session 172): the unsaved case has no id to
-  // carry and needed this exact fix, which is why keying on `target.id` fixed neither.
+  // ONE PATH NOW, and the second one is gone (owner, session 173). §2 had a "cheap path" for
+  // a SAVED booking: patch it here with `updateBooking` and return with nothing to restore,
+  // on the reasoning that an existing entity has no unsaved state to lose. Both halves of
+  // that were wrong in practice — _"it saves the new location instead of simply returning to
+  // the edit form"_ — because choosing a place on a map is not the same act as saving the
+  // booking, and because the form is where you were going either way. So every errand
+  // returns a draft with the place assigned, and the SAVE stays where every other save is:
+  // the form's own button.
+  // WHERE THE RETURN LANDS. `returnTo` is a URL, and the Index's bookings screen is view
+  // state rather than a route (ADR-0098) — so a booking errand that started there returns to
+  // a LANDING with no host mounted to hear the answer. `withBookingFormReturn` asks the Index
+  // to mount it; everywhere else the host never left and the helper leaves the path alone.
   const returnPath = useCallback(
     (taken: PlaceErrand) =>
       taken.target.kind === 'booking' ? withBookingFormReturn(taken.returnTo) : taken.returnTo,
@@ -241,23 +226,10 @@ export function MapView() {
     (placeId: string) => {
       const taken = errand.take();
       if (!taken) return;
-      const { target } = taken;
-      if (target.kind === 'booking' && target.id) {
-        void indexVerbs.updateBooking(target.id, { [target.field]: placeId }).catch(() => {});
-      }
-      // …AND THE ANSWER GOES BACK EITHER WAY (owner, session 170: _"return to booking isn't
-      // working"_). The saved-booking path used to patch and navigate, handing nothing over
-      // — and `returnTo` is a URL, while the thing you were looking at is a `Modal` that no
-      // URL addresses. So you landed on the bare screen behind it, with the place correctly
-      // assigned to a booking you could no longer see.
-      //
-      // The host re-opens it, through the channel it already listens on: a result with a
-      // DRAFT re-opens the form, one with only a saved `target.id` re-opens that booking's
-      // detail. No second mechanism, and no route for a sheet that deliberately has none.
       errandResult.hand({ errand: taken, placeId });
       navigate(returnPath(taken), { replace: true });
     },
-    [errand, errandResult, navigate, indexVerbs],
+    [errand, errandResult, navigate, returnPath],
   );
   // `ביטול` and back both run the same return, so there is exactly one way out (§2).
   // Cancelling assigns nothing — but it still has to GIVE THE FORM BACK (owner, session 168:
@@ -374,14 +346,7 @@ export function MapView() {
   // gone, which is the whole reason the errand carries a draft.
   const [bookingDraft, setBookingDraft] = useState<BookingSheetDraft | null>(null);
   usePlaceErrandReturn<BookingSheetDraft>('booking', (returned) => {
-    // NO DRAFT means the errand came from the booking's DETAIL sheet. It still returns to
-    // the booking's FORM (owner, session 172: _"both need to act the same way"_) — the
-    // place is already patched onto the entity, so the form opens showing it.
-    if (!returned.draft) {
-      const booking = bookings.find((b) => b.id === returned.target.id);
-      if (booking) setEditBooking(booking);
-      return;
-    }
+    if (!returned.draft) return;
     setEditBooking(bookings.find((b) => b.id === returned.target.id) ?? null);
     setBookingDraft(returned.draft);
   });

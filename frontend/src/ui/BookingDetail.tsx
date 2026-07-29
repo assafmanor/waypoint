@@ -4,6 +4,7 @@
 // opens the merged BookingSheet. Delete lives on the row's "⋯" (BookingManageSheet),
 // not here — the detail carries edit only (ADR-0053 revision, 2026-07-17).
 import { BOOKING_TYPE, type Booking, type BookingType } from '@waypoint/shared';
+import { bookingSheetDraft } from '../lib/booking-draft';
 import { useTrip } from '../state/trip-state';
 import { Sheet } from './Sheet';
 import { RouteLabel } from './RouteLabel';
@@ -98,8 +99,14 @@ export function BookingDetail({
   // A place is disambiguated BY PLACE — two cafés with the same name in the same district
   // are one list row apart and a kilometre apart on the canvas — and the map's own search
   // answers both corpora, filtering the trip's places from the first character, free and
-  // offline. This booking already exists, so there is no draft to carry: the Map patches it
-  // directly and the return is purely navigational (§2's cheap path).
+  // offline.
+  //
+  // IT CARRIES A DRAFT LIKE EVERY OTHER ERRAND (owner, session 173). §2 called the saved
+  // booking "the cheap path" — patch it from the Map and return with nothing to restore —
+  // and the owner's report is what that cost: the place was SAVED behind your back, and you
+  // landed on a preview instead of the form. Both are the same mistake, that an existing
+  // booking needs no form state. It needs exactly the form state the sheet would open with,
+  // which `bookingSheetDraft` now derives once for both of us.
   //
   // `null` outside the trip shell, where there is no Map tab to route to — the affordance
   // is then simply absent, which is the same "absent, not broken" rule `onShowOnMap`
@@ -165,6 +172,7 @@ export function BookingDetail({
                       startErrand({
                         target: { kind: 'booking', id: booking.id, field: 'placeId' },
                         label: errandLabel,
+                        draft: bookingSheetDraft({ booking, trip, events, places }),
                       })
               }
             />

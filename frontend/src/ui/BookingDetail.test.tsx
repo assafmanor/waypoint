@@ -167,19 +167,27 @@ describe('BookingDetail — the location fact (ADR-0121 §8 amendment)', () => {
   });
 
   // ＋ מיקום IS AN ERRAND TO THE MAP NOW (ADR-0134 §1), not a picker sheet over this one:
-  // a place is disambiguated BY PLACE, and the map's own search answers both corpora. This
-  // booking exists, so the errand carries no draft — the Map patches it and returns.
-  it('＋ מיקום sends an errand naming this booking and its field', () => {
-    const calls: unknown[] = [];
-    startErrand = (errand) => calls.push(errand);
+  // a place is disambiguated BY PLACE, and the map's own search answers both corpora.
+  //
+  // IT CARRIES A DRAFT like every other errand (owner, session 173). It used to send none, on
+  // the reasoning that a saved booking has no unsaved state — so the Map patched it directly
+  // and the return had nothing to re-open. That saved the place behind the user's back AND
+  // landed them on a preview; both are the same wrong assumption, and the draft is what makes
+  // this path identical to the unsaved one.
+  it('＋ מיקום sends an errand naming this booking, its field, and the form state', () => {
+    const calls: { target: unknown; label: string; draft?: { title: string; type: string } }[] = [];
+    startErrand = (errand) => calls.push(errand as (typeof calls)[number]);
     open(bk({ id: 'b7', type: BOOKING_TYPE.HOTEL, title: 'Shinjuku Granbell' }));
     fireEvent.click(screen.getByText(t.placePicker.empty));
-    expect(calls).toEqual([
-      {
-        target: { kind: 'booking', id: 'b7', field: 'placeId' },
-        label: 'Shinjuku Granbell',
-      },
-    ]);
+    expect(calls).toHaveLength(1);
+    expect(calls[0].target).toEqual({ kind: 'booking', id: 'b7', field: 'placeId' });
+    expect(calls[0].label).toBe('Shinjuku Granbell');
+    // The sheet's own opening state, derived by the one function both of them read
+    // (`lib/booking-draft.ts`) rather than re-assembled here.
+    expect(calls[0].draft).toMatchObject({
+      title: 'Shinjuku Granbell',
+      type: BOOKING_TYPE.HOTEL,
+    });
     // …and no picker sheet opens over this one any more.
     expect(screen.queryByLabelText(t.placePicker.searchPlaceholder)).toBeNull();
   });
