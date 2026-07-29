@@ -28,6 +28,7 @@ import { getNow } from '../lib/useClock';
 import { zonedIso, isoToTimeInput, hardConflicts, formatTime, resolveEndIso } from '../lib/time';
 import { useUnsavedGuard } from '../lib/useUnsavedGuard';
 import { bookingDefaultKind } from '../lib/booking-draft';
+import { useDerivedField } from '../lib/useDerivedField';
 import { buildEventSeed } from '../lib/booking-edit';
 import {
   CATEGORY_DEFAULT_BOOKED,
@@ -179,13 +180,19 @@ export function EventForm({
   const [date, setDate] = useState(draft?.date ?? initialDate);
   const [start, setStart] = useState(draft?.start ?? initialStart);
   const [end, setEnd] = useState(draft?.end ?? initialEnd);
-  const [kind, setKind] = useState<TripEvent['kind']>(draft?.kind ?? initialKind);
-  const [icon, setIcon] = useState(draft?.icon ?? initialIcon);
-  // The icon is now a pure badge (ADR-0109 §11): picking a category defaults the
-  // glyph via `iconForCategory`, unless the user has deliberately chosen one.
-  // Editing an event that already carries a glyph counts as chosen, so a later
-  // category change doesn't clobber it; a fresh event starts untouched.
-  const [iconTouched, setIconTouched] = useState(
+  // Editing an existing event counts as touched, the same way the icon treats a glyph the event
+  // already carries: its kind is a fact about it, not something for the booked row to re-derive
+  // (ADR-0136 §4 — re-deriving would harden a soft event on a toggle).
+  const kind = useDerivedField<TripEvent['kind']>(
+    draft?.kind ?? initialKind,
+    draft?.kindTouched ?? Boolean(event),
+  );
+  // The icon is a pure badge (ADR-0109 §11): picking a category defaults the glyph via
+  // `iconForCategory`, unless the user has deliberately chosen one. Editing an event that
+  // already carries a glyph counts as chosen, so a later category change doesn't clobber it;
+  // a fresh event starts untouched.
+  const icon = useDerivedField(
+    draft?.icon ?? initialIcon,
     draft?.iconTouched ?? Boolean(event?.icon ?? maybeItem?.icon),
   );
   const [category, setCategory] = useState<EventCategory | undefined>(
@@ -200,16 +207,12 @@ export function EventForm({
   // The row DEFAULTS from the category — lodging and transport open on, everything else off —
   // which is inference doing the one thing it can do honestly: offering a starting position,
   // never deciding a fact. It stops moving the moment a human touches it.
-  const [booked, setBooked] = useState(
+  const booked = useDerivedField(
     draft ? draft.booked : initialCategory ? CATEGORY_DEFAULT_BOOKED[initialCategory] : false,
+    draft?.bookedTouched ?? false,
   );
-  const [bookedTouched, setBookedTouched] = useState(draft?.bookedTouched ?? false);
   const [code, setCode] = useState(draft?.code ?? '');
   const [bookingType, setBookingType] = useState<BookingType | null>(draft?.bookingType ?? null);
-  // Editing an existing event counts as touched, the same way `iconTouched` treats a glyph the
-  // event already carries: its kind is a fact about it, not something for this row to re-derive
-  // (ADR-0136 §4 — re-deriving would harden a soft event on a toggle).
-  const [kindTouched, setKindTouched] = useState(draft?.kindTouched ?? Boolean(event));
 
   // The type the save will write: an explicit pick, else the category's guess. Only `transport`
   // offers the pick, because it is the only category the mapping cannot answer (§2).
@@ -219,31 +222,28 @@ export function EventForm({
   // While untouched the kind follows the booking type's own default (`bookingDefaultKind`) —
   // hard for a flight, train, hotel or activity; SOFT for a restaurant, which is exactly why
   // "hard ⇒ booked" could never have been the trigger (§1/§4).
-  const deriveKind = (nextBooked: boolean, nextType: BookingType) => {
-    if (kindTouched) return;
-    setKind(nextBooked ? bookingDefaultKind(nextType) : EVENT_KIND.SOFT);
-  };
+  const deriveKind = (nextBooked: boolean, nextType: BookingType) =>
+    kind.redrive(nextBooked ? bookingDefaultKind(nextType) : EVENT_KIND.SOFT);
 
   const pickCategory = (next: EventCategory) => {
     setCategory(next);
-    if (!iconTouched) setIcon(iconForCategory(next));
+    icon.redrive(iconForCategory(next));
     // A new category is a new question, so an explicit type does not survive it.
     setBookingType(null);
-    const nextBooked = bookedTouched ? booked : CATEGORY_DEFAULT_BOOKED[next];
-    if (!bookedTouched) setBooked(nextBooked);
-    deriveKind(nextBooked, CATEGORY_TO_BOOKING_TYPE[next]);
+    // `redrive` answers with the value now in force, so the kind's derivation below reads the
+    // row's real state rather than a `useState` React has not flushed yet.
+    deriveKind(booked.redrive(CATEGORY_DEFAULT_BOOKED[next]), CATEGORY_TO_BOOKING_TYPE[next]);
   };
 
   const toggleBooked = () => {
-    const next = !booked;
-    setBooked(next);
-    setBookedTouched(true);
+    const next = !booked.value;
+    booked.set(next);
     deriveKind(next, derivedType);
   };
 
   const pickBookingType = (next: BookingType) => {
     setBookingType(next);
-    deriveKind(booked, next);
+    deriveKind(booked.value, next);
   };
 
   // The zone in force right now: the pinned override, else re-derived from the
@@ -263,13 +263,13 @@ export function EventForm({
     date !== initialDate ||
     start !== initialStart ||
     end !== initialEnd ||
-    kind !== initialKind ||
-    icon !== initialIcon ||
+    kind.value !== initialKind ||
+    icon.value !== initialIcon ||
     category !== initialCategory ||
     placeId !== initialPlaceId ||
     // A row the human turned on, a typed code, or a chosen type are all real edits — closing
     // with any of them unsaved has to hit the discard guard like every other field.
-    bookedTouched ||
+    booked.touched ||
     code !== '' ||
     bookingType != null;
   const { guardedClose, prompting, confirmDiscard, cancelDiscard } = useUnsavedGuard(dirty);
@@ -283,13 +283,13 @@ export function EventForm({
     if (!start || !end) return [];
     const provisional = {
       id: event?.id ?? '__provisional__',
-      kind,
+      kind: kind.value,
       startsAt: zonedIso(date, start, tz),
       endsAt: resolveEndIso(date, start, end, tz),
     } as TripEvent;
     const dayEvents = events.filter((e) => e.date === date && e.status !== EVENT_STATUS.SKIPPED);
     return hardConflicts(provisional, dayEvents);
-  }, [start, end, kind, date, tz, events, event?.id]);
+  }, [start, end, kind.value, date, tz, events, event?.id]);
 
   const submit = (e: FormEvent) => {
     e.preventDefault();
@@ -305,9 +305,9 @@ export function EventForm({
     const fields = {
       date,
       title: title.trim(),
-      icon,
+      icon: icon.value,
       category,
-      kind,
+      kind: kind.value,
       placeId: showPlace ? placeId : undefined,
       // Only ever the user's own choice (ADR-0110 §94-99): a pinned zone is sent,
       // and clearing one sends `null` to hand the event back to the derivation. An
@@ -340,7 +340,7 @@ export function EventForm({
     //  • from the shelf → plus the idea's consume (ADR-0135 §5).
     //
     // The verb keeps those writes behind ONE toast and ONE undo.
-    if (booked && showBooked) {
+    if (booked.value && showBooked) {
       const parsed = createEventSchema.safeParse(fields);
       if (!parsed.success)
         return setError(parsed.error.issues[0]?.message ?? t.eventForm.titleRequired);
@@ -355,7 +355,10 @@ export function EventForm({
           ...(event
             ? {}
             : {
-                event: buildEventSeed({ date, start, end, kind, icon, category }, tz),
+                event: buildEventSeed(
+                  { date, start, end, kind: kind.value, icon: icon.value, category },
+                  tz,
+                ),
               }),
         },
         { event: event ?? null, maybeId: maybeItem?.id ?? null },
@@ -441,13 +444,7 @@ export function EventForm({
 
           <Field label={t.eventForm.titleLabel}>
             <div className="title-row">
-              <IconPicker
-                icon={icon}
-                onChange={(next) => {
-                  setIcon(next);
-                  setIconTouched(true);
-                }}
-              />
+              <IconPicker icon={icon.value} onChange={icon.set} />
               <input
                 className="title-input"
                 value={title}
@@ -520,12 +517,12 @@ export function EventForm({
                       date,
                       start,
                       end,
-                      kind,
-                      kindTouched,
-                      icon,
-                      iconTouched,
-                      booked,
-                      bookedTouched,
+                      kind: kind.value,
+                      kindTouched: kind.touched,
+                      icon: icon.value,
+                      iconTouched: icon.touched,
+                      booked: booked.value,
+                      bookedTouched: booked.touched,
                       code,
                       bookingType,
                       category,
@@ -549,16 +546,16 @@ export function EventForm({
           {showBooked ? (
             <div className="field">
               <ToggleChip
-                on={booked}
+                on={booked.value}
                 tone="cta"
                 size="touch"
                 ariaControls="ef-booking-body"
                 onClick={toggleBooked}
               >
-                <span aria-hidden="true">{booked ? ICONS.done : ICONS.add}</span>
+                <span aria-hidden="true">{booked.value ? ICONS.done : ICONS.add}</span>
                 {t.eventForm.bookedLabel}
               </ToggleChip>
-              <Collapsible expanded={booked}>
+              <Collapsible expanded={booked.value}>
                 {/* The one question the category cannot answer (§2, owner's call session
                     185): `EventCategory` has a single `transport` while `BookingType` has
                     both `flight` and `train`. Asked here and nowhere else — everywhere else
@@ -632,21 +629,15 @@ export function EventForm({
                   not keep moving it. */}
               <button
                 type="button"
-                className={'soft' + (kind === EVENT_KIND.SOFT ? ' on' : '')}
-                onClick={() => {
-                  setKind(EVENT_KIND.SOFT);
-                  setKindTouched(true);
-                }}
+                className={'soft' + (kind.value === EVENT_KIND.SOFT ? ' on' : '')}
+                onClick={() => kind.set(EVENT_KIND.SOFT)}
               >
                 {t.eventForm.kindSoft}
               </button>
               <button
                 type="button"
-                className={'hard' + (kind === EVENT_KIND.HARD ? ' on' : '')}
-                onClick={() => {
-                  setKind(EVENT_KIND.HARD);
-                  setKindTouched(true);
-                }}
+                className={'hard' + (kind.value === EVENT_KIND.HARD ? ' on' : '')}
+                onClick={() => kind.set(EVENT_KIND.HARD)}
               >
                 {t.eventForm.kindHard}
               </button>
