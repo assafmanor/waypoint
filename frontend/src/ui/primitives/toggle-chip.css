@@ -1,0 +1,99 @@
+/* The pressed chip (`ui/primitives/ToggleChip`), extracted in session 185 from the four
+   hand-rolled copies in `map.css`. Everything here is APPEARANCE; where a chip sits and
+   how it enters/leaves stays with the screen that places it, through `className`. */
+.wp-chip {
+  /* Never a flex item that grows: in the Map's rows the strip owns the sizing, and in a
+     `.field` — which is a COLUMN — an `inline-flex` child would stretch to the column's
+     width and the pill would read as a disabled INPUT rather than a control (measured in
+     session 184). `width: fit-content` settles both without an `align-self`, which would
+     have top-aligned every chip in the Map's centred rows. */
+  flex: 0 0 auto;
+  width: fit-content;
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+  border: 1px solid var(--line);
+  border-radius: 999px;
+  background: var(--card);
+  color: var(--ink);
+  font: inherit;
+  font-size: 12px;
+  font-weight: 700;
+  padding: 6px 12px;
+  cursor: pointer;
+  white-space: nowrap;
+}
+
+/* The touch floor (ADR-0017), for a chip that is its surface's primary control rather
+   than one of a strip — the form's `יש הזמנה` row. A filter chip stays at chip size. */
+.wp-chip.touch {
+  min-height: 44px;
+  padding-inline: 16px;
+  font-size: 13px;
+}
+
+/* Provisional while off (ADR-0110 §2) — the `אולי` facet is a maybe about maybes, and the
+   dash says so before the label does. It goes solid when the facet is on. */
+.wp-chip.provisional:not(.on) {
+  border-style: dashed;
+  border-color: var(--soft-line);
+}
+
+/* ── the tones ────────────────────────────────────────────────────────────────
+   Each names its own on-state, rather than one shared fill plus per-tone patches: the
+   accent FILLS and the cta TINTS, and that is a real difference between a chip over a
+   canvas and a chip in a form, not a knob. */
+
+/* The surface's own selection accent, set per-mode by whichever screen mounts the chip
+   (`.map-screen`/`.index` define it; ink in Trip, plan violet in Plan). The fallback is
+   what makes the primitive safe anywhere else — a Modal's portal has no such ancestor. */
+.wp-chip.accent.on {
+  background: var(--idx-accent, var(--ink));
+  border-color: var(--idx-accent, var(--ink));
+  color: var(--idx-accent-text, #fff);
+}
+
+/* The neutral primary, tinted rather than filled. Amber is time and commitment and plan
+   violet is Plan mode (ADR-0028, root rule 4) — and "this is booked" is emphatically not
+   the commitment axis, which is the whole point of ADR-0136 §4. */
+.wp-chip.cta.on {
+  border-color: var(--cta);
+  background: color-mix(in srgb, var(--cta) 10%, transparent);
+  color: var(--cta);
+}
+
+/* Teal is LOCATION, throughout and only (ADR-0109 §6-7 / ADR-0028): it reads teal even
+   when off, because what it is about does not change with its state. */
+.wp-chip.teal {
+  border-color: var(--teal);
+  color: var(--teal);
+  background: color-mix(in srgb, var(--teal) 10%, transparent);
+}
+.wp-chip.teal.on {
+  background: var(--teal);
+  color: var(--cta-text);
+}
+
+/* Present but no longer claiming it can do anything — near-me after a location refusal,
+   with the banner beside it carrying the explanation and the retry. Last, and it wins over
+   the on-state on purpose: the intent may still be set, and "cannot act on it" is the
+   fact worth showing. */
+.wp-chip.muted,
+.wp-chip.muted.on {
+  border-style: dashed;
+  border-color: var(--soft-line);
+  color: var(--muted);
+  background: transparent;
+}
+
+.wp-chip-count {
+  font-family: var(--font-mono);
+  font-size: 11px;
+  font-weight: 700;
+  color: var(--muted);
+}
+/* Against a filled chip the count rides its own text colour rather than a hardcoded
+   white, so it holds up in every tone and in dark mode. */
+.wp-chip.on .wp-chip-count {
+  color: color-mix(in srgb, currentColor 80%, transparent);
+}

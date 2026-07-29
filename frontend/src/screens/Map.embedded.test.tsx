@@ -11,7 +11,7 @@
 // list-only tab it is.
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { type ReactNode } from 'react';
-import { act, cleanup, fireEvent, render, screen, within } from '@testing-library/react';
+import { act, cleanup, fireEvent, render, screen, waitFor, within } from '@testing-library/react';
 import { MemoryRouter } from 'react-router-dom';
 import {
   EVENT_KIND,
@@ -98,7 +98,10 @@ vi.mock('../state/trip-state', () => ({
 }));
 vi.mock('../state/mode-state', () => ({ useMode: () => ({ mode: currentMode }) }));
 const addMaybe = vi.fn();
-vi.mock('../state/verbs', () => ({ useVerbs: () => ({ addMaybe }) }));
+// The Map hosts `EventForm` since ADR-0135 §3, so the stub covers the verbs that form calls.
+const verbs = { addMaybe, create: vi.fn(), update: vi.fn(), schedule: vi.fn(), book: vi.fn() };
+vi.mock('../state/verbs', () => ({ useVerbs: () => verbs }));
+vi.mock('../state/auth-state', () => ({ useAuth: () => ({ me: { user: { id: 'u1' } } }) }));
 vi.mock('../lib/outbox', () => ({ useIsOffline: () => isOffline }));
 
 // The device's location, driven per test. `permissionState` is what the Permissions
@@ -386,6 +389,7 @@ describe('the embedded map’s shell (ADR-0121)', () => {
     geoErrorCode = null;
     getCurrentPosition.mockClear();
     scrollIntoView.mockClear();
+    for (const fn of Object.values(verbs)) fn.mockClear();
   });
 
   const seed = () => {
@@ -402,6 +406,64 @@ describe('the embedded map’s shell (ADR-0121)', () => {
       event({ id: 'e4', placeId: 'tomorrow', category: 'food', date: NEXT_DAY }),
     ];
   };
+
+  // ── A PLACE BECOMES AN EVENT OR A BOOKING — THE SPLIT (ADR-0135) ─────────────
+  // `Map.test.tsx` covers the same block on the no-build-config, list-only path. Here it has
+  // the sheet to overflow, which is what §8's scroll-into-view exists for.
+  describe('the way-in block gains one action (ADR-0135)', () => {
+    const scheduleBtn = () =>
+      screen.queryByRole('button', { name: t.map.scheduleToDay }) as HTMLElement | null;
+
+    for (const allDays of [false, true]) {
+      const label = allDays ? 'all-days' : 'day';
+
+      it(`selecting a row reveals the footer and opens the form over the map, in ${label} scope`, () => {
+        seed();
+        render(wrap(<MapView />));
+        if (allDays) fireEvent.click(listButton(t.map.allDays));
+        expect(document.querySelector('.map-refs-foot')).toBeNull();
+
+        fireEvent.click(row('lunch')!);
+        expect(scheduleBtn()).toBeTruthy();
+
+        fireEvent.click(scheduleBtn()!);
+        // A Modal over the map, on the map's own tab — nothing navigated (§3), so the tab is
+        // still the map underneath.
+        expect(screen.getByRole('dialog')).toBeTruthy();
+        expect(document.querySelector('.map-screen')).toBeTruthy();
+        expect(document.querySelector('.pp-trigger.filled')?.textContent).toContain('lunch');
+      });
+    }
+
+    // §8: the block already overflows the `half` sheet on a 360 with two references, BEFORE
+    // this phase adds a footer — so selecting a row now scrolls what grew into view.
+    // `nearest`, because the row itself is already on screen: you just tapped it.
+    it('scrolls the newly-revealed block into view with `nearest`, not `center`', async () => {
+      seed();
+      render(wrap(<MapView />));
+      scrollIntoView.mockClear();
+
+      fireEvent.click(row('lunch')!);
+      await waitFor(() => expect(scrollIntoView).toHaveBeenCalledWith({ block: 'nearest' }));
+    });
+
+    // §7 / ADR-0134 §3: under an errand the tab is answering ONE question, so the verb
+    // CHANGES rather than accumulating — exactly as `נווט` gives its slot to `בחירה`.
+    it('is ABSENT while a place errand is live, and returns when the errand ends', () => {
+      seed();
+      render(wrap(<MapView />));
+      fireEvent.click(row('lunch')!);
+      expect(scheduleBtn()).toBeTruthy();
+
+      startErrand();
+      expect(scheduleBtn()).toBeNull();
+      // The row still offers the errand's own verb in its place.
+      expect(within(row('lunch')!).getByRole('button', { name: t.map.errand.choose })).toBeTruthy();
+
+      fireEvent.click(screen.getByRole('button', { name: t.map.errand.cancel }));
+      expect(scheduleBtn()).toBeTruthy();
+    });
+  });
 
   it('renders the split: a live pane, a floating controls row, and a sheet at half', () => {
     seed();
@@ -469,8 +531,14 @@ describe('the embedded map’s shell (ADR-0121)', () => {
   // Three controls at rest, not seven (ADR-0122 §2). Asserted in BOTH day scopes, since
   // the day-scoped and all-days paths are different renders.
   describe('the facets open in place, behind one control (ADR-0122 §2)', () => {
+    // Each control by the class that IDENTIFIES it, not by its whole className: since
+    // session 185 the two chips get their appearance from `ToggleChip`, so the full string
+    // also carries `wp-chip accent` — which is about how a chip looks, and this assertion
+    // is about which three controls are in the row.
     const rest = () =>
-      [...document.querySelectorAll('.map-controls > *')].map((el) => el.className);
+      [...document.querySelectorAll('.map-controls > *')].map(
+        (el) => [...el.classList].find((c) => c.startsWith('map-')) ?? el.className,
+      );
 
     it('at rest the row carries the scope, one filter control, and search', () => {
       seed();
@@ -534,7 +602,7 @@ describe('the embedded map’s shell (ADR-0121)', () => {
         t.map.filter.activeAria(`${t.iconPicker.categories.food} · ${t.map.filter.maybes}`),
       );
       expect(control().className).toContain('on');
-      expect(control().querySelector('.cnt')).toBeNull();
+      expect(control().querySelector('.wp-chip-count')).toBeNull();
     });
 
     it('says the same thing in all-days scope', () => {
@@ -548,6 +616,58 @@ describe('the embedded map’s shell (ADR-0121)', () => {
       expect(control.getAttribute('aria-label')).toBe(
         t.map.filter.activeAria(t.iconPicker.categories.food),
       );
+    });
+  });
+
+  // The session-185 extraction: four hand-rolled copies of one chip rule became four call
+  // sites of `ToggleChip`. What is worth a test is not the class but the SEMANTICS split
+  // the migration had to preserve — a pressed toggle and a control whose on-state is a fact
+  // about the filter look identical and must not announce identically.
+  describe('the pressed chips are one primitive (root rule 8)', () => {
+    const chips = () => [...document.querySelectorAll('.wp-chip')] as HTMLElement[];
+
+    for (const allDays of [false, true]) {
+      it(`every chip in the row is the shared primitive, in ${allDays ? 'all-days' : 'day'} scope`, () => {
+        seed();
+        tripMaybes = [
+          maybe({ id: 'm', placeId: 'lunch', category: 'food', targetDate: ACTIVE_DATE }),
+        ];
+        render(wrap(<MapView />));
+        if (allDays) fireEvent.click(listButton(t.map.allDays));
+
+        // The scope chip is a real toggle and says so; the filter control is an indicator
+        // and deliberately does not, because its tap OPENS the strip.
+        const scope = document.querySelector('.map-scopechip') as HTMLElement;
+        expect(scope.classList.contains('wp-chip')).toBe(true);
+        expect(scope.getAttribute('aria-pressed')).toBe(String(allDays));
+        const filter = document.querySelector('.map-facets') as HTMLElement;
+        expect(filter.classList.contains('wp-chip')).toBe(true);
+        expect(filter.hasAttribute('aria-pressed')).toBe(false);
+
+        // The facet toggles: provisional while off (ADR-0110 §2), and pressed toggles.
+        openFacets();
+        const maybes = document.querySelector('.map-maybes') as HTMLElement;
+        expect(maybes.classList.contains('provisional')).toBe(true);
+        expect(maybes.getAttribute('aria-pressed')).toBe('false');
+        fireEvent.click(maybes);
+        expect(
+          (document.querySelector('.map-maybes') as HTMLElement).getAttribute('aria-pressed'),
+        ).toBe('true');
+
+        // Nothing in the row is a hand-rolled chip any more.
+        expect(chips().length).toBeGreaterThan(0);
+      });
+    }
+
+    // Teal is a LOCATION semantic (ADR-0109 §6-7), so it is a tone the primitive keeps
+    // rather than a variant flattened into the neutral chip; a refusal drops it to `muted`,
+    // which is the chip present-but-unable rather than absent.
+    it('near-me keeps its teal tone, and a refusal mutes it instead of removing it', () => {
+      seed();
+      render(wrap(<MapView />));
+      const near = () => document.querySelector('.map-nearchip') as HTMLElement;
+      expect(near().classList.contains('teal')).toBe(true);
+      expect(near().classList.contains('muted')).toBe(false);
     });
   });
 
@@ -1966,7 +2086,7 @@ describe('the embedded map’s shell (ADR-0121)', () => {
       openFacets();
       return listButton(t.map.filter.left);
     };
-    const count = (el: HTMLElement) => el.querySelector('.cnt')?.textContent;
+    const count = (el: HTMLElement) => el.querySelector('.wp-chip-count')?.textContent;
     const pillCount = (label: string) => {
       openFacets();
       return screen
@@ -2219,7 +2339,7 @@ describe('the embedded map’s shell (ADR-0121)', () => {
       ];
       render(wrap(<MapView />));
       openFacets();
-      expect(listButton(t.map.filter.left).querySelector('.cnt')?.textContent).toBe('0');
+      expect(listButton(t.map.filter.left).querySelector('.wp-chip-count')?.textContent).toBe('0');
       fireEvent.click(listButton(t.map.filter.left));
       expect(screen.getByText(t.map.filter.noResultsTitle)).toBeTruthy();
       expect(document.querySelector('.fb-empty-body')!.textContent).toContain(t.map.filter.left);

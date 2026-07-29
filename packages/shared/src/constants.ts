@@ -85,6 +85,27 @@ export const BOOKING_TYPE_TO_CATEGORY = {
   other: 'other',
 } as const satisfies Record<BookingType, EventCategory>;
 
+/** The **inverse** direction (ADR-0136 §2): which booking an event of this category would
+ *  be, for the `יש הזמנה` row that creates one from `EventForm`. Not injective — the
+ *  categories outnumber the types — so this is a **guess the form states out loud** and the
+ *  category pill is how it is corrected, never a second picker.
+ *
+ *  It sits beside its inverse on purpose. The two are one fact in two directions, and a new
+ *  `BookingType` has to be answered in both: the `satisfies Record<…>` on **each** is what
+ *  makes a missed side a compile error rather than a silent gap. `transport → flight` is the
+ *  honest edge — a train is one tap on the category the form was already showing. */
+export const CATEGORY_TO_BOOKING_TYPE = {
+  lodging: 'hotel',
+  food: 'restaurant',
+  transport: 'flight',
+  sightseeing: 'activity',
+  nature: 'activity',
+  activity: 'activity',
+  shopping: 'other',
+  services: 'other',
+  other: 'other',
+} as const satisfies Record<EventCategory, BookingType>;
+
 export const CHANGE_ACTION = {
   CREATE: 'create',
   UPDATE: 'update',

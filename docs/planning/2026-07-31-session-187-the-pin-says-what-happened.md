@@ -1,4 +1,4 @@
-# Session 185 — the pin says what happened, and the ghost was the point (2026-07-30)
+# Session 187 — the pin says what happened, and the ghost was the point (2026-07-31)
 
 [ADR-0137](../decisions/0137-the-pin-says-what-happened.md), built. Two mockups:
 [`map-pin-outcome-v2.html`](../../mockups/map-pin-outcome-v2.html) is the design,

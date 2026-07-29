@@ -169,3 +169,24 @@ export function placeRefs(
     })
     .map(({ ref }) => ref);
 }
+
+/** **The idea a scheduled place consumes — or none** (ADR-0135 §5).
+ *
+ *  With **exactly one** live idea on the place, scheduling it is the shelf's own
+ *  consume-on-schedule reached from a new surface: leaving the idea parked would
+ *  leave the same place both scheduled and shelved, which is two rows in the list
+ *  and two pins on the canvas with one of them a lie.
+ *
+ *  With **two or more, nothing is consumed, and that is the decision, not an
+ *  oversight.** Two ideas on one place are two intentions ("a meal there",
+ *  "drinks there"), and scheduling one must not eat the other. Nothing on screen
+ *  can tell them apart — a shipped idea entry reads `על המדף · <day>` and nothing
+ *  else — so the screen does not guess.
+ *
+ *  Deliberately NOT day-scoped: an idea pencilled in for another day is still a
+ *  second intention, and consuming "the one in scope" would eat it silently.
+ *  A simplification to "any idea" has to argue with this comment first. */
+export function soleIdeaFor(placeId: string, maybeItems: MaybeItem[]): MaybeItem | null {
+  const live = maybeItems.filter((m) => !m.consumed && m.placeId === placeId);
+  return live.length === 1 ? live[0] : null;
+}

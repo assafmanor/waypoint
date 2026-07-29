@@ -64,6 +64,55 @@ describe('MaybeItemsService', () => {
     expect(changeCount).toBe(0);
   });
 
+  // The inverse of consume, and the reason it exists is undo: without it an undone schedule
+  // put the idea back locally and the next resync re-consumed it.
+  it('restores a consumed idea to the shelf through ChangeService', async () => {
+    const tripId = await newTrip();
+    const item = await prisma.maybeItem.create({
+      data: { tripId, title: 'Skytree', createdBy: DEV_USER, updatedBy: DEV_USER, consumed: true },
+    });
+
+    const restored = await service.restore(tripId, item.id, DEV_USER);
+    expect(restored.consumed).toBe(false);
+
+    const change = await prisma.change.findFirst({
+      where: { tripId, entityId: item.id, action: 'update' },
+    });
+    expect(change).toMatchObject({ entityType: 'maybeItem' });
+  });
+
+  // An undo can be replayed by an outbox flush that already landed, so restoring an idea that
+  // is already on the shelf must be a no-op rather than a second change.
+  it('is idempotent when the item is not consumed', async () => {
+    const tripId = await newTrip();
+    const item = await prisma.maybeItem.create({
+      data: { tripId, title: 'Skytree', createdBy: DEV_USER, updatedBy: DEV_USER },
+    });
+
+    await expect(service.restore(tripId, item.id, DEV_USER)).resolves.toMatchObject({
+      consumed: false,
+    });
+    expect(await prisma.change.count({ where: { tripId, entityId: item.id } })).toBe(0);
+  });
+
+  // A round trip, which is what the undo actually performs.
+  it('survives consume → restore, leaving the day mark alone', async () => {
+    const tripId = await newTrip();
+    const item = await prisma.maybeItem.create({
+      data: {
+        tripId,
+        title: 'Skytree',
+        createdBy: DEV_USER,
+        updatedBy: DEV_USER,
+        targetDate: '2026-07-20',
+      },
+    });
+
+    await service.consume(tripId, item.id, DEV_USER);
+    const restored = await service.restore(tripId, item.id, DEV_USER);
+    expect(restored).toMatchObject({ consumed: false, targetDate: '2026-07-20' });
+  });
+
   it('creates a shelf idea through ChangeService', async () => {
     const tripId = await newTrip();
     const created = await service.create(tripId, DEV_USER, { title: 'Cat cafe', icon: '🐱' });

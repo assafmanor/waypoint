@@ -308,6 +308,8 @@ const maybeItemUrl = (tripId: string, maybeItemId: string) =>
   `${maybeItemsUrl(tripId)}/${maybeItemId}`;
 const consumeMaybeItemUrl = (tripId: string, maybeItemId: string) =>
   `${maybeItemUrl(tripId, maybeItemId)}/consume`;
+const restoreMaybeItemUrl = (tripId: string, maybeItemId: string) =>
+  `${maybeItemUrl(tripId, maybeItemId)}/restore`;
 const bookingsUrl = (tripId: string) => `${API_BASE_URL}/trips/${tripId}/bookings`;
 const bookingUrl = (tripId: string, bookingId: string) => `${bookingsUrl(tripId)}/${bookingId}`;
 const placesUrl = (tripId: string) => `${API_BASE_URL}/trips/${tripId}/places`;
@@ -450,6 +452,16 @@ export async function fetchChanges(tripId: string, sinceSeq: string): Promise<Ch
  *  reverted an already-scheduled item back to unscheduled. */
 export async function consumeMaybeItem(tripId: string, maybeItemId: string): Promise<void> {
   const res = await apiFetch(consumeMaybeItemUrl(tripId, maybeItemId), {
+    method: HTTP_METHOD.POST,
+  });
+  if (!res.ok) return throwApiError(res);
+}
+
+/** **Puts a consumed idea back on the shelf** — the compensating write an UNDONE schedule owes
+ *  the server. Without it the reducer's snapshot restored the idea locally and the next resync
+ *  re-consumed it, so the idea vanished a second time with nothing on screen explaining why. */
+export async function restoreMaybeItem(tripId: string, maybeItemId: string): Promise<void> {
+  const res = await apiFetch(restoreMaybeItemUrl(tripId, maybeItemId), {
     method: HTTP_METHOD.POST,
   });
   if (!res.ok) return throwApiError(res);

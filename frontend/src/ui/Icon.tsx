@@ -77,12 +77,14 @@ const PATHS: Record<IconName, string> = {
   // so the retrofit has something to point at.
   camera:
     'M4 8h2.5l1.4-2.2a1 1 0 0 1 .84-.46h6.52a1 1 0 0 1 .84.46L17.5 8H20a1 1 0 0 1 1 1v8a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V9a1 1 0 0 1 1-1Z M15 13.2a3 3 0 1 1-6 0 3 3 0 0 1 6 0',
-  // WHAT HAPPENED AT A PLACE, on the map's pins (ADR-0117 §1, drawn on the canvas from
-  // session 185). The pair is deliberately the two most different silhouettes available:
+  // WHAT HAPPENED AT A PLACE, on the map's pins (ADR-0137, drawn on the canvas from
+  // session 187). The pair is deliberately the two most different silhouettes available:
   // a pin's mark is ~15px on the shipped canvas, and telling היינו from דילגנו at a
-  // glance is the whole feature. Shape carries the state, never colour — the same rule
-  // the cloud family below is built on, and here it is forced: the behind-you tier's own
-  // definition is the LOSS of colour (ADR-0130 §3), so a mark on it inherits the fade.
+  // glance is the whole feature. Shape carries the state INDEPENDENTLY of colour — the
+  // same rule the cloud family below is built on. Here the marks do also carry `--ok`/
+  // `--miss` (an outcome is a status, ADR-0028), so the shape is the redundant channel
+  // rather than the only one: it is what survives the tier's own quieting, and what a
+  // reader who cannot separate the two hues reads instead.
   //
   // `check` is not `cloud-check`'s mark: that one is inset inside the cloud's body, this
   // one is centred in the whole box. `skip` is not `close` either, and the distinction is

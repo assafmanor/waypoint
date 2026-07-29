@@ -318,7 +318,7 @@ describe('pinOutcome — what happened there, on the two tiers that can say (ADR
     }
   });
 
-  // THE REPORT'S OWN POPULATION (owner, session 185): "a ghost could be unmarked, skipped,
+  // THE REPORT'S OWN POPULATION (owner, session 187): "a ghost could be unmarked, skipped,
   // or consumed". A ghost has no day in the scope, so it reports the day it is LIVE on.
   it('a ghost reports what happened on its OWN day, not on the one you are looking at', () => {
     const index = usages({

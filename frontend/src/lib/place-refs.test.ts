@@ -9,7 +9,7 @@ import {
   type MaybeItem,
   type TripEvent,
 } from '@waypoint/shared';
-import { PLACE_REF_KIND, placeRefs } from './place-refs';
+import { PLACE_REF_KIND, placeRefs, soleIdeaFor } from './place-refs';
 
 const DAY = '2026-07-20';
 const NEXT_DAY = '2026-07-21';
@@ -243,5 +243,38 @@ describe('placeRefs — the way in to the entity (ADR-0121 §8)', () => {
     expect(placeRefs('nowhere', source({ events: [event({ id: 'e', placeId: 'x' })] }))).toEqual(
       [],
     );
+  });
+});
+
+// ADR-0135 §5. The two-idea case is the reproduction: it must fail if the consume is ever
+// relaxed to "any idea", which is the simplification this rule invites.
+describe('soleIdeaFor — what a scheduled place consumes (ADR-0135 §5)', () => {
+  it('returns the single live idea on the place', () => {
+    const only = maybe({ id: 'mb-1', placeId: 'pl-1' });
+    expect(soleIdeaFor('pl-1', [only, maybe({ id: 'mb-2', placeId: 'pl-other' })])).toBe(only);
+  });
+
+  it('returns NOTHING with two ideas — two intentions, and scheduling one must not eat the other', () => {
+    const two = [maybe({ id: 'mb-1', placeId: 'pl-1' }), maybe({ id: 'mb-2', placeId: 'pl-1' })];
+    expect(soleIdeaFor('pl-1', two)).toBeNull();
+  });
+
+  it('is not day-scoped: an idea pencilled in for another day still counts as a second intention', () => {
+    const two = [
+      maybe({ id: 'mb-1', placeId: 'pl-1', targetDate: '2026-07-20' }),
+      maybe({ id: 'mb-2', placeId: 'pl-1', targetDate: '2026-07-24' }),
+    ];
+    expect(soleIdeaFor('pl-1', two)).toBeNull();
+  });
+
+  it('ignores consumed ideas, so a place scheduled once can be scheduled again', () => {
+    const live = maybe({ id: 'mb-2', placeId: 'pl-1' });
+    expect(
+      soleIdeaFor('pl-1', [maybe({ id: 'mb-1', placeId: 'pl-1', consumed: true }), live]),
+    ).toBe(live);
+  });
+
+  it('returns nothing when the place has no idea at all', () => {
+    expect(soleIdeaFor('pl-1', [])).toBeNull();
   });
 });

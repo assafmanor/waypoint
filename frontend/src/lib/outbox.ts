@@ -23,6 +23,7 @@ import { db } from '../db';
 import {
   ApiError,
   consumeMaybeItem,
+  restoreMaybeItem,
   createBooking,
   createEvent,
   createMaybeItem,
@@ -56,6 +57,7 @@ export const OUTBOX_VERB = {
   MOVE: 'move',
   DELETE: 'delete',
   CONSUME_MAYBE_ITEM: 'consumeMaybeItem',
+  RESTORE_MAYBE_ITEM: 'restoreMaybeItem',
   CREATE_MAYBE_ITEM: 'createMaybeItem',
   DELETE_MAYBE_ITEM: 'deleteMaybeItem',
   UPDATE_MAYBE_ITEM: 'updateMaybeItem',
@@ -80,6 +82,8 @@ export type OutboxOp =
   | { verb: typeof OUTBOX_VERB.MOVE; eventId: string; input: MoveEventInput; confirm: boolean }
   | { verb: typeof OUTBOX_VERB.DELETE; eventId: string; confirm: boolean }
   | { verb: typeof OUTBOX_VERB.CONSUME_MAYBE_ITEM; maybeItemId: string }
+  // The inverse, queued by an UNDONE schedule (ADR-0027 §2's consume, reversed).
+  | { verb: typeof OUTBOX_VERB.RESTORE_MAYBE_ITEM; maybeItemId: string }
   // Maybe-shelf build actions (Plan-mode Tier 3) — offline-capable (ADR-0042).
   | { verb: typeof OUTBOX_VERB.CREATE_MAYBE_ITEM; input: CreateMaybeItemInput }
   | { verb: typeof OUTBOX_VERB.DELETE_MAYBE_ITEM; maybeItemId: string }
@@ -138,6 +142,7 @@ export function outboxOpEntityId(op: OutboxOp): string {
     case OUTBOX_VERB.DELETE:
       return op.eventId;
     case OUTBOX_VERB.CONSUME_MAYBE_ITEM:
+    case OUTBOX_VERB.RESTORE_MAYBE_ITEM:
     case OUTBOX_VERB.DELETE_MAYBE_ITEM:
     case OUTBOX_VERB.UPDATE_MAYBE_ITEM:
       return op.maybeItemId;
@@ -578,6 +583,9 @@ async function runOp(tripId: string, op: OutboxOp): Promise<void> {
       return;
     case OUTBOX_VERB.CONSUME_MAYBE_ITEM:
       await consumeMaybeItem(tripId, op.maybeItemId);
+      return;
+    case OUTBOX_VERB.RESTORE_MAYBE_ITEM:
+      await restoreMaybeItem(tripId, op.maybeItemId);
       return;
     case OUTBOX_VERB.CREATE_MAYBE_ITEM:
       await createMaybeItem(tripId, op.input);

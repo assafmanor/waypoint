@@ -1,7 +1,7 @@
 # 0137 — The pin says what happened there, and the ghost is the population that needed it
 
 **Status:** Accepted (design + build)
-**Date:** 2026-07-30
+**Date:** 2026-07-31
 **Refines:** [0117](0117-map-place-outcome-states.md) (its three outcome states, and the "Phase 6 inherits it" its Consequences promised), [0121](0121-embedded-map-phase-6-design.md) §6 (the pin ladder gains no tier — this is a second axis on two existing ones), [0130](0130-a-maybe-is-not-a-past-place.md) §2/§3 (the `behind` tier is Trip-only; `ghost` and `shelf` are the two subordinate tiers, and only one of them can carry an outcome), [0028](0028-plan-violet-color-budget-dark-ready.md) (`--ok`/`--miss` are for statuses, which is what an outcome is)
 
 Mockup: [`mockups/map-pin-outcome-v2.html`](../../mockups/map-pin-outcome-v2.html) (v1 is superseded and kept only for its §F, which is what this ADR's Alternatives point at)
