@@ -43,7 +43,8 @@ import {
 } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { useHandoff, type Handoff } from '../lib/handoff';
-import { tabTarget } from './nav-state';
+import { HOME_TAB, TAB_PARAM, tabTarget } from './nav-state';
+import type { TabId } from '../constants';
 import { useTrip } from './trip-state';
 
 /** Which place field of which entity an errand is for (ADR-0134 §2). **`field` is not
@@ -219,19 +220,52 @@ export function useStartPlaceErrand(): ((errand: Omit<PlaceErrand, 'returnTo'>) 
   }, [hand, navigate]);
 }
 
+/** Which tab a path addresses. Home carries no `?tab=`, so an absent one IS `home` rather
+ *  than "unknown" — every in-trip screen lives under exactly one tab. */
+const tabOfPath = (path: string): TabId =>
+  (new URLSearchParams(path.split('?')[1] ?? '').get(TAB_PARAM) as TabId | null) ?? HOME_TAB;
+
 /** The other end: a form's HOST takes the answer and re-opens the form from the draft
- *  with the place assigned (ADR-0134 §2). Returns `null` when nothing is waiting, or
- *  when what is waiting is for a different kind of entity than this host owns — so two
- *  hosts can both watch the channel without either stealing the other's errand. */
+ *  with the place assigned (ADR-0134 §2). Returns `null` when nothing is waiting, or when
+ *  what is waiting is not for this host — so several hosts can watch one channel without
+ *  stealing each other's errand.
+ *
+ *  **Two filters, and the second one is the fix for the bug that survived four attempts**
+ *  (owner, session 174; found by driving the round trip in a real browser, after four
+ *  jsdom-tested fixes each shipped and none of them worked):
+ *
+ *   • the entity KIND, so the event form and the booking sheet never cross; and
+ *   • **`hostTab` — the tab this host lives on**, matched against the tab the errand is
+ *     RETURNING to. The Map hosts a booking sheet itself (a row's way-in opens one), and it
+ *     is still mounted when it hands the answer over: `hand()` and `navigate()` land in one
+ *     React batch, so the Map's own host effect re-runs, takes the result meant for the
+ *     Index, applies it to state nobody will see, and is then unmounted by the navigation.
+ *     From outside that looked exactly like the channel never delivering — the destination
+ *     mounted, and no form opened.
+ *
+ *  `hostTab` is passed in rather than read from the URL, and that is the whole point: at the
+ *  instant the thief's effect runs, `window.location` is ALREADY the destination, so any
+ *  filter derived from it matches the thief too. The host's own tab is a static fact about
+ *  the component, so it cannot race the navigation that is stealing from it.
+ *
+ *  Comparing the TAB rather than the whole path is deliberate: the return path may carry
+ *  params the destination strips on arrival (the Index clears `?focus=` once it has acted),
+ *  so an exact match would fail for the very screen the fix is for. */
 export function useTakePlaceErrandResult(
   kind: PlaceErrandTarget['kind'],
+  hostTab: TabId,
 ): (() => PlaceErrandResult | null) | null {
   const scope = useContext(MapScopeContext);
   const result = scope?.errandResult;
   return useMemo(() => {
     if (!result) return null;
-    return () => (result.pending?.errand.target.kind === kind ? result.take() : null);
-  }, [result, kind]);
+    return () => {
+      const pending = result.pending;
+      if (pending?.errand.target.kind !== kind) return null;
+      if (tabOfPath(pending.errand.returnTo) !== hostTab) return null;
+      return result.take();
+    };
+  }, [result, kind, hostTab]);
 }
 
 /** What a host gets back: the form's own draft (typed here, opaque in the channel — the
@@ -269,12 +303,17 @@ export interface ReturnedPlaceErrand<D> {
  *  A once-only channel is not enough on its own to make a once-only EFFECT — `take()`
  *  cleared the handoff correctly and the bug was downstream of it. So the "once" lives
  *  here, where there is one copy of it: `apply` is read through a latest-ref, so the effect
- *  depends on nothing but the channel and a host may close over whatever it likes. */
+ *  depends on nothing but the channel and a host may close over whatever it likes.
+ *
+ *  `hostTab` is the tab this host lives on — see `useTakePlaceErrandResult` for why it is
+ *  declared rather than read from the URL. Every host is reachable under exactly one tab
+ *  (mode picks between the two that share `home` and `days`), so it identifies the host. */
 export function usePlaceErrandReturn<D>(
   kind: PlaceErrandTarget['kind'],
+  hostTab: TabId,
   apply: (returned: ReturnedPlaceErrand<D>) => void,
 ): void {
-  const take = useTakePlaceErrandResult(kind);
+  const take = useTakePlaceErrandResult(kind, hostTab);
   const applyRef = useRef(apply);
   applyRef.current = apply;
   useEffect(() => {

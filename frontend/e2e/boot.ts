@@ -95,6 +95,9 @@ export async function bootIntoTrip(
     bookings?: unknown[];
     events?: unknown[];
     maybeItems?: unknown[];
+    /** Trip places, so the Map tab's FREE half has rows to choose from — an errand can
+     *  then be finished without Google, which is what keeps this spec hermetic. */
+    places?: unknown[];
     /** Override the trip's date range (see `shortLiveTripDates`). */
     dates?: { startDate: string; endDate: string };
   } = {},
@@ -106,6 +109,7 @@ export async function bootIntoTrip(
     bookings: opts.bookings ?? SNAPSHOT.bookings,
     events: opts.events ?? SNAPSHOT.events,
     maybeItems: opts.maybeItems ?? SNAPSHOT.maybeItems,
+    places: opts.places ?? SNAPSHOT.places,
   };
   await page.route(
     (u) => u.pathname.endsWith('/auth/refresh'),
@@ -178,3 +182,52 @@ export async function bootIntoTrip(
 }
 
 export const TRIP_ID = 't1';
+
+/** One hotel booking with **no place**, plus a place the trip already owns and an event that
+ *  references it — the fixture the booking place-errand round trip needs (ADR-0134 §2).
+ *
+ *  No place on the booking is what makes `＋ מיקום` appear on its detail; the referenced
+ *  place is what gives the Map tab a row to CHOOSE, so the whole trip is finished without
+ *  Google and the spec stays hermetic. */
+export const ERRAND_FIXTURE = {
+  bookings: [
+    {
+      id: 'bk-hotel',
+      tripId: 't1',
+      type: 'hotel',
+      title: 'Shinjuku hotel',
+      source: 'manual',
+      createdAt: '2024-01-01T00:00:00.000Z',
+      updatedAt: '2024-01-01T00:00:00.000Z',
+      updatedBy: 'u1',
+    },
+  ],
+  places: [
+    {
+      id: 'pl-museum',
+      tripId: 't1',
+      name: 'Mori Museum',
+      lat: 35.66,
+      lng: 139.73,
+      createdAt: '2024-01-01T00:00:00.000Z',
+      updatedAt: '2024-01-01T00:00:00.000Z',
+      updatedBy: 'u1',
+    },
+  ],
+  events: [
+    {
+      id: 'ev-museum',
+      tripId: 't1',
+      date: new Date().toISOString().slice(0, 10),
+      title: 'Museum',
+      kind: 'soft',
+      status: 'planned',
+      placeId: 'pl-museum',
+      sortOrder: 0,
+      source: 'manual',
+      createdAt: '2024-01-01T00:00:00.000Z',
+      updatedAt: '2024-01-01T00:00:00.000Z',
+      updatedBy: 'u1',
+    },
+  ],
+};

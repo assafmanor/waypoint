@@ -11,6 +11,7 @@ import {
   usePlaceErrandReturn,
   type PlaceErrandTarget,
 } from './map-scope-state';
+import { HOME_TAB } from './nav-state';
 
 interface Draft {
   title: string;
@@ -31,7 +32,7 @@ const errandFor = (kind: PlaceErrandTarget['kind'], draft: Draft) => ({
 function hostHook(kind: PlaceErrandTarget['kind'], applied: Draft[]) {
   return () => {
     const scope = useMapScope();
-    usePlaceErrandReturn<Draft>(kind, (returned) => {
+    usePlaceErrandReturn<Draft>(kind, 'days', (returned) => {
       if (returned.draft) applied.push(returned.draft);
     });
     return scope;
@@ -69,7 +70,7 @@ describe('usePlaceErrandReturn', () => {
     const { result, rerender } = renderHook(
       () => {
         const scope = useMapScope();
-        usePlaceErrandReturn<Draft>('event', (returned) => {
+        usePlaceErrandReturn<Draft>('event', 'days', (returned) => {
           calls += 1;
           if (returned.draft) applied.push(returned.draft);
         });
@@ -93,7 +94,7 @@ describe('usePlaceErrandReturn', () => {
     const { result } = renderHook(
       () => {
         const scope = useMapScope();
-        usePlaceErrandReturn<Draft>('event', (r) => applied.push(r.draft));
+        usePlaceErrandReturn<Draft>('event', HOME_TAB, (r) => applied.push(r.draft));
         return scope;
       },
       { wrapper },
@@ -121,10 +122,10 @@ describe('usePlaceErrandReturn', () => {
     const { result } = renderHook(
       () => {
         const scope = useMapScope();
-        usePlaceErrandReturn<Draft>('event', (r) => {
+        usePlaceErrandReturn<Draft>('event', 'days', (r) => {
           if (r.draft) events.push(r.draft);
         });
-        usePlaceErrandReturn<Draft>('booking', (r) => {
+        usePlaceErrandReturn<Draft>('booking', 'days', (r) => {
           if (r.draft) bookings.push(r.draft);
         });
         return scope;
@@ -136,6 +137,53 @@ describe('usePlaceErrandReturn', () => {
     expect(bookings).toEqual([{ title: 'רכבת', placeId: 'pl-9' }]);
   });
 
+  // **TWO HOSTS OF THE SAME KIND, AND THE ONE THAT ANSWERS IS THE ONE THE ERRAND CAME FROM**
+  // (owner, session 174: _"I'm still not getting back to the draft"_ — the fifth report of the
+  // same sentence, and the first one with a cause).
+  //
+  // The Map hosts a booking sheet itself, so it watches this channel for kind `booking` too.
+  // It is also the surface that HANDS the answer over, and it is still mounted for that
+  // render: `hand()` and `navigate()` land in one React batch. So the Map's own effect re-ran,
+  // took the result meant for the Index, applied it to state that was about to be thrown away,
+  // and unmounted. The Index then mounted to an empty channel. From outside: the right screen,
+  // no form.
+  //
+  // The location is set to the DESTINATION here on purpose — that is the state the thief's
+  // effect actually runs in, and it is why no filter read off the URL can tell the two apart.
+  it('delivers to the host on the errand\u2019s own tab, not to a thief on another', () => {
+    window.history.replaceState(null, '', '/?tab=index');
+    const onMap: Draft[] = [];
+    const onIndex: Draft[] = [];
+    const { result } = renderHook(
+      () => {
+        const scope = useMapScope();
+        usePlaceErrandReturn<Draft>('booking', 'map', (r) => {
+          if (r.draft) onMap.push(r.draft);
+        });
+        usePlaceErrandReturn<Draft>('booking', 'index', (r) => {
+          if (r.draft) onIndex.push(r.draft);
+        });
+        return scope;
+      },
+      { wrapper },
+    );
+    act(() =>
+      result.current.errandResult.hand({
+        errand: {
+          target: { kind: 'booking', id: 'bk1', field: 'placeId' },
+          // What `withBookingFormReturn` produces: the destination's own params ride along,
+          // so the match is on the TAB rather than the whole path.
+          returnTo: '/?tab=index&focus=bookings',
+          label: 'מלון',
+          draft: { title: 'מלון' },
+        },
+        placeId: 'pl-9',
+      }),
+    );
+    expect(onMap).toEqual([]);
+    expect(onIndex).toEqual([{ title: 'מלון', placeId: 'pl-9' }]);
+  });
+
   // The whole point of the draft: the chosen place lands in the NAMED field, so a transport
   // booking cannot assign the right place to the wrong side of the journey. The assignment
   // happens in the HOOK now (session 168) rather than at each of five hosts — the same
@@ -145,7 +193,7 @@ describe('usePlaceErrandReturn', () => {
     const { result } = renderHook(
       () => {
         const scope = useMapScope();
-        usePlaceErrandReturn<Draft>('booking', (r) => {
+        usePlaceErrandReturn<Draft>('booking', HOME_TAB, (r) => {
           seen = { field: r.target.field, placeId: r.placeId, draft: r.draft };
         });
         return scope;

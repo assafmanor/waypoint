@@ -557,3 +557,53 @@ is exhaustive over `keyof Booking`, so adding a field to `bookingSchema` fails t
 someone classifies it as `form`, `identity` or (explicitly) `unused`. Same shape
 `constants.ts` uses for per-enum lookups, and for the same reason — a missing case should be
 a compile error, not a silent omission.
+
+## Build log addendum (2026-07-29, session 174) — the answer had a thief, and only a browser could see it
+
+> _"Unfortunately I'm still not getting back to the draft, same exact thing as before except
+> when returning from editing it doesn't auto save the location."_ … _"If you could add a
+> playwright test for that."_
+
+The fifth report of one sentence, and the first one with a cause. Sessions 170–173 each fixed
+something real about the return — the missing host, the landing that had no form, the cheap
+path that saved without asking — and the form still did not open. It never was those.
+
+### The Map takes its own hand-off
+
+`finishErrand` does two things in one click handler: `errandResult.hand(...)` and
+`navigate(returnTo, { replace: true })`. Both land in **one React batch**, so the Map is still
+mounted for the render that publishes the answer — and the Map is itself a **booking-form
+host** (a selected row's way-in opens a `BookingSheet`, §8). Its own `usePlaceErrandReturn`
+effect re-ran, matched on kind, took the result meant for the Index, applied it to state that
+was about to be destroyed, and unmounted. The Index then mounted to an empty channel.
+
+From outside this is indistinguishable from the channel never delivering: the right screen
+arrives, and no form opens. Which is why four fixes aimed at the delivery.
+
+### The filter has to be a fact about the host, not about the URL
+
+The first attempt compared the errand's `returnTo` against `window.location`. It fixed
+nothing, and the reason is the whole lesson: **by the time the thief's effect runs, the
+location is already the destination.** Anything read off the URL describes where the app is
+going, which both hosts now agree on — it cannot tell them apart.
+
+So `usePlaceErrandReturn` takes a **`hostTab`**: the tab that host lives on, a static property
+of the component, matched against the tab in the errand's `returnTo`. It cannot race a
+navigation because it does not observe one. Every host is reachable under exactly one tab
+(mode picks between the two that share `home` and `days`), so it identifies the host — and
+comparing the tab rather than the whole path is deliberate, since the destination strips
+params on arrival (the Index clears `?focus=` once it has acted).
+
+### The test is an e2e, and that is the finding
+
+Every previous attempt was unit-tested and green. They had to be: the bug lives in the seam
+between a screen unmounting, a navigation, and a screen mounting on the far side, and a jsdom
+test of the channel mocks away at least one of those — most of all the **second host**, which
+no unit test had any reason to mount. `e2e/booking-place-errand.spec.ts` asserts the owner's
+sentence instead of an implementation detail (you come back to the form you left, with the
+place in it, nothing saved), and it reproduced on the first run.
+
+`state/map-scope-state.test.tsx` now carries the thief case too, so the regression is cheap to
+catch — but it was written **after** the browser found it, and would not have been written
+otherwise. When a fix for a hand-over ships and the report comes back unchanged, the next step
+is a real browser, not a fifth reading of the code.
