@@ -19,8 +19,9 @@ import { DocumentUploadSheet } from './DocumentUploadSheet';
 import { DocumentViewer } from './DocumentViewer';
 import { DocumentManageSheet } from './DocumentManageSheet';
 import { Spinner } from './Spinner';
-import { DOCUMENT_TYPE_ICON, ICONS } from '../constants';
+import { DOCUMENT_TYPE_ICON } from '../constants';
 import { t } from '../i18n/he';
+import { Icon } from './Icon';
 
 export function DocumentsSection() {
   const { trip, documents } = useTrip();
@@ -65,7 +66,10 @@ export function DocumentsSection() {
           <div className="et">{t.docs.emptyTitle}</div>
           <div className="es">{t.docs.emptyBody}</div>
           <button type="button" className="ea" onClick={() => setUploading(true)}>
-            <span className="plus">{ICONS.add}</span> {t.docs.emptyAdd}
+            <span className="plus">
+              <Icon name="plus" />
+            </span>{' '}
+            {t.docs.emptyAdd}
           </button>
         </div>
       )}
@@ -142,7 +146,7 @@ function DocumentRow({
               {formatBytes(d.sizeBytes)}
             </span>
             <span className="doc-lock" aria-hidden="true">
-              🔒
+              <Icon name="lock" />
             </span>
           </>
         )

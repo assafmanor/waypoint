@@ -34,7 +34,6 @@ import {
   CATEGORY_DEFAULT_BOOKED,
   DEFAULT_EVENT_ICON,
   DOT_SEPARATOR,
-  ICONS,
   TRANSPORT_BOOKING_TYPES,
 } from '../constants';
 import { t } from '../i18n/he';
@@ -483,7 +482,7 @@ export function EventForm({
 
           {conflicts.length > 0 && (
             <p className="form-conflict">
-              ⚠︎ {t.event.conflictWarn.before}
+              <Icon name="warn" /> {t.event.conflictWarn.before}
               <TitleLabel title={conflicts[0].title} />{' '}
               {t.event.conflictWarn.after(formatTime(conflicts[0].startsAt!, tz))}
             </p>
@@ -552,7 +551,7 @@ export function EventForm({
                 ariaControls="ef-booking-body"
                 onClick={toggleBooked}
               >
-                <span aria-hidden="true">{booked.value ? ICONS.done : ICONS.add}</span>
+                <Icon name={booked.value ? 'check' : 'plus'} />
                 {t.eventForm.bookedLabel}
               </ToggleChip>
               <Collapsible expanded={booked.value}>

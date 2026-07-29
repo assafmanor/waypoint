@@ -13,6 +13,7 @@ import { useOverlay } from '../state/nav-state';
 import { IndexBackRow } from './IndexBackRow';
 import { DocumentsSection } from './DocumentsSection';
 import { t } from '../i18n/he';
+import { Icon } from './Icon';
 
 export function IndexDocumentsView({ onClose }: { onClose: () => void }) {
   useOverlay(onClose);
@@ -21,7 +22,11 @@ export function IndexDocumentsView({ onClose }: { onClose: () => void }) {
       <IndexBackRow
         title={t.docs.title}
         onBack={onClose}
-        end={<span className="badge-offline">🔒 {t.docs.encrypted}</span>}
+        end={
+          <span className="badge-offline">
+            <Icon name="lock" /> {t.docs.encrypted}
+          </span>
+        }
       />
       <DocumentsSection />
     </div>

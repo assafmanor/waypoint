@@ -25,7 +25,36 @@ export type IconName =
   | 'skip'
   | 'cloud-check'
   | 'cloud-up'
-  | 'cloud-bang';
+  | 'cloud-bang'
+  // ── The emoji sweep (ADR-0138). Every shape below replaces an emoji that was
+  // drawing a CONTROL. Grouped by what they replace, not alphabetically, so the
+  // sweep's boundary stays legible from the type alone.
+  // Row-menu verbs.
+  | 'edit'
+  | 'trash'
+  | 'shelf'
+  | 'swap'
+  | 'calendar'
+  // Status marks a control or chip carries.
+  | 'lock'
+  | 'warn'
+  | 'clock'
+  | 'offline'
+  | 'sync'
+  // Verbs elsewhere in the app.
+  | 'plus'
+  | 'more'
+  | 'clipboard'
+  | 'share'
+  | 'link'
+  | 'upload'
+  | 'navigate'
+  | 'crown'
+  | 'exit'
+  // Bottom nav (ADR-0138 §4 — the owner's call to cross this line).
+  | 'home'
+  | 'map'
+  | 'cards';
 type Dir = 'up' | 'right' | 'down' | 'left';
 
 // Cloud base shared by the three per-entity sync glyphs (SyncBadge, ADR-0080/0091).
@@ -96,6 +125,86 @@ const PATHS: Record<IconName, string> = {
   'cloud-check': CLOUD + ' M9.3 13.6l1.9 1.9 3.6-3.8',
   'cloud-up': CLOUD + ' M11.8 16.6v-4.6 M9.6 14l2.2-2.2 2.2 2.2',
   'cloud-bang': CLOUD + ' M11.8 11.9v2.7 M11.8 16.3v.02',
+
+  // ══ The emoji sweep (ADR-0138) ══════════════════════════════════════════
+  // Drawn to the same contract as everything above: one path, 24×24, stroke,
+  // `currentColor`, upright. That last property is what the emoji never had —
+  // a `danger` row now tints its icon WITH its label instead of leaving a
+  // full-colour 🗑️ beside red text.
+
+  // Pencil, tip leading. Replaces ✏️.
+  edit: 'M12 20h9 M16.4 3.6a2.12 2.12 0 0 1 3 3L7.5 18.5l-4.2 1.2 1.2-4.2Z',
+  // Lid, body, two tines. Replaces 🗑️.
+  trash:
+    'M4 6.5h16 M9 6.5V4.7a1.2 1.2 0 0 1 1.2-1.2h3.6A1.2 1.2 0 0 1 15 4.7v1.8 M6.4 6.5l.8 12.3A2 2 0 0 0 9.2 20.7h5.6a2 2 0 0 0 2-1.9l.8-12.3 M10.4 10.4v6 M13.6 10.4v6',
+  // A tray with something going INTO it — `העבר למדף` is putting the thing
+  // away, so the arrow is the verb and the tray is the destination. Replaces 📥.
+  shelf:
+    'M12 3v7.5 M8.8 7.6 12 10.8l3.2-3.2 M20 14.5v3.6a2 2 0 0 1-2 2H6a2 2 0 0 1-2-2v-3.6 M4 14.5h3.8l1.4 2h5.6l1.4-2H20',
+  // Two arrows exchanging, on the BLOCK axis so RTL cannot flip the meaning (a
+  // horizontal pair would read backwards). Replaces 🔄 at the `swap` sites.
+  swap: 'M8 20.5V4.2 M4.8 7.4 8 4.2l3.2 3.2 M16 3.5v16.3 M12.8 16.6 16 19.8l3.2-3.2',
+  // Replaces 📅 at BOTH its jobs — `schedule` (put this on a day) and the days
+  // tab. One shape, because they mean the same thing.
+  calendar:
+    'M8 2.6v3.4 M16 2.6v3.4 M3.4 10.2h17.2 M5.4 4.3h13.2a2 2 0 0 1 2 2v13.1a2 2 0 0 1-2 2H5.4a2 2 0 0 1-2-2V6.3a2 2 0 0 1 2-2Z',
+  // Shackle + body. The hard-commitment mark (ADR-0011), so it appears on chips
+  // and warnings far more than any other shape here. Replaces 🔒.
+  lock: 'M7.4 10.4V7.6a4.6 4.6 0 0 1 9.2 0v2.8 M5.8 10.4h12.4a1.4 1.4 0 0 1 1.4 1.4v8a1.4 1.4 0 0 1-1.4 1.4H5.8a1.4 1.4 0 0 1-1.4-1.4v-8a1.4 1.4 0 0 1 1.4-1.4Z',
+  // Triangle + bang. Replaces ⚠️ (and `EventForm`'s ⚠︎, and `ErrorState`'s).
+  warn: 'M12 3.6 22 20.4H2Z M12 9.8v4.6 M12 17.4v.02',
+  // (`check` lives above, with `skip` — ADR-0137 added it for the pin's outcome
+  // marks and this sweep reuses it for the bare ✓ rather than drawing a second
+  // tick. A typographic character rather than an emoji, but swept on the same
+  // font-fallback grounds the arrow guard used: Assistant has no glyph for it.)
+  // Replaces 🕐/🕓 — the zone chip, the free-until readout, the dev clock.
+  clock: 'M12 6.4V12l3.6 2.2 M21 12a9 9 0 1 1-18 0 9 9 0 0 1 18 0',
+  // Signal arcs with a slash through them. Replaces 📡 — which was a dish, i.e.
+  // the equipment rather than the state; what the banner means is "no signal".
+  offline: 'M12 19.6h.02 M8.6 16.2a4.8 4.8 0 0 1 6.8 0 M5.2 12.8a9.6 9.6 0 0 1 13.6 0 M3 3l18 18',
+  // Circular arrows — the "in flight" mark, deliberately NOT `swap`'s pair even
+  // though both shipped as 🔄. Two meanings behind one emoji is exactly the
+  // drift this sweep exists to end.
+  sync: 'M20.5 5.5v5h-5 M3.5 18.5v-5h5 M19.4 10.5a7.6 7.6 0 0 0-13.3-3.2L3.5 10.5 M4.6 13.5a7.6 7.6 0 0 0 13.3 3.2l2.6-3.2',
+  // Replaces ＋ (U+FF0B, fullwidth plus) — same font-fallback grounds as `check`.
+  plus: 'M12 4.8v14.4 M4.8 12h14.4',
+  // The kebab itself. Three dots, drawn as zero-length capped segments so the
+  // round linecap IS the dot. Replaces ⋯.
+  more: 'M6 12h.02 M12 12h.02 M18 12h.02',
+  // Board + clip. Replaces 📋 (copy-to-clipboard).
+  clipboard:
+    'M9 4.4H7.4a2 2 0 0 0-2 2v12.2a2 2 0 0 0 2 2h9.2a2 2 0 0 0 2-2V6.4a2 2 0 0 0-2-2H15 M9.6 2.6h4.8a.9.9 0 0 1 .9.9v1.8a.9.9 0 0 1-.9.9H9.6a.9.9 0 0 1-.9-.9V3.5a.9.9 0 0 1 .9-.9Z',
+  // Three nodes joined — the share/invite verb. Replaces 💬, which was a speech
+  // bubble doing a share's job.
+  share:
+    'M18 8.2a2.6 2.6 0 1 0 0-5.2 2.6 2.6 0 0 0 0 5.2Z M6 14.6a2.6 2.6 0 1 0 0-5.2 2.6 2.6 0 0 0 0 5.2Z M18 21a2.6 2.6 0 1 0 0-5.2A2.6 2.6 0 0 0 18 21Z M8.3 10.7l7.4-4.3 M8.3 13.3l7.4 4.3',
+  // Two chain links. Replaces 🔗.
+  link: 'M10.6 13.4a4 4 0 0 0 6 .4l2.4-2.4a4 4 0 0 0-5.6-5.6l-1.4 1.4 M13.4 10.6a4 4 0 0 0-6-.4L5 12.6a4 4 0 0 0 5.6 5.6l1.4-1.4',
+  // Arrow out of a tray — `FilePicker`'s pick-a-file tile. Replaces ⬆️, and is
+  // deliberately `download` mirrored so the pair reads as one family.
+  upload: 'M12 16.2V3.6m-5 5 5-5 5 5M4.6 20.4h14.8',
+  // A compass needle. Replaces 🧭 — the on-the-ground `ניווט` verb.
+  navigate: 'M21 12a9 9 0 1 1-18 0 9 9 0 0 1 18 0 M15.6 8.4l-2.2 5.2-5.2 2.2 2.2-5.2Z',
+  // Replaces 👑 — `MemberSheet`'s promote-to-admin.
+  crown:
+    'M3.4 7.2 6.8 12l5.2-6.8L17.2 12l3.4-4.8v10a1.4 1.4 0 0 1-1.4 1.4H4.8a1.4 1.4 0 0 1-1.4-1.4Z',
+  // A door with an arrow leading AWAY from it. Replaces 🚪 — remove-from-trip,
+  // and trip settings' own leave row. Two directional decisions, both load-bearing:
+  // the arrow points OUT of the frame (drawn the other way round it is the sign-IN
+  // mark), and the whole thing is authored mirrored from the LTR convention, door
+  // on the trailing side, because leaving moves leftward in an RTL layout. Authored
+  // that way rather than transformed — this app has no LTR mode to flip back to.
+  exit: 'M14.6 20.4H18.4a2 2 0 0 0 2-2V5.6a2 2 0 0 0-2-2h-3.8 M8 16.6 3.4 12 8 7.4 M3.4 12h11.2',
+  // ── Bottom nav. Four shapes, one per tab (ADR-0138 §4).
+  home: 'M3.4 10.2 12 3.4l8.6 6.8v9.2a1.6 1.6 0 0 1-1.6 1.6H5a1.6 1.6 0 0 1-1.6-1.6Z M9.4 21V13h5.2v8',
+  // A folded map. NOT `pin` — that shape already means "our marker" (ADR-0121
+  // §8) and the tab is the whole canvas, not one place on it.
+  map: 'M2.8 6.6 9 4.2v13.2l-6.2 2.4Zm6.2-2.4 6 2.4v13.2l-6-2.4Zm6 2.4 6.2-2.4v13.2L15 19.8Z',
+  // A card with content, behind it a second one. Replaces 📇. The two content
+  // rules are load-bearing: a bare pair of offset rectangles is the universal
+  // COPY mark, and the Index is a directory, not a duplicate.
+  cards:
+    'M7.4 6.6V4.8a1.6 1.6 0 0 1 1.6-1.6h9.8a1.6 1.6 0 0 1 1.6 1.6v9.8a1.6 1.6 0 0 1-1.6 1.6h-1.8 M4.8 6.6h10.4a1.6 1.6 0 0 1 1.6 1.6v11a1.6 1.6 0 0 1-1.6 1.6H4.8a1.6 1.6 0 0 1-1.6-1.6v-11a1.6 1.6 0 0 1 1.6-1.6Z M6.6 11.2h7 M6.6 14.8h4.2',
 };
 const FILLED: ReadonlySet<IconName> = new Set(['caret']);
 const ROTATE: Record<Dir, number> = { down: 0, left: 90, up: 180, right: 270 };

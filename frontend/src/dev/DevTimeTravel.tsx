@@ -1,5 +1,6 @@
 import { useState, type CSSProperties } from 'react';
 import { getSimulatedNow, setSimulatedNow } from '../lib/useClock';
+import { Icon } from '../ui/Icon';
 
 // ponytail: dev-only — App.tsx only mounts this when import.meta.env.DEV.
 // Collapsed to a small corner badge so it never covers the bottom nav or
@@ -17,7 +18,7 @@ export function DevTimeTravel() {
   if (!open) {
     return (
       <button type="button" onClick={() => setOpen(true)} style={badgeStyle(traveling)}>
-        🕓
+        <Icon name="clock" />
       </button>
     );
   }

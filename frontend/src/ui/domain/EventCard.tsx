@@ -16,8 +16,8 @@ import { useState, type ReactNode } from 'react';
 import { formatTime, crossesMidnightZoned } from '../../lib/time';
 import type { EventZones } from '../../lib/places';
 import { ZoneShiftPill } from '../ZoneShiftPill';
-import { DELAY_STEP_MINUTES } from '../../constants';
-import { ICONS } from '../../constants';
+import { CONTROL_ICON, DELAY_STEP_MINUTES, DOT_SEPARATOR } from '../../constants';
+import { ltrIsolate } from '../../lib/bidi';
 import { Icon } from '../Icon';
 import { TitleLabel } from '../TitleLabel';
 import { RowManageSheet, type RowAction } from './ListRow';
@@ -148,11 +148,11 @@ export function EventCard(props: EventCardProps) {
 
   const tag = isDone ? (
     <span className="wp-event-tag-done">
-      {ICONS.done} {t.event.didThis}
+      <Icon name="check" /> {t.event.didThis}
     </span>
   ) : isHard ? (
     <span className="wp-event-tag-hard">
-      {ICONS.lock} {t.event.hard}
+      <Icon name="lock" /> {t.event.hard}
     </span>
   ) : isPassed ? (
     <span className="wp-event-tag-phase">{t.event.notMarked}</span>
@@ -190,7 +190,7 @@ export function EventCard(props: EventCardProps) {
       </span>
       {conflict && (
         <span className="wp-event-conflict-flag">
-          {ICONS.warn} {t.event.conflictWarn.before}
+          <Icon name="warn" /> {t.event.conflictWarn.before}
           <TitleLabel title={conflict.title} />{' '}
           {t.event.conflictWarn.after(formatTime(conflict.startsAt, tz))}
         </span>
@@ -234,7 +234,7 @@ export function EventCard(props: EventCardProps) {
         <div className="wp-event-settle">
           <span className="wp-event-settle-q">{t.day.settleAsk}</span>
           <button type="button" className="wp-event-settle-yes" onClick={onDone}>
-            {ICONS.done} {t.actions.wasThere}
+            <Icon name="check" /> {t.actions.wasThere}
           </button>
           <button type="button" className="wp-event-settle-skip" onClick={onSkip}>
             {t.actions.skip}
@@ -248,32 +248,47 @@ export function EventCard(props: EventCardProps) {
   if (!isDone && !isHard && onSwap) {
     menuActions.push({
       label: t.actions.swap,
-      icon: ICONS.swap,
+      icon: CONTROL_ICON.swap,
       onSelect: () => runAction(onSwap),
     });
   }
   if (!isDone && !isHard && onPark) {
     menuActions.push({
       label: t.actions.toShelf,
-      icon: ICONS.toShelf,
+      icon: CONTROL_ICON.toShelf,
       onSelect: () => runAction(onPark),
     });
   }
   if (onEdit) {
     menuActions.push({
       label: t.actions.edit,
-      icon: ICONS.edit,
+      icon: CONTROL_ICON.edit,
       onSelect: () => runAction(onEdit),
     });
   }
   if (onRemove) {
     menuActions.push({
       label: t.actions.delete,
-      icon: ICONS.trash,
+      icon: CONTROL_ICON.trash,
       danger: true,
       onSelect: () => runAction(onRemove),
     });
   }
+
+  // The menu's subject line (ADR-0138 §3): kind, then the slot it holds. Both are
+  // what decide whether the verb you are about to pick is even possible — a hard
+  // event cannot be parked or swapped — so they belong above the list, not only
+  // on the card behind the scrim. The time is a numeric run inside RTL copy and
+  // takes its own isolate (ADR-0118).
+  const menuSubject = [
+    isHard ? t.event.hard : t.event.soft,
+    startsAt &&
+      ltrIsolate(
+        formatTime(startsAt, startZone) + (endsAt ? `–${formatTime(endsAt, endZone)}` : ''),
+      ),
+  ]
+    .filter(Boolean)
+    .join(` ${DOT_SEPARATOR} `);
 
   // `ניווט` stays in the action row: it is a live, on-the-ground verb, so it belongs
   // with the verbs, and it renders only when the event has a mappable place
@@ -314,7 +329,7 @@ export function EventCard(props: EventCardProps) {
             }}
           >
             <span className="mark" aria-hidden="true">
-              {ICONS.done}
+              <Icon name="check" />
             </span>
             <span className="undo" aria-hidden="true">
               <Icon name="undo" />
@@ -391,14 +406,14 @@ export function EventCard(props: EventCardProps) {
                 onClick={() => setMenuOpen(true)}
                 aria-label={t.actions.more}
               >
-                {ICONS.more}
+                <Icon name="more" />
               </button>
             </span>
           )}
         </div>
         {isHard && (
           <div className="wp-event-hard-warn">
-            {ICONS.warn} {t.event.hardWarn} {code && <span dir="auto">{code}</span>}
+            <Icon name="warn" /> {t.event.hardWarn} {code && <span dir="auto">{code}</span>}
           </div>
         )}
       </div>
@@ -407,6 +422,7 @@ export function EventCard(props: EventCardProps) {
           // The menu header is a visible title: a flight names its route there the
           // same way the card does, not as the raw stored string.
           title={<TitleLabel title={titleText} />}
+          subject={menuSubject}
           actions={menuActions}
           onClose={() => setMenuOpen(false)}
         />

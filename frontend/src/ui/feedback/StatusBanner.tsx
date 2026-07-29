@@ -5,6 +5,7 @@
 import type { ReactNode } from 'react';
 import type { BannerTone } from './types';
 import { t } from '../../i18n/he';
+import { Icon } from '../Icon';
 
 export function StatusBanner({
   tone = 'neutral',
@@ -25,7 +26,7 @@ export function StatusBanner({
           onClick={onDismiss}
           aria-label={t.feedback.dismiss}
         >
-          ✕
+          <Icon name="close" />
         </button>
       )}
     </div>

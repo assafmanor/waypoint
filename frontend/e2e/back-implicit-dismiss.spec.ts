@@ -26,12 +26,12 @@ async function systemBack(page: Page) {
  *  `.first()` picks the obscured one. */
 const form = (page: Page) => page.getByRole('dialog').first();
 
-const PLAN_MODE = '✏️ תכנון';
-const NEW_EVENT = '＋ אירוע חדש';
+const PLAN_MODE = 'תכנון';
+const NEW_EVENT = 'אירוע חדש';
 
 /** Plan mode's day builder, with the event form open — the host for both popovers below. */
 async function openEventForm(page: Page) {
-  await page.getByText(PLAN_MODE).first().click();
+  await page.locator('.modebar button', { hasText: PLAN_MODE }).click();
   await page.locator('nav.nav button', { hasText: 'יום-יום' }).click();
   await expect(page).toHaveURL(/[?&]tab=days/);
   await page.getByText(NEW_EVENT).first().click();

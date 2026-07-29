@@ -49,6 +49,40 @@ const COPY_GLYPH_SELECTORS = [
     'No arrow/caret glyph in UI copy — split the sentence and render <NavArrow>/<Icon> at the call site (design-language.md).',
 }));
 
+// ADR-0138: the same rule, now enforced for CONTROL emoji and not only arrows.
+// Until this, "emoji are content, icons are UI" was true of arrows/carets and
+// aspirational everywhere else, which is how ✏️ 🗑️ 📥 🔄 👑 🚪 ⬆️ 📷 🔗 ended up
+// drawing verbs — and how two call sites came to pass an emoji as an inline
+// literal rather than through the shared constant that a sweep could find.
+//
+// Scoped three ways, each for a reason:
+//
+//  - To the glyphs this app reached for as CONTROLS, never "any emoji". Category
+//    badges, trip identity, document types and the copy's warmth are content and
+//    must stay expressible — `GLYPH` in constants.ts is where they live.
+//  - To JSX. `constants.ts` and `i18n/` hold plain literals in `.ts` files; what
+//    matters is a glyph being RENDERED, the only place the distinction shows.
+//  - To non-test source (the block below carries `ignores` for tests). A fixture
+//    passing `icon="📄"` is standing in for content, and a test is not shipped UI.
+//
+// Deliberately NOT an `icon=`-prop selector: that prop carries CONTENT at almost
+// every call site (a booking's ✈️, a document's 📕). The menu case — the one that
+// started this — is covered far better by the compiler, since `RowAction.icon` is
+// typed `IconName` and an emoji literal simply does not typecheck.
+// An ALTERNATION, not a character class — and that is load-bearing. These selector
+// regexes are compiled without the `u` flag, so `[📥📋…]` is a class of SURROGATE
+// HALVES: every one of these lives in the U+1F4xx block and shares the lead unit
+// \uD83D, which made the class match any emoji in the plane. It flagged 📍 and 🗺️
+// as controls on first run. Each alternative below is a whole code point.
+const CONTROL_EMOJI = '(✏|🗑|📥|🔄|↩|👑|🚪|⬆|📷|🔗|📋|💬|📡|🧭|🔒|⚠|⏱|🔍|✕|⋯)';
+const CONTROL_EMOJI_MESSAGE =
+  'Use <Icon name="…"> (ui/Icon) — this glyph is drawing a CONTROL, and emoji are content while icons are UI (design-language.md, ADR-0138). Content glyphs belong in constants.ts\'s GLYPH.';
+
+const CONTROL_EMOJI_SELECTORS = [
+  `JSXText[value=/${CONTROL_EMOJI}/]`,
+  `JSXExpressionContainer Literal[value=/${CONTROL_EMOJI}/]`,
+].map((selector) => ({ selector, message: CONTROL_EMOJI_MESSAGE }));
+
 // ADR-0118: in an RTL app, `dir="ltr"` on an element that renders Hebrew lays the
 // whole element out left-to-right, so the Hebrew reader meets the last logical word
 // first — "9 ק״מ" reads "ק״מ 9", "+3 ש׳" reads "ש׳ 3+". `dir="auto"` is never worse
@@ -173,6 +207,7 @@ export default tseslint.config(
         'error',
         ...CLOCK_SELECTORS,
         ...RENDERED_GLYPH_SELECTORS,
+        ...CONTROL_EMOJI_SELECTORS,
         ...BIDI_SELECTORS,
         ...BACK_TRAVERSAL_SELECTORS,
       ],

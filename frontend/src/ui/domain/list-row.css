@@ -101,10 +101,15 @@
   justify-content: center;
   flex: 0 0 auto;
 }
+/* 44×44 is the touch floor the rest of the app meets (ADR-0017); this shipped at
+   30 and is the control that OPENS the menu, so it came along with the redesign.
+   The visible ink stays 30px — the extra is hit area, negative-margined so the
+   row's height and the trailing group's spacing are unchanged. */
 .wp-listrow-kebab {
-  width: 30px;
-  height: 30px;
-  border-radius: 9px;
+  width: 44px;
+  height: 44px;
+  margin: -7px;
+  border-radius: 12px;
   display: grid;
   place-items: center;
   background: none;
@@ -113,6 +118,10 @@
   font-size: var(--text-h3);
   line-height: 1;
   cursor: pointer;
+}
+.wp-listrow-kebab .icon {
+  width: 1.15em;
+  height: 1.15em;
 }
 .wp-listrow-kebab:hover {
   background: color-mix(in srgb, var(--ink) 6%, transparent);
@@ -162,4 +171,40 @@
 .wp-row-action-ic {
   font-size: var(--text-h3);
   flex: 0 0 auto;
+  /* Aligns with the label rather than the line box: an SVG sized in `em` sits on
+     its own baseline, and a 1.25em box beside 15px text drifts a hair low. */
+  display: inline-flex;
+}
+/* The mark is an SVG now (ADR-0138), so `danger` tints it WITH its label — the
+   emoji it replaced kept its own colours inside a red row, which is the tell
+   that it was never part of the state. Slightly over 1em because a 2px stroke
+   needs the extra to carry beside 15px of Hebrew. */
+.wp-row-action-ic .icon {
+  width: 1.25em;
+  height: 1.25em;
+  stroke-width: 1.9;
+}
+
+/* ── The sheet names its subject (ADR-0138 §3) ──────────────────────────────
+   A quiet fact line under `.modal-title`: type · time · state, in the app's `·`
+   grammar. It exists so the destructive verb is never anonymous — the booking
+   and document menus used to render two unlabelled rows over a scrim with the
+   thing being deleted hidden behind them. */
+.wp-row-subject {
+  display: block;
+  margin-block-start: 3px;
+  font-size: var(--text-meta);
+  font-weight: 500;
+  color: var(--muted);
+  line-height: 1.45;
+}
+
+/* ── The destructive verb partitions, it does not just recolour (§5) ────────
+   `מחק` and `ערוך` shipped as identical cards differing by text hue alone. A
+   hairline and a gap — 13px total — is the whole fix, and it costs the sheet
+   nothing it was using. */
+.wp-row-actions-danger {
+  margin-block-start: 10px;
+  padding-block-start: 10px;
+  border-block-start: 1px solid var(--line);
 }

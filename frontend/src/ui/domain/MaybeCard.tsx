@@ -16,6 +16,7 @@
 import { type ReactNode } from 'react';
 import type { HoldToDragProps } from '../../lib/useHoldToDrag';
 import './maybe-card.css';
+import { Icon } from '../Icon';
 
 export interface MaybeCardProps {
   /** Idea glyph (emoji content). */
@@ -82,7 +83,7 @@ export function MaybeCard({
           onClick={onRemove}
           aria-label={removeLabel}
         >
-          ✕
+          <Icon name="close" />
         </button>
         <button
           type="button"

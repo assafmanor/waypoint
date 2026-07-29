@@ -5,9 +5,9 @@
 import { useAuth } from '../state/auth-state';
 import { useIsOffline } from '../lib/outbox';
 import { CreateJoinActions } from '../ui/CreateJoinActions';
-import { ICONS } from '../constants';
 import { t } from '../i18n/he';
 import { Avatar } from '../ui/primitives/Avatar';
+import { Icon } from '../ui/Icon';
 
 const FLAP_ROWS = [
   ['w3', 'grow', 'w1'],
@@ -45,7 +45,7 @@ export function ZeroState({ onOpenAccount }: { onOpenAccount: () => void }) {
         </div>
         {offline && (
           <div className="offline-badge">
-            {ICONS.offline} {t.header.offlineNow}
+            <Icon name="offline" /> {t.header.offlineNow}
           </div>
         )}
       </header>

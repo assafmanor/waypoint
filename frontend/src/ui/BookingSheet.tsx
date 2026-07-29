@@ -10,7 +10,7 @@
 // for two-endpoint bookings, a single day otherwise — never a cramped native
 // datetime box), the footer is FormActions, delete routes through the generic
 // ConfirmDialog, and a dirty close is guarded by a discard confirm.
-import { useState, useMemo } from 'react';
+import { useState, useMemo, useEffect, useRef } from 'react';
 import {
   BOOKING_TYPE,
   BOOKING_TYPE_TO_CATEGORY,
@@ -78,6 +78,7 @@ export function BookingSheet({
   booking,
   seed,
   draft,
+  focus,
   onClose,
 }: {
   booking?: Booking | null;
@@ -85,11 +86,26 @@ export function BookingSheet({
   /** Re-opening after a place errand (ADR-0134 §2): every field comes from here, so a
    *  half-filled booking survives the trip to the Map tab. */
   draft?: BookingSheetDraft | null;
+  /** Open ON a field rather than at the top. `'when'` is what makes the row menu's
+   *  `שבץ במסלול` a real shortcut rather than a second name for `ערוך` (ADR-0138 §7)
+   *  — scheduling has always lived inside this form, and nothing said so. */
+  focus?: 'when';
   onClose: () => void;
 }) {
   const { trip, events, places, indexVerbs } = useTrip();
   const startErrand = useStartPlaceErrand();
   const isCreate = !booking;
+
+  // `שבץ במסלול` opened this sheet FOR the schedule (ADR-0138 §7), so land there
+  // rather than at the title. Runs once on open; `Modal` has already taken focus
+  // to the card by then, which is why this re-takes it rather than racing it.
+  const whenRef = useRef<HTMLDivElement>(null);
+  useEffect(() => {
+    if (focus !== 'when') return;
+    const first = whenRef.current?.querySelector<HTMLElement>('input, button');
+    first?.scrollIntoView({ block: 'center' });
+    first?.focus();
+  }, [focus]);
   const linkedEvent = booking ? events.find((e) => e.bookingId === booking.id) : undefined;
   // ONE derivation, shared with the errand that has to hand this state over before the sheet
   // exists (`lib/booking-draft.ts`). The `initial` blob is both the seed for every field
@@ -468,74 +484,81 @@ export function BookingSheet({
 
           {/* "When" comes first (right after the identity row), through the one
               WhenField standard — a span for two-endpoint bookings, a single day
-              otherwise. Never a cramped native datetime box (U-05). */}
-          {isSpan ? (
-            <>
-              <WhenField
-                variant="span"
-                start={spanStart}
-                end={spanEnd}
-                onChange={({ start: s, end: e }) => {
-                  setSpanStart(s);
-                  setSpanEnd(e);
-                }}
-                minDate={trip.startDate}
-                maxDate={trip.endDate}
-                labels={spanLabels(type)}
-                defaultDate={trip.startDate}
-                timeZone={startZone}
-                endTimeZone={endZone}
-                durationUnit={bookingDurationUnit(type)}
-                zones={{
-                  start: zoneChip(
-                    fromPlaceId ?? placeId,
-                    startZone,
-                    startOverride,
-                    setStartOverride,
-                  ),
-                  end: zoneChip(
-                    isTransport ? toPlaceId : placeId,
-                    endZone,
-                    endOverride,
-                    setEndOverride,
-                  ),
-                }}
-              />
-              <ZoneNote
-                startZone={startZone}
-                endZone={endZone}
-                tripZone={trip.timezone}
-                refMs={zoneRefMs}
-              />
-              {spanStart && <KindToggle kind={kind.value} onPick={pickKind} />}
-            </>
-          ) : (
-            <>
-              <WhenField
-                variant="day"
-                dateId="bs-date"
-                dateLabel={t.index.form.dateLabel}
-                date={date}
-                start={start}
-                end={end}
-                onChange={({ date: d, start: s, end: e }) => {
-                  setDate(d);
-                  setStart(s);
-                  setEnd(e);
-                }}
-                minDate={trip.startDate}
-                maxDate={trip.endDate}
-                zone={zoneChip(placeId, startZone, startOverride, setStartOverride)}
-              />
-              <ZoneNote
-                startZone={startZone}
-                endZone={endZone}
-                tripZone={trip.timezone}
-                refMs={zoneRefMs}
-              />
-              {date && <KindToggle kind={kind.value} onPick={pickKind} />}
-            </>
-          )}
+              otherwise. Never a cramped native datetime box (U-05).
+
+              The wrapper exists for `focus="when"` (ADR-0138 §7): the ref goes on
+              the BLOCK rather than on a `WhenField` autofocus prop, because the two
+              variants have different first controls and the sheet is the one place
+              that knows which is rendered. */}
+          <div ref={whenRef}>
+            {isSpan ? (
+              <>
+                <WhenField
+                  variant="span"
+                  start={spanStart}
+                  end={spanEnd}
+                  onChange={({ start: s, end: e }) => {
+                    setSpanStart(s);
+                    setSpanEnd(e);
+                  }}
+                  minDate={trip.startDate}
+                  maxDate={trip.endDate}
+                  labels={spanLabels(type)}
+                  defaultDate={trip.startDate}
+                  timeZone={startZone}
+                  endTimeZone={endZone}
+                  durationUnit={bookingDurationUnit(type)}
+                  zones={{
+                    start: zoneChip(
+                      fromPlaceId ?? placeId,
+                      startZone,
+                      startOverride,
+                      setStartOverride,
+                    ),
+                    end: zoneChip(
+                      isTransport ? toPlaceId : placeId,
+                      endZone,
+                      endOverride,
+                      setEndOverride,
+                    ),
+                  }}
+                />
+                <ZoneNote
+                  startZone={startZone}
+                  endZone={endZone}
+                  tripZone={trip.timezone}
+                  refMs={zoneRefMs}
+                />
+                {spanStart && <KindToggle kind={kind.value} onPick={pickKind} />}
+              </>
+            ) : (
+              <>
+                <WhenField
+                  variant="day"
+                  dateId="bs-date"
+                  dateLabel={t.index.form.dateLabel}
+                  date={date}
+                  start={start}
+                  end={end}
+                  onChange={({ date: d, start: s, end: e }) => {
+                    setDate(d);
+                    setStart(s);
+                    setEnd(e);
+                  }}
+                  minDate={trip.startDate}
+                  maxDate={trip.endDate}
+                  zone={zoneChip(placeId, startZone, startOverride, setStartOverride)}
+                />
+                <ZoneNote
+                  startZone={startZone}
+                  endZone={endZone}
+                  tripZone={trip.timezone}
+                  refMs={zoneRefMs}
+                />
+                {date && <KindToggle kind={kind.value} onPick={pickKind} />}
+              </>
+            )}
+          </div>
 
           {/* Single-place types carry a location; transport's places are its
               route endpoints above (ADR-0048). Transport needs no note of its own:
@@ -720,7 +743,7 @@ export function DeletePrompt({
     return (
       <ConfirmDialog
         tone="danger"
-        icon="🗑️"
+        icon={<Icon name="trash" />}
         title={t.index.del.plainTitle}
         body={t.index.del.plainBody}
         confirmLabel={t.index.del.confirmDelete}
@@ -733,12 +756,16 @@ export function DeletePrompt({
   return (
     <ConfirmDialog
       tone="danger"
-      icon="🔗"
+      icon={<Icon name="link" />}
       title={t.index.del.linkedTitle}
       body={t.index.del.linkedBody}
       onCancel={onCancel}
     >
-      {linkedIsHard && <p className="bs-hard-note">🔒 {t.index.del.hardNote}</p>}
+      {linkedIsHard && (
+        <p className="bs-hard-note">
+          <Icon name="lock" /> {t.index.del.hardNote}
+        </p>
+      )}
       <div className="bs-choices">
         <button type="button" className="bs-choice danger" onClick={() => onChoose('both')}>
           <div className="bs-choice-t">{t.index.del.both}</div>

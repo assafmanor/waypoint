@@ -15,9 +15,9 @@ import { formatTime } from '../../lib/time';
 import { transitionLabel } from '../../lib/transitions';
 import { NavArrow } from '../NavArrow';
 import { ZoneShiftPill } from '../ZoneShiftPill';
-import { ICONS } from '../../constants';
 import { t } from '../../i18n/he';
 import './glance-card.css';
+import { Icon } from '../Icon';
 
 /** An anchor pill within this fraction of a rail edge anchors inward (to the
  *  edge) instead of centering on its point, so it can't clip off the rail
@@ -89,12 +89,15 @@ export function GlanceCard({
     return (
       <div className="glance-day empty">
         <div className="ei" aria-hidden="true">
-          🗓️
+          <Icon name="calendar" />
         </div>
         <div className="et">{t.glance.emptyTitle}</div>
         <div className="es">{t.glance.emptySub}</div>
         <button type="button" className="ea" onClick={onAdd}>
-          <span className="plus">{ICONS.add}</span> {t.glance.emptyAdd}
+          <span className="plus">
+            <Icon name="plus" />
+          </span>{' '}
+          {t.glance.emptyAdd}
         </button>
       </div>
     );
@@ -194,7 +197,7 @@ export function GlanceCard({
         </div>
         {hardAnchorTime && (
           <div className="anchor">
-            {ICONS.lock} {t.glance.hardAnchor}
+            <Icon name="lock" /> {t.glance.hardAnchor}
             <br />
             <span className="tm" dir="auto">
               {hardAnchorTime}
@@ -206,7 +209,7 @@ export function GlanceCard({
         <div className="glance-foot">
           {freeUntil && (
             <span>
-              🕓 {t.glance.freeUntil}{' '}
+              <Icon name="clock" /> {t.glance.freeUntil}{' '}
               <span className="mono" dir="auto">
                 {freeUntil}
               </span>

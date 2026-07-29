@@ -25,7 +25,7 @@ import { countVisible } from '../lib/filter-reveal';
 import { bookingDurationUnit, formatBookingDuration } from '../lib/booking-timing';
 import { badgeClassForBookingType } from '../lib/transitions';
 import { EntitySyncBadge, useUnsynced } from './EntitySyncBadge';
-import { BOOKING_TYPE_ICON, CODE_PREFIX, ICONS } from '../constants';
+import { BOOKING_TYPE_ICON, CODE_PREFIX, GLYPH } from '../constants';
 import { BookingSheet, type BookingSheetDraft } from './BookingSheet';
 import { BookingDetail } from './BookingDetail';
 import { BookingManageSheet } from './BookingManageSheet';
@@ -85,9 +85,13 @@ export function IndexBookingsView({
   }, [initialBookingId]);
 
   const openDetail = (booking: Booking) => setDetail(booking);
-  const editFrom = (booking: Booking) => {
+  // `focus` rides along so the manage sheet's `שבץ במסלול` opens the form ON the
+  // when-field (ADR-0138 §7); `ערוך` passes nothing and opens at the top.
+  const [sheetFocus, setSheetFocus] = useState<'when' | undefined>(undefined);
+  const editFrom = (booking: Booking, focus?: 'when') => {
     setDetail(null);
     setManage(null);
+    setSheetFocus(focus);
     setSheet(booking);
   };
 
@@ -190,7 +194,7 @@ export function IndexBookingsView({
 
       {bookings.length === 0 ? (
         <div className="empty-card">
-          <div className="ei">{ICONS.ticket}</div>
+          <div className="ei">{GLYPH.ticket}</div>
           <div className="et">{t.index.emptyTitle}</div>
           <div className="es">{t.index.emptyBody}</div>
           <button type="button" className="ea" onClick={() => setSheet('create')}>
@@ -236,7 +240,7 @@ export function IndexBookingsView({
             ) : (
               noResults && (
                 <EmptyState
-                  icon={ICONS.search}
+                  icon={<Icon name="search" />}
                   title={t.index.filter.noResultsTitle}
                   body={
                     pastMatchCount > 0 ? t.index.filter.pastMatchHint(pastMatchCount) : undefined
@@ -296,7 +300,7 @@ export function IndexBookingsView({
                 renderRow={renderBooking}
               />
             ) : (
-              <EmptyState icon={ICONS.search} title={t.index.filter.noResultsTitle} />
+              <EmptyState icon={<Icon name="search" />} title={t.index.filter.noResultsTitle} />
             )}
           </div>
         </SearchOverlay>
@@ -313,9 +317,11 @@ export function IndexBookingsView({
           booking={sheet === 'create' ? null : sheet}
           seed={sheet === 'create' ? createSeed : undefined}
           draft={bookingDraft}
+          focus={sheetFocus}
           onClose={() => {
             setSheet(null);
             setBookingDraft(null);
+            setSheetFocus(undefined);
           }}
         />
       )}
@@ -365,7 +371,7 @@ function BookingLi({
           <BookingTitle booking={booking} places={places} />
           {isHard && (
             <span className="bk-lock" aria-hidden="true">
-              {ICONS.lock}
+              <Icon name="lock" />
             </span>
           )}
           <span className="tag-type">{t.index.bookingType[booking.type]}</span>
@@ -374,7 +380,7 @@ function BookingLi({
       meta={
         event ? (
           <span className="link-cue">
-            🔗 {scheduleLabel(event, booking, trip, now)}
+            <Icon name="link" /> {scheduleLabel(event, booking, trip, now)}
             {(() => {
               const dur = formatBookingDuration(
                 event,

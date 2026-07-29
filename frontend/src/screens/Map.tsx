@@ -89,7 +89,6 @@ import { EVENT_CATEGORY_OPTIONS } from '../lib/category-options';
 import {
   CATEGORY_PIN_HUE,
   DOT_SEPARATOR,
-  ICONS,
   MAP_ATTRIBUTION_H,
   MAP_CONTROLS_H,
   MAP_PIN,
@@ -1629,7 +1628,7 @@ export function MapView() {
       className="map-nearchip"
       onClick={toggleNearMe}
     >
-      {ICONS.nearMe} {geo.status === 'locating' ? t.map.near.locating : t.map.near.chip}
+      <Icon name="pin" /> {geo.status === 'locating' ? t.map.near.locating : t.map.near.chip}
     </ToggleChip>
   );
 
@@ -1762,7 +1761,7 @@ export function MapView() {
               target="_blank"
               rel="noopener noreferrer"
             >
-              {ICONS.navigate} {t.map.dayRoute}
+              <Icon name="navigate" /> {t.map.dayRoute}
             </a>
           )}
           {/* The one place the sort chip cannot live in the sheet: there is no sheet. */}
@@ -1960,7 +1959,7 @@ export function MapView() {
     ) : listCount === 0 ? (
       facetsActive ? (
         <EmptyState
-          icon={ICONS.search}
+          icon={<Icon name="search" />}
           title={t.map.filter.noResultsTitle}
           body={t.map.filter.noResultsBody(facetWords)}
           action={{ label: t.map.filter.clear, onClick: clearFacets }}
@@ -2394,7 +2393,7 @@ function PlaceRow({
           <span className="map-name">{place.name}</span>
           {isHard && (
             <span className="map-lock" aria-hidden="true">
-              🔒
+              <Icon name="lock" />
             </span>
           )}
         </span>
@@ -2465,7 +2464,7 @@ function PlaceRow({
             rel="noopener noreferrer"
             onClick={(e) => e.stopPropagation()}
           >
-            {ICONS.navigate} {t.actions.navigate}
+            <Icon name="navigate" /> {t.actions.navigate}
           </a>
         ) : (
           <AddLocationButton

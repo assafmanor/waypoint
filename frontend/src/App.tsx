@@ -72,7 +72,6 @@ import { useShrinkToFit } from './lib/useShrinkToFit';
 import {
   DEFAULT_TRIP_ICON,
   DOT_SEPARATOR,
-  ICONS,
   MS_PER_DAY,
   OUTBOX_RETRY_MS,
   TABS,
@@ -140,10 +139,10 @@ function ModeToggle() {
     <div className="modebar">
       <div className="toggle">
         <button className={mode === 'plan' ? 'on' : ''} onClick={() => setOverride('plan')}>
-          {ICONS.edit} {t.mode.plan}
+          <Icon name="edit" /> {t.mode.plan}
         </button>
         <button className={mode === 'trip' ? 'on' : ''} onClick={() => setOverride('trip')}>
-          {ICONS.navigate} {t.mode.trip}
+          <Icon name="navigate" /> {t.mode.trip}
         </button>
       </div>
     </div>
@@ -319,12 +318,12 @@ function Header({
       <div role="status" aria-live="polite">
         {offline && (
           <div className="offline-badge">
-            {ICONS.offline} {t.header.offlineNow}
+            <Icon name="offline" /> {t.header.offlineNow}
           </div>
         )}
         {pendingCount > 0 && (
           <div className="offline-badge">
-            {ICONS.sync} {t.header.pendingSync(pendingCount)}
+            <Icon name="sync" /> {t.header.pendingSync(pendingCount)}
           </div>
         )}
         {/* Persistent failed-summary → review/retry sheet (U-04, ADR-0080). Unlike
@@ -337,7 +336,7 @@ function Header({
             className="offline-badge sync-failed-summary"
             onClick={() => setSyncReviewOpen(true)}
           >
-            {ICONS.warn} {t.sync.summary(syncFailures.length)}
+            <Icon name="warn" /> {t.sync.summary(syncFailures.length)}
           </button>
         )}
       </div>
@@ -531,7 +530,9 @@ function Shell() {
               onClick={() => goToTab(tabDef.id)}
               aria-current={tabDef.id === tab}
             >
-              <span className="ic">{tabDef.icon}</span>
+              <span className="ic" aria-hidden="true">
+                <Icon name={tabDef.icon} />
+              </span>
               {t.tabs[tabDef.id]}
             </button>
           ))}

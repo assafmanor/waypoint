@@ -25,6 +25,7 @@ import { StatTile } from '../ui/domain';
 import { CollapseToggle, Collapsible } from '../ui/primitives/Collapsible';
 import { DOT_SEPARATOR, MS_PER_DAY, type TabId } from '../constants';
 import { t } from '../i18n/he';
+import { Icon } from '../ui/Icon';
 
 const CHECK_ICON: Record<CheckId, string> = {
   flights: '✈️',
@@ -283,7 +284,9 @@ export function PlanHome({ onNavigate }: { onNavigate: (tab: TabId) => void }) {
               has something legible to point at while collapsed. */}
           {!showCompleted && (
             <div className="chk-done-sum">
-              <span className="ok">✓ {t.planHome.checklist.completedSummary}</span>
+              <span className="ok">
+                <Icon name="check" /> {t.planHome.checklist.completedSummary}
+              </span>
               {completedChecks.map((check) => (
                 <span className="pill" key={check.id}>
                   {CHECK_ICON[check.id]} {t.planHome.checklist.summaryLabels[check.id]}
@@ -301,7 +304,9 @@ export function PlanHome({ onNavigate }: { onNavigate: (tab: TabId) => void }) {
                     <div className="chk-t">{row.title}</div>
                     <div className="chk-m">{row.meta}</div>
                   </div>
-                  <div className="chk-ok">✓ {t.planHome.checklist.done}</div>
+                  <div className="chk-ok">
+                    <Icon name="check" /> {t.planHome.checklist.done}
+                  </div>
                 </div>
               );
             })}

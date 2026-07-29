@@ -14,9 +14,10 @@
 // has to refresh. The gate itself has always been server-side (ADR-0039), so this is
 // about which host has the surrounding wiring, not about who is allowed.
 import type { Membership } from '@waypoint/shared';
-import { DOT_SEPARATOR } from '../../constants';
+import { CONTROL_ICON, DOT_SEPARATOR } from '../../constants';
 import { t } from '../../i18n/he';
 import { Sheet } from '../Sheet';
+import { RowActionList, type RowAction } from './ListRow';
 import { Avatar, type AvatarPerson } from '../primitives/Avatar';
 import { formatDayMonth } from '../../lib/time';
 import { memberRoleLabel } from './MemberRow';
@@ -71,18 +72,35 @@ export function MemberSheet({
         </div>
       </div>
 
-      {canPromote && (
-        <button className="ms-act" onClick={onPromote}>
-          <span className="ic">👑</span> {t.settings.promote}
-        </button>
-      )}
-      {canRemove && (
-        <button className="ms-act danger-item" onClick={onRemove}>
-          {/* The glyphs move across verbatim from the shipped sheet — this is a
-              relocation, not a redesign. Both are covered by the backlog's
-              emoji-as-UI-controls sweep. */}
-          <span className="ic">🚪</span> {t.settings.removeMember}
-        </button>
+      {/* The verbs render through the SHARED action list (ADR-0138 §1), not the
+          `.ms-act` pair this sheet used to own — that was the fifth
+          implementation of one row shape. The identity header above stays: it is
+          this sheet's genuine content, and it is also where the "name your
+          subject" rule the redesign applies everywhere else came from. */}
+      {(canPromote || canRemove) && (
+        <RowActionList
+          actions={[
+            ...(canPromote
+              ? [
+                  {
+                    label: t.settings.promote,
+                    icon: CONTROL_ICON.promote,
+                    onSelect: onPromote,
+                  } as RowAction,
+                ]
+              : []),
+            ...(canRemove
+              ? [
+                  {
+                    label: t.settings.removeMember,
+                    icon: CONTROL_ICON.leave,
+                    danger: true,
+                    onSelect: onRemove,
+                  } as RowAction,
+                ]
+              : []),
+          ]}
+        />
       )}
       <button className="ms-cancel" onClick={onClose}>
         {t.settings.closeMember}

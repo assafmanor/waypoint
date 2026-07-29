@@ -10,6 +10,7 @@
 import { type ChangeEntry } from '../../state/change-feed';
 import { t } from '../../i18n/he';
 import './change-feed.css';
+import { Icon } from '../Icon';
 
 export interface ChangeFeedProps {
   entries: ChangeEntry[];
@@ -78,7 +79,7 @@ export function ChangeFeed({ entries, now, onDismiss, onDismissAll }: ChangeFeed
                 onClick={() => onDismiss(e.id)}
                 aria-label={t.changeFeed.dismiss}
               >
-                ✕
+                <Icon name="close" />
               </button>
             </li>
           );

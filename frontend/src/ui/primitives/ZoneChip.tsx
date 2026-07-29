@@ -45,7 +45,7 @@ export function ZoneChip({ value, onChange, pinned = false, suggested }: ZoneChi
           onClick={() => setPicking(true)}
           aria-label={t.eventForm.zonePick(label)}
         >
-          <span aria-hidden="true">🕐</span>
+          <Icon name="clock" />
           <span className="zchip-zone">{label}</span>
           <span className="zchip-caret" aria-hidden="true">
             <Icon name="caret" dir="down" />
@@ -53,7 +53,7 @@ export function ZoneChip({ value, onChange, pinned = false, suggested }: ZoneChi
         </button>
       ) : (
         <span className="zchip-static">
-          <span aria-hidden="true">🕐</span> <span className="zchip-zone">{label}</span>
+          <Icon name="clock" /> <span className="zchip-zone">{label}</span>
         </span>
       )}
       {pinned && onChange && (

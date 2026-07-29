@@ -16,7 +16,7 @@ import { IndexBookingsView } from '../ui/IndexBookingsView';
 import { IndexDocumentsView } from '../ui/IndexDocumentsView';
 import { IndexTile } from '../ui/domain';
 import { Icon } from '../ui/Icon';
-import { ICONS } from '../constants';
+import { GLYPH } from '../constants';
 import { BOOKING_PARAM, FOCUS_PARAM, INDEX_FOCUS } from '../state/nav-state';
 import { t } from '../i18n/he';
 
@@ -86,7 +86,8 @@ export function Index() {
   const next = upcoming[0];
   const bookingsSubtitle = next ? (
     <>
-      🔗 {t.index.tile.nextPrefix} <BookingTitle booking={next.booking} places={places} />
+      <Icon name="link" /> {t.index.tile.nextPrefix}{' '}
+      <BookingTitle booking={next.booking} places={places} />
       {next.event && <> · {scheduleLabel(next.event, next.booking, trip, now)}</>}
       {past.length > 0 && <> · {t.index.tile.pastCount(past.length)}</>}
     </>
@@ -97,7 +98,9 @@ export function Index() {
   const docGroups = groupDocuments(documents);
   const documentsSubtitle =
     docGroups.length > 0 ? (
-      <>🔒 {docGroups.map((g) => t.docs.group[g.type]).join(' · ')}</>
+      <>
+        <Icon name="lock" /> {docGroups.map((g) => t.docs.group[g.type]).join(' · ')}
+      </>
     ) : (
       t.index.tile.emptyDocuments
     );
@@ -112,14 +115,14 @@ export function Index() {
       </div>
 
       <IndexTile
-        icon={ICONS.ticket}
+        icon={GLYPH.ticket}
         title={t.index.bookingsTitle}
         count={bookings.length}
         subtitle={bookingsSubtitle}
         onOpen={openBookings}
       />
       <IndexTile
-        icon={ICONS.documents}
+        icon={GLYPH.documents}
         title={t.docs.title}
         count={documents.length}
         subtitle={documentsSubtitle}

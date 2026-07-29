@@ -85,7 +85,7 @@ import { getNow } from '../lib/useClock';
 import { clampDate, shiftIso } from '../lib/time';
 import { bookingLinkedEventChange } from '../lib/outbox-effects';
 import { useToast } from '../ui/Toast';
-import { ICONS, type TabId } from '../constants';
+import { CONTROL_ICON, type TabId } from '../constants';
 import { EVENTS, MAYBE_ITEMS } from '../fixtures';
 import { useAuth } from './auth-state';
 import { DAY_PARAM, HOME_TAB, TAB_PARAM, daySelectTarget, resolveActiveDate } from './nav-state';
@@ -848,7 +848,7 @@ function TripReady({
   // reactive trip/roster state instead of the reducer. ---
   const settings = useMemo<SettingsVerbs>(() => {
     const fail = (err: unknown) => {
-      toast(ICONS.warn, t.toast.writeFailed);
+      toast(CONTROL_ICON.warn, t.toast.writeFailed);
       throw err;
     };
     return {
@@ -868,7 +868,7 @@ function TripReady({
           // Honest toast: `undefined` means the write was queued offline, not saved
           // to the server yet (ADR-0042) — the pending badge tracks it from here.
           toast(
-            canonical ? ICONS.done : ICONS.sync,
+            canonical ? CONTROL_ICON.done : CONTROL_ICON.sync,
             canonical ? t.settings.toast.saved : t.settings.toast.savedQueued,
           );
         } catch (err) {
@@ -888,7 +888,7 @@ function TripReady({
           if (canonical)
             setMembers((prev) => prev.map((m) => (m.id === canonical.id ? canonical : m)));
           toast(
-            canonical ? ICONS.done : ICONS.sync,
+            canonical ? CONTROL_ICON.done : CONTROL_ICON.sync,
             canonical ? t.settings.toast.promoted : t.settings.toast.promotedQueued,
           );
         } catch (err) {
@@ -964,13 +964,13 @@ function TripReady({
           }
           if (!opts.silent)
             toast(
-              canonical ? ICONS.done : ICONS.sync,
+              canonical ? CONTROL_ICON.done : CONTROL_ICON.sync,
               canonical ? t.index.toast.saved : t.index.toast.savedQueued,
             );
           return canonical ?? optimistic;
         } catch (err) {
           setBookings(previous);
-          toast(ICONS.warn, t.toast.writeFailed);
+          toast(CONTROL_ICON.warn, t.toast.writeFailed);
           throw err;
         }
       },
@@ -1006,12 +1006,12 @@ function TripReady({
             );
           }
           toast(
-            canonical ? ICONS.done : ICONS.sync,
+            canonical ? CONTROL_ICON.done : CONTROL_ICON.sync,
             canonical ? t.index.toast.saved : t.index.toast.savedQueued,
           );
         } catch (err) {
           setBookings(previous);
-          toast(ICONS.warn, t.toast.writeFailed);
+          toast(CONTROL_ICON.warn, t.toast.writeFailed);
           throw err;
         }
       },
@@ -1029,12 +1029,12 @@ function TripReady({
             },
             () => apiDeleteBooking(tripId, bookingId, opts),
           );
-          toast(ICONS.trash, t.index.toast.deleted);
+          toast(CONTROL_ICON.trash, t.index.toast.deleted);
         } catch (err) {
           setBookings(previous);
           // A hard linked-event 409 isn't a failure — the caller (edit sheet)
           // re-prompts for confirm/unlink, so it rethrows without a generic toast.
-          if (!isHardEventConfirmError(err)) toast(ICONS.warn, t.toast.writeFailed);
+          if (!isHardEventConfirmError(err)) toast(CONTROL_ICON.warn, t.toast.writeFailed);
           throw err;
         }
       },
@@ -1059,7 +1059,7 @@ function TripReady({
           if (canonical) setPlaces((prev) => prev.map((p) => (p.id === id ? canonical : p)));
         } catch (err) {
           setPlaces(previous);
-          toast(ICONS.warn, t.toast.writeFailed);
+          toast(CONTROL_ICON.warn, t.toast.writeFailed);
           throw err;
         }
         return id;
@@ -1076,7 +1076,7 @@ function TripReady({
           if (canonical) setPlaces((prev) => prev.map((p) => (p.id === placeId ? canonical : p)));
         } catch (err) {
           setPlaces(previous);
-          toast(ICONS.warn, t.toast.writeFailed);
+          toast(CONTROL_ICON.warn, t.toast.writeFailed);
           throw err;
         }
       },

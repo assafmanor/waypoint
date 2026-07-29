@@ -10,6 +10,7 @@ import { formatBytes } from '../../lib/bytes';
 import { t } from '../../i18n/he';
 import { usePickFile, type CaptureFacing } from './usePickFile';
 import './file-picker.css';
+import { Icon } from '../Icon';
 
 /** File extension shown on the non-image tile, e.g. "PDF". Falls back to a
  *  generic glyph when there's no usable extension. */
@@ -63,14 +64,14 @@ export function FilePicker({
         <div className={'file-picker-tiles' + (openCamera ? '' : ' solo')}>
           <button type="button" className="file-tile" onClick={openUpload} disabled={disabled}>
             <span className="file-tile-ic" aria-hidden="true">
-              ⬆️
+              <Icon name="upload" />
             </span>
             <span className="file-tile-lbl">{t.filePicker.upload}</span>
           </button>
           {openCamera && (
             <button type="button" className="file-tile" onClick={openCamera} disabled={disabled}>
               <span className="file-tile-ic" aria-hidden="true">
-                📷
+                <Icon name="camera" />
               </span>
               <span className="file-tile-lbl">{t.filePicker.capture}</span>
             </button>
@@ -105,7 +106,7 @@ export function FilePicker({
         disabled={disabled}
         aria-label={t.filePicker.remove}
       >
-        ✕
+        <Icon name="close" />
       </button>
     </div>
   );

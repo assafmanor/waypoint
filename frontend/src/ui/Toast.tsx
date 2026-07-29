@@ -2,14 +2,18 @@
 // shows an "undo" button — this is how undo surfaces (ADR-0019).
 import { createContext, useCallback, useContext, useRef, useState, type ReactNode } from 'react';
 import { TOAST_DURATION_MS } from '../constants';
+import { Icon, type IconName } from './Icon';
 import { t } from '../i18n/he';
 
-type ShowToast = (icon: string, text: string, onUndo?: () => void) => void;
+/** The mark is an `IconName`, not a string (ADR-0138 §4). A toast is the app
+ *  confirming an action, so its mark is the action's own icon — passing an
+ *  arbitrary string is what let 🔄 stand for both "swapped" and "syncing". */
+type ShowToast = (icon: IconName, text: string, onUndo?: () => void) => void;
 
 const ToastContext = createContext<ShowToast | null>(null);
 
 interface ToastState {
-  icon: string;
+  icon: IconName;
   text: string;
   onUndo?: () => void;
 }
@@ -36,7 +40,9 @@ export function ToastProvider({ children }: { children: ReactNode }) {
       <div className={'toast' + (toast ? ' show' : '')} role="status" aria-live="polite">
         {toast && (
           <>
-            <span className="ic">{toast.icon}</span>
+            <span className="ic" aria-hidden="true">
+              <Icon name={toast.icon} />
+            </span>
             <span className="txt">{toast.text}</span>
             {toast.onUndo && (
               <button className="undo" onClick={runUndo}>
