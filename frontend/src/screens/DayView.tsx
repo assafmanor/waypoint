@@ -420,7 +420,11 @@ export function DayView() {
                     key={m.id}
                     icon={m.icon}
                     title={m.title}
-                    action={`$<Icon name="plus" /> ${t.actions.scheduleToDay}`}
+                    action={
+                      <>
+                        <Icon name="plus" /> {t.actions.scheduleToDay}
+                      </>
+                    }
                     onSchedule={() => setScheduleItem(m)}
                   />
                 ))}
@@ -432,7 +436,11 @@ export function DayView() {
                     icon={e.icon}
                     title={e.title}
                     meta={t.day.skippedTag}
-                    action={`$<Icon name="undo" /> ${t.actions.restore}`}
+                    action={
+                      <>
+                        <Icon name="undo" /> {t.actions.restore}
+                      </>
+                    }
                     onSchedule={() => verbs.restore(e)}
                   />
                 ))}
@@ -453,7 +461,11 @@ export function DayView() {
                     icon={m.icon}
                     title={m.title}
                     meta={m.targetDate ? relativeDayLabel(m.targetDate, today) : undefined}
-                    action={`$<Icon name="plus" /> ${t.actions.scheduleToDay}`}
+                    action={
+                      <>
+                        <Icon name="plus" /> {t.actions.scheduleToDay}
+                      </>
+                    }
                     onSchedule={() => setScheduleItem(m)}
                   />
                 ))}

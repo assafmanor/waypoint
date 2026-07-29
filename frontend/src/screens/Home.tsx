@@ -55,7 +55,6 @@ import {
   CODE_PREFIX,
   DAY_WINDOW,
   CONTROL_ICON,
-  GLYPH,
   MINUTES_PER_DAY,
   MS_PER_DAY,
   QUICK_TILE_MAX_COLS,
@@ -409,7 +408,9 @@ export function Home({ onNavigate }: { onNavigate?: (tab: TabId) => void }) {
             className="qa"
             onClick={() => navigate(`/?${TAB_PARAM}=index&booking=${nextCoded.booking.id}`)}
           >
-            <span className="ic">{GLYPH.ticket}</span>
+            <span className="ic">
+              <Icon name="ticket" />
+            </span>
             <span className="lb">{t.quick.nextTicket}</span>
             <span className="code" dir="auto">
               {CODE_PREFIX}
@@ -419,7 +420,9 @@ export function Home({ onNavigate }: { onNavigate?: (tab: TabId) => void }) {
         )}
         {wifi && (
           <button className="qa" onClick={copyWifi}>
-            <span className="ic">{GLYPH.wifi}</span>
+            <span className="ic">
+              <Icon name="wifi" />
+            </span>
             <span className="lb">{t.quick.wifiCode}</span>
             {wifi.network && (
               <span className="sub" dir="auto">
@@ -447,7 +450,9 @@ export function Home({ onNavigate }: { onNavigate?: (tab: TabId) => void }) {
           className="qa empty"
           onClick={() => navigate(`/?${TAB_PARAM}=index&${FOCUS_PARAM}=${INDEX_FOCUS.DOCS}`)}
         >
-          <span className="ic">{GLYPH.documents}</span>
+          <span className="ic">
+            <Icon name="documents" />
+          </span>
           <span className="lb">
             <span className="plus">
               <Icon name="plus" />

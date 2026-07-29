@@ -31,7 +31,6 @@ import {
   DEVICE_TIMEZONE,
   DOT_SEPARATOR,
   CONTROL_ICON,
-  GLYPH,
 } from '../constants';
 import { NavArrow } from '../ui/NavArrow';
 import { t } from '../i18n/he';
@@ -262,7 +261,7 @@ export function TripSettings() {
               mono
             />
             <ReadRow
-              icon={GLYPH.budget}
+              icon={<Icon name="budget" />}
               label={t.settings.budgetLabel}
               value={
                 trip.dailyBudgetMinor != null

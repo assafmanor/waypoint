@@ -638,7 +638,7 @@ export function EventForm({
                 className={'hard' + (kind.value === EVENT_KIND.HARD ? ' on' : '')}
                 onClick={() => kind.set(EVENT_KIND.HARD)}
               >
-                {t.eventForm.kindHard}
+                <Icon name="lock" /> {t.eventForm.kindHard}
               </button>
             </div>
           </Field>
