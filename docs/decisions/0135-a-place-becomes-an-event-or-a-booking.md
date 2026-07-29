@@ -1,15 +1,15 @@
 # 0135 — A place becomes an event or a booking: one action on the way-in block
 
-**Status:** Accepted — designed 2026-07-29 (session 181), after the owner rejected the session's first design in place; widened 2026-07-30 (session 182); **narrowed 2026-07-30 (session 183)**, when its §2/§4/§4a/§6 were extracted to [ADR-0136](0136-a-confirmation-code-makes-an-event-a-booking.md) because they are not map decisions (owner: _"independently from the maps, events in general"_). What is left is the map's half. **Design only; nothing below is built.** The mockup renders the shipped stylesheets in a headless browser and every number in §8 is read from its live DOM, but no canvas over real tiles has been seen (ADR-0121 §13) and nothing here claims otherwise.
+**Status:** Accepted — designed 2026-07-29 (session 181), after the owner rejected the session's first design in place; widened 2026-07-30 (session 182); **narrowed 2026-07-30 (session 183)**, when its §2/§4/§4a/§6 were extracted to [ADR-0136](0136-an-event-can-also-be-booked.md) because they are not map decisions (owner: _"independently from the maps, events in general"_). What is left is the map's half. **Design only; nothing below is built.** The mockup renders the shipped stylesheets in a headless browser and every number in §8 is read from its live DOM, but no canvas over real tiles has been seen (ADR-0121 §13) and nothing here claims otherwise.
 **Date:** 2026-07-29
 
 **Extends** [0121](0121-embedded-map-phase-6-design.md) **§8** — the selection-revealed way-in block, which lists one entry per reference a place **already has**, gains a single primary action (§1). §8's own rule (a row tap normalises the sheet to `half`) is untouched.
 **Extends** [0134](0134-the-map-is-where-a-forms-place-comes-from.md) **§9** — its fourth target is the precedent this reads from, and §3 says why the errand's _channel_ is deliberately not reused. §3 of that ADR ("only one place is being chosen") is what makes §7 absent-during-an-errand.
-**Needs** [0136](0136-a-confirmation-code-makes-an-event-a-booking.md) — what the form does once it opens with a place. Designed here, extracted there; the two build independently (§2).
+**Needs** [0136](0136-an-event-can-also-be-booked.md) — what the form does once it opens with a place. Designed here, extracted there; the two build independently (§2).
 **Applies** [0027](0027-soft-item-lifecycle-shelf-slip.md) **§2** and [0116](0116-day-aware-shelf-and-idea-target-day.md) **§1** unchanged: consume-on-schedule is reached from a new surface, not redefined (§5), with one case named where it deliberately does not fire.
 **Relates** [0112](0112-place-in-trip-is-referenced-not-cached.md) (why a create is what puts a place in the trip), [0115](0115-plan-mode-place-research.md) §3 (`＋ אולי`, the only path today, and the control this reuses), [0028](0028-plan-violet-color-budget-dark-ready.md) (why the control is neutral), [0017](0017-mobile-first-device-targets.md) (the 360×640 screen §8 measures against), [0090](0090-back-is-computed-from-nav-state.md) (which this needs **nothing** from, and that is the finding).
 
-Mockup: [`mockups/map-place-becomes-v1.html`](../../mockups/map-place-becomes-v1.html) — **shared with ADR-0136 since the split.** This ADR's frame is the way-in block in three states (shipped, the rejected menu, the proposal), with a panel measuring all three from the live DOM at three screens and two stops; the form and outcome frames are 0136's. Its entry in [`design/mockups.md`](../design/mockups.md) carries the detail.
+Mockup: [`mockups/map-place-becomes-v1.html`](../../mockups/map-place-becomes-v1.html) — the way-in block in three states (shipped, the rejected menu, the proposal), with a panel measuring all three from the live DOM at three screens and two stops. **It draws the map and nothing else since session 184**: the form and outcome frames left for [`event-also-booked-v1.html`](../../mockups/event-also-booked-v1.html) with the decision they belong to. Its entry in [`design/mockups.md`](../design/mockups.md) carries the detail.
 
 ## Context
 
@@ -44,7 +44,7 @@ No group header, and no second control: ADR-0134's session-164 correction ("the 
 
 ### 2. What the form does with the place is **not this ADR's decision** — see ADR-0136
 
-The action opens `EventForm` pre-filled with the place. What that form then does — the collapsed `יש קוד הזמנה?` line, a code creating a **`Booking`** instead of an event, the type derived from the form's category, the kind rules, and converting an existing event — was designed here in sessions 181–182 and **extracted to [ADR-0136](0136-a-confirmation-code-makes-an-event-a-booking.md)** in session 183, on the owner's call: _"independently from the maps, events in general."_
+The action opens `EventForm` pre-filled with the place. What that form then does — a `יש הזמנה` row that **also** creates a `Booking`, the type derived from the form's category, the kind rules, and converting an existing event — was designed here in sessions 181–182 and **extracted to [ADR-0136](0136-an-event-can-also-be-booked.md)** in session 183, on the owner's call: _"independently from the maps, events in general."_ Its trigger was then replaced in session 184: it is not a confirmation code, because `confirmationCode` is nullable and a table booked by phone has no number.
 
 It is not a map decision and it is **independently buildable**. This ADR needs exactly one thing from it: that opening the form with a place is enough, because the form knows how to become either kind of thing. Read 0136 before touching the form; read this one before touching the map.
 
@@ -76,7 +76,7 @@ If the place has **exactly one** idea referencing it, the action opens the sheet
 
 ### 6. Hard vs. soft is never asked here
 
-Withdrawn to [ADR-0136 §4](0136-a-confirmation-code-makes-an-event-a-booking.md), which owns the whole rule (derived at create, **preserved** on conversion). What matters on this surface is only the half that was always true: **the map does not ask.** Asking here would create a second place that decides commitment, which root rules 1 and 8 both refuse, and the control is one tap away inside the form either way.
+Withdrawn to [ADR-0136 §4](0136-an-event-can-also-be-booked.md), which owns the whole rule (derived at create, **preserved** on conversion). What matters on this surface is only the half that was always true: **the map does not ask.** Asking here would create a second place that decides commitment, which root rules 1 and 8 both refuse, and the control is one tap away inside the form either way.
 
 ### 7. Absent while an errand is live
 
@@ -94,7 +94,7 @@ Read from the mockup's live DOM. A plain row is **73px**; the sheet's scroller i
 
 One control instead of two costs **+56px instead of +92px** — under a plain row rather than over it — and at 390 `half` it is the difference between the block fitting with room and the block being the sheet.
 
-**The form's own length is the other half of the cost, and it is not this ADR's** — it is paid on every screen that authors an event, so it is measured in [ADR-0136 §5](0136-a-confirmation-code-makes-an-event-a-booking.md) (482px → 560px with the line closed).
+**The form's own length is the other half of the cost, and it is not this ADR's** — it is paid on every screen that authors an event, so it is measured in [ADR-0136 §5](0136-an-event-can-also-be-booked.md) (482px → 560px with the line closed).
 
 **And the block already overflows the `half` sheet on a 360 before this phase adds anything:** a place with two references is 186px against a 153px scroller, as shipped. So the create does not introduce the condition; it makes it ordinary. **One thing therefore ships with it that the shipped code never needed: selecting a row scrolls it into view** — `scrollIntoView({ block: 'nearest' })` inside the sheet's own scroller. Without it the footer can open entirely below the fold on the screen ADR-0017 names as the small target, and the action would be the half you cannot see. It is a fix for something already true, arriving with the change that makes it common.
 

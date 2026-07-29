@@ -1,6 +1,6 @@
 # Session 183 — the code rule was never a map decision (2026-07-30)
 
-Paper only, one extraction: **[ADR-0136](../decisions/0136-a-confirmation-code-makes-an-event-a-booking.md)**,
+Paper only, one extraction: **[ADR-0136](../decisions/0136-an-event-can-also-be-booked.md)**,
 carved out of [ADR-0135](../decisions/0135-a-place-becomes-an-event-or-a-booking.md) §2/§4/§4a/§6.
 No new design — the same rule, filed where a reader can find it.
 
