@@ -167,8 +167,11 @@ export const MEMBER_AVATAR_CAP = 2;
 /** Icon for a manually created event when the form doesn't collect one (T-047). */
 export const DEFAULT_EVENT_ICON = '📌';
 
-/** Fallback glyph for a booking row in the Index when it has no linked event to
- *  borrow an icon from (a linked event's user-picked icon always wins). */
+/** Fallback glyph for a booking row when it has no linked event to borrow an icon
+ *  from — and now also when the event's glyph is only a placeholder. "A linked
+ *  event's user-picked icon always wins" was the stated rule and stayed right; the
+ *  reading of it was what slipped, because a DEFAULT was counted as a pick. Every
+ *  reader of this map goes through `chosenIcon`. */
 export const BOOKING_TYPE_ICON = {
   flight: '✈️',
   hotel: '🏨',
@@ -231,6 +234,33 @@ export const DOCUMENT_TYPE_ICON = {
 
 /** Icon for a manually added maybe-shelf idea (no icon picker yet). */
 export const DEFAULT_MAYBE_ICON = '💡';
+
+/** The glyphs the app hands out when nobody has chosen one. Named as a SET, and
+ *  read only through `chosenIcon` below. */
+const PLACEHOLDER_ICONS: ReadonlySet<string> = new Set([DEFAULT_EVENT_ICON, DEFAULT_MAYBE_ICON]);
+
+/** A stored glyph, but only if it actually says something — `undefined` for the
+ *  placeholders above, so the `??` chain behind it keeps running.
+ *
+ *  **Why this exists.** Four surfaces read `event.icon ?? <something more specific>`
+ *  (a booking's type glyph, a category's glyph). The rule they encode is right and
+ *  `constants.ts` used to state it as "a linked event's **user-picked** icon always
+ *  wins" — but a DEFAULT is not a pick, so `📌` outranked a glyph that genuinely
+ *  says what the thing is, and a flight row drew a generic pin instead of ✈️.
+ *
+ *  The reachable path is an event created with no category (the form leaves `📌`
+ *  in place) that is later given one: `EventForm` only re-derives the glyph while
+ *  the icon is untouched, and **editing an existing event counts as touched**, so
+ *  the pin sticks and then shadows the category from that point on.
+ *
+ *  Deliberately a value test, not a flag. An `iconIsDefault` column would have to
+ *  be maintained by every writer and would go stale the moment someone genuinely
+ *  picks the pin; asking "is this glyph a placeholder" needs no migration and is
+ *  right for rows written before today. The cost is honest and small: a user who
+ *  deliberately picks `📌`/`💡` is treated as having picked nothing, and gets the
+ *  more specific glyph instead. */
+export const chosenIcon = (icon?: string): string | undefined =>
+  icon && !PLACEHOLDER_ICONS.has(icon) ? icon : undefined;
 
 /** Drag edge auto-scroll (ADR-0116 §5 amendment): how deep the edge band is, and
  *  the fastest one frame may scroll while the pointer is pinned against it. The

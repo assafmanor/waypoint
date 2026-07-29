@@ -21,7 +21,7 @@ import { routeTitle } from '../lib/route-title';
 import { formatTime } from '../lib/time';
 import { bookingDurationUnit, formatBookingDuration, timingLabels } from '../lib/booking-timing';
 import { badgeClassForBookingType } from '../lib/transitions';
-import { BOOKING_TYPE_ICON, CODE_PREFIX } from '../constants';
+import { BOOKING_TYPE_ICON, chosenIcon, CODE_PREFIX } from '../constants';
 import { t } from '../i18n/he';
 import { Icon } from './Icon';
 
@@ -58,7 +58,7 @@ export function BookingDetail({
   const linkedEvent = events.find((e) => e.bookingId === booking.id);
 
   const tz = trip.timezone;
-  const icon = linkedEvent?.icon ?? BOOKING_TYPE_ICON[booking.type];
+  const icon = chosenIcon(linkedEvent?.icon) ?? BOOKING_TYPE_ICON[booking.type];
   // Shared booking grammar (ADR-0059 §3): badge tinted by category.
   const badgeTint = badgeClassForBookingType(booking.type);
   const wifi = booking.details?.wifi as Wifi | undefined;

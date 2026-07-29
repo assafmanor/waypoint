@@ -1,6 +1,7 @@
 import { describe, expect, it } from 'vitest';
 import {
   BOOKING_TYPE,
+  CATEGORY_DEFAULT_ICON,
   EVENT_KIND,
   EVENT_SOURCE,
   EVENT_STATUS,
@@ -9,6 +10,7 @@ import {
   type TripEvent,
 } from '@waypoint/shared';
 import { buildDayGlance, ambientEventsOnDate } from './glance';
+import { DEFAULT_EVENT_ICON } from '../constants';
 import { tripZoneCrossings, type ZoneContext } from './places';
 
 const TZ = 'Asia/Tokyo';
@@ -183,6 +185,46 @@ describe('buildDayGlance', () => {
       expect(span.icon).toBe('✈️');
       expect(span.nextDay).toBe(false);
     }
+  });
+
+  // An event created with no category keeps the form's DEFAULT pin, and editing it
+  // later to add one does NOT re-derive the glyph (`EventForm` treats an existing
+  // event's icon as chosen). So a categorised event can still be carrying `📌` —
+  // and before `chosenIcon` that pin shadowed the category's own glyph here.
+  it('prefers the category glyph over an event still carrying the default pin', () => {
+    const events = [
+      ev({
+        id: 'flight',
+        category: 'transport',
+        kind: EVENT_KIND.HARD,
+        icon: DEFAULT_EVENT_ICON,
+        startsAt: at('09:00'),
+        endsAt: at('11:00'),
+      }),
+    ];
+    const g = buildDayGlance(events, DATE, ms('08:00'), day07, day23, TZ);
+    const span = g.anchors[0];
+    expect(span.kind).toBe('span');
+    if (span.kind === 'span') {
+      expect(span.icon).toBe(CATEGORY_DEFAULT_ICON.transport);
+      expect(span.icon).not.toBe(DEFAULT_EVENT_ICON);
+    }
+  });
+
+  it('still lets a genuinely picked glyph win over the category', () => {
+    const events = [
+      ev({
+        id: 'flight',
+        category: 'transport',
+        kind: EVENT_KIND.HARD,
+        icon: '🚀',
+        startsAt: at('09:00'),
+        endsAt: at('11:00'),
+      }),
+    ];
+    const g = buildDayGlance(events, DATE, ms('08:00'), day07, day23, TZ);
+    const span = g.anchors[0];
+    if (span.kind === 'span') expect(span.icon).toBe('🚀');
   });
 
   it('keeps the generic departure/arrival wording for a same-day train span', () => {

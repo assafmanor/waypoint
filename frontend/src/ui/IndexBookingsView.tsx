@@ -25,7 +25,7 @@ import { countVisible } from '../lib/filter-reveal';
 import { bookingDurationUnit, formatBookingDuration } from '../lib/booking-timing';
 import { badgeClassForBookingType } from '../lib/transitions';
 import { EntitySyncBadge, useUnsynced } from './EntitySyncBadge';
-import { BOOKING_TYPE_ICON, CODE_PREFIX } from '../constants';
+import { BOOKING_TYPE_ICON, chosenIcon, CODE_PREFIX } from '../constants';
 import { BookingSheet, type BookingSheetDraft } from './BookingSheet';
 import { BookingDetail } from './BookingDetail';
 import { BookingManageSheet } from './BookingManageSheet';
@@ -352,7 +352,7 @@ function BookingLi({
   onLeaveForMap: () => void;
 }) {
   const { booking, event } = row;
-  const icon = event?.icon ?? BOOKING_TYPE_ICON[booking.type];
+  const icon = chosenIcon(event?.icon) ?? BOOKING_TYPE_ICON[booking.type];
   // Shared booking grammar (ADR-0059 §3): the badge is tinted by category (teal
   // for a stay, amber for transport), and a hard booking wears the lock.
   const badgeClass = badgeClassForBookingType(booking.type);

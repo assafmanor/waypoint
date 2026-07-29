@@ -22,6 +22,7 @@ import {
   type TimeItem,
 } from './time';
 import { eventEdgeZone, eventZones, type EventZones, type ZoneContext } from './places';
+import { chosenIcon, DEFAULT_EVENT_ICON } from '../constants';
 
 export type SegPhase = 'done' | 'passed' | 'now' | 'upcoming' | 'skipped';
 
@@ -355,7 +356,8 @@ export function buildDayGlance(
   // Marking a transition is not counting a block; an ambient stay stays off the
   // counted rail.
   const iconOf = (e: TripEvent) =>
-    e.icon ?? (e.category != null ? CATEGORY_DEFAULT_ICON[e.category] : '📌');
+    chosenIcon(e.icon) ??
+    (e.category != null ? CATEGORY_DEFAULT_ICON[e.category] : DEFAULT_EVENT_ICON);
   const byEvent = new Map<string, BookingTransition[]>();
   for (const tr of transitions) {
     const list = byEvent.get(tr.event.id);
