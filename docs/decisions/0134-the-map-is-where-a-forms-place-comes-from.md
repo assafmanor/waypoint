@@ -513,3 +513,47 @@ to still be mounted** — and this app has two shapes that break it: a `Modal` (
 screen that is view state rather than a route (ADR-0098). Where the precondition fails the
 return needs a URL that RE-CREATES the host, and the id of what to re-open belongs in the
 channel, not in that URL.
+
+## Build log addendum (2026-07-29, session 173) — §2's "cheap path" is withdrawn
+
+> _"When the booking doesn't exist, it returns to the bookings view but not to the form. When
+> the booking exists, it also returns to the bookings view and not the form, and saves the new
+> location instead of simply returning to the edit form. Both need to act the same way: return
+> to the booking form and maintain the same state the form had before entering the map."_
+
+**§2 had two paths and the cheap one is now gone.** It said a saved booking needs no draft —
+patch it from the Map with `updateBooking`, return with nothing to restore, "the expensive
+path is paid only where it is needed". Both halves were wrong on a device:
+
+- **Choosing a place on a map is not the same act as saving the booking.** The patch wrote
+  through before the user had agreed to anything, which is the opposite of the guard a hard
+  commitment is supposed to have (ADR-0011). The save belongs where every other save is: the
+  form's own button.
+- **The form is where you were going either way.** Returning to the read-only detail put you
+  one tap short of where the errand started.
+
+So there is **one path**: every errand carries a draft, returns a draft, and lands on the
+form with the place assigned and unsaved. The saved and unsaved cases are now the same code.
+
+### What that needed: the sheet's opening state as data
+
+A `BookingDetail` can see the booking but not **how the sheet would read it** — the zone each
+leg is authored in, what a seed resolves to, which kind a type defaults to. That derivation
+was twenty-odd `initial*` consts inside `BookingSheet`, reachable only by rendering it.
+
+It is now `lib/booking-draft.ts`'s `bookingSheetDraft()`, and the component seeds its own
+`useState` calls from the same call — so "what the form opened with" has one answer, used
+both by the fields and by the unsaved-changes diff. Re-deriving it at a second call site is
+precisely how two copies drift.
+
+### And the draft cannot silently fall behind the entity
+
+> _"Make sure that the booking draft schema is updated on any booking schema update."_
+
+A draft cannot be a mapped type over `Booking` — the sheet authors a **form**, so one entity
+field becomes four (`details` → room, notes, wifi × 2) and a stored instant becomes a date
+plus a time in a resolved zone. What can be enforced is **coverage**: `BOOKING_FIELD_COVERAGE`
+is exhaustive over `keyof Booking`, so adding a field to `bookingSchema` fails the build until
+someone classifies it as `form`, `identity` or (explicitly) `unused`. Same shape
+`constants.ts` uses for per-enum lookups, and for the same reason — a missing case should be
+a compile error, not a silent omission.

@@ -18,7 +18,19 @@ import {
   type Booking,
   type BookingType,
 } from '@waypoint/shared';
+import {
+  bookingSheetDraft,
+  bookingDefaultKind,
+  isSpanType,
+  isTransportType,
+  type BookingSeed,
+  type BookingSheetDraft,
+} from '../lib/booking-draft';
 import { useTrip } from '../state/trip-state';
+
+// Re-exported so the sheet stays the obvious import for its own props (the derivation moved
+// out in session 173, the vocabulary did not).
+export type { BookingSeed, BookingSheetDraft };
 import { Sheet } from './Sheet';
 import { IconPicker } from './IconPicker';
 import { Icon } from './Icon';
@@ -37,36 +49,22 @@ import {
   buildEventSeed,
   buildSpanSeed,
   dateOutOfTripRange,
-  findPlaceByName,
-  isoToDateTimeLocal,
 } from '../lib/booking-edit';
 import { routeTitle } from '../lib/route-title';
-import { bookingZoneOverrides, placeName, placeTimezone } from '../lib/places';
+import { placeName, placeTimezone } from '../lib/places';
 import { withChangeGroup } from '../lib/outbox';
-import { isoToTimeInput, zoneOffsetMinutes, zonedIso } from '../lib/time';
+import { zoneOffsetMinutes, zonedIso } from '../lib/time';
 import { hoursPhrase } from '../lib/duration';
 import { bookingDurationUnit, timingLabels } from '../lib/booking-timing';
 import { BOOKING_TYPE_ICON, DOT_SEPARATOR } from '../constants';
 import { useStartPlaceErrand, type PlaceErrandTarget } from '../state/map-scope-state';
 import { t } from '../i18n/he';
 
-interface Wifi {
-  network?: string;
-  password?: string;
-}
-
 const BOOKING_TYPE_OPTIONS = Object.values(BOOKING_TYPE).map((ty) => ({
   value: ty,
   icon: BOOKING_TYPE_ICON[ty],
   label: t.index.bookingType[ty],
 }));
-const isTransportType = (ty: BookingType) =>
-  ty === BOOKING_TYPE.FLIGHT || ty === BOOKING_TYPE.TRAIN;
-// Two-endpoint schedule (start + end, may span days): transport departure→arrival,
-// a hotel check-in→check-out, an activity start→end. Restaurant/other are a
-// single point on a day (date + the events time picker).
-const isSpanType = (ty: BookingType) =>
-  isTransportType(ty) || ty === BOOKING_TYPE.HOTEL || ty === BOOKING_TYPE.ACTIVITY;
 
 /** The two span-endpoint labels for a type — shared with the detail view and the
  *  Index row so the wording never drifts (`../lib/booking-timing`). */
@@ -75,39 +73,6 @@ const spanLabels = timingLabels;
 /** Pre-set fields for a create-flow open (ADR-0061): the Plan-home checklist opens
  *  the form for a specific booking type, and for a flight seeds the missing leg's
  *  destination endpoint. Ignored when editing an existing booking. */
-export interface BookingSeed {
-  type?: BookingType;
-  origin?: string;
-  dest?: string;
-}
-
-/** **The sheet's own state, as one blob** (ADR-0134 §2) — the booking counterpart of
- *  `EventFormDraft`, and longer because this sheet authors more. `error`/`saving`/`deleting`
- *  are deliberately absent: they describe the last save attempt, not anything typed. */
-export interface BookingSheetDraft {
-  type: BookingType;
-  iconTouched: boolean;
-  icon: string;
-  title: string;
-  code: string;
-  fromPlaceId: string | undefined;
-  toPlaceId: string | undefined;
-  placeId: string | undefined;
-  startOverride: string | null;
-  endOverride: string | null;
-  room: string;
-  notes: string;
-  wifiNetwork: string;
-  wifiPassword: string;
-  date: string;
-  start: string;
-  end: string;
-  spanStart: string;
-  spanEnd: string;
-  kind: 'hard' | 'soft';
-  kindTouched: boolean;
-}
-
 export function BookingSheet({
   booking,
   seed,
@@ -125,95 +90,50 @@ export function BookingSheet({
   const startErrand = useStartPlaceErrand();
   const isCreate = !booking;
   const linkedEvent = booking ? events.find((e) => e.bookingId === booking.id) : undefined;
-  const initialType = booking?.type ?? seed?.type ?? BOOKING_TYPE.FLIGHT;
-  const wifi = booking?.details?.wifi as Wifi | undefined;
+  // ONE derivation, shared with the errand that has to hand this state over before the sheet
+  // exists (`lib/booking-draft.ts`). The `initial` blob is both the seed for every field
+  // below and the baseline the unsaved-changes guard diffs against, so "what the form opened
+  // with" cannot mean two things.
+  const initial = useMemo(
+    () => bookingSheetDraft({ booking, seed, trip, events, places }),
+    [booking, seed, trip, events, places],
+  );
 
-  const defaultKind = (ty: BookingType) => (isSpanType(ty) ? EVENT_KIND.HARD : EVENT_KIND.SOFT);
-
-  // Initial values captured up front so the unsaved-changes guard can diff them.
-  const initialIcon = linkedEvent?.icon ?? BOOKING_TYPE_ICON[initialType];
-  const initialTitle = booking?.title ?? '';
-  const initialCode = booking?.confirmationCode ?? '';
-  // Transport endpoints are now real picked places (ADR-0113 follow-up), authored
-  // through the same PlacePicker as a single-place booking — no longer free text.
-  // A free-text seed (PlanHome's flight prefill) resolves only to an EXISTING trip
-  // place by name; if none matches, the leg starts empty and the user picks (no
-  // orphan place created on open).
-  const seedFromPlaceId = seed?.origin ? findPlaceByName(places, seed.origin)?.id : undefined;
-  const seedToPlaceId = seed?.dest ? findPlaceByName(places, seed.dest)?.id : undefined;
-  const initialFromPlaceId = booking?.fromPlaceId ?? seedFromPlaceId;
-  const initialToPlaceId = booking?.toPlaceId ?? seedToPlaceId;
-  // Single-place types (hotel/restaurant/activity/other) carry one placeId (ADR-0048).
-  const initialPlaceId = booking?.placeId;
-  const initialRoom = (booking?.details?.room as string | undefined) ?? '';
-  const initialNotes = (booking?.details?.notes as string | undefined) ?? '';
-  const initialWifiNetwork = wifi?.network ?? '';
-  const initialWifiPassword = wifi?.password ?? '';
-  const initialDate = linkedEvent?.date ?? '';
-  // Each leg reads in its own endpoint's zone (ADR-0107): a flight's departure in
-  // its origin, its arrival in its destination; a single-place booking in its
-  // place. Falls back to the trip primary zone when no place resolves a zone.
-  // A pinned zone (ADR-0107 §6) wins over the place's — it exists precisely for
-  // when no place can answer (a coordless Place-lite, or nothing picked yet).
-  const initialOverrides = bookingZoneOverrides(booking ?? undefined);
-  const initStartOverride = initialOverrides.start ?? null;
-  const initEndOverride = (isTransportType(initialType) ? initialOverrides.end : null) ?? null;
-  const zoneOf = (id: string | undefined, override: string | null) =>
-    override ?? placeTimezone(places, id) ?? trip.timezone;
-  const initTransport = isTransportType(initialType);
-  const initStartZone = initTransport
-    ? zoneOf(initialFromPlaceId, initStartOverride)
-    : zoneOf(initialPlaceId, initStartOverride);
-  const initEndZone = initTransport
-    ? zoneOf(initialToPlaceId, initEndOverride)
-    : zoneOf(initialPlaceId, initStartOverride);
-  const initialStart = linkedEvent?.startsAt
-    ? isoToTimeInput(linkedEvent.startsAt, initStartZone)
-    : '';
-  const initialEnd = linkedEvent?.endsAt ? isoToTimeInput(linkedEvent.endsAt, initEndZone) : '';
-  const initialSpanStart = linkedEvent?.startsAt
-    ? isoToDateTimeLocal(linkedEvent.startsAt, initStartZone)
-    : '';
-  const initialSpanEnd = linkedEvent?.endsAt
-    ? isoToDateTimeLocal(linkedEvent.endsAt, initEndZone)
-    : '';
-  const initialKind: 'hard' | 'soft' = linkedEvent?.kind ?? defaultKind(initialType);
-
-  const [type, setType] = useState<BookingType>(draft ? draft.type : initialType);
+  const [type, setType] = useState<BookingType>(draft ? draft.type : initial.type);
   const [iconTouched, setIconTouched] = useState(draft ? draft.iconTouched : false);
-  const [icon, setIcon] = useState(draft ? draft.icon : initialIcon);
-  const [title, setTitle] = useState(draft ? draft.title : initialTitle);
-  const [code, setCode] = useState(draft ? draft.code : initialCode);
+  const [icon, setIcon] = useState(draft ? draft.icon : initial.icon);
+  const [title, setTitle] = useState(draft ? draft.title : initial.title);
+  const [code, setCode] = useState(draft ? draft.code : initial.code);
   const [fromPlaceId, setFromPlaceId] = useState<string | undefined>(
-    draft ? draft.fromPlaceId : initialFromPlaceId,
+    draft ? draft.fromPlaceId : initial.fromPlaceId,
   );
   const [toPlaceId, setToPlaceId] = useState<string | undefined>(
-    draft ? draft.toPlaceId : initialToPlaceId,
+    draft ? draft.toPlaceId : initial.toPlaceId,
   );
   const [placeId, setPlaceId] = useState<string | undefined>(
-    draft ? draft.placeId : initialPlaceId,
+    draft ? draft.placeId : initial.placeId,
   );
   const [startOverride, setStartOverride] = useState<string | null>(
-    draft ? draft.startOverride : initStartOverride,
+    draft ? draft.startOverride : initial.startOverride,
   );
   const [endOverride, setEndOverride] = useState<string | null>(
-    draft ? draft.endOverride : initEndOverride,
+    draft ? draft.endOverride : initial.endOverride,
   );
-  const [room, setRoom] = useState(draft ? draft.room : initialRoom);
-  const [notes, setNotes] = useState(draft ? draft.notes : initialNotes);
-  const [wifiNetwork, setWifiNetwork] = useState(draft ? draft.wifiNetwork : initialWifiNetwork);
+  const [room, setRoom] = useState(draft ? draft.room : initial.room);
+  const [notes, setNotes] = useState(draft ? draft.notes : initial.notes);
+  const [wifiNetwork, setWifiNetwork] = useState(draft ? draft.wifiNetwork : initial.wifiNetwork);
   const [wifiPassword, setWifiPassword] = useState(
-    draft ? draft.wifiPassword : initialWifiPassword,
+    draft ? draft.wifiPassword : initial.wifiPassword,
   );
   // Non-transport scheduling: a single day + optional same-day time span.
-  const [date, setDate] = useState(draft ? draft.date : initialDate);
-  const [start, setStart] = useState(draft ? draft.start : initialStart);
-  const [end, setEnd] = useState(draft ? draft.end : initialEnd);
+  const [date, setDate] = useState(draft ? draft.date : initial.date);
+  const [start, setStart] = useState(draft ? draft.start : initial.start);
+  const [end, setEnd] = useState(draft ? draft.end : initial.end);
   // Span scheduling (transport departure/arrival, hotel check-in/check-out): two
   // explicit datetimes that may fall on different days.
-  const [spanStart, setSpanStart] = useState(draft ? draft.spanStart : initialSpanStart);
-  const [spanEnd, setSpanEnd] = useState(draft ? draft.spanEnd : initialSpanEnd);
-  const [kind, setKind] = useState<'hard' | 'soft'>(draft ? draft.kind : initialKind);
+  const [spanStart, setSpanStart] = useState(draft ? draft.spanStart : initial.spanStart);
+  const [spanEnd, setSpanEnd] = useState(draft ? draft.spanEnd : initial.spanEnd);
+  const [kind, setKind] = useState<'hard' | 'soft'>(draft ? draft.kind : initial.kind);
   const [kindTouched, setKindTouched] = useState(draft ? draft.kindTouched : false);
   const [error, setError] = useState<string | null>(null);
   const [saving, setSaving] = useState(false);
@@ -265,6 +185,10 @@ export function BookingSheet({
   const isTransport = isTransportType(type);
   const isHotel = type === BOOKING_TYPE.HOTEL;
   const isSpan = isSpanType(type);
+  // The LIVE zone resolver — same rule as the draft's, over the CURRENT picks rather than
+  // the ones the sheet opened with (`lib/booking-draft.ts` owns the opening ones).
+  const zoneOf = (id: string | undefined, override: string | null) =>
+    override ?? placeTimezone(places, id) ?? trip.timezone;
   // Live per-endpoint zones (from the current picks): departure/arrival in the
   // route's origin/destination, a single-place booking in its place (ADR-0107).
   // Changing a pick keeps the typed wall-clock and re-interprets it in the new
@@ -298,33 +222,36 @@ export function BookingSheet({
   // stays lodging, so nights/check-in-out/ambient behaviour all follow the type.
   const category = BOOKING_TYPE_TO_CATEGORY[type];
 
+  // Diffed against the SAME blob the fields were seeded from, so "what did this open with"
+  // has exactly one answer. `iconTouched`/`kindTouched` are not state the user typed, so
+  // they are not part of dirtiness.
   const dirty =
-    type !== initialType ||
-    icon !== initialIcon ||
-    title !== initialTitle ||
-    code !== initialCode ||
-    fromPlaceId !== initialFromPlaceId ||
-    toPlaceId !== initialToPlaceId ||
-    placeId !== initialPlaceId ||
-    room !== initialRoom ||
-    notes !== initialNotes ||
-    wifiNetwork !== initialWifiNetwork ||
-    wifiPassword !== initialWifiPassword ||
-    date !== initialDate ||
-    start !== initialStart ||
-    end !== initialEnd ||
-    spanStart !== initialSpanStart ||
-    spanEnd !== initialSpanEnd ||
-    startOverride !== initStartOverride ||
-    endOverride !== initEndOverride ||
-    kind !== initialKind;
+    type !== initial.type ||
+    icon !== initial.icon ||
+    title !== initial.title ||
+    code !== initial.code ||
+    fromPlaceId !== initial.fromPlaceId ||
+    toPlaceId !== initial.toPlaceId ||
+    placeId !== initial.placeId ||
+    room !== initial.room ||
+    notes !== initial.notes ||
+    wifiNetwork !== initial.wifiNetwork ||
+    wifiPassword !== initial.wifiPassword ||
+    date !== initial.date ||
+    start !== initial.start ||
+    end !== initial.end ||
+    spanStart !== initial.spanStart ||
+    spanEnd !== initial.spanEnd ||
+    startOverride !== initial.startOverride ||
+    endOverride !== initial.endOverride ||
+    kind !== initial.kind;
   const { guardedClose, prompting, confirmDiscard, cancelDiscard } = useUnsavedGuard(dirty);
   const requestClose = () => guardedClose(onClose);
 
   const changeType = (next: BookingType) => {
     setType(next);
     if (!iconTouched) setIcon(BOOKING_TYPE_ICON[next]);
-    if (!kindTouched) setKind(defaultKind(next));
+    if (!kindTouched) setKind(bookingDefaultKind(next));
   };
   const pickKind = (k: 'hard' | 'soft') => {
     setKind(k);
@@ -396,8 +323,8 @@ export function BookingSheet({
         // its end resolves to null — which also clears an end pinned while the type
         // was still transport, the one way this form can leave a stale one behind.
         const zonePatch = {
-          ...(startOverride !== initStartOverride && { startDisplayTimezone: startOverride }),
-          ...((isTransport ? endOverride : null) !== initEndOverride && {
+          ...(startOverride !== initial.startOverride && { startDisplayTimezone: startOverride }),
+          ...((isTransport ? endOverride : null) !== initial.endOverride && {
             endDisplayTimezone: isTransport ? endOverride : null,
           }),
         };
