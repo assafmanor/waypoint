@@ -367,6 +367,72 @@ describe('applySchedule (T-058: persists the maybe-item consumed flag server-sid
     expect(calls[1]).toContain('/maybe-items/mb-skytree/consume');
   });
 
+  // THE GAP THIS CLOSES (found session 185, fixed 186). Undoing a schedule restored the idea
+  // locally through the reducer's snapshot but never told the server, so the next resync
+  // re-consumed it and the idea vanished a second time. Fails if the undo only deletes the event.
+  it('undoing a schedule puts the idea back on the shelf server-side, not only locally', async () => {
+    const calls: { url: string; method?: string }[] = [];
+    vi.stubGlobal(
+      'fetch',
+      vi.fn((url: string, init?: RequestInit) => {
+        calls.push({ url: String(url), method: init?.method });
+        return Promise.resolve(new Response(JSON.stringify(event), { status: 200 }));
+      }),
+    );
+    const deps = fakeDeps();
+
+    await applySchedule(deps, event, 'mb-skytree');
+    // The descriptor has to remember WHICH idea was consumed, or the undo cannot name it.
+    expect(deps.lastAction.current).toEqual({
+      kind: 'create',
+      id: 'ev-new',
+      maybeId: 'mb-skytree',
+    });
+
+    calls.length = 0;
+    await applyUndo(deps);
+
+    expect(calls.some((c) => c.url.includes(`/events/${event.id}`) && c.method === 'DELETE')).toBe(
+      true,
+    );
+    expect(calls.some((c) => c.url.includes('/maybe-items/mb-skytree/restore'))).toBe(true);
+  });
+
+  // A plain create took no idea, so its undo must not try to restore one.
+  it('undoing a plain create restores nothing', async () => {
+    const calls: string[] = [];
+    vi.stubGlobal(
+      'fetch',
+      vi.fn((url: string) => {
+        calls.push(String(url));
+        return Promise.resolve(new Response(JSON.stringify(event), { status: 200 }));
+      }),
+    );
+    const deps = fakeDeps();
+
+    await applyCreateEvent(deps, event);
+    expect(deps.lastAction.current).toEqual({ kind: 'create', id: 'ev-new', maybeId: undefined });
+    calls.length = 0;
+    await applyUndo(deps);
+    expect(calls.some((c) => c.includes('/restore'))).toBe(false);
+  });
+
+  it('queues the restore when the undo happens offline', async () => {
+    vi.stubGlobal('fetch', vi.fn().mockResolvedValue(new Response(JSON.stringify(event))));
+    const deps = fakeDeps();
+    await applySchedule(deps, event, 'mb-skytree');
+
+    vi.stubGlobal('fetch', vi.fn());
+    vi.stubGlobal('navigator', { onLine: false });
+    await db.outbox.clear();
+    await applyUndo(deps);
+
+    expect((await db.outbox.toArray()).map((e) => e.op)).toEqual([
+      { verb: OUTBOX_VERB.DELETE, eventId: 'ev-new', confirm: false },
+      { verb: OUTBOX_VERB.RESTORE_MAYBE_ITEM, maybeItemId: 'mb-skytree' },
+    ]);
+  });
+
   it('queues both writes in the outbox when offline', async () => {
     const fetchMock = vi.fn();
     vi.stubGlobal('fetch', fetchMock);
@@ -552,6 +618,23 @@ describe('applyBookEvent (an event that is also booked, ADR-0136)', () => {
       expect(deletedAt).toBeLessThanOrEqual(patchIndex);
       // A converted event may be hard by now, so the restore has to carry confirm.
       expect(calls[patchIndex].url).toContain('confirm=true');
+    });
+
+    // The same gap the schedule undo had, on the booked path: without the server-side restore
+    // the idea came back locally and the next resync ate it again.
+    it('puts the idea it consumed back on the shelf, server-side', async () => {
+      const calls = okFetch();
+      const deps = fakeDeps();
+      deps.lastAction.current = {
+        kind: 'book',
+        bookingId: 'bk-new',
+        event: null,
+        maybeId: 'mb-skytree',
+      };
+
+      await applyUndo(deps);
+
+      expect(calls.some((c) => c.url.includes('/maybe-items/mb-skytree/restore'))).toBe(true);
     });
   });
 });

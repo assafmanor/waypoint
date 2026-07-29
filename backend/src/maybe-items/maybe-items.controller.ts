@@ -76,4 +76,18 @@ export class MaybeItemsController {
   ): Promise<MaybeItem> {
     return this.maybeItems.consume(tripId, maybeItemId, user.userId);
   }
+
+  /** Put a consumed idea back on the shelf — the compensating write an undone schedule owes
+   *  the server (see the service). Named `restore` because that is already this app's word for
+   *  "put it back": it is what un-skipping an event is called. */
+  @Post(':maybeItemId/restore')
+  @ApiOkResponse({ type: MaybeItemDto })
+  @ZodSerializerDto(MaybeItemDto)
+  restore(
+    @CurrentUser() user: Principal,
+    @Param('tripId') tripId: string,
+    @Param('maybeItemId') maybeItemId: string,
+  ): Promise<MaybeItem> {
+    return this.maybeItems.restore(tripId, maybeItemId, user.userId);
+  }
 }

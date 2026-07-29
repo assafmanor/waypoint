@@ -2,6 +2,7 @@
 // stays language-agnostic (conventions.md). Interpolated copy is a function;
 // runs that must render left-to-right (times, codes) stay as JSX in the caller.
 import { countdownText } from '../lib/time';
+import { type OutboxVerb } from '../lib/outbox';
 import { measure } from '../lib/bidi';
 
 export const t = {
@@ -297,6 +298,7 @@ export const t = {
       move: 'הזזת אירוע',
       delete: 'מחיקת אירוע',
       consumeMaybeItem: 'קידום רעיון',
+      restoreMaybeItem: 'החזרת רעיון למדף',
       createMaybeItem: 'הוספת רעיון',
       deleteMaybeItem: 'מחיקת רעיון',
       updateMaybeItem: 'עדכון רעיון',
@@ -310,7 +312,11 @@ export const t = {
       createPlace: 'הוספת מקום',
       updatePlace: 'עדכון מקום',
       uploadDocument: 'העלאת מסמך',
-    } as Record<string, string>,
+      // `satisfies Record<OutboxVerb, string>`, not `as Record<string, string>`: this map is
+      // read as `t.sync.verb[f.verb]`, so a verb missing from it renders a queued failure with
+      // NO name — and the loose cast made that silent. Typed, a new outbox verb is a compile
+      // error here, which is how every other per-enum lookup in this app behaves.
+    } satisfies Record<OutboxVerb, string>,
     review: {
       title: 'שינויים שלא נשמרו',
       intro: 'השינויים האלה נדחו בסנכרון. אפשר לנסות שוב או להשליך.',
