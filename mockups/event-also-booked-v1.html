@@ -1,54 +1,50 @@
 <!doctype html>
-<!-- A PLACE BECOMES AN EVENT OR A BOOKING — v1 (2026-07-29, Phase 14).
-     Promoting ADR-0135. Extends ADR-0121 §8's way-in block; reads ADR-0134
-     backwards WITHOUT reusing its channel; retires the "event or booking?"
-     question rather than answering it.
+<!-- AN EVENT CAN ALSO BE BOOKED — v1 (2026-07-30). Promoting ADR-0136.
+     NOT a map file: this is `EventForm` on the surface that hosts it most, the day
+     view. The map's own phase is `map-place-becomes-v1.html` (ADR-0135).
 
      ═══════════════════════════════════════════════════════════════════════
-     THE HOLE, AND THE FIRST DESIGN THAT WAS WRONG
+     TWO REJECTED DESIGNS, BOTH RECORDED, BECAUSE BOTH TAUGHT SOMETHING
      ═══════════════════════════════════════════════════════════════════════
-     A place added from the map can only ever be an IDEA. There is no path from a
-     place to "put this on Tuesday at 14:00" or "attach the reservation I just got".
+     1. `＋ אירוע` / `＋ הזמנה` as two entries. "Event or booking?" is the app's
+        question, not the traveller's — it asks a human to know the schema before
+        they can say what they know.
 
-     The first pass hung TWO create entries in the way-in block, `＋ אירוע` and
-     `＋ הזמנה`, in the same grey pill as the references. The owner's verdict was
-     "cluttered and very amateur looking", and it was right for a reason worth
-     keeping: the expanded row was a summary, a navigation list and a COMMAND MENU
-     at once. A selected item gets one obvious action; references are navigation and
-     a create is not their peer.
-
-     And the deeper half: **"maybe the user doesn't choose one or the other but the
-     code understands instead."** "Event or booking?" is the app's question, not the
-     traveller's. What a traveller knows is WHEN it is, and whether they have a
-     CONFIRMATION NUMBER — which is what ADR-0011 already calls a commitment, in its
-     own words: "hard = real commitment (flight, reservation code)".
+     2. A CONFIRMATION CODE as the trigger. Better, and still wrong, and the schema
+        says why: `confirmationCode` is nullable and every Booking field but `type`
+        and `title` is optional. A table booked by phone has no number; plenty of
+        people never record one. Keying on it would have missed the single most
+        common booking in the app — a restaurant, which `bookingDefaultKind` also
+        makes SOFT, so there was no second signal to fall back to either.
 
      ═══════════════════════════════════════════════════════════════════════
-     WHAT THIS FILE DRAWS, AND WHAT IT NO LONGER DOES
+     THE REFRAME THAT FIXED IT
      ═══════════════════════════════════════════════════════════════════════
-     It draws the map's way-in block and nothing else. Sessions 181-182 also drew
-     `EventForm`, a second host and the outcome screens here, because the code rule
-     was designed inside this phase; session 184 moved all of that to
-     `event-also-booked-v1.html`, where it belongs — the rule is not map-shaped and
-     is filed under Data model & events (ADR-0136). Keeping a copy of it here would
-     be two files claiming one design, and the older one would rot first.
+     Owner: **"many times an event is also a booking."** They were never
+     alternatives, and the model has always said so — a `Booking` HAS a linked
+     event, so "this event is also booked" is exactly `event.bookingId != null`.
 
-     WHAT IS ALREADY BUILT, so this file only claims what is new:
-       • the way-in block (ADR-0121 §8, `.map-refs`), revealed by selection;
-       • `.map-addmaybe` — the pill the tab ALREADY uses for "make something out of
-         this place" (`＋ אולי`). The new control is that control, not a new one.
+     So you are always creating an EVENT. One row says it is **also booked**, which
+     additionally creates the `Booking` and links it. One tap, no typing, nothing
+     required. The app still infers what it honestly can: the row DEFAULTS from the
+     category (lodging and transport are near-certainly booked), and a human owns
+     the fact from there — `bookedTouched`, the same guard `BookingSheet` already
+     carries for `kind`.
 
-     WHAT IS NEW: one control, not a menu. ⟨הבלוק⟩ draws the shipped block, the
-     rejected two-entry menu, and the proposal, and the panel MEASURES all three —
-     because "one control is smaller" is worth a number rather than an assertion.
+     WHAT THIS FILE DRAWS:
+       • `EventForm` in FULL at its real length, on the day view, in three states;
+       • the same form CONVERTING an existing event, and a third state for one that
+         is ALREADY linked (a statement with a way in, not a control);
+       • ⟨קטגוריה⟩ moving the default and the derived type live;
+       • WHAT EACH SAVE PRODUCES — the day card, and the Index bookings row.
 
-     Interactive: switch the block state, open the form, fill the code, change the
-     category, move the form to the day view, and read the outcome on the right. -->
+     Interactive: open the form, toggle `יש הזמנה`, change the category, switch
+     between creating and converting, and read the outcome on the left. -->
 <html lang="he" dir="rtl">
   <head>
     <meta charset="UTF-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-    <title>מקום הופך לאירוע או להזמנה · שלב 14 · מוקאפ v1</title>
+    <title>אירוע יכול להיות גם מוזמן · מוקאפ v1</title>
 <link rel="preconnect" href="https://fonts.googleapis.com" />
     <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
     <link
@@ -63,16 +59,13 @@
 
          GENERATED — never hand-edit. After any change to one of the listed sheets:
 
-             node mockups/tools/inline-app-css.mjs mockups/map-place-becomes-v1.html
+             node mockups/tools/inline-app-css.mjs mockups/event-also-booked-v1.html
 
          (idempotent; the file is in `.prettierignore` so formatting cannot fight the
-         generator). The form primitives are here because this file's second subject is
-         `EventForm` at its real length; `event-card.css`, `list-row.css` and
-         `place-badge.css` are here because its third subject is what a save PRODUCES,
-         and a fake outcome card would make the whole comparison worthless. `avatar.css`
-         is here because the header's cluster renders the `Avatar` primitive (`.wp-av`),
-         which an older frame copied as a bare `.av` and drew a stale header. -->
-    <!-- APP-CSS: styles/tokens.css, App.css, screens.css, ui/domain/day-strip.css, ui/primitives/avatar.css, ui/domain/place-badge.css, ui/primitives/reveal-list.css, ui/feedback/feedback.css, screens/map.css, ui/domain/map-pane.css, ui/primitives/snap-sheet.css -->
+         generator). `event-card.css` and `list-row.css` are in the manifest because
+         this file's second subject is what a save PRODUCES, and a faked outcome card
+         would make the whole comparison worthless. -->
+    <!-- APP-CSS: styles/tokens.css, App.css, screens.css, ui/domain/day-strip.css, ui/primitives/avatar.css, ui/domain/place-badge.css, ui/domain/event-card.css, ui/domain/list-row.css, ui/primitives/collapsible.css, ui/feedback/feedback.css, ui/primitives/modal.css, ui/primitives/field.css, ui/primitives/choice-grid.css, ui/primitives/form-actions.css, ui/primitives/place-picker.css, ui/primitives/when-field.css -->
     <style data-app-css>
 /* GENERATED by mockups/tools/inline-app-css.mjs from the manifest above.
    Do not edit below this line — change the app css, then re-run the tool. */
@@ -6478,50 +6471,627 @@ button.wp-av:focus-visible {
    board expands it and actions become possible in place, which is the shape this
    affordance actually wants there. */
 
-/* ═══ ui/primitives/reveal-list.css — generated, do not edit here ═══ */
-/* Filter/search reveal motion (ADR-0120, generalizing ADR-0098 §4). One rule
-   for every filtered list in the app: a row that stops matching shrinks + fades
-   in place instead of vanishing, and a row that starts matching rides the
-   per-row `transition-delay` `lib/filter-reveal.ts` hands it, so a chip tap or a
-   keystroke reveals matches with a gentle stagger. Unscoped on purpose — it is
-   the app's reveal, not the Index's. prefers-reduced-motion disables the
-   transition globally (App.css).
+/* ═══ ui/domain/event-card.css — generated, do not edit here ═══ */
+/* EventCard / VerbRow (domain, review U-03). Ported faithfully from `.item` /
+   `.face` / `.actions` / `.settle` in screens.css, under new `wp-event*`
+   classes so nothing overlaps the legacy rules until DayView migrates. The
+   hard/soft triple-coding (ADR-0011): solid + amber for hard, dashed + hatch +
+   muted for soft; amber `now` ring; the done record is --ok green, never amber
+   (ADR-0028). */
 
-   The collapse is a `0fr`/`1fr` grid track rather than a `max-height` guess, so
-   no surface declares how tall its tallest row might be — the Index's 140px cap
-   would have clipped a wrapped row, and every new call site would have needed a
-   number of its own. */
-.wp-reveal {
+.wp-event {
+  background: var(--card);
+  border: 1px solid var(--line);
+  border-radius: 15px;
+  margin-bottom: 10px;
+  overflow: hidden;
+}
+.wp-event.soft {
+  background: repeating-linear-gradient(-45deg, #fff 0 9px, #fbfaf7 9px 18px);
+  border: 1px dashed var(--soft-line);
+}
+.wp-event.now {
+  border-color: var(--amber);
+  box-shadow: 0 0 0 3px rgba(233, 166, 60, 0.13);
+}
+/* A passed event recedes (derived from the clock, ADR-0043); a soft card's hatch
+   flattens so it reads settled, not provisional. */
+.wp-event.passed {
+  opacity: 0.66;
+}
+.wp-event.passed.soft {
+  background: #f7f7f9;
+  border-style: solid;
+  border-color: var(--line);
+}
+/* A done event settles + a positive ✓ (--ok, a record, never amber). */
+.wp-event.done {
+  opacity: 0.85;
+  background: #f6faf7;
+  border-color: rgba(60, 154, 107, 0.32);
+  border-style: solid;
+}
+.wp-event.done .wp-event-badge {
+  background: rgba(60, 154, 107, 0.12);
+}
+/* An in-transit (pending) write reads as provisional (ADR-0092): the card fades
+   until the server confirms it, matching the Index/Documents rows. Pending only
+   — a failed card stays crisp so its cloud-bang keeps drawing attention. Placed
+   after .passed/.done so it wins when a queued edit lands on a past event. */
+.wp-event.unsynced {
+  opacity: 0.6;
+}
+
+/* Face — the tappable header (a toggle button; the settle variant is a div). */
+.wp-event-face {
+  display: flex;
+  align-items: center;
+  gap: var(--space-3);
+  padding: 14px 15px;
+  cursor: pointer;
+  width: 100%;
+  background: none;
+  border: 0;
+  font: inherit;
+  color: inherit;
+  text-align: inherit;
+}
+.wp-event-face.static {
+  cursor: default;
+}
+.wp-event-face:focus-visible {
+  outline: 2.5px solid var(--teal);
+  outline-offset: -2px;
+}
+.wp-event-badge {
+  width: 40px;
+  height: 40px;
+  border-radius: var(--radius-12);
   display: grid;
-  grid-template-rows: 1fr;
-  overflow: clip;
-  overflow-clip-margin: var(--reveal-bleed, 8px);
-  opacity: 1;
+  place-items: center;
+  font-size: 19px;
+  flex: 0 0 auto;
+  background: var(--paper);
+}
+.wp-event.soft .wp-event-badge {
+  background: rgba(22, 35, 61, 0.05);
+}
+
+/* Done ✓ as a tap-to-undo control (ADR-0043 revision) — --ok green; hover/focus
+   morphs the ✓ to an undo arrow; a thin persistent ring hints it's tappable. */
+.wp-event-check {
+  flex: 0 0 auto;
+  width: 22px;
+  height: 22px;
+  border-radius: var(--radius-999);
+  display: grid;
+  place-items: center;
+  font-size: var(--text-caption);
+  font-weight: 700;
+  color: #fff;
+  background: var(--ok);
+}
+.wp-event-check.btn {
+  position: relative;
+  cursor: pointer;
   transition:
-    opacity var(--t-base) var(--ease-standard),
-    transform var(--t-base) var(--ease-standard),
-    grid-template-rows var(--t-base) var(--ease-standard);
+    box-shadow var(--t-quick),
+    transform var(--t-quick);
 }
-/* The inner wrapper is what makes the collapse true: a `0fr` track resolves to
-   the row's own minimum contribution, so the row has to be able to contribute
-   nothing — `overflow: hidden` + `min-height: 0`, on an element carrying no
-   padding of its own (with the padded row inside it, a filtered-out row would
-   keep its padding's worth of height). The bleed is a layout-neutral
-   padding/negative-margin pair: it widens the clip box so a row's shadow, focus
-   ring, or next-stop ring isn't sheared off, without moving the row a pixel. */
-.wp-reveal-inner {
-  min-height: 0;
-  overflow: hidden;
-  margin: calc(var(--reveal-bleed, 8px) * -1);
-  padding: var(--reveal-bleed, 8px);
+.wp-event-check .mark,
+.wp-event-check .undo {
+  grid-area: 1 / 1;
+  transition:
+    opacity var(--t-quick),
+    transform var(--t-quick);
 }
-.wp-reveal.hidden {
-  grid-template-rows: 0fr;
+.wp-event-check .undo {
   opacity: 0;
-  transform: translateY(-4px) scale(0.97);
-  /* Fully closed: no bleed, and untappable even where `inert` isn't honoured. */
+  transform: scale(0.6);
+  font-size: 13px;
+}
+.wp-event-check.btn:hover,
+.wp-event-check.btn:focus-visible {
+  box-shadow: 0 0 0 4px rgba(60, 154, 107, 0.18);
+  transform: scale(1.06);
+}
+.wp-event-check.btn:hover .mark,
+.wp-event-check.btn:focus-visible .mark {
+  opacity: 0;
+  transform: scale(0.6);
+}
+.wp-event-check.btn:hover .undo,
+.wp-event-check.btn:focus-visible .undo {
+  opacity: 1;
+  transform: scale(1);
+}
+.wp-event-check.btn:focus-visible {
+  outline: 2.5px solid var(--teal);
+  outline-offset: 2px;
+}
+.wp-event-check.btn:active {
+  transform: scale(0.92);
+}
+.wp-event-check.btn::after {
+  content: '';
+  position: absolute;
+  inset: -4px;
+  border-radius: var(--radius-999);
+  box-shadow: 0 0 0 1.5px rgba(60, 154, 107, 0.35);
+}
+
+.wp-event-main {
+  flex: 1;
+  min-width: 0;
+}
+.wp-event-t {
+  font-weight: 700;
+  font-size: var(--text-body);
+  display: flex;
+  align-items: center;
+  gap: 7px;
+  flex-wrap: wrap;
+}
+/* The title text is its own flex child so it can shrink inside the row (the
+   hard/soft tag stays a sibling and is never clipped). Deliberately NOT clamped:
+   a long transport route is handled by shortening + the destination-primary
+   fallback (ADR-0059 §3 amendment), and anything else may wrap freely. */
+.wp-event-title-txt {
+  min-width: 0;
+}
+.wp-event-m {
+  font-size: var(--text-secondary);
+  color: var(--muted);
+  margin-top: 3px;
+  display: flex;
+  /* flex-start (not center) so the sync marker (ADR-0091) stays on the first line
+     and the meta text wraps beneath it — the badge never reflows the title. */
+  align-items: flex-start;
+  gap: 6px;
+  flex-wrap: wrap;
+}
+.wp-event-time {
+  font-family: var(--font-mono);
+  font-size: var(--text-secondary);
+  font-weight: 700;
+  color: var(--ink);
+  flex: 0 0 auto;
+  display: flex;
+  flex-direction: column;
+  align-items: flex-end;
+  gap: 4px;
+  text-align: end;
+  white-space: nowrap;
+}
+.wp-event.soft .wp-event-time {
+  color: var(--muted);
+}
+.wp-event-xmid {
+  font-size: 9px;
+}
+/* The meta line under the time range: elapsed duration + the zone-shift pill
+   (either or both), right-aligned so it sits under the time and never crowds
+   the title. */
+.wp-event-timemeta {
+  display: flex;
+  align-items: center;
+  gap: 5px;
+}
+/* Elapsed duration (ADR-0084/0107) — quiet, since it's context for the range
+   above, shown on transport + zone-shifted rows where the raw times can misread
+   the real span. */
+.wp-event-dur {
+  font-family: var(--font-mono);
+  font-size: 10.5px;
+  font-weight: 700;
+  color: var(--muted);
+}
+/* Zone-shift pill (ADR-0107 multi-zone): shows how far the clock jumps
+   (destination vs origin on a crossing, else vs the day's ambient zone), only
+   when the shift is non-zero. Amber — a time concept (design-language.md). */
+.wp-event-chev {
+  color: #b5bcc9;
+  font-size: var(--text-secondary);
+  flex: 0 0 auto;
+  display: grid;
+  place-items: center;
+  transition: transform var(--t-base);
+}
+.wp-event.open .wp-event-chev {
+  transform: rotate(180deg);
+}
+
+/* Hard/soft tags (triple-coding): amber for hard, muted for soft/passed, --ok
+   for done. */
+.wp-event-tag-hard {
+  font-size: 10px;
+  font-weight: 700;
+  color: var(--amber-deep);
+  background: rgba(233, 166, 60, 0.14);
+  padding: 2px 6px;
+  border-radius: 6px;
+  display: inline-flex;
+  align-items: center;
+  gap: 3px;
+}
+.wp-event-tag-soft {
+  font-size: 10px;
+  font-weight: 700;
+  color: var(--muted);
+  background: rgba(22, 35, 61, 0.06);
+  padding: 2px 6px;
+  border-radius: 6px;
+}
+.wp-event-tag-phase {
+  font-size: 10px;
+  font-weight: 700;
+  color: var(--muted);
+  background: rgba(22, 35, 61, 0.05);
+  padding: 2px 6px;
+  border-radius: 6px;
+}
+.wp-event-tag-done {
+  font-size: 10px;
+  font-weight: 700;
+  color: var(--ok);
+  background: rgba(60, 154, 107, 0.13);
+  padding: 2px 6px;
+  border-radius: 6px;
+  display: inline-flex;
+  align-items: center;
+  gap: 3px;
+}
+
+.wp-event-nest-note {
+  font-size: var(--text-caption);
+  font-weight: 700;
+  color: var(--muted);
+  white-space: nowrap;
+}
+.wp-event-conflict-flag {
+  display: block;
+  font-size: var(--text-caption);
+  color: var(--amber-deep);
+  margin-top: 2px;
+}
+
+/* Expanding verb strip. */
+.wp-event-actions {
+  max-height: 0;
   overflow: hidden;
-  pointer-events: none;
+  transition: max-height var(--t-base) ease;
+  background: #fafbfd;
+  border-top: 1px solid transparent;
+}
+.wp-event.open .wp-event-actions {
+  max-height: 220px;
+  border-top-color: var(--line);
+}
+.wp-event-act-row {
+  display: flex;
+  gap: 7px;
+  padding: var(--space-3) 14px;
+  flex-wrap: wrap;
+}
+.wp-event-act {
+  font: inherit;
+  font-size: var(--text-secondary);
+  font-weight: 600;
+  border: 1px solid var(--line);
+  background: #fff;
+  color: var(--ink);
+  border-radius: 9px;
+  padding: 7px 11px;
+  cursor: pointer;
+  transition:
+    background var(--t-quick),
+    color var(--t-quick);
+}
+.wp-event-act:hover {
+  background: var(--ink);
+  color: #fff;
+  border-color: var(--ink);
+}
+.wp-event-act.go {
+  border-color: var(--teal);
+  color: var(--teal);
+}
+.wp-event-act.go:hover {
+  background: var(--teal);
+  color: #fff;
+}
+.wp-event-act:focus-visible {
+  outline: 2.5px solid var(--teal);
+  outline-offset: 2px;
+}
+.wp-event-act-row-end {
+  display: flex;
+  gap: 7px;
+  margin-inline-start: auto;
+}
+.wp-event-act.icon-only {
+  padding: 7px 10px;
+  font-size: var(--text-body);
+  line-height: 1;
+}
+/* The quiet "more" ⋯ — no border until touched. */
+.wp-event-act.icon-only.more {
+  border-color: transparent;
+  color: var(--muted);
+  font-size: var(--text-h3);
+  padding: 6px 9px;
+}
+.wp-event-act.icon-only.more:hover {
+  background: var(--paper);
+  color: var(--ink);
+  border-color: var(--line);
+}
+.wp-event-act.stepper {
+  display: flex;
+  align-items: stretch;
+  padding: 0;
+}
+.wp-event-act.stepper .step {
+  font: inherit;
+  font-size: var(--text-body);
+  font-weight: 700;
+  line-height: 1;
+  border: none;
+  background: transparent;
+  color: inherit;
+  padding: 7px 10px;
+  cursor: pointer;
+}
+.wp-event-act.stepper .step-label {
+  display: flex;
+  align-items: center;
+  padding: 7px 6px;
+  border-inline: 1px solid var(--line);
+  color: var(--muted);
+  font-size: var(--text-caption);
+}
+.wp-event-hard-warn {
+  font-size: var(--text-caption);
+  color: var(--amber-deep);
+  padding: 0 14px var(--space-3);
+  display: flex;
+  align-items: center;
+  gap: 6px;
+}
+
+/* Settle strip (a passed-but-unmarked soft event). */
+.wp-event-settle {
+  display: flex;
+  align-items: center;
+  gap: var(--space-2);
+  padding: 0 15px 12px 66px;
+  margin-top: -2px;
+}
+.wp-event.soft .wp-event-settle {
+  padding-inline-end: 62px;
+}
+.wp-event-settle-q {
+  font-size: 11.5px;
+  font-weight: 600;
+  color: var(--muted);
+  margin-inline-end: auto;
+}
+.wp-event-settle button {
+  font: inherit;
+  font-size: 11.5px;
+  font-weight: 700;
+  border-radius: var(--radius-999);
+  padding: 5px 13px;
+  cursor: pointer;
+  border: 1px solid var(--line);
+  background: var(--card);
+  color: var(--ink);
+}
+.wp-event-settle-yes {
+  border-color: rgba(60, 154, 107, 0.4) !important;
+  color: var(--ok) !important;
+}
+.wp-event-settle button:focus-visible {
+  outline: 2.5px solid var(--teal);
+  outline-offset: 2px;
+}
+
+/* ═══ ui/domain/list-row.css — generated, do not edit here ═══ */
+/* ListRow + RowManageSheet (domain, review U-03). Ported faithfully from the
+   Index booking row (`.index .li.bk`) and the Documents row (`.index .li.doc`)
+   + the shared `.row-action` menu in screens.css, under new `wp-` classes so
+   nothing overlaps the legacy rules until the screens migrate and delete them.
+   Amber = time/commitment, teal = location (design-language color budget);
+   spacing/radius/type from the Wave-0 tokens where they map to the ramp. */
+
+.wp-listrow {
+  display: flex;
+  align-items: center;
+  border-bottom: 1px solid var(--line);
+}
+.wp-listrow:last-child {
+  border-bottom: none;
+}
+/* An in-transit (pending) write reads as provisional (ADR-0092): the whole row
+   fades until the server confirms it. Pending only — a failed row stays crisp so
+   its cloud-bang keeps drawing attention. The 19px cloud-up marker stays legible
+   at this opacity, so it still reads as "saving". */
+.wp-listrow.is-unsynced {
+  opacity: 0.6;
+}
+
+.wp-listrow-open {
+  display: flex;
+  align-items: center;
+  gap: 11px;
+  flex: 1;
+  min-width: 0;
+  background: transparent;
+  border: none;
+  font: inherit;
+  color: inherit;
+  text-align: start;
+  cursor: pointer;
+  padding: var(--space-3) 14px;
+}
+.wp-listrow-open:hover {
+  background: color-mix(in srgb, var(--ink) 4%, transparent);
+}
+.wp-listrow-open:focus-visible {
+  outline: 2px solid var(--teal);
+  outline-offset: -2px;
+}
+.wp-listrow-open:disabled {
+  cursor: default;
+}
+
+.wp-listrow-badge {
+  width: 36px;
+  height: 36px;
+  border-radius: 11px;
+  background: var(--paper);
+  display: grid;
+  place-items: center;
+  font-size: var(--text-h3);
+  flex: 0 0 auto;
+}
+/* Category tint (ADR-0059 §3): teal = a stay, amber = transport. */
+.wp-listrow-badge.stay {
+  background: color-mix(in srgb, var(--teal) 12%, transparent);
+}
+.wp-listrow-badge.trans {
+  background: rgba(233, 166, 60, 0.12);
+}
+
+.wp-listrow-main {
+  flex: 1;
+  min-width: 0;
+}
+.wp-listrow-title {
+  font-size: 13.5px;
+  font-weight: 700;
+  display: flex;
+  align-items: center;
+  gap: var(--space-1) 6px;
+  flex-wrap: wrap;
+}
+.wp-listrow-meta {
+  font-size: 11.5px;
+  color: var(--muted);
+  margin-top: 3px;
+  display: block;
+}
+
+.wp-listrow-right {
+  display: flex;
+  align-items: center;
+  gap: var(--space-2);
+  padding-inline-end: var(--space-3);
+  flex: 0 0 auto;
+  text-align: end;
+}
+/* Fixed sync column (ADR-0091): reserves its width even when the badge is silent
+   (synced → EntitySyncBadge renders null), so the marker sits in the same place
+   on every row and neighbours stay aligned. */
+.wp-listrow-sync {
+  inline-size: 19px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  flex: 0 0 auto;
+}
+.wp-listrow-kebab {
+  width: 30px;
+  height: 30px;
+  border-radius: 9px;
+  display: grid;
+  place-items: center;
+  background: none;
+  border: 0;
+  color: var(--muted);
+  font-size: var(--text-h3);
+  line-height: 1;
+  cursor: pointer;
+}
+.wp-listrow-kebab:hover {
+  background: color-mix(in srgb, var(--ink) 6%, transparent);
+  color: var(--ink);
+}
+
+/* RowManageSheet action list — the `⋯` menu items (ported from `.row-action`).
+   Violet hover: managing a row is a neutral action; the plan-tint hover matches
+   the shipped sheet. Danger action reads in the miss color. */
+.wp-row-actions {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  margin: var(--space-1) 0;
+}
+.wp-row-action {
+  display: flex;
+  align-items: center;
+  gap: 11px;
+  width: 100%;
+  text-align: start;
+  font: inherit;
+  font-size: var(--text-body);
+  font-weight: 600;
+  color: var(--ink);
+  background: var(--card);
+  border: 1px solid var(--line);
+  border-radius: var(--radius-12);
+  padding: 13px 14px;
+  cursor: pointer;
+}
+.wp-row-action:hover {
+  border-color: var(--plan);
+  background: var(--plan-tint);
+}
+.wp-row-action:focus-visible {
+  outline: 2.5px solid var(--plan);
+  outline-offset: 2px;
+}
+.wp-row-action.danger {
+  color: var(--miss);
+}
+.wp-row-action.danger:hover {
+  border-color: var(--miss);
+  background: rgba(198, 40, 40, 0.06);
+}
+.wp-row-action-ic {
+  font-size: var(--text-h3);
+  flex: 0 0 auto;
+}
+
+/* ═══ ui/primitives/collapsible.css — generated, do not edit here ═══ */
+/* Collapsible — animated open/shut container + its count-in-label toggle
+   (ADR-0098 reuse audit: generalized out of PlanHome's showCompleted/.chk-toggle
+   pattern so Index's past-bookings collapse doesn't grow a second one-off).
+   Callers own all visual chrome (color/background/border) via their own
+   className appended alongside `wp-collapse-toggle`/`wp-collapsible` — this
+   file carries only the shared behavior. */
+.wp-collapse-toggle {
+  font: inherit;
+  cursor: pointer;
+  transition: transform 0.12s ease;
+}
+.wp-collapse-toggle:active {
+  transform: scale(0.95);
+}
+
+/* max-height + opacity, never display:none, so a reveal/hide reads as motion
+   instead of a snap. prefers-reduced-motion disables this globally (App.css). */
+.wp-collapsible {
+  overflow: hidden;
+  max-height: 0;
+  opacity: 0;
+  transition:
+    max-height 0.32s ease,
+    opacity 0.22s ease;
+}
+.wp-collapsible.on {
+  max-height: 2000px;
+  opacity: 1;
 }
 
 /* ═══ ui/feedback/feedback.css — generated, do not edit here ═══ */
@@ -6952,183 +7522,232 @@ button.wp-av:focus-visible {
   }
 }
 
-/* ═══ screens/map.css — generated, do not edit here ═══ */
-/* Map tab (Phase 3, ADR-0109/0110) — the list-first pinned-place surface.
-   Ported from mockups/map-tab-v1.html, adapted to the real tokens (--teal +
-   color-mix instead of the mockup's --teal-deep/--teal-tint). Reuses the Index's
-   --idx-accent for the selected chips; set here so it works inside the search
-   overlay portal too (no .app ancestor there). */
-.map-screen {
-  --idx-accent: var(--ink);
-  --idx-accent-text: #fff;
-}
-.map-screen[data-mode='plan'] {
-  --idx-accent: var(--plan);
+/* ═══ ui/primitives/modal.css — generated, do not edit here ═══ */
+/* The single overlay primitive (ADR-0079). Three variants share one scrim +
+   focus/close machinery (Modal.tsx); only shape/position differ. Built on the
+   Wave-0 non-color tokens (radius/elevation/spacing, ADR-0082) and logical
+   properties so RTL needs no left/right. Neutral chrome only — never amber/teal
+   (unlike the legacy .confirm-card, which is deliberately amber for the
+   hard-edit guard); semantic hues stay reserved for meaning, not chrome.
+   The old sheet, confirm, and event-form class families remain in screens.css
+   until their consumers fold onto this primitive (Wave 2). */
+
+.modal-overlay {
+  position: fixed;
+  inset: 0;
+  background: rgba(22, 35, 61, 0.45);
+  display: flex;
+  justify-content: center;
+  /* Peer of the legacy .sheet-/.confirm-overlays (also z-index 20): a nested,
+     body-portalled prompt paints above by DOM order, not a higher z-index. */
+  z-index: 20;
+  animation: modal-fade var(--t-base) var(--ease-standard);
 }
 
-/* ── The split (Phase 6, ADR-0121 §5; the controls leave the layout in ADR-0122 §1) ──
-   The tab opts out of the scrolling body (`.body.is-fullbleed`, App.css) and owns its
-   own layout, and the split is now the WHOLE body: the two fixed rows above it were
-   370-of-844 phone pixels spent before either half got one, so they became one row
-   floating over the canvas. The one scroll region is still the sheet's list. Scoped to
-   `.is-split`, because the same `.map-screen` class also wraps the search overlay's
-   filtered copy of the list, which is ordinary scrolling content and must not become a
-   flex column. */
-.map-screen.is-split {
-  display: flex;
-  flex-direction: column;
-  height: 100%;
-  min-height: 0;
+/* sheet — bottom-anchored, full-width, rounded top (phone-first, ADR-0017). */
+.modal-overlay[data-variant='sheet'] {
+  align-items: flex-end;
 }
-.map-split {
-  position: relative;
-  flex: 1;
-  min-height: 0;
-  overflow: hidden;
-  /* At `full` the sheet stops BELOW the controls row, and what is behind the row there
-     is this backdrop — which is the sheet's own background, so the same row reads as the
-     list's ordinary header. One treatment, no second grammar, and no scrim (§1). */
+/* dialog — centered, constrained, gutter so it never touches the screen edge. */
+.modal-overlay[data-variant='dialog'] {
+  align-items: center;
+  padding: var(--space-6);
+}
+/* full — a full-viewport screen, not a floating card over dimmed content
+   (ADR-0101): opaque (matches the app's own page background) since it
+   REPLACES the trip header + bottom nav rather than sitting above them, and
+   there's nothing "outside" it to see or tap-dismiss to (see Modal.tsx's
+   backdrop-click gate). Used today by `SearchOverlay`; reusable for any
+   future full-screen mode. */
+.modal-overlay[data-variant='full'] {
   background: var(--screen);
 }
-/* The sheet's own scroll padding — the list needs edges, and a tail so the last
-   card clears the rounded bottom of the phone. */
-.map-sheet-scroll {
-  padding: 0 16px 16px;
-}
 
-/* ── ONE ROW, OVER THE CANVAS (ADR-0122 §1) ──────────────────────────────────────
-   Absolutely positioned at the top of `.map-split`, so it costs the split NO height:
-   the pane runs underneath it and the sheet's stops are measured against the whole
-   body. `--map-controls-h` is written by the screen from the same TS constant the
-   camera's top inset is derived from, so the layout and the band the camera keeps
-   clear of pins cannot drift apart.
-
-   No background: the map shows BETWEEN the chips, which is the whole point of moving
-   them here. The row is the same row at every stop and never collapses — every control
-   in it changes both halves (ADR-0121 §6), and a height above the split that changed
-   with the stop would relayout the canvas on the one gesture ADR-0121 §5 deliberately
-   made relayout-free. */
-.map-controls {
-  position: absolute;
-  top: 0;
-  inset-inline: 0;
-  z-index: 2;
-  box-sizing: border-box;
-  height: var(--map-controls-h, 46px);
-  display: flex;
-  align-items: center;
-  gap: 8px;
-  padding: 0 16px;
-}
-/* The list-only tab (offline, or no build config) has no split and no sheet, so the
-   same row renders in ordinary flow above the list: one component, two positionings,
-   never two components (ADR-0122 §8). */
-.map-controls.in-flow {
-  position: static;
-  height: auto;
-  flex-wrap: wrap;
-  padding: 14px 16px 10px;
-}
-.map-controls > * {
-  flex: 0 0 auto;
-}
-/* Search sits at the row's fixed end — and it is where the facet strip's `✕` then
-   appears, because a close control you have to scroll to reach is not a close control. */
-.map-controls > .map-search-btn,
-.map-controls > /* ── THE QUERY, AS THE ROW'S SECOND OCCUPANT (ADR-0131 §1) ───────────────────────
-   `סינון` already covers this row in place behind a pinned `✕`; the query is the second
-   occupant of that same slot, not a second mechanism. It grows to fill the row because a
-   query field that is 90px wide is a query field nobody types in.
-
-   44 inside a 46px row (`calc(--map-controls-h - 2px)`): design-language's touch floor
-   met BY GEOMETRY rather than by a hit area painted larger than the ink — the point
-   ADR-0126 §3 had to make about the furniture band — and the split pays NOTHING, because
-   the row already exists and already floats over the canvas. `MAP_CONTROLS_H` stays 46,
-   so `mapFitPadding`'s top stays derived from it and the camera reads the same number.
-
-   It is the one member of this row that carries a fill, and ADR-0122's "no scrim, no card
-   background" still stands: the row AT REST is unchanged and still shows the map between
-   its chips. A text field with no ground is not a text field, and this one is transient.
-   The fill is the Index's own field treatment, so search reads the same wherever it
-   happens. */
-.map-controls > .map-querystrip {
-  flex: 1 1 auto;
-  min-width: 0;
-}
-.map-querystrip {
-  box-sizing: border-box;
-  display: flex;
-  align-items: center;
-  gap: 8px;
-  height: calc(var(--map-controls-h, 46px) - 2px);
+.modal-card {
+  width: 100%;
   background: var(--card);
   border: 1px solid var(--line);
-  border-radius: 999px;
-  padding: 0 12px;
+  box-shadow: var(--elevation-floating);
+  /* Focus lands here (tabIndex -1); it is not keyboard-tabbable, so no ring. */
+  outline: none;
+}
+
+.modal-overlay[data-variant='sheet'] .modal-card {
+  max-width: 480px;
+  border-start-start-radius: var(--radius-16);
+  border-start-end-radius: var(--radius-16);
+  padding: var(--space-4);
+  /* Clear the home indicator on the bottom-anchored variant. */
+  padding-block-end: calc(var(--space-4) + var(--safe-bottom));
+}
+
+.modal-overlay[data-variant='dialog'] .modal-card {
+  max-width: 340px;
+  border-radius: var(--radius-16);
+  padding: var(--space-4);
+}
+
+.modal-overlay[data-variant='full'] .modal-card {
+  height: 100%;
+  max-width: none;
+  /* The card fills 100% of the overlay, so it's what's actually visible —
+     override the base rule's white `--card` fill with the same page-grey the
+     overlay itself uses, or the overlay's own background would never show. */
+  background: var(--screen);
+  border: 0;
+  box-shadow: none;
+  display: flex;
+  flex-direction: column;
+  overflow: hidden;
+}
+
+.modal-title {
+  font-weight: 700;
+  font-size: var(--text-h3);
+  line-height: var(--leading-snug);
+  color: var(--indigo);
+  margin-block-end: var(--space-3);
+}
+
+@keyframes modal-fade {
+  from {
+    opacity: 0;
+  }
+  to {
+    opacity: 1;
+  }
+}
+
+/* ═══ ui/primitives/field.css — generated, do not edit here ═══ */
+/* One field shell (U-05). Token-based (Wave-0), logical properties only for RTL.
+   Neutral chrome: the control border/background stay neutral; a focused control
+   picks up teal (design-language: teal = location, but reused app-wide as the
+   input focus hue), and the error slot uses --miss. */
+
+.field {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-1);
+}
+
+.field-label {
+  font-size: var(--text-caption);
+  font-weight: 700;
   color: var(--muted);
 }
-.map-querystrip .icon {
-  width: 15px;
-  height: 15px;
-  flex: 0 0 auto;
-}
-.map-querystrip input {
-  flex: 1;
-  min-width: 0;
-  border: 0;
-  outline: 0;
+
+.field input,
+.field textarea,
+.field select {
   font: inherit;
   font-size: var(--text-body);
-  background: none;
+  font-weight: 500;
   color: var(--ink);
-}
-.map-facets-close {
-  margin-inline-start: auto;
+  background: var(--card);
+  border: 1px solid var(--line);
+  border-radius: var(--radius-12);
+  padding-block: var(--space-2);
+  padding-inline: var(--space-3);
 }
 
-/* THE ONE FILTER CONTROL. At rest it says `סינון`; with a facet on it states WHICH
-   facets are on and takes the mode accent, because a filter that hides the fact that it
-   is filtering is the defect ADR-0119 exists to prevent. It carries NO count: the open
-   strip already answers "how many", and a fourth number would be a fourth thing to keep
-   coupled (§2). */
-.map-facets {
-  display: inline-flex;
+.field textarea {
+  min-height: 56px;
+  resize: vertical;
+}
+
+.field input:focus-visible,
+.field textarea:focus-visible,
+.field select:focus-visible {
+  outline: none;
+  border-color: var(--teal);
+}
+
+.field-error {
+  margin: 0;
+  font-size: var(--text-caption);
+  font-weight: 700;
+  color: var(--miss);
+}
+
+/* The hint slot — the error slot's quiet peer. Muted and regular-weight, so a note
+   about an empty field cannot be mistaken for something blocking the save. */
+.field-hint {
+  margin: 0;
+  font-size: var(--text-caption);
+  line-height: 1.45;
+  color: var(--muted);
+}
+
+/* ═══ ui/primitives/choice-grid.css — generated, do not edit here ═══ */
+/* ChoiceGrid — icon/label single-select cards. Ported from the shipped
+   `.bs-typesel`/`.bs-typecard` document + booking selectors in screens.css, under
+   component-scoped classes, spacing/radius/type from the Wave-0 tokens where they
+   map. Selected = neutral --cta ring + faint ink fill (never a semantic hue). */
+
+.choice-grid {
+  display: grid;
+  grid-template-columns: repeat(var(--choice-cols, 4), 1fr);
+  gap: var(--space-2);
+}
+
+.choice-card {
+  display: flex;
+  flex-direction: column;
   align-items: center;
   gap: 5px;
-  border: 1px solid var(--line);
-  background: var(--card);
-  color: var(--ink);
-  border-radius: 999px;
-  padding: 6px 12px;
   font: inherit;
-  font-size: 12px;
-  font-weight: 700;
+  background: var(--card);
+  border: 1px solid var(--line);
+  border-radius: var(--radius-12);
+  padding: var(--space-3) var(--space-1);
   cursor: pointer;
-  white-space: nowrap;
 }
-.map-facets.on {
-  background: var(--idx-accent);
-  border-color: var(--idx-accent);
-  color: var(--idx-accent-text);
+.choice-card:focus-visible {
+  outline: none;
+  border-color: var(--cta);
 }
-/* EXPANDED: the strip covers the row IN PLACE (ADR-0100 §3's shape, which ADR-0101
-   superseded for search because a keyboard plus a result list left no room for either —
-   a facet strip has neither, and its results are the pins and rows already on screen, so
-   the change has to stay visible while you make it). It scrolls with the same edge fade,
-   so a half-cut chip reads as "more this way" rather than as a broken cutoff. */
-.map-controls > .map-facetstrip {
-  flex: 1 1 auto;
-  min-width: 0;
+.choice-card:disabled {
+  cursor: default;
+  opacity: 0.6;
 }
-.map-facetstrip {
+
+.choice-card-ic {
+  font-size: var(--text-h3);
+  line-height: 1;
+}
+.choice-card-lbl {
+  font-size: var(--text-caption);
+  font-weight: 700;
+  color: var(--muted);
+}
+
+.choice-card.on {
+  border-color: var(--cta);
+  background: color-mix(in srgb, var(--ink) 5%, transparent);
+}
+.choice-card.on .choice-card-lbl {
+  color: var(--ink);
+}
+
+/* pills layout — a horizontally-scrollable row (ADR-0098: the Index category
+   filter, too many options for a fixed grid on a narrow phone). Selected state
+   stays the same neutral rule as the grid cards: ink fill, never a semantic hue. */
+.choice-grid.pills {
   display: flex;
-  align-items: center;
-  gap: 8px;
   overflow-x: auto;
+  gap: var(--space-2);
+  padding-block-end: 2px;
   scrollbar-width: none;
+  /* scroll-snap-type + scroll-snap-align (below) align the row's resting
+     scroll position to a chip boundary at the leading edge, including on
+     first load — without it the row can rest at any offset, bisecting the
+     chip nearest the container edge. It can't fix the TRAILING edge (the
+     container width is never an exact multiple of chip widths, so a peek is
+     inherent); a mask-image fade handles that so the peek reads as a "scroll
+     for more" affordance instead of a hard cutoff (ADR-0100 §6). The gradient
+     direction is physical (`to right`), correct in both directions since RTL
+     only reorders flex children, not `mask-image`'s own coordinate space. */
   scroll-snap-type: x mandatory;
-  /* Physical `to right` on purpose: RTL reorders flex children, not `mask-image`'s own
-     coordinate space (ADR-0100 §6). */
   -webkit-mask-image: linear-gradient(
     to right,
     transparent 0,
@@ -7144,286 +7763,318 @@ button.wp-av:focus-visible {
     transparent 100%
   );
 }
-.map-facetstrip::-webkit-scrollbar {
-  display: none;
+.choice-grid.pills::-webkit-scrollbar {
+  height: 0;
 }
-.map-facetstrip > * {
+.choice-pill {
   flex: 0 0 auto;
-  scroll-snap-align: start;
-}
-/* The outer strip owns the scroll and the fade now, so the pills group inside it is a
-   plain flex group: two nested scrollers fight, and two nested masks fade a chip twice. */
-.map-facetstrip .choice-grid.pills {
-  flex: 0 0 auto;
-  overflow: visible;
-  scroll-snap-type: none;
-  -webkit-mask-image: none;
-  mask-image: none;
-  padding-block-end: 0;
-}
-/* ── THE QUERY, AS THE ROW'S SECOND OCCUPANT (ADR-0131 §1) ───────────────────────
-   `סינון` already covers this row in place behind a pinned `✕`; the query is the second
-   occupant of that same slot, not a second mechanism. It grows to fill the row because a
-   query field that is 90px wide is a query field nobody types in.
-
-   44 inside a 46px row (`calc(--map-controls-h - 2px)`): design-language's touch floor
-   met BY GEOMETRY rather than by a hit area painted larger than the ink — the point
-   ADR-0126 §3 had to make about the furniture band — and the split pays NOTHING, because
-   the row already exists and already floats over the canvas. `MAP_CONTROLS_H` stays 46,
-   so `mapFitPadding`'s top stays derived from it and the camera reads the same number.
-
-   It is the one member of this row that carries a fill, and ADR-0122's "no scrim, no card
-   background" still stands: the row AT REST is unchanged and still shows the map between
-   its chips. A text field with no ground is not a text field, and this one is transient.
-   The fill is the Index's own field treatment, so search reads the same wherever it
-   happens. */
-.map-controls > .map-querystrip {
-  flex: 1 1 auto;
-  min-width: 0;
-}
-.map-querystrip {
-  box-sizing: border-box;
   display: flex;
-  align-items: center;
-  gap: 8px;
-  height: calc(var(--map-controls-h, 46px) - 2px);
-  background: var(--card);
-  border: 1px solid var(--line);
-  border-radius: 999px;
-  padding: 0 12px;
-  color: var(--muted);
-}
-.map-querystrip .icon {
-  width: 15px;
-  height: 15px;
-  flex: 0 0 auto;
-}
-.map-querystrip input {
-  flex: 1;
-  min-width: 0;
-  border: 0;
-  outline: 0;
-  font: inherit;
-  font-size: var(--text-body);
-  background: none;
-  color: var(--ink);
-}
-.map-facets-close {
-  display: grid;
-  place-items: center;
-  width: 30px;
-  height: 30px;
-  border-radius: 999px;
-  border: 1px solid var(--line);
-  background: var(--card);
-  color: var(--muted);
-  padding: 0;
-  cursor: pointer;
-}
-.map-facets-close .icon {
-  width: 15px;
-  height: 15px;
-}
-
-/* ── THE SORT CONTROL LIVES WITH THE LIST (§2) ───────────────────────────────────
-   `קרוב עכשיו` re-orders the rows and annotates them with distances, so it sits in the
-   sheet's own top row — fixed, visible at every stop, and costing no height. The toggle
-   is anchored at the trailing end and does not move when the chip leaves. */
-.wp-snapsheet-headrow .map-nearchip {
-  margin-inline-end: auto;
-  transition:
-    opacity var(--t-quick) var(--ease-standard),
-    transform var(--t-quick) var(--ease-standard),
-    visibility 0s;
-}
-/* At the map extreme no rows are on screen, so the chip would re-order and annotate
-   nothing you can see — the "button that looks like it does something and does nothing"
-   ADR-0109's session-105 amendment refused. What carries the FACT there is the canvas's
-   own "me" dot, which comes from `located`, not from the sort intent.
-
-   `visibility`, not `display`: it keeps the chip MOUNTED so both directions animate,
-   while taking it out of the tab order and the accessibility tree and making it
-   unhittable — a control you cannot see must not be tappable. The 0s-delayed switch is
-   what holds it until the fade ends. Offline the chip is UNMOUNTED instead, because
-   there it cannot exist at all: two different facts, two different mechanisms (§5). */
-.map-screen[data-view='map'] .wp-snapsheet-headrow .map-nearchip {
-  opacity: 0;
-  transform: translateY(4px) scale(0.96);
-  visibility: hidden;
-  transition:
-    opacity var(--t-quick) var(--ease-exit),
-    transform var(--t-quick) var(--ease-exit),
-    visibility 0s linear var(--t-quick);
-}
-
-/* רשימה · מפה — a shortcut to the two extremes of the SAME height axis the handle
-   drags, so the two controls cannot disagree. Its fill is a THUMB whose position IS the
-   stop (§5): ADR-0121 §5 claimed "one state, two controls" in code and then rendered
-   `half` as neither button on, which reads as a broken segmented control. At `half` the
-   thumb narrows and centres, so it sits visibly BETWEEN the two labels. */
-.map-viewtoggle {
-  position: relative;
-  display: flex;
-  background: color-mix(in srgb, var(--ink) 6%, transparent);
-  border: 1px solid var(--line);
-  border-radius: 999px;
-  padding: 2px;
-  gap: 2px;
-}
-.map-viewtoggle button {
-  font: inherit;
-  font-size: 12px;
-  font-weight: 600;
-  border: 0;
-  background: transparent;
-  color: var(--muted);
-  border-radius: 999px;
-  padding: 4px 15px;
-  cursor: pointer;
-}
-/* The thumb draws the fill now, so the segment stops carrying it — only the ink weight
-   still says which extreme is live. */
-.map-viewtoggle button {
-  position: relative;
-  z-index: 1;
-}
-.map-viewtoggle button.on {
-  color: var(--ink);
-}
-.map-viewtoggle::before {
-  content: '';
-  position: absolute;
-  top: 2px;
-  bottom: 2px;
-  width: calc(50% - 2px);
-  border-radius: 999px;
-  background: var(--card);
-  box-shadow: 0 1px 3px rgba(22, 35, 61, 0.14);
-  inset-inline-start: calc(25% + 1px);
-  transition: inset-inline-start var(--t-base) var(--ease-standard);
-}
-.map-screen[data-view='half'] .map-viewtoggle::before {
-  width: 32%;
-  inset-inline-start: 34%;
-}
-.map-screen[data-view='full'] .map-viewtoggle::before {
-  inset-inline-start: 2px;
-}
-.map-screen[data-view='map'] .map-viewtoggle::before {
-  inset-inline-start: 50%;
-}
-/* Reduced motion: the thumb JUMPS. It still moves — only the easing is dropped, and the
-   resting position carries the whole meaning either way (ADR-0098 §4). */
-@media (prefers-reduced-motion: reduce) {
-  .map-viewtoggle::before {
-    transition: none;
-  }
-}
-
-/* The whole day as one free Google directions link (§10) — teal, because it is a
-   location affordance like `נווט`, and it ships with the connector so it appears in
-   the same Plan-mode day scope. */
-.map-dayroute {
-  display: inline-flex;
   align-items: center;
   gap: 5px;
-  border: 1px solid var(--teal);
-  color: var(--teal);
-  background: var(--card);
-  border-radius: 999px;
-  padding: 6px 12px;
-  font-size: 12px;
+  font: inherit;
+  font-size: var(--text-caption);
   font-weight: 700;
-  text-decoration: none;
+  color: var(--muted);
+  background: var(--card);
+  border: 1px solid var(--line);
+  border-radius: var(--radius-999);
+  padding: 6px 12px;
+  cursor: pointer;
+  scroll-snap-align: start;
+  transition:
+    background 0.15s ease,
+    color 0.15s ease,
+    border-color 0.15s ease,
+    transform 0.12s ease;
+}
+/* compact pills — glyph + count, no word (ADR-0122 §2). The chip loses the padding
+   the word needed; its accessible name comes from the button's `aria-label`, not from
+   what is drawn. */
+.choice-grid.pills.compact .choice-pill {
+  padding: 6px 10px;
+}
+/* The event/idea category selector (ADR-0109 §11) wants a slightly larger tap
+   target than the compact Index filter chips that share `.choice-pill`; scoped
+   to the `.category-pills` wrapper so the Index chips stay as designed (ADR-0100). */
+.category-pills .choice-pill {
+  font-size: var(--text-secondary);
+  padding: 8px 14px;
+  gap: 6px;
+}
+
+.choice-pill-count {
+  font-family: var(--font-mono);
+  opacity: 0.75;
+}
+.choice-pill.on .choice-pill-count {
+  opacity: 0.85;
+}
+.choice-pill:active {
+  transform: scale(0.94);
+}
+.choice-pill:focus-visible {
+  outline: none;
+  border-color: var(--cta);
+}
+.choice-pill:disabled {
+  cursor: default;
+  opacity: 0.6;
+}
+.choice-pill.on {
+  background: var(--ink);
+  border-color: var(--ink);
+  color: #fff;
+}
+
+/* ═══ ui/primitives/form-actions.css — generated, do not edit here ═══ */
+/* A form body inside a Modal sheet: the scroll container the sticky action bar
+   pins to (U-01/U-02). Capped height keeps a long form within the sheet; the
+   RTL left-edge scrollbar is hidden (it reads as a stray line). */
+.modal-form {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-3);
+  max-height: 75vh;
+  max-height: 75dvh;
+  overflow-y: auto;
+  scrollbar-width: none;
+}
+.modal-form::-webkit-scrollbar {
+  display: none;
+}
+
+/* One form action bar (U-02). Sticky to the bottom of its scroll container so
+   the primary stays reachable while a long form scrolls; the card background
+   masks fields sliding under it. Token-based, logical properties only (RTL). */
+
+.form-actions {
+  position: sticky;
+  inset-block-end: 0;
+  z-index: 1;
+  display: flex;
+  gap: var(--space-3);
+  padding-block-start: var(--space-3);
+  background: var(--card);
+}
+
+.form-actions button {
+  font: inherit;
+  font-weight: 700;
+  font-size: var(--text-secondary);
+  border-radius: var(--radius-12);
+  padding: var(--space-3);
+  cursor: pointer;
+}
+
+/* Primary spans the row; the ghost secondary is a small trailing pill. */
+.fa-primary {
+  flex: 1;
+  border: none;
+  background: var(--cta);
+  color: var(--cta-text);
+}
+.fa-primary:disabled {
+  opacity: 0.6;
+  cursor: default;
+}
+
+.fa-secondary {
+  flex: 0 0 auto;
+  padding-inline: var(--space-5);
+  background: transparent;
+  color: var(--muted);
+  border: 1px solid var(--soft-line);
+}
+
+/* Destructive: de-emphasized text button on its own row, never a filled CTA. */
+.fa-destructive {
+  align-self: center;
+  margin-block-start: var(--space-1);
+  font: inherit;
+  font-weight: 700;
+  font-size: var(--text-secondary);
+  color: var(--miss);
+  background: transparent;
+  border: none;
+  padding: var(--space-2);
+  cursor: pointer;
+}
+
+.form-actions button:focus-visible,
+.fa-destructive:focus-visible {
+  outline: 2.5px solid var(--teal);
+  outline-offset: 2px;
+}
+
+/* ═══ ui/primitives/place-picker.css — generated, do not edit here ═══ */
+/* Places picker (ADR-0110 §1 / ADR-0109 §12). Teal is the location affordance
+   (design-language rule 4); selection chrome stays neutral. */
+.place-picker {
+  display: flex;
+  align-items: center;
+  gap: var(--space-2);
+}
+
+.pp-trigger {
+  flex: 1;
+  display: flex;
+  align-items: center;
+  gap: var(--space-2);
+  min-height: 44px;
+  padding: var(--space-2) var(--space-3);
+  border: 1px solid var(--line);
+  border-radius: var(--radius-12);
+  background: var(--card);
+  color: var(--faint);
+  font: inherit;
+  text-align: start;
+  cursor: pointer;
+}
+
+.pp-trigger.filled {
+  color: var(--ink);
+}
+
+.pp-trigger-icon {
+  color: var(--teal);
+  flex: none;
+}
+
+.pp-trigger-label {
+  overflow: hidden;
+  text-overflow: ellipsis;
   white-space: nowrap;
 }
 
-/* A tapped ghost, surfaced as the one row it is (§6) — its row is not in the
-   scoped list, so the tap is how you learn what it is and which day it belongs to. */
-.map-ghostrow {
-  margin-bottom: 4px;
+.pp-clear {
+  flex: none;
+  width: 32px;
+  height: 32px;
+  border: none;
+  border-radius: var(--radius-999);
+  background: transparent;
+  color: var(--muted);
+  font-size: 0.9rem;
+  cursor: pointer;
 }
 
-/* ── the facets themselves (they reuse the Index grammar) ────────────────── */
-/* the "אולי" facet is an independent toggle (ADR-0110 §2), dashed/provisional
-   when off, filled with the mode accent when on. */
-.map-maybes {
-  flex: 0 0 auto;
+.pp-sheet {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-3);
+}
+
+.pp-search {
+  width: 100%;
+  min-height: 44px;
+  padding: var(--space-2) var(--space-3);
+  border: 1px solid var(--line);
+  border-radius: var(--radius-12);
+  background: var(--card);
+  color: var(--ink);
+  font: inherit;
+}
+
+/* The two corpora's boundary (ADR-0131 §10). `.map-grouphead` is the Map tab's and is
+   scoped to it, so this is the picker's own one-line equivalent rather than a class
+   borrowed across surfaces — same job, same voice, no shared selector to keep in sync. */
+.pp-group {
+  font-size: 11.5px;
+  font-weight: 700;
+  color: var(--muted);
+  margin: 10px 2px 4px;
+}
+
+.pp-results {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-1);
+  max-height: 46vh;
+  overflow-y: auto;
+}
+
+.pp-result {
+  width: 100%;
+  display: flex;
+  flex-wrap: wrap;
+  align-items: baseline;
+  gap: var(--space-1) var(--space-2);
+  padding: var(--space-3);
+  border: none;
+  border-radius: var(--radius-12);
+  background: transparent;
+  color: var(--ink);
+  font: inherit;
+  text-align: start;
+  cursor: pointer;
+}
+
+.pp-result:hover:not(:disabled),
+.pp-result:focus-visible {
+  background: var(--line);
+}
+
+.pp-result:disabled {
+  opacity: 0.5;
+  cursor: default;
+}
+
+.pp-primary {
+  font-weight: 600;
+}
+
+.pp-secondary {
+  color: var(--muted);
+  font-size: 0.85rem;
+}
+
+.pp-chip {
+  margin-inline-start: auto;
+  padding: 2px var(--space-2);
+  border-radius: var(--radius-999);
+  background: color-mix(in srgb, var(--teal) 16%, transparent);
+  color: var(--teal);
+  font-size: 0.75rem;
+  white-space: nowrap;
+}
+
+.pp-name-only {
+  align-self: flex-start;
+  padding: var(--space-2) var(--space-3);
+  border: 1px dashed var(--line);
+  border-radius: var(--radius-12);
+  background: transparent;
+  color: var(--ink);
+  font: inherit;
+  cursor: pointer;
+}
+
+.pp-name-only:disabled {
+  opacity: 0.5;
+  cursor: default;
+}
+
+.pp-cost-footer {
+  margin: 0;
+  color: var(--faint);
+  font-size: 0.75rem;
+  text-align: center;
+}
+
+/* The `＋ מיקום` trigger (`AddLocationButton`): a dashed, muted pill — provisional,
+   NOT the teal navigate action, since there is nowhere to navigate yet. Ported from
+   the Map row's one-off `.map-addbtn` when a placeless booking's `מיקום` fact needed
+   the same affordance (rule 8). */
+.pp-addbtn {
   display: inline-flex;
   align-items: center;
   gap: 5px;
   border: 1px dashed var(--soft-line);
-  background: var(--card);
-  color: var(--ink);
-  border-radius: 999px;
-  padding: 7px 12px;
-  font: inherit;
-  font-size: 12.5px;
-  font-weight: 600;
-  cursor: pointer;
-  white-space: nowrap;
-}
-.map-maybes .cnt {
-  font-family: var(--font-mono);
-  font-size: 11px;
-  font-weight: 700;
   color: var(--muted);
-}
-.map-maybes.on {
-  background: var(--idx-accent);
-  border-color: var(--idx-accent);
-  border-style: solid;
-  color: var(--idx-accent-text);
-}
-.map-maybes.on .cnt {
-  color: rgba(255, 255, 255, 0.8);
-}
-.map-search-btn {
-  flex: 0 0 auto;
-  width: 34px;
-  height: 34px;
-  border-radius: 10px;
-  border: 1px solid var(--line);
-  background: var(--card);
-  display: grid;
-  place-items: center;
-  cursor: pointer;
-  color: var(--muted);
-}
-
-/* ── the day scope: the map-local "all days" chip (ADR-0110 §4) ───────────
-   `.map-scopehint`'s sentence retired with the two fixed rows (ADR-0122 §2): the chip's
-   own on/off state says which scope is on, and the header day strip already drops its
-   filled selection while all-days is live (session 81's `allScope`). */
-.map-scopechip {
-  display: inline-flex;
-  align-items: center;
-  gap: 5px;
-  border: 1px solid var(--line);
-  background: var(--card);
-  color: var(--ink);
-  border-radius: 999px;
-  padding: 6px 12px;
-  font-size: 12px;
-  font-weight: 700;
-  cursor: pointer;
-}
-.map-scopechip.on {
-  background: var(--idx-accent);
-  border-color: var(--idx-accent);
-  color: var(--idx-accent-text);
-}
-/* ── "near me now" (ADR-0109 §6-7) ──────────────────────────────────────────
-   Teal throughout: near-me, the distance chips and נווט are LOCATION affordances,
-   which is exactly what teal is for in the budget (ADR-0028). No amber here — the
-   only time anchor on this surface is navigate-to-next's tag. */
-.map-nearchip {
-  display: inline-flex;
-  align-items: center;
-  gap: 5px;
-  border: 1px solid var(--teal);
-  color: var(--teal);
-  background: color-mix(in srgb, var(--teal) 10%, transparent);
+  background: transparent;
   border-radius: 999px;
   padding: 6px 12px;
   font: inherit;
@@ -7432,1561 +8083,120 @@ button.wp-av:focus-visible {
   cursor: pointer;
   white-space: nowrap;
 }
-.map-nearchip.on {
-  background: var(--teal);
-  color: var(--cta-text);
-}
-/* refused: the chip stays present but stops claiming it can do anything — the
-   banner beside it carries the explanation and the retry. */
-.map-nearchip.refused {
-  border-style: dashed;
-  border-color: var(--soft-line);
-  color: var(--muted);
-  background: transparent;
-}
-
-/* the reason-first pre-prompt — an inline card, teal-edged (it is about location) */
-.map-geoprompt {
-  background: var(--card);
-  border: 1px solid var(--teal);
-  border-radius: 14px;
-  padding: 13px 14px;
-  margin-bottom: 12px;
-  box-shadow: 0 6px 16px -8px color-mix(in srgb, var(--teal) 45%, transparent);
-}
-
-/* ── CANVAS FURNITURE THAT COMES AND GOES (ADR-0122 §5/§6/§7) ────────────────────
-   The pre-prompt asks a question about the MAP and used to render inside the list's
-   scroll region, which at the map extreme is not on screen at all. Over the canvas it
-   costs the split no height: neither half shrinks, the pane's box does not change, and
-   therefore the camera does not move for it — which is the deciding argument over a card
-   between the controls and the split, which would shorten the pane while open and re-fit
-   the camera under the reader. A SIBLING of `.map-pane`, never inside it (Google owns the
-   canvas div's children) and never a wrapper around it (that remounts it, and a remount
-   is a billed map load — ADR-0121 §4). Not the pane's BOTTOM: Google's attribution is
-   bottom-inline-start and the ToS forbids obscuring it (ADR-0106 §B). */
-.map-split > .map-geoprompt {
-  position: absolute;
-  top: calc(var(--map-controls-h, 46px) + 8px);
-  inset-inline: 8px;
-  z-index: 2;
-  margin-bottom: 0;
-}
-/* ONE floating object over the canvas at a time: a 250px pane cannot hold a card AND two
-   floating controls and still read as a map, and the card is transient (once per session,
-   both buttons dismiss it). `:has()` rather than a prop, deliberately — `MapPane`'s props
-   stay identity-stable on a screen that re-renders every second (frontend/CLAUDE.md).
-   (ADR-0126 §2: the rule survives the second camera control by naming the CLUSTER
-   rather than growing a third selector — which is most of why the two buttons are
-   one `.map-camctl` element.) */
-.map-split:has(> .map-geoprompt) .map-areacount,
-.map-split:has(> .map-geoprompt) .map-camctl {
-  display: none;
-}
-
-/* THE PLACE CARD — the tapped pin's own row, hosted on the canvas (§7), rendered only
-   where the sheet cannot show that row. The bottom gutter is contractual, not taste:
-   Google draws its logo and terms link at the bottom-inline-start of the map div and the
-   ToS forbids obscuring them (ADR-0106 §B), so the card clears them by the attribution's
-   own height. */
-.map-placecard {
-  position: absolute;
-  inset-inline: 8px;
-  /* Measured against the PANE's bottom, not the split's: the card's containing block is
-     `.map-split`, whose bottom is the screen's, so the sheet's own height has to be in
-     the sum or the card sits behind the sheet — and over the attribution it was meant to
-     clear. */
-  bottom: calc(var(--sheet-h, 0px) + var(--map-attr-h, 22px) + 8px);
-  z-index: 2;
-}
-.map-placecard .place {
-  margin-bottom: 0;
-  box-shadow: 0 12px 28px -12px color-mix(in srgb, var(--ink) 45%, transparent);
-}
-
-/* Three objects on this surface come and go — the sort chip leaving at the map extreme,
-   the card arriving on a pin tap, the pre-prompt arriving on intent — so they share ONE
-   rule rather than growing three motion vocabularies on one canvas: a small rise and a
-   fade, at `--t-quick` (the token whose stated job is toggles).
-
-   App.css kills every transition and animation under `prefers-reduced-motion` with
-   `!important`, so the RESTING states carry the whole meaning. They do: present or absent
-   is the entire state, and nothing here is information only the motion conveys. */
-@keyframes map-furniture-in {
-  from {
-    opacity: 0;
-    transform: translateY(6px);
-  }
-}
-.map-placecard,
-.map-split > .map-geoprompt {
-  animation: map-furniture-in var(--t-quick) var(--ease-standard);
-}
-.map-geoprompt .gt {
-  font-size: 13.5px;
-  font-weight: 700;
-  margin-bottom: 4px;
-}
-.map-geoprompt .gm {
-  font-size: 12px;
-  color: var(--muted);
-  line-height: 1.5;
-  margin-bottom: 11px;
-}
-.map-geoprompt .gbtns {
-  display: flex;
-  gap: 8px;
-}
-.map-gbtn {
-  font: inherit;
-  font-size: 12.5px;
-  font-weight: 700;
-  border-radius: 10px;
-  padding: 9px 14px;
-  border: 1px solid var(--line);
-  background: var(--card);
-  color: var(--muted);
-  cursor: pointer;
-}
-.map-gbtn.primary {
-  background: var(--teal);
-  border-color: var(--teal);
-  color: var(--cta-text);
-}
-
-/* the banner's trailing affordance: a retry, or the settings hint when the browser
-   has hard-denied us and a retry could not re-prompt. */
-.map-georetry,
-.map-geohint {
-  margin-inline-start: 8px;
-  font: inherit;
-  font-size: inherit;
-  font-weight: 700;
-  white-space: nowrap;
-}
-.map-georetry {
-  border: 0;
-  background: none;
-  padding: 0;
-  color: var(--teal);
-  cursor: pointer;
-  text-decoration: underline;
-}
-.map-geohint {
-  color: var(--faint);
-  font-weight: 600;
-}
-
-/* the group header near-me sorts under */
-.map-grouphead {
-  display: flex;
-  align-items: center;
-  gap: 6px;
-  font-size: 11px;
-  font-weight: 700;
-  color: var(--muted);
-  margin: 2px 4px 8px;
-}
-.map-grouphead::after {
-  content: '';
-  flex: 1;
-  height: 1px;
-  background: var(--line);
-}
-
-/* per-row distance, above the נווט action in the trailing column */
-.map-dist {
-  font-size: 11.5px;
-  font-weight: 700;
-  color: var(--teal);
-  white-space: nowrap;
-}
-.map-dist.stale {
-  color: var(--faint);
-  font-weight: 600;
-}
-
-/* Offline the map desaturates and says "last saved" (design-language's offline
-   grammar): the rows are real, cached data — just not refreshable. */
-.map-screen[data-offline] .place {
-  filter: grayscale(35%);
-}
-
-/* ── the pinned-place list ──────────────────────────────────────────────── */
-.map-list {
-  display: flex;
-  flex-direction: column;
-}
-.place {
-  display: flex;
-  align-items: center;
-  /* The way-in block (`.map-refs`) is a full-width third line that appears on
-     selection, so the row wraps rather than squeezing it into the trailing column. */
-  flex-wrap: wrap;
-  gap: 11px;
-  background: var(--card);
-  border: 1px solid var(--line);
-  border-radius: 16px;
-  padding: 11px 12px;
-  margin-bottom: 9px;
-  box-shadow: 0 1px 2px rgba(14, 23, 41, 0.04);
-  cursor: pointer;
-}
-.place[role='button']:focus-visible {
-  outline: 2.5px solid var(--teal);
-  outline-offset: 2px;
-}
-/* The row half of the row ↔ pin selection (ADR-0121 §8). Neutral ink, deliberately
-   NOT amber: selecting a row is not a claim about what is next, and the two compose
-   on the same row when it happens to be both. */
-.place.selected {
-  border-color: var(--ink);
-  box-shadow: 0 0 0 2px color-mix(in srgb, var(--ink) 12%, transparent);
-}
-/* a pure shelf idea reads provisional — dashed + diagonal hatch (ADR-0011 soft). */
-.place.soft {
-  border-style: dashed;
-  border-color: var(--soft-line);
-  background:
-    repeating-linear-gradient(-45deg, rgba(22, 35, 61, 0.02) 0 6px, transparent 6px 12px),
-    var(--card);
-}
-/* navigate-to-next: the single time-anchor cue on the list (ADR-0106 §6 / ADR-0109
-   §6). Amber = time, spent on exactly one row — the list's form of the rendered
-   map's one amber ring, never a second accent on every pin. */
-.place.nextstop {
-  border-color: rgba(233, 166, 60, 0.34);
-  box-shadow: 0 0 0 3px rgba(233, 166, 60, 0.22);
-}
-/* The row half of the `עכשיו` cue, the same ring the next-stop row wears — where
-   you ARE is at least as much a time anchor as where you're going, and the two are
-   never on the same row (`eventPhase` is `now` or `upcoming`). The tag beside the
-   name is what tells them apart in words; the pulsing dot does it at a glance. */
-.place.nowstop {
-  border-color: rgba(233, 166, 60, 0.34);
-  box-shadow: 0 0 0 3px rgba(233, 166, 60, 0.22);
-}
-/* Behind you, on the CLOCK — the row's half of the pin's `saturate(.3)`. The two
-   halves of the split used to disagree about exactly this: the pin faded once a place
-   was behind you, the row only once a human had SKIPPED it. Keyed on the block
-   (`isDayUsagePast`, ADR-0124's single answer to "is this closed"), so the fade, the
-   `מה שמאחורינו` header and `מה נשאר` cannot make different claims about one place.
-
-   Light on purpose: the header already says it in words, so this reinforces the
-   message rather than carrying it. And NOT `.place.skipped`, which would be wrong
-   twice — that treatment is what session 137 took off the ambient tier (ADR-0109's
-   2026-07-27 amendment: the hotel you sleep in tonight read as finished), and it
-   means *a human said this did not happen*, which is a different claim from *the
-   clock passed it*. The `:not()` is what keeps a skipped-and-past row from wearing
-   both: this filter would otherwise compound with the badge's own below. */
-.place.behind:not(.skipped) {
-  filter: saturate(0.55);
-  opacity: 0.9;
-}
-
-/* A skipped place is handled and not happening (ADR-0117 §4): present, but not a live
-   commitment.
-
-   `.place.ambient` USED TO SHARE THIS RULE, on the reasoning that a mid-stay night is
-   also "present but not a live commitment". Half of that was wrong, and the split is
-   the point (ADR-0109's 2026-07-27 amendment): a skipped place is behind you, a night
-   you are sleeping somewhere is the most current fact on the day. Sharing one quiet
-   treatment made the one place you are guaranteed to come back to read as finished.
-   An ambient night now draws as an ordinary row; what marks it is the absence of a
-   number and a clock, not a fade. */
-.place.skipped {
-  background: var(--paper);
-  opacity: 0.85;
-  box-shadow: none;
-}
-
-.map-badge {
-  position: relative;
-  flex: 0 0 auto;
-  width: 40px;
-  height: 40px;
-  border-radius: 12px;
-  display: grid;
-  place-items: center;
-  font-size: 19px;
-  line-height: 1;
-}
-/* THE ORDER, on the row (ADR-0121 §6). The number is the place's index in the day's
-   sequence, and it was already on the pin — a list that omits it makes the two halves
-   of the split read as two different lists, which is what the number exists to
-   prevent. So it is the SAME stamp `.pin-n` draws, in the same corner, hung off the
-   badge the row already has rather than a second element beside it. Out of flow, so
-   the glyph stays centred; the `-5px` corner sits inside `.place`'s own padding, so
-   nothing clips. Absent (no attribute) for anything with no position in the schedule:
-   a ghost, an idea, an ambient stay night. */
-.map-badge[data-order]::before {
-  content: attr(data-order);
-  position: absolute;
-  top: -5px;
-  inset-inline-start: -5px;
-  min-width: 15px;
-  height: 15px;
-  padding: 0 3px;
-  display: grid;
-  place-items: center;
-  background: var(--ink);
-  color: var(--card);
-  font-family: var(--font-mono);
-  font-size: 9px;
-  font-weight: 700;
-  border-radius: 999px;
-  box-shadow: 0 0 0 1.5px var(--card);
-}
-.map-badge.cat-food {
-  background: var(--cat-food);
-}
-.map-badge.cat-lodging {
-  background: var(--cat-lodging);
-}
-.map-badge.cat-transit {
-  background: var(--cat-transit);
-}
-.map-badge.cat-leisure {
-  background: var(--cat-leisure);
-}
-.map-badge.cat-services {
-  background: var(--cat-services);
-}
-.place.soft .map-badge {
-  opacity: 0.72;
-  box-shadow: inset 0 0 0 1.5px var(--soft-line);
-}
-.place.skipped .map-badge {
-  filter: saturate(0.5);
-  opacity: 0.7;
-}
-/* coordless Place-lite: a listed-only row, dashed empty badge (ADR-0109 §3). */
-.map-badge.nocoord {
-  background: transparent;
-  border: 1.5px dashed var(--faint);
-  opacity: 0.7;
-}
-
-.map-main {
-  flex: 1;
-  min-width: 0;
-}
-.map-t {
-  font-size: 14.5px;
-  font-weight: 700;
-  color: var(--ink);
-  display: flex;
-  align-items: center;
-  gap: 6px;
-}
-/* A coordless Place-lite is genuinely incomplete data, so its name stays muted. An
-   ambient stay night is not — its name is the answer to "where am I sleeping". */
-.place.nocoord .map-t {
-  color: var(--muted);
-}
-.map-name {
-  overflow: hidden;
-  text-overflow: ellipsis;
-  white-space: nowrap;
-}
-.map-lock {
-  font-size: 10px;
-  flex: 0 0 auto;
-}
-.map-m {
-  font-size: 12px;
-  color: var(--muted);
-  margin-top: 2px;
-  display: flex;
-  flex-wrap: wrap;
-  gap: 4px 8px;
-}
-.map-tag {
-  display: inline-flex;
-  align-items: center;
-  gap: 3px;
-}
-.map-tag.mbadge {
-  color: var(--plan-deep);
-  font-weight: 700;
-}
-/* When this place is due — the row's time anchor, so amber, and mono like every
-   other clock reading in the app (ADR-0028 / design-language). */
-.map-tag.time {
-  font-family: var(--font-mono);
-  font-size: 11.5px;
-  font-weight: 700;
-  color: var(--amber-deep);
-}
-/* navigate-to-next: says WHICH row is next; the time beside it says when. */
-.map-tag.next {
-  color: var(--amber-deep);
-  font-weight: 700;
-}
-/* WHERE YOU ARE, RIGHT NOW. Amber like `next`, because both are time (ADR-0028),
-   and told apart by the same thing that tells the pins apart: motion. The dot is
-   Home's board blip (`.wp-board-live .blip`) at the row's scale, so the board, the
-   canvas and the list all beat together — one idiom, three surfaces.
-
-   The dot is a pseudo-element (no second span) and is a SOLID amber dot at rest,
-   with the ring layered on by the animation. `App.css`'s global reduced-motion rule
-   kills animations with `!important`, so the resting state has to carry the cue on
-   its own or the tag silently loses half its meaning. */
-.map-tag.now {
-  color: var(--amber-deep);
-  font-weight: 700;
-}
-.map-tag.now::before {
-  content: '';
-  width: 6px;
-  height: 6px;
-  border-radius: 50%;
-  background: var(--amber);
-  animation: map-row-now 2s infinite;
-}
-@keyframes map-row-now {
-  0% {
-    box-shadow: 0 0 0 0 rgba(233, 166, 60, 0.55);
-  }
-  70% {
-    box-shadow: 0 0 0 6px rgba(233, 166, 60, 0);
-  }
-  100% {
-    box-shadow: 0 0 0 0 rgba(233, 166, 60, 0);
-  }
-}
-/* the outcome tags (ADR-0117 §1): statuses, so the status tokens — --ok for a
-   visit, --miss for a skip. Amber stays on time, teal on location. */
-.map-tag.ok {
-  color: var(--ok);
-  font-weight: 700;
-}
-.map-tag.miss {
-  color: var(--miss);
-  font-weight: 700;
-}
-/* rating = cached Google value (ADR-0109 §9); the star glyph carries it, a
-   neutral amber-ink, not a semantic hue. */
-.map-tag.rate {
-  color: var(--amber-deep);
-  font-weight: 700;
-}
-
-.map-right {
-  flex: 0 0 auto;
-  display: flex;
-  flex-direction: column;
-  align-items: flex-end;
-  gap: 7px;
-}
-/* the one labelled trailing action: directions (teal = location). Viewing the
-   place is the row tap (ADR-0109 §1). */
-.map-navbtn {
-  display: inline-flex;
-  align-items: center;
-  gap: 5px;
-  border: 1px solid var(--teal);
-  color: var(--teal);
-  background: var(--card);
-  border-radius: 999px;
-  padding: 6px 12px;
-  font: inherit;
-  font-size: 12px;
-  font-weight: 700;
-  cursor: pointer;
-  white-space: nowrap;
-  text-decoration: none;
-}
-.map-navbtn:hover {
-  background: color-mix(in srgb, var(--teal) 10%, transparent);
-}
-/* The coordless `＋ מיקום` affordance is the shared `AddLocationButton`
-   (ui/primitives/place-picker.css) — a placeless booking's מיקום fact needed the
-   same pill, so it stopped being this row's one-off. */
-
-/* ── The way in to the entity (ADR-0121 §8) ────────────────────────────────────
-   A place is only in the trip because something REFERENCES it (ADR-0112), and the
-   details a traveller wants — the confirmation code, the notes, the documents, the
-   time it was booked for — live on that event/booking, never on the `Place`. So a
-   place needs a way through to it.
-
-   Revealed by SELECTION rather than sitting on every row: the row is already dense
-   (badge · name · meta · distance · נווט), and only one row is selected at a time.
-   Each entry is labelled in the reference's own words, not a generic "details", so
-   the control says where it goes — which is also what earns it a row. Full-width and
-   ≥40px, so it is a real touch target (ADR-0017) rather than a tappable 11px tag. */
-.map-refs {
-  flex-basis: 100%;
-  display: flex;
-  flex-direction: column;
-  gap: 4px;
-  margin-top: 8px;
-  padding-top: 8px;
-  border-top: 1px solid var(--line);
-}
-.map-ref {
-  display: flex;
-  align-items: center;
-  gap: 6px;
-  width: 100%;
-  padding: 7px 8px;
-  min-height: 40px;
-  border: 0;
-  border-radius: 10px;
-  background: color-mix(in srgb, var(--ink) 4%, transparent);
-  color: var(--ink);
-  font: inherit;
-  font-size: 12.5px;
-  font-weight: 600;
-  text-align: start;
-  cursor: pointer;
-}
-.map-ref .map-ref-kind {
-  color: var(--muted);
-  font-weight: 500;
-  flex: 0 0 auto;
-}
-.map-ref .map-ref-label {
-  overflow: hidden;
-  text-overflow: ellipsis;
-  white-space: nowrap;
-}
-.map-ref .icon {
-  width: 14px;
-  height: 14px;
-  margin-inline-start: auto;
-  flex: 0 0 auto;
-  color: var(--faint);
-}
-
-/* ── Plan-mode place research (Phase 5, ADR-0115) ────────────────────────────
-   The Google half of the search overlay. It reuses the list's own row grammar
-   above (.place / .map-badge / .map-main / .map-right) — these are only the
-   pieces that don't exist yet: the arm card, the ＋ אולי action, the "already
-   ours" statement, and the neutral result badge. ＋ אולי is plan violet: adding
-   an idea is a Plan-mode building action, not a location affordance (teal) or a
-   time anchor (amber) — the budget stays where ADR-0028 put it. */
-.map-res-hint {
-  font-size: 12px;
-  color: var(--faint);
-  line-height: 1.5;
-  margin: 2px 4px 10px;
-}
-
-/* a result row: the whole name block is a real link out to the Google place, so
-   a candidate can be vetted before we pay to resolve it (ADR-0115 §2). */
-.map-res-open {
-  /* A `<button>` now, not an `<a>` (ADR-0134 §5): the tap frames the place rather than
-     leaving the app, so it needs the reset a bare link never did. */
-  appearance: none;
-  border: 0;
-  background: none;
-  text-align: start;
-  font: inherit;
-  cursor: pointer;
-  display: flex;
-  align-items: center;
-  gap: 11px;
-  flex: 1;
-  min-width: 0;
-  text-decoration: none;
-  color: inherit;
-}
-.place.result {
-  cursor: default;
-}
-/* not ours yet: the same dashed neutral pin a coordless Place-lite wears */
-.map-badge.result {
-  background: transparent;
-  border: 1.5px dashed var(--faint);
-  color: var(--muted);
-  font-size: 16px;
-}
-/* ── THE CHOSEN CANDIDATE (owner, session 166) ───────────────────────────────────
-   `.place.selected` above is calibrated for a trip row: one row of many like it, all of
-   them yours, so an ink hairline plus a 12% halo is enough to say "this one". A result row
-   is not that case. It sits under a list of near-identical Google answers, its resting
-   badge is a DASHED neutral outline (the quietest badge on the surface), and the selection
-   is the answer to the only question being asked — which of these is the place.
-
-   So the row states it three ways at once, all of them the same idea the canvas ring now
-   states by filling: a heavier halo, a tinted surface, and the badge going SOLID. The badge
-   is the important one — it is the row's picture of the ring, so filling both is one cue in
-   two form factors, exactly as the pin is the badge on the canvas (ADR-0109 §3). Still
-   `--ink`: selection has never been a semantic colour here (ADR-0028). */
-.place.result.selected {
-  border-color: var(--ink);
-  box-shadow: 0 0 0 3px color-mix(in srgb, var(--ink) 20%, transparent);
-  background: color-mix(in srgb, var(--ink) 5%, var(--card));
-}
-.place.result.selected .map-badge.result {
-  border-style: solid;
-  border-color: var(--ink);
-  background: var(--ink);
-  color: var(--card);
-}
-/* `--cta`, NOT `--plan`, and that is a rule fix rather than a restyle (ADR-0131 §8).
-   Plan violet was legitimate here while ADR-0115 §6 kept research Plan-only; the moment
-   §8 renders this control in TRIP mode it is mode identity used as a button colour, which
-   `tokens.css` forbids in as many words ("amber/teal/plan are semantic, never CTAs") and
-   root CLAUDE.md rule 4 states directly. Found by drawing the surface against the shipped
-   stylesheets, not by reading the diff. */
-/* ── A RESULT ROW'S THREE JOBS (ADR-0134 §5) ─────────────────────────────────────
-   The row's body is a `<button>` now — the tap frames the place here — so the way out
-   to Google is its own control, and it goes BESIDE the verb rather than under it.
-
-   That is measured, not preferred. `.map-right` above is a `flex-direction: column`, so
-   a second control buys no WIDTH; it makes every result row taller. Stacked, a result row
-   is 106px and the sheet at `half` shows 3 rows at 390×844 / 2 at 360×640; side by side it
-   is 68px and shows 6 / 4. Height is the axis this surface declared scarce in ADR-0126
-   ("canvas furniture grows sideways"), and stacking halves the results you can see.
-
-   Scoped to `.place.result` deliberately: a trip row's `נווט` + distance genuinely want
-   the column, and this is not a reason to restack them. */
-.place.result .map-right {
-  flex-direction: row;
-  align-items: center;
-}
-/* The way out, as an ICON. The row already carries one labelled verb and two labelled
-   buttons compete for "which is the action" — the width measurement cleared a label
-   rather than forcing this, and ADR-0134 §5 says so. 44×44 met by GEOMETRY, never by a
-   hit area painted smaller than it is (ADR-0017, ADR-0126 §3), and `.map-navbtn`'s
-   trailing-action grammar rather than a new one. */
-.map-res-out {
-  flex: none;
-  display: grid;
-  place-items: center;
-  min-width: 44px;
-  min-height: 44px;
-  border: 1px solid var(--line);
-  border-radius: 12px;
-  background: var(--card);
-  color: var(--muted);
-  font-size: 16px;
-  text-decoration: none;
-  cursor: pointer;
-}
-.map-res-out:hover {
+.pp-addbtn:hover {
   border-color: var(--muted);
 }
 
-.map-addmaybe {
-  display: inline-flex;
-  align-items: center;
-  gap: 5px;
-  border: 1px solid var(--cta);
-  color: var(--cta);
-  background: color-mix(in srgb, var(--cta) 10%, transparent);
-  border-radius: 999px;
-  padding: 6px 12px;
-  font: inherit;
-  font-size: 12px;
-  font-weight: 700;
-  cursor: pointer;
-  white-space: nowrap;
-}
-.map-addmaybe:hover:not(:disabled) {
-  background: var(--cta);
-  color: var(--cta-text);
-}
-.map-addmaybe:disabled {
-  opacity: 0.55;
-  cursor: default;
-}
-.map-res-skel {
-  border-radius: 16px;
-  margin-bottom: 9px;
-}
-.map-res-foot {
-  text-align: center;
-  font-size: 10.5px;
-  color: var(--faint);
-  margin-top: 12px;
-}
+/* ═══ ui/primitives/when-field.css — generated, do not edit here ═══ */
+/* WhenField (U-05 "when" standard). The day variant's date is the native
+   full-width field (.wf-date). The span reuses the event picker's chrome: each
+   endpoint is a native date cell + the shared TimeField, both wearing the same
+   .tp-field cap+value box (screens.css), so date and time align and the span
+   reads as one grammar with the event picker. Logical properties only (RTL). */
 
-/* THE CARD'S BADGE IS THE WAY IN TO ITS OWN PIN (ADR-0129 §1), reusing session 148's
-   `.wp-placebadge` rather than growing a second affordance: same teal ring, same focus
-   treatment, same verb one step further in — you are already looking at the map, so it
-   frames the place instead of taking you to it.
-   Its corner MARK stands down, because on this badge that corner is already the order
-   number's (ADR-0121 §6) and two stamps in one corner is neither. The ring is what
-   carries "this one is a control" against the inert badges in the list behind it. */
-.map-badge[data-order] .wp-placebadge-mark {
-  display: none;
-}
-
-/* ═══ ui/domain/map-pane.css — generated, do not edit here ═══ */
-/* The rendered map pane + its pins (ADR-0121 §5/§6/§12). Ported from
-   mockups/map-embedded-v1.html's PHASE-6 DELTA block, which was written against
-   these very tokens.
-
-   The pane is sized to the area the SHEET LEAVES VISIBLE, not full-bleed behind it:
-   the Maps JS API draws Google's logo and attribution at the bottom-left OF THE MAP
-   DIV, and Google's terms require they not be obscured (ADR-0106 §B) — a peeking
-   sheet over an `inset: 0` pane would hide the one element we are contractually
-   obliged to show. It also makes the fit-to-bounds honest, since fitting bounds to
-   a div half-hidden behind the list centres pins under it (§5/§7).
-
-   `--sheet-h` is written by the screen from the SNAPPED sheet height, so a drag
-   costs no relayout — the pane resizes on snap, not per drag frame (§5). */
-.map-pane {
-  position: absolute;
-  inset-inline: 0;
-  top: 0;
-  bottom: var(--sheet-h, 0px);
-  overflow: hidden;
-  /* THE PIN'S SIZE IS READ OFF THIS BOX (ADR-0123). The pane is exactly the canvas the
-     snapped stop leaves visible, so making it a size container is what lets a pin be a
-     share of the map it sits on — in CSS, with no layout read on a screen that
-     re-renders every second and no `MapPane` prop that changes on a gesture (ADR-0121
-     §4 / ADR-0122 §9). An `AdvancedMarker`'s content is a real DOM descendant of the
-     canvas div, so `cqh` inside a pin resolves against this box.
-
-     Safe to contain: the box is sized by its own insets (`top`/`bottom` above), never
-     by what Google draws inside it, which is the one precondition `container-type:
-     size` has. */
-  container-type: size;
-}
-.map-canvas {
-  width: 100%;
-  height: 100%;
-}
-/* The full-list height: the map is behind the sheet and still ONE live instance —
-   hidden rather than destroyed, because destroying it is a billed load (§4). Its
-   box stays full-size so nothing relayouts to zero height. (At that stop the sheet stops
-   below the controls row rather than covering it — ADR-0122 §1 — so what shows above the
-   sheet is the split's own backdrop, not a sliver of canvas.) */
-.map-screen[data-view='full'] .map-pane {
-  bottom: 0;
-  visibility: hidden;
-}
-
-/* ── PINS ──────────────────────────────────────────────────────────────────────
-   `AdvancedMarker` content built from OUR markup (§6), reading the very same
-   `--cat-*` tokens as `.map-badge`, so the list badge and the map teardrop are one
-   colour system by construction rather than by discipline. Google's `PinElement`
-   gives background/border/glyph and cannot express the three commitment states
-   below, which is why the content is ours.
-
-   No `translate(-50%, -100%)` here (the mockup needed it for absolute positioning):
-   the marker's own anchor puts the tip on the coordinate.
-
-   ── ONE UNIT, ONE RULE (ADR-0123) ──
-   `--pin-u` is the teardrop's full height, and EVERY dimension below is a fraction of
-   it — badge, glyph, number, tag, rings and borders — so the pin grows and shrinks as
-   one object instead of a badge that outgrows its own number. The fractions are the
-   shipped 34px geometry expressed as ratios, so at the floor this draws the pin that
-   shipped, to within a pixel.
-
-   `--pin-base` is written by the screen from `MAP_PIN` via `pinSizeCss()` — the same
-   constants the camera's clearance is derived from, the `--map-controls-h` arrangement
-   for the same reason (ADR-0122 §1). Its fallback is the floor, which is what the
-   search overlay's copy of `.map-screen` gets: it reuses the class and pins nothing. */
-
-/* REGISTERED, so the unit is a real `<length>` the browser can INTERPOLATE — which is
-   what makes one line below animate the whole pin (ADR-0123). Every dimension is a
-   `calc()` over this one property, so transitioning it eases the badge, the glyph, the
-   number, the tag and the rings together; transitioning them one by one would be a
-   dozen declarations that can fall out of step, and `box-shadow` interpolation for the
-   amber rings besides.
-   `inherits: true` because the pin's parts are its children and read the same unit.
-   Measured in Chromium: a `cqh`-derived value survives registration, and the stop change
-   samples as a real curve rather than a step. Where `@property` is unsupported the unit
-   is an ordinary custom property: pins still size correctly, they just snap. */
-@property --pin-u {
-  syntax: '<length>';
-  inherits: true;
-  initial-value: 34px;
-}
-
-.map-pin {
-  --pin-u: var(--pin-base, 34px);
-  /* One stripe of the maybe's hatch, derived here so it re-derives with every override
-     of `--pin-u` below (the aside ratio, the dot tier) rather than in three places. */
-  --pin-hatch: calc(var(--pin-u) * 0.08);
-  /* The pane's box changes on SNAP, never per drag frame (ADR-0121 §5), so this fires
-     once per stop change — and it borrows the sheet's own duration and curve, so the
-     pins finish growing exactly as the sheet finishes sliding instead of jumping the
-     instant it starts. Reduced motion drops it with everything else (App.css's global
-     `!important`), which is the same "it still moves, only the easing goes" the sheet
-     and the camera already follow (ADR-0098 §4). */
-  transition: --pin-u var(--t-base) var(--ease-standard);
-  position: relative;
-  width: calc(var(--pin-u) * 0.82);
-  height: var(--pin-u);
-  cursor: pointer;
-}
-.map-pin .pin-b {
-  position: relative;
-  width: calc(var(--pin-u) * 0.74);
-  height: calc(var(--pin-u) * 0.74);
-  margin: 0 auto;
-  /* Sharp corner bottom-right, so rotate(45deg) swings the tip straight DOWN onto
-     the location — the map idiom. The list keeps the rounded `.map-badge`: two form
-     factors, one colour system (ADR-0109 §3). The 2px stays 2px at every size: it is
-     the *sharp* corner, and a corner that scales stops being one. */
-  border-radius: 50% 50% 2px 50%;
-  transform: rotate(45deg);
-  display: grid;
-  place-items: center;
-  background: var(--cat-leisure);
-  border: calc(var(--pin-u) * 0.06) solid var(--card);
-  box-shadow: 0 2px 5px rgba(22, 35, 61, 0.34);
-}
-.map-pin .pin-g {
-  transform: rotate(-45deg);
-  font-size: calc(var(--pin-u) * 0.38);
-  line-height: 1;
-}
-/* The same five hues, same names as `.map-badge.cat-*`. */
-.map-pin.cat-food .pin-b {
-  background: var(--cat-food);
-}
-.map-pin.cat-lodging .pin-b {
-  background: var(--cat-lodging);
-}
-.map-pin.cat-transit .pin-b {
-  background: var(--cat-transit);
-}
-.map-pin.cat-leisure .pin-b {
-  background: var(--cat-leisure);
-}
-.map-pin.cat-services .pin-b {
-  background: var(--cat-services);
-}
-/* Commitment is the hard/soft GRAMMAR, never a colour (ADR-0011/0028) — and these
-   are exactly what `PinElement` cannot draw. Each mirrors its `.place`
-   counterpart: `.soft`, and `.skipped` — which on a PIN is the behind-you tier, so
-   the row it mirrors is `.place.behind` (the row's own `.skipped` is the narrower
-   human outcome the canvas does not draw).
-
-   `.ambient` is deliberately absent: a strictly-middle stay night draws as an
-   ORDINARY pin (ADR-0109's 2026-07-27 amendment). It used to be desaturated, but on
-   this canvas desaturation already means BEHIND YOU — and the night you are sleeping
-   somewhere is the opposite of that. What marks it ambient is that it carries no
-   number, which is §6's own rule and now the whole distinction.
-
-   ── A MAYBE IS TEXTURED, NOT FADED (ADR-0130 §3) ──
-   Reported: "I want to be able to visually distinguish between somewhere I've already
-   been to and somewhere I'm considering." Both of the two rules below used to answer on
-   the SAME axis — a maybe was the hue at 55%, a passed stop is the hue desaturated —
-   so the two most different things on the canvas both read as *washed out*.
-
-   The design language already had the answer and the pin was the surface that dropped
-   it: "**Soft** — dashed border, **diagonal-hatch background**, lighter type"
-   (design-language.md's hard/soft grammar; `.place.soft` hatches, `.map-badge` under it
-   hatches, the teardrop substituted a tint). So the hatch comes back and the tint goes,
-   which splits the two onto axes that cannot be confused:
-
-     • **a maybe keeps its colour and loses its solidity** — full category hue, striped,
-       dashed edge, no number: vivid but unresolved;
-     • **a passed stop keeps its solidity and loses its colour** — grey, still filled,
-       and it still carries its number.
-
-   **The primary read is colour vs. grey**, and the hatch is the confirmation — worth
-   stating because it means the device pass can thin or drop the stripes at 25px without
-   giving back the distinction this exists for.
-
-   The stripe is a fraction of `--pin-u` like every other dimension (ADR-0123), so it
-   holds at every canvas size instead of turning into a smear on a big pin or a smudge on
-   a small one; 0.12 puts about three periods across the body, which is `.place.soft`'s
-   own 6px-on-40px density. The angle is stated in the pin's OWN frame: `.pin-b` is
-   rotated 45°, so `90deg` here — vertical stripes locally — lands as the design
-   language's `-45deg` hatch on screen. */
-.map-pin.soft .pin-b {
-  border-style: dashed;
-  border-color: var(--soft-line);
-  background-image: repeating-linear-gradient(
-    90deg,
-    transparent 0 var(--pin-hatch),
-    color-mix(in srgb, var(--card) 45%, transparent) var(--pin-hatch) calc(var(--pin-hatch) * 2)
-  );
-}
-.map-pin.skipped .pin-b {
-  filter: saturate(0.3);
-  opacity: 0.62;
-}
-
-/* THE ORDER, as a number (§6). A line between two stops is symmetric, so it never
-   said which end you reach first; the number does, and it is free — it is the index
-   in `comparePlacesBySchedule`'s day sequence, the same order the Day view renders.
-
-   It takes the corner ADR-0109 §3 gave the 🔒, which comes OFF the pin: solid-vs-
-   dashed already says committed-vs-idea, so the lock was belt-and-braces inherited
-   from the row (which keeps it — a row has width for both). */
-.map-pin .pin-n {
-  position: absolute;
-  top: calc(var(--pin-u) * -0.15);
-  inset-inline-start: calc(var(--pin-u) * -0.18);
-  min-width: calc(var(--pin-u) * 0.44);
-  height: calc(var(--pin-u) * 0.44);
-  padding: 0 calc(var(--pin-u) * 0.09);
-  display: grid;
-  place-items: center;
-  background: var(--ink);
-  color: var(--card);
-  font-family: var(--font-mono);
-  font-size: calc(var(--pin-u) * 0.26);
-  font-weight: 700;
-  border-radius: 999px;
-  box-shadow: 0 0 0 calc(var(--pin-u) * 0.045) var(--card);
-}
-/* Behind you KEEPS its number — the partition changes prominence, never the
-   position; #1 is still true after you have been there. (`.ambient` was listed here
-   too, which could never fire: an ambient night has no schedule slot, so it has no
-   number to mute.) */
-.map-pin.skipped .pin-n {
-  background: var(--muted);
-}
-
-/* THE FOURTH POPULATION: in view, but not in this day. The list can drop what it
-   filters; a map cannot, because the café you are standing next to is physically there,
-   which is the whole "what's near me now" question. So it is present but plainly
-   subordinate. No new colour is spent — the ladder is prominence, not palette
-   (ADR-0028).
-
-   `.aside` is the RATIO, and it is its own class because TWO tiers are subordinate for
-   two different reasons (ADR-0130 §3). Smaller BY RATIO (ADR-0123), which is the whole
-   reason this is one unit: the shipped 25px box would have gone on getting relatively
-   smaller as the canvas grew the others, until the ladder's bottom rung read as dirt on
-   the screen rather than as a place.
-
-     • `.ghost` — pencilled for ANOTHER day: a hollow outline in its category hue, no
-       fill, no glyph, no number. Hollow is the point: there is nothing of this day in it.
-     • `.soft.aside` — a shelf maybe on NO day, which is not the same claim and used to be
-       drawn as if it were. It keeps the maybe's own paint (dashed, hatched, filled, its
-       glyph) and takes only the ratio: available today, but you did not put it in this
-       day. So the paint says WHAT it is and the size says how much it is claiming. */
-/* ── AN UNSAVED GOOGLE RESULT (ADR-0132 §6) ──────────────────────────────────────
-   A RING, not a teardrop, and that is the whole design: the prominence ladder above
-   expresses DEGREE and has no free axis left (hue = category, fill = commitment, grey
-   = behind you, hollow = another day, ratio = subordinate, two amber box-shadows,
-   selection's outline, a zoom-keyed dot). "Not ours yet" is a difference of KIND, so it
-   takes the one axis nothing else uses — silhouette.
-
-   No tip, because a tip is a claim about WHICH BUILDING and a result is a candidate; no
-   hue, because the mask does not buy place types (ADR-0115 §2) so there is nothing
-   honest to colour it by; a `＋`, because the only verb available on it is add.
-
-   Sized off the same `--pin-base` as every pin, so it tracks the canvas the way
-   ADR-0123 made everything else track it — and NOT through `--pin-u`, because it is not
-   on the ladder and must not inherit the aside ratio or the dot tier. It sits ON the
-   coordinate (`translate(-50%, -50%)` is the marker's own default anchoring, so no
-   transform of ours), which is the truthful geometry for a place that is not in the
-   trip yet. */
-.map-result {
-  width: calc(var(--pin-base, 34px) * 0.82);
-  height: calc(var(--pin-base, 34px) * 0.82);
-  border-radius: 50%;
-  display: grid;
-  place-items: center;
-  background: var(--card);
-  border: calc(var(--pin-base, 34px) * 0.06) solid var(--ink);
-  box-shadow: 0 2px 6px rgba(22, 35, 61, 0.24);
-  color: var(--ink);
-  font-size: calc(var(--pin-base, 34px) * 0.44);
-  font-weight: 700;
-  line-height: 1;
-  cursor: pointer;
-}
-/* Selection reuses the ladder's own outline grammar rather than inventing a second
-   one — the ring is off the PROMINENCE ladder, not out of the design system.
-
-   IT ALSO FILLS (owner, session 166 — _"the selected Google search result is not prominent
-   enough"_). A 2px outline on a hollow ring, over map tiles, at the ring's 82% of an
-   already-small pin, is the least visible selection on the canvas — and it marks the one
-   thing on screen the user is deciding about. So the ring INVERTS: an outline says "this
-   one" among things of one kind, a fill says "this is the one I am looking at", which is
-   what the badge on its row does in the same breath (`map.css`).
-
-   `--ink` rather than an accent, for the reason the resting ring has no hue: the mask does
-   not buy place types (ADR-0115 §2), so there is nothing honest to colour it by, and amber
-   / teal / plan are spent elsewhere (ADR-0028). It also goes to full `--pin-base`, i.e. the
-   ring drops the 0.82 subordination while it is the subject. */
-.map-result.selected {
-  width: var(--pin-base, 34px);
-  height: var(--pin-base, 34px);
-  outline: 2px solid var(--card);
-  outline-offset: 2px;
-  background: var(--ink);
-  border-color: var(--card);
-  color: var(--card);
-  box-shadow: 0 3px 10px color-mix(in srgb, var(--ink) 45%, transparent);
-}
-
-.map-pin.aside {
-  --pin-u: calc(var(--pin-base, 34px) * var(--pin-aside-scale, 0.72));
-}
-/* The rung's own slight quieting, shared by both tiers on it — the ghost's shipped 0.9,
-   not a second number. Mild by design: a real fade is the BEHIND-you claim (0.62 plus
-   desaturation), and an aside pin has not been anywhere. */
-.map-pin.aside .pin-b {
-  opacity: 0.9;
-}
-.map-pin.ghost .pin-b {
-  background: transparent;
-  /* A ghost IS its outline — there is no fill behind it — so it takes a heavier ratio
-     than the filled pin's border, which only has to separate a colour from the map. */
-  border-width: calc(var(--pin-u) * 0.08);
-  border-style: solid;
-  border-color: color-mix(in srgb, var(--cat-leisure) 78%, var(--ink));
-  box-shadow: 0 1px 3px color-mix(in srgb, var(--ink) 18%, transparent);
-}
-.map-pin.ghost.cat-food .pin-b {
-  border-color: color-mix(in srgb, var(--cat-food) 78%, var(--ink));
-}
-.map-pin.ghost.cat-lodging .pin-b {
-  border-color: color-mix(in srgb, var(--cat-lodging) 78%, var(--ink));
-}
-.map-pin.ghost.cat-transit .pin-b {
-  border-color: color-mix(in srgb, var(--cat-transit) 78%, var(--ink));
-}
-.map-pin.ghost.cat-services .pin-b {
-  border-color: color-mix(in srgb, var(--cat-services) 78%, var(--ink));
-}
-
-/* ── THE DOT TIER (ADR-0121 §6, decided there and built in ADR-0128 §1) ────────
-   "Below a legibility threshold a pin degrades to a DOT — hue kept, number and glyph
-   dropped, since a 9px numeral is noise." The threshold is on **zoom**, not on the
-   canvas, and that distinction is why ADR-0123 deliberately left this alone: a pin's
-   SIZE must not change under a pinch, but its TIER legitimately can.
-
-   It is also the honest answer to "a pin does not shrink when you zoom out, so at
-   country zoom it covers a city" — the trigger ADR-0121 §6 named for revisiting
-   clustering, answered without adopting clustering: a dot spans no categories, so it
-   keeps its hue; it has no glyph or number to lose meaning; and it is the same object,
-   so nothing on the canvas leaves the pin grammar.
-
-   Entirely in CSS, off one data attribute the pane writes: no marker re-renders, no
-   prop, nothing that could re-diff a live map's overlays (§4). The teardrop becomes a
-   round dot — the tip is what claims a building, and at this zoom it cannot honestly
-   claim one, so it is dropped rather than shrunk. */
-/* ── THE DOT TIER APPLIES TO WHAT YOU ARE NOT LOOKING AT ────────────────────────
-   (ADR-0121 §6, built in ADR-0128 §1 and amended twice on 2026-07-28: session 154
-   spared the time anchors, session 155 scoped the whole tier to the day scope.)
-
-   **The owner's case, and it is the one that matters most:** you open the app in the
-   morning and look at the map to see what today holds and in what order. If the pins are
-   numberless dots you cannot know without zooming in and hunting — the opposite of what
-   the canvas is for. ADR-0121 §6 made the number the order cue ("a line between two stops
-   is symmetric and never said which end you reach first, and the number is free"), so a
-   tier that drops it trades away the canvas's one contribution over the list, in exactly
-   the view where that contribution is the point. **A travel day makes it sharpest:**
-   Tokyo→Kyoto fits at a zoom well below the threshold, so the day whose order you most
-   need to read is the day that lost it.
-
-   **TWO RULES, because there are genuinely two situations** — one selector covering both
-   was tried and kept leaving something behind:
-
-     • **Day scope — only the ASIDE pins degrade.** They are by definition not this day
-       (ADR-0121 §6, and ADR-0130 §3 for the second of the two), so they are the one
-       population that is not what you are looking at. Everything else stays a full pin:
-       the numbered stops, and also today's ambient stay night and today's ideas, which
-       carry no number BY DESIGN (ADR-0109's amendment: "what marks a night as ambient is
-       that it has no number and no clock") and would have been collateral damage of any
-       rule keyed on the number. A day holds three to six stops, so there is no density
-       problem here worth paying for.
-
-     • **All-days — everything degrades except the time anchors.** Nothing is numbered in
-       all-days at all (`buildPinOrderIndex` returns an empty map with no scoped day), so
-       there is no order to lose; and this is the multi-city case §6 invented the tier for,
-       where the density is real. The amber cue keeps its exemption because it answers
-       "what matters right now", which no zoom invalidates (session 154's rule: demote what
-       claims precision, keep what claims priority).
-
-   Both are `data-scope` on the screen, which the pane already sits inside — so the tier
-   costs no prop and no marker re-render, exactly as ADR-0128 §1 built it. */
-.map-screen[data-scope='day'] .map-pane[data-pins='dot'] .map-pin.aside,
-.map-screen[data-scope='all'] .map-pane[data-pins='dot'] .map-pin:not(.nowstop, .nextstop) {
-  --pin-u: calc(var(--pin-base, 34px) * var(--pin-dot-scale, 0.4));
-}
-/* An aside pin is the subordinate rung wherever it appears, so at dot size it compounds
-   both ratios — the ladder does not collapse just because the rungs got smaller. */
-.map-screen[data-scope='all'] .map-pane[data-pins='dot'] .map-pin.aside,
-.map-screen[data-scope='day'] .map-pane[data-pins='dot'] .map-pin.aside {
-  --pin-u: calc(var(--pin-base, 34px) * var(--pin-dot-scale, 0.4) * var(--pin-aside-scale, 0.72));
-}
-.map-screen[data-scope='day'] .map-pane[data-pins='dot'] .map-pin.aside .pin-b,
-.map-screen[data-scope='all'] .map-pane[data-pins='dot'] .map-pin:not(.nowstop, .nextstop) .pin-b {
-  /* No rotation and a full radius: a dot, not a small teardrop. The tip is what claims a
-     building, and at this zoom it cannot honestly claim one, so it is dropped rather than
-     shrunk. */
-  border-radius: 50%;
-  transform: none;
-  /* A maybe's dashed edge goes with the glyph and the number, for their reason: at dot
-     size the border is under a pixel, so the dash stops reading as provisional and starts
-     reading as a ragged rim. Rendered and looked at (ADR-0130 §3). The HATCH stays — it
-     is what still tells a maybe from a passed stop at 20px, which is the whole point. */
-  border-style: solid;
-  box-shadow: 0 1px 2px color-mix(in srgb, var(--ink) 22%, transparent);
-}
-/* The glyph and the amber tag are text-scale claims a dot cannot carry. The NUMBER is not
-   listed: nothing that carries one is ever degraded now, so there is nothing to hide. */
-.map-screen[data-scope='day'] .map-pane[data-pins='dot'] .map-pin.aside .pin-g,
-.map-screen[data-scope='all'] .map-pane[data-pins='dot'] .map-pin:not(.nowstop, .nextstop) .pin-g,
-.map-screen[data-scope='all']
-  .map-pane[data-pins='dot']
-  .map-pin:not(.nowstop, .nextstop)
-  .pin-tag {
-  display: none;
-}
-
-/* ── CHOOSING A PLACE: EVERY TRIP PIN IS CONTEXT (owner, session 166) ────────────
-   You arrived from a form to pick ONE place, so the trip's own pins are what you are
-   choosing AGAINST and the answer is a ring that is not yours yet. It shipped with the
-   full ladder — numbered teardrops, an amber next stop — and the owner's report is the
-   honest reading of that canvas: the loudest thing on it was the thing you were not here
-   to choose.
-
-   **It is the dot tier, not a seventh rung** (ADR-0128 §1): the same ratio, the same round
-   silhouette, the same dropped glyph and number, off the same one-attribute-on-the-screen
-   mechanism. What differs is only the TRIGGER — the zoom tier asks "is this legible at this
-   zoom", this asks "is this what you are choosing" — which is why it is a second selector
-   on the same rules rather than new paint.
-
-   Two deliberate differences from the zoom tier, both consequences of that trigger:
-   the amber cues are NOT spared (`עכשיו` claims priority among the things you are looking
-   at, and under an errand none of them is what you are looking at), and no `data-scope`
-   split (nothing here turns on which day chose the pin).
-
-   **TWO EXEMPTIONS, and both are the same idea** — the demotion asks "is this what you are
-   choosing", so anything that answers YES keeps its full pin:
-
-     • `.match` — your search surfaced it (session 168).
-     • `.selected` — you tapped it (session 169). Reported on a device: the selected place
-       drew as a dot with a selection ring around it, which is a ring drawn around nothing.
-       Selection is the strongest answer to "what are you choosing" the tab has, so it
-       outranks a rule about the backdrop by definition.
-
-   Both are classes on the PIN, never a switch on the screen: the exemption belongs to the
-   pin that earned it (ADR-0131 §4's split). */
-.map-screen[data-choosing] .map-pane .map-pin:not(.match, .selected) {
-  --pin-u: calc(var(--pin-base, 34px) * var(--pin-dot-scale, 0.4));
-}
-.map-screen[data-choosing] .map-pane .map-pin.aside:not(.match, .selected) {
-  --pin-u: calc(var(--pin-base, 34px) * var(--pin-dot-scale, 0.4) * var(--pin-aside-scale, 0.72));
-}
-.map-screen[data-choosing] .map-pane .map-pin:not(.match, .selected) .pin-b {
-  border-radius: 50%;
-  transform: none;
-  border-style: solid;
-  /* Outranks both amber rules below on specificity, which is how the cues are withdrawn
-     rather than by editing them. `animation: none` is not redundant: an animation beats a
-     normal declaration whatever the specificity, so `nowstop` would keep pulsing amber
-     through this `box-shadow`. */
-  box-shadow: 0 1px 2px color-mix(in srgb, var(--ink) 22%, transparent);
-  animation: none;
-}
-.map-screen[data-choosing] .map-pane .map-pin:not(.match, .selected) .pin-g,
-.map-screen[data-choosing] .map-pane .map-pin:not(.match, .selected) .pin-n,
-.map-screen[data-choosing] .map-pane .map-pin:not(.match, .selected) .pin-tag {
-  display: none;
-}
-
-/* THE ONE AMBER TIME-ANCHOR the map's budget allows (ADR-0109 §6): the next
-   committed stop, and nothing else on the canvas is amber. It is `.place.nextstop`'s
-   ring moved onto the pin as §6 always intended.
-
-   An OUTLINE ON the pin, not a ring around it: a `box-shadow` spread follows
-   `border-radius`, so it traces the teardrop's own silhouette (tip included) and the
-   pin simply looks outlined. The first pass drew a pill-shaped box around it, which
-   read as a circle someone had drawn near a pin — two shapes instead of one
-   highlighted shape.
-
-   The 22% glow alpha is `.place.nextstop`'s verbatim, so row cue and pin cue really
-   are one cue. The edge is SOLID rather than that rule's 34%, because a 34% amber
-   hairline holds up on the row's white card and disappears over a map base.
-
-   The ring widths are fractions of the pin like everything else (ADR-0123): a 2.5px
-   outline that stayed 2.5px on a 46px pin would read as a hairline someone forgot to
-   scale, and the outline IS the cue. The drop shadow underneath is not part of the
-   silhouette, so it stays put. */
-.map-pin.nextstop .pin-b {
-  box-shadow:
-    0 0 0 calc(var(--pin-u) * 0.074) var(--amber),
-    0 0 0 calc(var(--pin-u) * 0.162) rgba(233, 166, 60, 0.22),
-    0 2px 5px rgba(22, 35, 61, 0.34);
-}
-
-/* WHERE YOU ARE, RIGHT NOW — the canvas's second amber cue (ADR-0109's 2026-07-27
-   amendment). Both cues are amber because both are time (ADR-0028); what separates
-   them is MOTION, which is also the meaning: the live one moves, the pending one
-   waits. They never co-occur on one pin — `eventPhase` reads `now` or `upcoming`.
-
-   This is Home's board blip moved onto a pin, not a new invention: `wp-board-pulse`
-   (`board.css`) is the app's existing "live right now" idiom — the amber dot beside
-   `עכשיו` on the board — and its ring alpha and 2s period are reused verbatim so the
-   two surfaces beat together.
-
-   THE RESTING STATE CARRIES THE CUE, and the animation only layers on top. That is
-   not stylistic: `App.css`'s global `prefers-reduced-motion` rule kills every
-   animation with `!important`, so a pulse-only treatment would leave "now" with no
-   pin cue at all for exactly the people least able to spot a subtle one. Motion off
-   means still marked, just still. */
-.map-pin.nowstop .pin-b {
-  box-shadow:
-    0 0 0 calc(var(--pin-u) * 0.074) var(--amber),
-    0 0 0 calc(var(--pin-u) * 0.206) rgba(233, 166, 60, 0.28),
-    0 2px 5px rgba(22, 35, 61, 0.34);
-  animation: map-pin-now 2s infinite;
-}
-/* Custom properties resolve on the animated element, so the pulse scales with the pin
-   the same way its resting ring does. */
-@keyframes map-pin-now {
-  0% {
-    box-shadow:
-      0 0 0 calc(var(--pin-u) * 0.074) var(--amber),
-      0 0 0 0 rgba(233, 166, 60, 0.55),
-      0 2px 5px rgba(22, 35, 61, 0.34);
-  }
-  70% {
-    box-shadow:
-      0 0 0 calc(var(--pin-u) * 0.074) var(--amber),
-      0 0 0 calc(var(--pin-u) * 0.324) rgba(233, 166, 60, 0),
-      0 2px 5px rgba(22, 35, 61, 0.34);
-  }
-  100% {
-    box-shadow:
-      0 0 0 calc(var(--pin-u) * 0.074) var(--amber),
-      0 0 0 0 rgba(233, 166, 60, 0),
-      0 2px 5px rgba(22, 35, 61, 0.34);
-  }
-}
-/* The shipped `.map-tag.next` is not a filled amber pill — it is `--amber-deep` bold
-   text on the row's own surface. The pin's tag keeps that exactly and only adds the
-   card ground it needs to stay legible over the canvas, so amber is still ink here,
-   never a fill (ADR-0028 / ADR-0105 "amber is an accent, not a ground").
-
-   `--pin-tag-rise` is the same fraction the camera's clearance adds on top of the pin's
-   own height (ADR-0123): the tag is the topmost ink above the coordinate, so the number
-   that positions it and the number that reserves room for it are one number. */
-.map-pin .pin-tag {
-  position: absolute;
-  top: calc(var(--pin-u) * var(--pin-tag-rise, 0.56) * -1);
-  inset-inline-start: 50%;
-  transform: translateX(50%);
-  background: var(--card);
-  color: var(--amber-deep);
-  border: 1px solid rgba(233, 166, 60, 0.34);
-  font-size: calc(var(--pin-u) * 0.28);
-  font-weight: 700;
-  padding: calc(var(--pin-u) * 0.06) calc(var(--pin-u) * 0.21);
-  border-radius: 999px;
-  white-space: nowrap;
-  box-shadow: 0 1px 3px rgba(22, 35, 61, 0.2);
-}
-
-/* Selection stays an `outline` so it COMPOSES with the amber `box-shadow` above
-   rather than replacing it — a pin can be both the next stop and the one you just
-   tapped. Distinct from amber on purpose: selecting a row is not a claim about what
-   is next. The offset clears the amber ring in that case. */
-.map-pin.selected .pin-b {
-  outline: calc(var(--pin-u) * 0.06) solid var(--ink);
-  outline-offset: calc(var(--pin-u) * 0.06);
-}
-/* Both amber cues widen the pin's silhouette, so selection's outline steps out to
-   clear them rather than cutting through the ring — by the ring's own fraction, so it
-   keeps clearing it at every pin size (ADR-0123). */
-.map-pin.nextstop.selected .pin-b,
-.map-pin.nowstop.selected .pin-b {
-  outline-offset: calc(var(--pin-u) * 0.18);
-}
-
-/* "You are here" — the OS-map convention blue, deliberately outside the
-   amber/teal/violet budget (design-language's Map entry, ADR-0109 §3).
-
-   It scales with the pins (ADR-0123) even though it is not one: it is a marker on the
-   same canvas, answering the same "how big is a point on a map this size" question, and
-   a dot that stayed 14px while the pins grew would read as the least important thing on
-   screen — which is the opposite of what it is when you are standing somewhere. It has
-   no `--pin-u` of its own, so it reads the base directly. */
-.map-me {
-  display: block;
-  width: calc(var(--pin-base, 34px) * 0.41);
-  height: calc(var(--pin-base, 34px) * 0.41);
-  border-radius: 999px;
-  background: var(--me);
-  border: calc(var(--pin-base, 34px) * 0.074) solid var(--card);
-  box-shadow: 0 0 0 calc(var(--pin-base, 34px) * 0.21)
-    color-mix(in srgb, var(--me) 16%, transparent);
-}
-
-/* ── OUR CONTROLS, NOT GOOGLE'S (§12, restated by ADR-0126) ────────────────────
-   `disableDefaultUI`, then add back only what we need: Google's controls are
-   un-styleable, unlabelled and RTL-unaware. Zoom is the pinch; these are the two we
-   add — locate, and framing the filtered set, which used to be the same button
-   branching on a permission you could not see.
-
-   ONE BAND, AND IT RUNS ALONG THE INLINE AXIS. Measured against the real tree, a
-   vertical stack leaves −3px of clear canvas at 360×640 `half` — it overlaps
-   Google's attribution, which the ToS forbids (ADR-0106 §B) — where the same pair
-   side by side leaves 49px and costs 164px of an axis with 172 spare. The rule that
-   generalises: height is the scarce axis on this surface (the whole of ADR-0122), so
-   canvas furniture grows sideways, and a third piece joins this band rather than
-   opening a second one.
-
-   Unlabelled is still deliberate, and two glyphs is still not the pair ADR-0109 §1
-   rejected: that objection is about CONFUSABLE silhouettes, and a round crosshair
-   against four rectangular corner brackets share none. Both carry an `aria-label`. */
-.map-pane {
-  --map-furniture-h: 44px;
-}
-.map-camctl {
-  position: absolute;
-  /* The pane's floating furniture yields to the controls row above it (ADR-0122 §1): the
-     row spans the pane's full width, so this sits BELOW it rather than beside it. Absent
-     the row (there is no split), the var is undefined and this is the 8px it always was. */
-  top: calc(var(--map-controls-h, 0px) + 8px);
-  inset-inline-start: 8px;
-  display: flex;
-  align-items: center;
-  gap: 8px;
-}
-.map-recenter,
-.map-frame {
-  /* 44, not the 38 that shipped: design-language's floor is 44×44 and the old single
-     control was already under it. Met by geometry — never by a hit area painted
-     smaller than the box it claims. */
-  width: var(--map-furniture-h, 44px);
-  height: var(--map-furniture-h, 44px);
-  display: grid;
-  place-items: center;
-  background: var(--card);
-  border: 1px solid var(--line);
-  border-radius: 999px;
-  color: var(--ink);
-  padding: 0;
-  cursor: pointer;
-  box-shadow: 0 2px 6px rgba(22, 35, 61, 0.16);
-}
-.map-recenter .icon,
-.map-frame .icon {
-  width: 20px;
-  height: 20px;
-}
-
-/* THE AREA COUNT (§9). ADR-0106 §4 decided pan/zoom IS the area filter and no chip
-   is ever built — but nothing on screen said so, which made the decision invisible.
-   This says it. Top-inline-END: opposite the re-centre control, and nowhere near
-   Google's bottom-left attribution. Updated on the map's `idle` event, never per pan
-   frame. It counts every pin on the canvas, ghosts included: a SPATIAL readout, not
-   a facet count — and the wording carries that, `באזור` being about the area.
-
-   ADR-0126 §4 makes it TAPPABLE without making it a control: the live region stays
-   exactly where it is and WRAPS a `<button>`, because one node cannot hold
-   `role="status"` and `role="button"` at once. So the pill is painted on the CHILD,
-   not on the region — a border-box 44 plus the region's own hairline is 46 outer,
-   and the box that has to clear the touch floor is the tappable one. */
-.map-areacount {
-  position: absolute;
-  /* Below the controls row, like the camera controls opposite it (ADR-0122 §1). */
-  top: calc(var(--map-controls-h, 0px) + 8px);
-  inset-inline-end: 8px;
-  display: flex;
-  align-items: center;
-}
-/* The pill itself: a `<button>` when there is an area to sort by, a `<span>` when
-   there is not (zero, or before the first idle). One rule, so the two states are the
-   same object and the band never changes height under a changing count. */
-.map-areacount > * {
-  box-sizing: border-box;
-  min-height: var(--map-furniture-h, 44px);
-  display: inline-flex;
-  align-items: center;
-  gap: 4px;
-  padding: 0 12px;
-  background: color-mix(in srgb, var(--card) 88%, transparent);
-  border: 1px solid var(--line);
-  border-radius: 999px;
-  font: inherit;
-  font-size: 11.5px;
-  font-weight: 600;
-  color: var(--muted);
-  box-shadow: 0 1px 3px rgba(22, 35, 61, 0.14);
-  white-space: nowrap;
-}
-.map-areacount > button {
-  appearance: none;
-  cursor: pointer;
-}
-.map-areacount b {
-  color: var(--ink);
-  font-family: var(--font-mono);
-}
-/* On while the list is ordered by it — the same `.on` grammar and the same mode
-   accent as every other stateful chip on this tab, because a control that hides the
-   fact that it is on is the defect ADR-0119 exists to prevent. */
-.map-areacount.on > * {
-  background: var(--idx-accent);
-  border-color: var(--idx-accent);
-  color: var(--idx-accent-text);
-}
-.map-areacount.on b {
-  color: inherit;
-}
-
-/* ═══ ui/primitives/snap-sheet.css — generated, do not edit here ═══ */
-/* SnapSheet (ADR-0121 §5) — a sheet inside a pane, on a snap-height axis. The
-   heights themselves are the caller's (`--snap-h` per stop), because only the
-   caller knows what a peek should show. */
-.wp-snapsheet {
-  position: absolute;
-  inset-inline: 0;
-  bottom: 0;
-  height: var(--snap-h, 56%);
+.wf {
   display: flex;
   flex-direction: column;
-  background: var(--screen);
-  border-radius: var(--radius-lg, 16px) var(--radius-lg, 16px) 0 0;
-  box-shadow: 0 -8px 24px color-mix(in srgb, var(--ink) 18%, transparent);
-  transition: height var(--t-base, 280ms) var(--ease-standard, cubic-bezier(0.2, 0.7, 0.2, 1));
-}
-/* Under the finger there is nothing to ease — the height IS the gesture, and an
-   easing curve fighting it reads as lag. */
-.wp-snapsheet.dragging {
-  transition: none;
-}
-/* At full height the sheet IS the screen, so the card edges that said "there is
-   something behind me" would be lying. */
-.wp-snapsheet[data-view='full'] {
-  border-radius: 0;
-  box-shadow: none;
-}
-/* Reduced motion: the sheet SNAPS. It still moves — only the easing is dropped
-   (ADR-0098 §4 / ADR-0121 §13). */
-@media (prefers-reduced-motion: reduce) {
-  .wp-snapsheet {
-    transition: none;
-  }
+  gap: var(--space-3);
 }
 
-/* THE WHOLE TOP REGION IS THE DRAG TARGET (ADR-0122 §4). The grab line is 76×16px,
-   which is under ADR-0017's touch floor; this is the full width by ~51px. So the
-   region owns the vertical gesture and the browser must not claim the pan first —
-   `touch-action: none` is what makes the drag possible at all, and it lives here now
-   rather than on the button inside.
-
-   `--snap-top-h` is the caller's: the lowest stop can be exactly this region (the
-   Map's `map` stop), and reserving it from the same constant that builds that stop
-   means a taller top can never clip its own contents. */
-.wp-snapsheet-top {
-  flex: none;
-  min-height: var(--snap-top-h, 0px);
-  box-sizing: border-box;
-  padding: 7px var(--space-3, 14px) var(--space-1, 8px);
-  display: grid;
-  gap: var(--space-1, 8px);
-  justify-items: stretch;
-  touch-action: none;
-  cursor: grab;
+/* Native date field — full width, neutral chrome (matches the .field control). */
+.wf-date {
+  inline-size: 100%;
+  min-inline-size: 0;
+  font: inherit;
+  border: 1px solid var(--line);
+  border-radius: var(--radius-12, 12px);
+  background: var(--card);
+  padding-block: var(--space-2);
+  padding-inline: var(--space-3);
+  color: var(--ink);
+  color-scheme: light;
 }
-.wp-snapsheet.dragging .wp-snapsheet-top {
-  cursor: grabbing;
+.wf-date:focus-visible {
+  outline: none;
+  border-color: var(--teal);
 }
 
-/* The region is a real row now (a view toggle, a sort control), so its children
-   stretch and only the grab line stays centred. */
-.wp-snapsheet-headrow {
+/* ── span: two endpoints; neutral labels, amber reserved for the time value ── */
+.wf-span {
+  gap: var(--space-4);
+}
+.wf-leg-cap {
   display: flex;
   align-items: center;
-  justify-content: flex-end;
-  gap: var(--space-1, 8px);
+  gap: 6px;
+  font-size: var(--text-caption, 11px);
+  font-weight: 700;
+  color: var(--muted);
+  margin-block-end: var(--space-2);
+}
+.wf-leg-badge {
+  font-family: var(--font-mono);
+  font-size: 10px;
+  font-weight: 700;
+  color: var(--amber-deep);
+  background: rgba(233, 166, 60, 0.14);
+  padding-inline: 6px;
+  border-radius: 999px;
 }
 
-/* The visible affordance and the keyboard's way in: a real ARIA splitter, focusable
-   and named, drawing the 4px pill. */
-.wp-snapsheet-grab {
-  justify-self: center;
+/* Trigger row: the date cell + the TimeField trigger sit side by side; the
+   TimeField's panel (.tp-panel, flex-basis:100%) wraps to a full-width line
+   below them. */
+.wf-leg-row {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 9px;
+  align-items: stretch;
+}
+/* The date endpoint wears the shared .tp-field box (screens.css) with the native
+   date input as its value line — the cell owns the border, the input is bare. */
+.wf-date-cell {
+  flex: 1.3 1 0;
+}
+input.wf-date-val {
   border: 0;
-  background: none;
-  padding: 6px 18px;
-  margin: -6px 0 -2px;
-  display: grid;
-  place-items: center;
-  cursor: grab;
+  background: transparent;
+  padding: 0;
+  inline-size: 100%;
+  min-inline-size: 0;
+  direction: ltr;
+  color: var(--ink);
+  color-scheme: light;
 }
-.wp-snapsheet-grab:active {
-  cursor: grabbing;
-}
-.wp-snapsheet-grabline {
-  display: block;
-  width: 40px;
-  height: 4px;
-  border-radius: var(--radius-pill, 999px);
-  background: var(--soft-line);
-}
-.wp-snapsheet-grab:focus-visible {
-  outline: 2.5px solid var(--teal);
-  outline-offset: 2px;
-  border-radius: var(--radius-pill, 999px);
+input.wf-date-val:focus-visible {
+  outline: none;
 }
 
-/* The one scroll region: the sheet's body, never the page (the tab is full-bleed,
-   ADR-0121 §5). */
-.wp-snapsheet-body {
-  flex: 1;
-  min-height: 0;
-  overflow-y: auto;
-  overscroll-behavior-y: contain;
+.wf-dur {
+  font-size: var(--text-secondary, 13px);
+  color: var(--muted);
+}
+.wf-dur b {
+  color: var(--ink);
+  font-weight: 700;
 }
 </style>
     <style>
       /* ═══════════════════════════════════════════════════════════════════
-         PHASE-14 DELTA. Everything above the fence is shipped css.
+         THE DELTA. Everything above the fence is shipped css.
          ═══════════════════════════════════════════════════════════════════ */
 
-      /* ── ONE CONTROL, AND IT IS A CONTROL THE TAB ALREADY OWNS ────────────
-         The rejected first pass hung two `.map-ref`-shaped entries under the
-         references. That reads as a command menu because it IS one: same box, same
-         fill, same stack, four grey rectangles deep. A selected row gets ONE obvious
-         action, and it must not look like another list item.
+      /* ── THE ONE NEW ROW ──────────────────────────────────────────────────
+         The app's boolean idiom is an `aria-pressed` BUTTON, not a switch — the map's
+         scope chip, `.map-maybes`, the Index filter chips are all this. So that is what
+         this is, in a form field slot rather than over a canvas. No new primitive.
 
-         So the create is `.map-addmaybe` — the pill this tab already uses for "make
-         something out of this place" (`＋ אולי` on a Google result). Not a new
-         control and not a new colour: `--cta` is the neutral primary (amber is time
-         and commitment, plan violet is Plan mode, a create is neither — ADR-0028 and
-         root rule 4). Different SHAPE and different WEIGHT from a reference row,
-         which is what stops the block reading as a list of four equals. */
-      .map-refs-foot {
-        display: flex;
-        justify-content: center;
-        margin-top: 8px;
-      }
-      /* The one size change, and it is a floor rather than a taste: on a result row
-         this pill is a trailing chip in a dense 68px row; here it is the selected
-         row's primary action, so it meets 44×44 (ADR-0017) instead of inheriting a
-         chip's 29px. Scoped to the block, so the result row is untouched. */
-      .map-refs-foot .map-addmaybe {
-        min-height: 44px;
-        padding-inline: 18px;
-        font-size: 13px;
-      }
-
-      /* ── THE REJECTED MENU, KEPT SO THE PANEL CAN MEASURE IT ──────────────
-         Drawn only under ⟨התפריט שנפסל⟩, because "one control is smaller" is worth a
-         number rather than an assertion. */
-      .map-ref.make .map-ref-kind {
-        color: var(--ink);
-        font-weight: 600;
-      }
-      .map-ref:not(.make) + .map-ref.make {
-        margin-top: 4px;
-        padding-top: 8px;
-        border-top: 1px dashed var(--line);
-      }
-
-      /* ── THE FORM'S ONE NEW ROW ───────────────────────────────────────────
-         NOT a confirmation-code field. `confirmationCode` is nullable and every
-         Booking field but `type` and `title` is optional, so keying on a code
-         contradicts the schema — a phoned-in table has no number, and plenty of
-         people never record one. What the row asks is a fact anyone can answer
-         instantly: **is this also booked?**
-
-         The app's boolean idiom is an `aria-pressed` BUTTON, not a switch — the
-         scope chip, `.map-maybes`, the Index filter chips are all this — so that is
-         what this is, in a form field slot rather than over a canvas. No new
-         primitive, and none needed. */
+         `--cta` when on: neutral primary. Amber is time and commitment, plan violet is
+         Plan mode (ADR-0028, root rule 4) — and "this is booked" is emphatically NOT
+         the commitment axis, which is the whole point of §4. */
       .ef-booked {
+        /* `.field` is a column, so an `inline-flex` child stretches to its width and the
+           pill read as a disabled input rather than a control. It is a chip, so it takes
+           the width of its own label. */
+        align-self: flex-start;
+        width: fit-content;
         display: inline-flex;
         align-items: center;
         gap: 7px;
@@ -9011,9 +8221,9 @@ button.wp-av:focus-visible {
         place-items: center;
         width: 16px;
       }
-      /* The optional extras, revealed only once it IS booked — and OPTIONAL is the
-         whole point. The code is a detail OF a booking here, never the thing that
-         creates one. */
+      /* The booking's own details, revealed only once there IS one — and every one of
+         them OPTIONAL, which is the correction this design exists for. The code is a
+         detail of a booking, never the thing that creates one. */
       .ef-code-input {
         width: 100%;
         margin-top: 10px;
@@ -9025,9 +8235,9 @@ button.wp-av:focus-visible {
         background: var(--card);
         color: var(--ink);
       }
-      /* THE DERIVATION, STATED. Not a second type picker — a picker is exactly what
-         this removes. It reads the CATEGORY the form already carries (ADR-0038), so
-         the fix for a wrong guess is a control the form already has. */
+      /* THE DERIVATION, STATED, never a second picker. It reads the CATEGORY the form
+         already carries (ADR-0038/0109 §11), so the fix for a wrong guess is a control
+         the form already has. */
       .ef-derived {
         display: flex;
         align-items: center;
@@ -9039,74 +8249,64 @@ button.wp-av:focus-visible {
       .ef-derived b {
         color: var(--ink);
       }
-      /* An event that is ALREADY linked gets a statement with a way in, not a
-         control: the booking is where its code, room and notes live now, which is the
-         rule the form already runs for place and category. */
+      /* An event that is ALREADY linked gets a STATEMENT with a way in, not a control:
+         its code, room and notes live on the booking now — the rule the form already
+         runs for place and category, one field wider. */
       .ef-linked {
         display: flex;
         align-items: center;
         gap: 8px;
+        width: 100%;
         min-height: 44px;
+        padding: 7px 10px;
+        border: 1px solid var(--line);
+        border-radius: 12px;
+        background: color-mix(in srgb, var(--ink) 4%, transparent);
+        color: var(--ink);
+        font: inherit;
         font-size: 12.5px;
+        cursor: pointer;
+      }
+      .ef-linked .k {
         color: var(--muted);
+        font-weight: 500;
+      }
+      .ef-linked .icon {
+        width: 14px;
+        height: 14px;
+        margin-inline-start: auto;
+        color: var(--faint);
       }
 
-      /* MOCKUP-ONLY: `[hidden]` only sets `display: none`, so anything with its own
-         `display` beats it. `.map-ref` is flex, `.modal-overlay` is a grid and the
-         footer is flex — all three were hidden in name only on the first pass, and a
-         state toggle that hides nothing makes every number below a lie (the trap
-         `map-errand-v1` and `map-chrome-v1` each recorded one layer down).
-         `.wp-collapsible` is the OTHER half of the same lesson and is deliberately NOT
-         in this list: it opens on an `.on` CLASS, so wiring it with `[hidden]` flipped
-         the toggle, reported the right state and rendered a zero-height box. */
-      .map-refs[hidden],
-      .map-ref[hidden],
-      .map-refs-foot[hidden],
+      /* MOCKUP-ONLY: `[hidden]` only sets `display: none`, so any rule with its own
+         `display` beats it — `.modal-overlay` is a grid, these rows are flex. And
+         `.wp-collapsible` is deliberately NOT in this list: it opens on an `.on` CLASS,
+         so wiring it with `[hidden]` flips the state and renders a zero-height box. */
       .modal-overlay[hidden],
-      .ef-code-field[hidden],
+      .ef-booked[hidden],
+      .ef-linked[hidden],
       .ef-derived[hidden],
-      .map-list[hidden],
+      .ef-code-field[hidden],
       .mk-outcome[hidden],
-      .place[hidden] {
+      .wp-event[hidden],
+      .listcard[hidden] {
         display: none !important;
       }
-
-      /* MOCKUP-ONLY: the faked quiet base. In the app this is the cloud style on our
-         `mapId` (ADR-0125's terrain vocabulary). Not a rendering. */
-      .mk-canvas {
-        background:
-          repeating-linear-gradient(0deg, var(--line) 0 1px, transparent 1px 34px),
-          repeating-linear-gradient(90deg, var(--line) 0 1px, transparent 1px 34px),
-          linear-gradient(180deg, color-mix(in srgb, var(--screen) 55%, #fff), var(--screen));
-      }
-      /* MOCKUP-ONLY: the real `.map-pin` markup, placed by hand. In the app an
-         `AdvancedMarker` positions it from lat/lng. */
-      .mk-at {
-        position: absolute;
-        transform: translate(50%, -100%);
-      }
-      /* MOCKUP-ONLY: the overlay is `position: fixed` in the app, where the viewport
-         IS the phone. Inside a frame, the frame is the viewport. */
+      /* MOCKUP-ONLY: the overlay is `position: fixed` in the app, where the viewport IS
+         the phone; inside a frame, the frame is the viewport. */
       .mk-phone {
         position: relative;
       }
       .mk-phone .modal-overlay {
         position: absolute;
       }
-      /* MOCKUP-ONLY, AND IT IS A MEASUREMENT FIX RATHER THAN A COSMETIC ONE. The sheet
-         animates between its stops, so a panel reading the scroller one frame after a
-         stop change reads a height on its way somewhere — this file printed `208px`
-         for a viewport that settles at `153px` before the transition was cut. A number
-         taken mid-transition is the same class of lie as a selector that matches
-         nothing: it looks like evidence. */
-      .mk-phone .wp-snapsheet,
-      .mk-phone .map-split,
-      .mk-phone .map-pane,
+      /* MOCKUP-ONLY, AND A MEASUREMENT FIX: the collapsible animates, so a panel reading
+         it one frame after a toggle reports the open state as costing nothing. A number
+         taken mid-transition looks like evidence and is not. */
       .mk-phone .wp-collapsible {
         transition: none !important;
       }
-      /* MOCKUP-ONLY: two frames side by side — the surface being acted on, and what
-         the act produced. */
+      /* MOCKUP-ONLY: two frames — the surface being acted on, and what the act produced. */
       .mk-stage {
         display: flex;
         gap: 22px;
@@ -9137,14 +8337,13 @@ button.wp-av:focus-visible {
         border-radius: 12px;
         padding: 10px 12px;
       }
+      /* A create ADDS a card; a conversion CHANGES the one already there. Two different
+         claims, so they must not wear the same mark. */
       .mk-new {
         outline: 2px dashed var(--ok);
         outline-offset: 3px;
         border-radius: 14px;
       }
-      /* A create ADDS a card; a conversion CHANGES the one that was already there. Two
-         different claims, so they must not wear the same mark — the dashed green outline
-         means "this is new", and on a conversion that would be a lie about the day. */
       .mk-changed {
         outline: 2px dashed var(--amber);
         outline-offset: 3px;
@@ -9420,33 +8619,41 @@ button.wp-av:focus-visible {
   </head>
   <body class="mk">
     <div class="mk-caption">
-      <h1>מקום הופך לאירוע או להזמנה · שלב 14</h1>
+      <h1>אירוע יכול להיות גם מוזמן</h1>
       <p>
-        מקום שנוסף מהמפה יכול להיות רק <b>רעיון</b>. שתי הכרעות: הבלוק של דרכי הכניסה מקבל
-        <b>פעולה אחת</b> ולא תפריט, כי שורה נבחרת מקבלת פעולה אחת ברורה. ו<b>המשתמש לא בוחר אירוע
-        או הזמנה</b>: הוא עונה <b>מתי</b>, ואם יש בידו קוד אישור הוא מקליד אותו. הקוד מכריע מה נוצר,
-        הקטגוריה מכריעה איזה <b>סוג</b> של הזמנה, ומחויב/גמיש נגזר משניהם. המסגרת הימנית מראה
-        <b>מה נוצר בפועל</b> על מסך היום ובאינדקס.
+        <b>אירוע והזמנה מעולם לא היו חלופות.</b> להזמנה <i>יש</i> אירוע מקושר, ולכן "האירוע הזה גם
+        מוזמן" הוא בדיוק <code>event.bookingId != null</code>. אז תמיד יוצרים <b>אירוע</b>, ושורה
+        אחת אומרת שהוא <b>גם מוזמן</b> - הקשה אחת, בלי הקלדה, בלי שדה חובה. לא קוד אישור:
+        <code>confirmationCode</code> הוא nullable, שולחן שהוזמן בטלפון הוא בלי מספר, והרבה אנשים
+        פשוט לא מתעניינים במספרים. הקטגוריה נותנת את <b>ברירת המחדל</b>, והאדם מחזיק את העובדה.
       </p>
     </div>
 
     <div class="mk-controls">
       <div class="mk-states">
-        <span class="mk-label">בלוק דרכי הכניסה</span>
-        <button data-block="off">כפי שנשלח · רק הפניות</button>
-        <button data-block="menu">התפריט שנפסל · שתי כניסות</button>
-        <button data-block="on" class="on">האפיון · פעולה אחת</button>
+        <span class="mk-label">הטופס</span>
+        <button data-form="none">סגור</button>
+        <button data-form="ship">כפי שנשלח · בלי השורה</button>
+        <button data-form="open" class="on">עם השורה · לא מוזמן</button>
+        <button data-form="booked">עם השורה · מוזמן</button>
       </div>
       <div class="mk-states">
-        <span class="mk-label">המקום הנבחר</span>
-        <button data-place="idea1" class="on">רעיון אחד · ייצרך</button>
-        <button data-place="idea2">שני רעיונות · לא ייצרך</button>
-        <button data-place="event">כבר אירוע · אין רעיון</button>
+        <span class="mk-label">הטופס פועל על</span>
+        <button data-mode="create" class="on">אירוע חדש</button>
+        <button data-mode="convert">אירוע קיים · המרה</button>
+        <button data-mode="linked">אירוע שכבר מקושר</button>
       </div>
       <div class="mk-states">
-        <span class="mk-label">עצירה</span>
-        <button data-stop="half" class="on">חצי</button>
-        <button data-stop="full">רשימה מלאה</button>
+        <span class="mk-label">קטגוריה</span>
+        <button data-cat="food" class="on">🍽️ אוכל</button>
+        <button data-cat="lodging">🏨 לינה</button>
+        <button data-cat="transport">✈️ תחבורה</button>
+        <button data-cat="sightseeing">⛩️ אתרים</button>
+      </div>
+      <div class="mk-states">
+        <span class="mk-label">התוצאה מוצגת ב־</span>
+        <button data-out="day" class="on">יום ביום</button>
+        <button data-out="index">אינדקס · הזמנות</button>
       </div>
       <div class="mk-states">
         <span class="mk-label">מסך</span>
@@ -9455,22 +8662,20 @@ button.wp-av:focus-visible {
         <button data-size="360x640">360×640 · מסך קטן</button>
       </div>
       <p class="mk-hint">
-        ⟨קטגוריה⟩ מזיזה את ההשערה בזמן אמת: אוכל ← מסעדה (גמיש), לינה ← מלון (מחויב), תחבורה ←
-        טיסה (מחויב). זה §6 מצויר במקום נטען: הקוד מכריע <b>מה</b> נוצר, ולא <b>כמה מחויב</b> זה.
-        ⟨הטופס נפתח מ־⟩ מעביר את אותו טופס בדיוק למארח שני, וזו הטענה ש"זה רוחבי" בתור תמונה.
+        ⟨קטגוריה⟩ מזיזה <b>שני</b> דברים בזמן אמת: את ברירת המחדל של "יש הזמנה" (לינה ותחבורה
+        נדלקות, אוכל ואתרים לא) ואת <b>סוג</b> ההזמנה שייווצר. ברגע שנוגעים בכפתור, הקטגוריה מפסיקה
+        להזיז אותו - אותו שומר <code>kindTouched</code> שכבר קיים, שדה אחד הלאה. ⟨אירוע שכבר מקושר⟩
+        מראה שאין שם פקד בכלל, אלא <b>אמירה עם דרך כניסה</b>.
       </p>
     </div>
 
+    <div class="mk-stage">
+
       <div>
-        <div class="mk-framecap"><b>המשטח שפועלים עליו</b> · לשונית המפה</div>
+        <div class="mk-framecap"><b>המשטח שפועלים עליו</b> · יום ביום</div>
         <div class="mk-phone" id="phone" style="--mk-w: 390px; --mk-h: 844px">
-          <div class="app" data-mode="trip" id="app">
-            <!-- THE REAL in-trip chrome, checked against `App.tsx` this session rather
-                 than copied from an older frame. Two things had drifted in the copy and
-                 are fixed here: the member cluster is a real `<button class="avatars-btn">`
-                 (ADR-0133 §9 made it a control, not a `title`), and each avatar is the
-                 `Avatar` PRIMITIVE — `.wp-av .av`, never a bare `.av`. -->
-            <header class="header mode-chrome" data-mode="trip" id="header">
+          <div class="app" data-mode="trip">
+            <header class="header mode-chrome" data-mode="trip">
               <div class="modebar">
                 <div class="toggle">
                   <button>✎ תכנון</button>
@@ -9482,268 +8687,388 @@ button.wp-av:focus-visible {
                   <button class="trip-name-btn" aria-label="החלפת טיול">
                     <span class="trip-icon" aria-hidden="true">🗾</span>
                     <span class="trip-name">יפן באוקטובר</span>
-                    <span class="chev"><svg class="icon" viewBox="0 0 24 24" fill="currentColor" stroke="none" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M5 9l7 7 7-7z" /></svg></span>
                   </button>
-                  <div class="trip-sub">טוקיו<span class="dot">·</span>יום 3 מתוך 9</div>
+                  <div class="trip-sub">ה׳ 26.7<span class="dot">·</span>יום 4 מתוך 9</div>
                 </div>
                 <div class="header-actions">
-                  <button class="avatars-btn" aria-label="חברי הטיול">
-                    <span class="avatars">
-                      <span class="av more">&#8296;+2&#8297;</span>
-                      <span class="wp-av av" style="background: #7a86a8">ד</span>
-                      <span class="wp-av av" style="background: #6d8f86">נ</span>
-                    </span>
-                  </button>
                   <button type="button" class="wp-av av account-btn" style="background: #8a6f9c" aria-label="החשבון שלי">א</button>
-                  <button class="gear-btn" aria-label="הגדרות"><svg class="icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 0 1 0 2.83 2 2 0 0 1-2.83 0l-.06-.06a1.65 1.65 0 0 0-1.82-.33 1.65 1.65 0 0 0-1 1.51V21a2 2 0 0 1-2 2 2 2 0 0 1-2-2v-.09A1.65 1.65 0 0 0 9 19.4a1.65 1.65 0 0 0-1.82.33l-.06.06a2 2 0 0 1-2.83 0 2 2 0 0 1 0-2.83l.06-.06a1.65 1.65 0 0 0 .33-1.82 1.65 1.65 0 0 0-1.51-1H3a2 2 0 0 1-2-2 2 2 0 0 1 2-2h.09A1.65 1.65 0 0 0 4.6 9a1.65 1.65 0 0 0-.33-1.82l-.06-.06a2 2 0 0 1 0-2.83 2 2 0 0 1 2.83 0l.06.06a1.65 1.65 0 0 0 1.82.33H9a1.65 1.65 0 0 0 1-1.51V3a2 2 0 0 1 2-2 2 2 0 0 1 2 2v.09a1.65 1.65 0 0 0 1 1.51 1.65 1.65 0 0 0 1.82-.33l.06-.06a2 2 0 0 1 2.83 0 2 2 0 0 1 0 2.83l-.06.06a1.65 1.65 0 0 0-.33 1.82V9a1.65 1.65 0 0 0 1.51 1H21a2 2 0 0 1 2 2 2 2 0 0 1-2 2h-.09a1.65 1.65 0 0 0-1.51 1zM15 12a3 3 0 1 1-6 0 3 3 0 0 1 6 0" /></svg></button>
                 </div>
               </div>
-              <div role="status" aria-live="polite"></div>
-              <div class="wp-daystrip" data-mode="trip">
-                <div class="wp-daypill-wrap"><button class="wp-daypill past">ב׳<span class="n" dir="auto">23</span></button></div>
-                <div class="wp-daypill-wrap"><button class="wp-daypill past">ג׳<span class="n" dir="auto">24</span></button></div>
-                <div class="wp-daypill-wrap"><button class="wp-daypill on">ד׳<span class="n" dir="auto">25</span></button></div>
-                <div class="wp-daypill-wrap"><button class="wp-daypill future">ה׳<span class="n" dir="auto">26</span></button></div>
-                <div class="wp-daypill-wrap"><button class="wp-daypill future">ו׳<span class="n" dir="auto">27</span></button></div>
-                <div class="wp-daypill-wrap"><button class="wp-daypill future">ש׳<span class="n" dir="auto">28</span></button></div>
-                <div class="wp-daypill-wrap"><button class="wp-daypill future">א׳<span class="n" dir="auto">29</span></button></div>
-              </div>
             </header>
-            <main class="body is-fullbleed">
-              <div
-                class="map-screen is-split"
-                id="screen"
-                data-mode="trip"
-                data-view="half"
-                data-scope="day"
-                style="--sheet-h: 56%; --map-controls-h: 46px; --map-strip-h: 52px; --map-attr-h: 22px"
-              >
-                <div class="map-split" id="split">
-                  <div class="map-pane">
-                    <div class="map-canvas mk-canvas">
-                  <!-- THE REAL PIN MARKUP (`ui/domain/MapPane.tsx`): the glyph sits in
-                       `.pin-b`, the body, and the order NUMBER is a sibling after it. An
-                       older frame had them as two flat siblings, which is a pin whose body
-                       never gets its own box. -->
-                  <div class="mk-at" style="inset-inline-start: 44%; top: 40%">
-                    <div class="map-pin cat-food selected" role="button" aria-label="רמן נאגי" data-aside="0">
-                      <span class="pin-b"><span class="pin-g" aria-hidden="true">🍜</span></span>
-                      <span class="pin-n" dir="auto">2</span>
-                    </div>
-                  </div>
-                  <div class="mk-at" style="inset-inline-start: 68%; top: 24%">
-                    <div class="map-pin cat-leisure" role="button" aria-label="מקדש סנסו־ג׳י" data-aside="0">
-                      <span class="pin-b"><span class="pin-g" aria-hidden="true">⛩️</span></span>
-                      <span class="pin-n" dir="auto">1</span>
-                    </div>
-                  </div>
-                  <div class="mk-at" style="inset-inline-start: 24%; top: 62%">
-                    <div class="map-pin cat-stay" role="button" aria-label="מלון שינג׳וקו" data-aside="0">
-                      <span class="pin-b"><span class="pin-g" aria-hidden="true">🏨</span></span>
-                      <span class="pin-n" dir="auto">3</span>
-                    </div>
-                  </div>
-                    </div>
-                    <!-- THE CONTROLS ROW OVER THE CANVAS (ADR-0122 §1 / ADR-0132), in its
-                         REST state: scope, the collapsed facet control, and the search
-                         button that opens the query in this same row. Absolutely
-                         positioned, so it costs the split no height — but it is part of
-                         the surface, and an older frame that omitted it drew a canvas the
-                         app never shows. -->
-                    <div class="map-controls">
-                      <button type="button" class="map-scopechip" aria-pressed="false">🗓️ כל הימים</button>
-                      <button type="button" class="map-facets" aria-label="סינון">סינון</button>
-                      <button type="button" class="map-search-btn" aria-label="חיפוש"><svg class="icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="m21 21-5.197-5.197m0 0A7.5 7.5 0 1 0 5.196 5.196a7.5 7.5 0 0 0 10.607 10.607Z" /></svg></button>
-                    </div>
-                    <!-- The canvas's own furniture (`MapPane`): one camera cluster and the
-                         area readout wrapping its control (ADR-0126 §4). -->
-                    <div class="map-camctl">
-                      <button type="button" class="map-recenter" aria-label="איתור" title="איתור"><svg class="icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M12 2v3 M12 19v3 M2 12h3 M19 12h3 M19 12a7 7 0 1 1-14 0 7 7 0 0 1 14 0 M13.5 12a1.5 1.5 0 1 1-3 0 1.5 1.5 0 0 1 3 0" /></svg></button>
-                      <button type="button" class="map-frame" aria-label="התאמת התצוגה לכל המקומות" title="התאמת התצוגה לכל המקומות"><svg class="icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M4 9V6a2 2 0 0 1 2-2h3 M15 4h3a2 2 0 0 1 2 2v3 M20 15v3a2 2 0 0 1-2 2h-3 M9 20H6a2 2 0 0 1-2-2v-3" /></svg></button>
-                    </div>
-                    <div class="map-areacount" role="status" aria-live="polite">
-                      <button type="button" class="map-areabtn" aria-pressed="false" title="מיון הרשימה לפי האזור שבמסך">
-                        <b dir="auto">3</b> באזור
-                      </button>
-                    </div>
-                  </div>
-
-                  <div class="wp-snapsheet" id="sheet" data-view="half" style="--snap-h: 56%">
-                    <div class="wp-snapsheet-top">
-                      <button
-                        type="button"
-                        class="wp-snapsheet-grab"
-                        role="separator"
-                        aria-orientation="horizontal"
-                        aria-label="גובה הרשימה"
-                        aria-valuemin="0"
-                        aria-valuemax="2"
-                        aria-valuenow="1"
-                        aria-valuetext="חצי"
-                        tabindex="0"
-                      >
-                        <span class="wp-snapsheet-grabline" aria-hidden="true"></span>
-                      </button>
-                      <div class="wp-snapsheet-headrow">
-                        <button type="button" class="map-nearchip">📍 קרוב עכשיו</button>
-                        <div class="map-viewtoggle" role="group" aria-label="תצוגה">
-                          <button type="button" aria-pressed="false">רשימה</button>
-                          <button type="button" aria-pressed="false">מפה</button>
-                        </div>
-                      </div>
-                    </div>
-                    <div class="wp-snapsheet-body" id="sheetbody">
-                      <div class="map-sheet-scroll" id="scroll">
-                        <div class="map-list" id="maplist">
-                      <div class="place selected" id="row-sel" data-place="ramen" role="button" tabindex="0" aria-pressed="true">
-                        <div class="map-badge cat-food" data-order="2">🍜</div>
-                        <div class="map-main">
-                          <div class="map-t"><span class="map-name">רמן נאגי</span></div>
-                          <div class="map-m">
-                            <span class="map-tag time" id="sel-time" dir="auto">מחר</span>
-                            <span class="map-tag" id="sel-meta">Kabukicho, Shinjuku</span>
-                            <span class="map-tag mbadge" id="sel-shelf">על המדף</span>
-                            <span class="map-tag rate" dir="auto">★ 4.6</span>
-                          </div>
-                        </div>
-                        <div class="map-right">
-                          <span class="map-dist" dir="auto">1.2 ק״מ</span>
-                          <a class="map-navbtn">🧭 נווט</a>
-                        </div>
-                        <span class="map-refs" id="refs">
-                        <button type="button" class="map-ref" data-when="idea1 idea2">
-                          <span class="map-ref-kind">רעיון</span>
-                          <span class="map-ref-label">על המדף · מחר</span>
-                          <svg class="icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><polyline points="15 6 9 12 15 18" /></svg>
-                        </button>
-                        <button type="button" class="map-ref" data-when="idea2">
-                          <span class="map-ref-kind">רעיון</span>
-                          <span class="map-ref-label">על המדף · ללא יום</span>
-                          <svg class="icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><polyline points="15 6 9 12 15 18" /></svg>
-                        </button>
-                        <button type="button" class="map-ref" data-when="event">
-                          <span class="map-ref-kind">אירוע</span>
-                          <span class="map-ref-label">ארוחת צהריים · רביעי</span>
-                          <svg class="icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><polyline points="15 6 9 12 15 18" /></svg>
-                        </button>
-                        <!-- THE REJECTED MENU, drawn only under ⟨התפריט שנפסל⟩ so it can be measured. -->
-                        <button type="button" class="map-ref make" data-menu="1" hidden>
-                          <span class="map-ref-kind">＋ אירוע</span>
-                          <span class="map-ref-label">מתוך רמן לארוחת ערב</span>
-                        </button>
-                        <button type="button" class="map-ref make" data-menu="1" hidden>
-                          <span class="map-ref-kind">＋ הזמנה</span>
-                          <span class="map-ref-label">מתוך רמן לארוחת ערב</span>
-                        </button>
-                          <!-- ONE ACTION. A pill, not a fourth grey rectangle: different
-                               shape and different weight from a reference row, which is what
-                               keeps the block from reading as a list of four equals. -->
-                          <span class="map-refs-foot" id="refsfoot">
-                            <button type="button" class="map-addmaybe" id="mk-go">＋ שיבוץ ליום</button>
-                          </span>
+            <main class="body">
+              <div class="mk-outcome-body">
+                <div class="day-list">
+                  <div class="wp-event">
+                    <div class="wp-event-face static">
+                      <span class="wp-event-badge" aria-hidden="true">⛩️</span>
+                      <span class="wp-event-main">
+                        <span class="wp-event-t">
+                          <span class="wp-event-title-txt">מקדש סנסו־ג׳י</span>
+                          <span class="wp-event-tag-soft">גמיש</span>
                         </span>
-                      </div>
-                      <div class="place" data-place="senso" role="button" tabindex="0">
-                        <div class="map-badge cat-leisure" data-order="1">⛩️</div>
-                        <div class="map-main">
-                          <div class="map-t"><span class="map-name">מקדש סנסו־ג׳י</span></div>
-                          <div class="map-m">
-                            <span class="map-tag time" dir="auto">17:20</span>
-                            <span class="map-tag">ביקור</span>
-                          </div>
-                        </div>
-                        <div class="map-right">
-                          <span class="map-dist" dir="auto">3.4 ק״מ</span>
-                          <a class="map-navbtn">🧭 נווט</a>
-                        </div>
-                      </div>
-                      <div class="place" data-place="hotel" role="button" tabindex="0">
-                        <div class="map-badge cat-stay" data-order="3">🏨</div>
-                        <div class="map-main">
-                          <div class="map-t">
-                            <span class="map-name">מלון שינג׳וקו</span>
-                            <span class="map-lock" aria-hidden="true">🔒</span>
-                          </div>
-                          <div class="map-m">
-                            <span class="map-tag time" dir="auto">15:00</span>
-                            <span class="map-tag">צ׳ק־אין</span>
-                          </div>
-                        </div>
-                        <div class="map-right">
-                          <span class="map-dist" dir="auto">2.1 ק״מ</span>
-                          <a class="map-navbtn">🧭 נווט</a>
-                        </div>
-                      </div>
-                        </div>
-                      </div>
+                        <span class="wp-event-m">אסאקוסה</span>
+                      </span>
+                      <span class="wp-event-time"><span dir="auto">17:20</span></span>
+                    </div>
+                  </div>
+                  <div class="wp-event soft">
+                    <div class="wp-event-face static">
+                      <span class="wp-event-badge" aria-hidden="true">🍜</span>
+                      <span class="wp-event-main">
+                        <span class="wp-event-t">
+                          <span class="wp-event-title-txt">רמן לארוחת ערב</span>
+                          <span class="wp-event-tag-soft">גמיש</span>
+                        </span>
+                        <span class="wp-event-m">רמן נאגי</span>
+                      </span>
+                      <span class="wp-event-time"><span dir="auto">19:00</span></span>
                     </div>
                   </div>
                 </div>
               </div>
             </main>
-
             <nav class="nav">
               <button><span class="ic">🏠</span>בית</button>
-              <button><span class="ic">📅</span>יום ביום</button>
+              <button class="on"><span class="ic">📅</span>יום ביום</button>
               <button><span class="ic">🗂️</span>אינדקס</button>
-              <button class="on"><span class="ic">🗺️</span>מפה</button>
+              <button><span class="ic">🗺️</span>מפה</button>
             </nav>
+          </div>
+          <div>      <!-- ══ `EventForm`, AT ITS REAL LENGTH ══
+           Category leads (ADR-0109 §11: choosing it defaults the badge glyph, so it
+           reads above the icon + name row), then icon + title, then when, then place,
+           then — new — the code line, then kind, then the actions. Everything except
+           the code line is exactly what ships; drawing the form WITHOUT its category
+           pills and icon picker was the first pass's other mistake, because it made
+           the new line look like a bigger share of the form than it is.
+
+           And this is a `Modal` rendered by whichever host is selected — the Map tab
+           or the day view. That is the whole navigation argument in one node: nothing
+           was left, so there is no draft, no `returnTo`, no host waiting on a channel;
+           `Modal`'s own `useOverlay` is the entire back story. -->
+      <div class="modal-overlay" data-variant="sheet" id="form" hidden>
+        <div class="modal-card" role="dialog" aria-modal="true" aria-label="שיבוץ">
+          <div class="modal-title" id="form-title">שיבוץ · רמן נאגי</div>
+          <form class="modal-form">
+            <div class="field">
+              <span class="field-label">קטגוריה</span>
+              <div class="category-pills">
+                <div class="choice-grid pills" role="group" aria-label="קטגוריה">
+                  <button type="button" class="choice-pill" data-catpill="transport"><span class="choice-card-ic" aria-hidden="true">🚆</span><span class="choice-card-lbl">תחבורה</span></button>
+                  <button type="button" class="choice-pill" data-catpill="food"><span class="choice-card-ic" aria-hidden="true">🍽️</span><span class="choice-card-lbl">אוכל</span></button>
+                  <button type="button" class="choice-pill" data-catpill="lodging"><span class="choice-card-ic" aria-hidden="true">🏨</span><span class="choice-card-lbl">לינה</span></button>
+                  <button type="button" class="choice-pill" data-catpill="sightseeing"><span class="choice-card-ic" aria-hidden="true">⛩️</span><span class="choice-card-lbl">אתרים</span></button>
+                  <button type="button" class="choice-pill" data-catpill="nature"><span class="choice-card-ic" aria-hidden="true">🌿</span><span class="choice-card-lbl">טבע</span></button>
+                  <button type="button" class="choice-pill" data-catpill="activity"><span class="choice-card-ic" aria-hidden="true">🎟️</span><span class="choice-card-lbl">פעילות</span></button>
+                  <button type="button" class="choice-pill" data-catpill="shopping"><span class="choice-card-ic" aria-hidden="true">🛍️</span><span class="choice-card-lbl">קניות</span></button>
+                  <button type="button" class="choice-pill" data-catpill="services"><span class="choice-card-ic" aria-hidden="true">🧾</span><span class="choice-card-lbl">מעשי</span></button>
+                  <button type="button" class="choice-pill" data-catpill="other"><span class="choice-card-ic" aria-hidden="true">📍</span><span class="choice-card-lbl">כללי</span></button>
+                </div>
+              </div>
+            </div>
+
+            <div class="field">
+              <span class="field-label">כותרת</span>
+              <div class="title-row">
+                <div class="icon-picker">
+                  <button type="button" class="icon-chip" id="iconchip" aria-label="בחירת סמל">🍜</button>
+                </div>
+                <input class="title-input" value="רמן לארוחת ערב" />
+              </div>
+            </div>
+
+            <div class="field">
+              <span class="field-label">מתי</span>
+              <div class="wf">
+                <input class="wf-date" type="date" value="2026-07-26" />
+              </div>
+            </div>
+
+            <div class="field">
+              <span class="field-label">מיקום</span>
+              <div class="place-picker">
+                <button type="button" class="pp-trigger filled" aria-label="בחירת מיקום">
+                  <span class="pp-trigger-icon" aria-hidden="true">📍</span>
+                  <span class="pp-trigger-label">רמן נאגי</span>
+                </button>
+                <button type="button" class="pp-clear" aria-label="ניקוי המיקום">✕</button>
+              </div>
+            </div>
+
+            <!-- THE ONE NEW ROW, AND IT IS NOT A CODE FIELD.
+                 You are always creating an EVENT. This says the event is ALSO booked,
+                 which is what `event.bookingId != null` has always meant — the two were
+                 never alternatives, and treating them as alternatives was the mistake in
+                 the first two passes at this.
+
+                 One tap, no typing, so it works for a table booked by phone with no
+                 number and for people who never record numbers. And it DEFAULTS from the
+                 category (lodging/transport → on), which is the inference doing what it
+                 can honestly do while a human owns the fact. -->
+            <!-- No `field-label`: the button says `יש הזמנה`, and a label above it saying
+                 `הזמנה` is the same word twice for 20px. The control is self-labelling,
+                 which is the whole reason it is a labelled pill and not a bare switch. -->
+            <div class="field ef-code-field" id="codefield">
+              <button type="button" class="ef-booked" id="bookedbtn" aria-pressed="false" aria-controls="codebody">
+                <span class="tick" aria-hidden="true">＋</span>
+                יש הזמנה
+              </button>
+              <button type="button" class="ef-linked" id="linkedrow" hidden>
+                <span class="k">הזמנה</span>
+                <span>רמן נאגי · אישור RN-4820</span>
+                <svg class="icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><polyline points="15 6 9 12 15 18" /></svg>
+              </button>
+              <div class="wp-collapsible" id="codebody">
+                <input class="ef-code-input" id="codeinput" placeholder="מספר אישור · לא חובה" value="" />
+                <div class="ef-derived" id="derived">
+                  <span aria-hidden="true" id="derived-ic">🍽️</span>
+                  <span><span id="derived-lead">האירוע יירשם גם כ</span><b id="derived-txt">הזמנה · מסעדה</b><span id="derived-tail">, ואפשר להשלים אותה אחר כך</span></span>
+                </div>
+              </div>
+            </div>
+
+            <div class="field">
+              <span class="field-label">סוג</span>
+              <div class="kind-toggle" id="kindtoggle">
+                <button type="button" class="soft on" id="k-soft">גמיש</button>
+                <button type="button" class="hard" id="k-hard">מחויב</button>
+              </div>
+            </div>
+            <div class="form-actions">
+              <button type="button" class="fa-primary">שמירה</button>
+              <button type="button" class="fa-secondary" data-close="1">ביטול</button>
+            </div>
+          </form>
+        </div>
+      </div>
           </div>
         </div>
       </div>
 
+      <div>
+        <div class="mk-framecap"><b>מה נוצר בפועל</b> · <span id="outcap">מסך היום</span></div>
+        <div class="mk-phone" id="phone2" style="--mk-w: 390px; --mk-h: 844px">
+          <div class="app" data-mode="trip">
+            <header class="header mode-chrome" data-mode="trip">
+              <div class="trip-row">
+                <div class="trip-name-wrap">
+                  <button class="trip-name-btn" aria-label="החלפת טיול">
+                    <span class="trip-icon" aria-hidden="true">🗾</span>
+                    <span class="trip-name">יפן באוקטובר</span>
+                  </button>
+                  <div class="trip-sub">ה׳ 26.7<span class="dot">·</span>יום 4 מתוך 9</div>
+                </div>
+              </div>
+            </header>
+            <main class="body">
+              <div class="mk-outcome-body">
+                <div class="mk-outcome" id="out-day">
+                  <div class="day-list">
+                    <div class="wp-event">
+                      <div class="wp-event-face static">
+                        <span class="wp-event-badge" aria-hidden="true">⛩️</span>
+                        <span class="wp-event-main">
+                          <span class="wp-event-t">
+                            <span class="wp-event-title-txt">מקדש סנסו־ג׳י</span>
+                            <span class="wp-event-tag-soft">גמיש</span>
+                          </span>
+                          <span class="wp-event-m">אסאקוסה</span>
+                        </span>
+                        <span class="wp-event-time"><span dir="auto">17:20</span></span>
+                      </div>
+                    </div>
+
+                    <!-- WHAT THE SAVE PRODUCED. One form, one row, two cards: without the
+                         row a plain soft event; with it the BOOKING's linked event, which is
+                         what the day actually renders (`bookingEventFields`, ADR-0047/0093).
+                         The confirmation appears in the meta ONLY when there is one — a
+                         booking with no number is the ordinary case here, not a degenerate. -->
+                    <div class="wp-event soft mk-new" id="out-event">
+                      <div class="wp-event-face static">
+                        <span class="wp-event-badge" aria-hidden="true" id="out-ev-ic">🍜</span>
+                        <span class="wp-event-main">
+                          <span class="wp-event-t">
+                            <span class="wp-event-title-txt">רמן לארוחת ערב</span>
+                            <span class="wp-event-tag-soft">גמיש</span>
+                          </span>
+                          <span class="wp-event-m">רמן נאגי</span>
+                        </span>
+                        <span class="wp-event-time"><span dir="auto">19:00</span></span>
+                      </div>
+                    </div>
+
+                    <div class="wp-event mk-new" id="out-booking" hidden>
+                      <div class="wp-event-face static">
+                        <span class="wp-event-badge" aria-hidden="true" id="out-bk-ic">🍜</span>
+                        <span class="wp-event-main">
+                          <span class="wp-event-t">
+                            <span class="wp-event-title-txt">רמן לארוחת ערב</span>
+                            <span class="wp-event-tag-soft" id="out-bk-tag">גמיש</span>
+                          </span>
+                          <span class="wp-event-m" id="out-bk-meta">רמן נאגי</span>
+                        </span>
+                        <span class="wp-event-time"><span dir="auto">19:00</span></span>
+                      </div>
+                    </div>
+
+                    <p class="mk-outcome-note" id="out-conv-note" hidden>
+                      זו <b>אותה כרטיסייה</b>, לא חדשה: המרה לא מוסיפה כלום ליום, היא משנה את מה
+                      שכבר היה בו. האירוע שומר את ה<b>סוג</b> שלו (המרה לא מקשיחה אירוע גמיש),
+                      והמיקום והקטגוריה עוברים אל ההזמנה - האינווריאנט של ADR-0048, שהשרת אוכף
+                      בעצמו ברגע ש־<code>bookingId</code> נכתב.
+                    </p>
+                  </div>
+                </div>
+                <div class="mk-outcome" id="out-index" hidden>
+                  <div class="index">
+                    <div class="idx-screen">
+                      <div class="sec-title">הזמנות</div>
+                      <div class="listcard">
+                        <!-- `ui/domain/ListRow.tsx`: `.wp-listrow-right` is a SIBLING of the
+                             open button, not a child of it — a trailing control cannot live
+                             inside the button it sits beside (nested buttons are invalid, the
+                             same reason `PlaceBadge` is a `role="button"` span). -->
+                        <div class="wp-listrow">
+                          <button type="button" class="wp-listrow-open" aria-label="מלון שינג׳וקו">
+                            <span class="wp-listrow-badge stay" aria-hidden="true">🏨</span>
+                            <span class="wp-listrow-main">
+                              <span class="wp-listrow-title">
+                                מלון שינג׳וקו
+                                <span class="bk-lock" aria-hidden="true">🔒</span>
+                                <span class="tag-type">לינה</span>
+                              </span>
+                              <span class="wp-listrow-meta"><span class="link-cue">🔗 ד׳ 25.7 · 15:00</span></span>
+                            </span>
+                          </button>
+                          <div class="wp-listrow-right"><span class="code" dir="auto">#HT-9931</span></div>
+                        </div>
+                      </div>
+                      <div class="listcard mk-new" id="out-idx" hidden>
+                        <div class="wp-listrow">
+                          <button type="button" class="wp-listrow-open" aria-label="רמן לארוחת ערב">
+                            <span class="wp-listrow-badge" id="out-idx-ic" aria-hidden="true">🍽️</span>
+                            <span class="wp-listrow-main">
+                              <span class="wp-listrow-title">
+                                רמן לארוחת ערב
+                                <span class="bk-lock" id="out-idx-lock" aria-hidden="true" hidden>🔒</span>
+                                <span class="tag-type" id="out-idx-type">מסעדה</span>
+                              </span>
+                              <span class="wp-listrow-meta"><span class="link-cue">🔗 ה׳ 26.7 · 19:00</span></span>
+                            </span>
+                          </button>
+                          <div class="wp-listrow-right"><span class="code" dir="auto" id="out-idx-code"></span></div>
+                        </div>
+                      </div>
+                      <p class="mk-outcome-note" id="out-idx-note">
+                        בלי קוד הזמנה לא נוצרת הזמנה, ומסך האינדקס לא משתנה בכלל. זו חצי המשמעות של
+                        השדה: הוא לא מוסיף ישות, הוא מכריע איזו ישות נוצרת.
+                      </p>
+                    </div>
+                  </div>
+                </div>
+              </div>
+            </main>
+            <nav class="nav">
+              <button><span class="ic">🏠</span>בית</button>
+              <button class="on" id="nav-day"><span class="ic">📅</span>יום ביום</button>
+              <button id="nav-idx"><span class="ic">🗂️</span>אינדקס</button>
+              <button><span class="ic">🗺️</span>מפה</button>
+            </nav>
+          </div>
+        </div>
+      </div>
+    </div>
+
     <div class="mk-panels">
       <div class="mk-panel mk-warn">
-        <h3>שלוש הצורות של הבלוק, נמדדות</h3>
+        <h3>מה השורה עולה, נמדד</h3>
         <p>
-          נקרא מה־DOM החי של המסגרת השמאלית, ולא נטען. השאלה היא כמה מהמגירה נשאר אחרי ששורה
-          נבחרה, ובעצירת <code>חצי</code> על מסך קטן זו שאלה אמיתית.
+          נקרא מה־DOM החי של <code>.modal-form</code> - לא מ־<code>.modal-card</code>, שחסום בגובה
+          וגולל, ולכן <b>מפסיק לזוז</b> כשהתוכן שלו גדל. הטופס מצויר במלואו (קטגוריה, סמל וכותרת,
+          מתי, מיקום, סוג, פעולות), כי בלי זה השורה החדשה נראית כמו נתח גדול ממה שהיא.
         </p>
         <table>
           <thead>
             <tr>
-              <th>מצב</th>
-              <th>גובה השורה הנבחרת</th>
-              <th>מול המגירה</th>
+              <th>מצב הטופס</th>
+              <th>גובה התוכן</th>
+              <th>תוספת</th>
             </tr>
           </thead>
-          <tbody id="cost-rows"></tbody>
+          <tbody id="form-rows"></tbody>
         </table>
-        <p id="cost-note" style="margin-top: 10px"></p>
+        <p id="form-note" style="margin-top: 10px"></p>
       </div>
 
       <div class="mk-panel">
-        <h3>מה קורה לרעיון המקורי</h3>
+        <h3>למה לא קוד אישור, ולמה בכלל שורה</h3>
         <ul>
           <li>
-            <b>נצרך, דרך המסלול שכבר עושה את זה.</b> רעיון <b>אחד</b> - הפעולה פותחת את אותו טופס
-            שהמדף פותח (<code>EventForm maybeItem={…}</code>), והשמירה היא
-            <code>verbs.schedule</code>: האירוע נוצר והרעיון נצרך באותה פעולה (ADR-0027 §2).
+            <b>הסכמה עצמה פוסלת את הקוד.</b> <code>confirmationCode</code> הוא nullable, וכל שדה
+            ב־<code>Booking</code> חוץ מ־<code>type</code> ו־<code>title</code> הוא אופציונלי. שולחן
+            שהוזמן בטלפון הוא הזמנה בלי מספר, והרבה אנשים לא טורחים להקליד מספר גם כשיש.
           </li>
           <li>
-            <b>שני רעיונות: לא נצרך כלום.</b> שתי כוונות, ותזמון אחת לא אמור לאכול את השנייה. הבלוק
-            לא יכול להבדיל ביניהן - שורת רעיון קוראת <code>על המדף · &lt;יום&gt;</code> ותו לא.
+            <b>ולא היה גיבוי.</b> המקרה הנפוץ ביותר - מסעדה - הוא גם <b>גמיש</b> לפי
+            <code>bookingDefaultKind</code>, כך שגם "מחויב ⇐ הזמנה" היה מפספס אותו. אין אות שאפשר
+            להסיק ממנו, וזו מסקנה ולא ויתור.
           </li>
           <li>
-            <b>וגם המסלול עם הקוד צורך</b>, כי אירוע מקושר מניח משהו על היום בדיוק כמו תזמון.
+            <b>אבל השאלה כן משתנה.</b> "אירוע או הזמנה?" היא שאלה על הסכמה. "זה מוזמן?" היא שאלה על
+            העולם, ואפשר לענות עליה בהקשה אחת. אירוע והזמנה לא היו חלופות מעולם: להזמנה יש אירוע
+            מקושר, ולכן <b>תמיד</b> נוצר אירוע וההזמנה היא תוספת עליו.
+          </li>
+          <li>
+            <b>והפקד כבר קיים בשפה.</b> האידיום הבוליאני של האפליקציה הוא כפתור עם
+            <code>aria-pressed</code> (צ׳יפ הסקופ במפה, <code>.map-maybes</code>, צ׳יפי הסינון
+            באינדקס). זה בדיוק זה, בתוך שדה בטופס. אין פרימיטיב חדש.
           </li>
         </ul>
       </div>
 
       <div class="mk-panel">
-        <h3>למה זו <i>לא</i> שליחות שרצה לאחור</h3>
+        <h3>מה כן נגזר: ברירת מחדל, וסוג</h3>
         <ul>
           <li>
-            <b>השליחות קיימת בגלל אובדן, לא בגלל כיוון.</b> טופס הוא <code>Modal</code> עם מצב מקומי
-            שאף כתובת לא מכתובת אותו, ולכן <b>עזיבה</b> מאבדת אותו.
+            <b>הקטגוריה מדליקה את השורה מראש</b> ללינה ולתחבורה, ומשאירה אותה כבויה לשאר. זו ההסקה
+            עושה את מה שהיא <i>יכולה</i> לעשות ביושר - עמדת פתיחה, לא כלל - וזו בדיוק העמדה של
+            ADR-0113 ו־ADR-0116 §1: ברירת מחדל שקל לתקן, לעולם לא בחירה כפויה.
           </li>
           <li>
-            <b>וכאן אין מסע.</b> הטופס נפתח מעל המארח - המפה או מסך היום - ולכן אין טיוטה, אין
-            <code>returnTo</code> ואין ערוץ. התקדים הוא ADR-0134 §9.
+            <b>וברגע שנוגעים, הקטגוריה מפסיקה להזיז.</b> <code>bookedTouched</code>, אותו שומר
+            ש־<code>BookingSheet</code> כבר מחזיק עבור <code>kind</code>.
           </li>
           <li>
-            <b>מה כן: קריאת וו אחת.</b> לשונית המפה מארחת עכשיו גם <code>EventForm</code>, ולכן
-            חייבת <code>usePlaceErrandReturn&lt;EventFormDraft&gt;('event', 'map', …)</code>.
+            <b>הסוג נגזר מהקטגוריה של הטופס</b> (היפוך <code>BOOKING_TYPE_TO_CATEGORY</code>), ולא
+            מהמקום: הקטגוריה כבר מובילה את הטופס (ADR-0109 §11) וכבר נגזרת מקבוצת הסמל (ADR-0038),
+            ולכן <b>התיקון להשערה שגויה הוא פקד שכבר קיים</b>, בלי בורר שני.
+          </li>
+          <li>
+            <b>ומחויב/גמיש זו ציר אחר לגמרי.</b> ביצירה - <code>bookingDefaultKind</code>, ולכן
+            הזמנת מסעדה יוצאת <b>גמישה</b>. ב<b>המרה</b> - נשמר כפי שהוא, כי גזירה מחדש הייתה
+            מקשיחה בשקט אירוע גמיש (<code>activity</code> ⇐ <code>hard</code>), וזה בדיוק "אירוע
+            מחויב לא זז מעצמו" של ADR-0011 מהדלת האחורית.
+          </li>
+        </ul>
+      </div>
+
+      <div class="mk-panel">
+        <h3>שלושה מצבים, ואחד מהם הוא אמירה</h3>
+        <ul>
+          <li>
+            <b>אירוע חדש</b> - השורה היא פקד, וברירת המחדל מגיעה מהקטגוריה.
+          </li>
+          <li>
+            <b>אירוע קיים</b> - אותה שורה <b>ממירה</b>: <code>createBooking</code> בלי ה־seed של
+            האירוע (הוא כבר קיים), ואז טלאי <code>bookingId</code>. השרת מאפס את
+            <code>placeId</code> בעצמו, ולכן אין כאן קוד הגירה בכלל. שתי הכתיבות חייבות
+            <b>לבטל כאחת</b>.
+          </li>
+          <li>
+            <b>אירוע שכבר מקושר</b> - <b>אין פקד</b>. הקוד, החדר וההערות חיים על ההזמנה, ולכן השורה
+            היא אמירה עם דרך כניסה - בדיוק הכלל שהטופס כבר מריץ למיקום ולקטגוריה, שדה אחד רחב יותר.
+            וזה גם מה שהופך את המסלול לחד־כיווני: ביטול הזמנה הוא <b>מחיקה</b>, והיא שייכת למסך של
+            ההזמנה עם האישור שכבר יש לו.
           </li>
         </ul>
       </div>
@@ -9753,98 +9078,161 @@ button.wp-av:focus-visible {
       const $ = (s) => document.querySelector(s);
       const $$ = (s) => Array.from(document.querySelectorAll(s));
 
-      const state = { block: 'on', place: 'idea1', stop: 'half', size: '390x844' };
+      const state = {
+        form: 'open', mode: 'create', cat: 'food', out: 'day',
+        size: '390x844', bookedTouched: false,
+      };
 
-      function paintBlock(mode) {
-        $('#refsfoot').hidden = mode !== 'on';
-        $$('#refs .map-ref[data-menu]').forEach((el) => (el.hidden = mode !== 'menu'));
-      }
+      // `booked` is the DEFAULT a category implies, not a rule: lodging and transport are
+      // near-certainly booked, food and sightseeing are genuinely either. `hard` is the
+      // separate derivation (`bookingDefaultKind`) — two axes, deliberately not one.
+      const DERIVED = {
+        food: { type: 'מסעדה', ic: '🍽️', hard: false, booked: false },
+        lodging: { type: 'מלון', ic: '🏨', hard: true, booked: true },
+        transport: { type: 'טיסה', ic: '✈️', hard: true, booked: true },
+        sightseeing: { type: 'פעילות', ic: '⛩️', hard: true, booked: false },
+      };
 
       function render() {
-        paintBlock(state.block);
-        $$('#refs .map-ref[data-when]').forEach((el) => {
-          el.hidden = !el.dataset.when.split(' ').includes(state.place);
-        });
-        $('#sel-shelf').hidden = state.place === 'event';
-        $('#sel-time').textContent = state.place === 'event' ? '12:30' : 'מחר';
-        $('#sel-meta').textContent =
-          state.place === 'event' ? 'ארוחת צהריים' : 'Kabukicho, Shinjuku';
+        const open = state.form !== 'none';
+        const shipped = state.form === 'ship';
+        const booked = state.form === 'booked';
+        const converting = state.mode === 'convert';
+        const linked = state.mode === 'linked';
+        const d = DERIVED[state.cat];
 
-        const half = state.stop === 'half';
-        $('#screen').dataset.view = half ? 'half' : 'full';
-        $('#sheet').dataset.view = half ? 'half' : 'full';
-        $('#screen').style.setProperty('--sheet-h', half ? '56%' : '100%');
-        $('#sheet').style.setProperty('--snap-h', half ? '56%' : '100%');
+        $('#form').hidden = !open;
+        $('#form-title').textContent = state.mode === 'create' ? 'אירוע חדש' : 'עריכת אירוע';
+        $('#codefield').hidden = shipped;
+
+        // A LINKED event gets no control at all — a statement with a way in.
+        $('#bookedbtn').hidden = linked;
+        $('#linkedrow').hidden = !linked;
+        $('#bookedbtn').setAttribute('aria-pressed', String(booked));
+        $('#bookedbtn').querySelector('.tick').textContent = booked ? '✓' : '＋';
+        $('#codebody').classList.toggle('on', booked && !linked);
+        // DELIBERATELY EMPTY: the code is a detail OF a booking, never what creates one.
+        $('#codeinput').value = '';
+        $('#derived').hidden = !(booked && !linked);
+        $('#derived-lead').textContent = converting ? 'האירוע הזה יירשם גם כ' : 'האירוע יירשם גם כ';
+        $('#derived-tail').textContent = converting
+          ? ', והמיקום והקטגוריה יעברו אליה'
+          : ', ואפשר להשלים אותה אחר כך';
+        $('#derived-txt').textContent = 'הזמנה · ' + d.type;
+        $('#derived-ic').textContent = d.ic;
+        $('#iconchip').textContent = d.ic;
+        $$('[data-catpill]').forEach((p) => p.classList.toggle('on', p.dataset.catpill === state.cat));
+
+        // The kind follows the BOOKING TYPE, and only on a create.
+        const hard = booked && d.hard && !converting;
+        $('#k-soft').classList.toggle('on', !hard);
+        $('#k-hard').classList.toggle('on', hard);
+
+        $('#out-day').hidden = state.out !== 'day';
+        $('#out-index').hidden = state.out !== 'index';
+        $('#outcap').textContent =
+          (state.out === 'day' ? 'מסך היום' : 'אינדקס · הזמנות') + (converting ? ' · אחרי ההמרה' : '');
+        $('#nav-day').classList.toggle('on', state.out === 'day');
+        $('#nav-idx').classList.toggle('on', state.out === 'index');
+        $('#out-event').hidden = booked;
+        $('#out-booking').hidden = !booked;
+        $('#out-bk-ic').textContent = d.ic;
+        $('#out-bk-tag').textContent = hard ? '🔒 מחויב' : 'גמיש';
+        $('#out-bk-tag').className = hard ? 'wp-event-tag-hard' : 'wp-event-tag-soft';
+        $('#out-booking').classList.toggle('soft', !hard);
+        $('#out-booking').classList.toggle('mk-new', !converting);
+        $('#out-booking').classList.toggle('mk-changed', converting);
+        $('#out-conv-note').hidden = !(converting && booked);
+        $('#out-idx').hidden = !booked;
+        $('#out-idx-note').hidden = booked;
+        $('#out-idx-ic').textContent = d.ic;
+        $('#out-idx-type').textContent = d.type;
+        $('#out-idx-lock').hidden = !hard;
+        // The Index row shows a code only when one was typed — here, none was.
+        $('#out-idx-code').textContent = '';
 
         const [w, h] = state.size.split('x');
-        $('#phone').style.setProperty('--mk-w', w + 'px');
-        $('#phone').style.setProperty('--mk-h', h + 'px');
-
+        for (const p of ['#phone', '#phone2']) {
+          $(p).style.setProperty('--mk-w', w + 'px');
+          $(p).style.setProperty('--mk-h', h + 'px');
+        }
         requestAnimationFrame(measure);
       }
 
-      // ── THE MEASUREMENT ─────────────────────────────────────────────────────
-      // Read from the live DOM. Traps this file hit and records:
-      //   • a selector matching nothing returns a green-looking zero, so every node is
-      //     checked for existence first and the panel says so when one is missing;
-      //   • `[data-place]` matches the PIN as well as the row and the pin comes first,
-      //     so the row is read by its id and never by `[data-place]`;
-      //   • the sheet animates between stops, so its transitions are cut in the frame.
       function measure() {
-        const row = $('#row-sel');
-        const scroll = $('#sheetbody');
-        if (!row || !scroll) {
-          $('#cost-note').textContent = 'שגיאת מוקאפ: אחד הצמתים לא נמצא.';
+        const card = $('#form .modal-form');
+        if (!card) {
+          $('#form-note').textContent = 'שגיאת מוקאפ: הטופס לא נמצא.';
           return;
         }
-        const was = state.block;
-        const h = {};
-        for (const mode of ['off', 'menu', 'on']) {
-          paintBlock(mode);
-          h[mode] = row.getBoundingClientRect().height;
-        }
-        paintBlock(was);
+        const wasHidden = $('#form').hidden;
+        const wasField = $('#codefield').hidden;
+        const wasOn = $('#codebody').classList.contains('on');
+        const wasDerived = $('#derived').hidden;
+        $('#form').hidden = false;
 
-        // The CLIPPED scroller, never `.map-sheet-scroll` — that one is padding on the
-        // content and grows WITH it. A number that grows with what it constrains is not
-        // a measurement.
-        const vp = scroll.clientHeight;
-        const plain = $('.place:not(.selected)').getBoundingClientRect().height;
-        const verdict = (x) => (x <= vp ? 'נכנסת' : `גולשת ב־${Math.round(x - vp)}px`);
-        $('#cost-rows').innerHTML = [
-          ['כפי שנשלח · רק הפניות', h.off, verdict(h.off)],
-          ['התפריט שנפסל · שתי כניסות', h.menu, verdict(h.menu)],
-          ['האפיון · פעולה אחת', h.on, verdict(h.on)],
-          ['שורה רגילה, להשוואה', plain, ''],
-          ['גובה הגלילה במגירה', vp, state.stop === 'half' ? 'עצירת חצי' : 'רשימה מלאה'],
+        const h = {};
+        for (const mode of ['ship', 'open', 'booked']) {
+          $('#codefield').hidden = mode === 'ship';
+          $('#codebody').classList.toggle('on', mode === 'booked');
+          $('#derived').hidden = mode !== 'booked';
+          h[mode] = card.scrollHeight;
+        }
+        $('#codefield').hidden = wasField;
+        $('#codebody').classList.toggle('on', wasOn);
+        $('#derived').hidden = wasDerived;
+        $('#form').hidden = wasHidden;
+
+        $('#form-rows').innerHTML = [
+          ['כפי שנשלח · בלי השורה', h.ship, '-'],
+          ['עם השורה · לא מוזמן', h.open, '+' + Math.round(h.open - h.ship) + 'px'],
+          ['עם השורה · מוזמן', h.booked, '+' + Math.round(h.booked - h.ship) + 'px'],
         ]
           .map(([a, b, c]) => `<tr><td>${a}</td><td><b class="mk-num">${Math.round(b)}px</b></td><td>${c}</td></tr>`)
           .join('');
-        const already = h.off > vp;
-        $('#cost-note').innerHTML =
-          `התפריט עלה <b>+${Math.round(h.menu - h.off)}px</b>, הפעולה האחת עולה ` +
-          `<b>+${Math.round(h.on - h.off)}px</b>, ושורה רגילה היא ${Math.round(plain)}px. ` +
-          (already
-            ? '<b>והבלוק גולש מהמגירה כבר כפי שנשלח</b>, לפני שהשלב הזה מוסיף משהו - ולכן מה שנוסע ' +
-              'עם הפקד הוא גלילת השורה הנבחרת לתוך התצוגה, תיקון למשהו שכבר נכון היום.'
-            : h.on > vp
-              ? 'האפיון גולש כאן, והמגירה נגללת - מחיר ולא חסימה, בתנאי שהשורה הנבחרת נגללת לתוך התצוגה.'
-              : 'הכל נכנס במצב הזה.');
+        const idle = Math.round(h.open - h.ship);
+        const pct = Math.round((idle / h.ship) * 100);
+        $('#form-note').innerHTML =
+          `מי ש<b>לא</b> מזמין כלום משלם <b>${idle}px</b> על טופס שכבר גבוה ${Math.round(h.ship)}px ` +
+          `- כ־<b>${pct}%</b>, והוא המקרה הנפוץ. שדות ההזמנה נפתחים רק כשיש הזמנה ` +
+          `(<b>+${Math.round(h.booked - h.ship)}px</b> אז). זה המחיר שמשלם <b>כל</b> מארח של הטופס: ` +
+          'מסך היום, הבונה ולשונית המפה.';
       }
 
       $$('.mk-states button').forEach((b) => {
         b.addEventListener('click', () => {
           const key = Object.keys(b.dataset)[0];
           state[key] = b.dataset[key];
+          if (key === 'cat' && !state.bookedTouched && state.form !== 'none' && state.form !== 'ship') {
+            // THE DEFAULT MOVES WITH THE CATEGORY, until a human touches it.
+            state.form = DERIVED[state.cat].booked ? 'booked' : 'open';
+            syncButtons('form');
+          }
           b.parentElement.querySelectorAll('button').forEach((x) => x.classList.remove('on'));
           b.classList.add('on');
           render();
         });
       });
-      $('#mk-go').addEventListener('click', () => {
-        // Opening the form is `event-also-booked-v1.html`'s subject, not this file's.
-        window.alert('הטופס נפתח מעל המפה. מה שהוא עושה משם מצויר ב־event-also-booked-v1.html (ADR-0136).');
+      function syncButtons(key) {
+        $$(`.mk-states [data-${key}]`).forEach((b) =>
+          b.classList.toggle('on', b.dataset[key] === state[key]),
+        );
+      }
+      $('#bookedbtn').addEventListener('click', () => {
+        state.form = state.form === 'booked' ? 'open' : 'booked';
+        // A human has said it, so the category stops moving it — the same `kindTouched`
+        // guard `BookingSheet` already carries, one field over.
+        state.bookedTouched = true;
+        syncButtons('form');
+        render();
       });
+      $$('[data-close]').forEach((b) =>
+        b.addEventListener('click', () => {
+          state.form = 'none';
+          syncButtons('form');
+          render();
+        }),
+      );
 
       render();
       window.addEventListener('resize', measure);
