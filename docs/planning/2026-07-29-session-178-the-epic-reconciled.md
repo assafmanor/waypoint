@@ -49,6 +49,33 @@ already tracked, and the line now says so.
 | Latin address reorders in RTL              | open                         | **Open.** `BookingDetail`'s `.bk-fact-v bk-loc` still carries no `dir`                                                                                                                                     |
 | The chrome + the ring line                 | "what is left is a decision" | **Stale.** The decision (the map extreme) was taken by the owner and built in session 166; what is left is the **coordless match**, which has neither ring nor row                                         |
 
+### Addendum — the owner checked the first one, on the wrong surface, and that is worth keeping
+
+The owner answered this note with a screenshot of a `TGI` search at the **map extreme**: the
+place card reads `TGI Fridays · לפני 5 ימים · 14:00` — a place five days behind, correctly
+naming its day while the strip is on today. Reasonable reading, wrong surface, and the code
+says why: the **card** passes `forceDay: !inDayScope(cardUsage)`, so it has always named the day
+of anything outside the scope. The **list** is the defect, and its two `renderList` call sites
+pass nothing.
+
+So it was reproduced rather than argued, against `Map.test.tsx`'s own fixtures (strip on
+2026-07-20, `see` an event on the 21st, `idea` a genuinely dateless maybe):
+
+```
+query 'e', day-scoped → headers: ["מה שלפנינו", "ללא יום"]
+                        shown:   lite (today, meta null)
+                                 idea (no day)
+                                 see  (TOMORROW — filed under ללא יום, meta null)
+```
+
+`meta: null` and the `ללא יום` header on a place that plainly has a day. That is the whole
+defect in one assertion, and it is the test the fix should ship with.
+
+**The lesson is the one this epic keeps re-teaching from the other direction:** this surface has
+three renderers of the same row — the list, the place card, and the surfaced ghost — and two of
+them already force the day. "Is it fixed" is not a question about the tab; it is a question
+about which of the three you are looking at.
+
 ## Also corrected
 
 - **A code comment that now states the opposite of what ships.** `Map.tsx`'s `googleHalf`
