@@ -393,3 +393,19 @@ races Strict Mode and rapid re-renders. Unwinding them is that rejected design, 
 a decision, not a patch. Nothing observable misbehaves today: structural backs always
 `replace`, so the stranded entries are never traversed into; the cost is an unbounded forward
 stack and a longer history than the model claims.
+
+**And the invariant that keeps it harmless is now enforced rather than remembered.** Those
+entries are unreachable for exactly one reason: no back ever traverses. That was documented in
+ADR-0090 and honoured by hand. It is now two guards:
+
+- **A lint rule** (`BACK_TRAVERSAL_SELECTORS` in `eslint.config.mjs`) bans `navigate(-1)`,
+  `history.back()`/`forward()`/`go()` and reads of `history.length` in frontend app code.
+  Tests are exempt by pattern — `nav-state.system-back.test.tsx` and `Map.back.test.tsx` call
+  `history.back()` to SIMULATE the platform, which is the one legitimate use.
+- **An exhaustive `runStructural`.** Its `default: break` meant a new `BackAction` kind became
+  a silent no-op — the state in which someone reaches for `history.back()` to "make back work
+  again". It is now a `never` check, so a new kind fails the build until it says what explicit
+  navigation it performs.
+
+Both were verified to fire, not just written: six traversal shapes each raise the lint error,
+and adding a seventh `BackAction` kind fails `tsc`.
