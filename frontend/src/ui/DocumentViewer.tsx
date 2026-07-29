@@ -222,7 +222,7 @@ export function DocumentViewer({
 }) {
   useOverlay(onClose);
   const cardRef = useRef<HTMLDivElement>(null);
-  useDialogFocus(cardRef, onClose, { trap: true });
+  useDialogFocus(cardRef, { trap: true });
   const [url, setUrl] = useState<string | null>(null);
   const [failed, setFailed] = useState(false);
   // An image whose bytes the browser can't decode (HEIC, a corrupt scan) falls

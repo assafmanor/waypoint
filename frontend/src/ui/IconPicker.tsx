@@ -65,13 +65,12 @@ export function IconPicker({
     const onDocClick = (e: MouseEvent) => {
       if (wrapRef.current && !wrapRef.current.contains(e.target as Node)) setOpen(false);
     };
-    const onEsc = (e: KeyboardEvent) => e.key === 'Escape' && setOpen(false);
+    // No Escape listener: the back layer above owns it (ADR-0103 §2). This hook
+    // used to add one, and it was DEAD — a bubble-phase listener on `document`,
+    // behind `useDialogFocus`'s capture listener and its `stopPropagation`, so
+    // inside a form it never ran and Escape closed the form instead of the panel.
     document.addEventListener('click', onDocClick);
-    document.addEventListener('keydown', onEsc);
-    return () => {
-      document.removeEventListener('click', onDocClick);
-      document.removeEventListener('keydown', onEsc);
-    };
+    return () => document.removeEventListener('click', onDocClick);
   }, [open]);
 
   const toggle = () => {

@@ -142,6 +142,24 @@ describe('BuilderRow ⋯ sheet — the הזז step (ADR-0138 §8)', () => {
     expect(screen.queryByRole('button', { name: t.actions.edit })).toBeNull();
   });
 
+  // ADR-0103 §2, built 2026-08-01. Escape used to call the Modal's own `onClose`
+  // directly, reaching PAST the step's layer and dismissing the whole sheet — so it
+  // and system back disagreed on the one surface where a second layer exists.
+  it('peels the step on Escape too, exactly as back does', () => {
+    row(A);
+    openMenu();
+    fireEvent.click(screen.getByRole('button', { name: t.planDay.move }));
+    expect(document.querySelector('.bld-move')).toBeTruthy();
+
+    fireEvent.keyDown(document, { key: 'Escape' });
+    expect(document.querySelector('.bld-move')).toBeNull();
+    expect(screen.getByRole('button', { name: t.actions.edit })).toBeTruthy();
+
+    // And the next one leaves the sheet — one press, one layer, same as back.
+    fireEvent.keyDown(document, { key: 'Escape' });
+    expect(screen.queryByRole('button', { name: t.actions.edit })).toBeNull();
+  });
+
   it('omits הזז when there is nothing to reorder against', () => {
     row(A, { peers: [A] });
     openMenu();

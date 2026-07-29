@@ -409,3 +409,68 @@ ADR-0090 and honoured by hand. It is now two guards:
 
 Both were verified to fire, not just written: six traversal shapes each raise the lint error,
 and adding a seventh `BackAction` kind fails `tsc`.
+
+---
+
+## Amendment (2026-08-01) — Escape unification, built; and what §176 got wrong about `Modal`
+
+Owner: _"Let's fix the Escape thing too."_ This closes §2's deferred **"Trigger-aware
+`resolveBack` + Escape unification"** for the Escape half, and answers the
+**"Escape scope"** open question left in Alternatives.
+
+### The claim that was wrong
+
+The session-176 amendment above says:
+
+> `Modal` already honours this — its backdrop `onClick` and its Escape handler are
+> the very `onClose` it registers — which is why every sheet, dialog, picker and
+> confirm needed nothing.
+
+That is true for a **lone** overlay and false the moment a **second layer sits above
+the Modal's own**. `onClose` is the Modal's _own_ dismissal, not "whatever back would
+do next" — so where the two differ, Escape reached past the top layer:
+
+- the Plan builder row's `הזז` step and Plan mode's resolve sheet — back peeled the
+  step, Escape dismissed the whole sheet;
+- an `IconPicker` or `TimePicker` panel open inside a form — **back closed the panel,
+  Escape closed the FORM and threw away what you had typed.** That is the same defect
+  §176 was written to fix, surviving on the trigger it did not check.
+
+Two more, found while fixing it:
+
+- **Every open Modal added its own `document` listener.** `stopPropagation` does not
+  stop sibling listeners on the _same_ target, so a nested prompt over a sheet closed
+  **both** on one press.
+- **`IconPicker`'s own Escape handler was dead code** — a bubble-phase listener on
+  `document`, behind `useDialogFocus`'s capture listener and its `stopPropagation`.
+  It had never run inside a form.
+
+### The fix
+
+Escape runs the **resolver**, not a dialog's `onClose`. `useEscapeAsBack` lives in
+`useOverlay`, so every sheet/dialog/picker/confirm gets it with no call-site work;
+`useDialogFocus` loses its Escape branch and its `onClose` parameter, becoming purely
+what its name says. `stopImmediatePropagation` leaves exactly one owner.
+
+**Running the resolver is what makes the handler's position irrelevant.** Whichever
+overlay's listener happens to fire, the stack decides what peels — so the nested case
+is fixed by the same line as the step case, with no ordering reasoning.
+
+### Escape scope — resolved, with no layer typing
+
+Alternatives offered "overlays + search only (chosen default) vs. full peel". The
+chosen default holds, and it needed **no `TransientOverlayLayer` type** to express:
+the split already exists as two hooks. `useEscapeAsBack` is called by **`useOverlay`**,
+which is exactly dismissible overlays and search; filters and subviews register
+through **`useBackLayer`** directly and Escape still leaves them alone. §1's typed
+registry stays unbuilt and is not needed for this.
+
+So Escape's blast radius is unchanged — it acts only where a dialog is open, as
+before. What changed is _which_ layer it peels there.
+
+### Still open from §2
+
+The `BackTrigger` parameter on `resolveBack` itself. Escape now shares the resolver
+but does not identify itself to it, and nothing yet needs it to: every trigger wants
+the same "peel the topmost layer". A trigger that wants different treatment is what
+would force the parameter, and none exists today.

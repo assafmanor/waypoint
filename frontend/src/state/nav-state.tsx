@@ -660,12 +660,56 @@ export function useBackLayer(handle: () => BackResult, active = true) {
  *  shim over `useBackLayer` for the common "always closes" case — used by the
  *  `Modal` primitive, so every sheet/dialog inherits back-to-close with no
  *  call-site work. Reach for `useBackLayer` directly when a back should sometimes
- *  be consumed without leaving the screen (ADR-0103). */
+ *  be consumed without leaving the screen (ADR-0103).
+ *
+ *  It also makes **Escape a back trigger** (ADR-0103 §2's deferred "Escape
+ *  unification", built 2026-08-01) — see `useEscapeAsBack`. */
 export function useOverlay(onClose: () => void) {
   useBackLayer(() => {
     onClose();
     return { remainsActive: false };
   });
+  useEscapeAsBack();
+}
+
+/** **Escape is a back trigger, and back has one owner** (ADR-0103 §2).
+ *
+ *  It used to be a second, independent close path: `useDialogFocus` called the
+ *  Modal's own `onClose` directly. That is indistinguishable from back for a plain
+ *  overlay — which is why ADR-0103's session-176 amendment recorded `Modal` as
+ *  already honouring the rule — and wrong the moment a **second layer sits above
+ *  the Modal's own**. Then system back peeled the top layer while Escape reached
+ *  past it and dismissed the whole sheet: the builder row's `הזז` step, Plan mode's
+ *  resolve sheet, and — the case that loses typing — a `TimePicker`/`IconPicker`
+ *  panel open inside a form, where Escape closed the FORM.
+ *
+ *  Running the resolver instead makes the handler's position irrelevant: whoever
+ *  catches the key, the stack decides what peels. That is also what fixes nested
+ *  overlays, where every open Modal had added its own listener to `document` and
+ *  `stopPropagation` does not stop siblings on the same target — so two sheets
+ *  closed on one press. `stopImmediatePropagation` leaves exactly one owner.
+ *
+ *  **Scope is deliberately unchanged**, which resolves ADR-0103's open "Escape
+ *  scope" question in favour of its own chosen default (overlays + search, not
+ *  filters or subviews) — and needs no layer typing to do it, because the split
+ *  already exists: this hook lives in `useOverlay`, while filters and subviews
+ *  register through `useBackLayer` directly and Escape leaves them alone. */
+function useEscapeAsBack() {
+  const back = useAppBack();
+  const backRef = useRef(back);
+  backRef.current = back;
+  useEffect(() => {
+    const onKeyDown = (e: KeyboardEvent) => {
+      if (e.key !== 'Escape') return;
+      // Capture + immediate-stop: one press, one peel, no matter how many
+      // overlays are stacked or which of them owns the listener that fired.
+      e.stopImmediatePropagation();
+      e.preventDefault();
+      backRef.current();
+    };
+    document.addEventListener('keydown', onKeyDown, true);
+    return () => document.removeEventListener('keydown', onKeyDown, true);
+  }, []);
 }
 
 /** Close every open overlay at once. Used by the idle-resume reset (ADR-0060) so
