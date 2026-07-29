@@ -57,7 +57,7 @@ import { zoneOffsetMinutes, zonedIso } from '../lib/time';
 import { hoursPhrase } from '../lib/duration';
 import { bookingDurationUnit, timingLabels } from '../lib/booking-timing';
 import { BOOKING_TYPE_ICON, DOT_SEPARATOR } from '../constants';
-import { useStartPlaceErrand, type PlaceErrandTarget } from '../state/map-scope-state';
+import { useStartPlaceErrand, type PlaceErrandField } from '../state/map-scope-state';
 import { t } from '../i18n/he';
 
 const BOOKING_TYPE_OPTIONS = Object.values(BOOKING_TYPE).map((ty) => ({
@@ -141,40 +141,38 @@ export function BookingSheet({
 
   // ONE ERRAND BUILDER FOR THE THREE PLACE FIELDS (ADR-0134 §1/§2). Each call names its own
   // field, and the label says which end of the journey it is — a banner reading only
-  // "רכבת לקיוטו" would leave you guessing which side you were choosing. `null` outside the
-  // trip shell, where the field keeps its own sheet.
-  const findPlace = (field: PlaceErrandTarget['field'], side?: string) =>
-    startErrand &&
-    (() =>
-      startErrand({
-        target: { kind: 'booking', id: booking?.id, field },
-        label: [title.trim() || t.map.errand.untitledBooking, side]
-          .filter(Boolean)
-          .join(` ${DOT_SEPARATOR} `),
-        draft: {
-          type,
-          iconTouched,
-          icon,
-          title,
-          code,
-          fromPlaceId,
-          toPlaceId,
-          placeId,
-          startOverride,
-          endOverride,
-          room,
-          notes,
-          wifiNetwork,
-          wifiPassword,
-          date,
-          start,
-          end,
-          spanStart,
-          spanEnd,
-          kind,
-          kindTouched,
-        } satisfies BookingSheetDraft,
-      }));
+  // "רכבת לקיוטו" would leave you guessing which side you were choosing. `startErrand` is
+  // null only where there is no Map tab to route to, which no host of this sheet is.
+  const findPlace = (field: PlaceErrandField, side?: string) => () =>
+    startErrand?.({
+      target: { kind: 'booking', id: booking?.id, field },
+      label: [title.trim() || t.map.errand.untitledBooking, side]
+        .filter(Boolean)
+        .join(` ${DOT_SEPARATOR} `),
+      draft: {
+        type,
+        iconTouched,
+        icon,
+        title,
+        code,
+        fromPlaceId,
+        toPlaceId,
+        placeId,
+        startOverride,
+        endOverride,
+        room,
+        notes,
+        wifiNetwork,
+        wifiPassword,
+        date,
+        start,
+        end,
+        spanStart,
+        spanEnd,
+        kind,
+        kindTouched,
+      } satisfies BookingSheetDraft,
+    });
 
   const suggestedZones = useMemo(
     () =>

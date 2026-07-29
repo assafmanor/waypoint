@@ -100,7 +100,7 @@ import {
   type MapSheetView,
 } from '../constants';
 import { ChoiceGrid, type Choice } from '../ui/primitives/ChoiceGrid';
-import { AddLocationButton, PlacePickerSheet } from '../ui/primitives/PlacePicker';
+import { AddLocationButton } from '../ui/primitives/PlacePicker';
 import { RevealList } from '../ui/primitives/RevealList';
 import { SnapSheet } from '../ui/primitives/SnapSheet';
 import { MapPane, type MapPin, type MapResultPin } from '../ui/domain/MapPane';
@@ -193,13 +193,33 @@ export function MapView() {
   // The bias is a latest-ref rather than a value, so a camera idle can never re-run a
   // BILLED search: the hook reads it when a request actually fires (ADR-0132 §7).
   const biasRef = useRef<MapBounds | null>(null);
-  const research = usePlaceSearch({ corpus: PLACE_CORPUS.text, biasRef });
-  const verbs = useVerbs();
   // ── THE PLACE ERRAND (ADR-0134 §1-§4) ─────────────────────────────────────────
   // A form sent us here to pick ONE place. While it is live the tab is in errand mode:
   // every row gains `בחירה`, `נווט` goes away, and `＋ אולי` is replaced rather than
   // joined — "only choosing one place and not adding more and more places".
-  const pendingErrand = errand.pending;
+  // …AND THE FOURTH TARGET IS OURS (ADR-0134 §9): the coordless row's `＋ מיקום`, which
+  // used to open `PlacePickerSheet` — a second search surface over the map, on the one tab
+  // that already IS a search over a map. It is the same question ("which place is this?"),
+  // so it is the same mode, started locally because we are already standing on the
+  // destination: no hand-over, no navigation, nothing to return to.
+  const [rowErrand, setRowErrand] = useState<PlaceErrand | null>(null);
+  const pendingErrand = errand.pending ?? rowErrand;
+  // WHO CAN ANSWER IT. A form errand takes either half — the trip's own places answer it
+  // free and offline, which is the fact ADR-0134 §1 reconciled the whole reversal on. A ROW
+  // errand can only be answered by Google: the coordless row is already in our list, and a
+  // second row of ours cannot tell it where it is. So the trip's rows keep their ordinary
+  // grammar (no `בחירה`, no commit on a second tap) while a row errand is live.
+  //
+  // This also removes a control that did nothing: the retired sheet offered the trip's own
+  // places for the enrich too, and the Map discarded the id it handed back.
+  const errandTakesOurPlaces = pendingErrand != null && pendingErrand.target.kind !== 'place';
+  // ENRICHING IN PLACE, RATHER THAN MINTING A SECOND ROW (ADR-0110 §1). Under a row errand
+  // the pick adopts the chosen `googlePlaceId`/coords/timezone onto the row you started
+  // from, which is the whole point: that place stays the one your booking already
+  // references. It is the same option the retired sheet passed, on the same hook.
+  const enrichPlaceId = rowErrand?.target.kind === 'place' ? rowErrand.target.id : undefined;
+  const research = usePlaceSearch({ corpus: PLACE_CORPUS.text, biasRef, enrichPlaceId });
+  const verbs = useVerbs();
   // Assign and return, in one act. The place is handed back through the OTHER channel and
   // the form's host re-opens itself from the draft (§2) — this screen deliberately knows
   // nothing about what a booking form contains.
@@ -216,18 +236,21 @@ export function MapView() {
   // state rather than a route (ADR-0098) — so a booking errand that started there returns to
   // a LANDING with no host mounted to hear the answer. `withBookingFormReturn` asks the Index
   // to mount it; everywhere else the host never left and the helper leaves the path alone.
-  const returnPath = useCallback(
-    (taken: PlaceErrand) =>
-      taken.target.kind === 'booking' ? withBookingFormReturn(taken.returnTo) : taken.returnTo,
-    [],
-  );
+  //
+  // A row errand has no `returnTo` at all — it never left — and that one fact is what both
+  // exits below branch on, rather than each asking what kind of errand it is holding.
+  const returnPath = useCallback((taken: PlaceErrand) => {
+    if (!taken.returnTo) return null;
+    return taken.target.kind === 'booking' ? withBookingFormReturn(taken.returnTo) : taken.returnTo;
+  }, []);
 
   const finishErrand = useCallback(
     (placeId: string) => {
       const taken = errand.take();
       if (!taken) return;
       errandResult.hand({ errand: taken, placeId });
-      navigate(returnPath(taken), { replace: true });
+      const back = returnPath(taken);
+      if (back) navigate(back, { replace: true });
     },
     [errand, errandResult, navigate, returnPath],
   );
@@ -243,11 +266,19 @@ export function MapView() {
   // out of a `＋ מיקום` used to land on the bare screen behind the booking too, which is the
   // success path's bug with nothing even assigned to show for it.
   const cancelErrand = useCallback(() => {
+    // The row errand is local, so cancelling it is just putting the tab back: nothing to
+    // hand over, nowhere to go. It is cleared FIRST because `errand.take()` would find
+    // nothing and return early, leaving the banner up.
+    if (rowErrand) {
+      setRowErrand(null);
+      return;
+    }
     const taken = errand.take();
     if (!taken) return;
     if (taken.draft || taken.target.id) errandResult.hand({ errand: taken, placeId: null });
-    navigate(returnPath(taken), { replace: true });
-  }, [errand, errandResult, navigate]);
+    const back = returnPath(taken);
+    if (back) navigate(back, { replace: true });
+  }, [rowErrand, errand, errandResult, navigate, returnPath]);
   useBackLayer(() => {
     cancelErrand();
     return { remainsActive: false };
@@ -341,8 +372,6 @@ export function MapView() {
     research.reset();
     setSelectedResultId(null);
   }, [queryFieldOpen, research.reset]);
-  // A coordless Place-lite the user chose to enrich from the map (＋ מיקום).
-  const [enrichTarget, setEnrichTarget] = useState<Place | null>(null);
   // A booking reached through a selected row's way-in (§8) — `BookingDetail` is a
   // Modal sheet, so back closes it (ADR-0053), and editing hands off to the same
   // merged `BookingSheet` the Index uses.
@@ -562,6 +591,28 @@ export function MapView() {
   const today = liveToday(nowMs, zoneEvidence);
   const dayCtx = { onDate: scopedDate, nowMs, today };
 
+  // …AND A LIVE QUERY WIDENS THE LIST THE SAME WAY `כל הימים` DOES.
+  //
+  // Search is global by rule — scope-blind and facet-blind, the Index's rule (ADR-0102) —
+  // but only the PREDICATE was: every row still read itself against the strip's day, so a
+  // hit from another day resolved no `placeDay` at all and rendered with no day, no time
+  // and no meta, filed under `ללא יום`. That is a claim about the place made out of a
+  // fact about the scope, and `ללא יום` is a real block with a real meaning (ADR-0109's
+  // session-127 amendment) that a mis-scoped row was walking into.
+  //
+  // So the scope a ROW is read against is not `allDays` but this: the list spans the trip
+  // when the user says so **or when a query already made it**. One named fact rather than
+  // a `searching` test at each of the three places that ask (the order, the block, and
+  // what the row says), because they diverging is the defect itself.
+  //
+  // It is the LIST that widens, not the tab: the facet counts, `מה נשאר` and the pin
+  // numbering keep reading `dayCtx` (the chips are covered by the query field while it is
+  // open, and a pin's number must not renumber under a keystroke). And the place CARD is
+  // untouched — it has always named the day of anything out of scope through `forceDay`,
+  // which is why this defect could be checked on a real device and read as fixed.
+  const listSpansTrip = allDays || searching;
+  const listCtx = { onDate: listSpansTrip ? undefined : activeDate, nowMs, today };
+
   // ADR-0119's coupling rule, now on THREE axes: each facet's count is what the
   // OTHER facets leave visible, so no chip ever claims rows the list won't show.
   // Getting this wrong is not cosmetic — it is the exact defect ADR-0119 was
@@ -625,7 +676,7 @@ export function MapView() {
   // so the two surfaces can't disagree about a day. In BOTH modes: a list that opens
   // on last Tuesday is wrong while you're planning too.
   const nameOf = (u: PlaceUsage) => placeById.get(u.placeId)?.name ?? '';
-  const orderCtx = { nameOf, ...dayCtx };
+  const orderCtx = { nameOf, ...listCtx };
   const bySchedule = (a: PlaceUsage, b: PlaceUsage) => comparePlacesBySchedule(a, b, orderCtx);
   // Which block each row is in — the list labels where each one starts rather than
   // reordering silently as the clock passes each stop. Read from the same derivation
@@ -1123,6 +1174,18 @@ export function MapView() {
   };
   const selectResultRow = useCallback((result: PlaceResult) => onResultRowTap.current(result), []);
 
+  // A ROW ERRAND ENDS WHERE IT STARTED (ADR-0134 §9): close the field, and select the row —
+  // which the pick has just turned from a coordless line into a real pin, so `select`'s
+  // framing shows you the answer on the canvas you asked the question on. A latest-ref like
+  // the taps above, because `select` closes over this render's `ownedResults`/`sheetView`
+  // and a `useCallback` would frame against a stale one.
+  const finishRowErrand = useRef<(placeId: string) => void>(() => {});
+  finishRowErrand.current = (placeId: string) => {
+    setRowErrand(null);
+    openDisclosure(null);
+    select(placeId, { fromRow: true });
+  };
+
   // ADDING A RESULT — one path, whether it was tapped as a row or as a ring. Two steps,
   // both already built: resolve the place (which, for a Text Search result, spends
   // NOTHING — the search already returned the name, the address and the point, so the
@@ -1138,11 +1201,15 @@ export function MapView() {
       setAddResultFailed(false);
       try {
         const place = await research.pick(result);
-        // THREE SOURCES, ONE DESTINATION, AND THE INVOCATION DECIDES IT (ADR-0131 §11,
-        // ADR-0134 §3). With an errand live the place is ASSIGNED and the tab returns —
-        // no `MaybeItem`, because "only choosing one place and not adding more and more
-        // places" is the constraint. With no errand it goes to the shelf, unchanged.
-        if (pendingErrand) finishErrand(place.id);
+        // FOUR SOURCES, THREE DESTINATIONS, AND THE INVOCATION DECIDES IT (ADR-0131 §11,
+        // ADR-0134 §3/§9). Under a ROW errand the pick already did the work — the hook
+        // enriched the row in place — so there is nothing to assign and nowhere to return:
+        // the tab clears the errand and SELECTS the row, which is now a real pin, so the
+        // answer is visible where the question was asked. Under a form errand the place is
+        // ASSIGNED and the tab returns, with no `MaybeItem` ("only choosing one place and
+        // not adding more and more places"). With no errand it goes to the shelf, unchanged.
+        if (rowErrand) finishRowErrand.current(place.id);
+        else if (pendingErrand) finishErrand(place.id);
         else verbs.addMaybe(result.primaryText, { placeId: place.id });
       } catch {
         setAddResultFailed(true);
@@ -1150,7 +1217,7 @@ export function MapView() {
         setAddingResultId(null);
       }
     },
-    [research.pick, verbs, pendingErrand, finishErrand],
+    [research.pick, verbs, rowErrand, pendingErrand, finishErrand],
   );
 
   // A pin tap, behind a stable identity. `MapPane` is memoized, so a handler
@@ -1163,7 +1230,7 @@ export function MapView() {
     // the owner's `＋ or existing`, so both populations answer a second tap the same way.
     // It composes with ADR-0134 §3 rather than reversing it: the FIRST tap still only
     // selects, so you still look before you commit.
-    if (pendingErrand && selectedId === placeId) {
+    if (errandTakesOurPlaces && selectedId === placeId) {
       finishErrand(placeId);
       return;
     }
@@ -1243,7 +1310,7 @@ export function MapView() {
   // `refEntriesFor` filtered every one of them out and the way-in block §8 promised
   // came back empty on exactly the rows that have no other way in.
   const metaCtx = (opts: { forceDay?: boolean }) => ({
-    onDate: opts.forceDay ? undefined : scopedDate,
+    onDate: opts.forceDay ? undefined : listCtx.onDate,
     nowMs,
     today,
   });
@@ -1261,7 +1328,7 @@ export function MapView() {
     // Which day only matters when the list spans several: day-scoped, the strip and
     // the scope hint already name it, so `היום ·` on every row would be pure noise.
     // A surfaced ghost row is the exception — naming its day is the whole point.
-    const day = allDays || opts.forceDay ? relativeDayLabel(usageDay.date, today) : undefined;
+    const day = listSpansTrip || opts.forceDay ? relativeDayLabel(usageDay.date, today) : undefined;
     const event = usageDay.eventId ? eventById.get(usageDay.eventId) : undefined;
     // No event owns this day, so the day came from an idea's pencilled-in target
     // (ADR-0116 §1). It's named, not claimed: amber is time & commitment (ADR-0028)
@@ -1362,7 +1429,7 @@ export function MapView() {
     (usage: PlaceUsage) => {
       const place = placeById.get(usage.placeId);
       if (!place) return null;
-      const prominence = allDays
+      const prominence = listSpansTrip
         ? undefined
         : usage.days.find((d) => d.date === activeDate)?.prominence;
       const { day, time, what, pencilled } = dayMeta(usage, { forceDay: opts.forceDay });
@@ -1392,7 +1459,14 @@ export function MapView() {
           selected={selected}
           onSelect={opts.onSelect && (() => opts.onSelect!(usage.placeId))}
           refs={selected ? refEntriesFor(usage, opts) : undefined}
-          onEnrich={() => setEnrichTarget(place)}
+          onEnrich={() =>
+            setRowErrand({
+              target: { kind: 'place', id: place.id },
+              // The row names itself, which is all the banner needs: you are standing on
+              // the thing you are answering, so there is no reference to name it by.
+              label: place.name,
+            })
+          }
           onFrame={opts.onFrame}
           onChoose={opts.onChoose && (() => opts.onChoose!(usage.placeId))}
         />
@@ -1740,7 +1814,7 @@ export function MapView() {
         // errand it has to be able to choose it — otherwise a trip place is pickable from
         // the list and not from the canvas, on the tab that exists to show you where things
         // are (ADR-0134 §3).
-        onChoose: pendingErrand ? finishErrand : undefined,
+        onChoose: errandTakesOurPlaces ? finishErrand : undefined,
       })(cardUsage)}
     </div>
   );
@@ -1805,7 +1879,7 @@ export function MapView() {
         <p className="map-res-hint">{t.map.search.noResultsTitle}</p>
       ) : (
         renderList(listRows, (id) => select(id, { fromRow: true }), {
-          onChoose: pendingErrand ? finishErrand : undefined,
+          onChoose: errandTakesOurPlaces ? finishErrand : undefined,
         })
       )
     ) : listCount === 0 ? (
@@ -1826,7 +1900,7 @@ export function MapView() {
       )
     ) : (
       renderList(listRows, (id) => select(id, { fromRow: true }), {
-        onChoose: pendingErrand ? finishErrand : undefined,
+        onChoose: errandTakesOurPlaces ? finishErrand : undefined,
       })
     );
 
@@ -1886,16 +1960,6 @@ export function MapView() {
 
   const overlays = (
     <>
-      {/* Enrich a coordless Place-lite from the map (＋ מיקום): the shared picker
-          sheet, opened on the row's place, updates that row in place on a pick. */}
-      {enrichTarget && (
-        <PlacePickerSheet
-          current={enrichTarget}
-          onPick={() => setEnrichTarget(null)}
-          onClose={() => setEnrichTarget(null)}
-        />
-      )}
-
       {/* Reached through a selected row's way-in (§8). */}
       {detailBooking && (
         <BookingDetail

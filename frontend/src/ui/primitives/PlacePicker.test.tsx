@@ -1,142 +1,58 @@
 // @vitest-environment jsdom
-import { afterEach, beforeEach, describe, expect, it, vi, type Mock } from 'vitest';
-import { cleanup, fireEvent, render, screen, waitFor } from '@testing-library/react';
+import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
+import { cleanup, fireEvent, render, screen } from '@testing-library/react';
 import { wrapNav } from '../../test/nav-harness';
 import type { Place } from '@waypoint/shared';
 
-vi.mock('../../lib/api', async (importOriginal) => {
-  const actual = await importOriginal<typeof import('../../lib/api')>();
-  return { ...actual, searchPlaces: vi.fn() };
-});
-
+// THE SHEET'S TESTS WENT WITH THE SHEET (ADR-0134 §9). This file used to drive a whole
+// search surface through the field — the debounce, the resolve, the `בטיול` half, the
+// min-chars floor, the name-only fallback — because the field owned one. It doesn't: the
+// Map tab does, and `Map.test.tsx` + `lib/usePlaceSearch.test.ts` are where each of those
+// is asserted now. What is left here is what is left of the component: a display and a
+// launcher.
 let places: Place[] = [];
-const createPlace = vi.fn();
-const resolvePlace = vi.fn();
 vi.mock('../../state/trip-state', () => ({
-  useTrip: () => ({
-    trip: { id: 't1', timezone: 'Asia/Tokyo' },
-    places,
-    events: [],
-    bookings: [],
-    maybeItems: [],
-    indexVerbs: { createPlace, resolvePlace },
-  }),
+  useTrip: () => ({ places }),
 }));
 
-import { searchPlaces } from '../../lib/api';
 import { PlacePicker } from './PlacePicker';
 import { t } from '../../i18n/he';
-
-const searchMock = searchPlaces as unknown as Mock;
-const PREDICTION = { googlePlaceId: 'g-shibuya', primaryText: 'Shibuya', secondaryText: 'Tokyo' };
 
 describe('PlacePicker', () => {
   beforeEach(() => {
     places = [];
-    searchMock.mockReset().mockResolvedValue([PREDICTION]);
-    createPlace.mockReset().mockResolvedValue('pl-new');
-    resolvePlace.mockReset().mockResolvedValue({ id: 'pl-resolved' } as Place);
   });
   afterEach(() => cleanup());
 
   it('shows the placeholder when empty and the place name when filled', () => {
     places = [{ id: 'pl1', name: 'Shibuya Crossing' } as Place];
-    const { rerender } = render(wrapNav(<PlacePicker onChange={() => {}} placeholder="pick" />));
+    const { rerender } = render(
+      wrapNav(<PlacePicker onChange={() => {}} onFind={() => {}} placeholder="pick" />),
+    );
     expect(screen.getByText('pick')).toBeTruthy();
-    rerender(wrapNav(<PlacePicker value="pl1" onChange={() => {}} placeholder="pick" />));
+    rerender(
+      wrapNav(<PlacePicker value="pl1" onChange={() => {}} onFind={() => {}} placeholder="pick" />),
+    );
     expect(screen.getByText('Shibuya Crossing')).toBeTruthy();
   });
 
-  it('opens the search sheet, debounces a search, and resolves the pick', async () => {
-    const onChange = vi.fn();
-    render(wrapNav(<PlacePicker onChange={onChange} />));
+  it('the trigger sends the errand — it does not open anything here', () => {
+    const onFind = vi.fn();
+    render(wrapNav(<PlacePicker onChange={() => {}} onFind={onFind} />));
     fireEvent.click(screen.getByRole('button', { name: t.placePicker.open }));
-
-    const input = await screen.findByPlaceholderText(t.placePicker.searchPlaceholder);
-    fireEvent.change(input, { target: { value: 'shibuya' } });
-
-    const result = await screen.findByText('Shibuya', {}, { timeout: 2000 });
-    fireEvent.click(result);
-
-    await waitFor(() => expect(onChange).toHaveBeenCalledWith('pl-resolved'));
-    expect(resolvePlace).toHaveBeenCalledTimes(1);
+    expect(onFind).toHaveBeenCalledTimes(1);
+    // The assertion that keeps the retirement honest: no sheet, no dialog, nothing over
+    // the form. A second search surface reappearing here is exactly what §9 removed.
+    expect(document.querySelector('.wp-modal')).toBeNull();
   });
 
-  // ADR-0131 §10: the owner's rule is that adding a place must not send you anywhere when
-  // the place already exists — and until now this sheet only knew how to ask Google, so
-  // the most common add bought a paid session to find something the trip already held.
-  describe('the trip’s own places come first, and cost nothing (ADR-0131 §10)', () => {
-    const open = async () => {
-      fireEvent.click(screen.getByRole('button', { name: t.placePicker.open }));
-      return screen.findByPlaceholderText(t.placePicker.searchPlaceholder);
-    };
-
-    it('a pick from `בטיול` assigns straight away — no Google call, nothing minted', async () => {
-      places = [
-        { id: 'pl-hotel', name: 'Shinjuku Grand', address: 'Shinjuku', lat: 35.6, lng: 139.7 },
-        { id: 'pl-far', name: 'Somewhere else', lat: 35.1, lng: 139.1 },
-      ] as Place[];
-      const onChange = vi.fn();
-      render(wrapNav(<PlacePicker onChange={onChange} />));
-      fireEvent.change(await open(), { target: { value: 'shinjuku' } });
-
-      expect(screen.getByText(t.placePicker.tripGroup)).toBeTruthy();
-      fireEvent.click(screen.getByText('Shinjuku Grand'));
-      expect(onChange).toHaveBeenCalledWith('pl-hotel');
-      // The whole point: the free half answered, so nothing was resolved and nothing minted.
-      expect(resolvePlace).not.toHaveBeenCalled();
-      expect(createPlace).not.toHaveBeenCalled();
-    });
-
-    it('only offers places that can actually supply a location', async () => {
-      places = [
-        { id: 'pl-lite', name: 'Shinjuku by name only' },
-        { id: 'pl-real', name: 'Shinjuku Station', lat: 35.69, lng: 139.7 },
-      ] as Place[];
-      render(wrapNav(<PlacePicker onChange={() => {}} />));
-      fireEvent.change(await open(), { target: { value: 'shinjuku' } });
-
-      // A coordless Place-lite would offer the problem back — this sheet exists to give a
-      // row a location.
-      expect(screen.queryByText('Shinjuku by name only')).toBeNull();
-      expect(screen.getByText('Shinjuku Station')).toBeTruthy();
-    });
-
-    it('never offers the place you are replacing', async () => {
-      places = [{ id: 'pl-cur', name: 'Shinjuku Grand', lat: 35.6, lng: 139.7 }] as Place[];
-      render(wrapNav(<PlacePicker value="pl-cur" onChange={() => {}} />));
-      fireEvent.click(screen.getByRole('button', { name: t.placePicker.open }));
-      fireEvent.change(await screen.findByPlaceholderText(t.placePicker.searchPlaceholder), {
-        target: { value: 'shinjuku' },
-      });
-      expect(screen.queryByText(t.placePicker.tripGroup)).toBeNull();
-    });
-
-    it('answers below the min-chars floor, where the paid half cannot', async () => {
-      places = [{ id: 'pl-hotel', name: 'Ao', lat: 35.6, lng: 139.7 }] as Place[];
-      render(wrapNav(<PlacePicker onChange={() => {}} />));
-      fireEvent.change(await open(), { target: { value: 'Ao' } });
-      // Two characters: the floor (ADR-0131 §8b) is a COST control, and there is no cost
-      // on this side, so the free half answers from the first character.
-      expect(screen.getByText('Ao')).toBeTruthy();
-      expect(searchMock).not.toHaveBeenCalled();
-    });
-  });
-
-  it('offers a name-only fallback that queues a Place-lite without hitting the proxy', async () => {
+  it('clearing the place is not an errand — it edits the field in place', () => {
+    places = [{ id: 'pl1', name: 'Shibuya Crossing' } as Place];
     const onChange = vi.fn();
-    searchMock.mockResolvedValue([]); // no predictions
-    render(wrapNav(<PlacePicker onChange={onChange} />));
-    fireEvent.click(screen.getByRole('button', { name: t.placePicker.open }));
-
-    const input = await screen.findByPlaceholderText(t.placePicker.searchPlaceholder);
-    fireEvent.change(input, { target: { value: 'Grandma’s place' } });
-
-    const nameOnly = await screen.findByText(t.placePicker.saveNameOnly('Grandma’s place'));
-    fireEvent.click(nameOnly);
-
-    await waitFor(() => expect(onChange).toHaveBeenCalledWith('pl-new'));
-    expect(createPlace).toHaveBeenCalledWith({ name: 'Grandma’s place' });
-    expect(resolvePlace).not.toHaveBeenCalled();
+    const onFind = vi.fn();
+    render(wrapNav(<PlacePicker value="pl1" onChange={onChange} onFind={onFind} />));
+    fireEvent.click(screen.getByRole('button', { name: t.placePicker.clear }));
+    expect(onChange).toHaveBeenCalledWith(undefined);
+    expect(onFind).not.toHaveBeenCalled();
   });
 });

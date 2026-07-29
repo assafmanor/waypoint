@@ -47,23 +47,45 @@ import { HOME_TAB, TAB_PARAM, tabTarget } from './nav-state';
 import type { TabId } from '../constants';
 import { useTrip } from './trip-state';
 
+export type PlaceErrandField = 'placeId' | 'fromPlaceId' | 'toPlaceId';
+
 /** Which place field of which entity an errand is for (ADR-0134 §2). **`field` is not
  *  optional**, and that is the point of the type: a transport booking has two place
  *  fields, so an errand that only named the booking could assign the right place to the
  *  wrong side of the journey. */
-export interface PlaceErrandTarget {
+export interface PlaceErrandFormTarget {
   kind: 'event' | 'booking';
   /** Absent while the entity does not exist yet — a form being filled in for the first
    *  time is exactly the case the draft is for. */
   id?: string;
-  field: 'placeId' | 'fromPlaceId' | 'toPlaceId';
+  field: PlaceErrandField;
 }
+
+/** The fourth target, and the one that never travels (ADR-0134 §9): a **place row** on the
+ *  Map that has no location yet, being given one. It carries no `field` — there is no form
+ *  and nothing to assign, the row IS the thing being answered — and its `id` is required,
+ *  because unlike a form it always already exists.
+ *
+ *  It is a `PlaceErrandTarget` rather than a mechanism of its own so that the tab's errand
+ *  MODE is one thing: the banner, the `בחירה` verb replacing `＋ אולי`, the withdrawn
+ *  `נווט`, the dot tier, the back layer and the field opening on arrival are all written
+ *  once and read `pendingErrand`. What differs is only who can answer it (§9's note below)
+ *  and that it never leaves the tab. */
+export interface PlaceErrandRowTarget {
+  kind: 'place';
+  id: string;
+}
+
+export type PlaceErrandTarget = PlaceErrandFormTarget | PlaceErrandRowTarget;
 
 export interface PlaceErrand {
   target: PlaceErrandTarget;
   /** Where to go back to, navigated with `{ replace: true }` so in-trip history stays
-   *  flat (ADR-0090). */
-  returnTo: string;
+   *  flat (ADR-0090). **Absent means the errand never left**, which is the Map's own
+   *  `＋ מיקום` (§9): it starts on the destination, so it has nowhere to return to and
+   *  neither exit navigates. One field answers "does this go anywhere", so no exit needs
+   *  to ask what kind of errand it is holding. */
+  returnTo?: string;
   /** What the banner says, in the reference's own words (ADR-0121 §8's vocabulary). The
    *  producer writes it: only the form knows whether this is `ארוחת ערב · רביעי` or
    *  `יציאה · רכבת לקיוטו`. */
@@ -252,7 +274,7 @@ const tabOfPath = (path: string): TabId =>
  *  params the destination strips on arrival (the Index clears `?focus=` once it has acted),
  *  so an exact match would fail for the very screen the fix is for. */
 export function useTakePlaceErrandResult(
-  kind: PlaceErrandTarget['kind'],
+  kind: PlaceErrandFormTarget['kind'],
   hostTab: TabId,
 ): (() => PlaceErrandResult | null) | null {
   const scope = useContext(MapScopeContext);
@@ -262,6 +284,9 @@ export function useTakePlaceErrandResult(
     return () => {
       const pending = result.pending;
       if (pending?.errand.target.kind !== kind) return null;
+      // No `returnTo` means the errand never left the Map (§9), so no host is waiting for
+      // it — the same "not for this host" answer as a tab mismatch, one branch earlier.
+      if (!pending.errand.returnTo) return null;
       if (tabOfPath(pending.errand.returnTo) !== hostTab) return null;
       return result.take();
     };
@@ -280,7 +305,7 @@ export interface ReturnedPlaceErrand<D> {
   /** The place that was chosen, or `null` if the errand was cancelled. Already applied to
    *  `draft`; exposed because a host may want to know which way it ended. */
   placeId: string | null;
-  target: PlaceErrandTarget;
+  target: PlaceErrandFormTarget;
 }
 
 /** **A form host, on the way back** (ADR-0134 §2). Calls `apply` **exactly once**, with
@@ -309,7 +334,7 @@ export interface ReturnedPlaceErrand<D> {
  *  declared rather than read from the URL. Every host is reachable under exactly one tab
  *  (mode picks between the two that share `home` and `days`), so it identifies the host. */
 export function usePlaceErrandReturn<D>(
-  kind: PlaceErrandTarget['kind'],
+  kind: PlaceErrandFormTarget['kind'],
   hostTab: TabId,
   apply: (returned: ReturnedPlaceErrand<D>) => void,
 ): void {
@@ -319,17 +344,19 @@ export function usePlaceErrandReturn<D>(
   useEffect(() => {
     const result = take?.();
     if (!result) return;
+    // Unreachable — `take` already filtered on a FORM kind — but it is what narrows the
+    // union for the merge below, and it states the invariant §9 rests on: a place-row
+    // errand never uses this channel, because it never leaves the tab it is answered on.
+    if (result.errand.target.kind === 'place') return;
+    const target = result.errand.target;
     const draft = (result.errand.draft as D | undefined) ?? null;
     applyRef.current({
       // Assigned here, once, rather than at five call sites (see `ReturnedPlaceErrand`).
       // A cancel carries no place, so the draft comes back untouched — which is what makes
       // `ביטול` re-open the form instead of losing it.
-      draft:
-        draft && result.placeId
-          ? { ...draft, [result.errand.target.field]: result.placeId }
-          : draft,
+      draft: draft && result.placeId ? { ...draft, [target.field]: result.placeId } : draft,
       placeId: result.placeId,
-      target: result.errand.target,
+      target,
     });
   }, [take]);
 }
