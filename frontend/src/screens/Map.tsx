@@ -74,7 +74,7 @@ import { usePlaceSearch } from '../lib/usePlaceSearch';
 import { useVerbs } from '../state/verbs';
 import { stopHeightCss } from '../lib/snap-sheet';
 import { countVisible, revealRows, visibleItems, type Revealed } from '../lib/filter-reveal';
-import { daySelectTarget, useBackLayer, withBookingDetail } from '../state/nav-state';
+import { daySelectTarget, useBackLayer, withBookingFormReturn } from '../state/nav-state';
 import { useNavigate } from 'react-router-dom';
 import { formatTime, relativeDayLabel } from '../lib/time';
 import { eventEdgeTransition } from '../lib/transitions';
@@ -224,14 +224,16 @@ export function MapView() {
   //    place is handed BACK and the form's host re-opens it from the draft. That is the
   //    expensive path, and it is paid only where it is needed.
   // WHERE THE RETURN ACTUALLY LANDS. `returnTo` is a URL, and the Index's bookings screen
-  // is view state rather than a route (ADR-0098) — so for a saved booking it needs the
-  // deep link that re-opens the detail, which the Index already reads. Everywhere else the
-  // host is still mounted and re-opens itself from the channel, and `withBookingDetail`
-  // leaves those paths alone (session 171: the first fix re-opened it in three hosts and
-  // dropped the user on the Index landing in the fourth).
+  // is view state rather than a route (ADR-0098) — so a booking errand that started there
+  // returns to a LANDING with no host mounted to hear the answer. `withBookingFormReturn`
+  // asks the Index to mount that screen; everywhere else the host never left and the helper
+  // leaves the path alone.
+  //
+  // Every booking errand, not just a saved one (session 172): the unsaved case has no id to
+  // carry and needed this exact fix, which is why keying on `target.id` fixed neither.
   const returnPath = useCallback(
     (taken: PlaceErrand) =>
-      taken.target.id ? withBookingDetail(taken.returnTo, taken.target.id) : taken.returnTo,
+      taken.target.kind === 'booking' ? withBookingFormReturn(taken.returnTo) : taken.returnTo,
     [],
   );
 
@@ -372,12 +374,12 @@ export function MapView() {
   // gone, which is the whole reason the errand carries a draft.
   const [bookingDraft, setBookingDraft] = useState<BookingSheetDraft | null>(null);
   usePlaceErrandReturn<BookingSheetDraft>('booking', (returned) => {
-    // NO DRAFT means the errand came from the booking's DETAIL sheet, which has no form
-    // state to restore — what it has is a sheet that was open and that no URL addresses,
-    // so the return has to re-open it (session 170).
+    // NO DRAFT means the errand came from the booking's DETAIL sheet. It still returns to
+    // the booking's FORM (owner, session 172: _"both need to act the same way"_) — the
+    // place is already patched onto the entity, so the form opens showing it.
     if (!returned.draft) {
       const booking = bookings.find((b) => b.id === returned.target.id);
-      if (booking) setDetailBooking(booking);
+      if (booking) setEditBooking(booking);
       return;
     }
     setEditBooking(bookings.find((b) => b.id === returned.target.id) ?? null);

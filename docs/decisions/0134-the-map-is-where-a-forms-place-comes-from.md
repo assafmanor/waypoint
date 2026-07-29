@@ -472,3 +472,44 @@ the host is mounted and the param would be litter nothing clears. The param gets
 **The pattern worth keeping:** _"the host re-opens itself"_ is not a rule, it is a rule with
 a precondition — the host has to still be there. Where it is not, the destination has to be
 a URL, and this app already has one for every such case it has met so far.
+
+## Build log addendum (2026-07-29, session 172) — the host was never there, and the destination is the FORM
+
+> _"When the booking is still unsaved, exactly the same behavior as before, it goes to the
+> index main screen, not back to the form. When exiting an existing booking, it still
+> doesn't return to the edit form, instead it just displays the booking preview. Both need
+> to act the same way: return to the booking form and maintain the same state the form had
+> before entering the map."_
+
+Two more corrections, and the first one is the same root cause I had already written up
+twice and still keyed the fix on the wrong thing.
+
+### There is nothing wrong with the return channel. The listener is not there
+
+Sessions 170 and 171 both keyed on `target.id` — 170 to decide whether to re-open a detail,
+171 to decide whether to add a deep link. **Neither addresses the actual failure**, which is
+that the Index's bookings screen is view state inside `Index.tsx` (ADR-0098) and is simply
+**not mounted** when the return lands: `usePlaceErrandReturn` never runs, so the result sits
+pending and nothing re-opens. That is true for a saved booking and an unsaved one alike, and
+the unsaved case has no id to key on at all — which is exactly why the id-keyed fix in 171
+appeared to work for one case and did nothing for the other.
+
+So the return asks the Index to **mount the screen**, through the `focus` param ADR-0050
+already uses for the documents screen: `?focus=bookings`, no id. The pending result is what
+says which booking and what was typed, and the host takes it the moment it mounts. An id in
+the URL would be a second, weaker copy of the answer the errand is already holding.
+
+### And the destination is the form, in both cases
+
+The other half of the report: returning from a `BookingDetail` errand re-opened the
+**detail**, which is where you started rather than where the work is. Both paths now land on
+the **form** — the draft rehydrates the unsaved one, and the saved one opens on an entity
+whose place has already been patched, so the chosen place is showing either way.
+
+### The lesson, stated once so it stops recurring
+
+_"The host re-opens itself"_ is not a rule. It is a rule with a precondition — **the host has
+to still be mounted** — and this app has two shapes that break it: a `Modal` (no URL) and a
+screen that is view state rather than a route (ADR-0098). Where the precondition fails the
+return needs a URL that RE-CREATES the host, and the id of what to re-open belongs in the
+channel, not in that URL.

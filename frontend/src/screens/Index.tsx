@@ -17,7 +17,7 @@ import { IndexDocumentsView } from '../ui/IndexDocumentsView';
 import { IndexTile } from '../ui/domain';
 import { Icon } from '../ui/Icon';
 import { ICONS } from '../constants';
-import { BOOKING_PARAM } from '../state/nav-state';
+import { BOOKING_PARAM, FOCUS_PARAM, INDEX_FOCUS } from '../state/nav-state';
 import { t } from '../i18n/he';
 
 type IndexView = 'landing' | 'bookings' | 'documents';
@@ -39,18 +39,25 @@ export function Index() {
   const [params, setParams] = useSearchParams();
   useEffect(() => {
     const id = params.get(BOOKING_PARAM);
-    const focus = params.get('focus');
+    const focus = params.get(FOCUS_PARAM);
     if (!id && !focus) return;
     if (id) {
       setPendingBookingId(id);
       setView('bookings');
     }
-    if (focus === 'docs') {
+    if (focus === INDEX_FOCUS.DOCS) {
       setView('documents');
+    }
+    // …and MOUNTING the bookings screen is itself a destination (session 172): a booking
+    // errand returns here so the screen can take the pending answer and re-open its form.
+    // No id — the answer says which booking, and what was typed.
+    if (focus === INDEX_FOCUS.BOOKINGS) {
+      setPendingBookingId(undefined);
+      setView('bookings');
     }
     const next = new URLSearchParams(params);
     next.delete(BOOKING_PARAM);
-    next.delete('focus');
+    next.delete(FOCUS_PARAM);
     setParams(next, { replace: true });
   }, [params, setParams]);
 

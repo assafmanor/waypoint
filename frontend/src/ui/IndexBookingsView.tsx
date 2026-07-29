@@ -68,12 +68,12 @@ export function IndexBookingsView({
   // gone, which is the whole reason the errand carries a draft.
   const [bookingDraft, setBookingDraft] = useState<BookingSheetDraft | null>(null);
   usePlaceErrandReturn<BookingSheetDraft>('booking', (returned) => {
-    // NO DRAFT means the errand came from the booking's DETAIL sheet, which has no form
-    // state to restore — what it has is a sheet that was open and that no URL addresses,
-    // so the return has to re-open it (session 170).
+    // NO DRAFT means the errand came from the booking's DETAIL sheet. It still returns to
+    // the booking's FORM (owner, session 172: _"both need to act the same way"_) — the
+    // place is already patched onto the entity, so the form opens showing it.
     if (!returned.draft) {
       const booking = bookings.find((b) => b.id === returned.target.id);
-      if (booking) setDetail(booking);
+      if (booking) setSheet(booking);
       return;
     }
     setSheet(bookings.find((b) => b.id === returned.target.id) ?? 'create');

@@ -17,7 +17,7 @@ import {
   tabTarget,
   type BackAction,
   type NavSnapshot,
-  withBookingDetail,
+  withBookingFormReturn,
 } from './nav-state';
 
 describe('resolveBack — the one layer-peeling decision (ADR-0090, behavior of ADR-0035 §2)', () => {
@@ -279,24 +279,30 @@ describe('shouldResetToHomeOnResume — reopen-after-idle reset (ADR-0060)', () 
   });
 });
 
-// The Index's bookings screen is view state, not a route (ADR-0098), and the detail on top
-// of it is a `Modal` — so a return to the Index tab's URL renders the LANDING. The deep link
-// ADR-0050 already built for quick access is what re-opens it (session 171).
-describe('withBookingDetail', () => {
-  it('adds the detail deep link when the return lands on the Index tab', () => {
-    expect(withBookingDetail('/?tab=index', 'b1')).toBe('/?tab=index&booking=b1');
+// The Index's bookings screen is view state, not a route (ADR-0098), so a booking errand
+// returning to the Index tab lands on the LANDING — with no host mounted to hear the answer
+// the errand is holding. The return has to ask the Index to MOUNT that screen (session 172).
+describe('withBookingFormReturn', () => {
+  it('asks the Index to mount its bookings screen', () => {
+    expect(withBookingFormReturn('/?tab=index')).toBe('/?tab=index&focus=bookings');
   });
 
-  it('leaves every other destination alone — its host is still mounted', () => {
-    // A param nothing on these tabs reads, and nothing on them clears, is litter.
-    expect(withBookingDetail('/?tab=days', 'b1')).toBe('/?tab=days');
-    expect(withBookingDetail('/?tab=map&day=2026-07-22', 'b1')).toBe('/?tab=map&day=2026-07-22');
-    expect(withBookingDetail('/', 'b1')).toBe('/');
+  // No booking id, deliberately: the pending result says which booking and what was typed,
+  // and an unsaved booking has no id to carry at all — which is why keying on one fixed
+  // neither case.
+  it('carries no booking id', () => {
+    expect(withBookingFormReturn('/?tab=index')).not.toContain('booking=');
+  });
+
+  it('leaves every other destination alone — its host never unmounted', () => {
+    expect(withBookingFormReturn('/?tab=days')).toBe('/?tab=days');
+    expect(withBookingFormReturn('/?tab=map&day=2026-07-22')).toBe('/?tab=map&day=2026-07-22');
+    expect(withBookingFormReturn('/')).toBe('/');
   });
 
   it('keeps the params already on the way back', () => {
-    const out = new URLSearchParams(withBookingDetail('/?tab=index&day=2026-07-22', 'b1').slice(2));
+    const out = new URLSearchParams(withBookingFormReturn('/?tab=index&day=2026-07-22').slice(2));
     expect(out.get('day')).toBe('2026-07-22');
-    expect(out.get('booking')).toBe('b1');
+    expect(out.get('focus')).toBe('bookings');
   });
 });

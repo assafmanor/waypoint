@@ -91,6 +91,15 @@ describe('Index landing (ADR-0098)', () => {
     expect(screen.getByRole('dialog')).toBeTruthy(); // the detail sheet, opened on top
   });
 
+  // …and `?focus=bookings` MOUNTS the bookings screen with nothing on top (session 172).
+  // That is the whole point of it: a booking errand returns here so the screen exists to
+  // take the answer it is holding and re-open its form.
+  it('?focus=bookings mounts the bookings screen, opening no detail', () => {
+    render(wrap(<Index />, ['/?tab=index&focus=bookings']));
+    expect(screen.getByRole('button', { name: 'טוקיו' })).toBeTruthy(); // the bookings screen
+    expect(screen.queryByRole('dialog')).toBeNull(); // and nothing opened on top of it
+  });
+
   it('?focus=docs deep-link (ADR-0050) opens the documents screen directly', () => {
     render(wrap(<Index />, ['/?tab=index&focus=docs']));
     expect(screen.getByText(t.docs.emptyTitle)).toBeTruthy();
