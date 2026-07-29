@@ -196,6 +196,8 @@ In mockups emoji do both jobs; in the build they split:
 
 **The two places this doc itself named emoji both crossed** on the owner's call: the **bottom nav** (see the Bottom nav entry below) and the **verb-row / toast** marks. A toast's mark is now the icon of the action it confirms.
 
+**The line moved once more (2026-08-01 amendment).** The first pass filed the Index/Home tile markers as content, and the code disproved it: Home's quick-action row shipped as three emoji beside one SVG compass, four sibling buttons rendering two ways. So the test is now sharper than "is it a control" — **if a glyph has a sibling control already drawing an icon, it is a control.** `GLYPH` is down to a single entry (`5 👥`, a unit inside a sentence). What stays emoji is per-entity badges, trip identity, empty-state _illustrations_, and the warmth in copy. And note the corollary: **a mark baked into a copy string can only ever be an emoji**, so a string that wants one is split and the call site renders the icon.
+
 ## Device targets & responsive strategy
 
 **Mobile-first, phone-primary** (ADR-0017). The design is authored for the phone and scales up — never the reverse.

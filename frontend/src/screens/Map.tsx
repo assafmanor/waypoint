@@ -1787,7 +1787,7 @@ export function MapView() {
       ) : (
         <>
           <ToggleChip on={allDays} className="map-scopechip" onClick={() => setAllDays(!allDays)}>
-            🗓️ {t.map.allDays}
+            <Icon name="calendar" /> {t.map.allDays}
           </ToggleChip>
           {/* An `indicator`, not a `toggle`: the on-state says WHICH facets are live, and
               the tap opens the strip rather than pressing anything — so it carries no
@@ -2626,7 +2626,7 @@ function PlaceRow({
                   onSchedule();
                 }}
               >
-                {t.map.scheduleToDay}
+                <Icon name="plus" /> {t.map.scheduleToDay}
               </button>
             </span>
           )}

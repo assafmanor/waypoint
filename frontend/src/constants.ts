@@ -653,19 +653,24 @@ export type TabId = (typeof TABS)[number]['id'];
 
 /** Content glyphs — a thing being described, not a control being offered. These
  *  stay emoji deliberately (design-language): they carry the app's warmth, and a
- *  category badge is data, not chrome. */
+ *  category badge is data, not chrome.
+ *
+ *  **It is down to one entry, and that is the finding** (ADR-0138's follow-up).
+ *  The first pass filed the Index/Home tile markers here as "category badges",
+ *  which was wrong for a reason the code then made visible: each sits on a TILE
+ *  you tap. Home's quick-action row ended up with three of these beside one SVG
+ *  compass, and the Index's two tiles disagreed with the nav tab that leads to
+ *  them. A marker on a control is a control. `atm`/`weather`/`fx` went with them
+ *  unrendered — they had no call site at all, so they were a plan, not content.
+ *
+ *  What is left is the honest case: a **unit on a data run** inside a sentence
+ *  (`5 👥` on a trip card), which design-language's "icons that are part of a
+ *  sentence stay in the copy" covers exactly. The app's other content emoji do
+ *  not live here — they are the per-entity badges (`BOOKING_TYPE_ICON`,
+ *  `DOCUMENT_TYPE_ICON`, `CATEGORY_DEFAULT_ICON`), trip identity, and the warmth
+ *  in `i18n/`. */
 export const GLYPH = {
-  /** Index/quick-action category markers — a kind of thing, like a badge. */
-  ticket: '🎫',
-  documents: '🛂',
-  wifi: '📶',
-  atm: '🏧',
-  weather: '🌤️',
-  fx: '💱',
-  budget: '💰',
   members: '👥',
-  /** A place, as a fact on a card — not the map control (`Icon` 'pin'). */
-  place: '📍',
 } as const;
 
 /** Control icons — every one of these is drawn by `<Icon name={…} />`. The value

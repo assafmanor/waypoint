@@ -25,7 +25,7 @@ import { countVisible } from '../lib/filter-reveal';
 import { bookingDurationUnit, formatBookingDuration } from '../lib/booking-timing';
 import { badgeClassForBookingType } from '../lib/transitions';
 import { EntitySyncBadge, useUnsynced } from './EntitySyncBadge';
-import { BOOKING_TYPE_ICON, CODE_PREFIX, GLYPH } from '../constants';
+import { BOOKING_TYPE_ICON, CODE_PREFIX } from '../constants';
 import { BookingSheet, type BookingSheetDraft } from './BookingSheet';
 import { BookingDetail } from './BookingDetail';
 import { BookingManageSheet } from './BookingManageSheet';
@@ -194,11 +194,13 @@ export function IndexBookingsView({
 
       {bookings.length === 0 ? (
         <div className="empty-card">
-          <div className="ei">{GLYPH.ticket}</div>
+          <div className="ei">
+            <Icon name="ticket" />
+          </div>
           <div className="et">{t.index.emptyTitle}</div>
           <div className="es">{t.index.emptyBody}</div>
           <button type="button" className="ea" onClick={() => setSheet('create')}>
-            {t.index.form.add}
+            <Icon name="plus" /> {t.index.form.add}
           </button>
         </div>
       ) : (
@@ -227,7 +229,7 @@ export function IndexBookingsView({
             </div>
 
             <button type="button" className="addbtn" onClick={() => setSheet('create')}>
-              {t.index.form.add}
+              <Icon name="plus" /> {t.index.form.add}
             </button>
 
             {upcomingMatchCount > 0 ? (

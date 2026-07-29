@@ -56,7 +56,7 @@ export function DocumentsSection() {
     <>
       {!isEmpty && (
         <button type="button" className="addbtn" onClick={() => setUploading(true)}>
-          {t.docs.add}
+          <Icon name="plus" /> {t.docs.add}
         </button>
       )}
 

@@ -247,7 +247,7 @@ export const t = {
     // The way-in block's one primary action (ADR-0135 §1): a place in the trip could only
     // ever be an idea, and nothing said "put this on Tuesday at 14:00". Names the verb, not
     // the schema — "event or booking?" is the app's question, not the traveller's.
-    scheduleToDay: '＋ שיבוץ ליום',
+    scheduleToDay: 'שיבוץ ליום',
     // A pin that is in view but not in this day (ADR-0121 §6). Its row is not in
     // the sheet, so tapping it is the only way to learn what it is: the tap
     // surfaces that one row, named with the day it belongs to.
@@ -479,7 +479,7 @@ export const t = {
       delete: 'מחק הזמנה זו',
     },
     form: {
-      add: '＋ הוסף הזמנה',
+      add: 'הוסף הזמנה',
       createTitle: 'הזמנה חדשה',
       originLabel: 'מוצא 📍',
       destLabel: 'יעד 📍',
@@ -506,7 +506,7 @@ export const t = {
       startLabel: 'התחלה 🎬',
       endLabel: 'סיום 🏁',
       kindLabel: 'סוג אירוע',
-      kindHard: '🔒 קשיח',
+      kindHard: 'קשיח',
       kindSoft: 'גמיש',
       titleRequired: 'צריך שם להזמנה',
       // Transport is identified by its route, not a name (ADR-0059 §3): the route
@@ -536,7 +536,7 @@ export const t = {
   docs: {
     title: 'מסמכים',
     encrypted: 'מוצפן',
-    add: '＋ הוסף מסמך',
+    add: 'הוסף מסמך',
     loading: 'טוען מסמכים…',
     offline: 'המסמכים ייטענו כשנחזור לרשת',
     emptyTitle: 'אין עדיין מסמכים שמורים',
@@ -691,7 +691,7 @@ export const t = {
       note: 'אזור זמן ומטבע מסתדרים לפי היעד · תקציב אפשר להוסיף אחר כך',
     },
     created: {
-      modePill: '✏️ מצב תכנון',
+      modePill: 'מצב תכנון',
       emoji: '🎉',
       title: 'יש טיול!',
       sub: 'עכשיו הכי חשוב - להכניס את החבורה.',
@@ -1022,11 +1022,11 @@ export const t = {
     // zones name their outcome rather than both saying "drop here".
     parkDropHere: 'שחררו כאן להעברה למדף · ליום הזה',
     parkSomedayDropHere: 'שחררו כאן להעברה למדף · מתישהו',
-    gap: (label: string) => `פער של ${label} · ＋ שבץ`,
+    gap: (label: string) => `פער של ${label} · שבץ`,
     // The day's edges (session-123): free time with an event on one side only, so the
     // chip says which side it is on rather than calling itself a gap "between".
-    gapBefore: (label: string) => `פנוי לפני · ${label} · ＋ שבץ`,
-    gapAfter: (label: string) => `פנוי אחרי · ${label} · ＋ שבץ`,
+    gapBefore: (label: string) => `פנוי לפני · ${label} · שבץ`,
+    gapAfter: (label: string) => `פנוי אחרי · ${label} · שבץ`,
     gapMinutes: (n: number) => measure(n, 'דק׳'),
     gapHour: 'שעה',
     gapTwoHours: 'שעתיים',
@@ -1193,7 +1193,7 @@ export const t = {
     locationPlaceholder: 'אופציונלי',
     categoryLabel: 'קטגוריה',
     kindLabel: 'סוג',
-    kindHard: '🔒 קשיח',
+    kindHard: 'קשיח',
     kindSoft: 'גמיש',
     // ── The `יש הזמנה` row (ADR-0136) ──────────────────────────────────────
     // You are always creating an event; this says it is ALSO booked. One tap, no

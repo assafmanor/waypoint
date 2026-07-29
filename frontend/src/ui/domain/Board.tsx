@@ -231,7 +231,13 @@ export function Board(props: BoardProps) {
       ) : variant === 'now' ? (
         <>
           <div className="wp-board-now-label">
-            {nowKind === 'hard' ? `$<Icon name="lock" /> ${t.event.hard}` : t.event.soft}
+            {nowKind === 'hard' ? (
+              <>
+                <Icon name="lock" /> {t.event.hard}
+              </>
+            ) : (
+              t.event.soft
+            )}
           </div>
           <div className="wp-board-now-title">
             {nowIcon && <span className="wp-board-ic">{nowIcon}</span>}
