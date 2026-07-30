@@ -1,0 +1,1641 @@
+<title>Motion primitives — before/after lab</title>
+<!--
+  Waypoint · Motion primitives — before/after lab (v1)
+  ---------------------------------------------------
+  A DESIGN MOCKUP / motion reference, in the spirit of mode-switch-transition-v1.html.
+  Subject: the three SYSTEMIC motion gaps mapped in
+  `docs/planning/2026-07-31-session-189-motion-and-first-run-brief.md` (G1/G2/G3).
+
+  These three are judged by COMPARISON, not in isolation — "the sheet feels wrong"
+  is only legible next to a sheet that feels right. So every panel here has a
+  BEFORE (what ships today, reproduced faithfully from the real CSS) and an AFTER
+  (the proposal), on one toggle.
+
+    G1  Overlays cross-fade instead of arriving, and never leave at all.
+        modal.css animates opacity on .modal-overlay — scrim and card fade in
+        together, the card never translates. And Modal.tsx unmounts its portal the
+        instant onClose runs, so NO overlay in the app has an exit animation.
+        The fix pattern already exists in the repo: `.toast` stays mounted and
+        animates both directions off a `.show` class. This is one primitive change.
+
+    G2  The shell has no route motion. `.body`'s fade covers in-trip tab content
+        only; every full-screen `.app` surface hard-cuts — /login, zero state,
+        /new, the born screen, /join, /trips, settings.
+
+    G3  Taps acknowledge nothing. tokens.css kills the mobile tap-flash app-wide
+        on the stated grounds that "every tappable surface has its own :active".
+        There are ~16 :active rules in the entire frontend.
+
+  THE TWO PROPOSED TOKEN ADDITIONS are demonstrated rather than asserted:
+    --stagger-step  40ms   a shared unit for staggered entrances (none exists today)
+    --ease-arrive          the only overshooting easing — an object that SETTLES
+                           needs one, and all three shipped easings are monotone.
+  Toggle `--ease-arrive` off in the console to see why it earns its place. Anything
+  beyond these two is scope creep against the ramp discipline (design-language).
+
+  RTL IS LOAD-BEARING HERE. "Forward" is the inline-END edge (iOS RTL mirrors the
+  LTR push), and `translateX` is PHYSICAL — the exact trap frontend/CLAUDE.md
+  documents for `dir`/logical properties. Hence `--dir: -1` on the RTL stage and
+  `translateX(calc(var(--dir) * 100%))`. Flip the DIRECTION control to prove the
+  same CSS mirrors correctly.
+
+  REDUCED MOTION IS A CORRECTNESS CASE, NOT A COURTESY. G1 introduces a `closing`
+  state, and a state that only exists DURING an animation must still resolve when
+  there is no animation — otherwise the overlay never unmounts. The REDUCE control
+  exercises exactly that: the exit timer must read 0, not the token.
+
+  NOTE ON FONTS: system stack substitutes Secular One / Assistant / JetBrains Mono
+  (CSP blocks the CDN). Motion, not type, is the subject.
+
+  STATUS: proposal. Adoption = an ADR (Modal's enter/exit contract + the shell
+  transition + the press-feedback rule) plus the two token additions.
+-->
+<style>
+  :root {
+    /* the shipped ramp (tokens.css) */
+    --t-quick: 140ms;
+    --t-base: 240ms;
+    --t-deliberate: 400ms;
+    --t-cinematic: 600ms;
+    --ease-standard: cubic-bezier(0.2, 0, 0, 1);
+    --ease-exit: cubic-bezier(0.4, 0, 1, 1);
+    --ease-emphasized: cubic-bezier(0.16, 1, 0.3, 1);
+
+    /* PROPOSED additions — the only two this pass asks for */
+    --stagger-step: 40ms;
+    --ease-arrive: cubic-bezier(0.22, 1.16, 0.36, 1);
+
+    /* console chrome (the lab instrument — deliberately dark, deliberately not the app) */
+    --lab-bg: #0c1220;
+    --lab-bg-2: #111a2c;
+    --lab-panel: #141d31;
+    --lab-panel-2: #18233b;
+    --lab-line: rgba(148, 163, 194, 0.16);
+    --lab-line-2: rgba(148, 163, 194, 0.3);
+    --lab-ink: #e7ecf6;
+    --lab-muted: #93a0b8;
+    --lab-faint: #6b7794;
+    --lab-accent: #8b79e8;
+    --lab-warn: #e9a63c;
+    --lab-ok: #4cbf85;
+
+    --mono: ui-monospace, 'SF Mono', 'SFMono-Regular', Menlo, Consolas, monospace;
+    --sans: 'Segoe UI', system-ui, -apple-system, 'Helvetica Neue', Arial, sans-serif;
+  }
+
+  * {
+    box-sizing: border-box;
+  }
+  html {
+    -webkit-text-size-adjust: 100%;
+  }
+  body {
+    margin: 0;
+    font-family: var(--sans);
+    color: var(--lab-ink);
+    background:
+      radial-gradient(120% 80% at 82% -10%, rgba(139, 121, 232, 0.14), transparent 55%),
+      radial-gradient(90% 70% at 0% 0%, rgba(233, 166, 60, 0.07), transparent 50%),
+      linear-gradient(180deg, var(--lab-bg-2), var(--lab-bg));
+    min-height: 100vh;
+    padding: clamp(18px, 3vw, 40px);
+    line-height: 1.5;
+  }
+
+  h1 {
+    margin: 0 0 6px;
+    font-size: clamp(20px, 2.4vw, 27px);
+    letter-spacing: -0.01em;
+  }
+  .sub {
+    margin: 0;
+    color: var(--lab-muted);
+    font-size: 13.5px;
+    max-width: 78ch;
+  }
+  .sub b {
+    color: var(--lab-ink);
+    font-weight: 600;
+  }
+  code {
+    font-family: var(--mono);
+    font-size: 0.88em;
+    background: rgba(148, 163, 194, 0.12);
+    padding: 1px 5px;
+    border-radius: 5px;
+  }
+
+  /* ---- section tabs ---- */
+  .tabs {
+    display: flex;
+    gap: 6px;
+    flex-wrap: wrap;
+    margin: 18px 0 0;
+    padding: 5px;
+    background: var(--lab-panel);
+    border: 1px solid var(--lab-line);
+    border-radius: 13px;
+    width: fit-content;
+  }
+  .tabs button {
+    font: inherit;
+    font-size: 13px;
+    font-weight: 600;
+    color: var(--lab-muted);
+    background: none;
+    border: 0;
+    padding: 8px 15px;
+    border-radius: 9px;
+    cursor: pointer;
+    transition: var(--t-quick) var(--ease-standard);
+  }
+  .tabs button:hover {
+    color: var(--lab-ink);
+  }
+  .tabs button[aria-selected='true'] {
+    background: var(--lab-panel-2);
+    color: var(--lab-ink);
+    box-shadow: inset 0 0 0 1px var(--lab-line-2);
+  }
+  .tabs .tag {
+    font-family: var(--mono);
+    font-size: 10px;
+    color: var(--lab-accent);
+    margin-inline-end: 6px;
+  }
+
+  .panel[hidden] {
+    display: none;
+  }
+
+  /* ---- lab layout: phone left, console right ---- */
+  .lab {
+    display: grid;
+    grid-template-columns: minmax(300px, 360px) 1fr;
+    gap: clamp(20px, 3vw, 40px);
+    align-items: start;
+    margin-top: clamp(20px, 3vw, 32px);
+  }
+  @media (max-width: 860px) {
+    .lab {
+      grid-template-columns: 1fr;
+    }
+  }
+  .stage-col {
+    position: sticky;
+    top: 20px;
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    gap: 12px;
+  }
+  @media (max-width: 860px) {
+    .stage-col {
+      position: static;
+    }
+  }
+  .stage-cap {
+    font-family: var(--mono);
+    font-size: 11px;
+    color: var(--lab-faint);
+    text-align: center;
+  }
+
+  /* ================= THE PHONE STAGE ================= */
+  .phone {
+    width: 340px;
+    max-width: 92vw;
+    border-radius: 40px;
+    padding: 10px;
+    background: linear-gradient(160deg, #1c2740, #0b1120);
+    box-shadow:
+      0 40px 80px -32px rgba(0, 0, 0, 0.75),
+      0 0 0 1px rgba(148, 163, 194, 0.14),
+      inset 0 0 0 1px rgba(255, 255, 255, 0.04);
+  }
+  .stage {
+    position: relative;
+    border-radius: 31px;
+    overflow: hidden;
+    height: 620px;
+    direction: rtl;
+    isolation: isolate;
+    /* PHYSICAL sign for the inline axis. RTL: inline-end is the LEFT edge, so a
+       forward push enters from -100%. LTR flips it to +100%. This var is the whole
+       reason the same rules mirror. */
+    --dir: -1;
+
+    --s-screen: #e7eaef;
+    --s-card: #ffffff;
+    --s-ink: #16233d;
+    --s-muted: #6c7488;
+    --s-faint: #98a0b0;
+    --s-indigo: #1b2a4a;
+    --s-board: #0e1729;
+    --s-board-2: #152137;
+    --s-amber: #e9a63c;
+    --s-teal: #2c9c90;
+    --s-plan: #6e59d6;
+    --s-cta: #16233d;
+    --s-line: rgba(22, 35, 61, 0.1);
+    --s-soft-line: rgba(22, 35, 61, 0.28);
+    --on-dark: #eaf0ff;
+    --on-dark-mut: #8fa0c4;
+
+    background: var(--s-screen);
+    color: var(--s-ink);
+    font-size: 14.5px;
+  }
+  .stage[dir='ltr'] {
+    --dir: 1;
+  }
+  .stage[data-theme='dark'] {
+    --s-screen: #0f1726;
+    --s-card: #1a2740;
+    --s-ink: #e7eaf2;
+    --s-muted: #93a0b8;
+    --s-faint: #8592ab;
+    --s-indigo: #131f38;
+    --s-board: #0a1120;
+    --s-board-2: #101b30;
+    --s-amber: #f0b254;
+    --s-teal: #3fb3a5;
+    --s-plan: #8b79e8;
+    --s-cta: #e7eaf2;
+    --s-line: rgba(231, 234, 242, 0.1);
+    --s-soft-line: rgba(231, 234, 242, 0.3);
+  }
+  .stage,
+  .stage * {
+    font-family: var(--sans);
+  }
+  /* Reduced motion, exercised from the console rather than the OS so it can be
+     judged here. Mirrors App.css's global rule verbatim, including the !important
+     — which is what makes the `closing`-state timer a correctness problem. */
+  .stage[data-reduce='1'] *,
+  .stage[data-reduce='1'] {
+    animation: none !important;
+    transition: none !important;
+  }
+
+  .sb {
+    display: flex;
+    justify-content: space-between;
+    padding: 9px 18px 3px;
+    font-family: var(--mono);
+    font-size: 10.5px;
+    color: var(--s-muted);
+  }
+  .stage .screen {
+    position: absolute;
+    inset: 0;
+    display: flex;
+    flex-direction: column;
+    background: var(--s-screen);
+  }
+
+  /* ---- generic app furniture inside the stage ---- */
+  .hd {
+    background: var(--s-indigo);
+    color: var(--on-dark);
+    padding: 26px 16px 13px;
+    display: flex;
+    align-items: center;
+    gap: 10px;
+    flex: 0 0 auto;
+  }
+  .hd .back {
+    width: 30px;
+    height: 30px;
+    border-radius: 50%;
+    border: 1px solid rgba(234, 240, 255, 0.22);
+    background: rgba(234, 240, 255, 0.08);
+    color: inherit;
+    display: grid;
+    place-items: center;
+    font-size: 15px;
+    cursor: pointer;
+    flex: 0 0 auto;
+  }
+  .hd .ttl {
+    font-weight: 700;
+    font-size: 16px;
+  }
+  .bd {
+    flex: 1;
+    overflow: hidden;
+    padding: 16px;
+    display: flex;
+    flex-direction: column;
+    gap: 11px;
+  }
+  .card {
+    background: var(--s-card);
+    border: 1px solid var(--s-line);
+    border-radius: 16px;
+    padding: 13px;
+  }
+  .card .t {
+    font-weight: 700;
+    font-size: 14px;
+  }
+  .card .m {
+    color: var(--s-muted);
+    font-size: 12px;
+    margin-top: 2px;
+  }
+  .btn-cta {
+    font: inherit;
+    font-size: 14.5px;
+    font-weight: 700;
+    background: var(--s-cta);
+    color: var(--s-screen);
+    border: 0;
+    border-radius: 999px;
+    padding: 13px;
+    width: 100%;
+    cursor: pointer;
+  }
+  .btn-ghost {
+    font: inherit;
+    font-size: 13.5px;
+    font-weight: 600;
+    background: var(--s-card);
+    color: var(--s-ink);
+    border: 1px solid var(--s-soft-line);
+    border-radius: 999px;
+    padding: 11px;
+    cursor: pointer;
+  }
+  .nav {
+    flex: 0 0 auto;
+    display: flex;
+    background: var(--s-indigo);
+    padding: 8px 10px 16px;
+    gap: 4px;
+  }
+  .nav span {
+    flex: 1;
+    text-align: center;
+    font-size: 10.5px;
+    color: var(--on-dark-mut);
+    padding: 5px 0;
+    border-radius: 10px;
+  }
+  .nav span.on {
+    color: var(--on-dark);
+    background: rgba(141, 168, 232, 0.16);
+  }
+
+  /* =========================================================================
+     G1 — OVERLAY ENTER / EXIT
+     `before` reproduces modal.css + Modal.tsx exactly: opacity-only on the
+     WRAPPER (so scrim and card fade as one), and no exit at all — the node is
+     gone on the frame onClose runs.
+     `after` splits them: the scrim owns opacity, the card owns a per-variant
+     transform, and a `closing` state holds the node for one exit.
+     ========================================================================= */
+  .ov {
+    position: absolute;
+    inset: 0;
+    z-index: 20;
+    display: flex;
+    justify-content: center;
+  }
+  .ov[data-variant='sheet'] {
+    align-items: flex-end;
+  }
+  .ov[data-variant='dialog'] {
+    align-items: center;
+    padding: 24px;
+  }
+  .ov[data-variant='full'] {
+    align-items: stretch;
+  }
+  .ov-scrim {
+    position: absolute;
+    inset: 0;
+    background: rgba(22, 35, 61, 0.45);
+  }
+  .ov[data-variant='full'] .ov-scrim {
+    background: var(--s-screen);
+  }
+  .ov-card {
+    position: relative;
+    width: 100%;
+    background: var(--s-card);
+    border: 1px solid var(--s-line);
+    box-shadow: 0 18px 40px -18px rgba(14, 23, 41, 0.45);
+  }
+  .ov[data-variant='sheet'] .ov-card {
+    border-start-start-radius: 16px;
+    border-start-end-radius: 16px;
+    padding: 16px 16px 26px;
+  }
+  .ov[data-variant='dialog'] .ov-card {
+    max-width: 260px;
+    border-radius: 16px;
+    padding: 16px;
+  }
+  .ov[data-variant='full'] .ov-card {
+    border: 0;
+    box-shadow: none;
+    background: var(--s-screen);
+    display: flex;
+    flex-direction: column;
+    padding: 0;
+  }
+  .ov-title {
+    font-weight: 700;
+    font-size: 15px;
+    margin-bottom: 10px;
+  }
+  .ov-row {
+    display: flex;
+    align-items: center;
+    gap: 10px;
+    padding: 11px 0;
+    border-top: 1px solid var(--s-line);
+    font-size: 13.5px;
+  }
+  .ov-row .g {
+    width: 26px;
+    height: 26px;
+    border-radius: 8px;
+    background: rgba(22, 35, 61, 0.06);
+    display: grid;
+    place-items: center;
+    font-size: 13px;
+  }
+
+  /* --- BEFORE: what ships. One opacity on the wrapper, nothing else. --- */
+  .stage[data-g1='before'] .ov {
+    animation: ov-fade-legacy var(--t-base) var(--ease-standard);
+  }
+  @keyframes ov-fade-legacy {
+    from {
+      opacity: 0;
+    }
+    to {
+      opacity: 1;
+    }
+  }
+  /* deliberately NO .closing rule — the `before` case has no exit, and the JS
+     skips the hold so the node is torn out on the same frame. That absence IS
+     the finding. */
+
+  /* --- AFTER: scrim and card animate on separate channels, both directions. --- */
+  .stage[data-g1='after'] .ov-scrim {
+    opacity: 0;
+    transition: opacity var(--t-base) var(--ease-standard);
+  }
+  .stage[data-g1='after'] .ov.open .ov-scrim {
+    opacity: 1;
+  }
+  .stage[data-g1='after'] .ov.closing .ov-scrim {
+    opacity: 0;
+    transition-duration: var(--t-quick);
+    transition-timing-function: var(--ease-exit);
+  }
+  .stage[data-g1='after'] .ov-card {
+    /* Entrance uses --ease-arrive (the proposed overshoot) so the card SETTLES;
+       exit uses --ease-exit and a shorter duration — leaving should be brisker
+       than arriving, which is the asymmetry that reads as "responsive" rather
+       than "sluggish". */
+    transition:
+      transform var(--t-base) var(--ease-arrive),
+      opacity var(--t-base) var(--ease-standard);
+  }
+  .stage[data-g1='after'][data-arrive='0'] .ov-card {
+    transition-timing-function: var(--ease-standard), var(--ease-standard);
+  }
+  .stage[data-g1='after'] .ov.closing .ov-card {
+    transition:
+      transform var(--t-quick) var(--ease-exit),
+      opacity var(--t-quick) var(--ease-exit);
+  }
+  /* sheet — rises from the bottom edge. It came from off-screen; it should look
+     like it. */
+  .stage[data-g1='after'] .ov[data-variant='sheet'] .ov-card {
+    transform: translateY(100%);
+  }
+  .stage[data-g1='after'] .ov[data-variant='sheet'].open .ov-card {
+    transform: translateY(0);
+  }
+  .stage[data-g1='after'] .ov[data-variant='sheet'].closing .ov-card {
+    transform: translateY(100%);
+  }
+  /* dialog — no edge to come from. It is summoned, so it scales up in place. */
+  .stage[data-g1='after'] .ov[data-variant='dialog'] .ov-card {
+    transform: scale(0.96);
+    opacity: 0;
+  }
+  .stage[data-g1='after'] .ov[data-variant='dialog'].open .ov-card {
+    transform: scale(1);
+    opacity: 1;
+  }
+  .stage[data-g1='after'] .ov[data-variant='dialog'].closing .ov-card {
+    transform: scale(0.97);
+    opacity: 0;
+  }
+  /* full — replaces a screen, so it arrives LIKE a screen: from the inline-end
+     edge, same grammar as G2's forward push. Physical sign via --dir. */
+  .stage[data-g1='after'] .ov[data-variant='full'] .ov-card {
+    transform: translateX(calc(var(--dir) * 100%));
+  }
+  .stage[data-g1='after'] .ov[data-variant='full'].open .ov-card {
+    transform: translateX(0);
+  }
+  .stage[data-g1='after'] .ov[data-variant='full'].closing .ov-card {
+    transform: translateX(calc(var(--dir) * 100%));
+  }
+  /* The sheet's rows arrive on the shared stagger step — the sheet is a surface
+     with contents, and contents that appear with it read as one object. Capped
+     at 5 so a long list never drags (the ADR-0120 reveal's own rule). */
+  .stage[data-g1='after'] .ov.open .ov-stagger > * {
+    animation: row-in var(--t-base) var(--ease-standard) backwards;
+    animation-delay: calc(var(--i) * var(--stagger-step));
+  }
+  @keyframes row-in {
+    from {
+      opacity: 0;
+      transform: translateY(7px);
+    }
+  }
+
+  /* the map-search shape, for the `full` demo */
+  .srch-bar {
+    background: var(--s-indigo);
+    color: var(--on-dark);
+    padding: 26px 16px 13px;
+    display: flex;
+    align-items: center;
+    gap: 10px;
+  }
+  .srch-field {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    margin: 16px 16px 12px;
+    background: var(--s-card);
+    border: 1px solid var(--s-soft-line);
+    border-radius: 999px;
+    padding: 0 13px;
+    height: 40px;
+    color: var(--s-muted);
+    font-size: 13.5px;
+  }
+  .srch-res {
+    flex: 1;
+    padding: 0 16px;
+    display: flex;
+    flex-direction: column;
+  }
+
+  /* =========================================================================
+     G2 — SHELL ROUTE MOTION
+     ========================================================================= */
+  .stage[data-g2='before'] .screen.rt {
+    /* hard cut: exactly today. The outgoing screen is simply removed. */
+    animation: none;
+  }
+  .stage[data-g2='after'] .screen.rt {
+    animation: var(--t-deliberate) var(--ease-standard) both;
+  }
+  /* forward: the arriving screen comes from the inline-END edge and the one you
+     leave recedes a short way toward inline-start — it is still there, behind. A
+     symmetric slide reads as a carousel; an asymmetric one reads as depth. */
+  .stage[data-g2='after'] .screen.rt.in-fwd {
+    animation-name: rt-in-fwd;
+  }
+  .stage[data-g2='after'] .screen.rt.out-fwd {
+    animation-name: rt-out-fwd;
+  }
+  .stage[data-g2='after'] .screen.rt.in-back {
+    animation-name: rt-in-back;
+  }
+  .stage[data-g2='after'] .screen.rt.out-back {
+    animation-name: rt-out-back;
+  }
+  @keyframes rt-in-fwd {
+    from {
+      transform: translateX(calc(var(--dir) * 100%));
+    }
+  }
+  @keyframes rt-out-fwd {
+    to {
+      transform: translateX(calc(var(--dir) * -22%));
+      opacity: 0.55;
+    }
+  }
+  @keyframes rt-in-back {
+    from {
+      transform: translateX(calc(var(--dir) * -22%));
+      opacity: 0.55;
+    }
+  }
+  @keyframes rt-out-back {
+    to {
+      transform: translateX(calc(var(--dir) * 100%));
+    }
+  }
+  .screen.rt.out-fwd,
+  .screen.rt.out-back {
+    z-index: 1;
+  }
+  .screen.rt.in-fwd,
+  .screen.rt.in-back {
+    z-index: 2;
+  }
+  /* The zero-state's dormant board, so G2's demo travels between two REAL
+     surfaces rather than two grey boxes. */
+  .board-off {
+    background: linear-gradient(180deg, var(--s-board-2), var(--s-board));
+    border-radius: 16px;
+    padding: 13px;
+  }
+  .board-off .r {
+    display: flex;
+    justify-content: space-between;
+    font-family: var(--mono);
+    font-size: 10px;
+    color: var(--on-dark-mut);
+    margin-bottom: 10px;
+  }
+  .flaps {
+    display: flex;
+    flex-direction: column;
+    gap: 5px;
+  }
+  .flap-row {
+    display: flex;
+    gap: 5px;
+    align-items: center;
+  }
+  .flap-row .tm {
+    font-family: var(--mono);
+    font-size: 10px;
+    color: rgba(234, 240, 255, 0.3);
+    width: 32px;
+  }
+  .cell {
+    height: 9px;
+    border-radius: 3px;
+    background: rgba(234, 240, 255, 0.1);
+  }
+  .cell.w1 {
+    width: 16px;
+  }
+  .cell.w2 {
+    width: 26px;
+  }
+  .cell.w3 {
+    width: 34px;
+  }
+  .cell.grow {
+    flex: 1;
+  }
+
+  /* =========================================================================
+     G3 — PRESS FEEDBACK
+     `before` is the shipped state for most controls: the tap-flash is killed
+     app-wide and nothing replaces it.
+     ========================================================================= */
+  .stage[data-g3='after'] .tappable {
+    transition:
+      transform var(--t-quick) var(--ease-standard),
+      filter var(--t-quick) var(--ease-standard);
+  }
+  .stage[data-g3='after'] .tappable:active {
+    /* Scale, not colour: it composes with every surface the app has (dark board,
+       paper card, amber tint) without touching the semantic colour budget, and
+       it needs no per-variant table. */
+    transform: scale(0.97);
+    filter: brightness(0.96);
+  }
+  .stage[data-g3='after'] .tappable.tap-lg:active {
+    /* A big surface must scale LESS than a small one or it reads as collapsing —
+       the ratio is what stays constant, not the transform. */
+    transform: scale(0.985);
+  }
+  .g3-grid {
+    display: grid;
+    grid-template-columns: 1fr 1fr;
+    gap: 10px;
+  }
+  .g3-note {
+    font-size: 11px;
+    color: var(--s-faint);
+    text-align: center;
+    margin-top: 2px;
+  }
+  .chip {
+    font: inherit;
+    font-size: 12.5px;
+    font-weight: 600;
+    padding: 8px 13px;
+    border-radius: 999px;
+    border: 1px solid var(--s-soft-line);
+    background: var(--s-card);
+    color: var(--s-ink);
+    cursor: pointer;
+  }
+  .tile {
+    background: var(--s-card);
+    border: 1px solid var(--s-line);
+    border-radius: 16px;
+    padding: 14px 12px;
+    text-align: center;
+    cursor: pointer;
+    font-size: 12.5px;
+    font-weight: 600;
+  }
+  .tile .ic {
+    font-size: 20px;
+    display: block;
+    margin-bottom: 5px;
+  }
+
+  /* ================= CONSOLE ================= */
+  .console {
+    display: flex;
+    flex-direction: column;
+    gap: 14px;
+    min-width: 0;
+  }
+  .cpanel {
+    background: linear-gradient(180deg, var(--lab-panel-2), var(--lab-panel));
+    border: 1px solid var(--lab-line);
+    border-radius: 15px;
+    padding: 15px 16px;
+  }
+  .cpanel > h3 {
+    margin: 0 0 4px;
+    font-size: 12px;
+    letter-spacing: 0.09em;
+    text-transform: uppercase;
+    color: var(--lab-faint);
+  }
+  .cpanel p {
+    margin: 8px 0 0;
+    font-size: 13px;
+    color: var(--lab-muted);
+  }
+  .cpanel p b {
+    color: var(--lab-ink);
+    font-weight: 600;
+  }
+
+  .ab {
+    display: grid;
+    grid-template-columns: 1fr 1fr;
+    gap: 6px;
+    padding: 5px;
+    background: rgba(12, 18, 32, 0.6);
+    border: 1px solid var(--lab-line);
+    border-radius: 12px;
+    margin-top: 10px;
+  }
+  .ab button {
+    font: inherit;
+    font-size: 13px;
+    font-weight: 700;
+    border: 0;
+    border-radius: 8px;
+    padding: 10px;
+    cursor: pointer;
+    background: none;
+    color: var(--lab-muted);
+    transition: var(--t-quick) var(--ease-standard);
+  }
+  .ab button small {
+    display: block;
+    font-size: 10.5px;
+    font-weight: 500;
+    opacity: 0.75;
+  }
+  .ab button[aria-pressed='true'] {
+    background: var(--lab-panel-2);
+    color: var(--lab-ink);
+    box-shadow: inset 0 0 0 1px var(--lab-line-2);
+  }
+  .ab button[aria-pressed='true'][data-v='before'] {
+    color: #f0b6ac;
+  }
+  .ab button[aria-pressed='true'][data-v='after'] {
+    color: #9fe3c0;
+  }
+
+  .acts {
+    display: flex;
+    gap: 7px;
+    flex-wrap: wrap;
+    margin-top: 11px;
+  }
+  .btn {
+    font: inherit;
+    font-size: 12.5px;
+    font-weight: 600;
+    color: var(--lab-ink);
+    background: var(--lab-panel-2);
+    border: 1px solid var(--lab-line-2);
+    border-radius: 9px;
+    padding: 8px 13px;
+    cursor: pointer;
+    transition: var(--t-quick) var(--ease-standard);
+  }
+  .btn:hover {
+    border-color: var(--lab-accent);
+  }
+  .btn.primary {
+    background: var(--lab-accent);
+    border-color: transparent;
+    color: #fff;
+  }
+  .btn:active {
+    transform: scale(0.97);
+  }
+
+  .rows {
+    display: flex;
+    flex-direction: column;
+    gap: 9px;
+    margin-top: 11px;
+  }
+  .ctl {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 12px;
+    font-size: 12.5px;
+    color: var(--lab-muted);
+  }
+  .ctl > span b {
+    color: var(--lab-ink);
+    font-weight: 600;
+    display: block;
+  }
+  .ctl > span i {
+    font-style: normal;
+    font-size: 11.5px;
+  }
+  .seg {
+    display: flex;
+    gap: 3px;
+    padding: 3px;
+    background: rgba(12, 18, 32, 0.6);
+    border: 1px solid var(--lab-line);
+    border-radius: 9px;
+    flex: 0 0 auto;
+  }
+  .seg button {
+    font: inherit;
+    font-size: 11.5px;
+    font-weight: 600;
+    border: 0;
+    background: none;
+    color: var(--lab-faint);
+    padding: 5px 11px;
+    border-radius: 6px;
+    cursor: pointer;
+  }
+  .seg button[aria-pressed='true'] {
+    background: var(--lab-panel-2);
+    color: var(--lab-ink);
+    box-shadow: inset 0 0 0 1px var(--lab-line-2);
+  }
+
+  .verdict {
+    display: flex;
+    gap: 10px;
+    align-items: flex-start;
+    font-size: 12.5px;
+    color: var(--lab-muted);
+    background: rgba(12, 18, 32, 0.5);
+    border: 1px solid var(--lab-line);
+    border-inline-start: 3px solid var(--lab-warn);
+    border-radius: 0 10px 10px 0;
+    padding: 11px 13px;
+    margin-top: 12px;
+  }
+  .verdict.ok {
+    border-inline-start-color: var(--lab-ok);
+  }
+  .verdict b {
+    color: var(--lab-ink);
+  }
+
+  .spec {
+    margin: 11px 0 0;
+    border-collapse: collapse;
+    width: 100%;
+    font-size: 12px;
+  }
+  .spec th,
+  .spec td {
+    text-align: start;
+    padding: 7px 9px;
+    border-bottom: 1px solid var(--lab-line);
+    vertical-align: top;
+  }
+  .spec th {
+    color: var(--lab-faint);
+    font-weight: 600;
+    font-size: 10.5px;
+    letter-spacing: 0.06em;
+    text-transform: uppercase;
+  }
+  .spec td:first-child {
+    font-family: var(--mono);
+    color: var(--lab-accent);
+    white-space: nowrap;
+  }
+  .spec td {
+    color: var(--lab-muted);
+  }
+
+  .foot {
+    margin-top: 26px;
+    padding-top: 16px;
+    border-top: 1px solid var(--lab-line);
+    color: var(--lab-faint);
+    font-size: 12px;
+    max-width: 92ch;
+  }
+  .foot b {
+    color: var(--lab-muted);
+  }
+</style>
+
+<h1>Motion primitives — before / after</h1>
+<p class="sub">
+  The three <b>systemic</b> gaps from the session-189 brief. Each is judged by comparison, so each
+  has a faithful <b>BEFORE</b> (the shipped CSS) and an <b>AFTER</b> (the proposal) on one toggle.
+  Fixing these is what makes the two set pieces cheap — they then assemble from parts that already
+  move correctly.
+</p>
+
+<div class="tabs" role="tablist">
+  <button role="tab" aria-selected="true" data-tab="g1">
+    <span class="tag">G1</span>Overlays arrive &amp; leave
+  </button>
+  <button role="tab" aria-selected="false" data-tab="g2">
+    <span class="tag">G2</span>Shell route motion
+  </button>
+  <button role="tab" aria-selected="false" data-tab="g3">
+    <span class="tag">G3</span>Press feedback
+  </button>
+</div>
+
+<!-- ══════════════════════════════ G1 ══════════════════════════════ -->
+<section class="panel" id="p-g1">
+  <div class="lab">
+    <div class="stage-col">
+      <div class="phone">
+        <div class="stage" id="st1" data-g1="after" data-arrive="1" dir="rtl">
+          <div class="sb"><span>9:41</span><span>▮▮▮</span></div>
+          <div class="screen">
+            <div class="hd"><span class="ttl">🇯🇵 יפן · אביב</span></div>
+            <div class="bd">
+              <div class="card">
+                <div class="t">שינקנסן לקיוטו</div>
+                <div class="m">14:20 · תחנת טוקיו</div>
+              </div>
+              <div class="card">
+                <div class="t">ארוחה בגיון</div>
+                <div class="m">19:30 · קיוטו</div>
+              </div>
+              <div style="flex: 1"></div>
+            </div>
+            <div class="nav">
+              <span class="on">בית</span><span>יום</span><span>אינדקס</span><span>מפה</span>
+            </div>
+          </div>
+          <!-- overlays injected here by the console -->
+        </div>
+      </div>
+      <div class="stage-cap" id="cap1">tap a variant in the console →</div>
+    </div>
+
+    <div class="console">
+      <div class="cpanel">
+        <h3>Mode</h3>
+        <div class="ab" id="ab1">
+          <button data-v="before" aria-pressed="false">
+            BEFORE <small>modal.css as shipped</small>
+          </button>
+          <button data-v="after" aria-pressed="true">AFTER <small>the proposal</small></button>
+        </div>
+        <p>
+          <b>Watch the close, not the open.</b> In BEFORE the card never translates and the node is
+          torn out on the frame <code>onClose</code> runs — every sheet, dialog, picker and the
+          search overlay <b>snaps</b> shut. Enter-slow / exit-instant is the single most common
+          reason an app reads as unfinished, and today it is app-wide.
+        </p>
+      </div>
+
+      <div class="cpanel">
+        <h3>Open a variant</h3>
+        <div class="acts">
+          <button class="btn primary" data-open="sheet">sheet — a manage sheet</button>
+          <button class="btn primary" data-open="dialog">dialog — a confirm</button>
+          <button class="btn primary" data-open="full">full — the Map's search</button>
+        </div>
+        <p>
+          Each variant arrives the way its <b>shape</b> implies: the sheet rises from the edge it
+          came from, the dialog has no edge so it is summoned in place, and
+          <code>full</code> replaces a screen so it arrives <b>like</b> a screen — the same grammar
+          as G2's forward push, which is why the two must share one direction rule.
+        </p>
+        <table class="spec">
+          <tr>
+            <th>variant</th>
+            <th>enter</th>
+            <th>exit</th>
+          </tr>
+          <tr>
+            <td>sheet</td>
+            <td>translateY 100%→0, <code>--t-base</code> / <code>--ease-arrive</code></td>
+            <td>reverse, <code>--t-quick</code> / <code>--ease-exit</code></td>
+          </tr>
+          <tr>
+            <td>dialog</td>
+            <td>scale .96→1 + opacity, <code>--t-base</code></td>
+            <td>scale→.97 + opacity, <code>--t-quick</code></td>
+          </tr>
+          <tr>
+            <td>full</td>
+            <td>translateX inline-end→0, <code>--t-base</code></td>
+            <td>reverse, <code>--t-quick</code></td>
+          </tr>
+          <tr>
+            <td>scrim</td>
+            <td>opacity, on its <b>own</b> channel</td>
+            <td>opacity, <code>--t-quick</code></td>
+          </tr>
+        </table>
+        <div class="verdict ok">
+          <div>
+            <b>Exit is briefer than entrance, on purpose.</b> Symmetric timings feel sluggish on the
+            way out — you have already decided to leave. <code>--t-base</code> in,
+            <code>--t-quick</code> out.
+          </div>
+        </div>
+      </div>
+
+      <div class="cpanel">
+        <h3>Proofs</h3>
+        <div class="rows">
+          <div class="ctl">
+            <span
+              ><b>Reduced motion</b
+              ><i>a `closing` state must still resolve with no animation</i></span
+            >
+            <div class="seg" id="seg-reduce">
+              <button data-on="0" aria-pressed="true">off</button>
+              <button data-on="1" aria-pressed="false">on</button>
+            </div>
+          </div>
+          <div class="ctl">
+            <span><b>Direction</b><i>the same CSS must mirror — `translateX` is physical</i></span>
+            <div class="seg" id="seg-dir1">
+              <button data-on="rtl" aria-pressed="true">rtl</button>
+              <button data-on="ltr" aria-pressed="false">ltr</button>
+            </div>
+          </div>
+          <div class="ctl">
+            <span><b>--ease-arrive</b><i>off = the shipped monotone easings only</i></span>
+            <div class="seg" id="seg-arrive">
+              <button data-on="1" aria-pressed="true">on</button>
+              <button data-on="0" aria-pressed="false">off</button>
+            </div>
+          </div>
+          <div class="ctl">
+            <span><b>Theme</b><i>motion rides tokens, so it must survive the flip</i></span>
+            <div class="seg" id="seg-theme1">
+              <button data-on="light" aria-pressed="true">light</button>
+              <button data-on="dark" aria-pressed="false">dark</button>
+            </div>
+          </div>
+        </div>
+        <div class="verdict">
+          <div>
+            <b>The reduced-motion case is a real bug waiting to happen.</b> The exit timer must read
+            <code>0</code>, not the token — read it from the token and the overlay stays mounted for
+            140ms of nothing, still covering the screen and still holding focus. Correct by
+            construction: derive the hold from the same media query that kills the animation.
+          </div>
+        </div>
+      </div>
+
+      <div class="cpanel">
+        <h3>Where it lands</h3>
+        <p>
+          One change in <code>ui/primitives/Modal.tsx</code> + <code>modal.css</code>. Every overlay
+          in the app inherits it — sheets, <code>ConfirmDialog</code>, <code>RowManageSheet</code>,
+          <code>BookingSheet</code>, <code>EventForm</code>, <code>SearchOverlay</code>, the
+          document viewer. The state machine is <code>open → closing → unmounted</code>, and the
+          pattern is already in the repo: <code>.toast</code> stays mounted and animates both ways
+          off a <code>.show</code> class.
+        </p>
+        <div class="verdict">
+          <div>
+            <b>One constraint that does not move.</b> ADR-0132 §2 leaves the Map's
+            <b>chrome reclaim</b> un-animated because animating it relayouts the split mid-flight.
+            The overlay's arrival must not be made to cross-fade against the chrome disappearing —
+            they are two different surfaces and only one of them may move.
+          </div>
+        </div>
+      </div>
+    </div>
+  </div>
+</section>
+
+<!-- ══════════════════════════════ G2 ══════════════════════════════ -->
+<section class="panel" id="p-g2" hidden>
+  <div class="lab">
+    <div class="stage-col">
+      <div class="phone">
+        <div class="stage" id="st2" data-g2="after" dir="rtl">
+          <div class="sb"><span>9:41</span><span>▮▮▮</span></div>
+          <!-- screens injected by the console -->
+        </div>
+      </div>
+      <div class="stage-cap" id="cap2">zero state</div>
+    </div>
+
+    <div class="console">
+      <div class="cpanel">
+        <h3>Mode</h3>
+        <div class="ab" id="ab2">
+          <button data-v="before" aria-pressed="false">BEFORE <small>hard cut</small></button>
+          <button data-v="after" aria-pressed="true">AFTER <small>direction-aware</small></button>
+        </div>
+        <p>
+          <code>.body</code>'s <code>fade</code> covers in-trip <b>tab content</b> only. Every
+          full-screen <code>.app</code> surface renders with no entrance at all —
+          <code>/login</code>, the zero state, <code>/new</code>, the born screen,
+          <code>/join</code>, <code>/trips</code>, both settings screens. Every transition in the
+          two journeys the owner named is one of these.
+        </p>
+      </div>
+
+      <div class="cpanel">
+        <h3>Navigate</h3>
+        <div class="acts">
+          <button class="btn primary" id="g2-fwd">forward → /new</button>
+          <button class="btn" id="g2-back">← back</button>
+        </div>
+        <p>
+          <b>Forward and back must not look the same</b>, or the motion carries no information — it
+          becomes decoration you learn to ignore. And the pair is deliberately <b>asymmetric</b>:
+          the arriving screen travels the full width, the one you leave recedes only ~22% and dims.
+          A symmetric slide reads as a carousel; an asymmetric one reads as depth, which is what
+          "deeper into the app" means.
+        </p>
+        <table class="spec">
+          <tr>
+            <th>direction</th>
+            <th>arriving</th>
+            <th>leaving</th>
+          </tr>
+          <tr>
+            <td>forward</td>
+            <td>from inline-<b>end</b>, 100% → 0</td>
+            <td>to inline-start −22%, opacity → .55</td>
+          </tr>
+          <tr>
+            <td>back</td>
+            <td>from inline-start −22%, opacity .55 → 1</td>
+            <td>to inline-<b>end</b> 100%</td>
+          </tr>
+        </table>
+      </div>
+
+      <div class="cpanel">
+        <h3>Proofs</h3>
+        <div class="rows">
+          <div class="ctl">
+            <span><b>Direction</b><i>RTL is the app's base; LTR must mirror for free</i></span>
+            <div class="seg" id="seg-dir2">
+              <button data-on="rtl" aria-pressed="true">rtl</button>
+              <button data-on="ltr" aria-pressed="false">ltr</button>
+            </div>
+          </div>
+          <div class="ctl">
+            <span><b>Reduced motion</b><i>collapses to the hard cut, which is correct</i></span>
+            <div class="seg" id="seg-reduce2">
+              <button data-on="0" aria-pressed="true">off</button>
+              <button data-on="1" aria-pressed="false">on</button>
+            </div>
+          </div>
+        </div>
+        <div class="verdict">
+          <div>
+            <b
+              >RTL is the trap, and it is the one <code>frontend/CLAUDE.md</code> already
+              documents.</b
+            >
+            <code>translateX</code> is <b>physical</b>; there is no logical transform. In RTL,
+            inline-end is the <b>left</b> edge, so a forward push enters from <code>−100%</code>.
+            Hence one <code>--dir</code> sign on the shell and
+            <code>translateX(calc(var(--dir) * 100%))</code> — not a mirrored copy of every
+            keyframe.
+          </div>
+        </div>
+        <div class="verdict">
+          <div>
+            <b>Two things it must compose with.</b> Direction comes from nav state, never from
+            reading history (ADR-0090 — and traversal is lint-blocked). And it must be mutually
+            exclusive with the mode switch's <code>data-switching</code> window, or a Plan→Trip flip
+            that also changes route runs two transitions over each other.
+          </div>
+        </div>
+      </div>
+    </div>
+  </div>
+</section>
+
+<!-- ══════════════════════════════ G3 ══════════════════════════════ -->
+<section class="panel" id="p-g3" hidden>
+  <div class="lab">
+    <div class="stage-col">
+      <div class="phone">
+        <div class="stage" id="st3" data-g3="after" dir="rtl">
+          <div class="sb"><span>9:41</span><span>▮▮▮</span></div>
+          <div class="screen">
+            <div class="hd">
+              <button class="back tappable">→</button><span class="ttl">אינדקס</span>
+            </div>
+            <div class="bd">
+              <div style="display: flex; gap: 7px; flex-wrap: wrap">
+                <button class="chip tappable">הכול</button>
+                <button class="chip tappable">טיסות</button>
+                <button class="chip tappable">לינה</button>
+                <button class="chip tappable">מסעדות</button>
+              </div>
+              <div class="g3-grid">
+                <div class="tile tappable tap-lg"><span class="ic">🎫</span>הזמנות</div>
+                <div class="tile tappable tap-lg"><span class="ic">📄</span>מסמכים</div>
+              </div>
+              <div class="card tappable tap-lg">
+                <div class="t">שינקנסן לקיוטו</div>
+                <div class="m">14:20 · תחנת טוקיו</div>
+              </div>
+              <div style="flex: 1"></div>
+              <button class="btn-cta tappable">הוספה</button>
+              <button class="btn-ghost tappable">ביטול</button>
+              <p class="g3-note">press and hold anything above</p>
+            </div>
+            <div class="nav">
+              <span class="tappable">בית</span><span class="tappable">יום</span
+              ><span class="on tappable">אינדקס</span><span class="tappable">מפה</span>
+            </div>
+          </div>
+        </div>
+      </div>
+      <div class="stage-cap">press and hold — mouse down counts as a touch here</div>
+    </div>
+
+    <div class="console">
+      <div class="cpanel">
+        <h3>Mode</h3>
+        <div class="ab" id="ab3">
+          <button data-v="before" aria-pressed="false">BEFORE <small>as shipped</small></button>
+          <button data-v="after" aria-pressed="true">AFTER <small>one shared rule</small></button>
+        </div>
+        <p>
+          <code>tokens.css</code> kills the mobile tap-flash app-wide, justified in its own comment
+          by "every tappable surface has its own <code>:active</code> / hover / focus-visible
+          feedback". Counted: <b>~16 <code>:active</code> rules in the entire frontend.</b> Most
+          buttons acknowledge a tap with nothing at all.
+        </p>
+        <div class="verdict">
+          <div>
+            Phone-primary (ADR-0017) makes this <b>correctness</b>, not polish: there is no hover
+            state to fall back on, so for the frame before the target appears the app has told the
+            user nothing. Cheapest feel-per-line change in the codebase.
+          </div>
+        </div>
+      </div>
+
+      <div class="cpanel">
+        <h3>Why scale and not colour</h3>
+        <p>
+          A colour press-state needs a per-surface table — the app has a dark glowing board, paper
+          cards, amber tints, violet chrome — and it would spend from the semantic colour budget
+          (amber = time, teal = location, violet = plan) on chrome.
+          <b>Scale composes with every surface</b> and needs no table.
+        </p>
+        <table class="spec">
+          <tr>
+            <th>target</th>
+            <th>press</th>
+            <th>why</th>
+          </tr>
+          <tr>
+            <td>small (chip, icon, nav)</td>
+            <td>scale .97 + brightness .96</td>
+            <td>legible at 32–44px</td>
+          </tr>
+          <tr>
+            <td>large (card, tile, CTA)</td>
+            <td>scale .985</td>
+            <td>a big surface at .97 reads as collapsing</td>
+          </tr>
+          <tr>
+            <td>timing</td>
+            <td><code>--t-quick</code> / <code>--ease-standard</code></td>
+            <td>must land inside the same frame budget as the tap</td>
+          </tr>
+        </table>
+        <div class="verdict ok">
+          <div>
+            <b>Two sizes, not one.</b> Toggle to AFTER and hold the CTA, then the nav item — the
+            <b>ratio</b> is what should read as constant, not the transform. One value for both is
+            the version that looks broken on the card.
+          </div>
+        </div>
+      </div>
+
+      <div class="cpanel">
+        <h3>Proofs</h3>
+        <div class="rows">
+          <div class="ctl">
+            <span
+              ><b>Reduced motion</b><i>press feedback disappears entirely — is that right?</i></span
+            >
+            <div class="seg" id="seg-reduce3">
+              <button data-on="0" aria-pressed="true">off</button>
+              <button data-on="1" aria-pressed="false">on</button>
+            </div>
+          </div>
+          <div class="ctl">
+            <span><b>Theme</b><i>brightness() must not invert on dark</i></span>
+            <div class="seg" id="seg-theme3">
+              <button data-on="light" aria-pressed="true">light</button>
+              <button data-on="dark" aria-pressed="false">dark</button>
+            </div>
+          </div>
+        </div>
+        <div class="verdict">
+          <div>
+            <b>An open question, deliberately left open.</b> App.css's global rule kills
+            <code>transition</code> with <code>!important</code>, so under reduced motion the press
+            state <b>snaps</b> rather than eases — which is arguably correct (instant
+            acknowledgement is still acknowledgement). But <code>brightness(.96)</code> darkens on a
+            dark theme too, where "pressed" may want to be <b>lighter</b>. Judge both on a device
+            before wiring a second rule.
+          </div>
+        </div>
+      </div>
+    </div>
+  </div>
+</section>
+
+<p class="foot">
+  <b>Status:</b> proposal, not a decision — adoption needs an ADR covering <code>Modal</code>'s
+  enter/exit contract, the shell transition's direction source, and the press-feedback rule, plus
+  the two token additions (<code>--stagger-step</code>, <code>--ease-arrive</code>).
+  <b>What this file cannot settle:</b> real durations on a real device under a real thumb.
+  Everything here is judged on a desktop with a mouse; the numbers are starting points.
+  <b>Order matters:</b> G1 and G3 change how the whole app feels for a contained diff, and G1 is the
+  primitive the two set-piece journeys then build on — so they land before
+  <code>motion-trip-birth-v1.html</code> and <code>motion-join-v1.html</code>.
+</p>
+
+<script>
+  /* ---------- tabs ---------- */
+  const tabs = [...document.querySelectorAll('.tabs button')];
+  tabs.forEach((b) =>
+    b.addEventListener('click', () => {
+      tabs.forEach((o) => o.setAttribute('aria-selected', String(o === b)));
+      ['g1', 'g2', 'g3'].forEach((k) => {
+        document.getElementById('p-' + k).hidden = k !== b.dataset.tab;
+      });
+    }),
+  );
+
+  /* a segmented control: calls back with the pressed value */
+  function seg(id, cb) {
+    const root = document.getElementById(id);
+    if (!root) return;
+    root.addEventListener('click', (e) => {
+      const b = e.target.closest('button');
+      if (!b) return;
+      [...root.querySelectorAll('button')].forEach((o) =>
+        o.setAttribute('aria-pressed', String(o === b)),
+      );
+      cb(b.dataset.on);
+    });
+  }
+  /* a before/after pair */
+  function ab(id, cb) {
+    const root = document.getElementById(id);
+    root.addEventListener('click', (e) => {
+      const b = e.target.closest('button');
+      if (!b) return;
+      [...root.querySelectorAll('button')].forEach((o) =>
+        o.setAttribute('aria-pressed', String(o === b)),
+      );
+      cb(b.dataset.v);
+    });
+  }
+  const ms = (name, el) =>
+    parseFloat(getComputedStyle(el || document.documentElement).getPropertyValue(name)) || 0;
+
+  /* ══════════════ G1 ══════════════ */
+  const st1 = document.getElementById('st1');
+  const cap1 = document.getElementById('cap1');
+  let ov = null;
+  let closeTimer = null;
+
+  const OV_BODY = {
+    sheet: `
+      <div class="ov-title">שינקנסן לקיוטו</div>
+      <div class="ov-stagger">
+        <div class="ov-row" style="--i:0"><span class="g">✏️</span>עריכה</div>
+        <div class="ov-row" style="--i:1"><span class="g">🕑</span>שינוי שעה</div>
+        <div class="ov-row" style="--i:2"><span class="g">📍</span>מיקום</div>
+        <div class="ov-row" style="--i:3"><span class="g">🗑️</span>מחיקה</div>
+      </div>`,
+    dialog: `
+      <div class="ov-title">למחוק את ההזמנה?</div>
+      <p style="margin:0 0 14px;font-size:13px;color:var(--s-muted)">אפשר לבטל מיד לאחר מכן.</p>
+      <button class="btn-cta" data-close>מחיקה</button>`,
+    full: null, // built inline below (it is a screen, not a card)
+  };
+
+  function closeOv() {
+    if (!ov) return;
+    const before = st1.dataset.g1 === 'before';
+    const reduce = st1.dataset.reduce === '1';
+    // BEFORE has no exit at all: the node goes on this frame, exactly as
+    // Modal.tsx unmounts its portal today.
+    if (before) {
+      ov.remove();
+      ov = null;
+      cap1.textContent = 'closed — no exit animation (as shipped)';
+      return;
+    }
+    ov.classList.remove('open');
+    ov.classList.add('closing');
+    // THE CORRECTNESS POINT: with no animation the hold must be 0, or the
+    // overlay lingers while covering the screen and holding focus.
+    const hold = reduce ? 0 : ms('--t-quick');
+    clearTimeout(closeTimer);
+    closeTimer = setTimeout(() => {
+      if (ov) ov.remove();
+      ov = null;
+      cap1.textContent = reduce ? 'closed instantly (reduced motion)' : 'closed — the exit ran';
+    }, hold);
+  }
+
+  function openOv(variant) {
+    clearTimeout(closeTimer);
+    if (ov) ov.remove();
+    ov = document.createElement('div');
+    ov.className = 'ov';
+    ov.dataset.variant = variant;
+    if (variant === 'full') {
+      ov.innerHTML = `
+        <div class="ov-scrim"></div>
+        <div class="ov-card">
+          <div class="srch-bar"><span style="font-size:15px">→</span><span style="font-weight:700;font-size:15px">חיפוש מקום</span></div>
+          <div class="srch-field"><span>🔎</span><span>קיוטו</span></div>
+          <div class="srch-res ov-stagger">
+            <div class="ov-row" style="--i:0"><span class="g">📍</span>Fushimi Inari</div>
+            <div class="ov-row" style="--i:1"><span class="g">📍</span>Kiyomizu-dera</div>
+            <div class="ov-row" style="--i:2"><span class="g">＋</span>Nishiki Market</div>
+            <div class="ov-row" style="--i:3"><span class="g">＋</span>Gion Tatsumi Bridge</div>
+          </div>
+        </div>`;
+    } else {
+      ov.innerHTML = `<div class="ov-scrim"></div><div class="ov-card">${OV_BODY[variant]}</div>`;
+    }
+    ov.addEventListener('click', (e) => {
+      // the scrim, or an explicit close control — one handler, per ADR-0103's
+      // "an implicit dismissal is a back too"
+      if (e.target.classList.contains('ov-scrim') || e.target.closest('[data-close]')) closeOv();
+    });
+    st1.appendChild(ov);
+    cap1.textContent = variant + ' — tap the scrim to close, and watch the close';
+    // one frame, so the `open` class transitions from the closed state rather
+    // than being the initial paint
+    requestAnimationFrame(() => requestAnimationFrame(() => ov && ov.classList.add('open')));
+  }
+
+  document
+    .querySelectorAll('[data-open]')
+    .forEach((b) => b.addEventListener('click', () => openOv(b.dataset.open)));
+  ab('ab1', (v) => {
+    st1.dataset.g1 = v;
+    if (ov) {
+      ov.remove();
+      ov = null;
+    }
+    cap1.textContent = v === 'before' ? 'BEFORE — open one and close it' : 'AFTER — open one';
+  });
+  seg('seg-reduce', (v) => (st1.dataset.reduce = v));
+  seg('seg-dir1', (v) => st1.setAttribute('dir', v));
+  seg('seg-arrive', (v) => (st1.dataset.arrive = v));
+  seg('seg-theme1', (v) => st1.setAttribute('data-theme', v));
+
+  /* ══════════════ G2 ══════════════ */
+  const st2 = document.getElementById('st2');
+  const cap2 = document.getElementById('cap2');
+
+  const SCREEN_ZERO = `
+    <div class="hd" style="padding-top:26px"><span class="ttl">שלום, אסף</span></div>
+    <div class="bd">
+      <div class="board-off">
+        <div class="r"><span>● הלוח כבוי</span><span>--:--</span></div>
+        <div class="flaps">
+          <div class="flap-row"><span class="tm">--:--</span><i class="cell w3"></i><i class="cell grow"></i><i class="cell w1"></i></div>
+          <div class="flap-row"><span class="tm">--:--</span><i class="cell w2"></i><i class="cell grow"></i><i class="cell w2"></i></div>
+          <div class="flap-row"><span class="tm">--:--</span><i class="cell grow"></i><i class="cell w3"></i><i class="cell w1"></i></div>
+        </div>
+      </div>
+      <div style="text-align:center;padding:6px 4px">
+        <div style="font-weight:700;font-size:17px">אין טיול על הלוח</div>
+        <div style="font-size:12.5px;color:var(--s-muted);margin-top:3px">כשיהיה טיול, הלוח יידלק.</div>
+      </div>
+      <div style="flex:1"></div>
+      <button class="btn-cta" id="go-new">＋ טיול חדש</button>
+      <button class="btn-ghost">🔗 הצטרפות עם קישור</button>
+    </div>`;
+
+  const SCREEN_NEW = `
+    <div class="hd"><button class="back" id="go-back">→</button><span class="ttl">טיול חדש</span></div>
+    <div class="bd">
+      <div>
+        <div style="font-size:11.5px;font-weight:700;color:var(--s-muted);margin-bottom:5px">יעד</div>
+        <div class="card" style="border-radius:12px;padding:11px 13px;color:var(--s-faint)">לאן נוסעים?</div>
+      </div>
+      <div>
+        <div style="font-size:11.5px;font-weight:700;color:var(--s-muted);margin-bottom:5px">תאריכים</div>
+        <div style="display:flex;gap:8px">
+          <div class="card" style="flex:1;border-radius:12px;padding:11px;color:var(--s-faint);font-size:12.5px">התחלה</div>
+          <div class="card" style="flex:1;border-radius:12px;padding:11px;color:var(--s-faint);font-size:12.5px">סיום</div>
+        </div>
+      </div>
+      <div class="card" style="border-style:dashed;border-color:var(--s-soft-line);display:flex;align-items:center;gap:10px">
+        <span style="font-size:20px">🧭</span>
+        <div><div class="t" style="color:var(--s-faint)">שם הטיול</div><div class="m">ממתין ליעד ולתאריכים</div></div>
+      </div>
+      <div style="flex:1"></div>
+      <button class="btn-cta" style="opacity:.45">יצירת הטיול</button>
+    </div>`;
+
+  let at = 'zero';
+  function paintG2(initial) {
+    st2.querySelectorAll('.screen').forEach((s) => s.remove());
+    const s = document.createElement('div');
+    s.className = 'screen rt';
+    s.innerHTML = at === 'zero' ? SCREEN_ZERO : SCREEN_NEW;
+    st2.appendChild(s);
+    wireG2();
+    if (initial) cap2.textContent = at === 'zero' ? 'zero state' : '/new';
+  }
+  function navG2(dir) {
+    const outgoing = st2.querySelector('.screen');
+    at = at === 'zero' ? 'new' : 'zero';
+    const incoming = document.createElement('div');
+    incoming.className = 'screen rt ' + (dir === 'fwd' ? 'in-fwd' : 'in-back');
+    incoming.innerHTML = at === 'zero' ? SCREEN_ZERO : SCREEN_NEW;
+    st2.appendChild(incoming);
+    const hard = st2.dataset.g2 === 'before' || st2.dataset.reduce === '1';
+    if (outgoing) {
+      if (hard) outgoing.remove();
+      else {
+        outgoing.className = 'screen rt ' + (dir === 'fwd' ? 'out-fwd' : 'out-back');
+        setTimeout(() => outgoing.remove(), ms('--t-deliberate') + 30);
+      }
+    }
+    cap2.textContent =
+      (at === 'zero' ? 'zero state' : '/new') + (hard ? ' — hard cut' : ' — ' + dir);
+    wireG2();
+  }
+  function wireG2() {
+    const f = st2.querySelector('#go-new');
+    const b = st2.querySelector('#go-back');
+    if (f) f.onclick = () => navG2('fwd');
+    if (b) b.onclick = () => navG2('back');
+  }
+  paintG2(true);
+  document.getElementById('g2-fwd').addEventListener('click', () => {
+    if (at !== 'new') navG2('fwd');
+  });
+  document.getElementById('g2-back').addEventListener('click', () => {
+    if (at !== 'zero') navG2('back');
+  });
+  ab('ab2', (v) => (st2.dataset.g2 = v));
+  seg('seg-dir2', (v) => st2.setAttribute('dir', v));
+  seg('seg-reduce2', (v) => (st2.dataset.reduce = v));
+
+  /* ══════════════ G3 ══════════════ */
+  const st3 = document.getElementById('st3');
+  ab('ab3', (v) => (st3.dataset.g3 = v));
+  seg('seg-reduce3', (v) => (st3.dataset.reduce = v));
+  seg('seg-theme3', (v) => st3.setAttribute('data-theme', v));
+</script>

@@ -1,0 +1,1508 @@
+<title>Trip birth — the board's first departure</title>
+<!--
+  Waypoint · Trip birth — the creation payoff, two candidates (v1)
+  ---------------------------------------------------------------
+  A DESIGN MOCKUP / motion reference. Subject: Journey 1 of
+  `docs/planning/2026-07-31-session-189-motion-and-first-run-brief.md` — the moment
+  `submit()` succeeds and `CreateTrip` swaps to `Created` (screen #s-born).
+
+  WHAT SHIPS TODAY is a React state swap. Indigo shell chrome becomes plan-violet
+  `.born-*` chrome, a static 🎉 glyph and an <h1> appear, and nothing moves. It is
+  the least animated moment in the product and the most significant one.
+
+  THE IDEA, and the reason it needs no new vocabulary:
+
+    The app's signature concept is a DEPARTURE BOARD, and the first-run journey
+    already walks through its states — /login shows a teaser (the board from
+    outside), the zero state renders it UNPOWERED (built, ADR-0024 §2), Trip Home
+    renders it live and glowing. The gap in that sequence is creation.
+
+    So: TRIP BIRTH IS THE BOARD'S FIRST DEPARTURE. The same off→on the mode switch
+    already performs (screens.css `board-power`, `wp-board-glow`), fired on a second
+    trigger, with split-flap cells settling into the trip's first row — and the
+    first row of a brand-new trip is the trip itself, departing in N days. Honest
+    content, not a decorative flourish.
+
+    A confetti burst was considered and rejected: it is a second metaphor bolted
+    onto an app that already has one, it spends the one-loud-element ration twice
+    (the board is ALREADY the loud thing), and it reads as generic where the board
+    reads as this product.
+
+  AND IT SETTLES THE CINEMATIC BUDGET WITHOUT AMENDING IT. design-language.md
+  allows exactly ONE --t-cinematic moment (Plan→Trip). This does not ask for a
+  second: the cinematic ASSET is the board's power-on, and trip birth is that same
+  asset on a different trigger — one signature played at the two moments a trip
+  changes state (it is born; it goes live). Everything else in the sequence stays
+  at --t-deliberate and below.
+
+  THE SHARED ELEMENT IS THE ARGUMENT. The draft preview card (`.draft`, today an
+  aria-hidden decoration that silently swaps text) travels from its slot in the
+  form to the born card's position, and turns from the SOFT grammar to solid.
+  That dashed→solid is not decoration: ADR-0011's grammar means "provisional →
+  committed", and this is the frame where the trip stops being a draft. The motion
+  is saying the one true thing about the moment.
+
+  TWO CANDIDATES, drawn side by side because the owner should pick on a device:
+    A · full staged  ~1450ms  card → chrome → BOARD POWERS ON → content
+    B · restrained    ~650ms  card → chrome → content. No board.
+  B leaves the board's power-on exclusive to going live. A spends it twice and
+  gets the payoff. Play both; A is the recommendation, B is the honest fallback.
+
+  SKIPPABILITY IS PART OF THE DESIGN, not a setting. Someone who just wants to
+  start planning must be able to land the sequence with a tap — a celebration you
+  cannot interrupt is a modal dialog wearing a costume.
+
+  NOTE ON FONTS: system stack substitutes Secular One / Assistant / JetBrains Mono
+  (CSP blocks the CDN). RTL preserved.
+
+  STATUS: proposal. Adoption = an ADR (the birth sequence + the shared-element
+  contract + the "same cinematic asset, second trigger" reading of the budget).
+-->
+<style>
+  :root {
+    --t-quick: 140ms;
+    --t-base: 240ms;
+    --t-deliberate: 400ms;
+    --t-cinematic: 600ms;
+    --ease-standard: cubic-bezier(0.2, 0, 0, 1);
+    --ease-exit: cubic-bezier(0.4, 0, 1, 1);
+    --ease-emphasized: cubic-bezier(0.16, 1, 0.3, 1);
+    --stagger-step: 40ms;
+    --ease-arrive: cubic-bezier(0.22, 1.16, 0.36, 1);
+
+    --lab-bg: #0c1220;
+    --lab-bg-2: #111a2c;
+    --lab-panel: #141d31;
+    --lab-panel-2: #18233b;
+    --lab-line: rgba(148, 163, 194, 0.16);
+    --lab-line-2: rgba(148, 163, 194, 0.3);
+    --lab-ink: #e7ecf6;
+    --lab-muted: #93a0b8;
+    --lab-faint: #6b7794;
+    --lab-accent: #8b79e8;
+    --lab-amber: #e9a63c;
+    --lab-ok: #4cbf85;
+    --mono: ui-monospace, 'SF Mono', 'SFMono-Regular', Menlo, Consolas, monospace;
+    --sans: 'Segoe UI', system-ui, -apple-system, 'Helvetica Neue', Arial, sans-serif;
+  }
+  * {
+    box-sizing: border-box;
+  }
+  body {
+    margin: 0;
+    font-family: var(--sans);
+    color: var(--lab-ink);
+    background:
+      radial-gradient(120% 80% at 82% -10%, rgba(139, 121, 232, 0.15), transparent 55%),
+      radial-gradient(90% 70% at 0% 0%, rgba(233, 166, 60, 0.08), transparent 50%),
+      linear-gradient(180deg, var(--lab-bg-2), var(--lab-bg));
+    min-height: 100vh;
+    padding: clamp(18px, 3vw, 40px);
+    line-height: 1.5;
+  }
+  h1 {
+    margin: 0 0 6px;
+    font-size: clamp(20px, 2.4vw, 27px);
+    letter-spacing: -0.01em;
+  }
+  .sub {
+    margin: 0;
+    color: var(--lab-muted);
+    font-size: 13.5px;
+    max-width: 80ch;
+  }
+  .sub b {
+    color: var(--lab-ink);
+    font-weight: 600;
+  }
+  code {
+    font-family: var(--mono);
+    font-size: 0.88em;
+    background: rgba(148, 163, 194, 0.12);
+    padding: 1px 5px;
+    border-radius: 5px;
+  }
+
+  .lab {
+    display: grid;
+    grid-template-columns: minmax(300px, 360px) 1fr;
+    gap: clamp(20px, 3vw, 40px);
+    align-items: start;
+    margin-top: clamp(20px, 3vw, 32px);
+  }
+  @media (max-width: 880px) {
+    .lab {
+      grid-template-columns: 1fr;
+    }
+  }
+  .stage-col {
+    position: sticky;
+    top: 20px;
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    gap: 12px;
+  }
+  @media (max-width: 880px) {
+    .stage-col {
+      position: static;
+    }
+  }
+  .phone {
+    width: 340px;
+    max-width: 92vw;
+    border-radius: 40px;
+    padding: 10px;
+    background: linear-gradient(160deg, #1c2740, #0b1120);
+    box-shadow:
+      0 40px 80px -32px rgba(0, 0, 0, 0.75),
+      0 0 0 1px rgba(148, 163, 194, 0.14),
+      inset 0 0 0 1px rgba(255, 255, 255, 0.04);
+  }
+
+  /* ================= STAGE ================= */
+  .stage {
+    position: relative;
+    border-radius: 31px;
+    overflow: hidden;
+    height: 640px;
+    direction: rtl;
+    isolation: isolate;
+    --dir: -1;
+    --s-screen: #e7eaef;
+    --s-card: #ffffff;
+    --s-ink: #16233d;
+    --s-muted: #6c7488;
+    --s-faint: #98a0b0;
+    --s-indigo: #1b2a4a;
+    --s-board: #0e1729;
+    --s-board-2: #152137;
+    --s-amber: #e9a63c;
+    --s-teal: #2c9c90;
+    --s-plan: #6e59d6;
+    --s-plan-tint: rgba(110, 89, 214, 0.1);
+    --s-cta: #16233d;
+    --s-line: rgba(22, 35, 61, 0.1);
+    --s-soft-line: rgba(22, 35, 61, 0.28);
+    --on-dark: #eaf0ff;
+    --on-dark-mut: #8fa0c4;
+    background: var(--s-screen);
+    color: var(--s-ink);
+    font-size: 14.5px;
+  }
+  .stage[data-theme='dark'] {
+    --s-screen: #0f1726;
+    --s-card: #1a2740;
+    --s-ink: #e7eaf2;
+    --s-muted: #93a0b8;
+    --s-faint: #8592ab;
+    --s-indigo: #131f38;
+    --s-board: #0a1120;
+    --s-board-2: #101b30;
+    --s-amber: #f0b254;
+    --s-teal: #3fb3a5;
+    --s-plan: #8b79e8;
+    --s-plan-tint: rgba(139, 121, 232, 0.14);
+    --s-cta: #e7eaf2;
+    --s-line: rgba(231, 234, 242, 0.1);
+    --s-soft-line: rgba(231, 234, 242, 0.3);
+  }
+  .stage,
+  .stage * {
+    font-family: var(--sans);
+  }
+  .stage[data-reduce='1'],
+  .stage[data-reduce='1'] * {
+    animation: none !important;
+    transition: none !important;
+  }
+  .sb {
+    display: flex;
+    justify-content: space-between;
+    padding: 9px 18px 3px;
+    font-family: var(--mono);
+    font-size: 10.5px;
+    color: var(--s-muted);
+    position: relative;
+    z-index: 6;
+  }
+
+  /* ---- the chrome. ONE header element for both screens, because the chrome
+     WARMING is the transition — a second header cross-fading against the first
+     would be the thing this replaces. ---- */
+  .hd {
+    position: relative;
+    z-index: 5;
+    background: var(--s-indigo);
+    color: var(--on-dark);
+    padding: 4px 16px 13px;
+    display: flex;
+    align-items: center;
+    gap: 10px;
+    min-height: 52px;
+    transition:
+      background-color var(--t-deliberate) var(--ease-standard),
+      color var(--t-deliberate) var(--ease-standard);
+  }
+  .stage[data-phase='born'] .hd,
+  .stage[data-phase='done'] .hd {
+    background: var(--s-card);
+    color: var(--s-ink);
+  }
+  .hd .back {
+    width: 30px;
+    height: 30px;
+    border-radius: 50%;
+    border: 1px solid rgba(234, 240, 255, 0.22);
+    background: rgba(234, 240, 255, 0.08);
+    color: inherit;
+    display: grid;
+    place-items: center;
+    font-size: 15px;
+    flex: 0 0 auto;
+    transition: opacity var(--t-base) var(--ease-standard);
+  }
+  .hd .ttl {
+    font-weight: 700;
+    font-size: 16px;
+    flex: 1;
+    /* The title crossfades rather than sliding: it is the same slot saying a
+       different thing, and the chrome under it is already moving. Two things
+       moving in one 52px band is where a staged sequence turns into noise. */
+    transition: opacity var(--t-base) var(--ease-standard);
+  }
+  .stage[data-titleswap='1'] .hd .ttl {
+    opacity: 0;
+  }
+  /* the mode pill — the born screen is already INSIDE the trip, in Plan mode */
+  .hd .pill {
+    font-size: 10.5px;
+    font-weight: 700;
+    padding: 4px 9px;
+    border-radius: 999px;
+    background: var(--s-plan-tint);
+    color: var(--s-plan);
+    flex: 0 0 auto;
+    opacity: 0;
+    transform: scale(0.9);
+    transition:
+      opacity var(--t-base) var(--ease-standard),
+      transform var(--t-base) var(--ease-arrive);
+  }
+  .stage[data-phase='born'] .hd .pill,
+  .stage[data-phase='done'] .hd .pill {
+    opacity: 1;
+    transform: none;
+  }
+  .stage[data-phase='born'] .hd .back,
+  .stage[data-phase='done'] .hd .back {
+    opacity: 0;
+    pointer-events: none;
+  }
+  /* the drafting grid — Plan mode's durable channel (design-language) */
+  .hd::before {
+    content: '';
+    position: absolute;
+    inset: 0;
+    opacity: 0;
+    pointer-events: none;
+    background-image:
+      linear-gradient(var(--s-plan-tint) 1px, transparent 1px),
+      linear-gradient(90deg, var(--s-plan-tint) 1px, transparent 1px);
+    background-size: 16px 16px;
+    transition: opacity var(--t-deliberate) var(--ease-standard);
+  }
+  .stage[data-phase='born'] .hd::before,
+  .stage[data-phase='done'] .hd::before {
+    opacity: 1;
+  }
+
+  .bd {
+    position: absolute;
+    inset: 0;
+    top: 76px;
+    padding: 16px;
+    display: flex;
+    flex-direction: column;
+    gap: 11px;
+    overflow: hidden;
+  }
+
+  /* ---- the form's own contents. They RECEDE rather than cross-fade: the form
+     is not being replaced by another screen, it is resolving into one thing. ---- */
+  .form-part {
+    transition:
+      opacity var(--t-base) var(--ease-exit),
+      transform var(--t-base) var(--ease-exit),
+      filter var(--t-base) var(--ease-exit);
+  }
+  .stage[data-phase='submitting'] .form-part {
+    opacity: 0.5;
+    filter: saturate(0.6);
+  }
+  .stage:not([data-phase='form']):not([data-phase='submitting']) .form-part {
+    opacity: 0;
+    transform: translateY(10px) scale(0.985);
+    pointer-events: none;
+  }
+  .lbl {
+    font-size: 11.5px;
+    font-weight: 700;
+    color: var(--s-muted);
+    margin-bottom: 5px;
+  }
+  .inp {
+    background: var(--s-card);
+    border: 1px solid var(--s-line);
+    border-radius: 12px;
+    padding: 11px 13px;
+    font-size: 13.5px;
+  }
+  .inp.filled {
+    color: var(--s-ink);
+    font-weight: 600;
+  }
+  .inp:not(.filled) {
+    color: var(--s-faint);
+  }
+  .row2 {
+    display: flex;
+    gap: 8px;
+  }
+  .row2 > * {
+    flex: 1;
+  }
+  .title-row {
+    display: flex;
+    gap: 8px;
+    align-items: center;
+  }
+  .flagbox {
+    width: 42px;
+    height: 42px;
+    border-radius: 12px;
+    background: var(--s-card);
+    border: 1px solid var(--s-line);
+    display: grid;
+    place-items: center;
+    font-size: 20px;
+    flex: 0 0 auto;
+  }
+
+  /* ---- THE SHARED ELEMENT ----
+     One DOM node for the whole sequence. It lives absolutely positioned in the
+     stage and is moved between two measured slots, so nothing cross-fades and
+     nothing is duplicated — the card you were looking at IS the card you end up
+     with. `--dashed` is the soft grammar (ADR-0011); it goes solid at the frame
+     the trip stops being provisional. */
+  .shared {
+    position: absolute;
+    z-index: 4;
+    background: var(--s-card);
+    border: 1px dashed var(--s-soft-line);
+    border-radius: 16px;
+    padding: 13px;
+    display: flex;
+    align-items: center;
+    gap: 11px;
+    box-shadow: none;
+    transition:
+      top var(--t-deliberate) var(--ease-arrive),
+      inset-inline-start var(--t-deliberate) var(--ease-arrive),
+      width var(--t-deliberate) var(--ease-arrive),
+      border-color var(--t-deliberate) var(--ease-standard),
+      border-style 0s linear var(--t-deliberate),
+      box-shadow var(--t-deliberate) var(--ease-standard),
+      transform var(--t-deliberate) var(--ease-arrive);
+  }
+  .shared .ic {
+    font-size: 24px;
+    flex: 0 0 auto;
+    transition: transform var(--t-base) var(--ease-arrive);
+  }
+  .shared .t {
+    font-weight: 700;
+    font-size: 14.5px;
+  }
+  .shared .m {
+    color: var(--s-muted);
+    font-size: 12px;
+    margin-top: 2px;
+  }
+  .shared .tag {
+    margin-inline-start: auto;
+    font-size: 10px;
+    font-weight: 700;
+    letter-spacing: 0.04em;
+    color: var(--s-muted);
+    background: rgba(22, 35, 61, 0.06);
+    border-radius: 999px;
+    padding: 3px 8px;
+    flex: 0 0 auto;
+    transition:
+      opacity var(--t-base) var(--ease-exit),
+      transform var(--t-base) var(--ease-exit);
+  }
+  /* committed: solid border, real elevation, the draft tag gone */
+  .stage[data-committed='1'] .shared {
+    border-style: solid;
+    border-color: var(--s-line);
+    box-shadow: 0 8px 20px -14px rgba(14, 23, 41, 0.35);
+    transition-delay: 0s, 0s, 0s, 0s, 0s, 0s, 0s;
+  }
+  .stage[data-committed='1'] .shared .tag {
+    opacity: 0;
+    transform: scale(0.85);
+  }
+  .stage[data-committed='1'] .shared .ic {
+    /* the one flourish on the card: the flag settles as the trip becomes real */
+    transform: scale(1.14);
+  }
+  .slot {
+    /* invisible measuring targets — the card is positioned FROM these, never
+       inside them, so no layout thrash mid-flight */
+    visibility: hidden;
+    pointer-events: none;
+  }
+
+  /* ---- the born screen's content ---- */
+  .born {
+    position: absolute;
+    inset: 0;
+    top: 76px;
+    padding: 16px;
+    display: flex;
+    flex-direction: column;
+    gap: 11px;
+    overflow: hidden;
+    pointer-events: none;
+  }
+  .born > * {
+    opacity: 0;
+  }
+  .stage[data-content='1'] .born > .arr {
+    animation: born-in var(--t-base) var(--ease-arrive) both;
+    animation-delay: calc(var(--i) * var(--stagger-step));
+  }
+  @keyframes born-in {
+    from {
+      opacity: 0;
+      transform: translateY(9px);
+    }
+    to {
+      opacity: 1;
+      transform: none;
+    }
+  }
+  .born-hero {
+    text-align: center;
+  }
+  .born-hero .em {
+    font-size: 30px;
+    display: block;
+    line-height: 1.1;
+  }
+  .born-hero h2 {
+    margin: 5px 0 0;
+    font-size: 20px;
+    letter-spacing: -0.01em;
+  }
+  .born-hero p {
+    margin: 3px 0 0;
+    font-size: 12.5px;
+    color: var(--s-muted);
+  }
+  .invite {
+    background: var(--s-card);
+    border: 1px solid var(--s-line);
+    border-radius: 14px;
+    padding: 11px 13px;
+    display: flex;
+    align-items: center;
+    gap: 9px;
+  }
+  .invite .code {
+    flex: 1;
+    font-family: var(--mono);
+    font-size: 11px;
+    color: var(--s-muted);
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+    direction: ltr;
+    text-align: start;
+  }
+  .invite .cp {
+    width: 26px;
+    height: 26px;
+    border-radius: 8px;
+    background: rgba(22, 35, 61, 0.06);
+    display: grid;
+    place-items: center;
+    font-size: 12px;
+    flex: 0 0 auto;
+  }
+  .teach {
+    font-size: 11.5px;
+    color: var(--s-faint);
+    text-align: center;
+    margin: 0;
+  }
+  .born-cta {
+    display: flex;
+    flex-direction: column;
+    gap: 8px;
+    margin-top: auto;
+  }
+  .plan-btn {
+    font: inherit;
+    font-size: 14.5px;
+    font-weight: 700;
+    background: var(--s-plan);
+    color: #fff;
+    border: 0;
+    border-radius: 999px;
+    padding: 13px;
+    cursor: pointer;
+  }
+  .later-btn {
+    font: inherit;
+    font-size: 13.5px;
+    font-weight: 600;
+    background: none;
+    color: var(--s-muted);
+    border: 0;
+    padding: 8px;
+    cursor: pointer;
+  }
+  .btn-cta {
+    font: inherit;
+    font-size: 14.5px;
+    font-weight: 700;
+    background: var(--s-cta);
+    color: var(--s-screen);
+    border: 0;
+    border-radius: 999px;
+    padding: 13px;
+    width: 100%;
+    cursor: pointer;
+    transition:
+      opacity var(--t-base) var(--ease-standard),
+      transform var(--t-quick) var(--ease-arrive),
+      box-shadow var(--t-base) var(--ease-standard);
+  }
+  .btn-cta.armed {
+    /* the CTA ARMS when the form completes — a real state change, and the app
+       telling a first-timer they are done (U-13's concern, given a beat) */
+    animation: cta-arm var(--t-base) var(--ease-arrive);
+    box-shadow: 0 8px 20px -12px rgba(14, 23, 41, 0.55);
+  }
+  @keyframes cta-arm {
+    50% {
+      transform: scale(1.025);
+    }
+  }
+  .btn-cta[disabled] {
+    opacity: 0.42;
+  }
+  .spinner {
+    display: inline-block;
+    width: 13px;
+    height: 13px;
+    border: 2px solid rgba(255, 255, 255, 0.35);
+    border-top-color: #fff;
+    border-radius: 50%;
+    animation: spin 0.7s linear infinite;
+    vertical-align: -2px;
+  }
+  @keyframes spin {
+    to {
+      transform: rotate(360deg);
+    }
+  }
+
+  /* ================= THE BOARD — the payoff (candidate A only) ================= */
+  .board {
+    position: relative;
+    background: linear-gradient(180deg, var(--s-board-2), var(--s-board));
+    border-radius: 16px;
+    padding: 13px;
+    overflow: hidden;
+    opacity: 0;
+  }
+  .stage[data-board='on'] .board {
+    animation: board-power var(--t-cinematic) var(--ease-emphasized) both;
+  }
+  /* Off→on, mirroring the zero-state's dormant board and screens.css's own
+     board-power. Scale is tiny on purpose: the board is not bouncing in, it is
+     being SWITCHED ON, and the light is what moves. */
+  @keyframes board-power {
+    0% {
+      opacity: 0;
+      transform: translateY(8px) scale(0.985);
+    }
+    45% {
+      opacity: 1;
+      transform: none;
+    }
+    100% {
+      opacity: 1;
+      transform: none;
+    }
+  }
+  /* the amber glow igniting — the climax lands on the LIVE energy, not on
+     brightness (design-language: temperature & energy, never luminance) */
+  .board::after {
+    content: '';
+    position: absolute;
+    inset: -1px;
+    border-radius: 16px;
+    pointer-events: none;
+    box-shadow: inset 0 0 0 1px rgba(233, 166, 60, 0);
+    background: radial-gradient(120% 90% at 50% 120%, rgba(233, 166, 60, 0), transparent 70%);
+  }
+  .stage[data-board='on'] .board::after {
+    animation: board-glow var(--t-cinematic) var(--ease-emphasized) 0.12s both;
+  }
+  @keyframes board-glow {
+    from {
+      box-shadow: inset 0 0 0 1px rgba(233, 166, 60, 0);
+      background: radial-gradient(120% 90% at 50% 120%, rgba(233, 166, 60, 0), transparent 70%);
+    }
+    to {
+      box-shadow:
+        inset 0 0 0 1px rgba(233, 166, 60, 0.5),
+        0 0 40px -10px rgba(233, 166, 60, 0.55);
+      background: radial-gradient(120% 90% at 50% 118%, rgba(233, 166, 60, 0.22), transparent 72%);
+    }
+  }
+  .board-top {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    font-family: var(--mono);
+    font-size: 10px;
+    color: var(--on-dark-mut);
+    margin-bottom: 11px;
+  }
+  .board-top .live {
+    display: inline-flex;
+    align-items: center;
+    gap: 5px;
+    color: var(--s-amber);
+    font-weight: 700;
+  }
+  .board-top .live i {
+    width: 5px;
+    height: 5px;
+    border-radius: 50%;
+    background: var(--s-amber);
+    display: inline-block;
+  }
+  .stage[data-board='on'] .board-top .live i {
+    animation: pulse 2s infinite;
+    animation-delay: var(--t-cinematic);
+  }
+  @keyframes pulse {
+    0%,
+    100% {
+      opacity: 1;
+      transform: scale(1);
+    }
+    50% {
+      opacity: 0.45;
+      transform: scale(0.82);
+    }
+  }
+
+  /* --- the split-flap row. The board's FIRST departure, and for a brand-new
+     trip the departure IS the trip: name + how long until it starts. Honest
+     content — the flaps are not spelling a decorative string. --- */
+  .flap-row {
+    display: flex;
+    align-items: center;
+    gap: 7px;
+  }
+  .flap {
+    position: relative;
+    height: 20px;
+    border-radius: 4px;
+    background: rgba(234, 240, 255, 0.1);
+    overflow: hidden;
+    display: grid;
+    place-items: center;
+    transform-origin: center top;
+  }
+  .flap.f-time {
+    width: 52px;
+    flex: 0 0 auto;
+  }
+  .flap.f-name {
+    flex: 1;
+  }
+  .flap.f-days {
+    width: 62px;
+    flex: 0 0 auto;
+  }
+  .flap span {
+    font-family: var(--mono);
+    font-size: 11px;
+    font-weight: 700;
+    color: var(--s-amber);
+    opacity: 0;
+    white-space: nowrap;
+  }
+  .flap.f-name span {
+    font-family: var(--sans);
+    font-size: 12px;
+    color: var(--on-dark);
+  }
+  .stage[data-board='on'] .flap {
+    /* Each cell flips on the stagger step. `steps()` is the point: a split-flap
+       is DISCRETE — a smooth scaleY reads as a sliding blind, not as flaps. */
+    animation: flap-turn 260ms steps(4, end) both;
+    animation-delay: calc(220ms + var(--i) * 90ms);
+  }
+  .stage[data-board='on'] .flap span {
+    animation: flap-settle var(--t-quick) var(--ease-standard) both;
+    animation-delay: calc(400ms + var(--i) * 90ms);
+  }
+  @keyframes flap-turn {
+    0% {
+      transform: scaleY(1);
+      background: rgba(234, 240, 255, 0.1);
+    }
+    50% {
+      transform: scaleY(0.1);
+      background: rgba(234, 240, 255, 0.22);
+    }
+    100% {
+      transform: scaleY(1);
+      background: rgba(234, 240, 255, 0.07);
+    }
+  }
+  @keyframes flap-settle {
+    to {
+      opacity: 1;
+    }
+  }
+  .board-sub {
+    margin-top: 9px;
+    font-size: 10.5px;
+    color: var(--on-dark-mut);
+    text-align: center;
+    opacity: 0;
+  }
+  .stage[data-board='on'] .board-sub {
+    animation: flap-settle var(--t-base) var(--ease-standard) 700ms both;
+  }
+
+  /* the skip affordance — always present during the sequence, never a setting */
+  .skip {
+    position: absolute;
+    inset: 0;
+    z-index: 8;
+    background: none;
+    border: 0;
+    cursor: pointer;
+    display: none;
+  }
+  .stage[data-running='1'] .skip {
+    display: block;
+  }
+  .skip-hint {
+    position: absolute;
+    inset-inline: 0;
+    bottom: 14px;
+    text-align: center;
+    font-size: 10.5px;
+    color: var(--s-faint);
+    z-index: 9;
+    pointer-events: none;
+    opacity: 0;
+    transition: opacity var(--t-base) var(--ease-standard);
+  }
+  .stage[data-running='1'] .skip-hint {
+    opacity: 1;
+    transition-delay: 500ms;
+  }
+
+  /* ================= CONSOLE ================= */
+  .console {
+    display: flex;
+    flex-direction: column;
+    gap: 14px;
+    min-width: 0;
+  }
+  .cpanel {
+    background: linear-gradient(180deg, var(--lab-panel-2), var(--lab-panel));
+    border: 1px solid var(--lab-line);
+    border-radius: 15px;
+    padding: 15px 16px;
+  }
+  .cpanel > h3 {
+    margin: 0 0 4px;
+    font-size: 12px;
+    letter-spacing: 0.09em;
+    text-transform: uppercase;
+    color: var(--lab-faint);
+  }
+  .cpanel p {
+    margin: 8px 0 0;
+    font-size: 13px;
+    color: var(--lab-muted);
+  }
+  .cpanel p b {
+    color: var(--lab-ink);
+    font-weight: 600;
+  }
+  .cands {
+    display: grid;
+    gap: 8px;
+    margin-top: 10px;
+  }
+  .cand {
+    text-align: start;
+    font: inherit;
+    background: rgba(12, 18, 32, 0.55);
+    border: 1px solid var(--lab-line);
+    border-radius: 12px;
+    padding: 11px 13px;
+    cursor: pointer;
+    color: var(--lab-muted);
+    transition: var(--t-quick) var(--ease-standard);
+  }
+  .cand:hover {
+    border-color: var(--lab-line-2);
+  }
+  .cand[aria-pressed='true'] {
+    border-color: var(--lab-accent);
+    background: rgba(139, 121, 232, 0.12);
+    color: var(--lab-ink);
+  }
+  .cand b {
+    display: block;
+    font-size: 13.5px;
+    color: var(--lab-ink);
+  }
+  .cand b .dur {
+    font-family: var(--mono);
+    font-size: 11px;
+    font-weight: 500;
+    color: var(--lab-accent);
+    margin-inline-start: 7px;
+  }
+  .cand small {
+    font-size: 12px;
+    display: block;
+    margin-top: 2px;
+  }
+  .cand .rec {
+    display: inline-block;
+    font-size: 9.5px;
+    font-weight: 700;
+    letter-spacing: 0.06em;
+    color: var(--lab-ok);
+    border: 1px solid rgba(76, 191, 133, 0.4);
+    border-radius: 999px;
+    padding: 1px 6px;
+    margin-inline-start: 7px;
+    vertical-align: 1px;
+  }
+
+  .acts {
+    display: flex;
+    gap: 7px;
+    flex-wrap: wrap;
+    margin-top: 11px;
+  }
+  .btn {
+    font: inherit;
+    font-size: 12.5px;
+    font-weight: 600;
+    color: var(--lab-ink);
+    background: var(--lab-panel-2);
+    border: 1px solid var(--lab-line-2);
+    border-radius: 9px;
+    padding: 8px 13px;
+    cursor: pointer;
+    transition: var(--t-quick) var(--ease-standard);
+  }
+  .btn:hover {
+    border-color: var(--lab-accent);
+  }
+  .btn.primary {
+    background: var(--lab-accent);
+    border-color: transparent;
+    color: #fff;
+  }
+  .btn:active {
+    transform: scale(0.97);
+  }
+
+  /* beat timeline */
+  .beats {
+    margin-top: 12px;
+    display: flex;
+    flex-direction: column;
+    gap: 3px;
+  }
+  .beat {
+    display: grid;
+    grid-template-columns: 22px 1fr 78px;
+    gap: 9px;
+    align-items: center;
+    font-size: 12px;
+    color: var(--lab-muted);
+    padding: 6px 8px;
+    border-radius: 8px;
+    border: 1px solid transparent;
+  }
+  .beat.on {
+    background: rgba(139, 121, 232, 0.14);
+    border-color: rgba(139, 121, 232, 0.35);
+    color: var(--lab-ink);
+  }
+  .beat.na {
+    opacity: 0.35;
+  }
+  .beat .n {
+    font-family: var(--mono);
+    font-size: 10px;
+    color: var(--lab-faint);
+  }
+  .beat.on .n {
+    color: var(--lab-accent);
+  }
+  .beat .tk {
+    font-family: var(--mono);
+    font-size: 10px;
+    text-align: end;
+    color: var(--lab-faint);
+  }
+  .beat b {
+    color: inherit;
+    font-weight: 600;
+  }
+
+  .rows {
+    display: flex;
+    flex-direction: column;
+    gap: 9px;
+    margin-top: 11px;
+  }
+  .ctl {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 12px;
+    font-size: 12.5px;
+    color: var(--lab-muted);
+  }
+  .ctl > span b {
+    color: var(--lab-ink);
+    font-weight: 600;
+    display: block;
+  }
+  .ctl > span i {
+    font-style: normal;
+    font-size: 11.5px;
+  }
+  .seg {
+    display: flex;
+    gap: 3px;
+    padding: 3px;
+    background: rgba(12, 18, 32, 0.6);
+    border: 1px solid var(--lab-line);
+    border-radius: 9px;
+    flex: 0 0 auto;
+  }
+  .seg button {
+    font: inherit;
+    font-size: 11.5px;
+    font-weight: 600;
+    border: 0;
+    background: none;
+    color: var(--lab-faint);
+    padding: 5px 11px;
+    border-radius: 6px;
+    cursor: pointer;
+  }
+  .seg button[aria-pressed='true'] {
+    background: var(--lab-panel-2);
+    color: var(--lab-ink);
+    box-shadow: inset 0 0 0 1px var(--lab-line-2);
+  }
+  .verdict {
+    display: flex;
+    gap: 10px;
+    font-size: 12.5px;
+    color: var(--lab-muted);
+    background: rgba(12, 18, 32, 0.5);
+    border: 1px solid var(--lab-line);
+    border-inline-start: 3px solid var(--lab-amber);
+    border-radius: 0 10px 10px 0;
+    padding: 11px 13px;
+    margin-top: 12px;
+  }
+  .verdict.ok {
+    border-inline-start-color: var(--lab-ok);
+  }
+  .verdict.rej {
+    border-inline-start-color: #e07a6e;
+  }
+  .verdict b {
+    color: var(--lab-ink);
+  }
+  .foot {
+    margin-top: 26px;
+    padding-top: 16px;
+    border-top: 1px solid var(--lab-line);
+    color: var(--lab-faint);
+    font-size: 12px;
+    max-width: 92ch;
+  }
+  .foot b {
+    color: var(--lab-muted);
+  }
+  .stage-cap {
+    font-family: var(--mono);
+    font-size: 11px;
+    color: var(--lab-faint);
+    text-align: center;
+  }
+</style>
+
+<h1>Trip birth — the board's first departure</h1>
+<p class="sub">
+  Journey 1's payoff. Today <code>submit()</code> succeeding is a React state swap with
+  <b>no motion at all</b> — the least animated moment in the product and the most significant one.
+  Two candidates, because this should be picked on a device: <b>A</b> spends the board's power-on a
+  second time and gets the payoff; <b>B</b> keeps it exclusive to going live.
+</p>
+
+<div class="lab">
+  <div class="stage-col">
+    <div class="phone">
+      <div class="stage" id="stage" data-phase="form" data-cand="A" dir="rtl">
+        <div class="sb"><span>9:41</span><span>▮▮▮</span></div>
+
+        <div class="hd">
+          <button class="back">→</button>
+          <span class="ttl" id="hd-title">טיול חדש</span>
+          <span class="pill">✏️ תכנון</span>
+        </div>
+
+        <!-- ── the form ── -->
+        <div class="bd">
+          <div class="form-part">
+            <div class="lbl">יעד</div>
+            <div class="inp filled">🇯🇵 יפן</div>
+          </div>
+          <div class="form-part">
+            <div class="lbl">תאריכים</div>
+            <div class="row2">
+              <div class="inp filled" style="font-size: 12.5px">12.09.26</div>
+              <div class="inp filled" style="font-size: 12.5px">23.09.26</div>
+            </div>
+          </div>
+          <div class="form-part">
+            <div class="lbl">שם הטיול</div>
+            <div class="title-row">
+              <div class="flagbox">🇯🇵</div>
+              <div class="inp filled" style="flex: 1">יפן · ספטמבר</div>
+            </div>
+          </div>
+          <!-- the draft card's SLOT. The card itself is the shared element below. -->
+          <div class="slot" id="slot-form" style="height: 66px"></div>
+          <div class="form-part" style="margin-top: auto">
+            <button class="btn-cta armed" id="create">יצירת הטיול</button>
+          </div>
+        </div>
+
+        <!-- ── the born screen ── -->
+        <div class="born">
+          <div class="arr born-hero" style="--i: 0">
+            <span class="em">🎉</span>
+            <h2>הטיול נוצר</h2>
+            <p>עכשיו אפשר להזמין את החברים ולהתחיל לבנות.</p>
+          </div>
+          <!-- the shared card's DESTINATION slot -->
+          <div class="slot" id="slot-born" style="height: 66px"></div>
+          <div class="arr" style="--i: 1" id="board-wrap">
+            <div class="board">
+              <div class="board-top">
+                <span class="live"><i></i>הלוח דולק</span>
+                <span>ההמראה הראשונה</span>
+              </div>
+              <div class="flap-row">
+                <span class="flap f-time" style="--i: 0"><span>12.09</span></span>
+                <span class="flap f-name" style="--i: 1"><span>יפן · ספטמבר</span></span>
+                <span class="flap f-days" style="--i: 2"><span>44 ימים</span></span>
+              </div>
+              <div class="board-sub">היעד הראשון על הלוח</div>
+            </div>
+          </div>
+          <div class="arr invite" style="--i: 2">
+            <span class="code">waypoint.app/join/7Kq2mB</span>
+            <span style="font-size: 10.5px; font-weight: 700; color: var(--s-muted)">קישור</span>
+            <span class="cp">📋</span>
+          </div>
+          <p class="arr teach" style="--i: 3">שלחו את הקישור לקבוצה, כל אחד נכנס בלחיצה.</p>
+          <div class="arr born-cta" style="--i: 4">
+            <button class="plan-btn">התחלת תכנון</button>
+            <button class="later-btn">אחר כך</button>
+          </div>
+        </div>
+
+        <!-- ── the shared element: ONE node for the whole sequence ── -->
+        <div class="shared" id="shared">
+          <span class="ic">🇯🇵</span>
+          <div>
+            <div class="t">יפן · ספטמבר</div>
+            <div class="m">יפן · 12 ימים</div>
+          </div>
+          <span class="tag">טיוטה</span>
+        </div>
+
+        <button class="skip" id="skip" aria-label="דילוג"></button>
+        <div class="skip-hint">נגיעה כדי לדלג</div>
+      </div>
+    </div>
+    <div class="stage-cap" id="cap">tap “יצירת הטיול”</div>
+  </div>
+
+  <div class="console">
+    <div class="cpanel">
+      <h3>Candidate</h3>
+      <div class="cands" id="cands">
+        <button class="cand" data-c="A" aria-pressed="true">
+          <b
+            >A · full staged <span class="dur">~1450ms</span><span class="rec">RECOMMENDED</span></b
+          >
+          <small
+            >Shared card → chrome warms → <b>the board powers on</b> and flaps into the trip's first
+            departure → content arrives. Four beats, one climax.</small
+          >
+        </button>
+        <button class="cand" data-c="B" aria-pressed="false">
+          <b>B · restrained <span class="dur">~650ms</span></b>
+          <small
+            >Shared card → chrome warms → content arrives. No board. Reads as considered rather than
+            celebratory, and keeps the power-on exclusive to going live.</small
+          >
+        </button>
+      </div>
+      <div class="acts">
+        <button class="btn primary" id="play">▶ Play the sequence</button>
+        <button class="btn" id="reset">↺ Back to the form</button>
+      </div>
+      <div class="beats" id="beats"></div>
+    </div>
+
+    <div class="cpanel">
+      <h3>Why the board, and not confetti</h3>
+      <p>
+        The zero state already renders the departure board <b>unpowered</b>; Trip Home renders it
+        live and glowing. Between them sits creation, rendering no board at all — so the payoff is
+        not something to invent, it is a <b>gap to close</b>. And the first row of a brand-new trip
+        is honest content: the trip itself, departing in N days.
+      </p>
+      <div class="verdict rej">
+        <div>
+          <b>Confetti was drawn and rejected.</b> It bolts a second metaphor onto an app that
+          already has one, it spends the one-loud-element ration twice — the board is
+          <i>already</i> the loud thing on screen — and it reads as generic where the board reads as
+          this product. The 🎉 glyph stays; the burst does not.
+        </div>
+      </div>
+      <div class="verdict ok">
+        <div>
+          <b>It does not ask for a second cinematic moment.</b> design-language allows exactly one
+          (<code>--t-cinematic</code>, Plan→Trip). The cinematic <b>asset</b> is the board's
+          power-on, and this is that same asset on a second trigger — one signature at the two
+          moments a trip changes state (it is born; it goes live). Every other beat here is
+          <code>--t-deliberate</code> or below.
+        </div>
+      </div>
+    </div>
+
+    <div class="cpanel">
+      <h3>The shared element is the argument</h3>
+      <p>
+        The draft card (<code>.draft</code>, today an <code>aria-hidden</code> decoration that
+        silently swaps text) is <b>one DOM node</b> for the whole sequence — it travels from its
+        slot in the form to the born card's position. Nothing cross-fades and nothing is duplicated:
+        the card you were looking at <i>is</i> the card you end up with.
+      </p>
+      <div class="verdict ok">
+        <div>
+          <b>And the dashed → solid is not decoration.</b> ADR-0011's soft/hard grammar means
+          "provisional → committed", and this is the exact frame where the trip stops being a draft.
+          The <code>טיוטה</code> tag leaves on the same beat. The motion is saying the one true
+          thing about the moment — which is the test for whether a set piece has earned its length.
+        </div>
+      </div>
+    </div>
+
+    <div class="cpanel">
+      <h3>Proofs &amp; controls</h3>
+      <div class="rows">
+        <div class="ctl">
+          <span><b>Skip by tap</b><i>part of the design, never a setting</i></span>
+          <div class="seg" id="seg-skip">
+            <button data-on="1" aria-pressed="true">on</button>
+            <button data-on="0" aria-pressed="false">off</button>
+          </div>
+        </div>
+        <div class="ctl">
+          <span><b>Reduced motion</b><i>must land the END state, not skip the outcome</i></span>
+          <div class="seg" id="seg-reduce">
+            <button data-on="0" aria-pressed="true">off</button>
+            <button data-on="1" aria-pressed="false">on</button>
+          </div>
+        </div>
+        <div class="ctl">
+          <span><b>Theme</b><i>temperature &amp; energy, never luminance</i></span>
+          <div class="seg" id="seg-theme">
+            <button data-on="light" aria-pressed="true">light</button>
+            <button data-on="dark" aria-pressed="false">dark</button>
+          </div>
+        </div>
+      </div>
+      <div class="verdict">
+        <div>
+          <b>Skippability is the load-bearing one.</b> Someone who just wants to start planning must
+          be able to land the whole thing with a tap — a celebration you cannot interrupt is a modal
+          dialog wearing a costume. Turn it off and play A to feel why: the same 1450ms goes from
+          generous to imposed.
+        </div>
+      </div>
+      <div class="verdict">
+        <div>
+          <b>Reduced motion is not "skip the moment".</b> The board still ends up <i>on</i>, the
+          card still ends up committed, the invite still appears — all of it arrives in one frame. A
+          user who asked for less motion did not ask for a different outcome.
+        </div>
+      </div>
+    </div>
+
+    <div class="cpanel">
+      <h3>What this file cannot settle</h3>
+      <p>
+        Whether A's 1450ms reads as generous or as slow <b>on the third trip you create</b> — the
+        first time it is a gift, and a set piece is judged on the repeat. If it wears, the fix is
+        rarity rather than speed: play A on a person's <b>first</b> trip and B on every one after,
+        which is one condition and no new design. Judge on a device before wiring it.
+      </p>
+    </div>
+  </div>
+</div>
+
+<p class="foot">
+  <b>Status:</b> proposal. <b>Depends on</b> <code>motion-primitives-v1.html</code>'s G1/G2 — the
+  born screen's own overlays and the route into it should already move correctly before this lands,
+  or the set piece is a polished beat wired between two hard cuts. <b>Also drawn here:</b> the CTA
+  <i>arming</i> when the form completes (beat 0), which is small, separable, and worth shipping even
+  if neither candidate is.
+</p>
+
+<script>
+  const stage = document.getElementById('stage');
+  const shared = document.getElementById('shared');
+  const cap = document.getElementById('cap');
+  const beatsEl = document.getElementById('beats');
+  const ms = (n) => parseFloat(getComputedStyle(document.documentElement).getPropertyValue(n)) || 0;
+  const hdTitle = document.getElementById('hd-title');
+  const TITLE = { form: 'טיול חדש', born: '🇯🇵 יפן · ספטמבר' };
+
+  /* The header says which surface you are on, so it changes too — the born screen
+     is already INSIDE the trip. Swapped at the midpoint of its own fade, so the
+     text is never legible in the wrong place. */
+  function setTitle(which) {
+    if (hdTitle.textContent === TITLE[which]) return;
+    if (stage.dataset.reduce === '1') {
+      hdTitle.textContent = TITLE[which];
+      return;
+    }
+    stage.dataset.titleswap = '1';
+    setTimeout(() => {
+      hdTitle.textContent = TITLE[which];
+      stage.dataset.titleswap = '0';
+    }, ms('--t-base'));
+  }
+
+  /* The two candidates as data — a beat list, so the timeline in the console and
+     the sequence itself can never disagree. */
+  const CANDS = {
+    A: [
+      {
+        at: 0,
+        label: 'the card <b>travels</b> and commits — dashed → solid',
+        tok: '--t-deliberate',
+      },
+      { at: 300, label: 'chrome warms indigo → violet, grid draws', tok: '--t-deliberate' },
+      { at: 650, label: '<b>the board powers on</b> and flaps in', tok: '--t-cinematic' },
+      { at: 1150, label: 'hero, invite and CTAs arrive', tok: 'stagger' },
+    ],
+    B: [
+      {
+        at: 0,
+        label: 'the card <b>travels</b> and commits — dashed → solid',
+        tok: '--t-deliberate',
+      },
+      { at: 250, label: 'chrome warms indigo → violet, grid draws', tok: '--t-deliberate' },
+      { at: 400, label: 'hero, invite and CTAs arrive', tok: 'stagger' },
+    ],
+  };
+  const TOTAL = { A: 1450, B: 650 };
+
+  function renderBeats(active) {
+    const c = stage.dataset.cand;
+    beatsEl.innerHTML = CANDS[c]
+      .map(
+        (b, i) =>
+          `<div class="beat ${active === i ? 'on' : ''}"><span class="n">${i}</span><span>${b.label}</span><span class="tk">${b.at}ms · ${b.tok}</span></div>`,
+      )
+      .join('');
+    if (c === 'B')
+      beatsEl.insertAdjacentHTML(
+        'beforeend',
+        `<div class="beat na"><span class="n">—</span><span>the board powers on</span><span class="tk">not in B</span></div>`,
+      );
+  }
+
+  /* Position the shared card over a measured slot. This is the whole trick: the
+     card is never INSIDE either slot, so nothing reflows mid-flight. */
+  function placeShared(slotId, instant) {
+    const slot = document.getElementById(slotId);
+    const s = stage.getBoundingClientRect();
+    const r = slot.getBoundingClientRect();
+    if (instant) shared.style.transition = 'none';
+    shared.style.top = r.top - s.top + 'px';
+    shared.style.insetInlineStart = s.right - r.right + 'px';
+    shared.style.width = r.width + 'px';
+    if (instant) {
+      void shared.offsetHeight;
+      shared.style.transition = '';
+    }
+  }
+
+  let timers = [];
+  const clear = () => {
+    timers.forEach(clearTimeout);
+    timers = [];
+  };
+  const after = (t, fn) => timers.push(setTimeout(fn, t));
+
+  function reset() {
+    clear();
+    stage.dataset.phase = 'form';
+    stage.dataset.running = '0';
+    delete stage.dataset.committed;
+    delete stage.dataset.board;
+    delete stage.dataset.content;
+    document.getElementById('create').innerHTML = 'יצירת הטיול';
+    document.getElementById('create').disabled = false;
+    setTitle('form');
+    placeShared('slot-form', true);
+    renderBeats(-1);
+    cap.textContent = 'tap “יצירת הטיול”';
+  }
+
+  function land() {
+    /* the end state, reachable three ways: the sequence finishing, a skip tap,
+       and reduced motion. One function, so they cannot drift. */
+    clear();
+    stage.dataset.phase = 'done';
+    stage.dataset.running = '0';
+    stage.dataset.committed = '1';
+    stage.dataset.content = '1';
+    if (stage.dataset.cand === 'A') stage.dataset.board = 'on';
+    setTitle('born');
+    placeShared('slot-born', stage.dataset.reduce === '1');
+    renderBeats(CANDS[stage.dataset.cand].length - 1);
+    cap.textContent = 'landed';
+  }
+
+  function play() {
+    const c = stage.dataset.cand;
+    const reduce = stage.dataset.reduce === '1';
+    clear();
+    stage.dataset.phase = 'submitting';
+    const btn = document.getElementById('create');
+    btn.innerHTML = '<span class="spinner"></span>';
+    btn.disabled = true;
+    cap.textContent = 'creating…';
+
+    // the server round trip, then the sequence
+    after(reduce ? 0 : 380, () => {
+      if (reduce) return land();
+      stage.dataset.running = '1';
+      stage.dataset.phase = 'born';
+      stage.dataset.committed = '1';
+      placeShared('slot-born');
+      renderBeats(0);
+      after(CANDS[c][1].at, () => setTitle('born'));
+      cap.textContent = 'beat 0 — the card travels and commits';
+
+      const beats = CANDS[c];
+      beats.forEach((b, i) => {
+        if (i === 0) return;
+        after(b.at, () => {
+          renderBeats(i);
+          cap.textContent = 'beat ' + i;
+          if (/board/.test(b.label)) stage.dataset.board = 'on';
+          if (/arrive/.test(b.label)) stage.dataset.content = '1';
+        });
+      });
+      after(TOTAL[c], () => {
+        stage.dataset.running = '0';
+        cap.textContent = 'landed · ' + TOTAL[c] + 'ms';
+      });
+    });
+  }
+
+  document.getElementById('create').addEventListener('click', play);
+  document.getElementById('play').addEventListener('click', play);
+  document.getElementById('reset').addEventListener('click', reset);
+  document.getElementById('skip').addEventListener('click', () => {
+    if (stage.dataset.skip === '0') return;
+    land();
+    cap.textContent = 'skipped — landed on the end state';
+  });
+
+  document.getElementById('cands').addEventListener('click', (e) => {
+    const b = e.target.closest('.cand');
+    if (!b) return;
+    document
+      .querySelectorAll('.cand')
+      .forEach((o) => o.setAttribute('aria-pressed', String(o === b)));
+    stage.dataset.cand = b.dataset.c;
+    reset();
+  });
+
+  function seg(id, cb) {
+    const root = document.getElementById(id);
+    root.addEventListener('click', (e) => {
+      const b = e.target.closest('button');
+      if (!b) return;
+      [...root.querySelectorAll('button')].forEach((o) =>
+        o.setAttribute('aria-pressed', String(o === b)),
+      );
+      cb(b.dataset.on);
+    });
+  }
+  seg('seg-skip', (v) => (stage.dataset.skip = v));
+  seg('seg-reduce', (v) => {
+    stage.dataset.reduce = v;
+    reset();
+  });
+  seg('seg-theme', (v) => stage.setAttribute('data-theme', v));
+
+  /* The slots are measured, so a resize has to re-place the card. */
+  addEventListener('resize', () =>
+    placeShared(stage.dataset.phase === 'form' ? 'slot-form' : 'slot-born', true),
+  );
+  reset();
+</script>
