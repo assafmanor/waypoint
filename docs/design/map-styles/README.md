@@ -98,7 +98,7 @@ The `entertainment` **parent** carries the treatment so a feature type Google ad
 
 **Google's pins and ours coexist by chroma, not lightness:** Google's sights get a light neutral pin (`#c9ccd4`, chroma 5.0) with a dark glyph and white ring; ours are the five category hues at chroma 27.8–51.8. Grey pin = a thing that exists, coloured pin = a thing on your trip. `peak` goes further and colours its pin into the ground — a mountain wants a name more than a marker.
 
-Google's icons are clickable by default (`clickableIcons` is never disabled). A tap on one reaches `MapPane` as a map click carrying a `placeId` and **clears our selection like any other canvas tap** — deliberately: Google answers that tap with its own place card, ours renders on the same canvas at the `map` stop (ADR-0122 §7), so exempting the POI tap would stack two cards. Skipping on `event.detail.placeId` looks like a fix and is the bug; the code says so and a test holds it.
+**These labels are drawn, and not tappable.** `MapPane` sets **`clickableIcons: false`** (ADR-0125 §6's 2026-07-30 amendment), so Google never answers a tap on one with its own info window — a card on the same canvas band ours occupies at the `map` stop (ADR-0122 §7), un-styleable and LTR. Nothing in this file changes with it: `clickableIcons` is the **tap**, the style is the **label**, and the sights set above is the part that matters. A tap that lands on a sight is now an ordinary canvas tap and clears the selection, as every canvas tap does.
 
 ### Also suppressed
 

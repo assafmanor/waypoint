@@ -103,6 +103,15 @@ A draft of this ADR **exempted** the POI tap, on the reasoning that it "clears t
 
 So the handler is unchanged, with the reasoning now recorded in the code and pinned by a test — because "skip when `event.detail.placeId` is set" reads like an obvious fix and is the bug.
 
+**Amendment, 2026-07-30 (session 199) — the labels stay, the tap goes: `clickableIcons: false`.** The owner, on a real phone with Google's info window open over the canvas: _"I want to disable Google maps POI."_ ADR-0147 and ADR-0148 both list this option under rejected alternatives; **both rejections are now spent**, and it is worth being precise about why, because the argument was never about the labels:
+
+- **ADR-0147's** ground was that suppressing the tap deletes the `placeId` its "make a place from a sight" source ran on. **ADR-0148 §6 removed that source** — so the input has had no reader since. What was left was a tap whose entire effect was to open a card belonging to another product.
+- **ADR-0148's** ground was that _"Google's own card is now the thing we want"_ — the position §6 above reached from the other direction, that Google's card with its Maps link is a reasonable answer to a tap we have nothing to answer with. Seen in use, it is not: it opens on the canvas band our own place card owns, it is un-styleable and LTR, and it arrives on taps meant to pan.
+
+**What this ADR's §6 actually decided is untouched, and that is the point.** §6 is a claim about the **cloud style** — that a travel map has to draw the Eiffel Tower — and every id in the sights set stays enabled. A sight is still drawn, still named, still Google's achromatic grey against our chromatic pins. The reference layer is for reading, and reading is all it was ever for; **`clickableIcons` is the tap, not the label**, and the two were only ever coupled by Google's defaults.
+
+Which also settles the stacked-card question that §6, ADR-0147 and ADR-0148 each argued in turn: with no info window there is nothing to stack, so the canvas handler's "do not skip on `placeId`" rule survives as a guard on a case the API no longer produces. Built in `MapPane.tsx` on the `<Map>` element, asserted in `MapPane.test.tsx`.
+
 ### 7. Trails and pedestrian malls are trip-relevant infrastructure, not roads
 
 `noTraffic.trail` gets a green-grey casing so a path through nature stops rendering as a small road. `noTraffic.pedestrianMall` lands on **`#f3efe6` — `--paper` exactly**: an old-town walkable zone is literally the app's paper surface, which is a coincidence worth keeping rather than rounding away.
