@@ -8,16 +8,19 @@
 // `PlaceUsage` the list rows read, the same `comparePlacesBySchedule` order the
 // Day view renders. That is the property the list-first investment was for — a
 // chip that changes the list changes the pins in the same pass (ADR-0110 §2).
+import type { TripEvent } from '@waypoint/shared';
 import { MAP_PIN } from '../constants';
 import {
   comparePlacesBySchedule,
   isDayUsagePast,
   isOnShelf,
   placeDay,
+  placeMetaDay,
   type DayUsage,
   type PlaceOrderContext,
   type PlaceUsage,
 } from './place-usage';
+import { eventEdgeTransition } from './transitions';
 
 /**
  * The prominence ladder, one tier per pin (ADR-0121 §6). The list separates
@@ -175,6 +178,59 @@ export function pinOutcome(usage: PlaceUsage, ctx: PinContext): PinOutcome | und
       ? placeDay(usage, { nowMs: ctx.nowMs, today: ctx.today })
       : placeDay(usage, ctx);
   return day?.prominence === 'ambient' ? undefined : day?.outcome;
+}
+
+/**
+ * **Which transition is next at this place**, in the app's existing words for it, or
+ * `undefined` when there is none (ADR-0141).
+ *
+ * The pin used to say the hour and nothing else, so a check-in and a check-out were
+ * one pin with two different numbers. The words for the difference already existed
+ * (ADR-0063's `transitionLabel`/`eventTransitionKeys`, shared by the hero, the glance
+ * markers and the Index) — **and one of them was already on this screen**: `Map.tsx`'s
+ * `dayMeta` calls the same `eventEdgeTransition`, and its answer is the FIRST thing a
+ * place row's meta line says. So the row read `צ׳ק-אאוט` while the pin above it read
+ * `היעד הבא`. This is the wording half of what ADR-0137 did for the outcome mark: one
+ * derivation, rendered twice, instead of two halves making unequal claims.
+ *
+ * **Which end it is IS the pre/during distinction**, which is why no prefix word is
+ * needed and none is minted: `צ׳ק-אין` is the moment you arrive, `צ׳ק-אאוט` the moment
+ * you leave, `המראה` before boarding and `נחיתה` in the air. `DayUsage.edge` already
+ * carries it, and a strictly-middle stay night carries **neither** end — so a mid-span
+ * night is silent by construction rather than by a rule.
+ *
+ * Three things it deliberately does not do:
+ *
+ * - **It takes the transition word only, never `dayMeta`'s title fallback.** A name in a
+ *   ~10px pill over map tiles is unreadable, and it is not a phase; the pin's name is
+ *   already its accessible name. No word means no tag.
+ * - **The neutral tag is DAY-SCOPED, which the screen enforces, not this** — see
+ *   `Map.tsx`. All-days there is nothing on the pin saying which day the word belongs
+ *   to, so two stays from two days both read `צ׳ק-אין`: the same ambiguity that killed
+ *   all-days renumbering ({@link buildPinOrderIndex}). The amber cues stay scope-blind.
+ * - **`behind` is silent.** The transition happened, so a word naming it as ahead is a
+ *   lie — and that tier's one badge is already the outcome's (ADR-0137 §2). Every other
+ *   silence is a consequence rather than an exclusion: an `ambient` mid-span day has no
+ *   edge, and `idea`/`shelf`/`ghost` carry no tag at all.
+ *
+ * **The day it reports on is `placeMetaDay`, not `placeDay`** — deliberately the
+ * opposite choice from `pinOutcome`'s. There the requirement was that the grey and the
+ * mark describe one day; here it is that the pin and the row say the same **word**, and
+ * `placeMetaDay` is the function that answers "which day has something to say about
+ * this place". The two differ in exactly one case — all-days, on an ambient night, where
+ * it walks to the stay's next edge — and that is precisely the case where a silent pin
+ * under a row reading `צ׳ק-אאוט` would be the defect this removes. The tier gate still
+ * reads `placePinTier`, so a passed pin stays silent whichever day the wording picks.
+ */
+export function pinTransition(
+  usage: PlaceUsage,
+  ctx: PinContext,
+  eventById: (id: string) => TripEvent | undefined,
+): string | undefined {
+  if (placePinTier(usage, ctx) === PIN_TIER.behind) return undefined;
+  const day = placeMetaDay(usage, ctx);
+  const event = day?.eventId ? eventById(day.eventId) : undefined;
+  return event ? eventEdgeTransition(event, day?.edge) : undefined;
 }
 
 /**

@@ -23,6 +23,7 @@ import {
   placePinTier,
   placePoint,
   pinOutcome,
+  pinTransition,
   pinZIndex,
 } from './map-pins';
 import { MAP_PIN } from '../constants';
@@ -290,6 +291,113 @@ describe('placePinTier — four populations plus the ghost (ADR-0121 §6)', () =
       });
       expect(placePinTier(index.get('twice')!, { nowMs: NOON, today: DAY })).toBe(PIN_TIER.behind);
     });
+  });
+});
+
+describe('pinTransition — which transition is next there (ADR-0141)', () => {
+  const ctx = { onDate: DAY, nowMs: NOON };
+  // The events the words come from, built as the app builds them: the word is resolved off
+  // `category` + `icon` (ADR-0063's profile + its per-glyph override), never off a booking
+  // type, so a manual `lodging` event with no Booking has ends exactly as a hotel does.
+  const stay = event({
+    id: 'stay',
+    placeId: 'hotel',
+    category: 'lodging',
+    icon: '🏨',
+    date: PREV_DAY,
+    endDate: NEXT_DAY,
+    startsAt: `${PREV_DAY}T15:00:00Z`,
+    endsAt: `${NEXT_DAY}T10:00:00Z`,
+  });
+  const lookup = (events: TripEvent[]) => (id: string) => events.find((e) => e.id === id);
+
+  it('names the END the day sits at, which is what carries pre-vs-during', () => {
+    const index = usages({ places: [place('hotel')], events: [stay] });
+    const of = lookup([stay]);
+    // The same place, two days, two different words — and no prefix anywhere: `צ׳ק-אין` IS
+    // "you have not checked in", `צ׳ק-אאוט` IS "you are in and the exit is what's ahead".
+    expect(pinTransition(index.get('hotel')!, { onDate: PREV_DAY, nowMs: NOON }, of)).toBe(
+      'צ׳ק-אין',
+    );
+    expect(pinTransition(index.get('hotel')!, { onDate: NEXT_DAY, nowMs: NOON }, of)).toBe(
+      'צ׳ק-אאוט',
+    );
+  });
+
+  it('takes the per-MODE wording, so a flight and a train read differently', () => {
+    const flight = event({
+      id: 'fly',
+      placeId: 'airport',
+      category: 'transport',
+      icon: '✈️',
+      startsAt: `${DAY}T20:00:00Z`,
+    });
+    const train = event({
+      id: 'rail',
+      placeId: 'station',
+      category: 'transport',
+      icon: '🚄',
+      startsAt: `${DAY}T21:00:00Z`,
+    });
+    const index = usages({ places: [place('airport'), place('station')], events: [flight, train] });
+    const of = lookup([flight, train]);
+    expect(pinTransition(index.get('airport')!, ctx, of)).toBe('המראה');
+    expect(pinTransition(index.get('station')!, ctx, of)).toBe('יציאה');
+  });
+
+  it('says nothing for a category with no two ends — a reservation is one moment', () => {
+    // ADR-0063 makes `bracketed` 2 of 9 categories, which is also what rations the tag:
+    // a restaurant's phase is "coming up", and the amber `היעד הבא` already says that.
+    const dinner = event({
+      id: 'dinner',
+      placeId: 'ramen',
+      category: 'food',
+      icon: '🍜',
+      kind: EVENT_KIND.HARD,
+      startsAt: `${DAY}T20:00:00Z`,
+    });
+    const index = usages({ places: [place('ramen')], events: [dinner] });
+    expect(pinTransition(index.get('ramen')!, ctx, lookup([dinner]))).toBeUndefined();
+  });
+
+  it('a strictly-middle stay night says nothing day-scoped, and its next EDGE all-days', () => {
+    const index = usages({ places: [place('hotel')], events: [stay] });
+    const of = lookup([stay]);
+    // Day-scoped, DAY is the middle night: no end happens there, so `DayUsage.edge` is
+    // undefined and the pin is silent by construction — exactly as the row is.
+    expect(pinTransition(index.get('hotel')!, ctx, of)).toBeUndefined();
+    // All-days it reads `placeMetaDay`, which walks a mid-span night to the stay's next
+    // edge — the one case that function differs from `placeDay`, and the reason this reads
+    // it rather than `pinOutcome`'s: a silent pin under a row saying `צ׳ק-אאוט` is the
+    // defect ADR-0141 removes.
+    expect(pinTransition(index.get('hotel')!, { nowMs: NOON, today: DAY }, of)).toBe('צ׳ק-אאוט');
+  });
+
+  it('a passed stop says nothing — the transition happened, so naming it would be a lie', () => {
+    const flown = event({
+      id: 'flown',
+      placeId: 'airport',
+      category: 'transport',
+      icon: '✈️',
+      startsAt: `${DAY}T09:00:00Z`,
+      endsAt: `${DAY}T10:00:00Z`,
+    });
+    const index = usages({ places: [place('airport')], events: [flown] });
+    const of = lookup([flown]);
+    expect(placePinTier(index.get('airport')!, ctx)).toBe(PIN_TIER.behind);
+    expect(pinTransition(index.get('airport')!, ctx, of)).toBeUndefined();
+    // …and in PLAN mode the same pin speaks again, because `planning` withdraws `behind`
+    // (ADR-0130 §2): a day you are arranging has no past, and which end is which is
+    // exactly what you want while arranging it.
+    expect(pinTransition(index.get('airport')!, { ...ctx, planning: true }, of)).toBe('המראה');
+  });
+
+  it('says nothing when no event owns the day — an idea pencilled in is not an edge', () => {
+    const index = usages({
+      places: [place('shrine')],
+      maybeItems: [maybe({ id: 'm', placeId: 'shrine', targetDate: DAY })],
+    });
+    expect(pinTransition(index.get('shrine')!, ctx, () => undefined)).toBeUndefined();
   });
 });
 

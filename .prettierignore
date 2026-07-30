@@ -24,6 +24,7 @@ mockups/map-pin-outcome-v1.html
 mockups/map-pin-outcome-v2.html
 mockups/map-settle-from-canvas-v1.html
 mockups/map-settle-from-canvas-v2.html
+mockups/map-pin-phase-v1.html
 mockups/row-menu-v1.html
 # Google's published CBMS stylesheet schema, committed verbatim so the map styles can be
 # validated offline (developers.google.com is unreachable from sandboxed sessions).

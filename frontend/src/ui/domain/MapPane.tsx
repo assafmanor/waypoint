@@ -140,6 +140,14 @@ export interface MapPin {
   match?: boolean;
   /** Position in the day's sequence, or absent when it has none (§6). */
   order?: number;
+  /** **Which transition is next here** — `צ׳ק-אין`, `המראה`, … (`pinTransition`,
+   *  ADR-0141). It OWNS the tag slot when present, because it says what `עכשיו` /
+   *  `היעד הבא` say and one thing more; those two stay as the fallback for a place with
+   *  no bracketed end. Which end it is carries pre-vs-during, so there is no second
+   *  field for the phase. Absent on `behind`, on a mid-span night, on every aside tier,
+   *  and — unless the pin is one of the two amber cues — outside a day scope, which is
+   *  the screen's call for the reason `order` is (see `Map.tsx`). */
+  transition?: string;
   /** The single amber time-anchor the canvas allows — Trip mode, exactly one pin. */
   nextStop?: boolean;
   /** You are here, right now. The canvas's second amber cue, and the only animated
@@ -408,10 +416,29 @@ const PinMarker = memo(function PinMarker({
   ]
     .filter(Boolean)
     .join(' ');
+  // WHAT THE TAG SAYS, decided once. The transition word owns the slot when there is one
+  // — it says what `עכשיו`/`היעד הבא` say and one thing more (ADR-0141 §1) — and those
+  // two remain the fallback for a place with no bracketed end, which is what a restaurant
+  // reservation has. `nowStop`/`nextStop` then decide the tag's HUE rather than its words.
+  const tagText =
+    pin.transition ??
+    (pin.nowStop ? t.map.happeningNow : pin.nextStop ? t.map.nextStop : undefined);
   // The mark is silent, so the outcome joins the NAME — `שם · היינו`, the app's own
   // separator. Built here rather than folded into the screen's `label` so the words and
   // the shape they stand in for are written in one place.
-  const name = pin.outcome ? `${pin.label} · ${PIN_OUTCOME_LABEL[pin.outcome]}` : pin.label;
+  //
+  // AND SO DOES THE CUE THE WORD DISPLACED. Once the tag reads `צ׳ק-אאוט`, `עכשיו` is
+  // carried visually by the leading dot and the pulse — so the name composes it back in
+  // words, and nothing that used to be readable is now only visible (ADR-0141 §6, the
+  // same three-carriers arrangement ADR-0137 §3 made for the outcome).
+  const cue = pin.nowStop ? t.map.happeningNow : pin.nextStop ? t.map.nextStop : undefined;
+  const name = [
+    pin.label,
+    pin.transition ? cue : undefined,
+    pin.outcome && PIN_OUTCOME_LABEL[pin.outcome],
+  ]
+    .filter(Boolean)
+    .join(' · ');
   // WHERE THE ONE MARK GOES, decided once. Two independent conditions is how the first
   // pass drew a ghost's outcome twice — in its centre AND on a shoulder it does not have a
   // number for. Splitting the single `outcome` into two named slots makes the exclusivity
@@ -427,11 +454,28 @@ const PinMarker = memo(function PinMarker({
       onClick={() => onSelect(pin.placeId)}
     >
       <div className={cls} role="button" aria-label={name}>
-        {/* The tag belongs to the amber cue, so it is rendered only with it —
-            un-scoping its styles would still leave the text in the DOM. The two
-            cues cannot co-occur on one pin, so this is one slot, not two. */}
-        {pin.nowStop && <span className="pin-tag">{t.map.happeningNow}</span>}
-        {pin.nextStop && <span className="pin-tag">{t.map.nextStop}</span>}
+        {/* ONE TAG SLOT, one line, and two hues in one geometry (ADR-0141 §3). Amber is
+            what a LIVE claim costs and its population is unchanged — the one `nowStop`
+            and the one `nextStop`; a planned edge is `plain`, so the tag population can
+            grow without the amber budget moving (ADR-0028 / ADR-0105's "an accent, not a
+            ground", and ADR-0119's own neutral-tag precedent one surface over).
+
+            `live` is the leading dot, and it is the debt §1 incurs rather than decoration:
+            it carries "you are here" now that the word does not, at REST, because
+            `App.css` kills the pulse under reduced motion. It is `.map-tag.now`'s own
+            dot — itself Home's board blip — so the board, the list and the canvas really
+            are the one idiom `map.css` already claims they are. */}
+        {tagText && (
+          <span
+            className={
+              'pin-tag' +
+              (pin.nowStop || pin.nextStop ? '' : ' plain') +
+              (pin.nowStop ? ' live' : '')
+            }
+          >
+            {tagText}
+          </span>
+        )}
         {/* THE BODY holds whichever of the two the pin has: a glyph if it has one, or the
             outcome mark in the empty centre only a ghost offers. It stays `.pin-g` in both
             cases so the glyph's whole existing treatment — the counter-rotation, the

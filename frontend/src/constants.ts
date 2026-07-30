@@ -560,6 +560,11 @@ export const MAP_CARD_RESERVE_H = MAP_ATTRIBUTION_H + MAP_FLOAT_GAP + MAP_CARD_B
  * rediscover it: past roughly 56px a teardrop's tip gets vaguer about which building it
  * marks, and coincident pins overlap sooner — so a **dense all-days day** is the case to
  * look at before raising `MAX_H` further, not another single-day screenshot.
+ *
+ * Session 190 looked at that day for the TAG rather than for the pin, and it is worth
+ * knowing which half is now answered: a trip's worth of bracketed edges collides on a
+ * phone, which is one of the two reasons ADR-0141 makes the neutral phase tag day-scoped.
+ * The `MAX_H` question above is untouched — that was measured at 40px pins, not at the cap.
  */
 export const MAP_PIN = {
   MIN_H: 34,
@@ -573,11 +578,19 @@ export const MAP_PIN = {
    *  paper: 0.59 to the outer edge of the number badge (half the 0.82 box plus the badge's
    *  0.18 overhang) plus its 0.045 ring, which no bounding box reports.
    *
-   *  The amber tag is deliberately NOT in here. Measured at the same size, `התחנה הבאה`
-   *  reaches 1.10x the pin height per side; reserving that would put the horizontal inset
-   *  at 46% of a 390px viewport, where `fitPaddingFor` drops the padding wholesale and the
-   *  fit loses its framing — the trade ADR-0121 §7 already made explicitly ("losing a pin's
-   *  tag beats losing the framing"). One pin ever carries a tag; every pin has a badge. */
+   *  The tag is deliberately NOT in here, and reserving it would put the horizontal inset
+   *  past 40% of a 390px viewport, where `fitPaddingFor` drops the padding wholesale and
+   *  the fit loses its framing — the trade ADR-0121 §7 already made explicitly ("losing a
+   *  pin's tag beats losing the framing"). Every pin has a badge; only some carry a tag.
+   *
+   *  **The number this note used to give was measured on copy the app no longer shows**
+   *  (session 191, remeasured in Chromium for ADR-0141): 1.10x was `התחנה הבאה`, where the
+   *  shipped `היעד הבא` reaches **0.88x** per side. Restated because the tag's content is
+   *  no longer only those two words — a transition word now takes the slot — and the point
+   *  of the note is that the widest tag stays outside the inset. The widest of the new
+   *  words, `צ׳ק-אאוט`, is **0.90x**: 102% of today's, i.e. the same width in practice, so
+   *  nothing here moves. Ratios hold at every pin size, the tag's font-size being a
+   *  fraction of `--pin-u` like everything else. */
   SIDE_REACH: 0.64,
 } as const;
 

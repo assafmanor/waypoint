@@ -518,6 +518,15 @@
   .pin-tag {
   display: none;
 }
+/* The NEUTRAL tag drops at the dot tier in EVERY scope, which is why it is its own entry
+   rather than another `data-scope` arm above (ADR-0141 §5). The rule above spares the two
+   amber tags deliberately — they are the cues you are meant to find at any zoom — and it
+   only ever degraded a tag in all-days, where a neutral one does not exist at all. What is
+   new is day scope: a planned edge's word now rides an ordinary `upcoming` pin, and a
+   text-scale claim on a 5px dot is exactly the smudge these rules exist to prevent. */
+.map-pane[data-pins='dot'] .map-pin .pin-tag.plain {
+  display: none;
+}
 
 /* ── CHOOSING A PLACE: EVERY TRIP PIN IS CONTEXT (owner, session 166) ────────────
    You arrived from a form to pick ONE place, so the trip's own pins are what you are
@@ -662,6 +671,59 @@
   border-radius: 999px;
   white-space: nowrap;
   box-shadow: 0 1px 3px rgba(22, 35, 61, 0.2);
+}
+/* A PLANNED edge, not a live one (ADR-0141 §3). Same geometry, same card ground — the
+   ground is not decoration, it is what keeps small ink legible over arbitrary tiles —
+   and muted ink instead of amber.
+
+   This is the rule that lets the tag population grow at all. Amber is what a LIVE claim
+   costs: two amber pins is a cue and eight is a colour scheme (ADR-0028 / ADR-0105's
+   "an accent, not a ground"), and ADR-0137 §3 had already paid a render for exactly this
+   mistake in another coat. The precedent is verbatim one surface over — ADR-0119 states a
+   day a place was only PENCILLED into in a neutral tag "because amber is time &
+   commitment". A check-out three hours out is the same kind of claim. */
+.map-pin .pin-tag.plain {
+  color: var(--muted);
+  border-color: var(--line);
+  font-weight: 600;
+}
+/* THE LEADING DOT — "you are here", carried at rest (ADR-0141 §6).
+
+   It exists because the transition word displaced `עכשיו`, and the paint alone does not
+   replace it: `.nowstop` differs from `.nextstop` by 4.4% of the pin's height in spread
+   and 6% in alpha, and the PULSE that really separates them is killed globally by
+   `App.css`'s reduced-motion rule. So the resting mark has to say it.
+
+   `.map-tag.now::before` verbatim, scaled off `--pin-u` like everything else on a pin —
+   itself Home's `.wp-board-live .blip`. `map.css` already calls the dot "one idiom, three
+   surfaces"; the canvas's share of it was only the pulse until now. Solid at rest with
+   the ring layered on by the animation, for the same reason the row's is. */
+.map-pin .pin-tag.live::before {
+  content: '';
+  display: inline-block;
+  width: calc(var(--pin-u) * 0.17);
+  height: calc(var(--pin-u) * 0.17);
+  border-radius: 50%;
+  background: var(--amber);
+  margin-inline-end: calc(var(--pin-u) * 0.1);
+  vertical-align: calc(var(--pin-u) * 0.01);
+  animation: map-pin-tag-now 2s infinite;
+}
+/* Its own keyframe rather than the row's `map-row-now`, for one reason: that rule's ring
+   is a fixed 6px, and on this surface every length is a fraction of `--pin-u` (ADR-0123)
+   — a ring that stayed 6px while the pin grew to 56 would be the one thing on the canvas
+   that forgot to scale. Same alpha and same 2s period as the row's and the board's, so
+   the three still beat together. */
+@keyframes map-pin-tag-now {
+  0% {
+    box-shadow: 0 0 0 0 rgba(233, 166, 60, 0.55);
+  }
+  70% {
+    box-shadow: 0 0 0 calc(var(--pin-u) * 0.17) rgba(233, 166, 60, 0);
+  }
+  100% {
+    box-shadow: 0 0 0 0 rgba(233, 166, 60, 0);
+  }
 }
 
 /* Selection stays an `outline` so it COMPOSES with the amber `box-shadow` above
