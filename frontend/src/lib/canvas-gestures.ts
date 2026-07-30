@@ -1,9 +1,17 @@
-// The one-finger zoom's recogniser, as pure arithmetic (ADR-0145 §1/§4).
+// The canvas's gesture recogniser, as pure arithmetic — the one-finger zoom (ADR-0145
+// §1/§4) and the long press that drops a pin (ADR-0147 §1).
 //
-// **All of the gesture's decisions live here, with no Google and no DOM**, which is what
+// **All of the gestures' decisions live here, with no Google and no DOM**, which is what
 // makes a gesture this repo has got wrong five times (sessions 115/116/119/122/125)
-// testable as a table instead of by feel. `useDragZoom.ts` is the thin imperative half
+// testable as a table instead of by feel. `useCanvasGestures.ts` is the thin imperative half
 // that feeds it pointer events and hands its actions to the camera.
+//
+// **Both gestures are in ONE machine, and that is the arbitration** (ADR-0147 §1). The zoom
+// arms on a `DOWN` that PAIRS with a previous tap; a long press is a single `DOWN` that does
+// not. So a tap-then-hold is a zoom and a hold is a drop, decided by two arms of one
+// conditional rather than by two recognisers negotiating. A second capture-phase pipeline on
+// this pane would not merely duplicate — it would race for one pointer id and one click
+// swallow.
 //
 // Three phases, because the middle one is genuinely undecided (§1):
 //
@@ -16,7 +24,7 @@
 //             taken from Google, and it is PROVISIONAL: released here this is an ordinary
 //             double-tap and still owes a zoom.
 //   ZOOMING → the finger passed the slop. Committed.
-import { MAP_DRAG_ZOOM } from '../constants';
+import { DRAG_HOLD_SLOP_PX, MAP_DRAG_ZOOM } from '../constants';
 import { TUNE, tune } from './dev-tuning';
 
 export const DRAG_ZOOM_PHASE = {
@@ -41,6 +49,10 @@ export const DRAG_ZOOM_ACTION = {
   STEP: 'step',
   /** Released after zooming: the drag is over and the click it fires must be swallowed. */
   SETTLE: 'settle',
+  /** A press was held still for `DRAG_HOLD_MS` without pairing into a zoom: drop a pin at
+   *  the press point (ADR-0147 §1). Like `SETTLE` it owes a click swallow — the release
+   *  that follows would otherwise reach `onCanvasTap` and clear the card just opened. */
+  DROP: 'drop',
 } as const;
 export type DragZoomAction = (typeof DRAG_ZOOM_ACTION)[keyof typeof DRAG_ZOOM_ACTION];
 
@@ -49,6 +61,11 @@ export const DRAG_ZOOM_EVENT = {
   MOVE: 'move',
   UP: 'up',
   CANCEL: 'cancel',
+  /** **Synthetic** — the imperative half's hold timer, not a pointer event (ADR-0147 §1).
+   *  A hold is the ABSENCE of anything for `DRAG_HOLD_MS`, and a reducer over
+   *  `(type, x, y, t)` cannot observe absence; feeding it as an event is what keeps every
+   *  branch here a table the suite can drive. */
+  HOLD: 'hold',
 } as const;
 export type DragZoomEventType = (typeof DRAG_ZOOM_EVENT)[keyof typeof DRAG_ZOOM_EVENT];
 
@@ -69,6 +86,12 @@ export interface DragZoomState {
   tapX: number;
   tapY: number;
   hasTap: boolean;
+  /** Is a finger down right now on an UNPAIRED press — i.e. is a long press still
+   *  possible? (ADR-0147 §1.) It is not derivable from `phase`: an unpaired press leaves
+   *  the machine in `IDLE`, deliberately, because arming on a first tap is what steals
+   *  Google's pan. Cleared by a move past `DRAG_HOLD_SLOP_PX` (that is a pan), by the
+   *  release, and by the hold it authorises — so one press can drop at most one pin. */
+  pressing: boolean;
   /** Where the committed drag is measured from, and the last y it saw. The delta is taken
    *  per move rather than from the origin — see `levels`. */
   lastY: number;
@@ -96,6 +119,7 @@ export const IDLE_DRAG_ZOOM: DragZoomState = {
   tapX: 0,
   tapY: 0,
   hasTap: false,
+  pressing: false,
   lastY: 0,
   startZoom: 0,
   levels: 0,
@@ -212,11 +236,40 @@ export function reduceDragZoom(
     }
     // A first tap (or an unpairable one). Nothing is armed and nothing is taken; the press
     // is remembered only so the NEXT one can be tested against it.
-    return pass({ ...IDLE_DRAG_ZOOM, tapAt: event.t, tapX: event.x, tapY: event.y, hasTap: false });
+    // `pressing` is what makes this press a long-press candidate (ADR-0147 §1). It is set
+    // on the UNPAIRED branch only, so the press that arms a zoom above can never also drop
+    // a pin — the two gestures are separated here, once, and nowhere else.
+    return pass({
+      ...IDLE_DRAG_ZOOM,
+      tapAt: event.t,
+      tapX: event.x,
+      tapY: event.y,
+      hasTap: false,
+      pressing: true,
+    });
+  }
+
+  // A hold completed. Only an unpaired press that has not wandered can own it; anything
+  // else is a gesture already in progress and the timer is stale.
+  if (event.type === DRAG_ZOOM_EVENT.HOLD) {
+    if (state.phase !== DRAG_ZOOM_PHASE.IDLE || !state.pressing) return pass(state);
+    // Spent: one press drops at most one pin, and `hasTap` stays false so the release that
+    // follows a drop cannot pair into a zoom.
+    return {
+      state: { ...state, pressing: false },
+      action: DRAG_ZOOM_ACTION.DROP,
+      zoom: 0,
+    };
   }
 
   if (event.type === DRAG_ZOOM_EVENT.MOVE) {
-    if (state.phase === DRAG_ZOOM_PHASE.IDLE) return pass(state);
+    if (state.phase === DRAG_ZOOM_PHASE.IDLE) {
+      // Wandering past the hold slop means this is a pan, so the long press is off. The
+      // event still passes through — Google owns the pan and always did.
+      if (!state.pressing) return pass(state);
+      const travelled = Math.hypot(event.x - state.tapX, event.y - state.tapY);
+      return pass(travelled < DRAG_HOLD_SLOP_PX ? state : { ...state, pressing: false });
+    }
     if (state.phase === DRAG_ZOOM_PHASE.ARMED) {
       // Below the slop this is still a double-tap in progress, so it stays provisional.
       if (Math.abs(event.y - state.lastY) < MAP_DRAG_ZOOM.DRAG_SLOP_PX) {
@@ -300,4 +353,26 @@ export function zoomAboutPoint(
 ): WorldPoint {
   const shift = 2 ** -fromZoom - 2 ** -toZoom;
   return { x: centre.x + offsetPx.x * shift, y: centre.y + offsetPx.y * shift };
+}
+
+/**
+ * **Where on the map a screen point IS** — `zoomAboutPoint`'s plainer sibling, and what a
+ * long press needs to become a place (ADR-0147 §2).
+ *
+ * Same space, same one fact: at zoom `z`, `screenPx = worldUnits × 2^z`. So a point
+ * `offsetPx` from the canvas centre sits at `centre + offsetPx / 2^z` in world units, and
+ * Google's `fromPointToLatLng` turns that back into a coordinate. **No Mercator here
+ * either**, which is the whole reason this is safe to write (ADR-0129 §3): every nonlinear
+ * step stays inside Google's projection.
+ *
+ * `offsetPx` is from the CANVAS CENTRE (+x inline-end, +y down), the same convention
+ * `zoomAboutPoint` takes, so the two cannot disagree about which way is which.
+ */
+export function worldPointAtOffset(
+  centre: WorldPoint,
+  offsetPx: WorldPoint,
+  zoom: number,
+): WorldPoint {
+  const scale = 2 ** -zoom;
+  return { x: centre.x + offsetPx.x * scale, y: centre.y + offsetPx.y * scale };
 }

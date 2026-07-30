@@ -24,7 +24,7 @@ import {
   type PinTier,
 } from '../../lib/map-pins';
 import { readMapBounds, useMapCamera } from '../../lib/useMapCamera';
-import { useDragZoom } from '../../lib/useDragZoom';
+import { useCanvasGestures } from '../../lib/useCanvasGestures';
 import type { LatLng, MapBounds } from '../../lib/map-camera';
 import type { MapsConfig } from '../../lib/map-config';
 import { MAP_CARD_RESERVE_H, MAP_CONNECTOR, MAP_ZOOM, type PinHue } from '../../constants';
@@ -201,6 +201,16 @@ export interface MapPaneProps {
    *  the place card's own dismissal (ADR-0122 §7). Nothing registers with the back
    *  stack — the card is not an overlay, for the same reasons the sheet is not. */
   onCanvasTap: () => void;
+  /** A press held still on the canvas background: make a place here (ADR-0147 §1). Absent
+   *  — offline, or on the list-only path — the gesture is never armed at all, which is the
+   *  "absent, not disabled" rule the pane already follows for everything Google-shaped
+   *  (ADR-0121 §11). */
+  onHoldCanvas?: (at: LatLng) => void;
+  /** One of GOOGLE's own sight icons was tapped, carrying its `place_id` (ADR-0147 §4).
+   *  Google's own card is suppressed before this fires, so ours is the only one on the
+   *  canvas — which is how ADR-0125 §6's "never two cards" survives the tap becoming
+   *  ours. */
+  onTapGooglePlace?: (googlePlaceId: string, at: LatLng) => void;
   /** The viewport settled: the `באזור` readout recomputes here and never during a
    *  pan (§9 — a number churning under a moving finger is noise). */
   onViewChange: (bounds: MapBounds | null) => void;
@@ -283,6 +293,8 @@ function MapPaneInner({
   onLocate,
   framePlace,
   cardOpen,
+  onHoldCanvas,
+  onTapGooglePlace,
 }: MapPaneProps) {
   const paneRef = useRef<HTMLDivElement>(null);
   return (
@@ -321,6 +333,19 @@ function MapPaneInner({
           onClick={(event) => {
             const target = event.domEvent?.target as HTMLElement | null;
             if (target?.closest?.('.map-pin')) return;
+            // A GOOGLE sight, tapped (ADR-0147 §4). `stop()` suppresses Google's own info
+            // window, which is what lets OUR card answer the tap without §6's two cards ever
+            // existing at once — the owner's constraint was "not a mess", and clearing our
+            // selection was the means, not the end. The selection still clears; it is
+            // replaced by the new-place card rather than by nothing.
+            const placeId = event.detail.placeId;
+            const at = event.detail.latLng;
+            if (placeId && at && onTapGooglePlace) {
+              event.stop();
+              onCanvasTap();
+              onTapGooglePlace(placeId, at);
+              return;
+            }
             onCanvasTap();
           }}
         >
@@ -357,6 +382,7 @@ function MapPaneInner({
           onLocate={onLocate}
           framePlace={framePlace}
           cardOpen={cardOpen}
+          onHoldCanvas={onHoldCanvas}
         />
       </APIProvider>
     </div>
@@ -598,6 +624,7 @@ function MapCameraControls({
   onLocate,
   framePlace,
   cardOpen,
+  onHoldCanvas,
 }: {
   paneRef: RefObject<HTMLDivElement | null>;
   pins: readonly MapPin[];
@@ -610,6 +637,10 @@ function MapCameraControls({
   onLocate: () => void;
   framePlace?: LatLng | null;
   cardOpen?: boolean;
+  /** The long press lives here rather than beside `PinDensity` for the same reason the
+   *  drag zoom does: it must drive THIS camera's pane, and the recogniser that owns it is
+   *  the same one (ADR-0147 §1). */
+  onHoldCanvas?: (at: LatLng) => void;
 }) {
   const map = useMap(MAP_ID);
   // The camera answers to the day's OWN pins, never to the ghost tier: a ghost is a
@@ -652,7 +683,11 @@ function MapCameraControls({
   // per render is fine and deliberate — the hook reads it through a latest-ref, because
   // this screen re-renders every second and re-running the gesture's effect is precisely
   // the bug session 116 spent a round on.
-  useDragZoom(map, { zoomTo, stepZoomIn }, paneRef);
+  // The long press that makes a place is the same recogniser's third phase, so it arrives
+  // here rather than as a second pipeline (ADR-0147 §1). A fresh callback per render is fine
+  // and deliberate for the same reason the object above is: the hook reads it through a
+  // latest-ref, because this screen re-renders every second.
+  useCanvasGestures(map, { zoomTo, stepZoomIn }, paneRef, onHoldCanvas);
 
   // Focus pans AND zooms in when the view is too far out to read the place (ADR-0127
   // §1, reversing §7's "focus never zooms" in the one direction that was protecting

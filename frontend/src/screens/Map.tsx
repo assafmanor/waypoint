@@ -58,6 +58,7 @@ import {
   liveZoneContext,
   mapsDayRouteUrl,
   mapsDirectionsUrl,
+  mapsPlaceIdUrl,
   nextDestination,
 } from '../lib/places';
 import { PLACE_REF_KIND, placeRefs, soleIdeaFor } from '../lib/place-refs';
@@ -156,9 +157,27 @@ interface RefEntry {
   };
 }
 
+/** One stable id, because the prompt is a real `<label htmlFor>` rather than a placeholder
+ *  doing double duty (ADR-0147 §5) — a placeholder disappears the moment you type, which is
+ *  exactly when "what is this field" is still being asked. */
+const DRAFT_NAME_ID = 'map-draft-name';
+
 export function MapView() {
-  const { events, bookings, maybeItems, places, activeDate, zoneEvidence, usingCachedSnapshot } =
-    useTrip();
+  const {
+    events,
+    bookings,
+    maybeItems,
+    places,
+    activeDate,
+    zoneEvidence,
+    usingCachedSnapshot,
+    // Both of the canvas's make-a-place paths write through these (ADR-0147 §6): a dropped
+    // pin is a `createPlace` with coordinates and no `googlePlaceId`, a tapped Google sight
+    // is the same `resolvePlace` a search result picks with. Neither is a search, so neither
+    // goes through `usePlaceSearch` — its session, its debounce and its dedup are all about
+    // a query, and a canvas gesture has none.
+    indexVerbs,
+  } = useTrip();
   const { mode } = useMode();
   const offline = useIsOffline() || usingCachedSnapshot;
   const nowMs = useClock().getTime();
@@ -1356,6 +1375,90 @@ export function MapView() {
     [research.pick, verbs, rowErrand, pendingErrand, finishErrand],
   );
 
+  // ── MAKING A PLACE ON THE CANVAS (ADR-0147) ────────────────────────────────────────
+  // Two gestures, two sources, ONE draft: a long press on the background yields a bare
+  // coordinate (§1/§2), a tap on one of Google's own sights yields a coordinate AND a
+  // `place_id` (§4). What separates them downstream is exactly one field, so they share a
+  // state rather than growing two flows — and the presence of `googlePlaceId` is what picks
+  // the card's variant and the write.
+  const [draft, setDraft] = useState<{ at: LatLng; googlePlaceId?: string } | null>(null);
+  const [draftName, setDraftName] = useState('');
+  const [savingDraft, setSavingDraft] = useState(false);
+  const [draftFailed, setDraftFailed] = useState(false);
+
+  const openDraft = useRef<(at: LatLng, googlePlaceId?: string) => void>(() => {});
+  openDraft.current = (at, googlePlaceId) => {
+    // A draft replaces whatever was selected, which is the same rule a canvas tap follows
+    // (ADR-0122 §7) and the reason ADR-0125 §6's "never two cards" still holds: the card
+    // slot has one occupant, and this is now it.
+    clearSelection();
+    setDraft({ at, googlePlaceId });
+    setDraftName('');
+    setDraftFailed(false);
+    // Frame it once, so the place you just made is the place you are looking at (§5).
+    setFramePlace({ ...at });
+  };
+
+  const cancelDraft = useCallback(() => {
+    setDraft(null);
+    setDraftName('');
+    setDraftFailed(false);
+  }, []);
+
+  // The two props `MapPane` actually takes, `useCallback(…, [])` over the latest-ref above.
+  // The pane is memoized and this screen re-renders every second, so a fresh identity here
+  // re-diffs every marker — the anti-pattern `frontend/CLAUDE.md` lists as already fixed
+  // once. **Neither needs an offline guard:** `hasMap` already withholds the whole pane, so
+  // the gestures are absent rather than disabled (ADR-0121 §11).
+  const holdCanvas = useCallback((at: LatLng) => openDraft.current(at), []);
+  const tapGooglePlace = useCallback(
+    (googlePlaceId: string, at: LatLng) => openDraft.current(at, googlePlaceId),
+    [],
+  );
+
+  // The commit. Both variants end in the SAME three-way destination branch `addResult`
+  // already owns (§6, ADR-0131 §11) — the invocation decides where a new place goes, not
+  // where it came from — so this differs from that function only in how the `Place` is
+  // obtained.
+  const commitDraft = useRef<() => void>(() => {});
+  commitDraft.current = async () => {
+    if (!draft || savingDraft) return;
+    const typed = draftName.trim();
+    if (!draft.googlePlaceId && !typed) return;
+    setSavingDraft(true);
+    setDraftFailed(false);
+    try {
+      let placeId: string;
+      let name: string;
+      if (draft.googlePlaceId) {
+        // **The spend, and the only one on this surface** (§4): a POI tap carries no name,
+        // so this is one Place Details call — landing on an explicit confirm, which is
+        // ADR-0115 §1's "armed by intent, not by opening" read literally.
+        const place = await indexVerbs.resolvePlace({ googlePlaceId: draft.googlePlaceId });
+        placeId = place.id;
+        name = place.name;
+      } else {
+        // Free, and deliberately so: no session, no Details, no reverse geocode (§3).
+        name = typed;
+        placeId = await indexVerbs.createPlace({ name, lat: draft.at.lat, lng: draft.at.lng });
+      }
+      cancelDraft();
+      if (rowErrand) finishRowErrand.current(placeId);
+      else if (pendingErrand) finishErrand(placeId);
+      else {
+        // A `Place` with no reference is cache-only and would not list at all (ADR-0112),
+        // so the drop must also create one — the uncategorised `MaybeItem` that `＋ אולי`
+        // already creates, with its own toast and undo (ADR-0115 §3).
+        verbs.addMaybe(name, { placeId });
+        select(placeId, { fromRow: true });
+      }
+    } catch {
+      setDraftFailed(true);
+    } finally {
+      setSavingDraft(false);
+    }
+  };
+
   // A pin tap, behind a stable identity. `MapPane` is memoized, so a handler
   // re-created every render would break the memo and re-diff every marker once a
   // second — which is exactly what §4/§6 forbid. The latest-ref keeps the callback
@@ -1974,6 +2077,69 @@ export function MapView() {
     </div>
   );
 
+  // THE PLACE THAT DOES NOT EXIST YET (ADR-0147 §5). Same host as the two cards below, and
+  // the sharpest case of the rule that put them there: `.map-placecard` is "the row wherever
+  // the sheet cannot show it" (ADR-0122 §7), and a place that is not in the trip has **no
+  // row at any stop** — which is also why this one is NOT gated on the `map` stop the way
+  // the selection card is. In practice the gesture can only start on visible canvas, so at
+  // `full` it never arises.
+  const draftCard = draft && (
+    <div className="map-placecard map-draft">
+      {draft.googlePlaceId ? (
+        <>
+          <p className="map-draft-title">{t.map.make.googleTitle}</p>
+          <p className="map-draft-hint">{t.map.make.googleHint}</p>
+        </>
+      ) : (
+        <label className="map-draft-title" htmlFor={DRAFT_NAME_ID}>
+          {t.map.make.namePrompt}
+        </label>
+      )}
+      {!draft.googlePlaceId && (
+        <input
+          id={DRAFT_NAME_ID}
+          className="map-draft-name"
+          value={draftName}
+          onChange={(e) => setDraftName(e.target.value)}
+          placeholder={t.map.make.namePlaceholder}
+          autoFocus
+          enterKeyHint="done"
+          onKeyDown={(e) => {
+            if (e.key === 'Enter') commitDraft.current();
+          }}
+        />
+      )}
+      {draftFailed && <p className="map-draft-fail">{t.map.make.failed}</p>}
+      <div className="map-draft-acts">
+        {/* The FREE vet, and only where there is something to vet: a POI whose name we have
+            not paid for. A dropped pin needs none — you chose the spot. */}
+        {draft.googlePlaceId && (
+          <a
+            className="map-res-out"
+            href={mapsPlaceIdUrl(draft.googlePlaceId, draft.at)}
+            target="_blank"
+            rel="noopener noreferrer"
+            aria-label={t.map.research.openInGoogle}
+            title={t.map.research.openInGoogle}
+          >
+            <Icon name="external" />
+          </a>
+        )}
+        <button type="button" className="map-draft-cancel" onClick={cancelDraft}>
+          {t.map.make.cancel}
+        </button>
+        <button
+          type="button"
+          className="map-addmaybe"
+          disabled={savingDraft || (!draft.googlePlaceId && draftName.trim() === '')}
+          onClick={() => commitDraft.current()}
+        >
+          {t.map.make.add}
+        </button>
+      </div>
+    </div>
+  );
+
   // THE TAPPED RING, ON THE SAME CANVAS HOST (ADR-0132 §8, built session 166). Same rule as
   // the place card and the ghost row above — the row surfaces wherever the sheet cannot show
   // it — so it is `ResultRow` in `.map-placecard`, not a second grammar for a Google result.
@@ -2247,8 +2413,14 @@ export function MapView() {
           onAreaSort={toggleAreaSort}
           onLocate={locateFromCanvas}
           framePlace={framePlace}
-          cardOpen={cardUsage != null || cardResult != null}
+          cardOpen={cardUsage != null || cardResult != null || draft != null}
+          // Both make-a-place gestures (ADR-0147). Stable identities via latest-refs, like
+          // every other handler this memoized pane takes — an inline arrow here would
+          // re-diff every marker once a second (§7, ADR-0121 §4).
+          onHoldCanvas={holdCanvas}
+          onTapGooglePlace={tapGooglePlace}
         />
+        {draftCard}
         {placeCard}
         {resultCard}
         {geoPrompt}

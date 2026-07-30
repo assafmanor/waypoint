@@ -124,6 +124,23 @@ export const t = {
       // happening instead of leaving a bare header over an empty section.
       typeMore: 'הקלידו עוד כדי לחפש',
     },
+    // MAKING a place on the canvas (ADR-0147). Two sources, one card: a long press yields a
+    // spot that needs naming, a tap on one of Google's own sights yields a place Google will
+    // name once the add is confirmed. So `namePrompt` asks and `googleTitle` states.
+    make: {
+      namePrompt: 'מה יש כאן?',
+      namePlaceholder: 'שם המקום',
+      // The card sits ON the spot and the camera framed it, so the coordinates are
+      // confirmation rather than instruction — and a dropped pin has no address, on purpose
+      // (a reverse geocode is paid). `measure` keeps the numeric run an LTR island.
+      googleTitle: 'המקום שסימנתם',
+      // Google's own label is the preview: it is drawn under your finger, which is why the
+      // card does not repeat a name it would have to pay to learn.
+      googleHint: 'גוגל ישלים את השם בהוספה',
+      add: 'הוספה למדף',
+      cancel: 'ביטול',
+      failed: 'ההוספה נכשלה · נסו שוב',
+    },
     // Map-local day scope (ADR-0110 §4): the strip focuses one day; this chip
     // shows every day's places at once.
     // (`scopeAll` / `scopeDay` retired with `.map-scopehint` in ADR-0122 §2: the chip's

@@ -3,7 +3,7 @@ import { afterEach, describe, expect, it } from 'vitest';
 import { cleanup, fireEvent, render, screen } from '@testing-library/react';
 import { MAP_DRAG_ZOOM, MAP_ZOOM } from '../constants';
 import { clearTuning, tuningOverrides } from '../lib/dev-tuning';
-import { zoomPerLevelPx } from '../lib/drag-zoom';
+import { zoomPerLevelPx } from '../lib/canvas-gestures';
 import { DevMapTuner } from './DevMapTuner';
 
 afterEach(() => {

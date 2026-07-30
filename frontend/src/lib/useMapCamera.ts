@@ -46,7 +46,12 @@ import {
   type LatLng,
   type MapBounds,
 } from './map-camera';
-import { doubleTapZoom, zoomAboutPoint, type WorldPoint } from './drag-zoom';
+import {
+  doubleTapZoom,
+  worldPointAtOffset,
+  zoomAboutPoint,
+  type WorldPoint,
+} from './canvas-gestures';
 import { prefersReducedMotion } from './motion';
 import { MAP_CAMERA_EASE, MAP_ZOOM } from '../constants';
 // The zoom ladder is the device pass's, so these three reads go through the dev accessor
@@ -460,10 +465,7 @@ function sameCamera(a: CameraAt | null, b: CameraAt): boolean {
  *  when it cannot be worked out — no offset, or a map with no projection yet — in which
  *  case the caller anchors at the centre. Degrading rather than failing matters: a map has
  *  no projection until it has rendered, and a double-tap before then should still zoom.
- *
- *  **Nothing here constructs a `google.maps.Point`.** `fromLatLngToPoint` hands one back,
- *  so it is mutated and returned to `fromPointToLatLng` — which keeps this function clear
- *  of the `google.maps` global entirely, and means both projections are Google's own. */
+ */
 function anchoredCentre(
   map: google.maps.Map,
   centre: LatLng,
@@ -472,10 +474,45 @@ function anchoredCentre(
   toZoom: number,
 ): LatLng | null {
   if (!offsetPx || (offsetPx.x === 0 && offsetPx.y === 0)) return null;
+  return throughProjection(map, centre, (world) =>
+    zoomAboutPoint(world, offsetPx, fromZoom, toZoom),
+  );
+}
+
+/** **Where a screen point is on the map** — what a long press needs to become a place
+ *  (ADR-0147 §2). The offset is from the canvas centre, the same convention the anchored
+ *  zoom takes.
+ *
+ *  It reads the map's own centre and zoom rather than taking them: the gesture knows a
+ *  pixel and nothing else, and asking the map what it is currently showing is the one
+ *  reading that cannot go stale between the press and the drop. `null` when the map has no
+ *  projection or no camera yet — a drop is refused rather than guessed at. */
+export function latLngAtOffset(map: google.maps.Map, offsetPx: WorldPoint): LatLng | null {
+  const centre = map.getCenter();
+  const zoom = map.getZoom();
+  if (!centre || zoom == null) return null;
+  return throughProjection(map, { lat: centre.lat(), lng: centre.lng() }, (world) =>
+    worldPointAtOffset(world, offsetPx, zoom),
+  );
+}
+
+/** The projection round trip both of the above need: hand Google a coordinate, do one
+ *  power-of-two shift in ITS world space, hand the result back for un-projecting.
+ *
+ *  Extracted from `anchoredCentre` when the long press became its second caller (ADR-0147
+ *  §2) rather than copied beside it. **Nothing here constructs a `google.maps.Point`:**
+ *  `fromLatLngToPoint` hands one back, so it is mutated and returned to
+ *  `fromPointToLatLng` — which keeps this clear of the `google.maps` global entirely, and
+ *  means both projections are Google's own (ADR-0129 §3). */
+function throughProjection(
+  map: google.maps.Map,
+  centre: LatLng,
+  transform: (world: WorldPoint) => WorldPoint,
+): LatLng | null {
   const projection = map.getProjection();
   const world = projection?.fromLatLngToPoint(centre);
   if (!projection || !world) return null;
-  const moved = zoomAboutPoint(world, offsetPx, fromZoom, toZoom);
+  const moved = transform(world);
   world.x = moved.x;
   world.y = moved.y;
   const next = projection.fromPointToLatLng(world);

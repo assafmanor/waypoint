@@ -1,6 +1,6 @@
 import { useCallback, useState, type CSSProperties } from 'react';
 import { MAP_CARD_BODY_H, MAP_SHEET_STOPS } from '../constants';
-import { zoomPerLevelPx } from '../lib/drag-zoom';
+import { zoomPerLevelPx } from '../lib/canvas-gestures';
 import {
   clearTuning,
   mapReading,
@@ -305,11 +305,6 @@ const valueStyle: CSSProperties = {
   minWidth: 34,
   textAlign: 'center',
   fontVariantNumeric: 'tabular-nums',
-};
-const ruleStyle: CSSProperties = {
-  border: 0,
-  borderTop: '1px solid rgba(255,255,255,0.2)',
-  margin: '4px 0',
 };
 const readoutStyle: CSSProperties = { fontSize: 11, lineHeight: 1.5, opacity: 0.9 };
 const warnStyle: CSSProperties = { fontSize: 10, lineHeight: 1.4, color: '#ffb0a0', paddingTop: 2 };

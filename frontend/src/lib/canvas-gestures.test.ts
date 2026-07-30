@@ -17,7 +17,7 @@ import {
   zoomPerLevelPx,
   type DragZoomEventType,
   type DragZoomState,
-} from './drag-zoom';
+} from './canvas-gestures';
 import { MAP_DRAG_ZOOM, MAP_ZOOM } from '../constants';
 
 const LIMITS = { perLevelPx: 100, min: 2, max: 21 };
