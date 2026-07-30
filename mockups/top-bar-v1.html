@@ -3814,16 +3814,25 @@ button.wp-av:focus-visible {
       }
       /* The "there is more than one of these" cue — absent on a single-trip
          account, because a control with no source is not drawn (ADR-0045). */
+      /* "This is one of several." A card edge behind the trip's glyph — the deck
+         metaphor, which is LATERAL: it says there are others like this one, where a
+         back arrow says this one sits underneath something. Absent at one trip.
+
+         Drawn as two stacked edges rather than a full outline, so at 20px it reads
+         as depth instead of as a second icon competing with the flag. */
       .hdr-tripglyph .hdr-stack {
         position: absolute;
-        inset-block-start: 0;
-        inset-inline-start: 0;
-        width: 15px;
-        height: 15px;
+        inset: 0;
         border-radius: 5px;
-        border: 1.5px solid rgba(255, 255, 255, 0.3);
-        transform: translate(calc(var(--dir) * 5px), -5px);
+        border: 1.5px solid currentColor;
+        opacity: 0.4;
         pointer-events: none;
+        /* Behind and above, peeking toward the OUTSIDE edge so it never crowds the
+           name. `--dir` carries the inline axis's physical sign, so one rule serves
+           both directions (design-language's motion tokens). The pseudo-element
+           paints under the glyph's own text, which is what makes it read as a card
+           BEHIND rather than a second icon beside. */
+        transform: translate(calc(var(--dir) * -4px), -4px) scale(0.84);
       }
 
       /* The one exception indicator that stays in the chrome: a badge on the
@@ -4315,9 +4324,7 @@ button.wp-av:focus-visible {
       .app[data-mode='plan'] .hdr-trip .hdr-caret {
         background: rgba(110, 89, 214, 0.16);
       }
-      .app[data-mode='plan'] .hdr-trip .hdr-stack {
-        border-color: rgba(110, 89, 214, 0.4);
-      }
+
       .app[data-mode='plan'] .hdr-mode {
         background: var(--plan-tint);
       }
@@ -4522,36 +4529,34 @@ button.wp-av:focus-visible {
           </div>
 
           <div class="mk-card pick">
-            <span class="mk-tag yes">2 · היציאה נראית</span>
-            <h3>אי אפשר לפתור גילוי במשהו שצריך להקיש עליו כדי לגלות</h3>
+            <span class="mk-tag yes">2 · היציאה נראית, אבל לא מוצהרת</span>
+            <h3>לא כותרת סמויה, וגם לא חץ חזרה</h3>
             <ul class="mk-list">
               <li>
-                <b>זו ההכרעה, וגרסה קודמת של הקובץ הזה פספסה אותה.</b> להפוך את השם לתפריט
-                משפר את ה<b>הבנה אחרי ההקשה</b> — אבל הבעיה שדווחה היא שאף אחד לא מקיש
-                מלכתחילה. חץ במקום כותרת-שהיא-כפתור לא דורש לגלות כלום.
+                <b>שתי גרסאות קודמות של הקובץ הזה טעו כאן, כל אחת לכיוון אחר.</b> קודם
+                הפכתי את השם לתפריט — וזה משפר <b>הבנה אחרי ההקשה</b> בזמן שהבעיה היא שאף
+                אחד לא מקיש. אחר כך שמתי חץ חזרה — וזה פותר גילוי אבל <b>משקר על ההיררכיה</b>.
               </li>
               <li>
-                לכן ברירת המחדל (<b>⟨חץ חזרה⟩</b>) היא <b>חץ בקצה המוביל</b> שהולך
-                ל-<code>/trips</code>. הוא עולה 36px של רוחב, והם קיימים בדיוק כי גלגל
-                השיניים ועיגול נוסף כבר ירדו מהשורה.
+                <b>חץ חזרה אומר "המסך הזה יושב מתחת למשהו", והוא לא.</b> כלל הנחיתה של
+                ADR-0033 פותח טיול חי <b>ישירות</b> — לא הגעת מ-<code>/trips</code>, ורוב הזמן
+                בית-הטיול הוא המסך הראשי. גם הפעולה עצמה אינה "למעלה" אלא <b>לרוחב</b>: מעבר
+                בין טיולים, לא יציאה מתת-מסך.
               </li>
               <li>
-                <b>וזה לא ניווט חדש — זה ניווט קיים שסוף סוף נראה.</b> האפליקציה כבר יוצאת
-                מהטיול בחזרה כפולה מ-Home (<code>shell.leaveTripHint</code>, ADR-0035 §1),
-                כלומר <code>/trips</code> כבר הוא ההורה המבני. עד היום פשוט לא היה לזה פקד.
+                <b>לכן: ערימה.</b> קלף אחד מציץ מאחורי הדגל של הטיול, והסימן בקצה השבב הוא
+                <code>swap</code> ולא קָרֶט. שניהם אומרים "יש עוד כאלה" — לרוחב, שקט, ובלי
+                פקד רביעי בשורה.
               </li>
               <li>
-                <b>ואז השבב נעשה כן:</b> הקָרֶט שלו מפסיק להבטיח יציאה ופותח תפריט על
-                <b>הטיול הזה</b> — הגדרות, ומצב הסנכרון כשיש מה לומר. שני דברים שונים, שני
-                פקדים.
+                <b>והכי חשוב: זה נעלם כשיש טיול אחד.</b> רוב הזמן יש בדיוק אחד, ואז אין ערימה,
+                אין <code>swap</code>, ואין שום דבר בכרום שרומז שיש איפה להיות מלבד כאן —
+                השבב חוזר להיות זהות עם קָרֶט לתפריט. זה בדיוק "אין מקור, אין פקד"
+                (ADR-0045 / ADR-0109 §6). הקישו <b>⟨כמה טיולים יש לך⟩</b>.
               </li>
               <li>
-                שתי חלופות עדיין מצוירות, כי הן זולות יותר ברוחב:
-                <b>⟨תפריט⟩</b> — בלי חץ, והפריט הראשון בתפריט הוא <code>כל הטיולים</code>
-                (לא מחזיר את מגירת המחליף ש-ADR-0033 §3 פסל: הרשימה נשארת מסך אחד, התפריט
-                הוא פעולות); <b>⟨ישיר⟩</b> — ניווט ישיר עם סמל <code>swap</code> ו"קלף"
-                מאחורי הדגל, שומר הקשה אבל מחזיר את גלגל השיניים לשורה. שתיהן עדיין דורשות
-                לנחש שהשם הוא פקד.
+                החץ עדיין מצויר תחת <b>⟨חץ חזרה — נפסל⟩</b>, כי כדאי לראות למה נפסל: הוא גם
+                בולט מדי לפעולה נדירה, וגם עולה 36px שהשם צריך.
               </li>
             </ul>
           </div>
@@ -4890,11 +4895,22 @@ button.wp-av:focus-visible {
         </div>
 
         <p class="mk-note" style="margin-top: 16px">
-          <b>וממצא על הקוד ששתי ההצעות חושפות, ואינו של אף אחת מהן:</b> הכותרת הנשלחת כבר
-          חותכת שם באורך מקסימלי ב-390. <code>useShrinkToFit</code> יורד עד רצפת 15px
-          ועדיין נחתך — כלומר ההבטחה ש-<code>MAX_TRIP_NAME_LENGTH</code> מנסח ("שורה אחת")
-          <b>כבר לא מתקיימת היום</b>, עם ארבעה עיגולים וגלגל שיניים בשורה. הטבלה מראה את זה
-          בכל מצב: הקישו <b>⟨שם הטיול · מקסימום⟩</b>.
+          <b>שני ממצאים על הקוד ששתי ההצעות חושפות, ואינם של אף אחת מהן.</b>
+          <b>(א)</b> הכותרת הנשלחת <b>כבר חותכת</b> שם באורך מקסימלי ב-390:
+          <code>useShrinkToFit</code> יורד עד רצפת 15px ועדיין נחתך, כלומר ההבטחה
+          ש-<code>MAX_TRIP_NAME_LENGTH</code> מנסח ("שורה אחת") כבר לא מתקיימת היום, עם
+          ארבעה עיגולים וגלגל שיניים בשורה.
+          <b>(ב)</b> ולולאת ההתכווצות עצמה מודדת ב<b>מספרים שלמים</b>:
+          <code>scrollWidth</code> ו-<code>clientWidth</code> מעוגלים, כך שטקסט שחורג
+          ב-1.8px מדווח 94 מול 93. הקובץ הזה נפל בדיוק שם — המסגרת ציירה שלוש נקודות
+          בזמן שהמכשיר אמר "נכנס" — והתיקון הוא <code>Range</code> על תוכן הטקסט, שנותן
+          את הרוחב התת-פיקסלי שהדפדפן באמת השתמש בו. אותו עיוורון קיים בהוק הנשלח.
+        </p>
+        <p class="mk-note" style="margin-top: 10px">
+          <b>וזו ההכרעה שהמדידה כופה:</b> ב-390, עם שם באורך מקסימלי, <b>שתי השורות נחתכות
+          גם ברצפה של 13px</b> — כלומר אין להן גודל קריא שבו השם נכנס. <b>הסרגל המתפרק
+          מציג אותו ב-20px בלי לחתוך</b>, כי לשורת הזהות יש את כל רוחב השורה. זה לא העדפה
+          בין שתי הצעות; זו דרישה שאחת מהן לא עומדת בה.
         </p>
       </div>
       <!-- ── open ─────────────────────────────────────────────────────────── -->
@@ -5000,13 +5016,14 @@ button.wp-av:focus-visible {
         party: 'group',
         name: 'short',
         screen: 390,
-        switcher: 'back',
+        switcher: 'chip',
         modelabel: 'label',
         live: 'live',
         condensed: 'rest',
         tab: 'home',
         modeslot: 'top',
         shape: 'two',
+        trips: 'many',
       };
       // A surface may ask for the condensed chrome as its RESTING state, with no
       // gesture involved (ADR-0149 §8b). The Map is the first caller and the reason
@@ -5021,6 +5038,11 @@ button.wp-av:focus-visible {
        *  strip is a control belonging to two tabs, drawn on four. */
       const DAY_SCOPED_TABS = new Set(['days', 'map']);
       const apart = () => S.shape === 'apart';
+      /** Trips other than this one. The switch affordance is drawn only when this is
+       *  non-zero — "no source, no control" (ADR-0045 / ADR-0109 §6), applied to the
+       *  case the owner named: most of the time you have exactly one trip, and then
+       *  nothing in the chrome should suggest this screen sits under another. */
+      const otherTrips = () => (S.trips === 'many' ? 2 : 0);
 
       const CONTROLS = [
         {
@@ -5068,12 +5090,20 @@ button.wp-av:focus-visible {
           ],
         },
         {
+          k: 'trips',
+          label: 'כמה טיולים יש לך',
+          opts: [
+            ['one', 'אחד'],
+            ['many', 'שלושה'],
+          ],
+        },
+        {
           k: 'switcher',
           label: 'המעבר לטיולים',
           opts: [
-            ['back', 'חץ חזרה'],
-            ['menu', 'תפריט'],
+            ['chip', 'ערימה בשבב'],
             ['direct', 'ישיר'],
+            ['back', 'חץ חזרה — נפסל'],
           ],
         },
         {
@@ -5342,11 +5372,12 @@ button.wp-av:focus-visible {
               (S.net === 'offline' ? icon('offline') : S.net === 'pending' ? icon('sync') : icon('warn')) +
               '</span>';
         return `<div class="hdr-line">
-  <button class="hdr-out" aria-label="כל הטיולים">${backArrow()}</button>
   <button class="hdr-trip is-bare" aria-haspopup="dialog" aria-label="תפריט הטיול">
-    <span class="hdr-tripglyph">${TRIP.icon}${status}</span>
+    <span class="hdr-tripglyph">${TRIP.icon}${
+      otherTrips() ? '<span class="hdr-stack" aria-hidden="true"></span>' : ''
+    }${status}</span>
     <span class="hdr-trip-name">${tripName()}</span>
-    <span class="hdr-caret">${icon('caret', 'down')}</span>
+    <span class="hdr-caret">${otherTrips() ? icon('swap') : icon('caret', 'down')}</span>
   </button>
   <button class="hdr-people" aria-label="אנשים בטיול">
     <span class="avatars">
@@ -5440,15 +5471,15 @@ button.wp-av:focus-visible {
         data-mode="${S.mode}" data-modelabel="${S.modelabel}" ${S.screen <= 370 ? 'data-narrow' : ''}>
   <div class="hdr-top">
     ${
-      S.switcher === 'back'
+      S.switcher === 'back' && otherTrips()
         ? `<button class="hdr-out" aria-label="כל הטיולים">${backArrow()}</button>`
         : ''
     }
     <button class="hdr-trip" aria-haspopup="${S.switcher === 'direct' ? 'false' : 'dialog'}"
             aria-label="${S.switcher === 'direct' ? 'החלפת טיול' : 'תפריט הטיול'}">
-      ${glyph(S.switcher === 'direct' ? '<span class="hdr-stack" aria-hidden="true"></span>' : '')}
+      ${glyph(otherTrips() && S.switcher !== 'back' ? '<span class="hdr-stack" aria-hidden="true"></span>' : '')}
       <span class="hdr-trip-name">${tripName()}</span>
-      <span class="hdr-caret">${S.switcher === 'direct' ? icon('swap') : icon('caret', 'down')}</span>
+      <span class="hdr-caret">${otherTrips() && S.switcher !== 'back' ? icon('swap') : icon('caret', 'down')}</span>
     </button>
     ${
       S.switcher === 'direct'
@@ -5600,10 +5631,11 @@ button.wp-av:focus-visible {
   <hr />
   ${statusRow}
   ${
-    S.switcher === 'back'
+    otherTrips() === 0
       ? ''
       : `<button class="hdr-menu-row">${icon('swap')}
-    <span><span class="lbl">כל הטיולים</span><span class="sub">יציאה לרשימה</span></span>
+    <span><span class="lbl">כל הטיולים ⁦(${otherTrips() + 1})⁩</span>
+    <span class="sub">מעבר לטיול אחר</span></span>
     <span class="go">${backArrow()}</span></button>`
   }
   <button class="hdr-menu-row">${icon('settings')}
@@ -5649,15 +5681,30 @@ button.wp-av:focus-visible {
       // BOTH frames — the shipped pill ramps 26 → 15 and the proposed one 17 → 13, and
       // omitting it from the "before" would have flattered this design with a
       // truncation the app does not actually have.
+      // …with one correction, and it is a finding about the SHIPPED hook rather than
+      // about this file. `scrollWidth` and `clientWidth` are INTEGERS, so a text that
+      // overflows its box by 1.8px reports 94 against 93 — a difference of 1, which a
+      // `> clientWidth + 1` tolerance swallows entirely and a bare `>` catches only by
+      // luck of rounding. The frame rendered an ellipsis while the instrument said
+      // "fits", which is the exact failure this repo files under "a mockup that
+      // measures the wrong thing is worse than one that measures nothing". A Range
+      // over the text content gives the real sub-pixel width, so both the loop and
+      // the verdict read the same number the renderer used.
+      function textWidth(el) {
+        const r = document.createRange();
+        r.selectNodeContents(el);
+        return r.getBoundingClientRect().width;
+      }
       function shrinkToFit(el, maxPx, minPx) {
         if (!el) return null;
         let size = maxPx;
         el.style.fontSize = size + 'px';
-        while (el.scrollWidth > el.clientWidth && size > minPx) {
+        const box = () => el.getBoundingClientRect().width;
+        while (textWidth(el) > box() + 0.5 && size > minPx) {
           size -= 1;
           el.style.fontSize = size + 'px';
         }
-        return { size, truncated: el.scrollWidth > el.clientWidth + 1 };
+        return { size, truncated: textWidth(el) > box() + 0.5 };
       }
 
       // ── measure ───────────────────────────────────────────────────────────
@@ -5810,9 +5857,16 @@ button.wp-av:focus-visible {
           { passive: true },
         );
         requestAnimationFrame(measure);
+        // The mode label animates its max-width over --t-base, so the row's widths
+        // are still moving on the next frame — measuring there reported a name as
+        // "fits" while the render showed an ellipsis. Read again once it has settled.
+        setTimeout(measure, 320);
       }
 
       render();
+      // Webfont metrics decide every width here, so nothing measured before
+      // `Secular One` and `JetBrains Mono` land is worth printing.
+      if (document.fonts && document.fonts.ready) document.fonts.ready.then(measure);
       window.addEventListener('resize', () => requestAnimationFrame(measure));
     </script>
   </body>
