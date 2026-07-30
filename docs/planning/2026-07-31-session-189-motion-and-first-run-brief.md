@@ -107,6 +107,15 @@ Per variant, the arrival that matches the shape:
 - **`full`** — comes forward from the flow's forward edge (RTL-aware). It replaces a
   screen, so it should read as a screen arriving.
 
+**And one thing changed under this while the brief was being written** (main, 2026-08-01,
+ADR-0103 §2's Escape unification): Escape is now a **back trigger with one owner** in
+`nav-state` (`useEscapeAsBack`), and `useDialogFocus` no longer takes `onClose` at all. So
+the exit state must be driven from the **overlay stack's own close path**, not from a
+handler on each `Modal` — every way out (the `✕`, the backdrop, Escape, the system back)
+already converges on one function, and that convergence is exactly where `closing` belongs.
+Adding a second close path inside `Modal` to hang the animation on would re-create the
+divergence #365 just removed.
+
 Note the constraint on the Map's search specifically: ADR-0132 §2 deliberately leaves the
 **chrome reclaim** un-animated, because animating `display` on the header/nav relayouts the
 split mid-flight — the exact thing ADR-0121 §5 shaped the sheet's stops to avoid. That
