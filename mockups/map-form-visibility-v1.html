@@ -7547,11 +7547,11 @@ body {
    edge and leaves the hatch, which is `.soft`'s own distinguishing mark (ADR-0130 §3's two
    axes: colour-vs-grey primary, hatch as confirmation).
 
-   A TAPPED SIGHT gets no pin at all — Google has already drawn its own icon there, so ours
-   would be two markers for one place, the exact mess ADR-0125 §6 refused. It gets `.map-result`
-   instead: a ring is already this app's word for "a Google-sourced candidate that is not yours
-   yet" (ADR-0132 §6 — a different KIND of object gets a different SILHOUETTE, not another rung
-   on the pin ladder). */
+   THE OTHER TWO SOURCES GET NO MARKER AT ALL, because each already has one: a search result is
+   a ring in `results` and a renamed place has its own selected pin, so a second marker on either
+   would draw one place twice — the exact mess ADR-0125 §6 refused. (A third source, a tap on one
+   of Google's own sights, took a `.map-result` ring for that reason until ADR-0148 §6 removed the
+   source; the variant went with it rather than being left for a caller that no longer exists.) */
 .map-pin.pending .pin-b {
   border-style: dashed;
   border-color: var(--soft-line);
@@ -8807,12 +8807,30 @@ body {
      `.map-split`, whose bottom is the screen's, so the sheet's own height has to be in
      the sum or the card sits behind the sheet — and over the attribution it was meant to
      clear. */
-  bottom: calc(var(--sheet-h, 0px) + var(--map-attr-h, 22px) + 8px);
+  /* `--map-kb-h` is the keyboard's own overlap, and it is 0 on every platform that RESIZES the
+     viewport for it — there the split already paid, so the sheet is the only bottom there is.
+     On iOS the viewport does not shrink: the card lays out with a full canvas of room and the
+     keyboard is simply drawn over it, so every layout number reads healthy while the card is
+     invisible (ADR-0148 §4 — the same shape as ADR-0132 §4's iOS attribution failure). `max`
+     rather than a sum, because the two are alternative floors and never additive. */
+  bottom: max(
+    calc(var(--sheet-h, 0px) + var(--map-attr-h, 22px) + 8px),
+    calc(var(--map-kb-h, 0px) + 8px)
+  );
   z-index: 2;
 }
 .map-placecard .place {
   margin-bottom: 0;
   box-shadow: 0 12px 28px -12px color-mix(in srgb, var(--ink) 45%, transparent);
+}
+
+/* While the make/rename form is open the sheet stands down entirely and the canvas takes its
+   height (ADR-0148 §2). `display: none` rather than a 0px sliver, for the same reason ADR-0132
+   §2 chose it for the reclaimed chrome: the space is the whole point, and it also takes the
+   sheet's controls out of the tab order — while you are naming a point, the view toggle and
+   `קרוב עכשיו` are not part of this surface. */
+.map-screen[data-form='open'] .wp-snapsheet {
+  display: none;
 }
 
 /* ── THE FORM: FOUR SOURCES, ONE CARD (ADR-0147 §4) ──────────────────────────────
@@ -8830,8 +8848,41 @@ body {
    this takes `.place`'s own ground, radius and hairline and `.map-placecard .place`'s floating
    shadow rather than minting a third card. Rendering the first pass against the real
    stylesheets is what showed it had no card at all. */
+/* ── THE GUARANTEE: THE CARD CANNOT BE TALLER THAN THE ROOM IT HAS (ADR-0148 §1) ──
+   The card is anchored to the split's BOTTOM and grows UPWARD, so when the split shrinks —
+   a keyboard on a viewport the platform resizes — a card taller than its container overflows
+   the TOP and is clipped there. What survived was the actions row and what died was the title
+   and the field, which is the worst way round: you could commit a form you could not read.
+
+   More room does not fix that, it only postpones it. Even with the chrome reclaimed and the
+   sheet at `map`, 360×640 is ~39px short. So the card is bounded by what it actually has, and
+   the shortfall becomes a SCROLL instead of a clip.
+
+   The bound is arithmetic over the numbers the card's own `bottom` already uses, so there is
+   nothing to measure and nothing to keep in step: 100% of `.map-split`, minus the controls row
+   it must clear, minus the sheet, minus Google's attribution and its gap. Scoped with `:has`
+   to the card that holds a FORM — the selection card is a 73px row and wants none of this. */
+.map-placecard:has(> .map-draft) {
+  display: flex;
+  max-height: calc(
+    100% - var(--map-controls-h, 46px) - 8px - var(--sheet-h, 0px) - var(--map-attr-h, 22px) - 8px
+  );
+}
+/* A flex item in a container with a max-height: the container settles at
+   `min(content, cap)` and stretch sizes the card to it, which is what makes the cap apply to
+   the CARD rather than merely clipping it. `min-height: 0` is what lets it shrink at all. */
+.map-placecard:has(> .map-draft) > .map-draft {
+  flex: 1 1 auto;
+  min-height: 0;
+}
+
 .map-draft {
   display: grid;
+  /* Pinned head, scrolling middle, pinned foot. The head is `Field` (the title, which is also
+     the label, plus the name row and its hint or error) and the foot is the actions — the three
+     things a keyboard must never take: what am I naming, what have I typed, how do I get out. */
+  grid-template-rows: auto minmax(0, 1fr) auto;
+  overflow: hidden;
   gap: 8px;
   background: var(--card);
   border: 1px solid var(--line);
@@ -8841,11 +8892,29 @@ body {
      large surface — the default step is the control one). */
   --press-scale: var(--press-scale-lg);
 }
+/* The middle. `overscroll-behavior: contain` so reaching its end does not hand the gesture to
+   the canvas underneath — on a surface where a drag pans a map, a scroll chaining out is not a
+   nuisance but a camera move nobody asked for. No edge fade and no rule: the pinned field above
+   is already this region's boundary, and a mask here would clip the pills' own top at rest. */
+.map-draft-scroll {
+  min-height: 0;
+  overflow-y: auto;
+  overscroll-behavior: contain;
+  display: grid;
+  gap: 8px;
+  align-content: start;
+  scrollbar-width: none;
+}
+.map-draft-scroll::-webkit-scrollbar {
+  height: 0;
+  width: 0;
+}
 /* EVERY child, because a grid child defaults to `min-width: auto` and that is what pushed the
    confirm row past the card's own edge on a 360px frame — caught by rendering the proposal
    against these stylesheets, not by reading it. Stated once here rather than per child, so the
    next row added to this card inherits the fix instead of rediscovering it. */
-.map-draft > * {
+.map-draft > *,
+.map-draft-scroll > * {
   min-width: 0;
 }
 /* THE CARD'S HEADING IS THE NAME FIELD'S LABEL — one element, both jobs, because the heading
@@ -10110,7 +10179,7 @@ body {
     <div class="mk-wrap">
       <h1 class="mk-h" style="font-size: 26px">הטופס על הקנבס — נראות מלאה, וכל דרך החוצה</h1>
       <p class="mk-sub">
-        שני דיווחים מטלפון אמיתי על הטופס ש‑ADR-0147 שלח:
+        שלושה דיווחים מטלפון אמיתי על הטופס ש‑ADR-0147 שלח:
         <strong>"חייבת להיות נראות מלאה — תראה איך זה מטופל בחיפוש"</strong>, ו<strong>"הקשה מחוץ
         לטופס צריכה לסגור אותו ולבטל את הבחירה"</strong>. הראשון נראה כמו באג אחד והוא שלושה, וה<em>מדידה</em>
         היא מה שמפריד ביניהם.
@@ -10314,15 +10383,77 @@ body {
         </div>
       </div>
 
-      <h3 class="mk-h" style="font-size: 17px">⟨חלופה⟩ — מנוף רביעי שנשקל ולא מומלץ</h3>
+      <h2 class="mk-h">§C3 · "אני לא רוצה להרשות את זה" — ולכן הטופס נכנס, ולא נגלל</h2>
+      <p class="mk-sub">
+        הגרסה הראשונה של §C הציעה גלילה כתשובה ל‑39px שחסרו ב‑360×640 מול מקלדת אנדרואיד.
+        <strong>הבעלים דחה את זה</strong> — "חלק מהטופס חתוך, זה לא אמור לקרות ואני לא רוצה
+        להרשות את זה" — וזו הדחייה הנכונה: גלילה בתוך כרטיס של 204px היא לא נראות מלאה, היא
+        רשות לחתוך. אז נמצאו הפיקסלים במקום להתיר את החיתוך.
+      </p>
+      <div class="mk-row">
+        <div class="mk-note">
+          <h4>‏−20px · שורה שקטה אחת, לא שתיים</h4>
+          <p>
+            הכרטיס נשא <em>שני</em> טורי־טקסט מושתקים זה מעל זה — הרמז ("גוגל ישלים את השם") ושורת
+            הנקודה/הכתובת. יחד: 44px מתוך 243, על שתי פסוקיות קצרות ש<strong>מעולם לא שתיהן נשאו
+            משקל בבת אחת</strong>: לסיכה שהופלה אין כתובת בכלל, ולאתר שהוקש טבעת מתחת לאצבע כבר
+            אמרה איפה הוא.
+          </p>
+          <p>
+            אז שורה אחת, בחריץ ה‑<code>hint</code> של <code>Field</code> שכבר קיים: לסיכה — הנקודה;
+            לאתר — מי ימלא את השם; לתוצאה ולשינוי־שם — הכתובת. הכרטיס הפך ל‑<strong>223px לכל
+            מקור</strong>, כלומר מספר אחד לתכנן מולו.
+          </p>
+          <div class="mk-verdict">
+            <p>וזה שיפור בלי קשר למקלדת: שתי שורות שקטות שמתחרות זו עם זו גרועות מאחת.</p>
+          </div>
+        </div>
+        <div class="mk-note">
+          <h4>‏+52px · המדף נסוג <em>לגמרי</em>, לא רק ל‑<code>map</code></h4>
+          <p>
+            בעצירת <code>map</code> המדף הוא לא יותר מהרצועה שלו: ידית, <code>רשימה / מפה</code>,
+            <code>קרוב עכשיו</code> — מעל רשימה שאי אפשר לראות. <strong>אף אחד מהם אינו המשימה</strong>
+            בזמן שמכנים נקודה, וה־toggle שבתוכו אף <em>סותר</em> טופס שהרגע העביר אותך לקנבס.
+          </p>
+          <p>
+            אז הגובה עובר לקנבס: <code>display: none</code> ולא רצועה בגובה 0 עם תוכן חתוך — אותו
+            נימוק שבו ADR-0132 §2 בחר <code>display:none</code> לכרום, כולל היציאה מסדר ה‑tab.
+            ‏<code>sheetView</code> נשאר <code>map</code> מתחת, ולכן העצירה שנדחתה חוזרת בסגירה.
+          </p>
+          <div class="mk-verdict">
+            <p>
+              יחד: <strong>223 צריך, 256 יש</strong> במקרה הגרוע — 33px עודף. הערובה של §1 נשארת
+              כ<strong>רצפה</strong>, לא כתשובה: היא מבטיחה שאם מכשיר שלא נמדד יהיה צר מדי, זה
+              יתנהג כגלילה ולא כחיתוך.
+            </p>
+          </div>
+        </div>
+        <div class="mk-note">
+          <h4>נמדד, על הכרטיס שנשלח</h4>
+          <p>
+            ‏12 מצבים: ‏360×640 · 390×844 · 411×914 · 430×932, כל אחד מול <em>אין מקלדת</em>,
+            <em>אנדרואיד</em> ו‑<em>iOS</em>, עם חריצי בטיחות בכל המסכים שבאמת יש בהם כאלה. בכולם:
+            הכרטיס במלוא 223px, הכותרת והפעולות על המסך, <strong>ואין גלילה</strong>.
+          </p>
+          <div class="mk-verdict no">
+            <p>
+              <strong>ומה שזה לא:</strong> זו בדיקת <em>גיאומטריה</em> על ה‑CSS שנשלח, לא מעבר על
+              הקנבס. jsdom מדווח כל מלבן כאפס, ובלי מפתח דפדפן גם ה‑e2e מקבל את הטאב בלי לוח — כך
+              שהמספרים כאן נמדדו על הכרטיס האמיתי בתוך גיאומטריית ה‑split האמיתית, וזה מה שהם
+              מכסים.
+            </p>
+          </div>
+        </div>
+      </div>
+
+      <h3 class="mk-h" style="font-size: 17px">⟨חלופה⟩ — מנוף שנשקל ולא נבחר</h3>
       <div class="mk-row">
         <div class="mk-note" style="max-width: 100%; flex: 1 1 100%">
           <p>
-            <strong>שהקטגוריות והנקודה ייעלמו כשהמקלדת עולה</strong> (במקום לגלול). זול יותר,
-            וקונה 47px. <strong>נדחה:</strong> זה מזיז תוכן מתחת לאצבע בכל פוקוס ובלור — והמקלדת
-            ב‑iOS נפתחת ונסגרת הרבה — כך שהכרטיס "נושם". גלילה משאירה את הכל <em>קיים</em> ורק
-            דוחפת אותו מחוץ לחלון, וזה מה שההבטחה "נראות מלאה" בעצם אומרת: לא "הכל על המסך" אלא
-            <strong>"שום דבר לא נחתך בלי דרך להגיע אליו"</strong>.
+            <strong>שהקטגוריות ייעלמו כשהמקלדת עולה.</strong> קונה 43px ולא נדרש יותר אחרי §C3.
+            <strong>נדחה גם לגופו:</strong> זה מזיז תוכן מתחת לאצבע בכל פוקוס ובלור — והמקלדת
+            ב‑iOS נפתחת ונסגרת הרבה — כך שהכרטיס "נושם". אותו נימוק בדיוק שבו הטריגר של הכרום הוא
+            "הטופס פתוח" ולא "המקלדת למעלה" (§C3 למעלה): מצב יציב עדיף על מצב מדויק־ומהבהב.
           </p>
         </div>
       </div>
@@ -10516,6 +10647,44 @@ body {
         <div>
           <div class="mk-phone" id="phoneE"></div>
           <p class="mk-cap">משטח ההקשה — שקוף, מתחת לכרטיס, מעל הקנבס</p>
+        </div>
+      </div>
+
+      <!-- ═══════════════ §G 6c REMOVED ═══════════════ -->
+      <h2 class="mk-h">§G · והמקור שהוסר — ‏6c</h2>
+      <div class="mk-row">
+        <div class="mk-note" style="max-width: 100%; flex: 1 1 100%">
+          <p>
+            <strong>הוכרע (הבעלים, על טלפון אמיתי):</strong> הקשה על אתר של גוגל <em>לא</em> פותחת
+            את הטופס. <em>"לפתוח טופס יצירת מקום על כל הקשה על הצעה של גוגל זה מעצבן מאוד — אני
+            מעדיף שנסיר את זה."</em>
+          </p>
+          <p>
+            צודק, ובגלל משהו ש‑ADR-0147 §4 לא שקל: הוא תכנן את ה<strong>אקט</strong> (הקשה מכוונת על
+            אתר שרוצים להוסיף) ולא את ה<strong>שכיחות</strong>. אייקוני האתרים של גוגל פזורים על כל
+            הקנבס, וההקשה עליהם קורית גם כשלא מתכוונים כלום — כך שטופס בכל הקשה כזו הוא רעש, לא
+            הצעה. <strong>וזה בדיוק מה שמעבר על מכשיר מגלה ומה שקובץ mockup לא יכול:</strong>
+            השכיחות אינה שרטוט.
+          </p>
+          <p>
+            <strong>מה שחוזר:</strong> ADR-0125 §6 <em>בלי התיקון</em> — הכרטיס של גוגל עונה להקשה,
+            והקישור שלו לגוגל מפות הוא רוב הטעם שבה. ה‑<code>event.stop()</code> שהשתיק אותו
+            הוסר, ולא הושאר בהערה.
+          </p>
+          <p>
+            <strong>ומה שהלך איתו,</strong> כי קוד מת גרוע מפיצ׳ר שהוסר: המקור <code>sight</code>,
+            ה<strong>מחווה היחידה בשלב שמשלמת</strong> (‏<code>resolvePlace</code> על האישור),
+            הטבעת כסמן טיוטה, <code>mapsPlaceIdUrl</code>, ‏<code>nameOptional</code> (שהתקיים רק
+            כי הקשה כזו קנתה שם מגוגל), והנתיב החינמי "אתר שכבר בטיול → שינוי שם". שינוי שם נשאר
+            על העיפרון, וזו הדרך היחידה אליו.
+          </p>
+          <div class="mk-verdict">
+            <p>
+              <strong>ולכן הטופס הוא שלושה מקורות, לא ארבעה</strong> — והטענה לא נחלשת: זה עדיין
+              אקט אחד בשלושה מצבים, וההסרה אפילו מחדדת אותו, כי כל שלושת הנותרים הם משהו
+              ש<em>המשתמש ביקש</em> ולא משהו שקרה לו במקרה תוך כדי גלילה במפה.
+            </p>
+          </div>
         </div>
       </div>
 

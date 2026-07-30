@@ -27,7 +27,7 @@ import { readMapBounds, useMapCamera } from '../../lib/useMapCamera';
 import { useCanvasGestures } from '../../lib/useCanvasGestures';
 import type { LatLng, MapBounds } from '../../lib/map-camera';
 import type { MapsConfig } from '../../lib/map-config';
-import { MAP_CARD_RESERVE_H, MAP_CONNECTOR, MAP_ZOOM, type PinHue } from '../../constants';
+import { MAP_CONNECTOR, MAP_ZOOM, type PinHue } from '../../constants';
 import { TUNE, tune } from '../../lib/dev-tuning';
 import { DevMapProbe } from '../../dev/DevMapProbe';
 import { Icon, type IconName } from '../Icon';
@@ -177,24 +177,21 @@ export interface MapResultPin {
   selected?: boolean;
 }
 
-/** **The spot the open form is about** (ADR-0147 §5) — a marker for a place that does not
- *  exist yet, or one being renamed. Two silhouettes, and which one is not a style choice:
+/** **The spot the open form is about** (ADR-0147 §5) — a marker for a place that does not exist
+ *  yet. Only the LONG PRESS needs one: it lands on bare canvas, so nothing else says where it
+ *  went. It takes **our own pin**, dashed because it is provisional (ADR-0011's soft grammar
+ *  reused rather than a new colour) and in the category's hue, so choosing a category moves it.
  *
- *  - a LONG PRESS lands on bare canvas, so nothing else marks where it went and it takes
- *    **our own pin**, dashed because it is provisional (ADR-0011's soft grammar reused, not a
- *    new colour) and in the category's hue, so choosing a category moves it;
- *  - a TAPPED SIGHT and a search result already have a marker of Google's under them, so ours
- *    would be two markers for one place — the exact mess ADR-0125 §6 refused. Those get the
- *    app's own **ring** instead, which is already its word for "a Google-sourced candidate
- *    that is not yours yet" (ADR-0132 §6: a different KIND of object gets a different
- *    SILHOUETTE, not another rung on the pin ladder). */
+ *  The other two sources need nothing. A search result is already a ring in `results`, and a
+ *  renamed place already has its own selected pin — a second marker on either would say the same
+ *  thing twice, which is the mess ADR-0125 §6 refused.
+ *
+ *  It carried a `ringed` variant for the tapped sight until ADR-0148 §6 removed that source; the
+ *  variant went with it rather than being left for a caller that no longer exists. */
 export interface MapDraftMarker {
   lat: number;
   lng: number;
-  /** Draw the ring rather than our pin — set wherever Google has already marked the spot. */
-  ringed?: boolean;
-  /** Pin variant only: the category's hue and glyph, so the marker under the form answers the
-   *  form's own category pills. */
+  /** The category's hue and glyph, so the marker under the form answers its category pills. */
   hue?: PinHue;
   glyph?: string;
 }
@@ -228,11 +225,6 @@ export interface MapPaneProps {
    *  "absent, not disabled" rule the pane already follows for everything Google-shaped
    *  (ADR-0121 §11). */
   onHoldCanvas?: (at: LatLng) => void;
-  /** One of GOOGLE's own sight icons was tapped, carrying its `place_id` (ADR-0147 §4).
-   *  Google's own card is suppressed before this fires, so ours is the only one on the
-   *  canvas — which is how ADR-0125 §6's "never two cards" survives the tap becoming
-   *  ours. */
-  onTapGooglePlace?: (googlePlaceId: string, at: LatLng) => void;
   /** The spot the open make/rename form is about. Memoized on a content key by the caller,
    *  exactly like `pins` and `results` — same per-second-tick rule. */
   draftMarker?: MapDraftMarker | null;
@@ -259,7 +251,11 @@ export interface MapPaneProps {
   /** The place card is up, so a fit reserves the band it occupies (ADR-0128 §2). A
    *  boolean rather than a height: the number belongs in `constants.ts` with the rest of
    *  the card's geometry, not in the screen. */
-  cardOpen?: boolean;
+  /** **What the place card is occupying at the canvas's bottom, measured** — so a fit never
+   *  puts a pin under it (ADR-0122 §7, built in ADR-0128 §2). It replaced a `cardOpen`
+   *  boolean plus a constant, which was sized for a selected row and therefore wrong by
+   *  ~140px for the make/rename form (ADR-0148 §3). 0 when no card is up. */
+  cardReserve?: number;
   /** Locate was tapped with no fix to centre on. The camera half stays here (it needs
    *  the map instance); the permission ladder is the screen's, because that is where
    *  `useGeolocation` and the pre-prompt live (ADR-0126 §6). */
@@ -317,9 +313,8 @@ function MapPaneInner({
   onAreaSort,
   onLocate,
   framePlace,
-  cardOpen,
+  cardReserve,
   onHoldCanvas,
-  onTapGooglePlace,
   draftMarker,
 }: MapPaneProps) {
   const paneRef = useRef<HTMLDivElement>(null);
@@ -356,22 +351,15 @@ function MapPaneInner({
           // the selection would stack two cards. Replacing a selection when you tap
           // something else is also what every map app does. So do NOT skip on
           // `event.detail.placeId` — that reads like a fix and is the bug.
+          //
+          // **ADR-0147 §4 briefly made this tap open OUR form, and ADR-0148 §6 took it back
+          // out** (owner, on a real phone: _"opening a create place form for every hit on a
+          // Google suggestion is very annoying"_). So the `event.stop()` that suppressed
+          // Google's info window is gone rather than left commented: §6 holds unamended,
+          // Google's own card answers the tap, and its Maps link is most of the point of it.
           onClick={(event) => {
             const target = event.domEvent?.target as HTMLElement | null;
             if (target?.closest?.('.map-pin')) return;
-            // A GOOGLE sight, tapped (ADR-0147 §4). `stop()` suppresses Google's own info
-            // window, which is what lets OUR card answer the tap without §6's two cards ever
-            // existing at once — the owner's constraint was "not a mess", and clearing our
-            // selection was the means, not the end. The selection still clears; it is
-            // replaced by the new-place card rather than by nothing.
-            const placeId = event.detail.placeId;
-            const at = event.detail.latLng;
-            if (placeId && at && onTapGooglePlace) {
-              event.stop();
-              onCanvasTap();
-              onTapGooglePlace(placeId, at);
-              return;
-            }
             onCanvasTap();
           }}
         >
@@ -408,7 +396,7 @@ function MapPaneInner({
           onAreaSort={onAreaSort}
           onLocate={onLocate}
           framePlace={framePlace}
-          cardOpen={cardOpen}
+          cardReserve={cardReserve}
           onHoldCanvas={onHoldCanvas}
         />
       </APIProvider>
@@ -605,15 +593,11 @@ const DraftMarker = memo(function DraftMarker({ marker }: { marker: MapDraftMark
   const at = { lat: marker.lat, lng: marker.lng };
   return (
     <AdvancedMarker position={at} zIndex={DRAFT_MARKER_Z}>
-      {marker.ringed ? (
-        <div className="map-result selected" aria-hidden="true" />
-      ) : (
-        <div className={`map-pin pending cat-${marker.hue ?? 'leisure'}`} aria-hidden="true">
-          <span className="pin-b">
-            <span className="pin-g">{marker.glyph}</span>
-          </span>
-        </div>
-      )}
+      <div className={`map-pin pending cat-${marker.hue ?? 'leisure'}`} aria-hidden="true">
+        <span className="pin-b">
+          <span className="pin-g">{marker.glyph}</span>
+        </span>
+      </div>
     </AdvancedMarker>
   );
 });
@@ -673,7 +657,7 @@ function MapCameraControls({
   onAreaSort,
   onLocate,
   framePlace,
-  cardOpen,
+  cardReserve,
   onHoldCanvas,
 }: {
   paneRef: RefObject<HTMLDivElement | null>;
@@ -686,7 +670,7 @@ function MapCameraControls({
   onAreaSort: () => void;
   onLocate: () => void;
   framePlace?: LatLng | null;
-  cardOpen?: boolean;
+  cardReserve?: number;
   /** The long press lives here rather than beside `PinDensity` for the same reason the
    *  drag zoom does: it must drive THIS camera's pane, and the recogniser that owns it is
    *  the same one (ADR-0147 §1). */
@@ -724,7 +708,7 @@ function MapCameraControls({
     // The card's band, so a fit does not put a pin under it (ADR-0128 §2). The hook
     // reads it through a ref, so this changing on a tap re-pads the NEXT fit without
     // re-running the framing effect — i.e. without moving the camera on a pin tap.
-    bottomReserve: cardOpen ? MAP_CARD_RESERVE_H : 0,
+    bottomReserve: cardReserve ?? 0,
   });
 
   // **The one-finger zoom** (ADR-0145). It lives here rather than beside `PinDensity`

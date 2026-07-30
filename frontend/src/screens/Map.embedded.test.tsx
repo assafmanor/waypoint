@@ -237,15 +237,10 @@ vi.mock('../ui/domain/MapPane', () => ({
         >
           hold
         </button>
-        <button
-          data-poi
-          onClick={() =>
-            (props.onTapGooglePlace as (id: string, at: { lat: number; lng: number }) => void)(
-              'g-poi',
-              HELD_AT,
-            )
-          }
-        >
+        {/* A POI tap is GOOGLE's again (ADR-0148 §6), so the pane takes no callback for it and
+            this button drives the only thing the tap still does on our side: clear the
+            selection, exactly as ADR-0125 §6 has always said. */}
+        <button data-poi onClick={() => (props.onCanvasTap as () => void)()}>
           poi
         </button>
         {/* The marker under the open form: our dashed PIN for a dropped point, the app's own
@@ -330,7 +325,7 @@ import { NavProvider, useAppBack } from '../state/nav-state';
 import { MapScopeProvider, useMapScope } from '../state/map-scope-state';
 import { setSimulatedNow } from '../lib/useClock';
 import { MapView } from './Map';
-import { MAP_CONTROLS_H, MAP_SHEET_VIEW, PLACE_CORPUS } from '../constants';
+import { MAP_CONTROLS_H, MAP_SHEET_VIEW, PLACE_CORPUS, type MapSheetView } from '../constants';
 import { isFramedByCamera, PIN_TIER, type PinTier } from '../lib/map-pins';
 import { withoutBidiControls } from '../lib/bidi';
 import { DEFAULT_PLACE_ICON } from '../constants';
@@ -363,13 +358,13 @@ function wrap(node: ReactNode) {
  *  header button or the system-back interceptor does. */
 let lastBack = '';
 function ChromeProbe() {
-  const { queryOpen, errand, errandResult } = useMapScope();
+  const { chromeReclaimed, errand, errandResult } = useMapScope();
   const back = useAppBack();
   return (
     <>
       <button
         data-testid="chrome-probe"
-        data-query-open={String(queryOpen)}
+        data-chrome-reclaimed={String(chromeReclaimed)}
         onClick={() => {
           lastBack = back().kind;
         }}
@@ -398,7 +393,7 @@ const errandAnswer = () => screen.getByTestId('errand-probe').dataset.answer;
 /** What came back through the OTHER channel: a place id, `cancelled`, or '' if nothing was
  *  handed over at all — which is what a cancel used to do. */
 const errandReturn = () => screen.getByTestId('errand-probe').dataset.answer;
-const chromeReclaimed = () => probe().dataset.queryOpen === 'true';
+const chromeReclaimed = () => probe().dataset.chromeReclaimed === 'true';
 const pressBack = () => {
   fireEvent.click(probe());
   return lastBack;
@@ -424,6 +419,8 @@ const holdCanvas = () => fireEvent.click(document.querySelector('[data-hold]')!)
 const tapPoi = () => fireEvent.click(document.querySelector('[data-poi]')!);
 const draftMarker = () =>
   (document.querySelector('[data-draftmarker]') as HTMLElement).dataset.draftmarker;
+/** What the camera was last asked to bring into view. */
+const framed = () => (document.querySelector('[data-frame]') as HTMLElement).dataset.frame;
 const tapAreaSort = () => fireEvent.click(document.querySelector('[data-areasort]')!);
 const tapLocate = () => fireEvent.click(document.querySelector('[data-locate]')!);
 const areaSortOn = () => document.querySelector('[data-areasort]')!.getAttribute('data-on');
@@ -2165,12 +2162,6 @@ describe('the embedded map’s shell (ADR-0121)', () => {
             },
           },
           {
-            name: "a tap on one of Google's own sights",
-            arrange: () =>
-              indexVerbs.resolvePlace.mockResolvedValue({ id: 'p-poi', name: 'Senso-ji' }),
-            run: () => tapPoi(),
-          },
-          {
             name: 'a search result',
             arrange: () => searchStub.pick.mockResolvedValue({ id: 'p-res', name: 'Blue Bottle' }),
             run: () => {
@@ -2256,14 +2247,62 @@ describe('the embedded map’s shell (ADR-0121)', () => {
         expect(withoutBidiControls(draftForm()!.textContent!)).toContain('35.7148, 139.7967');
       });
 
-      it('a dropped pin is created with its coordinates, and the camera frames it', async () => {
+      // ── THE PIN COMES INTO VIEW, FROM EVERY SOURCE (ADR-0148 §3) ────────────────
+      // Stated over all four rather than once, because "the drop frames" was true while the
+      // pencil and a search result framed NOTHING — a rename could be started from a row whose
+      // pin was off screen, or from `full` where there is no canvas at all.
+      //
+      // The frame is deferred one animation frame on purpose: the split has just been given the
+      // sheet's height back and the card has not been laid out, so framing synchronously would
+      // fit against a canvas that no longer exists. So every case here waits a frame — and that
+      // wait is the assertion's own subject as much as the coordinates are.
+      it('every source brings the place it is about into view', async () => {
+        const cases: { name: string; open: () => void; at: string }[] = [
+          { name: 'a long press', open: holdCanvas, at: '35.7148,139.7967' },
+          {
+            name: 'a search result',
+            open: () => {
+              openSearch();
+              type('coffee');
+              fireEvent.click(
+                screen.getByRole('button', { name: t.map.research.addAria('Blue Bottle') }),
+              );
+            },
+            at: '35.69,139.7',
+          },
+          {
+            name: 'the pencil',
+            // Selected via its PIN, not its row, and that is the whole point of this case: a
+            // row tap frames on its own (ADR-0134 §6), so selecting that way would leave the
+            // camera already pointing at the place and this assertion would pass with the
+            // pencil framing nothing at all. A pin tap deliberately does NOT frame (ADR-0129
+            // §1, asserted two describes down), so what lands here can only be the rename's.
+            open: () => {
+              fireEvent.click(pin('museum')!);
+              fireEvent.click(pencil());
+            },
+            // `museum`'s own coordinates — a rename brings the place it is renaming into view.
+            at: '35.6,139.6',
+          },
+        ];
+        for (const c of cases) {
+          cleanup();
+          seedNamed();
+          searchStub.predictions = [
+            { googlePlaceId: 'g-1', primaryText: 'Blue Bottle', lat: 35.69, lng: 139.7 },
+          ];
+          render(wrap(<MapView />));
+          c.open();
+          await nextFrame();
+          expect(framed(), `${c.name} framed nothing`).toBe(c.at);
+        }
+      });
+
+      it('a dropped pin is created with its coordinates', async () => {
         seed();
         indexVerbs.createPlace.mockResolvedValue('p-drop');
         render(wrap(<MapView />));
         holdCanvas();
-        expect((document.querySelector('[data-frame]') as HTMLElement).dataset.frame).toBe(
-          '35.7148,139.7967',
-        );
         nameIt('הספסל עם הנוף');
         confirm();
         await vi.waitFor(() => expect(indexVerbs.createPlace).toHaveBeenCalled());
@@ -2291,68 +2330,34 @@ describe('the embedded map’s shell (ADR-0121)', () => {
         expect(draftMarker()).toBe(`pin|35.7148|139.7967|food|${iconForCategory('food')}`);
       });
 
-      // ── 6c: THE PAID ONE, AND IT PAYS ON THE CONFIRM ────────────────────────────
-      it('a tapped sight opens ours with no name, and buys one only on the confirm', async () => {
+      // ── 6c IS GONE, AND THAT IS THE ASSERTION (ADR-0148 §6) ─────────────────────
+      // A tap on one of Google's own sights opened this form and shipped that way; the owner
+      // used it on a phone and had it removed — _"opening a create place form for every hit on a
+      // Google suggestion is very annoying"_. So the POI tap is Google's again, which is
+      // ADR-0125 §6 unamended.
+      //
+      // Pinned as an ABSENCE on purpose. The removal took the phase's only paid gesture with it,
+      // so what must never come back is not just the form but the `resolvePlace` behind it: a
+      // POI tap that spends is the exact failure ADR-0147's own §4 spent three paragraphs
+      // avoiding, and it would be invisible until a bill arrived.
+      it('a tap on one of Google’s sights opens nothing of ours, and spends nothing', () => {
         seed();
-        indexVerbs.resolvePlace.mockResolvedValue({ id: 'p-poi', name: 'Senso-ji' });
         render(wrap(<MapView />));
         tapPoi();
-        expect(draftName().value).toBe('');
-        expect(within(draftForm()!).getByText(t.map.make.googleHint)).toBeTruthy();
-        // **Armed by intent, not by opening** (ADR-0115 §1): an exploratory tap costs nothing.
+        expect(draftForm()).toBeNull();
         expect(indexVerbs.resolvePlace).not.toHaveBeenCalled();
-        // It CAN be confirmed nameless, and it is the one source where that is true: Google's
-        // label is what the Details call buys.
-        confirm();
-        await vi.waitFor(() => expect(addMaybe).toHaveBeenCalled());
-        expect(indexVerbs.resolvePlace).toHaveBeenCalledTimes(1);
-        expect(indexVerbs.resolvePlace).toHaveBeenCalledWith({ googlePlaceId: 'g-poi' });
-        // Nothing was authored, so Google's name stands and no second write happens.
-        expect(indexVerbs.updatePlace).not.toHaveBeenCalled();
-        expect(addMaybe).toHaveBeenCalledWith(
-          'Senso-ji',
-          expect.objectContaining({ placeId: 'p-poi' }),
-        );
+        expect(indexVerbs.createPlace).not.toHaveBeenCalled();
+        expect(addMaybe).not.toHaveBeenCalled();
       });
 
-      it('a name typed over a tapped sight beats Google’s', async () => {
-        seed();
-        indexVerbs.resolvePlace.mockResolvedValue({ id: 'p-poi', name: 'Senso-ji' });
-        render(wrap(<MapView />));
-        tapPoi();
-        nameIt('המקדש עם השער האדום');
-        confirm();
-        await vi.waitFor(() => expect(indexVerbs.updatePlace).toHaveBeenCalled());
-        expect(indexVerbs.updatePlace).toHaveBeenCalledWith('p-poi', {
-          name: 'המקדש עם השער האדום',
-        });
-        expect(addMaybe).toHaveBeenCalledWith(
-          'המקדש עם השער האדום',
-          expect.objectContaining({ placeId: 'p-poi' }),
-        );
-      });
-
-      it('rings the tapped sight rather than pinning it — Google drew one there already', () => {
-        seed();
-        render(wrap(<MapView />));
-        tapPoi();
-        expect(draftMarker()).toBe('ring|35.7148|139.7967||');
-      });
-
-      // **THE TRIP ANSWERS FIRST** (ADR-0134 §1): a sight we already own needs no call at all.
-      it('a tapped sight the trip already owns is a rename, and free', async () => {
+      // …including on a sight the trip already owns, which used to open the form as a free
+      // rename. The pencil is the way to rename, and it is the only one.
+      it('a tap on a sight the trip already owns opens nothing either', () => {
         seedNamed({ googlePlaceId: 'g-poi' });
         render(wrap(<MapView />));
         tapPoi();
-        expect(draftName().value).toBe('רמן נאגי');
-        expect(within(draftForm()!).getByText(t.map.make.ownedHint)).toBeTruthy();
-        nameIt('הרמן ליד המלון');
-        confirm(t.map.make.save);
-        await vi.waitFor(() => expect(indexVerbs.updatePlace).toHaveBeenCalled());
-        expect(indexVerbs.resolvePlace).not.toHaveBeenCalled();
-        expect(indexVerbs.updatePlace).toHaveBeenCalledWith('museum', { name: 'הרמן ליד המלון' });
-        // Already in the trip, so nothing lands: there is no reference to create.
-        expect(addMaybe).not.toHaveBeenCalled();
+        expect(draftForm()).toBeNull();
+        expect(indexVerbs.updatePlace).not.toHaveBeenCalled();
       });
 
       // ── THE PENCIL: REVEALED BY SELECTION (ADR-0147 §3) ─────────────────────────
@@ -2472,6 +2477,187 @@ describe('the embedded map’s shell (ADR-0121)', () => {
         );
         expect(draftName().value).toBe('הספסל');
       });
+
+      // ═══ TOTAL VISIBILITY, AND EVERY WAY OUT (ADR-0148) ═══════════════════════════
+      // Two reports off a real phone: the form's top half was off screen with its actions
+      // still tappable, and an outside tap did not close it. What is pinned here is the three
+      // mechanisms that answer them, each as the property it must satisfy rather than as the
+      // one state that was screenshotted.
+      describe('the form has the room it needs, and one way out', () => {
+        const stop = () => screenEl().dataset.view;
+        /** The sheet's stop, through the control a finger uses. `half` is the default, so it
+         *  is reached by not touching the toggle at all. */
+        const setStop = (view: MapSheetView) => {
+          if (view === MAP_SHEET_VIEW.full) fireEvent.click(toggle(t.map.view.list));
+          else if (view === MAP_SHEET_VIEW.map) fireEvent.click(toggle(t.map.view.map));
+        };
+
+        // ── §2 · THE FORM IMPLIES THE `map` STOP, FROM EVERY ORIGIN ──────────────────
+        // Not "when the room is short": always, so standing the sheet down is the same act as
+        // tapping the view toggle rather than a special behaviour of the form. Stated over all
+        // three origins because the one that matters most is `full`, where the card's room is
+        // NEGATIVE by construction — so the pencil up there used to open a form that could not
+        // be drawn at all.
+        it('normalises the sheet to `map` from every stop, and gives the stop back', () => {
+          for (const from of [MAP_SHEET_VIEW.half, MAP_SHEET_VIEW.full] as const) {
+            cleanup();
+            seedNamed();
+            render(wrap(<MapView />));
+            setStop(from);
+            expect(stop()).toBe(from);
+            holdCanvas();
+            expect(stop(), `opening from ${from} did not normalise`).toBe(MAP_SHEET_VIEW.map);
+            // …and closing gives it back, which is what makes this a DEFERRAL rather than the
+            // loss ADR-0147 rejected ("it takes away the list you were reading").
+            fireEvent.click(within(draftForm()!).getByRole('button', { name: t.map.make.cancel }));
+            expect(stop(), `closing did not restore ${from}`).toBe(from);
+          }
+        });
+
+        // ── §2b · AND THE SHEET STANDS DOWN ENTIRELY, NOT JUST TO `map` ──────────────
+        // At `map` the sheet is nothing but its own 52px strip over a list you cannot see, and
+        // the view toggle in it contradicts a form that just moved you to the canvas. Giving
+        // that height to the canvas is what makes the WHOLE form fit with no scrolling on every
+        // target — with the strip it is 19px short at 360×640 under an Android keyboard.
+        //
+        // The geometry itself is not assertable here (jsdom reports every rect as zero, which
+        // is why `frontend/CLAUDE.md` sends this class of check to a measurement or e2e pass).
+        // What IS assertable is the mechanism: the height goes away, and it comes back.
+        it('gives the sheet’s whole height to the canvas while the form is open', () => {
+          seedNamed();
+          render(wrap(<MapView />));
+          expect(screenEl().style.getPropertyValue('--sheet-h')).not.toBe('0px');
+          holdCanvas();
+          expect(screenEl().style.getPropertyValue('--sheet-h')).toBe('0px');
+          expect(screenEl().dataset.form).toBe('open');
+          fireEvent.click(within(draftForm()!).getByRole('button', { name: t.map.make.cancel }));
+          expect(screenEl().style.getPropertyValue('--sheet-h')).not.toBe('0px');
+          expect(screenEl().dataset.form).toBeUndefined();
+        });
+
+        // ── §1 · ONE QUIET LINE, NEVER TWO ───────────────────────────────────────────
+        // Two short muted clauses each taking a full row plus a gap was 44px of a 223px card,
+        // and they were never both load-bearing at once. Asserted per source, because which of
+        // the two survives is the whole decision.
+        it('gives each source exactly one quiet line under the field', () => {
+          const cases: { name: string; open: () => void; note: string }[] = [
+            // A dropped pin has only its point — there is no address, on purpose.
+            { name: 'a long press', open: holdCanvas, note: '35.7148, 139.7967' },
+          ];
+          for (const c of cases) {
+            cleanup();
+            seed();
+            render(wrap(<MapView />));
+            c.open();
+            const notes = draftForm()!.querySelectorAll('.field-hint');
+            expect(notes, `${c.name} did not render exactly one note`).toHaveLength(1);
+            expect(withoutBidiControls(notes[0].textContent!)).toBe(c.note);
+            // …and the row it replaced is gone, not merely emptied.
+            expect(draftForm()!.querySelector('.map-draft-meta')).toBeNull();
+          }
+        });
+
+        it('the pencil at `full` opens a form the canvas can actually host', () => {
+          seedNamed();
+          render(wrap(<MapView />));
+          setStop(MAP_SHEET_VIEW.full);
+          fireEvent.click(pin('museum')!);
+          fireEvent.click(screen.getByRole('button', { name: t.map.make.rename }));
+          expect(draftForm()).toBeTruthy();
+          expect(stop()).toBe(MAP_SHEET_VIEW.map);
+        });
+
+        // Already at `map`, so there is nothing to defer and nothing to restore — the guard
+        // exists so a cancel cannot push the sheet somewhere the user never was.
+        it('leaves the stop alone when it is already `map`', () => {
+          seedNamed();
+          render(wrap(<MapView />));
+          setStop(MAP_SHEET_VIEW.map);
+          holdCanvas();
+          fireEvent.click(within(draftForm()!).getByRole('button', { name: t.map.make.cancel }));
+          expect(stop()).toBe(MAP_SHEET_VIEW.map);
+        });
+
+        // ── §5 · THE CHROME COMES DOWN, AND THE SHELL NEVER LEARNS WHICH SURFACE ─────
+        it('asks for the chrome while the form is open, and gives it back when it closes', () => {
+          seedNamed();
+          render(wrap(<MapView />));
+          expect(chromeReclaimed()).toBe(false);
+          holdCanvas();
+          expect(chromeReclaimed()).toBe(true);
+          fireEvent.click(within(draftForm()!).getByRole('button', { name: t.map.make.cancel }));
+          expect(chromeReclaimed()).toBe(false);
+        });
+
+        // The two surfaces are ORed by the screen, so neither can take the chrome back while
+        // the other still wants it — which is the whole reason it is one boolean with one
+        // writer rather than a `queryOpen || formOpen` at the shell's read site.
+        it('keeps the chrome down when a form closes over a still-open query', () => {
+          seedNamed();
+          searchStub.predictions = [
+            { googlePlaceId: 'g-1', primaryText: 'Blue Bottle', lat: 35.69, lng: 139.7 },
+          ];
+          render(wrap(<MapView />));
+          openSearch();
+          type('coffee');
+          expect(chromeReclaimed()).toBe(true);
+          fireEvent.click(
+            screen.getByRole('button', { name: t.map.research.addAria('Blue Bottle') }),
+          );
+          expect(chromeReclaimed()).toBe(true);
+          fireEvent.click(within(draftForm()!).getByRole('button', { name: t.map.make.cancel }));
+          // The query field is still open, so the chrome is still wanted.
+          expect(chromeReclaimed()).toBe(true);
+        });
+
+        // ── §E · ONE FUNCTION FOR EVERY WAY OUT ──────────────────────────────────────
+        // `frontend/CLAUDE.md`: a cancel control, a backdrop or OUTSIDE TAP, Escape and the
+        // Android gesture must all run the same handler. The shipped form bound three of four.
+        it('a tap on the canvas closes the form and clears the selection', () => {
+          seedNamed();
+          render(wrap(<MapView />));
+          fireEvent.click(pin('museum')!);
+          fireEvent.click(screen.getByRole('button', { name: t.map.make.rename }));
+          expect(draftForm()).toBeTruthy();
+          tapCanvas();
+          expect(draftForm()).toBeNull();
+          expect(row('רמן נאגי')!.className).not.toContain('selected');
+        });
+
+        // Every way out lands in the same place, which is the point of there being one
+        // function — a table rather than three tests, so a fourth exit cannot quietly differ.
+        it('the cancel, the outside tap and the system back all leave the same state', () => {
+          for (const exit of ['cancel', 'canvas', 'back'] as const) {
+            cleanup();
+            seedNamed();
+            render(wrap(<MapView />));
+            setStop(MAP_SHEET_VIEW.half);
+            holdCanvas();
+            fireEvent.change(draftName(), { target: { value: 'הספסל' } });
+            if (exit === 'cancel')
+              fireEvent.click(
+                within(draftForm()!).getByRole('button', { name: t.map.make.cancel }),
+              );
+            else if (exit === 'canvas') tapCanvas();
+            else pressBack();
+            expect(draftForm(), `${exit} left the form up`).toBeNull();
+            expect(stop(), `${exit} did not restore the stop`).toBe(MAP_SHEET_VIEW.half);
+            expect(draftMarker(), `${exit} left a marker behind`).toBe('');
+          }
+        });
+
+        // A row tap MEANS something else, so it is not swallowed: the form closes and the tap
+        // does what it came to do. One gesture, one intent, never a trap.
+        it('a row tap closes the form and still selects the row', () => {
+          seedNamed();
+          render(wrap(<MapView />));
+          holdCanvas();
+          expect(draftForm()).toBeTruthy();
+          fireEvent.click(row('lunch')!);
+          expect(draftForm()).toBeNull();
+          expect(row('lunch')!.className).toContain('selected');
+        });
+      });
     });
 
     // ─── A ROW TAP FRAMES; A CANVAS TAP PANS (ADR-0134 §6) ─────────────────────────
@@ -2480,8 +2666,6 @@ describe('the embedded map’s shell (ADR-0121)', () => {
     // in a list is the one case where you cannot see the place, and at `full` there is no
     // canvas at all. So the tap's SOURCE decides, and these tests are the split.
     describe('a row tap frames, a canvas tap pans', () => {
-      const framed = () => (document.querySelector('[data-frame]') as HTMLElement).dataset.frame;
-
       it('a trip row tap frames the place', () => {
         seed();
         render(wrap(<MapView />));

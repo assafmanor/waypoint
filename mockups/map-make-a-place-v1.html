@@ -7556,11 +7556,11 @@ body {
    edge and leaves the hatch, which is `.soft`'s own distinguishing mark (ADR-0130 §3's two
    axes: colour-vs-grey primary, hatch as confirmation).
 
-   A TAPPED SIGHT gets no pin at all — Google has already drawn its own icon there, so ours
-   would be two markers for one place, the exact mess ADR-0125 §6 refused. It gets `.map-result`
-   instead: a ring is already this app's word for "a Google-sourced candidate that is not yours
-   yet" (ADR-0132 §6 — a different KIND of object gets a different SILHOUETTE, not another rung
-   on the pin ladder). */
+   THE OTHER TWO SOURCES GET NO MARKER AT ALL, because each already has one: a search result is
+   a ring in `results` and a renamed place has its own selected pin, so a second marker on either
+   would draw one place twice — the exact mess ADR-0125 §6 refused. (A third source, a tap on one
+   of Google's own sights, took a `.map-result` ring for that reason until ADR-0148 §6 removed the
+   source; the variant went with it rather than being left for a caller that no longer exists.) */
 .map-pin.pending .pin-b {
   border-style: dashed;
   border-color: var(--soft-line);
@@ -8816,12 +8816,30 @@ body {
      `.map-split`, whose bottom is the screen's, so the sheet's own height has to be in
      the sum or the card sits behind the sheet — and over the attribution it was meant to
      clear. */
-  bottom: calc(var(--sheet-h, 0px) + var(--map-attr-h, 22px) + 8px);
+  /* `--map-kb-h` is the keyboard's own overlap, and it is 0 on every platform that RESIZES the
+     viewport for it — there the split already paid, so the sheet is the only bottom there is.
+     On iOS the viewport does not shrink: the card lays out with a full canvas of room and the
+     keyboard is simply drawn over it, so every layout number reads healthy while the card is
+     invisible (ADR-0148 §4 — the same shape as ADR-0132 §4's iOS attribution failure). `max`
+     rather than a sum, because the two are alternative floors and never additive. */
+  bottom: max(
+    calc(var(--sheet-h, 0px) + var(--map-attr-h, 22px) + 8px),
+    calc(var(--map-kb-h, 0px) + 8px)
+  );
   z-index: 2;
 }
 .map-placecard .place {
   margin-bottom: 0;
   box-shadow: 0 12px 28px -12px color-mix(in srgb, var(--ink) 45%, transparent);
+}
+
+/* While the make/rename form is open the sheet stands down entirely and the canvas takes its
+   height (ADR-0148 §2). `display: none` rather than a 0px sliver, for the same reason ADR-0132
+   §2 chose it for the reclaimed chrome: the space is the whole point, and it also takes the
+   sheet's controls out of the tab order — while you are naming a point, the view toggle and
+   `קרוב עכשיו` are not part of this surface. */
+.map-screen[data-form='open'] .wp-snapsheet {
+  display: none;
 }
 
 /* ── THE FORM: FOUR SOURCES, ONE CARD (ADR-0147 §4) ──────────────────────────────
@@ -8839,8 +8857,41 @@ body {
    this takes `.place`'s own ground, radius and hairline and `.map-placecard .place`'s floating
    shadow rather than minting a third card. Rendering the first pass against the real
    stylesheets is what showed it had no card at all. */
+/* ── THE GUARANTEE: THE CARD CANNOT BE TALLER THAN THE ROOM IT HAS (ADR-0148 §1) ──
+   The card is anchored to the split's BOTTOM and grows UPWARD, so when the split shrinks —
+   a keyboard on a viewport the platform resizes — a card taller than its container overflows
+   the TOP and is clipped there. What survived was the actions row and what died was the title
+   and the field, which is the worst way round: you could commit a form you could not read.
+
+   More room does not fix that, it only postpones it. Even with the chrome reclaimed and the
+   sheet at `map`, 360×640 is ~39px short. So the card is bounded by what it actually has, and
+   the shortfall becomes a SCROLL instead of a clip.
+
+   The bound is arithmetic over the numbers the card's own `bottom` already uses, so there is
+   nothing to measure and nothing to keep in step: 100% of `.map-split`, minus the controls row
+   it must clear, minus the sheet, minus Google's attribution and its gap. Scoped with `:has`
+   to the card that holds a FORM — the selection card is a 73px row and wants none of this. */
+.map-placecard:has(> .map-draft) {
+  display: flex;
+  max-height: calc(
+    100% - var(--map-controls-h, 46px) - 8px - var(--sheet-h, 0px) - var(--map-attr-h, 22px) - 8px
+  );
+}
+/* A flex item in a container with a max-height: the container settles at
+   `min(content, cap)` and stretch sizes the card to it, which is what makes the cap apply to
+   the CARD rather than merely clipping it. `min-height: 0` is what lets it shrink at all. */
+.map-placecard:has(> .map-draft) > .map-draft {
+  flex: 1 1 auto;
+  min-height: 0;
+}
+
 .map-draft {
   display: grid;
+  /* Pinned head, scrolling middle, pinned foot. The head is `Field` (the title, which is also
+     the label, plus the name row and its hint or error) and the foot is the actions — the three
+     things a keyboard must never take: what am I naming, what have I typed, how do I get out. */
+  grid-template-rows: auto minmax(0, 1fr) auto;
+  overflow: hidden;
   gap: 8px;
   background: var(--card);
   border: 1px solid var(--line);
@@ -8850,11 +8901,29 @@ body {
      large surface — the default step is the control one). */
   --press-scale: var(--press-scale-lg);
 }
+/* The middle. `overscroll-behavior: contain` so reaching its end does not hand the gesture to
+   the canvas underneath — on a surface where a drag pans a map, a scroll chaining out is not a
+   nuisance but a camera move nobody asked for. No edge fade and no rule: the pinned field above
+   is already this region's boundary, and a mask here would clip the pills' own top at rest. */
+.map-draft-scroll {
+  min-height: 0;
+  overflow-y: auto;
+  overscroll-behavior: contain;
+  display: grid;
+  gap: 8px;
+  align-content: start;
+  scrollbar-width: none;
+}
+.map-draft-scroll::-webkit-scrollbar {
+  height: 0;
+  width: 0;
+}
 /* EVERY child, because a grid child defaults to `min-width: auto` and that is what pushed the
    confirm row past the card's own edge on a 360px frame — caught by rendering the proposal
    against these stylesheets, not by reading it. Stated once here rather than per child, so the
    next row added to this card inherits the fix instead of rediscovering it. */
-.map-draft > * {
+.map-draft > *,
+.map-draft-scroll > * {
   min-width: 0;
 }
 /* THE CARD'S HEADING IS THE NAME FIELD'S LABEL — one element, both jobs, because the heading

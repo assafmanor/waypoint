@@ -122,11 +122,23 @@ interface MapScope {
   /** Have we already offered to locate the user this session? */
   locationOffered: boolean;
   markLocationOffered: () => void;
-  /** Is the Map's query field open? (ADR-0132 §1 — the field being OPEN, not a query
-   *  being live: the keyboard appears on focus, before a character exists.) The shell
-   *  is the second consumer, exactly as `allDays` has the `DayStrip`. */
-  queryOpen: boolean;
-  setQueryOpen: (value: boolean) => void;
+  /** **A surface on the Map tab wants the app chrome off** (ADR-0132 §2/§3): the header
+   *  and the tab bar come off screen and the safe-area insets move to the body. The shell
+   *  is the second consumer, exactly as `allDays` has the `DayStrip`.
+   *
+   *  **Named for the WANT, not the cause**, which is what ADR-0132 §2 actually asked for —
+   *  _"the shell is told the surface wants the chrome back, not what the surface is
+   *  doing"_ — and what its first name (`queryOpen`) contradicted. Two surfaces need it now
+   *  and both pop a keyboard on a viewport the platform may resize: the query field
+   *  (ADR-0132 §1 — the field being OPEN, not a query being live) and the make/rename form
+   *  (ADR-0148). A third would be a third writer to this one boolean, not a second `||` in
+   *  `App.tsx`.
+   *
+   *  **One writer, deliberately.** The Map screen derives it from both of its own states and
+   *  pushes the result, so two surfaces can never race to set it false while the other is
+   *  still open. */
+  chromeReclaimed: boolean;
+  setChromeReclaimed: (value: boolean) => void;
   /** A form asking the Map for one place (ADR-0134 §1). The Map reads `pending` to render
    *  its errand mode and `take()`s it when the choice is made or cancelled. */
   errand: Handoff<PlaceErrand>;
@@ -140,7 +152,7 @@ export function MapScopeProvider({ children }: { children: ReactNode }) {
   const [allDays, setAllDays] = useState(false);
   const [focusPlaceId, setFocusPlaceId] = useState<string | null>(null);
   const [locationOffered, setLocationOffered] = useState(false);
-  const [queryOpen, setQueryOpen] = useState(false);
+  const [chromeReclaimed, setChromeReclaimed] = useState(false);
   const errand = useHandoff<PlaceErrand>();
   const errandResult = useHandoff<PlaceErrandResult>();
   const value = useMemo<MapScope>(
@@ -152,12 +164,12 @@ export function MapScopeProvider({ children }: { children: ReactNode }) {
       clearFocus: () => setFocusPlaceId(null),
       locationOffered,
       markLocationOffered: () => setLocationOffered(true),
-      queryOpen,
-      setQueryOpen,
+      chromeReclaimed,
+      setChromeReclaimed,
       errand,
       errandResult,
     }),
-    [allDays, focusPlaceId, locationOffered, queryOpen, errand, errandResult],
+    [allDays, focusPlaceId, locationOffered, chromeReclaimed, errand, errandResult],
   );
   return <MapScopeContext.Provider value={value}>{children}</MapScopeContext.Provider>;
 }

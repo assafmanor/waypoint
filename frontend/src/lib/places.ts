@@ -649,18 +649,6 @@ export function mapsPredictionUrl(prediction: PlacePrediction): string {
   return mapsSearchUrl(label, prediction.googlePlaceId);
 }
 
-/** **"Show me what I just tapped"** for one of Google's own sight icons, which arrives with
- *  a `googlePlaceId` and coordinates and **no name** — because naming it is a Place Details
- *  call, i.e. paying to browse (ADR-0147 §4).
- *
- *  So the coordinates stand in for the query text, which Google's own URL API accepts
- *  alongside `query_place_id`. That makes vetting a candidate free where naming it in our
- *  own card would not be — the same trade ADR-0115 §2 made for a search result, one gesture
- *  along. Same builder, so there is one place that knows the URL shape. */
-export function mapsPlaceIdUrl(googlePlaceId: string, at: { lat: number; lng: number }): string {
-  return mapsSearchUrl(`${at.lat},${at.lng}`, googlePlaceId);
-}
-
 /** **A point, for a human to read** — the confirmation line on a place that has coordinates and
  *  no address, which is exactly what a pin dropped on the canvas is: a reverse geocode is paid
  *  and refused (ADR-0147 §7), so the point itself is what says the pin fell where the finger

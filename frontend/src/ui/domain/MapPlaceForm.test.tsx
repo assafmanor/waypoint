@@ -29,7 +29,7 @@ const CATEGORIES = Object.values(EVENT_CATEGORY);
 const spec = (over: Partial<MapPlaceFormSpec> = {}): MapPlaceFormSpec => ({
   title: t.map.make.dropTitle,
   name: '',
-  meta: '35.7148, 139.7967',
+  note: '35.7148, 139.7967',
   confirmLabel: t.map.make.add,
   ...over,
 });
@@ -182,12 +182,16 @@ describe('MapPlaceForm — what may be submitted', () => {
     expect(onConfirm).toHaveBeenCalledWith(expect.objectContaining({ name: 'הספסל' }));
   });
 
-  it('allows an empty name where Google is going to supply one', () => {
-    const { onConfirm } = mount({ nameOptional: true, hint: t.map.make.googleHint });
-    expect(confirmBtn().disabled).toBe(false);
-    fireEvent.click(confirmBtn());
-    expect(onConfirm).toHaveBeenCalledWith(expect.objectContaining({ name: '' }));
-    expect(screen.getByText(t.map.make.googleHint)).toBeTruthy();
+  // Every remaining source either types a name or arrives with one, so there is no escape from
+  // this and there should not be: an empty submit would write a nameless place. The one source
+  // that had an escape — a tapped sight, whose confirm bought Google's label — was removed
+  // (ADR-0148 §6), and `nameOptional` went with it rather than being left for nobody.
+  it('has no way to submit an empty name at all', () => {
+    const { onConfirm } = mount({ note: 'Kabukicho' });
+    expect(confirmBtn().disabled).toBe(true);
+    fireEvent.keyDown(nameField(), { key: 'Enter' });
+    expect(onConfirm).not.toHaveBeenCalled();
+    expect(screen.getByText('Kabukicho')).toBeTruthy();
   });
 
   it('does not confirm while a write is in flight', () => {

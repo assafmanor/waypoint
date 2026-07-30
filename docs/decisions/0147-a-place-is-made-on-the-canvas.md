@@ -4,7 +4,8 @@
 
 > **Date:** 2026-07-30
 > **Rewritten, not amended.** The first draft covered 6b + 6c alone. The owner then added **naming and renaming any place**, which turned out to be the same act and reframed the whole surface — so this file was rewritten against [`mockups/map-make-a-place-v1.html`](../../mockups/map-make-a-place-v1.html), the approved design. §1–§3 below are the two gestures, unchanged from that draft; §4 onward is the form the four sources share.
-> **Amends** [0125](0125-map-canvas-terrain-vocabulary.md) §6 — a POI tap still never stacks two cards, and the card it leaves standing is now **ours**. The owner's constraint is honoured by suppressing Google's, not by exempting the tap.
+> **Amended by** [0148](0148-the-place-form-has-the-room-it-needs.md) the same day, from three reports off a real phone, in four places. Read it before touching this surface: the **fourth source is gone** (a form on every POI tap is noise, so §4's POI column and the `stop()` below it are removed and ADR-0125 §6 stands unamended); the form now **implies the `map` stop** and the sheet stands down, which reverses the "normalise the sheet" rejection in Alternatives — both halves of it; §3's coordinates row and §4's hint are **one** quiet line rather than two; and §7's pencil only works from a sheet row because of that normalisation plus a measured camera reserve, since at the `full` stop this card's room is **−38px, constant**.
+> **Amends** [0125](0125-map-canvas-terrain-vocabulary.md) §6 — a POI tap still never stacks two cards, and the card it leaves standing is now **ours**. The owner's constraint is honoured by suppressing Google's, not by exempting the tap. **Reverted by [0148](0148-the-place-form-has-the-room-it-needs.md) §6:** §6 stands as originally written.
 > **Amends** [0131](0131-map-search-is-a-control-not-a-screen.md) §11 — the three-source table gains a **fourth** source, §9's two build-time questions are answered here, and one shipped behaviour changes: outside an errand a search result's add now opens the form instead of shelving straight away (§6).
 > **Amends** [0110](0110-maps-and-places-frontend-architecture.md) §1 — "the user's label is preserved on enrich" now covers `icon` as well as `name`, and it is a rule with a surface rather than an implementation detail (§4).
 > **Builds** [0131](0131-map-search-is-a-control-not-a-screen.md) §9 (the long press, designed there and unbuilt since) on [0145](0145-the-canvas-takes-a-one-finger-zoom.md)'s recogniser.
@@ -49,7 +50,7 @@ A long press yields a **pixel**; the write needs a `LatLng`. ADR-0129 §3 warns 
 - **The nullable `@@unique([tripId, googlePlaceId])` does let several coordinate-only places coexist.** Postgres treats `NULL`s as distinct in a unique index (`NULLS NOT DISTINCT` is opt-in and not used here), so N dropped pins on one trip are N rows. **Verified against a real Postgres, not reasoned** — this is precisely the assumption the phase was told to check rather than assume.
 - **`createPlace` already accepts what a dropped pin is.** `createPlaceSchema` has `name` required and `googlePlaceId`/`lat`/`lng` optional, and `places.service.create` writes `lat`/`lng` straight through. So (b) needed **no** endpoint change — which the backlog had listed as a blocker on the strength of "the only create path is `createPlace({ name })`". That was true of the _call sites_, not of the endpoint. (`icon` is a change, and it is §5's, not this one's.)
 - **But `create` never resolved the timezone, and that is a real gap this phase must not walk past.** `resolveTimezone` (geo-tz) was called only on the enriched path, because until now the only place with coordinates came from Google. A dropped pin has coordinates and would land with `timezone: null`, so ADR-0107's per-event zone would silently fall back to the trip's — wrong for exactly the traveller who drops a pin across a border. The zone is now resolved in `create` too, and re-resolved in `update` when **both** coordinates change. **It is a fix to the endpoints, not a special case for the map:** any caller that supplies coordinates gets the zone, which is what the field meant all along.
-- **No reverse geocode.** §9's call, unchanged: it is paid, and the user is typing the name anyway. The coordinates are shown instead, as confirmation that the pin fell where the finger was.
+- **No reverse geocode.** §9's call, unchanged: it is paid, and the user is typing the name anyway. The coordinates are shown instead, as confirmation that the pin fell where the finger was. ([ADR-0148](0148-the-place-form-has-the-room-it-needs.md) §1 makes that the card's **one** quiet line, in `Field`'s hint slot — a drop shows the point, the other sources show the address, and never both a hint and a coordinates row.)
 
 ### 4. Four sources, one form, because a place's NAME is the user's
 
@@ -62,9 +63,13 @@ This is the decision the rewrite exists for, and the one that made the feature c
 | Costs             | nothing            | one Details call **on confirm** | nothing (Text Search paid already) | nothing                    |
 | Vet before commit | you chose the spot | the free `place_id` deep-link   | the free deep-link                 | it is already yours        |
 
+**The 6c column above is history, not behaviour** — [ADR-0148](0148-the-place-form-has-the-room-it-needs.md) §6 removed that source on the owner's report the same day, so the shipped form has **three**. The rest of this section is unchanged by that: the claim was never about the count.
+
 **They are one act in four states, and the state is only what the field starts as.** So they share one form — **name · the app's own `IconPicker` · nine categories** — and only the title, what is prefilled, the hint and the confirm's word differ. A fifth source is a new spec object, not a new flow.
 
 **AND IT IS NOT A NEW POLICY — IT IS AN EXISTING ONE GETTING A SURFACE.** `places.service.ts`'s `enrichExisting` writes `googlePlaceId`/`address`/`lat`/`lng`/`timezone` and **deliberately not `name`**; `createEnriched`'s own comment states the other half ("a fresh pick has no user-authored name, so it takes Google's displayName"). _Your name outranks Google's_ is already how this system behaves, **implemented as an absence**. Renaming is the missing way in to a rule the backend has always kept — and `icon` now sits on the same protected side of it.
+
+**The next three paragraphs are the removed 6c source and describe nothing that ships** ([ADR-0148](0148-the-place-form-has-the-room-it-needs.md) §6): the `stop()`, the unprefilled-name reasoning, the ⟨חלופה⟩ costing, and the free owned-sight rename all went with it. Kept because the _costing_ is the durable part — if prefilling a POI name is ever wanted, this is what it costs.
 
 **A POI tap is answered by OUR card, because Google's is suppressed.** ADR-0125 §6's rule is "never two cards", not "Google answers POI taps" — the owner's words were about a mess, and clearing our selection was the means, not the end. Calling **`stop()`** on the click suppresses Google's info window, so ours is the only one and §6 holds by construction. Our selection still clears, exactly as §6 says; it is simply replaced by the form rather than by nothing.
 
@@ -122,6 +127,8 @@ Every obvious slot on the row is already spent:
 
 It is **absent under an errand**, like every other verb on this row.
 
+**What this section got wrong, and [ADR-0148](0148-the-place-form-has-the-room-it-needs.md) §2/§3 fixed:** the pencil sits on a **sheet row**, so unlike the two canvas gestures it can be pressed at the `full` stop — where the card's room is **−38px** — and on a row whose pin is off screen or not drawn at all. §1's "the gesture can only start on visible canvas" was true of the gestures and false of the pencil. The form now normalises the sheet to `map` and frames its subject from **every** source.
+
 ### 8. Two markers, and which one is not a style choice
 
 **6b marks its spot with OUR pin**, dashed — ADR-0011's soft grammar reused for "provisional", not a new colour — and in the category's hue, so the pills move it. It lands on bare canvas, and nothing else says where it went.
@@ -147,7 +154,7 @@ It is **absent under an errand**, like every other verb on this row.
 - **The icon on the existing `MaybeItem`** (zero migration). §5 — it is lost when the idea is deleted, and the icon is the place's.
 - **A cross-trip global place cache.** §5 — disqualified by `Place.icon`, recorded here because it is a tempting future optimisation.
 - **A search result keeping its no-form add.** §6 — it would leave one of the four sources speaking a different grammar, and the place would enter the trip with a name to correct later.
-- **Normalise the sheet to `map` on a drop**, so the card has room. Rejected: it takes away the list you were reading, and the card renders at every stop for a reason that is not about room — a place that is not in the trip yet has **no row at any stop**, which is the sharpest case of ADR-0122 §7 rather than an exception to it.
+- **Normalise the sheet to `map` on a drop**, so the card has room. Rejected: it takes away the list you were reading, and the card renders at every stop for a reason that is not about room — a place that is not in the trip yet has **no row at any stop**, which is the sharpest case of ADR-0122 §7 rather than an exception to it. **Reversed by [ADR-0148](0148-the-place-form-has-the-room-it-needs.md) §2**, on two facts this bullet was argued without: the list you were reading is already behind a keyboard (and the sheet **returns** to its stop, so nothing is taken), and at the `full` stop the card's room is negative, so §7's pencil opens a form that cannot be drawn. The ADR-0122 §7 half stands — the card still renders where there is no row; it renders it at `map`.
 
 ## Consequences
 
