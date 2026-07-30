@@ -17,6 +17,7 @@ import {
   type Destination,
 } from '@waypoint/shared';
 import { useBackLayer } from '../state/nav-state';
+import { useExitTransition } from '../lib/useExitTransition';
 import { t } from '../i18n/he';
 
 const ALL = 'all';
@@ -40,6 +41,12 @@ export function IconPicker({
   destinations?: readonly Destination[];
 }) {
   const [open, setOpen] = useState(false);
+  // The panel LEAVES as well as arrives (ADR-0144). It bypasses `Modal` on purpose — it is
+  // anchored to its trigger inside a form, not a layer over the screen — so it missed
+  // ADR-0140's enter/exit and snapped shut on all three of its exits. Every one of them
+  // routes through `beginClose` now, which is the same "one dismissal, one path" rule the
+  // back stack itself runs on (ADR-0103 §2).
+  const { closing, beginClose } = useExitTransition(() => setOpen(false));
   const [activeCat, setActiveCat] = useState<string>(ALL);
   const [query, setQuery] = useState('');
   const wrapRef = useRef<HTMLDivElement>(null);
@@ -56,14 +63,14 @@ export function IconPicker({
   // Registered on `open`, which is what makes the ordering right: the panel opens after its
   // host form mounted, so its layer lands ABOVE the form's and peels first.
   useBackLayer(() => {
-    setOpen(false);
+    beginClose();
     return { remainsActive: false };
   }, open);
 
   useEffect(() => {
     if (!open) return;
     const onDocClick = (e: MouseEvent) => {
-      if (wrapRef.current && !wrapRef.current.contains(e.target as Node)) setOpen(false);
+      if (wrapRef.current && !wrapRef.current.contains(e.target as Node)) beginClose();
     };
     // No Escape listener: the back layer above owns it (ADR-0103 §2). This hook
     // used to add one, and it was DEAD — a bubble-phase listener on `document`,
@@ -74,13 +81,15 @@ export function IconPicker({
   }, [open]);
 
   const toggle = () => {
-    setOpen((v) => !v);
+    // Closing goes through the exit; opening is immediate.
+    if (open) beginClose();
+    else setOpen(true);
     setQuery('');
   };
 
   const pick = (glyph: string) => {
     onChange(glyph);
-    setOpen(false);
+    beginClose();
   };
 
   const cell = (glyph: string, label?: string) => (
@@ -118,7 +127,12 @@ export function IconPicker({
       </button>
 
       {open && (
-        <div className="icon-panel" id={panelId} role="dialog" aria-label={t.iconPicker.title}>
+        <div
+          className={closing ? 'icon-panel is-closing' : 'icon-panel'}
+          id={panelId}
+          role="dialog"
+          aria-label={t.iconPicker.title}
+        >
           <div className="icon-panel-head">
             <span className="lbl">{t.iconPicker.title}</span>
           </div>

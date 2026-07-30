@@ -4037,3 +4037,49 @@
 .ms-fact .v.mono {
   font-family: var(--font-mono);
 }
+
+/* ============================================================
+   THE ANCHORED PANELS ARRIVE AND LEAVE (ADR-0144)
+
+   `IconPicker` and `TimePicker` deliberately bypass `Modal` — they are popovers
+   anchored to their trigger inside a form, not layers over the screen, so `Modal` would
+   pull them out of the flow they belong in (the same distinction ADR-0121 §5 draws for
+   `SnapSheet`). That also meant they missed ADR-0140's enter/exit entirely and were the
+   last two surfaces in the app that still snapped shut.
+
+   They do NOT rise like a sheet and they are NOT summoned like a dialog: both would be
+   lying about where they came from. An anchored panel grows from the edge it is attached
+   to, which `transform-origin` says and the scale performs — hence a Y-axis scale from
+   the trigger's edge rather than a translate from off-screen.
+
+   Exit is briefer than entrance (`--t-quick` / `--t-base`), like every other surface.
+   ============================================================ */
+.icon-panel {
+  transform-origin: top center;
+  animation: panel-open var(--t-base) var(--ease-arrive) both;
+}
+.icon-panel.is-closing {
+  animation: panel-open var(--t-quick) var(--ease-exit) reverse both;
+}
+/* The time panel wraps BELOW its trigger row in flow (see its base rule), so it grows
+   from the top edge too — but it must not animate `height`, which would reflow the form
+   on every frame. Scale + opacity only, and the row it wraps onto is already reserved. */
+.tp-panel {
+  transform-origin: top center;
+  animation: panel-open var(--t-base) var(--ease-arrive) both;
+}
+.tp-panel.is-closing {
+  animation: panel-open var(--t-quick) var(--ease-exit) reverse both;
+}
+@keyframes panel-open {
+  from {
+    opacity: 0;
+    /* Scaled on Y only: an anchored panel unfolds from its edge. A uniform scale reads
+       as a dialog being summoned, which is the other variant's job. */
+    transform: scaleY(0.88) translateY(-4px);
+  }
+  to {
+    opacity: 1;
+    transform: none;
+  }
+}

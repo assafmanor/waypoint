@@ -13,6 +13,7 @@
 // endpoint; see WhenField.)
 import { useMemo, useState } from 'react';
 import { useBackLayer } from '../state/nav-state';
+import { useExitTransition } from '../lib/useExitTransition';
 import { OVERNIGHT } from '../constants';
 import { t } from '../i18n/he';
 import { hoursPhrase } from '../lib/duration';
@@ -83,10 +84,15 @@ export function TimePicker({
       ? durPresets.reduce((a, b) => (Math.abs(b - duration) < Math.abs(a - duration) ? b : a))
       : null;
 
-  const close = () => {
+  // Same as `IconPicker` (ADR-0144): an anchored panel that deliberately bypasses `Modal`,
+  // so it missed ADR-0140's enter/exit. `close` is already the one owner of leaving here —
+  // the backdrop, the back layer and a commit all call it — so wrapping it gives every exit
+  // the animation without adding a second path.
+  const { closing, beginClose } = useExitTransition(() => {
     setOpen(null);
     setNote(null);
-  };
+  });
+  const close = beginClose;
 
   // **THE PANEL IS A BACK LAYER** (owner, session 176). Its `.tp-backdrop` exists purely so a
   // tap outside closes it — an implicit way out — so a system back owes the same one. Without
@@ -173,8 +179,8 @@ export function TimePicker({
 
           {open === 'dur' && startMin != null && (
             <>
-              <div className="tp-backdrop" onClick={close} />
-              <div className="tp-panel">
+              <div className={closing ? 'tp-backdrop is-closing' : 'tp-backdrop'} onClick={close} />
+              <div className={closing ? 'tp-panel is-closing' : 'tp-panel'}>
                 <div className="tp-exact">
                   <span className="tp-exact-lbl">{t.eventForm.exactEnd}</span>
                   {/* Uncontrolled (defaultValue), not value={end}: the OS time wheel

@@ -41,7 +41,15 @@ export function useExitTransition(onClose: () => void, token = '--t-quick') {
       return;
     }
     setClosing(true);
-    timer.current = setTimeout(() => onCloseRef.current(), wait);
+    timer.current = setTimeout(() => {
+      // Reset BEFORE handing back, so the hook is reusable by a surface that persists
+      // and re-opens. `Modal` unmounts on close and never needed it; the anchored panels
+      // do not — without this, `closing` stayed true and the guard above made every
+      // subsequent close a no-op, so a picker would open once and then never shut.
+      timer.current = undefined;
+      setClosing(false);
+      onCloseRef.current();
+    }, wait);
   }, [token]);
 
   // A caller that tears the surface down for its own reasons must not be called back
