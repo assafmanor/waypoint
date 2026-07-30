@@ -121,6 +121,15 @@ was one of these hard cuts.
   switch, which already has `.body`'s fade and must not get a second animation over it.
   The same key that replays the animation is what scopes it to shell navigation — no
   route list to keep in sync.
+- **The direction is LATCHED at arrival, not read live** (corrected 2026-07-31, session
+  192). How you arrived is a fact about the arrival; read every render it becomes a fact
+  about the most recent `navigate`. The trip's back guard pushes a **same-URL** entry a
+  beat after you enter a trip (ADR-0103) with no state, so it reads as forward — same
+  pathname, same key, nothing remounts, and yet `data-nav` changing value is enough to
+  start a _second_ animation. The shell slid 28px into a screen that had already arrived.
+  Invisible for as long as every arrival was `forward` (the attribute never changed
+  value); immediate once §7 gave arrivals a second manner. `RouteShell` now captures it
+  once, in a `useState` initialiser under the same pathname key.
 - **RTL rides the one `--dir` sign.** `translateX` has no logical form, and in RTL the
   inline-end edge is the **left** one, so a forward arrival travels negative. Forward
   comes from inline-end (the platform push, mirrored), back from inline-start.
@@ -234,6 +243,59 @@ silently:
   and shared from the start for the rest of this class (day and member counts, Home's
   glance figures).
 
+### 7. Journey 3 — the trip you picked comes with you, added 2026-07-31 (session 192)
+
+The last unbuilt piece of the brief's map, and the only **shared element** in the app: the
+trip card in `/trips` was the one place where tapping something took you somewhere without
+carrying it with you.
+
+- **The glyph travels, not the card.** A shared element has to be the same object at both
+  ends. The glyph is — same character, 23px in the paper row, 26px in the hero, 22px on the
+  pill. The trip **name** is not: between the two surfaces it changes font size, colour,
+  neighbours and truncation, so carrying it would be two different objects pretending to be
+  one. The tile travels with the glyph and dissolves over the first 60% of the flight, which
+  is what makes the arrival a bare glyph sitting on the pill rather than a swatch landing on
+  the chrome.
+- **The destination is measured, never declared.** This is the third time this codebase has
+  had to learn it — ADR-0142's invented `118px`, ADR-0143's `58px` stamp offset — so the
+  landing rect is read off `.trip-icon` itself, and the **e2e spec asserts the flight's own
+  final keyframe against the pill's settled box**. That is the whole test: where did the code
+  aim, and is that where the target actually is.
+- **A handoff arrival does not translate** — `NAV_DIR.HANDOFF`, a _manner_ rather than a
+  direction, riding the same `location.state` key because a second channel saying the same
+  kind of thing about the same navigation is the duplication rule 8 exists to prevent. Two
+  reasons, and the second is correctness: the flying glyph is already the answer to "where
+  did this come from", and a transform on the ancestor would offset the measured rect by up
+  to `--route-offset`, so the glyph would land _beside_ its target. The handoff and §3's
+  slide are alternatives, never both.
+- **The pill hides its own glyph until the landing**, and the removal of the clone and the
+  reveal of the real one are **one commit** — a fade at the end would leave a frame with
+  neither on screen. Which is only safe because the landing is exact.
+- **A module store, not `useHandoff`** (`lib/handoff.ts`, ADR-0134 §2's one-shot request):
+  the two ends straddle a route change, so the state would have to live in `App` above
+  `AppRoutes`, and every update would re-render the whole route tree at exactly the moment
+  the new route is mounting. And **not `useDragGhost`**, which also floats a stand-in for a
+  real element but clones the DOM inside one screen and follows a finger with no animation —
+  its clone keeps its looks only because it never leaves the subtree whose CSS paints it.
+  The two share just "a fixed box measured from a source rect"; folding them together means
+  reworking a live gesture path, which rule 8 says to ask about rather than do quietly.
+- **The wait is part of the gesture.** The glyph is picked up _before_ the trip shell
+  exists — a boot fetch away — so it lifts (scale + shadow, `--t-quick`) and holds until the
+  pill claims it, then sets back down as the flight begins. `TRIP_HANDOFF.STRAND_MS` bounds
+  the wait: nothing claimed it means a redirect or a boot that failed, and a glyph pinned
+  over the app with the pill's own icon hidden behind it is worse than no animation.
+- **Spends nothing from the cinematic budget.** The flight is `--t-deliberate`; the hold is
+  a wait, not a beat.
+
+One thing the build changed about the flight: the tile's dissolve is its **own** animation
+rather than a keyframe inside it, because `--ease-arrive` is front-loaded by design and
+keyframe offsets are sampled against the _eased_ progress — an `offset: 0.6` under it had
+the tile gone in the first fifth of the travel, before the object had visibly left the list.
+
+Also fixed here because it is the same domain and one line: `/trips`' back arrow into the
+live trip stamped nothing, so the one back in the app that bypasses the resolver was also
+the one that advanced.
+
 ## Build log
 
 **Session 190 (2026-07-31)** — built in the order the brief set out (G1 → G3 → G2), each
@@ -260,3 +322,25 @@ mirror off the single sign (rtl −884px, ltr +882px), and — in the built app 
 exactly viewport height with no scrollbar, the whole token layer resolving, and **no
 transform left behind** after the route animation, which would otherwise have made the
 wrapper a containing block for every `position: fixed` descendant.
+
+**Session 192 (2026-07-31)** — §7, and the §3 correction it exposed.
+
+The handoff was watched frame by frame in Chromium, by slowing the ramp tokens (which both
+the CSS and `motionDurationMs` read, so the whole gesture slows together) and sampling the
+clone's box, its fill and the shell's transform on every frame. That is what found both
+defects, and neither would have failed a test:
+
+1. **The shell slid 28px under the flying glyph.** `data-nav` was read live, so the trip
+   back guard's same-URL push flipped it from `handoff` to `forward` a beat after arrival
+   and started a second animation on a screen that had already arrived. Latched at arrival
+   now (§3). The pill's measured position moved 334 → 306 → 334 during the flight, which is
+   what the trace showed before the cause was known.
+2. **The tile dissolved in the first fifth of the travel**, because a keyframe `offset` is
+   sampled against `--ease-arrive`'s front-loaded progress. Now its own linear animation.
+
+The landing itself was verified numerically rather than by eye: the clone converged to the
+pill's box exactly (334, 23, 27×22) and the swap to the real glyph left it in the same
+place. The e2e spec asserts that permanently, against the flight's own final keyframe.
+
+**Still a human pass:** whether the hold before the flight reads as "held" or as "stuck" on
+a slow connection, and whether 1.08 is the right amount of lift.

@@ -177,6 +177,21 @@ router and the toast), so it can't be rendered bare. Use `wrapNav` from
 - A chip/search/scope control `.filter()`ing rows out of the array instead of the
   shared reveal (ADR-0120) — the Map jumped for two releases because the Index's
   motion was a one-off.
+- **Reading a per-arrival fact live instead of latching it**, and its twin, **putting a
+  keyframe `offset` under a non-monotone easing**. Both shipped in one afternoon and
+  neither could fail a test (ADR-0140 §7's build log). The route transition's `data-nav`
+  was read every render, so the trip back guard's **same-URL** push (ADR-0103, no state →
+  reads as forward) restarted the animation on a screen that had already arrived — a
+  same pathname means the same key and no remount, but the attribute changing value is
+  enough. And `--ease-arrive` overshoots, so keyframe offsets are sampled against a
+  front-loaded progress: an `offset: 0.6` fires in the first fifth. If a value describes
+  the **arrival**, capture it at mount; if a channel needs its own clock, give it its own
+  animation.
+- **A landing position written as a constant instead of measured.** Three times now:
+  ADR-0142's `--birth-card-top: 118px`, ADR-0143's `58px` stamp offset, and the trip
+  handoff's target. Measure the destination element, and assert the aim against its
+  settled box in an e2e spec — jsdom reports every rect as zero, so this whole class of
+  bug is invisible to the unit suite by construction.
 - Handing a `memo`ized component a **fresh object or function each render** on a
   screen that re-renders on the clock. `screens/Map.tsx` ticks every second, and
   `MapPane` holds a live `google.maps.Map` where a needless re-diff of every

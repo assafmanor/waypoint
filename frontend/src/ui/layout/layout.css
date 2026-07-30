@@ -91,3 +91,39 @@
 .wp-grid {
   display: grid;
 }
+
+/* ── The trip handoff's travelling glyph (ADR-0140 §7) ────────────────────────
+   The stand-in that carries a trip's glyph from the all-trips list onto the shell's
+   switcher pill. Size, position, fill and radius are written from JS — the tapped
+   tile's own measured box and computed paint — so nothing here may declare them.
+
+   Two transform animations, one per state, because the wait is part of the gesture:
+   `lift` is the pick-up (it plays on mount and holds), `land` sets it back down as the
+   flight begins. The flight itself is a Web Animations call on the geometry, so the two
+   never contend for the same property. */
+.handoff-glyph {
+  position: fixed;
+  /* Above every overlay (Modal is 20). Nothing may cover an object in flight, and it is
+     inert decoration for the few frames it exists. */
+  z-index: 30;
+  display: grid;
+  place-items: center;
+  line-height: 1;
+  pointer-events: none;
+  animation: handoff-lift var(--t-quick) var(--ease-arrive) forwards;
+}
+.handoff-glyph.is-landing {
+  animation: handoff-land var(--t-base) var(--ease-standard) forwards;
+}
+@keyframes handoff-lift {
+  to {
+    transform: scale(1.08);
+    box-shadow: var(--elevation-floating);
+  }
+}
+@keyframes handoff-land {
+  from {
+    transform: scale(1.08);
+    box-shadow: var(--elevation-floating);
+  }
+}
