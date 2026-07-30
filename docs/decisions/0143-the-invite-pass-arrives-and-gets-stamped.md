@@ -140,13 +140,34 @@ because one stamp is what makes the block hide.
 
 ## Consequences
 
-- The anonymous Google detour is now **visible**. It auto-joins on return via
-  `consumeJoinIntent()`, which the brief flagged as the app deciding while the user
-  watches a redirect. The fix turned out not to need a second tap — ADR-0024's explicit
-  tap already happened before leaving — it needed the outcome to be _shown_, and the
-  stamp/tear sequence does that. The return now lands on the pass and stamps it.
+- The anonymous Google detour is handled in **§8** — the claim that once stood here, that
+  the stamp sequence made it "visible" enough, did not survive a device.
 - `.join-status` survives for offline only. Any new load state has to decide which it is:
   a refusal (render the pass) or a fact about the network (a sentence).
+
+### 8. The anonymous return waits for a tap (device pass, 2026-08)
+
+This ADR shipped claiming the anonymous detour was now "visible", because the stamp and
+tear play on the way in. **On a phone it is not.** The owner's device pass reported the
+flow as "invite page → login → automatically joined", which is what it is: a flag saved
+before leaving (`saveJoinIntent`) was consumed on return and fired the join for you. The
+pass does appear, briefly, mid-sequence — and briefly is indistinguishable from not at all
+when you have just come back from an OAuth redirect and are not yet looking.
+
+The original reasoning was defensible: ADR-0024 treats tapping "Continue with Google" as
+the explicit confirmation, so a second tap looks redundant. What that misses is **what the
+tap is for**. It is not consent paperwork; it is the moment you read who invited you, where
+they are going, and who is already in. Auto-joining spends the screen and delivers none of
+it.
+
+So the return lands on the pass with the CTA reading "Join", and the join happens on a tap
+made while looking at the invitation. `saveJoinIntent`/`consumeJoinIntent`, their storage
+key and their tests are deleted rather than left dead.
+
+**The general lesson, since this is the third time in the pass:** "the animation makes it
+visible" is a claim about perception, and perception is exactly what a build cannot verify
+about itself. Every claim of that shape in this pass has needed a device — the misplaced
+card, the blank born screen, and now this.
 
 ## What this ADR does not settle
 
