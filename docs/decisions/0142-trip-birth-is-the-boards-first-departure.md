@@ -143,3 +143,22 @@ cheaper, smoother, and it removed the width interpolation entirely.
 One graceful-absence fix: `ResizeObserver` is absent in jsdom, so it is guarded rather
 than shimmed in tests. The one-shot measurement is what correctness depends on; the
 observer only keeps it fresh.
+
+**CORRECTED off a device the same day (session 191).** The owner opened `/new` on a real
+phone and the shared card was floating **over the destination and date fields**. The
+cause was in this ADR's §1 as first built: the card is absolutely positioned, so its
+resting `top` has to be measured — but the born slot does not exist during the form
+phase, so instead of solving that the build invented `--birth-card-top: 118px` as a
+fallback and never set it. 118px is not where anything is.
+
+The position is now measured every phase from whichever slot that phase owns, and the
+travel is a **WAAPI FLIP**: capture the top before the phase change, let React lay the new
+phase out, play the difference as a transform. No second slot has to exist early, no
+constant is invented, and it survives a form whose height changes as fields fill in. The
+card is also hidden until the first measurement lands, since painted before it, it sits
+briefly over the header.
+
+**This is the entry that justifies the "watch it on a device" line above.** 1803 tests
+passed with the card in the wrong place, because jsdom reports every rect as zero — no
+unit test on this codebase can see a layout defect. The prediction that the device pass
+would find something the tests could not was correct, and it took one screenshot.

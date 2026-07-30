@@ -1,4 +1,4 @@
-# Session 190 — the shell learns to move, and a trip gets born (2026-07-31)
+# Session 190 — the shell learns to move, a trip gets born, and a pass gets stamped (2026-07-31)
 
 [ADR-0140](../decisions/0140-motion-foundations-overlays-arrive-taps-answer-routes-have-a-direction.md)
 (the foundations) and
@@ -102,9 +102,46 @@ that exactly one card exists rather than two cross-fading) — but nobody has se
 and no test answers how it feels. **That is the next thing owed, and it is the one that
 can still find a defect the tests cannot**, as ADR-0121's build log kept proving.
 
+## Journey 2, and two more findings (same session)
+
+The invite join shipped too ([ADR-0143](../decisions/0143-the-invite-pass-arrives-and-gets-stamped.md)),
+and it produced the sharpest lesson of the session twice over.
+
+**The tests found a real bug in the mechanism they were written for.** `JoinTrip` had no
+test file at all — the same gap session 186 found on `CreateTrip`, on the _other_
+first-run surface. Its first tests immediately caught that arming the tear and the
+handoff timers together stranded the user on a torn pass forever: advancing to `torn`
+re-runs the effect, and its cleanup cancelled the pending navigation. That is twice in
+one session that writing the test for a new state machine found the defect rather than
+confirming its absence.
+
+**And my own mockup was wrong twice, in ways only the build could see.** It stamped the
+pass in **teal**, which ADR-0028 reserves for location — being admitted is a _status_, so
+`--ok`/`--miss`. And it drew the refused trip struck through, which assumes a preview the
+API does not return for a dead code: `fetchInvitePreview` is what failed, so there is
+nothing to draw. A motion mockup can be right about every beat and still be wrong about
+what data exists.
+
+## Then the device pass landed, and it was worth every word spent predicting it
+
+The owner opened `/new` on a real phone. **The shared card was floating over the
+destination and date fields.** The cause was mine and it was lazy: the card is absolutely
+positioned, so its resting `top` must be measured — but the born slot does not exist
+during the form phase, so rather than solve that, the build invented
+`--birth-card-top: 118px` and never set it.
+
+**1803 tests passed with the card in the wrong place**, because jsdom reports every rect
+as zero. No unit test on this codebase can see a layout defect. Everything above about
+"the sequence has not been watched" was not modesty — it was the actual risk, and one
+screenshot cashed it in.
+
+Fixed by measuring the position every phase from whichever slot that phase owns, and
+making the travel a WAAPI FLIP. Recorded in ADR-0142's build log, where the defect was.
+
 ## Next
 
-Journey 2 — the invite join, on `motion-join-v1.html`, with its own ADR. It carries a
-non-motion finding worth building alongside the beats: the anonymous Google detour
-auto-joins on return via `consumeJoinIntent()`, so the app decides while the user is
-looking at a redirect.
+Journey 4's micro-beats — `SyncBadge` resolving, `ToggleChip`/`ChoiceGrid` selection,
+`StatusBanner` arrival, and the remaining value counts now that `useCountUp` exists. Plus
+two named follow-ups: the **removed-member** refusal must not reuse the expiry stamp, and
+Journey 3's `IconPicker`/`TimePicker`/`ZonePicker` still bypass `Modal`, so they missed
+G1's enter/exit.
