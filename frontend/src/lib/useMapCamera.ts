@@ -46,7 +46,7 @@ import {
   type LatLng,
   type MapBounds,
 } from './map-camera';
-import { doubleTapZoom } from './drag-zoom';
+import { doubleTapZoom, zoomAboutPoint, type WorldPoint } from './drag-zoom';
 import { prefersReducedMotion } from './motion';
 import { MAP_CAMERA_EASE, MAP_ZOOM } from '../constants';
 
@@ -80,11 +80,15 @@ export interface MapCamera {
    *  It exists so the gesture is a CALLER of this hook rather than a second writer of the
    *  camera, which is ADR-0129 §3's invariant. */
   zoomTo: (zoom: number) => void;
-  /** One eased level in, about the current centre — the double-tap we take over from
-   *  Google because intercepting the gesture suppressed its own (ADR-0145 §2). Eased,
-   *  unlike `zoomTo`: this one is a discrete move the user asked for once, so it collapses
-   *  to a single `moveCamera` under reduced motion like every other (§7). */
-  stepZoomIn: () => void;
+  /** One eased level in — the double-tap we take over from Google because intercepting the
+   *  gesture suppressed its own (ADR-0145 §2). Eased, unlike `zoomTo`: this one is a
+   *  discrete move the user asked for once, so it collapses to a single `moveCamera` under
+   *  reduced motion like every other (§7).
+   *
+   *  `offsetPx` is the tapped point relative to the canvas centre, and it **anchors the
+   *  zoom there** — restoring what Google's own double-click zoom did before we suppressed
+   *  it. Omitted (or with no projection yet) it anchors at the centre. */
+  stepZoomIn: (offsetPx?: WorldPoint) => void;
 }
 
 export function useMapCamera(
@@ -409,13 +413,18 @@ export function useMapCamera(
    *  that ladder's floor turned a double-tap on a globe view into a jump to city zoom.
    *  It goes through the existing ease, so it reads as the same object moving as every
    *  other camera change — which Google's own double-click zoom never did (ADR-0129 §3). */
-  const stepZoomIn = useCallback(() => {
-    const centre = map?.getCenter();
-    if (!map || !centre) return;
-    const from = going.current?.zoom ?? map.getZoom();
-    if (from == null) return;
-    easeTo({ center: { lat: centre.lat(), lng: centre.lng() }, zoom: doubleTapZoom(from) });
-  }, [map, easeTo]);
+  const stepZoomIn = useCallback(
+    (offsetPx?: WorldPoint) => {
+      const centre = map?.getCenter();
+      if (!map || !centre) return;
+      const from = going.current?.zoom ?? map.getZoom();
+      if (from == null) return;
+      const to = doubleTapZoom(from);
+      const at = { lat: centre.lat(), lng: centre.lng() };
+      easeTo({ center: anchoredCentre(map, at, offsetPx, from, to) ?? at, zoom: to });
+    },
+    [map, easeTo],
+  );
 
   return { reframe, focus, frameOn, locate, zoomTo, stepZoomIn };
 }
@@ -438,4 +447,30 @@ function sameCamera(a: CameraAt | null, b: CameraAt): boolean {
     Math.abs(a.center.lat - b.center.lat) < 1e-6 &&
     Math.abs(a.center.lng - b.center.lng) < 1e-6
   );
+}
+
+/** **Where the centre must go for the tapped point to stay put** (ADR-0145 §3), or `null`
+ *  when it cannot be worked out — no offset, or a map with no projection yet — in which
+ *  case the caller anchors at the centre. Degrading rather than failing matters: a map has
+ *  no projection until it has rendered, and a double-tap before then should still zoom.
+ *
+ *  **Nothing here constructs a `google.maps.Point`.** `fromLatLngToPoint` hands one back,
+ *  so it is mutated and returned to `fromPointToLatLng` — which keeps this function clear
+ *  of the `google.maps` global entirely, and means both projections are Google's own. */
+function anchoredCentre(
+  map: google.maps.Map,
+  centre: LatLng,
+  offsetPx: WorldPoint | undefined,
+  fromZoom: number,
+  toZoom: number,
+): LatLng | null {
+  if (!offsetPx || (offsetPx.x === 0 && offsetPx.y === 0)) return null;
+  const projection = map.getProjection();
+  const world = projection?.fromLatLngToPoint(centre);
+  if (!projection || !world) return null;
+  const moved = zoomAboutPoint(world, offsetPx, fromZoom, toZoom);
+  world.x = moved.x;
+  world.y = moved.y;
+  const next = projection.fromPointToLatLng(world);
+  return next ? { lat: next.lat(), lng: next.lng() } : null;
 }

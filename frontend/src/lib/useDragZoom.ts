@@ -64,11 +64,12 @@ export function useDragZoom(
 
     const feed = (type: DragZoomEventType, x: number, y: number, t: number): boolean => {
       const { map: live, camera: cam } = latest.current;
-      // The pane's height is read where the gesture happens rather than kept in state, for
-      // the same reason the fit's padding is (ADR-0128): this screen re-renders every
-      // second and a layout read must not become a dependency.
+      // The pane's box is read where the gesture happens rather than kept in state, for the
+      // same reason the fit's padding is (ADR-0128): this screen re-renders every second and
+      // a layout read must not become a dependency.
+      const box = pane.getBoundingClientRect();
       const limits = dragZoomLimits(
-        pane.getBoundingClientRect().height,
+        box.height,
         live?.get('minZoom') as number | null | undefined,
         live?.get('maxZoom') as number | null | undefined,
       );
@@ -81,7 +82,13 @@ export function useDragZoom(
           cam.zoomTo(step.zoom);
           return true;
         case DRAG_ZOOM_ACTION.STEP:
-          cam.stepZoomIn();
+          // Anchored at the tapped point, which is what Google's own double-click zoom did
+          // before this handler suppressed it (ADR-0145 §3's amendment). Offsets are from
+          // the canvas CENTRE, which is the space `zoomAboutPoint` works in.
+          cam.stepZoomIn({
+            x: x - (box.left + box.width / 2),
+            y: y - (box.top + box.height / 2),
+          });
           return true;
         case DRAG_ZOOM_ACTION.SETTLE:
           // A real drag ends in a `click`, retargeted to whatever the capture landed on.

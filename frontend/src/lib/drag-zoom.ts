@@ -263,3 +263,37 @@ export function reduceDragZoom(
     hasTap: event.type === DRAG_ZOOM_EVENT.UP && travelled < MAP_DRAG_ZOOM.TAP_SLOP_PX,
   });
 }
+
+/** A point in Google's own world-coordinate space (the 256×256 Mercator square at zoom 0),
+ *  which is what `Projection.fromLatLngToPoint` speaks. */
+export interface WorldPoint {
+  x: number;
+  y: number;
+}
+
+/**
+ * **Keep a screen point fixed while the zoom changes** (ADR-0145 §3, point-anchoring).
+ *
+ * **There is no Mercator in here, and that is the design.** This works in Google's own
+ * world-coordinate space, where the relationship between world units and screen px is a
+ * pure power of two — so the only arithmetic is a scale change. Every nonlinear part of the
+ * projection stays inside Google's `fromLatLngToPoint`/`fromPointToLatLng`, which is what
+ * keeps this clear of ADR-0129 §3's warning about re-deriving Google's projection maths:
+ * we are asking Google to project, not projecting ourselves.
+ *
+ * At zoom `z`, `screenPx = worldUnits × 2^z`. The tapped point's world position is
+ * `centre + offset / 2^from`, and we want it to remain at the same `offset` afterwards,
+ * i.e. `centre' = tap − offset / 2^to`. Subtracting gives the one line below.
+ *
+ * `offsetPx` is measured from the CANVAS CENTRE (+x inline-end, +y down). World-space `y`
+ * grows southward exactly as screen `y` grows downward, so neither axis is flipped.
+ */
+export function zoomAboutPoint(
+  centre: WorldPoint,
+  offsetPx: WorldPoint,
+  fromZoom: number,
+  toZoom: number,
+): WorldPoint {
+  const shift = 2 ** -fromZoom - 2 ** -toZoom;
+  return { x: centre.x + offsetPx.x * shift, y: centre.y + offsetPx.y * shift };
+}

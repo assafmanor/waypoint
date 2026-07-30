@@ -12,6 +12,7 @@ import {
   IDLE_DRAG_ZOOM,
   dragZoomLimits,
   doubleTapZoom,
+  zoomAboutPoint,
   reduceDragZoom,
   zoomPerLevelPx,
   type DragZoomEventType,
@@ -327,5 +328,48 @@ describe('doubleTapZoom — one level from wherever you are', () => {
     expect(doubleTapZoom(MAP_ZOOM.STEP_IN_MAX)).toBe(MAP_ZOOM.STEP_IN_MAX + 1);
     expect(doubleTapZoom(MAP_DRAG_ZOOM.MAX)).toBe(MAP_DRAG_ZOOM.MAX);
     expect(doubleTapZoom(MAP_DRAG_ZOOM.MAX + 5)).toBe(MAP_DRAG_ZOOM.MAX);
+  });
+});
+
+describe('zoomAboutPoint — the tapped point stays put', () => {
+  // Pure scale arithmetic in Google's world space. The invariant is stated the way the
+  // derivation states it: the tapped point's world position must be reachable from the NEW
+  // centre at the NEW zoom using the SAME screen offset.
+  const invariant = (offset: { x: number; y: number }, from: number, to: number) => {
+    const centre = { x: 128, y: 128 };
+    const next = zoomAboutPoint(centre, offset, from, to);
+    const tapBefore = { x: centre.x + offset.x / 2 ** from, y: centre.y + offset.y / 2 ** from };
+    const tapAfter = { x: next.x + offset.x / 2 ** to, y: next.y + offset.y / 2 ** to };
+    expect(tapAfter.x).toBeCloseTo(tapBefore.x, 12);
+    expect(tapAfter.y).toBeCloseTo(tapBefore.y, 12);
+  };
+
+  it('holds for a tap off-centre in every quadrant, zooming in', () => {
+    for (const offset of [
+      { x: 120, y: 80 },
+      { x: -120, y: 80 },
+      { x: 120, y: -80 },
+      { x: -120, y: -80 },
+    ]) {
+      invariant(offset, 14, 15);
+    }
+  });
+
+  it('holds at a globe zoom and at a deep one, and when zooming OUT', () => {
+    invariant({ x: 100, y: -60 }, 2, 3);
+    invariant({ x: 100, y: -60 }, 19, 20);
+    invariant({ x: 100, y: -60 }, 15, 14);
+  });
+
+  it('moves the centre TOWARD the tap when zooming in', () => {
+    // Sign check, which is the one thing an invariant that holds symmetrically cannot catch:
+    // a flipped axis satisfies "stays put" against its own flipped derivation.
+    const next = zoomAboutPoint({ x: 128, y: 128 }, { x: 256, y: 256 }, 14, 15);
+    expect(next.x).toBeGreaterThan(128);
+    expect(next.y).toBeGreaterThan(128);
+  });
+
+  it('is a no-op for a tap dead centre', () => {
+    expect(zoomAboutPoint({ x: 128, y: 128 }, { x: 0, y: 0 }, 14, 15)).toEqual({ x: 128, y: 128 });
   });
 });

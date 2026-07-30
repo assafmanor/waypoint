@@ -64,8 +64,19 @@ This is the **fourth** time in this epic that a real device corrected something 
 
 The pattern in all four is the same: **the tests asserted what the code did, and the thing that was wrong was the model**. A property test catches this where a value test cannot, which is why §1's fix is tested as a property.
 
+## 4b. Point anchoring, taken in the same session (ADR-0145 §3 amended)
+
+The owner's answer to whether the double-tap should anchor at the tapped point: _"yes if we can use things that are given to us by Google, I would prefer them."_ So it does — and the decision **splits by gesture** rather than going one way:
+
+- **The drag keeps the centre**, for the reason §3 gave and the device did not contradict: the finger rests on the anchor for the whole gesture, so a point-anchored drag converges on the one spot you cannot see.
+- **The double-tap takes the point**, because by then you have lifted — the point is visible and a discrete "go there" is what you meant. And decisively, **Google's double-click zoom anchored there**, so centring it was never a design choice: it was an unnoticed downgrade that arrived with the §2 takeover.
+
+**On "things given to us by Google", which is the preference worth honouring precisely.** ADR-0129 §3 warns against _re-deriving_ Google's projection maths, and it would be easy to read that as "don't touch projections". The distinction: `zoomAboutPoint` works in **world coordinates**, where world-to-screen is a pure power of two, so the only arithmetic is a scale change — **there is no Mercator in our code at all.** Every nonlinear part lives inside `fromLatLngToPoint`/`fromPointToLatLng`. And nothing constructs a `google.maps.Point`: `fromLatLngToPoint` returns one, so it is mutated and handed back, which keeps the path clear of the `google.maps` global and makes it trivially fakeable.
+
+**The test is the behaviour, not the arithmetic.** The fake map gained Google's own documented Web Mercator, and the assertion is that _the geography under the finger does not move_. A linear stand-in would have passed while the shipped code was wrong about latitude — which is this feature's whole risk. The sign is asserted separately, since an invariant that holds symmetrically cannot catch a flipped axis. It also degrades: a map has no projection until it has rendered, and a double-tap before then still zooms, centred.
+
 ## Still open
 
-**Whether the double-tap should anchor at the tapped point.** ADR-0145 §3 left point-anchoring deliberately additive, and taking over Google's double-tap is what made it a live question — Google _did_ anchor there, so centring it is a real downgrade for the discrete gesture even if it is right for the drag (where the finger occludes the point and stays down). It needs the projection, so it is a real change rather than a constant, and it is the owner's call. Raised, not taken.
+**Whether the DRAG should also anchor at the tapped point.** The machinery now exists, so it is a small change rather than a design — but the argument against it is unchanged and is about the thumb, not the cost. Left alone deliberately; worth a look once the double-tap is on a phone.
 
-1845 unit tests / 130 files green; `format` / `lint` / `typecheck` / `build` too.
+1845+ unit tests green; `format` / `lint` / `typecheck` / `build` too.
